@@ -372,15 +372,17 @@ reopened only if A.6's measurement asks for it.
       beside `base`'s 11.9-14.2% / 8.1-8.4% and the synthetic prediction for a 38x cut (9.6%,
       i.e. no layout gain expected from A alone — §7B.1). The point of this row is the honest
       (e)/(f) record, not a pass.
-      **Done.** Recorded as §7C.2. §7B.1's prediction holds and the row is not a pass, but the
-      result is sharper than "no gain": A's largest contiguous block is **31,328 B in all fifteen
-      perturbations** (12.4-12.5%) where `base` swings 30,752-60,800 B (11.9-23.4%). The
-      perturbations still land — A's seam-time largest and retained bytes both move with `k` — so
-      the churn removal converted a lottery into a fixed outcome, which is §0A's model predicting
-      its own consequence unprompted. It is fixed slightly *below* `base`'s median (7.4% against
-      8.4% after the whole sequence), and the mechanism is priced: A retains **+7,232 B**, all of
-      it at construction, 3,200 B of it the 20 chunks' hoisted buffers measured directly. The
-      tripwire needs B, or B plus C.
+      **Done.** Recorded as §7C.2. §7B.1's prediction holds: **A does not move the ratio and is
+      slightly worse** — 12.4% against `base`'s 14.2% median after `build_system()`, 7.4% against
+      8.4% after the whole sequence, with all six matched pairs below `base`. A is flat across the
+      ten comparable `k` perturbations at 508k (31,328 B every run, against `base`'s 1.24x spread)
+      but **not** flat at 560k (6.7-8.1%), so the churn removal reduced sensitivity to a seam
+      survivor without eliminating it. The mechanism of the loss is priced: A retains **+7,232 B**,
+      all of it at construction, 3,200 B of it the 20 chunks' hoisted buffers measured directly.
+      **One instrument family had to be invalidated first**: the `q` perturbation injects churn
+      inside `SPIDevice.__aenter__`, which A's FRAM path never enters, so it fires 74x per logger
+      on `base` and 0x under A — excluded from every comparison, and it is what produced `base`'s
+      apparent 30,752-60,800 B swing. The tripwire needs B, or B plus C.
 - [x] Re-run the allocation census of §3A.3 for one logger `setup()` on the settrace-free build
       and confirm the 38x against the prototype's 3,072 B (the prototype was not the real code;
       this is the first real number).

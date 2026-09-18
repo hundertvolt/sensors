@@ -2429,7 +2429,7 @@ concurrent task still observes a block marked BUSY and then IDLE again during on
 
 **Closed**: §11 item 6, answered 2026-09-18.
 
-### 7C.2 The perturbation ensemble on the real path — A removes the lottery, not the fragmentation
+### 7C.2 The perturbation ensemble on the real path — no layout gain, and one instrument family invalidated
 
 §7A.8's protocol, re-run with A in place: `build-nosettrace` rebuilt against the restructured
 `src/` through `manifest_heap.py` (so the frozen bytecode is the shipped code, not a live-source
@@ -2438,27 +2438,48 @@ calibrated heaps, `largest contiguous / free` after the batch, `hp.mapdump()`'s 
 before each reading. The 508k arm is the 10 `k` perturbations §7A.8 published plus its 5 `q` runs;
 the 560k arm is the 6 `k` perturbations `base` has, so the comparison is like for like.
 
+**Only the `k` family is comparable across the two arms — `q` is not, and this had to be found
+before the numbers could be read at all.** The two families (§1.3) perturb by different mechanisms:
+`k` retains one `bytearray(32 * k)` **at the seam**, which is code-path independent and valid in
+both arms; `q` injects `q` transient `bytearray(32)`s **inside `SPIDevice.__aenter__`**. On the base
+branch `FRAM_SPI` enters that async session once per CS cycle (six `async with self._spidev` sites,
+74 entries per blank logger `setup()`), so `q` fires 74 times per logger. Under A the driver takes
+`self._spidev.asy_lock` directly and drives the chip through the synchronous session, so
+`SPIDevice.__aenter__` **never runs on the FRAM path at all** and `q` fires **zero** times. `q`
+therefore does not perturb A, and "`q` changes nothing under A" is a statement about the
+instrument's hook, not about the heap. The `q` rows are reported and excluded from every comparison.
+
 | configuration | | largest contiguous | largest / free | clears 55% |
 |---|---|---|---|---|
-| after `build_system()`, 508k | `base`, 15 | 30,752 - 60,800 | **11.9 - 23.4%** (med 14.3) | 0 / 15 |
-| after `build_system()`, 508k | **A, 15** | **31,328 - 31,328** | **12.4 - 12.5%** (med 12.4) | 0 / 15 |
-| the whole boot sequence, 560k | `base`, 6 | 23,648 - 24,832 | **8.1 - 8.5%** (med 8.4) | 0 / 6 |
-| the whole boot sequence, 560k | **A, 6** | **21,088 - 21,376** | **7.3 - 7.4%** (med 7.4) | 0 / 6 |
+| after `build_system()`, 508k | `base`, 10 `k` | 30,752 - 38,048 | **11.9 - 14.6%** (med 14.2) | 0 / 10 |
+| after `build_system()`, 508k | **A, 10 `k`** | **31,328 - 31,328** | **12.4 - 12.5%** (med 12.4) | 0 / 10 |
+| the whole boot sequence, 560k | `base`, 6 `k` | 23,648 - 24,832 | **8.1 - 8.5%** (med 8.4) | 0 / 6 |
+| the whole boot sequence, 560k | **A, same 6 `k`** | **21,088 - 21,376** | **7.3 - 7.4%** (med 7.4) | 0 / 6 |
+| *(reference, not comparable)* | `base`, 5 `q` | 32,800 - 60,800 | 12.8 - 23.4% | 0 / 5 |
+| *(reference, not comparable)* | A, 5 `q` | 31,328 - 31,328 | 12.4% | 0 / 5 |
 
-**The finding is the second column, not the fourth.** A's largest contiguous block is **31,328 B in
-all fifteen runs** where `base` swings by a factor of two. The perturbations are demonstrably still
-landing: `A`'s seam-time largest moves with `k` (219,808 → 218,016 B) and its retained bytes rise
-monotonically with it, exactly as the injected survivors demand — yet the post-batch outcome does
-not move at all. §2.3 said placement is the variable; what made it a *lottery* was the ~1 MB of
-same-size-class churn the batch ran through. Remove 9/10ths of that churn and the outcome is decided
-by the permanent object graph alone. This is the sharpest confirmation of §0A's model in this file:
-the model predicts that with the churn gone the result should become deterministic, and it did,
-without being asked to.
+**A does not move the ratio, and it is slightly worse.** 12.4% against `base`'s 14.2% median after
+`build_system()`, 7.4% against 8.4% after the whole sequence. §7B.1 predicted no layout gain from A
+alone; that is what happened, and the small loss is real rather than noise — every one of the six
+matched 560k pairs has A below `base`.
 
-**It is deterministic at a worse number than `base`'s median.** 12.4% against 14.3% after
-`build_system()`, and 7.4% against 8.4% after the whole sequence. §7B.1 predicted no layout gain
-from A alone and that is what happened, but the small loss has a mechanism worth naming, because it
-is the cost side of A.1.3's buffer hoisting:
+**A is less sensitive to a seam survivor, but "the lottery is gone" is too strong.** On the ten
+comparable `k` runs at 508k, `base` spreads 30,752-38,048 B (1.24x) while A returns **31,328 B in
+all ten**, and the perturbation is demonstrably landing (A's seam-time largest moves 219,808 →
+218,016 B across `k`, its retained bytes rise monotonically). But at 560k with the task list
+included, A is **not** flat: 19,264 B at `k13`, then 21,952 / 22,528 / 23,200 as `k` grows to 55,
+i.e. 6.7-8.1%. So the honest statement is narrower than the one this section first carried: at
+508k after `build_system()` the seam perturbation stopped moving the outcome; after the whole boot
+sequence it still does. **What produced `base`'s dramatic 30,752-60,800 B swing was the `q` family**
+(43,488-60,800 B on four of its five runs, against 30,752-38,048 for `k`) — a family that cannot be
+compared across these arms at all. That swing is itself interesting, and consistent with §6A.4's
+finding that small-object churn is protective rather than harmful, but it is not evidence about A.
+
+**Gap, stated rather than papered over**: `base` has only the 6 `k` runs at 560k, so whether it too
+drifts with larger seam survivors there is unmeasured. Closing it needs the pre-restructure frozen
+binary rebuilt, which this session overwrote in place.
+
+The cost side of A.1.3's buffer hoisting, which is where the small loss comes from:
 
 | dump | `base` retained | A retained | delta |
 |---|---|---|---|
