@@ -2,7 +2,7 @@
 # Dedicated entry point for the digital twin's "full Unix-port integration" run -
 # digital_twin/run_generic_integration.py, run against the real digital_twin buses under the real
 # MicroPython Unix-port interpreter, for any real device (--device, default wozi;
-# BUILD_CHAIN_PLAN.md's Session 6.2 - this script used to hardcode run_wozi_integration.py, now
+# SPECIFICATION.md Part L.4 - this script used to hardcode run_wozi_integration.py, now
 # retired along with run_dev_integration.py in favor of this one generic entry point). Deliberately
 # separate from scripts/test.sh: the twin needs its own MICROPYPATH
 # ("build/generated_src:src:digital_twin:ext:frozen_modules:.frozen") that never carries a "tests"
@@ -21,7 +21,7 @@
 # instead, which silently masked the gap.
 #
 # "build/generated_src" is required for the same reason scripts/test.sh needs it: no static
-# src/sensortask_*.py exists any more (BUILD_CHAIN_PLAN.md's Session 6 finish criterion) - both the
+# src/sensortask_*.py exists any more (SPECIFICATION.md Part L.2) - both the
 # device's module and its wiring plan are generated fresh below, via buildgen, into this gitignored
 # directory instead.
 #

@@ -27,7 +27,7 @@ def test_main_generates_every_real_device_matching_generate_device_directly(gene
     (tmp_path / "ext").symlink_to(repo_root / "ext")
     # Pins the one build_date main() computes for its whole batch, so this test's own separate
     # reference generate_device() calls below embed the exact same timestamp instead of racing a
-    # real wall clock against main()'s already-completed run (BUILD_CHAIN_PLAN.md Session 7).
+    # real wall clock against main()'s already-completed run (SPECIFICATION.md Part L.7).
     monkeypatch.setattr(generate_sensortask_modules, "current_build_date", lambda: "2026-09-12T10:00:00Z")
 
     exit_code = generate_sensortask_modules.main()

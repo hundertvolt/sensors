@@ -124,7 +124,7 @@ def test_real_website_inlined_definitions_matches_the_booted_devices_own_id() ->
     # index.html at build time instead, so this now reads it out of the real page body.
     #
     # "wozi" is hardcoded here deliberately, not a stale device-specific leftover this session left
-    # unexamined (BUILD_CHAIN_PLAN.md's Session 6.2 - re-verified, not just inherited): this file's
+    # unexamined (SPECIFICATION.md Part L.4 - re-verified, not just inherited): this file's
     # own device.id assertion is orthogonal to sensortask-module generalization - it comes from
     # WHICHEVER device's real website bundle scripts/test.sh built (frozen_modules/
     # frozen_website_wozi.py, the only one built - see that script's own comment), never from

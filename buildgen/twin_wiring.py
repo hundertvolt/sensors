@@ -1,4 +1,4 @@
-"""Derives the digital twin's per-device I2C/SPI wiring plan (which chip fake sits at which bus address) from a validated `DeviceModel` - the same shape `digital_twin/machine.py`'s `configure_wiring()` consumes at twin-boot time, replacing the old wozi/dev 2-profile enum (BUILD_CHAIN_PLAN.md's Session 5 mission).
+"""Derives the digital twin's per-device I2C/SPI wiring plan (which chip fake sits at which bus address) from a validated `DeviceModel` - the same shape `digital_twin/machine.py`'s `configure_wiring()` consumes at twin-boot time, replacing the old wozi/dev 2-profile enum (SPECIFICATION.md Part L.4 mission).
 See `digital_twin/README.md`'s "Booting a generated device" section for the twin-side half of this mechanism."""
 
 from typing import Any

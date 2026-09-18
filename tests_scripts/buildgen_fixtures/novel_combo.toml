@@ -1,5 +1,5 @@
 # novel_combo.toml - the mandatory synthetic "novel combination" fixture device
-# (BUILD_CHAIN_PLAN.md's acceptance criteria #2): existing drivers mixed in a pin/bus layout none
+# (SPECIFICATION.md Part L.1's acceptance criterion #2): existing drivers mixed in a pin/bus layout none
 # of the 6 real devices/*.toml use, proving buildgen's full pipeline succeeds from this one file
 # with zero code changes elsewhere. Not a real device - never flashed, never referenced outside
 # tests_scripts/test_buildgen_*.py.

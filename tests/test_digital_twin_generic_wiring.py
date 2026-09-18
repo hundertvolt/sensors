@@ -1,4 +1,4 @@
-"""Unit tests for digital_twin/machine.py's generalized wiring engine (configure_wiring()) and its "wozi"/"dev" legacy sugar (configure_i2c_wiring()) - BUILD_CHAIN_PLAN.md's Session 5 write-up.
+"""Unit tests for digital_twin/machine.py's generalized wiring engine (configure_wiring()) and its "wozi"/"dev" legacy sugar (configure_i2c_wiring()) - SPECIFICATION.md Part L.4.
 Bus-level Pin/I2C/SPI fake behavior itself is already covered by test_digital_twin_machine.py; this file is scoped to the wiring-plan-to-chip-fake construction mechanism only."""
 
 import sys
@@ -125,7 +125,7 @@ def test_configure_wiring_leaves_spi_bus_unwired_when_plan_has_no_spi_entry() ->
 # ---------------------------------------------------------------------------
 # configure_i2c_wiring() - "wozi"/"dev" legacy sugar over configure_wiring(), regression-checked
 # against the exact behavior the old hardcoded 2-profile _wire_i2c_devices()/_wire_spi_device()
-# produced (BUILD_CHAIN_PLAN.md's Session 5 write-up).
+# produced (SPECIFICATION.md Part L.4).
 # ---------------------------------------------------------------------------
 
 

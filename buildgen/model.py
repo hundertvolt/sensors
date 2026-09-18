@@ -25,7 +25,7 @@ TomlDoc = dict[str, Any]
 def instance_key(inst: "TomlDoc") -> tuple[str, str]:
     # The TOML's own driver/name_ext identity - deliberately never instance_name()/_NAME
     # (SPECIFICATION.md Part C.14.1's separate, unrelated naming space; see wiring.py's own
-    # module docstring and BUILD_CHAIN_PLAN.md's quality-bar section for the confirmed-real bug
+    # module docstring and SPECIFICATION.md Part L.5 for the confirmed-real bug
     # this distinction closes: NotificationCoordinator's _NAME is "NOTIFY", not "NOTIFICATION").
     return (inst["driver"], inst.get("name_ext", ""))
 

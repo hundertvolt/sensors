@@ -370,7 +370,7 @@ a live question:
   scoped to avoid this either way, but the naming is the structural backstop.
 - **Reusable real-hardware GC/fragmentation-instrumentation technique**: a temporary async probe
   task added to the boot entry (`boot_entry/<device>_boot.py` at the time this was written; that
-  directory is retired now - BUILD_CHAIN_PLAN.md's Session 6 - so add it to the staged `main.py`
+  directory is retired now - SPECIFICATION.md Part L.4 - so add it to the staged `main.py`
   a build produces, before flashing, and never commit the edit), printing a fixed-format
   line every N ms/every real event, captured via direct `pyserial` reads (`Board.tail_log()`, never
   `mpremote exec()` against a live system - that soft-resets it, wiping the very state being
@@ -815,8 +815,8 @@ mock-tier generic scenario type against what real hardware actually covers for d
   wraps was renamed to `test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_
   transactions` to say so.
 - `bus_topology_autodetect_and_hazard_sweep.py`'s own `KNOWN_ADDRESSES` table had drifted out of
-  sync with `tests_hardware/bus_topology.py`'s own copy (its own module docstring's stated
-  invariant) - it was missing ISL29125 (`0x44`) entirely, so the address sweep never probed/labeled
+  sync with the since-deleted `tests_hardware/bus_topology.py`'s own copy (that file's module
+  docstring stated the invariant; nothing enforced it, which is why it drifted) - it was missing ISL29125 (`0x44`) entirely, so the address sweep never probed/labeled
   it and the lone-device self-hazard branch could never apply to it. Fixed: `ISL29125_I2C` support
   added to both the address table and the self-hazard construction/read branch.
   - Everything else in the mock tier's generic scenario set already had a real-hardware equivalent

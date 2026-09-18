@@ -1,5 +1,5 @@
 """Parses driver-declared bus requirements from the `# @requires bus.<field><op><value>` comment
-tag placed at module level near `_WIRING`/`_VAL_*` (BUILD_CHAIN_PLAN.md's quality bar) - a plain
+tag placed at module level near `_WIRING`/`_VAL_*` (SPECIFICATION.md Part L.5) - a plain
 comment, never a real Python value, and never silently invisible (see tag_comments.py)."""
 
 import operator

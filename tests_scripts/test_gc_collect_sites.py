@@ -7,9 +7,9 @@ from pathlib import Path
 
 # The whole allowance, spelled out. src/ is checked structurally (a real call node, attributed to
 # its enclosing function); buildgen/ is checked textually because there the call only ever exists
-# inside codegen.py's emitted-source strings, where no Call node can be found. This test is the
-# only mechanical confinement - the lint.sh grep HEAP_REMEDIATION_PLAN.md B.3 also specified is
-# not in place, so a widening must fail here or it fails nowhere.
+# inside codegen.py's emitted-source strings, where no Call node can be found. scripts/lint.sh
+# greps for the same rule as a fast path; this test is the precise one - it attributes each call to
+# its enclosing function, so it also catches a rename of the allowed site.
 _ALLOWED_SRC_SITES = {("system_service.py", "start_and_check_tasks")}
 _ALLOWED_BUILDGEN_FILES = {"codegen.py"}
 

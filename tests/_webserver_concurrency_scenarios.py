@@ -108,7 +108,7 @@ def _next_test_port() -> int:
 
 async def _boot(port: int, device: str) -> "Any":
     # configure_wiring() first: every digital-twin I2C/SPI construction reads the shared
-    # machine._wiring_plan global (BUILD_CHAIN_PLAN.md's Session 6.2 finding - see this file's own
+    # machine._wiring_plan global (SPECIFICATION.md Part L.4 finding - see this file's own
     # git history/PR description) - "last configure_wiring() call before construction wins", so this
     # must run immediately before build_system(), not once at module import time, since several
     # devices' own modules get booted in the same process across this file's full test run.
@@ -244,7 +244,7 @@ async def _real_config_write(host: str, port: int, interval: int) -> int:
     """A real, harmless, valid config write - PUT /sensors {"SCD30": {"Interval": interval}} -
     against the real, currently-registered SCD30 driver (unlike _slow_but_healthy_put()'s own
     no-op empty /system PUT above, this genuinely reaches ConfigManager.write_config() through the
-    real object graph; SCD30 is present on every real device - BUILD_CHAIN_PLAN.md's Session 2).
+    real object graph; SCD30 is present on every real device - SPECIFICATION.md Part L.3).
     Used to prove concurrent GET polling survives a real concurrent config write, not just another
     concurrent read - the digital-twin-tier equivalent of
     tests_hardware/bench/test_memory_stress_bench.py's own real-hardware hammer-load test (GET

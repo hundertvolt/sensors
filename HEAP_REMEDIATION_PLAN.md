@@ -514,20 +514,22 @@ milliseconds ... about 1ms on the Pyboard" per the pinned docs; boot latency is 
 - [x] `buildgen/codegen.py` per B.1.1 (`_emit_build_system` and the import block); regenerate
       nothing by hand — `scripts/build_firmware.py`/the twin generate at build time.
 - [x] `src/system_service.py` per B.1.2, with `import gc`.
-- [ ] **`scripts/lint.sh` guard** — **NOT DONE, and deliberately so.** It was written, verified
-      to bite on an injected `gc.collect()` in `src/print_log.py`, and then **reverted**, because
-      touching `scripts/` triggers CLAUDE.md's two-target clean-chroot pre-push gate and **the
-      trixie leg cannot run in this environment**: `deb.debian.org:443` is `connect_rejected` by
-      the sandbox's egress policy (confirmed against the agent proxy's own status endpoint, which
-      logs the rejection). The noble leg got as far as `typecheck.sh` and died on a cut-off PyPI
-      transfer fetching the stub wheel — transient, retryable, but the trixie half is not. Rather
-      than push an unverified `scripts/` change, `scripts/` is left untouched by measure B, so the
-      gate is not triggered at all. `tests_scripts/test_gc_collect_sites.py` (B.2) carries the
-      confinement instead and is the stricter of the two: it attributes each call to its enclosing
-      function, so it catches a module-level call and a rename of the allowed site, neither of
-      which a path-based grep sees. The grep's only advantage is failing in the lint stage rather
-      than the test stage. **Owed**: add it from a host that can run both chroots — the bench Pi4
-      runs trixie already, and `REAL_HARDWARE_TEST_QUEUE.md` H1 tracks that gate.
+- [x] **`scripts/lint.sh` guard** — **done.** `gc.collect(` under `src/` is allowed only in
+      `src/system_service.py` and under `buildgen/` only in `buildgen/codegen.py`; anything else
+      fails the lint gate naming `SPECIFICATION.md` I.4(f.1). Verified to bite: an injected
+      `gc.collect()` in `src/print_log.py` failed lint (and the structural test) and passed again
+      once removed.
+      **History worth keeping, because the rule moved underneath it.** This was first written,
+      verified, then **reverted**, because touching `scripts/` triggered CLAUDE.md's two-target
+      clean-chroot *pre-push gate* and the trixie leg cannot run in this environment —
+      `deb.debian.org:443` is `connect_rejected` by the sandbox's egress policy (confirmed against
+      the agent proxy's own status endpoint; the noble leg got as far as `typecheck.sh` and died on
+      a cut-off PyPI transfer, which is transient). It was then restored on merging the base
+      branch, which carries the owner's decision of 2026-09-18 that **the two-target verification
+      is an owner-run periodic check, not a blocking per-push gate** (`BACKLOG.md`). **Flagged for
+      the owner**: CLAUDE.md's own "Pre-push verification" section still reads as a blocking gate,
+      so CLAUDE.md and BACKLOG.md now disagree — reported rather than edited, since which text is
+      authoritative is the owner's call (CLAUDE.md's flag-don't-silently-fix rule).
 - [x] `scripts/lint.sh`, `scripts/typecheck.sh`, `scripts/test.sh` exit 0. **Done**: lint clean,
       typecheck 157/47/105, suite 85/85 MicroPython files and 1237 pytest passed / 7 skipped.
 

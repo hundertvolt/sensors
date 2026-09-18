@@ -10,7 +10,7 @@ import sys
 # Same sys.path convention as tests/test_setter_microdot_integration.py (see its own module
 # docstring for why: scripts/test.sh's MICROPYPATH deliberately excludes ext/, and extending
 # sys.path here reaches the real, vendored ext/microdot.py without touching MICROPYPATH/
-# pyproject.toml/scripts/test.sh - a "Pre-push verification" scope change this file must not need.
+# pyproject.toml/scripts/test.sh - a "Build-environment verification" scope change this file must not need.
 sys.path.insert(0, "ext")
 
 from _shared_rest_roundtrip import drain_json_response_body
@@ -515,7 +515,7 @@ def test_system_get_is_flat_debug_gmt_dst_only() -> None:
 
 
 def test_system_get_reports_build_info_verbatim_when_supplied() -> None:
-    # BUILD_CHAIN_PLAN.md Session 7: buildgen supplies this dict at construction time (firmware/
+    # SPECIFICATION.md Part L.7: buildgen supplies this dict at construction time (firmware/
     # website version + a real build timestamp) - WebserverService never computes any of it itself,
     # just relays it under one "build" sub-entry alongside the ordinary flat settings fields.
     build_info = {"firmwareVersion": "2.0b0", "websiteVersion": "2.0b0", "buildDate": "2026-09-12T10:00:00Z"}
@@ -1984,7 +1984,7 @@ def test_h2_stream_response_has_an_explicit_correct_content_length_header() -> N
     # see _get_status()'s own comment). Real-hardware/real-socket regression coverage
     # (found via digital_twin/run_wozi_integration.py's own now-retired soak test failing without
     # this, before that soak machinery moved to run_generic_integration.py -
-    # BUILD_CHAIN_PLAN.md's Session 6.2): digital_twin/_http_client.py's fetch() falls back to a
+    # SPECIFICATION.md Part L.4): digital_twin/_http_client.py's fetch() falls back to a
     # slow, effectively-untested
     # reader.read(-1)-until-EOF path whenever Content-Length is missing.
     service, _app = _make_service()

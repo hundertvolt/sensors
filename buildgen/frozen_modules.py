@@ -1,4 +1,4 @@
-"""Dependency-driven frozen-module selection (BUILD_CHAIN_PLAN.md's "Core design decisions"): the
+"""Dependency-driven frozen-module selection (SPECIFICATION.md Part L.2): the
 transitive `import`/`from...import` closure, AST-scanned, seeded from the device's declared drivers
 plus a fixed core set. Computes *which* modules; feeding them to freeze() is Session 6's job."""
 

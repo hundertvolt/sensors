@@ -650,8 +650,8 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   repository/architecture overview, the toolchain/build-environment installer, the sensor driver
   architecture spec, the `src/` production-quality checklist, testing & coverage,
   MicroPython/RP2040 platform-target facts, the cross-cutting shared-pattern/primitive-reuse
-  catalog, and the website's own architecture — all in one place, organized into lettered Parts
-  (A-J) for different needs. Produced by a first-pass doc-scatter cleanup that merged
+  catalog, the website's own architecture, the new-driver checklist, and the device-TOML/`buildgen`
+  build chain — all in one place, organized into lettered Parts (A-L) for different needs. Produced by a first-pass doc-scatter cleanup that merged
   `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, most of this
   file's former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Build
   process" content, and the spec-shaped parts of `CLAUDE.md`/`BACKLOG.md` into one document. Start
@@ -663,7 +663,13 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   way at the UART promotion's merge: its durable contracts are Part J (J.9 in particular), its
   open items are in BACKLOG.md, and the work list and audit-pass history it also carried were
   dropped rather than migrated — documentation holds current state and rules, not the path that
-  got there.
+  got there. `BUILD_CHAIN_PLAN.md` and `BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md` were folded in
+  the same way once the device-genericization chain had fully landed: their durable content — the
+  device variants and the two standing acceptance criteria, the core design decisions, the device
+  TOML schema, the generator pipeline, the build-tooling quality bar, the wiring-defaults/per-value/
+  comment-tag/pin-legality mechanisms, and product versioning — is **Part L**, while their status
+  sections, dependency-ordered session breakdown, merge-back review checklist and merge history were
+  dropped as process narrative.
 
 **Temporary docs** (deleted once their purpose is served):
 
@@ -696,26 +702,14 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   result is migrated into the permanent docs; the file goes when the last row does. It authorizes
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
-- The **`*_HANDOVER*.md` files at the repo root** are per-effort throwaways, each owned by the
-  session or pull request named in its own first lines, each deleted once its findings are migrated
-  or confirmed not to apply. They are listed here only so they are locatable; do not treat one as a
-  durable reference, and prefer `REAL_HARDWARE_TEST_QUEUE.md` above for anything bench-related,
-  which is where their still-open real-hardware asks have been consolidated.
-
-**`BUILD_CHAIN_PLAN.md`** (working doc, active for the device-genericization initiative):
-
-- **[`BUILD_CHAIN_PLAN.md`](BUILD_CHAIN_PLAN.md)** — the shared plan for making `src/`, the
-  website, the build chain, and the test chain fully device-generic (every device-specific fact
-  in exactly one TOML file per device variant): target device list, core design decisions, the
-  device TOML schema, and the dependency-ordered session breakdown every session spun off
-  `claude/automated-build-chain-nuzumw` works against. Updated as decisions evolve across that
-  branch's sessions; expected to fold into `SPECIFICATION.md`/be deleted once the whole chain lands
-  and merges into `main`, matching this repo's usual temporary-planning-doc lifecycle (see the
-  deleted-docs list at the end of this section).
-- **[`BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md`](BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md)** —
-  design record for `buildgen`'s wiring-defaults mechanism, per-value generalization, and driver-
-  onboarding hardening; every mechanism it designed has since shipped, so it's kept current as a
-  durable design record rather than archived, same lifecycle as `BUILD_CHAIN_PLAN.md` above.
+- **[`HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`](HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md)** —
+  the last remaining `*_HANDOVER*.md` file, owned by the session working PR #105. These are
+  per-effort throwaways, each owned by the session or pull request named in its own first lines and
+  deleted once its findings are migrated or confirmed not to apply; the two real-hardware ones that
+  preceded it went that way on 2026-09-18, their still-open asks consolidated into
+  `REAL_HARDWARE_TEST_QUEUE.md` and their answered ones migrated into `SPECIFICATION.md`. Do not
+  treat a handover file as a durable reference, and prefer the queue above for anything
+  bench-related.
 
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 

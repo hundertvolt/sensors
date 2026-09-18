@@ -1,4 +1,4 @@
-"""Shape/collision smoke tests for devices/*.toml against BUILD_CHAIN_PLAN.md's schema (optional
+"""Shape/collision smoke tests for devices/*.toml against SPECIFICATION.md Part L.3's schema (optional
 modules only in [[instance]]; wifi/ntp/system are mandatory infra, tuned via [device] instead).
 Hand-implements the collision checks until Session 3's generator/validator exists."""
 
@@ -106,7 +106,7 @@ def check_singleton_drivers_never_declare_name_ext(doc: _TomlDoc, label: str) ->
             assert "name_ext" not in inst, f"{label}: singleton driver {inst['driver']!r} declares name_ext - singleton service kinds never do"
 
 
-# sgp40's per-value measurement wiring (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9):
+# sgp40's per-value measurement wiring (SPECIFICATION.md Part L.6.3):
 # temperature_source/humidity_source are independent {source, field} references, generalized from
 # the old single whole-object comp_source field - every real device today sources both off scd30.
 _SGP40_VALUE_WIRING = {"temperature_source": "Temp", "humidity_source": "Hum"}
@@ -804,3 +804,48 @@ def test_detects_device_wiring_referencing_a_nonexistent_instance() -> None:
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "neopixel"]
     with pytest.raises(AssertionError, match="no such instance exists"):
         check_device_wiring_resolves_if_present(doc, "base")
+
+
+# I2C-spec reserved address ranges: 0x00-0x07 (general call/CBUS/reserved/Hs-mode) and 0x78-0x7F
+# (10-bit addressing/reserved). No device's own address may fall inside either, or the chip answers
+# to - or is masked by - a bus-wide protocol address. Inherited from the deleted
+# tests_hardware/bus_topology.py, which asserted this over two hand-kept wiring tuples that nothing
+# imported; here it runs against the real device set instead. The on-target sweep
+# (device_scripts/bus_topology_autodetect_and_hazard_sweep.py) keeps its own copy of these ranges
+# deliberately - it is MicroPython running on the board and cannot import host test code.
+_RESERVED_I2C_RANGES = ((0x00, 0x07), (0x78, 0x7F))
+
+
+def _is_reserved(address: int) -> bool:
+    return any(lo <= address <= hi for lo, hi in _RESERVED_I2C_RANGES)
+
+
+def _declared_i2c_addresses(doc: dict[str, Any]) -> list[tuple[str, int]]:
+    # Filtered on the instance's own bus, not just on the presence of an `address` field: a reserved
+    # I2C range says nothing about an address on any other kind of bus, and a future SPI/UART driver
+    # carrying an `address` field would otherwise be judged against ranges that do not apply to it.
+    return [(inst["driver"], inst["address"]) for inst in doc.get("instance", []) if "address" in inst and str(inst.get("bus", "")).startswith("i2c")]
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_no_declared_i2c_address_falls_in_a_reserved_range(devices_dir: Path, device: str) -> None:
+    for driver, address in _declared_i2c_addresses(_load(devices_dir, device)):
+        assert not _is_reserved(address), f"{device}: {driver} declares I2C address {address:#04x}, which is in a reserved range"
+
+
+def test_the_reserved_range_sweep_actually_sees_a_declared_address(devices_dir: Path) -> None:
+    # Part E.8's guard-is-blind trap: only bmp3xx carries a TOML address field today, so a schema
+    # change that renamed it - or moved the bus field - would turn the per-device sweep above into a
+    # silent no-op on every device, and a passing suite would say nothing at all.
+    seen = [pair for device in DEVICE_NAMES for pair in _declared_i2c_addresses(_load(devices_dir, device))]
+    assert seen, "no device declares an I2C address field at all - the reserved-range sweep above is checking nothing"
+
+
+def test_no_fixed_driver_address_falls_in_a_reserved_range() -> None:
+    # The other half: scd30/sgp40/isl29125 carry no TOML address field at all, so the TOML sweep
+    # above can never see them. Their real addresses live in buildgen.twin_wiring.FIXED_ADDRESSES,
+    # which test_buildgen_twin_wiring.py already pins against the drivers' own defaults.
+    from buildgen.twin_wiring import FIXED_ADDRESSES
+
+    for driver, address in FIXED_ADDRESSES.items():
+        assert not _is_reserved(address), f"{driver}'s fixed I2C address {address:#04x} is in a reserved range"

@@ -71,7 +71,7 @@ def build_stage_dir(stage_dir: Path, device: str) -> None:
     except BuildError as e:
         raise RuntimeError(str(e)) from e
 
-    # Resolve buildgen's own computed frozen-module set (BUILD_CHAIN_PLAN.md's "Frozen-module
+    # Resolve buildgen's own computed frozen-module set (SPECIFICATION.md Part L.2's "frozen-module
     # selection is dependency-driven") to real files - only this device's actual transitive
     # dependency closure gets staged, not every src/*.py file unconditionally (a real, smaller-
     # firmware behavior change from this script's own pre-buildgen shape). Each module resolves to

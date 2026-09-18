@@ -302,7 +302,7 @@ def test_24_bit_address_write_and_read_round_trip_correctly_on_a_256kb_chip() ->
 
 
 def test_24_bit_address_low_byte_is_not_dropped_so_aliasing_addresses_stay_distinct() -> None:
-    # BUILD_CHAIN_PLAN.md's Session 6.2: _decode_addr() used to always read exactly 2 address bytes
+    # SPECIFICATION.md Part L.4: _decode_addr() used to always read exactly 2 address bytes
     # (data[1]/data[2]), silently dropping the 256KB chip's true low-order address byte (data[3]) -
     # real address `addr` aliased to `(addr >> 8) & 0xFF`, so any two real addresses sharing the
     # same high byte (e.g. 0x0000 and 0x00FF) collapsed onto the same decoded address and a write to

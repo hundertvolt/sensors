@@ -67,8 +67,24 @@ _NAME = const("WIFI")
 WIFI = namedtuple("WIFI", ("Mode", "Connected", "IP", "TS"))
 _FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's own fields above
 
+
+def _with_default(schema: "tuple[tuple[str, str, str, int, int, str | None], ...]", value: "str | None") -> "tuple[tuple[str, str, str, int, int, str | None], ...]":
+    # Substitutes a build-time per-device default into a one-field schema. Only the DEFAULT moves,
+    # never the bounds - a value already persisted by a user rename still wins at boot.
+    # A value outside the field's own bounds is dropped rather than installed: ConfigManager treats
+    # an unsatisfiable default as an invalid config and then answers None to every read, which would
+    # cost a device its networking config entirely. buildgen.validate is the rung that actually
+    # refuses such a value, at build time; this is the backstop that keeps the device bootable.
+    if value is None:
+        return schema
+    name, kind, _default, low, high, special = schema[0]
+    if kind != "str" or not (low <= len(value) <= high):
+        return schema  # a non-str field would be substituted unchecked - keep the built-in default
+    return ((name, kind, value, low, high, special),)
+
+
 # This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): the
-# status LED it drives, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md, from
+# status LED it drives, resolved by buildgen/ (SPECIFICATION.md Part L.4, from
 # [device.wiring].led_target - AsyConnTime is mandatory infra, never an [[instance]] entry itself)
 # to an already-constructed NeopixelDriver instance. "setter" mode: set_ext_led() is a
 # post-construction call (see set_ext_led() below), not a constructor kwarg - the generator emits
@@ -118,13 +134,15 @@ class AsyConnTime(SensorReaderConfig):
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
+        hostname: str | None = None,  # devices/*.toml's own [device].hostname, injected by buildgen;
+        hotspot_password: str | None = None,  # None keeps the shared default, which is what every test wants
         debug: int | None = None,
     ) -> None:
         super().__init__(
             WIFI(None, None, None, None),
             max_module_error,
             _NAME,
-            _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED + _VAL_HOTSPOT_PW,
+            _VAL_SSID + _VAL_PW + _VAL_CTRY + _with_default(_VAL_HOST, hostname) + _VAL_LED + _with_default(_VAL_HOTSPOT_PW, hotspot_password),
             cfg_path=cfg_path,
             fram=fram,
             history_length=history_length,

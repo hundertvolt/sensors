@@ -1,5 +1,5 @@
 """Tests for buildgen.frozen_modules: dependency-driven frozen-module selection via AST-scanned
-transitive import closure (BUILD_CHAIN_PLAN.md's "Core design decisions"), TYPE_CHECKING blocks
+transitive import closure (SPECIFICATION.md Part L.2), TYPE_CHECKING blocks
 stripped, never a dynamic import."""
 
 from pathlib import Path

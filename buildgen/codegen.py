@@ -20,7 +20,7 @@ _DNS_TIMEOUT_MS = 500
 _DNS_TRIES = 1
 _NTP_FETCH_TIMEOUT_MS = 5000
 
-# The generator's own fixed catalog for notification's per-signal getters (BUILD_CHAIN_PLAN.md's
+# The generator's own fixed catalog for notification's per-signal getters (SPECIFICATION.md Part L.4's
 # "Each notification signal's own threshold default/range and flash color are a related, still-open
 # question for Session 3" - resolved here: every real device TOML today uses identical
 # threshold/color values with no per-device override in the schema, so this session hardcodes the
@@ -37,7 +37,7 @@ _KNOWN_SIGNALS: "dict[str, tuple[str, str, str, tuple[int, int, int]]]" = {
 
 def _identifier(name: str, device: str, instance: "str | None"=None, field: "str | None"=None) -> str:
     # instance=/field= carried through so this matches every other BuildError call site's
-    # "name exactly what and where" contract (BUILD_CHAIN_PLAN.md's quality bar) - it was the one
+    # "name exactly what and where" contract (SPECIFICATION.md Part L.5) - it was the one
     # raise in the package that named only the device.
     if not name.isidentifier() or keyword.iskeyword(name):
         raise BuildError(device, f"{name!r} is not usable as a generated Python identifier", instance=instance, field=field)
@@ -412,7 +412,10 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             # fram's own construction line whenever a device-level fram_target wires it in
             # (buildgen.graph.build_construction_order() adds that dependency for exactly this) -
             # a device with no fram_target keeps conn as the very first thing built, unchanged.
-            lines.append(f"    conn = AsyConnTime(conn_fail_to_hotspot={dev['conn_fail_to_hotspot']}, hotspot_time_min={dev['hotspot_time_min']}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
+            # hostname/hotspot_password are [device]'s own values, passed as the per-device DEFAULTS
+            # for the two ConfigManager-persisted fields (asy_wifi_service._with_default). Before
+            # this, every device booted as the shared "SensorNode" whatever its TOML said.
+            lines.append(f"    conn = AsyConnTime(conn_fail_to_hotspot={dev['conn_fail_to_hotspot']}, hotspot_time_min={dev['hotspot_time_min']}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, hostname={dev['hostname']!r}, hotspot_password={dev['hotspot_password']!r}{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
             continue
         if node == "ntp":
             lines.append(f"    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, max_module_error=_MAX_MODULE_ERROR, dns_timeout_ms=_DNS_TIMEOUT_MS, dns_tries=_DNS_TRIES, ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS, cfg_path=cfg_path{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
@@ -677,7 +680,7 @@ def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[s
     # every generated device with a FRAM instance (i.e. every real device and both synthetic
     # fixtures) with AttributeError the moment main() reaches this collector, a real bug this
     # generator's own ast.parse()-only proof depth could never have caught (found + fixed by
-    # BUILD_CHAIN_PLAN.md's Session 5, whose own boot proof is the first thing to actually run
+    # SPECIFICATION.md Part L.4, whose own boot proof is the first thing to actually run
     # generated code at all).
     fram_var = next((ctx.instance_var(n) for n in construction_order if isinstance(n, tuple) and n[0] == "fram"), None)
     task_timer_modules = [m for m in modules if m != fram_var] if fram_var is not None else modules

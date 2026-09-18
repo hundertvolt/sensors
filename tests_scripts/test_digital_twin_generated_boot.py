@@ -1,5 +1,5 @@
 """Proves a Session-3-generated `sensortask_<device>.py` module actually boots under the digital twin's real MicroPython Unix-port environment and serves real REST requests - not just that it `ast.parse()`s (buildgen/'s own documented proof depth ceiling) or that buildgen.twin_wiring's plan looks right in isolation (test_buildgen_twin_wiring.py).
-Spawns the real Unix-port binary as a subprocess and speaks plain HTTP to it, the same pattern scripts/_digital_twin_ci_suite.py already uses for the hand-written sensortask_wozi.py; wiring this into scripts/run_digital_twin_ci.sh stays Session 6's job (BUILD_CHAIN_PLAN.md's Session 5 write-up).
+Spawns the real Unix-port binary as a subprocess and speaks plain HTTP to it, the same pattern scripts/_digital_twin_ci_suite.py already uses for the hand-written sensortask_wozi.py; wiring this into scripts/run_digital_twin_ci.sh stays Session 6's job (SPECIFICATION.md Part L.4).
 See digital_twin/README.md's "Booting a generated device" section for the full mechanism this exercises."""
 
 from __future__ import annotations
@@ -66,26 +66,6 @@ _SMOKE_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/sta
 # namespace out for exactly this reason; six other modules already go through it.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _FIXTURE_TOMLS = sorted(p.name for p in (_REPO_ROOT / "tests_scripts" / "buildgen_fixtures").glob("*.toml") if not p.name.startswith("malformed_"))
-
-# Reported, not fixed (BACKLOG item 31, and CLAUDE.md's "flag, don't silently change" rule for a
-# cross-file discrepancy a scan turns up). buildgen/definitions.py's _errcount_group() is keyed by
-# DRIVER KIND - it receives only a set of have-keys and has no instance information at all - while
-# the API publishes one key per LOGGER INSTANCE. No real device is affected (none declares two
-# instances of one driver, and dev's uart_link pair happens to use exactly the name_ext values the
-# catalog hardcodes), so this is latent, not live. Both synthetic fixtures are affected, which is
-# precisely what a fixture is for. Pinned exactly rather than waved through: closing the gap makes
-# this fail and prompts the exemption's removal, and any OTHER drift still fails immediately.
-# Each value is (published-but-never-displayed, displayed-but-never-published).
-_KNOWN_CATALOG_DRIFT: dict[str, tuple[frozenset[str], frozenset[str]]] = {
-    "novel_combo": (
-        frozenset({"SCD30_primary", "SCD30_secondary", "UART_a", "UART_b"}),
-        frozenset({"SCD30", "UART_init", "UART_resp"}),
-    ),
-    "multi_instance": (
-        frozenset({"BMP3XX_only", "CFGMGR_BMP3XX_only", "CFGMGR_SGP40_a", "CFGMGR_SGP40_b", "SCD30_a", "SCD30_b", "SGP40_a", "SGP40_b"}),
-        frozenset({"BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_SGP40", "SCD30", "SGP40"}),
-    ),
-}
 
 
 @pytest.fixture
@@ -158,18 +138,15 @@ def _errcount_parity_failures(model: DeviceModel, src_dir: Path, status_body: ob
         return ["GET /status carried no usable errcount object, so no parity claim would mean anything"]
     published = set(status_body["errcount"])
     displayed = _website_errcount_keys(model, src_dir)
-    expected_missing, expected_extra = _KNOWN_CATALOG_DRIFT.get(model.device, (frozenset(), frozenset()))
-    missing = (published - displayed) - expected_missing
-    extra = (displayed - published) - expected_extra
+    # No exemptions: _errcount_group() derives its rows per logger instance now (BACKLOG item 31,
+    # fixed 2026-09-18), so the two multi-instance fixtures agree exactly like the six real devices.
+    missing = published - displayed
+    extra = displayed - published
     failures = []
     if missing:
         failures.append(f"error sources published by GET /status with no website row (never displayed): {sorted(missing)}")
     if extra:
         failures.append(f"website errcount rows with no published source (each renders a permanent 0): {sorted(extra)}")
-    # The exemption is a record of a REPORTED gap, not a licence. Once the catalog derives per
-    # instance, these stop being drift and the stale entry has to go - loudly, not quietly.
-    if expected_missing and not (expected_missing & published):
-        failures.append(f"{model.device}'s _KNOWN_CATALOG_DRIFT entry is stale - the gap appears to be fixed, so delete it (and BACKLOG item 31) rather than carrying it")
     return failures
 
 
@@ -237,7 +214,7 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
 def test_synthetic_fixture_boots_and_serves_over_real_http(
     repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, fixtures_dir: Path, tmp_path: Path, device_toml_name: str,
 ) -> None:
-    # The two mandatory synthetic fixtures (BUILD_CHAIN_PLAN.md's acceptance criteria #2) - proves
+    # The two mandatory synthetic fixtures (SPECIFICATION.md Part L.1's acceptance criterion #2) - proves
     # the generic wiring mechanism handles a hardware combination none of the 6 real devices use,
     # not just wozi/dev's own two already-hand-verified layouts.
     device_toml = fixtures_dir / device_toml_name
@@ -252,7 +229,7 @@ def test_real_device_boots_its_generated_module_and_serves_over_real_http(
 ) -> None:
     # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
     # generator produces a module that runs, for every real device, not just ast.parse()s
-    # (BUILD_CHAIN_PLAN.md's Session 5 write-up: "ideally every" entry point).
+    # (SPECIFICATION.md Part L.4: "ideally every" entry point).
     toml_path = device_toml_path(device)
     port = _free_port()
     failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)

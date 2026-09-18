@@ -17,7 +17,7 @@ import sys
 from collections import namedtuple
 
 # scripts/test.sh's own MICROPYPATH ("src:tests:.frozen") deliberately doesn't include ext/ - that
-# would be a scripts/ change, which CLAUDE.md's "Pre-push verification" requires a full clean-
+# would be a scripts/ change, which CLAUDE.md's "Build-environment verification" requires a full clean-
 # chroot re-verification for. Extending sys.path at runtime, scoped to this one file, reaches the
 # same real ext/microdot.py without touching scripts/test.sh, MICROPYPATH, or pyproject.toml at
 # all - confirmed directly against the pinned interpreter that a plain sys.path.insert() before the
@@ -583,7 +583,7 @@ _SgpComp = namedtuple("_SgpComp", ("Temp", "Hum"))
 
 class _FakeCompSource:
     # Structural stand-in for temperature_source/humidity_source (SPECIFICATION.md Part C.14,
-    # BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9) - only get_data() is exercised, matching
+    # SPECIFICATION.md Part L.6.3) - only get_data() is exercised, matching
     # test_asy_sgp40_driver.py's own identical fixture.
     async def get_data(self) -> "Any":
         return _SgpComp(25.0, 50.0)

@@ -258,8 +258,8 @@ class WebserverService:
         sensors: "Sequence[_ModuleLike]" = (),
         settings: "dict[str, Sequence[SettingsGroup]] | None" = None,
         build_info: "dict[str, Any] | None" = None,  # verbatim "build" sub-entry on GET /system's
-        # otherwise-flat response (firmwareVersion/websiteVersion/buildDate - BUILD_CHAIN_PLAN.md
-        # Session 7) - a fixed, generator-supplied fact this class never computes itself; None
+        # otherwise-flat response (firmwareVersion/websiteVersion/buildDate - SPECIFICATION.md
+        # Part L.7) - a fixed, generator-supplied fact this class never computes itself; None
         # (default) omits the key entirely, matching every other optional constructor knob here.
         system_cmd: "SystemCmdFct | None" = None,
         notification_led: "NotificationLedFct | None" = None,

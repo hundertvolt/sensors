@@ -49,9 +49,9 @@ _MAX_OVERRIDE_TIME = const(3600)
 _NAME = const("NOTIFY")
 
 # This driver's live cross-instance dependencies (SPECIFICATION.md Part C.14): the LED it signals
-# through (required - resolved by buildgen/, Session 3 of BUILD_CHAIN_PLAN.md - "attr" mode: the
+# through (required - resolved by buildgen/, SPECIFICATION.md Part L.4 - "attr" mode: the
 # resolved NeopixelDriver instance's own request_signal bound method is passed as
-# request_signal_cb, not the instance itself, per BUILD_CHAIN_PLAN.md's "no getters, no callback
+# request_signal_cb, not the instance itself, per SPECIFICATION.md Part L.2's "no getters, no callback
 # functions in generated code" - the callback-shaped constructor parameter itself stays as-is, only
 # how the generator supplies it changes), plus the optional FRAM backup target.
 # @wiring signal_sink NeopixelDriver request_signal required attr
@@ -59,7 +59,7 @@ _NAME = const("NOTIFY")
 
 
 class _DefaultSignalSink:
-    """§2's wiring-defaults mechanism (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md), opted into via
+    """The wiring-defaults mechanism (SPECIFICATION.md Part L.6.2), opted into via
     [instance.wiring].signal_sink = {default = true} - a no-op LED sink for a notification setup
     that shouldn't blink any LED."""
 
@@ -83,7 +83,7 @@ _VAL_AUTO_ON = const((("AutoOn", "bool", True, None, None, None),))
 # WarnCO2/WarnVOC/WarnHum (registered per-signal at runtime, not one of this file's own _VAL_*
 # constants - see finalize()/_combined_schema() above) render in this same group too; their web
 # metadata is buildgen.definitions._WARN_SIGNAL_WEB_CATALOG, the generator-owned parallel of
-# buildgen.codegen._KNOWN_SIGNALS (BUILD_CHAIN_PLAN.md's quality bar: neither is a real per-device
+# buildgen.codegen._KNOWN_SIGNALS (SPECIFICATION.md Part L.5: neither is a real per-device
 # fact this file could tag - every device using a given signal wires it to the same threshold).
 # Literal submitGroup ("autoConfig"), not the "self" instance-resolved-name sentinel scd30/sgp40/
 # bmp3xx use: NotificationCoordinator is a singleton service (driver_registry.SERVICE_DRIVERS -

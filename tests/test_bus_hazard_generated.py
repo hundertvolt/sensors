@@ -142,7 +142,7 @@ for _device, _plan in _all_device_wiring_plans():
 
 # ---------------------------------------------------------------------------
 # Fail-loud paths: a real occupant with no tests/_bus_hazard_catalog.py adapter yet must abort with
-# a clear, actionable message, never silently skip that driver's own coverage (BUILD_CHAIN_PLAN.md's
+# a clear, actionable message, never silently skip that driver's own coverage (SPECIFICATION.md Part L.5's
 # "tested to the same bar as src/ code: ... full error-handling-path coverage" bar, applied here).
 # ---------------------------------------------------------------------------
 

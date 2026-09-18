@@ -242,8 +242,8 @@ if ! [ "$max_parallel" -ge 1 ] 2>/dev/null; then
     max_parallel=1
 fi
 
-# No static src/sensortask_wozi.py/sensortask_dev.py exist any more (BUILD_CHAIN_PLAN.md's Session
-# 6 finish criterion) - every device's own sensortask_<device>.py is generated fresh here, via
+# No static src/sensortask_wozi.py/sensortask_dev.py exist any more (SPECIFICATION.md
+# Part L.2) - every device's own sensortask_<device>.py is generated fresh here, via
 # buildgen, into build/generated_src/ (gitignored - see scripts/_generate_sensortask_modules.py's
 # own docstring for why NOT into src/ itself). tests/_sensortask_scenarios.py (dynamic __import__()
 # per device) and every tests/test_digital_twin_*.py file that statically imports a sensortask_<device>

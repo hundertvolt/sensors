@@ -104,7 +104,7 @@ def test_every_real_device_has_all_six_sections(repo_root: Path, src_dir: Path, 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_every_real_device_stamps_the_website_version(repo_root: Path, src_dir: Path, device: str) -> None:
-    # BUILD_CHAIN_PLAN.md Session 7: buildgen.version.WEBSITE_VERSION is a build-provenance-only
+    # SPECIFICATION.md Part L.7: buildgen.version.WEBSITE_VERSION is a build-provenance-only
     # stamp, independent of schemaVersion (the wire-format shape version) - a genuinely different
     # concept, so the two must never collide on the same key.
     generated = _generate(repo_root, src_dir, device)
@@ -373,7 +373,7 @@ def test_mandatory_group_declared_but_no_fields_reference_it_fails_loud(tmp_path
     mutated = tmp_path / "asy_notification_service.py"
     mutated.write_text("".join(lines), encoding="utf-8")
     spec = InstanceSpec(
-        driver="notification", name_ext="", fields={}, wiring={}, order_index=0,
+        driver="notification", name_ext="", fields={}, wiring={}, order_index=0, resolved_name="NOTIFY",  # errcount rows are per instance now, so this must be filled as validate.py always fills it
         driver_info=DriverInfo(driver="notification", module="asy_notification_service", class_name="NotificationCoordinator", kind="service", source_path=mutated, needs_setup=True),
     )
     model = DeviceModel(device="dev", path=Path("dev.toml"), doc={"device": {"name": "dev"}}, instances={("notification", ""): spec}, construction_order=[("notification", "")])

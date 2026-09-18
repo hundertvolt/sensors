@@ -1,6 +1,7 @@
 # Handover — bench harness fixes + the heap-fragmentation defect
 
-Temporary file, same convention as `REAL_HARDWARE_HANDOVER_PR103.md` and its predecessors: delete
+Temporary file, same convention as the real-hardware handovers that preceded it (all since
+migrated and deleted): delete
 once its contents are migrated into `SPECIFICATION.md`/`CLAUDE.md`/`BACKLOG.md`, or confirmed not to
 apply.
 

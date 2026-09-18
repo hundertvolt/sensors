@@ -221,7 +221,7 @@ def test_collect_chips_skips_a_bus_var_the_module_never_constructed() -> None:
 # sensortask_wozi object graph via the GENERIC entry point (not a static `import sensortask_wozi`),
 # wired from a JSON-dumped copy of machine's own "wozi" legacy plan, with one real injected fault -
 # the same combined shape run_wozi_integration.py's own now-retired main() smoke test used
-# (BUILD_CHAIN_PLAN.md's Session 6.2). No soak driving here any more (SPECIFICATION.md's "Driver/
+# (SPECIFICATION.md Part L.4). No soak driving here any more (SPECIFICATION.md's "Driver/
 # DUT process separation" Part, 2026-09-14) - that moved host-side to scripts/
 # _digital_twin_ci_suite.py's own Run 11, which is what actually exercises request-driving against
 # a real boot at scale; this test only proves main() itself boots/arms a fault/shuts down cleanly.

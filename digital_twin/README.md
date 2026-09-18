@@ -120,7 +120,7 @@ Kept completely separate so nothing here can accidentally affect the determinist
   freshly-`buildgen.generate.generate_device()`-generated one), for any real device, against a
   `--wiring-plan` JSON file, resolving the module via `__import__(--module)` instead of a static
   `import sensortask_wozi`. The single, fully-capable entry point every automated tier below drives
-  now (BUILD_CHAIN_PLAN.md's Session 6.2 retired the two former device-specific wrappers,
+  now (SPECIFICATION.md Part L.4 retired the two former device-specific wrappers,
   `run_wozi_integration.py`/`run_dev_integration.py`, once this file gained their own soak/state-
   persistence machinery too and became CI's real per-device driver) — see "Booting a generated
   device" below for the general mechanism and "Swapping the twin in" for the default-device
@@ -134,7 +134,7 @@ below's `--hang` section) — distinct from a bounded, immediately-raised fault.
 ## Swapping the twin in for a Unix-port run
 
 The generated `sensortask_wozi.py` (built fresh by `buildgen` from `devices/wozi.toml` — no static
-copy is committed any more, BUILD_CHAIN_PLAN.md's Session 6 finish criterion) needs **zero
+copy is committed any more, SPECIFICATION.md Part L.2) needs **zero
 twin-awareness** — no `if` branch anywhere distinguishing real hardware from simulated. The swap is
 pure `MICROPYPATH` ordering, the same mechanism `tests/machine.py` already uses transparently for
 the unit-test suite. `run_generic_integration.py` also drives real HTTP over real sockets against
@@ -220,7 +220,7 @@ fakes, which happened to return an already-flat shape. See `_flatten_cfg_values(
 `run_generic_integration.py` boots **any** device — not just wozi/dev — by consuming a Session-3
 `buildgen.generate.generate_device()`-generated module directly, replacing
 `configure_i2c_wiring("wozi"|"dev")`'s 2-profile enum with a wiring plan derived from that device's
-own TOML (BUILD_CHAIN_PLAN.md's Session 5 write-up has the full design account). Two things have to
+own TOML (SPECIFICATION.md Part L.4 has the full design account). Two things have to
 be produced **host-side, in a plain CPython process**, before this file's own MicroPython process can
 even start — `buildgen` needs `tomllib`, which the MicroPython Unix port doesn't have:
 
@@ -240,7 +240,7 @@ Then the MicroPython process, with the generated module's own directory placed *
 `MICROPYPATH` (so `import sensortask_novel_combo` resolves to the freshly-generated file, not any
 same-named file that might otherwise be found elsewhere on this path — every real device is
 generated exactly the same way now, including `wozi`/`dev`; no device has a hand-written
-`sensortask_<device>.py` any more, BUILD_CHAIN_PLAN.md's Session 6 finish criterion. `scripts/test.sh`/
+`sensortask_<device>.py` any more, SPECIFICATION.md Part L.2. `scripts/test.sh`/
 `scripts/run_unix_port_integration.sh`/`scripts/run_digital_twin_ci.sh` all generate into the fixed
 `build/generated_src/` directory via `scripts/_generate_sensortask_modules.py` rather than a fresh
 temp directory per run, purely because those callers need `wozi`'s/`dev`'s modules to exist at a
@@ -266,8 +266,7 @@ form of the retired `run_wozi_integration.py`'s/`run_dev_integration.py`'s hardc
 
 `launch.py` is left alone, for the same "different, static-demo use case" reason its own module
 docstring already gives (a `src/`-free raw-bus-read demo, no `sensortask_*` import at all).
-`run_wozi_integration.py`/`run_dev_integration.py` themselves are gone (BUILD_CHAIN_PLAN.md's
-Session 6.2): once this file gained their own soak machinery too, both were pure duplication with
+`run_wozi_integration.py`/`run_dev_integration.py` themselves are gone (SPECIFICATION.md Part L.4): once this file gained their own soak machinery too, both were pure duplication with
 nothing left only they could do — `scripts/run_digital_twin_ci.sh`'s own per-device CI matrix and
 every `tests/test_digital_twin_*.py` file that used to hardcode one of them now drive this file
 instead, for every real device including wozi/dev.
@@ -368,7 +367,7 @@ proves the real-time scheduling mechanism itself works at all, not a precise-cad
 GET/PUT endpoint, `DebugLevel=5` verbose logging, bus fault injection, settings/error persistence
 across a real reboot, soak) into an automated, CI-gating check — wired in as the `digital-twin-e2e`
 job in `.github/workflows/ci.yml`, run once per real device via that job's own `strategy.matrix`
-(BUILD_CHAIN_PLAN.md's Session 6.2, mirroring `firmware-build-verify`'s own precedent). See
+(SPECIFICATION.md Part L.4, mirroring `firmware-build-verify`'s own precedent). See
 `SPECIFICATION.md`'s "Digital twin" section (Part A.10) for the full architectural account of what
 it checks and why; this section is the practical how-to.
 
@@ -422,7 +421,7 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
    `SCD30`/`WEBSERVER`) from the very start of boot, not just after a later `PUT`.
 3. **Reboot with a sustained/high-repeat-count ("permanent") bus-fault matrix** — `--fault` on
    every bus-level error-counted module *this device actually has* at once (derived from its own
-   real wiring plan, BUILD_CHAIN_PLAN.md's Session 6.2 - `scd30:writeto:500`, `sgp40:writeto:500`,
+   real wiring plan, SPECIFICATION.md Part L.4 - `scd30:writeto:500`, `sgp40:writeto:500`,
    `fram:write:500` always, plus `bmp3xx:readfrom_mem:500` only for wozi/dev). Confirms every
    endpoint stays at `200` (graceful degradation under sustained failure, not just a single blip),
    every module's error counter climbs, and — via `run_generic_integration.py`'s own unconditional
@@ -721,7 +720,7 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
   fires many concurrent HTTP clients against the real assembled system, exercising a scenario the
   automated test tiers can't (a genuine repro crashes the whole interpreter process). Deliberately
   kept hardcoded to `sensortask_wozi`, not generalized to `run_generic_integration.py`'s own
-  `--module`/`--wiring-plan` mechanism (BUILD_CHAIN_PLAN.md's Session 6.2): its target bug is a
+  `--module`/`--wiring-plan` mechanism (SPECIFICATION.md Part L.4): its target bug is a
   device-independent MicroPython Unix-port interpreter bug, unrelated to any device's own sensor
   wiring, and it's never invoked by `scripts/run_digital_twin_ci.sh` or any `tests/test_*.py` file
   — so it carries none of that session's "narrowed to a boot+REST smoke check" concern. Run

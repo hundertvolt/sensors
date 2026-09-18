@@ -10,8 +10,13 @@ import struct
 
 from machine import I2C as _I2C
 from machine import Pin
+from micropython import const
 
 from base_classes import Lockable
+
+# Covers every read the drivers actually make (BMP3XX's 21-byte calibration block is the largest;
+# the hot paths are 1-6 bytes). A larger read still works - it falls back to the allocating call.
+_SCRATCH_SIZE = const(32)
 
 
 class I2C:
@@ -25,6 +30,11 @@ class I2C:
     ) -> None:
         self._i2c: _I2C | None = None
         self.async_lock = asyncio.Lock()
+        # One long-lived read buffer per bus instead of a fresh bytes object per register read
+        # (Part I: reuse, don't churn same-shaped objects). Safe to share across the devices on this
+        # bus because every method below fills and decodes it with no await in between, and no
+        # Timer/Pin.irq callback in this codebase touches I2C - both checked, not assumed.
+        self._scratch = bytearray(_SCRATCH_SIZE)
         self.init(port_id, scl_pin, sda_pin, frequency, timeout)
 
     @staticmethod
@@ -37,7 +47,7 @@ class I2C:
         return ((1 << num_bits) - 1) << start_bit
 
     @staticmethod
-    def _bytes_to_int(mem_value: bytes, *, lsb_first: bool) -> int:
+    def _bytes_to_int(mem_value: "bytes | memoryview", *, lsb_first: bool) -> int:
         # Shared byte-order reconstruction for get_bits()/set_bits(): lsb_first says whether
         # mem_value[0] is the least- or most-significant byte.
         reg = 0
@@ -46,12 +56,17 @@ class I2C:
             reg = (reg << 8) | mem_value[i]
         return reg
 
-    @staticmethod
-    def _readfrom_mem(bus: _I2C, address: int, reg_addr: int, nbytes: int, addrsize: int | None) -> bytes:
+    def _read_into_scratch(self, bus: _I2C, address: int, reg_addr: int, nbytes: int, addrsize: int | None) -> memoryview:
+        # Returns a view over the first nbytes of the shared buffer - valid only until the next read
+        # on this bus, so a caller that keeps the value must copy it out (struct.unpack already does).
         # addrsize=None omits the kwarg instead of duplicating machine.I2C's own default (8).
+        buf = self._scratch if nbytes <= len(self._scratch) else bytearray(nbytes)  # oversized read: allocate rather than refuse
+        view = memoryview(buf)[:nbytes]
         if addrsize is None:
-            return bus.readfrom_mem(address, reg_addr, nbytes)
-        return bus.readfrom_mem(address, reg_addr, nbytes, addrsize=addrsize)
+            bus.readfrom_mem_into(address, reg_addr, view)
+        else:
+            bus.readfrom_mem_into(address, reg_addr, view, addrsize=addrsize)
+        return view
 
     @staticmethod
     def _writeto_mem(bus: _I2C, address: int, reg_addr: int, buf: bytes, addrsize: int | None) -> None:
@@ -74,7 +89,7 @@ class I2C:
         # Reads an arbitrary bit-field out of a reg_width-byte register.
         if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
             return None
-        mem_value = self._readfrom_mem(self._i2c, address, reg_addr, reg_width, addrsize)
+        mem_value = self._read_into_scratch(self._i2c, address, reg_addr, reg_width, addrsize)
         reg = self._bytes_to_int(mem_value, lsb_first=lsb_first)
         return (reg & self._bitmask(num_bits, start_bit)) >> start_bit
 
@@ -90,9 +105,9 @@ class I2C:
             size = struct.calcsize(reg_format)
         except ValueError:  # malformed reg_format
             return None
-        raw = self._readfrom_mem(self._i2c, address, reg_addr, size, addrsize)
+        raw = self._read_into_scratch(self._i2c, address, reg_addr, size, addrsize)
         try:
-            unpacked = struct.unpack(reg_format, memoryview(raw))
+            unpacked = struct.unpack(reg_format, raw)
         except ValueError:  # malformed reg_format
             return None
         if not unpacked:
@@ -119,7 +134,7 @@ class I2C:
         # can't corrupt the bits just above the intended field.
         if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
             return
-        mem_value = self._readfrom_mem(self._i2c, address, reg_addr, reg_width, addrsize)
+        mem_value = self._read_into_scratch(self._i2c, address, reg_addr, reg_width, addrsize)
         reg = self._bytes_to_int(mem_value, lsb_first=lsb_first)
         reg &= ~self._bitmask(num_bits, start_bit)
         reg |= (value & self._bitmask(num_bits, 0)) << start_bit

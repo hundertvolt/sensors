@@ -109,11 +109,11 @@ _FIELDS = const(("Pres", "Temp", "SLPres", "TS"))  # kept in sync with BMP3XX's 
 # @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
 
 # This driver's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
-# FRAM backup target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md) to an
+# FRAM backup target, resolved by buildgen/ (SPECIFICATION.md Part L.4) to an
 # already-constructed instance, passed directly as this driver's own fram= kwarg.
 # @wiring fram_target AsyFramManager fram optional kwarg
 
-# Driver-declared value domains (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md's comment-tag section),
+# Driver-declared value domains (SPECIFICATION.md Part L.6.4),
 # read by buildgen/limits.py from these tags - the bounds are kept in sync with _MIN_TRIGGER_SECS/
 # _MAX_TRIGGER_SECS above by hand, since a comment can't reference a name.
 # BMP388/390's SDO pin selects the address: exactly 0x76 (pulled low) or 0x77 (pulled high).

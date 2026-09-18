@@ -1,6 +1,6 @@
 """Generic digital-twin entry point: boots ANY `sensortask_<device>` module - most usefully a Session-3 `buildgen.generate.generate_device()`-generated one, written to disk by the caller first - against a `machine.configure_wiring()`-shaped wiring-plan JSON (produced host-side by `buildgen.twin_wiring.compute_twin_wiring()`, since this MicroPython process has no tomllib/buildgen of its own). Not a `tests/test_*.py` file - it can serve forever.
 This file's own fault/hang chip lookup is the generalized form of `run_wozi_integration.py`'s/`run_dev_integration.py`'s hardcoded `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}`. The soak/memory-trend-check machinery itself moved host-side (`scripts/_digital_twin_ci_suite.py`'s own `_run_11_soak()`, 2026-09-14 - SPECIFICATION.md's "Driver/DUT process separation" Part) - this file's only remaining contribution to that check is `--mem-sample-interval-ms`, an optional background `gc.mem_free()` log-line emitter (see `_mem_sampler()`), the one value that check needs and has no source but this process's own heap.
-See `digital_twin/README.md`'s "Booting a generated device" section and BUILD_CHAIN_PLAN.md's Session 5/6.2 write-ups for the full design account."""
+See `digital_twin/README.md`'s "Booting a generated device" section and SPECIFICATION.md Part L.4/6.2 write-ups for the full design account."""
 
 import asyncio
 import gc
@@ -238,11 +238,21 @@ def _apply_fault(device: str, op: str, times: int, chips: "dict[str, Any]", wlan
     if device == "wlan":
         wlan.raise_on[op] = OSError(errno.EIO, message)
         return
+    _require_wired(device, chips)
     chips[device].fault.inject_fault(op, OSError(errno.EIO, message), times=times)
 
 
 def _apply_hang(device: str, op: str, seconds: float, times: int, chips: "dict[str, Any]") -> None:
+    _require_wired(device, chips)
     chips[device].fault.inject_hang(op, seconds, times=times)
+
+
+def _require_wired(device: str, chips: "dict[str, Any]") -> None:
+    # Being in launch.py's shared op vocabulary only says the NAME is spelled right; whether the
+    # chip exists depends on this device's own TOML (bmp3xx is wozi/dev-only, isl29125 dev-only).
+    # A bare KeyError here would name neither the device nor what was actually wired.
+    if device not in chips:
+        raise ValueError(f"--fault/--hang device {device!r} is not wired on this device - wired here: {sorted(chips)}")
 
 
 async def _wait_until_built(module: "Any", timeout_s: float = 10.0) -> None:

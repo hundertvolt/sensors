@@ -29,7 +29,7 @@ _NAME = const("NEOPIXEL")
 _MIN_SIGNAL_S = const(0.1)  # floor for a signal's ramp duration; also the NaN/garbage fallback
 
 # This driver's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
-# FRAM backup target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md) to an
+# FRAM backup target, resolved by buildgen/ (SPECIFICATION.md Part L.4) to an
 # already-constructed instance, passed directly as this driver's own fram= kwarg.
 # @wiring fram_target AsyFramManager fram optional kwarg
 

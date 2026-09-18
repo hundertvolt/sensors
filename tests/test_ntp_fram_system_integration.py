@@ -587,7 +587,7 @@ def make_scd30_reader(max_module_error: int = 1) -> SCD30_Reader:
 def make_sgp40_reader(cfg_path: str, max_module_error: int = 1) -> SGP40_Reader:
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
     # A real SCD30_Reader as temperature_source/humidity_source (SPECIFICATION.md Part C.14,
-    # BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9) - never read()/setup(), so its own
+    # SPECIFICATION.md Part L.6.3) - never read()/setup(), so its own
     # get_data() just returns its unmeasured-sentinel namedtuple (every field None), matching what
     # _no_comp_data() used to return directly.
     scd_reader = make_scd30_reader()

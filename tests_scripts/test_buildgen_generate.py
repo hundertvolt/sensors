@@ -1,5 +1,5 @@
 """End-to-end: buildgen.generate.generate_device() against all 6 real devices/*.toml plus the
-mandatory synthetic "novel combination" fixture (BUILD_CHAIN_PLAN.md acceptance criteria #2) -
+mandatory synthetic "novel combination" fixture (SPECIFICATION.md Part L.1's acceptance criterion #2) -
 the full validate -> sort -> generate pipeline from one TOML file, no code changes elsewhere."""
 
 # Correctness-proof scope: generated output is proven syntactically valid Python matching the
@@ -49,7 +49,7 @@ def test_real_device_constructs_watchdog_exactly_once(repo_root: Path, src_dir: 
     # The CPython-side half of tests/test_reset_call_site_invariant.py's own
     # test_wdt_constructed_only_in_sensortask_entry_point_files(): that test scans committed
     # src/*.py files and skips anything named sensortask_*.py, which is now vacuous (no
-    # sensortask_<device>.py is ever committed to src/ any more - BUILD_CHAIN_PLAN.md's Session 6
+    # sensortask_<device>.py is ever committed to src/ any more - SPECIFICATION.md Part L.4
     # finish criterion) - so the generated module's own single WDT() construction site needs its
     # own, separate proof instead of relying on that skip ever actually exercising it again.
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
@@ -114,7 +114,7 @@ def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_di
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    # BUILD_CHAIN_PLAN.md Session 7 (as corrected - GET /system's "build" sub-entry, not GET
+    # SPECIFICATION.md Part L.7 (as corrected - GET /system's "build" sub-entry, not GET
     # /status): buildgen.version.FIRMWARE_VERSION/WEBSITE_VERSION are the one source of truth for
     # the two version constants; the build date is a fresh, explicitly-injected value (never
     # computed on-device) so this test can assert an exact match instead of a moving "now".
@@ -140,8 +140,8 @@ def test_real_device_defaults_to_a_real_current_build_date_when_none_is_given(re
 
 
 def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path) -> None:
-    # The mandatory synthetic "novel combination" fixture (BUILD_CHAIN_PLAN.md's acceptance
-    # criteria #2): existing drivers mixed in a layout none of the 6 real devices use (two SCD30s,
+    # The mandatory synthetic "novel combination" fixture (SPECIFICATION.md Part L.1's
+    # acceptance criterion #2): existing drivers mixed in a layout none of the 6 real devices use (two SCD30s,
     # SGP40 independently compensated - temperature from the second SCD30, humidity from the first
     # (§2.9) - BMP3xx at the alternate address, a partial notification signal set) - proving the
     # generator's generality, not just the 6 hand-verified real files.
@@ -394,18 +394,15 @@ def test_cli_reports_build_error_on_stderr_and_exits_nonzero(tmp_path: Path, cap
     assert "hotspot_time_min" in captured.err
 
 
-def test_hostname_and_hotspot_password_are_not_yet_wired_into_generated_code(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
-    # Documents a real, pre-existing gap found during this session's own review (see
-    # buildgen/validate.py's _check_device_table() comment for the full account): [device].name/
-    # hostname/hotspot_password are validated (presence, shape, the SensorStation<name> formula)
-    # but neither this generator nor any hand-written sensortask_*.py actually has a
-    # constructor-time injection point for them - AsyConnTime's Hostname/HotspotPW are
-    # ConfigManager-persisted runtime values with one hardcoded default shared by every device's
-    # build. This test is a tripwire: it should start failing (and get deleted/updated) the day a
-    # future session actually wires either value into generated code.
+def test_hostname_and_hotspot_password_are_wired_into_generated_code(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
+    # The inverse of the tripwire this replaces. [device].hostname/hotspot_password were validated
+    # (presence, shape, the SensorStation<name> formula) and then reached nothing: every device
+    # booted as the shared "SensorNode" default, whatever its TOML said. They are now passed to
+    # AsyConnTime as the per-device defaults for the two ConfigManager-persisted fields.
     result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
-    assert "SensorStationWozi" not in result.module_source
-    assert "12345678" not in result.module_source
+    assert "hostname='SensorStationWozi'" in result.module_source
+    assert "hotspot_password='12345678'" in result.module_source
+    ast.parse(result.module_source)
 
 
 def test_bmp3xx_trigger_sec_is_rendered_into_the_constructor_call(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:

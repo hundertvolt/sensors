@@ -1,5 +1,5 @@
 """Tests for buildgen.requires_tag: the `# @requires bus.<field><op><value>` comment-tag parser
-and enforcement (BUILD_CHAIN_PLAN.md's "Build/generator script quality bar"). Covers the real
+and enforcement (SPECIFICATION.md Part L.5's build-tooling quality bar). Covers the real
 SCD30 clock-stretch tag this session added plus every malformed/violated case."""
 
 # Matrix dimensions for the one real tag built on buildgen/tag_comments.py's shared mechanism

@@ -87,7 +87,13 @@ def test_bus_fault_drivers_is_sorted_and_deterministic(ci_suite: ModuleType) -> 
 def test_bus_fault_drivers_skips_a_driver_the_suite_cannot_fault(ci_suite: ModuleType) -> None:
     # The filter's whole purpose: a future bus-attached driver with no _BUS_FAULT_OPS entry is
     # skipped here rather than KeyError-ing partway through Run 3/4.
-    assert ci_suite._bus_fault_drivers(_ctx(ci_suite, {"scd30", "isl29125", "neopixel"})) == ["scd30"]
+    #
+    # The stand-in is deliberately a name no device will ever declare. This test used to use
+    # "isl29125", which was accurate when written and silently became the record of a REAL gap: the
+    # driver shipped on `dev` with its own fault-capable chip fake and this test went on asserting
+    # it was correctly skipped. A hypothetical name cannot rot that way, and keeping a real driver
+    # here would make closing its gap look like a regression (it did, on 2026-09-18).
+    assert ci_suite._bus_fault_drivers(_ctx(ci_suite, {"scd30", "not_a_real_driver", "neopixel"})) == ["scd30"]
 
 
 def test_every_faultable_driver_has_both_an_op_and_an_errcount_name(ci_suite: ModuleType) -> None:

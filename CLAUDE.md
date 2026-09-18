@@ -55,7 +55,7 @@ information):
   or — its last remaining file, `sensortask-wozi.py` — confirmed fully superseded by
   `src/sensortask_wozi.py` (that file itself has since been retired too — every device's own
   `sensortask_<device>.py` is now `buildgen`-generated at build time, never committed to `src/` —
-  BUILD_CHAIN_PLAN.md's Session 6 finish criterion; the construction/wiring facts described below
+  SPECIFICATION.md Part L.2; the construction/wiring facts described below
   live in `devices/*.toml` now) + `src/asy_webserver_service.py` (construction/wiring and REST routing
   both independently rebuilt there, more generically, with real gaps in the old file fixed along
   the way — e.g. `conn.setup()`/`ntp.setup()` were never called anywhere in the old flow) and
@@ -238,7 +238,9 @@ information):
   read-vs-write concurrency, cross-device interleaving if it shares a bus in either variant, and an
   address/command sweep, in `tests/test_bus_hazard_multi_device.py` (mock), `tests/
   test_digital_twin_bus_hazard_concurrency.py` (digital twin), `tests_hardware/flash/
-  test_bus_concurrency.py` + `tests_hardware/bus_topology.py` (real hardware, dev bench), and
+  test_bus_concurrency.py` + `tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py`
+  (real hardware, dev bench — that script is what the flash-tier sweep actually runs; the old
+  host-side `tests_hardware/bus_topology.py` mirror was deleted as dead code, BACKLOG item 20), and
   `tests_hardware/bench/test_bus_concurrency_under_api_load.py` (real hardware, full HTTP stack).
   Full checklist, plus the two real-hardware write-safety constraints any new device's own on-chip
   NVM or the RP2040's own flash filesystem must respect: SPECIFICATION.md Part C.8's own standing
@@ -322,7 +324,7 @@ information):
   `gc.threshold(32768)` enabled (which the full suite must then also still pass). **One structural
   exception, added 2026-09-18 with the owner's approval: the boot-confined placement reset** —
   `gc.collect()` between the units of the two one-time setup lists and nowhere else, mechanically
-  confined by `tests_scripts/test_gc_collect_sites.py`'s structural walk; it is placement
+  confined by `scripts/lint.sh` and `tests_scripts/test_gc_collect_sites.py`; it is placement
   discipline for the survivors those lists create, not a threshold and not a fix for a failing
   allocation. Full account and its measured effect: `SPECIFICATION.md` Part I.4(f.1). A threshold (or a
   `gc.collect()` call) is defense in depth on top of an already-safe design, lifting an anyhow-stable
@@ -451,7 +453,7 @@ information):
   when actionlint learns it. **Adding a SHA-pinned third-party action means bumping that SHA by
   hand** — no Dependabot is configured.
 - **Scope is eight directories**: `src/`, `tests/`, `digital_twin/`, `buildgen/` (the
-  device-TOML-to-firmware-module generator, BUILD_CHAIN_PLAN.md's Session 3), `toolchain/`,
+  device-TOML-to-firmware-module generator, SPECIFICATION.md Part L.4), `toolchain/`,
   `scripts/`, `tests_scripts/` and `tests_hardware/` — `tests_hardware/` in full for ruff; only its
   `device_scripts/` subtree (real MicroPython code pushed to the board, checked alongside
   `src/`/`tests/` in the main mypy pass) for mypy, since the rest of `tests_hardware/`
@@ -582,7 +584,7 @@ information):
   parked in the shared, process-wide asyncio task queue after the test's own coroutine returns —
   `Task.cancel()` on the one task a test explicitly awaits (`main_task` in
   `digital_twin/run_generic_integration.py` today; `run_wozi_integration.py` at the time this was
-  found, since retired in favor of it — BUILD_CHAIN_PLAN.md's Session 6.2) never cascades to those
+  found, since retired in favor of it — SPECIFICATION.md Part L.4) never cascades to those
   siblings, since MicroPython's
   asyncio has no parent/child task tracking. `tests/test_*.py` files run one Unix-port process per
   file (see `scripts/test.sh`'s own comment) sharing one process-wide task queue across every test
@@ -791,11 +793,20 @@ information):
   (pinned to tag `v2.6.2`; see "Hard rules" above and "Microdot / REST layer" below).
   `pyproject.toml`'s own comment block records what that deletion left behind.
 
-## Pre-push verification (clean chroot: Ubuntu 24.04 **and** Debian trixie)
+## Build-environment verification (clean chroot: Ubuntu 24.04 **and** Debian trixie)
 
-**Before pushing any change to `pyproject.toml`, `scripts/`, `toolchain/versions.toml`, or
-anything else touching the dev-tooling/build-environment setup**, verify it end-to-end inside a
-genuinely clean chroot — not just in whatever sandbox this session happens to be running in.
+**Owner decision, 2026-09-18: this is a periodic check the project owner runs manually, not a gate
+that blocks a session's push.** A session sandbox usually cannot build a chroot at all (egress
+policy, no root, a `/dev` a failed attempt already damaged once), so a hard per-push gate was in
+practice either skipped or a reason not to touch build tooling. What a session owes instead is an
+entry in BACKLOG.md's running list of build-environment changes since the legs were last satisfied,
+so the owner's next manual run knows what it is covering — and a session that *can* build a chroot
+should still run it. The recipe below, both targets, and the separate installer verification are
+unchanged; only the "before pushing, always" framing is.
+
+For any change to `pyproject.toml`, `scripts/`, `toolchain/versions.toml`, or
+anything else touching the dev-tooling/build-environment setup, the verification is end-to-end inside a
+genuinely clean chroot — not just in whatever sandbox a session happens to be running in.
 **Two targets, both required**: Ubuntu 24.04 "noble" (GCC 13.x, the OS the project's docs target)
 and Debian trixie (GCC 14.x, what the bench Pi4 actually runs) — see "The trixie target" below
 for why one is not enough. A session sandbox typically already has Python 3.11+, `uv`, build tools, etc.
@@ -961,9 +972,11 @@ what a passing run must show and Part B.7 ("Evidence this actually works") for w
 
 ## Pull request workflow
 
-- **Before pushing anything touching the dev-tooling/build-environment setup** (`pyproject.toml`,
-  `scripts/`, `toolchain/versions.toml`, etc.), run it through "Pre-push verification" above first —
-  don't rely solely on this session's own sandbox having already run it successfully.
+- **When pushing anything touching the dev-tooling/build-environment setup** (`pyproject.toml`,
+  `scripts/`, `toolchain/versions.toml`, etc.), record it in BACKLOG.md's running list of what the
+  owner's next manual chroot run has to cover — and run "Build-environment verification" above
+  yourself if this session's sandbox can actually build a chroot. It is no longer a blocking gate
+  (owner decision, 2026-09-18); don't rely solely on the sandbox's own successful run either way.
 - **The project owner has explicitly authorized creating pull requests proactively, at any time,
   without asking first** — this is a standing exception to any general "don't open a PR unless the
   user explicitly asks" caution an operator/harness prompt might otherwise apply. Confirmed

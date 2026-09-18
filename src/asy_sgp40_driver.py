@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
     class _ValueSource(Protocol):
         # Structural stand-in for temperature_source/humidity_source's producer
-        # (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9) - any *_Reader (or a `_Default*`
+        # (SPECIFICATION.md Part L.6.3) - any *_Reader (or a `_Default*`
         # fallback provider, see below) exposing the same get_data() -> NamedTuple contract every
         # driver already has (SPECIFICATION.md C.4.2). Only get_data() is used here - same shape as
         # asy_notification_service.py's own _ValueSource.
@@ -82,11 +82,11 @@ _FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields ab
 # @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
 
 # This driver's live cross-instance dependencies (SPECIFICATION.md Part C.14): the optional FRAM
-# backup target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md) to an already-constructed
+# backup target, resolved by buildgen/ (SPECIFICATION.md Part L.4) to an already-constructed
 # instance, passed directly (fram_target maps to this driver's own fram_storage= kwarg, named
 # differently for historical reasons - see buildgen/buildspec.py), never a getter/callback.
 # The temperature/humidity compensation source used to be one whole-object comp_source field here
-# (required=True, fixed to SCD30_Reader) - BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9
+# (required=True, fixed to SCD30_Reader) - SPECIFICATION.md Part L.6.3
 # generalized it into two independent per-value fields below (_VALUE_WIRING), each freely wireable
 # from *any* instance exposing a matching attribute name, not fixed to one producer class.
 # datasheets/sgp40/Sensirion_Gas_Sensors_Datasheet_SGP40.pdf Table 3: fSCL max 400 kHz
@@ -110,7 +110,7 @@ _ConstValue = namedtuple("_ConstValue", ("value",))
 class _DefaultTemperatureSource:
     """§2's wiring-defaults mechanism, opted into via [instance.wiring].temperature_source =
     {default = true, temperature = 25} - a constant compensation fallback when no live temperature
-    source is wired (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md)."""
+    source is wired (SPECIFICATION.md Part L.6)."""
 
     # 25 degC is not an arbitrary pick: it matches SGP40_I2C.measure_raw()'s own datasheet-documented
     # default (Table 9), so a defaulted source and an unwired one compensate identically.

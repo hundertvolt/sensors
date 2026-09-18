@@ -74,7 +74,7 @@ def test_device_without_a_hand_written_definitions_file_generates_one_via_buildg
     # arzi/klkizi/grkizi/schlafzi have no html/definitions/<device>.json at all (only wozi/dev do) -
     # scripts/build_website.sh falls back to generating one on the fly via buildgen instead of
     # failing, which is what actually lets scripts/build_firmware.py build these 4 devices at all
-    # (BUILD_CHAIN_PLAN.md's Session 6 account). Picks "arzi" as a concrete stand-in for all four.
+    # (SPECIFICATION.md Part L.4). Picks "arzi" as a concrete stand-in for all four.
     definitions_file = repo_root / "html" / "definitions" / "arzi.json"
     assert not definitions_file.exists(), "sanity: this test's whole premise is that arzi has no hand-written definitions.json"
 

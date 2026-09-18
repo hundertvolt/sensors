@@ -1,6 +1,6 @@
 """Tests for buildgen.wiring: the `# @wiring <toml_field> <ProducerClass> <target>
 <required|optional> <kwarg|attr|setter>` comment tag (SPECIFICATION.md Part C.14.2). Covers the
-real tags in src/ plus the whole accept/reject matrix BUILD_CHAIN_PLAN.md's quality bar requires."""
+real tags in src/ plus the whole accept/reject matrix SPECIFICATION.md Part L.5 requires."""
 
 from pathlib import Path
 
@@ -9,7 +9,7 @@ import pytest
 from buildgen.errors import BuildError
 from buildgen.wiring import WiringField, parse_wiring
 
-# Dimensions this file walks (BUILD_CHAIN_PLAN.md's standing matrix rule - accept side at full
+# Dimensions this file walks (SPECIFICATION.md Part L.5's standing matrix rule - accept side at full
 # dimensionality, reject side one case per dimension without recombination):
 #   D1 wording  - the tag name itself: exact, typo'd, mis-cased, sigil dropped
 #   D2 format   - each of the five grammar elements individually wrong, and individually dropped
@@ -189,7 +189,7 @@ def test_parse_wiring_rejects_each_element_being_dropped(tmp_path: Path, source:
 def test_parse_wiring_bare_tag_name_with_no_payload_at_all_is_prose(tmp_path: Path) -> None:
     # The one deletion that does NOT abort, deliberately and consistently with @requires: a comment
     # that is only the tag name carries nothing to tell an abandoned tag apart from prose naming
-    # the mechanism ("# @wiring - see BUILD_CHAIN_PLAN.md"). Every partial tag still aborts.
+    # the mechanism ("# @wiring - see SPECIFICATION.md Part L"). Every partial tag still aborts.
     assert _parse(tmp_path, "# @wiring\n") == ()
 
 
@@ -214,7 +214,7 @@ def test_parse_wiring_rejects_locations_inside_a_body(tmp_path: Path, source: st
 @pytest.mark.parametrize(
     "source",
     [
-        "# wiring is handled by the generator, see BUILD_CHAIN_PLAN.md\n",  # prose, no sigil, no payload
+        "# wiring is handled by the generator, see SPECIFICATION.md Part L\n",  # prose, no sigil, no payload
         "# @wiring\n".replace("@wiring", "@webhook"),  # an unrelated @-word
         'X = "# @wiring fram_target AsyFramManager fram optional kwarg"\n',  # inside a string literal
         '"""Doc.\n# @wiring fram_target AsyFramManager fram optional kwarg\n"""\nX = 1\n',  # inside a docstring

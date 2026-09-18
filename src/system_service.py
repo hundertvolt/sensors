@@ -48,7 +48,7 @@ _TASK_FAIL_MAX = const(300)  # ...ratio important for triggering reset (multiple
 _NAME = const("SYSTEM")
 
 # This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
-# FRAM error-log target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md, from
+# FRAM error-log target, resolved by buildgen/ (SPECIFICATION.md Part L.4, from
 # [device.wiring].fram_target - SystemService is mandatory infra, never an [[instance]] entry
 # itself) to an already-constructed instance, passed directly as this service's own fram= kwarg.
 # @wiring fram_target AsyFramManager fram optional kwarg

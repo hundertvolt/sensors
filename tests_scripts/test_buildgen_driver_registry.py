@@ -1,6 +1,6 @@
 """Tests for buildgen.driver_registry: driver -> class resolution (the naming convention plus its
 documented fallback table), and the _NAME-constant parser instance-name collision detection relies
-on. See BUILD_CHAIN_PLAN.md's acceptance criteria #1."""
+on. See SPECIFICATION.md Part L.1's acceptance criterion #1."""
 
 from pathlib import Path
 
@@ -91,7 +91,7 @@ def test_parse_name_constant_real_drivers(src_dir: Path, driver: str, expected_n
 
 
 def test_parse_name_constant_confirms_notify_is_not_notification(src_dir: Path) -> None:
-    # BUILD_CHAIN_PLAN.md's own confirmed-real bug case: NotificationCoordinator's _NAME is
+    # SPECIFICATION.md Part L.3's confirmed-real bug case: NotificationCoordinator's _NAME is
     # "NOTIFY", not "NOTIFICATION" - instance_name()/_NAME is a different naming space than the
     # TOML driver identity ("notification") wiring resolves against.
     info = resolve_driver("notification", src_dir, "dev")

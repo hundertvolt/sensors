@@ -1021,6 +1021,61 @@ def test_set_bits_masks_an_oversized_value_instead_of_corrupting_adjacent_bits()
     assert i2c.get_bits(0x50, 3, 0x10, 2, reg_width=1) == 0x7  # field itself reads back all-ones
 
 
+# ---------------------------------------------------------------------------
+# shared read scratch - readfrom_mem_into() instead of an allocation per read
+# ---------------------------------------------------------------------------
+
+
+def test_register_reads_go_through_readfrom_mem_into_not_the_allocating_form() -> None:
+    i2c = make_i2c()
+    mock = fake(i2c)
+    calls: list[str] = []
+    real_alloc = mock.readfrom_mem
+
+    def spy_into(address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
+        # Fills from real_alloc rather than calling through to the fake's own readfrom_mem_into,
+        # which itself delegates to readfrom_mem - that delegation would otherwise show up here as a
+        # second call and hide whether the driver used the allocating form directly.
+        calls.append("readfrom_mem_into")
+        buf[:] = real_alloc(address, memaddr, len(buf), addrsize=addrsize)  # type: ignore[index,arg-type]
+
+    def spy_alloc(address: int, memaddr: int, nbytes: int, *, addrsize: int = 8) -> bytes:
+        calls.append("readfrom_mem")
+        return real_alloc(address, memaddr, nbytes, addrsize=addrsize)
+
+    mock.readfrom_mem_into = spy_into  # type: ignore[method-assign]
+    mock.readfrom_mem = spy_alloc  # type: ignore[method-assign]
+    mock.registers[(0x42, 0x10)] = bytearray(b"\x01\x02\x03")
+    i2c.get_register_struct(0x42, 0x10, "3s")
+    i2c.get_bits(0x42, 4, 0x10, 0, 1)
+    i2c.set_bits(0x42, 4, 0x10, 0, 0x5, 1)
+    # The allocating form survives only as the oversized-read fallback; none of the three uses it.
+    assert calls == ["readfrom_mem_into"] * 3, calls
+
+
+def test_a_read_result_is_copied_out_of_the_scratch_not_aliased_to_it() -> None:
+    # The buffer is shared across every device on the bus, so a returned value that still pointed
+    # into it would silently change under its owner at the next read on any of them.
+    i2c = make_i2c()
+    mock = fake(i2c)
+    mock.registers[(0x42, 0x10)] = bytearray(b"\xaa\xbb\xcc")
+    mock.registers[(0x43, 0x10)] = bytearray(b"\x11\x22\x33")
+    first = i2c.get_register_struct(0x42, 0x10, "3s")
+    assert first == b"\xaa\xbb\xcc"
+    i2c.get_register_struct(0x43, 0x10, "3s")  # a second device, same bus, same scratch
+    assert first == b"\xaa\xbb\xcc", "the first read's value moved when a later read reused the buffer"
+
+
+def test_a_read_larger_than_the_scratch_still_works() -> None:
+    # Nothing in src/ reads more than BMP3XX's 21-byte calibration block today, so this path is the
+    # "zero callers now, maybe callers tomorrow" kind - it must not be a refusal.
+    i2c = make_i2c()
+    mock = fake(i2c)
+    size = 40  # asy_i2c_driver._SCRATCH_SIZE is 32, and const() folds the name out of the module
+    mock.registers[(0x42, 0x20)] = bytearray(range(size))
+    assert i2c.get_register_struct(0x42, 0x20, f"{size}s") == bytes(range(size))
+
+
 if __name__ == "__main__":
     import microtest
 

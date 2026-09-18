@@ -1,12 +1,28 @@
 name: CI
 
+# Two triggers on purpose, and the `push` leg is the load-bearing one. A `pull_request` run is
+# built against `refs/pull/N/merge`, the merge commit GitHub precomputes - so when a PR has a
+# merge CONFLICT with its base, that ref cannot exist, GitHub creates no run at all, and the
+# branch silently stops being tested with no failure anywhere to notice. That is not
+# hypothetical: `main` landed its own ISL29125 promotion on 2026-09-14, which conflicted with
+# `claude/automated-build-chain-nuzumw`, and 128 commits then went unverified because
+# `push` was scoped to `main` alone and nothing else covered the branch. Same failure class as
+# the `paths:`-filtered second workflow file the web-changes job below explains avoiding
+# (SPECIFICATION.md Part H.8): a check that never fires reads exactly like a check that passed.
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: ['**']  # '**' rather than bare `push:`, so pushing a tag doesn't run the suite again
 
+# Deliberately shared between the two triggers above: `github.head_ref` is the source branch on a
+# pull_request and empty on a push, where `github.ref_name` is that same branch name - so a push
+# to a branch with an open PR puts both runs in ONE group and `cancel-in-progress` leaves exactly
+# one alive. Exactly one, not zero and not two: no doubled spend on this matrix, and a conflicted
+# PR still gets the `push` run because it is then the only one that exists. Which of the two
+# survives is a race and does not matter - they differ only in whether the tree carries the merge
+# commit, and for a conflicted PR there is no merge commit to test in the first place.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 # Deny-by-default for the automatic GITHUB_TOKEN: without this block every job inherits whatever
@@ -425,7 +441,7 @@ jobs:
     # observed 6-hour hang before timeout-minutes existed - see CLAUDE.md's "CI hang investigation"
     # note). Real GitHub-hosted-runner timings, measured directly rather than assumed (Session 8's
     # closing-pass PR, two independent cold-cache runs - no prior run on this exact branch/PR scope
-    # to inherit a cache from, see BUILD_CHAIN_PLAN.md for the mechanism): this job's own plain pass
+    # to inherit a cache from, see SPECIFICATION.md Part L for the mechanism): this job's own plain pass
     # took 16m58s and 16m42s from a cold cache (full from-scratch ARM+MicroPython Unix-port
     # toolchain build included); a warm cache drops that to the ~13-15 minutes the test suite itself
     # takes (~17 minutes measured on a real runner, 2026-09-13). The coverage pass used to run
@@ -589,7 +605,7 @@ jobs:
     # does) - a fundamentally different, heavier kind of check than the fast unit-test tier, not a
     # duplicate of it.
     #
-    # strategy.matrix over all 6 real devices (BUILD_CHAIN_PLAN.md's Session 6.2, mirroring
+    # strategy.matrix over all 6 real devices (SPECIFICATION.md Part L.4, mirroring
     # firmware-build-verify's own precedent below) - each device's own 11-run suite is an
     # independent job, attributable directly in the job list, rather than one long serial script
     # that would otherwise need roughly 6x the wall-clock budget of a single device's run (several
@@ -638,7 +654,7 @@ jobs:
     # (that entry itself stays open - it's specifically about the legacy build-*.sh scripts, a
     # separate, not-yet-done piece of work).
     #
-    # strategy.matrix over all 6 real devices (BUILD_CHAIN_PLAN.md's Session 6) - each is its own
+    # strategy.matrix over all 6 real devices (SPECIFICATION.md Part L.4) - each is its own
     # job, so a failure names exactly which device's generated build broke directly in the job
     # list, rather than one job silently only ever having covered wozi/dev the way this job did
     # before every device had a buildgen-generated entry point to build from. fail-fast: false so

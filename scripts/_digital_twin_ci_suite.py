@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.11"
 # ///
-"""Automated version of the manual digital-twin on-demand walkthrough - drives `digital_twin/run_generic_integration.py` as a real subprocess, over real HTTP/UDP, through a sequence of real process restarts, and asserts every step. Device-generic (BUILD_CHAIN_PLAN.md's Session 6.2): `--device` selects which real `devices/<device>.toml`-derived module + wiring plan to boot, defaulting to `wozi`. The bus-fault matrix (Run 3/4) is derived from that device's own wiring plan, never a hardcoded driver list - a device without `bmp3xx` (4 of the 6 real devices) simply never faults/checks it.
+"""Automated version of the manual digital-twin on-demand walkthrough - drives `digital_twin/run_generic_integration.py` as a real subprocess, over real HTTP/UDP, through a sequence of real process restarts, and asserts every step. Device-generic (SPECIFICATION.md Part L.4): `--device` selects which real `devices/<device>.toml`-derived module + wiring plan to boot, defaulting to `wozi`. The bus-fault matrix (Run 3/4) is derived from that device's own wiring plan, never a hardcoded driver list - a device without `bmp3xx` (4 of the 6 real devices) simply never faults/checks it.
 CPython/stdlib-only (the code under test still only ever runs under the real MicroPython Unix-port interpreter); invoked by `scripts/run_digital_twin_ci.sh` (which owns "clean"/"build", and the per-device `buildgen` generation step this suite's own `--device` depends on) as its "test" phase, once per device via CI's own `strategy.matrix` (see `.github/workflows/ci.yml`'s `digital-twin-e2e` job).
 Full walkthrough and rationale: `digital_twin/README.md`'s "Automated CI suite" section."""
 
@@ -30,7 +30,7 @@ SCD30_STATE_PATH = STATE_DIR / "scd30_state.json"
 CONFIG_DIR = STATE_DIR / "config"
 GENERATED_SRC_DIR = REPO_ROOT / "build" / "generated_src"
 # build/generated_src first: no static src/sensortask_wozi.py exists any more
-# (BUILD_CHAIN_PLAN.md's Session 6 finish criterion) - scripts/run_digital_twin_ci.sh generates it
+# (SPECIFICATION.md Part L.2) - scripts/run_digital_twin_ci.sh generates it
 # (and every other real device's module + wiring plan, Session 6.2) fresh, via buildgen, into this
 # gitignored directory before this suite ever runs.
 MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen"
@@ -60,16 +60,17 @@ _BUS_FAULT_OPS = {  # the real bus-level call each driver's own bus access goes 
     "scd30": "writeto",
     "sgp40": "writeto",
     "bmp3xx": "readfrom_mem",
+    "isl29125": "readfrom_mem",  # every periodic read is get_register_struct() -> readfrom_mem
     "fram": "write",
 }
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver -> its own REST/error-log `_NAME` constant - confirmed directly against
 # src/asy_scd30_driver.py/asy_sgp40_driver.py/asy_bmp3xx_driver.py/asy_fram_manager.py: all four
-# happen to equal `driver.upper()`, but this is NOT a general rule (CLAUDE.md/BUILD_CHAIN_PLAN.md
+# happen to equal `driver.upper()`, but this is NOT a general rule (CLAUDE.md/SPECIFICATION.md Part L.3
 # both warn against assuming that - e.g. NotificationCoordinator's own _NAME is "NOTIFY", not
 # "NOTIFICATION") - this table is the verified, narrow exception for exactly these four bus-attached,
 # fault-injectable drivers, not instance_name()/`_NAME` resolution reused generically.
-_DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "fram": "FRAM"}
+_DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "isl29125": "ISL29125", "fram": "FRAM"}
 # Which bus-attached drivers produce a real /measurements reading (Run 4's "came back after being
 # faulted" check) vs which Run 4 asserts came back at 0.
 #
@@ -94,8 +95,8 @@ _DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX",
 # a defect - self-healing detecting real torn state IS the FRAM driver working as designed, the same
 # reasoning that already excludes SGP40's own history from an assertion here for the identical root
 # cause (see this function's own comment below).
-_MEASUREMENT_DRIVERS = frozenset({"scd30", "sgp40", "bmp3xx"})
-_NO_PERSIST_WHEN_FRAM_FAULTED = frozenset({"scd30", "bmp3xx"})
+_MEASUREMENT_DRIVERS = frozenset({"scd30", "sgp40", "bmp3xx", "isl29125"})
+_NO_PERSIST_WHEN_FRAM_FAULTED = frozenset({"scd30", "bmp3xx", "isl29125"})
 _PERSISTED_ERROR_MODULES = ("SGP40",)  # the only fault-injectable module whose reboot persistence
 # is actually PROVEN here, not the only one that has it - SCD30/BMP3XX are FRAM-backed too and
 # simply have no equivalent chip-healthy check (see above, and BACKLOG.md).
@@ -640,10 +641,14 @@ def _wait_for_dns_answer(host: str, timeout_s: float) -> bool:
 
 def _bus_fault_drivers(ctx: RunContext) -> list[str]:
     # Sorted, deterministic subset of ctx.drivers this suite actually knows how to fault/check -
-    # every real device's own bus-attached driver set (scd30/sgp40/fram always; bmp3xx only on
-    # wozi/dev) is covered by _BUS_FAULT_OPS today, so this is currently a no-op filter, but stays
-    # a filter (not a bare ctx.drivers sort) so a future bus-attached driver this suite hasn't been
-    # taught to fault yet is silently skipped here rather than KeyError-ing in Run 3/4.
+    # every real device's own bus-attached driver set (scd30/sgp40/fram always; bmp3xx on wozi/dev;
+    # isl29125 on dev) is covered by _BUS_FAULT_OPS today, so this is currently a no-op filter. It
+    # stays a filter (not a bare ctx.drivers sort) so a future bus-attached driver this suite has
+    # not been taught to fault yet is skipped rather than KeyError-ing in Run 3/4 - but that skip
+    # is SILENT, and it has already cost real coverage once: the ISL29125 landed with its own
+    # fault-capable chip fake and sat outside every run here until 2026-09-18, because nothing
+    # fails when a driver is merely missing from these tables. Adding a bus-attached driver means
+    # adding it to _BUS_FAULT_OPS/_DRIVER_ERRCOUNT_NAME/_MEASUREMENT_DRIVERS in the same change.
     return sorted(d for d in ctx.drivers if d in _BUS_FAULT_OPS)
 
 
@@ -798,7 +803,7 @@ def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> None:
     # ---- Run 5: clean boot, a small BOUNDED fault (not sustained) - proves recovery, the other
     # half of the self-healing story Run 3 alone can't show (it only proves "doesn't crash while
     # still broken", not "comes back once the fault clears"). SGP40 is present on every real device
-    # (BUILD_CHAIN_PLAN.md's Session 2), so this run needs no device-conditional logic at all. ----
+    # (SPECIFICATION.md Part L.3), so this run needs no device-conditional logic at all. ----
     _clean_state()
     log5 = ctx.logs_dir / "run5_recovery_after_bounded_fault.log"
     proc = _spawn(ctx, ["--fault", f"sgp40:writeto:{_SGP40_BOUNDED_FAULT_COUNT}"], log5)
@@ -946,7 +951,7 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
     # (conn_fail_to_hotspot=5 real scripted failures), starts the real DNSServer, and confirms it
     # actually answers a real UDP DNS query - not just that the internal state flipped. WiFi/NTP/
     # SystemService are mandatory infrastructure on every real device (never a [[instance]] entry,
-    # BUILD_CHAIN_PLAN.md's device TOML schema), so this run needs no device-conditional logic.
+    # SPECIFICATION.md Part L.3's device TOML schema), so this run needs no device-conditional logic.
     #
     # Only possible because of digital_twin/_unix_port_udp_addr_shim.py: BACKLOG.md's "Real-hardware
     # verification gap for asy_udp_socket.py/captive_dns.py" entry root-caused three separate
