@@ -64,7 +64,7 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | O9 | The sawtooth: churn repeatedly allocates the whole free memory, gc collects often because fill is high, the level sawtooths across the whole heap, and survivors thrown at random points stay where they land, ending evenly distributed | **confirmed** | fill driven to **64 bytes free**, amplitude 272,576 of ~278,000 (§6A.6); survivors smeared across all ten heap deciles at span 96-99% when broken vs the bottom 1-2 deciles at 18-40% when clean (§6A.7) |
 | O10 | There is no churn budget: it is a lottery, pure chance plus nonlinearity — a conjunction of parallelism, volume and interleaving, each with a threshold, and the knee is where all conditions are met at once | **confirmed for the conjunction and the absence of a budget; component verdicts differ** | volume x survivor population interact multiplicatively (§6A.11); interleaving null — a yield allocates nothing on the real VM (§1.2 item 7); **parallelism is absent from the boot batch entirely** (§0B.6), so it cannot be one of the met conditions there. "No budget" now has a mechanism: the churn knee is a property of the *pair*, not of the churn (§6A.11). The chance is not between runs — the outcome is deterministic per configuration (§6.3, §6.4) — it is a fixed order's sensitivity to any shift in it |
 | O12 | The FRAM path's churn is an architectural inefficiency of the driver/protocol *construction*: a critical-path run should generate orders of magnitude fewer short-lived allocations, with every integrity feature of the storage kept | **confirmed by a wire-identical prototype** | same 74 CS cycles, same bytes on the bus, asserted event by event; board-equivalent `setup()` 118,144 -> 3,072 B (38x) with everything below the lock synchronous, ~1,300 (~90x) with one lock acquisition per chunk operation (§3B) |
-| O13 | `gc.collect()`, confined to the boot lists - start, between each module, end, and the same for the async setup list - actively compacts the initially generated permanent survivors, and stays forbidden everywhere else | **the effect is confirmed and is the strongest measured; the stated mechanism is not what happens; and it is null at the threshold the firmware ships** | ten collects take the worst case from 13% to 59% kept and clear the 55% floor 15 of 15 against base's 0 of 15, with a clean dose-response in the number of collects (§7A.2). But nothing is compacted - MicroPython never moves an object; the collects reset the allocator's free-scan index, so later survivors pack low instead of smearing (§7A.4). At the shipped `gc.threshold(32768)` (§1.5) it moves the worst case from 87% to 86% (§7A.6) |
+| O13 | `gc.collect()`, confined to the boot lists - start, between each module, end, and the same for the async setup list - keeps the boot's permanent survivors packed at the bottom of the heap by giving each of them a fitting hole low down, and stays forbidden everywhere else. Clarified by the owner, 2026-09-18: survivors are never moved, and packing the *later* ones low is what was meant by "compacted" | **the mechanism is confirmed exactly as stated; the size of the effect falls short of the floor on its own; and it is null at the threshold the firmware ships** | each collect resets the allocator's free-scan index, so the next module's survivors take the lowest fitting hole instead of a hole above the churn's high-water mark - deciles 20/5/4/2/1/5/5/13/4/5 at span 92% become 29/7/0/0/1/0/0/0/32/0 at median gap 224 B (§7A.4), and the number of collects gives a clean dose-response (§7A.2). On the board's own metric at the board's own fill it is worth 3.2-6.9x, reaching 45% of free after `build_system()` and 58% after the task list, against a floor of 55-74% (§7A.8): the strongest single remedy measured, and still short. At the shipped `gc.threshold(32768)` (§1.5) it changes nothing (§7A.6) |
 | O11 | The survivor population is itself one of the conditions | **confirmed, decisively** | churn alone 0%, survivors alone -18%, both together **-88%** of the largest free block (§6A.11) |
 
 ### 0.2 This session's hypotheses
@@ -670,6 +670,15 @@ At 560k, the twin reproduces the board's shape:
 
 **For the settrace-free build (§1.2 item 7) the same fill-fraction rule gives ~455k**: 113,888 B
 after import, 200,096 B after `build_system()`, against 145,120 / 232,640 for the settrace build.
+
+**Those are `fill.py`'s *bare* figures, and `probe.py` is not bare** (2026-09-18). The probe retains
+~52,700 B of its own - its imports, the wiring-plan dict, the probe arrays, and the twin
+`Timer`/`WDT` fakes that `fill.py` neutralises and it does not - constant across arms and allocated
+before the seam, so it shifts fill without changing what any variant does relative to another. At
+455k the probe's process is therefore **55%** full, not 44%. Sizing so the *bare* system sits at the
+board's 44% under the probe gives **508k** for a run ending at `build_system()` and **560k** for one
+that also runs the task-starter list. §7A.8 is measured at those two, and at them the twin
+reproduces the board's own largest-over-free ratio (17.5-18.2% against the board's 18.9%).
 
 Frozen-port import cost, for reference — this is what makes a run take ~4 s instead of minutes:
 
@@ -1989,8 +1998,10 @@ with a collect after each starter.
 Absolutely: worst-case largest free block 23,584 -> **104,640 B**, median 32,576 -> 104,800. **One
 collect at the end achieves nothing**, which is the point - this is not about freeing garbage (every
 map dump collects first anyway), it is about *when* placement is reset relative to each survivor's
-birth. It is also the first variant in this file to clear the floor on **every** run rather than on
-the median (§7.1, §7.2).
+birth. It is also the first variant in this file to clear that bar on **every** run rather than on
+the median (§7.1, §7.2). `kept%` is a retention ratio against the seam, though, not the board's own
+quantity - **§7A.8 re-does this on largest-over-free at the board's own fill, which is the figure
+that answers whether the floor is met**, and the verdict there is weaker than this table looks.
 
 ### 7A.3 The async setup list
 
@@ -2075,6 +2086,67 @@ decision (§11 item 4), not a measurement.
 What would make it genuine defense in depth: a design-level fix that clears the floor at native
 defaults by itself, with the boot collects added on top. The dose table above prices that at a ~172x
 churn cut, against §3B's 38-90x.
+
+### 7A.8 The decisive question: does it hold with no threshold at all?
+
+The owner's criterion (2026-09-18): a `gc.threshold()` is a means of moving an already stable system
+further from the edge and never the mechanism to rely on, so the system must work without one, and
+the question is whether the boot-confined collects get it there. §7A.2's `kept%` cannot answer that
+- it is a retention ratio against the seam, not the board's own quantity. The board's is **largest
+contiguous over free**, and the floor is an absolute 80,000 B of contiguous free.
+
+**Two calibrations had to be fixed first.**
+
+- *The floor as a ratio is a range, not 55%.* §7.1's "55%" is 80,000 against ~146,000 B free. §2.1's
+  own [HW] measurement has free at **108,736 B** after the batch, where the same 80,000 B is
+  **74%**. Both are cited below; nothing here clears the conservative form.
+- *The probe carries ~52,700 B of its own retained objects* (its imports, the wiring-plan dict, the
+  probe arrays, and the twin `Timer`/`WDT` fakes `fill.py` neutralises and it does not), constant
+  across arms and allocated before the seam. §1.4's "44% full at ~455k" is `fill.py`'s **bare**
+  system (200,096 B retained), so at 455k the probe's own process is **55%** full, materially denser
+  than the board. Sizing so the *bare* system sits at the board's 44%: **508k** after
+  `build_system()`, **560k** once the task list has run too. Every figure below is at those sizes,
+  with the bare fill reported so it can be checked.
+
+[TWIN, settrace-free, `gc.threshold(-1)`, real FRAM path, 15 perturbations for the setup list and 6
+for the full sequence]
+
+| configuration | bare fill | | largest contiguous | largest / free | clears 55% |
+|---|---|---|---|---|---|
+| after `build_system()`, 508k | 43.7% | `base` | 30,752 - 36,992 | **11.9 - 14.2%** | 0 / 10 |
+| after `build_system()`, 508k | 43.8% | **10 collects** | 115,008 - 116,560 | **44.6 - 45.0%** | 0 / 10 |
+| the whole boot sequence, 560k | 42.9% | `base` | 23,648 - 24,656 | **8.1 - 8.4%** | 0 / 6 |
+| the whole boot sequence, 560k | 43.0% | **32 collects** | 169,120 - 169,296 | **57.7 - 57.8%** | 6 / 6 |
+
+(worst and median; the two collecting rows are the owner's scheme applied to the setup list alone
+and to both lists.)
+
+**The answer, stated plainly: not settled, and closer to "no" than to "yes".** The scheme is worth a
+factor of 3.2 to 6.9 on the board's own metric, and it lands *on* the floor rather than clearly
+above it - over the optimistic 55% form for the full sequence, under it after `build_system()`
+alone, and under the conservative 74% form in both. `base` is nowhere near either, at 8-14%.
+
+Two further readings of the same table. The twin at this calibration **reproduces the board's cited
+ratio**: 18.9% on the board (20,592 of 108,736) against 17.5-18.2% measured here at 560k, which is
+independent support for §1.5's conclusion that the [HW] symptom is the `threshold(-1)` shape. And
+the task-starter list is not a footnote - it costs `base` more than the entire setup batch does
+(14.2% -> 8.4%), so any scheme that stops at `build_system()` is treating the smaller half.
+
+**What the combination looks like, with the caveat that matters.** Synthetic churn at the real setup
+positions, same heap and calibration, 10 perturbations:
+
+| synthetic churn per logger | no collects | 10 collects |
+|---|---|---|
+| 843,232 B - base's own dose | 15.4% | 70.0% - 10 of 10 |
+| 22,190 B - §3B's 38x cut | 9.6% | 87.5% - 10 of 10 |
+| 9,369 B - §3B's 90x floor | 51.1% | 87.5% - 10 of 10 |
+
+Neither lever alone reaches the floor at its own dose; together they are far above it. **But the
+injector overstates the collecting arm**: at base's own dose it gives 70.0% where the real FRAM path
+gives 45.0%, a 25-point gap that does not exist in the non-collecting arm (15.4% against 14.2%). So
+read the combination as *directionally* strong and not as 87%. The real number needs §3B built,
+which needs §11 item 2's scoped exception; that is the measurement that would actually settle the
+owner's question, and it is not available from the twin as the code stands.
 
 ### 7A.7 What is not claimed
 
@@ -2236,6 +2308,7 @@ built per §1.4 and run from the repo root with `MICROPYPATH=.frozen`.
 | `along.py` | per module `setup()`: allocated and retained in the module's own code before, during and after its logger's round trip; twin `Timer`/`WDT` fakes neutralised |
 | `fill.py` | post-`build_system()` fill on a large heap, for §1.4's fill-fraction calibration of either binary |
 | `probe.py` gc modes | §7A: `gcboot` / `gcboot2` / `gcboot5` / `gcboot10` wrap `SystemService.feed_watchdog()` — the call the generated batch already makes between two modules — and collect after every / every second / fifth / tenth module; `basex` / `gcbootx` additionally run `start_and_check_tasks()`'s own starter loop. `GCTHRESH=<n>` applies a `gc.threshold()` where the generated boot entry applies it, `YCOST=0` corrects the synth budget on the settrace-free binary (§1.2 item 8). `GCUS` reports each collect's own microseconds |
+| `gcfloor.py` | §7A.8's board-comparable metric: largest contiguous over free after the batch, with the bare fill recomputed by subtracting the probe's own ~52,700 B of retained instrument, per arm |
 | `gcens.sh` / `gcsum.py` / `gcsum2.py` / `gcx.py` / `gch.py` | §7A's ensembles: `gcens.sh <variant> <build> <heapsize> <tag>` emits the 15 perturbation runs; `gcsum2.py` tabulates worst/median/best kept% with retained and free bytes per arm, `gcx.py` the task-list arms, `gch.py` the heap-size x threshold sweep behind §1.5 |
 | `proto.py` | §3B: records every CS edge and transfer on the twin's `machine.SPI`/`Pin` for the current path and for each wire-identical prototype (`SyncFramChip`, `ProtoChunk`, `Proto2Chunk`) and asserts the traces equal; prices each in a collection-free window, first with the twin's fakes as they are, then with `machine.SPI.init/write/readinto` and `FramChip.write/readinto` replaced by allocation-free equivalents (the board-equivalent pass — the raw replay of the whole trace then costs 128 B). No argv; uses `build/generated_src/sensortask_dev_wiring_plan.json` |
 | `build-nosettrace` | `make -j8 BUILD=build-nosettrace VARIANT=standard VARIANT_DIR=<toolchain>/build_overrides/unix_kbd_intr_variant "CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=0 -Wno-array-bounds" FROZEN_MANIFEST=<scratchpad>/manifest_heap.py` in `ports/unix` — the heapprobe recipe with the flag off, into its own build dir; builds clean with no warnings |
@@ -2299,9 +2372,12 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
 
 4. **The boot-confined `gc.collect()` exception (§7A) — take it, and on what grounds?** Put by the
    owner on 2026-09-18 and measured the same day. It works, and at native `gc` defaults it is the
-   strongest remedy in this file: 0 of 15 perturbations clearing the 55% floor becomes 15 of 15,
-   worst-case largest free block 23,584 -> 104,640 B, with a clean dose-response in the number of
-   collects and **no** effect from a single collect at the end. Three things belong in the decision.
+   strongest remedy in this file, with a clean dose-response in the number of collects and **no**
+   effect from a single collect at the end. **On the board's own metric at the board's own fill it
+   is still short of the floor** (§7A.8): largest-over-free goes from 14.2% to 45.0% after
+   `build_system()` and from 8.4% to 57.8% after the task list too, against a floor of 55% in its
+   optimistic form and 74% in the form §2.1's own [HW] free figure implies. A 3.2-6.9x improvement
+   that lands on the line, not over it. Three things belong in the decision.
    (i) It is **not compaction** — nothing moves; it resets where the *next* survivors are placed
    (§7A.4), so the grounding is placement, not hygiene. (ii) At the `gc.threshold(32768)` the
    firmware's own boot entry already sets, it buys nothing measurable (87% -> 86% worst case), and
@@ -2311,7 +2387,11 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
    amending `SPECIFICATION.md` I.4, with the boot-only confinement and the audit that keeps it
    confined written into the rule. The alternative shape that needs no amendment: a design-level fix
    that clears the floor at native defaults on its own, with the collects added on top — priced at a
-   ~172x churn cut against §3B's 38-90x (§7A.5).
+   ~172x churn cut against §3B's 38-90x (§7A.5). (iv) **Neither lever reaches the floor alone and
+   together they are far above it** on the synthetic proxy (§7A.8), but that proxy overstates the
+   collecting arm by 25 points against the real path, so the combination needs §3B built - item 2 -
+   before it can be measured rather than estimated. If the decision is to be evidence-led, item 2's
+   exception is the one that unblocks the measurement item 4 turns on.
 
 **One constraint already settled and not to be re-proposed.** The 80,000 B floor is not to be
 lowered. The second, `gc.collect()`/`gc.threshold()` as the remedy — forbidden by
