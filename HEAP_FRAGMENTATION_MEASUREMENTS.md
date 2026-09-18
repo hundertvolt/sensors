@@ -2941,6 +2941,17 @@ All readings below are at the **standalone/fresh-heap position**, at `gc.thresho
 `starters=22 timers=8` matches §7E's [SRC] count, so the starter loop really does run 23 collects
 on the AFTER arm.
 
+**Flagged, not explained (PR #105 session, 2026-09-18).** The
+`after_starter_list_production_threshold` row reads **exactly 49,152 B on both arms**, where the
+line above it differs by 8,720 B (66,144 vs 57,424). An identical, round figure from two images that
+disagree a line earlier is the shape an instrument artefact takes, and this branch has hit eight of
+those. **The obvious hypothesis was tested and refuted**: `gc.threshold(32768)` does *not* clamp the
+binary-search probe. Measured directly on the Unix port at 200k/300k/560k heaps, the probe returns
+the same value at `threshold(-1)` and `threshold(32768)`, and where it differs it differs in both
+directions (97,120 → 98,944 at 200k) — ordinary run-to-run layout noise, not a ceiling. So the
+coincidence stands unexplained rather than dismissed. Do not read 49,152 as a layout figure until a
+second run reproduces it; if it does, it is structural and worth understanding.
+
 ### 7F.3 P3 confirmed — the instrument sees the starter list
 
 On the **BEFORE** arm `after_starter_list` (70%) is materially worse than `after_build_system`
@@ -2997,6 +3008,10 @@ position P2 needs on the AFTER arm.
   confirmed by re-running the suite with it; `Board.run_isolated()` captures device stdout into a
   Python string rather than letting it reach the terminal. Getting the number needs a one-line
   change to that test to print the captured output on pass. P1 stands without it.
+  **Done host-side 2026-09-18 (PR #105 session), not yet run:** the test now prints every `HEAP `
+  line whatever the verdict. `-s` was powerless before because the test never emitted the string at
+  all; now that it does, `scripts/run_flash_hardware_suite.sh -s` surfaces the figures on a passing
+  run, so the next in-suite run yields the number without having to make the test fail to see it.
 - **An aged-heap AFTER reading**, which is what P2 actually turns on (§7F.4), and which needs
   §7F.5's second defect addressed first.
 - **The AFTER arm's threshold-first reading.** The BEFORE arm's was taken: with

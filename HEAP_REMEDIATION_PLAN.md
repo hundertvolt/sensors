@@ -609,15 +609,22 @@ measure A and is **fully run as of 2026-09-18** — results in §1A's own rows a
 order, and each prediction with the result that would falsify it. The boxes below stay here as this
 plan's own record; a session at the bench should work those two.
 
-- [~] **T.1 Tripwire.** A's half is DONE (§7D.3: 20,592 → 28,864 B in-suite, +40.2 %, [HW]); the
-      A + B column is owed and is queue row B1. Note §7D.2's correction to this box's own premise:
-      only *like suite positions* are comparable, so a standalone reading does not answer it.
+- [~] **T.1 Tripwire — RUN, both columns, one residue** (§7F.1 [HW]). A: 20,592 → 28,864 B in-suite,
+      +40.2 % (§7D.3). A + B: **PASSES in-suite**, the first image ever to, against a BEFORE arm
+      reading 28,736 B and failing. What is still owed is only the exact AFTER `largest_block` —
+      the test discarded it on a passing run, now fixed host-side (§7F.6), so the next in-suite run
+      yields it. Note §7D.2's correction to this box's own premise: only *like suite positions* are
+      comparable, so a standalone reading does not answer it.
       **Original text:** `tests_hardware/flash/test_memory_stress.py::
       test_real_gc_heap_headroom_survives_a_full_system_build` with A alone, then with A + B:
       `free` and `largest_block` after `build_system()`, `threshold(-1)`, on the `dev` board.
       Against the unlowered 80,000 B. Record both readings in `HEAP_FRAGMENTATION_MEASUREMENTS.md`
       §2.1's [HW] table as the third and fourth columns.
-- [ ] **T.2 Bus-hazard tiers 3 and 4** (CLAUDE.md's standing rule for a bus-facing change):
+- [~] **T.2 Bus-hazard tiers 3 and 4 — flash tier done, bench tier owed.** §7F's AFTER arm ran the
+      full flash suite with **zero failures**, which covers all three FRAM tests; §7F.7 calls out the
+      two rewritten injectors passing on *both* arms specifically, the first real-chip proof the
+      hijacked payload is refused. The bench tier's six were last run on the A-only arm (§7D.5), not
+      on A + B. **Original text**:
       `tests_hardware/flash/test_bus_concurrency.py`'s three FRAM tests
       (`test_fram_same_device_read_write_concurrency`, `test_fram_cs_pin_hijack_fault_injection_and_recovery`,
       `test_fram_hard_reset_race_during_write_and_recovery`) and
@@ -637,9 +644,11 @@ plan's own record; a session at the bench should work those two.
       stretch, reported in the script's `RESULT:` line; the number goes into `SPECIFICATION.md`
       F.5's SPI notes beside the UART 4.4 ms figure. If it is above ~1 ms, the per-command yield
       policy is already the finest the chip allows and the finding is recorded, not "fixed".
-- [~] **T.5 Boot cost of B** — owed, queue row B3; the new
-      `device_scripts/heap_layout_after_full_boot_sequence.py` prints it as its own `BOOT` line.
-      A-only is a median 919 ms (§7D.7) against the 8,388 ms cap. **Original text**: `time.ticks_ms()` across `build_system()` and across the starter
+- [x] **T.5 Boot cost of B — DONE** (§7F.7 [HW]): `build_system_ms` 943 → **1,402 ms**, so B's 11
+      batch collects cost ~455 ms, about **41 ms each** on the RP2040's real heap — ~85x the twin's
+      figure, and the first RP2040 collect cost this project has measured. Far under the 8,388 ms
+      watchdog cap; no `WDT_RESET` across the run's reboots. `start_timers_ms` is unchanged at 789.
+      **Original text**: `time.ticks_ms()` across `build_system()` and across the starter
       loop, before and after, one line each — for the record only (boot latency is not a
       metric), and to confirm no watchdog starvation on the 8,388 ms cap with the collects in.
 - [ ] **T.6** `tests_hardware/flash/test_memory_stress.py`'s second test and the bench memory

@@ -24,6 +24,12 @@ def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> Non
     # catch a regression in that footprint - notably a future MicroPython bump relocating more code
     # into SRAM, as 1.29 already did with the interpreter core (Part F.5.3's 12,918 B).
     output = board.run_isolated(DEVICE_SCRIPTS / "heap_headroom_after_full_system_build.py", timeout_s=120.0)
+    # Print on pass too, not only in the assertion messages below: run_isolated() captures device
+    # stdout into a string, so a PASSING run used to discard the figures entirely and the only way
+    # to learn what a green board actually measured was to make it fail (7F.6 lost exactly that
+    # number). Surface them with `scripts/run_flash_hardware_suite.sh -s`.
+    for line in (ln for ln in output.splitlines() if ln.startswith("HEAP ")):
+        print(line)
     match = RESULT_RE.search(output)
     assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
     assert match.group(1) == "PASS", f"real heap-headroom check failed: {match.group(2).strip()}\nfull output:\n{output}"
