@@ -561,8 +561,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     defined by the module. It is not a mechanism to lift wholesale; each of these two needs its own
     answer to "what is an episode here", which is the part needing a decision.
 
-36. **`web-unit-tests` has under 2x headroom against its own 20-minute `timeout-minutes`, and that
-    margin has now been spent twice.** CI run `35372354351` (head `b0f755c`) was cancelled at
+36. **The web tier has under 2x headroom against its own 20-minute `timeout-minutes`, and that
+    margin has now been spent three times — on two different jobs.** CI run `35372354351` (head
+    `b0f755c`) cancelled `web-unit-tests` at
     19m33s with every other job green; the same suite on the same tree runs in **9m36s locally**
     (11 files, 778 tests, exit 0, measured 2026-09-18), and the previous CI run on an identical
     `js/`/`tests_js/`/`html/` tree took 9m23s. So this is wall-clock on GitHub's runner, not a test
@@ -574,6 +575,16 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     `web-cross-browser-smoke`, so one slow runner silently removes three signals, not one. Options
     if it recurs: raise `timeout-minutes` for that job, or split the live-backend PUT matrix into
     its own job the way coverage already is.
+
+    **It recurred on 2026-09-18, one job over**: run `35399058626` (head `10ec130`) cancelled
+    **`web-coverage`** at 20m15s, with `web-unit-tests` itself green — but at **13m11s**, against
+    the 9m23s an identical web tree took before. So the runner was slow, `web-unit-tests` survived
+    on its remaining margin, and the instrumented rerun behind it did not. Not caused by that head:
+    its only `js/`/`html/` change was a comment. This makes the splitting fix a partial one — it
+    moved the ceiling rather than removing it — and it shows the budget is short for the *slow*
+    runner, not just for one job. `web-coverage` is non-gating by construction (its test step is
+    `continue-on-error`, nothing `needs:` it), so no signal was lost; the whole-run conclusion still
+    reads `cancelled`, which is the part worth knowing when reading run history.
 
 37. **Five cross-file consistency findings carried over from `main`, each re-verified on this branch
     (2026-09-18) and each still needing an owner yes/no.** They were raised on `main` by the
