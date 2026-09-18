@@ -71,7 +71,7 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | C8 | The size threshold is mediated by collection frequency — a large request fails on contiguity and forces an early, shallow collection | **confirmed** | large-unit churn collects at a median 220,864 B still free vs 1,440 B for small-unit churn (§6A.6) |
 | C9 | Cutting the 74 chip-select sessions to ~6 will clear the contiguity floor | **withdrawn** | ~12x against a required 40-100x; 70,000 B per logger measures in_big 14 / span 97%, inside the saturated regime (§6A.8) |
 | C10 | Loop yields are protective for layout | **confirmed, and confound-checked** | first measured at constant total bytes, which entangled it with small-object count; re-run at fixed small-object count it holds — in_big 21 -> 4 -> 2 as yields rise (§6A.4) |
-| C11 | Pre-allocating each module's permanent objects at construction is the remedy the evidence favours | **untested** | the survivor knob only *adds* objects, so the sub-76 regime is unmeasured; needs a variant that hoists the batch's own survivors out of the window (§6A.11, §11) |
+| C11 | Pre-allocating each module's permanent objects at construction is the remedy the evidence favours | **refuted** | the mechanism is real — the same objects placed pre-seam give in_big 0 and 100% kept where in-window they give 380 and 12% — but it holds only below the churn threshold. At the real 843,232 B dose pre-seam objects are unprotected (kept ~50%), and the real system's 76 survivors are already an order of magnitude below the survivor axis's own onset, so that axis is not the binding constraint (§6A.13) |
 
 ## 1. The instrument
 
@@ -908,6 +908,69 @@ real code change, not a knob. Cells at 400 extra survivors per logger, and at 3,
 with 100, are absent because they `MemoryError` — 3,600 retained bytearrays is ~230 KB on a 278 KB
 free heap. Out of range by construction, not a defect, and not read as data.
 
+### 6A.13 Survivor hoisting: the mechanism confirmed, the remedy killed
+
+Lever (b) — allocate each module's permanent objects at construction so fewer are born inside the
+churn window — was the one remedy the 2D map appeared to favour. Tested directly.
+
+The knob only *adds* survivors, so a true hoist (moving existing ones earlier) is not expressible.
+What is expressible, and is the mechanism question, is an exact A/B: **the same retained objects, the
+same count, the same size class, allocated either during the window or before the seam.** The
+pre-seam arm hooks `AsyFramManager.__init__`, which `build_system()` calls in its construction
+phase. Containers are sized exactly and allocated in the same phase as their contents (see the
+instrument note below).
+
+**At 4,800 B of churn per logger, pre-seam placement is total protection:**
+
+| churn 4,800 B/logger | survivors | in_big | seam_max | after_max | kept% |
+|---|---|---|---|---|---|
+| control | 76 | 0 | 56,576 | 57,248 | 101% |
+| 225 **in-window** | 522 | 0 | 56,576 | 57,248 | 101% |
+| 540 **in-window** | 1,149 | **129** | 56,576 | 29,152 | 51% |
+| 900 **in-window** | 1,866 | **380** | 56,576 | 7,104 | 12% |
+| 225 **pre-seam** | 76 | 0 | 32,576 | 33,248 | 102% |
+| 540 **pre-seam** | 76 | 1 | 6,240 | 5,088 | 81% |
+| 900 **pre-seam** | 74 | **0** | 6,240 | 6,240 | **100%** |
+
+Identical objects, identical churn: in-window they take in_big to 380 and destroy 88% of the big
+run; pre-seam they take in_big to 0 and the batch destroys **nothing**. **The mechanism is
+confirmed** — a permanent object that already exists when the churn starts is not displaced by it.
+
+**At the real churn dose, pre-seam placement protects nothing:**
+
+| real base churn (843,232 B/logger) | survivors | in_big | seam_max | after_max | kept% |
+|---|---|---|---|---|---|
+| plain base | 76 | 0 / 2 | 57,440 | 57,440 / 39,072 | 100 / 68 |
+| +225 **pre-seam** | 74 / 76 | 4 / 4 | 33,440 | 16,416 | **49 / 50** |
+| +900 **pre-seam** | 76 | 4 / 3 | 6,240 | 3,136 | **50 / 49** |
+
+The batch destroys about half of whatever seam it is given, regardless of when the permanent objects
+were allocated. Pre-seam objects are protected at 4,800 B and unprotected at 843,232 B, which places
+the protection strictly inside the low-churn regime.
+
+**Why lever (b) cannot work, argued from the measured map.** The survivor axis has its own
+threshold: nothing at all up to 525 survivors, onset between 795 and 1,148 (§6A.11). **The real
+system sits at 76** — already an order of magnitude *below* its own threshold, and still broken,
+because the churn axis is far *above* its threshold (843,232 B against 8,000-20,000 B). Hoisting can
+only reduce an already-sub-threshold quantity, and reducing a quantity that is not the binding
+constraint cannot change a saturated outcome. The two tables above are that argument's direct
+evidence: the survivor axis stops mattering exactly where the churn axis saturates.
+
+**What this leaves.** Of the three levers in §6A.9, (b) is dead and (c) — raising the transients'
+size class above ~9 GC blocks — is a restatement of reducing small-object churn, which §6A.8 prices
+at a required 40-100x against an achievable ~12x. **Lever (a), position, is the only candidate the
+evidence still supports**, and §2.5's dose-1 result remains the only exact zero ever measured:
+byte-identical work, moved after the batch, gives 100% kept and in_big 0.
+
+**Instrument note, a defect worth recording.** The first two attempts at this experiment were both
+invalidated by their own container. Growing the retention list with `append()` reallocates its
+backing array repeatedly, and each reallocation is a large transient; replacing that with a
+pre-sized `[None] * 4096` was worse still — a 32 KB list allocated at import lands **inside** the
+big free run and splits it, dropping the control's own seam from 56,800 to 6,368 and making every
+arm incomparable. Fixed by sizing each container exactly and allocating it in the same phase as the
+objects it holds, so the control allocates no container at all. The control's seam returning to
+~56,500 is the check that this is clean.
+
 ### 6A.12 Scorecard against the conjunction model
 
 The model that matches the evidence: the defect needs several conditions met at once, each with a
@@ -920,7 +983,7 @@ threshold, and above them the outcome is a heavy-tailed lottery rather than a gr
 | **position** relative to long-lived allocation | **decisive** (§2.5) — the only exact zero found anywhere |
 | **parallelism** (churn concurrent with survivor births) | **suggestive**: worse tail and lower median (§6A.10), not established |
 | **interleaving / yield count** | **measured in the opposite direction** — protective at fixed small-object count (§6A.4), with a mechanism that explains why. Note this is a layout statement only; §8.1 is what removing yields costs |
-| **survivor population size** | **confirmed, threshold, and it interacts multiplicatively with churn volume** (§6A.11) — alone -18%, with a 176x-below-knee churn dose -88%. The sub-76 regime, where remedy lever (b) operates, is still untested |
+| **survivor population size** | **confirmed, threshold, and it interacts multiplicatively with churn volume** (§6A.11) — alone -18%, with a 176x-below-knee churn dose -88%. But the real system sits at 76, an order of magnitude **below** the axis's own onset (795-1,148), so it is not the binding constraint and reducing it cannot help (§6A.13) |
 
 ## 7. Remedy candidates, measured
 
@@ -1136,15 +1199,17 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
    sleeping per chunk operation behind the 6.4 s `ResetErrors` — but as an efficiency fix, not the
    remedy. Same for `syncdeep` (§7). Both are inside files CLAUDE.md and `SPECIFICATION.md` C.3.1
    make vendored-adjacent. Measured, not committed.
-   **What §6A does point at, and what needs your call:** the three levers the mechanism leaves are
-   (a) move the churn out of the window where long-lived allocation happens (§2.5's dose-1 result,
-   the only exact zero found); (b) ensure nothing long-lived is *born* in that window — pre-allocate
-   every module's permanent objects during construction, which is `SPECIFICATION.md` I.1's existing
-   "instantiate large permanent buffers early" guidance, now with a measured layout mechanism behind
-   it and an argument for extending it to *small* permanent objects, which is the opposite emphasis;
-   (c) raise the transients' size class above ~9 GC blocks so they cannot claim dust holes, which is
-   I.4(g)'s "reuse/pre-allocate instead of churning same-shaped objects" read as a layout rule rather
-   than a consumption one. (a) and (b) are outside the restricted files.
+   **What the evidence now points at, and what needs your call.** Of the three levers §6A.9 listed,
+   two are closed by measurement: (b) pre-allocating every module's permanent objects at construction
+   is **refuted** — the mechanism is real but holds only below the churn threshold, and the real
+   system's survivor count is already an order of magnitude below its own onset, so that axis is not
+   the binding constraint (§6A.13); (c) raising the transients' size class is a restatement of
+   cutting small-object churn, priced at a required 40-100x against an achievable ~12x (§6A.8).
+   **Lever (a) — position — is the only candidate the evidence still supports**: defer the per-logger
+   `PrintLogHistoryStore.setup()` to one pass after every module's `setup()`, which is item 3 below
+   and the only configuration that ever measured an exact zero (§2.5). It is implementable in
+   `print_log.py` plus one generated step in `buildgen/codegen.py`, both outside the restricted
+   files, and its cost is the persistence window item 3 states.
 3. **The ordering guarantee.** Deferring only the per-logger `PrintLogHistoryStore.setup()` to one
    pass after the batch is implementable in `print_log.py` plus one generated step in
    `buildgen/codegen.py` (the batch is a single `setup_order` list at `:453-469`), without touching
