@@ -184,7 +184,7 @@ reopened only if A.6's measurement asks for it.
       fixed bus config, one CS low/high pair, no transfer outside a CS window) is asserted rather
       than elided, and a test proves the compact form accounts for every raw event. Both bite
       checks pass: a single dropped WRDI and a single changed payload byte each fail it.
-- [ ] **`tests/test_asy_spi_driver.py`** (49 tests today, at the base branch's state): add the
+- [x] **`tests/test_asy_spi_driver.py`** (49 tests today, at the base branch's state): add the
       synchronous session's own tests mirroring the async ones that apply — `session_begin`
       raises before `setup()`, CS active only inside, deassert on exception in the body,
       `configure` applied fresh per session, two devices sharing a bus never have CS asserted
@@ -196,6 +196,21 @@ reopened only if A.6's measurement asks for it.
       (`test_session_does_not_yield_to_other_tasks_while_cs_is_asserted`'s base-branch form, if it
       pins the old behaviour) is rewritten to the new invariant — the only edit to an existing
       test, and it is named here so it is not mistaken for a silent change.
+      **Correction**: no test of that name exists on the base branch. The one that actually pinned
+      the awaited settle is `test_aenter_releases_the_lock_if_cancelled_during_the_settle_sleep`,
+      which cancelled a task parked *at* the settle and asserted the lock was released. It is the
+      one rewritten, to `test_entering_a_session_is_atomic_so_cancellation_lands_only_after_it`:
+      there is now no suspension point between acquiring the bus lock and releasing it, so the
+      cancellation lands after the session, with the lock released and CS deasserted. Every other
+      test that yields inside a session supplies its own `await asyncio.sleep(0)` in the body and
+      was unaffected.
+      **Done**: 49 -> 62 tests, all green, and the wire traces unchanged. Names settled:
+      `session_begin()`/`session_end()` plus `write_sync()`/`readinto_sync()`/
+      `write_readinto_sync()` are the new plain functions; the async `__aenter__`/`__aexit__`/
+      `write`/`readinto`/`write_readinto` keep their names and are re-expressed on top of them, so
+      no public entry point changes. The caller-holds-the-lock contract needed no new guard:
+      `SPI.configure()`'s existing `First acquire async lock!` check already enforces it, and a
+      test pins that.
 - [ ] **`tests/test_asy_fram_driver.py`** (71 tests today): every existing test stays green
       unchanged. Add: the 5-CS envelope is issued under **one** bus-lock hold (count acquire/
       release on `spi.async_lock`), `set_values()` yields exactly once per byte-level command
