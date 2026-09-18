@@ -206,6 +206,23 @@ def test_a_broken_probe_falls_back_to_the_previous_behaviour_rather_than_going_s
     assert int(out[2]) == 4, f"a broken probe must fall back to 4x, got {out}"
 
 
+def test_the_speed_probe_runs_before_the_pytest_job_loads_the_host(repo_root: Path) -> None:
+    # The placement bug this pins, found 2026-09-18: the probe timed a real process on a real host,
+    # but sat 262 lines AFTER the tests_scripts/ background launch - so it measured the host with
+    # pytest already saturating every core, not the host's own capability. Measured on this
+    # project's 4-core x86 sandbox: 131-141ms across 8 idle samples versus 391ms in situ, i.e. 2x/8
+    # jobs where the host warrants 4x/16, and non-deterministic run to run. Every unit test in this
+    # section runs the extracted function in isolation on an idle machine, so none of them can see
+    # this - only the ordering can, which is why it is asserted here rather than left to a comment.
+    text = _test_sh_text(repo_root)
+    probe_at = text.find("_detect_parallelism() {")
+    resolved_at = text.find('if [ -n "${TEST_PARALLELISM:-}" ]; then')
+    pytest_at = text.find(_PYTEST_LINE)
+    assert probe_at != -1 and resolved_at != -1, "scripts/test.sh no longer resolves the parallelism here - update this test with it"
+    assert pytest_at != -1, f"scripts/test.sh no longer runs {_PYTEST_LINE!r} - update this test with it"
+    assert resolved_at < pytest_at, "scripts/test.sh must resolve TEST_PARALLELISM BEFORE backgrounding tests_scripts/ - the speed probe otherwise measures that job's own CPU load instead of the host"
+
+
 def test_the_env_override_still_wins_over_autodetection(repo_root: Path) -> None:
     # The documented escape hatch the bench Pi4 uses if the probe ever misjudges it.
     text = _test_sh_text(repo_root)

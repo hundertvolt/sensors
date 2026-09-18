@@ -530,8 +530,20 @@ constraints.
     those apart. `scripts/test.sh` now times a fixed integer loop in the very interpreter the tests
     run under and picks the multiplier from that (4x at <=250ms, 2x at <=900ms, 1x beyond), honouring
     a cgroup CPU quota when one is set, with `TEST_PARALLELISM` still overriding everything.
-    Measured: 117ms -> 16 jobs on this project's x86 sandbox (unchanged from before), and a simulated
-    Pi4-class 704ms -> 8 jobs. **What is left**: the thresholds are calibrated from one fast host
+    Measured: 131-141ms (8 samples) -> 16 jobs on this project's x86 sandbox, unchanged from before,
+    and a simulated Pi4-class 704ms -> 8 jobs.
+    **One correction, 2026-09-18**: an earlier revision of this item quoted "117ms -> 16 jobs
+    (unchanged from before)" as if that were what the script did. It was not — those figures were
+    measured in isolation, while the probe itself sat *after* the `tests_scripts/` background launch
+    and therefore timed the host with pytest saturating every core. In situ it read **391ms and
+    picked 8**, not 16, on the very sandbox it was calibrated against. Fixed by moving the whole
+    resolution ahead of that launch (nothing in it depends on anything in between), and
+    `tests_scripts/test_test_sh.py` now asserts that ordering — the unit tests around it all run the
+    extracted function in isolation on an idle machine, so none of them could have caught it. The
+    wall-clock cost on that host was small (4m30.9s autodetected vs 4m26.6s pinned at 16) only
+    because the backgrounded pytest tier at 263s was the binding constraint at both settings; the
+    real defects were the non-determinism and that the probe was not measuring what it claimed to.
+    **What is left**: the thresholds are calibrated from one fast host
     plus a simulated slow one, not from the Pi4 itself — if a real bench run still starves that twin
     assertion at 2x, the next step is 1x for that class, or widening the assertion's own budget.
     Note `_wait_until()` counts poll *iterations*, not wall clock, so making it a true wall-clock

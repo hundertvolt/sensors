@@ -31,9 +31,11 @@ _JUSTIFIED_UNMARKED = {
 _KNOWN_PERSISTING_HELPERS = {
     "isl29125_write_worker",  # bus-concurrency writer, driven only from persistence_write-marked tests
     "bmp3xx_write_worker",  # same
-    # Fixture: its stage-0 `PUT {"SSID": ""}` forces hotspot mode so a dozen tests can run at all,
-    # and its stage-7 restore undoes that - prerequisite writes, not any one test's own, so its six
-    # unmarked dependents are correct rather than an oversight (owner's rule above).
+    # Fixture: its stage-0 `PUT {"SSID": ""}` forces hotspot mode so two dozen tests can run at all,
+    # and its stage-7 restore undoes that - prerequisite writes, not any one test's own, so all but
+    # the three dependents that PUT a persisting field themselves are correctly unmarked (owner's
+    # rule above). Stated as a rule rather than a count: an earlier revision said "its six unmarked
+    # dependents", which was wrong when written and would have gone stale regardless.
     "joined_hotspot",
     "_restore_ssid_over",  # teardown-side restore for the garbage-SSID outage test
     "_recover_stale_dut_credentials",  # session-level recovery path, not a test's own write
@@ -65,6 +67,30 @@ def _leaf_keys(node: ast.expr) -> set[str]:
             elif isinstance(key, ast.Constant) and isinstance(key.value, str):
                 keys.add(key.value)
     return keys
+
+
+def _non_literal_put_bodies(path: Path) -> list[str]:
+    """Function names whose PUT body is not a literal dict, so _leaf_keys() cannot read it.
+
+    The detector below is blind to those - a body built in a variable, or passed by keyword, simply
+    yields no keys and the function never appears as a writer. That blindness has to be enumerated
+    rather than left implicit, or a future `payload = {...}` refactor of a marked test would silently
+    unmark it. Today there is exactly one and it provably persists nothing; see the guard below.
+    """
+    tree = ast.parse(path.read_text())
+    offenders = []
+    for fn in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]:
+        for call in [n for n in ast.walk(fn) if isinstance(n, ast.Call)]:
+            name = call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, "id", "")
+            if name != "fetch":
+                continue
+            method = call.args[2] if len(call.args) >= 3 else None
+            if not (isinstance(method, ast.Constant) and method.value == "PUT"):
+                continue
+            body = call.args[4] if len(call.args) >= 5 else next((kw.value for kw in call.keywords if kw.arg == "body"), None)
+            if body is not None and not isinstance(body, ast.Dict):
+                offenders.append(fn.name)
+    return sorted(set(offenders))
 
 
 def _persisting_put_functions(path: Path, dispatch_only: frozenset[str]) -> dict[str, set[str]]:
@@ -109,6 +135,20 @@ def test_every_test_that_persists_a_config_field_carries_the_marker(repo_root: P
             if name.startswith("test_") and name not in marked and name not in _JUSTIFIED_UNMARKED:
                 offenders.append(f"{path.relative_to(repo_root)}::{name} PUTs {sorted(keys)}")
     assert not offenders, "these tests persist config to the RP2040's flash without @pytest.mark.persistence_write:\n  " + "\n  ".join(offenders)
+
+
+# Function -> why its non-literal PUT body is safe to be invisible to the detector above.
+_JUSTIFIED_UNREADABLE_BODIES = {
+    "test_put_oversized_body_is_rejected_with_413_over_the_normal_network": "the body is deliberately past max_content_length, so vendored ext/microdot.py rejects it with 413 before this project's route handler - and therefore ConfigManager - is ever reached",
+}
+
+
+def test_every_unreadable_put_body_is_a_triaged_one(repo_root: Path) -> None:
+    # Closes the detector's one blind spot by naming it: a PUT whose body is a variable yields no
+    # keys, so the wear guard below passes on it no matter what it writes. Exactly one exists today
+    # and it provably persists nothing; a second has to be triaged rather than silently inherit that.
+    unreadable = {name for path in _tests_hardware_modules(repo_root) for name in _non_literal_put_bodies(path)}
+    assert unreadable == set(_JUSTIFIED_UNREADABLE_BODIES), f"a PUT body the marker guard cannot read changed - triage each one and update _JUSTIFIED_UNREADABLE_BODIES.\n  added: {sorted(unreadable - set(_JUSTIFIED_UNREADABLE_BODIES))}\n  gone: {sorted(set(_JUSTIFIED_UNREADABLE_BODIES) - unreadable)}"
 
 
 def test_the_one_justified_exemption_still_rests_on_every_field_being_rejected(repo_root: Path) -> None:
