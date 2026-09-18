@@ -533,6 +533,11 @@ milliseconds ... about 1ms on the Pyboard" per the pinned docs; boot latency is 
 
 ## T. Real hardware (needs its own go-ahead, in the session that runs it)
 
+**The runnable form of this section is `REAL_HARDWARE_TEST_QUEUE.md` §1A** (added 2026-09-18, after
+the owner reported the branch on the bench in another session): exact commands, the order the
+before/after pair has to run in, the A6 hold-time script, and the prediction to read A0/A1 against.
+The boxes below stay here as this plan's own record; a session at the bench should work §1A.
+
 - [ ] **T.1 Tripwire.** `tests_hardware/flash/test_memory_stress.py::
       test_real_gc_heap_headroom_survives_a_full_system_build` with A alone, then with A + B:
       `free` and `largest_block` after `build_system()`, `threshold(-1)`, on the `dev` board.
@@ -546,9 +551,11 @@ milliseconds ... about 1ms on the Pyboard" per the pinned docs; boot latency is 
       stays initialized and responsive under API load) — all green. No flash-cycle or
       persistence-write marker is needed by any of them beyond what they already declare; FRAM
       is out of the wear gate's scope.
-- [ ] **T.3 Every FRAM device script** under `tests_hardware/device_scripts/fram_*.py` (12 of
-      them: roundtrips, busy-status lockout, pause gating, write-protect, the reset races, the
-      error-log reset race trio) green — they are the real-chip proof that every safety measure
+- [ ] **T.3 Every FRAM device script** under `tests_hardware/device_scripts/fram_*.py` (**13**,
+      not the 12 this said before the count was checked: roundtrip, capacity, CS hijack,
+      busy-status lockout, pause gating, write-protect, the two reset-race pairs and the
+      error-log reset-race trio — plus `sgp40_fram_backup_restore.py`, which is not `fram_*`-named
+      but is the same proof) green — they are the real-chip proof that every safety measure
       survived the restructure. **Read the FRAM-backed error logs before any `ResetErrors`**
       (CLAUDE.md), and remember these scripts overwrite production's first chunks.
 - [ ] **T.4 Hold time, measured** (F.3, §3B.5): a device script that times one byte-level write

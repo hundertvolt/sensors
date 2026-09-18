@@ -24,6 +24,7 @@ These change what gets run, so settle them first.
 | D1 | **Does the bench spend flash/NVM writes this round?** A default run deselects 13 of the bench tier's 73 tests and 9 of the flash tier's 51; `--allow-persistence-writes` runs them and spends real cycles. `--allow-scd30-extra-write` is AND-gated on top for one further SCD30 NVM write. | Several rows below are *only* reachable with the flag — R1 and R4 in particular. Deselection is invisible to the pass/fail check, so this must be a knowing choice (CLAUDE.md's wear rule). | OPEN |
 | D2 | **Is the NeoPixel-aimed-at-the-ISL29125 rig set up?** The gating question is **settled** — `main`'s `@pytest.mark.neopixel_sweep` + `--allow-neopixel-sweep` has been adopted here (2026-09-18), so `test_isl29125_survives_recombined_realistic_lighting_scenarios` (~8.5 min) and `test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration` (~99 s) now skip by default instead of failing on a bench without the rig. What remains is the physical question: decide whether to pass the flag this round. | The 2026-09-17 bench session ran both ungated and they passed after the `_park()` fix, which suggests the rig *is* in place — confirm rather than assume, and record the geometry via the manual tier's `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry` (M1) so the next session does not have to. Opting in costs ~10 min. | OPEN |
 | D3 | **Which firmware image.** Every row below assumes a `dev` build from this branch's own tip via `scripts/build_firmware.py dev`. | CLAUDE.md's hard rule: a `wozi` build flashed onto the dev bench "tests nothing at all" and has produced false bugs before. | OPEN |
+| D4 | **Is §1A's before/after pair being run this sitting?** It needs **two** `dev` images — the merge base and this branch's tip — so two build+flash cycles, in that order. | Only relevant if A0/A1 are in scope. Every other row needs one image (the tip). Reusing an older `largest_block` reading from a previous session as the "before" arm is not a before/after: the board's provisioning, the base branch and the firmware have all moved since 2026-09-17. | OPEN |
 
 ---
 
@@ -43,6 +44,122 @@ FRAM-persisted per-module logs are the one piece of diagnostic evidence a reboot
 `ResetErrors` destroys them irreversibly. Also check what has already been run against the board: an
 isolated-driver device script builds its own `AsyFramManager` over the same chip and can leave a
 plausible-looking fabricated entry behind (`tests_hardware/README.md` has the mechanism).
+
+---
+
+## 1A. Measure A — the FRAM path restructure (PR #105, branch `claude/heap-fragmentation-remediation`)
+
+Added 2026-09-18: the owner reports the branch is on the bench in another session. Until then this
+work was §5-excluded; that exclusion is lifted for the rows below and nothing else on PR #105.
+
+Two separable questions, and they want different runs: **does the restructured FRAM path still do
+everything the old one did on real silicon** (A2-A5, A8), and **what did it actually buy** (A0-A1,
+A6-A7). The functional rows can run on their own; the gain rows only mean anything as a matched
+before/after pair on the same board in the same sitting.
+
+**What changed, so a failure can be read.** `SPIDevice` gained a synchronous session
+(`session_begin()`/`session_end()` + `write_sync()`/`readinto_sync()`/`write_readinto_sync()`) with
+a blocking `time.sleep_us(2)` settle in place of two awaited 1 ms settles; `FRAM_SPI` drives the
+chip through plain functions over it and now **holds the bus for a whole block operation** rather
+than per byte-level command; the chunk layer allocates its scratch buffers once in `__init__`
+instead of per call. The wire protocol is asserted byte-identical by
+`tests/test_asy_fram_wire_trace.py`'s goldens, so **any** real-chip behaviour change is a finding,
+not an expected consequence.
+
+| # | Run | Notes | Status |
+| --- | --- | --- | --- |
+| A0 | **The "before" heap reading.** Build and flash `dev` from the merge base (`claude/automated-build-chain-nuzumw`), then run `uv run pytest tests_hardware/flash/test_memory_stress.py -k test_real_gc_heap_headroom -v` **five times**, recording the `HEAP after_build_system: free=… alloc=… largest_block=…` line from each. | **Expect this arm to FAIL** — the 80,000 B floor is the defect this branch addresses (board read 20,592 B on 2026-09-17). The failure message includes the full device output, so every `HEAP` line still comes back. Five runs because one reading cannot separate the level from the spread. | OPEN |
+| A1 | **The "after" heap reading.** Same five runs on a `dev` build from this branch's tip. | Same command, same five-times rule. Both arms must be the same board, same sitting, same ambient state — a reading taken weeks apart against a differently-provisioned board is not a before/after. | OPEN |
+| A2 | **FRAM functionality, flash tier**: `uv run pytest tests_hardware/flash/test_fram_storage.py -v` | All 9 tests. Drives 10 of the 13 `device_scripts/fram_*.py` plus `sgp40_fram_backup_restore.py`: manager roundtrip, SGP40 VOC backup/restore, error-log roundtrip, the error-log reset race (seed+verify), the boot-window reset, write-protect, pause/unpause gating, busy-status lockout, capacity after a full build. This is the row that says the restructure kept every safety measure. | OPEN |
+| A3 | **FRAM bus hazards, flash tier** (tier 3 of CLAUDE.md's four): `uv run pytest tests_hardware/flash/test_bus_concurrency.py -v -k "fram or deinit"` | `test_fram_same_device_read_write_concurrency`, `test_fram_cs_pin_hijack_fault_injection_and_recovery`, `test_fram_hard_reset_race_during_write_and_recovery` (the remaining 3 `fram_*.py` scripts), plus `test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton` — included because A touched `asy_spi_driver.py`, not because FRAM needs it. | OPEN |
+| A4 | **Bus hazards under real API load, bench tier** (tier 4): `uv run pytest tests_hardware/bench/test_bus_concurrency_under_api_load.py -v` | 6 tests, each of which asserts FRAM stays initialized and responsive while real HTTP clients hammer the API. Two of the six are `@pytest.mark.persistence_write`. | 4 of 6: OPEN / 2: BLOCKED on D1 |
+| A5 | **The second-SPI-device question is NOT testable here — do not report it as verified.** The bus lock's scope widened from one command (~5 CS, ~100 µs) to a whole block operation (~25 CS, ~600 µs), so a second SPI device would wait ~6x longer. No `devices/*.toml` wires a second SPI device, so nothing on this bench can contend with the FRAM for SPI0. | Record as structurally untestable on the current rig, the same way `tests/test_bus_hazard_multi_device.py` covers the shape no generated TOML can produce. A6's hold-time number is the closest real evidence available. | OPEN (record, do not run) |
+| A6 | **Hold time, measured on real wire** (plan T.4, sharpened by the per-block-operation scope). The twin cannot answer this at all: `digital_twin/_fram_chip.py` answers SPI opcodes in memory with zero wire time (this queue's own R7 already says so). Script below. | Two distinct numbers, and conflating them is the trap: **(a)** the longest *synchronous, non-yielding* stretch, which is what blocks the asyncio loop — one command envelope; **(b)** the *bus-lock hold*, which is the whole block operation including the yields inside it, and is what a second SPI device would wait. (a) is the F.3 number; (b) is the A5 number. | OPEN |
+| A7 | **Boot cost, for the record only** (plan T.5): `time.ticks_ms()` across `build_system()`, median of 5, on both arms. | Boot latency is explicitly not a metric to optimise (CLAUDE.md, WP6) — this exists to confirm nothing approaches the 8,388 ms watchdog cap, and to feed this queue's R7, whose whole point is that Part A.7's FRAM setup-cost figures are twin-only. If R6/R7 are run in the same sitting, fold this into them rather than booting separately. | OPEN |
+| A8 | **Re-read `GET /status`'s `errcount` after A2-A4 and check for anything the restructured path could have logged**: errno 90/91/92/93/99/100 (the byte-level read/write guards) and wrnno 81/82/84 (write-protect/WEL). | Every one of these numbers and messages was preserved verbatim through the restructure and is asserted by the mock tier, but only the real chip can produce the status bits that trigger them. A clean run here is the functional result; a *new* entry is the most valuable thing this whole block could produce. | OPEN |
+| A9 | R10's `fram_write_protect_roundtrip.py` (fixed-in-source, never executed) now also exercises A's `set_write_protected()` self-acquiring-the-bus path. | Cross-reference only — the run itself is R10's, and A2 covers it. Do not run it twice. | see R10 |
+
+**A6's script.** Not committed as a test (T.4 decides whether it becomes one) — save it and run it
+with `scripts/mpremote_connect.sh exec "import machine; machine.WDT(timeout=8000)"` then
+`scripts/mpremote_connect.sh run /tmp/fram_hold_time.py`, mirroring what `Board.run_isolated()`
+does. Unlike every other FRAM device script it writes at the **top** of the address space and never
+calls `get_chunk()`, so it does not overwrite production's error logs. **Already executed against
+the digital twin** (2026-09-18), so it reaches both `print()` lines rather than dying on a renamed
+method at first contact — the twin's own numbers are meaningless (its fake chip answers in memory
+with zero wire time, which is precisely why this row exists):
+
+```python
+"""Times the real SPI wire cost of one command envelope and one whole block operation."""
+
+import asyncio
+import time
+
+import asy_spi_driver
+from asy_fram_manager import AsyFramManager
+
+
+async def _main() -> None:
+    spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
+    fram = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
+    if not await fram.setup():
+        print("RESULT: FAIL fram.setup() failed - real chip not responding on spi0/cs5")
+        return
+    chip = fram.fram
+    addr = 0x3FF00  # top of the address space, clear of every production chunk
+    one = bytearray(1)
+    eight = bytearray(8)
+
+    # (a) the synchronous, non-yielding stretches, bus already held.
+    async with chip:
+        t0 = time.ticks_us()
+        w_status = chip.set_values_sync(one, addr)
+        t1 = time.ticks_us()
+        r_status = chip.get_values_sync(eight, addr)
+        t2 = time.ticks_us()
+    write_us = time.ticks_diff(t1, t0)
+    read_us = time.ticks_diff(t2, t1)
+    if not await chip.report_set_values(w_status):
+        print("RESULT: FAIL the 1-byte write reported a failure status")
+        return
+    if not await chip.report_get_values(r_status):
+        print("RESULT: FAIL the 8-byte read reported a failure status")
+        return
+
+    # (b) the bus-lock hold: entry to exit, yields inside it included.
+    t3 = time.ticks_us()
+    async with chip:
+        for _ in range(4):  # a block operation's own command count
+            chip.set_values_sync(one, addr)
+            await asyncio.sleep(0)
+            chip.get_values_sync(eight, addr)
+            await asyncio.sleep(0)
+    hold_us = time.ticks_diff(time.ticks_us(), t3)
+
+    print(f"HOLD write_5cs={write_us}us read_1cs={read_us}us block_operation={hold_us}us")
+    print(f"RESULT: PASS longest non-yielding stretch {max(write_us, read_us)}us, bus held {hold_us}us")
+
+
+asyncio.run(_main())
+```
+
+**How to read A0/A1 — the prediction, written down before the run so a surprise is recognisable.**
+The twin's own perturbation ensemble was run on the restructured code (settrace-free frozen binary,
+`gc.threshold(-1)`, calibrated heap, 15 + 6 perturbations, `HEAP_FRAGMENTATION_MEASUREMENTS.md`
+§7A.8's protocol):
+
+- After `build_system()`: A gives **31,328 B largest in all 15 runs**, ratio 12.4-12.5%. Base swung
+  **30,752-60,800 B**, 11.9-23.4%, median 14.3%. A removed the *variance*, not the fragmentation.
+- After the whole boot sequence: A **7.3-7.4%** against base's **8.1-8.5%** — marginally worse.
+- A **retains 7,232 B more** than base, measured at the construction seam. 3,200 B of that is the 20
+  hoisted per-chunk buffers (20 x 160 B, confirmed directly by nulling them and collecting) and
+  1,024 B is import residue from the new methods.
+
+So the honest expectation on silicon is **`free` slightly lower, `largest_block` roughly unchanged,
+and the 80,000 B tripwire still failing** — A is a churn/allocation-count fix (9.0x per logger
+`setup()`), and §7B.1 predicted no layout gain from it alone. **A large `largest_block` improvement
+would contradict the twin and must be investigated before it is believed**, not reported as success;
+the likeliest explanations would be a different `gc.threshold()` in play or an arm built from the
+wrong tree, both of which the twin cannot reproduce.
 
 ---
 
@@ -92,9 +209,11 @@ a test to *write* against real hardware, not just a run.
 
 ## 5. Excluded on purpose
 
-- **Heap fragmentation** — belongs to the session working PR #105
-  (`HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` is its handover). The one failure left at PR #103's
-  close is that defect. Not this queue's business; listed so it does not look forgotten.
+- **Heap fragmentation, beyond §1A.** §1A now carries measure A's own rows, because the owner
+  reported the branch on the bench (2026-09-18). Everything else on PR #105 still belongs to the
+  session working it (`HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` is its handover): measure B (the
+  boot-confined `gc.collect()`) is not built, so its rows — plan T.1's A+B column, T.5's collect
+  timing — cannot be run yet. The one failure left at PR #103's close is that defect.
 - **PR #84's three bench passes** (`reactive` full suite 95 passed/2 skipped; `reactive` + churn
   pressure tests 3 passed; `threshold` full suite 95 passed/2 skipped) are already run, on that PR's
   own branch. They do not need repeating — but note **none of PR #84 is on this branch**, so its
@@ -121,3 +240,6 @@ have actually cost something:
   with no STA config, recoverable only over the serial REPL. It has happened.
 - **Don't chase `asy_fram_manager.py`/`asy_fram_driver.py` internals** from anything found here —
   heavily audited, and any real change there needs its own scoped review (SPECIFICATION.md C.3.1).
+  **§1A is the one carve-out**: those two files plus `asy_spi_driver.py` are what measure A rewrote
+  under an owner-granted scoped exception, so a failure in A2-A8 is a finding *about* that change
+  and belongs back to the PR #105 session — still not a drive-by fix here.
