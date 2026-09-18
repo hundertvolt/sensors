@@ -41,12 +41,15 @@ deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below
 ## Environment variables
 
 - `MPREMOTE_DEVICE` (or `--device` on any `pytest tests_hardware` invocation) - serial device path
-  for the flash-tier board. With neither set, `harness.resolve_board_device()` picks the board's
-  own `/dev/serial/by-id/usb-MicroPython_Board_in_FS_mode_*-if00` symlink, which is named by USB
-  serial number and so survives the re-enumeration a hard reset causes; it falls back to the lowest
-  `ttyACM*` and finally to `/dev/ttyACM0`. Either variable pins the path outright, and a pinned
-  path is never re-resolved. `scripts/mpremote_connect.sh` still defaults to `/dev/ttyACM0` -
-  pass `MPREMOTE_DEVICE` there if the node has moved.
+  for the flash-tier board. With neither set, `harness.resolve_board_device()` identifies the board
+  by USB vendor ID - `toolchain/setup_toolchain.py`'s own `detect_pico_serial_devices()`, so the two
+  cannot disagree - and returns its `/dev/serial/by-id/...` symlink, which is named by USB serial
+  number and so survives the re-enumeration a hard reset causes. Two boards attached is a hard error
+  naming both rather than a silent pick; none attached returns a path that cannot exist, so the
+  `board` fixture skips without mpremote opening some other device's port to find that out. Either
+  variable pins the path outright, and a pinned path is never re-resolved.
+  `scripts/mpremote_connect.sh` still defaults to `/dev/ttyACM0`, making it the one entry point a
+  re-enumeration can still strand - pass `MPREMOTE_DEVICE` there if the node has moved.
 - `BENCH_AP_PASSWORD` - **optional, not required for a normal run** (fixed 2026-09-08 - see
   BACKLOG.md open question 9 for the full incident this used to cause).
   `tests_hardware/bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values`

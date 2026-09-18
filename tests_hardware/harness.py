@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,11 @@ import serial
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+# For `import setup_toolchain` below - the same bare-sibling shape as that module's own
+# `import micropython_overrides` (host_typecheck.ini's own account of why both need a path slot).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "toolchain"))
+from setup_toolchain import detect_pico_serial_devices
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -99,24 +105,56 @@ class MpremoteResult:
 
 
 _BOARD_BY_ID_GLOB = "usb-MicroPython_Board_in_FS_mode_*-if00"
+# Returned when no Pico-family board is attached at all: a path that cannot exist, so the `board`
+# fixture's own is_reachable() probe fails and SKIPS (this tier stays collectible with nothing
+# attached) without mpremote ever opening some other device's port to find that out.
+_NO_BOARD_DEVICE = "/dev/no-pico-serial-device-detected"
 # Bounded for the same reason the USB unbind/rebind escalation below is: a node that keeps
 # vanishing and reappearing under an alternating name would otherwise extend the grace window
 # forever, and no single subprocess timeout breaks out of _mpremote()'s own loop.
 _MAX_DEVICE_REBINDS = 2
 
 
-def resolve_board_device() -> str:
-    """The board's current serial node, preferring the stable by-id symlink over a ttyACM index.
+def _stable_name_for(dev_path: Path, by_id_dir: Path) -> str:
+    """The `/dev/serial/by-id` symlink pointing at `dev_path`, or `dev_path` itself if none does.
+    Matching by target rather than by name drops the old hardcoded product string, so a board whose
+    USB descriptor reads differently still resolves to a stable name."""
+    if by_id_dir.is_dir():
+        for link in sorted(by_id_dir.iterdir()):
+            if link.resolve() == dev_path.resolve():
+                return str(link)
+    return str(dev_path)
 
-    `/dev/serial/by-id/` names the device by its USB serial number, so it survives the
+
+def resolve_board_device(
+    by_id_dir: Path = Path("/dev/serial/by-id"),
+    sys_tty_dir: Path = Path("/sys/class/tty"),
+    dev_dir: Path = Path("/dev"),
+) -> str:
+    """The board's current serial node, identified by USB vendor ID and named by its stable by-id
+    symlink. Directories are overridable for tests, like detect_pico_serial_devices()' own.
+
+    Which device: setup_toolchain.py's vendor-ID detection is the single source of truth, so this
+    can never select a non-Pico ACM device (the bench's Arduino UART peer) the way a bare `ttyACM*`
+    scan could. Two matches is a hard error rather than a silent sorted()[0] - driving the wrong
+    board is worse than not starting - mirroring resolve_pico_device()'s own rule.
+
+    Which name: `/dev/serial/by-id/` names the device by USB serial number, so it survives the
     re-enumeration a hard reset causes; the bare ttyACM index does not (observed moving
-    ttyACM0 -> ttyACM1 mid-suite). Falls back to the lowest present ttyACM node, then to
-    ttyACM0 so the error message stays the familiar one when no board is attached at all."""
-    by_id = sorted(Path("/dev/serial/by-id").glob(_BOARD_BY_ID_GLOB)) if Path("/dev/serial/by-id").is_dir() else []
-    if by_id:
-        return str(by_id[0])
-    acm = sorted(Path("/dev").glob("ttyACM*"))
-    return str(acm[0]) if acm else "/dev/ttyACM0"
+    ttyACM0 -> ttyACM1 mid-suite). The by-id glob is also the fallback identification path, for a
+    host whose /sys is unreadable - it is Pico-specific too, so neither route can pick a stranger."""
+    candidates = detect_pico_serial_devices(sys_tty_dir, dev_dir)
+    if not candidates and by_id_dir.is_dir():
+        candidates = [link.resolve() for link in sorted(by_id_dir.glob(_BOARD_BY_ID_GLOB))]
+    if len(candidates) > 1:
+        names = ", ".join(str(c) for c in candidates)
+        raise HardwareNotAvailableError(
+            f"multiple Raspberry Pi USB serial devices found ({names}) - pass --device or set "
+            "MPREMOTE_DEVICE to pick one explicitly, rather than have the suite guess which board to drive",
+        )
+    if not candidates:
+        return _NO_BOARD_DEVICE
+    return _stable_name_for(candidates[0], by_id_dir)
 
 
 class Board:
