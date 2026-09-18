@@ -12,7 +12,7 @@ defects themselves, because each one is a trap a future session will otherwise r
 
 **Start at §0.** It is the ledger of every hypothesis this investigation tested — whose it was, what
 tested it, and whether it is confirmed, suggestive, refuted, withdrawn or still untested. The rest
-of the document is the evidence those verdicts rest on. §6A.12's scorecard is the same thing
+of the document is the evidence those verdicts rest on. §6A.13's scorecard is the same thing
 narrowed to the factors that control the defect.
 
 Note also §2.1's calibration: the twin heap is sized by **fill fraction**, not by copying a number
@@ -71,7 +71,7 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | C8 | The size threshold is mediated by collection frequency — a large request fails on contiguity and forces an early, shallow collection | **confirmed** | large-unit churn collects at a median 220,864 B still free vs 1,440 B for small-unit churn (§6A.6) |
 | C9 | Cutting the 74 chip-select sessions to ~6 will clear the contiguity floor | **withdrawn** | ~12x against a required 40-100x; 70,000 B per logger measures in_big 14 / span 97%, inside the saturated regime (§6A.8) |
 | C10 | Loop yields are protective for layout | **confirmed, and confound-checked** | first measured at constant total bytes, which entangled it with small-object count; re-run at fixed small-object count it holds — in_big 21 -> 4 -> 2 as yields rise (§6A.4) |
-| C11 | Pre-allocating each module's permanent objects at construction is the remedy the evidence favours | **refuted** | the mechanism is real — the same objects placed pre-seam give in_big 0 and 100% kept where in-window they give 380 and 12% — but it holds only below the churn threshold. At the real 843,232 B dose pre-seam objects are unprotected (kept ~50%), and the real system's 76 survivors are already an order of magnitude below the survivor axis's own onset, so that axis is not the binding constraint (§6A.13) |
+| C11 | Pre-allocating each module's permanent objects at construction is the remedy the evidence favours | **refuted** | the mechanism is real — the same objects placed pre-seam give in_big 0 and 100% kept where in-window they give 380 and 12% — but it holds only below the churn threshold. At the real 843,232 B dose pre-seam objects are unprotected (kept ~50%), and the real system's 76 survivors are already an order of magnitude below the survivor axis's own onset, so that axis is not the binding constraint (§6A.12) |
 
 ## 1. The instrument
 
@@ -897,7 +897,7 @@ churn; it is a property of the **pair**. Measured at the natural ~76-survivor po
 there; raise the population and 4,800 B suffices. Onset in the survivor axis is equally sharp —
 nothing at all up to 525 survivors, then 0 -> 7 -> 119 between 795 and 1,148. Both axes have a
 threshold, and the defect needs both crossed at once, which is exactly the conjunction model in
-§6A.12.
+§6A.13.
 
 **Limit of this experiment, and the next step it names.** The knob only *adds* survivors, so the
 **sub-76 regime is untested** — and that is precisely where remedy lever (b) operates (pre-allocate
@@ -908,7 +908,7 @@ real code change, not a knob. Cells at 400 extra survivors per logger, and at 3,
 with 100, are absent because they `MemoryError` — 3,600 retained bytearrays is ~230 KB on a 278 KB
 free heap. Out of range by construction, not a defect, and not read as data.
 
-### 6A.13 Survivor hoisting: the mechanism confirmed, the remedy killed
+### 6A.12 Survivor hoisting: the mechanism confirmed, the remedy killed
 
 Lever (b) — allocate each module's permanent objects at construction so fewer are born inside the
 churn window — was the one remedy the 2D map appeared to favour. Tested directly.
@@ -971,7 +971,7 @@ arm incomparable. Fixed by sizing each container exactly and allocating it in th
 objects it holds, so the control allocates no container at all. The control's seam returning to
 ~56,500 is the check that this is clean.
 
-### 6A.12 Scorecard against the conjunction model
+### 6A.13 Scorecard against the conjunction model
 
 The model that matches the evidence: the defect needs several conditions met at once, each with a
 threshold, and above them the outcome is a heavy-tailed lottery rather than a gradient.
@@ -983,7 +983,7 @@ threshold, and above them the outcome is a heavy-tailed lottery rather than a gr
 | **position** relative to long-lived allocation | **decisive** (§2.5) — the only exact zero found anywhere |
 | **parallelism** (churn concurrent with survivor births) | **suggestive**: worse tail and lower median (§6A.10), not established |
 | **interleaving / yield count** | **measured in the opposite direction** — protective at fixed small-object count (§6A.4), with a mechanism that explains why. Note this is a layout statement only; §8.1 is what removing yields costs |
-| **survivor population size** | **confirmed, threshold, and it interacts multiplicatively with churn volume** (§6A.11) — alone -18%, with a 176x-below-knee churn dose -88%. But the real system sits at 76, an order of magnitude **below** the axis's own onset (795-1,148), so it is not the binding constraint and reducing it cannot help (§6A.13) |
+| **survivor population size** | **confirmed, threshold, and it interacts multiplicatively with churn volume** (§6A.11) — alone -18%, with a 176x-below-knee churn dose -88%. But the real system sits at 76, an order of magnitude **below** the axis's own onset (795-1,148), so it is not the binding constraint and reducing it cannot help (§6A.12) |
 
 ## 7. Remedy candidates, measured
 
@@ -1172,7 +1172,8 @@ built per §1.4 and run from the repo root with `MICROPYPATH=.frozen`.
 | `probe.py synth` mode | §6A's factorial injector. argv: `<cfg> synth <audit> <pert> <q> <churn_b> <yields> <blk\|coro> <unit> [peak\|trace] [small_n]`. With `small_n >= 0` the three knobs (small objects, yields, hole-proof 1024 B units) are set explicitly and interleaved evenly, which is how §6A.4's confound-free yield sweep is run; with `small_n` omitted the byte budget is held constant instead |
 | `probe.py synthpar` / `parplus` modes | §6A.10's concurrent-churn task. `synthpar` no-ops the logger setups (and so starves its own task of scheduling slots - the batch's awaits are what create the parallelism); `parplus` keeps the real batch intact and adds the task on top, which is the one that isolates added parallelism |
 | `spread.py` / `saw.py` | survivor decile histogram, heap span and distinct-run count; the fill-sawtooth trace analysis |
-| `probe.py synth` arg 12 (`surv_n`) | §6A.12's retained-survivor knob: extra kept 64 B bytearrays per logger setup, interleaved with the churn. `svgrid.py` tabulates the churn x survivor grid |
+| `probe.py synth` arg 12 (`surv_n`) | §6A.11's retained-survivor knob: extra kept 64 B bytearrays per logger setup, interleaved with the churn. `svgrid.py` tabulates the churn x survivor grid |
+| `probe.py` arg 13 (`presurv`) | §6A.12's pre-seam partner, hooked on `AsyFramManager.__init__` so the objects land in the construction phase. Works with any mode including plain `base`, which is how the real-churn arm is run. Both retention containers are sized exactly and allocated in-phase — §6A.12's instrument note has the two container artifacts that invalidated earlier attempts |
 | `fgrid.py` / `holes.py` / `peak.py` / `hist.py` | in_big + kept% per run; dust-hole occupancy; matched non-collecting peak dumps; the seam hole-size histogram |
 | `unitcost.py` / `unit2.py` | per-allocation cost calibration (`bytearray(n)`, bare await, `sleep(0)`) |
 
@@ -1203,7 +1204,7 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
    two are closed by measurement: (b) pre-allocating every module's permanent objects at construction
    is **refuted** — the mechanism is real but holds only below the churn threshold, and the real
    system's survivor count is already an order of magnitude below its own onset, so that axis is not
-   the binding constraint (§6A.13); (c) raising the transients' size class is a restatement of
+   the binding constraint (§6A.12); (c) raising the transients' size class is a restatement of
    cutting small-object churn, priced at a required 40-100x against an achievable ~12x (§6A.8).
    **Lever (a) — position — is the only candidate the evidence still supports**: defer the per-logger
    `PrintLogHistoryStore.setup()` to one pass after every module's `setup()`, which is item 3 below
