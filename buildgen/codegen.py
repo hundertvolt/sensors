@@ -304,6 +304,7 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append('Mirrors every device\'s own construction-order shape (SPECIFICATION.md Part A.7)."""')
     lines.append("")
     lines.append("import asyncio")
+    lines.append("import gc")
     lines.append("import time")
     lines.append("from asyncio import ThreadSafeFlag")
     lines.append("")
@@ -462,12 +463,18 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             continue
         if spec.driver_info and spec.driver_info.needs_setup:
             setup_order.append(ctx.instance_var(node))
+    # Measure B (SPECIFICATION.md Part I.4(f)): one collect before the batch and one after each
+    # module, and nowhere else. Each is a placement reset, not hygiene and not compaction - it puts
+    # the allocator's free-scan index back to zero so the next module's permanent objects take the
+    # lowest fitting holes instead of landing above this batch's churn.
+    lines.append("    gc.collect()")
     for name in setup_order:
         lines.append(f"    await {name}.setup()")
         # WP6 (SPECIFICATION.md Part D.9/G.2): fed after every one-time setup() call, never inside a
         # loop - that's what makes this safe regardless of how many modules a device wires. No-op on
         # a watchdog-less build or once _force_watchdog_starve latches, via feed_watchdog() itself.
         lines.append("    sysfunct.feed_watchdog()")
+        lines.append("    gc.collect()")  # after the feed, never before it - the collect is the slow part
     lines.append("")
 
 

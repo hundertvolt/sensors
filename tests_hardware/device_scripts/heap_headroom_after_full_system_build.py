@@ -18,6 +18,13 @@ _PROBE_MAX = 192 * 1024
 # an ordinary allocation-pattern change won't trip them but a real regression will - a new static
 # buffer, or a future MicroPython bump moving more code into SRAM the way 1.29 already did with the
 # interpreter core (12,918 B, Part F.5.3). Raise them only with a fresh measurement to point at.
+# Two facts about what this figure now means. build_system() carries the boot-confined placement
+# reset (Part I.4(f.1)), so largest_block is the *with-collects* layout - a reading below the floor
+# means the layout regressed past what those collects recover, not that they are absent. And the
+# number depends on WHEN in a suite it is taken: Board.run_isolated() interrupts the running
+# firmware without resetting, so a freshly-flashed standalone run measures a young heap and a run
+# deep in a suite measures an aged one - 95,104 B against 28,864 B on the same firmware, with free
+# unchanged (HEAP_FRAGMENTATION_MEASUREMENTS.md 7D.2). Compare only like suite positions.
 _MIN_FREE = 100_000
 _MIN_LARGEST_BLOCK = 80_000
 

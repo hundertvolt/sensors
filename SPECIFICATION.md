@@ -4359,7 +4359,9 @@ stress/hammer ones, and the bar is zero `MemoryError`s, caught or not.** The who
 twin and real hardware alike, no relaxed bar for either — must run to completion with
 `gc.threshold(-1)` (MicroPython's real reactive-only default) and with no nonstandard `gc` settings
 or added `gc.collect()` calls anywhere in the business logic or the test's own setup propping it
-up. A test that only passes because a `MemoryError` was caught and logged without crashing anything
+up (the boot-confined placement reset in (f.1) is the one structural exception, and it is part of
+the firmware's own boot rather than a test's setup — the suite must still clear this stage with it
+in). A test that only passes because a `MemoryError` was caught and logged without crashing anything
 is not a passing result at this stage — a caught-but-real allocation failure is exactly the signal
 this stage exists to catch, and "it didn't crash" is not the same claim as "it didn't happen."
 **One narrow, evidence-backed exception**: `digital_twin/run_generic_integration.py`'s
@@ -4386,6 +4388,43 @@ change at all — it lifts an already-stable system further from a stability thr
 otherwise sit close to, it does not create that stability. Once applied, the *same* full suite must
 still pass with it enabled too — it's an additive safety margin layered on an already-safe design,
 never a swap of one mode for another, and never itself the explanation for why a test now passes.
+
+**(f.1) The one structural exception: a boot-confined placement reset.** `gc.collect()` between the
+units of the two *one-time* setup lists — the generated setup batch (`buildgen.codegen`'s
+`_emit_build_system()`, one before the batch and one after each module's `feed_watchdog()`) and
+`SystemService.start_and_check_tasks()`'s task-starter loop (one before the loop, one after each
+starter) — **and nowhere else whatsoever**. This is not a threshold, not hygiene, and **not** a fix
+for an allocation that failed: MicroPython's collector never moves an object, so nothing is
+compacted. What each call changes is *where the next allocations land* — `gc_collect_end()` resets
+the allocator's free-scan index to zero (`py/gc.c`), so the following module's permanent objects
+take the lowest fitting holes instead of being pushed above the batch's own churn high-water mark.
+It is therefore placement discipline for the survivors those two lists create, applied at the only
+two points in the firmware's life where permanent objects are born in a known sequence.
+
+Grounded in the pinned MicroPython documentation's own recommendation
+(`docs/reference/constrained.rst:413-437` at `v1.29.0`: a demanded collection "is advantageous ...
+firstly to preempt fragmentation", and "`gc.collect()` issued after the import will ameliorate the
+problem"), and in this repo's own measurement. **The measured effect, stated so nobody later
+mistakes it for (f)-stage margin**: on the twin at `gc.threshold(-1)` — the (e)-stage configuration
+— it is worth a factor of 3.2 to 6.9 on largest-contiguous-over-free, taking the post-batch figure
+from 11.9-14.2% to 44.6-45.0% and the post-task-list figure from 8.1-8.4% to 57.7-57.8%
+(HEAP_FRAGMENTATION_MEASUREMENTS.md §7A.2/§7A.8). At the shipped `gc.threshold(32768)` it changes
+nothing measurable (§7A.6), which is the honest reading: this earns its place at the (e) stage, not
+as (f) margin.
+
+Confined mechanically, not by convention: `tests_scripts/test_gc_collect_sites.py` walks `src/`
+with `ast` and asserts the only `gc.collect()` call site is `system_service.start_and_check_tasks`,
+attributing every call to its enclosing function — so a new call anywhere, including at module
+level, and a rename of the allowed site both fail it — plus a textual assertion that `buildgen/`
+emits one only from `codegen.py`. The test carries its own two self-tests, so the guard is checked
+rather than assumed. A `scripts/lint.sh` grep was specified alongside it (HEAP_REMEDIATION_PLAN.md
+B.3) and is **not** in place: a `scripts/` change triggers CLAUDE.md's two-target clean-chroot
+pre-push gate, whose Debian trixie leg cannot run where `deb.debian.org` is blocked by egress
+policy. The structural test is the stricter of the two in any case; the grep would only fail
+earlier, in the lint stage rather than the test stage. **The prohibition in (e), (f) and (g) is otherwise unchanged**: no `gc.collect()` in
+business logic, none in the run phase (the supervisor loop under the starter list is the run phase
+and is asserted to have none), and none as the remedy for memory pressure.
+
 **(g) When a genuine memory-pressure issue is found, fix it with a design-level technique that
 relieves the pressure directly** — chunking a large operation, reusing/pre-allocating buffers
 instead of churning same-shaped objects, streaming (`_stream_dict_response()`, I.3) — never a

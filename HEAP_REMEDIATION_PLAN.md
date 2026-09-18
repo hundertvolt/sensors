@@ -488,21 +488,22 @@ milliseconds ... about 1ms on the Pyboard" per the pinned docs; boot latency is 
 
 ### B.2 Tests first
 
-- [ ] **`tests_scripts/test_buildgen_generate.py`**: beside
+- [x] **`tests_scripts/test_buildgen_generate.py`**: beside
       `test_real_device_feeds_the_watchdog_after_every_setup_call_in_order`, a test that for every
       real device the generated `build_system()` has `gc.collect()` immediately before the first
       `await ….setup()`, immediately after every `sysfunct.feed_watchdog()`, and **nowhere else
       in the generated module** (count == len(setup_order) + 1); and that `main()` and every other
       generated function contain none.
-- [ ] **`tests/test_system_service.py`** (83 today): `start_and_check_tasks()` calls
+- [x] **`tests/test_system_service.py`** (83 today, 85 now): `start_and_check_tasks()` calls
       `gc.collect()` exactly `len(task_starters) + 1` times before the first supervisor pass and
       **zero** times during N supervisor iterations (patch `gc.collect` with a counter the way the
       file already patches `machine`/`time`; the supervisor loop is driven with the existing
       `_TASK_CHECK_TIME` fakes). Also: an empty starter list still collects once (the start-of-list
       collect) and never fails.
-- [ ] **`tests_scripts/test_digital_twin_generated_boot.py`**: the real generated module boots
-      and serves over HTTP with the collects in (both existing tests, unchanged).
-- [ ] **A guard test for the guard**: `tests_scripts/test_gc_collect_sites.py` (new) walks `src/`
+- [x] **`tests_scripts/test_digital_twin_generated_boot.py`**: the real generated module boots
+      and serves over HTTP with the collects in (both existing tests, unchanged). **Confirmed** —
+      both pass untouched in the full suite run above.
+- [x] **A guard test for the guard**: `tests_scripts/test_gc_collect_sites.py` (new, 4 tests) walks `src/`
       and `buildgen/` with `ast` and asserts `gc.collect(` occurs only in
       `system_service.py:start_and_check_tasks` and in `codegen.py`'s emitter string — the same
       assertion `scripts/lint.sh`'s grep makes (B.3), expressed structurally so a rename of either
@@ -510,22 +511,30 @@ milliseconds ... about 1ms on the Pyboard" per the pinned docs; boot latency is 
 
 ### B.3 Implementation
 
-- [ ] `buildgen/codegen.py` per B.1.1 (`_emit_build_system` and the import block); regenerate
+- [x] `buildgen/codegen.py` per B.1.1 (`_emit_build_system` and the import block); regenerate
       nothing by hand — `scripts/build_firmware.py`/the twin generate at build time.
-- [ ] `src/system_service.py` per B.1.2, with `import gc`.
-- [ ] **`scripts/lint.sh` guard**, modelled on the `method-assign` grep at `:39`: `gc.collect(`
-      under `src/` is allowed only in `src/system_service.py`, and under `buildgen/` only in
-      `buildgen/codegen.py`; any other hit fails the lint gate with a message naming
-      `SPECIFICATION.md` I.4(f). `digital_twin/`'s two existing calls (`_mem_sampler`, the
-      unwedge) and `tests/`' own are outside the guard's scope by design (I.4(e) already names
-      the sampler as the one exception; the unwedge is F.6). **Touching `scripts/` triggers the
-      two-target clean-chroot gate** (CLAUDE.md): noble/GCC 13 and trixie/GCC 14, both, before
-      the push that carries it — state plainly if it cannot be satisfied.
-- [ ] `scripts/lint.sh`, `scripts/typecheck.sh`, `scripts/test.sh` exit 0.
+- [x] `src/system_service.py` per B.1.2, with `import gc`.
+- [ ] **`scripts/lint.sh` guard** — **NOT DONE, and deliberately so.** It was written, verified
+      to bite on an injected `gc.collect()` in `src/print_log.py`, and then **reverted**, because
+      touching `scripts/` triggers CLAUDE.md's two-target clean-chroot pre-push gate and **the
+      trixie leg cannot run in this environment**: `deb.debian.org:443` is `connect_rejected` by
+      the sandbox's egress policy (confirmed against the agent proxy's own status endpoint, which
+      logs the rejection). The noble leg got as far as `typecheck.sh` and died on a cut-off PyPI
+      transfer fetching the stub wheel — transient, retryable, but the trixie half is not. Rather
+      than push an unverified `scripts/` change, `scripts/` is left untouched by measure B, so the
+      gate is not triggered at all. `tests_scripts/test_gc_collect_sites.py` (B.2) carries the
+      confinement instead and is the stricter of the two: it attributes each call to its enclosing
+      function, so it catches a module-level call and a rename of the allowed site, neither of
+      which a path-based grep sees. The grep's only advantage is failing in the lint stage rather
+      than the test stage. **Owed**: add it from a host that can run both chroots — the bench Pi4
+      runs trixie already, and `REAL_HARDWARE_TEST_QUEUE.md` H1 tracks that gate.
+- [x] `scripts/lint.sh`, `scripts/typecheck.sh`, `scripts/test.sh` exit 0. **Done**: lint clean,
+      typecheck 157/47/105, suite 85/85 MicroPython files and 1237 pytest passed / 7 skipped.
 
 ### B.4 The rule amendment (`SPECIFICATION.md` I.4, CLAUDE.md)
 
-- [ ] **I.4(f)** gains one paragraph: the boot-confined placement reset — `gc.collect()` between
+- [x] **I.4(f)** gains one paragraph — added as **(f.1)**, its own lettered sub-item so (f)'s
+      threshold rule and the boot exception cannot be confused: the boot-confined placement reset — `gc.collect()` between
       the units of the two one-time setup lists, emitted by `buildgen` and owned by
       `SystemService`, and nowhere else — is *not* a threshold and *not* a fix for an allocation
       that fails; it is placement discipline for the survivors those lists create (§7A.4's
@@ -536,32 +545,44 @@ milliseconds ... about 1ms on the Pyboard" per the pinned docs; boot latency is 
       configuration is stated with its number (§7A.8), so nobody later mistakes it for (f)-stage
       margin. Confined by `scripts/lint.sh` (B.3) and the structural test (B.2). The prohibition
       for business logic and the run phase is restated unchanged.
-- [ ] **I.4(e)**'s "no added `gc.collect()` calls anywhere in the business logic or the test's own
+- [x] **I.4(e)**'s "no added `gc.collect()` calls anywhere in the business logic or the test's own
       setup" gains the cross-reference to (f)'s boot exception so the two paragraphs cannot be
       read as contradicting each other.
-- [ ] **CLAUDE.md**'s memory-safety hard rule (the "Standing rule, every test" sentence) gets the
+- [x] **CLAUDE.md**'s memory-safety hard rule (the "Standing rule, every test" sentence) gets the
       same one-clause cross-reference, no more — CLAUDE.md points, `SPECIFICATION.md` holds.
-- [ ] **`heap_headroom_after_full_system_build.py`**'s comment: the script still asserts before
+- [x] **`heap_headroom_after_full_system_build.py`**'s comment — and it also now records §7D.2's
+      suite-position dependence, which makes the figure comparable only against like positions: the script still asserts before
       any threshold is set; note that `build_system()` now carries the boot collects, so the
       figure it asserts is the with-collects layout, and that a number below the floor means the
       layout regressed past what the collects recover (the dampening §7B.2 names).
 
 ### B.5 The digital twin
 
-- [ ] Full twin CI sequence green at both thresholds (as A.4).
-- [ ] `digital_twin/run_generic_integration.py` needs no change: it runs the generated
-      `main()`, so it gets the collects the way the board does.
+- [x] Full twin CI sequence green at both thresholds (as A.4). **Done**: "every check succeeded
+      at both `gc.threshold(-1)` and `gc.threshold(32768)`" — I.4(e) then (f), in that order, with
+      the collects in. Run 11's soak trend is **-3,692 B** (free *grew*) against a 13,719 B
+      tolerance, and zero `MemoryError` anywhere, caught-and-logged included.
+- [x] `digital_twin/run_generic_integration.py` needs no change: it runs the generated
+      `main()`, so it gets the collects the way the board does. **Confirmed** — no twin file was
+      touched, and the twin CI above exercised the collects through the real generated module.
 
 ### B.6 Measurement, A + B (twin, no hardware)
 
-- [ ] §7A.8's protocol again, real path, A and B both in: largest/free after `build_system()` at
-      508k and after the task list at 560k, 15 + 6 perturbations, `threshold(-1)`. Record as §7C's
-      second row set, beside §7B.3's corrected expectation (60-80%) and the proxy's 87.5%. This is
-      the number the owner's question turns on.
-- [ ] The same at `threshold(32768)`, for the (f)-stage record (expected: unchanged from today's
-      87%, §7A.6).
-- [ ] Survivor placement (§6A.7's decile histogram) for A+B, to show the mechanism held on the
-      real path the way it did on the proxy.
+- [x] §7A.8's protocol again, real path, A and B both in. **Done, recorded as §7E** (its own
+      section rather than a second §7C row set — §7C is now three subsections about A). **86.2-86.3%
+      after `build_system()` and 87.5-90.2% after the whole sequence**, against `base`'s 14.2% /
+      8.4% and B-alone's 45.0% / 57.8%; 10/10 and 6/6 clear both the 55% and the conservative 74%
+      form. Largest contiguous 217,680 B / 255,824 B median, cross-checked by actually allocating
+      it (`probe_largest` agrees to 8 bytes). The proxy's 87.5% prediction landed on the nose. The
+      two levers **compound**: A alone is worth nothing on this metric, B alone 45-58%, together
+      86-89%.
+- [x] The same at `threshold(32768)`. **Done, §7E.2: 95.9% / 95.5%**, and 4-5 points above
+      B alone there too. §7A.6's "changes nothing measurable" still reads correctly as a statement
+      about B alone; the (e)-stage gain is where this scheme earns its place.
+- [x] Survivor placement. **Done, §7E.1: zero survivors in the top four deciles** (`base` puts
+      150 of 288 there), span 98% → 53-55%. §7A.4's predicted shape, on the real code. One
+      instrument fault had to be fixed first — `basex` replicates the starter loop instead of
+      calling it, so it never reached B's second collect site (§7E.3).
 
 ## C. The seam + contiguity guard (§12, carried forward; the thing that restores the tripwire's sensitivity)
 

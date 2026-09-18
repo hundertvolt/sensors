@@ -2787,6 +2787,104 @@ dominant term is **interpreter overhead per transaction**, not wire time.
 - **The run phase over months of uptime** is still untouched, exactly as §7A.7 says — though §7D.5's
   UART result is the first real-hardware evidence that A helps there.
 
+## 7E. A + B on the real path — the measurement the owner's question turns on (2026-09-18)
+
+Measure B built per HEAP_REMEDIATION_PLAN.md B.1-B.3: `buildgen/codegen.py` emits `gc.collect()`
+once before the setup batch and once after each module's `feed_watchdog()` (11 for `dev`), and
+`SystemService.start_and_check_tasks()` collects once before its starter loop and once after each
+starter (23 for `dev`). Nowhere else. §7A.8's protocol, settrace-free frozen binary rebuilt against
+this `src/` and these generated modules, `gc.threshold(-1)`, calibrated heaps, `k` perturbations
+only (the `q` family is not comparable across arms — §7C.2).
+
+| arm | after `build_system()`, 508k | the whole boot sequence, 560k |
+|---|---|---|
+| `base` — neither | 11.9 - 14.6% (med 14.2) | 8.1 - 8.5% (med 8.4) |
+| A alone | 12.4 - 12.5% (med 12.4) | 7.3 - 7.4% (med 7.4) |
+| B alone, simulated (§7A.8's `gcboot`) | 44.6 - 45.1% (med 45.0) | 57.7 - 57.9% (med 57.8) |
+| **A + B, shipped** | **86.2 - 86.3%** (med 86.3) | **87.5 - 90.2%** (med 88.7) |
+| clears the 55% form | **10 / 10** | **6 / 6** |
+| clears the conservative 74% form | **10 / 10** | **6 / 6** |
+
+Largest contiguous block, median: **217,680 B** after `build_system()` and **255,824 B** after the
+whole sequence, against `base`'s 36,992 B and 24,656 B. **Cross-checked independently**: `hp`'s own
+`probe_largest` actually allocates a `bytearray` of that size, and reports 260,248 B where the block
+map said 260,256 B — an 8-byte agreement, so this is a real obtainable allocation and not a map
+artifact.
+
+**§7A.8's synthetic proxy predicted 87.5% for the combination and warned it was probably
+optimistic.** On the real path it is 86.3% / 88.7%. The proxy was right, and the warning was
+unnecessary — the one place in this file where a prediction landed on the nose.
+
+**The two levers compound rather than add.** A alone is worth nothing on this metric (it is even
+marginally negative); B alone is worth 45-58%; together they are 86-89%. The mechanism is §0A's:
+each collect resets the allocator's free-scan index, and what the *next* module then finds depends
+on how much churn ran in between. A removes 9/10ths of that churn, so each reset is followed by a
+clean lowest-fit placement instead of one competing with ~1 MB of same-size-class traffic. Neither
+lever can produce that alone, which is why §7B.3 sequenced them together and why B alone was never
+the recommendation.
+
+### 7E.1 Survivor placement — the mechanism, confirmed on the real path
+
+§6A.7's decile histogram, 560k, the same six perturbations:
+
+| arm | span | median gap | survivors | deciles, low → high |
+|---|---|---|---|---|
+| `base` | 98% | 160 B | 288 | 26 3 0 8 21 67 13 65 39 46 |
+| A alone | 99% | 192 B | 261 | 27 4 0 0 33 58 49 18 26 46 |
+| **A + B** | **53 - 55%** | 256 B | 246 - 258 | **60 44 12 14 50 66 0 0 0 0** |
+
+**Zero survivors in the top four deciles, against `base` putting 150 of 288 there.** The span more
+than halves. That is exactly §7A.4's predicted shape — survivors packed low, the top of the heap
+left whole — now measured on the real code rather than on an injector.
+
+Two caveats, both in §7A.4's own terms. `in_big` falls (226 → ~15) and `distinct` rises (53 →
+~157): **neither is a valid metric for a collecting arm**, because the survivors now sit low among
+the seam's many small free runs rather than strewn through its one big one. The largest-contiguous
+figure and the independent allocation probe are the metrics that mean something here.
+
+### 7E.2 At the shipped `gc.threshold(32768)`, for the (f)-stage record
+
+| arm | after `build_system()`, 508k | the whole boot sequence, 560k |
+|---|---|---|
+| **A + B** | **95.9 - 96.2%** (med 95.9) | **94.8 - 96.2%** (med 95.5) |
+| B alone, simulated | 91.4 - 91.5% (med 91.4) | — |
+
+§7A.6 said the collects change nothing measurable at the shipped threshold, and that still reads
+correctly as a statement about *B alone* — the threshold already does most of B's work. What is new
+is that A + B is 4-5 points above B alone here too, and that both configurations clear every form of
+the floor with wide margin. **The honest framing for I.4 is unchanged**: this scheme earns its place
+at the (e) stage, where it is worth 6x, and the threshold remains additive margin on top rather than
+the thing that makes the system safe.
+
+### 7E.2a Two things this measurement does not cover, stated rather than implied
+
+**The gap between the two lists.** The real generated `main()` runs `sysfunct.start_timers()` and
+`await ntp.ntp_force_sync()` *between* `build_system()` and `start_and_check_tasks()` — so the
+firmware has a third stretch of boot, carrying a real NTP round trip, with no collect in it.
+B's design (B.1) covers the two lists and deliberately nothing else, and widening it would widen
+I.4(f.1)'s exception, which is not this measure's call to make. Recorded as an observation: if a
+later measurement finds survivors born in that gap, the question reopens as its own decision.
+
+**`probe.py`'s `basex` skips both of those calls**, so the 560k arm measures
+`build_system()` + the starter loop and not the real boot in full. That deviation is identical in
+every arm compared here (`base`, A, B, A+B), so the comparison holds; what it means is that 88.7%
+is the figure for those two lists, not a prediction of what a board reads after a complete boot.
+§7D.2 is the standing warning on that distinction from the hardware side.
+
+### 7E.3 One instrument correction this measurement needed first
+
+The first 560k run returned **10.1%**, wildly inconsistent with 86.3% at 508k. The cause was the
+instrument, not the code: `probe.py`'s `basex` mode **replicates** `start_and_check_tasks()`'s
+starter loop inline (to stop before its `while True` supervisor) rather than calling the method, so
+it never reached B's second collect site at all — that arm measured A plus the batch collects only.
+A `BSTART=1` switch now makes the replicated loop collect where the shipped method does, without
+also installing the batch collects `GCBOOT=1` adds (which would double the real ones). The 10.1%
+row is worth keeping as the measurement of *B's first site alone*, and it is the sharpest evidence
+that **the task-starter list is where most of B's value is**: batch collects alone take the full
+sequence from 8.4% to 10.1%; adding the starter-list collects takes it to 88.7%. §7A.8 already
+observed that the task list costs `base` more than the entire setup batch does; this is the same
+fact from the remedy's side.
+
 ---
 
 ## 8. What is committed

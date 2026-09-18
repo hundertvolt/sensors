@@ -319,7 +319,12 @@ information):
   real default) and with zero `MemoryError`s — caught-and-logged included — and with no
   `gc.collect()` calls or other nonstandard `gc` settings anywhere in the business logic or the
   test's own setup propping the result up, *before* it's ever run again with the project's chosen
-  `gc.threshold(32768)` enabled (which the full suite must then also still pass). A threshold (or a
+  `gc.threshold(32768)` enabled (which the full suite must then also still pass). **One structural
+  exception, added 2026-09-18 with the owner's approval: the boot-confined placement reset** —
+  `gc.collect()` between the units of the two one-time setup lists and nowhere else, mechanically
+  confined by `tests_scripts/test_gc_collect_sites.py`'s structural walk; it is placement
+  discipline for the survivors those lists create, not a threshold and not a fix for a failing
+  allocation. Full account and its measured effect: `SPECIFICATION.md` Part I.4(f.1). A threshold (or a
   `gc.collect()` call) is defense in depth on top of an already-safe design, lifting an anyhow-stable
   system further from a stability threshold — it is forbidden as the fix itself for a design that
   still needs one big contiguous allocation somewhere, or for any other memory-pressure issue; the
