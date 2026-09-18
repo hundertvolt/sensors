@@ -82,6 +82,13 @@ digital_twin/fram_state.json
 digital_twin/scd30_state.json
 digital_twin/config/
 
+# ConfigManager-backed config_*.cfg spilled into the REPO ROOT by running a
+# tests_hardware/device_scripts/ script host-side against the twin's fakes: those scripts pass
+# cfg_path="" because on the board the flash root IS the cwd. Same regenerable run artifacts as
+# digital_twin/config/ above, and config_WIFI.cfg carries SSID/PW on a tree that has real ones -
+# ignored so a `git add -A` after a validation run cannot commit one.
+/config_*.cfg
+
 # scripts/run_digital_twin_ci.sh's own per-run subprocess log files (scripts/_digital_twin_ci_suite.py's
 # --logs-dir default) - plain, regenerable CI-run artifacts, never committed.
 digital_twin_ci_logs/

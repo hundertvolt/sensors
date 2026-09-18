@@ -602,12 +602,17 @@ milliseconds ... about 1ms on the Pyboard" per the pinned docs; boot latency is 
 
 ## T. Real hardware (needs its own go-ahead, in the session that runs it)
 
-**The runnable form of this section is `REAL_HARDWARE_TEST_QUEUE.md` §1A** (added 2026-09-18, after
-the owner reported the branch on the bench in another session): exact commands, the order the
-before/after pair has to run in, the A6 hold-time script, and the prediction to read A0/A1 against.
-The boxes below stay here as this plan's own record; a session at the bench should work §1A.
+**The runnable form of this section is two files.** `REAL_HARDWARE_TEST_QUEUE.md` §1A covers
+measure A and is **fully run as of 2026-09-18** — results in §1A's own rows and
+`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D. What is still owed is measure B, whose runnable form is
+`REAL_HARDWARE_HANDOVER_MEASURE_B.md`, indexed by queue §1B: two firmware images, the readings in
+order, and each prediction with the result that would falsify it. The boxes below stay here as this
+plan's own record; a session at the bench should work those two.
 
-- [ ] **T.1 Tripwire.** `tests_hardware/flash/test_memory_stress.py::
+- [~] **T.1 Tripwire.** A's half is DONE (§7D.3: 20,592 → 28,864 B in-suite, +40.2 %, [HW]); the
+      A + B column is owed and is queue row B1. Note §7D.2's correction to this box's own premise:
+      only *like suite positions* are comparable, so a standalone reading does not answer it.
+      **Original text:** `tests_hardware/flash/test_memory_stress.py::
       test_real_gc_heap_headroom_survives_a_full_system_build` with A alone, then with A + B:
       `free` and `largest_block` after `build_system()`, `threshold(-1)`, on the `dev` board.
       Against the unlowered 80,000 B. Record both readings in `HEAP_FRAGMENTATION_MEASUREMENTS.md`
@@ -632,7 +637,9 @@ The boxes below stay here as this plan's own record; a session at the bench shou
       stretch, reported in the script's `RESULT:` line; the number goes into `SPECIFICATION.md`
       F.5's SPI notes beside the UART 4.4 ms figure. If it is above ~1 ms, the per-command yield
       policy is already the finest the chip allows and the finding is recorded, not "fixed".
-- [ ] **T.5 Boot cost of B**: `time.ticks_ms()` across `build_system()` and across the starter
+- [~] **T.5 Boot cost of B** — owed, queue row B3; the new
+      `device_scripts/heap_layout_after_full_boot_sequence.py` prints it as its own `BOOT` line.
+      A-only is a median 919 ms (§7D.7) against the 8,388 ms cap. **Original text**: `time.ticks_ms()` across `build_system()` and across the starter
       loop, before and after, one line each — for the record only (boot latency is not a
       metric), and to confirm no watchdog starvation on the 8,388 ms cap with the collects in.
 - [ ] **T.6** `tests_hardware/flash/test_memory_stress.py`'s second test and the bench memory

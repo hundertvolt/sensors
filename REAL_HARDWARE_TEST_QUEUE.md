@@ -193,6 +193,27 @@ wrong tree, both of which the twin cannot reproduce.
 
 ---
 
+## 1B. Measure B — the boot-confined placement reset (PR #105, same branch)
+
+**The runnable form of this section is `REAL_HARDWARE_HANDOVER_MEASURE_B.md`** — two firmware
+images, the readings to take in order, and each prediction with the result that would falsify it.
+This row is only the index entry, so the queue stays the single place a bench session looks first.
+
+Measure B is built, tested and green in the twin (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7E: A + B
+takes largest-block-over-free from 14.2 % to 86.3 % after `build_system()` and from 8.4 % to 88.7 %
+over the whole boot sequence, both [TWIN]). **None of it has run on silicon**, so §7E is the
+unconfirmed half of this branch exactly as §7B.1 was before §7D refuted it.
+
+| # | Run | Notes | Status |
+| --- | --- | --- | --- |
+| B1 | **The matched in-suite pair**, A-only against A + B. | Plan T.1's A + B column. Both arms: `scripts/run_flash_hardware_suite.sh`, read the tripwire's `largest_block`. The BEFORE arm is the tip with `src/system_service.py` + `buildgen/codegen.py` at `da9bcf1`, rebuilt — §7D.1's isolation technique, and the rebuild is load-bearing because `codegen.py` is a build-time file. | OPEN |
+| B2 | **The whole boot sequence, not just `build_system()`.** New script `device_scripts/heap_layout_after_full_boot_sequence.py` (added 2026-09-18, validated host-side against the twin, never run on a board). | The existing `heap_headroom_after_full_system_build.py` stops at `build_system()` and so reaches only the first of measure B's two collect sites. §7E.3: with the batch collects but not the starter-list ones, the whole-sequence figure falls back from 88.7 % to 10.1 % — the half the existing instrument cannot see. Comes with its own position-saturation validity check. | OPEN |
+| B3 | **Boot cost with the collects in.** | Plan T.5. The B2 script's own `BOOT` line. A-only is a median 919 ms (§7D.7) against the 8,388 ms cap; watchdog-margin check only, boot latency is not a metric (CLAUDE.md WP6). | OPEN |
+| B4 | **The threshold-first reading** — the firmware's own boot path under its own `gc.threshold(32768)` from the start. | §7D.8's second open item, still open after the 2026-09-18 run: both scripts read at the reactive default and set 32768 afterwards. One extra `mpremote` invocation settles it. The twin sees no layout defect at all at 32768 while the board's cited symptom is the `threshold(-1)` shape — one of the two is wrong. | OPEN |
+| B5 | **F1/F2's fixes on silicon** — the two FRAM fault injectors and the SSID script. | Covered by B1's suite run for the injectors (both must PASS on both arms; `mpremote run` pushes `tests_hardware/` from the working tree, so both images get the fixed versions). The SSID script is optional and goes last — see §2A F1 and the handover's §6.2 recovery recipe. | OPEN |
+
+---
+
 ## 2. Targeted investigations
 
 **Owner confirmation, 2026-09-18**: R1 (item 30), R2 (item 32's reader-count curve), R3 (item 29's
@@ -260,10 +281,12 @@ a test to *write* against real hardware, not just a run.
 
 - **Heap fragmentation, beyond §1A.** §1A's rows are **all run as of 2026-09-18** — results in
   the rows themselves, §1A-R, and `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D, which is the first
-  [HW] section on this branch. Everything else on PR #105 still belongs to the
-  session working it (`HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` is its handover): measure B (the
-  boot-confined `gc.collect()`) is not built, so its rows — plan T.1's A+B column, T.5's collect
-  timing — cannot be run yet. The one failure left at PR #103's close is that defect.
+  [HW] section on this branch. **Measure B is no longer excluded** — it was
+  built on 2026-09-18 (`7ccbe8d`), so plan T.1's A+B column and T.5's collect timing are now
+  runnable and live in §1B above, with `REAL_HARDWARE_HANDOVER_MEASURE_B.md` as their runnable form.
+  What stays excluded on PR #105 is plan section C (the seam + contiguity guard) and section D, both
+  of which need the owner's go-ahead and neither of which is built. The one failure left at PR #103's
+  close is that defect.
 - **PR #84's three bench passes** (`reactive` full suite 95 passed/2 skipped; `reactive` + churn
   pressure tests 3 passed; `threshold` full suite 95 passed/2 skipped) are already run, on that PR's
   own branch, and do not need repeating. **The PR itself was closed unmerged on 2026-09-18 by owner

@@ -2777,8 +2777,11 @@ dominant term is **interpreter overhead per transaction**, not wire time.
 
 ### 7D.8 What is still not answered
 
-- **Measure B is unmeasured on hardware.** It is not built (owner is holding it for an explicit go),
-  so the A+B column of §7B.3 and §7A's whole dose-response remain [TWIN].
+- **Measure B is unmeasured on hardware.** It was built later the same day (`7ccbe8d`) and measured
+  in the twin (§7E), so the A+B column of §7B.3 and §7A's whole dose-response remain [TWIN] — but the
+  reason is now bench time rather than unbuilt code. The runnable form is
+  `REAL_HARDWARE_HANDOVER_MEASURE_B.md` (queue §1B), which also carries the instrument §7E.3's
+  fault made necessary: a device script that reaches the starter list, not just `build_system()`.
 - **The `gc.threshold(32768)` question §1.5 raises is still open at the decisive point.** The
   device script reads `after_build_system` at MicroPython's reactive default and then sets 32768;
   in every run on both arms the two lines were identical, so the threshold moved nothing *at that
