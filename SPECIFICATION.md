@@ -492,11 +492,26 @@ every number above is a digital-twin measurement, not a real-hardware one.**
 exclude the entire real cost of a FRAM transaction; the "design itself needs no change on this
 evidence" conclusion this paragraph previously drew is exactly the thing a real-hardware run could
 overturn, since the dominant term in a real FRAM setup call (SPI wire time under lock contention) is
-precisely what the twin cannot measure. **Not yet re-checked on real hardware as of this note** —
-see `REAL_HARDWARE_HANDOVER.md` (temporary, deleted once its findings land here) for the exact
-measurement plan and what to do if the contended `webserver` setup call turns out to matter for
-real. Do not treat this paragraph's numbers as validated for anything beyond "the twin's task
-graph resolves in this many simulated seconds."
+precisely what the twin cannot measure. Do not treat this paragraph's numbers as validated for
+anything beyond "the twin's task graph resolves in this many simulated seconds."
+
+**Re-checked on real hardware (`dev` bench, 2026-09-16), and the twin's absolute numbers do not
+survive it.** Real `dev` firmware was built from each commit's own tree, flashed, then given 5 timed
+`hard_reset()` cycles per image with the first post-flash boot discarded and `GET /status` polled
+every 200ms for a real `200`: pre-WP baseline **7.74s**, WP1+WP2 **9.80s**, WP1–WP8 complete
+**9.76s**, and **10.66s** with the `CFGMGR_SYSTEM` setup-order fix on top (medians of 5, spread
+±0.06s at the two earlier points). So **WP1+WP2 costs ~+2.05s of real boot latency and WP3–WP8 add
+nothing measurable**, and 23 consecutive reboots across the four images produced no `WDT_RESET` —
+which is the standard that actually applies here (CLAUDE.md's "does not starve the watchdog", not
+"boots fast"). The twin's *absolute* figures were never a real baseline, since it models no WiFi at
+all and association plus DHCP dominate the real 7.7s floor; its *delta* prediction held up well
+(~1.4–1.8s predicted for WP2 alone against a real WP1+WP2 delta of ~2.05s). **The contended-
+`webserver` hypothesis above did not survive the measurement**: `webserver`'s own `pr.setup()` was
+confirmed to *succeed* from a clean boot on real hardware (`initialized == True`), so the contended
+window costs it time, not correctness — and since WP2 adds no new chunk to `webserver` itself, it
+cannot account for a delta that WP1+WP2 produce jointly. One part stays open: the `CFGMGR_SYSTEM`
+fix's own **+0.90s** is far more than one extra FRAM-backed logger's `setup()` should cost, and is
+unexplained (`REAL_HARDWARE_TEST_QUEUE.md` R6).
 
 **This order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — derived from
 `devices/wozi.toml`.** `buildgen` derives both from each device's own TOML rather than assuming

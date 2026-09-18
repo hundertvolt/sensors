@@ -50,6 +50,18 @@ instead, since WP3–WP8 (including the reboot-flush fix below) landed after tha
 
 ## What still needs real hardware — in priority order
 
+> **Status, 2026-09-18: nothing below still needs real hardware. Do not re-run any of it.** Steps 1,
+> 2 and 2a were all executed on the `dev` bench on 2026-09-16 by the worker branch
+> `claude/real-hardware-boot-latency-measurements` (PR #102, closed unmerged by owner decision —
+> these branches were workers, never merge candidates). Their results are migrated and live here now,
+> not in that closed PR: the real boot-latency figures and the disproven `webserver` hypothesis are
+> in `SPECIFICATION.md`'s boot-latency note (Part A.7), and the one genuinely open part — the
+> `CFGMGR_SYSTEM` setup-order fix's unexplained **+0.90s** — is `REAL_HARDWARE_TEST_QUEUE.md`'s R6.
+> Step 4 (record the real figures next to the twin ones) is done. **This file is therefore
+> deletable by its own criterion above**; it is kept for now only so its §2/§2a reasoning stays
+> readable next to the measurement that settled it.
+
+
 ### 1. Boot-to-first-`200` latency, before anything else is decided
 
 **Everything below this point is speculation until this measurement exists.** `SPECIFICATION.md`'s

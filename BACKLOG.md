@@ -14,7 +14,7 @@ usual; that file exists so the real-hardware subset does not have to be reassemb
 
 **The numbered list below has gaps, and its numbers are never reused or renumbered.** Code comments
 and `SPECIFICATION.md` cite items by number, so a resolved item whose number is cited stays as a
-short closed stub saying what the answer was (items 1, 5, 6, 9, 12 today); one whose number nothing
+short closed stub saying what the answer was (items 1, 5, 6, 9, 12, 33 today); one whose number nothing
 cites is deleted outright, its permanent content migrated per the policy above. A gap therefore means
 "resolved and removed", never "lost".
 
@@ -522,86 +522,65 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     **Close this by** taking the curve, then adding the bench analogue of the twin's own budget
     check to `tests_hardware/error_log_helpers.py`.
 
-33. **Two open pull requests target `claude/automated-build-chain-nuzumw` and have never landed on
-    it - merging that branch into `main` orphans both.** The decision (land, re-target, or abandon)
-    is the owner's, and it has to be taken *before* the merge, because the base branch is what they
-    hang off. Each was verified absent from the branch by file, not inferred from its PR description
-    (2026-09-18).
-    - **PR #102** (`claude/real-hardware-boot-latency-measurements`, open, not draft, docs-only,
-      5 files) is the real-hardware execution of `REAL_HARDWARE_HANDOVER.md`'s own step 1: measured
-      boot latency across four flashed images (pre-WP baseline **7.74s** -> WP1+WP2 **9.80s** ->
-      WP1-WP8 **9.76s** -> +the `CFGMGR_SYSTEM` fix **10.66s**, medians of 5, spread +-0.06s), 23
-      consecutive reboots with no `WDT_RESET`, and it retires that handover doc. **None of it is on
-      the branch** - `SPECIFICATION.md`'s boot-latency note still carries only the digital-twin
-      figures the PR replaces, and `REAL_HARDWARE_HANDOVER.md` is still in the tree asking for a
-      measurement that has already been taken. One finding is worth keeping either way: the
-      `CFGMGR_SYSTEM` setup-order fix costs **+0.90s** of real boot latency, far more than one extra
-      FRAM-backed logger's `setup()` should, and is unexplained (queue row R6).
-    - **PR #84** (`claude/real-hardware-memory-validation-p3vkxr`, open, not draft, 63 files,
-      +2839/-404, 29 commits) makes GC policy a property of the build (`buildgen/gc_policy.py`,
-      `scripts/build_firmware.py --gc-policy`, `BUILD_GC_POLICY` read back off the frozen image) and
-      turns allocator pressure into an instrument (`tests_hardware/device_modules/memory_pressure.py`,
-      `tests_scripts/test_hardware_harness_transients.py`, SPECIFICATION.md Part I.6). It is the
-      real-hardware half of CLAUDE.md's own "every test must pass under `gc.threshold(-1)`" rule, and
-      it reports three full bench passes. **Not one of its files exists on this branch.** Its overlap
-      with the separate heap-fragmentation effort (PR #105) needs deciding rather than assuming.
-
-    **The third body of work this item used to name needs nothing** - checked item by item
-    (2026-09-18) rather than taken at face value. `claude/pr103-real-hardware-fram-validation` is not
-    on the remote and has no PR, and of the six items `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`
-    S1.0 says were lost, five are accounted for: the bench `"Unchanged"` fix landed here as
-    `ec816d5`; the ISL29125 conformance stand-in table is present and byte-identical to `main`'s and
-    its guard test exists under a different name; the bus-hazard settle fix is on `main` and is not
-    one of the merge conflicts, so the merge brings it in unchanged; the lighting-scenario fix was
-    already carried across; and the errno 11->35 correction was real and is now done here
-    (`_read_on()`'s gain-ratio calibration leg no longer shares the periodic read's code, spec table
-    updated, test asserts the code). Only `REAL_HARDWARE_FINDINGS_PR103.md` is unaccounted for, and
-    it never existed in any ref here - its substance appears to be what item 30 and
-    `REAL_HARDWARE_HANDOVER_PR103.md` already carry. Nothing further needs recovering from that
-    machine unless the owner knows of content beyond those six.
-
-    **`main`'s ISL29125 tests were assessed one by one and the worthwhile ones adopted here
-    (2026-09-18)**, so the merge no longer has to preserve them. Adopted: the calibrate-command and
-    gain-ratio-across-a-real-reboot bench tests (the second gaining the
-    `@pytest.mark.persistence_write` `main` lacked - it owns two persisting PUTs); the manual-tier
-    lux/reference-meter test, which is also what records the rig geometry; and - the highest
-    operational value - `main`'s `neopixel_sweep` gate on the two long lighting tests, with its
-    contextual entry in `scripts/_require_clean_hardware_run.sh` (a skip without the flag is
-    expected; a skip *with* it is still a real failure). **Not** adopted: `main`'s five real-Microdot
-    setter tests, near-redundant against this branch's own driver-tier coverage; the one thing none
-    of them pinned - *which* rung rejects an out-of-band value - is now pinned by
+33. **Closed 2026-09-18 (owner decision): the two open pull requests that targeted this branch are
+    dropped, not landed.** PR #102 (`claude/real-hardware-boot-latency-measurements`) and PR #84
+    (`claude/real-hardware-memory-validation-p3vkxr`) were real-hardware *workers*, never merge
+    candidates, so the `main` merge orphaning them is not a loss. Both are closed on GitHub; their
+    branches stay on the remote, so the diffs remain readable if anything is wanted later.
+    **Carried across before closing**: PR #102's real boot-latency figures and its disproven
+    `webserver` lazy-setup hypothesis are now in SPECIFICATION.md Part A.7's boot-latency note, its
+    unexplained **+0.90s** `CFGMGR_SYSTEM` cost is queue row R6, and `REAL_HARDWARE_HANDOVER.md`
+    carries a banner marking every one of its steps answered (it is deletable by its own criterion
+    now; kept only so its §2/§2a reasoning stays next to the measurement that settled it).
+    **Deliberately NOT carried, which is the one thing to know if this is ever revisited**: none of
+    PR #84 exists on any other branch — `buildgen/gc_policy.py`, `scripts/build_firmware.py
+    --gc-policy`, `--memory-pressure`, `tests_hardware/device_modules/memory_pressure.py`,
+    `tests_scripts/test_hardware_harness_transients.py` and SPECIFICATION.md Part I.6 — so that
+    build-and-instrument tooling, and the four validation-apparatus fixes that came with it, are
+    unshipped by decision rather than by oversight. Its three bench passes stand as executed (queue
+    §5).
+    **The adoption record this item's number is cited for (queue row R8) stays valid**: `main`'s
+    ISL29125 tests were assessed one by one and the worthwhile ones adopted here 2026-09-18 — the
+    calibrate-command and gain-ratio-across-a-real-reboot bench tests (the second gaining the
+    `@pytest.mark.persistence_write` `main` lacked, since it owns two persisting PUTs), the
+    manual-tier lux/reference-meter test that also records the rig geometry, and — the highest
+    operational value — `main`'s `neopixel_sweep` gate on the two long lighting tests with its
+    contextual entry in `scripts/_require_clean_hardware_run.sh`. **Not** adopted: `main`'s five
+    real-Microdot setter tests, near-redundant against this branch's own driver-tier coverage; the
+    one thing none of them pinned — *which* rung rejects an out-of-band value — is now pinned by
     `test_an_out_of_band_knob_is_rejected_by_the_schema_rung_not_the_setter`. The bench tier moved
     from **71 to 73 tests and 12 to 13 deselected**; the flash tier's 51/9 is unchanged, since the
     two new gates skip rather than deselect. Every count re-measured by a real `--collect-only` run.
     Neither adopted bench test has ever run on silicon: queue row R8.
-
-
-34. **CLAUDE.md's 3-line header-comment cap eroded across this branch - the two `src/` blocks are
-    fixed; the test-side ones need an owner decision.** Measured 2026-09-18 over every triple-quoted
-    module/class/function header in the eight lint scopes: `main` carries **18 over-cap blocks out of
-    290 (6.2 %)**, this branch **63 out of 431 (14.6 %)**, and 58 of the 63 sit in files this branch
-    touched - drift introduced here, not the repo's pre-existing state. By scope (main -> branch):
-    `tests/` 7 -> 30, `tests_hardware/` 10 -> 17, `tests_scripts/` 1 -> 9, `toolchain/` 0 -> 3,
-    `scripts/` 0 -> 2, **`src/` 0 -> 2**.
-    **The `src/` half is done (2026-09-18)**, that being the fully-reviewed bar and clean on `main`,
-    and the rule's own escape hatch (relocate the prose, never drop it) made it unambiguous:
-    `asy_notification_service.py::_DefaultSignalSink` and
-    `asy_sgp40_driver.py::_DefaultTemperatureSource` are back to 3 lines with the detail moved to
-    adjacent inline comments. `src/` is at 0 over-cap blocks again.
-    **Still open, and genuinely a decision**: the 61 test-side blocks. The worst are module headers
-    that became mini-essays - `tests/_sensortask_scenarios.py` (17 lines),
-    `tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py` (17),
-    `bus_concurrency_isl29125_write_vs_siblings.py` (16),
-    `tests/test_digital_twin_sensortask_integration.py` (15),
-    `tests/_digital_twin_construction_scenarios.py` (14),
-    `toolchain/micropython_overrides.py::apply_unix_kbd_intr_override` (13). The options are to hold
-    the whole branch to the cap (a ~61-block edit, all of it prose relocation into
-    `SPECIFICATION.md`/`digital_twin/README.md`/adjacent inline comments), to accept the test-side
-    ones as scaffolding, or to revise the cap itself for test/device-script files whose header has to
-    explain a hardware scenario. Not decided here.
+    Also settled here: of the six items `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` §1.0 calls
+    lost, five are accounted for on this branch or on `main` (checked item by item, not taken at
+    face value); only `REAL_HARDWARE_FINDINGS_PR103.md` is unaccounted for, and it never existed in
+    any ref here — its substance appears to be what item 30 and `REAL_HARDWARE_HANDOVER_PR103.md`
+    already carry. `claude/pr103-real-hardware-fram-validation` is not on the remote and has no PR.
 
 
 ## Deferred / explicitly out-of-scope work
+- **CLAUDE.md's 3-line header-comment cap eroded across this branch — `src/` is fixed, and the 61
+  test-side blocks are deferred to one concentrated documentation-style run** (owner decision,
+  2026-09-18: the cap stands as written, and the rest gets fixed in a single dedicated pass, not
+  piecemeal alongside unrelated work). Measured 2026-09-18 over every triple-quoted module/class/
+  function header in the eight lint scopes: `main` carries **18 over-cap blocks out of 290 (6.2 %)**,
+  this branch **63 out of 431 (14.6 %)**, and 58 of the 63 sit in files this branch touched — drift
+  introduced here, not the repo's pre-existing state. By scope (main → branch): `tests/` 7 → 30,
+  `tests_hardware/` 10 → 17, `tests_scripts/` 1 → 9, `toolchain/` 0 → 3, `scripts/` 0 → 2, `src/`
+  0 → 2. **The `src/` half is already done** (2026-09-18), that being the fully-reviewed bar and
+  clean on `main`: `asy_notification_service.py::_DefaultSignalSink` and
+  `asy_sgp40_driver.py::_DefaultTemperatureSource` are back to 3 lines with the detail moved to
+  adjacent inline comments, so `src/` is at 0 over-cap blocks again. The remaining 61 are all
+  test-side; the worst are module headers that became mini-essays —
+  `tests/_sensortask_scenarios.py` (17 lines),
+  `tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py` (17),
+  `bus_concurrency_isl29125_write_vs_siblings.py` (16),
+  `tests/test_digital_twin_sensortask_integration.py` (15),
+  `tests/_digital_twin_construction_scenarios.py` (14),
+  `toolchain/micropython_overrides.py::apply_unix_kbd_intr_override` (13). The run applies the
+  rule's own escape hatch throughout — relocate the prose to `SPECIFICATION.md`/
+  `digital_twin/README.md`/an adjacent inline comment, never drop it.
 - **CLAUDE.md's two-target clean-chroot pre-push gate is unsatisfied for every build-environment
   change this branch made after 2026-09-12 — owner's call whether to waive it or run it before
   `claude/automated-build-chain-nuzumw` merges.** CLAUDE.md requires a clean Ubuntu-noble (GCC 13)
