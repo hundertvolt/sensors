@@ -321,15 +321,22 @@ reopened only if A.6's measurement asks for it.
 
 ### A.4 The digital twin
 
-- [ ] `scripts/run_digital_twin_ci.sh` / `scripts/_digital_twin_ci_suite.py` full sequence green
+- [x] `scripts/run_digital_twin_ci.sh` / `scripts/_digital_twin_ci_suite.py` full sequence green
       at **both** `gc.threshold(-1)` and `32768` (it already runs both, in that order — I.4(e)
       then (f)). Run 11's `gc.mem_free()` trend check is the twin's run-phase leak guard and must
       stay within tolerance; the restructure changes the allocation pattern of every run-phase
       error persist, so the soak is the test that would show a new leak.
-- [ ] `tests/test_digital_twin_sensortask_integration.py` (13 tests, including the hotspot-
+      **Done**: "every check succeeded at both gc.threshold(-1) and gc.threshold(32768)". Run 11's
+      trend is a **1,274 B decline against a 12,790 B tolerance** over 808 samples, with 840 soak
+      requests across every endpoint producing zero HTTP failures, the watchdog never starved, and
+      zero `MemoryError`s anywhere in the sequence — caught-and-logged included, which the suite
+      counts as a failure. Run 10's watchdog backstop still engaged for a genuinely wedged bus
+      (`would_have_triggered_count=2`), so the blocking settle did not blunt it.
+- [x] `tests/test_digital_twin_sensortask_integration.py` (13 tests, including the hotspot-
       fallback one `f6a182d` once broke) green in isolation 5 of 5 runs — the scheduling-point
       regression of §8.1 is exactly the class of fault a yield-policy change can cause, and this
       is the file that caught it.
+      **Done**: 13/13 on all five isolated runs.
 
 ### A.5 Measurement, A alone (twin, no hardware)
 
