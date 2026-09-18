@@ -2354,61 +2354,80 @@ its own collection-free window. `max_size=0x40000`, so the address buffer is the
 |---|---|---|
 | base branch, twin fakes as-is | 141,952 | 92,640 |
 | **base branch, board-equivalent** | **122,880** | **80,384** |
-| A built, twin fakes as-is | 33,728 | 23,744 |
-| **A built, board-equivalent** | **18,240 (6.7x)** | **13,536 (5.9x)** |
+| A, bus lock per command, twin fakes as-is | 33,728 | 23,744 |
+| A, bus lock per command, board-equivalent | 18,240 (6.7x) | 13,536 (5.9x) |
+| A, bus lock per block operation, twin fakes as-is | 29,184 | 19,360 |
+| **A, bus lock per block operation, board-equivalent** | **13,696 (9.0x)** | **9,152 (8.8x)** |
 | §3B's P2 prototype, for reference | 3,072 (38x) | 1,984 (39x) |
+
+The last row is the shipped shape: the owner chose per-block-operation locking (§11 item 6, closed
+2026-09-18). Both A rows are the same code apart from where the bus lock is taken.
 
 The wire protocol is byte-identical throughout — `tests/test_asy_fram_wire_trace.py` asserts every
 CS cycle and every transfer's bytes against goldens captured from the pre-restructure code.
 
-### 7C.1 Why the real code lands at 6.7x and not 38x
+### 7C.1 Where the remaining cost is, and why it is not 38x
 
-Per-node, board-equivalent, same run:
+Per-node, board-equivalent, in the shipped per-block-operation shape:
 
 | node | cost |
 |---|---|
 | bus lock acquire + release (bare `Lock`) | 288 |
 | the whole synchronous 5-CS write envelope, lock already held | **32** |
-| `async with FRAM_SPI` (the driver lock, once per block operation) | 608 |
-| `set_values(1 B)` including its own `async with` on the driver | 992 |
+| `async with FRAM_SPI` (driver lock + bus, once per block operation) | 1,152 |
 | `crc.add_into()` over one chunk | 576 |
-| `_write_chunk` (one block) | 4,576 |
-| `_read_into` (one block) | 5,632 |
-| `_compare_with` (one block) | 6,400 |
+| `_write_chunk` (one block) | 3,200 |
+| `_read_into` (one block) | 3,616 |
+| `_compare_with` (one block) | 4,032 |
 
-The bus work itself is now **32 B per five CS cycles** — the goal of the restructure, reached. What
-remains is await machinery, and almost all of it is the bus lock: a blank `setup()` issues 18
-byte-level commands (14 writes x 5 CS + 4 reads x 1 CS = 74), and each pays one
-`asyncio.Lock.acquire()` coroutine at 288 B plus its own entry-point coroutine. That is ~6,900 B of
-the 18,240, with the six `async with self.fram` block-operation locks adding ~3,600 more.
+The bus work itself is now **32 B per five CS cycles** — the goal of the restructure, reached.
+Everything left is await machinery. In the shipped shape a blank `setup()` is four block
+operations, so the locks cost 4 x 1,152 = 4,608 B rather than the 18 x ~380 B the per-command scope
+paid, and that difference — 4,544 B measured, 18,240 to 13,696 — is the whole of what the decision
+bought.
 
-**This is a decision the plan got wrong, not a defect in the build.** HEAP_REMEDIATION_PLAN.md A.1.4
-chose to take the bus lock **per byte-level command** and estimated the cost of that choice at
-"~1,800 B per setup". The real figure is ~15,000 B, because **§3B's P1 and P2 both took the bus lock
-once per block operation, not per command** — §3B.3's own sentence, "the floor is now set entirely
-by lock acquisitions", is about four block-operation acquisitions, and its ~1,800 B is the gap
-between per-block-operation and per-*chunk*-operation locking (lever 3), not between per-command and
-per-block-operation. P2's synchronous status-byte protocol is not reachable at all at per-command
-granularity: `_set_check_sb()`'s callees are `get_values()`/`set_values()`, which must stay
-coroutines if they are the ones acquiring the bus.
+The residue, roughly: ~4,600 B of block-operation locks, ~1,700 B of `_set_check_sb()`/
+`_handle_status_bytes()` coroutines (18 per blank `setup()`), ~2,300 B of `crc_checks`' `async`
+per-byte CRC, and ~5,000 B of the chunk layer's own coroutines and buffers.
 
-So the ladder, with the measured cost of each rung:
+**Why this is not §3B's 38x, and why that number was never reachable.** Two of those four residue
+terms are not part of this restructure at all. `crc_checks.CRC_Base._crc` is a coroutine with an
+`await` per byte; §3B's prototypes used a plain synchronous `crc8()` and so paid none of it — that
+is §11 item 1 / plan item A.8, undecided. `AsyFramChunkBuffer` allocates a fresh `asyncio.Lock` on
+every `get_buffer()`; the prototypes had no such buffer object — that is plan item A.7, a
+consumer-side change outside these three files. And the prototypes carried **no error reporting at
+all**: the real code's `wrnno`/`errno` surface is what keeps `_set_check_sb()` and
+`_handle_status_bytes()` coroutines, since each of their branches logs a different message with a
+different number and a persisted log entry is an await. Making them synchronous would recover
+~1,700 B but only by moving those messages off their decision sites, which C.7.1's auditability
+does not obviously permit; it is recorded as available, not taken.
 
-| bus-lock scope | blank `setup()` | what another SPI device waits for |
-|---|---|---|
-| per byte-level command (built, A.1.4's choice) | 18,240 | one command, ~5 CS cycles |
-| per block operation (§3B's P1 and P2) | ~3,000-13,000 | one block operation, ~25 CS cycles |
-| per chunk operation (§3B.4 lever 3) | ~1,300 | both blocks, ~50 CS cycles |
+So 38x was a prototype figure for a prototype's obligations. **9.0x is the figure for code that
+keeps every guard, every number and every message**, and the part of the gap that belongs to this
+work — the lock scope — is closed.
 
-The middle rung's range is wide because it is two changes, not one: moving the acquisition alone
-removes ~6,900 B, and making the status-byte protocol synchronous on top of it is what took P1's
-7,296 to P2's 3,072. Only the first is measured here; the second is inferred from §3B.
+**The decision that produced the last row** was put as §11 item 6 and answered by the owner on
+2026-09-18: take the bus lock once per block operation. HEAP_REMEDIATION_PLAN.md A.1.4 had chosen
+per-command and priced that at "~1,800 B"; the measured cost was 4,544 B, and the ~1,800 B in
+§3B.3 is the gap between per-block-operation and per-*chunk*-operation locking (lever 3), one rung
+further down. Both §3B prototypes already locked per block operation, which is why neither ever
+measured the per-command rung.
 
-Yield granularity is unaffected either way — `sleep(0)` allocates nothing (§5), so the per-command
-yield policy stays whatever the lock scope is, and the loop is never starved for a block operation's
-duration. What the lock scope decides is only how finely a *second* SPI device could interleave.
+`FRAM_SPI.__aenter__` now takes the driver lock and the bus together, for one block operation; the
+byte-level entry points gain synchronous forms (`get_values_sync()`/`set_values_sync()`) whose
+status is reported by `report_get_values()`/`report_set_values()`, so the guards' numbers and
+messages live in one place whichever path decided them. The chunk layer calls the synchronous forms
+and yields after each status-byte pair, after the payload command, and per `check_length` slice —
+§3B's P2 yield points. A second SPI device now waits for a block operation (~25 CS, ~600 us) rather
+than a command (~5 CS, ~100 us); nothing else about the path changed, and the golden wire traces are
+byte-identical across both scopes.
 
-**Open**: §11 item 6.
+Yields still cost nothing (§5), so the loop is not starved for a block operation's duration: the
+scheduling points simply moved from the driver's byte-level entry points into the block operation
+that owns them, which is where §3B's P2 had them. `tests/test_asy_fram_manager.py` pins that a
+concurrent task still observes a block marked BUSY and then IDLE again during one `write()`.
+
+**Closed**: §11 item 6, answered 2026-09-18.
 
 ---
 
@@ -2659,21 +2678,20 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
    **§7B lays the two side by side** - gain, effort, risk, the combination, whose flaw it is, and a
    recommended order (A first, measured alone; B on top, measured again).
 
-6. **How finely should the SPI bus lock be taken inside the FRAM path?** (Raised 2026-09-18 by the
-   build, not by an earlier plan.) A is built and measured at **6.7x** (§7C), against §3B's
-   projected 38x. The whole gap is one decision: HEAP_REMEDIATION_PLAN.md A.1.4 takes the bus lock
-   **per byte-level command**, while §3B's P1 *and* P2 both took it **once per block operation** -
-   and the plan priced its own choice at ~1,800 B when the measured cost is ~15,000 B per blank
-   `setup()`. The choice is not about safety or about the wire protocol (byte-identical either way,
-   asserted by a golden-trace test) and not about loop fairness (yields cost nothing and stay
-   per-command either way). It is only about how finely a **second SPI device** could interleave
-   with the FRAM: one ~5-CS command, or one ~25-CS block operation. There is no second SPI device
-   in any device TOML today; the constraint is the owner's stated "potential future multi-device SPI
-   compatibility". Taking the coarser scope also unlocks P2's synchronous status-byte protocol,
-   which §3B measured as a further 7,296 -> 3,072. **Options**: (a) keep per-command, accept 6.7x;
-   (b) move to per block operation, expected ~3,000-13,000 B, interleaving granularity one block
-   operation; (c) lever 3, per chunk operation, ~1,300 B, granularity both blocks. §7C.1 has the
-   ladder and the measured per-node costs behind it.
+6. **How finely should the SPI bus lock be taken inside the FRAM path?** **Answered by the owner,
+   2026-09-18: once per block operation.** Raised by the build rather than an earlier plan, because
+   A measured 6.7x where §3B projected 38x and the whole difference was this one scope.
+   HEAP_REMEDIATION_PLAN.md A.1.4 had taken the lock per byte-level command and priced that at
+   ~1,800 B; the measured cost was **4,544 B** per blank `setup()`, and §3B.3's ~1,800 B is the gap
+   between per-block-operation and per-*chunk*-operation locking (lever 3), one rung further down —
+   both §3B prototypes already locked per block operation, so the per-command rung was never
+   measured there. Rebuilt at the chosen scope, a blank logger `setup()` costs **13,696 B against
+   the base branch's 122,880 (9.0x)** and a valid one 9,152 against 80,384 (8.8x), with the wire
+   traces byte-identical across both scopes. The cost accepted: a second SPI device waits for a
+   block operation (~25 CS, ~600 us) instead of a command (~5 CS, ~100 us); there is no second SPI
+   device in any device TOML today. **Lever 3 (per chunk operation) is not taken** — it is worth
+   only ~1,800 B more here and moves the lock hierarchy itself, and A.6 reopens it only if the
+   combination with the boot collects falls short. §7C/§7C.1 carry the measurement and the residue.
 
 **One constraint already settled and not to be re-proposed.** The 80,000 B floor is not to be
 lowered. The second, `gc.collect()`/`gc.threshold()` as the remedy — forbidden by

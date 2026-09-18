@@ -212,7 +212,12 @@ class _AsyBaseFramChunk:
         uninit = False
         stat = self._sb_buf  # one buffer per chunk, not one per call - _op_lock serializes its use
         if check_idle:
-            if not await fram.get_values(stat, st_addr):
+            # The synchronous driver entry point: the bus lock is held by the block operation
+            # around this, so there is no acquisition and no coroutine per command. The driver
+            # still logs its own guard errno, exactly as get_values() would have.
+            read_status = fram.get_values_sync(stat, st_addr)
+            if read_status:
+                await fram.report_get_values(read_status)
                 await self.pr.err_s("Read status byte failed!", errno=err)
                 return None
             if stat[0] != _STATUS_IDLE:  # if required, check if byte is as expected
@@ -224,7 +229,10 @@ class _AsyBaseFramChunk:
         # err/err+1 reserved; only check_idle=True needs the 3-wide spread (matches the gap below).
         write_errno = err + 2 if check_idle else err
         stat[0] = val  # the read-back above is already consumed, so the same byte carries the write
-        if not await fram.set_values(stat, st_addr):
+        write_status = fram.set_values_sync(stat, st_addr)
+        # A zero status is the common case and costs no coroutine at all; anything else is either
+        # a guard, a refusal, or the stuck-latch warning, and the driver owns each one's message.
+        if write_status and not await fram.report_set_values(write_status):
             await self.pr.err_s("Write status byte failed!", errno=write_errno)
             return None
         return uninit
@@ -253,12 +261,15 @@ class _AsyBaseFramChunk:
                 # check_idle=False here, so _handle_status_bytes may only set err to err + 1
                 if await self._handle_status_bytes(fram, addr, _STATUS_BUSY, check_idle=False, err=10) is None:
                     return False
+                await asyncio.sleep(0)  # after the status-byte pair; the bus lock is held, CS is not asserted
                 if await self.crc.add_into(buf, self.size) is None:
                     await self.pr.err_s("CRC computation failed!", errno=17)
                     return False
-                if not await fram.set_values(buf, addr):
+                payload_status = fram.set_values_sync(buf, addr)
+                if payload_status and not await fram.report_set_values(payload_status):
                     await self.pr.err_s("_write_chunk failed!", errno=18)
                     return False
+                await asyncio.sleep(0)  # after the payload command
                 # check_idle=False here, so _handle_status_bytes may only set err to err + 1
                 if await self._handle_status_bytes(fram, addr, _STATUS_IDLE, check_idle=False, err=19) is None:
                     return False
@@ -274,6 +285,9 @@ class _AsyBaseFramChunk:
             try:
                 # check_idle=True here, so _handle_status_bytes may set err all the way to err + 6
                 uninit = await self._handle_status_bytes(fram, addr, _STATUS_BUSY, check_idle=True, err=30)
+                # Before the two early returns, not after: an uninitialized block is the blank
+                # chip's whole read, so this is its only scheduling point.
+                await asyncio.sleep(0)  # after the status-byte pair; the bus lock is held, CS is not asserted
                 if uninit is None:  # error
                     self._read_progress(0, -1, 0)
                     return False, 0
@@ -295,7 +309,9 @@ class _AsyBaseFramChunk:
                         self._read_progress(0, -1, num_iterations)
                         return False, 0
                     slice_mv = mv[0:chunk_size]  # always filled from the start of the buffer
-                    if not await fram.get_values(slice_mv, addr + position):
+                    read_status = fram.get_values_sync(slice_mv, addr + position)
+                    if read_status:
+                        await fram.report_get_values(read_status)
                         await self.pr.err_s("FRAM read error in _read_chunk!", errno=37)
                         self._read_progress(0, -1, num_iterations)
                         return False, 0
@@ -335,10 +351,11 @@ class _AsyBaseFramChunk:
                 # check_idle=False here, so _handle_status_bytes may only set err to err + 1
                 if await self._handle_status_bytes(fram, addr, _STATUS_UNINIT, check_idle=False, err=50) is None:
                     return False
+                await asyncio.sleep(0)  # after the status-byte pair; the bus lock is held, CS is not asserted
                 # bytearray(n) zero-fills directly (same content as `[_STATUS_UNINIT] * n`) without
                 # building that list first - `[x] * n` can segfault uncatchably for large n (CLAUDE.md).
-                res = await fram.set_values(bytearray(self.size + self.crc.length()), addr)
-                if not res:
+                clear_status = fram.set_values_sync(bytearray(self.size + self.crc.length()), addr)
+                if clear_status and not await fram.report_set_values(clear_status):
                     await self.pr.err_s("FRAM write failed in _clear_chunk!", errno=57)
                     return False
             except Exception as e:

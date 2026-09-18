@@ -1586,6 +1586,19 @@ dev:` (lock 2) wrapping `async with dev.i2c_device as i2c:` (lock 1). **Lock ord
 always 2 before 1** — audited across every driver with no violation; reversing risks a real
 deadlock.
 
+**Lock 1's scope is per-driver, and the FRAM path's is a whole block operation, not a single
+transaction** (owner's decision, 2026-09-18). `FRAM_SPI.__aenter__` takes lock 2 and then lock 1
+together and holds both for one `_write_chunk`/`_read_chunk`/`_clear_chunk` — roughly 25 chip-select
+cycles — so the byte-level commands inside run as plain synchronous functions
+(`get_values_sync()`/`set_values_sync()`) with no coroutine and no lock acquisition each. That is
+what makes the path affordable: it took a blank FRAM-backed logger `setup()` from 122,880 to
+13,696 board-equivalent bytes. Ordering is unchanged (2 before 1), a second SPI device still
+interleaves — between block operations rather than between commands — and the event loop still gets
+a scheduling point after every status-byte pair, after each payload command and per read slice.
+An I2C driver keeps the per-transaction scope: it has no equivalent synchronous session, and
+SPECIFICATION.md Part F.5.8 refuses the generalisation. Full measurement and the ladder of scopes
+considered: `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7C/§7C.1 and §11 item 6.
+
 **Known inconsistency (`asy_wifi_service.py`)**: `network_available()` requires the *caller* to
 already hold `wifi_mode_lock`, while its sibling getters assume the caller does *not* — already
 caused one since-fixed bug (`get_dns_server_ip()` always `None`); left as-is, but a new getter

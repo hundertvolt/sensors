@@ -158,8 +158,17 @@ reopened only if A.6's measurement asks for it.
    per 5-CS envelope, not five). The driver lock stays per block operation. This is the
    "multi-device compatibility preserved" choice from §0 and the lower-risk one; it costs the
    ~1,800 B per setup that separates 3,072 from ~1,300, which B makes irrelevant to layout.
-   **Correction, from the build (2026-09-18).** This paragraph's cost figure is wrong by an order
-   of magnitude, and the error changed the outcome. §3B's P1 **and** P2 both took the bus lock
+   **Superseded by the owner's decision, 2026-09-18: the bus lock is taken once per block
+   operation, not per byte-level command.** `FRAM_SPI.__aenter__` takes the driver lock and the bus
+   together; `get_values_sync()`/`set_values_sync()` are the byte-level entry points the chunk
+   layer calls, with `report_get_values()`/`report_set_values()` owning every guard's number and
+   message; the block operations yield after each status-byte pair, after the payload command, and
+   per `check_length` slice — §3B's P2 yield points. Measured: a blank logger `setup()` costs
+   **13,696 B against the base branch's 122,880 (9.0x)**, a valid one 9,152 against 80,384 (8.8x),
+   wire traces byte-identical. A second SPI device now waits for a block operation (~25 CS, ~600 us)
+   instead of a command (~5 CS, ~100 us). Lever 3 (per chunk operation) stays untaken: ~1,800 B
+   more, and it moves the hierarchy itself. Full account: §7C/§7C.1 and §11 item 6.
+   **What the paragraph below got wrong**, kept because the error is instructive. §3B's P1 **and** P2 both took the bus lock
    *once per block operation*; §3B.3's "the floor is now set entirely by lock acquisitions" counts
    four block-operation acquisitions, and its ~1,800 B is the gap between per-block-operation and
    per-*chunk*-operation locking (lever 3) - not between per-command and per-block-operation. The
@@ -167,7 +176,7 @@ reopened only if A.6's measurement asks for it.
    18,240 B board-equivalent (6.7x) where P2 was 3,072 (38x). P2's synchronous status-byte protocol
    is also unreachable at per-command granularity, since `_set_check_sb()`'s callees are the very
    coroutines that acquire the bus. The measured ladder and the per-node costs are §7C.1; the
-   decision itself is §11 item 6, put to the owner and not taken unilaterally.
+   decision itself is §11 item 6, now answered.
 
 5. **What the twin and mock fakes need**: nothing new in `tests/machine.py`'s `SPI` /
    `digital_twin/machine.py`'s `SPI` (their `write`/`readinto`/`write_readinto`/`init` are already
@@ -250,11 +259,14 @@ reopened only if A.6's measurement asks for it.
       failure) and 51 (`_clear_chunk`, byte 2). The progress test is stronger than "yields at least
       once": a concurrent task observes the block marked BUSY *and* IDLE again during one
       `write()`, which a non-yielding block operation could not show.
-      **Deviation from A.1.3, bullet 1.** `_set_check_sb()`/`_handle_status_bytes()` could **not**
-      become synchronous. Their callees are `FRAM_SPI.get_values()`/`set_values()`, which under
-      A.1.4's decision take the bus lock per command and must therefore stay coroutines; making
-      the status-byte helpers synchronous would require the manager to hold the bus lock across a
-      whole block operation, which is exactly the lock-hierarchy change A.1.4 declined. Their
+      **Deviation from A.1.3, bullet 1**, in its final form. Once the owner chose
+      per-block-operation locking, the manager *does* hold the bus across the block operation, so
+      the helpers' callees became the synchronous `get_values_sync()`/`set_values_sync()` and the
+      per-command coroutine and lock went away. The helpers themselves stay coroutines, for a
+      different reason: each of their branches logs a distinct message with a distinct number, and
+      a persisted log entry is an `await`. Making them synchronous would recover ~1,700 B only by
+      moving those messages off their decision sites, which C.7.1's auditability does not clearly
+      permit. Recorded in §7C.1 as available, not taken. Their
       logging also stays at its own site: the reason for moving reporting up in the driver was
       that those bodies hold the bus lock and must not await, and these do not. What was taken
       from the bullet is the part that actually costs bytes - the per-call `bytearray(1)` and

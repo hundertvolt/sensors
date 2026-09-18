@@ -19,6 +19,16 @@ from asy_spi_driver import SPI, SPIDevice
 from base_classes import Lockable
 from print_log import PrintLogHistory
 
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from typing import Literal
+
+    from typing_extensions import Self
+
 # RDID response (32 clock cycles after the opcode): manufacturer ID, then the JEDEC continuation-
 # code byte, then the two Product ID bytes (1st byte is the more significant one) - all four are
 # fixed values for this specific chip, confirmed against the datasheet.
@@ -76,6 +86,14 @@ _W_WEL_NOT_SET = const(2)  # wrnno 82 (write) / 83 (write protection)
 _W_WEL_STUCK = const(4)  # wrnno 81 - advisory: the operation itself still completed
 _W_WP_MISMATCH = const(8)  # errno 95
 
+# The three guards get_values()/set_values() share, in the same bit set so one status carries
+# whatever the synchronous body decided. Which errno each maps to differs per entry point, so the
+# two reporters below spell that out rather than a shared table doing it.
+_SV_OK = const(0)
+_SV_NOT_INIT = const(16)  # errno 90 (get) / 92 (set)
+_SV_NOT_LOCKED = const(32)  # errno 99 (get) / 100 (set)
+_SV_BAD_RANGE = const(64)  # errno 91 (get) / 93 (set)
+
 
 class FRAM_SPI(Lockable):
     def __init__(
@@ -102,10 +120,36 @@ class FRAM_SPI(Lockable):
         self._status_buf = bytearray(1)
         self._addr_buf = bytearray(_ADDR_BUF_24BIT) if self._max_size > _ADDR_16BIT_MAX else bytearray(_ADDR_BUF_16BIT)
         self._wrsr_buf = bytearray(2)  # WRSR opcode + target status byte, the one two-byte command
-        # The innermost of the three locks, taken once per command rather than once per CS cycle:
-        # a five-CS write envelope is indivisible on the wire, and the bus stays interleavable
-        # between commands. SPIDevice's own async session takes this same lock for other callers.
+        # The innermost of the three locks. Taken once per block operation, by __aenter__ below:
+        # the five-CS write envelope is indivisible on the wire anyway, and holding the bus across
+        # the block operation is what lets the whole byte-level path be synchronous. SPIDevice's
+        # own async session takes this same lock for any other caller of the bus.
         self._bus_lock = self._spidev.asy_lock
+
+    async def __aenter__(self) -> "Self":
+        # Takes the driver lock and then the bus, both for one whole block operation. The chunk
+        # layer's byte-level commands then run synchronously under a lock it already holds - a
+        # second SPI device waits for the block operation (~25 CS) instead of for each command
+        # (~5 CS), which is the trade HEAP_FRAGMENTATION_MEASUREMENTS.md §11 item 6 settled.
+        await super().__aenter__()
+        try:
+            await self._bus_lock.acquire()
+        except BaseException:
+            self.asy_lock.release()
+            raise
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,  # `object`, not TracebackType: the precise name only exists under TYPE_CHECKING
+    ) -> "Literal[False]":
+        try:
+            self._bus_lock.release()
+        except RuntimeError:  # already released somehow - same tolerance Lockable's own exit has
+            pass
+        return await super().__aexit__(exc_type, exc_val, exc_tb)
 
     # One CS cycle each, on a bus lock the caller already holds. Everything from here down to
     # _write() is synchronous: the chip is driven by blocking register writes, so a coroutine per
@@ -237,47 +281,69 @@ class FRAM_SPI(Lockable):
     async def get_size(self) -> int:
         return self._max_size
 
-    async def get_values(self, buf: bytearray | memoryview, addr_start: int = 0) -> bool:
+    def get_values_sync(self, buf: bytearray | memoryview, addr_start: int = 0) -> int:
+        # The byte-level read, on a bus lock the caller already holds (SPI.configure()'s own guard
+        # enforces that). Returns _SV_OK, or a status the caller hands to report_get_values() -
+        # a body holding the bus must not await, and a persisted log entry is an await.
         if not self.initialized:
-            await self.pr.err_s("FRAM not initialized, run setup first!", errno=90)
-            return False
+            return _SV_NOT_INIT
         if not self.asy_lock.locked():  # from Lockable class
+            return _SV_NOT_LOCKED
+        if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
+            return _SV_BAD_RANGE
+        self._read_address(addr_start, buf)
+        return _SV_OK
+
+    async def report_get_values(self, status: int) -> bool:
+        # get_values()' own numbers and messages, in the one place that has them, whichever path
+        # decided the status. Returns what get_values() returns.
+        if status & _SV_NOT_INIT:
+            await self.pr.err_s("FRAM not initialized, run setup first!", errno=90)
+        elif status & _SV_NOT_LOCKED:
             # WP8: an internal-contract violation (a caller failing to hold the lock the Lockable
             # base class requires), not a hardware fault - a real code defect if it ever fires, so
-            # errno rather than wrnno, unlike the benign, expected refusals above/below.
+            # errno rather than wrnno, unlike the benign, expected refusals elsewhere.
             await self.pr.err_s("get_values: FRAM access not locked!", errno=99)
-            return False
-        if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
+        elif status & _SV_BAD_RANGE:
             await self.pr.err_s("get_values: Invalid FRAM address range!", errno=91)
-            return False
-        await self._bus_lock.acquire()
-        try:
-            self._read_address(addr_start, buf)
-        finally:
-            self._bus_lock.release()
-        await asyncio.sleep(0)  # the per-command yield, outside the CS window and outside the lock
-        return True
+        else:
+            return True
+        return False
 
-    async def set_values(self, buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
+    async def get_values(self, buf: bytearray | memoryview, addr_start: int = 0) -> bool:
+        status = self.get_values_sync(buf, addr_start)
+        await asyncio.sleep(0)  # the per-command yield; CS is deasserted and the bus lock is the caller's
+        return await self.report_get_values(status)
+
+    def set_values_sync(self, buf: bytes | bytearray | memoryview, addr_start: int) -> int:
+        # The byte-level write, on a bus lock the caller already holds. Same contract as
+        # get_values_sync(): the status goes to report_set_values(), which owns every message.
         if not self.initialized:
+            return _SV_NOT_INIT
+        if not self.asy_lock.locked():  # from Lockable class
+            # WP8: same internal-contract violation as get_values_sync() above, own errno per the
+            # "grouped by the raising method" convention (SPECIFICATION.md C.7.1).
+            return _SV_NOT_LOCKED
+        if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
+            return _SV_BAD_RANGE
+        return self._write(addr_start, buf)
+
+    async def report_set_values(self, status: int) -> bool:
+        # set_values()' own numbers and messages. A stuck write-enable latch is the one status that
+        # warns and still reports success: the payload landed, only the housekeeping is stuck.
+        if status & _SV_NOT_INIT:
             await self.pr.err_s("FRAM not initialized, run setup first!", errno=92)
             return False
-        if not self.asy_lock.locked():  # from Lockable class
-            # WP8: same internal-contract violation as get_values() above, own errno per the
-            # "grouped by the raising method" convention (SPECIFICATION.md C.7.1) - matches how the
-            # sibling "not initialized" check is already numbered separately per method here.
+        if status & _SV_NOT_LOCKED:
             await self.pr.err_s("set_values: FRAM access not locked!", errno=100)
             return False
-        if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
+        if status & _SV_BAD_RANGE:
             await self.pr.err_s("set_values: Invalid FRAM address range!", errno=93)
             return False
-        await self._bus_lock.acquire()
-        try:
-            status = self._write(addr_start, buf)
-        finally:
-            self._bus_lock.release()
-        await asyncio.sleep(0)  # the per-command yield, outside the CS window and outside the lock
         if status & _W_PROTECTED:
+            # WP8: persisted, matching AsyFramManager's own "communication paused, not writing"
+            # precedent (asy_fram_manager.py, wrnno=60/70/80) for the same class of condition - a
+            # refused-but-expected write against a deliberately-gated chip, not a hardware fault.
             await self.pr.wrn_s("FRAM currently write protected.", wrnno=84)
             return False
         if status & _W_WEL_NOT_SET:
@@ -287,8 +353,16 @@ class FRAM_SPI(Lockable):
             await self.pr.wrn_s("FRAM write enable latch did not clear after WRDI retry.", wrnno=81)
         return True
 
+    async def set_values(self, buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
+        status = self.set_values_sync(buf, addr_start)
+        await asyncio.sleep(0)  # the per-command yield; CS is deasserted and the bus lock is the caller's
+        return await self.report_set_values(status)
+
     async def set_write_protected(self, *, value: bool) -> bool:
-        # Always protects the entire array (BP0+BP1) - per-block ranges are unused.
+        # Always protects the entire array (BP0+BP1) - per-block ranges are unused. Self-acquires
+        # the bus, like setup() does, so it must NOT be called from inside `async with fram:` -
+        # asyncio.Lock isn't reentrant and that would hang, the same caveat verify_present()
+        # carries for the driver lock. Every caller today calls it bare.
         if not self.initialized:
             await self.pr.err_s("FRAM not initialized, run setup first!", errno=94)
             return False

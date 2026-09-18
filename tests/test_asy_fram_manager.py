@@ -30,6 +30,10 @@ _STATUS_UNINIT = 0x00
 _STATUS_IDLE = 0x01
 _STATUS_BUSY = 0x02
 
+# A status bit no real set_values_sync()/get_values_sync() return uses, so an injected failure
+# is distinguishable from every genuine one - see fail_set_values_at() below.
+_INJECTED_FAILURE = 1 << 20
+
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
@@ -1741,14 +1745,7 @@ def test_handle_status_bytes_fails_cleanly_when_only_the_second_byte_write_fails
     assert chunk is not None
     addr0, _addr1 = chunk.block_addr
     byte2_addr = addr0 + chunk.size + chunk.crc.length() + 1
-    original_set_values = chunk.fram.set_values
-
-    async def failing_set_values(buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
-        if addr_start == byte2_addr:
-            return False
-        return await original_set_values(buf, addr_start)
-
-    chunk.fram.set_values = failing_set_values  # type: ignore[method-assign]
+    fail_set_values_at(chunk, byte2_addr)
 
     async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await chunk.write(b"data")
@@ -1792,14 +1789,7 @@ def test_write_chunk_fails_cleanly_when_the_payload_write_itself_fails() -> None
     chunk = manager.get_chunk(4, crc=CRC8())
     assert chunk is not None
     addr0, _addr1 = chunk.block_addr
-    original_set_values = chunk.fram.set_values
-
-    async def failing_set_values(buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
-        if addr_start == addr0:
-            return False
-        return await original_set_values(buf, addr_start)
-
-    chunk.fram.set_values = failing_set_values  # type: ignore[method-assign]
+    fail_set_values_at(chunk, addr0)
 
     async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await chunk.write(b"data")
@@ -1821,14 +1811,7 @@ def test_read_chunk_self_heals_from_block_1_when_block_0s_payload_read_itself_fa
     assert chunk is not None
     run(chunk.write(b"good"))
     addr0, _addr1 = chunk.block_addr
-    original_get_values = chunk.fram.get_values
-
-    async def failing_get_values(buf: bytearray | memoryview, addr_start: int = 0) -> bool:
-        if addr_start == addr0:
-            return False
-        return await original_get_values(buf, addr_start)
-
-    chunk.fram.get_values = failing_get_values  # type: ignore[method-assign]
+    fail_get_values_at(chunk, addr0)
 
     async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         result = await chunk.read()
@@ -1877,18 +1860,7 @@ def test_read_chunk_fails_cleanly_when_the_final_idle_status_write_itself_fails(
     run(chunk.write(b"good"))
     addr0, _addr1 = chunk.block_addr
     status_byte1_addr = addr0 + chunk.size + chunk.crc.length()
-    original_set_values = chunk.fram.set_values
-    call_count = 0
-
-    async def failing_set_values(buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
-        nonlocal call_count
-        if addr_start == status_byte1_addr:
-            call_count += 1
-            if call_count == 2:
-                return False
-        return await original_set_values(buf, addr_start)
-
-    chunk.fram.set_values = failing_set_values  # type: ignore[method-assign]
+    fail_set_values_at(chunk, status_byte1_addr, on_call=2)
 
     async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         result = await chunk.read()
@@ -1908,14 +1880,7 @@ def test_clear_chunk_fails_cleanly_when_the_data_wipe_write_itself_fails() -> No
     assert chunk is not None
     run(chunk.write(b"good"))
     addr0, _addr1 = chunk.block_addr
-    original_set_values = chunk.fram.set_values
-
-    async def failing_set_values(buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
-        if addr_start == addr0:
-            return False
-        return await original_set_values(buf, addr_start)
-
-    chunk.fram.set_values = failing_set_values  # type: ignore[method-assign]
+    fail_set_values_at(chunk, addr0)
 
     async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await chunk.clear()
@@ -2361,28 +2326,51 @@ def status_byte_addrs(chunk: "AsyFramChunk") -> tuple[int, int]:
 def fail_set_values_at(chunk: "AsyFramChunk", addr: int, *, on_call: int = 1) -> None:
     # Address-selective, and occurrence-selective: the same status byte is written once for the
     # BUSY mark and once for the IDLE mark, so the two errno spreads need different occurrences.
-    original = chunk.fram.set_values
+    # Injected at set_values_sync(), because that is what the chunk layer calls - it pays no
+    # coroutine and no bus-lock acquisition per command. The sentinel is a status bit no real
+    # driver status uses, and patching the reporter alongside keeps the injected failure from
+    # adding a driver-level log entry of its own: the same fidelity the previous
+    # `set_values() -> False` double had, at the seam the code now actually uses.
+    original_sync = chunk.fram.set_values_sync
+    original_report = chunk.fram.report_set_values
     seen = [0]
 
-    async def failing(buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
+    def failing(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
         if addr_start == addr:
             seen[0] += 1
             if seen[0] == on_call:
-                return False
-        return await original(buf, addr_start)
+                return _INJECTED_FAILURE
+        return original_sync(buf, addr_start)
 
-    chunk.fram.set_values = failing  # type: ignore[method-assign]
-
-
-def fail_get_values_at(chunk: "AsyFramChunk", addr: int) -> None:
-    original = chunk.fram.get_values
-
-    async def failing(buf: bytearray | memoryview, addr_start: int = 0) -> bool:
-        if addr_start == addr:
+    async def reporting(status: int) -> bool:
+        if status == _INJECTED_FAILURE:
             return False
-        return await original(buf, addr_start)
+        return await original_report(status)
 
-    chunk.fram.get_values = failing  # type: ignore[method-assign]
+    chunk.fram.set_values_sync = failing  # type: ignore[method-assign]
+    chunk.fram.report_set_values = reporting  # type: ignore[method-assign]
+
+
+def fail_get_values_at(chunk: "AsyFramChunk", addr: int, *, on_call: int = 1) -> None:
+    # The read-side mirror of fail_set_values_at above; same seam, same sentinel.
+    original_sync = chunk.fram.get_values_sync
+    original_report = chunk.fram.report_get_values
+    seen = [0]
+
+    def failing(buf: bytearray | memoryview, addr_start: int = 0) -> int:
+        if addr_start == addr:
+            seen[0] += 1
+            if seen[0] == on_call:
+                return _INJECTED_FAILURE
+        return original_sync(buf, addr_start)
+
+    async def reporting(status: int) -> bool:
+        if status == _INJECTED_FAILURE:
+            return False
+        return await original_report(status)
+
+    chunk.fram.get_values_sync = failing  # type: ignore[method-assign]
+    chunk.fram.report_get_values = reporting  # type: ignore[method-assign]
 
 
 def make_written_chunk(check_length: int = 8) -> "tuple[AsyFramManager, FakeMB85RS64V, AsyFramChunk]":
@@ -2501,6 +2489,49 @@ def test_a_concurrent_task_observes_a_block_operation_in_progress() -> None:
     assert run(scenario()) is True
     assert _STATUS_BUSY in seen
     assert _STATUS_IDLE in seen
+
+
+def test_every_block_operation_yields_even_when_it_returns_early() -> None:
+    # The blank chip's whole read is two status-byte reads that find UNINIT and return - so the
+    # yield after the status-byte pair has to come before those early returns, or a blank setup()
+    # runs four byte-level commands per block with no scheduling point at all. Counted for a read
+    # of an uninitialized chunk, a read of a valid one, a write and a clear.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    assert chunk is not None
+    passes = [0]
+
+    async def competitor() -> None:
+        while True:
+            passes[0] += 1
+            await asyncio.sleep(0)
+
+    async def count(coro: "Coroutine[Any, Any, Any]") -> int:
+        other = asyncio.create_task(competitor())
+        await asyncio.sleep(0)
+        before = passes[0]
+        await coro
+        during = passes[0] - before
+        other.cancel()
+        try:
+            await other
+        except asyncio.CancelledError:
+            pass
+        return during
+
+    async def scenario() -> "tuple[int, int, int, int]":
+        blank_read = await count(chunk.read())  # both blocks uninitialized: the early-return path
+        wrote = await count(chunk.write(b"data"))
+        valid_read = await count(chunk.read())
+        cleared = await count(chunk.clear())
+        return blank_read, wrote, valid_read, cleared
+
+    blank_read, wrote, valid_read, cleared = run(scenario())
+    assert blank_read >= 2, f"a blank read gave a competing task {blank_read} turns"  # one per block
+    assert wrote >= 2
+    assert valid_read >= 2
+    assert cleared >= 2
 
 
 def test_the_compare_with_scratch_buffer_belongs_to_the_chunk_not_the_call() -> None:

@@ -603,7 +603,16 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
 
         import network  # digital_twin's own fake - see this file's own sys.path setup above
 
-        conn.wlan.script_connect_outcomes([network.STAT_NO_AP_FOUND])
+        # Eight, not one, so the transition does not depend on WHEN the connection_failures
+        # seeding below lands. digital_twin/network.py's queue falls back to always-succeeding once
+        # exhausted, so a single scripted failure made the whole test hinge on that one failure
+        # resolving *after* the seeding - a race the bare sleep(0.2) below could only win by being
+        # slower than wlan_connect()'s own prefix, which is two FRAM-backed pr.setup() calls. It
+        # stopped winning once the FRAM path got ~9x cheaper (HEAP_FRAGMENTATION_MEASUREMENTS.md
+        # section 7C): 2 of 2 runs failed, waiting out the full 25 s on an always-succeeding queue.
+        # With a queue deeper than the streak needs, either order reaches conn_fail_to_hotspot=5
+        # through the same real state machine, and the test no longer depends on a timing window.
+        conn.wlan.script_connect_outcomes([network.STAT_NO_AP_FOUND] * 8)
 
         pixel_task = pixel.start_asy_neopixel_led_overl()  # the one real pixel task that turns
         # conn's own on()/off()/toggle() LED calls into real committed NeoPixel frames.
