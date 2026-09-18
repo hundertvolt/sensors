@@ -1,10 +1,6 @@
-"""Canonical, zero-touch overrides for MicroPython's own build. Every override here generates
-files/flags entirely OUTSIDE the fetched `$PICO_TOOLCHAIN_DIR/micropython` checkout - never a byte
-written into it - referencing the pinned source by absolute path, and verifies a known anchor in
-that source first so a future MicroPython release that restructures the target fails the build
-loudly instead of silently shipping unpatched behavior. Full design rationale, the mechanism used
-for each override, and the re-verification checklist for a MicroPython version bump:
-SPECIFICATION.md Part B.14."""
+"""Canonical, zero-touch overrides for MicroPython's own build: every one generates files and flags
+entirely OUTSIDE the fetched checkout, and verifies a known anchor in the pinned source first so a
+restructuring release fails loudly. Rationale and version-bump checklist: SPECIFICATION.md B.14."""
 
 from __future__ import annotations
 
@@ -62,19 +58,9 @@ def verify_unix_kbd_intr_anchor(micropython_dir: Path) -> Path:
 
 
 def apply_unix_kbd_intr_override(micropython_dir: Path, overrides_dir: Path) -> dict[str, str]:
-    """Redirects the Unix "standard" variant's own config directory (`make`'s `VARIANT_DIR`, which
-    the port's Makefile only defaults via `?=` - a plain command-line override wins cleanly, no
-    ordering tricks needed) to an external directory that `#include`s the real variant files by
-    absolute path and then `#undef`/`#define`s `MICROPY_ASYNC_KBD_INTR` to 0 - MicroPython's own
-    safe path (`mp_sched_keyboard_interrupt()`, checked at the next bytecode-dispatch safepoint)
-    instead of the default's immediate `nlr_raise()` straight from the async SIGINT handler, which
-    can land mid any non-reentrant operation (GC collection, exception/frame bookkeeping) and
-    corrupt VM state. Verified empirically end-to-end (2026-09-15): the resulting binary's
-    preprocessed `unix_mphal.c` selects the safe branch, and a build with `VARIANT=standard`
-    explicitly still also passed keeps `BUILD ?= build-$(VARIANT)` at `build-standard` (every other
-    script in this repo hardcodes that path) - `VARIANT_DIR` alone would otherwise derive `VARIANT`
-    from the override directory's own name and rename the build output directory.
-    Returns the extra `make` variables `build_unix_port()` must pass through unchanged."""
+    """Points the Unix standard variant's VARIANT_DIR at an external directory that #includes the
+    real variant files and forces MICROPY_ASYNC_KBD_INTR to 0, selecting MicroPython's safe,
+    deferred SIGINT path. Returns build_unix_port()'s extra `make` variables; see Part B.14.1."""
     verify_unix_kbd_intr_anchor(micropython_dir)
     real_variant_dir = micropython_dir / "ports" / "unix" / "variants" / "standard"
     override_dir = overrides_dir / "unix_kbd_intr_variant"

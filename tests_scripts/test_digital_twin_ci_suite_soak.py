@@ -1,7 +1,6 @@
-"""Tests scripts/_digital_twin_ci_suite.py's own pure Run 11 (soak) helpers - _parse_mem_samples()
-and _mem_trend() - without a live twin subprocess/HTTP server. Host-driven request-cycling itself
-(the actual fix - SPECIFICATION.md's "Driver/DUT process separation" Part) is exercised for real by
-scripts/run_digital_twin_ci.sh's own end-to-end run, not re-mocked here."""
+"""Tests scripts/_digital_twin_ci_suite.py's pure Run 11 (soak) helpers - _parse_mem_samples()
+and _mem_trend() - with no live twin subprocess. Host-driven request cycling itself is exercised
+end to end by scripts/run_digital_twin_ci.sh (SPECIFICATION.md Part E.9), not re-mocked here."""
 
 from types import ModuleType
 

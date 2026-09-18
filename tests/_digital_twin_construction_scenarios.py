@@ -1,16 +1,6 @@
-"""Shared scenario library: "construction across every real device" (SPECIFICATION.md Part L.4) - fast, no real wall-clock waits, digital-twin-tier construction/wiring/REST checks parametrized
-across all 6 real devices. Split out of tests/test_digital_twin_sensortask_integration.py (which
-still carries this tier's own heavier, deliberately wozi-only tests) so scripts/test.sh can run each
-device's own 3-scenario batch as its own independent Unix-port process, the same
-register_for_device()-factory shape tests/_sensortask_scenarios.py/tests/_webserver_concurrency_scenarios.py
-already use - cutting the real build_system() calls sharing one process here from ~29 (11 wozi-only
-heavy tests + this section's own 18) down to ~11 (the heavy tests alone) at the root, not via a
-per-file heap override or a gc.collect() stabilization attempt (confirmed directly, 2026-09-17
-session: this section's own real, socket-backed build_system() calls are what a lower Unix-port test
-heap (8M vs the current 32M) intermittently failed on when the whole suite ran under
-scripts/test.sh's new parallel job pool - passing reliably in isolation but not under real concurrent
-CPU contention with other test files, since fewer builds sharing one process means less garbage ever
-has to coexist regardless of when GC runs)."""
+"""Shared scenario library: digital-twin-tier construction/wiring/REST across all 6 real devices
+(SPECIFICATION.md Part L.4), fast, no real wall-clock waits. Not a test file - the export is
+register_for_device(); SPECIFICATION.md Part E.2.1 has the per-device split and why it exists."""
 
 import asyncio
 import json

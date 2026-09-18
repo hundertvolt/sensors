@@ -126,14 +126,8 @@ def _website_errcount_keys(model: DeviceModel, src_dir: Path) -> set[str]:
 
 def _errcount_parity_failures(model: DeviceModel, src_dir: Path, status_body: object) -> list[str]:
     """Compares the error sources GET /status really publishes against the website's own catalog.
-
-    The two sides are built by unrelated mechanisms: the API derives itself from the live object
-    graph (SensorReaderConfig.get_error_sources() returns [self, self.cfgmgr], and the generated
-    _collect_error_sources() is a plain loop over every constructed module), while the catalog in
-    buildgen/definitions.py is hand-kept. Both drift directions are silent in the product - a source
-    with no row is never rendered, and a row with no source renders a permanent, reassuring "0",
-    because js/templates.js falls back to `errcount[key] ?? {counter: 0}`.
-    """
+    The API derives itself from the live object graph; buildgen/definitions.py's catalog is
+    hand-kept. Both drift directions are silent in the product - SPECIFICATION.md Part H.6."""
     if not isinstance(status_body, dict) or not isinstance(status_body.get("errcount"), dict):
         return ["GET /status carried no usable errcount object, so no parity claim would mean anything"]
     published = set(status_body["errcount"])

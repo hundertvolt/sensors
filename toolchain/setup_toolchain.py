@@ -317,13 +317,9 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest
 
 
 def build_unix_port(micropython_dir: Path, toolchain_dir: Path, jobs: int, frozen_manifest: Path | None = None) -> Path:
-    """Builds the "standard" Unix port variant; needs mpy-cross already built, and takes
-    frozen_manifest like build_firmware(). Always MICROPY_PY_SYS_SETTRACE=1 so one binary backs both
-    plain and --coverage runs (CLAUDE.md); ports/rp2's build never gets that flag.
-    Also always applies micropython_overrides.apply_unix_kbd_intr_override() - forces MicroPython's
-    own safe, deferred SIGINT-delivery path instead of its default immediate one, closing a real
-    VM-state-corruption class of bug (SPECIFICATION.md Part B.14.1, CLAUDE.md Part F.6) - via
-    `VARIANT`/`VARIANT_DIR` make variables that never touch a single file inside micropython_dir."""
+    """Builds the standard Unix port variant; needs mpy-cross, takes frozen_manifest like
+    build_firmware(). Always MICROPY_PY_SYS_SETTRACE=1, so one binary backs plain and --coverage
+    runs, and always apply_unix_kbd_intr_override() for the safe SIGINT path (Part B.14.1)."""
     label = "with the frozen verification module" if frozen_manifest else "standard, unchanged"
     log(f"Building the MicroPython Unix port ({label})")
     unix_dir = micropython_dir / "ports" / "unix"

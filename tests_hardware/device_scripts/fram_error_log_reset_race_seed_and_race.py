@@ -1,7 +1,6 @@
-"""Isolated-driver device script, phase 1 of 2 (see fram_error_log_reset_race_verify.py). Races a
-real machine.reset() against an in-flight PrintLogHistoryStore chunk write - the CHUNK-level
-counterpart to fram_reset_race_during_write_seed_and_race.py's raw-driver race.
-Run via `board.run_isolated_expect_reset()`, never run_isolated()."""
+"""Isolated-driver device script, phase 1 of 2 (see fram_error_log_reset_race_verify.py): races a
+real machine.reset() against an in-flight PrintLogHistoryStore chunk write - the chunk-level
+counterpart to the raw-driver race. Run via board.run_isolated_expect_reset(), never run_isolated()."""
 
 import asyncio
 

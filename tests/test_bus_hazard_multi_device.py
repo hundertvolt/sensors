@@ -1,11 +1,6 @@
-"""Mock-level (tests/machine.py fake I2C) bus-hazard/concurrency regression suite - the fast,
-deterministic tier of SPECIFICATION.md Part C.8's bus-hazard coverage. Holds only genuinely
-driver-agnostic hazard shapes (cross-device interleaving, broadcast effects, fault isolation,
-parallel sessions - "what bad could sharing a bus do", independent of which specific drivers are
-involved); a hazard whose assertions only make sense for one particular driver's own quirks lives
-with that driver instead (tests/test_asy_<driver>_driver.py). This file runs unconditionally and
-is not a staging area for tests/test_bus_hazard_generated.py's TOML-driven scheme - the two run
-alongside each other, see Part C.8 for the standing rule on extending either."""
+"""Mock-level (tests/machine.py fake I2C) bus-hazard suite - the fast, deterministic tier of
+SPECIFICATION.md Part C.8. Holds only driver-agnostic hazard shapes; a driver-specific one lives
+with that driver. Runs alongside test_bus_hazard_generated.py, not as a staging area for it."""
 
 import asyncio
 import struct

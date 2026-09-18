@@ -1,7 +1,6 @@
-"""Drives scripts/_require_clean_hardware_run.sh's verdict logic against canned pytest output, via a
-stub `uv` on PATH, and holds the two sides of its skip-gating contract to each other: what the script
-whitelists, and what tests_hardware/ actually marks and gates. All of it is invisible to any run this
-session is allowed to make."""
+"""Drives scripts/_require_clean_hardware_run.sh's verdict logic against canned pytest output via a
+stub `uv` on PATH, and holds the two sides of its skip-gating contract to each other: what the
+script whitelists, and what tests_hardware/ actually marks and gates."""
 
 import ast
 import os

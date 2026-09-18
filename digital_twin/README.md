@@ -391,8 +391,9 @@ placeholder). Must succeed before any test phase runs.
 `uv run` CPython script (stdlib-only — no `uv sync` needed) that drives
 `digital_twin/run_generic_integration.py` as a real subprocess, over real HTTP/UDP (`http.client`/
 `socket`, not `_http_client.py` — this script runs under CPython, not the twin's own MicroPython
-process), through fourteen real, sequential subprocess runs (12 top-level, two of them - 5b/5c -
-sub-runs of run 5) on a fixed port (`18080`, distinct from
+process), through a sequence of real subprocess runs (12 top-level, two of them - 5b/5c - sub-runs of run
+5; 5c itself spawns one process per bus-attached driver plus one, so the subprocess total is
+device-dependent - 16 for `wozi`, 17 for `dev`) on a fixed port (`18080`, distinct from
 the manual entry point's `8080` default, so both can run side by side without colliding). **The
 whole 12-top-level-run sequence itself runs twice, not just once** — `main()` calls `run_suite()`
 once at `--gc-threshold -1` (MicroPython's own real reactive-only default) and once at `32768` (the
@@ -472,7 +473,20 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
    can start, no status byte can be left `_STATUS_BUSY`, and the restore is deterministic —
    measured **20/20** against the ~1-in-8 loss of run 5b's unpaused shutdown. This is what makes
    the pair sound: 5b alone would pass even if persistence never worked at all (an empty ring
-   satisfies all-or-nothing), which is exactly the hole the old run 4 check had. 5c also confirms
+   satisfies all-or-nothing), which is exactly the hole the old run 4 check had.
+   **The sweep is device-wide, not SGP40-only** (2026-09-18): every bus-fault-injectable driver
+   this device wires gets its own chip-healthy bounded fault, each in its own process, chained onto
+   the previous link's persisted state — so each link is itself a restore check and the final
+   fault-free reboot then verifies every faulted row exactly. One fault per process rather than all
+   at once is forced by the task-restart budget (SPECIFICATION.md Part C.4.1): three drivers
+   faulted together exhaust it and the *device* reboots itself mid-run, which is not the commanded
+   reboot this run exists to test. The final boot also sweeps every *other* registered error source for loss
+   (`SYSTEM`/`NOTIFY`/`NTP`/`WEBSERVER`/`DNSSRV`, every `CFGMGR_*`, `dev`'s two `uart_link`
+   instances): a fresh entry from that boot is legitimate, a missing one never is. `FRAM` is the
+   one exemption — `AsyFramManager` builds a plain `PrintLogHistory`, since the store cannot
+   persist its own failure history through itself, and
+   `tests/_sensortask_scenarios.py` pins it as the only one from the real object graph.
+   5c also confirms
    the pause itself does *not* survive the reboot (RAM-only by design) and that a `ResetErrors` PUT
    genuinely clears the restored history on the chip — issued only *after* polling for the restore,
    because a reset arriving before the loggers finish `setup()` is dropped by design and the

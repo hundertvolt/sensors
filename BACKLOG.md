@@ -391,27 +391,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     7.396s / 5.207s at `gc.threshold(-1)`. Useful for spotting a twin-side regression; not a
     predictor of real-hardware cost in either direction.
 
-25. **Persistence coverage against a HEALTHY store, not just a faulted one.** The digital-twin
-    suite only touches SCD30/BMP3XX persistence through Run 4's `_NO_PERSIST_WHEN_FRAM_FAULTED`
-    sweep, which runs after Run 3 faulted `fram:write` dead — so it proves "nothing persisted
-    through a chip that was unavailable", a far weaker property than the name it used to carry.
-    SGP40 gets the real chip-healthy treatment in Run 5b/5c; nothing else does, so a genuine
-    regression in another module's FRAM persistence passes CI today. **Where to fix**: extend Run 5c
-    to sweep every FRAM-backed source rather than adding runs per module — much cheaper in CI
-    wall-clock than a 5b/5c pair each.
-    **Queued for this session's own test audit (owner, 2026-09-18) — not to be started before it.**
-    **Scanned 2026-09-18, and the gap is much wider than this item's own first paragraph says.**
-    It is not an SCD30/BMP3XX gap: `dev`'s generated module makes **12** FRAM-wired constructions,
-    plus one implicit `CFGMGR_<name>` logger per `SensorReaderConfig`-based module (WP2's rule), and
-    **exactly two of them have any chip-healthy reboot-persistence proof at all** — SGP40 via Run
-    5b/5c (`_PERSISTED_ERROR_MODULES` is literally `("SGP40",)`) and WIFI via Run 8. Everything else
-    — SCD30, BMP3XX, ISL29125, SYSTEM, NOTIFY, NTP, WEBSERVER, DNSSRV, every `CFGMGR_*`, and `dev`'s
-    two `uart_link` instances — is covered only by the faulted-chip sweep, which cannot distinguish
-    "persistence works and the chip was dead" from "persistence never worked". NEOPIXEL is the one
-    real exemption (no persisted logging at all, Part C.7.1). The audit's own first task is
-    therefore to decide the sweep's shape, since a per-module 5b/5c pair × ~12 is not affordable in
-    CI wall-clock and a single generalized Run 5c sweep is.
-
 28. **`TEST_PARALLELISM` now autodetects host capability — the residual is a calibration question,
     not an open design decision.** The 4x-core-count default failed a healthy twin test on the bench
     Pi4 through CPU starvation alone (reproduced with twelve synthetic busy-loops and no parallel
@@ -669,7 +648,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     it rides the next real-hardware session rather than being pushed blind
     (`REAL_HARDWARE_TEST_QUEUE.md`).
 
-42. **The 3-line comment cap is enforced in `src/` and measured everywhere else.** The cap was
+42. **Every header block in the repo is inside the 3-line cap; the inline blocks outside `src/` are
+    measured, not yet fixed.** The cap was
     tightened from "no hard numeric cap" to 3 lines per inline block by the project owner on
     2026-09-14 and re-confirmed 2026-09-18; `main` had recorded that only the ISL29125 branch's own
     files complied and estimated ~200 pre-existing blocks. The real repo-wide figure, measured
@@ -690,10 +670,20 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
     `src/` was swept to **zero** in the same pass (121 blocks, of which ~27 turned out to be tag
     runs), because it is the shipped firmware and the one scope where the rule earns its keep;
-    nothing was deleted, only tightened or moved to the Part that already owned the fact. The rest
-    is deliberately left: rewriting ~1,400 comment blocks in one diff would bury any review, and
-    each one still needs the judgement call about where its detail belongs. Best taken scope by
-    scope, `tests/` last - it is 58% of the total on its own.
+    nothing was deleted, only tightened or moved to the Part that already owned the fact.
+
+    **Header blocks are now at zero repo-wide** (2026-09-18, the concentrated run the owner asked
+    for): 65 over-cap Python module/class/function docstrings across `tests/` (33),
+    `tests_hardware/` (17), `tests_scripts/` (10), `toolchain/` (3) and `scripts/` (2), plus two
+    JS/CSS file headers. Most were duplicating a rule the spec already stated, so the fix was a
+    pointer, not a deletion; the three per-device scenario libraries' shared rationale became
+    SPECIFICATION.md Part E.2.1, its single point of truth. `js/definitions.js`'s ~37-line
+    `@typedef` run is exempt as a machine-checked type declaration (CLAUDE.md), like buildgen's tag
+    lines.
+
+    The inline blocks above are deliberately still left: rewriting ~1,400 of them in one diff would
+    bury any review, and each one still needs the judgement call about where its detail belongs.
+    Best taken scope by scope, `tests/` last - it is 58% of the total on its own.
 
 ## Deferred / explicitly out-of-scope work
 
@@ -718,27 +708,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   never-run-on-silicon caveat), so the resolution no longer needs to reach into `main`'s side for
   anything. What remains is purely mechanical, and is the owner's to schedule.
 
-- **CLAUDE.md's 3-line header-comment cap eroded across this branch — `src/` is fixed, and the 61
-  test-side blocks are deferred to one concentrated documentation-style run** (owner decision,
-  2026-09-18: the cap stands as written, and the rest gets fixed in a single dedicated pass, not
-  piecemeal alongside unrelated work). Measured 2026-09-18 over every triple-quoted module/class/
-  function header in the eight lint scopes: `main` carries **18 over-cap blocks out of 290 (6.2 %)**,
-  this branch **63 out of 431 (14.6 %)**, and 58 of the 63 sit in files this branch touched — drift
-  introduced here, not the repo's pre-existing state. By scope (main → branch): `tests/` 7 → 30,
-  `tests_hardware/` 10 → 17, `tests_scripts/` 1 → 9, `toolchain/` 0 → 3, `scripts/` 0 → 2, `src/`
-  0 → 2. **The `src/` half is already done** (2026-09-18), that being the fully-reviewed bar and
-  clean on `main`: `asy_notification_service.py::_DefaultSignalSink` and
-  `asy_sgp40_driver.py::_DefaultTemperatureSource` are back to 3 lines with the detail moved to
-  adjacent inline comments, so `src/` is at 0 over-cap blocks again. The remaining 61 are all
-  test-side; the worst are module headers that became mini-essays —
-  `tests/_sensortask_scenarios.py` (17 lines),
-  `tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py` (17),
-  `bus_concurrency_isl29125_write_vs_siblings.py` (16),
-  `tests/test_digital_twin_sensortask_integration.py` (15),
-  `tests/_digital_twin_construction_scenarios.py` (14),
-  `toolchain/micropython_overrides.py::apply_unix_kbd_intr_override` (13). The run applies the
-  rule's own escape hatch throughout — relocate the prose to `SPECIFICATION.md`/
-  `digital_twin/README.md`/an adjacent inline comment, never drop it.
 - **CLAUDE.md's two-target clean-chroot verification is an owner-run periodic check, not a blocking
   per-push gate - settled (owner decision, 2026-09-18).** The recipe, both targets and the separate
   installer verification all stand exactly as CLAUDE.md documents them; what changed is who runs
@@ -748,7 +717,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   `scripts/test.sh` (+520 lines - parallelism autodetection, the backgrounded `tests_scripts/` job
   and its timeout, the heap-size and port-base moves), `scripts/typecheck.sh`, `scripts/lint.sh`,
   `scripts/build_firmware.py`, `scripts/_require_clean_hardware_run.sh`,
-  `scripts/run_digital_twin_ci.sh`, `scripts/run_unix_port_integration.sh`, `pyproject.toml` (+159),
+  `scripts/run_digital_twin_ci.sh`, `scripts/run_unix_port_integration.sh`,
+  `scripts/_digital_twin_ci_suite.py` (test orchestration only - no build step, so the chroot legs
+  neither exercise nor are threatened by it), `pyproject.toml` (+159),
   and - the class the lint/typecheck recipe never exercises at all - `toolchain/setup_toolchain.py`
   plus the new `toolchain/micropython_overrides.py` (PR #90's `MICROPY_ASYNC_KBD_INTR=0` Unix-port
   build override, SPECIFICATION.md Part B.14.1). That last pair is what a compiler-version-sensitive

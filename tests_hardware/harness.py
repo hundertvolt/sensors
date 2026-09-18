@@ -61,10 +61,9 @@ def _usb_reset_device(device: str) -> bool:
 
 
 class HardwareNotAvailableError(RuntimeError):
-    """Raised when a real board/bench isn't reachable - conftest.py's fixtures turn that into a skip,
-    so this tier stays collectible with nothing attached. resolve_board_device()'s ambiguous-hardware
-    raise is the deliberate exception: `board` builds a Board before probing, so two attached boards
-    surface as an error naming both, never as a silently skipped run."""
+    """Raised when a real board/bench isn't reachable - conftest.py turns it into a skip, so this
+    tier stays collectible with nothing attached. resolve_board_device()'s ambiguous-hardware raise
+    is the deliberate exception: two attached boards must error naming both, never skip."""
 
 
 class HardwareTestFailureError(AssertionError):
@@ -133,18 +132,9 @@ def resolve_board_device(
     sys_tty_dir: Path = Path("/sys/class/tty"),
     dev_dir: Path = Path("/dev"),
 ) -> str:
-    """The board's current serial node, identified by USB vendor ID and named by its stable by-id
-    symlink. Directories are overridable for tests, like detect_pico_serial_devices()' own.
-
-    Which device: setup_toolchain.py's vendor-ID detection is the single source of truth, so this
-    can never select a non-Pico ACM device (the bench's Arduino UART peer) the way a bare `ttyACM*`
-    scan could. Two matches is a hard error rather than a silent sorted()[0] - driving the wrong
-    board is worse than not starting - mirroring resolve_pico_device()'s own rule.
-
-    Which name: `/dev/serial/by-id/` names the device by USB serial number, so it survives the
-    re-enumeration a hard reset causes; the bare ttyACM index does not (observed moving
-    ttyACM0 -> ttyACM1 mid-suite). The by-id glob is also the fallback identification path, for a
-    host whose /sys is unreadable - it is Pico-specific too, so neither route can pick a stranger."""
+    """The board's current serial node, found by setup_toolchain.py's vendor-ID detection (never a
+    bare ttyACM scan, which could pick the bench's Arduino) and named by its by-id symlink, which
+    survives the re-enumeration a hard reset causes. Two matches is a hard error, not sorted()[0]."""
     candidates = detect_pico_serial_devices(sys_tty_dir, dev_dir)
     if not candidates and by_id_dir.is_dir():
         candidates = [link.resolve() for link in sorted(by_id_dir.glob(_BOARD_BY_ID_GLOB))]
@@ -170,12 +160,9 @@ class Board:
         self.default_timeout_s = default_timeout_s
 
     def _rebind_device_if_moved(self) -> bool:
-        """Re-resolves the serial node when the current one has vanished. Returns True if it moved.
-
-        A hard reset re-enumerates the CDC-ACM device, and the kernel does not guarantee the same
-        ttyACM index afterwards - observed moving ttyACM0 -> ttyACM1 mid-suite, which failed every
-        later serial-using test with mpremote's generic "may be in use by another program". An
-        explicitly pinned device (constructor arg or MPREMOTE_DEVICE) is never second-guessed."""
+        """Re-resolves the serial node when the current one has vanished; True if it moved. A hard
+        reset re-enumerates the CDC-ACM device with no index guarantee (observed ttyACM0 -> ttyACM1
+        mid-suite). An explicitly pinned device is never second-guessed."""
         if self._pinned_device is not None or Path(self.device).exists():
             return False
         rebound = resolve_board_device()
@@ -264,13 +251,9 @@ class Board:
         return result.stdout
 
     def run_isolated(self, script_path: str | Path, *, soft_reset_after: bool = True, timeout_s: float | None = None, allow_recovery: bool = True) -> str:
-        """Isolated-driver mode: `mpremote run <script>` interrupts the system into raw REPL to
-        run `script_path` against real frozen `src/` drivers, re-arming the watchdog first - never
-        leaves `main.py` running afterward (see tests_hardware/README.md).
-
-        `allow_recovery=False` for a script whose own disconnect is the EXPECTED outcome: the retry
-        path spends its full 10s grace window before reporting, which a caller timing how fast the
-        connection drops would otherwise measure instead of the drop itself."""
+        """Isolated-driver mode: `mpremote run <script>` against the real frozen src/ drivers,
+        re-arming the watchdog first, never leaving main.py running (tests_hardware/README.md).
+        allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured."""
         args = ["exec", "import machine; machine.WDT(timeout=8000)", "run", str(script_path)]
         if soft_reset_after:
             args.append("soft-reset")

@@ -1,9 +1,7 @@
 /**
- * Enumerates every real writable field across a device's own definitions.json - shared by
- * tests_js/mock-server-put-matrix.test.js (exhaustive matrix against js/mock-server.js's fake
- * fetch) and tests_js/live-backend-put-matrix.test.js (the same matrix's shape, against the real
- * digital-twin backend) so both stay driven by one field-enumeration source rather than two
- * hand-kept copies of the same section/group/field-kind filtering logic.
+ * Enumerates every real writable field across a device's own definitions.json, shared by the
+ * mock-server and live-backend PUT-matrix tests so both run off one field-enumeration source
+ * rather than two hand-kept copies of the same section/group/field-kind filtering.
  */
 
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */

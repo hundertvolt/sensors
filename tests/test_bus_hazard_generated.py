@@ -1,10 +1,6 @@
 """Mock-tier bus-hazard coverage assembled FROM the real TOML wiring (SPECIFICATION.md Part C.8),
-not hand-paired like test_bus_hazard_multi_device.py.
-
-Iterates every real device's own generated wiring plan and every I2C bus on it (project owner's
-direction, phase 2): a bus with 2+ real occupants gets the full cross-sensor scenario set; every
-bus, single-occupant or not, gets its own address/command sweep. A future device/bus needs zero
-edits here to be picked up - dynamically discovered from build/generated_src/, not a hand-kept list."""
+not hand-paired like test_bus_hazard_multi_device.py. Every device's generated wiring plan and
+every I2C bus on it, discovered from build/generated_src/ - a new device needs no edit here."""
 
 import json
 import os

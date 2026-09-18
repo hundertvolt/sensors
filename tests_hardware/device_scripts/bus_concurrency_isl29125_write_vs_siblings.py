@@ -1,19 +1,6 @@
-"""Isolated-driver device script: real-hardware counterpart to
-scenario_a_write_does_not_disturb_concurrent_sibling_reads (tests/_bus_hazard_catalog.py) - closes a
-real coverage gap the mock-tier generic scenario found: no existing real-hardware test proved a
-config WRITE from one dev/i2c1 occupant landing concurrently with its SIBLINGS' own reads, only
-same-device write-vs-own-read (bus_concurrency_same_device_scd30.py,
-isl29125_same_device_rw_concurrency.py) and the SGP40 general-call case
-(sgp40_general_call_reset_hazard.py). ISL29125's own configure() is the writer here (volatile
-config register, FN8424 p7 - no real NVM-write-budget concern, so this runs fully unrestricted.
-Real hardware has no literal equivalent of the mock tier's `asyncio.sleep(0)`-count offset sweep (a
-yield count means nothing against a real preemptible interpreter and real bus timing), so this
-deliberately varies the real DELAY before each write instead - a short list of explicitly different
-intervals (_WRITE_DELAYS_MS), cycled across WRITE_CYCLES writes, so the sweep is a designed set of
-distinct relative timings against the siblings' own read loops, not merely hoping uncontrolled
-scheduling/serial jitter happens to cover a range on its own. SCD30 is NOT the writer in this
-script - see bus_concurrency_scd30_write_vs_siblings.py's own docstring for why that needs a
-separate, opt-in, budget-capped script instead of just picking a different `writers[0]`."""
+"""Isolated-driver device script: the real-hardware counterpart to the mock tier's
+scenario_a_write_does_not_disturb_concurrent_sibling_reads, with ISL29125's volatile configure()
+as the writer across _WRITE_DELAYS_MS. Why delays, not yields: SPECIFICATION.md Part C.8."""
 
 import asyncio
 import time

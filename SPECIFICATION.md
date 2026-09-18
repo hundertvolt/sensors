@@ -1334,6 +1334,13 @@ applicable. `_read_<sensor>()`: capture the timestamp first; on failure reset ev
 `None`, don't overwrite the cached reading; otherwise build the namedtuple (computing derived
 fields via `math_helpers`) and call `_set_meas_data(...)`.
 
+**A restart is not free.** Each one costs `system_service.py`'s `_TASK_FAIL_INCREMENT` (100)
+against a `_TASK_FAIL_MAX` of 300 that decays by only 1 per clean supervisor pass, so a process
+tolerates about **three** restarts from any source before it reboots itself. One bounded bus fault
+is one restart — which is why a test that needs several drivers to log a chip-healthy error gives
+each its own process instead of faulting them together (`scripts/_digital_twin_ci_suite.py`'s
+Run 5c; measured both ways).
+
 ### C.4.2 Data-access contract (same 3(+1) methods, every driver)
 
 ```python
@@ -2753,6 +2760,38 @@ background launch, because one `tests_scripts/` test necessarily writes a throwa
 `microtest.py` is a minimal collector/runner (find every `test_*` function, call it, report
 PASS/FAIL, exit non-zero on failure) — not CPython's `unittest`, unavailable on the Unix port's
 "standard" build. Plain `assert`.
+
+## E.2.1 Per-device scenario libraries: one process per device
+
+Three test tiers are parametrized across all 6 real devices, and each is split the same way: the
+scenario bodies live once in a shared `tests/_*_scenarios.py` library (leading underscore — not a
+test file), exported through a `register_for_device(<device>)` factory that six thin
+`tests/test_*_<device>.py` wrappers each call once.
+
+| shared library | per-device wrappers | tier |
+| --- | --- | --- |
+| `tests/_sensortask_scenarios.py` | `test_sensortask_<device>.py` | `build_system()` construction/wiring + real webserver wiring |
+| `tests/_digital_twin_construction_scenarios.py` | `test_digital_twin_construction_<device>.py` | digital-twin construction/wiring/REST, no wall-clock waits |
+| `tests/_webserver_concurrency_scenarios.py` | `test_digital_twin_webserver_concurrency_<device>.py` | real concurrent TCP against `WebserverService` |
+
+**Why the split exists is memory, not organization.** `scripts/test.sh` runs one Unix-port process
+per `tests/test_*.py` file, sharing one heap across every test function in it, so a single file
+holding all 6 devices' scenarios builds that many real `build_system()` object graphs in one heap.
+Confirmed directly (2026-09-17): before the split,
+`tests/test_digital_twin_sensortask_integration.py` made ~29 real socket-backed `build_system()`
+calls in one process (18 device-generic + ~11 wozi-only) and intermittently failed with a real
+`MemoryError` under `scripts/test.sh`'s parallel job pool at a reduced test heap, while passing
+reliably in isolation. The split cuts the worst case to that file's own ~11 — a fix at the root,
+not a per-file heap override or a `gc.collect()` prop (Part I.4(f)).
+
+It is **not** a reversion to the old per-device test-body duplication that Part L's Session 6.2
+collapsed: that collapse removed six hardcoded *copies* of every scenario. Every body still lives
+exactly once and stays device-generic; the wrappers carry one call each and no logic.
+
+`tests/test_digital_twin_sensortask_integration.py` keeps its heavier tests wozi-only rather than
+splitting them too: each drives seconds-to-tens-of-seconds of real wall clock through mandatory
+infrastructure plus SCD30/SGP40 only (never `bmp3xx`), so the mechanism each proves is already
+device-independent and a ×6 parametrization would buy nothing.
 
 ## E.3 Running
 

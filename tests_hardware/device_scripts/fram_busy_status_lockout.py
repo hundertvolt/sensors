@@ -1,7 +1,6 @@
-"""Isolated-driver device script: the real-hardware half of the SPI RX-overrun story (BACKLOG.md).
-An overrun itself is a DMA timing condition nothing in Python can induce, but its CONSEQUENCE is
-inducible - both blocks left _STATUS_BUSY must lock the chunk unreadable until rewritten, which on
-a destructive-readout part is intended behaviour, not a defect (SPECIFICATION.md Part A.4)."""
+"""Isolated-driver device script: the real-hardware half of the SPI RX-overrun story. The overrun
+is a DMA timing condition Python cannot induce; its consequence is - both blocks left _STATUS_BUSY
+lock the chunk unreadable until rewritten, intended on a destructive-readout part (Part A.4)."""
 
 import asyncio
 

@@ -55,16 +55,9 @@ def hotspot_ssid(board: Board, dut_ip: str) -> str:
 
 @pytest.fixture(scope="module")
 def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: str) -> Iterator[str]:
-    """Stages 0-2 (precondition, associate, DHCP) in setup; stages 7-8 (flip back, confirm
-    reachable again) in teardown - module-scoped since each join/leave costs a real ~15-30s WiFi
-    association. Yields the DUT's gateway IP for every stage-3+ test to talk to.
-
-    Its stage-0/stage-7 writes persist to flash and are deliberately UNMARKED (owner's rule,
-    2026-09-18: the gate covers the write a test OWNS, never one it is merely reached through), so
-    only the three tests below that PUT a persisting field themselves carry @persistence_write. An
-    earlier revision marked eleven more purely for depending on this fixture; that deselected them
-    by default while the fixture still ran for their unmarked siblings - coverage lost, no wear
-    saved. Do not re-add a marker here for reaching the hotspot; add one for spending a write."""
+    """Stages 0-2 in setup, stages 7-8 in teardown, module-scoped - each join/leave costs a real
+    ~15-30s association. Yields the DUT's gateway IP. Its own persisting writes stay UNMARKED per
+    CLAUDE.md's owns-vs-reached-through rule: mark a test that spends a write, never this fixture."""
     # Stage 0 - precondition: force hotspot mode on demand rather than waiting for organic failure.
     # Read the real SSID back first: this fixture is what destroys it, so this fixture is what owns
     # restoring it (see the stage-7 teardown). Relying on stage 6's own credential push to put it

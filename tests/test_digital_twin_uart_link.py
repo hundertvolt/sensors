@@ -1,9 +1,6 @@
-"""Twin-tier coverage for the UART crossover link (SPECIFICATION.md Part J.7): builds the real
-buildgen-generated sensortask_dev object graph against the digital twin's own buses, joins its two
-UART peripherals across the bench rig's jumper, and drives real transfers while the rest of the
-task graph runs. sensortask_dev.py itself is never hand-written or committed - scripts/test.sh
-pre-generates it into build/generated_src/ (first on MICROPYPATH) via buildgen before this file
-ever runs; `import sensortask_dev` below resolves to that generated module."""
+"""Twin-tier coverage for the UART crossover link (SPECIFICATION.md Part J.7): the real generated
+sensortask_dev object graph on the twin's buses, its two UART peripherals joined across the bench
+jumper, driving real transfers while the rest of the task graph runs."""
 
 import asyncio
 import sys

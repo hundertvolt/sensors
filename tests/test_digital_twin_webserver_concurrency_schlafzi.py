@@ -1,8 +1,5 @@
-"""Real-socket concurrent-connection regression coverage for WebserverService against schlafzi
-specifically - one of six per-device files generated from the shared
-tests/_webserver_concurrency_scenarios.py scenario library (see that module's own docstring for
-the full scenario set, the rationale for the per-device split, and every pointer to
-SPECIFICATION.md this used to carry directly)."""
+"""Real-socket concurrent-connection coverage for WebserverService on schlafzi - one of six
+wrappers over the shared tests/_webserver_concurrency_scenarios.py library (Part E.2.1)."""
 
 from _webserver_concurrency_scenarios import register_for_device
 

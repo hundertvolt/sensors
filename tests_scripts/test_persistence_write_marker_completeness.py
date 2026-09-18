@@ -70,13 +70,9 @@ def _leaf_keys(node: ast.expr) -> set[str]:
 
 
 def _non_literal_put_bodies(path: Path) -> list[str]:
-    """Function names whose PUT body is not a literal dict, so _leaf_keys() cannot read it.
-
-    The detector below is blind to those - a body built in a variable, or passed by keyword, simply
-    yields no keys and the function never appears as a writer. That blindness has to be enumerated
-    rather than left implicit, or a future `payload = {...}` refactor of a marked test would silently
-    unmark it. Today there is exactly one and it provably persists nothing; see the guard below.
-    """
+    """Function names whose PUT body is not a literal dict, so _leaf_keys() cannot read it and the
+    detector below never sees them as writers. Enumerated rather than left implicit, or a
+    `payload = {...}` refactor would silently unmark a marked test. Exactly one today."""
     tree = ast.parse(path.read_text())
     offenders = []
     for fn in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]:

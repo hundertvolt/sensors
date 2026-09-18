@@ -1,10 +1,6 @@
 """Isolated-driver device script: real-hardware regression test for the SGP40 general-call reset
-hazard (SPECIFICATION.md Part C.8) - runs concurrent SCD30 AND ISL29125 reads against repeated
-SGP40 initialize() cycles and checks for CRC/OSError corruption plus measurement still advancing.
-ISL29125 closes a real coverage gap: this file used to check only SCD30, even though dev's real
-i2c1 has BOTH as SGP40's siblings (mirroring tests/_bus_hazard_catalog.py's own generic
-scenario_general_call_does_not_disturb_concurrent_siblings, which runs against every non-broadcasting
-occupant of the bus, not just one)."""
+hazard (SPECIFICATION.md Part C.8) - concurrent SCD30 AND ISL29125 reads against repeated SGP40
+initialize() cycles, checking for CRC/OSError corruption and that measurements still advance."""
 
 import asyncio
 

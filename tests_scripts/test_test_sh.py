@@ -253,12 +253,9 @@ def _without_comments(shell_source: str) -> str:
 
 
 def _run_cleanup_probe(repo_root: Path, tmp_path: Path, *, arm_trap: bool) -> bool:
-    """Reproduces the launch-then-abort pattern; returns True if the inner child survived.
-
-    The inner sleeper's output goes to /dev/null and the probe's own output is discarded rather than
-    piped: a captured pipe is inherited by the background job, so the parent's exit would not be
-    observable here until that job finally ended - which is precisely the survival being measured.
-    """
+    """Reproduces the launch-then-abort pattern; returns True if the inner child survived. Output
+    is discarded, not piped: a captured pipe is inherited by the background job, so the parent's
+    exit would not be observable until that job ended - which is the survival being measured."""
     pidfile = tmp_path / "inner.pid"
     # A second copy, outside the set the trap removes: _cleanup() deletes its own pidfile, so the
     # armed arm would otherwise leave the probe with no pid left to ask about.

@@ -1,7 +1,6 @@
-"""Isolated-driver device script: SystemService.start_and_check_tasks() actually restarts a real
-dead task on real hardware, not just mock/twin bookkeeping - the restart mechanism CLAUDE.md's own
-memory-safety-discipline rule leans on ("trust system_service.py's task supervisor to restart a
-task that still dies")."""
+"""Isolated-driver device script: SystemService.start_and_check_tasks() really restarts a dead task
+on real hardware, not just in mock/twin bookkeeping - the mechanism CLAUDE.md's memory-safety
+discipline leans on when it says to trust the supervisor to restart a task that still dies."""
 
 import asyncio
 
