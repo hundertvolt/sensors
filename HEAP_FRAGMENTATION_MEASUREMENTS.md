@@ -82,7 +82,7 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | C9 | Cutting the 74 chip-select sessions to ~6 will clear the contiguity floor | **withdrawn as stated; the achievable side reopened by §3B** | ~12x against a required 40-100x; 70,000 B per logger measures in_big 14 / span 97%, inside the saturated regime (§6A.8). §3B now reaches 38-90x *without* cutting a session; the required side was computed in settrace bytes and is not re-derived (§3A.6), so whether that clears the floor is untested |
 | C12 | The status-byte pair, the two copies and the per-write WREN/WRDI envelope are redundant bookkeeping | **withdrawn — owner's account, 2026-09-18** | each element is grounded (§3B.1): the status bytes are a lock against a copy caught mid-operation, the pair written separately so a torn pair is detectable; the copies restore the last valid value; the CRC catches bus errors; each CS cycle is what commits a command at the chip. The wire protocol is the integrity feature; the cost is the Python that carries it |
 | C10 | Loop yields are protective for layout | **withdrawn — a settrace artifact** | it held, confound-checked, on the settrace build (§6A.4), where each yield allocated a 28-block object that competed for no survivor's hole and forced early collections. On the real VM a yield allocates 0 B (§1.2 item 7), so it can be neither protective nor harmful to layout |
-| C13 | Every figure in this file is the `gc.threshold(-1)` picture, and the firmware ships `gc.threshold(32768)`, where the twin shows no layout defect at any churn dose | **confirmed [SRC] + [TWIN], and it puts the [HW] symptom in question** | the threshold is set in the generated boot entry, which the harnesses never execute (§1.5); at 32,768 B `base` keeps 87% against 18%, survivors span 12% of the heap against 92%, and every churn dose from zero to base's own clears the floor (§7A.5). The cited [HW] 18% was measured on a board whose own entry sets it - unresolved, and it needs one `mem_info()` on hardware (§1.5, §0B.7) |
+| C13 | Every figure in this file is the `gc.threshold(-1)` picture, and the firmware ships `gc.threshold(32768)`, where the twin shows no layout defect at any churn dose | **confirmed [SRC] + [TWIN]; the qualitative half was the handover's, and the [HW] question it raised is resolved** | the threshold is set in the generated boot entry, which neither the harnesses nor the hardware test's own device script execute (§1.5); at 32,768 B `base` keeps 87% against 18%, survivors span 12% of the heap against 92%, and every churn dose from zero to base's own clears the floor (§7A.5). The handover's §2.12 already recorded that a threshold set before `build_system()` makes the twin look healthy and called it masking; what is new is the quantification and the [SRC] trace. The [HW] 20,592 B is a deliberate pre-threshold reading, so board and twin agree and the corpus's baseline is the one the hardware test asserts on (§1.5) |
 | C11 | Pre-allocating each module's permanent objects at construction is the remedy the evidence favours | **refuted** | the mechanism is real — the same objects placed pre-seam give in_big 0 and 100% kept where in-window they give 380 and 12% — but it holds only below the churn threshold. At the real 843,232 B dose pre-seam objects are unprotected (kept ~50%), and the real system's 76 survivors are already an order of magnitude below the survivor axis's own onset, so that axis is not the binding constraint (§6A.12) |
 
 ## 0A. The model
@@ -513,11 +513,13 @@ is why a 2-block change of one object's size moves the result and why nothing co
   startup phase has *none*, so §6A.10's added-parallelism arm describes a regime the boot batch
   never enters. What is still untested is whether parallelism matters *after* boot, once the task
   graph is live (§12).
-- **Which configuration the [HW] symptom belongs to** (§1.5, C13) — the firmware's own boot entry
-  sets `gc.threshold(32768)`, where the twin shows the defect essentially absent at every churn
-  dose, yet the cited [HW] figure is 18% kept, the twin's `threshold(-1)` shape. One
-  `micropython.mem_info(1)` on the board right after `build_system()` under the shipped entry
-  settles it, and it decides whether any remedy in this file is needed on a real unit.
+- ~~Which configuration the [HW] symptom belongs to~~ — **answered from [SRC] the same day**
+  (§1.5): the hardware test's device script runs `build_system()` itself, asserts before any
+  threshold is set, and only then reports a second, unasserted line with
+  `gc.threshold(32768)` applied. The board's 20,592 B is a deliberate no-threshold reading, the twin
+  reproduces it, and the corpus's baseline is the one the hardware test asserts on. What remains
+  untested on hardware is whether the *boot-collect scheme* moves the board the way it moves the
+  twin, which needs a go-ahead and a device-script run, not a new question.
 - **Gap 10, hardware** — unchanged, and no go-ahead. A GC block is 16 B there against 32 B here, so
   the "1-block objects are immune" boundary in §0B.2 falls at a different byte size on the board and
   the eligible population may be a different fraction of the whole.
@@ -726,14 +728,27 @@ is §0A.1's: every collection resets the allocator's free-scan index to zero, so
 takes the lowest fitting hole instead of one above the churn's high-water mark, and at 32,768 B the
 batch's own churn triggers one every few hundred allocations.
 
-**The discrepancy this opens, and it is not resolved here.** The [HW] symptom (§2.1) is largest
-115,536 -> 20,592 B, i.e. **18% kept** - which is what the twin produces with the threshold **off**,
-not on. Candidates, none testable without hardware: the [HW] figure was taken through a path that
-never runs the generated `main.py` (an `mpremote`-pushed device script, or the legacy firmware,
-neither of which sets a threshold); or the board's 16 B blocks change the outcome; or it was read at
-a later moment than the seam. One `micropython.mem_info(1)` on the board immediately after
-`build_system()`, under the shipped entry, settles it. Until then **"the shipped configuration is
-already clean" is a twin result only**, and the corpus's own baseline stands.
+**The discrepancy this opens.** The [HW] symptom (§2.1) is largest 115,536 -> 20,592 B, i.e.
+**18% kept** - which is what the twin produces with the threshold **off**, not on.
+
+**Resolved from [SRC], 2026-09-18, and the answer is the first candidate.** The [HW] figures come
+from `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py`, an isolated-driver
+script that runs `build_system()` itself and never executes the generated `main.py`. It measures and
+asserts **before** any threshold is set, deliberately: "a headroom figure that only holds with a
+proactive threshold isn't headroom (CLAUDE.md's memory-safety ladder)". It then sets
+`gc.threshold(32768)` and reports a second time, for information only - that second line is what a
+production-configured board would show, and no floor is asserted against it. So the board's 20,592 B
+is the `threshold(-1)` reading by design, which is exactly what the twin reproduces, and there is no
+contradiction between the two. **The corpus's baseline is the same one the hardware test asserts
+on**, which is the stronger statement than the one this section originally made.
+
+The handover said the qualitative half of this first, and it belongs to it: its §2.12's "setting the
+threshold *before* `build_system()` makes the twin heap look healthy - that is the threshold masking
+a design defect, which is exactly the condition I.4(e) exists to detect". The device script embodies
+the same rule in code. What is added here is the
+quantification (the per-dose sweep in §7A.5, the fill sweep above), the [SRC] trace of where the
+threshold is set and which path skips it, and the fact that the *board* figure is a no-threshold
+figure rather than a production one.
 
 ---
 
@@ -2093,13 +2108,33 @@ The owner's criterion (2026-09-18): a `gc.threshold()` is a means of moving an a
 further from the edge and never the mechanism to rely on, so the system must work without one, and
 the question is whether the boot-confined collects get it there. §7A.2's `kept%` cannot answer that
 - it is a retention ratio against the seam, not the board's own quantity. The board's is **largest
-contiguous over free**, and the floor is an absolute 80,000 B of contiguous free.
+contiguous over free**, and the floor is an absolute 80,000 B - a regression tripwire, not a
+consumer's demand, as the paragraph below establishes.
+
+**What the 80,000 B floor actually is, checked at source (2026-09-18).** It is not a demand from any
+allocation the firmware makes. `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py`
+sets `_MIN_FREE = 100_000` and `_MIN_LARGEST_BLOCK = 80_000` with the comment "Floors, not expected
+values. Measured on the real dev board at MicroPython 1.29.0 (2026-09-11): free=130720,
+largest_block=116032 after a full `build_system()`. These sit ~23%/~31% below that, so an ordinary
+allocation-pattern change won't trip them but a real regression will." The 80,000 is therefore a
+**regression tripwire at 69% of a healthy board measurement**, and the probe's shape is justified as
+"the same shape a real `json.dumps()`/read buffer needs", not as an 80 KB consumer. Nothing in `src/`
+allocates anywhere near it: the largest named buffer is `_DNS_RECV_BUF = 512`, the UART frames are
+53 B, and `asy_webserver_service.py` streams a growing dict precisely so no single large
+`json.dumps()` ever happens. The handover's §2.12 gloss - "encodes a real product property (an 80 KB
+contiguous allocation must remain obtainable after boot)" - is an interpretation of that tripwire,
+not something traced to a consumer, and this file had repeated it as a requirement. **What the floor
+is good for is unchanged**: it is the one assertion that catches a layout regression on real
+silicon, the healthy board it was calibrated against sat at largest/free = 88.8%, and today's board
+sits at 18.9%. Read the rows below as distance to that tripwire, not as a prediction that a specific
+allocation fails.
 
 **Two calibrations had to be fixed first.**
 
 - *The floor as a ratio is a range, not 55%.* §7.1's "55%" is 80,000 against ~146,000 B free. §2.1's
   own [HW] measurement has free at **108,736 B** after the batch, where the same 80,000 B is
-  **74%**. Both are cited below; nothing here clears the conservative form.
+  **74%** - which is the handover's own scaling rule (its §2.7: "the floor demands largest >= 73.6%
+  of free"). Both are cited below; nothing here clears the conservative form.
 - *The probe carries ~52,700 B of its own retained objects* (its imports, the wiring-plan dict, the
   probe arrays, and the twin `Timer`/`WDT` fakes `fill.py` neutralises and it does not), constant
   across arms and allocated before the seam. §1.4's "44% full at ~455k" is `fill.py`'s **bare**
