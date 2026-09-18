@@ -203,14 +203,27 @@ keep wear as low as it can go" — never "spend zero". Recorded in `CLAUDE.md`, 
 README.md` and the completeness guard itself, whose `joined_hotspot` entry had justified the
 exemption on a different and untrue ground ("every dependent is marked").
 
-**Still open, not fixed:** `resolve_board_device()` is a second device-discovery implementation
-alongside `toolchain/setup_toolchain.py`'s vendor-ID one (`detect_pico_serial_devices()` /
-`resolve_pico_device()`), and the looser of the two — it takes `sorted(...)[0]` silently where the
-existing one makes an ambiguous pick a hard error, and its bare `ttyACM*` fallback could select the
-Arduino UART peer rather than the Pico. It also hardcodes `/dev` and `/sys`, so unlike its sibling
-(which takes overridable dirs explicitly "for tests") it cannot be unit-tested, and neither new
-function has host-side coverage. Consolidating the two is a real change to how the board is found
-and wants a bench run behind it.
+**Closed by `9cfb3b3`** (bench session): `resolve_board_device()` no longer carries a second,
+looser copy of device discovery — it imports `detect_pico_serial_devices()` from
+`toolchain/setup_toolchain.py`, so the two cannot drift, and takes the same injectable directories.
+Identification is by USB vendor ID, two boards attached is a hard error naming both, and no board
+returns a path that cannot exist so the `board` fixture still skips rather than opening a stranger's
+port. Named by the by-id symlink as before, now matched by target rather than by the hardcoded
+product string. Seven host-side tests over fabricated `/sys`, `/dev` and by-id trees
+(`tests_scripts/test_resolve_board_device.py`) cover the multi-device cases the one-board bench
+cannot; on the bench itself the new implementation returns the previous answer byte for byte.
+
+**One correction to this section's own framing, from that work:** the claim above that the bare
+`ttyACM*` fallback "could select the Arduino UART peer rather than the Pico" was too strong. With
+both devices present the old code already picked correctly — the by-id glob is Pico-specific and
+runs first — so it could only pick a foreign device when **no board was attached at all**, opening
+that peer's port to find out. Real, but never "drives the wrong board".
+
+**Still open, deliberately not taken:** `scripts/mpremote_connect.sh:8`'s
+`device="${MPREMOTE_DEVICE:-/dev/ttyACM0}"` is the last hardcoded node, and now the only entry point
+an erratic re-enumeration can strand. A `scripts/` change owes CLAUDE.md's two-chroot pre-push gate,
+which is the project owner's call rather than a drive-by edit; `tests_hardware/README.md` names it
+as a known exposure in the meantime.
 
 ---
 

@@ -61,8 +61,10 @@ def _usb_reset_device(device: str) -> bool:
 
 
 class HardwareNotAvailableError(RuntimeError):
-    """Raised when a real board/bench isn't reachable. conftest.py's fixtures turn this into a
-    skip, not a failure, so this tier stays collectible with nothing attached."""
+    """Raised when a real board/bench isn't reachable - conftest.py's fixtures turn that into a skip,
+    so this tier stays collectible with nothing attached. resolve_board_device()'s ambiguous-hardware
+    raise is the deliberate exception: `board` builds a Board before probing, so two attached boards
+    surface as an error naming both, never as a silently skipped run."""
 
 
 class HardwareTestFailureError(AssertionError):
