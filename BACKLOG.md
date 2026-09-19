@@ -576,15 +576,30 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     if it recurs: raise `timeout-minutes` for that job, or split the live-backend PUT matrix into
     its own job the way coverage already is.
 
-    **It recurred on 2026-09-18, one job over**: run `35399058626` (head `10ec130`) cancelled
-    **`web-coverage`** at 20m15s, with `web-unit-tests` itself green — but at **13m11s**, against
-    the 9m23s an identical web tree took before. So the runner was slow, `web-unit-tests` survived
-    on its remaining margin, and the instrumented rerun behind it did not. Not caused by that head:
-    its only `js/`/`html/` change was a comment. This makes the splitting fix a partial one — it
-    moved the ceiling rather than removing it — and it shows the budget is short for the *slow*
-    runner, not just for one job. `web-coverage` is non-gating by construction (its test step is
-    `continue-on-error`, nothing `needs:` it), so no signal was lost; the whole-run conclusion still
-    reads `cancelled`, which is the part worth knowing when reading run history.
+    **It recurred twice on 2026-09-18, and the second one found the actual cause.** Run
+    `35399058626` (head `10ec130`) cancelled **`web-coverage`** at 20m15s with `web-unit-tests`
+    green but at 13m11s, against 9m23s for an identical web tree. Run `35403737100` (head
+    `fa2a908`, a **markdown-only** commit) then cancelled **`web-unit-tests`** itself at 20m17s,
+    which skipped `web-coverage` and `web-cross-browser-smoke` — the three-signals-for-one loss
+    this item already predicted, now observed.
+
+    **Root cause: `web-changes` does not filter what this item assumed it filters.** Its own
+    comment says it gates the web tier on "whether this push/PR actually touches the website's own
+    source", but `dorny/paths-filter` given no explicit `base` compares a push to a non-default
+    branch against the **default branch**, not against the pushed commit range. Its log says so
+    outright: `Changes will be detected between main and claude/automated-build-chain-nuzumw`,
+    `Detected 281 changed files`, `Filter web = true` — matching on `html/style.css`, `js/*`,
+    `tests_js/*` and `scripts/*` this branch touched weeks ago, on a commit that changed one `.md`
+    file. So the full ~13-20 minute web tier runs on **every push to this branch**, and the
+    20-minute ceiling is rolled every time. Four instances is the arithmetic, not bad luck — and it
+    is why splitting `web-coverage` out helped so little.
+
+    Not fixed here, because the choice is a real one and it is the owner's: comparing against
+    `main` is arguably *correct* for a PR's status checks (you want the web suite to have run
+    against the branch's final state before merge), and its cost is exactly this. If the intent is
+    the comment's — only run when this push touched web files — the fix is one line, an explicit
+    `base: ${{ github.event.before }}` for push events. Either way the comment and the behaviour
+    should be made to agree.
 
 37. **Five cross-file consistency findings carried over from `main`, each re-verified on this branch
     (2026-09-18) and each still needing an owner yes/no.** They were raised on `main` by the
