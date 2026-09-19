@@ -72,10 +72,9 @@ def make_fram_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85
 
 
 async def _pump(flag: "asyncio.ThreadSafeFlag", ticks: int, settle: int = 5) -> None:
-    # Drives a ThreadSafeFlag-gated loop (status_counter) forward `ticks` times without relying on
-    # real elapsed time - `settle` extra sleep(0) yields per tick let every await point in one loop
-    # iteration resolve before the flag is set again (verified directly against the built
-    # interpreter: a single sleep(0) isn't always enough to drain a multi-await iteration).
+    # Drives a ThreadSafeFlag-gated loop forward `ticks` times without relying on real elapsed time -
+    # `settle` extra sleep(0) yields per tick let every await point in one loop iteration resolve before the
+    # flag is set again, a single sleep(0) not always being enough to drain a multi-await iteration.
     for _ in range(ticks):
         flag.set()
         for _ in range(settle):
@@ -83,11 +82,9 @@ async def _pump(flag: "asyncio.ThreadSafeFlag", ticks: int, settle: int = 5) -> 
 
 
 class _FastAsyncSleep:
-    # start_and_check_tasks() staggers task startup by 1.0/len(task_starters) real seconds and
-    # checks tasks every real _TASK_CHECK_TIME=2s - both far too slow for a test that just wants
-    # to drive a handful of supervisor cycles. asyncio.sleep is a shared, process-wide function
-    # (unlike the per-module `time` swap above, there's exactly one to patch); restored on
-    # __exit__ regardless of how the `with` block exits.
+    # start_and_check_tasks() staggers task startup by 1.0/len(task_starters) real seconds and checks tasks
+    # every real _TASK_CHECK_TIME=2s, both far too slow for a test driving a handful of supervisor cycles.
+    # asyncio.sleep is process-wide - one function to patch - and is restored however the block exits.
     def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
 
@@ -102,16 +99,12 @@ class _FastAsyncSleep:
 
 
 class _RaiseOnArm:
-    # Toggles tests/machine.py's Timer.raise_on_arm (a shared class attribute, not per-instance) for
-    # the duration of the `with` block - simulates real rp2 alarm-pool exhaustion (OSError(ENOMEM)
-    # from Timer.init()/a full Timer(period=..., ...) construction), restoring it on exit regardless
-    # of how the block exits.
+    # Toggles tests/machine.py's shared Timer.raise_on_arm for the `with` block, simulating real rp2 alarm-
+    # pool exhaustion from Timer.init() or a full Timer(...) construction, and restoring it on exit.
     #
-    # `exc` picks which arm of every call site's own `except (OSError, MemoryError)` gets exercised:
-    # the default OSError(ENOMEM) alarm-pool exhaustion, or the MemoryError a failed allocation
-    # raises instead. MemoryError is not an OSError subclass (see CLAUDE.md/SPECIFICATION.md Part F),
-    # so neither arm covers the other - each guard is proven against both. Timer.raise_on_arm_exc is
-    # a shared class attribute too, reset back to its OSError default on exit alongside raise_on_arm.
+    # `exc` picks which arm of each call site's `except (OSError, MemoryError)` runs: the default
+    # OSError(ENOMEM), or the MemoryError a failed allocation raises. MemoryError is not an OSError subclass
+    # (Part F), so neither arm covers the other and each guard is proven against both.
     def __init__(self, exc: "type[BaseException]" = OSError) -> None:
         self._exc = exc
 
@@ -196,10 +189,9 @@ def test_feed_watchdog_is_a_silent_no_op_without_a_watchdog() -> None:
 
 
 def test_feed_watchdog_stops_once_force_watchdog_starve_latches() -> None:
-    # _force_watchdog_starve is _reboot()'s own one-way "let the hardware watchdog do it instead"
-    # signal (alarm-pool exhaustion when arming the reset timer) - feed_watchdog() must honor it
-    # even with a real watchdog present, exactly like start_and_check_tasks()'s own loop already did
-    # before this method existed to share the check.
+    # _force_watchdog_starve is _reboot()'s one-way "let the hardware watchdog do it instead" signal, set on
+    # alarm-pool exhaustion when arming the reset timer - feed_watchdog() must honor it even with a real
+    # watchdog present, exactly as start_and_check_tasks()'s loop already did before this method existed.
     wdt = machine.WDT()
     svc = make_service(watchdog=wdt)
     svc._force_watchdog_starve = True
@@ -281,10 +273,9 @@ def test_ntp_boot_signature_callback_exception_returns_none_and_logs_once() -> N
 
 
 class _OverflowingTime:
-    # MicroPython's real `time` module is a read-only builtin (confirmed directly: assigning
-    # time.mktime = ... raises AttributeError) - can't monkeypatch an attribute onto it, so this
-    # replaces system_service's own module-level `time` name instead (a plain, mutable module
-    # global, unlike the builtin module it points to).
+    # MicroPython's real `time` module is a read-only builtin (assigning time.mktime raises AttributeError),
+    # so this replaces system_service's own module-level `time` name instead - a plain, mutable module
+    # global, unlike the builtin module it points to.
     def gmtime(self) -> "tuple[int, ...]":
         import time as _real_time
 
@@ -484,10 +475,9 @@ def test_status_counter_boot_signature_never_changes_again_once_resolved() -> No
 
 
 def test_start_timers_empty_list_sets_timers_running_without_crashing() -> None:
-    # Explicit short-circuit, not an incidental IndexError-in-_timer_sequencer caught by its own
-    # generic `except Exception` (that would still "work" but log a misleading "Timer starter 0
-    # failed" - confirmed empirically before this guard was added) - assert _timer_sequencer is
-    # never even called for an empty list, not just that nothing crashes.
+    # An explicit short-circuit, not an incidental IndexError in _timer_sequencer caught by its generic
+    # except (which would still "work" but log a misleading "Timer starter 0 failed") - asserts
+    # _timer_sequencer is never even called for an empty list, not just that nothing crashes.
     svc = make_service()
     Timer.all_timers.clear()
     called = []
@@ -532,13 +522,12 @@ def test_start_timers_sequences_all_starters_in_order_and_sets_timers_running() 
 
 
 def test_timer_sequencer_reuses_the_same_preallocated_timer_object_across_every_step() -> None:
-    # Regression test for a real GC-drop bug: _timer_sequencer() used to construct a fresh, unstored
-    # Timer(...) for every chain step - unreferenced by anything on the Python side, so it was
-    # GC-eligible before its own ONE_SHOT callback ever fired on real hardware (confirmed by
-    # reproduction: start_timers() hung forever - see CLAUDE.md/SPECIFICATION.md Part F.1's
-    # documented soft-Timer-callback-drop gotcha). Fixed by reusing self.sequencer_timer, preallocated
-    # in __init__ exactly like uptime_timer/reset_timer/storage_timer - proven here by object
-    # identity staying constant across every chain step.
+    # Regression test for a real GC-drop bug: _timer_sequencer() built a fresh, unstored Timer per chain
+    # step, unreferenced on the Python side and so GC-eligible before its ONE_SHOT callback fired -
+    # reproduced as start_timers() hanging forever (Part F.1's soft-Timer-callback-drop gotcha).
+    #
+    # Fixed by reusing self.sequencer_timer, preallocated in __init__ like the other timers - proven here by
+    # object identity staying constant across every chain step.
     svc = make_service()
     Timer.all_timers.clear()
     starters = [lambda: None, lambda: None, lambda: None]
@@ -781,10 +770,9 @@ def test_pause_permanent_storage_valid_duration_pauses_then_auto_unpauses_when_t
 
 
 def test_pause_permanent_storage_second_call_rearms_over_the_first_pending_unpause_timer() -> None:
-    # Cross-dependency/re-entrancy: a second call before the first auto-unpause timer ever fires
-    # must fully replace it (deinit() the old one before init()-ing the new duration/callback), not
-    # stack two competing auto-unpause callbacks. Triggering afterward must reflect only the second
-    # call's state, never a leftover from the first.
+    # Cross-dependency/re-entrancy: a second call before the first auto-unpause timer fires must fully
+    # replace it, deinit()-ing the old one before init()-ing the new duration and callback, not stack two
+    # competing callbacks. Triggering afterward must reflect only the second call's state.
     manager, _chip = make_fram_manager()
     svc = make_service(fram=manager)
     svc.pause_permanent_storage(60)
@@ -856,10 +844,9 @@ def test_get_timer_starters_starter_arms_the_uptime_timer() -> None:
 
 
 def test_start_uptime_timer_logs_and_continues_when_it_cannot_be_armed() -> None:
-    # Real rp2 Timer.init() can raise OSError(ENOMEM) under alarm-pool exhaustion (confirmed
-    # against ports/rp2/machine_timer.c) - owner-confirmed design: unlike reboot_system()'s own
-    # reset_timer guard, this degrades gracefully instead of forcing a reboot, since sensors, the
-    # REST API and every other timer/task keep working fine without uptime/boot-signature.
+    # Real rp2 Timer.init() can raise OSError(ENOMEM) under alarm-pool exhaustion (confirmed against
+    # ports/rp2/machine_timer.c) - owner-confirmed design: unlike reboot_system()'s reset_timer guard, this
+    # degrades gracefully rather than forcing a reboot, everything else working fine without uptime.
     svc = make_service()
     with _RaiseOnArm():
         svc.start_uptime_timer()  # must not raise despite the timer failing to arm
@@ -993,10 +980,9 @@ def test_start_and_check_tasks_feeds_the_watchdog_while_tasks_stay_alive() -> No
 
 
 def test_start_and_check_tasks_stops_feeding_the_watchdog_once_force_watchdog_starve_is_set() -> None:
-    # _force_watchdog_starve is set by reboot_system()/reboot_bootloader() when they can't arm
-    # their own reset timer (alarm-pool exhaustion) - the supervisor loop must then stop feeding
-    # the watchdog even while task_errors is well under _TASK_FAIL_MAX, so the hardware watchdog
-    # becomes the actual reset mechanism instead.
+    # _force_watchdog_starve is set by reboot_system()/reboot_bootloader() when they cannot arm their own
+    # reset timer - the supervisor loop must then stop feeding the watchdog even while task_errors is well
+    # under _TASK_FAIL_MAX, so the hardware watchdog becomes the actual reset mechanism.
     wdt = machine.WDT()
     svc = make_service(watchdog=wdt)
     svc._force_watchdog_starve = True
@@ -1074,10 +1060,9 @@ def test_start_and_check_tasks_restarts_a_dead_task_and_logs_a_warning() -> None
 
 
 def test_start_and_check_tasks_logs_the_real_exception_of_a_crashed_task() -> None:
-    # Regression test: MicroPython's asyncio Task has no .exception()/.result() (extmod/asyncio/
-    # task.py) - before _log_dead_task() existed, a crashed task's own exception was silently
-    # discarded, and every restart logged the same content-free "Task ended - attempting restart"
-    # warning regardless of whether the task returned cleanly, was cancelled, or hit a real bug.
+    # Regression test: MicroPython's asyncio Task has no .exception()/.result(), so before _log_dead_task()
+    # existed a crashed task's exception was silently discarded, and every restart logged the same content-
+    # free warning whether the task returned cleanly, was cancelled, or hit a real bug.
     svc = make_service()
     call_count = [0]
 
@@ -1110,12 +1095,12 @@ def test_start_and_check_tasks_logs_the_real_exception_of_a_crashed_task() -> No
 
 
 def test_start_and_check_tasks_logs_a_self_cancelled_task_as_a_persisted_error() -> None:
-    # Regression test for the real "wrnno=10" bench-hardware bug (see CLAUDE.md/SPECIFICATION.md):
-    # _log_dead_task()'s CancelledError branch used to log via the non-persisting self.pr.err(),
-    # so a task ending via CancelledError left zero trace in errcount - indistinguishable from a
-    # clean return, and the actual explanation for a real restart that had already ruled out both
-    # the clean-return path (auto_led_override()'s only one, the _finalized guard) and a real
-    # exception (errno=5 never fired). Fixed to persist via its own errno=6.
+    # Regression test for the real "wrnno=10" bench-hardware bug: _log_dead_task()'s CancelledError branch
+    # used to log via the non-persisting self.pr.err(), so a task ending that way left zero trace in
+    # errcount, indistinguishable from a clean return.
+    #
+    # That was the actual explanation for a real restart which had already ruled out both the clean-return
+    # path and a real exception. Fixed to persist via its own errno=6.
     svc = make_service()
     call_count = [0]
 
@@ -1199,11 +1184,9 @@ def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() ->
 
 
 # ---------------------------------------------------------------------------
-# System-settings store (config_SYSTEM.cfg) - general, module-independent persisted settings,
-# DebugLevel first (see system_service.py's own module docstring for the intended future growth:
-# timing/timezone, rsyslog, ...). Own isolated cfg_path per test, same reasoning as
-# test_ntp_fram_system_integration.py's own _tmp_cfg_dir(): setup()/set_debug_level() are real
-# file I/O and must never touch the repo's own working directory.
+# System-settings store (config_SYSTEM.cfg) - general, module-independent persisted settings, DebugLevel
+# first (see system_service.py's docstring for the intended growth). Own isolated cfg_path per test, same
+# reasoning as the NTP/FRAM integration suite: setup()/set_debug_level() are real file I/O.
 # ---------------------------------------------------------------------------
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
