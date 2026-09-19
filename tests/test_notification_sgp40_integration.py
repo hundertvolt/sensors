@@ -1,12 +1,12 @@
 """Cross-module integration: a real SGP40_Reader feeding a real NotificationCoordinator, driving a real NeopixelDriver - fills the WarnVOC gap test_notification_scd30_integration.py leaves (it only exercises WarnCO2).
 Only tests/neopixel.py's fake write surface and tests/machine.py's fake I2C bus are mocked; every layer above the raw I2C transaction runs for real."""
-# VOC index calibration note (verified directly against voc_algorithm.py): a single raw reading
-# never moves the index - _VOCALGORITHM_INITIAL_BLACKOUT (45 sampling intervals) must elapse first,
-# and the index then settles toward 100 (the algorithm's "clean air" baseline) under any *constant*
-# raw signal - a deviation-from-learned-baseline index, not an absolute-concentration one. A real
-# threshold crossing needs two phases: settle near 100, then step away from that raw value. Also
-# confirmed: a higher raw tick count moves the index *down* (raw increase = cleaner air on this
-# sensor's convention), so the spike-inducing step is a drop in raw, not a rise.
+# VOC index calibration note, verified directly against voc_algorithm.py: a single raw reading never moves
+# the index - the 45-interval initial blackout must elapse first - and the index then settles toward 100,
+# the "clean air" baseline, under any constant raw signal. It measures deviation, not concentration.
+#
+# So a real threshold crossing needs two phases: settle near 100, then step away from that raw value. Also
+# confirmed: a higher raw tick count moves the index down, raw increase meaning cleaner air on this sensor's
+# convention, so the spike-inducing step is a drop in raw, not a rise.
 
 import asyncio
 from collections import namedtuple
@@ -40,10 +40,9 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 class _FastAsyncSleep:
-    # Same technique as test_asy_sgp40_driver.py's own _FastAsyncSleep: measure_index_and_raw()'s
-    # real command-delay sleeps (tens of ms each) would otherwise make the ~180-cycle baseline-settle
-    # + threshold-spike sequence below take upward of 15s per test. asyncio.sleep is a shared,
-    # process-wide function, restored on exit regardless of how the `with` block exits.
+    # Same technique as test_asy_sgp40_driver.py's _FastAsyncSleep: measure_index_and_raw()'s real command-
+    # delay sleeps, tens of ms each, would make the ~180-cycle settle-then-spike sequence below take upward
+    # of 15s per test. asyncio.sleep is process-wide, restored however the block exits.
     def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
 
@@ -159,10 +158,9 @@ def _settle_and_spike(reader: SGP40_Reader, fake_bus: "_MachineI2C") -> "SGP40":
     for _ in range(160):
         data = _drive_one_cycle(reader, fake_bus, 30000)
     assert data.VOC == 100  # confirms the baseline genuinely settled before phase 2 starts
-    # Phase 2: step to a much lower raw value - a real, sudden air-quality change from the sensor's
-    # own already-learned "clean" baseline - until the index actually crosses WarnVOC's default
-    # threshold (350). Loop-until-crossed rather than a hardcoded count: robust to the exact
-    # convergence curve, which is fixed-point-arithmetic-derived and not worth pinning exactly.
+    # Phase 2: step to a much lower raw value - a sudden air-quality change from the already-learned "clean"
+    # baseline - until the index crosses WarnVOC's default threshold of 350. Loop-until-crossed rather than
+    # a hardcoded count, being robust to a fixed-point convergence curve not worth pinning exactly.
     for _ in range(40):
         data = _drive_one_cycle(reader, fake_bus, 5000)
         if isinstance(data.VOC, int) and data.VOC > 350:
@@ -201,11 +199,9 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_sgp40s_ow
     fake_bus.read_queue.append(_word(30000))
 
     async def scenario() -> "tuple[dict[str, Any], dict[str, Any]]":
-        # Awaited directly, not through _drive_one_cycle()'s sync run() wrapper - this scenario()
-        # is itself already running under this file's own top-level run()/asyncio.run(), and a
-        # nested asyncio.run() call segfaults the interpreter (see test_notification_scd30_
-        # integration.py's own comment on this exact gotcha - found the hard way while writing
-        # this test, not copied defensively).
+        # Awaited directly, not through _drive_one_cycle()'s sync run() wrapper: this scenario() already
+        # runs under the file's top-level asyncio.run(), and a nested one segfaults the interpreter - found
+        # the hard way while writing this test, not copied defensively.
         data, compensated, _serialized = await sgp_reader._read_sgp(None, serialize=False, deserialize=False)  # the fault happens inside here
         await sgp_reader._error_check(data, condition=compensated)
         await sgp_reader._store_sgp(data)
@@ -225,10 +221,9 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_sgp40s_ow
     assert isinstance(err_count, int)
     assert err_count >= 1
     assert notify_log["NOTIFY"]["ErrCount"] == 0
-    # neopixel_signal()'s own startup sets a defined (0,0,0) off state once, unconditionally -
-    # nothing beyond that single boot-time write, since no signal was ever triggered (data.VOC is
-    # None on a faulted cycle, so _check_one()'s getattr(data, "VOC") reads None - never counted as
-    # "above threshold").
+    # neopixel_signal()'s startup sets a defined (0,0,0) off state once, unconditionally, and nothing beyond
+    # that single boot-time write, no signal ever having been triggered: data.VOC is None on a faulted
+    # cycle, so _check_one()'s getattr reads None, never counted as above threshold.
     assert [w[0] for w in pixel.pixel.writes] == [(0, 0, 0)]
 
 

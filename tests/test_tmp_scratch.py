@@ -78,10 +78,9 @@ def test_teardown_removes_the_whole_subtree_including_nested_files() -> None:
 
 
 def test_constructing_a_new_scratch_wipes_a_stale_directory_left_by_an_earlier_process() -> None:
-    # Simulates a previous run of this same file (its own _next_dir would have restarted at 0 and
-    # reused the same directory name) leaving a real, persisted config file behind - the actual
-    # mechanism that used to make a "Valid" write silently read back as "Unchanged". A fresh
-    # TmpScratch() for the same key must never let that leftover survive to be observed.
+    # Simulates a previous run of this same file, whose _next_dir would have restarted at 0 and reused the
+    # same directory name, leaving a real persisted config file behind - the actual mechanism that used to
+    # make a "Valid" write silently read back as "Unchanged". A fresh TmpScratch() must not let it survive.
     stale = _ROOT + "/scratchtest_stale/1"
     try:
         os.mkdir(_ROOT)
@@ -139,11 +138,9 @@ def test_teardown_all_clears_every_registered_scratch_and_the_registry_itself() 
 
 
 class _RecordingOs:
-    # Stands in for the `os` binding inside _tmp_scratch itself, recording (call, path) for every
-    # directory operation and forwarding to the real one. Swapping a module's own imported name is
-    # this project's established mocking mechanism (MicroPython has no unittest.mock - CLAUDE.md);
-    # the built-in `os` module itself can't be monkeypatched here, only a Python module's reference
-    # to it, which is what _tmp_scratch.py actually calls through anyway.
+    # Stands in for the `os` binding inside _tmp_scratch itself, recording (call, path) for every directory
+    # operation and forwarding to the real one. Swapping a module's own imported name is this project's
+    # mocking mechanism, MicroPython having no unittest.mock, and the builtin module cannot be patched.
     def __init__(self, calls: "list[tuple[str, str]]") -> None:
         self._calls = calls
 
@@ -165,21 +162,20 @@ class _RecordingOs:
 
 
 def test_no_operation_ever_reads_the_shared_root_only_its_own_key_subtree() -> None:
-    # The whole point of TmpScratch over the retired per-file _sweep_stale_tmp_dirs(prefix) trio,
-    # asserted as the structural invariant it actually is (_tmp_scratch.py's own docstring: "Every
-    # op stays scoped to <key>, never tests/_tmp's shared root") rather than inferred from a
-    # symptom. The old shape's real failure was an os.listdir() on the shared root, whose
-    # allocation scales with EVERY file's leftover entries - so what has to stay true is simply
-    # that no TmpScratch operation ever reads that root. Proven directly here by recording every
-    # os call a full lifecycle makes.
+    # The whole point of TmpScratch over the retired per-file _sweep_stale_tmp_dirs() trio, asserted as the
+    # structural invariant it actually is - "every op stays scoped to <key>, never tests/_tmp's shared root"
+    # - rather than inferred from a symptom.
     #
-    # This replaces a test that populated the shared root with 400,000 real sibling directories to
-    # reproduce that MemoryError for real. That version cost 396MB of physical disk writes on every
-    # single run (measured directly via /proc/diskstats), in both the unit-tests and
-    # unit-tests-coverage CI jobs plus every local run - a lot of avoidable SSD wear to
-    # re-demonstrate a defect in an implementation this repo no longer contains. This assertion is
-    # also strictly stronger: a reintroduced listdir(_ROOT) fails here immediately, where the
-    # scale test only noticed once the root had grown enormous.
+    # The old shape's real failure was an os.listdir() on the shared root, whose allocation scales with
+    # every file's leftover entries, so what has to stay true is simply that no TmpScratch operation reads
+    # that root. Proven directly by recording every os call a full lifecycle makes.
+    #
+    # This replaces a test that populated the shared root with 400,000 real sibling directories to reproduce
+    # that MemoryError, at a measured 396MB of physical disk writes per run, in two CI jobs plus every local
+    # run, to re-demonstrate a defect in an implementation this repo no longer contains.
+    #
+    # The assertion is also strictly stronger: a reintroduced listdir(_ROOT) fails here immediately, where
+    # the scale test only noticed once the root had grown enormous.
     calls: list[tuple[str, str]] = []
     key = "scratchtest_root_untouched"
     own = _ROOT + "/" + key
@@ -204,11 +200,9 @@ def test_no_operation_ever_reads_the_shared_root_only_its_own_key_subtree() -> N
 
 
 def test_unrelated_siblings_in_the_shared_root_do_not_affect_a_scratchs_own_behavior() -> None:
-    # The behavioral companion to the structural assertion above: with unrelated entries sitting in
-    # the shared root, a scratch's own construct/dir/teardown cycle still works and still leaves
-    # those entries completely alone. A small, deliberately cheap population - the invariant is
-    # independence from sibling COUNT, which a handful proves as well as a huge number would (and
-    # see that test's own comment for what the huge number used to cost).
+    # The behavioral companion to the structural assertion above: with unrelated entries in the shared root,
+    # a scratch's construct/dir/teardown cycle still works and leaves them alone. A deliberately cheap
+    # population - the invariant is independence from sibling COUNT, which a handful proves as well.
     try:
         os.mkdir(_ROOT)
     except OSError:
