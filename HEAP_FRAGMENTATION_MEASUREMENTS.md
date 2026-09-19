@@ -3867,11 +3867,38 @@ the hole silently. Host-side work, owner's call.
 ### 7J.6 State the bench was left in — READ THIS BEFORE THE NEXT BENCH RUN
 
 On the owner's instruction at the end of this sitting, the board was taken **out of test
-configuration**: reflashed with a clean production `dev` image and set to **`DebugLevel = 0`**, then
-joined to the local network as an ordinary device.
+configuration** and set up as an ordinary device on the local network.
+
+**What was done**, in order: built `scripts/build_firmware.py dev` fresh from this tip (`buildDate
+2026-09-19T21:18:50Z`), flashed it with `picotool load -x -v`, then cleaned the filesystem. The
+flash does **not** wipe the littlefs config — every file survived it, which is worth knowing in its
+own right — so the cleanup was explicit:
+
+| file | action |
+|---|---|
+| `config_HWTEST_DEBUGLEVEL_BACKUP.cfg`, `config_HWTEST_ISL29125.cfg`, `config_HWTEST_REBOOT.cfg` | **deleted** — test residue |
+| `config_HWTEST_ISL29125.cfgconfig_ISL29125.cfg` | **deleted** — this is §2A **F8**'s malformed two-names-concatenated file, whose residual was "fold it into the next run that already spends a flash write". This was that run. |
+| `config_BMP3XX.cfg`, `config_ISL29125.cfg`, `config_SGP40.cfg`, `config_NOTIFY.cfg` | **deleted** — regenerated at driver defaults on boot, i.e. a fresh device |
+| `config_NTP.cfg` | **kept** — it carries real locale (`GMTOffset`/`DSTOffset` 3600, `pool.ntp.org`), which a reset to defaults would have silently wiped |
+| `config_WIFI.cfg` | **rewritten**, same SSID/PW/Country, `Hostname` corrected from the stale `SensorNode` to `devices/dev.toml`'s own `SensorStationDev` |
+| `config_SYSTEM.cfg` | **rewritten** to `{"DebugLevel": 0}` |
+
+**Verified after a `kick_all_stations()` + `hard_reset()`**: associated to the bench AP (RSSI -23),
+DHCP from the real router (192.168.85.57, gateway/DNS 192.168.85.1), NTP synced, website serving
+HTTP 200 at 9,292 bytes, all four sensors reading plausible values, and **resolvable by name on the
+LAN as `SensorStationDev.fritz.box`** — a normal device, reachable by hostname. The boot's own
+`errcount` (four `CFGMGR_* W3`, one per deleted file; `WIFI W6`; plus the FRAM-persisted `NTP`/
+`SYSTEM` history and F9's familiar foreign `FRAM E31`) was **read and recorded before** a single
+`ResetErrors`, per CLAUDE.md; the table is now clean.
+
+**This incidentally answers R12**, which was BLOCKED on D1 for exactly this reason: with the stale
+persisted `Hostname` gone, the per-device value takes effect and the unit is reachable under it.
+R12's own note is what predicted this ("the persisted value wins on a board that already has a
+config, so a stale `SensorNode` there is correct behaviour, not a failure").
 
 **This deliberately breaks the bench tier.** Several `tests_hardware/` tests read the serial log and
-a `DebugLevel` of 0 silences what they parse. Before resuming any bench-tier work:
+a `DebugLevel` of 0 silences what they parse — confirmed immediately here, where a post-reset
+`tail_log()` returned nothing at all. Before resuming any bench-tier work:
 `PUT /system {"DebugLevel": 5}`, confirm it took, and re-check the board is on the bench SSID.
 
 ### 7J.7 One thing left undiagnosed, and it is not written off
