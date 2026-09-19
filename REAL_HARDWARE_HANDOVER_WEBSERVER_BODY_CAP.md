@@ -5,11 +5,13 @@ migrated** into `SPECIFICATION.md` Part I.6, `REAL_HARDWARE_TEST_QUEUE.md` §1D 
 `HEAP_FRAGMENTATION_MEASUREMENTS.md`. Written 2026-09-19 by a session with **no** real-hardware
 go-ahead — every claim below was [SRC] or [MOCK] when written.
 
-> **RUN 2026-09-19 by a session that had the go-ahead. W1-W4 PASS; W5 FAILS.** Results are in
-> `SPECIFICATION.md` Part I.6 as `[HW]` and in `REAL_HARDWARE_TEST_QUEUE.md` §1D. **§4's advance
-> note about W5's soft spot is wrong in its premise, and its prescribed fix would not have worked**
-> — see the boxed note there before acting on it. This file stays until W5 is decided; everything
-> else it owed is migrated.
+> **RUN 2026-09-19 by a session that had the go-ahead. W1-W4 PASS; W5 FAILED and has since been
+> rewritten.** Results are in `SPECIFICATION.md` Part I.6 as `[HW]` and in
+> `REAL_HARDWARE_TEST_QUEUE.md` §1D. **§4's advance note about W5's soft spot was wrong in its
+> premise, and its prescribed fix would not have worked** — the boxed note there records why.
+> W5 was then rewritten around the invariant the cap actually owns (queue §2A F10) and replays
+> PASS against every recorded run. **This file stays until that rewrite is confirmed on silicon**,
+> which is one bench-suite run; everything else it owed is migrated.
 
 **Nothing in this file authorizes anything.** CLAUDE.md's gate stands: the session that runs this
 needs the project owner's go-ahead **in its own conversation**. A go-ahead given to the session
@@ -96,7 +98,7 @@ scripts/run_bench_hardware_suite.sh -k "body_cap or band_that_used_to_be or larg
 | W2 | `test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network` | 3072 -> 413, 4096 -> 413 | **Most likely the wrong image was flashed.** Under the old 4096 B cap both were accepted. Check the image before touching the code. |
 | W3 | `test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap` | 1132 B -> 200, and a maximal `NTP_Host` -> 200 + `"Invalid"` | The regression that actually matters when a cap is *lowered*: something legitimate is now refused. Do **not** respond by raising the cap without re-deriving the schema maximum. |
 | W4 | `test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits` | Interleaved sizes, each answered on its own merits | A 413 left the next request mis-parsed on a connection the server closed early — a real connection-handling defect, not a cap one. |
-| W5 | `test_concurrent_mixed_body_sizes_never_destabilise_the_real_server` | 24 threads, mixed sizes, against the real `max_connections = 4` | See the known-soft-spot note below before calling it a bug. |
+| W5 | `test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status` | 24 threads, mixed sizes, against the real `max_connections = 4`. Asserts that every client **that is answered** is answered correctly; a refusal at the ceiling is counted, not failed. | **This is the one row to re-run.** A wrong status means the cap genuinely mis-answers under concurrency. A *non-ceiling* exception (a timeout above all) is not tolerated and means something hung. "Too few answered" or "never saw both verdicts" means the run was too starved to prove anything — re-run rather than relax. |
 
 > **MEASURED WRONG, 2026-09-19 [HW].** The note below says a red W5 showing exception strings
 > *only on the oversized arm* should be relaxed on that arm. On the board **half the resets are on
@@ -106,7 +108,12 @@ scripts/run_bench_hardware_suite.sh -k "body_cap or band_that_used_to_be or larg
 > measured 2 -> 0%, 4 -> 25%, 6 -> 16%, 8 -> 12%, 12 -> 33%, 16 -> 25%, 24 -> 25%, so they begin
 > *at* the ceiling rather than beyond it. Relaxing only the oversized arm would leave W5 failing on
 > the undersized one. The server stayed responsive, did not reboot, and `WEBSERVER`'s log stayed
-> empty, so nothing in `src/` is implicated. Queue finding F10 carries the three options.
+> empty, so nothing in `src/` is implicated.
+>
+> **Resolved 2026-09-19, host-side.** F10's own raw data settles it: across 96 concurrent requests
+> **not one was answered with the wrong status** — every failure is a refusal. So the cap held and
+> the assertion was wrong, which none of F10's three options addresses. W5 now asserts correctness
+> of the answers it gets, tolerating only a *ceiling close*. See queue §2A F10.
 
 ### W5's one known soft spot, stated in advance — and measured wrong
 
@@ -115,11 +122,12 @@ an oversized body means the server answers 413 and closes **without draining** t
 client can see `BrokenPipeError`/`ConnectionResetError` once the RP2040's small lwIP receive window
 fills. **That is correct server behaviour, not a failure** — but it fails the assertion as written.
 
-If a red W5 shows exception strings only on the oversized arm, the right fix is to relax that arm to
-"413 **or** a clean reset", not to change anything in `src/`. The sizes were chosen to stay under
-the ~5000 B that `test_put_oversized_body_is_rejected_with_413_over_the_normal_network` has already
-demonstrated is safe on this bench, so this is expected to stay latent — it is written down because
-a first run is exactly when a latent thing surfaces.
+**The prescription that followed was wrong, and is kept here only so the mistake is legible**: it
+said to relax the oversized arm alone. The reset has nothing to do with body size — it is the
+connection ceiling, and it lands on 64 B bodies just as often. The lesson worth carrying forward is
+in `tests_hardware/README.md`'s "two traps" section: a test that exceeds `max_connections` must
+assert the property its own feature owns, not that every client is served, and an all-small-bodies
+control is the two-minute check that tells the two apart.
 
 ---
 

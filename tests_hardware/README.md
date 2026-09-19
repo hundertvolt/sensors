@@ -227,6 +227,37 @@ so far, every one found by running the test rather than reading it, and every on
   beside its ceiling: `threshold_oscillation_crossing` must switch at least 4 times and
   `hysteresis_band_dwell_no_chatter` exactly zero, so an edit making either vacuous fails the other.
 
+## Writing a new bench-tier test, and diagnosing a DUT that has gone quiet: two traps
+
+Both cost real bench time more than once, and neither is discoverable by reading the code.
+
+- **A DUT that has gone unreachable is usually your own `mpremote` call, and every serial check you
+  make to diagnose it re-causes the symptom.** `exec` and `run` interrupt the running firmware into
+  the REPL, so `main.py` stops and the board leaves the network; `run_isolated()`'s armed
+  `WDT(timeout=8000)` then resets it ~8 s after the command ends. It cost time on 2026-09-18 and
+  again on 2026-09-19, each time as the same loop: curl fails -> `exec` to inspect the config ->
+  the inspection strands `main.py` again -> curl still fails. **The config was intact every time.**
+  Diagnose *passively*: `hard_reset()`, then `Board.tail_log()` with no `exec`/`run` at all, and
+  only then curl. `tail_log()` replays buffered history, so several identical "WLAN connection
+  established" blocks are **not** a reboot loop - poll `SysUptime` and watch it advance, which is
+  the cheap discriminator.
+- **A test that opens more concurrent connections than `max_connections = 4` cannot expect a
+  definitive status from all of them**, whatever it is testing. `_serve()`'s reject-when-full branch
+  closes without writing a response, and `src/` does not choose whether the client sees FIN or RST -
+  `test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` accepts either for exactly
+  that reason. Measured 2026-09-19 with tiny bodies, so it is nothing to do with payload size:
+  concurrency 2 -> 0% reset, 4 -> 25%, 8 -> 12%, 24 -> 25%. Resets begin **at** the ceiling, not
+  beyond it. **Before calling such a reset a defect, run the all-small-bodies control** - two
+  minutes, and it separates the feature under test from the connection ceiling. It is what turned a
+  suspected request-body-cap defect into a measured property of the server.
+
+Both halves of the second trap generalise into one rule for any test that exceeds the ceiling:
+**assert the property your feature owns, not that every client is served.** A body-cap test owns
+"every client that IS answered is answered correctly"; being answered at all is the ceiling's
+business. Pair that with a floor on how many were answered, or the test passes vacuously on a run
+where nearly everything was refused - the same "assert a minimum engagement beside every ceiling"
+habit the section above states for device scripts.
+
 ## The ISL29125 mock-conformance probe
 
 `test_isl29125_register_probe_matches_the_digital_twins_fake_chip` is the only test in this tier that

@@ -5,6 +5,7 @@ and slowloris/abrupt disconnects - DHCP-client flakiness is deliberately out of 
 
 from __future__ import annotations
 
+import http.client
 import json
 import socket
 import threading
@@ -807,22 +808,44 @@ def test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits(dut_
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
 
 
-def test_concurrent_mixed_body_sizes_never_destabilise_the_real_server(dut_ip: str) -> None:
-    # The shape that motivated Part I.6: max_connections bodies can be in flight at once, so the
-    # simultaneous contiguous demand is that many buffers. With the caps bound it is bounded by
-    # connections x 2048; with the band open it was connections x 16384 on a 264 KB device.
+# A connection the server refuses at its own ceiling, whose shape src/ does not choose.
+# test_connections_at_and_above_the_real_socket_limit_degrade_cleanly above accepts FIN or RST for
+# exactly this reason: _serve()'s reject-when-full branch closes without ever writing a response.
+_CEILING_CLOSE = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, http.client.BadStatusLine)
+
+
+def _is_ceiling_close(exc: BaseException) -> bool:
+    # urllib wraps the transport error in URLError.reason; http.client.RemoteDisconnected is a
+    # subclass of both ConnectionResetError and BadStatusLine, so it is covered by the tuple.
+    return isinstance(exc, _CEILING_CLOSE) or isinstance(getattr(exc, "reason", None), _CEILING_CLOSE)
+
+
+def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str) -> None:
+    """The multi-buffer shape that motivated Part I.6, asserted on what the body cap actually owns.
+
+    max_connections bodies can be in flight at once, so the simultaneous contiguous demand is that
+    many buffers - bounded by connections x 2048 now, connections x 16384 while the band was open."""
     reset_all_error_logs(dut_ip)
+    # The same settle the connection-ceiling test above takes, and for the same reason: _serve()
+    # releases its slot in a finally that runs after _close_writer(), so the PUT just made can
+    # still hold one. Without it the workers start against 3 free slots, not 4.
+    time.sleep(1.0)
     sizes = [512, _BODY_CAP * 2, _BODY_CAP, _OLD_CONTENT_CAP, 64, _BODY_CAP + 1, 900, _BODY_CAP * 2] * 3
-    results: dict[int, int | str] = {}
+    answered: dict[int, int] = {}
+    refused: dict[int, str] = {}
+    other: dict[int, str] = {}
     results_lock = threading.Lock()
 
     def worker(index: int, size: int) -> None:
         try:
-            status: int | str = _put_sized(dut_ip, size, timeout_s=30.0)
+            status = _put_sized(dut_ip, size, timeout_s=30.0)
         except Exception as exc:  # the worker's job is to report, never to raise into the harness
-            status = f"{type(exc).__name__}: {exc}"
+            bucket = refused if _is_ceiling_close(exc) else other
+            with results_lock:
+                bucket[index] = f"{type(exc).__name__}: {exc}"
+            return
         with results_lock:
-            results[index] = status
+            answered[index] = status
 
     threads = [threading.Thread(target=worker, args=(i, size)) for i, size in enumerate(sizes)]
     for t in threads:
@@ -831,12 +854,25 @@ def test_concurrent_mixed_body_sizes_never_destabilise_the_real_server(dut_ip: s
         t.join(timeout=60.0)
         assert not t.is_alive(), "a worker thread never finished within 60s - possible real deadlock under concurrent mixed-body load"
 
-    wrong = {i: results[i] for i, size in enumerate(sizes) if results.get(i) != (200 if size <= _BODY_CAP else 413)}
-    assert not wrong, f"{len(wrong)} of {len(sizes)} concurrent mixed-size PUTs answered wrongly: {dict(list(wrong.items())[:8])}"
+    # This opens 24 connections against max_connections=4, so most of them are refused at the
+    # ceiling by design (queue F10 measured ~25%, at every body size including 64 B). A refusal is
+    # not a body-cap result, so it is counted, not failed - but ONLY a refusal.
+    assert not other, f"{len(other)} worker(s) failed for a reason that is not the connection ceiling: {dict(list(other.items())[:8])}"
+    wrong = {i: answered[i] for i, size in enumerate(sizes) if i in answered and answered[i] != (200 if size <= _BODY_CAP else 413)}
+    assert not wrong, f"{len(wrong)} of {len(answered)} answered PUTs got the WRONG status under concurrency: {dict(list(wrong.items())[:8])}"
+
+    # Anti-vacuity, from the server's own documented capacity rather than a measured rate: a run
+    # where nearly everything was refused proves nothing about the cap, and one that never saw
+    # both verdicts never exercised the boundary it exists to check.
+    statuses = list(answered.values())
+    assert len(statuses) >= _MAX_CONNECTIONS, f"only {len(statuses)} of {len(sizes)} PUTs were answered at all - too few to say anything about the cap ({len(refused)} refused)"
+    assert 200 in statuses and 413 in statuses, f"the run never saw both verdicts, so the cap was never exercised under concurrency: {sorted(set(statuses))}"
+
     # Still healthy afterwards, and no MemoryError degraded anything - a body the server refused to
     # buffer must cost it nothing, which is the whole point of binding the two caps.
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=15.0).status_code == 200, "webserver unresponsive after concurrent mixed-body load"
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    print(f"RESULT NOTE: {len(answered)} answered, {len(refused)} refused at the connection ceiling, 0 answered wrongly")
 
 
 def test_put_nonsense_field_values_are_marked_invalid_not_crashed(dut_ip: str) -> None:

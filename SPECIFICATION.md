@@ -4649,9 +4649,19 @@ concurrency against `max_connections = 4`, not of the body cap at all**. Measure
 concurrency, tiny bodies only: 2 -> 0%, 4 -> 25%, 6 -> 16%, 8 -> 12%, 12 -> 33%, 16 -> 25%,
 24 -> 25%. Resets begin **at** the connection ceiling, not beyond it, so W5's premise — that 24
 concurrent clients each receive a definitive status — cannot hold on this server at any
-concurrency above 2. The server stayed responsive and did not reboot under the load. **Reported,
-not changed** (CLAUDE.md's flag-don't-fix rule): the test needs a decision about what it should
-assert, and `src/` is not implicated.
+concurrency above 2. The server stayed responsive and did not reboot under the load, and `src/` is
+not implicated.
+
+**What the test should have asserted, and now does** [SRC]. Across the 96 concurrent requests those
+runs recorded, **not one was answered with the wrong status** — every failure is a *refusal*. So the
+body cap held under concurrency and only the assertion was wrong. `_serve()`'s reject-when-full
+branch closes without writing a response and does not choose whether the client sees FIN or RST
+(`test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` accepts either for that
+reason), so a refusal above `max_connections` is the ceiling's business, not the cap's. The rewritten
+row asserts the property the cap owns — **every client that IS answered is answered correctly** —
+tolerating a ceiling close alone: any other exception, a timeout included, still fails, so a real
+hang cannot hide behind it, and a floor on answers plus a required 200-and-413 pair stop it passing
+vacuously. Replayed against all four recorded runs it passes each one; **not yet re-run on silicon**.
 
 **Related, deliberately not changed:** `NTP_Host`'s 1024-character bound mirrors the deployed
 pre-refactor handler (`modules/sensortask-*.py`'s `update_valid_json(..., 3, 1024, ...)`), so
