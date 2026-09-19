@@ -5,13 +5,18 @@ migrated** into `SPECIFICATION.md` Part I.6, `REAL_HARDWARE_TEST_QUEUE.md` §1D 
 `HEAP_FRAGMENTATION_MEASUREMENTS.md`. Written 2026-09-19 by a session with **no** real-hardware
 go-ahead — every claim below was [SRC] or [MOCK] when written.
 
-> **RUN 2026-09-19 by a session that had the go-ahead. W1-W4 PASS; W5 FAILED and has since been
-> rewritten.** Results are in `SPECIFICATION.md` Part I.6 as `[HW]` and in
-> `REAL_HARDWARE_TEST_QUEUE.md` §1D. **§4's advance note about W5's soft spot was wrong in its
-> premise, and its prescribed fix would not have worked** — the boxed note there records why.
-> W5 was then rewritten around the invariant the cap actually owns (queue §2A F10) and replays
-> PASS against every recorded run. **This file stays until that rewrite is confirmed on silicon**,
-> which is one bench-suite run; everything else it owed is migrated.
+> **W1-W4 PASS (2026-09-19). W5's rewrite is now CONFIRMED on silicon too (post-merge bench run,
+> 2026-09-19) — and the row is still red, on a line that asserts nothing about the cap.** Results
+> are in `SPECIFICATION.md` Part I.6 as `[HW]`, in `REAL_HARDWARE_TEST_QUEUE.md` §1D, and in
+> `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7I. **§4's advance note about W5's soft spot was wrong in
+> its premise, and its prescribed fix would not have worked** — the boxed note there records why.
+>
+> **What is left is one line, and it is an owner decision rather than bench time.** W5's four cap
+> assertions hold in four consecutive runs — 20 of 24 answered, both verdicts present, **zero wrong
+> statuses, zero non-ceiling exceptions**. The failure is the post-load `GET /status` health check,
+> which is single-shot with no settle and lands in the connection-slot drain window; the same
+> request succeeds **75 ms** later. That is queue §2A **F11**. When F11 is settled and W5 comes
+> back green, **delete this file** — everything else it owed is already migrated.
 
 **Nothing in this file authorizes anything.** CLAUDE.md's gate stands: the session that runs this
 needs the project owner's go-ahead **in its own conversation**. A go-ahead given to the session

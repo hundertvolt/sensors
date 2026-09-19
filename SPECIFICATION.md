@@ -4678,7 +4678,23 @@ reason), so a refusal above `max_connections` is the ceiling's business, not the
 row asserts the property the cap owns — **every client that IS answered is answered correctly** —
 tolerating a ceiling close alone: any other exception, a timeout included, still fails, so a real
 hang cannot hide behind it, and a floor on answers plus a required 200-and-413 pair stop it passing
-vacuously. Replayed against all four recorded runs it passes each one; **not yet re-run on silicon**.
+vacuously. Replayed against all four recorded runs it passes each one.
+
+**Confirmed on silicon, 2026-09-19** [HW]. In the post-merge full bench run and in three dedicated
+repeats afterwards, **all four of those assertions hold every time**: 20 of 24 requests answered
+against a floor of 4, both verdicts present, no non-ceiling exception, and — the claim the cap
+actually owns — **not one request answered with the wrong status**. So the body cap is now
+established under real concurrency on real hardware, not only by replay. `WEBSERVER`'s error log
+stayed empty throughout.
+
+The row nonetheless still goes red, on the line *after* those four: a single-shot
+`GET /status` health check, made with no settle, raises `ConnectionResetError`. The server is not
+unresponsive — polled rather than asked once, it answers 200 **75 ms** later (two of three repeats;
+the third answered first try). It is this same slot-release lag at the other end of the test: 24
+workers' slots are still draining through `_serve()`'s `finally`, and the row takes its settle
+*before* its workers and none *after* them. `tests_hardware/`'s own `http_client.fetch()` is
+single-shot by construction. **Reported, not changed** — `REAL_HARDWARE_TEST_QUEUE.md` §2A F11
+carries it, and nothing in `src/` is implicated.
 
 **Related, deliberately not changed:** `NTP_Host`'s 1024-character bound mirrors the deployed
 pre-refactor handler (`modules/sensortask-*.py`'s `update_valid_json(..., 3, 1024, ...)`), so

@@ -3554,6 +3554,167 @@ else in §7D depends on it; A's layout result (§7D.3) is a different measuremen
 
 ---
 
+## 7I. The post-merge full bench run (2026-09-19, owner's instruction — COMPLETE)
+
+One full bench-tier run at default flags, no arguments, no wear flags, no soak — the mandate of
+`REAL_HARDWARE_HANDOVER_POST_MERGE_BENCH_RUN.md`, run after the branch merged 22 commits of base
+plus the `arduino/` import and the ISL29125 promotion. The verdict line in full:
+
+```
+1 failed, 97 passed, 4 skipped, 27 deselected in 2439.57s (0:40:39)
+```
+
+The handover asked for the deselected count to be read rather than the word "clean": **27, exactly
+the reference figure** from the two preceding sittings, and **97 passed / 4 skipped** matches the
+reference too. The four skips are the two NeoPixel-rig light programs, the `--allow-flash-cycle`
+reflash smoke test, and the spoofed-off-subnet-source row. **The one failure is W5 — and not on any
+assertion about the body cap** (§7I.2).
+
+**The image.** `src/` changed by exactly one line since the previously flashed build, and it is a
+comment (`max_content_length`'s own `1.8x` → `1.56x` margin note), so the frozen bytecode is
+identical and no reflash was spent. Confirmed functionally before starting rather than assumed:
+2047 → 200, 2048 → 200, 2049 → 413, 4096 → 413 over the real network, which is W1 and W2's own
+subject matter.
+
+### 7I.1 The pre- and post-run `errcount`, read before anything wrote
+
+CLAUDE.md's standing rule. Before the suite:
+
+| module | counter | non-empty history |
+|---|---|---|
+| `WIFI` | 5 | `W6` |
+| `SGP40` | 6 | `W13` x5, `W11` |
+| every other module (21 total, `WEBSERVER` included) | 0 | — |
+
+After the suite, once its own `reset_all_error_logs()` calls had cleared the table and the run had
+refilled it:
+
+| module | counter | non-empty history |
+|---|---|---|
+| `NTP` | 11 | `E1` x5, `E2`, `E20`, `E1` x3 |
+| `SYSTEM` | 1 | `W4` |
+| every other module | 0 | — |
+
+**`WEBSERVER` is empty both times**, which is the assertion every §1D row makes and the one that
+matters: a 413 is raised inside vendored Microdot before any of our own code runs, so anything
+there would be a finding about this project. `NTP`'s entries are attributable —
+`test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing` is the second-to-last test
+in the run. Nothing unexplained appeared, so §2A F9's contamination hazard is not in play here.
+
+### 7I.2 W5's rewrite is confirmed on silicon — the red is one line further down
+
+Every one of the four assertions the row was rewritten around **holds**, in the suite run and in
+three dedicated repeats afterwards:
+
+| run | answered | refused at ceiling | **wrong status** | non-ceiling exceptions |
+|---|---|---|---|---|
+| bench suite | (reached the health check, so all four passed) | — | **0** | **0** |
+| repeat 1 | 20 / 24 | 4 | **0** | **0** |
+| repeat 2 | 20 / 24 | 4 | **0** | **0** |
+| repeat 3 | 20 / 24 | 4 | **0** | **0** |
+
+Twenty answers against a floor of four, both verdicts present every time, and **not one request
+answered with the wrong status** across all of them. That is the property the body cap actually
+owns, and it is now `[HW]`.
+
+What fails is the line *after* those four:
+
+```
+assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=15.0).status_code == 200, \
+    "webserver unresponsive after concurrent mixed-body load"
+```
+
+which raised `ConnectionResetError` out of `http.client._read_status`. **The server is not
+unresponsive.** Polled immediately after the load rather than asked once, it answered **200 after
+75 ms** in two of the three repeats and first-try in the third:
+
+| repeat | attempts after the load |
+|---|---|
+| 1 | `0.000s ConnectionResetError`, `0.075s 200` |
+| 2 | `0.000s ConnectionResetError`, `0.073s 200` |
+| 3 | `0.000s 200` |
+
+This is §7H-era F10's slot-release lag at the *other* end of the test. A slot is released in
+`_serve()`'s `finally`, which runs after `_close_writer()` awaits the close; 24 workers have just
+finished, so their slots are still draining. W5 takes a `time.sleep(1.0)` settle **before** its
+workers — added for exactly this reason — and none **after** them, and
+`tests_hardware/http_client.py`'s `fetch()` is single-shot with no retry by construction. Recorded
+as queue §2A **F11** and deliberately **not edited**: the handover's §3 forbids weakening W5, and
+CLAUDE.md's flag-don't-change rule applies. The fix that suggests itself is the one the
+neighbouring `test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` already uses for
+this lag, applied to the health check alone and leaving all four cap assertions untouched.
+
+### 7I.3 §7G's replacement checks, re-measured after the merge — every margin held or improved
+
+The mandated invocation takes no arguments, so pytest captures device stdout and the `HEAP`/`MAP`/
+`DELTA` lines the handover asks to be written down never surface on a passing test. They were
+recovered by re-running that one test alone with `-s` (about five seconds of board time):
+
+```
+HEAP baseline:                            free=137312 alloc=55520 largest_block=136400 retained=0
+HEAP after_build_system:                  free=102656 alloc=90176 largest_block=93696  retained=0
+HEAP after_build_system_control:          free=102656 alloc=90176 largest_block=93696  retained=0
+HEAP after_build_system_production_threshold: free=102656 alloc=90176 largest_block=93696 retained=0
+MAP  after_build_system: used=90192 free=102640 largest_free_run=93696
+     free_above_top_survivor=93696 gaps>=4K=1 gaps>=16K=1
+     deciles=[1206, 1205, 1200, 1135, 870, 21, 0, 0, 0, 0]
+DELTA boot placement: new_blocks=2169 highest_new_pct=51 new_in_top16K=0 new_in_top32K=0
+```
+
+**`retained=0` on every `HEAP ` line**, so §2A F5's caveat does not apply and every figure here is
+usable. Against §7H.4's reading on the pre-merge image:
+
+| §7G.2 check | threshold | §7H.4 | **§7I** | margin now |
+|---|---|---|---|---|
+| `used <= 100,000` | 100,000 | 89,040 | **90,192** | 1.11x |
+| `largest_free_run >= 32,768` | 32,768 | 90,688 | **93,696** | **2.86x** |
+| `free_above_top_survivor >= 16,384` | 16,384 | 90,688 | **93,696** | **5.72x** |
+| probe vs map cross-check | delta <= 64 B | delta 0 | 93,696 vs 93,696 → **delta 0** | — |
+| `new_above(16_384) == 0` (§7G.1) | 0 | 0 | **0** | — |
+
+`used` moved +1,152 B and the contiguous run **+3,008 B the right way**, so both replacement checks
+are further from their thresholds than before the merge, not nearer. The decile histogram is the
+stronger statement again and it improved: **the top four deciles still hold zero allocated blocks,
+and the fifth dropped from 163 to 21**. No threshold was re-fitted and none needed to be — the
+handover's §3 forbids it and nothing came close.
+
+### 7I.4 R15 closed — per-module error logs persist across a real production reboot
+
+The flash tier already covered the *mechanism* through an isolated-driver script's own
+`AsyFramManager`; what had never been shown on silicon was the **production object graph's**
+per-module wiring surviving a real reset. Read `errcount`, `PUT /system {"SystemCmd": "reboot"}`,
+read it again:
+
+| module | before | after | |
+|---|---|---|---|
+| `NTP` | counter 11, `E1 E1 E1 E1 E1 E2 E20 E1 E1 E1` | counter 11, **identical** | **SAME** |
+| `SYSTEM` | counter 1, `W4` | counter 1, `W4` | **SAME** |
+| `WIFI` | counter 2, `W6` | counter 7, `W6 W6` | appended, not lost |
+| `SGP40` | counter 0, — | counter 5, `W13` … | appended during the same boot |
+
+`NTP`'s full ten-entry history came back byte-identical, which is the row's own criterion. `WIFI`
+and `SGP40` are not counter-examples: both logged *new* warnings during the very boot being
+measured (the reboot's own STA attempts, and SGP40's routine boot warning — it carried six `W13`s
+in the pre-suite table too), with the pre-reboot entries still present underneath. `FRAM`'s own row
+was 0 on both sides, so the "in-memory by design" exception the row calls out was not exercised.
+
+### 7I.5 One thing that cost time, and is nobody's defect
+
+The hand-issued `PUT /system {"SystemCmd": "reboot"}` above left the DUT **in hotspot mode**: the
+command returned `Valid`, the board reset and came up entirely healthy — all tasks running, every
+sensor reading, uptime advancing — but STA never re-associated, and the serial log repeated
+`WIFI Hotspot mode is active / Connected stations: []` with `NTP Network not available` for about
+four minutes. A `board.hard_reset()` recovered it to its own address in ~40 s.
+
+It is the known **stale-AP-station-table** behaviour, not a new one.
+`tests_hardware/conftest.py`'s `dut_ip` fixture calls `bench.kick_all_stations()` before every
+`hard_reset()`, and `test_real_reboot_sequencing_via_rest_completes_cleanly` calls it immediately
+after this same REST reboot, its own comment naming "the same stale-AP-station-table finding as
+every other real reboot in this tier". **That test passed in this run.** The trap belongs only to a
+session issuing the reboot by hand, and is recorded as queue §2A F12 and in §6's standing traps.
+
+---
+
 ## 8. What is committed
 
 **Reverted, 2026-09-18, at the owner's instruction.** Every change this investigation made to
