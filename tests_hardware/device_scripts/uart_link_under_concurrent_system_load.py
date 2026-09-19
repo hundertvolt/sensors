@@ -104,6 +104,19 @@ async def _memory_churn_loop(load: Load) -> None:
         await asyncio.sleep_ms(2)
 
 
+async def _heap_floor() -> int:
+    # gc.mem_alloc() mid-run also counts the churn loop's own held blocks, which oscillate between
+    # 13 and 25 x 512 B - a 6144 B swing that swamped the 2048 B bound (queue F7). The minimum over
+    # more than two churn cycles is the live floor, which is what "did the link retain" needs.
+    floor = 0
+    for _ in range(8):
+        gc.collect()
+        sample = gc.mem_alloc()
+        floor = sample if not floor else min(floor, sample)
+        await asyncio.sleep_ms(8)
+    return floor
+
+
 async def _main() -> None:
     wdt = machine.WDT(timeout=8000)
     failures = []
@@ -157,8 +170,7 @@ async def _main() -> None:
         while time.ticks_diff(deadline, time.ticks_ms()) > 0:
             wdt.feed()
             if not heap_at_third and time.ticks_diff(time.ticks_ms(), started_ms) > RUN_MS // 3:
-                gc.collect()
-                heap_at_third = gc.mem_alloc()
+                heap_at_third = await _heap_floor()
             started = time.ticks_ms()
             answer = await initiator.uart_get(_CMD_BANNER)
             rtt = time.ticks_diff(time.ticks_ms(), started)
@@ -169,8 +181,9 @@ async def _main() -> None:
                 link_failures += 1
             await asyncio.sleep_ms(5)
     finally:
-        gc.collect()
-        heap_at_end = gc.mem_alloc()
+        # Sampled the same way and while the same loads still run, so both ends are comparable
+        # floors - stopping the loads first would bias the difference negative instead.
+        heap_at_end = await _heap_floor()
         load.stop = True
         for task in tasks:
             task.cancel()
