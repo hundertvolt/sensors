@@ -45,7 +45,9 @@ if TYPE_CHECKING:
 class Pin:
     IN = 0
     OUT = 1
-    PULL_UP = 2
+    # Real rp2 values (ports/rp2/machine_pin.c at v1.29.0: GPIO_PULL_UP 1, GPIO_PULL_DOWN 2).
+    PULL_UP = 1
+    PULL_DOWN = 2
     IRQ_FALLING = 0x04
     IRQ_RISING = 0x08
 

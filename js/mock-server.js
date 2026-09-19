@@ -296,8 +296,13 @@ function jitterInPlace(group) {
         if (key.endsWith("TS") || key === "Timestamp" || key.endsWith("Uptime")) {
             group[key] = value + 1;
         } else {
-            const spread = Math.max(Math.abs(value) * 0.01, 0.05);
-            group[key] = Math.round((value + (Math.random() * 2 - 1) * spread) * 100) / 100;
+            // Spread and rounding were sized for readings of order hundreds (CO2 ~600). On the
+            // ISL29125's normalised 0-1 leaves a 0.05 floor is +-178%, taking them NEGATIVE, and
+            // two decimals quantise to 0.00. Below 1 both scale with the value; above it, nothing.
+            const magnitude = Math.abs(value);
+            const spread = magnitude >= 1 ? Math.max(magnitude * 0.01, 0.05) : magnitude * 0.05;
+            const factor = magnitude >= 1 ? 100 : 10000;
+            group[key] = Math.round((value + (Math.random() * 2 - 1) * spread) * factor) / factor;
         }
     }
 }

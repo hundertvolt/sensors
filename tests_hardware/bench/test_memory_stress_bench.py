@@ -15,9 +15,10 @@ from soak_tiers import SOAK_TIER_SECONDS
 if TYPE_CHECKING:
     from harness import Board
 
-# The six FRAM-backed modules (SPECIFICATION.md Part A.7) - WIFI/NTP/every CFGMGR_* logger are
-# RAM-only. CLAUDE.md's standing rule: read these before clearing state on any unexpected error.
-_FRAM_BACKED_MODULES = ("SYSTEM", "SGP40", "BMP3XX", "SCD30", "NEOPIXEL", "NOTIFY")
+# The FRAM-backed modules (Part A.7); WIFI/NTP/every CFGMGR_* logger are RAM-only. Read these
+# before clearing state on any unexpected error. ISL29125 is dev-only, and every lookup below is
+# .get()-guarded, so listing it costs nothing on a variant that does not carry it.
+_FRAM_BACKED_MODULES = ("SYSTEM", "SGP40", "BMP3XX", "SCD30", "ISL29125", "NEOPIXEL", "NOTIFY")
 
 # 4 GET threads at true max speed (unlike the modest, soak-gated test below) plus 1 thread
 # PUTting SGP40.SGPResetVOC every 3s - reproduces the request density that originally found real

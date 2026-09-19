@@ -38,6 +38,32 @@ def assert_module_error_log_nonempty(dut_ip: str, module_name: str) -> None:
     assert counter > 0, f"{module_name!r} error log was unexpectedly empty after a deliberately-provoked fault: {entry!r}"
 
 
+def assert_module_error_log_clean(
+    dut_ip: str, module_name: str, allowed_warnings: tuple[int, ...] = (), allowed_errors: tuple[int, ...] = (),
+) -> None:
+    """Nothing in the log beyond the entries explicitly named.
+
+    Stricter than assert_module_error_log_empty() where it matters (it reads the history rather
+    than a counter) and deliberately looser where an empty log is not a property the module can
+    actually offer: a module whose normal operation includes a legitimate warning cannot be held to
+    a zero counter without the test becoming a race against that warning. Same distinction
+    isl29125_mechanism_envelope.py already draws on-device ("logged real ERRORS, not just warnings").
+    `allowed_errors` exists for the one case where an ERROR is the documented outcome rather than a
+    defect - a test that deliberately provokes torn writes and then asserts the recovery worked.
+    """
+    entry = get_errcount(dut_ip).get(module_name, {})
+    history = entry.get("history", [])
+    unexpected = [
+        h for h in history
+        if (h.get("type") == "E" and h.get("num") not in allowed_errors)
+        or (h.get("type") == "W" and h.get("num") not in allowed_warnings)
+    ]
+    assert not unexpected, (
+        f"{module_name!r} logged {unexpected!r} - only warnings {allowed_warnings!r} and errors "
+        f"{allowed_errors!r} are expected here; full entry: {entry!r}"
+    )
+
+
 def assert_module_error_log_contains(dut_ip: str, module_name: str, num: int, kind: str) -> None:
     """Kind is "E" (err_s()) or "W" (wrn_s())."""
     counts = get_errcount(dut_ip)

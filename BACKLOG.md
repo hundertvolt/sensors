@@ -692,28 +692,42 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     pass by the owner's explicit framing, not a standing gate: new code is expected to meet the cap
     as it is written, and nothing enforces it mechanically.
 
-## Deferred / explicitly out-of-scope work
+43. **Closed 2026-09-19: `main` is merged in, and the "purely mechanical" assessment of that merge
+    was wrong in four places.** The branch's base was `348be6d` (PR #70); `main` had moved 76
+    commits ahead to `32e9a8e`, none of them in this branch's history. The recorded resolution held
+    in outline - take this branch's side on all 36 content conflicts, keep the three modify/delete
+    files deleted (`src/sensortask_dev.py`, `digital_twin/run_dev_integration.py`,
+    `tests_hardware/bus_topology.py`, all buildgen-generated or retired here) - and `arduino/`, the
+    BSEC 2.6.1.0 vendor release plus sketches, came in as the pure addition it was expected to be.
 
-- **The `main` merge conflict: how it resolves was settled 2026-09-14/18; only WHEN is open.**
-  Recorded here so no future session re-opens it as a design question. `main` and this branch built
-  the ISL29125 driver twice, in parallel, on the same day - `main` via PR #75, this branch via its
-  own buildgen-native port (PR #83, forked from `03192a5` before the promotion existed on any shared
-  ref). Git therefore sees six files as `add/add`, and the content conflicts are both sides writing
-  up the same driver in the same places (`SPECIFICATION.md`, `BACKLOG.md`, `DEVICE_REFERENCE.md`,
-  `html/definitions/dev.json`, `js/definitions.js`, `mockdata/dev.json`, the bus-hazard tests, six
-  `tests_hardware/` files). Nothing else on `main` conflicts: the `arduino/` libraries are a pure
-  addition and the SCD30 settle fix auto-merges.
-  **Resolution: take this branch's side.** It is the newer of the two and carries three fixes `main`
-  never got (the configurable INT pull-up, the shadow-divergence race fix, saturation moved out of
-  `wrnno=12` into the API's `Overrange` field), and its driver differs from `main`'s by +140/-60,
-  most of that the same code reworded. The two modify/delete conflicts (`src/sensortask_dev.py`,
-  `digital_twin/run_dev_integration.py`, which PR #75 edited to wire the ISL29125 in by hand) resolve
-  as **keep deleted** - buildgen generates both now, and `devices/dev.toml` already carries the
-  wiring.
-  **The exceptions list is already merged, not still owed**: `main`'s worthwhile ISL29125 tests were
-  assessed one by one and adopted here in `32afd7f` (item 33 has the full account, queue row R8 the
-  never-run-on-silicon caveat), so the resolution no longer needs to reach into `main`'s side for
-  anything. What remains is purely mechanical, and is the owner's to schedule.
+    What the assessment missed is that `main`'s ISL29125 branch also carried **general fixes this
+    branch never had**, because the two forked before the promotion existed on any shared ref.
+    Taking this branch's side wholesale would have silently reverted all four:
+
+    - `.github/workflows/ci.yml`: `uv sync` retried in **every** job that syncs, not just the test
+      lanes. `main` hit HTTP 500 on 2026-09-13 and 504 on 2026-09-14, both on lanes touching no
+      shell script. Adopted, with the three later sites pointing at the first one's reasoning.
+    - `tests/machine.py` and `digital_twin/machine.py`: `Pin.PULL_UP`/`PULL_DOWN` corrected to the
+      real rp2 values (`GPIO_PULL_UP` 1, `GPIO_PULL_DOWN` 2, `ports/rp2/machine_pin.c` at v1.29.0).
+      Both fakes here had `PULL_UP = 2` and no `PULL_DOWN` at all. Adopted in both. Every use site
+      is symbolic, so nothing depended on the wrong number - only the fakes' fidelity did.
+    - `js/mock-server.js`: magnitude-aware jitter. The old spread was sized for readings of order
+      hundreds, so on the ISL29125's normalised 0-1 leaves a 0.05 floor is +-178% - it drove them
+      negative and quantised them to 0.00. Adopted.
+
+    Two further gaps were **this branch's own**, caught by `main`'s new
+    `tests_js/definitions-mockdata-coverage.test.js`: `mockdata/dev.json` had no `BMP3XX`
+    measurements at all, and no `UARTLINK` status counters, though dev's definitions declare both
+    (the latter a WP3 leftover - the fields were added to the definitions and never to the mock).
+    Both added.
+
+    **The hazard worth remembering**: an auto-merged *test* file next to an `--ours`-resolved
+    *source* file. Git reports no conflict, so nothing flags it, and the test then fails against
+    source that lacks the feature it pins. Three of the four fixes above surfaced exactly that way,
+    from `npm run test:unit` rather than from reading 150 conflict hunks. After a resolution that
+    takes one side wholesale, run every tier before trusting it.
+
+## Deferred / explicitly out-of-scope work
 
 - **CLAUDE.md's two-target clean-chroot verification is an owner-run periodic check, not a blocking
   per-push gate - settled (owner decision, 2026-09-18).** The recipe, both targets and the separate
