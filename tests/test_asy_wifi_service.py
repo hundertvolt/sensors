@@ -11,12 +11,9 @@ import asy_wifi_service
 from asy_udp_socket import AsyUDPSocket
 from asy_wifi_service import WIFI, AsyConnTime
 
-# Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_STA_ESTABLISHED/_PHASE_HOTSPOT/
-# _PHASE_DEACTIVATED values, duplicated here rather than imported: those are micropython.const()-
-# wrapped there (consistent with every other module-level constant in that file), and const()
-# values are inlined at compile time and don't survive as real importable module attributes on this
-# port (confirmed directly) - `from asy_wifi_service import _PHASE_HOTSPOT` raises ImportError. Keep
-# these four literals in sync with asy_wifi_service.py's own definitions if those ever change.
+# Mirrors asy_wifi_service.py's own _PHASE_* values, duplicated rather than imported: const()
+# values are inlined at compile time and don't survive as importable module attributes on this
+# port (confirmed directly). Keep these four in sync with asy_wifi_service.py's own definitions.
 _PHASE_STA_SEEKING = 0
 _PHASE_STA_ESTABLISHED = 1
 _PHASE_HOTSPOT = 2
@@ -60,13 +57,9 @@ def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "in
 
 
 def _wlan(client: AsyConnTime) -> "Any":
-    # _wlan(client) is typed against the real network.WLAN stub (see pyproject.toml's own
-    # tests/network.py exclude comment - that's deliberate, so asy_wifi_service.py's own real
-    # `import network` call sites stay checked against the real API). At runtime, MICROPYPATH
-    # ordering constructs tests/network.py's fake instead, which exposes several test-only
-    # attributes (raise_on, _status, _ifconfig, _stations, ...) the real stub has no reason to
-    # declare. Narrows to Any once, here, so every test below can reach those without its own
-    # per-site `# type: ignore`.
+    # _wlan(client) is typed against the real network.WLAN stub (pyproject.toml's tests/network.py
+    # exclude is deliberate), but at runtime MICROPYPATH constructs tests/network.py's fake with its
+    # test-only attributes. Narrows to Any once here, so no test below needs a `# type: ignore`.
     return client.wlan
 
 
@@ -80,10 +73,9 @@ def _tmp_cfg_dir() -> str:
 
 
 class FakeLED:
-    # Structurally satisfies asy_wifi_service.py's own LEDControl Protocol (on/off/toggle) without
-    # needing a real GPIO pin - same spirit as the fake network.WLAN this file also depends on.
-    # raise_on models a genuinely misbehaving caller-injected ext_led (_led_on()/_led_off()/
-    # _led_toggle() must degrade gracefully against this, not just a well-behaved LED).
+    # Structurally satisfies asy_wifi_service.py's LEDControl Protocol (on/off/toggle) with no real
+    # GPIO pin, same spirit as the fake network.WLAN. raise_on models a genuinely misbehaving
+    # caller-injected ext_led, which _led_on()/_led_off()/_led_toggle() must degrade against.
     def __init__(self) -> None:
         self.on_calls = 0
         self.off_calls = 0
@@ -117,13 +109,9 @@ class FakeLED:
 
 
 class _RaiseOnArm:
-    # Same technique as test_asy_ntp_client.py's own _RaiseOnArm - toggles tests/machine.py's
-    # Timer.raise_on_arm (a shared class attribute) for the duration of the `with` block,
-    # simulating real rp2 alarm-pool exhaustion (OSError(ENOMEM) from Timer.init()). `exc` picks
-    # which arm of every call site's own `except (OSError, MemoryError)` is exercised - MemoryError
-    # is not an OSError subclass (see CLAUDE.md/SPECIFICATION.md Part F), so neither arm covers the
-    # other. Timer.raise_on_arm_exc is a shared class attribute too, reset back to its OSError
-    # default on exit alongside raise_on_arm.
+    # Same technique as test_asy_ntp_client.py's _RaiseOnArm - toggles tests/machine.py's shared
+    # Timer.raise_on_arm for the `with` block, simulating rp2 alarm-pool exhaustion. `exc` picks
+    # which arm of `except (OSError, MemoryError)` runs; neither covers the other (Part F).
     def __init__(self, exc: "type[BaseException]" = OSError) -> None:
         self._exc = exc
 
@@ -217,10 +205,9 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
 
 
 class _FastAsyncSleep:
-    # _switch_wlan_mode()'s happy path makes several real asyncio.sleep() calls (2s+1s+1s settle
-    # time around deinit/reinit) - far too slow for a plain test. Same technique as
-    # test_asy_bmp3xx_driver.py's/test_asy_sgp40_driver.py's own _FastAsyncSleep. asyncio.sleep is a
-    # shared, process-wide function, restored on exit regardless of how the `with` block exits.
+    # _switch_wlan_mode()'s happy path makes several real asyncio.sleep() calls (2s+1s+1s of settle
+    # time) - far too slow for a plain test. Same technique as the _FastAsyncSleep in the bmp3xx/
+    # sgp40 suites; asyncio.sleep is process-wide, so it is restored however the block exits.
     def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
 
@@ -327,13 +314,13 @@ def test_get_dict_cfg_masks_the_password() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Configuration: every valid field, and single/multiple invalid recombinations coming from a real
-# on-disk config_WIFI.cfg file, exercised through the real ConfigManager asy_wifi_service now owns
-# internally (not mocked) - proving asy_wifi_service.py's own handling of ConfigManager's per-field
-# defaulting, not re-testing ConfigManager's own contract (already covered by test_config_manager.py).
-# get_dict_cfg()'s own PW-masking (_mask_pw()) hides the real underlying value regardless of
-# validity, so these read the raw cached value via client.cfgmgr.get_dict([...]) instead - the same
-# level test_asy_ntp_client.py's own config-matrix tests exercise through _get_ntp_config().
+# Configuration: every valid field, plus single/multiple invalid recombinations from a real on-disk
+# config_WIFI.cfg, through the real ConfigManager this module owns - proving this module's handling
+# of per-field defaulting, not re-testing ConfigManager (test_config_manager.py covers that).
+
+# get_dict_cfg()'s _mask_pw() hides the real value regardless of validity, so these read the raw
+# cached value via client.cfgmgr.get_dict([...]) - the level test_asy_ntp_client.py's own
+# config-matrix tests work at too.
 # ---------------------------------------------------------------------------
 
 _WIFI_KEYS = ["SSID", "PW", "Country", "Hostname", "LedWifiOn", "HotspotPW"]
@@ -449,11 +436,9 @@ def test_config_hostname_too_long_falls_back_to_default() -> None:
 
 
 def test_config_hostname_one_over_the_real_max_falls_back_to_default() -> None:
-    # 33 chars - just past network.hostname()'s real, documented 32-character hard cap
-    # (MICROPY_PY_NETWORK_HOSTNAME_MAX_LEN, confirmed against extmod/modnetwork.h on both the
-    # deployed v1.26.1 pin and the v1.29.0 refactor target). _VAL_HOST's schema max was narrowed to
-    # match this real constraint - see BACKLOG.md - so this must now be rejected at config-validation
-    # time instead of reaching network.hostname() and raising there.
+    # 33 chars - just past network.hostname()'s real 32-character cap, confirmed against
+    # extmod/modnetwork.h on both the v1.26.1 pin and the v1.29.0 target. _VAL_HOST's schema max was
+    # narrowed to match, so this is now rejected at config-validation time, not by the real call.
     json_text = (
         '{"SSID": "MyNetwork", "PW": "supersecret", "Country": "US", '
         '"Hostname": "' + ("h" * 33) + '", "LedWifiOn": false}'
@@ -572,9 +557,8 @@ def test_get_error_counter_starts_empty_and_records_a_real_error() -> None:
 
 # ---------------------------------------------------------------------------
 # LED helpers - _led_on()/_led_off()/_led_toggle()/set_wifi_led(). _led_off() is a real-bug
-# regression test: an earlier replace_all edit this session accidentally overwrote its body with a
-# call to itself (infinite recursion) - a plain call+assert already catches that regression, since
-# a recursive _led_off() would blow the interpreter's recursion limit instead of returning cleanly.
+# regression test: its body was once overwritten with a call to itself, which a plain call+assert
+# catches, since a recursive _led_off() blows the recursion limit instead of returning cleanly.
 # ---------------------------------------------------------------------------
 
 
@@ -672,13 +656,12 @@ def test_set_wifi_led_returns_true_uniform_setter_contract() -> None:
 
 def test_flash_led_off_cancelled_mid_off_phase_still_leaves_the_led_on() -> None:
     # _flash_led_off()'s real contract is its `except asyncio.CancelledError: self._led_on(); break`
-    # handler: whichever phase of the ~2.9s-on/0.1s-off cycle the task is interrupted in,
-    # cancellation must leave the LED lit - _hotspot_client_connected()/reconnect_wifi() cancel this
-    # task precisely to hand back a steadily-on LED. The other ledflash tests only prove the task is
-    # created and cancels cleanly, never driving an actual toggle; this one runs the cycle far enough
-    # to land in the off phase (the one phase where a missing handler would leave the LED dark) and
-    # then cancels there. _FastAsyncSleep collapses both real sleeps to a plain yield, so the cycle
-    # is driven by scheduling steps instead of ~3s of wall clock.
+    # handler: whichever phase of the ~2.9s-on/0.1s-off cycle is interrupted, cancellation must
+    # leave the LED lit, since the cancelling callers want a steadily-on LED back.
+
+    # The other ledflash tests never drive an actual toggle; this one runs the cycle into the off
+    # phase - the one phase where a missing handler leaves the LED dark - and cancels there.
+    # _FastAsyncSleep collapses both sleeps to a yield, so scheduling steps drive the cycle.
     led = FakeLED()
     client = make_client(ext_led=led)
     run(client.set_wifi_led(status=True))
@@ -713,12 +696,11 @@ def test_led_wifi_on_push_callback_is_registered_at_construction() -> None:
 
 def test_push_callbacks_registered_for_led_wifi_on_only() -> None:
     # Exhaustive, not just "LedWifiOn is present": SSID/PW/Country/Hostname are persist-only and
-    # must have no push entry, and - the concrete concern this guards - set_ext_led() (the plain,
-    # REST-unreachable method sensortask-wozi.py calls once at boot to lazily hand this client its
-    # Neopixel-as-WiFi-LED controller, see its own module-level `conn.set_ext_led(pixel)` call) must
-    # never end up registered here either. It takes an LEDControl object, not a schema-typed
-    # int/float/str/bool, so it couldn't be dispatched through _set_dict_cfg even if it were
-    # registered - this test is the direct, explicit proof that it isn't, rather than relying on
+    # must have no push entry, and set_ext_led() - the REST-unreachable method the boot sequence
+    # calls once to hand this client its Neopixel-as-WiFi-LED - must not be registered either.
+
+    # It takes an LEDControl object rather than a schema-typed value, so it could not be dispatched
+    # through _set_dict_cfg even if registered; this is the explicit proof rather than relying on
     # that type mismatch alone.
     client = make_client(ext_led=FakeLED())
     assert set(client._push_callbacks) == {"LedWifiOn"}
@@ -766,10 +748,9 @@ def test_set_dict_cfg_led_wifi_on_end_to_end_persists_and_pushes() -> None:
 
 
 def test_set_dict_cfg_multiple_invalid_fields_reported_independently() -> None:
-    # Mirrors asy_ntp_client.py's own multi-invalid _set_dict_cfg coverage
-    # (test_set_dict_cfg_invalid_field_reported_individually_others_still_apply) - this driver had
-    # no multi-field _set_dict_cfg test at all beyond the single-field LedWifiOn one above, despite
-    # having four persist-only string fields each with their own real min/max/special validation.
+    # Mirrors asy_ntp_client.py's own multi-invalid _set_dict_cfg coverage - this driver had no
+    # multi-field _set_dict_cfg test beyond the single-field LedWifiOn one above, despite four
+    # persist-only string fields each with their own min/max/special validation.
     led = FakeLED()
     client = make_client(ext_led=led)
     results = run(
@@ -1048,9 +1029,8 @@ def test_network_available_false_on_a_status_exception() -> None:
 
 # ---------------------------------------------------------------------------
 # is_hotspot_active() - lock-free getter for asy_webserver_service.py's captive-portal redirect
-# fallback (see SPECIFICATION.md Part A.5). All four _conn_phase values are exercised
-# deliberately, not just the True case and one False case - a regression narrowed to, say,
-# _PHASE_DEACTIVATED alone would slip past a two-case test.
+# fallback (SPECIFICATION.md Part A.5). All four _conn_phase values are exercised deliberately:
+# a regression narrowed to, say, _PHASE_DEACTIVATED alone would slip past a two-case test.
 # ---------------------------------------------------------------------------
 
 
@@ -1079,10 +1059,9 @@ def test_is_hotspot_active_false_in_deactivated_phase() -> None:
 
 
 def test_is_hotspot_active_dynamic_mode_switch_reflects_live_state_not_cached() -> None:
-    # Dynamic-mode-switch coverage: a plain int-compare getter with no internal caching must track
-    # _conn_phase live, on the SAME client instance, across repeated calls - not just once per phase
-    # on a fresh instance (every other test above uses a fresh make_client() per phase, which alone
-    # wouldn't catch an accidental memoization bug).
+    # Dynamic-mode-switch coverage: a plain int-compare getter with no caching must track
+    # _conn_phase live on the SAME client instance across repeated calls. Every other test above
+    # uses a fresh make_client() per phase, which alone wouldn't catch a memoization bug.
     client = make_client()
     for phase, expected in (
         (_PHASE_STA_SEEKING, False),
@@ -1136,27 +1115,23 @@ def test_wlan_isconnected_returns_the_real_value_when_unlocked() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Compound scenario: every "returns a locked default" test above proves the getter's own defensive
-# check works against a synthetically pre-acquired lock, not against a genuinely suspended real
-# competing task - identified via a bird's-eye gap review (2026-09-04). This drives the actual
-# real-world case: an established connection's own real outage-retry (_on_sta_disconnected()'s
-# asyncio.sleep(60) branch, proven suspended-not-finished the same way
-# test_on_sta_disconnected_retries_after_a_minute_when_previously_connected already does) genuinely
-# holding wifi_mode_lock for real, while a REST-facing getter is called from a second, real,
-# concurrently-scheduled coroutine mid-hold - the actual shape GET /status or GET /networking would
-# see if it landed during a live 60s retry window, not just what the getter does when told the lock
-# is held.
+# Compound scenario: every "returns a locked default" test above proves the getter's defensive
+# check against a synthetically pre-acquired lock, not against a genuinely suspended competing
+# task. This drives the real case.
+
+# An established connection's own outage-retry (_on_sta_disconnected()'s asyncio.sleep(60) branch)
+# genuinely holds wifi_mode_lock while a REST-facing getter runs in a second concurrently-scheduled
+# coroutine - the shape GET /status or GET /networking sees during a live 60s retry window.
 # ---------------------------------------------------------------------------
 
 
 def test_status_getters_return_locked_defaults_during_a_real_concurrent_outage_retry() -> None:
     client = make_client(conn_fail_to_hotspot=2)
     client._conn_phase = _PHASE_STA_ESTABLISHED
-    _wlan(client)._connected = True  # the real "phantom connected" shape: isconnected() still True,
-    # but _run_sta_mode()'s caller (simulated here) has independently decided a retry is needed -
-    # matches this project's own real-hardware finding (test_network_resilience.py's own
-    # "the link *looked* fine to both sides' bookkeeping while actually being dead" account) that
-    # this branch can be reached and held for a long time regardless of what isconnected() reports.
+    _wlan(client)._connected = True  # the real "phantom connected" shape: isconnected() still True
+    # while _run_sta_mode()'s caller has independently decided a retry is needed - the real-hardware
+    # finding (test_network_resilience.py) is that this branch can be reached and held for a long
+    # time regardless of what isconnected() reports.
 
     async def hold_lock_via_established_retry() -> None:
         # Mirrors _run_sta_mode()'s own acquire-then-call shape (src/asy_wifi_service.py:527-533) -
@@ -1294,10 +1269,9 @@ def test_hotspot_client_absent_self_heals_a_dropped_timer_callback() -> None:
 
 
 def test_hotspot_client_absent_self_heal_persists_its_own_errno() -> None:
-    # WP8: a real, actionable self-heal event (F.1's soft-Timer-callback-drop gotcha actually
-    # firing), not routine WiFi-mode-transition noise - the one sibling of this file's own
-    # module-docstring "routine observations degrade silently" policy that genuinely needed
-    # upgrading to err_s().
+    # WP8: a real, actionable self-heal event (Part F.1's soft-Timer-callback-drop gotcha actually
+    # firing), not routine WiFi-mode-transition noise - the one sibling of this file's
+    # "routine observations degrade silently" policy that genuinely needed upgrading to err_s().
     client = make_client(hotspot_time_min=1, wifi_refresh_sec=5)
     run(client._hotspot_client_absent())  # arms the timer (never triggered)
     client.hotspot_timer_ticks_since_armed = 23  # one tick short of the threshold
@@ -1338,9 +1312,8 @@ def test_hotspot_client_absent_starts_the_led_flash_task() -> None:
 
 # ---------------------------------------------------------------------------
 # "Attempt" operations - a mode switch, hotspot activation, a connect trigger, polling connect
-# status, the disconnect-wait, permanent deactivation: each persists a real errno via pr.err_s()
-# and sets self.hw_op_failed on a genuine exception, independent of connection_failures/
-# conn_fail_to_hotspot's own AP-reachability-driven hotspot fallback.
+# status, the disconnect-wait, permanent deactivation: each persists a real errno via pr.err_s() and
+# sets self.hw_op_failed on a genuine exception, independent of the AP-reachability-driven fallback.
 # ---------------------------------------------------------------------------
 
 
@@ -1512,14 +1485,12 @@ def test_disconnect_sta_and_wait_returns_immediately_when_already_disconnected()
 
 
 def test_disconnect_sta_and_wait_times_out_instead_of_hanging_forever() -> None:
-    # Real correctness proof for the bounded-loop fix: a driver that never confirms disconnection
-    # (isconnected() always True) must not hang wlan_connect() forever - this genuinely runs the
-    # full _STA_DISCONNECT_WAIT_ITERS(20) * 0.5s = 10s bound in real time (const() values are
-    # compiled away, so there's no way to fast-forward this from the test side - see
-    # SPECIFICATION.md Part E.5.1's own note on this class of MicroPython behavior). The fake WLAN's own
-    # disconnect() normally clears _connected as a side effect (modeling a real disconnect
-    # completing immediately) - overridden here to a no-op so isconnected() keeps reporting True
-    # throughout, genuinely simulating a driver that never confirms disconnection.
+    # A driver that never confirms disconnection (isconnected() always True) must not hang
+    # wlan_connect() forever: this runs the full _STA_DISCONNECT_WAIT_ITERS(20) * 0.5s bound in real
+    # time, since const() values are compiled away and can't be fast-forwarded (Part E.5.1).
+
+    # The fake WLAN's disconnect() normally clears _connected as a side effect; overridden here to
+    # a no-op so isconnected() keeps reporting True throughout.
     client = make_client()
     run(client.pr.setup())
     _wlan(client)._connected = True
@@ -1614,10 +1585,8 @@ def test_on_sta_disconnected_registers_failure_when_never_connected() -> None:
 
 def test_on_sta_disconnected_retries_after_a_minute_when_previously_connected() -> None:
     # _PHASE_STA_ESTABLISHED takes the "retry a previously-successful connection in one minute"
-    # branch, which asyncio.sleep(60)s for real - proven by observing the task is still suspended
-    # there (not finished, never reached _register_sta_connection_failure()) instead of paying the
-    # full 60s wait, the same "prove the bound without waiting it out" approach
-    # test_wlan_connect_never_gives_up_while_repeatedly_succeeding() already uses.
+    # branch, which asyncio.sleep(60)s for real - proven by observing the task still suspended there
+    # rather than paying the wait out, the same approach as the repeated-success test above.
     client = make_client(conn_fail_to_hotspot=2)
     client._conn_phase = _PHASE_STA_ESTABLISHED
 
@@ -1704,10 +1673,9 @@ def test_attempt_sta_connect_empty_ssid_forces_immediate_hotspot_fallback() -> N
 
 
 # ---------------------------------------------------------------------------
-# _run_sta_mode() / _get_hotspot_stations() / _manage_hotspot_stations() / _run_hotspot_mode() /
-# _leave_hotspot_mode() / _wait_for_sta_disconnect() / _handle_reconnect_trigger() -
-# the orchestration layer around wlan_connect()'s main loop, previously only exercised indirectly
-# through the full loop (with these helpers themselves faked out) or not at all.
+# The orchestration layer around wlan_connect()'s main loop, previously only exercised indirectly:
+# _run_sta_mode, _get_hotspot_stations, _manage_hotspot_stations, _run_hotspot_mode,
+# _leave_hotspot_mode, _wait_for_sta_disconnect and _handle_reconnect_trigger.
 # ---------------------------------------------------------------------------
 
 
@@ -1739,16 +1707,13 @@ def test_run_sta_mode_skips_attempt_when_already_connected() -> None:
 
 
 def test_run_sta_mode_stays_benign_across_many_cycles_when_isconnected_is_permanently_stuck_true() -> None:
-    # Real-hardware finding this proves benign at mock tier (test_network_resilience.py's own
-    # account, 5/5 real trials): the CYW43 firmware can leave isconnected() stuck True for well over
-    # 150s after a real outage - _run_sta_mode() is the exact per-wifi_refresh_sec-cycle method the
-    # real running task calls once already established, and `if not self._wlan_isconnected_or_false():
-    # ...` structurally never fires while stuck true, so _attempt_sta_connect()/_on_sta_disconnected()
-    # are never reached at all. Drives the real (not monkeypatched) method across many repeated
-    # cycles and proves the steady state stays fully benign: no exception, no hw_op_failed (no task
-    # restart), no connection_failures climb (no spurious hotspot escalation), _conn_phase stays
-    # ESTABLISHED - matches CLAUDE.md's "physical intervention as the accepted backstop" pattern
-    # for this class of problem, not a hang or crash.
+    # Real-hardware finding proven benign at mock tier (test_network_resilience.py, 5/5 trials):
+    # the CYW43 firmware can leave isconnected() stuck True for well over 150s after a real outage,
+    # and _run_sta_mode()'s `if not self._wlan_isconnected_or_false()` never fires while stuck.
+
+    # Drives the real method across many cycles and proves the steady state stays fully benign: no
+    # exception, no hw_op_failed, no connection_failures climb, _conn_phase stays ESTABLISHED -
+    # CLAUDE.md's "physical intervention as the accepted backstop" pattern, not a hang or crash.
     client = make_client(conn_fail_to_hotspot=2)
     client._conn_phase = _PHASE_STA_ESTABLISHED
     _wlan(client)._connected = True
@@ -1766,14 +1731,12 @@ def test_run_sta_mode_stays_benign_across_many_cycles_when_isconnected_is_perman
 
 
 def test_run_sta_mode_attempts_a_real_reconnect_on_the_very_first_cycle_once_isconnected_finally_flips_false() -> None:
-    # Completes the picture the steady-state test above starts: once the CYW43-firmware-level lie
-    # finally clears (isconnected() actually flips false, whatever real-world timing that takes),
-    # self-healing must begin on the very first following cycle, not some later one -
-    # _wlan_isconnected_or_false() is queried fresh every _run_sta_mode() call, so there's no extra
-    # latency layered on top of the underlying firmware's own timing.
-    # make_client_with_json (a real configured SSID), not make_client (whose default empty SSID
-    # would make _attempt_sta_connect() take the "immediate hotspot mode" shortcut instead of
-    # ever calling wlan.connect() - not what this test needs to observe).
+    # Completes the steady-state test above: once the firmware-level lie clears, self-healing must
+    # begin on the very first following cycle, since _wlan_isconnected_or_false() is queried fresh
+    # every _run_sta_mode() call and adds no latency of its own.
+
+    # make_client_with_json (a real configured SSID), not make_client: an empty SSID would make
+    # _attempt_sta_connect() take the immediate-hotspot shortcut instead of calling wlan.connect().
     client = make_client_with_json(_VALID_JSON, conn_fail_to_hotspot=2)
     client._conn_phase = _PHASE_STA_ESTABLISHED
     _wlan(client)._connected = True
@@ -1910,12 +1873,9 @@ def test_handle_reconnect_trigger_sta_mode_waits_for_disconnect() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _reset_wlan_connect_state() - runs once at the top of every wlan_connect() task (re)start: clears
-# the per-run failure bookkeeping, preserves (rather than resets) _conn_phase when a restart
-# happens to land mid-hotspot, and computes reconn_wifi from the (possibly preserved) phase plus
-# the real WLAN driver state. Previously only exercised indirectly through wlan_connect()'s own
-# tests below - these isolate it directly, including the hotspot-preserving asymmetry the
-# _conn_phase refactor had to keep (see asy_wifi_service.py's own comment on this method).
+# _reset_wlan_connect_state() - runs at the top of every wlan_connect() task (re)start: clears the
+# per-run failure bookkeeping, preserves _conn_phase when a restart lands mid-hotspot, and computes
+# reconn_wifi from that phase plus the real WLAN driver state. These isolate it directly.
 # ---------------------------------------------------------------------------
 
 
@@ -1935,10 +1895,8 @@ def test_reset_wlan_connect_state_resets_sta_established_to_seeking() -> None:
 
 def test_reset_wlan_connect_state_preserves_deactivated_phase_across_a_restart() -> None:
     # A task restart (e.g. after the hw_op_failed streak gives up) must NOT pull the state machine
-    # back out of the terminal deactivated phase - _PHASE_DEACTIVATED is a deliberate, permanent
-    # WLAN-off state (SPECIFICATION.md Part A.4: a physical power-cycle is the accepted recovery
-    # path), same special-casing as _PHASE_HOTSPOT just above. BACKLOG.md's open-question item 1,
-    # now decided/hardened.
+    # out of the terminal deactivated phase - _PHASE_DEACTIVATED is a deliberate, permanent WLAN-off
+    # state (Part A.4: a physical power-cycle is the recovery), same casing as _PHASE_HOTSPOT above.
     client = make_client()
     client._conn_phase = _PHASE_DEACTIVATED
     client._reset_wlan_connect_state()
@@ -2020,9 +1978,8 @@ def test_reset_wlan_connect_state_turns_the_led_off() -> None:
 
 # ---------------------------------------------------------------------------
 # wlan_connect() - the task-supervisor entry point: pr.setup(), the fresh _err_cnt_internal streak,
-# and max_module_error/_error_check() giving up after repeated WLAN-hardware-exception cycles
-# (independent from, and a coarser safety net than, connection_failures/conn_fail_to_hotspot's own
-# AP-reachability-driven hotspot fallback).
+# and max_module_error/_error_check() giving up after repeated WLAN-hardware-exception cycles - a
+# coarser safety net than the AP-reachability-driven conn_fail_to_hotspot fallback, independent of it.
 # ---------------------------------------------------------------------------
 
 
@@ -2042,11 +1999,9 @@ def test_wlan_connect_calls_pr_setup_before_entering_its_loop() -> None:
 
 
 def test_wlan_connect_also_calls_dns_server_pr_setup_before_entering_its_loop() -> None:
-    # Regression test from baseline verification: dns_server is
-    # its own separate PrintLogHistory instance (captive_dns.py's DNSServer, own construction) -
-    # nothing called its own pr.setup() before this fix, so every dns_server.pr.err_s()/wrn_s() call
-    # degraded to "PrintLog: Uninitialized, call setup first!" forever, reproduced directly running
-    # the real assembled system against the digital twin in real hotspot/AP mode.
+    # Regression test from baseline verification: dns_server is its own separate PrintLogHistory
+    # instance (captive_dns.py's DNSServer) and nothing called its pr.setup() before this fix, so
+    # every dns_server.pr call degraded to "PrintLog: Uninitialized" forever.
     client = make_client(wifi_refresh_sec=0)
     assert client.dns_server.pr.initialized is False
 
@@ -2163,9 +2118,8 @@ def test_wlan_connect_dispatches_to_sta_mode_when_conn_phase_is_not_hotspot() ->
 
 def test_wlan_connect_calls_handle_reconnect_trigger_when_reconn_wifi_is_set() -> None:
     # A task (re)start while the driver still reports connected forces reconn_wifi=True via
-    # _reset_wlan_connect_state()'s own computation - wlan_connect()'s loop must act on that the
-    # very first iteration, not just on ones following an explicit reconnect_wifi()/hotspot-timer
-    # trigger.
+    # _reset_wlan_connect_state() - wlan_connect()'s loop must act on that the very first iteration,
+    # not only on one following an explicit reconnect_wifi()/hotspot-timer trigger.
     client = make_client(wifi_refresh_sec=0)
     _wlan(client)._connected = True
     reconnect_calls = [0]
@@ -2254,22 +2208,22 @@ def test_wlan_connect_recovers_the_streak_on_alternating_failure_and_success() -
 
 # ===========================================================================
 # Integration tests: real (not mocked) captive DNS server - downstream. _configure_hotspot_ap()
-# starts a real DNSServer.run() task backed by a real AsyUDPSocket; driving it end-to-end proves
-# how a genuine malformed/off-subnet UDP datagram is handled, not just the unit under test in
-# isolation. DNSServer.__init__ hardcodes port 53 (privileged, no root in CI - same problem
-# test_asy_ntp_client.py's own _RedirectGetaddrinfo works around for real port 123) - redirected
-# here by swapping client.dns_server.udps for a fresh AsyUDPSocket on a free ephemeral port before
-# ever starting the hotspot, since DNSServer.run() only ever touches self.udps, never rebuilds it.
+# starts a real DNSServer.run() task over a real AsyUDPSocket, so a genuinely malformed/off-subnet
+# datagram is handled end to end rather than in isolation.
+
+# DNSServer.__init__ hardcodes privileged port 53 (no root in CI), redirected here by swapping
+# client.dns_server.udps for a fresh AsyUDPSocket on a free ephemeral port before starting the
+# hotspot, since DNSServer.run() only ever touches self.udps and never rebuilds it.
+# ===========================================================================
 # ===========================================================================
 
-# 27000+, not the 54000 this file used to share with tests/test_asy_dns_client.py: scripts/test.sh
-# runs test files concurrently now, so a base must be disjoint from every OTHER file's, not just
-# from its own reuse, and must sit below the OS ephemeral range (32768-60999) so no concurrently-
-# running ephemeral socket can be assigned it either. A duplicate unicast UDP bind does not fail
-# with EADDRINUSE here (both sockets set SO_REUSEADDR, src/asy_udp_socket.py - confirmed directly
-# that the second bind succeeds); it silently delivers each datagram to one socket only, so a
-# collision surfaces as an inexplicable timeout, not an error. See scripts/test.sh's own
-# TEST_PARALLELISM comment for the full base allocation.
+# 27000+, not a base shared with another test file: scripts/test.sh runs files concurrently, so a
+# base must be disjoint from every other file's and must sit below the OS ephemeral range
+# (32768-60999). See scripts/test.sh's own TEST_PARALLELISM comment for the full allocation.
+
+# A duplicate unicast UDP bind does not fail with EADDRINUSE here (both sockets set SO_REUSEADDR,
+# confirmed directly) - it silently delivers each datagram to one socket only, so a collision
+# surfaces as an inexplicable timeout rather than an error.
 _next_port = 27000
 
 
@@ -2283,9 +2237,8 @@ def make_addr() -> "tuple[str, int]":
 
 def _dns_query_packet(domain: str) -> bytes:
     # Minimal standard-query DNS packet DNSQuery.__init__ can parse: a 12-byte header (opcode bits
-    # of byte 2 all zero -> "standard query"), then the QNAME as length-prefixed labels terminated
-    # by a zero-length label, then a harmless QTYPE=A/QCLASS=IN (never read by this file's own
-    # parsing, which stops once the QNAME's terminator is reached).
+    # zero), the QNAME as length-prefixed labels ending in a zero-length label, then a harmless
+    # QTYPE=A/QCLASS=IN, never read by parsing that stops at the QNAME terminator.
     header = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"
     qname = b"".join(bytes([len(label)]) + label.encode("ascii") for label in domain.split(".")) + b"\x00"
     return header + qname + b"\x00\x01\x00\x01"
@@ -2300,10 +2253,9 @@ async def _start_real_hotspot(client: AsyConnTime, server_addr: "tuple[str, int]
 
 
 def test_integration_hotspot_captive_dns_ignores_a_malformed_packet_without_crashing() -> None:
-    # "Interrupted packet" simulation: a datagram far too short to even contain a DNS header, sent
-    # from a genuine second socket over a real loopback UDP round trip (not mocked) - proves the
-    # whole real transport-to-parsing pipeline survives, not just DNSQuery in isolation.
-    # DNSQuery.__init__'s own (IndexError, UnicodeError) guard already handles this.
+    # "Interrupted packet": a datagram far too short to contain a DNS header, sent from a genuine
+    # second socket over a real loopback round trip - proves the whole transport-to-parsing pipeline
+    # survives, not just DNSQuery. DNSQuery.__init__'s (IndexError, UnicodeError) guard handles it.
     client = make_client()
     server_addr = make_addr()
 
@@ -2327,17 +2279,12 @@ def test_integration_hotspot_captive_dns_ignores_a_malformed_packet_without_cras
 
 
 class _ScriptedUDPSocket:
-    # Feeds a scripted sequence of (data, addr) pairs to DNSServer.run()'s real recvfrom() calls,
-    # with addr as a genuine (host, port) tuple. Needed because this Unix port's own AsyUDPSocket,
-    # once bound via a pre-resolved sockaddr (required for a real bind() to work at all here - see
-    # make_addr()'s own comment), returns an *opaque raw sockaddr* from its own real recvfrom() in
-    # this specific build, not a parseable (host, port) tuple - exactly the quirk captive_dns.py's
-    # own on_subnet except-clause already anticipates and degrades gracefully against (confirmed
-    # directly: a real two-socket round trip here gets every packet dropped as "unparseable
-    # address", regardless of actual subnet match). This drives DNSServer.run()'s real subnet-check
-    # and response-building code against a controlled, always-clean address shape instead, so the
-    # accept/reject distinction is actually being tested, not just "every real packet gets dropped
-    # here regardless of subnet".
+    # Feeds a scripted sequence of (data, addr) pairs to DNSServer.run()'s real recvfrom(), with
+    # addr a genuine (host, port) tuple. This Unix port's AsyUDPSocket, once bound via a pre-resolved
+    # sockaddr, returns an opaque raw one - the quirk captive_dns.py already degrades against.
+
+    # Without this, a real two-socket round trip drops every packet as "unparseable address"
+    # regardless of subnet (confirmed directly), so the accept/reject distinction would go untested.
     def __init__(self, script: "list[tuple[bytes, tuple[str, int]]]") -> None:
         self._script = list(script)
         self.sent: list[tuple[bytes, tuple[str, int]]] = []
@@ -2393,20 +2340,20 @@ def test_integration_hotspot_captive_dns_ignores_an_off_subnet_query() -> None:
 
 
 # ===========================================================================
-# Integration tests: the full wlan_connect() task driven end-to-end through the fake network.WLAN,
-# proving how a real connect success/failure sequence propagates all the way up through
-# get_data()/get_error_counter() and connection_failures/hotspot fallback - not just the unit under
-# test in isolation. Mirrors test_asy_ntp_client.py's own integration-tests section.
+# Integration tests: the full wlan_connect() task end to end through the fake network.WLAN, proving
+# how a real connect success/failure sequence propagates up through get_data()/get_error_counter()
+# and connection_failures/hotspot fallback. Mirrors test_asy_ntp_client.py's own section.
+# ===========================================================================
 # ===========================================================================
 
 
 def test_integration_sta_connect_succeeds_and_propagates_to_get_data() -> None:
-    # _poll_sta_connect_status() never returns early on STAT_GOT_IP (existing, unmodified
-    # behavior - it keeps polling for its full 10 iterations regardless), so this genuinely runs
-    # ~5s in real time; simulates a WLAN driver that reports a connection as already established
-    # the instant connect() is called (connect_calls still records the real attempt). get_data()'s
-    # cached snapshot is only ever pushed by time_counter()'s own task (see get_data()'s own
-    # comment) - driven here alongside wlan_connect(), exactly like a real task-starter set would.
+    # _poll_sta_connect_status() never returns early on STAT_GOT_IP (existing behavior - it polls
+    # all 10 iterations regardless), so this genuinely runs ~5s in real time; it simulates a driver
+    # reporting a connection established the instant connect() is called.
+
+    # get_data()'s cached snapshot is only ever pushed by time_counter()'s own task, so that is
+    # driven here alongside wlan_connect(), exactly like a real task-starter set would.
     client = make_client_with_json(_VALID_JSON, wifi_refresh_sec=0)
     original_connect = _wlan(client).connect
 
@@ -2455,11 +2402,9 @@ def test_integration_repeated_wrong_password_falls_back_to_hotspot_mode() -> Non
 
 
 def test_cfg_schema_matches_what_cfgmgr_was_built_with() -> None:
-    # Regression check for the sensortask-wozi.py integration bug where a shared REST helper
-    # (api_helpers.py's cmd_post_check()) needed each module's own schema to call the promoted
-    # config_manager.ConfigManager.write_config(data, cfg_vals) correctly - cfg_schema is the public
-    # attribute that lets a caller outside this module get that schema without reaching into a
-    # private, underscore-prefixed module-level const.
+    # Regression check for the integration bug where a shared REST helper needed each module's own
+    # schema to call ConfigManager.write_config(data, cfg_vals) correctly - cfg_schema is the public
+    # attribute giving an outside caller that schema, without reaching into a private const.
     client = make_client()
     assert client.cfg_schema == (_VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED + _VAL_HOTSPOT_PW)
 
@@ -2706,27 +2651,16 @@ def test_start_hotspot_uses_the_configured_hotspot_password_not_the_default() ->
 # Task/timer resource leak regression: _run_hotspot_mode() calls _start_hotspot() every loop
 # iteration where wlan.status() != network.STAT_GOT_IP.
 #
-# CORRECTED (2026-09-08, see _configure_hotspot_ap()'s own corrected comment in src/
-# asy_wifi_service.py): this used to claim that condition is "true on literally every iteration
-# while purely in AP mode, since STAT_GOT_IP is a STA-only status an AP interface never reports."
-# That claim about real hardware was wrong, verified directly against the pinned MicroPython/
-# cyw43-driver C source - an AP interface reaches STAT_GOT_IP too, once it has its own
-# self-assigned IP, same as a STA interface with a DHCP lease. In real steady-state operation this
-# branch (and so _start_hotspot()/_configure_hotspot_ap()) only fires once per hotspot entry, not
-# every tick. What *is* still accurate: neither tests/network.py's nor digital_twin/network.py's
-# WLAN fakes ever transition `_status` to STAT_GOT_IP for AP mode on their own (a deliberate
-# mocking simplification, not a modeling bug to fix here) - so calling _start_hotspot() twice in a
-# row, as this test does, is this file's own way of exercising the repeated-call shape a real
-# device would only very rarely revisit (e.g. a genuine status flicker), not the routine case the
-# original comment believed it was.
+# A real AP interface does reach STAT_GOT_IP once it has its own self-assigned IP (verified against
+# the pinned MicroPython/cyw43-driver source), so in steady state that branch fires once per hotspot
+# entry, not every tick - calling _start_hotspot() twice below is a rare flicker, not the norm.
 #
-# The regression this section actually guards against is still real and still applies regardless:
-# _configure_hotspot_ap() (called from _start_hotspot() via _activate_hotspot_ap()) unconditionally
-# did `self.dns_server_task = evtloop.create_task(...)` with no is-already-running guard - unlike
-# every other task-holding attribute in this file (ledflash, hotspot_timer), which all null-check
-# before reassigning. Net effect before that fix: a second real re-entry into this method (rare in
-# steady state, but not impossible) would leak a concurrent DNSServer.run() task, sharing the one
-# DNSServer instance's single AsyUDPSocket/poller with the still-running original.
+# Neither WLAN fake ever transitions _status to STAT_GOT_IP for AP mode on its own (a deliberate
+# mocking simplification, not a modeling bug to fix here).
+#
+# The regression guarded here is real regardless: _configure_hotspot_ap() used to create its
+# dns_server_task with no is-already-running guard, unlike every other task-holding attribute in
+# this file, so a re-entry leaked a concurrent DNSServer.run() sharing the one AsyUDPSocket.
 # ---------------------------------------------------------------------------
 
 
@@ -2782,11 +2716,9 @@ def test_start_hotspot_starts_a_fresh_dns_server_task_if_the_previous_one_alread
 
 
 # ---------------------------------------------------------------------------
-# Radio reconfiguration idempotency (2026-09-08, real bench hardware investigation - see
-# _configure_hotspot_ap()'s own corrected comment): a genuine re-entry into this method while the
-# AP interface is still active must not reapply essid/password/active(True) - only skip-if-already-
-# active protects against a real, if rare, beacon interruption on the actual CYW43 firmware, unlike
-# the DNS-task guard above which is a pure resource-leak concern.
+# Radio reconfiguration idempotency (real bench hardware investigation): a genuine re-entry while
+# the AP interface is still active must not reapply essid/password/active(True), or the real CYW43
+# firmware can interrupt its beacon - unlike the DNS-task guard above, a pure resource-leak concern.
 # ---------------------------------------------------------------------------
 
 
