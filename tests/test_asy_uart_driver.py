@@ -98,10 +98,9 @@ def test_valid_bits_parity_stop_pass_through_unvalidated() -> None:
 
 
 def test_non_positive_baudrate_does_not_raise() -> None:
-    # Real hardware silently ignores a non-positive baudrate (keeps the previous/default value)
-    # instead of raising - confirmed directly, not guessed (see tests/machine.py's docstring). The
-    # raise/no-raise contract is what this test actually checks; it doesn't claim the fake models
-    # the silent-ignore/clamp behavior itself.
+    # Real hardware silently ignores a non-positive baudrate, keeping the previous or default value, rather
+    # than raising - confirmed directly, not guessed (tests/machine.py's docstring). The raise/no-raise
+    # contract is what this checks; it makes no claim the fake models the silent-ignore behavior itself.
     uart = make_uart(baudrate=0)
     assert fake(uart).id == 0  # construction completed, nothing raised
 
@@ -194,10 +193,9 @@ def test_bad_invert_mask_raises_value_error() -> None:
 
 
 def test_bad_tx_pin_wins_over_bad_port_id() -> None:
-    # asy_uart_driver.py's own init() constructs Pin(tx_pin) as a call *argument* to _UART(...),
-    # so a bad tx_pin always raises before _UART()'s own body (and therefore its port_id check)
-    # ever runs - a consequence of how this driver is structured, not something to assume matches
-    # mp_machine_uart_make_new()'s own internal check order in isolation.
+    # asy_uart_driver.py's init() constructs Pin(tx_pin) as a call argument to _UART(...), so a bad tx_pin
+    # always raises before _UART()'s own body, and therefore its port_id check, ever runs - a consequence of
+    # how this driver is structured, not an assumption about the C constructor's internal check order.
     try:
         UART(99, tx_pin=29, rx_pin=1)
         message = ""
@@ -247,10 +245,9 @@ def test_multiple_invalid_pins_still_raises_cleanly() -> None:
 
 
 def test_failed_reinit_leaves_the_bus_deinitialized_not_reverted() -> None:
-    # init() always deinit()s the previous bus first (see its own comment), so a failing re-init
-    # can't roll back to the previous working bus - the instance is left deinitialized until a
-    # caller successfully re-inits with valid parameters. Same shape as asy_i2c_driver.py's/
-    # asy_spi_driver.py's own init(), not unique to UART.
+    # init() always deinit()s the previous bus first, so a failing re-init cannot roll back to the previous
+    # working bus - the instance is left deinitialized until a caller re-inits with valid parameters. The
+    # same shape as asy_i2c_driver.py's and asy_spi_driver.py's init(), not unique to UART.
     uart = make_uart()
     try:
         uart.init(99, tx_pin=0, rx_pin=1)  # bad port_id
@@ -375,10 +372,9 @@ def test_ready_times_out_when_nothing_arrives() -> None:
 
 
 def test_ready_survives_a_concurrent_deinit_mid_loop() -> None:
-    # Regression test: ready() used to check self._uart/self.poller for None only once, at entry,
-    # then loop indefinitely calling self.poller.ipoll(0) - a concurrent deinit() mid-loop nulled
-    # self.poller and crashed the next iteration with AttributeError. Fixed to re-check every
-    # iteration, matching asy_udp_socket.py's own ready() (see BACKLOG.md).
+    # Regression test: ready() used to check self._uart/self.poller for None only at entry, then loop
+    # indefinitely calling ipoll(0) - a concurrent deinit() mid-loop nulled self.poller and crashed the next
+    # iteration. Fixed to re-check every iteration, matching asy_udp_socket.py's ready().
     uart = make_uart()
 
     def deinit_mid_loop() -> int:
@@ -1060,10 +1056,9 @@ def test_readline_until_complete_assembles_multi_part_line() -> None:
 
 
 def test_readline_until_complete_survives_an_empty_readline_without_crashing() -> None:
-    # Regression test for a fixed latent IndexError: `msg[-1]` on a still-empty bytearray if
-    # readline() ever returns b"" while ready() still reports POLLIN. Monkeypatched directly since
-    # the fake's own queue-driven readline() can't otherwise be made to return b"" while data is
-    # still pending.
+    # Regression test for a fixed latent IndexError: `msg[-1]` on a still-empty bytearray if readline() ever
+    # returns b"" while ready() still reports POLLIN. Monkeypatched directly, the fake's queue-driven
+    # readline() not otherwise being able to return b"" while data is still pending.
     uart = make_uart()
     fk = fake(uart)
     fk.feed_rx(b"ok\n")
@@ -1306,10 +1301,9 @@ def test_aexit_tolerates_a_lock_already_released_inside_the_block() -> None:
 
 
 def test_task_cancellation_while_holding_the_lock_still_releases_it() -> None:
-    # Interrupts a session via real asyncio cancellation (not just an exception raised by our own
-    # code) - MicroPython's asyncio still runs __aexit__ via CancelledError propagating through
-    # `async with`, same as CPython (confirmed directly for I2CDevice; UART(Lockable) shares the
-    # exact same __aenter__/__aexit__ implementation, not a reimplementation).
+    # Interrupts a session via real asyncio cancellation, not just an exception raised by our own code -
+    # MicroPython's asyncio still runs __aexit__ via CancelledError propagating through `async with`, as
+    # CPython does. Confirmed for I2CDevice; UART(Lockable) shares that exact implementation.
     uart = make_uart()
     started = False
 
@@ -1393,10 +1387,9 @@ def test_reentrant_acquisition_deadlocks_and_cleans_up() -> None:
 
 
 class _MemoryErrorCRC:
-    # Wraps a real CRC_Base so length() (needed by read_until_complete()'s own nbytes += ... call)
-    # keeps working, while add()/check() raise MemoryError instead of doing real work - same
-    # technique as test_asy_udp_socket.py's own _MemoryErrorSocketWrapper, proving
-    # asy_uart_driver.py's try/except MemoryError around these two calls actually catches it.
+    # Wraps a real CRC_Base so length(), which read_until_complete() needs, keeps working while
+    # add()/check() raise MemoryError instead of doing real work - the UDP socket suite's own technique,
+    # proving asy_uart_driver.py's try/except around these two calls actually catches it.
     def __init__(self, real: "CRC_Base") -> None:
         self._real = real
 
@@ -1423,10 +1416,9 @@ def test_write_returns_false_on_crc_add_memoryerror() -> None:
 
 
 class _NoneCRC:
-    # A real CRC_Base's add() only ever returns None via its own _validate_init() rejecting an
-    # explicit init argument - write() never passes one, so this path can't be reached through any
-    # real CRC object. Minimal fake matching just the add()/length() surface write() calls, same
-    # technique as _MemoryErrorCRC above for its own otherwise-unreachable branch.
+    # A real CRC_Base's add() only ever returns None via its own _validate_init() rejecting an explicit init
+    # argument, which write() never passes, so this path is unreachable through any real CRC object. A
+    # minimal fake matching just the add()/length() surface write() calls, like _MemoryErrorCRC above.
     def length(self) -> int:
         return 0
 
