@@ -38,10 +38,9 @@ def make_port() -> int:
 
 
 def resolve_addr(host: str, port: int) -> tuple[str, int]:
-    # This project's MicroPython Unix-port "standard" build rejects a plain (host, port) tuple in
-    # bind()/sendto() with "TypeError: object with buffer protocol required" - a known Unix-port-
-    # only limitation (micropython/micropython#6924), not present on the real rp2 target. Tests
-    # work around it the same way tests/test_asy_udp_socket.py does: resolve first.
+    # This project's Unix-port "standard" build rejects a plain (host, port) tuple in bind()/sendto() with
+    # "TypeError: object with buffer protocol required" (micropython/micropython#6924), which the real rp2
+    # target does not. Worked around the same way tests/test_asy_udp_socket.py does: resolve first.
     return socket.getaddrinfo(host, port)[0][-1]  # type: ignore[return-value]
 
 
@@ -55,11 +54,9 @@ def make_query(labels: list[str], query_id: bytes = b"\x12\x34") -> bytes:
 
 
 def malformed_query_cases() -> list[bytes]:
-    # The 11 shapes found reachable from a truncated/malformed real UDP datagram (see BACKLOG.md):
-    # too short for the opcode byte, too short for the question section, a length byte with
-    # nothing following, a label truncated mid-way (both by 1 byte and entirely), an oversized
-    # (attack-style) label-length claim, a label with an invalid UTF-8 byte, and a validly-
-    # terminated label with QTYPE/QCLASS missing entirely.
+    # The 11 shapes reachable from a truncated or malformed real UDP datagram: too short for the opcode byte
+    # or the question section, a length byte with nothing following, a label truncated mid-way or entirely,
+    # an oversized length claim, invalid UTF-8, and a label with no QTYPE/QCLASS.
     header = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"  # standard query, QDCOUNT=1
     return [
         b"",
@@ -177,15 +174,15 @@ def test_response_builds_expected_packet_for_valid_domain() -> None:
 
 
 def test_response_ignores_trailing_data_after_the_question_and_hardcodes_counts() -> None:
-    # A real-world shape: a query with a single question PLUS trailing data this class was never
-    # meant to parse (most commonly a real client's EDNS0 OPT record in the additional section, or
-    # - equally unhandled here - a second question). Before the _question_end fix, self.data[12:]
-    # echoed that trailing data straight into what the header declares is pure question content,
-    # while ANCOUNT was set equal to the *original* QDCOUNT rather than the one record actually
-    # appended - producing a packet whose declared header counts didn't match its real byte layout
-    # (a compliant parser, having read exactly the declared question(s), would try to parse the
-    # leftover trailing bytes as the start of the answer section instead of the real answer, which
-    # sits right after them).
+    # A real-world shape: a query with a single question plus trailing data this class was never meant to
+    # parse - most commonly a client's EDNS0 OPT record, or an equally unhandled second question.
+    #
+    # Before the _question_end fix, self.data[12:] echoed that trailing data into what the header declares
+    # is pure question content, while ANCOUNT was set to the original QDCOUNT rather than the one record
+    # appended - a packet whose declared counts did not match its byte layout.
+    #
+    # A compliant parser, having read exactly the declared questions, would then try to parse the leftover
+    # trailing bytes as the start of the answer section instead of the real answer, which sits after them.
     header = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x01"  # QDCOUNT=1, ARCOUNT=1 (EDNS0)
     question = b"\x01a\x02io\x00\x00\x01\x00\x01"  # a.io, QTYPE=A, QCLASS=IN
     opt_record = b"\x00\x00\x29\x10\x00\x00\x00\x00\x00\x00\x00"  # root name, TYPE=41 (OPT), RDLENGTH=0
@@ -230,12 +227,12 @@ def test_response_returns_none_for_empty_domain() -> None:
 
 
 def test_response_answers_the_root_domain_query_not_indistinguishable_from_a_parse_failure() -> None:
-    # Regression test for BACKLOG.md's "root-domain query can't be told apart from a failed parse"
-    # entry: a root query (a single zero-length label, ".") parses to the same empty self.domain a
-    # malformed/truncated datagram falls back to. Before this fix, response() used `if self.domain:`
-    # to decide whether to answer, so both cases returned None - contradicting this module's own
-    # docstring claim that every on-subnet query gets an answer. response() now tracks parse success
-    # separately, so a genuine root query is answered like any other.
+    # Regression test for BACKLOG.md's "root-domain query can't be told apart from a failed parse" entry: a
+    # root query (a single zero-length label) parses to the same empty self.domain a malformed datagram
+    # falls back to, and response() used `if self.domain:` to decide whether to answer.
+    #
+    # Both cases therefore returned None, contradicting this module's docstring claim that every on-subnet
+    # query gets an answer. response() now tracks parse success separately.
     query = make_query([])  # zero labels -> immediate zero-length terminator, i.e. the root domain
     dns = DNSQuery(query, make_pr())
     assert dns.domain == ""  # still the same empty representation as a parse failure...
@@ -248,11 +245,11 @@ def test_response_answers_the_root_domain_query_not_indistinguishable_from_a_par
 
 
 def test_dns_query_rejects_question_truncated_right_before_qtype_qclass() -> None:
-    # Boundary check either side of the QTYPE/QCLASS cutoff: a label + terminator with the full 4
-    # trailing bytes present must still parse and answer normally (exact boundary accepted); the
-    # same label + terminator with those 4 bytes missing entirely must be treated as malformed
-    # (don't respond), not silently echoed as a short, misaligned question - self.data[12:end]
-    # would otherwise truncate via ordinary slice semantics instead of raising.
+    # Boundary check either side of the QTYPE/QCLASS cutoff: a label plus terminator with the full 4
+    # trailing bytes must still parse and answer normally, while the same without them must be treated as
+    # malformed rather than silently echoed as a short, misaligned question.
+    #
+    # self.data[12:end] would otherwise truncate via ordinary slice semantics instead of raising.
     header = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"
     complete = header + b"\x01a\x00" + b"\x00\x01\x00\x01"  # QTYPE=A, QCLASS=IN present
     truncated = header + b"\x01a\x00"  # terminator present, QTYPE/QCLASS entirely missing
@@ -318,13 +315,13 @@ def test_dns_server_get_error_counter_reflects_a_real_logged_error() -> None:
 # ---------------------------------------------------------------------------
 # DNSServer.run(): driven through a controlled fake transport.
 #
-# DNSServer.udps is always bound via a resolved sockaddr in this Unix-port test build (the same
-# workaround resolve_addr() above documents), which makes recvfrom() return an opaque raw sockaddr
-# rather than a (host, port) tuple - this environment can never itself produce a real string
-# addr[0] for a server-mode socket (confirmed directly; see BACKLOG.md). _FakeUDPS lets the actual
-# subnet-membership/malformed-query/error-path branches inside run() be driven for real with
-# well-formed (or deliberately bad) (host, port) tuples, while DNSQuery/response() still run
-# unmocked. The real-socket test at the bottom of this file covers the genuine raw-sockaddr path.
+# DNSServer.udps is always bound via a resolved sockaddr in this Unix-port build, which makes recvfrom()
+# return an opaque raw sockaddr rather than a (host, port) tuple - so this environment can never itself
+# produce a real string addr[0] for a server-mode socket.
+#
+# _FakeUDPS lets run()'s actual subnet-membership, malformed-query and error-path branches be driven for
+# real with well-formed or deliberately bad tuples, while DNSQuery/response() still run unmocked. The real-
+# socket test at the bottom covers the genuine raw-sockaddr path.
 # ---------------------------------------------------------------------------
 
 
@@ -335,10 +332,9 @@ class _FakeUDPS:
         self.sendto_results: list[int | None] = []
         self.disconnect_called = False
         self.disconnect_ok = True  # real AsyUDPSocket.disconnect()'s success return, see Step 6 note
-        # One entry per recvfrom() call, for backoff-timing assertions. "Any", not "int": mypy's
-        # time.pyi types ticks_ms() as the opaque _TicksMs marker class (deliberately incompatible
-        # with plain int to catch raw-arithmetic misuse) - these values are only ever fed back into
-        # time.ticks_diff(), never used as plain ints.
+        # One entry per recvfrom() call, for backoff-timing assertions. "Any", not "int": mypy's time.pyi
+        # types ticks_ms() as the opaque _TicksMs marker class, deliberately incompatible with plain int to
+        # catch raw-arithmetic misuse, and these values are only ever fed back into time.ticks_diff().
         self.recv_call_times_ms: list[Any] = []
 
     # DNSServer only ever calls recvfrom(4096)/sendto(packet, addr) - neither the buffer size nor
@@ -623,12 +619,12 @@ def _bad_ipv4_values() -> "list[Any]":
 
 
 # ---------------------------------------------------------------------------
-# DNSServer.run(): server_ip/netmask startup-configuration matrix. Every invalid case asserts
-# run() returns without raising and never attempts to bind (sock stays None) - exercising
-# _ipv4_to_int's never-raises None-check at the top of run() without a live socket (a non-str
-# server_ip/netmask still raises via _ipv4_to_int's own ip.split(), same as before). The
-# valid-configuration case does need a live loop iteration, so it goes through the fake transport
-# and a real cancellable task, like the rest of this file's run() tests.
+# DNSServer.run(): the server_ip/netmask startup-configuration matrix. Every invalid case asserts run()
+# returns without raising and never binds, exercising _ipv4_to_int's never-raises None-check without a live
+# socket. A non-str server_ip or netmask still raises via _ipv4_to_int's own ip.split().
+#
+# The valid-configuration case does need a live loop iteration, so it goes through the fake transport and a
+# real cancellable task, like the rest of this file's run() tests.
 # ---------------------------------------------------------------------------
 
 
@@ -696,10 +692,9 @@ def test_run_rejects_multiple_simultaneous_invalid_server_ip_and_netmask_recombi
 
 
 def test_run_rejects_non_str_server_ip_or_netmask() -> None:
-    # A non-str value still raises (via _ipv4_to_int's own ip.split()) - this class's public
-    # `str`-typed signature relies on that, same as asy_dns_client.py's _is_ipv4_literal() callers.
-    # Any lives on the bad-value table, not on scenario()'s parameters: they keep run()'s own
-    # declared str types, which is exactly the contract this test proves is enforced at runtime.
+    # A non-str value still raises, via _ipv4_to_int's own ip.split() - this class's public str-typed
+    # signature relies on that, like asy_dns_client.py's _is_ipv4_literal() callers. Any lives on the bad-
+    # value table, not on scenario()'s parameters, which keep run()'s declared str types.
     bad_pairs: tuple[tuple[Any, Any], ...] = ((None, "255.0.0.0"), ("192.168.4.1", 123), ([1, 2, 3, 4], b"255.0.0.0"))
     for bad_ip, bad_netmask in bad_pairs:
         server = DNSServer()
@@ -738,9 +733,8 @@ def test_dns_query_init_rejects_single_invalid_data_parameter_without_raising() 
 
 def test_dns_query_init_rejects_list_shaped_data_that_reaches_decode() -> None:
     # A sequence long enough to survive both integer-index lookups (data[2] and data[12]) but fail
-    # specifically at self.domain += data[...].decode("utf-8") - a list slice has no .decode
-    # method, exercising the AttributeError arm distinctly from the TypeError/IndexError arms the
-    # shorter values above trigger.
+    # specifically at self.domain += data[...].decode("utf-8"), a list slice having no .decode - exercising
+    # the AttributeError arm distinctly from the TypeError/IndexError arms the shorter values trigger.
     bad_data = [0] * 20
     bad_data[12] = 3  # claims a 3-byte label
     assert DNSQuery(bad_data, make_pr()).domain == ""  # type: ignore[arg-type]
@@ -788,29 +782,25 @@ def test_response_rejects_invalid_ip_combined_with_empty_domain_state() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Integration: DNSServer driven through a real AsyUDPSocket end to end (not the fake transport
-# above) - exercises the whole pipeline against the actual dependency it imports, including that
-# dependency's own real fault-handling contract (documented in asy_udp_socket.py's module
-# docstring: every public I/O method returns its None-shaped sentinel rather than raising).
+# Integration: DNSServer driven through a real AsyUDPSocket end to end, not the fake transport above -
+# exercising the whole pipeline against the actual dependency it imports, including that dependency's own
+# fault-handling contract: every public I/O method returns its None-shaped sentinel rather than raising.
 # ---------------------------------------------------------------------------
 
 
-# A real server socket in this Unix-port test build is always bound via a resolved sockaddr (see
-# resolve_addr()'s and _FakeUDPS's own comments above), which makes recvfrom() hand back an opaque
-# raw sockaddr rather than a (host, port) tuple - so addr[0] can never be a real dotted-quad string
-# here, and run()'s subnet check (correctly) rejects every real packet as off-subnet/malformed
-# before a reply is ever sent. That's why the tests below assert liveness/rebind behavior against a
-# real socket rather than reply content - reply *content* is already fully covered by
-# test_response_builds_expected_packet_for_valid_domain, and the fake-transport tests above already
-# drive the subnet-accept path for real with well-formed (host, port) tuples.
+# A real server socket in this Unix-port build is always bound via a resolved sockaddr, which makes
+# recvfrom() hand back an opaque raw one rather than a (host, port) tuple - so addr[0] can never be a real
+# dotted quad here, and run()'s subnet check correctly rejects every real packet before replying.
+#
+# So the tests below assert liveness and rebind behavior against a real socket rather than reply content,
+# which test_response_builds_expected_packet_for_valid_domain already covers in full while the fake-
+# transport tests drive the subnet-accept path.
 
 
 def test_run_reuses_same_dns_server_instance_across_multiple_hotspot_cycles() -> None:
-    # Mirrors asy_wifi_service.py's real usage (AsyConnTime.__init__ constructs exactly one
-    # self.dns_server = DNSServer(...), reused across every hotspot activation): one DNSServer
-    # instance constructed once, with run() started, cancelled, and started again across repeated
-    # hotspot activations - only safe because
-    # AsyUDPSocket.disconnect() fully resets connected/sock state for _connect()'s next attempt.
+    # Mirrors asy_wifi_service.py's real usage, where AsyConnTime.__init__ builds one self.dns_server reused
+    # across every hotspot activation: one instance, run() started, cancelled and started again - safe only
+    # because AsyUDPSocket.disconnect() fully resets state for the next _connect().
     server_addr = resolve_addr("127.0.0.1", make_port())
     server = DNSServer()
     server.udps = AsyUDPSocket(server_addr, mode="server")
@@ -866,12 +856,11 @@ def test_run_real_socket_survives_a_burst_of_consecutive_malformed_datagrams() -
 
 
 # ---------------------------------------------------------------------------
-# Integration contract: replicates asy_wifi_service.py's real DNSServer usage exactly. It cannot be
-# imported directly here - it depends on network.WLAN and other RP2040-only hardware this
-# environment doesn't have. Confirmed directly against asy_wifi_service.py: one DNSServer built
-# once in AsyConnTime.__init__, run() started via evtloop.create_task(self.dns_server.run(own_ip,
-# own_netmask)), and shut down via a fire-and-forget self.dns_server_task.cancel() that the caller
-# never awaits.
+# Integration contract: replicates asy_wifi_service.py's real DNSServer usage exactly. That module cannot be
+# imported here, depending on network.WLAN and other RP2040-only hardware this environment lacks.
+#
+# Confirmed directly against it: one DNSServer built once in AsyConnTime.__init__, run() started via
+# evtloop.create_task(), and shut down via a fire-and-forget cancel() the caller never awaits.
 # ---------------------------------------------------------------------------
 
 
@@ -897,12 +886,13 @@ def test_integration_survives_async_connects_fire_and_forget_cancel_pattern() ->
 
 
 # ---------------------------------------------------------------------------
-# run()'s catch-all backoff: an unexpected (not malformed-data, not off-subnet) exception from a
-# dependency must still degrade to the 3s backoff rather than crash or busy-loop, and must be
-# logged as a real, persisted error. This is the one fault category that genuinely cannot be
-# produced for real - nothing in the legitimate processing path throws mid-packet - so it's
-# simulated with a monkeypatched DNSQuery, matching this project's "mock only what's necessary"
-# precedent (mocking a dependency, not the run() logic under test).
+# run()'s catch-all backoff: an unexpected exception from a dependency - neither malformed data nor off-
+# subnet - must still degrade to the 3s backoff rather than crash or busy-loop, and must be logged as a
+# real, persisted error.
+#
+# The one fault category that genuinely cannot be produced for real, nothing in the legitimate processing
+# path throwing mid-packet, so it is simulated with a monkeypatched DNSQuery - mocking a dependency, not the
+# run() logic under test.
 # ---------------------------------------------------------------------------
 
 
@@ -979,12 +969,12 @@ def test_run_disconnect_reporting_a_genuine_exception_logs_a_persisted_error() -
 
 
 # ---------------------------------------------------------------------------
-# run()'s recvfrom() empty-result backoff (SPECIFICATION.md Part C.9's cascading-recovery-storm
-# convention): a persistently-failing recvfrom() that returns
-# (None, None) without ever raising - e.g. a bind() that never actually succeeded - must not spin
-# the loop at zero delay (the real end-to-end run measured ~5 wrn_s() lines/second before this fix).
-# Distinct from the genuinely-unexpected-exception backoff tested above, which already had its own
-# flat 3s pause; this is the normal, no-exception "no data" path, which previously had none at all.
+# run()'s recvfrom() empty-result backoff (SPECIFICATION.md Part C.9's cascading-recovery-storm convention):
+# a persistently-failing recvfrom() returning (None, None) without ever raising - a bind() that never
+# succeeded, say - must not spin the loop at zero delay, measured at ~5 wrn_s() lines/second before the fix.
+#
+# Distinct from the unexpected-exception backoff above, which already had its own flat 3s pause; this is the
+# normal, no-exception "no data" path, which previously had none.
 # ---------------------------------------------------------------------------
 
 

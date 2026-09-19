@@ -2215,7 +2215,6 @@ def test_wlan_connect_recovers_the_streak_on_alternating_failure_and_success() -
 # client.dns_server.udps for a fresh AsyUDPSocket on a free ephemeral port before starting the
 # hotspot, since DNSServer.run() only ever touches self.udps and never rebuilds it.
 # ===========================================================================
-# ===========================================================================
 
 # 27000+, not a base shared with another test file: scripts/test.sh runs files concurrently, so a
 # base must be disjoint from every other file's and must sit below the OS ephemeral range
@@ -2343,7 +2342,6 @@ def test_integration_hotspot_captive_dns_ignores_an_off_subnet_query() -> None:
 # Integration tests: the full wlan_connect() task end to end through the fake network.WLAN, proving
 # how a real connect success/failure sequence propagates up through get_data()/get_error_counter()
 # and connection_failures/hotspot fallback. Mirrors test_asy_ntp_client.py's own section.
-# ===========================================================================
 # ===========================================================================
 
 

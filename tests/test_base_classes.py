@@ -51,20 +51,16 @@ def make_fram_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85
 
 
 class _RaisingFramChunk:
-    # Minimal local fake (mirrors tests/test_print_log.py's own) proving SensorReader's FRAM-backed
-    # path stays exception-safe against the general _FramManager/_FramChunk Protocol contract, not
-    # just the concrete AsyFramManager - whose own _write_chunk/_read_chunk wrap their entire
-    # bodies in try/except (confirmed by asy_fram_manager.py's own src/ promotion audit), so
-    # write_into()/read_into() can no longer actually raise through it.
+    # Minimal local fake (mirroring tests/test_print_log.py's) proving SensorReader's FRAM-backed path stays
+    # exception-safe against the general _FramManager/_FramChunk Protocol contract, not just the concrete
+    # AsyFramManager, whose own wrapping try/except means write_into()/read_into() can no longer raise.
     def __init__(self, *, raise_on_write: bool = False, raise_on_read: bool = False) -> None:
         self.raise_on_write = raise_on_write
         self.raise_on_read = raise_on_read
 
-    # Every parameter below keeps its exact name (and stays unused): both doubles implement
-    # print_log.py's own _FramChunk/_FramManager Protocols, which mypy matches structurally by
-    # parameter name (proven in tests/test_print_log.py's copy, where the same doubles are
-    # passed to a Protocol-typed parameter), and print_log.py calls get_chunk(size, crc=CRC8())
-    # by keyword on top of that.
+    # Every parameter below keeps its exact name (and stays unused): both doubles implement print_log.py's
+    # _FramChunk/_FramManager Protocols, which mypy matches structurally by parameter name, and print_log.py
+    # calls get_chunk(size, crc=CRC8()) by keyword on top of that.
     def get_buffer(self) -> "_LockableBufferType":
         from base_classes import LockableBuffer as _LB
 
@@ -86,11 +82,9 @@ class _RaisingFramManager:
         self._chunk = chunk
         self.raise_on_get_chunk = raise_on_get_chunk
 
-    # Every parameter below keeps its exact name (and stays unused): both doubles implement
-    # print_log.py's own _FramChunk/_FramManager Protocols, which mypy matches structurally by
-    # parameter name (proven in tests/test_print_log.py's copy, where the same doubles are
-    # passed to a Protocol-typed parameter), and print_log.py calls get_chunk(size, crc=CRC8())
-    # by keyword on top of that.
+    # Every parameter below keeps its exact name (and stays unused): both doubles implement print_log.py's
+    # _FramChunk/_FramManager Protocols, which mypy matches structurally by parameter name, and print_log.py
+    # calls get_chunk(size, crc=CRC8()) by keyword on top of that.
     def get_chunk(
         self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
     ) -> "_RaisingFramChunk | None":
@@ -347,12 +341,9 @@ def test_lockedcounter_max_val_zero_stays_clamped_to_zero() -> None:
 
 
 def test_lockedcounter_negative_max_val_is_clamped_to_zero_at_construction() -> None:
-    # A negative max_val is never passed by any real call site (system_service.py/async_connect.py/
-    # neopixel_signal.py all pass a fixed positive literal) - a dev-time-typo risk, not a value ever
-    # computed at runtime. Clamped to 0 in __init__ so the counter's own [0, max_val] invariant holds
-    # for every value, the same way it already does for max_val=0: without this, _clamp's
-    # min(max(value, 0), max_val) would collapse every value to the negative max_val itself instead
-    # of ever reaching 0.
+    # A negative max_val is a dev-time-typo risk, never a runtime-computed value. Clamped to 0 in __init__
+    # so the counter's [0, max_val] invariant holds throughout: without it, _clamp's min(max(value, 0),
+    # max_val) would collapse every value to the negative max_val.
     counter = LockedCounter(init_value=3, max_val=-5)
     assert counter.max_val == 0
     assert run(counter.get_value()) == 0
@@ -657,10 +648,9 @@ def test_sensorreader_fram_backed_error_check_persists_and_survives_reboot() -> 
 
 
 def test_sensorreader_fram_backed_error_check_without_setup_never_raises() -> None:
-    # Real drivers call `await self.pr.setup()` themselves as part of their own async init (e.g.
-    # asy_bmp3xx_driver.py's _init_bmp) - SensorReader.__init__ can't do this itself since it's
-    # sync. Skipping setup() must degrade cleanly (in-memory count/history still update per
-    # print_log.py's own contract; only the FRAM write is skipped), never raise.
+    # Real drivers await self.pr.setup() in their own async init, since SensorReader.__init__ is sync.
+    # Skipping setup() must degrade cleanly - in-memory count and history still update per print_log.py's
+    # contract, only the FRAM write is skipped - and never raise.
     manager, _chip = make_fram_manager()
     reader = SensorReader(Meas(None, 50), max_module_error=5, fram=manager)
     assert reader.pr.initialized is False
@@ -679,12 +669,12 @@ def test_sensorreader_fram_allocation_failure_still_logs_in_memory_without_raisi
 
 
 # ---------------------------------------------------------------------------
-# SensorReader - real FRAM failure modes injected at the simulated-chip level, plus the two
-# Protocol-level defensive-contract proofs that no longer have a real-class equivalent (see
-# _RaisingFramChunk/_RaisingFramManager above) - driven through SensorReader's own API
-# (_error_check/setup) rather than print_log.py's methods directly; test_print_log.py already
-# covers each mode exhaustively at that level, this confirms the same fault matrix still degrades
-# cleanly through this file's own base_classes.py wiring.
+# SensorReader - real FRAM failure modes injected at the simulated-chip level, plus the two Protocol-level
+# defensive-contract proofs with no real-class equivalent, driven through SensorReader's own API rather than
+# print_log.py's methods.
+#
+# test_print_log.py already covers each mode exhaustively at that level; this confirms the same fault matrix
+# still degrades cleanly through base_classes.py's own wiring.
 # ---------------------------------------------------------------------------
 
 
@@ -780,10 +770,9 @@ def test_sensorreaderconfig_forwards_its_name_to_the_base_class_logger() -> None
 
 
 def test_sensorreaderconfig_name_ext_threads_into_filename_and_both_loggers() -> None:
-    # name_ext (SPECIFICATION.md Part C.14) must resolve once in super().__init__() and then be
-    # used consistently everywhere self.name is used here: the on-flash config filename, this
-    # object's own logger, and the nested ConfigManager's "CFGMGR_<name>" logger - not just the raw
-    # `name` positional (this driver type's fixed base name).
+    # name_ext (SPECIFICATION.md Part C.14) must resolve once in super().__init__() and then be used
+    # consistently everywhere self.name is: the on-flash config filename, this object's logger, and the
+    # nested ConfigManager's "CFGMGR_<name>" logger - not just the raw `name` positional.
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_SCD30_fan_pressure.cfg")
     try:
@@ -839,11 +828,9 @@ def test_sensorreaderconfig_setup_awaits_cfgmgr_setup() -> None:
 
 
 def test_sensorreaderconfig_get_cfg_schema_returns_the_schema_it_was_built_with() -> None:
-    # Base-class-owned getter (mirrors _get_mgr_cfg/_get_dict_cfg's "define once, inherit
-    # everywhere" shape): every SensorReaderConfig subclass gets this for free from the schema it
-    # already passes into super().__init__(), whether or not the subclass itself keeps a local
-    # reference. self.cfg_schema stays a public attribute too (existing callers - the legacy REST
-    # layer, this file's own earlier tests - already read it directly).
+    # Base-class-owned getter, mirroring _get_mgr_cfg/_get_dict_cfg's "define once, inherit everywhere"
+    # shape: every SensorReaderConfig subclass gets this free from the schema it already passes to
+    # super().__init__(). self.cfg_schema stays public too, since existing callers read it directly.
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_getschema.cfg")
     try:
@@ -930,10 +917,9 @@ def test_sensorreaderconfig_get_dict_cfg_round_trips_a_real_bool_field() -> None
 
 
 def test_sensorreaderconfig_configmanager_has_its_own_separate_logger_instance() -> None:
-    # ConfigManager builds its own "CFGMGR_" + name-identified PrintLogHistory internally instead
-    # of reusing its owner's self.pr - reusing the owner's logger would mislabel every
-    # config-related log line as coming from the owner itself, not from config management. Deliberately the inverse of what
-    # this test used to assert (a pre-Cluster-2 shared-instance design).
+    # ConfigManager builds its own "CFGMGR_"-prefixed PrintLogHistory instead of reusing its owner's self.pr
+    # - reusing the owner's logger would mislabel every config-related line as coming from the owner itself.
+    # Deliberately the inverse of what this test asserted under the old shared-instance design.
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_shared.cfg")
     try:
@@ -1065,12 +1051,12 @@ def test_sensorreaderconfig_cfgmgr_stays_ram_only_when_fram_is_none() -> None:
 
 
 def test_sensorreaderconfig_malformed_config_file_repairs_cleanly_with_fram_backed_logger() -> None:
-    # ConfigManager's repair warnings go through its own separate "CFGMGR_" + name logger - not
-    # reader.pr, the FRAM-backed logger this test constructs directly - so reader.pr.err_count stays
-    # 0 regardless of the repair. As of WP2 (CLAUDE.md's implicit-FRAM-wiring rule), cfgmgr's own
-    # logger is FRAM-backed too when fram= is passed here, exactly like reader.pr - but a repair
-    # warning uses pr.wrn()/pr.err(), never the _s() persisting variants, so nothing is actually
-    # written to FRAM by either logger regardless of which one is or isn't FRAM-backed.
+    # ConfigManager's repair warnings go through its own separate "CFGMGR_" logger, not reader.pr, so
+    # reader.pr.err_count stays 0 regardless of the repair.
+    #
+    # As of WP2 cfgmgr's logger is FRAM-backed too when fram= is passed, exactly like reader.pr - but a
+    # repair warning uses pr.wrn()/pr.err(), never the persisting _s() variants, so neither logger writes to
+    # FRAM.
     path_prefix = _SHARED_CFG_DIR
     path = path_prefix + "config_fram2.cfg"
     _remove(path)
@@ -1089,15 +1075,12 @@ def test_sensorreaderconfig_malformed_config_file_repairs_cleanly_with_fram_back
 
 
 def test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together() -> None:
-    # Two independent subsystems degrading at once: FRAM allocation fails (pr.fram stays None) while
-    # the config file doesn't exist yet either (gets created with defaults) - neither failure may
-    # raise, nor may one derail the other. Also WP4/Topic 6's own negative case: proves the "every
-    # FRAM-chunk-holding module actually has a non-None chunk" check
-    # (tests/_sensortask_scenarios.py's fram_chunks_are_all_successfully_allocated_not_out_of_memory,
-    # run for every real device) can genuinely fail, not just never has - allocated_size can never
-    # exceed size by construction (get_chunk() checks before incrementing, never after), so that
-    # comparison alone would be a tautology; a None chunk reference is the real, observable signal
-    # capacity was insufficient, for both a module's own logger and (WP2) its owned cfgmgr's.
+    # Two independent subsystems degrading at once: FRAM allocation fails (pr.fram stays None) while the
+    # config file does not exist yet either. Neither failure may raise, nor derail the other.
+    #
+    # Also WP4/Topic 6's negative case: it proves the per-device "every FRAM-chunk-holding module has a non-
+    # None chunk" check can genuinely fail. allocated_size can never exceed size by construction, so that
+    # comparison alone is a tautology; a None chunk reference is the real signal capacity was insufficient.
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_fram3.cfg")
     try:
@@ -1142,17 +1125,15 @@ def test_sensorreaderconfig_write_config_is_reflected_by_get_dict_cfg() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SensorReaderConfig - generic setter dispatch (_set_mgr_cfg / _set_dict_cfg), mirroring
-# _get_mgr_cfg/_get_dict_cfg's "base-class-owned orchestration, per-field push via a callback"
-# shape. Only defined on SensorReaderConfig (not the plain SensorReader base) - unlike reads, a
-# generic write is fundamentally schema-validation-driven (it needs a real ConfigManager to
-# validate+persist against), so there's no meaningful stub for a class with no cfgmgr at all (see
-# asy_scd30_driver.py, which has no schema and keeps its own hand-rolled setters instead of using
-# this path). Persist-first, then push (project decision): a value is only ever pushed live to
-# hardware once it has actually been safely written to flash, so a value that made it onto the
-# device is always the value that will still be there after an unplanned reset. Push only fires for
-# an actual change ("Valid"), never for "Unchanged" - no generic force-resend semantics (SCD30's
-# AmbPres is the only real case that ever needed that, and it doesn't use this path at all).
+# SensorReaderConfig - generic setter dispatch (_set_mgr_cfg / _set_dict_cfg), mirroring the getters' "base-
+# class-owned orchestration, per-field push via a callback" shape. Only on SensorReaderConfig, not the plain
+# SensorReader base: a generic write needs a real ConfigManager to validate and persist against.
+#
+# Persist-first, then push (project decision): a value only reaches hardware once it is safely on flash, so
+# whatever made it onto the device is still there after an unplanned reset.
+#
+# Push fires only for an actual change ("Valid"), never for "Unchanged" - there are no generic force-resend
+# semantics, SCD30's AmbPres being the only case that needed them and not using this path.
 # ---------------------------------------------------------------------------
 
 
@@ -1221,12 +1202,12 @@ def test_set_dict_cfg_registered_push_callback_is_invoked_with_the_new_value() -
 
 
 def test_set_dict_cfg_push_callback_returning_false_marks_the_field_failed() -> None:
-    # Uniform bool setter-return contract: False means the hardware push was rejected. persist-first
-    # still writes the requested value before the push is attempted, but a failed push now triggers
-    # _recover_failed_push, which corrects the persisted value back to what it was immediately
-    # before this request (no getter registered here, so the pre-write snapshot - not the schema
-    # default - wins) - only the underlying persisted value changes, the reported status stays
-    # "Failed" either way.
+    # Uniform bool setter-return contract: False means the hardware push was rejected. Persist-first still
+    # writes the requested value first, but a failed push triggers _recover_failed_push, which corrects the
+    # persisted value back to what it was immediately before the request.
+    #
+    # No getter is registered here, so the pre-write snapshot wins over the schema default; only the
+    # underlying persisted value changes, and the reported status stays "Failed" either way.
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfail.cfg")
     try:
@@ -1336,11 +1317,9 @@ def test_set_dict_cfg_failed_push_falls_back_to_old_value_when_getter_raises() -
 
 
 def test_set_dict_cfg_failed_push_getter_returning_out_of_schema_value_falls_through() -> None:
-    # A getter reads live, possibly-adversarial hardware state - its return value isn't statically
-    # known to satisfy this field's own schema (e.g. a corrupted register read-back). This must be
-    # treated the same as the getter raising (test above): fall through to the next rung (the
-    # pre-write snapshot), not silently accept/attempt-persist a value _set_mgr_cfg would itself
-    # reject as "Invalid", which would otherwise leave the recovery attempt doing nothing.
+    # A getter reads live, possibly-adversarial hardware state, so its return value is not statically known
+    # to satisfy the field's schema. That must be treated like the getter raising: fall through to the next
+    # rung, the pre-write snapshot, not persist a value _set_mgr_cfg would itself reject as "Invalid".
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfailgetteroor.cfg")
     try:
@@ -1369,11 +1348,9 @@ def test_set_dict_cfg_failed_push_getter_returning_out_of_schema_value_falls_thr
 
 
 def test_set_dict_cfg_failed_push_getter_returning_coercible_value_is_coerced_before_persisting() -> None:
-    # A getter reading real hardware can plausibly hand back an integral float for an int-typed
-    # field (e.g. a register readback library that always returns float) - _recover_failed_push's
-    # own type_or_range_error() call must coerce it the same way any other entry point does, not
-    # just accept/reject on type alone. Confirms the coerced (int) value - not the getter's raw
-    # float - is what actually gets persisted.
+    # A getter reading real hardware can plausibly hand back an integral float for an int-typed field, so
+    # _recover_failed_push's own type_or_range_error() call must coerce it like any other entry point rather
+    # than accepting or rejecting on type alone. The coerced int, not the raw float, must be persisted.
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfailgettercoerce.cfg")
     try:
@@ -1425,10 +1402,9 @@ def test_set_dict_cfg_failed_push_on_first_ever_request_recovers_to_schema_defau
 
 
 def test_set_dict_cfg_failed_push_on_special_alone_field_skips_recovery_entirely() -> None:
-    # Mirrors legacy's cmd_keys exclusion from the getter/config/default fallback chain: a
-    # command-only/special-alone field (e.g. a trigger) has nothing to persist-correct - it's never
-    # in ConfigManager's _cache to begin with. A getter that raises if ever called proves the
-    # recovery path returns immediately without reaching it.
+    # Mirrors legacy's cmd_keys exclusion from the getter/config/default fallback chain: a command-only
+    # field has nothing to persist-correct, never being in ConfigManager's _cache. A getter that raises if
+    # called proves the recovery path returns immediately without reaching it.
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfailtrigger.cfg")
     try:
@@ -1450,18 +1426,16 @@ def test_set_dict_cfg_failed_push_on_special_alone_field_skips_recovery_entirely
 
 
 def test_set_dict_cfg_special_alone_field_write_never_logs_a_spurious_config_read_error() -> None:
-    # REAL FINDING (2026-09-08, real bench hardware, root-caused via a dedicated isolated repro):
-    # a command-only/special-alone field (e.g. asy_sgp40_driver.py's own SGPResetVOC) is never in
-    # ConfigManager's own _cache (config_manager.py's setup() explicitly skips it - "not used for
-    # storage"). _set_dict_cfg()'s own pre-write old-value snapshot used to fetch it unconditionally
-    # anyway, hitting ConfigManager.get_dict()'s real KeyError path and logging one spurious
-    # CFGMGR_<name> errno=8 ("Config read error") on *every single write* to such a field -
-    # confirmed deterministic on real hardware (one isolated PUT, zero concurrent load, one new
-    # errno=8 entry in /status's own errcount.CFGMGR_SGP40 every time - not the race this was
-    # originally mistaken for). Wasted work, too: _recover_failed_push() (the only real consumer of
-    # old_values) already skips a special-alone field outright, so the fetched value was never even
-    # used. Fixed by filtering the snapshot fetch itself down to genuinely persisted keys, using the
-    # same schema-derived check _recover_failed_push() already applies at the point of use.
+    # Real finding (2026-09-08, real bench hardware): a command-only/special-alone field is never in
+    # ConfigManager's _cache, since setup() skips it as "not used for storage".
+    #
+    # _set_dict_cfg()'s pre-write old-value snapshot used to fetch it anyway, hitting get_dict()'s KeyError
+    # path and logging one spurious CFGMGR_<name> errno=8 on every single write to such a field -
+    # deterministic, one new entry per isolated PUT, not the race it was first mistaken for.
+    #
+    # Wasted work too: _recover_failed_push(), the only consumer of old_values, already skips a special-
+    # alone field. Fixed by filtering the snapshot fetch to genuinely persisted keys, with the same schema-
+    # derived check _recover_failed_push() applies at the point of use.
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_specialnospuriouserr.cfg")
     try:
@@ -1484,13 +1458,12 @@ def test_set_dict_cfg_special_alone_field_write_never_logs_a_spurious_config_rea
 
 
 def test_set_dict_cfg_mixed_persisted_and_special_alone_fields_in_one_request() -> None:
-    # Coverage gap in the fix above: a single request combining a genuinely persisted field with a
-    # special-alone one must filter *per field*, not treat the whole request as one shape. Proves
-    # two things together, in the one call, that the dedicated special-alone test above and the
-    # existing SampleInterv-only old-value tests each only prove in isolation: (1) the special-alone
-    # field (Trigger) still logs no spurious error, and (2) the persisted field's (SampleInterv) own
-    # old-value snapshot is still correctly fetched and used for real push-failure recovery - the
-    # filtering change must not have accidentally dropped it too.
+    # Coverage gap in the fix above: a request combining a genuinely persisted field with a special-alone
+    # one must filter per field, not treat the whole request as one shape.
+    #
+    # Proves in one call what the dedicated special-alone test and the SampleInterv-only old-value tests
+    # each only prove in isolation: the special-alone field still logs no spurious error, and the persisted
+    # field's old-value snapshot is still fetched and used for real push-failure recovery.
     combined = _VAL_SI + _VAL_SPECIAL
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_mixedpersistedspecial.cfg")
@@ -1517,11 +1490,9 @@ def test_set_dict_cfg_mixed_persisted_and_special_alone_fields_in_one_request() 
         reader._push_callbacks["Trigger"] = push_fail
         results = run(reader._set_dict_cfg({"SampleInterv": 42, "Trigger": True}, combined))
         assert results == {"SampleInterv": "Failed", "Trigger": "Failed"}
-        # Read back with _VAL_SI alone, not combined - matches real production usage
-        # (asy_sgp40_driver.py's own get_dict_cfg() deliberately excludes its special-alone field
-        # from the schema it reads with, for this exact reason: _get_dict_cfg() has no filtering of
-        # its own, unlike the fix under test here, so including Trigger in the read schema would
-        # exercise a separate, pre-existing characteristic unrelated to this test's own subject.
+        # Read back with _VAL_SI alone, matching real usage, where get_dict_cfg() excludes a special-alone
+        # field from the schema it reads with. _get_dict_cfg() does no filtering of its own, so including
+        # Trigger would exercise a separate, pre-existing characteristic.
         assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 5}}
         assert reader.cfgmgr.pr.err_count == err_count_before
     finally:
@@ -1557,10 +1528,9 @@ def test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default() 
 
 
 def test_recover_failed_push_unknown_key_is_a_defensive_noop() -> None:
-    # Unreachable via _set_dict_cfg's own normal flow (a key only ever reaches _recover_failed_push
-    # after already being validated present in cfg_vals), but exercised directly the same way this
-    # file's other "shouldn't happen" branches (e.g. MissingKeySetMgrCfgReader) are - proves the
-    # defensive early return actually holds, not just that it's never hit in practice.
+    # Unreachable via _set_dict_cfg's normal flow, where a key only reaches _recover_failed_push after being
+    # validated present in cfg_vals, but exercised directly like this file's other "shouldn't happen"
+    # branches - proving the defensive early return holds, not just that it is never hit in practice.
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_recoverunknown.cfg")
     try:
@@ -1572,10 +1542,9 @@ def test_recover_failed_push_unknown_key_is_a_defensive_noop() -> None:
 
 
 def test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught() -> None:
-    # _set_mgr_cfg is the same overridable extension point _set_dict_cfg's own initial persist call
-    # already defends against - the correction write inside _recover_failed_push needs the same
-    # defense: a second call that raises (the initial persist succeeds, only the correction fails)
-    # must not crash the whole request.
+    # _set_mgr_cfg is the same overridable extension point _set_dict_cfg's initial persist call already
+    # defends against, and the correction write inside _recover_failed_push needs the same defense: a second
+    # call that raises, where the initial persist succeeded, must not crash the whole request.
     class FlakyOnSecondWriteReader(SensorReaderConfig):
         # Class attribute instead of an __init__ override that only forwards *args/**kwargs to
         # super(): the first `+= 1` below rebinds it per instance, so the counter behaves
@@ -1608,10 +1577,9 @@ def test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught()
 
 
 def test_set_dict_cfg_multiple_fields_recover_independently_via_different_rungs() -> None:
-    # Two fields in the same request, both pushes failing, each resolving through a *different*
-    # fallback rung - proves the recovery chain is genuinely per-field independent, not just
-    # correct for a single isolated failure (mirrors this file's own "multiple invalid fields"
-    # tests, applied to the recovery chain instead of plain validation).
+    # Two fields in one request, both pushes failing, each resolving through a different fallback rung - so
+    # the recovery chain is genuinely per-field independent, not merely correct for one isolated failure.
+    # This file's "multiple invalid fields" shape, applied to recovery rather than validation.
     combined = _VAL_SI + _VAL_BOOL
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfailmulti.cfg")
@@ -1730,10 +1698,9 @@ def test_set_dict_cfg_multi_field_request_reports_each_field_independently() -> 
 
 
 def test_set_dict_cfg_multiple_invalid_fields_neither_pushed() -> None:
-    # Multiple simultaneously-invalid fields, each with its own registered push callback: confirms
-    # per-field independence holds through the push layer too, not just the persist layer already
-    # covered by test_config_manager.py's own test_write_config_multiple_keys_mixed_outcomes_in_one_call
-    # - neither invalid field's callback fires, and both are left at their untouched defaults.
+    # Multiple simultaneously-invalid fields, each with its own registered push callback: confirms per-field
+    # independence holds through the push layer too, not only the persist layer test_config_manager.py
+    # covers. Neither invalid field's callback fires, and both are left at their untouched defaults.
     combined = _VAL_SI + _VAL_BOOL
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_multiinvalid.cfg")
@@ -1798,10 +1765,9 @@ def test_set_dict_cfg_set_mgr_cfg_override_raising_marks_every_field_failed() ->
 
 
 def test_set_dict_cfg_set_mgr_cfg_override_malformed_result_marks_every_field_failed() -> None:
-    # Same defensive posture as the raising-override test above, for the other way a misbehaving
-    # override can fail: returning successfully but with a "results" that isn't the WriteValidity
-    # dict the rest of _set_dict_cfg assumes (e.g. results.get(key) below would otherwise raise
-    # AttributeError, uncaught - base_classes.py's own contract is that no method here ever raises).
+    # Same defensive posture as the raising-override test above, for the other way a misbehaving override
+    # can fail: returning successfully but with a "results" that is not the WriteValidity dict the rest of
+    # _set_dict_cfg assumes - results.get(key) would otherwise raise AttributeError, uncaught.
     class MalformedSetMgrCfgReader(SensorReaderConfig):
         async def _set_mgr_cfg(
             self, _data: "dict[str, int | float | str | bool | None]", _cfg_vals: "cm.ConfigSchema",
@@ -1821,12 +1787,12 @@ def test_set_dict_cfg_set_mgr_cfg_override_malformed_result_marks_every_field_fa
 
 
 def test_set_dict_cfg_set_mgr_cfg_override_missing_key_marks_it_failed() -> None:
-    # A different malformed-override shape from the two tests above (raising, or returning a
-    # non-dict): here the override reports persisted=True with a real dict, but one that's simply
-    # missing a key the caller asked about - the real ConfigManager-backed _set_mgr_cfg never does
-    # this (write_config() always accounts for every key in data), but a subclass override could.
-    # Without a fallback, that key would silently vanish from the returned dict instead of being
-    # reported, breaking the "every field reported independently" contract this file documents.
+    # A third malformed-override shape, after raising and returning a non-dict: the override reports
+    # persisted=True with a real dict that is simply missing a key the caller asked about. The real
+    # ConfigManager-backed _set_mgr_cfg never does this, but a subclass override could.
+    #
+    # Without a fallback that key would silently vanish from the returned dict instead of being reported,
+    # breaking the "every field reported independently" contract.
     class MissingKeySetMgrCfgReader(SensorReaderConfig):
         async def _set_mgr_cfg(
             self, _data: "dict[str, int | float | str | bool | None]", _cfg_vals: "cm.ConfigSchema",
