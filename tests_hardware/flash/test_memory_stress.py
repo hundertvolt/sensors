@@ -53,11 +53,25 @@ def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> Non
         f"so one is wrong; the probe understating by a power-of-two fraction of 192 KB is the known artefact.\nfull output:\n{output}"
     )
     # What the owner asked these tests to express (2026-09-19): long-lived objects must not colonise
-    # the top of the heap. A whole worst-case allocation still fitting above the highest survivor is
-    # the weakest form of that which is still worth asserting.
+    # the top of the heap. Asserted twice, because the two fail for different reasons and the
+    # difference is the diagnosis (MEASUREMENTS 7G.5).
+    assert "baseline" in maps, f"no baseline block map in the device output - the placement delta cannot be computed:\n{output}"
+    placed = heap_map.delta(maps["baseline"], layout)
+    print(f"DELTA boot placement: {placed.summary()}")
+    # 1. Attributable, and independent of what the suite left on the heap before this ran: the BOOT
+    #    must add nothing in the long heap. Zero, not a budget - 17 twin runs across 41-58% fill,
+    #    perturbed, never placed one (7G.5).
+    assert placed.new_above(WORST_CASE_ALLOCATION) == 0, (
+        f"the boot placed {placed.new_above(WORST_CASE_ALLOCATION)} long-lived object(s) inside the top "
+        f"{WORST_CASE_ALLOCATION} B of the heap, where a worst-case allocation has to fit. This one is the boot's own "
+        f"doing, not the suite position's. {placed.summary()}"
+    )
+    # 2. Absolute, and position-dependent by nature: nothing at all may sit up there, whoever put it
+    #    there. If this fails while 1 passes, the heap was already colonised before the boot ran.
     assert layout.free_above_top_survivor >= WORST_CASE_ALLOCATION, (
         f"long-lived objects reach into the top of the heap: only {layout.free_above_top_survivor} B free above the highest "
-        f"allocated block, against the {WORST_CASE_ALLOCATION} B worst reachable allocation. Layout: {layout.summary()}"
+        f"allocated block, against the {WORST_CASE_ALLOCATION} B worst reachable allocation. The boot itself placed "
+        f"{placed.new_above(WORST_CASE_ALLOCATION)} of them there, so read this with that number. Layout: {layout.summary()}"
     )
 
 

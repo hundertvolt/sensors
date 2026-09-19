@@ -87,7 +87,11 @@ def _report_checked(label: str) -> "tuple[int, int]":
 
 
 async def _main() -> None:
-    _report_checked("baseline")  # interpreter + this script only, before anything else exists
+    _report_checked("baseline")
+    # The "before" half of the placement delta: what the BOOT adds up high is attributable only by
+    # comparing against what was already there, which is what makes that check independent of the
+    # suite position (MEASUREMENTS 7D.2, 7G.5).
+    _dump_map("baseline")
     try:
         await sensortask_dev.build_system(cfg_path="", web_host="127.0.0.1", web_port=8080)
     except Exception as e:

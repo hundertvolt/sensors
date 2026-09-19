@@ -3301,6 +3301,80 @@ it before the first run — but it does mean the first bench run is where it is 
 there is a finding, not automatically a regression**: it would say that long-lived objects do reach
 the top of the real heap, which is worth knowing either way. Queue row B7.
 
+### 7G.5 "Zero survivors in the long heap" — asked for, measured, and it holds [TWIN]
+
+The owner's ask, 2026-09-19: *"one thing I would like as a test would be 'zero survivors in the long
+heap with A and B applied and without gc.threshold set'. But only if this is reliable and won't
+produce false positives erratically. If it's brittle, we could also change it to 'no more than X
+survivors'."*
+
+Answered by measurement rather than by picking a number. **Zero is reliable — at the
+requirement-sized region, and only when measured as a delta.** Both qualifications came out of the
+data, not out of caution.
+
+**Why a delta.** Asked absolutely — "no allocated block in the top N" — the answer depends on what
+was on the heap *before* the boot ran, which is §7D.2's position problem in a new place: in-suite,
+`main.py`'s own leftovers sit wherever they sit, and the boot would be blamed for them. Comparing
+the block map before `build_system()` against the map after it counts only what **the boot placed**.
+Whatever was already up there appears in both maps and cancels. The measurement is then the same
+whatever the suite has done to the board beforehand — which no other figure in this file can claim.
+
+**And it is a lower bound, deliberately.** A block that is occupied in *both* maps is not
+attributed, even when the first occupant was freed in between and the boot's own survivor took its
+place — which is a real case on the board, where `build_system()` rebinds the module globals and
+drops `main.py`'s graph as it builds its own. So the delta can undercount exactly where the
+absolute check is strict, and the absolute check can blame the boot for something it did not place.
+That is why both are asserted: **the pair brackets the truth, and the two failing differently is
+itself the diagnosis.**
+
+**The sweep.** Real `build_system()`, `gc.threshold(-1)`, `fresh` = first build in the process,
+`aged` = a full boot plus 4 s of run phase first, then `build_system()` again — which is exactly
+what a device script does on the board, since it rebinds the same module's globals and drops the
+previous graph. Perturbations retain 0/7/61 extra objects before the build, shifting every later
+placement.
+
+| fill | arm | `new_in_top16K` | `new_in_top32K` | `new_in_top64K` | highest new block |
+|---|---|---|---|---|---|
+| 1,150k aged (58%) | A only | 11 | 306 | 337 | 98% |
+| 1,150k aged (58%) | **A + B** | **0** | **0** | 256 | 95% |
+| 1,250k aged (53%) | A only | 4 | 9 | 9 | 99% |
+| 1,250k aged (53%) | **A + B** | **0** | **0** | **0** | 87% |
+| 1,300k aged (51%) | A only | 5 | 5 | 9 | 99% |
+| 1,300k aged (51%) | **A + B** | **0** | **0** | **0** | 84% |
+| 1,300k fresh | A only | 0 | 0 | 0 | 92-94% |
+| 1,300k fresh | **A + B** | **0** | **0** | **0** | **61-62%** |
+| 1,600k aged (41%) | **A + B** | **0** | **0** | **0** | 68% |
+
+**`new_in_top16K = 0` and `new_in_top32K = 0` held in every A + B run — 17 of 17**, across four
+heap sizes spanning 41-58% fill, fresh and aged, at three perturbations. A-only breaks the 16 KB
+boundary as soon as the heap is aged, and reaches 92-99% of the heap in every configuration.
+
+**Where it becomes brittle, measured rather than guessed.** At 1,150k — a *tighter* fill than the
+board's ~46% — A + B places 256 blocks in the top 64 KB. So 64 KB is the edge and a fraction-based
+boundary is worse: "no survivor above 90% of the heap" fails there too. That is precisely the
+"false positives erratically" the owner asked to avoid, and it is why the shipped boundary is
+**16,384 B — one worst reachable allocation (§7A.9)** — and not the biggest number that happened to
+pass.
+
+**The transfer caveat, stated because absolute bytes do not transfer (§1.4).** 16 KB is 1.2-1.4% of
+these twin heaps and **8.5%** of the board's ~192 KB, so the board is being asked for proportionally
+more. What the twin verifies at comparable fill is that the top **13-16%** stays clear (highest new
+block at 84-87%), which is ~25-31 KB board-equivalent — so 16,384 B keeps roughly 2x margin at the
+board's own fill. It is **not** verified for 32,768 B on the board, which is why that is reported
+and not asserted. `highest_new_pct` is printed on every run so the real margin becomes visible the
+first time this runs on silicon, and the boundary can be raised against a reading rather than a
+hope.
+
+**What shipped.** `tests_hardware/flash/test_memory_stress.py` now asserts **both** forms, because
+they fail for different reasons and the difference is the diagnosis:
+1. `delta(baseline, after_build_system).new_above(16_384) == 0` — attributable to the boot,
+   independent of suite position.
+2. `free_above_top_survivor >= 16_384` — absolute, and position-dependent by nature.
+
+A failure of 2 while 1 passes says the heap was already colonised before the boot ran, and the
+message says so. Four more parser tests pin the delta, including that a block already allocated in
+the `before` map is never counted however high it sits.
+
 ---
 
 ## 8. What is committed

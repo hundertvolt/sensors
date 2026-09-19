@@ -107,3 +107,51 @@ def test_parse_labelled_picks_out_each_marked_block() -> None:
     found = heap_map.parse_labelled(doubled)
     assert sorted(found) == ["first", "second"]
     assert found["first"].heap_blocks == 256
+
+
+def _with_top_block_allocated() -> heap_map.HeapMap:
+    return heap_map.parse(_REAL[:-2] + "h\n")
+
+
+def test_delta_reports_only_what_the_second_map_added() -> None:
+    # The whole point: a block already allocated in `before` is not the boot's doing, however high
+    # it sits, so it must not show up here. This synthetic heap is 256 blocks of 32 B, so the top
+    # 2,048 B is its last 64 - the added run sits at 128-191, just below it.
+    before = _with_top_block_allocated()
+    after = heap_map.parse(_REAL.replace("00001000: " + "." * 64, "00001000: " + "h" * 64)[:-2] + "h\n")
+    placed = heap_map.delta(before, after)
+    assert len(placed.new_offsets) == 64
+    assert placed.new_above(2048) == 0
+    assert placed.highest_new_pct() == 74
+
+
+def test_delta_catches_a_survivor_placed_in_the_long_heap() -> None:
+    before = _parsed()
+    after = _with_top_block_allocated()
+    placed = heap_map.delta(before, after)
+    assert placed.new_offsets == [255]
+    assert placed.new_above(2048) == 1
+    assert placed.highest_new_pct() == 99
+
+
+def test_delta_of_a_map_against_itself_is_empty() -> None:
+    placed = heap_map.delta(_parsed(), _parsed())
+    assert placed.new_offsets == []
+    assert placed.highest_new_pct() == -1
+    assert placed.new_above(2048) == 0
+
+
+def test_delta_refuses_two_maps_from_different_heaps() -> None:
+    # Offsets only name the same addresses within one interpreter session; comparing across two
+    # would silently report garbage rather than fail.
+    bigger = heap_map.parse(_REAL.replace("total: 8192", "total: 10240") + "00002000: " + "." * 64 + "\n")
+    assert bigger.heap_blocks == 320
+    with pytest.raises(heap_map.HeapMapError):
+        heap_map.delta(_parsed(), bigger)
+
+
+def test_new_above_a_region_larger_than_the_heap_counts_everything() -> None:
+    # Asking for the top 16 KB of an 8 KB heap is the whole heap, not an error - the real device
+    # heap is far larger than any region these tests ask about, so this only guards the arithmetic.
+    placed = heap_map.delta(_parsed(), _with_top_block_allocated())
+    assert placed.new_above(16384) == len(placed.new_offsets) == 1

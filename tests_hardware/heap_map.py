@@ -22,6 +22,7 @@ _FREE = "."
 class HeapMap(NamedTuple):
     """One parsed `mem_info(1)` dump. Byte figures throughout; `deciles` counts allocated blocks."""
 
+    kinds: str
     block_bytes: int
     heap_blocks: int
     total_bytes: int
@@ -112,6 +113,7 @@ def parse(text: str) -> HeapMap:
         deciles[min(9, index * 10 // len(blocks))] += 1
 
     return HeapMap(
+        kinds=blocks,
         block_bytes=block_bytes,
         heap_blocks=len(blocks),
         total_bytes=total_bytes,
@@ -123,6 +125,47 @@ def parse(text: str) -> HeapMap:
         lowest_survivor_offset=allocated[0] * block_bytes,
         free_runs=free_runs,
         deciles=deciles,
+    )
+
+
+class HeapDelta(NamedTuple):
+    """What one stretch of code ADDED to the heap: blocks free in `before` and allocated in `after`.
+    Position-independent by construction, and a LOWER bound - a block occupied in both maps is not
+    attributed, even if the first occupant was freed in between (MEASUREMENTS 7G.5)."""
+
+    block_bytes: int
+    heap_blocks: int
+    new_offsets: list[int]
+
+    def new_above(self, top_bytes: int) -> int:
+        """Newly allocated blocks within the topmost `top_bytes` of the heap."""
+        first = self.heap_blocks - top_bytes // self.block_bytes
+        return sum(1 for offset in self.new_offsets if offset >= first)
+
+    def highest_new_pct(self) -> int:
+        """How far up the heap the highest newly allocated block sits, 0-100; -1 if none."""
+        return max(self.new_offsets) * 100 // self.heap_blocks if self.new_offsets else -1
+
+    def summary(self) -> str:
+        return (
+            f"new_blocks={len(self.new_offsets)} highest_new_pct={self.highest_new_pct()} "
+            f"new_in_top16K={self.new_above(16384)} new_in_top32K={self.new_above(32768)}"
+        )
+
+
+def delta(before: HeapMap, after: HeapMap) -> HeapDelta:
+    """What `after` holds that `before` did not, block position by block position. Both must come
+    from the same interpreter session, or the offsets name different addresses and the answer is
+    meaningless - which is why a mismatch raises rather than comparing what it can."""
+    if before.block_bytes != after.block_bytes or before.heap_blocks != after.heap_blocks:
+        raise HeapMapError(
+            f"the two maps describe different heaps ({before.heap_blocks}x{before.block_bytes} B against "
+            f"{after.heap_blocks}x{after.block_bytes} B) - they must come from one session to be comparable",
+        )
+    return HeapDelta(
+        block_bytes=after.block_bytes,
+        heap_blocks=after.heap_blocks,
+        new_offsets=[i for i, kind in enumerate(after.kinds) if kind != _FREE and before.kinds[i] == _FREE],
     )
 
 
