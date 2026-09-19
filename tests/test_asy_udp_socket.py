@@ -24,21 +24,21 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 _HOST = "127.0.0.1"
-_next_port = 51000
+# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
+# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
+_next_port = 21000
 
 
 def make_addr() -> tuple[str, int]:  # a fresh loopback port per call, so tests never contend for the same address
     global _next_port
     _next_port += 1
-    # The MicroPython Unix port's "standard" build (unlike the real rp2 target - see
-    # typings/socket.pyi's _Address, which asy_udp_socket.py's addr: tuple[str, int] contract
-    # already matches) rejects a plain (host, port) tuple in bind()/connect()/sendto() with
-    # "TypeError: object with buffer protocol required" (a known, long-standing Unix-port-only
-    # quirk, micropython/micropython#6924). getaddrinfo()'s resolved object is required instead -
-    # on this port that's actually an opaque sockaddr bytearray, not a real tuple[str, int], but
-    # AsyUDPSocket only ever passes addr through untouched, so it's safe to hand it through here
-    # despite the mismatched static type (the rp2 stub types getaddrinfo()'s result as a tuple,
-    # matching what the real target actually returns).
+    # The Unix port's "standard" build rejects a plain (host, port) tuple in bind()/connect()/
+    # sendto() with "TypeError: object with buffer protocol required" (micropython/micropython#6924),
+    # unlike the real rp2 target, so getaddrinfo()'s resolved object is required instead.
+
+    # On this port that object is an opaque sockaddr bytearray rather than a tuple[str, int], but
+    # AsyUDPSocket only ever passes addr through untouched, so handing it through is safe despite
+    # the mismatched static type.
     return socket.getaddrinfo(_HOST, _next_port)[0][-1]  # type: ignore[return-value]
 
 
@@ -55,10 +55,9 @@ def resolve_addr(host: str, port: int) -> tuple[str, int]:
 
 
 # ---------------------------------------------------------------------------
-# __init__ configuration: every valid combination, single and multiple invalid parameter
+# __init__ configuration: every valid combination, plus single and multiple invalid parameter
 # recombinations. These only construct the object - no real socket call happens until _connect()
-# runs, so a plain (unresolved) tuple is safe here even though it can't be handed to this
-# project's own MicroPython Unix-port build's connect()/bind()/sendto() (see make_addr() above).
+# runs, so a plain unresolved tuple is safe here (see make_addr() above).
 # ---------------------------------------------------------------------------
 
 
@@ -73,21 +72,18 @@ def test_init_accepts_every_valid_mode_and_conn_tries_combination() -> None:
 
 
 def test_init_accepts_a_pre_resolved_bytes_like_addr() -> None:
-    # Some platforms' socket.getaddrinfo() returns an opaque sockaddr (bytes/bytearray), not a
-    # tuple - confirmed directly on this project's own MicroPython Unix-port test build. This
-    # file only ever passes addr through untouched, so construction must accept this shape too,
-    # not just the documented tuple[str, int] shape real hardware always uses.
+    # Some platforms' socket.getaddrinfo() returns an opaque sockaddr (bytes/bytearray) rather
+    # than a tuple, including this project's own Unix-port test build. This file only passes addr
+    # through untouched, so construction must accept that shape too, not just tuple[str, int].
     resolved = socket.getaddrinfo("127.0.0.1", 51500)[0][-1]
     sock = AsyUDPSocket(resolved, mode="server")  # type: ignore[arg-type]
     assert sock._addr == resolved
 
 
 def test_init_rejects_invalid_mode() -> None:
-    # Bug: an invalid mode used to busy-loop forever inside _connect() with zero await points -
-    # a genuine unrecoverable lockup (confirmed directly: the process had to be hard-killed even
-    # under asyncio.wait_for(), since the offending coroutine never yields control back to the
-    # scheduler for the timeout to fire). Fixed: validated eagerly here instead, so the bad value
-    # is rejected before _connect() is ever reachable.
+    # An invalid mode used to busy-loop forever inside _connect() with zero await points - a
+    # genuine unrecoverable lockup, since the coroutine never yields for even
+    # asyncio.wait_for()'s timeout to fire. Validated eagerly here, before _connect() is reachable.
     for bad_mode in ("bogus", "", "CLIENT", "client ", None, 123):
         try:
             AsyUDPSocket(("127.0.0.1", 12345), mode=bad_mode)  # type: ignore[arg-type]
@@ -310,11 +306,9 @@ class AdversarialPeer:
 
 
 def test_recvfrom_silently_truncates_an_oversized_datagram() -> None:
-    # POSIX UDP behavior, confirmed directly against this project's MicroPython Unix-port build:
-    # a datagram larger than the recv buffer is truncated to buf bytes with no error and no
-    # signal that truncation happened (MSG_TRUNC/recvmsg() aren't exposed by MicroPython's socket
-    # module) - this module can't detect or prevent it. Documented in the module docstring, not
-    # "fixed" - this proves the actual (not assumed) contract callers must design around.
+    # POSIX UDP behavior, confirmed against this project's Unix-port build: a datagram larger than
+    # the recv buffer is truncated to buf bytes with no error and no signal (MSG_TRUNC/recvmsg()
+    # are not exposed). Documented rather than "fixed" - the contract callers must design around.
     addr = make_addr()
     peer_addr = make_addr()
     oversized = b"X" * 500
@@ -398,17 +392,13 @@ def test_arbitrary_binary_content_round_trips_untouched() -> None:
 
 
 def test_client_mode_filters_datagrams_from_unexpected_sources() -> None:
-    # connect() on the client socket isn't just a convenience - the kernel refuses to deliver
-    # datagrams from any address other than the connected peer. Prove this directly with a
-    # genuine third, independent UDP endpoint acting as an off-path/spoofed sender: it must never
-    # be seen by the client, even though it targets the exact same port.
-    # This is the Unix-port/BSD-socket half of BACKLOG.md's open question #5 ("connected-socket
-    # source filtering") - real rp2/lwIP is a genuinely different socket implementation and isn't
-    # exercised here at all (see that question's own C-level-difference note); real-hardware
-    # confirmation that this same property holds on the actual target is
-    # tests_hardware/bench/test_network_resilience.py's
-    # test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source (2026-09-08, confirmed
-    # holds - no gap between this test's own guarantee and the real device's).
+    # connect() on the client socket is not just convenience - the kernel refuses to deliver
+    # datagrams from any address other than the connected peer. Proven with a genuine third,
+    # independent endpoint acting as an off-path sender against the exact same port.
+
+    # This is the Unix-port/BSD-socket half of BACKLOG.md's open question 5; real rp2/lwIP is a
+    # different socket implementation and is covered instead by tests_hardware/bench/
+    # test_network_resilience.py, which confirmed the same property holds on real hardware.
     peer_addr = make_addr()
     attacker_addr = make_addr()
 
@@ -502,10 +492,9 @@ def test_recvfrom_respects_timeout_against_a_realistically_delayed_genuine_reply
 
 
 class _RecordingAsyncio:
-    # asyncio is a read-only builtin/frozen module on MicroPython (same reason
-    # _RaisingSocketModule below replaces asy_udp_socket's own module-level `socket` name instead
-    # of monkeypatching the real module) - wraps the real module, recording every sleep_ms()
-    # duration while still actually sleeping, so ready()'s own timeout/loop logic keeps working.
+    # asyncio is a read-only builtin on MicroPython (the same reason _RaisingSocketModule below
+    # replaces asy_udp_socket's own module-level `socket` name), so this wraps the real module,
+    # recording every sleep_ms() duration while still sleeping, keeping ready()'s logic intact.
     def __init__(self, real: "ModuleType") -> None:
         self._real = real
         self.sleep_ms_calls: list[int] = []
@@ -522,10 +511,9 @@ class _RecordingAsyncio:
 
 
 def test_ready_default_wait_time_ms_does_not_busy_spin() -> None:
-    # Bug: wait_time_ms defaulted to 0 - confirmed directly this busy-polls ipoll(0)+sleep_ms(0)
-    # ~9000x/sec while idle (~180x the rate at 20ms), pure CPU churn on RP2040's single core, for
-    # the two real callers (captive_dns.py, async_connect.py) that never override it. Prove the
-    # fixed default (20ms) is what ready() actually uses, not just what's documented.
+    # wait_time_ms defaulted to 0, which busy-polls ipoll(0)+sleep_ms(0) ~9000x/sec while idle
+    # (~180x the rate at 20ms) - pure CPU churn on RP2040's single core for the two real callers
+    # that never override it. Proves the fixed 20ms default is what ready() actually uses.
     addr = make_addr()
     recorder = _RecordingAsyncio(asy_udp_socket.asyncio)
     asy_udp_socket.asyncio = recorder  # type: ignore[assignment]
@@ -581,10 +569,9 @@ def test_connect_setup_memoryerror_self_heals_instead_of_raising() -> None:
 
 
 class _MemoryErrorSocketWrapper:
-    # Wraps a real, already-connected/bound socket - sendto()/write()/recvfrom() all raise
-    # MemoryError instead of doing real I/O, proving each public method's except clause catches
-    # it too, not just OSError. Everything else (close(), used by disconnect()) falls through to
-    # the real socket via __getattr__.
+    # Wraps a real, already-connected/bound socket whose sendto()/write()/recvfrom() raise
+    # MemoryError instead of doing I/O, proving each public method's except clause catches that
+    # too, not only OSError. Everything else falls through to the real socket via __getattr__.
     def __init__(self, real: "socket.socket") -> None:
         self._real = real
 
@@ -677,10 +664,9 @@ class _RaisingUnregisterPoller:
 
 
 def test_disconnect_clears_state_even_when_unregister_raises() -> None:
-    # Bug: disconnect()'s single try/except wrapped unregister()+close()+state-clearing together
-    # - a raising unregister() aborted the whole block before self.sock/self.poller/self.connected
-    # were ever reset, confirmed directly: the object was left stuck in a broken half-connected
-    # state forever, with no self-heal (unlike every other failure path in this file).
+    # disconnect()'s single try/except used to wrap unregister()+close()+state-clearing together,
+    # so a raising unregister() aborted the block before self.sock/self.poller/self.connected were
+    # reset - leaving the object stuck half-connected forever, with no self-heal.
     addr = make_addr()
 
     async def scenario() -> tuple[bool, bool, bool, bool]:
@@ -754,14 +740,12 @@ class _DisconnectingPoller:
 
 
 def test_ready_survives_a_concurrent_disconnect_mid_poll_loop() -> None:
-    # Bug: ready()'s poll loop only checked `self.poller is None` once, before the loop - if
-    # another coroutine called disconnect() on the same instance mid-loop, the next
-    # self.poller.ipoll(0) crashed with AttributeError ('NoneType' has no attribute 'ipoll'),
-    # confirmed directly. Neither real caller does this today (both use one AsyUDPSocket from a
-    # single coroutine at a time), but nothing in this file enforced or even documented that
-    # constraint - fixed defensively instead: ready() now re-checks every iteration and returns
-    # False, matching this file's own "never raises" contract instead of relying on callers to
-    # never race it.
+    # ready()'s poll loop only checked `self.poller is None` once, before the loop, so a
+    # concurrent disconnect() made the next self.poller.ipoll(0) raise AttributeError.
+
+    # Neither real caller does this today (both use one AsyUDPSocket from a single coroutine at a
+    # time), but nothing enforced or documented that constraint - so ready() re-checks every
+    # iteration and returns False, matching this file's "never raises" contract.
     addr = make_addr()
 
     async def scenario() -> bool:
@@ -784,10 +768,9 @@ def test_ready_survives_a_concurrent_disconnect_mid_poll_loop() -> None:
 
 
 def unbindable_addr() -> tuple[str, int]:
-    # 10.255.255.254 is never a local interface address in this environment (confirmed directly:
-    # bind() there raises OSError(EADDRNOTAVAIL)) - a deterministic way to force a real bind()
-    # failure, unlike a same-port "blocker" socket, which SO_REUSEADDR (set by _connect() itself)
-    # lets a second UDP socket bind alongside on Linux, so that approach never actually fails.
+    # 10.255.255.254 is never a local interface address in this environment, so bind() there
+    # raises OSError(EADDRNOTAVAIL) - a deterministic forced bind() failure. A same-port "blocker"
+    # socket would not work: SO_REUSEADDR, set by _connect() itself, lets a second UDP socket bind.
     return socket.getaddrinfo("10.255.255.254", 51999)[0][-1]  # type: ignore[return-value]
 
 
@@ -949,12 +932,9 @@ def test_ready_wait_time_ms_is_milliseconds_not_seconds() -> None:
 
 
 class _RaisingSocketModule:
-    # MicroPython's real `socket` module is a read-only builtin (same reason
-    # test_system_service.py's own time-module fakes exist - see that file) - can't monkeypatch
-    # an attribute onto it, so this replaces asy_udp_socket's own module-level `socket` name
-    # instead. Mirrors the real module's constants asy_udp_socket.py references, but socket()
-    # itself always raises - simulates a resource-exhaustion failure (e.g. out of file
-    # descriptors) at the very first setup step, before the connect/bind retry loop ever runs.
+    # MicroPython's real `socket` module is a read-only builtin, so this replaces
+    # asy_udp_socket's own module-level `socket` name. Mirrors the constants that module
+    # references, but socket() always raises - resource exhaustion at the first setup step.
     AF_INET = socket.AF_INET
     SOCK_DGRAM = socket.SOCK_DGRAM
     SOL_SOCKET = socket.SOL_SOCKET
@@ -992,11 +972,9 @@ def test_connect_setup_failure_self_heals_instead_of_raising() -> None:
 
 
 def test_recvfrom_detects_pollerr_instead_of_waiting_out_the_full_timeout() -> None:
-    # Confirmed empirically (not just reasoned about): a connected UDP client socket with a
-    # pending ICMP port-unreachable reports POLLOUT|POLLERR, never POLLIN - ready(POLLIN) used to
-    # check only `event & mask` and would ignore POLLERR entirely, waiting out the full timeout
-    # for a failure the kernel already knew about. Connect to an address nobody listens on, send,
-    # then prove recvfrom() returns promptly (well under its timeout) instead of stalling.
+    # Confirmed empirically: a connected UDP client socket with a pending ICMP port-unreachable
+    # reports POLLOUT|POLLERR, never POLLIN, and ready(POLLIN) used to check only `event & mask`,
+    # waiting out the full timeout for a failure the kernel already knew about.
     addr = make_addr()  # nobody ever binds/listens on this address
 
     async def scenario() -> tuple[bytes | None, int]:
@@ -1058,23 +1036,20 @@ def test_async_context_manager_disconnects_even_on_exception() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Integration-level: exact real-world call patterns, informed by (not importing - improved-
-# quality/ stays out of scope per CLAUDE.md) the current upstream callers async_connect.py's NTP
-# client and captive_dns.py's DNSServer, plus how a real UDP fault propagates up through each
-# processing path. These mirror each caller's documented, stable call shape (mode, buffer sizes,
-# timeout/tries, acquire-use-release pattern) rather than importing WIP implementation details
-# that could change during the refactor - proving the *contract* is robust protects any future
-# refactored caller too, not just today's.
+# Integration-level: the exact real-world call patterns of the two upstream callers,
+# asy_ntp_client.py's NTP client and captive_dns.py's DNSServer, plus how a real UDP fault
+# propagates up through each processing path.
+
+# These mirror each caller's documented, stable call shape (mode, buffer sizes, timeout/tries,
+# acquire-use-release) rather than importing implementation details - proving the contract is
+# robust protects a future refactored caller too, not just today's.
 # ---------------------------------------------------------------------------
 
 
 def test_ntp_client_pattern_end_to_end_success() -> None:
-    # Mirrors async_connect.py's exact NTP call shape: AsyUDPSocket(addr, mode="client"),
-    # write_and_recvfrom(48-byte NTP request, 1024-byte buffer, timeout_ms=...), disconnect()
-    # called once on the success path AND unconditionally again in finally - proving that
-    # double-disconnect() (already proven idempotent in isolation) is genuinely safe in this
-    # exact real usage shape too, and that the caller's broad `except Exception` backstop is
-    # never actually needed.
+    # Mirrors asy_ntp_client.py's exact call shape, including disconnect() on the success path
+    # AND unconditionally again in finally - proving that double disconnect() is safe in this real
+    # usage shape, and that the caller's broad except Exception backstop is never needed.
     server_addr = make_addr()
     ntp_request = b"\x1b" + bytearray(47)
     ntp_reply = b"\x1c" + bytearray(47)  # a realistic 48-byte NTP-shaped reply
@@ -1111,10 +1086,9 @@ def test_ntp_client_pattern_end_to_end_success() -> None:
 
 
 def test_ntp_client_pattern_no_server_reachable() -> None:
-    # Mirrors the exact same call shape against an address nobody listens on (a real network
-    # fault: ICMP port-unreachable, exactly like a genuinely offline NTP server) - proving msg
-    # ends up None (matching the real "if msg is None: retry" branch downstream) without ever
-    # needing the caller's broad except Exception backstop.
+    # The same call shape against an address nobody listens on - a real network fault (ICMP
+    # port-unreachable, exactly like an offline NTP server) - proving msg ends up None, matching
+    # the real "if msg is None: retry" branch downstream, with no broad except needed.
     server_addr = make_addr()  # nobody ever binds/listens here
     ntp_request = b"\x1b" + bytearray(47)
 
@@ -1169,10 +1143,9 @@ def test_ntp_client_pattern_garbage_reply_is_delivered_not_rejected() -> None:
 
 
 def test_dns_server_pattern_bound_to_all_interfaces_end_to_end() -> None:
-    # Mirrors captive_dns.py's exact DNSServer call shape: AsyUDPSocket(("0.0.0.0", port),
-    # mode="server"), recvfrom(4096), conditional sendto(response, addr) - including the real
-    # 0.0.0.0-bind-then-receive-via-127.0.0.1-targeted-traffic path (every other test in this
-    # file binds and targets 127.0.0.1 directly, never exercising a real "any interface" bind).
+    # Mirrors captive_dns.py's exact call shape: a server-mode socket bound to ("0.0.0.0", port),
+    # recvfrom(4096), conditional sendto(response, addr) - including the real bind-any-interface
+    # then receive-via-127.0.0.1 path that every other test in this file skips.
     port = make_port()
     server_addr = resolve_addr("0.0.0.0", port)
     client_target_addr = resolve_addr("127.0.0.1", port)
@@ -1196,19 +1169,17 @@ def test_dns_server_pattern_bound_to_all_interfaces_end_to_end() -> None:
 
     data, addr, reply = run(scenario())
     assert data == query
-    # addr's exact representation is platform-opaque on this Unix-port build too (recvfrom()'s
-    # returned address is a raw bytearray sockaddr here, not a (host, port) tuple - the same
-    # quirk make_addr()/resolve_addr() already work around for getaddrinfo()) - only its
-    # existence (used to route the reply below) is this test's concern, not its shape.
+    # addr's exact representation is platform-opaque on this Unix-port build too (recvfrom()
+    # returns a raw bytearray sockaddr, the same quirk make_addr()/resolve_addr() work around) -
+    # only its existence, used to route the reply below, is this test's concern.
     assert addr is not None
     assert reply == response
 
 
 def test_dns_server_pattern_recvfrom_never_returns_a_mismatched_pair() -> None:
-    # captive_dns.py's exact guard is `if data is not None and addr is not None:` - implicitly
-    # assuming these are always both-set or both-None together. Confirm that assumption actually
-    # holds: recvfrom() never returns (bytes, None) or (None, tuple) in either the timeout or the
-    # success path.
+    # captive_dns.py's guard is `if data is not None and addr is not None:`, implicitly assuming
+    # the two are always both set or both None. This confirms that holds: recvfrom() never returns
+    # (bytes, None) or (None, tuple) in either the timeout or the success path.
     addr = make_addr()
     peer_addr = make_addr()
 
@@ -1232,13 +1203,11 @@ def test_dns_server_pattern_recvfrom_never_returns_a_mismatched_pair() -> None:
 
 
 def test_dns_server_pattern_sendto_failure_does_not_corrupt_subsequent_serving() -> None:
-    # captive_dns.py discards sendto()'s return value entirely (`await self.udps.sendto(packet,
-    # addr)`) - a failed reply (e.g. the resolving client's route disappearing mid-response) is
-    # silently swallowed one level above this module, never observed or logged by the real caller
-    # today (flagged in BACKLOG.md - out of scope to fix inside captive_dns.py itself). What this
-    # module IS responsible for: proving that failure can't corrupt the *server socket* for the
-    # next, unrelated query in the same long-lived DNSServer loop - this is exactly "how a real
-    # UDP fault could propagate up through the processing path" for this caller's shape.
+    # captive_dns.py discards sendto()'s return value, so a failed reply is silently swallowed one
+    # level above this module (flagged in BACKLOG.md, out of scope to fix there).
+
+    # What this module is responsible for is that such a failure cannot corrupt the server socket
+    # for the next, unrelated query in the same long-lived DNSServer loop.
     addr = make_addr()
     unreachable_client_addr = resolve_addr("10.255.255.254", 12345)  # never routable in this environment
     real_peer_addr = make_addr()
@@ -1264,19 +1233,16 @@ def test_dns_server_pattern_sendto_failure_does_not_corrupt_subsequent_serving()
 
 
 # ---------------------------------------------------------------------------
-# Fifth pass: __init__'s validation only runs once, at construction - a direct post-construction
-# mutation of _addr/_conn_tries (private, but Python doesn't truly enforce that) can still put the
-# object into the exact same shapes the validation was meant to prevent. Confirmed directly, then
-# fixed by widening every touching except clause to catch TypeError too, not by re-validating on
-# every access.
+# Fifth pass: __init__'s validation only runs at construction, so a direct post-construction
+# mutation of _addr/_conn_tries can still reach the shapes it was meant to prevent. Closed by
+# widening every touching except clause to catch TypeError, not by re-validating on each access.
 # ---------------------------------------------------------------------------
 
 
 def test_connect_self_heals_when_addr_mutated_to_a_malformed_value() -> None:
-    # Bug: mutating ._addr directly after construction (bypassing __init__'s validation entirely)
-    # used to raise an uncaught TypeError from sock.connect()/bind(), reintroducing the exact bug
-    # __init__'s eager validation was meant to close, just through a different door. Confirmed
-    # directly. Fixed: _connect()'s connect()/bind() try now also catches TypeError.
+    # Mutating ._addr directly after construction bypasses __init__'s validation and used to
+    # raise an uncaught TypeError from sock.connect()/bind(), reintroducing the very bug that
+    # eager validation closed. _connect()'s connect()/bind() try now also catches TypeError.
     addr = make_addr()
     sock = AsyUDPSocket(addr, mode="client")
     sock._addr = (12345, 80)  # type: ignore[assignment]  # malformed - host is an int, not a str
@@ -1288,12 +1254,9 @@ def test_connect_self_heals_when_addr_mutated_to_a_malformed_value() -> None:
 
 
 def test_connect_self_heals_when_conn_tries_mutated_to_a_non_int() -> None:
-    # Bug: mutating ._conn_tries to None used to raise an uncaught TypeError - but not from inside
-    # the per-attempt try/except (which already caught TypeError): `tries < self._conn_tries` is
-    # the while loop's own *condition*, evaluated before the inner try is ever entered, so only
-    # the outer try/except covers it - confirmed directly this was still uncaught even after the
-    # inner-try fix, because the outer except hadn't been widened yet. Fixed: the outer except now
-    # also catches TypeError.
+    # Mutating ._conn_tries to None used to raise an uncaught TypeError - but not from the
+    # per-attempt try, which already caught it: `tries < self._conn_tries` is the while loop's own
+    # condition, evaluated before that try is entered, so only the outer except covers it.
     addr = make_addr()
     sock = AsyUDPSocket(addr, mode="server")
     sock._conn_tries = None  # type: ignore[assignment]
@@ -1305,11 +1268,9 @@ def test_connect_self_heals_when_conn_tries_mutated_to_a_non_int() -> None:
 
 
 def test_connect_treats_a_mutated_mode_as_server_like_without_crashing() -> None:
-    # Not a bug: _connect()'s mode branch is a plain if/else (client vs. everything else) since
-    # __init__ already guarantees only "client"/"server" reach it - a mutated ._mode bypasses that
-    # guarantee, but the binary branch shape means it just falls through to the bind() (server-
-    # like) path rather than hanging the way the old three-way branch with a dead else did.
-    # Documented behavior, confirmed directly, not something worth guarding against further.
+    # Not a bug: _connect()'s mode branch is a plain if/else since __init__ guarantees only
+    # "client"/"server" reach it. A mutated ._mode bypasses that, but the binary shape falls
+    # through to bind() rather than hanging the way the old three-way branch did.
     addr = make_addr()
     sock = AsyUDPSocket(addr, mode="client")
     sock._mode = "bogus"  # type: ignore[assignment]
@@ -1366,12 +1327,9 @@ def test_recvfrom_returns_none_sentinel_for_a_malformed_buf_with_real_pending_da
 
 
 def test_disconnect_no_longer_crashes_a_concurrent_in_flight_connect_retry() -> None:
-    # Bug: before the connect-lock, a disconnect() call concurrent with another coroutine's
-    # in-flight _connect() retry could null self.sock/self.poller out from under it - confirmed
-    # directly this crashed with an uncaught AttributeError ('NoneType' has no attribute 'bind')
-    # on the retry's next connect()/bind() call. Fixed: disconnect() now takes the same lock, so
-    # it waits for the in-flight attempt to finish (bounded by conn_tries * the retry backoff)
-    # instead of tearing it down mid-flight.
+    # Before the connect-lock, a disconnect() concurrent with another coroutine's in-flight
+    # _connect() retry could null self.sock/self.poller out from under it. disconnect() now takes
+    # the same lock, waiting for the attempt (bounded by conn_tries * the backoff) instead.
     bad_addr = unbindable_addr()
 
     async def scenario() -> tuple[bool, int]:
@@ -1394,10 +1352,9 @@ def test_disconnect_no_longer_crashes_a_concurrent_in_flight_connect_retry() -> 
 
 
 def test_concurrent_caller_joins_an_in_flight_connect_instead_of_a_premature_none() -> None:
-    # Confirmed directly (before this fix): a coroutine calling a public method while another
-    # coroutine's _connect() was mid-retry got a spurious None immediately, instead of waiting for
-    # the in-flight attempt. Proves the fixed behavior: B's sendto() blocks until A's connect
-    # resolves, then genuinely succeeds once A's retry succeeds - not a redundant retry of its own.
+    # A coroutine calling a public method while another's _connect() was mid-retry used to get a
+    # spurious None immediately instead of waiting. B's sendto() must block until A's connect
+    # resolves and then genuinely succeed, not start a redundant retry of its own.
     bad_addr = unbindable_addr()
     good_addr = make_addr()
 
@@ -1426,10 +1383,9 @@ def test_concurrent_caller_joins_an_in_flight_connect_instead_of_a_premature_non
 
 
 def test_cancelling_a_task_that_holds_the_connect_lock_releases_it() -> None:
-    # Locks + cancellation are a classic deadlock source, and this file just gained its first
-    # lock - verified directly rather than assumed: async with's __aexit__ must still run (and
-    # release the lock) when the task holding it is cancelled mid-retry, or every future caller
-    # on this instance would hang forever waiting for a lock nobody will ever release.
+    # Locks plus cancellation are a classic deadlock source, and this file gained its first lock:
+    # `async with`'s __aexit__ must still run and release when the holding task is cancelled
+    # mid-retry, or every future caller on this instance hangs forever.
     bad_addr = unbindable_addr()
 
     async def scenario() -> tuple[bool, bool]:
@@ -1497,12 +1453,9 @@ def test_cancelling_a_task_waiting_on_the_connect_lock_leaves_it_healthy() -> No
 
 
 def test_write_on_an_unconnected_server_mode_socket_returns_none_sentinel() -> None:
-    # write() semantically requires a connected socket (unlike sendto(), which takes an explicit
-    # destination) - calling it on a bound-but-unconnected server-mode socket is a caller misuse
-    # this file deliberately doesn't guard against structurally (see BACKLOG.md's second pass:
-    # "no structural guard... guarding against a misuse that doesn't happen would just add
-    # complexity"), but that reasoning was never actually verified to be non-crashing. Confirmed
-    # directly here: the real ENOTCONN-style OSError is caught like any other socket failure.
+    # write() semantically requires a connected socket, so calling it on a bound-but-unconnected
+    # server-mode socket is a caller misuse this file deliberately does not guard structurally
+    # (BACKLOG.md). The real ENOTCONN-style OSError is caught like any other socket failure.
     addr = make_addr()
 
     async def scenario() -> int | None:
@@ -1534,10 +1487,9 @@ def test_sendto_empty_bytes_succeeds() -> None:
 
 
 def test_recvfrom_buf_zero_returns_empty_bytes_not_the_timeout_sentinel() -> None:
-    # An extreme instance of the already-documented truncation contract, not a new behavior -
-    # confirmed directly: buf=0 against a genuinely pending datagram returns (b"", addr), not the
-    # (None, None) timeout sentinel, distinguishing "received nothing because buf=0" from
-    # "received nothing because nothing arrived".
+    # An extreme instance of the documented truncation contract, not a new behavior: buf=0
+    # against a genuinely pending datagram returns (b"", addr), not the (None, None) timeout
+    # sentinel - distinguishing "nothing because buf=0" from "nothing because nothing arrived".
     addr = make_addr()
     peer_addr = make_addr()
 
@@ -1583,20 +1535,16 @@ def test_write_and_recvfrom_tries_zero_returns_immediately() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Sixth pass: ready()'s own mask/timeout_ms/wait_time_ms parameters, and write_and_recvfrom()'s
-# own tries parameter, were never guarded against a malformed caller-supplied value - confirmed
-# directly these raised an uncaught TypeError that bypassed every method's except clause, since
-# the raise happened inside ready()/write_and_recvfrom() itself, not inside the real socket call
-# those clauses wrap. sendto()/write()/recvfrom() call `await self.ready(...)` *before* their own
-# try block even starts, so ready()'s own crash was never caught by them either.
+# Sixth pass: ready()'s mask/timeout_ms/wait_time_ms and write_and_recvfrom()'s tries were never
+# guarded against a malformed caller-supplied value, and raised an uncaught TypeError past every
+# except clause - the raise is inside ready(), which callers await before their own try begins.
 # ---------------------------------------------------------------------------
 
 
 def test_ready_returns_false_sentinel_for_a_malformed_timeout_ms() -> None:
-    # Bug: `if (timeout_ms > 0) and ...` inside ready()'s poll loop raised an uncaught TypeError
-    # for e.g. timeout_ms=None - confirmed directly. Only reachable once the loop's first ipoll(0)
-    # finds nothing already matching mask (a fresh, never-sent-to server socket polled for POLLIN),
-    # since a matching first iteration returns True before ever touching timeout_ms.
+    # `if (timeout_ms > 0) and ...` inside ready()'s poll loop raised an uncaught TypeError for
+    # timeout_ms=None. Only reachable once the first ipoll(0) finds nothing matching mask (a
+    # fresh server socket polled for POLLIN), since a matching first iteration returns early.
     addr = make_addr()
 
     async def scenario() -> bool:
@@ -1628,10 +1576,9 @@ def test_ready_returns_false_sentinel_for_a_malformed_wait_time_ms() -> None:
 
 
 def test_ready_returns_false_sentinel_for_a_malformed_mask() -> None:
-    # Bug: `event & (mask | select.POLLERR | select.POLLHUP)` raised an uncaught TypeError for
-    # e.g. mask=None - confirmed directly. Uses a fresh server socket (immediately POLLOUT-ready,
-    # so ipoll(0)'s very first result is non-empty) to reach the `event & (mask | ...)` expression
-    # on the first iteration, rather than needing a real pending datagram.
+    # `event & (mask | select.POLLERR | select.POLLHUP)` raised an uncaught TypeError for
+    # mask=None. Uses a fresh server socket, immediately POLLOUT-ready so ipoll(0)'s first result
+    # is non-empty, to reach that expression on the first iteration without a pending datagram.
     addr = make_addr()
 
     async def scenario() -> bool:
@@ -1646,10 +1593,9 @@ def test_ready_returns_false_sentinel_for_a_malformed_mask() -> None:
 
 
 def test_ready_cancellation_still_propagates_through_the_new_try_except() -> None:
-    # The fix above wraps ready()'s whole per-iteration loop body (including its
-    # asyncio.sleep_ms() await point) in try/except (OSError, MemoryError, TypeError) - must not
-    # accidentally start swallowing asyncio.CancelledError too (a BaseException subclass, not an
-    # Exception, and not in that tuple - but worth confirming directly rather than assuming).
+    # The fix above wraps ready()'s whole per-iteration loop body, including its
+    # asyncio.sleep_ms() await point, in try/except (OSError, MemoryError, TypeError) - it must
+    # not start swallowing asyncio.CancelledError, a BaseException subclass not in that tuple.
     addr = make_addr()
 
     async def scenario() -> bool:
@@ -1672,13 +1618,12 @@ def test_ready_cancellation_still_propagates_through_the_new_try_except() -> Non
 
 
 def test_recvfrom_propagates_readys_false_sentinel_for_a_malformed_timeout_ms() -> None:
-    # The bug above wasn't just reachable through ready() directly - sendto()/write()/recvfrom()
-    # each call `await self.ready(..., timeout_ms=timeout_ms)` *before* their own try block starts,
-    # so ready()'s crash bypassed their except clauses entirely. Confirm the real public entry
-    # point callers actually use (recvfrom(), not ready() directly) is fixed too. Nothing must be
-    # sent here: a genuinely pending datagram would make ready()'s very first ipoll(0) already
-    # match POLLIN, returning True before timeout_ms is ever compared - only the "still waiting"
-    # path actually reaches the buggy comparison.
+    # The bug above was not only reachable through ready() directly: sendto()/write()/recvfrom()
+    # each await self.ready(...) before their own try block starts, so the crash bypassed their
+    # except clauses. Confirms the real entry point callers use, recvfrom(), is fixed too.
+
+    # Nothing must be sent here: a pending datagram would make the first ipoll(0) match POLLIN and
+    # return before timeout_ms is ever compared, so only the still-waiting path reaches it.
     addr = make_addr()
 
     async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:

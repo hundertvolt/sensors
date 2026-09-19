@@ -6,6 +6,7 @@ import struct
 import time
 
 from _fram_chip_fake import FakeMB85RS64V
+from _tmp_scratch import TmpScratch
 from machine import RTC, Timer
 
 import asy_ntp_client as ntpmod
@@ -56,67 +57,13 @@ _VAL_GMT = (("GMTOffset", "int", 3600, -43200, 43200, None),)
 _VAL_DST = (("DSTOffset", "int", 3600, -43200, 43200, None),)
 
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("ntp_")
-
-
-def _remove_any(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        try:
-            os.rmdir(path)
-        except OSError:
-            pass  # already gone, or genuinely not removable - not this helper's problem
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("ntp")
 
 
 def _tmp_cfg_dir() -> str:
-    # A fresh, unique directory per call - AsyNtpClient now names its own config file
-    # unconditionally ("config_NTP.cfg", from base_classes.py's SensorReaderConfig), so tests can
-    # no longer isolate each other via distinct filenames the way the old externally-injected
-    # ConfigManager tests did; a fresh directory does the same job.
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    _next_dir += 1
-    path = _TMP_DIR + "/ntp_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass  # already exists from a stale previous run
-    _remove_any(path + "/config_NTP.cfg")  # clear any stale leftover (file or directory) from a previous run
-    return path + "/"
+    return _scratch.dir()
 
 
 def make_client(
@@ -163,23 +110,18 @@ def make_client_with_json(json_text: str) -> AsyNtpClient:
 
 
 def make_invalid_cfg_client() -> AsyNtpClient:
-    # A directory where ConfigManager expects a plain file - its own os.stat() 0x4000 (MP_S_IFDIR)
-    # check rejects this and leaves self.valid False; the same "config manager itself is invalid"
-    # state the old empty-schema make_broken_cfgmgr() reproduced a different way (this driver's own
-    # schema is fixed and non-empty now, so that route no longer applies here).
+    # A directory where ConfigManager expects a plain file - its os.stat() 0x4000 (MP_S_IFDIR)
+    # check rejects it and leaves self.valid False, the same "config manager itself is invalid"
+    # state the old empty-schema route reproduced before this driver's schema became non-empty.
     cfg_path = _tmp_cfg_dir()
     os.mkdir(cfg_path + "config_NTP.cfg")
     return make_client(cfg_path=cfg_path)
 
 
 class _RaiseOnArm:
-    # Same technique as test_system_service.py's own _RaiseOnArm - toggles tests/machine.py's
-    # Timer.raise_on_arm (a shared class attribute, not per-instance) for the duration of the
-    # `with` block, simulating real rp2 alarm-pool exhaustion (OSError(ENOMEM) from Timer.init()).
-    # `exc` picks which arm of every call site's own `except (OSError, MemoryError)` is exercised -
-    # MemoryError is not an OSError subclass (see CLAUDE.md/SPECIFICATION.md Part F), so neither arm
-    # covers the other. Timer.raise_on_arm_exc is a shared class attribute too, reset back to its
-    # OSError default on exit alongside raise_on_arm.
+    # Same technique as test_system_service.py's _RaiseOnArm - toggles tests/machine.py's shared
+    # Timer.raise_on_arm for the `with` block, simulating rp2 alarm-pool exhaustion. `exc` picks
+    # which arm of `except (OSError, MemoryError)` runs; neither covers the other (Part F).
     def __init__(self, exc: "type[BaseException]" = OSError) -> None:
         self._exc = exc
 
@@ -193,7 +135,9 @@ class _RaiseOnArm:
         Timer.raise_on_arm_exc = OSError
 
 
-_next_port = 53000
+# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
+# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
+_next_port = 23000
 
 
 def make_addr() -> "tuple[str, int]":
@@ -327,11 +271,9 @@ def test_start_asy_sync_age_counter_returns_a_real_task() -> None:
 
 
 def test_fram_given_uses_fram_backed_logging() -> None:
-    # AsyNtpClient didn't accept a fram= parameter at all before this migration - proves the
-    # constructor actually forwards it to SensorReaderConfig/SensorReader rather than silently
-    # dropping it (the same real, promoted AsyFramManager + simulated chip test_base_classes.py
-    # uses for the equivalent base-class-level check, exercised here as an integration check of
-    # this driver's own constructor wiring).
+    # AsyNtpClient took no fram= parameter before this migration - proves the constructor forwards
+    # it to SensorReaderConfig/SensorReader rather than silently dropping it, using the same real
+    # AsyFramManager plus simulated chip test_base_classes.py uses for the base-class check.
     bus = asy_spi_driver.SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
     manager = AsyFramManager(bus, 1, max_size=0x2000)
     client = make_client(fram=manager)
@@ -442,13 +384,12 @@ def test_get_error_counter_records_multiple_entries_in_order() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _now() / _set_synced() / _set_last_sync_age() / _increment_last_sync_age() - the internal
-# state-mutation helpers that replaced last_ntp_sync's/ntp_synced's old independent LockedCounter/
-# LockedFlag objects. These are exercised incidentally as test setup throughout this file, but the
-# field-preservation/None-handling/clamping contract they're actually responsible for needs its own
-# direct coverage - this is exactly the concurrency-safety claim BACKLOG.md's fifth-pass entry
-# makes (each helper does an unlocked get-then-set pair, safe only because nothing in between
-# awaits - see asy_ntp_client.py's own comment on _set_synced()).
+# The internal state-mutation helpers _now()/_set_synced()/_set_last_sync_age()/
+# _increment_last_sync_age(), which replaced last_ntp_sync's and ntp_synced's old LockedCounter/
+# LockedFlag objects. Their field-preservation/None-handling/clamping contract needs this.
+
+# Each helper does an unlocked get-then-set pair, safe only because nothing in between awaits -
+# see asy_ntp_client.py's own comment on _set_synced().
 # ---------------------------------------------------------------------------
 
 
@@ -678,10 +619,9 @@ def test_ntp_force_sync_deinits_a_pending_retry_timer() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Configuration: every valid field, and single/multiple invalid recombinations coming from a real
-# on-disk config_NTP.cfg file, exercised through the real ConfigManager AsyNtpClient now owns
-# internally (not mocked) - proving asy_ntp_client.py's own handling of ConfigManager's per-field
-# defaulting, not re-testing ConfigManager's own contract (already covered by test_config_manager.py).
+# Configuration: every valid field, plus single/multiple invalid recombinations from a real
+# on-disk config_NTP.cfg, through the real ConfigManager this client owns - proving this module's
+# handling of per-field defaulting, not re-testing ConfigManager (test_config_manager.py does).
 # ---------------------------------------------------------------------------
 
 _VALID_JSON = (
@@ -766,10 +706,8 @@ def test_get_ntp_config_returns_none_when_config_manager_itself_is_invalid() -> 
 
 # ---------------------------------------------------------------------------
 # _safe_get_dns_server - reads the get_dns_server callback (AsyConnTime.get_dns_server_ip) and
-# wraps its errors; called by asy_ntp_time() *before* acquiring wifi_mode_lock (see that method's
-# own comment and BACKLOG.md for the real bug this split fixes: calling the callback from inside the
-# locked section always saw the shared Lock as held and always got None back, regardless of the
-# real WLAN state).
+# wraps its errors; called by asy_ntp_time() BEFORE acquiring wifi_mode_lock, since from inside
+# the locked section it always saw the shared Lock as held and always got None back.
 # ---------------------------------------------------------------------------
 
 
@@ -804,12 +742,9 @@ def test_safe_get_dns_server_callback_raising_persists_a_warning() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _resolve_ntp_server - now delegates to asy_dns_client.py's resolve_ipv4() (see that file's own
-# module docstring and BACKLOG.md); this file's own long_block_lock is gone entirely since
-# resolve_ipv4() never blocks the event loop the way socket.getaddrinfo() used to. Takes dns_server
-# as a plain parameter (not a callback it invokes itself) since _safe_get_dns_server() above must be
-# called before wifi_mode_lock is acquired, one level up in asy_ntp_time() - see that method's own
-# comment.
+# _resolve_ntp_server - delegates to asy_dns_client.py's resolve_ipv4(), so this file's old
+# long_block_lock is gone: resolve_ipv4() never blocks the event loop the way getaddrinfo() did.
+# dns_server is a plain parameter, since _safe_get_dns_server() must run before the lock above.
 # ---------------------------------------------------------------------------
 
 
@@ -823,10 +758,9 @@ def test_resolve_ntp_server_literal_ip_returns_immediately() -> None:
 
 
 class _RecordingResolver:
-    # Stands in for asy_dns_client.resolve_ipv4() itself - proves _resolve_ntp_server()'s own
-    # orchestration (tuple building, error handling, timeout_ms/tries forwarding) independent of
-    # resolve_ipv4()'s own real network behavior, which tests/test_asy_dns_client.py already
-    # covers exhaustively.
+    # Stands in for asy_dns_client.resolve_ipv4() - proves _resolve_ntp_server()'s orchestration
+    # (tuple building, error handling, timeout_ms/tries forwarding) independent of resolve_ipv4()'s
+    # own network behavior, which tests/test_asy_dns_client.py covers exhaustively.
     def __init__(self, return_value: "str | None") -> None:
         self.calls: list[tuple[str, tuple[str, ...], int, int]] = []
         self.return_value = return_value
@@ -904,13 +838,12 @@ def test_resolve_ntp_server_dns_failure_persists_an_error() -> None:
 
 
 # No real-network end-to-end test through _resolve_ntp_server() itself: resolve_ipv4()'s `port`
-# parameter has no override here (real hardware always queries port 53, and _resolve_ntp_server()
-# doesn't expose a test-only knob for it) - binding a fake DNS peer to port 53 would need root and
-# would be genuinely environment-dependent (unlike every other loopback test in this suite, which
-# uses an arbitrary unprivileged port). The seam between the two files is already fully
-# characterized above (_RecordingResolver proves the exact arguments/return-value handling), and
-# resolve_ipv4()'s own real UDP behavior is exhaustively covered by tests/test_asy_dns_client.py -
-# together these prove the same thing a port-53 integration test would, without that fragility.
+# has no override here, and binding a fake DNS peer to port 53 needs root and is
+# environment-dependent, unlike every other loopback test in this suite.
+
+# The seam is already fully characterized above (_RecordingResolver pins the exact arguments and
+# return-value handling) and resolve_ipv4()'s real UDP behavior is covered by
+# tests/test_asy_dns_client.py - together proving what a port-53 test would, without the fragility.
 
 
 # ---------------------------------------------------------------------------
@@ -931,9 +864,8 @@ _recording_udp_calls: "list[int]" = []
 
 class _RecordingUDPSocket:
     # Stands in for asy_udp_socket.AsyUDPSocket - records the timeout_ms _fetch_ntp_reply() passes
-    # to write_and_recvfrom(), proving ntp_fetch_timeout_ms is this instance's own configured value
-    # (see asy_ntp_client.py's own constructor comment) reaching the real call, not a hardcoded
-    # module constant.
+    # to write_and_recvfrom(), proving ntp_fetch_timeout_ms is this instance's configured value
+    # reaching the real call, not a hardcoded module constant.
     def __init__(self, addr: "tuple[str, int]", mode: str = "client", conn_tries: int = 1) -> None:
         pass
 
@@ -961,12 +893,9 @@ def test_fetch_ntp_reply_forwards_the_constructors_own_fetch_timeout() -> None:
 
 
 def test_fetch_ntp_reply_ipv6_shaped_four_tuple_addr_returns_none() -> None:
-    # getaddrinfo() is called with no address-family hint, so a resolver that prefers/returns IPv6
-    # would hand back a 4-tuple (host, port, flowinfo, scopeid), not the (host, port) 2-tuple this
-    # file assumes throughout. AsyUDPSocket.__init__ already rejects any non-2-tuple with TypeError
-    # (see its own module docstring), which _fetch_ntp_reply already catches - proving the whole
-    # pipeline degrades to "no reply" instead of crashing on an unexpected address family, even
-    # though this file never restricts getaddrinfo() to AF_INET (see BACKLOG.md's third-pass note).
+    # getaddrinfo() is called with no address-family hint, so a resolver preferring IPv6 hands
+    # back a 4-tuple, not the 2-tuple this file assumes. AsyUDPSocket.__init__ rejects that with
+    # TypeError, which _fetch_ntp_reply catches, so the pipeline degrades to "no reply".
     client = make_client()
     result = run(client._fetch_ntp_reply(("2001:db8::1", 123, 0, 0)))  # type: ignore[arg-type]
     assert result is None
@@ -1021,14 +950,12 @@ def test_fetch_ntp_reply_real_round_trip_returns_the_exact_reply_bytes() -> None
 
 
 # ---------------------------------------------------------------------------
-# _parse_ntp_reply - NTP packet format verified against RFC 5905 during an earlier session: 48-byte
-# header, Transmit Timestamp at byte offset 40 (8 bytes: 4-byte integer seconds + 4-byte fraction,
-# only the integer half is read here), 2208988800s is the documented 1900->1970 epoch delta - see
-# BACKLOG.md. Also checks byte 0's Leap Indicator and byte 1's Stratum before trusting the
-# timestamp at all (rejects LI=3 "unsynchronized" and Stratum=0 "invalid"/Kiss-o'-Death) - every
-# helper below sets Stratum=1 by default so the era/plausibility-window tests aren't incidentally
-# rejected by this separate check. _parse_ntp_reply() is now async (it persists errors/warnings via
-# self.pr.err_s()/wrn_s(), which require awaiting) - every call below is wrapped in run().
+# _parse_ntp_reply - NTP packet format per RFC 5905: 48-byte header, Transmit Timestamp at byte
+# offset 40 (only the integer seconds half is read), 2208988800s being the 1900->1970 epoch delta.
+
+# Byte 0's Leap Indicator and byte 1's Stratum are checked before the timestamp is trusted at all
+# (LI=3 "unsynchronized" and Stratum=0 Kiss-o'-Death are rejected), so every helper below sets
+# Stratum=1 by default. _parse_ntp_reply() is async, hence the run() around every call.
 # ---------------------------------------------------------------------------
 
 _NTP_EPOCH_DELTA = 2208988800
@@ -1069,10 +996,9 @@ def test_parse_ntp_reply_applies_the_ntp_offset_s_correction() -> None:
 
 
 def _truncated(length: int) -> bytes:
-    # A non-zero Stratum (index 1) whenever the length reaches it, so these truncation-length tests
-    # are rejected (if at all) for being too short to reach the Transmit Timestamp, not incidentally
-    # for looking like a Kiss-o'-Death reply (stratum 0) - keeps this isolated from the separate
-    # LI/Stratum check.
+    # A non-zero Stratum whenever the length reaches index 1, so these truncation-length tests are
+    # rejected for being too short to reach the Transmit Timestamp, not incidentally for looking
+    # like a Kiss-o'-Death reply - keeping this isolated from the separate LI/Stratum check.
     buf = bytearray(length)
     if length > 1:
         buf[1] = 1
@@ -1140,12 +1066,9 @@ def _make_raw_ntp_reply(raw_seconds: int) -> bytes:
 
 
 def test_parse_ntp_reply_era_rollover_wrapped_reply_reconstructs_the_real_future_date() -> None:
-    # NTP's 32-bit "seconds since 1900" field wraps in 2036 (era rollover) - distinct from the
-    # ~2037 Unix time_t OverflowError already covered above. A real post-2036 server sends a small
-    # raw value (wrapped back near 0, not the huge continuously-counting value it "really" means).
-    # _parse_ntp_reply() now reinterprets a below-floor reading as the next NTP era (RFC 5905 7.3)
-    # and rechecks against the same plausibility window - this proves the round trip actually lands
-    # back on the real intended date, not just "doesn't crash" (see BACKLOG.md).
+    # NTP's 32-bit "seconds since 1900" field wraps in 2036, distinct from the ~2037 Unix time_t
+    # OverflowError above, so a post-2036 server sends a small wrapped value. _parse_ntp_reply()
+    # reinterprets a below-floor reading as the next NTP era (RFC 5905 7.3) and rechecks it.
     client = make_client()
     target_unix = 2185978496  # 2039-04-09ish - past the ~2036 wrap, well within the plausible ceiling
     raw = (target_unix + _NTP_EPOCH_DELTA) & 0xFFFFFFFF
@@ -1155,11 +1078,9 @@ def test_parse_ntp_reply_era_rollover_wrapped_reply_reconstructs_the_real_future
 
 
 def test_parse_ntp_reply_rejects_a_timestamp_implausible_in_every_era() -> None:
-    # A raw value that looks implausible both read directly (era 0: ~1995, below the floor) and
-    # after the one-shot era reinterpretation (era 1: ~2131, past the ceiling) - genuinely
-    # rejectable corrupt/garbage data, not just an ordinary era-rollover reply. Fixes the real bug
-    # found while writing this test's predecessor: previously this silently produced a bogus-but-
-    # accepted "successful sync" (see BACKLOG.md's third-pass entry) instead of failing closed.
+    # A raw value implausible both read directly (era 0: ~1995, below the floor) and after the
+    # one-shot era reinterpretation (era 1: ~2131, past the ceiling) - genuinely corrupt data, not
+    # an ordinary rollover reply. This used to produce a bogus-but-accepted "successful sync".
     client = make_client()
     result = run(client._parse_ntp_reply(_make_raw_ntp_reply(3000000000), 0))
     assert result is None
@@ -1202,20 +1123,18 @@ def _reply_with_li_and_stratum(leap_indicator: int, stratum: int, unix_seconds: 
 
 
 def test_parse_ntp_reply_rejects_leap_indicator_unsynchronized() -> None:
-    # RFC 5905's Leap Indicator = 3 ("unknown (clock unsynchronized)") is an alarm condition - the
-    # server is explicitly saying it isn't a trustworthy time source yet, even though its Transmit
-    # Timestamp here is a perfectly plausible current date that would otherwise pass every other
-    # check (see BACKLOG.md).
+    # RFC 5905's Leap Indicator = 3 ("clock unsynchronized") is an alarm condition: the server is
+    # explicitly saying it is not a trustworthy time source, even though its Transmit Timestamp
+    # here is a plausible current date that would pass every other check.
     client = make_client()
     msg = _reply_with_li_and_stratum(leap_indicator=3, stratum=1, unix_seconds=int(time.time()))
     assert run(client._parse_ntp_reply(msg, 0)) is None
 
 
 def test_parse_ntp_reply_rejects_stratum_zero_kiss_of_death() -> None:
-    # RFC 5905/4330: Stratum 0 = "unspecified or invalid", used for Kiss-o'-Death (KoD) packets -
-    # never a genuine time source, regardless of its Transmit Timestamp's contents (see
-    # BACKLOG.md's worked example: a real KoD reply's all-zero Transmit Timestamp would otherwise
-    # land exactly inside the plausibility window after era-reinterpretation).
+    # RFC 5905/4330: Stratum 0 means "unspecified or invalid", used for Kiss-o'-Death packets -
+    # never a genuine time source whatever its Transmit Timestamp holds. A real KoD reply's
+    # all-zero timestamp would otherwise land inside the plausibility window after era-reinterp.
     client = make_client()
     msg = _reply_with_li_and_stratum(leap_indicator=0, stratum=0, unix_seconds=int(time.time()))
     assert run(client._parse_ntp_reply(msg, 0)) is None
@@ -1435,14 +1354,9 @@ def test_ntp_time_hours_counter_marks_out_of_sync_past_the_async_interval_multip
 
 
 def test_ntp_time_hours_counter_never_naturally_reaches_the_async_interval_multiple_under_constant_config() -> None:
-    # Complements test_ntp_time_hours_counter_marks_out_of_sync_past_the_async_interval_multiple
-    # above (which isolates the 3x transition by directly poking ntp_sec_count). Under natural
-    # ticking with a constant NTP_Interv_H, the loop's own reset-to-0-once-sec_count-hits-1x-
-    # interval logic fires every single cycle before sec_count can ever approach the 3x threshold -
-    # so the "distrust a stale sync after 3x the interval" safety net never actually engages here,
-    # even across several full cycles of continuous (simulated) sync silence. See BACKLOG.md's
-    # third-pass findings: inherited from python/CommonDrivers/async_connect.py byte-for-byte,
-    # flagged rather than changed.
+    # Complements the test above that isolates the 3x transition by poking ntp_sec_count. Under
+    # natural ticking the loop's own reset-to-0 at 1x fires every cycle before sec_count nears 3x,
+    # so the "distrust a stale sync" net never engages - inherited byte for byte from legacy.
     json_text = '{"NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 1, "GMTOffset": 3600, "DSTOffset": 3600}'
     client = make_client_with_json(json_text)
 
@@ -1465,20 +1379,17 @@ def test_ntp_time_hours_counter_never_naturally_reaches_the_async_interval_multi
 
 
 # ---------------------------------------------------------------------------
-# cettime() - CET/CEST DST boundary math; verified through the real time.mktime()/time.gmtime()
-# rather than hand-computing the "last Sunday of March/October" formula independently (already
-# confirmed copied verbatim from deployed production code - see BACKLOG.md) - this only needs to
-# prove branch selection + exception-safety, not re-derive the formula itself.
+# cettime() - CET/CEST DST boundary math, verified through the real time.mktime()/time.gmtime()
+# rather than hand-computing the "last Sunday of March/October" formula, which is copied verbatim
+# from deployed production code. This only proves branch selection and exception safety.
 #
-# Real finding, flagged (not silently fixed) in an earlier session's report: this project's pinned
-# MicroPython Unix-port test interpreter's time.gmtime() returns a 9-element tuple (trailing
-# isdst=0), not the 8-element shape MicroPython's own docs document for embedded ports including
-# rp2, the real deployment target (confirmed directly below) - matches the cross-port ambiguity
-# typings/_mpy_shed/time_mp.pyi's _TimeTuple union already anticipates. cettime()'s own
-# `if len(cet) == 8` check is correct for the real rp2 target, but would return None under this
-# interpreter if not accounted for - so every test below normalizes gmtime()'s result to 8
-# elements via a monkeypatched `time` shim, to test the real rp2-target contract despite running
-# on a host whose own gmtime() shape differs.
+# Real finding, flagged rather than silently fixed: this project's pinned Unix-port interpreter's
+# time.gmtime() returns a 9-element tuple (trailing isdst=0), not the 8-element shape MicroPython
+# documents for embedded ports including rp2 - the ambiguity typings' _TimeTuple anticipates.
+#
+# cettime()'s `if len(cet) == 8` check is correct for the real rp2 target but would return None
+# under this interpreter, so every test below normalizes gmtime()'s result to 8 elements through
+# a monkeypatched `time` shim.
 # ---------------------------------------------------------------------------
 
 
@@ -1488,11 +1399,8 @@ def test_this_interpreters_gmtime_returns_nine_elements_not_eight() -> None:
 
 class _FixedNowTime:
     # Same monkeypatch technique as test_system_service.py's _OverflowingTime/_RaisingGmtime -
-    # replaces AsyNtpClient's own module-level `time` name (a plain, mutable module global),
-    # not the real (read-only builtin) module. gmtime()/mktime() delegate to the real module so
-    # the DST-boundary formula is genuinely exercised; only time() is overridden (deterministic
-    # branch selection instead of depending on the real calendar date) and gmtime()'s result is
-    # truncated to 8 elements (see module comment above - the real rp2 target's actual shape).
+    # replaces this module's own `time` name, not the read-only builtin. gmtime()/mktime()
+    # delegate to the real module; only time() is overridden and gmtime() truncated to 8 elements.
     def __init__(self, fixed_now: int, raise_exc: "Exception | None" = None) -> None:
         self._fixed_now = fixed_now
         self._raise_exc = raise_exc
@@ -1517,10 +1425,9 @@ def _mid_month_now(month: int) -> int:
 
 
 def _client_with_offsets(gmt_offset: int, dst_offset: int) -> AsyNtpClient:
-    # Deliberately one single f-string, not a plain-string-literal-adjacent-to-an-f-string
-    # concatenation: confirmed directly that MicroPython mishandles the latter when the plain
-    # part contains a literal brace (this JSON's opening "{") - it raises a spurious
-    # KeyError on the plain part's own content instead of producing the intended string.
+    # Deliberately one single f-string, not a plain literal adjacent to an f-string: confirmed
+    # directly that MicroPython mishandles the latter when the plain part contains a literal brace
+    # (this JSON's opening "{"), raising a spurious KeyError on the plain part's own content.
     json_text = (
         f'{{"NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 12, '
         f'"GMTOffset": {gmt_offset}, "DSTOffset": {dst_offset}}}'
@@ -1853,9 +1760,8 @@ def test_run_sync_attempt_success_calls_handle_success_with_the_parsed_time() ->
 
 # ---------------------------------------------------------------------------
 # asy_ntp_time() - the task-supervisor entry point: proves the trigger -> lock -> attempt ->
-# lock-release cycle actually works, and that the lock is released even if the attempt itself
-# raises (shouldn't happen after an earlier session's own exception audit, but the surrounding
-# try/finally must not depend on that to stay correct).
+# lock-release cycle works, and that the lock is released even if the attempt raises. That should
+# not happen after the exception audit, but the surrounding try/finally must not depend on it.
 # ---------------------------------------------------------------------------
 
 
@@ -1913,10 +1819,9 @@ def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> Non
 
 
 def test_asy_ntp_time_swallows_an_already_released_wifi_lock() -> None:
-    # Regression-shaped defensive guard: if the lock were somehow already released by the time
-    # asy_ntp_time()'s own finally block runs, wifi_mode_lock.release() raises RuntimeError - caught
-    # and swallowed rather than crashing the task. Forced here by having the (monkeypatched)
-    # attempt itself release the lock as a side effect, simulating that "already released" state.
+    # Defensive guard: if the lock were somehow already released by the time asy_ntp_time()'s
+    # finally block runs, wifi_mode_lock.release() raises RuntimeError - caught and swallowed
+    # rather than crashing the task. Forced here by having the attempt release the lock itself.
     client = make_client()
 
     async def attempt_releases_lock_itself(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
@@ -2066,30 +1971,24 @@ def test_asy_ntp_time_recovers_the_streak_on_alternating_failure_and_success() -
 
 
 # ===========================================================================
-# Integration tests: real (not mocked) network path, driving the whole asy_ntp_time() task
-# through cfgmgr -> _resolve_ntp_server -> AsyUDPSocket -> real UDP loopback -> a staged real NTP
-# server - proving how a genuine network fault (or success) propagates all the way up through
-# ntp_issynced()/get_last_ntp_sync()/cettime(), not just the unit under test in isolation.
+# Integration tests: the real network path, driving the whole asy_ntp_time() task through
+# cfgmgr -> _resolve_ntp_server -> AsyUDPSocket -> real UDP loopback -> a staged real NTP server,
+# proving how a genuine fault or success propagates up through the public getters.
 # ===========================================================================
 
 
 class _RedirectNtpNetworking:
-    # Combines two Unix-port-only test workarounds needed only when driving the FULL asy_ntp_time()
-    # task end-to-end (not when calling _fetch_ntp_reply() etc. directly with an already-resolved
-    # addr, which every other test in this file already does - this must NOT be applied there, or
-    # indexing into an already-opaque object would itself break, confirmed directly):
-    # (1) _resolve_ntp_server() always returns _NTP_UDP_PORT (123, the real NTP port) alongside
-    #     whatever IP resolve_ipv4() resolved - binding a test server on the real port 123 needs
-    #     root/CAP_NET_BIND_SERVICE, which CI runners don't have (confirmed directly: bind() raises
-    #     EACCES there, even though it worked in a root dev sandbox). Redirected here to a real,
-    #     already-bound ephemeral port instead (see _NTP_UDP_PORT's own comment on why it's
-    #     deliberately not const()-wrapped, unlike every sibling constant in that file).
-    # (2) _resolve_ntp_server() now returns a plain (str, int) tuple - the correct, typed shape real
-    #     rp2 hardware's socket.connect() accepts directly (see asy_dns_client.py's own resolve_ipv4()
-    #     contract) - but this Unix-port "standard" build's connect() rejects that same plain tuple
-    #     (test_asy_udp_socket.py's own make_addr() comment, micropython/micropython#6924). Wraps
-    #     asy_ntp_client.py's own AsyUDPSocket import to pre-resolve it transparently, exactly like
-    #     tests/test_asy_dns_client.py's own _ResolvingAsyUDPSocket wrapper.
+    # Two Unix-port-only workarounds, needed only when driving the FULL asy_ntp_time() task end to
+    # end. They must NOT be applied where a test calls _fetch_ntp_reply() with an already-resolved
+    # addr, since indexing into an already-opaque object would itself break.
+    #
+    # (1) _resolve_ntp_server() always returns the real NTP port 123, and binding a test server
+    #     there needs root/CAP_NET_BIND_SERVICE, which CI runners lack (bind() raises EACCES).
+    #     Redirected to a real, already-bound ephemeral port instead.
+    #
+    # (2) _resolve_ntp_server() returns a plain (str, int) tuple - correct for real rp2 hardware -
+    #     which this Unix-port build's connect() rejects (micropython/micropython#6924), so
+    #     AsyUDPSocket is wrapped to pre-resolve it, like test_asy_dns_client.py's own wrapper.
     def __init__(self, port: int) -> None:
         self._port = port
 
@@ -2116,10 +2015,9 @@ class _RedirectNtpNetworking:
 
 
 class FakeNtpServer:
-    # A genuine independent UDP endpoint (real socket.socket(), not an AsyUDPSocket) - staged to
-    # answer with a controlled reply or drop the request entirely, the same "real peer, not a
-    # mock" approach as test_asy_udp_socket.py's AdversarialPeer. Binds to a real, free ephemeral
-    # port (see _RedirectNtpNetworking above for why not real port 123).
+    # A genuine independent UDP endpoint (a real socket.socket(), not an AsyUDPSocket), staged to
+    # answer with a controlled reply or drop the request - the same "real peer, not a mock"
+    # approach as test_asy_udp_socket.py's AdversarialPeer, on a free ephemeral port.
     def __init__(self) -> None:
         self.port = make_port()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -2235,13 +2133,12 @@ def test_integration_full_task_stays_not_synced_on_a_malformed_reply() -> None:
 
 
 def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
-    # A real network fault propagated up and then recovered from - but only meaningful once
-    # already synced once: _handle_ntp_sync_failure()'s one-shot retry timer is only armed when
-    # ntp_synced is already True (its own comment: a fresh/never-synced client instead relies on
-    # ntp_time_hours_counter()'s own periodic retrigger, covered separately above). So this first
-    # gets one real successful sync, forces a second attempt that gets dropped (simulating a lost
-    # UDP packet / transient unreachable server), and proves the resulting retry timer genuinely
-    # reaches a real listening server on a later attempt, not just in isolation.
+    # A real network fault propagated up and recovered from, but only meaningful once already
+    # synced: _handle_ntp_sync_failure()'s one-shot retry timer is armed only when ntp_synced is
+    # already True, a fresh client relying on the periodic retrigger covered above.
+
+    # So this takes one real successful sync, forces a second attempt that gets dropped, and proves
+    # the resulting retry timer genuinely reaches a real listening server on a later attempt.
     client = make_integration_client()
     reply = make_ntp_reply(int(time.time()))
 
@@ -2296,11 +2193,9 @@ def test_get_cfg_schema_matches_the_public_attribute() -> None:
 
 
 def test_set_dict_cfg_works_out_of_the_box_with_zero_driver_changes() -> None:
-    # Every NTP field is persist-only (this file's own module docstring: "Config setters are out
-    # of scope... only the getter quartet is implemented" predates this generalization pass) - no
-    # asy_ntp_client.py source change was needed to gain setter support at all, since
-    # base_classes.py's generic _set_dict_cfg() already covers the "persist, nothing to push"
-    # case for free. This is exactly the abstraction the design was meant to prove out.
+    # Every NTP field is persist-only, and no asy_ntp_client.py source change was needed to gain
+    # setter support: base_classes.py's generic _set_dict_cfg() already covers the "persist,
+    # nothing to push" case for free. This is exactly the abstraction the design meant to prove.
     client = make_client()
     results = run(client._set_dict_cfg({"NTP_Host": "time.example.org", "NTP_Interv_H": 6}, client.get_cfg_schema()))
     assert results == {"NTP_Host": "Valid", "NTP_Interv_H": "Valid"}
@@ -2324,11 +2219,9 @@ def test_no_push_callbacks_are_registered_for_any_ntp_field() -> None:
 
 
 def test_cfg_schema_matches_what_cfgmgr_was_built_with() -> None:
-    # Regression check for the sensortask-wozi.py integration bug where a shared REST helper
-    # (api_helpers.py's cmd_post_check()) needed each module's own schema to call the promoted
-    # config_manager.ConfigManager.write_config(data, cfg_vals) correctly - cfg_schema is the public
-    # attribute that lets a caller outside this module get that schema without reaching into a
-    # private, underscore-prefixed module-level const.
+    # Regression check for the integration bug where a shared REST helper needed each module's own
+    # schema to call ConfigManager.write_config(data, cfg_vals) correctly - cfg_schema is the
+    # public attribute giving an outside caller that schema, without reaching into a private const.
     client = make_client()
     assert client.cfg_schema == (_VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST)
 

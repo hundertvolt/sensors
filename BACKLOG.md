@@ -7,8 +7,52 @@ operating constraints/architecture reference) or README.md (human-facing orienta
 migrated there rather than duplicated here. See README.md for orientation, CLAUDE.md for operating
 constraints.
 
+**Anything in here that needs the dev bench is also listed in `REAL_HARDWARE_TEST_QUEUE.md`**, which
+is the single running queue a go-ahead session works through in one pass. Items stay tracked here as
+usual; that file exists so the real-hardware subset does not have to be reassembled from this file,
+`tests_hardware/README.md` and the handover docs every time.
+
+**The numbered list below has gaps, and its numbers are never reused or renumbered.** Code comments
+and `SPECIFICATION.md` cite items by number, so a resolved item whose number is cited stays as a
+short closed stub saying what the answer was (items 1, 5, 6, 9, 12, 15, 20, 23, 31, 33 today); one whose number nothing
+cites is deleted outright, its permanent content migrated per the policy above. A gap therefore means
+"resolved and removed", never "lost".
+
 ## Refactor targets not yet done
 
+- **A config-persisting `PUT /sensors` reset its own HTTP connection under concurrent API load -
+  fixed (WP5, 2026-09-16), pending real-hardware re-confirmation.** Root cause: an RP2040 flash
+  write disables interrupts port-wide for its whole duration (`ports/rp2/rp2_flash.c`'s
+  `begin_critical_flash_section()`), freezing the CYW43 link and lwIP's own timers along with it -
+  and the old `ConfigManager.write_config()` performed that write synchronously, inline, inside the
+  very PUT request whose connection then got reset. Fixed at the design level exactly as this entry
+  originally called for: `write_config()` now validates and stages synchronously, then hands the
+  actual `open()`/`json.dump()` write to an independent `asyncio.create_task()`, fully decoupled
+  from the request/response (see `config_manager.py`'s own comments and SPECIFICATION.md Part F.2
+  for the full mechanism, including the accepted residual risk window and its interaction with the
+  WiFi-power-cycle backstop). Mock-tier (`tests/test_config_manager.py`) and digital-twin-tier
+  coverage all pass; **still open**: re-running the two real-hardware bench tests that originally
+  found this
+  (`tests_hardware/bench/test_bus_concurrency_under_api_load.py`'s
+  `test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load` and
+  `test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load`) against the
+  real dev board, once a real-hardware go-ahead exists for a session - this entry stays until that
+  confirmation lands.
+  **Half of that confirmation has since landed, and it split the two arms — read item 30 with this
+  entry, not separately** (noted 2026-09-18 by the pre-merge sweep; the two were written a day apart
+  and never cross-referenced). The bench session of 2026-09-17, on firmware carrying this WP5 fix,
+  found the **BMP3XX arm passing** and the **ISL29125 arm still failing** (four-arm isolation: PUT
+  alone 0/10, PUT + 1 reader 0/6, PUT + 2 readers **6/18**, plain GET + 2 readers 0/6). So the
+  deferral fixed what it was built to fix - the *shared* synchronous flash write is no longer the
+  discriminator, which is precisely what the two arms having opposite outcomes on the same flash path
+  proves - but a second, ISL29125-specific mechanism remains, and that residual is item 30, where the
+  next step (the `RangeAuto=false` bisection) already lives. **What is genuinely still owed here is
+  therefore only the BMP3XX arm's re-confirmation being treated as durable** rather than one bench
+  run; the ISL29125 arm is not "pending re-confirmation", it is a known open defect with its own item.
+
+  Note the bench re-run that produced these numbers needs `--allow-persistence-writes`: the write path
+  is now gated behind `@pytest.mark.persistence_write`, so a default bench run deselects both arms and
+  re-confirms neither.
 - **Mypy shall be configured to disallow `Any` types** (owner-specified). Mostly addressed, but
   not by the flag it was originally written about: all three passes now run full `--strict`
   (`disallow_any_generics` included), so no *implicit* `Any` from a bare `dict`/`list`/`tuple`
@@ -54,45 +98,6 @@ constraints.
   Unix-port-tests were pulled forward out of this order already, once `math_helpers.py` cleared the
   `src/` bar, and that's now standing practice for every new file, not a one-off.
 
-- **Sort every class in `src/` to SPECIFICATION.md D.15's method ordering — HIGH PRIORITY**
-  (owner's ruling, 2026-09-13, after an AST sweep measured the gap). **D.15's order as written
-  stands**: privates first, then publics, each group role-ordered (starters, getters, setters,
-  others). `asy_uart_comm.py`'s interleaved layout is **not** a precedent to codify — it was an
-  accident, the rule simply was not applied when that module was built.
-  D.15's "no change to any comment" clause was never meant to forbid moving a comment along with
-  the method it documents; it has been amended to say what it meant (relocation yes, rewriting no),
-  so a file organised into labelled functional sections can still be sorted.
-  **Amended again 2026-09-14, and this one moves methods between groups**: "starter" is now
-  defined as a role, not a prefix — what a `get_*_starters()` collection hands to the base class or
-  to `system_service.py` at boot, plus that collection and the `stop_*` pairing with such a
-  `start_*`. A `start_*` that is really an on-demand command is an Other. Re-sweeping `src/` under
-  the amended definition reclassifies eight methods across five files, in both directions:
-  `ISL29125_Reader.start_calibration`, `AsyConnTime._start_hotspot`, `SystemService._start_task` /
-  `start_timers` / `start_and_check_tasks` and both `stop_continuous_measurement`s become Others,
-  while `UART_Comm._listen_loop` becomes a starter (`get_task_starters` hands it over).
-  `SystemService`'s three are the genuinely arguable ones — they are the supervisor's own boot
-  entry points, so they *do* the handing over rather than being handed over; settle that when the
-  reorder is actually done rather than now.
-  **The "eleven of 74" enumeration below predates that amendment and needs re-measuring as part of
-  the reorder** — the classes named are still non-compliant, but the list is neither a current
-  count nor complete. As measured 2026-09-13: `UART_Comm` (privates and publics interleaved
-  throughout, its starters/getters group last rather than first), `UART` (`resync_framing` among
-  the privates), `Framing_Base`/`Framing_COBS` (`_checked` mid-public), `SCD30_Reader`
-  (`_set_dict_cfg`, a base-class override), `AsyConnTime`, `ConfigManager`, `SystemService`, and
-  the three `asy_webserver_service.py` protocol stubs
-  `_ModuleLike`/`_StreamLike`/`_TimeoutStreamProxy`. Compliant: `asy_bmp3xx_driver.py`,
-  `asy_sgp40_driver.py` and `asy_isl29125_driver.py` — the ISL driver is verified against the rule
-  including the 2026-09-14 amendment, private group included, so it needs no further work. Its one
-  real deviation (`_end_calibration` sitting between two publics) was fixed in the same pass that
-  amended the rule; `start_calibration` needed no move, since Others sort last either way.
-  **Deliberately not done in the session that raised it** (owner's direction): it is a large,
-  review-hostile diff across five working modules and three protocol stubs, several of them
-  hardware-validated, and it belongs in a session of its own. Each class is a pure AST-verified
-  sort with no behaviour change, so it can be done incrementally, one module per commit.
-  **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
-  2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first; it is
-  picked up on its own.
-
 - **The UART protocol's C implementation is not in this repo yet.** It runs on the Arduino peer and
   is the protocol's second implementation (SPECIFICATION.md Part J). A future session imports it,
   then reconciles it against `UART_C_PORT_CHANGELOG.md` — the running log of protocol changes made
@@ -104,50 +109,82 @@ constraints.
   running the C side exists and can be connected to the dev board, so the reconciliation session can
   test the two implementations against each other for real rather than only reading them side by
   side.
-- **Auto-builder: decide whether `sensortask_dev` importing `asy_uart_comm` is selection enough, or
-  whether a separate selectable `uart_crossover` unit is still wanted.** The original requirement was
-  recorded (owner, 2026-09-11) as: `asy_uart_comm.py` is a *submodule*, not an include-selectable
-  one, with no upstream module, so a dev build meant to exercise the crossover jumper had nothing
-  that would cause it to be included at all — hence a selectable `uart_crossover` module constructing
-  the two instances across the jumper.
-  **That premise has since changed, and the change is worth stating plainly rather than leaving the
-  original entry to mislead the integration session.** `src/sensortask_dev.py` now constructs both
-  instances itself (SPECIFICATION.md Part A.7 step 13b), so it *is* the upstream module the entry
-  asked for: an import-scanning builder that selects `sensortask_dev` pulls `asy_uart_comm` in behind
-  it. Independently, today's `scripts/build_firmware.py` globs and freezes all of `src/*.py`, so a
-  dev firmware built with it contains the module either way. **The flash and bench hardware tiers are therefore
-  not blocked, and have now been run** (2026-09-11, dev bench, owner's go-ahead in-session):
-  `tests_hardware/flash/test_uart_crossover.py` 2/2 and
-  `tests_hardware/bench/test_uart_link_under_api_load.py` 2/2, against a dev firmware built from the
-  branch and flashed for the purpose. Neither skip guard fired, which independently confirms
-  `asy_uart_comm` does reach a dev build behind `sensortask_dev`; they remain only as a diagnostic if
-  some future firmware genuinely lacks the module.
-  What is left for the integration session is a design question this branch should not answer for it:
-  whether the auto-builder's selection model wants the variant entry point to carry the link (as it
-  does now), or a separate selectable `uart_crossover` unit so the link can be included or omitted
-  independently of `sensortask_dev`. Still **no file, no code and no placeholder** added here for it.
+- **The full test-suite scan for tier/layering-completeness and wrongly-trusted-hazard tests
+  (project owner, 2026-09-15) has now run once, beyond bus-hazard's own corner** — UART,
+  WiFi/network/NTP/DNS, FRAM/memory/reboot/watchdog, and webserver/notification/config-push were all
+  swept, real call chains traced end-to-end rather than grep-counted. Full account, including what
+  was fixed, what's a confirmed structural exception, and what's named-but-not-fixed (needing either
+  a dedicated real-hardware session or a project-owner design decision): `tests_hardware/README.md`'s
+  "Tenth pass". No second instance of the SGP40-shaped bug (a real hardware trigger silently
+  substituted with a software-only one) turned up, but several real tier-parity gaps did, most now
+  closed. **Named follow-ons still open, tracked in that section, not repeated here**: a real-hardware
+  test for UART's F.5.8 "never blocks" invariant against the actual shipped driver (not a hand-rolled
+  clamp); wiring a periodic SET into the bench UART exerciser's live load; deciding whether the mock
+  tier's ~20-scenario UART fault-injection catalog is a genuine real-hardware structural exception or
+  needs a raw-second-UART injection technique; a project-owner design review before any
+  `rotate_ap_password()` bench test (real AP credential rotation on the shared bench rig); a
+  real-hardware test for `_reboot()`'s alarm-pool-exhaustion fallback; and a hard-reset-recovery bench
+  test for NOTIFY's own FRAM chunk (needs an observable-write signal analogous to SGP40's `BackupTS`
+  first). Re-running this sweep against other domains (it did not touch e.g. sensortask/system_service
+  integration beyond what FRAM/memory covered) is future work, not assumed done everywhere.
 
 ## Open questions (need owner input or further investigation)
 
-1. `modules/_boot.py`'s `import sensortask.py` (literal `.py`) — works reliably on real hardware
-   (pinned to MicroPython 1.26), but MicroPython's documented freeze/import behavior says it should
-   raise `ImportError`. **The mechanism itself is now confirmed, not a mystery**: traced
-   directly through the pinned source (`tools/mpy-tool.py`'s frozen-name generation,
+- **ISL29125's chip configuration divergence under concurrent API load (PR #84/commit `679c2b0`'s
+  isolation work, HIGH IMPORTANCE, completely unforeseen — project owner, 2026-09-15) — fixed in
+  code and unit-tested; real-hardware re-verification still pending.** Root cause, traced through
+  the real code: `ISL29125_I2C.configure()` mutated the in-memory shadow fields
+  `encode_shadow()`/`matches_shadow()` read (`self._mode`, `self._range_fs`, `self._resolution`,
+  ...) *before* it ever acquired the per-sensor device-session lock that SPECIFICATION.md Part C.8
+  documents as what serializes "a multi-transaction sequence against another coroutine starting its
+  own sequence on the same sensor" — only the actual wire write was ever inside that lock. Under
+  real concurrent load (`read_loop()`'s own background reads/`_switch_range()` calls, or a second
+  concurrent request) that lock does get contended, so a `configure()` call could be suspended
+  *after* mutating the shadow but *before* its write reached the chip, letting a concurrent `GET`'s
+  `get_config_snapshot()` + `matches_shadow()` observe the shadow already showing the new value
+  against a chip that still held the old one — a false "diverged from the shadow" `wrnno=11` report
+  with nothing actually wrong on the wire, which is why three quiet trials never reproduced it but
+  2 concurrent `GET` workers did (twice, per the original isolation). The existing mock test that
+  looked like it should cover this
+  (`test_concurrent_read_and_write_never_interleave_on_the_wire`) only ever proved wire-level
+  atomicity, never this shadow-vs-chip timing race. **Fixed** by widening the device-session lock in
+  `configure()` to span the whole validate-mutate-write(-rollback-on-failure) sequence, matching
+  Part C.8's own documented intent (`_write_shadow()` renamed `_write_shadow_locked()`: no longer
+  self-locking, the caller now holds the lock for the whole critical section). Regression test:
+  `tests/test_asy_isl29125_driver.py::test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight`
+  holds the exact lock `configure()` needs (standing in for real contention) and confirms the
+  shadow cannot change while `configure()` is blocked waiting for it. **Still open**: this needs a
+  real-hardware re-run (the original finding only ever manifested under real concurrent bench load)
+  before it can be considered fully closed — needs the project owner's go-ahead per CLAUDE.md's
+  standing real-hardware gate. Queued as `REAL_HARDWARE_TEST_QUEUE.md` R9, together with the
+  `Overrange` half below (`device_scripts/isl29125_mechanism_envelope.py` was updated to read the
+  field instead of the retired `W12` log entry and has not run on silicon since).
+- **The sibling `W12` ("saturated on the high range") finding from the same isolation work is
+  resolved differently, by design rather than by fixing a bug (project owner, 2026-09-15):**
+  saturation status was never a fault, so it no longer lives in the error/warning log at all. It's
+  now a live, mode-aware `Overrange` measurement field on `ISL29125` (`src/asy_isl29125_driver.py`):
+  true whenever nothing left could mitigate the saturation — the configured range itself under
+  Fixed range (nothing will ever switch it), or Automatic Range already parked on its highest
+  setting with nowhere further to go. This structurally can't fail an error-log-empty bench
+  assertion again, and closes a real pre-existing gap the old warning never covered: a saturated
+  *fixed low-range* reading used to go unreported entirely (the old condition only ever checked
+  `sample_range == _RANGE_HIGH_LUX`). Covered by three new/updated tests in
+  `tests/test_asy_isl29125_driver.py`; `tests_hardware/device_scripts/isl29125_mechanism_envelope.py`
+  updated to check the field directly instead of the retired `W12` log entry (also pending
+  real-hardware re-run). `html/definitions/dev.json`/`mockdata/dev.json` updated with the new field.
+
+1. `modules/_boot.py`'s `import sensortask.py` (literal `.py`) - **mechanism answered; the file is
+   never changed regardless.** Kept only because CLAUDE.md's own hard rule and
+   `tests_hardware/flash/test_reboot_persistence.py` cite this number. Traced through the pinned
+   source at 1.28 and re-verified at 1.29.0 (`tools/mpy-tool.py`'s frozen-name generation,
    `py/frozenmod.c`'s exact-match lookup, `py/builtinimport.c`'s `stat_module()`/
-   `process_import_at_level()`) - a plain `import sensortask` (no `.py`) is unambiguously correct:
-   `stat_module()` auto-appends `.py` before matching against the frozen table, while a
-   dotted `import sensortask.py` requires "sensortask" to resolve as a *package* (have `__path__`),
-   which a flat frozen file never does, so it should raise. **Re-verified at v1.29.0**: `mpy-tool.py`
-   did change (`short_name` is now `".".join(name.split(".")[:-1])` rather than a literal `.py`
-   strip, plus a new non-ASCII module-name rejection), but the frozen name it produces for a flat
-   `foo.py` is identical, and `py/frozenmod.c` is untouched - the analysis stands unchanged.
-   `boot_entry/wozi_boot.py` (the refactor's own entry point) already does
-   `from sensortask_wozi import main` - the correct form - so there's nothing to fix on the
-   refactor side. **`modules/_boot.py` itself stays untouched**: it targets the currently-deployed
-   1.26 firmware, a different version whose own import machinery hasn't been separately verified
-   here - CLAUDE.md's hard rule (don't touch without real 1.26 hardware testing first) still
-   applies, and extrapolating from the 1.28/1.29 trace above would be exactly the "changing it
-   blind" risk that rule exists to prevent.
+   `process_import_at_level()`): a plain `import sensortask` is unambiguously the correct form, and
+   the dotted one *should* raise, because it needs "sensortask" to resolve as a package. Why it
+   nonetheless works on the deployed 1.26 firmware was never verified against that version's own
+   import machinery and never will be - the legacy tree is reference-only forever, so no session
+   tests it. Nothing to do on the refactor side either:
+   `buildgen.codegen.generate_boot_entry_source()` already emits the correct
+   `from sensortask_wozi import main`.
 2. Config-schema migration is a real data-loss risk on the *current deployed* codebase —
    `ConfigManager` overwrites the entire config file with hardcoded defaults the moment one key is
    missing, so a firmware update adding a config key could silently wipe WiFi credentials/tuned
@@ -168,53 +205,16 @@ constraints.
    coordination mechanism needed. **Note**: `get_long_block_lock()` itself was already removed
    entirely before this was decided (see CLAUDE.md's "Long-blocking operations" hard rule) — this
    decision doesn't resurrect it.
-5. ~~Real-hardware verification gap for `asy_udp_socket.py`/`captive_dns.py`~~ — **closed
-   (2026-09-08, real bench hardware).** All three UDP-layer claims (garbage-response robustness/
-   truncation, connected-socket source-address filtering, POLLERR/POLLHUP delivery) are now
-   confirmed on real rp2/lwIP, not just the Unix port (which is structurally unable to exercise this
-   transport at all — `ports/unix/modsocket.c` rejects `AsyUDPSocket`'s plain `(host, port)` tuple
-   with `TypeError`, worked around for CI purposes only via `digital_twin/_unix_port_udp_addr_shim.py`
-   — see `digital_twin/README.md` for that shim's own account):
-   - **Garbage-response robustness and truncation**: `tests_hardware/bench/test_network_resilience.py`'s
-     `test_ntp_server_sends_garbage_instead_of_a_valid_response`/`test_dns_server_sends_garbage_
-     instead_of_a_valid_response` and `test_hotspot_role_reversal.py`'s
-     `test_malformed_truncated_packet_is_silently_dropped` — see `tests_hardware/README.md`'s "Fourth
-     pass" section. One separately-flagged doc/comment mismatch there
-     (`test_dns_flood_backoff_curve_recovers_once_flood_stops`'s own comment claimed the wrong code
-     path) is now fixed in place (2026-09-08) — see that file's own note for the corrected account
-     and the real, still-open coverage gap it surfaced (no fault in this codebase can currently
-     force the actual backoff-growth branch from a bench test).
-   - **Connected-socket source-address filtering — CONFIRMED HOLDS**:
-     `test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source`
-     (`test_network_resilience.py`) forges a crafted NTP reply from a genuinely different source and
-     confirms the DUT's RTC is never corrupted by it — `AsyUDPSocket`'s `mode="client"`
-     `sock.connect()` gets real OS/lwIP-level enforcement on this hardware. Also confirmed at the
-     mock tier (`tests/test_asy_udp_socket.py::test_client_mode_filters_datagrams_from_unexpected_sources`,
-     cross-referenced to this real-hardware result in its own comment) — no twin/flash-tier
-     equivalent needed (twin wraps the same sockets the mock tier already exercises; flash tier has
-     no bench bridge to build an equivalent against).
-   - **POLLERR/POLLHUP delivery — never observed, effectively dead code on this platform.** Real
-     rp2/lwIP does not appear to propagate ICMP errors onto a connected UDP socket's poll state —
-     `AsyUDPSocket.ready()`'s own `POLLERR`/`POLLHUP` handling is correct, defensive code this
-     platform's socket implementation likely never triggers in practice. See
-     `tests_hardware/README.md`'s "Known assumptions and open findings" for the probe technique and
-     full result.
-
-   Along the way, this also found and closed a genuine gap in the *bench harness itself* (not
-   `asy_udp_socket.py`): `bench_control.BenchBridge.redirect_udp_port_to_local()`'s DNAT redirect
-   doesn't reliably deliver to a local listening socket on this bench (`route_localnet=0`) — fixed by
-   adding `start_udp_source_capture()`/`read_captured_udp_source_port()` (a real wire-level `tcpdump`
-   capture, no local delivery needed) as the way to observe a DUT's own outbound request going
-   forward. Full account in `tests_hardware/README.md`.
-
-   A related but separate gap this pass also closed, at every tier that meaningfully applies: no
-   tier had fast coverage for the *combined concurrent GET+config-write* traffic shape the real
-   bench hammer-load test (`tests_hardware/bench/test_memory_stress_bench.py`) exercises. Added
-   `tests/test_asy_webserver_service.py`'s Section I.4 (unit tier) and
-   `tests/test_digital_twin_webserver_concurrency.py::test_realistic_mixed_polling_and_a_concurrent_real_config_write`
-   (twin tier, real assembled system, at `max_connections=4`). Not added to flash tier (no network
-   there, see `test_memory_stress.py`'s own header comment) or as a second bench test (already
-   covered).
+5. ~~Real-hardware verification gap for `asy_udp_socket.py`/`captive_dns.py`~~ - **closed
+   (2026-09-08, real bench hardware).** Kept as a stub because `tests_hardware/README.md`,
+   `bench_control.py` and two bench test files cite this number. All three UDP-layer claims are
+   confirmed on real rp2/lwIP: garbage-response robustness and truncation; connected-socket
+   source-address filtering (**holds** - real OS/lwIP enforcement, a forged reply never corrupts the
+   DUT's RTC); and POLLERR/POLLHUP delivery (**never observed** - `AsyUDPSocket.ready()`'s handling
+   is correct but effectively dead code on this platform). Technique, results, and the bench-harness
+   gap the pass also closed (`start_udp_source_capture()`, a real `tcpdump` capture, replacing a
+   DNAT redirect that does not deliver locally at `route_localnet=0`): `tests_hardware/README.md`'s
+   "Fourth pass" and "Known assumptions and open findings".
 6. ~~Should `asy_wifi_service.py` gain an independent WiFi reachability check?~~ — **closed
    (2026-09-08): investigated, no `src/` change.** The CYW43 firmware/lwIP stack can silently mask a
    real link disruption from `wlan.isconnected()` entirely; decided, with full upstream research
@@ -247,59 +247,29 @@ constraints.
    adapter, already hosting the AP). Both stay `[MANUAL]` until the rig exists — don't re-propose
    building it, and don't substitute a software-only stand-in claiming the same coverage. Migrated
    from the deleted `HARDWARE_TEST_PLAN.md`; surrounding architecture in SPECIFICATION.md Part E.6.
-9. **WiFi-reconnect flakiness across the bench suite - root-caused and fixed at the root (was
-   tracked here as several separate-looking symptoms; all traced to a small number of real
-   causes).** A missing `BENCH_AP_PASSWORD` env var used to cascade into ~25 unrelated-looking test
-   failures (the hotspot role-reversal fixture's own flip-back step silently skipped without it,
-   leaving the DUT's persisted SSID cleared and unable to rejoin STA even via its own `hard_reset()`
-   fallback) - fixed by defaulting to `bench.ap_password()` (reads the real PSK live via
-   `nmcli --show-secrets`), no env var required any more. A real association race in
-   `join_dut_hotspot()` (`is_ssid_visible()` true one moment doesn't guarantee the following `nmcli`
-   scan still sees it) could exhaust its retry budget - fixed with
-   `_join_dut_hotspot_with_reverify_retry()` (`tests_hardware/bench/test_hotspot_role_reversal.py`),
-   which reconfirms live visibility before every retry instead of a blind sleep. A stale,
-   factually-wrong code comment in `_configure_hotspot_ap()` (claiming `STAT_GOT_IP` was STA-only)
-   was corrected in place, and a real re-entry guard (`not self.wlan.active()`) was added so a
-   genuine re-entry while the AP is already active doesn't blindly reapply essid/password - both
-   confirmed on real hardware and covered by new mock-tier regression tests
-   (`tests/test_asy_wifi_service.py`). A `hard_reset()`-during-natural-FRAM-backup test was missing
-   the same recovery fallback every sibling test already has - added. The hard-reset-recovery
-   mechanism itself (`kick_all_stations()` + `hard_reset()`) was independently verified rock-solid
-   (28/28 trials, ~9.1s each, zero variance) - not itself a source of flakiness. A bare-`pytest`-
-   invocation hang some full-file test runs hit (`tests/test_asy_wifi_service.py`) was confirmed
-   transient contention, not a real bug - `scripts/test.sh`'s own per-file timeout+retry mechanism
-   (which exists for exactly this) passes clean on the first retried attempt.
-10. **A spontaneous, singular `/dev/ttyACM0` USB dropout during a purely passive test - closed, not
-    reproducible.** Four systematic reproduction attempts (host-side USB autosuspend, live `dmesg`
-    correlation windows, a targeted compounded-reset stress test, a full session-wide `dmesg`
-    re-check) found no correlated cause on either the Pi4 or rp2 side. Not worth further
-    investigation unless it recurs under normal operation; a `dmesg -T -w`-concurrent capture
-    technique is ready to reuse for a real correlated timestamp if it ever does.
-11. **CLAUDE.md's "Pre-push verification" recipe had no GCC>=14 host target — CLOSED
-    (2026-09-11).** Owner's call: add it alongside noble, not instead of it. Both targets are now
-    required by that section, which carries the trixie deltas and the `gcc --version` check.
+9. **WiFi-reconnect flakiness across the bench suite - root-caused and fixed at the root.** Kept
+   as a stub because three `tests_hardware/` files cite this number. What looked like several
+   unrelated symptoms was: a missing `BENCH_AP_PASSWORD` cascading into ~25 unrelated-looking
+   failures (now defaulted from `bench.ap_password()`, which reads the real PSK live - no env var
+   needed); a real association race in `join_dut_hotspot()` (now re-verifies live visibility before
+   every retry instead of a blind sleep); a factually wrong `_configure_hotspot_ap()` comment plus a
+   missing re-entry guard (both fixed, with mock-tier regression coverage); and one sibling test
+   lacking the recovery fallback every other one had. The hard-reset recovery mechanism itself
+   (`kick_all_stations()` + `hard_reset()`) was independently verified rock-solid (28/28 trials,
+   ~9.1s each, zero variance) and was never a source of flakiness.
 12. **Does `machine.soft_reset()` reset the RP2040 hardware counter `time.ticks_ms()` derives
-    from? - ANSWERED on real hardware (2026-09-11): no, but the question was aimed at the wrong
-    mechanism.** Two `mpremote exec` reads 3s apart returned 25769 and 29136 ms (delta 3367): the
-    soft reset mpremote performs on raw-REPL entry leaves the counter running, because it is
-    free-running hardware time.
-    **The real hazard is the watchdog, not the soft reset.** An `mpremote exec` stops `main.py`, so
-    nothing feeds the WDT and the board takes a genuine *hard* reset ~8s later - which DOES reset
-    the counter. Measured directly: two reads 12s apart returned 1368364 then 5323 ms, the second
-    being time since the intervening WDT reset. So `test_ticks_ms_real_2pow30_rollover`'s multi-day
-    `board.exec()` polling still corrupts its own measurement, just via the WDT hard reset rather
-    than via soft-reset semantics - each poll costs ~8s of uptime and restarts the count. Any real
-    multi-day run needs the poll to re-feed or disable the watchdog, or to observe passively
-    (`tail_log()`) instead.
-13. **Is "reads also blocked while the chip is write-protected" intended? — CLOSED
-    (2026-09-11).** Yes: intended and accepted, an access gate rather than data loss. Full
-    behaviour, the two properties distinguishing it from the pause gate, and the tier coverage
-    (including the silicon-level check only the bench tier can make): SPECIFICATION.md Part A.4's
-    FRAM entry.
-14. **Adopt `machine.mem_backup()` for reset forensics? — CLOSED (2026-09-11).** No, not in
-    normal code; it stays a diagnostic tool to reach for if a severe, hard-to-debug reset ever
-    appears that the FRAM logs cannot explain. Capability and decision:
-    SPECIFICATION.md Part F.5.4.
+    from? - ANSWERED on real hardware (2026-09-11): no, and the question was aimed at the wrong
+    mechanism.** The counter is free-running hardware time and survives the soft reset `mpremote`
+    performs on raw-REPL entry (two reads 3s apart: 25769 then 29136 ms). **The real hazard is the
+    watchdog.** An `mpremote exec` stops `main.py`, so nothing feeds the WDT and the board takes a
+    genuine *hard* reset ~8s later, which does zero the counter (measured: 1368364 then 5323 ms,
+    12s apart). Acted on 2026-09-18 - `test_ticks_ms_real_2pow30_rollover` would have passed
+    **vacuously within about two hours**, because the reboot alone satisfies `now < before`; a drop
+    now only counts as a wrap when the previous read was already within two hours of 2**30
+    (`_WRAP_FLOOR_MS`), so the ambiguity fails honestly instead. Kept as a stub because
+    `tests_hardware/flash/test_bus_electrical_timing.py` cites this number. **Do not re-investigate
+    the soft-reset semantics**; what remains is designing a measurement method that leaves the board
+    running, which is `REAL_HARDWARE_TEST_QUEUE.md`'s C7, not this item.
 15. **Should a transient SPI RX overrun be retried, or left to the task supervisor?** MicroPython
     1.29 added an `OSError(EIO)` raise site to rp2's SPI transfer path for *reading* transfers of
     32+ bytes (SPECIFICATION.md Part F.5.2), reachable here via `asy_fram_driver.py`'s 260-byte
@@ -314,98 +284,24 @@ constraints.
     covers. Still deliberately **not** changed (CLAUDE.md: flag, don't silently fix). Note that the
     interrupted read *does* leave the chunk marked busy and unreadable until rewritten - that is
     intended behavior, not a second bug to weigh here: see SPECIFICATION.md Part A.4's FRAM entry.
-16. **A `ResetErrors` PUT landing in the boot window used to clear some modules' error logs and
-    silently fail on others — FIXED (2026-09-11).** `PrintLogHistory.reset()` now writes
-    unconditionally and claims initialization only once that write succeeds. Mechanism, the
-    deliberate asymmetry against `_store_err()`'s own guard, and the tier coverage:
-    SPECIFICATION.md Part C.7.
 
-17. **Five cross-file consistency findings from the ISL29125 promotion's bird's-eye `src/` scan
-    (CLAUDE.md: reported, not fixed — 2026-09-12).** None is a bug; each is a place two files
-    answer the same question differently, and each needs a decision rather than a drive-by edit.
-    **A recommendation was added to each on 2026-09-13**; all five still need the owner's yes/no,
-    and four of them would touch drivers this branch otherwise leaves alone.
-    - **`FiltCoeff` means two different things.** In `asy_bmp3xx_driver.py` it is the BMP3xx's
-      on-chip IIR register — a discrete `int` from `_IIR_SETTINGS` (0…127). In
-      `asy_isl29125_driver.py` it is a software EMA coefficient — a `float` in -1.0…1.0 with -1.0
-      meaning off. Same field name, same `/sensors` endpoint, different type and different
-      meaning. No wire collision (the sensor group namespaces it), and both names are locally
-      the natural one. Options: leave it, or give one of them a distinguishing name.
-      **Recommendation: leave it.** Renaming the BMP3xx field is a config-schema migration on
-      already-deployed units — open question 2's own data-loss risk, for a purely cosmetic gain;
-      renaming the ISL one makes the newer driver the odd one out. Both fields carry their own
-      `description` in `html/definitions/<device>.json`, which is where a user actually meets them.
-    - **Four names for two trigger-event roles.** `asy_bmp3xx_driver.py`/`asy_sgp40_driver.py` use
-      `trigger_event`; `asy_scd30_driver.py` uses `start_trigger_event` + `irq_trigger_event`;
-      `asy_isl29125_driver.py` uses `base_trigger_event` + `read_event`, and its own comment says
-      it matches SCD30's shape — which it does structurally, not by name.
-      **Recommendation: if one is chosen, it should be the ISL29125 pair** — `base_trigger_event`
-      for the 1 s divider input and `read_event` for "go and read now", which are the only two
-      roles any of the four drivers has, and the only naming that says which is which. A pure
-      rename with no behaviour attached, but it touches three drivers and their tests.
-    - **`from asyncio import ThreadSafeFlag` appears in exactly one file** (`asy_scd30_driver.py`);
-      every other file in `src/` writes `asyncio.ThreadSafeFlag`. Pre-existing, not ISL-introduced.
-      **Recommendation: change the one file.** Four lines in `asy_scd30_driver.py`, no behavioural
-      risk whatsoever, and the cheapest of the five to settle.
-    - **`_N_*_CFG` constants group on two different axes.** BMP3xx and ISL29125 group by type
-      (`_N_INT_CFG`/`_N_FLOAT_CFG`/`_N_BOOL_CFG`); SGP40 groups by purpose (`_N_SETUP_CFG`/
-      `_N_STORAGE_CFG`).
-      **Recommendation: close this as "both, and the rule is whichever axis separates them".** It
-      resolved itself on 2026-09-13: narrowing `_store_isl()`'s config read to `FiltCoeff` alone
-      gave the ISL29125 two float batches, and no type-based name can tell two float batches
-      apart — hence `_N_STORE_CFG` beside `_N_FLOAT_CFG`, which is exactly SGP40's own reasoning.
-      Type when type separates them, purpose when it does not.
-    - **Return-annotation quoting is mixed project-wide**, and most files use both forms. Twenty
-      files carry quoted subscripted return annotations, eleven carry unquoted ones. MicroPython
-      never evaluates annotations, so both are safe; there is simply no stated convention.
-      **Recommendation: state the rule, do not mass-edit.** The one that matches what the code
-      already mostly does, and the only one with a reason behind it: quote an annotation that
-      names a `TYPE_CHECKING`-only import, leave the rest bare. A sentence in SPECIFICATION.md
-      Part D costs nothing; touching 31 files to enforce it buys nothing.
+20. **`tests_hardware/bus_topology.py` deleted as dead code - closed (owner decision, 2026-09-18).**
+    It was a hand-kept, tool-uncross-checked third copy of `devices/dev.toml`'s/`wozi.toml`'s wiring
+    facts, and nothing in the repo imported it: the real on-target sweep CLAUDE.md's bus-hazard rule
+    cited it for runs `device_scripts/bus_topology_autodetect_and_hazard_sweep.py` instead, which
+    live-detects the topology and carries its own address table.
+    **What moved rather than went away**: its only enforced content was the assertion that no declared
+    device address falls in an I2C-reserved range (0x00-0x07, 0x78-0x7F). That is now
+    `tests_scripts/test_device_tomls.py`'s `test_no_declared_i2c_address_falls_in_a_reserved_range`
+    (+ the fixed-address half against `buildgen.twin_wiring.FIXED_ADDRESSES`, + a guard that the sweep
+    is not silently seeing no addresses at all) - run against the real device set in an enforced lint/
+    test scope, rather than over two hardcoded tuples in a file nothing loaded.
+    The on-target script keeps its own `KNOWN_ADDRESSES` deliberately - it is MicroPython on the board
+    and cannot import host code; that is now stated in its own comment and in Part K.7's checklist
+    instead of a cross-reference to a file that no longer exists. CLAUDE.md's bus-hazard rule, Part
+    K.7 and the new-driver checklist all repointed.
 
-    **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
-    2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first; it is
-    picked up on its own.
-    Separately, and already known: `SGPResetVOC` and now `ISLCalibrate` are the only two config
-    fields in `src/` carrying a device prefix. The retired promotion plan contradicted itself here
-    (its prose said the ISL field carries no prefix, its schema table named it `ISLResetCal`); the
-    code kept the table's prefix but not its name, the field having been rebuilt as a calibration
-    trigger rather than a resetter. Recorded because the prefix question itself is still open, not
-    the resolved contradiction.
-
-24. **The two live-backend browser tests fail locally on a stale/stub frozen website** (observed
-    2026-09-13 on this branch; **not caused by it** — nothing in the ISL29125 work touches the web
-    lane, and 575/576 `tests_js` tests pass). `npx vitest run` reports 2 failed files, 1 failed
-    test:
-    - `tests_js/live-backend.test.js` — the browser-driven PUT round-trip fails with
-      `page.waitForSelector: Timeout 10000ms exceeded` waiting for `[data-section-key="system"]`.
-      The captured HTML in the failure shows why: the twin served the **wozi placeholder stub**
-      (`<title>wozi placeholder</title>`, `Hello, wozi! (placeholder stub)`), not the real site.
-    - `tests_js/live-backend-put-matrix.test.js` — fails at *collection* with
-      `startLiveMatrix failed: digital twin never started serving on 127.0.0.1:19412 within
-      20000ms`, twin stderr empty. Whether this is the same root cause surfacing earlier or a
-      separate boot/port problem was **not** established.
-
-    **Confirmed root cause for the first one.** `frozen_modules/` is a gitignored build artifact
-    and currently holds `frozen_html.py` at 8 KB — the stub, built by `scripts/build_frozen_html.sh`
-    from `html_stub/` — alongside a separate 84 KB `frozen_website_wozi.py`. `sensortask_dev.py`'s
-    top-level `import frozen_html` is what mounts `/html`, so the twin serves whatever that module
-    contains; here, the placeholder. The tracked `html/index.html` *is* the real site, so this is
-    purely about which artifact got built into `frozen_modules/`.
-
-    **Also worth fixing, and arguably the real defect:** `tests_js/live-backend.test.js`'s own
-    docstring promises it "skips itself with a clear message if the MicroPython toolchain/frozen
-    website aren't built yet, rather than failing the suite" — but `_live_twin_command.js`'s guard
-    only checks that the Unix-port binary exists. It does not check that the frozen module is the
-    **real** website, so a stub build fails with a confusing selector timeout instead of skipping
-    as designed. Widening that guard would have turned this into a one-line skip message.
-
-    Left for the web lane's owner: not investigated further, and nothing was rebuilt, since a
-    `scripts/build_website.sh` run changes a gitignored artifact that other work on this bench may
-    be relying on.
-
-
-25. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
+22. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
    Part C.7 reserves `errno` 1-9 and `wrnno` 1-2 for `SensorReader`/`SensorReaderConfig`, and
    `api_response.py`'s `handle_set_cmd()` owns the fixed cross-module slot `errno=99`; the project
    owner's standing direction (2026-09-11) is that **every** module aligns to that reservation for
@@ -416,11 +312,7 @@ constraints.
    `asy_ntp_client.py` (`wrnno` 1-3), `asy_notification_service.py` (`wrnno` 1-5 - its `errno` was
    already renumbered to 10-13 for exactly this reason). Conformant today:
    `asy_sgp40_driver.py` (`errno` 10-18, `wrnno` 10-14), `asy_bmp3xx_driver.py`,
-   `asy_scd30_driver.py`, `asy_fram_manager.py`/`asy_fram_driver.py`, and - checked 2026-09-13
-   after the merge, since that driver and this audit were written concurrently and it appeared in
-   neither list - `asy_isl29125_driver.py` (`errno` 10-38, `wrnno` 10-13 since the 2026-09-14
-   renumbering), clear of both reserved
-   ranges.
+   `asy_scd30_driver.py`, `asy_fram_manager.py`/`asy_fram_driver.py`.
    **No live clash exists** - none of the seven currently shares a logger with a `SensorReader`
    instance, so the reserved codes never reach the same history stream. It becomes a real defect
    the moment one of them gains a `logger=` reach-through, which is exactly the pattern
@@ -431,140 +323,491 @@ constraints.
    (invalidating persisted history semantics for those modules on the next deployment) or only on
    each module's next substantial touch. Flagged, deliberately not fixed drive-by - see CLAUDE.md's
    "flag, don't silently change" rule.
-   **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
-   2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first; it is
-   picked up on its own.
 
-26. `asy_uart_comm.py`'s `wrnno` 11 ("drain bound reached - the peer never stopped sending") can
-    never reach the FRAM history through the path that produces it. SPECIFICATION.md Part C.7.1 allows one persisted
-    warning per fault episode; `_resync()` logs `wrnno` 10 first and spends it, then calls
-    `_drain()`, so 11 is always demoted to visible-only. Measured 2026-09-13: a resync whose drain
-    genuinely hits its bound persists `['W10']` and nothing else. **Not a violation of the rule** -
-    it is "at most once per episode", satisfied by never - but 11 is the strictly more informative
-    of the two, and it is the one signal separating a babbling or misconfigured peer from ordinary
-    line noise once the link has carried a valid frame at some point (before that, `errno` 32
-    covers it). **Where to fix**: have `_drain()` set a flag and let `_resync()` choose which
-    `wrnno` spends the episode's slot, so the more specific condition wins - about five lines, no
-    change to the one-per-episode budget. Needs an owner decision because it changes which entry an
-    operator sees in a field log, the same class as the `errno` 32 decision of 2026-09-12.
-    `SPECIFICATION.md` C.7.1 now states the actual behaviour rather than the intended one.
-    **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
-    2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first; it is
-    picked up on its own.
+23. **`asy_uart_comm.py`'s `wrnno` 11 now outranks 10 - fixed (owner decision, 2026-09-18).**
+    Kept as a closed stub only because `SPECIFICATION.md` C.7.1 cites this number. 11 ("drain bound
+    reached - the peer never stopped sending") could never reach the FRAM history through the path
+    that produces it: `_resync()` persisted 10 first and spent the episode's one slot. `_drain()` now
+    flags the condition instead of logging it, and `_resync()` logs after the drain, choosing the more
+    specific code. The one-persisted-warning-per-episode budget is unchanged - the owner's own
+    condition on this fix, and the reason 11 takes the slot rather than adding one.
+    The same change closed the inverse leak nobody had looked for: `setup()`'s boot drain is
+    deliberately not a fault and not counted, yet against a babbling peer it persisted 11 on **every
+    boot**, because the bound logged itself rather than flagging its caller. It now persists nothing.
+    Covered by three tests in `tests/test_asy_uart_comm.py` (the bound case takes the slot, the quiet
+    case is unchanged, the boot drain persists nothing - the first proven non-vacuous by inverting the
+    choice and watching it fail); `UART_C_PORT_CHANGELOG.md` B32; SPECIFICATION.md C.7.1 restated.
 
-29. **An interrupted `setup_toolchain.py env --tier flash` can leave the unit-test interpreter
-    broken, and `scripts/test.sh` will use it anyway** (hit 2026-09-13). The flash tier legitimately
-    rebuilds the MicroPython Unix port as part of `test_env_tier_flash_recurring_run_is_idempotent`,
-    and `run_verification_sequence()` builds it **twice**: first with the frozen-verification
-    manifest, then a vanilla rebuild that restores "the real test rig" (its own comment). Interrupt
-    the run between those two and the binary left on disk has no frozen `asyncio` at all — every
-    `tests/test_*.py` that imports asyncio then dies with `ImportError: no module named 'asyncio'`,
-    which reads like a code failure and is not one. The most likely trigger here was this session's
-    own `pkill` of a hardware suite, so it is a fragility rather than a latent bug, but nothing
-    detects it: `scripts/test.sh` only checks `[ ! -x "$micropython_bin" ]`, so a *broken* binary is
-    indistinguishable from a good one and is silently used.
-    **Out of scope for the ISL29125 promotion (owner, 2026-09-13)** — it is general test tooling
-    with nothing sensor-specific about it, and the documented workaround (`rm` the binary and
-    re-run `scripts/test.sh`) costs a rebuild rather than a wrong answer. It belongs to a session
-    already paying for a toolchain build, which is where the two-chroot pre-push gate below is
-    nearly free rather than the dominant cost.
-    **Recommendation: make that guard a capability check rather than an existence check** — e.g.
-    `"$micropython_bin" -c "import asyncio"` (or a small `-X heapsize` smoke import) alongside the
-    `-x` test, rebuilding when it fails. Deliberately not implemented here: `scripts/` is inside
-    CLAUDE.md's "Pre-push verification" scope, which requires a clean Ubuntu-noble *and* Debian-trixie
-    chroot run before pushing, and this session cannot satisfy that gate. Recovery in the meantime is
-    `rm` the binary and re-run `scripts/test.sh`, which rebuilds it.
+24. **`PUT /status {"ResetErrors": true}` costs a large, slowly-growing fraction of the product's
+    own request ceiling. Now measured on real hardware; one question left.**
+    `asy_webserver_service.py`'s `_put_status()` resets every registered error source sequentially
+    and each FRAM-backed one pays a real FRAM write; WP1/WP2/WP3 grew that set to 21 on `dev`. Two
+    real ceilings bound it, both confirmed directly: the server aborts any request at
+    `outer_cap_s = 15.0` (`asy_webserver_service.py:275`, via `asyncio.wait_for()` at `:667`), and
+    the real web UI gives up at `DEFAULT_TIMEOUT_MS = 15000` (`js/poll-manager.js:8`). A device whose
+    sweep crosses 15s is broken for its own operators, not merely slow in CI.
 
-30. **`SPECIFICATION.md` carries six subsections about one sensor, and no other sensor has any.**
-    Raised 2026-09-14 while deciding where the calibration band-gate finding belongs; **the owner's
-    ruling is to leave the specification exactly as it stands, Finding 2 included, and tidy this up
-    in a session of its own.** Recorded here so that session does not have to re-derive the scan.
+    **Real hardware, `dev` bench board, 2026-09-17, 21 FRAM-backed chunks** — the numbers that
+    supersede every twin estimate below:
 
-    Three distinct patterns exist in the document, and only the third is the question:
+    | condition | wall clock | % of the 15s ceiling |
+    | --- | --- | --- |
+    | idle, real accumulated history | **6.32s** | 42% |
+    | idle, repeated on already-empty logs | 6.40-6.62s | 43-44% |
+    | via `reset_all_error_logs()` | 6.89-6.98s | 46% |
+    | **3 concurrent `GET /status` workers** | **11.58s** | **77%** |
 
-    - **Generic rule, named instance** — the dominant and legitimate one. C.4.3 cites SGP40 against
-      SCD30 to illustrate `SensorReader` vs `SensorReaderConfig`; C.7 names the drivers sharing the
-      `errno` block; D.15 uses `ISL29125_Reader.start_calibration()` as the worked example of the
-      amended starter rule. All 29 `src/` modules are named somewhere this way. Nothing to move.
-    - **Sections named after a module that *is* the architecture** — A.7/A.7.1 (the two
-      `sensortask_*.py` construction orders), A.8 (`asy_webserver_service.py`), C.5
-      (`config_manager.py`), C.6, C.7 (`print_log.py`/`base_classes.py`), and Part J
-      (`asy_uart_comm.py`). There is no generic version of "what order does `sensortask_wozi` build
-      things in". Part J is the strongest case and rests on a different justification again: the
-      UART protocol is a two-implementation contract with the Arduino peer, so that Part is the
-      interface definition both sides implement, which is why CLAUDE.md points at it by name.
-    - **Dedicated single-chip technical sections — ISL29125 only.** C.11.1.1 (`BOUTF`'s lifecycle
-      and where datasheet p12 is wrong), C.11.1.2 (the threshold persistence counter and the
-      destructive status read), C.11.1.3 (PRST derived from `SampleInterv`), C.11.2 ("ISL29125
-      reference layer"), C.11.3 (the calibration design, holding the band-gate finding), C.11.4
-      (the measured range-ratio table) and C.11.5 (the project owner's twenty settled requirements,
-      persisted there when the promotion doc that held them was deleted; the numbering is cited by
-      the driver and its tests, so that section moves as a unit or not at all). Checked the other
-      sensors the same way, with chip-only
-      identifier sets (`AmbPres`/`FRC`/`ASC`; `sraw` and the VOC-index terms; `_VAL_POV`/
-      oversampling/IIR): **SCD30, SGP40 and BMP3XX have no dedicated section anywhere.**
+    Correctness confirmed alongside: HTTP 200, all 21 counters (`UART_init`/`UART_resp` included)
+    read back 0 with every history ring cleared.
 
-    Two places *do* treat every driver alike, so the convention is not simply absent: A.4's
-    "functional behaviors confirmed intentional" list has one bullet per chip (ISL's is the same
-    shape and length as SCD30's and SGP40's), and C.7.1's registry has one row per module. Both are
-    consistent; the C.11 block is the outlier.
+    **Three things this settles, two of which contradict what this item previously said.**
+    **(1) The twin is not a floor.** Real idle (6.32s) is *faster* than the twin's own `dev` figure
+    (8.151s) — the Unix-port interpreter plus the fake chip's Python-level work cost more than real
+    SPI wire time saves. The "real hardware pays real clocking on top of it" claim here was wrong,
+    and so was the ~10-12s extrapolation drawn from the boot-latency branch's delta calibration
+    (`358c08f`); a staggered boot `setup()` genuinely does not predict a back-to-back write burst.
+    **(2) The cost is fixed PER CHUNK (~305ms), not per history entry** — clearing 21 chunks holding
+    real history costs the same as clearing 21 empty ones, consistent with the ~170ms-per-FRAM-logger
+    `setup()` figure being paid roughly twice (a read+write pair). So the "~0.6s marginal per source"
+    figure previously derived from the 4-source `dev`/`wozi` twin delta overstated it; that delta
+    was never purely 4 chunks. **(3) The event loop is not blocked**: concurrent `GET /status` stayed
+    0.56-0.76s throughout a `PUT` lasting 8.1s, so the 8388ms watchdog cap is not threatened — the
+    time is yielded, not held.
 
-    **The decision that gates the work**: is C.11's contract "generic rules only, chips cited as
-    examples", or "generic rules plus the worked example that established each one"? The block was
-    written under the second reading. Under the first, C.11.1.3 and C.11.3 should not simply move —
-    each has a generic kernel worth keeping in place ("a chip-side persistence window must stay
-    shorter than the software re-check interval, or software beats the interrupt to every decision";
-    "calibration is user-triggered, user-applied, and writes nothing by itself"), with the ISL
-    arithmetic and mechanics extracted out from under it. C.11.1.1/C.11.1.2 are pure single-chip
-    datasheet fact with no generic content, C.11.4 is measured data about one specimen, and C.11.2
-    is prior-art analysis that may belong with the attribution material instead.
+    **What is still open — and it is the load case, not the idle one.** At 11.58s under three
+    concurrent readers, `dev` sits at 77% of its own ceiling, and per-chunk cost roughly doubles
+    under that contention (~551ms). That leaves headroom of roughly **6 more chunks under load**, not
+    the ~10 the twin numbers suggested. Nothing asserts elapsed time anywhere: both client timeouts
+    are backstops placed against the cap (the CI suite derives `_RESET_ERRORS_TIMEOUT_S` from a
+    mirrored `_SERVER_OUTER_CAP_S`; `tests_hardware/error_log_helpers.py` carries a measured 30.0s),
+    and `tests_scripts/test_request_timeout_ceiling.py` enforces every copy against `outer_cap_s`
+    itself — but a backstop is not a budget. **Where to fix**: an explicit elapsed-time budget, sized
+    against the load case rather than the idle one; and if a future device's chunk count approaches
+    ~27, a design-level fix at the source (batched or concurrent reset, one shared chunk) rather than
+    a larger client timeout, per CLAUDE.md's root-cause-don't-raise-the-limit rule.
 
-    **Where ISL-specific content would go instead**, if it leaves: CLAUDE.md caps every module
-    header block at 3 lines and `asy_isl29125_driver.py`'s is already exactly 3, so the header
-    cannot hold it — that same rule's next tier, "a short comment right next to the code it
-    explains", is the destination for a code fact, and `tests_hardware/README.md`'s NeoPixel rig
-    section for anything that is really an operator procedure. A new per-module doc file was
-    considered and is **not** recommended: the repo has no such convention, and a document beside
-    the code without being the code is what drifts.
+    Twin figures kept only as the harness baseline they are (5 reps, idle host, loopback): `dev`
+    8.151s (7.901-8.259) / `wozi` 5.592s (5.534-5.746) at the shipped `gc.threshold(32768)`, and
+    7.396s / 5.207s at `gc.threshold(-1)`. Useful for spotting a twin-side regression; not a
+    predictor of real-hardware cost in either direction.
 
-    **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
-    2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first.
+28. **`TEST_PARALLELISM` now autodetects host capability — the residual is a calibration question,
+    not an open design decision.** The 4x-core-count default failed a healthy twin test on the bench
+    Pi4 through CPU starvation alone (reproduced with twelve synthetic busy-loops and no parallel
+    test processes), while being entirely safe on a fast 4-core x86 host — core *count* cannot tell
+    those apart. `scripts/test.sh` now times a fixed integer loop in the very interpreter the tests
+    run under and picks the multiplier from that (4x at <=250ms, 2x at <=900ms, 1x beyond), honouring
+    a cgroup CPU quota when one is set, with `TEST_PARALLELISM` still overriding everything.
+    Measured: 131-141ms (8 samples) -> 16 jobs on this project's x86 sandbox, unchanged from before,
+    and a simulated Pi4-class 704ms -> 8 jobs.
+    **One correction, 2026-09-18**: an earlier revision of this item quoted "117ms -> 16 jobs
+    (unchanged from before)" as if that were what the script did. It was not — those figures were
+    measured in isolation, while the probe itself sat *after* the `tests_scripts/` background launch
+    and therefore timed the host with pytest saturating every core. In situ it read **391ms and
+    picked 8**, not 16, on the very sandbox it was calibrated against. Fixed by moving the whole
+    resolution ahead of that launch (nothing in it depends on anything in between), and
+    `tests_scripts/test_test_sh.py` now asserts that ordering — the unit tests around it all run the
+    extracted function in isolation on an idle machine, so none of them could have caught it. The
+    wall-clock cost on that host was small (4m30.9s autodetected vs 4m26.6s pinned at 16) only
+    because the backgrounded pytest tier at 263s was the binding constraint at both settings; the
+    real defects were the non-determinism and that the probe was not measuring what it claimed to.
+    **What is left**: the thresholds are calibrated from one fast host
+    plus a simulated slow one, not from the Pi4 itself — if a real bench run still starves that twin
+    assertion at 2x, the next step is 1x for that class, or widening the assertion's own budget.
+    Note `_wait_until()` counts poll *iterations*, not wall clock, so making it a true wall-clock
+    timer would make this worse rather than better.
 
-31. **The 3-line inline-comment cap is applied only to what the ISL29125 branch owns.** The cap
-    was tightened from "no hard numeric cap" to 3 lines per block on 2026-09-14 (owner; CLAUDE.md
-    records it), and every file that branch created, plus every block it added to a file it
-    modified, now complies - 95 blocks in created files and 34 in modified ones, plus six
-    over-length docstrings.
-    **What is left is pre-existing**: blocks written before that branch, in files it merely touched.
-    Measured the same day: `tests/test_asy_webserver_service.py` 48 over-length blocks (longest 22),
-    `tests/test_setter_microdot_integration.py` 23, `tests_js/render.test.js` 19, `js/mock-server.js`
-    18, and a long tail across ~30 more files - about 200 in total, none of them this branch's.
-    Deliberately not swept here: rewriting another promotion's comments inside a colour-sensor PR is
-    exactly the drive-by editing CLAUDE.md warns against, and the diff would bury the review.
+29. **A real WiFi outage logs `W4` ("WLAN wrong password") twice alongside the expected `W5`
+    ("access point not found"), on a network whose password never changed.** Observed on the dev
+    bench board during `test_real_wifi_outage_and_recovery_while_in_normal_sta_mode` (2026-09-17).
+    `tests_hardware/bench/test_network_resilience.py`'s own
+    `_assert_wifi_log_has_only_benign_ap_not_found_warning()` expects only `W5`. Either the CYW43
+    driver reports a misleading status during an AP-down transition and
+    `asy_wifi_service.py`'s `_poll_sta_connect_status()` faithfully records it (making the test's
+    expectation wrong), or the status mapping there is off. Not chased — one look should tell which.
+    **Read item 35 with this one** (added 2026-09-18): `_poll_sta_connect_status()` persists one
+    warning per connect *attempt*, and an outage retries, so "W4 twice" may be two attempts rather
+    than two verdicts about one. That does not by itself explain a wrong-password verdict on a
+    correct password, but it does change what the bench run should be looking at.
+
+30. **ISL29125 HTTP connection reset under concurrent API load — root-cause not yet established.**
+    Owner's direction: chase, root-cause and resolve. Needs **both** a config-persisting PUT and >=2
+    concurrent readers (four-arm isolation on the dev bench, 2026-09-17: PUT alone 0/10, PUT + 1
+    reader 0/6, PUT + 2 readers **6/18**, plain GET + 2 readers 0/6), so it is a real residual, not a
+    test artifact, and not the `max_connections=4` reject path (that one is a clean single-worker RST
+    at 5 concurrent workers, by design). Failures land at 21-72ms against 0.5-2.2s for successful
+    writes — two cleanly separated populations, and the connection dies before reaching the handler.
+    **The DUT logs nothing**: `WEBSERVER`'s counter stays 0, so this is invisible to FRAM forensics.
+    The suspected mechanism is the deferred flash write's own interrupt-disable window
+    (SPECIFICATION.md Part F.2's accepted residual risk) — **suspected, not proven**; all that is
+    established is that the persisting write is necessary. Note the write path is now gated behind
+    `@pytest.mark.persistence_write`, so reproducing it needs `--allow-persistence-writes`.
+    **Where to look first — corrected 2026-09-17 after comparing the two arms properly.** An earlier
+    version of this item said the BMP3XX arm passing "points at load/timing rather than at this one
+    driver". That reads the evidence backwards. The two tests are the *same* shape: 2 GET workers on
+    `/sensors` plus one writer alternating between two valid values, same endpoint, same
+    `ConfigManager.write_config()` flash path. Identical setup, opposite outcome, so the flash write
+    the two share cannot be what distinguishes them — the difference is in what each driver's own
+    push does on the bus. `BMP3XX._push_pressure_oversampling()` is a single `set_*` write.
+    `ISL29125._push_resolution()` → `set_resolution()` is a **three-step reconfiguration**:
+    `isl.configure(resolution=...)`, then `_reapply_persist()` (the derived persistence counter
+    changes with the cycle length), then — because `RangeAuto` defaults to `True` and `dev` leaves it
+    there — `_switch_range()` to re-arm threshold registers that are scaled to the old resolution.
+    That is a far longer critical section against two concurrent readers, and it is the first thing
+    to instrument. **Cheap bisection**: `RangeAuto` is a plain REST bool, so `PUT /sensors
+    {"ISL29125": {"RangeAuto": false}}` drops the third leg without touching any code — if the reset
+    rate falls, the re-arm is implicated; if it does not, it is the first two.
+
+31. **The website's errcount catalog is keyed per logger INSTANCE now - fixed (owner decision,
+    2026-09-18).** `buildgen/definitions.py`'s `_errcount_group()` took only a `set[str]` of have-keys
+    and emitted one fixed row per driver kind, plus two hardcoded `UART_init`/`UART_resp` rows, while
+    the API derives its keys from the live object graph (`SensorReaderConfig.get_error_sources()`
+    returns `[self, self.cfgmgr]`; the generated `_collect_error_sources()` loops over every
+    constructed module). It now takes the `DeviceModel` and emits one row per instance from
+    `spec.resolved_name` - the same string the API publishes - with the label suffixed by `name_ext`
+    (`_NAME_EXT_LABEL` keeps `init`/`resp` rendering as "Initiator"/"Responder", so no real device's
+    UI text moved). `uart_link` became an ordinary catalog entry; the hardcoded pair is gone.
+    **No real device changed**: the golden-file comparison against all six hand-written
+    `html/definitions/*.json` still passes byte-for-byte, which is what "latent, not live" meant.
+    Both synthetic fixtures are now correct, and `_KNOWN_CATALOG_DRIFT` in
+    `tests_scripts/test_digital_twin_generated_boot.py` is deleted rather than updated - the parity
+    check runs with no exemptions at all, against real booted devices (8 passed).
+    **Left for a later audit, deliberately out of this fix's scope**: the cross-cutting `status`/
+    `errcount` sections of `definitions.py` are still a hand-maintained catalog rather than
+    `@web`-tag-derived the way every per-driver section already is. That is the same class of gap as
+    the `buildspec.py` schema entry below (owner: keep hand-maintained, the drivers are an integral
+    part of the repo) - worth one deliberate look at whether the two should be decided together,
+    not a mechanical continuation of this change.
+
+32. **The bench tier's `ResetErrors` timeout was raised 10.0s → 30.0s with no elapsed-time budget
+    to replace what that bound was incidentally enforcing.** Recorded 2026-09-17 during a
+    self-audit of this branch; it is the one change on it that loosens rather than tightens.
+    The old `10.0` was genuinely miscalibrated — it sat *below* the product's own
+    `outer_cap_s = 15.0`, so a legitimate sweep (measured 6.32s idle, **11.58s under three
+    concurrent readers** on the dev bench) failed as a client timeout before the server could abort,
+    and the test could never observe the server's real behaviour at all. Raising it was correct.
+    **But the twin got a compensating `_RESET_ERRORS_BUDGET_S` (12.0s, asserted per sweep by
+    `_put_reset_errors_timed()`) and the bench tier did not.** `reset_all_error_logs()` passes the
+    timeout and asserts nothing about elapsed time, so a sweep that degraded to, say, 25s on real
+    hardware would now pass silently where the old bound would at least have gone red — for the
+    wrong reason, but red.
+    **Why no bench budget was set instead of recording this.** Sizing one needs the reader-count
+    curve `REAL_HARDWARE_TEST_QUEUE.md`'s R2 asks for (0/1/2/3/4/6 readers). Two points do not
+    say whether it flattens: the twin's 12.0s is already below the 11.58s-at-3-readers measurement
+    plus any margin, so copying it across would flake the bench suite, and anything above ~15s
+    cannot fire before the server's own abort. Both halves of the owner's standing requirement for
+    this budget — "reliably won't fail the pipeline accidentally with a false positive" **and**
+    "will reliably fail if something really went wrong" — are unsatisfiable until that curve exists.
+    **Close this by** taking the curve, then adding the bench analogue of the twin's own budget
+    check to `tests_hardware/error_log_helpers.py`.
+
+33. **Closed 2026-09-18 (owner decision): the two open pull requests that targeted this branch are
+    dropped, not landed.** PR #102 (`claude/real-hardware-boot-latency-measurements`) and PR #84
+    (`claude/real-hardware-memory-validation-p3vkxr`) were real-hardware *workers*, never merge
+    candidates, so the `main` merge orphaning them is not a loss. Both are closed on GitHub; their
+    branches stay on the remote, so the diffs remain readable if anything is wanted later.
+    **Carried across before closing**: PR #102's real boot-latency figures and its disproven
+    `webserver` lazy-setup hypothesis are now in SPECIFICATION.md Part A.7's boot-latency note, its
+    unexplained **+0.90s** `CFGMGR_SYSTEM` cost is queue row R6. `REAL_HARDWARE_HANDOVER.md` itself was
+    deleted once every step it asked for was answered and migrated, as its own first lines instruct.
+    **Deliberately NOT carried, which is the one thing to know if this is ever revisited**: none of
+    PR #84 exists on any other branch — `buildgen/gc_policy.py`, `scripts/build_firmware.py
+    --gc-policy`, `--memory-pressure`, `tests_hardware/device_modules/memory_pressure.py`,
+    `tests_scripts/test_hardware_harness_transients.py` and a Part I.6 that was only ever written on
+    that branch (nothing here references it, and no such section exists in SPECIFICATION.md) — so that
+    build-and-instrument tooling, and the four validation-apparatus fixes that came with it, are
+    unshipped by decision rather than by oversight. Its three bench passes stand as executed (queue
+    §5).
+    **The adoption record this item's number is cited for (queue row R8) stays valid**: `main`'s
+    ISL29125 tests were assessed one by one and the worthwhile ones adopted here 2026-09-18 — the
+    calibrate-command and gain-ratio-across-a-real-reboot bench tests (the second gaining the
+    `@pytest.mark.persistence_write` `main` lacked, since it owns two persisting PUTs), the
+    manual-tier lux/reference-meter test that also records the rig geometry, and — the highest
+    operational value — `main`'s `neopixel_sweep` gate on the two long lighting tests with its
+    contextual entry in `scripts/_require_clean_hardware_run.sh`. **Not** adopted: `main`'s five
+    real-Microdot setter tests, near-redundant against this branch's own driver-tier coverage; the
+    one thing none of them pinned — *which* rung rejects an out-of-band value — is now pinned by
+    `test_an_out_of_band_knob_is_rejected_by_the_schema_rung_not_the_setter`. The bench tier moved
+    from **71 to 73 tests and 12 to 13 deselected**; the flash tier's 51/9 is unchanged, since the
+    two new gates skip rather than deselect. Every count re-measured by a real `--collect-only` run.
+    Neither adopted bench test has ever run on silicon: queue row R8.
+    Also settled here: of the six items `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` §1.0 calls
+    lost, five are accounted for on this branch or on `main` (checked item by item, not taken at
+    face value); only `REAL_HARDWARE_FINDINGS_PR103.md` is unaccounted for, and it never existed in
+    any ref here — its substance appears to be what item 30 and queue row R1
+    already carry. `claude/pr103-real-hardware-fram-validation` is not on the remote and has no PR.
+
+
+35. **Closed 2026-09-19 (owner decision): the two persisted-warning flood paths are episode-scoped
+    now, per distinct code.** `asy_wifi_service.py`'s `_poll_sta_connect_status()` spent a slot per
+    connect *attempt* and `asy_fram_manager.py`'s chunk `_read()`/`_write()` spent one per degraded
+    operation, so a ten-retry outage or one dead cell emptied the owning module's ten-slot ring by
+    itself. Both now dedupe per distinct code per episode, ended by a successful STA connection and
+    by a clean read/write respectively. The owner's condition was "reflect reality and do not miss
+    real failures", which ruled out `asy_uart_comm.py`'s own first-wins rule twice over, and the
+    shape that satisfies both is new: `PrintLogHistory.wrn_s()/err_s()` take `repeat=True`, which
+    **still counts the occurrence and still writes the count through to FRAM** but spends no history
+    slot. So `/status` still says a device failed to connect five times while the ring still holds
+    what preceded the outage - and a changed verdict (`W4` beside `W5`, item 29's own shape) still
+    persists, which a first-wins rule would have destroyed. Stated once in SPECIFICATION.md Part
+    C.7.1, which also records why the three implementing modules define an episode differently.
+    Covered at the unit tier (three tests each, all bite-verified) and end to end in the twin suite:
+    Run 7 now asserts five counted attempts occupying one slot, Run 8 that both numbers survive the
+    reboot. `asy_uart_comm.py` was deliberately left on its own rule - its repeats are consequences
+    of one fault whose `errno` was already counted, not independent events.
+
+36. **Closed 2026-09-19 (owner decision): the filter compares against the push now, and the live
+    PUT matrix is its own sharded job.** Two separate causes, both measured rather than guessed.
+    *The filter*: `dorny/paths-filter` given no `base:` compares a push to a non-default branch
+    against the **default branch**, so on a long-lived branch every push matched whatever it had
+    touched weeks ago - `Detected 281 changed files`, `Filter web = true`, on a commit that changed
+    one `.md` file. It now passes `base: ${{ github.ref }}`, upstream's own documented idiom for
+    "what did this push change". A `pull_request` still compares through the API against the PR's
+    base and so still runs the full web tier before merge, which is what a pre-merge status check
+    wants; a branch's first push, where no common ancestor exists, counts every file as added and
+    runs, which is the safe direction. *The budget*: the web suite is 578s for 778 tests, and
+    `tests_js/live-backend-put-matrix.test.js` alone is **567s of it** (243 tests) - so that one
+    file was the whole ceiling problem, and splitting `web-coverage` out earlier helped so little
+    because it was never the coverage rerun. It is now `web-put-matrix`, three parallel shards
+    (measured: 80 tests in 182s per shard), leaving `web-unit-tests` at 110s for the other 535
+    tests and `web-coverage` cheap for the same reason. `timeout-minutes` stays at 20 everywhere:
+    no job is near it any more, so raising it would have hidden a real hang instead of removing a
+    real cost. Shard plumbing worth knowing about, since three obvious routes silently do nothing:
+    a shell variable does not reach a Vitest browser test (Vite fills `import.meta.env` from `.env`
+    files only), `define` rewrites exact expression text so a type-cast read is not substituted,
+    and a `JSON.stringify`'d define value arrives double-quoted. The partition itself is proven by
+    `tests_js/mock-server-put-matrix.test.js` rather than trusted.
+
+37. **Five cross-file consistency findings carried over from `main`, each re-verified on this branch
+    (2026-09-18) and each still needing an owner yes/no.** They were raised on `main` by the
+    ISL29125 promotion's bird's-eye `src/` scan (2026-09-12) with recommendations added 2026-09-13,
+    and this branch had never picked them up. None is a bug; each is a place two files answer the
+    same question differently.
+    - **`FiltCoeff` means two different things** - BMP3xx's on-chip IIR register (discrete `int`
+      from `_IIR_SETTINGS`) and the ISL29125's software EMA coefficient (`float`, -1.0 = off), same
+      field name on the same `/sensors` endpoint. No wire collision (the sensor group namespaces
+      it). **Recommendation: leave it** - renaming the BMP3xx field is a config-schema migration on
+      deployed units for a cosmetic gain, and both carry their own `description` in
+      `html/definitions/<device>.json`, which is where a user meets them.
+    - **Four names for two trigger-event roles**: `trigger_event` (BMP3xx/SGP40),
+      `start_trigger_event` + `irq_trigger_event` (SCD30), `base_trigger_event` + `read_event`
+      (ISL29125). **Recommendation: the ISL29125 pair if any** - it is the only naming that says
+      which role is which. A pure rename, but it touches three drivers and their tests.
+    - **`from asyncio import ThreadSafeFlag` appears in exactly one file** (`asy_scd30_driver.py`);
+      every other file writes `asyncio.ThreadSafeFlag`. **Recommendation: change the one file** -
+      four lines, no behavioural risk, the cheapest of the five.
+    - **`_N_*_CFG` constants group on two axes** - by type (BMP3xx, ISL29125) and by purpose
+      (SGP40). **Closed as "both, and the rule is whichever axis separates them"**: the ISL29125
+      ended up with two float batches, which no type-based name can tell apart, hence
+      `_N_STORE_CFG` beside `_N_FLOAT_CFG` - SGP40's own reasoning. Both are present here.
+    - **Return-annotation quoting is mixed project-wide**: 22 `src/` files carry quoted subscripted
+      return annotations, 11 carry unquoted ones, 9 carry both. MicroPython never evaluates
+      annotations, so both are safe and there is simply no stated convention. **Recommendation:
+      state the rule, do not mass-edit** - quote an annotation naming a `TYPE_CHECKING`-only
+      import, leave the rest bare, as a sentence in SPECIFICATION.md Part D.
+
+38. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves, and
+    the owner's standing direction (2026-09-11) is that every module aligns to it** - carried over
+    from `main`, re-verified here 2026-09-18. Part C.7 reserves `errno` 1-9 and `wrnno` 1-2;
+    `api_response.py` owns the fixed cross-module slot 99. Non-conformant: `config_manager.py`,
+    `system_service.py`, `asy_webserver_service.py`, `captive_dns.py` (all `errno` and `wrnno`),
+    plus `asy_wifi_service.py`, `asy_ntp_client.py` and `asy_notification_service.py` on `wrnno`
+    alone. **No live clash exists** - none of the seven currently shares a logger with a
+    `SensorReader` instance. It becomes a real defect the moment one gains a `logger=`
+    reach-through, which is exactly what `AsyFramManager`/`FRAM_SPI` do and what this branch's
+    `asy_uart_comm.py` adopted (C.7.1 records it numbering from 10 for that reason). Renumbering is
+    mechanical but not free: every changed code is a persisted value in deployed FRAM histories and
+    appears in C.7.1, the errcount UI's raw `num`, and existing tests. Needs an owner decision.
+
+39. **An interrupted `setup_toolchain.py env --tier flash` can leave the Unix-port binary without a
+    frozen `asyncio`, and `scripts/test.sh` uses it anyway** - carried over from `main` (hit
+    2026-09-13). `run_verification_sequence()` builds the interpreter twice (frozen-verification
+    manifest, then a vanilla rebuild restoring the real test rig); interrupting between the two
+    leaves every `tests/test_*.py` dying with `ImportError: no module named 'asyncio'`, which reads
+    as a code failure and is not one. `scripts/test.sh` only checks `[ ! -x "$micropython_bin" ]`,
+    so a broken binary is indistinguishable from a good one. Recovery: `rm` the binary and re-run.
+    **Recommendation: make that guard a capability check** (`"$micropython_bin" -c "import asyncio"`
+    beside the `-x` test, rebuilding when it fails). `main` deferred it because `scripts/` was
+    inside a blocking two-chroot pre-push gate; that gate became an owner-run periodic check on
+    2026-09-18, so the recommendation is actionable now and only needs the owner's go-ahead.
+
+40. **`SPECIFICATION.md` carries seven subsections about one sensor, and no other sensor has any**
+    - carried over from `main`, where the owner ruled (2026-09-14) to leave the document exactly as
+    it stands and tidy this in a session of its own. Three patterns exist and only the third is the
+    question: *generic rule, named instance* (C.4.3, C.7, D.15 - the dominant, legitimate one);
+    *sections named after a module that IS the architecture* (A.7, A.8, C.5, C.6, C.7, Part J -
+    Part J additionally being a two-implementation interface definition); and *dedicated
+    single-chip technical sections*, which only the ISL29125 has (C.11.1 through C.11.5, including
+    C.11.1.1-C.11.1.3). Recorded so that session does not re-derive the scan.
+
+41. **Two device scripts still hand-list their `cfgmgr._cache` keys and will silently miss a new
+    schema field** - carried over from `main`, verified here 2026-09-18.
+    `bmp3xx_plausibility_read.py` and `sgp40_fram_backup_restore.py` prime the cache from a literal
+    dict; the four ISL29125 scripts already derive it from the driver's own schema
+    (`{field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}`) and then
+    override only what the script deliberately changes. A field added to either driver leaves the
+    hand-listed script reading a default that no longer exists, which looks like a driver fault.
+    The generic form is a two-line change in each, but it can only be validated on the bench - so
+    it rides the next real-hardware session rather than being pushed blind
+    (`REAL_HARDWARE_TEST_QUEUE.md`).
+
+42. **Closed 2026-09-19 (owner decision 4): every header and inline comment block in the repo is
+    inside the 3-line cap.** The cap was tightened from "no hard numeric cap" to 3 lines per block
+    by the project owner on 2026-09-14, re-confirmed 2026-09-18, and the owner then asked for the
+    same treatment applied once - not permanently - to everything outside `src/`.
+
+    **Header blocks reached zero first** (2026-09-18): 65 over-cap Python module/class/function
+    docstrings plus two JS/CSS file headers. Most duplicated a rule the spec already stated, so the
+    fix was a pointer, not a deletion; the three per-device scenario libraries' shared rationale
+    became SPECIFICATION.md Part E.2.1, its single point of truth.
+
+    **Inline blocks then followed, scope by scope**, `src/` first (121 blocks) and `tests/` last as
+    the largest by far. Final tallies, after three corrections to the measurement itself - divider
+    rules (`# ----`) are separators, PEP 723 `# /// script` headers are metadata, and JSDoc
+    `@param`/`@returns` continuation lines are annotations, none of them commentary:
+
+    | scope | blocks | scope | blocks |
+    | --- | --- | --- | --- |
+    | `tests/` | 710 | `tests_js/` | 44 |
+    | `tests_scripts/` | 101 | `js/` | 28 |
+    | `tests_hardware/` | 97 | `toolchain/` | 4 |
+    | `scripts/` | 76 | `html/` | 2 |
+    | `buildgen/` | 62 | | |
+    | `digital_twin/` | 48 | | |
+
+    Nothing was dropped outright. Each block kept the load-bearing WHY next to the line it explains;
+    implementation-history narrative ("found via", "corrected during implementation", test counts
+    from a since-changed suite) went, per the documentation rule that docs carry current state and
+    rules, not the path that got there; and an architectural fact already owned by a
+    SPECIFICATION.md Part became a pointer to it rather than a restatement.
+
+    Stale facts surfaced and were corrected in passing: `tests/test_asy_webserver_service.py` and
+    SPECIFICATION.md Part I.5 both still described the Unix-port harness as an 8MB heap
+    (`scripts/test.sh` moved it to 16M, and that file's own comment owns the history), and the
+    UDP-socket suite named `async_connect.py` and the deleted `improved-quality/` as its upstream
+    callers, where the real ones are `src/asy_ntp_client.py` and `src/captive_dns.py`.
+
+    Machine-read tag lines (`# @web`, `# @wiring`, `# @limits`, `# @requires`) and
+    `js/definitions.js`'s `@typedef` run stay exempt as data, per CLAUDE.md. This was a one-time
+    pass by the owner's explicit framing, not a standing gate: new code is expected to meet the cap
+    as it is written, and nothing enforces it mechanically.
+
+43. **Closed 2026-09-19: `main` is merged in, and the "purely mechanical" assessment of that merge
+    was wrong in four places.** The branch's base was `348be6d` (PR #70); `main` had moved 76
+    commits ahead to `32e9a8e`, none of them in this branch's history. The recorded resolution held
+    in outline - take this branch's side on all 36 content conflicts, keep the three modify/delete
+    files deleted (`src/sensortask_dev.py`, `digital_twin/run_dev_integration.py`,
+    `tests_hardware/bus_topology.py`, all buildgen-generated or retired here) - and `arduino/`, the
+    BSEC 2.6.1.0 vendor release plus sketches, came in as the pure addition it was expected to be.
+
+    What the assessment missed is that `main`'s ISL29125 branch also carried **general fixes this
+    branch never had**, because the two forked before the promotion existed on any shared ref.
+    Taking this branch's side wholesale would have silently reverted all four:
+
+    - `.github/workflows/ci.yml`: `uv sync` retried in **every** job that syncs, not just the test
+      lanes. `main` hit HTTP 500 on 2026-09-13 and 504 on 2026-09-14, both on lanes touching no
+      shell script. Adopted, with the three later sites pointing at the first one's reasoning.
+    - `tests/machine.py` and `digital_twin/machine.py`: `Pin.PULL_UP`/`PULL_DOWN` corrected to the
+      real rp2 values (`GPIO_PULL_UP` 1, `GPIO_PULL_DOWN` 2, `ports/rp2/machine_pin.c` at v1.29.0).
+      Both fakes here had `PULL_UP = 2` and no `PULL_DOWN` at all. Adopted in both. Every use site
+      is symbolic, so nothing depended on the wrong number - only the fakes' fidelity did.
+    - `js/mock-server.js`: magnitude-aware jitter. The old spread was sized for readings of order
+      hundreds, so on the ISL29125's normalised 0-1 leaves a 0.05 floor is +-178% - it drove them
+      negative and quantised them to 0.00. Adopted.
+
+    Two further gaps were **this branch's own**, caught by `main`'s new
+    `tests_js/definitions-mockdata-coverage.test.js`: `mockdata/dev.json` had no `BMP3XX`
+    measurements at all, and no `UARTLINK` status counters, though dev's definitions declare both
+    (the latter a WP3 leftover - the fields were added to the definitions and never to the mock).
+    Both added.
+
+    **The hazard worth remembering**: an auto-merged *test* file next to an `--ours`-resolved
+    *source* file. Git reports no conflict, so nothing flags it, and the test then fails against
+    source that lacks the feature it pins. Three of the four fixes above surfaced exactly that way,
+    from `npm run test:unit` rather than from reading 150 conflict hunks. After a resolution that
+    takes one side wholesale, run every tier before trusting it.
 
 ## Deferred / explicitly out-of-scope work
-- **Two device scripts still hand-list their `cfgmgr._cache` keys, and will break as a "dead
-  sensor" the day their driver gains a config key.** `bmp3xx_plausibility_read.py` (8 keys) and
-  `sgp40_fram_backup_restore.py` (3 keys, and the literal appears **twice** in that file, for
-  reader1 and reader2). Both were verified in sync on 2026-09-14, so this is latent risk, not a live
-  bug — which is exactly why it is easy to forget. The failure mode is not a config error: the batch
-  read in `_init_*()` comes back short of its `_N_*_CFG` length check, init logs its "Error reading
-  config data!" errno and returns False, and the read chain never starts, so the script reports
-  *"sensor not responding or not wired to i2c1"* / `samples=0`. That is precisely what happened to
-  three of the four `isl29125_*.py` scripts when `GainRatio` joined the ISL schema (2026-09-14):
-  hours look like a hardware fault before anyone suspects the cache. The fix is one line, already
-  applied to all four ISL scripts and written up as a standing rule in `tests_hardware/README.md`'s
-  priming note:
-  `reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}`
-  plus explicit overrides. **Convert whichever script its driver's schema changes first** — doing it
-  pre-emptively needs a real-hardware run to re-verify each, which is the only reason it is deferred
-  rather than done. Not a general licence to leave new scripts hand-listed: anything new derives.
+
+- **CLAUDE.md's two-target clean-chroot verification is an owner-run periodic check, not a blocking
+  per-push gate - settled (owner decision, 2026-09-18).** The recipe, both targets and the separate
+  installer verification all stand exactly as CLAUDE.md documents them; what changed is who runs
+  them and when. The owner runs them manually every now and then, on the bench Pi4 (trixie/GCC 14.2)
+  or their own box, rather than a session blocking a push on a chroot it usually cannot build.
+  The legs were last satisfied 2026-09-12. Changed on this branch since, against `main`:
+  `scripts/test.sh` (+520 lines - parallelism autodetection, the backgrounded `tests_scripts/` job
+  and its timeout, the heap-size and port-base moves), `scripts/typecheck.sh`, `scripts/lint.sh`,
+  `scripts/build_firmware.py`, `scripts/_require_clean_hardware_run.sh`,
+  `scripts/run_digital_twin_ci.sh`, `scripts/run_unix_port_integration.sh`,
+  `scripts/_digital_twin_ci_suite.py` (test orchestration only - no build step, so the chroot legs
+  neither exercise nor are threatened by it), `pyproject.toml` (+159), and on the web side
+  `package.json`/`vitest.config.js`/`eslint.config.js` (2026-09-19's PUT-matrix split - npm scripts
+  and a build-time define, which `env --tier generic` installs through but does not compile),
+  and - the class the lint/typecheck recipe never exercises at all - `toolchain/setup_toolchain.py`
+  plus the new `toolchain/micropython_overrides.py` (PR #90's `MICROPY_ASYNC_KBD_INTR=0` Unix-port
+  build override, SPECIFICATION.md Part B.14.1). That last pair is what a compiler-version-sensitive
+  break would actually show up in, so it is the part worth the owner's next manual run; a
+  `scripts/test.sh` change is host tooling and low-risk. Kept here as the running list of what is
+  owed, not as a merge blocker.
+
+- **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
+  `build_info=` parameter) only got the noble leg of CLAUDE.md's required two-target clean-chroot
+  pre-push verification** — the narrower, earlier instance of the entry above. The trixie leg — required by the same rule whenever `pyproject.toml`
+  changes, specifically to catch a GCC>=14-only issue the noble/GCC-13 leg can't see (the precedent:
+  the mbedtls `-Warray-bounds` false positive, SPECIFICATION.md Part B.7.1) — couldn't be run from
+  that session's own sandbox: `debootstrap --variant=minbase trixie` needs `deb.debian.org`, which
+  the sandbox's egress policy rejected outright (confirmed directly, not a transient failure), with
+  no alternate Debian mirror to fall back to. The change itself is a pure ruff/pylint lint-rule
+  threshold with no compiler-version sensitivity, so the residual risk is judged low, not zero — a
+  from-scratch trixie leg (or a run on the bench Pi4, which already runs trixie/GCC 14.2) should
+  still confirm it whenever one is next convenient. The change itself is the `build_info=` parameter
+  SPECIFICATION.md Part L.7 describes.
+- **`buildgen/buildspec.py`'s per-driver schema is hand-maintained — making it AST-derivable is a
+  separate, unstarted unit of work.** Everything else `buildgen/` needs from a driver is derived
+  from `src/` automatically (the class itself via `driver_registry.py`'s naming convention,
+  `_WIRING`, `_VALUE_WIRING`, `_LIMITS`, `_Default*`); `buildspec.py`'s "which TOML fields does this
+  driver require/allow, does it sit on a bus, does it have a selectable address" dicts are the one
+  exception, because Session 2's shipped TOML field names (`pin`, `cs_pin`, ...) and `src/`'s
+  constructor parameter names (`neopixel_pin`, `spi_cs`, ...) are two independently-evolved naming
+  spaces with no rule connecting them. So adding a 7th driver means editing one table by hand, and
+  forgetting to is a real (if now clearly-reported) failure. **The small half is already done**: a
+  driver that resolves via `driver_registry` but has no `buildspec.py` entry raises a dedicated
+  error naming that as the cause, instead of reporting every one of its real fields as
+  "unrecognized" (SPECIFICATION.md Part L.6's "Known limitation" section). The large half —
+  deriving the schema from each driver's own constructor signature, or from a new declarative tuple
+  beside `_WIRING` — needs real design, not a mechanical continuation, and hasn't been started.
+  **Owner decision, 2026-09-18: it stays hand-maintained, and this is no longer an open question.**
+  The drivers are an integral part of this repo, not third-party definitions arriving from outside,
+  so one table edit per new driver is an acceptable cost — and the small half above already turns
+  forgetting it into a named error rather than a confusing one. Kept only to record that the
+  alternative was considered and declined; don't re-propose it. (Item 31's closing note flags that
+  `definitions.py`'s cross-cutting `status`/`errcount` catalog is the same class of hand-maintained
+  table, worth deciding alongside this one if it is ever revisited.)
+- **`[device].name`/`hostname`/`hotspot_password` are wired into the boot path now - done (owner
+  decision, 2026-09-18).** Every device really did boot as `SensorNode` whatever its TOML said; the
+  three fields were validated and then reached nothing. `AsyConnTime.__init__` takes `hostname=`/
+  `hotspot_password=` and substitutes them as the **defaults** of the two ConfigManager-persisted
+  fields (`_with_default()`), so a user rename through the web UI still wins on a later boot, and
+  every existing test that asserts the literal `"SensorNode"`/`"12345678"` keeps passing untouched -
+  `None` means "keep the shared default", which is what a bare construction asks for.
+  `buildgen/codegen.py` passes `devices/*.toml`'s own values into the generated `AsyConnTime(...)`
+  call; the `test_hostname_and_hotspot_password_are_not_yet_wired_into_generated_code` tripwire is
+  replaced by its inverse, and `validate.py`'s long gap comment by two lines of current fact.
+  **One new failure mode, closed at both ends**: ConfigManager treats a default it cannot satisfy as
+  an invalid config and then answers `None` to *every* read, so an out-of-bounds injected value
+  would have cost a device its whole networking config. `validate.py` now refuses a hostname longer
+  than `network.hostname()`'s 32-character cap at build time (in practice a cap on `[device].name`),
+  and `_with_default()` drops an out-of-bounds value back to the built-in default rather than
+  installing it - the build-time rung is the one that fails, the runtime one keeps the device
+  bootable. Four tests: the injection works, an out-of-bounds injection falls back, the generated
+  call carries the values, the over-long hostname fails the build.
+
 - **A digital-twin soak's wall clock is set by GC timing, so it must never be bisected to a code
   change** (established 2026-09-11 after one was — see SPECIFICATION.md Part E.7 for the measurement
   and the inverted control). Not open work: the finding itself is the resolution, and
-  `tests/test_digital_twin_run_dev_integration.py`'s budget now sits above the whole observed range
-  rather than inside it. Left here because the trap is easy to fall into a second time: the numbers
-  are stable to within 0.3s per build, which reads exactly like a real signal.
+  `tests/test_digital_twin_run_generic_integration.py`'s budget now sits above the whole observed
+  range rather than inside it. Left here because the trap is easy to fall into a second time: the
+  numbers are stable to within 0.3s per build, which reads exactly like a real signal.
 - **The UART fakes still do not *wait* the way a real read does, deliberately.** They serve what
   they hold and return, where the peripheral would wait out `timeout_char` for every byte the caller
   asked for that has not arrived (SPECIFICATION.md Part F.5.8). Making them actually wait would turn
@@ -602,58 +845,6 @@ constraints.
   - **One `Framing_COBS` instance shared between two drivers would corrupt both**, since its
     long-lived scratch is per-instance, not per-call. Every construction site makes its own; noted
     because the failure would be silent if one ever did not.
-- **The 1.29.0 pin is now field-proven on the dev bench (2026-09-11).** Real `dev` firmware built
-  from `src/` and flashed; `sys.implementation` on target reports `(1, 29, 0)` / `_mpy=4870` /
-  `RPI_PICO_W`. Flash tier (25 passed), bench tier (85 passed) and the mid soak tier (4 passed) all
-  ran clean against it. Deployed units stay on 1.26 regardless (open question 3). Of the three items
-  that wanted on-target confirmation beyond just running the existing suites, **two are now closed**:
-  - **The new SPI `OSError(EIO)` raise site** (Part F.5.2, open question 15) - **confirmed as far as
-    target allows.** Its live path, `asy_fram_driver.py`'s 260-byte SGP40 VOC-state read, passes on
-    real hardware at 1.29, so the DMA path is genuinely exercised. Answering #15 properly still
-    needs a real overrun *observed*, which no Python-level knob can induce; the consequence is
-    covered instead - see the RX-overrun entry below.
-  - **That `I2C.deinit()`/`SPI.deinit()` really are silent no-ops** (Part F.5.1) - **done
-    (2026-09-11)**, pinned down exactly where this entry suggested, by
-    `device_scripts/bus_deinit_is_a_noop_on_real_hardware.py` +
-    `test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton`. On live silicon an
-    `i2c.scan()` returns the identical device list after `deinit()` and a real FRAM read still
-    succeeds after `machine.SPI.deinit()`; the same script also confirms the static per-bus
-    singleton claim (`machine.I2C(id) is machine.I2C(id)`) that the two fakes deliberately diverge
-    from. Previously only fake-vs-fake agreement.
-  - **The SRAM-resident-code change - settled 2026-09-11, project owner's call: the question is
-    RAM, not speed.** No timing run is wanted, and the linker-map figure is never to be quoted as a
-    measured speedup. The headroom it leaves is now measured on real hardware and gated by
-    `tests_hardware/flash/test_memory_stress.py`'s
-    `test_real_gc_heap_headroom_survives_a_full_system_build`; figures and reasoning in Part F.5.3.
-- **The SPI RX-overrun error path shall be tested** (project owner's explicit direction,
-  2026-09-10). MicroPython 1.29's new `OSError(EIO)` raise site (SPECIFICATION.md Part F.5.2),
-  across the tiers CLAUDE.md's standing bus-hazard rule asks for. **All four are now done**;
-  what they found is open question 15 above.
-  - **Mock tier, raise-site semantics - done.** `tests/test_asy_spi_driver.py`: a write never
-    raises, a sub-32-byte read never takes the DMA path so cannot overrun, a 32+ byte read raises.
-  - **Mock tier, live path - done.** `tests/test_asy_fram_manager.py`'s four live-path tests inject
-    the fault at the `machine.SPI` boundary and let it travel the real
-    `asy_spi_driver` → `asy_fram_driver.get_values()` → `_read_chunk()` chunk loop. This needed a
-    real gap closed first: `tests/_fram_chip_fake.py` overrides `readinto()` and so shadowed the
-    base fake's own fault check, leaving the bus-level knobs unreachable through the FRAM stack.
-  - **Digital twin - done.** `digital_twin/machine.py`'s SPI gained the same size-gated
-    `rx_overrun`/`rx_overrun_remaining` model (the chip-level `FaultInjector` is the wrong place:
-    it cannot express the 32-byte threshold, so it would raise on a 1-byte status read that real
-    hardware could not fail). Exercised against the real booted object graph in
-    `tests/test_digital_twin_bus_hazard_concurrency.py`.
-  - **Real hardware - done (2026-09-11), and deliberately not a fault-injection test.** An RX
-    overrun is a DMA timing condition; nothing reachable from Python on the device can induce one,
-    so there is no on-target equivalent of the knob the other three tiers use. Both halves of what
-    a bench run *can* do are now covered: the 260-byte SGP40 VOC-state read (the only path in this
-    codebase past the 32-byte DMA threshold) passes on target at 1.29 via
-    `tests_hardware/flash/test_fram_storage.py`'s existing backup/restore test, proving the DMA
-    path is exercised at all; and the **consequence** rather than the cause is now pinned down by
-    `device_scripts/fram_busy_status_lockout.py` + `test_both_blocks_left_busy_lock_the_real_chunk_
-    until_it_is_rewritten`, which writes `_STATUS_BUSY` into both blocks' status bytes through the
-    real driver and confirms the chunk reads back `None` with a real error logged, then recovers on
-    a rewrite - the intended destructive-readout protection of SPECIFICATION.md Part A.4's FRAM
-    entry, now proven on the real chip rather than only modelled.
-
 - **`tests_hardware/device_scripts/`'s two real-hardware bugs are fixed but NOT re-run on the
   bench.** Moving that directory into the MicroPython mypy pass (commit 08529d1) is what surfaced
   them; both are grounded in source, not inferred, but neither has been executed against real
@@ -669,14 +860,15 @@ constraints.
     `run_until_complete()` sets to the terminating exception. The 1.28 stub package did not
     declare `data` and the line needed a `# type: ignore[attr-defined]`; the 1.29.0 stubs do
     declare it, so the ignore is gone.
-  A flash-tier run should confirm both, whenever one is next scheduled.
+  A flash-tier run should confirm both, whenever one is next scheduled
+  (`REAL_HARDWARE_TEST_QUEUE.md` R10).
 - **`mypy tests_hardware/device_scripts` run STANDALONE reports two `Timer()` findings that no
   gate ever sees.** Both `timer_alarm_pool_exhaustion.py` and `scheduler_saturation_drop.py`
   construct a bare `machine.Timer()`, which is valid runtime usage the third-party board stub does
   not model (it requires a positional `id`). This is the same stub gap CLAUDE.md's "Code quality
   tooling" section already records for `src/`'s four drivers plus `I2C.deinit()`, and it has the
   same resolution: every invocation the project actually runs - CI's `scripts/typecheck.sh src
-  tests boot_entry tests_hardware/device_scripts` and a bare local `scripts/typecheck.sh` - includes
+  tests tests_hardware/device_scripts` and a bare local `scripts/typecheck.sh` - includes
   `tests/`, whose `tests/machine.py` fake models `Timer()` correctly and wins module resolution.
   Worth knowing before anyone runs mypy over that directory on its own and reads the result as a
   regression.
@@ -751,85 +943,43 @@ constraints.
     `test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout`) all PASSED, 3/3, zero
     `MemoryError`/reboot markers, zero unexpected skips. **Still open**: the real `--tier long`
     (6h) production-duration run itself - `mid` is a genuine real-hardware pass at 10 minutes, not
-    a substitute for the full 6h window this item was always about.
-- **Website definitions-file autogeneration — not yet built.** `html/definitions/<device>.json`
-  (Part H.5) is currently hand-written. A worked, already-checked-against-real-code *sketch* exists
-  for deriving most of it at build time from `#`-prefixed comment tags placed above each driver's
-  `ConfigSchema` tuple (most fields — `min`/`max`, toggle/string/enum/number `kind`, special/enum
-  option values — are already inferable from the schema tuple itself with no tag at all; a tag only
-  needs to supply what the tuple can't: `label` (required), `unit`, `description`, an occasional
-  `kind` override for a non-`ConfigSchema` value like `asy_webserver_service.py`'s `_SYSTEM_CMDS`,
-  and `special:<value>="<meaning>"` for a sentinel/enum-option's human-readable meaning). Grammar:
-  `# @web <key>=<value> <key>="<quoted value>" ...` for a per-field tag; `@web-group` for a
-  module-level tag (`label`, `endpoint`, optional `submitGroup`). Three worked examples against real
-  `src/` code: a sentinel special value (`asy_scd30_driver.py`'s `AmbPres`), a toggle needing no
-  `kind` tag at all (`SelfCal`), and an enumerated field (`asy_bmp3xx_driver.py`'s `PressOvers`, six
-  `special:` entries becoming six labeled `options`). **Not a decision** — no parser has been built
-  and no `src/` file carries these tags yet. Left open, case by case, for whoever builds the real
-  parser: where the composite `lightCmdLED` shape (r/g/b/t) and other non-driver-schema webserver
-  values anchor a tag at all; whether `@web-group`'s `endpoint`/`submitGroup` belong on the schema
-  declaration or should instead read off `src/sensortask_wozi.py`'s own `SettingsGroup(...)`
-  construction-site wiring (which already states the same grouping, risking silent drift if tagged
-  twice); a full formal grammar (escaping a `"` inside a quoted value, etc.) was deliberately not
-  attempted, since the sketch's job was proving the *shape* of the idea against real code, not being
-  implementation-ready.
-- **Per-variant `sensortask-*.py` generator — not yet built (the automated version specifically;
-  one real, hand-written second variant now exists).** SPECIFICATION.md Part A.3 already names the
-  automated generator as a real planned direction (one setup-definition file → every variant's
-  `sensortask-*.py`/website pair), shaped for by A.8's registration-API/A.9's `HTML_SRC_DIRS`
-  mechanisms. `src/sensortask_dev.py` (2026-09-03) is the first
-  concrete step toward it — a real, hand-written, `src/`-quality dev-bench variant carrying the
-  same three sensors as wozi (SCD30 + BMP3xx + SGP40), built and flashed for real via
-  `scripts/build_firmware.py dev`/`boot_entry/dev_boot.py`, confirmed clean on real hardware
-  (6.5-minute stability window, real sensor readings, real captive-portal redirect). It's an
-  interim baseline, not the generator itself — deliberately not over-invested in permanence, meant
-  to be replaced once the generator lands. Two concrete requirements for whenever the generator is
-  actually built, so they aren't lost
-  between now and then: (1) any hardware-presence-conditioned wiring `sensortask_wozi.py` currently
-  hardcodes for its own fixed sensor set — which FRAM chunks get allocated (Part A.7's seven-chunk
-  order is wozi-specific) and any sensor-specific bus parameter (e.g. SCD30's own I2C
-  clock-stretch `timeout=200000`) — must be derived from the target variant's actual module set,
-  not copied verbatim into a variant lacking that sensor; (2) **every generated variant needs its
-  own real unit tests** (owner requirement - a generated `sensortask-*.py` is exactly as much "real
-  code" as a hand-written one, same Part D bar applies; the build script that generates the
-  `sensortask-*.py`/test pair is also the natural place to activate/select which of the generated
-  tests actually run for a given variant, rather than a separate manual step), and those tests must
-  themselves check which sensors/FRAM a given variant actually has before asserting anything
-  sensor- or FRAM-specific — asserting e.g. `scd_reader.pr.fram is not None` unconditionally against
-  a variant with no SCD30 (or no FRAM at all) would either hard-fail on a module that was never
-  supposed to exist, or - the sharper risk - pass vacuously for the wrong reason if the assertion is
-  generated loosely enough to skip rather than genuinely check. A variant-specific test also can't
-  hardcode *which bus* a sensor sits on (SCD30 is wired to `i2c0` on wozi, but a different variant
-  could wire it to `i2c1` or a third bus entirely) — it must look the bus up through the sensor's
-  own object graph (e.g. `scd_reader.scd.i2c_scd30.i2c_device.i2c`), never assume a specific
-  `i2cN` name. `tests/test_sensortask_wozi.py`'s own
-  `test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it` is the worked example
-  this generalizes from (both the bus lookup and the FRAM assertions), not a template to copy
-  unconditionally. **Resolved (2026-09-03): `scripts/build_firmware.py dev` is now the real,
-  correct, confirmed-working way to build/flash for the dev bench** — device-parametrized boot-entry
-  selection (`boot_entry/<device>_boot.py`) is real, and the earlier "wozi's own pins forced onto
-  dev hardware" mismatch that produced noise mistaken for real bugs (once tracked as the open
-  questions list's own item 7) no longer has anything to stand in for. `dev_legacy/README.md`'s
-  mounted-entry-script recipe remains a valid, lighter-weight path for driver-level bring-up/
-  debugging (watchdog off, no flash write), but is no longer the *only* valid way to run the real,
-  wired-together system on this hardware — `scripts/build_firmware.py dev` (watchdog armed, the
-  real production-shaped path) is now the one to use for actual verification work. **Never
-  `scripts/build_firmware.py wozi` against this bench** — `wozi` is never physically flashed, only
-  `dev` is (CLAUDE.md's hard rule); that mismatch is exactly what produced the noise this item
-  originally described.
+    a substitute for the full 6h window this item was always about
+    (`REAL_HARDWARE_TEST_QUEUE.md` S4).
+- **Website definitions-file autogeneration — done (SPECIFICATION.md Part L.4).** The
+  `@web`/`@web-group` comment-tag family and `buildgen/definitions.py`'s generator now exist,
+  resolving every open question this entry used to track (anchoring a non-driver-schema value like
+  `lightCmdLED`, `@web-group`'s relationship to `SettingsGroup(...)` wiring, the formal grammar's
+  scope) — see SPECIFICATION.md Part L.4 for the resolutions and
+  `tests_scripts/test_buildgen_web_tag.py`/`test_buildgen_definitions.py` for the test coverage.
+  Generating `html/definitions/<device>.json` for real was Session 6's own job; that session
+  closed two of its three parts — `arzi`/`klkizi`/`grkizi`/`schlafzi` (the four devices that never
+  had a hand-written file) now get one generated on the fly by `scripts/build_website.sh`'s own
+  fallback, and this is wired into CI's 6-device `firmware-build-verify` matrix. **Still open**:
+  retiring `wozi`/`dev`'s own hand-written `html/definitions/{wozi,dev}.json` in favor of generated
+  output — deliberately deferred, since `tests_js/live-backend-put-matrix.test.js`/
+  `mock-server-put-matrix.test.js` read those two files directly as fixtures and switching them
+  over needs a `tests_js/` fixture audit nobody has done yet. **The same wozi/dev-only scope shows up in the browser prototype too**: `js/
+  app.js`'s `KNOWN_DEVICES = ["wozi", "dev"]` (its `?device=` switch, prototype-only per that file's
+  own docstring — real firmware ships exactly one device's `definitions.json`, never branches on a
+  query param) is a real, literal device-name list living outside `devices/*.toml`, but it isn't an
+  independent gap: it exists because `mockdata/`/`html/definitions/` only carry fixtures for those
+  two devices, the same limitation this entry already tracks. Extending it to all 6 needs generating
+  `mockdata/<device>.json` fixtures for the other four first, not just a `KNOWN_DEVICES` edit — found
+  by SPECIFICATION.md Part L.1, flagged here rather than fixed piecemeal.
 - **Manual cross-browser/cross-device spot check not yet done — needs the project owner directly.**
   Automated coverage (Part H.7's cross-browser smoke script, Vitest's browser-mode suite) only ever
   exercises Chromium/WebKitGTK/Firefox/Edge on Linux CI runners — Part H.1's "stable and
   good-looking on major mobile/desktop browsers" goal still wants at least one real human pass on
   real Safari and a real mobile device, which no automation here can substitute for.
 - **UART sensor integration — still unwired as a *sensor*, though the link itself now exists.**
-  `asy_uart_comm.py` is promoted (SPECIFICATION.md Part J) and `src/sensortask_dev.py` constructs two
-  instances across the dev bench's crossover jumper, which is what makes the protocol's
-  self-compatibility property physically testable. What stays deliberately absent is any *sensor*
-  behind that link: no BME688/BSEC coprocessor, and no such wiring in any other variant. Not a legacy
-  deployed feature, so adding one would be a scope addition beyond feature-parity rather than a
-  postponed fix — owner-confirmed this stays as-is. The protocol module is standalone by design: its
-  BME688/BSEC first use case is explicitly out of scope and was **not** part of the promotion.
+  `asy_uart_comm.py` is promoted (SPECIFICATION.md Part J) and the buildgen-generated
+  `sensortask_dev.py` constructs two instances across the dev bench's crossover jumper, which is
+  what makes the protocol's self-compatibility property physically testable. What stays
+  deliberately absent is any *sensor* behind that link: no BME688/BSEC coprocessor, and no such
+  wiring in any other variant. Not a legacy deployed feature, so adding one would be a scope
+  addition beyond feature-parity rather than a postponed fix — owner-confirmed this stays as-is.
+  The protocol module is standalone by design: its BME688/BSEC first use case is explicitly out of
+  scope and was **not** part of the promotion.
 - **Owner requirement for the final wiring stage — fulfilled, entry kept only until the large
   post-merge audit closes.** Every `sensortask-*.py` built as part of the real rewrite needs a full
   Unix-port equivalent, runnable on a local computer, with whatever hardware is physically
@@ -839,7 +989,7 @@ constraints.
   whole wired-together sensortask can be exercised as close to the real target as possible without
   physical hardware. **Fulfilled**: `digital_twin/` is the lowest-level-mocking module this
   requirement calls for (see `SPECIFICATION.md` Part A.10), and `scripts/run_unix_port_integration.sh`
-  runs the whole wired-together `src/sensortask_wozi.py` against it end to end (see
+  runs the whole wired-together (buildgen-generated) `sensortask_wozi.py` against it end to end (see
   `digital_twin/README.md`'s "Swapping the twin in for a Unix-port run" section). This entry should
   come out once the whole effort's large post-merge audit closes, per this file's own stated
   resolved-item policy — not yet removed on its own, since that audit hasn't closed yet.
@@ -871,62 +1021,40 @@ constraints.
   see SPECIFICATION.md Part C.8 for the full account. Still not picked up: a rename to make
   `network_available()`'s already-held-lock contract visible in its own name (e.g.
   `network_available_locked()`) was considered but not done — nothing blocks it now that
-  `improved-quality/sensortask-wozi.py` is deleted, but `src/sensortask_wozi.py` itself still calls
-  it by the current name, so this remains a real (if small) call-site update.
-- **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` still call the allocating
-  `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — this was written as "worth doing
-  before `asy_isl29125_driver.py` is migrated", and that migration has now happened without it.
-  **Still not done, deliberately, and worth a decision rather than silent carry-over**: the ISL's
-  own hot path is one `get_register_struct(_REGISTER_DATA, "6s")` per read cycle — a 6-byte
-  allocation at the configured sample interval, nowhere near the fixed-size-buffer bar Part I
-  reserves the zero-copy treatment for. The cost of doing it is a changed signature on three shared
-  methods every existing driver calls. Left as the same low-priority item it was, no longer blocked
-  on anything.
+  `improved-quality/sensortask-wozi.py` is deleted, but `buildgen/codegen.py` itself still generates
+  a call to it by the current name, so this remains a real (if small) call-site update.
+- **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` now read through
+  `readfrom_mem_into()` - done (owner decision, 2026-09-18).** Not the way this entry assumed,
+  which is why it is worth a line: it predicted "a changed signature on three shared methods every
+  existing driver calls", and no signature moved at all. The allocation was internal
+  (`_readfrom_mem()` returned a fresh `bytes` per read), so the fix is one long-lived 32-byte
+  scratch per `I2C` instance plus a `memoryview` slice - CLAUDE.md's "reuse, don't churn
+  same-shaped objects" (Part I), applied where it costs nothing at the call sites.
+  Safe to share across the devices on a bus because every one of these methods fills and decodes
+  with no `await` in between, and no `Timer`/`Pin.irq` callback in this codebase touches I2C -
+  both checked against the real code, not assumed. A read larger than the scratch (nothing today;
+  BMP3XX's 21-byte calibration block is the largest) falls back to allocating rather than refusing.
+  `machine.I2C.readfrom_mem_into()` was verified against the pinned 1.29.0 source rather than from
+  memory: `extmod/machine_i2c.c` routes it through the same `read_mem()` as `readfrom_mem` with the
+  same `OSError` semantics, and rp2's own hardware I2C type reuses that same locals dict.
+  Both test fakes gained `readfrom_mem_into()` **delegating to their own `readfrom_mem`**, so fault
+  injection (`--fault <chip>:readfrom_mem`), the bus log and every existing test keep working
+  unchanged. Three new tests in `tests/test_asy_i2c_driver.py`: the entry points use the
+  non-allocating form, a returned value is copied out rather than aliased to the shared buffer
+  (the one real hazard this design creates), and an oversized read still works.
+
 - **`asy_scd30_driver.py`'s persistent NVM setters have no published write-cycle endurance figure**
   (checked every available Sensirion doc) — safe today only because every setter is REST-triggered,
   never called from a boot path or periodic loop. Don't add a periodic/high-frequency caller
   without reconsidering this.
-- Network fault injection against the real dev bench unit is complete:
-  `BenchBridge.inject_network_degradation()` (`tc netem` on `wifi_iface()` only) covers loss,
-  latency+jitter, corruption, duplication, and reordering, exercised by
-  `tests_hardware/bench/test_network_resilience.py`. CYW43-firmware-level faults (e.g.
-  `wlan.connect()` itself raising) aren't network-path faults `tc`/`iptables` can express — those
-  stay covered by the digital twin's own `--fault wlan:...` hook instead.
-- **Still open**: the NTP-outage-x-bus-load fault recombination has no twin/mock-tier equivalent
-  (no NTP-drop-and-retry scenario exists at either tier to extend) — a real opportunity if a future
-  session has the budget, not chased yet. The other two recombinations that matter (FRAM write vs.
-  a real hardware reset; repeated WiFi flapping x concurrent bus load) already have coverage across
-  every tier where they're meaningful.
-- ~~A real device-side traceback at boot - `AttributeError: 'NoneType' object has no attribute
-  '__aexit__'` in `asy_sgp40_driver.py`'s `_store_sgp()` calling `base_classes.py`'s
-  `_set_meas_data()` (`async with self._datalock:`)~~ - **closed (2026-09-08), confirmed
-  impossible against the current code, no hardware time needed.** Re-checked `base_classes.py`
-  directly: `self._datalock = asyncio.Lock()` (line 171) is set unconditionally and synchronously
-  in `SensorReader.__init__()`, with no conditional/lazy-init path anywhere - there is no code path
-  under which an already-constructed `SensorReader` (or its `SGP40_Reader` subclass) could ever
-  have `self._datalock is None` when `_set_meas_data()` (line 212) runs. Line numbers still match
-  this file's own already-documented finding exactly (`_store_sgp` at line 349,
-  `_set_meas_data` at line 211, matching the "349"/"211" cited against `c177608`) - the mismatch
-  against the original traceback's reported line numbers (224/159) stands confirmed, not just
-  suspected: the DUT was provably running a stale, earlier-flashed firmware image at that moment,
-  not the code this repo actually ships. Same "singular, not systematically reproducible, closed
-  without further hardware time" disposition as the USB-dropout and WDT-reset items - not a real
-  bug in the current codebase.
-- **Real, fully root-caused and fixed `MemoryError` under sustained concurrent HTTP load (2026-09-04→08).**
-  A real, reproducible `MemoryError` under sustained concurrent HTTP load (dozens of occurrences
-  within minutes) traced to `GET /status`'s single `json.dumps()` over the whole aggregate response
-  (~5.7KB, at a real 17-module registration scale) — already caught cleanly by the existing blanket
-  exception handling (no crash, no leak; a `gc.mem_free()` trace confirmed a healthy sawtooth
-  pattern, not monotonic decline). Fixed by streaming the response as size-bounded JSON fragments
-  (`_coalesce_json_fragments()`/`_append_coalesced_object()`, `_MAX_STATUS_PIECE_BYTES=1024`) plus
-  `gc.threshold(32768)` as defense in depth — both confirmed on real hardware (0 MemoryErrors over a
-  10-minute hammer load that previously produced 237). Two platform facts found while building this
-  (MicroPython's `async def ... yield` "async generator" is broken, not just absent — segfaults the
-  interpreter; over-fragmenting the response regresses throughput independent of memory safety) live
-  permanently in SPECIFICATION.md Part F.1; the full audit that generalized this fix to every other
-  GET route, the GC-threshold real-hardware data, and the real-hardware confirmation all live in
-  SPECIFICATION.md Part I; the standing handling discipline is CLAUDE.md's memory-safety-discipline
-  hard rule. A related, separate bug found and fixed along the way: every command-only/special-alone
-  config field write (e.g. SGP40's `SGPResetVOC`) logged a spurious `CFGMGR_*` errno=8 — fixed in
-  `base_classes.py`'s `_set_dict_cfg()` (filters its pre-write snapshot fetch down to genuinely
-  persisted keys), with regression coverage in `tests/test_base_classes.py`.
+- Network fault injection against the real dev bench unit is complete
+  (`BenchBridge.inject_network_degradation()`, `tc netem` on `wifi_iface()` only: loss,
+  latency+jitter, corruption, duplication, reordering, exercised by
+  `tests_hardware/bench/test_network_resilience.py`); CYW43-firmware-level faults such as
+  `wlan.connect()` itself raising are not network-path faults `tc`/`iptables` can express and stay
+  covered by the digital twin's own `--fault wlan:...` hook. **Still open**: the
+  NTP-outage-x-bus-load fault recombination has no twin/mock-tier equivalent (no NTP-drop-and-retry
+  scenario exists at either tier to extend) - a real opportunity if a future session has the budget,
+  not chased yet. The other two recombinations that matter (FRAM write vs. a real hardware reset;
+  repeated WiFi flapping x concurrent bus load) already have coverage across every tier where they
+  are meaningful.

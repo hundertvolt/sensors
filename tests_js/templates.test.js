@@ -200,13 +200,9 @@ describe("buildField", () => {
     });
 
     it("renders an editable enum with no matching current value as unselected, not silently defaulting to the first option (regression)", () => {
-        // SystemCmd is never returned by GET /system (write-only dispatched action - SPECIFICATION.md
-        // Part A.8), so its currentValue is always undefined here. Without an explicit blank
-        // placeholder, a native <select> auto-selects its first <option> when none is marked
-        // selected - so a visitor who opened the System section and clicked Apply without ever
-        // touching the dropdown would silently submit whichever command happens to be listed first
-        // (e.g. "reboot"), with zero deliberate interaction. Confirmed live in Chromium before this
-        // fix: exactly this sequence PUT {"SystemCmd":"reboot"}.
+        // SystemCmd is write-only and never returned by GET /system (Part A.8), so currentValue
+        // is always undefined. Without a blank placeholder a <select> auto-selects its first
+        // option, so Apply alone PUT a reboot - confirmed live in Chromium before the fix.
         const field = {
             key: "SystemCmd",
             label: "Command",
@@ -257,10 +253,9 @@ describe("buildField", () => {
         expect(mustQuery(el, '[data-current-value-for="MeasInt"]').textContent).toContain("5");
     });
 
-    // A distinct attribute from data-field-key (which must keep pointing at the specific control -
-    // collectGroupBody()/paint() in render.js rely on that) - this one tags the whole per-field
-    // wrapper, so a PUT result can color the individual field's own box (SPECIFICATION.md Part H.3
-    // follow-up: per-field granularity restored alongside the accent-stripe presentation).
+    // Distinct from data-field-key, which must keep pointing at the control itself for
+    // collectGroupBody()/paint(): this tags the whole per-field wrapper, so a PUT result can
+    // color that field's own box - Part H.3's per-field granularity beside the accent stripe.
     it("tags the field's own wrapper with a distinct data-field-wrapper-key, separate from the control's data-field-key", () => {
         const field = buildField({ key: "CO2", label: "CO2", kind: "readonly" }, 612, false);
         expect(field.dataset.fieldWrapperKey).toBe("CO2");

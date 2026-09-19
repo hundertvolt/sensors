@@ -7,10 +7,15 @@
   "scripts": {
     "lint": "eslint js tests_js scripts html eslint.config.js vitest.config.js",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
-    "pretest": "scripts/build_website.sh wozi",
+    "build:site": "scripts/build_website.sh wozi && uv run scripts/_generate_sensortask_modules.py",
+    "pretest": "npm run build:site",
     "test": "vitest run",
-    "pretest:coverage": "scripts/build_website.sh wozi",
-    "test:coverage": "vitest run --coverage",
+    "pretest:unit": "npm run build:site",
+    "test:unit": "vitest run --exclude \"**/node_modules/**\" --exclude \"tests_js/live-backend-put-matrix.test.js\"",
+    "pretest:put-matrix": "npm run build:site",
+    "test:put-matrix": "vitest run tests_js/live-backend-put-matrix.test.js",
+    "pretest:coverage": "npm run build:site",
+    "test:coverage": "vitest run --coverage --exclude \"**/node_modules/**\" --exclude \"tests_js/live-backend-put-matrix.test.js\"",
     "lint:html": "html-validate \"html/**/*.html\"",
     "lint:css": "stylelint \"html/**/*.css\"",
     "preview": "python3 -m http.server 8000"

@@ -1,10 +1,10 @@
-"""Digital-twin fake `machine` module - real-time-firing `Timer`, I2C/SPI wired to per-address chip
-simulators (see `configure_i2c_wiring()`), deliberately independent of `tests/machine.py`.
+"""Digital-twin fake `machine` module - real-time-firing `Timer`, I2C/SPI wired to per-address chip simulators via `configure_wiring()` (generic, buildgen-derived plan) or `configure_i2c_wiring()` (the "wozi"/"dev" legacy sugar), deliberately independent of `tests/machine.py`.
 See `digital_twin/README.md`'s "What's here" section for the full wiring/`Pin`-identity account."""
 
 import asyncio
 import errno
 import io
+import json
 import select
 import time
 from collections import deque
@@ -45,13 +45,11 @@ if TYPE_CHECKING:
 class Pin:
     IN = 0
     OUT = 1
-    IRQ_FALLING = 0x04
-    IRQ_RISING = 0x08
     # Real rp2 values (ports/rp2/machine_pin.c at v1.29.0: GPIO_PULL_UP 1, GPIO_PULL_DOWN 2).
-    # asy_isl29125_driver.py is the first driver to need one - its INT line is open-drain and needs
-    # a pull-up; SCD30's RDY is push-pull, which is why nothing needed these before.
     PULL_UP = 1
     PULL_DOWN = 2
+    IRQ_FALLING = 0x04
+    IRQ_RISING = 0x08
 
     _registry: "dict[int, Pin]" = {}
     _initialized: bool
@@ -126,10 +124,9 @@ class Pin:
         return self
 
     def simulate_edge(self, new_value: object) -> None:
-        # Twin-only: drives a real electrical transition, firing the registered handler only if
-        # the transition direction matches what irq() was told to listen for - unlike
-        # tests/machine.py's own trigger_irq() (fires unconditionally; deterministic unit tests
-        # don't need edge-direction fidelity), a twin standing in for real hardware does.
+        # Twin-only: drives a real electrical transition, firing the handler only when the
+        # direction matches what irq() was asked to listen for. tests/machine.py's trigger_irq()
+        # fires unconditionally - a deterministic unit test needs no edge fidelity; a twin does.
         old = self._value
         self._value = 1 if new_value else 0
         if old == self._value:
@@ -156,10 +153,9 @@ _current_scd30_chip: "Any | None" = None
 
 
 def configure_scd30_state_path(path: "str | None") -> None:
-    # Same module-level-hook pattern as configure_fram_state_path() above, applied to the SCD30's
-    # own NVM-persisted settings instead of FRAM contents - called once, before build_system()-
-    # equivalent code constructs i2c0, by whatever entry point Step 5 writes. None (the default)
-    # means "in-memory only, no persistence".
+    # configure_fram_state_path()'s pattern applied to the SCD30's NVM-persisted settings rather
+    # than FRAM contents. Called once by the entry point, before anything constructs i2c0; None,
+    # the default, means in-memory only.
     global _scd30_state_path
     _scd30_state_path = path
 
@@ -171,53 +167,72 @@ def flush_scd30() -> None:
         _current_scd30_chip.save_state()
 
 
-_i2c_wiring_profile = "wozi"  # dev's variant flips which bus carries which sensors (and SCD30's
-# own IRQ pin) relative to wozi - same module-level-hook pattern as configure_random_source()/
-# configure_fram_state_path() above. Default "wozi" keeps every existing caller unchanged.
+_wiring_plan: "dict[str, Any] | None" = None  # None until configure_wiring()/configure_i2c_wiring()
+# runs, or a bus is actually constructed - see _current_wiring_plan() below.
+
+
+def configure_wiring(plan: "dict[str, Any]") -> None:
+    # Called once, before build_system()-equivalent code constructs i2c0/i2c1/spi0 - a plain dict in
+    # buildgen.twin_wiring.compute_twin_wiring()'s own shape. Replaces the whole plan outright, the
+    # same "last configure_*() call before construction wins" convention every hook here already uses.
+    global _wiring_plan
+    if "buses" not in plan or "spi" not in plan:
+        raise ValueError("wiring plan must be a dict with 'buses' and 'spi' keys - see buildgen.twin_wiring.compute_twin_wiring()'s own docstring for the shape")
+    _wiring_plan = plan
 
 
 def configure_i2c_wiring(profile: str) -> None:
-    # Called once before i2c0/i2c1 are constructed, by an entry point wanting a non-default wiring
-    # (run_dev_integration.py's main() passes "dev"). Validated eagerly rather than inside
-    # _wire_i2c_devices(), so a typo surfaces at the call site instead of NAKing every transaction.
+    # Legacy sugar over configure_wiring(), kept for tests: no real entry point calls it, since
+    # run_generic_integration.py passes a full wiring-plan dict. Called once, before anything
+    # constructs i2c0/i2c1.
+
+    # It loads the profile's own generated wiring plan, derived from devices/<profile>.toml, so
+    # the TOML stays the only source of truth - never a hand-typed literal. Validated eagerly
+    # here so a typo surfaces at the call site instead of NAKing every later transaction.
     if profile not in ("wozi", "dev"):
         raise ValueError(f"unknown I2C wiring profile {profile!r} - expected 'wozi' or 'dev'")
-    global _i2c_wiring_profile
-    _i2c_wiring_profile = profile
+    with open(f"build/generated_src/sensortask_{profile}_wiring_plan.json") as f:
+        configure_wiring(json.load(f))
+
+
+def _current_wiring_plan() -> "dict[str, Any]":
+    # Lazily defaults to wozi's generated plan the first time a caller constructs a bus without
+    # configuring wiring, matching the old eager default exactly - but loaded on first use, since
+    # this file must stay importable before build/generated_src/ exists.
+    if _wiring_plan is None:
+        configure_i2c_wiring("wozi")
+    return _wiring_plan  # type: ignore[return-value]  # configure_i2c_wiring() above always sets it
+
+
+def _build_i2c_chip(attachment: "dict[str, Any]") -> "Any":
+    # Dispatches on the wiring plan's "driver" string - the twin's hand-maintained chip-fake
+    # catalog, a new chip type still needing one written. The return type is Any rather than
+    # _I2CDevice because no single fake implements all four of that Protocol's methods.
+    global _current_scd30_chip
+    driver = attachment["driver"]
+    if driver == "scd30":
+        from _scd30_chip import Scd30Chip
+
+        chip = Scd30Chip(rdy_pin=Pin(attachment["irq_pin"], mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
+        _current_scd30_chip = chip
+        return chip
+    if driver == "sgp40":
+        from _sgp40_chip import Sgp40Chip
+
+        return Sgp40Chip(random_source=_random_source)
+    if driver == "bmp3xx":
+        from _bmp3xx_chip import Bmp3xxChip
+
+        return Bmp3xxChip(random_source=_random_source)
+    if driver == "isl29125":
+        from _isl29125_chip import Isl29125Chip
+
+        return Isl29125Chip(random_source=_random_source, int_pin=Pin(attachment["irq_pin"], mode=Pin.IN))
+    raise ValueError(f"digital twin has no I2C chip fake for driver {driver!r} - add one to machine._build_i2c_chip()")
 
 
 def _wire_i2c_devices(bus_id: int) -> "dict[int, Any]":
-    global _current_scd30_chip
-    from _bmp3xx_chip import Bmp3xxChip
-    from _isl29125_chip import Isl29125Chip
-    from _scd30_chip import Scd30Chip
-    from _sgp40_chip import Sgp40Chip
-
-    if _i2c_wiring_profile == "dev":
-        # dev_legacy/README.md's wiring table: i2c0 (bus_id=0) carries BMP3xx alone; i2c1 (bus_id=1)
-        # carries SCD30 (IRQ/RDY=GPIO11) + SGP40 + ISL29125 (INT=GPIO6) sharing the bus - the
-        # reverse pairing from wozi's own layout below, which carries no ISL29125 at all.
-        if bus_id == 0:
-            return {0x77: Bmp3xxChip(random_source=_random_source)}
-        if bus_id == 1:
-            chip = Scd30Chip(rdy_pin=Pin(11, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
-            _current_scd30_chip = chip
-            return {
-                0x61: chip,
-                0x59: Sgp40Chip(random_source=_random_source),
-                0x44: Isl29125Chip(int_pin=Pin(6, mode=Pin.IN), random_source=_random_source),
-            }
-        return {}
-
-    # "wozi" (default): i2c0 (bus_id=0) carries SCD30 alone (IRQ/RDY=GPIO8); i2c1 (bus_id=1) carries
-    # SGP40 + BMP3xx sharing the bus.
-    if bus_id == 0:
-        chip = Scd30Chip(rdy_pin=Pin(8, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
-        _current_scd30_chip = chip
-        return {0x61: chip}
-    if bus_id == 1:
-        return {0x59: Sgp40Chip(random_source=_random_source), 0x77: Bmp3xxChip(random_source=_random_source)}
-    return {}
+    return {attachment["address"]: _build_i2c_chip(attachment) for attachment in _current_wiring_plan()["buses"].get(f"i2c{bus_id}", [])}
 
 
 class I2C:
@@ -232,10 +247,9 @@ class I2C:
         self.devices = _wire_i2c_devices(id)  # public: tests reach a wired chip via i2c.devices[addr]
 
     def deinit(self) -> None:
-        # Real rp2 machine.I2C.deinit() only exists from MicroPython 1.29 on, and even there the
-        # port's .deinit protocol slot is NULL - a silent no-op that leaves the peripheral and its
-        # pins exactly as they were (SPECIFICATION.md Part F.5). Every bus operation below stays
-        # working afterwards on purpose; the flag only records that the call was forwarded.
+        # Real rp2 I2C.deinit() exists only from 1.29, and even there the port's protocol slot is
+        # NULL - a silent no-op leaving the peripheral and pins as they were (Part F.5). Every bus
+        # operation keeps working here on purpose; the flag only records the call.
         self.deinit_called = True
 
     def scan(self) -> "list[int]":
@@ -269,6 +283,11 @@ class I2C:
         self.log.append(("readfrom_mem", address, memaddr, nbytes, addrsize))
         return data
 
+    def readfrom_mem_into(self, address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
+        # Delegates, so fault injection (--fault <chip>:readfrom_mem) and the bus log stay one
+        # implementation regardless of which of the two read forms the driver under test calls.
+        buf[:] = self.readfrom_mem(address, memaddr, len(buf), addrsize=addrsize)  # type: ignore[index,arg-type]
+
     def writeto_mem(self, address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
         device = self._device_or_nak(address)
         device.handle_writeto_mem(memaddr, bytes(buf))  # type: ignore[call-overload]
@@ -298,22 +317,23 @@ def flush_fram() -> None:
 _DEV_FRAM_SIZE = 0x40000  # MB85RS2MTA, 256KB - sensortask_dev.py's own AsyFramManager(spi0, 5, max_size=0x40000, ...)
 _DEV_FRAM_RDID = bytes([0x04, 0x7F, 0x48, 0x03])  # manufacturer=Fujitsu, cont_code, product ID 0x4803 - asy_fram_driver.py's own _KNOWN_PRODUCT_IDS[0x40000], datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf p.10
 
+# Real chip-model identity (the RDID bytes) isn't a TOML/DeviceModel fact - only max_size is - so
+# it's keyed by size as the best available proxy (unique today: 8KB MB85RS64V vs 256KB MB85RS2MTA).
+# Any size not listed falls back to FramChip's own default RDID (MB85RS64V's - wozi's own chip).
+_FRAM_RDID_BY_MAX_SIZE: "dict[int, bytes]" = {_DEV_FRAM_SIZE: _DEV_FRAM_RDID}
+
 
 def _wire_spi_device(bus_id: int) -> "FramChip | None":
     global _current_fram_chip
-    if bus_id == 0:
-        from _fram_chip import FramChip
+    attachment = _current_wiring_plan()["spi"].get(f"spi{bus_id}")
+    if attachment is None:
+        return None
+    from _fram_chip import FramChip
 
-        # Mirrors _wire_i2c_devices()'s own profile branch above - see digital_twin/README.md's
-        # "What's here" section for the real chip-identity bug this fixed.
-        chip = (
-            FramChip(size=_DEV_FRAM_SIZE, state_path=_fram_state_path, rdid_response=_DEV_FRAM_RDID)
-            if _i2c_wiring_profile == "dev"
-            else FramChip(state_path=_fram_state_path)
-        )
-        _current_fram_chip = chip
-        return chip
-    return None
+    max_size = attachment["max_size"]
+    chip = FramChip(size=max_size, state_path=_fram_state_path, rdid_response=_FRAM_RDID_BY_MAX_SIZE.get(max_size))
+    _current_fram_chip = chip
+    return chip
 
 
 class SPI:
@@ -345,10 +365,9 @@ class SPI:
         self.deinit_called = False
         self.log: deque[tuple[Any, ...]] = deque((), _LOG_MAXLEN)
         self.device = _wire_spi_device(id)  # public: tests reach the wired chip via spi.device
-        # MicroPython 1.29 added an RX-overrun check to rp2's SPI transfer path, reached only by
-        # *reading* transfers of 32+ bytes (SPECIFICATION.md Part F.5.2). Modelled here rather
-        # than on the chip's own FaultInjector because it is a property of the port, not the
-        # device: sticky, plus a counted form for a transient glitch the bus recovers from.
+        # 1.29 added an RX-overrun check to rp2's SPI transfer path, reached only by READING
+        # 32+ bytes (Part F.5.2). Modelled here rather than on the chip's FaultInjector because
+        # it belongs to the port, not the device: sticky, plus a counted transient form.
         self.rx_overrun = False
         self.rx_overrun_remaining = 0
 
@@ -806,19 +825,17 @@ class Timer:
                 is_own_callback = False
             if not is_own_callback:
                 self._task.cancel()
-            # Self-rearming from within its own callback is valid (real rp2 hardware just
-            # reprograms the alarm pool), but asyncio.Task.cancel() can't cancel its own running
-            # task (MicroPython raises RuntimeError) - skip the self-cancel; the old task is about
-            # to return/loop on its own right after this callback returns anyway.
+            # Self-rearming from inside the callback is valid - real hardware just reprograms
+            # the alarm pool - but a Task cannot cancel itself in MicroPython. Skip the
+            # self-cancel: the old task returns on its own right after this callback does.
             self._task = None
         self.callback = None
 
 
 _WDT_TIMEOUT_MAX_MS = 8388  # RP2040 hard cap: 0xffffff / 2 / 1000 (ports/rp2/machine_wdt.c) - see
-# SPECIFICATION.md Part F.1. Confirmed directly against the pinned v1.29.0 source (not guessed;
-# 1.29 added a separate 16777ms RP2350 branch, but the RP2040 cap is unchanged):
-# WDT(timeout=N) for N above this raises ValueError("timeout exceeds 8388"); WDT(id != 0) raises
-# ValueError too ("WDT(%d) doesn't exist") - rp2 only ever implements id 0. Both matched here.
+# SPECIFICATION.md Part F.1, read from the pinned v1.29.0 source rather than guessed - 1.29 added
+# a separate RP2350 branch, but the RP2040 cap is unchanged. A timeout above it raises
+# ValueError, as does any id but 0, which is all rp2 implements. Both matched here.
 
 
 class WDT:

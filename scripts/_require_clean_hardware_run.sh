@@ -11,15 +11,24 @@
 # PASSED, not quietly skip or fail. (`pytest tests_hardware --collect-only`, the genuinely
 # no-hardware-attached case, bypasses this file entirely - it's a plain manual invocation, not run
 # through either wrapper script.) The opt-in-gated categories (--allow-flash-cycle/--soak-tier/
-# --allow-multi-day-rollover-wait/--allow-neopixel-sweep, tests_hardware/conftest.py) are handled
-# contextually below, not just whitelisted outright - their own tests skipping is only acceptable
-# when the matching flag was genuinely omitted from this invocation; passing the flag and still
-# getting a skip is a real failure. Soak tests (long_soak/multi_day_rollover markers) are never
-# run through the general wrapper scripts at all (they pass -m "not long_soak and not
-# multi_day_rollover", so those tests are deselected, not skipped) - this whitelist only matters
-# for a direct invocation of this file that doesn't apply that marker exclusion, e.g.
-# scripts/run_bench_soak_tests.sh's own -m long_soak selection (where --soak-tier IS expected to
-# be passed, so these become "must pass", not "may skip").
+# --allow-multi-day-rollover-wait/--allow-neopixel-sweep, tests_hardware/conftest.py) are handled contextually below, not
+# just whitelisted outright - their own tests skipping is only acceptable when the matching flag
+# was genuinely omitted from this invocation; passing the flag and still getting a skip is a real
+# failure. Soak tests (long_soak/multi_day_rollover markers) are never run through the general
+# wrapper scripts at all (they pass -m "not long_soak and not multi_day_rollover", so those tests
+# are deselected, not skipped) - this whitelist only matters for a direct invocation of this file
+# that doesn't apply that marker exclusion, e.g. scripts/run_bench_soak_tests.sh's own -m long_soak
+# selection (where --soak-tier IS expected to be passed, so these become "must pass", not "may skip").
+# --allow-persistence-writes/--allow-scd30-extra-write deliberately need NO entry in the loop below,
+# unlike the three flags above: tests_hardware/conftest.py's own pytest_collection_modifyitems()
+# deselects every persistence_write/scd30_extra_write-marked test at collection time when its flag is
+# absent (same mechanism as the long_soak/multi_day_rollover markers above), rather than a per-test
+# pytest.skip() - so those tests never appear as a per-test SKIPPED line for this script's grep.
+# That is exactly why the final verdict below REPORTS the deselected count rather than saying only
+# "clean": deselection is invisible to every check in this file, and since the persistence gate
+# stopped being SCD30-only it covers 13 of the bench tier's 73 tests - a sixth of the suite quietly
+# not running is the same "looks identical to a real clean run" ambiguity this whole file exists to
+# rule out, just arriving through collection instead of through unreachable hardware.
 set -uo pipefail  # deliberately not -e: this script inspects pytest's own output before deciding its own exit code
 
 # The one currently-known, deliberate, permanent skip: raw-socket off-subnet-source-address
@@ -48,6 +57,7 @@ fi
 if [ "$soak_tier" = 0 ]; then
     KNOWN_PERMANENT_SKIPS+=(
         "test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic"
+        "test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved"
         "test_single_core_timing_headroom_holds_under_normal_full_task_load"
         "test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout"
     )
@@ -55,11 +65,14 @@ fi
 if [ "$allow_multi_day_rollover" = 0 ]; then
     KNOWN_PERMANENT_SKIPS+=("test_ticks_ms_real_2pow30_rollover")
 fi
+# The two NeoPixel-rig light programs. Unlike the gates above, these are gated on a PHYSICAL rig
+# (the on-board WS2812 aimed at the ISL29125, geometry recorded by the manual tier) rather than on
+# wear or wall-clock - without it they fail outright rather than mis-measure, which is why they are
+# opt-in at all. Same contextual rule as the others: expected to skip when the flag is absent, a
+# real failure when it was passed.
 if [ "$allow_neopixel_sweep" = 0 ]; then
-    # Physical geometry, not a destructive or slow operation: the ISL29125 sweep needs the board's
-    # own NeoPixel actually aimed at the sensor, ambient light excluded (tests_hardware/README.md).
     KNOWN_PERMANENT_SKIPS+=(
-        "test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope"
+        "test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration"
         "test_isl29125_survives_recombined_realistic_lighting_scenarios"
     )
 fi
@@ -106,11 +119,22 @@ if [ -n "$unexpected_skips" ]; then
     exit 1
 fi
 
-if ! grep -qE '[0-9]+ passed' "$logfile"; then
+# [1-9][0-9]* rather than [0-9]+: a literal "0 passed" must not satisfy a check whose entire job is
+# refusing a vacuous run. pytest omits the word entirely today, so this is defensive, not observed.
+if ! grep -qE '[1-9][0-9]* passed' "$logfile"; then
     echo "" >&2
     echo "FAILED: zero real passes - real hardware is expected to be attached and reachable for this run." >&2
     exit 1
 fi
 
+# Deselected tests are invisible to every check above (see the header's own note), so the verdict
+# names them rather than implying everything ran. pytest prints the count in its own summary line.
+deselected="$(grep -oE '[0-9]+ deselected' "$logfile" | tail -1)"
 echo ""
-echo "OK: real-hardware suite run clean - no unexpected skips, no failures."
+if [ -n "$deselected" ]; then
+    echo "OK: real-hardware suite run clean - no unexpected skips, no failures."
+    echo "    NOTE: $deselected by an opt-in gate and therefore never executed - this run does NOT"
+    echo "    cover them. Add --allow-persistence-writes (and/or the other --allow-* flags) to."
+else
+    echo "OK: real-hardware suite run clean - no unexpected skips, no failures, nothing deselected."
+fi

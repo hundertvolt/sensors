@@ -113,11 +113,9 @@ class Bmp3xxChip:
         self._burst = bytes(6)
         self.fault = FaultInjector()
         self._temp_calib, self._pressure_calib = _decode_calibration(_CAL_RAW)
-        # Initial value: one uniform draw within [min,max] at construction - every value after this
-        # one steps from the last instead (see _trigger_measurement() below). The ADC burst itself
-        # stays at its all-zero default until the first forced-mode trigger actually computes one -
-        # unchanged from before this walk existed (real hardware has nothing to report before its
-        # first conversion either).
+        # One uniform draw within [min,max] at construction; every later value steps from the
+        # last (see _trigger_measurement()). The ADC burst stays all-zero until the first forced
+        # trigger computes one, as real hardware has nothing to report before its first conversion.
         self._temp_c = self._random.uniform(self._min_temp_c, self._max_temp_c)
         self._pressure_hpa = self._random.uniform(self._min_pressure_hpa, self._max_pressure_hpa)
 
@@ -149,17 +147,13 @@ class Bmp3xxChip:
         self._status = _STATUS_CMD_RDY | _STATUS_DATA_READY
 
     def handle_writeto(self, _data: bytes) -> None:
-        # asy_i2c_driver.py's I2CDevice.setup()/_probe_for_device() writes zero bytes to every I2C
-        # device at construction time to check for an ACK, before any register access - real
-        # hardware ACKs this fine regardless of protocol family. Found during baseline
-        # verification: this chip fake only had handle_writeto_mem() (matching
-        # its real register-addressed protocol), so the twin's I2C dispatch (machine.py's own
-        # writeto() -> device.handle_writeto()) raised AttributeError on every real BMP3xx boot,
-        # repeatedly failing/restarting its whole reader task. Nothing else in this codebase's own
-        # BMP3xx driver ever calls plain writeto() (every real register access goes through
-        # writeto_mem()), so this only needs to answer the empty-probe shape - the payload is
-        # ignored by design, hence the underscore-prefixed parameter name (every caller, including
-        # machine.py's own dispatch, passes it positionally).
+        # _probe_for_device() writes zero bytes to every I2C device at construction to check for
+        # an ACK, which real hardware answers whatever its protocol family. Without this the twin
+        # raised AttributeError on every BMP3xx boot, restarting the reader task forever.
+
+        # Nothing else in this driver calls plain writeto(), every register access going through
+        # writeto_mem(), so this only has to answer the empty-probe shape - hence the ignored,
+        # underscore-prefixed payload, which every caller passes positionally anyway.
         self.fault.maybe_raise("writeto")
 
     def handle_writeto_mem(self, reg_addr: int, data: bytes) -> None:

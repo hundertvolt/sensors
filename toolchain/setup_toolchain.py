@@ -23,6 +23,12 @@ from typing import Any
 
 import tomllib
 
+# The same explicit sys.path convention scripts/build_firmware.py uses for its toolchain/
+# siblings: needed so this resolves both when run directly (which puts its own directory on
+# sys.path) and when loaded through tests_scripts/_script_loader.py, which does not.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import micropython_overrides
+
 # Confirmed GCC >=14 false positive in mbedtls_xor(), not a real bug (SPECIFICATION.md Part B.7);
 # suppressed outright since build_unix_port()/build_firmware() treat any "warning:" as a hard
 # failure. See Part B.7.1 for the periodic-recheck instructions before ever removing this.
@@ -74,10 +80,9 @@ BUILD_ENV_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 # (SPECIFICATION.md Part B.7).
 BUILD_ENV_LOCALE = "C.UTF-8"
 
-# On top of the base allowlist, git/apt calls (and the rp2 "submodules" Makefile target,
-# which does both a git fetch *and* an internal cmake configure pass) also need whatever
-# proxy/CA configuration this machine's network actually requires — explicitly named
-# here rather than inherited wholesale, so it's still only ever these specific variables.
+# On top of the base allowlist, git/apt calls - and the rp2 "submodules" target, which fetches
+# and configures - need whatever proxy/CA configuration this machine requires. Named explicitly
+# rather than inherited wholesale, so it stays only ever these variables.
 NETWORK_ENV_EXTRA = (
     "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy",
     "NO_PROXY", "no_proxy", "ALL_PROXY", "all_proxy",
@@ -309,20 +314,23 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest
     return uf2
 
 
-def build_unix_port(micropython_dir: Path, jobs: int, frozen_manifest: Path | None = None) -> Path:
-    """Builds the "standard" Unix port variant; needs mpy-cross already built, and takes
-    frozen_manifest like build_firmware(). Always MICROPY_PY_SYS_SETTRACE=1 so one binary backs both
-    plain and --coverage runs (CLAUDE.md); ports/rp2's build never gets that flag."""
+def build_unix_port(micropython_dir: Path, toolchain_dir: Path, jobs: int, frozen_manifest: Path | None = None) -> Path:
+    """Builds the standard Unix port variant; needs mpy-cross, takes frozen_manifest like
+    build_firmware(). Always MICROPY_PY_SYS_SETTRACE=1, so one binary backs plain and --coverage
+    runs, and always apply_unix_kbd_intr_override() for the safe SIGINT path (Part B.14.1)."""
     label = "with the frozen verification module" if frozen_manifest else "standard, unchanged"
     log(f"Building the MicroPython Unix port ({label})")
     unix_dir = micropython_dir / "ports" / "unix"
     build_dir = unix_dir / "build-standard"
     if build_dir.exists():
         shutil.rmtree(build_dir)
+    overrides_dir = toolchain_dir / "build_overrides"
+    override_make_vars = micropython_overrides.apply_unix_kbd_intr_override(micropython_dir, overrides_dir)
     make_cmd = [
         "make",
         f"-j{jobs}",
         f"CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=1 {_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND}",
+        *(f"{key}={value}" for key, value in override_make_vars.items()),
     ]
     if frozen_manifest is not None:
         make_cmd.append(f"FROZEN_MANIFEST={frozen_manifest}")
@@ -440,7 +448,7 @@ def run_verification_sequence(micropython_dir: Path, toolchain_dir: Path, board:
 
         unix_manifest = test_dir / "manifest_unix.py"
         write_freeze_manifest(unix_manifest, "variants/manifest.py")
-        unix_binary = build_unix_port(micropython_dir, jobs, frozen_manifest=unix_manifest)
+        unix_binary = build_unix_port(micropython_dir, toolchain_dir, jobs, frozen_manifest=unix_manifest)
         run_frozen_verify_on_unix(unix_binary)
 
         rp2_manifest = test_dir / "manifest_rp2.py"
@@ -451,7 +459,7 @@ def run_verification_sequence(micropython_dir: Path, toolchain_dir: Path, board:
 
     clean_frozen_verification_build_dirs(toolchain_dir, board)
 
-    unix_binary = build_unix_port(micropython_dir, jobs)  # vanilla rebuild: the real test rig
+    unix_binary = build_unix_port(micropython_dir, toolchain_dir, jobs)  # vanilla rebuild: the real test rig
 
     return mpy_cross_binary, unix_binary
 
@@ -960,10 +968,9 @@ def run_project_dependency_install(repo_root: Path, toolchain_dir: Path, *, skip
     if not (repo_root / "package.json").exists():
         log("No package.json found - skipping npm ci")
         return
-    # Installs the pinned Node when the host has none, instead of the previous soft skip that left
-    # the whole web tier silently unrunnable - which is exactly what happened on the bench Pi4.
-    # Not gated on --skip-apt: no system package and no sudo, just a tarball into the managed
-    # toolchain directory. --skip-npm above is the gate for "I do not want the JS side at all".
+    # Installs the pinned Node when the host has none, rather than the soft skip that left the
+    # web tier silently unrunnable on the bench Pi4. Not gated on --skip-apt - no system package,
+    # no sudo, just a tarball into the managed toolchain dir; --skip-npm is that gate.
     node_bin = ensure_node(toolchain_dir, repo_root)
     env = None
     if node_bin is not None:

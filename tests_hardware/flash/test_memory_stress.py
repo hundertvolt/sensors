@@ -19,10 +19,9 @@ RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
 
 def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> None:
-    # The one memory figure no fake can produce: the RP2040's real 264KB SRAM minus the firmware's
-    # own static footprint, measured after the real dev object graph exists. Its floors exist to
-    # catch a regression in that footprint - notably a future MicroPython bump relocating more code
-    # into SRAM, as 1.29 already did with the interpreter core (Part F.5.3's 12,918 B).
+    # The one memory figure no fake can produce: real 264KB SRAM minus the firmware's static
+    # footprint, measured with the real dev object graph up. The floors catch a regression in that
+    # footprint - a version bump moving code into SRAM, as 1.29 did (Part F.5.3).
     output = board.run_isolated(DEVICE_SCRIPTS / "heap_headroom_after_full_system_build.py", timeout_s=120.0)
     match = RESULT_RE.search(output)
     assert match is not None, f"device script printed no RESULT line - full output:\n{output}"

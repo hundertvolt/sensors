@@ -46,10 +46,9 @@ def test_deinit_forwards_to_machine_i2c_and_drops_the_reference() -> None:
 
 
 def test_forwarded_machine_i2c_deinit_does_not_disable_the_underlying_bus() -> None:
-    # Pins down the real rp2 semantics the fake models: machine.I2C.deinit() leaves the .deinit
-    # protocol slot NULL, so the peripheral keeps running and every raw bus op still works. Only
-    # asy_i2c_driver.I2C's own dropped reference makes operations no-op - reattaching the same
-    # underlying bus object proves the hardware side was never actually torn down.
+    # Pins the real rp2 semantics the fake models: machine.I2C.deinit() leaves the .deinit slot NULL, so the
+    # peripheral keeps running and every raw bus op still works. Only asy_i2c_driver.I2C's dropped reference
+    # makes operations no-op - reattaching the same bus object proves nothing was torn down.
     i2c = make_i2c()
     mock = fake(i2c)
     mock.registers[(0x50, 0x00)] = bytearray(b"\x01\x02")
@@ -81,11 +80,9 @@ def test_operations_after_deinit_return_none_or_noop() -> None:
 
 
 def test_device_operations_on_an_already_deinitialized_bus_return_none_or_noop() -> None:
-    # Distinct from the mid-session case above: the bus is deinitialized *before* any session
-    # ever starts, and every I2CDevice method is exercised directly (not just readinto via a
-    # mid-session probe). There's no way to observe a *never-initialized* bus separately from
-    # this - I2C.__init__ always calls init() immediately, so "deinitialized" is the only
-    # externally-reachable uninitialized state.
+    # Distinct from the mid-session case above: the bus is deinitialized before any session starts, and
+    # every I2CDevice method is exercised directly rather than just readinto via a mid-session probe. A
+    # never-initialized bus cannot be observed separately - I2C.__init__ always calls init() immediately.
     i2c = make_i2c()
     device = I2CDevice(i2c, 0x50)
     i2c.deinit()
@@ -242,13 +239,13 @@ def test_register_struct_malformed_format_returns_none_and_noop() -> None:
 
 
 class _FakeStruct:
-    # get_register_struct()'s calcsize()/unpack() try/except pair share the same format-string
-    # parsing logic in real MicroPython - confirmed directly: any reg_format bad enough to raise
-    # out of unpack() already raises out of calcsize() first (both reject "Y" identically), so the
-    # unpack()-specific except and the "unpacked value isn't int/float/bytes" fallback below it can
-    # never actually be reached through any real malformed format string. Faked here by
-    # substituting asy_i2c_driver's own module-level `struct` name, the same technique this
-    # project's other test files use for their own otherwise-unreachable guards.
+    # get_register_struct()'s calcsize() and unpack() try/except pair share the same format-string parsing
+    # in real MicroPython: any reg_format bad enough to raise out of unpack() already raises out of
+    # calcsize() first, both rejecting "Y" identically.
+    #
+    # So the unpack()-specific except, and the "unpacked value is not int/float/bytes" fallback below it,
+    # are unreachable through any real malformed format string - faked here by substituting asy_i2c_driver's
+    # own module-level `struct` name, as this project's other suites do.
     def __init__(self, unpack_result: "tuple[Any, ...] | Exception") -> None:
         self._unpack_result = unpack_result
 
@@ -344,10 +341,9 @@ def test_set_register_struct_accepts_bytearray_for_bytes_formats() -> None:
 
 
 def test_set_register_struct_type_mismatch_returns_none_instead_of_raising() -> None:
-    # Found during review: struct.pack raises TypeError (not ValueError) when value's type
-    # doesn't match what reg_format expects - previously uncaught, a real "never raises"
-    # contract violation for an in-contract (correctly-typed per the old int-only signature)
-    # call, not an out-of-domain input the type system already excluded.
+    # Found during review: struct.pack raises TypeError, not ValueError, when value's type does not match
+    # what reg_format expects - previously uncaught, a real "never raises" contract violation for an in-
+    # contract call, not an out-of-domain input the type system already excluded.
     i2c = make_i2c()
     i2c.set_register_struct(0x50, 0x20, "4s", 5)  # int value, bytes-type format
     assert len(fake(i2c).log) == 0  # rejected before ever touching the bus
@@ -663,10 +659,9 @@ def test_sequential_sessions_do_not_leak_lock_state_between_them() -> None:
 
 
 def test_device_operations_do_not_self_lock_caller_must_wrap_in_async_with() -> None:
-    # I2CDevice's read/write methods never acquire self.asy_lock themselves - by design, every
-    # real caller (SCD30_I2C/SGP40_I2C/BMP3XX_I2C) wraps them in `async with device:` itself.
-    # Makes explicit an easy-to-miss division of responsibility: locking is the caller's job,
-    # not something write()/readinto() provide on their own.
+    # I2CDevice's read and write methods never acquire self.asy_lock themselves - by design, every real
+    # caller wraps them in `async with device:`. This makes an easy-to-miss division of responsibility
+    # explicit: locking is the caller's job, not something write()/readinto() provide.
     i2c = make_i2c()
     device = I2CDevice(i2c, 0x50)
 
@@ -833,10 +828,9 @@ def test_task_cancellation_while_holding_the_lock_still_releases_it() -> None:
 
 
 def test_reentrant_acquisition_on_the_same_device_deadlocks_and_cleans_up() -> None:
-    # Not reentrant by design (a plain asyncio.Lock): nesting `async with device:` on the same
-    # device within one task deadlocks rather than silently succeeding - bounded by wait_for so
-    # the test itself can't hang. Confirmed directly this raises TimeoutError and still leaves
-    # the lock released afterward (wait_for's own cancellation unwinds the inner `async with`).
+    # Not reentrant by design, being a plain asyncio.Lock: nesting `async with device:` on one device within
+    # one task deadlocks rather than silently succeeding, bounded by wait_for so the test cannot hang. It
+    # raises TimeoutError and still leaves the lock released, wait_for's cancellation unwinding it.
     i2c = make_i2c()
     device = I2CDevice(i2c, 0x50)
 
@@ -908,10 +902,9 @@ def test_pad_byte_only_reg_format_returns_none() -> None:
 
 
 def test_set_register_struct_multi_field_format_silently_zero_pads_missing_values() -> None:
-    # Documents a real MicroPython-specific quirk (not a bug in this driver): struct.pack
-    # silently zero-fills a field this single-value method never supplies, rather than raising
-    # like CPython's struct.error would. set_register_struct is deliberately single-value-only;
-    # this is what happens if a caller mistakenly passes a multi-field format anyway.
+    # Documents a real MicroPython-specific quirk, not a bug in this driver: struct.pack silently zero-fills
+    # a field this single-value method never supplies, rather than raising as CPython's struct.error would.
+    # set_register_struct is deliberately single-value-only; this is what a multi-field format does anyway.
     i2c = make_i2c()
     i2c.set_register_struct(0x50, 0x20, ">HH", 5)
     assert fake(i2c).registers[(0x50, 0x20)] == bytearray(struct.pack(">HH", 5, 0))
@@ -1019,6 +1012,61 @@ def test_set_bits_masks_an_oversized_value_instead_of_corrupting_adjacent_bits()
     # Only bits 2-4 (the 3-bit field at start_bit=2) may be set; bits 5-7 must stay untouched.
     assert fake(i2c).registers[(0x50, 0x10)] == bytearray([0b00011100])
     assert i2c.get_bits(0x50, 3, 0x10, 2, reg_width=1) == 0x7  # field itself reads back all-ones
+
+
+# ---------------------------------------------------------------------------
+# shared read scratch - readfrom_mem_into() instead of an allocation per read
+# ---------------------------------------------------------------------------
+
+
+def test_register_reads_go_through_readfrom_mem_into_not_the_allocating_form() -> None:
+    i2c = make_i2c()
+    mock = fake(i2c)
+    calls: list[str] = []
+    real_alloc = mock.readfrom_mem
+
+    def spy_into(address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
+        # Fills from real_alloc rather than calling through to the fake's own readfrom_mem_into,
+        # which itself delegates to readfrom_mem - that delegation would otherwise show up here as a
+        # second call and hide whether the driver used the allocating form directly.
+        calls.append("readfrom_mem_into")
+        buf[:] = real_alloc(address, memaddr, len(buf), addrsize=addrsize)  # type: ignore[index,arg-type]
+
+    def spy_alloc(address: int, memaddr: int, nbytes: int, *, addrsize: int = 8) -> bytes:
+        calls.append("readfrom_mem")
+        return real_alloc(address, memaddr, nbytes, addrsize=addrsize)
+
+    mock.readfrom_mem_into = spy_into  # type: ignore[method-assign]
+    mock.readfrom_mem = spy_alloc  # type: ignore[method-assign]
+    mock.registers[(0x42, 0x10)] = bytearray(b"\x01\x02\x03")
+    i2c.get_register_struct(0x42, 0x10, "3s")
+    i2c.get_bits(0x42, 4, 0x10, 0, 1)
+    i2c.set_bits(0x42, 4, 0x10, 0, 0x5, 1)
+    # The allocating form survives only as the oversized-read fallback; none of the three uses it.
+    assert calls == ["readfrom_mem_into"] * 3, calls
+
+
+def test_a_read_result_is_copied_out_of_the_scratch_not_aliased_to_it() -> None:
+    # The buffer is shared across every device on the bus, so a returned value that still pointed
+    # into it would silently change under its owner at the next read on any of them.
+    i2c = make_i2c()
+    mock = fake(i2c)
+    mock.registers[(0x42, 0x10)] = bytearray(b"\xaa\xbb\xcc")
+    mock.registers[(0x43, 0x10)] = bytearray(b"\x11\x22\x33")
+    first = i2c.get_register_struct(0x42, 0x10, "3s")
+    assert first == b"\xaa\xbb\xcc"
+    i2c.get_register_struct(0x43, 0x10, "3s")  # a second device, same bus, same scratch
+    assert first == b"\xaa\xbb\xcc", "the first read's value moved when a later read reused the buffer"
+
+
+def test_a_read_larger_than_the_scratch_still_works() -> None:
+    # Nothing in src/ reads more than BMP3XX's 21-byte calibration block today, so this path is the
+    # "zero callers now, maybe callers tomorrow" kind - it must not be a refusal.
+    i2c = make_i2c()
+    mock = fake(i2c)
+    size = 40  # asy_i2c_driver._SCRATCH_SIZE is 32, and const() folds the name out of the module
+    mock.registers[(0x42, 0x20)] = bytearray(range(size))
+    assert i2c.get_register_struct(0x42, 0x20, f"{size}s") == bytes(range(size))
 
 
 if __name__ == "__main__":

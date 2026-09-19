@@ -29,7 +29,7 @@ declare module "vitest/browser" {
             | { skipped: true; reason: string }
             | { skipped: false; titleHasSensorStation: boolean; deviceName: string; debugLevelApplyStatus: string | null }
         >;
-        startLiveMatrix: () => Promise<{ skipped: true; reason: string } | { skipped: false }>;
+        startLiveMatrix: () => Promise<{ skipped: true; reason: string } | { skipped: false; shard: string }>;
         stopLiveMatrix: () => Promise<void>;
         getRealCurrentValues: (paths: string[]) => Promise<Record<string, unknown>>;
         applyField: (args: {
@@ -60,3 +60,4 @@ declare module "vitest/browser" {
         }>;
     }
 }
+

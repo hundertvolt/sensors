@@ -16,10 +16,9 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-# digital_twin/ must precede tests/ here specifically so `machine` resolves to the twin's own
-# fake, not tests/machine.py's (which would otherwise shadow it - both files are named `machine`).
-# See test_digital_twin_sgp40.py's own comment for why this is a per-file sys.path insertion
-# rather than a scripts/test.sh/MICROPYPATH change.
+# digital_twin/ must precede tests/ here specifically so `machine` resolves to the twin's own fake rather
+# than tests/machine.py's, both files being named `machine`. See test_digital_twin_sgp40.py for why this is
+# a per-file sys.path insertion rather than a scripts/test.sh change.
 sys.path.insert(0, "digital_twin")
 
 import machine
@@ -199,11 +198,9 @@ def test_wozi_wiring_carries_no_isl29125() -> None:
 
 
 def test_configure_scd30_state_path_and_flush_scd30_round_trip_settings() -> None:
-    # Same module-level-hook shape as configure_fram_state_path()/flush_fram() - no dedicated wiring
-    # test exists for that FRAM pair either (only covered indirectly via a real Step 5 run), so this
-    # closes the gap for the new SCD30 feature at least. Persistence content itself (which fields,
-    # malformed-file handling, ...) is tests/test_digital_twin_scd30.py's job; this only checks that
-    # machine.py's own module-level hooks actually reach the chip _wire_i2c_devices() constructs.
+    # Same module-level-hook shape as configure_fram_state_path()/flush_fram(), which has no dedicated
+    # wiring test either - so this closes the gap for the SCD30 feature at least. Persistence content is
+    # tests/test_digital_twin_scd30.py's job; this only checks the hooks reach the chip that is constructed.
     import os
 
     sys.path.insert(0, "digital_twin")
@@ -293,11 +290,9 @@ def test_i2c_and_spi_deinit_are_recorded() -> None:
 
 
 def test_i2c_log_stays_bounded_across_many_transactions() -> None:
-    # Regression test from baseline verification: I2C.log used to
-    # be a plain, unbounded list, growing for the life of the process - the dominant contributor to
-    # a real MemoryError reproduced by actually running the assembled system end-to-end (real
-    # asyncio/HTTP/bus-transaction churn eventually needed a large-enough contiguous reallocation to
-    # grow it, which failed once the heap fragmented). Now a deque(maxlen=_LOG_MAXLEN).
+    # Regression test from baseline verification: I2C.log used to be a plain unbounded list, growing for the
+    # life of the process - the dominant contributor to a real MemoryError reproduced by running the
+    # assembled system end to end, its growth eventually needing a reallocation the fragmented heap refused.
     i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
     for _ in range(machine._LOG_MAXLEN + 50):
         i2c.writeto(0x00, b"")  # general-call address - always tolerated, logged every time
@@ -352,12 +347,12 @@ def test_wdt_would_have_triggered_count_and_log_start_at_zero() -> None:
 
 
 def test_wdt_notifies_once_after_a_feed_free_window() -> None:
-    # Short timeout + a generous asyncio.wait_for bound - same "does the mechanism work at all"
-    # spirit as test_timer_fires_for_real_on_a_short_period below, not a precise-cadence assertion.
-    # Polling far finer than the WDT's own period (5ms vs. 150ms) matters here, not just style: the
-    # background monitor loops forever rather than stopping after one notification, so a poll
-    # granularity close to the WDT's own period races it - the exact count observed depends on how
-    # many of its own cycles complete before this loop's next wakeup gets scheduled.
+    # Short timeout plus a generous asyncio.wait_for bound - the same "does the mechanism work at all"
+    # spirit as the short-period timer test below, not a precise-cadence assertion.
+    #
+    # Polling far finer than the WDT's own period (5ms vs. 150ms) matters here, not just as style: the
+    # background monitor loops forever rather than stopping after one notification, so a granularity close
+    # to its period races it, the observed count depending on scheduling.
     async def scenario() -> None:
         wdt = WDT(timeout=150)
         for _ in range(200):
@@ -477,16 +472,16 @@ def test_timer_deinit_stops_further_callbacks() -> None:
 
 
 def test_timer_reinit_from_within_its_own_callback_does_not_raise() -> None:
-    # Regression test: self-rearming/chained timers (src/system_service.py's own
-    # _timer_sequencer(), fixed to reuse one preallocated Timer via repeated .init() calls rather
-    # than constructing a fresh Timer() per chain step - see CLAUDE.md/SPECIFICATION.md Part F.1)
-    # re-.init() the SAME Timer object from within that object's own currently-firing callback.
-    # Timer.init()'s own internal deinit() used to unconditionally call self._task.cancel() -
-    # cancelling the task that is, at that exact moment, running the very callback doing the
-    # re-init, which MicroPython's asyncio (extmod/asyncio/task.py) rejects with
-    # RuntimeError("can't cancel self"). This is a real, valid pattern on real rp2 hardware (just
-    # reprograms the alarm pool - the just-fired ONE_SHOT alarm is already consumed), so the twin
-    # must support it too.
+    # Regression test: self-rearming chained timers - system_service.py's _timer_sequencer(), fixed to reuse
+    # one preallocated Timer via repeated .init() calls rather than constructing a fresh one per step (Part
+    # F.1) - re-.init() the SAME Timer object from inside that object's currently-firing callback.
+    #
+    # Timer.init()'s internal deinit() used to unconditionally call self._task.cancel(), cancelling the task
+    # that is at that moment running the very callback doing the re-init, which MicroPython's asyncio
+    # rejects with RuntimeError("can't cancel self").
+    #
+    # This is a real, valid pattern on real rp2 hardware - it just reprograms the alarm pool, the just-fired
+    # ONE_SHOT alarm already being consumed - so the twin must support it too.
     steps: list[int] = []
     timer = Timer()
 
@@ -508,12 +503,12 @@ def test_timer_reinit_from_within_its_own_callback_does_not_raise() -> None:
 
 
 def test_timer_deinit_outside_a_running_event_loop_does_not_raise() -> None:
-    # Sibling regression test: the same self-reinit fix above needs asyncio.current_task() to tell
-    # whether deinit() is running from inside the timer's own callback - but current_task() itself
-    # raises RuntimeError("no running event loop") when called with no event loop running at all
-    # (confirmed directly against extmod/asyncio/core.py), which a plain synchronous caller (no
-    # asyncio.run() in progress) hits immediately. deinit() must treat that the same as "definitely
-    # not my own callback", not let the RuntimeError propagate.
+    # Sibling regression test: the self-reinit fix above needs asyncio.current_task() to tell whether
+    # deinit() is running inside the timer's own callback, but current_task() itself raises RuntimeError("no
+    # running event loop") with no loop running at all, which a plain synchronous caller hits immediately.
+    #
+    # deinit() must treat that the same as "definitely not my own callback", not let the RuntimeError
+    # propagate.
     timer = Timer()
     timer.init(period=1000, mode=Timer.ONE_SHOT, callback=lambda _t: None)
     timer.deinit()  # must not raise, called with no event loop running

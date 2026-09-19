@@ -16,10 +16,9 @@ const REST_PATHS = /** @type {const} */ ([
 const SYSTEM_CMDS = ["reboot", "bootloader", "mempause"];
 const PAUSE_TIME_MAX = 3600; // matches src/asy_webserver_service.py's own _PAUSE_TIME_MAX
 
-// Three /sensors fields with real, documented hardware quirks (SPECIFICATION.md Part H.4): each
-// is a direct hardware dispatch re-run whenever submitted, never compared against a stored value
-// or persisted like an ordinary settings field - modeled here instead of the generic store-and-echo
-// path, which would wrongly report "Unchanged" and echo back the raw PUT.
+// The /sensors fields with documented hardware quirks (Part H.4): each is a hardware dispatch
+// re-run on every submit, never compared against a stored value. Modelled apart from the generic
+// store-and-echo path, which would wrongly report "Unchanged" and echo the raw PUT back.
 const SENSOR_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC", "ISLCalibrate"]);
 
 /**
@@ -231,10 +230,9 @@ function dispatchSensorQuirkField(field, rawValue) {
 }
 
 /**
- * Applies SENSOR_QUIRK_FIELDS' real GET-readback behavior: `ForceCalRef` always reports the fixed
- * constant 400 (SCD30's volatile-register limitation); `ContMeas`/`SGPResetVOC`/`ISLCalibrate` are
- * omitted entirely, matching the real schema's exclusion of all three - each is a command-only
- * trigger that is never persisted, so echoing one back would make it look like a stored setting.
+ * Applies SENSOR_QUIRK_FIELDS' real GET-readback behavior: `ForceCalRef` always reports 400
+ * (SCD30's volatile register), and the three command-only triggers are omitted entirely as the
+ * real schema omits them - echoing one back would make it look like a stored setting.
  * @param {Record<string, Record<string, unknown>>} sensorsConfig
  * @returns {Record<string, Record<string, unknown>>}
  */
@@ -251,10 +249,9 @@ function applySensorQuirksForGet(sensorsConfig) {
 }
 
 /**
- * Simulates the real backend's own known gap (SPECIFICATION.md Part H.6): a
- * settings group's post-write hook raising drops that group's fields from `result` entirely,
- * with the overall response still reporting `res:"OK"`. Deletes one arbitrary key in place, once,
- * only when `controls.nextFailure === "partial-result"` (consumed either way it fires or not).
+ * Simulates the backend's known gap (Part H.6): a settings group's post-write hook raising
+ * drops that group's fields from `result` while the response still says `res:"OK"`. Deletes one
+ * key in place, once, on `controls.nextFailure === "partial-result"`, consumed either way.
  * @param {Record<string, string>} results
  * @param {MockFetchControls} [controls]
  */
@@ -300,7 +297,7 @@ function jitterInPlace(group) {
             group[key] = value + 1;
         } else {
             // Spread and rounding were sized for readings of order hundreds (CO2 ~600). On the
-            // ISL29125's normalised 0-1 leaves a 0.05 floor is +-178% and takes them NEGATIVE, and
+            // ISL29125's normalised 0-1 leaves a 0.05 floor is +-178%, taking them NEGATIVE, and
             // two decimals quantise to 0.00. Below 1 both scale with the value; above it, nothing.
             const magnitude = Math.abs(value);
             const spread = magnitude >= 1 ? Math.max(magnitude * 0.01, 0.05) : magnitude * 0.05;
@@ -353,10 +350,9 @@ export function installMockFetch(defs, initialData, controls) {
                 throw new TypeError("Failed to fetch (simulated network failure)");
             }
             if (failure === "malformed-body") {
-                // Matches the real backend's own make_response(1) exactly (SPECIFICATION.md Part
-                // A.8/A.5): a request body Request.json can't parse, or that parses to something
-                // other than a JSON object, is a clean HTTP 200 with res:"ERR" - never a shaped
-                // HTTP error status.
+                // Matches the backend's own make_response(1) (Part A.8/A.5): a body Request.json
+                // cannot parse, or that parses to something other than an object, is a clean
+                // HTTP 200 with res:"ERR" rather than a shaped HTTP error status.
                 return jsonResponse({ res: "ERR", code: 1, descr: "Invalid JSON request", result: {} });
             }
             if (failure === "torn-json") {
@@ -416,10 +412,9 @@ export function installMockFetch(defs, initialData, controls) {
             const endpointKey = /** @type {"networking" | "system" | "notification"} */ (path.slice(1));
             const configKey = /** @type {"networkingConfig" | "systemConfig" | "notificationConfig"} */ (`${endpointKey}Config`);
             const rawBody = body();
-            // SystemCmd/PauseTime/lightCmdLED are dispatched actions, never persisted settings on
-            // the real backend (SPECIFICATION.md Part A.8) - excluded here before the generic
-            // sparse-PUT path below so none of them leak into state[configKey] (and so a later GET
-            // never returns them, matching _get_settings_flat()'s real behavior).
+            // SystemCmd/PauseTime/lightCmdLED are dispatched actions, never persisted settings
+            // (Part A.8). Excluded before the generic sparse-PUT path so none reaches
+            // state[configKey], which is what keeps a later GET matching _get_settings_flat().
             const { SystemCmd, PauseTime, lightCmdLED, ...persistableBody } = rawBody;
             const results = applySparsePut(persistableBody, flatDefsByEndpoint[endpointKey], state[configKey]);
             if (path === "/system" && "SystemCmd" in rawBody) {

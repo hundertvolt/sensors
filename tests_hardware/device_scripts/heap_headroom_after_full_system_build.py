@@ -13,9 +13,9 @@ import sensortask_dev
 _PROBE_MIN = 64
 _PROBE_MAX = 192 * 1024
 
-# Floors, not expected values: measured at free=130720 / largest_block=116032 after a full
-# build_system(), and set ~23%/~31% below, so only a real regression trips them. Raise them only
-# with a fresh measurement. NOT re-measured since asy_isl29125_driver.py joined the dev graph.
+# Floors, not expected values: measured free=130720/largest_block=116032 on the real dev board at
+# 1.29.0 (2026-09-11), and set ~23%/~31% below that, so ordinary allocation churn does not trip
+# them and a new static buffer or an SRAM-growing version bump does. Raise only on a measurement.
 _MIN_FREE = 100_000
 _MIN_LARGEST_BLOCK = 80_000
 
@@ -58,7 +58,7 @@ async def _main() -> None:
     # Deliberately measured at MicroPython's own reactive-only default first: a headroom figure that
     # only holds with a proactive threshold isn't headroom (CLAUDE.md's memory-safety ladder).
     free, largest = _report("after_build_system")
-    gc.threshold(32768)  # what boot_entry/dev_boot.py sets in the real firmware
+    gc.threshold(32768)  # what buildgen.codegen.generate_boot_entry_source() sets in the real firmware
     _report("after_build_system_production_threshold")
 
     if free < _MIN_FREE:

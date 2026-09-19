@@ -12,7 +12,10 @@ import { chromium, devices } from "playwright";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
 const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
-const MICROPYPATH = "src:digital_twin:ext:frozen_modules:.frozen";
+// build/generated_src first: no static src/sensortask_wozi.py exists any more
+// (SPECIFICATION.md Part L.2) - .github/workflows/ci.yml's
+// web-cross-browser-smoke job generates it fresh there, via buildgen, before this spawns.
+const MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen";
 const HOST = "127.0.0.1";
 // Distinct from every other fixed port this repo already uses for a twin/integration run - see
 // tests_js/_live_twin_command.js's own comment for the full enumeration this continues (19411,
@@ -32,14 +35,13 @@ const SANDBOX_CHROMIUM = "/opt/pw-browsers/chromium"; // same dev-sandbox path v
 const WEBKIT_DRIVER_PORT = 4444;
 const GECKODRIVER_PORT = 4445;
 
-// Desktop-sized probe (well above the site's own 640px responsive breakpoint - html/style.css) and
-// a mobile-ish one (well below it). WebKit/Firefox have no device-emulation API over plain
-// WebDriver, so these are real window resizes, not true device emulation (no touch synthesis,
-// no mobile UA) - Playwright's own `devices` presets give Chromium/Edge the fuller emulation
-// (see runChromiumFamily() below). Both headless WebKit and headless Firefox enforce their own
-// minimum window width below a certain point (confirmed directly - requesting 393px back real
-// numbers around 447-500px), so MOBILE_VIEWPORT is a request, not a guarantee; the check below
-// only asserts the resulting width is still under the responsive breakpoint, not an exact value.
+// One probe well above the site's 640px breakpoint and one well below. WebKit and Firefox have
+// no device-emulation API over plain WebDriver, so these are real window resizes - no touch
+// synthesis, no mobile UA; only Chromium/Edge get Playwright's fuller `devices` emulation.
+
+// Both headless engines also enforce a minimum window width - requesting 393px comes back
+// around 447-500px - so MOBILE_VIEWPORT is a request, not a guarantee, and the check below
+// asserts only that the result is still under the breakpoint.
 const DESKTOP_VIEWPORT = { width: 1280, height: 900 };
 const MOBILE_VIEWPORT = { width: 393, height: 852 };
 const RESPONSIVE_BREAKPOINT_PX = 640;
@@ -72,13 +74,9 @@ async function waitUntilServing(url, timeoutMs) {
     throw new Error(`nothing answered ${url} within ${timeoutMs}ms`);
 }
 
-// Every spawned child (twin/Xvfb/driver) is tracked here from the moment it's created until
-// stopProcess() (or a SIGINT/SIGTERM handler below) reaps it - a real, confirmed gap otherwise:
-// Node crashes synchronously on an unhandled ChildProcess 'error' event (spawn failure - e.g. a
-// missing binary) from *outside* any of this file's own try/catch frames, skipping every
-// try/finally cleanup below and leaking whatever else is already running. Tracking every process
-// here, and killing whatever's left on the way out (a crash or a local Ctrl-C alike), closes that
-// gap. See SPECIFICATION.md Part H.7's "Cross-browser coverage" for this script's overall design.
+// Every spawned child is tracked from creation until stopProcess() or a signal handler reaps it:
+// Node's synchronous crash on an unhandled ChildProcess 'error' happens outside every try/catch
+// here, skipping the cleanup and leaking whatever else runs. Part H.7 has the overall design.
 /** @type {Set<import("node:child_process").ChildProcess>} */
 const activeProcesses = new Set();
 
@@ -95,7 +93,23 @@ function spawnTwin() {
     return trackProcess(
         spawn(
             MICROPYTHON_BIN,
-            ["digital_twin/run_wozi_integration.py", "--host", HOST, "--port", String(PORT), "--fram-state-path", "", "--scd30-state-path", ""],
+            [
+                "digital_twin/run_generic_integration.py",
+                "--module",
+                "sensortask_wozi",
+                "--wiring-plan",
+                path.join(REPO_ROOT, "build", "generated_src", "sensortask_wozi_wiring_plan.json"),
+                "--device",
+                "wozi",
+                "--host",
+                HOST,
+                "--port",
+                String(PORT),
+                "--fram-state-path",
+                "",
+                "--scd30-state-path",
+                "",
+            ],
             { cwd: REPO_ROOT, env: { ...process.env, MICROPYPATH, TZ: "UTC" }, stdio: ["ignore", "ignore", "pipe"] },
         ),
         "twin",
@@ -117,14 +131,12 @@ async function stopProcess(proc, signal = "SIGINT") {
     ]);
 }
 
-// WebKitWebDriver/geckodriver both need a real X display even in "headless" use (confirmed
-// directly for WebKitGTK; geckodriver's `-headless` Firefox arg was kept wrapped the same way for
-// consistency - see runFirefox()'s own comment). Spawns Xvfb itself directly, rather than via the
-// `xvfb-run` wrapper script: a wrapper process is an extra layer this file can't reliably tear
-// down - confirmed directly (an earlier version used `xvfb-run -a <driver>` and SIGINT to the
-// wrapper's own PID left both Xvfb and the driver binary itself still running afterward, a real
-// leak found by checking `pgrep` after a run, not by inspection). Spawning Xvfb here directly
-// gives this file a real handle to kill explicitly instead.
+// Both drivers need a real X display even headless - confirmed for WebKitGTK, and geckodriver
+// is wrapped the same way for consistency.
+
+// Xvfb is spawned directly rather than through `xvfb-run`, which is a layer this file cannot
+// reliably tear down: an earlier version sent SIGINT to the wrapper's PID and left both Xvfb
+// and the driver running, found with pgrep after a run. Spawning it here gives a real handle.
 let nextDisplayNumber = 90;
 
 /** @returns {{display: string, xvfbProc: import("node:child_process").ChildProcess}} */
@@ -187,12 +199,9 @@ async function wdExecute(base, sid, script) {
     return body.value;
 }
 
-// The nav-to-Sensors click, run alone (not combined with the field fill below): renderSection()
-// swaps the visible section in asynchronously (a real fetch-then-render, not a synchronous DOM
-// swap), so a script that clicks the nav link and immediately queries for the target field in the
-// same synchronous execution can genuinely find it still null on both WebKit and Firefox. Kept as
-// its own tiny script/poll pair rather than folded into an `await` inside one execute/sync call,
-// since WebDriver's execute/sync has no way to await an in-page Promise across the wire anyway.
+// The nav click runs alone, not folded into the field fill: renderSection() swaps the section in
+// asynchronously, so a script that clicks and immediately queries can find the field null on both
+// engines. Its own script/poll pair, since execute/sync cannot await an in-page Promise anyway.
 const NAV_TO_SENSORS_SCRIPT = `
     document.getElementById("hamburger-button").click();
     const link = [...document.querySelectorAll("[data-section-key]")].find((a) => a.dataset.sectionKey === "sensors");
@@ -292,11 +301,9 @@ async function runViaRawWebDriver({ engine, viewport, probeValue, driverProcessF
             throw new Error(`requested a mobile viewport but window.innerWidth was ${fillResult.innerWidth}px (>= ${RESPONSIVE_BREAKPOINT_PX}px breakpoint)`);
         }
 
-        // Waits for BOTH data-apply-status (set as soon as the PUT resolves) AND the caption
-        // (only updated by a separate, slightly later GET round trip - render.js's own
-        // onApplied() -> fetchOnce(), see this file's header comment) to settle - polling only
-        // the former was confirmed to race ahead of the caption in this file's own development,
-        // reading back the previous check's stale value instead of this one's freshly-applied one.
+        // Waits for BOTH data-apply-status, set as the PUT resolves, and the caption, which a
+        // separate slightly later GET updates. Polling only the attribute raced ahead of the
+        // caption during this file's own development, reading the previous check's stale value.
         const expectedCaption = `Current value: ${probeValue}`;
         const applied = await pollUntil(
             () => /** @type {Promise<{applyStatus: string | null, caption: string | null}>} */ (wdExecute(driverBase, /** @type {string} */ (sid), readAppliedResultScript())),
@@ -318,11 +325,9 @@ async function runViaRawWebDriver({ engine, viewport, probeValue, driverProcessF
         if (driverProc) {
             await stopProcess(driverProc);
         }
-        // SIGKILL, not SIGINT: confirmed directly that Xvfb doesn't reliably exit on SIGINT within
-        // SHUTDOWN_TIMEOUT_MS once a client (the driver process) has connected to it, and there's
-        // no graceful-shutdown state worth waiting for here anyway (unlike the real digital twin's
-        // own FRAM/SCD30 flush-on-SIGINT - see stopProcess()'s other caller, stopTwin-equivalent
-        // spawnTwin() above).
+        // SIGKILL, not SIGINT: Xvfb does not reliably exit on SIGINT within SHUTDOWN_TIMEOUT_MS
+        // once a driver has connected to it, and it has no graceful-shutdown state worth waiting
+        // for - unlike the twin's own FRAM/SCD30 flush, stopProcess()'s other caller.
         await stopProcess(xvfbProc, "SIGKILL");
     }
 }
@@ -357,13 +362,9 @@ function runFirefox(viewport, probeValue) {
 }
 
 /**
- * Polls until `wrapperLocator`'s `data-apply-status` AND `captionLocator`'s text both settle to
- * their expected post-apply values, mirroring pollUntil() above. Both are needed, not just the
- * first: `data-apply-status` is set as soon as the PUT resolves, but the caption only updates via
- * a separate, slightly later GET round trip (render.js's own onApplied() -> fetchOnce(), see this
- * file's header comment) - polling only the attribute was confirmed to race ahead of the caption
- * in this file's own development, reading back the *previous* check's stale caption instead of
- * this one's freshly-applied value.
+ * Polls until `wrapperLocator`'s `data-apply-status` AND `captionLocator`'s text both settle,
+ * mirroring pollUntil() above. Both are needed: the attribute is set as the PUT resolves, while
+ * the caption waits on a separate later GET, so polling the attribute alone read stale text.
  * @param {import("playwright").Locator} wrapperLocator
  * @param {import("playwright").Locator} captionLocator
  * @param {string} expectedCaption
@@ -428,10 +429,9 @@ async function runChromiumFamily(which, viewport, probeValue) {
     }
 }
 
-// A local Ctrl-C (SIGINT) or SIGTERM would otherwise skip every try/finally cleanup below entirely
-// (Node's default action for both is to terminate immediately) - confirmed as a real gap, orphaning
-// whatever's currently in activeProcesses (the twin, and/or an in-progress engine's Xvfb+driver).
-// Harmless in CI (an ephemeral VM reclaims everything on job end regardless) but real for local dev.
+// A local Ctrl-C or SIGTERM would otherwise skip every try/finally below, Node terminating
+// immediately on both, orphaning whatever is in activeProcesses. Harmless in CI, where the VM
+// is reclaimed anyway, and a real leak for local development.
 for (const sig of /** @type {const} */ (["SIGINT", "SIGTERM"])) {
     process.on(sig, () => {
         console.error(`\nReceived ${sig} - killing ${activeProcesses.size} still-running process(es) before exit.`);
@@ -468,11 +468,9 @@ async function main() {
             { name: "Chromium", available: true, run: (viewport, probeValue) => runChromiumFamily("chromium", viewport, probeValue) },
         ];
 
-        // Every (engine, viewport) check gets its own probe value, never reused - each check reads
-        // back its own just-applied value, so two checks racing/interleaving against the one shared
-        // twin backend can never mistake one another's write for their own (confirmed necessary
-        // directly: an earlier version reused the same value across engines and briefly masked a
-        // real timing bug elsewhere in this file's own development).
+        // Every (engine, viewport) check gets its own probe value, never reused, so two checks
+        // interleaving against the one shared twin backend cannot mistake one another's write
+        // for their own - an earlier version reused one and briefly masked a real timing bug.
         let nextProbeValue = 30;
         for (const engine of engines) {
             if (!engine.available) {

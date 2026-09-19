@@ -29,22 +29,18 @@ class FakeMB85RS64V(FakeSPI):
         self.drop_wren = False  # simulate WREN's opcode transfer getting corrupted on the wire
         self.drop_next_wrdi = 0  # simulate N consecutive WRDI transfers getting corrupted
         self.drop_wrsr = False  # simulate WRSR's status-byte transfer getting corrupted
-        # disturb_write_autoclear/disturb_wrsr_autoclear suppress the datasheet's own auto-clear
-        # specifically so FRAM_SPI's explicit WRDI-verification/retry path (defense-in-depth
-        # against that exact auto-clear mechanism itself glitching) stays exercised by a real
-        # simulated fault, instead of being permanently unreachable once the normal case already
-        # clears WEL before WRDI even runs.
+        # These two suppress the datasheet's own auto-clear specifically so FRAM_SPI's explicit WRDI-
+        # verification and retry path - defense in depth against that auto-clear itself glitching - stays
+        # exercised by a real simulated fault rather than being permanently unreachable.
         self.disturb_write_autoclear = False  # simulate the chip's own WRITE-completion WEL auto-clear not firing
         self.disturb_wrsr_autoclear = False  # simulate the chip's own WRSR-completion WEL auto-clear not firing
         # Different in kind from the knobs above: simulates a disturbance landing on a WRITE's
         # actual payload bytes (not an opcode/latch), genuinely undetectable at this layer by
         # design - payload-level data integrity is asy_fram_manager.py's CRC/dual-copy job instead.
         self.corrupt_next_write_data: bytes | None = None  # what actually lands, if not the real payload
-        # Set by a test after FRAM_SPI construction (e.g. chip.wp_pin = fram._wp_pin), since the pin
-        # object doesn't exist until FRAM_SPI.__init__ runs. Models the datasheet's WRITING PROTECT
-        # table via the wel property below: WRSR is only accepted when WEL=1 and (WPEN=0 or WP=1).
-        # None (no pin wired) models WP tied permanently high (unprotected) - the driver's own
-        # assumption when constructed without a wp_pin.
+        # Set by a test after FRAM_SPI construction, the pin not existing until __init__ runs. Models the
+        # datasheet's WRITING PROTECT table via the wel property below: WRSR is accepted only when WEL=1 and
+        # (WPEN=0 or WP=1). None models WP tied high, the driver's assumption without a wp_pin.
         self.wp_pin: Pin | None = None
         self._pending_op: int | None = None
         self._pending_addr: int | None = None
@@ -80,11 +76,13 @@ class FakeMB85RS64V(FakeSPI):
             else:
                 self.status &= ~0x02
         elif opcode == _OPCODE_WRSR:
-            # Requires WEL set first, exactly like WRITE (datasheet: WEL "indicates if FRAM
-            # array and status register are writable"); WRSR can't write bit 1 (WEL) itself, so
-            # the current WEL bit is preserved through this assignment regardless. Also requires
-            # the status register itself to be unlocked (WRITING PROTECT table): WPEN=0, or
-            # WP=1 if wired - checked against the *current* WPEN/WP, not the value being written.
+            # Requires WEL set first, exactly like WRITE - the datasheet has WEL indicate whether the array
+            # and status register are writable - and WRSR cannot write bit 1 itself, so the current WEL is
+            # preserved.
+            #
+            # It also requires the status register itself to be unlocked per the WRITING PROTECT table:
+            # WPEN=0, or WP=1 if wired, checked against the current WPEN/WP rather than the value being
+            # written.
             wp_level = 1 if self.wp_pin is None else self.wp_pin.value()
             sr_unlocked = not (self.status & 0x80) or wp_level == 1
             if self.wel and not self.drop_wrsr and sr_unlocked:
@@ -103,11 +101,12 @@ class FakeMB85RS64V(FakeSPI):
             self._pending_op = _OPCODE_RDID
 
     def readinto(self, buf: bytearray | memoryview, _write_value: int = 0x00) -> None:
-        # Overriding readinto() shadows the base fake's own bus-level fault check, so call it
-        # explicitly: without this, machine.SPI's rx_overrun/inject_fault knobs are unreachable
-        # through the FRAM stack and the 1.29 RX-overrun path can only be tested one layer up.
-        # Raising before the buffer is filled matches the base fake; on real hardware an overrun
-        # leaves partial garbage there, which is why the caller must not trust it either way.
+        # Overriding readinto() shadows the base fake's bus-level fault check, so it is called explicitly:
+        # without this, machine.SPI's rx_overrun/inject_fault knobs are unreachable through the FRAM stack
+        # and the 1.29 RX-overrun path is only testable one layer up.
+        #
+        # Raising before the buffer is filled matches the base fake; on real hardware an overrun leaves
+        # partial garbage there, which is why the caller must not trust it either way.
         self._maybe_raise("readinto", len(buf))
         if self._pending_op == _OPCODE_READ and self._pending_addr is not None:
             n = len(buf)

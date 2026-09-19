@@ -66,10 +66,9 @@ def register(name: str, description: str, tier: str) -> Callable[[Callable[[], N
 
 
 def main() -> int:
-    # Import side effect: registers every manual test with the decorator above. Done here, not at
-    # module level, so `--list` stays fast and `runner.py` itself has no hard dependency on every
-    # individual test module's own imports (e.g. manual_wifi.py's harness.Board) unless a run
-    # actually needs them.
+    # Import side effect: registers every manual test with the decorator above. Here rather than
+    # at module level, so `--list` stays fast and runner.py takes no hard dependency on each test
+    # module's own imports (manual_wifi.py's harness.Board) unless a run needs them.
     import manual_bus_electrical  # noqa: F401
     import manual_persistence  # noqa: F401
     import manual_sensor_accuracy  # noqa: F401

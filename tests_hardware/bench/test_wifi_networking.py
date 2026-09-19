@@ -66,10 +66,9 @@ def test_real_dns_resolution_succeeds_over_genuine_udp(board: Board) -> None:
 
 
 def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # Doubles as this tier's real-hardware proof for BACKLOG.md open question 6: the STA link
-    # stays fully up (only UDP 123 is blocked, not the AP) - the real-hardware shape of
-    # "isconnected()==True but a specific downstream operation is unreachable", the same property
-    # tests/test_ntp_wifi_dns_integration.py proves at the mock/unit level.
+    # This tier's real-hardware proof for BACKLOG open question 6: only UDP 123 is blocked, not
+    # the AP, so the STA link stays up - "isconnected()==True but one downstream operation is
+    # unreachable", which tests/test_ntp_wifi_dns_integration.py proves at the mock level.
     reset_all_error_logs(dut_ip)
     bench.block_udp_ports([123])
     try:
@@ -95,10 +94,9 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: _http_ok(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry - see this test's own comment)")
-    # `_error_check()`'s coarser consecutive-failure counter (SPECIFICATION.md Part C.7, not gated
-    # on ntp_issynced()) fires unconditionally on every failed sync attempt, ending in errno=20
-    # ("Giving up after repeated sync failures") - the real, expected outcome for a persistently
-    # blocked port, not a bug. See tests_hardware/README.md for the full since-fixed test-bug account.
+    # `_error_check()`'s consecutive-failure counter (Part C.7, not gated on ntp_issynced())
+    # fires on every failed sync, ending in errno=20 - the expected outcome for a persistently
+    # blocked port. tests_hardware/README.md has the since-fixed test-bug account.
     assert_module_error_log_contains(dut_ip, "NTP", 20, "E")
 
 

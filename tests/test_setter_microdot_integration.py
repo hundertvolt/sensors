@@ -1,37 +1,35 @@
 """End-to-end integration tests for the setter generalization work: api_response.py's
 parse_cmd_request()/handle_set_cmd() driven against mocked Microdot request data (fine/partial/garbage), then against a real ext/microdot.py (v2.6.2) Microdot app wired the same way src/asy_webserver_service.py's real registration-based routes are.
 """
-# Covers a real AsyConnTime (WiFi) reader for the setter path, a real AsyNtpClient reader for both
-# the getter and the setter path, a real BMP3xx_Reader/SGP40_Reader for the schema-driven sensor
-# setters, and a real SCD30_Reader for the one sensor whose REST surface is hand-rolled per field
-# instead of schema-driven. Only test-local Microdot apps are constructed here, independent of
-# src/asy_webserver_service.py's own construction - anything of its wiring that has to be exercised
-# is reimplemented locally (_wifi_field_schema()/_SCD_SET_FIELDS/_scd_apply_field below), never
-# imported, to keep this file's own scope self-contained.
+# Covers a real AsyConnTime for the setter path, a real AsyNtpClient for both getter and setter, a real
+# BMP3xx_Reader/SGP40_Reader for the schema-driven sensor setters, and a real SCD30_Reader for the one
+# sensor whose REST surface is hand-rolled per field instead of schema-driven.
+#
+# Only test-local Microdot apps are constructed here, independent of src/asy_webserver_service.py: any of
+# its wiring that must be exercised is reimplemented locally, never imported, to keep this file's scope
+# self-contained.
 
 import asyncio
 import errno as errno_mod
 import json
 import os
 import sys
+from collections import namedtuple
 
-# scripts/test.sh's own MICROPYPATH ("src:tests:.frozen") deliberately doesn't include ext/ - that
-# would be a scripts/ change, which CLAUDE.md's "Pre-push verification" requires a full clean-
-# chroot re-verification for. Extending sys.path at runtime, scoped to this one file, reaches the
-# same real ext/microdot.py without touching scripts/test.sh, MICROPYPATH, or pyproject.toml at
-# all - confirmed directly against the pinned interpreter that a plain sys.path.insert() before the
-# import resolves it correctly, the same as MICROPYPATH would.
+# scripts/test.sh's MICROPYPATH deliberately excludes ext/, and changing that would be a scripts/ change
+# needing a full clean-chroot re-verification. Extending sys.path at runtime, scoped to this one file,
+# reaches the same real ext/microdot.py without touching any of that.
 sys.path.insert(0, "ext")
 
 # ext/ isn't on this project's mypy search path yet (see pyproject.toml's [tool.mypy]) - same gap
 # as src/asy_webserver_service.py's own import of this module.
+from _tmp_scratch import TmpScratch
 from microdot import Microdot, Request  # type: ignore[import-not-found]
 
 import api_response as ar
 import config_manager as cm
 from asy_bmp3xx_driver import BMP3xx_Reader
 from asy_i2c_driver import I2C
-from asy_isl29125_driver import ISL29125_Reader
 from asy_ntp_client import AsyNtpClient
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
@@ -53,68 +51,13 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("msi_")
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("msi")
 
 
 def _tmp_cfg_dir() -> str:
-    # tests/_tmp is never wiped between local invocations of this file (unlike CI's always-fresh
-    # checkout - same reasoning as test_asy_sgp40_driver.py's own _sgp_cfg_dir()) - _next_dir alone
-    # isn't enough to guarantee a fresh config file, since a directory name repeats across runs of
-    # the same process. Clear any config file left over from a previous local run explicitly.
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    _next_dir += 1
-    path = _TMP_DIR + "/msi_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass  # already exists from a stale previous run
-    for stale in ("config_WIFI.cfg", "config_NTP.cfg", "config_BMP3XX.cfg", "config_SGP40.cfg", "config_ISL29125.cfg"):
-        try:
-            os.remove(path + "/" + stale)
-        except OSError:
-            try:
-                # _break_cfg_file() below deliberately leaves a *directory* behind under this name
-                # (that's how it makes a real config write fail) - os.remove() can't clear that one,
-                # and leaving it would make the next local run's ConfigManager.setup() reject the
-                # config outright ("exists but is not a file") instead of starting fresh.
-                os.rmdir(path + "/" + stale)
-            except OSError:
-                pass  # no stale file or directory - already fresh
-    return path + "/"
+    return _scratch.dir()
 
 
 def make_wifi_client() -> AsyConnTime:
@@ -149,19 +92,17 @@ class _FakeRequest:
 
 
 # ---------------------------------------------------------------------------
-# Simulated endpoint handler - combines parse_cmd_request()+handle_set_cmd() exactly the way a real
-# sensortask-*.py route will (mirrors the real, existing /net/cmd "setNetwork" handler's shape:
-# one cmd, a fixed field list, one post_fct hook) - driven against mocked request data of varying
-# quality (fine/partial/garbage), without a real Microdot app or real sockets.
+# Simulated endpoint handler - combines parse_cmd_request() and handle_set_cmd() the way a real route does
+# (one cmd, a fixed field list, one post_fct hook), driven against mocked request data of varying quality
+# without a real Microdot app or real sockets.
 #
 # AsyConnTime owns one schema/cfgmgr for all of SSID/PW/Country/Hostname/LedWifiOn, but the real
-# registration (src/sensortask_wozi.py's own "networking" settings list) scopes them into two
-# separate SettingsGroup(conn, ...) entries - one for SSID/PW/Country/Hostname (with
-# post_fct=conn.reconnect_wifi), one for LedWifiOn alone (no post_fct) - passing the *whole* schema
-# as one group would let a LedWifiOn-only change spuriously fire reconnect_wifi(), and vice versa
-# let an SSID/PW/Country/Hostname change silently reach LedWifiOn's own group with no reconnect at
-# all. _wifi_field_schema() below mirrors that same per-group scoping locally, since this file
-# never imports src/sensortask_wozi.py itself (see its own module docstring).
+# registration scopes them into two separate SettingsGroup entries - one for the four with
+# post_fct=conn.reconnect_wifi, one for LedWifiOn alone with none.
+#
+# Passing the whole schema as one group would let a LedWifiOn-only change spuriously reconnect, and let the
+# others reach LedWifiOn's group with no reconnect at all. _wifi_field_schema() below mirrors that scoping
+# locally, this file never importing the generated device module.
 # ---------------------------------------------------------------------------
 
 
@@ -268,12 +209,12 @@ def test_mocked_request_empty_body_dict_is_valid_but_changes_nothing() -> None:
 
 
 # ---------------------------------------------------------------------------
-# setNetwork/setWiFiLED field scoping - regression coverage for the cross-route schema leakage risk
-# this pattern is designed to avoid: AsyConnTime owns one schema for both field groups, so passing
-# the *whole* schema to either route (instead of each route's own real subset, as
-# src/sensortask_wozi.py's two separate SettingsGroup(conn, ...) registrations do) would let
-# setNetwork accept/persist LedWifiOn (and spuriously reconnect for an LED-only change) and let
-# setWiFiLED silently accept/persist SSID/PW/Country/Hostname with no reconnect at all.
+# setNetwork/setWiFiLED field scoping - regression coverage for the cross-route schema leakage this pattern
+# avoids: AsyConnTime owns one schema for both field groups, so passing the whole schema to either route,
+# rather than that route's own subset, would blur them.
+#
+# setNetwork would then accept and persist LedWifiOn, reconnecting spuriously for an LED-only change, and
+# setWiFiLED would silently persist SSID/PW/Country/Hostname with no reconnect at all.
 # ---------------------------------------------------------------------------
 
 
@@ -328,12 +269,12 @@ def test_real_microdot_set_network_rejects_led_field_end_to_end() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Real ext/microdot.py (v2.6.2) end-to-end - a real Microdot() app with a real @app.put route,
-# dispatched through the library's own real dispatch_request() (routing, before/after-request
-# hooks, exception handling, dict->JSON Response coercion - see CLAUDE.md's "Microdot / REST
-# layer" section), driven with a real Request object rather than a mock. No real TCP socket is
-# opened - Request is constructed directly, the same shape Request.create() itself builds from a
-# socket stream, without needing one here.
+# Real ext/microdot.py (v2.6.2) end to end - a real Microdot() app with a real @app.put route, dispatched
+# through the library's own dispatch_request() (routing, before/after hooks, exception handling, dict->JSON
+# coercion - see CLAUDE.md's "Microdot / REST layer"), with a real Request object.
+#
+# No real TCP socket is opened: Request is constructed directly, in the same shape Request.create() builds
+# from a socket stream.
 # ---------------------------------------------------------------------------
 
 
@@ -425,22 +366,20 @@ def test_real_microdot_handler_raising_is_caught_by_microdots_own_blanket_catch(
 
 
 # ---------------------------------------------------------------------------
-# Real Microdot end-to-end with a real sensor driver (BMP3xx), not just the software-only WiFi/NTP
-# readers above - proves a genuine hardware/communication fault (a wedged I2C bus, the same failure
-# mode a disconnected/dead sensor produces) propagates all the way through _set_dict_cfg's push
-# callback, handle_set_cmd's envelope, and real Microdot dispatch as a per-field "Failed" status
-# inside a normal 200 JSON response - never as a raised exception or a bare Microdot 500. This is
-# the one place CLAUDE.md's "Microdot / REST layer" blanket-catch guarantee and SPECIFICATION.md Part C.4's
-# layer-3 "never raises" contract are proven to hold *together*, end-to-end, not just individually.
+# Real Microdot end to end with a real sensor driver (BMP3xx), not just the software-only readers above -
+# proving a genuine hardware fault (a wedged I2C bus, as a dead sensor produces) propagates through
+# _set_dict_cfg's push callback, handle_set_cmd's envelope and real dispatch as a per-field "Failed".
+#
+# Inside a normal 200 JSON response, never a raised exception or a bare Microdot 500. The one place
+# CLAUDE.md's blanket-catch guarantee and SPECIFICATION.md Part C.4's layer-3 "never raises" contract are
+# proven to hold together.
 # ---------------------------------------------------------------------------
 
 
 def _nak_i2c_address(i2c: I2C, address: int) -> None:
-    # Same real-fake-I2C access as test_asy_bmp3xx_driver.py's own fake() helper - i2c._i2c is
-    # typed I2C-or-None (only None before setup()/first use), so this narrows it the same way
-    # fake()'s own -> FakeI2C return annotation does, rather than an inline type: ignore at the
-    # call site (which mypy would flag as "union-attr", not "attr-defined", and is easy to get
-    # subtly wrong - confirmed directly by getting exactly that mismatch here first).
+    # Same real-fake-I2C access as test_asy_bmp3xx_driver.py's fake() helper - i2c._i2c is typed I2C-or-None
+    # (only None before setup()), so this narrows it the way fake()'s own return annotation does, rather
+    # than an inline type: ignore, which mypy would flag as "union-attr" and is easy to get subtly wrong.
     from machine import I2C as _FakeI2C
 
     real_i2c = i2c._i2c
@@ -486,20 +425,19 @@ def test_real_microdot_setter_end_to_end_i2c_bus_fault_surfaces_as_failed_not_50
     body = json.loads(res.body)
     assert body["res"] == "OK"  # the request itself was validly processed and dispatched
     assert body["result"] == {"PressOvers": "Failed"}
-    # base_classes.py's failed-push recovery chain corrects the persisted value back rather than
-    # leaving it at the requested-but-never-applied 8. This is a fresh reader with the bus dead
-    # from the start (no successful prior write, no getter registered), so the pre-write snapshot
-    # rung itself resolves to the schema default (1) - the fallback chain's last rung, complementing
-    # test_asy_bmp3xx_driver.py's own test which distinguishes the pre-write-snapshot rung from this
-    # one directly.
+    # base_classes.py's failed-push recovery chain corrects the persisted value back rather than leaving it
+    # at the requested-but-never-applied 8. This is a fresh reader with the bus dead from the start, so the
+    # pre-write snapshot rung resolves to the schema default (1), the chain's last rung.
+    #
+    # Complements test_asy_bmp3xx_driver.py's own test, which distinguishes the pre-write-snapshot rung from
+    # this one directly.
     assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 1}
 
 
 def test_real_microdot_setter_end_to_end_write_only_fault_recovers_via_live_getter() -> None:
-    # Same real dispatch path as the test above, but with a narrower, more realistic fault (the
-    # write half only, see _fault_i2c_write) that leaves the registered _get_callbacks getter
-    # functional - proving the getter rung actually resolves end to end through a real Microdot
-    # request, not just when synthetically driven at the base_classes.py/driver level.
+    # Same real dispatch path as the test above, but with a narrower, more realistic fault - the write half
+    # only - that leaves the registered getter functional, proving the getter rung resolves end to end
+    # through a real Microdot request, not only when driven synthetically at the driver level.
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
     reader = BMP3xx_Reader(i2c, address=0x77, cfg_path=_tmp_cfg_dir())
     run(reader.cfgmgr.setup())
@@ -564,12 +502,12 @@ def test_real_microdot_getter_end_to_end_reflects_a_prior_write() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Real Microdot end-to-end for AsyNtpClient's SETTER path. asy_ntp_client.py's own module
-# docstring claims "base_classes.py's generic _set_dict_cfg() already provides full setter support
-# with zero changes to this file (no self._push_callbacks entries registered)" - every field is
-# persist-only. That claim was only ever exercised at the _set_dict_cfg() level (the getter section
-# above, and test_asy_ntp_client.py's own tests); this proves it end to end through a real Microdot
-# route shaped exactly like the real /time/cmd handler, post_asy_fct=ntp_force_sync included.
+# Real Microdot end to end for AsyNtpClient's SETTER path. asy_ntp_client.py's module docstring claims
+# base_classes.py's generic _set_dict_cfg() gives full setter support with no changes to that file, every
+# field being persist-only.
+#
+# That claim was only ever exercised at the _set_dict_cfg() level; this proves it end to end through a real
+# route shaped exactly like the real handler, post_asy_fct=ntp_force_sync included.
 # ---------------------------------------------------------------------------
 
 
@@ -624,16 +562,21 @@ def test_real_microdot_ntp_setter_end_to_end_out_of_range_field_is_rejected_per_
 
 
 # ---------------------------------------------------------------------------
-# Real Microdot end-to-end for SGP40's own setter surface (the third and last _set_dict_cfg-backed
-# sensor route, alongside WiFi's and BMP3xx's above). SGPResetVOC is the interesting one: a
-# command-only, never-persisted trigger field (asy_sgp40_driver.py's _VAL_RESET) dispatched through
-# the very same generic path as an ordinary persisted field - only ever exercised by direct
-# _set_dict_cfg() calls in test_asy_sgp40_driver.py before this, never through a real route.
+# Real Microdot end to end for SGP40's setter surface, the third _set_dict_cfg-backed sensor route.
+# SGPResetVOC is the interesting one: a command-only, never-persisted trigger field dispatched through the
+# same generic path as an ordinary persisted field, only ever driven directly before this.
 # ---------------------------------------------------------------------------
 
 
-async def _sgp_comp_data() -> "list[int | float | None]":
-    return [25.0, 50.0]
+_SgpComp = namedtuple("_SgpComp", ("Temp", "Hum"))
+
+
+class _FakeCompSource:
+    # Structural stand-in for temperature_source/humidity_source (SPECIFICATION.md Part C.14,
+    # SPECIFICATION.md Part L.6.3) - only get_data() is exercised, matching
+    # test_asy_sgp40_driver.py's own identical fixture.
+    async def get_data(self) -> "Any":
+        return _SgpComp(25.0, 50.0)
 
 
 def make_sgp_reader() -> "tuple[SGP40_Reader, I2C]":
@@ -641,16 +584,24 @@ def make_sgp_reader() -> "tuple[SGP40_Reader, I2C]":
     # integration.py's make_sgp_reader(): a real SGP40_Reader over the real asy_i2c_driver.py I2C
     # wrapper, mocked only at tests/machine.py's raw-bus boundary.
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _sgp_comp_data, max_module_error=5, cfg_path=_tmp_cfg_dir())
+    comp = _FakeCompSource()
+    reader = SGP40_Reader(
+        i2c,
+        temperature_source=comp,
+        temperature_field="Temp",
+        humidity_source=comp,
+        humidity_field="Hum",
+        max_module_error=5,
+        cfg_path=_tmp_cfg_dir(),
+    )
     run(reader.cfgmgr.setup())
     return reader, i2c
 
 
 def _break_cfg_file(path: str) -> None:
-    # Replaces the config file with a directory of the same name, so ConfigManager.write_config()'s
-    # own open(path, "w") raises a real OSError (EISDIR) from the filesystem rather than a patched-in
-    # fake - the genuine "persistence layer is broken" fault, the SGP40 setter path's only real
-    # failure mode (see the fault test below for why an I2C fault isn't one).
+    # Replaces the config file with a directory of the same name, so write_config()'s own open(path, "w")
+    # raises a real OSError (EISDIR) from the filesystem rather than a patched-in fake - the genuine
+    # "persistence layer is broken" fault, and the SGP40 setter path's only real failure mode.
     os.remove(path)
     os.mkdir(path)
 
@@ -686,13 +637,13 @@ def test_real_microdot_sgp40_setter_end_to_end_reset_voc_round_trips() -> None:
 
 
 def test_real_microdot_sgp40_setter_end_to_end_i2c_bus_fault_still_succeeds_and_never_500s() -> None:
-    # Deliberate difference from the BMP3xx equivalent above, and worth stating explicitly rather
-    # than leaving as an untested assumption: SGP40's whole setter surface is bus-independent.
-    # BackupPeriod/BackupMaxAge/WaitTimeNTP are persist-only (no push callback at all), and
-    # SGPResetVOC's own push callback (_push_reset_voc -> reset_voc) only arms two in-RAM flags for
-    # read_loop() to act on later - no I2C transaction happens anywhere in the request path. So a
-    # genuinely dead bus (the same fault that makes BMP3xx report "Failed") must still produce a
-    # plain 200/"Valid" here, and must certainly never raise or surface as a bare Microdot 500.
+    # Deliberate difference from the BMP3xx equivalent above, worth stating rather than leaving as an
+    # untested assumption: SGP40's whole setter surface is bus-independent. Three fields are persist-only,
+    # and SGPResetVOC's push callback only arms two in-RAM flags for read_loop() to act on later.
+    #
+    # No I2C transaction happens anywhere in the request path, so a genuinely dead bus - the same fault that
+    # makes BMP3xx report "Failed" - must still produce a plain 200/"Valid", and certainly never a raise or
+    # a bare Microdot 500.
     reader, i2c = make_sgp_reader()
     _nak_i2c_address(i2c, 0x59)  # SGP40's own address stops acking, like a dead/disconnected sensor
     app = _sgp_app(reader)
@@ -706,12 +657,16 @@ def test_real_microdot_sgp40_setter_end_to_end_i2c_bus_fault_still_succeeds_and_
 
 
 def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_not_500() -> None:
-    # SGP40's real "Failed" path (see the bus-fault test above for why it isn't an I2C one): a
-    # broken persistence layer. ConfigManager.write_config() catches its own OSError and reports the
-    # whole write failed, so base_classes.py's _set_dict_cfg() marks every requested key "Failed" -
-    # including the never-persisted trigger field, which correctly does *not* fire its push callback
-    # off a failed write. Same assertion shape as the BMP3xx fault test: a normal 200 carrying
-    # per-field detail, not a raised exception and not a bare Microdot 500.
+    # SGP40's real broken-persistence-layer path, as opposed to the bus fault above. WP5 (SPECIFICATION.md
+    # Part F.2): write_config() no longer touches the filesystem inline - it validates and stages, then
+    # hands the open()/json.dump() to an independent task, decoupled from this request entirely.
+    #
+    # A broken persistence layer is therefore invisible to base_classes.py's "persisted" check: the response
+    # reports the ordinary Valid outcome, and the trigger field's push callback fires as it would on a
+    # healthy write, its correctness not depending on a disk write it is unrelated to.
+    #
+    # The fault only surfaces later, as a logged errno - never back through this response, and never as a
+    # raise or a bare Microdot 500.
     reader, _i2c = make_sgp_reader()
     _break_cfg_file(reader.cfgmgr.config_file)
     app = _sgp_app(reader)
@@ -720,123 +675,23 @@ def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_no
     assert res.status_code == 200
     body = json.loads(res.body)
     assert body["res"] == "OK"  # the request itself was validly processed and dispatched
-    assert body["result"] == {"BackupPeriod": "Failed", "SGPResetVOC": "Failed"}
-    assert reader.reset is False  # nothing was persisted, so nothing was pushed live either
-    assert run(reader.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 1}  # still the default
+    assert body["result"] == {"BackupPeriod": "Valid", "SGPResetVOC": "Valid"}
+    assert reader.reset is True  # pushed live regardless of the still-pending, doomed flash write
+    run(reader.cfgmgr.flush_pending())  # now the deferred flush actually runs, and fails (EISDIR)
+    assert run(reader.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 1}  # never made it to disk
 
 
 # ---------------------------------------------------------------------------
-# Real Microdot for the ISL's setters: a push that moves more than it names, and a repeatable trigger.
-# ---------------------------------------------------------------------------
-
-
-def make_isl_reader() -> "tuple[ISL29125_Reader, I2C]":
-    i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = ISL29125_Reader(i2c, 6, cfg_path=_tmp_cfg_dir())
-    run(reader.cfgmgr.setup())
-    return reader, i2c
-
-
-def _isl_app(reader: ISL29125_Reader) -> Microdot:
-    app = Microdot()
-
-    @app.put("/sensors/cmd")
-    async def sensor_cmd(request: Request) -> "ar.ResponseEnvelope":
-        data, err = ar.parse_cmd_request(request, ["setISL"])
-        if err is not None:
-            return err
-        assert data is not None
-        fields = {k: v for k, v in data.items() if k != "cmd"}
-        return await ar.handle_set_cmd(reader, fields, reader.get_cfg_schema())
-
-    return app
-
-
-def test_real_microdot_isl29125_setter_end_to_end_round_trips_a_software_knob() -> None:
-    reader, _i2c = make_isl_reader()
-    app = _isl_app(reader)
-    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "AutoRangeDwell": 30.0, "SampleInterv": 4})
-    res = run(app.dispatch_request(req))
-    assert res.status_code == 200
-    body = json.loads(res.body)
-    assert body["result"] == {"AutoRangeDwell": "Valid", "SampleInterv": "Valid"}
-    assert reader._ar_dwell_s == 30.0  # the live push really landed, not just the persisted value
-    assert run(reader.trigger_period.get_value()) == 4
-
-
-def test_real_microdot_isl29125_setter_end_to_end_moves_the_derived_down_point_too() -> None:
-    # One PUT, two pieces of live state: the stored threshold and the down point derived from it.
-    # Only the real route proves the derivation is not bypassed by the push path, which reaches
-    # the setter through _set_dict_cfg's callback rather than by calling it directly.
-    reader, _i2c = make_isl_reader()
-    app = _isl_app(reader)
-    before = reader._down_thresh()
-    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "AutoRangeThresh": 60.0})
-    res = run(app.dispatch_request(req))
-    assert res.status_code == 200
-    body = json.loads(res.body)
-    assert body["res"] == "OK"
-    assert body["result"] == {"AutoRangeThresh": "Valid"}
-    assert reader._ar_thresh == 60.0
-    assert reader._down_thresh() < before, "the derived down point has to follow the threshold down"
-    assert run(reader.cfgmgr.get_dict(["AutoRangeThresh"])) == {"AutoRangeThresh": 60.0}
-
-
-def test_real_microdot_isl29125_setter_end_to_end_rejects_an_out_of_band_threshold() -> None:
-    # "Invalid", not "Failed", and that distinction is the point: with the cross-field rule gone,
-    # every rejection here is a plain schema rejection, so an out-of-band value never reaches the
-    # driver. Still per-field detail, never a 500.
-    reader, _i2c = make_isl_reader()
-    app = _isl_app(reader)
-    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "AutoRangeThresh": 20.0})
-    res = run(app.dispatch_request(req))
-    assert res.status_code == 200
-    body = json.loads(res.body)
-    assert body["res"] == "OK"
-    assert body["result"] == {"AutoRangeThresh": "Invalid"}
-    assert reader._ar_thresh == 85.0  # unchanged
-    assert run(reader.cfgmgr.get_dict(["AutoRangeThresh"])) == {"AutoRangeThresh": 85.0}
-
-
-def test_real_microdot_isl29125_setter_end_to_end_calibrate_is_a_repeatable_trigger() -> None:
-    # SPECIFICATION.md Part C.5.2.1 obligation 3: a special-alone command field always reports
-    # Valid once the type check passes. Fired twice in a row, through the real route.
-    reader, _i2c = make_isl_reader()
-    app = _isl_app(reader)
-    for _ in range(2):
-        req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "ISLCalibrate": True})
-        res = run(app.dispatch_request(req))
-        assert res.status_code == 200
-        assert json.loads(res.body)["result"] == {"ISLCalibrate": "Valid"}
-    # Never persisted: get_dict() is all-or-nothing per key, so asking for it returns None.
-    assert run(reader.cfgmgr.get_dict(["ISLCalibrate"])) is None
-
-
-def test_real_microdot_isl29125_setter_end_to_end_bus_fault_surfaces_as_failed_not_500() -> None:
-    # Unlike the SGP40 above, this driver's hardware-backed fields really do touch the bus on the
-    # request path, so a dead sensor has to come back as per-field "Failed" rather than a raise.
-    reader, i2c = make_isl_reader()
-    _nak_i2c_address(i2c, 0x44)
-    app = _isl_app(reader)
-    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "IrCompAdjust": 55})
-    res = run(app.dispatch_request(req))
-    assert res.status_code == 200
-    body = json.loads(res.body)
-    assert body["res"] == "OK"
-    assert body["result"] == {"IrCompAdjust": "Failed"}
-
-
-# ---------------------------------------------------------------------------
-# Real Microdot end-to-end for SCD30's bespoke per-field REST wiring. Unlike every other sensor,
-# SCD30_Reader has no ConfigManager/local-cache surface at all - its parameters live on the
-# sensor's own NVM (see asy_scd30_driver.py's "No local default either" comment) - so its own real
-# `_set_dict_cfg()` drives each field through a hand-rolled (key, field, setter) dispatch dict
-# instead of a schema-backed cache read/write. That dispatch is reimplemented locally below rather
-# than imported, the same convention _wifi_field_schema() already follows in this file (see the
-# module docstring); only the three fields this file actually exercises are mirrored, not all
-# seven. Every SCD30 setter already returns bool and never raises (its own module docstring/
-# SPECIFICATION.md Part C), so the Valid/Failed mapping is a plain bool check - the try/except is
-# defense-in-depth against a future change to that contract, exactly as in the real file.
+# Real Microdot end to end for SCD30's bespoke per-field REST wiring. Unlike every other sensor,
+# SCD30_Reader has no ConfigManager or local-cache surface at all, its parameters living on the sensor's own
+# NVM, so its _set_dict_cfg() drives each field through a hand-rolled (key, field, setter) dispatch dict.
+#
+# That dispatch is reimplemented locally below rather than imported, the same convention
+# _wifi_field_schema() follows; only the three fields this file exercises are mirrored, not all seven.
+#
+# Every SCD30 setter already returns bool and never raises (SPECIFICATION.md Part C), so the Valid/Failed
+# mapping is a plain bool check - the try/except is defense in depth against a future change to that
+# contract, exactly as in the real file.
 # ---------------------------------------------------------------------------
 
 _FIELD_SCD_MEAS_INT: "cm.FieldSchema" = ("MeasInt", "int", 2, 2, 1800, None)
@@ -848,8 +703,8 @@ _FIELD_SCD_FORCE_CAL_REF: "cm.FieldSchema" = ("ForceCalRef", "int", 400, 400, 20
 def _scd_set_fields(
     reader: SCD30_Reader,
 ) -> "tuple[tuple[str, cm.FieldSchema, Callable[[Any], Coroutine[Any, Any, bool]]], ...]":
-    # Bound per reader instance (the real file builds this once against its one module-level
-    # scd_reader); iterated in a fixed order, which the one-shot bus fault below relies on.
+    # Bound per reader instance (the real generated module builds this once against its one
+    # module-level scd30); iterated in a fixed order, which the one-shot bus fault below relies on.
     return (
         ("MeasInt", _FIELD_SCD_MEAS_INT, reader.set_measurement_interval),
         ("AmbPres", _FIELD_SCD_AMB_PRES, reader.set_ambient_pressure),
@@ -941,10 +796,9 @@ def test_real_microdot_scd30_per_field_setter_end_to_end_applies_every_field() -
     body = json.loads(res.body)
     assert body["res"] == "OK"
     assert body["result"] == {"MeasInt": "Valid", "AmbPres": "Valid", "ForceCalRef": "Valid"}
-    # "Valid" alone would only prove the setter returned True - these confirm the real command
-    # frames reached the real bus, in the loop's own field order, each carrying its own value
-    # (command word + big-endian argument; the trailing CRC byte is already covered byte-for-byte
-    # against the Interface Description's worked examples in test_asy_scd30_driver.py).
+    # "Valid" alone would only prove the setter returned True - these confirm the real command frames
+    # reached the real bus, in the loop's own field order, each carrying its own value. The trailing CRC
+    # byte is already covered byte for byte against the Interface Description in test_asy_scd30_driver.py.
     writes = _scd_writes(reader)
     assert len(writes) == 3
     assert writes[0][:4] == b"\x46\x00\x00\x0a"  # 0x4600 set measurement interval = 10 s
@@ -980,11 +834,12 @@ def test_real_microdot_scd30_per_field_setter_end_to_end_out_of_range_field_neve
 
 
 def test_real_microdot_scd30_per_field_setter_end_to_end_bus_fault_surfaces_as_failed_not_500() -> None:
-    # SCD30's counterpart to the BMP3xx bus-fault test above, through the hand-rolled per-field loop
-    # instead of handle_set_cmd(): a genuine bus fault on one field must surface as that field's own
-    # "Failed" inside a normal 200 envelope - never a raised exception, never a bare Microdot 500 -
-    # while every other field in the same request still applies. The fault is one-shot, so it lands
-    # on MeasInt (the loop's first field) and leaves AmbPres' own write untouched.
+    # SCD30's counterpart to the BMP3xx bus-fault test above, through the hand-rolled per-field loop instead
+    # of handle_set_cmd(): a bus fault on one field must surface as that field's own "Failed" inside a
+    # normal 200 envelope, while every other field in the same request still applies.
+    #
+    # The fault is one-shot, so it lands on MeasInt, the loop's first field, and leaves AmbPres' write
+    # untouched.
     reader = make_scd_reader()
     _fault_next_i2c_write(reader, OSError(errno_mod.EIO, "no ACK on write"))
     app = _scd_app(reader)

@@ -29,10 +29,9 @@ def _pixel(driver: NeopixelDriver) -> "neopixel.NeoPixel":
 
 
 def make_driver(neopixel_freq: int = 100, led_overl_bri: int = 50, debug: "int | None" = None) -> NeopixelDriver:
-    # freq=100 (vs. the real 20 default) keeps every ramp's step count high enough (5 steps per
-    # direction at the t=0.1 floor) to observe mid-ramp state, while keeping real wall-clock ramp
-    # time short (~0.1s: 10 frames * 0.01s dt) - this file's tests drive real asyncio.sleep(), not a
-    # simulated clock, so keeping every ramp fast matters for suite runtime.
+    # freq=100, against the real 20 default, keeps every ramp's step count high enough - 5 per direction at
+    # the t=0.1 floor - to observe mid-ramp state while keeping real ramp time short. These tests drive real
+    # asyncio.sleep() rather than a simulated clock, so fast ramps matter for suite runtime.
     return NeopixelDriver(0, neopixel_freq=neopixel_freq, led_overl_bri=led_overl_bri, debug=debug)
 
 
@@ -347,15 +346,13 @@ def test_led_signal_returns_false_for_a_second_call_before_the_first_dispatches(
 
 
 def test_led_signal_returns_true_while_a_previous_request_is_already_animating() -> None:
-    # The "must NOT check .locked()" case: start_signal_lock is released again right after a
-    # request is queued (see request_signal()'s own body) - it is NOT the busy signal for an
-    # in-progress ramp. start_signal_event stays set for the ramp's whole real duration instead,
-    # and ext_start_signal (led_signal()'s own one-slot flag) is untouched by an internal request.
-    # A wrong implementation using start_signal_lock.locked() as led_signal()'s busy check would
-    # see it unlocked here and behave correctly by accident in this specific scenario, but would
-    # then wrongly ignore a second real external request already pending - this test instead pins
-    # down what the actual state looks like mid-ramp, so a future change can't silently start
-    # gating led_signal() on the wrong primitive.
+    # The "must NOT check .locked()" case: start_signal_lock is released again right after a request is
+    # queued, so it is not the busy signal for an in-progress ramp. start_signal_event stays set for the
+    # ramp's whole duration instead, and ext_start_signal is untouched by an internal request.
+    #
+    # An implementation using start_signal_lock.locked() as led_signal()'s busy check would see it unlocked
+    # here and be correct by accident, then wrongly ignore a second pending external request. This pins what
+    # the state looks like mid-ramp, so a change cannot silently gate on the wrong primitive.
     driver = make_driver()
 
     async def scenario() -> bool:
@@ -528,10 +525,9 @@ def test_in_memory_variant_works_without_fram() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _clamp_byte() - a real NeoPixel's __setitem__ writes straight into a bytearray and raises
-# ValueError for an out-of-range int (confirmed against micropython-lib's real neopixel.py source).
-# request_signal()/led_signal()/led_overl_bri are correctly-typed int/float (every caller is our own
-# code, not guarded against here) but can still legitimately be out-of-range or NaN/inf.
+# _clamp_byte() - a real NeoPixel's __setitem__ writes straight into a bytearray and raises ValueError for
+# an out-of-range int (confirmed against micropython-lib's real neopixel.py). The callers are correctly-
+# typed int/float, all being our own code, but can still legitimately be out-of-range or NaN.
 # ---------------------------------------------------------------------------
 
 

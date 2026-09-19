@@ -59,7 +59,7 @@ def make_chip(**kwargs: object) -> Isl29125Chip:
 
 
 def configure(chip: Isl29125Chip, config1: int, config2: int = 0x00, config3: int = 0x00) -> None:
-    # One 3-byte burst from 0x01, exactly the shape the driver's own _write_shadow() sends.
+    # One 3-byte burst from 0x01, exactly the shape the driver's own _write_shadow_locked() sends.
     chip.handle_writeto_mem(_ADDR_CONFIG1, bytes([config1, config2, config3]))
 
 

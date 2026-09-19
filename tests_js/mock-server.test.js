@@ -244,12 +244,9 @@ describe("installMockFetch", () => {
     });
 
     it("validates PUT /notification's PauseTime range like the real backend's _dispatch_notification_pause() and dispatches it to the live status value, not a stored setting", async () => {
-        // Real backend behavior this mirrors (src/asy_webserver_service.py's
-        // _dispatch_notification_pause()): PauseTime is a runtime action - range-checked 0-3600,
-        // never persisted to config storage, never reported "Unchanged", and its current value is
-        // read back from GET /status's notification.PauseTime, never GET /notification. Now reuses
-        // config_manager.py's own coerce_numeric() policy (SPECIFICATION.md Part A.8) - a
-        // fractional value is rejected outright, not truncated.
+        // Mirrors _dispatch_notification_pause(): PauseTime is a runtime action, checked
+        // 0-3600, never persisted or "Unchanged", read back from GET /status. It follows
+        // coerce_numeric(), so a fraction is rejected outright rather than truncated (Part A.8).
         uninstall = installMockFetch(DEFS, DATA);
 
         const tooLarge = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 3601 }) });
@@ -273,13 +270,9 @@ describe("installMockFetch", () => {
     });
 
     it("dispatches PUT /notification's lightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting", async () => {
-        // Real behavior this mirrors: "Invalid" only for a non-dict payload; every subfield
-        // missing, non-numeric, (for the int-typed r/g/b) fractional, or out-of-range is rejected
-        // via config_manager.py's coerce_numeric()/type_or_range_error() (SPECIFICATION.md Part
-        // A.8) and reported "Failed" (never "Invalid") - r/g/b/t's shared int/float coercion +
-        // range policy is now the same one every schema-backed field gets, matching legacy's own
-        // led_cmd() bounds (r/g/b 0-255, t 0.5-60.0) rather than the src/ backend's old
-        // silent-clamp/floor behavior.
+        // Mirrors the real behavior: "Invalid" only for a non-dict payload, while a missing,
+        // non-numeric, fractional or out-of-range subfield reports "Failed" through
+        // coerce_numeric() - legacy's led_cmd() bounds, not the old silent clamp (Part A.8).
         uninstall = installMockFetch(DEFS, DATA);
 
         const notADict = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: "not-a-dict" }) });

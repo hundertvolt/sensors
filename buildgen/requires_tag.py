@@ -1,0 +1,94 @@
+"""Parses driver-declared bus requirements from the `# @requires bus.<field><op><value>` comment
+tag placed at module level near `_WIRING`/`_VAL_*` (SPECIFICATION.md Part L.5) - a plain
+comment, never a real Python value, and never silently invisible (see tag_comments.py)."""
+
+import operator
+import re
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from buildgen.errors import BuildError
+from buildgen.tag_comments import KNOWN_TAGS, check_for_near_miss_tags, iter_comment_tokens
+
+# "#+" so a "## @requires ..." section-style comment is accepted rather than reported malformed.
+# The value may not begin with an operator character, so a truncated "bus.timeout>=" fails as a
+# malformed tag instead of silently re-splitting into op ">" and value "=".
+_SPECS = tuple(spec for spec in KNOWN_TAGS if spec.name == "requires")
+
+_TAG_RE = re.compile(r"#+\s*@requires\s+bus\.(?P<field>\w+)\s*(?P<op>>=|<=|==|!=|>|<)\s*(?P<value>[^\s<>=!]\S*)")
+
+_OPS: dict[str, Callable[[Any, Any], bool]] = {
+    ">=": operator.ge,
+    "<=": operator.le,
+    "==": operator.eq,
+    "!=": operator.ne,
+    ">": operator.gt,
+    "<": operator.lt,
+}
+
+
+@dataclass(frozen=True)
+class RequiresTag:
+    field: str
+    op: str
+    value: "int | float"
+    raw: str
+
+
+def _coerce(raw: str) -> "int | float":
+    try:
+        return int(raw)
+    except ValueError:
+        return float(raw)
+
+
+def parse_requires_tags(path: Path, device: str, instance_label: str) -> tuple[RequiresTag, ...]:
+    tokens = iter_comment_tokens(path, device, instance_label)
+    tags = []
+    exact_matches: set[tuple[int, int]] = set()
+    for tok in tokens:
+        m = _TAG_RE.fullmatch(tok.text.strip())
+        if m is None:
+            continue
+        exact_matches.add((tok.lineno, tok.col))
+        if tok.inside_block:
+            raise BuildError(
+                device,
+                f"{path}:{tok.lineno}: @requires tag must be at module level (see _WIRING/_VAL_*'s own placement), not inside a class/function body: {tok.text.strip()!r}",
+                instance=instance_label,
+            )
+        try:
+            value = _coerce(m.group("value"))
+        except ValueError:
+            raise BuildError(device, f"{path}:{tok.lineno}: malformed @requires value {m.group('value')!r}", instance=instance_label) from None
+        tags.append(RequiresTag(m.group("field"), m.group("op"), value, m.group(0).strip()))
+    check_for_near_miss_tags(tokens, path, device, instance_label, exact_matches, _SPECS)
+    return tuple(tags)
+
+
+def check_requires_tags(tags: "tuple[RequiresTag, ...]", bus_table: "dict[str, Any]", device: str, instance_label: str, bus_name: str) -> None:
+    for tag in tags:
+        actual = bus_table.get(tag.field)
+        if actual is None:
+            raise BuildError(device, f"bus.{bus_name} is missing field {tag.field!r}, required by {instance_label} ({tag.raw!r})", instance=instance_label, field=tag.field)
+        try:
+            satisfied = _OPS[tag.op](actual, tag.value)
+        except TypeError:
+            # A malformed TOML value must fail as a BuildError, not as a raw TypeError from the
+            # comparison: _check_bus_tables() validates only the bus fields it knows by name,
+            # not every field an @requires tag might name.
+            raise BuildError(
+                device,
+                f"bus.{bus_name}.{tag.field}={actual!r} is not comparable to {instance_label}'s requirement {tag.raw!r} (wrong type)",
+                instance=instance_label,
+                field=tag.field,
+            ) from None
+        if not satisfied:
+            raise BuildError(
+                device,
+                f"bus.{bus_name}.{tag.field}={actual!r} does not satisfy {instance_label}'s requirement {tag.raw!r}",
+                instance=instance_label,
+                field=tag.field,
+            )

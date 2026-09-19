@@ -7,20 +7,16 @@ import { commands } from "vitest/browser";
 import { afterAll, describe, expect, it } from "vitest";
 import wozi from "../html/definitions/wozi.json";
 import { formatFieldValue } from "../js/field-format.js";
-import { collectPutFieldCases } from "./_put_field_cases.js";
+import { collectPutFieldCases, shardPutFieldCases } from "./_put_field_cases.js";
 
 /** @typedef {import("./_put_field_cases.js").PutFieldCase} PutFieldCase */
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */
 
 const REAL_PATHS = /** @type {const} */ (["/sensors", "/networking", "/system", "/notification"]);
 
-// Three real, documented backend quirks where a field's GET readback never reflects a value that
-// was just applied - see SPECIFICATION.md Part H.7 for the full account (driver sources, the
-// digital-twin fake, and the confirmed js/mock-server.js divergence this exposed). ContMeas's own
-// remount value is `true` ("On"), matching its FieldDef `defaultValue` (SPECIFICATION.md Part
-// H.5/H.6) - the safe state legacy itself used as ContMeas's synthetic reference
-// (modules/sensortask-wozi.py's `data["ContMeas"] = True`), not a bare toggle's own
-// Boolean(undefined) fallback.
+// Three documented backend quirks where a field's GET readback never reflects what was just
+// applied; Part H.7 has the full account. ContMeas remounts as `true`, its FieldDef
+// defaultValue and the safe state legacy used, not a bare toggle's Boolean(undefined).
 /** @type {Record<string, unknown>} */
 const ALWAYS_REMOUNTS_AS = { ForceCalRef: 400, ContMeas: true, SGPResetVOC: false };
 
@@ -30,12 +26,9 @@ const ALWAYS_REMOUNTS_AS = { ForceCalRef: 400, ContMeas: true, SGPResetVOC: fals
 const CASE_TIMEOUT_MS = 15000;
 
 /**
- * True if `sectionKey`/`groupKey`'s own field list carries a `dispatch: true` field (js/render.js's
- * collectGroupBody() always resubmits one) - such a field keeps every Apply on that shared group
- * card a real round trip even when every other field is left at its own current/blank value, so a
- * resubmit-unchanged probe on any field in that group still gets a real "Valid"/"Unchanged" back.
- * Without a dispatch sibling, resubmitting an unchanged non-dispatch toggle/enum field is now
- * sparse-omitted (see below) - so this is what decides which of the two commands to use.
+ * True if this group carries a `dispatch: true` field, which collectGroupBody() always
+ * resubmits - keeping every Apply a real round trip, so a resubmit-unchanged probe still gets an
+ * answer. Without one the field is sparse-omitted, so this picks which command a case uses.
  * @param {SiteDefinitions} defs
  * @param {string} sectionKey
  * @param {string} groupKey
@@ -59,7 +52,10 @@ if (!boot.skipped) {
         systemConfig: real["/system"],
         notificationConfig: real["/notification"],
     });
-    CASES = collectPutFieldCases("wozi", /** @type {SiteDefinitions} */ (wozi), data);
+    // Sharded in CI only, via $PUT_MATRIX_SHARD relayed by startLiveMatrix(): this one file is
+    // 567s of the web tier's 578s, so parallel shards are what keep it clear of its own budget.
+    // Unset locally, so `npm test` and `npm run test:put-matrix` still run every case.
+    CASES = shardPutFieldCases(collectPutFieldCases("wozi", /** @type {SiteDefinitions} */ (wozi), data), boot.shard);
 }
 
 afterAll(async () => {
@@ -71,12 +67,9 @@ if (boot.skipped) {
 } else {
     describe.each(CASES)("live PUT $sectionKey/$groupKey/$field.key ($field.kind)", (testCase) => {
         const { sectionKey, groupKey, field } = testCase;
-        // Same fallback as js/definitions.js's resolveFieldValue(): a field with no real GET
-        // readback (testCase.currentValue undefined) may still declare a schema-level defaultValue
-        // as its safe synthetic baseline (ContMeas - SPECIFICATION.md Part H.5) - resolve it once
-        // here so every probe below (resubmit-unchanged gating, the toggle "opposite" state, the
-        // enum "every other option" list) reasons about the same effective current value the real
-        // UI does, not the raw possibly-undefined GET value alone.
+        // The same fallback resolveFieldValue() applies: a field with no GET readback may still
+        // declare a schema-level defaultValue as its baseline (Part H.5). Resolved once here so
+        // every probe below reasons about the value the real UI sees, not the raw GET one.
         let currentValue = testCase.currentValue === undefined ? field.defaultValue : testCase.currentValue;
 
         /**
@@ -90,10 +83,9 @@ if (boot.skipped) {
          * tolerance for this scenario.
          */
         async function applyAndExpectRendered(value, expectedStatus) {
-            // Same-view caption AND remount both reflect a real GET round-trip (js/render.js's
-            // onApplied() -> fetchOnce()) - so both need ALWAYS_REMOUNTS_AS's override for the three
-            // quirky fields (SPECIFICATION.md Part H.7). A toggle/enum's same-view state is local to the
-            // click instead (no in-place poll touches it), so raw `value` is still correct there.
+            // Caption and remount both come from a real GET round trip, so both need
+            // ALWAYS_REMOUNTS_AS's override for the three quirky fields (Part H.7). A toggle or
+            // enum's same-view state is local to the click, so raw `value` is right there.
             const expectedRemountValue = field.key in ALWAYS_REMOUNTS_AS ? ALWAYS_REMOUNTS_AS[field.key] : value;
 
             const applied = await commands.applyField({ sectionKey, groupKey, fieldKey: field.key, field, value, expectRenderedValue: expectedRemountValue });
@@ -136,21 +128,17 @@ if (boot.skipped) {
             }
         }
 
-        // An empty-string current value has no real "resubmit" gesture - typing nothing is
-        // indistinguishable from untouched under the sparse-PUT convention (SPECIFICATION.md Part H.4).
-        // A masked field (PW) has no real "resubmit its own current value" gesture either: its GET
-        // readback is always the fixed placeholder "********" (src/asy_wifi_service.py's own
-        // _mask_pw() overlay), never the real stored credential - resubmitting that placeholder
-        // isn't a no-op probe, it's a genuinely new (if coincidentally valid-length) password that
-        // the real backend would accept and persist, silently overwriting the twin's actual Wi-Fi
-        // credential and firing a real reconnect.
+        // An empty-string current value has no "resubmit" gesture: typing nothing is
+        // indistinguishable from untouched under the sparse-PUT convention (Part H.4).
+
+        // Nor does a masked field: PW reads back as the fixed "********" overlay, never the
+        // stored credential, so resubmitting it is not a no-op probe but a new password the
+        // backend would persist - overwriting the twin's real Wi-Fi credential mid-run.
         const resubmittable = currentValue !== undefined && !(field.kind === "string" && currentValue === "") && field.mask !== true;
         if (resubmittable) {
-            // A non-dispatch toggle/enum field is now sparse-omitted when resubmitted unchanged
-            // (js/render.js's collectGroupBody() fix) - no round trip fires unless a sibling field
-            // in the same group is dispatch-marked and keeps the shared card's Apply body non-empty
-            // regardless. number/string fields are unaffected either way: applyAndExpectRendered()
-            // always fills a real, non-blank value, so they were never sparse-omittable here.
+            // A non-dispatch toggle or enum resubmitted unchanged is sparse-omitted, so no round
+            // trip fires unless a dispatch sibling keeps the shared card's body non-empty.
+            // number/string are unaffected: applyAndExpectRendered() always fills a real value.
             const willRoundTrip =
                 field.kind === "number" ||
                 field.kind === "string" ||
@@ -280,11 +268,15 @@ if (boot.skipped) {
                 CASE_TIMEOUT_MS,
             );
 
-            it.each(validLengths.map((len) => "x".repeat(len)).filter((v) => v !== currentValue))(
+            // Parametrised over LENGTHS, not the generated strings: `%s` goes into the test
+            // name, from which vitest derives a screenshot filename - and NTP_Host's maxLength
+            // 1024 made that ENAMETOOLONG, wedging a run until the job's own cap killed it.
+            it.each(validLengths.filter((len) => "x".repeat(len) !== currentValue))(
                 "accepts a %s-char string (a valid value distributed across the length range), rendered correctly",
-                async (value) => {
-                    await applyAndExpectRendered(value, "Valid");
+                async (len) => {
+                    await applyAndExpectRendered("x".repeat(len), "Valid");
                 },
+                CASE_TIMEOUT_MS,
             );
         }
 

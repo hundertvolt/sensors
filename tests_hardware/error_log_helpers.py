@@ -8,9 +8,14 @@ from typing import Any
 
 import http_client
 
+# Above the server's own 15.0s outer_cap_s, not below it: a legitimate sweep can never exceed the
+# cap, and the 10.0s this used to be made a slow-but-legitimate reset read as a network fault. The
+# headroom absorbs real WiFi latency the loopback twin has none of. Measurements: BACKLOG item 24.
+_RESET_ERRORS_TIMEOUT_S = 30.0
+
 
 def reset_all_error_logs(dut_ip: str) -> None:
-    res = http_client.fetch(dut_ip, 80, "PUT", "/status", {"ResetErrors": True}, timeout_s=10.0)
+    res = http_client.fetch(dut_ip, 80, "PUT", "/status", {"ResetErrors": True}, timeout_s=_RESET_ERRORS_TIMEOUT_S)
     assert res.status_code == 200 and res.json().get("res") == "OK", f"failed to reset error logs via PUT /status: {res.status_code} {res.body!r}"
 
 

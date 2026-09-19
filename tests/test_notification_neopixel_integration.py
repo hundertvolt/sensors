@@ -4,7 +4,8 @@ Only tests/neopixel.py's fake write surface is mocked; overlay/arbitration, the 
 """
 
 import asyncio
-import os
+
+from _tmp_scratch import TmpScratch
 
 from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationCoordinator, NotificationSignal
@@ -35,63 +36,24 @@ async def _local_time() -> _FakeTime:
     return _FakeTime(12, 0)
 
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
+class _FakeSource:
+    # A controllable NotificationSignal producer (Part C.14.2): get_data() returns self, exposing exactly
+    # one attribute - whatever field name the caller configures - at a fixed value, matching every removed
+    # inline closure's own fixed-return shape.
+    def __init__(self, field: str, value: int) -> None:
+        setattr(self, field, value)
+
+    async def get_data(self) -> "_FakeSource":
+        return self
 
 
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("notify_neopixel_")
-
-
-def _remove_any(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        try:
-            os.rmdir(path)
-        except OSError:
-            pass
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("notify_neopixel")
 
 
 def _tmp_cfg_dir() -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    _next_dir += 1
-    path = _TMP_DIR + "/notify_neopixel_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass
-    _remove_any(path + "/config_NOTIFY.cfg")
-    return path + "/"
+    return _scratch.dir()
 
 
 def make_pair() -> "tuple[NeopixelDriver, NotificationCoordinator]":
@@ -120,10 +82,8 @@ async def _cancel_all(tasks: "list[asyncio.Task[None]]") -> None:
 def test_real_threshold_crossing_produces_an_actual_ramp_with_scaled_color() -> None:
     pixel, notify = make_pair()
 
-    async def get_value() -> int:
-        return 2000  # above the 1600 default threshold
-
-    signal = NotificationSignal("WarnCO2", get_value, (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
+    source = _FakeSource("WarnCO2", 2000)  # above the 1600 default threshold
+    signal = NotificationSignal("WarnCO2", source, "WarnCO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     notify.register(signal)
     notify.finalize()
     run(notify.cfgmgr.setup())
@@ -143,14 +103,12 @@ def test_real_threshold_crossing_produces_an_actual_ramp_with_scaled_color() -> 
 def test_multiple_simultaneous_crossings_produce_sequential_correctly_colored_ramps() -> None:
     pixel, notify = make_pair()
 
-    async def co2_value() -> int:
-        return 2000
-
-    async def voc_value() -> int:
-        return 400
-
-    co2 = NotificationSignal("WarnCO2", co2_value, (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
-    voc = NotificationSignal("WarnVOC", voc_value, (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
+    co2 = NotificationSignal(
+        "WarnCO2", _FakeSource("WarnCO2", 2000), "WarnCO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0),
+    )
+    voc = NotificationSignal(
+        "WarnVOC", _FakeSource("WarnVOC", 400), "WarnVOC", (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0),
+    )
     notify.register(co2)
     notify.register(voc)
     notify.finalize()
@@ -175,10 +133,8 @@ def test_multiple_simultaneous_crossings_produce_sequential_correctly_colored_ra
 def test_led_signal_during_notification_triggered_animation_is_queued_and_eventually_runs() -> None:
     pixel, notify = make_pair()
 
-    async def get_value() -> int:
-        return 2000
-
-    signal = NotificationSignal("WarnCO2", get_value, (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
+    source = _FakeSource("WarnCO2", 2000)
+    signal = NotificationSignal("WarnCO2", source, "WarnCO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     notify.register(signal)
     notify.finalize()
     run(notify.cfgmgr.setup())

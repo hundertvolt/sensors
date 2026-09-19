@@ -1,7 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020 Bryan Siepert for Adafruit Industries (original
-# adafruit_sgp40, CircuitPython) - restructured/rewritten for asyncio + MicroPython, see
-# THIRD_PARTY_LICENSES.md.
+# SPDX-FileCopyrightText: Copyright (c) 2020 Bryan Siepert for Adafruit Industries
 # SPDX-License-Identifier: MIT
+# From adafruit_sgp40, restructured for asyncio + MicroPython - see THIRD_PARTY_LICENSES.md.
 
 """Sensirion SGP40 VOC sensor driver: SGP40_I2C (chip protocol) and SGP40_Reader (async wrapper - trigger timer, read loop, error counting, config schema, FRAM backup/restore of voc_algorithm.py's VOCAlgorithm state).
 Same shape as asy_scd30_driver.py/asy_bmp3xx_driver.py (see SPECIFICATION.md Part C).
@@ -30,18 +29,23 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any
+    from typing import Any, Protocol
 
     from asy_fram_manager import AsyFramChunkTimestampedBuffer, AsyFramManager
     from asy_i2c_driver import I2C
     from print_log import ErrorLog
+
+    class _ValueSource(Protocol):
+        # Structural stand-in for temperature_source/humidity_source's producer (Part L.6.3): any
+        # *_Reader, or a `_Default*` fallback below, exposing the get_data() -> NamedTuple contract
+        # every driver already has (C.4.2). Same shape as asy_notification_service's _ValueSource.
+        async def get_data(self) -> "Any": ...
 
 # roughly the time how often the data written to the FRAM is verified.
 # less a data safety feature here but rather a check if communication and integrity is generally okay
 _FRAM_VERIFY_MINS = const(60)
 _MAX_NTP_WAITTIME = const(600)  # 600s = 10min
 _BACKUP_COUNTER_MAX = const(100000)  # see _check_storage()'s own note on the 86400s = 1 day margin
-_N_COMP_VALUES = const(2)  # the compensation callback's own [Temperature, Humidity] result shape
 _SELF_TEST_PASS = const(0xD4)  # datasheet Table 13, high byte only (the low byte is "ignore")
 
 _VAL_BP = const((("BackupPeriod", "int", 1, 0, 1440, None),))
@@ -54,22 +58,84 @@ _N_SETUP_CFG = const(2)  # value count of the _VAL_BP + _VAL_WT batch read below
 # from get_dict_cfg()'s own schema argument below - this key is never in ConfigManager's _cache.
 _VAL_RESET = const((("SGPResetVOC", "bool", None, None, None, True),))
 
+# @web-group section=sensors submitGroup=self label="SGP40 — VOC Index" submit=true
+# @web BackupPeriod section=sensors submitGroup=self label="VOC Index Backup Interval" unit="min" special:0="Backups off"
+# @web BackupMaxAge section=sensors submitGroup=self label="VOC Index Backup Max Age" unit="min" special:0="Use all found backups"
+# @web WaitTimeNTP section=sensors submitGroup=self label="VOC Index NTP Wait Time" unit="s" special:0="Never wait for NTP sync"
+# @web SGPResetVOC section=sensors submitGroup=self label="Reset VOC Index" description="Only 'On' has effect. Resets the VOC algorithm and deletes the current backup." dispatch=true
+
 _NAME = const("SGP40")
-# VOC/Raw/TS also doubles as the full result of a read (see _read_sgp/_store_sgp) - no separate
-# results type needed, unlike asy_scd30_driver.py's SCDResults, which carries derived fields SGP40
-# doesn't have.
-# Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
-# infer field names from a literal at the call site, not through a variable indirection.
+# VOC/Raw/TS doubles as a read's full result, so no separate results type is needed - unlike
+# SCDResults, which carries derived fields this driver has none of. Kept as a literal tuple, not
+# `_FIELDS`: mypy's namedtuple plugin infers field names only from a literal at the call site.
 SGP40 = namedtuple("SGP40", ("VOC", "Raw", "TS"))
 _FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields above
+
+# @web-group section=measurements submitGroup=self label="SGP40 — VOC Index"
+# @web VOC section=measurements submitGroup=self kind=readonly label="VOC Index"
+# @web Raw section=measurements submitGroup=self kind=readonly label="VOC Raw" unit="ticks"
+# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
+
+# This driver's live cross-instance dependencies (SPECIFICATION.md Parts C.14 and L.4): the optional
+# FRAM backup target, resolved to an already-constructed instance (fram_target maps to this driver's
+# own fram_storage= kwarg, for historical reasons - buildgen/buildspec.py), never a getter.
+
+# Temperature/humidity compensation used to be one whole-object comp_source fixed to SCD30_Reader;
+# Part L.6.3 generalized it into two independent per-value fields, each wireable from any instance
+# exposing a matching attribute name.
+
+# datasheets/sgp40/Sensirion_Gas_Sensors_Datasheet_SGP40.pdf Table 3: fSCL max 400 kHz. A
+# generator-checked build requirement, not a comment a TOML author must remember - a bus shared
+# with an SCD30 is additionally held to that sensor's stricter 100 kHz tag.
+# @requires bus.frequency<=400000
+# @wiring fram_target AsyFramManager fram_storage optional kwarg
+
+# Per-value measurement wiring (Part L.6.3): each field resolves independently in the same
+# {source, field} shape the warn_* fields use, matched by attribute name alone. Both are required,
+# so an SGP40 with no compensation data at all has to opt in explicitly through a `_Default*`.
+# @value-wiring temperature_source temperature_source temperature_field required
+# @value-wiring humidity_source humidity_source humidity_field required
+
+_ConstValue = namedtuple("_ConstValue", ("value",))
+
+
+class _DefaultTemperatureSource:
+    """§2's wiring-defaults mechanism, opted into via [instance.wiring].temperature_source =
+    {default = true, temperature = 25} - a constant compensation fallback when no live temperature
+    source is wired (SPECIFICATION.md Part L.6)."""
+
+    # 25 degC is not an arbitrary pick: it matches SGP40_I2C.measure_raw()'s own datasheet-documented
+    # default (Table 9), so a defaulted source and an unwired one compensate identically.
+    def __init__(self, temperature: float = 25) -> None:
+        self._data = _ConstValue(float(temperature))
+
+    # Every `_Default*` provider returns an object exposing exactly one attribute named "value" (a
+    # fixed contract, §10.1 item 1), so buildgen resolves a defaulted per-value field as (provider, "value").
+    async def get_data(self) -> "_ConstValue":
+        return self._data
+
+
+class _DefaultHumiditySource:
+    """Same mechanism as _DefaultTemperatureSource, for relative humidity - 50%RH matches
+    SGP40_I2C.measure_raw()'s own datasheet-documented default (Table 9)."""
+
+    def __init__(self, relative_humidity: float = 50) -> None:
+        self._data = _ConstValue(float(relative_humidity))
+
+    async def get_data(self) -> "_ConstValue":
+        return self._data
 
 
 class SGP40_Reader(SensorReaderConfig):
     def __init__(
         self,
         i2c: "I2C",
-        asy_comp_callback: "Callable[[], Coroutine[Any, Any, list[int | float | None]]]",
+        temperature_source: "_ValueSource",
+        temperature_field: str,
+        humidity_source: "_ValueSource",
+        humidity_field: str,
         max_module_error: int = 5,
+        name_ext: str = "",
         cfg_path: str = "",
         fram_storage: "AsyFramManager | None" = None,
         fram_ntp_callback: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
@@ -81,6 +147,7 @@ class SGP40_Reader(SensorReaderConfig):
             max_module_error,
             _NAME,
             _VAL_BP + _VAL_BMAX + _VAL_WT + _VAL_RESET,
+            name_ext=name_ext,
             cfg_path=cfg_path,
             fram=fram_storage,
             history_length=history_length,
@@ -97,7 +164,13 @@ class SGP40_Reader(SensorReaderConfig):
         # real values are always set by _init_sgp() before read_loop() ever reads these
         self.voc_init = 0
         self.voc_write = 0
-        self.comp_callback = asy_comp_callback  # expects [Temperature, Humidity]
+        # A direct reference to each producer's own concurrency-safe holder (its already
+        # _datalock-guarded get_data(), Part C.14/G.2), never a wrapping getter. The two may be the
+        # same instance - the common case, both off one SCD30 - or two different ones.
+        self.temperature_source = temperature_source
+        self.temperature_field = temperature_field
+        self.humidity_source = humidity_source
+        self.humidity_field = humidity_field
         if fram_storage is None or fram_ntp_callback is None:
             self.ts_storage = None
         else:
@@ -179,13 +252,26 @@ class SGP40_Reader(SensorReaderConfig):
                 if not self._reset_fram_cleared:
                     await self.pr.err_s("Error clearing FRAM!", errno=15)
 
-        try:  # caller-supplied callback, could legitimately misbehave
-            comp_data = await self.comp_callback()  # [Temperature, Humidity]
+        # Direct read of each producer's get_data() (Part C.14), resolved by attribute name like
+        # _check_one() does for warn_*. get_data() never raises, but the named field can be None -
+        # the producer has not measured yet, or its error streak gave up - which is expected input.
+
+        # Split the way _check_one() splits it: only get_data() itself raising, a real violation of
+        # its never-raises contract, is worth logging. A None field takes its own default and is
+        # never routed through float(), which would raise and be misreported as a read failure.
+        temp_val: int | float | None
+        hum_val: int | float | None
+        try:
+            temp_data = await self.temperature_source.get_data()
+            hum_data = await self.humidity_source.get_data()
         except Exception as e:
-            await self.pr.err_s("Compensation data callback failed:", e, errno=18)
-            comp_data = [None, None]
-        if len(comp_data) != _N_COMP_VALUES or comp_data[0] is None or comp_data[1] is None:
-            await self.pr.wrn_s("No compensation data available!", wrnno=14)
+            await self.pr.err_s("Compensation data read failed:", e, errno=18)
+            temp_val, hum_val = None, None
+        else:
+            temp_val = getattr(temp_data, self.temperature_field, None)
+            hum_val = getattr(hum_data, self.humidity_field, None)
+
+        if temp_val is None or hum_val is None:
             if deserialize:
                 self.pr.evt("Retrying initialization...")
                 self.voc_init = 1  # retry init if triggered and no compensation data is available
@@ -205,8 +291,11 @@ class SGP40_Reader(SensorReaderConfig):
                 serialized,
                 deserialized,
             ) = await self.sgp.measure_index_and_raw(
-                temperature=float(comp_data[0]),
-                relative_humidity=float(comp_data[1]),
+                # float(), not a plain narrowed value: these are known not-None here but not known
+                # numeric, so a non-numeric field from a caller-supplied source raises here like a
+                # genuine I2C fault and is caught below (errno=11) rather than escaping.
+                temperature=float(temp_val),
+                relative_humidity=float(hum_val),
                 reset=reset_for_measure,
                 buf=None if buf is None else buf.get_data_buf(),
                 serialize=serialize,
@@ -400,13 +489,13 @@ class SGP40_Reader(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data, _FIELDS)
+        return make_dict(data, _FIELDS, name=self.name)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         # Deliberately excludes _VAL_RESET (SGPResetVOC) - see that const's own comment: it's never
         # in cfgmgr's _cache (special-alone, not persisted), and ConfigManager.get_dict() is
         # all-or-nothing per requested key, so including it here would break this whole read.
-        return await self._get_dict_cfg(_NAME, _VAL_BP + _VAL_BMAX + _VAL_WT)
+        return await self._get_dict_cfg(self.name, _VAL_BP + _VAL_BMAX + _VAL_WT)
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()

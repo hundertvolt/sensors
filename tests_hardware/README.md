@@ -12,8 +12,8 @@ worth knowing before trusting a run's results.
 go-ahead first, given directly in that session's own conversation** - see CLAUDE.md's own hard rule
 on this. Once granted, this file has everything else needed: prerequisites below, environment
 variables, the critical safety facts folded into "Known assumptions and open findings" (the
-`--allow-flash-cycle`/long-soak/`--allow-neopixel-sweep` opt-in gates in "Running" below, the
-stage-6 permanent-WLAN-deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below).
+`--allow-flash-cycle`/long-soak opt-in gates in "Running" below, the stage-6 permanent-WLAN-
+deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below).
 
 ## Prerequisites
 
@@ -37,12 +37,30 @@ stage-6 permanent-WLAN-deactivation risk, `BENCH_AP_PASSWORD` handling in "Envir
    rebuild picotool on the real hardware session's own machine (or confirm the apt-packaged
    `picotool` there already has USB support - check for the same warning line) rather than assuming
    this session's cached build works.
+4. **The NeoPixel sweep rig** - only for `--allow-neopixel-sweep`, and not provisioned by any
+   `setup_toolchain.py` tier because it is physical, not software. The board's own WS2812 (GP18 on
+   this bench) has to be aimed at the ISL29125's window at a fixed, recorded distance, with ambient
+   light excluded (an enclosure or a darkened room). Two flash-tier tests depend on it -
+   `test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration` and
+   `test_isl29125_survives_recombined_realistic_lighting_scenarios` - and without the rig they fail
+   outright rather than mis-measuring, which is why both are opt-in and skip by default. Setting the
+   rig up and writing its geometry down is the manual tier's own
+   `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`; run that once, record the
+   distance here, and the automated pair becomes meaningful. They are also the suite's longest pair
+   at roughly ten minutes combined, so opting in is a deliberate choice about wall clock as well.
 
 ## Environment variables
 
 - `MPREMOTE_DEVICE` (or `--device` on any `pytest tests_hardware` invocation) - serial device path
-  for the flash-tier board. Defaults to `/dev/ttyACM0`, same convention as
-  `scripts/mpremote_connect.sh`.
+  for the flash-tier board. With neither set, `harness.resolve_board_device()` identifies the board
+  by USB vendor ID - `toolchain/setup_toolchain.py`'s own `detect_pico_serial_devices()`, so the two
+  cannot disagree - and returns its `/dev/serial/by-id/...` symlink, which is named by USB serial
+  number and so survives the re-enumeration a hard reset causes. Two boards attached is a hard error
+  naming both rather than a silent pick; none attached returns a path that cannot exist, so the
+  `board` fixture skips without mpremote opening some other device's port to find that out. Either
+  variable pins the path outright, and a pinned path is never re-resolved.
+  `scripts/mpremote_connect.sh` still defaults to `/dev/ttyACM0`, making it the one entry point a
+  re-enumeration can still strand - pass `MPREMOTE_DEVICE` there if the node has moved.
 - `BENCH_AP_PASSWORD` - **optional, not required for a normal run** (fixed 2026-09-08 - see
   BACKLOG.md open question 9 for the full incident this used to cause).
   `tests_hardware/bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values`
@@ -80,8 +98,20 @@ uv run pytest tests_hardware/flash --allow-multi-day-rollover-wait -k test_ticks
 # default - this genuinely re-flashes the board, see SPECIFICATION.md Part E.6.3):
 scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 
-# Add --allow-neopixel-sweep to also run the two ISL29125 light tests (skipped by default -
-# they need the NeoPixel rig physically set up, see "The ISL29125 NeoPixel light rig" below):
+# SCD30 NVM writes are off by default (flash wear on real hardware) - a plain run above spends zero
+# real SCD30 writes, and every SCD30-dependent bus-hazard test (routine or additional) deselects
+# cleanly. Add --allow-persistence-writes for the global permission (runs the routine group, one real
+# write for the whole session); add --allow-scd30-extra-write ON TOP of that (AND-gated, not a
+# substitute) to also run the one test that spends a SECOND real write (skipped/deselected by
+# default - same precedent as --allow-flash-cycle; see SPECIFICATION.md Part C.8's bus-hazard
+# promotion checklist and bus_concurrency_scd30_write_vs_siblings.py's own docstring):
+scripts/run_flash_hardware_suite.sh --allow-persistence-writes
+scripts/run_flash_hardware_suite.sh --allow-persistence-writes --allow-scd30-extra-write
+
+# The two long ISL29125 light programs need a PHYSICAL rig, not a permission: the on-board WS2812
+# aimed at the sensor's window at a fixed distance with ambient light excluded (see "The NeoPixel
+# sweep rig" below). Without it they FAIL rather than mis-measure, and they cost ~10 minutes when
+# they do run - so they are opt-in, and skip by default:
 scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep
 
 # Manual tests (interactive, prints instructions, waits for confirmation):
@@ -94,196 +124,120 @@ Both automated scripts are plain `uv run pytest` wrappers - any pytest flag work
 `-m role_reversal`, `-v`, `--tb=short`, ...). `--collect-only` works with nothing attached at all
 (every fixture skips cleanly, never errors, when the hardware it needs isn't reachable).
 
-## The ISL29125 NeoPixel light rig
+## The NeoPixel sweep rig
 
-`test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope` and
-`test_isl29125_survives_recombined_realistic_lighting_scenarios` are the only tests in this tier
-gated on physical geometry rather than on time or wear, which is why they share the
-`--allow-neopixel-sweep` flag and have their own `KNOWN_PERMANENT_SKIPS` entries in
-`scripts/_require_clean_hardware_run.sh` (so an expected skip does not read as a failure). A third
-script, `isl29125_autorange_sweep.py`, used to live here and was retired: it drove a moving LED
-ramp, which confounds the gain step with the light's own rise, and its one unique measurement now
-lives in the envelope test as two settled holds. What the rig needs:
+Two flash-tier tests are gated on physical geometry rather than on wear or wall clock -
+`test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration` and
+`test_isl29125_survives_recombined_realistic_lighting_scenarios`, both behind `--allow-neopixel-sweep`
+and both whitelisted in `scripts/_require_clean_hardware_run.sh` so an expected skip does not read as
+a failure. What the rig needs:
 
 - The dev board's own WS2812 (GP18) aimed at the ISL29125's window at a fixed, recorded distance -
-  close enough that a full-brightness white ramp drives the sensor through the 375 lx range's top
-  and into the 10000 lx range, so the sweep really crosses the switch point.
-- Ambient light excluded (an enclosure, or a darkened room). Ambient that already exceeds the low
-  range makes the whole ramp happen on the high range and the sweep fails with "only range N was
-  ever used", which is a rig problem, not a driver one.
-- Nothing else driving the pixel: the script goes through `request_signal()`'s real arbitration
-  path, and a notification signal landing mid-ramp is indistinguishable from a bad reading.
-- **Park the pixel dark before any isolated light-sensor run, and take an ambient baseline first.**
-  In a normal build the WS2812 is owned by the WiFi/notification signalling service, and a WS2812
-  *latches* its last value - so interrupting `main.py` into raw REPL (which every `mpremote run`
-  does) leaves the LED lit at whatever colour that service last wrote, frequently 100% white. That
-  is bright enough at this geometry to saturate the ISL29125's 375 lx range outright, and it looks
-  exactly like a sensor or driver fault rather than the rig. Found the hard way, 2026-09-12: a
-  register probe read 65444/65272/65323 on the low range and was briefly taken for a real
-  saturation finding; with the pixel explicitly written `(0, 0, 0)` first, the same bench reads
-  ~40 lx (10.7% of that range). The baseline is also the rig check proper - ambient that already
-  saturates the low range makes the whole sweep happen on the high range.
+  close enough that full-brightness white crosses the 375 lx range's top into the 10000 lx range.
+  Record the geometry through the manual tier's
+  `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`.
+- Ambient excluded (enclosure or darkened room). Ambient above the low range puts the whole run on
+  the high range and fails with "only range N was ever used" - a rig fault, not a driver one.
+- Nothing else driving the pixel: these scripts go through `request_signal()`'s real arbitration, and
+  a notification signal landing mid-scenario is indistinguishable from a bad reading.
 
-Everything it asserts is **relative** - continuity across the range switch, hysteresis (no
-chatter), hue/saturation invariance while the level ramps, and gain-ratio convergence. Absolute lux
-and CCT against a WS2812's three narrow emission lines are meaningless, so they are deliberately
-not checked anywhere; the reference-meter half lives in
-`tests_hardware/manual/manual_sensor_accuracy.py` instead, alongside the geometry record.
+Every assertion is **relative** - continuity across the switch, no chatter, hue/saturation invariance
+while the level moves, gain-ratio convergence. Absolute lux and CCT against a WS2812's three narrow
+emission lines are meaningless and are asserted nowhere; the reference-meter half is the manual
+tier's job. CLAUDE.md's FRAM rule applies in its sharpest form to every script here - see "A hardware
+run overwrites the production modules' FRAM chunks" below before treating any log as evidence.
 
-**Before running any ISL29125 device script**, CLAUDE.md's FRAM rule applies in its sharpest form:
-an isolated-driver script builds its own `AsyFramManager` over the same chip and the allocator is
-deterministic, so its first chunk *is* production's first chunk. Read the FRAM-persisted error logs
-first, and treat any log found afterwards as suspect unless you know what has been run against that
-board. The gain-ratio persistence check is deliberately a bench-tier REST test
-(`bench/test_rest_endpoints_over_sta.py`) rather than a device-script pair for exactly this reason.
+## ISL29125 bench-rig facts, before reading any result
 
-## ISL29125 bench-rig facts worth knowing before reading a result
+Each of these looks like a driver defect and is not:
 
-Three properties of this specific rig, all confirmed by the project owner or measured directly.
-None is a driver defect, and each one looks like one if you do not know it:
-
-- **The sensor can be covered or uncovered between runs.** Ambient at this bench measured ~40 lx
-  uncovered (10.7% of the 375 lx range); covered it is far lower. Any test comparing an absolute
-  reading taken before a cover change against one taken after will disagree for that reason alone -
-  which is why every assertion in these ISL tests is structural or relative, and why the
-  return-to-baseline check uses an LED-dominated level (~20) rather than ambient.
-- **The breakout board carries its own red LEDs**, so the red channel reads systematically a little
-  high relative to green and blue. Nothing here asserts channel equality or a specific hue, only
-  that the HSB triple stays in domain and coherent with RGB.
-- **An interrupted `main.py` leaves the WS2812 latched**, frequently at full white - see the sweep
-  rig section below. **Every ISL29125 device script must therefore park the pixel dark itself**
-  rather than assuming the bench is dark; they all do now. This is not cosmetic: it silently broke
-  `isl29125_real_irq_edge.py` on its first real run (2026-09-13). A latched-white pixel is ~2000 lx
-  at this geometry, which is a STATIC scene sitting comfortably inside the auto-range band - it
-  crosses no threshold, so no threshold interrupt fires, and the reader's first sample waits for
-  the periodic tick (30 s in that test) instead. The driver is correct; the test was depending on
-  an unstated rig condition. Measured both ways: latched white FAILs, parked dark PASSes in 0.60 s.
-- **The auto-range hysteresis band, measured on the covered rig (2026-09-12)**, in NeoPixel levels
-  at this geometry - needed by any test that wants to force, or deliberately avoid, a range switch:
+- **An interrupted `main.py` leaves the WS2812 latched**, often at full white (~2000 lx at this
+  geometry), because a WS2812 holds its last value and every `mpremote run` interrupts `main.py`.
+  Every ISL29125 script that reads light therefore parks the pixel dark itself and takes an ambient
+  baseline first. Found twice: a register probe read 65444/65272/65323 and was briefly taken for real
+  saturation (parked dark, the same bench reads ~40 lx, 10.7% of the low range); and
+  `isl29125_real_irq_edge.py` failed its first real run because latched white is a **static** scene -
+  it crosses no threshold, no interrupt fires, and the first sample waits for the 30 s periodic tick.
+  Parked dark it passes in 0.60 s.
+- **The sensor can be covered or uncovered between runs** (~40 lx uncovered here, far less covered),
+  so nothing compares an absolute reading across a cover change and the return-to-baseline check uses
+  an LED-dominated level rather than ambient.
+- **The breakout carries its own red LEDs**, so red reads systematically high against green and blue.
+  Nothing asserts channel equality or a specific hue, only that HSB stays in domain and coherent with
+  RGB.
+- **The auto-range hysteresis band**, measured covered at this geometry (2026-09-12), in NeoPixel
+  levels:
 
   | direction | low range (375 lx) holds | high range (10000 lx) takes over |
   |---|---|---|
   | rising | to level 6 (~197 lx) | from level 8 (~300 lx) |
   | falling | from level 2 (~76 lx) | to level 3 (~112 lx) |
 
-  So **levels 2-8 sit INSIDE the band and cannot force a switch in either direction**. The
-  decision itself lands in 500-800 ms at the derived `PRST = 2` (see the next section);
-  `isl29125_lighting_scenarios.py` nonetheless holds a level for 8 s before asserting on a switch,
-  which is deliberate margin over that latency, not an estimate of it. The band is geometry- and
-  cover-dependent: re-measure with that script's own levels if the rig changes.
+  **Levels 2-8 sit inside the band and cannot force a switch either way.** Re-measure if the rig or
+  the cover changes.
 
-## Writing a new device script: the three habits, and why
+## Which path decides a range switch
 
-A test depending on an unstated rig condition is this tier's recurring failure mode - six instances
-so far, every one found by running the test rather than by reading it, and every one of them passed
-first. The three habits that catch the class:
-
-- **Provide your own light** rather than trusting the bench state. `isl29125_plausibility_read.py`
-  passed while a preceding test happened to leave the pixel latched white, then failed once another
-  parked it dark - its own result depended on test ORDER, with the script itself unchanged.
-- **Restore or side-step every piece of shared state you touch** - light, config files, FRAM
-  chunks - so a script cannot decide a later one's result or corrupt production's. The envelope
-  script seeded `cfgmgr._cache` without calling `setup()`, so its `_set_dict_cfg()` calls wrote that
-  cache over the board's real `config_ISL29125.cfg`: six silent flash writes per run.
-- **Assert a minimum engagement beside every ceiling** - this must switch, both ranges must be
-  used - so a test cannot pass while the mechanism it targets never runs. A "no `W15`" check proved
-  nothing in a run making two switches when the warning needs five in a row, and an oscillation
-  scenario passed with `switches=0` because both its levels sat inside the hysteresis band.
-
-## Which path decides a range switch, and the rule that governs it
-
-Measured 2026-09-13, six forced crossings per setting: the chip cannot raise `RGBTHF` before
-`PRST` whole RGB cycles have passed (303 ms each at 16 bit), while the driver
-re-evaluates the same condition in software on every sample with no persistence requirement at
-all. **Whichever window is shorter decides every switch.**
+Measured 2026-09-13, six forced crossings per setting. The chip cannot raise `RGBTHF` before `PRST`
+whole RGB cycles have passed (303 ms each at 16 bit), while the driver re-checks the same condition
+in software every sample with no persistence requirement. **The shorter window decides every switch.**
 
 | `PRST` | window at 16 bit | against `SampleInterv = 1` | measured |
 |---|---|---|---|
-| 4 | 1212 ms | longer - software wins | 5 of 6 switches periodic-led, latency pinned at ~1000 ms |
+| 4 | 1212 ms | longer - software wins | 5 of 6 periodic-led, latency ~1000 ms |
 | 2 | 606 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 500-800 ms |
 | 1 | 303 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 200-613 ms |
 
-PRST is **derived** for exactly this reason and is no longer a config field at all
-(SPECIFICATION.md Part C.11.1.3): the driver picks the largest setting whose window still closes
-inside the sample interval. A device script setting its own `cfgmgr._cache` therefore cannot get
-this relationship wrong any more - there is nothing to seed. The dead-line detector remains, as
-`wrnno=13` (renumbered from 15 when the warning block was made contiguous), and has only one
-meaning: five range decisions in a row went to the periodic path, so the INT line itself looks
-dead. A script seeding `cfgmgr._cache` seeds `AutoRangeThresh` alone - `AutoRangeDown` and
-`AutoRangeSettle` are derived and fixed respectively, and are likewise no longer config fields.
+That is why the window is derived rather than configured (SPECIFICATION.md Part C.11.1.3), and why
+`wrnno=13` - five range decisions in a row taken by the periodic path - means the INT line looks dead
+rather than that a setting is wrong.
 
-## The ISL29125 mechanism envelope
+## What the two gated light tests prove
 
-`tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope`
-is the module's own "does everything actually work" proof, and it is deliberately **not** a
-calibration test - every assertion is structural or relative, and none depends on absolute lux
-being right. It drives the board's own NeoPixel through eight steady levels (ambient → hard
-saturation) and back down, using the **overlay** path (`pixel.led_overl_bri` + `on()`/`off()`), not
-a ramp: a ramp confounds a range-switch step with the light's own change, which on this rig moves
-at ~22%/s through the switch point.
+- **Mechanism envelope** (`isl29125_mechanism_envelope.py`, ~99 s of settles alone): eight steady
+  levels up and back down through the overlay path, never a ramp - a ramp confounds the range step
+  with the light's own change. One run proves a live read chain at every level, `Bri == max(R, G, B)`
+  with every field in domain, monotonic response across the envelope, both ranges used, hysteresis
+  with no chatter, the return to the low range, fixed-range pinning at both ends, 12-bit and 16-bit
+  agreeing on one static scene (which is what proves the `<< 4` normalisation), `ISLCalibrate`
+  starting a run without moving the applied ratio, `Overrange` true at full white (this rig really
+  does exceed 10000 lx at ~20 mm), no `W13`, and zero `E` entries.
+- **Lighting scenarios** (`isl29125_lighting_scenarios.py`, ~8.5 min of real segments): ten scenarios
+  recombining colour, slope shape, direction, start/end level, pauses and threshold proximity, driven
+  **raw** because `NeopixelDriver` offers only a steady white and a 0->peak->0 triangle. Two
+  cross-scenario invariants: the inter-sample gap stays at the sample interval (a stall means the read
+  chain died, not that the light moved slowly), and a return-to-baseline re-read after each scenario
+  catches a driver left wedged in a range.
 
-What one run proves: a live read chain at every level; `Bri == max(R, G, B)` and every field in
-domain; monotonic response across a 39 → 8900 lx envelope; both ranges used; hysteresis with no
-chatter (2 switches across a full up-and-down, against a ceiling of 4); the return to the low
-range; fixed-range pinning at both ends; 12-bit and 16-bit agreeing to <1% on one static scene
-(which is what proves the `<< 4` normalisation); `ISLCalibrate` starting a run without moving the
-applied ratio; the saturation detector firing at
-full white (`W12` - this rig really does exceed the 10000 lx range at ~20 mm); **no `W13`**, which
-is the driver's own "the interrupt may be dead" detector and therefore proves the INT line is
-carrying the range decisions rather than the periodic fallback silently doing the work; and zero
-`E`-type entries in the error log.
+## Writing a new device script: three habits
 
-It shares the `--allow-neopixel-sweep` gate with the sweep below - same physical prerequisite.
+A test depending on an unstated rig condition is this tier's recurring failure mode - six instances
+so far, every one found by running the test rather than reading it, and every one green first:
 
-## The ISL29125 lighting-scenario matrix
-
-`tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_survives_recombined_realistic_lighting_scenarios`
-is the resilience proof: ten scenarios recombining colour, slope shape, direction, start/end level,
-pauses and threshold proximity, all asserted structurally. It drives the pixel **raw** on purpose -
-`NeopixelDriver` offers a steady white (`led_overl_bri` + `on()`) and a 0->peak->0 triangle
-(`request_signal`), and neither can express an arbitrary start level, end level, pause, step or
-per-channel waveform. Nothing else contends for the pixel in an isolated run.
-
-Scenarios: slow sunrise and sunset (55 s full-range ramps), a medium dimmer ramp on a warm mixture
-starting and ending non-zero with a pause, fast bulb-style 1 s ramps, instantaneous flash steps
-between arbitrary levels and pure colours, an oscillation that crosses **both** band edges, a dwell
-that stays **inside** the band, a constant "ambient" blue under a moving "dynamic" red, a
-constant-level colour walk, and a mixed-mode scenario using every shape over overlapping
-sub-ranges. One run: 520 samples, 1.0-8930 lx combined, zero errors.
-
-**The design lesson, learned the hard way here - a ceiling alone is not a test.** The first version
-of this file asserted only `switches <= N` and passed with `threshold_oscillation: switches=0`: the
-levels had been picked against the *uncovered* rig and both sat inside the hysteresis band, so the
-mechanism under test never engaged and the ceiling was satisfied trivially. Every scenario now
-carries a **minimum** engagement expectation as well (`min_switches`, and a must-use-both-ranges
-flag), and the scenarios that must cross a band edge start with a dark pre-roll so their starting
-range is deterministic rather than inherited from the preceding baseline. The complementary pair is
-what actually proves the behaviour: `threshold_oscillation_crossing` must switch at least 4 times,
-and `hysteresis_band_dwell_no_chatter` must switch **exactly zero** times while the light moves
-between 111 and 226 lx. A future edit that makes either vacuous will be caught by the other.
-
-Two further invariants run across every scenario: the inter-sample gap stays at the ~1240 ms sample
-interval (a stall means the read chain died, not that the light moved slowly), and after each
-scenario a **return-to-baseline** check re-reads one fixed LED-dominated level and compares it with
-the reference taken at the start - that is what catches a driver left wedged in a range or in a
-stuck state, which no per-sample invariant would notice.
+- **Provide your own light.** `isl29125_plausibility_read.py` passed while a preceding test left the
+  pixel latched white, then failed once another parked it dark - its result depended on test ORDER,
+  with the script itself unchanged.
+- **Restore or side-step every piece of shared state you touch** - light, config files, FRAM chunks.
+  The envelope script once seeded `cfgmgr._cache` without calling `setup()`, so its `_set_dict_cfg()`
+  calls wrote that cache over the board's real `config_ISL29125.cfg`: six silent flash writes per run.
+- **Assert a minimum engagement beside every ceiling**, or a test passes while the mechanism it
+  targets never runs. A "no `W13`" check proves nothing in a run making two switches when the warning
+  needs five in a row, and an oscillation scenario passed with `switches=0` because both its levels
+  sat inside the band. Every scenario now carries `min_switches` and a must-use-both-ranges flag
+  beside its ceiling: `threshold_oscillation_crossing` must switch at least 4 times and
+  `hysteresis_band_dwell_no_chatter` exactly zero, so an edit making either vacuous fails the other.
 
 ## The ISL29125 mock-conformance probe
 
-`tests_hardware/flash/test_sensor_accuracy.py::test_the_isl29125_mock_answers_the_bus_exactly_as_the_real_chip_does`
-is the only test in this tier that checks the **digital twin** rather than the firmware: it runs
-`device_scripts/isl29125_mock_conformance_probe.py` against the real part, runs the identical file
-against `digital_twin/_isl29125_chip.py` under the Unix port, and diffs every protocol key. Needs
-no rig beyond the board (it takes ~20s) and is not gated behind any flag.
-
-Two things to know before trusting a failure. The probe talks **raw `machine.I2C` only**, so it
-needs nothing from `src/` on the board - it runs against stock firmware, and a `mpremote mount` is
-never required. And it needs the Unix port already built (`scripts/test.sh` once); it raises a
-clear `FileNotFoundError` naming the path rather than skipping if not.
-
-A failure here means the fake and the part disagree - decide which one is wrong from the datasheet
-**and** a fresh measurement, never from the fake. SPECIFICATION.md Part C.11.1 lists what the first
-real run found and why each item mattered.
+`test_isl29125_register_probe_matches_the_digital_twins_fake_chip` is the only test in this tier that
+checks the **digital twin** rather than the firmware: `device_scripts/isl29125_mock_conformance_probe.py`
+runs against the real part and then against `digital_twin/_isl29125_chip.py` under the Unix port, and
+every protocol key is diffed (`tests_hardware/isl29125_conformance.py` holds the shared expectation
+table). It talks raw `machine.I2C` only, so it needs nothing from `src/` on the board and no
+`mpremote mount`, and it needs the Unix port already built - it raises a `FileNotFoundError` naming
+the path rather than skipping. A failure means the fake and the part disagree: decide which is wrong
+from the datasheet **and** a fresh measurement, never from the fake (SPECIFICATION.md Part C.11.1
+lists what the first real run found).
 
 ## Known assumptions and open findings
 
@@ -292,34 +246,6 @@ started. Read them before trusting a run's results blindly - a failure in one of
 point at a flagged assumption being wrong, not at a real product bug. Resolved items are struck
 through, kept (not deleted) so a reader mid-investigation doesn't wonder whether something was ever
 a live question:
-
-- **An ISL29125 test asserts an EMPTY error log** - this note previously said the opposite, and the
-  rule inverted when the background learner was removed (2026-09-13). There is no schedule left to
-  race: a calibration run only happens when a user starts one, and a run that finds no usable scene
-  reports that by leaving `GainMeas` null rather than by warning. The `allowed_warnings=(13, 16)`
-  allowance that used to be required is worse than useless now: 16 no longer exists, and 13 has
-  since been REUSED by the renumbering (SPECIFICATION.md Part C.7.1) for the dead-line detector -
-  so that allowance would now wave through a live, meaningful warning. Use
-  `assert_module_error_log_empty()`.
-- **The ISL29125's gain ratio is a config value, not a FRAM one** (since 2026-09-13). Only a user
-  PUT changes it, so a test comparing it across a reboot is an ordinary config-persistence check
-  and needs no `RangeAuto` pinning - a calibration run cannot move it at all. A run publishes its
-  candidate as the `GainMeas` measurement instead, which is legitimately null until a stable pair
-  is measured, so assert its PRESENCE unless the rig's light is actually arranged.
-- **`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly` expects FRAM
-  entries, and clears them afterwards.** Three hard resets landing inside real SPI writes are
-  meant to tear some: `E31` (status-byte failure on the write side), `W71` (dual-copy recovery
-  reading block 1 - the mechanism working) and `W72` (a chunk that lost both copies). Settled as
-  acceptable degradation rather than a robustness gap (owner, 2026-09-13), so the test permits
-  exactly those three and still fails on anything else. It clears the FRAM log in its own
-  `finally`, so no sibling test has to know it ran.
-- **An interrupted flash-tier run can leave the Unix-port unit-test interpreter unusable.**
-  `test_env_tier_flash_recurring_run_is_idempotent` runs the full `setup_toolchain.py env --tier
-  flash`, which builds the Unix port twice (frozen-verification manifest, then a vanilla rebuild that
-  restores the real test rig). Killing the suite between those two leaves a binary with no frozen
-  `asyncio`, and `scripts/test.sh` only checks that the file is executable - so every `tests/test_*.py`
-  then dies with `ImportError: no module named 'asyncio'`, which looks like a code failure and is not
-  one. Recovery: `rm` the binary and re-run `scripts/test.sh`. BACKLOG.md item 30.
 
 - ~~The bench has never run MicroPython 1.29.0.~~ — **resolved (2026-09-11): it has, repeatedly.**
   Real `dev` firmware built from `src/` and flashed, with the flash, bench and mid soak tiers all
@@ -336,14 +262,6 @@ a live question:
   `"Task N ended with exception"` (chased down as real on 2026-09-11; it was test data). CLAUDE.md's
   "read the FRAM logs before clearing" rule assumes a board that has been running normally — check
   what was last run against this one first.
-- **The config files on the flash filesystem are the same hazard, except it is a real write, not
-  just a stale read.** An isolated-driver script seeds `cfgmgr._cache` directly and never calls
-  `cfgmgr.setup()`, so the manager keeps its default `config_<NAME>.cfg` filename — and any call
-  reaching `_set_dict_cfg()` runs a real `write_config()`, stamping that seeded cache over the
-  production file. `isl29125_mechanism_envelope.py` did exactly that until 2026-09-13, rewriting
-  `config_ISL29125.cfg` six times per run with no sign of it in the test output. A script that
-  pushes config therefore points `cfgmgr.config_file` at a `config_HWTEST_*.cfg` scratch name,
-  the convention `reboot_persist_write.py` already uses; do the same for any new one.
 - **The UART crossover coverage is 5 flash-tier tests and 3 bench-tier tests, all passing as part
   of the full sweep** (2026-09-12: `run_bench_hardware_suite.sh` → 96 passed, 2 known-permanent
   skips, 41 min, with the four SCD30-EEPROM-write tests deselected). Three of the flash tests and
@@ -566,8 +484,9 @@ a live question:
   and hanging forever. `scripts/run_flash_hardware_suite.sh`/`run_bench_hardware_suite.sh` are
   scoped to avoid this either way, but the naming is the structural backstop.
 - **Reusable real-hardware GC/fragmentation-instrumentation technique**: a temporary async probe
-  task added to `boot_entry/<device>_boot.py` (never committed - `git diff` confirmed clean after
-  reverting, real production firmware rebuilt+reflashed before finishing), printing a fixed-format
+  task added to the boot entry (`boot_entry/<device>_boot.py` at the time this was written; that
+  directory is retired now - SPECIFICATION.md Part L.4 - so add it to the staged `main.py`
+  a build produces, before flashing, and never commit the edit), printing a fixed-format
   line every N ms/every real event, captured via direct `pyserial` reads (`Board.tail_log()`, never
   `mpremote exec()` against a live system - that soft-resets it, wiping the very state being
   measured). Used for `gc.mem_free()` sampling + collection detection, real per-collection pause
@@ -843,37 +762,6 @@ ever attempting a real sensor read. Found independently in `bmp3xx_plausibility_
 `sgp40_fram_backup_restore.py`. Never call `cfgmgr.setup()` in such scripts - that performs a real
 littlefs file write/read.
 
-**DERIVE that cache from the driver's own schema; never hand-list the keys.** The one line to copy:
-
-```python
-reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}
-```
-
-then override only what the script deliberately varies, on the following lines. `cfg_schema` is a
-public attribute (`base_classes.py`, SPECIFICATION.md Part C.5.1) and the predicate keeps every
-field that has a default while skipping command-only entries, which have none (`ISLCalibrate`,
-`SGPResetVOC`). Keep it inline per script - `mpremote run` executes a single file and only frozen
-`src/` modules are importable, so a shared helper in `device_scripts/` would not resolve on the
-device (`isl29125_conformance.py` is host-side and is not a counter-example).
-
-This is not a style preference. A hand-listed cache silently desynchronises the moment a driver
-gains a config key: the batch read in `_init_*()` comes back short of its `_N_*_CFG` length check,
-init logs its "Error reading config data!" errno and returns False, and the read chain never starts
-- which presents as a **dead or unwired sensor**, not as a config problem. That cost three of the
-four `isl29125_*.py` scripts on 2026-09-14 when `GainRatio` joined the schema; all four now derive.
-
-**Still hand-listed, and therefore still exposed** (both verified in sync as of 2026-09-14, so this
-is latent risk rather than a live bug - convert whichever one its driver's schema changes first):
-
-| Script | Keys | Note |
-|---|---|---|
-| `bmp3xx_plausibility_read.py` | 8 | matches all 8 BMP3XX schema defaults |
-| `sgp40_fram_backup_restore.py` | 3 | the literal appears **twice** in the file (reader1 and reader2), doubling the drift surface |
-
-The two ISL29125 concurrency scripts, and the `_measure_*` half of `isl29125_real_irq_edge.py`,
-sidestep priming entirely by constructing the protocol layer (`ISL29125_I2C`) alone, which has no
-`cfgmgr` at all - the shape Part C.8 requires of any concurrency script touching persisted config.
-
 ## Sixth pass - the `dut_ip()` fixture's retry/recovery methodology, and other bench-harness findings
 
 `conftest.py`'s session-scoped `dut_ip()` fixture gates nearly every bench test, so its retry logic
@@ -972,3 +860,385 @@ wherever the console survives the step; `countdown()` is reserved for genuine po
 where it doesn't. `state_expected_outcome()` prints what "passed" should look like before the
 script's own verdict, for tests that end in a human visual/instrument check rather than a
 script-only assertion.
+
+## Seventh pass - cross-occupant write-vs-siblings real-hardware coverage (mock-tier gap closure)
+
+`tests/_bus_hazard_catalog.py`'s generic mock-tier scenario
+(`scenario_a_write_does_not_disturb_concurrent_sibling_reads`) surfaced a real gap once its own
+"same test bar as `src/`" audit was extended to the real-hardware tier: no existing flash-tier test
+proved a config WRITE from one dev/i2c1 occupant landing concurrently with its SIBLINGS' own reads -
+only same-device write-vs-own-read (`bus_concurrency_same_device_scd30.py`,
+`isl29125_same_device_rw_concurrency.py`) and the SGP40 general-call broadcast case
+(`sgp40_general_call_reset_hazard.py`, SCD30 sibling only, not ISL29125). Two new tests close this:
+
+- **`test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads`**
+  (`device_scripts/bus_concurrency_isl29125_write_vs_siblings.py`) - ISL29125's own `configure()` is
+  the writer (a volatile config register, no NVM-write-budget concern per FN8424 p7), repeated
+  `WRITE_CYCLES=8` times over a real multi-second window with SCD30 and SGP40 both reading
+  concurrently. Part of the routine group, no opt-in needed.
+- **`test_scd30_config_write_does_not_disturb_concurrent_sibling_reads`**
+  (`device_scripts/bus_concurrency_scd30_write_vs_siblings.py`) - the SCD30-as-writer half of the
+  same gap. SCD30's own `set_temperature_offset()` is a real NVM write, so this is deliberately
+  **not** part of the routine group: gated behind `@pytest.mark.persistence_write` +
+  `@pytest.mark.scd30_extra_write` / `--allow-persistence-writes` AND-gated with
+  `--allow-scd30-extra-write` (same precedent as `--allow-flash-cycle` - see the Eleventh pass
+  below for the full consolidated gating design), fires the one additional real write exactly once
+  per invocation, and must never be folded into the one routine write
+  `scd30_continuous_measurement_triggered` already spends for the whole flash-tier bus-hazard group
+  (SPECIFICATION.md Part C.8's own write-budget rule).
+
+**Honesty note - neither test has been run against real hardware yet.** Both were written and typed
+during a session with no real-hardware go-ahead (CLAUDE.md's own standing gate) and no ability to
+verify against the real bench Pi4/dev board - they pass `ruff`/`mypy` and follow the same structural
+conventions as every proven-on-hardware script in this directory (window-overlap interleaving proof,
+`RESULT: PASS/FAIL` line, `wdt.feed()` cadence, plausibility bounds), but that is not the same as a
+real run. Treat both as a first cut to be smoke-tested (and fixed if wrong) on the next real-hardware
+session, not as already-confirmed coverage - flagged here explicitly rather than left to look
+finished.
+
+## Eighth pass - full mock/twin-to-real-hardware scenario parity for dev's own topology, and flash-tier/bench-tier parity
+
+Follow-up direction (project owner): every generic mock/twin bus-hazard scenario type must have a
+real-hardware equivalent for whichever bus dev's own real wiring makes it applicable to (SCD30 stays
+under its write-budget restriction), and whatever gets added to the flash tier must also get a
+bench-tier counterpart - flash-tier bus-hazard coverage is always a subset of bench-tier coverage,
+never the other half.
+
+**The mock tier's timing-offset sweep, made explicit on real hardware, not just implicit in natural
+jitter**: the Seventh pass's own two new scripts originally relied on a fixed write cadence (ISL29125)
+or natural scheduling jitter alone to vary timing. `bus_concurrency_isl29125_write_vs_siblings.py` now
+cycles through a deliberately varied, explicit set of pre-write delays
+(`_WRITE_DELAYS_MS = (5, 15, 40, 80, 120)`, each exercised twice) instead of one fixed 30ms cadence -
+a designed spread of relative timings against the siblings' own read loops, not merely hoping
+uncontrolled jitter happens to cover a range. `bus_concurrency_scd30_write_vs_siblings.py` still fires
+at exactly ONE fixed offset (0.3s in) - the one-write budget makes a real multi-offset sweep
+structurally impossible there, not a design choice to skip it; its own docstring now says so
+explicitly rather than silently reading like an oversight. Real hardware still has no literal
+equivalent of the mock tier's `asyncio.sleep(0)`-count offset (a yield count means nothing against a
+real preemptible interpreter and real bus timing) - a real elapsed-time delay is the honest,
+tier-appropriate substitute.
+
+**Two real gaps closed in dev's own general-call/address-sweep coverage**, found by checking every
+mock-tier generic scenario type against what real hardware actually covers for dev's real topology
+(i2c0: BMP3xx alone; i2c1: SCD30+SGP40+ISL29125):
+
+- `sgp40_general_call_reset_hazard.py` used to run its concurrent-sibling check against SCD30 only,
+  even though ISL29125 is also a real, non-broadcasting sibling on the same bus (mirroring
+  `tests/_bus_hazard_catalog.py`'s own `scenario_general_call_does_not_disturb_concurrent_siblings`,
+  which runs against every non-broadcasting occupant, not just one). Now reads both concurrently
+  while SGP40's own `initialize()` fires its real general-call broadcast; the flash-tier test this
+  wraps was renamed to `test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_
+  transactions` to say so.
+- `bus_topology_autodetect_and_hazard_sweep.py`'s own `KNOWN_ADDRESSES` table had drifted out of
+  sync with the since-deleted `tests_hardware/bus_topology.py`'s own copy (that file's module
+  docstring stated the invariant; nothing enforced it, which is why it drifted) - it was missing ISL29125 (`0x44`) entirely, so the address sweep never probed/labeled
+  it and the lone-device self-hazard branch could never apply to it. Fixed: `ISL29125_I2C` support
+  added to both the address table and the self-hazard construction/read branch.
+  - Everything else in the mock tier's generic scenario set already had a real-hardware equivalent
+    for dev's own topology once this pass checked systematically: same-occupant write-vs-own-read
+    (per-driver same-device scripts, all three occupants), all-occupants-concurrent-reads
+    (`isl29125_cross_device_concurrency.py` already runs all three of i2c1's occupants at once), and
+    the "rogue general call against a lone occupant with no real broadcaster" case (i2c0's own
+    BMP3xx-alone bus) - the topology script's own self-hazard branch already covered this before this
+    pass, for whichever known device turns out to be the bus's sole occupant.
+
+**Flash-tier -> bench-tier parity**: added
+`test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load`
+(`tests_hardware/bench/test_bus_concurrency_under_api_load.py`) - the same ISL29125-writes-while-
+siblings-read hazard as the flash-tier test above, driven through the real HTTP/REST stack instead of
+the bare driver (`PUT /sensors {"ISL29125": {"Resolution": ...}}` alternating between both real valid
+settings, concurrent with `GET /sensors` hammering, with the board's original `Resolution` restored
+in a `finally` block - the same push/restore duty `test_sensor_config_push_over_real_hardware.py`'s
+own BMP3xx test already owes for a shared bench rig).
+
+**SCD30 has no bench-tier (or any REST-layer) counterpart, and this is structural, not a scope gap**:
+`asy_scd30_driver.py` registers zero `_push_callbacks` (already noted by
+`test_sensor_config_push_over_real_hardware.py`'s own comment) - there is no `PUT /sensors` field
+that could ever reach SCD30's own NVM write at all. The flash tier's own
+`bus_concurrency_scd30_write_vs_siblings.py` (gated behind both `--allow-persistence-writes` and
+`--allow-scd30-extra-write` - see the Eleventh pass below) is therefore the only real-hardware
+coverage this specific hazard can ever have, by construction of `src/` itself - recorded here
+rather than left as a silent asymmetry between the two tiers.
+
+Same honesty note as the Seventh pass: none of this pass's changes have been run against real
+hardware either (still no go-ahead this session) - `ruff`/`mypy` clean, structurally consistent with
+proven scripts, but unverified on silicon until a real bench session confirms it.
+
+## Ninth pass - auditing the flash-tier/bench-tier bus-hazard pairing itself, and a real miscoverage found
+
+Direct follow-up question: does *every* pre-existing flash-tier bus-hazard test (not just the ones
+this session added) actually have a bench-tier counterpart? Checking systematically found one
+genuine, surprising miscoverage plus two closeable gaps:
+
+- **SGP40's general-call hazard has ZERO real bench-tier coverage, despite `test_bus_concurrency_
+  under_api_load.py` appearing to exercise it.** Every one of that file's four tests already runs a
+  `sgp40_reset_trigger_worker()` PUTting `SGPResetVOC` concurrently with GET load - reasonable to
+  assume, from the name and the pattern, that this re-triggers the same general-call broadcast the
+  flash tier's `sgp40_general_call_reset_hazard.py` proves survives concurrent reads. **It does not.**
+  Read the real call chain directly: `reset_voc()` only sets a flag consumed by the next
+  `measure_index_and_raw(reset=True)` call, which calls `vocalgorithm_reset()` - a software-only VOC
+  algorithm reset. The real broadcast only ever fires from `SGP40_I2C._reset()`, itself only called
+  from `initialize()`, itself only ever invoked internally at driver setup/task-supervisor restart -
+  never through any `_push_callbacks`/REST field. There is currently no way to force this hazard on a
+  live, already-running system via REST at all - a bench test would need a real reboot mid-load,
+  which would confound the very load being measured. Documented as a structural exception (module
+  docstring, `test_bus_concurrency_under_api_load.py`) rather than left implied by the
+  superficially-similar-looking worker.
+- **SGP40 was never schema-sanity-checked in any bench GET worker at all** - `_schema_sanity_findings()`
+  checked SCD30/BMP3xx/ISL29125's own config fields but no SGP40 field, so a torn/corrupted VOC
+  reading under bench load would have gone completely undetected. Closed: checks `SGP40.VOC` against
+  the same `[0, 500]` bounds `sgp40_voc_algorithm_quality.py` already uses.
+- **BMP3xx's same-device write-vs-own-read had no bench-tier counterpart**, even though (unlike
+  SCD30) BMP3xx has real REST-pushable fields already exercised elsewhere
+  (`test_sensor_config_push_over_real_hardware.py`). Closed:
+  `test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load` - alternates
+  `PressOvers` between both real valid settings concurrently with this same sensor's own GET reads,
+  restoring the original value afterward.
+- **SCD30's own same-device write-vs-own-read** has the identical structural absence as its
+  write-vs-siblings hazard (zero `_push_callbacks`) - recorded as the same exception, not a second
+  one, right next to the existing note.
+
+Same honesty note again: the two new/closed items above are `ruff`/`mypy`-clean but unverified
+against real silicon this session.
+
+## Tenth pass - full test-suite sweep for tier/layering completeness and wrongly-trusted tests, beyond bus-hazard (project owner, 2026-09-15, BACKLOG.md HIGH PRIORITY item)
+
+Direct follow-up to the Ninth pass's own SGP40 miscoverage: is that failure mode (a test whose
+name/pattern matches a hazard but whose real call chain doesn't reach it) present anywhere else in
+the suite, and does E.6.6/E.6.1's tier-parity requirement hold outside the bus-hazard domain? Swept
+UART, WiFi/network/NTP/DNS, FRAM/memory/reboot/watchdog, and webserver/notification/config-push -
+each domain's own real call chains traced against the test files that claim to exercise them, not
+grepped for coverage. No second instance of the exact SGP40 bug (a real hardware trigger silently
+substituted with a software-only one) turned up, but several real tier-parity gaps did.
+
+**Fixed this pass:**
+
+- **`isl29125_plausibility_read.py` was a real, working, silicon-ready device script with no pytest
+  wrapper at all** - written during the ISL29125 promotion (PR #83) but never wired into
+  `test_sensor_accuracy.py`, so it never actually ran as part of this suite. Closed:
+  `test_isl29125_real_reading_is_within_datasheet_plausible_bounds`.
+- **ISL29125's entire real REST config-push surface had zero bench-tier coverage** - unlike SCD30
+  (explicitly excluded, zero `_push_callbacks`), ISL29125 has four hardware-backed, read-back-able
+  fields (`Resolution`/`Range`/`IrCompOffset`/`IrCompAdjust`) with no exclusion comment, suggesting
+  oversight rather than a decision. Closed:
+  `test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback` in
+  `test_sensor_config_push_over_real_hardware.py` - also pushes `RangeAuto: False` alongside `Range`,
+  since under real auto-ranging (the driver's own default) the chip's own range bit is the state
+  machine's choice, not the user's setting, and `_read_sensor_dict()` omits `Range` from a live
+  snapshot entirely rather than misreport it (`asy_isl29125_driver.py`'s own comment) - a real
+  readback of a pushed `Range` needs auto-ranging off first.
+- **FRAM's write-protect gate (`get_write_protected()`/`set_write_protected()`) had real flash-tier
+  coverage with its own bench-vs-flash split never written down anywhere**, unlike storage-pause
+  gating's own explicitly-documented split. Confirmed structural (E.6.6 exception 2: neither method
+  has a REST route at all, by grep) and now stated as such directly in `test_fram_storage.py`.
+- **`SystemService.start_and_check_tasks()`'s own real restart-a-dead-task mechanism had no
+  real-hardware test at all** - the exact recovery rung CLAUDE.md's memory-safety-discipline rule
+  leans on ("trust `system_service.py`'s task supervisor to restart a task that still dies"), proven
+  only at the mock/twin tiers. New: `device_scripts/system_service_restarts_a_real_dead_task.py` +
+  `tests_hardware/flash/test_task_supervisor.py`'s
+  `test_start_and_check_tasks_restarts_a_real_dead_task` - a starter that dies immediately, checked
+  called at least twice within one real `_TASK_CHECK_TIME` (2s) cycle. Deliberately stops at ~3.6s
+  real time (task_errors capped at 200): a task that dies immediately adds `_TASK_FAIL_INCREMENT`
+  (100) per cycle, and `_TASK_FAIL_MAX` (300) would otherwise trip a real reboot around the 4th
+  cycle (~7s) - not what this script is testing.
+- **`PUT /notification`'s `PauseTime` field was initially misjudged as an unfixable structural
+  exception during this pass (no GET /notification field reads it back) - wrong**: buildgen's own
+  generated `_notification_status()` puts a live `PauseTime` (`await notification.get_override_led()`)
+  into `GET /status`'s own `"notification"` section on every real device, the same real signal
+  `tests/test_digital_twin_sensortask_integration.py`'s own
+  `test_put_pause_time_round_trips_and_counts_down_over_real_http` already reads. Closed (once
+  found, not left as the wrong "exception"):
+  `test_notification_pause_time_push_counts_down_over_real_rest` in
+  `test_sensor_config_push_over_real_hardware.py` - proves the real `auto_led_override()` background
+  task actually decrements the pushed value to 0 on real hardware, not just that the PUT stuck.
+
+**Confirmed structural exceptions (no fix possible, recorded so the absence reads as a decision, not
+a gap):**
+
+- **`PUT /notification`'s `lightCmdLED` field has no bench-tier equivalent, and currently cannot** -
+  it drives the Neopixel directly, and WS2812 has no read protocol at all (the same reason its own
+  timing check is manual-only - see the Known assumptions entry above). Not fixable without a real
+  scope/logic-analyzer in the bench rig's own automated toolchain.
+- **Neopixel/WS2812 signal timing** - already a documented structural exception (Known assumptions
+  entry above); reconfirmed still accurate, not re-litigated.
+- **SCD30's real IRQ-pin edge and same-device write-vs-own-read** - already-documented structural
+  exceptions (zero `_push_callbacks`); reconfirmed, not re-litigated.
+
+**Named, not fixed this pass** (real, credible findings from the domain sweeps below, each requiring
+either a dedicated real-hardware session to get right or a project-owner decision this pass
+shouldn't make unilaterally - disclosed rather than silently dropped, per BACKLOG.md's own
+"resolved or migrated, never silently dropped" rule):
+
+- **UART's sharpest invariant (`asy_uart_driver.py`/`asy_uart_comm.py` may never block the loop -
+  CLAUDE.md) has its F.5.8 half real-hardware-tested only via a hand-rolled clamp, never the shipped
+  driver's own `ready()`/`_buffered()`.** `device_scripts/uart_read_never_blocks_the_loop.py`
+  deliberately uses raw `machine.UART` "so it stays true independently of how `asy_uart_driver` is
+  arranged internally" (its own docstring) - honest, not a wrongly-trusted test, but it means no
+  real-hardware run ever calls the actual shipped clamp. F.5.9 (idle poll rate) already has a
+  real-driver-object proof (`uart_idle_poll_rate.py`); F.5.8 needs the analogous script.
+- **Bench-tier UART traffic under load never issues a multi-chunk SET** - `UartLinkExerciser.
+  _exercise_loop()` only ever calls `uart_get(_CMD_BANNER)`, so "bench ⊇ flash" (E.6.1) doesn't hold
+  for the multi-chunk SET train the flash tier proves (`uart_crossover_exchange.py`). The exerciser
+  already has `_CMD_ECHO`/`_set_callback` wired for exactly this; wiring a periodic SET into the live
+  loop touches the real production exerciser, not just a test, so it's named here rather than done
+  blind.
+- **The mock-tier UART hazard catalog (~20 fault-injection scenarios: corruption, drop, truncate,
+  duplicate, receive-overrun, lost-final-ACK, peer-reset-mid-transaction, and more) has only two
+  real-hardware equivalents (silence, baud desync).** Plausibly a genuine E.6.6 structural exception
+  (no MITM device sits on the crossover jumper to corrupt/drop/duplicate real bytes) but - unlike the
+  SCD30/FRAM-write-protect precedents above - this was never actually written down as one anywhere,
+  and a hand-built corrupt frame via a second raw `machine.UART` write (the same technique the mock
+  tier's own `raw_frame()` helper uses in-process) is at least plausible. Needs someone with bench
+  access to actually try it before this can be closed either way.
+- **`BenchBridge.rotate_ap_password()` is built (real `nmcli`) but has zero call sites** - the bench
+  five-backend table (E.6.1) lists "credential rotation" as a real fault-injection capability the
+  harness supports, but no automated test or `manual/` script ever exercises it, so the documented
+  capability table currently overstates real coverage. Not attempted here deliberately: a botched
+  credential-rotation test on the shared bench rig's real AP risks exactly the kind of
+  destructive-network-change lockout CLAUDE.md's dead-man's-switch rule (Part B.13) exists for: this
+  needs a project-owner-reviewed design, not a blind first attempt.
+- **`_reboot()`'s own alarm-pool-exhaustion fallback (`_force_watchdog_starve = True`) is mock-only.**
+  The technique to exhaust a real alarm pool already exists on real hardware
+  (`fram_pause_unpause_and_gating.py`), so a flash-tier script is straightforward in principle - it
+  would deliberately trigger a real watchdog-starvation reset (safe, same shape as
+  `test_watchdog_starvation.py`), but getting the real timing right without a live board to verify
+  against is exactly the kind of thing worth doing in a dedicated real-hardware session rather than
+  blind.
+- **NOTIFY's own FRAM chunk has no hard-reset-recovery bench test**, unlike SGP40's
+  (`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`). Extending that
+  ~5-minute, 3-real-hard-reset test to a second FRAM-backed module needs first identifying NOTIFY's
+  own equivalent of `BackupTS` (an observable "a fresh write just completed" signal) - not confirmed
+  to exist yet, so left named rather than guessed at.
+
+**Confirmed clean, no fixes needed** (traced end-to-end, not just grep-counted): WiFi's real bench
+worker call chains (`ap_down`/`ap_up`, UDP block/redirect, `netem` fault injection, hotspot
+role-reversal, spoofed-NTP-source) all genuinely reach the real mechanism their names claim; the
+wedged-WiFi `isconnected()` backstop has real, automated bench coverage with real timing data
+(`test_network_resilience.py`), not just a one-off manual finding; UART's flash-tier fault-injection
+and idle-poll-rate scripts, and mock/twin/flash parity for the core happy-path and one-sided-silence
+scenarios, are all genuine; BMP3xx/SGP40's REST config-push is proven end-to-end via real
+GET-after-PUT readback; the bench mempause test and the flash/bench memory-stress split are both
+honestly and correctly scoped, not wrongly-trusted; SGP40's `SGPResetVOC` push is a thin test (it
+never asserts the reset's own effect) but says so in its own comment - not a new instance of the
+Ninth pass's bug, just worth naming.
+
+Same honesty note as every real-hardware addition in this file: the new/changed files above are
+`ruff`/`mypy`-clean but unverified against real silicon this session.
+
+## Persistence-write gating: one global flag plus an AND-gated extra flag
+
+**Standing design, project owner's own choice** (broadened from SCD30-only to all persistence,
+2026-09-17): every real write to a **limited-endurance** store is gated by two flags/markers,
+deliberately not one, in a strict hierarchy —
+- `--allow-persistence-writes`/`@pytest.mark.persistence_write` is the single **global** permission:
+  without it, no test spending a real limited-endurance write runs at all. That covers the routine
+  per-session SCD30 write `scd30_continuous_measurement_triggered` makes for the flash-tier
+  bus-hazard group (7 tests, directly or transitively), the two flash-tier reboot tests that write
+  real config through `ConfigManager.write_config()`, and every bench-tier test issuing a
+  config-persisting PUT.
+- `--allow-scd30-extra-write`/`@pytest.mark.scd30_extra_write` is a **narrower** opt-in, carried
+  ALONGSIDE `@pytest.mark.persistence_write` (never in place of it) on the one test that spends a second
+  write beyond the routine one. It is AND-gated with the global flag in code, not just by
+  convention — passing it alone, without `--allow-persistence-writes`, still deselects that test.
+
+**What the gate is about: the write a test OWNS, not one it is reached through** (project owner's
+clarification, 2026-09-18). A persisting write that *is* the thing under test is optional, and
+belongs behind the marker. A persisting write that is a **prerequisite** several other tests are
+reached through — `test_hotspot_role_reversal.py`'s `joined_hotspot` clearing the SSID to force
+hotspot mode (and restoring it in teardown), `conftest.py`'s `_recover_stale_dut_credentials()` —
+stays unmarked and allowed: gating it would deselect the tests it exists to enable, and those tests
+are not what spends the wear. So the choice the flag offers is "test everything and accept the
+higher write wear" versus "test everything that matters and keep wear as low as it can go" — never
+"spend zero". `tests_scripts/test_persistence_write_marker_completeness.py` pins the prerequisite
+set by name, so a new one has to be triaged against this rule rather than silently joining it.
+
+**What counts as a limited-endurance store**: the SCD30's own on-chip NVM, and the RP2040's flash
+filesystem — which every accepted *config-persisting* PUT writes through `config_manager.py`'s own
+`json.dump()`, so a REST write is a flash cycle, not just a network round trip. A **dispatch-only**
+PUT is deliberately outside the gate, because it is never persisted at all: `SystemCmd`,
+`PauseTime`, `lightCmdLED`, `ResetErrors`, plus any schema field carrying `dispatch=true` in its own
+`@web` tag (`SGPResetVOC`, `ISLCalibrate` today — derive that set from the tags, never from this
+list going stale). FRAM is **not** in scope: its endurance is effectively unbounded at this
+project's write rates.
+
+This shape exists because a real, unbypassable rule and a real, opt-in-only rarity are two
+different things: both stores have a finite write-wear budget, so it must be possible to run the
+full flash- and bench-tier suites (dozens of tests) without spending any write a test *owns* —
+that's the global flag's job. Separately, one specific test spends a second write beyond the
+routine one and stays behind its own narrower opt-in, since running the routine group should never
+implicitly commit to that extra write too. Both flags are skipped/deselected by default, matching
+every other opt-in real-hardware gate in this file.
+
+**Be precise about what a plain invocation costs**, since it is not zero and an earlier revision of
+this section said it was, two paragraphs after stating the rule that makes it false. A plain
+`scripts/run_flash_hardware_suite.sh` spends no real persistence write at all — every prerequisite
+writer named above is bench-only. A plain `scripts/run_bench_hardware_suite.sh` spends the
+prerequisite ones: `joined_hotspot`'s stage-0 `PUT {"SSID": ""}` and its stage-7 restore on every
+run that reaches the hotspot module, plus `_recover_stale_dut_credentials()`'s SSID/PW push on a run
+where the DUT cannot rejoin the bench AP. That is the deliberate cost of the owner's rule, not an
+oversight — gating them would deselect the dozen-odd tests they exist to enable.
+
+**Read the deselected count in the verdict.** Because the gate deselects at collection time rather
+than skipping per test, a gated run is invisible to every check in
+`scripts/_require_clean_hardware_run.sh` — so that script now names the count in its own OK line
+(13 of the bench tier's 73 tests, 9 of the flash tier's 51, as of this writing - measured by real
+`--collect-only` runs, not estimated). "Clean" there means
+"everything that ran, passed", not "everything ran".
+
+**Mechanism:**
+
+- `tests_hardware/conftest.py`'s `pytest_collection_modifyitems()` is the single deselection point:
+  it deselects every `persistence_write`-marked item when `--allow-persistence-writes` is absent, and every
+  additionally `scd30_extra_write`-marked item when `--allow-scd30-extra-write` is absent. No test
+  checks either flag inline. This matters beyond style: `scripts/_require_clean_hardware_run.sh`
+  fails a run on any *unexpected* `SKIPPED` test, and has no allowance for either SCD30 flag the way
+  it does for `--allow-flash-cycle`/`--soak-tier`/`--allow-multi-day-rollover-wait` — a plain
+  `scripts/run_flash_hardware_suite.sh` invocation (no extra flags) needs the SCD30 tests to
+  disappear from the run cleanly. Collection-time deselection reports as `N deselected` in pytest's
+  own summary line, never a per-test `SKIPPED`, so that script's grep never needs an entry for it.
+- Every test that depends on `scd30_continuous_measurement_triggered`, directly or transitively,
+  carries `@pytest.mark.persistence_write` — the 6 routine-group tests, plus two ISL29125-named tests
+  (`test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours`,
+  `test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads`) whose SCD30 leg also
+  depends on that fixture. Marker placement is derived from the fixture's real dependents, not from
+  which tests look SCD30-related by name.
+- `scd30_continuous_measurement_triggered` (`tests_hardware/flash/conftest.py`) raises loudly if
+  it is ever invoked without `--allow-persistence-writes`, as a backstop: correct marker placement on every
+  dependent test makes this unreachable via the collection-time deselection above, but a future test
+  that forgets the marker fails hard here instead of silently spending a real write.
+
+## WP4/Topic 6 - FRAM capacity check, real-hardware tier
+
+`test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build`
+(device script `fram_capacity_after_full_system_build.py`) closes the real-hardware leg of
+CLAUDE.md's implicit-FRAM-wiring rule's own capacity backstop: a shipped firmware asking for more
+FRAM than its own chip has must be a hard, automatic, pre-flash test failure, not a silent
+boot-time console print nobody's watching. Builds the real `dev` object graph
+(`sensortask_dev.build_system()`) on the real board, then checks that every module which should
+have inherited a real FRAM chunk (its own `pr`, plus its own `cfgmgr` where one exists) actually
+got one rather than silently degrading to RAM-only.
+
+**Deliberately not `fram.allocated_size <= fram.size`** - `AsyFramManager.get_chunk()` checks
+capacity *before* incrementing `allocated_size`, never after, so that comparison can never be
+false by construction and would be a tautology, not a check. A `None` chunk reference on a module
+that should have gotten one is the real, observable signal that capacity ran out; the mock-tier
+equivalent (`tests/_sensortask_scenarios.py`'s `fram_chunks_are_all_successfully_allocated_not_out_of_memory`,
+run for every real device) uses the same shape, and
+`tests/test_base_classes.py`'s `test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together`
+is the negative case proving it can actually fail.
+
+**mpremote-only by design (owner's own decision)**: no new `/status` field - this is a one-time,
+build-deterministic build-validity fact (`AsyFramManager` is a bump-pointer allocator with no
+deallocation, so "does everything fit" is fully decided once construction finishes, and stays true
+for that build's entire life), not live operational state a client needs to query.
+
+**Extended by WP3**: `_CANDIDATE_MODULE_NAMES` now also checks `uart_link_init`/`uart_link_resp` -
+`dev.toml`'s only two `uart_link` instances, both wired with `fram_target = "fram"` - so this same
+real-hardware check covers the UART crossover link's own errno/wrnno history getting a real chunk,
+not just the sensor/infra modules it already covered. `UartLinkExerciser`'s own `fram=`/`logger=`
+forwarding is otherwise covered by `tests/test_asy_uart_link_driver.py` (mock tier: functionality,
+the no-`fram=` regression, the allocation-failure fallback, the `logger=` reach-through, and a
+simulated-reboot roundtrip) and `tests/test_digital_twin_uart_link.py`'s
+`test_both_ends_get_their_own_real_fram_chunk` (twin tier) - real-hardware visibility through
+`/status` was already covered pre-WP3 by `tests_hardware/bench/test_uart_link_under_api_load.py`'s
+own `get_errcount()` calls, since that was never conditional on RAM-vs-FRAM backing.

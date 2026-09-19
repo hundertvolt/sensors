@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addoption("--device", default=None, help="Serial device path for the flash-tier board (default: $MPREMOTE_DEVICE or /dev/ttyACM0)")
+    parser.addoption("--device", default=None, help="Serial device path for the flash-tier board (default: $MPREMOTE_DEVICE, else the board's stable /dev/serial/by-id symlink - see harness.resolve_board_device())")
     parser.addoption(
         "--soak-tier",
         choices=sorted(SOAK_TIER_SECONDS),
@@ -42,17 +42,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Actually run @pytest.mark.flash_cycle tests (a deliberate re-provisioning flash - counts against the 'no extra flash cycles' constraint, never run as part of a routine pass). Skipped by default.",
     )
     parser.addoption(
-        "--allow-neopixel-sweep",
-        action="store_true",
-        default=False,
-        help=(
-            "Actually run @pytest.mark.neopixel_sweep tests - the ISL29125 auto-range sweep driven "
-            "by the board's own NeoPixel, which needs a physical geometry a routine bench run "
-            "cannot assume (the LED aimed at the sensor, ambient light excluded). Skipped by "
-            "default; see tests_hardware/README.md for the rig."
-        ),
-    )
-    parser.addoption(
         "--allow-multi-day-rollover-wait",
         action="store_true",
         default=False,
@@ -62,14 +51,85 @@ def pytest_addoption(parser: pytest.Parser) -> None:
             "deliberately its own separate flag, never bundled with --soak-tier. Skipped by default."
         ),
     )
+    parser.addoption(
+        "--allow-neopixel-sweep",
+        action="store_true",
+        default=False,
+        help=(
+            "Actually run @pytest.mark.neopixel_sweep tests - the two long ISL29125 light programs "
+            "that drive the board's own WS2812 and read the part back. They need a PHYSICAL rig the "
+            "bench does not have by default: the on-board NeoPixel aimed at the ISL29125's window at "
+            "a fixed distance with ambient light excluded (set up and recorded by the manual tier's "
+            "own isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry). Without that rig "
+            "they do not merely mis-measure, they fail - and they cost ~10 minutes of real light "
+            "programs when they do run. Spends no write of any kind, so it is its own flag rather "
+            "than a persistence one. Skipped by default."
+        ),
+    )
+    parser.addoption(
+        "--allow-persistence-writes",
+        action="store_true",
+        default=False,
+        help=(
+            "Global kill switch for ANY real limited-endurance persistence write - actually run "
+            "@pytest.mark.persistence_write tests. Covers every store with a finite write-wear "
+            "budget, not just one chip: the SCD30's own on-chip NVM, and the RP2040's flash "
+            "filesystem, which every accepted config-persisting PUT writes through "
+            "config_manager.py's own json.dump(). FRAM is deliberately NOT in scope - its endurance "
+            "is effectively unbounded for this project's write rates. Without this flag a run spends "
+            "no write that a test OWNS; it is not zero writes overall, because a persisting write "
+            "that is a shared PREREQUISITE (joined_hotspot clearing the SSID, "
+            "_recover_stale_dut_credentials()) stays unmarked and still runs - gating those would "
+            "deselect exactly the tests they exist to enable. Skipped by default. Every test that "
+            "owns one needs this flag, including the one further gated behind "
+            "--allow-scd30-extra-write below - this is the single flag that decides whether any "
+            "real persistence write happens, not one flag per test group."
+        ),
+    )
+    parser.addoption(
+        "--allow-scd30-extra-write",
+        action="store_true",
+        default=False,
+        help=(
+            "On top of --allow-persistence-writes, also run the one @pytest.mark.scd30_extra_write "
+            "test that spends a SECOND real NVM-persisted SCD30 write beyond the one routine "
+            "per-session write --allow-persistence-writes alone already permits (SPECIFICATION.md "
+            "Part C.8). Stays SCD30-specific, and stays AND-gated with the global flag - passing "
+            "this alone, without --allow-persistence-writes, still deselects the test. Skipped by default, "
+            "same precedent as --allow-flash-cycle: an explicit, rare, deliberately-opted-into "
+            "extra real write, never run as part of a routine pass."
+        ),
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "long_soak: real-hardware passive observation over one of three named duration tiers (short/mid/long) - skipped unless --soak-tier is passed; see scripts/run_bench_soak_tests.sh")
     config.addinivalue_line("markers", "multi_day_rollover: a real, fixed ~12.4-day wait, not tier-selectable - skipped unless --allow-multi-day-rollover-wait is passed")
     config.addinivalue_line("markers", "flash_cycle: a deliberate re-provisioning flash (counts against the 'no extra flash cycles' constraint), skipped unless --allow-flash-cycle is passed")
-    config.addinivalue_line("markers", "neopixel_sweep: needs the NeoPixel-aimed-at-the-ISL29125 rig physically set up (tests_hardware/README.md) - skipped unless --allow-neopixel-sweep is passed")
+    config.addinivalue_line("markers", "persistence_write: the TEST ITSELF spends a real limited-endurance write (SCD30 on-chip NVM, or the RP2040 flash filesystem behind any config-persisting PUT), directly or through a helper it drives - deselected unless --allow-persistence-writes is passed. A write that is a shared PREREQUISITE rather than the thing under test stays unmarked and allowed - see tests_hardware/README.md")
+    config.addinivalue_line("markers", "scd30_extra_write: a SECOND real NVM-persisted SCD30 write beyond the routine per-session one already spent by a persistence_write test - always carried alongside @pytest.mark.persistence_write on the same test, deselected unless BOTH --allow-persistence-writes AND --allow-scd30-extra-write are passed")
+    config.addinivalue_line("markers", "neopixel_sweep: needs the physical NeoPixel-aimed-at-the-ISL29125 rig (manual tier records its geometry) - skipped unless --allow-neopixel-sweep is passed; ~10 minutes of real light programs when it runs, and a hard failure rather than a soft one without the rig")
     config.addinivalue_line("markers", "role_reversal: bench radio temporarily stops hosting br0-wifi-ap to join the DUT's own hotspot - informational marker, not skip-gated")
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Central deselection point for every real limited-endurance persistence write. AND-gates
+    scd30_extra_write on top of persistence_write: the global flag alone decides whether any such
+    write happens, and --allow-scd30-extra-write only narrows further, for SCD30's second write."""
+    allow_writes = config.getoption("--allow-persistence-writes")
+    allow_extra_write = config.getoption("--allow-scd30-extra-write")
+    kept: list[pytest.Item] = []
+    deselected: list[pytest.Item] = []
+    for item in items:
+        lacks_write_permission = item.get_closest_marker("persistence_write") is not None and not allow_writes
+        lacks_extra_write_permission = item.get_closest_marker("scd30_extra_write") is not None and not allow_extra_write
+        if lacks_write_permission or lacks_extra_write_permission:
+            deselected.append(item)
+        else:
+            kept.append(item)
+    if deselected:
+        items[:] = kept
+        config.hook.pytest_deselected(items=deselected)
 
 
 @pytest.fixture(scope="session")
@@ -97,21 +157,33 @@ def bench(board: Board) -> Iterator[BenchBridge]:
     yield bridge
 
 
-_DUT_DEFAULT_HOSTNAME = "SensorNode"  # src/asy_wifi_service.py's _VAL_HOST schema default - this bench's own DUT has never been reconfigured with a different one (dev_legacy/README.md's "Current bench state")
-_DUT_HOTSPOT_PASSWORD = "12345678"  # hardcoded in src/asy_wifi_service.py's _configure_hotspot_ap() - same value as test_hotspot_role_reversal.py's own _HOTSPOT_PASSWORD
+# The DUT's hotspot SSID is its Hostname config value, whose DEFAULT a build injects from
+# devices/<device>.toml since 2026-09-18 - so a board with an older config file still answers to
+# the persisted "SensorNode". Both are live; newest first, so a fresh board is found first.
+_DUT_HOSTNAME_CANDIDATES = ("SensorStationDev", "SensorNode")
+_DUT_HOTSPOT_PASSWORD = "12345678"  # src/asy_wifi_service.py's _VAL_HOTSPOT_PW default, which every devices/*.toml also declares - same value as test_hotspot_role_reversal.py's own _HOTSPOT_PASSWORD
 
 
 def _recover_stale_dut_credentials(bench: BenchBridge) -> None:
     """Last-resort recovery for dut_ip(): if the DUT can't join the bench AP after two hard_reset()
     retries, stale stored WiFi credentials are the likely cause - joins the DUT's own hotspot
     fallback and PUTs the bench AP's current credentials to it (see tests_hardware/README.md)."""
+    found: list[str] = []
+
+    def _any_candidate_visible() -> bool:
+        for ssid in _DUT_HOSTNAME_CANDIDATES:
+            if bench.is_ssid_visible(ssid):
+                found.append(ssid)
+                return True
+        return False
+
     wait_until(
-        lambda: bench.is_ssid_visible(_DUT_DEFAULT_HOSTNAME),
+        _any_candidate_visible,
         timeout_s=30.0,
         poll_interval_s=2.0,
-        description=f"DUT's own hotspot ({_DUT_DEFAULT_HOSTNAME!r}) to become scannable during automatic stale-credential recovery",
+        description=f"DUT's own hotspot (one of {list(_DUT_HOSTNAME_CANDIDATES)}) to become scannable during automatic stale-credential recovery",
     )
-    bench.join_dut_hotspot(_DUT_DEFAULT_HOSTNAME, _DUT_HOTSPOT_PASSWORD, timeout_s=45.0)
+    bench.join_dut_hotspot(found[0], _DUT_HOTSPOT_PASSWORD, timeout_s=45.0)
     try:
         gateway = bench.gateway_ip()
         ssid = bench.ap_ssid()

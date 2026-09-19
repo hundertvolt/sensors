@@ -74,7 +74,7 @@ _MAX_TRIGGER_SECS = const(3600)
 _VAL_SI = const((("SampleInterv", "int", 2, _MIN_TRIGGER_SECS, _MAX_TRIGGER_SECS, None),))
 # PressOvers/TempOvers/FiltCoeff are genuine discrete allowed-value sets, not continuous ranges -
 # a plain min/max (the old shape) wrongly accepted e.g. PressOvers=20, which _set_osr_setting()
-# would then reject at the hardware layer (see BACKLOG.md's architecture-review note, now closed).
+# would then reject at the hardware layer - validation belongs in the schema, not on the wire.
 _VAL_POV = const((("PressOvers", "int", 1, None, None, _OSR_SETTINGS),))
 _VAL_TOV = const((("TempOvers", "int", 1, None, None, _OSR_SETTINGS),))
 _VAL_FC = const((("FiltCoeff", "int", 0, None, None, _IIR_SETTINGS),))
@@ -86,11 +86,38 @@ _VAL_ATM = const((("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None),))
 _N_INT_CFG = const(4)  # SampleInterv + PressOvers + TempOvers + FiltCoeff
 _N_FLOAT_CFG = const(4)  # PressOffset + TempOffset + SeaLevelOffs + MeanAtmTemp
 
+# @web-group section=sensors submitGroup=self label="BMP388 — Pressure, Temperature" submit=true
+# @web SampleInterv section=sensors submitGroup=self label="Measurement Interval" unit="s"
+# @web PressOvers section=sensors submitGroup=self label="Pressure Oversampling" special:1="×1" special:2="×2" special:4="×4" special:8="×8" special:16="×16" special:32="×32"
+# @web TempOvers section=sensors submitGroup=self label="Temperature Oversampling" special:1="×1" special:2="×2" special:4="×4" special:8="×8" special:16="×16" special:32="×32"
+# @web FiltCoeff section=sensors submitGroup=self label="Filter Coefficient" description="First-order IIR lowpass filter coefficient." special:0="Off" special:1="1" special:3="3" special:7="7" special:15="15" special:31="31" special:63="63" special:127="127"
+# @web PressOffset section=sensors submitGroup=self label="Pressure Offset" unit="hPa"
+# @web TempOffset section=sensors submitGroup=self label="Temperature Offset" unit="K"
+# @web SeaLevelOffs section=sensors submitGroup=self label="Sensor Sea Level Offset" unit="m"
+# @web MeanAtmTemp section=sensors submitGroup=self label="Mean Atmospheric Temperature" unit="°C"
+
 _NAME = const("BMP3XX")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
 # infer field names from a literal at the call site, not through a variable indirection.
 BMP3XX = namedtuple("BMP3XX", ("Pres", "Temp", "SLPres", "TS"))
 _FIELDS = const(("Pres", "Temp", "SLPres", "TS"))  # kept in sync with BMP3XX's own fields above
+
+# @web-group section=measurements submitGroup=self label="BMP388 — Pressure, Temperature"
+# @web Pres section=measurements submitGroup=self kind=readonly label="Pressure" unit="hPa"
+# @web Temp section=measurements submitGroup=self kind=readonly label="Temperature" unit="°C"
+# @web SLPres section=measurements submitGroup=self kind=readonly label="Sea Level Pressure" unit="hPa"
+# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
+
+# This driver's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
+# FRAM backup target, resolved by buildgen/ (SPECIFICATION.md Part L.4) to an
+# already-constructed instance, passed directly as this driver's own fram= kwarg.
+# @wiring fram_target AsyFramManager fram optional kwarg
+
+# Driver-declared value domains (SPECIFICATION.md Part L.6.4), read by buildgen/limits.py from the
+# tags below - bounds kept in sync with _MIN/_MAX_TRIGGER_SECS by hand, since a comment cannot
+# reference a name. BMP388/390's SDO pin selects the address: exactly 0x76 (low) or 0x77 (high).
+# @limits address in {0x76, 0x77}
+# @limits trigger_sec 1..3600
 if TYPE_CHECKING:
     BMPResults = tuple[float | None, float | None, int | None]  # pressure, temperature, timestamp
 
@@ -102,6 +129,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         address: int = 0x77,
         trigger_sec: int = 1,
         max_module_error: int = 5,
+        name_ext: str = "",
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -112,6 +140,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             max_module_error,
             _NAME,
             _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM,
+            name_ext=name_ext,
             cfg_path=cfg_path,
             fram=fram,
             history_length=history_length,
@@ -139,13 +168,9 @@ class BMP3xx_Reader(SensorReaderConfig):
         self._get_callbacks[name_cfg(_VAL_FC)] = self.get_filter_coefficient
 
     async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
-        # Single batched read (get_config_snapshot()), not three independent get_*() calls - closes
-        # the torn-read window BACKLOG.md flagged (a concurrent config write landing mid-batch used
-        # to be able to mix pre-/post-write values). Unlike the three independent get_*() wrappers
-        # this replaced, get_config_snapshot() can raise on a bus fault (BMP3XX_I2C's own "allowed
-        # to raise" layer) - caught here, not left to get_dict_cfg()'s own callback try/except,
-        # because that would skip the dict update entirely and leave these three fields at their
-        # persisted config-file defaults instead of None.
+        # One batched read, not three get_*() calls, closing a torn-read window a concurrent config
+        # write could land in. It can raise on a bus fault, caught here rather than by get_dict_cfg()'s
+        # try/except - which would skip the dict update and leave these fields at their defaults.
         try:
             pressure_oversampling, temperature_oversampling, filter_coefficient = await self.bmp.get_config_snapshot()
         except Exception as e:
@@ -286,11 +311,11 @@ class BMP3xx_Reader(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data, _FIELDS)
+        return make_dict(data, _FIELDS, name=self.name)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
-            _NAME,
+            self.name,
             _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM,
             callback=self._read_sensor_dict,
         )
@@ -567,12 +592,9 @@ class BMP3XX_I2C:
         return result
 
     async def get_config_snapshot(self) -> "tuple[int, int, int]":
-        # (PressOvers, TempOvers, FiltCoeff) - one device-session lock hold across all 3 bit-field
-        # reads, closing the torn-read window a concurrent set_*_oversampling()/set_filter_coefficient()
-        # call (also i2c_bmp3xx-locked) could otherwise land inside mid-batch (BACKLOG.md's
-        # BMP3xx_Reader.get_dict_cfg() torn-read entry). Same "allowed to raise" layer as every other
-        # BMP3XX_I2C method - a mid-batch fault fails the whole snapshot rather than a mix of fresh
-        # and stale fields.
+        # One device-session lock hold across all three bit-field reads, closing the torn-read window
+        # a concurrent set_*_oversampling()/set_filter_coefficient() could land in. Same "allowed to
+        # raise" layer as every other BMP3XX_I2C method: a mid-batch fault fails the whole snapshot.
         async with self.i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
             osr_p = await i2c.get_bits(3, _REGISTER_OSR, 0)
             osr_t = await i2c.get_bits(3, _REGISTER_OSR, 3)

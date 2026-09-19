@@ -14,17 +14,22 @@ if TYPE_CHECKING:
 
 
 class HttpResponse:
-    def __init__(self, status_code: int, headers: "dict[str, str]", body: bytes) -> None:
+    def __init__(self, status_code: int, headers: "dict[str, str]", body: "bytes | bytearray") -> None:
         self.status_code = status_code
         self.headers = headers
+        # bytearray on the sized path (_read_exact()'s right-sized buffer, never re-copied),
+        # bytes on the unsized one, or b"" when read_body=False drained the response instead of
+        # materializing it - .json() must not be called on that. Nothing ever mutates it.
         self.body = body
 
-    # Every response body this client is ever asked to decode is a JSON *object* (the REST layer's
-    # own make_response() envelope, or a flat settings dict) - hence dict, not a bare value. The
-    # value side stays Any: callers index nested levels (res.json()["notification"]["PauseTime"]),
-    # which no non-Any JSON alias can express without a cast at every call site.
+    # Every body this client decodes is a JSON object - the REST envelope or a flat settings
+    # dict - hence dict rather than a bare value. The value side stays Any because callers index
+    # nested levels, which no non-Any JSON alias expresses without a cast at every site.
     def json(self) -> "dict[str, Any]":
-        decoded: dict[str, Any] = json.loads(self.body)  # named local, not a bare return: json.loads() is Any-typed
+        # json.loads()'s stub types its argument AnyStr and so rejects bytearray - a stub gap,
+        # not a runtime one: mod_json_loads() reads through mp_get_buffer_raise(), the generic
+        # buffer protocol bytearray implements (confirmed against the pinned source).
+        decoded: dict[str, Any] = json.loads(self.body)  # type: ignore[type-var]
         return decoded
 
 
@@ -54,7 +59,81 @@ def parse_header_line(line: bytes) -> "tuple[str, str] | None":
     return name.strip(), value.strip()
 
 
-async def fetch(host: str, port: int, method: str, path: str, json_body: "dict[str, object] | None" = None) -> HttpResponse:
+async def _read_exact(reader: "Any", n: int) -> bytearray:
+    # One right-sized buffer filled through Stream.readinto(), never Stream.readexactly(), whose
+    # `r += r2` accumulation is what fragments this heap under soak. README.md's
+    # "_http_client.py's read paths" section has the full account and the measurements.
+
+    # readinto() does one queue_read()+readinto() pair with no retry loop, so a spurious None -
+    # poll said readable, the read came back empty - reaches here and must be retried. Only a
+    # real 0 means the peer closed; conflating them reads as an intermittent false EOFError.
+    buf = bytearray(n)
+    view = memoryview(buf)
+    got = 0
+    while got < n:
+        nread = await reader.readinto(view[got:])
+        if nread == 0:
+            raise EOFError
+        if nread:
+            got += nread
+    return buf
+
+
+_READ_UNTIL_CLOSE_CHUNK_BYTES = 1024
+
+
+async def _read_until_close(reader: "Any") -> bytes:
+    # The live path for GET /, not a rare fallback: send_file() hands the response a raw file
+    # stream, so the automatic Content-Length never applies and EOF ends the body. Fixed-size
+    # chunks joined once, for Stream.read(-1)'s same accumulation reason (README.md).
+
+    # The b"".join(chunks) below is still one whole-body allocation, which is fine for a caller
+    # that needs the bytes and wrong for one that does not - that caller takes
+    # _drain_until_close(). README.md has the CI failure this distinction came from.
+    chunks: list[bytes] = []
+    scratch = bytearray(_READ_UNTIL_CLOSE_CHUNK_BYTES)
+    while True:
+        nread = await reader.readinto(scratch)
+        if nread == 0:
+            break
+        if nread:
+            chunks.append(bytes(scratch[:nread]))
+    return b"".join(chunks)
+
+
+async def _drain_until_close(reader: "Any") -> None:
+    # _read_until_close()'s discard-everything sibling: each bounded chunk through one reused
+    # scratch buffer, never accumulating or joining. For a caller that needs the connection
+    # cleanly drained to EOF and never looks at the body (README.md).
+    scratch = bytearray(_READ_UNTIL_CLOSE_CHUNK_BYTES)
+    while True:
+        nread = await reader.readinto(scratch)
+        if nread == 0:
+            break
+
+
+async def _drain_exact(reader: "Any", n: int) -> None:
+    # _read_exact()'s own discard-everything sibling, same reasoning as _drain_until_close() above -
+    # one small reused scratch buffer, bounded reads, nothing accumulated or returned.
+    scratch = bytearray(min(n, _READ_UNTIL_CLOSE_CHUNK_BYTES))
+    got = 0
+    while got < n:
+        nread = await reader.readinto(memoryview(scratch)[: min(len(scratch), n - got)])
+        if nread == 0:
+            raise EOFError
+        if nread:
+            got += nread
+
+
+async def fetch(
+    host: str,
+    port: int,
+    method: str,
+    path: str,
+    json_body: "dict[str, object] | None" = None,
+    *,
+    read_body: bool = True,
+) -> HttpResponse:
     # reader/writer are the same underlying Stream object on this build (two names kept only for
     # readability/symmetry with Microdot's own convention) - close() is a no-op here, the socket
     # only actually closes via wait_closed() in the finally below.
@@ -73,9 +152,16 @@ async def fetch(host: str, port: int, method: str, path: str, json_body: "dict[s
             headers[name] = value
 
         content_length = headers.get("Content-Length")
-        # read(-1) reads until EOF - a safe fallback for a missing Content-Length, though every real
-        # response this client sees does carry one (Microdot sets it whenever missing).
-        body = await reader.readexactly(int(content_length)) if content_length is not None else await reader.read(-1)
+        # Sized bodies take _read_exact(), unsized ones _read_until_close(); neither accumulates
+        # by concatenation. read_body=False takes the matching drain sibling, reading the same
+        # bounded chunks but never materializing the body (README.md).
+        body: bytes | bytearray = b""
+        if read_body:
+            body = await _read_exact(reader, int(content_length)) if content_length is not None else await _read_until_close(reader)
+        elif content_length is not None:
+            await _drain_exact(reader, int(content_length))
+        else:
+            await _drain_until_close(reader)
 
         return HttpResponse(status_code, headers, body)
     finally:

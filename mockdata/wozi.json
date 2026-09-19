@@ -16,7 +16,10 @@
         "SSID": "sensor-net", "PW": "hunter2hunter2", "Country": "DE", "Hostname": "wozi",
         "LedWifiOn": true, "NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 4
     },
-    "systemConfig": { "DebugLevel": 1, "GMTOffset": 3600, "DSTOffset": 3600 },
+    "systemConfig": {
+        "DebugLevel": 1, "GMTOffset": 3600, "DSTOffset": 3600,
+        "build": { "firmwareVersion": "2.0b0", "websiteVersion": "2.0b0", "buildDate": "2026-09-12T10:00:00Z" }
+    },
     "notificationConfig": {
         "AutoOn": true, "OnH": 7, "OnM": 0, "OffH": 22, "OffM": 0, "FlashBri": 120,
         "Interv": 900.0, "FlashDur": 2.0, "WarnCO2": 1200, "WarnVOC": 250, "WarnHum": 65.0

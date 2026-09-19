@@ -4,7 +4,7 @@ a not-paused-first reset race or a circumventable watchdog."""
 
 import os
 
-_SRC_DIR = "src"  # scripts/test.sh always invokes tests from the repo root, like every other test file's own _TMP_DIR = "tests/_tmp" convention
+_SRC_DIR = "src"  # scripts/test.sh always invokes tests from the repo root, like tests/_tmp_scratch.py's own "tests/_tmp" convention
 
 
 def _src_files() -> "list[str]":
@@ -27,13 +27,12 @@ def test_reset_and_bootloader_calls_confined_to_system_service() -> None:
 
 
 def test_wdt_constructed_only_in_sensortask_entry_point_files() -> None:
-    # "must be hardcoded so no error ever can circumvent it when it is set active" - own comment
-    # on the sanctioned WDT() construction sites: each device's own sensortask_<device>.py
-    # entry-point file (sensortask_wozi.py, sensortask_dev.py, ... - DEV_HARDWARE_BASELINE_PLAN.md
-    # decision 5 extended this from a single hardcoded site to "one per device", same hardcoded-
-    # no-injection-point contract, just once per device instead of once repo-wide). A WDT()
-    # construction anywhere else in src/ (a shared driver/service module) would be a real,
-    # deployed-firmware-breaking regression, not a style nit.
+    # "must be hardcoded so no error ever can circumvent it when it is set active" - the owner's comment on
+    # the sanctioned WDT() construction sites, each device's own sensortask_<device>.py entry point.
+    #
+    # The dev-bench baseline work extended this from a single hardcoded site to one per device, the same no-
+    # injection-point contract. A WDT() construction anywhere else in src/, in a shared driver or service
+    # module, would be a real deployed-firmware-breaking regression, not a style nit.
     offenders = []
     for filename in _src_files():
         if filename.startswith("sensortask_") and filename.endswith(".py"):

@@ -89,11 +89,9 @@ async def _settle(n: int = 5) -> None:
 
 
 class _FastAsyncSleep:
-    # _read_dev_register()/_send_dev_command() each make real 0.05s asyncio.sleep() calls - fine for
-    # a directly-`run()`-awaited coroutine, but far too slow for a test driving get_config_snapshot()
-    # as a background task through a bounded sleep(0) pump loop (same technique as
-    # test_asy_bmp3xx_driver.py's own _FastAsyncSleep). asyncio.sleep is a shared, process-wide
-    # function, restored on exit regardless of how the `with` block exits.
+    # _read_dev_register()/_send_dev_command() each make real 0.05s asyncio.sleep() calls - fine for a
+    # directly awaited coroutine, far too slow for a test driving get_config_snapshot() through a bounded
+    # sleep(0) pump. asyncio.sleep is process-wide, restored however the block exits.
     def __enter__(self) -> "_FastAsyncSleep":
         self._real_sleep = asyncio.sleep
 
@@ -108,13 +106,9 @@ class _FastAsyncSleep:
 
 
 class _RaiseOnArm:
-    # Same technique as test_system_service.py's/test_asy_wifi_service.py's own _RaiseOnArm -
-    # toggles tests/machine.py's Timer.raise_on_arm (a shared class attribute, not per-instance)
-    # for the duration of the `with` block, simulating a real rp2 Timer.init() that can't arm.
-    # `exc` picks which of start_timer()'s two guarded arms gets exercised: the default
-    # OSError(ENOMEM) alarm-pool-exhaustion one, or the MemoryError one a failed allocation raises
-    # instead (see tests/machine.py's Timer.raise_on_arm_exc). Both class attributes are restored
-    # on exit regardless of how the block exits.
+    # Same technique as the _RaiseOnArm in the system_service/wifi suites - toggles tests/machine.py's
+    # shared Timer.raise_on_arm for the `with` block, simulating an rp2 Timer.init() that cannot arm. `exc`
+    # picks which of start_timer()'s guarded arms runs: the OSError(ENOMEM) alarm-pool one, or MemoryError.
     def __init__(self, exc: "type[BaseException]" = OSError) -> None:
         self._exc = exc
 
@@ -130,9 +124,8 @@ class _RaiseOnArm:
 
 # ---------------------------------------------------------------------------
 # Module level: wire format cross-checked against the Interface Description's own worked examples
-# (datasheets/scd30/Sensirion_CO2_Sensors_SCD30_Interface_Description.pdf) - hardcoded bytes from
-# the PDF, not this file's own crc8_byte() helper, so a latent bug in that helper couldn't mask a
-# real mismatch.
+# (datasheets/scd30/Sensirion_CO2_Sensors_SCD30_Interface_Description.pdf) - hardcoded bytes from the PDF,
+# not this file's crc8_byte() helper, so a latent bug in that helper cannot mask a real mismatch.
 # ---------------------------------------------------------------------------
 
 
@@ -286,12 +279,12 @@ def test_set_ambient_pressure_rejects_values_just_inside_the_dead_zone_around_ze
 
 
 def test_set_ambient_pressure_rejects_fractional_values_that_would_truncate_to_the_special_zero() -> None:
-    # Regression test for a real bug found during re-review: validating against pressure_mbar
-    # *after* int()-truncating it let any value in the open interval (-1, 0) - e.g. -0.5 - silently
-    # through as the special "disable" value 0, instead of being rejected, since int(-0.5) == 0
-    # (Python/MicroPython int() truncates toward zero, it doesn't round). Confirmed directly
-    # against the real interpreter before fixing: set_ambient_pressure(-0.5) used to send a real
-    # "disable ambient pressure" command to the sensor with no error raised at all.
+    # Regression test for a real bug found during re-review: validating against pressure_mbar AFTER
+    # int()-truncating it let any value in the open interval (-1, 0) through as the special "disable" value
+    # 0, since int() truncates toward zero rather than rounding.
+    #
+    # Confirmed against the real interpreter before fixing: set_ambient_pressure(-0.5) sent a real "disable
+    # ambient pressure" command to the sensor with no error raised at all.
     scd, i2c = make_scd()
     for bad in (-0.5, -0.01, -0.999):
         assert _raises_value_error(scd.set_ambient_pressure(bad)), f"{bad} should have raised"
@@ -317,11 +310,9 @@ def test_set_altitude_boundaries() -> None:
 
 
 def test_set_altitude_rejects_fractional_values_that_would_truncate_to_zero() -> None:
-    # Same class of bug as set_ambient_pressure's own regression test above: int(-0.5) == 0, which
-    # is itself a valid altitude (sea level) - so truncating before validating would have silently
-    # accepted a negative altitude as "0m" instead of rejecting it. altitude's signature only
-    # advertises int (unlike pressure_mbar's explicit int | float), but nothing stops a caller from
-    # passing a float anyway - defensive test, deliberately outside the declared type.
+    # Same class of bug as the set_ambient_pressure regression above: int(-0.5) == 0, itself a valid
+    # altitude (sea level), so truncating before validating would silently accept a negative altitude as
+    # "0m". altitude's signature only advertises int, but nothing stops a caller passing a float anyway.
     scd, i2c = make_scd()
     for bad in (-0.5, -0.01, -0.999):
         assert _raises_value_error(scd.set_altitude(bad)), f"{bad} should have raised"  # type: ignore[arg-type]
@@ -448,14 +439,13 @@ def test_read_measurement_never_ran_yet_leaves_getters_at_their_initial_none() -
 
 
 def test_get_co2_temperature_humidity_all_reflect_one_read_measurement_call() -> None:
-    # Regression test for a real bug found during re-review: get_CO2()/get_temperature()/
-    # get_relative_humidity() used to each independently call the data-ready-checking fetch, and
-    # the SCD30's data-ready flag clears the instant the measurement is actually read - so only the
-    # first of the three ever saw "ready", and the second/third would see "not ready" and wipe the
-    # first call's own fresh result back to None. Modeled here with a single register_frame(1) +
-    # data_frame() pair queued - exactly one real sensor read - not three, which is what let the bug
-    # go unnoticed: three independently-queued "ready" replies don't match how the real hardware
-    # actually behaves across one read_measurement() + three getter calls.
+    # Regression test for a real bug found during re-review: the three getters used to each independently
+    # call the data-ready-checking fetch, and the SCD30's data-ready flag clears the instant the measurement
+    # is read - so only the first saw "ready" and the other two wiped its fresh result back to None.
+    #
+    # Modeled with a single register_frame(1) + data_frame() pair queued, exactly one real sensor read.
+    # Three independently-queued "ready" replies is what let the bug go unnoticed, since that is not how the
+    # real hardware behaves across one read_measurement() plus three getter calls.
     scd, i2c = make_scd()
     i2c.read_queue.append(register_frame(1))
     i2c.read_queue.append(data_frame(412.5, 23.4, 45.6))
@@ -635,10 +625,9 @@ def test_reader_start_timer_arms_periodic_timer_and_pin_irq() -> None:
 
 
 def test_reader_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be_armed() -> None:
-    # Real rp2 Timer.init() raises OSError(ENOMEM) when the alarm pool is exhausted (confirmed
-    # against ports/rp2/machine_timer.c) - start_timer() must log via self.pr.err() and return
-    # normally, since its caller is system_service.py's synchronous start_timers() sequencer:
-    # raising here would take down the whole timer-start chain over one sensor's 500ms tick.
+    # Real rp2 Timer.init() raises OSError(ENOMEM) when the alarm pool is exhausted (confirmed against
+    # ports/rp2/machine_timer.c) - start_timer() must log and return normally, since raising into
+    # system_service.py's synchronous start_timers() would take down the whole chain over one sensor.
     FakeTimer.all_timers.clear()
     reader = make_reader()
     with _RaiseOnArm():
@@ -664,10 +653,9 @@ def test_reader_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be
 
 
 def test_reader_start_timer_degrades_gracefully_on_a_memory_error_while_arming() -> None:
-    # MemoryError is not an OSError subclass (see SPECIFICATION.md Part F), so start_timer()'s
-    # `except (OSError, MemoryError)` needs that second arm spelled out explicitly - without it, a
-    # heap-exhausted arming attempt would propagate straight out of this synchronous starter
-    # instead of degrading the same way the ENOMEM case above does (pin IRQ included).
+    # MemoryError is not an OSError subclass (SPECIFICATION.md Part F), so start_timer()'s `except (OSError,
+    # MemoryError)` needs that second arm spelled out - without it a heap-exhausted arming attempt
+    # propagates straight out of this synchronous starter, pin IRQ included.
     FakeTimer.all_timers.clear()
     reader = make_reader()
     with _RaiseOnArm(MemoryError):
@@ -877,10 +865,9 @@ def test_reader_getters_return_none_on_crc_mismatch() -> None:
 def test_reader_set_then_get_altitude_round_trips_through_real_i2c_frames() -> None:
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
-    # Queued upfront, not from inside scenario(): register_frame() calls run()/asyncio.run()
-    # itself (via crc8_byte()), and nesting that inside a coroutine already driven by an outer
-    # run(scenario()) segfaults the MicroPython Unix port instead of raising cleanly - a real
-    # difference from CPython's asyncio.run(), which just raises RuntimeError for the same misuse.
+    # Queued upfront, not from inside scenario(): register_frame() calls run()/asyncio.run() itself via
+    # crc8_byte(), and nesting that inside a coroutine already driven by an outer run() segfaults the
+    # MicroPython Unix port instead of raising cleanly, unlike CPython's RuntimeError for the same misuse.
     i2c.read_queue.append(register_frame(321))
 
     async def scenario() -> "tuple[bool, int | None]":
@@ -921,13 +908,11 @@ def test_reader_stop_continuous_measurement_false_returns_false_on_bus_fault() -
 
 
 def test_set_dict_cfg_reports_contmeas_true_as_valid_not_failed() -> None:
-    # Regression test: stop_continuous_measurement(value=True)'s own contract returns False for its
-    # pure-no-op case (see test_reader_stop_continuous_measurement_true_is_a_pure_noop above), and
-    # a first version of this method's ContMeas dispatch forwarded that return value straight into
-    # the generic "Valid"/"Failed" mapping, unlike improved-quality/sensortask-wozi.py's own removed
-    # _push_cont_meas wrapper - reporting a real client's ContMeas=True (the field's own default,
-    # "keep measuring") as "Failed" even though nothing failed. Never caught by any prior test since
-    # nothing exercised _set_dict_cfg's own ContMeas branch specifically.
+    # Regression test: stop_continuous_measurement(value=True) returns False for its no-op case, and a first
+    # version of the ContMeas dispatch forwarded that into the generic "Valid"/"Failed" mapping - reporting
+    # a client's ContMeas=True, the field's own default, as "Failed" though nothing failed.
+    #
+    # Never caught by any prior test, since nothing exercised _set_dict_cfg's ContMeas branch specifically.
     reader = make_reader()
     reader_fake_i2c(reader)
     result = run(reader._set_dict_cfg({"ContMeas": True}, reader.get_cfg_schema()))
@@ -957,10 +942,9 @@ def test_set_dict_cfg_reports_contmeas_non_bool_as_invalid() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _set_dict_cfg - schema-driven int/float dispatch loop (TempOffs/MeasInt/AmbPres/Altitude/
-# ForceCalRef/SelfCal), distinct from the ContMeas special-case tests above: this is the branch
-# that calls config_manager.py's type_or_range_error() (coercion included, SPECIFICATION.md Part
-# A.8) before dispatching to each field's own real setter. Never exercised at all before this.
+# _set_dict_cfg - the schema-driven int/float dispatch loop, distinct from the ContMeas special-case tests
+# above: this is the branch calling config_manager.py's type_or_range_error() (coercion included,
+# SPECIFICATION.md Part A.8) before dispatching to each field's own real setter.
 # ---------------------------------------------------------------------------
 
 
@@ -972,10 +956,9 @@ def test_set_dict_cfg_dispatches_a_valid_value_to_the_real_setter_and_reports_va
 
 
 def test_set_dict_cfg_int_value_for_the_float_typed_tempoffs_field_is_coerced_before_dispatch() -> None:
-    # TempOffs is float-typed - a plain int PUT value must be coerced to float by
-    # type_or_range_error() before ever reaching set_temperature_offset(), not passed through as
-    # the raw int (both are structurally acceptable to the setter's own int|float signature, so
-    # only inspecting the actual argument received - via this spy - proves coercion really ran).
+    # TempOffs is float-typed, so a plain int PUT value must be coerced to float by type_or_range_error()
+    # before reaching set_temperature_offset(). Both are structurally acceptable to the setter's int|float
+    # signature, so only inspecting the actual argument received, via this spy, proves coercion really ran.
     reader = make_reader()
     reader_fake_i2c(reader)
     received = []
@@ -1087,15 +1070,12 @@ def test_get_dict_cfg_reports_every_schema_field_by_name() -> None:
 
 
 def test_get_cfg_schema_returns_every_settable_field_by_name() -> None:
-    # Regression test from baseline verification:
-    # SCD30_Reader(SensorReader) - unlike every other reader in this codebase (SensorReaderConfig
-    # subclasses) - never inherited a get_cfg_schema() method, even though
-    # asy_webserver_service.py's _put_sensors() route calls module.get_cfg_schema() uniformly for
-    # every registered sensor (this file's own _set_dict_cfg() docstring already documented that
-    # exact expectation). Missing it meant a real PUT /sensors touching SCD30 crashed with a 500
-    # (AttributeError) - reproduced directly, never caught by any existing test since
-    # tests/test_asy_webserver_service.py's own _put_sensors tests use a fake module that already
-    # has get_cfg_schema() defined.
+    # Regression test from baseline verification: SCD30_Reader is a plain SensorReader, unlike every other
+    # reader here, so it never inherited get_cfg_schema() - though _put_sensors() calls that uniformly for
+    # every registered sensor, as this file's own _set_dict_cfg() docstring documented.
+    #
+    # Missing it meant a real PUT /sensors touching SCD30 crashed with a 500, never caught because
+    # test_asy_webserver_service.py's _put_sensors tests use a fake module that already defines it.
     reader = make_reader()
     names = cm.schema_names(reader.get_cfg_schema())
     assert set(names) == {"TempOffs", "MeasInt", "AmbPres", "Altitude", "ForceCalRef", "SelfCal"}
@@ -1117,14 +1097,13 @@ def test_get_dict_cfg_degrades_to_none_per_field_on_bus_fault_not_a_crash() -> N
 
 
 def test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write() -> None:
-    # Regression test for BACKLOG.md's torn-read entry: get_dict_cfg()'s six config fields used to
-    # be six independently-locked register reads, so a concurrent write (also i2c_scd30-locked)
-    # could land between any two of them and produce a dict mixing pre-/post-write values.
-    # get_config_snapshot() now holds the device-session lock for the whole batch, so a concurrent
-    # write can't even start its own I2C traffic until the whole read has finished - proven here by
-    # checking the concurrent write's own writeto() log entry only appears after all 6 of the read's
-    # own log entries (2 ops/register: one writeto for the register address, one readfrom_into for
-    # the reply).
+    # Regression test for BACKLOG.md's torn-read entry: get_dict_cfg()'s six config fields used to be six
+    # independently-locked register reads, so a concurrent write could land between any two and produce a
+    # dict mixing pre- and post-write values.
+    #
+    # get_config_snapshot() now holds the device-session lock for the whole batch, proven here by checking
+    # the concurrent write's writeto() entry appears only after all six of the read's own log entries (two
+    # ops per register: a writeto for the address, a readfrom_into for the reply).
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
     for value in (450, 10, 1000, 200, 400, 1):  # TempOffs, MeasInt, AmbPres, Altitude, ForceCalRef, SelfCal
@@ -1148,10 +1127,9 @@ def test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write() -> 
     fields = result["SCD30"]
     assert fields["TempOffs"] == 4.5  # the pre-write value, not the concurrent write's 9.99
     read_ops = 12  # 6 registers x (writeto register address, readfrom_into reply)
-    # The write's own command frame is 5 bytes (2-byte command + 2-byte data + 1-byte CRC) -
-    # distinct from the read's 2-byte register-address probe for the same command code (TempOffs
-    # happens to be read first in the batch, so a length-agnostic match would find that probe
-    # instead at index 0).
+    # The write's command frame is 5 bytes (2-byte command, 2-byte data, 1-byte CRC), distinct from the
+    # read's 2-byte register-address probe for the same command code - TempOffs is read first in the batch,
+    # so a length-agnostic match would find that probe at index 0 instead.
     write_index = next(
         i for i, entry in enumerate(log) if entry[0] == "writeto" and entry[2][:2] == bytes([0x54, 0x03]) and len(entry[2]) == 5
     )
@@ -1176,10 +1154,9 @@ def test_get_error_counter_forwards_to_the_real_print_log() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Integration: _init_scd() / read_loop() - real base_classes.SensorReader + print_log wiring.
-# scd.setup()'s own I2C behavior is independently covered above; here it's monkeypatched to a fast
-# no-op so these tests focus on read_loop()'s own orchestration (IRQ-driven trigger, error
-# counting, data storage) without re-paying its real ~2.5s reset delay each time.
+# Integration: _init_scd() / read_loop() - real base_classes.SensorReader plus print_log wiring.
+# scd.setup()'s own I2C behavior is covered above; here it is monkeypatched to a fast no-op so these focus
+# on read_loop()'s orchestration without re-paying its real ~2.5s reset delay each time.
 # ---------------------------------------------------------------------------
 
 
@@ -1196,10 +1173,9 @@ def test_init_scd_returns_false_immediately_when_probe_fails_no_reset_reached() 
 def test_read_loop_full_iteration_stores_measured_data_and_derived_values() -> None:
     reader = make_reader(max_module_error=1)
     reader.scd.setup = _fake_setup  # type: ignore[method-assign]
-    # read_measurement() is the one call that can raise post-fix; get_CO2()/get_temperature()/
-    # get_relative_humidity() are pure cache reads (see src/asy_scd30_driver.py's own comment on
-    # why they must never independently re-check data-ready) - faked as a no-op success plus fixed
-    # cache values, matching that real shape instead of the pre-fix "each getter fetches" one.
+    # read_measurement() is the one call that can raise post-fix; the three getters are pure cache reads
+    # (see src/asy_scd30_driver.py on why they must never re-check data-ready) - faked as a no-op success
+    # plus fixed cache values, matching that shape, not the pre-fix "each getter fetches" one.
     reader.scd.read_measurement = _fake_setup  # type: ignore[method-assign]
 
     async def fake_co2() -> float:
@@ -1376,11 +1352,9 @@ def test_reader_setters_return_true_on_success() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SCD30_I2C._send_dev_command()'s CRC-generation guard - a real CRC8 object can't actually fail
-# add_into() through any real command this driver sends (always a fixed 2-byte argument, always
-# succeeds), so this monkeypatches scd.crc with a minimal fake, the same technique
-# test_asy_sgp40_driver.py's own _AlwaysFailCRC/test_asy_uart_driver.py's own _NoneCRC use for their
-# own otherwise-unreachable branches.
+# SCD30_I2C._send_dev_command()'s CRC-generation guard - a real CRC8 object cannot fail add_into() through
+# any command this driver sends (always a fixed 2-byte argument), so scd.crc is monkeypatched with a minimal
+# fake, the same technique the SGP40 and UART driver suites use for their unreachable branches.
 # ---------------------------------------------------------------------------
 
 
@@ -1401,6 +1375,118 @@ def test_send_dev_command_raises_when_crc_generation_produces_the_wrong_length()
     except RuntimeError as e:
         raised = "CRC generation failed" in str(e)
     assert raised
+
+
+# ---------------------------------------------------------------------------
+# Bus-hazard coverage moved from tests/test_bus_hazard_multi_device.py (SPECIFICATION.md Part
+# C.8): genuinely SCD30-specific (decodes this driver's own wire protocol/API), not a generic
+# cross-sensor shape, so it belongs here instead.
+# ---------------------------------------------------------------------------
+
+
+async def _gather(a: "Coroutine[Any, Any, Any]", b: "Coroutine[Any, Any, Any]") -> None:
+    # asyncio.gather() itself returns a Future, not a Coroutine - mypy rejects passing it straight
+    # to run() (same call-shape convention test_asy_i2c_driver.py's own scenario() wrapping uses).
+    await asyncio.gather(a, b)
+
+
+_CMD_GET_DATA_READY = b"\x02\x02"
+_CMD_READ_MEASUREMENT = b"\x03\x00"
+_CMD_SET_TEMPERATURE_OFFSET = b"\x54\x03"
+
+
+def _parse_scd30_log(log: "list[tuple[Any, ...]]", read_iterations: int) -> None:
+    # Command-byte-based proof that same-device ops never interleave on the wire: parses the log into non-
+    # overlapping runs and fails on any stray entry. A before/after log-length "span" check was rejected - a
+    # coroutine blocked on the lock overlaps the holder's span, which is correct serialization.
+    reads_parsed = 0
+    writes_parsed = 0
+    i = 0
+    while i < len(log):
+        entry = log[i]
+        if entry[0] == "writeto" and bytes(entry[2][:2]) == _CMD_GET_DATA_READY:
+            assert i + 3 < len(log), f"truncated read_measurement() sequence at log index {i}: {log[i:]}"
+            assert log[i + 1][0] == "readfrom_into", f"expected readfrom_into at index {i + 1}, got {log[i + 1]}"
+            assert log[i + 2][0] == "writeto" and bytes(log[i + 2][2][:2]) == _CMD_READ_MEASUREMENT, f"expected writeto(READ_MEASUREMENT) at index {i + 2}, got {log[i + 2]}"
+            assert log[i + 3][0] == "readfrom_into", f"expected readfrom_into at index {i + 3}, got {log[i + 3]}"
+            reads_parsed += 1
+            i += 4
+        elif entry[0] == "writeto" and bytes(entry[2][:2]) == _CMD_SET_TEMPERATURE_OFFSET:
+            writes_parsed += 1
+            i += 1
+        else:
+            raise AssertionError(f"unexpected/misplaced log entry at index {i} (interleaving corruption): {entry}")
+    assert reads_parsed == read_iterations, f"parsed {reads_parsed} read cycles, expected {read_iterations}"
+    assert writes_parsed == 1, f"parsed {writes_parsed} write(s), expected exactly 1"
+
+
+def test_concurrent_read_and_write_never_interleave_on_the_wire_byte_exact() -> None:
+    scd, i2c = make_scd()
+    read_iterations = 6
+
+    for _ in range(read_iterations):
+        i2c.read_queue.append(register_frame(1))  # data-ready
+        i2c.read_queue.append(data_frame(412.5, 23.4, 45.6))
+
+    reads_completed = 0
+    write_completed = False
+
+    async def reader() -> None:
+        nonlocal reads_completed
+        for _ in range(read_iterations):
+            await scd.read_measurement()
+            reads_completed += 1
+
+    async def writer() -> None:
+        nonlocal write_completed
+        await asyncio.sleep(0)  # let the reader get partway into its first cycle first
+        await scd.set_temperature_offset(12.34)
+        write_completed = True
+
+    with _FastAsyncSleep():
+        run(_gather(reader(), writer()))
+
+    assert reads_completed == read_iterations
+    assert write_completed
+    _parse_scd30_log(i2c.log, read_iterations)
+
+
+def test_never_touches_any_address_but_its_own() -> None:
+    scd, i2c = make_scd()
+    for _ in range(40):  # generous - some methods issue more than one read
+        i2c.read_queue.append(register_frame(1))
+        i2c.read_queue.append(data_frame(400.0, 20.0, 50.0))
+
+    async def exercise() -> None:
+        for call in (
+            scd.setup,
+            scd.reset,
+            scd.get_measurement_interval,
+            scd.get_self_calibration_enabled,
+            scd.get_ambient_pressure,
+            scd.get_altitude,
+            scd.get_temperature_offset,
+            scd.get_forced_recalibration_reference,
+            scd.get_config_snapshot,
+            scd.read_measurement,
+            scd.stop_continuous_measurement,
+            lambda: scd.set_measurement_interval(5),
+            lambda: scd.set_self_calibration_enabled(True),
+            lambda: scd.set_ambient_pressure(1013),
+            lambda: scd.set_altitude(100),
+            lambda: scd.set_temperature_offset(1.0),
+            lambda: scd.set_forced_recalibration_reference(500),
+        ):
+            try:
+                await call()
+            except Exception:  # only the addresses *touched* matter for this sweep, not success
+                pass
+
+    with _FastAsyncSleep():
+        run(exercise())
+
+    touched = {entry[1] for entry in i2c.log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")}
+    assert touched == {_ADDR}, f"SCD30_I2C touched unexpected address(es): {touched - {_ADDR}}"
 
 
 if __name__ == "__main__":

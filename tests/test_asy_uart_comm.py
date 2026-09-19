@@ -16,6 +16,7 @@ from asy_uart_comm import (
     UART_Comm,
 )
 from asy_uart_driver import UART
+from base_classes import LockableBuffer
 from crc_checks import CRC16
 from framing_codecs import Framing_COBS
 
@@ -797,6 +798,65 @@ def test_the_drain_is_bounded_against_a_peer_that_never_stops() -> None:
     assert run(scenario(), limit=20) is True  # terminates at the bound instead of looping forever
 
 
+def test_a_drain_that_hits_its_bound_spends_the_episode_slot_on_the_more_specific_warning() -> None:
+    # W11 is what separates a babbling or misconfigured peer from ordinary line noise. It used to be
+    # unreachable in FRAM: _resync() persisted W10 first and spent the episode's one slot on it.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
+
+    async def flood() -> None:
+        while True:
+            pair.fake_a.feed_rx(b"\xff" * 32)
+            await asyncio.sleep_ms(1)
+
+    async def scenario() -> bool:
+        flooder = asyncio.create_task(flood())
+        try:
+            async with pair.driver_a as device:
+                await asyncio.wait_for(pair.initiator._resync(device), 10)
+        finally:
+            flooder.cancel()
+        return True
+
+    assert run(scenario(), limit=20) is True
+    # Exactly one, not both: the budget the whole episode gets is still a single persisted warning.
+    assert persisted(pair.initiator) == ["W11"], persisted(pair.initiator)
+
+
+def test_a_quiet_resync_still_persists_the_plain_resync_warning() -> None:
+    # The other side of the choice above - nothing about W10's own case changed.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
+
+    async def scenario() -> None:
+        async with pair.driver_a as device:
+            await pair.initiator._resync(device)
+
+    run(scenario(), limit=10)
+    assert persisted(pair.initiator) == ["W10"], persisted(pair.initiator)
+
+
+def test_a_boot_drain_that_hits_its_bound_persists_nothing() -> None:
+    # setup()'s drain is deliberately not a fault and not counted, but it shares _drain() - and while
+    # the bound logged itself, a babbling peer put an entry in FRAM on every single boot.
+    comm = make_comm()
+
+    async def flood() -> None:
+        while True:
+            comm.uart._uart.feed_rx(b"\xff" * 32)  # type: ignore[union-attr]
+            await asyncio.sleep_ms(1)
+
+    async def scenario() -> bool:
+        flooder = asyncio.create_task(flood())
+        try:
+            await asyncio.wait_for(comm.setup(), 10)
+        finally:
+            flooder.cancel()
+        return True
+
+    assert run(scenario(), limit=20) is True
+    assert comm._drain_bound_hit is True  # the bound really was reached, so the check is not vacuous
+    assert persisted(comm) == [], persisted(comm)
+
+
 def test_the_drain_reads_into_the_scratch_buffer() -> None:
     # read() would allocate per round, on exactly the degraded link where the heap is most
     # fragmented. Asserted on what the fake was asked to do.
@@ -1524,10 +1584,9 @@ def returns(value: "Any") -> "Any":
 
 
 def test_a_bus_cleared_after_construction_is_refused_at_every_entry_point() -> None:
-    # The handle is read fresh on every call rather than captured at construction, so each entry
-    # point carries its own None check and each has to reach its own sentinel - never an
-    # AttributeError out of a module contracted never to raise. setup() re-checks for the same
-    # reason: a restart must refuse, not drain through a handle that is gone.
+    # The handle is read fresh on every call, not captured at construction, so each entry point carries its
+    # own None check and reaches its own sentinel, never an AttributeError out of a module contracted not to
+    # raise. setup() re-checks too: a restart must refuse, not drain through a gone handle.
     def pull(chunk: int, buf: memoryview) -> int:
         return 0
 
@@ -1659,10 +1718,9 @@ def fail_write_after(fake: "Any", successes: int) -> None:
 
 
 def test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs() -> None:
-    # Every writefrom() in the module is checked, and one GET passes through six distinct ones: the
-    # request, the responder's ACK for it, the answer's header frame, the initiator's ACK for that
-    # header, a mid-train ACK and the final ACK. All six report errno 21 and resync - a write that
-    # silently did nothing is exactly what leaves the two sides on different frame boundaries.
+    # Every writefrom() in the module is checked, and one GET passes through six: the request, its ACK, the
+    # answer's header frame, the initiator's ACK for that, a mid-train ACK and the final one. All six report
+    # errno 21 and resync - a silent no-op write is what desynchronises the two sides.
     def get_with_a_failed_write(side: str, successes: int, answer: bytes) -> "tuple[bytearray | None, list[str]]":
         pair = Pair(timeout=30, get_callback=echo_get(answer), set_callback=accept_set())
         assert run(pair.setup()) is True
@@ -1886,10 +1944,9 @@ def test_every_internal_buffer_read_rechecks_rather_than_indexing_none() -> None
     assert persisted(comm) == ["E14", "W10"], persisted(comm)
 
 def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
-    # _busy is cleared in a finally rather than on the return path, so a task cancelled while it
-    # holds the bus - a supervisor restart, or clear() unsticking a wedged link - does not leave
-    # the instance refusing every later call as re-entrant forever. The flag is not the lock: the
-    # lock releases itself on the way out of `async with`, this does not.
+    # _busy is cleared in a finally rather than on the return path, so a task cancelled while holding the
+    # bus - a supervisor restart, or clear() unsticking a wedged link - does not leave the instance refusing
+    # every later call as re-entrant. The flag is not the lock: `async with` releases that, not this.
     def pull(chunk: int, buf: memoryview) -> int:
         return 0
 
@@ -1924,10 +1981,9 @@ def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
         assert bus.asy_lock.locked() is False, work
 
 def test_two_declined_ids_in_rotation_do_not_refill_the_history_either() -> None:
-    # The half J4's own fix still left open. Remembering only the *last* declined id suppresses a
-    # repeat but not an alternation, and a peer looping over a command set of which two are
-    # unimplemented here is the realistic shape - it refilled and overflowed a ten-slot history in
-    # five rounds, cause entry first, exactly the loss the rule exists to prevent.
+    # The half J4's own fix still left open. Remembering only the last declined id suppresses a repeat but
+    # not an alternation, and a peer looping over a command set of which two are unimplemented here is the
+    # realistic shape - it refilled and overflowed a ten-slot history in five rounds, cause entry first.
     pair = run(build_pair(timeout=30, get_callback=returns((False, None)), set_callback=accept_set()))
     for _ in range(6):
         for cmd_id in (0x42, 0x43):
@@ -1943,10 +1999,9 @@ def test_two_declined_ids_in_rotation_do_not_refill_the_history_either() -> None
 
 
 def test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault() -> None:
-    # Chunk 1 is already sent and acknowledged by the time a pull callback is first asked for
-    # anything, so every abort here leaves the peer mid-train: it drains for 1.5 x timeout while
-    # this side, without a hold-off, is free to transmit straight into that window - where the
-    # drain swallows a real payload and reports it back as a link fault.
+    # Chunk 1 is already sent and acknowledged by the time a pull callback is first asked for anything, so
+    # every abort here leaves the peer mid-train: it drains for 1.5 x timeout while this side, without a
+    # hold-off, is free to transmit into that window, where the drain swallows a real payload as a fault.
     def aborting_pull(kind: str) -> "Any":
         def pull(chunk: int, buf: memoryview) -> "Any":
             if chunk != 2:
@@ -2080,10 +2135,9 @@ def test_the_legacy_bsec_command_set_still_runs_end_to_end() -> None:
 
 
 def test_the_two_spellings_the_boards_own_uart_script_used_still_work() -> None:
-    # dev_legacy/ext_uart.py, the exploratory script found on the board, exercised two shapes the
-    # BSEC driver itself does not: a GET declaring an expected size of exactly zero (an answer that
-    # must be empty, which is a different claim from "don't care"), and a SET whose payload is an
-    # empty bytearray rather than None. Both have to stay distinguishable from failure.
+    # dev_legacy/ext_uart.py, the exploratory script found on the board, exercised two shapes the BSEC
+    # driver does not: a GET declaring an expected size of exactly zero - an answer that must be empty, a
+    # different claim from "don't care" - and a SET whose payload is an empty bytearray rather than None.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(0)))
     empty = run(pair.with_listener(pair.initiator.uart_get(0x3C, exp_size=0)), limit=20)
     assert empty is not None and len(empty) == 0, empty  # empty, not None (J.9)
@@ -2117,6 +2171,19 @@ def test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one() -> None:
     # Everything else the legacy link declared is accepted unchanged: 115200 baud, a 1000ms reply
     # budget, payload_size 20, and a CRC16 underneath the protocol.
     assert deployed(128).payload_size == _BSEC_PAYLOAD_SIZE
+
+
+def test_a_drain_that_cannot_run_clears_the_previous_drains_verdict() -> None:
+    # _drain()'s verdict outlives the call - the resync that called it reads it afterwards - so it is
+    # cleared before the early return, not after. A construction whose RX buffer failed is the only
+    # way to reach that return, and it must not hand the next resync the last drain's answer.
+    comm = make_comm()
+    comm._drain_bound_hit = True
+    comm._rx = LockableBuffer(-1)  # a failed allocation, which is what hands its owner None
+    assert comm._rx.get_buf() is None  # the early return really is the path taken
+    assert run(comm._drain(comm.uart)) == 0  # type: ignore[arg-type]
+    assert comm._drain_bound_hit is False
+
 
 if __name__ == "__main__":
     import microtest

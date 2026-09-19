@@ -16,9 +16,9 @@ if TYPE_CHECKING:
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
-# Both scripts import asy_uart_comm, which a dev firmware built today does contain (sensortask_dev
-# imports it, and build_firmware.py freezes all of src/). The guard below is therefore not an
-# expected skip - it only names the cause if some future firmware lacks it (BACKLOG.md).
+# Both scripts import asy_uart_comm, which a dev firmware carries: dev.toml's two `uart_link`
+# instances pull it in transitively through asy_uart_link_driver.py. The guard below is not an
+# expected skip - it only names the cause if some future build genuinely lacks the module.
 _MISSING_MODULE_RE = re.compile(r"ImportError: no module named 'asy_uart_comm'")
 
 
@@ -29,7 +29,7 @@ def _run_or_skip(board: Board, script: str, timeout_s: float) -> str:
         if _MISSING_MODULE_RE.search(str(e)):
             pytest.skip(
                 "this firmware does not contain asy_uart_comm - a dev build normally pulls it in "
-                "behind sensortask_dev, so check how this firmware was built (BACKLOG.md)",
+                "via devices/dev.toml's uart_link instances, so check how this firmware was built",
             )
         raise
 

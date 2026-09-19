@@ -2,16 +2,17 @@
 mocking boundary as test_asy_scd30_driver.py's own integration-level tests) feeding a real asy_notification_service.py.NotificationCoordinator, driving a real asy_neopixel_driver.py.NeopixelDriver.
 Exercises how a genuine hardware fault on one driver (SCD30) does NOT propagate into a sibling driver's (NOTIFY's) own error accounting, matching SPECIFICATION.md Part C.7's "each driver owns its own error log" separation of concerns.
 """
-# The get_value() wrapper mirrors src/sensortask_wozi.py's own
-# co2_value_callback()/hum_value_callback() exactly (reproduced locally rather than imported, to
-# keep this test independent of that module's own full construction sequence). Only tests/neopixel.py's
-# fake write surface and tests/machine.py's fake I2C bus are mocked; every layer above the raw I2C
-# transaction (SCD30_Reader's own protocol/error handling, the notify poll loop, gating,
-# NeopixelDriver's arbitration/ramp) runs for real.
+# Each NotificationSignal below holds a direct (source, field) reference to the same scd_reader instance
+# (SPECIFICATION.md Part C.14.2), mirroring the generated device modules' real registration shape.
+#
+# Only tests/neopixel.py's fake write surface and tests/machine.py's fake I2C bus are mocked; every layer
+# above the raw I2C transaction - the driver's protocol and error handling, the notify poll loop, gating,
+# NeopixelDriver's arbitration and ramp - runs for real.
 
 import asyncio
-import os
 import struct
+
+from _tmp_scratch import TmpScratch
 
 from asy_i2c_driver import I2C
 from asy_neopixel_driver import NeopixelDriver
@@ -37,63 +38,13 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("notify_scd30_")
-
-
-def _remove_any(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        try:
-            os.rmdir(path)
-        except OSError:
-            pass
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("notify_scd30")
 
 
 def _tmp_cfg_dir() -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    _next_dir += 1
-    path = _TMP_DIR + "/notify_scd30_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass
-    _remove_any(path + "/config_NOTIFY.cfg")
-    return path + "/"
+    return _scratch.dir()
 
 
 class _FakeTime:
@@ -141,33 +92,14 @@ def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
     return bytes(frame)
 
 
-async def co2_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
-    # Verbatim mirror of src/sensortask_wozi.py's own co2_value_callback() body.
-    scd_data = await scd_reader.get_data()
-    if scd_data is None or scd_data.CO2 is None:
-        return None
-    return float(scd_data.CO2)
-
-
-async def hum_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
-    # Verbatim mirror of src/sensortask_wozi.py's own hum_value_callback() body -
-    # same SCD30_Reader instance backs both WarnCO2 and WarnHum in the real wiring (one sensor,
-    # two notification signals off its own .Hum/.CO2 fields), but no test file exercised the real
-    # WarnHum chain before this one - only WarnCO2 had integration coverage.
-    scd_data = await scd_reader.get_data()
-    if scd_data is None or scd_data.Hum is None:
-        return None
-    return float(scd_data.Hum)
-
-
 def make_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, NotificationCoordinator]":
+    # Direct (source, field) reference (SPECIFICATION.md Part C.14.2), same SCD30_Reader instance
+    # backing both WarnCO2 and WarnHum in the real wiring (one sensor, two notification signals off
+    # its own .CO2/.Hum fields) - mirrors src/sensortask_wozi.py's own real registration shape.
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
-    async def get_co2() -> "int | float | None":
-        return await co2_value_callback(scd_reader)
-
     notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir())
-    signal = NotificationSignal("WarnCO2", get_co2, (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
+    signal = NotificationSignal("WarnCO2", scd_reader, "CO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     notify.register(signal)
     notify.finalize()
     run(notify.cfgmgr.setup())
@@ -180,11 +112,8 @@ def make_hum_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, Notificat
     # avoids the two signals' ramps overlapping in the same pixel.pixel.writes trace.
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
-    async def get_hum() -> "int | float | None":
-        return await hum_value_callback(scd_reader)
-
     notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir())
-    signal = NotificationSignal("WarnHum", get_hum, (("WarnHum", "float", 65.0, 0.0, 100.0, None),), (0, 0, 1))
+    signal = NotificationSignal("WarnHum", scd_reader, "Hum", (("WarnHum", "float", 65.0, 0.0, 100.0, None),), (0, 0, 1))
     notify.register(signal)
     notify.finalize()
     run(notify.cfgmgr.setup())
@@ -231,7 +160,7 @@ def test_real_sensor_reading_above_threshold_flows_through_to_a_real_ramp() -> N
 
 def test_real_humidity_reading_above_threshold_flows_through_to_a_real_ramp() -> None:
     # Same real read chain as the WarnCO2 test above, driving WarnHum instead - the one other real
-    # signal this SCD30_Reader instance backs in the actual wiring (see hum_value_callback() above).
+    # signal this SCD30_Reader instance backs in the actual wiring (see make_hum_stack() above).
     scd_reader, i2c = make_scd_reader()
     i2c.read_queue.append(register_frame(1))
     i2c.read_queue.append(data_frame(800.0, 22.0, 70.0))  # CO2 well under threshold, Hum above the 65.0 default
@@ -295,15 +224,16 @@ def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:
     scd_reader, i2c = make_scd_reader()
     i2c.inject_fault("writeto", OSError(5, "simulated bus fault"))
     pixel, notify = make_stack(scd_reader)
-    # Built outside scenario() deliberately: register_frame()/data_frame() call crc8_byte(), which
-    # runs its own asyncio.run() - calling that from inside scenario() while it's already running
-    # under this file's own run()/asyncio.run() is a nested asyncio.run() call. MicroPython's
-    # asyncio doesn't reject that with a clean RuntimeError the way CPython's does - it corrupts the
-    # scheduler badly enough to segfault the whole interpreter (confirmed by direct reproduction
-    # isolating this exact pattern down to a two-line repro, independent of anything in
-    # asy_scd30_driver.py/asy_i2c_driver.py). Not a production bug: no real driver code calls
-    # asyncio.run() from within a coroutine either. Keep every frame-building call at this same
-    # sync top level, matching test_asy_scd30_driver.py's own established convention.
+    # Built outside scenario() deliberately: register_frame()/data_frame() call crc8_byte(), which runs its
+    # own asyncio.run(), and calling that from inside scenario() while it already runs under this file's
+    # top-level asyncio.run() is a nested run().
+    #
+    # MicroPython's asyncio does not reject that with a clean RuntimeError as CPython does - it corrupts the
+    # scheduler badly enough to segfault the whole interpreter, confirmed by a two-line repro independent of
+    # any driver code. Not a production bug: no real driver calls asyncio.run() from a coroutine.
+    #
+    # Keep every frame-building call at this same sync top level, matching test_asy_scd30_driver.py's
+    # established convention.
     frame1 = register_frame(1)
     frame2 = data_frame(2000.0, 22.0, 45.0)
 

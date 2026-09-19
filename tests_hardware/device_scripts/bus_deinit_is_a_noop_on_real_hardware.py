@@ -1,7 +1,6 @@
-"""Isolated-driver device script: SPECIFICATION.md Part F.5.1's two rp2 claims, on a live bus.
-Both were read out of the port's protocol tables and modelled in tests/machine.py and
-digital_twin/machine.py, never observed on real silicon: machine.I2C/SPI .deinit() are silent
-no-ops (the peripheral keeps running), and each bus id is a static singleton."""
+"""Isolated-driver device script: SPECIFICATION.md Part F.5.1's two rp2 claims on a live bus -
+machine.I2C/SPI .deinit() are silent no-ops and each bus id is a static singleton. Both were read
+out of the port's protocol tables and modelled in the fakes, never observed on real silicon."""
 
 import asyncio
 

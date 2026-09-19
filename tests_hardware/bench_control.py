@@ -56,10 +56,9 @@ class BenchBridge:
         return iface
 
     def ap_ssid(self) -> str:
-        # `--escape no`: `nmcli -g` escapes every ':' in a value as '\:', so an SSID/PSK containing
-        # one would be handed to the DUT with stray backslashes and simply fail to associate - a
-        # credential bug that presents as "WiFi flakiness". Colon-free for a bench-generated AP
-        # (secrets.token_urlsafe), but not for a hand-made one or a $BENCH_AP_PASSWORD override.
+        # `--escape no`: `nmcli -g` escapes ':' as '\:', so an SSID/PSK containing one reaches
+        # the DUT with stray backslashes and fails to associate - a credential bug that looks like
+        # WiFi flakiness. Only a hand-made AP or a $BENCH_AP_PASSWORD override can contain one.
         return _nmcli("--escape", "no", "-g", "802-11-wireless.ssid", "connection", "show", self.ap_conn).strip()
 
     def ap_password(self) -> str:
@@ -71,10 +70,9 @@ class BenchBridge:
     # -- fault injection: attacking the DUT's *uplink* (the bridge is the AP the DUT connects to) --
 
     def ap_down(self) -> None:
-        # Idempotent: nmcli's own "connection down" errors ("not an active connection") if called
-        # a second time while already down - a real finding from a retry loop around
-        # join_dut_hotspot() (which calls this internally) needing to call ap_down() again after an
-        # earlier attempt in the same loop already took it down but failed a later step.
+        # Idempotent: nmcli's "connection down" errors with "not an active connection" when it is
+        # already down. Found through join_dut_hotspot()'s retry loop, which calls this again
+        # after an earlier attempt took the AP down and then failed a later step.
         try:
             _nmcli("connection", "down", self.ap_conn)
         except HardwareTestFailureError as e:

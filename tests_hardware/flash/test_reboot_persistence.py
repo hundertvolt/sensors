@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
 from harness import Board, wait_until
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
@@ -25,6 +26,7 @@ def _parse_result(output: str) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.persistence_write
 def test_config_value_survives_a_genuine_hard_reset(board: Board) -> None:
     write_output = board.run_isolated(DEVICE_SCRIPTS / "reboot_persist_write.py")
     ok, detail = _parse_result(write_output)
@@ -39,13 +41,13 @@ def test_config_value_survives_a_genuine_hard_reset(board: Board) -> None:
 
 
 # ---------------------------------------------------------------------------
-# This bench only ever flashes the refactored `src/` build (dev_boot.py frozen as "main.py") - never
-# the legacy `modules/_boot.py` mechanism BACKLOG.md's open question #1 covers. Verifies a genuine
-# hard reset brings the whole refactored application layer (ConfigManager/FRAM, not just the bare
-# interpreter) back up cleanly - no twin/mock backend can prove this.
+# This bench only flashes the refactored `src/` build (dev_boot.py frozen as "main.py"), never
+# the legacy `modules/_boot.py` mechanism of BACKLOG open question 1. Proves a real hard reset
+# brings the whole application layer back - ConfigManager/FRAM, not just the interpreter.
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.persistence_write
 def test_boot_import_mechanism_actually_boots_the_real_system(board: Board) -> None:
     # This bench's board is left at production-quiet DebugLevel=0 between sessions, which suppresses
     # the pr.one()-level boot-chatter lines this check looks for - raise DebugLevel for the one

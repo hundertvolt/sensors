@@ -1,29 +1,25 @@
 """Boots the real sensortask_wozi object graph (digital_twin) with the REAL website - not
 html_stub - wired in as `frozen_html`, and proves it over real HTTP: the Unix-port counterpart to
-scripts/build_firmware.py's real ARM build (SPECIFICATION.md Part B.11), runnable and checkable
-here where the ARM build can only be compiled, never executed."""
+scripts/build_firmware.py's real ARM build, which can only be compiled here, never executed."""
 
 import asyncio
 import json
-import os
 import sys
 
 sys.path.insert(0, "ext")  # reaches the real, vendored ext/microdot.py - same convention as
 # test_digital_twin_sensortask_integration.py's own comment.
 sys.path.insert(0, "digital_twin")
 
-# Must run before `import sensortask_wozi` below: MicroPython's import machinery checks
-# sys.modules by name before touching the filesystem (confirmed directly against the pinned
-# v1.29.0 source, py/builtinimport.c's process_import_at_level(), same lookup CPython does) - so
-# pre-registering "frozen_html" here makes sensortask_wozi.py's own top-level `import frozen_html`
-# bind to the real website instead of resolving frozen_modules/frozen_html.py's html_stub build.
+# Must run before `import sensortask_wozi` below: MicroPython's import machinery checks sys.modules by name
+# before touching the filesystem (v1.29.0's py/builtinimport.c, the same lookup CPython does), so pre-
+# registering "frozen_html" binds that import to the real website, not the html_stub build.
 import frozen_website_wozi  # type: ignore[import-not-found]  # mounts /html with the real website content
 
 sys.modules["frozen_html"] = frozen_website_wozi
 
 import _http_client  # noqa: E402
-
 import sensortask_wozi  # noqa: E402
+from _tmp_scratch import TmpScratch  # noqa: E402
 
 # Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_HOTSPOT values - same
 # not-importable-once-const()-folded reasoning as tests/test_asy_wifi_service.py's own copy; keep in
@@ -47,26 +43,15 @@ def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
-# Same per-test config-file isolation shape as test_digital_twin_sensortask_integration.py, own
-# port range (19300+) so a parallel/adjacent run of that file never collides on either.
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
+# Per-test config-file isolation via tests/_tmp_scratch.py - see that module's docstring and
+# tests/test_tmp_scratch.py for the mechanism. Own port range (19300+) so a parallel or adjacent run of
+# test_digital_twin_sensortask_integration.py never collides on either.
+_scratch = TmpScratch("dtrw")
 _next_port = 19300
 
 
 def _tmp_cfg_dir() -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    _next_dir += 1
-    path = _TMP_DIR + "/dtrw_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass
-    return path + "/"
+    return _scratch.dir()
 
 
 def _next_test_port() -> int:
@@ -82,8 +67,13 @@ async def _boot(port: int) -> None:
 async def _start_webserver() -> "asyncio.Task[None]":
     assert sensortask_wozi.webserver is not None
     task = sensortask_wozi.webserver.get_task_starters()[0]()
-    await asyncio.sleep(0.1)  # let _run() actually reach start_server()/bind - same bound
-    # test_asy_webserver_service.py's own F.8 test uses for the identical real-socket startup race.
+    # WP1/CLAUDE.md's implicit-FRAM-wiring rule made webserver.pr real-FRAM-backed whenever the device wires
+    # FRAM, so _run() now awaits a real self.pr.setup() - a real chunk read/write - before start_server(),
+    # not the instant no-op a RAM-only logger's setup() was.
+    #
+    # Measured directly against this file's real twin fakes: consistently ready within ~400ms, so 1.0s keeps
+    # a ~2.5x margin rather than a bare-minimum guess.
+    await asyncio.sleep(1.0)
     return task
 
 
@@ -95,7 +85,7 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
         pass
 
 
-def _decompress(body: bytes) -> bytes:
+def _decompress(body: "bytes | bytearray") -> bytes:
     # Same technique as test_frozen_html_integration.py/test_website_build_integration.py - see
     # either file's own comment for why deflate.DeflateIO(..., AUTO, ...) is the right call here.
     import io
@@ -128,6 +118,21 @@ def test_real_website_inlined_definitions_matches_the_booted_devices_own_id() ->
     # definitions.json is no longer a separately-fetched route (scripts/build_website.sh's own
     # "Inlining" comment - SPECIFICATION.md Part H.7): it's embedded directly into
     # index.html at build time instead, so this now reads it out of the real page body.
+    #
+    # "wozi" is hardcoded deliberately, not a stale device-specific leftover (Part L.4, re-verified): this
+    # file's device.id assertion comes from whichever device's real website bundle scripts/test.sh built -
+    # frozen_website_wozi.py, the only one - never from sensortask_wozi.py's construction.
+    #
+    # Generalizing it would mean teaching scripts/test.sh to build a second real gzip+freezefs+inlined
+    # bundle per device, real added build cost for all 6, just to re-prove a pipeline this file already
+    # proves once.
+    #
+    # The per-device DATA correctness - a device's real definitions.json carrying its own device.id - is
+    # already proven generically for all 6 by tests_scripts/test_buildgen_definitions.py. This file's job is
+    # that the gzip/freezefs/inlining pipeline executes correctly under the Unix port at all.
+    #
+    # That is the same code path whichever device's data flows through it, so picking wozi, this project's
+    # exemplary base variant, once is complete coverage rather than a gap.
     port = _next_test_port()
 
     async def scenario() -> None:
@@ -189,16 +194,16 @@ def test_real_website_static_mount_never_shadows_a_real_api_route() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Captive-portal hotspot-mode redirect - full integration, real production website + real API, real
-# HTTP over a real socket (the one thing test_sensortask_wozi.py's own in-process _dispatch()
-# equivalent can't exercise). No real WiFi task is started (conn.start_asy_wlan_connect() is never
-# called here) - conn._conn_phase is set directly instead, the same test-seam convention
-# test_sensortask_wozi.py's own wiring-level coverage and this file's sibling
-# test_digital_twin_sensortask_integration.py's own direct-attribute tests already use; that file's
-# own test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led
-# already covers the "reached via a genuine real STA-failure/hotspot transition" case with the
-# html_stub website - this file adds the REAL production website + full real API surface on top,
-# plus the dynamic-switch and error-path coverage that test doesn't.
+# Captive-portal hotspot-mode redirect - full integration: the real production website, the real API, and
+# real HTTP over a real socket, the one thing _sensortask_scenarios.py's in-process dispatch cannot
+# exercise.
+#
+# No real WiFi task is started - conn._conn_phase is set directly instead, the test-seam convention both
+# _sensortask_scenarios.py and this file's sibling twin integration suite already use.
+#
+# That sibling already covers the "reached via a genuine STA-failure transition" case against the stub
+# website; this adds the real production website and full API surface on top, plus the dynamic-switch and
+# error-path coverage it does not have.
 # ---------------------------------------------------------------------------
 
 

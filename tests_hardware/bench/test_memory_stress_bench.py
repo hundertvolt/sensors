@@ -96,11 +96,9 @@ def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reb
     reset_all_error_logs(dut_ip)
     lines, success_count, request_errors = _run_max_speed_hammer_load(board, dut_ip, _HAMMER_DURATION_S)
     _assert_no_crash_or_reboot(lines)
-    # A real success requires the webserver to have actually accepted, processed, and responded to
-    # the request with valid JSON while under load - proof the server stayed alive and responsive
-    # throughout, not just that no crash marker appeared in the log (which a fully-wedged-but-
-    # not-crashed server would also satisfy). max_connections=4 rejections are expected and not
-    # counted against this - see _run_max_speed_hammer_load()'s own reject-when-full comment.
+    # A success here means the server accepted, processed and answered with valid JSON under load
+    # - which a wedged-but-not-crashed server cannot fake, unlike an absent crash marker.
+    # max_connections=4 rejections do not count against it (_run_max_speed_hammer_load()).
     assert success_count > 100, f"too few successful requests got through during the hammer load ({success_count} ok, {len(request_errors)} rejected/errored) - server may have wedged"
     reset_all_error_logs(dut_ip)
 

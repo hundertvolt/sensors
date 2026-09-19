@@ -11,14 +11,14 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
 const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
-const MICROPYPATH = "src:digital_twin:ext:frozen_modules:.frozen";
+// build/generated_src first: no static src/sensortask_wozi.py exists any more
+// (SPECIFICATION.md Part L.2) - package.json's own "pretest"/
+// "pretest:coverage" hooks generate it fresh there, via buildgen, before this spawns.
+const MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen";
 const HOST = "127.0.0.1";
-// Distinct from every other fixed port this repo already uses for a twin/integration run (8080
-// manual walkthrough, 18080 Python's own automated CI suite, 19300+ Python's
-// test_digital_twin_sensortask_integration.py/test_digital_twin_real_website_integration.py) -
-// see digital_twin/README.md's "never together" note. This one's launched from Node, not Python,
-// so there's no real collision risk either way, but a distinct value keeps every entry point's
-// port trivially attributable from a process listing alone.
+// Distinct from every other fixed twin/integration port here (8080, 18080, 19300+ - see
+// digital_twin/README.md's "never together" note). Launched from Node rather than Python, so
+// there is no real collision risk; a distinct value just keeps a process listing attributable.
 const PORT = 19411;
 const READY_TIMEOUT_MS = 20000;
 const SHUTDOWN_TIMEOUT_MS = 15000;
@@ -53,7 +53,13 @@ function spawnTwin() {
     const proc = spawn(
         MICROPYTHON_BIN,
         [
-            "digital_twin/run_wozi_integration.py",
+            "digital_twin/run_generic_integration.py",
+            "--module",
+            "sensortask_wozi",
+            "--wiring-plan",
+            path.join(REPO_ROOT, "build", "generated_src", "sensortask_wozi_wiring_plan.json"),
+            "--device",
+            "wozi",
             "--host",
             HOST,
             "--port",
@@ -66,17 +72,15 @@ function spawnTwin() {
         {
             cwd: REPO_ROOT,
             env: { ...process.env, MICROPYPATH, TZ: "UTC" },
-            // stdout: ignored (never read) - an unconsumed piped stream keeps Node's event loop
-            // alive (and can eventually block the child if its OS pipe buffer fills), leaving the
-            // vitest process hanging on exit otherwise.
-            // stderr: piped and drained below, only for surfacing into a failure's error message.
+            // stdout ignored rather than piped: an unconsumed pipe keeps Node's event loop alive
+            // and can block the child once its buffer fills, hanging vitest at exit. stderr is
+            // piped and drained below, only to surface in a failure's error message.
             stdio: ["ignore", "ignore", "pipe"],
         },
     );
-    // An unhandled ChildProcess 'error' event (e.g. a spawn failure) crashes the whole Node/Vitest
-    // process synchronously, skipping this file's own try/finally cleanup entirely. A no-op
-    // listener is enough: the existing waitUntilServing()/goto() error paths already surface a
-    // spawn failure via their own timeouts.
+    // An unhandled ChildProcess 'error' event crashes the whole Node/Vitest process
+    // synchronously, skipping this file's try/finally entirely. A no-op listener suffices -
+    // waitUntilServing()/goto() already surface a spawn failure through their own timeouts.
     proc.on("error", () => { /* no-op by design, per the comment above */ });
     return proc;
 }
@@ -86,15 +90,13 @@ async function stopTwin(proc) {
     if (proc.exitCode !== null || proc.signalCode !== null) {
         return;
     }
-    // SIGINT, not SIGTERM/kill('SIGTERM'): run_wozi_integration.py's own graceful-shutdown path
+    // SIGINT, not SIGTERM/kill('SIGTERM'): run_generic_integration.py's own graceful-shutdown path
     // (FRAM/SCD30 flush) only runs on KeyboardInterrupt - a plain SIGTERM would skip it, same
     // reasoning as scripts/_digital_twin_ci_suite.py's own _shutdown().
     proc.kill("SIGINT");
-    // The SIGKILL fallback timer is cleared once the child is actually gone. A plain
-    // `Promise.race([exit, sleep(...)])` leaves the setTimeout pending after the race settles, and
-    // a pending timer keeps Node's event loop alive - which surfaced as Vitest's "Tests closed
-    // successfully but something prevents Vite server from exiting" (its own close timeout is
-    // 10s, shorter than this 15s one) on every run touching a live-twin file.
+    // The SIGKILL fallback timer is cleared once the child is gone. A plain Promise.race leaves
+    // the setTimeout pending, and a pending timer keeps Node's event loop alive - which showed up
+    // as Vitest's "something prevents Vite server from exiting" on every live-twin run.
     /** @type {ReturnType<typeof setTimeout> | undefined} */
     let killTimer;
     try {
@@ -128,7 +130,7 @@ export async function runLiveBackendSmoke({ context }) {
 
     // Fresh state every run, mirroring scripts/_digital_twin_ci_suite.py's own "clean" step -
     // FRAM/SCD30 are already in-memory-only above; config/ is the one thing that still persists
-    // to a fixed path by default (run_wozi_integration.py exposes no --cfg-path flag).
+    // to a fixed path by default (run_generic_integration.py exposes no --cfg-path flag).
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
 
     const proc = spawnTwin();

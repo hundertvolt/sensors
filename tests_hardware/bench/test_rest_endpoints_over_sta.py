@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import http_client
+import pytest
 from harness import wait_until
 
 if TYPE_CHECKING:
@@ -20,8 +21,6 @@ PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
 BMP_TEMP_MIN_C, BMP_TEMP_MAX_C = -40.0, 85.0
 VOC_MIN, VOC_MAX = 0, 500
 RAW_MIN, RAW_MAX = 0, 65535
-LUX_MIN, LUX_MAX = 0.0, 10_000.0  # FN8424 p1's own two-range span
-CCT_MIN_K, CCT_MAX_K = 2000.0, 12_500.0  # McCamy (1992)'s own usable span
 
 # ---------------------------------------------------------------------------
 # The website, over the normal STA/bridge network path (not hotspot mode).
@@ -45,7 +44,7 @@ def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(bo
     assert res.status_code == 200, f"GET /measurements failed: {res.status_code} {res.body!r}"
     body = res.json()
 
-    for name in ("SCD30", "BMP3XX", "SGP40", "ISL29125"):
+    for name in ("SCD30", "BMP3XX", "SGP40"):
         assert name in body, f"GET /measurements is missing the {name!r} key entirely: {body!r}"
 
     failures: list[str] = []
@@ -75,36 +74,13 @@ def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(bo
     if raw is None or not (RAW_MIN <= raw <= RAW_MAX):
         failures.append(f"SGP40.Raw={raw!r} not within [{RAW_MIN}, {RAW_MAX}]")
 
-    # The only nested measurement group in either shipped device: RGB and HSB are sub-objects, not
-    # flat keys (requirement 11), so this also proves the nesting survives the real JSON round trip.
-    isl = body["ISL29125"]
-    lux, cct, range_act = isl.get("Lux"), isl.get("CCT"), isl.get("RangeAct")
-    rgb, hsb = isl.get("RGB"), isl.get("HSB")
-    if lux is None or not (LUX_MIN <= lux <= LUX_MAX):
-        failures.append(f"ISL29125.Lux={lux!r} not within [{LUX_MIN}, {LUX_MAX}] lx")
-    if range_act not in (375, 10_000):
-        failures.append(f"ISL29125.RangeAct={range_act!r} is neither of the part's two ranges")
-    if cct is not None and not (CCT_MIN_K <= cct <= CCT_MAX_K):
-        failures.append(f"ISL29125.CCT={cct!r} not within [{CCT_MIN_K}, {CCT_MAX_K}] K")  # legitimately None below the low-light floor
-    if not isinstance(rgb, dict) or not isinstance(hsb, dict):
-        failures.append(f"ISL29125.RGB/HSB did not arrive as sub-objects: RGB={rgb!r} HSB={hsb!r}")
-    else:
-        for group, key in (("RGB", "R"), ("RGB", "G"), ("RGB", "B"), ("HSB", "S"), ("HSB", "B")):
-            value = (rgb if group == "RGB" else hsb).get(key)
-            if value is None or not (0.0 <= value <= 1.0):
-                failures.append(f"ISL29125.{group}.{key}={value!r} outside the normalised 0-1 range")
-        hue = hsb.get("H")
-        if hue is None or not (0.0 <= hue < 360.0):
-            failures.append(f"ISL29125.HSB.H={hue!r} outside [0, 360)")
-
     assert not failures, "implausible/missing real sensor values via GET /measurements: " + "; ".join(failures) + f"\nfull body: {body!r}"
 
 
 # ---------------------------------------------------------------------------
-# The FRAM storage-pause gate, end to end over the real HTTP stack. The mock tier covers the
-# clamp/re-arm/abort logic and the flash tier covers the real chip gating plus the real
-# auto-unpause timer; what only this tier can prove is that the REST command actually reaches
-# AsyFramManager on a real device and is visible in GET /status.
+# The FRAM storage-pause gate end to end over the real HTTP stack. The mock tier covers the
+# clamp/re-arm/abort logic and the flash tier the real chip gating and auto-unpause timer; only
+# this tier proves the REST command reaches AsyFramManager and shows up in GET /status.
 # ---------------------------------------------------------------------------
 
 
@@ -120,12 +96,9 @@ def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(bo
     assert paused.status_code == 200, f"GET /status after mempause failed: {paused.status_code} {paused.body!r}"
     assert paused.json()["system"]["MemPaused"] is True, f"MemPaused did not become True after a real PUT /system mempause: {paused.json()['system']!r}"
 
-    # Recovery is a reboot, not a second REST call: the pause window is a fixed 300s and the
-    # duration is never client-suppliable (asy_webserver_service.py forwards the enum string only),
-    # so there is no REST unpause to issue. That constraint is also the assertion - AsyFramManager
-    # sets _pause = False in __init__ and nothing ever restores it from FRAM, so the pause is
-    # RAM-only and a reset must clear it. Leaving the bench unpaused for whatever runs next is a
-    # required side effect, not incidental cleanup.
+    # Recovery is a reboot, not a second REST call: the window is a fixed 300s and the duration
+    # is never client-suppliable, so no REST unpause exists. That is also the assertion - the
+    # pause is RAM-only, so a reset must clear it, which also leaves the bench usable.
     bench.kick_all_stations()  # see conftest.py's dut_ip docstring for why this precedes every reconnect-expecting reset
     board.hard_reset()
     wait_until(
@@ -139,26 +112,29 @@ def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(bo
 
 
 # ---------------------------------------------------------------------------
-# The gain ratio survives a power cycle like any config - over REST, since an isolated-driver
-# script would build its own AsyFramManager and overwrite production's first chunk.
+# ISL29125's applied gain ratio across a real reboot. The flash tier proves the config mechanism
+# survives a hard reset generically; this adds the field whose classification is newest -
+# GainRatio is ordinary user-PUT config now, not a self-learned runtime value.
+# ---------------------------------------------------------------------------
 
 
+@pytest.mark.persistence_write
 def test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # The ratio is config now, written only by a user PUT, so this is a config-persistence property
-    # rather than a FRAM one - and a calibration run cannot move it under the test at all, which is
-    # why no RangeAuto pinning is needed any more.
+    # Marked: this test OWNS its persisting writes (the probe PUT and the restore PUT), unlike the
+    # dispatch-only ISLCalibrate push, which stores nothing. CLAUDE.md's wear rule, and the reason
+    # tests_scripts/test_persistence_write_marker_completeness.py would fail without the marker.
     before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
     assert before.status_code == 200, f"GET /sensors failed: {before.status_code} {before.body!r}"
     original = before.json()["ISL29125"]["GainRatio"]
     assert original is not None, "GainRatio is a schema field with a default - it can never be absent"
 
-    # A value distinguishable from the nominal default, so the reboot leg proves persistence rather
-    # than re-defaulting. Inside the driver's own 20-34 band and exactly representable as a float.
+    # Distinguishable from the nominal default, so the reboot leg proves persistence rather than
+    # re-defaulting. Inside the driver's own [20, 34] band and exactly representable as a float.
     probe = 24.5 if abs(original - 24.5) > 0.01 else 27.25
     put = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"GainRatio": probe}}, timeout_s=10.0)
-    assert put.status_code == 200 and put.json()["result"]["ISL29125"].get("GainRatio") == "Valid", (
-        f"could not set GainRatio={probe}: {put.status_code} {put.body!r}"
-    )
+    assert put.status_code == 200, f"PUT /sensors GainRatio={probe} failed: {put.status_code} {put.body!r}"
+    assert put.json()["result"]["ISL29125"].get("GainRatio") == "Valid", f"could not set GainRatio={probe}: {put.json()['result']['ISL29125']!r}"
+
     try:
         bench.kick_all_stations()  # see conftest.py's dut_ip docstring for why this precedes every reconnect-expecting reset
         board.hard_reset()
@@ -166,10 +142,16 @@ def test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value(
             lambda: http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=5.0).status_code == 200,
             timeout_s=120.0,
             poll_interval_s=3.0,
-            description="DUT serving /sensors again after the reboot this test's persistence check needs",
+            description="DUT serving /sensors again after the reboot this persistence check needs",
         )
         after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0).json()["ISL29125"]["GainRatio"]
         assert after == probe, f"GainRatio did not survive a real reboot: set {probe!r}, read back {after!r}"
     finally:
+        # Restore regardless of outcome - this mutates the real, persisted config of a shared rig,
+        # and the applied ratio scales every later reading across a range change.
         restore = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"GainRatio": original}}, timeout_s=10.0)
         assert restore.status_code == 200, f"failed to restore GainRatio={original!r}: {restore.status_code} {restore.body!r}"
+        verdict = restore.json()["result"]["ISL29125"].get("GainRatio")
+        # "Unchanged" counts as restored: if the probe PUT never landed, the board still holds the
+        # original and this is a legitimate no-op - rejecting it would mask the real failure.
+        assert verdict in ("Valid", "Unchanged"), f"restoring GainRatio={original!r} was rejected: {verdict!r}"

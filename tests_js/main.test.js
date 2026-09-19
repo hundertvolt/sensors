@@ -45,10 +45,9 @@ function buildElements() {
 }
 
 /**
- * Builds a `<script type="application/json" id="inlined-definitions">` element the same shape
- * scripts/build_website.sh's own "Inlining" comment describes a real device build embedding into
- * index.html - not attached to `elements` by buildElements() itself (dev/preview mode's own
- * html/index.html never has one), so each test that wants one builds and passes it explicitly.
+ * Builds the `<script type="application/json" id="inlined-definitions">` element a real device
+ * build embeds into index.html (build_website.sh's "Inlining" note). buildElements() never
+ * attaches one, since dev/preview has none, so each test that wants one passes it explicitly.
  * @param {string} jsonText
  */
 function buildInlinedDefinitionsEl(jsonText) {

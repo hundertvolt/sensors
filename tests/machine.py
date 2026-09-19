@@ -126,15 +126,18 @@ class I2C:
         self.log = _CallLog()
         self.registers: dict[tuple[int, int], bytearray] = {}  # a real round trip through readfrom_mem/writeto_mem
         self.read_queue: list[bytes] = []  # its raw-transaction counterpart: readfrom_into() has no register to key off
+        self.read_queue_by_address: dict[int, list[bytes]] = {}  # opt-in per-address queue, checked
+        # before the shared one above - needed once two raw-word-protocol devices, with no register to key
+        # off, were driven concurrently on one bus (dev's i2c1 SCD30+SGP40), which would otherwise each pop
+        # whichever reply was next. Empty by default, so shared-queue callers are unaffected.
         self.nak_addresses: set[int] = set()  # convenience: EIO (no ACK) on every op to this address
         self.busy = False  # convenience: ETIMEDOUT (bus/clock-stretch timeout) on every op, any address
         self._faults: dict[str, list[Exception]] = {}  # op name -> FIFO queue, one exception per matching call
 
     def inject_fault(self, op: str, exc: Exception, times: int = 1) -> None:
-        # Queues `exc` to be raised on the next `times` calls to the named op (readfrom_into,
-        # writeto, readfrom_mem, writeto_mem, or scan) - lets a test fail one specific step of a
-        # multi-step operation (e.g. the read half of write_then_readinto) without affecting the
-        # others, modeling a transfer interrupted partway through.
+        # Queues `exc` to be raised on the next `times` calls to the named op (readfrom_into, writeto,
+        # readfrom_mem, writeto_mem or scan) - letting a test fail one specific step of a multi-step
+        # operation, such as the read half of write_then_readinto, without affecting the others.
         self._faults.setdefault(op, []).extend([exc] * times)
 
     def _maybe_raise(self, op: str, address: int) -> None:
@@ -163,13 +166,14 @@ class I2C:
             raise queue.pop(0)
         return sorted({addr for addr, _ in self.registers} - self.nak_addresses)
 
-    def _next_read_bytes(self, nbytes: int) -> bytes:
-        data = self.read_queue.pop(0) if self.read_queue else b""
+    def _next_read_bytes(self, address: int, nbytes: int) -> bytes:
+        per_address = self.read_queue_by_address.get(address)
+        data = per_address.pop(0) if per_address else (self.read_queue.pop(0) if self.read_queue else b"")
         return (data + bytes(nbytes))[:nbytes]  # always exactly nbytes, zero-padded/truncated like real hw
 
     def readfrom_into(self, address: int, buf: object, stop: bool = True) -> None:
         self._maybe_raise("readfrom_into", address)
-        data = self._next_read_bytes(len(buf))  # type: ignore[arg-type]
+        data = self._next_read_bytes(address, len(buf))  # type: ignore[arg-type]
         buf[:] = data  # type: ignore[index]
         self.log.append(("readfrom_into", address, data, stop))
 
@@ -185,6 +189,11 @@ class I2C:
         data = (stored + bytes(nbytes))[:nbytes]  # always exactly nbytes, zero-padded/truncated like real hw
         self.log.append(("readfrom_mem", address, memaddr, nbytes, addrsize))
         return data
+
+    def readfrom_mem_into(self, address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
+        # Delegates, so the fault hook, the log entry and the stored-register semantics stay one
+        # implementation - a test faulting "readfrom_mem" keeps working whichever form the driver calls.
+        buf[:] = self.readfrom_mem(address, memaddr, len(buf), addrsize=addrsize)  # type: ignore[index,arg-type]
 
     def writeto_mem(self, address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
         self._maybe_raise("writeto_mem", address)
@@ -269,10 +278,9 @@ class SPI:
         self._faults.setdefault(op, []).extend([exc] * times)
 
     def _maybe_raise(self, op: str, nbytes: int) -> None:
-        # DMA_MIN_SIZE_THRESHOLD is 32 in ports/rp2/machine_spi.c - a shorter transfer uses the
-        # blocking software path, which has no overrun check and so cannot raise. Both knobs are
-        # gated on that, so a 1-byte status-register read stays immune however they are set;
-        # inject_fault()'s queue below is deliberately not, so a test can still target any call.
+        # DMA_MIN_SIZE_THRESHOLD is 32 in ports/rp2/machine_spi.c - a shorter transfer takes the blocking
+        # software path, which has no overrun check and cannot raise. Both knobs are gated on that, so a
+        # 1-byte read stays immune however they are set; inject_fault()'s queue deliberately is not.
         if nbytes >= _SPI_DMA_MIN_SIZE:
             if self.rx_overrun:
                 raise OSError(errno.EIO, "SPI RX overrun")
@@ -284,10 +292,9 @@ class SPI:
             raise queue.pop(0)
 
     def deinit(self) -> None:
-        # Real rp2 machine.SPI.deinit() leaves the protocol's .deinit slot NULL: a silent no-op
-        # that neither stops the peripheral nor releases the pins (SPECIFICATION.md Part F.5).
-        # This fake therefore deliberately leaves every bus operation working afterwards, exactly
-        # like real hardware; the counters only record that asy_spi_driver.py forwarded the call.
+        # Real rp2 machine.SPI.deinit() leaves the protocol's .deinit slot NULL: a silent no-op that neither
+        # stops the peripheral nor releases the pins (Part F.5). This fake therefore leaves every bus
+        # operation working afterwards; the counters only record that asy_spi_driver.py forwarded the call.
         self.deinit_called = True
         self.deinit_count += 1
         self.log.append(("deinit",))
@@ -598,10 +605,9 @@ class Timer:
     ONE_SHOT = 0
     PERIODIC = 1
 
-    # Class-level registry, not per-instance: records every real Timer() *construction*, so a test
-    # can assert none happened (e.g. system_service.py's _timer_sequencer() reusing one preallocated
-    # Timer via .init() instead - SPECIFICATION.md Part F.1). Tests must clear this between test
-    # functions (all_timers.clear()) since it otherwise persists across the whole process lifetime.
+    # Class-level registry, not per-instance: records every real Timer() construction, so a test can assert
+    # none happened - system_service.py's _timer_sequencer() reusing one preallocated Timer via .init()
+    # instead (Part F.1). Tests must clear it between functions, since it persists for the whole process.
     all_timers: "ClassVar[list[Timer]]" = []
 
     # Test-only, off by default: real rp2 Timer.init() raises OSError(ENOMEM) on an exhausted alarm

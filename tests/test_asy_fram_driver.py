@@ -7,10 +7,9 @@ from asy_fram_driver import FRAM_SPI
 from asy_spi_driver import SPI
 from print_log import PrintLogHistory
 
-# Swaps the stateful MB85RS64V chip fake in for the whole process (one test file per
-# scripts/test.sh invocation - see SPECIFICATION.md Part E.3): asy_spi_driver.SPI.init() resolves `_SPI` as
-# a plain module global at call time, so reassigning it here before any SPI bus is constructed is
-# enough, with no per-test patch/restore dance needed.
+# Swaps the stateful MB85RS64V chip fake in for the whole process (one test file per scripts/test.sh
+# invocation, SPECIFICATION.md Part E.3): asy_spi_driver.SPI.init() resolves `_SPI` as a module global at
+# call time, so reassigning it before any bus is constructed needs no per-test patch/restore.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
 try:
@@ -88,10 +87,9 @@ def test_setup_raises_on_wrong_continuation_code() -> None:
 
 
 def test_setup_raises_on_wrong_product_id_with_correct_manufacturer_id() -> None:
-    # Regression test for the real bug found during this promotion: the legacy check was
-    # `manf_wrong AND prod_wrong`, so a correct manufacturer byte alone (0x04) made this whole
-    # check pass regardless of the (also byte-order-swapped) product ID - meaning a wrong/different
-    # Fujitsu part, or a corrupted product-ID byte pair, was silently accepted. Now must raise.
+    # Regression test for a real bug found during this promotion: the legacy check was `manf_wrong AND
+    # prod_wrong`, so a correct manufacturer byte alone made the whole check pass regardless of the byte-
+    # order-swapped product ID - silently accepting a different Fujitsu part or a corrupted ID pair.
     fram, chip = make_fram()
     chip.rdid_response = bytes([0x04, 0x7F, 0x99, 0x99])
     try:
@@ -426,10 +424,9 @@ def test_write_reports_data_written_even_if_wrdi_stays_stuck_after_retry() -> No
 
 
 def test_setup_resyncs_wp_from_nonvolatile_hardware_state_over_a_stale_constructor_guess() -> None:
-    # Regression for a real bug: WPEN/BP0/BP1 are nonvolatile FRAM cells (unlike WEL, which resets
-    # at power-on), so real hardware can already be write-protected from a previous session before
-    # this object even exists. setup() must trust the real status register over the constructor's
-    # wp= guess in both directions - a stale "assumed protected" and a stale "assumed unprotected".
+    # Regression for a real bug: WPEN/BP0/BP1 are nonvolatile FRAM cells, unlike WEL which resets at power-
+    # on, so real hardware can already be write-protected from a previous session. setup() must trust the
+    # real status register over the constructor's wp= guess in both directions.
     fram, chip = make_fram(wp=False)
     chip.status = 0x8C  # hardware was actually left protected by an earlier session
 
@@ -565,11 +562,11 @@ def test_wp_pin_get_write_protected_reads_active_low_pin_correctly() -> None:
 
 
 def test_wp_pin_protection_can_be_toggled_off_again_after_being_enabled() -> None:
-    # Regression for a real bug: per the datasheet's WRITING PROTECT table, WEL=1,WPEN=1,WP=0
-    # makes the status register itself unwritable - so a wp_pin left low from an earlier
-    # protect=True call used to silently block every later WRSR, including the one meant to turn
-    # protection back off, permanently locking this driver into protected mode. Multiple round
-    # trips here (not just one) prove it's not a one-shot fluke.
+    # Regression for a real bug: per the datasheet's write-protect table, WEL=1/WPEN=1/WP=0 makes the status
+    # register itself unwritable, so a wp_pin left low from an earlier protect=True call silently blocked
+    # every later WRSR, including the one meant to turn protection off - a permanent lock-in.
+    #
+    # Multiple round trips here, not just one, prove it is not a one-shot fluke.
     fram, chip = make_fram(wp_pin=7)
     run(setup_fram(fram))
 
@@ -584,10 +581,9 @@ def test_wp_pin_protection_can_be_toggled_off_again_after_being_enabled() -> Non
 
 
 def test_wp_pin_restored_to_prior_asserted_level_when_wrsr_readback_fails() -> None:
-    # Regression: set_write_protected() deasserts WP before attempting WRSR (so the register's
-    # own WP-pin lock doesn't block that very WRSR) and must restore the pin on failure, not leave
-    # it deasserted - which would silently unlock a status register that's actually still
-    # protected. Starts from an already-protected state so the restore has an observable effect.
+    # Regression: set_write_protected() deasserts WP before attempting WRSR, so the register's own WP-pin
+    # lock does not block that very WRSR, and must restore the pin on failure rather than leave it
+    # deasserted - which would silently unlock a status register that is actually still protected.
     fram, chip = make_fram(wp_pin=7)
     run(setup_fram(fram))
 
@@ -654,11 +650,12 @@ def test_setup_again_after_verify_present_failure_recovers() -> None:
 
 
 def test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_already_held() -> None:
-    # verify_present() self-acquires the outer Lockable lock, unlike get_values()/set_values()
-    # (which require the caller to already hold it) - calling it from inside an existing
-    # `async with fram:` block would otherwise hang the task forever, since asyncio.Lock isn't
-    # reentrant. _VERIFY_PRESENT_LOCK_TIMEOUT_S is a real const() (verified un-monkeypatchable,
-    # see asy_fram_driver.py), so this test sits out the real ~1s timeout rather than shortening it.
+    # verify_present() self-acquires the outer Lockable lock, unlike get_values()/set_values(), which
+    # require the caller to hold it - calling it inside an existing `async with fram:` would hang forever,
+    # asyncio.Lock not being reentrant.
+    #
+    # _VERIFY_PRESENT_LOCK_TIMEOUT_S is a real const() and cannot be monkeypatched, so this test sits out
+    # the real ~1s timeout rather than shortening it.
     fram, _chip = make_fram()
     run(setup_fram(fram))
 
@@ -717,13 +714,12 @@ def test_write_protected_still_reports_success_even_if_wel_stays_stuck_after_ret
 
 
 def test_wp_and_wp_pin_combinations_all_construct_and_setup_cleanly() -> None:
-    # All 4 combinations of the two independent wp/wp_pin parameters - each on its own is already
-    # covered elsewhere; this locks in that every pairing (not just each parameter in isolation)
-    # constructs and sets up without error, with the pin left in the datasheet-correct state.
-    # setup() re-syncs _wp from the real (nonvolatile) status register rather than trusting the
-    # constructor's wp= guess (see test_setup_resyncs_wp_from_nonvolatile_hardware_state_*), so
-    # `wp` here is what the simulated hardware is seeded to already hold, not just a constructor
-    # passthrough.
+    # All 4 combinations of the two independent wp/wp_pin parameters - each on its own is covered elsewhere;
+    # this locks in that every pairing constructs and sets up without error, with the pin in the datasheet-
+    # correct state.
+    #
+    # setup() re-syncs _wp from the real nonvolatile status register rather than trusting the constructor,
+    # so `wp` here is what the simulated hardware is seeded to hold, not a constructor passthrough.
     for wp in (False, True):
         for wp_pin in (None, 7):
             fram, chip = make_fram(wp=wp, wp_pin=wp_pin)
@@ -763,10 +759,9 @@ def test_max_size_zero_or_negative_raises_at_setup_as_an_unrecognized_size() -> 
 
 
 def test_unrecognized_max_size_raises_at_setup_regardless_of_wp_settings() -> None:
-    # Several edge values together (not just one at a time): an unrecognized max_size alongside a
-    # real wp/wp_pin configuration. _check_device_id() (now keyed by max_size) runs before any
-    # wp/status-register handling in setup(), so it must raise the same way regardless of what
-    # wp/wp_pin are set to - no interaction/crash between them.
+    # Several edge values together, not one at a time: an unrecognized max_size alongside a real wp/wp_pin
+    # configuration. _check_device_id(), now keyed by max_size, runs before any status-register handling in
+    # setup(), so it must raise the same way whatever wp/wp_pin are - no interaction between them.
     fram, chip = make_fram(max_size=-1, wp=True, wp_pin=7)
     chip.status = 0x8C
     try:
@@ -784,10 +779,9 @@ def test_unrecognized_max_size_raises_at_setup_regardless_of_wp_settings() -> No
 
 
 def test_verify_present_before_setup_returns_false_not_a_raised_runtimeerror() -> None:
-    # Real gap found during an exception-safety review: every other public method here guards
-    # `initialized` first and returns a clean False - verify_present() was the one exception,
-    # letting SPIDevice's own "not set up" RuntimeError leak out uncaught if called before the
-    # first setup() ever succeeded. Fixed to match every sibling method's contract.
+    # Real gap found during an exception-safety review: every other public method here guards `initialized`
+    # first and returns a clean False, and verify_present() was the one exception, letting SPIDevice's own
+    # "not set up" RuntimeError leak out if called before the first successful setup().
     fram, _chip = make_fram()
 
     async def scenario() -> bool:
@@ -803,10 +797,9 @@ def test_verify_present_before_setup_returns_false_not_a_raised_runtimeerror() -
 
 
 def test_construction_with_an_out_of_range_wp_pin_raises_uncaught_at_boot() -> None:
-    # __init__ constructs a real Pin object for wp_pin - a one-time, at-boot misconfiguration is
-    # allowed to raise loudly rather than silently produce a permanently nonfunctional driver
-    # (same carve-out asy_spi_driver.py's own __init__ already established). 99 is outside the
-    # real RP2040's GPIO0-28 range (tests/machine.py's fake Pin validates this).
+    # __init__ constructs a real Pin object for wp_pin - a one-time at-boot misconfiguration is allowed to
+    # raise loudly rather than silently produce a permanently nonfunctional driver, the carve-out
+    # asy_spi_driver.py already established. 99 is outside the real RP2040's GPIO0-28 range.
     bus = make_bus()
     try:
         FRAM_SPI(bus, 1, logger=PrintLogHistory(), wp_pin=99)
@@ -828,12 +821,12 @@ def test_construction_with_an_out_of_range_spi_cs_raises_uncaught_at_boot() -> N
 
 
 def test_bus_deinit_mid_operation_raises_uncaught_runtimeerror() -> None:
-    # The other deliberately-allowed path: if the underlying bus is deinitialized by something
-    # else out from under an in-flight FRAM_SPI (not a hardware disturbance - a real electrical
-    # disturbance never touches this Python-level lifecycle state, only an explicit .deinit()/
-    # .init() call elsewhere does), SPIDevice.__aenter__'s own configure() call raises
-    # RuntimeError, uncaught here, matching asy_spi_driver.py's own already-signed-off precedent
-    # that this is the caller's responsibility, not this driver's.
+    # The other deliberately-allowed path: if the underlying bus is deinitialized out from under an in-
+    # flight FRAM_SPI, SPIDevice.__aenter__'s configure() call raises RuntimeError, uncaught here, matching
+    # asy_spi_driver.py's signed-off precedent that this is the caller's responsibility.
+    #
+    # Not a hardware disturbance: a real electrical fault never touches this Python-level lifecycle state,
+    # only an explicit deinit()/init() call elsewhere does.
     fram, _chip = make_fram()
     run(setup_fram(fram))
     fram._spidev.spi.deinit()
@@ -856,11 +849,9 @@ def test_bus_deinit_mid_operation_raises_uncaught_runtimeerror() -> None:
 
 
 def test_corrupted_write_payload_bytes_are_undetectable_at_this_layer_by_design() -> None:
-    # This layer verifies opcodes/latches/device identity, never the payload bytes themselves -
-    # raw SPI has no equivalent of a data-integrity check (see asy_spi_driver.py), which is
-    # exactly why asy_fram_manager.py's CRC + dual-copy redundancy exists one layer up (see this
-    # file's own module docstring). Proven here, not just asserted in prose: a payload byte that
-    # lands wrong on the wire still reports a fully successful write.
+    # This layer verifies opcodes, latches and device identity, never the payload bytes - raw SPI has no
+    # data-integrity check, which is why asy_fram_manager.py's CRC and dual copies exist one layer up.
+    # Proven, not asserted: a payload byte landing wrong on the wire still reports a successful write.
     fram, chip = make_fram()
     run(setup_fram(fram))
     chip.corrupt_next_write_data = b"XXXX"  # what actually lands, regardless of what's sent
@@ -880,11 +871,9 @@ def test_corrupted_write_payload_bytes_are_undetectable_at_this_layer_by_design(
 
 
 def test_works_correctly_with_the_real_printloghistory_logger_used_in_production() -> None:
-    # AsyFramManager passes its own real PrintLogHistory instance as logger in production, shared
-    # with every chunk it owns - this confirms that using one doesn't interfere with FRAM_SPI's own
-    # behavior. FRAM_SPI's `logger` parameter is typed PrintLogHistory (not the narrower PrintLog)
-    # precisely because it does call the subclass-only err_s()/wrn_s() methods - see the dedicated
-    # persisted-logging tests below for that behavior itself.
+    # AsyFramManager passes its own real PrintLogHistory as logger in production, shared with every chunk it
+    # owns - this confirms doing so does not interfere with FRAM_SPI's behavior. The `logger` parameter is
+    # typed PrintLogHistory rather than the narrower PrintLog precisely because it calls err_s()/wrn_s().
     bus = make_bus()
     logger = PrintLogHistory(history_length=5)
     fram = FRAM_SPI(bus, 1, logger=logger, max_size=0x2000)
@@ -903,10 +892,9 @@ def test_works_correctly_with_the_real_printloghistory_logger_used_in_production
 
 
 # ---------------------------------------------------------------------------
-# Persisted logging - err_s()/wrn_s() upgrade for the genuinely actionable hardware-fault paths
-# (device-not-initialized, invalid address range, WEL didn't set/clear, write-protect readback
-# mismatch, verify_present() lock-timeout); "currently write protected"/"access not locked" stay
-# on the plain, non-persisted err()/wrn() - routine/caller-contract signals, not hardware faults.
+# Persisted logging - err_s()/wrn_s() for the genuinely actionable hardware-fault paths (not initialized,
+# invalid address range, WEL did not set or clear, write-protect readback mismatch, verify_present() lock-
+# timeout); the routine caller-contract signals stay on the plain, non-persisted err()/wrn().
 # ---------------------------------------------------------------------------
 
 
@@ -1042,32 +1030,33 @@ def test_wrdi_stuck_after_retry_logs_a_persisted_warning() -> None:
     assert 0x80 + 81 in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
 
 
-def test_write_protected_and_access_not_locked_stay_on_non_persisted_logging() -> None:
-    # The two message categories deliberately excluded from the err_s()/wrn_s() upgrade above:
-    # "currently write protected" (routine, expected outcome) and "access not locked" (a caller
-    # contract violation, not a hardware fault). Neither should touch the persisted history.
+def test_write_protected_and_access_not_locked_are_now_persisted() -> None:
+    # WP8: "currently write protected" (a benign, expected refusal, matching AsyFramManager's own
+    # "communication paused" wrn_s precedent) and "access not locked" (a caller contract violation, so errno
+    # rather than wrnno) both now persist, replacing the print-only degrade this test previously pinned.
     fram, _chip = make_fram()
     run(setup_fram(fram))
     assert run(fram.set_write_protected(value=True)) is True
 
     async def scenario() -> tuple[bool, bool]:
-        no_lock = await fram.get_values(bytearray(1), 0)  # no `async with fram:` wrapper
+        no_lock = await fram.get_values(bytearray(1), 0)  # no `async with fram:` wrapper - errno=99
         async with fram:
-            still_protected = await fram.set_values(b"x", 0)
+            still_protected = await fram.set_values(b"x", 0)  # locked, so this reaches _write() - wrnno=84
         return no_lock, still_protected
 
     no_lock, still_protected = run(scenario())
     assert no_lock is False
     assert still_protected is False
-    assert fram.pr.err_count == 0
-    assert list(fram.pr.history) == [0] * 10
+    assert fram.pr.err_count == 2
+    log = run(fram.pr.get_log())[fram.pr.name]
+    assert log["ErrNum"][-2:] == [99, 84]
+    assert log["ErrType"][-2:] == ["E", "W"]
 
 
 def test_two_operations_on_the_same_fram_never_run_concurrently() -> None:
-    # FRAM_SPI's own outer Lockable lock (base_classes.py), not the SPI bus's - test_asy_spi_
-    # driver.py already proves the bus-level lock serializes; this proves the same property one
-    # level up, for the lock every real caller (asy_fram_manager.py) actually wraps chunk
-    # operations in.
+    # FRAM_SPI's own outer Lockable lock (base_classes.py), not the SPI bus's - test_asy_spi_driver.py
+    # already proves the bus-level lock serializes; this proves the same one level up, for the lock every
+    # real caller actually wraps chunk operations in.
     fram, _chip = make_fram()
     run(setup_fram(fram))
     concurrent = 0
@@ -1113,6 +1102,60 @@ def test_task_cancelled_while_holding_frams_own_lock_still_releases_it() -> None
         assert not fram.asy_lock.locked()
 
     run(scenario())
+
+
+# ---------------------------------------------------------------------------
+# Bus-hazard coverage moved from tests/test_bus_hazard_multi_device.py (SPECIFICATION.md Part
+# C.8): FRAM is SPI, no address/bus-sharing concept, so same-device concurrency is its whole slice.
+# Complements the concurrency-counter proof above with a real read/write data-integrity check.
+# ---------------------------------------------------------------------------
+
+_HAZARD_READ_REGION = (0x0000, 16)  # (start_address, length) - never touched by the writer below
+_HAZARD_WRITE_REGION = (0x1000, 16)  # disjoint from the read region, well within the 0x2000 chip's range
+_HAZARD_SEED_PATTERN = bytes(range(16))  # 0x00..0x0F - fixed, known, easy to spot corruption in
+_HAZARD_WRITE_PATTERN = bytes(range(0xF0, 0x100))  # 0xF0..0xFF - deliberately distinct from the seed
+
+
+def test_same_device_concurrent_read_and_write_never_corrupt_each_other() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.memory[_HAZARD_READ_REGION[0] : _HAZARD_READ_REGION[0] + _HAZARD_READ_REGION[1]] = _HAZARD_SEED_PATTERN
+
+    read_iterations = 20
+    reads_completed = 0
+    write_completed = False
+    read_mismatches: list[str] = []
+
+    async def reader() -> None:
+        nonlocal reads_completed
+        buf = bytearray(_HAZARD_READ_REGION[1])
+        for i in range(read_iterations):
+            ok = await fram.get_values(buf, addr_start=_HAZARD_READ_REGION[0])
+            if not ok or bytes(buf) != _HAZARD_SEED_PATTERN:
+                read_mismatches.append(f"iter {i}: ok={ok} got={bytes(buf).hex()} expected={_HAZARD_SEED_PATTERN.hex()}")
+            reads_completed += 1
+
+    async def writer() -> None:
+        nonlocal write_completed
+        await asyncio.sleep(0)  # let the reader get partway into its run first
+        ok = await fram.set_values(_HAZARD_WRITE_PATTERN, addr_start=_HAZARD_WRITE_REGION[0])
+        assert ok, "FRAM write failed outright under concurrent read load"
+        write_completed = True
+
+    async def locked_call(coro: "Coroutine[Any, Any, None]") -> None:
+        async with fram:
+            await coro
+
+    async def scenario() -> None:
+        await asyncio.gather(locked_call(reader()), locked_call(writer()))
+
+    run(scenario())
+
+    assert reads_completed == read_iterations
+    assert write_completed
+    assert not read_mismatches, f"{len(read_mismatches)} corrupted/torn read(s) under concurrent write: {read_mismatches[:5]}"
+    written_back = bytes(chip.memory[_HAZARD_WRITE_REGION[0] : _HAZARD_WRITE_REGION[0] + _HAZARD_WRITE_REGION[1]])
+    assert written_back == _HAZARD_WRITE_PATTERN, f"write region shows {written_back.hex()}, expected {_HAZARD_WRITE_PATTERN.hex()} - torn/corrupted write"
 
 
 if __name__ == "__main__":

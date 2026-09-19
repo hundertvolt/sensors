@@ -2,10 +2,9 @@
 base_classes.py's SensorReaderConfig), validated against a schema of `_VAL_*` `const()` tuples: (name, type, default, min, max, special).
 Every public function/method returns a documented "invalid" sentinel, never raises.
 """
-# `__init__` only stashes constructor args (cheap, synchronous); `ConfigManager` reads the file
-# once, in `async def setup()`, into `self._cache` - every later `get_*`/`write_config` call
-# reads/writes `_cache` directly (see CLAUDE.md for the cache-vs-external-corruption trade-off this
-# implies).
+# `__init__` only stashes constructor args (cheap, synchronous); the file is read once, in
+# `async def setup()`, into `self._cache`, and every later `get_*`/`write_config` works on `_cache`
+# directly - CLAUDE.md has the cache-vs-external-corruption trade-off this implies.
 
 import asyncio
 import json
@@ -20,6 +19,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any, Literal, NamedTuple, TypeVar
 
+    from asy_fram_manager import AsyFramManager
     from print_log import ErrorLog
 
     T = TypeVar("T", int, float, str)
@@ -43,7 +43,11 @@ if TYPE_CHECKING:
     ]
     ConfigSchema = tuple[FieldSchema, ...]
 
-from print_log import PrintLogHistory
+    # A driver's generator-facing metadata is deliberately not a Python value at all - it lives in
+    # `# @wiring`/`# @value-wiring`/`# @limits` comment tags, so nothing the firmware reads becomes
+    # frozen bytecode just to serve the generator (SPECIFICATION.md Parts L.5 and C.14.2).
+
+from print_log import PrintLogHistory, make_logger
 
 
 def _special_bypass(check_val: "CfgValue", val_special: "CfgSpecial", scalar_type: type, *, check_special: bool) -> "bool | None":
@@ -61,6 +65,15 @@ def _special_bypass(check_val: "CfgValue", val_special: "CfgSpecial", scalar_typ
     if check_special and check_val == val_special:
         return False
     return None
+
+
+def instance_name(base_name: str, name_ext: str) -> str:
+    # Uniform per-instance naming (SPECIFICATION.md Part C.14): an empty name_ext reproduces
+    # base_name unchanged, a non-empty one appends "_" + name_ext across REST keys, config filenames
+    # and error-log keys at once. Collision detection over a device's instance list is buildgen's.
+    if not name_ext:
+        return base_name
+    return base_name + "_" + name_ext
 
 
 def schema_names(schema: "ConfigSchema") -> "list[str]":  # field names, in schema order (duplicates preserved); malformed input -> []
@@ -85,16 +98,20 @@ def schema_dict(schema: "ConfigSchema") -> "dict[str, FieldSchema]":  # {field_n
 
 
 def make_dict(
-    nt: "NamedTuple", fields: "tuple[str, ...]",
+    nt: "NamedTuple", fields: "tuple[str, ...]", name: str | None = None,
 ) -> "dict[str, dict[str, int | float | str | None]]":  # {type_name: {field: value}} - fields is the same
-    # literal tuple the caller's own namedtuple(name, fields) was built from (rp2's build ROM level
-    # is MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES, one level below the MICROPY_CONFIG_ROM_LEVEL_
-    # EVERYTHING that _asdict()/_fields require - confirmed against ports/rp2/mpconfigport.h - so
-    # neither is safe to rely on here).
-    try:
-        name = type(nt).__name__
-    except Exception:
-        return {}
+    # literal tuple the caller's namedtuple(name, fields) was built from: rp2 builds at
+    # MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES, one level below the EVERYTHING that _asdict()/_fields
+    # need (confirmed against ports/rp2/mpconfigport.h), so neither is safe to rely on here.
+
+    # name=None introspects the namedtuple's own type name, which every single-instance caller
+    # relies on. A caller that can have more than one instance passes its resolved self.name: the
+    # namedtuple TYPE is fixed at class-definition time and cannot vary per instance (Part C.14).
+    if name is None:
+        try:
+            name = type(nt).__name__
+        except Exception:
+            return {}
     try:
         return {name: {field: getattr(nt, field) for field in fields}}
     except Exception:
@@ -102,31 +119,18 @@ def make_dict(
 
 
 def coerce_numeric(check_val: "CfgValue", scalar_type: type) -> "tuple[bool, int | float | Any]":
-    # Returned value: the coerced scalar when the flag is True (scalar_type is only ever int or
-    # float here), the caller's own raw value untouched when it's False - hence the Any arm.
-    # Intent: accept only what's exactly representable as scalar_type, in either direction (see
-    # SPECIFICATION.md Part A.8) - float -> int is accepted only when the value carries no
-    # fractional part, rejected otherwise, never truncated/rounded, so a fat-fingered "12.5" can't
-    # silently become a stored "12". int -> float is a blanket accept instead (see the inline
-    # comment on that branch below for the one known, accepted gap this leaves in the "exactly
-    # representable" intent - not true in general, though every real field is unaffected today).
-    # bool is deliberately excluded from both directions even though it's an int subclass in
-    # Python/MicroPython - type() (not isinstance()) already keeps it out of every branch below,
-    # same as the pre-coercion strict check did.
-    #
-    # Public (no leading underscore) and reused outside this module: sensortask_wozi.py's
-    # lightCmdLED dispatch (dispatch-only, not schema-backed - no FieldSchema record to hand
-    # type_or_range_error()) calls this directly for its r/g/b/t coercion instead of duplicating
-    # the same int<->float acceptance logic a second time.
+    # Accepts only what is exactly representable as scalar_type (SPECIFICATION.md Part A.8):
+    # float -> int only without a fractional part, never truncated; int -> float is a blanket accept
+    # (the branch below states the one gap). bool is excluded both ways, by type() not isinstance().
+
+    # Public and reused: the generated lightCmdLED dispatch has no FieldSchema to hand
+    # type_or_range_error(), so it calls this rather than duplicating the acceptance rule.
     if type(check_val) is scalar_type:
         return True, check_val
     if scalar_type is float and type(check_val) is int:
-        # No exact-round-trip check on this direction (unlike float->int below): documented,
-        # accepted gap, not a bug - a value large enough to lose precision here (beyond a float's
-        # mantissa - 2**24 on the real RP2040 firmware's single-precision build, 2**53 on this
-        # Unix-port test build's double precision, see SPECIFICATION.md Part A.8) would already be
-        # rejected by every current schema field's own min/max bounds (the largest today is 5000.0)
-        # long before reaching this line.
+        # No exact-round-trip check on this direction, unlike float->int below: an accepted gap. A
+        # value large enough to lose precision (past 2**24 on the real single-precision build,
+        # Part A.8) is already outside every schema field's own bounds - the largest today is 5000.0.
         return True, float(check_val)
     if scalar_type is int and type(check_val) is float:
         try:
@@ -209,8 +213,11 @@ if TYPE_CHECKING:
 
 
 class ConfigManager:
-    def __init__(self, filename: str, cfg_vals: "ConfigSchema", name: str) -> None:
-        self.pr = PrintLogHistory(name="CFGMGR_" + name)
+    def __init__(self, filename: str, cfg_vals: "ConfigSchema", name: str, fram: "AsyFramManager | None" = None) -> None:
+        # Inherits its owning module's FRAM durability (CLAUDE.md's implicit-FRAM-wiring rule),
+        # falling back to the same RAM-only PrintLogHistory whenever fram is None - so a caller that
+        # never passes it sees no change at all.
+        self.pr: PrintLogHistory = make_logger(fram, name="CFGMGR_" + name)
         self.name = "CFGMGR_" + name  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=).
         self.config_lock = asyncio.Lock()
@@ -218,6 +225,17 @@ class ConfigManager:
         self.cfg_vals = cfg_vals
         self.valid = False
         self._cache: dict[str, CfgValue] = {}
+        # Staging slot for write_config()'s deferred flash write (SPECIFICATION.md Part F.2) - not
+        # yet on disk, but the read path serves it first so a GET reflects a just-accepted PUT
+        # immediately rather than waiting for the actual flash write to complete.
+        self._staged: dict[str, CfgValue] | None = None
+        self._pending_flush: asyncio.Task[None] | None = None
+
+    def _current(self) -> "dict[str, CfgValue]":
+        # write_config() always stages a full snapshot (dict(self._cache) plus the changed keys),
+        # never a partial one, so a plain swap - not a per-key merge - is correct here: read-your-
+        # write for a value not yet flushed, exactly as it would read once the flush completes.
+        return self._staged if self._staged is not None else self._cache
 
     async def _get_values(self, keys: "ConfigSchema") -> "list[Any] | None":
         if not self.valid:
@@ -225,7 +243,8 @@ class ConfigManager:
             return None
         self.pr.all(self.config_file, "- Reading config data into list.")
         try:
-            return [self._cache[key] for key in schema_names(keys)]
+            current = self._current()
+            return [current[key] for key in schema_names(keys)]
         except KeyError as e:  # unknown key
             await self.pr.err_s(self.config_file, "- Config read error:", e, errno=6)
             return None
@@ -246,14 +265,16 @@ class ConfigManager:
         await self.pr.reset()
 
     async def get_dict(self, keys: "list[str]") -> "dict[str, CfgValue] | None":
-        # Reads _cache directly - no lock needed (write_config never awaits mid-mutation, so no
-        # partial state is observable here; see module docstring for the cache design).
+        # Reads _cache, or _staged when a write_config() is between staging and its flush landing
+        # (read-your-write). No lock needed: neither write_config() nor _flush_staged() awaits
+        # mid-mutation of the field this reads, so no partial state is observable.
         if not self.valid:
             await self.pr.err_s(self.config_file, "- Config is not valid, cannot read!", errno=7)
             return None
         self.pr.all(self.config_file, "- Reading config data into dict.")
         try:
-            return {key: self._cache[key] for key in keys}
+            current = self._current()
+            return {key: current[key] for key in keys}
         except (KeyError, TypeError) as e:  # unknown key, or a non-iterable/malformed keys param
             await self.pr.err_s(self.config_file, "- Config read error:", e, errno=8)
             return None
@@ -278,12 +299,18 @@ class ConfigManager:
     async def write_config(
         self, data: "dict[str, CfgValue]", cfg_vals: "ConfigSchema",
     ) -> "tuple[bool, WriteValidity]":
+        # Validates and stages synchronously, then hands the flash write to an independent task
+        # rather than awaiting it inline (SPECIFICATION.md Part F.2): an RP2040 flash write disables
+        # interrupts port-wide, and inline it reset the very HTTP connection whose PUT triggered it.
         if not self.valid:
             await self.pr.err_s(self.config_file, "- Config is not valid, cannot write!", errno=9)
             return False, {}
         async with self.config_lock:
             try:
-                new_cache = dict(self._cache)  # working copy - only committed to _cache after a successful write
+                # Built off _current(), not raw _cache: a second write_config() can enter here before
+                # an earlier one's _flush_staged() has run, and basing new_cache on the staged
+                # snapshot is what keeps a rapid pair of writes additive rather than clobbering.
+                new_cache = dict(self._current())  # working copy - only staged/committed after validation
                 changed = False
                 defaults = schema_dict(cfg_vals)
                 dict_results: WriteValidity = {}
@@ -321,19 +348,61 @@ class ConfigManager:
                 if not changed:
                     self.pr.evt(self.config_file, "- No new / unchanged config data.")
                     return True, dict_results
-                with open(self.config_file, "w") as f:
-                    json.dump(new_cache, f)
-                self._cache = new_cache  # only commit once the write has actually succeeded
-                self.pr.evt(self.config_file, "- Config data was written.")
-            except (MemoryError, OSError, ValueError, AttributeError) as e:  # file errors, a non-dict
-                # `data` param (AttributeError on .items()), or json.dump() exhausting the heap;
-                # ValueError is defensive since dump() no longer reads/reparses json here.
-                await self.pr.err_s(self.config_file, "- Error writing config data:", e, errno=14)
+                # Staged, not yet on flash - get_dict()/_get_values() consult this first (read-your-
+                # write), and _cache stays "what's actually on disk" until _flush_staged() commits it.
+                self._staged = new_cache
+                self._pending_flush = asyncio.create_task(self._flush_staged(new_cache))
+                self.pr.evt(self.config_file, "- Config data staged, flash write scheduled.")
+            except (MemoryError, AttributeError) as e:  # a non-dict `data` param (AttributeError on
+                # .items()), or dict()/the validation loop exhausting the heap - no file I/O happens
+                # in this method anymore (see _flush_staged), so OSError/ValueError no longer apply.
+                await self.pr.err_s(self.config_file, "- Error validating config data:", e, errno=15)
                 return False, {}
             else:
                 return True, dict_results
 
+    async def _flush_staged(self, staged: "dict[str, CfgValue]") -> None:
+        # The still-synchronous, uninterruptible flash write, decoupled from whatever request
+        # triggered it. It re-acquires write_config()'s own lock, so at most one write is in flight
+        # per ConfigManager and a later call simply queues behind this one on the fresh _cache.
+        async with self.config_lock:
+            if self._staged is not staged:
+                # A newer write_config() staged something else while this task waited for the lock:
+                # this snapshot is superseded and writing it would regress a replaced value.
+                # Defensive, so "last write wins" never depends on asyncio's scheduling being FIFO.
+                return
+            try:
+                with open(self.config_file, "w") as f:
+                    json.dump(staged, f)
+                self._cache = staged  # only commit once the write has actually succeeded
+                self.pr.evt(self.config_file, "- Config data was written.")
+            except (MemoryError, OSError, ValueError, AttributeError) as e:  # file errors, or
+                # json.dump() exhausting the heap. _cache is left untouched - "what's on disk, as far
+                # as we know" - and this is the accepted, logged-only residual-risk outcome
+                # (SPECIFICATION.md Part F.2), never re-raised into the caller.
+                await self.pr.err_s(self.config_file, "- Error writing config data:", e, errno=14)
+            finally:
+                if self._staged is staged:  # nothing newer staged while this flush was running
+                    self._staged = None
+                if self._pending_flush is asyncio.current_task():
+                    self._pending_flush = None
+
+    async def flush_pending(self) -> None:
+        # Waits for a write_config()-spawned flush to finish rather than merely be scheduled. Most
+        # callers tolerate the deferred write (SPECIFICATION.md Part F.2); the exception is a
+        # commanded reboot/bootloader, which is software-triggered and can easily wait it out.
+
+        # Only ever holds the LATEST call's task. An earlier one it superseded is safe to leave
+        # unawaited: it has either already run, or will run and find itself superseded by
+        # _flush_staged()'s snapshot-identity check - a no-op either way.
+        pending = self._pending_flush
+        if pending is not None:
+            await pending
+
     async def setup(self) -> None:
+        await self.pr.setup()  # required for every logged warning and error, like every other
+        # FRAM-capable module's setup(): without it self.pr.initialized never becomes True and each
+        # later err_s()/wrn_s() silently skips its own FRAM write (CLAUDE.md's implicit-FRAM rule).
         data: dict[str, CfgValue] | None = None
         try:
             if (os.stat(self.config_file)[0] & 0x4000) == 0:  # 0x4000 = MP_S_IFDIR, MicroPython's own
