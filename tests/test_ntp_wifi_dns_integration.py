@@ -1,10 +1,11 @@
 """Integration tests across the real three-file chain: AsyConnTime -> AsyNtpClient -> asy_dns_client.py's resolve_ipv4(). Every other test file replaces peers with a lambda/recorder; this file wires real instances (matching sensortask-wozi.py) to prove the *linked* behavior - calling order, error handling, value propagation - a lambda-based unit test can't observe.
 Found and fixed a real bug this way: AsyNtpClient used to call get_dns_server_ip() after acquiring the shared wifi_mode_lock, so its own locked() gate always saw True and always returned None. Fixed via _safe_get_dns_server(), called before acquiring the lock."""
-# No real port-53/port-123-privileged end-to-end test is attempted (needs root, not CI-portable).
-# Tests needing a real UDP round trip use a literal-IP NTP_Host (sidesteps DNS/port 53 entirely) or
-# malformed DNS-server entries (skipped instantly by resolve_ipv4()'s own guard, no network wait
-# needed). Real UDP behavior of resolve_ipv4()/AsyUDPSocket is already covered by
-# tests/test_asy_dns_client.py and tests/test_asy_ntp_client.py.
+# No real port-53 or port-123 end-to-end test is attempted, both needing root and neither being CI-portable.
+# Tests needing a real UDP round trip use a literal-IP NTP_Host, sidestepping DNS entirely, or malformed
+# DNS-server entries, skipped instantly by resolve_ipv4()'s own guard with no network wait.
+#
+# Real UDP behavior of resolve_ipv4() and AsyUDPSocket is already covered by tests/test_asy_dns_client.py
+# and tests/test_asy_ntp_client.py.
 
 import asyncio
 import select
@@ -38,11 +39,9 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 def _wlan(conn: AsyConnTime) -> "Any":  # Any is the point here, not an omission - see below
-    # _wlan(conn) is typed against the real network.WLAN stub (see pyproject.toml's own
-    # tests/network.py exclude comment); at runtime MICROPYPATH ordering constructs
-    # tests/network.py's fake instead, which exposes test-only attributes (raise_on, _status,
-    # _ifconfig, _connected, ...) the real stub has no reason to declare. Narrows to Any once,
-    # here, matching test_asy_wifi_service.py's own identical helper.
+    # _wlan(conn) is typed against the real network.WLAN stub (pyproject.toml's tests/network.py exclude),
+    # but at runtime MICROPYPATH constructs tests/network.py's fake, exposing test-only attributes the real
+    # stub has no reason to declare. Narrows to Any once here, matching test_asy_wifi_service.py's helper.
     return conn.wlan
 
 
@@ -88,11 +87,9 @@ def make_ntp(
 
 
 def connect_wlan(conn: AsyConnTime, dns_server: str = "192.0.2.53") -> None:
-    # Puts the real fake network.WLAN into a normal, connected STA state - the same shape
-    # network_available()/get_dns_server_ip() expect in production (see asy_wifi_service.py's own
-    # _conn_phase/_wlan_status_or_none()). Bypasses the real wlan_connect() state machine (out of
-    # scope here - test_asy_wifi_service.py already covers that machine in isolation) to focus
-    # purely on the two accessor methods this file's integration actually depends on.
+    # Puts the fake network.WLAN into a normal, connected STA state - the shape
+    # network_available()/get_dns_server_ip() expect in production. Bypasses the real wlan_connect() state
+    # machine, out of scope here, to focus on the two accessor methods this file's integration depends on.
     _wlan(conn)._connected = True
     _wlan(conn)._status = network.STAT_GOT_IP
     _wlan(conn)._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", dns_server)
@@ -160,11 +157,9 @@ def test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv
 
 
 def test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi_service() -> None:
-    # A fresh device that has never gotten a DHCP lease: WLAN.ifconfig()'s real documented default
-    # is all "0.0.0.0" fields (see asy_wifi_service.py's own fake network.WLAN default) - proves
-    # this real value (not filtered by get_dns_server_ip() itself) reaches resolve_ipv4() as-is;
-    # resolve_ipv4()'s own "0.0.0.0" skip is already covered at that file's own unit level
-    # (tests/test_asy_dns_client.py), this just proves the value actually gets there unmodified.
+    # A fresh device that has never gotten a DHCP lease: WLAN.ifconfig()'s documented default is all
+    # "0.0.0.0" fields, and this proves that value, not filtered by get_dns_server_ip() itself, reaches
+    # resolve_ipv4() as-is. resolve_ipv4()'s own "0.0.0.0" skip is covered at its own unit level.
     conn = make_conn()
     connect_wlan(conn, dns_server="0.0.0.0")
     ntp = make_ntp(conn, "pool.ntp.org")
@@ -185,13 +180,13 @@ def test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi
 
 
 def test_get_dns_server_ip_real_wlan_exception_is_treated_as_none_not_propagated() -> None:
-    # conn.get_wlan_ifconfig() degrades a real wlan.ifconfig() exception to None - an
-    # observation-tier query, so it degrades via self.pr.err() (debug-level only, never persisted
-    # to get_error_counter(); see asy_wifi_service.py's own module docstring and
-    # test_get_dns_server_ip_returns_none_on_exception in test_asy_wifi_service.py) rather than
-    # raising or logging a real error. Proves that degradation, driven through the real object,
-    # still reaches _safe_get_dns_server() as a clean None rather than an exception - resolution
-    # proceeds with no server hint instead of the WLAN fault surfacing as a crash.
+    # conn.get_wlan_ifconfig() degrades a real wlan.ifconfig() exception to None - an observation-tier
+    # query, so it degrades via self.pr.err(), debug-level only and never persisted, rather than raising or
+    # logging a real error.
+    #
+    # This proves that degradation, driven through the real object, still reaches _safe_get_dns_server() as
+    # a clean None, so resolution proceeds with no server hint instead of the WLAN fault surfacing as a
+    # crash.
     conn = make_conn()
     connect_wlan(conn)
     _wlan(conn).raise_on["ifconfig"] = OSError("simulated WLAN hardware fault")
@@ -368,19 +363,17 @@ def test_full_chain_reaches_synced_state_via_a_real_wifi_service_and_a_literal_i
 
 
 def test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_server_never_answers() -> None:
-    # The real-hardware finding this proves at the mock/unit level (BACKLOG.md open question 6,
-    # closed 2026-09-04 "investigated, no src/ change"): the CYW43 firmware/lwIP stack can report
-    # a real link as fully connected (wlan.isconnected()==True, STAT_GOT_IP) while it's actually
-    # dead - a real arping probe got zero responses from a DUT that `iw station dump` showed
-    # continuously "associated: yes" for. `connect_wlan(conn)` below puts the *real* AsyConnTime's
-    # WLAN into exactly that "looks connected" state, so `conn.network_available()` - driven
-    # through the real object, not a lambda stand-in - genuinely reports True the whole time. The
-    # FakeNtpServer is bound and reachable (a real socket, a real port) but its own serve_once()
-    # is deliberately never called, so a real send genuinely goes unanswered - the same observable
-    # shape a truly dead-but-reported-alive link produces (nothing ever comes back), reached here
-    # via "nobody's listening" rather than "the packet vanishes on a dead radio link" - the
-    # distinction doesn't matter to this code, which only ever sees "sent, then nothing back
-    # within the timeout" either way.
+    # The real-hardware finding this proves at the mock tier (BACKLOG.md open question 6, closed
+    # 2026-09-04): the CYW43 firmware and lwIP stack can report a link as fully connected while it is dead -
+    # a real arping probe got zero responses from a DUT `iw station dump` called associated.
+    #
+    # connect_wlan(conn) below puts the real AsyConnTime's WLAN into exactly that "looks connected" state,
+    # so conn.network_available(), driven through the real object rather than a lambda stand-in, genuinely
+    # reports True throughout.
+    #
+    # The FakeNtpServer is bound and reachable, a real socket on a real port, but its serve_once() is never
+    # called, so a real send genuinely goes unanswered - the same observable shape a dead-but-reported-alive
+    # link produces. The code only ever sees "sent, then nothing back within the timeout" either way.
     conn = make_conn()
     connect_wlan(conn)
     server = FakeNtpServer()
@@ -405,12 +398,12 @@ def test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_ser
             server.close()
 
     synced, last_num, last_type = run(scenario())
-    # Never synced (a real send with nobody answering back can't produce a real time), but the
-    # task itself completes cleanly (asyncio.wait_for above didn't time out) and gives up through
-    # the same real errno=20 path the isolated-mock version of this scenario already proves in
-    # tests/test_asy_ntp_client.py::test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_20
-    # - this test's own value is proving the same property through the *real* network_available()
-    # chain (a WLAN fake genuinely reporting connected), not a directly-monkeypatched attempt.
+    # Never synced, a real send with nobody answering back cannot produce a real time, but the task itself
+    # completes cleanly - the wait_for above did not time out - and gives up through the same real errno=20
+    # path the isolated-mock version in tests/test_asy_ntp_client.py already proves.
+    #
+    # This test's own value is proving the same property through the real network_available() chain, with a
+    # WLAN fake genuinely reporting connected, rather than a directly-monkeypatched attempt.
     assert synced is False
     assert last_num == 20
     assert last_type == "E"
@@ -434,10 +427,9 @@ def test_full_chain_stays_unsynced_when_the_real_wifi_service_reports_network_un
 
 
 def test_dns_resolution_totally_unreachable_through_the_real_chain_persists_errno_12() -> None:
-    # Every candidate server is malformed/unset ("0.0.0.0" from conn's own real ifconfig plus a
-    # monkeypatched malformed fallback list) - resolve_ipv4()'s own _is_ipv4_literal() guard skips
-    # each one instantly (no network wait needed), reaching its own "no valid server anywhere"
-    # None return through the real three-file chain rather than a synthetic _RecordingResolver.
+    # Every candidate server is malformed or unset - "0.0.0.0" from conn's real ifconfig plus a
+    # monkeypatched fallback list - so resolve_ipv4()'s _is_ipv4_literal() guard skips each instantly,
+    # reaching its "no valid server anywhere" return through the real chain, not a synthetic resolver.
     import asy_dns_client
 
     conn = make_conn()
