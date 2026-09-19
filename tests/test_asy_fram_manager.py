@@ -82,9 +82,8 @@ def test_get_chunk_sequential_allocation_offsets_match_bump_pointer_math() -> No
 
 def test_allocation_order_not_chunk_size_determines_offsets() -> None:
     # The static-allocation invariant this whole file depends on: whichever get_chunk()/
-    # get_timestamped_chunk() call happens first claims the lower offset, regardless of the
-    # chunk's own size - this is why call order must stay identical across firmware versions for
-    # a device's existing stored data to still decode correctly.
+    # get_timestamped_chunk() call happens first claims the lower offset regardless of size, which
+    # is why call order must stay identical across firmware versions for stored data to decode.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     small_first = manager.get_chunk(2)
@@ -256,12 +255,9 @@ def test_corrupted_block1_status_leaves_block0_valid_and_self_heals_block1() -> 
 
 
 def test_status_byte_holding_an_unrecognized_garbage_value_is_treated_the_same_as_busy() -> None:
-    # _set_check_sb's read-side check is only ever `!= IDLE` then `!= UNINIT` (confirmed by reading
-    # the source - _STATUS_BUSY is only ever *written*, never compared against on read), so a
-    # genuinely arbitrary corrupted byte (not one of the three defined sentinel values at all) must
-    # take the exact same "invalid, self-heal" path as a real torn-write BUSY - not a separate,
-    # untested failure mode. Locks that down explicitly rather than trusting it followed from the
-    # BUSY-specific tests above by coincidence.
+    # _set_check_sb's read-side check is only ever `!= IDLE` then `!= UNINIT` (_STATUS_BUSY is
+    # written, never compared on read), so an arbitrary corrupted byte must take the same
+    # "invalid, self-heal" path as a real torn-write BUSY rather than a separate failure mode.
     garbage = 0x7A  # deliberately not _STATUS_UNINIT/_STATUS_IDLE/_STATUS_BUSY
     assert garbage not in (_STATUS_UNINIT, _STATUS_IDLE, _STATUS_BUSY)
     manager, chip = make_manager()
@@ -326,10 +322,9 @@ def test_crc8_detects_corrupted_trailer_byte_itself_not_just_payload() -> None:
 
 
 def test_read_reports_failure_when_both_blocks_valid_but_hold_different_data() -> None:
-    # Simulates a write torn between finishing block 0 and starting block 1: both blocks
-    # independently look fine (CRC_Pass never checks payload content, status bytes are IDLE) but
-    # hold different data - no generation counter can say which is "right", so this must fail
-    # rather than guess (owner-confirmed intentional design, see asy_fram_manager.py's docstring).
+    # Simulates a write torn between finishing block 0 and starting block 1: both blocks look
+    # fine independently (CRC_Pass never checks content, both status bytes IDLE) but hold
+    # different data - no generation counter can say which is right, so this must fail, not guess.
     manager, chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass())
@@ -390,10 +385,9 @@ def test_write_with_verify_enabled_succeeds_for_correct_data() -> None:
 
 
 def test_manager_get_pause_reflects_set_pause_directly() -> None:
-    # The plain getter itself, not just its effect on chunk operations (real legacy callers: a
-    # deliberate reboot pauses storage right before resetting so no write is left mid-flight, and
-    # an operator-triggered REST "mempause" command pauses writes for a bounded maintenance
-    # window - see BACKLOG.md).
+    # The plain getter itself, not just its effect on chunk operations. Real callers: a deliberate
+    # reboot pauses storage right before resetting so no write is left mid-flight, and an
+    # operator-triggered REST "mempause" pauses writes for a bounded maintenance window.
     manager, _chip = make_manager()
     assert manager.get_pause() is False
     manager.set_pause(value=True)
@@ -446,11 +440,11 @@ def test_override_pause_bypasses_manager_pause() -> None:
 
 def test_pause_short_circuits_before_the_bus_so_an_injected_fault_survives_untouched() -> None:
     # The ORDERING claim the two tests above cannot make: _read()/_write() consult _mempause()
-    # BEFORE any SPI access, so a paused operation is not merely refused - the bus is never driven
-    # at all. Discriminated by a queued one-shot readinto fault: if the paused read had reached the
-    # bus it would have consumed the fault, and the post-unpause read would then find a clean bus.
-    # Uses a READ fault deliberately - machine.SPI's fake makes write() non-injectable on purpose,
-    # matching the real rp2 write-only path's own inability to fail (SPECIFICATION.md Part F.5.2).
+    # BEFORE any SPI access, so a paused operation never drives the bus at all. Discriminated by a
+    # queued one-shot readinto fault, which a paused read would have consumed.
+
+    # A READ fault deliberately - machine.SPI's fake makes write() non-injectable on purpose,
+    # matching the real rp2 write-only path's own inability to fail (Part F.5.2).
     manager, chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass())
@@ -465,10 +459,9 @@ def test_pause_short_circuits_before_the_bus_so_an_injected_fault_survives_untou
 
     paused_result, paused_errs = run(while_paused())
     assert paused_result is None  # refused by the gate
-    # The refusal itself is logged as a WARNING (_read()'s wrnno=70), never an error - and no error
-    # of any kind appears, because nothing reached the bus that could fail. Asserting on ErrType
-    # rather than ErrCount is deliberate: ErrCount counts "W" entries too, so the bare count is
-    # bumped by the refusal itself and cannot distinguish "refused" from "tried and failed".
+    # The refusal is logged as a WARNING (_read()'s wrnno=70), never an error, and no error
+    # appears at all since nothing reached the bus. Asserting on ErrType rather than ErrCount is
+    # deliberate: ErrCount counts "W" entries too, so it cannot tell "refused" from "tried".
     assert "E" not in paused_errs["FRAM"]["ErrType"]
     assert 70 in paused_errs["FRAM"]["ErrNum"]  # _read()'s own "FRAM communication paused" warning
 
@@ -597,10 +590,8 @@ def test_timestamped_corrupted_timestamp_byte_self_heals_when_crc_protected() ->
 
 def test_timestamped_corrupted_timestamp_byte_hard_fails_without_crc() -> None:
     # With crc=CRC_Pass() (no checksum at all), a single corrupted copy is still caught - not by
-    # any CRC, but by the independent cross-block byte comparison every read() already does: block
-    # 0 "looks fine" on its own (CRC_Pass never inspects content), but now disagrees with block 1,
-    # which is exactly the "no generation counter to say which is right" hard-failure case, not a
-    # silently-wrong timestamp being returned.
+    # any CRC but by the cross-block byte comparison every read() does: block 0 looks fine alone
+    # yet disagrees with block 1, the same "which is right?" hard failure, not a silent answer.
     manager, chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
@@ -662,10 +653,9 @@ def test_timestamped_write_require_ntp_refuses_when_not_synced_and_persists_noth
 
 
 def test_ntp_callback_raising_degrades_to_not_synced_instead_of_propagating() -> None:
-    # ntp_sync_callback is a caller-injected dependency (currently asy_ntp_client.py's ntp_issynced
-    # in sensortask-wozi.py's real wiring, promoted/audited) that this parameter's generic Callable
-    # type still doesn't statically rule out misbehaving - was called unguarded before this promotion.
-    # See tests/test_ntp_fram_system_integration.py for the same guard proven against the real object.
+    # ntp_sync_callback is a caller-injected dependency whose generic Callable type does not
+    # statically rule out misbehaving, and it was called unguarded before this promotion. See
+    # tests/test_ntp_fram_system_integration.py for the same guard against the real object.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _raising_callback, crc=CRC_Pass())
@@ -690,9 +680,8 @@ def test_mktime_overflow_degrades_to_uninit_timestamp_instead_of_propagating() -
 
     class _OverflowingTime:
         # Patches the `time` name inside asy_fram_manager.py's own namespace, not the real
-        # built-in `time` module (which doesn't support attribute assignment on this
-        # interpreter) - the same "patch the name where it's looked up" technique already used
-        # for asy_spi_driver._SPI above.
+        # builtin module (which rejects attribute assignment on this interpreter) - the same
+        # "patch the name where it is looked up" technique used for asy_spi_driver._SPI above.
         @staticmethod
         def gmtime() -> tuple[int, ...]:
             return (2038, 1, 1, 0, 0, 0, 0, 1)
@@ -724,13 +713,12 @@ def test_mktime_overflow_degrades_to_uninit_timestamp_instead_of_propagating() -
 
 def test_compare_with_huge_check_length_self_heals_instead_of_crashing() -> None:
     # _compare_with's `bytearray(self.check_length)` was unguarded against MemoryError/
-    # OverflowError - check_length is a caller-supplied int, not hardware-bounded like the
-    # allocation asy_fram_driver.py's own guard covers. Magnitude matches
-    # tests/test_base_classes.py's own confirmed MemoryError boundary for bytearray(n).
-    # The allocation failure makes _compare_with report block 1 as "not verifiably valid", which
-    # _read() already treats like any other block-1 problem: heal it from block 0 rather than
-    # failing the whole read - proving the fix integrates with existing self-healing, not just
-    # that it avoids a crash.
+    # OverflowError - check_length is caller-supplied, not hardware-bounded like the allocation
+    # asy_fram_driver.py guards. Magnitude matches test_base_classes.py's confirmed boundary.
+
+    # The allocation failure makes _compare_with report block 1 "not verifiably valid", which
+    # _read() heals from block 0 like any other block-1 problem - so the fix integrates with the
+    # existing self-healing rather than merely avoiding a crash.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass(), check_length=2**62)
@@ -745,10 +733,8 @@ def test_compare_with_huge_check_length_self_heals_instead_of_crashing() -> None
 
 def test_compare_with_zero_check_length_fails_cleanly_instead_of_hanging_forever() -> None:
     # Regression for a real bug found in review: _read_chunk's streaming loop computes
-    # chunk_size = min(len(buf), total_size - position) - with check_length=0, len(buf) is
-    # always 0, so chunk_size is always 0, position never advances, and the loop runs forever
-    # (confirmed directly: it hung past a bounded wait before this fix). asyncio.wait_for here
-    # means a real regression fails this test with a clear timeout, not a frozen test run.
+    # chunk_size = min(len(buf), total_size - position), so with check_length=0 it is always 0,
+    # position never advances and the loop runs forever. wait_for turns that into a clear timeout.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass(), check_length=0)
@@ -777,10 +763,9 @@ def test_compare_with_huge_check_length_during_write_verification_degrades_safel
 
 
 def test_oversized_write_logs_errno_84_not_colliding_with_clears_errno_80() -> None:
-    # AsyFramChunk.write's own "data too large" errno used to collide with
-    # _AsyBaseFramChunk.clear()'s errno=80 - both log into the same shared PrintLogHistory
-    # instance every chunk allocated from one manager shares, so the two failures were previously
-    # indistinguishable in the error history.
+    # AsyFramChunk.write's "data too large" errno used to collide with _AsyBaseFramChunk.clear()'s
+    # errno=80, and both log into the one shared PrintLogHistory every chunk of a manager uses, so
+    # the two failures were indistinguishable in the error history.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass())
@@ -889,11 +874,9 @@ def test_write_fails_cleanly_when_fram_is_write_protected() -> None:
 
 
 def test_read_is_also_blocked_while_write_protected_and_the_data_survives_it() -> None:
-    # Intended, accepted behavior, not a defect (project owner, 2026-09-11; SPECIFICATION.md Part
-    # A.4's FRAM entry): _read_chunk() must WRITE a transient busy marker before it reads, so write
-    # protection gates read() exactly as it gates write(). The discriminating part is the second
-    # half - the stored bytes are untouched by the refusal and come back intact once protection is
-    # cleared, so this is an access gate, not data loss.
+    # Intended, accepted behavior, not a defect (project owner, 2026-09-11; Part A.4):
+    # _read_chunk() must WRITE a transient busy marker before it reads, so write protection gates
+    # read() as it gates write() - yet the stored bytes come back intact once protection clears.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass())
@@ -921,8 +904,7 @@ def test_read_is_also_blocked_while_write_protected_and_the_data_survives_it() -
 def test_write_protect_gate_still_reaches_the_bus_unlike_the_pause_gate() -> None:
     # The two refusals look identical from outside (both hand back None) but differ where it
     # matters: set_pause() short-circuits before SPI, write protection does not - its guard sits
-    # inside FRAM_SPI._write(), reached only after _set_check_sb() has already clocked the status
-    # byte off the real chip. Counting chip-side reads is what tells them apart.
+    # inside FRAM_SPI._write(), after _set_check_sb() already clocked the status byte off the chip.
     manager, chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass())
@@ -960,9 +942,8 @@ def test_write_protect_gate_still_reaches_the_bus_unlike_the_pause_gate() -> Non
 
 def test_operations_fail_cleanly_once_fram_chip_goes_uninitialized_mid_run() -> None:
     # Models a chip that stopped responding after a successful setup() - every FRAM_SPI call
-    # short-circuits on its own `initialized` guard before ever touching the bus. Distinct from
-    # the WREN-drop case: reads fail at the *read* step (errno 30) here since get_values() itself
-    # refuses immediately, not just the subsequent status write (errno 32 for WREN-drop).
+    # short-circuits on its own `initialized` guard before touching the bus. Distinct from the
+    # WREN-drop case: reads fail at the read step (errno 30), not the later status write (32).
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass())
@@ -1014,10 +995,9 @@ def test_read_fails_when_both_blocks_have_crc_invalid_payloads() -> None:
 
 
 def test_block1_invalid_while_block0_valid_self_heals_block1() -> None:
-    # Mirror of the existing block-0-corruption self-heal test - this file only ever corrupted
-    # block 0's payload directly; block 1 being the one that's wrong (block 0 fine) is a distinct
-    # code path (_compare_with's cross-check inside _read()'s "block 0 already valid" branch, not
-    # the "block 0 invalid" branch).
+    # Mirror of the block-0-corruption self-heal test - this file only ever corrupted block 0's
+    # payload, and block 1 being the wrong one is a distinct code path (_compare_with's cross-check
+    # inside _read()'s "block 0 already valid" branch, not the "block 0 invalid" branch).
     manager, chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8())
@@ -1035,11 +1015,9 @@ def test_block1_invalid_while_block0_valid_self_heals_block1() -> None:
 
 
 def test_read_fails_when_self_heal_write_to_block0_fails() -> None:
-    # block 0 is invalid and needs healing from block 1; if that heal write itself fails (a real
-    # FRAM write can fail independently of the read that triggered it), read() must still report
-    # failure rather than pretend the stale/invalid block 0 is now fine. _write_chunk is patched
-    # per-address rather than using write-protect, since write-protect would also block the
-    # BUSY-status write every read needs just to start, masking this specific failure.
+    # Block 0 is invalid and needs healing from block 1; if that heal write fails, read() must
+    # still report failure, not pretend block 0 is fine. _write_chunk is patched per-address
+    # rather than write-protected, which would also block the BUSY write every read needs.
     manager, chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8())
@@ -1291,10 +1269,9 @@ def test_timestamped_chunk_write_with_verify_enabled_succeeds() -> None:
 
 
 def test_get_chunk_rejects_zero_size_regardless_of_crc() -> None:
-    # A chunk storing nothing is never a sensible request - rejected unconditionally at the top
-    # of get_chunk(), before any CRC/capacity logic runs, not just for the CRC_Pass() case that
-    # used to reproduce the old spurious-CRC-error-on-read quirk (see BACKLOG.md - that quirk is
-    # gone now, replaced by an outright rejection independent of which crc would've been used).
+    # A chunk storing nothing is never a sensible request - rejected unconditionally at the top of
+    # get_chunk(), before any CRC/capacity logic, not just for the CRC_Pass() case that used to
+    # reproduce the old spurious-CRC-error-on-read quirk (now gone, replaced by this rejection).
     manager, _chip = make_manager()
     run(setup_manager(manager))
     assert manager.get_chunk(0, crc=CRC_Pass()) is None
@@ -1303,10 +1280,9 @@ def test_get_chunk_rejects_zero_size_regardless_of_crc() -> None:
 
 
 def test_get_timestamped_chunk_rejects_zero_size_regardless_of_crc() -> None:
-    # Mirrors get_chunk()'s own rejection - the timestamped variant never actually reproduced the
-    # old quirk itself (the 8-byte timestamp header always keeps total_size > 0 regardless of
-    # payload size), but a zero-payload request is just as senseless here, so it's rejected the
-    # same way for consistency, not left as a quirk-free special case.
+    # Mirrors get_chunk()'s rejection. The timestamped variant never reproduced the old quirk
+    # itself - the 8-byte timestamp header keeps total_size > 0 whatever the payload size - but a
+    # zero-payload request is just as senseless, so it is rejected the same way for consistency.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     assert manager.get_timestamped_chunk(0, _synced, crc=CRC_Pass()) is None
@@ -1325,10 +1301,9 @@ def test_get_chunk_rejects_zero_size_even_with_abundant_remaining_capacity() -> 
 
 
 def test_all_zero_and_all_0xff_payloads_round_trip_without_sentinel_collision() -> None:
-    # Payload content lives in a separate address range from the status bytes (_STATUS_UNINIT is
-    # 0x00, one of the exact byte values a real payload might legitimately need to store) -
-    # confirms there's no accidental confusion between "chunk never written" and "chunk holds
-    # all-zero data".
+    # Payload content lives in a separate address range from the status bytes, and _STATUS_UNINIT
+    # is 0x00 - one of the exact byte values a real payload might legitimately store. Confirms
+    # there is no confusion between "chunk never written" and "chunk holds all-zero data".
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8())
@@ -1347,10 +1322,9 @@ def test_all_zero_and_all_0xff_payloads_round_trip_without_sentinel_collision() 
 
 
 def test_epoch_zero_timestamp_reads_back_as_uninitialized_sentinel_collision() -> None:
-    # _TS_UNINIT (0) doubles as both "never written" and the literal Unix epoch - a real UTC
-    # timestamp of exactly 0 is indistinguishable from "uninitialized" on read. Confirmed via a
-    # direct interpreter test, not fixed here (inherited from the original deployed design, not
-    # introduced by this promotion) - locks down the collision as real, documented behavior.
+    # _TS_UNINIT (0) doubles as both "never written" and the literal Unix epoch, so a real UTC
+    # timestamp of exactly 0 is indistinguishable from uninitialized on read. Inherited from the
+    # deployed design, not introduced here - locked down as real, documented behavior.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
@@ -1389,17 +1363,15 @@ def test_epoch_zero_timestamp_reads_back_as_uninitialized_sentinel_collision() -
 
 # ---------------------------------------------------------------------------
 # Deliberately-allowed exceptions propagating through this file's own composition points -
-# confirms the "caught here" / "allowed to raise" boundary asy_fram_driver.py's own docstring
-# documents actually holds one layer up, through AsyFramManager's public API, not just in
-# asy_fram_driver.py's own already-thorough test suite in isolation.
+# confirms the "caught here" / "allowed to raise" boundary asy_fram_driver.py's docstring
+# documents holds one layer up too, through AsyFramManager's public API.
 # ---------------------------------------------------------------------------
 
 
 def test_construction_raises_uncaught_valueerror_for_an_out_of_range_spi_cs() -> None:
-    # AsyFramManager.__init__ constructs FRAM_SPI(...) with no try/except around it - a bad
-    # spi_cs is a one-time, at-boot misconfiguration allowed to raise loudly rather than silently
-    # produce a permanently nonfunctional manager (asy_fram_driver.py's own already-tested
-    # carve-out, confirmed here to still hold through this file's own constructor).
+    # AsyFramManager.__init__ constructs FRAM_SPI(...) with no try/except - a bad spi_cs is a
+    # one-time at-boot misconfiguration allowed to raise loudly rather than silently produce a
+    # permanently nonfunctional manager, and that carve-out must still hold through __init__.
     bus = make_bus()
     try:
         AsyFramManager(bus, 99, max_size=0x2000)
@@ -1427,11 +1399,9 @@ def test_setup_fails_cleanly_when_device_id_does_not_match() -> None:
 
 
 def test_chunk_operations_fail_cleanly_when_the_underlying_bus_is_deinitialized_mid_run() -> None:
-    # asy_spi_driver.py's own contract says a mid-operation bus deinit raises an uncaught
-    # RuntimeError at that layer (asy_fram_driver.py's own test suite already proves this in
-    # isolation) - this confirms the *other* half of that same contract: one layer up, this
-    # file's broad `except Exception` in _write_chunk/_read_chunk/_clear_chunk catches it cleanly,
-    # rather than letting it propagate out of AsyFramChunk's own public write()/read()/clear().
+    # asy_spi_driver.py's contract says a mid-operation bus deinit raises an uncaught RuntimeError
+    # at that layer. This confirms the other half: one layer up, the broad `except Exception` in
+    # _write_chunk/_read_chunk/_clear_chunk catches it before it leaves AsyFramChunk's API.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass())
@@ -1483,10 +1453,8 @@ def test_get_chunk_negative_size_degrades_to_an_unusable_but_non_crashing_chunk(
 
 def test_get_chunk_negative_verify_triggers_verification_on_every_single_write() -> None:
     # Surprising but harmless: verify_counter starts at 0 and is compared with `>=` against
-    # `verify` *after* incrementing - a negative verify makes that comparison (1 >= negative) true
-    # on the very first write, so verification runs (and the counter resets to 0) every time,
-    # unlike verify=0 (never verifies) or verify=N>0 (every Nth write). Locked down as real,
-    # non-crashing, if unusual, behavior - not something this pass changes.
+    # `verify` after incrementing, so a negative verify makes (1 >= negative) true on the first
+    # write and verification runs every time. Locked down as real, non-crashing behavior.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass(), verify=-5)
@@ -1500,10 +1468,9 @@ def test_get_chunk_negative_verify_triggers_verification_on_every_single_write()
 
 
 def test_get_chunk_negative_check_length_self_heals_instead_of_crashing() -> None:
-    # Same MemoryError-degrades-to-"not verifiably valid" guard as the huge-check_length
-    # regression test, reached via a different input class: bytearray(negative_int) raises
-    # MemoryError on this interpreter (confirmed directly - the negative count gets reinterpreted
-    # as a huge unsigned allocation request), not a distinct crash mode of its own.
+    # The same MemoryError-degrades-to-"not verifiably valid" guard as the huge-check_length
+    # regression test, reached from a different input class: bytearray(negative_int) raises
+    # MemoryError here too, the negative count being reinterpreted as a huge unsigned request.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass(), check_length=-1)
@@ -1547,13 +1514,12 @@ def test_multiple_invalid_parameters_combined_still_degrade_safely() -> None:
 
 
 def test_disagreeing_status_bytes_within_one_block_are_treated_as_invalid_and_self_healed() -> None:
-    # _handle_status_bytes checks its two status bytes' "uninit" results *agree* before trusting
-    # either - status byte 1 = UNINIT and status byte 2 = IDLE are each individually a normal,
-    # valid value on their own (neither triggers the "not idle, not uninit" errno=31 path), but
-    # disagreeing with each other is its own distinct failure the base/errno=31 checks can't
-    # catch - only reachable via _read_chunk's initial busy-set step (check_idle=True is the only
-    # call site where the "uninit" flag isn't hardcoded False), confirmed empirically, previously
-    # completely untested.
+    # _handle_status_bytes checks that its two status bytes' "uninit" results agree before
+    # trusting either: byte 1 = UNINIT with byte 2 = IDLE are each individually valid (neither
+    # trips the errno=31 path), but disagreeing is its own failure the base checks cannot catch.
+
+    # Only reachable via _read_chunk's initial busy-set step, the one call site where the "uninit"
+    # flag is not hardcoded False. Previously untested.
     manager, chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass())
@@ -1574,10 +1540,9 @@ def test_disagreeing_status_bytes_within_one_block_are_treated_as_invalid_and_se
 
 
 def test_write_verify_reports_the_distinct_errno_when_only_block_1_fails_verification() -> None:
-    # The verify loop's `errno=63+n` was only ever exercised for n=0 (block 0 failing first always
-    # short-circuits the loop before n=1 is tried) - isolating block 1's own verification failure
-    # needs a per-address patch, the same technique already used for the self-heal-write-failure
-    # tests, since block 0 must genuinely succeed for the loop to ever reach n=1 at all.
+    # The verify loop's `errno=63+n` was only exercised for n=0, since block 0 failing first
+    # short-circuits before n=1. Isolating block 1's own verification failure needs a per-address
+    # patch, the same technique as the self-heal-write-failure tests, so block 0 genuinely passes.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass(), verify=1)
@@ -1603,18 +1568,9 @@ def test_write_verify_reports_the_distinct_errno_when_only_block_1_fails_verific
 
 
 def test_op_lock_prevents_concurrent_writes_from_interleaving_between_blocks() -> None:
-    # A genuinely unplanned condition found by construction, not by inspection: _write() used to
-    # only hold fram's lock separately for each block (_write_chunk acquires/releases it once per
-    # block), not continuously across the whole logical write - so two tasks writing the same
-    # chunk concurrently could interleave *between* blocks, each reporting success, while leaving
-    # one task's data in block 0 and the other's in block 1 (the CRC/dual-copy hard-fail safety net
-    # still caught the resulting inconsistency cleanly, but interleaving itself was never a designed
-    # -for possibility). Fixed with _op_lock: a chunk-owned lock (distinct from fram's own, which
-    # still separately serializes individual block operations *across* different chunks) that now
-    # wraps each of write()/read()/clear()'s entire body, so this chunk's own top-level operations
-    # can never overlap at all. Proven directly via instrumented block-write call order, not just by
-    # checking the end result stays consistent - true serialization means the two writers' calls
-    # can never even be *entered* concurrently, one fully finishes before the other starts.
+    # Found by construction, not inspection: _write() used to hold fram's lock only per block, so
+    # two tasks writing one chunk could interleave between blocks, each reporting success while
+    # leaving one task's data in block 0 and the other's in block 1.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8())
@@ -1631,10 +1587,9 @@ def test_op_lock_prevents_concurrent_writes_from_interleaving_between_blocks() -
     chunk._write_chunk = instrumented_write_chunk  # type: ignore[method-assign]
 
     async def scenario() -> list[bool]:
-        # The stub types 2-arg gather() as returning tuple[bool, bool] (mirroring CPython
-        # typeshed's precise-arity overloads), but MicroPython's real asyncio.gather() always
-        # returns a list (extmod/asyncio/funcs.py's `return ts`, ts built as a list) - so the
-        # annotation stays honest to actual runtime behavior instead of matching the stub.
+        # The stub types 2-arg gather() as returning tuple[bool, bool], mirroring CPython
+        # typeshed's precise-arity overloads, but MicroPython's asyncio.gather() always returns a
+        # list (extmod/asyncio/funcs.py) - so the annotation stays honest to runtime behavior.
         return await asyncio.gather(chunk.write(b"AAAA"), chunk.write(b"BBBB"))  # type: ignore[return-value]
 
     results = run(scenario())
@@ -1865,11 +1820,9 @@ def test_read_chunk_fails_cleanly_when_incremental_crc_update_itself_fails() -> 
 
 
 def test_read_chunk_fails_cleanly_when_the_final_idle_status_write_itself_fails() -> None:
-    # The read-idle-set step (after a successful streaming read) has its own "write status byte
-    # failed" branch - reaching it specifically after a full successful read (not the busy-set at
-    # the start of the same read, which writes the *same* status-byte address) needs a call
-    # counter, not just an address match: the 1st write to this address is the busy-set, the 2nd
-    # is the idle-set this test targets.
+    # The read-idle-set step, after a successful streaming read, has its own "write status byte
+    # failed" branch. Reaching it rather than the busy-set at the start of the same read, which
+    # writes the same address, needs a call counter: 1st write busy-set, 2nd the idle-set.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8())
@@ -2122,13 +2075,9 @@ def test_timestamped_chunk_buffer_get_crc_buf_returns_the_trailing_crc_slice() -
 
 
 # ---------------------------------------------------------------------------
-# write_into()/read_into() timestamp pack/unpack exception handling - struct.pack_into()/
-# unpack_from() can't actually fail through real use (_TS_FMT's buffer is always allocated at
-# exactly struct.calcsize(_TS_FMT), and utc is always a plain non-negative int), so this
-# monkeypatches asy_fram_manager's own `struct` module reference the same way that
-# tests/test_system_service.py's own
-# test_ntp_boot_signature_mktime_overflow_returns_none_and_logs_once fakes `time` for its own
-# otherwise-unreachable branch.
+# write_into()/read_into() timestamp pack/unpack exception handling - struct.pack_into() and
+# unpack_from() cannot fail through real use, since the buffer is always exactly
+# struct.calcsize(_TS_FMT) and utc a non-negative int, so this fakes the `struct` reference.
 # ---------------------------------------------------------------------------
 
 
@@ -2212,8 +2161,7 @@ def test_read_into_treats_unpack_from_failure_as_an_uninitialized_timestamp() ->
 # ---------------------------------------------------------------------------
 # MicroPython 1.29's SPI RX-overrun raise site, driven through the real live path: the fault is
 # injected at the machine.SPI boundary and travels asy_spi_driver -> asy_fram_driver.get_values()
-# -> _read_chunk's chunk loop, so what these pin down is the stack's actual behaviour rather than
-# one layer's contract. See SPECIFICATION.md Part F.5.2 and BACKLOG.md's own entry.
+# -> _read_chunk's loop, so these pin down the stack's behaviour, not one layer's contract.
 # ---------------------------------------------------------------------------
 
 
@@ -2281,8 +2229,7 @@ def test_a_sub_threshold_chunk_is_immune_to_a_bus_wide_overrun() -> None:
 def test_an_overrun_leaves_the_spi_bus_itself_reusable_rather_than_wedged() -> None:
     # The failure path runs through two `async with` blocks (the manager's chunk lock and
     # SPIDevice's CS/bus lock). If either leaked, one overrun would wedge the shared SPI bus for
-    # every other device on it - a far worse outcome than the failed read itself. It does not:
-    # a second chunk reads normally once the bus recovers.
+    # every other device on it. It does not: a second chunk reads normally once the bus recovers.
     manager, chip = make_manager()
     run(setup_manager(manager))
     broken = manager.get_chunk(40, crc=CRC8())
@@ -2309,11 +2256,9 @@ def test_an_overrun_leaves_the_spi_bus_itself_reusable_rather_than_wedged() -> N
 
 
 def test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten() -> None:
-    # Intended behavior, not a defect (SPECIFICATION.md Part A.4's FRAM entry): _read_chunk marks a
-    # block BUSY before reading and only restores IDLE on the way out, so an interruption in
-    # between leaves both copies marked. MB85RS64V reads are destructive internally, so an
-    # interrupted read is an interrupted restore - the bytes may read back intact and still not be
-    # trustworthy, which is why every later read is refused (errno 31) until a write clears it.
+    # Intended behavior, not a defect (Part A.4): _read_chunk marks a block BUSY before reading
+    # and restores IDLE only on the way out, so an interruption leaves both copies marked.
+    # MB85RS64V reads are destructive internally, so an interrupted read is an interrupted restore.
     manager, chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(40, crc=CRC8())
