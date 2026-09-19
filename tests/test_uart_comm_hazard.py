@@ -65,11 +65,17 @@ def timeout_for(crc: "CrcMaker") -> int:
     return _TIMEOUT_MS if crc is None else _TIMEOUT_MS * 8
 
 
-def hazard_pair(crc: "CrcMaker" = None) -> Pair:
+# A sustained CLEAN run never consumes the timeout, so the short budget above buys it nothing and
+# costs it a false failure: at 1x the no-CRC arm sits 1.25x over the 24ms floor, well inside the
+# scheduling gap scripts/test.sh's own 16-way oversubscription produces. Derivation in Part J.7.
+_SUSTAINED_TIMEOUT_MS = _TIMEOUT_MS * 8
+
+
+def hazard_pair(crc: "CrcMaker" = None, timeout_ms: int | None = None) -> Pair:
     maker = (lambda: None) if crc is None else crc
     pair = Pair(
-        payload_size=_PAYLOAD, timeout=timeout_for(crc), get_callback=echo_get(b"v"), set_callback=accept_set(),
-        crc_a=maker(), crc_b=maker(),
+        payload_size=_PAYLOAD, timeout=timeout_for(crc) if timeout_ms is None else timeout_ms,
+        get_callback=echo_get(b"v"), set_callback=accept_set(), crc_a=maker(), crc_b=maker(),
     )
     assert run(pair.setup()) is True
     return pair
@@ -519,7 +525,7 @@ def _check_a_long_run_of_transactions_retains_no_memory(crc: "CrcMaker") -> None
     # CLAUDE.md's memory-safety ladder at its most direct: a link running for weeks has no backstop
     # below the watchdog, so the steady state must not grow the heap. The fakes' recorders are muted
     # so the number is src/'s alone; hazard_pair(crc) is built out here (its asyncio.run() cannot nest).
-    pair = hazard_pair(crc)
+    pair = hazard_pair(crc, timeout_ms=_SUSTAINED_TIMEOUT_MS)
     for fake in (pair.fake_a, pair.fake_b):
         fake.log.append = lambda entry: None  # type: ignore[method-assign]
     completed, per_transaction = run(_measure_retention(pair), limit=120)
@@ -975,7 +981,7 @@ _HAMMER_MEASURED = _HAMMER_ROUNDS - _HAMMER_SAMPLE_AT - 1  # transactions the he
 def _hammer_clean(crc: "CrcMaker") -> None:
     import gc
 
-    pair = hazard_pair(crc)
+    pair = hazard_pair(crc, timeout_ms=_SUSTAINED_TIMEOUT_MS)
     for fake in (pair.fake_a, pair.fake_b):
         fake.log.append = lambda entry: None  # type: ignore[method-assign]
     payload = bytes(_PAYLOAD * 3)

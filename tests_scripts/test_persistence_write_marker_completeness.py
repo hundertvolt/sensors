@@ -9,8 +9,12 @@ silently. The sibling gating test proves the flag WORKS; this proves nothing esc
 import ast
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # The four route-level dispatch-only fields (asy_webserver_service.py's own PUT handlers act on them
 # and never hand them to ConfigManager) - the rest are derived from the real @web schema tags below,
@@ -70,43 +74,87 @@ def _leaf_keys(node: ast.expr) -> set[str]:
     return keys
 
 
-def _non_literal_put_bodies(path: Path) -> list[str]:
-    """Function names whose PUT body is not a literal dict, so _leaf_keys() cannot read it and the
-    detector below never sees them as writers. Enumerated rather than left implicit, or a
-    `payload = {...}` refactor would silently unmark a marked test. Exactly one today."""
+class _FetchShape(NamedTuple):
+    """Where fetch() really keeps its method and body arguments, read from its own def below."""
+
+    method_at: int
+    body_at: int
+    body_kw: str
+
+
+def _fetch_shape(repo_root: Path) -> _FetchShape:
+    # Derived, never hardcoded: every detector here indexes fetch()'s positional arguments, so a
+    # reordered or renamed parameter would silently make them read the wrong one - and the keyword
+    # fallback did exactly that, looking for `body=` when the parameter has always been `json_body`.
+    tree = ast.parse((repo_root / "tests_hardware" / "http_client.py").read_text())
+    fn = next((n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "fetch"), None)
+    assert fn is not None, "tests_hardware/http_client.py no longer defines fetch() - every detector in this file reads its call sites"
+    names = [arg.arg for arg in fn.args.args]
+    bodies = [n for n in names if "body" in n]
+    assert len(bodies) == 1, f"fetch()'s body argument is no longer unambiguous ({bodies}) - update this derivation with it"
+    assert "method" in names, f"fetch() no longer takes a `method` argument ({names}) - every detector here reads it to tell a PUT from a GET"
+    return _FetchShape(names.index("method"), names.index(bodies[0]), bodies[0])
+
+
+def _fetch_calls(path: Path) -> "Iterator[tuple[str, ast.Call]]":
+    """(enclosing function name, call) for every call named `fetch` in the module."""
     tree = ast.parse(path.read_text())
-    offenders = []
     for fn in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]:
         for call in [n for n in ast.walk(fn) if isinstance(n, ast.Call)]:
             name = call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, "id", "")
-            if name != "fetch":
-                continue
-            method = call.args[2] if len(call.args) >= 3 else None
-            if not (isinstance(method, ast.Constant) and method.value == "PUT"):
-                continue
-            body = call.args[4] if len(call.args) >= 5 else next((kw.value for kw in call.keywords if kw.arg == "body"), None)
-            if body is not None and not isinstance(body, ast.Dict):
-                offenders.append(fn.name)
+            if name == "fetch":
+                yield fn.name, call
+
+
+def _argument(call: ast.Call, index: int, keyword: str) -> ast.expr | None:
+    """One argument of a call, whether it was passed positionally or by keyword."""
+    if len(call.args) > index:
+        return call.args[index]
+    return next((kw.value for kw in call.keywords if kw.arg == keyword), None)
+
+
+def _put_body(call: ast.Call, shape: _FetchShape) -> ast.expr | None:
+    """The body a fetch() call PUTs, or None when the call is not a literal-method PUT with a body."""
+    method = _argument(call, shape.method_at, "method")
+    if not (isinstance(method, ast.Constant) and method.value == "PUT"):
+        return None
+    return _argument(call, shape.body_at, shape.body_kw)
+
+
+def _non_literal_put_bodies(path: Path, shape: _FetchShape) -> list[str]:
+    """Function names whose PUT body is not a literal dict, so _leaf_keys() cannot read it and the
+    detector below never sees them as writers. Enumerated rather than left implicit, or a
+    `payload = {...}` refactor would silently unmark a marked test."""
+    offenders = []
+    for fn_name, call in _fetch_calls(path):
+        body = _put_body(call, shape)
+        if body is not None and not isinstance(body, ast.Dict):
+            offenders.append(fn_name)
     return sorted(set(offenders))
 
 
-def _persisting_put_functions(path: Path, dispatch_only: frozenset[str]) -> dict[str, set[str]]:
+def _forwarded_method_calls(path: Path, shape: _FetchShape) -> list[str]:
+    """Function names calling fetch() with a non-literal method: wrappers no detector here can
+    classify, since deciding whether a call writes at all starts by reading that argument."""
+    offenders = []
+    for fn_name, call in _fetch_calls(path):
+        method = _argument(call, shape.method_at, "method")
+        if not (isinstance(method, ast.Constant) and isinstance(method.value, str)):
+            offenders.append(fn_name)
+    return sorted(set(offenders))
+
+
+def _persisting_put_functions(path: Path, dispatch_only: frozenset[str], shape: _FetchShape) -> dict[str, set[str]]:
     """Function name -> the persisting fields its own body PUTs, for every function that PUTs one."""
-    tree = ast.parse(path.read_text())
     found: dict[str, set[str]] = {}
-    for fn in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]:
-        keys: set[str] = set()
-        for call in [n for n in ast.walk(fn) if isinstance(n, ast.Call)]:
-            name = call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, "id", "")
-            # http_client.fetch(host, port, method, route, body, ...) - a body argument is required
-            # for this to be a write at all, so a 4-argument GET never reaches _leaf_keys().
-            if name != "fetch" or len(call.args) < 5:
-                continue
-            method = call.args[2]
-            if isinstance(method, ast.Constant) and method.value == "PUT":
-                keys |= _leaf_keys(call.args[4]) - dispatch_only
+    for fn_name, call in _fetch_calls(path):
+        # A body argument is required for this to be a write at all, so a bodyless GET - or a PUT
+        # whose body arrived by keyword, which the old positional-only read missed - is handled here
+        # once, by _put_body(), rather than by each detector guessing at argument positions.
+        body = _put_body(call, shape)
+        keys = _leaf_keys(body) - dispatch_only if body is not None else set()
         if keys:
-            found[fn.name] = keys
+            found[fn_name] = found.get(fn_name, set()) | keys
     return found
 
 
@@ -125,10 +173,11 @@ def test_every_test_that_persists_a_config_field_carries_the_marker(repo_root: P
     # The wear guard itself. An unmarked writer is invisible - it passes, the suite goes green, and
     # the only evidence is flash endurance spent on a run that was never meant to spend any.
     dispatch_only = _dispatch_only_fields(repo_root)
+    shape = _fetch_shape(repo_root)
     offenders = []
     for path in _tests_hardware_modules(repo_root):
         marked = _marked_functions(path)
-        for name, keys in _persisting_put_functions(path, dispatch_only).items():
+        for name, keys in _persisting_put_functions(path, dispatch_only, shape).items():
             if name.startswith("test_") and name not in marked and name not in _JUSTIFIED_UNMARKED:
                 offenders.append(f"{path.relative_to(repo_root)}::{name} PUTs {sorted(keys)}")
     assert not offenders, "these tests persist config to the RP2040's flash without @pytest.mark.persistence_write:\n  " + "\n  ".join(offenders)
@@ -145,8 +194,94 @@ def test_every_unreadable_put_body_is_a_triaged_one(repo_root: Path) -> None:
     # Closes the detector's one blind spot by naming it: a PUT whose body is a variable yields no
     # keys, so the wear guard below passes on it no matter what it writes. Exactly one exists today
     # and it provably persists nothing; a second has to be triaged rather than silently inherit that.
-    unreadable = {name for path in _tests_hardware_modules(repo_root) for name in _non_literal_put_bodies(path)}
+    shape = _fetch_shape(repo_root)
+    unreadable = {name for path in _tests_hardware_modules(repo_root) for name in _non_literal_put_bodies(path, shape)}
     assert unreadable == set(_JUSTIFIED_UNREADABLE_BODIES), f"a PUT body the marker guard cannot read changed - triage each one and update _JUSTIFIED_UNREADABLE_BODIES.\n  added: {sorted(unreadable - set(_JUSTIFIED_UNREADABLE_BODIES))}\n  gone: {sorted(set(_JUSTIFIED_UNREADABLE_BODIES) - unreadable)}"
+
+
+# Wrapper -> why a fetch() call it makes may keep its method in a variable. An entry is only
+# admissible when the wrapper presents http_client.fetch's own name and positional signature, so its
+# CALLERS are what the detector reads; the test below re-derives that rather than trusting the entry.
+_JUSTIFIED_FORWARDED_METHODS = {
+    "tests_hardware/bench/test_bus_concurrency_under_api_load.py::fetch": "a ceiling-close retry wrapper that forwards every argument unchanged, named `fetch` with http_client.fetch's exact positional signature, so each call site is read directly and nothing is hidden behind it",
+}
+
+
+def _positional_parameters(path: Path, name: str) -> list[str]:
+    """The positional parameter names of one top-level function, in order."""
+    tree = ast.parse(path.read_text())
+    fn = next((n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef) and n.name == name), None)
+    assert fn is not None, f"{path}::{name} is gone - drop its _JUSTIFIED_FORWARDED_METHODS entry with it"
+    return [arg.arg for arg in fn.args.args]
+
+
+def test_every_forwarding_wrapper_still_mirrors_fetchs_own_signature(repo_root: Path) -> None:
+    # The exemption above rests entirely on the wrapper being indistinguishable from fetch() at its
+    # call sites. Rename one parameter or reorder two and that stops being true while the allowlist
+    # entry goes on excusing it - so the premise is re-derived here, never assumed.
+    expected = _positional_parameters(repo_root / "tests_hardware" / "http_client.py", "fetch")
+    for entry in _JUSTIFIED_FORWARDED_METHODS:
+        rel, _, name = entry.partition("::")
+        actual = _positional_parameters(repo_root / rel, name)
+        assert actual == expected, f"{entry} no longer mirrors http_client.fetch's positional signature, so its call sites are no longer readable by the detector: {actual} != {expected}"
+
+
+def test_no_fetch_wrapper_hides_its_method_from_the_detector(repo_root: Path) -> None:
+    # F15's residual, closed. Every detector above starts by reading fetch()'s method argument, so a
+    # wrapper forwarding its own parameter there is classified as nothing at all - which is exactly
+    # how isl29125_write_worker and bmp3xx_write_worker left _KNOWN_PERSISTING_HELPERS unnoticed.
+    shape = _fetch_shape(repo_root)
+    forwarders = {
+        f"{path.relative_to(repo_root)}::{name}"
+        for path in _tests_hardware_modules(repo_root)
+        for name in _forwarded_method_calls(path, shape)
+    }
+    assert forwarders == set(_JUSTIFIED_FORWARDED_METHODS), f"a fetch() call now passes its method as a variable, so the wear guard cannot tell a PUT from a GET there. Give the wrapper http_client.fetch's own name and positional signature, or triage it into _JUSTIFIED_FORWARDED_METHODS.\n  added: {sorted(forwarders - set(_JUSTIFIED_FORWARDED_METHODS))}\n  gone: {sorted(set(_JUSTIFIED_FORWARDED_METHODS) - forwarders)}"
+
+
+def test_a_synthetic_forwarding_wrapper_is_actually_caught(tmp_path: Path, repo_root: Path) -> None:
+    # The same "prove it bites" treatment the detector itself gets: F14's first draft is replayed
+    # verbatim, and must be both invisible to the PUT detector and loud in the check above.
+    module = tmp_path / "test_wrapper.py"
+    module.write_text(
+        'def _put(ip, method, route, body):\n'
+        '    return http_client.fetch(ip, 80, method, route, body, timeout_s=10.0)\n'
+        '\n'
+        'def test_writes() -> None:\n'
+        '    _put(ip, "PUT", "/sensors", {"BMP3XX": {"PressOvers": 4}})\n',
+    )
+    shape = _fetch_shape(repo_root)
+    assert _persisting_put_functions(module, _dispatch_only_fields(repo_root), shape) == {}, "the PUT detector cannot see through a wrapper - if it ever can, this guard is redundant, not wrong"
+    assert _forwarded_method_calls(module, shape) == ["_put"]
+
+
+def test_a_put_body_passed_by_keyword_is_still_seen(tmp_path: Path, repo_root: Path) -> None:
+    # The positional-only read missed this outright, and its keyword fallback looked for `body=`
+    # while the parameter has always been `json_body` - so the one escape hatch could never fire.
+    module = tmp_path / "test_keyword.py"
+    module.write_text('def test_writes() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", json_body={"BMP3XX": {"PressOvers": 4}}, timeout_s=10.0)\n')
+    found = _persisting_put_functions(module, _dispatch_only_fields(repo_root), _fetch_shape(repo_root))
+    assert found == {"test_writes": {"PressOvers"}}
+
+
+# Modules that issue HTTP without going through fetch(), and why each is not a way to reach a PUT.
+_HTTP_LIBRARIES = frozenset({"urllib", "http", "requests", "httpx", "aiohttp"})
+
+
+def test_fetch_is_the_only_route_from_this_tier_to_an_http_request(repo_root: Path) -> None:
+    # Every check in this file begins at a call named fetch, so a module driving an HTTP library
+    # itself would bypass the wear guard completely. Raw `socket` is deliberately out of scope: this
+    # tier uses it for DNS probes and the connection-ceiling rows, never to speak HTTP.
+    offenders = []
+    for path in _tests_hardware_modules(repo_root):
+        if path.name == "http_client.py":  # the one place allowed to, and the shape everything else reads
+            continue
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.Import):
+                offenders += [f"{path.relative_to(repo_root)}: import {a.name}" for a in node.names if a.name.split(".")[0] in _HTTP_LIBRARIES]
+            elif isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] in _HTTP_LIBRARIES:
+                offenders.append(f"{path.relative_to(repo_root)}: from {node.module} import ...")
+    assert not offenders, "these modules can issue an HTTP request without going through http_client.fetch(), which is the only call the wear guard can see:\n  " + "\n  ".join(offenders)
 
 
 def test_every_justified_exemption_still_rests_on_every_field_being_rejected(repo_root: Path) -> None:
@@ -155,7 +290,7 @@ def test_every_justified_exemption_still_rests_on_every_field_being_rejected(rep
     # against a fixed count, so a second entry cannot inherit the first one's verification.
     path = repo_root / "tests_hardware" / "bench" / "test_network_resilience.py"
     source = path.read_text()
-    persisting = _persisting_put_functions(path, _dispatch_only_fields(repo_root))
+    persisting = _persisting_put_functions(path, _dispatch_only_fields(repo_root), _fetch_shape(repo_root))
     for name in _JUSTIFIED_UNMARKED:
         body = source.split(f"def {name}(", 1)
         assert len(body) == 2, f"{name} is gone - drop its _JUSTIFIED_UNMARKED entry with it"
@@ -173,10 +308,11 @@ def test_the_set_of_persisting_helpers_is_exactly_the_triaged_one(repo_root: Pat
     # A helper's own callers carry the marker, which this file cannot verify by name resolution.
     # Pinning the set converts "a new untriaged helper" from silent into a failing test.
     dispatch_only = _dispatch_only_fields(repo_root)
+    shape = _fetch_shape(repo_root)
     helpers = {
         name
         for path in _tests_hardware_modules(repo_root)
-        for name in _persisting_put_functions(path, dispatch_only)
+        for name in _persisting_put_functions(path, dispatch_only, shape)
         if not name.startswith("test_")
     }
     assert helpers == _KNOWN_PERSISTING_HELPERS, f"the set of non-test functions issuing a persisting PUT changed - triage each one and update _KNOWN_PERSISTING_HELPERS.\n  added: {sorted(helpers - _KNOWN_PERSISTING_HELPERS)}\n  gone: {sorted(_KNOWN_PERSISTING_HELPERS - helpers)}"
@@ -198,7 +334,7 @@ def test_a_synthetic_unmarked_writer_is_actually_caught(tmp_path: Path, repo_roo
     # trivially if _persisting_put_functions() ever stops finding anything at all.
     module = tmp_path / "test_synthetic.py"
     module.write_text('def test_writes() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": 4}}, timeout_s=10.0)\n')
-    found = _persisting_put_functions(module, _dispatch_only_fields(repo_root))
+    found = _persisting_put_functions(module, _dispatch_only_fields(repo_root), _fetch_shape(repo_root))
     assert found == {"test_writes": {"PressOvers"}}
     assert _marked_functions(module) == set(), "an unmarked writer must not look marked"
 
@@ -207,7 +343,7 @@ def test_a_synthetic_unmarked_writer_is_actually_caught(tmp_path: Path, repo_roo
 def test_a_dispatch_only_put_is_not_flagged(tmp_path: Path, repo_root: Path, body: str) -> None:
     module = tmp_path / "test_dispatch.py"
     module.write_text(f'def test_dispatches() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", {body}, timeout_s=10.0)\n')
-    assert _persisting_put_functions(module, _dispatch_only_fields(repo_root)) == {}
+    assert _persisting_put_functions(module, _dispatch_only_fields(repo_root), _fetch_shape(repo_root)) == {}
 
 
 def _registered_markers(repo_root: Path) -> set[str]:

@@ -4978,6 +4978,38 @@ configured baud rate, so a drain or cooldown cannot pass for the wrong reason). 
 shared set of assertions in `tests/_uart_link_contract.py` — the two may differ in fidelity, never
 in semantics — with `link.settle()` as the single seam between them.
 
+**The mock tier's `timeout` is a scheduling budget, not a wire budget, and has to be sized as one.**
+The loopback link delivers in-memory within one event-loop turn, so nothing of the configured
+`timeout` is ever spent on transmission — the only thing it can measure is whether this *host*
+rescheduled the reading task in time. That makes it a host-dependency wherever a test asserts that
+every one of a long run of clean transactions completed, and `scripts/test.sh` deliberately
+oversubscribes the runner (4× the core count, 16 concurrent interpreters on a 4-core host, plus the
+backgrounded `tests_scripts/` tier), so the stall is self-inflicted and routine rather than exotic.
+
+Sized against J.6's own floor (`2 × poll_wait_ms + poll_idle_ms +` the worst-case GC pause), the
+margins are:
+
+| arm | budget | floor | margin |
+| --- | --- | --- | --- |
+| real `dev` link | 1000 ms | 2·2 + 50 + 21 = 75 ms | 13.3× |
+| `tests/test_uart_comm_hazard.py`, CRC16 | 240 ms | 2·1 + 1 + 21 = 24 ms | 10× |
+| same file, no CRC | 30 ms | 24 ms | **1.25×** |
+
+The no-CRC arm is the outlier, and it is the one that failed: measured max scheduling gap 3 ms idle,
+23–26 ms at 8× CPU oversubscription, and past 30 ms in a loaded full-file run — reproduced twice in
+a row locally under load after CI run `35468454090` saw it once, always as `only 149/150 hammered
+transactions completed`, one transaction short at the very end. **Not a listener-budget shortfall**,
+which was the first hypothesis: instrumented, 150 transactions consume exactly 150 of the 450
+available listen rounds.
+
+The fix is confined to the two tests that assert a *clean* run completes in full
+(`_hammer_clean`, `_measure_retention`), which build their pair at `_TIMEOUT_MS * 8` — the same 10×
+margin the CRC arm already had. A clean run never consumes the timeout, so this costs no wall clock;
+the short budget stays where it earns its keep, in the fault-injecting tests whose recovery cycles it
+actually makes cheap. The accepted trade-off is that neither test would now catch a *latency*
+regression below 240 ms — they assert completion and heap retention, not duration, and the CRC arm
+already carried exactly that trade-off.
+
 **Constraint — a loopback harness must never register a fake UART with a real `select.poll()`.** The
 Unix port does not re-evaluate a Python object's `ioctl()` after registration (the reason
 `tests/test_asy_uart_driver.py`'s `_StepPoller` exists, and the cause of a CI-only hang — CLAUDE.md's

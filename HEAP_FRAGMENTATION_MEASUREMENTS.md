@@ -3860,9 +3860,10 @@ through it, and `_KNOWN_PERSISTING_HELPERS` is **unchanged**. The `is_ceiling_cl
 also **promoted out of `test_network_resilience.py` into `http_client.py`** per CLAUDE.md Part G's
 shared-primitive rule rather than duplicated.
 
-**F15's residual is open**: the guard has `_JUSTIFIED_UNREADABLE_BODIES` for a body it cannot read,
-but no concept of a *call* it cannot recognise, so the next wrapper not shaped like `fetch` reopens
-the hole silently. Host-side work, owner's call.
+**F15's residual is closed, host-side, 2026-09-19** — see §7K.1. The guard now fails on any
+`fetch()` call that passes its method as a variable, re-derives the one allowlisted wrapper's
+premise from `http_client.fetch`'s own signature, and pins `fetch()` as this tier's sole HTTP
+chokepoint. Closing it surfaced two live defects in the guard itself.
 
 ### 7J.6 State the bench was left in — READ THIS BEFORE THE NEXT BENCH RUN
 
@@ -3901,16 +3902,115 @@ a `DebugLevel` of 0 silences what they parse — confirmed immediately here, whe
 `tail_log()` returned nothing at all. Before resuming any bench-tier work:
 `PUT /system {"DebugLevel": 5}`, confirm it took, and re-check the board is on the bench SSID.
 
-### 7J.7 One thing left undiagnosed, and it is not written off
+### 7J.7 One thing left undiagnosed at the time — since root-caused (§7K.2)
 
 **F16**: CI run `35468454090` reported `tests/test_uart_comm_hazard.py` at 95/96, `only 149/150
 hammered transactions completed`. Nothing in this sitting touches the mock tier, and the three
 preceding CI runs on this branch were green. Re-run locally **5 times on the same Unix-port binary:
-96/96 every time** (a 12-run characterisation was cut short when the sitting was paused). So it is
-CI-only so far — but 5 local runs is not enough to call it a flake, and it is recorded as **OPEN,
-undiagnosed**. The lead worth pulling first: whether `run(hammer(), limit=300)` is a tight bound on
-the event-loop steps that 150 transactions plus a 450-round listener actually need, since a slower
-runner would then lose the last transaction — which is exactly 149/150.
+96/96 every time**, which is why it was recorded as CI-only and explicitly **not** written off as a
+flake on that evidence. **That caution was right and the framing was wrong**: it reproduces readily
+once the host is loaded the way `scripts/test.sh` itself loads it, and the lead recorded here — that
+`limit=300` might be a tight event-loop-step budget — is not what `limit` means. Both are settled in
+§7K.2.
+
+---
+
+## 7K. The two host-side leftovers, closed without bench time (2026-09-19)
+
+§7J left exactly two rows open that needed no hardware. Both are now closed, and in each case the
+recorded lead turned out to be wrong — which is the part worth keeping.
+
+### 7K.1 F15 — the guard had no concept of a call it could not recognise, and two live holes besides
+
+The residual as recorded: `tests_scripts/test_persistence_write_marker_completeness.py` has
+`_JUSTIFIED_UNREADABLE_BODIES` for a PUT *body* it cannot read, but nothing for a *call* it cannot
+recognise, so the next wrapper not shaped like `fetch` reopens F14's hole silently.
+
+Three checks close it, each verified by injecting the regression it exists for rather than by
+agreeing with today's tree:
+
+| check | what it catches | proven by |
+|---|---|---|
+| `test_no_fetch_wrapper_hides_its_method_from_the_detector` | any `fetch()` call passing its method as a variable — F14's draft exactly | renaming the real wrapper to `_fetch`: **fails** |
+| `test_every_forwarding_wrapper_still_mirrors_fetchs_own_signature` | the one allowlisted wrapper drifting off `http_client.fetch`'s positional signature | swapping its `method`/`path` parameters: **fails** |
+| `test_fetch_is_the_only_route_from_this_tier_to_an_http_request` | a module driving `urllib`/`http.client` itself, bypassing the detector entirely | — (`http_client.py` is the only importer today, confirmed) |
+
+`_JUSTIFIED_FORWARDED_METHODS` carries exactly one entry, the ceiling-close retry wrapper F14 added,
+and the second check re-derives that entry's premise instead of trusting it — the same discipline
+`test_every_justified_exemption_still_rests_on_every_field_being_rejected` already applies to the
+other allowlist. Raw `socket` is deliberately out of scope: this tier uses it for DNS probes and the
+connection-ceiling rows, never to speak HTTP, and an allowlist of four files would be noise.
+
+**Two live defects surfaced while building this, neither of them the residual.** The detector's
+keyword fallback looked for `body=` — but `http_client.fetch`'s parameter has always been
+`json_body`, so that escape hatch could never fire in its entire life. And
+`_persisting_put_functions()` read `args[4]` positionally only. Together, a keyword-passed literal
+PUT body was invisible to **both** detectors: not flagged as a writer, not flagged as unreadable.
+Fixed by deriving fetch's real method index, body index and body keyword from its own `def`
+(`_fetch_shape()`), so a reordered or renamed parameter now fails loudly instead of silently
+shifting what every detector reads. `test_a_put_body_passed_by_keyword_is_still_seen` pins it.
+
+Nothing in `tests_hardware/` changed: `_KNOWN_PERSISTING_HELPERS` and both justification tables are
+untouched, and the tier's 16 guard tests pass.
+
+### 7K.2 F16 — not CI-only, and neither recorded lead was the mechanism
+
+**It reproduces locally, 3 runs out of 3**, by running the whole file under 24 CPU hogs on 4 cores:
+`FAIL test_sustained_hammering_never_degrades_or_grows_the_heap_nocrc`, `95/96 passed`, the same
+`only 149/150` every time. That is not an exotic condition — `scripts/test.sh` creates it
+deliberately, at 4x the runner's core count (16 concurrent interpreters on a 4-core host) plus the
+backgrounded `tests_scripts/` tier. The "CI-only" reading came from five *unloaded* local runs.
+
+**Both recorded leads were checked and neither holds.**
+
+- `run(hammer(), limit=300)` is not an event-loop step budget. `run()` is
+  `asyncio.run(asyncio.wait_for(coro, limit))`, so `limit` is a **timeout in seconds** — and an
+  expiry raises `TimeoutError`, it never returns `149`. All 150 iterations ran; one returned `False`.
+- The listener budget is not binding either. Instrumented with an unbounded counting listener, 150
+  transactions consume **exactly 150** of the 450 rounds available, 1 per transaction in both CRC
+  modes — three times the headroom, not a starved tail.
+
+**The mechanism.** The loopback link delivers in memory within one event-loop turn, so no part of the
+configured `timeout` is ever spent on transmission: the only thing it can measure is whether this
+*host* rescheduled the reading task in time. `ready()` enforces it against `time.ticks_ms()`, so one
+long scheduling gap fails one read, one transaction, and the run. Sized against J.6's own floor
+(`2 × poll_wait_ms + poll_idle_ms + ` worst-case GC pause):
+
+| arm | budget | floor | margin |
+|---|---|---|---|
+| real `dev` link | 1000 ms | 2·2 + 50 + 21 = 75 ms | 13.3x |
+| `test_uart_comm_hazard.py`, CRC16 | 240 ms | 2·1 + 1 + 21 = 24 ms | 10x |
+| same file, no CRC | 30 ms | 24 ms | **1.25x** |
+
+The no-CRC arm is the outlier and it is the one that fails; the CRC arm was already raised 8x, by
+`timeout_for()`, for this same symptom. Measured scheduling gaps, via a 1 ms-tick observer inside the
+run: **3 ms idle, 23-26 ms at 8x CPU oversubscription**, and past 30 ms in a loaded full-file run.
+
+**One candidate ruled out rather than assumed**: that the floor's 21 ms GC term — measured on the
+*target* — understates a 16 MB Unix-port heap. Measured directly: worst `gc.collect()` pause on that
+heap with a mid-file object graph is **2 ms**. The host's collector is fast; this is OS scheduling,
+not GC.
+
+**The fix** builds the two tests that assert a *clean* run completes in full (`_hammer_clean`,
+`_measure_retention`) at `_TIMEOUT_MS * 8` — the margin the CRC arm already had. A clean run never
+consumes the timeout, so this costs no wall clock, and the short budget stays where it genuinely
+earns its keep: the fault-injecting tests, whose recovery cycles it makes cheap. Nothing in `src/`
+changed, and no assertion was loosened — `ok == 150` and `completed == 120` are still exact.
+
+**Before and after, same load, same binary, same file:**
+
+| | 24 CPU hogs on 4 cores, full file |
+|---|---|
+| before | `FAIL ..._nocrc` / `95/96 passed` — **3 of 3 runs** |
+| after | `96/96 passed` — **5 of 5 runs** |
+
+Unloaded it was 96/96 on both sides, which is why five quiet local runs said nothing.
+
+**The accepted trade-off, stated rather than buried**: neither test would now catch a *latency*
+regression below 240 ms. They assert completion and heap retention, not duration, and the CRC arm has
+carried exactly this trade-off since `timeout_for()` was written. An observer task measuring the gap
+instead was considered and rejected: it would allocate inside the very window
+`_measure_retention` goes to such lengths to keep clean.
 
 ---
 
