@@ -3743,6 +3743,150 @@ session issuing the reboot by hand, and is recorded as queue §2A F12 and in §6
 
 ---
 
+## 7J. The 2026-09-19 evening sitting — eight more suite runs, five defects closed (COMPLETE)
+
+The owner's instruction: fix anything the current run turned up, push, then **three consecutive full
+bench runs at default flags**, then **one run with all persistence tests including the extra SCD30
+write**, still no soak. Every failure below was fixed and pushed *before* the next pass started,
+per the owner's follow-up instruction. **Not one of them was a defect in `src/`.**
+
+### 7J.1 The scoreboard
+
+| run | flags | verdict |
+|---|---|---|
+| verification (post-W5-fix) | default | **98 passed**, 4 skipped, 27 deselected — 38:48 |
+| triple A, run 1 | default | **98 passed**, 4 skipped, 27 deselected |
+| triple A, run 2 | default | 1 failed, 97 passed — **F7** |
+| triple A, run 3 | default | **98 passed**, 4 skipped, 27 deselected |
+| triple B, run 1 | default | **98 passed**, 4 skipped, 27 deselected — 40:09 |
+| triple B, run 2 | default | **98 passed**, 4 skipped, 27 deselected — 37:58 |
+| triple B, run 3 | default | **98 passed**, 4 skipped, 27 deselected — 40:09 |
+| persistence, run 1 | `--allow-persistence-writes --allow-scd30-extra-write` | 3 failed, 117 passed, 4 skipped, **5 deselected** — 48:27, **F14** |
+| persistence, run 2 | same | **120 passed**, 4 skipped, 5 deselected — 48:58 |
+
+Triple A was restarted as triple B because F7's fix changed what was under test — three consecutive
+clean runs have to be three runs of the same thing. **No `RESULT NOTE` appeared in any of triple
+B**, so the STA-connect retry added in F13 was never actually consumed; nothing was being absorbed.
+
+**The wear-gate run is the one that earned its keep**: deselected fell 27 → 5, i.e. it executed
+**22 tests no previous sitting had ever run**, and three of them failed on their first exposure.
+Flags deliberately *not* passed: `--allow-flash-cycle` (a deliberate re-flash, not a persistence
+test) and `--allow-neopixel-sweep` (needs a physical light rig this bench does not have — those two
+fail rather than skip without it, which is why they are the 4 skipped throughout).
+
+### 7J.2 F11 — W5's health check (owner-decided, fixed)
+
+Covered in §7I.2. The owner's ruling: *"a defect in the test setup, not a failure ... the test must
+still fail if the server genuinely is unreachable, but under fair circumstances, not within an
+almost-zero-delay recovery phase where it doesn't even have a chance."* Fixed with the same bounded
+`wait_until()` the neighbouring connection-ceiling row already uses, verified to still fail against
+a silent address and a dead port.
+
+### 7J.3 F13 — a single association asserted as if it were deterministic
+
+`test_real_sta_connect_reaches_established_after_a_hard_reset` failed in triple A run 1, taking
+`test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing` with it as a pure cascade
+(`No route to host` — the DUT was simply off the LAN). The firmware behaved correctly: two failed
+associations (`WLAN status: -1`, the CYW43 reporting failure), then the designed hotspot fallback.
+
+**Measured before changing anything**: one `kick_all_stations()` + `hard_reset()` recovered it with
+zero connect failures, then **12 further cold boots established 12/12, zero connect failures**. It
+had passed in the two preceding full runs, making it 1 miss in 3. Status `-1` is an AP/RF-side
+event, so nothing in `src/` is implicated. Fixed with at most **one** second cold boot, assertions
+unchanged and run on the last attempt, both messages naming the attempt count, and a `RESULT NOTE`
+printed whenever the retry is consumed so a rising rate stays visible. A systematic break still
+fails both attempts — this row is the primary regression coverage for the stale AP-side
+station-table scenario and was deliberately not blunted.
+
+### 7J.4 F7 — the UART heap figure was measuring churn phase, not retention
+
+Failed in triple A run 2 (`heap grew 3744 bytes`), inside the 3,584–4,752 B spread already on
+record against a 2,048 B bound. F7 had been root-caused host-side as a sampling defect; this run
+supplied the arithmetic that settles it:
+
+`_CHURN_BLOCK = 512` and `_memory_churn_loop`'s held list oscillates between 13 and 25 blocks — a
+**6,144 B swing, three times the bound** — and both endpoints were single `gc.mem_alloc()` reads
+taken while that loop still ran, the end one inside the `finally` *before* `load.stop = True`.
+
+Both ends now take the **live floor** (`_heap_floor()`: minimum of 8 collected samples at 8 ms,
+spanning more than two churn cycles), sampled identically and under the same running load —
+quiescing first would bias the difference negative instead of making the two comparable.
+
+| | before | after |
+|---|---|---|
+| observed values | 3,584 / 3,744 / 4,192 / 4,752 B | **-272 / +16 / +224 / +336 / +752 / +848 B** |
+| vs the 2,048 B bound | ~2x over | **2.4x under** |
+
+The negative reading is the signature of a real floor rather than a phase artefact. **The bound is
+unchanged at 2,048 B** — no threshold was re-fitted — and still catches what it exists for: 53 B
+retained per transaction across this run's ~117 transfers is ~6 KB, far above it.
+
+### 7J.5 F14 — three first-ever-executed tests, and F15 — the guard that caught my own fix
+
+The wear-gate run's three failures:
+
+- **`test_same_device_concurrent_sessions_never_corrupt_each_other`**: `CO2=119.73297` on iterations
+  0-4, *the same value every time* — a stale data register, not corruption.
+  `bus_concurrency_same_device_scd30.py` calls `scd.setup()` (a soft reset) then reads immediately,
+  while the SCD30's measurement interval is NVM-persisted and so resumes at once, raising data-ready
+  over the first unsettled conversion. **Its sibling `scd30_same_device_rw_concurrency.py` was
+  already fixed for exactly this and its comment names the identical signature** ("a stuck
+  CO2=141.99 on every iteration"); this script never got the same treatment. Mirrored it: a 12 s
+  drain that *calls* `read_measurement()` rather than sleeping, because data-ready clears only on
+  read.
+- **`test_isl29125_config_write_...` and `test_bmp3xx_config_write_...`**: `ConnectionResetError` —
+  F10/F11's slot-release lag a third time. These open **3** connections, *below* `max_connections =
+  4`, and the file's own header already tried to buy safety with margin ("must stay under
+  max_connections=4 with real margin ... or a brief overlap ... hits a genuine (but here undesired)
+  reject-when-full"). Margin does not help: the slot is released in `_serve()`'s `finally` after
+  `_close_writer()` awaits, so back-to-back worker requests outrun it. The BMP3XX row's second
+  error — `PressOvers=1 rejected: ... "Unchanged"` — is a **cascade**: the lost write desynchronised
+  the worker's alternation, so the next value already matched. Both now retry a ceiling close **and
+  only** a ceiling close.
+
+**F15 is what that fix then ran into, and it is the more interesting finding.** The retry wrapper's
+first form, `_fetch(dut_ip, "PUT", "/sensors", {...})`, made `isl29125_write_worker` and
+`bmp3xx_write_worker` **invisible** to `tests_scripts/test_persistence_write_marker_completeness.py`,
+whose AST detector matches a call named exactly `fetch` with **at least 5 positional args**, method
+at `args[2]` and body at `args[4]`. CI reported them as `gone: ['bmp3xx_write_worker',
+'isl29125_write_worker']`.
+
+**The guard worked exactly as designed** — it pins the set in *both* directions, so a helper leaving
+is as loud as one joining — and the tempting fix, deleting the two names from
+`_KNOWN_PERSISTING_HELPERS`, would have turned CI green while leaving two real flash writes
+permanently unwatched. Fixed by **restoring visibility instead of excusing it**: the wrapper is now
+named `fetch` with `http_client.fetch`'s exact positional signature, the detector sees straight
+through it, and `_KNOWN_PERSISTING_HELPERS` is **unchanged**. The `is_ceiling_close()` predicate was
+also **promoted out of `test_network_resilience.py` into `http_client.py`** per CLAUDE.md Part G's
+shared-primitive rule rather than duplicated.
+
+**F15's residual is open**: the guard has `_JUSTIFIED_UNREADABLE_BODIES` for a body it cannot read,
+but no concept of a *call* it cannot recognise, so the next wrapper not shaped like `fetch` reopens
+the hole silently. Host-side work, owner's call.
+
+### 7J.6 State the bench was left in — READ THIS BEFORE THE NEXT BENCH RUN
+
+On the owner's instruction at the end of this sitting, the board was taken **out of test
+configuration**: reflashed with a clean production `dev` image and set to **`DebugLevel = 0`**, then
+joined to the local network as an ordinary device.
+
+**This deliberately breaks the bench tier.** Several `tests_hardware/` tests read the serial log and
+a `DebugLevel` of 0 silences what they parse. Before resuming any bench-tier work:
+`PUT /system {"DebugLevel": 5}`, confirm it took, and re-check the board is on the bench SSID.
+
+### 7J.7 One thing left undiagnosed, and it is not written off
+
+**F16**: CI run `35468454090` reported `tests/test_uart_comm_hazard.py` at 95/96, `only 149/150
+hammered transactions completed`. Nothing in this sitting touches the mock tier, and the three
+preceding CI runs on this branch were green. Re-run locally **5 times on the same Unix-port binary:
+96/96 every time** (a 12-run characterisation was cut short when the sitting was paused). So it is
+CI-only so far — but 5 local runs is not enough to call it a flake, and it is recorded as **OPEN,
+undiagnosed**. The lead worth pulling first: whether `run(hammer(), limit=300)` is a tight bound on
+the event-loop steps that 150 transactions plus a 450-round listener actually need, since a slower
+runner would then lose the last transaction — which is exactly 149/150.
+
+---
+
 ## 8. What is committed
 
 **Reverted, 2026-09-18, at the owner's instruction.** Every change this investigation made to
