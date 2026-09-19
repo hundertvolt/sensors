@@ -41,4 +41,21 @@ if grep -rn "type: ignore\[[^]]*method-assign" src/; then
     status=1
 fi
 
+# `gc.collect()` is confined to the two one-time boot lists (SPECIFICATION.md Part I.4(f.1)): the
+# task-starter loop in src/system_service.py, and the setup batch buildgen/codegen.py emits. It is a
+# placement reset for the survivors those lists create, never a fix for an allocation that fails and
+# never the run phase. tests_scripts/test_gc_collect_sites.py makes the same assertion structurally
+# (it attributes each call to its enclosing function, so a rename fails there too); this grep is the
+# fast path that fails the lint gate before the suite runs. digital_twin/ and tests/ are deliberately
+# out of scope - I.4(e) already names the twin's memory sampler as its own exception, and the SIGINT
+# heap unwedge is Part F.6.
+if grep -rn --include="*.py" "gc\.collect(" src/ | grep -v "^src/system_service.py:"; then
+    echo "error: gc.collect() in src/ is confined to system_service.py's task-starter list (SPECIFICATION.md Part I.4(f.1))." >&2
+    status=1
+fi
+if grep -rn --include="*.py" "gc\.collect(" buildgen/ | grep -v "^buildgen/codegen.py:"; then
+    echo "error: gc.collect() in buildgen/ is confined to codegen.py's emitted boot batch (SPECIFICATION.md Part I.4(f.1))." >&2
+    status=1
+fi
+
 exit "$status"

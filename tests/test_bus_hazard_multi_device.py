@@ -1,6 +1,6 @@
-"""Mock-level (tests/machine.py fake I2C) bus-hazard suite - the fast, deterministic tier of
-SPECIFICATION.md Part C.8. Holds only driver-agnostic hazard shapes; a driver-specific one lives
-with that driver. Runs alongside test_bus_hazard_generated.py, not as a staging area for it."""
+"""Mock-level (tests/machine.py's fake I2C and SPI) bus-hazard suite - the fast, deterministic
+tier of SPECIFICATION.md Part C.8. Holds only driver-agnostic hazard shapes; a driver-specific
+one lives with that driver. Runs alongside test_bus_hazard_generated.py, not a staging area for it."""
 
 import asyncio
 import struct
@@ -12,6 +12,7 @@ from asy_bmp3xx_driver import BMP3XX_I2C
 from asy_i2c_driver import I2C
 from asy_isl29125_driver import ISL29125_I2C
 from asy_sgp40_driver import SGP40_I2C
+from asy_spi_driver import SPI, SPIDevice
 
 try:
     from typing import TYPE_CHECKING
@@ -385,6 +386,100 @@ def test_no_reserved_i2c_address_collides_with_any_promoted_devices_own_address(
     for name, address in (("SCD30", _SCD_ADDR), ("BMP3xx", _BMP_ADDR), ("SGP40", _SGP_ADDR), ("ISL29125", _ISL_ADDR)):
         assert not _is_reserved(address), f"{name}'s own address {address:#x} falls inside a reserved I2C range"
 
+
+# SPI: two devices on one bus, one through the async session and one through the synchronous one.
+# The generated TOML-driven scheme cannot produce this shape (every device TOML puts the FRAM alone
+# on spi0), and it is what "future multi-device SPI compatibility" has to mean concretely.
+
+
+def test_spi_async_and_synchronous_sessions_share_one_bus_without_cs_overlap() -> None:
+    bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
+    async_device = SPIDevice(bus, 1)
+    sync_device = SPIDevice(bus, 6)
+    run(async_device.setup())
+    run(sync_device.setup())
+    rounds = 12
+    overlap_observed = False
+    async_done = sync_done = 0
+
+    def both_asserted() -> bool:
+        return (
+            async_device.cs_pin.value() == async_device.cs_active_value
+            and sync_device.cs_pin.value() == sync_device.cs_active_value
+        )
+
+    async def async_worker() -> None:
+        nonlocal overlap_observed, async_done
+        for _ in range(rounds):
+            async with async_device:
+                overlap_observed = overlap_observed or both_asserted()
+                await async_device.write(b"\x05")
+            async_done += 1
+
+    async def sync_worker() -> None:
+        # The pattern asy_fram_driver.py's own command bodies use: take the bus lock, run the
+        # whole CS cycle synchronously, release, then yield - never yielding with CS asserted.
+        nonlocal overlap_observed, sync_done
+        for _ in range(rounds):
+            await bus.async_lock.acquire()
+            try:
+                sync_device.session_begin()
+                try:
+                    overlap_observed = overlap_observed or both_asserted()
+                    sync_device.write_sync(b"\x06")
+                finally:
+                    sync_device.session_end()
+            finally:
+                bus.async_lock.release()
+            sync_done += 1
+            await asyncio.sleep(0)
+
+    async def scenario() -> None:
+        await asyncio.gather(async_worker(), sync_worker())
+
+    run(scenario())
+    assert not overlap_observed
+    assert async_done == rounds
+    assert sync_done == rounds
+    assert async_device.cs_pin.value() == 1  # both back to inactive afterwards
+    assert sync_device.cs_pin.value() == 1
+    assert not bus.async_lock.locked()
+
+
+def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_raises() -> None:
+    # Fault isolation across the two session styles: an rx overrun inside the synchronous
+    # session must not strand the shared lock or the other device's access to the bus.
+    bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
+    faulting = SPIDevice(bus, 1)
+    neighbour = SPIDevice(bus, 6)
+    run(faulting.setup())
+    run(neighbour.setup())
+    bus._spi.rx_overrun = True  # type: ignore[union-attr]  # the fake SPI behind the wrapper
+    neighbour_ok = False
+
+    async def scenario() -> bool:
+        raised = False
+        await bus.async_lock.acquire()
+        try:
+            faulting.session_begin()
+            try:
+                faulting.readinto_sync(bytearray(32))  # 32+ bytes: the DMA path, the only one that can raise
+            except OSError:
+                raised = True
+            finally:
+                faulting.session_end()
+        finally:
+            bus.async_lock.release()
+        nonlocal neighbour_ok
+        async with neighbour:
+            neighbour_ok = True
+            await neighbour.write(b"\x05")
+        return raised
+
+    assert run(scenario())
+    assert neighbour_ok
+    assert not bus.async_lock.locked()
+    assert faulting.cs_pin.value() == 1
 
 if __name__ == "__main__":
     import microtest

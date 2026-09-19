@@ -1,5 +1,5 @@
-"""Isolated-driver device script, phase 1 of 2 (see verify_recovery.py for phase 2). Races a real
-machine.reset() against an in-flight FRAM write, same yield-point technique as the CS-hijack script.
+"""Isolated-driver device script, phase 1 of 2 (see verify_recovery.py for phase 2). Fires a real
+machine.reset() from inside an in-flight FRAM write, same transfer-seam technique as the CS-hijack script.
 Run via `board.run_isolated_expect_reset()`, never run_isolated() - see tests_hardware/README.md's FRAM reset-race finding."""
 
 import asyncio
@@ -52,16 +52,25 @@ async def _main() -> None:
         async with fram:
             await fram.set_values(_NEW_TARGET_PATTERN, addr_start=_TARGET_ADDR)
 
-    async def reset_yanker() -> None:
-        # One await asyncio.sleep(0) before acting - next-in-line the instant victim_writer yields,
-        # same scheduling-order dependency as the CS-hijack script's cs_yanker().
-        await asyncio.sleep(0)
-        machine.reset()  # never returns - real RP2040 hardware reset, immediate
+    # Reset from inside the victim's own payload transfer, at the driver's synchronous seam. The
+    # earlier form raced an `await asyncio.sleep(0)` task into the CS window; measure A made that
+    # window non-yielding, so the race could no longer land (HEAP_FRAGMENTATION_MEASUREMENTS §7D.5).
+    spidev = fram._spidev
+    original_write_sync = spidev.write_sync
 
-    await asyncio.wait_for(asyncio.gather(reset_yanker(), victim_writer()), 30.0)
+    def resetting_write_sync(buf: "bytes | bytearray | memoryview") -> None:
+        # The command buffers around the payload are 1 or 5 bytes, never its length.
+        if len(buf) == len(_NEW_TARGET_PATTERN):
+            machine.reset()  # never returns - real RP2040 hardware reset, immediate, CS still asserted
+        original_write_sync(buf)
+
+    spidev.write_sync = resetting_write_sync  # type: ignore[method-assign]
+    await asyncio.wait_for(victim_writer(), 30.0)
+    spidev.write_sync = original_write_sync  # type: ignore[method-assign]
     # Unreachable in the successful case (machine.reset() halts the runtime first). If this DOES
-    # print, the race missed its window - the phase-2 verify script's guard-region check catches that.
-    print("RESULT: FAIL reset_yanker() never actually fired before victim_writer() completed - race did not land, nothing was tested")
+    # print, the payload transfer never happened - the phase-2 verify script's guard-region check
+    # catches that too.
+    print("RESULT: FAIL the reset never fired - no payload transfer of the expected length reached the seam, nothing was tested")
 
 
 asyncio.run(_main())

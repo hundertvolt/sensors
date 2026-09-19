@@ -679,6 +679,24 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source is imported into this repo and reconciled, then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
+- **[`HEAP_REMEDIATION_PLAN.md`](HEAP_REMEDIATION_PLAN.md)** — the implementation to-do list for
+  the two approved heap-fragmentation measures (the wire-identical FRAM path restructure and the
+  boot-confined `gc.collect()` placement resets): what is fixed before a line is written, the
+  design decided per file, tests-first items per tier, the measurement and hardware steps, the
+  `SPECIFICATION.md` I.4 amendment, and what is out of scope. Deleted once every box is ticked and
+  its durable parts have moved into `SPECIFICATION.md`/CLAUDE.md/BACKLOG.md.
+- **[`HEAP_FRAGMENTATION_MEASUREMENTS.md`](HEAP_FRAGMENTATION_MEASUREMENTS.md)** — the measured
+  evidence base for the heap-fragmentation defect (the collapse of the largest contiguous block
+  across WP1+WP2; the 80,000 B floor it used to be measured against was retired by the owner on
+  2026-09-19 and replaced by the three requirement-derived checks in its §7G):
+  what the instrument is validated against and the six ways it silently lied before that, the
+  per-module allocation census, the FRAM logging path priced per transaction, the negative results
+  that constrain any fix, and every remedy candidate's ensembled numbers. Continues
+  `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`'s Part 2, which states the defect and the ideas on
+  the table; read that first for context. Its §9 quarantines every figure a defective instrument
+  produced or a later measurement overturned — check there before reusing any number found in an
+  older transcript or doc. Deleted once its durable parts are migrated into `SPECIFICATION.md`
+  Part I / CLAUDE.md / BACKLOG.md and the defect is closed.
 - **[`REAL_HARDWARE_TEST_QUEUE.md`](REAL_HARDWARE_TEST_QUEUE.md)** — the single list of everything
   waiting on the dev bench (suite runs, targeted investigations, coverage gaps that need silicon,
   bench-host tasks), so one go-ahead session can work it in one pass instead of rediscovering it
@@ -686,11 +704,24 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   result is migrated into the permanent docs; the file goes when the last row does. It authorizes
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
+- **[`REAL_HARDWARE_HANDOVER_POST_MERGE_BENCH_RUN.md`](REAL_HARDWARE_HANDOVER_POST_MERGE_BENCH_RUN.md)** — the
+  runnable handover for one full bench-tier run at default flags: no persistence writes, no soak,
+  read the deselected count. Also states what the 22-commit base merge did and did not bring to the
+  hardware tier, so a red result is read correctly rather than chased. Deleted once its results are
+  migrated; it authorizes nothing.
+- **[`REAL_HARDWARE_HANDOVER_WEBSERVER_BODY_CAP.md`](REAL_HARDWARE_HANDOVER_WEBSERVER_BODY_CAP.md)** — the runnable
+  handover for the next bench sitting: the request-body cap (`SPECIFICATION.md` Part I.6) on
+  silicon and over real WiFi, five bench-tier rows that have never run. It states up front what the
+  wire can and cannot show, so a green run is not written up as proving more than it does.
+  **Replaces the measure-B handover**, deleted once §7H migrated every result it owed.
+  `REAL_HARDWARE_TEST_QUEUE.md` §1D is its index row; this file is what a bench session reads top to
+  bottom. Deleted once its results are migrated.
 - **[`HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`](HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md)** —
-  the last remaining `*_HANDOVER*.md` file, owned by the session working PR #105. Only its Part 2
-  is still live — Part 1's harness changes all landed on this branch, and its one open bench ask is
-  `REAL_HARDWARE_TEST_QUEUE.md` row R14 — and that half is superseded by PR #105's own measurement/
-  plan docs, which are not on this branch yet, so the file goes when that PR merges. These are
+  the other `*_HANDOVER*.md` file besides the measure-B one above, owned by the session working
+  PR #105. Only its Part 2 is still live — Part 1's harness changes all landed on this branch, and
+  its one open bench ask is `REAL_HARDWARE_TEST_QUEUE.md` row R14 — and that half is superseded by
+  PR #105's own measurement/plan docs, which this branch carries, so the file goes when this PR
+  merges. These are
   per-effort throwaways, each owned by the session or pull request named in its own first lines and
   deleted once its findings are migrated or confirmed not to apply; the two real-hardware ones that
   preceded it went that way on 2026-09-18, their still-open asks consolidated into

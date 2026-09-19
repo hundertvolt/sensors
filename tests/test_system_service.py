@@ -954,6 +954,74 @@ def test_start_and_check_tasks_empty_starters_never_fails() -> None:
         run(scenario())
 
 
+class _CountingGc:
+    """Stands in for the `gc` module so the boot collects can be counted - module-attribute
+    reassignment is this project's mocking mechanism (MicroPython has no unittest.mock)."""
+
+    def __init__(self) -> None:
+        self.collects = 0
+
+    def collect(self) -> None:
+        self.collects += 1
+
+
+def _long_lived_starter() -> "asyncio.Task[None]":
+    async def _c() -> None:
+        await asyncio.sleep(3600)
+
+    return asyncio.create_task(_c())
+
+
+def _count_collects_during_supervision(starters: "list[Callable[[], asyncio.Task[Any]]]", iterations: int) -> "tuple[int, int]":
+    """Returns (collects once every starter has been started, collects after `iterations` more
+    supervisor passes) - the second must equal the first: the supervisor is the run phase."""
+    counter = _CountingGc()
+    original_gc = system_service.gc
+    system_service.gc = counter  # type: ignore[assignment]
+    svc = make_service(watchdog=machine.WDT())
+    after_start = [0]
+
+    async def scenario() -> None:
+        task = asyncio.create_task(svc.start_and_check_tasks(starters))
+        for _ in range(4 * (len(starters) + 1)):  # let the whole starter loop and its sleeps drain
+            await asyncio.sleep(0)
+        after_start[0] = counter.collects
+        for _ in range(iterations):
+            await asyncio.sleep(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    try:
+        with _FastAsyncSleep():
+            run(scenario())
+    finally:
+        system_service.gc = original_gc
+    return after_start[0], counter.collects
+
+
+def test_start_and_check_tasks_collects_once_per_starter_plus_one_and_never_in_the_supervisor() -> None:
+    # Measure B (PLAN B.1.2, SPECIFICATION.md I.4(f.1)): the starter list is the second of the two
+    # one-time boot lists that get a placement-reset collect between their units. The supervisor
+    # underneath is the run phase, where I.4 forbids one - so the count must not move once spinning.
+    starters = [_long_lived_starter, _long_lived_starter, _long_lived_starter]
+    after_start, after_supervision = _count_collects_during_supervision(starters, 40)
+    assert after_start == len(starters) + 1, f"expected {len(starters) + 1} boot collects, got {after_start}"
+    assert after_supervision == after_start, (
+        f"the supervisor loop collected {after_supervision - after_start} time(s) - the run phase must collect never"
+    )
+
+
+def test_start_and_check_tasks_with_no_starters_still_does_the_start_of_list_collect() -> None:
+    # An empty starter list is a real configuration (a device wiring no tasks), and the
+    # start-of-list collect is not conditional on there being anything to iterate.
+    after_start, after_supervision = _count_collects_during_supervision([], 20)
+    assert after_start == 1, f"expected exactly the start-of-list collect, got {after_start}"
+    assert after_supervision == 1, "the supervisor loop must not collect even with no tasks to supervise"
+
+
 def test_start_and_check_tasks_feeds_the_watchdog_while_tasks_stay_alive() -> None:
     wdt = machine.WDT()
     svc = make_service(watchdog=wdt)

@@ -3,12 +3,16 @@ degradation at the raw `network` level, so this drives the real asy_wifi_service
 loop directly (bypassing only REST/webserver) to narrow down its own reconnect orchestration. Run via `mpremote run <this>` (no soft-reset chain); hard_reset() afterward."""
 
 import asyncio
+import os
 import time
 
 import asy_wifi_service
 
 GARBAGE_SSID = "wozi-diag2-net-does-not-exist"
-REAL_SSID = "sensors-bench-ap"
+# Every persist this script makes goes here instead of config_WIFI.cfg. The repro is driven by the
+# in-memory cache, so the production file never needed writing - and writing it is what stranded the
+# bench (QUEUE F1). Same convention as reboot_persist_write.py's config_HWTEST_REBOOT.cfg.
+_SCRATCH_CFG = "config_HWTEST_WIFI.cfg"
 
 t0 = time.ticks_ms()
 
@@ -20,18 +24,63 @@ def log(msg: str) -> None:
 _PHASE_NAMES = {0: "STA_SEEKING", 1: "STA_ESTABLISHED", 2: "HOTSPOT", 3: "DEACTIVATED"}
 
 
+async def _set_ssid(conn: "asy_wifi_service.AsyConnTime", ssid: str) -> object:
+    return await conn._set_dict_cfg({"SSID": ssid}, conn.get_cfg_schema())
+
+
+async def _read_live_ssid(conn: "asy_wifi_service.AsyConnTime") -> str:
+    # Read the bench's own SSID through the real path rather than hardcoding it: this script writes
+    # a garbage value into the RP2040 flash filesystem, and a wrong restore strands the board as
+    # badly as none (QUEUE F1 - it happened). The snapshot carries the password, so it is never logged.
+    snapshot = await conn._get_dict_cfg(conn.name, conn.get_cfg_schema())
+    ssid = snapshot.get(conn.name, {}).get("SSID")
+    return ssid if isinstance(ssid, str) else ""
+
+
 async def main() -> None:
     conn = asy_wifi_service.AsyConnTime(debug=5)
     await conn.setup()
     await conn.pr.setup()
     log("AsyConnTime constructed and set up, cfg SSID/PW/Country/Hostname read from real config file")
 
+    real_ssid = await _read_live_ssid(conn)
+    if not real_ssid:
+        log("ABORT: could not read the real SSID back, so it could not be restored - refusing to overwrite it")
+        return
+    # Read the production file first, then divert: from here on config_WIFI.cfg is never opened
+    # again, so no crash, reset or racing deferred flush can leave the garbage SSID behind on flash.
+    conn.cfgmgr.config_file = _SCRATCH_CFG
+    log(f"real SSID captured; persists diverted to {_SCRATCH_CFG}, config_WIFI.cfg is now read-only for this run")
+
     task = conn.start_asy_wlan_connect()
     log("wlan_connect() task started")
 
+    try:
+        await _run_repro(conn, task, real_ssid)
+    finally:
+        # Re-read rather than tracking a flag: this has to be right whichever path left the repro,
+        # including the two early returns and any exception inside it. The cache is what the live
+        # service reads, so it is restored even though nothing production was ever written.
+        if await _read_live_ssid(conn) != real_ssid:
+            log("--- restoring the real SSID in the cache (the flow did not reach its own restore) ---")
+            log(f"_set_dict_cfg(SSID=real) -> {await _set_ssid(conn, real_ssid)}")
+        await _drop_scratch(conn)
+
+
+async def _drop_scratch(conn: "asy_wifi_service.AsyConnTime") -> None:
+    # The scratch file holds a full WIFI config, real password included - the same secret already on
+    # this filesystem, but a second copy nothing else would ever clean up. Wait the deferred flush
+    # out first, or the remove races it and the file comes back.
+    try:
+        await conn.cfgmgr.flush_pending()
+        os.remove(_SCRATCH_CFG)
+    except OSError as e:
+        log(f"could not remove {_SCRATCH_CFG}: {e!r} - delete it by hand")
+
+
+async def _run_repro(conn: "asy_wifi_service.AsyConnTime", task: "asyncio.Task[None]", real_ssid: str) -> None:
     log("--- overwriting SSID with a garbage value via the real _set_dict_cfg() path ---")
-    results = await conn._set_dict_cfg({"SSID": GARBAGE_SSID}, conn.get_cfg_schema())
-    log(f"_set_dict_cfg(SSID=garbage) -> {results}")
+    log(f"_set_dict_cfg(SSID=garbage) -> {await _set_ssid(conn, GARBAGE_SSID)}")
     conn.reconnect_wifi()
     log("reconnect_wifi() called (simulates the REST post_fct firing)")
 
@@ -59,8 +108,7 @@ async def main() -> None:
 
     log("=== REACHED HOTSPOT PHASE ===")
     log("--- restoring the real SSID via the real _set_dict_cfg() path ---")
-    results = await conn._set_dict_cfg({"SSID": REAL_SSID}, conn.get_cfg_schema())
-    log(f"_set_dict_cfg(SSID=real) -> {results}")
+    log(f"_set_dict_cfg(SSID=real) -> {await _set_ssid(conn, real_ssid)}")
     t_reconnect_trigger = time.ticks_ms()
     conn.reconnect_wifi()
     log("reconnect_wifi() called (simulates the REST post_fct firing again)")

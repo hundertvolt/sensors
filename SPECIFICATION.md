@@ -292,7 +292,9 @@ against its actual source, not docs/memory.
   contained by the blanket catch; guarding it ourselves is about a precise reply, not crash
   prevention.
 - Request size is bounded before any handler runs: `max_content_length` (16KB default, 413 if
-  exceeded) → tightened to 4096 bytes in `asy_webserver_service.py`; `max_readline` (2KB default).
+  exceeded) → tightened to **2048** bytes in `asy_webserver_service.py`, with `max_body_length`
+  bound to the same value so an oversized body is never buffered (Part I.6); `max_readline` (2KB
+  default).
 - The Microdot server task is wired into `start_and_check_tasks()` like every other module — a dead
   server task restarts automatically with the same decaying-failure/reboot fallback, no
   Microdot-specific code needed, since **each accepted connection runs in its own independent
@@ -697,8 +699,11 @@ uv run toolchain/setup_toolchain.py test                          # re-verify ex
 `--toolchain-dir`/`--jobs` apply to both; the rest are `setup`-only. `scripts/test.sh` exposes
 `--skip-apt` as `SKIP_APT=1`. No venv needed — `uv run` provisions an ephemeral interpreter (B.8).
 Both subcommands also build/verify a Unix-port interpreter, always with
-`MICROPY_PY_SYS_SETTRACE=1` (inert when unused), so one binary backs both plain `scripts/test.sh`
-and `--coverage` (E.5). RP2040 firmware never gets this flag.
+`MICROPY_PY_SYS_SETTRACE=1`, so one binary backs both plain `scripts/test.sh` and `--coverage`
+(E.5). RP2040 firmware never gets this flag. **Not inert when unused** (measured 2026-09-18,
+corrected here and in CLAUDE.md): the flag makes the VM allocate a frame and a code object on every
+call and every generator resume, callback or not, inflating every allocation figure measured under
+this binary 4-5x relative to the firmware — see HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7.
 
 **Prerequisites**: `sudo`; outbound network to GitHub/apt; `uv`; Ubuntu's `universe` component
 (default on real Ubuntu images — `gcc-arm-none-eabi` lives there).
@@ -1632,6 +1637,19 @@ individual transaction is already serialized by lock 1. Pattern: `async with sel
 dev:` (lock 2) wrapping `async with dev.i2c_device as i2c:` (lock 1). **Lock ordering is fixed:
 always 2 before 1** — audited across every driver with no violation; reversing risks a real
 deadlock.
+
+**Lock 1's scope is per-driver, and the FRAM path's is a whole block operation, not a single
+transaction** (owner's decision, 2026-09-18). `FRAM_SPI.__aenter__` takes lock 2 and then lock 1
+together and holds both for one `_write_chunk`/`_read_chunk`/`_clear_chunk` — roughly 25 chip-select
+cycles — so the byte-level commands inside run as plain synchronous functions
+(`get_values_sync()`/`set_values_sync()`) with no coroutine and no lock acquisition each. That is
+what makes the path affordable: it took a blank FRAM-backed logger `setup()` from 122,880 to
+13,696 board-equivalent bytes. Ordering is unchanged (2 before 1), a second SPI device still
+interleaves — between block operations rather than between commands — and the event loop still gets
+a scheduling point after every status-byte pair, after each payload command and per read slice.
+An I2C driver keeps the per-transaction scope: it has no equivalent synchronous session, and
+SPECIFICATION.md Part F.5.8 refuses the generalisation. Full measurement and the ladder of scopes
+considered: `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7C/§7C.1 and §11 item 6.
 
 **Known inconsistency (`asy_wifi_service.py`)**: `network_available()` requires the *caller* to
 already hold `wifi_mode_lock`, while its sibling getters assume the caller does *not* — already
@@ -3533,9 +3551,14 @@ FRAM entry has the full account.
   threshold changes neither figure. Against a largest known single allocation of ~5.7 KB (`GET
   /status`, itself streamed in 1 KB fragments since Part I.3), that is ample. Kept honest by
   `tests_hardware/flash/test_memory_stress.py`'s
-  `test_real_gc_heap_headroom_survives_a_full_system_build`, which asserts floors of 100,000 B
-  free and 80,000 B contiguous so a future bump relocating more code into SRAM shows up as a test
-  failure rather than as slow attrition. The comparable 1.28 figure is the 2026-09-08 hammer-load
+  `test_real_gc_heap_headroom_survives_a_full_system_build`, so a future bump relocating more code
+  into SRAM shows up as a test failure rather than as slow attrition. **That test's thresholds
+  changed on 2026-09-19**: the owner retired its 100,000 B free / 80,000 B contiguous floors as not
+  reflecting any real requirement, and it now asserts survivor volume (<= 100,000 B allocated),
+  survivor *placement* and contiguity (>= 32,768 B, twice that worst case). Placement is asserted
+  twice off `micropython.mem_info(1)`'s block map: the boot must **place** nothing in the top
+  16,384 B (a delta against a map taken before `build_system()`, so it is independent of what the
+  suite already left on the heap), and nothing may sit there at all. `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7G has the derivation. The comparable 1.28 figure is the 2026-09-08 hammer-load
   `mem_free` floor of 91,312 B (Part I.5), which is a *loaded* floor, not an at-rest one — the two
   are not directly comparable, and measuring a loaded floor at 1.29 would need `mem_free` exposed
   over REST, which is deliberately not done.
@@ -4410,6 +4433,13 @@ to hit the measured +53% throughput regression from per-write `asyncio.wait_for(
 Byte-budget batching bounds both piece size and count regardless of module count.
 `_MAX_STATUS_PIECE_BYTES = 1024`'s real headroom, confirmed on real hardware: the smallest
 largest-allocatable-contiguous-block under real hammer load was 49152 bytes — **~48x headroom**.
+**Flagged, not corrected (2026-09-19):** 49152 is exactly `192 KB / 4`, which is also the value a
+binary-search largest-block probe over `[0, 192 KB]` returns when it pins its own buffer — the
+artefact `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7F.8 established, and this repo's only committed
+such probe uses exactly that ceiling. The instrument behind this figure arrived with a merge from
+`main` and is not in the tree, so this cannot be checked here. **The conclusion is unaffected
+either way**: the artefact only ever *understates*, so the real headroom is 48x or better. Recorded
+so the number is not reused as a measurement of the heap. Re-measure it: queue row R16.
 
 Test coverage: direct primitive tests; a hammer test at the real 17-module scale for each fixed
 route; a combined final test hammering all six memory-bounded GET routes concurrently. Every hammer
@@ -4449,7 +4479,9 @@ stress/hammer ones, and the bar is zero `MemoryError`s, caught or not.** The who
 twin and real hardware alike, no relaxed bar for either — must run to completion with
 `gc.threshold(-1)` (MicroPython's real reactive-only default) and with no nonstandard `gc` settings
 or added `gc.collect()` calls anywhere in the business logic or the test's own setup propping it
-up. A test that only passes because a `MemoryError` was caught and logged without crashing anything
+up (the boot-confined placement reset in (f.1) is the one structural exception, and it is part of
+the firmware's own boot rather than a test's setup — the suite must still clear this stage with it
+in). A test that only passes because a `MemoryError` was caught and logged without crashing anything
 is not a passing result at this stage — a caught-but-real allocation failure is exactly the signal
 this stage exists to catch, and "it didn't crash" is not the same claim as "it didn't happen."
 **One narrow, evidence-backed exception**: `digital_twin/run_generic_integration.py`'s
@@ -4476,6 +4508,41 @@ change at all — it lifts an already-stable system further from a stability thr
 otherwise sit close to, it does not create that stability. Once applied, the *same* full suite must
 still pass with it enabled too — it's an additive safety margin layered on an already-safe design,
 never a swap of one mode for another, and never itself the explanation for why a test now passes.
+
+**(f.1) The one structural exception: a boot-confined placement reset.** `gc.collect()` between the
+units of the two *one-time* setup lists — the generated setup batch (`buildgen.codegen`'s
+`_emit_build_system()`, one before the batch and one after each module's `feed_watchdog()`) and
+`SystemService.start_and_check_tasks()`'s task-starter loop (one before the loop, one after each
+starter) — **and nowhere else whatsoever**. This is not a threshold, not hygiene, and **not** a fix
+for an allocation that failed: MicroPython's collector never moves an object, so nothing is
+compacted. What each call changes is *where the next allocations land* — `gc_collect_end()` resets
+the allocator's free-scan index to zero (`py/gc.c`), so the following module's permanent objects
+take the lowest fitting holes instead of being pushed above the batch's own churn high-water mark.
+It is therefore placement discipline for the survivors those two lists create, applied at the only
+two points in the firmware's life where permanent objects are born in a known sequence.
+
+Grounded in the pinned MicroPython documentation's own recommendation
+(`docs/reference/constrained.rst:413-437` at `v1.29.0`: a demanded collection "is advantageous ...
+firstly to preempt fragmentation", and "`gc.collect()` issued after the import will ameliorate the
+problem"), and in this repo's own measurement. **The measured effect, stated so nobody later
+mistakes it for (f)-stage margin**: on the twin at `gc.threshold(-1)` — the (e)-stage configuration
+— it is worth a factor of 3.2 to 6.9 on largest-contiguous-over-free, taking the post-batch figure
+from 11.9-14.2% to 44.6-45.0% and the post-task-list figure from 8.1-8.4% to 57.7-57.8%
+(HEAP_FRAGMENTATION_MEASUREMENTS.md §7A.2/§7A.8). At the shipped `gc.threshold(32768)` it changes
+nothing measurable (§7A.6), which is the honest reading: this earns its place at the (e) stage, not
+as (f) margin.
+
+Confined mechanically, not by convention: `tests_scripts/test_gc_collect_sites.py` walks `src/`
+with `ast` and asserts the only `gc.collect()` call site is `system_service.start_and_check_tasks`,
+attributing every call to its enclosing function — so a new call anywhere, including at module
+level, and a rename of the allowed site both fail it — plus a textual assertion that `buildgen/`
+emits one only from `codegen.py`. The test carries its own two self-tests, so the guard is checked
+rather than assumed. `scripts/lint.sh` carries the same rule as a fast path, so a widening
+fails the lint gate before the suite runs: `gc.collect(` under `src/` only in `system_service.py`,
+under `buildgen/` only in `codegen.py`. Both were verified to bite on an injected call. **The prohibition in (e), (f) and (g) is otherwise unchanged**: no `gc.collect()` in
+business logic, none in the run phase (the supervisor loop under the starter list is the run phase
+and is asserted to have none), and none as the remedy for memory pressure.
+
 **(g) When a genuine memory-pressure issue is found, fix it with a design-level technique that
 relieves the pressure directly** — chunking a large operation, reusing/pre-allocating buffers
 instead of churning same-shaped objects, streaming (`_stream_dict_response()`, I.3) — never a
@@ -4518,6 +4585,128 @@ carries none. The jumper uses UART0 on GP0/GP1 and UART1 on GP8/GP9: of the othe
 pairs, GPIO24/25 and GPIO28/29 each have a half the wireless chip takes (A.6), and GPIO16/17 is
 left free because a BME688's BSEC coprocessor wants UART0 there and one peripheral serves one pair. Everything below describes what the promoted module does, not what the legacy one
 did — the differences are enumerated in `UART_C_PORT_CHANGELOG.md`.
+
+## I.6 The request-body cap, and why both of Microdot's limits must move together
+
+Microdot exposes two independent limits, and the gap between them was the firmware's largest
+attacker-reachable contiguous allocation.
+
+- `Request.max_content_length` — the largest body that is *accepted*; anything over it is answered
+  413. This project sets it.
+- `Request.max_body_length` — the largest body that is *buffered* into `request.body`; a larger one
+  (up to `max_content_length`) is left unread and reached through `request.stream` instead. This
+  project did **not** set it, so it stayed at Microdot's 16 KB default.
+
+**The ordering makes the gap live** [SRC]: `handle_request()` calls `Request.create()` (`:1400`),
+which reads the body at `:426`, and only then `dispatch_request()` (`:1410`), whose 413 check is at
+`:1443`. A body between the two limits is therefore read into one contiguous allocation and
+immediately thrown away. Verified against the vendored v2.6.2 and against upstream `main`, which
+carries the same defaults and the same ordering — this is not fixed by a version bump, and
+`ext/microdot.py` is never edited (Part A.5's vendoring rule), so the fix is ours to apply from
+outside.
+
+**The exposure was per-request, not per-server.** `readexactly(content_length)` allocates a fresh
+`bytes` per request, and `max_connections` is 4, so up to **four** such buffers could be live at
+once: 4 x 16,384 = 65,536 B of contiguous demand, against roughly 105,000 B free after boot.
+Nothing legitimate could provoke it — every accepted body is far smaller — but a client sending
+four concurrent oversized PUTs could, and each would be answered 413 *after* allocating.
+
+**What the caps are set to, and why 2048.** Measured against the real schemas, per **route**
+rather than per group: the largest legitimate body is **1,312 B** on `PUT /networking`, dominated by
+`NTP_Host`'s 1024-character bound (1,038 B of it). The others are smaller — `/sensors` 967 B on
+`dev` and 629 B on `wozi`, `/notification` 523 B, `/system` 139 B, `/status` 22 B — and real traffic
+measures 232 B. So 2048 clears the schema maximum with **1.56x** margin and real traffic with ~9x,
+and takes the four-connection worst case to 4 x 2,048 = 8,192 B.
+
+**Per route, not per group, and the difference is load-bearing** [SRC]. An earlier revision quoted
+1,132 B, which is the *NTP group alone*, on the grounds that `js/render.js` submits one group at a
+time with only changed fields. That is true of this website and not of the API: `_put_sensors()`
+iterates `body.items()` and the flat handlers apply every field they recognise, so any client may
+legitimately send a whole route's fields in one body — and a cap must serve what the API accepts,
+not what one client happens to send. The route figures above are therefore the ones the cap is set
+against. `/sensors` is also the one that *grows*: it gains a group per driver, which is why it is
+338 B wider on `dev` than on `wozi`.
+
+**Derived and guarded, not quoted** [SRC]. `tests_scripts/test_request_body_cap_headroom.py`
+computes both sides — the cap out of `WebserverService.__init__` by AST, the schema out of the real
+`buildgen` model per device — and asserts no route can be sent a legitimate body the cap would
+reject. It also pins each device's maximum, so a new driver or a widened string bound fails
+deliberately instead of drifting toward the cap unnoticed; verified to bite by widening `NTP_Host`
+to 4096, which reports `/networking` at 4,384 B. The hardware tier's W3 checks the same property on
+silicon but cannot run in CI, and its constant is the one this guard would otherwise be quoting.
+
+**Both are set from the one constructor parameter**, so they cannot drift apart again — the defect
+was never a value, it was the gap. `tests/test_asy_webserver_service.py`'s F.2b section pins this
+behaviourally by recording every `readexactly()` size the server asks its reader for: an oversized
+request must produce **no body read at all**, including under concurrent mixed load at both
+`gc.threshold(-1)` and `gc.threshold(32768)`.
+
+**On real hardware the wire shows less than that, and the bench rows say so** [SRC].
+`tests_hardware/bench/test_network_resilience.py` mirrors F.2b over real WiFi (queue §1D, W1-W5),
+but a socket cannot distinguish "buffered then rejected" from "rejected unread" — both firmwares
+answer 413, only at different sizes. The mirrors therefore pin the **cap value** and the
+boundary's exactness; the 2048-4096 band rejecting is what tells this firmware from the previous
+one. The binding itself stays a mock-tier and source-level claim, never a hardware-confirmed one.
+
+**Run on silicon, 2026-09-19** [HW]. W1-W4 pass on the real `dev` board over real WiFi: the
+boundary is exact (2047 -> 200, 2048 -> 200, 2049 -> 413, so Microdot's `<=` is honoured), the
+2048-4096 band that the previous firmware accepted now answers 413 on both 3072 and 4096 (W2, the
+only row that tells the two firmwares apart), the schema maximum still fits (sent as 1132 B on the
+day, since corrected to the route-wide 1312 B above), and a mixed
+stream is answered request-by-request. `WEBSERVER`'s error log stayed **empty** throughout, which
+is the assertion that matters: a 413 is raised inside vendored Microdot before any of our own code
+is reached, so anything appearing there would be a finding about this project.
+
+**W5 fails, and not for the reason it was written to catch** [HW]. Its own handover predicted a
+soft spot where an oversized body draws a clean reset instead of a 413, and prescribed relaxing the
+oversized arm. That prescription is wrong here: **half the resets are on bodies well under the
+cap** — 64, 512, 900 and 2048 B — in 5 of 5 runs. A control with every body under the cap, and a
+second with all bodies at 64 B, reset at the same rate, so **the resets are a property of
+concurrency against `max_connections = 4`, not of the body cap at all**. Measured rate against
+concurrency, tiny bodies only: 2 -> 0%, 4 -> 25%, 6 -> 16%, 8 -> 12%, 12 -> 33%, 16 -> 25%,
+24 -> 25%. Resets begin **at** the connection ceiling, not beyond it, so W5's premise — that 24
+concurrent clients each receive a definitive status — cannot hold on this server at any
+concurrency above 2. The server stayed responsive and did not reboot under the load, and `src/` is
+not implicated.
+
+**What the test should have asserted, and now does** [SRC]. Across the 96 concurrent requests those
+runs recorded, **not one was answered with the wrong status** — every failure is a *refusal*. So the
+body cap held under concurrency and only the assertion was wrong. `_serve()`'s reject-when-full
+branch closes without writing a response and does not choose whether the client sees FIN or RST
+(`test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` accepts either for that
+reason), so a refusal above `max_connections` is the ceiling's business, not the cap's. The rewritten
+row asserts the property the cap owns — **every client that IS answered is answered correctly** —
+tolerating a ceiling close alone: any other exception, a timeout included, still fails, so a real
+hang cannot hide behind it, and a floor on answers plus a required 200-and-413 pair stop it passing
+vacuously. Replayed against all four recorded runs it passes each one.
+
+**Confirmed on silicon, 2026-09-19** [HW]. In the post-merge full bench run and in three dedicated
+repeats afterwards, **all four of those assertions hold every time**: 20 of 24 requests answered
+against a floor of 4, both verdicts present, no non-ceiling exception, and — the claim the cap
+actually owns — **not one request answered with the wrong status**. So the body cap is now
+established under real concurrency on real hardware, not only by replay. `WEBSERVER`'s error log
+stayed empty throughout.
+
+The row nonetheless went red on the line *after* those four: a single-shot `GET /status` health
+check, made with no settle, raising `ConnectionResetError`. The server was not unresponsive —
+polled rather than asked once, it answers 200 **75 ms** later (two of three repeats; the third
+answered first try). It is this same slot-release lag at the other end of the test: 24 workers'
+slots are still draining through `_serve()`'s `finally`, and the row took its settle *before* its
+workers and none *after* them, while `tests_hardware/`'s own `http_client.fetch()` is single-shot
+by construction. Nothing in `src/` was implicated.
+
+**Fixed in the test, 2026-09-19** (owner's decision; `REAL_HARDWARE_TEST_QUEUE.md` §2A F11 has the
+account). The health check now uses the same bounded `wait_until()` that
+`test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` already uses in the same file
+for the identical lag. This does not weaken it: `wait_until()` retries a check that raises but
+still raises `TimeoutError` when its bound expires, verified against a silent address and a dead
+port, and all four cap assertions are untouched. W5 has run green three times since.
+
+**Related, deliberately not changed:** `NTP_Host`'s 1024-character bound mirrors the deployed
+pre-refactor handler (`modules/sensortask-*.py`'s `update_valid_json(..., 3, 1024, ...)`), so
+tightening it to DNS's real 253-character limit is a divergence from fielded behaviour and the
+owner's call, not this change's. It would take the schema maximum to ~360 B.
+
 
 ## J.1 Scope and the two-implementation contract
 

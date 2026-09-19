@@ -67,6 +67,37 @@ def test_real_device_feeds_the_watchdog_after_every_setup_call_in_order(repo_roo
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_collects_once_before_and_after_every_setup_call_and_nowhere_else(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # Measure B (PLAN B.1.1, SPECIFICATION.md I.4(f.1)): a placement reset, not hygiene and not
+    # compaction. The "nowhere else" half is the load-bearing one - this is a boot-only exception to
+    # I.4, so the generated module must not grow a collect anywhere the run phase reaches.
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    lines = result.module_source.splitlines()
+    setup_lines = [i for i, line in enumerate(lines) if re.match(r"\s*await \w+\.setup\(\)\s*$", line)]
+    assert len(setup_lines) > 0, "no setup() calls found in the generated boot sequence"
+
+    for i in setup_lines:
+        assert lines[i + 2].strip() == "gc.collect()", (
+            f"{device}: {lines[i].strip()!r} feed is not followed by the placement-reset collect"
+        )
+    first_setup = setup_lines[0]
+    assert lines[first_setup - 1].strip() == "gc.collect()", (
+        f"{device}: the start-of-list collect is missing before the first setup() call"
+    )
+
+    # One per module plus the one before the loop, and not a single one anywhere else in the module.
+    assert result.module_source.count("gc.collect()") == len(setup_lines) + 1, (
+        f"{device}: expected {len(setup_lines) + 1} collects, found {result.module_source.count('gc.collect()')}"
+    )
+    assert re.search(r"^import gc$", result.module_source, re.MULTILINE), f"{device}: generated module never imports gc"
+
+    # main() runs the webserver forever after build_system() returns - a collect reaching it would
+    # be a run-phase collect, which I.4 forbids outright.
+    main_at = next(i for i, line in enumerate(lines) if line.startswith("async def main("))
+    assert "gc.collect()" not in "\n".join(lines[main_at:]), f"{device}: main() must carry no collect"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     assert f"from sensortask_{device} import main" in result.boot_entry_source

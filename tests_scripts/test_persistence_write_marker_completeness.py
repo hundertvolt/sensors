@@ -22,6 +22,7 @@ _ROUTE_DISPATCH_FIELDS = frozenset({"SystemCmd", "PauseTime", "lightCmdLED", "Re
 # a body whose every field is rejected (or unchanged) never reaches _flush_staged()'s json.dump().
 _JUSTIFIED_UNMARKED = {
     "test_put_nonsense_field_values_are_marked_invalid_not_crashed": "every field in the body is rejected as Invalid, so write_config() returns on `not changed` without staging a flash write",
+    "test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap": "its NTP_Host is 1025 characters, ONE over _VAL_NH's own 3..1024 bound, so the field is rejected as Invalid and write_config() returns on `not changed` - at exactly 1024 it would be valid and this would be a real flash write",
 }
 
 # Non-test functions (helpers and fixtures) that issue a persisting PUT. Pinned by name so a NEW one
@@ -136,6 +137,7 @@ def test_every_test_that_persists_a_config_field_carries_the_marker(repo_root: P
 # Function -> why its non-literal PUT body is safe to be invisible to the detector above.
 _JUSTIFIED_UNREADABLE_BODIES = {
     "test_put_oversized_body_is_rejected_with_413_over_the_normal_network": "the body is deliberately past max_content_length, so vendored ext/microdot.py rejects it with 413 before this project's route handler - and therefore ConfigManager - is ever reached",
+    "_put_sized": "queue section 1D's body-cap helper: it pads an UNKNOWN sensor key, which PUT /sensors ignores silently, so no field of it ever reaches ConfigManager at any size - accepted or 413'd alike",
 }
 
 
@@ -147,15 +149,24 @@ def test_every_unreadable_put_body_is_a_triaged_one(repo_root: Path) -> None:
     assert unreadable == set(_JUSTIFIED_UNREADABLE_BODIES), f"a PUT body the marker guard cannot read changed - triage each one and update _JUSTIFIED_UNREADABLE_BODIES.\n  added: {sorted(unreadable - set(_JUSTIFIED_UNREADABLE_BODIES))}\n  gone: {sorted(set(_JUSTIFIED_UNREADABLE_BODIES) - unreadable)}"
 
 
-def test_the_one_justified_exemption_still_rests_on_every_field_being_rejected(repo_root: Path) -> None:
-    # An allowlist entry is only as good as its reason. If this test ever stops asserting that its
-    # fields come back "Invalid", its body persists after all and the exemption has to go with it.
-    source = (repo_root / "tests_hardware" / "bench" / "test_network_resilience.py").read_text()
-    name = next(iter(_JUSTIFIED_UNMARKED))
-    body = source.split(f"def {name}(", 1)
-    assert len(body) == 2, f"{name} is gone - drop its _JUSTIFIED_UNMARKED entry with it"
-    fn_text = body[1].split("\ndef ", 1)[0]
-    assert fn_text.count('== "Invalid"') >= 2, f"{name} no longer asserts that every field it PUTs is rejected - it may now persist, so the exemption no longer holds"
+def test_every_justified_exemption_still_rests_on_every_field_being_rejected(repo_root: Path) -> None:
+    # An allowlist entry is only as good as its reason: stop asserting a field comes back
+    # "Invalid" and the body persists after all. Checked per entry and per FIELD rather than
+    # against a fixed count, so a second entry cannot inherit the first one's verification.
+    path = repo_root / "tests_hardware" / "bench" / "test_network_resilience.py"
+    source = path.read_text()
+    persisting = _persisting_put_functions(path, _dispatch_only_fields(repo_root))
+    for name in _JUSTIFIED_UNMARKED:
+        body = source.split(f"def {name}(", 1)
+        assert len(body) == 2, f"{name} is gone - drop its _JUSTIFIED_UNMARKED entry with it"
+        fn_text = body[1].split("\ndef ", 1)[0]
+        needed = len(persisting.get(name, ()))
+        # Two ways a PUT field provably writes nothing, and both have to count: rejected as
+        # "Invalid", or sitting under a sensor key no driver registers, which _put_sensors()
+        # drops silently. Counting only the first wrongly condemns a body that mixes them.
+        proven = fn_text.count('== "Invalid"') + fn_text.count('not in body["result"]')
+        assert needed, f"{name} no longer PUTs any persisting field - drop its _JUSTIFIED_UNMARKED entry, it is exempt from nothing"
+        assert proven >= needed, f"{name} PUTs {needed} persisting field(s) but proves only {proven} of them are rejected or ignored - it may now persist, so the exemption no longer holds"
 
 
 def test_the_set_of_persisting_helpers_is_exactly_the_triaged_one(repo_root: Path) -> None:

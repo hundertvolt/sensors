@@ -729,6 +729,28 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
 ## Deferred / explicitly out-of-scope work
 
+- **`NTP_Host`'s 1024-character bound mirrors the deployed handler; tightening it to DNS's real 253
+  is the owner's call.** `src/asy_ntp_client.py`'s `_VAL_NH` declares `("NTP_Host", "str",
+  "pool.ntp.org", 3, 1024, None)`, and the comment above it says the bounds mirror the fielded
+  pre-refactor REST handler — confirmed: `modules/sensortask-*.py` does
+  `update_valid_json(req_json, "NTP_Host", "str", res, 3, 1024, debug=debug)` on every deployed
+  device. A DNS name cannot exceed **253** characters in presentation format (255 octets on the
+  wire, minus the length and root bytes), so 1024 is ~4x over-permissive — but changing it is a
+  deliberate divergence from fielded behaviour, which the "same features, not a feature change"
+  working agreement makes a decision rather than a fix. **Why it is worth deciding**: that one
+  field is the sole reason the largest schema-permitted PUT body is **1,312 B** — `NTP_Host` alone
+  costs 1,038 B of it, and the next-largest route is `/sensors` at 967 B on `dev`. Real traffic
+  measures 232 B. **At 253 the route maximum drops to 541 B**, which would take
+  `max_content_length`'s margin from **1.56x to 3.79x** (SPECIFICATION.md Part I.6; the older
+  1,132 B / 1.8x figures were the NTP group alone, not the whole route).
+  `tests_scripts/test_request_body_cap_headroom.py` derives all of this, so a change here is
+  re-measured rather than re-estimated.
+  **Not a one-token change**: `html/definitions/{dev,wozi}.json` carry the bound as
+  `"maxLength": 1024` and are generated *and committed*, so they need regenerating, and
+  `tests/test_asy_ntp_client.py:53` mirrors the tuple verbatim. **Unchecked**: whether a stored
+  value outside a tightened bound is rejected on the next write or silently falls back to the
+  default — trace the read path before changing it.
+
 - **CLAUDE.md's two-target clean-chroot verification is an owner-run periodic check, not a blocking
   per-push gate - settled (owner decision, 2026-09-18).** The recipe, both targets and the separate
   installer verification all stand exactly as CLAUDE.md documents them; what changed is who runs
@@ -749,7 +771,18 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   break would actually show up in, so it is the part worth the owner's next manual run; a
   `scripts/test.sh` change is host tooling and low-risk. Kept here as the running list of what is
   owed, not as a merge blocker.
-
+- **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
+  `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
+  fixed.** The SPI form exists because the FRAM path drives the chip through blocking register
+  writes and paid a coroutine pair plus a bus-lock cycle for every CS cycle (the heap-fragmentation
+  work, HEAP_REMEDIATION_PLAN.md A.1.1). `I2CDevice` has no CS pin, no per-session `configure()`
+  and no settle, so it has nothing equivalent to make synchronous: its `async with` is
+  `Lockable`'s plain lock acquisition, and its own `async def` transfer wrappers already sit
+  directly on blocking `machine.I2C` calls. Generalising the session shape to I2C is explicitly
+  refused by SPECIFICATION.md Part F.5.8 for the neighbouring read-clamp case, and would be a
+  rewrite of every I2C driver's call sites for no measured gain. Recorded here per CLAUDE.md's
+  flag-don't-silently-fix rule for cross-file API divergence (Part D.10), as a known and deliberate
+  asymmetry rather than an inconsistency to tidy up.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's required two-target clean-chroot
   pre-push verification** — the narrower, earlier instance of the entry above. The trixie leg — required by the same rule whenever `pyproject.toml`

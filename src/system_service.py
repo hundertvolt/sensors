@@ -6,6 +6,7 @@ Every method returns a well-defined value, never raises.
 # reboot_system()/reboot_bootloader() take after _RESET_DELAY is the intent, not a failure.
 
 import asyncio
+import gc
 import random
 import time
 
@@ -215,9 +216,14 @@ class SystemService:
     async def start_and_check_tasks(self, task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
         await self.pr.setup()  # required for all logged warnings and errors
         tasks: list[asyncio.Task[Any] | None] = [None] * len(task_starters)
+        # Measure B (SPECIFICATION.md Part I.4(f.1)): the second of the two one-time boot lists that
+        # get a placement reset between their units - each collect puts the allocator's free-scan
+        # index back to zero. Not hygiene, not compaction, and never in the supervisor below.
+        gc.collect()
         for n, starter in enumerate(task_starters):
             tasks[n] = await self._start_task(starter, n)
             await asyncio.sleep(1.0 / len(task_starters))
+            gc.collect()
         task_errors = 0
 
         while True:

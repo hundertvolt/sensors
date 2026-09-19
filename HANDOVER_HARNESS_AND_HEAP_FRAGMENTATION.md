@@ -230,9 +230,10 @@ that peer's port to find out. Real, but never "drives the wrong board".
 
 **Still open, deliberately not taken:** `scripts/mpremote_connect.sh:8`'s
 `device="${MPREMOTE_DEVICE:-/dev/ttyACM0}"` is the last hardcoded node, and now the only entry point
-an erratic re-enumeration can strand. A `scripts/` change owes CLAUDE.md's two-chroot pre-push gate,
-which is the project owner's call rather than a drive-by edit; `tests_hardware/README.md` names it
-as a known exposure in the meantime.
+an erratic re-enumeration can strand. A `scripts/` change owes an entry in BACKLOG.md's list for the
+owner's next manual two-chroot run (periodic since 2026-09-18, no longer a blocking gate), and the
+change itself is still the owner's call rather than a drive-by edit; `tests_hardware/README.md`
+names it as a known exposure in the meantime.
 
 ---
 
@@ -655,7 +656,8 @@ even sharper version (assert the setup batch adds at most N new runs).
   as remedies. Note also [TWIN] that setting the threshold *before* `build_system()` makes the twin
   heap look healthy — that is the threshold masking a design defect, which is exactly the condition
   I.4(e) exists to detect, not evidence that nothing is wrong.
-- **Do not lower the test's 80,000 B floor.** It encodes a real product property (an 80 KB
+- ~~**Do not lower the test's 80,000 B floor.**~~ **Retired by the owner, 2026-09-19** — see
+  `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7G for what replaced it and why. Original text: it encodes a real product property (an 80 KB
   contiguous allocation must remain obtainable after boot) and that property genuinely does not hold.
 - **Do not rewrite `asy_fram_manager.py` / `asy_fram_driver.py` internals** off the back of §2.5.
 - **Do not trust a digital-twin memory measurement taken before neutralising `SPI.log`/`I2C.log`** —

@@ -6,11 +6,18 @@ CS-pin wrapper). Sole consumer: asy_fram_driver.py's FRAM_SPI.
 # None; setup (__init__/init(), configure()) may raise. Raise sites: SPECIFICATION.md Part F.5.
 
 import asyncio
+import time
 
 from machine import SPI as _SPI
 from machine import Pin
+from micropython import const
 
 from base_classes import Lockable
+
+# Blocking CS settle. Both parts specify tCSU/tCSH >= 10 ns and tD >= 40 ns (MB85RS2MTA) / 60 ns
+# (MB85RS64V), so 2 us is orders of magnitude clear of them; rp2's sleep_us() busy-waits on
+# time_us_64(), where sleep_us(1) only promises an elapsed time in (0, 1] us and 2 promises >= 1.
+_CS_SETTLE_US = const(2)
 
 try:
     from typing import TYPE_CHECKING
@@ -116,13 +123,12 @@ class SPIDevice(Lockable):
         self.firstbit = firstbit
         self.initialized = False  # cs_pin isn't configured as an output until setup() runs
 
-    async def __aenter__(self) -> "Self":
-        # Pin.value() writes the GPIO register unconditionally regardless of direction, so
-        # entering before setup() would silently fail to assert CS rather than raise.
+    def session_begin(self) -> None:
+        # What __aenter__ does between the lock operations, for a caller that already holds the bus
+        # lock - configure()'s own guard enforces that. The settle blocks on purpose: an awaited one
+        # would hand the loop to another task with CS asserted and the bus locked.
         if not self.initialized:
             raise RuntimeError("SPIDevice not set up - call setup() first")
-        await super().__aenter__()
-        # __aenter__ raising means `async with` never calls __aexit__, so clean up here too.
         try:
             self.spi.configure(
                 baudrate=self.baudrate,
@@ -132,9 +138,28 @@ class SPIDevice(Lockable):
                 firstbit=self.firstbit,
             )
             self.cs_pin.value(self.cs_active_value)
-            await asyncio.sleep(0.001)
+            time.sleep_us(_CS_SETTLE_US)
         except BaseException:
             self.cs_pin.value(not self.cs_active_value)  # deassert if asserted
+            raise
+
+    def session_end(self) -> None:
+        # The caller's own try/finally is what guarantees this runs; the async form below is that
+        # caller for `async with` users.
+        self.cs_pin.value(not self.cs_active_value)
+        time.sleep_us(_CS_SETTLE_US)
+
+    async def __aenter__(self) -> "Self":
+        # Pin.value() writes the GPIO register unconditionally regardless of direction, so
+        # entering before setup() would silently fail to assert CS rather than raise. Checked
+        # before the lock is acquired, so a misuse never even contends for the bus.
+        if not self.initialized:
+            raise RuntimeError("SPIDevice not set up - call setup() first")
+        await super().__aenter__()
+        # __aenter__ raising means `async with` never calls __aexit__, so clean up here too.
+        try:
+            self.session_begin()
+        except BaseException:
             self.asy_lock.release()
             raise
         return self
@@ -146,26 +171,43 @@ class SPIDevice(Lockable):
         exc_tb: object,  # `object`, not TracebackType: the precise name only exists under TYPE_CHECKING
     ) -> "Literal[False]":
         # params are only forwarded to super().__aexit__(), never inspected. CS deassert runs
-        # first, while the lock is still held.
-        self.cs_pin.value(not self.cs_active_value)
-        await asyncio.sleep(0.001)
-        return await super().__aexit__(exc_type, exc_val, exc_tb)
+        # first, while the lock is still held; the yield afterwards is this path's one scheduling
+        # point, placed after the release so a burst of sessions cannot starve the loop.
+        self.session_end()
+        released = await super().__aexit__(exc_type, exc_val, exc_tb)
+        await asyncio.sleep(0)
+        return released
 
     async def setup(self) -> None:
         self.cs_pin.init(self.cs_pin.OUT)
         self.cs_pin.value(not self.cs_active_value)
         self.initialized = True
 
-    async def write(self, buf: bytes | bytearray | memoryview) -> None:
+    def write_sync(self, buf: bytes | bytearray | memoryview) -> None:
         self.spi.write(buf)
 
-    async def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
+    def readinto_sync(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
         self.spi.readinto(buf, write_value=write_value)
 
-    async def write_readinto(
+    def write_readinto_sync(
         self,
         buffer_out: bytes | bytearray | memoryview,
         buffer_in: bytearray | memoryview,
     ) -> None:
         # Full-duplex simultaneous transfer, not write-then-read - see SPI.write_readinto().
         self.spi.write_readinto(buffer_out, buffer_in)
+
+    # The async transfers stay for `async with` callers (a future SPI sensor driver), expressed on
+    # the synchronous primitives above so the bus sequence has exactly one implementation.
+    async def write(self, buf: bytes | bytearray | memoryview) -> None:
+        self.write_sync(buf)
+
+    async def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
+        self.readinto_sync(buf, write_value=write_value)
+
+    async def write_readinto(
+        self,
+        buffer_out: bytes | bytearray | memoryview,
+        buffer_in: bytearray | memoryview,
+    ) -> None:
+        self.write_readinto_sync(buffer_out, buffer_in)

@@ -321,7 +321,12 @@ information):
   real default) and with zero `MemoryError`s — caught-and-logged included — and with no
   `gc.collect()` calls or other nonstandard `gc` settings anywhere in the business logic or the
   test's own setup propping the result up, *before* it's ever run again with the project's chosen
-  `gc.threshold(32768)` enabled (which the full suite must then also still pass). A threshold (or a
+  `gc.threshold(32768)` enabled (which the full suite must then also still pass). **One structural
+  exception, added 2026-09-18 with the owner's approval: the boot-confined placement reset** —
+  `gc.collect()` between the units of the two one-time setup lists and nowhere else, mechanically
+  confined by `scripts/lint.sh` and `tests_scripts/test_gc_collect_sites.py`; it is placement
+  discipline for the survivors those lists create, not a threshold and not a fix for a failing
+  allocation. Full account and its measured effect: `SPECIFICATION.md` Part I.4(f.1). A threshold (or a
   `gc.collect()` call) is defense in depth on top of an already-safe design, lifting an anyhow-stable
   system further from a stability threshold — it is forbidden as the fix itself for a design that
   still needs one big contiguous allocation somewhere, or for any other memory-pressure issue; the
@@ -522,9 +527,19 @@ information):
   self-contained `uv run` script, under CPython) are two separate stages glued together through
   `coverage.py`'s own `CoverageData` API — see SPECIFICATION.md Part E.5 ("Coverage") for the full
   pipeline. The Unix port binary is always built with `MICROPY_PY_SYS_SETTRACE=1`
-  (`build_unix_port()` in `toolchain/setup_toolchain.py`) — an inert hook check when unused, not a
-  behavior change, confirmed directly — so plain `scripts/test.sh` and `--coverage` share one
-  binary; `ports/rp2`'s firmware build never gets this flag. CI
+  (`build_unix_port()` in `toolchain/setup_toolchain.py`) so plain `scripts/test.sh` and
+  `--coverage` share one binary; `ports/rp2`'s firmware build never gets this flag. **An earlier
+  note here called the flag "an inert hook check when unused" — measured false on 2026-09-18**:
+  with it compiled in, `py/vm.c`'s `FRAME_ENTER()` runs `mp_prof_frame_enter()` on every bytecode
+  entry, which allocates a frame object and a code object per call and per generator resume whether
+  or not a trace callback is installed (`py/profile.c:190`). Against an otherwise identical
+  settrace-free build of the same frozen manifest: `await asyncio.sleep(0)` 1,152 B vs 0 B, a
+  coroutine call 224 vs 64 B, one FRAM logger `setup()` 651,680 vs 137,120 B (4.75x). It changes no
+  test's *result*, but every allocation figure measured under this binary — the digital twin's and
+  the memory-safety suite's alike — is inflated 4-5x, non-uniformly, relative to the firmware. Full
+  account and the per-node conversion table: HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7 and
+  §3A; whether to build a second, flag-free binary for the plain run is an open owner decision
+  there (§11 item 0). CI
   (`.github/workflows/ci.yml`) runs it as its own non-gating job, `unit-tests-coverage` — separate
   from `unit-tests` because `timeout-minutes` gates a whole job rather than its real step, so the
   instrumented rerun would otherwise cancel a suite that had already passed (it did, on run
@@ -680,8 +695,11 @@ information):
   boot (`asy_udp_socket.py`), so the two tiers overlap safely.
 - **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
-  if `format` is ever run by accident. Lint rule selection (`E`/`F`/`W`/`I`/`UP`/`B`) is stricter
-  than ruff's default but well short of enabling everything.
+  if `format` is ever run by accident. Lint rule selection is `select = ["ALL"]` — every non-preview
+  rule ruff ships, narrowed only by an explicitly justified `ignore` list (`pyproject.toml`'s
+  `[tool.ruff.lint]`, where each exclusion carries its own reasoning). That opt-in-to-everything
+  choice is exactly why ruff is pinned: an unpinned upgrade would hard-fail CI on a rule nobody
+  chose.
 - **Bare `except:` (E722) is intentionally left enabled**, unlike the old `improved-quality/pycheck.sh`
   — the project owner wants ruff to flag existing bare excepts as a tracked to-do, not silence them
   before they're fixed (test-driven-development framing, confirmed directly).
@@ -894,8 +912,8 @@ chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-
 # from-scratch run installs it on its own - it stays listed here because a REUSED chroot whose
 # toolchain is already built skips that install step entirely and hits the same late failure.
 
-# Per-verification: copy the CURRENT working tree (uncommitted changes included - this is a
-# pre-push gate, not a post-push audit) into the chroot, then run the exact documented workflow
+# Per-verification: copy the CURRENT working tree (uncommitted changes included - this verifies
+# what is on disk, not what is on a branch) into the chroot, then run the exact documented workflow
 # from README.md's "Code quality tooling" section.
 rm -rf "$CHROOT/root/sensors"
 cp -r /path/to/this/repo/checkout "$CHROOT/root/sensors"   # adjust to wherever it's actually checked out

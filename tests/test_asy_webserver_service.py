@@ -252,7 +252,7 @@ def _make_service(**kwargs: "Any") -> "tuple[WebserverService, Microdot]":  # An
     # verbatim into WebserverService's own 22 differently-typed keyword parameters, which no single
     # non-Any **kwargs element type can express before PEP 692's Unpack (3.11+).
     app = Microdot()
-    kwargs.setdefault("max_content_length", 4096)
+    kwargs.setdefault("max_content_length", 2048)  # tracks the shipped default, so these tests exercise it
     kwargs.setdefault("max_connections", 3)
     kwargs.setdefault("per_call_timeout_s", 0.2)
     kwargs.setdefault("outer_cap_s", 0.5)
@@ -902,9 +902,13 @@ def test_b_deeply_nested_json_body_degrades_to_a_clean_rejection_not_a_hard_faul
     # deeply as the json.loads() under test, blowing the recursion limit in this test's own setup.
     # Repeating raw JSON text keeps recursion to the json.loads() inside the code under test.
     _service, app, _mod = _settings_service("system")
-    depth = 2000  # deep enough to matter on an embedded stack; MicroPython's json.loads recursion
-    # bound is confirmed well under this by direct testing against the pinned interpreter (raises
-    # RecursionError/ValueError, not a hard interpreter fault).
+    # The deepest nesting that is actually REACHABLE: max_content_length caps the body at 2,048 B,
+    # so 1,000 levels (2,001 B) is the worst case a client can submit, and a deeper one is a 413
+    # before any of this runs. Previously 2,000, which stopped fitting when the cap was tightened.
+    depth = 1000
+    # An earlier comment here claimed MicroPython's json.loads() recursion bound is "well under"
+    # this - measured false against the pinned interpreter, which parses depth 3,000 fine. What the
+    # test really pins is the non-dict top level taking _body_as_dict()'s clean ERR path.
     req = _make_request(app, "PUT", "/system", {})
     req._body = b"[" * depth + b"1" + b"]" * depth
     req.content_length = len(req._body)
@@ -1256,6 +1260,168 @@ def test_f2_body_truncated_by_a_clean_peer_close_degrades_via_microdots_own_blan
     run_timed(service._serve(reader, writer), timeout_s=3.0)
     assert run(service._open_conns.get_value()) == 0
     assert b" 400 " in writer.written  # Microdot's own ordinary 400 response, not a silent drop
+
+
+# F.2b - request-body buffering: an oversized body must never be read into memory at all.
+#
+# ext/microdot.py reads the body inside Request.create() (`:426`) and only answers 413 later, in
+# dispatch_request() (`:1443`) - so a body between max_body_length and max_content_length is
+# allocated in full and then thrown away. Leaving max_body_length at microdot's own 16 KB default
+# while max_content_length is 2048 opens exactly that band, and max_connections of them can be in
+# flight at once. WebserverService binds the two, and these tests pin that behaviourally: the
+# server must never ASK its reader for more than the cap, which is the direct cause rather than a
+# memory heuristic an 8MB Unix-port heap could never show (same framing as H.3/I.2's hammers).
+
+
+class _BodySizeReader(_ScriptedReader):
+    # Records every readexactly() size, which is exactly what Request.create() uses to pull a body
+    # into one contiguous bytes object - so max_body_read is the largest single body allocation the
+    # server attempted, observed without patching anything.
+    def __init__(self, chunks: "list[tuple[float, bytes]]", *, eof: bool = False) -> None:
+        super().__init__(chunks, eof=eof)
+        self.body_reads: list[int] = []
+
+    async def readexactly(self, n: int) -> bytes:
+        self.body_reads.append(n)
+        return await super().readexactly(n)
+
+    @property
+    def max_body_read(self) -> int:
+        return max(self.body_reads) if self.body_reads else 0
+
+
+_BODY_CAP = 2048  # what _make_service() sets, matching the shipped default
+
+
+def _sized_put(payload_bytes: int, interval: int = 7) -> bytes:
+    # A /networking PUT of exactly payload_bytes, carrying a REAL field ("Interval") next to the
+    # padding - so an accepted one has to be genuinely applied, not merely not-rejected, and the
+    # padding key is one no driver registers so it can never validate as real config.
+    envelope = len(json.dumps({"Interval": interval, "Padding": ""}).encode())
+    body = json.dumps({"Interval": interval, "Padding": "x" * (payload_bytes - envelope)}).encode()
+    return _request_bytes("PUT", "/networking", body)
+
+
+def _body_service() -> "tuple[WebserverService, Microdot, _FakeModule]":
+    mod = _FakeModule("NETWORKING", values={"Interval": 5, "Offset": 0})
+    service, app = _make_service(
+        settings={"networking": [SettingsGroup(mod, ("Interval", "Offset"))]}, per_call_timeout_s=2.0, outer_cap_s=2.0,
+    )
+    return service, app, mod
+
+
+def _serve_one(service: "WebserverService", body_bytes: int, interval: int = 7) -> "tuple[_BodySizeReader, _ScriptedWriter]":
+    reader = _BodySizeReader([(0, _sized_put(body_bytes, interval))])
+    writer = _ScriptedWriter()
+    run_timed(service._serve(reader, writer), timeout_s=3.0)
+    return reader, writer
+
+
+def test_f2b_none_above_the_cap_every_body_is_buffered_and_applied() -> None:
+    service, _app, mod = _body_service()
+    for n, size in enumerate((64, 512, _BODY_CAP - 1, _BODY_CAP)):  # the cap is inclusive: `<=` in Request.create()
+        reader, writer = _serve_one(service, size, interval=10 + n)
+        assert b" 200 " in writer.written, (size, writer.written[:80])
+        assert reader.max_body_read == size, (size, reader.body_reads)
+        # Accepted means APPLIED: the real field next to the padding reached the module.
+        assert mod.set_calls[-1]["Interval"] == 10 + n, (size, mod.set_calls[-1])
+        assert run(service._open_conns.get_value()) == 0
+
+
+def test_f2b_all_above_the_cap_are_rejected_without_the_body_ever_being_read() -> None:
+    service, _app, mod = _body_service()
+    for size in (_BODY_CAP + 1, _BODY_CAP * 2, _BODY_CAP * 8):
+        reader, writer = _serve_one(service, size)
+        assert b"413" in writer.written, (size, writer.written[:80])
+        # The whole point: not "read then discarded", but never read. body_reads stays empty
+        # because Request.create() takes its `else` branch and hands over the stream instead.
+        assert reader.body_reads == [], (size, reader.body_reads)
+        assert run(service._open_conns.get_value()) == 0
+    assert mod.set_calls == []  # nothing was applied: every one was refused before any handler ran
+
+
+def test_f2b_a_mixed_stream_handles_each_request_on_its_own_merits() -> None:
+    # "some above": interleaved, so a rejection can never leave the next acceptance mis-parsed and
+    # an acceptance can never let the next oversized one through.
+    service, _app, mod = _body_service()
+    sizes = [128, _BODY_CAP * 4, 700, _BODY_CAP + 1, _BODY_CAP, 64, _BODY_CAP * 16]
+    applied = 0
+    for n, size in enumerate(sizes):
+        reader, writer = _serve_one(service, size, interval=20 + n)
+        if size <= _BODY_CAP:
+            applied += 1
+            assert b" 200 " in writer.written, (size, writer.written[:80])
+            assert reader.max_body_read == size, (size, reader.body_reads)
+            assert mod.set_calls[-1]["Interval"] == 20 + n, (size, mod.set_calls[-1])
+        else:
+            assert b"413" in writer.written, (size, writer.written[:80])
+            assert reader.body_reads == [], (size, reader.body_reads)
+        assert len(mod.set_calls) == applied, (size, mod.set_calls)  # no rejected one slipped through
+        assert run(service._open_conns.get_value()) == 0
+
+
+def test_f2b_the_two_microdot_caps_are_bound_together_so_the_band_cannot_reopen() -> None:
+    # Structural guard: the defect is not a value, it is the GAP between the two. A future change
+    # that sets only one of them would silently reopen it, and every behavioural test above would
+    # still pass for bodies under whichever cap ended up larger.
+    _service, _app = _make_service(max_content_length=777)
+    assert Request.max_content_length == 777
+    assert Request.max_body_length == 777
+
+
+def _body_service_with_connections(max_connections: int) -> "tuple[WebserverService, Microdot, _FakeModule]":
+    mod = _FakeModule("NETWORKING", values={"Interval": 5, "Offset": 0})
+    service, app = _make_service(
+        settings={"networking": [SettingsGroup(mod, ("Interval", "Offset"))]},
+        max_connections=max_connections, per_call_timeout_s=2.0, outer_cap_s=5.0,
+    )
+    return service, app, mod
+
+
+def _hammer_mixed_bodies(service: "WebserverService", sizes: "list[int]") -> "list[_BodySizeReader]":
+    readers = [_BodySizeReader([(0, _sized_put(size))]) for size in sizes]
+    writers = [_ScriptedWriter() for _ in sizes]
+
+    async def _all() -> None:  # index-based, not zip(): MicroPython's zip() has no strict= (B905)
+        await asyncio.gather(*(service._serve(readers[i], writers[i]) for i in range(len(sizes))))
+
+    run_timed(_all(), timeout_s=10.0)
+    for i, size in enumerate(sizes):
+        expected = b" 200 " if size <= _BODY_CAP else b"413"
+        assert expected in writers[i].written, (size, writers[i].written[:80])
+    return readers
+
+
+def test_f2b_hammer_concurrent_mixed_bodies_bound_the_total_buffered_bytes() -> None:
+    # The real-hardware shape this protects: max_connections bodies can be in flight at once, so
+    # the simultaneous contiguous demand is that many buffers, not one. With the caps bound it is
+    # bounded by connections x cap; with the band open it would be connections x 16 KB.
+    orig_threshold = gc.threshold()
+    gc.threshold(-1)  # I.4(e) first: the guarantee must hold at MicroPython's own real default
+    try:
+        service, _app, mod = _body_service_with_connections(64)
+        sizes = [_BODY_CAP * 4 if i % 3 else 512 for i in range(60)]
+        readers = _hammer_mixed_bodies(service, sizes)
+        assert sum(r.max_body_read for r in readers) == sum(s for s in sizes if s <= _BODY_CAP)
+        assert all(r.max_body_read <= _BODY_CAP for r in readers)
+        assert len(mod.set_calls) == sum(1 for s in sizes if s <= _BODY_CAP)  # every under-cap one applied
+        assert run(service._open_conns.get_value()) == 0
+    finally:
+        gc.threshold(orig_threshold)
+
+
+def test_f2b_hammer_all_oversized_allocates_no_body_at_all() -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(32768)  # and again at the shipped threshold, as H.3 does for its own pair
+    try:
+        service, _app, mod = _body_service_with_connections(64)
+        readers = _hammer_mixed_bodies(service, [_BODY_CAP * 6] * 40)
+        assert all(r.body_reads == [] for r in readers)
+        assert mod.set_calls == []
+        assert run(service._open_conns.get_value()) == 0
+    finally:
+        gc.threshold(orig_threshold)
+
 
 
 # F.5 - after response / close
