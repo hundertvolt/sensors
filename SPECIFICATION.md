@@ -4625,6 +4625,13 @@ behaviourally by recording every `readexactly()` size the server asks its reader
 request must produce **no body read at all**, including under concurrent mixed load at both
 `gc.threshold(-1)` and `gc.threshold(32768)`.
 
+**On real hardware the wire shows less than that, and the bench rows say so** [SRC].
+`tests_hardware/bench/test_network_resilience.py` mirrors F.2b over real WiFi (queue §1D, W1-W5),
+but a socket cannot distinguish "buffered then rejected" from "rejected unread" — both firmwares
+answer 413, only at different sizes. The mirrors therefore pin the **cap value** and the
+boundary's exactness; the 2048-4096 band rejecting is what tells this firmware from the previous
+one. The binding itself stays a mock-tier and source-level claim, never a hardware-confirmed one.
+
 **Related, deliberately not changed:** `NTP_Host`'s 1024-character bound mirrors the deployed
 pre-refactor handler (`modules/sensortask-*.py`'s `update_valid_json(..., 3, 1024, ...)`), so
 tightening it to DNS's real 253-character limit is a divergence from fielded behaviour and the

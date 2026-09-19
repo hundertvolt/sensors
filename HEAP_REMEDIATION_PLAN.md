@@ -605,14 +605,13 @@ milliseconds ... about 1ms on the Pyboard" per the pinned docs; boot latency is 
 
 ## T. Real hardware (needs its own go-ahead, in the session that runs it)
 
-**The runnable form of this section is two files.** `REAL_HARDWARE_TEST_QUEUE.md` §1A covers
-measure A and is **fully run as of 2026-09-18** — results in §1A's own rows and
-`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D. What is still owed is measure B, whose runnable form is
-`REAL_HARDWARE_HANDOVER_MEASURE_B.md`, indexed by queue §1B: two firmware images, the readings in
-order, and each prediction with the result that would falsify it. **Both that handover and the
-script it drives changed on 2026-09-19** — one of §7F's readings was a probe artefact and another
-named the wrong position (§7F.8, §7F.9), so the instrument now reports `retained=` and
-`after_starter_loop_end`, and what is owed is two invocations rather than a redesign. The boxes below stay here as this
+**Both measures are now fully run on silicon.** `REAL_HARDWARE_TEST_QUEUE.md` §1A covers measure A
+(run 2026-09-18, results in §1A's rows and `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D); §1B covers
+measure B, **closed 2026-09-19** — P1 through P5 all confirmed, §7G's replacement checks passing
+with 5.5x margin on their first run, and the bench tier fully clean for the first time (§7H). The
+measure-B handover that drove it has been deleted, per its own stated condition. Its successor,
+`REAL_HARDWARE_HANDOVER_WEBSERVER_BODY_CAP.md` (queue §1D), covers the one piece of this branch
+that has still never run on hardware: the Part I.6 request-body cap. The boxes below stay here as this
 plan's own record; a session at the bench should work those two.
 
 - [~] **T.1 Tripwire — RUN, both columns, one residue** (§7F.1 [HW]). A: 20,592 → 28,864 B in-suite,

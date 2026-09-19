@@ -17,8 +17,12 @@ Status values: **OPEN** (owed), **BLOCKED** (waiting on a decision or another ro
 §1B (measure B) **closed** — §7F and **§7H**: P1, P2, P3, P4 and P5 all confirmed on silicon, B7's
 replacement checks pass with 5.5x margin, and the bench tier is fully clean for the first time.
 §1C's C1 is **closed** by the same runs; C2/C3/C4 remain. One §7D claim was **overturned** — see
-§2A F7. What is still owed is D1-gated work, R-rows independent of measure B, and F1's SSID
-script.
+§2A F7. What is still owed is **§1D's five new webserver body-cap mirrors** (added 2026-09-19,
+never run), D1-gated work, R-rows independent of measure B, and F1's SSID script.
+
+**The next sitting's headline is §1D**, not measure B: `REAL_HARDWARE_HANDOVER_WEBSERVER_BODY_CAP.md`
+is its runnable form. `REAL_HARDWARE_HANDOVER_MEASURE_B.md` is **deleted** — §7H migrated every
+result it owed, which is that file's own stated condition for going.
 
 **What changed since the 2026-09-18 bench sitting, host-side, and why it matters to the next one.**
 Two of §7F's own readings turned out not to mean what they said, both found without hardware and
@@ -33,10 +37,10 @@ both fixed in the instrument rather than argued around:
   seconds after the list ends, and the twin loses most of measure B's gain within ~2 s of the run
   phase starting. `heap_layout_after_full_boot_sequence.py` now also reports **`after_starter_loop_end`**,
   detected by counting starters rather than by waiting a guessed interval — that is the reading P2
-  turns on, and no silicon figure for it exists yet.
+  turns on. **It has since been taken** (§7H.2): A-only 5%, A + B 80%.
 
-So the measure-B rows below are cheaper than they were: the owed items are **two invocations of one
-script**, not a redesign, and they now produce a number that can settle P2 either way.
+Both measure-B rows are now **DONE** — the 2026-09-19 sitting ran them and P2 is settled. The
+paragraph above is kept only because it explains why the two readings differ.
 
 **And the tripwire itself changed (owner, 2026-09-19).** The 80,000 B floor is retired — it was
 never the owner's, and it demanded a third of physical memory contiguously free. What
@@ -48,25 +52,24 @@ survivor volume (`used <= 100,000 B`), survivor **placement** — now in two for
 there, whoever put it there) — and contiguity (`>= 32,768 B`, twice the worst case).
 Both device scripts also print `micropython.mem_info(1)`'s block map now, which gives the exact
 largest free run without allocating anything, and the host side cross-checks it against the probe.
-Full derivation: MEASUREMENTS §7G. **The placement check has never run on silicon** — row B7.
+Full derivation: MEASUREMENTS §7G. **The placement check has since run on silicon and passes with
+5.5x margin** (§7H.4) — row B7, closed on its first run.
 
-**If there is time for one sitting only, in this order.** Everything here is on the tip image; only
-the first step needs the second (A-only) image, and B6/B4 are worth more with it than without.
+**If there is time for one sitting only, in this order (revised 2026-09-19, after §7H).** Measure A
+and B are both settled on silicon, so the old A-only arm is no longer needed and **one image
+suffices** — this branch's own tip.
 
-1. **S1** on both arms (flash suite), **with `-s`** — that alone closes B1's owed exact
-   `largest_block`, exercises the replaced tripwire (**B7**, including both placement checks' first
-   run ever), re-runs T.2's flash tier and R11's I2C-scratch confirmation, and gives R14 its first
-   run. Read the `MAP` and `DELTA` lines and `retained=` on the `HEAP ` lines (§2A F5).
-2. **B6**, immediately after each arm's S1, without resetting the board — two invocations of
-   `heap_layout_after_full_boot_sequence.py`. This is the only row that can settle P2, and the only
-   one that produces an aged-heap AFTER reading.
-3. **B4**, one further invocation on the AFTER arm with the threshold set first (handover §4.4).
-4. **P5** — re-read `GET /status`'s `errcount` and compare against the pre-flight figures in §7F.6.
-   Read it *before* any `ResetErrors`; that is CLAUDE.md's rule and it has cost evidence before.
-5. **S2** (bench suite) if the sitting allows, which closes T.2's bench tier on A + B, C1's
-   tier-4 bus-hazard run, and R9.
+1. **P5 first, before anything writes**: read `GET /status`'s `errcount` and record it verbatim.
+   CLAUDE.md's rule, and it has cost real evidence twice now (§2A F9).
+2. **S2** (bench suite) — this is where **§1D's W1-W5 live**, the only genuinely new code since the
+   last sitting. If time runs out after this step, the sitting still paid for itself.
+3. **S1** (flash suite) **with `-s`** — re-runs §7G's tripwire and its `MAP`/`DELTA` lines as a
+   regression check now rather than a first run. Read `retained=` on every `HEAP ` line (§2A F5).
+4. **F1's SSID script** (`wifi_service_reconnect_repro.py`), fixed but never run since. Read §2A F1
+   in full first: this is the script that stranded the bench, and the fix is structural.
+5. **R9 / R13 / R15** — independent of everything above, and none of them needs D1.
 
-Everything else in this file is independent of measure B and can wait for another sitting.
+Everything else in this file can wait for another sitting.
 
 ---
 
@@ -309,9 +312,10 @@ wrong tree, both of which the twin cannot reproduce.
 
 ## 1B. Measure B — the boot-confined placement reset (PR #105, same branch)
 
-**The runnable form of this section is `REAL_HARDWARE_HANDOVER_MEASURE_B.md`** — two firmware
-images, the readings to take in order, and each prediction with the result that would falsify it.
-This row is only the index entry, so the queue stays the single place a bench session looks first.
+**CLOSED 2026-09-19 — every row below is DONE.** The handover that drove it
+(`REAL_HARDWARE_HANDOVER_MEASURE_B.md`) has been **deleted**, its results migrated into
+`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7F and §7H. This section is kept only until its rows are
+migrated too; it is not work.
 
 Measure B is built, tested and green in the twin (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7E: A + B
 takes largest-block-over-free from 14.2 % to 86.3 % after `build_system()` and from 8.4 % to 88.7 %
@@ -341,6 +345,35 @@ own. None is part of measure A or B, so neither §1A's nor §1B's runs speak to 
 | C2 | **The oversized-read fallback** (`nbytes > 32` allocates instead of sharing) is never taken on this hardware — BMP3XX's 21-byte calibration block is the largest read and stays under the threshold. | Record as structurally unexercised on `dev`, the same treatment A5 got for the second-SPI-device question. | OPEN (record) |
 | C3 | **`asy_wifi_service._with_default()`** substitutes a build-time per-device default into the one-field hostname/SSID schema, dropping a value outside the field's own bounds rather than installing it — an unsatisfiable default makes `ConfigManager` answer `None` to every read, which would cost a device its networking config entirely. | The failure mode is "device boots with no networking config", so one look on the one board that can show it: `GET /networking`'s `Hostname` against `devices/dev.toml` after a clean boot. | OPEN |
 | C4 | **`asy_uart_comm.py` reclassified which warning takes the episode's single persisted slot** — `_WRN_DRAIN_BOUND` (11) now wins over `_WRN_RESYNC` (10) when the drain bound was hit, because 11 separates a babbling peer from ordinary line noise. The boot drain persists nothing. | **Receiver-side only, no emitted bytes change**, so it is the preferred class of protocol change and a mixed-version pair still works — but it still needs a `UART_C_PORT_CHANGELOG.md` entry, which should be confirmed. `dev`'s two `uart_link` instances make it observable: check `errcount`'s `UART_init`/`UART_resp` history after a run that forces a resync. | OPEN |
+
+---
+
+## 1D. The request-body cap (Part I.6) — new, never run on silicon
+
+`src/asy_webserver_service.py`'s `max_content_length` moved 4096 -> **2048** and `max_body_length`
+is now **bound to it** instead of keeping microdot's own 16 KB default, closing the band where a
+body was buffered in full and only then answered 413 (SPECIFICATION.md Part I.6). Six mock tests
+pin it at `tests/test_asy_webserver_service.py` §F.2b; **five bench-tier mirrors were added
+2026-09-19 and have never run against real hardware or real WiFi.**
+
+**What the wire can and cannot show.** The mock tier proves "the body is never READ" directly, by
+counting the `readexactly()` sizes the server asks for. That is not observable over a socket: both
+the old and the new firmware answer 413, just at different sizes. So the bench mirrors prove the
+**cap value** moved, not the binding — W2 is the row that can tell the two firmwares apart, and
+nothing here should be reported as having confirmed the binding itself.
+
+| # | Run | Notes | Status |
+| --- | --- | --- | --- |
+| W1 | `test_put_body_cap_boundary_is_exact_over_the_normal_network` | 2047 / 2048 / 2049 B, one byte apart. microdot's `Request.create()` compares with `<=`, so **2048 must still be served**; an off-by-one here is a real regression, not a tolerance. | OPEN |
+| W2 | `test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network` | 3072 B and 4096 B must both answer **413**. **This is the only check that distinguishes this firmware from the previous one** — under the old 4096 B cap both were accepted. A 200 here means the image predates Part I.6, i.e. the wrong image was flashed; check that before concluding anything about the code. | OPEN |
+| W3 | `test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap` | The direction that matters when a cap is *lowered*: 1132 B (the schema maximum, dominated by `NTP_Host`'s 1024 bound) must still be served, plus a real maximal `NTP_Host` field. Sent **one character over** `_VAL_NH`'s own 3..1024 bound on purpose, so the handler marks it `Invalid` and nothing persists — at exactly 1024 it is valid and would be a flash write. | OPEN |
+| W4 | `test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits` | Interleaved accepted/rejected sizes, so a 413 cannot leave the next request mis-parsed on a connection the server closed early. | OPEN |
+| W5 | `test_concurrent_mixed_body_sizes_never_destabilise_the_real_server` | 24 concurrent threads, mixed sizes, against the real `max_connections=4` ceiling — the multi-buffer shape that motivated the change. Watch for a worker reporting an exception string rather than a status: a `BrokenPipeError`/`ConnectionReset` on an oversized body is the server closing without draining, which is **expected behaviour, not a failure**, but it would fail this assertion as written. If that is what a red run shows, relax the oversized arm to "413 or a clean reset" rather than re-fitting anything. | OPEN |
+
+**Zero wear, deliberately.** Every one pads an **unknown** sensor key, which `PUT /sensors` ignores
+silently — so nothing validates, nothing persists and no `CFGMGR_*` logger fires. None of these is
+`@pytest.mark.persistence_write`-marked and none should become so; if one ever needs an *accepted*
+config write to make its point, that is the moment to add the marker, not before.
 
 ---
 
@@ -382,8 +415,8 @@ were put to the owner as open decisions and the answer was "record for the real-
 | F4 | **Row A4's marker count was wrong** (three `persistence_write`, not two). Corrected in place. A reminder that these counts drift; read the deselected number from the run. | DONE |
 | F5 | **The largest-block probe can pin its own buffer and report a false, round, *low* figure** — always `_PROBE_MAX >> k`, e.g. 49,152 = 192 KB / 4. Found 2026-09-19 by reproducing it deterministically on the Unix port; it is what §7F.2's unexplained row was, and the threshold had nothing to do with it (MEASUREMENTS §7F.8). It is not confined to the reporting script: `heap_headroom_after_full_system_build.py` asserts an 80,000 B floor on the same probe, so a pin at 49,152 would have been a **false tripwire FAIL on a healthy image**. No recorded failure has the signature (every one is off-node), so nothing already measured is affected. | **FIXED 2026-09-19, unverified on silicon.** Both scripts print `retained=` (the exact tell: it equals `largest_block` when pinned) and reread automatically while it is non-zero; on the twin one reread has always sufficed and lands on its clean neighbours. **What a bench run owes: nothing extra** — just read the `retained=` fields in B1's and B6's output. Any non-zero one on a non-retry line is expected and handled; a non-zero one on a `_retryN` line means three rereads failed and the figure must not be used. |
 | F6 | **Measure B's placement gain decays in the run phase, within about two seconds** (twin, MEASUREMENTS §7F.9). At the starter loop's end A+B holds 20-59 % of free against A-only's 5-11 %; 4 s later both arms are in single digits, A+B roughly 2x A-only. This is not a defect in B — I.4(f.1) confines the exception to the two boot lists on purpose — but it does mean every figure taken "after boot" has to say **how long after**. | **OPEN as a silicon question, and B6 is the run that answers it.** Two consequences for whoever runs the bench: read `after_starter_loop_end`, not `after_starter_list`, when judging measure B; and do not report a drop between those two lines as a regression — the twin predicts it on both arms. |
-| F7 | **§7D.5's "A fixed the UART crossover heap-growth test" is overturned.** It was drawn from one observation per arm. Five further runs: A-only **FAIL** (grew 4,192 B), A+B **FAIL** (4,752 B) in the flash suite, then A+B **PASS** in the bench tier and **PASS** in the B7 re-run — the same image both ways. The test is marginal around its own threshold, not a stable signal. Corrected in place in §7D.5 and recorded in §7H.5. **Worth deciding**: either widen its bound against a measured spread, or treat it as advisory; as it stands a green/red result from it carries no information. | OPEN — needs a decision, not a bench run |
-| F8 | **A malformed file exists on the bench board's flash**: `config_HWTEST_ISL29125.cfgconfig_ISL29125.cfg`, two config filenames concatenated with no separator. Some `tests_hardware/` path builds a config filename by concatenation. Harmless where it sits (nothing reads it), but the code that wrote it is defective. Found incidentally while listing `*.cfg` over the REPL. | OPEN — host-side grep, no bench time |
+| F7 | **§7D.5's "A fixed the UART crossover heap-growth test" is overturned.** It was drawn from one observation per arm. Five further runs: A-only **FAIL** (grew 4,192 B), A+B **FAIL** (4,752 B) in the flash suite, then A+B **PASS** in the bench tier and **PASS** in the B7 re-run — the same image both ways. The test is marginal around its own threshold, not a stable signal. Corrected in place in §7D.5 and recorded in §7H.5. **Worth deciding**: either widen its bound against a measured spread, or treat it as advisory; as it stands a green/red result from it carries no information. | **ROOT-CAUSED 2026-09-19, host-side, and it is a SAMPLING defect rather than a mis-calibrated threshold — so neither of the two options the row offers is the right one.** `uart_link_under_concurrent_system_load.py` computes `heap_growth = gc.mem_alloc()_end - gc.mem_alloc()_at_third`, both after a `gc.collect()`, and fails over 2048 B. `gc.mem_alloc()` after a collect measures **live** bytes — but both samples are taken while **five concurrent loops are still running** (`_scd_load_loop`, `_sgp_load_loop`, `_fram_read_loop`, `_memory_churn_loop`, `responder._listen_loop`), and the end sample is taken in the `finally` **before** `load.stop = True`, so the loads are live at that instant too. The churn loop's own comment says its block is "held briefly, then dropped" — so whether a multi-KB block happens to be held at either sampling instant is a coin flip, and that is the whole observed 3,584/4,192/4,752 B spread. The bound is not wrong about leaks (a real 53-B-per-transaction retention over thousands of transactions would be tens of KB and still caught); the **measurement** is contaminated. A third option, and the only one that makes the row informative again: quiesce before sampling — set `load.stop = True`, cancel the tasks, await a beat, *then* `gc.collect()` and read — or sample repeatedly near each point and take the minimum, which is the live floor with transients excluded. **Not changed here**: it is a real-hardware test this session cannot run, and CLAUDE.md's "flag, don't silently change" applies. Owner's call on which form to take. |
+| F8 | **A malformed file exists on the bench board's flash**: `config_HWTEST_ISL29125.cfgconfig_ISL29125.cfg`, two config filenames concatenated with no separator. Harmless where it sits (nothing reads it). | **ANSWERED 2026-09-19, host-side, and it is NOT a live defect in this tree.** The grep the row asked for was run across `HEAD`, `origin/main` and the base branch. The only concatenation site anywhere is `base_classes.py:278`/`system_service.py:102`'s `cfg_path + "config_" + name + ".cfg"`, and **no `tests_hardware/` caller passes a `.cfg` value as `cfg_path`** — every scratch-config override in the tree assigns `cfgmgr.config_file` directly (`isl29125_mechanism_envelope.py`, `reboot_persist_write.py`/`_read.py`, `wifi_service_reconnect_repro.py`, the two debug-level scripts), which is the correct form and the only form the history ever had (`47af5bb`, `75d222e`). The filename is a **stale artefact of an older script generation or another tree**, not something this code can produce. Residual: a leftover file on the board's flash. Deleting it is a flash write, so it is D1-gated and not worth a cycle on its own — fold it into the next run that already spends one. |
 | F9 | **The pre-flight `errcount` carried `FRAM: E31, W73`.** `W73` is a real FRAM-manager warning; **`errno=31` is `asy_isl29125_driver.py`'s "Status read failed"**, a foreign code under FRAM's own logger — CLAUDE.md's chunk-contamination hazard from an earlier isolated-driver script, not a FRAM fault. Recorded before this sitting's own scripts overwrote it, which they did (FRAM went 2 -> 0). | RECORDED |
 
 ---
@@ -421,7 +454,7 @@ a test to *write* against real hardware, not just a run.
   the rows themselves, §1A-R, and `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D, which is the first
   [HW] section on this branch. **Measure B is no longer excluded** — it was
   built on 2026-09-18 (`7ccbe8d`), so plan T.1's A+B column and T.5's collect timing are now
-  runnable and live in §1B above, with `REAL_HARDWARE_HANDOVER_MEASURE_B.md` as their runnable form.
+  runnable and live in §1B above — and, as of 2026-09-19, **run and closed** (§7H).
   What stays excluded on PR #105 is plan section C (the seam + contiguity guard) and section D, both
   of which need the owner's go-ahead and neither of which is built. The one failure left at PR #103's
   close is that defect.

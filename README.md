@@ -704,12 +704,12 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   result is migrated into the permanent docs; the file goes when the last row does. It authorizes
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
-- **[`REAL_HARDWARE_HANDOVER_MEASURE_B.md`](REAL_HARDWARE_HANDOVER_MEASURE_B.md)** — the runnable
-  handover for one specific bench sitting: measuring the boot-confined placement reset
-  (`SPECIFICATION.md` Part I.4(f.1)) on silicon, the last unmeasured half of PR #105. Two firmware
-  images, the readings to take, and each prediction with the result that would falsify it. **Run
-  partially on 2026-09-18** — the headline is settled and the file records what is still owed.
-  `REAL_HARDWARE_TEST_QUEUE.md` §1B is its index row; this file is what a bench session reads top to
+- **[`REAL_HARDWARE_HANDOVER_WEBSERVER_BODY_CAP.md`](REAL_HARDWARE_HANDOVER_WEBSERVER_BODY_CAP.md)** — the runnable
+  handover for the next bench sitting: the request-body cap (`SPECIFICATION.md` Part I.6) on
+  silicon and over real WiFi, five bench-tier rows that have never run. It states up front what the
+  wire can and cannot show, so a green run is not written up as proving more than it does.
+  **Replaces the measure-B handover**, deleted once §7H migrated every result it owed.
+  `REAL_HARDWARE_TEST_QUEUE.md` §1D is its index row; this file is what a bench session reads top to
   bottom. Deleted once its results are migrated.
 - **[`HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`](HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md)** —
   the other `*_HANDOVER*.md` file besides the measure-B one above, owned by the session working

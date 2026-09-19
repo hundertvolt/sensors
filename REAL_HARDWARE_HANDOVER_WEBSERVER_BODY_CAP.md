@@ -1,0 +1,149 @@
+# Real-hardware handover — the request-body cap on silicon (SPECIFICATION.md Part I.6)
+
+Temporary file, same convention as every handover before it: **delete once its results are
+migrated** into `SPECIFICATION.md` Part I.6, `REAL_HARDWARE_TEST_QUEUE.md` §1D and
+`HEAP_FRAGMENTATION_MEASUREMENTS.md`. Written 2026-09-19 by a session with **no** real-hardware
+go-ahead — every claim below is [SRC] (read out of the source) or [MOCK] (proven at the mock tier),
+and **nothing here is [HW]**.
+
+**Nothing in this file authorizes anything.** CLAUDE.md's gate stands: the session that runs this
+needs the project owner's go-ahead **in its own conversation**. A go-ahead given to the session
+that wrote this, or to the 2026-09-18/2026-09-19 bench sittings, does not carry over.
+`tests_hardware/README.md` stays the technical reference for prerequisites, flags and safety facts.
+
+It replaces `REAL_HARDWARE_HANDOVER_MEASURE_B.md`, which was **deleted** once §7H migrated every
+result it owed — that file's own stated condition for going.
+
+---
+
+## 1. What changed, and why it needs silicon at all
+
+`src/asy_webserver_service.py`, two values:
+
+```python
+max_content_length: int = 2048,              # was 4096
+Request.max_body_length = max_content_length # was microdot's own 16384 default, never set by us
+```
+
+Vendored `ext/microdot.py` has **two** body limits and they were unbound. `Request.create()`
+(`:426`) buffers the body into one contiguous `bytes` **before** `handle_request` (`:1400`/`:1410`)
+ever calls `dispatch_request()`, which is what answers 413 (`:1443`). So every body between
+`max_content_length` and `max_body_length` was allocated in full and then thrown away. With
+`max_connections = 4` and a fresh buffer per request, that is **4 x 16384 = 65536 B** of
+simultaneous contiguous demand on a 264 KB device whose largest *legitimate* body is 1132 B.
+
+**No patch into microdot.** Both values are set from our own code; the vendoring rule is untouched.
+
+### Why the wire cannot show the whole change — read this before reporting anything
+
+The mock tier proves *"an oversized body is never READ"* directly, by counting the `readexactly()`
+sizes the server asks its reader for (`tests/test_asy_webserver_service.py` §F.2b). **That is not
+observable over a socket.** Old firmware and new both answer 413 to an oversized body; they differ
+only in *which sizes* count as oversized.
+
+So the bench mirrors prove the **cap value moved**. They do **not** prove the binding itself, and a
+green run must not be written up as if they did. **W2 is the only row that distinguishes this
+firmware from the previous one** — see its own note below.
+
+---
+
+## 2. Prerequisites
+
+1. **One image**, this branch's own tip: `scripts/build_firmware.py dev`, then flash. Never a
+   `wozi` build (CLAUDE.md: it "tests nothing at all" and has produced false bugs before).
+2. **Real WiFi and a reachable DUT** — this is a bench-tier run, not a flash-tier one. Every row
+   goes over the real network stack through `tests_hardware/http_client.py`.
+3. **Confirm the cap is what you think it is** before running anything, or W2's verdict is
+   meaningless: `GET /status` the board, then check the flashed source really carries 2048. No
+   device TOML overrides it (checked: `max_content_length` appears only in
+   `src/asy_webserver_service.py`), so the default is what every device gets.
+
+**No wear flags needed.** None of §1D's rows is `@pytest.mark.persistence_write`-marked and none
+should become so — see §5.
+
+---
+
+## 3. The run
+
+The five rows live in `tests_hardware/bench/test_network_resilience.py` and ride along with the
+ordinary bench suite. No separate invocation:
+
+```
+scripts/run_bench_hardware_suite.sh
+```
+
+Read the **deselected** count, not just the word "clean" — the wear gates deselect rather than
+skip, so "everything that ran, passed" is not "everything ran" (CLAUDE.md).
+
+To run just this section while iterating:
+
+```
+scripts/run_bench_hardware_suite.sh -k "body_cap or band_that_used_to_be or largest_body or mixed_stream or concurrent_mixed_body"
+```
+
+---
+
+## 4. The five rows, each with what would falsify it
+
+| # | Test | Asserts | A failure means |
+| --- | --- | --- | --- |
+| W1 | `test_put_body_cap_boundary_is_exact_over_the_normal_network` | 2047 -> 200, 2048 -> 200, 2049 -> 413 | An off-by-one at the cap. microdot compares with `<=`, so **2048 itself must be served**; this is not a tolerance to widen. |
+| W2 | `test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network` | 3072 -> 413, 4096 -> 413 | **Most likely the wrong image was flashed.** Under the old 4096 B cap both were accepted. Check the image before touching the code. |
+| W3 | `test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap` | 1132 B -> 200, and a maximal `NTP_Host` -> 200 + `"Invalid"` | The regression that actually matters when a cap is *lowered*: something legitimate is now refused. Do **not** respond by raising the cap without re-deriving the schema maximum. |
+| W4 | `test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits` | Interleaved sizes, each answered on its own merits | A 413 left the next request mis-parsed on a connection the server closed early — a real connection-handling defect, not a cap one. |
+| W5 | `test_concurrent_mixed_body_sizes_never_destabilise_the_real_server` | 24 threads, mixed sizes, against the real `max_connections = 4` | See the known-soft-spot note below before calling it a bug. |
+
+### W5's one known soft spot, stated in advance
+
+W5 asserts every worker got either 200 or 413. A worker may instead report an **exception string**:
+an oversized body means the server answers 413 and closes **without draining** the request, so the
+client can see `BrokenPipeError`/`ConnectionResetError` once the RP2040's small lwIP receive window
+fills. **That is correct server behaviour, not a failure** — but it fails the assertion as written.
+
+If a red W5 shows exception strings only on the oversized arm, the right fix is to relax that arm to
+"413 **or** a clean reset", not to change anything in `src/`. The sizes were chosen to stay under
+the ~5000 B that `test_put_oversized_body_is_rejected_with_413_over_the_normal_network` has already
+demonstrated is safe on this bench, so this is expected to stay latent — it is written down because
+a first run is exactly when a latent thing surfaces.
+
+---
+
+## 5. Why none of this spends a flash cycle, and the one place that was nearly wrong
+
+Every sized body pads an **unknown** sensor key (`HWTESTNoSuchSensor`). `PUT /sensors` ignores an
+unknown key silently — the existing `test_put_nonsense_field_values_are_marked_invalid_not_crashed`
+already pins that — so nothing validates, nothing persists and no `CFGMGR_*` logger fires. The
+body's *size* is the whole subject.
+
+**The near-miss, recorded because it is the kind of thing that repeats.** W3's second half sends a
+maximal `NTP_Host`. The first draft sent `"z" * 1024`, which is **valid** per `_VAL_NH`'s own
+`3..1024` bound — it would have been accepted and **written to flash**, an unmarked wear cycle in a
+test claiming to need none. It now sends **1025** characters: one over the field's bound, so the
+handler marks it `Invalid` and nothing is written, while the body is still large enough to prove
+the transport cap passes it. If a future edit "fixes" that 1025 back to 1024, it reintroduces a
+real flash write.
+
+If one of these ever genuinely needs an *accepted* config write to make its point, that is the
+moment to add `@pytest.mark.persistence_write` — not before.
+
+**This is machine-checked, not a promise.** `tests_scripts/test_persistence_write_marker_completeness.py`
+caught the `"z" * 1024` draft above on the first run and refused it, which is how the near-miss was
+found. W3 is now a named entry in its `_JUSTIFIED_UNMARKED` allowlist, carrying the reason it is
+exempt, and the helper `_put_sized` is a named entry in `_JUSTIFIED_UNREADABLE_BODIES` because its
+body is built by a call the guard's AST walk cannot read. Both lists are pinned by name, so a
+future test cannot inherit either exemption silently.
+
+---
+
+## 6. What to write down
+
+- The pass/fail of each of W1-W5, and for W5 specifically **whether any worker reported an exception
+  string rather than a status**, with the string.
+- `GET /status`'s `errcount` for `WEBSERVER` before and after. Every row asserts it stays empty: a
+  413 is raised inside vendored microdot before any handler or `pr` of ours is reached, so anything
+  appearing there is a genuine finding about our own code.
+- **Read `errcount` BEFORE any `ResetErrors`** (CLAUDE.md). These tests call `reset_all_error_logs()`
+  themselves, so the pre-flight read has to happen before the suite starts, not after.
+
+Then migrate: the results into `SPECIFICATION.md` Part I.6 as a `[HW]` line, the row statuses into
+`REAL_HARDWARE_TEST_QUEUE.md` §1D, and **delete this file**.

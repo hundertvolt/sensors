@@ -5,7 +5,9 @@ and slowloris/abrupt disconnects - DHCP-client flakiness is deliberately out of 
 
 from __future__ import annotations
 
+import json
 import socket
+import threading
 import time
 from typing import TYPE_CHECKING
 
@@ -722,6 +724,118 @@ def test_put_oversized_body_is_rejected_with_413_over_the_normal_network(dut_ip:
     assert res.status_code == 413, f"an oversized PUT body was not rejected with 413: {res.status_code} {res.body!r}"
     # Rejected entirely inside vendored, unmodified ext/microdot.py before this project's own route
     # handler (or its pr) is ever reached - nothing of ours could have logged anything here.
+    assert_module_error_log_empty(dut_ip, "WEBSERVER")
+
+
+# ---------------------------------------------------------------------------
+# The request-body cap on real hardware, over real WiFi. tests/test_asy_webserver_service.py's
+# F.2b pins "an oversized body is never READ" directly, by counting the readexactly() sizes the
+# server asks its reader for. Over the wire that is not observable, so these mirror it on the one
+# thing that is: WHO answered. 413 comes from vendored microdot before any handler runs; 200 can
+# only come from the handler, which means the body was buffered and dispatched. Full account of
+# why both caps had to move together: SPECIFICATION.md Part I.6.
+# ---------------------------------------------------------------------------
+
+_BODY_CAP = 2048  # asy_webserver_service.py's max_content_length, now bound to max_body_length too
+_OLD_CONTENT_CAP = 4096  # what it was before Part I.6; the 2048..4096 band is the discriminator
+_SCHEMA_MAX_BODY = 1132  # largest body any group's schema can produce, dominated by NTP_Host's 1024
+
+
+def _sized_sensors_body(total_bytes: int) -> dict[str, dict[str, str]]:
+    """A PUT /sensors body of exactly total_bytes, under a sensor key no driver registers.
+
+    Unknown keys are ignored silently, so nothing validates, persists or logs: the size is the
+    whole subject, and that is what keeps every test below outside the persistence_write gate."""
+    envelope = len(json.dumps({"HWTESTNoSuchSensor": {"Padding": ""}}).encode())
+    body = {"HWTESTNoSuchSensor": {"Padding": "x" * (total_bytes - envelope)}}
+    assert len(json.dumps(body).encode()) == total_bytes, "padding arithmetic drifted from json.dumps()"
+    return body
+
+
+def _put_sized(dut_ip: str, total_bytes: int, timeout_s: float = 10.0) -> int:
+    return http_client.fetch(dut_ip, 80, "PUT", "/sensors", _sized_sensors_body(total_bytes), timeout_s=timeout_s).status_code
+
+
+def test_put_body_cap_boundary_is_exact_over_the_normal_network(dut_ip: str) -> None:
+    # "none above" and "all above" in their sharpest form: one byte apart, on real hardware.
+    # microdot's Request.create() compares with <=, so the cap itself must still be served.
+    reset_all_error_logs(dut_ip)
+    assert _put_sized(dut_ip, _BODY_CAP) == 200, "a body of exactly max_content_length was rejected - the cap must be inclusive"
+    assert _put_sized(dut_ip, _BODY_CAP - 1) == 200, "a body one byte under the cap was rejected"
+    assert _put_sized(dut_ip, _BODY_CAP + 1) == 413, "a body one byte over the cap was not rejected with 413"
+    # A 413 is raised inside vendored microdot before this project's own handler or its pr is
+    # reached, so nothing of ours can have logged anything on either side of the boundary.
+    assert_module_error_log_empty(dut_ip, "WEBSERVER")
+
+
+def test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network(dut_ip: str) -> None:
+    # The one check that can tell this firmware from the previous one. Before Part I.6 the content
+    # cap was 4096 and max_body_length was microdot's own 16 KB, so a 3000 B body was buffered AND
+    # accepted; the whole 2048..16384 band was buffered before any 413. Now it is refused unread.
+    reset_all_error_logs(dut_ip)
+    midband = (_BODY_CAP + _OLD_CONTENT_CAP) // 2
+    assert _put_sized(dut_ip, midband) == 413, f"a {midband} B body was not rejected - the old 4096 B content cap looks still in place"
+    assert _put_sized(dut_ip, _OLD_CONTENT_CAP) == 413, "a body at the OLD content cap was accepted - this firmware predates Part I.6"
+    assert_module_error_log_empty(dut_ip, "WEBSERVER")
+
+
+def test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap(dut_ip: str) -> None:
+    # The direction that matters when a cap is LOWERED: the regression would be refusing something
+    # legitimate. 1132 B is the largest body a group's own schema can produce, so a real maximal
+    # config push must still be served - with 2048 B that is 1.8x headroom, asserted not assumed.
+    reset_all_error_logs(dut_ip)
+    assert _SCHEMA_MAX_BODY < _BODY_CAP, "the schema maximum no longer fits under the cap - Part I.6's premise has moved"
+    assert _put_sized(dut_ip, _SCHEMA_MAX_BODY) == 200, f"the largest schema-permitted body ({_SCHEMA_MAX_BODY} B) was rejected"
+    # And the real field that dominates that maximum, not just padding. ONE character over
+    # _VAL_NH's own 3..1024 bound, so the handler marks it Invalid and nothing is written: at
+    # exactly 1024 it is valid, and an accepted NTP_Host is a flash write this test must not own.
+    res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": "z" * 1025}, timeout_s=10.0)
+    assert res.status_code == 200, f"a body carrying a maximal NTP_Host was rejected at the TRANSPORT level, which is the cap's doing: {res.status_code} {res.body!r}"
+    assert res.json()["result"].get("NTP_Host") == "Invalid", f"a 1025-char NTP_Host was not marked Invalid, so it may have PERSISTED: {res.body!r}"
+
+
+def test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits(dut_ip: str) -> None:
+    # Interleaved, so a rejection cannot leave the next acceptance mis-parsed on a connection the
+    # server closed early, and an acceptance cannot let the next oversized one through.
+    reset_all_error_logs(dut_ip)
+    sizes = [128, _BODY_CAP * 2, 700, _BODY_CAP + 1, _BODY_CAP, 64, _OLD_CONTENT_CAP]
+    for size in sizes:
+        expected = 200 if size <= _BODY_CAP else 413
+        status = _put_sized(dut_ip, size)
+        assert status == expected, f"a {size} B body answered {status}, expected {expected}"
+    assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a mixed-size PUT stream"
+    assert_module_error_log_empty(dut_ip, "WEBSERVER")
+
+
+def test_concurrent_mixed_body_sizes_never_destabilise_the_real_server(dut_ip: str) -> None:
+    # The shape that motivated Part I.6: max_connections bodies can be in flight at once, so the
+    # simultaneous contiguous demand is that many buffers. With the caps bound it is bounded by
+    # connections x 2048; with the band open it was connections x 16384 on a 264 KB device.
+    reset_all_error_logs(dut_ip)
+    sizes = [512, _BODY_CAP * 2, _BODY_CAP, _OLD_CONTENT_CAP, 64, _BODY_CAP + 1, 900, _BODY_CAP * 2] * 3
+    results: dict[int, int | str] = {}
+    results_lock = threading.Lock()
+
+    def worker(index: int, size: int) -> None:
+        try:
+            status: int | str = _put_sized(dut_ip, size, timeout_s=30.0)
+        except Exception as exc:  # the worker's job is to report, never to raise into the harness
+            status = f"{type(exc).__name__}: {exc}"
+        with results_lock:
+            results[index] = status
+
+    threads = [threading.Thread(target=worker, args=(i, size)) for i, size in enumerate(sizes)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=60.0)
+        assert not t.is_alive(), "a worker thread never finished within 60s - possible real deadlock under concurrent mixed-body load"
+
+    wrong = {i: results[i] for i, size in enumerate(sizes) if results.get(i) != (200 if size <= _BODY_CAP else 413)}
+    assert not wrong, f"{len(wrong)} of {len(sizes)} concurrent mixed-size PUTs answered wrongly: {dict(list(wrong.items())[:8])}"
+    # Still healthy afterwards, and no MemoryError degraded anything - a body the server refused to
+    # buffer must cost it nothing, which is the whole point of binding the two caps.
+    assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=15.0).status_code == 200, "webserver unresponsive after concurrent mixed-body load"
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
 
 
