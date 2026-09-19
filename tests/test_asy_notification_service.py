@@ -40,10 +40,9 @@ def _tmp_cfg_dir() -> str:
 
 
 class FakeValue:
-    # A controllable NotificationSignal producer (SPECIFICATION.md Part C.14.2): get_data()
-    # returns self, dynamically exposing exactly one attribute - whatever field name the caller
-    # configures - fixed value, or raises once armed. Mirrors a real *_Reader.get_data()'s "always
-    # available, individual field can be None" contract.
+    # A controllable NotificationSignal producer (Part C.14.2): get_data() returns self, exposing exactly
+    # one attribute - whatever field the caller configures - at a fixed value, or raising once armed.
+    # Mirrors a real *_Reader.get_data()'s "always available, field can be None" contract.
     def __init__(self, value: "int | float | None" = None, field: str = "Value") -> None:
         self.value = value
         self.field = field
@@ -136,10 +135,9 @@ def make_signal(
 
 
 async def _one_cycle(_coordinator: NotificationCoordinator, task: "asyncio.Task[None]", wait: float = 0.1) -> None:
-    # monitor_loop() is an infinite loop; let it run through exactly one full iteration (including
-    # any triggered flashes' settle sleeps) by giving it real wall-clock time, then cancel. `wait`
-    # must cover every triggered signal's own 2*FlashDur settle sleep for a test to observe the
-    # full cycle, not just its first flash.
+    # monitor_loop() is an infinite loop; this lets it run one full iteration, triggered flashes' settle
+    # sleeps included, by giving it real wall-clock time, then cancels. `wait` must cover every triggered
+    # signal's own 2*FlashDur settle sleep to observe the full cycle, not just its first flash.
     await asyncio.sleep(wait)
     task.cancel()
     try:
@@ -272,10 +270,9 @@ def test_invalid_write_on_one_field_does_not_affect_others() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Exhaustive config field validation (write_config()'s Valid/Invalid contract) - every field in the
-# combined schema (the coordinator's own 8 static fields plus a registered signal's own field),
-# every valid boundary, single invalid values on both sides of every bound, wrong types, and
-# multi-field invalid/valid recombinations in one write.
+# Exhaustive config field validation (write_config()'s Valid/Invalid contract) - every field in the combined
+# schema, the coordinator's own 8 static ones plus a registered signal's, every valid boundary, single
+# invalid values either side of every bound, wrong types, and multi-field recombinations.
 # ---------------------------------------------------------------------------
 
 # name -> (min, max, "int"|"float") for the coordinator's own numeric-bounded static fields.
@@ -328,10 +325,9 @@ def test_each_int_float_field_boundary_values_accepted() -> None:
 
     async def scenario() -> None:
         for field, (lo, hi, _kind) in _INT_FLOAT_FIELD_BOUNDS.items():
-            # "Unchanged" (not just "Valid") also proves acceptance: write_config() only reaches its
-            # changed-vs-same-as-cache comparison after type_or_range_error() has already passed -
-            # a couple of these fields' own schema defaults happen to sit exactly at their own lo
-            # bound (OnM/OffM both default to 0), so writing lo there is a same-value "Unchanged".
+            # "Unchanged", not just "Valid", also proves acceptance: write_config() reaches its changed-vs-
+            # cache comparison only once type_or_range_error() has passed, and a couple of these fields
+            # default exactly to their lo bound, making a write of lo a same-value "Unchanged".
             assert await write_one(field, lo) in ("Valid", "Unchanged"), field
             assert await write_one(field, hi) in ("Valid", "Unchanged"), field
 
@@ -411,11 +407,9 @@ def test_unknown_field_key_reported_invalid_and_ignored() -> None:
 
 
 def test_registered_int_field_boundaries_and_coercion_enforced() -> None:
-    # A registered NotificationSignal's own field goes through the exact same combined-schema path
-    # as the coordinator's own static fields above - proven here with its real WarnCO2 bounds
-    # (0-3000), not just the coordinator's own 8 fields. An integral float is now accepted and
-    # coerced (SPECIFICATION.md Part A.8's int<->float coercion policy); a fractional one is still
-    # rejected, same treatment as out-of-range.
+    # A registered NotificationSignal's field goes through the same combined-schema path as the
+    # coordinator's static fields above, proven with its real WarnCO2 bounds (0-3000). An integral float is
+    # accepted and coerced (Part A.8); a fractional one is still rejected, like out-of-range.
     coordinator, _clock, _cb = make_coordinator()
     signal, _fv = make_signal("WarnCO2")
     coordinator.register(signal)
@@ -445,10 +439,9 @@ def test_registered_int_field_boundaries_and_coercion_enforced() -> None:
 
 
 def test_registered_float_field_boundaries_and_coercion_enforced() -> None:
-    # A second registered signal with a float-typed field (WarnHum's real production shape) -
-    # proves the combined schema isn't accidentally int-only. An int is always accepted and
-    # coerced for a float field (SPECIFICATION.md Part A.8) - a blanket accept, since every int is
-    # exactly representable as a float.
+    # A second registered signal with a float-typed field, WarnHum's real production shape, proving the
+    # combined schema is not accidentally int-only. An int is always accepted and coerced for a float field
+    # (Part A.8) - a blanket accept, every int being exactly representable as a float.
     coordinator, _clock, _cb = make_coordinator()
     fv = FakeValue(50.0, field="WarnHum")
     field_schema = (("WarnHum", "float", 65.0, 0.0, 100.0, None),)
@@ -1064,15 +1057,13 @@ def test_auto_on_false_blocks_all_checks_regardless_of_window() -> None:
 
 
 def test_override_active_blocks_checks_and_resumes_after_countdown() -> None:
-    # Directly inspects _auto_active - the one thing auto_led_override() actually controls - rather
-    # than routing through a full monitor_loop() cycle. auto_led_override() is _auto_active's sole
-    # owner/writer (monitor_loop() only ever reads it - see
-    # test_monitor_loop_restart_does_not_clobber_an_active_led_override below for the regression
-    # this ownership split fixes); monitor_loop()'s gate itself (`if auto_on and self._auto_active:`)
-    # is the exact same expression already proven to correctly gate on its first operand by
-    # test_auto_on_false_blocks_all_checks_regardless_of_window - both operands go through one plain
-    # `and`, so there is no asymmetric-bug scenario where one operand gates correctly and the other
-    # doesn't.
+    # Directly inspects _auto_active, the one thing auto_led_override() controls, rather than routing
+    # through a full monitor_loop() cycle. auto_led_override() is its sole writer, monitor_loop() only ever
+    # reading it - see the restart regression test below for what that ownership split fixes.
+    #
+    # monitor_loop()'s gate (`if auto_on and self._auto_active:`) is the same expression already proven to
+    # gate correctly on its first operand, and both go through one plain `and`, so there is no asymmetric-
+    # bug case where one operand gates correctly and the other does not.
     coordinator, _clock, _cb = make_coordinator()
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
@@ -1103,13 +1094,13 @@ def test_override_active_blocks_checks_and_resumes_after_countdown() -> None:
 
 
 def test_monitor_loop_restart_does_not_clobber_an_active_led_override() -> None:
-    # Regression test: monitor_loop() used to unconditionally set self._auto_active = True at its
-    # own start - harmless on a genuine first boot (already True from __init__), but wrong on a
-    # supervisor-driven restart (see test_monitor_loop_gives_up_after_too_many_consecutive_config_read_failures
-    # for how that restart happens): it would silently clobber an override auto_led_override() had
-    # legitimately set active in the meantime, since the two tasks are independently restartable by
-    # system_service.py's start_and_check_tasks() but shared this one unlocked flag. Fixed by making
-    # auto_led_override() the flag's sole writer; monitor_loop() only ever reads it now.
+    # Regression test: monitor_loop() used to unconditionally set self._auto_active = True at its start -
+    # harmless on a genuine first boot, already True from __init__, but wrong on a supervisor-driven
+    # restart.
+    #
+    # It would silently clobber an override auto_led_override() had legitimately set active meanwhile, the
+    # two tasks being independently restartable by start_and_check_tasks() while sharing one unlocked flag.
+    # Fixed by making auto_led_override() the flag's sole writer.
     coordinator, _clock, _cb = make_coordinator()
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
@@ -1141,11 +1132,12 @@ def test_monitor_loop_restart_does_not_clobber_an_active_led_override() -> None:
 
 
 def test_set_override_led_above_the_max_clamps_and_reads_back_clamped() -> None:
-    # get_override_led()/set_override_led() are the coordinator's own public override API (the REST
-    # layer's only route to it) - this drives the clamp through both of them, rather than through the
-    # underlying LockedCounter, whose own [0, max_val] clamping is already covered in
-    # test_base_classes.py. _MAX_OVERRIDE_TIME is const()-folded and not importable (see
-    # SPECIFICATION.md Part E.5.1), so 3600 is hardcoded here, matching this file's other const mirrors.
+    # get_override_led()/set_override_led() are the coordinator's public override API and the REST layer's
+    # only route to it - this drives the clamp through both, rather than through the underlying
+    # LockedCounter, whose clamping test_base_classes.py covers.
+    #
+    # _MAX_OVERRIDE_TIME is const()-folded and not importable (Part E.5.1), so 3600 is hardcoded, matching
+    # this file's other const mirrors.
     coordinator, _clock, _cb = make_coordinator()
 
     async def scenario() -> "tuple[int, int, int]":
@@ -1188,10 +1180,9 @@ def test_malformed_own_config_read_degrades_gracefully_and_keeps_retrying() -> N
 
 
 def test_next_sleep_secs_subtracts_elapsed_time() -> None:
-    # Direct unit test of the rem_interv arithmetic monitor_loop() uses, isolated from a full
-    # real-time cycle: Interv's own schema floor is 60.0s, which makes observing this end-to-end
-    # (waiting for elapsed time to actually consume a full Interv) impractically slow for a unit
-    # test - this exercises the exact same clamp/subtraction expression directly instead.
+    # Direct unit test of the rem_interv arithmetic monitor_loop() uses, isolated from a full real-time
+    # cycle: Interv's schema floor is 60.0s, which makes observing this end to end impractically slow for a
+    # unit test, so this exercises the same clamp and subtraction expression directly.
     import time
 
     coordinator, _clock, _cb = make_coordinator()
@@ -1302,11 +1293,9 @@ def test_monitor_loop_gives_up_after_too_many_consecutive_config_read_failures()
 
 
 class _OverflowingTime:
-    # MicroPython's real `time` module is a read-only builtin (assigning time.mktime = ... raises
-    # AttributeError - confirmed directly, see test_system_service.py's own equivalent class), so
-    # this replaces asy_notification_service's own module-level `time` name instead: a plain,
-    # mutable module global, unlike the builtin module it points to. Only _now()'s own two calls run
-    # while it's installed, so monitor_loop()'s ticks_ms()/ticks_diff() never see it.
+    # MicroPython's real `time` module is a read-only builtin, so this replaces this module's own module-
+    # level `time` name instead: a plain mutable global, unlike the builtin it points to. Only _now()'s two
+    # calls run while it is installed, so monitor_loop()'s ticks_ms()/ticks_diff() never see it.
     def gmtime(self) -> "tuple[int, ...]":
         import time as _real_time
 
@@ -1317,10 +1306,9 @@ class _OverflowingTime:
 
 
 class _RaisingGmtime:
-    # Same monkeypatch technique as _OverflowingTime above, but faulting the other call inside the
-    # same try block (time.gmtime() itself) instead of mktime() - both share one
-    # `except (OverflowError, OSError)`, so this proves the guard isn't only reachable from the
-    # mktime() half of that line.
+    # Same monkeypatch technique as _OverflowingTime above, faulting the other call inside the same try
+    # block - time.gmtime() itself rather than mktime(). Both share one `except (OverflowError, OSError)`,
+    # so this proves the guard is not only reachable from the mktime() half of that line.
     def gmtime(self) -> "NoReturn":
         raise OSError("RTC read failed")
 
