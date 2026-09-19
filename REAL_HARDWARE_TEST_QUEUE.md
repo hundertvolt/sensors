@@ -420,6 +420,23 @@ were put to the owner as open decisions and the answer was "record for the real-
 | F9 | **The pre-flight `errcount` carried `FRAM: E31, W73`.** `W73` is a real FRAM-manager warning; **`errno=31` is `asy_isl29125_driver.py`'s "Status read failed"**, a foreign code under FRAM's own logger — CLAUDE.md's chunk-contamination hazard from an earlier isolated-driver script, not a FRAM fault. Recorded before this sitting's own scripts overwrote it, which they did (FRAM went 2 -> 0). | RECORDED |
 | F10 | **W5's assertion cannot be satisfied by this server, and the handover's prescribed fix would not have fixed it.** Measured 2026-09-19: 24 concurrent PUTs reset ~25% of clients **regardless of body size** — an all-64-byte control resets at the same rate as the mixed one, and resets begin **at** `max_connections = 4` (2 -> 0%, 4 -> 25%, 8 -> 12%, 24 -> 25%). So W5 is measuring the connection ceiling, not the body cap, and relaxing only its oversized arm (the handover's §4 note) would leave it failing on the undersized one. Nothing in `src/` is implicated: the server stayed responsive, did not reboot under load, and `WEBSERVER`'s error log stayed empty throughout. **Three options, owner's call**: drop W5's concurrency to something the server can actually answer (<= 2 by measurement, not 4), accept a clean reset as valid on *any* arm, or have the client retry on reset. Flagged rather than edited per CLAUDE.md. | OPEN — needs a decision, not bench time |
 
+
+**F10's raw data, 2026-09-19** — kept so the spread is inspectable without spending bench time.
+Sizes are `[512, 4096, 2048, 4096, 64, 2049, 900, 4096] * 3`; **bold** indices are bodies *under*
+the cap, which should have answered 200:
+
+| run | resets | indices (size) |
+| --- | --- | --- |
+| bench suite | 6/24 | **4 (64)**, 9 (4096), 11 (4096), **14 (900)**, 15 (4096), 17 (4096) |
+| repeat 1 | 4/24 | 3 (4096), **6 (900)**, **12 (64)**, 23 (4096) |
+| repeat 2 | 4/24 | **4 (64)**, **8 (512)**, 19 (4096), 23 (4096) |
+| repeat 3 | 6/24 | **4 (64)**, **8 (512)**, 9 (4096), **10 (2048)**, 15 (4096), **18 (2048)** |
+
+**10 undersized against 10 oversized across the four runs**, and the undersized set includes
+2048 B — exactly the cap, which W1 proves is served when it is the only request in flight.
+Controls: all-bodies-under-cap 4/24, 6/24, 5/24, 6/24; all-bodies-64-B 6/24, 5/24. Same rate,
+no oversized body present at all.
+
 ---
 
 ## 3. Coverage gaps that need a bench session to close
@@ -492,6 +509,22 @@ something:
 - **"After the starter list" and "after boot" are not the same position, and the gap is seconds.**
   Judge measure B by `after_starter_loop_end`; `after_starter_list` is taken seconds into the run
   phase, where the twin says most of B's gain is already gone on both arms (§2A F6).
+- **A DUT that has gone unreachable is usually your own `mpremote` call, not a fault — and every
+  serial check you make to diagnose it re-causes it.** `exec` and `run` interrupt the running
+  firmware into the REPL, so `main.py` stops and the board leaves the network; `run_isolated()`'s
+  armed `WDT(timeout=8000)` then resets it ~8 s after the command ends. Cost real time twice
+  (2026-09-18 and 2026-09-19), each time as a loop: curl fails → `exec` to look at the config →
+  the look itself strands `main.py` again → curl still fails. **The config was intact every time.**
+  Diagnose it *passively*: `hard_reset()`, then `Board.tail_log()` with no `exec`/`run` at all, and
+  only then curl. Note `tail_log()` replays buffered history, so several identical
+  "WLAN connection established" blocks are not a reboot loop — confirm that by polling `SysUptime`
+  and watching it advance, which is the cheap discriminator.
+- **A bench-tier test that opens more concurrent connections than `max_connections = 4` cannot
+  expect a definitive status from all of them.** Measured 2026-09-19 with tiny bodies, so nothing
+  to do with body size: concurrency 2 → 0% reset, 4 → 25%, 8 → 12%, 24 → 25%. Resets start **at**
+  the ceiling, not beyond it. Before calling such a reset a defect, run the all-small-bodies control
+  — it is two minutes and it separates "the feature under test" from "the connection ceiling"
+  (§2A F10).
 - **Don't chase `asy_fram_manager.py`/`asy_fram_driver.py` internals** from anything found here —
   heavily audited, and any real change there needs its own scoped review (SPECIFICATION.md C.3.1).
   **§1A is the one carve-out**: those two files plus `asy_spi_driver.py` are what measure A rewrote
