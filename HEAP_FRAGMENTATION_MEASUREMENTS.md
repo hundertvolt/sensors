@@ -2736,7 +2736,7 @@ Running the full flash suite on **both** arms gives direct attribution, which no
 | test | BEFORE | AFTER | attribution |
 |---|---|---|---|
 | `test_real_gc_heap_headroom_survives_a_full_system_build` | FAIL 20,592 | FAIL 28,864 | improved 40 %, not fixed |
-| `test_the_link_keeps_transferring_while_every_other_subsystem_is_busy` | **FAIL** | **PASS** | **A fixed this** |
+| `test_the_link_keeps_transferring_while_every_other_subsystem_is_busy` | **FAIL** | **PASS** | ~~A fixed this~~ — **overturned, see §7H.5**: the test is marginal around its own threshold and both passes and fails on the same image |
 | `test_fram_cs_pin_hijack_fault_injection_and_recovery` | PASS | **FAIL** | **A broke this** |
 | `test_fram_hard_reset_race_during_write_and_recovery` | PASS | **FAIL** | **A broke this** |
 
@@ -3390,6 +3390,165 @@ they fail for different reasons and the difference is the diagnosis:
 A failure of 2 while 1 passes says the heap was already colonised before the boot ran, and the
 message says so. Four more parser tests pin the delta, including that a block already allocated in
 the `before` map is never counted however high it sits.
+
+---
+
+## 7H. The 2026-09-19 sitting — P2 settled, the new checks' first silicon run (COMPLETE)
+
+**Provenance: [HW] throughout.** Real `dev` bench board, owner's go-ahead in the running session.
+This sitting closed every item §7F.6 left owed, ran §7G's replacement checks for the first time,
+and overturned one claim §7D.5 made.
+
+Arms built by §7F.1's isolation: BEFORE = tip with `src/system_service.py` and `buildgen/codegen.py`
+at `da9bcf1`, **regenerated** (verified 0 generated + 0 `system_service` collects); AFTER = tip
+(verified 11 + 2). `md5sum`s differ. §7F.5's note about the stale `build/generated_src/` was heeded —
+the count was taken off a fresh `generate_device()` call, not that path.
+
+### 7H.1 B1's owed figure, and it is larger than the bound implied
+
+`test_memory_stress.py` prints every `HEAP ` line on a passing run since 2026-09-18, so
+`run_flash_hardware_suite.sh -s` surfaced it with no extra invocation:
+
+| arm | in-suite `after_build_system` | verdict |
+|---|---|---|
+| BEFORE (A only) | `free=104,368 alloc=88,464 largest_block=27,968 retained=0` | FAIL (old 80,000 floor) |
+| AFTER (A + B) | `free=104,272 alloc=88,560 largest_block=91,008 retained=0` | PASS |
+
+**91,008 B against 27,968 B — 3.25x.** §7F could only say ">= 80,000"; the real figure clears the
+retired floor by 1.14x and §7G's replacement `largest_free_run >= 32,768` by 2.78x. `retained=0` on
+every line of both arms, so §7F.8's pinning artefact touched none of this.
+
+### 7H.2 P2 CONFIRMED — the reading it always turned on
+
+B6, both arms, taken immediately after that arm's suite without resetting. The position is
+genuinely aged, confirmed by `after_build_system` matching the in-suite value (26,736 / 89,792)
+rather than the ~93,000 a fresh heap returns.
+
+| reading (free / largest / pct) | BEFORE (A only) | AFTER (A + B) |
+|---|---|---|
+| `after_build_system` | 103,168 / 26,736 / **25%** | 103,104 / 89,792 / **87%** |
+| `after_start_timers` | 100,608 / 27,024 / 26% | 100,544 / 89,792 / 89% |
+| **`after_starter_loop_end`** | 93,056 / **5,024 / 5%** | 93,024 / **75,104 / 80%** |
+| `after_starter_list` (4 s settle) | 92,160 / 5,664 / 6% | 92,128 / 11,952 / 12% |
+| `BOOT build_system_ms` | 679 | 1,404 |
+| `BOOT starter_loop_ms` | 2,409 | 2,964 |
+
+§7F.9's prediction was A + B **20-59%** of free at the loop end against A-only's **5-11%**.
+Measured: A-only **5%**, inside its band; A + B **80%**, above the twin's own upper bound. The
+falsifier — AFTER no better than BEFORE at the same position — is not close. **P2 is confirmed, and
+the separation on silicon is wider than the twin's.**
+
+**F6's run-phase decay is confirmed on silicon as well**: A + B gives back 80% -> 12% across the 4 s
+settle; A-only moves 5% -> 6%, having nothing to lose. So both halves of §7F.9's finding hold —
+the gain is real and large where the boot lists end, and most of it is returned in the run phase.
+
+### 7H.3 B4 — the threshold does not merely add to B, it is what makes B's gain survive
+
+AFTER arm, `gc.threshold(32768)` set *before* the run, against the reactive-default run above:
+
+| reading | AFTER, reactive default | AFTER, threshold-first |
+|---|---|---|
+| `after_build_system` | 89,792 / 87% | 94,304 / 91% |
+| `after_starter_loop_end` | 75,104 / 80% | 79,680 / 85% |
+| `after_starter_list` (4 s settle) | **11,952 / 12%** | **74,896 / 80%** |
+| `BOOT build_system_ms` | 1,404 | 1,033 |
+| `BOOT starter_loop_ms` | 2,964 | 1,720 |
+
+Same image, same board, one invocation apart: **with the firmware's own threshold set from the
+start, the run-phase decay does not occur** — 80% is held where the reactive default falls to 12%.
+It is also faster, by 371 ms of `build_system()` and 1,244 ms of starter loop.
+
+This is the same direction the BEFORE arm showed on 2026-09-18 (threshold-first 75,536 / 79%
+against reactive 66,144 / 70%), now much larger because there is more gain to preserve. It bears
+directly on §1.5 and §7D.8: on this evidence the threshold is not defence in depth layered on top of
+B — **it is the thing that carries B's placement gain into the run phase.**
+
+**Stated as one reading per condition, not a repeated measurement.** Two arms x one invocation, and
+the settle-point figure is the one that moves most. Worth repeating before anything is concluded
+from it, which is why it is reported and not asserted anywhere.
+
+### 7H.4 §7G's replacement checks, first silicon run — and the top of the heap is empty
+
+The full flash suite re-run on the AFTER arm with §7G's instrument: **36 passed, 3 skipped,
+12 deselected, zero failures.**
+
+```
+MAP after_build_system: used=89040 free=103792 largest_free_run=90688
+    free_above_top_survivor=90688 gaps>=4K=1 gaps>=16K=1
+    deciles=[1163, 1177, 1177, 1079, 806, 163, 0, 0, 0, 0]
+```
+
+| §7G.2 check | threshold | measured | margin |
+|---|---|---|---|
+| `used <= 100,000` | 100,000 | **89,040** | 1.12x |
+| `largest_free_run >= 32,768` | 32,768 | **90,688** | 2.77x |
+| `free_above_top_survivor >= 16,384` | 16,384 | **90,688** | **5.53x** |
+| probe vs map cross-check | delta <= 64 B | 90,688 vs 90,688 | **delta 0** |
+
+§7G.4 said `free_above_top_survivor` "has never been measured on real hardware, on any image" and
+that a failure would be a finding either way. It passes, with 5.5x margin. **The decile histogram
+is the stronger statement: the top four deciles hold zero allocated blocks**, and the fifth holds
+163. That is the owner's "as few survivors in the long heap" satisfied outright on the shipped
+image, not approached.
+
+The probe and the map agreeing **exactly** also retires any doubt that §7F.8's artefact is at work
+in these readings.
+
+### 7H.5 A claim §7D.5 made is overturned
+
+§7D.5 recorded `test_the_link_keeps_transferring_while_every_other_subsystem_is_busy` as
+**"A fixed this"**, on one observation per arm. Four further runs say otherwise:
+
+| run | image | result |
+|---|---|---|
+| S1 2026-09-18 | base (A reverted) | FAIL — heap grew 3,584 B |
+| S1 2026-09-18 | A | PASS |
+| S1 2026-09-19 | A only | **FAIL** — heap grew 4,192 B |
+| S1 2026-09-19 | A + B | **FAIL** — heap grew 4,752 B |
+| S2 2026-09-19 | A + B | **PASS** |
+| S1 2026-09-19 (B7 re-run) | A + B | **PASS** |
+
+The same image both passes and fails it, and the A-only arm now fails where A passed before. **The
+test is marginal around its own threshold, not a stable signal**, so the 2026-09-18 attribution was
+drawn from a single observation that did not reproduce. §7D.5's row is corrected in place. Nothing
+else in §7D depends on it; A's layout result (§7D.3) is a different measurement entirely.
+
+### 7H.6 Everything else this sitting closed
+
+- **S2, the bench tier: `93 passed, 4 skipped, 27 deselected` — zero failures**, the first fully
+  clean bench run on any image. Closes T.2's bench tier on A + B, C1's tier-4 bus-hazard run for the
+  I2C shared scratch buffer, and R9's ISL29125 shadow-divergence check.
+- **R11 / C1 (I2C shared scratch buffer)**: tier 3 and tier 4 both green across two full suites.
+  `test_isl29125_same_device_read_write_concurrency` and
+  `test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton` pass.
+- **R14** (`test_watchdog_starvation_triggers_a_real_hardware_reset`, the new banner assertion that
+  could turn a green test red): **PASS** on silicon, first run.
+- **R8's calibrate half** (`test_isl29125_calibrate_command_push_over_real_rest`): **PASS**. The
+  reboot half stays D1-blocked.
+- **F2**: both FRAM injectors pass again on both arms, and neither reported the
+  "nothing was injected" guard.
+- **P5, `errcount` after the sitting**: FRAM 2 -> 0, SGP40 3 -> 10 (`W10` x4, `W13` x5, `W11`),
+  WIFI 5 -> 9 (`W6` x9). **No errno 90/91/92/93/99/100, no wrnno 81/82/84** — the FRAM byte-level
+  guards stayed clean across two full suites and a bench tier. FRAM's own pre-flight entries going
+  to 0 is the documented chunk-overwrite hazard, observed again.
+
+### 7H.7 Three observations that are not results
+
+- **The pre-flight `errcount` carried `FRAM: E31, W73`.** `W73` is a real FRAM-manager warning
+  ("Invalid data in block 1, overwriting with block 0 data"), but **`errno=31` is
+  `asy_isl29125_driver.py`'s "Status read failed"** — a foreign code under FRAM's own logger. That
+  is CLAUDE.md's chunk-contamination hazard, from an earlier isolated-driver script, not a FRAM
+  fault. Recorded because the rule says to read these before they are overwritten, and they were
+  overwritten by this sitting's own scripts.
+- **A malformed file exists on the board's flash**:
+  `config_HWTEST_ISL29125.cfgconfig_ISL29125.cfg` — two config filenames concatenated. Some test
+  path builds a filename by concatenation without a separator. Harmless where it sits (nothing
+  reads it), but it is a real defect in whatever wrote it. Not chased; queued.
+- **R12 (per-device hostname) cannot be checked on this board as it stands.** `GET /networking`
+  reports `SensorNode` while `devices/dev.toml` says `SensorStationDev` — which is R12's own
+  documented "the persisted value wins on a board that already has a config file" case, not a
+  failure. Confirming it needs a board with no `config_WIFI.cfg`, i.e. a deliberate config wipe,
+  which is a flash write and outside D1.
 
 ---
 
