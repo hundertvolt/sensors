@@ -2,22 +2,9 @@
 comment-tag parsers (SPECIFICATION.md Part L.5's build-tooling quality bar - the same bar
 test_buildgen_requires_tag.py already covers for `@requires`, mirrored here for the newer family)."""
 
-# Matrix dimensions:
-#   D1 field name     plain, CamelCase, digit-bearing, underscored (single-char "r"/"g"/"b" too)
-#   D2 key=value      quoted string, bareword, boolean (true/false), special:<value>="<meaning>"
-#                     (repeated), unknown key rejected, missing required key(s) rejected
-#   D3 format         spacing around "#"/the tag word/"="; "##" section style; quoted vs bareword;
-#                     dropped-piece direction (trailing junk, a dropped value, a duplicate key)
-#   D4 location       top of file, after a docstring, among imports, trailing inline, last line
-#                     with no trailing newline, inside a class/function body (rejected)
-#   D5 multiplicity   none, one, several fields, duplicate (section, submitGroup, field) rejected,
-#                     a valid tag does not excuse a near-miss beside it
-#   D6 web-group      required keys, submit=/submitLabel=, duplicate (section, submitGroup)
-#                     rejected, the same dropped-piece grammar failures as @web
-#   D7 near-miss      "@" dropped, field name dropped (web only), tag name typo'd, wrong-family
-#                     cross-contamination avoided, the edit-distance boundary just outside each
-#                     family's own tolerance (which must stay silent)
-#   D8 real drivers   every src/ file this session tagged parses to the exact expected tags
+# SPECIFICATION.md Part L.5 names this file's own matrix dimensions, from field name and
+# key=value shape through location, multiplicity, the web-group family's extra keys, near-miss
+# handling, and the real-driver pass over every tagged src/ file.
 
 from pathlib import Path
 
@@ -397,10 +384,9 @@ def test_parse_web_group_tags_rejects_near_misses(tmp_path: Path, source: str, m
 
 
 def test_parse_web_tags_edit_distance_just_outside_tolerance_stays_silent(tmp_path: Path) -> None:
-    # "web" is <=4 letters, so _max_typo_distance() only tolerates one typo. "wax" is edit distance
-    # 2 from "web" (two substitutions) - structured like a real payload, but too far to be a typo of
-    # this family's name, so it must be left alone entirely (mirrors
-    # test_parse_requires_tags_leaves_non_tags_alone's own "@requi" edit-distance-3 case).
+    # "web" is <=4 letters, so _max_typo_distance() tolerates one typo, and "wax" is distance 2 -
+    # payload-shaped but too far to be a typo of this family's name, so it must be left alone
+    # entirely, like the "@requi" distance-3 case in the requires-tag file.
     assert _parse(tmp_path, '# @wax X section=sensors submitGroup=self label="L"\n') == ()
 
 

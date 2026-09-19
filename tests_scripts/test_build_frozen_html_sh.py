@@ -6,12 +6,9 @@ import os
 import subprocess
 from pathlib import Path
 
-# Assertion technique used throughout this file: freezefs (ext/freezefs/archive.py) writes each
-# archived file's mount path as a plain literal string in the generated .py, e.g.
-# "/sub/inside.txt.gz" (every file gets gzipped first by this script, so every archived path ends
-# in ".gz"). Grepping the generated file's text for those literal strings is a real, direct check
-# of what got archived - no need to run the frozen module under MicroPython to prove the merge
-# worked.
+# The assertion technique throughout: freezefs writes each archived file's mount path as a plain
+# literal in the generated .py, and this script gzips first, so every path ends in ".gz". Grepping
+# the generated text for those literals checks what was archived without running it.
 
 
 def _run_build_frozen_html(repo_root: Path, output_path: Path, html_src_dirs: str | None = None, *, check: bool = True) -> subprocess.CompletedProcess[str]:

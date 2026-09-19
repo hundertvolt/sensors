@@ -5,10 +5,9 @@ end to end by scripts/run_digital_twin_ci.sh (SPECIFICATION.md Part E.9), not re
 from types import ModuleType
 
 # ---------------------------------------------------------------------------
-# _parse_mem_samples() - the log-line-scraping half of the "gc.mem_free() has no other source"
-# exception (SPECIFICATION.md Part I.4(e)) - reads digital_twin/run_generic_integration.py's own
-# _mem_sampler() output ("MEM_SAMPLE <time.time()> <gc.mem_free()>") back out of the twin's
-# captured stdout, the same pattern _would_have_triggered_count() already uses for that value.
+# _parse_mem_samples(): the log-scraping half of the "gc.mem_free() has no other source"
+# exception (Part I.4(e)), reading _mem_sampler()'s MEM_SAMPLE lines back out of the twin's
+# captured stdout - the pattern _would_have_triggered_count() already uses.
 # ---------------------------------------------------------------------------
 
 
@@ -42,11 +41,9 @@ def test_parse_mem_samples_skips_a_malformed_line_instead_of_raising(ci_suite: M
 
 
 def test_mem_trend_flags_a_genuine_steady_decline(ci_suite: ModuleType) -> None:
-    # 20 samples (quarter_size=5), a steady decline of 15000 bytes/sample - early_avg (first
-    # quarter) vs. late_avg (last quarter) trend (225000) is comfortably past the tolerance the
-    # decline's own within-quarter spread produces (_MEM_TREND_TOLERANCE_SD_MULTIPLIER * ~21213 ~=
-    # 63639) - a genuine leak's own magnitude dwarfs even the noise its own steady progression adds
-    # to each quarter's internal spread.
+    # 20 samples at quarter_size 5, declining 15000 bytes a sample: the early-to-late trend of
+    # 225000 is far past the ~63639 tolerance that decline's own within-quarter spread produces.
+    # A genuine leak dwarfs even the noise its own progression adds to each quarter.
     samples = [200_000 - 15_000 * i for i in range(20)]
     result = ci_suite._mem_trend(samples)
     assert result is not None
@@ -81,10 +78,9 @@ def test_mem_trend_returns_none_below_four_samples(ci_suite: ModuleType) -> None
 
 
 def test_mem_trend_tolerance_is_zero_for_a_perfectly_noiseless_flat_profile(ci_suite: ModuleType) -> None:
-    # A degenerate edge case worth pinning directly: zero within-quarter spread means zero
-    # tolerance, not a historical floor - a real gc.mem_free() trace is never this quiet, but the
-    # formula itself (_MEM_TREND_TOLERANCE_SD_MULTIPLIER * max(pstdev(early), pstdev(late))) must
-    # degrade to exactly this at the limit.
+    # A degenerate edge worth pinning: zero within-quarter spread means zero tolerance, not a
+    # historical floor. No real trace is this quiet, but the formula must degrade to exactly
+    # this at the limit.
     samples = [123_456] * 100
     result = ci_suite._mem_trend(samples)
     assert result is not None
@@ -95,12 +91,9 @@ def test_mem_trend_tolerance_is_zero_for_a_perfectly_noiseless_flat_profile(ci_s
 
 
 def test_mem_trend_tolerance_scales_with_each_attempts_own_observed_noise(ci_suite: ModuleType) -> None:
-    # The core property this design exists for (2026-09-14 CI investigation - see
-    # _MEM_TREND_TOLERANCE_SD_MULTIPLIER's own module-level comment): the SAME early-vs-late
-    # decline (200 bytes) gets a tighter tolerance from a quiet quarter than from a noisy one, since
-    # each attempt's own tolerance now tracks its own real noise level instead of a fixed historical
-    # constant (scaled or not) that real, heavily autocorrelated gc.mem_free() sampling never
-    # actually matched.
+    # The core property the design exists for: the SAME 200-byte decline gets a tighter
+    # tolerance from a quiet quarter than a noisy one, each attempt tracking its own noise level
+    # rather than a fixed constant real autocorrelated sampling never matched.
     quiet = [100_010, 99_990, 100_010, 99_990, 99_810, 99_790, 99_810, 99_790]
     noisy = [100_500, 99_500, 100_500, 99_500, 99_600, 100_400, 99_600, 100_400]
     quiet_result = ci_suite._mem_trend(quiet)

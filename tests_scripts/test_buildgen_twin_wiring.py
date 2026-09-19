@@ -49,12 +49,9 @@ def digital_twin_machine(repo_root: Path) -> Any:
 def test_configure_i2c_wiring_loads_the_real_generated_plan(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, repo_root: Path, src_dir: Path, digital_twin_machine: Any, device: str,
 ) -> None:
-    # digital_twin/machine.py's configure_i2c_wiring("wozi"|"dev") reads
-    # build/generated_src/sensortask_<profile>_wiring_plan.json (relative to cwd, matching every
-    # other digital-twin consumer of that file - scripts/_generate_sensortask_modules.py writes it,
-    # scripts/test.sh runs that first). Proves the load-and-apply mechanism end to end against a
-    # throwaway build/generated_src/ under a tmp cwd - self-contained, not dependent on that script
-    # having already run - rather than relying on a hand-maintained literal that could silently drift.
+    # configure_i2c_wiring() reads the generated wiring plan relative to cwd, as every other twin
+    # consumer of that file does. This proves the load-and-apply mechanism end to end against a
+    # throwaway tree under a tmp cwd, so it needs no prior run and no hand-kept literal.
     model = build_model(repo_root / "devices" / f"{device}.toml", src_dir)
     expected = compute_twin_wiring(model)
     generated_dir = tmp_path / "build" / "generated_src"
@@ -103,26 +100,20 @@ def test_fixed_addresses_table_matches_the_real_drivers_own_hardware_defaults() 
 
 
 def test_twin_machine_has_no_chip_fake_for_an_unknown_driver_fails_loud(digital_twin_machine: Any) -> None:
-    # digital_twin/machine.py's own _build_i2c_chip() analogue of
-    # test_bus_attached_driver_with_no_address_rule_fails_loud_not_silently_miswired below - a
-    # wiring-plan attachment naming a driver the twin has no chip fake for must fail loud, not
-    # silently produce a bus with a missing device. Driven directly (no real device TOML can name a
-    # driver machine.py doesn't know, since compute_twin_wiring() and _build_i2c_chip() are always
-    # kept in sync by hand for the same fixed driver set today).
+    # _build_i2c_chip()'s analogue of the no-address-rule test below: an attachment naming a
+    # driver the twin has no fake for must fail loud, not produce a bus with a missing device.
+    # Driven directly, since the two sides are hand-kept in sync for one fixed driver set.
     with pytest.raises(ValueError, match=r"digital twin has no I2C chip fake for driver 'not_a_real_driver'"):
         digital_twin_machine._build_i2c_chip({"driver": "not_a_real_driver"})
 
 
 def test_bus_attached_driver_with_no_address_rule_fails_loud_not_silently_miswired(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Guards compute_twin_wiring()'s own defensive fallback: a new driver added to
-    # buildspec.BUS_ATTACHED_DRIVERS without a matching FIXED_ADDRESSES/ADDRESS_CAPABLE_DRIVERS
-    # entry here must fail loud, never silently mis-wire the twin. Unreachable via any real device
-    # TOML today - buildspec.py's own three driver-classification sets already partition
-    # BUS_ATTACHED_DRIVERS exhaustively (FIXED_ADDRESS_DRIVERS's own definition is exactly
-    # BUS_ATTACHED_DRIVERS minus the other two) - so this constructs the gap directly via
-    # monkeypatch, same technique test_buildgen_validate.py's own
-    # test_driver_resolvable_but_missing_buildspec_entry_reports_the_real_cause uses for its
-    # otherwise-unreachable branch.
+    # Guards compute_twin_wiring()'s defensive fallback: a driver added to BUS_ATTACHED_DRIVERS
+    # without a matching address rule here must fail loud, never silently mis-wire the twin.
+
+    # Unreachable through any real TOML, buildspec.py's three classification sets partitioning
+    # BUS_ATTACHED_DRIVERS exhaustively, so the gap is constructed by monkeypatch - the same
+    # technique the missing-buildspec-entry test uses for its own unreachable branch.
     monkeypatch.setattr(twin_wiring, "BUS_ATTACHED_DRIVERS", frozenset({"fakebus"}))
     spec = InstanceSpec(driver="fakebus", name_ext="", fields={"bus": "i2c0"}, wiring={}, order_index=0)
     model = DeviceModel(device="test", path=Path("test.toml"), doc={}, instances={("fakebus", ""): spec})

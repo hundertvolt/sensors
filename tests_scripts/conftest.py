@@ -12,10 +12,9 @@ from _script_loader import load_script_module
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# buildgen/ (SPECIFICATION.md Part L.4) is a real top-level package, unlike scripts/
-# (loaded per-file via importlib.util elsewhere in this suite) - pytest's own rootless import mode
-# only ever puts tests_scripts/ itself on sys.path, never the repo root, so its tests need this to
-# resolve `import buildgen`.
+# buildgen/ is a real top-level package, unlike scripts/, which this suite loads per file through
+# importlib. pytest's rootless import mode puts only tests_scripts/ on sys.path, never the repo
+# root, so `import buildgen` needs this.
 sys.path.insert(0, str(REPO_ROOT))
 
 

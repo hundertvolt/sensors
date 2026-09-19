@@ -2,14 +2,10 @@
 `_FIELDS` tuple `make_dict()` keys its output by (SPECIFICATION.md Part C.6): the two are written
 out separately by hand, and until this test nothing checked that they still say the same thing."""
 
-# Seven modules carry this duplication, each with the same "kept in sync with <X>'s own fields
-# above" comment and no enforcement behind it. The duplication itself is deliberate and stays:
-# mypy's namedtuple plugin can only infer field names from a literal AT the call site, so routing
-# the tuple through `_FIELDS` would cost static typing on every field access in the driver
-# (asy_isl29125_driver.py states the reason where it does it). What was missing is the other half -
-# the invariant proven rather than asserted in a comment, which is exactly CLAUDE.md's "assert the
-# property the current code must hold" rule applied to a cross-declaration one.
-#
+# Seven modules carry this duplication with nothing behind the "kept in sync" comment. It stays
+# deliberately: mypy's namedtuple plugin infers field names only from a literal at the call site,
+# so routing through `_FIELDS` would cost static typing on every field access.
+
 # Drift here is silent and reaches the wire: `_FIELDS` is what make_dict() iterates to build the
 # `/measurements` body, while the NamedTuple is what the read path fills, so a field renamed in one
 # and not the other publishes a wrong or missing key while every driver test still passes.

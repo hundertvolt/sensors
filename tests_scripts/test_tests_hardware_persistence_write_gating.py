@@ -55,11 +55,9 @@ def test_both_flags_runs_every_real_persistence_write_test(repo_root: Path) -> N
 
 
 # ---------------------------------------------------------------------------
-# The bench tier joined this gate when it stopped being SCD30-only: every config-persisting PUT
-# writes the RP2040's own flash filesystem through config_manager.py's json.dump(), which is the
-# same finite-endurance class the SCD30's NVM is in. Counted, not just spot-checked, because the
-# failure mode of a mis-placed marker is silent - a test that writes but is not marked spends real
-# wear on a routine pass, and one marked that does not write silently loses coverage.
+# The bench tier joined this gate once it stopped being SCD30-only: every config-persisting PUT
+# writes the RP2040's flash filesystem, the same finite-endurance class. Counted rather than
+# spot-checked, since a misplaced marker fails silently in both directions.
 # ---------------------------------------------------------------------------
 
 _BENCH = "tests_hardware/bench"
@@ -84,11 +82,9 @@ _FLASH = "tests_hardware/flash"
 
 
 def test_the_flash_tier_gates_its_config_writing_reboot_tests_too(repo_root: Path) -> None:
-    # The counted assertions above target ONE file, so they cannot see a marker placed anywhere else
-    # in the tier. These two write real config through ConfigManager.write_config() from their own
-    # device scripts (reboot_persist_write.py, system_debug_level_raise_for_boot_log_check.py) - a
-    # flash cycle each, and nothing to do with SCD30, which is exactly the class this gate grew to
-    # cover. Named rather than counted: a count breaks on every unrelated test added to the tier.
+    # The counted assertions above target ONE file and cannot see a marker elsewhere in the tier.
+    # These two write real config from their own device scripts - a flash cycle each, nothing to
+    # do with SCD30. Named rather than counted, a count breaking on every unrelated addition.
     gated = _collect(repo_root, target=_FLASH)
     ungated = _collect(repo_root, "--allow-persistence-writes", target=_FLASH)
     for name in ("test_config_value_survives_a_genuine_hard_reset", "test_boot_import_mechanism_actually_boots_the_real_system"):

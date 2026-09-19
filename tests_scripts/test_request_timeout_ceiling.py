@@ -77,11 +77,11 @@ def test_the_ci_suites_reset_errors_timeout_can_actually_fire_as_a_server_abort(
 
 
 def test_the_bench_tiers_reset_errors_timeout_sits_above_the_same_ceiling(repo_root: Path, outer_cap_s: float) -> None:
-    # tests_hardware/ hardcodes its own value rather than deriving it (it has no import path to
-    # src/), so it is the copy most likely to drift. Below the cap, a slow-but-legitimate reset on
-    # real hardware reads as a client timeout and gets misdiagnosed as a network fault - measured at
-    # 6.32s idle and 11.58s under concurrent readers on the dev bench board, 2026-09-17. Only the
-    # lower bound is asserted: unlike the twin's loopback copy, this one deliberately carries extra
+    # tests_hardware/ hardcodes its value, having no import path to src/, so it is the copy most
+    # likely to drift. Below the cap a slow-but-legitimate reset reads as a client timeout and is
+    # misdiagnosed as a network fault (BACKLOG item 24 has the measurements).
+
+    # Only the lower bound is asserted: unlike the twin's loopback copy, this one carries extra
     # slack for real WiFi latency on the server abort's own close.
     helpers = repo_root / "tests_hardware" / "error_log_helpers.py"
     reset_timeout = _module_constant(helpers, "_RESET_ERRORS_TIMEOUT_S")

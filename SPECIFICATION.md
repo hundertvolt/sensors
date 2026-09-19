@@ -5552,7 +5552,39 @@ could be wrong and refusing to proceed, rather than degrading.
   a string or docstring, an unparseable file), plus the false-positive checks that make the
   mechanism trustworthy (realistic prose merely mentioning the tag's name, an unrelated `@`-word).
   `tests_scripts/test_buildgen_tag_comments.py` and `test_buildgen_requires_tag.py` are the
-  reference implementation of this bar. It was motivated by a real incident: a driver signature
+  reference implementation of this bar, and each walks its own named dimensions — kept here so a
+  file's own header need not restate them. **`@requires`**: operator (`>= <= == != > <`); value
+  (int, zero, negative, underscored, float, negative float, exponent); format (spacing around the
+  `#`, the tag word, the dot and the operator, plus `##` section style); location (top of file,
+  after a docstring, among imports, trailing inline on a module-level statement, last line with no
+  trailing newline, beside `_WIRING`); multiplicity (none, one, several — distinct fields, a
+  repeated field, exact duplicates — and mixed in with ordinary comments and tag-shaped strings);
+  field name (plain, underscored, digit-bearing); enforcement (each operator satisfied and violated
+  against a real bus table, plus a missing field, a falsy-but-present value, and non-comparable
+  types). **`@wiring`**: wording (exact, typo'd, mis-cased, sigil dropped); format (each of the five
+  grammar elements individually wrong, and individually dropped); location (module level including
+  bracketed continuation lines, versus inside a class or function body); multiplicity (none, one,
+  several, and a duplicate field); spacing (every legal whitespace and `#`-prefix variant); verdict
+  (the parsed `WiringField` really carries what the tag said). **The shared mechanism**
+  (`test_buildgen_tag_comments.py`, unit level): scan (what counts as a real comment token at all
+  versus a `#` inside a string or docstring, where it sits by line, column and physical-line
+  indentation, and how an unreadable or unparseable file fails); wording (the leading word and its
+  `@` sigil — exact, wrong case, each typo shape of insert/delete/substitute/transpose, sigil
+  missing, the edit-distance boundary, an unrelated `@`-word, a punctuation-suffixed word); payload
+  (whether the rest carries a tag-shaped field/operator/value, the gate that keeps ordinary prose
+  from failing a build); verdict (which near-miss error each wording x payload x sigil combination
+  raises, and every combination that must stay silent). **`@web`/`@web-group`**: field name (plain,
+  CamelCase, digit-bearing, underscored, single-character); key=value (quoted, bareword, boolean,
+  repeated `special:<value>="<meaning>"`, unknown key rejected, missing required keys rejected);
+  format (spacing, `##` section style, quoted versus bareword, and each dropped-piece direction —
+  trailing junk, a dropped value, a duplicate key); location (as for `@requires`, plus inside a
+  class or function body, which is rejected); multiplicity (none, one, several, a duplicate
+  (section, submitGroup, field) rejected, and a valid tag not excusing a near-miss beside it);
+  web-group (its own required keys, `submit=`/`submitLabel=`, a duplicate (section, submitGroup)
+  rejected, and the same dropped-piece failures); near-miss (`@` dropped, field name dropped, tag
+  name typo'd, no cross-family contamination, and the edit-distance boundary just outside each
+  family's tolerance, which must stay silent); real drivers (every tagged `src/` file parsing to
+  exactly the expected tags). It was motivated by a real incident: a driver signature
   change once silently broke two `tests_hardware/device_scripts/` call sites for a full day,
   undetected because nothing in that scope was checked at all. A malformed comment tag silently
   parsing to "no tag declared" is the same class of risk one layer down.

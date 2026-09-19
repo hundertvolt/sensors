@@ -89,13 +89,13 @@ def test_strips_multiple_type_checking_blocks_in_one_file(strip_module: ModuleTy
 
 
 def test_real_src_files_round_trip_to_syntactically_valid_type_checking_free_output(strip_module: ModuleType, repo_root: Path) -> None:
-    # End-to-end proof against the actual promoted driver files that use this pattern (not just
-    # synthetic snippets above) - confirms the transform handles real, full-size module content.
-    # Every bare `if TYPE_CHECKING:` block must be gone; the import-guard header itself is only
-    # required to disappear where it's the plain two-line D.6 form - some files (e.g.
-    # asy_scd30_driver.py) extend the except handler with a real runtime `cast()` no-op fallback
-    # that's called outside any TYPE_CHECKING block, so that handler body has more than the one
-    # matched statement and this transform correctly leaves it in place rather than guessing.
+    # End-to-end proof against the real promoted drivers, not just the synthetic snippets above.
+    # Every bare `if TYPE_CHECKING:` block must go; the import guard itself only has to disappear
+    # in the plain two-line D.6 form.
+
+    # Some files extend the except handler with a runtime cast() fallback called outside any
+    # TYPE_CHECKING block, so that body holds more than the matched statement and the transform
+    # correctly leaves it alone rather than guessing.
     src_files_with_guard = [p for p in (repo_root / "src").glob("*.py") if "TYPE_CHECKING" in p.read_text()]
     assert src_files_with_guard, "sanity: at least one real src/ file should use this pattern"
     for src_file in src_files_with_guard:

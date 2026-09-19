@@ -25,11 +25,9 @@ def ext_dir(repo_root: Path) -> Path:
 def test_wozi_construction_order_matches_reference_ordering_constraints(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
     result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
     order = [n if isinstance(n, str) else f"{n[0]}_{n[1]}" if n[1] else n[0] for n in result.model.construction_order]
-    # src/sensortask_wozi.py's own real, hand-verified construction order (SPECIFICATION.md Part
-    # A.7): fram before conn/ntp/sysfunct (every one of the three inherits wozi's own device-level
-    # fram_target implicitly, CLAUDE.md's implicit-FRAM-wiring rule), conn before ntp before
-    # sysfunct, scd30 before sgp40 (temperature_source/humidity_source, §2.9), every fram-wired
-    # instance after fram, notification last (signal_sink -> neopixel, every warn_* source built).
+    # The hand-verified construction order (Part A.7): fram before conn/ntp/sysfunct, which all
+    # inherit the device-level fram_target implicitly; conn before ntp before sysfunct; scd30
+    # before sgp40 for its compensation sources; and notification last, once every source exists.
     assert order.index("conn") < order.index("ntp") < order.index("sysfunct")
     assert order.index("fram") < order.index("conn")
     assert order.index("fram") < order.index("ntp")
@@ -61,10 +59,9 @@ def test_multi_instance_fixture_respects_cross_driver_dependency(repo_root: Path
 
 
 def test_cycle_detection_raises(tmp_path: Path, src_dir: Path) -> None:
-    # No real driver's _WIRING requires SGP40_Reader as a producer - can't construct a real cycle
-    # with the actual driver set (SGP40 requiring SCD30, which would need to require SGP40 back,
-    # isn't expressible in real _WIRING declarations), so this drives build_construction_order()
-    # directly against a synthetic DeviceModel whose two instances depend on each other.
+    # No real driver's _WIRING requires SGP40_Reader as a producer, so a genuine cycle is not
+    # expressible with the actual driver set - this drives build_construction_order() against a
+    # synthetic model whose two instances depend on each other instead.
     from buildgen.wiring import WiringField
 
     doc = base_doc()
@@ -77,10 +74,9 @@ def test_cycle_detection_raises(tmp_path: Path, src_dir: Path) -> None:
 
 
 def test_setter_mode_wiring_on_an_instance_gates_no_construction_order(tmp_path: Path, src_dir: Path) -> None:
-    # "setter" wiring is a post-construction call, so it must never contribute a dependency edge -
-    # otherwise a pair of instances wiring each other by setter would deadlock the sort. Only
-    # AsyConnTime declares a setter tag today, and it is mandatory infra rather than an
-    # [[instance]], so this drives the sort directly against a synthetic model.
+    # "setter" wiring is a post-construction call and must never contribute a dependency edge,
+    # or a pair wiring each other by setter would deadlock the sort. Only AsyConnTime declares
+    # one today, and it is mandatory infra, so this uses a synthetic model.
     from buildgen.wiring import WiringField
 
     model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)

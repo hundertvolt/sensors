@@ -90,11 +90,9 @@ def test_bus_fault_drivers_skips_a_driver_the_suite_cannot_fault(ci_suite: Modul
     # The filter's whole purpose: a future bus-attached driver with no _BUS_FAULT_OPS entry is
     # skipped here rather than KeyError-ing partway through Run 3/4.
     #
-    # The stand-in is deliberately a name no device will ever declare. This test used to use
-    # "isl29125", which was accurate when written and silently became the record of a REAL gap: the
-    # driver shipped on `dev` with its own fault-capable chip fake and this test went on asserting
-    # it was correctly skipped. A hypothetical name cannot rot that way, and keeping a real driver
-    # here would make closing its gap look like a regression (it did, on 2026-09-18).
+    # The stand-in is a name no device will ever declare. This once used "isl29125", accurate
+    # when written, which silently became the record of a REAL gap once that driver shipped with
+    # its own fault-capable fake - and closing the gap then looked like a regression.
     assert ci_suite._bus_fault_drivers(_ctx(ci_suite, {"scd30", "not_a_real_driver", "neopixel"})) == ["scd30"]
 
 
@@ -117,20 +115,19 @@ def test_run_5c_faults_every_bus_attached_driver_but_never_the_store_itself(ci_s
 
 def test_the_only_error_source_exempt_from_run_5cs_loss_sweep_is_the_store_itself(ci_suite: ModuleType) -> None:
     # Everything else in errcount is FRAM-backed and must come back across a commanded reboot.
-    # AsyFramManager cannot persist its own failure history through the store that failed, which is
-    # the one legitimate exemption; tests/_sensortask_scenarios.py pins the same fact from the real
-    # built object graph, so the two tiers have to agree before a name can be added here.
+    # AsyFramManager cannot persist its own history through the store that failed, the one
+    # legitimate exemption, which _sensortask_scenarios.py pins from the real object graph too.
     assert sorted(ci_suite._IN_MEMORY_ONLY_ERROR_SOURCES) == ["FRAM"]
     assert set(ci_suite._DRIVER_ERRCOUNT_NAME.values()) >= ci_suite._IN_MEMORY_ONLY_ERROR_SOURCES
 
 
 def test_every_i2c_or_spi_attached_driver_a_real_device_declares_is_faultable(ci_suite: ModuleType) -> None:
-    # The three tables above are only checked against EACH OTHER, which is what let the ISL29125 be
-    # consistently absent from all of them and silently skipped by _bus_fault_drivers() from the day
-    # it shipped. This is the outward check: the real device set decides who has to be in there.
-    # Scoped to i2c/spi because those are the buses digital_twin/'s chip fakes can inject a fault on
-    # - uart_link's peer is a second UART_Comm, not a faultable chip fake, so it is out by mechanism
-    # rather than by an allowlist that would have to be remembered.
+    # The three tables above are only checked against EACH OTHER, which let the ISL29125 be
+    # absent from all of them and silently skipped from the day it shipped. This is the outward
+    # check: the real device set decides who belongs.
+
+    # Scoped to i2c/spi, the buses the twin's chip fakes can fault. uart_link's peer is a second
+    # UART_Comm rather than a faultable fake, so it is out by mechanism, not by an allowlist.
     attached = set()
     for device in DEVICE_NAMES:
         doc = tomllib.loads(device_toml(device).read_text())
@@ -140,11 +137,9 @@ def test_every_i2c_or_spi_attached_driver_a_real_device_declares_is_faultable(ci
 
 
 # ---------------------------------------------------------------------------
-# _errcount() / _errcount_required() - the tolerant/strict split. This is the guard against the
-# vacuous-pass class: _errcount() answers {} for an unreadable /status, which reads as counter 0
-# with an empty history, so any assertion EXPECTING 0 would hold against a server that answered
-# nothing. Run 4, Run 5c and Run 8 all did exactly that before the split. These are the regression
-# tests for that, driven by monkeypatching the suite's own _http().
+# _errcount() / _errcount_required(), the tolerant/strict split that guards the vacuous-pass
+# class: {} for an unreadable /status reads as counter 0 with an empty history, so an assertion
+# expecting 0 would hold against a server that answered nothing - as Runs 4, 5c and 8 all did.
 # ---------------------------------------------------------------------------
 
 
@@ -330,10 +325,9 @@ def test_the_persisted_error_modules_are_real_errcount_sources_and_not_empty(ci_
 
 
 def test_the_sgp40_asymmetry_between_the_three_driver_sets_is_deliberate(ci_suite: ModuleType) -> None:
-    # SGP40 is the one measurement driver excluded from the "reset to 0 with FRAM faulted" set and
-    # the one module whose reboot persistence is actually proven - two halves of a single documented
-    # decision (_PERSISTED_ERROR_MODULES' own comment). Silently adding it to the first set, or
-    # dropping it from the second, would flip a real assertion with no test noticing.
+    # SGP40 is the one measurement driver outside the reset-to-0-with-FRAM-faulted set and the
+    # one whose reboot persistence is actually proven - two halves of one decision. Adding it to
+    # the first set, or dropping it from the second, would flip a real assertion unnoticed.
     assert "sgp40" in ci_suite._MEASUREMENT_DRIVERS
     assert "sgp40" not in ci_suite._NO_PERSIST_WHEN_FRAM_FAULTED, "SGP40's own history is deliberately not asserted to reset - see _PERSISTED_ERROR_MODULES' comment"
     assert ci_suite._DRIVER_ERRCOUNT_NAME["sgp40"] in ci_suite._PERSISTED_ERROR_MODULES

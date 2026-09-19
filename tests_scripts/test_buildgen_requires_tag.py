@@ -2,21 +2,9 @@
 and enforcement (SPECIFICATION.md Part L.5's build-tooling quality bar). Covers the real
 SCD30 clock-stretch tag this session added plus every malformed/violated case."""
 
-# Matrix dimensions for the one real tag built on buildgen/tag_comments.py's shared mechanism
-# (whose own unit-level coverage is test_buildgen_tag_comments.py). The accept side is covered as a
-# full cross-product where dimensions genuinely interact, since a build that silently accepts the
-# wrong thing is the failure mode the whole tag exists to prevent; the reject side covers each
-# dimension once rather than recombining - a build that aborts, aborts.
-#   D1 operator     >= <= == != > <
-#   D2 value        int / zero / negative / underscored / float / negative float / exponent
-#   D3 format       spacing around "#", the tag word, the dot and the operator; "##" section style
-#   D4 location     top of file, after a docstring, among imports, trailing inline on a module-level
-#                   statement, last line with no trailing newline, next to _WIRING
-#   D5 multiplicity none, one, several (distinct fields, repeated field, exact duplicates), mixed in
-#                   with ordinary comments and strings that merely contain tag-shaped text
-#   D6 field name   plain, underscored, digit-bearing
-#   D7 enforcement  each operator satisfied and violated against a real bus table, plus missing
-#                   field, falsy-but-present value, and non-comparable types
+# SPECIFICATION.md Part L.5 names this file's own matrix dimensions and the rule behind them: the
+# accept side as a full cross-product, since silently accepting the wrong thing is what the tag
+# exists to prevent, and the reject side once per dimension - a build that aborts, aborts.
 
 from pathlib import Path
 

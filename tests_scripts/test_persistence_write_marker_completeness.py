@@ -2,10 +2,9 @@
 field but forgets @pytest.mark.persistence_write spends real RP2040 flash wear on every routine run,
 silently. The sibling gating test proves the flag WORKS; this proves nothing escapes it unowned."""
 
-# The gate covers the write a test OWNS, not one it is merely reached through: a shared prerequisite
-# (a fixture forcing a mode many tests then exercise, a recovery path) stays unmarked and allowed,
-# because gating it would deselect the tests it exists to enable. Owner's rule, 2026-09-18; the full
-# statement, and why the answer is not "spend zero", is in tests_hardware/README.md.
+# The gate covers the write a test OWNS, not one it is merely reached through: a shared
+# prerequisite stays unmarked, since gating it would deselect the tests it enables. Owner's rule,
+# 2026-09-18; tests_hardware/README.md states it fully, and why the answer is not "spend zero".
 
 import ast
 import re
@@ -31,11 +30,12 @@ _JUSTIFIED_UNMARKED = {
 _KNOWN_PERSISTING_HELPERS = {
     "isl29125_write_worker",  # bus-concurrency writer, driven only from persistence_write-marked tests
     "bmp3xx_write_worker",  # same
-    # Fixture: its stage-0 `PUT {"SSID": ""}` forces hotspot mode so two dozen tests can run at all,
-    # and its stage-7 restore undoes that - prerequisite writes, not any one test's own, so all but
-    # the three dependents that PUT a persisting field themselves are correctly unmarked (owner's
-    # rule above). Stated as a rule rather than a count: an earlier revision said "its six unmarked
-    # dependents", which was wrong when written and would have gone stale regardless.
+    # Fixture: its stage-0 PUT forces hotspot mode so two dozen tests can run at all, and its
+    # stage-7 restore undoes that - prerequisite writes, so every dependent but the three that
+    # PUT a persisting field themselves is correctly unmarked.
+
+    # Stated as a rule, not a count: an earlier revision named "its six unmarked dependents",
+    # which was wrong when written and would have gone stale anyway.
     "joined_hotspot",
     "_restore_ssid_over",  # teardown-side restore for the garbage-SSID outage test
     "_recover_stale_dut_credentials",  # session-level recovery path, not a test's own write
@@ -219,10 +219,9 @@ def _used_markers(repo_root: Path) -> dict[str, set[str]]:
 
 
 def test_no_test_carries_an_unregistered_marker(repo_root: Path) -> None:
-    # --strict-markers is not enabled, so an unregistered marker - a typo, or one left behind by a
-    # rename like scd30_write -> persistence_write - is silently inert: pytest_collection_modifyitems()
-    # never matches it, the test is never deselected, and a routine run spends the wear it was
-    # supposed to be gated behind. It emits a warning at most, and nothing reads those.
+    # --strict-markers is off, so an unregistered marker - a typo, or one left by a rename - is
+    # silently inert: nothing matches it, the test is never deselected, and a routine run spends
+    # the wear it was meant to gate. It emits a warning at most, and nothing reads those.
     registered = _registered_markers(repo_root)
     # parametrize/skipif/usefixtures are pytest's own built-ins, never registered by a project.
     builtin = {"parametrize", "skipif", "skip", "xfail", "usefixtures", "filterwarnings", "timeout"}
@@ -231,9 +230,8 @@ def test_no_test_carries_an_unregistered_marker(repo_root: Path) -> None:
 
 
 def test_the_extra_write_marker_is_never_carried_alone(repo_root: Path) -> None:
-    # The AND-gate's own structural half. scd30_extra_write only ever NARROWS: the collection hook
-    # deselects it without --allow-scd30-extra-write, but nothing makes it imply the global gate, so
-    # a test carrying it alone would run on a plain --allow-persistence-writes-less pass and spend
-    # the SCD30's NVM. The sibling gating test proves the flags compose; this proves the usage does.
+    # The AND-gate's structural half: scd30_extra_write only NARROWS, and nothing makes it imply
+    # the global gate, so a test carrying it alone would run unflagged and spend the SCD30's NVM.
+    # The sibling test proves the flags compose; this proves the usage does.
     lone = [name for name, marks in _used_markers(repo_root).items() if "scd30_extra_write" in marks and "persistence_write" not in marks]
     assert not lone, f"scd30_extra_write must always be carried alongside persistence_write: {lone}"
