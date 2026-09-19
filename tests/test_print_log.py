@@ -40,11 +40,9 @@ def make_fram_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85
 
 
 class _RaisingFramChunk:
-    # A minimal local fake, not a full FRAM simulation: proves PrintLogHistoryStore's own
-    # defense-in-depth against the general _FramManager/_FramChunk Protocol contract still holds,
-    # independent of what the concrete AsyFramManager currently guarantees (its own _write_chunk/
-    # _read_chunk wrap their entire bodies in try/except - confirmed by asy_fram_manager.py's own
-    # src/ promotion audit - so write_into()/read_into() can no longer actually raise through it).
+    # A minimal local fake, not a full FRAM simulation: proves PrintLogHistoryStore's defense in depth
+    # against the general _FramManager/_FramChunk Protocol contract still holds, independent of the concrete
+    # AsyFramManager, whose wrapping try/except means write_into()/read_into() can no longer raise.
     def __init__(self, *, raise_on_write: bool = False, raise_on_read: bool = False) -> None:
         self.raise_on_write = raise_on_write
         self.raise_on_read = raise_on_read
@@ -247,9 +245,8 @@ def test_get_log_with_no_argument_and_no_name_set_falls_back_to_empty_string() -
 
 def test_get_log_with_no_argument_uses_self_name() -> None:
     # Regression coverage for a real test-authoring mistake caught while trialing this design:
-    # history_length=1 leaves no initial _NO_ERR slot to survive a single err_s() call, so this
-    # assertion doesn't depend on the "leftover initial slot" shape
-    # test_get_log_classifies_error_warning_and_clear_entries above already covers.
+    # history_length=1 leaves no initial _NO_ERR slot to survive a single err_s() call, so this assertion
+    # does not depend on the "leftover initial slot" shape the classification test above already covers.
     hist = PrintLogHistory(history_length=1, name="SGP40")
     run(hist.err_s("e", errno=1))
     log = run(hist.get_log())
@@ -317,12 +314,13 @@ def test_history_length_negative_is_clamped_to_zero_not_a_raise() -> None:
 
 
 def test_history_length_huge_is_capped_instead_of_crashing_the_interpreter() -> None:
-    # A typed-valid but wildly unusual int input: confirmed directly against the pinned Unix-port
-    # interpreter that `[x] * n` (what building this deque does internally) segfaults the whole
-    # process for some huge-but-representable n (no catchable exception at all - MemoryError only
-    # covers smaller sizes, OverflowError only covers n at/above the machine-word boundary, and
-    # there's an uncatchable gap in between). The fix caps the input before ever attempting the
-    # allocation - this pins that the cap actually holds, not just that construction "doesn't raise".
+    # A typed-valid but wildly unusual int input: confirmed against the pinned Unix-port interpreter that
+    # `[x] * n`, what building this deque does internally, segfaults the whole process for some huge-but-
+    # representable n, with no catchable exception at all.
+    #
+    # MemoryError only covers smaller sizes and OverflowError only n at or above the machine-word boundary,
+    # leaving an uncatchable gap between. The fix caps the input before attempting the allocation, and this
+    # pins that the cap holds, not just that construction does not raise.
     hist = PrintLogHistory(history_length=2**62)
     assert len(hist.history) <= 0xFFFF
     run(hist.err_s("e", errno=1))
@@ -330,14 +328,12 @@ def test_history_length_huge_is_capped_instead_of_crashing_the_interpreter() -> 
 
 
 class _RaisingDeque:
-    # PrintLogHistory.__init__()'s except MemoryError fallback (deque([_NO_ERR] * history_length,
-    # history_length) failing on a genuinely memory-constrained device) can't be forced
-    # deterministically through a real allocation at any size small enough to be safe/reliable in a
-    # test - faked by substituting print_log's own module-level `deque` name, the same technique
-    # this project's other test files use for their own otherwise-unreachable guards. Only the
-    # first (nonzero-maxlen) call raises - the except block's own deque([], 0) fallback must still
-    # succeed normally, matching what a real memory-constrained device's tiny recovery allocation
-    # would do.
+    # PrintLogHistory.__init__()'s except MemoryError fallback cannot be forced deterministically through a
+    # real allocation at any size small enough to be safe in a test, so it is faked by substituting
+    # print_log's own module-level `deque` name, as this project's other suites do for unreachable guards.
+    #
+    # Only the first, nonzero-maxlen call raises: the except block's own deque([], 0) fallback must still
+    # succeed normally, matching what a memory-constrained device's tiny recovery allocation would do.
     def __call__(self, iterable: "list[int]", maxlen: int) -> "deque[int]":
         if maxlen == 0:
             return deque(iterable, maxlen)
@@ -462,11 +458,12 @@ def test_printloghistorystore_err_s_persists_and_survives_a_simulated_reboot() -
 
 
 def test_printloghistorystore_err_s_before_setup_does_not_touch_fram() -> None:
-    # Regression test for a real bug: _store_err()'s "not initialized" guard used to only return
-    # early when self.level > _LOG_OFF, so with logging off (the common production case) calling
-    # err_s() before setup() had loaded (or established) the persisted state fell through to
-    # _write() anyway - overwriting real FRAM-persisted history with a freshly-constructed,
-    # not-yet-loaded default. Fixed so the return no longer depends on self.level.
+    # Regression test for a real bug: _store_err()'s "not initialized" guard used to return early only when
+    # self.level > _LOG_OFF, so with logging off - the common production case - calling err_s() before
+    # setup() had loaded the persisted state fell through to _write() anyway.
+    #
+    # That overwrote real FRAM-persisted history with a freshly-constructed, not-yet-loaded default. Fixed
+    # so the return no longer depends on self.level.
     manager, chip = make_fram_manager()
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4, level=None)  # level=None -> _LOG_OFF
@@ -540,10 +537,9 @@ def test_printloghistorystore_zero_length_history_survives_write_and_read() -> N
 
 
 def test_printloghistorystore_write_uses_explicit_little_endian_layout() -> None:
-    # Pins down the on-the-wire format explicitly now that print_log.py uses "<H"/"B"*n instead of
-    # a bare "H"/"B"*n format string - confirmed directly that MicroPython's struct defaults a
-    # no-prefix format to "@" (native alignment/padding), not "<", though it made no observable
-    # difference for this specific field order (see module docstring).
+    # Pins the on-the-wire format explicitly now that print_log.py uses "<H"/"B"*n instead of a bare one -
+    # confirmed directly that MicroPython's struct defaults a no-prefix format to "@", native alignment and
+    # padding, not "<", though it made no observable difference for this field order.
     manager, chip = make_fram_manager()
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=2)
@@ -574,10 +570,9 @@ def test_printloghistorystore_reset_persists_cleared_state_across_a_reboot() -> 
 
 
 # ---------------------------------------------------------------------------
-# PrintLogHistoryStore - real FRAM failure modes, injected at the simulated-chip level
-# (tests/_fram_chip_fake.py's fault-injection knobs - see test_asy_fram_driver.py for their own
-# dedicated coverage), plus the two Protocol-level defensive-contract proofs that no longer have a
-# real-class equivalent (see _RaisingFramChunk/_RaisingFramManager above).
+# PrintLogHistoryStore - real FRAM failure modes injected at the simulated-chip level (the fault-injection
+# knobs in tests/_fram_chip_fake.py, covered in their own right by test_asy_fram_driver.py), plus the two
+# Protocol-level defensive-contract proofs with no real-class equivalent.
 # ---------------------------------------------------------------------------
 
 
@@ -618,10 +613,9 @@ def test_printloghistorystore_write_into_returns_false_is_surfaced() -> None:
 
 
 def test_printloghistorystore_read_into_returns_false_is_surfaced() -> None:
-    # A real double-fault: both of the chunk's own redundant blocks are corrupted (torn-write
-    # status left BUSY on each), so the real dual-copy self-healing has nothing left to recover
-    # from - a stronger proof than a flat "read fails" flag, since it shows print_log.py degrades
-    # cleanly even after asy_fram_manager.py's own redundancy is genuinely exhausted.
+    # A real double fault: both of the chunk's redundant blocks are corrupted, torn-write status left BUSY
+    # on each, so the dual-copy self-healing has nothing left to recover from - a stronger proof than a flat
+    # "read fails" flag, showing print_log.py degrades cleanly even once that redundancy is exhausted.
     manager, chip = make_fram_manager()
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4)
@@ -636,13 +630,13 @@ def test_printloghistorystore_read_into_returns_false_is_surfaced() -> None:
 
 
 def test_printloghistorystore_self_heals_from_a_single_corrupted_copy_across_a_reboot() -> None:
-    # The genuine-bit-flip counterpart to the two status-byte/torn-write tests above: here a real
-    # persisted *data* byte of copy 0 is flipped, so nothing about the block's status says anything
-    # is wrong - only CRC8 (the checksum PrintLogHistoryStore itself asks get_chunk() for) can
-    # notice. Mirrors tests/test_voc_algorithm.py's own
-    # test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram, which does this for
-    # a CRC32-protected chunk, and additionally checks that the surviving copy is written back over
-    # the corrupted one rather than only being read around.
+    # The genuine-bit-flip counterpart to the two torn-write tests above: a real persisted data byte of copy
+    # 0 is flipped, so nothing about the block's status says anything is wrong and only CRC8, the checksum
+    # PrintLogHistoryStore asks get_chunk() for, can notice.
+    #
+    # Mirrors tests/test_voc_algorithm.py's single-corrupted-copy test, which does this for a
+    # CRC32-protected chunk, and additionally checks the surviving copy is written back over the corrupted
+    # one rather than only being read around.
     manager, chip = make_fram_manager()
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4)

@@ -186,14 +186,13 @@ def test_persisted_file_is_json_with_hex_encoded_memory() -> None:
 
 
 def test_save_state_round_trips_correctly_across_chunk_boundaries() -> None:
-    # Regression test from baseline verification: save_state()
-    # used to build the whole memory image as one giant bytes(self.memory).hex() string in a single
-    # allocation, which failed with a real MemoryError once the heap got fragmented by a live
-    # system's normal churn (reproduced deterministically running the real assembled system against
-    # this twin - see _fram_chip.py's own _SAVE_CHUNK_SIZE comment). The fix streams the write out in
-    # _SAVE_CHUNK_SIZE-byte pieces instead; this test isn't about fragmentation itself (not
-    # reproducible deterministically in a unit test), it's about chunk-boundary correctness - every
-    # byte around and across a chunk boundary must still round-trip exactly, not just the bulk data.
+    # Regression test from baseline verification: save_state() used to build the whole memory image as one
+    # giant hex string in a single allocation, which failed with a real MemoryError once the heap was
+    # fragmented by a live system's churn - reproduced deterministically against this twin.
+    #
+    # The fix streams the write out in _SAVE_CHUNK_SIZE pieces. This test is not about fragmentation, which
+    # no unit test reproduces deterministically, but about chunk-boundary correctness: every byte around and
+    # across a boundary must still round-trip exactly.
     import _fram_chip
 
     path = _tmp_path("fram_chunk_boundary.json")
@@ -239,12 +238,13 @@ def test_load_state_handles_a_truncated_file_without_raising() -> None:
 
 
 def test_load_state_handles_a_hex_byte_pair_straddling_a_chunk_boundary() -> None:
-    # Regression test for the read-side chunked parse itself (_load_state()'s own pending/piece
-    # stitching, mirroring save_state()'s _SAVE_CHUNK_SIZE fix on the read path) - a hex byte pair
-    # split across two f.read() calls must still decode to the right byte, not get silently
-    # dropped or misaligned. _LOAD_CHUNK_CHARS defaults to 1024, far larger than any size this
-    # test can afford to construct by hand - temporarily shrunk to 1 to force a straddle on
-    # (almost) every single byte, deterministically, without needing a huge fixture.
+    # Regression test for the read-side chunked parse itself, _load_state()'s pending/piece stitching
+    # mirroring save_state()'s fix on the read path: a hex byte pair split across two f.read() calls must
+    # still decode to the right byte, not be silently dropped or misaligned.
+    #
+    # _LOAD_CHUNK_CHARS defaults to 1024, far larger than any size this test can afford to construct by
+    # hand, so it is temporarily shrunk to 1 to force a straddle on almost every byte without a huge
+    # fixture.
     import _fram_chip
 
     path = _tmp_path("fram_chunk_straddle.json")
@@ -290,11 +290,9 @@ def test_fault_injection_on_write_and_readinto() -> None:
 
 
 def test_24_bit_address_write_and_read_round_trip_correctly_on_a_256kb_chip() -> None:
-    # A 256KB chip (dev's real MB85RS2MTA) sends a 3-byte address (opcode + 3 bytes = 4-byte
-    # header, src/asy_fram_driver.py's own _ADDR_BUF_24BIT) instead of the 8KB chip's 2-byte
-    # address - this chip is >_ADDR_16BIT_MAX, so it exercises that 3-byte path. A basic
-    # correctness check; see the next test for why a single-address round trip alone can't catch
-    # an aliasing bug (write and read would use the identically wrong decode).
+    # A 256KB chip (dev's real MB85RS2MTA) sends a 3-byte address, so a 4-byte header, instead of the 8KB
+    # chip's 2-byte one - being over _ADDR_16BIT_MAX, it exercises that path. A basic correctness check; the
+    # next test shows why a single-address round trip alone cannot catch an aliasing bug.
     chip = FramChip(size=0x40000)
     _wren(chip)
     _write_mem24(chip, 0x0100, b"\xaa\xbb\xcc")
@@ -302,12 +300,12 @@ def test_24_bit_address_write_and_read_round_trip_correctly_on_a_256kb_chip() ->
 
 
 def test_24_bit_address_low_byte_is_not_dropped_so_aliasing_addresses_stay_distinct() -> None:
-    # SPECIFICATION.md Part L.4: _decode_addr() used to always read exactly 2 address bytes
-    # (data[1]/data[2]), silently dropping the 256KB chip's true low-order address byte (data[3]) -
-    # real address `addr` aliased to `(addr >> 8) & 0xFF`, so any two real addresses sharing the
-    # same high byte (e.g. 0x0000 and 0x00FF) collapsed onto the same decoded address and a write to
-    # one silently clobbered the other, corrupting unrelated FRAM chunks (discovered via a real
-    # digital-twin CI suite failure against dev). This proves they now stay distinct.
+    # SPECIFICATION.md Part L.4: _decode_addr() used to always read exactly 2 address bytes, silently
+    # dropping the 256KB chip's true low-order byte, so a real address aliased to (addr >> 8) & 0xFF.
+    #
+    # Any two addresses sharing a high byte then collapsed onto one decoded address and a write to either
+    # clobbered the other, corrupting unrelated FRAM chunks - discovered via a real digital-twin CI failure
+    # against dev. This proves they now stay distinct.
     chip = FramChip(size=0x40000)
     _wren(chip)
     _write_mem24(chip, 0x0000, b"\x11")

@@ -739,7 +739,7 @@ def test_put_oversized_body_is_rejected_with_413_over_the_normal_network(dut_ip:
 
 _BODY_CAP = 2048  # asy_webserver_service.py's max_content_length, now bound to max_body_length too
 _OLD_CONTENT_CAP = 4096  # what it was before Part I.6; the 2048..4096 band is the discriminator
-_SCHEMA_MAX_BODY = 1132  # largest body any group's schema can produce, dominated by NTP_Host's 1024
+_SCHEMA_MAX_BODY = 1312  # largest schema-permitted PUT body, dominated by NTP_Host's 1024 (I.6)
 
 
 def _sized_sensors_body(total_bytes: int) -> dict[str, dict[str, str]]:
@@ -782,8 +782,8 @@ def test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_n
 
 def test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap(dut_ip: str) -> None:
     # The direction that matters when a cap is LOWERED: the regression would be refusing something
-    # legitimate. 1132 B is the largest body a group's own schema can produce, so a real maximal
-    # config push must still be served - with 2048 B that is 1.8x headroom, asserted not assumed.
+    # legitimate. 1312 B is the largest body any route's own schema can produce, so a real maximal
+    # config push must still be served - 1.56x headroom, derived in tests_scripts/ and asserted here.
     reset_all_error_logs(dut_ip)
     assert _SCHEMA_MAX_BODY < _BODY_CAP, "the schema maximum no longer fits under the cap - Part I.6's premise has moved"
     assert _put_sized(dut_ip, _SCHEMA_MAX_BODY) == 200, f"the largest schema-permitted body ({_SCHEMA_MAX_BODY} B) was rejected"

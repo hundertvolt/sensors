@@ -23,10 +23,9 @@ if TYPE_CHECKING:
     from typing import Any
 
 _GENERAL_CALL_ADDR = 0x00
-# I2C spec reserved address ranges (0x00-0x07: general call/CBUS/reserved/Hs-mode; 0x78-0x7F:
-# 10-bit addressing/reserved) - the generic form of test_bus_hazard_multi_device.py's own
-# test_no_reserved_i2c_address_collides_with_any_promoted_devices_own_address, checked here against
-# every real occupant's own TOML-declared address instead of a hand-kept per-driver constant table.
+# I2C spec reserved address ranges (0x00-0x07 general call, CBUS, reserved and Hs-mode; 0x78-0x7F 10-bit
+# addressing and reserved) - the generic form of test_bus_hazard_multi_device.py's own reserved-address
+# test, checked against every real occupant's TOML-declared address, not a hand-kept constant table.
 _RESERVED_I2C_RANGES = ((0x00, 0x07), (0x78, 0x7F))
 
 
@@ -75,10 +74,9 @@ def scd_data_frame(co2: float, temperature: float, humidity: float) -> bytes:
     return bytes(frame)
 
 
-# BMP3xx: a fixed, reproducible calibration/ADC dataset (same one test_bus_hazard_multi_device.py's
-# own _CAL_RAW/_ADC_P/_ADC_T/_EXPECTED_* used before this catalog absorbed them, and the same one
-# test_asy_bmp3xx_driver.py's own dataset uses) - not re-deriving the compensation math's own
-# correctness here, only a deterministic, known-good reading to detect a concurrency-torn read.
+# BMP3xx: a fixed, reproducible calibration/ADC dataset - the same one test_bus_hazard_multi_device.py used
+# before this catalog absorbed it, and the same one test_asy_bmp3xx_driver.py uses - not re-deriving the
+# compensation math here, only a deterministic known-good reading to detect a concurrency-torn read.
 _BMP_CAL_RAW = struct.pack(
     "<HHbhhbbHHbbhbb",
     28617, 26074, -10, -3944, -10416, 26, 0, 30462, 120, 4, 0, 4285, 22, -60,
@@ -124,18 +122,16 @@ _ISL_COUNTS = (0x2000, 0x1800, 0x1000)
 
 
 # ---------------------------------------------------------------------------
-# Per-driver adapter: enough to construct/seed/drive one instance generically, without any of this
-# module knowing which concrete driver it is. Only covers drivers that actually share a bus with
-# another driver on some real device today - a driver with no bus-sharing neighbour anywhere
-# isn't in I2C_HAZARD_CATALOG yet; add it the same way the moment one wires it alongside another.
+# Per-driver adapter: enough to construct, seed and drive one instance generically, without this module
+# knowing which concrete driver it is. Only covers drivers that actually share a bus with another on some
+# real device today; one with no bus-sharing neighbour is added the moment a device wires it alongside one.
 # ---------------------------------------------------------------------------
 
 
 class I2CHazardAdapter:
-    # A plain class, not @dataclass - `dataclasses` has no stub in the MicroPython-target typeshed
-    # this file type-checks under (custom_typeshed_dir) and no real driver/test module anywhere in
-    # src/tests/digital_twin imports it either; buildgen (genuinely CPython-only) is the only place
-    # dataclasses is used in this repo, confirmed by grep before adding a second, incompatible one.
+    # A plain class, not @dataclass - `dataclasses` has no stub in the MicroPython-target typeshed this file
+    # checks under, and no driver or test module in src/tests/digital_twin imports it either; buildgen,
+    # which is genuinely CPython-only, is the one place in this repo that uses it.
     def __init__(
         self,
         driver: str,
@@ -156,10 +152,9 @@ class I2CHazardAdapter:
 
 
 def _seed_scd30(fake_bus: FakeI2C, address: int, iterations: int) -> None:
-    # Keyed by address, not the shared fake_bus.read_queue: SCD30 speaks the same register-less,
-    # write-then-read protocol shape SGP40 does, so when both share a bus (dev's real i2c1) their
-    # replies must not be pulled from one shared, address-agnostic FIFO (tests/machine.py's
-    # read_queue_by_address, added for exactly this - see its own comment).
+    # Keyed by address, not the shared fake_bus.read_queue: SCD30 speaks the same register-less, write-then-
+    # read protocol shape SGP40 does, so when both share a bus their replies must not be pulled from one
+    # address-agnostic FIFO - hence tests/machine.py's read_queue_by_address.
     queue = fake_bus.read_queue_by_address.setdefault(address, [])
     for _ in range(iterations):
         queue.append(scd_register_frame(1))

@@ -113,10 +113,9 @@ def test_parse_args_gc_threshold_defaults_to_matching_real_firmware() -> None:
 
 
 def test_parse_args_gc_threshold_is_overridable() -> None:
-    # scripts/_digital_twin_ci_suite.py's own main() needs this to drive the whole suite at
-    # MicroPython's own real reactive-only default (CLAUDE.md's/SPECIFICATION.md Part I.4(e)'s
-    # standing rule that the whole suite must pass there *before* it's ever run with a chosen
-    # threshold).
+    # scripts/_digital_twin_ci_suite.py's main() needs this to drive the whole suite at MicroPython's own
+    # reactive-only default - Part I.4(e)'s standing rule that the suite must pass there before it is ever
+    # run with a chosen threshold.
     config = parse_args(["--module", "m", "--wiring-plan", "p.json", "--gc-threshold", "-1"])
     assert config.gc_threshold == -1
 
@@ -150,10 +149,9 @@ class _FakeBusWrapper:
 
 
 class _FakeModule:
-    # Class-level attribute declarations, defaulting to None - the same shape a real generated
-    # module's own globals take before build_system() assigns them (buildgen/codegen.py's own
-    # _emit_globals(): `i2c0: "Any | None" = None`) - lets test functions below assign whichever
-    # subset a given plan actually wires, without mypy flagging the rest as undeclared.
+    # Class-level attribute declarations defaulting to None - the shape a real generated module's globals
+    # take before build_system() assigns them (buildgen/codegen.py's _emit_globals) - letting test functions
+    # assign whichever subset a plan wires without mypy flagging the rest as undeclared.
     i2c0: "_FakeBusWrapper | None" = None
     i2c1: "_FakeBusWrapper | None" = None
     spi0: "_FakeBusWrapper | None" = None
@@ -218,20 +216,17 @@ def test_collect_chips_skips_a_bus_var_the_module_never_constructed() -> None:
 
 
 # ---------------------------------------------------------------------------
-# main() - one real, short, bounded end-to-end smoke test: boots the real hand-written
-# sensortask_wozi object graph via the GENERIC entry point (not a static `import sensortask_wozi`),
-# wired from a JSON-dumped copy of machine's own "wozi" legacy plan, with one real injected fault -
-# the same combined shape run_wozi_integration.py's own now-retired main() smoke test used
-# (SPECIFICATION.md Part L.4). No soak driving here any more (SPECIFICATION.md's "Driver/
-# DUT process separation" Part, 2026-09-14) - that moved host-side to scripts/
-# _digital_twin_ci_suite.py's own Run 11, which is what actually exercises request-driving against
-# a real boot at scale; this test only proves main() itself boots/arms a fault/shuts down cleanly.
-# Deliberately exactly one such test, not two (a boot-only one plus a separate fault-injection one):
-# main()'s own real supervisor (sensortask_wozi.main()/start_and_check_tasks()) leaves several real
-# background tasks running after main()'s own main_task.cancel() - the same orphaned-task
-# memory-pressure bug tests/test_digital_twin_sensortask_integration.py's own module docstring
-# already documents in full. digital_twin/launch.py's own test file has exactly one such smoke test
-# for the identical reason - matched here, not reinvented.
+# main() - one real, short, bounded end-to-end smoke test: boots the real sensortask_wozi object graph via
+# the GENERIC entry point rather than a static import, wired from a JSON-dumped copy of machine's "wozi"
+# plan, with one real injected fault - the shape the retired run_wozi_integration.py's own test used.
+#
+# No soak driving here any more (SPECIFICATION.md's "Driver/DUT process separation" Part): that moved host-
+# side to the CI suite's Run 11, which drives requests against a real boot at scale. This only proves main()
+# itself boots, arms a fault and shuts down cleanly.
+#
+# Deliberately exactly one such test, not a boot-only one plus a separate fault-injection one: main()'s real
+# supervisor leaves several background tasks running after main_task.cancel(), the orphaned-task memory-
+# pressure problem the twin integration suite's docstring documents. launch.py's tests match this.
 # ---------------------------------------------------------------------------
 
 

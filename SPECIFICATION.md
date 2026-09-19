@@ -4555,7 +4555,7 @@ finding — it governs every test in this repo from now on, digital-twin and rea
 
 ## I.5 Real-hardware confirmation
 
-Every parameter this audit's Unix-port tests couldn't reach (an 8MB heap vs. RP2040's real budget)
+Every parameter this audit's Unix-port tests couldn't reach (a host-sized heap vs. RP2040's real budget)
 was confirmed on real target hardware (2026-09-08): `gc.threshold(32768)` (real hammer-load
 `mem_free` floor 91312 bytes vs. 128 bytes at the reactive-only default), the real GC pause-length
 range (I.1), and `_MAX_STATUS_PIECE_BYTES`'s real headroom (I.3).
@@ -4611,13 +4611,29 @@ once: 4 x 16,384 = 65,536 B of contiguous demand, against roughly 105,000 B free
 Nothing legitimate could provoke it — every accepted body is far smaller — but a client sending
 four concurrent oversized PUTs could, and each would be answered 413 *after* allocating.
 
-**What the caps are set to, and why 2048.** Measured against the real schemas: the largest body the
-client can produce is one config group with every field at its schema maximum, which is **1,132 B**
-(NTP, dominated by `NTP_Host`'s 1024-character bound); every other group is under 300 B, and real
-traffic measures 232 B. The client submits one group at a time and only changed fields
-(`js/render.js`), so body size does not grow with module count. 2048 clears the schema maximum with
-1.8x margin and real traffic with ~9x, and takes the four-connection worst case to 4 x 2,048 =
-8,192 B.
+**What the caps are set to, and why 2048.** Measured against the real schemas, per **route**
+rather than per group: the largest legitimate body is **1,312 B** on `PUT /networking`, dominated by
+`NTP_Host`'s 1024-character bound (1,038 B of it). The others are smaller — `/sensors` 967 B on
+`dev` and 629 B on `wozi`, `/notification` 523 B, `/system` 139 B, `/status` 22 B — and real traffic
+measures 232 B. So 2048 clears the schema maximum with **1.56x** margin and real traffic with ~9x,
+and takes the four-connection worst case to 4 x 2,048 = 8,192 B.
+
+**Per route, not per group, and the difference is load-bearing** [SRC]. An earlier revision quoted
+1,132 B, which is the *NTP group alone*, on the grounds that `js/render.js` submits one group at a
+time with only changed fields. That is true of this website and not of the API: `_put_sensors()`
+iterates `body.items()` and the flat handlers apply every field they recognise, so any client may
+legitimately send a whole route's fields in one body — and a cap must serve what the API accepts,
+not what one client happens to send. The route figures above are therefore the ones the cap is set
+against. `/sensors` is also the one that *grows*: it gains a group per driver, which is why it is
+338 B wider on `dev` than on `wozi`.
+
+**Derived and guarded, not quoted** [SRC]. `tests_scripts/test_request_body_cap_headroom.py`
+computes both sides — the cap out of `WebserverService.__init__` by AST, the schema out of the real
+`buildgen` model per device — and asserts no route can be sent a legitimate body the cap would
+reject. It also pins each device's maximum, so a new driver or a widened string bound fails
+deliberately instead of drifting toward the cap unnoticed; verified to bite by widening `NTP_Host`
+to 4096, which reports `/networking` at 4,384 B. The hardware tier's W3 checks the same property on
+silicon but cannot run in CI, and its constant is the one this guard would otherwise be quoting.
 
 **Both are set from the one constructor parameter**, so they cannot drift apart again — the defect
 was never a value, it was the gap. `tests/test_asy_webserver_service.py`'s F.2b section pins this
@@ -4635,7 +4651,8 @@ one. The binding itself stays a mock-tier and source-level claim, never a hardwa
 **Run on silicon, 2026-09-19** [HW]. W1-W4 pass on the real `dev` board over real WiFi: the
 boundary is exact (2047 -> 200, 2048 -> 200, 2049 -> 413, so Microdot's `<=` is honoured), the
 2048-4096 band that the previous firmware accepted now answers 413 on both 3072 and 4096 (W2, the
-only row that tells the two firmwares apart), the 1132 B schema maximum still fits, and a mixed
+only row that tells the two firmwares apart), the schema maximum still fits (sent as 1132 B on the
+day, since corrected to the route-wide 1312 B above), and a mixed
 stream is answered request-by-request. `WEBSERVER`'s error log stayed **empty** throughout, which
 is the assertion that matters: a 413 is raised inside vendored Microdot before any of our own code
 is reached, so anything appearing there would be a finding about this project.
@@ -5702,7 +5719,39 @@ could be wrong and refusing to proceed, rather than degrading.
   a string or docstring, an unparseable file), plus the false-positive checks that make the
   mechanism trustworthy (realistic prose merely mentioning the tag's name, an unrelated `@`-word).
   `tests_scripts/test_buildgen_tag_comments.py` and `test_buildgen_requires_tag.py` are the
-  reference implementation of this bar. It was motivated by a real incident: a driver signature
+  reference implementation of this bar, and each walks its own named dimensions — kept here so a
+  file's own header need not restate them. **`@requires`**: operator (`>= <= == != > <`); value
+  (int, zero, negative, underscored, float, negative float, exponent); format (spacing around the
+  `#`, the tag word, the dot and the operator, plus `##` section style); location (top of file,
+  after a docstring, among imports, trailing inline on a module-level statement, last line with no
+  trailing newline, beside `_WIRING`); multiplicity (none, one, several — distinct fields, a
+  repeated field, exact duplicates — and mixed in with ordinary comments and tag-shaped strings);
+  field name (plain, underscored, digit-bearing); enforcement (each operator satisfied and violated
+  against a real bus table, plus a missing field, a falsy-but-present value, and non-comparable
+  types). **`@wiring`**: wording (exact, typo'd, mis-cased, sigil dropped); format (each of the five
+  grammar elements individually wrong, and individually dropped); location (module level including
+  bracketed continuation lines, versus inside a class or function body); multiplicity (none, one,
+  several, and a duplicate field); spacing (every legal whitespace and `#`-prefix variant); verdict
+  (the parsed `WiringField` really carries what the tag said). **The shared mechanism**
+  (`test_buildgen_tag_comments.py`, unit level): scan (what counts as a real comment token at all
+  versus a `#` inside a string or docstring, where it sits by line, column and physical-line
+  indentation, and how an unreadable or unparseable file fails); wording (the leading word and its
+  `@` sigil — exact, wrong case, each typo shape of insert/delete/substitute/transpose, sigil
+  missing, the edit-distance boundary, an unrelated `@`-word, a punctuation-suffixed word); payload
+  (whether the rest carries a tag-shaped field/operator/value, the gate that keeps ordinary prose
+  from failing a build); verdict (which near-miss error each wording x payload x sigil combination
+  raises, and every combination that must stay silent). **`@web`/`@web-group`**: field name (plain,
+  CamelCase, digit-bearing, underscored, single-character); key=value (quoted, bareword, boolean,
+  repeated `special:<value>="<meaning>"`, unknown key rejected, missing required keys rejected);
+  format (spacing, `##` section style, quoted versus bareword, and each dropped-piece direction —
+  trailing junk, a dropped value, a duplicate key); location (as for `@requires`, plus inside a
+  class or function body, which is rejected); multiplicity (none, one, several, a duplicate
+  (section, submitGroup, field) rejected, and a valid tag not excusing a near-miss beside it);
+  web-group (its own required keys, `submit=`/`submitLabel=`, a duplicate (section, submitGroup)
+  rejected, and the same dropped-piece failures); near-miss (`@` dropped, field name dropped, tag
+  name typo'd, no cross-family contamination, and the edit-distance boundary just outside each
+  family's tolerance, which must stay silent); real drivers (every tagged `src/` file parsing to
+  exactly the expected tags). It was motivated by a real incident: a driver signature
   change once silently broke two `tests_hardware/device_scripts/` call sites for a full day,
   undetected because nothing in that scope was checked at all. A malformed comment tag silently
   parsing to "no tag declared" is the same class of risk one layer down.

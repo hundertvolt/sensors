@@ -651,42 +651,81 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     it rides the next real-hardware session rather than being pushed blind
     (`REAL_HARDWARE_TEST_QUEUE.md`).
 
-42. **Every header block in the repo is inside the 3-line cap; the inline blocks outside `src/` are
-    measured, not yet fixed.** The cap was
-    tightened from "no hard numeric cap" to 3 lines per inline block by the project owner on
-    2026-09-14 and re-confirmed 2026-09-18; `main` had recorded that only the ISL29125 branch's own
-    files complied and estimated ~200 pre-existing blocks. The real repo-wide figure, measured
-    2026-09-18 with buildgen's machine-read tag lines (`# @web`, `# @wiring`, `# @limits`,
-    `# @requires`) excluded as data rather than commentary, is **1,445 over-length blocks**:
+42. **Closed 2026-09-19 (owner decision 4): every header and inline comment block in the repo is
+    inside the 3-line cap.** The cap was tightened from "no hard numeric cap" to 3 lines per block
+    by the project owner on 2026-09-14, re-confirmed 2026-09-18, and the owner then asked for the
+    same treatment applied once - not permanently - to everything outside `src/`.
 
-    | scope | blocks | files |
-    | --- | --- | --- |
-    | `tests/` | 842 | 87 |
-    | `tests_hardware/` | 144 | 43 |
-    | `tests_scripts/` | 125 | 30 |
-    | `tests_js/` | 74 | 12 |
-    | `scripts/` | 73 | 5 |
-    | `js/` | 70 | 9 |
-    | `buildgen/` | 62 | 15 |
-    | `digital_twin/` | 46 | 14 |
-    | `toolchain/` | 9 | 2 |
+    **Header blocks reached zero first** (2026-09-18): 65 over-cap Python module/class/function
+    docstrings plus two JS/CSS file headers. Most duplicated a rule the spec already stated, so the
+    fix was a pointer, not a deletion; the three per-device scenario libraries' shared rationale
+    became SPECIFICATION.md Part E.2.1, its single point of truth.
 
-    `src/` was swept to **zero** in the same pass (121 blocks, of which ~27 turned out to be tag
-    runs), because it is the shipped firmware and the one scope where the rule earns its keep;
-    nothing was deleted, only tightened or moved to the Part that already owned the fact.
+    **Inline blocks then followed, scope by scope**, `src/` first (121 blocks) and `tests/` last as
+    the largest by far. Final tallies, after three corrections to the measurement itself - divider
+    rules (`# ----`) are separators, PEP 723 `# /// script` headers are metadata, and JSDoc
+    `@param`/`@returns` continuation lines are annotations, none of them commentary:
 
-    **Header blocks are now at zero repo-wide** (2026-09-18, the concentrated run the owner asked
-    for): 65 over-cap Python module/class/function docstrings across `tests/` (33),
-    `tests_hardware/` (17), `tests_scripts/` (10), `toolchain/` (3) and `scripts/` (2), plus two
-    JS/CSS file headers. Most were duplicating a rule the spec already stated, so the fix was a
-    pointer, not a deletion; the three per-device scenario libraries' shared rationale became
-    SPECIFICATION.md Part E.2.1, its single point of truth. `js/definitions.js`'s ~37-line
-    `@typedef` run is exempt as a machine-checked type declaration (CLAUDE.md), like buildgen's tag
-    lines.
+    | scope | blocks | scope | blocks |
+    | --- | --- | --- | --- |
+    | `tests/` | 710 | `tests_js/` | 44 |
+    | `tests_scripts/` | 101 | `js/` | 28 |
+    | `tests_hardware/` | 97 | `toolchain/` | 4 |
+    | `scripts/` | 76 | `html/` | 2 |
+    | `buildgen/` | 62 | | |
+    | `digital_twin/` | 48 | | |
 
-    The inline blocks above are deliberately still left: rewriting ~1,400 of them in one diff would
-    bury any review, and each one still needs the judgement call about where its detail belongs.
-    Best taken scope by scope, `tests/` last - it is 58% of the total on its own.
+    Nothing was dropped outright. Each block kept the load-bearing WHY next to the line it explains;
+    implementation-history narrative ("found via", "corrected during implementation", test counts
+    from a since-changed suite) went, per the documentation rule that docs carry current state and
+    rules, not the path that got there; and an architectural fact already owned by a
+    SPECIFICATION.md Part became a pointer to it rather than a restatement.
+
+    Stale facts surfaced and were corrected in passing: `tests/test_asy_webserver_service.py` and
+    SPECIFICATION.md Part I.5 both still described the Unix-port harness as an 8MB heap
+    (`scripts/test.sh` moved it to 16M, and that file's own comment owns the history), and the
+    UDP-socket suite named `async_connect.py` and the deleted `improved-quality/` as its upstream
+    callers, where the real ones are `src/asy_ntp_client.py` and `src/captive_dns.py`.
+
+    Machine-read tag lines (`# @web`, `# @wiring`, `# @limits`, `# @requires`) and
+    `js/definitions.js`'s `@typedef` run stay exempt as data, per CLAUDE.md. This was a one-time
+    pass by the owner's explicit framing, not a standing gate: new code is expected to meet the cap
+    as it is written, and nothing enforces it mechanically.
+
+43. **Closed 2026-09-19: `main` is merged in, and the "purely mechanical" assessment of that merge
+    was wrong in four places.** The branch's base was `348be6d` (PR #70); `main` had moved 76
+    commits ahead to `32e9a8e`, none of them in this branch's history. The recorded resolution held
+    in outline - take this branch's side on all 36 content conflicts, keep the three modify/delete
+    files deleted (`src/sensortask_dev.py`, `digital_twin/run_dev_integration.py`,
+    `tests_hardware/bus_topology.py`, all buildgen-generated or retired here) - and `arduino/`, the
+    BSEC 2.6.1.0 vendor release plus sketches, came in as the pure addition it was expected to be.
+
+    What the assessment missed is that `main`'s ISL29125 branch also carried **general fixes this
+    branch never had**, because the two forked before the promotion existed on any shared ref.
+    Taking this branch's side wholesale would have silently reverted all four:
+
+    - `.github/workflows/ci.yml`: `uv sync` retried in **every** job that syncs, not just the test
+      lanes. `main` hit HTTP 500 on 2026-09-13 and 504 on 2026-09-14, both on lanes touching no
+      shell script. Adopted, with the three later sites pointing at the first one's reasoning.
+    - `tests/machine.py` and `digital_twin/machine.py`: `Pin.PULL_UP`/`PULL_DOWN` corrected to the
+      real rp2 values (`GPIO_PULL_UP` 1, `GPIO_PULL_DOWN` 2, `ports/rp2/machine_pin.c` at v1.29.0).
+      Both fakes here had `PULL_UP = 2` and no `PULL_DOWN` at all. Adopted in both. Every use site
+      is symbolic, so nothing depended on the wrong number - only the fakes' fidelity did.
+    - `js/mock-server.js`: magnitude-aware jitter. The old spread was sized for readings of order
+      hundreds, so on the ISL29125's normalised 0-1 leaves a 0.05 floor is +-178% - it drove them
+      negative and quantised them to 0.00. Adopted.
+
+    Two further gaps were **this branch's own**, caught by `main`'s new
+    `tests_js/definitions-mockdata-coverage.test.js`: `mockdata/dev.json` had no `BMP3XX`
+    measurements at all, and no `UARTLINK` status counters, though dev's definitions declare both
+    (the latter a WP3 leftover - the fields were added to the definitions and never to the mock).
+    Both added.
+
+    **The hazard worth remembering**: an auto-merged *test* file next to an `--ours`-resolved
+    *source* file. Git reports no conflict, so nothing flags it, and the test then fails against
+    source that lacks the feature it pins. Three of the four fixes above surfaced exactly that way,
+    from `npm run test:unit` rather than from reading 150 conflict hunks. After a resolution that
+    takes one side wholesale, run every tier before trusting it.
 
 ## Deferred / explicitly out-of-scope work
 
@@ -699,35 +738,18 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   wire, minus the length and root bytes), so 1024 is ~4x over-permissive — but changing it is a
   deliberate divergence from fielded behaviour, which the "same features, not a feature change"
   working agreement makes a decision rather than a fix. **Why it is worth deciding**: that one
-  field is the sole reason the largest schema-permitted PUT body is 1,132 B; every other config
-  group is under 300 B, and real traffic measures 232 B. At 253 the schema maximum drops to ~360 B,
-  which would take `max_content_length`'s margin from 1.8x to ~5.7x (SPECIFICATION.md Part I.6).
+  field is the sole reason the largest schema-permitted PUT body is **1,312 B** — `NTP_Host` alone
+  costs 1,038 B of it, and the next-largest route is `/sensors` at 967 B on `dev`. Real traffic
+  measures 232 B. **At 253 the route maximum drops to 541 B**, which would take
+  `max_content_length`'s margin from **1.56x to 3.79x** (SPECIFICATION.md Part I.6; the older
+  1,132 B / 1.8x figures were the NTP group alone, not the whole route).
+  `tests_scripts/test_request_body_cap_headroom.py` derives all of this, so a change here is
+  re-measured rather than re-estimated.
   **Not a one-token change**: `html/definitions/{dev,wozi}.json` carry the bound as
   `"maxLength": 1024` and are generated *and committed*, so they need regenerating, and
   `tests/test_asy_ntp_client.py:53` mirrors the tuple verbatim. **Unchecked**: whether a stored
   value outside a tightened bound is rejected on the next write or silently falls back to the
   default — trace the read path before changing it.
-
-- **The `main` merge conflict: how it resolves was settled 2026-09-14/18; only WHEN is open.**
-  Recorded here so no future session re-opens it as a design question. `main` and this branch built
-  the ISL29125 driver twice, in parallel, on the same day - `main` via PR #75, this branch via its
-  own buildgen-native port (PR #83, forked from `03192a5` before the promotion existed on any shared
-  ref). Git therefore sees six files as `add/add`, and the content conflicts are both sides writing
-  up the same driver in the same places (`SPECIFICATION.md`, `BACKLOG.md`, `DEVICE_REFERENCE.md`,
-  `html/definitions/dev.json`, `js/definitions.js`, `mockdata/dev.json`, the bus-hazard tests, six
-  `tests_hardware/` files). Nothing else on `main` conflicts: the `arduino/` libraries are a pure
-  addition and the SCD30 settle fix auto-merges.
-  **Resolution: take this branch's side.** It is the newer of the two and carries three fixes `main`
-  never got (the configurable INT pull-up, the shadow-divergence race fix, saturation moved out of
-  `wrnno=12` into the API's `Overrange` field), and its driver differs from `main`'s by +140/-60,
-  most of that the same code reworded. The two modify/delete conflicts (`src/sensortask_dev.py`,
-  `digital_twin/run_dev_integration.py`, which PR #75 edited to wire the ISL29125 in by hand) resolve
-  as **keep deleted** - buildgen generates both now, and `devices/dev.toml` already carries the
-  wiring.
-  **The exceptions list is already merged, not still owed**: `main`'s worthwhile ISL29125 tests were
-  assessed one by one and adopted here in `32afd7f` (item 33 has the full account, queue row R8 the
-  never-run-on-silicon caveat), so the resolution no longer needs to reach into `main`'s side for
-  anything. What remains is purely mechanical, and is the owner's to schedule.
 
 - **CLAUDE.md's two-target clean-chroot verification is an owner-run periodic check, not a blocking
   per-push gate - settled (owner decision, 2026-09-18).** The recipe, both targets and the separate

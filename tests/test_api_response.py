@@ -311,11 +311,9 @@ def test_handle_set_cmd_async_post_fct_raising_is_caught_and_reports_generic_err
 
 
 def test_handle_set_cmd_sync_post_fct_raising_never_schedules_the_async_hook() -> None:
-    # Both hooks supplied at once, with the synchronous one raising: post_fct() fires first and
-    # post_asy_fct() is only awaited afterwards (see handle_set_cmd's own ordering), so the async
-    # hook must never run at all - not even be scheduled. Pins that firing order down as real
-    # behaviour rather than an incidental statement order, and confirms the response still degrades
-    # into the same generic-error envelope the two single-hook-raises tests above expect.
+    # Both hooks supplied at once, with the synchronous one raising: post_fct() fires first and the async
+    # hook is only awaited afterwards, so it must never run, not even be scheduled. Pins that order as real
+    # behaviour, and confirms the response still degrades into the same generic envelope.
     reader, path = _make_reader("handlebothhooksraise")
     try:
         async_calls = []

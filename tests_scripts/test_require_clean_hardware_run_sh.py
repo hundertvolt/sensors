@@ -112,22 +112,18 @@ def _gate_cases() -> "list[tuple[str, str]]":
 
 @pytest.mark.parametrize(("flag", "test_name"), _gate_cases())
 def test_a_gated_skip_is_accepted_without_its_flag_and_rejected_with_it(repo_root: Path, tmp_path: Path, flag: str, test_name: str) -> None:
-    # The contextual half of the whitelist, and the easiest to break by promoting an entry to
-    # unconditional: passing the flag and STILL getting a skip means the hardware went away mid-run,
-    # which is exactly what this script exists to refuse to call clean. Parametrized over every gated
-    # name rather than one representative - each entry is hand-written in the script and one of them
-    # was genuinely missing (see the completeness test below for how that failed).
+    # The whitelist's contextual half, easiest to break by promoting an entry to unconditional:
+    # passing the flag and STILL skipping means the hardware went away mid-run, which is what
+    # this script refuses to call clean. Parametrized over every gated name, since one was missing.
     log = f"{_GREEN_LINE}\ntests_hardware/flash/test_x.py::{test_name} SKIPPED (opt-in)\n{_SUMMARY}\n"
     assert _run(repo_root, tmp_path, log).returncode == 0, f"{test_name} must be an accepted skip when {flag} is absent"
     assert _run(repo_root, tmp_path, log, flag).returncode == 1, f"{test_name} skipping despite {flag} must fail the run"
 
 
 def test_every_skip_gated_test_is_whitelisted_under_its_own_flag(repo_root: Path) -> None:
-    # The gap this closes cost nothing to write and can only otherwise be found by spending bench
-    # time: a marker-gated test absent from the script's list skips in every default run, is not
-    # recognised, and turns a genuinely clean bench suite into "FAILED: unexpected test skip".
-    # test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved was
-    # exactly that until 2026-09-18 - marked long_soak, never whitelisted.
+    # A gap otherwise findable only by spending bench time: a marker-gated test absent from the
+    # script's list skips in every default run, is not recognised, and turns a clean bench suite
+    # into "FAILED: unexpected test skip". One long_soak test was exactly that until 2026-09-18.
     whitelisted = _whitelisted_by_flag(repo_root)
     missing = {
         marker: sorted(names - whitelisted.get(_SKIP_GATES[marker], set()))
@@ -138,10 +134,9 @@ def test_every_skip_gated_test_is_whitelisted_under_its_own_flag(repo_root: Path
 
 
 def test_every_skip_gated_test_really_checks_its_own_flag(repo_root: Path) -> None:
-    # The marker alone gates nothing: tests_hardware/conftest.py deselects only the persistence
-    # pair, so each of these tests skips itself by reading its own option. A marker added without
-    # that body check fails in the expensive direction - the test RUNS on a bench that was never
-    # opted in, driving ~10 minutes of light programs or a real reflash nobody asked for.
+    # The marker alone gates nothing: conftest.py deselects only the persistence pair, so each
+    # of these skips itself by reading its own option. A marker without that body check fails
+    # expensively - the test RUNS unopted-in, costing light programs or a real reflash.
     ungated: dict[str, list[str]] = {}
     for path in sorted((repo_root / "tests_hardware").rglob("test_*.py")):
         source = path.read_text()

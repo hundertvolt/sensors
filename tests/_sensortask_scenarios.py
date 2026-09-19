@@ -6,10 +6,9 @@ import asyncio
 import json
 import sys
 
-# Same convention as tests/test_asy_webserver_service.py's own module docstring: scripts/test.sh's
-# MICROPYPATH deliberately excludes ext/, and every generated sensortask_<device> module now
-# transitively imports microdot (via asy_webserver_service.py) - extending sys.path here reaches
-# the real, vendored ext/microdot.py without touching MICROPYPATH/pyproject.toml/scripts/test.sh.
+# Same convention as tests/test_asy_webserver_service.py: scripts/test.sh's MICROPYPATH excludes
+# ext/, and every generated sensortask_<device> transitively imports microdot - extending sys.path
+# reaches the real vendored ext/microdot.py without a build-environment scope change.
 sys.path.insert(0, "ext")
 
 import machine
@@ -52,10 +51,9 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 def status_body(res: "Response") -> bytes:
-    # GET /status streams from a plain list of already-json.dumps()-encoded fragments now (see
-    # asy_webserver_service.py's _get_status()/_build_status_pieces()) - drains it the way a real
-    # client naturally would, so every existing json.loads(...) assertion on a GET /status response
-    # keeps working unchanged.
+    # GET /status streams a list of already-json.dumps()-encoded fragments (see
+    # asy_webserver_service.py's _build_status_pieces()); draining it the way a real client would
+    # keeps every json.loads(...) assertion on a /status response working unchanged.
     return drain_json_response_body(res.body)
 
 
@@ -65,24 +63,17 @@ _DEVICES = ("wozi", "dev", "arzi", "klkizi", "grkizi", "schlafzi")
 
 
 class _FakeMB85RS2MTA(FakeMB85RS64V):
-    # dev's real FRAM chip is a 256KB MB85RS2MTA (product ID 0x04 0x7F 0x48 0x03, SPECIFICATION.md
-    # Part C.3.1), not the 8KB MB85RS64V every other real device uses (the base fake's own default
-    # RDID). A subclass, not a post-construction override, since build_system() constructs the chip
-    # with no such hook. Only the RDID changes, not the fake's own memory buffer size - nothing in
-    # this file's own construction/wiring scope ever writes chunks anywhere near a real chip's
-    # capacity ceiling, on either size; the RDID is what asy_fram_manager.py's own setup() actually
-    # keys "did I find the chip I expect" off.
+    # dev's real FRAM is a 256KB MB85RS2MTA (SPECIFICATION.md Part C.3.1), not the 8KB MB85RS64V
+    # the base fake defaults to. A subclass, since build_system() offers no post-construction hook.
+    # Only the RDID changes - that is what asy_fram_manager.py's setup() keys its chip check off.
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self.rdid_response = bytes([0x04, 0x7F, 0x48, 0x03])
 
 
-# Same "keyed by the real chip's own max_size" table digital_twin/machine.py's own
-# _FRAM_RDID_BY_MAX_SIZE uses for the identical reason - derived from each device's own real FRAM
-# instance (devices/*.toml's [[instance]] driver="fram" max_size=...), read here from the wiring
-# plan buildgen already computed, not a hardcoded wozi/dev special case. A future device with a
-# third real FRAM size needs one new entry here, the same narrow addition twin_wiring.py's own table
-# would need.
+# Same "keyed by the real chip's own max_size" table digital_twin/machine.py's _FRAM_RDID_BY_MAX_SIZE
+# uses, for the identical reason - derived from each device's own real FRAM. A third real size needs
+# one new entry here, the same narrow addition twin_wiring.py's own table would need.
 _FRAM_FAKE_BY_MAX_SIZE: "dict[int, type[FakeMB85RS64V]]" = {
     0x2000: FakeMB85RS64V,
     0x40000: _FakeMB85RS2MTA,
@@ -102,21 +93,13 @@ def _fram_fake_class(device: str) -> "type[FakeMB85RS64V]":
 
 
 # ---------------------------------------------------------------------------
-# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper: build_system()
-# constructs several real ConfigManager-backed modules (conn, ntp, sgp40, [bmp3xx], notification),
-# each of which writes/reads a real config_<NAME>.cfg file at its cfg_path - repeated calls across
-# test_* functions in this one process must not collide on the same files, and must not touch the
-# real repo-root config files either. Keyed per-device (register_for_device() below sets this up),
-# not one shared "sensortask" key - since scripts/test.sh now runs each device's own batch as its
-# own OS process, potentially concurrently with every other device's own process (the whole point
-# of the tests/test_sensortask_<device>.py split - see this module's own docstring), two devices'
-# processes must never resolve TmpScratch's fixed tests/_tmp/<key>/ path to the same directory, or
-# one process's construction-time wipe (TmpScratch.__init__) could race the other's still-running
-# writes. TmpScratch's own per-instance counter still keeps every call's own directory unique
-# within one process regardless of device. See _tmp_scratch.py's own docstring for the
-# construction-time wipe and tests/microtest.py's teardown_all() call that replace this file's old,
-# self-contained _sweep_stale_tmp_dirs()/_next_dir pair - tests/test_tmp_scratch.py now carries the
-# regression coverage that used to live here as test_sweep_stale_tmp_dirs_*().
+# Per-test config-file isolation via tests/_tmp_scratch.py: build_system() constructs several real
+# ConfigManager-backed modules, each writing a real config_<NAME>.cfg at its cfg_path - repeated
+# calls in this process must not collide, nor touch the real repo-root config files.
+
+# Keyed per-device (register_for_device() sets this up), not one shared "sensortask" key: each
+# device's batch is its own OS process, potentially concurrent, so two devices must never resolve
+# TmpScratch's tests/_tmp/<key>/ path to the same directory - one wipe could race the other.
 # ---------------------------------------------------------------------------
 
 _scratch: "TmpScratch | None" = None
@@ -154,14 +137,9 @@ def _device_of(module: "Any") -> str:
 
 
 def _present_optional_instances(module: "Any") -> "tuple[str, ...]":
-    # Reflective, not a hardcoded per-device table - but the oracle is the wiring plan buildgen
-    # wrote BEFORE this module was even generated (scripts/_generate_sensortask_modules.py's own
-    # "instances" list, straight from devices/<device>.toml), never the built module's own
-    # attributes: reading the module back (getattr(module, name, None) is not None) can't
-    # distinguish "device genuinely has no bmp3xx" from "buildgen silently dropped a declared
-    # driver" - a real construction bug would read back as though the driver was never wired at
-    # all, and every check below would agree with it. fram is deliberately excluded here - every
-    # real device has one unconditionally, and it's never part of the sensor-facing sets below.
+    # Reflective, but the oracle is the wiring plan buildgen wrote from devices/<device>.toml,
+    # never the built module's attributes: reading the module back cannot tell "device has no
+    # bmp3xx" from "buildgen silently dropped a declared driver". fram is excluded, always present.
     plan_instances = set(_wiring_plan(_device_of(module))["instances"])
     return tuple(name for name in _OPTIONAL_INSTANCE_NAMES if name in plan_instances)
 
@@ -174,8 +152,7 @@ def _has(module: "Any", name: str) -> bool:
     else:
         # The reverse direction matters too: a wiring plan that silently UNDER-reports (omits a
         # driver build_system() genuinely constructs) must not let this check quietly agree with
-        # it and stop testing a real, live object - confirmed by direct review this was the one
-        # blind spot the "declared present -> constructed" check above didn't cover.
+        # it and stop testing a real, live object.
         assert getattr(module, name, None) is None, f"{name} is NOT in devices/{device}.toml's own instances, but build_system() constructed it anyway"
     return present
 
@@ -207,13 +184,9 @@ def _all_loggers(module: "Any") -> "list[Any]":
         module.sysfunct.pr,
         module.sysfunct.cfgmgr.pr,
     ]
-    # scd30 before sgp40 before bmp3xx: matches buildgen's own construction/collection order
-    # (topological - sgp40 depends on scd30 as its temperature/humidity source, so scd30 is built
-    # and collected first) - every real device's own devices/*.toml lists its instances in this
-    # same relative order (SPECIFICATION.md Part L.3), so this fixed shape (rather than a
-    # generic reflective walk of buildgen's own construction order) stays correct for all 6. This
-    # test pairs setters[i] with loggers[i] by index elsewhere in this file, so this order is
-    # load-bearing.
+    # scd30 before sgp40 before bmp3xx matches buildgen's topological construction order (sgp40
+    # depends on scd30 as its temperature/humidity source), the same relative order every device's
+    # TOML lists (Part L.3). setters[i] is paired with loggers[i] elsewhere, so this is load-bearing.
     if _has(module, "scd30"):
         loggers.append(module.scd30.pr)
     if _has(module, "sgp40"):
@@ -232,29 +205,13 @@ def _all_loggers(module: "Any") -> "list[Any]":
 
 
 def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
-    # AsyConnTime(chunk) -> its own CFGMGR_WIFI(chunk) -> its own DNSServer(chunk) ->
-    # AsyNtpClient(chunk) -> its own CFGMGR_NTP(chunk) -> SystemService(chunk) -> its own
-    # CFGMGR_SYSTEM(chunk) -> SCD30_Reader(chunk, no cfgmgr - params live on-sensor) -> SGP40 own
-    # log(chunk) -> its own CFGMGR_SGP40(chunk) -> SGP40 VOC backup (timestamped) ->
-    # [BMP3xx_Reader(chunk) + its own CFGMGR_BMP3XX(chunk), only if present] ->
-    # [ISL29125_Reader(chunk) + its own CFGMGR_ISL29125(chunk), only if present] ->
-    # NeopixelDriver(chunk, no cfgmgr) -> NotificationCoordinator(chunk) -> its own
-    # CFGMGR_NOTIFY(chunk) -> [UartLinkExerciser x2 (chunk each, no cfgmgr), only if present, WP3] ->
-    # WebserverService(chunk, no cfgmgr), in that order, unconditionally.
-    # WP1/CLAUDE.md's implicit-FRAM-wiring rule: conn/ntp/webserver - and conn's own DNSServer -
-    # draw a chunk too, on every real device's own [device.wiring].fram_target. WP2, the same rule
-    # applied to ConfigManager: every SensorReaderConfig-based module's own cfgmgr draws its own
-    # separate chunk immediately after that module's own pr chunk (base_classes.py's
-    # SensorReaderConfig.__init__ builds self.pr then self.cfgmgr in that order) - SystemService is
-    # not a SensorReaderConfig subclass but embeds its own ConfigManager directly the same way
-    # (system_service.py's own comment), so it follows the identical "own chunk, then cfgmgr chunk"
-    # shape. NeopixelDriver/WebserverService/SCD30_Reader/UartLinkExerciser have no on-flash config
-    # at all, so none of them ever contributes a cfgmgr chunk. SCD30 constructs before SGP40
-    # (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a direct reference to scd30
-    # as its temperature_source/humidity_source, so the producer must exist first). Derived from the
-    # module's own reflected instance set (_present_optional_instances()), not a hardcoded
-    # per-device literal - every real device's own devices/*.toml lists its instances in this same
-    # relative order (SPECIFICATION.md Part L.3), so this fixed shape stays correct for all 6.
+    # The full expected chunk order is SPECIFICATION.md Part A.7's "Real FRAM chunk order" -
+    # implicit-FRAM-wiring (conn/ntp/webserver and conn's DNSServer) and a cfgmgr chunk right after
+    # each SensorReaderConfig-based module's own pr chunk are the two rules that shape it.
+
+    # Built from the module's own reflected instance set, not a hardcoded per-device literal: every
+    # device's TOML lists its instances in this same relative order (Part L.3), so the fixed shape
+    # below stays correct for all 6.
     calls = ["chunk", "chunk", "chunk"]  # AsyConnTime, its own CFGMGR_WIFI, its own DNSServer
     calls += ["chunk", "chunk"]  # AsyNtpClient, its own CFGMGR_NTP
     calls += ["chunk", "chunk"]  # SystemService, its own CFGMGR_SYSTEM
@@ -294,9 +251,8 @@ def _dispatch(module: "Any", method: str, path: str, json_body: "dict[str, Any] 
 
 # ---------------------------------------------------------------------------
 # Scenario bodies - one per distinct construction/wiring/webserver-registration concern, each
-# parametrized by `device` and registered once per real device below via _register()/globals(),
-# mirroring tests/_webserver_concurrency_scenarios.py's own dynamic-registration convention
-# (the only parametrization mechanism available without a real pytest - SPECIFICATION.md Part E.1).
+# parametrized by `device` and registered per real device below, mirroring
+# tests/_webserver_concurrency_scenarios.py's dynamic-registration convention (Part E.1).
 # ---------------------------------------------------------------------------
 
 _SCENARIOS: "list[tuple[str, Callable[[str], None]]]" = []
@@ -313,22 +269,18 @@ def _register(name: str) -> "Callable[[Callable[[str], None]], Callable[[str], N
 @_register("build_system_constructs_every_real_module")
 def _scenario_build_system_constructs_every_real_module(device: str) -> None:
     module = build(device)
-    # Bare module-level attributes - reaches every long-lived object the same way the legacy
-    # reference file's own module-level names would be reached. Shared shape with the twin's own
-    # equivalent test (tests/_shared_rest_roundtrip.py). Mandatory infra + this device's own
-    # reflected optional-instance set - never a hardcoded 3-sensor literal.
+    # Bare module-level attributes - reaches every long-lived object the way the legacy reference
+    # file's own module-level names would. Shared shape with tests/_shared_rest_roundtrip.py.
+    # Mandatory infra plus this device's reflected optional set, never a hardcoded 3-sensor literal.
     mandatory = ("conn", "ntp", "i2c0", "i2c1", "spi0", "fram", "sysfunct", "neopixel", "notification", "watchdog")
     assert_named_modules_constructed(module, mandatory + _present_optional_instances(module))
 
 
 @_register("scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it")
 def _scenario_scd30_clock_stretch(device: str) -> None:
-    # SCD30 documents up to 150ms of clock stretching once per day for internal calibration
-    # (datasheets/scd30/..._Interface_Description.pdf p.2) - rp2's own I2C timeout default is
-    # 50ms (DEFAULT_I2C_TIMEOUT, ports/rp2/machine_i2c.c), so whichever bus SCD30 sits on must
-    # override it or that expected stretch surfaces as a spurious OSError roughly once a day.
-    # Looked up through scd30 itself (not assumed to be i2c0) - every real device wires it to i2c0
-    # today, but this test stays correct as-is if a future variant wired it elsewhere.
+    # SCD30 documents up to 150ms of clock stretching once per day (datasheets/scd30/...
+    # _Interface_Description.pdf p.2) and rp2's I2C timeout default is 50ms, so whichever bus SCD30
+    # sits on must override it. Looked up through scd30 itself, not assumed to be i2c0.
     module = build(device)
     if not _has(module, "scd30"):
         return  # every real device has scd30 today, but this stays correct if a future one doesn't
@@ -383,13 +335,9 @@ def _scenario_web_host_port_overridable(device: str) -> None:
 
 @_register("main_forwards_web_host_and_port_to_build_system")
 def _scenario_main_forwards_web_host_port(device: str) -> None:
-    # main() itself (not just build_system()) must accept and forward the override - the real entry
-    # point calls <module>.main(), never build_system() directly. Fakes
-    # start_timers()/ntp_force_sync()/start_and_check_tasks() the same way this file's own
-    # main-call-order scenario (below) already does, and for the same reason (see that scenario's
-    # own comment): start_timers()'s real Timer-sequencing chain never completes under
-    # tests/machine.py's fake, which only fires Timer callbacks via manual .trigger() - awaiting it
-    # for real here would hang.
+    # main() itself, not just build_system(), must accept and forward the override - the real entry
+    # point calls <module>.main(). Fakes the three steps for the same reason the main-call-order
+    # scenario below does: the real Timer-sequencing chain never completes under machine.py's fake.
     from asy_ntp_client import AsyNtpClient
     from system_service import SystemService
 
@@ -468,16 +416,13 @@ def _scenario_fram_chunk_order(device: str) -> None:
 @_register("fram_chunks_are_all_successfully_allocated_not_out_of_memory")
 def _scenario_fram_chunks_allocated(device: str) -> None:
     module = build(device)
-    # Every FRAM-chunk-owning module's own PrintLogHistoryStore/AsyFramTimestampedChunk degrades to
-    # in-memory-only on allocation failure rather than raising (base_classes.py's own contract) -
-    # assert the happy path actually got real FRAM-backed chunks, not a silently-degraded one.
-    # This is also WP4/Topic 6's own "does everything fit" capacity check, run for every real
-    # device (parametrized like every other scenario in this file): the real, deterministic
-    # enforcement is exactly this - no chunk-holding module ended up with a None chunk reference -
-    # not `allocated_size <= size`, which can never be false by construction (get_chunk() checks
-    # capacity before incrementing, never after) and so would be a tautology rather than a check.
-    # See test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together
-    # (tests/test_base_classes.py) for the negative case proving this same shape can actually fail.
+    # Every FRAM-chunk-owning module degrades to in-memory-only on allocation failure rather than
+    # raising (base_classes.py's contract) - assert the happy path got real chunks, not a degraded
+    # one. This is also the per-device "does everything fit" capacity check.
+
+    # The real enforcement is exactly this - no chunk-holding module ended up with a None chunk -
+    # not `allocated_size <= size`, which get_chunk() makes true by construction. The negative case
+    # is test_base_classes.py's test_sensorreaderconfig_fram_allocation_failure_and_missing_....
     assert module.conn is not None and module.ntp is not None
     assert module.sysfunct is not None and module.neopixel is not None and module.notification is not None
     assert isinstance(module.conn.pr, PrintLogHistoryStore)
@@ -532,22 +477,17 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
 @_register("the_fram_manager_is_the_only_error_source_whose_own_log_is_not_fram_backed")
 def _scenario_only_the_fram_manager_logs_in_memory(device: str) -> None:
     module = build(device)
-    # scripts/_digital_twin_ci_suite.py's Run 5c sweeps the whole errcount table for "nothing was
-    # lost across a commanded reboot" and exempts exactly its _IN_MEMORY_ONLY_ERROR_SOURCES. That
-    # exemption is pinned here from the real object graph rather than trusted as a hand-kept list:
-    # AsyFramManager builds a plain PrintLogHistory because the store cannot persist its own failure
-    # history through itself, and it is the only source allowed to. A module that quietly lost its
-    # fram= wiring would otherwise just be added to that set and stop being swept.
+    # scripts/_digital_twin_ci_suite.py's Run 5c sweeps the whole errcount table and exempts its
+    # _IN_MEMORY_ONLY_ERROR_SOURCES. Pinned from the real object graph: AsyFramManager is the only
+    # source allowed to be in-memory, since the store cannot persist its own failures through itself.
     in_memory = sorted(logger.name for logger in _all_loggers(module) if not isinstance(logger, PrintLogHistoryStore))
     assert in_memory == ["FRAM"], f"{device}: only the FRAM manager's own log may be in-memory-only, found {in_memory}"
 
 
 class _DeadFramChip(FakeMB85RS64V):
-    # Same technique as test_fram_integration.py's own
+    # Same technique as test_fram_integration.py's
     # test_sensorreader_runs_in_degraded_mode_when_fram_setup_never_succeeded: a real device-ID
-    # mismatch (not just fram=None) - the chip responds, just never comes up as an MB85RS64V. Not
-    # device-specific: any RDID mismatch degrades the same way regardless of which real chip's
-    # RDID the healthy case would have used.
+    # mismatch, not just fram=None - the chip responds, it just never comes up as the expected one.
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
@@ -555,11 +495,9 @@ class _DeadFramChip(FakeMB85RS64V):
 
 @_register("build_system_never_insists_on_fram_hardware_being_available")
 def _scenario_fram_never_required(device: str) -> None:
-    # Owner requirement: no module may insist on FRAM availability - every currently FRAM-backed
-    # error log must keep working in plain RAM, and SGP40 specifically must keep running (skipping
-    # backup/restore entirely) without FRAM. Exercises the *whole* construction chain with a dead
-    # chip, not just one driver in isolation (asy_sgp40_driver.py's/print_log.py's own test suites
-    # already cover each class's own degraded-mode contract at the unit level in more depth).
+    # Owner requirement: no module may insist on FRAM availability - every FRAM-backed error log
+    # must keep working in plain RAM, and SGP40 must keep running without backup/restore. Exercises
+    # the whole construction chain with a dead chip, not one driver in isolation.
     asy_spi_driver._SPI = _DeadFramChip  # type: ignore[misc]
     module = __import__(f"sensortask_{device}")
     run(module.build_system(cfg_path=_tmp_cfg_dir()))
@@ -571,10 +509,9 @@ def _scenario_fram_never_required(device: str) -> None:
     assert module.fram.fram.initialized is False  # the dead chip, confirmed never ready
     assert module.sysfunct is not None and module.neopixel is not None and module.notification is not None
 
-    # Every FRAM-chunk-owning module's own logger still allocated a chunk (pure bookkeeping,
-    # SPECIFICATION.md C.13 - doesn't require setup() to have succeeded) but stays functional in
-    # degraded mode rather than raising - matches test_fram_integration.py's own established
-    # "reader.pr.fram is not None, just permanently hardware-unusable" pattern.
+    # Every FRAM-chunk-owning logger still allocated a chunk (pure bookkeeping, SPECIFICATION.md
+    # Part C.13 - doesn't need setup() to have succeeded) but stays functional in degraded mode,
+    # matching test_fram_integration.py's "not None, just permanently hardware-unusable" pattern.
     assert isinstance(module.sysfunct.pr, PrintLogHistoryStore)
     run(module.sysfunct.pr.err_s("boom", errno=1))  # never raises despite the dead chip
     assert run(module.sysfunct.get_error_counter())["SYSTEM"]["ErrCount"] == 1  # still counted in memory
@@ -697,13 +634,9 @@ def _scenario_setup_batch_order(device: str) -> None:
 
             BMP3xx_Reader.setup = real_bmp_setup  # type: ignore[method-assign]
 
-    # notify_finalize runs during synchronous construction, before any setup() call; fram is first
-    # *within* the async setup() batch - sysfunct's own cfgmgr.pr.setup() is FRAM-backed and needs
-    # AsyFramManager already initialized, or it degrades instantly instead of ever reading/writing
-    # its own FRAM chunk (fixed: fram.setup() has no dependency on sysfunct in the other direction).
-    # conn/ntp were both built before fram/sysfunct but are placed after them here too, matching
-    # sysfunct's/fram's own already-fixed positions; conn before ntp mirrors their own real
-    # construction order. bmp only appears for a device that has one.
+    # notify_finalize runs during synchronous construction; fram is first within the async setup()
+    # batch, because sysfunct's FRAM-backed cfgmgr.pr.setup() needs AsyFramManager initialized or it
+    # degrades instantly. conn/ntp are built earlier but placed after those two, conn before ntp.
     expected = ["notify_finalize", "fram", "sysfunct", "conn", "ntp", "sgp"]
     if _has(module, "bmp3xx"):
         expected.append("bmp")
@@ -713,12 +646,9 @@ def _scenario_setup_batch_order(device: str) -> None:
 
 @_register("boot_feeds_the_watchdog_exactly_once_per_setup_call")
 def _scenario_boot_feeds_the_watchdog(device: str) -> None:
-    # WP6 (SPECIFICATION.md Part D.9/G.2): the real, generated boot sequence must actually execute
-    # a feed after every setup() call, not just emit one in source (tests_scripts/
-    # test_buildgen_generate.py's own test_real_device_feeds_the_watchdog_after_every_setup_call_in_order
-    # proves the codegen shape, generically, for all 6 devices - this proves it actually runs,
-    # end to end, against the real object graph). The expected count is derived from the same
-    # generated source buildgen wrote for this device, not a hand-maintained per-device number.
+    # WP6 (SPECIFICATION.md Part D.9/G.2): the generated boot sequence must actually execute a feed
+    # after every setup() call, not just emit one in source (tests_scripts/test_buildgen_generate.py
+    # proves the codegen shape). The expected count comes from the generated source, not by hand.
     with open(f"build/generated_src/sensortask_{device}.py") as f:
         source_lines = f.readlines()
     expected_feeds = sum(1 for line in source_lines if line.strip().startswith("await ") and line.strip().endswith(".setup()"))
@@ -730,11 +660,9 @@ def _scenario_boot_feeds_the_watchdog(device: str) -> None:
 
 
 def _bmp3xx_devices() -> "frozenset[str]":
-    # Which of _DEVICES actually declare a bmp3xx instance, derived from each device's own wiring
-    # plan (buildgen-computed from devices/*.toml) rather than a hardcoded "wozi/dev" literal -
-    # used only where a scenario needs to know this BEFORE construction (to decide whether to
-    # import/patch BMP3xx_Reader at all); every other scenario derives it AFTER construction, by
-    # reflecting on the built module itself.
+    # Which of _DEVICES declare a bmp3xx, from each device's buildgen-computed wiring plan rather
+    # than a hardcoded literal - used only where a scenario must know this BEFORE construction;
+    # every other scenario derives it afterwards by reflecting on the built module.
     return frozenset(d for d in _DEVICES if "bmp3xx" in _wiring_plan_driver_names(d))
 
 
@@ -757,9 +685,8 @@ def _scenario_notify_cfgmgr_exists(device: str) -> None:
 
 # ---------------------------------------------------------------------------
 # Debug level - persisted on sysfunct, pushed live to every logger's own set_level() through a
-# registry collected once at boot (owner requirement: general, system-wide, not per-module - but
-# no shared mutable value anywhere; see SPECIFICATION.md Part A.7's "Debug-level registry"
-# section and _collect_level_setters() for the full logger list).
+# registry collected once at boot (owner requirement: system-wide, but no shared mutable value).
+# See SPECIFICATION.md Part A.7's "Debug-level registry" and _collect_level_setters().
 # ---------------------------------------------------------------------------
 
 
@@ -769,11 +696,9 @@ def _scenario_collect_level_setters(device: str) -> None:
     setters = module._collect_level_setters()
     loggers = _all_loggers(module)
     assert len(setters) == len(loggers)
-    # Each collected setter really is that logger's own bound set_level - confirmed by behavior
-    # (bound-method identity isn't guaranteed, matching this file's own established convention for
-    # checking bound methods elsewhere): calling it must change that exact logger's own level.
-    # Index-based, not zip() - avoids a silent length-mismatch footgun on top of the explicit
-    # length assert above.
+    # Each collected setter really is that logger's own bound set_level, confirmed by behavior
+    # rather than identity (bound-method identity isn't guaranteed). Index-based, not zip() - that
+    # avoids a silent length-mismatch footgun on top of the explicit length assert above.
     for i in range(len(loggers)):
         loggers[i].set_level(PrintLog.level_off())
         setters[i](PrintLog.level_info())
@@ -785,9 +710,8 @@ def _scenario_debug_seed_value(device: str) -> None:
     module = build(device, debug=PrintLog.level_warn())
     assert module.sysfunct is not None
     # First boot - no persisted value yet, so sysfunct.setup() writes and resolves the schema
-    # default (0), then pushes it out through the registry - overriding the debug= seed every
-    # individual module's own logger was constructed with. Matches test_system_service.py's own
-    # test_setup_resolves_cfgmgr_and_leaves_debug_level_at_the_default_on_first_boot.
+    # default (0), then pushes it through the registry, overriding the debug= seed each logger was
+    # constructed with. Matches test_system_service.py's own first-boot test.
     assert module.sysfunct.get_debug_level() == 0
     for pr in _all_loggers(module):
         assert pr.get_level() == 0, f"{pr.name!r} still shows the debug= seed, not the resolved default"
@@ -835,11 +759,9 @@ def _scenario_collect_task_starters(device: str) -> None:
     assert all(callable(s) for s in starters)
     # No Microdot/webserver task - webserver's own task lives outside this collection entirely.
     assert not any("webserver" in getattr(s, "__name__", "").lower() for s in starters)
-    # Each real module's own get_task_starters() output is present. MicroPython bound methods
-    # don't expose __self__ (confirmed directly against the real Unix-port interpreter - a
-    # CPython-only introspection assumption), but they do compare equal when bound to the same
-    # (instance, function) pair, so membership via == still proves each owner actually contributed
-    # its own starters to the combined list, not just that the total count happens to match.
+    # MicroPython bound methods don't expose __self__ (confirmed against the real Unix-port
+    # interpreter - that is a CPython-only assumption), but they compare equal when bound to the
+    # same (instance, function) pair, so membership via == still proves real ownership.
     for owner in _sensor_reader_owners(module):
         for expected in owner.get_task_starters():
             assert expected in starters, f"no task starter bound to {owner!r}"
@@ -847,12 +769,9 @@ def _scenario_collect_task_starters(device: str) -> None:
 
 @_register("collect_timer_starters_includes_every_constructed_module")
 def _scenario_collect_timer_starters(device: str) -> None:
-    # Every constructed module is checked here, not just the ones that currently contribute a real
-    # timer (matches _scenario_collect_task_starters's own uniform ownership check) - neopixel/
-    # notification/webserver all currently return [] from their own get_timer_starters(), but this
-    # test still proves _collect_timer_starters() actually calls each of them (rather than picking
-    # modules by name), since a future Timer added to any of the three would otherwise silently
-    # never run.
+    # Every constructed module is checked, not just those currently contributing a timer:
+    # neopixel/notification/webserver all return [] today, but this proves _collect_timer_starters()
+    # actually calls each of them rather than picking modules by name.
     module = build(device)
     starters = module._collect_timer_starters()
     assert len(starters) > 0
@@ -874,12 +793,8 @@ def _scenario_collect_starters_never_blocks(device: str) -> None:
 
 # ---------------------------------------------------------------------------
 # main()'s own composition - build_system() -> start_timers() -> ntp_force_sync() ->
-# start_and_check_tasks(), in that order. start_timers()'s real Timer-sequencing mechanism and
-# start_and_check_tasks()'s real supervisor loop are each already thoroughly covered by
-# test_system_service.py directly - this test fakes both out (they'd otherwise need real
-# wall-clock-firing Timers, which tests/machine.py's fake only fires via manual .trigger(), or
-# block forever) to verify main() itself wires the pieces together in the right order, without
-# re-proving either subsystem's own internals here.
+# start_and_check_tasks(), in that order. Both middle steps are faked out (their real mechanisms
+# need wall-clock Timers, or block forever); test_system_service.py covers them directly.
 # ---------------------------------------------------------------------------
 
 
@@ -928,26 +843,20 @@ def _scenario_main_call_order(device: str) -> None:
 
 # ---------------------------------------------------------------------------
 # Webserver wiring - build_system() also constructs a real Microdot() app + WebserverService,
-# registering every real driver's SettingsGroup/status_source/system_cmd/notification_led/
-# maintenance_sensor/error_source. These tests check the *real* registrations landed correctly
-# (right module, right fields, right hooks) - not the generic dispatch/aggregation logic itself,
-# which tests/test_asy_webserver_service.py's own uniform-fake suite already covers in full depth
-# (its own endpoint-design decision), and not real concurrent-connection behavior, which
-# tests/_webserver_concurrency_scenarios.py already covers, also parametrized across all 6
-# devices.
+# registering every driver's SettingsGroup/status_source/system_cmd/notification_led/
+# maintenance_sensor/error_source. These check the real registrations landed correctly.
+
+# Not the generic dispatch/aggregation logic (tests/test_asy_webserver_service.py's uniform-fake
+# suite covers that in full depth), and not concurrent-connection behavior
+# (tests/_webserver_concurrency_scenarios.py, also parametrized across all 6 devices).
 # ---------------------------------------------------------------------------
 
 
 @_register("webserver_pr_is_fram_backed_when_device_wires_fram")
 def _scenario_webserver_pr_fram_backed(device: str) -> None:
-    # WP1/CLAUDE.md's implicit-FRAM-wiring rule (SPECIFICATION.md Part A.7): every real device's own
-    # TOML declares [device.wiring].fram_target, so webserver's own self.pr is FRAM-backed on all 6,
-    # exactly like conn/ntp/sysfunct - superseding the earlier RAM-only-by-design decision (a
-    # connection-reclaim warning could in principle churn faster than a sensor's rare hardware-fault
-    # log, still worth watching - see BACKLOG.md). A device with no device-level fram_target at all
-    # is covered instead at the buildgen/codegen level (tests_scripts/test_buildgen_generate.py's
-    # test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_only), since none of
-    # the 6 real devices this file builds exercises that fallback path.
+    # WP1/CLAUDE.md's implicit-FRAM-wiring rule (SPECIFICATION.md Part A.7): every device's TOML
+    # declares [device.wiring].fram_target, so webserver's self.pr is FRAM-backed on all 6, like
+    # conn/ntp/sysfunct. No device-level fram_target is covered at the codegen level instead.
     module = build(device)
     assert module.webserver is not None
     assert isinstance(module.webserver.pr, PrintLogHistoryStore)
@@ -956,10 +865,9 @@ def _scenario_webserver_pr_fram_backed(device: str) -> None:
 
 @_register("webserver_measurements_and_sensors_get_include_every_real_sensor")
 def _scenario_webserver_measurements_and_sensors_get(device: str) -> None:
-    # Shared shape with the twin's own equivalent check (tests/_shared_rest_roundtrip.py). Expected
-    # sensor-name set is derived reflectively from this device's own present optional instances
-    # (scd30/sgp40/bmp3xx/isl29125 only - neopixel/notification aren't sensors=-registered), never a
-    # hardcoded wozi/dev 3-sensor literal.
+    # Shared shape with the twin's equivalent check (tests/_shared_rest_roundtrip.py). The expected
+    # sensor-name set is derived reflectively from this device's present optional instances
+    # (neopixel/notification aren't sensors=-registered), never a hardcoded 3-sensor literal.
     module = build(device)
     expected = {name.upper() for name in _present_optional_instances(module) if name in ("scd30", "sgp40", "bmp3xx", "isl29125")}
     res = _dispatch(module, "GET", "/measurements")
@@ -985,13 +893,9 @@ def _scenario_sensors_put_sgp40(device: str) -> None:
 
 @_register("webserver_sensors_put_round_trips_a_real_scd30_field_through_the_real_driver")
 def _scenario_sensors_put_scd30(device: str) -> None:
-    # Regression test from baseline verification: SCD30_Reader is the only sensors=-registered
-    # module that's a plain SensorReader rather than a SensorReaderConfig subclass (no local
-    # cfgmgr - these params live on the sensor itself, see asy_scd30_driver.py's own _VAL_*
-    # comment), so it never inherited get_cfg_schema() the way every other registered sensor does.
-    # _put_sensors() calls module.get_cfg_schema() uniformly for every sensor named in the PUT
-    # body - without SCD30_Reader's own now-added method, this crashed with a real 500
-    # (AttributeError).
+    # SCD30_Reader is the only sensors=-registered module that is a plain SensorReader rather than
+    # a SensorReaderConfig subclass (its params live on the sensor), so it never inherited
+    # get_cfg_schema() - which _put_sensors() calls uniformly, crashing with a real 500 before.
     module = build(device)
     res = _dispatch(module, "PUT", "/sensors", {"SCD30": {"MeasInt": 4}})
     body = json.loads(res.body)
@@ -1056,13 +960,9 @@ def _scenario_system_put_reboot(device: str) -> None:
 
 @_register("webserver_system_put_reboot_flushes_a_still_pending_config_write_first")
 def _scenario_system_put_reboot_flushes_pending_write(device: str) -> None:
-    # A commanded reboot must not drop a write that's still only staged
-    # (buildgen/codegen.py's generated _flush_pending_configs(), src/config_manager.py's own
-    # flush_pending()) - unlike the accepted power-loss residual risk (SPECIFICATION.md Part F.2),
-    # this path is software-triggered and can easily wait the flush out. One PUT body carrying both
-    # a settings-group change and SystemCmd=reboot is the real, single-request shape this actually
-    # happens in (asy_webserver_service.py's _put_system() applies settings before dispatching the
-    # command), not two separate requests.
+    # A commanded reboot must not drop a still-staged write (the generated _flush_pending_configs(),
+    # config_manager.py's flush_pending()) - unlike the accepted power-loss residual risk (Part F.2),
+    # this path can wait the flush out. One PUT with a settings change plus SystemCmd=reboot.
     module = build(device)
     assert module.sysfunct is not None
     res = _dispatch(module, "PUT", "/system", {"DebugLevel": PrintLog.level_err(), "SystemCmd": "reboot"})
@@ -1110,10 +1010,9 @@ def _scenario_notification_light_cmd_led_rejects_fractional(device: str) -> None
 
 @_register("webserver_notification_put_light_cmd_led_rejects_non_numeric_field")
 def _scenario_notification_light_cmd_led_rejects_non_numeric_field(device: str) -> None:
-    # Another behavior change from the old raw int()/float() casts: those would silently parse a
-    # numeric-looking string ("10") via Python's lenient int()/float() constructors -
-    # coerce_numeric() never parses strings, only coerces between the two numeric types, so this
-    # is now rejected too.
+    # Another behavior change from the old raw int()/float() casts: those would parse a
+    # numeric-looking string ("10") via Python's lenient constructors, while coerce_numeric() only
+    # coerces between the two numeric types, so this is now rejected too.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"lightCmdLED": {"r": "10", "g": 20, "b": 30, "t": 1.0}})
     assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
@@ -1139,9 +1038,8 @@ def _scenario_notification_light_cmd_led_rejects_missing_field(device: str) -> N
 @_register("webserver_notification_put_light_cmd_led_rejects_out_of_range_rgb")
 def _scenario_notification_light_cmd_led_rejects_out_of_range_rgb(device: str) -> None:
     # Regression test for a real legacy-vs-src/ divergence (SPECIFICATION.md Part H.6's
-    # dispatch-only field rules): legacy's own led_cmd() validates and rejects out-of-range r/g/b
-    # (0-255) - the promoted src/ callback used to silently clamp instead. Rejected exactly like a
-    # missing/non-numeric field.
+    # dispatch-only field rules): legacy's led_cmd() rejects out-of-range r/g/b (0-255) where the
+    # promoted callback used to silently clamp. Rejected exactly like a missing/non-numeric field.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"lightCmdLED": {"r": 256, "g": 20, "b": 30, "t": 1.0}})
     assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
@@ -1167,12 +1065,9 @@ def _scenario_notification_light_cmd_led_rejects_out_of_range_t(device: str) -> 
 
 @_register("webserver_notification_put_light_cmd_led_accepts_lower_boundary_rgb_and_t")
 def _scenario_notification_light_cmd_led_lower_boundary(device: str) -> None:
-    # Deliberately one dispatch per test (not both boundaries in one test function): _dispatch()
-    # drives each call through its own fresh asyncio.run(), so NeopixelDriver's background
-    # neopixel_signal() consumer task never actually runs here - a second real request_signal()
-    # call in the same test would find start_signal_event already set from the first call and
-    # never cleared, hanging forever in request_signal()'s own `while ...: await asyncio.sleep(0)`
-    # loop. Matches every other lightCmdLED scenario in this file's own single-dispatch convention.
+    # Deliberately one dispatch per test: _dispatch() drives each call through its own fresh
+    # asyncio.run(), so NeopixelDriver's consumer task never runs here - a second request_signal()
+    # would find start_signal_event already set and never cleared, hanging in its own wait loop.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"lightCmdLED": {"r": 0, "g": 255, "b": 0, "t": 0.5}})
     assert json.loads(res.body)["result"]["lightCmdLED"] == "Valid"
@@ -1207,10 +1102,9 @@ def _scenario_status_get(device: str) -> None:
     res = _dispatch(module, "GET", "/status")
     body = json.loads(status_body(res))
     assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
-    # SGP40 and UARTLINK are the only maintenance-status sources any real device has today
-    # (VOC backup/restore timestamps; UART transfer/failure counts) - reflective, not hardcoded,
-    # since a future device without either (buildgen/codegen.py's own "if sgp40 in have"/uart
-    # equivalent) would otherwise go stale silently here.
+    # SGP40 and UARTLINK are the only maintenance-status sources any real device has today (VOC
+    # backup/restore timestamps; UART transfer/failure counts) - reflective, not hardcoded, since a
+    # future device with neither would otherwise go stale silently here.
     expected_sensors = set()
     if _has(module, "sgp40"):
         expected_sensors.add("SGP40")
@@ -1224,24 +1118,18 @@ def _scenario_status_get(device: str) -> None:
     assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UtcTime" in body["system"]
     assert "WifiUptime" in body["networking"] and "NtpSynced" in body["networking"]
     assert "Triggered" in body["notification"] and "PauseTime" in body["notification"]
-    # One entry per real module + per real ConfigManager + this service's own "WEBSERVER" entry -
-    # derived from _all_loggers()'s own reflected shape, never a hardcoded wozi/dev-specific count.
-    # By NAME, not just by count: a count agrees just as happily with a logger published under
-    # the wrong name, and the name is what the website's own errcount rows are keyed by (Part
-    # H.6) - a published key nothing matches renders nothing at all.
+    # One entry per real module + per real ConfigManager + this service's own "WEBSERVER" entry,
+    # from _all_loggers()'s reflected shape. By NAME, not count: the website's errcount rows are
+    # keyed by name (Part H.6), so a published key nothing matches renders nothing at all.
     assert {logger.name for logger in _all_loggers(module)} == set(body["errcount"].keys())
     assert len(body["errcount"]) == len(_all_loggers(module)), "two loggers sharing a name would collapse into one row"
 
 
 @_register("webserver_system_get_reports_the_real_build_info")
 def _scenario_system_get_build_info(device: str) -> None:
-    # SPECIFICATION.md Part L.7: every generated device embeds buildgen.version.FIRMWARE_VERSION/
-    # WEBSITE_VERSION plus a real build timestamp and reports them live under GET /system's "build"
-    # sub-entry, alongside the ordinary flat DebugLevel/GMTOffset/DSTOffset settings fields (no
-    # existing scenario in this file does a plain GET /system, so this is this module's only proof
-    # of that flat shape too, not just "build"'s own presence). Can't cross-check the exact build-
-    # info values against buildgen itself from inside the MicroPython interpreter (host-CPython-only
-    # tooling), so those three are checked for presence/shape only.
+    # SPECIFICATION.md Part L.7: every generated device embeds FIRMWARE_VERSION/WEBSITE_VERSION
+    # plus a build timestamp under GET /system's "build" sub-entry, beside the flat Debug/GMT/DST
+    # fields - the only proof of that flat shape. Build-info values are checked for shape only.
     module = build(device)
     res = _dispatch(module, "GET", "/system")
     body = json.loads(status_body(res))
@@ -1265,11 +1153,9 @@ def _scenario_status_put_reset_errors(device: str) -> None:
 
 @_register("webserver_status_put_reset_errors_is_not_undone_by_a_fram_loggers_later_setup")
 def _scenario_status_reset_errors_not_undone(device: str) -> None:
-    # SPECIFICATION.md Part C.7's boot window, reproduced exactly. Every FRAM-backed logger runs its
-    # own pr.setup() from inside its task - SGP40's lives in read_loop()'s _init_sgp() - while the
-    # webserver's own task answers as soon as start_server() returns. So a ResetErrors PUT can land
-    # while the chunk still holds the previous boot's history and the RAM-side logger is still
-    # uninitialized. build_system() starts no tasks, so that state is deterministic here.
+    # SPECIFICATION.md Part C.7's boot window, reproduced exactly: every FRAM-backed logger runs
+    # pr.setup() from inside its own task while the webserver already answers, so a ResetErrors PUT
+    # can land on a stale chunk. build_system() starts no tasks, making that state deterministic.
     module = build(device)
     sgp = module.sgp40
     assert sgp is not None
@@ -1288,12 +1174,8 @@ def _scenario_status_reset_errors_not_undone(device: str) -> None:
 
 # ---------------------------------------------------------------------------
 # Captive-portal hotspot-mode redirect wiring (SPECIFICATION.md Part A.5/A.7) - confirms
-# `is_hotspot_active=conn.is_hotspot_active` (build_system()'s own real WebserverService(...) call)
-# actually reaches the real, wired conn instance, through the real construction graph - not a fake
-# callback like tests/test_asy_webserver_service.py's own Section G.2 coverage. No real WiFi task is
-# started here (deliberately - see test_digital_twin_real_website_integration.py's own note for the
-# same reasoning): conn._conn_phase is set directly, the same test-seam convention this file's own
-# networking-PUT scenarios above already use for a real driver's internal state.
+# `is_hotspot_active=conn.is_hotspot_active` reaches the real wired conn through the real
+# construction graph. No WiFi task runs: conn._conn_phase is set directly, this file's test seam.
 # ---------------------------------------------------------------------------
 
 
@@ -1380,14 +1262,14 @@ def _scenario_hotspot_put_unmatched_405(device: str) -> None:
 # ---------------------------------------------------------------------------
 # Registration: one test_<scenario> per scenario, for whichever single device the caller names -
 # microtest.py discovers every callable in globals() named test_*, the only parametrization
-# mechanism available here (no real pytest on MicroPython - SPECIFICATION.md Part E.1). fn is bound
-# as a default-argument value, not read from the loop variable, since a closure over a `for` loop's
-# own variable would otherwise have every generated test share the SAME (last-iteration) fn.
+# mechanism available here (no real pytest on MicroPython - SPECIFICATION.md Part E.1).
 #
-# One device per call, not all of _DEVICES in one pass: each tests/test_sensortask_<device>.py file
-# calls this exactly once, for its own device only, so this module's ~55 scenarios run as their own
-# independent Unix-port process per device (6 processes total) instead of one process building all
-# 6 devices' object graphs 55 times each (this module's own docstring has the full rationale).
+# fn is bound as a default-argument value rather than read from the loop variable, or every
+# generated test would share the same last-iteration fn.
+#
+# One device per call: each tests/test_sensortask_<device>.py calls this once, for its own device,
+# so the scenarios run as one independent Unix-port process per device instead of one process
+# building all 6 object graphs for every scenario (this module's docstring has the rationale).
 # ---------------------------------------------------------------------------
 
 

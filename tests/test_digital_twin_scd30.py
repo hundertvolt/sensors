@@ -124,10 +124,9 @@ def test_produce_new_reading_sets_data_ready_true() -> None:
 
 
 def test_read_measurement_returns_crc_valid_buffer_decoding_to_the_produced_values() -> None:
-    # First 3 values: the uniform draw at construction. Last 3: the step delta _produce_new_reading()
-    # below draws - zeroed here so the final value stays exactly at the constructed initial value,
-    # keeping this test's own assertions about the *values* independent of the walk mechanism
-    # (which gets its own dedicated tests further down).
+    # First 3 values: the uniform draw at construction. Last 3: the step delta _produce_new_reading() draws,
+    # zeroed here so the final value stays exactly at the constructed initial value, keeping this test's
+    # assertions about the values independent of the walk mechanism, which has its own tests below.
     chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[512.5, 21.5, 47.25, 0.0, 0.0, 0.0]))
     chip._produce_new_reading()
     chip.handle_writeto(b"\x03\x00")  # READ_MEASUREMENT - bare command, no args

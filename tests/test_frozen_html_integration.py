@@ -39,21 +39,19 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 def _decompress(body: "_ResponseBody") -> bytes:
-    # send_file() responses stream their body from a file-like object (VfsFrozen.open()'s own
-    # BytesIO), not raw bytes - .read() first to get the real gzip bytes off the wire, matching what
-    # a real HTTP client would receive. deflate.DeflateIO with AUTO auto-detects the gzip header
-    # (confirmed directly against the pinned v1.29.0 Unix-port build) - the same mechanism
-    # ffsmount.py's own VfsFrozen.open() would use for a freezefs-level --compress entry, applied
-    # here to our own gzip-Content-Encoding bytes instead, since this project never uses freezefs's
-    # own --compress (see CLAUDE.md).
+    # send_file() responses stream their body from a file-like object, not raw bytes, so .read() comes first
+    # to get the real gzip bytes off the wire, matching what a real HTTP client receives.
+    #
+    # deflate.DeflateIO with AUTO auto-detects the gzip header (confirmed against the pinned v1.29.0 build)
+    # - the same mechanism ffsmount.py would use for a freezefs --compress entry, applied here to our own
+    # gzip-Content-Encoding bytes, this project never using freezefs's own --compress.
     import io
 
     import deflate
 
-    # No `with` - real MicroPython DeflateIO does support the context-manager protocol (confirmed
-    # directly), but the micropython-rp2-rpi_pico_w-stubs package doesn't declare __enter__/__exit__
-    # on it (a stub gap, same class of thing as pyproject.toml's own documented Timer()/I2C.deinit()
-    # gaps) - a plain read() on this short-lived, in-memory-only stream needs no explicit close.
+    # No `with` - real MicroPython DeflateIO does support the context-manager protocol, confirmed directly,
+    # but the stubs package does not declare __enter__/__exit__ on it, the same class of stub gap as the
+    # documented Timer()/I2C.deinit() ones. A plain read() on this in-memory stream needs no explicit close.
     d = deflate.DeflateIO(io.BytesIO(body.read()), deflate.AUTO, 0, True)
     return d.read()  # type: ignore[no-any-return]
 

@@ -4,6 +4,7 @@
         "SGP40": { "VOC": 95, "Raw": 28850, "TS": 1755000000 },
         "SHTC3": { "Temp": 23.3, "Hum": 39.1, "WetBulb": 15.8, "DewPoint": 8.4, "TS": 1755000000 },
         "MPRLS": { "Pres": 1002.9, "TS": 1755000000 },
+        "BMP3XX": { "Pres": 1005.3, "Temp": 21.6, "SLPres": 1013.8, "TS": 1755000000 },
         "ISL29125": { "Lux": 245.3, "RGB": { "R": 0.184, "G": 0.221, "B": 0.099 }, "HSB": { "H": 217.4, "S": 0.552, "B": 0.221 }, "CCT": 5200, "RangeAct": 10000, "Overrange": false, "GainMeas": null, "TS": 1755000000 }
     },
     "sensorsConfig": {
@@ -40,7 +41,7 @@
             "LocalTime": { "year": 2025, "month": 8, "mday": 12, "hour": 9, "minute": 14, "second": 3, "weekday": 1 },
             "UtcTime": { "year": 2025, "month": 8, "mday": 12, "hour": 8, "minute": 14, "second": 3, "weekday": 1 }
         },
-        "sensors": { "SGP40": { "BackupTS": 1754997000, "RestoreTS": 0 } },
+        "sensors": { "SGP40": { "BackupTS": 1754997000, "RestoreTS": 0 }, "UARTLINK": { "Transfers": 1842, "Failures": 3 } },
         "notification": { "Triggered": false, "TS": 0, "PauseTime": 0 },
         "errcount": {
             "WIFI": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },

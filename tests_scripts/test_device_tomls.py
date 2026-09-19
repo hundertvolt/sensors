@@ -248,10 +248,9 @@ def test_every_device_is_covered_by_the_micropython_tiers_per_device_files(repo_
     """The MicroPython tier cannot discover devices the way DEVICE_NAMES does, so it is checked
     against them instead: tests/ runs one process per test FILE, and no import-time glob conjures
     a file. Replaces an older devices/-holds-exactly-DEVICE_NAMES check, tautological since."""
-    # Each scenario library's own `_DEVICES` tuple stays hand-written too, and deliberately: its
-    # ORDER assigns the twin's TCP port bases (_PORT_BASE_BY_DEVICE). What must not stay silent is
-    # a device added to devices/ while these are not - it would ship with none of those suites
-    # covering it, and every one of them would still pass.
+    # Each scenario library's `_DEVICES` tuple stays hand-written deliberately: its ORDER assigns
+    # the twin's TCP port bases. What must not stay silent is a device added to devices/ while
+    # these are not - it would ship uncovered, with every one of those suites still passing.
     expected = set(DEVICE_NAMES)
     problems = []
     for family in ("test_sensortask", "test_digital_twin_construction", "test_digital_twin_webserver_concurrency"):
@@ -806,13 +805,12 @@ def test_detects_device_wiring_referencing_a_nonexistent_instance() -> None:
         check_device_wiring_resolves_if_present(doc, "base")
 
 
-# I2C-spec reserved address ranges: 0x00-0x07 (general call/CBUS/reserved/Hs-mode) and 0x78-0x7F
-# (10-bit addressing/reserved). No device's own address may fall inside either, or the chip answers
-# to - or is masked by - a bus-wide protocol address. Inherited from the deleted
-# tests_hardware/bus_topology.py, which asserted this over two hand-kept wiring tuples that nothing
-# imported; here it runs against the real device set instead. The on-target sweep
-# (device_scripts/bus_topology_autodetect_and_hazard_sweep.py) keeps its own copy of these ranges
-# deliberately - it is MicroPython running on the board and cannot import host test code.
+# I2C-spec reserved ranges: 0x00-0x07 and 0x78-0x7F. No device address may fall inside either, or
+# the chip answers to - or is masked by - a bus-wide protocol address.
+
+# Inherited from the deleted tests_hardware/bus_topology.py, which asserted it over two hand-kept
+# tuples nothing imported; here it runs against the real device set. The on-target sweep keeps
+# its own copy deliberately, being MicroPython on the board and unable to import host test code.
 _RESERVED_I2C_RANGES = ((0x00, 0x07), (0x78, 0x7F))
 
 

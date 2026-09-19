@@ -2,10 +2,9 @@
 environment setup) in isolation: the pure-Python detection/idempotency/argument-parsing logic,
 mocked against fake /sys trees and a fake run() - never real hardware, sudo, or network."""
 
-# dev_legacy/README.md defines what "flash"/"bench" mean and holds the manual nmcli recipe this
-# automates. End-to-end real-hardware behavior (USB auto-detection against a real board, the bridge
-# and AP actually working) is proven on the real bench unit instead - the same "real thing, not
-# stubs" split SPECIFICATION.md Part E.1 draws for the interpreter.
+# dev_legacy/README.md defines what "flash" and "bench" mean and holds the manual nmcli recipe
+# this automates. End-to-end behavior - USB detection, the bridge and AP working - is proven on
+# the real bench unit instead, the same real-thing-not-stubs split Part E.1 draws.
 
 import os
 import subprocess
@@ -292,10 +291,9 @@ def _fake_run_for_existing_bridge(recorded_run: list[list[str]], channel: str = 
 
 
 def test_ensure_bench_bridge_reuses_existing_ap_without_recreating(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
-    # ensure_br_netfilter(), the channel self-heal check, and the MAC-mismatch check now all run
-    # unconditionally on every call (see ensure_bench_bridge()'s own docstring) - channel and MAC
-    # are stubbed already-correct so neither self-heal/warning branch (covered separately below)
-    # also fires here.
+    # ensure_br_netfilter(), the channel self-heal and the MAC-mismatch check all run on every
+    # call now. Channel and MAC are stubbed already-correct here, so neither of those branches -
+    # covered separately below - fires as well.
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
     monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
     monkeypatch.setattr(setup_toolchain, "run", _fake_run_for_existing_bridge(recorded_run))
@@ -334,10 +332,9 @@ def test_ensure_bench_bridge_no_channel_repair_when_already_pinned(setup_toolcha
 
 
 def test_ensure_bench_bridge_warns_without_auto_repairing_mac_mismatch(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]], capsys: pytest.CaptureFixture[str]) -> None:
-    # REAL FINDING, 2026-09-04 bench Pi4 lockout incident (see CLAUDE.md's "Hard rules"): a bridge
-    # created before the MAC-pinning fix (or whose MAC has since drifted) must be flagged, never
-    # silently auto-repaired - cycling a live bridge's MAC risks the exact same SSH-drop class of
-    # incident this check exists to prevent.
+    # From the 2026-09-04 bench Pi4 lockout (CLAUDE.md's hard rules): a bridge created before the
+    # MAC-pinning fix, or whose MAC has drifted, must be flagged and never auto-repaired -
+    # cycling a live bridge's MAC risks the same SSH-drop this check exists to prevent.
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
     monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
     monkeypatch.setattr(

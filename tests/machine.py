@@ -18,12 +18,16 @@ if TYPE_CHECKING:
 class Pin:
     IN = 0
     OUT = 1
-    PULL_UP = 2
     # Real rp2 values (confirmed against ports/rp2/machine_pin.c: IRQ_RISING maps to the pico-sdk's
     # GPIO_IRQ_EDGE_RISE=0x08, IRQ_FALLING to GPIO_IRQ_EDGE_FALL=0x04) - asy_scd30_driver.py only
     # ever passes these back opaquely to irq(), but matching the real bit values costs nothing.
     IRQ_FALLING = 0x04
     IRQ_RISING = 0x08
+    # Real rp2 values (ports/rp2/machine_pin.c at v1.29.0: GPIO_PULL_UP 1, GPIO_PULL_DOWN 2).
+    # asy_isl29125_driver.py is the first driver to need one - its INT line is open-drain and needs
+    # a pull-up; SCD30's RDY is push-pull, which is why nothing needed these before.
+    PULL_UP = 1
+    PULL_DOWN = 2
 
     def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: object = None) -> None:
         # Real rp2 Pin() raises for an invalid id: TypeError for a non-int, ValueError outside
@@ -123,19 +127,17 @@ class I2C:
         self.registers: dict[tuple[int, int], bytearray] = {}  # a real round trip through readfrom_mem/writeto_mem
         self.read_queue: list[bytes] = []  # its raw-transaction counterpart: readfrom_into() has no register to key off
         self.read_queue_by_address: dict[int, list[bytes]] = {}  # opt-in per-address queue, checked
-        # before the shared one above - needed the first time two raw-word-protocol devices (no
-        # register to key off) were driven concurrently on one shared bus (dev's real i2c1
-        # SCD30+SGP40), which would otherwise each pop whichever reply was next regardless of who
-        # asked. Empty by default: every existing caller of the shared queue is unaffected.
+        # before the shared one above - needed once two raw-word-protocol devices, with no register to key
+        # off, were driven concurrently on one bus (dev's i2c1 SCD30+SGP40), which would otherwise each pop
+        # whichever reply was next. Empty by default, so shared-queue callers are unaffected.
         self.nak_addresses: set[int] = set()  # convenience: EIO (no ACK) on every op to this address
         self.busy = False  # convenience: ETIMEDOUT (bus/clock-stretch timeout) on every op, any address
         self._faults: dict[str, list[Exception]] = {}  # op name -> FIFO queue, one exception per matching call
 
     def inject_fault(self, op: str, exc: Exception, times: int = 1) -> None:
-        # Queues `exc` to be raised on the next `times` calls to the named op (readfrom_into,
-        # writeto, readfrom_mem, writeto_mem, or scan) - lets a test fail one specific step of a
-        # multi-step operation (e.g. the read half of write_then_readinto) without affecting the
-        # others, modeling a transfer interrupted partway through.
+        # Queues `exc` to be raised on the next `times` calls to the named op (readfrom_into, writeto,
+        # readfrom_mem, writeto_mem or scan) - letting a test fail one specific step of a multi-step
+        # operation, such as the read half of write_then_readinto, without affecting the others.
         self._faults.setdefault(op, []).extend([exc] * times)
 
     def _maybe_raise(self, op: str, address: int) -> None:
@@ -276,10 +278,9 @@ class SPI:
         self._faults.setdefault(op, []).extend([exc] * times)
 
     def _maybe_raise(self, op: str, nbytes: int) -> None:
-        # DMA_MIN_SIZE_THRESHOLD is 32 in ports/rp2/machine_spi.c - a shorter transfer uses the
-        # blocking software path, which has no overrun check and so cannot raise. Both knobs are
-        # gated on that, so a 1-byte status-register read stays immune however they are set;
-        # inject_fault()'s queue below is deliberately not, so a test can still target any call.
+        # DMA_MIN_SIZE_THRESHOLD is 32 in ports/rp2/machine_spi.c - a shorter transfer takes the blocking
+        # software path, which has no overrun check and cannot raise. Both knobs are gated on that, so a
+        # 1-byte read stays immune however they are set; inject_fault()'s queue deliberately is not.
         if nbytes >= _SPI_DMA_MIN_SIZE:
             if self.rx_overrun:
                 raise OSError(errno.EIO, "SPI RX overrun")
@@ -291,10 +292,9 @@ class SPI:
             raise queue.pop(0)
 
     def deinit(self) -> None:
-        # Real rp2 machine.SPI.deinit() leaves the protocol's .deinit slot NULL: a silent no-op
-        # that neither stops the peripheral nor releases the pins (SPECIFICATION.md Part F.5).
-        # This fake therefore deliberately leaves every bus operation working afterwards, exactly
-        # like real hardware; the counters only record that asy_spi_driver.py forwarded the call.
+        # Real rp2 machine.SPI.deinit() leaves the protocol's .deinit slot NULL: a silent no-op that neither
+        # stops the peripheral nor releases the pins (Part F.5). This fake therefore leaves every bus
+        # operation working afterwards; the counters only record that asy_spi_driver.py forwarded the call.
         self.deinit_called = True
         self.deinit_count += 1
         self.log.append(("deinit",))
@@ -605,10 +605,9 @@ class Timer:
     ONE_SHOT = 0
     PERIODIC = 1
 
-    # Class-level registry, not per-instance: records every real Timer() *construction*, so a test
-    # can assert none happened (e.g. system_service.py's _timer_sequencer() reusing one preallocated
-    # Timer via .init() instead - SPECIFICATION.md Part F.1). Tests must clear this between test
-    # functions (all_timers.clear()) since it otherwise persists across the whole process lifetime.
+    # Class-level registry, not per-instance: records every real Timer() construction, so a test can assert
+    # none happened - system_service.py's _timer_sequencer() reusing one preallocated Timer via .init()
+    # instead (Part F.1). Tests must clear it between functions, since it persists for the whole process.
     all_timers: "ClassVar[list[Timer]]" = []
 
     # Test-only, off by default: real rp2 Timer.init() raises OSError(ENOMEM) on an exhausted alarm

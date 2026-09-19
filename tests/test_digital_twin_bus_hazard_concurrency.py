@@ -70,11 +70,12 @@ async def _feed_watchdog_periodically(watchdog: "WDT") -> None:
 
 _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 
-# Which get_data() field, per driver, proves that driver produced a real reading under load - the
-# digital-twin tier's own (much smaller) analogue of tests/_bus_hazard_catalog.py's mock-tier
-# adapters, used by the TOML-driven pass at the end of _run_real_task_graph_and_assert_healthy()
-# below (SPECIFICATION.md Part C.8). A new driver added to a device's
-# own i2c1 needs an entry here before it gets this generic check (see the fail-loud assert there).
+# Which get_data() field, per driver, proves that driver produced a real reading under load - the twin
+# tier's much smaller analogue of tests/_bus_hazard_catalog.py's mock-tier adapters, used by the TOML-driven
+# pass in _run_real_task_graph_and_assert_healthy() below (Part C.8).
+#
+# A new driver added to a device's own i2c1 needs an entry here before it gets this generic check - see the
+# fail-loud assert there.
 _I2C_DRIVER_HEALTH_FIELD: "dict[str, str]" = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
 
 
@@ -247,11 +248,12 @@ def test_wozi_fram_recovers_after_an_injected_spi_read_fault() -> None:
 
 
 def test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
-    # Twin-tier form of the live-path mock tests in test_asy_fram_manager.py: same fault, but
-    # against the real twin bus and a chunk allocated from the real booted manager. One overrun
-    # costs nothing because _read chunk-reads block 1 when block 0 fails; a persistent one
-    # degrades to None instead of propagating, and leaves the chunk marked BUSY by design
-    # (destructive readout - SPECIFICATION.md Part A.4's FRAM entry).
+    # Twin-tier form of the live-path mock tests in test_asy_fram_manager.py: the same fault, but against
+    # the real twin bus and a chunk allocated from the real booted manager. One overrun costs nothing, _read
+    # chunk-reading block 1 when block 0 fails.
+    #
+    # A persistent one degrades to None instead of propagating, and leaves the chunk marked BUSY by design -
+    # destructive readout, SPECIFICATION.md Part A.4.
     machine.configure_i2c_wiring("wozi")
     port = _next_test_port()
 
@@ -281,10 +283,9 @@ def test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
 
 
 async def _wait_established_then_flap_once(conn: "AsyConnTime") -> None:
-    # A single disconnect, not repeated flapping: the ESTABLISHED retry branch is a genuine,
-    # non-fast-forwardable 60s sleep (SPECIFICATION.md Part E.5.1), so repeated flapping isn't
-    # CI-time-reasonable here - tests_hardware/bench/test_network_resilience.py covers that on
-    # real hardware instead.
+    # A single disconnect, not repeated flapping: the ESTABLISHED retry branch is a genuine, non-fast-
+    # forwardable 60s sleep (Part E.5.1), so repeated flapping is not CI-time-reasonable here.
+    # tests_hardware/bench/test_network_resilience.py covers that on real hardware instead.
     while not conn.wlan.isconnected():
         await asyncio.sleep(0.5)
     conn.wlan.disconnect()
@@ -297,11 +298,9 @@ def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnec
     # ESTABLISHED-branch retry) while concurrent bus load is in flight. Real ~75s test time is
     # unavoidable (see _wait_established_then_flap_once()).
     #
-    # Deliberately does NOT reuse _run_real_task_graph_and_assert_healthy() above: its
-    # shared_bus_log/_GENERAL_CALL_ENTRY check assumes a short run window that never wraps the
-    # twin I2C fake's bounded log deque - at this test's much longer duration that entry gets
-    # evicted by ordinary traffic, a false negative on a property already proven by the sibling
-    # test above. This test inlines its own leaner health check instead.
+    # Deliberately does NOT reuse _run_real_task_graph_and_assert_healthy(): its shared_bus_log check
+    # assumes a short window that never wraps the twin I2C fake's bounded log deque, and at this test's much
+    # longer duration that entry is evicted by ordinary traffic - a false negative on a proven property.
     machine.configure_i2c_wiring("wozi")
     port = _next_test_port()
 
@@ -343,10 +342,9 @@ def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnec
 
 
 def test_wozi_storage_pause_gates_the_real_twin_chip_and_override_still_reaches_it() -> None:
-    # Twin-tier parity for the chunk-level gating the mock tier proves against a fake bus and the
-    # flash tier proves against the real chip: same claims, but through the real booted manager on
-    # the real twin bus. The discriminating check is reading the chip back with override_pause - a
-    # refused write that still reached the bus would show the new bytes here.
+    # Twin-tier parity for the chunk-level gating the mock tier proves against a fake bus and the flash tier
+    # against the real chip: the same claims, through the real booted manager on the twin bus. The
+    # discriminating check reads the chip back with override_pause - a refused write would show new bytes.
     machine.configure_i2c_wiring("wozi")
 
     async def scenario() -> None:
@@ -374,11 +372,12 @@ def test_wozi_storage_pause_gates_the_real_twin_chip_and_override_still_reaches_
 
 
 def test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it() -> None:
-    # Twin-tier parity for the mock tier's own pair of write-protect tests, and the accepted,
-    # intended behavior the flash tier confirms against real silicon: _read_chunk() has to WRITE a
-    # transient busy marker before reading, so write protection gates read() as well as write().
-    # Different in kind from the pause gate above - that one refuses before the bus, this one
-    # refuses at the chip - and, crucially, non-destructive: the bytes come back once it is cleared.
+    # Twin-tier parity for the mock tier's pair of write-protect tests, and the accepted, intended behavior
+    # the flash tier confirms against real silicon: _read_chunk() has to WRITE a transient busy marker
+    # before reading, so write protection gates read() as well as write().
+    #
+    # Different in kind from the pause gate above - that refuses before the bus, this at the chip - and,
+    # crucially, non-destructive: the bytes come back once it is cleared.
     machine.configure_i2c_wiring("wozi")
 
     async def scenario() -> None:
@@ -404,10 +403,9 @@ def test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it() -> None:
 
 
 def test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_survives() -> None:
-    # Twin-tier form of test_asy_fram_manager.py's own ordering test: _read() consults the pause
-    # flag before touching SPI, so a queued overrun must still be there afterwards. Uses the
-    # bus-level rx_overrun_remaining knob (not the chip FaultInjector) because only that one models
-    # 1.29's 32-byte DMA threshold - SPECIFICATION.md Part F.5.2.
+    # Twin-tier form of test_asy_fram_manager.py's ordering test: _read() consults the pause flag before
+    # touching SPI, so a queued overrun must still be there afterwards. Uses the bus-level
+    # rx_overrun_remaining knob, the only one modelling 1.29's 32-byte DMA threshold (Part F.5.2).
     machine.configure_i2c_wiring("wozi")
 
     async def scenario() -> None:
@@ -434,11 +432,12 @@ def test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_s
 
 
 def test_wozi_storage_pause_does_not_survive_a_simulated_reboot() -> None:
-    # AsyFramManager.__init__ sets _pause = False and nothing restores it from FRAM, so the pause is
-    # RAM-only. The bench tier proves this against a real reboot; this is the CI-gated counterpart,
-    # using the same configure_fram_state_path()/flush_fram() reboot mechanism the SGP40 VOC
-    # backup-survival test uses - which is what makes the contrast meaningful: chunk bytes DO carry
-    # across this same boundary, the pause flag does not.
+    # AsyFramManager.__init__ sets _pause = False and nothing restores it from FRAM, so the pause is RAM-
+    # only. The bench tier proves this against a real reboot; this is the CI-gated counterpart, using the
+    # same state-file reboot mechanism the SGP40 backup-survival test uses.
+    #
+    # That shared mechanism is what makes the contrast meaningful: chunk bytes do carry across this same
+    # boundary, the pause flag does not.
     machine.configure_i2c_wiring("wozi")
 
     async def scenario() -> None:

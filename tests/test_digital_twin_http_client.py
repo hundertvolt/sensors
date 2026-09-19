@@ -97,21 +97,19 @@ def test_parse_header_line_returns_none_for_the_blank_terminator() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _read_exact() - fills one right-sized buffer across as many partial readinto() rounds as the
-# underlying stream actually delivers (extmod/asyncio/stream.py's own Stream.readinto() does
-# exactly one non-accumulating read per call, never a whole-buffer guarantee) - the replacement for
-# Stream.readexactly()'s own `r += r2` growth-by-concatenation accumulation, which is what made a
-# multi-KB response body a repeated allocate-copy-discard cycle under repeated soak cycles.
+# _read_exact() - fills one right-sized buffer across as many partial readinto() rounds as the stream
+# delivers, extmod/asyncio/stream.py's Stream.readinto() doing exactly one non-accumulating read per call.
+# It replaces readexactly()'s `r += r2` growth, which made a multi-KB body an allocate-copy-discard cycle.
 # ---------------------------------------------------------------------------
 
 
 class _ChunkedReader:
-    # A fake stream whose readinto() hands back one pre-scripted chunk per call, exactly like a
-    # real socket splitting one response body across several TCP segments - proving the loop
-    # actually loops, not just that it works when the first call happens to deliver everything. A
-    # scripted `None` models extmod/asyncio/stream.py's own Stream.readinto() spurious-wake race -
-    # poll said readable, the underlying read still came back empty - which must be retried, never
-    # treated as EOF (only a real `b""` may be, once the script runs out).
+    # A fake stream whose readinto() hands back one pre-scripted chunk per call, like a real socket
+    # splitting a body across TCP segments - proving the loop actually loops, not just that it works when
+    # the first call delivers everything.
+    #
+    # A scripted `None` models Stream.readinto()'s spurious-wake race - poll said readable, the read still
+    # came back empty - which must be retried, never treated as EOF; only a real b"" may be.
     def __init__(self, chunks: "list[bytes | None]") -> None:
         self._chunks = list(chunks)
 
@@ -151,12 +149,11 @@ def test_read_exact_raises_eof_on_premature_stream_closure() -> None:
 
 
 def test_read_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof() -> None:
-    # The regression this exists to catch: Stream.readinto() can legitimately return None even
-    # right after poll() said the socket was readable (extmod/asyncio/stream.py's own Stream.read()
-    # explicitly retries on this same race, one function up in that file) - a first version of
-    # _read_exact() conflated None with a real 0-byte EOF, which read as an intermittent, false
-    # "connection closed" under exactly the scheduling jitter a busier CI runner produces more of
-    # than a quiet sandbox does.
+    # The regression this exists to catch: Stream.readinto() can legitimately return None right after poll()
+    # said the socket was readable, and Stream.read() one function up explicitly retries on that same race.
+    #
+    # A first version of _read_exact() conflated None with a real 0-byte EOF, which read as an intermittent,
+    # false "connection closed" under exactly the scheduling jitter a busy CI runner produces more of.
     reader = _ChunkedReader([None, b"ab", None, b"c"])
     result = run_timed(http_client._read_exact(reader, 3))
     assert bytes(result) == b"abc"
@@ -169,10 +166,9 @@ def test_read_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof()
 
 
 class _EofReader:
-    # Like _ChunkedReader, but readinto() always fills as much of the caller's own buffer as the
-    # current chunk allows (mirroring a real socket, which fills whatever room readinto() is given,
-    # not just returns its own chunk verbatim) - proving _read_until_close() correctly bounds each
-    # read to len(buf), not just to the scripted chunk's own length.
+    # Like _ChunkedReader, but readinto() always fills as much of the caller's buffer as the current chunk
+    # allows, mirroring a real socket, which fills whatever room it is given rather than returning its chunk
+    # verbatim - proving _read_until_close() bounds each read to len(buf), not the scripted chunk's length.
     def __init__(self, chunks: "list[bytes | None]") -> None:
         self._chunks = list(chunks)
 
@@ -223,11 +219,11 @@ def test_read_until_close_returns_empty_bytes_for_an_immediately_closed_stream()
 
 
 # ---------------------------------------------------------------------------
-# _drain_exact()/_drain_until_close() - fetch(read_body=False)'s own discard-everything siblings of
-# _read_exact()/_read_until_close(): the real fix for a real digital-twin CI regression (the `dev`
-# device's own largest frozen website, 7579 bytes, tipped _read_until_close()'s final b"".join()
-# over a fragmented-heap edge under gc.threshold(-1) that wozi's/arzi's smaller sites didn't) -
-# _soak()/_wait_until_serving() never look at a fetched body, so they must never materialize one.
+# _drain_exact()/_drain_until_close() - fetch(read_body=False)'s discard-everything siblings, and the real
+# fix for a digital-twin CI regression: dev's largest frozen website, 7579 bytes, tipped
+# _read_until_close()'s final b"".join() over a fragmented-heap edge the smaller sites did not.
+#
+# _soak() and _wait_until_serving() never look at a fetched body, so they must never materialize one.
 # ---------------------------------------------------------------------------
 
 
@@ -291,12 +287,11 @@ def test_http_response_json_decodes_the_body() -> None:
 
 
 # ---------------------------------------------------------------------------
-# fetch() - one real end-to-end smoke test against a minimal hand-built asyncio.start_server(),
-# proving the whole wire protocol round-trips correctly (request bytes out, status/headers/body
-# parsed back in) - same "does the mechanism work at all" spirit test_digital_twin_launch.py's own
-# main() smoke test and test_digital_twin_machine.py's own Timer/WDT live-timing tests already use,
-# not a claim about src/asy_webserver_service.py's own behavior (that's this file's other sibling,
-# tests/test_digital_twin_sensortask_integration.py's, job).
+# fetch() - one real end-to-end smoke test against a minimal hand-built asyncio.start_server(), proving the
+# whole wire protocol round-trips: request bytes out, status, headers and body parsed back in.
+#
+# The same "does the mechanism work at all" spirit as the launch and machine suites' own smoke tests, not a
+# claim about src/asy_webserver_service.py's behavior - that is the twin integration suite's job.
 # ---------------------------------------------------------------------------
 
 
@@ -360,10 +355,9 @@ def test_fetch_reassembles_a_body_delivered_across_two_separate_writes() -> None
 
 
 async def _canned_server_no_content_length(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
-    # Matches GET /'s real shape (asy_webserver_service.py's static-file route, via ext/microdot.py's
-    # Response.send_file() passing a raw stream body): no Content-Length at all, body delivered
-    # across several separate writes, EOF (this connection closing) is what actually ends it - the
-    # exact shape that sent every real GET / through fetch()'s unsized _read_until_close() path.
+    # Matches GET /'s real shape, the static-file route via Response.send_file() passing a raw stream body:
+    # no Content-Length at all, body delivered across several writes, and EOF - this connection closing -
+    # ends it. Exactly the shape that sent every real GET / through the unsized path.
     await reader.readline()
     while True:
         line = await reader.readline()
@@ -394,10 +388,9 @@ def test_fetch_reads_a_body_with_no_content_length_until_the_connection_closes()
 
 
 # ---------------------------------------------------------------------------
-# fetch(read_body=False) - the actual fix for the real digital-twin CI regression this section's
-# own _drain_exact()/_drain_until_close() tests above document. Both real-socket paths (sized via
-# Content-Length, unsized via connection-close) must still report the real status_code while never
-# materializing a body - body comes back as b"" either way, which callers must not decode.
+# fetch(read_body=False) - the actual fix for the digital-twin CI regression the _drain_* tests above
+# document. Both real-socket paths, sized via Content-Length and unsized via connection-close, must report
+# the real status_code while never materializing a body: it comes back b"", which callers must not decode.
 # ---------------------------------------------------------------------------
 
 

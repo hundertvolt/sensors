@@ -1225,10 +1225,9 @@ def test_a_genuinely_saturated_white_scene_survives_the_device_id_re_read() -> N
 
 
 def test_fixed_range_saturation_on_the_low_range_is_overrange_too() -> None:
-    # A real gap the old W12 warning never covered (it only ever checked sample_range ==
-    # _RANGE_HIGH_LUX): with RangeAuto off, nothing will ever switch a saturated LOW range up, so
-    # "no option left to mitigate it" is equally true there - the low range is whatever the user
-    # pinned, and a saturated fixed-low reading silently under-reported before this field existed.
+    # A real gap the old W12 warning never covered, it only ever checking sample_range == _RANGE_HIGH_LUX:
+    # with RangeAuto off, nothing will ever switch a saturated LOW range up, so "no option left to mitigate
+    # it" is equally true there - a saturated fixed-low reading silently under-reported before this field.
     i2c, reader = ready_reader("fixed_low_sat")
     reader._range_auto = False
     reader._active_range = _RANGE_LOW_LUX
@@ -2647,11 +2646,12 @@ def test_the_two_remaining_auto_range_knobs_reject_out_of_range_values_with_errn
 
 
 def test_an_out_of_band_knob_is_rejected_by_the_schema_rung_not_the_setter() -> None:
-    # WHICH rung rejects it is the point, not just that it is rejected. "Invalid" means the schema
-    # bound caught it and the value never reached the driver; "Failed" would mean the setter ran and
-    # refused, which for a pure software knob would leave the live policy momentarily reachable with
-    # an unvalidated value. The test above pins the setter's own guard; this pins that _set_dict_cfg
-    # never gets that far. Both are needed: neither implies the other.
+    # WHICH rung rejects it is the point, not just that it is rejected. "Invalid" means the schema bound
+    # caught it and the value never reached the driver; "Failed" would mean the setter ran and refused,
+    # which for a pure software knob leaves the live policy momentarily reachable with an unvalidated value.
+    #
+    # The test above pins the setter's own guard; this pins that _set_dict_cfg never gets that far. Neither
+    # implies the other.
     _i2c, reader = ready_reader("knob_rung")
 
     async def scenario() -> "list[Any]":
@@ -3160,10 +3160,9 @@ async def _gather(a: "Coroutine[Any, Any, Any]", b: "Coroutine[Any, Any, Any]") 
 
 
 def test_concurrent_read_and_write_never_interleave_on_the_wire() -> None:
-    # The ISL's own same-device hazard is sharper than its siblings': the status read at 0x08 is
-    # DESTRUCTIVE (it clears the interrupt flag and releases the INT line), and the data burst
-    # that follows it belongs to the same logical cycle. A config write landing between the two
-    # would restart the conversion under a read that has already committed to its own status.
+    # The ISL's same-device hazard is sharper than its siblings': the status read at 0x08 is DESTRUCTIVE,
+    # clearing the interrupt flag and releasing the INT line, and the data burst after it belongs to the
+    # same logical cycle. A config write between the two restarts the conversion under a committed read.
     i2c, isl = ready_protocol()
     seed(i2c, _REG_DATA, counts_burst(0x2000, 0x1800, 0x1000))
     read_iterations = 6
@@ -3192,17 +3191,16 @@ def test_concurrent_read_and_write_never_interleave_on_the_wire() -> None:
 
 
 def test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight() -> None:
-    # Regression for the real-hardware divergence finding recorded in BACKLOG.md: configure()
-    # used to mutate self._mode/_range_fs/_resolution/... (what encode_shadow()/matches_shadow()
-    # read) BEFORE acquiring the device-session lock that SPECIFICATION.md Part C.8 says is what
-    # serializes a multi-transaction sequence against a concurrent coroutine on the same sensor -
-    # only the actual wire write was ever inside that lock. Under real concurrent API load a
-    # configure() call could be suspended (waiting for that lock) after mutating the shadow but
-    # before its write reached the chip, letting a concurrent reader observe a shadow already
-    # describing a value the chip had not yet taken - a false "diverged from the shadow" report
-    # with nothing actually wrong. Reproduced directly by holding the very lock configure() needs,
-    # standing in for a concurrent in-flight operation (e.g. read_loop()'s own background reads):
-    # the shadow must stay exactly where it was for as long as that lock is held by someone else.
+    # Regression for the real-hardware divergence finding in BACKLOG.md: configure() used to mutate the
+    # shadow state encode_shadow()/matches_shadow() read BEFORE acquiring the device-session lock that Part
+    # C.8 says serializes a multi-transaction sequence - only the wire write was ever inside it.
+    #
+    # Under real concurrent API load a configure() call could be suspended waiting for that lock after
+    # mutating the shadow but before its write reached the chip, letting a concurrent reader see a shadow
+    # describing a value the chip had not taken - a false "diverged" report with nothing actually wrong.
+    #
+    # Reproduced directly by holding the very lock configure() needs, standing in for a concurrent in-flight
+    # operation: the shadow must stay exactly where it was while that lock is held by someone else.
     _i2c, isl = ready_protocol()
     assert isl.resolution() == 16
 

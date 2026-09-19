@@ -30,12 +30,9 @@ def test_wozi_device_stages_the_expected_files_renamed_and_flattened(repo_root: 
     ):
         assert expected in text, expected
 
-    # The seven production modules must NOT be individually staged any more - only the bundle
-    # above. style.css and definitions.json (html/definitions/wozi.json) must NOT be staged as
-    # separate files either any more - both are now inlined directly into index.html at build time
-    # (see build_website.sh's own "Inlining" comment) - test_website_build_integration.py's own
-    # test_inlined_definitions_and_stylesheet_replace_the_two_separately_staged_files proves the
-    # inlined content itself is correct; this file only checks staging, not content.
+    # The seven production modules must NOT be staged individually any more, only the bundle
+    # above, and style.css and definitions.json must not be staged at all - both are inlined into
+    # index.html at build time. This file checks staging; the integration test checks content.
     for not_staged in (
         "/js/definitions.js.gz",
         "/js/poll-manager.js.gz",
@@ -71,10 +68,9 @@ def test_unknown_device_fails_with_no_matching_definitions_file(repo_root: Path,
 
 
 def test_device_without_a_hand_written_definitions_file_generates_one_via_buildgen(repo_root: Path, tmp_path: Path) -> None:
-    # arzi/klkizi/grkizi/schlafzi have no html/definitions/<device>.json at all (only wozi/dev do) -
-    # scripts/build_website.sh falls back to generating one on the fly via buildgen instead of
-    # failing, which is what actually lets scripts/build_firmware.py build these 4 devices at all
-    # (SPECIFICATION.md Part L.4). Picks "arzi" as a concrete stand-in for all four.
+    # Four devices have no hand-written definitions.json, so build_website.sh generates one on
+    # the fly through buildgen rather than failing - which is what lets build_firmware.py build
+    # them at all (Part L.4). "arzi" stands in for all four.
     definitions_file = repo_root / "html" / "definitions" / "arzi.json"
     assert not definitions_file.exists(), "sanity: this test's whole premise is that arzi has no hand-written definitions.json"
 
@@ -84,23 +80,19 @@ def test_device_without_a_hand_written_definitions_file_generates_one_via_buildg
     text = out_file.read_text()
     assert "/index.html.gz" in text
     assert "/js/app.js.gz" in text
-    # The generated definitions.json must be inlined into index.html, exactly like the two
-    # hand-written ones - never staged as its own separate frozen file. Regression guard: an
-    # earlier version of this fallback wrote the generated file directly into the served stage
-    # directory instead of a separate scratch directory, and it reappeared here as a stray
-    # /definitions.json.gz (scripts/build_website.sh's own "scratch_dir" comment).
+    # The generated definitions.json must be inlined like the hand-written ones, never staged as
+    # its own frozen file. A regression guard: an earlier fallback wrote it into the served stage
+    # directory rather than a scratch one, and it reappeared here as a stray /definitions.json.gz.
     assert "/definitions.json.gz" not in text
 
 
 def test_device_toml_that_fails_buildgen_validation_fails_the_build_loud(repo_root: Path, tmp_path: Path) -> None:
-    # The other half of the fallback's failure surface: a devices/<device>.toml that DOES exist but
-    # fails buildgen's own validation (a bad hand-edit, a bad merge) - as opposed to
-    # test_unknown_device_fails_with_no_matching_definitions_file's "neither file exists at all".
-    # build_website.sh always `cd`s to its own repo root regardless of the caller's cwd, so this
-    # needs a real devices/<device>.toml on disk to exercise - the fixture lives in the dedicated
-    # tests_scripts/buildgen_fixtures/ directory (same place novel_combo.toml/multi_instance.toml
-    # live) and is copied into devices/ under a test-only name for this one test only, removed
-    # again in `finally` even if an assertion below fails.
+    # The fallback's other failure surface: a devices/<device>.toml that exists but fails
+    # buildgen's validation, as opposed to neither file existing at all.
+
+    # build_website.sh always cd's to the repo root, so this needs a real file on disk: the
+    # fixture lives in buildgen_fixtures/ and is copied into devices/ under a test-only name,
+    # removed again in `finally` even when an assertion fails.
     device = "zz_test_malformed_buildgen_fixture"
     device_toml = repo_root / "devices" / f"{device}.toml"
     assert not device_toml.exists(), "sanity: this test-only device name must not collide with a real device"
@@ -119,11 +111,9 @@ def test_device_toml_that_fails_buildgen_validation_fails_the_build_loud(repo_ro
 
 
 def test_every_real_js_and_html_file_is_accounted_for_by_the_staging_script(repo_root: Path) -> None:
-    # scripts/build_website.sh's cp lists (html root files, production js/ modules) are hand-kept,
-    # not derived from directory contents - a new html/*.html or js/*.js file added later would
-    # silently ship without it (or without a deliberate "stays prototype-only" decision) with no
-    # test catching the drift. Cross-checks the real directories against the script's own source,
-    # so a mismatch fails loudly instead of silently under-shipping the built website.
+    # build_website.sh's cp lists are hand-kept, not derived from directory contents, so a new
+    # html/ or js/ file would silently ship without it - or without a deliberate prototype-only
+    # decision. Cross-checking the directories against the script's source makes that loud.
     script_text = (repo_root / "scripts" / "build_website.sh").read_text()
 
     html_root_files = {p.name for p in (repo_root / "html").iterdir() if p.is_file()}

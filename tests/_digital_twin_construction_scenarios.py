@@ -56,11 +56,9 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
         pass
 
 
-# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - own scratch key and
-# port range per device (register_for_device() below sets both up), distinct from
-# tests/test_digital_twin_sensortask_integration.py's own 19100+/"dtsi" (that file keeps its own
-# wozi-only heavy tests, now running in a separate process from this module's per-device files) and
-# from every other digital-twin-tier file's own claimed range (19300+, 19400+, 19700+).
+# Per-test config-file isolation via tests/_tmp_scratch.py - own scratch key and port range per device,
+# distinct from test_digital_twin_sensortask_integration.py's 19100+/"dtsi", which keeps its own wozi-only
+# heavy tests, and from every other twin-tier file's claimed range (19300+, 19400+, 19700+).
 _PORT_BASE_BY_DEVICE = {device: 19500 + 10 * i for i, device in enumerate(_DEVICES)}
 
 _scratch: "TmpScratch | None" = None
@@ -98,10 +96,9 @@ async def _boot_device(port: int, device: str) -> "Any":
 
 
 def _present_optional_instances(module: "Any", device: str) -> "tuple[str, ...]":
-    # Derived from the wiring plan's own pre-construction "instances" list, not the built module's
-    # own attributes - see tests/_sensortask_scenarios.py's own identical helper/comment for why (a
-    # real construction bug that silently drops a declared driver would read back as though the
-    # device never had it, which getattr(module, name, None) can't tell apart from the truth).
+    # Derived from the wiring plan's pre-construction "instances" list, not the built module's attributes -
+    # see tests/_sensortask_scenarios.py's identical helper for why: a construction bug that silently drops
+    # a declared driver reads back as though the device never had it, which getattr cannot tell apart.
     plan_instances = set(_wiring_plan(device)["instances"])
     all_names = ("scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification")
     present = tuple(name for name in all_names if name in plan_instances)
@@ -160,10 +157,9 @@ def _scenario_measurements_and_sensors_shape(device: str) -> None:
 
 @_register_param("a_real_bus_fault_degrades_to_a_clean_response_not_a_crash")
 def _scenario_bus_fault_degrades(device: str) -> None:
-    # A concrete example of the "might point us to oversights" value owner decision 10 called out:
-    # this exercises a real twin-injected I2C fault flowing all the way through the real driver ->
-    # real webserver -> a real HTTP response, something no existing tests/machine.py-backed test can
-    # do (tests/machine.py has no comparable fault-injection surface wired to sensortask_<device>.py).
+    # A concrete example of the "might point us to oversights" value owner decision 10 called out: a real
+    # twin-injected I2C fault flowing through the real driver, the real webserver and a real HTTP response,
+    # which no tests/machine.py-backed test can do, that fake having no comparable fault surface.
     port = _next_test_port()
 
     async def scenario() -> None:
@@ -176,17 +172,14 @@ def _scenario_bus_fault_degrades(device: str) -> None:
         plan = _wiring_plan(device)
         sgp40_bus_name = next(bus_name for bus_name, attachments in plan["buses"].items() if any(a["driver"] == "sgp40" for a in attachments))
         bus = getattr(module, sgp40_bus_name)
-        # asy_i2c_driver.I2C wraps the real machine.I2C at its own private _i2c attribute (confirmed
-        # directly against src/asy_i2c_driver.py's __init__) - the twin's own chip-fake registry
-        # (.devices) lives on that wrapped object, not on the wrapper itself. Only None before
-        # init() runs (__init__ calls it itself, unconditionally) - always set by now, just not
-        # statically provable from the type alone.
+        # asy_i2c_driver.I2C wraps the real machine.I2C at its private _i2c attribute, and the twin's chip-
+        # fake registry lives on that wrapped object, not the wrapper. Only None before init() runs, which
+        # __init__ calls unconditionally - set by now, just not statically provable from the type.
         assert bus._i2c is not None
         sgp40_chip = bus._i2c.devices[0x59]
-        # A handful is enough - this test makes exactly one HTTP request, and the real Unix-port
-        # heap is small enough that a needlessly large `times` (each queued as its own list entry)
-        # measurably adds to this file's own cumulative memory pressure across its several real
-        # build_system() calls.
+        # A handful is enough: this test makes exactly one HTTP request, and the Unix-port heap is small
+        # enough that a needlessly large `times`, each entry queued separately, measurably adds to this
+        # file's cumulative memory pressure across its several real build_system() calls.
         sgp40_chip.fault.inject_fault("writeto", OSError(errno.EIO, "test-injected"), times=5)
         task = module.webserver.get_task_starters()[0]()
         # See test_digital_twin_sensortask_integration.py's own _start_webserver() comment: WP1
@@ -207,10 +200,11 @@ def _scenario_bus_fault_degrades(device: str) -> None:
 
 # ---------------------------------------------------------------------------
 # Registration: one test_<scenario> per scenario, for whichever single device the caller names -
-# microtest.py discovers every callable in globals() named test_*, the only parametrization
-# mechanism available here (no real pytest on MicroPython - SPECIFICATION.md Part E.1). fn is bound
-# as a default-argument value, not read from the loop variable, since a closure over a `for` loop's
-# own variable would otherwise have every generated test share the SAME (last-iteration) fn.
+# microtest.py discovers every callable in globals() named test_*, the only parametrization mechanism
+# available here (Part E.1).
+#
+# fn is bound as a default-argument value rather than read from the loop variable, or every generated test
+# would share the same last-iteration fn.
 # ---------------------------------------------------------------------------
 
 

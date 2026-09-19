@@ -1,11 +1,12 @@
 """Full-stack FRAM integration for the Neopixel promotion: proves asy_neopixel_driver.py's own
 PrintLogHistoryStore chunk and asy_notification_service.py's single combined one are genuinely independent, non-overlapping allocations off one shared AsyFramManager, and both survive a simulated reboot.
 """
-# Matches src/sensortask_wozi.py's real production topology (both pass fram=fram).
-# NotificationCoordinator's combined chunk covers its own fields + every registered
-# NotificationSignal's check-failure logging together, per its staged-registration design - not a
-# separate chunk per signal. Mirrors tests/test_fram_integration.py's established pattern: real
-# chain down to the simulated chip, not mocked at AsyFramManager's own boundary.
+# Matches the generated device modules' real production topology, both passing fram=fram.
+# NotificationCoordinator's combined chunk covers its own fields plus every registered NotificationSignal's
+# check-failure logging together, per its staged-registration design.
+#
+# Mirrors tests/test_fram_integration.py's established pattern: the real chain down to the simulated chip,
+# not mocked at AsyFramManager's own boundary.
 
 import asyncio
 

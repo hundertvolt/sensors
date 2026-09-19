@@ -9,14 +9,9 @@ import pytest
 from buildgen.errors import BuildError
 from buildgen.wiring import WiringField, parse_wiring
 
-# Dimensions this file walks (SPECIFICATION.md Part L.5's standing matrix rule - accept side at full
-# dimensionality, reject side one case per dimension without recombination):
-#   D1 wording  - the tag name itself: exact, typo'd, mis-cased, sigil dropped
-#   D2 format   - each of the five grammar elements individually wrong, and individually dropped
-#   D3 location - module level (incl. bracketed continuation lines) vs inside a class/function body
-#   D4 multiplicity - none / one / several tags per file, and a duplicate field
-#   D5 spacing  - every legal whitespace and "#"-prefix variant
-#   D6 verdict  - the parsed WiringField actually carries what the tag said
+# SPECIFICATION.md Part L.5 names this file's own matrix dimensions, under the same standing
+# rule: the accept side at full dimensionality, the reject side one case per dimension with no
+# recombination.
 
 _REQUIREDNESS = [("required", True), ("optional", False)]
 _MODES = ["kwarg", "attr", "setter"]

@@ -75,10 +75,9 @@ def _is_reserved(address: int) -> bool:
     return any(lo <= address <= hi for lo, hi in _RESERVED_RANGES)
 
 
-# BMP3xx: a fixed, reproducible calibration/ADC dataset (same one test_asy_bmp3xx_driver.py's own
-# _CAL_RAW/_ADC_P/_ADC_T/_EXPECTED_* use) - not re-deriving the expected values independently here
-# since correctness of the compensation math is already covered there; this file only needs a
-# *deterministic, known-good* reading to detect corruption, not to re-verify the formula.
+# BMP3xx: a fixed, reproducible calibration/ADC dataset, the same one test_asy_bmp3xx_driver.py uses - not
+# re-deriving the expected values here, correctness of the compensation math being covered there. This file
+# needs only a deterministic, known-good reading to detect corruption.
 _BMP_CAL_RAW = struct.pack(
     "<HHbhhbbHHbbhbb",
     28617, 26074, -10, -3944, -10416, 26, 0, 30462, 120, 4, 0, 4285, 22, -60,
@@ -270,11 +269,11 @@ def test_sgp40_general_call_reset_does_not_disturb_a_concurrent_isl29125_read() 
 
 
 def test_general_call_absent_sibling_bmp3xx_alone_on_the_bus_survives_a_broadcast_too() -> None:
-    # BMP3xx is the only device on this bus (matching dev's real i2c0 wiring); the broadcast is
-    # issued directly against the raw I2C wrapper (no SGP40_I2C instance) to prove BMP3xx alone
-    # tolerates a general call regardless of who issues it. This is the ROGUE-broadcast case
-    # tests/_bus_hazard_catalog.py's own TOML-driven scheme cannot generate (it only ever fires a
-    # general call a real catalog occupant's own adapter issues), so it stays hand-written here.
+    # BMP3xx is the only device on this bus, matching dev's real i2c0 wiring, and the broadcast is issued
+    # directly against the raw I2C wrapper to prove BMP3xx alone tolerates a general call whoever issues it.
+    #
+    # This is the ROGUE-broadcast case tests/_bus_hazard_catalog.py's TOML-driven scheme cannot generate, it
+    # only ever firing a general call a catalog occupant's own adapter issues, so it stays hand-written.
     i2c = make_i2c(0)  # matches dev's real i2c0 port id
     bmp = BMP3XX_I2C(i2c, address=_BMP_ADDR)
     fake_bus = fake(i2c)
@@ -348,10 +347,9 @@ def test_sgp40_bus_fault_does_not_corrupt_or_stall_a_concurrent_isl29125_read() 
 
 
 # ---------------------------------------------------------------------------
-# 4. Parallel sessions: multiple concurrent CALLERS hitting the SAME device instance (as opposed
-#    to different devices sharing a bus, sections above) must never scramble each other's reads.
-#    I2CDevice's own session lock (asy_i2c_driver.py) is the shared bus lock, so this proves the
-#    same mechanism the cross-device tests exercise, serializing multiple callers of one device.
+# 4. Parallel sessions: multiple concurrent CALLERS hitting the SAME device instance, as opposed to
+# different devices sharing a bus above, must never scramble each other's reads. I2CDevice's session lock is
+# the shared bus lock, so this proves the same mechanism, serializing multiple callers of one device.
 # ---------------------------------------------------------------------------
 
 

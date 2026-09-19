@@ -113,13 +113,9 @@ def test_instance_table_of_the_wrong_type_entirely_is_rejected(tmp_path: Path, s
 
 
 def test_toml_document_not_parsing_to_a_table_at_the_top_level_is_rejected(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # buildgen.model.load_device()'s own `if not isinstance(doc, dict)` guard - provably
-    # unreachable via any real file: tomllib.load() always returns a dict for any TOML document it
-    # successfully parses (the grammar itself requires the document root to be a table), so no
-    # malformed-but-parseable input can ever reach this branch. Reached here the same way
-    # test_buildgen_twin_wiring.py's own otherwise-unreachable ValueError guard is: monkeypatch the
-    # one thing the real code trusts (tomllib.load's return value) rather than leave the guard
-    # itself completely untested.
+    # load_device()'s isinstance guard is unreachable through any real file: tomllib.load()
+    # always returns a dict, the grammar requiring the document root to be a table. Reached by
+    # monkeypatching the one thing the real code trusts, rather than leaving the guard untested.
     import tomllib
 
     # Patches the real, single cached tomllib module object every importer (buildgen.model
@@ -235,10 +231,9 @@ def test_two_i2c_buses_legal_topology(tmp_path: Path, src_dir: Path) -> None:
 
 
 def test_spi1_is_a_legal_peripheral_index(tmp_path: Path, src_dir: Path) -> None:
-    # spi1 is logically legal but unexercised by any real devices/*.toml today (§4.3 axis 10) -
-    # `fram` (the sole real SPI-attached driver, per asy_spi_driver.py's own docstring) is a forced
-    # singleton, so there's no way to have two SPI buses simultaneously *used* by real drivers; this
-    # instead proves spi1 itself resolves correctly by moving the one fram instance onto it.
+    # spi1 is legal but unexercised by any real device: fram is the only SPI-attached driver and
+    # is a forced singleton, so two SPI buses can never both be in use. This proves spi1 itself
+    # resolves by moving that one instance onto it.
     doc = base_doc()
     doc["instance"][0]["irq_pin"] = 21  # free up GP8 (block8-11's MISO pin) from scd30's default
     del doc["bus"]["spi0"]
@@ -543,11 +538,9 @@ def test_duplicate_driver_name_ext_pair(tmp_path: Path, src_dir: Path) -> None:
 
 
 def test_instance_name_collision_via_distinct_drivers_same_resolved_name(tmp_path: Path, src_dir: Path) -> None:
-    # Two genuinely different [[instance]] entries (different drivers, so the (driver, name_ext)
-    # dedup in model.load_device() doesn't catch it) that still resolve to the same
-    # instance_name() - real drivers' _NAME constants never collide this way today (each is a
-    # distinct all-caps token), so this drives validate._check_instance_name_collisions() directly
-    # against a synthetic model, the same way test_buildgen_graph.py's cycle test does.
+    # Two different [[instance]] entries, so load_device()'s dedup misses them, that still
+    # resolve to the same instance_name(). No real driver's _NAME collides this way, so this
+    # drives the check against a synthetic model as the graph cycle test does.
     from buildgen.model import DeviceModel, InstanceSpec
     from buildgen.validate import _check_instance_name_collisions
 
@@ -572,18 +565,16 @@ def test_instance_name_collision_check_fails_loud_if_resolved_name_still_unset(t
 
 
 def test_required_fields_check_fails_loud_for_a_bus_attached_driver_with_no_bus_kind_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # _check_required_fields()'s own "internal:" invariant guard - buildspec.py's own comment states
-    # every BUS_ATTACHED_DRIVERS member must appear in BUS_KIND_BY_DRIVER, true for all real drivers
-    # today, so this drives it via monkeypatch, same technique as
-    # test_device_wiring_required_field_missing_is_rejected below.
+    # _check_required_fields()'s internal invariant: every BUS_ATTACHED_DRIVERS member must
+    # appear in BUS_KIND_BY_DRIVER, true of every real driver, so this is reached by
+    # monkeypatch - the technique the device-wiring test below also uses.
     import buildgen.validate as validate_mod
     from buildgen.buildspec import BUS_KIND_BY_DRIVER
     from buildgen.model import DeviceModel, InstanceSpec
 
-    # Imported directly from its origin module, not accessed as validate_mod.BUS_KIND_BY_DRIVER -
-    # mypy's host_typecheck.ini (no_implicit_reexport) rejects the latter as accessing a name
-    # validate.py only imported, not exported; both names bind the exact same dict object, so
-    # mutating this one is still what _check_required_fields() itself reads.
+    # Imported from its origin module rather than through validate_mod, which
+    # no_implicit_reexport rejects as accessing a name validate.py only imported. Both bind the
+    # same dict, so mutating this one is what _check_required_fields() reads.
     monkeypatch.delitem(BUS_KIND_BY_DRIVER, "scd30")
     model = DeviceModel("dev", tmp_path / "dev.toml", {})
     model.instances[("scd30", "")] = InstanceSpec("scd30", "", {"bus": "i2c0", "irq_pin": 8}, {}, 0)
@@ -632,11 +623,9 @@ def test_default_value_selection_check_fails_loud_for_a_non_table_wiring_value(t
 
 
 def test_instance_label_collision_synthetic(tmp_path: Path, src_dir: Path) -> None:
-    # §7.2(C)/§10.5 item 2: instance_label() (the generated Python-variable identity) has no
-    # uniqueness check of its own distinct from resolved_name's - unreachable via any real driver
-    # name today (none contains an underscore that lines up with another driver+name_ext
-    # combination), so this drives _check_instance_label_collisions() directly against a synthetic
-    # model, the same style as the resolved_name-collision test above.
+    # instance_label(), the generated Python-variable identity, has its own uniqueness check
+    # distinct from resolved_name's - unreachable with today's driver names, none carrying an
+    # underscore that could line up, so this drives it against a synthetic model.
     from buildgen.model import DeviceModel, InstanceSpec
     from buildgen.validate import _check_instance_label_collisions
 
@@ -648,10 +637,9 @@ def test_instance_label_collision_synthetic(tmp_path: Path, src_dir: Path) -> No
 
 
 def test_gpio_collision_cs_pin_synthetic_two_instances(tmp_path: Path, src_dir: Path) -> None:
-    # §5.1 #12: duplicate CS pins on SPI is already subsumed by _check_gpio_collisions()'s shared
-    # claims dict, but today only `fram` has a cs_pin field and it's a forced singleton - no real
-    # TOML can produce two cs_pin-bearing instances to collide. Drives the check directly against a
-    # synthetic model instead, the same style as the resolved_name-collision test above.
+    # Duplicate CS pins are subsumed by _check_gpio_collisions()'s shared claims dict, but only
+    # fram has a cs_pin and it is a forced singleton, so no real TOML can produce two. Driven
+    # against a synthetic model instead.
     from buildgen.model import DeviceModel, InstanceSpec
     from buildgen.validate import _check_gpio_collisions
 
@@ -663,10 +651,9 @@ def test_gpio_collision_cs_pin_synthetic_two_instances(tmp_path: Path, src_dir: 
 
 
 def test_singleton_service_declared_twice(tmp_path: Path, src_dir: Path) -> None:
-    # A singleton service is always forced to name_ext="" (see the next test), so two declarations
-    # of the same one always collide as an exact-duplicate [[instance]] entry - caught by
-    # model.load_device()'s own (driver, name_ext) dedup before the singleton-specific check even
-    # runs (SPECIFICATION.md Part C.14's "never more than one per device by construction").
+    # A singleton service is always forced to name_ext="", so two declarations collide as an
+    # exact-duplicate [[instance]] entry - caught by load_device()'s dedup before the
+    # singleton-specific check even runs (Part C.14).
     doc = base_doc()
     second_fram = {"driver": "fram", "bus": "spi0", "cs_pin": 22, "max_size": 1024}
     doc["instance"].append(second_fram)
@@ -698,13 +685,12 @@ def test_global_gpio_pin_collision_two_instances(tmp_path: Path, src_dir: Path) 
 
 
 def test_global_gpio_pin_collision_bus_vs_bus(tmp_path: Path, src_dir: Path) -> None:
-    # §7.1 #7: _check_gpio_collisions() claims every bus-table wire pin into one shared dict, so a
-    # bus-vs-bus collision (no instance involved) should already raise - only bus-vs-instance and
-    # instance-vs-instance had a test until now. Both buses stay used by their real instances, so
-    # this isolates the pin-collision path from the separate "declared but never used" check.
-    # GP4 is individually legal for both roles claimed here (i2c0's SDA *and* spi0's MISO, per the
-    # real Figure 2 table) - picked deliberately so Phase 2's pin-role check doesn't fire first and
-    # mask the plain double-claim this test means to isolate.
+    # _check_gpio_collisions() claims every bus wire pin into one shared dict, so a bus-vs-bus
+    # collision with no instance involved should raise too - only the other two pairings had a
+    # test. Both buses stay in use, isolating this from the declared-but-unused check.
+
+    # GP4 is individually legal for both roles claimed here, chosen so the pin-role check does
+    # not fire first and mask the plain double-claim under test.
     doc = base_doc()
     doc["bus"]["i2c0"]["sda_pin"] = doc["bus"]["spi0"]["miso_pin"]
     with pytest.raises(BuildError, match="claimed twice"):
@@ -974,10 +960,9 @@ def test_device_wiring_fram_target_checks_every_consumers_own_tag(tmp_path: Path
 
 
 def test_partial_instance_level_fram_wiring_is_fine(tmp_path: Path, src_dir: Path) -> None:
-    # §4.3 axis 4's "partial" state: FRAM present, some fram-wirable instances wire fram_target,
-    # others explicitly don't - every existing test either wires it uniformly (base_doc's own
-    # default) or removes it from exactly one instance while testing something unrelated. This is
-    # the first test asserting the genuinely-partial case on its own terms.
+    # The partial state: FRAM present, some wirable instances declaring fram_target and others
+    # deliberately not. Every other test either wires it uniformly or drops it from one instance
+    # while testing something else; this asserts the partial case on its own terms.
     doc = base_doc()
     del doc["instance"][0]["wiring"]["fram_target"]  # scd30 - unwired
     del doc["instance"][3]["wiring"]["fram_target"]  # neopixel - unwired
@@ -995,13 +980,9 @@ def test_device_wiring_fram_target_left_unwired_is_fine(tmp_path: Path, src_dir:
 
 
 def test_device_wiring_required_field_missing_is_rejected(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Both real [device.wiring] fields (led_target/fram_target) are optional today, so this drives
-    # _check_device_wiring's required-field enforcement directly against a stand-in consumer table
-    # pointing at a real driver file with a genuinely required _WIRING entry (notification's
-    # signal_sink - sgp40's old comp_source, this test's original stand-in, no longer exists as a
-    # _WIRING entry at all since §2.9 generalized it away) - the same "drive a validate.py internal
-    # directly" approach test_instance_name_collision_via_distinct_drivers_same_resolved_name()
-    # above already uses for a case none of the six real device TOMLs can exercise either.
+    # Both real [device.wiring] fields are optional, so this drives the required-field
+    # enforcement against a stand-in consumer table pointing at notification's signal_sink - a
+    # genuinely required _WIRING entry, sgp40's old comp_source no longer being one at all.
     import buildgen.validate as validate_mod
     from buildgen.model import DeviceModel
 
@@ -1249,12 +1230,9 @@ def test_instance_entry_without_a_driver_key(tmp_path: Path, src_dir: Path) -> N
 
 
 def _with_uart_pair(doc: "TomlDoc") -> "TomlDoc":
-    # Mirrors devices/dev.toml's own uart0/uart1 + initiator/responder shape (a datasheet-legal
-    # UART_ROLE pin pair per bus - buildgen/pico_gpio.py's own _UART_PAIRS) - the one real device
-    # this driver is used by today. GP16/17 (not dev.toml's own GP0/1) since base_doc()'s fram
-    # instance already claims GP1 as its own cs_pin; scd30's own irq_pin moves off GP8 for the same
-    # reason - base_doc() and dev.toml are two independently-evolved fixtures, their pin claims
-    # were never meant to coexist.
+    # Mirrors dev.toml's uart0/uart1 initiator/responder shape, with a datasheet-legal pin pair
+    # per bus. GP16/17 rather than dev.toml's GP0/1, and scd30's irq_pin moved, because base_doc()
+    # and dev.toml are independently-evolved fixtures whose pin claims were never meant to meet.
     next(i for i in doc["instance"] if i["driver"] == "scd30")["irq_pin"] = 6
     doc["bus"]["uart0"] = {"tx_pin": 16, "rx_pin": 17, "baudrate": 115200}
     doc["bus"]["uart1"] = {"tx_pin": 8, "rx_pin": 9, "baudrate": 115200}
@@ -1320,11 +1298,9 @@ def test_device_with_no_uart_link_instances_at_all_is_fine(tmp_path: Path, src_d
 
 
 # ---------------------------------------------------------------------------
-# uart_link: the uart-kind branches of _check_bus_tables()/_check_gpio_collisions() - each already
-# has an i2c and/or spi sibling test (test_bus_missing_required_wire_pin, test_spi_bus_declares_
-# frequency, test_bus_unknown_field_rejected, test_gpio_with_no_i2c_function_rejected,
-# test_i2c_pin_belonging_to_the_other_i2c_index_rejected, test_i2c_pin_role_transposed_rejected)
-# but the parallel uart branch of the same shared code was never given its own.
+# uart_link: the uart-kind branches of _check_bus_tables()/_check_gpio_collisions(). Each has an
+# i2c or spi sibling test already, but the parallel uart branch of the same shared code had none
+# of its own until here.
 # ---------------------------------------------------------------------------
 
 
@@ -1365,10 +1341,9 @@ def test_uart_bus_unknown_field_rejected(tmp_path: Path, src_dir: Path) -> None:
 
 
 def test_uart_pin_with_no_uart_function_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # GP7 has no UART function at all (buildgen/pico_gpio.py's own _UART_PAIRS docstring) and isn't
-    # claimed by any of base_doc()/_with_uart_pair()'s own other pins (i2c0 12/13, spi0 2/3/4, fram
-    # cs_pin 1, neopixel pin 15, scd30 irq_pin 6, uart0 16/17, uart1 8/9) - a claimed-elsewhere pin
-    # would hit the GPIO-collision check first instead of the one this test targets.
+    # GP7 has no UART function at all and is claimed by none of this fixture's other pins - a
+    # pin claimed elsewhere would hit the GPIO-collision check first, instead of the one this
+    # test targets.
     doc = _with_uart_pair(base_doc())
     doc["bus"]["uart0"]["tx_pin"] = 7
     with pytest.raises(BuildError, match=r"bus\.uart0\.tx_pin=GP7 has no UART function on the Pico W"):

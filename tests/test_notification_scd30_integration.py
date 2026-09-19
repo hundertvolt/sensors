@@ -2,12 +2,12 @@
 mocking boundary as test_asy_scd30_driver.py's own integration-level tests) feeding a real asy_notification_service.py.NotificationCoordinator, driving a real asy_neopixel_driver.py.NeopixelDriver.
 Exercises how a genuine hardware fault on one driver (SCD30) does NOT propagate into a sibling driver's (NOTIFY's) own error accounting, matching SPECIFICATION.md Part C.7's "each driver owns its own error log" separation of concerns.
 """
-# Each NotificationSignal below holds a direct (source, field) reference to the same scd_reader
-# instance (SPECIFICATION.md Part C.14.2), mirroring src/sensortask_wozi.py's own real registration
-# shape. Only tests/neopixel.py's
-# fake write surface and tests/machine.py's fake I2C bus are mocked; every layer above the raw I2C
-# transaction (SCD30_Reader's own protocol/error handling, the notify poll loop, gating,
-# NeopixelDriver's arbitration/ramp) runs for real.
+# Each NotificationSignal below holds a direct (source, field) reference to the same scd_reader instance
+# (SPECIFICATION.md Part C.14.2), mirroring the generated device modules' real registration shape.
+#
+# Only tests/neopixel.py's fake write surface and tests/machine.py's fake I2C bus are mocked; every layer
+# above the raw I2C transaction - the driver's protocol and error handling, the notify poll loop, gating,
+# NeopixelDriver's arbitration and ramp - runs for real.
 
 import asyncio
 import struct
@@ -224,15 +224,16 @@ def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:
     scd_reader, i2c = make_scd_reader()
     i2c.inject_fault("writeto", OSError(5, "simulated bus fault"))
     pixel, notify = make_stack(scd_reader)
-    # Built outside scenario() deliberately: register_frame()/data_frame() call crc8_byte(), which
-    # runs its own asyncio.run() - calling that from inside scenario() while it's already running
-    # under this file's own run()/asyncio.run() is a nested asyncio.run() call. MicroPython's
-    # asyncio doesn't reject that with a clean RuntimeError the way CPython's does - it corrupts the
-    # scheduler badly enough to segfault the whole interpreter (confirmed by direct reproduction
-    # isolating this exact pattern down to a two-line repro, independent of anything in
-    # asy_scd30_driver.py/asy_i2c_driver.py). Not a production bug: no real driver code calls
-    # asyncio.run() from within a coroutine either. Keep every frame-building call at this same
-    # sync top level, matching test_asy_scd30_driver.py's own established convention.
+    # Built outside scenario() deliberately: register_frame()/data_frame() call crc8_byte(), which runs its
+    # own asyncio.run(), and calling that from inside scenario() while it already runs under this file's
+    # top-level asyncio.run() is a nested run().
+    #
+    # MicroPython's asyncio does not reject that with a clean RuntimeError as CPython does - it corrupts the
+    # scheduler badly enough to segfault the whole interpreter, confirmed by a two-line repro independent of
+    # any driver code. Not a production bug: no real driver calls asyncio.run() from a coroutine.
+    #
+    # Keep every frame-building call at this same sync top level, matching test_asy_scd30_driver.py's
+    # established convention.
     frame1 = register_frame(1)
     frame2 = data_frame(2000.0, 22.0, 45.0)
 

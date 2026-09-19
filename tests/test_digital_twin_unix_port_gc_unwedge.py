@@ -14,19 +14,19 @@ from unix_port_gc_unwedge import unwedge_heap_after_interrupt
 # (SPECIFICATION.md Part F.6)
 # ---------------------------------------------------------------------------
 
-# The wedged state itself (GC_COLLECT_FLAG stuck in gc_lock_depth after a SIGINT interrupted a
-# collection) is deliberately NOT constructed here: it is unreachable from Python. micropython.
-# heap_lock() looks like a stand-in - both states raise the same "memory allocation failed, heap
-# is locked" MemoryError - but it sets a different field, and the two need opposite recoveries
-# (confirmed directly: gc.collect() clears the stuck collect flag but not heap_lock()'s depth
-# counter; heap_unlock() does the reverse). Testing against heap_lock() would therefore assert the
-# wrong contract. What is checkable here is that it is safe on the healthy path it runs on every
-# time. The original real reproduction (out-of-process, plus the digital-twin CI suite's own
-# interrupt-driven shutdowns) is historical now, not a standing validation path: SPECIFICATION.md
-# Part F.6's amendment - toolchain/micropython_overrides.py's unix_kbd_intr override (Part B.14.1)
-# closed the root SIGINT-safety gap this whole module works around, so those shutdowns can no
-# longer actually reach the wedged-heap state at all. unwedge_heap_after_interrupt() stays wired
-# in as defense in depth only; these two tests are what is left checkable about it going forward.
+# The wedged state itself - GC_COLLECT_FLAG stuck in gc_lock_depth after a SIGINT interrupted a collection -
+# is deliberately NOT constructed here: it is unreachable from Python.
+#
+# micropython.heap_lock() looks like a stand-in, both states raising the same "heap is locked" MemoryError,
+# but it sets a different field and the two need opposite recoveries: gc.collect() clears the stuck collect
+# flag but not heap_lock()'s depth counter, and heap_unlock() does the reverse.
+#
+# Testing against heap_lock() would therefore assert the wrong contract. What is checkable here is that the
+# recovery is safe on the healthy path it runs on every time.
+#
+# The original real reproduction is historical now, not a standing validation path: Part F.6's amendment
+# records that toolchain/micropython_overrides.py's unix_kbd_intr override closed the root SIGINT-safety
+# gap, so those shutdowns can no longer reach the wedged state at all.
 
 
 def test_unwedge_is_a_harmless_no_op_on_an_unlocked_heap() -> None:

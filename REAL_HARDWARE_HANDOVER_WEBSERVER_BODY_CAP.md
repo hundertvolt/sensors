@@ -37,7 +37,7 @@ Vendored `ext/microdot.py` has **two** body limits and they were unbound. `Reque
 ever calls `dispatch_request()`, which is what answers 413 (`:1443`). So every body between
 `max_content_length` and `max_body_length` was allocated in full and then thrown away. With
 `max_connections = 4` and a fresh buffer per request, that is **4 x 16384 = 65536 B** of
-simultaneous contiguous demand on a 264 KB device whose largest *legitimate* body is 1132 B.
+simultaneous contiguous demand on a 264 KB device whose largest *legitimate* body is 1312 B.
 
 **No patch into microdot.** Both values are set from our own code; the vendoring rule is untouched.
 
@@ -96,7 +96,7 @@ scripts/run_bench_hardware_suite.sh -k "body_cap or band_that_used_to_be or larg
 | --- | --- | --- | --- |
 | W1 | `test_put_body_cap_boundary_is_exact_over_the_normal_network` | 2047 -> 200, 2048 -> 200, 2049 -> 413 | An off-by-one at the cap. microdot compares with `<=`, so **2048 itself must be served**; this is not a tolerance to widen. |
 | W2 | `test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network` | 3072 -> 413, 4096 -> 413 | **Most likely the wrong image was flashed.** Under the old 4096 B cap both were accepted. Check the image before touching the code. |
-| W3 | `test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap` | 1132 B -> 200, and a maximal `NTP_Host` -> 200 + `"Invalid"` | The regression that actually matters when a cap is *lowered*: something legitimate is now refused. Do **not** respond by raising the cap without re-deriving the schema maximum. |
+| W3 | `test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap` | 1312 B -> 200, and a maximal `NTP_Host` -> 200 + `"Invalid"` | The regression that actually matters when a cap is *lowered*: something legitimate is now refused. Do **not** respond by raising the cap without re-deriving the schema maximum. |
 | W4 | `test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits` | Interleaved sizes, each answered on its own merits | A 413 left the next request mis-parsed on a connection the server closed early — a real connection-handling defect, not a cap one. |
 | W5 | `test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status` | 24 threads, mixed sizes, against the real `max_connections = 4`. Asserts that every client **that is answered** is answered correctly; a refusal at the ceiling is counted, not failed. | **This is the one row to re-run.** A wrong status means the cap genuinely mis-answers under concurrency. A *non-ceiling* exception (a timeout above all) is not tolerated and means something hung. "Too few answered" or "never saw both verdicts" means the run was too starved to prove anything — re-run rather than relax. |
 

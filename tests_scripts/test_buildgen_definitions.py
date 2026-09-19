@@ -206,10 +206,9 @@ def test_multi_instance_fixture_generates_successfully(fixtures_dir: Path, src_d
 
 
 # ---------------------------------------------------------------------------
-# Failure paths - a hand-built minimal DeviceModel pointed at a deliberately mutated copy of one
-# driver file, everything else read from the real src/ tree (mirrors the project's established
-# "deliberately malformed fixture" testing convention, applied here to a source file rather than a
-# TOML document since that's what this generator actually scans).
+# Failure paths: a minimal DeviceModel pointed at a deliberately mutated copy of one driver file,
+# everything else from the real src/ tree - the project's malformed-fixture convention applied to
+# a source file rather than a TOML document, since that is what this generator scans.
 # ---------------------------------------------------------------------------
 
 
@@ -299,10 +298,9 @@ def test_duplicate_mandatory_group_across_two_files_fails_loud(tmp_path: Path, s
 
 
 def test_web_tag_with_no_schema_and_no_kind_override_fails_loud(tmp_path: Path, src_dir: Path) -> None:
-    # ContMeas is deliberately freestanding (test_buildgen_schema_ast.py's own confirmation: no
-    # _VAL_* ConfigSchema constant at all) - its "kind=toggle" override is the only thing that lets
-    # _infer_kind() resolve it. Drop the override and _infer_kind() has neither a schema-derived
-    # field_type nor an explicit kind to fall back on.
+    # ContMeas is freestanding, with no _VAL_* ConfigSchema constant at all, so its kind=toggle
+    # override is the only thing letting _infer_kind() resolve it. Drop that and it has neither a
+    # schema-derived field_type nor an explicit kind to fall back on.
     mutated = _copy_driver_replacing(tmp_path, src_dir, "asy_scd30_driver.py", " kind=toggle", "")
     model = _single_scd30_model("dev", mutated)
     with pytest.raises(BuildError, match="no matching ConfigSchema constant and no explicit kind"):
@@ -319,10 +317,9 @@ def test_web_tag_kind_enum_with_no_discrete_schema_choice_set_fails_loud(tmp_pat
 
 
 def test_web_tag_declares_extra_special_label_not_in_schema_choice_set_fails_loud(tmp_path: Path, src_dir: Path) -> None:
-    # The reverse direction of test_missing_special_label_for_an_enum_schema_value_fails_loud: every
-    # schema choice already has a matching special: label (proven by the golden-file test), so
-    # adding one more special: entry for a value the schema's own choice set doesn't contain is the
-    # only way to reach the "declares special: option(s) ... not present" branch.
+    # The reverse of the missing-label test: every schema choice already has a matching special:
+    # label, so adding one for a value the choice set does not contain is the only way to reach
+    # the "declares special: option(s) ... not present" branch.
     mutated = _copy_driver_replacing(tmp_path, src_dir, "asy_bmp3xx_driver.py", ' special:127="127"', ' special:127="127" special:999="Extra"')
     spec = InstanceSpec(
         driver="bmp3xx", name_ext="", fields={}, wiring={}, order_index=0,
@@ -335,10 +332,9 @@ def test_web_tag_declares_extra_special_label_not_in_schema_choice_set_fails_lou
 
 
 def test_web_tag_schema_sentinel_value_with_no_matching_special_label_fails_loud(tmp_path: Path, src_dir: Path) -> None:
-    # AmbPres's ConfigSchema declares a scalar sentinel (special=0, not a tuple/list choice set -
-    # test_extract_field_schemas_real_scd30... confirms fields["AmbPres"] == ("int", None, 700, 1400, 0)),
-    # documented today by its own "special:0=..." tag entry. Drop that one documentation entry and
-    # the sentinel is left with nothing to explain it.
+    # AmbPres's ConfigSchema declares a scalar sentinel rather than a choice set, documented by
+    # its own special:0= tag entry. Drop that one entry and the sentinel has nothing left to
+    # explain it.
     mutated = _copy_driver_replacing(tmp_path, src_dir, "asy_scd30_driver.py", ' special:0="Compensation off / use Altitude"', "")
     model = _single_scd30_model("dev", mutated)
     with pytest.raises(BuildError, match=r"has a sentinel special value 0 but no matching special:0"):
@@ -346,11 +342,9 @@ def test_web_tag_schema_sentinel_value_with_no_matching_special_label_fails_loud
 
 
 def test_mandatory_group_never_declared_anywhere_fails_loud(tmp_path: Path, src_dir: Path) -> None:
-    # _mandatory_group()'s own "len(declaring) == 0" branch - distinct from
-    # test_duplicate_mandatory_group_across_two_files_fails_loud's "declared twice" branch above.
-    # system_service.py is the sole owner of section=system submitGroup=settings (asy_ntp_client.py
-    # deliberately never declares it - see that test's own comment); drop it entirely instead of
-    # duplicating it, and no scanned file declares this mandatory group at all.
+    # _mandatory_group()'s "none declaring" branch, distinct from the "declared twice" one above.
+    # system_service.py is the sole owner of that group, so dropping it rather than duplicating
+    # it leaves no scanned file declaring the mandatory group at all.
     patched_src = tmp_path / "src"
     patched_src.mkdir()
     for existing in src_dir.glob("*.py"):

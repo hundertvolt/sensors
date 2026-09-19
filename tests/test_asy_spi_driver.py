@@ -54,10 +54,9 @@ def test_deinit_forwards_to_machine_spi_and_drops_the_reference() -> None:
 
 
 def test_forwarded_machine_spi_deinit_does_not_disable_the_underlying_bus() -> None:
-    # Pins down the real rp2 semantics the fake models: machine.SPI's .deinit protocol slot is
-    # NULL, so the peripheral keeps running and every raw bus op still works. Only
-    # asy_spi_driver.SPI's own dropped reference makes operations no-op - reattaching the same
-    # underlying bus object proves the hardware side was never actually torn down.
+    # Pins the real rp2 semantics the fake models: machine.SPI's .deinit protocol slot is NULL, so the
+    # peripheral keeps running and every raw bus op still works. Only asy_spi_driver.SPI's dropped reference
+    # makes operations no-op - reattaching the same bus object proves the hardware side was never torn down.
     spi = make_spi()
     mock = fake(spi)
     spi.deinit()
@@ -96,11 +95,9 @@ def test_operations_after_deinit_return_none_or_noop() -> None:
 
 
 def test_device_operations_on_an_already_deinitialized_bus_return_none_or_noop() -> None:
-    # Bypasses `async with device:` deliberately: __aenter__ would call configure(), which
-    # raises on a deinitialized bus regardless (see test_aenter_leaves_lock_held_if_configure_
-    # raises_pre_existing_gap below) - this test is only about SPI's own no-op contract at the
-    # write()/readinto()/write_readinto() level, reached directly the way I2CDevice's equivalent
-    # test reaches I2C's.
+    # Bypasses `async with device:` deliberately: __aenter__ would call configure(), which raises on a
+    # deinitialized bus regardless. This test is only about SPI's no-op contract at the
+    # write()/readinto()/write_readinto() level, reached directly the way I2CDevice's equivalent test does.
     spi = make_spi()
     device = make_device(spi)
     spi.deinit()
@@ -152,12 +149,12 @@ def test_write_readinto_matching_lengths_succeeds() -> None:
 
 
 def test_write_readinto_mismatched_buffer_lengths_returns_none_instead_of_raising() -> None:
-    # machine.SPI.write_readinto() itself raises ValueError("buffers must be the same length")
-    # here (confirmed against extmod/machine_spi.c's mp_machine_spi_write_readinto(), shared by
-    # hardware and soft SPI) - caught and turned into a None return, matching this driver's
-    # non-hardware-failure convention (see e.g. asy_i2c_driver.py's malformed-reg_format handling).
-    # Checked in both directions - the underlying check is symmetric (src.len != dest.len), but
-    # buffer_out longer than buffer_in and vice versa are both real, distinct caller mistakes.
+    # machine.SPI.write_readinto() itself raises ValueError("buffers must be the same length") here,
+    # confirmed against extmod/machine_spi.c, shared by hardware and soft SPI - caught and turned into a
+    # None return, matching this driver's non-hardware-failure convention.
+    #
+    # Checked in both directions: the underlying check is symmetric on length, but buffer_out longer than
+    # buffer_in and vice versa are both real, distinct caller mistakes.
     spi = make_spi()
     spi.write_readinto(b"abc", bytearray(2))  # buffer_out longer - must not raise
     assert len(fake(spi).log) == 0  # rejected before ever touching the bus
@@ -167,14 +164,12 @@ def test_write_readinto_mismatched_buffer_lengths_returns_none_instead_of_raisin
 
 def test_disconnected_wire_is_undetectable_reads_whatever_is_on_the_bus_not_an_exception() -> None:
     # Real, deliberately-not-simulated irregular condition: unlike I2C's NAK, SPI has no ACK, so a
-    # physically disconnected MISO/clock wire is invisible at this layer on real RP2040 hardware
-    # (confirmed against ports/rp2/machine_spi.c at v1.29.0: the only failure it reports is an RX
-    # overrun on a 32+ byte read, which a silent wire never produces - see the module docstring,
-    # SPECIFICATION.md Part F.5.2, and BACKLOG.md open question 15).
-    # This test proves that documented claim as a regression, not just a comment: with nothing
-    # primed in the fake's read_queue (modeling a device that never drives MISO), readinto() and
-    # write_readinto() still succeed and hand back zero-filled bytes instead of raising anything -
-    # exactly what "undetectable" means in practice, not an untestable absence.
+    # disconnected MISO or clock wire is invisible at this layer on real hardware - confirmed against
+    # ports/rp2/machine_spi.c at v1.29.0, whose only reported failure is a 32+ byte RX overrun.
+    #
+    # This proves that documented claim as a regression rather than a comment: with nothing primed in the
+    # fake's read_queue, modelling a device that never drives MISO, readinto() and write_readinto() still
+    # succeed and hand back zero-filled bytes. That is what "undetectable" means in practice.
     spi = make_spi()
     buf = bytearray(b"\xff\xff")
     spi.readinto(buf)
@@ -241,9 +236,8 @@ def test_configure_succeeds_and_forwards_params_once_lock_is_held() -> None:
 
 def test_configure_raises_not_implemented_for_lsb_firstbit() -> None:
     # The module docstring claims rp2 hardware SPI only implements MSB-first, sourced from
-    # ports/rp2/machine_spi.c's machine_spi_init() - this test makes that claim testable rather
-    # than an assertion nothing would catch if it were ever wrong. FakeSPI.LSB mirrors the real
-    # constant value (1); no caller in this codebase passes firstbit=LSB today.
+    # ports/rp2/machine_spi.c's machine_spi_init() - this makes that claim testable rather than an assertion
+    # nothing would catch. FakeSPI.LSB mirrors the real constant value; no caller passes firstbit=LSB today.
     spi = make_spi()
 
     async def scenario() -> bool:
@@ -288,10 +282,9 @@ def test_setup_drives_cs_pin_to_inactive_active_high_variant() -> None:
 
 
 def test_aenter_raises_if_setup_was_never_called() -> None:
-    # Real finding from the architecture-review pass: Pin.value() writes the GPIO output register
-    # unconditionally regardless of direction (confirmed against ports/rp2/machine_pin.c), so
-    # entering before setup() wouldn't crash on its own - it would silently fail to assert CS on
-    # real hardware. This guard converts that into a clear, immediate RuntimeError instead.
+    # Real finding from the architecture-review pass: Pin.value() writes the GPIO output register regardless
+    # of direction (confirmed against ports/rp2/machine_pin.c), so entering before setup() would not crash -
+    # it would silently fail to assert CS. This guard makes it a clear RuntimeError.
     spi = make_spi()
     device = make_device(spi, call_setup=False)
 
@@ -471,12 +464,12 @@ def test_reinit_mid_session_switches_to_a_fresh_bus() -> None:
 
 
 def test_aenter_releases_the_lock_if_configure_raises() -> None:
-    # Real bug found and fixed during this promotion (present in the original file too): if the
-    # bus is deinitialized before a new session starts, __aenter__ acquires the lock first, then
-    # configure() raises RuntimeError - since __aenter__ itself then raises, `async with` never
-    # calls __aexit__. Without __aenter__'s own try/except, the lock would leak permanently
-    # (see BACKLOG.md). This test proves the fix: the lock is released before the exception
-    # propagates.
+    # Real bug found and fixed during this promotion, present in the original file too: if the bus is
+    # deinitialized before a new session starts, __aenter__ acquires the lock first and then configure()
+    # raises RuntimeError - and since __aenter__ itself raises, `async with` never calls __aexit__.
+    #
+    # Without __aenter__'s own try/except the lock would leak permanently. This proves the fix: the lock is
+    # released before the exception propagates.
     spi = make_spi()
     device = make_device(spi)
     spi.deinit()
@@ -618,10 +611,9 @@ def test_two_devices_sharing_a_bus_never_run_concurrently() -> None:
 
 
 def test_two_devices_sharing_a_bus_never_have_cs_simultaneously_asserted() -> None:
-    # Companion to the max_concurrent check above, but at the actual hardware signal level: the
-    # lock prevents concurrent *sessions*, but this confirms what that actually guarantees
-    # physically - device_a's CS is provably deasserted (__aexit__ already ran, releasing the
-    # lock, before __aenter__ ever asserts device_b's CS) at every point device_b's CS is high.
+    # Companion to the max_concurrent check above, at the actual hardware signal level: the lock prevents
+    # concurrent sessions, and this confirms what that guarantees physically - device_a's CS is provably
+    # deasserted at every point device_b's CS is high, __aexit__ having run before __aenter__ asserts it.
     spi = make_spi()
     device_a = make_device(spi, cs_pin=1)
     device_b = make_device(spi, cs_pin=6)

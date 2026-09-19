@@ -27,12 +27,13 @@ def _test_sh_text(repo_root: Path) -> str:
 
 
 def test_buildgen_generation_runs_before_the_pytest_job_is_backgrounded(repo_root: Path) -> None:
-    # The race this ordering closes: scripts/_generate_sensortask_modules.py globs devices/*.toml,
-    # while tests_scripts/test_build_website_sh.py's malformed-TOML case writes a throwaway
-    # devices/zz_test_*.toml into the live tree for the length of one test (it cannot be given a
-    # tmp_path tree - build_website.sh resolves devices/<device>.toml from the repo root). Generated
-    # first, that file's brief existence is never observed; backgrounded first, a glob landing inside
-    # that window exits 1 and aborts the whole run under `set -e`, naming a device nobody added.
+    # The race this ordering closes: the generator globs devices/*.toml, while the malformed-TOML
+    # test writes a throwaway one into the live tree for the length of one test - it cannot use a
+    # tmp_path tree, build_website.sh resolving from the repo root.
+
+    # Generated first, that file's brief existence is never seen; backgrounded first, a glob
+    # landing in that window exits 1 and aborts the run under `set -e`, naming a device nobody
+    # added.
     text = _test_sh_text(repo_root)
     generate_at = text.find(_GENERATE_LINE)
     pytest_at = text.find(_PYTEST_LINE)
@@ -42,10 +43,9 @@ def test_buildgen_generation_runs_before_the_pytest_job_is_backgrounded(repo_roo
 
 
 def test_stale_live_tree_fixtures_are_swept_before_anything_globs_devices(repo_root: Path) -> None:
-    # The sweep covers the leak the ordering above cannot: the fixture test removes its file in
-    # `finally`, which a SIGKILL (the pytest job is timeout-wrapped) defeats. A leaked file breaks
-    # every later scripts/test.sh, scripts/typecheck.sh and twin run at the generation step, so the
-    # sweep has to run ahead of that step, not merely somewhere in the script.
+    # The sweep covers the leak the ordering cannot: the fixture removes its file in `finally`,
+    # which a SIGKILL defeats, and a leaked file then breaks every later test.sh, typecheck.sh
+    # and twin run at the generation step - so the sweep must run ahead of that step.
     text = _test_sh_text(repo_root)
     sweep_at = text.find(_SWEEP_LINE)
     assert sweep_at != -1, f"scripts/test.sh must sweep stale live-tree fixtures via {_SWEEP_LINE!r}"
@@ -70,11 +70,9 @@ def test_the_live_tree_fixture_test_uses_the_reserved_prefix(repo_root: Path) ->
 
 
 def test_a_leaked_fixture_is_reclaimed_at_session_start_too(repo_root: Path) -> None:
-    # The sweep in scripts/test.sh only helps runs that go through scripts/test.sh. conftest.py
-    # reclaims the same namespace at pytest session start, which covers a direct `pytest
-    # tests_scripts` run and - unlike any test that globs the live tree - cannot race the fixture
-    # that legitimately creates one mid-session, because at session start nothing has created it yet.
-    # Asserted structurally rather than by globbing devices/ here, for exactly that reason.
+    # test.sh's sweep only helps runs that go through test.sh, so conftest.py reclaims the same
+    # namespace at pytest session start - covering a direct run, and unable to race the fixture
+    # that legitimately creates one, since nothing has at session start.
     conftest = (repo_root / "tests_scripts" / "conftest.py").read_text()
     assert "_reclaim_leaked_device_fixtures" in conftest, "conftest.py must reclaim leaked live-tree device fixtures at session start"
     assert 'glob("zz_test_*.toml")' in conftest, "the session-start reclamation must target the reserved namespace"
@@ -207,13 +205,12 @@ def test_a_broken_probe_falls_back_to_the_previous_behaviour_rather_than_going_s
 
 
 def test_the_speed_probe_runs_before_the_pytest_job_loads_the_host(repo_root: Path) -> None:
-    # The placement bug this pins, found 2026-09-18: the probe timed a real process on a real host,
-    # but sat 262 lines AFTER the tests_scripts/ background launch - so it measured the host with
-    # pytest already saturating every core, not the host's own capability. Measured on this
-    # project's 4-core x86 sandbox: 131-141ms across 8 idle samples versus 391ms in situ, i.e. 2x/8
-    # jobs where the host warrants 4x/16, and non-deterministic run to run. Every unit test in this
-    # section runs the extracted function in isolation on an idle machine, so none of them can see
-    # this - only the ordering can, which is why it is asserted here rather than left to a comment.
+    # The placement bug this pins (2026-09-18): the probe timed a real process, but sat after
+    # the tests_scripts/ launch, measuring a host pytest already saturated - 131-141ms idle
+    # against 391ms in situ, 8 jobs where 16 was warranted, non-deterministic run to run.
+
+    # Every unit test in this section runs the extracted function in isolation on an idle
+    # machine, so none of them can see it - only the ordering can, hence asserting it here.
     text = _test_sh_text(repo_root)
     probe_at = text.find("_detect_parallelism() {")
     resolved_at = text.find('if [ -n "${TEST_PARALLELISM:-}" ]; then')
@@ -232,11 +229,9 @@ def test_the_env_override_still_wins_over_autodetection(repo_root: Path) -> None
 
 
 # ---------------------------------------------------------------------------
-# _cleanup() - the EXIT trap. Regression test for a real defect: bash does not kill its background
-# jobs when the parent exits, so an abort between the pytest launch and the final `wait` orphaned
-# the job for up to its own 1200s timeout - and that orphan transiently writes a
-# devices/zz_test_*.toml into the live tree, re-opening the very glob hazard the ordering closes.
-# Driven against real processes, because the whole question is whether a child actually dies.
+# _cleanup(), the EXIT trap. A regression test for a real defect: bash does not kill background
+# jobs when the parent exits, so an abort before the final `wait` orphaned it for up to 1200s,
+# re-opening the glob hazard. Driven against real processes - the question is whether one dies.
 # ---------------------------------------------------------------------------
 
 

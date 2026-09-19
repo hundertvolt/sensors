@@ -93,10 +93,9 @@ def _register_bus_tests(namespace: "dict[str, object]", device: str, bus_name: s
     namespace[f"{prefix}_each_real_occupant_never_touches_an_unexpected_address"] = test_each_real_occupant_never_touches_an_unexpected_address
 
     def test_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets() -> None:
-        # A same-DEVICE hazard, not cross-occupant - applies even to a lone occupant on its own bus
-        # (test_bus_hazard_multi_device.py's own byte-exact same-device proofs cover exactly this
-        # shape for SCD30/ISL29125 alone on a bus), so this is generated unconditionally, unlike the
-        # cross-occupant scenarios below which need >= 2 real occupants to mean anything.
+        # A same-DEVICE hazard, not cross-occupant, so it applies even to a lone occupant on its own bus,
+        # the shape test_bus_hazard_multi_device.py's byte-exact proofs cover. Hence generated
+        # unconditionally, unlike the cross-occupant scenarios below, which need two real occupants.
         run(scenario_same_occupant_own_write_does_not_disturb_own_concurrent_read(_make_build_fresh(bus_name, attachments)))
 
     namespace[f"{prefix}_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets"] = test_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets

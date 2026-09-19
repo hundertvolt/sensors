@@ -20,18 +20,16 @@ if TYPE_CHECKING:
 
     from crc_checks import CRC_Base
 
-    # None means "no CRC on the bus"; otherwise a zero-argument factory, called once per end.
-    # A factory rather than an instance: CRC_Base carries incremental state, so the two ends must
-    # never share one object. Not type[CRC_Base] - that would demand CRC_Base's own three-argument
-    # constructor, which the concrete widths (CRC16 and friends) deliberately do not take.
+    # None means "no CRC on the bus"; otherwise a zero-argument factory, called once per end. A factory, not
+    # an instance, CRC_Base carrying state the two ends must not share. Not type[CRC_Base], which would
+    # demand a three-argument constructor the concrete widths do not take.
     CrcMaker = Callable[[], CRC_Base] | None
 
     from machine import _LinkDirection as Direction  # one direction of the crossover link
 
-# A short timeout keeps each recovery cycle cheap: this tier is about which frames are accepted and
-# what is emitted, not about real-world durations, and every value still clears the module's own
-# floor of 2 x poll_wait_ms + poll_idle_ms + the worst-case GC pause (the harness leaves
-# poll_idle_ms at poll_wait_ms, so that floor is 24ms here).
+# A short timeout keeps each recovery cycle cheap: this tier is about which frames are accepted and what is
+# emitted, not about real-world durations, and every value still clears the module's own floor of 2 x
+# poll_wait_ms + poll_idle_ms plus the worst-case GC pause - 24ms here, the harness leaving them equal.
 _TIMEOUT_MS = 30
 _PAYLOAD = 8
 _FRAME = 5 + _PAYLOAD
@@ -61,10 +59,9 @@ def wire_frame(crc: "CrcMaker") -> int:
 
 
 def timeout_for(crc: "CrcMaker") -> int:
-    # A CRC yields once per byte (crc_checks.py's own loop), so the same wall-clock budget covers
-    # far fewer bytes once other tasks share the loop - measured as transactions timing out at the
-    # tier's deliberately tiny 30ms. The real link's own 1000ms has ample headroom; this keeps the
-    # mock's speed while giving the CRC path the same *relative* margin.
+    # A CRC yields once per byte, so the same wall-clock budget covers far fewer bytes once other tasks
+    # share the loop - measured as transactions timing out at this tier's deliberately tiny 30ms. The real
+    # link's 1000ms has ample headroom; this keeps the mock's speed at the same relative margin.
     return _TIMEOUT_MS if crc is None else _TIMEOUT_MS * 8
 
 
@@ -485,9 +482,8 @@ async def _measure_retention(pair: Pair) -> "tuple[int, float]":
     import gc
 
     # Three rounds per transaction, not one: a listen round is not always consumed by a completed
-    # transaction, and a budget of exactly n+1 starves the last few transactions rather than
-    # measuring them. Verified with the budget raised: 120/120 complete with zero errors logged in
-    # both CRC modes, so the shortfall was the harness's, not the protocol's.
+    # transaction, and a budget of exactly n+1 starves the last few rather than measuring them. With it
+    # raised, 120/120 complete with zero errors in both CRC modes, so the shortfall was the harness's.
     listener = asyncio.create_task(_listen_rounds(pair, (_WARMUP + _MEASURED) * 3))
     payload = bytes(_PAYLOAD * 3)
     done = 0
@@ -549,10 +545,9 @@ _ERR_BAD_ARG = 34
 
 
 def errnos(comm: UART_Comm) -> "list[int]":
-    # Errors only. ErrNum holds errnos and wrnnos in one ring and they share the number space -
-    # wrnno 10 is a resync, errno 10 is a bad payload_size - so ErrType is what tells them apart.
-    # Every fault also resyncs, so the newest entry is almost always the resync warning.
-    # Indexed rather than zip()ed: MicroPython's zip() has no strict= parameter to satisfy B905.
+    # Errors only. ErrNum holds errnos and wrnnos in one ring sharing the number space - wrnno 10 is a
+    # resync, errno 10 a bad payload_size - so ErrType tells them apart, and every fault also resyncs, so
+    # the newest entry is usually the resync warning. Indexed, not zip()ed: MicroPython has no strict=.
     entry = run(comm.get_error_counter())[comm.name]
     nums, kinds = entry["ErrNum"], entry["ErrType"]
     return [nums[i] for i in range(len(nums)) if kinds[i] == "E"]
@@ -729,10 +724,9 @@ def _answer_payload_offset(marker: int = ord("v"), crc: "CrcMaker" = None) -> in
 
 
 def _check_a_corrupted_payload_byte_is_delivered_undetected_without_a_crc(crc: "CrcMaker") -> None:
-    # The other half of the same boundary, and the uncomfortable one: with no CRC configured, a bit
-    # flip inside the payload passes every structural check and reaches the caller as good data.
-    # This is a documented property of the deployed configuration, not a defect to fix here - it is
-    # pinned so that enabling a CRC (the test below) is visibly the thing that changes it.
+    # The other half of the same boundary, and the uncomfortable one: with no CRC configured, a bit flip in
+    # the payload passes every structural check and reaches the caller as good data. A documented property
+    # of the deployed configuration, pinned so enabling a CRC is visibly what changes it.
     offset = _answer_payload_offset(crc=crc)
     pair = hazard_pair(crc)
     pair.link.direction_from(pair.fake_b).corrupt_indices = {offset: 0xFF}
@@ -1035,10 +1029,9 @@ def _hammer_faulted(crc: "CrcMaker") -> None:
 
     async def hammer() -> int:
         listener = asyncio.create_task(_listen_rounds(pair, 240))
-        # The first fault allocates a fixed ~3.4kB - the log history's buffers and the resync
-        # scratch, built once and reused. Measured constant at 10, 30, 60 and 120 failures, so it
-        # is one-time cost rather than per-failure retention. The first burst absorbs it; only the
-        # second is measured, which is what makes this a leak test rather than a startup test.
+        # The first fault allocates a fixed ~3.4kB - the log history's buffers and the resync scratch, built
+        # once and reused. Measured constant at 10, 30, 60 and 120 failures, so it is a one-time cost, not
+        # per-failure retention. The first burst absorbs it; only the second is measured.
         await burst(30)
         gc.collect()
         before[0] = gc.mem_alloc()
@@ -1054,10 +1047,9 @@ def _hammer_faulted(crc: "CrcMaker") -> None:
 
     before = [0]
     grew = run(hammer(), limit=300)
-    # Same reasoning as the clean hammer, against the failure path's own scale. The one-time cost
-    # this test absorbs in its first burst is ~114 B/failure at this count, so a bound well below
-    # that still catches an unabsorbed or genuinely leaking failure path, while tolerating the few
-    # bytes per failure of host-dependent interpreter noise (CI measured 4.3, locally 0).
+    # Same reasoning as the clean hammer, against the failure path's scale. The one-time cost absorbed in
+    # the first burst is ~114 B/failure here, so a bound well below that still catches an unabsorbed or
+    # leaking path while tolerating host-dependent interpreter noise (CI 4.3, locally 0).
     per_failure = grew / 30
     assert per_failure < 16.0, f"{grew} bytes over 30 failures = {per_failure:.1f} B/failure"
 
@@ -1205,10 +1197,9 @@ def _check_a_disconnect_then_reconnect_mid_frame_recovers(crc: "CrcMaker") -> No
 
 
 def _check_the_crc_appears_on_the_wire_big_endian_after_the_payload(crc: "CrcMaker") -> None:
-    # Byte order is part of the wire contract, not an implementation detail: the C peer's own CRC is
-    # appended in the platform's NATIVE order and is deliberately not wire-compatible with this one
-    # (SPECIFICATION.md Part J, UART_C_PORT_CHANGELOG.md A7). If this silently changed, two
-    # implementations would disagree in a way that looks exactly like a dead link.
+    # Byte order is part of the wire contract, not an implementation detail: the C peer appends its own CRC
+    # in the platform's NATIVE order and is deliberately not wire-compatible with this one (SPECIFICATION.md
+    # Part J, UART_C_PORT_CHANGELOG.md A7). A silent change here looks exactly like a dead link.
     if crc is None:
         return  # nothing is appended without a CRC; the companion mode covers the other half
     pair = hazard_pair(crc)

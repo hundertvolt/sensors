@@ -46,24 +46,18 @@ def test_real_device_generates_syntactically_valid_module(repo_root: Path, src_d
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_constructs_watchdog_exactly_once(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    # The CPython-side half of tests/test_reset_call_site_invariant.py's own
-    # test_wdt_constructed_only_in_sensortask_entry_point_files(): that test scans committed
-    # src/*.py files and skips anything named sensortask_*.py, which is now vacuous (no
-    # sensortask_<device>.py is ever committed to src/ any more - SPECIFICATION.md Part L.4
-    # finish criterion) - so the generated module's own single WDT() construction site needs its
-    # own, separate proof instead of relying on that skip ever actually exercising it again.
+    # The CPython half of test_reset_call_site_invariant.py's WDT check: that one scans
+    # committed src/ files and skips sensortask_*.py, which is now vacuous since none is ever
+    # committed (Part L.4). The generated module's single WDT() site needs its own proof.
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     assert result.module_source.count("WDT(") == 1
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_feeds_the_watchdog_after_every_setup_call_in_order(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    # WP6 (SPECIFICATION.md Part D.9/G.2): the one-time boot setup batch must not starve the
-    # hardware watchdog, no matter how many modules a device wires - a feed after every await
-    # X.setup() line, never inside a loop, is what makes this safe regardless of setup count.
-    # SystemService.feed_watchdog() itself is unit-tested (tests/test_system_service.py) for the
-    # no-watchdog/force-starve no-op cases; this proves codegen actually emits the call at every
-    # site, for every real device, not just wozi/dev.
+    # The boot setup batch must not starve the watchdog however many modules a device wires
+    # (Part D.9/G.2), which a feed after every await X.setup() - never inside a loop - is what
+    # guarantees. feed_watchdog() itself is unit-tested; this proves codegen emits every call.
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     lines = result.module_source.splitlines()
     setup_lines = [i for i, line in enumerate(lines) if re.match(r"\s*await \w+\.setup\(\)\s*$", line)]
@@ -111,10 +105,9 @@ def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_di
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    # SPECIFICATION.md Part L.7 (as corrected - GET /system's "build" sub-entry, not GET
-    # /status): buildgen.version.FIRMWARE_VERSION/WEBSITE_VERSION are the one source of truth for
-    # the two version constants; the build date is a fresh, explicitly-injected value (never
-    # computed on-device) so this test can assert an exact match instead of a moving "now".
+    # Part L.7: buildgen.version is the one source of truth for the two version constants, and
+    # the build date is explicitly injected rather than computed on-device - which is what lets
+    # this assert an exact match instead of a moving "now".
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir, build_date="2026-09-12T10:00:00Z")
     assert result.module_source.count("_FIRMWARE_VERSION = const(") == 1
     assert result.module_source.count("_WEBSITE_VERSION = const(") == 1
@@ -137,11 +130,9 @@ def test_real_device_defaults_to_a_real_current_build_date_when_none_is_given(re
 
 
 def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path) -> None:
-    # The mandatory synthetic "novel combination" fixture (SPECIFICATION.md Part L.1's
-    # acceptance criterion #2): existing drivers mixed in a layout none of the 6 real devices use (two SCD30s,
-    # SGP40 independently compensated - temperature from the second SCD30, humidity from the first
-    # (§2.9) - BMP3xx at the alternate address, a partial notification signal set) - proving the
-    # generator's generality, not just the 6 hand-verified real files.
+    # The mandatory synthetic novel-combination fixture (Part L.1's criterion 2): existing
+    # drivers in a layout no real device uses - two SCD30s, an SGP40 compensated from each,
+    # BMP3xx at its alternate address - proving generality beyond the six hand-verified files.
     result = generate_device(fixtures_dir / "novel_combo.toml", src_dir, ext_dir)
     ast.parse(result.module_source)
     ast.parse(result.boot_entry_source)
@@ -169,11 +160,9 @@ def test_novel_combo_construction_order_is_topologically_valid(fixtures_dir: Pat
 
 
 def test_multi_instance_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path) -> None:
-    # Axis 9's own dedicated multi-instance fixture (§10.7 item 1): 2x scd30 + 2x sgp40 (on
-    # different buses - sgp40 has no address-select pin), one sgp40 wired entirely to a real scd30,
-    # the other mixing a cross-driver-type reference (bmp3xx's own Temp) with an explicit default -
-    # proving §2.9's "any producer exposing a matching attribute name" claim directly, not just
-    # satisfying it structurally.
+    # The dedicated multi-instance fixture: two SCD30s and two SGP40s on separate buses, one
+    # SGP40 wired to a real SCD30 and the other mixing a cross-driver reference with an explicit
+    # default - proving the "any producer exposing a matching attribute name" claim directly.
     result = generate_device(fixtures_dir / "multi_instance.toml", src_dir, ext_dir)
     ast.parse(result.module_source)
     ast.parse(result.boot_entry_source)
@@ -201,10 +190,9 @@ def test_multi_instance_fixture_generates_successfully(fixtures_dir: Path, src_d
 
 
 def test_multi_instance_same_module_merges_distinct_default_extras(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    # codegen.py's per-module import dedup (bb5354c) unions whichever _Default* extras any
-    # instance of the shared module needs - this fixture has each of two sgp40 instances default a
-    # *different* field (a's humidity, b's temperature), so the merged import line must carry both
-    # extras even though neither instance alone needs both.
+    # codegen's per-module import dedup unions whichever _Default* extras any instance needs.
+    # Here the two sgp40 instances default DIFFERENT fields, so the merged import line must
+    # carry both even though neither instance alone needs both.
     doc = base_doc()
     doc["bus"]["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000, "timeout": 200000}
     sgp40 = next(i for i in doc["instance"] if i["driver"] == "sgp40")
@@ -274,10 +262,9 @@ def test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_o
 
 
 def test_multi_instance_same_module_dedupes_identical_default_extra(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    # Same mechanism, opposite corner: both sgp40 instances default the *same* field
-    # (humidity_source, with different constants) - default_class_name() maps the field name alone
-    # to the class name, so the module's single import line must list _DefaultHumiditySource once,
-    # not twice, even though two separate instances each requested it.
+    # The same mechanism's opposite corner: both sgp40 instances default the SAME field, with
+    # different constants. default_class_name() maps the field name alone, so the import line
+    # must list the class once rather than twice.
     doc = base_doc()
     doc["bus"]["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000, "timeout": 200000}
     sgp40 = next(i for i in doc["instance"] if i["driver"] == "sgp40")
@@ -392,10 +379,9 @@ def test_cli_reports_build_error_on_stderr_and_exits_nonzero(tmp_path: Path, cap
 
 
 def test_hostname_and_hotspot_password_are_wired_into_generated_code(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
-    # The inverse of the tripwire this replaces. [device].hostname/hotspot_password were validated
-    # (presence, shape, the SensorStation<name> formula) and then reached nothing: every device
-    # booted as the shared "SensorNode" default, whatever its TOML said. They are now passed to
-    # AsyConnTime as the per-device defaults for the two ConfigManager-persisted fields.
+    # The inverse of the tripwire this replaces: hostname and hotspot_password were validated
+    # and then reached nothing, so every device booted as the shared "SensorNode". They are
+    # passed to AsyConnTime now, as the two persisted fields' per-device defaults.
     result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
     assert "hostname='SensorStationWozi'" in result.module_source
     assert "hotspot_password='12345678'" in result.module_source
@@ -485,11 +471,9 @@ def test_codegen_has_no_build_recipe_for_an_unknown_driver(tmp_path: Path, src_d
 
 
 def test_notification_with_no_signal_sink_wiring_field_fails_loud(tmp_path: Path, src_dir: Path) -> None:
-    # _build_args_notification()'s own "internal:" invariant - notification's signal_sink wiring
-    # field is always resolved by validate.py's own _check_wiring_references() before codegen ever
-    # runs (base_doc()'s own notification instance always declares it), so this is unreachable via
-    # any real TOML; driven the same way test_codegen_has_no_build_recipe_for_an_unknown_driver
-    # above reaches its own otherwise-unreachable branch - mutate an already-validated spec directly.
+    # _build_args_notification()'s internal invariant: signal_sink is always resolved by
+    # validate.py before codegen runs, so no real TOML reaches this. Driven by mutating an
+    # already-validated spec, the same way the unknown-driver test above reaches its branch.
     from buildgen.codegen import _build_args_notification, _Ctx
     from buildgen.validate import build_model
 
@@ -501,10 +485,9 @@ def test_notification_with_no_signal_sink_wiring_field_fails_loud(tmp_path: Path
 
 
 def test_instance_with_no_driver_info_fails_loud_at_codegen_time(tmp_path: Path, src_dir: Path) -> None:
-    # _emit_header_and_imports()'s own "internal:" invariant - driver_info is always resolved by
-    # validate.py's _resolve_instances() before codegen runs. Driven via generate_module_source()
-    # directly (the same seam generate_device() itself calls through), on an otherwise-valid model
-    # with one instance's driver_info cleared after validation.
+    # _emit_header_and_imports()'s internal invariant: driver_info is always resolved before
+    # codegen runs. Driven through generate_module_source(), the same seam generate_device()
+    # uses, on a valid model with one instance's driver_info cleared afterwards.
     from buildgen.codegen import generate_module_source
     from buildgen.graph import build_construction_order
     from buildgen.validate import build_model
@@ -517,10 +500,9 @@ def test_instance_with_no_driver_info_fails_loud_at_codegen_time(tmp_path: Path,
 
 
 def test_construction_order_entry_that_is_neither_a_bare_node_nor_an_instance_key_fails_loud(tmp_path: Path, src_dir: Path) -> None:
-    # _emit_build_system()'s own "internal:" invariant - buildgen.graph.build_construction_order()
-    # only ever emits "conn"/"ntp"/"sysfunct" or a real (driver, name_ext) instance key, so no real
-    # TOML can reach this; driven by inserting a bogus bare string into an otherwise-valid,
-    # already-computed construction order.
+    # _emit_build_system()'s internal invariant: build_construction_order() only emits the three
+    # infra names or a real instance key, so no TOML reaches this. Driven by inserting a bogus
+    # bare string into an already-computed construction order.
     from buildgen.codegen import generate_module_source
     from buildgen.graph import build_construction_order
     from buildgen.validate import build_model

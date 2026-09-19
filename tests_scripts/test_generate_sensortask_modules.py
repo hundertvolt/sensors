@@ -38,23 +38,18 @@ def test_main_generates_every_real_device_matching_generate_device_directly(gene
         expected = generate_device(repo_root / "devices" / f"{device}.toml", repo_root / "src", repo_root / "ext", build_date="2026-09-12T10:00:00Z")
         assert (out_dir / f"sensortask_{device}.py").read_text() == expected.module_source
         expected_plan = compute_twin_wiring(expected.model)
-        # "instances" is main()'s own addition on top of compute_twin_wiring()'s documented shape
-        # (an independent, pre-construction driver-presence oracle for tests/_sensortask_scenarios.py -
-        # see main()'s own comment) - checked separately against the model directly, then popped
-        # before comparing the rest of the plan against compute_twin_wiring()'s own return value
-        # unchanged.
+        # "instances" is main()'s addition on top of compute_twin_wiring()'s shape, an
+        # independent pre-construction driver-presence oracle - checked against the model
+        # directly, then popped so the rest compares against that function's return unchanged.
         actual_plan = json.loads((out_dir / f"sensortask_{device}_wiring_plan.json").read_text())
         assert actual_plan.pop("instances") == sorted({spec.driver for spec in expected.model.instances.values()})
         assert actual_plan == expected_plan
 
 
 def test_main_reports_a_build_error_and_exits_nonzero_without_crashing(generate_sensortask_modules: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    # A malformed devices/*.toml is a real, reachable failure (a hand-edited TOML, a bad merge) -
-    # the loop's own `except BuildError` must report it and return 1, not let a traceback escape or
-    # silently leave a partially-generated build/generated_src/ with no explanation. Real generation
-    # logic is bypassed (generate_device monkeypatched) so this test doesn't need a genuinely
-    # malformed TOML fixture to trigger buildgen's own validation - only this script's own reporting
-    # contract is under test here.
+    # A malformed devices/*.toml is a reachable failure, so the loop's except BuildError must
+    # report it and return 1 rather than let a traceback escape or leave a half-generated tree.
+    # generate_device is monkeypatched: only this script's reporting contract is under test.
     (tmp_path / "devices").mkdir()
     (tmp_path / "devices" / "broken.toml").write_text("# not a real device\n")
     monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)

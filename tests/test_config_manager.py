@@ -139,10 +139,9 @@ def test_name_cfg_malformed_input_returns_empty_string() -> None:
 
 
 def test_name_cfg_single_field_literally_named_empty_string_quirk() -> None:
-    # Ambiguous but benign: a single field named "" (never a real driver's choice, but not rejected
-    # by schema_names/schema_dict either) returns the exact same "" a malformed/empty schema does -
-    # name_cfg can't distinguish "one field named empty string" from "no usable name" this way.
-    # Never crashes; nothing in the codebase relies on telling these two apart.
+    # Ambiguous but benign: a single field named "" (never a real driver's choice, but not rejected by
+    # schema_names/schema_dict either) returns the same "" a malformed or empty schema does. Never crashes,
+    # and nothing relies on telling the two apart.
     field: cm.ConfigSchema = (("", "int", 5, 0, 10, None),)
     assert cm.name_cfg(field) == ""
 
@@ -236,10 +235,9 @@ def test_make_dict_none_valued_field_passes_through() -> None:
 
 
 def test_make_dict_nested_tuple_field_no_longer_confuses_field_extraction() -> None:
-    # Regression test for the repr()-parsing landmine make_dict() used to have: a field whose own
-    # value's repr contains "(" (e.g. a nested tuple) used to desync the parser and silently drop
-    # every field after it. fields is now an explicit tuple, not parsed out of repr(), so this
-    # value round-trips like any other.
+    # Regression test for the repr()-parsing landmine make_dict() used to have: a field whose value's repr
+    # contains "(" desynced the parser and silently dropped every field after it. fields is now an explicit
+    # tuple, so such a value round-trips like any other.
     from collections import namedtuple
 
     Nested = namedtuple("Nested", ["a", "b"])
@@ -257,11 +255,12 @@ def test_make_dict_comma_in_list_value_repr_no_longer_corrupts_result() -> None:
 
 
 # ---------------------------------------------------------------------------
-# coerce_numeric - direct/standalone (SPECIFICATION.md Part A.8's numeric-coercion policy). This is
-# the lower-level function type_or_range_error() itself calls before ever touching min/max/special -
-# tested here in isolation so its own contract doesn't depend on any field's range, and
-# sensortask_wozi.py's lightCmdLED dispatch (the other real caller, with no FieldSchema of its own)
-# is exercised against exactly this same surface.
+# coerce_numeric - direct/standalone (SPECIFICATION.md Part A.8's numeric-coercion policy). The lower-level
+# function type_or_range_error() calls before touching min/max/special, tested in isolation so its contract
+# does not depend on any field's range.
+#
+# The same surface sensortask_wozi.py's lightCmdLED dispatch is exercised against, that one having no
+# FieldSchema of its own.
 # ---------------------------------------------------------------------------
 
 
@@ -315,10 +314,8 @@ def test_coerce_numeric_float_to_int_nan_and_inf_rejected_not_raised() -> None:
 
 
 def test_coerce_numeric_bool_excluded_from_both_directions() -> None:
-    # bool subclasses int in Python/MicroPython, but type() (not isinstance()) excludes it from
-    # every branch - it must never coerce into int OR float, and never pass the same-type check
-    # for either, even though `isinstance(True, int)` and `isinstance(True, float)` would both
-    # otherwise be misleading here.
+    # bool subclasses int in Python/MicroPython, but type() rather than isinstance() excludes it from every
+    # branch: it must never coerce into int OR float, and never pass the same-type check for either.
     assert cm.coerce_numeric(check_val=True, scalar_type=int) == (False, True)
     assert cm.coerce_numeric(check_val=False, scalar_type=int) == (False, False)
     assert cm.coerce_numeric(check_val=True, scalar_type=float) == (False, True)
@@ -341,19 +338,17 @@ def test_coerce_numeric_unsupported_scalar_type_never_raises() -> None:
 
 
 def test_coerce_numeric_large_int_to_float_precision_limit_is_a_documented_accepted_gap() -> None:
-    # int -> float is a blanket accept (no exact-round-trip check, unlike the float -> int
-    # direction) on the stated premise that "every int is exactly representable as a float" - true
-    # for any value a real schema field's own min/max bounds could ever let through (the largest
-    # today is BMP3xx's SeaLevelOffs at 5000.0 - SPECIFICATION.md Part A.8), but not true in
-    # general: float has finite mantissa precision (24 bits / ~2**24 on the real RP2040 firmware's
-    # single-precision MICROPY_FLOAT_IMPL_FLOAT build, 52 bits / ~2**53 on this Unix-port test
-    # build's double-precision MICROPY_FLOAT_IMPL_DOUBLE - confirmed against both ports'
-    # mpconfigport.h), and MicroPython's int is arbitrary-precision (MICROPY_LONGINT_IMPL_MPZ) on
-    # both. Beyond that many bits, float(int) silently rounds instead of raising - documented,
-    # accepted risk (not a bug to fix here): no currently-registered float field's bounds go
-    # anywhere near this range, and this Unix-port test build's own double precision means it can't
-    # even reproduce the real, stricter single-precision RP2040 threshold - so this test only proves
-    # the *documented* double-precision boundary on Unix, not the deployed single-precision one.
+    # int -> float is a blanket accept, with no exact-round-trip check unlike the other direction, on the
+    # premise that every int is exactly representable as a float. True for any value a real schema field's
+    # bounds let through (the largest today is BMP3xx's SeaLevelOffs at 5000.0).
+    #
+    # Not true in general: float has a finite mantissa (24 bits on the real RP2040's single-precision build,
+    # 52 on this Unix-port double-precision one) while MicroPython's int is arbitrary-precision on both, so
+    # beyond that float(int) silently rounds.
+    #
+    # Documented, accepted risk: no registered float field's bounds go near this range, and this build
+    # cannot reproduce the real single-precision threshold - so this proves only the double-precision
+    # boundary.
     exact = 2**53
     ok, coerced = cm.coerce_numeric(exact, float)
     assert (ok, coerced) == (True, float(exact))  # still exactly representable at 2**53 itself
@@ -377,10 +372,9 @@ def test_type_or_range_error_int_in_and_out_of_range() -> None:
 
 
 # ---------------------------------------------------------------------------
-# type_or_range_error - int<->float coercion (SPECIFICATION.md Part A.8's numeric-coercion policy):
-# a JSON int is always accepted for a float field (lossless in every case), a JSON float is
-# accepted for an int field only when it carries no fractional part (accept only what's exactly
-# representable, in either direction - never silently discards a digit the caller actually sent).
+# type_or_range_error - int<->float coercion (SPECIFICATION.md Part A.8): a JSON int is always accepted for
+# a float field (lossless), a JSON float for an int field only when it carries no fractional part - accept
+# only what is exactly representable, never discard a digit.
 # ---------------------------------------------------------------------------
 
 
@@ -403,10 +397,9 @@ def test_type_or_range_error_int_field_rejects_fractional_float() -> None:
 
 
 def test_type_or_range_error_int_field_rejects_nan_and_inf_coercion_attempt() -> None:
-    # A float attempting int-coercion that happens to be NaN/+-inf must not raise - MicroPython's
-    # own int(float) conversion raises ValueError for NaN, OverflowError for +-inf (confirmed
-    # against py/objint.c's mp_obj_new_int_from_float) - both are caught and treated as a normal
-    # rejection, not a crash.
+    # A float attempting int-coercion that is NaN or an infinity must not raise: MicroPython's int(float)
+    # raises ValueError for NaN and OverflowError for the infinities (confirmed against py/objint.c), and
+    # both are caught and treated as a normal rejection.
     field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
     assert cm.type_or_range_error(float("nan"), field)[0] is True
     assert cm.type_or_range_error(float("inf"), field)[0] is True
@@ -475,10 +468,9 @@ def test_type_or_range_error_int_missing_or_wrong_typed_bounds_rejected() -> Non
 
 
 def test_type_or_range_error_int_malformed_special_type_rejects_any_value() -> None:
-    # A wrong-typed "special" (schema-authoring error, not a runtime data issue) makes this always
-    # return True regardless of check_val or check_special - reachable in principle, but in
-    # practice check_cfg_get_default's own self-check (see below) already rejects such a schema
-    # before ConfigManager/write_config ever calls type_or_range_error against real data.
+    # A wrong-typed "special" is a schema-authoring error, not a runtime data issue, and makes this always
+    # return True regardless of check_val - reachable in principle, but in practice check_cfg_get_default's
+    # own self-check rejects such a schema first.
     field: cm.FieldSchema = ("X", "int", None, 0, 10, "99")
     assert cm.type_or_range_error(5, field, check_special=True)[0] is True
     assert cm.type_or_range_error(5, field, check_special=False)[0] is True
@@ -514,10 +506,9 @@ def test_type_or_range_error_str_malformed_special_type_rejects_any_value() -> N
 
 
 # ---------------------------------------------------------------------------
-# type_or_range_error / check_cfg_get_default - discrete allowed-value-set special (a tuple of
-# values instead of a single scalar): covers BMP3xx's OSR/IIR settings (pure enumeration, no
-# continuous range at all - min/max both None) and systemCmd-style closed string enums, without
-# changing the FieldSchema tuple's shape or disturbing the existing single-scalar special path.
+# type_or_range_error / check_cfg_get_default - the discrete allowed-value-set special (a tuple rather than
+# a single scalar): covers BMP3xx's OSR/IIR settings (pure enumeration, min/max both None) and systemCmd-
+# style closed string enums, without changing the FieldSchema tuple's shape.
 # ---------------------------------------------------------------------------
 
 
@@ -621,10 +612,9 @@ def test_check_cfg_get_default_discrete_set_default_not_in_set_is_invalid() -> N
 
 
 def test_check_cfg_get_default_discrete_set_special_only_field_is_rejected() -> None:
-    # def=None with a tuple special has no real scalar to fall back to (unlike the single-scalar
-    # special-only case, e.g. AmbPres) - the substituted "default" (the tuple itself) fails its own
-    # type_or_range_error self-check (wrong type, not a member of itself), so this is correctly
-    # treated as a malformed schema rather than silently accepted.
+    # def=None with a tuple special has no real scalar to fall back to, unlike the single-scalar special-
+    # only case. The substituted "default" (the tuple itself) fails its own type_or_range_error self-check,
+    # so this is correctly treated as a malformed schema.
     field: cm.FieldSchema = ("X", "int", None, None, None, (1, 2, 4, 8, 16, 32))
     assert cm.check_cfg_get_default(field) == (True, None)
 
@@ -766,10 +756,9 @@ def test_check_cfg_get_default_wrong_length_rejected() -> None:
 
 
 def test_check_cfg_get_default_both_default_and_special_present() -> None:
-    # "def" is non-null, so the special-only bypass never triggers - a real, storable default wins
-    # even though the field also declares a reachable special sentinel (mirrors the AmbPres shape,
-    # but with a real default instead of null - a field that is both normally stored and later
-    # writable to its special value via the check_special bypass in type_or_range_error).
+    # "def" is non-null, so the special-only bypass never triggers and a real, storable default wins even
+    # though the field also declares a reachable special sentinel - the AmbPres shape but with a real
+    # default, so the field is both normally stored and writable to its special.
     field: cm.FieldSchema = ("X", "int", 5, 0, 10, 99)
     assert cm.check_cfg_get_default(field) == (True, 5)
 
@@ -797,11 +786,9 @@ def test_check_cfg_get_default_def_type_mismatched_from_declared_type_rejected()
 
 
 def test_check_cfg_get_default_malformed_special_type_rejected_even_with_a_valid_default() -> None:
-    # A different code path from the "used as default" test below: here "def" is present and
-    # perfectly valid on its own (5, in [0, 10]), so the special-as-default substitution never
-    # triggers - but type_or_range_error's own val_special type-check still runs unconditionally
-    # whenever special is not None, rejecting the field regardless of check_val. Confirms a
-    # malformed special can't slip through just because the field also has a normal, valid default.
+    # A different code path from the "used as default" test below: "def" is present and valid, so the
+    # special-as-default substitution never triggers - but type_or_range_error's val_special type-check runs
+    # unconditionally whenever special is not None, so a malformed one cannot hide behind a valid default.
     field: cm.FieldSchema = ("X", "int", 5, 0, 10, "99")  # special should be int, not str
     assert cm.check_cfg_get_default(field) == (True, None)
 
@@ -813,10 +800,9 @@ def test_check_cfg_get_default_bool_malformed_special_type_rejected_when_used_as
 
 
 def test_type_or_range_error_bool_ignores_malformed_special_for_a_genuinely_valid_bool_quirk() -> None:
-    # Unlike int/float/str, the bool branch never inspects "special" at all - there's no range for
-    # a bool to bypass - so a wrong-typed special only ever surfaces via check_cfg_get_default's
-    # own self-check (previous test), never by rejecting an otherwise-valid bool value outright.
-    # Longstanding, deliberate asymmetry (see BACKLOG.md), not new to the tuple schema.
+    # Unlike int/float/str, the bool branch never inspects "special" at all - there is no range for a bool
+    # to bypass - so a wrong-typed special surfaces only via check_cfg_get_default's self-check, never by
+    # rejecting an otherwise-valid bool. Deliberate, longstanding asymmetry.
     assert cm.type_or_range_error(check_val=True, field=("X", "bool", None, None, None, 1))[0] is False
 
 
@@ -915,11 +901,9 @@ def test_configmanager_corrupt_json_falls_back_to_defaults() -> None:
 
 
 def test_configmanager_raw_nan_token_treated_as_corrupt_not_a_raise() -> None:
-    # MicroPython's json module can write NaN/inf (json.dumps(float("nan")) -> "nan", no exception)
-    # but can't read that same token back (json.loads("nan") raises ValueError) - confirmed directly
-    # against the pinned interpreter, an asymmetry CPython doesn't have (it round-trips both ways).
-    # A file containing this token (however it got there) must still take the same "corrupt file,
-    # rebuild from defaults" path as any other malformed JSON, not raise.
+    # MicroPython's json module writes NaN/inf (json.dumps(float("nan")) -> "nan") but cannot read that
+    # token back (json.loads("nan") raises ValueError), an asymmetry CPython does not have. A file holding
+    # it must take the same "corrupt file, rebuild from defaults" path as any other malformed JSON.
     path = _tmp_path("nantoken.cfg")
     _remove(path)
     with open(path, "w") as f:
@@ -934,13 +918,13 @@ def test_configmanager_raw_nan_token_treated_as_corrupt_not_a_raise() -> None:
 
 
 def test_configmanager_value_omitted_json_quirk_self_heals() -> None:
-    # A genuine MicroPython json.load() leniency, re-confirmed directly against the pinned
-    # v1.29.0 interpreter and distinct from the already-tested "unterminated" case (fixed upstream in 2025,
-    # commit 9ef16b466 - that fix only covers a missing closing brace/bracket). A value omitted
-    # before a comma/closing brace doesn't raise here - it desyncs the parser into a wrong/mangled
-    # dict instead (e.g. `{"Count": , "Offset": 1.5}` silently parses to `{"Count": "Offset"}`).
-    # Not a bug in this file: every mangled key/value still goes through the normal per-key
-    # type/range check and falls back to its own default, same as any other corrupt value.
+    # A genuine MicroPython json.load() leniency, re-confirmed against the pinned v1.29.0 interpreter and
+    # distinct from the "unterminated" case (fixed upstream in 2025, commit 9ef16b466, which only covers a
+    # missing closing brace or bracket).
+    #
+    # A value omitted before a comma or closing brace does not raise - it desyncs the parser into a mangled
+    # dict instead. Not a bug in this file: every mangled key still goes through the normal per-key
+    # type/range check and falls back to its own default.
     path = _tmp_path("mangled.cfg")
     _remove(path)
     with open(path, "w") as f:
@@ -969,12 +953,9 @@ def test_configmanager_valid_existing_non_default_value_preserved() -> None:
 
 
 def test_configmanager_setup_coerces_and_rewrites_a_hand_edited_int_value_for_a_float_field() -> None:
-    # A hand-edited (or pre-coercion-policy) file storing a float field's value as a bare-integer
-    # JSON literal ("Offset": 7, not "Offset": 7.0) must be coerced to float on load - and, since
-    # the coerced shape differs in type from what was actually on disk, setup()'s own
-    # `type(coerced_cfg) is not type(new_cfg)` rewrite check (not `!=`, which 7 != 7.0 would have
-    # missed - see config_manager.py's own inline comment) must fire and persist the corrected
-    # float shape back to disk, not just hold it in _cache until the next write.
+    # A file storing a float field as a bare-integer JSON literal must be coerced to float on load - and
+    # since the coerced shape differs in type from what was on disk, setup()'s `type(coerced_cfg) is not
+    # type(new_cfg)` check (not `!=`, which 7 != 7.0 would miss) must fire and persist the fix.
     path = _tmp_path("setupintforfloat.cfg")
     _remove(path)
     with open(path, "w") as f:
@@ -1015,13 +996,12 @@ def test_configmanager_setup_coerces_and_rewrites_a_hand_edited_integral_float_v
 
 
 def test_configmanager_setup_matching_literal_shape_does_not_force_a_spurious_rewrite() -> None:
-    # Negative-space companion to the two tests above: a file whose stored values already match
-    # their field's own declared type shape exactly must NOT be flagged by the `type(coerced_cfg)
-    # is not type(new_cfg)` check - confirms that check only fires on an actual type mismatch, not
-    # on every load. Proven directly (not just indirectly via the value read back) by comparing the
-    # file's exact on-disk bytes before/after setup(): rewrite=True is the only thing that ever
-    # calls json.dump() again in setup(), so byte-identical content before and after is direct proof
-    # no rewrite happened.
+    # Negative-space companion to the two tests above: a file whose stored values already match their
+    # field's declared type shape must NOT be flagged by the `type(coerced_cfg) is not type(new_cfg)` check
+    # - it may only fire on an actual mismatch, not on every load.
+    #
+    # Proven directly by comparing the file's exact on-disk bytes before and after setup(): rewrite=True is
+    # the only thing that ever calls json.dump() again there.
     path = _tmp_path("setupmatchingshape.cfg")
     _remove(path)
     with open(path, "w") as f:
@@ -1210,13 +1190,12 @@ def test_configmanager_one_malformed_field_among_valid_fields_invalidates_whole_
 
 
 def test_configmanager_non_string_field_name_quirk() -> None:
-    # A non-string "name" (schema-authoring mistake) is never rejected - init succeeds, and the
-    # on-disk file has its int key silently stringified by json.dump. But get_dict/etc. now read
-    # from _cache (see module docstring), which is keyed by the schema's own original (still-int)
-    # name - never round-tripped through JSON - so a read using that same int key now succeeds,
-    # not the reverse: the "123" string key that's actually on disk no longer matches anything,
-    # since _cache is never rebuilt from the file after setup(). Never crashes either way; a real
-    # driver would never author a name like this.
+    # A non-string "name" (a schema-authoring mistake) is never rejected: init succeeds and json.dump
+    # silently stringifies the int key on disk. Reads now come from _cache, which is keyed by the schema's
+    # own still-int name and never round-trips through JSON.
+    #
+    # So a read using that int key succeeds while the "123" string key actually on disk matches nothing,
+    # _cache never being rebuilt from the file after setup(). Never crashes either way.
     bad_name_schema = ((123, "int", 5, 0, 10, None),)
     path = _tmp_path("badname.cfg")
     _remove(path)
@@ -1551,11 +1530,9 @@ def test_get_str_values_accepts_any_value() -> None:
 
 
 def test_get_bool_values_wrong_cached_type_returns_none() -> None:
-    # bool(v) never raises (unlike int()/float()/str()), so a wrong-typed cached value must be
-    # rejected by explicit isinstance check instead of relying on a conversion exception. setup()
-    # and write_config both validate before ever storing into _cache, so a real driver can't
-    # actually get a wrong-typed value in there - poke _cache directly to exercise this
-    # defense-in-depth path (reads must still reject it if it's ever there).
+    # bool(v) never raises, unlike int()/float()/str(), so a wrong-typed cached value must be rejected by an
+    # explicit isinstance check rather than a conversion exception. setup() and write_config both validate
+    # first, so _cache is poked directly here to exercise that defense-in-depth path.
     mgr, path = _make("badconvertbool.cfg")
     try:
         mgr._cache["Enabled"] = "notabool"
@@ -1740,10 +1717,9 @@ def test_write_config_key_missing_from_cache_marked_failed() -> None:
 
 
 # ---------------------------------------------------------------------------
-# write_config()'s deferred flush (SPECIFICATION.md Part F.2 / BACKLOG.md 2026-09-15): the actual
-# flash write is staged and handed to an independent asyncio.create_task(), never awaited inline -
-# see write_config()'s own comment for why (an RP2040 flash write disables interrupts port-wide for
-# its duration, and doing it inline reset the HTTP connection whose PUT triggered it).
+# write_config()'s deferred flush (SPECIFICATION.md Part F.2): the actual flash write is staged and handed
+# to an independent asyncio.create_task(), never awaited inline - an RP2040 flash write disables interrupts
+# port-wide, and inline it reset the HTTP connection whose PUT triggered it.
 # ---------------------------------------------------------------------------
 
 
@@ -1762,11 +1738,8 @@ def test_get_dict_reads_the_staged_value_before_the_deferred_flush_lands() -> No
 
         assert run(write_then_read()) == {"Count": 8}
         # Deliberately not asserting mgr._cache's exact value here: whether the deferred flush has
-        # physically completed by this specific point is scheduling detail this test harness's own
-        # asyncio.run()-per-call boundary makes non-deterministic (a real device's single, long-
-        # running event loop has no such boundary), never something get_dict()'s own contract
-        # promises either way. What must hold regardless is exactly what was just asserted above:
-        # get_dict() returns the just-written value immediately.
+        # physically completed by this point is scheduling detail this harness's asyncio.run()-per-call
+        # boundary makes non-deterministic, and get_dict()'s contract never promises it either way.
         run(mgr.flush_pending())
         assert run(mgr.get_dict(["Count"])) == {"Count": 8}  # still correct once actually flushed
         assert mgr._cache["Count"] == 8  # the default multi-field _SCHEMA - other keys stay defaulted
@@ -1777,10 +1750,9 @@ def test_get_dict_reads_the_staged_value_before_the_deferred_flush_lands() -> No
 
 
 def test_a_second_write_to_the_same_key_before_the_first_flush_lands_is_not_lost() -> None:
-    # The "at most one unflushed staged value per sensor at a time" assumption WP5's own design
-    # rests on: two writes to the SAME key, staged back to back before either flush has actually
-    # run, must not let the first one's flush later clobber the second's value once both complete -
-    # exactly the hazard _flush_staged()'s own superseded-snapshot check exists to close.
+    # The "at most one unflushed staged value per sensor at a time" assumption WP5's design rests on: two
+    # writes to the SAME key staged back to back, before either flush has run, must not let the first one's
+    # flush clobber the second's value - exactly what _flush_staged()'s superseded-snapshot check closes.
     mgr, path = _make("doublestage.cfg")
     try:
 
@@ -1947,10 +1919,9 @@ def test_write_config_self_heals_corrupted_stored_value() -> None:
 
 
 def test_write_config_repairs_a_file_corrupted_after_valid_init() -> None:
-    # Deliberate consequence of _cache (see module docstring): write_config no longer reads the
-    # file first, only writes it - so an externally-corrupted file doesn't block a write, it gets
-    # silently overwritten (repaired) from _cache instead of the pre-cache design's "detect and
-    # fail" behavior.
+    # Deliberate consequence of _cache: write_config no longer reads the file first, only writes it, so an
+    # externally-corrupted file does not block a write - it is silently overwritten (repaired) from _cache
+    # instead of the pre-cache design's "detect and fail".
     mgr, path = _make("writecorrupted.cfg")
     try:
         assert mgr.valid is True
@@ -1966,16 +1937,15 @@ def test_write_config_repairs_a_file_corrupted_after_valid_init() -> None:
 
 
 def test_write_config_genuine_write_failure_leaves_cache_unchanged() -> None:
-    # A real write failure (not just a pre-existing corrupt file, which the test above shows gets
-    # silently repaired) - here the parent directory itself is removed after a valid init, so
-    # open(path, "w") genuinely raises OSError inside the deferred flush. write_config() itself no
-    # longer touches the filesystem at all (SPECIFICATION.md Part F.2 - the write is staged, then
-    # handed to an independent asyncio.create_task()), so it reports validation success regardless;
-    # the failure only ever surfaces once the flush actually runs, as a logged errno, never back
-    # through write_config()'s own return value. _cache must only ever be committed to *after* a
-    # successful write (see _flush_staged's own comment) - confirms it's still the old, unchanged
-    # value afterwards, not left half-updated, and that a later read no longer sees the failed
-    # staged value either (the accepted residual-risk outcome, not silently wrong some other way).
+    # A real write failure, unlike the pre-existing corrupt file above which gets silently repaired: the
+    # parent directory is removed after a valid init, so open(path, "w") genuinely raises OSError inside the
+    # deferred flush.
+    #
+    # write_config() itself no longer touches the filesystem (Part F.2), so it reports validation success
+    # regardless and the failure only surfaces as a logged errno once the flush runs.
+    #
+    # _cache must be committed only after a successful write, so it stays at the old value here, and a later
+    # read must not see the failed staged value either.
     subdir = _scratch.dir() + "writefail_subdir"
     try:
         os.mkdir(subdir)
@@ -1991,12 +1961,9 @@ def test_write_config_genuine_write_failure_leaves_cache_unchanged() -> None:
         os.rmdir(subdir)  # parent directory gone - the deferred flush below will genuinely fail
 
         async def write_then_read() -> "tuple[bool, cm.WriteValidity, dict[str, cm.CfgValue] | None]":
-            # Both calls in one coroutine, back to back with no intervening await on the happy
-            # path: the only way to observe the staged value deterministically before the
-            # independently-scheduled flush task gets a turn to run (and, here, fail) - two
-            # separate top-level run() calls would race it, since this test file's run() is a
-            # fresh asyncio.run() per call and MicroPython's scheduler can service an already-
-            # pending task in between two such calls.
+            # Both calls in one coroutine, back to back with no intervening await on the happy path: the
+            # only way to observe the staged value deterministically before the independently-scheduled
+            # flush task gets a turn. Two separate top-level run() calls would race it.
             ok, results = await mgr.write_config({"Count": 8}, _VAL_INT)
             staged_view = await mgr.get_dict(["Count"])
             return ok, results, staged_view
@@ -2028,10 +1995,9 @@ def test_write_config_special_only_value_matching_sentinel_is_valid() -> None:
 
 
 def test_write_config_special_only_int_sentinel_accepts_a_coerced_integral_float() -> None:
-    # Coercion runs before the special-value bypass for a special-only field too, not just an
-    # ordinary ranged one (already covered at the type_or_range_error unit level by
-    # test_type_or_range_error_int_field_coerced_float_still_honors_special_bypass) - confirmed
-    # here end-to-end through write_config()'s own special-only ("not used for storage") path.
+    # Coercion runs before the special-value bypass for a special-only field too, not just an ordinary
+    # ranged one (covered at the unit level by the type_or_range_error special-bypass test) - confirmed here
+    # end to end through write_config()'s own "not used for storage" path.
     mgr, path = _make("specialsentinelcoerced.cfg")
     try:
         ok, results = run(mgr.write_config({"Special": 99.0}, _VAL_SPECIAL))
@@ -2226,12 +2192,12 @@ def test_configmanager_corrupt_json_warning_recorded_via_wrn_s() -> None:
 
 
 # ---------------------------------------------------------------------------
-# MemoryError fault injection at json.dump()/json.load() - the heap-exhaustion arm of
-# write_config()'s and setup()'s own except clauses. RP2040's 264KB SRAM makes a failed
-# serialize/parse realistic, but it can't be provoked through any real config file small enough
-# to be safe/reliable in a test - so config_manager's own module-level `json` name is substituted
-# instead, the same technique tests/test_asy_udp_socket.py (_MemoryErrorOnceSocketModule) and
-# tests/test_asy_uart_driver.py (_MemoryErrorCRC) use for their own otherwise-unreachable guards.
+# MemoryError fault injection at json.dump()/json.load() - the heap-exhaustion arm of write_config()'s and
+# setup()'s except clauses. RP2040's 264KB SRAM makes a failed serialize/parse realistic, but no config file
+# small enough to be safe in a test can provoke it.
+#
+# So config_manager's own module-level `json` name is substituted instead, the same technique the UDP socket
+# and UART driver suites use for their own otherwise-unreachable guards.
 # ---------------------------------------------------------------------------
 
 
@@ -2259,12 +2225,12 @@ class _MemoryErrorJson:
 
 
 def test_write_config_memoryerror_from_json_dump_leaves_cache_unchanged() -> None:
-    # MemoryError is not an OSError subclass (see CLAUDE.md) - _flush_staged's except clause lists
-    # it explicitly, and this is the only way that arm is ever reached. Same "commit _cache only
-    # after a successful write" contract as test_write_config_genuine_write_failure_leaves_cache_
-    # unchanged above, but with the heap-exhaustion cause instead of a real file error. The fault
-    # must stay patched in through flush_pending(), not just through write_config()'s own return -
-    # the actual json.dump() call now happens inside the deferred flush, not synchronously here.
+    # MemoryError is not an OSError subclass (CLAUDE.md), _flush_staged's except clause lists it explicitly,
+    # and this is the only way that arm is reached. Same "commit _cache only after a successful write"
+    # contract as the genuine-write-failure test above, with heap exhaustion as the cause.
+    #
+    # The fault must stay patched in through flush_pending(), where the real json.dump() now happens, not
+    # only through write_config()'s own return.
     mgr, path = _make("memerrwrite.cfg", cfg_vals=_VAL_INT)
     try:
         assert mgr.valid is True
@@ -2278,11 +2244,9 @@ def test_write_config_memoryerror_from_json_dump_leaves_cache_unchanged() -> Non
             cm.json = original_json
         assert mgr._cache == {"Count": 5}  # untouched - still the original default
         assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # staged value cleared once the flush failed
-        # The on-disk file is a different matter: open(..., "w") already truncated it before
-        # json.dump() ever ran, so a mid-dump failure leaves it unparseable. _cache stays
-        # authoritative regardless, and the next successful write repairs the file exactly like
-        # test_write_config_repairs_a_file_corrupted_after_valid_init shows for any other
-        # out-of-band corruption.
+        # The on-disk file is a different matter: open(..., "w") already truncated it before json.dump()
+        # ran, so a mid-dump failure leaves it unparseable. _cache stays authoritative, and the next
+        # successful write repairs the file exactly as it does for any other out-of-band corruption.
         with open(path) as f:
             assert f.read() == ""
         ok, results = run(mgr.write_config({"Count": 8}, _VAL_INT))  # no fault injected this time

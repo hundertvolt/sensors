@@ -77,11 +77,9 @@ def test_wlan_config_records_every_call() -> None:
 
 
 def test_wlan_config_calls_stays_bounded_across_many_calls() -> None:
-    # Regression test from baseline verification's own follow-up
-    # audit: config_calls/connect_calls used to be plain, unbounded lists, the same latent-leak
-    # shape as the fixed I2C.log/SPI.log bug (see network.py's own _CALL_LOG_MAXLEN comment) - a
-    # long-running twin session's own reconnect/fault-injection retry loop calls config()/connect()
-    # repeatedly for the life of the process.
+    # Regression test from baseline verification's follow-up audit: config_calls/connect_calls used to be
+    # plain unbounded lists, the same latent-leak shape as the fixed I2C.log/SPI.log bug - a long twin
+    # session's reconnect and fault-injection retry loop calls them for the life of the process.
     import network as network_module
 
     wlan = WLAN(STA_IF)

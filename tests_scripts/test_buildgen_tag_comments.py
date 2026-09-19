@@ -2,18 +2,9 @@
 scanner behind `# @requires` (and the planned `# @web`/`# @web-group` tags). Standing rule under
 test: a typo'd or misplaced attempt must fail loud, never read as "no tag here"."""
 
-# Matrix dimensions covered in this file (the shared mechanism, unit level - the full end-to-end
-# grammar cross-product for the one real tag built on it lives in test_buildgen_requires_tag.py):
-#   D1 scan     what counts as a real comment token at all (vs. a "#" inside a string/docstring),
-#               where it sits (line, column, physical-line indentation), and how an unreadable or
-#               unparseable source file fails.
-#   D2 wording  the comment's leading word and its "@" sigil: exact, wrong case, each typo shape
-#               (insert/delete/substitute/transpose), sigil missing, edit-distance boundary,
-#               unrelated @-word, punctuation-suffixed word.
-#   D3 payload  whether the rest of the comment carries a tag-shaped field/operator/value payload -
-#               the gate that keeps ordinary prose merely mentioning a tag name from failing a build.
-#   D4 verdict  which near-miss error each (wording x payload x sigil) combination raises, and every
-#               combination that must stay silent.
+# The shared mechanism at unit level; the end-to-end grammar cross-product for the one real tag
+# built on it lives in test_buildgen_requires_tag.py. SPECIFICATION.md Part L.5 names this file's
+# own matrix dimensions - scan, wording, payload and verdict.
 
 from pathlib import Path
 
@@ -76,10 +67,9 @@ def test_iter_comment_tokens_marks_tab_indented_comment(tmp_path: Path) -> None:
 
 
 def test_iter_comment_tokens_trailing_inline_comment_on_module_level_statement_is_not_indented(tmp_path: Path) -> None:
-    # The comment token's own column is > 0 (it starts after the code on the line), but the
-    # statement itself is unindented - inside_block must not be the token's column, or a legitimate
-    # trailing "_WIRING = (...)  # @requires ..." placement would be wrongly rejected as "inside a
-    # class/function body".
+    # The comment token's column is > 0, starting after the code on the line, while the
+    # statement itself is unindented - so inside_block must not be the token's column, or a
+    # legitimate trailing tag placement would be rejected as sitting inside a body.
     path = tmp_path / "asy_x_driver.py"
     path.write_text("_WIRING = ()  # trailing comment\n")
     tokens = iter_comment_tokens(path, "dev", "x")
@@ -172,10 +162,9 @@ def test_iter_comment_tokens_undecodable_source_fails_loud_not_a_raw_traceback(t
 
 
 def test_iter_comment_tokens_line_break_lookalike_does_not_shift_later_lines(tmp_path: Path) -> None:
-    # Regression guard: str.splitlines() also breaks on \x0b/\x0c/\u2028/\u2029/\x85, which
-    # Python's tokenizer treats as ordinary characters. Deriving each comment's physical line by
-    # indexing a splitlines() list therefore shifted every line after one of those characters,
-    # reporting an unindented module-level tag as indented - a valid driver rejected outright.
+    # A regression guard: str.splitlines() also breaks on \x0b/\x0c/\u2028/\u2029/\x85, which
+    # the tokenizer treats as ordinary characters - so indexing a splitlines() list shifted every
+    # later line and reported an unindented module-level tag as indented.
     path = tmp_path / "asy_x_driver.py"
     path.write_bytes(b"X = 'a\x0bb'\ndef f():\n    pass\n# @requires bus.timeout>=200000\n")
     (tok,) = iter_comment_tokens(path, "dev", "x")
@@ -316,10 +305,9 @@ def test_check_for_near_miss_tags_reports_the_offending_line_number() -> None:
 
 
 def test_check_for_near_miss_tags_ignores_prose_without_payload_shape() -> None:
-    # Mirrors a real near-collision found in this repo (buildgen/validate.py's own comment: "...
-    # required by that driver's own @requires tag, not here)." wrapped across #-lines) - a comment
-    # that opens with "@requires" but carries no field/operator/value shape at all must never be
-    # flagged, or ordinary prose mentioning the tag by name would break every build.
+    # Mirrors a real near-collision in this repo, where a wrapped comment line began with the
+    # tag's own name: a comment opening with "@requires" but carrying no field/operator/value
+    # shape must never be flagged, or prose mentioning the tag would break every build.
     _check([_tok("# @requires tag, not here).")])  # no raise
 
 

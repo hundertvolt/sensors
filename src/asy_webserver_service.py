@@ -259,7 +259,7 @@ class WebserverService:
         status_sources: "dict[str, StatusSourceFct] | None" = None,
         maintenance_sensors: "Sequence[tuple[str, MaintenanceFct]]" = (),
         error_sources: "Sequence[_ModuleLike]" = (),
-        max_content_length: int = 2048,  # 1.8x the largest schema-permitted body, ~9x real traffic (I.6)
+        max_content_length: int = 2048,  # 1.56x the largest schema-permitted body, ~9x real traffic (I.6)
         max_connections: int = 4,  # reject-when-full ceiling, one slot of margin below the
         # confirmed MEMP_NUM_TCP_PCB=5 rp2-port ceiling - see SPECIFICATION.md Part H.7 for the
         # real-browser-testing rationale behind this value (raised from an original 3).

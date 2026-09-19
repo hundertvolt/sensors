@@ -142,12 +142,12 @@ _CompReading = namedtuple("_CompReading", ("Temp", "Hum"))
 
 
 class _FakeCompSource:
-    # Structural stand-in for temperature_source/humidity_source (SPECIFICATION.md Part C.14,
-    # SPECIFICATION.md Part L.6.3) - a fixed value independent of this test's
-    # own real scd_reader, matching the removed _comp_data() stub's own fixed [25.0, 50.0] return
-    # exactly (scd_reader's real reading is deliberately not used here - _settle_and_spike() below
-    # needs 200 compensated SGP40 cycles well before this test ever drives scd_reader for its own
-    # real measurement).
+    # Structural stand-in for temperature_source/humidity_source (SPECIFICATION.md Parts C.14 and L.6.3) - a
+    # fixed value independent of this test's real scd_reader, matching the removed stub's own fixed [25.0,
+    # 50.0] return exactly.
+    #
+    # scd_reader's real reading is deliberately not used: _settle_and_spike() below needs 200 compensated
+    # SGP40 cycles well before this test ever drives scd_reader for its own real measurement.
     async def get_data(self) -> "Any":
         return _CompReading(25.0, 50.0)
 
@@ -246,11 +246,12 @@ def test_both_sensors_crossing_threshold_together_trigger_their_own_signal_witho
 
 
 def test_one_sensor_i2c_fault_stays_isolated_and_the_healthy_sibling_still_triggers() -> None:
-    # SCD30 faults; SGP40 stays healthy and already-spiked - proves a real hardware fault on one
-    # sensor's own driver neither blocks nor corrupts the sibling sensor's independent chain, and is
-    # attributed only to the faulted sensor's own error log (matching SPECIFICATION.md Part C.7's "each driver
-    # owns its own error log" separation of concerns, now proven across two real sensors sharing one
-    # downstream coordinator rather than just one sensor in isolation).
+    # SCD30 faults while SGP40 stays healthy and already-spiked - proving a real hardware fault on one
+    # sensor's driver neither blocks nor corrupts the sibling's independent chain, and is attributed only to
+    # the faulted sensor's own error log.
+    #
+    # That matches Part C.7's "each driver owns its own error log" separation, now proven across two real
+    # sensors sharing one downstream coordinator rather than one sensor in isolation.
     scd_reader, scd_i2c = make_scd_reader()
     scd_i2c.inject_fault("writeto", OSError(5, "simulated bus fault"))
 

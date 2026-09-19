@@ -164,12 +164,13 @@ def test_banner_get_across_a_real_responder_via_get_callback() -> None:
 
 
 def test_echo_round_trip_across_a_real_responder_via_set_and_get_callbacks() -> None:
-    # SET then GET the same command id (0x02, ECHO) - exercises _set_callback/_message_callback's
-    # storage and _get_callback's read-back, exactly as tests_hardware/device_scripts/
-    # uart_crossover_exchange.py does against real hardware. Drives the responder through its own
-    # real get_task_starters() listen-loop task (not a bare uart_listen() round, unlike this file's
-    # other tests/Pair.with_listener()): _message_callback - where _last_echo is actually written -
-    # is only ever invoked by that loop, never by a raw uart_listen() call.
+    # SET then GET the same command id (0x02, ECHO) - exercising _set_callback/_message_callback's storage
+    # and _get_callback's read-back, exactly as tests_hardware/device_scripts/uart_crossover_exchange.py
+    # does against real hardware.
+    #
+    # Drives the responder through its real get_task_starters() listen-loop task rather than a bare
+    # uart_listen() round, _message_callback - where _last_echo is written - only ever being invoked by that
+    # loop.
     async def go() -> None:
         pair = await build_pair()
         listener = pair.responder.get_task_starters()[0]()
@@ -209,12 +210,13 @@ def test_exercise_loop_counts_a_failure_when_nothing_answers() -> None:
 
 
 # ---------------------------------------------------------------------------
-# WP3 - optional FRAM support (was wrongly, deliberately excluded). UART_Comm's own fram=/logger=
-# reach-through already existed (asy_uart_comm.py) and is unit-tested by the digital-twin FRAM-order
-# check; what's new here is exclusively UartLinkExerciser's own forwarding, so that's what these
-# cover - functionality, the no-fram= regression, the allocation-failure fallback, the logger=
-# reach-through, and a reboot-survival roundtrip, mirroring test_asy_notification_service.py's own
-# test_fram_backed_variant_survives_a_reboot() for the same class of claim.
+# WP3 - optional FRAM support, previously excluded. UART_Comm's own fram=/logger= reach-through already
+# existed and is unit-tested by the digital-twin FRAM-order check; what is new here is exclusively
+# UartLinkExerciser's own forwarding.
+#
+# So these cover functionality, the no-fram= regression, the allocation-failure fallback, the logger= reach-
+# through and a reboot-survival roundtrip, mirroring the notification suite's own reboot test for the same
+# class of claim.
 # ---------------------------------------------------------------------------
 
 
@@ -306,11 +308,9 @@ def test_fram_backed_error_history_survives_a_simulated_reboot() -> None:
 
 
 def test_a_persisted_fault_during_a_transfer_does_not_stall_other_tasks() -> None:
-    # WP3's own blocking-latency requirement: the new fram= path must not introduce a blocking wait
-    # anywhere the "never blocks the asyncio loop, not even in a wait state" rule (CLAUDE.md) covers.
-    # asy_uart_comm.py itself is unchanged by this WP - every err_s()/_fault() call site already
-    # awaited, and the fake FRAM chunk's write_into()/read_into() above are themselves coroutines -
-    # so this proves the wiring didn't regress that invariant, not that the invariant was newly built.
+    # WP3's blocking-latency requirement: the new fram= path must not introduce a blocking wait anywhere the
+    # "never blocks the asyncio loop, not even in a wait state" rule covers. asy_uart_comm.py is unchanged
+    # here and the fake chunk's methods are coroutines, so this proves no regression.
     async def go() -> None:
         pair = await build_pair()
         pair.initiator._comm.pr = make_logger(_FakeFramManager(), name="UART_fram_test")

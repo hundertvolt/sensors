@@ -28,26 +28,17 @@ _HOST = "127.0.0.1"
 _HTTP_OK = 200
 _BOOT_TIMEOUT_S = 30.0
 _SHUTDOWN_TIMEOUT_S = 15.0
-# Must comfortably outlast real boot-to-serving latency plus the 5-endpoint smoke loop's own
-# sequential HTTP round trips - `3` used to pass only because an older, slower
-# `run_generic_integration.py` shutdown sequence added a few seconds of unintentional slack after
-# the sleep expired; a cleaner/faster shutdown (2026-09-14) removed that slack and exposed this
-# budget as always having been too tight, not a new regression to chase in the twin itself
-# (confirmed directly: the pre-refactor file reproduces the identical ~1.9s boot latency it had
-# before this margin was raised the first time). Raised again, deliberately, from 6 to 15 once WP1
-# (WiFi/NTP/webserver inheriting the device's FRAM chip when one is wired, CLAUDE.md's implicit-
-# FRAM-wiring rule) wired a real FRAM-backed logger into `conn`/`ntp`/`webserver` (plus `conn`'s own
-# `DNSServer`): each now performs a real chunk read/write the first time its own task runs, sharing
-# one process-wide `asyncio.Lock` (`FRAM_SPI`'s own, `src/asy_fram_driver.py`) with every other
-# already-FRAM-wired module whose own task is starting in the very same ~1s task-start stagger
-# window (`system_service.py`'s `start_and_check_tasks()`) - measured directly, not estimated:
-# boot-to-first-200 across all 6 real devices lands between ~4.5s and ~6.3s (`dev` slowest, the
-# device with the most FRAM-wired instances), for a real, expected reason - not a new hang, and not
-# something to chase down as a code defect. It is a boot-time-only, self-resolving cost (steady-
-# state serving is unaffected - the lock is only ever this contended during the one-time startup
-# window), matching CLAUDE.md's own already-accepted position that boot latency is not a thing to
-# optimise for its own sake; see BACKLOG.md for the finding, in case FRAM-chunk-lock contention at
-# boot ever needs its own fix once WP2 adds another chunk per FRAM-wired sensor's own ConfigManager.
+# Must outlast real boot-to-serving latency plus the smoke loop's sequential round trips. The
+# old `3` passed only on unintentional slack in a slower shutdown sequence; removing that slack
+# exposed the budget as always having been too tight, not a new regression.
+
+# Raised to 15 once the implicit-FRAM-wiring rule gave conn/ntp/webserver real FRAM-backed
+# loggers: each does a chunk read/write on its first task run, all sharing one process-wide lock
+# inside the same ~1s task-start stagger window.
+
+# Measured, not estimated: boot-to-first-200 lands between ~4.5s and ~6.3s across the six real
+# devices, dev slowest. A boot-time-only, self-resolving cost that leaves steady-state serving
+# untouched - and boot latency is not a thing to optimise for its own sake (CLAUDE.md).
 _TWIN_DURATION_S = 15
 # No real static content is needed - this suite never requests "/" (asy_webserver_service.py's own
 # static route only touches frozen_html lazily, per request - see this file's own module docstring
@@ -59,11 +50,9 @@ _SMOKE_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/sta
 # edit here, which is the whole point of a generated build chain. Same for a new synthetic fixture,
 # minus the deliberately malformed ones (they exist to be rejected, not booted).
 #
-# Through _devices.DEVICE_NAMES, not this file's own glob of devices/*.toml. That glob ran at import
-# (i.e. collection) time, before conftest.py's session-start reclamation fixture has removed a
-# devices/zz_test_*.toml a SIGKILLed earlier run leaked - and this is the one suite that would
-# actually BOOT it, the leaked fixture being a deliberately malformed TOML. _devices.py filters that
-# namespace out for exactly this reason; six other modules already go through it.
+# Through _devices.DEVICE_NAMES, not a local glob of devices/*.toml: that glob ran at collection
+# time, before conftest.py reclaims a zz_test_*.toml leaked by a SIGKILLed run - and this is the
+# one suite that would actually BOOT that deliberately malformed fixture.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _FIXTURE_TOMLS = sorted(p.name for p in (_REPO_ROOT / "tests_scripts" / "buildgen_fixtures").glob("*.toml") if not p.name.startswith("malformed_"))
 

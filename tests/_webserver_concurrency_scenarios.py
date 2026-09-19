@@ -4,26 +4,21 @@ Section F. Not a test file; SPECIFICATION.md Parts H.7 and E.2.1 have the ration
 
 # See SPECIFICATION.md Part H.7 and this module's own comments below for the full rationale.
 
-# Every existing test client in this project before this file (curl, Python's http.client,
-# digital_twin/_http_client.py itself) has always issued exactly one request at a time, so nothing
-# has ever driven more than one simultaneous real TCP connection against a live server - Section F
-# above drives WebserverService._serve() directly against in-process reader/writer fakes, never the
-# real accept()/select.poll() layer. digital_twin/README.md's "Known gaps" section records a real,
-# already-fixed MicroPython Unix-port segfault found by a real user report firing 8+ concurrent
-# clients (digital_twin/run_generic_integration.py's own soak-section comment) - this file's own
-# high-concurrency test deliberately revisits that exact scale as a regression check, in-process,
-# so a recurrence of that class of bug crashes this test file's own interpreter process and fails
-# loudly under scripts/test.sh's per-file timeout+retry, the same way test_asy_webserver_service.py's
-# own F.9 soak already relies on for its identical in-process crash-detection story.
+# Every existing test client in this project - curl, http.client, digital_twin/_http_client.py - has always
+# issued one request at a time, so nothing has ever driven more than one simultaneous real TCP connection
+# against a live server; Section F drives _serve() against in-process fakes, never real accept()/poll().
 #
-# One thing this file deliberately does NOT attempt: a "different source host" variant. Confirmed
-# directly by reading WebserverService._serve() (src/asy_webserver_service.py) - it makes no
-# per-source-IP distinction anywhere, and the pinned MicroPython Unix port's own
-# asyncio.open_connection() has no local_addr parameter to bind a distinct source address from
-# regardless. Concurrent connections from one client machine and from many are handled by literally
-# the same code path, so a second source IP would add no real coverage here - what actually
-# matters, and is what every test below varies, is the number of connections in flight and their
-# behavior.
+# digital_twin/README.md's "Known gaps" records a real, already-fixed Unix-port segfault found by a user
+# report firing 8+ concurrent clients. This file's high-concurrency test revisits that exact scale as a
+# regression check, in-process, so a recurrence crashes this file's interpreter and fails loudly.
+#
+# One thing this file deliberately does NOT attempt is a "different source host" variant: _serve() makes no
+# per-source-IP distinction anywhere, and the pinned Unix port's asyncio.open_connection() has no local_addr
+# to bind a distinct source from regardless.
+#
+# Concurrent connections from one client machine and from many take literally the same path, so a second
+# source IP adds no coverage - what matters, and what every test below varies, is the number of connections
+# in flight and their behavior.
 
 import asyncio
 import gc
@@ -70,18 +65,13 @@ def _wiring_plan(device: str) -> "dict[str, Any]":
     return plan
 
 
-# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
-# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. Own port
-# range base (19700+, one 200-port block per device - see _PORT_BASE_BY_DEVICE below), distinct
-# from test_digital_twin_sensortask_integration.py's 19100+ and
-# test_digital_twin_real_website_integration.py's 19300+.
+# Per-test config-file isolation via tests/_tmp_scratch.py - see that module's docstring for the mechanism.
+# Own port range base (19700+, one 200-port block per device), distinct from the twin integration suites'
+# 19100+ and 19300+.
 #
-# Both _scratch's key and the port range are keyed per-device (register_for_device() below sets
-# them up), not shared across all 6 devices in one process like the old single-file design: since
-# scripts/test.sh now runs each device's own tests/test_digital_twin_webserver_concurrency_<device>.py
-# as its own OS process, potentially concurrently with every other device's own process, two
-# devices' processes must never resolve TmpScratch's fixed tests/_tmp/<key>/ path - or a real
-# localhost bind - to the same location.
+# Both the scratch key and the port range are keyed per device, not shared across all 6 in one process: each
+# device's tests run as their own OS process, potentially concurrently, so two must never resolve
+# TmpScratch's tests/_tmp/<key>/ path - or a real localhost bind - to the same place.
 _PORT_BASE_BY_DEVICE = {device: 19700 + 200 * i for i, device in enumerate(_DEVICES)}
 
 _scratch: "TmpScratch | None" = None
@@ -101,11 +91,9 @@ def _next_test_port() -> int:
 
 
 async def _boot(port: int, device: str) -> "Any":
-    # configure_wiring() first: every digital-twin I2C/SPI construction reads the shared
-    # machine._wiring_plan global (SPECIFICATION.md Part L.4 finding - see this file's own
-    # git history/PR description) - "last configure_wiring() call before construction wins", so this
-    # must run immediately before build_system(), not once at module import time, since several
-    # devices' own modules get booted in the same process across this file's full test run.
+    # configure_wiring() first: every twin I2C/SPI construction reads the shared machine._wiring_plan global
+    # (Part L.4), where the last call before construction wins - so this runs immediately before
+    # build_system(), not once at import, several devices being booted in one process here.
     machine.configure_wiring(_wiring_plan(device))
     module = __import__(f"sensortask_{device}")
     await module.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
@@ -115,23 +103,17 @@ async def _boot(port: int, device: str) -> "Any":
 async def _start_webserver(module: "Any") -> "asyncio.Task[None]":
     assert module.webserver is not None
     task: asyncio.Task[None] = module.webserver.get_task_starters()[0]()
-    # WP1/CLAUDE.md's implicit-FRAM-wiring rule made webserver.pr real-FRAM-backed whenever the
-    # device wires FRAM (every real device today): _run() now awaits a real self.pr.setup() call
-    # (a real chunk read/write) before it ever reaches start_server()/bind, not the instant no-op
-    # a RAM-only logger's own setup() was - test_asy_webserver_service.py's own F.8 test still uses
-    # the old 0.05s bound because its own WebserverService fixture is never constructed with fram=.
-    # A polling readiness check was tried here instead of a fixed sleep (to avoid wasting the same
-    # margin on every one of this file's ~15 call sites) but made things measurably worse both ways
-    # tried: a real _http_client.fetch() probe broke this file's own max_connections-exactness tests
-    # (its own connection wasn't reliably released before the real scenario opened its own N), and a
-    # bare TCP connect-then-close probe broke far more of them, for a reason not fully understood -
-    # this server's own connection-accounting is evidently sensitive to a well-formed-but-unread
-    # connection landing before the real scenario's own connections do, in a way a fixed sleep
-    # (which touches the socket layer not at all) never triggers. Reverted to a fixed sleep,
-    # recalibrated down from the first attempt's 1.0s (measured ~400ms typical in this file's own
-    # no-other-tasks-running boot shape) - 0.5s keeps real margin without this file's own ~15 call
-    # sites' cumulative cost pushing it over scripts/test.sh's 180s per-file timeout inside a full
-    # suite run the way 1.0s did (confirmed directly: passes standalone, only times out mid-suite).
+    # WP1/CLAUDE.md's implicit-FRAM-wiring rule made webserver.pr real-FRAM-backed whenever the device wires
+    # FRAM, so _run() now awaits a real self.pr.setup() - a real chunk read/write - before start_server(),
+    # not the instant no-op a RAM-only logger's setup() was.
+    #
+    # A polling readiness check was tried instead and made things measurably worse: a real fetch() probe
+    # broke this file's max_connections-exactness tests, its connection not reliably released before the
+    # scenario opened its N, and a bare TCP connect-then-close probe broke more of them still.
+    #
+    # The server's connection accounting is evidently sensitive to a well-formed-but-unread connection
+    # landing first, in a way a fixed sleep never triggers. So: 0.5s, recalibrated down from 1.0s (~400ms
+    # typical here), keeping margin without ~15 call sites pushing past the per-file timeout.
     await asyncio.sleep(0.5)
     return task
 
@@ -164,10 +146,9 @@ async def _flaky_connection(host: str, port: int) -> None:
 
 
 async def _still_serving(host: str, port: int, timeout_s: float = 5.0) -> bool:
-    # Retried, not single-shot: right after a connection burst, a still-draining prior connection
-    # (its own _close_writer() await, or a reject-when-full close) can transiently leave
-    # max_connections' slots looking full for a moment - a real, benign timing window, not a sign
-    # the server is actually wedged. Only a *sustained* failure across this whole budget means that.
+    # Retried, not single-shot: right after a connection burst, a still-draining prior connection can
+    # transiently leave max_connections' slots looking full - a real, benign timing window, not a wedged
+    # server. Only a sustained failure across this whole budget means that.
     start = time.ticks_ms()
     while True:
         try:
@@ -235,14 +216,12 @@ async def _real_config_write(host: str, port: int, interval: int) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Scenario bodies - one per distinct concurrency shape, each parametrized by `device` and
-# registered once per real device below via _register()/globals(), rather than 6 hand-duplicated
-# copies of every test. Renamed from a bare test_* to _scenario_* + _register() purely so this
-# file's own dynamic-registration loop (mirroring microtest.py's test_* discovery-by-globals()
-# convention, the only parametrization mechanism available without a real pytest) can generate
-# `test_<name>_<device>` for every device from one shared body. No scenario below has a
-# device-specific assertion - WebserverService's own accept/reject machinery is identical
-# regardless of which sensors a device has - so generalizing needed no assertion rework at all.
+# Scenario bodies - one per distinct concurrency shape, each parametrized by `device` and registered per
+# real device below, rather than 6 hand-duplicated copies. Named _scenario_* rather than test_* purely so
+# the registration loop can generate `test_<name>_<device>` from one shared body.
+#
+# No scenario has a device-specific assertion - WebserverService's accept/reject machinery is identical
+# whichever sensors a device has - so generalizing needed no assertion rework at all.
 # ---------------------------------------------------------------------------
 
 _SCENARIOS: "list[tuple[str, Callable[[str], Coroutine[Any, Any, None]], float]]" = []
@@ -285,14 +264,13 @@ async def _scenario_beyond_max_rejected_cleanly(device: str) -> None:
                 # not an exception this test should treat as a real failure.
 
         results = await asyncio.gather(*(one() for _ in range(8)))
-        # max_connections bounds how many are open *at once*, not the total resolved across
-        # this whole burst - against a fast local server, an early connection can finish and
-        # free its slot before a later one even arrives, so more than max_connections can
-        # legitimately succeed in total (confirmed directly: a real run here saw 6/8 succeed).
-        # What's actually guaranteed: at least one succeeds, at least one instance of the
-        # documented reject-when-full outcome is possible under a big enough burst (not
-        # asserted as a strict must-happen-every-run, since it's timing-dependent), and nothing
-        # else leaks out.
+        # max_connections bounds how many are open at once, not the total resolved across the whole burst:
+        # against a fast local server an early connection can finish and free its slot before a later one
+        # arrives, so more than max_connections can legitimately succeed in total (a real run here saw 6/8).
+        #
+        # What is guaranteed: at least one succeeds, at least one instance of the documented reject-when-
+        # full outcome is possible under a big enough burst (not asserted as must-happen, being timing-
+        # dependent), and nothing else leaks out.
         assert results.count(200) >= 1, results
         assert all(r in (200, "rejected") for r in results), results  # nothing else - no
         # unexpected exception type leaked out of any of the 8 concurrent attempts
@@ -334,13 +312,13 @@ async def _scenario_all_flaky(device: str) -> None:
 
 @_register("high_concurrency_burst_at_historical_segfault_repro_scale_survives", 60.0)
 async def _scenario_high_concurrency_burst(device: str) -> None:
-    # digital_twin/run_generic_integration.py's own soak-section comment records a real, real-user-
-    # reported segfault found by firing 8+ concurrent clients against the real assembled system -
-    # root-caused and fixed via digital_twin/unix_port_poll_prewarm.py's raised poll-array ceiling
-    # (digital_twin/README.md's "Known gaps" section). This test deliberately revisits that exact
-    # scale, repeated, as an in-process regression check: a recurrence of that dangling-pointer
-    # class of bug corrupts process memory and crashes the whole interpreter, which would fail this
-    # test file loudly (scripts/test.sh's per-file timeout+retry backstop), not silently pass.
+    # digital_twin/run_generic_integration.py's soak-section comment records a real, user-reported segfault
+    # found by firing 8+ concurrent clients at the real assembled system, root-caused and fixed via
+    # unix_port_poll_prewarm.py's raised poll-array ceiling.
+    #
+    # This deliberately revisits that exact scale, repeated, as an in-process regression check: a recurrence
+    # of that dangling-pointer class of bug corrupts process memory and crashes the whole interpreter,
+    # failing this file loudly under scripts/test.sh's timeout+retry rather than silently passing.
     port = _next_test_port()
     module = await _boot(port, device)
     task = await _start_webserver(module)
@@ -371,11 +349,9 @@ async def _scenario_each_count_up_to_max(device: str) -> None:
             # must be admitted in full, not just the exact ceiling (already covered above).
             results = await asyncio.gather(*(_healthy_request("127.0.0.1", port) for _ in range(n)))
             assert results.count(200) == n, (n, results)
-            # A brief settle delay between rounds - the same real, benign timing window
-            # _still_serving()'s own docstring already documents: without it, a round's own
-            # connections can still be mid-close (_close_writer()'s own wait_closed()) when the
-            # next round's burst arrives, transiently making max_connections' slots look fuller
-            # than they really are and reset one of the next round's own connections.
+            # A brief settle delay between rounds - the benign timing window _still_serving()'s docstring
+            # documents: without it a round's connections can still be mid-close when the next burst
+            # arrives, making the slots look fuller than they are and resetting one of the next round's.
             await asyncio.sleep(0.2)
     finally:
         await _cancel(task)
@@ -416,10 +392,9 @@ async def _scenario_above_max_all_flaky(device: str) -> None:
 
 @_register("connection_count_fluctuating_in_real_time_server_stays_healthy", 30.0)
 async def _scenario_fluctuating_real_time(device: str) -> None:
-    # Every burst test above fires its whole batch at once - real traffic doesn't arrive in
-    # lockstep. This staggers healthy and flaky connection attempts over a real wall-clock window
-    # and checks the server's health *during* the fluctuation via a concurrent health-check loop,
-    # not just once at the end.
+    # Every burst test above fires its whole batch at once, and real traffic does not arrive in lockstep.
+    # This staggers healthy and flaky attempts over a real wall-clock window and checks the server's health
+    # during the fluctuation, via a concurrent health-check loop, not just once at the end.
     port = _next_test_port()
     module = await _boot(port, device)
     task = await _start_webserver(module)
@@ -499,10 +474,9 @@ async def _scenario_existing_survive_overflow(device: str) -> None:
 
 @_register("a_slot_freed_by_a_stale_connections_timeout_accepts_a_new_connection", 30.0)
 async def _scenario_stale_slot_reclaimed(device: str) -> None:
-    # Real production wiring's own outer_cap_s default (15.0s - every generated sensortask_<device>
-    # module's own WebserverService(...) call has no override) - genuinely waits out a real reclaim
-    # rather than asserting the mechanism only against a short test-only timeout (already covered
-    # in-process, against a short timeout, by tests/test_asy_webserver_service.py's own F.1 test).
+    # Real production wiring's own outer_cap_s default (15.0s - no generated device module overrides it),
+    # genuinely waiting out a real reclaim rather than asserting the mechanism only against a short test-
+    # only timeout, which test_asy_webserver_service.py's F.1 test already covers in-process.
     port = _next_test_port()
     module = await _boot(port, device)
     task = await _start_webserver(module)
@@ -568,14 +542,12 @@ async def _scenario_openhab_and_browser(device: str) -> None:
 
 @_register("realistic_mixed_polling_and_a_concurrent_real_config_write", 20.0)
 async def _scenario_polling_and_config_write(device: str) -> None:
-    # Same OpenHAB-polling mix as above, with a real config write landing concurrently - proves the
-    # combined GET+write shape stays healthy against the real, fully assembled twin system
-    # (ConfigManager's own asyncio.Lock already rules out a data race - SPECIFICATION.md Part C.7 -
-    # this is about the same "stays healthy under this traffic shape" concern the GET-only tests
-    # above already check, now with a real writer in the mix too). Exactly max_connections=4 at
-    # once (2 polling GETs + 2 writes), same "all must succeed cleanly" bar as
-    # _scenario_n_healthy_up_to_max above - not pushed past the ceiling, since that's a different,
-    # already-covered concern (_scenario_mixed_traffic_above_ceiling below).
+    # The same OpenHAB-polling mix as above with a real config write landing concurrently, proving the
+    # GET+write shape stays healthy against the real assembled twin. ConfigManager's asyncio.Lock rules out
+    # a data race (Part C.7); this is the "stays healthy" concern, now with a writer present.
+    #
+    # Exactly max_connections=4 at once (2 polling GETs, 2 writes), the same "all must succeed cleanly" bar
+    # as the up-to-max scenario - not pushed past the ceiling, which is a separate, already-covered concern.
     port = _next_test_port()
     module = await _boot(port, device)
     task = await _start_webserver(module)
@@ -629,22 +601,18 @@ async def _scenario_mixed_traffic_above_ceiling(device: str) -> None:
 
 # ---------------------------------------------------------------------------
 # Registration: one test_<scenario> per scenario, for whichever single device the caller names -
-# microtest.py discovers every callable in globals() named test_*, the only parametrization
-# mechanism available here (no real pytest on MicroPython - SPECIFICATION.md Part E.1). fn/timeout
-# are bound as default-argument values, not read from the loop variable, since a closure over a
-# `for` loop's own variable would otherwise have every generated test share the SAME
-# (last-iteration) fn.
+# microtest.py discovers every callable in globals() named test_*, the only parametrization mechanism
+# available here (no real pytest on MicroPython - SPECIFICATION.md Part E.1).
 #
-# gc.collect() after every real object-graph build this module does (15 scenarios) - a real
-# MemoryError was found without it (dev's 256KB FRAM chip fake failing to allocate on test
-# ~70-something, back when one process built all 6 devices' worth, 90 builds total) once enough
-# discarded-but-uncollected garbage accumulated across a process's run. MicroPython's own
-# gc.threshold(32768)-triggered automatic collection alone wasn't enough to keep pace with this
-# module's own before-under-test object churn at that call volume - confirmed directly: adding
-# this one explicit collect() after each test resolved it with room to spare. Kept even now that
-# the per-device split (this module's own docstring) means one process only ever does 15 of these
-# builds, not 90 - a proven defense-in-depth backstop, not the fix for anything currently observed
-# to be broken at the smaller per-process volume.
+# fn and timeout are bound as default-argument values rather than read from the loop variable, or every
+# generated test would share the same last-iteration fn.
+#
+# gc.collect() after every real object-graph build: a real MemoryError was found without it, once enough
+# discarded-but-uncollected garbage accumulated across a process's run, back when one process built all 6
+# devices' worth. MicroPython's own threshold-triggered collection alone could not keep pace.
+#
+# Kept even now that the per-device split means one process only does 15 builds rather than 90 - a proven
+# defense-in-depth backstop, not the fix for anything currently broken at that smaller volume.
 # ---------------------------------------------------------------------------
 
 

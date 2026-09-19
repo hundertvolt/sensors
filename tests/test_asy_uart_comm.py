@@ -1584,10 +1584,9 @@ def returns(value: "Any") -> "Any":
 
 
 def test_a_bus_cleared_after_construction_is_refused_at_every_entry_point() -> None:
-    # The handle is read fresh on every call rather than captured at construction, so each entry
-    # point carries its own None check and each has to reach its own sentinel - never an
-    # AttributeError out of a module contracted never to raise. setup() re-checks for the same
-    # reason: a restart must refuse, not drain through a handle that is gone.
+    # The handle is read fresh on every call, not captured at construction, so each entry point carries its
+    # own None check and reaches its own sentinel, never an AttributeError out of a module contracted not to
+    # raise. setup() re-checks too: a restart must refuse, not drain through a gone handle.
     def pull(chunk: int, buf: memoryview) -> int:
         return 0
 
@@ -1719,10 +1718,9 @@ def fail_write_after(fake: "Any", successes: int) -> None:
 
 
 def test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs() -> None:
-    # Every writefrom() in the module is checked, and one GET passes through six distinct ones: the
-    # request, the responder's ACK for it, the answer's header frame, the initiator's ACK for that
-    # header, a mid-train ACK and the final ACK. All six report errno 21 and resync - a write that
-    # silently did nothing is exactly what leaves the two sides on different frame boundaries.
+    # Every writefrom() in the module is checked, and one GET passes through six: the request, its ACK, the
+    # answer's header frame, the initiator's ACK for that, a mid-train ACK and the final one. All six report
+    # errno 21 and resync - a silent no-op write is what desynchronises the two sides.
     def get_with_a_failed_write(side: str, successes: int, answer: bytes) -> "tuple[bytearray | None, list[str]]":
         pair = Pair(timeout=30, get_callback=echo_get(answer), set_callback=accept_set())
         assert run(pair.setup()) is True
@@ -1946,10 +1944,9 @@ def test_every_internal_buffer_read_rechecks_rather_than_indexing_none() -> None
     assert persisted(comm) == ["E14", "W10"], persisted(comm)
 
 def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
-    # _busy is cleared in a finally rather than on the return path, so a task cancelled while it
-    # holds the bus - a supervisor restart, or clear() unsticking a wedged link - does not leave
-    # the instance refusing every later call as re-entrant forever. The flag is not the lock: the
-    # lock releases itself on the way out of `async with`, this does not.
+    # _busy is cleared in a finally rather than on the return path, so a task cancelled while holding the
+    # bus - a supervisor restart, or clear() unsticking a wedged link - does not leave the instance refusing
+    # every later call as re-entrant. The flag is not the lock: `async with` releases that, not this.
     def pull(chunk: int, buf: memoryview) -> int:
         return 0
 
@@ -1984,10 +1981,9 @@ def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
         assert bus.asy_lock.locked() is False, work
 
 def test_two_declined_ids_in_rotation_do_not_refill_the_history_either() -> None:
-    # The half J4's own fix still left open. Remembering only the *last* declined id suppresses a
-    # repeat but not an alternation, and a peer looping over a command set of which two are
-    # unimplemented here is the realistic shape - it refilled and overflowed a ten-slot history in
-    # five rounds, cause entry first, exactly the loss the rule exists to prevent.
+    # The half J4's own fix still left open. Remembering only the last declined id suppresses a repeat but
+    # not an alternation, and a peer looping over a command set of which two are unimplemented here is the
+    # realistic shape - it refilled and overflowed a ten-slot history in five rounds, cause entry first.
     pair = run(build_pair(timeout=30, get_callback=returns((False, None)), set_callback=accept_set()))
     for _ in range(6):
         for cmd_id in (0x42, 0x43):
@@ -2003,10 +1999,9 @@ def test_two_declined_ids_in_rotation_do_not_refill_the_history_either() -> None
 
 
 def test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault() -> None:
-    # Chunk 1 is already sent and acknowledged by the time a pull callback is first asked for
-    # anything, so every abort here leaves the peer mid-train: it drains for 1.5 x timeout while
-    # this side, without a hold-off, is free to transmit straight into that window - where the
-    # drain swallows a real payload and reports it back as a link fault.
+    # Chunk 1 is already sent and acknowledged by the time a pull callback is first asked for anything, so
+    # every abort here leaves the peer mid-train: it drains for 1.5 x timeout while this side, without a
+    # hold-off, is free to transmit into that window, where the drain swallows a real payload as a fault.
     def aborting_pull(kind: str) -> "Any":
         def pull(chunk: int, buf: memoryview) -> "Any":
             if chunk != 2:
@@ -2140,10 +2135,9 @@ def test_the_legacy_bsec_command_set_still_runs_end_to_end() -> None:
 
 
 def test_the_two_spellings_the_boards_own_uart_script_used_still_work() -> None:
-    # dev_legacy/ext_uart.py, the exploratory script found on the board, exercised two shapes the
-    # BSEC driver itself does not: a GET declaring an expected size of exactly zero (an answer that
-    # must be empty, which is a different claim from "don't care"), and a SET whose payload is an
-    # empty bytearray rather than None. Both have to stay distinguishable from failure.
+    # dev_legacy/ext_uart.py, the exploratory script found on the board, exercised two shapes the BSEC
+    # driver does not: a GET declaring an expected size of exactly zero - an answer that must be empty, a
+    # different claim from "don't care" - and a SET whose payload is an empty bytearray rather than None.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(0)))
     empty = run(pair.with_listener(pair.initiator.uart_get(0x3C, exp_size=0)), limit=20)
     assert empty is not None and len(empty) == 0, empty  # empty, not None (J.9)
