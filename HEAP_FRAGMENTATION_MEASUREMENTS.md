@@ -3636,13 +3636,41 @@ unresponsive.** Polled immediately after the load rather than asked once, it ans
 
 This is §7H-era F10's slot-release lag at the *other* end of the test. A slot is released in
 `_serve()`'s `finally`, which runs after `_close_writer()` awaits the close; 24 workers have just
-finished, so their slots are still draining. W5 takes a `time.sleep(1.0)` settle **before** its
-workers — added for exactly this reason — and none **after** them, and
-`tests_hardware/http_client.py`'s `fetch()` is single-shot with no retry by construction. Recorded
-as queue §2A **F11** and deliberately **not edited**: the handover's §3 forbids weakening W5, and
-CLAUDE.md's flag-don't-change rule applies. The fix that suggests itself is the one the
-neighbouring `test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` already uses for
-this lag, applied to the health check alone and leaving all four cap assertions untouched.
+finished, so their slots are still draining. W5 took a `time.sleep(1.0)` settle **before** its
+workers — added for exactly this reason — and none **after** them, while
+`tests_hardware/http_client.py`'s `fetch()` is single-shot with no retry by construction.
+
+**FIXED 2026-09-19, owner's decision** ("a defect in the test setup, not a failure ... the test must
+still fail if the server genuinely is unreachable, but under fair circumstances, not within an
+almost-zero-delay recovery phase where it doesn't even have a chance"). The health check now uses
+the **same `wait_until()` the neighbouring `test_connections_at_and_above_the_real_socket_limit_degrade_cleanly`
+already uses 170 lines up in the same file** — 15 s bound, 1 s poll — whose own comment names this
+very phenomenon ("closing 5 sockets near-simultaneously can transiently reset a brand-new connection
+right after"). All four cap assertions are untouched.
+
+**It is not a weakening, and that was verified rather than argued.** `wait_until()` treats a raising
+check as not-yet-ready but still raises `TimeoutError` with the last exception embedded once the
+bound expires. Exercised host-side against two genuinely dead targets, using the exact call shape
+the test now makes:
+
+| target | outcome | elapsed |
+|---|---|---|
+| a bench-LAN address that answers nothing | `TimeoutError ... (last error: URLError(OSError(113, 'No route to host')))` | 19.4 s |
+| a reachable host with nothing on port 80 | `TimeoutError ... (last error: URLError(ConnectionRefusedError(111, 'Connection refused')))` | 15.0 s |
+
+Both fail, inside the bound, naming the real cause. Three consecutive green runs of the fixed row
+on the board followed, with the same zero-wrong-status result and a wider refusal spread than
+before — 16/8, 19/5 and 20/4 answered/refused — which is the anti-vacuity floor of 4 doing its job
+rather than the row becoming easier to pass.
+
+**The suite's own verdict line is clean for the first time since the §1D rows were added:**
+
+```
+98 passed, 4 skipped, 27 deselected in 2328.23s (0:38:48)
+OK: real-hardware suite run clean - no unexpected skips, no failures.
+```
+
+Same 4 skipped / 27 deselected as every reference run, one more passed, nothing else moved.
 
 ### 7I.3 §7G's replacement checks, re-measured after the merge — every margin held or improved
 

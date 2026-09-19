@@ -4687,14 +4687,20 @@ actually owns — **not one request answered with the wrong status**. So the bod
 established under real concurrency on real hardware, not only by replay. `WEBSERVER`'s error log
 stayed empty throughout.
 
-The row nonetheless still goes red, on the line *after* those four: a single-shot
-`GET /status` health check, made with no settle, raises `ConnectionResetError`. The server is not
-unresponsive — polled rather than asked once, it answers 200 **75 ms** later (two of three repeats;
-the third answered first try). It is this same slot-release lag at the other end of the test: 24
-workers' slots are still draining through `_serve()`'s `finally`, and the row takes its settle
-*before* its workers and none *after* them. `tests_hardware/`'s own `http_client.fetch()` is
-single-shot by construction. **Reported, not changed** — `REAL_HARDWARE_TEST_QUEUE.md` §2A F11
-carries it, and nothing in `src/` is implicated.
+The row nonetheless went red on the line *after* those four: a single-shot `GET /status` health
+check, made with no settle, raising `ConnectionResetError`. The server was not unresponsive —
+polled rather than asked once, it answers 200 **75 ms** later (two of three repeats; the third
+answered first try). It is this same slot-release lag at the other end of the test: 24 workers'
+slots are still draining through `_serve()`'s `finally`, and the row took its settle *before* its
+workers and none *after* them, while `tests_hardware/`'s own `http_client.fetch()` is single-shot
+by construction. Nothing in `src/` was implicated.
+
+**Fixed in the test, 2026-09-19** (owner's decision; `REAL_HARDWARE_TEST_QUEUE.md` §2A F11 has the
+account). The health check now uses the same bounded `wait_until()` that
+`test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` already uses in the same file
+for the identical lag. This does not weaken it: `wait_until()` retries a check that raises but
+still raises `TimeoutError` when its bound expires, verified against a silent address and a dead
+port, and all four cap assertions are untouched. W5 has run green three times since.
 
 **Related, deliberately not changed:** `NTP_Host`'s 1024-character bound mirrors the deployed
 pre-refactor handler (`modules/sensortask-*.py`'s `update_valid_json(..., 3, 1024, ...)`), so

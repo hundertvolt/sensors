@@ -868,9 +868,15 @@ def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(du
     assert len(statuses) >= _MAX_CONNECTIONS, f"only {len(statuses)} of {len(sizes)} PUTs were answered at all - too few to say anything about the cap ({len(refused)} refused)"
     assert 200 in statuses and 413 in statuses, f"the run never saw both verdicts, so the cap was never exercised under concurrency: {sorted(set(statuses))}"
 
-    # Still healthy afterwards, and no MemoryError degraded anything - a body the server refused to
-    # buffer must cost it nothing, which is the whole point of binding the two caps.
-    assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=15.0).status_code == 200, "webserver unresponsive after concurrent mixed-body load"
+    # Still healthy afterwards: a body the server refused to buffer must cost it nothing. The 24
+    # workers' slots are still draining through _serve()'s finally, so a single-shot check here is
+    # refused at the ceiling - same wait_until() the connection-ceiling test above uses for that lag.
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
+        timeout_s=15.0,
+        poll_interval_s=1.0,
+        description="webserver serving normally again after the concurrent mixed-body load cleared",
+    )
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
     print(f"RESULT NOTE: {len(answered)} answered, {len(refused)} refused at the connection ceiling, 0 answered wrongly")
 
