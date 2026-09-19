@@ -4,10 +4,9 @@ import _tmp_scratch
 
 
 def run(namespace: dict[str, object]) -> None:
-    # A minimal test collector/runner, not the CPython stdlib `unittest`: it isn't part of the
-    # MicroPython Unix port's default "standard" build, and pulling it in via mip would add a
-    # network dependency to every test run. Just enough to run test_*() functions, report
-    # pass/fail per test, and exit nonzero on any failure - which is all these tests need.
+    # A minimal test collector and runner, not the CPython stdlib `unittest`: that is not part of the Unix
+    # port's default "standard" build, and pulling it in via mip would add a network dependency to every
+    # test run. Just enough to run test_*() functions, report pass/fail, and exit nonzero on any failure.
     #
     # Takes a plain namespace dict (call as `microtest.run(globals())`), not a module object:
     # the MicroPython Unix port doesn't register the top-level script in `sys.modules["__main__"]`
@@ -33,15 +32,11 @@ def run(namespace: dict[str, object]) -> None:
         # test failure, so a file's scratch dir never outlives its own run.
         _tmp_scratch.teardown_all()
     print(f"{total - failed}/{total} passed")
-    # Always exits explicitly, not just on failure: a test that spins up the real
-    # sensortask_wozi.build_system()/start_and_check_tasks() task graph (the digital-twin
-    # integration files) leaves independently-scheduled sibling tasks (WiFi, sensor readers, the
-    # webserver, ...) parked in the shared, process-wide asyncio task queue after its own test
-    # function returns - Task.cancel() on the one Task a test explicitly awaited (e.g. main_task in
-    # digital_twin/run_generic_integration.py) never cascades to those siblings, since asyncio doesn't
-    # track parent/child task relationships. Falling off the end of this script used to leave the
-    # Unix-port process waiting on that leftover queue instead of exiting - confirmed by direct
-    # reproduction (system_service.py's own _timer_sequencer() fix was what first let a soak test
-    # run its real task graph to a clean, non-cancelled completion instead of always timing out
-    # first). sys.exit() forces the process down immediately regardless of what's still parked.
+    # Always exits explicitly, not just on failure: a test that spins up the real build_system() task graph
+    # leaves independently-scheduled sibling tasks parked in the shared, process-wide asyncio task queue
+    # after its own test function returns.
+    #
+    # Task.cancel() on the one Task a test explicitly awaited never cascades to those siblings, asyncio
+    # tracking no parent/child relationships, so falling off the end of this script used to leave the
+    # process waiting on that leftover queue instead of exiting. sys.exit() forces it down regardless.
     sys.exit(1 if failed else 0)

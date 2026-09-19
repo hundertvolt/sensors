@@ -651,42 +651,46 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     it rides the next real-hardware session rather than being pushed blind
     (`REAL_HARDWARE_TEST_QUEUE.md`).
 
-42. **Every header block in the repo is inside the 3-line cap; the inline blocks outside `src/` are
-    measured, not yet fixed.** The cap was
-    tightened from "no hard numeric cap" to 3 lines per inline block by the project owner on
-    2026-09-14 and re-confirmed 2026-09-18; `main` had recorded that only the ISL29125 branch's own
-    files complied and estimated ~200 pre-existing blocks. The real repo-wide figure, measured
-    2026-09-18 with buildgen's machine-read tag lines (`# @web`, `# @wiring`, `# @limits`,
-    `# @requires`) excluded as data rather than commentary, is **1,445 over-length blocks**:
+42. **Closed 2026-09-19 (owner decision 4): every header and inline comment block in the repo is
+    inside the 3-line cap.** The cap was tightened from "no hard numeric cap" to 3 lines per block
+    by the project owner on 2026-09-14, re-confirmed 2026-09-18, and the owner then asked for the
+    same treatment applied once - not permanently - to everything outside `src/`.
 
-    | scope | blocks | files |
-    | --- | --- | --- |
-    | `tests/` | 842 | 87 |
-    | `tests_hardware/` | 144 | 43 |
-    | `tests_scripts/` | 125 | 30 |
-    | `tests_js/` | 74 | 12 |
-    | `scripts/` | 73 | 5 |
-    | `js/` | 70 | 9 |
-    | `buildgen/` | 62 | 15 |
-    | `digital_twin/` | 46 | 14 |
-    | `toolchain/` | 9 | 2 |
+    **Header blocks reached zero first** (2026-09-18): 65 over-cap Python module/class/function
+    docstrings plus two JS/CSS file headers. Most duplicated a rule the spec already stated, so the
+    fix was a pointer, not a deletion; the three per-device scenario libraries' shared rationale
+    became SPECIFICATION.md Part E.2.1, its single point of truth.
 
-    `src/` was swept to **zero** in the same pass (121 blocks, of which ~27 turned out to be tag
-    runs), because it is the shipped firmware and the one scope where the rule earns its keep;
-    nothing was deleted, only tightened or moved to the Part that already owned the fact.
+    **Inline blocks then followed, scope by scope**, `src/` first (121 blocks) and `tests/` last as
+    the largest by far. Final tallies, after three corrections to the measurement itself - divider
+    rules (`# ----`) are separators, PEP 723 `# /// script` headers are metadata, and JSDoc
+    `@param`/`@returns` continuation lines are annotations, none of them commentary:
 
-    **Header blocks are now at zero repo-wide** (2026-09-18, the concentrated run the owner asked
-    for): 65 over-cap Python module/class/function docstrings across `tests/` (33),
-    `tests_hardware/` (17), `tests_scripts/` (10), `toolchain/` (3) and `scripts/` (2), plus two
-    JS/CSS file headers. Most were duplicating a rule the spec already stated, so the fix was a
-    pointer, not a deletion; the three per-device scenario libraries' shared rationale became
-    SPECIFICATION.md Part E.2.1, its single point of truth. `js/definitions.js`'s ~37-line
-    `@typedef` run is exempt as a machine-checked type declaration (CLAUDE.md), like buildgen's tag
-    lines.
+    | scope | blocks | scope | blocks |
+    | --- | --- | --- | --- |
+    | `tests/` | 710 | `tests_js/` | 44 |
+    | `tests_scripts/` | 101 | `js/` | 28 |
+    | `tests_hardware/` | 97 | `toolchain/` | 4 |
+    | `scripts/` | 76 | `html/` | 2 |
+    | `buildgen/` | 62 | | |
+    | `digital_twin/` | 48 | | |
 
-    The inline blocks above are deliberately still left: rewriting ~1,400 of them in one diff would
-    bury any review, and each one still needs the judgement call about where its detail belongs.
-    Best taken scope by scope, `tests/` last - it is 58% of the total on its own.
+    Nothing was dropped outright. Each block kept the load-bearing WHY next to the line it explains;
+    implementation-history narrative ("found via", "corrected during implementation", test counts
+    from a since-changed suite) went, per the documentation rule that docs carry current state and
+    rules, not the path that got there; and an architectural fact already owned by a
+    SPECIFICATION.md Part became a pointer to it rather than a restatement.
+
+    Stale facts surfaced and were corrected in passing: `tests/test_asy_webserver_service.py` and
+    SPECIFICATION.md Part I.5 both still described the Unix-port harness as an 8MB heap
+    (`scripts/test.sh` moved it to 16M, and that file's own comment owns the history), and the
+    UDP-socket suite named `async_connect.py` and the deleted `improved-quality/` as its upstream
+    callers, where the real ones are `src/asy_ntp_client.py` and `src/captive_dns.py`.
+
+    Machine-read tag lines (`# @web`, `# @wiring`, `# @limits`, `# @requires`) and
+    `js/definitions.js`'s `@typedef` run stay exempt as data, per CLAUDE.md. This was a one-time
+    pass by the owner's explicit framing, not a standing gate: new code is expected to meet the cap
+    as it is written, and nothing enforces it mechanically.
 
 ## Deferred / explicitly out-of-scope work
 

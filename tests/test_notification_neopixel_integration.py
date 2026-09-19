@@ -37,10 +37,9 @@ async def _local_time() -> _FakeTime:
 
 
 class _FakeSource:
-    # A controllable NotificationSignal producer (SPECIFICATION.md Part C.14.2): get_data() returns
-    # self, dynamically exposing exactly one attribute (whatever field name the caller configures)
-    # - a fixed value, matching every removed inline get_value()/co2_value()/voc_value() closure's
-    # own fixed-return shape.
+    # A controllable NotificationSignal producer (Part C.14.2): get_data() returns self, exposing exactly
+    # one attribute - whatever field name the caller configures - at a fixed value, matching every removed
+    # inline closure's own fixed-return shape.
     def __init__(self, field: str, value: int) -> None:
         setattr(self, field, value)
 

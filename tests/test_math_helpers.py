@@ -92,12 +92,12 @@ def test_dew_point_valid_ice_branch() -> None:
 
 
 def test_dew_point_branch_boundary_roughly_continuous() -> None:
-    # The water-phase and ice-phase coefficient sets are two independently-fit approximations
-    # stitched together at temperature == 0, not a single continuous formula: measured, they
-    # disagree by about 1.03 degC right at the boundary (50% RH) - a real property of this
-    # formula, not a bug introduced here. This is a regression guard against that gap growing
-    # much larger (e.g. from an accidental coefficient/branch-condition change), not an assertion
-    # that the two branches are continuous.
+    # The water-phase and ice-phase coefficient sets are two independently-fit approximations stitched
+    # together at temperature == 0, not a single continuous formula: measured, they disagree by about 1.03
+    # degC right at the boundary at 50% RH - a real property of the formula, not a bug introduced here.
+    #
+    # A regression guard against that gap growing much larger, from an accidental coefficient or branch-
+    # condition change, not an assertion that the two branches are continuous.
     just_above = mh.dew_point(0.0, 50.0)
     just_below = mh.dew_point(-0.001, 50.0)
     assert just_above is not None

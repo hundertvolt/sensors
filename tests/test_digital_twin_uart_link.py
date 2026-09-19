@@ -83,12 +83,12 @@ async def exchange(work: "Coroutine[Any, Any, T]") -> "T":
     # read to complete, and the twin delivers by real wire time. Cutting the listener off would
     # strand a frame for the next exchange - a harness artefact, so the harness waits it out.
     #
-    # Drives the responder's own UART_Comm.uart_listen() directly, not UartLinkExerciser's real
-    # get_task_starters() listen loop - deliberately, so this file's callback-storage assertions
-    # (test_a_payload_larger_than_one_chunk_crosses_the_jumper_intact) go through the harness's own
-    # controlled single round rather than a free-running task. UartLinkExerciser's own message
-    # dispatch (_message_callback writing _last_echo) is covered separately by
-    # tests/test_asy_uart_link_driver.py's echo-round-trip test, which drives the real task instead.
+    # Drives the responder's own UART_Comm.uart_listen() directly rather than UartLinkExerciser's real
+    # listen-loop task, deliberately, so this file's callback-storage assertions go through the harness's
+    # controlled single round instead of a free-running task.
+    #
+    # UartLinkExerciser's own message dispatch is covered separately by tests/test_asy_uart_link_driver.py's
+    # echo-round-trip test, which drives the real task instead.
     dev = sensortask_dev
     assert dev.uart_link_resp is not None
     listener = asyncio.create_task(dev.uart_link_resp._comm.uart_listen())
@@ -170,10 +170,9 @@ def test_the_two_ends_sit_on_distinct_peripherals_with_sized_buffers() -> None:
 
 
 def test_both_ends_get_their_own_real_fram_chunk() -> None:
-    # AsyFramManager is a bump-pointer allocator, so instantiation order *is* the on-chip
-    # layout - an inserted chunk would turn every previously persisted log into garbage. dev.toml
-    # wires fram_target = "fram" on both uart_link instances (WP3), each getting its own chunk -
-    # a shared one would merge two links' histories into a single unattributable /status entry.
+    # AsyFramManager is a bump-pointer allocator, so instantiation order IS the on-chip layout and an
+    # inserted chunk would turn every persisted log into garbage. dev.toml wires fram_target on both
+    # uart_link instances (WP3), each with its own chunk - a shared one would merge two links' histories.
     build_linked_system()
     dev = sensortask_dev
     assert dev.fram is not None
@@ -211,10 +210,9 @@ def test_a_payload_larger_than_one_chunk_crosses_the_jumper_intact() -> None:
     assert dev.uart_link_init is not None and dev.uart_link_resp is not None
     payload = bytes((i * 5) & 0xFF for i in range(140))  # spans three data chunks at payload_size 48
     assert run(exchange(dev.uart_link_init._comm.uart_set(0x02, payload))) is True
-    # The responder's own _last_echo is only ever written by _message_callback, which
-    # exchange()'s harness-controlled uart_listen() round does NOT invoke (see exchange()'s own
-    # comment) - so this stays unset here, the same "the callback stores nothing itself" fact
-    # main's own original test recorded, just checked against the real storage location now.
+    # The responder's _last_echo is only ever written by _message_callback, which exchange()'s harness-
+    # controlled uart_listen() round does not invoke - so it stays unset here, the same "the callback stores
+    # nothing itself" fact the original test recorded, now checked against the real storage location.
     assert dev.uart_link_resp._last_echo is None
 
 
@@ -425,10 +423,9 @@ def test_the_link_survives_sustained_allocation_pressure() -> None:
 
 
 def _hammer_with_the_graph_running(threshold: int) -> None:
-    # The combined case: the link hammered flat out while the rest of the real dev graph runs, with
-    # the heap watched throughout. Run under MicroPython's own default (-1, no proactive
-    # collection) as well as the project's chosen 32768, per CLAUDE.md's stress-test rule - a
-    # hammer that only survives with proactive collection is hiding the defect the rule exists for.
+    # The combined case: the link hammered flat out while the rest of the real dev graph runs, with the heap
+    # watched throughout. Run under MicroPython's own default (no proactive collection) as well as the
+    # project's 32768 - a hammer that only survives with proactive collection hides the defect.
     import gc
 
     link = build_linked_system()

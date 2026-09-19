@@ -180,12 +180,12 @@ def test_configure_i2c_wiring_wozi_uses_scd30_irq_pin_8_not_devs_11() -> None:
 
 
 def test_default_wiring_before_any_configure_call_is_wozi() -> None:
-    # Regression check for the old module-level `_i2c_wiring_profile = "wozi"` default - the very
-    # first test function to run in a fresh Unix-port process (before any other test's
-    # configure_i2c_wiring()/configure_wiring() call) must still see wozi's own layout, matching
-    # every caller that never calls either function at all (segfault_stress_repro.py's own main()).
-    # Re-asserted here explicitly (not just relied upon via test order) since machine._wiring_plan
-    # is process-global state that later tests' configure_*() calls mutate.
+    # Regression check for the old module-level `_i2c_wiring_profile = "wozi"` default: the very first test
+    # function to run in a fresh process, before any configure_*() call, must still see wozi's layout,
+    # matching every caller that never calls either function at all.
+    #
+    # Re-asserted explicitly rather than relied upon via test order, machine._wiring_plan being process-
+    # global state that later tests mutate.
     machine.configure_i2c_wiring("wozi")  # restore the default explicitly - this test must not
     # depend on running before every other test in this file for its own assertion to hold.
     Pin.reset_registry()

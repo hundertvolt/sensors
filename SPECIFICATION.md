@@ -4488,7 +4488,7 @@ finding — it governs every test in this repo from now on, digital-twin and rea
 
 ## I.5 Real-hardware confirmation
 
-Every parameter this audit's Unix-port tests couldn't reach (an 8MB heap vs. RP2040's real budget)
+Every parameter this audit's Unix-port tests couldn't reach (a host-sized heap vs. RP2040's real budget)
 was confirmed on real target hardware (2026-09-08): `gc.threshold(32768)` (real hammer-load
 `mem_free` floor 91312 bytes vs. 128 bytes at the reactive-only default), the real GC pause-length
 range (I.1), and `_MAX_STATUS_PIECE_BYTES`'s real headroom (I.3).
