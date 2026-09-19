@@ -601,6 +601,17 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     `base: ${{ github.event.before }}` for push events. Either way the comment and the behaviour
     should be made to agree.
 
+    **Half of that is done: the comment now matches the behaviour** (2026-09-19). `web-changes`'
+    own block says the tier is gated on whether the branch *differs from the default branch* in
+    web source, and names the `paths-filter` default that makes it so - a documentation fix that
+    settles nothing and pre-empts nothing. Confirmed against upstream's own README while making it:
+    a `push` with no `base:` compares against the repository default branch, a `pull_request` is
+    compared through the API against the PR's base regardless of `base:`, and an absent common
+    ancestor (a new branch, `github.event.before` as all-zeros) counts every file as added. So
+    setting `base: ${{ github.event.before }}` would change **push** runs only - PR-event runs
+    would still run the full web tier, which is what a pre-merge status check wants. **Still open
+    and still the owner's: the `base:` choice itself, and the 20-minute budget.**
+
 37. **Five cross-file consistency findings carried over from `main`, each re-verified on this branch
     (2026-09-18) and each still needing an owner yes/no.** They were raised on `main` by the
     ISL29125 promotion's bird's-eye `src/` scan (2026-09-12) with recommendations added 2026-09-13,

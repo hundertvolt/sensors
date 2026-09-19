@@ -34,9 +34,12 @@ permissions: {}
 
 jobs:
   web-changes:
-    # Gates the web-CI tier below on whether this push/PR actually touches the website's own
-    # source (html/, js/, tests_js/) or its own tooling config - kept as a single workflow file
-    # with a changes-detection job feeding `if:` conditions, deliberately not a second workflow
+    # Gates the web-CI tier below on whether the branch DIFFERS FROM the default branch in the
+    # website's own source (html/, js/, tests_js/) or its own tooling config - `dorny/paths-filter`
+    # given no `base:` compares against the default branch, never the pushed range, so on a
+    # long-lived branch this is true from its first web-touching commit onward (BACKLOG item 36).
+    # Kept as a single workflow file with a
+    # changes-detection job feeding `if:` conditions, deliberately not a second workflow
     # file with its own trigger-level `paths:` filter (which can leave a PR stuck on a required
     # status check that never fires because the whole workflow never triggered - see
     # SPECIFICATION.md Part H.8). The existing Python jobs below are untouched and keep running on every
