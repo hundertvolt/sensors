@@ -4,6 +4,7 @@ shared-behavior function written against one translates directly to the other, t
 
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -40,3 +41,17 @@ def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any
         # A non-2xx response is still a meaningful REST response here (e.g. a validation failure has
         # a real JSON body) - surface it like a success instead of forcing callers to catch HTTPError.
         return HttpResponse(exc.code, dict(exc.headers or {}), exc.read())
+
+
+# A connection the server closed at its own max_connections ceiling, whose shape src/ does not
+# choose: _serve()'s reject-when-full branch closes without ever writing a response, so the client
+# sees FIN or RST depending on kernel TCP state (queue F10/F11 measured both).
+CEILING_CLOSE = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, http.client.BadStatusLine)
+
+
+def is_ceiling_close(exc: BaseException) -> bool:
+    """True if exc is a connection-ceiling refusal rather than a real transport failure.
+
+    urllib wraps the transport error in URLError.reason; http.client.RemoteDisconnected subclasses
+    both ConnectionResetError and BadStatusLine, so the tuple above already covers it."""
+    return isinstance(exc, CEILING_CLOSE) or isinstance(getattr(exc, "reason", None), CEILING_CLOSE)

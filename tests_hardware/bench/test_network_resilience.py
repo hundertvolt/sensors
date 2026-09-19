@@ -5,7 +5,6 @@ and slowloris/abrupt disconnects - DHCP-client flakiness is deliberately out of 
 
 from __future__ import annotations
 
-import http.client
 import json
 import socket
 import threading
@@ -808,18 +807,6 @@ def test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits(dut_
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
 
 
-# A connection the server refuses at its own ceiling, whose shape src/ does not choose.
-# test_connections_at_and_above_the_real_socket_limit_degrade_cleanly above accepts FIN or RST for
-# exactly this reason: _serve()'s reject-when-full branch closes without ever writing a response.
-_CEILING_CLOSE = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, http.client.BadStatusLine)
-
-
-def _is_ceiling_close(exc: BaseException) -> bool:
-    # urllib wraps the transport error in URLError.reason; http.client.RemoteDisconnected is a
-    # subclass of both ConnectionResetError and BadStatusLine, so it is covered by the tuple.
-    return isinstance(exc, _CEILING_CLOSE) or isinstance(getattr(exc, "reason", None), _CEILING_CLOSE)
-
-
 def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str) -> None:
     """The multi-buffer shape that motivated Part I.6, asserted on what the body cap actually owns.
 
@@ -840,7 +827,7 @@ def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(du
         try:
             status = _put_sized(dut_ip, size, timeout_s=30.0)
         except Exception as exc:  # the worker's job is to report, never to raise into the harness
-            bucket = refused if _is_ceiling_close(exc) else other
+            bucket = refused if http_client.is_ceiling_close(exc) else other
             with results_lock:
                 bucket[index] = f"{type(exc).__name__}: {exc}"
             return
