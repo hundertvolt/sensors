@@ -569,6 +569,90 @@ uploaded as a CI build artifact via the `digital-twin-e2e` job's own `if: always
 a failure's full boot log is inspectable from the Actions run itself, not just the pass/fail
 summary). The suite exits non-zero if any check fails, failing the CI job.
 
+### What `run_generic_integration.py` keeps in-process, and why
+
+Almost every request-driving and response-observing job moved host-side (SPECIFICATION.md's
+"Driver/DUT process separation"). Two things could not, and both are deliberate:
+
+- **`--mem-sample-interval-ms`** — `gc.mem_free()` exists only inside this process's own heap and
+  deliberately has no REST route. It samples on a fixed wall-clock timer rather than once per
+  host-driven cycle, because the host has no way to signal "a cycle finished" without adding the
+  very channel this design avoids, and a denser stream is at least as sensitive to a real trend.
+  Each line is timestamped off the same wall clock the host reads, so the host selects the samples
+  inside its own window — the same way it scrapes the watchdog counter from stdout, never by
+  calling back in. Its `gc.collect()` is measurement instrumentation under Part I.4(e)'s narrow
+  exception, not a pressure workaround: on a fixed timer, reaching no webserver or driver, it
+  cannot mask a real `MemoryError`. Verified by removing it (2026-09-14) — the trend check got
+  *worse*, swinging min=99808/max=1347104 on a healthy run, a false positive from incidental
+  reactive-GC timing.
+- **The `wire_log` clearer.** `UARTLink.wire_log` is unbounded by design, so a unit test with
+  direct object access can assert exactly what crossed the wire, and every such test clears it
+  itself. This process has no such access — it boots the twin as a subprocess and never reads the
+  log — so left alone it grows for as long as the link carries traffic, the exerciser firing every
+  second regardless of HTTP activity. That is what made Run 11's memory trend fail for `dev`, the
+  only device with a wired pair, while `wozi` stayed flat. Clearing it changes nothing
+  over-the-wire: nothing in the request path or `asy_uart_comm.py` ever reads it back.
+
+### Run 11's two calibrated numbers
+
+**`_SOAK_WARMUP_CYCLES = 100`, not wozi's original 40.** `dev`'s two extra `uart_link` instances
+mean more one-time post-boot settling — module-level caches and config-derived structures
+populated once, the same asymptotically-decaying-then-flat shape wozi's boot shows on a smaller
+scale, not an unbounded leak. Confirmed 2026-09-14: `gc.mem_free()` plateaus for both devices given
+enough idle wall clock, wozi's curve flattening well inside 40 cycles' worth and dev's needing
+roughly 2.5x that, reproduced with the UART tasks fully disabled — so it is settling proportional
+to module count, not UART traffic. 100 gives every device room to finish before the measured
+window starts.
+
+**The memory-trend tolerance is self-calibrating, and a scaling law is why.** The original
+calibration — five 100-cycle soaks, 25-sample quarters, trend deltas of +2623, +796, -410, +1729,
+-116 bytes — gave a flat 8192-byte tolerance, about 3.1x the worst magnitude and scattered around
+zero. Porting that forward as `8192 * sqrt(25/quarter)` assumed a trend's standard error shrinks
+with `1/sqrt(quarter_size)`, as it would for independent samples. It does not, and CI kept tripping
+it on a different device each time.
+
+Measured directly: sliding a 206-sample window across a region 20+ seconds past all settling and
+visibly flat in the raw trace, the trend statistic's own standard deviation came in at 1496-1964
+bytes — 3.4-4.5x what the formula predicts at this quarter size, because consecutive 25ms
+`gc.mem_free()` samples are heavily autocorrelated. More samples buy far less noise reduction than
+independent-sample statistics assume, so the formula tightened fastest exactly where it had to be
+loosest.
+
+`_mem_trend()` now measures the spread *within* each quarter, decoupled from the early-vs-late
+difference the trend itself measures — so a genuine leak's decline cannot inflate the tolerance
+meant to catch it — and sets the tolerance as a generous multiple of that. Self-calibrating per
+device, run and quarter size, with no constant to re-derive, and it covers the observed worst case
+(5889 bytes) with room left.
+
+### Two suite-table subtleties worth reading before changing one
+
+**`_NO_PERSIST_WHEN_FRAM_FAULTED` is not "these logs are in-memory".** It was named and described
+that way once and the claim was false: SCD30, SGP40 and BMP3XX are all FRAM-backed. What makes
+SCD30/BMP3XX reset to 0 in Run 3 is situational — that run faults `fram:write`, so the chip is dead
+for its whole duration and nothing they logged could reach it. The property is "with FRAM faulted,
+nothing persisted", a much weaker claim, which is why Run 5b/5c exist to make the chip-healthy one
+for every bus-attached driver the device wires.
+
+`fram` is deliberately absent from that set even though its own log genuinely is in-memory-only.
+Run 3's `fram:write` fault can leave a chunk's status byte stuck mid-write, and the dual-block+CRC
+self-healing read every restore goes through correctly detects and logs that as a fresh FRAM-level
+entry on Run 4's next boot — confirmed directly, the same history reappearing on a fresh process.
+That is not old data surviving (BMP3XX/SCD30 correctly show 0) and not a defect: self-healing
+detecting real torn state is the driver working.
+
+**`_RESET_ERRORS_TIMEOUT_S` is derived, not chosen.** `PUT /status {"ResetErrors": true}` resets
+every registered source in turn, and each FRAM-backed one pays a real chunk write — 10+ of them on
+`dev`, which is why it exceeds `_http()`'s plain 5s default. The first two CI runs on `dev` failed
+on exactly that one call, at both gc thresholds, and nothing else.
+
+The value sits just **above** the server's own `outer_cap_s`, deliberately: below it a legitimate
+slow reset reads as a client timeout, and at or above it the client timeout can never fire at all,
+since the server aborts first — so the suite observes the server's own diagnosable abort instead of
+a bare "something took too long". The earlier flat 20.0 was inert for that reason, and also sat
+above the 15s the real web UI gives up at. What is still missing is an elapsed-time budget well
+below the cap: this is a backstop, not a performance assertion, and the suite is blind to the whole
+5-15s band (BACKLOG item 24, which carries the real-hardware measurements).
+
 ### `--hang` (real bus hangs, distinct from `--fault`)
 
 `digital_twin/launch.py --hang DEVICE:OP:SECONDS[:TIMES]` (also accepted by
@@ -607,6 +691,43 @@ path. `run10_watchdog_hang_backstop.log`'s check depends on this same fix and on
 `scripts/_digital_twin_ci_suite.py`'s Run 10 giving the twin enough `--duration` (15s, not 0) for
 SGP40's own bus access — now queued behind BMP3xx's and SCD30's own FRAM-backed startup I/O on the
 shared FRAM SPI bus — to actually reach its hung `writeto` before the run exits.
+
+### `_http_client.py`'s read paths (why neither one uses `Stream.read()`)
+
+The twin's own HTTP client reads bodies two ways, and both avoid the obvious call for the same
+reason: `extmod/asyncio/stream.py`'s `Stream.readexactly()` and `Stream.read(-1)` both accumulate
+with `r += r2` on every partial read — a fresh, larger contiguous object per read, the previous one
+abandoned. Over a several-KB body arriving in several TCP reads that is several progressively
+bigger allocate-copy-discard cycles per fetch, which is exactly what fragments this heap under
+repeated soak cycles. Confirmed by reading the pinned interpreter's own source, not inferred.
+
+- **Sized (`Content-Length`) →** one right-sized `bytearray` filled through `Stream.readinto()`,
+  which does a single non-accumulating read per call and so has to be looped. One allocation per
+  fetch, made once the final size is known. **`readinto()` can return `None`** — poll said
+  readable, the read still came back empty, the race `Stream.read()`'s own retry loop exists to
+  ride out. It reaches this caller directly and must be retried; only a real `0` means the peer
+  closed. Conflating the two reads as an intermittent, environment-dependent false `EOFError`
+  under scheduling jitter, which a quiet sandbox rarely reproduces. This file's first version did.
+- **Unsized (`GET /`, the frozen website) →** `ext/microdot.py`'s `send_file()` hands the response
+  a raw file stream, so `Response.complete()`'s automatic `Content-Length` never applies and
+  `Connection: close` plus EOF is how the response ends. This is the live path for that route, not
+  a rare fallback. Fixed-size chunks collected in a list and joined once, rather than one bigger
+  contiguous copy per read.
+
+The final `b"".join(chunks)` is still one whole-body allocation (~7.5KB for the largest device's
+frozen website). That is fine for a caller that needs the bytes, but **no real device ever holds
+one**: a browser assembles the body from Microdot's own 1KB `send_file_buffer_size` chunks over the
+wire. A caller that only checks `status_code` takes `_drain_until_close()` instead — SPECIFICATION.md
+Part I.4(g), relieve the pressure at its source rather than paper over an avoidable allocation with
+a GC-policy change. No explicit `gc.collect()` belongs anywhere near this: `py/gc.c`'s `gc_alloc()`
+already runs a full collect-and-retry before it ever raises `MemoryError`, so a stale response's
+garbage is reclaimed exactly when an allocation needs the room.
+
+That distinction was found by a real CI failure, and is the reason `_drain_until_close()` exists:
+`dev`'s own frozen website (7579 bytes, 168-483 bytes larger than the other five devices') tipped
+that one allocation over a fragmented-heap edge at `gc.threshold(-1)` where the slightly smaller
+sites did not. The fix was calling the draining sibling from the hot soak loop — not shrinking the
+site, and not reaching for a threshold.
 
 ### `_unix_port_udp_addr_shim.py` (real UDP round trips under the Unix port)
 

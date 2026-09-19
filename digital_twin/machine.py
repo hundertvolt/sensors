@@ -122,10 +122,9 @@ class Pin:
         return self
 
     def simulate_edge(self, new_value: object) -> None:
-        # Twin-only: drives a real electrical transition, firing the registered handler only if
-        # the transition direction matches what irq() was told to listen for - unlike
-        # tests/machine.py's own trigger_irq() (fires unconditionally; deterministic unit tests
-        # don't need edge-direction fidelity), a twin standing in for real hardware does.
+        # Twin-only: drives a real electrical transition, firing the handler only when the
+        # direction matches what irq() was asked to listen for. tests/machine.py's trigger_irq()
+        # fires unconditionally - a deterministic unit test needs no edge fidelity; a twin does.
         old = self._value
         self._value = 1 if new_value else 0
         if old == self._value:
@@ -152,10 +151,9 @@ _current_scd30_chip: "Any | None" = None
 
 
 def configure_scd30_state_path(path: "str | None") -> None:
-    # Same module-level-hook pattern as configure_fram_state_path() above, applied to the SCD30's
-    # own NVM-persisted settings instead of FRAM contents - called once, before build_system()-
-    # equivalent code constructs i2c0, by whatever entry point Step 5 writes. None (the default)
-    # means "in-memory only, no persistence".
+    # configure_fram_state_path()'s pattern applied to the SCD30's NVM-persisted settings rather
+    # than FRAM contents. Called once by the entry point, before anything constructs i2c0; None,
+    # the default, means in-memory only.
     global _scd30_state_path
     _scd30_state_path = path
 
@@ -182,15 +180,13 @@ def configure_wiring(plan: "dict[str, Any]") -> None:
 
 
 def configure_i2c_wiring(profile: str) -> None:
-    # Called once, before build_system()-equivalent code constructs i2c0/i2c1, by whatever caller
-    # wants a non-default wiring by name - legacy sugar over configure_wiring() kept for tests
-    # (digital_twin/README.md), not called by any real entry point since run_generic_integration.py
-    # takes a full wiring-plan dict instead. Loads the profile's own generated
-    # build/generated_src/sensortask_<profile>_wiring_plan.json (scripts/_generate_sensortask_modules.py,
-    # from the real devices/<profile>.toml via buildgen.twin_wiring.compute_twin_wiring()) - never a
-    # hand-typed literal, so devices/wozi.toml and dev.toml stay the only source of truth. Validated
-    # eagerly here rather than only inside configure_wiring() above, so a typo surfaces immediately at
-    # the call site instead of silently NAKing every I2C transaction later.
+    # Legacy sugar over configure_wiring(), kept for tests: no real entry point calls it, since
+    # run_generic_integration.py passes a full wiring-plan dict. Called once, before anything
+    # constructs i2c0/i2c1.
+
+    # It loads the profile's own generated wiring plan, derived from devices/<profile>.toml, so
+    # the TOML stays the only source of truth - never a hand-typed literal. Validated eagerly
+    # here so a typo surfaces at the call site instead of NAKing every later transaction.
     if profile not in ("wozi", "dev"):
         raise ValueError(f"unknown I2C wiring profile {profile!r} - expected 'wozi' or 'dev'")
     with open(f"build/generated_src/sensortask_{profile}_wiring_plan.json") as f:
@@ -198,22 +194,18 @@ def configure_i2c_wiring(profile: str) -> None:
 
 
 def _current_wiring_plan() -> "dict[str, Any]":
-    # Lazily defaults to wozi's own generated plan the first time any caller constructs a bus without
-    # ever calling configure_wiring()/configure_i2c_wiring() first (e.g.
-    # digital_twin/segfault_stress_repro.py's own main(), deliberately kept hardcoded to
-    # sensortask_wozi - see that module's own comment) - matches the old eager "default to wozi"
-    # behavior exactly, just loaded on first use instead of at import time (this file must stay
-    # importable even before build/generated_src/ exists, e.g. under a plain CPython cross-check).
+    # Lazily defaults to wozi's generated plan the first time a caller constructs a bus without
+    # configuring wiring, matching the old eager default exactly - but loaded on first use, since
+    # this file must stay importable before build/generated_src/ exists.
     if _wiring_plan is None:
         configure_i2c_wiring("wozi")
     return _wiring_plan  # type: ignore[return-value]  # configure_i2c_wiring() above always sets it
 
 
 def _build_i2c_chip(attachment: "dict[str, Any]") -> "Any":
-    # Dispatches on the wiring plan's own "driver" string - the twin's own hand-maintained chip-fake
-    # catalog (a genuinely new chip type still needs one hand-written, CLAUDE.md's named exception).
-    # Return type is deliberately Any, not _I2CDevice: no single real chip fake implements all four
-    # of that Protocol's methods, the same reason _wire_i2c_devices() below stays dict[int, Any].
+    # Dispatches on the wiring plan's "driver" string - the twin's hand-maintained chip-fake
+    # catalog, a new chip type still needing one written. The return type is Any rather than
+    # _I2CDevice because no single fake implements all four of that Protocol's methods.
     global _current_scd30_chip
     driver = attachment["driver"]
     if driver == "scd30":
@@ -253,10 +245,9 @@ class I2C:
         self.devices = _wire_i2c_devices(id)  # public: tests reach a wired chip via i2c.devices[addr]
 
     def deinit(self) -> None:
-        # Real rp2 machine.I2C.deinit() only exists from MicroPython 1.29 on, and even there the
-        # port's .deinit protocol slot is NULL - a silent no-op that leaves the peripheral and its
-        # pins exactly as they were (SPECIFICATION.md Part F.5). Every bus operation below stays
-        # working afterwards on purpose; the flag only records that the call was forwarded.
+        # Real rp2 I2C.deinit() exists only from 1.29, and even there the port's protocol slot is
+        # NULL - a silent no-op leaving the peripheral and pins as they were (Part F.5). Every bus
+        # operation keeps working here on purpose; the flag only records the call.
         self.deinit_called = True
 
     def scan(self) -> "list[int]":
@@ -372,10 +363,9 @@ class SPI:
         self.deinit_called = False
         self.log: deque[tuple[Any, ...]] = deque((), _LOG_MAXLEN)
         self.device = _wire_spi_device(id)  # public: tests reach the wired chip via spi.device
-        # MicroPython 1.29 added an RX-overrun check to rp2's SPI transfer path, reached only by
-        # *reading* transfers of 32+ bytes (SPECIFICATION.md Part F.5.2). Modelled here rather
-        # than on the chip's own FaultInjector because it is a property of the port, not the
-        # device: sticky, plus a counted form for a transient glitch the bus recovers from.
+        # 1.29 added an RX-overrun check to rp2's SPI transfer path, reached only by READING
+        # 32+ bytes (Part F.5.2). Modelled here rather than on the chip's FaultInjector because
+        # it belongs to the port, not the device: sticky, plus a counted transient form.
         self.rx_overrun = False
         self.rx_overrun_remaining = 0
 
@@ -833,19 +823,17 @@ class Timer:
                 is_own_callback = False
             if not is_own_callback:
                 self._task.cancel()
-            # Self-rearming from within its own callback is valid (real rp2 hardware just
-            # reprograms the alarm pool), but asyncio.Task.cancel() can't cancel its own running
-            # task (MicroPython raises RuntimeError) - skip the self-cancel; the old task is about
-            # to return/loop on its own right after this callback returns anyway.
+            # Self-rearming from inside the callback is valid - real hardware just reprograms
+            # the alarm pool - but a Task cannot cancel itself in MicroPython. Skip the
+            # self-cancel: the old task returns on its own right after this callback does.
             self._task = None
         self.callback = None
 
 
 _WDT_TIMEOUT_MAX_MS = 8388  # RP2040 hard cap: 0xffffff / 2 / 1000 (ports/rp2/machine_wdt.c) - see
-# SPECIFICATION.md Part F.1. Confirmed directly against the pinned v1.29.0 source (not guessed;
-# 1.29 added a separate 16777ms RP2350 branch, but the RP2040 cap is unchanged):
-# WDT(timeout=N) for N above this raises ValueError("timeout exceeds 8388"); WDT(id != 0) raises
-# ValueError too ("WDT(%d) doesn't exist") - rp2 only ever implements id 0. Both matched here.
+# SPECIFICATION.md Part F.1, read from the pinned v1.29.0 source rather than guessed - 1.29 added
+# a separate RP2350 branch, but the RP2040 cap is unchanged. A timeout above it raises
+# ValueError, as does any id but 0, which is all rp2 implements. Both matched here.
 
 
 class WDT:

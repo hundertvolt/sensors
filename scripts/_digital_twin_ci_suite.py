@@ -29,32 +29,26 @@ FRAM_STATE_PATH = STATE_DIR / "fram_state.json"
 SCD30_STATE_PATH = STATE_DIR / "scd30_state.json"
 CONFIG_DIR = STATE_DIR / "config"
 GENERATED_SRC_DIR = REPO_ROOT / "build" / "generated_src"
-# build/generated_src first: no static src/sensortask_wozi.py exists any more
-# (SPECIFICATION.md Part L.2) - scripts/run_digital_twin_ci.sh generates it
-# (and every other real device's module + wiring plan, Session 6.2) fresh, via buildgen, into this
-# gitignored directory before this suite ever runs.
+# build/generated_src first: no static sensortask_<device>.py exists any more (Part L.2).
+# run_digital_twin_ci.sh regenerates every device's module and wiring plan through buildgen into
+# this gitignored directory before the suite runs.
 MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen"
 HOST = "127.0.0.1"
 PORT = 18080  # a fixed, non-privileged, non-8080-default port - avoids colliding with a real
 # manual `scripts/run_unix_port_integration.sh` run on the same machine.
 DNS_PORT = 53  # captive_dns.py's DNSServer binds ("0.0.0.0", 53) unconditionally, real port only.
 
-# print_log.py's own per-module PrintLog `name=` values (src/*.py's `_NAME` constants) - a verbose
-# (DebugLevel=5) log line is `print(name, *args)`, so a line *starting* with one of these plus a
-# space is real per-module log output, not run_generic_integration.py's own unconditional banner
-# prints. Checked as a set (not all of them - some, like DNSSRV/NEOPIXEL, aren't guaranteed to log
-# anything during this suite's short runs) to confirm verbose logging is genuinely flowing, not to
-# pin every module's exact output. Includes BMP3XX even though 4 of the 6 real devices never
-# construct that driver at all - harmless, since a prefix simply never matches on those devices'
-# logs; not worth conditioning on ctx.drivers for a set membership check this loose.
+# Per-module PrintLog `name=` values. A verbose log line is `print(name, *args)`, so a line
+# starting with one of these plus a space is real module output, not the runner's own banners.
+
+# A loose set on purpose - some modules are not guaranteed to log at all in these short runs - so
+# it confirms verbose logging is flowing rather than pinning any module's output. BMP3XX stays
+# even where no device wires it: an unmatched prefix costs nothing.
 _VERBOSE_LOG_PREFIXES = ("SYSTEM", "SGP40", "SCD30", "BMP3XX", "WEBSERVER", "NOTIFY", "WIFI", "NTP", "FRAM")
 
-# Bus-fault-matrix knowledge, keyed by TOML `driver` identity (buildgen.twin_wiring's own vocabulary
-# - matches devices/*.toml's `driver = "..."` values, e.g. "scd30") rather than each driver's own
-# REST/error-log `_NAME` constant. Real per-driver facts, true for every device that happens to
-# carry that driver - not per-device facts - so these tables stay fixed; what varies per device is
-# only *which* of these drivers are actually present, derived from that device's own wiring plan
-# (RunContext.drivers) rather than hardcoded here.
+# Bus-fault-matrix knowledge keyed by TOML `driver` identity, not by each driver's own _NAME.
+# These are per-driver facts, true of every device carrying that driver, so the tables are fixed;
+# what varies is only which drivers a device wires, read from its own wiring plan.
 _BUS_FAULT_OPS = {  # the real bus-level call each driver's own bus access goes through - confirmed
     # directly against each driver's own read/write call sites, not guessed from the chip's API.
     "scd30": "writeto",
@@ -64,62 +58,37 @@ _BUS_FAULT_OPS = {  # the real bus-level call each driver's own bus access goes 
     "fram": "write",
 }
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
-# Driver -> its own REST/error-log `_NAME` constant - confirmed directly against
-# src/asy_scd30_driver.py/asy_sgp40_driver.py/asy_bmp3xx_driver.py/asy_fram_manager.py: all four
-# happen to equal `driver.upper()`, but this is NOT a general rule (CLAUDE.md/SPECIFICATION.md Part L.3
-# both warn against assuming that - e.g. NotificationCoordinator's own _NAME is "NOTIFY", not
-# "NOTIFICATION") - this table is the verified, narrow exception for exactly these four bus-attached,
-# fault-injectable drivers, not instance_name()/`_NAME` resolution reused generically.
+# Driver to its own REST/error-log `_NAME`, read from each driver's source. They all happen to
+# equal driver.upper() here, which is NOT a general rule - NotificationCoordinator's is "NOTIFY",
+# not "NOTIFICATION" (Part L.3). A verified narrow table, never generic _NAME resolution.
 _DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "isl29125": "ISL29125", "fram": "FRAM"}
-# The one registered error source whose own log is deliberately NOT FRAM-backed: AsyFramManager
-# builds a plain PrintLogHistory (asy_fram_manager.py), since the store cannot persist its own
-# failure history through itself. Run 5c's loss sweep therefore exempts it - everything else in
-# errcount must come back. tests/_sensortask_scenarios.py pins the set from the built object graph,
-# so a module that quietly loses its FRAM wiring cannot be waved through by adding a name here.
+# The one registered error source deliberately not FRAM-backed: AsyFramManager builds a plain
+# PrintLogHistory, the store being unable to persist its own failure history through itself. Run
+# 5c's loss sweep exempts it; _sensortask_scenarios.py pins the set from the real object graph.
 _IN_MEMORY_ONLY_ERROR_SOURCES = frozenset({"FRAM"})
 # Which bus-attached drivers produce a real /measurements reading (Run 4's "came back after being
 # faulted" check) vs which Run 4 asserts came back at 0.
 #
-# That second set is NOT "the ones whose error log is in-memory" - it used to be named and described
-# that way and the claim was simply false. SCD30/SGP40/BMP3XX are ALL FRAM-backed (each is
-# constructed with fram=fram - see build/generated_src/sensortask_<device>.py, and CLAUDE.md's
-# FRAM-backed-subset list), so none of them is in-memory-only by design. What actually makes
-# SCD30/BMP3XX reset to 0 here is narrower and entirely situational: Run 3 faults `fram:write`, so
-# the chip is dead for the whole run and nothing they logged could ever reach it. The property this
-# set asserts is therefore "with FRAM faulted, nothing persisted", not "these logs never persist" -
-# a real but much weaker claim, and one nothing currently re-checks against a HEALTHY chip. SGP40 is
-# excluded because Run 5b/5c give it that stronger, chip-healthy treatment, which Run 5c now
-# extends to every bus-attached driver this device wires (SCD30/BMP3XX/ISL29125 included).
-# "fram" is deliberately absent too, despite its own error log genuinely being in-memory-only
-# (AsyFramManager.pr is a plain PrintLogHistory, no fram= kwarg - confirmed directly): Run 3's own
-# `fram:write` fault can leave the persisted chip's chunk status byte stuck mid-write ("torn"), and
-# the dual-block+CRC self-healing read every other FRAM-backed module's own restore goes through
-# (asy_fram_manager.py's _read_chunk()) correctly detects and logs that as a genuine, fresh "FRAM"-
-# level error/warning on Run 4's very next boot - confirmed directly: the exact same history Run 3
-# itself already asserted was recorded reappears unchanged on Run 4's fresh process. Not old data
-# surviving (a real regression would be BMP3XX/SCD30 failing too, and they correctly show 0), and not
-# a defect - self-healing detecting real torn state IS the FRAM driver working as designed, the same
-# reasoning that already excludes SGP40's own history from an assertion here for the identical root
-# cause (see this function's own comment below).
+# The second set means "with FRAM faulted, nothing persisted", NOT "these logs are in-memory" -
+# what it was once wrongly named for. SGP40 and "fram" are each absent for their own separate
+# reason; digital_twin/README.md has both accounts in full.
 _MEASUREMENT_DRIVERS = frozenset({"scd30", "sgp40", "bmp3xx", "isl29125"})
 _NO_PERSIST_WHEN_FRAM_FAULTED = frozenset({"scd30", "bmp3xx", "isl29125"})
 _PERSISTED_ERROR_MODULES = ("SGP40",)  # Run 5b's own abrupt-restart subject, not a claim about
 # who has persistence: Run 5b reboots straight onto Run 5's state, and Run 5 faults only SGP40.
 # Run 5c proves the chip-healthy half for every bus-attached driver, via its own sweep set.
-# WIFI's own top-level error log is FRAM-backed too (WP1's
-# implicit-FRAM-wiring rule, CLAUDE.md/SPECIFICATION.md Part A.7 - AsyConnTime passes fram=fram
-# through to SensorReader.__init__ same as every other FRAM-wired module's own self.pr), so it
-# follows the same all-or-nothing abrupt-restart guarantee - checked separately (Run 8), not via
-# ctx.drivers, since it isn't bus-fault-injectable (no chip fake of its own).
+
+# WIFI's own log is FRAM-backed too, under the implicit-FRAM-wiring rule, so it follows the same
+# all-or-nothing abrupt-restart guarantee - checked separately in Run 8 rather than through
+# ctx.drivers, since it is not bus-fault-injectable and has no chip fake.
 
 # The one HTTP status every endpoint in this suite is expected to answer with - a non-200 anywhere
 # is a suite failure, never an alternative success path.
 _HTTP_OK = 200
 
-# The settings run 1 PUTs and every later run reads back unchanged (the persistence checks), the
-# thresholds the log/error-count assertions compare against, and the scripted fault counts handed
-# to run_generic_integration.py's own --fault/--wifi-outcome flags. Named here so the value a run
-# INJECTS and the value its assertion EXPECTS can never drift apart.
+# The settings Run 1 PUTs and every later run reads back, the thresholds the assertions compare
+# against, and the scripted fault counts handed to --fault/--wifi-outcome. Named here so the
+# value a run INJECTS and the value its assertion EXPECTS cannot drift apart.
 _TEST_DEBUG_LEVEL = 5
 _TEST_WARN_CO2 = 1800
 _TEST_SCD30_MEAS_INT = 4
@@ -133,101 +102,35 @@ _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the 
 # and slot count are therefore different numbers here, deliberately - BACKLOG item 35.
 _WIFI_PERSISTED_WARNINGS = 1
 
-# PUT /status {"ResetErrors": true} (asy_webserver_service.py's _put_status()) sequentially calls
-# reset_error_counter() on every registered error source, and each FRAM-backed one's own reset()
-# does a real, non-negligible FRAM write (print_log.py's PrintLogHistoryStore._write()) - not the
-# single fixed-cost op the suite's other requests are. WP1/WP2/WP3 grew the FRAM-backed subset to
-# 10+ entries on `dev` specifically (every CFGMGR_* logger, WIFI/NTP/WEBSERVER/SYSTEM, SGP40/BMP3XX,
-# plus dev's own two uart_link instances that no other device carries - CLAUDE.md's FRAM-backed-
-# subset list), so it exceeds _http()'s plain 5.0s default. Confirmed directly: the first two CI runs
-# on `dev` both failed with the exact same two checks (Run 1's and Run 5c's own ResetErrors PUT, at
-# both gc.threshold passes, 4 failures total) and no others - not a boot-time or wifi/fram-assertion
-# flake, a genuine per-request timeout on this one heavier-than-usual call.
-#
-# The value is DERIVED from the server's own per-request cap, not chosen freely: a client timeout at
-# or above that cap can never actually fire, because the server aborts the request first. An earlier
-# flat 20.0 here was exactly that - inert, and misleading about the real budget, since it also sat
-# above the 15s the real web UI gives up at (js/poll-manager.js's DEFAULT_TIMEOUT_MS). Sitting just
-# ABOVE the cap is deliberate: the suite then observes the server's own abort, which is diagnosable,
-# rather than a bare client-side timeout that says only "something took too long". What is still
-# missing is an explicit elapsed-time budget well below the cap - this timeout is a backstop, not a
-# performance assertion, and the suite is blind to the whole 5-15s band (BACKLOG.md item 24).
-#
-# Real hardware has since measured the call itself (dev bench board, 2026-09-17, 21 chunks): 6.32s
-# idle, 11.58s with three concurrent GET /status workers - see BACKLOG.md item 24. That is BELOW the
-# twin's own 8.151s for the same device, so the twin is not the optimistic end of this comparison.
-# It also settles a recommendation made from that session, which was to keep a flat 20.0 here: the
-# concern behind it (the budget must clear a call that really can take 11.6s) is already satisfied,
-# because the value below is above the server's own cap and the server aborts anything slower at
-# 15.0s - a legitimate reset cannot reach 17s in the first place. The bench tier keeps a larger
-# value for a reason the twin does not share: real WiFi latency on the abort's own close.
+# ResetErrors resets every source in turn, each FRAM-backed one paying a real chunk write, so it
+# far exceeds _http()'s 5s default. The value below is DERIVED from the server's own cap;
+# README.md has the derivation and BACKLOG item 24 the real-hardware measurements.
 _SERVER_OUTER_CAP_S = 15.0  # mirrors asy_webserver_service.py's own outer_cap_s default - keep in sync
 _RESET_ERRORS_TIMEOUT_S = _SERVER_OUTER_CAP_S + 2.0  # loopback: no WiFi close latency to absorb
-# The BUDGET, as opposed to the timeout above: a timeout only catches a call that never finished, so
-# without this the suite was blind to the whole band between "normal" and the cap. Sized from both
-# real datasets rather than picked: the twin's own worst observed `dev` sweep is 8.259s (5 reps,
-# 21 chunks) and real hardware is 6.32s idle / 11.58s under three concurrent readers, so 80% of the
-# cap sits ~45% above anything legitimate ever measured while still tripping well before the server
-# would abort. In chunk terms - the regression this actually guards against - `dev` would need ~10
-# more FRAM-backed sources to breach it, which is about what WP1/WP2/WP3 added between them. Only
-# checked on the idle path the suite actually drives; it runs no concurrent readers during a reset.
+# The BUDGET rather than the timeout above, which only catches a call that never finished. Sized
+# from both datasets - twin 8.259s worst, hardware 6.32s idle and 11.58s under load - so 80% of
+# the cap sits ~45% above anything legitimate, and dev needs ~10 more sources to breach it.
 _RESET_ERRORS_BUDGET_S = _SERVER_OUTER_CAP_S * 0.8
 
-# Run 11 (soak) - moved host-side from digital_twin/run_generic_integration.py's own now-retired
-# _soak() (SPECIFICATION.md's "Driver/DUT process separation" Part, 2026-09-14): this suite now
-# drives every soak request itself, over real HTTP, the same way Runs 1-10 already do via _http()
-# below, instead of delegating request-driving to the twin's own in-process HTTP client - the
-# client's own allocation/CPU work no longer shares the DUT's heap, ever.
+# Run 11 (soak), moved host-side from the twin's own retired _soak() ("Driver/DUT process
+# separation"): this suite drives every soak request over real HTTP as Runs 1-10 do, so the
+# client's allocation and CPU work never shares the DUT's heap.
 _SOAK_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
-# 40 (wozi's own original calibration) genuinely isn't enough warmup for `dev` specifically - its
-# two extra wired uart_link instances (devices/dev.toml; wozi has none) mean more one-time,
-# post-boot settling (module-level caches/config-derived structures populated once, the same
-# asymptotically-decaying-then-flat shape wozi's own boot already shows on a smaller scale, not a
-# real unbounded leak - confirmed directly, 2026-09-14: gc.mem_free() plateaus for both devices
-# given enough idle wall-clock time after boot, wozi's own curve flattening well inside 40 cycles'
-# worth of real time, dev's own needing roughly 2.5x that before it does too, reproduced with the
-# uart_link exercise/listen tasks fully disabled - so this is boot settling proportional to module
-# count, not UART traffic). 100 gives every device, not just wozi, real wall-clock room to finish
-# settling before the measured window starts, so the trend check measures a genuine plateau instead
-# of an in-progress one-time settle.
+# 100, not wozi's original 40: dev's two extra uart_link instances mean more one-time post-boot
+# settling, so the trend check would otherwise measure an in-progress settle rather than a
+# plateau. digital_twin/README.md has the measurement.
 _SOAK_WARMUP_CYCLES = 100
 _SOAK_CYCLES = 20
-# The one thing this move genuinely can't take host-side: gc.mem_free() only exists inside the
-# twin's own heap, and deliberately has no REST route. digital_twin/run_generic_integration.py's
-# --mem-sample-interval-ms arms a trivial background task there (_mem_sampler()) that prints one
-# "MEM_SAMPLE <time.time()> <gc.mem_free()>" line per interval, decoupled from request handling -
-# this suite reads those lines back out of the twin's own captured log the same way it already
-# reads watchdog.would_have_triggered_count (_would_have_triggered_count() below), never by calling
-# back into the twin process. 25ms is dense enough that even a fast warmup+cycles pass (a few
-# hundred ms of loopback HTTP) still yields plenty of samples for a meaningful quarter split - the
-# sampler itself costs one gc.collect()+print() per interval, cheap enough that a short interval
-# costs nothing measurable.
+# The one thing that move could not take host-side: gc.mem_free() lives in the twin's heap and
+# has no REST route, so --mem-sample-interval-ms prints a MEM_SAMPLE line per interval and this
+# suite scrapes them from the captured log, as it already does the watchdog counter.
+
+# 25ms is dense enough that even a fast pass yields plenty of samples for a quarter split, and
+# one gc.collect()+print() per interval costs nothing measurable.
 _MEM_SAMPLE_INTERVAL_MS = 25
-# _MEM_TREND_*: originally calibrated (run_wozi_integration.py, since retired) from five
-# independent 100-cycle soaks - 25-sample first/last quarters - trend deltas of +2623, +796, -410,
-# +1729, -116 bytes: max magnitude 2623, scattered around zero (evidence against a real leak, not
-# the absence of variance). That calibration's own flat 8192-byte tolerance (~3.1x that magnitude)
-# was ported forward (2026-09-14, the host-side move) as `8192 * sqrt(25/quarter)`, on the
-# assumption a trend's standard error shrinks with 1/sqrt(quarter_size) the way it would for
-# independent samples. It doesn't: real CI kept tripping this past the scaled tolerance - a
-# different device each time - and a same-tree local investigation (2026-09-14) both reproduced it
-# directly (two independent wozi boots in a row, 3298/2854 and 4361/2847 bytes, well past the
-# scaled tolerance) and measured why. Sliding a 206-sample window (this suite's own real
-# _SOAK_CYCLES=20 quarter size) across a region already 20+ real seconds past all post-boot
-# settling - genuinely flat, confirmed by eye against the raw MEM_SAMPLE trace - the trend
-# statistic's own empirical standard deviation came in at 1496-1964 bytes: 3.4-4.5x larger than
-# the `sqrt(25/quarter)` formula's IID assumption predicts at this quarter size, because
-# consecutive 25ms `gc.mem_free()` samples are heavily autocorrelated (the same reactive-GC-paced
-# heap barely moves between two adjacent 25ms readings), so more samples buys far less real
-# noise reduction than independent-sample statistics assume. The formula was tightening fastest
-# exactly where it needed to be loosest.
-# Fixed by grounding the tolerance in each attempt's own observed noise, not a historical constant
-# extrapolated through a scaling law that doesn't hold: _mem_trend() below measures the spread
-# *within* each quarter separately (decoupled from the early-vs-late difference the trend itself
-# measures, so a genuine leak's own decline doesn't inflate the very tolerance meant to catch it)
-# and sets the tolerance as a generous multiple of that. Self-calibrating per device/run/quarter
-# size - no magic constant to keep re-deriving as the soak's own shape changes - and, per the same
-# 2026-09-14 measurement, comfortably covers the observed worst case (5889 bytes) with room left.
+# The tolerance is grounded in each attempt's own observed noise rather than a historical
+# constant scaled by a law that does not hold here - consecutive 25ms gc.mem_free() samples are
+# heavily autocorrelated. digital_twin/README.md has the measurement and what it replaced.
 _MEM_TREND_TOLERANCE_SD_MULTIPLIER = 3.0
 
 # A fixed, recognizable DNS transaction ID, so a real answer from the captive DNSServer can be told
@@ -251,11 +154,9 @@ class RunContext:
     wiring_plan_path: Path
     drivers: frozenset[str]
     gc_threshold: int  # passed to every spawned run_generic_integration.py subprocess via
-    # --gc-threshold - CLAUDE.md's/SPECIFICATION.md Part I.4(e)'s standing rule (sharpened
-    # 2026-09-14 from "new stress/hammer tests" to every test, digital-twin runs included): the
-    # WHOLE suite must pass clean under MicroPython's own real gc.threshold(-1) default before it's
-    # ever run again with the project's chosen gc.threshold(32768) - main() runs run_suite() twice,
-    # once per value, never once with a single hardcoded threshold.
+    # --gc-threshold, under Part I.4(e)'s standing rule: the WHOLE suite must pass clean at
+    # MicroPython's own gc.threshold(-1) before it is run again at the project's chosen 32768.
+    # main() therefore runs run_suite() twice, once per value, never once with one hardcoded.
 
 
 # Sharpened memory-safety discipline (CLAUDE.md, SPECIFICATION.md Part I.4(e), 2026-09-14): every
@@ -278,11 +179,9 @@ def _check(*, condition: bool, msg: str) -> None:
 
 
 def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
-    # SPECIFICATION.md Part I.4(e) (sharpened 2026-09-14): zero MemoryErrors, caught-and-logged
-    # included - a caught allocation failure that merely avoided a crash is still a design defect,
-    # not a passing result. Checked for every run's log, not only the soak test's own HTTP-level
-    # failures list, since a MemoryError can just as well be logged by src/'s own catch-and-degrade
-    # handlers (SPECIFICATION.md Part I.4(a)/(b)) during any run, not only under soak-style hammering.
+    # Part I.4(e): zero MemoryErrors, caught-and-logged included, a caught allocation failure
+    # being a design defect rather than a passing result. Checked on every run's log, not only
+    # the soak's, since src/'s catch-and-degrade handlers can log one during any run.
     log_text = _read_log(log_path)
     _check(
         condition="MemoryError" not in log_text,
@@ -339,24 +238,17 @@ def _put_reset_errors_timed(run_label: str) -> int:
 
 
 def _error_type_count(entry: dict[str, Any], type_char: str = "E") -> int:
-    # entry["counter"] (PrintLogHistory's own ErrCount) increments on both errors ("E") AND
-    # warnings ("W") pushed into the same history - a driver's own "recovered after N failures"
-    # notice is itself a "W" entry (see e.g. src/asy_sgp40_driver.py's own read-loop recovery path),
-    # so a real recovery can bump "counter" without any NEW failure. Counting one specific type's
-    # history entries (default "E") is the actual "did N of THIS kind of event happen" signal this
-    # suite needs - WIFI's own scripted connect failures are "W"-typed (asy_wifi_service.py's
-    # conn_fail_to_hotspot uses wrn_s(), not err_s()), so Run 8 passes type_char="W".
+    # entry["counter"] counts errors AND warnings in one history, and a "recovered after N
+    # failures" notice is itself a "W" - so a recovery bumps it with no new failure. Counting one
+    # type's entries is the real "did N of THIS happen" signal; WIFI's are "W", hence Run 8.
     history = entry.get("history", [])
     return sum(1 for item in history if isinstance(item, dict) and item.get("type") == type_char)
 
 
 def _errcount(name: str) -> dict[str, Any]:
-    # TOLERANT: answers {} for any /status read it could not parse, because the polling helpers below
-    # call this in a loop and a transient non-200 during boot must retry, not abort. That tolerance
-    # is a hazard at an assertion site: {} reads as counter 0 with an empty history, so any check
-    # whose EXPECTED value is 0 would hold just as happily against a server that answered nothing.
-    # Assertions must use _errcount_required() below instead - the split is what stops that mistake
-    # being reachable at all, rather than a rule each new call site has to remember.
+    # TOLERANT: answers {} for a /status it could not parse, since the polling helpers call it in
+    # a loop and a transient non-200 during boot must retry. Assertions take _errcount_required()
+    # instead - {} reads as counter 0 - a split that makes the mistake unreachable.
     status, body = _http("GET", "/status")
     if status != _HTTP_OK or not isinstance(body, dict):
         return {}
@@ -365,10 +257,9 @@ def _errcount(name: str) -> dict[str, Any]:
 
 
 def _errcount_required(name: str) -> dict[str, Any]:
-    # STRICT: for assertion sites. Raises rather than returning {}, so an unreadable /status becomes
-    # the enclosing run function's own `except Exception` -> _fail() instead of a silent pass. Every
-    # registered error source is present in errcount whether or not it ever logged, so a missing
-    # entry is always a real failure and never an empty log.
+    # STRICT, for assertion sites: raises rather than returning {}, so an unreadable /status
+    # becomes the caller's _fail() instead of a silent pass. Every registered source appears in
+    # errcount whether or not it logged, so a missing entry is always a real failure.
     entry = _errcount(name)
     if not entry:
         raise RuntimeError(f"GET /status did not yield a readable errcount entry for {name!r} - the server answered nothing usable, so no assertion about its counter would mean anything")
@@ -389,10 +280,9 @@ def _errcount_all() -> dict[str, dict[str, Any]]:
 
 
 def _wait_for_error_counts_to_settle(names: list[str], timeout_s: float, samples: int = 3, interval_s: float = 2.0) -> dict[str, int]:
-    # A bounded fault is exhausted when its drivers stop adding "E" entries - an observable event,
-    # not a wall-clock guess, so this samples until `samples` consecutive reads agree for every name.
-    # Needed because a snapshot taken mid-fault would be compared after the reboot against entries
-    # that landed after it, which reads as a persistence failure when nothing was lost at all.
+    # A bounded fault is exhausted when its drivers stop adding "E" entries - observable, not a
+    # wall-clock guess - so this samples until consecutive reads agree for every name. A snapshot
+    # taken mid-fault would read as a persistence failure when nothing was lost.
     deadline = time.monotonic() + timeout_s
     agreed = 0
     previous: dict[str, int] = {}
@@ -444,11 +334,9 @@ def _wait_for_errcount_above(name: str, floor: int, timeout_s: float) -> dict[st
 
 
 def _wait_for_error_type_count(name: str, target: int, timeout_s: float, type_char: str = "E") -> dict[str, Any]:
-    # Same "poll, never guess a sleep" reasoning as _wait_for_errcount_above(), but keyed on one
-    # specific type's count _error_type_count() extracts rather than the raw counter (which a "W"
-    # recovery notice also bumps). A fixed sleep here encodes a host-speed assumption: on this
-    # project's own bench Pi4 a bounded 3-fault SGP40 run needs ~8s to record all three and settle,
-    # where an x86 CI runner needs ~2s, so a 6s sleep passes there and samples mid-sequence here.
+    # _wait_for_errcount_above()'s poll-never-sleep reasoning, keyed on one type's count rather
+    # than the raw counter a "W" also bumps. A fixed sleep encodes a host-speed assumption: the
+    # bench Pi4 needs ~8s where an x86 runner needs ~2s, so 6s passes there and samples here.
     deadline = time.monotonic() + timeout_s
     entry: dict[str, Any] = {}
     while time.monotonic() < deadline:
@@ -487,16 +375,14 @@ def _spawn(ctx: RunContext, extra_args: list[str], log_path: Path) -> subprocess
         "--device", ctx.device,
         "--host", HOST,
         "--port", str(PORT),
-        # run_generic_integration.py's own RunConfig defaults these to None (in-memory only) -
-        # unlike run_wozi_integration.py's/run_dev_integration.py's own hardcoded defaults, so this
-        # suite's persistence-across-a-real-reboot checks (Run 2, Run 4, Run 5b/5c) need them
-        # supplied explicitly, pointed at the same fixed paths _clean_state() wipes.
+        # RunConfig defaults these to None (in-memory only), unlike the retired per-device entry
+        # points, so this suite's persistence-across-a-reboot checks supply them explicitly,
+        # pointed at the same fixed paths _clean_state() wipes.
         "--fram-state-path", str(FRAM_STATE_PATH),
         "--scd30-state-path", str(SCD30_STATE_PATH),
-        # Applied to every run this suite spawns, not only the soak test - CLAUDE.md's/
-        # SPECIFICATION.md Part I.4(e)'s sharpened standing rule (2026-09-14) covers the whole
-        # suite, digital-twin runs alike, not just "new stress/hammer tests". main() runs the whole
-        # suite twice, once per RunContext.gc_threshold value.
+        # Applied to every run this suite spawns, not only the soak: Part I.4(e)'s rule covers
+        # the whole suite, not just stress tests. main() runs it twice, once per
+        # RunContext.gc_threshold value.
         "--gc-threshold", str(ctx.gc_threshold),
         *extra_args,
     ]
@@ -528,13 +414,12 @@ def _close_log_and_check_memory_safety(proc: subprocess.Popen[str], run_label: s
 
 
 def _proc_diagnostic_fields(pid: int) -> dict[str, str]:
-    # Best-effort /proc introspection (Linux-only, exactly what every CI runner and dev box here
-    # already is) for a process that ignored SIGINT for `timeout_s` seconds - `wchan` in particular
-    # names the kernel function the process is actually blocked in (e.g. "do_poll" vs
-    # "hrtimer_nanosleep" vs "do_futex"), which tells a real syscall-level wait apart from a wedged
-    # heap or a runaway CPU-bound loop without needing a debugger attached. Never allowed to raise -
-    # this is diagnostic-only, and a missing/unreadable /proc entry (process just exited, non-Linux,
-    # permission quirk) must not itself fail the suite or mask the real timeout.
+    # Best-effort /proc introspection for a process that ignored SIGINT: `wchan` names the kernel
+    # function it is blocked in, which separates a real syscall wait from a wedged heap or a
+    # runaway loop with no debugger attached. Linux-only, which every runner here is.
+
+    # Never allowed to raise - diagnostic only, so a missing or unreadable /proc entry must not
+    # fail the suite or mask the real timeout.
     fields: dict[str, str] = {}
     proc_dir = Path(f"/proc/{pid}")
     try:
@@ -562,10 +447,9 @@ def _shutdown(proc: subprocess.Popen[str], run_label: str, timeout_s: float = 15
         try:
             proc.wait(timeout=timeout_s)
         except subprocess.TimeoutExpired:
-            # Never diagnosed before (see this suite's own module-level rationale for why this
-            # block exists): capture what the wedged process was actually doing before killing it,
-            # so a recurrence is self-diagnosing from the CI job log alone instead of leaving only
-            # "exit code -9" behind.
+            # Capture what the wedged process was doing before killing it, so a recurrence is
+            # self-diagnosing from the CI job log alone rather than leaving only "exit code -9" -
+            # which is all this ever left behind before.
             elapsed = time.monotonic() - start
             diag = _proc_diagnostic_fields(proc.pid)
             log_file = getattr(proc, "ci_log_file", None)
@@ -631,11 +515,9 @@ _MEM_SAMPLE_LINE_FIELD_COUNT = 3  # "MEM_SAMPLE", the timestamp, the byte count
 
 
 def _parse_mem_samples(log_text: str) -> list[tuple[float, int]]:
-    # digital_twin/run_generic_integration.py's own _mem_sampler() (armed via
-    # --mem-sample-interval-ms) prints "MEM_SAMPLE <time.time()> <gc.mem_free()>" once per
-    # interval - the same captured-log-line pattern _would_have_triggered_count() above already
-    # uses for the twin's other internal-only value. Malformed/foreign lines are skipped rather
-    # than raising, matching _would_have_triggered_count()'s own tolerance for a partial log.
+    # The twin's _mem_sampler() prints one MEM_SAMPLE line per interval - the same captured-log
+    # pattern _would_have_triggered_count() already reads for its own internal-only value.
+    # Malformed lines are skipped rather than raising, matching that function's tolerance.
     samples: list[tuple[float, int]] = []
     for line in log_text.splitlines():
         if not line.startswith("MEM_SAMPLE "):
@@ -684,15 +566,13 @@ def _wait_for_dns_answer(host: str, timeout_s: float) -> bool:
 
 
 def _bus_fault_drivers(ctx: RunContext) -> list[str]:
-    # Sorted, deterministic subset of ctx.drivers this suite actually knows how to fault/check -
-    # every real device's own bus-attached driver set (scd30/sgp40/fram always; bmp3xx on wozi/dev;
-    # isl29125 on dev) is covered by _BUS_FAULT_OPS today, so this is currently a no-op filter. It
-    # stays a filter (not a bare ctx.drivers sort) so a future bus-attached driver this suite has
-    # not been taught to fault yet is skipped rather than KeyError-ing in Run 3/4 - but that skip
-    # is SILENT, and it has already cost real coverage once: the ISL29125 landed with its own
-    # fault-capable chip fake and sat outside every run here until 2026-09-18, because nothing
-    # fails when a driver is merely missing from these tables. Adding a bus-attached driver means
-    # adding it to _BUS_FAULT_OPS/_DRIVER_ERRCOUNT_NAME/_MEASUREMENT_DRIVERS in the same change.
+    # The sorted subset of ctx.drivers this suite knows how to fault. Every real device's set is
+    # covered today, so it filters nothing - but it stays a filter so an untaught driver is
+    # skipped rather than raising KeyError in Run 3/4.
+
+    # That skip is SILENT, and it has cost real coverage: the ISL29125 arrived with its own
+    # fault-capable fake and sat outside every run here until 2026-09-18. A new bus-attached
+    # driver joins _BUS_FAULT_OPS/_DRIVER_ERRCOUNT_NAME/_MEASUREMENT_DRIVERS in the same change.
     return sorted(d for d in ctx.drivers if d in _BUS_FAULT_OPS)
 
 
@@ -762,13 +642,9 @@ def _run_2_reboot_settings_persistence(ctx: RunContext) -> None:
 
 
 def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
-    # ---- Run 3: reboot with a sustained/high-repeat-count ("permanent") bus-fault matrix across
-    # every bus-level error-counted module this DEVICE actually has (derived from ctx.drivers, never
-    # a hardcoded list - a device without bmp3xx simply never faults/checks it here) at once -
-    # proves the system keeps logging/counting every failure AND the watchdog never starves under
-    # sustained failure (bounded, immediately-raised errors, not an indefinite hang - see this
-    # file's own module docstring and digital_twin/_fault_injection.py's for why that distinction
-    # matters here). ----
+    # ---- Run 3: reboot with a sustained bus-fault matrix across every bus-level error-counted
+    # module this device wires, from ctx.drivers rather than a list. Proves the system keeps
+    # logging and that the watchdog survives sustained immediately-raised errors. ----
     log3 = ctx.logs_dir / "run3_sustained_bus_fault_matrix.log"
     fault_drivers = _bus_fault_drivers(ctx)
     fault_args: list[str] = []
@@ -777,12 +653,9 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
     proc = _spawn(ctx, fault_args, log3)
     try:
         _wait_until_serving(proc)
-        # Wait for every faulted module to have recorded a real error, rather than sleeping a
-        # guessed interval and hoping: "the fault has actually been exercised" is a real event to
-        # wait for, and a fixed sleep here encodes the same host-speed assumption that made the old
-        # Run 4 check flaky (an x86 CI runner gets through several read cycles in the time this
-        # bench Pi4 manages one). Keyed on "E"-typed entries, never the raw counter - a "W" recovery
-        # notice bumps that too, so `counter > 0` could be satisfied without the fault ever landing.
+        # Wait for every faulted module to have recorded a real error rather than sleeping a
+        # guess: a fixed sleep encodes the host-speed assumption that made the old Run 4 flaky.
+        # Keyed on "E" entries, never the raw counter, which a "W" recovery notice also bumps.
         errcount_names = [_DRIVER_ERRCOUNT_NAME[d] for d in fault_drivers]
         faulted = {name: _wait_for_error_type_count(name, 1, timeout_s=45.0) for name in errcount_names}
         for path in ("/measurements", "/sensors", "/status"):
@@ -800,28 +673,21 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
 
 
 def _run_4_bus_fault_persistence_sweep(ctx: RunContext) -> None:
-    # ---- Run 4: reboot fault-free after Run 3's matrix - what must reset, and that every faulted
-    # bus actually comes back. Whichever of SCD30/BMP3XX this device actually has are in-memory-only
-    # by design and must read back 0 (SPECIFICATION.md Part A.7); that direction is deterministic
-    # and is what this run proves. ----
-    #
-    # This run deliberately does NOT assert that SGP40's FRAM-backed history survived Run 3 - it
-    # cannot. Run 3's own matrix faults `fram:write` (when this device has a fram instance, which
-    # every real device does), so the chip is unwritable for that whole run and nothing SGP40 logs
-    # there can ever reach it. The check that used to stand here (`counter > 0`) was unsound twice
-    # over: `counter` counts "W" as well as "E", so it was only ever satisfied by a FRESH warning
-    # from this run's own boot rather than by anything persisted, and waiting on that warning is a
-    # host-speed race (it lands before the sample on an x86 CI runner, after it on the bench Pi4 -
-    # measured). Losing FRAM-backed history when the FRAM itself was unavailable is accepted
-    # behavior, not a defect (project owner's call, 2026-09-11): no recovery scheme is wanted for a
-    # reboot that catches the chip mid-operation. The real persistence claim is proven in Run 5b
-    # instead, where the chip is healthy and the outcome is deterministic on any host.
-    #
-    # FRAM's own error log is excluded from the reset-to-0 sweep below for the same root cause, one
-    # layer down (see _NO_PERSIST_WHEN_FRAM_FAULTED's own comment): Run 3's `fram:write` fault can leave
-    # a chunk's status byte torn mid-write, and the dual-block+CRC self-healing read every other
-    # FRAM-backed module's restore goes through then correctly detects and logs that as a genuine,
-    # fresh "FRAM"-level entry on this very run's own boot - not persisted data, and not a defect.
+    # ---- Run 4: reboot fault-free after Run 3's matrix - what must reset, and that every
+    # faulted bus comes back. With FRAM faulted throughout Run 3, the swept drivers must read
+    # back 0, which is deterministic and is what this run proves. ----
+
+    # It deliberately does NOT assert that SGP40's history survived Run 3, which it cannot: that
+    # run faults `fram:write`, so nothing logged there ever reached the chip. Losing history when
+    # the chip was unavailable is accepted (owner, 2026-09-11), and Run 5b proves the real claim.
+
+    # The `counter > 0` check that once stood here was unsound twice over: counter includes "W",
+    # so only a FRESH warning from this boot satisfied it, and waiting on that warning is a
+    # host-speed race - it lands before the sample on x86 and after it on the bench Pi4.
+
+    # FRAM's own log is excluded from the reset-to-0 sweep below for the same root cause a layer
+    # down: Run 3's fault can leave a chunk torn, and the self-healing read correctly logs that
+    # as a fresh FRAM entry on this boot - not persisted data, and not a defect.
     log4 = ctx.logs_dir / "run4_bus_fault_persistence_sweep.log"
     proc = _spawn(ctx, [], log4)
     try:
@@ -851,10 +717,9 @@ def _run_4_bus_fault_persistence_sweep(ctx: RunContext) -> None:
 
 
 def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> None:
-    # ---- Run 5: clean boot, a small BOUNDED fault (not sustained) - proves recovery, the other
-    # half of the self-healing story Run 3 alone can't show (it only proves "doesn't crash while
-    # still broken", not "comes back once the fault clears"). SGP40 is present on every real device
-    # (SPECIFICATION.md Part L.3), so this run needs no device-conditional logic at all. ----
+    # ---- Run 5: clean boot with a small BOUNDED fault, proving recovery - the half Run 3 cannot
+    # show, since it only proves the system survives while still broken. SGP40 is on every real
+    # device (Part L.3), so this needs no device-conditional logic. ----
     _clean_state()
     log5 = ctx.logs_dir / "run5_recovery_after_bounded_fault.log"
     proc = _spawn(ctx, ["--fault", f"sgp40:writeto:{_BOUNDED_FAULT_COUNT}"], log5)
@@ -881,20 +746,17 @@ def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> None:
 
 def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext) -> None:
     # ---- Run 5b: reboot straight onto Run 5's state, fault-free. Run 5 left exactly
-    # _BOUNDED_FAULT_COUNT "E" entries on a HEALTHY chip, write-through (print_log.py's
-    # _store_err() writes on every push - no deferred flush to race), so they SHOULD come back. But
-    # Run 5 shut down abruptly, and an abrupt shutdown can catch a chunk write in flight: both
-    # status bytes are set to _STATUS_BUSY before the payload is touched, so an interrupted write
-    # leaves them there, PrintLogHistoryStore.setup()'s _read() then fails, and its _write() fallback
-    # stores the empty ring. Measured here at roughly 1 abrupt restart in 8.
-    #
-    # That loss is accepted behavior, not a defect (project owner's call, 2026-09-11): no recovery
-    # scheme is wanted for a reboot that catches the chip mid-operation. So this run asserts the
-    # invariant that does hold unconditionally - the restore is ALL-OR-NOTHING, never partial and
-    # never garbled, which is the dual-block + CRC + busy-flag protocol's actual job. Run 5c below
-    # covers the case that must never lose anything. Mirrored at the mock tier
-    # (tests/test_fram_integration.py) and on real silicon (tests_hardware/flash/test_fram_storage.py).
-    #
+    # _BOUNDED_FAULT_COUNT "E" entries on a healthy chip, written through on every push, so they
+    # SHOULD come back.
+
+    # But Run 5 shut down abruptly, which can catch a chunk write in flight: both status bytes go
+    # to _STATUS_BUSY before the payload is touched, so an interrupted write leaves them there,
+    # the restore read fails and its fallback stores the empty ring. Roughly 1 restart in 8.
+
+    # That loss is accepted (owner, 2026-09-11), so this asserts what holds unconditionally: the
+    # restore is ALL-OR-NOTHING, the dual-block+CRC+busy-flag protocol's actual job. Run 5c
+    # covers the case that must never lose anything; mirrored at the mock and flash tiers.
+
     # A timing race cannot make this fail spuriously: the poll returns either the fully restored ring
     # or a still-empty one (setup()'s restore is a single history.extend(), never observable half
     # done), and both satisfy the invariant. ----
@@ -919,23 +781,19 @@ def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext) -> None:
 
 
 def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -> None:
-    # ---- Run 5c: the case that must NEVER lose anything - a commanded reboot. Production's own
-    # system_service._reboot() pauses permanent storage before it resets, precisely so no FRAM chunk
-    # operation can be in flight across the restart; `PUT /system {"SystemCmd": "mempause"}` is that
-    # same pause, reachable over REST. With it held, none of _write()/_read()/clear() can start, so
-    # no status byte can be left at _STATUS_BUSY and the restore is deterministic - measured 20/20
-    # here against roughly 1-in-8 loss for the unpaused abrupt shutdown Run 5b covers.
-    #
+    # ---- Run 5c: the case that must NEVER lose anything, a commanded reboot. _reboot() pauses
+    # permanent storage first so no chunk operation is in flight, and mempause is that same pause
+    # over REST - so no status byte is left busy and the restore is deterministic, 20/20 measured.
+
     # This is what makes the pair sound: Run 5b alone would pass even if persistence never worked at
     # all (an empty ring satisfies all-or-nothing), which is exactly the hole the old Run 4 check had.
     #
     # Device-wide since 2026-09-18: every bus-fault-injectable driver this device wires gets its
     # own chip-healthy fault link, and the final reboot then checks the whole errcount table.
     #
-    # One fault per PROCESS, chained onto the previous link's persisted state rather than faulting
-    # every driver at once: three together exhaust the task-restart budget and the DEVICE reboots
-    # itself mid-run, which is not the commanded reboot under test (SPECIFICATION.md Part C.4.1).
-    # Chaining also makes each link a restore check, which one fault-everything boot could not be. ----
+    # One fault per PROCESS, chained onto the previous link's state: three at once exhaust the
+    # task-restart budget and the device reboots itself mid-run, which is not the commanded
+    # reboot under test (Part C.4.1). Chaining also makes each link its own restore check. ----
     _clean_state()
     drivers = _healthy_store_fault_drivers(ctx)
     recorded: dict[str, int] = {}
@@ -994,18 +852,13 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
             _check(condition=now >= had, msg=f"Run 5c: {name} kept the {had} error(s) it had logged before the commanded reboot ({now} found, {restored_table.get(name)!r})")
         _check(condition=sorted(restored_table) == sorted(snapshot_table), msg=f"Run 5c: the reboot registered exactly the same error sources, so no row silently dropped out of this sweep (before {sorted(snapshot_table)!r}, after {sorted(restored_table)!r})")
         _check(condition=_mem_paused() is False, msg="Run 5c: the storage pause did NOT survive the reboot (it is RAM-only by design)")
-        # Every real device wires SGP40's compensation source to SCD30 (devices/*.toml); a
-        # compensation read racing SCD30's cold-start after this fresh boot used to log a real,
-        # spurious E18/W14 pair for that ordinary startup timing (SPECIFICATION.md Part C.14.2,
-        # fixed 2026-09-12 - found via this exact check racing that timing). Fixed at the source now, so
-        # this sleep is no longer covering that up; kept as a plain settle window so the check below
-        # stays about ResetErrors actually clearing the log, not about racing any boot-time read.
+        # Every device wires SGP40's compensation source to SCD30, and a read racing SCD30's
+        # cold start used to log a spurious E18/W14 pair (Part C.14.2, fixed 2026-09-12). Now
+        # only a settle window, keeping the check below about ResetErrors and not a boot read.
         time.sleep(3.0)
-        # The restored history must not be a read-only relic: a ResetErrors PUT has to clear it on
-        # the chip, for every swept source at once rather than only the one this run faulted first.
-        # Deliberately issued after the poll above confirmed setup() ran, so this checks the
-        # ordinary case; a reset issued *before* setup() is covered separately (Part C.7
-        # - it persists straight away now and the later setup() must not undo it).
+        # The restored history must not be a read-only relic: ResetErrors has to clear it on the
+        # chip, for every swept source at once. Issued after the poll confirmed setup() ran, so
+        # this is the ordinary case; a reset issued BEFORE setup() is covered separately (C.7).
         status = _put_reset_errors_timed("Run 5c")
         _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /status ResetErrors accepted (status {status})")
         cleared_table = _errcount_all()
@@ -1020,10 +873,9 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
 
 
 def _run_6_configure_ssid(ctx: RunContext) -> None:
-    # ---- Run 6: clean boot, configure a real SSID (persisted) for Run 7's WiFi test below - a
-    # real configured SSID, not the "SSID==''" unconfigured shortcut, is needed for a genuine
-    # STA-connect-failure cycle (matches tests/test_digital_twin_sensortask_integration.py's own
-    # in-process precedent for this same distinction). ----
+    # ---- Run 6: clean boot, configuring a real persisted SSID for Run 7. A genuine
+    # STA-connect-failure cycle needs a real SSID, not the unconfigured empty-string shortcut -
+    # the same distinction the in-process twin integration test makes. ----
     _clean_state()
     log6 = ctx.logs_dir / "run6_configure_ssid.log"
     proc = _spawn(ctx, [], log6)
@@ -1039,21 +891,13 @@ def _run_6_configure_ssid(ctx: RunContext) -> None:
 
 
 def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
-    # ---- Run 7: reboot with scripted repeated STA-connect failures ("no access point found") -
-    # real-world WiFi fault. Drives the real STA -> hotspot fallback state machine
-    # (conn_fail_to_hotspot=5 real scripted failures), starts the real DNSServer, and confirms it
-    # actually answers a real UDP DNS query - not just that the internal state flipped. WiFi/NTP/
-    # SystemService are mandatory infrastructure on every real device (never a [[instance]] entry,
-    # SPECIFICATION.md Part L.3's device TOML schema), so this run needs no device-conditional logic.
-    #
-    # Only possible because of digital_twin/_unix_port_udp_addr_shim.py: BACKLOG.md's "Real-hardware
-    # verification gap for asy_udp_socket.py/captive_dns.py" entry root-caused three separate
-    # Unix-port-only socket quirks (a plain (host, port) tuple rejected by bind()/connect()/sendto(),
-    # and recvfrom() returning a raw sockaddr struct instead of the (str, int) shape production code
-    # expects) that made a real UDP round trip impossible under this harness before that shim existed
-    # - all three correct, required behavior for real rp2 hardware, so src/ itself stays untouched;
-    # the shim works around them entirely from twin-side code, applied by
-    # run_generic_integration.py's own main() before anything constructs a socket. ----
+    # ---- Run 7: reboot with scripted repeated STA-connect failures. Drives the real hotspot
+    # fallback state machine, then confirms the real DNSServer answers a real UDP query rather
+    # than merely that internal state flipped. Mandatory infrastructure, so no device logic.
+
+    # Only possible because of _unix_port_udp_addr_shim.py, which works around three Unix-port
+    # socket quirks that made a real UDP round trip impossible here - all three correct behavior
+    # for real rp2 hardware, so src/ stays untouched and the shim is entirely twin-side. ----
     log7 = ctx.logs_dir / "run7_wifi_hotspot_dns.log"
     proc = _spawn(
         ctx,
@@ -1062,23 +906,19 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
     )
     try:
         _wait_until_serving(proc)
-        # Waits for the FULL scripted failure count (conn_fail_to_hotspot=5), not just > 0 (the
-        # very first failure) - hotspot activation, and therefore the DNSServer, doesn't start
-        # until the 5th one. Waiting for all 5 here first, then giving the DNS check its own
-        # separate budget, is more robust than one long guessed timeout covering both phases -
-        # a real CI runner observed needing well over the first attempt's combined budget.
+        # Waits for the FULL scripted failure count, not just the first: hotspot activation, and
+        # so the DNSServer, only starts on the fifth. Waiting for all five and then giving DNS
+        # its own budget beats one guessed timeout covering both phases, as a real runner showed.
         entry = _wait_for_errcount_above("WIFI", _WIFI_SCRIPTED_FAILURES - 1, timeout_s=90.0)
         _check(condition=entry.get("counter", 0) >= _WIFI_SCRIPTED_FAILURES, msg=f"Run 7: all {_WIFI_SCRIPTED_FAILURES} repeated WiFi connect failures drove real hotspot fallback and were recorded in WIFI's error counter ({entry!r})")
         logged = _error_type_count(entry, type_char="W")
         _check(condition=logged == _WIFI_PERSISTED_WARNINGS, msg=f"Run 7: those {_WIFI_SCRIPTED_FAILURES} identical verdicts spent {_WIFI_PERSISTED_WARNINGS} history slot, not one each - the ring still holds what preceded the outage ({entry!r})")
-        # 30s originally timed out twice in a row on real GitHub Actions runners even after the
-        # errcount-wait fix above landed and was confirmed working - turned out to be a red herring:
-        # the real cause was scripts/run_digital_twin_ci.sh's interpreter binary lacking
-        # CAP_NET_BIND_SERVICE, so DNSServer's bind() to privileged port 53 was silently failing and
-        # no timeout length would ever have fixed it (see digital_twin/README.md's "Automated CI
-        # suite" run 7 entry for the full account). Left at 90s with a 0.5s retry cadence (see
-        # _wait_for_dns_answer) anyway, now that the real fix is in - this is a hotspot-fallback
-        # path, not a hot one, so the extra slack costs nothing when the answer arrives early.
+        # 30s timed out twice on real runners even after the errcount-wait fix, and the cause
+        # was a red herring: the interpreter lacked CAP_NET_BIND_SERVICE, so the bind to port 53
+        # silently failed and no timeout would have helped (README.md's run 7 entry).
+
+        # Left at 90s with the real fix in: this is a fallback path, not a hot one, so the slack
+        # costs nothing when the answer arrives early.
         answered = _wait_for_dns_answer(HOST, timeout_s=90.0)
         _check(condition=answered, msg="Run 7: the real captive DNSServer answered a real UDP DNS query after WiFi hotspot fallback")
         status, _ = _http("GET", "/status")
@@ -1094,16 +934,12 @@ def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
     # ---- Run 8: reboot fault-free - WIFI's own persistence-correctness check, plus configure an
     # unreachable NTP host (persisted) for Run 9.
     #
-    # WIFI's own top-level error log is FRAM-backed (WP1's implicit-FRAM-wiring rule - see
-    # _PERSISTED_ERROR_MODULES's own comment above), so - like SGP40's Run 5b - it follows the
-    # all-or-nothing abrupt-restart guarantee, never a guaranteed-reset-to-0: Run 7's own shutdown
-    # is the same ordinary _shutdown() (SIGINT) every run uses, which can still catch a FRAM chunk
-    # write in flight even after the REST-visible counter has already updated (Run 5b's own finding
-    # - the counter and the physical write are separate, not atomic). This used to assert
-    # counter==0 under a stale, pre-WP1 in-memory-only assumption that real CI never actually
-    # exercised until WP1/WP2 finally went through it (confirmed stale, not a design ambiguity: the
-    # fram=fram wiring and CLAUDE.md's own FRAM-backed-subset list both already state the current,
-    # intended behavior). ----
+    # WIFI's own log is FRAM-backed under the implicit-FRAM-wiring rule, so like SGP40's Run 5b
+    # it follows the all-or-nothing abrupt-restart guarantee rather than resetting to 0: Run 7's
+    # ordinary SIGINT shutdown can still catch a chunk write after the counter has updated.
+
+    # This once asserted counter==0, under a pre-WP1 in-memory-only assumption real CI never
+    # exercised until WP1/WP2 went through it - stale, not ambiguous. ----
     log8 = ctx.logs_dir / "run8_wifi_persistence_and_configure_ntp.log"
     proc = _spawn(ctx, [], log8)
     try:
@@ -1147,18 +983,13 @@ def _run_9_ntp_unreachable(ctx: RunContext) -> None:
 
 
 def _run_10_watchdog_hang_backstop(ctx: RunContext) -> None:
-    # ---- Run 10: the dedicated hang case - a real, blocking (not asyncio) time.sleep() inside a
-    # chip fake's handler, genuinely freezing the whole interpreter past the 8000ms WDT window, to
-    # prove the (simulated) watchdog backstop itself actually engages - the one thing sustained-but-
-    # bounded errors (Run 3) cannot demonstrate. See digital_twin/_fault_injection.py's own module
-    # docstring for why this - and only this - is what real hardware's "genuinely wedged bus"
-    # scenario requires (SPECIFICATION.md Part F.2, CLAUDE.md's own settled "hardware watchdog is
-    # the accepted backstop" rule). --duration 15, not 0: since BMP3xx/SCD30 gained FRAM-backed
-    # error logging, SGP40's own first bus access queues behind theirs on the shared FRAM SPI bus,
-    # so the hang can fire well after webserver readiness - --duration 0 raced that and sometimes
-    # exited before the hang ever fired at all. See digital_twin/README.md's "WDT._arm()'s
-    # late-feed backstop" for the full account (this and that fix were found together). SGP40 is
-    # present on every real device, so this run needs no device-conditional logic. ----
+    # ---- Run 10: the dedicated hang case - a real blocking sleep inside a chip fake, freezing
+    # the interpreter past the WDT window to prove the simulated backstop engages, which Run 3's
+    # bounded errors cannot. _fault_injection.py says why only this models a wedged bus.
+
+    # --duration 15, not 0: SGP40's first bus access now queues behind BMP3xx's and SCD30's own
+    # FRAM startup I/O, so the hang can fire well after readiness and 0 sometimes exited first.
+    # README.md's "WDT._arm() late-feed backstop" has the account - both were found together. ----
     _clean_state()
     log10 = ctx.logs_dir / "run10_watchdog_hang_backstop.log"
     proc = _spawn(ctx, ["--hang", "sgp40:writeto:12", "--duration", "15"], log10)
@@ -1185,15 +1016,13 @@ class _SoakAttempt:
 
 
 def _run_11_soak_attempt(ctx: RunContext, log_path: Path, attempt_label: str) -> _SoakAttempt:
-    # ---- Run 11: a genuinely fresh, clean boot dedicated to the soak check - driven entirely from
-    # THIS process, exactly like Runs 1-10 (SPECIFICATION.md's "Driver/DUT process separation" Part,
-    # 2026-09-14): warmup + cycle requests go out over real HTTP via _http() below, never through
-    # the twin's own in-process client. The one thing that genuinely can't move host-side -
-    # gc.mem_free(), which only exists inside the twin's own heap - is armed via
-    # --mem-sample-interval-ms and read back from the twin's own captured log after the fact (see
-    # _parse_mem_samples()'s own comment). Driven at ctx.gc_threshold like every other run in this
-    # suite - see main()'s own comment for why the whole suite executes once per gc.threshold()
-    # value, in order. ----
+    # ---- Run 11: a fresh clean boot for the soak check, driven entirely from THIS process like
+    # Runs 1-10 ("Driver/DUT process separation") - warmup and cycle requests go over real HTTP,
+    # never through the twin's own client.
+
+    # The one thing that cannot move host-side, gc.mem_free(), is armed via
+    # --mem-sample-interval-ms and read back from the captured log. Driven at ctx.gc_threshold
+    # like every other run. ----
     _clean_state()
     proc = _spawn(ctx, ["--mem-sample-interval-ms", str(_MEM_SAMPLE_INTERVAL_MS)], log_path)
     http_failures: list[str] = []
@@ -1252,17 +1081,13 @@ def _report_soak_attempt(attempt: _SoakAttempt, label: str) -> bool:
 
 
 def _run_11_soak(ctx: RunContext) -> None:
-    # Defense in depth on top of _mem_trend()'s own self-calibrated tolerance (see
-    # _MEM_TREND_TOLERANCE_SD_MULTIPLIER's module-level comment for the real root cause this
-    # addresses directly), not a substitute for it: a live process's own reactive-GC-paced heap,
-    # sampled on a wall-clock timer and correlated back to a host-side window by timestamp, is still
-    # a genuinely noisy measurement even once correctly calibrated. One retry, a second fully
-    # independent clean boot, tells a residual bad draw apart from a real leak the same way every
-    # other guard in this suite is required to justify itself (E.8's "a guard is only established by
-    # removing what it guards and watching it fail"): a transient reading essentially never repeats
-    # past tolerance twice in a row, a genuine unbounded leak (the failure mode this check exists to
-    # catch) reliably does. Never retries an HTTP/watchdog/shutdown failure - those aren't this
-    # measurement's own known noise source, and finding one ends the run immediately.
+    # Defense in depth on top of the self-calibrated tolerance, not a substitute: a live
+    # reactive-GC-paced heap sampled on a timer and correlated by timestamp stays noisy even
+    # when correctly calibrated.
+
+    # One retry, a second fully independent boot, separates a residual bad draw from a real leak:
+    # a transient reading essentially never repeats past tolerance twice, an unbounded leak
+    # reliably does. Never retries an HTTP, watchdog or shutdown failure - not this noise source.
     attempt1 = _run_11_soak_attempt(ctx, ctx.logs_dir / "run11_soak.log", "attempt 1")
     clean1 = _report_soak_attempt(attempt1, "attempt 1")
     if not clean1 or attempt1.trend_result is None:
@@ -1300,10 +1125,9 @@ def _run_11_soak(ctx: RunContext) -> None:
 
 
 def _mem_trend(samples: list[int]) -> tuple[float, float, int, float, float] | None:
-    # Pure trend-vs-tolerance arithmetic, split out from _run_11_soak() so it's unit-testable
-    # without a live subprocess/HTTP server (tests_scripts/test_digital_twin_ci_suite_soak.py).
-    # Returns (trend, tolerance, quarter_size, early_avg, late_avg), or None if there aren't at
-    # least 4 samples (the caller's own _check() above already reports that case).
+    # Pure trend-vs-tolerance arithmetic, split out of _run_11_soak() so it is unit-testable
+    # without a live subprocess. Returns (trend, tolerance, quarter_size, early_avg, late_avg),
+    # or None below four samples, which the caller's own _check() already reports.
     quarter = len(samples) // 4
     if quarter < 1:
         return None
@@ -1312,23 +1136,18 @@ def _mem_trend(samples: list[int]) -> tuple[float, float, int, float, float] | N
     early_avg = sum(early) / len(early)
     late_avg = sum(late) / len(late)
     trend = early_avg - late_avg  # positive: memory declined between quarters
-    # Tolerance is this attempt's own noise level, not a historical constant - see
-    # _MEM_TREND_TOLERANCE_SD_MULTIPLIER's own module-level comment for the 2026-09-14 measurement
-    # behind why. Each quarter's own internal spread (never the early-vs-late difference itself,
-    # which is exactly what a genuine leak would inflate - measuring noise from the same statistic
-    # a real leak moves would make the tolerance loosen precisely when it most needs to hold) stands
-    # in for the trend statistic's true standard error, which a `sqrt(quarter_size)` correction
-    # under real, heavily autocorrelated gc.mem_free() sampling does not reach.
+    # Tolerance is this attempt's own noise level, not a historical constant. Each quarter's
+    # INTERNAL spread stands in for the trend's true standard error - never the early-vs-late
+    # difference, which a genuine leak inflates, loosening the tolerance just when it must hold.
     quarter_noise = max(statistics.pstdev(early), statistics.pstdev(late)) if quarter > 1 else 0.0
     tolerance = _MEM_TREND_TOLERANCE_SD_MULTIPLIER * quarter_noise
     return trend, tolerance, quarter, early_avg, late_avg
 
 
 def run_suite(ctx: RunContext) -> None:
-    # Runs the whole 12-top-level-run (14 real subprocess) sequence once, at ctx.gc_threshold - see
-    # main() for why this whole function runs twice, not just Run 11. Doesn't tally/print
-    # pass-or-fail on its own any more (main() does that once, after both passes) - _FAILURES is
-    # shared, deliberately, so a single combined report names every failure from either pass.
+    # Runs the whole 12-top-level-run sequence once at ctx.gc_threshold; main() says why the
+    # whole function runs twice. It tallies nothing itself - _FAILURES is shared on purpose, so
+    # main() prints one combined report naming every failure from either pass.
     global _CURRENT_PASS_LABEL
     _CURRENT_PASS_LABEL = f"[gc.threshold={ctx.gc_threshold}] "
     ctx.logs_dir.mkdir(parents=True, exist_ok=True)
@@ -1349,11 +1168,9 @@ def run_suite(ctx: RunContext) -> None:
 
 
 def _drivers_in_plan(plan: dict[str, Any]) -> frozenset[str]:
-    # The set of bus-attached `driver` identities (buildgen.twin_wiring's own vocabulary) this
-    # device's own wiring plan actually declares - e.g. {"scd30", "sgp40", "fram"} for a device
-    # without bmp3xx, {"scd30", "sgp40", "bmp3xx", "fram"} for wozi/dev. Neopixel/notification never
-    # appear here (GPIO-pin-only, not bus-attached - buildgen.twin_wiring.compute_twin_wiring()'s
-    # own scope), which is fine: this suite's bus-fault matrix only ever targets bus-attached drivers.
+    # The bus-attached `driver` identities this device's wiring plan declares - {"scd30",
+    # "sgp40", "fram"} for a device without bmp3xx, and so on. Neopixel and notification never
+    # appear, being GPIO-only, which is fine: the fault matrix targets bus-attached drivers.
     names: set[str] = set()
     for attachments in plan["buses"].values():
         for attachment in attachments:
@@ -1391,14 +1208,12 @@ def main() -> int:
         gc_threshold=-1,  # overridden per pass below
     )
 
-    # Runs the WHOLE suite twice, not just Run 11 - CLAUDE.md's/SPECIFICATION.md Part I.4(e)'s
-    # standing rule, sharpened 2026-09-14 from "new stress/hammer tests" to every test, digital-twin
-    # runs included: the suite must pass clean under gc.threshold(-1) (MicroPython's own real
-    # reactive-only default, zero MemoryErrors anywhere - caught-and-logged included) BEFORE it's
-    # ever run again with the project's chosen gc.threshold(32768) (I.4(f): defense in depth on an
-    # already-safe design, never itself the reason a run passes). Order matters; -1 goes first. Two
-    # separate log subdirectories so a failure's own logs from either pass are never overwritten by
-    # the other.
+    # Runs the WHOLE suite twice, not just Run 11 (Part I.4(e)): it must pass clean at
+    # MicroPython's own gc.threshold(-1), with zero MemoryErrors anywhere, BEFORE running again
+    # at the chosen 32768, which is defense in depth and never itself why a run passes.
+
+    # Order matters, -1 first, and each pass logs into its own subdirectory so a failure's logs
+    # are never overwritten by the other.
     for gc_threshold, subdir in ((-1, "gc_threshold_neg1"), (32768, "gc_threshold_32768")):
         ctx = replace(base_ctx, logs_dir=base_ctx.logs_dir / subdir, gc_threshold=gc_threshold)
         _clean_state()

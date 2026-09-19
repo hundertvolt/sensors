@@ -29,19 +29,16 @@ import setup_toolchain as st  # noqa: E402
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 from _strip_type_checking import strip_type_checking_blocks  # type: ignore[import-not-found]  # noqa: E402
 
-# buildgen/ lives at the repo root alongside scripts/ - not a subdirectory needing its own
-# sys.path entry the way toolchain/scripts above do, but this script is invoked with an arbitrary
-# cwd (via uv run from anywhere - see the Usage comment above), so REPO_ROOT itself still needs to
-# be on sys.path for `import buildgen` to resolve.
+# buildgen/ sits at the repo root beside scripts/, so it needs no sys.path entry of its own the
+# way the toolchain scripts do - but this script runs from an arbitrary cwd, so REPO_ROOT itself
+# still has to be on sys.path for `import buildgen` to resolve.
 sys.path.insert(0, str(REPO_ROOT))
 from buildgen.errors import BuildError  # noqa: E402
 from buildgen.generate import generate_device  # noqa: E402
 
-# Mirrors boards/RPI_PICO_W/manifest.py + boards/manifest.py combined - the default manifest's own
-# require()s and its freeze("$(PORT_DIR)/modules") (the stock, always-returns _boot.py + rp2.py)
-# are reused unchanged; {stage_dir} freeze() below adds our own modules on top, including each
-# device's buildgen-generated boot entry staged under the literal name "main.py" (see this file's
-# own docstring for why).
+# Mirrors the two stock manifests combined: their require()s and freeze("$(PORT_DIR)/modules")
+# are reused unchanged, and the {stage_dir} freeze() below adds our modules on top - including
+# each device's generated boot entry, staged as "main.py" for the reason the docstring gives.
 _MANIFEST_TEMPLATE = """\
 include("$(PORT_DIR)/boards/{board}/manifest.py")
 freeze({stage_dir!r})
@@ -53,30 +50,25 @@ def log(msg: str) -> None:
 
 
 def _stage_stripped(src_file: Path, dest: Path) -> None:
-    # Strips this build's temp staged copy only - never the real src/ext files (CLAUDE.md's
-    # hard rule; see _strip_type_checking.py's own docstring for why this is safe and what it
-    # saves). A file with no if TYPE_CHECKING: blocks (e.g. ext/microdot.py today) is written back
-    # byte-for-byte unchanged.
+    # Strips this build's staged copy only, never the real src/ or ext/ file (CLAUDE.md's hard
+    # rule; _strip_type_checking.py's docstring says why it is safe). A file with no
+    # if TYPE_CHECKING: block is written back byte for byte.
     dest.write_text(strip_type_checking_blocks(src_file.read_text()))
 
 
 def build_stage_dir(stage_dir: Path, device: str) -> None:
-    # Every device needs its own devices/<device>.toml (buildgen's own device definition) - fail
-    # loud, before staging anything, converting buildgen's own BuildError (malformed TOML,
-    # unresolved wiring, ...) into a plain RuntimeError so this function's own contract (raise
-    # RuntimeError on any build-impossible condition) stays uniform for every failure mode below.
+    # Every device needs its own devices/<device>.toml. Fail before staging anything, converting
+    # buildgen's BuildError into a RuntimeError so this function's contract - RuntimeError on any
+    # build-impossible condition - stays uniform across every failure mode below.
     device_toml = REPO_ROOT / "devices" / f"{device}.toml"
     try:
         generated = generate_device(device_toml, REPO_ROOT / "src", REPO_ROOT / "ext")
     except BuildError as e:
         raise RuntimeError(str(e)) from e
 
-    # Resolve buildgen's own computed frozen-module set (SPECIFICATION.md Part L.2's "frozen-module
-    # selection is dependency-driven") to real files - only this device's actual transitive
-    # dependency closure gets staged, not every src/*.py file unconditionally (a real, smaller-
-    # firmware behavior change from this script's own pre-buildgen shape). Each module resolves to
-    # exactly one of src/ or ext/ (e.g. "microdot" naturally resolves to ext/microdot.py, since
-    # asy_webserver_service.py - itself in buildgen.frozen_modules.CORE_MODULES - imports it).
+    # Resolves buildgen's computed frozen-module set (Part L.2) to real files, so only this
+    # device's transitive closure is staged rather than every src/*.py - a genuinely smaller
+    # firmware than before buildgen. Each module resolves to exactly one of src/ or ext/.
     module_files: dict[str, Path] = {}
     for module in generated.frozen_modules:
         src_file = REPO_ROOT / "src" / f"{module}.py"
@@ -88,11 +80,9 @@ def build_stage_dir(stage_dir: Path, device: str) -> None:
         else:
             raise RuntimeError(f"buildgen computed {module!r} as a frozen module for device {device!r} but no matching file exists under src/ or ext/ - a buildgen bug, not a device misconfiguration")
 
-    # This script freezes every resolved module alongside its own infra files (main.py,
-    # frozen_html.py, and the generated device entry module itself) into the SAME flat stage_dir -
-    # a future src/ file sharing one of those names would be silently overwritten (or would
-    # silently overwrite the infra file copied after it) with no error, shipping wrong firmware
-    # content. Fail loud instead.
+    # Every resolved module is frozen alongside the infra files into one flat stage_dir, so a
+    # future src/ file sharing one of those names would silently overwrite it or be overwritten,
+    # shipping wrong firmware content with no error. Fail instead.
     entry_module = f"sensortask_{generated.model.device}"
     reserved = {"main.py", "frozen_html.py", f"{entry_module}.py"}
     collisions = reserved & {f"{m}.py" for m in module_files}
@@ -102,12 +92,9 @@ def build_stage_dir(stage_dir: Path, device: str) -> None:
     for module, path in sorted(module_files.items()):
         _stage_stripped(path, stage_dir / f"{module}.py")
 
-    # The buildgen-generated device entry module (sensortask_<device>.py-equivalent) and its boot
-    # entry - freshly generated text, never read off disk, so there is nothing to strip. Frozen
-    # under the literal name "main.py", not "<device>_boot.py" - see this module's own docstring
-    # for the source-confirmed reason (pyexec_file_if_exists("main.py") checks the frozen table
-    # before the filesystem, and runs after mp_usbd_init(); a custom _boot.py that never returns
-    # means USB never initializes at all).
+    # The generated device entry module and its boot entry: freshly generated text, never read
+    # off disk, so nothing to strip. Frozen as "main.py" rather than "<device>_boot.py" for the
+    # source-confirmed reason the docstring gives - a custom _boot.py would cost USB entirely.
     (stage_dir / f"{entry_module}.py").write_text(generated.module_source)
     (stage_dir / "main.py").write_text(generated.boot_entry_source)
 
@@ -162,10 +149,9 @@ def main() -> int:
         manifest_path = tmp_path / "manifest.py"
         manifest_path.write_text(_MANIFEST_TEMPLATE.format(board=board, stage_dir=str(stage_dir)))
 
-        # mpy-cross's own build/ doesn't self-clean per build (unlike ports/rp2/build-{board}), so
-        # it's wiped here too - but must be explicitly rebuilt right after, not left to the rp2
-        # port's own implicit sub-build, which fails from a freshly-wiped dir (see SPECIFICATION.md
-        # Part B.11's mpy-cross-rebuild finding).
+        # mpy-cross's build/ does not self-clean per build the way ports/rp2/build-{board} does,
+        # so it is wiped here - and must then be rebuilt explicitly, since the rp2 port's own
+        # implicit sub-build fails from a freshly wiped directory (Part B.11).
         mpy_cross_build_dir = micropython_dir / "mpy-cross" / "build"
         if mpy_cross_build_dir.exists():
             log(f"Cleaning {mpy_cross_build_dir} before rebuilding")

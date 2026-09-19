@@ -6,10 +6,10 @@ import gc
 
 def unwedge_heap_after_interrupt() -> None:
     """Clear a `GC_COLLECT_FLAG` left stuck in `gc_lock_depth` by an interrupted collection."""
-    # gc.collect() is the recovery, and the only one that works: py/gc.c's gc_collect_start_common()
-    # re-sets the flag and gc_collect_end() clears it properly on the way out. micropython.
-    # heap_unlock() is NOT a substitute - it subtracts (1 << GC_LOCK_DEPTH_SHIFT) from a value
-    # holding only the 1-bit collect flag, leaving gc_lock_depth negative and still "locked".
-    # Unconditional and cheap: a collection at shutdown costs nothing and needs no allocation of
-    # its own, so this is safe to run on every interrupt rather than only the wedged ones.
+    # gc.collect() is the recovery and the only one that works: gc_collect_start_common() re-sets
+    # the flag and gc_collect_end() clears it properly. heap_unlock() is not a substitute - it
+    # subtracts a shift from a value holding only the 1-bit flag, leaving the depth negative.
+
+    # Unconditional and cheap: a collection at shutdown costs nothing and allocates nothing, so
+    # running it on every interrupt rather than only the wedged ones is safe.
     gc.collect()

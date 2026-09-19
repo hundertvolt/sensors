@@ -21,11 +21,9 @@ class FaultInjector:
             raise queue.pop(0)
 
     def inject_hang(self, op: str, seconds: float, times: int = 1) -> None:
-        # Queues a real blocking time.sleep(seconds) before the next `times` calls to the named op
-        # proceed - see this module's own docstring for why this is deliberately a real blocking
-        # sleep, not asyncio.sleep(). Kept as its own queue, separate from _queues above: a hang
-        # isn't an exception to raise, it's a delay before the call still completes normally
-        # (maybe_raise() is checked separately, after this returns, by every real call site).
+        # Queues a real blocking time.sleep() before the next `times` calls to this op - the
+        # module docstring says why blocking, not asyncio.sleep(). Its own queue, separate from
+        # _queues: a hang is a delay before the call still completes, not an exception to raise.
         self._hangs.setdefault(op, []).extend([seconds] * times)
 
     def maybe_hang(self, op: str) -> None:

@@ -96,10 +96,11 @@ class Scd30Chip:
         self._timer: Timer | None = None
         self.state_path = state_path
         self._load_state()  # may override the *_s/_ambient_pressure/_altitude/_temp_offset_raw/
-        # _asc_enabled defaults just set above - never the co2/temp/hum draws below, see class docstring
-        # for why those stay unpersisted.
-        # Initial value: one uniform draw within [min,max] at construction - every value after this
-        # one steps from the last instead (see _produce_new_reading() below).
+        # _asc_enabled defaults just set above - never the co2/temp/hum draws below, which the
+        # class docstring explains staying unpersisted.
+
+        # One uniform draw within [min,max] at construction; every later value steps from the
+        # last (see _produce_new_reading()).
         self._co2 = self._random.uniform(self._min_co2, self._max_co2)
         self._temp = self._random.uniform(self._min_temp, self._max_temp)
         self._hum = self._random.uniform(self._min_hum, self._max_hum)
