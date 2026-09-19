@@ -466,10 +466,9 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             continue
         if spec.driver_info and spec.driver_info.needs_setup:
             setup_order.append(ctx.instance_var(node))
-    # Measure B (SPECIFICATION.md Part I.4(f)): one collect before the batch and one after each
-    # module, and nowhere else. Each is a placement reset, not hygiene and not compaction - it puts
-    # the allocator's free-scan index back to zero so the next module's permanent objects take the
-    # lowest fitting holes instead of landing above this batch's churn.
+    # Measure B (SPECIFICATION.md Part I.4(f.1)): one collect before the batch and one after each
+    # module, nowhere else. A placement reset, not hygiene and not compaction - it puts the
+    # allocator's free-scan index back to zero so the next module takes the lowest fitting holes.
     lines.append("    gc.collect()")
     for name in setup_order:
         lines.append(f"    await {name}.setup()")

@@ -1172,10 +1172,8 @@ def test_same_device_concurrent_read_and_write_never_corrupt_each_other() -> Non
     assert written_back == _HAZARD_WRITE_PATTERN, f"write region shows {written_back.hex()}, expected {_HAZARD_WRITE_PATTERN.hex()} - torn/corrupted write"
 
 
-# ---------------------------------------------------------------------------
-# Bus-lock granularity and the per-command yield policy: one acquire/release and
-# exactly one scheduler pass per byte-level command, whatever its CS-cycle count
-# ---------------------------------------------------------------------------
+# Bus-lock granularity and the per-command yield policy: one acquire/release and exactly one
+# scheduler pass per byte-level command, whatever its CS-cycle count.
 
 
 def count_bus_lock_holds(fram: FRAM_SPI) -> "list[int]":
@@ -1215,10 +1213,9 @@ async def passes_during(coro: "Coroutine[Any, Any, Any]") -> int:
 
 
 def test_a_write_command_is_issued_under_one_bus_lock_hold() -> None:
-    # A one-byte write is a five-CS-cycle envelope (WREN, RDSR, WRITE, WRDI, RDSR). The chip needs
-    # every one of those cycles; the bus lock does not need taking five times for them. One hold
-    # per command is the granularity that keeps a shared bus interleavable between commands while
-    # making the envelope itself indivisible - see HEAP_REMEDIATION_PLAN.md A.1.4.
+    # A one-byte write is a five-CS envelope (WREN, RDSR, WRITE, WRDI, RDSR); the chip needs every
+    # cycle, the bus lock does not need taking five times. One hold per command keeps a shared bus
+    # interleavable between commands while making the envelope indivisible - PLAN A.1.4.
     fram, _chip = make_fram()
     run(setup_fram(fram))
     holds = count_bus_lock_holds(fram)
@@ -1269,10 +1266,8 @@ def test_get_values_yields_exactly_once_per_command() -> None:
     assert run(scenario()) == 1
 
 
-# ---------------------------------------------------------------------------
-# The three write-path warnings: same number, same message, logged once, from the
-# same public entry point - whichever layer actually decides them
-# ---------------------------------------------------------------------------
+# The three write-path warnings: same number, same message, logged once, from the same public
+# entry point - whichever layer actually decides them.
 
 
 def record_warnings(fram: FRAM_SPI) -> "list[tuple[tuple[object, ...], int]]":

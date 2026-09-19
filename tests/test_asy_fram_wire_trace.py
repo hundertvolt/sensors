@@ -40,9 +40,8 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 # --------------------------------------------------------------------------- bus recorder
-# Patched in permanently at import; each wrapper is inert while _TRACE is None, so an untraced
-# preparation step (the manager's own setup(), seeding a valid chunk) costs nothing and records
-# nothing. Only the CS pin of the FRAM's own SPIDevice is watched - a WP pin edge is not a CS edge.
+# Patched in permanently at import and inert while _TRACE is None, so an untraced preparation step
+# costs nothing. Only the FRAM SPIDevice's own CS pin is watched - a WP edge is not a CS edge.
 _TRACE: "list[str] | None" = None
 _CS_PIN: "machine.Pin | None" = None
 
@@ -159,9 +158,8 @@ async def _rig() -> "tuple[AsyFramManager, PrintLogHistoryStore, AsyFramTimestam
 
 
 # --------------------------------------------------------------------------- goldens
-# Recorded from src/ as it stands today. Each line is one CS cycle's transfers, in order;
-# w: is a write, r: the bytes a read received, x: a full-duplex write_readinto (out:in).
-# The opcodes: 06 WREN, 04 WRDI, 05 RDSR, 02 WRITE, 03 READ, 9f RDID, 01 WRSR.
+# One line per CS cycle's transfers, in order; w: write, r: bytes a read received, x: full-duplex.
+# Opcodes: 06 WREN, 04 WRDI, 05 RDSR, 02 WRITE, 03 READ, 9f RDID, 01 WRSR.
 _GOLDEN_BLANK_SETUP = """\
 w:03000d r:00
 w:06

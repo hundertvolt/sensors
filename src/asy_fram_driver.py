@@ -119,17 +119,15 @@ class FRAM_SPI(Lockable):
         self._status_buf = bytearray(1)
         self._addr_buf = bytearray(_ADDR_BUF_24BIT) if self._max_size > _ADDR_16BIT_MAX else bytearray(_ADDR_BUF_16BIT)
         self._wrsr_buf = bytearray(2)  # WRSR opcode + target status byte, the one two-byte command
-        # The innermost of the three locks. Taken once per block operation, by __aenter__ below:
-        # the five-CS write envelope is indivisible on the wire anyway, and holding the bus across
-        # the block operation is what lets the whole byte-level path be synchronous. SPIDevice's
-        # own async session takes this same lock for any other caller of the bus.
+        # The innermost of the three locks, taken once per block operation by __aenter__ below:
+        # holding the bus across the whole block is what lets the byte-level path be synchronous.
+        # SPIDevice's own async session takes this same lock for any other caller of the bus.
         self._bus_lock = self._spidev.asy_lock
 
     async def __aenter__(self) -> "Self":
-        # Takes the driver lock and then the bus, both for one whole block operation. The chunk
-        # layer's byte-level commands then run synchronously under a lock it already holds - a
-        # second SPI device waits for the block operation (~25 CS) instead of for each command
-        # (~5 CS), which is the trade HEAP_FRAGMENTATION_MEASUREMENTS.md §11 item 6 settled.
+        # Driver lock then bus, both for one whole block operation, so the chunk layer's byte-level
+        # commands run synchronously under a lock it already holds - a second SPI device then waits
+        # ~25 CS rather than ~5 (HEAP_FRAGMENTATION_MEASUREMENTS.md §11 item 6 settled that trade).
         await super().__aenter__()
         try:
             await self._bus_lock.acquire()
@@ -150,10 +148,9 @@ class FRAM_SPI(Lockable):
             pass
         return await super().__aexit__(exc_type, exc_val, exc_tb)
 
-    # One CS cycle each, on a bus lock the caller already holds. Everything from here down to
-    # _write() is synchronous: the chip is driven by blocking register writes, so a coroutine per
-    # CS cycle bought nothing but allocations. The scheduling points live in the public coroutines
-    # below, one per command - see HEAP_REMEDIATION_PLAN.md A.1.2.
+    # One CS cycle each, on a bus lock the caller already holds. Everything down to _write() is
+    # synchronous: the chip is driven by blocking register writes, so a coroutine per CS cycle
+    # bought only allocations. Scheduling points live in the public coroutines below (PLAN A.1.2).
     def _send_command(self, command: bytes | bytearray) -> None:
         # WREN/WRDI are each a complete, standalone one-byte command (datasheet timing diagrams
         # show CS low only for the opcode); WRSR is the one two-byte command that ends here too.
@@ -358,10 +355,9 @@ class FRAM_SPI(Lockable):
         return await self.report_set_values(status)
 
     async def set_write_protected(self, *, value: bool) -> bool:
-        # Always protects the entire array (BP0+BP1) - per-block ranges are unused. Self-acquires
-        # the bus, like setup() does, so it must NOT be called from inside `async with fram:` -
-        # asyncio.Lock isn't reentrant and that would hang, the same caveat verify_present()
-        # carries for the driver lock. Every caller today calls it bare.
+        # Always protects the entire array (BP0+BP1); per-block ranges are unused. Self-acquires the
+        # bus like setup(), so it must NOT be called from inside `async with fram:` - asyncio.Lock
+        # isn't reentrant and that would hang, the same caveat verify_present() carries.
         if not self.initialized:
             await self.pr.err_s("FRAM not initialized, run setup first!", errno=94)
             return False

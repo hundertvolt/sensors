@@ -167,10 +167,9 @@ class _AsyBaseFramChunk:
             return True
 
     def _read_progress(self, global_start: int, span: int, n_iter: int) -> None:
-        # One iteration of _read_chunk() reported back; span < 0 means "this read failed". The read
-        # buffer is always filled from index 0, so only the position within the chunk varies. When
-        # _compare_against is set, each slice is compared as it arrives, since the scratch buffer
-        # is refilled by the next iteration - that is why this cannot be a returned value.
+        # One _read_chunk() iteration reported back; span < 0 means this read failed. With
+        # _compare_against set, each slice is compared as it arrives, since the next iteration
+        # refills the scratch buffer - which is why this cannot be a returned value.
         self._read_iters = n_iter
         if span < 0:
             self._read_valid = False

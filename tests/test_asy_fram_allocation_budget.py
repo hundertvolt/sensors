@@ -1,10 +1,8 @@
 """Allocation budget for the FRAM path's boot-time cost: one blank and one valid PrintLogHistoryStore.setup() priced in a collection-free window, against a ceiling set from a measured run.
 This is the efficiency half of SPECIFICATION.md I.4(e) - it fails if a coroutine-per-CS-cycle, or any comparable per-call allocation, regresses back into the path."""
-# The absolute byte figures are binary-dependent and NOT board figures. A Unix port built with
-# MICROPY_PY_SYS_SETTRACE=1 (which scripts/test.sh's own interpreter is) allocates a frame and a
-# code object per call and per generator resume, inflating every number here 4-5x and
-# non-uniformly - see HEAP_FRAGMENTATION_MEASUREMENTS.md section 1.2 item 7 and section 3A. Both
-# budgets below are therefore measured, one per build, and selected at runtime.
+# The absolute byte figures are binary-dependent and NOT board figures: a MICROPY_PY_SYS_SETTRACE=1
+# build (which scripts/test.sh's interpreter is) inflates every number here 4-5x and non-uniformly
+# - HEAP_FRAGMENTATION_MEASUREMENTS.md 1.2 item 7 and 3A. Both budgets are measured, one per build.
 
 import asyncio
 import gc
@@ -31,10 +29,9 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-# Measured 2026-09-18 on the mock tier, median of five runs, with a ~15% margin. On the settrace
-# build: 296,448 B blank and 234,592 B valid (against 820,096 / 564,960 before the restructure).
-# On an otherwise identical settrace-free build: 28,864 B and 20,512 B (against 137,088 / 89,408).
-# The settrace-free pair is the one whose ratios carry to the board.
+# Measured 2026-09-18, mock tier, median of five, ~15% margin. Settrace build: 296,448 B blank /
+# 234,592 B valid (was 820,096 / 564,960). Settrace-free: 28,864 / 20,512 (was 137,088 / 89,408)
+# - that pair is the one whose ratios carry to the board.
 _SETTRACE_BUILD = hasattr(sys, "settrace")
 _BUDGET_BLANK = 344_000 if _SETTRACE_BUILD else 34_000
 _BUDGET_VALID = 270_000 if _SETTRACE_BUILD else 24_000

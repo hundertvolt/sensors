@@ -24,10 +24,9 @@ async def _set_ssid(conn: "asy_wifi_service.AsyConnTime", ssid: str) -> object:
 
 
 async def _read_live_ssid(conn: "asy_wifi_service.AsyConnTime") -> str:
-    # Read the bench's own SSID through the real path instead of hardcoding it: this script writes
-    # a garbage value into the RP2040 flash filesystem, and a wrong restore strands the board just
-    # as badly as no restore (REAL_HARDWARE_TEST_QUEUE.md F1 - it happened). The snapshot also
-    # carries the real password, so it is never logged.
+    # Read the bench's own SSID through the real path rather than hardcoding it: this script writes
+    # a garbage value into the RP2040 flash filesystem, and a wrong restore strands the board as
+    # badly as none (QUEUE F1 - it happened). The snapshot carries the password, so it is never logged.
     snapshot = await conn._get_dict_cfg(conn.name, conn.get_cfg_schema())
     ssid = snapshot.get(conn.name, {}).get("SSID")
     return ssid if isinstance(ssid, str) else ""

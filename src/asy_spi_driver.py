@@ -124,10 +124,9 @@ class SPIDevice(Lockable):
         self.initialized = False  # cs_pin isn't configured as an output until setup() runs
 
     def session_begin(self) -> None:
-        # Everything __aenter__ does between the lock operations, for a caller that already holds
-        # the bus lock - configure()'s own guard enforces that contract. The settle blocks on
-        # purpose: an awaited one here hands the loop to another task with CS asserted and the bus
-        # locked. The scheduling points belong to the coroutine owning the operation instead.
+        # What __aenter__ does between the lock operations, for a caller that already holds the bus
+        # lock - configure()'s own guard enforces that. The settle blocks on purpose: an awaited one
+        # would hand the loop to another task with CS asserted and the bus locked.
         if not self.initialized:
             raise RuntimeError("SPIDevice not set up - call setup() first")
         try:

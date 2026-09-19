@@ -5,11 +5,9 @@ enclosing function, so this catches what a path-based grep would miss."""
 import ast
 from pathlib import Path
 
-# The whole allowance, spelled out. src/ is checked structurally (a real call node, attributed to
-# its enclosing function); buildgen/ is checked textually because there the call only ever exists
-# inside codegen.py's emitted-source strings, where no Call node can be found. scripts/lint.sh
-# greps for the same rule as a fast path; this test is the precise one - it attributes each call to
-# its enclosing function, so it also catches a rename of the allowed site.
+# The whole allowance. src/ is checked structurally (a real call node attributed to its enclosing
+# function, so a rename of the allowed site fails too); buildgen/ textually, the call existing only
+# inside codegen.py's emitted-source strings. scripts/lint.sh greps the same rule as a fast path.
 _ALLOWED_SRC_SITES = {("system_service.py", "start_and_check_tasks")}
 _ALLOWED_BUILDGEN_FILES = {"codegen.py"}
 

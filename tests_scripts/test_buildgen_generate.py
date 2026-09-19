@@ -74,12 +74,9 @@ def test_real_device_feeds_the_watchdog_after_every_setup_call_in_order(repo_roo
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_collects_once_before_and_after_every_setup_call_and_nowhere_else(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    # Measure B (HEAP_REMEDIATION_PLAN.md B.1.1): the boot-confined placement reset. Each collect
-    # puts the allocator's free-scan index back to zero so the next module's permanent objects take
-    # the lowest fitting holes instead of landing above the batch's churn (SPECIFICATION.md I.4(f),
-    # HEAP_FRAGMENTATION_MEASUREMENTS.md 7A.4) - it is not hygiene and not compaction. The
-    # "nowhere else" half is the load-bearing one: this is a boot-only exception to I.4's
-    # prohibition, so the generated module must not grow a collect anywhere the run phase reaches.
+    # Measure B (PLAN B.1.1, SPECIFICATION.md I.4(f.1)): a placement reset, not hygiene and not
+    # compaction. The "nowhere else" half is the load-bearing one - this is a boot-only exception to
+    # I.4, so the generated module must not grow a collect anywhere the run phase reaches.
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     lines = result.module_source.splitlines()
     setup_lines = [i for i, line in enumerate(lines) if re.match(r"\s*await \w+\.setup\(\)\s*$", line)]

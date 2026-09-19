@@ -502,11 +502,9 @@ def test_aenter_releases_the_lock_if_configure_raises() -> None:
 
 
 def test_entering_a_session_is_atomic_so_cancellation_lands_only_after_it() -> None:
-    # Was test_aenter_releases_the_lock_if_cancelled_during_the_settle_sleep: that test pinned the
-    # awaited settle's scheduler pass *inside* the CS window, which is the hazard the synchronous
-    # session closes. There is now no suspension point between acquiring the bus lock and
-    # releasing it, so a cancellation aimed at that window lands after the session instead - with
-    # the lock already released and CS already deasserted, which is what actually matters.
+    # Was ..._cancelled_during_the_settle_sleep, which pinned the awaited settle's scheduler pass
+    # INSIDE the CS window - the hazard the synchronous session closes. With no suspension point
+    # left there, a cancellation lands after the session, lock released and CS deasserted.
     spi = make_spi()
     device = make_device(spi)
     entered = False
@@ -848,11 +846,9 @@ def test_reentrant_acquisition_on_the_same_device_deadlocks_and_cleans_up() -> N
     assert not spi.async_lock.locked()
 
 
-# ---------------------------------------------------------------------------
-# The synchronous session: the same CS/settle/configure sequence as `async with`,
-# without the lock operations, the coroutines or the awaited settle. The caller
-# holds the bus lock - configure()'s own guard enforces that contract.
-# ---------------------------------------------------------------------------
+# The synchronous session: the same CS/settle/configure sequence as `async with`, without the lock
+# operations, the coroutines or the awaited settle. The caller holds the bus lock - configure()'s
+# own guard enforces that contract.
 
 
 def test_session_begin_raises_if_setup_was_never_called() -> None:
@@ -1093,10 +1089,8 @@ def test_readinto_sync_propagates_rx_overrun_and_the_callers_finally_still_deass
     assert not spi.async_lock.locked()
 
 
-# ---------------------------------------------------------------------------
-# The two scheduling invariants the settle used to decide by accident: no pass
-# inside the CS window (the hazard), one pass per session (the burst's fairness)
-# ---------------------------------------------------------------------------
+# The two scheduling invariants the settle used to decide by accident: no pass inside the CS
+# window (the hazard), one pass per session (the burst's fairness).
 
 
 def test_async_session_has_no_scheduling_point_while_cs_is_asserted() -> None:

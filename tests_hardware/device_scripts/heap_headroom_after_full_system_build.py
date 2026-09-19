@@ -13,18 +13,9 @@ import sensortask_dev
 _PROBE_MIN = 64
 _PROBE_MAX = 192 * 1024
 
-# Floors, not expected values. Measured on the real dev board at MicroPython 1.29.0 (2026-09-11):
-# free=130720, largest_block=116032 after a full build_system(). These sit ~23%/~31% below that, so
-# an ordinary allocation-pattern change won't trip them but a real regression will - a new static
-# buffer, or a future MicroPython bump moving more code into SRAM the way 1.29 already did with the
-# interpreter core (12,918 B, Part F.5.3). Raise them only with a fresh measurement to point at.
-# Two facts about what this figure now means. build_system() carries the boot-confined placement
-# reset (Part I.4(f.1)), so largest_block is the *with-collects* layout - a reading below the floor
-# means the layout regressed past what those collects recover, not that they are absent. And the
-# number depends on WHEN in a suite it is taken: Board.run_isolated() interrupts the running
-# firmware without resetting, so a freshly-flashed standalone run measures a young heap and a run
-# deep in a suite measures an aged one - 95,104 B against 28,864 B on the same firmware, with free
-# unchanged (HEAP_FRAGMENTATION_MEASUREMENTS.md 7D.2). Compare only like suite positions.
+# Floors, not expected values: measured 2026-09-11 (free=130720, largest_block=116032) and set
+# ~23%/~31% under. Raise them only against a fresh measurement. build_system() carries the boot
+# collects (Part I.4(f.1)), and the figure is suite-position-dependent - MEASUREMENTS 7D.2.
 _MIN_FREE = 100_000
 _MIN_LARGEST_BLOCK = 80_000
 

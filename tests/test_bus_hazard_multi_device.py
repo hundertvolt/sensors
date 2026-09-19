@@ -389,12 +389,9 @@ def test_no_reserved_i2c_address_collides_with_any_promoted_devices_own_address(
         assert not _is_reserved(address), f"{name}'s own address {address:#x} falls inside a reserved I2C range"
 
 
-# ---------------------------------------------------------------------------
-# SPI: two devices on one bus, one driven through the async session and one
-# through the synchronous one. This is the shape the generated TOML-driven
-# scheme cannot produce - every device TOML puts the FRAM alone on spi0 - and
-# it is what "future multi-device SPI compatibility" has to mean concretely.
-# ---------------------------------------------------------------------------
+# SPI: two devices on one bus, one through the async session and one through the synchronous one.
+# The generated TOML-driven scheme cannot produce this shape (every device TOML puts the FRAM alone
+# on spi0), and it is what "future multi-device SPI compatibility" has to mean concretely.
 
 
 def test_spi_async_and_synchronous_sessions_share_one_bus_without_cs_overlap() -> None:

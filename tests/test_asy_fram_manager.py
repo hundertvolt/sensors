@@ -2311,11 +2311,9 @@ def test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten()
     assert repaired  # a write is the only thing that clears it
 
 
-# ---------------------------------------------------------------------------
-# The status-byte errno spread, branch by branch. _set_check_sb()/_handle_status_
-# bytes() decide these and the block operation logs them; the numbers and the
-# public entry point they are reachable from are the contract (Part C.7.1).
-# ---------------------------------------------------------------------------
+# The status-byte errno spread, branch by branch. _set_check_sb()/_handle_status_bytes() decide
+# these and the block operation logs them; the numbers and the public entry point they are
+# reachable from are the contract (Part C.7.1).
 
 
 def status_byte_addrs(chunk: "AsyFramChunk") -> tuple[int, int]:
@@ -2324,13 +2322,9 @@ def status_byte_addrs(chunk: "AsyFramChunk") -> tuple[int, int]:
 
 
 def fail_set_values_at(chunk: "AsyFramChunk", addr: int, *, on_call: int = 1) -> None:
-    # Address-selective, and occurrence-selective: the same status byte is written once for the
-    # BUSY mark and once for the IDLE mark, so the two errno spreads need different occurrences.
-    # Injected at set_values_sync(), because that is what the chunk layer calls - it pays no
-    # coroutine and no bus-lock acquisition per command. The sentinel is a status bit no real
-    # driver status uses, and patching the reporter alongside keeps the injected failure from
-    # adding a driver-level log entry of its own: the same fidelity the previous
-    # `set_values() -> False` double had, at the seam the code now actually uses.
+    # Address- and occurrence-selective: the same status byte is written once for the BUSY mark and
+    # once for the IDLE mark, so the two errno spreads need different occurrences. Injected at
+    # set_values_sync(), the seam the chunk layer actually calls; the sentinel is an unused status bit.
     original_sync = chunk.fram.set_values_sync
     original_report = chunk.fram.report_set_values
     seen = [0]
@@ -2453,10 +2447,8 @@ def test_clear_chunk_status_byte_2_failure_reports_errno_51() -> None:
     assert 51 in errnums(manager)  # err=50 + gap=1 for check_idle=False
 
 
-# ---------------------------------------------------------------------------
-# A block operation is not an opaque unit, and its scratch buffers belong to the
-# chunk rather than to each call
-# ---------------------------------------------------------------------------
+# A block operation is not an opaque unit, and its scratch buffers belong to the chunk rather
+# than to each call.
 
 
 def test_a_concurrent_task_observes_a_block_operation_in_progress() -> None:
@@ -2492,10 +2484,9 @@ def test_a_concurrent_task_observes_a_block_operation_in_progress() -> None:
 
 
 def test_every_block_operation_yields_even_when_it_returns_early() -> None:
-    # The blank chip's whole read is two status-byte reads that find UNINIT and return - so the
-    # yield after the status-byte pair has to come before those early returns, or a blank setup()
-    # runs four byte-level commands per block with no scheduling point at all. Counted for a read
-    # of an uninitialized chunk, a read of a valid one, a write and a clear.
+    # A blank chip's whole read is two status-byte reads that find UNINIT and return, so the yield
+    # after that pair must come before those early returns - otherwise a blank setup() runs four
+    # commands per block with no scheduling point. Counted for uninit read, valid read, write, clear.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass())
@@ -2552,10 +2543,9 @@ def test_the_compare_with_scratch_buffer_belongs_to_the_chunk_not_the_call() -> 
 
 
 def test_a_chunk_whose_scratch_buffer_cannot_be_allocated_still_reads() -> None:
-    # The (MemoryError, OverflowError) guard moves to construction with the allocation. The
-    # degradation must stay exactly what it was: _compare_with() reports "not verifiably valid",
-    # so a read falls back to rewriting block 1 from block 0 and still returns the data - the
-    # behaviour test_get_chunk_negative_check_length_self_heals_instead_of_crashing already pins.
+    # The (MemoryError, OverflowError) guard moves to construction with the allocation, but the
+    # degradation must not change: _compare_with() reports "not verifiably valid", so a read
+    # rewrites block 1 from block 0 and still returns the data (the self-heals test pins it).
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass(), check_length=-1)

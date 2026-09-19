@@ -1016,11 +1016,9 @@ def _count_collects_during_supervision(starters: "list[Callable[[], asyncio.Task
 
 
 def test_start_and_check_tasks_collects_once_per_starter_plus_one_and_never_in_the_supervisor() -> None:
-    # Measure B (HEAP_REMEDIATION_PLAN.md B.1.2): the task-starter list is the second of the two
-    # one-time boot lists that get a placement-reset collect between their units - each one puts the
-    # allocator's free-scan index back to zero so the next starter's permanent objects take the
-    # lowest fitting holes (SPECIFICATION.md I.4(f)). The supervisor loop underneath is the run
-    # phase, where I.4 forbids a collect outright, so the count must not move once it is spinning.
+    # Measure B (PLAN B.1.2, SPECIFICATION.md I.4(f.1)): the starter list is the second of the two
+    # one-time boot lists that get a placement-reset collect between their units. The supervisor
+    # underneath is the run phase, where I.4 forbids one - so the count must not move once spinning.
     starters = [_long_lived_starter, _long_lived_starter, _long_lived_starter]
     after_start, after_supervision = _count_collects_during_supervision(starters, 40)
     assert after_start == len(starters) + 1, f"expected {len(starters) + 1} boot collects, got {after_start}"
