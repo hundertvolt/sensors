@@ -128,6 +128,10 @@ _BOUNDED_FAULT_COUNT = 3  # injected bus failures per bounded-fault run - SGP40'
 # 5/5b, then one link per bus-attached driver in Run 5c. Not device- or driver-specific, and
 # deliberately small: each one ends the driver's read task, and three is the supervisor's budget.
 _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the failure count that trips hotspot fallback
+# All five are the same verdict, so the episode rule spends ONE history slot on them while still
+# counting all five (asy_wifi_service.py's _episode_wrn(), SPECIFICATION.md Part C.7.1). Counter
+# and slot count are therefore different numbers here, deliberately - BACKLOG item 35.
+_WIFI_PERSISTED_WARNINGS = 1
 
 # PUT /status {"ResetErrors": true} (asy_webserver_service.py's _put_status()) sequentially calls
 # reset_error_counter() on every registered error source, and each FRAM-backed one's own reset()
@@ -1065,6 +1069,8 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
         # a real CI runner observed needing well over the first attempt's combined budget.
         entry = _wait_for_errcount_above("WIFI", _WIFI_SCRIPTED_FAILURES - 1, timeout_s=90.0)
         _check(condition=entry.get("counter", 0) >= _WIFI_SCRIPTED_FAILURES, msg=f"Run 7: all {_WIFI_SCRIPTED_FAILURES} repeated WiFi connect failures drove real hotspot fallback and were recorded in WIFI's error counter ({entry!r})")
+        logged = _error_type_count(entry, type_char="W")
+        _check(condition=logged == _WIFI_PERSISTED_WARNINGS, msg=f"Run 7: those {_WIFI_SCRIPTED_FAILURES} identical verdicts spent {_WIFI_PERSISTED_WARNINGS} history slot, not one each - the ring still holds what preceded the outage ({entry!r})")
         # 30s originally timed out twice in a row on real GitHub Actions runners even after the
         # errcount-wait fix above landed and was confirmed working - turned out to be a red herring:
         # the real cause was scripts/run_digital_twin_ci.sh's interpreter binary lacking
@@ -1104,10 +1110,11 @@ def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
         _wait_until_serving(proc)
         # Poll tolerantly, then re-read STRICTLY before asserting: this is the one check whose
         # expected set admits 0, so the poller's own {}-on-unreadable return would satisfy it.
-        _wait_for_error_type_count("WIFI", _WIFI_SCRIPTED_FAILURES, timeout_s=30.0, type_char="W")
+        _wait_for_error_type_count("WIFI", _WIFI_PERSISTED_WARNINGS, timeout_s=30.0, type_char="W")
         entry = _errcount_required("WIFI")
         restored = _error_type_count(entry, type_char="W")
-        _check(condition=restored in (0, _WIFI_SCRIPTED_FAILURES), msg=f"Run 8: WIFI's FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial {restored}-entry remnant ({entry!r})")
+        _check(condition=restored in (0, _WIFI_PERSISTED_WARNINGS), msg=f"Run 8: WIFI's FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial {restored}-entry remnant ({entry!r})")
+        _check(condition=entry.get("counter", 0) in (0, _WIFI_SCRIPTED_FAILURES), msg=f"Run 8: and the counter came back with it, still naming all {_WIFI_SCRIPTED_FAILURES} attempts rather than the one slot they share ({entry!r})")
         # 192.0.2.1: RFC 5737 TEST-NET-1, guaranteed non-routable - a deliberate, reproducible
         # "unreachable" address rather than relying on incidental CI sandbox network policy.
         status, body = _http("PUT", "/networking", {"NTP_Host": "192.0.2.1"})

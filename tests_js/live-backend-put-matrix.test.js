@@ -7,7 +7,7 @@ import { commands } from "vitest/browser";
 import { afterAll, describe, expect, it } from "vitest";
 import wozi from "../html/definitions/wozi.json";
 import { formatFieldValue } from "../js/field-format.js";
-import { collectPutFieldCases } from "./_put_field_cases.js";
+import { collectPutFieldCases, shardPutFieldCases } from "./_put_field_cases.js";
 
 /** @typedef {import("./_put_field_cases.js").PutFieldCase} PutFieldCase */
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */
@@ -59,7 +59,10 @@ if (!boot.skipped) {
         systemConfig: real["/system"],
         notificationConfig: real["/notification"],
     });
-    CASES = collectPutFieldCases("wozi", /** @type {SiteDefinitions} */ (wozi), data);
+    // Sharded in CI only (VITE_PUT_MATRIX_SHARD="<index>/<count>"): this one file is 567s of the
+    // web tier's 578s, so parallel shards are what keep it clear of its own timeout-minutes.
+    // Unset locally, so `npm test` and `npm run test:put-matrix` still run every case.
+    CASES = shardPutFieldCases(collectPutFieldCases("wozi", /** @type {SiteDefinitions} */ (wozi), data), __PUT_MATRIX_SHARD__);
 }
 
 afterAll(async () => {

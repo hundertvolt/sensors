@@ -60,3 +60,9 @@ declare module "vitest/browser" {
         }>;
     }
 }
+
+// vitest.config.js's own `define` substitutes this at build time: "<index>/<count>" in CI's
+// sharded web-put-matrix job, "" everywhere else. See live-backend-put-matrix.test.js.
+declare global {
+    const __PUT_MATRIX_SHARD__: string;
+}

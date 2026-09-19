@@ -100,13 +100,9 @@ async def _check_auto_unpause_timers(fram: AsyFramManager, sysfunct: SystemServi
 
 
 async def _check_exhausted_alarm_pool(fram: AsyFramManager, sysfunct: SystemService, chunk: AsyFramChunk) -> None:
-    # 9. Safety invariant under a genuinely exhausted alarm pool: storage must never be left
-    #    paused with nothing able to unpause it. pause_permanent_storage() deinit()s its own
-    #    storage_timer before re-arming, so whether the re-arm actually hits the ENOMEM abort path
-    #    or finds the slot it just freed is an rp2 alarm-pool detail this script deliberately does
-    #    not predict - both outcomes are acceptable, and the assertion is the invariant they share:
-    #    the REST window is a fixed 300s no client can shorten, so a pause that neither aborts nor
-    #    auto-unpauses would strand FRAM writes for five minutes with no way back.
+    # 9. Safety invariant under an exhausted alarm pool: storage is never left paused with
+    #    nothing able to unpause it. Whether the re-arm aborts on ENOMEM or finds the slot its own
+    #    deinit() just freed is an rp2 detail; both are fine, and that invariant is what is asserted.
     hogged = []
     try:
         for _ in range(64):

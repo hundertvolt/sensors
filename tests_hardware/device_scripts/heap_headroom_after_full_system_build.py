@@ -13,11 +13,9 @@ import sensortask_dev
 _PROBE_MIN = 64
 _PROBE_MAX = 192 * 1024
 
-# Floors, not expected values. Measured on the real dev board at MicroPython 1.29.0 (2026-09-11):
-# free=130720, largest_block=116032 after a full build_system(). These sit ~23%/~31% below that, so
-# an ordinary allocation-pattern change won't trip them but a real regression will - a new static
-# buffer, or a future MicroPython bump moving more code into SRAM the way 1.29 already did with the
-# interpreter core (12,918 B, Part F.5.3). Raise them only with a fresh measurement to point at.
+# Floors, not expected values: measured free=130720/largest_block=116032 on the real dev board at
+# 1.29.0 (2026-09-11), and set ~23%/~31% below that, so ordinary allocation churn does not trip
+# them and a new static buffer or an SRAM-growing version bump does. Raise only on a measurement.
 _MIN_FREE = 100_000
 _MIN_LARGEST_BLOCK = 80_000
 

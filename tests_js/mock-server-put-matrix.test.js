@@ -9,7 +9,7 @@ import dev from "../html/definitions/dev.json";
 import woziData from "../mockdata/wozi.json";
 import devData from "../mockdata/dev.json";
 import { installMockFetch } from "../js/mock-server.js";
-import { collectPutFieldCases } from "./_put_field_cases.js";
+import { collectPutFieldCases, shardPutFieldCases } from "./_put_field_cases.js";
 
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */
 /** @typedef {import("../js/definitions.js").MockDeviceData} MockDeviceData */
@@ -291,4 +291,27 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
             expect(currentValueIn(getBody, testCase)).toBe(value);
         });
     }
+});
+
+// The live PUT matrix runs as parallel CI shards (see .github/workflows/ci.yml's web-put-matrix and
+// live-backend-put-matrix.test.js). A shard split that drops or doubles a case would silently shrink
+// that matrix, so the partition itself is proven here rather than trusted.
+describe("shardPutFieldCases", () => {
+    const cases = collectPutFieldCases("wozi", /** @type {SiteDefinitions} */ (wozi), /** @type {MockDeviceData} */ (woziData));
+
+    it("returns every case when no shard is requested", () => {
+        expect(shardPutFieldCases(cases, undefined)).toEqual(cases);
+        expect(shardPutFieldCases(cases, "")).toEqual(cases);
+    });
+
+    it.each([1, 2, 3, 7])("partitions the full case list exactly once across %i shards", (count) => {
+        const shards = Array.from({ length: count }, (_unused, i) => shardPutFieldCases(cases, `${i + 1}/${count}`));
+        expect(shards.flat()).toHaveLength(cases.length);
+        expect(new Set(shards.flat())).toEqual(new Set(cases));
+        expect(Math.max(...shards.map((s) => s.length)) - Math.min(...shards.map((s) => s.length))).toBeLessThanOrEqual(1);
+    });
+
+    it.each(["0/3", "4/3", "3", "a/b", "1/0"])("rejects the malformed shard spec %s", (spec) => {
+        expect(() => shardPutFieldCases(cases, spec)).toThrow(/shard spec/);
+    });
 });

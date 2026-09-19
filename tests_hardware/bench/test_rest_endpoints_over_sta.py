@@ -78,10 +78,9 @@ def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(bo
 
 
 # ---------------------------------------------------------------------------
-# The FRAM storage-pause gate, end to end over the real HTTP stack. The mock tier covers the
-# clamp/re-arm/abort logic and the flash tier covers the real chip gating plus the real
-# auto-unpause timer; what only this tier can prove is that the REST command actually reaches
-# AsyFramManager on a real device and is visible in GET /status.
+# The FRAM storage-pause gate end to end over the real HTTP stack. The mock tier covers the
+# clamp/re-arm/abort logic and the flash tier the real chip gating and auto-unpause timer; only
+# this tier proves the REST command reaches AsyFramManager and shows up in GET /status.
 # ---------------------------------------------------------------------------
 
 
@@ -97,12 +96,9 @@ def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(bo
     assert paused.status_code == 200, f"GET /status after mempause failed: {paused.status_code} {paused.body!r}"
     assert paused.json()["system"]["MemPaused"] is True, f"MemPaused did not become True after a real PUT /system mempause: {paused.json()['system']!r}"
 
-    # Recovery is a reboot, not a second REST call: the pause window is a fixed 300s and the
-    # duration is never client-suppliable (asy_webserver_service.py forwards the enum string only),
-    # so there is no REST unpause to issue. That constraint is also the assertion - AsyFramManager
-    # sets _pause = False in __init__ and nothing ever restores it from FRAM, so the pause is
-    # RAM-only and a reset must clear it. Leaving the bench unpaused for whatever runs next is a
-    # required side effect, not incidental cleanup.
+    # Recovery is a reboot, not a second REST call: the window is a fixed 300s and the duration
+    # is never client-suppliable, so no REST unpause exists. That is also the assertion - the
+    # pause is RAM-only, so a reset must clear it, which also leaves the bench usable.
     bench.kick_all_stations()  # see conftest.py's dut_ip docstring for why this precedes every reconnect-expecting reset
     board.hard_reset()
     wait_until(
@@ -116,11 +112,9 @@ def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(bo
 
 
 # ---------------------------------------------------------------------------
-# ISL29125's applied gain ratio, across a real reboot. The flash tier already proves the config
-# mechanism survives a hard reset generically (test_config_value_survives_a_genuine_hard_reset);
-# what this adds is the one field whose classification is newest - GainRatio stopped being a
-# self-learned runtime value and became ordinary config, written only by a user PUT - exercised
-# over the real REST stack rather than through a device script.
+# ISL29125's applied gain ratio across a real reboot. The flash tier proves the config mechanism
+# survives a hard reset generically; this adds the field whose classification is newest -
+# GainRatio is ordinary user-PUT config now, not a self-learned runtime value.
 # ---------------------------------------------------------------------------
 
 

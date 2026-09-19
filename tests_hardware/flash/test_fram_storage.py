@@ -54,27 +54,18 @@ def test_error_log_history_persists_in_the_real_chip_across_a_simulated_reboot(b
 
 
 def test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write(board: Board) -> None:
-    # The other half of the claim above: that one simulates a fresh boot with a new manager object
-    # in the SAME process, so it never actually restarts and can only ever show the happy path.
-    # A real reset landing mid-chunk-write is the case that matters, and losing the whole history to
-    # it is accepted behavior (project owner's call, 2026-09-11 - no recovery scheme wanted): an
-    # interrupted write leaves a status byte at _STATUS_BUSY, PrintLogHistoryStore.setup()'s _read()
-    # then fails, and its _write() fallback stores the empty ring. Measured in the digital twin at
-    # roughly 1 abrupt restart in 8. What must never happen - and is what this asserts on silicon -
-    # is a PARTIAL or garbled restore, which would mean the dual-block + CRC + busy-flag protocol
-    # had failed at its actual job. Chunk-level counterpart to test_bus_concurrency.py's own
-    # raw-driver test_fram_hard_reset_race_during_write_and_recovery.
+    # The other half of the claim above, which simulates a fresh boot in the SAME process and so
+    # only ever shows the happy path. Losing the whole history to a reset landing mid-write is
+    # accepted (owner, 2026-09-11; Part C.3.1); a PARTIAL restore never is, and is what this asserts.
     board.run_isolated_expect_reset(DEVICE_SCRIPTS / "fram_error_log_reset_race_seed_and_race.py", timeout_s=30.0)
     wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after the reset-raced error-log write")
     _run_and_assert_pass(board, "fram_error_log_reset_race_verify.py", timeout_s=60.0, label="FRAM error-log reset-race all-or-nothing check")
 
 
 # ---------------------------------------------------------------------------
-# The error log's own boot window: a ResetErrors landing before a FRAM-backed logger has run its
-# own pr.setup() must still be persisted, and must survive that setup()
-# (SPECIFICATION.md Part C.7). Mirrored
-# at the mock tier (tests/test_print_log.py, tests/_sensortask_scenarios.py) and the twin tier
-# (tests/test_digital_twin_sensortask_integration.py); this is the same claim on the real chip.
+# The error log's boot window: a ResetErrors landing before a FRAM-backed logger has run its own
+# pr.setup() must persist and survive that setup() (Part C.7). The same claim on the real chip
+# that test_print_log.py, _sensortask_scenarios.py and the twin integration test make elsewhere.
 # ---------------------------------------------------------------------------
 
 
@@ -83,9 +74,8 @@ def test_error_log_reset_during_the_boot_window_is_persisted_and_not_undone(boar
 
 
 # ---------------------------------------------------------------------------
-# Bottom-level hardware function: the real WPEN|BP0|BP1 write-protect mechanism actually gates a
-# real write AND a real read, and can be cleared again - not just "can a chunk be written at all".
-# Reads being gated too is intended, accepted behavior (SPECIFICATION.md Part A.4's FRAM entry),
+# Bottom-level hardware function: the real WPEN|BP0|BP1 mechanism gates a real write AND a real
+# read and can be cleared again. Reads being gated too is intended (Part A.4's FRAM entry) and is
 # asserted identically at the mock and twin tiers.
 #
 # Flash-only, no bench counterpart, structurally (E.6.6 exception 2): get_write_protected()/
@@ -98,10 +88,9 @@ def test_write_protection_actually_gates_a_real_write_and_a_real_read(board: Boa
 
 
 # ---------------------------------------------------------------------------
-# The storage-pause gate (system_service.pause_permanent_storage()/AsyFramManager.set_pause()).
-# The mock tier already covers the clamp/re-arm/abort-on-arm-failure logic exhaustively, but it
-# fakes machine.Timer - so "the real ONE_SHOT auto-unpause actually fires on an rp2 alarm pool" and
-# "a pause genuinely stops the bus write reaching the chip" are both hardware-only claims.
+# The storage-pause gate (pause_permanent_storage()/AsyFramManager.set_pause()). The mock tier
+# covers the clamp/re-arm/abort logic but fakes machine.Timer, so two claims are hardware-only:
+# the ONE_SHOT auto-unpause really fires on an rp2 alarm pool, and a pause really stops the write.
 # ---------------------------------------------------------------------------
 
 
@@ -113,10 +102,9 @@ def test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires
 
 
 # ---------------------------------------------------------------------------
-# The busy-status lockout: the real-hardware half of the SPI RX-overrun coverage BACKLOG.md tracks.
-# The overrun itself is a DMA timing condition no Python-level knob can induce on target, so this
-# tests its consequence instead - which IS inducible, and is the behaviour that actually protects a
-# destructive-readout part. Mock and twin tiers already cover it; this closes the hardware tier.
+# The busy-status lockout: the real-hardware half of BACKLOG's SPI RX-overrun coverage. The
+# overrun is a DMA timing condition no Python knob can induce on target, so this tests its
+# consequence, which is inducible and is what actually protects a destructive-readout part.
 # ---------------------------------------------------------------------------
 
 

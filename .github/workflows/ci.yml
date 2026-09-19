@@ -34,11 +34,11 @@ permissions: {}
 
 jobs:
   web-changes:
-    # Gates the web-CI tier below on whether the branch DIFFERS FROM the default branch in the
-    # website's own source (html/, js/, tests_js/) or its own tooling config - `dorny/paths-filter`
-    # given no `base:` compares against the default branch, never the pushed range, so on a
-    # long-lived branch this is true from its first web-touching commit onward (BACKLOG item 36).
-    # Kept as a single workflow file with a
+    # Gates the web-CI tier below on whether THIS PUSH touched the website's own source (html/,
+    # js/, tests_js/) or its own tooling config. That needs the explicit `base:` below: given none,
+    # `dorny/paths-filter` compares a push against the repository's default branch, so on a
+    # long-lived branch every push matched whatever it had touched weeks ago and the whole web tier
+    # ran on markdown-only commits (BACKLOG item 36). Kept as a single workflow file with a
     # changes-detection job feeding `if:` conditions, deliberately not a second workflow
     # file with its own trigger-level `paths:` filter (which can leave a PR stuck on a required
     # status check that never fires because the whole workflow never triggered - see
@@ -57,6 +57,11 @@ jobs:
       - uses: dorny/paths-filter@15192bc058cc28a13dbf6cde61f19e18988b7af6 # v3
         id: filter
         with:
+          # Upstream's own documented idiom for "what did this push change": a base naming the same
+          # branch that was pushed to is detected against the commit before the push. Ignored on a
+          # pull_request, which is compared through the API against the PR's base - so a PR still
+          # runs the full web tier before merge, which is what a pre-merge status check wants.
+          base: ${{ github.ref }}
           filters: |
             web:
               - 'html/**'
@@ -161,8 +166,68 @@ jobs:
       # The real wozi website is built automatically by npm's own `pretest`/`pretest:coverage`
       # hooks (package.json) - single source of truth for "build before test", shared with local
       # dev (see "Run unit tests" comment above).
+      # Everything except tests_js/live-backend-put-matrix.test.js, which is its own sharded job
+      # below: measured locally, that one file is 567s of this suite's 578s (243 of its 778 tests),
+      # so leaving it here is what put this job under 2x headroom against its own budget.
       - name: Run unit tests (Vitest, real-browser mode)
-        run: npm test
+        run: npm run test:unit
+
+  web-put-matrix:
+    # The live PUT matrix (tests_js/live-backend-put-matrix.test.js): every writable wozi.json field
+    # driven through a real browser against a real digital twin. Split out of web-unit-tests and
+    # sharded because it IS the web tier's wall clock - measured locally, 567s of the suite's 578s,
+    # 243 of its 778 tests - so it repeatedly rolled a 20-minute budget and took the other 535
+    # tests' signal, the coverage report and the cross-browser smoke down with it (BACKLOG item 36).
+    # Each shard is its own runner, so the harness's fixed twin port (tests_js/_live_matrix_command.js)
+    # never collides; the partition itself is proven by tests_js/mock-server-put-matrix.test.js.
+    #
+    # needs: web-unit-tests rather than web-lint-and-typecheck, the same fail-fast reasoning
+    # web-cross-browser-smoke states for itself - no point spending three runners on the slow
+    # matrix if the two-minute suite already found the regression.
+    needs: [web-changes, web-unit-tests]
+    if: needs.web-changes.outputs.web == 'true'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false  # one shard's failure must not hide which cases the other two would have caught
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright OS dependencies (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
+      - name: Build MicroPython Unix port (if not cached)
+        run: |
+          bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
+          if [ ! -x "$bin" ]; then
+            uv run toolchain/setup_toolchain.py setup
+          fi
+      - name: Run the live PUT matrix (shard ${{ matrix.shard }} of 3)
+        run: npm run test:put-matrix
+        env:
+          PUT_MATRIX_SHARD: ${{ matrix.shard }}/3
 
   # Split out from web-unit-tests (was its last three steps) after this job's own coverage rerun
   # was confirmed to intermittently blow web-unit-tests' 20-minute timeout-minutes budget even
@@ -218,6 +283,9 @@ jobs:
       # scripts/test.sh --coverage - see CLAUDE.md's "Code quality tooling", SPECIFICATION.md
       # Part E.5). web-unit-tests' own "Run unit tests" step is the real pass/fail signal; this
       # just re-runs the same suite once more, instrumented, to measure js/ line coverage.
+      # Excludes the live PUT matrix for the same reason web-unit-tests does, and at almost no cost
+      # to the number: tests_js/mock-server-put-matrix.test.js drives the same js/ paths over the
+      # same generated case list, against the mock backend instead of a real twin.
       - name: Run unit tests with coverage
         run: npm run test:coverage 2>&1 | tee coverage-output.txt
         continue-on-error: true

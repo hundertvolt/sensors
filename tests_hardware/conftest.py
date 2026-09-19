@@ -157,11 +157,9 @@ def bench(board: Board) -> Iterator[BenchBridge]:
     yield bridge
 
 
-# The DUT's hotspot SSID is its Hostname config value, and since 2026-09-18 a build injects
-# devices/<device>.toml's own [device].hostname as that field's DEFAULT (BACKLOG). A board whose
-# config file predates that still carries the persisted "SensorNode" and keeps using it, so both are
-# legitimately live depending on when the board's filesystem was last wiped - hence a candidate list
-# rather than one name. Ordered newest-first, so a freshly flashed board is found on the first scan.
+# The DUT's hotspot SSID is its Hostname config value, whose DEFAULT a build injects from
+# devices/<device>.toml since 2026-09-18 - so a board with an older config file still answers to
+# the persisted "SensorNode". Both are live; newest first, so a fresh board is found first.
 _DUT_HOSTNAME_CANDIDATES = ("SensorStationDev", "SensorNode")
 _DUT_HOTSPOT_PASSWORD = "12345678"  # src/asy_wifi_service.py's _VAL_HOTSPOT_PW default, which every devices/*.toml also declares - same value as test_hotspot_role_reversal.py's own _HOTSPOT_PASSWORD
 

@@ -14,24 +14,21 @@ from error_log_helpers import assert_module_error_log_empty, reset_all_error_log
 if TYPE_CHECKING:
     from harness import Board
 
-# Deliberately different from every driver default (_VAL_POV/_VAL_TOV/_VAL_FC in
-# asy_bmp3xx_driver.py: PressOvers=1, TempOvers=1, FiltCoeff=0) and all real, allowed discrete
-# settings (_OSR_SETTINGS=(1,2,4,8,16,32), _IIR_SETTINGS=(0,1,3,7,15,31,63,127)) - a real change
-# must actually take effect on the real hardware for this test to mean anything.
+# Different from every driver default (PressOvers=1, TempOvers=1, FiltCoeff=0) and all real
+# allowed discrete settings (_OSR_SETTINGS, _IIR_SETTINGS in asy_bmp3xx_driver.py): a real change
+# has to take effect on real hardware for this test to mean anything.
 _BMP3XX_TEST_VALUES = {"PressOvers": 4, "TempOvers": 2, "FiltCoeff": 3}
 
 # SCD30 has no live-push config fields at all (asy_scd30_driver.py registers no _push_callbacks) -
 # nothing to add a real-push-parity test for on that sensor.
 
-# ISL29125 is dev-only (no wozi instance - CLAUDE.md). Of its ten config fields, only these four
-# are hardware-backed with a real get-back path (asy_isl29125_driver.py's own _get_callbacks) - the
-# rest are software-only knobs (trigger interval, auto-range settings, gain ratio) or command-only
-# (ISLCalibrate) with nothing to read back. Deliberately different from the driver's own defaults
-# (Resolution=16, Range=10000, IrCompOffset=0, IrCompAdjust=40) and all real, allowed settings.
-# RangeAuto must also be pushed False here: under auto-range (the real default) the chip's own
-# range bit is the state machine's choice, not the user's setting, so _read_sensor_dict() omits
-# Range from a live snapshot entirely rather than let it misreport the auto-ranger's own pick
-# (asy_isl29125_driver.py's own comment on this) - a real readback of a pushed Range needs it off.
+# ISL29125 is dev-only. Of its ten config fields only these four are hardware-backed with a real
+# get-back path (_get_callbacks); the rest are software knobs or command-only. Values chosen away
+# from the defaults (Resolution=16, Range=10000, IrCompOffset=0, IrCompAdjust=40).
+
+# RangeAuto goes False with them because under auto-range the chip's range bit is the state
+# machine's pick, not the user's, so _read_sensor_dict() omits Range from a live snapshot
+# entirely - reading back a pushed Range needs the auto-ranger off.
 _ISL29125_TEST_VALUES = {"Resolution": 12, "Range": 375, "RangeAuto": False, "IrCompOffset": 1, "IrCompAdjust": 20}
 
 
@@ -116,11 +113,9 @@ def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(
 
 
 def test_notification_pause_time_push_counts_down_over_real_rest(board: Board, dut_ip: str) -> None:
-    # PauseTime is dispatch-only (no GET /notification field to read back - it's deliberately
-    # excluded from flat settings there), but IS a real live value under GET /status's own
-    # "notification" section (buildgen's generated _notification_status(): "PauseTime":
-    # await notification.get_override_led()) - proving the real auto_led_override() background
-    # task actually decrements it on real hardware, not just that the PUT was accepted.
+    # PauseTime is dispatch-only, so GET /notification has nothing to read back - but GET
+    # /status's notification section carries it live, which proves the real auto_led_override()
+    # background task decrements it on hardware rather than merely that the PUT was accepted.
     reset_all_error_logs(dut_ip)
     put_res = http_client.fetch(dut_ip, 80, "PUT", "/notification", {"PauseTime": 3}, timeout_s=10.0)
     assert put_res.status_code == 200, f"PUT /notification PauseTime failed: {put_res.status_code} {put_res.body!r}"
@@ -163,12 +158,9 @@ def test_sgp40_reset_voc_command_push_over_real_rest(board: Board, dut_ip: str) 
 
 
 def test_isl29125_calibrate_command_push_over_real_rest(board: Board, dut_ip: str) -> None:
-    # The one ISL29125 config field the push/readback test above deliberately excludes, for exactly
-    # the reason that makes it worth its own test: ISLCalibrate is command-only (dispatch-only, so
-    # outside the persistence gate - it writes nothing), which means a readback can never show it
-    # took effect. What CAN be pinned is the pair of invariants a calibration run must respect, and
-    # neither is reachable from the mock tier's _set_dict_cfg() call or from a device script run in
-    # isolation - only from the real REST stack against the real part.
+    # The one ISL29125 field the test above excludes, for the reason that earns it its own:
+    # ISLCalibrate is command-only, so no readback can show it took effect. What can be pinned is
+    # the pair of invariants a run must respect, reachable only from the real REST stack.
     reset_all_error_logs(dut_ip)
     before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
     assert before.status_code == 200, f"GET /sensors failed: {before.status_code} {before.body!r}"

@@ -167,6 +167,7 @@ class AsyConnTime(SensorReaderConfig):
         # (i.e. every task (re)start), not meant to be read from outside this class.
         self._conn_phase = _PHASE_STA_SEEKING
         self.connection_failures = 0
+        self._episode_wrns = 0  # codes already persisted this connect episode - see _episode_wrn()
         self.hotspot_started_once = False
         self.hw_op_failed = False  # this loop iteration's flag feeding _error_check(), see wlan_connect()
         # SSID/PW/Country/Hostname are persist-only (read fresh from cfgmgr each connection attempt);
@@ -459,6 +460,7 @@ class AsyConnTime(SensorReaderConfig):
         self.pr.one("WLAN connection established")
         self._conn_phase = _PHASE_STA_ESTABLISHED
         self.connection_failures = 0
+        self._episode_wrns = 0  # a connection ends the episode; the next outage persists afresh
         self._led_on()
         self._print_wlan_diagnostics()
 
@@ -602,20 +604,29 @@ class AsyConnTime(SensorReaderConfig):
             elif status == _STAT_OBTAINING_IP:
                 self.pr.all("WLAN obtaining IP")
             elif status == network.STAT_WRONG_PASSWORD:
-                await self.pr.wrn_s("WLAN wrong password", wrnno=4)
+                await self._episode_wrn(4, "WLAN wrong password")
                 return
             elif status == network.STAT_NO_AP_FOUND:
-                await self.pr.wrn_s("WLAN access point not found", wrnno=5)
+                await self._episode_wrn(5, "WLAN access point not found")
                 return
             elif status == network.STAT_CONNECT_FAIL:
-                await self.pr.wrn_s("WLAN connection failed", wrnno=6)
+                await self._episode_wrn(6, "WLAN connection failed")
                 return
             elif status == network.STAT_GOT_IP:
                 self.pr.all("WLAN connection successful")
             else:
-                await self.pr.wrn_s("WLAN undefined state:", status, wrnno=7)
+                await self._episode_wrn(7, "WLAN undefined state:", status)
                 return
             await asyncio.sleep(0.5)
+
+    async def _episode_wrn(self, wrnno: int, *args: object) -> None:
+        # C.7.1's repeat rule, per DISTINCT code: this runs once per connect ATTEMPT and a real
+        # outage retries, so a slot per attempt empties the ten-slot ring in ten tries. Repeats
+        # still count - five failed attempts are five real events - they just spend no slot.
+        bit = 1 << wrnno
+        seen = bool(self._episode_wrns & bit)
+        self._episode_wrns |= bit
+        await self.pr.wrn_s(*args, wrnno=wrnno, repeat=seen)
 
     async def _handle_sta_connection_result(self) -> None:
         if self._wlan_isconnected_or_false():

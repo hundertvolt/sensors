@@ -152,6 +152,9 @@ export default [
             sourceType: "module",
             globals: {
                 ...globals.browser,
+                // Substituted at build time by vitest.config.js's own `define`, so it is a real
+                // literal by the time the browser sees it - never an actual runtime global.
+                __PUT_MATRIX_SHARD__: "readonly",
             },
         },
         rules: BUG_CATCHING_RULES,

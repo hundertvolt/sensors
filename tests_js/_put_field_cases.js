@@ -22,6 +22,26 @@ export const DISPATCH_ONLY_KEYS = new Set(["SystemCmd", "PauseTime", "lightCmdLE
  */
 
 /**
+ * Deterministic round-robin partition of `cases` into `count` shards, 1-indexed. CI runs the live
+ * PUT matrix as parallel shard jobs; `spec` unset (a plain local run) returns every case.
+ * @param {PutFieldCase[]} cases
+ * @param {string | undefined} spec "<index>/<count>", e.g. "2/3"
+ * @returns {PutFieldCase[]}
+ */
+export function shardPutFieldCases(cases, spec) {
+    if (!spec) {
+        return cases;
+    }
+    const parts = spec.split("/").map(Number);
+    const index = parts[0] ?? 0;
+    const count = parts[1] ?? 0;
+    if (parts.length !== 2 || !Number.isInteger(index) || !Number.isInteger(count) || index < 1 || index > count) {
+        throw new Error(`PUT matrix shard spec must be "<index>/<count>" with 1 <= index <= count, got ${spec}`);
+    }
+    return cases.filter((_case, position) => position % count === index - 1);
+}
+
+/**
  * @param {string} device
  * @param {SiteDefinitions} defs
  * @param {MockDeviceData} data current stored config, MockDeviceData-shaped

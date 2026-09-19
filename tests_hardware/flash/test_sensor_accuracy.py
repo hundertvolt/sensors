@@ -68,10 +68,9 @@ def test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibrati
 def test_isl29125_survives_recombined_realistic_lighting_scenarios(board: Board, request: pytest.FixtureRequest) -> None:
     if not request.config.getoption("--allow-neopixel-sweep"):
         pytest.skip("needs the NeoPixel-aimed-at-the-ISL29125 rig physically set up - pass --allow-neopixel-sweep once it is (tests_hardware/README.md's rig section, recorded by the manual tier)")
-    # Ten recombined lighting scenarios (colours, mixtures, slow/medium/fast slopes, steps, holds,
-    # threshold oscillation) driven through the board's own NeoPixel - real segment durations alone
-    # sum to ~8.5 minutes (see the device script's own _scenarios() table), plus per-scenario
-    # baseline settles; this is a genuinely long real-hardware run, not a routine-pass-speed one.
+    # Ten recombined lighting scenarios driven through the board's own NeoPixel. The device
+    # script's _scenarios() table sums to ~8.5 minutes of real segment time before per-scenario
+    # baseline settles, so this is a deliberately long run, not a routine-speed one.
     output = board.run_isolated(DEVICE_SCRIPTS / "isl29125_lighting_scenarios.py", timeout_s=900.0)
     match = RESULT_RE.search(output)
     assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
@@ -79,11 +78,9 @@ def test_isl29125_survives_recombined_realistic_lighting_scenarios(board: Board,
 
 
 def test_isl29125_register_probe_matches_the_digital_twins_fake_chip(board: Board) -> None:
-    # Runs device_scripts/isl29125_mock_conformance_probe.py IDENTICALLY against the real chip
-    # (here) and against digital_twin/_isl29125_chip.py under the MicroPython Unix port
-    # (isl29125_conformance.run_probe_against_twin(), which needs that port already built - see
-    # tests_hardware/README.md's prerequisites), then diffs every protocol-level KEY=VALUE pair -
-    # illumination-dependent keys are excluded via PHYSICAL_KEYS, not compared as absolute values.
+    # Runs isl29125_mock_conformance_probe.py identically against the real chip and against the
+    # twin's fake under the Unix port (run_probe_against_twin(), which needs that port built),
+    # then diffs every protocol KEY=VALUE pair. PHYSICAL_KEYS excludes the light-dependent ones.
     real_output = board.run_isolated(DEVICE_SCRIPTS / "isl29125_mock_conformance_probe.py", timeout_s=120.0)
     real = isl29125_conformance.parse(real_output)
     assert real.get("DONE") == "1", f"the real-hardware probe did not run to completion - full output:\n{real_output}"

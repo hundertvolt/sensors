@@ -218,10 +218,9 @@ class Board:
             return MpremoteResult(proc.returncode, proc.stdout, proc.stderr)
 
     def is_reachable(self) -> bool:
-        # allow_recovery=False: report the honest, current state - a caller may be deliberately
-        # polling for an expected "no" (e.g. waiting to observe a real reboot). This method always
-        # Ctrl-C's/soft-resets the device on raw-REPL entry, so never poll it against a live,
-        # already-running system - use is_device_present() instead (see README for the finding).
+        # allow_recovery=False: report the honest current state, since a caller may be polling
+        # for an expected "no" while waiting out a real reboot. Raw-REPL entry always Ctrl-C's the
+        # device, so never poll this against a live system - is_device_present() is for that.
         try:
             result = self._mpremote("exec", "print('mpremote-ok')", timeout_s=10.0, allow_recovery=False)
         except (HardwareNotAvailableError, HardwareTestFailureError):

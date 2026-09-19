@@ -94,10 +94,9 @@ async def _self_hazard_check(i2c: "asy_i2c_driver.I2C", port_id: int, address: i
     reads. A module-level function rather than an inline block so no closure here captures the
     caller's bus-loop variables (ruff B023) - everything it needs is a parameter."""
     name = KNOWN_ADDRESSES[address]
-    # Each protocol object is constructed and set up exactly once, outside the read loop - unlike
-    # BMP3xx/SGP40, a freshly-constructed object per call would never have run setup() and would
-    # crash on its own cached calibration/CRC state (BMP3xx's _temp_calib/_pressure_calib in
-    # particular, only populated by setup()).
+    # Constructed and set up once, outside the read loop: a fresh object per call never runs
+    # setup(), and then crashes on its own cached calibration state (BMP3xx's _temp_calib/
+    # _pressure_calib are populated there and nowhere else).
     read_once = None
     try:
         if address == 0x61:

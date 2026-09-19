@@ -25,6 +25,14 @@ const launchOptions = existsSync(sandboxChromium) ? { executablePath: sandboxChr
  * Unix-port interpreter (SPECIFICATION.md Part E.1). See SPECIFICATION.md Part H.8.
  */
 export default defineConfig({
+    // The live PUT matrix's own shard selector, read at config load and substituted into the
+    // browser bundle as a plain global. Three things were tried before this one: a shell variable
+    // (Vite fills `import.meta.env` from .env files only), an `import.meta.env` define (`define`
+    // rewrites exact expression text, which a type-cast read is not), and a JSON.stringify'd value
+    // (double-quoted - Vitest stringifies a define value itself, so the raw string is what to pass).
+    define: {
+        __PUT_MATRIX_SHARD__: process.env.PUT_MATRIX_SHARD ?? "",
+    },
     test: {
         include: ["tests_js/**/*.test.js"],
         // Explicit backstop, not a fix for any known hang - mirrors the Python side's standing

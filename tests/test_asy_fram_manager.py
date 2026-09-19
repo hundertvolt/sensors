@@ -2346,6 +2346,76 @@ def test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten()
     assert repaired  # a write is the only thing that clears it
 
 
+# ---------------------------------------------------------------------------
+# BACKLOG item 35 - a degraded condition warns on every operation, so persisting each one refills
+# the owning module's bounded history by itself. Episode-scoped per distinct code, like
+# asy_uart_comm.py's own _episode_wrn(); SPECIFICATION.md Part C.7.1 states the rule.
+# ---------------------------------------------------------------------------
+
+
+def _warnings(errs: "ErrorLog") -> list[int]:
+    nums, types = errs["FRAM"]["ErrNum"], errs["FRAM"]["ErrType"]
+    assert isinstance(nums, list)
+    assert isinstance(types, list)
+    return [num for index, num in enumerate(nums) if types[index] == "W"]  # zip(strict=) has no MicroPython equivalent
+
+
+def test_a_block_0_that_keeps_failing_persists_one_warning_per_episode_not_one_per_read() -> None:
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8())
+    assert chunk is not None
+
+    async def scenario() -> "ErrorLog":
+        await chunk.write(b"good")
+        addr0, _addr1 = chunk.block_addr
+        for _read in range(5):
+            # Re-corrupted each time: _read() heals block 0 from block 1, so one flip is one
+            # warning. A cell that no longer holds what was written to it is what warns forever.
+            chip.memory[addr0] ^= 0xFF
+            await chunk.read()
+        return await manager.get_error_counter()
+
+    assert _warnings(run(scenario())) == [71], "five failing reads must not spend five slots"
+
+
+def test_a_clean_read_ends_the_episode_so_a_later_fault_persists_again() -> None:
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8())
+    assert chunk is not None
+
+    async def scenario() -> "ErrorLog":
+        await chunk.write(b"good")
+        addr0, _addr1 = chunk.block_addr
+        chip.memory[addr0] ^= 0xFF
+        await chunk.read()  # warns, and heals block 0 from block 1
+        await chunk.read()  # both copies healthy again - the episode is over
+        chip.memory[addr0] ^= 0xFF
+        await chunk.read()  # a fresh fault, so a fresh persisted warning
+        return await manager.get_error_counter()
+
+    assert _warnings(run(scenario())) == [71, 71]
+
+
+def test_a_held_mempause_persists_one_refusal_not_one_per_operation() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    assert chunk is not None
+    run(chunk.write(b"data"))
+    manager.set_pause(value=True)
+
+    async def scenario() -> "ErrorLog":
+        for _cycle in range(4):
+            await chunk.write(b"else")  # wrnno 60
+            await chunk.read()  # wrnno 70
+        return await manager.get_error_counter()
+
+    # Both codes persist once: a paused write and a paused read are different facts, and a pause
+    # long enough to matter is a pause many operations run into.
+    assert _warnings(run(scenario())) == [60, 70]
+
 if __name__ == "__main__":
     import microtest
 

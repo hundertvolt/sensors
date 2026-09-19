@@ -155,7 +155,7 @@ class PrintLogHistory(PrintLog):
         if self.level > _LOG_OFF:
             print(self.name, *args)
 
-    async def _store_err(self, min_e: int, max_e: int, errno: int) -> None:
+    async def _store_err(self, min_e: int, max_e: int, errno: int, *, repeat: bool = False) -> None:
         # errno<=_NO_ERR (0) is the shared "nothing to record" sentinel for err_s()/wrn_s() alike;
         # a real code is only shifted into its own sub-range by min_e past this check.
         if self.err_count < _MAX_CNT:
@@ -164,11 +164,12 @@ class PrintLogHistory(PrintLog):
             self._diag("PrintLog: Error count reached maximum value!")
         if errno <= _NO_ERR:
             return
-        errno += min_e
-        if errno <= max_e:
-            self.history.append(errno)
-        else:
-            self._diag("PrintLog: Error number", errno - min_e, "is invalid!")
+        if not repeat:  # a repeat is counted and written, but spends no slot - SPECIFICATION.md Part C.7.1
+            errno += min_e
+            if errno <= max_e:
+                self.history.append(errno)
+            else:
+                self._diag("PrintLog: Error number", errno - min_e, "is invalid!")
         if not self.initialized:
             # Return regardless of logging level - don't write stale state to FRAM before setup().
             self._diag("PrintLog: Uninitialized, call setup first!")
@@ -199,13 +200,13 @@ class PrintLogHistory(PrintLog):
     async def setup(self) -> None:  # no persistence to load in the pure in-memory case
         self.initialized = True
 
-    async def err_s(self, *args: object, errno: int = _NO_ERR, **kwargs: "Any") -> None:
-        await self._store_err(_NO_ERR, _MAX_ERR, errno)
+    async def err_s(self, *args: object, errno: int = _NO_ERR, repeat: bool = False, **kwargs: "Any") -> None:
+        await self._store_err(_NO_ERR, _MAX_ERR, errno, repeat=repeat)
         if self.level >= _LOG_ERR:
             print(self.name, *args, **kwargs)
 
-    async def wrn_s(self, *args: object, wrnno: int = _NO_ERR, **kwargs: "Any") -> None:
-        await self._store_err(_NO_WRN, _MAX_WRN, wrnno)
+    async def wrn_s(self, *args: object, wrnno: int = _NO_ERR, repeat: bool = False, **kwargs: "Any") -> None:
+        await self._store_err(_NO_WRN, _MAX_WRN, wrnno, repeat=repeat)
         if self.level >= _LOG_WARN:
             print(self.name, *args, **kwargs)
 
