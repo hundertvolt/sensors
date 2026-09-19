@@ -14,12 +14,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-# Every comment-tag family this generator recognizes. Each carries its own "does this comment even
-# look like an attempt at me" predicate, because the families have genuinely different payload
-# shapes - an operator for @requires, a snake_case field name for @wiring - and a single shared
-# heuristic would go blind on whichever shape it wasn't written for, which is exactly the silent
-# miss this whole module exists to prevent. Add a family here and give it its own strict-grammar
-# module alongside requires_tag.py/wiring_tag.py; @web/@web-group (BACKLOG.md) lands the same way.
+# Every comment-tag family this generator knows, each with its own "is this even an attempt at
+# me" predicate: the payload shapes differ, and one shared heuristic would go blind on whichever
+# it was not written for - the silent miss this module exists to prevent.
+
+# A new family goes here, plus its own strict-grammar module beside requires_tag.py.
 def _looks_like_requires_payload(text: str) -> bool:
     if _PAYLOAD_OPERATOR_RE.search(text):
         return True
@@ -38,11 +37,11 @@ def _payload_words(text: str) -> "tuple[bool, list[str]]":
 
 def _looks_like_wiring_payload(text: str) -> bool:
     # Every element of a wiring tag is a bare word, so sentence punctuation rules a comment out
-    # immediately. Past that the bar depends on the sigil, because the two paths carry very
-    # different false-positive risk: nobody writes "@wiring" in prose, so with the sigil any bare-
-    # word payload counts as an attempt (which is what lets a tag with an element *dropped* still
-    # be caught). Without it, "wiring is handled by the generator" is ordinary English, so a real
-    # name shape - a snake_case TOML field or a CamelCase producer class - has to be present too.
+    # at once. Past that the bar depends on the sigil: nobody writes "@wiring" in prose, so with
+    # it any bare-word payload counts, which is what catches a tag with an element dropped.
+
+    # Without the sigil, "wiring is handled by the generator" is ordinary English, so a real name
+    # shape - a snake_case TOML field or a CamelCase producer class - must be present too.
     at_sign, words = _payload_words(text)
     if not words or not all(_PAYLOAD_WORD_RE.match(w) for w in words):
         return False
@@ -71,11 +70,8 @@ def _looks_like_limits_payload(text: str) -> bool:
 
 
 def _looks_like_web_payload(text: str) -> bool:
-    # A `@web` tag is "<FieldName> key=value ...": a leading bare identifier, then at least one
-    # real key=value pair. Mirrors _looks_like_limits_payload's two-branch shape: the field name
-    # surviving alone (every key=value pair dropped) is still an attempt, and so is every
-    # key=value pair surviving while the field name itself was dropped (the first "word" then
-    # looks like "label=..." rather than a bare identifier).
+    # A `@web` tag is "<FieldName> key=value ...". Two branches like the @limits predicate: the
+    # field name alone is an attempt, and so is the reverse, where the first word is "label=...".
     _, words = _payload_words(text)
     if not words:
         return False
@@ -96,12 +92,9 @@ def _looks_like_web_group_payload(text: str) -> bool:
 
 
 def _looks_like_requires_attempt(text: str) -> bool:
-    # An exact "@requires" is strong evidence by itself, so a bare number is payload enough for it
-    # ("@requires timeout 200000" - both the "bus." prefix and the operator dropped). This
-    # leniency is specific to this family's number-shaped payload: applied to @limits it would read
-    # "@limits are described in section 5.2" as a broken tag, so it lives here, not in the shared
-    # scan. The other families need no equivalent - their own strict predicates already recognise
-    # every partial tag, because any bare-word payload is one.
+    # An exact "@requires" is strong evidence by itself, so a bare number is payload enough even
+    # with the prefix and operator dropped. Specific to this family's number-shaped payload -
+    # on @limits it would read "described in section 5.2" as a broken tag - so it lives here.
     return _looks_like_requires_payload(text) or bool(_PAYLOAD_NUMBER_RE.search(text))
 
 
@@ -134,13 +127,9 @@ _SHORT_TAG_NAME_LEN = 4  # 3-4 letters (the planned "@web") only tolerates one t
 def _max_typo_distance(tag_name: str) -> int:
     return 1 if len(tag_name) <= _SHORT_TAG_NAME_LEN else 2
 
-# The rough shape every real tag's payload has, in two alternative forms - an identifier followed
-# by a comparison-like operator (value deliberately optional, so a truncated "bus.timeout>=" still
-# counts as an attempt), or a dotted reference plus a number (so a tag whose operator was dropped
-# entirely, "bus.timeout 200000", isn't silently invisible either). Gates near-miss detection so an
-# ordinary prose comment that happens to open with "@requires" (e.g. "@requires a bit more care
-# here") is never mistaken for a malformed tag - see test_buildgen_tag_comments.py's
-# false-positive coverage.
+# The rough shape a real tag's payload has, in two forms: an identifier plus a comparison-like
+# operator, value optional so a truncated one counts, or a dotted reference plus a number, so a
+# dropped operator is not invisible. Gates near-miss detection against ordinary prose.
 _PAYLOAD_OPERATOR_RE = re.compile(r"\b[\w.]+\s*(>=|<=|==|!=|=|>|<)")
 _PAYLOAD_DOTTED_RE = re.compile(r"\b\w+\.\w+")
 _PAYLOAD_NUMBER_RE = re.compile(r"(?<![\w.])[-+]?\d")
@@ -196,23 +185,18 @@ def iter_comment_tokens(path: Path, device: str, instance_label: str) -> "list[C
     string/docstring is never mistaken for a real comment. Each token also carries whether it sits
     inside a class/function body rather than at module level."""
     tokens = []
-    # Bracket depth, plus whether the statement that opened the current bracketing was itself
-    # indented: inside brackets a comment's own line is always indented by style, so its physical
-    # indentation says nothing about whether it sits at module level - the enclosing statement's
-    # does. Outside brackets the line's own indentation is the answer, and INDENT/DEDENT depth is
-    # not: the tokenizer emits no DEDENT for a comment line, so a module-level comment following an
-    # indented block still reads as depth 1 there.
+    # Bracket depth plus whether the statement that opened it was indented: inside brackets a
+    # comment is always indented by style, so only the enclosing statement says whether this is
+    # module level. Outside them the line's own indentation answers it, and DEDENT depth cannot.
     depth = 0
     stmt_indented = False
     try:
         with path.open("rb") as f:  # tokenize decodes it itself, honoring a PEP 263 cookie/BOM
             for tok in tokenize.tokenize(f.readline):
                 if tok.type == tokenize.COMMENT:
-                    # tok.line is the tokenizer's own physical source line. Re-deriving it by
-                    # indexing a str.splitlines() list would misalign: splitlines() also breaks on
-                    # \x0b/\x0c/\u2028/..., which Python's tokenizer treats as ordinary characters,
-                    # so a single such character anywhere earlier in the file shifted every later
-                    # line by one and made valid module-level tags fail as "not at module level".
+                    # tok.line is the tokenizer's own physical line. Re-deriving it by indexing
+                    # str.splitlines() misaligns: that also breaks on \x0b/\x0c/\u2028, which the
+                    # tokenizer treats as ordinary characters, shifting every later line by one.
                     inside_block = stmt_indented if depth else tok.line[:1].isspace()
                     tokens.append(CommentToken(tok.start[0], tok.start[1], tok.string, inside_block))
                 elif tok.type == tokenize.OP and tok.string in "()[]{}":

@@ -27,12 +27,9 @@ class WiringField:
     target: str
     required: bool
     mode: str  # "kwarg" | "attr" | "setter"
-    # mode decides how the resolved producer reaches its consumer (SPECIFICATION.md Part C.14.2):
-    # "kwarg" passes the instance as a constructor kwarg named `target`; "attr" passes the
-    # instance's `target` attribute/bound method instead (signal_sink wants `pixel.request_signal`,
-    # not `pixel`); "setter" calls `<consumer>.<target>(<producer>)` once, after both exist, so it
-    # gates nothing in construction order. Per-value measurement wiring is _VALUE_WIRING's
-    # (value_wiring.py), not this tag's.
+    # mode decides how the producer reaches its consumer (Part C.14.2): "kwarg" passes the
+    # instance as a constructor kwarg, "attr" its `target` attribute or bound method, "setter"
+    # calls it once after both exist. Per-value wiring is _VALUE_WIRING's, not this tag's.
 
 
 def parse_wiring(path: Path, device: str, driver: str) -> "tuple[WiringField, ...]":

@@ -58,22 +58,18 @@ import { fetchWithTimeout } from "./poll-manager.js";
 /** The only schema major version this build of the renderer understands. */
 export const SUPPORTED_SCHEMA_MAJOR = 1;
 
-// websiteVersion (when present) is this project's own product/build version (SPECIFICATION.md
-// Part L.7) - build provenance only, distinct from schemaVersion's wire-format-shape concern
-// above. Not rendered anywhere in the UI (no live-data question the way the device's own real
-// GET /system "build" sub-entry has - you're always looking at exactly the build you fetched),
-// so it isn't validated here either; a missing/malformed value degrades to "unknown provenance",
-// never to broken rendering.
+// websiteVersion is build provenance only (SPECIFICATION.md Part L.7), distinct from
+// schemaVersion's wire-format concern above. Nothing renders it - you always have exactly the
+// build you fetched - so it is unvalidated too, and a bad value costs provenance, not rendering.
 
 /**
  * A field's effective current value: the real value from `currentValues` when GET reported one,
  * otherwise `field.defaultValue`, otherwise `undefined`. Callers use this instead of reading
  * `currentValues[field.key]` directly, so rendering and change-comparison never drift apart.
  *
- * `field.path` walks a nested measurement body (`{"RGB": {"R": 0.5}}`) one or more levels down
- * instead of doing the flat `key` lookup - readonly fields only, since a PUT body is always flat.
- * A path that is present but does not resolve yields `undefined` (rendered as an em dash), never
- * a partially-walked sub-object leaking into `formatFieldValue()` as `[object Object]`.
+ * `field.path` walks a nested measurement body (`{"RGB": {"R": 0.5}}`) instead of the flat `key`
+ * lookup - readonly fields only, a PUT body being always flat. A path that does not resolve
+ * yields `undefined`, never a half-walked sub-object reaching `formatFieldValue()`.
  * @param {FieldDef} field
  * @param {Record<string, unknown>} currentValues
  * @returns {unknown}
@@ -192,9 +188,8 @@ export function validateDefinitions(data) {
 
 /**
  * Validates the two display-only hints a nested, precision-declared readonly field carries.
- * Accepting either needs no validator change at all - nothing here inspected field-level keys
- * before - but this file's contract is to fail loudly rather than in the browser, so a malformed
- * `path`/`decimals` has to surface here.
+ * Accepting them needed no validator change at all, but this file's contract is to fail loudly
+ * rather than in the browser, so a malformed `path`/`decimals` has to surface here.
  * @param {unknown} field
  * @param {string} where
  * @returns {string[]}

@@ -8,10 +8,9 @@
 /** @typedef {import("../js/definitions.js").MockDeviceData} MockDeviceData */
 /** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
 
-// Dispatch-only fields (a command/action, not a stored setting) and the one composite field shape
-// (lightCmdLED) have their own distinct Invalid/Failed/Valid semantics, covered by dedicated tests
-// elsewhere (mock-server.test.js, render.test.js) - excluded from this generic enumeration rather
-// than force-fit into categories that don't apply to them.
+// Dispatch-only fields and the one composite shape (lightCmdLED) have their own Invalid/Failed/
+// Valid semantics, covered by dedicated tests in mock-server.test.js and render.test.js. Excluded
+// here rather than force-fit into categories that do not apply to them.
 export const DISPATCH_ONLY_KEYS = new Set(["SystemCmd", "PauseTime", "lightCmdLED", "ResetErrors"]);
 
 /**

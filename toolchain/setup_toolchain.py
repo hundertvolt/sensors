@@ -23,10 +23,9 @@ from typing import Any
 
 import tomllib
 
-# Same explicit sys.path convention scripts/build_firmware.py already uses for its own
-# toolchain/ sibling imports - required so this still resolves whether this file is run directly
-# (as __main__, which already gets its own directory on sys.path for free) or loaded via
-# tests_scripts/_script_loader.py's importlib mechanism, which does not.
+# The same explicit sys.path convention scripts/build_firmware.py uses for its toolchain/
+# siblings: needed so this resolves both when run directly (which puts its own directory on
+# sys.path) and when loaded through tests_scripts/_script_loader.py, which does not.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import micropython_overrides
 
@@ -81,10 +80,9 @@ BUILD_ENV_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 # (SPECIFICATION.md Part B.7).
 BUILD_ENV_LOCALE = "C.UTF-8"
 
-# On top of the base allowlist, git/apt calls (and the rp2 "submodules" Makefile target,
-# which does both a git fetch *and* an internal cmake configure pass) also need whatever
-# proxy/CA configuration this machine's network actually requires — explicitly named
-# here rather than inherited wholesale, so it's still only ever these specific variables.
+# On top of the base allowlist, git/apt calls - and the rp2 "submodules" target, which fetches
+# and configures - need whatever proxy/CA configuration this machine requires. Named explicitly
+# rather than inherited wholesale, so it stays only ever these variables.
 NETWORK_ENV_EXTRA = (
     "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy",
     "NO_PROXY", "no_proxy", "ALL_PROXY", "all_proxy",
@@ -970,10 +968,9 @@ def run_project_dependency_install(repo_root: Path, toolchain_dir: Path, *, skip
     if not (repo_root / "package.json").exists():
         log("No package.json found - skipping npm ci")
         return
-    # Installs the pinned Node when the host has none, instead of the previous soft skip that left
-    # the whole web tier silently unrunnable - which is exactly what happened on the bench Pi4.
-    # Not gated on --skip-apt: no system package and no sudo, just a tarball into the managed
-    # toolchain directory. --skip-npm above is the gate for "I do not want the JS side at all".
+    # Installs the pinned Node when the host has none, rather than the soft skip that left the
+    # web tier silently unrunnable on the bench Pi4. Not gated on --skip-apt - no system package,
+    # no sudo, just a tarball into the managed toolchain dir; --skip-npm is that gate.
     node_bin = ensure_node(toolchain_dir, repo_root)
     env = None
     if node_bin is not None:

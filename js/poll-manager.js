@@ -8,10 +8,9 @@
 export const DEFAULT_TIMEOUT_MS = 15000;
 
 /**
- * fetch() bounded by an AbortController timeout, freeing the connection and rejecting instead of
- * waiting forever on a hung one. Used by `PollManager.request()` below and directly by one-off
- * startup fetches outside the single-flight queue (`definitions.js`/`app.js`) that still need the
- * same never-hang guarantee.
+ * fetch() bounded by an AbortController timeout, so a hung connection is freed and rejected
+ * rather than waited on. Used by `PollManager.request()` and directly by the one-off startup
+ * fetches outside the single-flight queue that need the same never-hang guarantee.
  * @param {string} url
  * @param {RequestInit} [init]
  * @param {number} [timeoutMs]

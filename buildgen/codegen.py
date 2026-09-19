@@ -20,13 +20,9 @@ _DNS_TIMEOUT_MS = 500
 _DNS_TRIES = 1
 _NTP_FETCH_TIMEOUT_MS = 5000
 
-# The generator's own fixed catalog for notification's per-signal getters (SPECIFICATION.md Part L.4's
-# "Each notification signal's own threshold default/range and flash color are a related, still-open
-# question for Session 3" - resolved here: every real device TOML today uses identical
-# threshold/color values with no per-device override in the schema, so this session hardcodes the
-# known catalog exactly as sensortask_wozi.py/sensortask_dev.py already do, rather than inventing a
-# TOML field neither of those two hand-written files has. See this session's PR description for the
-# "flagged for a future TOML-schema extension" note this implies.
+# The generator's fixed catalog for notification's per-signal getters (Part L.4). Every real
+# device TOML uses identical threshold and colour values with no per-device override, so this
+# hardcodes what the hand-written modules already did rather than inventing a TOML field.
 _KNOWN_SIGNALS: "dict[str, tuple[str, str, str, tuple[int, int, int]]]" = {
     # toml key: (signal name, const name, field_schema literal, color)
     "warn_co2": ("WarnCO2", "_FIELD_WARN_CO2", '(("WarnCO2", "int", 1600, 0, 3000, None),)', (1, 0, 0)),
@@ -72,10 +68,9 @@ class _Ctx:
         return var if wf.mode == "kwarg" else f"{var}.{wf.target}"
 
     def value_wiring_kwargs(self, spec: InstanceSpec, toml_field: str) -> "list[tuple[str, str]]":
-        # §2.9's per-value measurement wiring: resolves to either a real {source, field} reference
-        # (any producer, matched by attribute name) or an explicit default provider - always
-        # (source_kwarg, field_kwarg) rendered as a pair, mirroring how _DefaultTemperatureSource/
-        # _DefaultHumiditySource's get_data() always exposes a single "value" attribute (§10.1 item 1).
+        # Per-value measurement wiring: either a real {source, field} reference matched by
+        # attribute name, or an explicit default provider. Always rendered as a
+        # (source_kwarg, field_kwarg) pair, as the _Default*Source classes expose one "value".
         vwf = next(f for f in spec.value_wiring_schema if f.toml_field == toml_field)
         value = spec.wiring[toml_field]
         if isinstance(value, dict) and value.get("default") is True:
@@ -98,10 +93,9 @@ def _kw(pairs: "list[tuple[str, str]]") -> str:
 
 
 def _defaulted_wiring_fields(spec: InstanceSpec) -> "list[str]":
-    # Every TOML field on this instance that opted into §2's wiring-defaults mechanism
-    # ({default = true, ...}) - covers both _WIRING-based (signal_sink) and _VALUE_WIRING-based
-    # (temperature_source/humidity_source) fields uniformly, since both live in spec.wiring the
-    # same way. Used to decide which _Default<Field> classes this instance's import line needs.
+    # Every field on this instance that opted into the wiring-defaults mechanism, covering both
+    # _WIRING- and _VALUE_WIRING-based fields uniformly since both live in spec.wiring. Decides
+    # which _Default<Field> classes the instance's import line needs.
     return [f for f, v in spec.wiring.items() if isinstance(v, dict) and v.get("default") is True]
 
 
@@ -111,20 +105,17 @@ def _fram_kw(spec: InstanceSpec, ctx: _Ctx) -> "tuple[str, str] | None":
 
 
 def _device_fram_arg(model: DeviceModel, ctx: _Ctx) -> str:
-    # Mandatory infra's own device-level counterpart to _fram_kw() above: [device.wiring].fram_target
-    # (always a plain instance-name string, never a §2 default-provider dict - _check_device_wiring()
-    # already enforces that) is implicitly wired into every mandatory-infra consumer that declares its
-    # own "# @wiring fram_target ..." tag (sysfunct/conn/ntp/webserver today), same mechanism, one
-    # shared helper instead of the inline expression each call site used to duplicate.
+    # The device-level counterpart to _fram_kw(): [device.wiring].fram_target is always a plain
+    # instance name, never a default-provider dict (_check_device_wiring() enforces that), and is
+    # wired into every mandatory-infra consumer declaring a fram_target tag.
     fram_target = model.doc.get("device", {}).get("wiring", {}).get("fram_target")
     return f"fram={ctx.instance_var(resolve_instance_key(model, fram_target))}" if fram_target else ""
 
 
 def _device_fram_kwarg_suffix(model: DeviceModel, ctx: _Ctx) -> str:
-    # ", fram=<var>" ready to splice directly into an existing inline call's argument list (conn's/
-    # ntp's/sysfunct's own one-line constructor calls below) - _emit_webserver() below needs the bare
-    # "fram=<var>" form instead (its own call is emitted one kwarg per line), so it calls
-    # _device_fram_arg() directly rather than through this wrapper.
+    # ", fram=<var>" ready to splice into an inline argument list, as conn/ntp/sysfunct's
+    # one-line constructor calls need. _emit_webserver() emits one kwarg per line and so calls
+    # _device_fram_arg() directly for the bare form.
     arg = _device_fram_arg(model, ctx)
     return f", {arg}" if arg else ""
 
@@ -252,10 +243,9 @@ def _build_args_uart_link(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], li
     return pos, kw
 
 
-# One handler per driver, in the same "add a driver -> add a row" shape as buildspec.py's own
-# tables - kept as a dispatch table rather than one long if/elif chain (which this file used to be)
-# purely to stay under ruff's cyclomatic-complexity ceiling; the actual per-driver logic is
-# unchanged, just split one function per driver instead of one branch per driver in a single one.
+# One handler per driver, the same "add a driver, add a row" shape buildspec.py's tables use. A
+# dispatch table rather than the if/elif chain this used to be, purely to stay under ruff's
+# complexity ceiling - the per-driver logic itself is unchanged.
 _BUILD_ARGS_HANDLERS: "dict[str, Callable[[InstanceSpec, _Ctx], tuple[list[str], list[tuple[str, str]]]]]" = {
     "scd30": _build_args_scd30,
     "sgp40": _build_args_sgp40,
@@ -407,13 +397,13 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
 
     for node in construction_order:
         if node == "conn":
-            # Placed here, not hardcoded ahead of the bus loop, specifically so it can come after
-            # fram's own construction line whenever a device-level fram_target wires it in
-            # (buildgen.graph.build_construction_order() adds that dependency for exactly this) -
-            # a device with no fram_target keeps conn as the very first thing built, unchanged.
-            # hostname/hotspot_password are [device]'s own values, passed as the per-device DEFAULTS
-            # for the two ConfigManager-persisted fields (asy_wifi_service._with_default). Before
-            # this, every device booted as the shared "SensorNode" whatever its TOML said.
+            # Here rather than hardcoded ahead of the bus loop, so it can follow fram's own
+            # construction whenever a device-level fram_target wires it in. A device without one
+            # still builds conn first.
+
+            # hostname/hotspot_password are [device]'s values, passed as the DEFAULTS of the two
+            # ConfigManager-persisted fields (_with_default). Before this every device booted as
+            # the shared "SensorNode" whatever its TOML said.
             lines.append(f"    conn = AsyConnTime(conn_fail_to_hotspot={dev['conn_fail_to_hotspot']}, hotspot_time_min={dev['hotspot_time_min']}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, hostname={dev['hostname']!r}, hotspot_password={dev['hotspot_password']!r}{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
             continue
         if node == "ntp":
@@ -445,14 +435,9 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
     lines.append("    timers_running = ThreadSafeFlag()")
     lines.append("    sysfunct.set_level_setters(_collect_level_setters())")
     lines.append("")
-    # fram must come before sysfunct: sysfunct.setup() -> cfgmgr.setup() -> its own FRAM-backed
-    # logger's pr.setup() (WP2) needs AsyFramManager already initialized to do a real chunk
-    # read/write - sysfunct-before-fram left CFGMGR_SYSTEM's own setup() finding
-    # `self.fram.initialized is False` every boot, degrading instantly (confirmed directly:
-    # 0ms vs every other FRAM-backed cfgmgr's ~170ms real setup cost) rather than ever
-    # persisting/restoring its own history. fram.setup() has no dependency on sysfunct in the
-    # other direction (confirmed: AsyFramManager.setup() only touches its own pr/fram, never
-    # sysfunct), so this reorder is safe.
+    # fram must precede sysfunct: sysfunct.setup() reaches its cfgmgr's FRAM-backed logger, which
+    # needs AsyFramManager initialized. The other order left CFGMGR_SYSTEM degrading every boot,
+    # 0ms against ~170ms, and is safe to reverse (Part A.7's boot-latency note).
     setup_order = []
     if "fram" in have:
         setup_order.append(ctx.instance_var(("fram", "")))
@@ -506,14 +491,9 @@ def generate_module_source(model: DeviceModel, construction_order: "list[str | t
 
 
 def _emit_flush_pending_configs(lines: "list[str]", construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> None:
-    # A commanded reboot/bootloader must not drop a write that's still only staged
-    # (ConfigManager.write_config()'s deferred flash flush) - the accepted residual-risk window is
-    # power loss between "response sent" and "write attempted" (SPECIFICATION.md Part F.2), not a
-    # software-triggered reboot 4 seconds later that could easily wait. getattr(module, "cfgmgr",
-    # None) generically, not a new get_*() fan-in method on every module class: only
-    # SensorReaderConfig subclasses and SystemService itself ever have one (confirmed - grep for
-    # "self.cfgmgr =" across src/), so a virtual method every other module class would have to stub
-    # out to "return []" bought nothing here.
+    # A commanded reboot must not drop a still-staged write: the accepted residual risk is power
+    # loss between response and write (Part F.2), not a software reboot 4 seconds later. Reached
+    # by getattr rather than a fan-in method every other module class would have to stub out.
     modules = _module_names(construction_order, ctx)
     lines.append("async def _flush_pending_configs() -> None:")
     for name in modules:
@@ -664,17 +644,9 @@ def _module_names(construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) 
 
 def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> None:
     modules = _module_names(construction_order, ctx)
-    # fram (AsyFramManager) has get_error_sources()/get_loggers() but, unlike every other
-    # constructed module, no get_task_starters()/get_timer_starters() at all - a synchronous
-    # flash-backed store owns no asyncio task or Timer of its own. Every hand-written
-    # sensortask_wozi.py/sensortask_dev.py's own _collect_task_starters()/_collect_timer_starters()
-    # already excludes it from those two loops specifically (while still including it in
-    # _collect_error_sources()/_collect_level_setters()) - this mirrors that, rather than crashing
-    # every generated device with a FRAM instance (i.e. every real device and both synthetic
-    # fixtures) with AttributeError the moment main() reaches this collector, a real bug this
-    # generator's own ast.parse()-only proof depth could never have caught (found + fixed by
-    # SPECIFICATION.md Part L.4, whose own boot proof is the first thing to actually run
-    # generated code at all).
+    # fram has get_error_sources()/get_loggers() but no task or timer starters: a synchronous
+    # store owns neither, and the hand-written modules excluded it from exactly these two loops.
+    # Getting it wrong was AttributeError on every FRAM-wired device, caught only by Part L.4.
     fram_var = next((ctx.instance_var(n) for n in construction_order if isinstance(n, tuple) and n[0] == "fram"), None)
     task_timer_modules = [m for m in modules if m != fram_var] if fram_var is not None else modules
     lines.append('def _collect_error_sources() -> "list[Any]":')

@@ -40,16 +40,13 @@ _BUS_PIN_ROLE: "dict[str, tuple[dict[int, tuple[str, str]], str]]" = {
     "tx_pin": (UART_ROLE, "tx"),
     "rx_pin": (UART_ROLE, "rx"),
 }
-# Every field a bus table of this kind may declare, in total - its own required wire pins plus
-# "frequency" (both i2c/asy_i2c_driver.I2C's own required param, checked separately above for a
-# more specific message) and, i2c-only, "timeout" (asy_i2c_driver.I2C's own optional param;
-# asy_spi_driver.SPI has none) - itself optional at the bus-table-shape level, only actually
-# required when an scd30 instance sits on this specific bus (enforced by that driver's own
-# @requires tag, not here). uart's own optional fields all mirror asy_uart_driver.UART's own
-# constructor kwargs of the same name, present only because dev's bench-specific tuning
-# (SPECIFICATION.md Part J) differs from that constructor's own generic defaults - "baudrate" is
-# required (checked separately below, same shape as i2c's "frequency"), the rest are optional and
-# codegen only emits a kwarg for whichever of them the TOML actually declares.
+# Every field a bus table of this kind may declare: its required wire pins, plus "frequency"
+# (checked separately above for a better message) and, i2c-only, "timeout" - optional at the
+# table level, required only when an scd30 sits on this bus, which its @requires tag enforces.
+
+# uart's optional fields mirror asy_uart_driver.UART's kwargs of the same name, present because
+# dev's bench tuning (Part J) differs from that constructor's defaults. "baudrate" is required
+# like i2c's "frequency"; codegen emits a kwarg only for whichever others the TOML declares.
 _BUS_ALLOWED_FIELDS = {
     "i2c": frozenset(_BUS_WIRE_FIELDS["i2c"]) | {"frequency", "timeout"},
     "spi": frozenset(_BUS_WIRE_FIELDS["spi"]),
@@ -67,13 +64,9 @@ _ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | {"wiring"}
 _WPA2_MIN_PASSWORD_LEN = 8  # WPA2-PSK's own minimum (IEEE 802.11i)
 _WPA2_MAX_PASSWORD_LEN = 63  # its maximum too; asy_wifi_service._VAL_HOTSPOT_PW carries the same pair
 
-# [device.wiring] fields and which mandatory-infra consumer(s)' own _WIRING they resolve against -
-# both fixed and known ahead of time (SPECIFICATION.md Part L.3: exactly these two
-# fields exist today), unlike [instance.wiring]'s fully generic per-driver resolution below.
-# fram_target has more than one consumer (CLAUDE.md's implicit-FRAM-wiring rule: every mandatory-
-# infra module inherits the device's FRAM chip when one is wired) - each entry's own "# @wiring
-# fram_target ..." tag is checked, so a consumer that stops declaring it (or never did) is caught
-# here rather than silently accepting an instance reference that consumer can't actually use.
+# [device.wiring] fields and the mandatory-infra consumers whose _WIRING they resolve against,
+# fixed ahead of time (Part L.3) unlike [instance.wiring]'s generic resolution. fram_target has
+# several consumers, and each one's own tag is checked so a missing declaration is caught here.
 _DEVICE_WIRING_CONSUMERS: "dict[str, tuple[tuple[str, str, str], ...]]" = {
     "led_target": (("asy_wifi_service.py", "AsyConnTime", "conn"),),
     "fram_target": (
@@ -93,10 +86,9 @@ def _bus_kind(bus_name: str, device: str) -> str:
 
 
 def _check_device_table(model: DeviceModel) -> None:
-    # `name`/`hostname`/`hotspot_password` are validated here AND wired into generated code as of
-    # 2026-09-18 (BACKLOG): codegen passes hostname=/hotspot_password= to AsyConnTime, which
-    # substitutes them as the per-device defaults of the two ConfigManager-persisted fields. Until
-    # then all three were checked and then reached nothing, so every device booted as "SensorNode".
+    # These three are validated here AND wired into generated code since 2026-09-18: codegen
+    # passes hostname/hotspot_password to AsyConnTime, which uses them as the defaults of the two
+    # persisted fields. Before that they were checked and reached nothing.
     dev = model.doc.get("device")
     if not isinstance(dev, dict):
         raise BuildError(model.device, "missing [device] table")
@@ -108,11 +100,9 @@ def _check_device_table(model: DeviceModel) -> None:
             raise BuildError(model.device, f"[device].{f} must be an int, got {dev[f]!r}", field=f)
     if not (isinstance(dev["name"], str) and dev["name"]):
         raise BuildError(model.device, "[device].name must be a non-empty string", field="name")
-    # hotspot_password used to get only the bare presence check every _REQUIRED_DEVICE_FIELDS
-    # member gets, so `hotspot_password = 5` or `= ""` built clean - the one field left out of the
-    # "any misformatted field or property must fail the build" rule. The 8-character floor is
-    # WPA2-PSK's own minimum (IEEE 802.11i), i.e. a shorter one isn't a weak password, it's a
-    # hotspot the CYW43 can't bring up at all.
+    # hotspot_password used to get only the bare presence check, so `= 5` or `= ""` built clean -
+    # the one field outside the "any misformatted value fails the build" rule. The 8-character
+    # floor is WPA2-PSK's own minimum: below it the CYW43 cannot bring the hotspot up at all.
     if not isinstance(dev["hotspot_password"], str):
         raise BuildError(model.device, f"[device].hotspot_password must be a string, got {dev['hotspot_password']!r}", field="hotspot_password")
     if not (_WPA2_MIN_PASSWORD_LEN <= len(dev["hotspot_password"]) <= _WPA2_MAX_PASSWORD_LEN):
@@ -123,10 +113,9 @@ def _check_device_table(model: DeviceModel) -> None:
     expected_hostname = "SensorStation" + dev["name"]
     if dev["hostname"] != expected_hostname:
         raise BuildError(model.device, f"[device].hostname is {dev['hostname']!r}, expected {expected_hostname!r} (SensorStation<name>)", field="hostname")
-    # network.hostname()'s own cap, mirrored from asy_wifi_service._VAL_HOST's upper bound. Now that
-    # the value is really injected, an over-long one would be silently dropped back to "SensorNode"
-    # at boot by _with_default()'s backstop - a device quietly not answering to its own name. The
-    # formula above means this is really a cap on [device].name, which is what the message says.
+    # network.hostname()'s cap, mirrored from _VAL_HOST's upper bound. Now that the value really
+    # is injected, an over-long one would be dropped back to "SensorNode" by _with_default() and
+    # the device would quietly not answer to its own name. In practice a cap on [device].name.
     if len(dev["hostname"]) > _HOSTNAME_MAX_LEN:
         raise BuildError(model.device, f"[device].hostname is {len(dev['hostname'])} characters - network.hostname() caps at {_HOSTNAME_MAX_LEN}, so [device].name may be at most {_HOSTNAME_MAX_LEN - len('SensorStation')}", field="hostname")
     unknown = set(dev) - _ALLOWED_DEVICE_FIELDS
@@ -135,10 +124,9 @@ def _check_device_table(model: DeviceModel) -> None:
 
 
 def _check_bus_tables(model: DeviceModel) -> "dict[str, TomlDoc]":
-    # A device with zero bus-attached instances (no sensors, no FRAM) is a logically valid,
-    # simplest-possible shape - [bus.*] is allowed to be absent/empty entirely. If any instance
-    # *does* need a bus, _check_required_fields()'s "references undeclared bus" check catches that
-    # downstream; this function only validates the shape of whatever bus tables are actually there.
+    # A device with no bus-attached instances at all is a valid, simplest-possible shape, so
+    # [bus.*] may be absent entirely. An instance that does need one is caught downstream by
+    # _check_required_fields(); this only validates the shape of whatever tables are present.
     buses = model.doc.get("bus", {})
     if not isinstance(buses, dict):
         raise BuildError(model.device, f"[bus] must be a table of bus tables, got {buses!r}")
@@ -170,14 +158,13 @@ def _check_bus_tables(model: DeviceModel) -> "dict[str, TomlDoc]":
 
 
 def _resolve_instances(model: DeviceModel, src_dir: Path) -> None:
-    # No separate "singleton declared twice" check needed: a singleton service instance is always
-    # forced to name_ext="" (below), so two of the same singleton driver always share the exact
-    # same (driver, name_ext) key - model.load_device() already rejects that as a duplicate
-    # [[instance]] entry before this function ever runs, making a second check here dead code.
-    # Every parse below reads and re-parses the driver's source file, so two instances of one
-    # driver did all of it twice. Cached per source path for this build: the results are pure
-    # functions of the file. A parse error still aborts the build on whichever instance hit it
-    # first - the fault is in the shared driver file, so either instance names it correctly.
+    # No "singleton declared twice" check is needed: a singleton is always forced to
+    # name_ext="", so two of them share one (driver, name_ext) key and load_device() already
+    # rejects that as a duplicate before this runs.
+
+    # Every parse below re-reads the driver's source, so two instances of one driver did it
+    # twice. Cached per source path for this build, the results being pure functions of the file.
+    # A parse error still aborts on whichever instance hit it first, and either names it right.
     parsed: dict[Path, _ParsedDriverTags] = {}
     for spec in model.instances.values():
         info = resolve_driver(spec.driver, src_dir, model.device)
@@ -203,13 +190,9 @@ def _instance_name(base_name: str, name_ext: str) -> str:
 
 def _check_required_fields(model: DeviceModel, buses: "dict[str, TomlDoc]") -> None:
     for spec in model.instances.values():
-        # §6.3/§8.4/§10.5 item 1: a driver that resolves via driver_registry.resolve_driver() (it's
-        # a real asy_<name>_driver.py with a SensorReader/SensorReaderConfig subclass, or a known
-        # _OVERRIDES service) but has no entry in buildspec.py's own hand-maintained dicts would
-        # otherwise fall through .get(spec.driver, ()) / .get(spec.driver, frozenset()) below and
-        # have every one of its real fields flagged as "unrecognized" - technically fail-loud, but
-        # with a message that looks like a TOML typo rather than what it actually is. Named
-        # explicitly here so a driver-onboarding gap reports its real cause.
+        # A driver resolving through driver_registry but absent from buildspec.py's tables would
+        # fall through the .get() defaults below and have every real field flagged
+        # "unrecognized" - fail-loud, but reading like a TOML typo. Named here instead (Part L.6).
         if spec.driver not in REQUIRED_TOML_FIELDS:
             raise BuildError(
                 model.device,
@@ -228,10 +211,9 @@ def _check_required_fields(model: DeviceModel, buses: "dict[str, TomlDoc]") -> N
                 raise BuildError(model.device, f"{spec.label} references undeclared bus {spec.fields['bus']!r}", instance=spec.label, field="bus")
             if spec.driver not in BUS_KIND_BY_DRIVER:
                 raise BuildError(model.device, f"{spec.label}: driver {spec.driver!r} is in BUS_ATTACHED_DRIVERS but has no buildgen.buildspec.BUS_KIND_BY_DRIVER entry - add one", instance=spec.label)
-            # A device TOML that points a driver at the wrong kind of bus (e.g. an i2c-only driver
-            # on a [bus.uart0]) used to build cleanly - the bus merely had to exist, its *kind* was
-            # never checked - and only fail at firmware boot, deep inside that driver's own
-            # construction, with a raw AttributeError instead of this fail-loud error.
+            # A driver pointed at the wrong kind of bus used to build cleanly - the bus merely
+            # had to exist - and failed only at boot, deep inside that driver's construction,
+            # with a raw AttributeError instead of this error.
             actual_kind = _bus_kind(spec.fields["bus"], model.device)
             expected_kind = BUS_KIND_BY_DRIVER[spec.driver]
             if actual_kind != expected_kind:
@@ -245,19 +227,15 @@ def _check_required_fields(model: DeviceModel, buses: "dict[str, TomlDoc]") -> N
             raise BuildError(model.device, f"{spec.label} declares an address field, but {spec.driver!r} has no address-select pin (see buildgen.buildspec.ADDRESS_CAPABLE_DRIVERS)", instance=spec.label, field="address")
         if spec.driver == "uart_link" and spec.fields.get("role") not in _UART_LINK_ROLES:
             raise BuildError(model.device, f"{spec.label}.role must be one of {sorted(_UART_LINK_ROLES)}, got {spec.fields.get('role')!r}", instance=spec.label, field="role")
-        # These three all reach codegen.py's hex()/str() argument-building unvalidated otherwise -
-        # a wrong type (e.g. a quoted "0x77" string for address) would raise a raw TypeError from
-        # hex(), or - for trigger_sec, which only ever goes through str() - silently render as a
-        # bare, unquoted Python identifier token that ast.parse() itself can't distinguish from a
-        # real int literal (BuildError catches it here instead of producing subtly-broken output).
+        # These three reach codegen's hex()/str() argument-building unvalidated otherwise: a
+        # quoted "0x77" raises a raw TypeError from hex(), and trigger_sec, which only goes
+        # through str(), renders as a bare identifier token ast.parse() cannot tell from an int.
         for f in ("address", "max_size", "trigger_sec"):
             if f in spec.fields and not (isinstance(spec.fields[f], int) and not isinstance(spec.fields[f], bool)):
                 raise BuildError(model.device, f"{spec.label}.{f} must be an int, got {spec.fields[f]!r}", instance=spec.label, field=f)
-        # Catch-all: any field beyond "driver"/"name_ext" (structural, handled by model.py) and
-        # this driver's own required+optional set is a copy-paste/typo error (SPECIFICATION.md Part L.5's
-        # "plain wrong/missing/copy-pasted fields" error class) - e.g. an "irq_pin" left over from copying a
-        # scd30 block to make a new sgp40 instance, silently ignored by codegen otherwise since it
-        # never appears in any driver's own _build_call() branch.
+        # Catch-all: any field beyond driver/name_ext and this driver's own set is a copy-paste
+        # error (Part L.5) - an "irq_pin" left from cloning an scd30 block, say, which codegen
+        # would otherwise ignore silently, never reaching any driver's _build_call() branch.
         unknown = set(spec.fields) - {"driver", "name_ext"} - ALLOWED_INSTANCE_FIELDS.get(spec.driver, frozenset())
         if unknown:
             raise BuildError(model.device, f"{spec.label} declares unrecognized field(s) {sorted(unknown)} for driver {spec.driver!r}", instance=spec.label, field=min(unknown))
@@ -313,11 +291,9 @@ def _check_instance_name_collisions(model: DeviceModel) -> None:
 
 
 def _check_instance_label_collisions(model: DeviceModel) -> None:
-    # §7.2(C)/§8.5/§10.5 item 2: instance_label() (the codegen-time Python-variable identity,
-    # f"{driver}_{name_ext}" if name_ext else driver) is a different identity space from
-    # resolved_name (the REST-key identity, already checked above) - unreachable with today's 6 real
-    # driver names (none contains an underscore that could line up with another driver+name_ext
-    # combination), but structurally latent for a future driver whose module name does.
+    # instance_label(), the codegen-time Python-variable identity, is a different space from
+    # resolved_name's REST-key identity checked above. Unreachable with today's six driver names,
+    # none of which carries an underscore that could line up, but latent for a future one.
     seen: dict[str, tuple[str, str]] = {}
     for key in model.instances:
         label = instance_label(key)
@@ -359,10 +335,9 @@ def _check_gpio_collisions(model: DeviceModel, buses: "dict[str, TomlDoc]") -> N
                 continue
             pin = bus_table[f]
             claim(pin, f"bus.{bus_name}", f)
-            # Bus-pin-only: this specific GPIO must be hardwired to *this* bus's own peripheral
-            # index, in the *role* this field claims (SDA vs SCL, MISO vs SCK vs MOSI, TX vs RX) -
-            # not just any legal, unclaimed GPIO. cs_pin/irq_pin/neopixel's "pin" have no peripheral
-            # role to check (see the claim() call below), so this half only runs for bus wire pins.
+            # Bus pins only: the GPIO must be hardwired to THIS bus's peripheral index in the
+            # role the field claims, not merely be legal and unclaimed. cs_pin/irq_pin/neopixel's
+            # pin have no peripheral role, so this half runs for wire pins alone.
             role_table, expected_role = _BUS_PIN_ROLE[f]
             info = role_table.get(pin)
             if info is None:
@@ -408,14 +383,12 @@ def _check_address_collisions(model: DeviceModel) -> None:
 
 
 def _check_uart_link_roles(model: DeviceModel) -> None:
-    # RP2040 has exactly two UART peripherals, so a device can wire at most one crossover pair -
-    # buildgen.twin_wiring.compute_twin_wiring()'s own docstring already claims build_model()
-    # guarantees "no more than one initiator/responder pair"; this is what actually enforces that.
-    # Without it, e.g. two "role = \"initiator\"" instances (on uart0/uart1, so no GPIO collision)
-    # built and booted silently - both looping on read timeouts forever, no responder ever able to
-    # answer, and compute_twin_wiring()'s own pairing loop picking whichever instance it saw last
-    # for "initiator_var" while leaving "responder_var" None, silently disabling the twin's
-    # crossover wiring - with no build-time error naming any of it.
+    # RP2040 has two UART peripherals, so a device wires at most one crossover pair. This is
+    # what enforces the guarantee compute_twin_wiring()'s docstring already relies on.
+
+    # Without it two initiators on uart0/uart1 built and booted silently, both looping on read
+    # timeouts with nothing able to answer, while the twin's pairing loop kept the last one it
+    # saw and left responder_var None - disabling crossover wiring with no error naming it.
     initiators = [spec.label for spec in model.instances.values() if spec.driver == "uart_link" and spec.fields.get("role") == "initiator"]
     responders = [spec.label for spec in model.instances.values() if spec.driver == "uart_link" and spec.fields.get("role") == "responder"]
     if not initiators and not responders:
@@ -466,10 +439,9 @@ def _check_source_field_reference(model: DeviceModel, value: object, consumer_la
 
 
 def _check_default_provider_params(model: DeviceModel, spec: InstanceSpec, toml_field: str, value: "TomlDoc") -> ast.ClassDef:
-    # Shared by _WIRING-based defaults (signal_sink) and _VALUE_WIRING-based defaults
-    # (temperature_source/humidity_source) - §2.4's "the class definition IS the schema": a
-    # `_Default<Field>`'s own `__init__` signature says what keys a `{default = true, ...}`
-    # sub-table may/must carry, discovered via AST the same way _WIRING/_LIMITS already are.
+    # Shared by _WIRING- and _VALUE_WIRING-based defaults, on the principle that the class
+    # definition IS the schema: a `_Default<Field>`'s own __init__ signature says which keys a
+    # `{default = true, ...}` sub-table may carry, read by AST like _WIRING and _LIMITS.
     if spec.driver_info is None:
         raise BuildError(model.device, "internal: driver_info unresolved by default-provider-check time", instance=spec.label, field=toml_field)
     class_node = find_default_class(spec.driver_info.source_path, model.device, spec.label, toml_field)
@@ -495,12 +467,9 @@ def _check_default_provider_params(model: DeviceModel, spec: InstanceSpec, toml_
 
 def _check_default_selection(model: DeviceModel, spec: InstanceSpec, wf: WiringField, toml_field: str, value: "TomlDoc") -> None:
     class_node = _check_default_provider_params(model, spec, toml_field, value)
-    # §2.8's second open question, resolved "yes" for attr-mode _WIRING fields only (signal_sink):
-    # verify the default provider actually defines the target attribute/method - same
-    # fail-loud-at-generation-time philosophy as every other buildgen/ check. The generalized
-    # per-value mechanism (_VALUE_WIRING) needs no equivalent check - every _Default<Field> there
-    # follows one fixed, hardcoded "get_data() returns an object with a .value attribute" contract
-    # instead (see _check_default_value_selection below).
+    # For attr-mode _WIRING fields only: verify the default provider really defines the target
+    # attribute, the same fail-at-generation-time rule every other check here follows.
+    # _VALUE_WIRING needs no equivalent - its providers all follow one fixed get_data() contract.
     if wf.mode == "attr" and not default_class_defines_attr(class_node, wf.target):
         raise BuildError(
             model.device,
@@ -541,10 +510,9 @@ def _check_instance_wiring(model: DeviceModel) -> None:
             if wf.required and wf.toml_field not in spec.wiring:
                 raise BuildError(model.device, f"{spec.label} is missing required wiring.{wf.toml_field}", instance=spec.label, field=wf.toml_field)
 
-        # Per-signal getters (notification's warn_co2/warn_voc/warn_hum): a related but separate
-        # mechanism from _WIRING (SPECIFICATION.md Part C.14.3) - {source, field} sub-tables,
-        # each individually optional; `source` still resolves against the same driver/name_ext
-        # identity space as every other wiring reference.
+        # Per-signal getters (notification's warn_co2/warn_voc/warn_hum): related to _WIRING but
+        # separate (Part C.14.3). Each {source, field} sub-table is optional, and `source`
+        # resolves against the same driver/name_ext space as every other wiring reference.
         for toml_field, value in spec.wiring.items():
             if not toml_field.startswith("warn_"):
                 continue
@@ -583,11 +551,9 @@ def _check_device_wiring(model: DeviceModel, src_dir: Path) -> None:
                 raise BuildError(model.device, f"[device.wiring].{toml_field} declared, but {module_file} has no matching @wiring tag", field=toml_field)
             _check_wiring_reference(model, wf, value, "device.wiring", toml_field)
 
-    # Required-field enforcement, mirroring _check_instance_wiring's own pass below - both known
-    # device-wiring fields are optional today, so this was previously untested/untriggered dead
-    # code potential; kept in sync so a future required _WIRING entry on any consumer can't
-    # silently go unenforced the way [instance.wiring]'s required fields already are. A field is
-    # required overall if ANY of its consumers' own tags say so - each is checked independently.
+    # Required-field enforcement mirroring _check_instance_wiring's pass below. Both device-
+    # wiring fields are optional today, so this never fires yet; kept in sync so a future
+    # required entry cannot go unenforced. A field is required if ANY consumer's tag says so.
     for toml_field, consumers in _DEVICE_WIRING_CONSUMERS.items():
         if toml_field in wiring:
             continue

@@ -2,11 +2,9 @@
 sit on a bus, and which have a real TOML-configurable `address` (SPECIFICATION.md's schema note -
 datasheet-checked by Session 2, not re-derived here)."""
 
-# The one hand-maintained per-driver table in this package - driver-class resolution
-# (driver_registry.py) and `_WIRING`/`_LIMITS`/`_Default*` are all AST-derived from src/ instead.
-# It can't be: Session 2's already-shipped TOML field names ("pin", "cs_pin", ...) and src/'s own
-# constructor parameter names ("neopixel_pin", "spi_cs", ...) are two independently-evolved naming
-# spaces, so there is no rule to derive one from the other. Adding a driver means adding a row here.
+# The one hand-maintained per-driver table here; everything else buildgen needs is AST-derived
+# from src/. It cannot be derived: the shipped TOML field names and src/'s constructor parameter
+# names are two independently-evolved naming spaces. Adding a driver adds a row (Part L.6).
 
 # TOML fields every instance of this driver must declare (beyond "driver"/"name_ext", which
 # model.py itself already requires/defaults) - a missing one is a build-time error
@@ -28,10 +26,9 @@ OPTIONAL_TOML_FIELDS: dict[str, tuple[str, ...]] = {
     "scd30": ("trigger_sec",),
     "sgp40": (),
     "bmp3xx": ("address", "trigger_sec"),
-    # No "address": 0x44 is hard-wired (no address-select pin, datasheet p15) - FIXED_ADDRESS_DRIVERS
-    # territory below, like scd30/sgp40, not ADDRESS_CAPABLE_DRIVERS like bmp3xx. irq_pull_up: the
-    # INT line is open-drain (p6) - a board with its own external pull-up resistor sets this false
-    # so the internal one (the driver's own default, irq_pull_up=True) isn't also engaged.
+    # No "address": 0x44 is hard-wired (no address-select pin, datasheet p15), so this belongs in
+    # FIXED_ADDRESS_DRIVERS. irq_pull_up exists because the INT line is open-drain (p6): a board
+    # with its own external pull-up sets it false so the internal one is not engaged too.
     "isl29125": ("trigger_sec", "irq_pull_up"),
     "fram": (),
     "neopixel": (),
@@ -49,12 +46,9 @@ ALLOWED_INSTANCE_FIELDS: dict[str, frozenset[str]] = {
 # Drivers whose instances sit on a declared [bus.*] - i.e. carry a "bus" TOML field at all.
 BUS_ATTACHED_DRIVERS = frozenset(REQUIRED_TOML_FIELDS) - {"neopixel", "notification"}
 
-# Which bus *kind* (buildgen.validate._VALID_BUS_IDS's own "i2c"/"spi"/"uart") each bus-attached
-# driver's own "bus" field must resolve to. Without this, a TOML typo like `driver = "uart_link"
-# bus = "i2c0"` built successfully (the bus merely had to exist, its kind was never checked) and
-# only failed at firmware boot, deep inside UART_Comm's construction, with a raw AttributeError
-# instead of a build-time BuildError - found by review, not by anything in devices/*.toml actually
-# doing this. Every BUS_ATTACHED_DRIVERS member must appear here.
+# Which bus kind each bus-attached driver's "bus" field must resolve to. Without it a TOML typo
+# pairing a uart_link with an i2c bus built cleanly - the bus only had to exist - and failed at
+# boot inside UART_Comm with a raw AttributeError. Every BUS_ATTACHED_DRIVERS member belongs here.
 BUS_KIND_BY_DRIVER: dict[str, str] = {
     "scd30": "i2c",
     "sgp40": "i2c",
@@ -68,11 +62,7 @@ BUS_KIND_BY_DRIVER: dict[str, str] = {
 # pin selects 0x76/0x77) - the only ones a TOML `address` field is meaningful for.
 ADDRESS_CAPABLE_DRIVERS = frozenset({"bmp3xx"})
 
-# Bus-attached drivers with no address field at all - the chip's own I2C address is fixed in
-# hardware (SCD30/SGP40's own datasheets), so two such instances sharing one bus can never be told
-# apart (SPECIFICATION.md Part L.5's "two hardwired-address instances of the same chip type sharing a
-# bus with no way to distinguish them at all" case). "uart_link" lands here too, for a related but
-# distinct reason: a UART bus is a point-to-point peripheral, not a multi-drop one, so it never has
-# an address concept at all - the same "no way to tell two instances on one bus apart" collision
-# check (validate._check_address_collisions()) applies for exactly the reason its own message states.
+# Bus-attached drivers with no address field: the chip's address is fixed in hardware, so two
+# instances on one bus cannot be told apart (Part L.5). "uart_link" joins them for a related
+# reason - a UART is point-to-point and has no address concept at all.
 FIXED_ADDRESS_DRIVERS = BUS_ATTACHED_DRIVERS - ADDRESS_CAPABLE_DRIVERS - {"fram"}

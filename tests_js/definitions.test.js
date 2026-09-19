@@ -57,10 +57,9 @@ describe("validateDefinitions", () => {
     });
 
     it("rejects a section with a missing or unrecognized pollGroup", () => {
-        // js/render.js's renderSection() only ever checks `=== "live"`, so a missing/typo'd
-        // pollGroup silently falls back to a single one-shot fetch instead of failing loudly here -
-        // exactly the "shape mismatch surfaces a visible error" contract this module's own header
-        // comment promises for every other field.
+        // renderSection() only ever checks `=== "live"`, so a missing or misspelled pollGroup
+        // falls back to one silent one-shot fetch instead of failing loudly - against the
+        // "shape mismatch surfaces a visible error" contract this module promises elsewhere.
         const missing = { ...MINIMAL_VALID, sections: [{ key: "x", label: "X", rest: { get: "/x" }, groups: [] }] };
         expect(validateDefinitions(missing).some((p) => p.includes("pollGroup"))).toBe(true);
 

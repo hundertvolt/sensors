@@ -23,10 +23,9 @@ TomlDoc = dict[str, Any]
 
 
 def instance_key(inst: "TomlDoc") -> tuple[str, str]:
-    # The TOML's own driver/name_ext identity - deliberately never instance_name()/_NAME
-    # (SPECIFICATION.md Part C.14.1's separate, unrelated naming space; see wiring.py's own
-    # module docstring and SPECIFICATION.md Part L.5 for the confirmed-real bug
-    # this distinction closes: NotificationCoordinator's _NAME is "NOTIFY", not "NOTIFICATION").
+    # The TOML's own driver/name_ext identity, never instance_name()/_NAME - a separate naming
+    # space (Part C.14.1). Part L.5 records the real bug the distinction closes:
+    # NotificationCoordinator's _NAME is "NOTIFY", not "NOTIFICATION".
     return (inst["driver"], inst.get("name_ext", ""))
 
 
@@ -68,11 +67,9 @@ class DeviceModel:
 
 
 def resolve_instance_key(model: DeviceModel, value: str) -> "tuple[str, str]":
-    # A wiring value is always a plain "driver" or "driver_ext" string (never a (driver, ext)
-    # pair) - try the bare, unextended reading first (the common case - every real device's own
-    # wiring values name an unextended instance), then fall back to splitting the last "_"-group
-    # off as name_ext for a target that itself used one (e.g. this session's own synthetic
-    # multi-instance fixture, tests_scripts/buildgen_fixtures/novel_combo.toml).
+    # A wiring value is always a plain "driver" or "driver_ext" string, never a pair. Try the
+    # unextended reading first, as every real device's wiring values use it, then fall back to
+    # splitting the last "_"-group off as name_ext - which only a synthetic fixture needs today.
     key = (value, "")
     if key in model.instances:
         return key
@@ -100,10 +97,9 @@ def load_device(path: Path) -> DeviceModel:
     instances: dict[tuple[str, str], InstanceSpec] = {}
     raw_instances = doc.get("instance", [])
     if isinstance(raw_instances, dict):
-        # A single-bracket [instance] table (rather than the [[instance]] array-of-tables the
-        # schema uses) parses to a dict, whose iteration below would yield its *keys* - so every
-        # such device used to fail as "entry #0 is missing a 'driver' field", pointing at the
-        # wrong mistake entirely. Name the real one instead.
+        # A single-bracket [instance] table parses to a dict, whose iteration yields its keys -
+        # so such a device used to fail as "entry #0 is missing a 'driver' field", naming the
+        # wrong mistake entirely. Name the real one.
         raise BuildError(device, "[instance] is a single table - instances are an array of tables, so each one needs double brackets: [[instance]]")
     if not isinstance(raw_instances, list):
         raise BuildError(device, f"[[instance]] must be an array of tables, got {raw_instances!r}")

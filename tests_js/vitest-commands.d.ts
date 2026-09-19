@@ -29,7 +29,7 @@ declare module "vitest/browser" {
             | { skipped: true; reason: string }
             | { skipped: false; titleHasSensorStation: boolean; deviceName: string; debugLevelApplyStatus: string | null }
         >;
-        startLiveMatrix: () => Promise<{ skipped: true; reason: string } | { skipped: false }>;
+        startLiveMatrix: () => Promise<{ skipped: true; reason: string } | { skipped: false; shard: string }>;
         stopLiveMatrix: () => Promise<void>;
         getRealCurrentValues: (paths: string[]) => Promise<Record<string, unknown>>;
         applyField: (args: {
@@ -61,8 +61,3 @@ declare module "vitest/browser" {
     }
 }
 
-// vitest.config.js's own `define` substitutes this at build time: "<index>/<count>" in CI's
-// sharded web-put-matrix job, "" everywhere else. See live-backend-put-matrix.test.js.
-declare global {
-    const __PUT_MATRIX_SHARD__: string;
-}

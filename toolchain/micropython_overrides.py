@@ -32,11 +32,9 @@ def _read_anchor_source(path: Path, override_name: str) -> str:
 # B.14.1, CLAUDE.md's Part F.6 entry.
 # ---------------------------------------------------------------------------------------------
 
-# The exact line as pinned (ports/unix/variants/mpconfigvariant_common.h) - a plain, UNGUARDED
-# #define (no #ifndef), which is exactly why a CFLAGS_EXTRA -D can't override it: verified
-# directly (2026-09-15) that a later plain #define in the same translation unit always wins over
-# an earlier command-line -D, regardless of order, and this build treats the resulting
-# "macro redefined" warning as a hard failure anyway.
+# The exact line as pinned (ports/unix/variants/mpconfigvariant_common.h): an UNGUARDED #define,
+# which is why CFLAGS_EXTRA -D cannot override it - a later plain #define always wins over an
+# earlier -D (verified 2026-09-15), and the redefinition warning is a hard failure here anyway.
 _UNIX_KBD_INTR_ANCHOR = "#define MICROPY_ASYNC_KBD_INTR         (!MICROPY_PY_THREAD_GIL)"
 
 

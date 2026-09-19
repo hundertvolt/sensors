@@ -146,13 +146,14 @@ export async function startLiveMatrix({ context }) {
         livePage = await context.newPage();
         await livePage.goto(`http://${HOST}:${PORT}/`);
         await livePage.waitForSelector("[data-section-key]");
-        return { skipped: false };
+        // $PUT_MATRIX_SHARD travels back through the Commands API rather than a Vite `define`:
+        // the test runs in the browser, where process.env does not exist, and every build-time
+        // route was worse - see this function's own callers and SPECIFICATION.md Part H.7.
+        return { skipped: false, shard: process.env.PUT_MATRIX_SHARD ?? "" };
     } catch (err) {
-        // A failure here means the test file's top-level `await commands.startLiveMatrix()` throws
-        // before its own afterAll(() => commands.stopLiveMatrix()) is ever registered - without
-        // tearing the twin down right here, a boot failure (a slow/flaky page load, most commonly)
-        // orphans the twin subprocess for the rest of the process's lifetime, pinning PORT for
-        // every subsequent run until someone manually kills it.
+        // A failure here means the test file's top-level startLiveMatrix() threw before its
+        // afterAll(stopLiveMatrix) was ever registered. Without tearing down right here, a slow
+        // page load orphans the twin and pins PORT until someone kills it by hand.
         if (livePage) {
             await livePage.close().catch(() => { /* best-effort teardown - a page already gone is fine */ });
             // eslint-disable-next-line require-atomic-updates -- see stopLiveMatrix()'s own comment below
@@ -169,9 +170,8 @@ export async function startLiveMatrix({ context }) {
 }
 
 // require-atomic-updates flags livePage/twinProc as read-then-written across an await, which is
-// only unsafe under concurrent invocation - Vitest's Commands API calls are dispatched strictly
-// sequentially by one test file's own await chain (never two in flight at once against this
-// module), so the actual race the rule guards against can't happen here.
+// unsafe only under concurrent invocation. Vitest dispatches Commands API calls strictly
+// sequentially from one file's await chain, so the race the rule guards cannot happen.
 export async function stopLiveMatrix() {
     if (livePage) {
         await livePage.close().catch(() => { /* best-effort teardown - a page already gone is fine */ });
@@ -328,12 +328,9 @@ export async function applyField(_context, { sectionKey, groupKey, fieldKey, fie
 }
 
 /**
- * Leaves a non-`dispatch` toggle/enum field at its own already-current value and clicks its group
- * card's real Apply button, expecting js/render.js's collectGroupBody() to sparse-omit it (the fix
- * this command exists to exercise): no PUT ever fires, so - unlike applyField() above - this never
- * waits on a real `data-apply-status`, which would never arrive. navigateToSection()'s own
- * mainEl.replaceChildren() (js/templates.js's buildSectionShell()) guarantees a genuinely fresh
- * card with no leftover `data-apply-status` from an earlier field's test sharing this same group.
+ * Leaves a non-`dispatch` toggle/enum at its current value and clicks Apply, expecting
+ * collectGroupBody() to sparse-omit it. No PUT fires, so unlike applyField() this waits on no
+ * `data-apply-status` - and navigateToSection() leaves none behind from an earlier field.
  * @param {import("playwright").BrowserContext} _context unused - see applyField()'s own note.
  * @param {{sectionKey: string, groupKey: string, fieldKey: string, kind: "toggle" | "enum", value: unknown}} args
  * @returns {Promise<{resultText: string | null, applyStatus: string | null}>}

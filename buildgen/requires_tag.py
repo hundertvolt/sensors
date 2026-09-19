@@ -12,10 +12,9 @@ from typing import Any
 from buildgen.errors import BuildError
 from buildgen.tag_comments import KNOWN_TAGS, check_for_near_miss_tags, iter_comment_tokens
 
-# "#+" so a "## @requires ..." section-style comment is accepted rather than reported as
-# malformed; the value may not start with an operator character, so a truncated
-# "bus.timeout>=" fails as a malformed *tag* instead of silently re-splitting into op ">"
-# and value "=".
+# "#+" so a "## @requires ..." section-style comment is accepted rather than reported malformed.
+# The value may not begin with an operator character, so a truncated "bus.timeout>=" fails as a
+# malformed tag instead of silently re-splitting into op ">" and value "=".
 _SPECS = tuple(spec for spec in KNOWN_TAGS if spec.name == "requires")
 
 _TAG_RE = re.compile(r"#+\s*@requires\s+bus\.(?P<field>\w+)\s*(?P<op>>=|<=|==|!=|>|<)\s*(?P<value>[^\s<>=!]\S*)")
@@ -77,10 +76,9 @@ def check_requires_tags(tags: "tuple[RequiresTag, ...]", bus_table: "dict[str, A
         try:
             satisfied = _OPS[tag.op](actual, tag.value)
         except TypeError:
-            # A malformed TOML value (e.g. a string where the tag expects a number) must fail
-            # loud as a BuildError, not surface as a raw, uncaught TypeError from the comparison
-            # itself - _check_bus_tables() only validates the handful of bus fields it knows about
-            # by name (scl_pin/sda_pin/frequency/...), not every field an @requires tag might name.
+            # A malformed TOML value must fail as a BuildError, not as a raw TypeError from the
+            # comparison: _check_bus_tables() validates only the bus fields it knows by name,
+            # not every field an @requires tag might name.
             raise BuildError(
                 device,
                 f"bus.{bus_name}.{tag.field}={actual!r} is not comparable to {instance_label}'s requirement {tag.raw!r} (wrong type)",
