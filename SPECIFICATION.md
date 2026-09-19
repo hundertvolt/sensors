@@ -4632,6 +4632,27 @@ answer 413, only at different sizes. The mirrors therefore pin the **cap value**
 boundary's exactness; the 2048-4096 band rejecting is what tells this firmware from the previous
 one. The binding itself stays a mock-tier and source-level claim, never a hardware-confirmed one.
 
+**Run on silicon, 2026-09-19** [HW]. W1-W4 pass on the real `dev` board over real WiFi: the
+boundary is exact (2047 -> 200, 2048 -> 200, 2049 -> 413, so Microdot's `<=` is honoured), the
+2048-4096 band that the previous firmware accepted now answers 413 on both 3072 and 4096 (W2, the
+only row that tells the two firmwares apart), the 1132 B schema maximum still fits, and a mixed
+stream is answered request-by-request. `WEBSERVER`'s error log stayed **empty** throughout, which
+is the assertion that matters: a 413 is raised inside vendored Microdot before any of our own code
+is reached, so anything appearing there would be a finding about this project.
+
+**W5 fails, and not for the reason it was written to catch** [HW]. Its own handover predicted a
+soft spot where an oversized body draws a clean reset instead of a 413, and prescribed relaxing the
+oversized arm. That prescription is wrong here: **half the resets are on bodies well under the
+cap** — 64, 512, 900 and 2048 B — in 5 of 5 runs. A control with every body under the cap, and a
+second with all bodies at 64 B, reset at the same rate, so **the resets are a property of
+concurrency against `max_connections = 4`, not of the body cap at all**. Measured rate against
+concurrency, tiny bodies only: 2 -> 0%, 4 -> 25%, 6 -> 16%, 8 -> 12%, 12 -> 33%, 16 -> 25%,
+24 -> 25%. Resets begin **at** the connection ceiling, not beyond it, so W5's premise — that 24
+concurrent clients each receive a definitive status — cannot hold on this server at any
+concurrency above 2. The server stayed responsive and did not reboot under the load. **Reported,
+not changed** (CLAUDE.md's flag-don't-fix rule): the test needs a decision about what it should
+assert, and `src/` is not implicated.
+
 **Related, deliberately not changed:** `NTP_Host`'s 1024-character bound mirrors the deployed
 pre-refactor handler (`modules/sensortask-*.py`'s `update_valid_json(..., 3, 1024, ...)`), so
 tightening it to DNS's real 253-character limit is a divergence from fielded behaviour and the

@@ -3,8 +3,13 @@
 Temporary file, same convention as every handover before it: **delete once its results are
 migrated** into `SPECIFICATION.md` Part I.6, `REAL_HARDWARE_TEST_QUEUE.md` §1D and
 `HEAP_FRAGMENTATION_MEASUREMENTS.md`. Written 2026-09-19 by a session with **no** real-hardware
-go-ahead — every claim below is [SRC] (read out of the source) or [MOCK] (proven at the mock tier),
-and **nothing here is [HW]**.
+go-ahead — every claim below was [SRC] or [MOCK] when written.
+
+> **RUN 2026-09-19 by a session that had the go-ahead. W1-W4 PASS; W5 FAILS.** Results are in
+> `SPECIFICATION.md` Part I.6 as `[HW]` and in `REAL_HARDWARE_TEST_QUEUE.md` §1D. **§4's advance
+> note about W5's soft spot is wrong in its premise, and its prescribed fix would not have worked**
+> — see the boxed note there before acting on it. This file stays until W5 is decided; everything
+> else it owed is migrated.
 
 **Nothing in this file authorizes anything.** CLAUDE.md's gate stands: the session that runs this
 needs the project owner's go-ahead **in its own conversation**. A go-ahead given to the session
@@ -93,7 +98,17 @@ scripts/run_bench_hardware_suite.sh -k "body_cap or band_that_used_to_be or larg
 | W4 | `test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits` | Interleaved sizes, each answered on its own merits | A 413 left the next request mis-parsed on a connection the server closed early — a real connection-handling defect, not a cap one. |
 | W5 | `test_concurrent_mixed_body_sizes_never_destabilise_the_real_server` | 24 threads, mixed sizes, against the real `max_connections = 4` | See the known-soft-spot note below before calling it a bug. |
 
-### W5's one known soft spot, stated in advance
+> **MEASURED WRONG, 2026-09-19 [HW].** The note below says a red W5 showing exception strings
+> *only on the oversized arm* should be relaxed on that arm. On the board **half the resets are on
+> bodies well under the cap** (64, 512, 900, 2048 B), in 5 of 5 runs. Two controls settle it: 24
+> concurrent PUTs with every body under the cap, and again with all bodies at 64 B, reset at the
+> same rate. The resets are **`max_connections = 4` under 24-way concurrency, not the body cap** —
+> measured 2 -> 0%, 4 -> 25%, 6 -> 16%, 8 -> 12%, 12 -> 33%, 16 -> 25%, 24 -> 25%, so they begin
+> *at* the ceiling rather than beyond it. Relaxing only the oversized arm would leave W5 failing on
+> the undersized one. The server stayed responsive, did not reboot, and `WEBSERVER`'s log stayed
+> empty, so nothing in `src/` is implicated. Queue finding F10 carries the three options.
+
+### W5's one known soft spot, stated in advance — and measured wrong
 
 W5 asserts every worker got either 200 or 413. A worker may instead report an **exception string**:
 an oversized body means the server answers 413 and closes **without draining** the request, so the
