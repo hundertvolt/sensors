@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import heap_map
 import pytest
 from soak_tiers import SOAK_TIER_SECONDS
 
@@ -17,12 +18,17 @@ if TYPE_CHECKING:
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
+# The largest contiguous allocation the firmware can be asked to make (MEASUREMENTS 7A.9): 4,096 B
+# as configured, 16,384 B worst case reachable through microdot's own max_body_length default. Every
+# figure below is a multiple of that, never of a board reading.
+WORST_CASE_ALLOCATION = 16_384
+
 
 def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> None:
     # The one memory figure no fake can produce: the RP2040's real 264KB SRAM minus the firmware's
-    # own static footprint, measured after the real dev object graph exists. Its floors exist to
-    # catch a regression in that footprint - notably a future MicroPython bump relocating more code
-    # into SRAM, as 1.29 already did with the interpreter core (Part F.5.3's 12,918 B).
+    # own static footprint, measured after the real dev object graph exists. The device script
+    # checks survivor volume and contiguity; the placement check below needs the block map, which
+    # only the host can read back.
     output = board.run_isolated(DEVICE_SCRIPTS / "heap_headroom_after_full_system_build.py", timeout_s=120.0)
     # Print on pass too, not only in the assertions below: run_isolated() captures device stdout
     # into a string, so a PASSING run used to discard the figures and 7F.6 lost exactly that number.
@@ -32,6 +38,32 @@ def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> Non
     match = RESULT_RE.search(output)
     assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
     assert match.group(1) == "PASS", f"real heap-headroom check failed: {match.group(2).strip()}\nfull output:\n{output}"
+
+    maps = heap_map.parse_labelled(output)
+    assert "after_build_system" in maps, f"no mem_info(1) block map in the device output - the layout cannot be checked:\n{output}"
+    layout = maps["after_build_system"]
+    print(f"MAP after_build_system: {layout.summary()}")
+    # Cross-check, free: the probe allocates and the map does not, so they fail in different ways.
+    # A disagreement means one of them is wrong - the probe's own pinning artefact looks exactly
+    # like this (MEASUREMENTS 7F.8), and it always understates.
+    probed = _probed_largest_block(output, "after_build_system")
+    assert probed is not None, f"no HEAP after_build_system line to cross-check the map against:\n{output}"
+    assert abs(layout.largest_free_run - probed) <= layout.block_bytes * 2, (
+        f"the allocating probe says {probed} B and the block map says {layout.largest_free_run} B. They measure the same run, "
+        f"so one is wrong; the probe understating by a power-of-two fraction of 192 KB is the known artefact.\nfull output:\n{output}"
+    )
+    # What the owner asked these tests to express (2026-09-19): long-lived objects must not colonise
+    # the top of the heap. A whole worst-case allocation still fitting above the highest survivor is
+    # the weakest form of that which is still worth asserting.
+    assert layout.free_above_top_survivor >= WORST_CASE_ALLOCATION, (
+        f"long-lived objects reach into the top of the heap: only {layout.free_above_top_survivor} B free above the highest "
+        f"allocated block, against the {WORST_CASE_ALLOCATION} B worst reachable allocation. Layout: {layout.summary()}"
+    )
+
+
+def _probed_largest_block(output: str, label: str) -> int | None:
+    match = re.search(rf"^HEAP {re.escape(label)}(?:_retry\d+)?: .*largest_block=(\d+)", output, re.MULTILINE)
+    return int(match.group(1)) if match else None
 
 
 @pytest.mark.long_soak

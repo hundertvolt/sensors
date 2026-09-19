@@ -48,9 +48,10 @@ runs the hardware).
 - **`gc.collect()` appears in exactly two shipped sites**, both boot-only, both emitted or owned by
   the system's own boot code, guarded by lint (item B.3). The general prohibition for business
   logic and the run phase stands unchanged (`SPECIFICATION.md` I.4).
-- **The 80,000 B floor is not lowered.** `tests_hardware/device_scripts/
-  heap_headroom_after_full_system_build.py`'s `_MIN_LARGEST_BLOCK` stays; it is the real-silicon
-  regression tripwire (§7A.9).
+- **The 80,000 B floor is retired** (owner, 2026-09-19 — it was never theirs and demanded a third
+  of physical memory contiguously free). `heap_headroom_after_full_system_build.py` now checks
+  survivor volume, survivor *placement* and contiguity against §7A.9's measured worst reachable
+  allocation instead. No threshold in it may be fitted to a board reading (§7G).
 - **The branch starts clean.** At the owner's instruction (2026-09-18) every change this
   investigation made to established `src/` and test files was reverted to
   `claude/automated-build-chain-nuzumw`'s state: `src/asy_spi_driver.py` and
@@ -623,7 +624,7 @@ plan's own record; a session at the bench should work those two.
       **Original text:** `tests_hardware/flash/test_memory_stress.py::
       test_real_gc_heap_headroom_survives_a_full_system_build` with A alone, then with A + B:
       `free` and `largest_block` after `build_system()`, `threshold(-1)`, on the `dev` board.
-      Against the unlowered 80,000 B. Record both readings in `HEAP_FRAGMENTATION_MEASUREMENTS.md`
+      Against the 80,000 B floor, since retired (§7G). Record both readings in `HEAP_FRAGMENTATION_MEASUREMENTS.md`
       §2.1's [HW] table as the third and fourth columns.
 - [~] **T.2 Bus-hazard tiers 3 and 4 — flash tier done, bench tier owed.** §7F's AFTER arm ran the
       full flash suite with **zero failures**, which covers all three FRAM tests; §7F.7 calls out the
@@ -692,7 +693,7 @@ plan's own record; a session at the bench should work those two.
 ## What is not in scope (so it is not done by accident)
 
 - Changing any byte on the wire, any CS-cycle count, or any status-byte semantics.
-- Lowering the 80,000 B floor, or the 100,000 B free floor.
+- Re-introducing a floor fitted to a board reading, in place of §7G's requirement-derived checks.
 - `gc.collect()` anywhere but the two boot sites; any `gc.threshold()` change.
 - Generalising the synchronous session to `asy_i2c_driver.py` (flagged, not done).
 - §11 item 3 (deferring logger setup to one pass after the batch) — owner objection on record,

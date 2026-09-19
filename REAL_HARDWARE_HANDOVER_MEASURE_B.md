@@ -54,7 +54,8 @@ board.** They are a direction and a mechanism, and this run is what turns them i
 refutes them — exactly as §7D.4 refuted the twin's "A buys no layout gain" in the other direction.
 
 **The one sentence that makes this run worth a bench slot.** The tripwire
-(`test_real_gc_heap_headroom_survives_a_full_system_build`, floor 80,000 B) has **failed in-suite on
+(`test_real_gc_heap_headroom_survives_a_full_system_build`, floor 80,000 B *as it then stood* — that
+floor was retired by the owner on 2026-09-19, MEASUREMENTS §7G) has **failed in-suite on
 every image ever measured** — 20,592 B before A, 28,864 B after A. If B transfers at anything like
 the twin's magnitude, this is the image where **it passes in-suite for the first time**. If it stays
 under ~40,000 B, §7E is twin-only and says nothing about silicon.
@@ -291,7 +292,7 @@ interpretation at the bench.
 | reading | BEFORE (A only) | AFTER (A + B) |
 |---|---|---|
 | `after_build_system` free / largest / pct, in-suite (§4.2) | 105,088 / **28,736** / 27% | **not captured** — see §7F.6 |
-| tripwire `RESULT:` (floor 80,000 B) | **FAIL** | **PASS** (suite: 36 passed, 0 failed) |
+| tripwire `RESULT:` (floor 80,000 B, since retired — §7G) | **FAIL** | **PASS** (suite: 36 passed, 0 failed) |
 | `after_build_system` free / largest / pct (§4.3 script, fresh heap) | 104,192 / 93,728 / 89% | 104,128 / 90,720 / 87% |
 | `after_start_timers` free / largest / pct | 101,760 / 93,728 / 92% | 101,696 / 90,720 / 89% |
 | `after_starter_loop_end` free / largest / pct | **owed** — the line P2 turns on, added 2026-09-19 | **owed** |
@@ -434,9 +435,10 @@ different mechanism is a design decision. Do not invent one at the bench.
   contiguity figure even means. Measure B is what this run is for.
 - **The run phase over months of uptime** (§7A.7, §7D.8). Still untouched. §7D.5's UART result is the
   only real-hardware evidence either measure helps there.
-- **Lowering the 80,000 B floor.** Forbidden. If P1 holds, the floor finally passes in-suite and the
-  question becomes whether to *raise* it — with a fresh measurement to point at, and the owner's
-  decision, not this run's.
+- **Re-fitting the tripwire to a board reading.** The 80,000 B floor was **retired by the owner on
+  2026-09-19** and replaced by three requirement-derived checks (MEASUREMENTS §7G), each derived
+  from §7A.9's measured worst reachable allocation. Raising or lowering one of those to make a
+  reading pass is the thing the old floor did wrong; it is not this run's to do.
 
 ---
 

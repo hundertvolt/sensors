@@ -6,6 +6,7 @@ import asyncio
 import gc
 import time
 
+import micropython
 import sensortask_dev
 
 # Same doubling/halving bounds as heap_headroom_after_full_system_build.py, deliberately: the two
@@ -60,6 +61,16 @@ def _report(label: str) -> "tuple[int, int, int]":
     return free, largest, retained
 
 
+def _dump_map(label: str) -> None:
+    # The layout itself: mem_info(1) prints the per-block map and the exact largest free run,
+    # allocating nothing - so it cannot perturb what it measures, and it cannot hit the probe's own
+    # pinning artefact either. Parsed host-side by tests_hardware/heap_map.py.
+    gc.collect()
+    print(f"=== MAP {label} ===")
+    micropython.mem_info(1)
+    print(f"=== ENDMAP {label} ===")
+
+
 def _report_checked(label: str) -> "tuple[int, int]":
     # A probe run can pin its own buffer through a stale root; every later attempt then fails and
     # the search converges on the pinned size - always _PROBE_MAX >> k, e.g. 49,152 (MEASUREMENTS
@@ -84,6 +95,7 @@ async def _main() -> None:
         return
     build_ms = time.ticks_diff(time.ticks_ms(), t0)
     _report_checked("after_build_system")
+    _dump_map("after_build_system")
 
     sysfunct = sensortask_dev.sysfunct
     if sysfunct is None:
@@ -134,9 +146,11 @@ async def _main() -> None:
     # The reading measure B's second site is about: taken where the last collect of the starter list
     # just ran, before the run phase has had time to undo it (MEASUREMENTS 7F.9).
     _report_checked("after_starter_loop_end")
+    _dump_map("after_starter_loop_end")
 
     await asyncio.sleep_ms(_STARTER_SETTLE_MS)
     free, largest = _report_checked("after_starter_list")
+    _dump_map("after_starter_list")
     supervisor.cancel()
 
     # Control first, at the unchanged threshold: without it a difference in the next line cannot be

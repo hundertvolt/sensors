@@ -2215,6 +2215,13 @@ from 115,536 to 20,592 B, applied once more, puts the reachable 16 KB body read 
 tripwire is what catches that a layout regression happened at all. Keep it; read a number below it
 as "the heap's layout has regressed this far", not as "an allocation is failing".
 
+> **Superseded by the owner, 2026-09-19. The 80,000 B floor is retired, not kept.** In the owner's
+> own words: *"I don't know, I did not introduce it and can be removed as it does not reflect
+> reality. my expectation is that there are as few survivors in the long heap and that sufficient
+> contiguous gaps fit with some rather sure margin for real use, but not one third of the whole RAM
+> contiguously free. Replace by more expressive tests."* So the paragraph above was arguing to keep
+> a number nobody had ever asked for. What replaced it is §7G.
+
 **Reported, not changed (CLAUDE.md's flag-don't-fix rule).** The 4,096 B cap does not bound what is
 allocated, only what is answered: `Request.max_body_length` stays at microdot's 16 KB default, so a
 12 KB `PUT` to any route is read into one contiguous buffer before the 413. `ext/microdot.py` is
@@ -3205,6 +3212,97 @@ argument for widening the exception into the run phase.
 
 ---
 
+## 7G. The 80,000 B floor, retired and replaced (owner, 2026-09-19)
+
+**The decision, in the owner's words:** *"I don't know, I did not introduce it and can be removed as
+it does not reflect reality. my expectation is that there are as few survivors in the long heap and
+that sufficient contiguous gaps fit with some rather sure margin for real use, but not one third of
+the whole RAM contiguously free. Replace by more expressive tests."*
+
+That retires the number this whole branch has been reporting against, and it replaces one arbitrary
+threshold with three checks that each say what they mean. §7A.9 had already shown the floor was
+5x above anything the firmware can be asked to allocate; what it got wrong was the conclusion
+("keep it"), not the arithmetic.
+
+### 7G.1 A better instrument, and it costs nothing [SRC]
+
+`micropython.mem_info(1)` prints the GC's own per-block allocation map, and the `gc_dump_info()`
+header above it prints **`max free sz`: the longest run of free blocks, in blocks** [SRC, `py/gc.c`
+`gc_info()`]. Three properties matter here:
+
+- **It allocates nothing**, so it cannot perturb the layout it measures — unlike the binary-search
+  probe, which allocates up to 192 KB per reading.
+- **It is exact**, not a search result, and therefore immune to §7F.8's pinning artefact outright.
+- **It carries position**, which no single number can: the map shows *where* the survivors are.
+
+Verified equal to the probe to the byte: a fragmented 300k heap gives `max free sz: 3842` blocks x
+32 B = **122,944 B**, and the binary-search probe on the same heap returns **122,944**. On the real
+boot sequence at 1M the two agree at **167,456 B**, delta 0.
+
+Both device scripts now print the map; `tests_hardware/heap_map.py` parses it host-side (the device
+cannot — `mem_info` writes to the platform print, not `sys.stdout`), and
+`tests_scripts/test_heap_map_parser.py` pins the parser, because its dangerous failure mode is
+silent: a truncated capture reads as a heap with an enormous free run at the end, which is the
+direction that turns a regression into a pass.
+
+### 7G.2 The three checks, and what each clause of the owner's sentence became
+
+| the owner's words | the check | the threshold, and where it comes from |
+|---|---|---|
+| "as few survivors" | `used <= 100,000 B` after the full build | ~14% over the 87,760-87,968 B [HW] the dev object graph itself costs |
+| "as few survivors **in the long heap**" | `free_above_top_survivor >= 16,384 B` | one whole worst reachable allocation still fits **above the highest long-lived object** (§7A.9) |
+| "sufficient contiguous gaps fit with some rather sure margin for real use" | `largest_free_run >= 32,768 B` | **2x** that worst case |
+| "but not one third of the whole RAM" | — | 32,768 B is **12%** of the RP2040's 264 KB SRAM; the retired floor was 30% |
+
+Every threshold is derived from §7A.9's measured 16,384 B worst reachable allocation — microdot's
+own `max_body_length` default, which the project never overrides — and **none may be raised to fit a
+board reading**. That is the discipline the old floor lacked: it was set at ~69% of one healthy
+measurement, so it encoded whatever that board happened to do.
+
+The probe stays, and the host side **cross-checks it against the map**. They measure the same run by
+different means, so a disagreement means one of them is wrong — and §7F.8's artefact has exactly
+that signature.
+
+### 7G.3 `free_above_top_survivor` is the discriminating metric [TWIN]
+
+Measured on the real boot sequence, 1,300k, the two arms of §7F.9:
+
+| position | A only | A + B |
+|---|---|---|
+| `after_build_system` | **6,240** | **213,472** |
+| `after_starter_loop_end` | **5,184** | **71,552** |
+| 4 s into the run phase | **1,568** | **35,680** |
+
+A 14-34x separation, in the direction the mechanism predicts: with no placement reset the survivors
+reach the very top of the heap, and with one they do not. This is what "as few survivors in the long
+heap" looks like when it is measured rather than inferred, and it separates the arms far more
+sharply than the contiguity number the old floor watched.
+
+**One metric was tried and rejected**: the *count* of free runs above a size. On the A-only arm it is
+consistently **higher** (14/16/23 gaps >= 4 KB against A + B's 9/11/18), because a fragmented heap has
+more medium holes. A gap count reads backwards as a health metric and is reported only as a
+diagnostic.
+
+`alloc_span_pct` was also weak here (99% against 83-97%) — a couple of objects at the extremes
+saturate it — so it stays a diagnostic too.
+
+### 7G.4 What is owed on silicon
+
+**There is no host-side gate on any of this, and building one is not free.** `mem_info(1)` works
+identically on the Unix port, so the same three checks could run in the twin's CI — but only at a
+*calibrated* heap size: at `scripts/test.sh`'s 16 MB everything passes trivially, and absolute bytes
+do not transfer anyway (§1.4). A calibrated-heap layout gate means a `scripts/` change and a
+heapsize decision, which is the owner's call and bigger than this change. Recorded as an option, not
+built.
+
+**`free_above_top_survivor` has never been measured on real hardware**, on any image. Its threshold
+is derived from the requirement rather than fitted to a reading, which is the only honest way to set
+it before the first run — but it does mean the first bench run is where it is found out. **A failure
+there is a finding, not automatically a regression**: it would say that long-lived objects do reach
+the top of the real heap, which is worth knowing either way. Queue row B7.
+
+---
+
 ## 8. What is committed
 
 **Reverted, 2026-09-18, at the owner's instruction.** Every change this investigation made to
@@ -3473,7 +3571,14 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
    only ~1,800 B more here and moves the lock hierarchy itself, and A.6 reopens it only if the
    combination with the boot collects falls short. §7C/§7C.1 carry the measurement and the residue.
 
-7. **Which position is the 80,000 B floor about?** Put 2026-09-19, off the back of §7F.9, and not
+7. ~~**Which position is the 80,000 B floor about?**~~ **Answered the same day, by retiring the
+   floor — §7G.** The owner's answer was that the floor is not theirs and does not reflect reality,
+   and that what matters is few survivors in the long heap plus contiguous gaps that fit real use
+   with a sure margin. The position question dissolves with it: the replacement checks measure
+   survivor *placement* directly, at whatever position the script runs, instead of inferring layout
+   health from one contiguity number. The original text is kept below because §7F.9's measurement
+   still stands on its own.
+   **Original:** Put 2026-09-19, off the back of §7F.9, and not
    answerable from this file's own evidence. The tripwire measures right after `build_system()`;
    the floor exists because a real allocation — a JSON response, a read buffer — has to succeed
    **during the run phase**, which is a different moment. Measure B is worth 4-7x at the boot
@@ -3490,8 +3595,12 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
    guard is the design-level answer if the choice is (ii) or (iii), which is one more reason it is
    the next thing to decide.
 
-**One constraint already settled and not to be re-proposed.** The 80,000 B floor is not to be
-lowered. The second, `gc.collect()`/`gc.threshold()` as the remedy — forbidden by
+**One constraint, and it is the opposite of what this section used to say.** The 80,000 B floor was
+**retired by the owner on 2026-09-19** — it was never theirs, and it demanded a third of physical
+memory contiguously free, which nothing in this firmware needs. It is replaced by three
+requirement-derived checks, §7G. What is not to be re-proposed is *re-introducing a fitted floor*:
+every threshold in the replacement is derived from §7A.9's measured worst reachable allocation, and
+none of them may be raised to fit a board reading. The second, `gc.collect()`/`gc.threshold()` as the remedy — forbidden by
 `SPECIFICATION.md` I.4(e)/(f)/(g) and previously rejected by the owner outright (removes the
 symptom, breaks with any GC behaviour change, and loads the processor and I/O system) — was
 **reopened by the owner on 2026-09-18** as the boot-confined exception above, and is item 4, not a

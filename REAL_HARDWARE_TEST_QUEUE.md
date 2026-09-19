@@ -36,12 +36,23 @@ both fixed in the instrument rather than argued around:
 So the measure-B rows below are cheaper than they were: the owed items are **two invocations of one
 script**, not a redesign, and they now produce a number that can settle P2 either way.
 
+**And the tripwire itself changed (owner, 2026-09-19).** The 80,000 B floor is retired — it was
+never the owner's, and it demanded a third of physical memory contiguously free. What
+`test_real_gc_heap_headroom_survives_a_full_system_build` now asserts is three things, each derived
+from §7A.9's *measured* worst reachable allocation (16,384 B) rather than from a board reading:
+survivor volume (`used <= 100,000 B`), survivor **placement** (a whole worst-case allocation must
+still fit above the highest long-lived object) and contiguity (`>= 32,768 B`, twice the worst case).
+Both device scripts also print `micropython.mem_info(1)`'s block map now, which gives the exact
+largest free run without allocating anything, and the host side cross-checks it against the probe.
+Full derivation: MEASUREMENTS §7G. **The placement check has never run on silicon** — row B7.
+
 **If there is time for one sitting only, in this order.** Everything here is on the tip image; only
 the first step needs the second (A-only) image, and B6/B4 are worth more with it than without.
 
 1. **S1** on both arms (flash suite), **with `-s`** — that alone closes B1's owed exact
-   `largest_block`, re-runs T.2's flash tier and R11's I2C-scratch confirmation, and gives R14 its
-   first run. Read `retained=` on the `HEAP ` lines (§2A F5).
+   `largest_block`, exercises the replaced tripwire (**B7**, including the placement check's first
+   run ever), re-runs T.2's flash tier and R11's I2C-scratch confirmation, and gives R14 its first
+   run. Read the `MAP after_build_system:` line and `retained=` on the `HEAP ` lines (§2A F5).
 2. **B6**, immediately after each arm's S1, without resetting the board — two invocations of
    `heap_layout_after_full_boot_sequence.py`. This is the only row that can settle P2, and the only
    one that produces an aged-heap AFTER reading.
@@ -251,6 +262,7 @@ unconfirmed half of this branch exactly as §7B.1 was before §7D refuted it.
 | B3 | **Boot cost with the collects in.** | **DONE 2026-09-18 — P4 CONFIRMED.** `build_system_ms` 943 → **1,402**, i.e. ~455 ms for B's 11 batch collects (~41 ms each). Under the ~2,000 ms falsifier and the 8,388 ms cap; no `WDT_RESET`. First measured RP2040 collect cost — ~85x the twin's 300-490 us, as §7A.7 predicted would not transfer | DONE |
 | B4 | **The threshold-first reading** — the firmware's own boot path under its own `gc.threshold(32768)` from the start. | **PARTIAL 2026-09-18.** BEFORE arm taken: threshold-first `after_starter_list` **75,536 / 79%** against the reactive default's 66,144 / 70% — the firmware's own threshold gives the *better* layout on A-only. That reading is unaffected by §7F.8's artefact (75,536 is off-node), and with the withdrawn row gone it is now the *only* threshold evidence in §7F, which makes closing it worth more than it was. **AFTER arm owed**, one invocation (§4.4's chained `exec gc.threshold(32768)` form) | PARTIAL |
 | B6 | **Rerun B2's script on both arms with the 2026-09-19 instrument.** Two invocations of one script, one per arm, each immediately after that arm's suite run so the heap is aged. Same command as the handover §4.3. | **OPEN, and it is the cheapest open row in this file.** It yields, in one go: (a) **`after_starter_loop_end`** on both arms — the reading P2 turns on, for which no silicon figure exists; (b) an **aged-heap** pair, the position where the defect actually exists (BEFORE is already in hand at 10,128 B / 10%, §7F.5); (c) a replacement for the withdrawn threshold row, now with a control reading before the threshold is set; (d) `retained=` on every line, which says whether any reading in it is an artefact. **Prediction to read it against** (twin, §7F.9): at the loop end A+B holds 20-59% of free against A-only's 5-11%. **Falsified if** the AFTER arm's loop-end reading is no better than the BEFORE arm's at the same position. A drop between the loop end and the 4 s settle is *expected on both arms* and falsifies nothing | OPEN |
+| B7 | **The replaced tripwire's first run** (owner retired the 80,000 B floor 2026-09-19). No new invocation — it is what S1 already runs. | **OPEN.** Two of its three checks are safe against everything ever measured (`used <= 100,000` against a measured 87,760-87,968; `largest_free_run >= 32,768` where every A+B reading cleared 80,000). The third, **`free_above_top_survivor >= 16,384`, has never been measured on any image** — its threshold is derived from the requirement, which is the only honest way to set it before the first run. **A failure is a finding, not automatically a regression**: it would mean long-lived objects reach the top of the real heap, which is worth knowing either way — report the `MAP` line and do not re-fit the threshold. Twin separation for reference: A+B 213,472 B against A-only 6,240 B (§7G.3) | OPEN |
 | B5 | **F1/F2's fixes on silicon** — the two FRAM fault injectors and the SSID script. | **F2 DONE 2026-09-18: both injectors PASS on both arms** — first real-chip proof the hijacked payload is actually refused (the twin's fake chip ignores CS, so host-side validation never could). Neither reported the "nothing was injected" guard. **F1's SSID script deliberately NOT run** (B-D3) | F2 DONE / F1 OPEN |
 
 ---

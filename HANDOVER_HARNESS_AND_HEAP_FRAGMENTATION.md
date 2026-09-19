@@ -656,7 +656,8 @@ even sharper version (assert the setup batch adds at most N new runs).
   as remedies. Note also [TWIN] that setting the threshold *before* `build_system()` makes the twin
   heap look healthy — that is the threshold masking a design defect, which is exactly the condition
   I.4(e) exists to detect, not evidence that nothing is wrong.
-- **Do not lower the test's 80,000 B floor.** It encodes a real product property (an 80 KB
+- ~~**Do not lower the test's 80,000 B floor.**~~ **Retired by the owner, 2026-09-19** — see
+  `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7G for what replaced it and why. Original text: it encodes a real product property (an 80 KB
   contiguous allocation must remain obtainable after boot) and that property genuinely does not hold.
 - **Do not rewrite `asy_fram_manager.py` / `asy_fram_driver.py` internals** off the back of §2.5.
 - **Do not trust a digital-twin memory measurement taken before neutralising `SPI.log`/`I2C.log`** —

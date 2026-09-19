@@ -686,7 +686,8 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   its durable parts have moved into `SPECIFICATION.md`/CLAUDE.md/BACKLOG.md.
 - **[`HEAP_FRAGMENTATION_MEASUREMENTS.md`](HEAP_FRAGMENTATION_MEASUREMENTS.md)** — the measured
   evidence base for the heap-fragmentation defect (the collapse of the largest contiguous block
-  across WP1+WP2, which fails `tests_hardware/flash/test_memory_stress.py`'s 80,000 B floor):
+  across WP1+WP2; the 80,000 B floor it used to be measured against was retired by the owner on
+  2026-09-19 and replaced by the three requirement-derived checks in its §7G):
   what the instrument is validated against and the six ways it silently lied before that, the
   per-module allocation census, the FRAM logging path priced per transaction, the negative results
   that constrain any fix, and every remedy candidate's ensembled numbers. Continues

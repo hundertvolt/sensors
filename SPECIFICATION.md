@@ -3532,9 +3532,13 @@ FRAM entry has the full account.
   threshold changes neither figure. Against a largest known single allocation of ~5.7 KB (`GET
   /status`, itself streamed in 1 KB fragments since Part I.3), that is ample. Kept honest by
   `tests_hardware/flash/test_memory_stress.py`'s
-  `test_real_gc_heap_headroom_survives_a_full_system_build`, which asserts floors of 100,000 B
-  free and 80,000 B contiguous so a future bump relocating more code into SRAM shows up as a test
-  failure rather than as slow attrition. The comparable 1.28 figure is the 2026-09-08 hammer-load
+  `test_real_gc_heap_headroom_survives_a_full_system_build`, so a future bump relocating more code
+  into SRAM shows up as a test failure rather than as slow attrition. **That test's thresholds
+  changed on 2026-09-19**: the owner retired its 100,000 B free / 80,000 B contiguous floors as not
+  reflecting any real requirement, and it now asserts survivor volume (<= 100,000 B allocated),
+  survivor *placement* (a whole 16,384 B worst-case allocation must still fit above the highest
+  long-lived object, read off `micropython.mem_info(1)`'s block map) and contiguity (>= 32,768 B,
+  twice that worst case). `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7G has the derivation. The comparable 1.28 figure is the 2026-09-08 hammer-load
   `mem_free` floor of 91,312 B (Part I.5), which is a *loaded* floor, not an at-rest one — the two
   are not directly comparable, and measuring a loaded floor at 1.29 would need `mem_free` exposed
   over REST, which is deliberately not done.
