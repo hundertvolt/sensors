@@ -17,10 +17,13 @@ _PROBE_MAX = 192 * 1024
 # has always been enough on the twin, at every heap size tried.
 _PROBE_RETRIES = 3
 
-# The largest contiguous allocation this firmware can be asked to make, measured against the code
-# rather than against a board reading: 4,096 B as configured, 16,384 B worst case actually reachable
-# through microdot's own max_body_length default (MEASUREMENTS 7A.9).
+# The largest contiguous allocation this firmware could be asked to make when these floors were
+# set, measured against the code rather than a board reading: 4,096 B as configured, 16,384 B worst
+# case through microdot's own max_body_length default (MEASUREMENTS 7A.9).
 _WORST_CASE_ALLOCATION = 16_384
+# That worst case fell to 2,048 B once both caps were bound (SPECIFICATION.md Part I.6). Not
+# re-derived on purpose: these are a regression tripwire with margin, not a restatement of the
+# requirement, so lowering them would only cost sensitivity.
 # Requirement, not a fitted floor: room for the worst case twice over. 32,768 B is 12% of the
 # RP2040's 264 KB SRAM, where the retired 80,000 B floor was 30% - a third of physical memory, which
 # is what the owner retired it for on 2026-09-19. Nothing here may be raised to fit a reading.

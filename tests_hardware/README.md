@@ -636,7 +636,7 @@ tests closed these (54 -> 65, `bench/test_network_resilience.py` plus two new
   accept, no response ever written" reject-when-full comment).
 - **Nonsense GET/PUT over the normal network**: a genuine 404 (shaped per `_ERROR_SHAPES`), a
   genuinely malformed raw JSON body (needs a raw socket - `http_client.fetch()` can only ever
-  serialize valid JSON), a real 413 over `max_content_length=4096`, and syntactically valid but
+  serialize valid JSON), a real 413 over `max_content_length=2048`, and syntactically valid but
   nonsensical field values (wrong type, out-of-range, an entirely unknown sensor key) - each
   confirmed against `_body_as_dict()`/`base_classes.py`'s `_set_dict_cfg()` to land exactly where the
   real source says it should, including confirming none of these paths ever reach

@@ -2230,6 +2230,22 @@ vendored and never edited; the one-line fix belongs next to the existing
 it is a webserver change, not a heap-layout one - but it is the single allocation that decides how
 much contiguity this firmware actually needs.
 
+> **FIXED 2026-09-19 under a temporary scope extension, and this section had two errors.**
+> Both caps are now 2,048 B and bound to one another, so the band is closed:
+> `SPECIFICATION.md` Part I.6.
+>
+> **Error 1 — the table's "largest single contiguous allocation" is per-allocation, and never asked
+> how many can be live at once.** `readexactly(content_length)` allocates a fresh `bytes` per
+> request and `max_connections` is 4, so the real simultaneous worst case was **4 x 16,384 =
+> 65,536 B** in four separate contiguous runs, against ~105,000 B free. It is now 4 x 2,048 =
+> 8,192 B.
+>
+> **Error 2 — "the tripwire sits about 5x above anything the firmware can be asked to allocate" is
+> now 16x**, because the worst reachable allocation fell to 2,048 B. §7G's thresholds are
+> deliberately **not** lowered to match: they are a regression tripwire with margin, not a bare
+> restatement of the requirement, and re-deriving them at 2,048 would only cost sensitivity. That
+> is a choice, recorded here so it is not mistaken for the arithmetic still holding.
+
 ### 7A.7 What is not claimed
 
 - **No hardware.** Every figure is [TWIN], and §1.5's unresolved [HW]/threshold discrepancy applies

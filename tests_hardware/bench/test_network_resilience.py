@@ -753,8 +753,9 @@ def test_put_malformed_raw_request_is_rejected_cleanly_over_the_normal_network(d
 
 def test_put_oversized_body_is_rejected_with_413_over_the_normal_network(dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
-    # max_content_length defaults to 4096 (asy_webserver_service.py) - well past that, on a field
+    # max_content_length defaults to 2048 (asy_webserver_service.py) - well past that, on a field
     # name real drivers never register, so nothing here could accidentally validate as real config.
+    # Over max_body_length too, now they are bound, so the body is never read (SPECIFICATION I.6).
     oversized = {"BMP3XX": {"Nonsense" + "x" * 5000: 1}}
     res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", oversized, timeout_s=10.0)
     assert res.status_code == 413, f"an oversized PUT body was not rejected with 413: {res.status_code} {res.body!r}"

@@ -259,7 +259,7 @@ class WebserverService:
         status_sources: "dict[str, StatusSourceFct] | None" = None,
         maintenance_sensors: "Sequence[tuple[str, MaintenanceFct]]" = (),
         error_sources: "Sequence[_ModuleLike]" = (),
-        max_content_length: int = 4096,
+        max_content_length: int = 2048,  # 1.8x the largest schema-permitted body, ~9x real traffic (I.6)
         max_connections: int = 4,  # reject-when-full ceiling, one slot of margin below the
         # confirmed MEMP_NUM_TCP_PCB=5 rp2-port ceiling - see SPECIFICATION.md Part H.7 for the
         # real-browser-testing rationale behind this value (raised from an original 3).
@@ -303,6 +303,11 @@ class WebserverService:
         Request.max_content_length = max_content_length  # a Request *class* attribute, not
         # per-app-instance (ext/microdot.py's own module docstring example) - see
         # tests/test_asy_webserver_service.py's own boundary-test comment on this.
+
+        # Bound to the same value, never microdot's own 16 KB default: Request.create() buffers the
+        # body before dispatch_request() answers 413, so a larger cap here has an oversized body
+        # read into one contiguous allocation and then thrown away (SPECIFICATION.md Part I.6).
+        Request.max_body_length = max_content_length
 
         app.get("/measurements")(self._get_measurements)
         app.get("/sensors")(self._get_sensors)

@@ -292,7 +292,9 @@ against its actual source, not docs/memory.
   contained by the blanket catch; guarding it ourselves is about a precise reply, not crash
   prevention.
 - Request size is bounded before any handler runs: `max_content_length` (16KB default, 413 if
-  exceeded) → tightened to 4096 bytes in `asy_webserver_service.py`; `max_readline` (2KB default).
+  exceeded) → tightened to **2048** bytes in `asy_webserver_service.py`, with `max_body_length`
+  bound to the same value so an oversized body is never buffered (Part I.6); `max_readline` (2KB
+  default).
 - The Microdot server task is wired into `start_and_check_tasks()` like every other module — a dead
   server task restarts automatically with the same decaying-failure/reboot fallback, no
   Microdot-specific code needed, since **each accepted connection runs in its own independent
@@ -4566,6 +4568,51 @@ carries none. The jumper uses UART0 on GP0/GP1 and UART1 on GP8/GP9: of the othe
 pairs, GPIO24/25 and GPIO28/29 each have a half the wireless chip takes (A.6), and GPIO16/17 is
 left free because a BME688's BSEC coprocessor wants UART0 there and one peripheral serves one pair. Everything below describes what the promoted module does, not what the legacy one
 did — the differences are enumerated in `UART_C_PORT_CHANGELOG.md`.
+
+## I.6 The request-body cap, and why both of Microdot's limits must move together
+
+Microdot exposes two independent limits, and the gap between them was the firmware's largest
+attacker-reachable contiguous allocation.
+
+- `Request.max_content_length` — the largest body that is *accepted*; anything over it is answered
+  413. This project sets it.
+- `Request.max_body_length` — the largest body that is *buffered* into `request.body`; a larger one
+  (up to `max_content_length`) is left unread and reached through `request.stream` instead. This
+  project did **not** set it, so it stayed at Microdot's 16 KB default.
+
+**The ordering makes the gap live** [SRC]: `handle_request()` calls `Request.create()` (`:1400`),
+which reads the body at `:426`, and only then `dispatch_request()` (`:1410`), whose 413 check is at
+`:1443`. A body between the two limits is therefore read into one contiguous allocation and
+immediately thrown away. Verified against the vendored v2.6.2 and against upstream `main`, which
+carries the same defaults and the same ordering — this is not fixed by a version bump, and
+`ext/microdot.py` is never edited (Part A.5's vendoring rule), so the fix is ours to apply from
+outside.
+
+**The exposure was per-request, not per-server.** `readexactly(content_length)` allocates a fresh
+`bytes` per request, and `max_connections` is 4, so up to **four** such buffers could be live at
+once: 4 x 16,384 = 65,536 B of contiguous demand, against roughly 105,000 B free after boot.
+Nothing legitimate could provoke it — every accepted body is far smaller — but a client sending
+four concurrent oversized PUTs could, and each would be answered 413 *after* allocating.
+
+**What the caps are set to, and why 2048.** Measured against the real schemas: the largest body the
+client can produce is one config group with every field at its schema maximum, which is **1,132 B**
+(NTP, dominated by `NTP_Host`'s 1024-character bound); every other group is under 300 B, and real
+traffic measures 232 B. The client submits one group at a time and only changed fields
+(`js/render.js`), so body size does not grow with module count. 2048 clears the schema maximum with
+1.8x margin and real traffic with ~9x, and takes the four-connection worst case to 4 x 2,048 =
+8,192 B.
+
+**Both are set from the one constructor parameter**, so they cannot drift apart again — the defect
+was never a value, it was the gap. `tests/test_asy_webserver_service.py`'s F.2b section pins this
+behaviourally by recording every `readexactly()` size the server asks its reader for: an oversized
+request must produce **no body read at all**, including under concurrent mixed load at both
+`gc.threshold(-1)` and `gc.threshold(32768)`.
+
+**Related, deliberately not changed:** `NTP_Host`'s 1024-character bound mirrors the deployed
+pre-refactor handler (`modules/sensortask-*.py`'s `update_valid_json(..., 3, 1024, ...)`), so
+tightening it to DNS's real 253-character limit is a divergence from fielded behaviour and the
+owner's call, not this change's. It would take the schema maximum to ~360 B.
+
 
 ## J.1 Scope and the two-implementation contract
 

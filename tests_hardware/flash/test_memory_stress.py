@@ -18,10 +18,13 @@ if TYPE_CHECKING:
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
-# The largest contiguous allocation the firmware can be asked to make (MEASUREMENTS 7A.9): 4,096 B
-# as configured, 16,384 B worst case reachable through microdot's own max_body_length default. Every
-# figure below is a multiple of that, never of a board reading.
+# The largest contiguous allocation the firmware could be asked to make when these floors were set
+# (MEASUREMENTS 7A.9): 4,096 B as configured, 16,384 B worst case through microdot's own
+# max_body_length default. Every figure below is a multiple of that, never of a board reading.
 WORST_CASE_ALLOCATION = 16_384
+# That worst case fell to 2,048 B once both caps were bound (SPECIFICATION.md Part I.6). Not
+# re-derived on purpose: these are a regression tripwire with margin, not a restatement of the
+# requirement, so lowering them would only cost sensitivity.
 
 
 def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> None:

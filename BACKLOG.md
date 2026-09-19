@@ -698,6 +698,24 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
 ## Deferred / explicitly out-of-scope work
 
+- **`NTP_Host`'s 1024-character bound mirrors the deployed handler; tightening it to DNS's real 253
+  is the owner's call.** `src/asy_ntp_client.py`'s `_VAL_NH` declares `("NTP_Host", "str",
+  "pool.ntp.org", 3, 1024, None)`, and the comment above it says the bounds mirror the fielded
+  pre-refactor REST handler — confirmed: `modules/sensortask-*.py` does
+  `update_valid_json(req_json, "NTP_Host", "str", res, 3, 1024, debug=debug)` on every deployed
+  device. A DNS name cannot exceed **253** characters in presentation format (255 octets on the
+  wire, minus the length and root bytes), so 1024 is ~4x over-permissive — but changing it is a
+  deliberate divergence from fielded behaviour, which the "same features, not a feature change"
+  working agreement makes a decision rather than a fix. **Why it is worth deciding**: that one
+  field is the sole reason the largest schema-permitted PUT body is 1,132 B; every other config
+  group is under 300 B, and real traffic measures 232 B. At 253 the schema maximum drops to ~360 B,
+  which would take `max_content_length`'s margin from 1.8x to ~5.7x (SPECIFICATION.md Part I.6).
+  **Not a one-token change**: `html/definitions/{dev,wozi}.json` carry the bound as
+  `"maxLength": 1024` and are generated *and committed*, so they need regenerating, and
+  `tests/test_asy_ntp_client.py:53` mirrors the tuple verbatim. **Unchecked**: whether a stored
+  value outside a tightened bound is rejected on the next write or silently falls back to the
+  default — trace the read path before changing it.
+
 - **The `main` merge conflict: how it resolves was settled 2026-09-14/18; only WHEN is open.**
   Recorded here so no future session re-opens it as a design question. `main` and this branch built
   the ISL29125 driver twice, in parallel, on the same day - `main` via PR #75, this branch via its
