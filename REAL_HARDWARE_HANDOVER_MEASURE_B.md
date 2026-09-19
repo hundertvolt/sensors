@@ -8,10 +8,17 @@ below was [TWIN] or [SRC] when written.
 > **RUN, PARTIALLY, 2026-09-18 by a session that did have the go-ahead. Results:
 > `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7F.** The headline (P1) is settled: the tripwire **passes
 > in-suite on A + B**, having failed on every image ever measured. P3 and P4 confirmed, P2 untested
-> (§7F.4 — the fresh-heap position cannot test it), P5 owed. **Two defects in this file's own
-> protocol were found by following it — §4.1's build check and §4.3's saturation check are both
-> broken; see the boxed notes in each, and §7F.5.** Do not re-run from scratch: §7F.6 lists the
-> four things still owed.
+> (§7F.4), P5 owed. **Two defects in this file's own protocol were found by following it — §4.1's
+> build check and §4.3's saturation check are both broken; see the boxed notes in each, and §7F.5.**
+> Do not re-run from scratch: §7F.6 lists what is still owed.
+>
+> **Amended 2026-09-19, host-side, with no hardware.** Two of that run's own readings did not mean
+> what they said: the `..._production_threshold` row was a **probe artefact** and is withdrawn
+> (§7F.8), and `after_starter_list` is a **run-phase** reading taken ~3 s past the position P2 is
+> about (§7F.9). `heap_layout_after_full_boot_sequence.py` now reports `retained=` on every line and
+> a new `after_starter_loop_end`, and both scripts take a control reading before switching the
+> threshold. What is owed is **two invocations of one script**, one per arm, right after each arm's
+> suite run — queue row B6.
 
 **Nothing in this file authorizes anything.** CLAUDE.md's gate stands: the session that runs this
 needs the project owner's go-ahead **in its own conversation**, and a go-ahead given to this session
@@ -27,17 +34,20 @@ host-side on the settrace-free frozen Unix port, **[SRC]** read from this repo's
 
 Measure A has been measured on silicon (§7D) — it buys **+40.2 %** of in-suite largest obtainable
 block, 20,592 → 28,864 B [HW]. Measure B has not. It is built, tested, green in CI and green in the
-twin, and the twin puts A + B at **6.1x the base layout after `build_system()` and 10.6x over the
-whole boot sequence** on this metric — while A alone is worth nothing on it:
+twin, and the twin puts A + B at **6.1x the base layout after `build_system()` and 10.6x by the end of the task
+starter list** on this metric — while A alone is worth nothing on it:
 
-| arm | after `build_system()`, 508k | whole boot sequence, 560k |
+| arm | after `build_system()`, 508k | end of the starter list, 560k |
 |---|---|---|
 | base — neither measure | 14.2 % | 8.4 % |
 | A alone | 12.4 % | 7.4 % |
 | B alone | 45.0 % | 57.8 % |
 | **A + B, as shipped** | **86.3 %** | **88.7 %** |
 
-All [TWIN] (§7E). The board's own A-only in-suite reading is **28,864 / 105,216 = 27.4 %** [HW] —
+All [TWIN] (§7E). **Both columns name a moment during boot, not "after boot"** — the right-hand one
+stops where the starter list stops. That distinction was implicit when this table was written and
+turned out to matter: the run phase takes most of the gain back within ~2 s (§7F.9). The board's own
+A-only in-suite reading is **28,864 / 105,216 = 27.4 %** [HW] —
 already more than twice the twin's A-only 12.4 %, because the twin measured a cold process and the
 board measured an aged one (§7D.2). **So the twin's ratios are not a numeric prediction for the
 board.** They are a direction and a mechanism, and this run is what turns them into evidence or
@@ -219,12 +229,30 @@ the aged heap this reading depends on.
 > and neither reading needs the board to survive the other. It is the same argument §7D.3 already
 > made for the tripwire, which read 28,864 B from both suites.
 
-**Validity check, and it is not optional.** §7D.3 read a byte-identical 28,864 B from both the flash
-and the bench suite, which suggests the ageing effect saturates. Confirm that here rather than assume
-it: run the command a **second** time about five minutes later. If the two readings agree, the
-position has saturated and "right after the suite" is a sound stand-in for "in the suite". **If they
-disagree materially, say so and treat every number in §5 as position-confounded** — that is a
-finding about the method, and more valuable than a number taken on a false assumption.
+**Validity check, replacing the broken re-run.** §7D.3 read a byte-identical 28,864 B from both the
+flash and the bench suite, which suggests the ageing effect saturates. Confirm that rather than
+assume it by taking **one reading after the flash suite and one after the bench suite**, each
+immediately after its own run. If they agree, the position has saturated and "right after the suite"
+is a sound stand-in for "in the suite". **If they disagree materially, say so and treat every number
+in §5 as position-confounded** — that is a finding about the method, and more valuable than a number
+taken on a false assumption.
+
+**The script changed on 2026-09-19 and now prints three things it did not.** All are free; nothing
+in the invocation changes.
+- **`after_starter_loop_end`** — a reading taken where the starter loop actually ends, detected by
+  counting starters rather than waiting a guessed interval. **This, not `after_starter_list`, is the
+  line P2 is about**: the twin puts most of measure B's gain back within ~2 s of the run phase
+  starting, while `after_starter_list` sits a few seconds past the loop, on the far side of that
+  decay (MEASUREMENTS §7F.9). It keeps its name and a 4 s settle — now timed from the loop's end
+  rather than the supervisor's creation, so ~1 s later than §5's rows, which that same decay makes
+  immaterial. `BOOT`'s new `starter_loop_ms` / `settle_ms` split puts the position on the line.
+- **`retained=` on every `HEAP` line**, and a `_retryN` line when it is non-zero. The probe can pin
+  its own buffer and then report `_PROBE_MAX >> k` — which is where §5's withdrawn 49,152 B row came
+  from (MEASUREMENTS §7F.8). A non-zero `retained` on a *retry* line is the only case worth
+  reporting; the retry itself is automatic.
+- **`after_starter_list_control`**, a second reading at the *unchanged* threshold, taken before
+  `gc.threshold(32768)` is set. Without it a difference in the threshold line cannot be told from a
+  difference between two probe runs, which is exactly how the 49,152 B row was misread.
 
 ### 4.4 Reading 3 — the threshold question (§7D.8's second open item)
 
@@ -266,8 +294,9 @@ interpretation at the bench.
 | tripwire `RESULT:` (floor 80,000 B) | **FAIL** | **PASS** (suite: 36 passed, 0 failed) |
 | `after_build_system` free / largest / pct (§4.3 script, fresh heap) | 104,192 / 93,728 / 89% | 104,128 / 90,720 / 87% |
 | `after_start_timers` free / largest / pct | 101,760 / 93,728 / 92% | 101,696 / 90,720 / 89% |
-| `after_starter_list` free / largest / pct | 93,632 / 66,144 / 70% | 94,272 / 57,424 / 60% |
-| `after_starter_list_production_threshold` | 93,632 / 49,152 / 52% | 94,272 / 49,152 / 52% |
+| `after_starter_loop_end` free / largest / pct | **owed** — the line P2 turns on, added 2026-09-19 | **owed** |
+| `after_starter_list` free / largest / pct (~3 s into the run phase) | 93,632 / 66,144 / 70% | 94,272 / 57,424 / 60% |
+| ~~`after_starter_list_production_threshold`~~ | ~~93,632 / 49,152 / 52%~~ | ~~94,272 / 49,152 / 52%~~ **withdrawn — probe artefact, §7F.8** |
 | §4.3 re-run five minutes later — same or different? | **check is broken** — see the §4.3 note; genuinely-aged run gave 10,128 / 10% | not taken |
 | §4.4 threshold-first `after_starter_list` | 94,928 / **75,536 / 79%** | **owed** |
 | `BOOT build_system_ms / start_timers_ms` | 943-951 / 789-790 | **1,402** / 789 |
@@ -275,9 +304,10 @@ interpretation at the bench.
 | `GET /status` `errcount` before / after | NTP 11, SYSTEM 1 (W4), rest 0 | after-read **owed** (P5) |
 
 **Verdicts: P1 confirmed. P3 confirmed. P4 confirmed. F2 confirmed fixed on silicon (both
-injectors pass on both arms). P2 untested — the fresh-heap position cannot test it (§7F.4), and
-the fresh-heap column above will read as "B is harmful" if taken at face value; it is not.
-P5 owed.**
+injectors pass on both arms). P2 untested — the fresh-heap column above will read as "B is harmful"
+if taken at face value, and it is not: both its arms are run-phase readings taken seconds past the
+position P2 is about (§7F.9), and the reading that can test it did not exist when this run was made.
+It does now. P5 owed.**
 
 ### The predictions, each with its falsifier
 
@@ -286,10 +316,17 @@ P5 owed.**
   **Falsified if** the AFTER in-suite reading stays under ~40,000 B: B's twin effect does not transfer
   to silicon, and §7E is a twin-only result. That is the same class of correction §7D.4 applied to A,
   in the opposite direction, and it must be written up as plainly.
-- **P2 — the after-starter-list reading is about as good as the after-`build_system()` one** on the
-  AFTER arm. This is the claim that the starter-list collects *preserve* what the batch collects
-  built. **Falsified if** after-starter-list is much worse: the second site is not doing its job on
-  real timing, and B is half a measure.
+- **P2 — restated 2026-09-19, because the line it named was the wrong one.** The claim is that the
+  starter-list collects *preserve* what the batch collects built, and the reading that shows it is
+  **`after_starter_loop_end`**, not `after_starter_list` (which sits seconds into the run phase — §7F.9).
+  On the twin, at the loop's end, A + B holds **20 / 50 / 59 %** across three heap sizes against
+  A-only's **6 / 5 / 11 %**; read at the old position both arms have already decayed to single
+  digits. **The prediction:** on the AFTER arm `after_starter_loop_end` keeps most of
+  `after_build_system`'s figure — on a fresh heap that is ~90,000 B staying above ~50,000 B, and at
+  the aged position it is the ratio that matters, not the byte count. **Falsified if** the AFTER
+  arm's loop-end reading is no better than the BEFORE arm's at the same position: the second site is
+  not doing its job on real timing, and B is half a measure. A drop between the loop end and the 4 s
+  settle is **not** a falsifier — that is the run phase, and the twin predicts it on both arms.
 - **P3 — the internal control, and it needs no second image.** On the **BEFORE** arm,
   after-starter-list must be **worse** than after-`build_system()` (twin base: 14.2 % → 8.4 %) —
   the starter list scatters survivors when nothing resets placement. **If P3 does not hold, the

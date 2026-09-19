@@ -704,8 +704,9 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   stays the technical reference for how to actually run any of it.
 - **[`REAL_HARDWARE_HANDOVER_MEASURE_B.md`](REAL_HARDWARE_HANDOVER_MEASURE_B.md)** — the runnable
   handover for one specific bench sitting: measuring the boot-confined placement reset
-  (`SPECIFICATION.md` Part I.4(f.1)) on silicon, which is the last unmeasured half of PR #105. Two
-  firmware images, the readings to take, and each prediction with the result that would falsify it.
+  (`SPECIFICATION.md` Part I.4(f.1)) on silicon, the last unmeasured half of PR #105. Two firmware
+  images, the readings to take, and each prediction with the result that would falsify it. **Run
+  partially on 2026-09-18** — the headline is settled and the file records what is still owed.
   `REAL_HARDWARE_TEST_QUEUE.md` §1B is its index row; this file is what a bench session reads top to
   bottom. Deleted once its results are migrated.
 - **[`HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`](HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md)** —

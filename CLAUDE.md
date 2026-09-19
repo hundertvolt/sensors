@@ -912,8 +912,8 @@ chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-
 # from-scratch run installs it on its own - it stays listed here because a REUSED chroot whose
 # toolchain is already built skips that install step entirely and hits the same late failure.
 
-# Per-verification: copy the CURRENT working tree (uncommitted changes included - this is a
-# pre-push gate, not a post-push audit) into the chroot, then run the exact documented workflow
+# Per-verification: copy the CURRENT working tree (uncommitted changes included - this verifies
+# what is on disk, not what is on a branch) into the chroot, then run the exact documented workflow
 # from README.md's "Code quality tooling" section.
 rm -rf "$CHROOT/root/sensors"
 cp -r /path/to/this/repo/checkout "$CHROOT/root/sensors"   # adjust to wherever it's actually checked out

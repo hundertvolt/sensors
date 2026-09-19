@@ -4409,6 +4409,13 @@ to hit the measured +53% throughput regression from per-write `asyncio.wait_for(
 Byte-budget batching bounds both piece size and count regardless of module count.
 `_MAX_STATUS_PIECE_BYTES = 1024`'s real headroom, confirmed on real hardware: the smallest
 largest-allocatable-contiguous-block under real hammer load was 49152 bytes — **~48x headroom**.
+**Flagged, not corrected (2026-09-19):** 49152 is exactly `192 KB / 4`, which is also the value a
+binary-search largest-block probe over `[0, 192 KB]` returns when it pins its own buffer — the
+artefact `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7F.8 established, and this repo's only committed
+such probe uses exactly that ceiling. The instrument behind this figure arrived with a merge from
+`main` and is not in the tree, so this cannot be checked here. **The conclusion is unaffected
+either way**: the artefact only ever *understates*, so the real headroom is 48x or better. Recorded
+so the number is not reused as a measurement of the heap. Re-measure it: queue row R16.
 
 Test coverage: direct primitive tests; a hammer test at the real 17-module scale for each fixed
 route; a combined final test hammering all six memory-bounded GET routes concurrently. Every hammer

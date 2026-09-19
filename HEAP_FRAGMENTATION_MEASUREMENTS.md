@@ -2789,6 +2789,11 @@ dominant term is **interpreter overhead per transaction**, not wire time.
   from the start, which remains untested on hardware.
 - **The run phase over months of uptime** is still untouched, exactly as §7A.7 says — though §7D.5's
   UART result is the first real-hardware evidence that A helps there.
+  **Sharpened 2026-09-19 (§7F.9):** it is not only months that are untouched. On the twin the run
+  phase takes back most of measure B's placement gain within about **two seconds** of the first
+  tasks running, on every heap size tried, leaving A + B roughly 2x A-only rather than 5-7x. That
+  makes "which position the 80,000 B floor is about" a real question rather than a pedantic one —
+  §11 item 7.
 
 ## 7E. A + B on the real path — the measurement the owner's question turns on (2026-09-18)
 
@@ -2813,6 +2818,12 @@ whole sequence, against `base`'s 36,992 B and 24,656 B. **Cross-checked independ
 `probe_largest` actually allocates a `bytearray` of that size, and reports 260,248 B where the block
 map said 260,256 B — an 8-byte agreement, so this is a real obtainable allocation and not a map
 artifact.
+
+**Read the 560k column as "at the end of the starter loop", not "after boot" — §7F.9.** `basex`
+stops where the list stops, and the run phase that follows it carries no collect and gives most of
+this gain back within about two seconds on every heap size tried. That is a statement about the
+position the number names, not a retraction: at the position it does name, it is confirmed by an
+independent instrument driving the real `start_and_check_tasks()`.
 
 **§7A.8's synthetic proxy predicted 87.5% for the combination and warned it was probably
 optimistic.** On the real path it is 86.3% / 88.7%. The proxy was right, and the warning was
@@ -2933,7 +2944,7 @@ All readings below are at the **standalone/fresh-heap position**, at `gc.thresho
 | `after_build_system` | 104,192 / 93,728 / **89%** | 104,128 / 90,720 / **87%** |
 | `after_start_timers` | 101,760 / 93,728 / 92% | 101,696 / 90,720 / 89% |
 | `after_starter_list` | 93,632 / 66,144 / **70%** | 94,272 / 57,424 / **60%** |
-| `after_starter_list_production_threshold` | 93,632 / 49,152 / 52% | 94,272 / 49,152 / 52% |
+| ~~`after_starter_list_production_threshold`~~ | ~~93,632 / 49,152 / 52%~~ | ~~94,272 / 49,152 / 52%~~ **withdrawn, §7F.8** |
 | `BOOT build_system_ms` | 943 - 951 | **1,402** |
 | `BOOT start_timers_ms` | 789 - 790 | 789 |
 | `LISTS` | starters=22 timers=8 | starters=22 timers=8 |
@@ -2941,16 +2952,21 @@ All readings below are at the **standalone/fresh-heap position**, at `gc.thresho
 `starters=22 timers=8` matches §7E's [SRC] count, so the starter loop really does run 23 collects
 on the AFTER arm.
 
-**Flagged, not explained (PR #105 session, 2026-09-18).** The
-`after_starter_list_production_threshold` row reads **exactly 49,152 B on both arms**, where the
-line above it differs by 8,720 B (66,144 vs 57,424). An identical, round figure from two images that
-disagree a line earlier is the shape an instrument artefact takes, and this branch has hit eight of
-those. **The obvious hypothesis was tested and refuted**: `gc.threshold(32768)` does *not* clamp the
-binary-search probe. Measured directly on the Unix port at 200k/300k/560k heaps, the probe returns
-the same value at `threshold(-1)` and `threshold(32768)`, and where it differs it differs in both
-directions (97,120 → 98,944 at 200k) — ordinary run-to-run layout noise, not a ceiling. So the
-coincidence stands unexplained rather than dismissed. Do not read 49,152 as a layout figure until a
-second run reproduces it; if it does, it is structural and worth understanding.
+**Two rows of this table do not mean what they say, and both were found out after it was written.**
+
+**The threshold row is withdrawn — §7F.8.** It read exactly 49,152 B on both arms where the line
+above differs by 8,720 B. That is the ninth instrument artefact on this branch: the probe pinned its
+own buffer and returned the first size that succeeded, always `_PROBE_MAX >> k`, and 49,152 is
+`192 KB / 4`. Not a layout figure, not the threshold — the threshold hypothesis was tested and
+refuted separately (the probe returns the same value at `threshold(-1)` and `threshold(32768)` at
+200k/300k/560k, differing in both directions where it differs at all). Both device scripts now
+detect the pin and reread.
+
+**The `after_starter_list` row is a run-phase reading — §7F.9.** The script settles 4,000 ms after
+the starter list, and the twin puts most of measure B's decay inside the first two seconds of the
+run phase. So neither the 70% nor the 60% says anything about what the starter-list collects did;
+the reading that does is `after_starter_loop_end`, which the script did not take at the time and
+now does.
 
 ### 7F.3 P3 confirmed — the instrument sees the starter list
 
@@ -2972,6 +2988,15 @@ defect does exist is the in-suite one, and there the same two images give 28,736
 **So P2 is untested, not refuted.** Testing it needs an aged-heap AFTER reading, which §7F.5's
 second defect prevented this session from taking. Anyone reading the §7F.2 table in isolation will
 conclude B is harmful; it is the single most misreadable number in this file.
+
+**Amended 2026-09-19, and the position was only half the reason.** §7F.9 measured the same two arms
+host-side against the real `start_and_check_tasks()` and found that the row this section argues
+about is taken **4 seconds into the run phase**, by which point the twin has already lost most of
+B's gain on every heap size tried — so the 87/89 and 60/70 pairs are run-phase readings on both
+arms, and a fresh heap is not the only thing standing between them and P2. Read at the starter
+loop's own end, where B's second site actually acts, the twin gives A + B **20 / 50 / 59%** against
+A-only's **6 / 5 / 11%**. P2 is still owed on silicon, but it now has an instrument that can see it
+(`after_starter_loop_end`) and a quantitative prediction to be read against.
 
 ### 7F.5 Two defects in the handover's own method, found by following it
 
@@ -3012,6 +3037,11 @@ position P2 needs on the AFTER arm.
   line whatever the verdict. `-s` was powerless before because the test never emitted the string at
   all; now that it does, `scripts/run_flash_hardware_suite.sh -s` surfaces the figures on a passing
   run, so the next in-suite run yields the number without having to make the test fail to see it.
+- **A rerun of `heap_layout_after_full_boot_sequence.py` on both arms with the 2026-09-19
+  instrument.** Not a new experiment — the same run again, now that the script takes the
+  `after_starter_loop_end` reading P2 turns on (§7F.9), detects the probe pin that made the
+  threshold row unreadable (§7F.8), and takes a control reading before switching the threshold.
+  Two invocations. Everything §7F.2 records stays valid except the withdrawn row.
 - **An aged-heap AFTER reading**, which is what P2 actually turns on (§7F.4), and which needs
   §7F.5's second defect addressed first.
   **Amended (PR #105 session): it does not.** §7F.5's own run 1 — 10,128 B / 10% on the BEFORE arm,
@@ -3028,6 +3058,8 @@ position P2 needs on the AFTER arm.
   open question. One invocation on the AFTER arm closes it.
 - **P5**, the `errcount` re-read. Pre-flight was NTP 11 (`E1`x6, `E2`, `E20`, `E1`, `E1`) and
   SYSTEM 1 (`W4`), everything else 0.
+- ~~**The unexplained 49,152 B.**~~ **Closed 2026-09-19 — §7F.8.** It was the probe pinning its own
+  buffer, not the threshold and not the layout. The row is withdrawn and both scripts now detect it.
 - The F1 SSID script (handover §6.2) was **deliberately not run** (B-D3), it being the script that
   stranded the bench on 2026-09-18.
 
@@ -3045,6 +3077,131 @@ is the first RP2040 collect cost this project has measured.
 arm on 2026-09-18, and this is the first real-chip confirmation that the hijacked payload is
 actually *refused*: the twin's fake chip ignores CS, so host-side validation could only ever show
 that the injection fires. Neither reported the "nothing was injected, so nothing was tested" guard.
+
+### 7F.8 The 49,152 B coincidence, explained: the probe can pin its own buffer [TWIN]
+
+§7F.2 flagged `after_starter_list_production_threshold` reading **exactly 49,152 B on both arms**
+where the line above differed by 8,720 B, and recorded that the obvious hypothesis — the threshold
+clamping the probe — had been tested and refuted. The real mechanism was found on 2026-09-19, and it
+is neither the threshold nor the layout.
+
+**`_largest_block()` can keep its own probe buffer alive through a stale root.** The search
+allocates `bytearray(mid)`, `del`s it and collects; in some call contexts the just-freed buffer
+survives that collect. Every later, larger attempt then fails for want of the space the pinned
+buffer is holding, `high` walks down to the pinned size, and the search returns **exactly the first
+size that succeeded** — which, for a binary search over `[0, _PROBE_MAX]`, is always
+`_PROBE_MAX >> k`: 98,304, **49,152**, 24,576, 12,288. The reading is an artefact of the
+instrument, and it is always an *understatement*.
+
+Reproduced deterministically on the settrace-free Unix port at 200k, 300k, 500k and 1M heaps, with
+a fragmented heap and repeated `_report()` calls. The **pin** occurs at all four; it **corrupts the
+answer** at 200k and 300k, where the true largest run is below `_PROBE_MAX` and the search therefore
+has somewhere lower to converge to. At 500k and 1M the answer is already `_PROBE_MAX` and only
+`retained` shows it happened — which is the case a reader would never notice without that field:
+
+| run | free | largest_block | mem_alloc vs the clean runs |
+|---|---|---|---|
+| r1 | 237,280 | 121,472 | — |
+| **r2** | 237,280 | **98,304** = `_PROBE_MAX / 2` | **+98,304** |
+| r3 - r5 | 237,280 | 121,632 | — |
+
+**The tell is `alloc`, and it is exact**: in the pinned run `gc.mem_alloc()` is higher by precisely
+`largest_block`. Byte-identical across repeated processes, and the same shape at 200k
+(12,288 = `_PROBE_MAX / 16`, alloc +12,288).
+
+**Why both arms produced the same number.** Whether the pin happens depends on the call sequence,
+not on the heap: the script, the frame nesting and the number of probe iterations are identical on
+the two images. Both arms' true `after_starter_list` value sits between 49,152 and 98,304, so on
+both the first successful probe is the second midpoint, 49,152 — and both pin there. That accounts
+for every feature of the row at once: the identical value, its roundness, its being *worse* than the
+line above, and `free` being unchanged (`gc.mem_free()` is read before the probe runs).
+
+**Consequences.**
+- **The `after_starter_list_production_threshold` row of §7F.2 is withdrawn**, on both arms. It is
+  not a layout figure. Nothing else in §7F depends on it.
+- The contradiction it created is gone with it. §7F.6's threshold-first BEFORE reading
+  (**75,536 B / 79%** against the reactive default's 66,144 / 70%) said the firmware's own threshold
+  gives the *better* layout; the withdrawn row said the opposite. Only the first is a measurement.
+- **No other figure in this file is affected.** The artefact's signature is a value of the form
+  `_PROBE_MAX >> k`, and no other reading has one: 135,392 / 127,808 / 93,728 / 90,720 / 66,144 /
+  57,424 / 28,864 / 28,736 / 20,592 / 10,128 are all off-node.
+- **One older figure elsewhere in the repo has the signature.** `SPECIFICATION.md` I.3's "smallest
+  largest-allocatable-contiguous-block under real hammer load was 49152 bytes" is exactly
+  `192 KB / 4`. Its instrument arrived with a merge from `main` and is not in this tree, so this
+  cannot be settled here; flagged in place and queued as R16. The claim it supports is unharmed —
+  the artefact only understates, so that headroom is 48x or better.
+- **It could have produced a false tripwire FAIL.** `heap_headroom_after_full_system_build.py`
+  asserts a floor of 80,000 B on the same probe; a pin at 49,152 fails it on an image that is fine.
+  That has not happened — every in-suite failure recorded here is off-node — but it was reachable.
+
+**Both device scripts now detect and recover from it** (2026-09-19). `_report()` records
+`gc.mem_alloc()` before the search and again after a collect, prints the difference as
+`retained=`, and `_report_checked()` re-runs the reading while `retained` is non-zero. On the twin
+one rerun has always been enough, and the retried value lands on its clean neighbours (121,440
+against 121,248/121,440; 20,192 against 20,000/20,192). Both scripts also take a **control reading
+at the unchanged threshold** before setting `gc.threshold(32768)`, so a difference in the threshold
+line can no longer be confused with a difference between two probe runs — the confound that made
+this row unreadable in the first place.
+
+### 7F.9 Where measure B's gain is, and how fast the run phase takes it back [TWIN]
+
+§7F.4 read the fresh-heap table as "P2 untested, because a fresh heap has no defect to fix". That
+was half right. Run host-side on 2026-09-19 against the real `build_system()` and the real
+`SystemService.start_and_check_tasks()` — no replica of the starter loop, unlike §7E's `basex` — with
+the A arm made by rebinding the two modules' own `gc` to a no-op `collect()` (34 suppressed calls,
+= 11 + 23, matching the [SRC] counts exactly):
+
+| heap | arm | `after_build_system` | **starter loop end** | +2 s | +4 s | +10 s | +20 s |
+|---|---|---|---|---|---|---|---|
+| 1,000k | A | 11% | 6% | 5% | 6% | 3% | 5% |
+| 1,000k | **A + B** | **45%** | **20%** | 17% | 7% | 9% | 13% |
+| 1,300k | A | 10% | 5% | 3% | 5% | 5% | 4% |
+| 1,300k | **A + B** | **68%** | **50%** | 14% | 21% | 9% | 14% |
+| 1,600k | A | 40% | 11% | 9% | 9% | 6% | 8% |
+| 1,600k | **A + B** | **78%** | **59%** | 19% | 11% | 11% | 8% |
+
+(Largest contiguous over free. Settrace binary, so the heap sizes are ~4-5x the board's own fill
+scale and are **not** comparable to §7E's calibrated 508k/560k — §1.2 item 7. The A-vs-A+B
+comparison at a fixed heap is unaffected. `_PROBE_MAX` raised to 768 KB so nothing is censored.
+The rebinding is exactly equivalent to the BEFORE image for these two modules: `gc.collect` is the
+**only** `gc` attribute either of them uses — 11 uses in the generated module and 2 in
+`system_service.py`, checked by grep — so nothing else changes behaviour.)
+
+**Three things follow, and they resolve rather than weaken P2.**
+
+1. **The starter-list collects do their job.** At the moment the loop ends, A + B holds 20 / 50 / 59%
+   against A-only's 6 / 5 / 11% — a 3-5x gap, at every heap size. §7E's claim that the second site
+   *preserves* what the batch built is confirmed on the real method.
+2. **The run phase undoes most of it within about two seconds.** The supervisor and the 22 now-running
+   tasks churn with no collect — by design, I.4(f.1) confines the exception to the two lists — and
+   both arms fall toward a floor. A + B stays roughly 2x A-only there, but the 68% is gone.
+3. **So §7F.2's `after_starter_list` row is a run-phase reading, not a starter-list one.** The device
+   script slept 4,000 ms from the supervisor task's *creation*, and the loop itself takes ~1 s
+   (`1.0 / len(starters)` per starter, whatever the count), so the board read about **3 s into the
+   run phase** — squarely past the decay. The board's AFTER arm (60%) and BEFORE arm (70%) are both
+   measurements of the run phase, and P2 was never addressed by either.
+
+**This also settles the §7E disagreement.** `probe.py basex` stops at the end of the starter loop and
+reported 88.7%; the device script settles 4 s and reported 60%. Both are right about different
+positions, and neither instrument was wrong — the two numbers were being compared as if they named
+the same moment. §7E.2a already warned that `basex` "measures `build_system()` + the starter loop and
+not the real boot in full"; this is the other half of that warning.
+
+**The instrument is fixed** (2026-09-19): `heap_layout_after_full_boot_sequence.py` now wraps
+`SystemService._start_task` to count starters as they land, waits for the loop's own end rather than
+a guessed constant, and reports **`after_starter_loop_end`** there — the reading measure B's second
+site is actually about — before going on to the settled `after_starter_list` reading, which keeps
+its old label. That reading now settles 4 s from the loop's **end** rather than 4 s from the
+supervisor's creation, so it sits ~1 s later than §7F.2's — which the table above says is inside the
+noise, every column from +2 s on being in the same band. `BOOT` now prints `starter_loop_ms` and
+`settle_ms` separately, so the position is on the line rather than inferred.
+
+**What this does not change.** B's value on silicon is measured and stands: the in-suite tripwire
+passes on the AFTER arm and fails on the BEFORE arm (§7F.1), and that reading is taken after
+`build_system()`, where the batch collects are worth 4-7x on the twin and enough to clear the
+80,000 B floor on the board. A boot-time placement gain that decays in the run phase is exactly what
+a boot-confined placement reset can be expected to buy; it is not a defect in B, and it is not an
+argument for widening the exception into the run phase.
 
 ---
 
@@ -3165,6 +3322,8 @@ transcript.
 | **model: "churn sweep extent is the variable"** | falsified: 4 loggers (498 CS sessions) keep 100% in 5/5 runs while 1 logger (126 sessions) keeps 51-62% |
 | **model: "interleaving alone is the whole story"** | too glib as first stated; §4 shows the FRAM path is also 36x every other peripheral in transaction count, which is a separate, real defect |
 | my prediction that a large heap would clear the defect | **wrong**; recorded in §6.5 |
+| **[HW]** `after_starter_list_production_threshold` = **49,152 B**, both arms (§7F.2) | the probe pinned its own buffer and returned the first size that succeeded, `_PROBE_MAX / 4`. Not a layout figure and not the threshold's doing — §7F.8. Both device scripts now report `retained=` and reread |
+| **[HW]** §7F.2's `after_starter_list` row read as "what the starter-list collects left behind" | it is taken 4 s into the run phase, past the decay §7F.9 measures. The figures stand; the reading of them does not. Use `after_starter_loop_end` |
 | the handover's §2.7.1 twin table | not reproducible at its stated configuration; see §1.4 |
 | the handover's §2.4 "JSON-derived strings in `_cache`" hypothesis | refuted: exactly **one** str/bytes survivor in the whole batch (§2.2) |
 | the handover's §2.5 "**6** CS sessions per byte-level write" | `get_write_protected()` issues no bus traffic. It is **5**, and only 5 closes the arithmetic (§3.1) |
@@ -3227,8 +3386,10 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
 0. **Build the twin/test interpreter without `MICROPY_PY_SYS_SETTRACE`** (§1.2 item 7) — a second
    binary for `scripts/test.sh`, `--coverage` keeping its own. Every allocation figure the twin
    produces today, the memory-safety suite's included, carries a per-call and per-resume cost the
-   firmware does not have. Touches `toolchain/setup_toolchain.py` and `scripts/`, so it is behind
-   the two-target clean-chroot gate; the recipe that produced `build-nosettrace` is in §10.
+   firmware does not have. Touches `toolchain/setup_toolchain.py` and `scripts/`, so it owes
+   BACKLOG.md's running list for the owner's next manual two-target chroot run — an owner-run
+   periodic check since 2026-09-18, not a gate that blocks the change. The recipe that produced
+   `build-nosettrace` is in §10.
 1. **Ship the CRC yield-granularity fix (§3.4) on its own merits?** **CLOSED, owner, 2026-09-18:
    "pure wall clock time is not such an issue, don't touch."** `src/crc_checks.py` is not to be
    modified. §7C.3 measured the allocation as a flat 160 B per `_crc` call regardless of buffer
@@ -3312,6 +3473,23 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
    only ~1,800 B more here and moves the lock hierarchy itself, and A.6 reopens it only if the
    combination with the boot collects falls short. §7C/§7C.1 carry the measurement and the residue.
 
+7. **Which position is the 80,000 B floor about?** Put 2026-09-19, off the back of §7F.9, and not
+   answerable from this file's own evidence. The tripwire measures right after `build_system()`;
+   the floor exists because a real allocation — a JSON response, a read buffer — has to succeed
+   **during the run phase**, which is a different moment. Measure B is worth 4-7x at the boot
+   position and, on the twin, roughly 2x once the run phase has had a couple of seconds. Both are
+   real; they are not the same claim, and only the first is what the tripwire's PASS on silicon
+   (§7F.1) certifies. Three ways to read it, and the choice is yours: (i) the boot position is the
+   right one, because the worst contiguous demand this firmware makes is at boot and a run-phase
+   allocation failure is what the memory-safety ladder's later rungs exist for — then nothing
+   changes; (ii) the run-phase position is the right one, and the tripwire should be *moved* there
+   rather than the floor changed (the floor itself is not up for lowering — see below); (iii) both,
+   as two separate tripwires with separately measured floors. **What is not on the table** is
+   widening I.4(f.1)'s exception into the run phase to hold the layout up — that is precisely the
+   (e)-stage fix the rule forbids, and §7A.6 already argued it. Plan section C's seam + contiguity
+   guard is the design-level answer if the choice is (ii) or (iii), which is one more reason it is
+   the next thing to decide.
+
 **One constraint already settled and not to be re-proposed.** The 80,000 B floor is not to be
 lowered. The second, `gc.collect()`/`gc.threshold()` as the remedy — forbidden by
 `SPECIFICATION.md` I.4(e)/(f)/(g) and previously rejected by the owner outright (removes the
@@ -3325,8 +3503,9 @@ closed door. The general prohibition for business logic and the run phase stands
 
 - Commit Tier 1 into the repo properly: the retained frozen-port build variant, the runtime
   neutralisations, the calibrated heap size, and the census tooling. Touches
-  `toolchain/setup_toolchain.py` and adds a `scripts/` entry, so it triggers the two-target
-  clean-chroot pre-push gate (Ubuntu noble/GCC 13 **and** Debian trixie/GCC 14).
+  `toolchain/setup_toolchain.py` and adds a `scripts/` entry, so it owes BACKLOG.md's running list
+  for the owner's next manual two-target chroot run (Ubuntu noble/GCC 13 **and** Debian
+  trixie/GCC 14) — periodic since 2026-09-18, not a blocking gate.
 - The `buildgen` seam + contiguity guard, written test-first and verified to fail when the invariant
   is deliberately broken. It must assert **absolute contiguity against free** at the seam and after,
   not a ratio between two probes, and must hold its own perturbation constant (§9, last row).

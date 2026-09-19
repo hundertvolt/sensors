@@ -526,10 +526,12 @@ milliseconds ... about 1ms on the Pyboard" per the pinned docs; boot latency is 
       the agent proxy's own status endpoint; the noble leg got as far as `typecheck.sh` and died on
       a cut-off PyPI transfer, which is transient). It was then restored on merging the base
       branch, which carries the owner's decision of 2026-09-18 that **the two-target verification
-      is an owner-run periodic check, not a blocking per-push gate** (`BACKLOG.md`). **Flagged for
-      the owner**: CLAUDE.md's own "Pre-push verification" section still reads as a blocking gate,
-      so CLAUDE.md and BACKLOG.md now disagree — reported rather than edited, since which text is
-      authoritative is the owner's call (CLAUDE.md's flag-don't-silently-fix rule).
+      is an owner-run periodic check, not a blocking per-push gate** (`BACKLOG.md`).
+      **The contradiction this entry flagged is gone** (re-checked 2026-09-19): the same base move
+      also rewrote CLAUDE.md's own section, which now opens with that decision in as many words, so
+      CLAUDE.md and BACKLOG.md agree. One leftover phrase inside its chroot recipe still said
+      "pre-push gate" where it meant "the working tree, not a branch"; reworded, since it is
+      wording rather than a rule.
 - [x] `scripts/lint.sh`, `scripts/typecheck.sh`, `scripts/test.sh` exit 0. **Done**: lint clean,
       typecheck 157/47/105, suite 85/85 MicroPython files and 1237 pytest passed / 7 skipped.
 
@@ -606,7 +608,10 @@ milliseconds ... about 1ms on the Pyboard" per the pinned docs; boot latency is 
 measure A and is **fully run as of 2026-09-18** — results in §1A's own rows and
 `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D. What is still owed is measure B, whose runnable form is
 `REAL_HARDWARE_HANDOVER_MEASURE_B.md`, indexed by queue §1B: two firmware images, the readings in
-order, and each prediction with the result that would falsify it. The boxes below stay here as this
+order, and each prediction with the result that would falsify it. **Both that handover and the
+script it drives changed on 2026-09-19** — one of §7F's readings was a probe artefact and another
+named the wrong position (§7F.8, §7F.9), so the instrument now reports `retained=` and
+`after_starter_loop_end`, and what is owed is two invocations rather than a redesign. The boxes below stay here as this
 plan's own record; a session at the bench should work those two.
 
 - [~] **T.1 Tripwire — RUN, both columns, one residue** (§7F.1 [HW]). A: 20,592 → 28,864 B in-suite,
@@ -654,6 +659,13 @@ plan's own record; a session at the bench should work those two.
 - [ ] **T.6** `tests_hardware/flash/test_memory_stress.py`'s second test and the bench memory
       stress (`tests_hardware/bench/test_memory_stress_bench.py`) green — the run-phase check on
       silicon.
+- [ ] **T.7 The starter list's own reading, which no run has taken** (added 2026-09-19, queue B6).
+      §7F.2's `after_starter_list` figures are taken 4 s into the run phase, and the twin loses most
+      of B's gain inside the first ~2 s there (§7F.9) — so measure B's second site has never been
+      measured on silicon at all. `heap_layout_after_full_boot_sequence.py` now reports
+      `after_starter_loop_end`, detected by counting starters rather than waiting a constant. Two
+      invocations, one per arm, each right after that arm's suite run so the heap is aged. It also
+      replaces the row §7F.8 withdrew and confirms `retained=0` on the probe.
 
 ## D. Documentation, the PR, and closing
 

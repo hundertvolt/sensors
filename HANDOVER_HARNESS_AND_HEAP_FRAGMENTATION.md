@@ -230,9 +230,10 @@ that peer's port to find out. Real, but never "drives the wrong board".
 
 **Still open, deliberately not taken:** `scripts/mpremote_connect.sh:8`'s
 `device="${MPREMOTE_DEVICE:-/dev/ttyACM0}"` is the last hardcoded node, and now the only entry point
-an erratic re-enumeration can strand. A `scripts/` change owes CLAUDE.md's two-chroot pre-push gate,
-which is the project owner's call rather than a drive-by edit; `tests_hardware/README.md` names it
-as a known exposure in the meantime.
+an erratic re-enumeration can strand. A `scripts/` change owes an entry in BACKLOG.md's list for the
+owner's next manual two-chroot run (periodic since 2026-09-18, no longer a blocking gate), and the
+change itself is still the owner's call rather than a drive-by edit; `tests_hardware/README.md`
+names it as a known exposure in the meantime.
 
 ---
 

@@ -12,6 +12,9 @@ import sensortask_dev
 # from a real failure rather than running off the top.
 _PROBE_MIN = 64
 _PROBE_MAX = 192 * 1024
+# Rereads allowed when the probe pins its own buffer (see _report_checked). Three is generous: one
+# has always been enough on the twin, at every heap size tried.
+_PROBE_RETRIES = 3
 
 # Floors, not expected values: measured 2026-09-11 (free=130720, largest_block=116032) and set
 # ~23%/~31% under. Raise them only against a fresh measurement. build_system() carries the boot
@@ -41,15 +44,32 @@ def _largest_block() -> int:
     return low
 
 
-def _report(label: str) -> "tuple[int, int]":
+def _report(label: str) -> "tuple[int, int, int]":
     gc.collect()
-    free, largest = gc.mem_free(), _largest_block()
-    print(f"HEAP {label}: free={free} alloc={gc.mem_alloc()} largest_block={largest}")
+    free, base = gc.mem_free(), gc.mem_alloc()
+    largest = _largest_block()
+    gc.collect()
+    retained = gc.mem_alloc() - base
+    print(f"HEAP {label}: free={free} alloc={gc.mem_alloc()} largest_block={largest} retained={retained}")
+    return free, largest, retained
+
+
+def _report_checked(label: str) -> "tuple[int, int]":
+    # A probe run can pin its own buffer through a stale root; every later attempt then fails and the
+    # search converges on the pinned size - always _PROBE_MAX >> k, e.g. 49,152 (MEASUREMENTS 7F.8).
+    # Unretried that is a false FAIL against the floor below, on an image that is fine.
+    free, largest, retained = _report(label)
+    attempt = 0
+    while retained >= _PROBE_MIN and attempt < _PROBE_RETRIES:
+        attempt += 1
+        free, largest, retained = _report(f"{label}_retry{attempt}")
+    if retained >= _PROBE_MIN:
+        print(f"WARNING {label}: probe still holding {retained} B after {_PROBE_RETRIES} rereads - largest_block is a floor, not a figure")
     return free, largest
 
 
 async def _main() -> None:
-    _report("baseline")  # interpreter + this script only, before anything else exists
+    _report_checked("baseline")  # interpreter + this script only, before anything else exists
     try:
         await sensortask_dev.build_system(cfg_path="", web_host="127.0.0.1", web_port=8080)
     except Exception as e:
@@ -57,9 +77,12 @@ async def _main() -> None:
         return
     # Deliberately measured at MicroPython's own reactive-only default first: a headroom figure that
     # only holds with a proactive threshold isn't headroom (CLAUDE.md's memory-safety ladder).
-    free, largest = _report("after_build_system")
+    free, largest = _report_checked("after_build_system")
+    # Control first at the unchanged threshold, so the next line's difference cannot be confused
+    # with a difference between two probe runs at the same position (MEASUREMENTS 7F.8).
+    _report_checked("after_build_system_control")
     gc.threshold(32768)  # what buildgen.codegen.generate_boot_entry_source() sets in the real firmware
-    _report("after_build_system_production_threshold")
+    _report_checked("after_build_system_production_threshold")
 
     if free < _MIN_FREE:
         print(f"RESULT: FAIL free heap after a full system build fell below the floor: {free} < {_MIN_FREE}")

@@ -3,11 +3,16 @@ degradation at the raw `network` level, so this drives the real asy_wifi_service
 loop directly (bypassing only REST/webserver) to narrow down its own reconnect orchestration. Run via `mpremote run <this>` (no soft-reset chain); hard_reset() afterward."""
 
 import asyncio
+import os
 import time
 
 import asy_wifi_service
 
 GARBAGE_SSID = "wozi-diag2-net-does-not-exist"
+# Every persist this script makes goes here instead of config_WIFI.cfg. The repro is driven by the
+# in-memory cache, so the production file never needed writing - and writing it is what stranded the
+# bench (QUEUE F1). Same convention as reboot_persist_write.py's config_HWTEST_REBOOT.cfg.
+_SCRATCH_CFG = "config_HWTEST_WIFI.cfg"
 
 t0 = time.ticks_ms()
 
@@ -42,7 +47,10 @@ async def main() -> None:
     if not real_ssid:
         log("ABORT: could not read the real SSID back, so it could not be restored - refusing to overwrite it")
         return
-    log("real SSID captured for restore")
+    # Read the production file first, then divert: from here on config_WIFI.cfg is never opened
+    # again, so no crash, reset or racing deferred flush can leave the garbage SSID behind on flash.
+    conn.cfgmgr.config_file = _SCRATCH_CFG
+    log(f"real SSID captured; persists diverted to {_SCRATCH_CFG}, config_WIFI.cfg is now read-only for this run")
 
     task = conn.start_asy_wlan_connect()
     log("wlan_connect() task started")
@@ -51,10 +59,23 @@ async def main() -> None:
         await _run_repro(conn, task, real_ssid)
     finally:
         # Re-read rather than tracking a flag: this has to be right whichever path left the repro,
-        # including the two early returns and any exception inside it.
+        # including the two early returns and any exception inside it. The cache is what the live
+        # service reads, so it is restored even though nothing production was ever written.
         if await _read_live_ssid(conn) != real_ssid:
-            log("--- restoring the real SSID in finally (the flow did not reach its own restore) ---")
+            log("--- restoring the real SSID in the cache (the flow did not reach its own restore) ---")
             log(f"_set_dict_cfg(SSID=real) -> {await _set_ssid(conn, real_ssid)}")
+        await _drop_scratch(conn)
+
+
+async def _drop_scratch(conn: "asy_wifi_service.AsyConnTime") -> None:
+    # The scratch file holds a full WIFI config, real password included - the same secret already on
+    # this filesystem, but a second copy nothing else would ever clean up. Wait the deferred flush
+    # out first, or the remove races it and the file comes back.
+    try:
+        await conn.cfgmgr.flush_pending()
+        os.remove(_SCRATCH_CFG)
+    except OSError as e:
+        log(f"could not remove {_SCRATCH_CFG}: {e!r} - delete it by hand")
 
 
 async def _run_repro(conn: "asy_wifi_service.AsyConnTime", task: "asyncio.Task[None]", real_ssid: str) -> None:
