@@ -17,11 +17,15 @@ Status values: **OPEN** (owed), **BLOCKED** (waiting on a decision or another ro
 §1B (measure B) **closed** — §7F and **§7H**: P1, P2, P3, P4 and P5 all confirmed on silicon, B7's
 replacement checks pass with 5.5x margin, and the bench tier is fully clean for the first time.
 §1C's C1 is **closed** by the same runs; C2/C3/C4 remain. One §7D claim was **overturned** — see
-§2A F7. What is still owed is **§1D's five new webserver body-cap mirrors** (added 2026-09-19,
-never run), D1-gated work, R-rows independent of measure B, and F1's SSID script.
+§2A F7. §1D's body-cap mirrors have since run: **W1-W4 pass**, W5 failed for a reason that was not
+the body cap and has been **rewritten** (§2A F10). What is still owed is **W5's first run in its
+rewritten form**, D1-gated work, R-rows independent of measure B, and F1's SSID script.
 
-**The next sitting's headline is §1D**, not measure B: `REAL_HARDWARE_HANDOVER_WEBSERVER_BODY_CAP.md`
-is its runnable form. `REAL_HARDWARE_HANDOVER_MEASURE_B.md` is **deleted** — §7H migrated every
+**The next sitting's runnable form is `REAL_HARDWARE_HANDOVER_POST_MERGE_BENCH_RUN.md`** — one full
+bench-tier run at default flags (**no** `--allow-persistence-writes`, **no** soak), which is the
+owner's instruction of 2026-09-19 and covers every §1D row including W5's rewrite.
+`REAL_HARDWARE_HANDOVER_WEBSERVER_BODY_CAP.md` stays open alongside it on W5 alone, and goes when
+W5 comes back green. `REAL_HARDWARE_HANDOVER_MEASURE_B.md` is **deleted** — §7H migrated every
 result it owed, which is that file's own stated condition for going.
 
 **What changed since the 2026-09-18 bench sitting, host-side, and why it matters to the next one.**
@@ -61,13 +65,16 @@ suffices** — this branch's own tip.
 
 1. **P5 first, before anything writes**: read `GET /status`'s `errcount` and record it verbatim.
    CLAUDE.md's rule, and it has cost real evidence twice now (§2A F9).
-2. **S2** (bench suite) — this is where **§1D's W1-W5 live**, the only genuinely new code since the
-   last sitting. If time runs out after this step, the sitting still paid for itself.
-3. **S1** (flash suite) **with `-s`** — re-runs §7G's tripwire and its `MAP`/`DELTA` lines as a
-   regression check now rather than a first run. Read `retained=` on every `HEAP ` line (§2A F5).
-4. **F1's SSID script** (`wifi_service_reconnect_repro.py`), fixed but never run since. Read §2A F1
+2. **One full bench-tier run at default flags** — `scripts/run_bench_hardware_suite.sh`, no
+   arguments. Owner's instruction, 2026-09-19. It covers the flash tier too, excludes the soak
+   unconditionally, and leaves every wear gate off. **This alone is the sitting's mandate**;
+   `REAL_HARDWARE_HANDOVER_POST_MERGE_BENCH_RUN.md` is its runnable form and says how to read W5.
+3. **F1's SSID script** (`wifi_service_reconnect_repro.py`), fixed but never run since. Read §2A F1
    in full first: this is the script that stranded the bench, and the fix is structural.
-5. **R9 / R13 / R15** — independent of everything above, and none of them needs D1.
+4. **R9 / R13 / R15** — independent of everything above, and none of them needs D1.
+
+Everything D1-gated (R1, R4, R5, R8's reboot arm, R12, S3) stays **blocked** this sitting by that
+same instruction — the intended outcome, not an omission.
 
 Everything else in this file can wait for another sitting.
 

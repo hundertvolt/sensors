@@ -704,6 +704,11 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   result is migrated into the permanent docs; the file goes when the last row does. It authorizes
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
+- **[`REAL_HARDWARE_HANDOVER_POST_MERGE_BENCH_RUN.md`](REAL_HARDWARE_HANDOVER_POST_MERGE_BENCH_RUN.md)** — the
+  runnable handover for one full bench-tier run at default flags: no persistence writes, no soak,
+  read the deselected count. Also states what the 22-commit base merge did and did not bring to the
+  hardware tier, so a red result is read correctly rather than chased. Deleted once its results are
+  migrated; it authorizes nothing.
 - **[`REAL_HARDWARE_HANDOVER_WEBSERVER_BODY_CAP.md`](REAL_HARDWARE_HANDOVER_WEBSERVER_BODY_CAP.md)** — the runnable
   handover for the next bench sitting: the request-body cap (`SPECIFICATION.md` Part I.6) on
   silicon and over real WiFi, five bench-tier rows that have never run. It states up front what the
