@@ -45,15 +45,13 @@ async def _while_protected(fram: AsyFramManager, chunk: "AsyFramChunk") -> "str 
 
 
 async def _chip_itself_refuses(fram: AsyFramManager, chunk: "AsyFramChunk") -> None:
-    # The checks above all stop at FRAM_SPI._write()'s own software guard, so on their own they
-    # prove the DRIVER refuses, not that the silicon does. Only real hardware can answer that, so
-    # the bench tier asks it directly: lie to the driver (_wp is just the cached copy of the status
-    # register, and there is no WP pin on this rig) so it sends a real WREN+WRITE at a chip whose
-    # BP0|BP1 still protect the whole array.
-    # Deliberately returns no verdict of its own. Whether chunk.write() reports success is not the
-    # claim - the driver gets no readback unless its periodic verify happens to land on this write -
-    # and asserting either way would only test which side of that counter we are on. The real claim
-    # is the readback in _after_clearing(): the bytes must still be PATTERN_A.
+    # The checks above stop at FRAM_SPI._write()'s software guard, so they prove the DRIVER
+    # refuses, not the silicon. Lying to the driver (_wp is only a cached status-register copy)
+    # sends a real WREN+WRITE at a chip whose BP0|BP1 still protect the whole array.
+
+    # No verdict of its own: whether chunk.write() reports success only says which side of the
+    # periodic-verify counter this landed on. The claim is _after_clearing()'s readback - the
+    # bytes must still be PATTERN_A.
     fram.fram._wp = False  # deliberately desynced from the chip, see above
     try:
         await chunk.write(PATTERN_B)

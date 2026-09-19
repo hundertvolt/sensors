@@ -8,10 +8,9 @@ import sensortask_dev
 
 failures: list[str] = []
 
-# Every mandatory-infra/optional-instance name dev's own build_system() constructs that could hold
-# a FRAM-backed logger - checked generically via getattr(), not by importing the real classes,
-# since not every device wires every one of these (this script is dev-specific, but written the
-# same way the mock tier's own tests are, so it stays correct if dev's own TOML ever changes).
+# Every name dev's build_system() constructs that could hold a FRAM-backed logger. Probed via
+# getattr() rather than by importing the classes, since no device wires all of them - so this
+# stays correct if dev's own TOML changes, the way the mock tier's equivalents are written.
 _CANDIDATE_MODULE_NAMES = (
     "conn", "ntp", "sysfunct", "scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification", "webserver",
     "uart_link_init", "uart_link_resp",

@@ -9,23 +9,20 @@ import dev from "../html/definitions/dev.json";
 import woziData from "../mockdata/wozi.json";
 import devData from "../mockdata/dev.json";
 import { installMockFetch } from "../js/mock-server.js";
-import { collectPutFieldCases } from "./_put_field_cases.js";
+import { collectPutFieldCases, shardPutFieldCases } from "./_put_field_cases.js";
 
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */
 /** @typedef {import("../js/definitions.js").MockDeviceData} MockDeviceData */
 /** @typedef {import("./_put_field_cases.js").PutFieldCase & {data: MockDeviceData}} PutFieldCase */
 
-// Shared driver/module field sets - identical between devices, so only wozi's copy is exercised.
-// Currently matches zero of dev's real groups (SCD30/SGP40/BMP3XX, same three drivers as wozi - the
-// two devices' only real difference today is I2C bus pairing, which the JSON definitions don't
-// encode) - that's expected, not a bug: project-owner direction (2026-09-08) is to keep this
-// mechanism as-is for when dev gains its own unique sensor(s) later, not to prune it now.
+// Shared driver field sets are identical between devices, so only wozi's copy runs. This
+// matches none of dev's real groups today - they differ only in I2C bus pairing, which the JSON
+// does not encode - and stays for a future dev-unique sensor (owner, 2026-09-08).
 const DEV_UNIQUE_GROUPS = new Set(["SHTC3", "MPRLS", "ISL29125"]);
 
-// GET never reflects what this generic matrix's "resubmit -> Unchanged"/"valid value -> reflected
-// in GET" categories assume (SPECIFICATION.md Part H.4's mock-server-quirks note) - excluded here
-// only, not via _put_field_cases.js's shared DISPATCH_ONLY_KEYS, since
-// tests_js/live-backend-put-matrix.test.js also consumes that list and covers these fields for real.
+// GET never reflects what this matrix's resubmit-and-readback categories assume (Part H.4's
+// mock-server-quirks note). Excluded here only, not through the shared DISPATCH_ONLY_KEYS, since
+// live-backend-put-matrix.test.js consumes that list and does cover these fields for real.
 const GET_READBACK_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC", "ISLCalibrate", "PW"]);
 
 /**
@@ -46,11 +43,9 @@ const CASES = [
 ];
 
 /**
- * Sends one raw PUT body (exact JSON text, so a test controls a number's literal int/float shape
- * precisely - something building a JS value and calling JSON.stringify() on it cannot do, since JS
- * itself has no int/float type distinction) against a fresh mock install, and returns that field's
- * own result plus a fresh GET of the same endpoint - all within one `installMockFetch()` lifetime,
- * since state only persists for the duration of one install.
+ * Sends one raw PUT body as exact JSON text, so a test controls a number's literal int/float
+ * shape - which JSON.stringify() cannot, JS having no such distinction. Returns that field's
+ * result and a fresh GET, inside the one installMockFetch() lifetime state persists for.
  * @param {PutFieldCase} testCase
  * @param {string | undefined} literal raw JSON literal text for the field's value, or undefined to
  * omit the field from the body entirely (the "untouched" sparse-PUT case)
@@ -194,11 +189,9 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
 
         if (isFloat) {
             it("accepts a bare-integer literal for this float-typed field: Valid, coerced (config_manager.py's coerce_numeric(), SPECIFICATION.md Part A.8 - int -> float is a blanket accept)", async () => {
-                // A whole number in [min, max], distinct from the field's own current value (else
-                // this would legitimately resubmit-as-Unchanged instead) and from any declared
-                // special (kept out of this test's own intent, even though a special would also
-                // still just be Valid). Round(mid)/round(min)/round(max) between them always find
-                // one for any real field's range.
+                // A whole number in [min, max], distinct from the current value - which would
+                // legitimately resubmit as Unchanged - and from any declared special, which is
+                // simply outside this test's intent. The three rounded candidates always find one.
                 const wrongShapeBase = [Math.round(mid), Math.round(min), Math.round(max)].find(
                     (v) => v >= min && v <= max && v !== currentValue && !specialMagnitudes.has(v),
                 );
@@ -291,4 +284,27 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
             expect(currentValueIn(getBody, testCase)).toBe(value);
         });
     }
+});
+
+// The live PUT matrix runs as parallel CI shards (see .github/workflows/ci.yml's web-put-matrix and
+// live-backend-put-matrix.test.js). A shard split that drops or doubles a case would silently shrink
+// that matrix, so the partition itself is proven here rather than trusted.
+describe("shardPutFieldCases", () => {
+    const cases = collectPutFieldCases("wozi", /** @type {SiteDefinitions} */ (wozi), /** @type {MockDeviceData} */ (woziData));
+
+    it("returns every case when no shard is requested", () => {
+        expect(shardPutFieldCases(cases, undefined)).toEqual(cases);
+        expect(shardPutFieldCases(cases, "")).toEqual(cases);
+    });
+
+    it.each([1, 2, 3, 7])("partitions the full case list exactly once across %i shards", (count) => {
+        const shards = Array.from({ length: count }, (_unused, i) => shardPutFieldCases(cases, `${i + 1}/${count}`));
+        expect(shards.flat()).toHaveLength(cases.length);
+        expect(new Set(shards.flat())).toEqual(new Set(cases));
+        expect(Math.max(...shards.map((s) => s.length)) - Math.min(...shards.map((s) => s.length))).toBeLessThanOrEqual(1);
+    });
+
+    it.each(["0/3", "4/3", "3", "a/b", "1/0"])("rejects the malformed shard spec %s", (spec) => {
+        expect(() => shardPutFieldCases(cases, spec)).toThrow(/shard spec/);
+    });
 });

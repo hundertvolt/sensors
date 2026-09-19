@@ -16,11 +16,9 @@ if TYPE_CHECKING:
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
-# Both scripts import asy_uart_comm, which a dev firmware built today does contain: devices/dev.toml
-# declares two `driver = "uart_link"` instances, and buildgen's dependency-driven frozen-module
-# selection (buildgen.frozen_modules.compute_frozen_modules()) pulls in asy_uart_comm transitively
-# through asy_uart_link_driver.py's own import of it. The guard below is therefore not an expected
-# skip - it only names the cause if some future firmware build genuinely lacks it.
+# Both scripts import asy_uart_comm, which a dev firmware carries: dev.toml's two `uart_link`
+# instances pull it in transitively through asy_uart_link_driver.py. The guard below is not an
+# expected skip - it only names the cause if some future build genuinely lacks the module.
 _MISSING_MODULE_RE = re.compile(r"ImportError: no module named 'asy_uart_comm'")
 
 

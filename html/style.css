@@ -311,11 +311,9 @@ button {
     color: var(--color-text-muted);
 }
 
-/* Apply-result status indicator: a left accent stripe, not a full background recolor (legacy's
-   own presentation) - reads as a status badge, not a jarring flash. Shown at two levels: the
-   card as a whole (worst status across the group) and each individual field's own box (its own
-   result) - legacy colored each field's own nearest card separately, and that per-field
-   granularity is kept here too, just restyled as a stripe (SPECIFICATION.md Part H.3). */
+/* Apply-result indicator: a left accent stripe rather than legacy's full background recolor, so
+   it reads as a badge and not a flash. Two levels, as legacy had: the card's worst status across
+   the group, and each field's own box (SPECIFICATION.md Part H.3). */
 .card[data-apply-status="valid"] {
     border-left: 3px solid var(--color-success);
 }
@@ -410,10 +408,9 @@ button {
     color: var(--color-danger);
 }
 
-/* One horizontal, wrapping row of pills per module - not a vertical list. A module can carry
-   10+ entries; stacking each in its own row wastes vertical space for content that's just a
-   single small number, and a horizontal strip reads faster as "one module's recent history at a
-   glance" anyway. */
+/* One horizontal wrapping row of pills per module, not a vertical list: a module can carry 10+
+   entries, each just a small number, so stacking them wastes height and reads worse than a strip
+   of "one module's recent history at a glance". */
 .history-list {
     display: flex;
     flex-wrap: wrap;

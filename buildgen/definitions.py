@@ -17,10 +17,9 @@ from buildgen.web_tag import SELF_GROUP, WebFieldTag, WebGroupTag, parse_web_gro
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# SCHEMA_VERSION is this file's own wire-format shape version (does js/definitions.js understand
-# what it was just served); WEBSITE_VERSION (buildgen.version) is this project's own product/build
-# version, a genuinely different concept - never conflate the two (CLAUDE.md/SPECIFICATION.md
-# Part L.7).
+# SCHEMA_VERSION is this file's wire-format shape version - can js/definitions.js understand what
+# it was served. WEBSITE_VERSION is the product/build version, a different concept entirely;
+# never conflate the two (Part L.7).
 SCHEMA_VERSION = "1.0.0"
 
 # Fixed, generator-owned REST-endpoint skeleton (H.4: "Nav grouping: Mirrors the 6 REST endpoints
@@ -50,11 +49,9 @@ _WARN_SIGNAL_WEB_CATALOG: "dict[str, dict[str, Any]]" = {
     "warn_hum": {"key": "WarnHum", "label": "Humidity Warning Threshold", "unit": "%", "kind": "number", "min": 0.0, "max": 100.0, "float": True},
 }
 
-# Dispatch-only, webserver-level fields with no real per-device variation and no single owning
-# driver file (SPECIFICATION.md Part H.5.1). `lightCmdLED`'s own bounds
-# mirror asy_webserver_service.py's `_dispatch_notification_led()`/sensortask_wozi.py's
-# `_FIELD_LED_R/G/B/T` (universal across every device); `SystemCmd` mirrors
-# asy_webserver_service.py's `_SYSTEM_CMDS`; `PauseTime` mirrors its own `_PAUSE_TIME_FIELD`.
+# Dispatch-only webserver-level fields: no per-device variation and no single owning driver file
+# (Part H.5.1). Each mirrors its own source in asy_webserver_service.py - lightCmdLED's bounds
+# from _dispatch_notification_led(), SystemCmd from _SYSTEM_CMDS, PauseTime from its field.
 _SYSTEM_COMMAND_GROUP: "dict[str, Any]" = {
     "key": "command", "label": "System Command", "submit": True,
     "fields": [{"key": "SystemCmd", "label": "Command", "kind": "enum", "dispatch": True, "options": [
@@ -87,11 +84,9 @@ _RESET_ERRORS_GROUP: "dict[str, Any]" = {
     }],
 }
 
-# Errcount module catalog (H.6): {have-key: (label, has_cfgmgr_companion)}. "have-key" is the same
-# vocabulary as an instance's own `driver` TOML string for optional modules, plus the five
-# mandatory-infrastructure/fixed keys that are never `[[instance]]` entries. Fixed/generator-owned
-# for the same reason as the dispatch-only catalogs above: these are cosmetic UI labels, not a
-# per-driver fact any one source file is the sole owner of.
+# Errcount module catalog (H.6): {have-key: (label, has_cfgmgr_companion)}. A have-key is an
+# instance's own `driver` string, plus the five mandatory keys that are never [[instance]]
+# entries. Generator-owned like the catalogs above: cosmetic labels, owned by no source file.
 _MANDATORY_ERRCOUNT_KEYS = frozenset({"wifi", "dns", "ntp", "system", "webserver"})
 _ERRCOUNT_CATALOG: "tuple[tuple[str, str, bool], ...]" = (
     ("wifi", "Wi-Fi", True),
@@ -366,12 +361,9 @@ def _suffixed(label: str, name_ext: str) -> str:
 
 
 def _errcount_group(model: DeviceModel) -> "dict[str, Any]":
-    # Keyed per logger INSTANCE, matching what the API actually publishes: the live object graph
-    # decides those names (SensorReaderConfig.get_error_sources() -> [self, self.cfgmgr], and the
-    # generated _collect_error_sources() loops over every constructed module), so an instance named
-    # scd30_primary publishes SCD30_primary/CFGMGR_SCD30_primary and needs a row under that key.
-    # A kind-keyed catalog rendered neither: an unmatched published source is never shown, and an
-    # unmatched row renders a permanent, reassuring 0 (js/templates.js's `?? {counter: 0}` fallback).
+    # Keyed per logger INSTANCE, as the API publishes them: scd30_primary publishes
+    # SCD30_primary and CFGMGR_SCD30_primary and needs a row under each. A kind-keyed catalog
+    # drifts silently both ways - a missing source vanishes, a stale row renders a permanent 0.
     modules: list[dict[str, str]] = []
     by_driver: dict[str, list[InstanceSpec]] = {}
     for spec in model.instances.values():

@@ -88,9 +88,68 @@ from this branch's tip. **D4 yes** — the pair was run, see §1A.
 
 ---
 
-## 1. Suite runs
+## 1. Run sheet - the order to work in
 
-| # | Run | Notes | Status |
+Every step below is a real command against real hardware, so **do not start any of them without
+the go-ahead rule at the top of this file being satisfied**. Work top to bottom: each step assumes
+the ones above it. `tests_hardware/README.md` stays the reference for *how* a step works
+(prerequisites, environment variables, what each marker gates); this sheet is only the order, the
+command, and what to write down.
+
+**Step 1 - record the board's current state, before touching anything.**
+`GET /status` and save the whole `errcount` table verbatim into this session's notes. It is the one
+diagnostic a reboot does not erase and `ResetErrors` destroys irreversibly (CLAUDE.md). Then ask
+what was last run against this board: an isolated-driver device script builds its own
+`AsyFramManager` over the same chip and can leave a plausible-looking fabricated entry behind
+(`tests_hardware/README.md` has the mechanism). An unexplained entry is evidence only if the
+board's recent history allows it to be.
+
+**Step 2 - answer D1, D2 and D3 (section 0) and write the answers down.** They decide which of the
+steps below run at all. Nothing later re-asks.
+
+**Step 3 - build and flash this branch's own `dev` image.**
+`scripts/build_firmware.py dev`, then flash it. Never a `wozi` build (CLAUDE.md: it "tests nothing
+at all" and has produced false bugs). For R12 specifically the board needs a *clean filesystem* -
+a persisted config wins over the new per-device hostname, so a stale `SensorNode` there would
+prove nothing.
+
+**Step 4 - the flash tier.** `scripts/run_flash_hardware_suite.sh`
+Read the verdict's **deselected** count, not just the word "clean": the wear gates deselect rather
+than skip, so "everything that ran, passed" is not "everything ran". Expect R10's two fixed device
+scripts and R14's watchdog banner to be exercised here - if R14 fails, read *which* case before
+concluding anything (its row says how to tell the two apart).
+
+**Step 5 - the bench tier.** `scripts/run_bench_hardware_suite.sh`
+A strict superset of step 4; same deselected-count caveat. R9 and R11 ride along here.
+
+**Step 6 - the wear-gated re-run, only if D1 said yes.**
+`scripts/run_flash_hardware_suite.sh --allow-persistence-writes` and the same for the bench script.
+This is what makes R1, R4, R5 and R8's reboot arm reachable at all; without it they are deselected
+and answered by nothing. Add `--allow-scd30-extra-write` only if a second SCD30 NVM write is
+genuinely wanted on top.
+
+**Step 7 - the NeoPixel light programs, only if D2 said yes.**
+`scripts/run_manual_hardware_tests.sh --only isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`
+first (it is what records the rig geometry), then
+`scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep`. ~10 minutes combined.
+
+**Step 8 - the targeted investigations** in section 2, in this order: R1 (start with its no-code
+`RangeAuto=false` bisection, and restore `RangeAuto` afterwards), R2's reader-count curve at 0, 1,
+2, 3, 4 and 6 readers, then R3, R6/R7, R13 and R15. R15 needs no fault injection - whatever the
+board has already logged is its subject, so it pairs naturally with step 1's recording.
+
+**Step 9 - the long soak, deliberately and separately.** `scripts/run_bench_soak_tests.sh`, tier
+chosen on purpose (short 60 s / mid 600 s / long 6 h). Never bundled into steps 4-6; the suite
+runners exclude it unconditionally.
+
+**Step 10 - the bench host itself** (section 4): H1's two chroot legs and H2's parallelism probe.
+Neither touches the board, so they can run while it is busy.
+
+**Step 11 - close out.** For each row answered: migrate the result into `SPECIFICATION.md`,
+`CLAUDE.md` or `BACKLOG.md` as the row says, then delete the row. **When the last row goes, delete
+this file** - it is a queue, not a record.
+
+| # | Suite run | Notes | Status |
 | --- | --- | --- | --- |
 | S1 | `scripts/run_flash_hardware_suite.sh` | **DONE 2026-09-18, on BOTH arms.** Tip: `3 failed, 33 passed, 3 skipped, 12 deselected` (864.67 s). Before arm: `2 failed, 34 passed, 3 skipped, 12 deselected` (844.84 s). Failure attribution in §1A-R. | DONE |
 | S2 | `scripts/run_bench_hardware_suite.sh` | **DONE 2026-09-19 (A+B): `93 passed, 4 skipped, 27 deselected` — ZERO failures**, the first fully clean bench run on any image. Closes T.2's bench tier, C1's tier-4 run and R9. §7H.6 | DONE |

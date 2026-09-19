@@ -28,10 +28,9 @@ def _failures(scd_errors: "list[str]", isl_errors: "list[str]", sgp_errors: "lis
         failures.append("ISL29125 completed zero read cycles during the whole run - loop never progressed")
     failures.extend(scd_errors[:10])
     failures.extend(isl_errors[:10])
-    # The run spans several SCD30 measurement intervals, so genuinely advancing measurement should
-    # produce >= 2 distinct CO2 values; a single unchanging value signals it silently stopped
-    # advancing (e.g. an undocumented general-call reset) - not caught by a CRC failure alone, since
-    # that only catches corruption of a transaction already in flight.
+    # The run spans several SCD30 measurement intervals, so advancing measurement means >= 2
+    # distinct CO2 values; one unchanging value means it silently stopped (an undocumented
+    # general-call reset). A CRC failure cannot catch this - it only sees a transaction in flight.
     if len(distinct_co2_values) < 2:
         failures.append(
             f"only {len(distinct_co2_values)} distinct CO2 value(s) seen across {scd_completed} reads over "
@@ -47,10 +46,9 @@ async def _main() -> None:
     sgp = SGP40_I2C(i2c1)
     isl = ISL29125_I2C(i2c1)
     await scd.setup()
-    # Deliberately never calls set_ambient_pressure() here - see
-    # scd30_same_device_rw_concurrency.py's own docstring for the one NVM-persisted write this
-    # whole test group makes, exactly once per session, via tests_hardware/flash/conftest.py's
-    # scd30_continuous_measurement_triggered fixture (which this test depends on).
+    # No set_ambient_pressure() here: this group's one NVM-persisted write happens once per
+    # session in flash/conftest.py's scd30_continuous_measurement_triggered fixture, which this
+    # test depends on. scd30_same_device_rw_concurrency.py's docstring has the wear reasoning.
     await sgp.setup()
     await isl.setup()
     await isl.configure(mode=0x05, range_fs=10000, resolution=16, threshold_interrupt=False)

@@ -21,10 +21,9 @@ def scd30_continuous_measurement_triggered(board: Board, request: pytest.Fixture
     SCD30 write (set_ambient_pressure(), doubling as "trigger continuous measurement") this test
     group issues. Session-scoped so every other dependent reuses it instead of repeating the write."""
     if not request.config.getoption("--allow-persistence-writes"):
-        # Every real dependent test must carry @pytest.mark.persistence_write, which
-        # tests_hardware/conftest.py's pytest_collection_modifyitems() deselects before this fixture
-        # could ever run without the flag - reaching here means a test forgot the marker, not that
-        # real hardware did anything wrong. Fails loudly rather than silently spending the write.
+        # Every dependent test must carry @pytest.mark.persistence_write, which conftest.py's
+        # pytest_collection_modifyitems() deselects before this fixture could run unflagged. So
+        # reaching here means a test forgot the marker: fail loudly rather than spend the write.
         raise RuntimeError(
             "scd30_continuous_measurement_triggered was invoked without --allow-persistence-writes - the "
             "requesting test is missing @pytest.mark.persistence_write, so it wasn't deselected by "

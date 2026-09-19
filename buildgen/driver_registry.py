@@ -10,11 +10,9 @@ from buildgen.errors import BuildError
 
 _READER_BASES = {"SensorReader", "SensorReaderConfig"}
 
-# Drivers that genuinely can't follow asy_<name>_driver.py/*_Reader (SPECIFICATION.md
-# Part L.1's acceptance criterion #1 and its own named exception): none of the four defines a SensorReader/
-# SensorReaderConfig subclass at all, and fram/notification/uart_link's own files aren't even named
-# "_driver.py" to begin with (asy_uart_link_driver.py IS "_driver.py"-named, but still needs the
-# override - the naming convention alone was never sufficient, only necessary).
+# Drivers that cannot follow the asy_<name>_driver.py/*_Reader convention (Part L.1's criterion
+# 1): none defines a SensorReader/SensorReaderConfig subclass. The naming convention alone was
+# never sufficient either - asy_uart_link_driver.py fits it and still needs the override.
 _OVERRIDES: dict[str, tuple[str, str]] = {
     "fram": ("asy_fram_manager", "AsyFramManager"),
     "neopixel": ("asy_neopixel_driver", "NeopixelDriver"),
@@ -22,17 +20,14 @@ _OVERRIDES: dict[str, tuple[str, str]] = {
     "uart_link": ("asy_uart_link_driver", "UartLinkExerciser"),
 }
 
-# Every driver resolved via the override table above, regardless of whether it's a singleton -
-# "needs an override" and "is a singleton" are independent facts that happened to coincide for the
-# first three entries; SERVICE_DRIVERS only ever meant the former (validate.py's own name_ext
-# rejection - the actual singleton restriction - reads SINGLETON_SERVICE_DRIVERS below instead).
+# Every driver resolved through the override table, singleton or not: "needs an override" and
+# "is a singleton" are independent facts that merely coincided for the first three entries. The
+# actual singleton restriction lives in SINGLETON_SERVICE_DRIVERS below.
 SERVICE_DRIVERS = frozenset(_OVERRIDES)
 
-# Singleton services: never more than one per device (SPECIFICATION.md Part C.14's own scoping).
-# uart_link is deliberately excluded - it resolves via the same override table (it isn't a
-# SensorReader/SensorReaderConfig subclass either) but is NOT a singleton: a device wires exactly
-# two instances (initiator/responder), disambiguated by name_ext like any other multi-instance
-# driver, not forced to name_ext="" the way fram/neopixel/notification are.
+# Singleton services: never more than one per device (Part C.14). uart_link is excluded on
+# purpose - it needs the same override, but a device wires two instances (initiator/responder)
+# disambiguated by name_ext, rather than being forced to name_ext="" like the other three.
 SINGLETON_SERVICE_DRIVERS = SERVICE_DRIVERS - {"uart_link"}
 
 
@@ -64,13 +59,9 @@ def _find_reader_classes(tree: ast.Module) -> "list[str]":
 
 
 def _class_needs_setup(tree: ast.Module, class_name: str) -> bool:
-    # SensorReaderConfig subclasses always need it (base_classes.py's own async setup(), which
-    # reads the on-flash ConfigManager); bare SensorReader subclasses never do (no ConfigManager -
-    # e.g. SCD30_Reader). Neither base applies to a "service" override (AsyFramManager/
-    # NeopixelDriver/NotificationCoordinator's own __init__ superclass differs per class) - fall
-    # back to whether the class defines its own `async def setup` at all (true for AsyFramManager,
-    # false for NeopixelDriver; NotificationCoordinator hits the SensorReaderConfig branch above
-    # directly, since it does extend it).
+    # SensorReaderConfig subclasses always need it (their async setup() reads ConfigManager);
+    # bare SensorReader subclasses never do. Neither base applies to a service override, so those
+    # fall back to whether the class defines an `async def setup` of its own at all.
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and node.name == class_name:
             bases = {b.id for b in node.bases if isinstance(b, ast.Name)}

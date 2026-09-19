@@ -33,14 +33,9 @@ _booted_module: "Any | None" = None  # set by main(), read by _print_wdt_status(
 # needed explicitly here since this file's own module is only known at runtime (parse_args()'s
 # --module), unlike run_wozi_integration.py/run_dev_integration.py's own static imports.
 
-# Matches buildgen.codegen.generate_boot_entry_source()'s own real-firmware boot entry (same value,
-# same one-time placement immediately before asyncio.run()) - the twin sets it too, by default, so a
-# non-soak run models production's actual memory-safety configuration, not just its allocation code.
-# Overridable via --gc-threshold so the whole suite (scripts/_digital_twin_ci_suite.py's main(), not
-# just the soak run) can be driven at MicroPython's own real reactive-only default too -
-# CLAUDE.md's/SPECIFICATION.md Part I.4(e)'s standing rule that the whole suite must pass at
-# gc.threshold(-1) *before* it's ever run with a chosen threshold, which a single hardcoded
-# gc.threshold(32768) here could never be checked against.
+# The same value and one-time placement the real firmware boot entry uses, so a twin run models
+# production's memory-safety configuration and not just its allocation code. --gc-threshold
+# overrides it, since Part I.4(e) requires the whole suite to pass at -1 first.
 _GC_THRESHOLD_DEFAULT = 32768
 
 
@@ -196,14 +191,12 @@ def parse_args(argv: "list[str]") -> RunConfig:
 
 
 def _collect_chips(module: "Any", plan: "dict[str, Any]") -> "dict[str, Any]":
-    # Generalizes run_wozi_integration.py's/run_dev_integration.py's own hardcoded
-    # `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}` dict by walking the wiring plan and
-    # resolving each attachment's bus variable by name. A driver with more than one instance is also
-    # keyed by "driver_nameext" (the plain key still exists too, first instance wins - launch.py's
-    # parse_fault_spec()/parse_hang_spec() only ever speak the plain-driver-name vocabulary).
-    # sorted(): plan["buses"]/plan["spi"] are plain dicts, and MicroPython dicts do NOT preserve
-    # insertion order the way CPython's do (confirmed directly) - sorting by bus name is what makes
-    # "first instance wins" above actually mean "i2c0 before i2c1", not MicroPython's hash order.
+    # Generalizes the retired entry points' hardcoded device dicts by walking the wiring plan.
+    # A multi-instance driver is also keyed "driver_nameext"; the plain key stays, first instance
+    # winning, since the fault vocabulary only speaks plain driver names.
+
+    # sorted() because MicroPython dicts do not preserve insertion order as CPython's do, so
+    # sorting by bus name is what makes "first instance wins" mean i2c0 before i2c1.
     chips: dict[str, Any] = {}
     for bus_name, attachments in sorted(plan["buses"].items()):
         bus = getattr(module, bus_name, None)
@@ -267,22 +260,17 @@ async def _wait_until_built(module: "Any", timeout_s: float = 10.0) -> None:
 
 
 def _wire_uart_crossover(module: "Any", plan: "dict[str, Any]") -> "Any | None":
-    # Generic, wiring-plan-JSON-driven equivalent of what main's own hand-written
-    # run_dev_integration.py used to do by hand (device-name-specific): the bench's permanent
-    # crossover jumper. Without it the twin models a dev board whose jumper is missing, and the
-    # link exerciser the booted module now starts would spend the whole run timing out instead of
-    # moving bytes (SPECIFICATION.md Part A.7/J). A no-op for any device with no "uart" key
-    # (buildgen.twin_wiring.compute_twin_wiring() only emits one when the device TOML declares a
-    # uart_link initiator/responder pair - wozi never does). Returns the built link (or None) so
-    # main() can hold a reference - needed for _wire_log_clearer() below, since the link itself is
-    # otherwise unreachable once this returns.
-    #
-    # Deliberately not inside machine.configure_wiring() itself (the plan this was drafted against
-    # first suggested that): configure_wiring() runs BEFORE build_system() constructs anything, but
-    # attach_crossover_jumper() needs the two already-built asy_uart_driver.UART wrapper objects'
-    # own ._uart machine fakes and .poller attributes - those only exist once this generic entry
-    # point's own module (the booted sensortask_<device>) has actually built them, the same reason
-    # _collect_chips() below is a post-construction step too, not a pre-construction one.
+    # The wiring-plan-driven equivalent of what the retired per-device entry point did by hand:
+    # the bench's permanent crossover jumper. Without it the twin models a dev board whose jumper
+    # is missing, and the exerciser spends the run timing out instead of moving bytes (Part J).
+
+    # A no-op for a device with no "uart" key, which only a declared initiator/responder pair
+    # produces. Returns the built link so main() can hold a reference for _wire_log_clearer(),
+    # which has no other way to reach it.
+
+    # Not inside machine.configure_wiring(), which runs BEFORE anything is constructed: the
+    # jumper needs the two built UART wrappers' own fakes and pollers, which exist only once the
+    # booted module has made them - the same reason _collect_chips() is post-construction too.
     uart_plan = plan.get("uart")
     if uart_plan is None:
         return None
@@ -298,27 +286,9 @@ def _wire_uart_crossover(module: "Any", plan: "dict[str, Any]") -> "Any | None":
 
 
 async def _mem_sampler(interval_ms: int) -> None:
-    # Optional (--mem-sample-interval-ms, unset by default): the ONE piece of this process a
-    # host-side driver genuinely cannot get any other way - gc.mem_free() only exists inside this
-    # process's own heap, and deliberately has no REST route (SPECIFICATION.md's "Driver/DUT
-    # process separation" Part - every request-driving/response-observing responsibility this file
-    # used to also carry, in the now-retired _soak(), moved host-side, to
-    # scripts/_digital_twin_ci_suite.py's own _run_11_soak(); this is the one thing that couldn't).
-    # Decoupled from any request/response path on purpose, running on its own fixed wall-clock timer
-    # rather than once per host-driven cycle - the host has no way to signal "a cycle just finished"
-    # into this process without adding exactly the kind of extra channel this design avoids, and a
-    # denser, timer-driven sample stream is at least as sensitive to a real trend as a
-    # once-per-cycle one. Each line is timestamped (time.time(), the same wall clock the host's own
-    # process reads) so the host can select just the samples taken during its own measurement
-    # window, the same way it already scrapes watchdog.would_have_triggered_count from this
-    # process's own stdout via _print_wdt_status() below - never by calling back into this process.
-    # gc.collect() here is measurement instrumentation, not a memory-pressure workaround: it runs on
-    # a fixed timer, decoupled from request handling, and cannot mask a real MemoryError (nothing
-    # here ever calls into the webserver or a driver) - SPECIFICATION.md Part I.4(e)'s own narrow,
-    # already-litigated exception for exactly this reason (verified directly, 2026-09-14: the
-    # now-retired in-process _soak() briefly ran without this same gc.collect() and the trend check
-    # got measurably worse, not better - min=99808/max=1347104 swings on a genuinely healthy run,
-    # a false positive from incidental reactive-GC timing, not from anything this collect() hides).
+    # Optional (--mem-sample-interval-ms): the one thing a host-side driver cannot get any other
+    # way, gc.mem_free() living in this heap with no REST route. Fixed timer, timestamped lines,
+    # and an instrumentation-only gc.collect() - README.md has the reasoning and measurement.
     while True:
         await asyncio.sleep_ms(interval_ms)
         gc.collect()
@@ -329,19 +299,9 @@ _WIRE_LOG_CLEAR_INTERVAL_MS = 5000
 
 
 async def _wire_log_clearer(link: "Any") -> None:
-    # digital_twin/machine.py's UARTLink.wire_log is unbounded by design (SPECIFICATION.md's own
-    # documented trap, "Clear it inside any measurement loop") - it exists so a unit test with
-    # direct object access can assert exactly what crossed the wire (tests/_uart_link_contract.py's
-    # check_wire_log_records_what_was_delivered(), tests/test_asy_uart_comm.py's byte-exact check),
-    # and every such test clears it itself between assertions. This process has no such access - it
-    # boots the twin as a real subprocess and never reads wire_log at all - so left alone it grows
-    # for as long as the crossover link carries traffic (src/asy_uart_link_driver.py's own
-    # UartLinkExerciser fires every second, independent of HTTP activity), eventually becoming a
-    # genuine, permanently-retained allocation and this process's own memory-safety violation -
-    # confirmed directly: this is what made Run 11's gc.mem_free() trend check fail for `dev`
-    # (the only device with a wired uart_link pair) while `wozi` (no UART bus at all) stayed flat.
-    # Clearing it here changes nothing about the link's real over-the-wire behavior - nothing in
-    # this process's own request/response path or asy_uart_comm.py ever reads it back.
+    # UARTLink.wire_log is unbounded by design, and nothing in this process ever reads it, so
+    # left alone it grows for as long as the link carries traffic - which is what made Run 11's
+    # trend check fail for `dev` and not `wozi`. README.md's own section has the account.
     while True:
         await asyncio.sleep_ms(_WIRE_LOG_CLEAR_INTERVAL_MS)
         link.a_to_b.wire_log = bytearray()
@@ -426,16 +386,12 @@ async def main(config: RunConfig) -> None:
         elif config.duration > 0:
             await asyncio.sleep(config.duration)
     finally:
-        # SPECIFICATION.md Part F.6 (see its amendment: this project's own Unix-port build now
-        # forces safe, deferred SIGINT delivery - Part B.14.1 - so this specific race should no
-        # longer be reachable at all; kept as defense in depth, not a load-bearing fix anymore):
-        # a SIGINT landing inside gc_collect() can leave the heap permanently locked, and this
-        # whole block allocates (f-strings, task bookkeeping, flush_fram()/flush_scd30() below) -
-        # unwedge unconditionally, first, exactly like the __main__ except KeyboardInterrupt:
-        # handler below does, rather than only there. Before this call existed here, a
-        # KeyboardInterrupt landing while THIS coroutine (not a sibling task) was the one running
-        # never reached that outer handler until after this block's own allocations had already
-        # run against a potentially-locked heap.
+        # Part F.6, defense in depth now that Part B.14.1 forces safe SIGINT delivery: an
+        # interrupt inside gc_collect() can leave the heap locked, and this whole block
+        # allocates, so unwedge first rather than only in the outer handler.
+
+        # Before this call existed here, an interrupt landing while THIS coroutine was running
+        # reached that outer handler only after these allocations had already run.
         unwedge_heap_after_interrupt()
         _print_wdt_status(config)
         if sampler_task is not None:
@@ -466,22 +422,16 @@ async def main(config: RunConfig) -> None:
 
 if __name__ == "__main__":
     _config = parse_args(sys.argv[1:])
-    # Placed immediately before asyncio.run(), same as buildgen.codegen.generate_boot_entry_source()'s
-    # own real-firmware boot entry - _GC_THRESHOLD_DEFAULT (32768) matches it exactly, so an ordinary
-    # twin run models production's real memory-safety configuration, not just its allocation code.
-    # --gc-threshold overrides it - scripts/_digital_twin_ci_suite.py's own main() runs the WHOLE
-    # suite (not just one run) at both gc.threshold(-1) and gc.threshold(32768), in that order, per
-    # SPECIFICATION.md Part I.4(e)'s standing rule that the whole suite must pass clean at the real
-    # default before it's ever run again with the project's chosen threshold.
+    # Immediately before asyncio.run(), where the real firmware boot entry also sets it, so an
+    # ordinary twin run models production's configuration. --gc-threshold overrides it: the CI
+    # suite runs the WHOLE suite at -1 and then at 32768, in that order (Part I.4(e)).
     gc.threshold(_config.gc_threshold)
     try:
         asyncio.run(main(_config))
     except KeyboardInterrupt:
-        # Reached when the KeyboardInterrupt lands while main()'s own coroutine is suspended (not
-        # currently running) - it never enters main()'s try/finally at all in that case, so this is
-        # not just a backstop for a wedge missed above; it is the only cleanup that runs at all for
-        # that case. See SPECIFICATION.md Part F.6 (and its amendment - Part B.14.1) for the
-        # gc_collect()-heap-lock mechanism and why it's defense in depth now, not the live fix.
+        # Reached when the interrupt lands while main()'s coroutine is suspended: it never
+        # enters main()'s try/finally then, so this is the only cleanup that runs at all, not a
+        # backstop for a wedge missed above. Part F.6 has the mechanism.
         unwedge_heap_after_interrupt()
         machine.flush_fram()
         machine.flush_scd30()

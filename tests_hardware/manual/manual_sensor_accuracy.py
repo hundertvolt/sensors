@@ -8,10 +8,9 @@ from runner import confirm, print_instruction, register, state_expected_outcome
 
 _DUT_IP_HINT = "the DUT's IP (see tests_hardware/README.md for how to find it)"
 
-# BMP388/BMP384 typical accuracy, sourced directly from datasheets/bmp3xx/bst-bmp388-ds001.pdf
-# (not assumed from memory): relative accuracy typ. +-8 Pa (900-1100 hPa, 25-40 degC), absolute
-# accuracy typ. +-50 Pa (300-1100 hPa, -20 to +65 degC); temperature absolute accuracy +-0.3 degC
-# @25 degC, +-0.5 degC over 0-65 degC.
+# BMP388/BMP384 typical accuracy, read from datasheets/bmp3xx/bst-bmp388-ds001.pdf rather than
+# memory: relative +-8 Pa (900-1100 hPa, 25-40 degC), absolute +-50 Pa (300-1100 hPa, -20..65
+# degC); temperature +-0.3 degC at 25 degC, +-0.5 degC over 0-65 degC.
 _BMP388_PRESSURE_TOLERANCE_PA = 50.0
 _BMP388_TEMP_TOLERANCE_C = 0.5
 
@@ -54,11 +53,9 @@ def test_sgp40_real_voc_index_response_to_real_stimulus() -> None:
     confirm("Poll GET /measurements every ~10s for the next 2 minutes and press Enter once you've confirmed the rise-then-decay pattern")
 
 
-# The ISL29125 datasheet states no lux accuracy figure at all (datasheets/isl29125/), so there is
-# no absolute bar to hold it to - and absolute lux or CCT measured against a WS2812's three narrow
-# emission lines is meaningless by construction, which is exactly why the automated sweep only ever
-# asserts relative properties. What IS checkable by hand is repeatability on an unchanged scene,
-# and continuity across the range switch the gain ratio exists to make seamless.
+# The ISL29125 datasheet states no lux accuracy figure, and absolute lux or CCT against a
+# WS2812's three narrow emission lines is meaningless anyway - hence the automated sweep's
+# relative-only assertions. By hand: repeatability on one scene, continuity across a range switch.
 _ISL29125_REPEATABILITY_TOLERANCE_PCT = 10.0
 
 

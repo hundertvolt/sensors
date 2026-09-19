@@ -12,9 +12,8 @@ from buildgen.tag_comments import KNOWN_TAGS, check_for_near_miss_tags, iter_com
 _SPECS = tuple(spec for spec in KNOWN_TAGS if spec.name == "limits")
 
 # Past the field name the payload is interpreted by hand below, so a broken bound reports which
-# half is wrong rather than the whole line just failing to match. It must still carry range or
-# choice-set punctuation to match at all, or an ordinary sentence that happens to start with
-# "@limits" would be read as a tag with an unintelligible domain instead of as the prose it is.
+# half is wrong rather than failing to match at all. It must still carry range or choice-set
+# punctuation, or prose beginning "@limits" would read as a tag with an unintelligible domain.
 _TAG_RE = re.compile(r"#+\s*@limits\s+(?P<field>\w+)\s+(?=.*(?:\.\.|[{}]))(?P<payload>\S.*?)\s*$")
 _SET_RE = re.compile(r"^in\s*\{(?P<values>[^{}]*)\}$")
 _RANGE_PARTS = 2  # a range payload is always exactly <min>..<max>

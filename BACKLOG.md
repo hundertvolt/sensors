@@ -538,53 +538,45 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     already carry. `claude/pr103-real-hardware-fram-validation` is not on the remote and has no PR.
 
 
-35. **Two more persisted-warning paths can refill the bounded FRAM history, the same class
-    `asy_uart_comm.py` already closed.** Found 2026-09-18 while satisfying the owner's condition on
-    item 23 ("take care that such conditions in general do not flood the persisted warnings") -
-    the UART module's own budget was checked and holds, so this is what the same lens found
-    elsewhere. Reported, not fixed: which entry an operator sees in a field log is a behaviour
-    decision, the same class as the `errno` 32 and item 23 decisions.
-    - **`asy_wifi_service.py`'s `_poll_sta_connect_status()`** persists exactly one of `wrnno`
-      4/5/6/7 per call and returns, which is correct *per attempt* - but a real outage retries, and
-      every retry spends another slot. A ten-slot ring is gone in ten retries, evicting whatever
-      preceded the outage. **This is very likely the mechanism behind item 29** (a real outage
-      logging `W4` twice alongside `W5` on a network whose password never changed): two entries are
-      two attempts, not necessarily two different verdicts about the same one. Worth reading the two
-      items together before chasing either - and worth checking on the bench run rather than only by
-      reading code, since the alternative explanation (the CYW43 genuinely reporting a misleading
-      status mid-transition) is still open.
-    - **`asy_fram_manager.py`'s `_read()`** persists `wrnno` 71/72/73 on every degraded read, so a
-      permanently corrupted block 0 logs one warning per read forever. The dual-copy layer means the
-      data is still correct, which is exactly why this can run unnoticed for a long time.
-    **Shape of the fix, if taken**: `asy_uart_comm.py`'s `_episode_wrn()` is the worked precedent -
-    one persisted warning per episode, the rest visible-only, with the episode's own boundaries
-    defined by the module. It is not a mechanism to lift wholesale; each of these two needs its own
-    answer to "what is an episode here", which is the part needing a decision.
+35. **Closed 2026-09-19 (owner decision): the two persisted-warning flood paths are episode-scoped
+    now, per distinct code.** `asy_wifi_service.py`'s `_poll_sta_connect_status()` spent a slot per
+    connect *attempt* and `asy_fram_manager.py`'s chunk `_read()`/`_write()` spent one per degraded
+    operation, so a ten-retry outage or one dead cell emptied the owning module's ten-slot ring by
+    itself. Both now dedupe per distinct code per episode, ended by a successful STA connection and
+    by a clean read/write respectively. The owner's condition was "reflect reality and do not miss
+    real failures", which ruled out `asy_uart_comm.py`'s own first-wins rule twice over, and the
+    shape that satisfies both is new: `PrintLogHistory.wrn_s()/err_s()` take `repeat=True`, which
+    **still counts the occurrence and still writes the count through to FRAM** but spends no history
+    slot. So `/status` still says a device failed to connect five times while the ring still holds
+    what preceded the outage - and a changed verdict (`W4` beside `W5`, item 29's own shape) still
+    persists, which a first-wins rule would have destroyed. Stated once in SPECIFICATION.md Part
+    C.7.1, which also records why the three implementing modules define an episode differently.
+    Covered at the unit tier (three tests each, all bite-verified) and end to end in the twin suite:
+    Run 7 now asserts five counted attempts occupying one slot, Run 8 that both numbers survive the
+    reboot. `asy_uart_comm.py` was deliberately left on its own rule - its repeats are consequences
+    of one fault whose `errno` was already counted, not independent events.
 
-36. **The web tier has under 2x headroom against its own 20-minute `timeout-minutes`, and that
-    margin has now been spent three times — on two different jobs.** CI run `35372354351` (head
-    `b0f755c`) cancelled `web-unit-tests` at
-    19m33s with every other job green; the same suite on the same tree runs in **9m36s locally**
-    (11 files, 778 tests, exit 0, measured 2026-09-18), and the previous CI run on an identical
-    `js/`/`tests_js/`/`html/` tree took 9m23s. So this is wall-clock on GitHub's runner, not a test
-    regression - the same failure the job's own comment already records once before (PR #50, run
-    `33856690559`), whose fix then was splitting `web-coverage` out rather than widening the budget.
-    Nothing is proposed here: the budget is the owner's to set, and the suite's real cost is a
-    headless-browser tier plus a live digital-twin subprocess, neither of which shrinks by trying
-    harder. Worth noting that a cancelled run also **skips** `web-coverage` and
-    `web-cross-browser-smoke`, so one slow runner silently removes three signals, not one. Options
-    if it recurs: raise `timeout-minutes` for that job, or split the live-backend PUT matrix into
-    its own job the way coverage already is.
-
-    **It recurred on 2026-09-18, one job over**: run `35399058626` (head `10ec130`) cancelled
-    **`web-coverage`** at 20m15s, with `web-unit-tests` itself green — but at **13m11s**, against
-    the 9m23s an identical web tree took before. So the runner was slow, `web-unit-tests` survived
-    on its remaining margin, and the instrumented rerun behind it did not. Not caused by that head:
-    its only `js/`/`html/` change was a comment. This makes the splitting fix a partial one — it
-    moved the ceiling rather than removing it — and it shows the budget is short for the *slow*
-    runner, not just for one job. `web-coverage` is non-gating by construction (its test step is
-    `continue-on-error`, nothing `needs:` it), so no signal was lost; the whole-run conclusion still
-    reads `cancelled`, which is the part worth knowing when reading run history.
+36. **Closed 2026-09-19 (owner decision): the filter compares against the push now, and the live
+    PUT matrix is its own sharded job.** Two separate causes, both measured rather than guessed.
+    *The filter*: `dorny/paths-filter` given no `base:` compares a push to a non-default branch
+    against the **default branch**, so on a long-lived branch every push matched whatever it had
+    touched weeks ago - `Detected 281 changed files`, `Filter web = true`, on a commit that changed
+    one `.md` file. It now passes `base: ${{ github.ref }}`, upstream's own documented idiom for
+    "what did this push change". A `pull_request` still compares through the API against the PR's
+    base and so still runs the full web tier before merge, which is what a pre-merge status check
+    wants; a branch's first push, where no common ancestor exists, counts every file as added and
+    runs, which is the safe direction. *The budget*: the web suite is 578s for 778 tests, and
+    `tests_js/live-backend-put-matrix.test.js` alone is **567s of it** (243 tests) - so that one
+    file was the whole ceiling problem, and splitting `web-coverage` out earlier helped so little
+    because it was never the coverage rerun. It is now `web-put-matrix`, three parallel shards
+    (measured: 80 tests in 182s per shard), leaving `web-unit-tests` at 110s for the other 535
+    tests and `web-coverage` cheap for the same reason. `timeout-minutes` stays at 20 everywhere:
+    no job is near it any more, so raising it would have hidden a real hang instead of removing a
+    real cost. Shard plumbing worth knowing about, since three obvious routes silently do nothing:
+    a shell variable does not reach a Vitest browser test (Vite fills `import.meta.env` from `.env`
+    files only), `define` rewrites exact expression text so a type-cast read is not substituted,
+    and a `JSON.stringify`'d define value arrives double-quoted. The partition itself is proven by
+    `tests_js/mock-server-put-matrix.test.js` rather than trusted.
 
 37. **Five cross-file consistency findings carried over from `main`, each re-verified on this branch
     (2026-09-18) and each still needing an owner yes/no.** They were raised on `main` by the
@@ -748,7 +740,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   `scripts/build_firmware.py`, `scripts/_require_clean_hardware_run.sh`,
   `scripts/run_digital_twin_ci.sh`, `scripts/run_unix_port_integration.sh`,
   `scripts/_digital_twin_ci_suite.py` (test orchestration only - no build step, so the chroot legs
-  neither exercise nor are threatened by it), `pyproject.toml` (+159),
+  neither exercise nor are threatened by it), `pyproject.toml` (+159), and on the web side
+  `package.json`/`vitest.config.js`/`eslint.config.js` (2026-09-19's PUT-matrix split - npm scripts
+  and a build-time define, which `env --tier generic` installs through but does not compile),
   and - the class the lint/typecheck recipe never exercises at all - `toolchain/setup_toolchain.py`
   plus the new `toolchain/micropython_overrides.py` (PR #90's `MICROPY_ASYNC_KBD_INTR=0` Unix-port
   build override, SPECIFICATION.md Part B.14.1). That last pair is what a compiler-version-sensitive

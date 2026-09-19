@@ -38,13 +38,9 @@ def _resolve_plain_addr(addr: "T") -> "T | tuple[str, int]":
 
 
 async def _patched_connect(self: "asy_udp_socket.AsyUDPSocket") -> None:
-    # Every real call site (captive_dns.py's "0.0.0.0", asy_ntp_client.py's already-DNS-resolved
-    # NTP server IP - see this module's own docstring) already hands over a plain, already-numeric
-    # (host: str, port: int) tuple, so this is always a fast, local, no-network-lookup
-    # getaddrinfo() call - never a real DNS query. Only resolves once: after the first successful
-    # resolution self._addr becomes the real sockaddr bytes object, which isn't a tuple, so
-    # _resolve_plain_addr()'s own isinstance(addr, tuple) check naturally skips re-resolving on
-    # every later reconnect attempt.
+    # Every real call site already hands over a numeric (host, port) tuple, so this getaddrinfo()
+    # is always local and never a DNS query. It also resolves once: afterwards self._addr is a
+    # sockaddr bytes object, which the isinstance check skips on every later reconnect.
     self._addr = _resolve_plain_addr(self._addr)
     await _real_connect(self)
 
@@ -54,11 +50,9 @@ async def _patched_sendto(self: "asy_udp_socket.AsyUDPSocket", msg: "bytes | byt
 
 
 def _normalize_recvfrom_addr(addr: "T") -> "T | tuple[str, int]":
-    # Only the raw 16-byte AF_INET struct this build's recvfrom() actually returns is normalized -
-    # anything else (None from a failed recv, an already-(str, int) tuple, IPv6) passes through
-    # unchanged. struct's own "<H" + ">H" split (native family field, network-order port field)
-    # can't be expressed as one format string (struct forbids mixing byte-order prefixes mid-string),
-    # so the two are unpacked separately below instead.
+    # Only the raw 16-byte AF_INET struct this build's recvfrom() returns is normalized;
+    # everything else passes through. The native family field and network-order port field cannot
+    # share one format string - struct forbids mixing byte-order prefixes - hence two unpacks.
     if isinstance(addr, (bytes, bytearray)) and len(addr) >= 8:
         family = struct.unpack("<H", addr[0:2])[0]
         if family == socket.AF_INET:

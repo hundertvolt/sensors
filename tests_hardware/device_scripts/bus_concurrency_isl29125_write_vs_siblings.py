@@ -12,10 +12,9 @@ from asy_isl29125_driver import ISL29125_I2C
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
 
-# Deliberately varied, not a fixed cadence - covers "immediately back-to-back with a sibling's own
-# transaction" (5ms) through "well clear of any one transaction, mid another sibling's read" (120ms),
-# cycled across WRITE_CYCLES writes so every real run exercises the full spread, not just whichever
-# phase natural jitter happens to land on.
+# Varied, not a fixed cadence: 5ms is back-to-back with a sibling's transaction, 120ms is mid
+# another sibling's read. Cycled across WRITE_CYCLES so every run covers the whole spread rather
+# than whichever phase natural jitter lands on.
 _WRITE_DELAYS_MS = (5, 15, 40, 80, 120)
 WRITE_CYCLES = len(_WRITE_DELAYS_MS) * 2  # each delay exercised twice, not just once
 _MODE_RGB = 0x05

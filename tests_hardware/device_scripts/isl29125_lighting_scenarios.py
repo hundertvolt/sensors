@@ -188,10 +188,9 @@ def _log_entries(counters: "ErrorLog") -> "list[tuple[str, int]]":
 
 async def _run_scenario(rig: Rig, spec: "tuple[str, tuple[int, int, int], list[tuple[str, tuple[int, int, int], tuple[int, int, int], float]], int, int, bool]") -> None:
     name, entry, segments, min_switches, max_switches, both_ranges = spec
-    # Every scenario starts from a range it CHOSE, never the one _baseline()'s own level-20 light
-    # happened to leave behind. A scenario whose light sits inside the hysteresis band cannot derive
-    # its entry range - either one is stable there, which is what hysteresis means - so it declares
-    # the light that forces the one it wants, and this proves the part actually got there.
+    # Every scenario starts from a range it CHOSE, not whichever one _baseline()'s level-20 light
+    # left behind - inside the hysteresis band either range is stable, so a scenario declares the
+    # light that forces the one it wants and this proves the part actually got there.
     check(await _park(rig, entry), f"{name}: the entry light {entry} never settled on one range within {_PARK_TIMEOUT_S:.0f}s - the scenario's starting range is undefined")
     rig.reset_scenario(name)
     await rig.reader.reset_error_counter()
@@ -199,12 +198,9 @@ async def _run_scenario(rig: Rig, spec: "tuple[str, tuple[int, int, int], list[t
     entries = _log_entries(await rig.reader.get_error_counter())
     errors = [pair for pair in entries if pair[0] == "E"]
     check(not errors, f"{name}: the module logged real ERRORS: {errors}")
-    # W13 is the driver's own dead-interrupt detector: five range decisions IN A ROW made by the
-    # periodic safety net. That run of five is driver state (_periodic_only_switches) which no
-    # per-scenario reset touches - reset_error_counter() clears the log, not the counter - so it can
-    # legitimately span scenarios and blaming whichever one it surfaces in would be arbitrary. It is
-    # recorded here and asserted once per RUN in _main(), next to the check that enough switches
-    # happened for it to be reachable at all.
+    # W13 needs five periodic-path range decisions in a row, and that run lives in driver state
+    # (_periodic_only_switches) which reset_error_counter() does not touch - so it can span
+    # scenarios, and blaming the one it surfaces in would be arbitrary. Asserted once per run.
     if ("W", 13) in entries:
         w13_seen.append(name)
     check(rig.samples >= 3, f"{name}: only {rig.samples} samples arrived - the read chain stalled")

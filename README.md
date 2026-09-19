@@ -230,8 +230,9 @@ convenience (see `js/app.js`'s own docstring) — real firmware always serves ex
 definitions.json, never branches on a query param.
 
 All five CI-covered checks run in GitHub Actions CI (`.github/workflows/ci.yml`'s `web-lint-and-typecheck`/
-`web-unit-tests` jobs), gated by a `dorny/paths-filter` job so they only run when `html/`, `js/`,
-`tests_js/`, or their own tooling configs actually change — alongside, not replacing, the Python
+`web-unit-tests` jobs, plus `web-put-matrix` for the live PUT matrix, which is sharded three ways
+because that one file is the web tier's whole wall clock), gated by a `dorny/paths-filter` job so
+they only run when this push changed `html/`, `js/`, `tests_js/`, or their own tooling configs — alongside, not replacing, the Python
 jobs above, which keep gating on Python paths exactly as before. Config lives at the repo root
 (`eslint.config.js`, `tsconfig.json`, `vitest.config.js`, `.htmlvalidate.json`,
 `.stylelintrc.json`); see `SPECIFICATION.md` Part H.8 for the full role mapping and rationale. Vitest's

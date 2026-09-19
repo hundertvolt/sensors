@@ -212,12 +212,9 @@ async def _main() -> None:
 
         up = await _ascending(pixel, reader, wdt)
 
-        # The saturation detector must have set Overrange at full white - this rig really does
-        # exceed 10000 lx at ~20mm. Overrange is a live measurement-output field now, not a log
-        # entry (BACKLOG.md), so this checks the reader's own current data directly rather than
-        # the error/warning log. W13 is still checked via the log - one leg makes a couple of
-        # range decisions and that warning needs five in a row, so its absence is a guard, not a
-        # proof (see the scenarios script).
+        # Overrange must be set at full white - this rig really does exceed 10000 lx at ~20mm -
+        # and it is a live measurement field now, not a log entry, so the reader's own data is
+        # what to read. W13 stays a log check, and one leg cannot reach it: a guard, not a proof.
         entries, count = _log_entries(await reader.get_error_counter())
         notes.append(f"ascending-leg log: count={count} entries={entries}")
         check((await reader.get_data()).Overrange is True, "Overrange is not True after driving the part into hard saturation at full white - the saturation detector never fired")

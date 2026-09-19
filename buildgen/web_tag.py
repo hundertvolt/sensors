@@ -97,10 +97,9 @@ def _coerce_bool(raw: str, *, device: str, path: Path, lineno: int, instance_lab
 
 
 def _coerce_path(raw: str, *, device: str, path: Path, lineno: int, instance_label: str, field_name: str) -> "tuple[str, ...]":
-    # Dot-joined, not a literal JSON array (Section 9/SPECIFICATION.md Part H.5.1's own design
-    # note): _KV_RE only captures a single quoted-or-bare scalar per key=value pair, so a real
-    # array literal has no home in this grammar - splitting a plain string at consumption time
-    # (buildgen.definitions) fits the existing shape instead of growing a second value grammar.
+    # Dot-joined rather than a JSON array (Part H.5.1): _KV_RE captures one scalar per key=value
+    # pair, so an array literal has no home in this grammar. Splitting a plain string at
+    # consumption time fits the existing shape instead of growing a second value grammar.
     parts = tuple(raw.split("."))
     if not parts or any(not p for p in parts):
         raise BuildError(

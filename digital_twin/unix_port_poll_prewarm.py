@@ -9,13 +9,9 @@ import select
 import socket
 
 _DEFAULT_CEILING = 512  # ~28x every concurrent-registration count observed in this codebase's own
-# soak/stress testing (webserver max_connections=4, plus the fixed small set of background service
-# sockets - DNS/NTP/wifi - peaking around 18 in a deliberately adversarial 8-concurrent-client burst).
-# This workaround is still fundamentally a raised threshold, not an unconditional fix - see the
-# module docstring's "as long as real peak concurrent fd registrations never reach the ceiling again"
-# caveat - so the margin is deliberately generous rather than just-above-observed: measured at ~45ms
-# of one-time startup cost (well under a second, loopback-only, no realistic risk of exhausting the
-# host's fd limit), which is cheap enough that there is no real reason to cut it closer.
+# soak/stress testing: max_connections=4 plus the background service sockets, peaking near 18 in
+# an adversarial 8-client burst. Still a raised threshold rather than a fix, per the docstring's
+# caveat, so the margin is generous - ~45ms of one-time startup is cheap enough not to cut close.
 
 
 def prewarm_poll_set(ceiling: int = _DEFAULT_CEILING, port: int = 18099) -> None:
@@ -31,10 +27,9 @@ def prewarm_poll_set(ceiling: int = _DEFAULT_CEILING, port: int = 18099) -> None
     servers = []
     try:
         for _ in range(ceiling):
-            # Only the accepted server-side socket needs to stay registered to force pollfds
-            # growth - the client end's job is done once accept() completes, so close it
-            # immediately rather than holding ~2x ceiling fds open at once (peak fd count was
-            # exceeding the process's open-file limit, raising OSError EMFILE here).
+            # Only the accepted server-side socket has to stay registered to force pollfds
+            # growth; the client end is done once accept() returns. Closing it at once avoids
+            # holding ~2x the ceiling open, which was raising OSError EMFILE here.
             c = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             c.connect(addr)
             s, _peer = listener.accept()

@@ -81,12 +81,9 @@ _HANG_DEVICE_OPS = {
 
 
 def parse_hang_spec(spec: str) -> "tuple[str, str, float, int]":
-    # --hang DEVICE:OP:SECONDS[:TIMES] - a real, blocking time.sleep(SECONDS) (see
-    # _fault_injection.py's own module docstring for why this - not an exception - is the only way
-    # to faithfully simulate a genuinely wedged bus threatening the (simulated) watchdog. TIMES
-    # defaults to 1: a single multi-second hang is already the interesting case: real hardware in
-    # this state gets one 8388ms-capped window before the real WDT resets it, not an indefinite
-    # string of them.
+    # --hang DEVICE:OP:SECONDS[:TIMES] queues a real blocking sleep, which _fault_injection.py's
+    # docstring explains is the only faithful way to wedge a bus against the watchdog. TIMES
+    # defaults to 1, since real hardware gets one 8388ms window before the WDT resets it.
     parts = spec.split(":")
     if len(parts) not in (3, 4):
         raise ValueError(f"malformed --hang {spec!r} - expected DEVICE:OP:SECONDS[:TIMES]")
@@ -209,10 +206,9 @@ def _apply_hang(device: str, op: str, seconds: float, times: int, chips: "dict[s
 
 
 def _require_wired(device: str, chips: "dict[str, Any]") -> None:
-    # A name in the vocabulary above is not the same as a chip this run actually wired: this
-    # launcher's own wiring is fixed, and a generated device only carries the drivers its TOML
-    # declares. Without this the miss is a bare KeyError from inside the fault plumbing, naming
-    # nothing - the build-tooling "say exactly what and where" bar (SPECIFICATION.md Part L.5).
+    # A name in the vocabulary above is not the same as a chip this run wired: a generated device
+    # carries only the drivers its TOML declares. Without this the miss is a bare KeyError from
+    # inside the fault plumbing, naming nothing - short of Part L.5's say-what-and-where bar.
     if device not in chips:
         raise ValueError(f"--fault/--hang device {device!r} is in the known op vocabulary but is not wired on this run - wired here: {sorted(chips)}")
 
@@ -317,10 +313,9 @@ async def _wifi_watcher(wlan: "network.WLAN") -> None:
 
 
 async def _sensor_loop(i2c0: "I2C", i2c1: "I2C", summary: "dict[str, Any]") -> None:
-    # Each sensor's own read is isolated in its own try/except - a --fault-injected (or genuinely
-    # unlucky) bus error on one sensor must not stop this loop from continuing to poll the other
-    # two, matching this codebase's own established "one bad participant can't take down the rest"
-    # convention (e.g. src/system_service.py's _apply_level() per-setter try/except).
+    # Each sensor's read is isolated, so an injected or genuinely unlucky bus error on one does
+    # not stop the loop polling the others - the same "one bad participant cannot take down the
+    # rest" convention _apply_level()'s per-setter try/except follows.
     while True:
         try:
             scd30_reading = _read_scd30(i2c0)
@@ -353,13 +348,12 @@ async def _sensor_loop(i2c0: "I2C", i2c1: "I2C", summary: "dict[str, Any]") -> N
 
 async def main(config: "LaunchConfig") -> "dict[str, Any]":
     if config.seed is not None:
-        # MicroPython's `random` module has no instantiable Random class (confirmed directly:
-        # `random.Random` doesn't exist on the pinned build, unlike CPython) - every chip fake's own
-        # random_source=None default already falls back to this same module-level `random`, though,
-        # so reseeding its one shared global generator here gives every wired chip's value walk the
-        # same single seed without needing machine.configure_random_source()'s object-injection seam
-        # at all (that seam still exists for a caller that genuinely wants a distinct random.Random-
-        # shaped object - see its own docstring - just not needed for this simpler case).
+        # MicroPython's `random` has no instantiable Random class, unlike CPython - but every
+        # chip fake's random_source=None default already falls back to this same module-level
+        # generator, so reseeding it here seeds every wired chip's walk at once.
+
+        # configure_random_source()'s object-injection seam still exists for a caller that wants
+        # a distinct generator; this simpler case does not need it.
         import random as _random_module
 
         _random_module.seed(config.seed)
@@ -393,10 +387,9 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
         wlan.active(True)
         wlan.connect(_SSID, _PASSWORD)
     except OSError as e:
-        # A --fault wlan:... can target active()/connect() themselves - isolated the same way
-        # _sensor_loop() isolates each sensor's own read, so one faulted WLAN op still lets the
-        # WDT-feed/sensor-read loops run and the demo exit cleanly with a summary, instead of
-        # crashing main() before it ever gets there.
+        # A --fault wlan:... can target active()/connect() themselves, isolated the way
+        # _sensor_loop() isolates each read - so one faulted WLAN op still leaves the feed and
+        # read loops running and the demo exiting with a summary, rather than crashing main().
         print("WLAN: startup failed:", e)
 
     tasks = [
@@ -430,13 +423,12 @@ if __name__ == "__main__":
     try:
         asyncio.run(main(_config))
     except KeyboardInterrupt:
-        # Same MicroPython Unix-port asyncio.run()/KeyboardInterrupt gap run_generic_integration.py's
-        # identical handler works around (SPECIFICATION.md Part F.6, now defense in depth only per
-        # its amendment - Part B.14.1 forces safe SIGINT delivery for this project's own Unix-port
-        # build): a SIGINT landing inside gc_collect_start_common()'s window can leave the heap
-        # locked for the rest of the process, and main()'s own `finally` (which calls
-        # flush_fram()/flush_scd30()) cannot be relied on to run first - unwedge before touching
-        # either flush, or a --fram-state-path/--scd30-state-path run can fail to persist on exit.
+        # The Unix-port SIGINT gap run_generic_integration.py's identical handler works around
+        # (Part F.6, defense in depth only now that Part B.14.1 forces safe delivery): an
+        # interrupt inside the collector's window can leave the heap locked for the process.
+
+        # main()'s own `finally` cannot be relied on to run first, so unwedge before either
+        # flush, or a --fram-state-path run can fail to persist on exit.
         unwedge_heap_after_interrupt()
         machine.flush_fram()
         machine.flush_scd30()

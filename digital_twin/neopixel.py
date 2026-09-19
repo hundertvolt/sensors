@@ -4,10 +4,9 @@ Unlike WLAN, no behavioral change from the `tests/` shape was needed: real `NeoP
 from collections import deque
 
 _WRITES_MAXLEN = 200  # ad-hoc introspection aid, same shape as digital_twin/machine.py's own
-# I2C.log/SPI.log (see that file's own _LOG_MAXLEN comment for the full reasoning) - write() runs
-# on every tick of src/asy_neopixel_driver.py's own signal loop for the life of the process, so an
-# unbounded list here is the identical latent risk, found by the same session's own audit rather
-# than by reproducing a real failure for this specific one.
+# I2C.log/SPI.log (that file's _LOG_MAXLEN comment has the reasoning) - write() runs on every
+# tick of the signal loop for the life of the process, so an unbounded list is the identical
+# latent risk, found by the same audit rather than by reproducing a failure here.
 
 
 class NeoPixel:

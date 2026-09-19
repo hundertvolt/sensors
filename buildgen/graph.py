@@ -27,11 +27,9 @@ def build_construction_order(model: DeviceModel) -> "list[Node]":
     fram_target = device_wiring.get("fram_target")
     if fram_target is not None:
         fram_key = resolve_instance_key(model, fram_target)
-        # sysfunct/conn/ntp are all mandatory infra that implicitly inherit the device's FRAM chip
-        # when one is wired (SPECIFICATION.md Part C.14 / CLAUDE.md's implicit-FRAM-wiring rule) -
-        # each needs its constructor call emitted after fram's, so each depends on it here exactly
-        # like sysfunct already did. webserver needs no entry: it has no fixed-infra node in this
-        # graph at all (buildgen.codegen always emits it last, after every other construction line).
+        # sysfunct/conn/ntp are mandatory infra that inherit the device's FRAM chip implicitly
+        # (Part C.14), so each must be constructed after fram and depends on it here. webserver
+        # needs no entry: it has no node in this graph, codegen always emitting it last.
         deps["sysfunct"].add(fram_key)
         deps["conn"].add(fram_key)
         deps["ntp"].add(fram_key)

@@ -41,10 +41,9 @@ def test_config_value_survives_a_genuine_hard_reset(board: Board) -> None:
 
 
 # ---------------------------------------------------------------------------
-# This bench only ever flashes the refactored `src/` build (dev_boot.py frozen as "main.py") - never
-# the legacy `modules/_boot.py` mechanism BACKLOG.md's open question #1 covers. Verifies a genuine
-# hard reset brings the whole refactored application layer (ConfigManager/FRAM, not just the bare
-# interpreter) back up cleanly - no twin/mock backend can prove this.
+# This bench only flashes the refactored `src/` build (dev_boot.py frozen as "main.py"), never
+# the legacy `modules/_boot.py` mechanism of BACKLOG open question 1. Proves a real hard reset
+# brings the whole application layer back - ConfigManager/FRAM, not just the interpreter.
 # ---------------------------------------------------------------------------
 
 

@@ -24,6 +24,7 @@ _WORST_CASE_ALLOCATION = 16_384
 # That worst case fell to 2,048 B once both caps were bound (SPECIFICATION.md Part I.6). Not
 # re-derived on purpose: these are a regression tripwire with margin, not a restatement of the
 # requirement, so lowering them would only cost sensitivity.
+
 # Requirement, not a fitted floor: room for the worst case twice over. 32,768 B is 12% of the
 # RP2040's 264 KB SRAM, where the retired 80,000 B floor was 30% - a third of physical memory, which
 # is what the owner retired it for on 2026-09-19. Nothing here may be raised to fit a reading.

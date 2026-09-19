@@ -126,10 +126,9 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
 
 
 # ---------------------------------------------------------------------------
-# Compound fault: the same real bus contention above, but with real, light network degradation
-# also active - a real deployed unit experiences imperfect WiFi and concurrent client traffic
-# simultaneously, not as two separate incidents. Uses the same "everyday congestion" range as
-# test_network_resilience.py's light-congestion test, not the severe range (already proven survivable alone).
+# Compound fault: the bus contention above with light network degradation also active, since a
+# deployed unit meets imperfect WiFi and client traffic together, not as separate incidents. The
+# everyday-congestion range from test_network_resilience.py, not the severe one.
 # ---------------------------------------------------------------------------
 
 
@@ -193,10 +192,9 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
 
 
 # ---------------------------------------------------------------------------
-# Recombination test (project owner's request): real bus contention with a real transient NTP
-# outage (a guaranteed UDP-port block, not probabilistic degradation) running concurrently - proves
-# neither NTP's retry-timer machinery nor concurrent bus load disrupts the other, even though both
-# share the same event loop/task scheduler.
+# Recombination test (owner's request): real bus contention concurrent with a real transient NTP
+# outage - a guaranteed UDP-port block, not probabilistic degradation - so neither NTP's retry
+# timers nor the bus load disrupts the other despite sharing one event loop.
 # ---------------------------------------------------------------------------
 
 
@@ -275,10 +273,9 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
 
 
 # ---------------------------------------------------------------------------
-# Recombination test (project owner's request): real bus contention with repeated real WiFi
-# flapping (3x ap_down()/ap_up()) running concurrently - unlike the two compound tests above, this
-# actually disconnects/reconnects the real STA link, exercising wifi_mode_lock and
-# DNS/hotspot-bookkeeping teardown, not just a degraded link or a different subsystem's retry timer.
+# Recombination test (owner's request): real bus contention with repeated WiFi flapping (3x
+# ap_down()/ap_up()). Unlike the two compound tests above this really drops and re-raises the STA
+# link, so wifi_mode_lock and the DNS/hotspot teardown are exercised, not just a degraded link.
 # ---------------------------------------------------------------------------
 
 
@@ -359,13 +356,9 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
 
 
 # ---------------------------------------------------------------------------
-# Flash-tier parity (project owner's standing direction: flash-tier bus-hazard coverage is always a
-# subset of bench-tier coverage - whatever gets added to tests_hardware/flash/test_bus_concurrency.py
-# gets a bench-tier counterpart here too, driven through the real HTTP/REST stack instead of the bare
-# driver). Real-hardware, API-load counterpart to
-# tests_hardware/flash/test_bus_concurrency.py::test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads
-# (itself the real-hardware counterpart to tests/_bus_hazard_catalog.py's own
-# scenario_a_write_does_not_disturb_concurrent_sibling_reads).
+# Flash-tier parity, per Part C.8's standing rule: every flash-tier bus hazard gets a bench-tier
+# counterpart through the real HTTP/REST stack. This one answers test_bus_concurrency.py's
+# test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads.
 # ---------------------------------------------------------------------------
 
 _ISL29125_RESOLUTIONS = (12, 16)  # the only two real, valid settings (asy_isl29125_driver.py's own _RESOLUTIONS)
@@ -400,14 +393,12 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
                 _record(f"worker {worker_id} iter {i}: {finding}")
 
     def isl29125_write_worker() -> None:
-        # Systematically alternates between both real, valid settings - a real config WRITE landing
-        # concurrently with the GET workers' own reads, repeated several times over the run so
-        # genuine HTTP/scheduling jitter puts each write at a different real relative timing against
-        # the readers (the tier-appropriate substitute for the mock tier's own explicit
-        # asyncio.sleep(0)-count offset sweep - see tests_hardware/README.md's own account of why).
-        # Start away from whatever the board currently holds. An already-equal PUT is reported
-        # "Unchanged", and base_classes.py's _set_dict_cfg() pushes only "Valid" fields live - so
-        # that write would reach no hardware at all and exercise no hazard.
+        # Alternates between both valid settings so HTTP and scheduling jitter land each write at
+        # a different relative timing against the readers - this tier's substitute for the mock
+        # tier's explicit sleep(0)-offset sweep (tests_hardware/README.md).
+
+        # Starting away from the board's current value matters: an equal PUT reports "Unchanged"
+        # and _set_dict_cfg() pushes only "Valid" fields live, so it would reach no hardware.
         first = 1 if original_resolution == _ISL29125_RESOLUTIONS[0] else 0
         for i in range(_ISL29125_WRITE_CYCLES):
             value = _ISL29125_RESOLUTIONS[(first + i) % 2]
@@ -448,16 +439,9 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
     reset_all_error_logs(dut_ip)
 
 
-# SCD30 has NO bench-tier (or any REST-layer) counterpart for the write-vs-siblings hazard, and this
-# is a structural absence, not a scope gap: asy_scd30_driver.py registers zero _push_callbacks (see
-# test_sensor_config_push_over_real_hardware.py's own identical note), so there is no PUT /sensors
-# field that could ever reach SCD30's own NVM write at all - the flash tier's own
-# bus_concurrency_scd30_write_vs_siblings.py (gated behind BOTH --allow-persistence-writes AND
-# --allow-scd30-extra-write) is therefore the ONLY real-hardware coverage this specific hazard can
-# ever have, by construction of src/ itself.
-# The identical reasoning applies to SCD30's own SAME-device write-vs-own-read hazard too (flash
-# tier's bus_concurrency_same_device_scd30.py) - no REST field reaches it either, so that one has no
-# bench-tier counterpart for the same structural reason, not a second, separate gap.
+# SCD30's two write hazards have no bench-tier counterpart, and that is Part C.8's structural
+# exception 1 rather than a gap, because the driver registers no push callback at all - so no PUT
+# can reach its NVM write. The flash tier's gated scripts are their only real-hardware coverage.
 
 
 # ---------------------------------------------------------------------------
@@ -497,13 +481,13 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
                 _record(f"worker {worker_id} iter {i}: {finding}")
 
     def bmp3xx_write_worker() -> None:
-        # Same varied-offset spirit as the ISL29125 writer above, scaled to BMP3xx's own two-value
-        # discrete setting - alternates repeatedly so genuine HTTP/scheduling jitter puts each write
-        # at a different real relative timing against this SAME sensor's own concurrent GET reads
-        # (a same-device hazard, unlike the ISL29125 test's cross-occupant one).
-        # Same reason as the ISL29125 writer above - and PressOvers' own driver default is 1, which
-        # IS _BMP3XX_OVERSAMPLING_SETTINGS[0], so a board at defaults would otherwise spend its very
-        # first write on a no-op every single run.
+        # The ISL29125 writer's varied-offset approach, scaled to BMP3xx's two-value setting -
+        # but against this same sensor's own concurrent reads, a same-device hazard rather than a
+        # cross-occupant one.
+
+        # Starting away from the current value matters doubly here: PressOvers' driver default IS
+        # _BMP3XX_OVERSAMPLING_SETTINGS[0], so a board at defaults would spend its first write on
+        # a no-op every run.
         first = 1 if original_press_overs == _BMP3XX_OVERSAMPLING_SETTINGS[0] else 0
         for i in range(_ISL29125_WRITE_CYCLES):
             value = _BMP3XX_OVERSAMPLING_SETTINGS[(first + i) % 2]
@@ -540,15 +524,6 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
     reset_all_error_logs(dut_ip)
 
 
-# SGP40's general-call hazard (flash tier: sgp40_general_call_reset_hazard.py) has NO real bench-tier
-# coverage, and this is a structural absence found auditing this file against that one, not a scope
-# gap left unclosed: the real I2C general-call broadcast only fires from SGP40_I2C._reset(), which is
-# only ever called from initialize() - itself only invoked internally at driver setup/task-supervisor
-# restart, never exposed through any _push_callbacks/REST field. PUT /sensors {"SGP40":
-# {"SGPResetVOC": true}} (this file's own sgp40_reset_trigger_worker(), used by four tests above) does
-# NOT reach it - confirmed directly against source: reset_voc() only sets a flag consumed by the next
-# measure_index_and_raw(reset=True) call, which calls vocalgorithm_reset() (a software-only VOC
-# algorithm reset), never _reset(). There is currently no REST-reachable way to force a real SGP40
-# general-call broadcast on a live, already-running system at all, so no bench-tier test can exercise
-# this hazard without a real reboot mid-load (which would confound the very load being tested) -
-# recorded here explicitly rather than left implied by the superficially-similar-looking worker above.
+# SGP40's general-call hazard has no bench-tier counterpart either, and that is Part C.8's
+# structural exception 2: the broadcast fires only from _reset() at setup. SGPResetVOC, which the
+# workers above use and which looks like a trigger, reaches a software-only reset instead.

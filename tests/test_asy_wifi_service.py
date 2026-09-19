@@ -1453,6 +1453,45 @@ def test_poll_sta_connect_status_undefined_state_persists_wrnno_7() -> None:
     assert _last_err(counter, "ErrType") == "W"
 
 
+# BACKLOG item 35: one persisted slot per connect ATTEMPT empties the ten-slot ring in ten retries,
+# evicting whatever preceded the outage. The episode rule is per distinct code, not per episode as
+# asy_uart_comm.py's own _episode_wrn() is - see that module and SPECIFICATION.md Part C.7.1.
+
+
+def test_a_repeated_connect_verdict_persists_once_per_episode_however_often_the_outage_retries() -> None:
+    client = make_client()
+    run(client.pr.setup())
+    _wlan(client)._status = network.STAT_NO_AP_FOUND
+    for _attempt in range(10):
+        run(client._poll_sta_connect_status())
+    counter = run(client.get_error_counter())
+    assert [num for num in counter["WIFI"]["ErrNum"] if num] == [5], "ten retries must not spend ten slots"
+    assert counter["WIFI"]["ErrCount"] == 10, "...and must still be counted: ten failed attempts are ten events"
+
+
+def test_a_different_verdict_in_the_same_episode_still_persists() -> None:
+    client = make_client()
+    run(client.pr.setup())
+    for status in (network.STAT_NO_AP_FOUND, network.STAT_NO_AP_FOUND, network.STAT_WRONG_PASSWORD):
+        _wlan(client)._status = status
+        run(client._poll_sta_connect_status())
+    counter = run(client.get_error_counter())
+    # Exactly item 29's shape: a W4 beside a W5 on one outage must survive the dedup, since which
+    # of the two is right is the open question - collapsing to the first would destroy the evidence.
+    assert [num for num in counter["WIFI"]["ErrNum"] if num] == [5, 4]
+
+
+def test_a_successful_connection_ends_the_episode_so_a_later_outage_persists_again() -> None:
+    client = make_client()
+    run(client.pr.setup())
+    _wlan(client)._status = network.STAT_NO_AP_FOUND
+    run(client._poll_sta_connect_status())
+    client._on_sta_connected()
+    run(client._poll_sta_connect_status())
+    counter = run(client.get_error_counter())
+    assert [num for num in counter["WIFI"]["ErrNum"] if num] == [5, 5]
+
+
 def test_disconnect_sta_and_wait_exception_sets_hw_op_failed_and_persists_errno_15() -> None:
     client = make_client()
     run(client.pr.setup())

@@ -6,19 +6,16 @@ from typing import Any
 from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, BUS_ATTACHED_DRIVERS, FIXED_ADDRESS_DRIVERS
 from buildgen.model import DeviceModel, instance_label
 
-# scd30/sgp40/isl29125 carry no TOML `address` field (buildspec.py's own FIXED_ADDRESS_DRIVERS) -
-# their real I2C address is fixed in hardware, matching asy_scd30_driver.py's/asy_sgp40_driver.py's/
-# asy_isl29125_driver.py's own defaults - a twin-only named exception, not a broken generalization
-# promise (see README.md).
+# scd30/sgp40/isl29125 carry no TOML `address` field (buildspec.py's FIXED_ADDRESS_DRIVERS):
+# their I2C address is fixed in hardware, matching each driver's own default. A twin-only named
+# exception, not a broken generalization promise (see README.md).
 FIXED_ADDRESSES: "dict[str, int]" = {"scd30": 0x61, "sgp40": 0x59, "isl29125": 0x44}
 
 
 def _compute_uart_wiring(model: DeviceModel) -> "dict[str, str] | None":
-    # Which two already-constructed uart_link instances are the crossover pair, named by the exact
-    # generated Python variable each resolves to (instance_label() - the same identity
-    # buildgen.codegen._Ctx.instance_var() derives its own generated variable names from, so a
-    # caller can getattr(module, plan["uart"]["initiator_var"]) on the real booted module).
-    # None when the device has no uart_link instances at all (every device but "dev" today).
+    # Which two uart_link instances are the crossover pair, named by the generated Python
+    # variable each resolves to - the same identity instance_var() derives from, so a caller can
+    # getattr() it off the real booted module. None on every device but "dev" today.
     initiator_var: str | None = None
     responder_var: str | None = None
     for spec in model.instances.values():
@@ -56,10 +53,9 @@ def compute_twin_wiring(model: DeviceModel) -> "dict[str, Any]":
         elif spec.driver in FIXED_ADDRESS_DRIVERS:
             address = FIXED_ADDRESSES[spec.driver]
         else:
-            # Unreachable for today's real driver set (scd30/sgp40/bmp3xx/fram) - every
-            # BUS_ATTACHED_DRIVERS member is one of ADDRESS_CAPABLE_DRIVERS/FIXED_ADDRESS_DRIVERS/
-            # "fram" by buildspec.py's own definitions. Guards a future bus-attached driver added to
-            # buildspec.py without a matching FIXED_ADDRESSES entry here.
+            # Unreachable for today's driver set: every BUS_ATTACHED_DRIVERS member is address-
+            # capable, fixed-address or fram by buildspec.py's own definitions. This guards a
+            # future bus-attached driver added there without a FIXED_ADDRESSES entry here.
             raise ValueError(f"digital twin twin_wiring has no address rule for bus-attached driver {spec.driver!r} - add it to buildgen.twin_wiring.FIXED_ADDRESSES or ADDRESS_CAPABLE_DRIVERS")
         attachment: dict[str, Any] = {"driver": spec.driver, "name_ext": spec.name_ext, "address": address}
         if spec.driver in ("scd30", "isl29125"):

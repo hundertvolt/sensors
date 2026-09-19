@@ -22,10 +22,9 @@ def _assert_pass(output: str, what: str) -> None:
 
 @pytest.mark.persistence_write
 def test_scd30_same_device_read_write_concurrency_and_continuous_measurement_trigger(scd30_continuous_measurement_triggered: None) -> None:
-    # Declaring the fixture as a parameter is what actually runs it (pytest fixture semantics) -
-    # this test exists to give that one real NVM write its own clearly-named, first-to-run pass/
-    # fail surface, even though every other SCD30-dependent test below also (harmlessly, thanks to
-    # session-scoped caching) depends on the same fixture.
+    # Declaring the fixture as a parameter is what runs it. This test exists only to give that
+    # one real NVM write its own named, first-to-run pass/fail surface; the SCD30 tests below
+    # depend on the same session-scoped fixture and so pay nothing extra.
     pass
 
 
@@ -59,10 +58,9 @@ def test_bmp3xx_same_device_read_write_concurrency(board: Board) -> None:
 
 
 def test_isl29125_same_device_read_write_concurrency(board: Board) -> None:
-    # No NVM-write-budget dependency either, and for a stronger reason than BMP3xx's: the ISL29125
-    # has no on-chip non-volatile memory at all (FN8424 p7 calls its config registers volatile
-    # memory outright), so rewriting its configuration costs nothing. The sharper hazard here is
-    # the DESTRUCTIVE 0x08 status read, which a config write landing mid-cycle must not tear.
+    # No NVM-write budget at all here, unlike BMP3xx: FN8424 p7 calls the ISL29125's config
+    # registers volatile outright, so rewriting them costs nothing. The real hazard is the
+    # DESTRUCTIVE 0x08 status read, which a config write landing mid-cycle must not tear.
     output = board.run_isolated(DEVICE_SCRIPTS / "isl29125_same_device_rw_concurrency.py", timeout_s=90.0)
     _assert_pass(output, "ISL29125 same-device read/write concurrency check")
 
@@ -77,14 +75,9 @@ def test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours(board: Board
 
 @pytest.mark.persistence_write
 def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads(board: Board, scd30_continuous_measurement_triggered: None) -> None:
-    # Real-hardware counterpart to tests/_bus_hazard_catalog.py's own
-    # scenario_a_write_does_not_disturb_concurrent_sibling_reads (SPECIFICATION.md Part C.8):
-    # closes a real gap the generic mock-tier scenario surfaced - no prior real-hardware test proved
-    # a WRITE from one dev/i2c1 occupant landing concurrently with its siblings' own reads, only
-    # same-device write-vs-own-read and the SGP40 general-call broadcast case. Uses ISL29125 (a
-    # volatile config register, no NVM-write-budget concern) as the writer, not SCD30 - see
-    # bus_concurrency_isl29125_write_vs_siblings.py's own docstring for why SCD30 needs its own
-    # separate, opt-in, budget-capped test instead.
+    # Real-hardware counterpart to _bus_hazard_catalog.py's scenario_a (Part C.8), closing a gap
+    # that catalog surfaced: nothing here had proved one dev/i2c1 occupant's WRITE landing among
+    # its siblings' reads. ISL29125 writes because its registers are volatile; SCD30's is opt-in.
     output = board.run_isolated(DEVICE_SCRIPTS / "bus_concurrency_isl29125_write_vs_siblings.py", timeout_s=90.0)
     _assert_pass(output, "ISL29125 config-write-vs-concurrent-sibling-reads check")
 
@@ -92,13 +85,9 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads(board: 
 @pytest.mark.persistence_write
 @pytest.mark.scd30_extra_write
 def test_scd30_config_write_does_not_disturb_concurrent_sibling_reads(board: Board, scd30_continuous_measurement_triggered: None) -> None:
-    # The SCD30-as-writer half of the same real coverage gap - deliberately NOT part of the routine
-    # group (unlike the ISL29125 version above): this issues one ADDITIONAL real NVM-persisted SCD30
-    # write beyond the one scd30_continuous_measurement_triggered already spends, so it only runs
-    # when explicitly opted into (see conftest.py's --allow-persistence-writes/--allow-scd30-extra-write /
-    # this file's own bus_concurrency_scd30_write_vs_siblings.py docstring for the full budget
-    # reasoning). Deselected by tests_hardware/conftest.py's pytest_collection_modifyitems() unless
-    # BOTH flags are passed - no inline skip needed here.
+    # The SCD30-as-writer half of the same gap, deliberately outside the routine group: it spends
+    # one NVM write beyond the fixture's, so conftest.py's pytest_collection_modifyitems()
+    # deselects it unless BOTH --allow-persistence-writes and --allow-scd30-extra-write are given.
     output = board.run_isolated(DEVICE_SCRIPTS / "bus_concurrency_scd30_write_vs_siblings.py", timeout_s=90.0)
     _assert_pass(output, "SCD30 config-write-vs-concurrent-sibling-reads check")
 
@@ -136,25 +125,22 @@ def test_fram_cs_pin_hijack_fault_injection_and_recovery(board: Board) -> None:
 
 
 def test_fram_hard_reset_race_during_write_and_recovery(board: Board) -> None:
-    # Real hardware-reset race against an in-flight FRAM write - a genuinely different fault than
-    # the CS-hijack race above (a real RP2040-side machine.reset(), not a controlled SPI-protocol-
-    # level CS deselect) - see fram_reset_race_during_write_seed_and_race.py's own docstring for the
-    # full mechanism and its honest, deliberately-scoped-safe design.
+    # Real hardware-reset race against an in-flight FRAM write: a different fault from the
+    # CS-hijack above, since this is a real machine.reset() rather than a protocol-level deselect.
+    # fram_reset_race_during_write_seed_and_race.py's docstring has the mechanism.
     board.run_isolated_expect_reset(DEVICE_SCRIPTS / "fram_reset_race_during_write_seed_and_race.py", timeout_s=30.0)
-    # is_reachable() (not the presence-only is_device_present()), same established pattern
-    # test_reboot_persistence.py's own test_config_value_survives_a_genuine_hard_reset uses - the
-    # real, freshly-rebooted production firmware is about to be interrupted for the verify phase
-    # below anyway, so there's no live system here to avoid disturbing.
+    # is_reachable(), not the presence-only is_device_present() - the same pattern
+    # test_config_value_survives_a_genuine_hard_reset uses. The freshly-rebooted firmware is
+    # interrupted by the verify phase below anyway, so there is no live system to protect here.
     wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after the real reset-raced write")
     output = board.run_isolated(DEVICE_SCRIPTS / "fram_reset_race_during_write_verify_recovery.py", timeout_s=60.0)
     _assert_pass(output, "FRAM hard-reset race during write recovery check")
 
 
 # ---------------------------------------------------------------------------
-# SPECIFICATION.md Part F.5.1, on a live bus. Both claims were read out of the rp2 port's protocol
-# tables and faithfully modelled in tests/machine.py and digital_twin/machine.py - but a fake
-# agreeing with a fake proves nothing about silicon, which is what BACKLOG.md flagged this file as
-# the natural home for.
+# SPECIFICATION.md Part F.5.1, on a live bus. Both claims were read out of the rp2 port's own
+# protocol tables and modelled in tests/machine.py and digital_twin/machine.py - but a fake
+# agreeing with a fake proves nothing about silicon.
 # ---------------------------------------------------------------------------
 
 

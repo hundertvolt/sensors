@@ -45,10 +45,9 @@ def _link_counters(dut_ip: str) -> dict[str, int]:
 
 
 def _require_uart_modules(dut_ip: str) -> None:
-    # The link only exists in a firmware that contains asy_uart_comm, which a dev build made today
-    # does: devices/dev.toml's two `driver = "uart_link"` instances pull it in transitively via
-    # buildgen's dependency-driven frozen-module selection. Absent entries therefore mean a build
-    # to check, not a protocol failure.
+    # The link exists only in a firmware carrying asy_uart_comm, which devices/dev.toml's two
+    # `driver = "uart_link"` instances pull in through buildgen's dependency-driven module
+    # selection. Absent entries are therefore a build to check, not a protocol failure.
     present = get_errcount(dut_ip)
     missing = [name for name in _UART_MODULES if name not in present]
     if missing:
@@ -109,10 +108,9 @@ def test_the_link_stays_healthy_while_the_api_is_hammered(board: Board, dut_ip: 
 
 
 def test_real_transfers_complete_while_the_api_is_hammered(board: Board, dut_ip: str) -> None:
-    # The actual function test: "a transfer completes while the API is hammered". The two tests
-    # around it assert the link logged no errors, which an idle link also satisfies - this one
-    # requires the link to have moved bytes during the load window, and to have moved them without
-    # a single failed attempt.
+    # The actual function test: a transfer completes while the API is hammered. Its two
+    # neighbours assert the link logged no errors, which an idle link satisfies too; this one
+    # requires bytes moved during the load window, with no failed attempt.
     _require_uart_modules(dut_ip)
     before = _link_counters(dut_ip)
 

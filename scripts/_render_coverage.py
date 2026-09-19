@@ -53,10 +53,9 @@ def main() -> int:
     data.add_lines(merged_hits)
     data.write()
 
-    # Anchoring the report to every src/*.py file (not just ones a raw dump happened to mention)
-    # is what makes an entirely untested src/ file show up as a real 0% row instead of silently
-    # not appearing in the report at all -- confirmed directly against coverage.py's own morfs=
-    # handling.
+    # Anchoring the report to every src/*.py file, not only those a raw dump happened to
+    # mention, is what makes an entirely untested file appear as a real 0% row rather than not
+    # at all - confirmed against coverage.py's own morfs= handling.
     src_files = sorted(os.path.abspath(p) for p in glob.glob(os.path.join(repo_root, args.src_dir, "*.py")))
 
     cov = coverage.Coverage(data_file=data_path)
