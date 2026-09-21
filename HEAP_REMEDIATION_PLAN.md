@@ -629,10 +629,12 @@ milliseconds ... about 1ms on the Pyboard" per the pinned docs; boot latency is 
 (run 2026-09-18, results in §1A's rows and `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D); §1B covers
 measure B, **closed 2026-09-19** — P1 through P5 all confirmed, §7G's replacement checks passing
 with 5.5x margin on their first run, and the bench tier fully clean for the first time (§7H). The
-measure-B handover that drove it has been deleted, per its own stated condition. Its successor,
-`REAL_HARDWARE_HANDOVER_WEBSERVER_BODY_CAP.md` (queue §1D), covers the one piece of this branch
-that has still never run on hardware: the Part I.6 request-body cap. The boxes below stay here as this
-plan's own record; a session at the bench should work those two.
+measure-B handover that drove it has been deleted, per its own stated condition, and so is its
+successor — the Part I.6 request-body cap it covered has since run green on silicon and **queue §1D
+is fully closed** (§7J). The live handover is now `REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md`
+(queue **§1E**), the board half of section C: the placement reading the board has never taken,
+because its device script dumps no seam map. The boxes below stay here as this plan's own record;
+a session at the bench should work §1E and whichever T-rows below are still open.
 
 - [~] **T.1 Tripwire — RUN, both columns, one residue** (§7F.1 [HW]). A: 20,592 → 28,864 B in-suite,
       +40.2 % (§7D.3). A + B: **PASSES in-suite**, the first image ever to, against a BEFORE arm

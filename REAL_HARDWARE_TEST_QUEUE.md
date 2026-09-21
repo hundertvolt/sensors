@@ -106,8 +106,10 @@ suffices** — this branch's own tip.
    CLAUDE.md's rule, and it has cost real evidence twice now (§2A F9).
 2. **One full bench-tier run at default flags** — `scripts/run_bench_hardware_suite.sh`, no
    arguments. Owner's instruction, 2026-09-19. It covers the flash tier too, excludes the soak
-   unconditionally, and leaves every wear gate off. **This alone is the sitting's mandate**;
-   `REAL_HARDWARE_HANDOVER_POST_MERGE_BENCH_RUN.md` is its runnable form and says how to read W5.
+   unconditionally, and leaves every wear gate off. **This alone is the sitting's mandate.** The
+   handover that used to carry its runnable form is deleted, its results migrated into MEASUREMENTS
+   §7I/§7J; `tests_hardware/README.md` is the standing technical reference for running it, and W5
+   needs no special reading any more — §1D closed it green three times over.
 3. **F1's SSID script** (`wifi_service_reconnect_repro.py`), fixed but never run since. Read §2A F1
    in full first: this is the script that stranded the bench, and the fix is structural.
 4. **R9 / R13 / R15** — independent of everything above, and none of them needs D1.

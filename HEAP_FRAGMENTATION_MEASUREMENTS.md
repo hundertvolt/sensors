@@ -3557,7 +3557,8 @@ else in §7D depends on it; A's layout result (§7D.3) is a different measuremen
 ## 7I. The post-merge full bench run (2026-09-19, owner's instruction — COMPLETE)
 
 One full bench-tier run at default flags, no arguments, no wear flags, no soak — the mandate of
-`REAL_HARDWARE_HANDOVER_POST_MERGE_BENCH_RUN.md`, run after the branch merged 22 commits of base
+`REAL_HARDWARE_HANDOVER_POST_MERGE_BENCH_RUN.md` (since deleted, its results being these), run
+after the branch merged 22 commits of base
 plus the `arduino/` import and the ISL29125 promotion. The verdict line in full:
 
 ```
