@@ -768,7 +768,13 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   `scripts/build_firmware.py`, `scripts/_require_clean_hardware_run.sh`,
   `scripts/run_digital_twin_ci.sh`, `scripts/run_unix_port_integration.sh`,
   `scripts/_digital_twin_ci_suite.py` (test orchestration only - no build step, so the chroot legs
-  neither exercise nor are threatened by it), `pyproject.toml` (+159), and on the web side
+  neither exercise nor are threatened by it),
+  **`toolchain/setup_toolchain.py` (2026-09-21: `build_unix_port()` now builds TWO variants -
+  `build-standard` without `MICROPY_PY_SYS_SETTRACE` as the test rig, `build-settrace` with it for
+  `--coverage` only - so a from-scratch chroot run builds the Unix port twice and takes
+  correspondingly longer; `scripts/test.sh` picks the binary by mode and hard-fails if the one it
+  needs is absent, which is the single most likely way a reused chroot breaks here)**,
+  `pyproject.toml` (+159), and on the web side
   `package.json`/`vitest.config.js`/`eslint.config.js` (2026-09-19's PUT-matrix split - npm scripts
   and a build-time define, which `env --tier generic` installs through but does not compile),
   and - the class the lint/typecheck recipe never exercises at all - `toolchain/setup_toolchain.py`

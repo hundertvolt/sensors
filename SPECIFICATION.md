@@ -706,12 +706,15 @@ uv run toolchain/setup_toolchain.py test                          # re-verify ex
 `setup` is the default subcommand; `test` skips network/apt and re-verifies an existing install.
 `--toolchain-dir`/`--jobs` apply to both; the rest are `setup`-only. `scripts/test.sh` exposes
 `--skip-apt` as `SKIP_APT=1`. No venv needed — `uv run` provisions an ephemeral interpreter (B.8).
-Both subcommands also build/verify a Unix-port interpreter, always with
-`MICROPY_PY_SYS_SETTRACE=1`, so one binary backs both plain `scripts/test.sh` and `--coverage`
-(E.5). RP2040 firmware never gets this flag. **Not inert when unused** (measured 2026-09-18,
-corrected here and in CLAUDE.md): the flag makes the VM allocate a frame and a code object on every
-call and every generator resume, callback or not, inflating every allocation figure measured under
-this binary 4-5x relative to the firmware — see HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7.
+Both subcommands also build/verify **two** Unix-port interpreters (owner decision, 2026-09-21):
+`build-standard` **without** `MICROPY_PY_SYS_SETTRACE` — the test rig, what plain `scripts/test.sh`
+runs — and `build-settrace` with it, which only `scripts/test.sh --coverage` uses (E.5). RP2040
+firmware never gets the flag either way. **The flag is not inert when unused** (measured
+2026-09-18), which is why the two cannot share one build: it makes the VM allocate a frame and a
+code object on every call and every generator resume, callback or not, inflating every allocation
+figure 4-5x relative to the firmware — see HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7. Since
+the split, the plain suite's figures are the firmware's own scale, and the heavy files run faster
+for the same reason (`test_sensortask_wozi.py` 24.6s → 9.3s).
 
 **Prerequisites**: `sudo`; outbound network to GitHub/apt; `uv`; Ubuntu's `universe` component
 (default on real Ubuntu images — `gcc-arm-none-eabi` lives there).
@@ -754,6 +757,7 @@ constructed environment, never the caller's shell wholesale:
   micropython/             full clone at the pinned ref
     ports/rp2/build-<board>/    transient - removed after verification
     ports/unix/build-standard/  host-side interpreter build - the standing test-rig artifact
+    ports/unix/build-settrace/  the same, plus MICROPY_PY_SYS_SETTRACE - `--coverage` only
     mpy-cross/build/            cross-compiler build output
   pico-sdk/                full clone at the ref MicroPython pins
   picotool/                full clone at the derived matching tag; built + sudo make install'ed

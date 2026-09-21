@@ -85,7 +85,15 @@ for arg in "$@"; do
 done
 
 toolchain_dir="${PICO_TOOLCHAIN_DIR:-$HOME/pico-toolchain}"
-micropython_bin="$toolchain_dir/micropython/ports/unix/build-standard/micropython"
+# Two variants, built together by setup_toolchain.py. The plain run takes the settrace-FREE one:
+# compiling MICROPY_PY_SYS_SETTRACE in allocates a frame and a code object per call and per
+# generator resume, inflating every allocation figure 4-5x (SPECIFICATION.md Part E.5.1).
+unix_dir="$toolchain_dir/micropython/ports/unix"
+if [ "$coverage" = "1" ]; then
+    micropython_bin="$unix_dir/build-settrace/micropython"   # --coverage needs sys.settrace itself
+else
+    micropython_bin="$unix_dir/build-standard/micropython"
+fi
 
 if [ ! -x "$micropython_bin" ]; then
     echo "MicroPython Unix port not found at $micropython_bin - building it now" >&2
@@ -94,6 +102,12 @@ if [ ! -x "$micropython_bin" ]; then
         skip_apt_flag=(--skip-apt)
     fi
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
+fi
+if [ ! -x "$micropython_bin" ]; then
+    # A toolchain dir built before the two variants were split has only build-standard, and that
+    # one carries settrace - so --coverage would run against a binary that no longer exists here.
+    echo "error: $micropython_bin is still missing after setup - rebuild with --clean" >&2
+    exit 1
 fi
 
 # TEST_PARALLELISM: how many test_*.py files run at once. Each file is already a fully isolated

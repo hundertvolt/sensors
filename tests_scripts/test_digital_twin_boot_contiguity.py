@@ -25,9 +25,9 @@ from heap_map import HeapMap, delta, parse_labelled
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-# scripts/test.sh's own MICROPYPATH and heap size, so this measures what the suite measures. The
-# heap size is deliberately NOT calibrated to a fill fraction: every bound below is an absolute
-# offset above the seam, and those were measured byte-identical at 8M and 16M.
+# scripts/test.sh's own MICROPYPATH, heap size and interpreter, so this measures what the suite
+# measures. The heap size is deliberately NOT calibrated to a fill fraction: every bound below is
+# an absolute offset from the seam, and those proved heap-size independent at 8M and 16M.
 _MICROPYPATH = "build/generated_src:src:tests:frozen_modules:.frozen"
 _HEAPSIZE = "16M"
 _PROBE = "tests/_boot_contiguity_probe.py"
@@ -44,18 +44,28 @@ _CONTROL_DEVICES = ("wozi", "dev")
 _REQUIRED_MAPS = ("baseline", "batch_00", "after_batch", "after_starter_loop_end")
 
 # Every bound is the worst reading measured across all six devices with the collects live, times a
-# margin, and each sits at least 2.6x below the best reading the suppressed arm produced. Twin units
-# (32 B blocks, x86-64) and twin-only - the board's own tripwire stays the hardware test.
-_BATCH_REACH_MAX = 640 * 1024  # worst live 278,688 (2.35x); best suppressed 2,103,008 (3.21x above)
-_BATCH_MEDIAN_MAX = 192 * 1024  # worst live 45,056 (4.36x); best suppressed 1,174,880 (5.98x above)
-_BOOT_REACH_MAX = 1280 * 1024  # worst live 633,344 (2.07x); best suppressed 3,530,208 (2.69x above)
-_BOOT_MEDIAN_MAX = 192 * 1024  # worst live -55,744, below the seam entirely; suppressed 1,213,632
+# margin, with the best suppressed reading on the other side of it. Twin units (32 B blocks,
+# x86-64) and twin-only - the board's own tripwire stays the hardware test.
+#
+# These were re-derived on the settrace-FREE interpreter (SPECIFICATION.md Part E.5.1). On the old
+# settrace build the batch's own REACH above the seam discriminated 7.5x; without the 4-5x
+# allocation inflation the batch no longer pushes the frontier at all - 8,160 B in BOTH arms on
+# four of six devices - so that metric is gone. What survives, and is stronger, is how deep the new
+# blocks go BELOW the seam, plus the whole boot sequence's reach once the starter list has run
+# (§7E.3: the starter list is where most of measure B's value is).
 
-# How many newly allocated blocks may sit more than this far above the seam. Measured zero on every
-# device with the collects live and 1,110+ without, so the slack is for one future large allocation
-# that genuinely cannot fit a low hole, not for a drift in placement.
-_HIGH_BAND = 512 * 1024
-_HIGH_BAND_BLOCKS_MAX = 256
+# The batch's median new block must sit at least this far BELOW the seam's top survivor.
+_BATCH_MEDIAN_DEPTH_MIN = 300 * 1024  # worst live 452,832 (1.47x); best suppressed 218,528 (1.41x under)
+
+# Both lists together: the highest new block, and the median's depth.
+_BOOT_REACH_MAX = 64 * 1024  # live 16,352 on every device (4.0x); best suppressed 141,632 (2.16x over)
+_BOOT_MEDIAN_DEPTH_MIN = 256 * 1024  # worst live 356,576 (1.36x); best suppressed 108,352 (2.42x under)
+
+# How many blocks newly allocated by the whole sequence may sit more than this far above the seam.
+# Measured zero on every device with the collects live and 98+ without, so the slack is for one
+# future large allocation that genuinely cannot fit a low hole, not for a drift in placement.
+_HIGH_BAND = 128 * 1024
+_HIGH_BAND_BLOCKS_MAX = 32
 
 # Retention must be arm-independent: the collects change WHERE the next survivor is born, never how
 # much survives (MEASUREMENTS 7A.1's finding, which reproduces here at 0.05%). 1% is 19x that.
@@ -158,11 +168,8 @@ def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str, str
     # of landing above the churn's high-water mark. Suppressing them moves this by 7.5x or more.
     maps = boot_probe(device, _ARM_LIVE).maps
     seam, after = maps["batch_00"], maps["after_batch"]
-    reach, median = _reach(seam, after), _median(seam, after)
-    high = _blocks_above(seam, after, _HIGH_BAND)
-    assert reach <= _BATCH_REACH_MAX, f"{device}: the setup batch's highest new block sits {reach} B above the seam, over the {_BATCH_REACH_MAX} B bound - a collect is missing, or no longer resets placement"
-    assert median <= _BATCH_MEDIAN_MAX, f"{device}: the median new block sits {median} B above the seam, over the {_BATCH_MEDIAN_MAX} B bound"
-    assert high <= _HIGH_BAND_BLOCKS_MAX, f"{device}: {high} new blocks sit more than {_HIGH_BAND} B above the seam, over the {_HIGH_BAND_BLOCKS_MAX} allowed"
+    depth = -_median(seam, after)
+    assert depth >= _BATCH_MEDIAN_DEPTH_MIN, f"{device}: the setup batch's median new block sits only {depth} B below the seam, under the {_BATCH_MEDIAN_DEPTH_MIN} B bound - a collect is missing, or no longer resets placement"
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -172,9 +179,11 @@ def test_the_whole_boot_sequence_places_its_survivors_low(boot_probe: Callable[[
     # the run phase undoes most of the gain within ~2 s and the position stops discriminating (7F.9).
     maps = boot_probe(device, _ARM_LIVE).maps
     seam, after = maps["batch_00"], maps["after_starter_loop_end"]
-    reach, median = _reach(seam, after), _median(seam, after)
+    reach, depth = _reach(seam, after), -_median(seam, after)
+    high = _blocks_above(seam, after, _HIGH_BAND)
     assert reach <= _BOOT_REACH_MAX, f"{device}: the whole boot sequence's highest new block sits {reach} B above the seam, over the {_BOOT_REACH_MAX} B bound"
-    assert median <= _BOOT_MEDIAN_MAX, f"{device}: the median new block sits {median} B above the seam, over the {_BOOT_MEDIAN_MAX} B bound"
+    assert depth >= _BOOT_MEDIAN_DEPTH_MIN, f"{device}: the median new block sits only {depth} B below the seam, under the {_BOOT_MEDIAN_DEPTH_MIN} B bound"
+    assert high <= _HIGH_BAND_BLOCKS_MAX, f"{device}: {high} new blocks sit more than {_HIGH_BAND} B above the seam, over the {_HIGH_BAND_BLOCKS_MAX} allowed"
 
 
 @pytest.mark.parametrize("device", _CONTROL_DEVICES)
@@ -183,11 +192,12 @@ def test_suppressing_the_emitted_collects_breaks_both_bounds(boot_probe: Callabl
     # stops forwarding to the real collect, which is what deleting the emitted lines would do.
     # A bound the broken configuration also satisfies is not a guard.
     maps = boot_probe(device, _ARM_SUPPRESSED).maps
-    seam = maps["batch_00"]
-    batch_reach = _reach(seam, maps["after_batch"])
-    boot_reach = _reach(seam, maps["after_starter_loop_end"])
-    assert batch_reach > _BATCH_REACH_MAX, f"{device}: with every emitted collect suppressed the batch still stayed inside the {_BATCH_REACH_MAX} B bound (reach {batch_reach} B) - the bound no longer detects the defect it exists for"
+    seam, after = maps["batch_00"], maps["after_starter_loop_end"]
+    batch_depth = -_median(seam, maps["after_batch"])
+    boot_reach, boot_high = _reach(seam, after), _blocks_above(seam, after, _HIGH_BAND)
+    assert batch_depth < _BATCH_MEDIAN_DEPTH_MIN, f"{device}: with every emitted collect suppressed the batch's median still sat {batch_depth} B below the seam, past the {_BATCH_MEDIAN_DEPTH_MIN} B bound - the bound no longer detects the defect it exists for"
     assert boot_reach > _BOOT_REACH_MAX, f"{device}: with every collect suppressed the whole boot sequence still stayed inside the {_BOOT_REACH_MAX} B bound (reach {boot_reach} B)"
+    assert boot_high > _HIGH_BAND_BLOCKS_MAX, f"{device}: with every collect suppressed only {boot_high} new blocks sat more than {_HIGH_BAND} B above the seam, still inside the {_HIGH_BAND_BLOCKS_MAX} allowed"
 
 
 @pytest.mark.parametrize("device", _CONTROL_DEVICES)

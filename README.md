@@ -47,7 +47,7 @@ works with no subcommand named. Full `setup` flag reference:
 | `--micropython-ref REF` | Build a specific MicroPython tag/ref instead of `toolchain/versions.toml`'s pinned one |
 | `--latest` | Detect the newest stable MicroPython release, pin `versions.toml` to it, then build that |
 | `--skip-apt` | Skip installing system/apt packages (assumes they're already present) |
-| `--clean` | Wipe all build-artifact directories (`picotool/build`, `mpy-cross/build`, `ports/rp2/build-<board>`, `ports/unix/build-standard`) before building, without re-cloning git sources |
+| `--clean` | Wipe all build-artifact directories (`picotool/build`, `mpy-cross/build`, `ports/rp2/build-<board>`, and both Unix-port variants `ports/unix/build-standard` and `ports/unix/build-settrace`) before building, without re-cloning git sources |
 | `--toolchain-dir PATH` | Directory holding the micropython/pico-sdk/picotool source trees (default: `$PICO_TOOLCHAIN_DIR` or `~/pico-toolchain`) |
 | `--jobs N` | Parallel make jobs (default: `os.cpu_count()`) |
 

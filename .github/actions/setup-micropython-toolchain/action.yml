@@ -16,6 +16,24 @@ runs:
     - name: Install uv
       shell: bash
       run: pip install uv
+    # Every caller reaches `uv run` sooner or later, and that implicitly builds the WHOLE dev group
+    # first - actionlint-py among them, which ships no wheel and fetches its binary inside its own
+    # build backend, so one bad response fails a lane on a tree where nothing is wrong.
+    # Observed: HTTP 500 on 2026-09-13 (unit-tests), 504 on 2026-09-14, and HTTP 500 on 2026-09-21
+    # in firmware-build-verify - that last one turned CI red on a docs-only commit, because the
+    # retry then existed only in the four lint lanes and in unit-tests, never in the five jobs that
+    # reach uv through this action. Retrying here covers all of them in one place, which is what
+    # this action is for. unit-tests/unit-tests-coverage keep their own copy as well: a second sync
+    # against a current environment is a no-op, and CLAUDE.md says not to simplify that one away.
+    - name: Sync dev dependencies (retried - third-party build downloads are not always up)
+      shell: bash
+      run: |
+        for attempt in 1 2 3; do
+            uv sync && exit 0
+            echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+            sleep $((attempt * 10))
+        done
+        uv sync
     - name: Cache MicroPython Unix port build
       uses: actions/cache@v6
       with:

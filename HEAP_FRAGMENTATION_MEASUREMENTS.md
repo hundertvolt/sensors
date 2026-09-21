@@ -4088,7 +4088,13 @@ to the real collect **only on the live arm**. One instrument, both arms, no seco
 measures and cannot hit §7F.8's own pinning artefact. The metrics are byte offsets relative to the
 seam's top survivor: reach (max), median, and the count above a 512 KiB band.
 
-### 7L.3 The bounds, and what they are 2-4x away from
+### 7L.3 The bounds as first derived, on the settrace binary — SUPERSEDED by 7L.7
+
+> **These figures are the settrace build's.** §11 item 0 was taken on 2026-09-21 and the plain
+> suite moved to a settrace-free interpreter, on which the headline metric here **stops
+> discriminating altogether**. The shipped bounds are §7L.7's; everything below is kept because it
+> is what the metric choice was originally argued from, and because the contrast is the clearest
+> statement of how much the flag distorted these numbers.
 
 Six devices, three repeats. **The batch figures are byte-identical across repeats**; the cumulative
 ones vary ~4% with task scheduling.
@@ -4151,6 +4157,45 @@ count, which makes the anchor's existence a separate assertion. Re-verified: 6 f
   `mem_info(1)` goes to the platform print rather than `sys.stdout`, so an in-process MicroPython
   test structurally cannot read its own map, and `heap_map.py` is host CPython. Plan C is annotated
   with this.
+
+### 7L.7 Re-derived on the settrace-free interpreter, and the metric had to change (2026-09-21)
+
+§11 item 0 was answered — two Unix-port binaries, the plain suite on the flag-free one — and the
+guard was re-measured on it before anything was believed. **The control arm caught the problem by
+itself**: on the new binary the two `test_suppressing_the_emitted_collects_breaks_both_bounds`
+cases were the only failures, reporting a suppressed-arm batch reach of **77,664 B against a
+655,360 B bound**. A guard whose broken configuration also passes is not a guard, and it said so.
+
+**Why the old metric died.** Without the 4-5x allocation inflation the setup batch no longer pushes
+the allocation frontier at all: its reach above the seam is **8,160 B in BOTH arms** on arzi,
+klkizi, grkizi and schlafzi — byte-identical, zero discrimination — and 8,160 against 12,192 on
+wozi. The batch's churn was never the signal; the settrace frame/code objects were most of what
+made it look like one.
+
+**What survives, measured across all six devices, three repeats each.** The batch figures are again
+byte-identical across repeats; the cumulative ones vary a few percent with task scheduling.
+
+| position | metric | worst live | best suppressed | bound | margin / headroom |
+|---|---|---|---|---|---|
+| batch | median **depth below** seam | 452,832 | 218,528 | 300 KiB | 1.47x / 1.41x |
+| both lists | reach above seam | 16,352 (every device) | 141,632 | 64 KiB | 4.0x / 2.16x |
+| both lists | median depth below seam | 356,576 | 108,352 | 256 KiB | 1.36x / 2.42x |
+| both lists | blocks > 128 KiB up | **0** everywhere | 98 | 32 | — / 3.06x |
+
+Two things follow. **The discrimination moved to the starter list**, which is §7E.3's finding
+arriving from the other direction: the batch alone barely moves the frontier once its churn is real
+rather than inflated, while the starter list's 22 tasks still do — 16,352 B live against 141,632 B
+suppressed. And **depth below the seam is the better metric anyway**: it is a median, so no single
+large allocation can move it, and it measures placement directly rather than through the frontier.
+
+**Re-verified by injection on the new binary**, not assumed: removing the per-module collect from
+`codegen.py` fails **13** of the 22 tests (batch placement on all six devices, the whole sequence on
+dev, and the count check on all six). Reverted afterwards.
+
+**One side effect worth recording.** The flag-free interpreter is also faster where it matters:
+`test_sensortask_wozi.py` 24.60s → 9.26s (2.7x), `test_system_service.py` unchanged within noise,
+`test_asy_wifi_service.py` 114.29s → 114.25s — the wait-bound file does not move, which is exactly
+what a per-call allocation cost predicts.
 
 ---
 
@@ -4333,9 +4378,14 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
 ## 11. Decisions put to the owner — the answered ones keep their answer in place
 
 Answered items stay here with the answer stated at their top rather than being deleted, so a
-later reader sees what was decided and on what evidence. **Still open: item 0 only.**
+later reader sees what was decided and on what evidence. **Nothing is open here any more.**
 
-0. **Build the twin/test interpreter without `MICROPY_PY_SYS_SETTRACE`** (§1.2 item 7) — a second
+0. **Build the twin/test interpreter without `MICROPY_PY_SYS_SETTRACE`** (§1.2 item 7).
+   **ANSWERED, owner, 2026-09-21: build it.** Done: `toolchain/setup_toolchain.py` builds
+   `build-standard` (flag-free, the rig) and `build-settrace` (`--coverage` only), and
+   `scripts/test.sh` picks by mode. It is **not** a second test run — the suite runs once, against a
+   different binary — and the allocation-heavy files got faster with it (§7L.7). The guard's own
+   bounds had to be re-derived on it, which §7L.7 records. Original framing: a second
    binary for `scripts/test.sh`, `--coverage` keeping its own. Every allocation figure the twin
    produces today, the memory-safety suite's included, carries a per-call and per-resume cost the
    firmware does not have. Touches `toolchain/setup_toolchain.py` and `scripts/`, so it owes

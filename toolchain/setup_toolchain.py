@@ -314,24 +314,37 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest
     return uf2
 
 
-def build_unix_port(micropython_dir: Path, toolchain_dir: Path, jobs: int, frozen_manifest: Path | None = None) -> Path:
-    """Builds the standard Unix port variant; needs mpy-cross, takes frozen_manifest like
-    build_firmware(). Always MICROPY_PY_SYS_SETTRACE=1, so one binary backs plain and --coverage
-    runs, and always apply_unix_kbd_intr_override() for the safe SIGINT path (Part B.14.1)."""
-    label = "with the frozen verification module" if frozen_manifest else "standard, unchanged"
+# The two Unix-port variants and what each backs. The plain test rig is settrace-FREE: with
+# MICROPY_PY_SYS_SETTRACE compiled in, py/vm.c allocates a frame and a code object per call and per
+# generator resume, inflating every allocation figure 4-5x (SPECIFICATION.md Part E.5.1).
+UNIX_BUILD_DIR = "build-standard"
+UNIX_SETTRACE_BUILD_DIR = "build-settrace"
+
+
+def build_unix_port(micropython_dir: Path, toolchain_dir: Path, jobs: int, frozen_manifest: Path | None = None, *, settrace: bool = False) -> Path:
+    """Builds a Unix port variant; needs mpy-cross, takes frozen_manifest like build_firmware().
+    settrace=False is the test rig, True is --coverage's own binary (see the constants above).
+    Always apply_unix_kbd_intr_override() for the safe SIGINT path (Part B.14.1)."""
+    variant = "settrace, for --coverage" if settrace else "settrace-free, the test rig"
+    label = f"{variant}, with the frozen verification module" if frozen_manifest else variant
     log(f"Building the MicroPython Unix port ({label})")
     unix_dir = micropython_dir / "ports" / "unix"
-    build_dir = unix_dir / "build-standard"
+    build_dir = unix_dir / (UNIX_SETTRACE_BUILD_DIR if settrace else UNIX_BUILD_DIR)
     if build_dir.exists():
         shutil.rmtree(build_dir)
     overrides_dir = toolchain_dir / "build_overrides"
     override_make_vars = micropython_overrides.apply_unix_kbd_intr_override(micropython_dir, overrides_dir)
+    # BUILD= only for the non-default variant: the Makefile's own `BUILD ?= build-$(VARIANT)`
+    # already lands the settrace-free rig in build-standard, which every other script resolves.
+    settrace_flag = "-DMICROPY_PY_SYS_SETTRACE=1 " if settrace else ""
     make_cmd = [
         "make",
         f"-j{jobs}",
-        f"CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=1 {_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND}",
+        f"CFLAGS_EXTRA={settrace_flag}{_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND}",
         *(f"{key}={value}" for key, value in override_make_vars.items()),
     ]
+    if settrace:
+        make_cmd.append(f"BUILD={UNIX_SETTRACE_BUILD_DIR}")
     if frozen_manifest is not None:
         make_cmd.append(f"FROZEN_MANIFEST={frozen_manifest}")
     out = run(make_cmd, cwd=unix_dir, env=build_env())
@@ -357,7 +370,8 @@ def clean_build_dirs(toolchain_dir: Path, board: str) -> None:
         toolchain_dir / "picotool" / "build",
         toolchain_dir / "micropython" / "mpy-cross" / "build",
         toolchain_dir / "micropython" / "ports" / "rp2" / f"build-{board}",
-        toolchain_dir / "micropython" / "ports" / "unix" / "build-standard",
+        toolchain_dir / "micropython" / "ports" / "unix" / UNIX_BUILD_DIR,
+        toolchain_dir / "micropython" / "ports" / "unix" / UNIX_SETTRACE_BUILD_DIR,
     ]
     for target in targets:
         if target.exists():
@@ -426,7 +440,9 @@ def clean_frozen_verification_build_dirs(toolchain_dir: Path, board: str) -> Non
     log("Cleaning up the frozen-bytecode verification build artifacts")
     targets = [
         toolchain_dir / "micropython" / "ports" / "rp2" / f"build-{board}",
-        toolchain_dir / "micropython" / "ports" / "unix" / "build-standard",
+        # UNIX_BUILD_DIR only: the verification chain builds the default variant, never the
+        # settrace one, so removing that here would delete a real deliverable instead of an artifact.
+        toolchain_dir / "micropython" / "ports" / "unix" / UNIX_BUILD_DIR,
     ]
     for target in targets:
         if target.exists():
@@ -460,6 +476,9 @@ def run_verification_sequence(micropython_dir: Path, toolchain_dir: Path, board:
     clean_frozen_verification_build_dirs(toolchain_dir, board)
 
     unix_binary = build_unix_port(micropython_dir, toolchain_dir, jobs)  # vanilla rebuild: the real test rig
+    # Second, separate binary, into its own build dir: --coverage needs sys.settrace, and compiling
+    # it in costs every OTHER run 4-5x on allocation figures, so the two cannot share one build.
+    build_unix_port(micropython_dir, toolchain_dir, jobs, settrace=True)
 
     return mpy_cross_binary, unix_binary
 

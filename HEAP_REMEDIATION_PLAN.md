@@ -763,7 +763,11 @@ a session at the bench should work §1E and whichever T-rows below are still ope
 - Generalising the synchronous session to `asy_i2c_driver.py` (flagged, not done).
 - §11 item 3 (deferring logger setup to one pass after the batch) — owner objection on record,
   and measured clean only at dose 1.
-- §11 item 0 (the settrace-free test binary) — a separate toolchain decision; A.5/B.6 use the
-  scratch `build-nosettrace` binary the way §10 documents.
+- ~~§11 item 0 (the settrace-free test binary) — a separate toolchain decision.~~ **Taken by the
+  owner on 2026-09-21 and built**, so it is no longer out of scope: `toolchain/setup_toolchain.py`
+  builds `build-standard` (flag-free, the rig) and `build-settrace` (`--coverage` only), and
+  `scripts/test.sh` picks by mode. Section C's bounds were re-derived on the new binary, which the
+  control arm forced (§7L.7). A.5/B.6's own figures stay as measured, on the scratch binary §10
+  documents.
 - Editing `ext/microdot.py` (the `max_body_length` note in §7A.9 belongs to the webserver, not here).
 - Anything in `python/`, `modules/`, or the four `build-*.sh` scripts.

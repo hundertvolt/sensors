@@ -532,9 +532,11 @@ information):
   `sys.settrace` inside MicroPython) and rendering (`scripts/_render_coverage.py`, a second
   self-contained `uv run` script, under CPython) are two separate stages glued together through
   `coverage.py`'s own `CoverageData` API — see SPECIFICATION.md Part E.5 ("Coverage") for the full
-  pipeline. The Unix port binary is always built with `MICROPY_PY_SYS_SETTRACE=1`
-  (`build_unix_port()` in `toolchain/setup_toolchain.py`) so plain `scripts/test.sh` and
-  `--coverage` share one binary; `ports/rp2`'s firmware build never gets this flag. **An earlier
+  pipeline. **Two Unix-port binaries are built, not one** (owner decision, 2026-09-21):
+  `build-standard` is the test rig and is built **without** `MICROPY_PY_SYS_SETTRACE`, while
+  `build-settrace` carries the flag and is used only by `--coverage`; `ports/rp2`'s firmware build
+  never gets it either way. `scripts/test.sh` picks by mode, and `build_unix_port()` in
+  `toolchain/setup_toolchain.py` builds both. **An earlier
   note here called the flag "an inert hook check when unused" — measured false on 2026-09-18**:
   with it compiled in, `py/vm.c`'s `FRAME_ENTER()` runs `mp_prof_frame_enter()` on every bytecode
   entry, which allocates a frame object and a code object per call and per generator resume whether
@@ -544,8 +546,10 @@ information):
   test's *result*, but every allocation figure measured under this binary — the digital twin's and
   the memory-safety suite's alike — is inflated 4-5x, non-uniformly, relative to the firmware. Full
   account and the per-node conversion table: HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7 and
-  §3A; whether to build a second, flag-free binary for the plain run is an open owner decision
-  there (§11 item 0). CI
+  §3A. **That was §11 item 0, and it is now decided and done**: the plain run uses the flag-free
+  binary, so its figures are the firmware's own scale, and the allocation-heavy files got faster
+  with it (`test_sensortask_wozi.py` 24.6s → 9.3s) while wait-bound ones are unchanged. Only
+  `--coverage` still measures under the inflated binary, which is inherent - it needs the flag. CI
   (`.github/workflows/ci.yml`) runs it as its own non-gating job, `unit-tests-coverage` — separate
   from `unit-tests` because `timeout-minutes` gates a whole job rather than its real step, so the
   instrumented rerun would otherwise cancel a suite that had already passed (it did, on run
