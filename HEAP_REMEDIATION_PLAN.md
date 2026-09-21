@@ -34,17 +34,24 @@ runs the hardware).
 - **Every `errno`/`wrnno` keeps its number and its meaning** (`SPECIFICATION.md` C.7.1: FRAM 10-100,
   `wrnno` 60-84). What moves is *where* it is logged — once, by the coroutine that owns the
   operation, instead of at the leaf — not what is logged.
-- **Multi-device SPI compatibility is preserved at today's granularity.** The bus lock is released
-  and the loop yielded after every byte-level command (the 5-CS envelope), never held for a whole
-  block operation — the "per command" yield policy, measured to cost 0 B against the per-block one
-  (§3B.3). A second device on `spi0` therefore still gets the bus between any two commands, which
-  is finer than any real device TOML needs (FRAM is alone on `spi0` everywhere) and coarser than
-  today's per-CS-cycle release only by the four cycles of one envelope, all of which the chip
-  itself requires to be uninterrupted.
-- **F.3's hold-time principle is met by measurement, not estimate.** The longest synchronous
-  stretch is one byte-level command: 5 CS cycles, 9 bytes on the wire at 1 MHz plus the RP2040's
-  per-cycle overhead. Estimated well under a millisecond; measured on hardware in item T.4 before
-  the change is called done.
+- **Multi-device SPI compatibility is preserved, at a coarser granularity than this bullet first
+  fixed.** ~~The bus lock is released and the loop yielded after every byte-level command, never
+  held for a whole block operation.~~ **Superseded by the owner's decision of 2026-09-18: the bus
+  lock is taken once per block operation** (A.1.4, §11 item 6). Raised by the build, not by a plan:
+  per-command locking measured **4,544 B** per blank `setup()` where this bullet's source (§3B.3)
+  had priced ~1,800 B, because that figure is the gap between per-block and per-*chunk* locking, one
+  rung further down — both §3B prototypes already locked per block. The cost accepted is that a
+  second device on `spi0` waits for a block operation (~25 CS, measured **21,269 µs** on silicon,
+  §7D.6) instead of a command; no `devices/*.toml` wires one. Wire traces are byte-identical at
+  both scopes, so nothing the chip requires to be uninterrupted changed.
+- **F.3's hold-time principle is met by measurement, and the estimate this bullet carried was
+  wrong.** ~~Estimated well under a millisecond.~~ **Measured on silicon by queue row A6, not by
+  T.4: 2,849 µs** for the longest non-yielding stretch — a 1-byte `set_values_sync()`, ~6 CS
+  envelopes — which is the same order as the UART's 4.4 ms frame CLAUDE.md treats as a forbidden
+  loop block, and ~28-35x this bullet's working figure (§7D.6). About 90% of it is MicroPython
+  interpreter and `machine.SPI` call overhead, not wire time, so the 1 MHz arithmetic above was
+  never the binding term. Recorded as a finding rather than chased: at per-command granularity this
+  is already the finest the chip allows. T.4's own per-command timing is still owed.
 - **`gc.collect()` appears in exactly two shipped sites**, both boot-only, both emitted or owned by
   the system's own boot code, guarded by lint (item B.3). The general prohibition for business
   logic and the run phase stands unchanged (`SPECIFICATION.md` I.4).
@@ -69,6 +76,12 @@ runs the hardware).
 ## A. The FRAM path restructure (scoped exception granted for `asy_spi_driver.py`, `asy_fram_driver.py`, `asy_fram_manager.py`)
 
 ### A.1 Design, decided
+
+> **The cost projection below was not what the build measured.** At the lock scope the owner chose
+> (once per block operation, A.1.4 and §11 item 6), a blank logger `setup()` costs **13,696 B
+> against the base branch's 122,880 — 9.0x, not 38x** — and a valid one 9,152 against 80,384 (8.8x),
+> with the wire traces byte-identical. The 38x/90x ladder here was projected from §3B prototypes
+> that had already assumed per-block locking, so it never priced the rung the plan then picked.
 
 The shape is §3B's **P2** with the **per-command yield policy** (§3B.4 levers 1, 2 and 4; lever 3,
 the lock hierarchy, deliberately *not* taken — see A.1.4). Board-equivalent cost per blank logger
@@ -409,7 +422,10 @@ reopened only if A.6's measurement asks for it.
 - [x] **Owner's decision, and the criterion is corrected here.** This box was written as "does A
       alone clear the tripwire" — the wrong test: the 80,000 B floor is a regression tripwire at
       69% of one healthy board reading, not a demand any allocation makes (§7A.8, §7A.9), and the
-      goal is fewer long-lived survivors scattered through the heap. **On the goal as stated, A
+      goal is fewer long-lived survivors scattered through the heap. **The owner then retired that
+      floor outright on 2026-09-19** (§7G), which settles this correction rather than leaving it an
+      argument: the criterion is now survivor volume, survivor placement and a contiguity check
+      derived from the worst reachable allocation. **On the goal as stated, A
       alone does not get there either** — though §7D [HW] has since shown it gets **40.2% of the
       way** on real hardware, where the twin saw nothing, so the reasoning below understates A and
       the conclusion (B is still needed) is unchanged rather than merely intact:

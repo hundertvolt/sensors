@@ -140,8 +140,11 @@ which is what makes transient pressure self-limiting.
 holes and 2,162 blocks — 71% of the seam's hole count — and construction adds only 216 more. Both
 are fixed workloads, which is why the dust is heap-size independent.
 
-**The single large run is the only source of a large contiguous allocation, so the 80,000 B floor is
-a statement about it alone.**
+**The single large run is the only source of a large contiguous allocation**, so any contiguity
+criterion is a statement about it alone. (It was the 80,000 B floor when this model was written;
+that floor was **retired by the owner on 2026-09-19** and replaced by survivor volume, survivor
+placement and a contiguity check derived from the worst reachable allocation — §7G. The model's
+claim is unaffected: whatever the criterion, this run is what it measures.)
 
 ### 0A.3 The mechanism
 
@@ -1943,6 +1946,11 @@ Full-dose `kept%` detail for the ordering variants:
 
 ### 7.1 Against the 80,000 B floor
 
+> **The floor this subsection scores against was retired by the owner on 2026-09-19 (§7G)** — it was
+> a tripwire at 69% of one healthy board reading, not a demand any allocation makes, and it asked
+> for a third of physical memory contiguously free. The pass/fail verdicts below are therefore
+> against a criterion that no longer applies; the *relative* comparisons between arms still stand.
+
 Absolute twin bytes do not transfer (§ unit warning), but the ratio does. The board needs
 largest >= 80,000 of ~146,000 free ~= **55% of the seam's big run** [HW].
 
@@ -2096,7 +2104,10 @@ bind at all** - every dose from zero to base's own clears the floor at 85-97%.
 the fix itself, and never reached for to make a failing (e)-stage test pass". The measured effect of
 this scheme is precisely and only on the (e)-stage configuration: 0 of 15 -> 15 of 15 against the
 floor at `threshold(-1)`, and at the shipped `threshold(32768)` 87% -> 86% worst and 87% -> 92%
-median, i.e. nothing. On the evidence it **is** the (e)-stage fix I.4(f) names rather than defense in
+median, i.e. nothing. **That "nothing" is about B's effect measured AT a fixed threshold, and is
+not the last word on the threshold itself**: §7H.3 [HW] found the shipped threshold is what carries
+B's boot gain into the run phase (80% held against 12% at the reactive default), so the two are not
+independent the way this paragraph's framing implies. On the evidence it **is** the (e)-stage fix I.4(f) names rather than defense in
 depth on top of one, so adopting it is an amendment to I.4, not an application of it. That is a
 decision (§11 item 4), not a measurement.
 
@@ -2963,6 +2974,12 @@ pair trustworthy.
 previous one stops at `build_system()` and so reaches only the first of B's two collect sites).
 All readings below are at the **standalone/fresh-heap position**, at `gc.threshold(-1)`:
 
+> **One row here does not mean what its label says, established later in §7F.9 point 3.**
+> `after_starter_list` was taken 4,000 ms from the supervisor task's *creation*, and the starter
+> loop itself takes ~1 s, so it reads ~3 s into the **run phase** — past the decay, not at the
+> starter list at all. The instrument has since been fixed to report `after_starter_loop_end` at the
+> loop's own observed end; read this table's last row as a run-phase figure.
+
 | reading (free / largest_block / pct) | BEFORE (A only) | AFTER (A + B) |
 |---|---|---|
 | `baseline` | 137,632 / 135,392 / 98% | 137,632 / 127,808 / 92% |
@@ -3001,6 +3018,12 @@ Had it not held, P1 and P2 would have meant nothing. Twin base moves 14.2% → 8
 span; the board moves 89% → 70%, same direction, much gentler.
 
 ### 7F.4 P2 is NOT confirmed at this position — and the position is the reason
+
+> **Superseded by §7H.2 [HW], 2026-09-19: P2 is CONFIRMED.** The aged-heap AFTER reading this
+> section says the run could not take was taken the next sitting — `after_starter_loop_end`
+> 5,024 B / 5% on A-only against **75,104 B / 80%** on A + B, beating the twin's own upper bound.
+> §7F.9 adds the host-side half on the real method. Everything below is still the right reading of
+> a *fresh* heap; only its "untested" verdict is closed.
 
 On the fresh heap, A + B is **slightly worse** than A alone at every point (87% vs 89% after
 `build_system()`, 60% vs 70% after the starter list). Read naively that is P2 falsified.
@@ -4300,7 +4323,10 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
 
 ---
 
-## 11. Open decisions — owner's call, put and not yet answered
+## 11. Decisions put to the owner — the answered ones keep their answer in place
+
+Answered items stay here with the answer stated at their top rather than being deleted, so a
+later reader sees what was decided and on what evidence. **Still open: 0 and 3.**
 
 0. **Build the twin/test interpreter without `MICROPY_PY_SYS_SETTRACE`** (§1.2 item 7) — a second
    binary for `scripts/test.sh`, `--coverage` keeping its own. Every allocation figure the twin
@@ -4316,7 +4342,11 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
    accepted, and the owner's original reason for the yield (a 256 B CRC stalling other tasks) holds.
    Not deferred to BACKLOG — decided.
 2. **Are `asy_fram_driver.py`/`asy_fram_manager.py` — and `asy_spi_driver.py` — open for a scoped
-   exception, for §3B's restructure?** This item's earlier form proposed cutting *transactions* (one
+   exception, for §3B's restructure?** **ANSWERED, owner, 2026-09-18: yes.** The exception was
+   granted for exactly those three files, measure A is built, measured on silicon (§7D) and
+   shipped; "Measured, not committed" below is the pre-decision state, kept for its evidence. The
+   one sub-decision it left open is item 6, also answered. What the build then measured, against
+   the projections below: **9.0x**, not 38x, at the chosen lock scope (§7C/§11 item 6). This item's earlier form proposed cutting *transactions* (one
    2-byte status write instead of two, one WREN envelope per chunk operation): **withdrawn** — the
    owner's account (§3B.1) grounds every one of the 74 CS cycles, and the wire protocol is not to
    change. What remains is the Python shape, and it is enough: §3B's prototype, asserted
@@ -4352,8 +4382,17 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
    `start_and_check_tasks()` runs after it, so there are no concurrent tasks to race with; the real
    cost is the persistence window, not a race.
 
-4. **The boot-confined `gc.collect()` exception (§7A) — take it, and on what grounds?** Put by the
-   owner on 2026-09-18 and measured the same day. It works, and at native `gc` defaults it is the
+4. **The boot-confined `gc.collect()` exception (§7A) — take it, and on what grounds?**
+   **ANSWERED, owner, 2026-09-18: taken.** `SPECIFICATION.md` I.4 gained **(f.1)** on the placement
+   grounds sub-point (i) names, mechanically confined by `scripts/lint.sh` and two structural tests,
+   with the effect guard added 2026-09-21 (§7L). **Two of the reasons to hesitate below have since
+   been closed the other way**: the floor the "still short of the floor" clause measures against was
+   **retired** by the owner on 2026-09-19 (item 7, §7G), and sub-point (ii)'s "settle §1.5 first"
+   was settled that same 2026-09-18 — the board figure *is* the reactive-default reading by the
+   device script's own design, so there was something to fix. (ii)'s "buys nothing measurable at the
+   shipped threshold" also reads differently after §7H.3 [HW]: the threshold is what carries B's
+   gain into the run phase, so it is not idle there. Everything below is the pre-decision state,
+   kept for its evidence. Put by the owner on 2026-09-18 and measured the same day. It works, and at native `gc` defaults it is the
    strongest remedy in this file, with a clean dose-response in the number of collects and **no**
    effect from a single collect at the end. **On the board's own metric at the board's own fill it
    is still short of the floor** (§7A.8): largest-over-free goes from 14.2% to 45.0% after
