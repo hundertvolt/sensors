@@ -3492,8 +3492,18 @@ It is also faster, by 371 ms of `build_system()` and 1,244 ms of starter loop.
 
 This is the same direction the BEFORE arm showed on 2026-09-18 (threshold-first 75,536 / 79%
 against reactive 66,144 / 70%), now much larger because there is more gain to preserve. It bears
-directly on §1.5 and §7D.8: on this evidence the threshold is not defence in depth layered on top of
-B — **it is the thing that carries B's placement gain into the run phase.**
+directly on §1.5 and §7D.8: **the threshold is what carries B's placement gain into the run phase.**
+
+> **The inference this sentence originally drew from that — "so the threshold is not defence in
+> depth" — overreached, and is withdrawn (2026-09-21).** It conflates two different claims. Whether
+> the system is *stable* without the threshold is settled and the answer is yes: the whole
+> MicroPython suite passes at `gc.threshold(-1)` — 85/85 files, zero `MemoryError`s, caught-and-
+> logged included — and so does the twin CI's own eleven-run sequence. Whether the boot *placement
+> gain* survives the run phase without it is the different question this section measures, and the
+> answer to that is no. So the owner's framing stands unchanged: the threshold is defence in depth
+> pushing an already-stable system further from the edge, not the thing that makes it stable. What
+> this measurement adds is only that it also preserves a layout benefit B creates — which is a
+> reason to keep it, never a reason the design may lean on it.
 
 **Stated as one reading per condition, not a repeated measurement.** Two arms x one invocation, and
 the settle-point figure is the one that moves most. Worth repeating before anything is concluded

@@ -595,6 +595,30 @@ jobs:
       - name: Run unit tests
         run: scripts/test.sh
 
+  # The (f) stage of CLAUDE.md's memory-safety rule, which had no runner until 2026-09-21: the same
+  # suite again with the gc.threshold(32768) the firmware's own boot entry sets, layered on a design
+  # that has already passed at MicroPython's reactive -1 in unit-tests above. Both halves are
+  # required - "stable on its own, then pushed further from the threshold" - and only the first was
+  # ever exercised here, the twin CI being the sole place the shipped value was tested at all.
+  # Its own job, not a second step in unit-tests, for the same reason unit-tests-coverage is split
+  # out: a second full-suite run must never sit on the critical path of the jobs that follow.
+  unit-tests-gc-threshold:
+    name: Unit tests (shipped gc.threshold)
+    needs: lint-and-typecheck
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
+      - name: Run unit tests at the shipped gc.threshold
+        run: GC_THRESHOLD=32768 scripts/test.sh
+
   # Split out of unit-tests above (Session 8's closing-consistency-pass PR), exactly as
   # web-coverage was split out of web-unit-tests and for the same reason - which this branch then
   # proved again on the Python side. Coverage is a report, not a gate (CLAUDE.md's "Code quality

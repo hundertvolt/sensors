@@ -54,8 +54,14 @@ _REQUIRED_MAPS = ("baseline", "batch_00", "after_batch", "after_starter_loop_end
 # blocks go BELOW the seam, plus the whole boot sequence's reach once the starter list has run
 # (§7E.3: the starter list is where most of measure B's value is).
 
-# The batch's median new block must sit at least this far BELOW the seam's top survivor.
+# The batch's median new block must sit at least this far BELOW the seam's top survivor. The two
+# margins are thin because the ARMS are only 2.07x apart here, not because the bound is sloppy -
+# no split of that gap gives more than ~1.44x each way. _ARM_RATIO_MIN below is the strict half.
 _BATCH_MEDIAN_DEPTH_MIN = 300 * 1024  # worst live 452,832 (1.47x); best suppressed 218,528 (1.41x under)
+
+# The batch's own reach and band count no longer separate the arms (8,160 B and 0 in BOTH), so they
+# are kept as plain regression tripwires rather than as proof the collects work: they catch a future
+# module allocating high during the batch, which is a different defect and otherwise unguarded.
 
 # Both lists together: the highest new block, and the median's depth.
 _BOOT_REACH_MAX = 64 * 1024  # live 16,352 on every device (4.0x); best suppressed 141,632 (2.16x over)
@@ -66,6 +72,12 @@ _BOOT_MEDIAN_DEPTH_MIN = 256 * 1024  # worst live 356,576 (1.36x); best suppress
 # future large allocation that genuinely cannot fit a low hole, not for a drift in placement.
 _HIGH_BAND = 128 * 1024
 _HIGH_BAND_BLOCKS_MAX = 32
+
+# How much deeper the live arm must place than the suppressed one. A ratio between the two arms of
+# the same run, so it needs no absolute bound and no unit - the strictest thing this file asserts.
+# Measured: batch depth 2.36x (wozi) and 4.64x (dev); cumulative reach 12.96x and 13.93x.
+_ARM_DEPTH_RATIO_MIN = 1.5
+_ARM_REACH_RATIO_MIN = 4.0
 
 # Retention must be arm-independent: the collects change WHERE the next survivor is born, never how
 # much survives (MEASUREMENTS 7A.1's finding, which reproduces here at 0.05%). 1% is 19x that.
@@ -168,8 +180,11 @@ def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str, str
     # of landing above the churn's high-water mark. Suppressing them moves this by 7.5x or more.
     maps = boot_probe(device, _ARM_LIVE).maps
     seam, after = maps["batch_00"], maps["after_batch"]
-    depth = -_median(seam, after)
+    depth, reach = -_median(seam, after), _reach(seam, after)
+    high = _blocks_above(seam, after, _HIGH_BAND)
     assert depth >= _BATCH_MEDIAN_DEPTH_MIN, f"{device}: the setup batch's median new block sits only {depth} B below the seam, under the {_BATCH_MEDIAN_DEPTH_MIN} B bound - a collect is missing, or no longer resets placement"
+    assert reach <= _BOOT_REACH_MAX, f"{device}: the setup batch's highest new block sits {reach} B above the seam, over the {_BOOT_REACH_MAX} B tripwire - something in the batch now allocates high"
+    assert high <= _HIGH_BAND_BLOCKS_MAX, f"{device}: {high} of the batch's new blocks sit more than {_HIGH_BAND} B above the seam, over the {_HIGH_BAND_BLOCKS_MAX} allowed"
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -198,6 +213,18 @@ def test_suppressing_the_emitted_collects_breaks_both_bounds(boot_probe: Callabl
     assert batch_depth < _BATCH_MEDIAN_DEPTH_MIN, f"{device}: with every emitted collect suppressed the batch's median still sat {batch_depth} B below the seam, past the {_BATCH_MEDIAN_DEPTH_MIN} B bound - the bound no longer detects the defect it exists for"
     assert boot_reach > _BOOT_REACH_MAX, f"{device}: with every collect suppressed the whole boot sequence still stayed inside the {_BOOT_REACH_MAX} B bound (reach {boot_reach} B)"
     assert boot_high > _HIGH_BAND_BLOCKS_MAX, f"{device}: with every collect suppressed only {boot_high} new blocks sat more than {_HIGH_BAND} B above the seam, still inside the {_HIGH_BAND_BLOCKS_MAX} allowed"
+
+
+@pytest.mark.parametrize("device", _CONTROL_DEVICES)
+def test_the_live_arm_places_strictly_deeper_than_the_suppressed_one(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+    # The mechanism as a RATIO between the two arms of the same run, which is what the absolute
+    # bounds above only approximate: no unit, no heap-size term, and no margin spent on the gap
+    # between devices. A change that moved both arms together would pass every bound and fail here.
+    live, suppressed = boot_probe(device, _ARM_LIVE).maps, boot_probe(device, _ARM_SUPPRESSED).maps
+    depth_ratio = -_median(live["batch_00"], live["after_batch"]) / -_median(suppressed["batch_00"], suppressed["after_batch"])
+    reach_ratio = _reach(suppressed["batch_00"], suppressed["after_starter_loop_end"]) / max(_reach(live["batch_00"], live["after_starter_loop_end"]), 1)
+    assert depth_ratio >= _ARM_DEPTH_RATIO_MIN, f"{device}: the batch's median sits only {depth_ratio:.2f}x deeper with the collects live than without, under the {_ARM_DEPTH_RATIO_MIN}x bound"
+    assert reach_ratio >= _ARM_REACH_RATIO_MIN, f"{device}: the whole sequence reaches only {reach_ratio:.2f}x higher with the collects suppressed, under the {_ARM_REACH_RATIO_MIN}x bound"
 
 
 @pytest.mark.parametrize("device", _CONTROL_DEVICES)

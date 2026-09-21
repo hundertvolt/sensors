@@ -84,6 +84,9 @@ for arg in "$@"; do
     esac
 done
 
+# GC_THRESHOLD=32768 re-runs the MicroPython tier through tests/_threshold_runner.py with that
+# gc.threshold() set, which is CLAUDE.md's (f) stage. Unset (the default) is the (e) stage: the
+# interpreter's own reactive -1, where the design has to stand up on its own first.
 toolchain_dir="${PICO_TOOLCHAIN_DIR:-$HOME/pico-toolchain}"
 # Two variants, built together by setup_toolchain.py. The plain run takes the settrace-FREE one:
 # compiling MICROPY_PY_SYS_SETTRACE in allocates a frame and a code object per call and per
@@ -521,6 +524,10 @@ run_test_file() {
     # same-named file that might otherwise be found elsewhere on this path.
     if [ "$coverage" = "1" ]; then
         cmd=(tests/_coverage_runner.py "$test_file" "$raw_dir/$tag.json")
+    elif [ -n "${GC_THRESHOLD:-}" ]; then
+        # CLAUDE.md's (f) stage: the same suite again with the value the firmware ships, layered on
+        # a design that already passes at the reactive default. Never a substitute for that run.
+        cmd=(tests/_threshold_runner.py "$test_file" "$GC_THRESHOLD")
     else
         cmd=("$test_file")
     fi
