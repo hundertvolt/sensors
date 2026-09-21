@@ -156,7 +156,15 @@ features as today's deployed units, not a feature change.
   exposes the schema via a public `self.cfg_schema` attribute (`asy_wifi_service.py`/
   `asy_ntp_client.py`).
 - `asy_fram_driver.py`/`asy_fram_manager.py` — raw SPI FRAM driver + chunk allocator with dual-copy
-  redundancy (every real device — see the FRAM-storage bullet above). `src/`'s promoted versions: each chunk stores two copies plus a
+  redundancy (every real device — see the FRAM-storage bullet above). **The byte-level path is
+  synchronous under a caller-held lock** (2026-09-18 restructure, wire-identical): `FRAM_SPI`
+  acquires the driver lock and the bus together for one whole block operation, its command bodies
+  are plain functions over `SPIDevice.session_begin()`/`session_end()` with a blocking 2 us CS
+  settle, and the owning coroutine yields between commands and reports the status they return
+  (`get_values_sync()`/`set_values_sync()` plus `report_get_values()`/`report_set_values()`). Every
+  `errno`/`wrnno` keeps its number and meaning; only the logging site moved up. The async
+  `__aenter__`/`write`/`readinto`/`write_readinto` forms stay for any other bus user.
+  `src/`'s promoted versions: each chunk stores two copies plus a
   busy/idle status byte guarding reads and writes (MB85RS64V reads are destructive internally — the
   datasheet's own endurance note says total reads *and* writes set the endurance limit "as an FRAM
   memory operates with destructive readout mechanism", i.e. every read is internally a
@@ -1279,6 +1287,14 @@ as both lock layers (C.8) stay genuinely distinct. What differs:
   don't assume it transfers.
 - **Write-enable-latch mechanics are FRAM/EEPROM-specific** — most sensor registers are plainly
   writable; don't build a latch step unless the datasheet documents one.
+- **The bus session has a synchronous form, and a new SPI sensor driver should prefer it.**
+  `SPIDevice.session_begin()`/`session_end()` do what `__aenter__`/`__aexit__` do between the lock
+  operations, for a caller that already holds the bus lock, with `write_sync()`/`readinto_sync()`/
+  `write_readinto_sync()` as the transfers. The settle inside the CS window **must** block
+  (`time.sleep_us(2)`) — an awaited one hands the loop to another task with CS asserted and the bus
+  locked — so the scheduling points belong in the coroutine that owns the operation, not in the CS
+  path. The async forms remain, expressed on the same primitives, with one `sleep(0)` after the
+  lock is released. Measured cost of getting this wrong: see F.5.8's SPI note.
 - Everything else (scratch buffers, session lock, compensation math, range checks) carries over
   unchanged.
 - **`FRAM_SPI._setup_addr_buffer()` trusts caller-supplied `max_size` for address width (3 vs. 4
@@ -1609,7 +1625,7 @@ while the ring still says what else happened.
 |---|---|---|---|
 | `base_classes.py` | 1-9 | 1-2 | Reserved base range — every driver starts at 10+. |
 | `config_manager.py` (`CFGMGR_<name>`) | 1-15 | 1-6 | Sequential in source order. 14=the deferred flush's own write failure (`_flush_staged()`, WP5); 15=a validation-phase `MemoryError`/`AttributeError` in `write_config()` itself, split off 14 once the actual file write moved into the separate deferred method. |
-| `asy_fram_manager.py`/`asy_fram_driver.py` (`FRAM`) | 10-100 | 60-84 | `AsyFramManager` 10-88 (busy/idle status-byte helper spreads a base across 2-7 values per call); `FRAM_SPI` 89-98 (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout, device-ID guard) + `wrnno` 81-83 (WRDI-stuck, WEL-didn't-set ×2). **WP8**: 99=`get_values()`'s own "access not locked" internal-contract violation, 100=`set_values()`'s (each its own number per the "grouped by the raising method" convention, matching the sibling not-initialized pair); `wrnno` 84=`_write()`'s "currently write protected" refusal — a benign, expected outcome (matches `AsyFramManager`'s own "communication paused" `wrn_s` precedent, `wrnno` 60/70/80), so `wrnno` rather than `errno` unlike the two lock violations. The chunk's own 60 and 70-73 follow the repeat rule above, per distinct code per degraded episode, which a clean read or write ends — a dead cell or a held mempause warns on every single operation otherwise, and the chunk logs into its OWNER's FRAM-backed history, not the manager's. |
+| `asy_fram_manager.py`/`asy_fram_driver.py` (`FRAM`) | 10-100 | 60-84 | `AsyFramManager` 10-88 (busy/idle status-byte helper spreads a base across 2-7 values per call); `FRAM_SPI` 89-98 (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout, device-ID guard) + `wrnno` 81-83 (WRDI-stuck, WEL-didn't-set ×2). **WP8**: 99=`get_values()`'s own "access not locked" internal-contract violation, 100=`set_values()`'s (each its own number per the "grouped by the raising method" convention, matching the sibling not-initialized pair); `wrnno` 84=`_write()`'s "currently write protected" refusal — a benign, expected outcome (matches `AsyFramManager`'s own "communication paused" `wrn_s` precedent, `wrnno` 60/70/80), so `wrnno` rather than `errno` unlike the two lock violations. **Re-traced after the 2026-09-18 synchronous restructure and every number and meaning is unchanged** (manager `errno` 17-88 + `wrnno` 80, driver `errno` 89-100 + `wrnno` 81-84, checked against the source rather than assumed). What moved is the raising site, which this column's "grouped by the raising method" convention has to be read against: 90/91/99 and 92/93/84/82/81 are now raised by `report_get_values()`/`report_set_values()`, the reporters that own `get_values()`'/`set_values()`' messages, because a synchronous body holding the bus lock must not await a persisted log entry. The chunk's own 60 and 70-73 follow the repeat rule above, per distinct code per degraded episode, which a clean read or write ends — a dead cell or a held mempause warns on every single operation otherwise, and the chunk logs into its OWNER's FRAM-backed history, not the manager's. |
 | `asy_bmp3xx_driver.py` (`BMP3XX`) | 10-22 | — | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched snapshot read. |
 | `asy_scd30_driver.py` (`SCD30`) | 10-25 | — | 10=init, 11=periodic read, 12=unused (no init-time config), 13=stop-continuous-measurement, 14-25=per-field forwards. |
 | `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15/17/19/21=resolution/range/IR-offset/IR-adjust getters, 16/18/20/22=their setters, 24=derived-persistence reapply, 25=trigger-interval, 26=gain-ratio/filter-coefficient setters (shared), 27=autorange-threshold/dwell setters (shared), 28=`_read_sensor_dict()`, 29=auto-range threshold-register write, 30=auto-range RNG-bit write, 31=status read, 32=all-ones bus-fault confirmation, 33=brownout re-apply, 34=diverged-config re-apply, 35=paired gain-ratio calibration leg (`_read_on()`), 38=`set_range_auto()`. `wrnno` 10=brownout detected, 11=chip config diverged from shadow, 13=range decided by the periodic path only for 5 decisions running (the interrupt line may be dead, requirement 17/C.11.5). **12 is retired, not reused**: it used to mean "saturated on the high range", but that status is a harmless, transient, always-current measurement fact, not a fault — it now lives in the measurement output as the `Overrange` field (mode-aware: true whenever nothing left could mitigate the saturation — the configured range itself under Fixed range, or Automatic Range already on its highest setting) rather than as a log entry. |
@@ -3767,6 +3783,17 @@ back. `machine.I2C`/`machine.SPI` expose no equivalent: a transfer is one synchr
 with no partial-read API to clamp to, so an SCD30's 18-byte read *is* a ~1.8ms synchronous span by
 construction. That is the case Part F.2 already settles — the hardware watchdog is the accepted
 backstop, and no I2C-level timeout mechanism is to be proposed for it.
+
+**The SPI side's own measured hold, for the same reason it cannot be clamped.** After the FRAM
+path's synchronous restructure (A.4), the longest non-yielding stretch is **2,849 us** — a 1-byte
+`set_values_sync()`, ~6 CS envelopes — and a block operation holds the bus for **21,269 us**
+(measured on the dev board, HEAP_FRAGMENTATION_MEASUREMENTS.md §7D.6). The first figure is the same
+order as the 4.4 ms UART frame above, so it is stated rather than hidden. **About 90% of it is
+MicroPython interpreter and `machine.SPI` call overhead, not wire time** (six short transactions at
+1 MHz is ~300 us), which is why a faster clock would not shorten it and why per-command yielding is
+already the finest granularity the chip allows. No device TOML wires a second SPI device, so the
+21 ms figure is a contract statement rather than an observed contention. T.4's per-command timing
+is still owed.
 
 The write side is the same shape but bounded, and needed no change: `mp_machine_uart_write()`
 short-writes rather than waiting once `timeout` (0 here) elapses, and `_write_all()` gates on

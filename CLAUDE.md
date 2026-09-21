@@ -324,9 +324,15 @@ information):
   `gc.threshold(32768)` enabled (which the full suite must then also still pass). **One structural
   exception, added 2026-09-18 with the owner's approval: the boot-confined placement reset** —
   `gc.collect()` between the units of the two one-time setup lists and nowhere else, mechanically
-  confined by `scripts/lint.sh` and `tests_scripts/test_gc_collect_sites.py`; it is placement
+  confined by `scripts/lint.sh` and `tests_scripts/test_gc_collect_sites.py` on the *sites* and by
+  `tests_scripts/test_digital_twin_boot_contiguity.py` on the *effect* (it boots all six generated
+  devices and asserts the survivors still land low, with a suppressed control arm asserting the
+  bound would otherwise break); it is placement
   discipline for the survivors those lists create, not a threshold and not a fix for a failing
-  allocation. Full account and its measured effect: `SPECIFICATION.md` Part I.4(f.1). A threshold (or a
+  allocation. Full account and its measured effect: `SPECIFICATION.md` Part I.4(f.1). **Do not read
+  it as making the shipped `gc.threshold(32768)` redundant** — on silicon that threshold is what
+  carries the boot placement gain into the run phase (80% held against 12% at the reactive default),
+  so the two are layered, not alternatives. A threshold (or a
   `gc.collect()` call) is defense in depth on top of an already-safe design, lifting an anyhow-stable
   system further from a stability threshold — it is forbidden as the fix itself for a design that
   still needs one big contiguous allocation somewhere, or for any other memory-pressure issue; the
