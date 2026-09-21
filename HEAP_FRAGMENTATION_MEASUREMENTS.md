@@ -4333,7 +4333,7 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
 ## 11. Decisions put to the owner — the answered ones keep their answer in place
 
 Answered items stay here with the answer stated at their top rather than being deleted, so a
-later reader sees what was decided and on what evidence. **Still open: 0 and 3.**
+later reader sees what was decided and on what evidence. **Still open: item 0 only.**
 
 0. **Build the twin/test interpreter without `MICROPY_PY_SYS_SETTRACE`** (§1.2 item 7) — a second
    binary for `scripts/test.sh`, `--coverage` keeping its own. Every allocation figure the twin
@@ -4377,7 +4377,14 @@ later reader sees what was decided and on what evidence. **Still open: 0 and 3.*
    and the only configuration that ever measured an exact zero (§2.5). It is implementable in
    `print_log.py` plus one generated step in `buildgen/codegen.py`, both outside the restricted
    files, and its cost is the persistence window item 3 states.
-3. **The ordering guarantee.** Deferring only the per-logger `PrintLogHistoryStore.setup()` to one
+3. **The ordering guarantee.** **ANSWERED, owner, 2026-09-21: leave as is — do not defer.** The
+   persistence window is the deciding cost: between `fram.setup()` and a deferred pass, a module
+   failing in its own `setup()` would hold that error in RAM rather than FRAM, and that is exactly
+   the evidence CLAUDE.md's read-the-FRAM-logs rule depends on. The owner's race objection stands on
+   record alongside it. Worth noting for anyone tempted to reopen it: the exact-zero below was
+   measured *before* A + B shipped at 86-89%, so its marginal value on the current design was never
+   established. Everything below is the pre-decision analysis, kept for its evidence.
+   Deferring only the per-logger `PrintLogHistoryStore.setup()` to one
    pass after the batch is implementable in `print_log.py` plus one generated step in
    `buildgen/codegen.py` (the batch is a single `setup_order` list at `:453-469`), without touching
    the ten drivers — `await self.pr.setup()` is the first line of every module's own `setup()`.

@@ -440,7 +440,11 @@ reopened only if A.6's measurement asks for it.
       resolve one way once the tripwire stopped being the criterion. **B is deliberately not
       started**: the owner asked to wait for an explicit go, because real-hardware measurements
       are coming and may change what B is measured against.
-- [ ] Reopen §3B.4 lever 3 (the lock hierarchy) **only** if the combination in B.6 falls short
+- [x] **CLOSED, owner, 2026-09-21: not reopened — answered by this box's own condition.** The
+      combination did not fall short (86.3% / 88.7% on the twin, 87% / 80% on silicon), so the
+      condition for reopening was never met. Lever 3 is worth only ~1,800 B more and moves the lock
+      hierarchy itself (§11 item 6). Original wording: reopen §3B.4 lever 3 (the lock hierarchy)
+      **only** if the combination in B.6 falls short
       and the measurement points at within-module smear rather than between-module placement
       (§7B.3 says which is which: collects fix between-module, churn fixes within-module).
 

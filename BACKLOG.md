@@ -729,8 +729,14 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
 ## Deferred / explicitly out-of-scope work
 
-- **`NTP_Host`'s 1024-character bound mirrors the deployed handler; tightening it to DNS's real 253
-  is the owner's call.** `src/asy_ntp_client.py`'s `_VAL_NH` declares `("NTP_Host", "str",
+- **`NTP_Host` keeps its 1024-character bound — SETTLED, owner, 2026-09-21: "keep it". Do not
+  re-raise.** Fielded behaviour wins over the 4x over-permissiveness, exactly as the "same
+  features, not a feature change" agreement implies, and `max_content_length` keeps its 1.56x
+  margin rather than the 3.79x a tightening would have bought. The analysis below is kept because
+  it is what the decision was made on, and because it names the four files a future change would
+  have to touch together.
+  **Original framing:** `NTP_Host`'s 1024-character bound mirrors the deployed handler; tightening
+  it to DNS's real 253 was the owner's call. `src/asy_ntp_client.py`'s `_VAL_NH` declares `("NTP_Host", "str",
   "pool.ntp.org", 3, 1024, None)`, and the comment above it says the bounds mirror the fielded
   pre-refactor REST handler — confirmed: `modules/sensortask-*.py` does
   `update_valid_json(req_json, "NTP_Host", "str", res, 3, 1024, debug=debug)` on every deployed
