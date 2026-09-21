@@ -707,25 +707,49 @@ a session at the bench should work §1E and whichever T-rows below are still ope
 
 ## D. Documentation, the PR, and closing
 
-- [ ] `HEAP_FRAGMENTATION_MEASUREMENTS.md`: §7C (A alone; A + B), §11 items 2 and 4 marked
-      decided with the date and the owner's words; §0 ledger rows O12/O13 updated with the real-path
-      figures; §12's guard item struck.
-- [ ] `SPECIFICATION.md`: I.4 per B.4; C.3.1's `FRAM_SPI` bullet and A.4's FRAM description gain
-      the synchronous-form sentence; F.5 gains T.4's number; C.7.1 unchanged (verified, not
-      assumed — every number re-traced to its entry point after A.3).
-- [ ] `CLAUDE.md`: the memory-safety hard rule's cross-reference (B.4); the "Do not rewrite
-      `asy_fram_manager.py`/`asy_fram_driver.py` internals without a scoped exception" sentence
-      in the PR description's "Constraints carried over" is superseded and says so.
-- [ ] `BACKLOG.md`: A.7's two entries; nothing else new (open question 6 and the FRAM
-      `verify_present()`/`set_write_protected()` "SETTLED" item are untouched).
-- [ ] README.md's "Further reading": this file listed while it exists, then removed with it.
-- [ ] Commits: one per lettered step with a message that says what and why; the PR description of
-      #105 (or a fresh PR if #105 is merged first — a merged PR is finished, restart the branch
-      from the base) updated per step; `subscribe_pr_activity` stays on.
-- [ ] Verification statement in the PR, in this order and by exit code: `scripts/lint.sh`,
-      `scripts/typecheck.sh`, `scripts/test.sh` (83+ files), the twin CI sequence at both
-      thresholds, the chroot gate for B.3's `scripts/lint.sh` change (both targets, named), and
-      the hardware tiers' status (run with the go-ahead, or explicitly not run).
+- [x] `HEAP_FRAGMENTATION_MEASUREMENTS.md` — **done 2026-09-21.** §7C marked as measuring the
+      pre-decision build, with A + B pointed at §7E/§7F/§7H; §11 items 2 and 4 marked answered with
+      the date, and two of item 4's reasons to hesitate recorded as since closed the other way; O12
+      and O13 carry the real-path figures (9.0x, not the 38x ladder) and O13's superseded verdict;
+      §12's guard item struck with its metric replacement recorded.
+- [x] `SPECIFICATION.md` — **done 2026-09-21, one sub-item still bench-blocked.** I.4(f.1) per B.4
+      plus the effect guard (§7L); A.4's FRAM bullet and C.3.1's SPI-sensor list gained the
+      synchronous-form description, including why the CS-window settle must block; C.7.1 **verified**
+      rather than assumed — every code re-traced from the source, numbers and meanings identical
+      (manager `errno` 17-88 + `wrnno` 80, driver `errno` 89-100 + `wrnno` 81-84), with the moved
+      raising site now stated because that column groups by it. **F.5.8 gained §7D.6's measured
+      figures (2,849 us non-yielding, 21,269 us bus hold, ~90% interpreter overhead) rather than
+      T.4's, which has not run** — T.4's per-command timing is still owed and F.5.8 says so.
+- [x] `CLAUDE.md` — **done 2026-09-21.** The memory-safety rule's exception now names the effect
+      guard beside the two site guards, and states that it does **not** make the shipped
+      `gc.threshold(32768)` redundant — §7H.3 measured the two as layered, not alternatives.
+      **The second half of this box no longer applies**: the PR description has carried no
+      "Constraints carried over" section for some time, so there is no such sentence to supersede.
+      The scoped exception it referred to is recorded where it belongs — section A's own heading and
+      §11 item 2, both marked granted.
+- [x] `BACKLOG.md` — **done, and it needed no edit** (verified 2026-09-21). A.7 produced **one**
+      BACKLOG entry, not two — the second item was ruled out by the owner before it reached the
+      backlog — and that entry (`SPIDevice` has a synchronous session, `I2CDevice` does not; flagged,
+      not fixed) is present and accurate against the shipped code. Open question 6 and the FRAM
+      `verify_present()`/`set_write_protected()` "SETTLED" item are untouched, as required. Nothing
+      new is owed: this session's changes touch only `tests/`, `tests_scripts/` and docs, so the
+      chroot running list gains nothing either.
+- [x] README.md's "Further reading" — **done**: this file is listed while it exists (and is removed
+      with it). The same pass replaced two entries pointing at handover files this branch had already
+      deleted with the live `REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md`.
+- [x] Commits: one per lettered step with a message that says what and why — done throughout; #105
+      is still open and unmerged, so its own description is what was updated (2026-09-21), not a
+      fresh PR. **`subscribe_pr_activity` is deliberately NOT on**: the owner instructed this
+      session to stop watching the branch, and a later instruction outranks this box. Re-arming it
+      needs the owner to say so.
+- [x] Verification statement in the PR — **done 2026-09-21, in that order and by exit code**: lint 0;
+      typecheck 0 (159/47/110 files); `scripts/test.sh` 0 (**85/85** MicroPython files, 1339 passed /
+      7 skipped); `scripts/run_digital_twin_ci.sh wozi` 0, every check at **both** `gc.threshold(-1)`
+      and `32768`, soak trend 545 B decline against a 9,637 B tolerance over 825 samples, zero
+      `MemoryError`s; the two chroot legs named and stated **not run, and unrunnable here**
+      (`deb.debian.org:443` is `connect_rejected` by the sandbox), with the owner's periodic-check
+      decision and what the run owes; and the hardware tiers stated **not run**, with no go-ahead in
+      this conversation and §1E named as what is owed.
 
 ## What is not in scope (so it is not done by accident)
 
