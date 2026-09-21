@@ -47,8 +47,14 @@ budget is not binding (150 of 450 rounds used). The real mechanism is the mock t
 `timeout` sitting at **1.25×** its own floor where CRC16 sits at 10× and the real link at 13.3×.
 Derivation: SPECIFICATION.md Part J.7.
 
-What is still owed: D1-gated work, the remaining R-rows, §1C's C2/C3/C4, and F1's SSID script —
-**all of it needs the bench**, so nothing on this list is host-side work any more.
+**Plan section C is built and closed host-side (2026-09-21)** — the boot placement reset now has a
+twin regression guard measuring placement directly, verified against four injected regressions
+(HEAP_FRAGMENTATION_MEASUREMENTS.md §7L). It opened **§1E**: the board has never taken that reading
+and cannot as its device script stands, and the four rows there are the cheapest bench work on this
+list — no wear, no reflash, both arms from one image.
+
+What is still owed: §1E, D1-gated work, the remaining R-rows, §1C's C2/C3/C4, and F1's SSID script —
+**all of it needs the bench.**
 
 **The bench board no longer carries a test image.** On the owner's instruction (2026-09-19,
 end of sitting) it was reflashed with a **clean production `dev` image and `DebugLevel = 0`**, and
@@ -414,6 +420,41 @@ nothing here should be reported as having confirmed the binding itself.
 silently — so nothing validates, nothing persists and no `CFGMGR_*` logger fires. None of these is
 `@pytest.mark.persistence_write`-marked and none should become so; if one ever needs an *accepted*
 config write to make its point, that is the moment to add the marker, not before.
+
+---
+
+## 1E. The boot placement reset, measured as placement (plan section C's board half) — never run
+
+`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7L built the host guard
+(`tests_scripts/test_digital_twin_boot_contiguity.py`, 22 tests, all six devices) and measures
+`gc.collect()`'s boot-confined reset **directly**: the reach of each boot list's newly allocated
+blocks above its own seam, rather than a contiguity fraction. Live against suppressed separates by
+**7.5x** (setup batch) and **5.6x** (both lists), with retention arm-independent to 0.05%.
+
+**The board has taken no such reading, and cannot as it stands.**
+`tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py` dumps no map at the seam —
+`baseline` is a probe reading, not a `mem_info(1)` dump — so `heap_map.py`'s `delta()` has no
+`before` for the batch. `REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md` is the runnable form and carries
+the port (23 lines from `tests/_boot_contiguity_probe.py`).
+
+**Both arms run from one image, no reflash.** The emitted collects resolve `gc` as a module global
+in the generated module and in `system_service`, so a device script can suppress every one of them
+at runtime. This removes the second firmware image §7D's arm comparison needed.
+
+| # | Run | Notes | Status |
+| --- | --- | --- | --- |
+| B7 | Seam map + board reach, live arm | Extended `heap_layout_after_full_boot_sequence.py` on `dev`; compute `delta(seam, after_batch)` and `delta(seam, after_starter_loop_end)` host-side. Board units (16 B blocks) — the parser derives the block size, never convert by hand | OPEN |
+| B8 | The same run, `--arm suppressed` | One invocation, same image, straight after B7 so the heap is aged alike. The board's first controlled A/B of the collects | OPEN |
+| B9 | The ratio, which is the transferable claim | Host says 7.5x / 5.6x. Same direction and order of magnitude confirms the mechanism on silicon; a ratio near 1.0 is a finding to record before anything else | OPEN |
+| B10 | Does the board put the median at or below the seam top? | The host's live arm does, on all six devices — the strongest unit-free statement the metric makes | OPEN |
+
+**No absolute host bound may be copied to the board.** §7L's bytes are twin units, settrace-inflated
+4-5x (§1.2 item 7). The ratio, the sign of the median and the zero count above the band transfer;
+640 KiB and 1,280 KiB do not. No new floor is asserted by any row here (§7G's rule).
+
+**Zero wear.** No flash write, no persistence write, no marker, no reflash. Read the FRAM-backed
+`errcount` before any `ResetErrors`, and remember an isolated-driver script overwrites production's
+first FRAM chunks.
 
 ---
 

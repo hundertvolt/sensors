@@ -92,6 +92,13 @@ def _fram_fake_class(device: str) -> "type[FakeMB85RS64V]":
     return _FRAM_FAKE_BY_MAX_SIZE[spi_attachment["max_size"]]
 
 
+def fram_fake_class(device: str) -> "type[FakeMB85RS64V]":
+    """Public alias of _fram_fake_class for tests/_boot_contiguity_probe.py, which boots the same
+    devices from its own script entry point - exported rather than copied so the RDID table above
+    stays the one place the tests tier maps a device to its real chip."""
+    return _fram_fake_class(device)
+
+
 # ---------------------------------------------------------------------------
 # Per-test config-file isolation via tests/_tmp_scratch.py: build_system() constructs several real
 # ConfigManager-backed modules, each writing a real config_<NAME>.cfg at its cfg_path - repeated

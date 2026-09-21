@@ -4014,6 +4014,115 @@ instead was considered and rejected: it would allocate inside the very window
 
 ---
 
+## 7L. Measure B, measured as placement — plan section C built and its bounds derived (2026-09-21)
+
+Plan section C asked for a twin guard asserting **absolute largest-contiguous against free** at the
+seam, after `build_system()` and after the starter list, at "the calibrated heap", with thresholds
+set from B.6's figures. Built instead as a **placement** guard, because the contiguity framing turned
+out not to survive its own premise. What shipped: `tests/_boot_contiguity_probe.py` (the boot driver)
+and `tests_scripts/test_digital_twin_boot_contiguity.py` (22 tests, 18 s, six devices).
+
+### 7L.1 Why the plan's own metric was replaced
+
+Two blockers, both measured rather than argued.
+
+- **`scripts/test.sh` hardcodes `-X heapsize=16M` and a test cannot change its own process's heap**,
+  so "the calibrated heap" (§1.4's 455k) is unreachable from `tests/`. Shrinking the heap instead is
+  worse than useless: the setup batch's own churn peaks near 1 MB on this binary (`alloc` 517,280 ->
+  977,152 across one `sysfunct.setup()`), so at a calibrated fill the suppressed arm would force
+  reactive collections and stop being a suppressed arm at all. The defect is self-limiting, which is
+  exactly §0A.1's third consequence.
+- **The plan's metric is heap-size dependent and the replacement is not.** Same code, same arm:
+
+| metric | at `heapsize=8M` | at `heapsize=16M` |
+|---|---|---|
+| `largest_free_run` / free after the batch, collects live | 93% | 96% |
+| `largest_free_run` / free after the batch, suppressed | 64% | 82% |
+| **reach above the seam, collects live** | **1,046,688** | **1,046,688** |
+| **reach above the seam, suppressed** | **3,336,064** | **3,336,064** |
+
+The reach is **byte-identical** across a 2x heap change; the fraction moves by 18 points. So the
+guard asserts reach and needs no calibration, and `test.sh`'s fixed heap size stops being a problem.
+
+### 7L.2 The instrument
+
+`tests_hardware/heap_map.py` — the board tier's own parser — already had what was needed:
+`HeapDelta` is "blocks free in `before` and allocated in `after`", position-independent by
+construction. The probe supplies the `before` map the board tier never had (§2 of
+`REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md`): a `gc` stand-in installed on the generated module and
+on `system_service` dumps `micropython.mem_info(1)` at its first call — the seam — and then forwards
+to the real collect **only on the live arm**. One instrument, both arms, no second image.
+
+`mem_info(1)` allocates nothing, so unlike the bisecting `bytearray` probe it cannot perturb what it
+measures and cannot hit §7F.8's own pinning artefact. The metrics are byte offsets relative to the
+seam's top survivor: reach (max), median, and the count above a 512 KiB band.
+
+### 7L.3 The bounds, and what they are 2-4x away from
+
+Six devices, three repeats. **The batch figures are byte-identical across repeats**; the cumulative
+ones vary ~4% with task scheduling.
+
+| position | metric | worst live | best suppressed | bound | margin / headroom |
+|---|---|---|---|---|---|
+| batch | reach | 278,688 | 2,103,008 | 640 KiB | 2.35x / 3.21x |
+| batch | median | 45,056 | 1,174,880 | 192 KiB | 4.36x / 5.98x |
+| batch | blocks > 512 KiB up | 0 | 1,110 | 256 | — / 4.3x |
+| both lists | reach | 633,344 | 3,530,208 | 1,280 KiB | 2.07x / 2.69x |
+| both lists | median | −55,744 | 1,213,632 | 192 KiB | — / 6.17x |
+
+Per-device batch reach, live against suppressed: wozi 278,688 / 2,567,008 (9.2x), dev 239,456 /
+3,255,808 (13.6x), arzi 274,592 / 2,103,008 (7.7x), klkizi, grkizi and schlafzi 275,136 / 2,103,072
+(7.6x). Every bound is the worst live reading times a margin, and every one sits at least 2.6x below
+the best suppressed reading — derived, not fitted, and twin-only (§7G's rule).
+
+### 7L.4 Two claims turned from prose into assertions
+
+- **Retention is arm-independent.** `used_bytes` after the batch: wozi 643,360 live against 643,584
+  suppressed, dev 745,344 / 745,728, arzi 577,568 / 577,984 — a 0.05% worst case. §7A.1's finding,
+  reproduced on the real `build_system()` rather than a wrapper, and now asserted at 1%: if the arms
+  ever diverge on how much *survives*, the collects have started compensating for a leak and
+  I.4(f.1)'s justification has changed.
+- **A real boot fires exactly the collects the static guards count.** `batch_collects` equals the
+  generated module's own `await X.setup()` count + 1 and `starter_collects` equals the observed
+  starter count + 1, on all six devices — dev's **11 + 23** matching §7F.9's measured 34 exactly.
+  Derived from each list's length, never from the emitted line count: see 7L.5.
+
+### 7L.5 Verified against four injected regressions, and one of them exposed an instrument defect
+
+Each was injected into the real source, regenerated, run, then reverted.
+
+| injected | result |
+|---|---|
+| per-module collect removed from `codegen.py` | **12 failed** — both positions, all six devices |
+| leading batch collect removed from `codegen.py` | **passed 22/22 at first** — see below |
+| per-starter collect removed from `system_service.py` | **12 failed** — cumulative + count; batch correctly still passed |
+| leading starter collect removed from `system_service.py` | **6 failed** — the count test |
+
+**The second one is the finding.** The effect measurement anchors its seam at the *first* collect, so
+deleting the leading collect moved the anchor with it and the shifted baseline hid the change. The
+existing static guard (`test_buildgen_generate.py`) did catch it, so the suite was never blind — but
+the new test was, and a test that re-anchors silently is the kind of instrument §1.2 catalogues.
+Closed by deriving the expected count from each list's own length rather than from the emitted line
+count, which makes the anchor's existence a separate assertion. Re-verified: 6 failures.
+
+### 7L.6 What this does not do
+
+- **No board figure.** Every number here is twin units and settrace-inflated; the board has still
+  never taken a placement reading, because its device script has no seam map.
+  `REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md` is the runnable ask, including the one-image both-arms
+  finding that removes the reflash §7D's comparison needed.
+- **The settle position is measured and deliberately not asserted on.** Four seconds after the
+  starter loop, dev's *suppressed* arm reported a **larger** `largest_free_run` than its live arm
+  (10.19–10.47 MB / 64–66% against 9.37–9.47 MB / 59–60%). §7F.9's decay does not merely erase the
+  gain, it can invert the ranking — so any guard reading that position would be measuring noise.
+- **Section C's file name and tier differ from the plan's.** It is
+  `tests_scripts/test_digital_twin_boot_contiguity.py`, not `tests/test_digital_twin_boot_contiguity.py`:
+  `mem_info(1)` goes to the platform print rather than `sys.stdout`, so an in-process MicroPython
+  test structurally cannot read its own map, and `heap_map.py` is host CPython. Plan C is annotated
+  with this.
+
+---
+
 ## 8. What is committed
 
 **Reverted, 2026-09-18, at the owner's instruction.** Every change this investigation made to

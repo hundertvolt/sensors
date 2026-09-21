@@ -704,20 +704,15 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   result is migrated into the permanent docs; the file goes when the last row does. It authorizes
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
-- **[`REAL_HARDWARE_HANDOVER_POST_MERGE_BENCH_RUN.md`](REAL_HARDWARE_HANDOVER_POST_MERGE_BENCH_RUN.md)** — the
-  runnable handover for one full bench-tier run at default flags: no persistence writes, no soak,
-  read the deselected count. Also states what the 22-commit base merge did and did not bring to the
-  hardware tier, so a red result is read correctly rather than chased. Deleted once its results are
-  migrated; it authorizes nothing.
-- **[`REAL_HARDWARE_HANDOVER_WEBSERVER_BODY_CAP.md`](REAL_HARDWARE_HANDOVER_WEBSERVER_BODY_CAP.md)** — the runnable
-  handover for the next bench sitting: the request-body cap (`SPECIFICATION.md` Part I.6) on
-  silicon and over real WiFi, five bench-tier rows that have never run. It states up front what the
-  wire can and cannot show, so a green run is not written up as proving more than it does.
-  **Replaces the measure-B handover**, deleted once §7H migrated every result it owed.
-  `REAL_HARDWARE_TEST_QUEUE.md` §1D is its index row; this file is what a bench session reads top to
-  bottom. Deleted once its results are migrated.
+- **[`REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md`](REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md)** — the
+  runnable handover for the next bench sitting: the boot placement reset measured as *placement*
+  rather than as a contiguity number, which the board has never done because its device script takes
+  no seam map. States the one-image/both-arms finding that removes the reflash an arm comparison
+  used to need, and which of the host figures transfer to the board and which do not.
+  `REAL_HARDWARE_TEST_QUEUE.md` §1E is its index row. Deleted once its results are migrated; it
+  authorizes nothing — CLAUDE.md's go-ahead gate still applies.
 - **[`HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`](HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md)** —
-  the other `*_HANDOVER*.md` file besides the measure-B one above, owned by the session working
+  the other `*_HANDOVER*.md` file besides the boot-contiguity one above, owned by the session working
   PR #105. Only its Part 2 is still live — Part 1's harness changes all landed on this branch, and
   its one open bench ask is `REAL_HARDWARE_TEST_QUEUE.md` row R14 — and that half is superseded by
   PR #105's own measurement/plan docs, which this branch carries, so the file goes when this PR

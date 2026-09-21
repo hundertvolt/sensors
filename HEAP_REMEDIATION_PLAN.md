@@ -591,17 +591,37 @@ milliseconds ... about 1ms on the Pyboard" per the pinned docs; boot latency is 
 
 ## C. The seam + contiguity guard (§12, carried forward; the thing that restores the tripwire's sensitivity)
 
-- [ ] `tests/test_digital_twin_boot_contiguity.py` (new), written test-first and verified to fail
-      when the invariant is deliberately broken (e.g. by disabling one collect): boot the real
-      generated module for `wozi` and `dev` in the twin at the calibrated heap, and assert
-      **absolute largest-contiguous against free** at the seam (after construction, before the
-      setup batch) and after `build_system()`, and again after the task-starter list, with the
-      perturbation held constant (§9's last row: a probe that varies its own retained size
-      invalidates the comparison). The thresholds are set from B.6's measurement with margin, on
-      the twin's own units (32 B blocks, x86-64), and stated as twin-only in the test's comment —
-      the board's tripwire stays the hardware test.
-- [ ] Runs at `gc.threshold(-1)` only (it is an (e)-stage test); listed in `scripts/test.sh`'s
-      per-file loop like every other `tests/test_*.py`.
+- [x] **DONE 2026-09-21, and the metric was replaced — full account in
+      `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7L.** Shipped as
+      `tests_scripts/test_digital_twin_boot_contiguity.py` (22 tests, 18 s, **all six** devices, not
+      just wozi and dev) plus `tests/_boot_contiguity_probe.py`, the boot driver it spawns.
+      **Three deviations from the text below, each measured rather than chosen.** (1) *Tier and file
+      name*: `micropython.mem_info(1)` goes to the platform print rather than `sys.stdout`, so an
+      in-process `tests/` test structurally cannot read its own heap map, and
+      `tests_hardware/heap_map.py` — the board tier's own parser, reused rather than reimplemented —
+      is host CPython. (2) *Metric*: "absolute largest-contiguous against free" is heap-size
+      dependent (93% against 96% for the same arm at 8M and 16M), and `scripts/test.sh` hardcodes
+      `-X heapsize=16M` which a test cannot change; the **reach** of each list's newly allocated
+      blocks above its own seam measured **byte-identical** at both heap sizes, so that is what is
+      asserted. (3) *Calibrated heap*: unreachable, and also self-defeating — at a calibrated fill
+      the suppressed arm forces reactive collections and stops being a suppressed arm.
+      Bounds are the worst live reading across six devices times a margin, each at least 2.6x below
+      the best suppressed reading (§7L.3), twin-only as required. The seam, `after_build_system` and
+      after the starter list are all read; the settled position is measured and deliberately **not**
+      asserted on — §7L.6 records dev's suppressed arm reading *better* there than its live arm.
+- [x] **Verified to fail when the invariant is deliberately broken — four injections, not one**
+      (§7L.5): removing the per-module collect (12 failures), the leading batch collect, the
+      per-starter collect (12) and the leading starter collect (6). The second initially **passed**,
+      exposing a real defect in the new instrument — the seam anchored at the first collect, so
+      deleting that collect moved the anchor and hid the change; closed by deriving the expected
+      count from each list's own length. The control arm is now a permanent part of the suite rather
+      than a one-time manual check: the probe suppresses every collect at runtime by rebinding `gc`,
+      so the test asserts both that the live arm meets each bound and that the suppressed arm
+      violates it.
+- [x] Runs at `gc.threshold(-1)` (nothing sets a threshold in either tier) and needs no
+      `scripts/test.sh` change: the pytest tier collects `tests_scripts/test_*.py` on its own, and
+      the probe is `_`-prefixed so the MicroPython tier's `tests/test_*.py` glob never runs it.
+      **No `scripts/`, `pyproject.toml` or `toolchain/` change, so no BACKLOG chroot entry is owed.**
 
 ## T. Real hardware (needs its own go-ahead, in the session that runs it)
 

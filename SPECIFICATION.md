@@ -4539,7 +4539,17 @@ level, and a rename of the allowed site both fail it — plus a textual assertio
 emits one only from `codegen.py`. The test carries its own two self-tests, so the guard is checked
 rather than assumed. `scripts/lint.sh` carries the same rule as a fast path, so a widening
 fails the lint gate before the suite runs: `gc.collect(` under `src/` only in `system_service.py`,
-under `buildgen/` only in `codegen.py`. Both were verified to bite on an injected call. **The prohibition in (e), (f) and (g) is otherwise unchanged**: no `gc.collect()` in
+under `buildgen/` only in `codegen.py`. Both were verified to bite on an injected call.
+
+Those two guard the *sites*; `tests_scripts/test_digital_twin_boot_contiguity.py` guards the
+*effect*. It boots all six real generated devices under the Unix port and asserts that each list's
+newly allocated blocks still land low — the reach above that list's own seam, measured through
+`tests_hardware/heap_map.py`, the board tier's own parser. It runs a suppressed control arm in the
+same suite (the probe rebinds `gc`, so no second image is needed) and asserts that the arm *violates*
+each bound, which is what keeps the bounds meaningful; it also asserts retention is arm-independent,
+since a divergence there would mean the collects had started compensating for a leak rather than
+moving placement. Bounds are derived from the measured worst case with margin and are **twin-only** —
+the board's own reading is still owed (HEAP_FRAGMENTATION_MEASUREMENTS.md §7L). **The prohibition in (e), (f) and (g) is otherwise unchanged**: no `gc.collect()` in
 business logic, none in the run phase (the supervisor loop under the starter list is the run phase
 and is asserted to have none), and none as the remedy for memory pressure.
 
