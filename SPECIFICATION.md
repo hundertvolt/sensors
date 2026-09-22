@@ -622,7 +622,12 @@ source dir(s) (`html_stub/` default, `HTML_SRC_DIRS` overridable), then runs `py
 compressed=True, file_extension=".gz")`). Output goes to `frozen_modules/` (gitignored), not
 `.frozen/`: `.frozen/` is a hardcoded MicroPython import-machinery sentinel
 (`MP_FROZEN_PATH_PREFIX`) — any path starting with that string routes to the compiled-in frozen
-table, so a real on-disk file there is silently unimportable. Every generated
+table, so a real on-disk file there is silently unimportable. **The merge of several source dirs is
+recursive, not flat**: each one's nested subtree keeps its relative paths, so a staged website build
+(`<staged>/index.html`, `<staged>/definitions/wozi.json`, `<staged>/js/render.js`) and a shared dir
+can each contribute part of the tree — freezefs's archiver already walks nested paths and Microdot's
+static route already matches slashes, so a plain recursive copy is all the script needs. Every
+generated
 `sensortask_<device>.py` does a module-level `import frozen_html`, mounting `/html` as a side
 effect; `WebserverService(..., static_mount="/html")` registers the static route pair.
 
@@ -2811,7 +2816,37 @@ against the same `TEST_PARALLELISM` budget as any test file, and carries its own
 standing "hanging tests are never allowed" rule). One ordering constraint follows from that
 concurrency and is load-bearing: every step that globs `devices/*.toml` must run **before** the
 background launch, because one `tests_scripts/` test necessarily writes a throwaway
-`devices/zz_test_*.toml` into the live tree. See that script's own comments.
+`devices/zz_test_*.toml` into the live tree.
+
+**`devices/zz_test_*.toml` is a reserved namespace** — for live-tree test fixtures only; a real
+device may never be named that way. `tests_scripts/test_build_website_sh.py`'s malformed-TOML case
+removes its own file in `finally`, which a SIGKILL (the pytest job is `timeout`-wrapped) defeats,
+so `scripts/test.sh` also sweeps the pattern up front. A leaked one is not merely untidy:
+`scripts/_generate_sensortask_modules.py` globs `devices/*.toml` and exits 1 on the first
+`BuildError`, so under `set -e` it aborts that script, `scripts/typecheck.sh` and both twin runners
+outright, naming a device nobody added. Both halves of the reservation, and the sweep's placement
+ahead of the generation step, are asserted by `tests_scripts/test_test_sh.py`.
+
+**Two per-file resources must stay disjoint across the suite, because the loop is concurrent**:
+each file's `TmpScratch` key (`tests/_tmp_scratch.py`; the per-device split gives each generated
+file its own) and its socket port base. A full enumeration on 2026-09-17 found two violations a
+spot-check had missed — two files allocating from the same base, harmless while the loop was
+sequential, and the whole 51000-57000 tier sitting *inside* the OS ephemeral range
+(32768-60999), where any concurrent ephemeral bind could be handed one of those exact ports,
+`tests_scripts/`'s own `_free_port()` included now that it runs alongside. For UDP both modes are
+silent rather than `EADDRINUSE`, so the symptom is an inexplicable timeout, not an error. The tier
+moved below the ephemeral range, where the twin tier already sat: bases are now 19100 / 19300 /
+19400 / 19500+ / 19700+ (twin, TCP) and 21000 / 22000 / 23000 / 24000 / 25000 / 26000 / 27000
+(`udp_socket` / `captive_dns` / `ntp_client` / `dns_client` / `ntp_wifi_dns` / `ntp_fram_system` /
+`wifi_service`). **A new test file that binds a socket claims an unused base below 32768** — never a
+neighbour's, never inside the ephemeral range.
+
+**`tests/_tmp` gets one bounded `rm -rf` before any test file runs**, not a per-file sweep: every
+`TmpScratch` already wipes its own subtree regardless (`tests/_tmp_scratch.py`), so this only bounds
+a long-lived local sandbox against what accumulated before that mechanism existed, or what a killed
+file (a segfault, E.3) left behind. A real `rm -rf` rather than a MicroPython `os.listdir()` loop,
+whose cost grows with the entry count — the very `MemoryError` that design replaced. Both sweeps
+no-op on CI, which starts from a fresh checkout.
 
 ## E.2 Test framework
 
@@ -2881,6 +2916,47 @@ Session 6): `uv run scripts/_generate_sensortask_modules.py` to populate the git
 typecheck.sh` already do both automatically; running one such file directly, as the invocation above
 does for `test_math_helpers.py`, needs them done by hand first or the import fails with
 `ImportError: no module named 'sensortask_wozi'`.
+
+### E.3.1 The Unix-port test heap, and the two timeouts around each file
+
+**`-X heapsize=16M`** (against the port's own 2MB default) is a test-harness setting only, unrelated
+to the rp2040's RAM budget (Part F.1): real hardware builds one device's graph once per boot, never
+several devices' graphs repeatedly in one process. The value moved with the suite's shape and is
+recorded here because it must never be *raised* as a fix:
+
+- WP1+WP2 made the then-monolithic `test_sensortask.py` build all six devices' graphs across ~330
+  test functions **in one process**, pushing 8M → 32M (8M and 16M both hit real `MemoryError`s
+  partway through that file: 81/321 and 176/321 passing).
+- Fixed at the root instead — splitting that file per device (55 builds per process, not 330) let
+  its heaviest per-device file pass even at 4M in isolation.
+- A full-suite run at a lower value then surfaced two unrelated files that had never failed at 32M.
+  Both were root-caused rather than patched with a `gc.collect()` (forbidden as a stabilisation
+  tool, and confirmed not to work for either) or a per-file heap override.
+  `test_digital_twin_sensortask_integration.py` had the same many-devices-in-one-process shape and
+  was split the same way (~29 real builds down to ~11).
+  `test_digital_twin_bus_hazard_concurrency.py`'s dev-variant scenario is a different mechanism:
+  it reproducibly misses its own 9-second real-clock budget at 8M in **every** isolated run, with no
+  contention, and passes at 16M and above — this test genuinely needs margin against GC overhead,
+  which no split addresses.
+- So **16M is a measured floor across every file**, confirmed by a real full-suite run, not another
+  guess-and-check.
+
+**`PER_FILE_TIMEOUT_S` (default 240) plus two retries** is a standing backstop for the "hanging
+tests are never allowed" rule, not the fix for any specific hang — the CI hang it was written during
+was really `test_asy_uart_driver.py` using a real `select.poll()` against a fake UART, and an
+isolation run with the timeout and `stdbuf` reverted passed 8/8 (CLAUDE.md's known-hang note).
+Two retries absorb transient contention; a third consecutive timeout on one file is a real failure.
+`stdbuf -oL -eL` forces line buffering, since MicroPython block-buffers 4096 bytes whenever stdout
+is not a tty.
+
+The 240s default came from 180s when the real-socket webserver-concurrency scenarios grew ~35s past
+comfort. **Per-file overrides exist but the table is empty**: the per-device splits brought the two
+former monolithic files (447s/268s single-process) down to ~90s (`sensortask_*`) and ~45s
+(`webserver_concurrency_*`) standalone. Running all six of one family at once costs 114.8s/59.5s
+wall clock rather than 6x one file, because almost all of each build is real SPI CS-settle sleeping
+rather than CPU work (~35s of user CPU across a ~9-minute sequential six-file run) — so concurrent
+processes barely contend even past the core count. Re-measure and re-add an entry if a future device
+pushes one past the default.
 
 **The (f) stage is the same command with one variable set** (I.4(e)/(f) are the two stages, and
 both are run):
@@ -4166,12 +4242,18 @@ answering the six REST paths, A.8).
 **`scripts/build_website.sh <device>`** stages one device's real site: `index.html` (with
 `style.css` and `definitions.json` inlined, H.7), the production `js/` modules concatenated into
 one `js/app.js` bundle, `main.js` renamed `app.js`. Staging the production entry under the name
-`app.js` means `index.html`'s import path never needs a build-time rewrite. Cross-checked against
-`html/`/`js/`'s real contents by `tests_scripts/test_build_website_sh.py`.
+`app.js` means `index.html`'s import path never needs a build-time rewrite. `js/mock-server.js` is
+deliberately never staged at all — its `fetch` patching has no business near production. That same
+path also stays identical under `npm run preview`, which serves the repo layout where `js/app.js` is
+the prototype-only entry file. Cross-checked against `html/`/`js/`'s real contents by
+`tests_scripts/test_build_website_sh.py`.
 
 **Splitting a module**: the bundler strips local `import` lines but never `export` lines — two
 production files exporting the same name would collide once concatenated; a split-out module
-(`field-format.js`) must never be *re-exported*. **`index.html`'s inline bootstrap `<script
+(`field-format.js`) must never be *re-exported*. Concatenation order is fixed so every file follows
+the local files it imports from, which matters only for the handful of top-level `const`s
+(`DEFAULT_TIMEOUT_MS`/`pollManager`, `SUPPORTED_SCHEMA_MAJOR`) since function and class
+declarations hoist anyway; `scripts/build_website.sh` re-checks that mechanically on every build. **`index.html`'s inline bootstrap `<script
 type="module">`** can't be extracted (must keep importing the literal, never-rewritten path).
 `eslint-plugin-html` still lints it in place; `tsc`'s JSDoc checking doesn't cover inline scripts
 (accepted — it's a thin bootstrap).
@@ -4402,6 +4484,21 @@ separate, slightly later GET). Deliberately narrow scope (not a second exhaustiv
 real WebDriver round trip costs seconds). `scripts/setup_cross_browser_toolchain.sh` installs the
 three non-Chromium toolchains (idempotent), shared between CI and local dev; CI always installs all
 three (a skip there is the bug to chase).
+
+**Why each engine comes from the channel it does** — none is the obvious one, and the script only
+points here. WebKitGTK: `webkit2gtk-driver` is a plain apt package shipping `/usr/bin/
+WebKitWebDriver`, a real W3C WebDriver server, so nothing else is needed (plus `xvfb`, since
+headless WebKitGTK still wants a display). Edge: Microsoft's own apt repo
+(`packages.microsoft.com`) ships a real Linux build, and Playwright drives it directly through
+`chromium.launch({executablePath})` — same Blink/CDP protocol — so it needs no separate WebDriver
+server. Firefox is the awkward one: Ubuntu's `firefox` package is a snap-only stub that fails
+outright without working snapd (which CI runners and most containers lack), and every other usual
+source — Mozilla's CDN, the `mozillateam` PPA, Playwright's own bundled build — is blocked by the
+outbound network policy this was first verified under. conda-forge, reached through a standalone
+`micromamba` binary, packages a real current Firefox plus Mozilla's own `geckodriver` and was
+reachable. That install is deliberately **unpinned**, unlike `toolchain/versions.toml`'s
+MicroPython pin: whatever conda-forge publishes today is acceptable for an engine-diversity smoke
+check, and deleting `$CROSS_BROWSER_TOOLCHAIN_DIR` forces a fresh pull.
 
 ## H.8 CI / tooling stack
 

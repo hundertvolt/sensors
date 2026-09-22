@@ -1,50 +1,33 @@
 #!/usr/bin/env bash
-# Dedicated entry point for the digital twin's "full Unix-port integration" run -
-# digital_twin/run_generic_integration.py, run against the real digital_twin buses under the real
-# MicroPython Unix-port interpreter, for any real device (--device, default wozi;
-# SPECIFICATION.md Part L.4 - this script used to hardcode run_wozi_integration.py, now
-# retired along with run_dev_integration.py in favor of this one generic entry point). Deliberately
-# separate from scripts/test.sh: the twin needs its own MICROPYPATH
-# ("build/generated_src:src:digital_twin:ext:frozen_modules:.frozen") that never carries a "tests"
-# segment (digital_twin/README.md's own "never together" rule - see that doc's "Swapping the twin
-# in for a Unix-port run" section), and run_generic_integration.py can run forever (no --duration -
-# a real browser on this machine should be able to reach it), which would hang scripts/test.sh's
-# own default tests/test_*.py glob loop if it were discovered there instead.
+# Dedicated entry point for the digital twin's full Unix-port integration run:
+# digital_twin/run_generic_integration.py against the real twin buses under the real MicroPython
+# Unix-port interpreter, for any real device (--device, default wozi; SPECIFICATION.md Part L.4).
 #
-# "ext" is required here (unlike scripts/test.sh's own MICROPYPATH) because every generated
-# sensortask_<device>.py unconditionally imports vendored ext/microdot.py - every tests/test_*.py
-# file that needs it works around scripts/test.sh's own ext-less MICROPYPATH with its own per-file
-# sys.path.insert(0, "ext") (see e.g. tests/_sensortask_scenarios.py's own comment), but this is the
-# real standalone entry point, not a test file, so it needs the real fix here instead. Found by
-# actually running this script standalone for the first time (a manual baseline-verification pass) -
-# every prior verification of this file went through the test-harness sys.path.insert() workaround
-# instead, which silently masked the gap.
+# Deliberately separate from scripts/test.sh: the twin needs its own MICROPYPATH with no "tests"
+# segment (digital_twin/README.md's "never together" rule), and this run can serve forever with no
+# --duration, which would hang that script's own test-file loop.
 #
-# "build/generated_src" is required for the same reason scripts/test.sh needs it: no static
-# src/sensortask_*.py exists any more (SPECIFICATION.md Part L.2) - both the
-# device's module and its wiring plan are generated fresh below, via buildgen, into this gitignored
-# directory instead.
+# That path needs "ext", unlike scripts/test.sh's, because every generated sensortask_<device>.py
+# imports vendored ext/microdot.py - a test file works around the ext-less path with its own
+# sys.path.insert, the real entry point needs the real fix.
 #
-# Usage:
-#   scripts/run_unix_port_integration.sh                        # just launch wozi + serve forever, no flags
-#   scripts/run_unix_port_integration.sh --device dev            # same, for the dev bench variant
-#   scripts/run_unix_port_integration.sh --fault sgp40:writeto  # manual fault-injection exploration
-#   scripts/run_unix_port_integration.sh --host 0.0.0.0 --port 8080   # reachable from outside this machine
+# "build/generated_src" is there because no static src/sensortask_*.py exists any more (Part L.2):
+# both the module and its wiring plan are generated fresh below.
 #
-# --device (this script's own flag, one of wozi/dev/arzi/klkizi/grkizi/schlafzi - not forwarded)
-# picks which devices/<device>.toml-generated module/wiring plan to boot. Every other flag forwards
-# straight through to run_generic_integration.py's own parse_args() - see that module's own
-# docstring for the full list (--host/--port/--fram-state-path/--seed/--fault/--wifi-outcome/
-# --gc-threshold/--mem-sample-interval-ms/--duration). No flags given just launches wozi and serves
-# forever (RunConfig's own defaults - localhost:8080), the same "reachable/observable" half of owner
-# decision 7 a real rp2040 boot would give you. There is no --soak flag here any more - the
-# automated HTTP+memory-trend soak check moved host-side (SPECIFICATION.md's "Driver/DUT process
-# separation" Part) - run it via scripts/_digital_twin_ci_suite.py's own Run 11 instead.
+# Usage: scripts/run_unix_port_integration.sh [--device <name>] [flags forwarded to the twin]
+#   e.g. --device dev, --fault sgp40:writeto, --host 0.0.0.0 --port 8080 (reachable from outside).
+#
+# --device is this script's own flag (one of the six real devices, not forwarded) and picks which
+# generated module/wiring plan to boot; every other flag goes straight through to
+# run_generic_integration.py's parse_args(), whose docstring has the full list.
+#
+# No flags just launches wozi on localhost:8080 and serves forever. There is no --soak flag any
+# more: the HTTP+memory-trend soak check moved host-side into
+# scripts/_digital_twin_ci_suite.py's Run 11 (SPECIFICATION.md's "Driver/DUT process separation").
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-export TZ=UTC  # same reasoning as scripts/test.sh's own identical export - see that script's own
-# comment for the full time.mktime(time.gmtime()) non-UTC-host explanation.
+export TZ=UTC  # same reasoning as scripts/test.sh's own identical export, which has the account.
 
 device="wozi"
 forward_args=()
@@ -73,12 +56,9 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
-# run_generic_integration.py's own DNSServer (src/captive_dns.py) binds the real privileged port
-# 53; a non-root dev environment can't bind that without either running as root or holding this
-# specific capability on the interpreter binary. Applied fresh every invocation, not assumed to
-# survive from a prior run - see scripts/run_digital_twin_ci.sh's identical block for why baking
-# this into the toolchain build itself wouldn't be reliable (xattrs, where capabilities live,
-# don't survive a cached/restored toolchain's tar round-trip).
+# The twin's DNSServer binds the real privileged port 53, which a non-root environment cannot do
+# without this capability on the interpreter binary. Granted fresh every invocation, for the reason
+# scripts/run_digital_twin_ci.sh's identical block gives.
 echo "== Granting CAP_NET_BIND_SERVICE to $micropython_bin (needed for the real port-53 DNS server)"
 if [ "$(id -u)" -eq 0 ]; then
     setcap 'cap_net_bind_service=+ep' "$micropython_bin"

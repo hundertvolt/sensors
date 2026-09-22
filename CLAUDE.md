@@ -428,9 +428,9 @@ information):
   `@typedef`/`@param`/`@returns` annotations are the same case** — `npm run typecheck` really
   checks them with `tsc`, so `js/definitions.js`'s ~37-line `@typedef` run is a type declaration,
   not a comment; the prose above it is not exempt. Applied across `src/` in one pass (project
-  owner's direction, 2026-09-18); Python, JS and CSS are at zero over-cap blocks, header and inline
-  alike, while shell was never swept — BACKLOG.md item 42 carries the per-scope measurement and the
-  one open decision. Keep new code to this bar.
+  owner's direction, 2026-09-18) and repo-wide since: **every scope measures zero over-cap blocks,
+  header and inline alike — Python, JS, CSS and, since 2026-09-22, `scripts/`'s shell** (BACKLOG.md
+  item 42 records what each sweep moved and where). Keep new code to this bar.
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
@@ -690,8 +690,8 @@ information):
   — a Unix-port-only test-harness setting, unrelated to the real rp2040's own RAM budget. **The
   value is not fixed and has moved with the suite's own shape** (8M → 32M when WP1+WP2 made the
   monolithic `test_sensortask.py` build all 6 devices' graphs in one process, then back down to
-  today's 16M once that file was split per device — root-caused, not overridden); `scripts/test.sh`'s
-  own comment above the flag is the authoritative history, kept there rather than duplicated here.
+  today's 16M once that file was split per device — root-caused, not overridden);
+  SPECIFICATION.md Part E.3.1 is the authoritative history, kept there rather than duplicated here.
   Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before checking the
   flag is still in place — and don't raise it as the fix, which that history is a standing example
   against.
@@ -825,13 +825,15 @@ information):
     F.5.1. `src/asy_i2c_driver.py`, `src/asy_spi_driver.py`, `tests/machine.py` and
     `digital_twin/machine.py` all state the real semantics now.
 - **`scripts/typecheck.sh` repairs two verified defects in the MicroPython stub package after
-  installing it** (added with the 1.29 bump; see the script's own comment for the full account).
+  installing it** (added with the 1.29 bump; this bullet is the full account, the script itself
+  carries only the mechanics).
   `micropython-stdlib-stubs` 1.29.0.post1/.post2 privatised `_asyncio.Future` to `_Future` and
   dropped the `asyncio/futures.pyi` that re-exported it, while `asyncio/tasks.pyi` and
   `asyncio/__init__.pyi` still import from it — leaving `Future` as `Any`, collapsing
   `_FutureLike[_T]`, and making every `asyncio.wait_for()`/`gather()` result in this repo
   un-inferable; and `builtins.pyi` has `NotImplemented` commented out, though MicroPython genuinely
-  has it and honors it from `__eq__` (verified against the pinned Unix-port interpreter). Together
+  has it and honors it from `__eq__` (verified against the pinned Unix-port interpreter —
+  SPECIFICATION.md Part F.5.5). Together
   these accounted for **all 26** findings the bump surfaced. Both repairs are conditional on the
   defect still being present, so they no-op once upstream re-ships — **don't replace them with
   `type: ignore` comments in `src/`/`digital_twin/`**: the code is correct on real hardware in both

@@ -651,9 +651,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     it rides the next real-hardware session rather than being pushed blind
     (`REAL_HARDWARE_TEST_QUEUE.md`).
 
-42. **Closed 2026-09-19 (owner decision 4): every header and inline comment block in the repo's
-    Python, JS and CSS is inside the 3-line cap** — shell was never in the sweep, see the closing
-    paragraph. The cap was tightened from "no hard numeric cap" to 3 lines per block
+42. **Closed: every header and inline comment block in the repo is inside the 3-line cap** — Python,
+    JS and CSS on 2026-09-19 (owner decision 4), shell on 2026-09-22 (owner's follow-up), see the
+    closing paragraphs. The cap was tightened from "no hard numeric cap" to 3 lines per block
     by the project owner on 2026-09-14, re-confirmed 2026-09-18, and the owner then asked for the
     same treatment applied once - not permanently - to everything outside `src/`.
 
@@ -696,22 +696,32 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     pass by the owner's explicit framing, not a standing gate: new code is expected to meet the cap
     as it is written, and nothing enforces it mechanically.
 
-    **What the pass did not cover — shell, measured 2026-09-22, owner's call.** Every sweep commit
-    touched `.py`/`.js`/`.css` only, so `scripts/*.sh` still carries **88** blocks over the cap, 40
-    of them in `scripts/test.sh` (whose file header alone is three blocks of 11, 14 and 6 lines).
-    Python, JS and CSS re-measure at **zero** today, header/docstring and inline alike, after seven
-    residual blocks were brought in on 2026-09-22. Four inline: `test_asy_webserver_service.py`
-    (which also still claimed the retired 8MB Unix-port heap), `flash/test_memory_stress.py` and two
-    `tests_hardware/bench/` files. Three docstrings: `tests_hardware/error_log_helpers.py`,
-    `test_gc_collect_sites.py`, and `test_memory_error_gate_agreement.py`, whose 4-line header this
-    branch had written itself. A blank line inside a docstring separates blocks exactly as a bare
-    `#` does, so the measurement counts blocks, not whole docstrings.
+    **The Python/JS/CSS residue, 2026-09-22.** Seven blocks were still over: four inline
+    (`test_asy_webserver_service.py`, which also still claimed the retired 8MB Unix-port heap,
+    `flash/test_memory_stress.py`, and two `tests_hardware/bench/` files) and three docstrings
+    (`tests_hardware/error_log_helpers.py`, `test_gc_collect_sites.py`, and
+    `test_memory_error_gate_agreement.py`, whose 4-line header this branch had written itself). A
+    blank line inside a docstring separates blocks exactly as a bare `#` does, so the measurement
+    counts blocks, not whole docstrings.
 
-    Shell is left as an owner decision rather than swept unasked: CLAUDE.md's cap says "all code in
-    the repo" but names only Python's `#` and JS's `//`, and these blocks are load-bearing
-    build-chain WHY notes, so a bulk rewrite is the kind that loses knowledge. New shell comments
-    are written to the cap either way — every block this branch added to `scripts/test.sh` is
-    inside it.
+    **Shell, 2026-09-22, on the owner's follow-up direction.** The earlier sweep had touched
+    `.py`/`.js`/`.css` only, leaving **88** over-cap blocks in `scripts/*.sh`, 40 of them in
+    `scripts/test.sh`, whose file header alone was three blocks of 11, 14 and 6 lines. All 13
+    scripts are now at zero, on the same rule as before: nothing dropped, the load-bearing WHY kept
+    next to the line it explains, implementation-history narrative out, and anything architectural
+    migrated to the doc that owns it rather than restated. The four legacy `build-*.sh` at the repo
+    root stay out of scope, reference-only forever.
+
+    What that migration produced, since these are now the citation targets: **Part E.1** gained the
+    reserved `devices/zz_test_*.toml` namespace, the `tests/_tmp` sweep rationale and the port-base
+    /`TmpScratch`-key disjointness rule (including "a new socket-binding test file claims an unused
+    base below 32768"); **Part E.3.1** is new and owns the `-X heapsize` history and the per-file
+    timeout/override figures, which CLAUDE.md had until now deliberately pointed at `scripts/
+    test.sh`'s own comment for; **Part H.2** gained the never-staged `mock-server.js` and the
+    concatenation-order rule; **Part H.7** gained why each browser engine comes from the channel it
+    does; **Part A.9** gained the recursive multi-source merge; and `tests_hardware/README.md`
+    gained why both suite wrappers go through `_require_clean_hardware_run.sh` at all — pytest exits
+    0 for an all-skipped run exactly as for an all-passed one.
 
 43. **Closed 2026-09-19: `main` is merged in, and the "purely mechanical" assessment of that merge
     was wrong in four places.** The branch's base was `348be6d` (PR #70); `main` had moved 76

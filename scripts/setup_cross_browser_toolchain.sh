@@ -1,22 +1,10 @@
 #!/usr/bin/env bash
-# Installs the three non-Chromium browser engines scripts/cross_browser_smoke.mjs drives
-# (WebKitGTK, real Microsoft Edge, real Firefox) - idempotent, safe to re-run. Playwright's own
-# Chromium (already used by the rest of tests_js/) is installed separately via `npx playwright
-# install chromium`, unrelated to this script.
+# Installs the three non-Chromium engines scripts/cross_browser_smoke.mjs drives (WebKitGTK, real
+# Microsoft Edge, real Firefox) - idempotent, safe to re-run. Playwright's own Chromium comes from
+# `npx playwright install chromium` instead and is unrelated to this script.
 #
-# Why these three specific install paths, not the "obvious" one for each:
-# - WebKit: `webkit2gtk-driver` (ships /usr/bin/WebKitWebDriver, a real W3C WebDriver server for
-#   WebKitGTK) is a plain apt package - no alternative needed.
-# - Microsoft Edge: Microsoft's own apt repo (packages.microsoft.com) ships a real Linux Edge
-#   build. Playwright can drive it directly via `chromium.launch({executablePath: ...})` (same
-#   Blink/CDP protocol as Chromium), so no separate WebDriver server is needed for this one.
-# - Firefox: Ubuntu's own `firefox` apt package is a snap-only stub (fails outright without a
-#   working snapd, which this CI runner/most containers don't have) and every other usual source
-#   (Mozilla's own CDN, the mozillateam PPA, Playwright's own bundled build) is blocked by this
-#   project's outbound network policy where this was first verified. conda-forge (via
-#   conda.anaconda.org, a different distribution channel entirely) packages a real, current
-#   Firefox plus geckodriver (Mozilla's own official WebDriver server) and was reachable - see
-#   SPECIFICATION.md Part H.7 for the full investigation trail.
+# None of the three channels below is the obvious one for its engine; SPECIFICATION.md Part H.7's
+# "Why each engine comes from the channel it does" has the investigation trail for all three.
 set -euo pipefail
 
 # --- WebKit: webkit2gtk-driver + xvfb (headless WebKitGTK needs a virtual display) ---
@@ -41,11 +29,8 @@ else
 fi
 
 # --- Firefox + geckodriver: conda-forge via a standalone micromamba binary ---
-# Deliberately unpinned (unlike toolchain/versions.toml's strict MicroPython pin) - this installs
-# whatever conda-forge currently publishes as "firefox"/"geckodriver". Acceptable for a browser-
-# engine-diversity smoke check (SPECIFICATION.md Part H.7's "Coverage depth" decision); bump
-# CROSS_BROWSER_DIR below (or just delete it) to force a fresh install if conda-forge's build ever
-# needs re-pulling.
+# Deliberately unpinned, unlike toolchain/versions.toml's MicroPython pin (Part H.7). Delete
+# CROSS_BROWSER_DIR below to force a fresh pull.
 CROSS_BROWSER_DIR="${CROSS_BROWSER_TOOLCHAIN_DIR:-$HOME/cross-browser-toolchain}"
 FIREFOX_BIN="$CROSS_BROWSER_DIR/mamba_root/envs/ff/bin/firefox"
 GECKODRIVER_BIN="$CROSS_BROWSER_DIR/mamba_root/envs/ff/bin/geckodriver"

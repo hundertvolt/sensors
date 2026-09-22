@@ -1,76 +1,11 @@
 #!/usr/bin/env bash
-# Stages the real website (html/ + js/) for exactly one device into the shape scripts/
-# build_frozen_html.sh expects, then invokes it. See SPECIFICATION.md Part H.2 for the design
-# this follows and the gaps it closes; scripts/build_frozen_html.sh itself is unchanged by this
-# script's existence - it stays a generic "merge N source dirs, gzip, freezefs" pipeline, this
-# script's own job is only building the one merged dir HTML_SRC_DIRS points at.
+# Stages the real website (html/ + js/) for exactly one device into the shape
+# scripts/build_frozen_html.sh expects, then invokes it. That script stays generic - this one's only
+# job is building the single merged directory HTML_SRC_DIRS points at.
 #
-# What gets staged, and why each rename/selection exists:
-#   - html/index.html - staged with html/style.css and the device's own definitions.json inlined
-#     directly into it (see "Inlining" below) - neither is staged as a separate file any more.
-#   - html/definitions/<device>.json - inlined into index.html, not staged under its own name; a
-#     real device's firmware only ever ships its own one definitions file, so the inlined data is
-#     always the one matching this build's own device rather than needing a "device" constant
-#     baked into checked-in JS (mirrors how html/index.html itself never branches on device -
-#     SPECIFICATION.md Part H.4's "per-device page-scheme mechanism" row).
-#   - The production JS module set (js/field-format.js, poll-manager.js, templates.js,
-#     definitions.js, render.js, nav.js, main.js) - concatenated into one bundled js/app.js (see
-#     "Bundling" below), not copied as separate files. js/mock-server.js (prototype-only fake
-#     backend) is deliberately NOT staged at all - its fetch-patching has no business anywhere near
-#     production.
-#   - The bundle is staged as js/app.js on purpose: html/index.html's own `<script>` imports
-#     "../js/app.js" unconditionally, and that one path is meant to stay identical between
-#     `npm run preview` (serves the real repo layout, where js/app.js is the separate,
-#     prototype-only entry file) and a real device build (where the staged js/app.js is really the
-#     bundle below) - see SPECIFICATION.md Part H.2's own account of this staging rename.
-#     Staging under this name means html/index.html never needs a build-time text rewrite.
-#
-# Bundling (SPECIFICATION.md Part H.7): concatenated into one file, not copied as 7 separate
-# js/*.js files, so a single page load opens far fewer concurrent TCP connections - the real
-# rp2040 lwIP build's MEMP_NUM_TCP_PCB=5 (lwIP's own default, confirmed against the vendored
-# source, no project override) is a hard ceiling on simultaneously active TCP connections that no
-# amount of src/asy_webserver_service.py tuning can raise; 7 separate JS files plus index.html plus
-# style.css could alone exceed it on a single browser tab's first paint, before any other client
-# (e.g. an OpenHAB instance polling REST endpoints) even connects. Concatenation order matters -
-# each file only ever appears after every local file it imports from, so a `const`/class needed by
-# a later file already exists by the time that file's top-level code runs (function declarations
-# are hoisted regardless, so strict ordering only matters for the few top-level `const`s -
-# poll-manager.js's DEFAULT_TIMEOUT_MS/pollManager, definitions.js's SUPPORTED_SCHEMA_MAJOR - but
-# kept consistent throughout rather than relying on that distinction). Every file's own
-# `import { ... } from "./local-file.js";` line is dropped (`grep -v`) since after concatenation
-# every imported name is already in scope from earlier in the same file; each file's own `export`
-# keywords are left as-is - a module script can freely contain unused exports, and stripping them
-# would be one more thing that could get the regex wrong for no real benefit. This is a plain,
-# dependency-free text concatenation (matching this project's own small/lean/no-build-step-magic
-# philosophy - SPECIFICATION.md Part H.1), not a real bundler - safe here specifically because every
-# production js/*.js file uses only simple `import { name, ... } from "./relative.js"` (no default
-# exports, no dynamic imports, no re-exports, no naming collisions across files - confirmed by
-# direct inspection, and cross-checked mechanically below) rather than because concatenation is a
-# generally-safe substitute for real bundling.
-#
-# Inlining (SPECIFICATION.md Part H.7): html/style.css and the device's own
-# definitions.json are embedded directly into the staged index.html (a `<style>` block replacing
-# the `<link rel="stylesheet">`, and a `<script type="application/json" id="inlined-definitions">`
-# element js/definitions.js's own loadDefinitions() reads in preference to fetching) instead of
-# being staged as separate files - cuts a single page load from 4 concurrent connections (index.html
-# + style.css + app.js + definitions.json) to 2 (index.html + app.js), reducing how much of the
-# real rp2040 lwIP build's MEMP_NUM_TCP_PCB=5 ceiling one browser tab alone can consume, the same
-# problem the JS bundling above already addresses for the seven production modules. This was chosen
-# deliberately over real HTTP keep-alive/persistent connections after an earlier attempt: vendored
-# ext/microdot.py (checked directly, including its current upstream `main` branch - no keep-alive
-# support has been added even there) always closes the connection after exactly one request by
-# design, and building persistent-connection support entirely in application code around it (a
-# stream-proxy wrapper intercepting Microdot's own close call, a write-capture loop) proved fragile
-# and easy to break silently on any future Microdot change - reverted in favor of this simpler,
-# framework-respecting reduction instead. Raising the rp2 firmware's own MEMP_NUM_TCP_PCB compile
-# constant (the standard fix MicroPython's own maintainers point to for this exact ceiling elsewhere)
-# was also considered and set aside for this round - out of scope for a website-only change.
-# The definitions JSON is embedded with every literal `<` replaced by the escape sequence
-# backslash-u-zero-zero-three-c (semantically identical once JSON-parsed) - `<script>` is an HTML
-# "raw text" element, terminated by a literal
-# `</script` (case-insensitively) wherever it appears, so a field value that happened to contain
-# that exact substring would otherwise prematurely close the tag and corrupt the page; escaping
-# away every `<` removes any possibility of that substring surviving in the embedded text at all.
+# SPECIFICATION.md Part H.2 owns what gets staged and why: the app.js rename, the never-staged
+# mock-server.js, the import-stripping and concatenation-order rules. Part H.7 owns why bundling and
+# inlining exist at all, and why keep-alive is deliberately not the answer.
 #
 # Usage: scripts/build_website.sh <device> [output_path]
 #   <device>     matches an html/definitions/<device>.json file, e.g. "wozi".
@@ -82,22 +17,15 @@ device="${1:?Usage: scripts/build_website.sh <device> [output_path]}"
 out_file="${2:-frozen_modules/frozen_html.py}"
 
 stage_dir="$(mktemp -d)"
-# Separate from stage_dir on purpose: stage_dir becomes the served /html content root
-# (scripts/build_frozen_html.sh below scans its whole tree), so a generated definitions.json
-# written there would get frozen as its own extra /definitions.json.gz file - defeating the
-# "Inlining" design above (confirmed directly: an earlier version of this fallback wrote it into
-# stage_dir and a stray /definitions.json.gz reappeared in the freezefs manifest). scratch_dir
-# holds build-only intermediate files that must never be served.
+# Separate from stage_dir on purpose: stage_dir is the served /html content root and gets scanned
+# whole, so a generated definitions.json written there would be frozen as an extra
+# /definitions.json.gz and defeat H.7's inlining. scratch_dir never reaches the served tree.
 scratch_dir="$(mktemp -d)"
 trap 'rm -rf "$stage_dir" "$scratch_dir"' EXIT
 
-# wozi/dev keep their existing hand-written html/definitions/<device>.json unchanged (tests_js/'s
-# own PUT-matrix fixtures load it directly off disk - SPECIFICATION.md Part L.4 proved these
-# two are already byte-shape-identical to buildgen's own generated output, so nothing is lost by
-# not switching them over yet; retiring them outright is a separate, deliberately deferred piece of
-# work - see SPECIFICATION.md Part L.4). Every other device has no hand-written file
-# at all (only wozi.json/dev.json exist today) - generated fresh here via buildgen instead of
-# failing, so scripts/build_firmware.py can build any of the 6 real devices, not just these two.
+# wozi/dev keep their hand-written html/definitions/<device>.json, which tests_js/'s PUT-matrix
+# fixtures load straight off disk; retiring them is deferred work (SPECIFICATION.md Part L.4).
+# Every other device has none, so buildgen generates one here rather than failing the build.
 definitions_src="html/definitions/${device}.json"
 if [[ ! -f "$definitions_src" ]]; then
     device_toml="devices/${device}.toml"
@@ -122,11 +50,9 @@ with open("html/style.css", encoding="utf-8") as f:
 with open(definitions_src, encoding="utf-8") as f:
     definitions_json = f.read()
 
-# Built via chr(92) rather than a literal backslash in this script's own source, purely to keep
-# this heredoc's own escaping unambiguous - the resulting six-character sequence (backslash,
-# "u003c") is standard JSON's own escape for "<", semantically identical to a literal "<" once
-# JSON.parse()'d (see this script's own "Inlining" comment above for why every "<" is escaped
-# this way before embedding).
+# chr(92) rather than a literal backslash, to keep this heredoc's own escaping unambiguous. The
+# result is JSON's own escape for "<", identical to a literal "<" once parsed; escaping every one of
+# them is what stops a field value containing "</script" from closing the tag early (Part H.7).
 escaped_lt = chr(92) + "u003c"
 definitions_json = definitions_json.replace("<", escaped_lt)
 

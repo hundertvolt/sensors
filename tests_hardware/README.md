@@ -124,6 +124,29 @@ Both automated scripts are plain `uv run pytest` wrappers - any pytest flag work
 `-m role_reversal`, `-v`, `--tb=short`, ...). `--collect-only` works with nothing attached at all
 (every fixture skips cleanly, never errors, when the hardware it needs isn't reachable).
 
+**Why both wrappers go through `scripts/_require_clean_hardware_run.sh` rather than trusting
+pytest's exit code.** That clean-skip design is what makes a run against genuinely *unreachable*
+hardware look identical at the exit-code level to a real clean run: pytest exits 0 for an
+all-skipped run exactly as it does for an all-passed one. These wrappers exist to run against real,
+attached hardware, so that ambiguity must never pass silently - every expected test has to show
+PASSED, not quietly skip. The helper therefore inspects pytest's own output (which is also why it
+runs without `set -e`) and fails on any skip beyond three deliberate classes:
+
+- `KNOWN_PERMANENT_SKIPS`, one documented, permanent entry at a time - never a way to silence a
+  real skip.
+- The opt-in gates that skip per test (`--allow-flash-cycle`, `--soak-tier`,
+  `--allow-multi-day-rollover-wait`, `--allow-neopixel-sweep`), each accepted *only* when its own
+  flag is absent from that invocation. Pass the flag and still get a skip, and it fails.
+- The gates that deselect at collection time instead (`--allow-persistence-writes`,
+  `--allow-scd30-extra-write`), which no check in that script can see at all - hence the deselected
+  count in its verdict, described under "Read the deselected count in the verdict" below.
+
+The soak markers are a non-case for the whitelist: both general wrappers pass
+`-m "not long_soak and not multi_day_rollover"`, so those tests are deselected rather than skipped.
+The entry matters only for a direct invocation that omits that exclusion, such as
+`scripts/run_bench_soak_tests.sh`'s own `-m long_soak` selection - where `--soak-tier` *is*
+expected, making those tests "must pass" rather than "may skip".
+
 ## The NeoPixel sweep rig
 
 Two flash-tier tests are gated on physical geometry rather than on wear or wall clock -
