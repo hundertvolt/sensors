@@ -39,12 +39,10 @@ def _glob_to_regex(pattern: str) -> "re.Pattern[str]":
 
 
 def _repo_json_files(repo_root: Path) -> list[str]:
-    found = []
+    found: list[str] = []
     for dirpath, dirnames, filenames in os.walk(repo_root):
         dirnames[:] = [d for d in dirnames if d not in _PRUNED and not d.startswith("htmlcov")]
-        for name in filenames:
-            if name.endswith(".json"):
-                found.append(str(Path(dirpath, name).relative_to(repo_root)))
+        found.extend(str(Path(dirpath, name).relative_to(repo_root)) for name in filenames if name.endswith(".json"))
     return found
 
 
