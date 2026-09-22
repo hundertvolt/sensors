@@ -232,7 +232,7 @@ rather than that a setting is wrong.
   chain died, not that the light moved slowly), and a return-to-baseline re-read after each scenario
   catches a driver left wedged in a range.
 
-## Writing a new device script: three habits
+## Writing a new device script: four habits
 
 A test depending on an unstated rig condition is this tier's recurring failure mode - six instances
 so far, every one found by running the test rather than reading it, and every one green first:
@@ -249,6 +249,14 @@ so far, every one found by running the test rather than reading it, and every on
   sat inside the band. Every scenario now carries `min_switches` and a must-use-both-ranges flag
   beside its ceiling: `threshold_oscillation_crossing` must switch at least 4 times and
   `hysteresis_band_dwell_no_chatter` exactly zero, so an edit making either vacuous fails the other.
+- **`await flush_pending()` after any config write.** `write_config()` only *stages*; the flash write
+  is its own task (SPECIFICATION.md Part F.2). Production keeps an event loop running, but a device
+  script that writes and then returns lets `asyncio.run()` discard the flush, and the file is left
+  holding `setup()`'s defaults - while `write_config()` has already reported success. This silently
+  broke three scripts: the reboot-persistence marker never persisted, and the DebugLevel pair backed
+  up `PrevLevel: 0` instead of the real 5 and then "restored" that, the two omissions cancelling so
+  the *test passed*. Fixing only one of that pair drives the bench board to `DebugLevel = 0`.
+  `tests_scripts/test_device_script_config_flush.py` now pins this. Full account: MEASUREMENTS 7O.
 
 ## Writing a new bench-tier test, and diagnosing a DUT that has gone quiet: two traps
 

@@ -416,11 +416,19 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     wall-clock cost on that host was small (4m30.9s autodetected vs 4m26.6s pinned at 16) only
     because the backgrounded pytest tier at 263s was the binding constraint at both settings; the
     real defects were the non-determinism and that the probe was not measuring what it claimed to.
-    **What is left**: the thresholds are calibrated from one fast host
-    plus a simulated slow one, not from the Pi4 itself — if a real bench run still starves that twin
-    assertion at 2x, the next step is 1x for that class, or widening the assertion's own budget.
-    Note `_wait_until()` counts poll *iterations*, not wall clock, so making it a true wall-clock
-    timer would make this worse rather than better.
+    **CLOSED 2026-09-22 — measured on the real Pi4, and the premise was wrong.** The bench Pi4
+    reports `== Test parallelism: 16 (4 usable cores x 4, interpreter speed probe 139ms)`: 139ms is
+    comfortably inside the 4x band, so it probes as a **fast** host and takes the top multiplier —
+    not the 2x every earlier note assumed from the simulated slow host. The 704ms simulation simply
+    did not resemble this machine. **The suite is green there at 4x**: `1458 passed, 7 skipped` in
+    `tests_scripts/`, `85/85` MicroPython files, 473.99s, and the twin assertion this item exists
+    for — `test_digital_twin_sensortask_integration.py`'s
+    `test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led` —
+    passes with its file at 13/13, plus zero real allocation failures. So there is **nothing to
+    re-tune and no 1x fallback to introduce**; the original starvation was the 4x-core-count default
+    on a *loaded* host, which the probe already fixed. Note `_wait_until()` counts poll *iterations*,
+    not wall clock, so making it a true wall-clock timer would still make this worse rather than
+    better — kept because it is a standing trap, not a residual.
 
 29. **A real WiFi outage logs `W4` ("WLAN wrong password") twice alongside the expected `W5`
     ("access point not found"), on a network whose password never changed.** Observed on the dev

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 import dns_probe
 import http_client
 import pytest
+import website_identity
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
 from harness import Board, HardwareTestFailureError, wait_until
 
@@ -285,7 +286,7 @@ def test_real_static_website_content_serves_over_the_hotspot_link(joined_hotspot
     # twin (SPECIFICATION.md Part A.9), now over real hardware/RF.
     res = http_client.fetch(joined_hotspot, 80, "GET", "/", timeout_s=10.0)
     assert res.status_code == 200
-    assert len(res.body) > 0
+    website_identity.assert_page_is_this_devices_build(res, "the hotspot link")
 
 
 def test_nonsense_path_redirects_to_root_over_the_hotspot_link(joined_hotspot: str) -> None:

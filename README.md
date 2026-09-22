@@ -708,24 +708,6 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   result is migrated into the permanent docs; the file goes when the last row does. It authorizes
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
-- **[`REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md`](REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md)** — the
-  runnable handover for the next bench sitting: the boot placement reset measured as *placement*
-  rather than as a contiguity number, which the board has never done because its device script takes
-  no seam map. States the one-image/both-arms finding that removes the reflash an arm comparison
-  used to need, and which of the host figures transfer to the board and which do not.
-  `REAL_HARDWARE_TEST_QUEUE.md` §1E is its index row. Deleted once its results are migrated; it
-  authorizes nothing — CLAUDE.md's go-ahead gate still applies.
-
-Handover files are per-effort throwaways, each owned by the session or pull request named in its own
-first lines and deleted once its findings are migrated or confirmed not to apply — the boot-contiguity
-one above is the only one still live. The two real-hardware handovers that preceded it went that way
-on 2026-09-18 and `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` on 2026-09-22, their still-open asks
-consolidated into `REAL_HARDWARE_TEST_QUEUE.md` (rows R14 and §1F) and their durable findings migrated
-into `SPECIFICATION.md` (Part I.1 carries the external prior art the last one held). Do not treat a
-handover file as a durable reference, and prefer the queue above for anything bench-related.
-
-**`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
-
 - **[`DEVICE_REFERENCE.md`](DEVICE_REFERENCE.md)** — notes for configuring/operating a deployed
   unit (Neopixel LED signal legend, SGP40 FRAM backup config semantics), not architecture/AI-session
   material — kept separate from README.md/CLAUDE.md/SPECIFICATION.md for that reason.

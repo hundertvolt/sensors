@@ -3983,8 +3983,11 @@ order as the 4.4 ms UART frame above, so it is stated rather than hidden. **Abou
 MicroPython interpreter and `machine.SPI` call overhead, not wire time** (six short transactions at
 1 MHz is ~300 us), which is why a faster clock would not shorten it and why per-command yielding is
 already the finest granularity the chip allows. No device TOML wires a second SPI device, so the
-21 ms figure is a contract statement rather than an observed contention. T.4's per-command timing
-is still owed.
+21 ms figure is a contract statement rather than an observed contention. **That is structurally
+untestable rather than merely untested** (queue row N4, recorded 2026-09-22): with no second device
+on the bus in any variant, nothing can observe FRAM's whole-block hold from the outside, so 21,269 us
+is the closest evidence obtainable — and it is what a second device *would* wait, not the ~600 us an
+earlier draft of the row assumed. T.4's per-command timing is still owed.
 
 The write side is the same shape but bounded, and needed no change: `mp_machine_uart_write()`
 short-writes rather than waiting once `timeout` (0 here) elapses, and `_write_all()` gates on
@@ -4415,6 +4418,16 @@ contain a literal `"` (no escaping), and every tag is a single physical line (no
 syntax, unlike `@wiring`'s bracketed-continuation-line allowance — a `@web` tag's payload never
 needs it).
 
+**The served page is checked against this generator on real hardware** (queue row G9, closed
+2026-09-22). `tests_hardware/website_identity.py` runs `build_model()` + `generate_definitions()`
+for the device under test, pulls the errcount group's module keys out of the result, and asserts the
+page the DUT actually serves names every one of them, identifies itself as that device
+(`"id": "dev"`), and names no other device's id. Both website tests use it — over the bridge network
+and over the hotspot link — replacing a `200`-and-non-empty check that a build carrying another
+device's definitions, or one predating this generator, passed just as happily. Nothing is hardcoded:
+a new `[[instance]]` is covered the day it is declared. The body is gzip, keyed on
+`Content-Encoding` rather than sniffed, because the firmware serves `index.html.gz`.
+
 **`path`/`decimals` — nested-body and display-precision hints (added for ISL29125).** Most
 `get_dict_data()` overrides are flat (`make_dict()`'s own one-level contract), so a tag's `key`
 always doubled as the JSON lookup path. `asy_isl29125_driver.py` is the first driver whose
@@ -4696,7 +4709,11 @@ No public signature changed. The buffer is shared across every device on a bus, 
 because each of these methods fills and decodes it with no `await` in between and no `Timer`/
 `Pin.irq` callback in this codebase touches I2C — both verified against the real code. A read larger
 than the scratch (nothing today; BMP3XX's 21-byte calibration block is the largest) falls back to
-the allocating call rather than being refused.
+the allocating call rather than being refused. **That fallback is structurally unexercised on this
+hardware** (queue row N1, recorded 2026-09-22): no driver in the tree issues a read above 32 bytes,
+so it is dead on `dev` by construction, not merely untested. It stays because the next chip's
+calibration block need not be small, and the same treatment is given to the second-SPI-device
+question in F.5.8.
 
 ## I.3 The shared primitive: `_stream_dict_response()`
 
@@ -4718,7 +4735,13 @@ artefact `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7F.8 established, and this repo'
 such probe uses exactly that ceiling. The instrument behind this figure arrived with a merge from
 `main` and is not in the tree, so this cannot be checked here. **The conclusion is unaffected
 either way**: the artefact only ever *understates*, so the real headroom is 48x or better. Recorded
-so the number is not reused as a measurement of the heap. Re-measure it: queue row R16.
+so the number is not reused as a measurement of the heap. **The artefact itself was reproduced on
+this board on 2026-09-22**, at exactly this value: a boot-placement run reported
+`largest_block=49152 retained=49152` at its control position, and a reread from a fresh frame
+returned 14,928 — so 49152-with-retained-equal is confirmed to be what the probe emits on real
+`dev` hardware when it pins its own buffer, not merely on the twin. That does not prove I.3's figure
+came from the artefact (the instrument behind it is still not in this tree), but it removes the last
+doubt about the mechanism. Queue row R16.
 
 Test coverage: direct primitive tests; a hammer test at the real 17-module scale for each fixed
 route; a combined final test hammering all six memory-bounded GET routes concurrently. Every hammer

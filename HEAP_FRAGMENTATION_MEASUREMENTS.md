@@ -3916,7 +3916,12 @@ shared-primitive rule rather than duplicated.
 premise from `http_client.fetch`'s own signature, and pins `fetch()` as this tier's sole HTTP
 chokepoint. Closing it surfaced two live defects in the guard itself.
 
-### 7J.6 State the bench was left in — READ THIS BEFORE THE NEXT BENCH RUN
+### 7J.6 State the bench was left in — SUPERSEDED by §7P (2026-09-22)
+
+**Read §7P instead for the board's current state.** The hand-back described below was undone on
+2026-09-22: the board was reflashed from this branch's tip and `DebugLevel` put back to 5. What
+stays useful here is the *recipe* — this is still how to hand the board back as an ordinary quiet
+device, and §7P points at it for exactly that.
 
 On the owner's instruction at the end of this sitting, the board was taken **out of test
 configuration** and set up as an ordinary device on the local network.
@@ -4100,8 +4105,8 @@ guard asserts reach and needs no calibration, and `test.sh`'s fixed heap size st
 
 `tests_hardware/heap_map.py` — the board tier's own parser — already had what was needed:
 `HeapDelta` is "blocks free in `before` and allocated in `after`", position-independent by
-construction. The probe supplies the `before` map the board tier never had (§2 of
-`REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md`): a `gc` stand-in installed on the generated module and
+construction. The probe supplies the `before` map the board tier never had: a `gc` stand-in
+installed on the generated module and
 on `system_service` dumps `micropython.mem_info(1)` at its first call — the seam — and then forwards
 to the real collect **only on the live arm**. One instrument, both arms, no second image.
 
@@ -4165,10 +4170,9 @@ count, which makes the anchor's existence a separate assertion. Re-verified: 6 f
 
 ### 7L.6 What this does not do
 
-- **No board figure.** Every number here is twin units and settrace-inflated; the board has still
-  never taken a placement reading, because its device script has no seam map.
-  `REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md` is the runnable ask, including the one-image both-arms
-  finding that removes the reflash §7D's comparison needed.
+- **No board figure** — true when this was written, and **superseded by §7M**, which took the
+  board's reading on 2026-09-22 and found the ratios here do *not* transfer at the board's own fill.
+  Every number in §7L is twin units; read §7M before quoting any of it about hardware.
 - **The settle position is measured and deliberately not asserted on.** Four seconds after the
   starter loop, dev's *suppressed* arm reported a **larger** `largest_free_run` than its live arm
   (10.19–10.47 MB / 64–66% against 9.37–9.47 MB / 59–60%). §7F.9's decay does not merely erase the
@@ -4217,6 +4221,346 @@ dev, and the count check on all six). Reverted afterwards.
 `test_sensortask_wozi.py` 24.60s → 9.26s (2.7x), `test_system_service.py` unchanged within noise,
 `test_asy_wifi_service.py` 114.29s → 114.25s — the wait-bound file does not move, which is exactly
 what a per-call allocation cost predicts.
+
+---
+
+## 7M. The board's own placement reading — E1-E4 and T7, and the twin's ratios do NOT transfer (2026-09-22)
+
+§7L built the host guard and derived its bounds; the board had never taken the reading. It has now,
+on `dev`, from this branch's own image (`buildDate 2026-09-22T16:11:57Z`), both arms off that one
+image with no reflash. **The headline is that the twin's two transferable ratios do not reproduce
+on silicon**, which is the outcome the (now deleted) boot-contiguity handover's §3 (B9) named in
+advance as "a finding either way" and told this session to record before touching anything.
+
+### 7M.1 The instrument
+
+`tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py` gained the 23-line `_ProbeGc`
+port from `tests/_boot_contiguity_probe.py`, so it now dumps a **seam map** at the generated module's
+first emitted collect (`batch_00`) — the `before` that `heap_map.delta()` previously had no candidate
+for — and can suppress every emitted collect at runtime.
+
+**The arm is selected by a plain global, not argv**, and that was determined empirically rather than
+assumed: under `mpremote run`, `sys.argv` reads back `[]` and **assigning** it raises
+`AttributeError: 'module' object has no attribute 'argv'`, while `exec "_ARM_OVERRIDE='suppressed'"`
+in the same raw-REPL session does reach the run's globals. (Appending to `sys.argv` in place also
+works, but leaves the arm at index 0, with no script-name slot — an off-by-one waiting to happen.)
+
+`_report_checked()`'s existing probe readings were left in place, as the handover asked, so the run
+stays comparable with §7H.4.
+
+### 7M.2 What the board measures
+
+Board units throughout — 16 B blocks, 12,052 blocks, **192,832 B of heap total**, with the seam at
+**~98,720 B**, i.e. the heap is already 51% allocated when the setup batch begins. Metric
+definitions are `tests_scripts/test_digital_twin_boot_contiguity.py`'s own, reused verbatim.
+
+**Three repeats per arm, and the ranges are tight — this is signal, not noise.**
+
+| position | metric | live (median, range) | suppressed (median, range) | twin says | board says |
+|---|---|---|---|---|---|
+| batch | median **depth below** seam | 10,736 (10,736–11,232) | 15,600 (15,408–16,288) | 2.07x live | **0.69x — inverted** |
+| batch | reach above seam | 2,576 (2,560–2,896) | 3,952 (3,520–4,000) | no discrimination | **1.53x, correct direction** |
+| both lists | median depth below seam | **+976** (624–1,344) | **−1,840** (−1,984..−1,824) | 3.3x live | **sign discriminates** |
+| both lists | reach above seam | 20,960 (20,784–21,120) | 19,072 (18,688–19,808) | 8.66x live | **0.91x — no separation** |
+| both lists | new blocks > 64 KiB up | 0 | 0 | 0 against 98–726 | **0 in both — structurally mute** |
+| both lists | `used_bytes` (retention) | 101,936 | 101,888 | arm-independent to 0.05% | **0.05% — matches exactly** |
+
+Two of those rows need stating in words rather than as a ratio. **The whole sequence's median
+straddles the seam**: live sits 976 B *below* it, suppressed 1,840 B *above* it. A ratio across zero
+is meaningless, so the honest figure is the **difference, 2,816 B, with the live arm lower** — which
+is B10's qualitative claim, and it holds. And the **>128 KiB band the twin uses cannot exist here**:
+128 KiB above a seam at 98,720 B is past the top of a 192,832 B heap, so the 0-in-both-arms reading
+is an artefact of heap size, not evidence. The table uses 64 KiB instead, and it is 0 in both arms too.
+
+### 7M.3 The pre-batch probe was ruled out as the cause, not assumed innocent
+
+The device script runs `_report_checked("baseline")` before `build_system()`, and on this heap that
+probe allocates **132,672 B of a 135,008 B free pool** and frees it — a near-total defragmentation
+immediately before the thing being measured, which the twin probe has no equivalent of. That is a
+credible explanation for a washed-out effect, so it was tested rather than argued about: a
+scratchpad-only variant with that one call removed, two repeats per arm.
+
+| metric | live | suppressed | direction against the committed variant |
+|---|---|---|---|
+| batch depth below seam | 960 | 2,400 | **no claim — see below** |
+| batch reach above seam | 4,888 | 7,192 | still 1.47x, correct direction |
+| both lists depth below seam | −1,576 | −5,320 | live still 3,744 B lower |
+| both lists reach above seam | 22,032 | 22,928 | still 1.04x, no separation |
+
+Three of the four magnitudes move while their direction does not, so the probe is not what is
+suppressing the effect, and the variant was not committed.
+
+**The batch-depth row is the exception and an earlier draft of this section overstated it.** At n=2
+the two arms' per-run values are −2,336/+4,256 (live) against −432/+5,232 (suppressed): a spread of
+~6.6 KB with the ranges overlapping almost entirely, so the medians' 0.40x is noise and **no
+direction is claimed for it here**. The inversion is a finding of the *committed* variant, where the
+arms are tight and disjoint (live 10,736–11,232, suppressed 15,408–16,288), not of this one. The
+other three no-probe metrics are tight and do support their rows — §7M.5 has every run.
+
+### 7M.4 What this does and does not mean
+
+**What transfers:** the batch's own reach (1.5x, the metric §7L.7 had written off as mute on the
+twin), the sign of the whole sequence's median, and the arm-independence of retention.
+**What does not:** the batch's median depth (0.69x, inverted) and the cumulative reach (0.91x) —
+the twin's two headline numbers, 2.07x and 8.66x.
+
+**The most likely reason is fill, and it is stated as interpretation, not as measurement.** The
+twin's own absolute figures — a 452,832 B median depth and a 141,632 B suppressed reach — are each
+larger than this board's **entire 192,832 B heap**. With ~94 KB of free space above a seam that
+already sits at 51%, there is not the room for "survivors go into low holes instead of stacking above
+the churn" to open up the separation a 16 MB heap shows; every board reach observed is 2–23 KB.
+
+**This is not a reason to change anything, and specifically not a reason to touch measure B.**
+Retention is arm-independent on the board exactly as on the twin, no new floor is asserted (§7G's
+rule), and measure B's *silicon* confirmation was never this metric — §7F's P1–P5 and the tripwire's
+5.5x margin stand untouched. What is now recorded is narrower and true: **the placement metric's
+ratios are a twin-scale statement, and the board does not reproduce them at its own fill.** The host
+guard's bounds remain host bounds; none of them was ever to be copied to the board, and none was.
+
+**T7 closes with the same runs.** `after_starter_loop_end` was read on both arms — the starter list's
+own site, which no silicon run had ever measured — and the probe reports `retained=0` there in both,
+confirming the reading is a figure rather than a floor.
+
+### 7M.5 Every run, in board units — the handover's own evidence requirement
+
+Board heap geometry, derived by the parser and never converted by hand:
+**`block_bytes=16`, `heap_blocks=12052`, `total_bytes=192832`.**
+
+Depths are positive **below** the seam. Both band counts the handover named are included; both are
+**0 in every run of every arm**, and structurally so — 128 KiB above a seam at ~98,700 B already
+exceeds the 192,832 B heap, and 512 KiB exceeds it by more than 2.5x. Neither band can discriminate
+anything on this hardware, which is a property of the board, not a result.
+
+| run | seam B | batch new | batch reach | batch median depth | batch >128K | batch >512K | boot new | boot reach | boot median depth | boot >128K | boot >512K |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| E1 live | 98720 | 53 | 2336 | 11136 | 0 | 0 | 612 | 21056 | 1008 | 0 | 0 |
+| E2 suppressed | 98544 | 53 | 3536 | 14368 | 0 | 0 | 629 | 19824 | -2144 | 0 | 0 |
+| live rep1 | 98736 | 54 | 2560 | 11232 | 0 | 0 | 616 | 20784 | 1344 | 0 | 0 |
+| live rep2 | 98560 | 53 | 2896 | 10736 | 0 | 0 | 604 | 20960 | 624 | 0 | 0 |
+| live rep3 | 98560 | 53 | 2576 | 10736 | 0 | 0 | 617 | 21120 | 976 | 0 | 0 |
+| supp rep1 | 98720 | 59 | 3520 | 16288 | 0 | 0 | 619 | 19808 | -1984 | 0 | 0 |
+| supp rep2 | 98656 | 53 | 4000 | 15600 | 0 | 0 | 630 | 18688 | -1840 | 0 | 0 |
+| supp rep3 | 98560 | 54 | 3952 | 15408 | 0 | 0 | 620 | 19072 | -1824 | 0 | 0 |
+| live no-probe1 | 96160 | 56 | 4944 | -2336 | 0 | 0 | 610 | 22048 | -1568 | 0 | 0 |
+| live no-probe2 | 96192 | 56 | 4832 | 4256 | 0 | 0 | 614 | 22016 | -1584 | 0 | 0 |
+| supp no-probe1 | 95648 | 88 | 7408 | -432 | 0 | 0 | 625 | 22944 | -5264 | 0 | 0 |
+| supp no-probe2 | 95728 | 54 | 6976 | 5232 | 0 | 0 | 625 | 22912 | -5376 | 0 | 0 |
+
+The two canonical runs' own captured summary output, verbatim:
+
+```
+ARM collects                                     | ARM suppressed
+HEAP baseline:              free=135008 lb=132672 | HEAP baseline:              free=135040 lb=132608
+HEAP after_build_system:    free=100528 lb=91760  | HEAP after_build_system:    free=100592 lb=90160
+LISTS starters=22 timers=8 batch_collects=11      | LISTS starters=22 timers=8 batch_collects=11
+HEAP after_start_timers:    free=98000  lb=91760  | HEAP after_start_timers:    free=98176  lb=93776
+HEAP after_starter_loop_end:free=90944  lb=73040  | HEAP after_starter_loop_end:free=90992  lb=74448
+HEAP after_starter_list:    free=89712  lb=63984  | HEAP after_starter_list:    free=89856  lb=65136
+HEAP ..._control:           free=89712  lb=49152  | HEAP ..._control:           free=89856  lb=65248
+   retained=49152  <- the 7F.8 pinning artefact   |    retained=0
+HEAP ..._control_retry1:    free=40496  lb=14928  | (no reread needed)
+HEAP ..._production_thresh: free=40560  lb=14928  | HEAP ..._production_thresh: free=89856  lb=65248
+COUNTS batch_collects=11 starter_collects=23      | COUNTS batch_collects=11 starter_collects=23
+BOOT build_system_ms=1238 timers=790 loop=1790    | BOOT build_system_ms=1123 timers=790 loop=1527
+RESULT: PASS 89712 B free, 63984 B largest        | RESULT: PASS 89856 B free, 65136 B largest
+```
+
+`retained=0` at `after_starter_loop_end` in both arms is T7's own check. The live arm's
+`_control` position hit the pinning artefact at exactly 49,152 B with `retained=49152` and the
+script's own reread cleared it — the same event §7G/R16 describe, reproduced here on silicon.
+
+**What is NOT recorded here, and why.** The raw `micropython.mem_info(1)` block maps behind these
+figures are 8,370 lines across the twelve runs. They are the parser's *input*, fully reduced by the
+table above, and this repo gitignores run logs (`digital_twin_ci_logs/`), so they were not committed
+and did not survive the session. Regenerate them with, per arm:
+`mpremote connect <dev> exec "import machine; machine.WDT(timeout=8000)" [exec "_ARM_OVERRIDE='suppressed'"] run tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py soft-reset`,
+then `tests_hardware/heap_map.py`'s `parse_labelled()`/`delta()` host-side against `batch_00`,
+`after_build_system` and `after_starter_loop_end`.
+
+
+---
+
+## 7N. The 2026-09-22 sitting's own record — the suite runs, and three rows that closed with them
+
+**Image**: `scripts/build_firmware.py dev` from this branch's tip, `buildDate 2026-09-22T16:11:57Z`,
+flashed with `picotool load -x -v` (verified OK). One deliberate flash cycle, which is run-sheet
+step 3. The board had been left as an ordinary production device at `DebugLevel = 0` (§7J.6); that
+was restored to 5 over the serial REPL before any tier ran, since several tests parse a log that 0
+silences.
+
+**`errcount` before anything wrote**: all 21 modules clean — every counter 0, every history slot
+`N`/0 — recorded verbatim per CLAUDE.md's rule. The board's history allows that reading to be
+trusted: the bench host had booted 9 minutes earlier and the board enumerated at 16:51:56, so
+nothing had run against it since the 2026-09-19 production setup whose closing `ResetErrors` left
+the table clean.
+
+| run | result | against |
+|---|---|---|
+| **S1** `run_flash_hardware_suite.sh` | **36 passed, 3 skipped, 12 deselected**, 890.53 s | the queue's own `36 passed, 3 skipped, 12 deselected` target — exact match |
+| **S2** `run_bench_hardware_suite.sh` | **98 passed, 4 skipped, 27 deselected**, 2509.87 s (41:49) | the queue's `93 passed, 4 skipped, 27 deselected` — **5 more passing**, which is growth in the three bench files that changed since, not a discrepancy |
+
+Both clean, zero failures, and `_require_clean_hardware_run.sh` reported no unexpected skips. The
+deselected counts are the wear gates, and they mean this pair does **not** speak for the gated set.
+
+**Three queue rows close on these two runs, with no further board time:**
+
+- **G7** — the two memory gates (`flash/test_memory_stress.py`, `bench/test_memory_stress_bench.py`)
+  were widened on 2026-09-22 to read `harness.MEMORY_ERROR_MARKERS` and had never executed since.
+  They executed here and passed, so the widened gate does not false-positive on a healthy real board
+  — which is what the unit and twin tiers could only argue by construction.
+- **T6** — the run-phase memory check on silicon, the same two files, green on this image.
+- **T3** — all **14** FRAM device scripts green. This needed no separate invocation: every one of
+  them (13 `fram_*.py` plus `sgp40_fram_backup_restore.py`) is driven by a flash-tier test in
+  `test_fram_storage.py` or `test_bus_concurrency.py`, and all of those passed in S1 and again in
+  S2. The row had assumed a hand-run pass was owed; it was not.
+
+**Contamination note for whoever reads the FRAM logs next.** This sitting ran isolated-driver device
+scripts (§7M's ten boot runs) that build their own `AsyFramManager` over the same chip, so
+production's first FRAM chunks have been overwritten. The clean table above is the *pre-sitting*
+reading and is the one to trust.
+
+
+---
+
+## 7O. The wear-gated run (S3), and the two-bugs-cancelling defect it was the only way to find
+
+S3 ran on 2026-09-22 after S1/S2 came back clean, which is exactly the ordering D1's standing yes
+requires — so the one failure it produced is attributable to the gated set rather than to anything
+the default runs would also have shown. That is the whole point of the ordering, and it paid for
+itself on the first try.
+
+**First run: `1 failed, 118 passed, 4 skipped, 6 deselected`, 2980.36 s (49:40).** The failure was
+`flash/test_reboot_persistence.py::test_config_value_survives_a_genuine_hard_reset` —
+`RESULT: FAIL Marker=0 after reboot, expected 424242`.
+
+### 7O.1 The defect is in the test scripts, not in `src/`
+
+`ConfigManager.write_config()` **stages** and hands the flash write to its own task
+(`asyncio.create_task(self._flush_staged(...))`, Part F.2 — an inline write disabled interrupts
+port-wide and reset the very HTTP connection whose PUT triggered it). `flush_pending()` is what
+awaits it.
+
+`reboot_persist_write.py` called `write_config()` and returned with **no further await**, so
+`asyncio.run()` tore the loop down with the flush still queued and nothing ever reached flash. The
+write reporting `PASS` is consistent: staging succeeded, committing never happened. Production is
+unaffected — a real PUT-driven flow keeps the event loop running.
+
+### 7O.2 The same bug in the DebugLevel pair, where two instances of it were cancelling out
+
+A scan of every `device_scripts/` file that writes config found the same omission in
+`system_debug_level_raise_for_boot_log_check.py` (both writes) and
+`system_debug_level_restore_after_boot_log_check.py`. The board's own filesystem showed what that
+had been doing, and it is worse than a failing test:
+
+| file on the board, after the run | held | should have held |
+|---|---|---|
+| `config_HWTEST_REBOOT.cfg` | `{"Marker": 0}` | `{"Marker": 424242}` |
+| `config_HWTEST_DEBUGLEVEL_BACKUP.cfg` | `{"PrevLevel": 0}` | `{"PrevLevel": 5}` |
+
+Both files existed holding `setup()`'s **defaults** — the only write that ever landed. So
+`test_boot_import_mechanism_actually_boots_the_real_system` **passed** while backing up the wrong
+value and then "restoring" it, and `config_SYSTEM.cfg` kept `DebugLevel: 5` only because the
+restore's own write did not flush either. **Two instances of the same bug cancelling.** Fix either
+one alone and the bench board silently ends up at `DebugLevel = 0` — the state that makes several
+bench tests parse an empty log and fail quietly, and the exact condition §7J.6 warns about.
+
+`isl29125_mechanism_envelope.py` writes config too and is **not** affected: it awaits
+`asyncio.sleep_ms(200)` between pushes, so its flushes are scheduled, and nothing it does has to
+survive a reset.
+
+### 7O.3 Fixed and verified against the filesystem, not against the test
+
+All three scripts now `await flush_pending()`. The poisoned `PrevLevel: 0` backup was deleted from
+the board first — with the restore fixed and that file left in place, the next run would have
+faithfully written `DebugLevel = 0`. Re-run of both tests: **2 passed**, and the board's own files
+then read `{"Marker": 424242}`, `{"PrevLevel": 5}` and `{"DebugLevel": 5}`.
+
+**The lesson generalises**: a `device_scripts/` file that writes config and then returns has no
+event loop left to commit it, so `flush_pending()` is mandatory there in a way it is not in
+production code. Two of the three affected scripts were passing tests while doing the wrong thing.
+`tests_scripts/test_device_script_config_flush.py` now pins it, with one justified exemption whose
+justification the guard re-derives; both halves were verified red by injecting the regression.
+
+### 7O.4 S3's own status: NOT re-run green end to end, deliberately
+
+**The full gated suite has been run exactly once** (the `1 failed, 118 passed` above). After the fix,
+only `test_reboot_persistence.py` was re-run — `2 passed` — and the fix was confirmed by reading the
+board's own files rather than by re-running anything else.
+
+A second full gated pass was started and **the owner stopped it (2026-09-22)**: permission to spend
+wear covers one run, not a standing licence, and re-running a ~50-minute wear-spending suite to
+"confirm green" after a single fixed failure is exactly the loop the gate exists to prevent. That
+aborted run reached 15% and did spend six gated tests before it was killed
+(`test_bus_concurrency.py`'s five cross/same-device session tests plus
+`test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads`); it never reached the
+reboot-persistence pair. **So: the gated set's own result stands at one failure, found and fixed,
+with the fix verified on the two tests that carried it — and anyone wanting a clean full gated run
+has to decide to spend one.**
+
+**"End to end" means 119 of 129 tests.** Ten never executed even with the flag, all by design, so a
+green gated run would still not be the whole tier:
+
+| | why |
+|---|---|
+| **6 deselected** — `test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout`, `test_single_core_timing_headroom_holds_under_normal_full_task_load`, `test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved`, `test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic`, `test_ticks_ms_real_2pow30_rollover` | `long_soak`/`multi_day_rollover`, which both wrappers exclude **unconditionally** whatever flags are passed — queue row S4's territory, and G6's deferred ~12.4-day run |
+| **4 skipped** — the two ISL29125 light programs, `test_real_uf2_reflash_and_boot_smoke_test`, `test_spoofed_off_subnet_source_address_is_ignored` | the first two want `--allow-neopixel-sweep` (S3b), the third is `flash_cycle` |
+
+**What a fresh gated pass would actually buy** is not reassurance about the fix — the re-run plus the
+on-disk values prove that more directly than a green suite would — but **R1, R4, R5 and R8's reboot
+arm**, which this run made reachable and whose results nobody has yet read out. That is the reason to
+spend one, if there is one.
+
+
+---
+
+## 7P. State the bench was left in — READ THIS BEFORE THE NEXT BENCH RUN
+
+Supersedes §7J.6, which described the 2026-09-19 production hand-back. **That hand-back has been
+undone**: the board is a test board again, not the quiet LAN device §7J.6 left behind.
+
+| | value |
+|---|---|
+| firmware | this branch's tip, `buildDate 2026-09-22T16:11:57Z`, flashed with `picotool load -x -v` |
+| `DebugLevel` | **5** — restored over the serial REPL before any tier ran, and deliberately left there |
+| network | STA on `sensors-bench-fa9707`, DHCP `192.168.85.57`, RSSI -49, NTP synced, reachable as `SensorStationDev.fritz.box` |
+| UART link | 713 transfers, 0 failures |
+
+**Config files left on the board.** Two are this session's test residue and are safe to delete; the
+rest are ordinary.
+
+| file | note |
+|---|---|
+| `config_HWTEST_REBOOT.cfg` = `{"Marker": 424242}` | residue of the reboot-persistence test, and the evidence its fix works |
+| `config_HWTEST_DEBUGLEVEL_BACKUP.cfg` = `{"PrevLevel": 5}` | residue of the boot-import test. **Check this before the next run of it** — it holding `0` is the §7O.2 defect, and a correctly-flushing restore would then drive `DebugLevel` to 0 |
+| `config_NOTIFY.cfg` has `WarnCO2: 1700` | a bench test's own push, not the 1600 default |
+| `config_WIFI.cfg`, `config_NTP.cfg` | unchanged, real locale and credentials intact |
+
+**`errcount` at hand-back is test residue, not evidence of a fault**: `FRAM` counter=14 with
+`E34/W71/E34/W71/E31/W72/E31/W71/E46/W72`, plus `SGP40 W10` and `WIFI W10`. Those FRAM entries are
+the CS-hijack and reset-race fault injectors doing their job. The clean pre-sitting reading is in
+§7N and is the one to compare against — and remember the isolated-driver boot scripts overwrote
+production's first FRAM chunks either way.
+
+**To hand the board back as an ordinary quiet device**, §7J.6's recipe still applies and has to be
+re-applied: delete the two `config_HWTEST_*` files, reset `DebugLevel` to 0, and decide about
+`WarnCO2`. Nothing about that was done here, because the bench is expected to keep working.
+
+### 7P.1 Two operational details worth not rediscovering
+
+- **After a `picotool` reflash the board can take far longer than a naive poll window to rejoin the
+  AP.** It was unreachable over HTTP for more than 90 s of polling, the AP station table stayed
+  empty, and serial was silent — which looks exactly like a failed flash. It was not: at
+  `DebugLevel = 0` the serial log says nothing by design, and once `DebugLevel` was raised the next
+  boot showed the association completing ~45 s in, then every task healthy. **Raise `DebugLevel`
+  before concluding anything from a quiet board**, and prefer the passive `tail_log()` diagnosis
+  §7J/CLAUDE.md already prescribe over `exec`, which re-causes the symptom.
+- **`sys.argv` cannot be assigned on this port.** `import sys; sys.argv = [...]` raises
+  `AttributeError: 'module' object has no attribute 'argv'`, although reading it returns `[]` and
+  appending to it works. This matters because `mpremote run` passes no argv at all — the mechanism
+  that does work is a plain global set by an `exec` earlier in the same raw-REPL session, which
+  reaches the run's globals (`exec "_ARM_OVERRIDE='suppressed'" run script.py`). Verified directly
+  on this board, 2026-09-22; `heap_layout_after_full_boot_sequence.py` uses it.
+
 
 ---
 
