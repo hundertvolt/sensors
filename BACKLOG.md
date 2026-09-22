@@ -859,6 +859,13 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   And one more `scripts/test.sh` change the same day, shell only with no build step: the two
   `_render_coverage.py` calls are `||`-guarded and the verdict block maps a renderer-only failure
   onto exit 3, so a coverage-tooling failure stays distinguishable from a failed test.
+  A further `scripts/` change on 2026-09-22, also shell only:
+  `scripts/setup_cross_browser_toolchain.sh`'s two `apt-get update` calls go through an
+  `apt_update()` helper that tolerates their own failure, the same treatment
+  `toolchain/setup_toolchain.py`'s `ensure_apt_packages()` already gives them — under `set -e` a
+  single unrelated third-party source (a PPA that 403s or whose key expired) aborted the whole
+  installer before it could install a package the main archive serves. Every `apt-get install`
+  stays fatal. The chroot recipe never runs this script, so it changes nothing the legs cover.
   Kept here as the running list of what is owed, not as a merge blocker.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not

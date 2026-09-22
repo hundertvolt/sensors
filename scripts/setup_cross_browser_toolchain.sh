@@ -7,10 +7,17 @@
 # "Why each engine comes from the channel it does" has the investigation trail for all three.
 set -euo pipefail
 
+# Non-fatal, like toolchain/setup_toolchain.py's own ensure_apt_packages(): an unrelated
+# third-party source (a PPA that 403s or whose key expired) must not stop an install from the main
+# archive. Every apt-get install below stays fatal, so a package we really need still fails loudly.
+apt_update() {
+    sudo apt-get update || echo "== apt-get update reported errors - continuing, the install below still gates"
+}
+
 # --- WebKit: webkit2gtk-driver + xvfb (headless WebKitGTK needs a virtual display) ---
 if ! command -v WebKitWebDriver >/dev/null 2>&1; then
     echo "== Installing webkit2gtk-driver + xvfb"
-    sudo apt-get update
+    apt_update
     sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends webkit2gtk-driver xvfb
 else
     echo "== webkit2gtk-driver already installed, skipping"
@@ -22,7 +29,7 @@ if ! command -v microsoft-edge-stable >/dev/null 2>&1; then
     curl -sS https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /usr/share/keyrings/microsoft-edge.gpg >/dev/null
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-edge.gpg] https://packages.microsoft.com/repos/edge stable main" \
         | sudo tee /etc/apt/sources.list.d/microsoft-edge.list >/dev/null
-    sudo apt-get update
+    apt_update
     sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends microsoft-edge-stable
 else
     echo "== Microsoft Edge already installed, skipping"

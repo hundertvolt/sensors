@@ -4551,8 +4551,10 @@ Mirrors Python's role split: **ESLint** (flat config, beyond `eslint:recommended
 can't share one `tsc` program's ambient globals, H.8.1) for mypy; **Vitest in real-browser mode**
 (`@vitest/browser-playwright`, real Chromium, deliberately not jsdom — same "real engine over a
 shim" principle as E.1; `testTimeout: 20000` mirrors "hanging tests never allowed") for the
-real-interpreter test principle; **`@vitest/coverage-v8`** (report-only, no threshold) for
-`--coverage`; **html-validate** for `html/`, **Stylelint** for CSS.
+real-interpreter test principle; **`@vitest/coverage-v8`** (report-only, no threshold, writing
+to `htmlcov_js/` rather than its default `coverage/`, which Python imports as a namespace package
+and which therefore shadowed the real `coverage` distribution `scripts/_render_coverage.py` needs)
+for `--coverage`; **html-validate** for `html/`, **Stylelint** for CSS.
 
 **CI mechanism**: `.github/workflows/ci.yml` carries a `dorny/paths-filter` gate job feeding `if:`
 conditions on `web-lint-and-typecheck`/`web-unit-tests` — deliberately not a second workflow file

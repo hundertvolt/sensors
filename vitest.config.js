@@ -32,6 +32,12 @@ export default defineConfig({
         // enough to cover this suite's own longest explicit wait (5000ms, render.test.js) with
         // margin for CI/real-browser overhead.
         testTimeout: 20000,
+        coverage: {
+            // A `coverage/` directory at the repo root is importable as a namespace package and
+            // shadows the real `coverage` distribution scripts/_render_coverage.py imports, so a
+            // web-coverage run turned scripts/typecheck.sh red. htmlcov_js/ matches htmlcov*/.
+            reportsDirectory: "htmlcov_js",
+        },
         browser: {
             enabled: true,
             provider: playwright({ launchOptions }),

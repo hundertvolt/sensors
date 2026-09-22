@@ -307,11 +307,11 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
         continue-on-error: true
       - name: Upload HTML coverage report artifact
-        if: hashFiles('coverage/index.html') != ''
+        if: hashFiles('htmlcov_js/index.html') != ''
         uses: actions/upload-artifact@v7
         with:
           name: coverage-html-js
-          path: coverage/
+          path: htmlcov_js/
         continue-on-error: true
 
   web-cross-browser-smoke:
