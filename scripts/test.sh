@@ -542,10 +542,6 @@ per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
 declare -A per_file_timeout_overrides_s=()
 max_attempts=3
 
-# Runs one test_*.py file's own timeout+retry loop to completion and writes PASS/FAIL to
-# status_file - never returns a nonzero exit status itself (failure is communicated through the
-# status file, not the function's own return code), so backgrounding this behind `&` and reaping it
-# with `wait`/`wait -n` below never trips this script's own `set -e`.
 # SPECIFICATION.md Part I.4(e): zero MemoryErrors, caught-and-logged included - a caught
 # allocation failure is a design defect, not a passing result. The twin tier already asserts this
 # on its own logs (_digital_twin_ci_suite.py); this is the same check for the tier (e)/(f) run in.
@@ -556,6 +552,10 @@ _flag_memory_errors() {
     fi
 }
 
+# Runs one test_*.py file's own timeout+retry loop to completion and writes PASS/FAIL to
+# status_file - never returns a nonzero exit status itself (failure is communicated through the
+# status file, not the function's own return code), so backgrounding this behind `&` and reaping it
+# with `wait`/`wait -n` below never trips this script's own `set -e`.
 run_test_file() {
     local test_file="$1"
     local status_file="$2"
