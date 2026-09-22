@@ -4553,7 +4553,10 @@ can't share one `tsc` program's ambient globals, H.8.1) for mypy; **Vitest in re
 shim" principle as E.1; `testTimeout: 20000` mirrors "hanging tests never allowed") for the
 real-interpreter test principle; **`@vitest/coverage-v8`** (report-only, no threshold, writing
 to `htmlcov_js/` rather than its default `coverage/`, which Python imports as a namespace package
-and which therefore shadowed the real `coverage` distribution `scripts/_render_coverage.py` needs)
+and which therefore shadowed the real `coverage` distribution `scripts/_render_coverage.py` needs;
+`exclude: ["**/*.json"]` because the provider re-parses every file V8 reported as JavaScript, so
+the JSON the site fetches at runtime threw a rolldown parse stack per run before being dropped
+anyway - `tests_scripts/test_js_coverage_excludes_json.py` keeps every JSON out of that set)
 for `--coverage`; **html-validate** for `html/`, **Stylelint** for CSS.
 
 **CI mechanism**: `.github/workflows/ci.yml` carries a `dorny/paths-filter` gate job feeding `if:`
