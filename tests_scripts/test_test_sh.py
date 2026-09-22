@@ -408,3 +408,55 @@ def test_a_non_integer_gc_threshold_is_rejected_before_anything_is_built(repo_ro
     )
     assert completed.returncode == 1, f"expected a fast rejection, got {completed.returncode}:\n{completed.stdout[-2000:]}\n{completed.stderr[-2000:]}"
     assert "GC_THRESHOLD must be an integer" in completed.stderr
+
+
+# ---------------------------------------------------------------------------
+# The MemoryError gate. SPECIFICATION.md Part I.4(e) requires zero MemoryErrors from the suite,
+# caught-and-logged included; the twin tier asserted that on its own logs and this tier - the one
+# the (e)/(f) stages actually run in - had no equivalent, so a degrade-and-pass went by in silence.
+# ---------------------------------------------------------------------------
+
+
+def _flag(repo_root: Path, tmp_path: Path, output: str) -> str:
+    """Runs scripts/test.sh's own _flag_memory_errors() over one file's captured output."""
+    body = re.search(r"^_flag_memory_errors\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
+    assert body is not None, "scripts/test.sh no longer defines _flag_memory_errors() - update this test with it"
+    results = tmp_path / "results"
+    results.mkdir(exist_ok=True)
+    log = tmp_path / "case.log"
+    log.write_text(output)
+    script = tmp_path / "flag.sh"
+    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\nresults_dir="{results}"\n{body.group(0)}\n_flag_memory_errors case "{log}"\n')
+    subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True)
+    marker = results / "case.memerr"
+    return marker.read_text() if marker.exists() else ""
+
+
+def test_a_caught_and_logged_memory_error_is_flagged(repo_root: Path, tmp_path: Path) -> None:
+    # The whole point: this file's own tests all passed. A degrade path that allocated, failed,
+    # logged it and carried on is a design defect, not a green result.
+    flagged = _flag(repo_root, tmp_path, "[test_x] 12/12 passed\n[test_x] WARN sgp40 setup: MemoryError\n")
+    assert "MemoryError" in flagged, "a MemoryError in a passing file's output must be flagged"
+
+
+def test_a_clean_run_is_not_flagged(repo_root: Path, tmp_path: Path) -> None:
+    # The false-positive direction, and why the gate is affordable: measured over a full 85-file
+    # run, the suite's own output contains the string zero times.
+    assert _flag(repo_root, tmp_path, "[test_x] 12/12 passed\n[test_x] PASS test_allocates_a_buffer\n") == ""
+
+
+def test_the_flag_records_the_offending_lines_not_just_the_fact(repo_root: Path, tmp_path: Path) -> None:
+    # A bare "this file had one" would send the reader back through a 400,000-line log to find it.
+    flagged = _flag(repo_root, tmp_path, "[test_x] noise\n[test_x] ERR fram chunk alloc: MemoryError: memory allocation failed\n")
+    assert "memory allocation failed" in flagged
+
+
+def test_the_gate_is_wired_into_the_run_and_into_the_verdict(repo_root: Path) -> None:
+    text = _test_sh_text(repo_root)
+    # Structural, because the real path is an 85-file run: what has to hold is that each file's
+    # output is captured, that both of run_test_file()'s exits are flagged, and that a flag reaches
+    # the summary AND the exit status - a report nobody's CI gates on is not a gate.
+    assert 'sed -u "s/^/[$tag] /" | tee -a "$log_file"' in text, "each file's tagged output must be captured for the gate to search"
+    assert text.count('_flag_memory_errors "$tag" "$log_file"') == 2, "both the PASS and the FAIL exit of run_test_file() must flag, so a degraded pass is caught too"
+    assert re.search(r'if \[ -s "\$results_dir/\$tag\.memerr" \]; then\n\s*failed=1', text), "a flagged file must set failed=1, not merely print"
+    assert "MemoryError seen" in text, "the summary must name the files, so a long log does not have to be re-read"

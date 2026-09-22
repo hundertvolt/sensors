@@ -321,7 +321,11 @@ information):
   real default) and with zero `MemoryError`s — caught-and-logged included — and with no
   `gc.collect()` calls or other nonstandard `gc` settings anywhere in the business logic or the
   test's own setup propping the result up, *before* it's ever run again with the project's chosen
-  `gc.threshold(32768)` enabled (which the full suite must then also still pass). **One structural
+  `gc.threshold(32768)` enabled (which the full suite must then also still pass). **Both halves are
+  machine-checked, not left to whoever reads the log**: the twin tier checks each run's log
+  (`scripts/_digital_twin_ci_suite.py`) and `scripts/test.sh` searches each test file's own output
+  and fails the run, a passing file included — a degrade-and-pass is the silent case the bar is
+  about. Don't relax that to "only on a failing file". **One structural
   exception, added 2026-09-18 with the owner's approval: the boot-confined placement reset** —
   `gc.collect()` between the units of the two one-time setup lists and nowhere else, mechanically
   confined by `scripts/lint.sh` and `tests_scripts/test_gc_collect_sites.py` on the *sites* and by

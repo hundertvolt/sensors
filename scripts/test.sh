@@ -546,11 +546,22 @@ max_attempts=3
 # status_file - never returns a nonzero exit status itself (failure is communicated through the
 # status file, not the function's own return code), so backgrounding this behind `&` and reaping it
 # with `wait`/`wait -n` below never trips this script's own `set -e`.
+# SPECIFICATION.md Part I.4(e): zero MemoryErrors, caught-and-logged included - a caught
+# allocation failure is a design defect, not a passing result. The twin tier already asserts this
+# on its own logs (_digital_twin_ci_suite.py); this is the same check for the tier (e)/(f) run in.
+_flag_memory_errors() {
+    local tag="$1" log_file="$2"
+    if grep -q "MemoryError" "$log_file" 2>/dev/null; then
+        grep -m5 "MemoryError" "$log_file" >"$results_dir/$tag.memerr"
+    fi
+}
+
 run_test_file() {
     local test_file="$1"
     local status_file="$2"
-    local tag cmd file_timeout_s attempt ec
+    local tag cmd file_timeout_s attempt ec log_file
     tag="$(basename "$test_file" .py)"
+    log_file="$results_dir/$tag.log"
     echo "== Running $test_file"
     # .frozen must be included explicitly: MICROPYPATH replaces MicroPython's default sys.path
     # rather than extending it, and the default path is what makes frozen-in modules (asyncio
@@ -572,17 +583,21 @@ run_test_file() {
     fi
     file_timeout_s="${per_file_timeout_overrides_s[$test_file]:-$per_file_timeout_s}"
     for attempt in $(seq 1 "$max_attempts"); do
+        # Truncated per attempt: only the attempt that decided this file's verdict is searched for
+        # a MemoryError, so a timed-out earlier attempt's partial output cannot fail a passing file.
+        : >"$log_file"
         # 2>&1 | sed, not two separate streams: several of these now run concurrently, and
         # per-line tagging (rather than relying on stdout/stderr ordering alone) is what keeps a
         # multi-file log human-readable. `set -o pipefail` (top of file) makes the pipeline's own
         # exit status the real interpreter's (timeout's) - sed itself only ever exits 0/nonzero on
         # its own unrelated failure, never masking a real 124/1 from the command it's piping.
-        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=16M "${cmd[@]}" 2>&1 | sed -u "s/^/[$tag] /"; then
+        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=16M "${cmd[@]}" 2>&1 | sed -u "s/^/[$tag] /" | tee -a "$log_file"; then
             ec=0
         else
             ec=$?
         fi
         if [ "$ec" -eq 0 ]; then
+            _flag_memory_errors "$tag" "$log_file"
             echo "PASS" >"$status_file"
             return 0
         elif [ "$ec" -eq 124 ] && [ "$attempt" -lt "$max_attempts" ]; then
@@ -592,6 +607,7 @@ run_test_file() {
             if [ "$ec" -eq 124 ]; then
                 echo "== $test_file exceeded ${file_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
             fi
+            _flag_memory_errors "$tag" "$log_file"
             echo "FAIL" >"$status_file"
             return 0
         fi
@@ -673,14 +689,22 @@ if [ "$tests_scripts_result" != "PASS" ]; then
 fi
 
 failed_files=()
+memory_error_files=()
 passed_count=0
 for test_file in "${test_files[@]}"; do
-    status_file="$results_dir/$(basename "$test_file" .py).status"
+    tag="$(basename "$test_file" .py)"
+    status_file="$results_dir/$tag.status"
     if [ "$(cat "$status_file" 2>/dev/null)" = "PASS" ]; then
         passed_count=$((passed_count + 1))
     else
         failed=1
         failed_files+=("$test_file")
+    fi
+    # Independent of pass/fail: a file that degraded gracefully and passed is exactly the silent
+    # case this exists for, and one that failed still names the allocation as the likelier cause.
+    if [ -s "$results_dir/$tag.memerr" ]; then
+        failed=1
+        memory_error_files+=("$test_file")
     fi
 done
 
@@ -703,6 +727,13 @@ if [ "${#failed_files[@]}" -gt 0 ]; then
     echo "Failed files:"
     for f in "${failed_files[@]}"; do
         echo "  - $f"
+    done
+fi
+if [ "${#memory_error_files[@]}" -gt 0 ]; then
+    echo "MemoryError seen (caught-and-logged counts too - SPECIFICATION.md Part I.4(e)):"
+    for f in "${memory_error_files[@]}"; do
+        echo "  - $f"
+        sed "s/^/      /" "$results_dir/$(basename "$f" .py).memerr"
     done
 fi
 if [ "$failed" -eq 0 ] && [ "$tests_scripts_result" = "PASS" ]; then

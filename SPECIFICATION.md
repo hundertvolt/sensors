@@ -4555,6 +4555,12 @@ the firmware's own boot rather than a test's setup — the suite must still clea
 in). A test that only passes because a `MemoryError` was caught and logged without crashing anything
 is not a passing result at this stage — a caught-but-real allocation failure is exactly the signal
 this stage exists to catch, and "it didn't crash" is not the same claim as "it didn't happen."
+**Both tiers now assert that themselves rather than leaving it to a reader**: the twin's
+`scripts/_digital_twin_ci_suite.py` checks every run's log, and `scripts/test.sh` (added
+2026-09-22, having been the gap) searches each test file's own captured output and fails the run,
+naming the file and the offending lines. The gate is checked on a passing file too, since a file
+that degraded gracefully and went green is the whole silent case. It costs nothing today: measured
+over a full 85-file run, the suite's output contains the string zero times.
 **One narrow, evidence-backed exception**: `digital_twin/run_generic_integration.py`'s
 `_mem_sampler()` calls `gc.collect()` on its own fixed wall-clock timer (`--mem-sample-interval-ms`,
 decoupled from the soak's request/response path entirely — E.9) purely to settle `gc.mem_free()`

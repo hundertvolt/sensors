@@ -154,8 +154,9 @@ its own interpreter process and prints its own `PASS`/`FAIL` lines plus an `N/N 
 goes, each line prefixed with that file's own name in brackets (e.g. `[test_sensortask_dev]`) since
 several files' output interleaves when they run concurrently; **the run ends with one rolled-up
 summary** (`tests_scripts/`'s own pass/fail, the
-MicroPython file count, and every failed file named by path) so a failure earlier in a long run
-doesn't require scrolling back through the log:
+MicroPython file count, every failed file named by path, and any file whose output contained a
+`MemoryError` — caught-and-logged counts, and fails the run, even if that file's own tests passed)
+so a failure earlier in a long run doesn't require scrolling back through the log:
 
 ```
 == Test summary ==
