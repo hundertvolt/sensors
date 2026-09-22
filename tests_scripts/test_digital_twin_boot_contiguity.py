@@ -53,7 +53,7 @@ _REQUIRED_MAPS = ("baseline", "batch_00", "after_batch", "after_starter_loop_end
 
 # The batch's median new block must sit at least this far BELOW the seam's top survivor. The two
 # margins are thin because the ARMS are only 2.07x apart here, not because the bound is sloppy -
-# no split of that gap gives more than ~1.44x each way. _ARM_RATIO_MIN below is the strict half.
+# no split of that gap gives more than ~1.44x each way. _ARM_DEPTH_RATIO_MIN below is the strict half.
 _BATCH_MEDIAN_DEPTH_MIN = 300 * 1024  # worst live 452,832 (1.47x); best suppressed 218,528 (1.41x under)
 
 # The batch's own reach and band count no longer separate the arms (8,160 B and 0 in BOTH), so they
@@ -218,10 +218,13 @@ def test_the_live_arm_places_strictly_deeper_than_the_suppressed_one(boot_probe:
     # bounds above only approximate: no unit, no heap-size term, and no margin spent on the gap
     # between devices. A change that moved both arms together would pass every bound and fail here.
     live, suppressed = boot_probe(device, _ARM_LIVE).maps, boot_probe(device, _ARM_SUPPRESSED).maps
-    depth_ratio = -_median(live["batch_00"], live["after_batch"]) / -_median(suppressed["batch_00"], suppressed["after_batch"])
-    reach_ratio = _reach(suppressed["batch_00"], suppressed["after_starter_loop_end"]) / max(_reach(live["batch_00"], live["after_starter_loop_end"]), 1)
-    assert depth_ratio >= _ARM_DEPTH_RATIO_MIN, f"{device}: the batch's median sits only {depth_ratio:.2f}x deeper with the collects live than without, under the {_ARM_DEPTH_RATIO_MIN}x bound"
-    assert reach_ratio >= _ARM_REACH_RATIO_MIN, f"{device}: the whole sequence reaches only {reach_ratio:.2f}x higher with the collects suppressed, under the {_ARM_REACH_RATIO_MIN}x bound"
+    live_depth, suppressed_depth = -_median(live["batch_00"], live["after_batch"]), -_median(suppressed["batch_00"], suppressed["after_batch"])
+    live_reach, suppressed_reach = _reach(live["batch_00"], live["after_starter_loop_end"]), _reach(suppressed["batch_00"], suppressed["after_starter_loop_end"])
+    # Multiplied rather than divided, so the bound holds over the whole domain: either side of
+    # either quotient can legitimately go negative (a median or a reach BELOW the seam), which
+    # flips a ratio's sense and would fail this for a mechanism working better than measured.
+    assert live_depth >= _ARM_DEPTH_RATIO_MIN * suppressed_depth, f"{device}: the batch's median sits {live_depth} B below the seam with the collects live against {suppressed_depth} B without - under the {_ARM_DEPTH_RATIO_MIN}x separation this asserts"
+    assert suppressed_reach >= _ARM_REACH_RATIO_MIN * live_reach, f"{device}: the whole sequence reaches {suppressed_reach} B above the seam with the collects suppressed against {live_reach} B with them live - under the {_ARM_REACH_RATIO_MIN}x separation this asserts"
 
 
 @pytest.mark.parametrize("device", _CONTROL_DEVICES)
@@ -266,6 +269,21 @@ def _int_constants(source: str, names: tuple[str, ...]) -> dict[str, int]:
         if match:
             found[name] = int(match.group(1))
     return found
+
+
+def test_the_control_arm_devices_are_real_devices(repo_root: Path) -> None:
+    # A name that stopped being a device would still parametrize, and the probe would then fail on
+    # a missing generated module - a confusing import error in place of "this list is stale".
+    assert set(_CONTROL_DEVICES) <= set(DEVICE_NAMES), f"{sorted(set(_CONTROL_DEVICES) - set(DEVICE_NAMES))} is no longer a real device - update the control arm with it"
+
+
+def test_the_probe_runs_under_the_same_interpreter_settings_as_the_suite(repo_root: Path) -> None:
+    # This file's header claims it measures what scripts/test.sh measures. A MICROPYPATH that
+    # drifted would resolve `import sensortask_<device>` somewhere else, or not at all, and the
+    # measurement would silently describe a different build than the one the suite runs.
+    text = (repo_root / "scripts" / "test.sh").read_text()
+    assert f'MICROPYPATH="{_MICROPYPATH}"' in text, f"scripts/test.sh no longer runs the suite on MICROPYPATH={_MICROPYPATH!r} - re-derive this probe's own bounds against whatever replaced it"
+    assert f"-X heapsize={_HEAPSIZE}" in text, f"scripts/test.sh no longer runs the suite at heapsize={_HEAPSIZE} - the bounds proved heap-size independent at 8M and 16M, so confirm that still holds before changing this"
 
 
 def test_the_twin_probe_and_the_board_script_read_at_the_same_positions(repo_root: Path) -> None:

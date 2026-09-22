@@ -4559,8 +4559,29 @@ this stage exists to catch, and "it didn't crash" is not the same claim as "it d
 `scripts/_digital_twin_ci_suite.py` checks every run's log, and `scripts/test.sh` (added
 2026-09-22, having been the gap) searches each test file's own captured output and fails the run,
 naming the file and the offending lines. The gate is checked on a passing file too, since a file
-that degraded gracefully and went green is the whole silent case. It costs nothing today: measured
-over a full 85-file run, the suite's output contains the string zero times.
+that degraded gracefully and went green is the whole silent case.
+
+**All four gates match two spellings, and the second one is the load-bearing half.** `src/`'s degrade
+handlers log the exception, not its class — `self.pr.err("Could not start timer:", e)` reaches
+`print()`, which renders `str(e)`, and the interpreter's own `MemoryError` message is
+`"memory allocation failed, allocating N bytes"` (or `", heap is locked"`; both raised from
+`py/runtime.c:1692/1696`, and there is no third wording in the pinned source). The class name
+therefore appears **only** in an *uncaught* traceback. Searching for `MemoryError` alone — which
+all four gates did until 2026-09-22 — thus saw exactly the crash case and missed every
+caught-and-logged one, i.e. precisely the silent degrade this stage is named for; the twin tier had
+carried that blind spot since the check was written, and the unit tier inherited it on the day it
+was added. There are **four** such gates, not two, and three of them were blind: the unit tier
+(`scripts/test.sh`), the twin tier (`scripts/_digital_twin_ci_suite.py`) and the two real-hardware
+soak/hammer gates (`tests_hardware/flash/test_memory_stress.py`,
+`tests_hardware/bench/test_memory_stress_bench.py`, which also matched `"Traceback"` and so caught
+a crash but not a degrade). All four now match `MemoryError` *or* `memory allocation failed`,
+through one shared `tests_hardware/harness.py` `MEMORY_ERROR_MARKERS` for the hardware pair; their
+agreement is pinned by `tests_scripts/test_memory_error_gate_agreement.py`, which also fails a new
+hardware-tier assertion written with the bare class name. Don't narrow any of them back
+to it. The widened gate still costs nothing: measured over a full 85-file run at
+`gc.threshold(-1)`, the suite's output contains neither pattern once, and the suite's own 15
+deliberate injections raise `MemoryError("simulated allocation failure")` — wording chosen so a
+test proving a degrade path is never confused with a real allocation failure on the host.
 **One narrow, evidence-backed exception**: `digital_twin/run_generic_integration.py`'s
 `_mem_sampler()` calls `gc.collect()` on its own fixed wall-clock timer (`--mem-sample-interval-ms`,
 decoupled from the soak's request/response path entirely — E.9) purely to settle `gc.mem_free()`

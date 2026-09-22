@@ -178,13 +178,19 @@ def _check(*, condition: bool, msg: str) -> None:
         print(f"OK: {_CURRENT_PASS_LABEL}{msg}")
 
 
+# Both spellings of the same event: those handlers log str(e), not the class, so a real caught
+# allocation failure prints "memory allocation failed, ..." (py/runtime.c:1692/1696) with no
+# "MemoryError" anywhere - the class name alone only ever sees an UNCAUGHT traceback.
+_MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
+
+
 def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
     # Part I.4(e): zero MemoryErrors, caught-and-logged included, a caught allocation failure
     # being a design defect rather than a passing result. Checked on every run's log, not only
     # the soak's, since src/'s catch-and-degrade handlers can log one during any run.
     log_text = _read_log(log_path)
     _check(
-        condition="MemoryError" not in log_text,
+        condition=not any(marker in log_text for marker in _MEMORY_ERROR_MARKERS),
         msg=f"{run_label}: log contains zero MemoryErrors (caught-and-logged counts as a failure too)",
     )
 

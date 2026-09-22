@@ -11,9 +11,9 @@
 # to relocate the cache, or SKIP_APT=1 if the required system packages (see
 # toolchain/versions.toml) are already present.
 #
-# --coverage: runs the same tests, under the same Unix port binary (it's always built with
-# MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port() - so there's no separate coverage-only
-# interpreter to build), but with tests/_coverage_runner.py wrapping each test file to install a
+# --coverage: runs the same tests under the OTHER of the two Unix port binaries - build-settrace,
+# the only one compiled with MICROPY_PY_SYS_SETTRACE, the rig's being built deliberately without it
+# (SPECIFICATION.md Part E.5.2) - with tests/_coverage_runner.py wrapping each test file to install a
 # sys.settrace line tracer scoped to src/ and digital_twin/ and record which lines actually
 # executed. The merged result is handed to scripts/_render_coverage.py (a separate, self-contained
 # `uv run` script - coverage.py itself only runs under CPython, never under MicroPython) TWICE -
@@ -48,6 +48,45 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # GitHub-hosted-runner behavior (implicitly UTC) regardless of the developer's own machine.
 export TZ=UTC
 
+# Ahead of every sweep below, not after them: these two checks are pure argument validation, and
+# a rejected invocation must leave the live tree exactly as it found it. tests_scripts/ runs a
+# nested test.sh to prove the rejection, concurrently with 85 files holding tests/_tmp scratch.
+coverage=0
+for arg in "$@"; do
+    case "$arg" in
+        --coverage) coverage=1 ;;
+        *)
+            echo "Unknown argument: $arg (only --coverage is supported)" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# GC_THRESHOLD=32768 re-runs the MicroPython tier through tests/_threshold_runner.py with that
+# gc.threshold() set, which is CLAUDE.md's (f) stage. Unset (the default) is the (e) stage: the
+# interpreter's own reactive -1, where the design has to stand up on its own first.
+if [ -n "${GC_THRESHOLD:-}" ]; then
+    # Validated once here rather than 85 times inside the runner: an unparseable value would
+    # otherwise surface as one ValueError traceback per test file, each retried twice, with the
+    # actual mistake nowhere in the rolled-up summary.
+    if [[ ! "$GC_THRESHOLD" =~ ^-?[0-9]+$ ]]; then
+        echo "error: GC_THRESHOLD must be an integer - 32768 is what the firmware ships, -1 the reactive default - not '$GC_THRESHOLD'" >&2
+        exit 1
+    fi
+    # Range as well as shape: the regex accepts a value gc.threshold() cannot convert to a machine
+    # word, which then raises OverflowError INSIDE the runner, once per file - the very run this
+    # block prevents. Length first, so the comparisons never overflow bash's arithmetic either.
+    if [ "${#GC_THRESHOLD}" -gt 11 ] || [ "$GC_THRESHOLD" -gt 2147483647 ] || [ "$GC_THRESHOLD" -lt -2147483648 ]; then
+        echo "error: GC_THRESHOLD=$GC_THRESHOLD does not fit a machine word - any negative value means the reactive default (-1 by convention, see py/modgc.c) and the firmware ships 32768" >&2
+        exit 1
+    fi
+    if [ "$coverage" = "1" ]; then
+        # Said out loud rather than silently dropped: --coverage has its own runner, and a run that
+        # ignores an explicitly set threshold must not look like one that honored it.
+        echo "== note: --coverage uses its own runner, so GC_THRESHOLD=$GC_THRESHOLD is ignored for this run" >&2
+    fi
+fi
+
 # One-time, bounded sweep of the WHOLE tests/_tmp tree, before any test file runs - not a
 # per-file/per-prefix sweep. Every test_*.py file's own per-test scratch directories
 # (tests/_tmp_scratch.py's TmpScratch) already wipe and re-remove their own subtree on every run
@@ -72,35 +111,6 @@ rm -rf tests/_tmp
 # sweep's own placement ahead of the generation step, are asserted by tests_scripts/test_test_sh.py);
 # a real device may never be named that way. No-op on CI, which always starts from a fresh checkout.
 rm -f devices/zz_test_*.toml
-
-coverage=0
-for arg in "$@"; do
-    case "$arg" in
-        --coverage) coverage=1 ;;
-        *)
-            echo "Unknown argument: $arg (only --coverage is supported)" >&2
-            exit 1
-            ;;
-    esac
-done
-
-# GC_THRESHOLD=32768 re-runs the MicroPython tier through tests/_threshold_runner.py with that
-# gc.threshold() set, which is CLAUDE.md's (f) stage. Unset (the default) is the (e) stage: the
-# interpreter's own reactive -1, where the design has to stand up on its own first.
-if [ -n "${GC_THRESHOLD:-}" ]; then
-    # Validated once here rather than 85 times inside the runner: an unparseable value would
-    # otherwise surface as one ValueError traceback per test file, each retried twice, with the
-    # actual mistake nowhere in the rolled-up summary.
-    if [[ ! "$GC_THRESHOLD" =~ ^-?[0-9]+$ ]]; then
-        echo "error: GC_THRESHOLD must be an integer - 32768 is what the firmware ships, -1 the reactive default - not '$GC_THRESHOLD'" >&2
-        exit 1
-    fi
-    if [ "$coverage" = "1" ]; then
-        # Said out loud rather than silently dropped: --coverage has its own runner, and a run that
-        # ignores an explicitly set threshold must not look like one that honored it.
-        echo "== note: --coverage uses its own runner, so GC_THRESHOLD=$GC_THRESHOLD is ignored for this run" >&2
-    fi
-fi
 
 toolchain_dir="${PICO_TOOLCHAIN_DIR:-$HOME/pico-toolchain}"
 # Two variants, built together by setup_toolchain.py. The plain run takes the settrace-FREE one:
@@ -547,8 +557,12 @@ max_attempts=3
 # on its own logs (_digital_twin_ci_suite.py); this is the same check for the tier (e)/(f) run in.
 _flag_memory_errors() {
     local tag="$1" log_file="$2"
-    if grep -q "MemoryError" "$log_file" 2>/dev/null; then
-        grep -m5 "MemoryError" "$log_file" >"$results_dir/$tag.memerr"
+    # Both spellings, because src/'s degrade handlers log str(e) and not the class: a real caught
+    # allocation failure prints "memory allocation failed, ..." (py/runtime.c:1692/1696) with no
+    # "MemoryError" in it, so the class name alone only ever sees an UNCAUGHT traceback.
+    local pattern="MemoryError|memory allocation failed"
+    if grep -qE "$pattern" "$log_file" 2>/dev/null; then
+        grep -m5 -E "$pattern" "$log_file" >"$results_dir/$tag.memerr"
     fi
 }
 

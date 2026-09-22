@@ -771,7 +771,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   `scripts/build_firmware.py`, `scripts/_require_clean_hardware_run.sh`,
   `scripts/run_digital_twin_ci.sh`, `scripts/run_unix_port_integration.sh`,
   `scripts/_digital_twin_ci_suite.py` (test orchestration only - no build step, so the chroot legs
-  neither exercise nor are threatened by it),
+  neither exercise nor are threatened by it; 2026-09-22 widened its `MemoryError` log check to match
+  `memory allocation failed` too - same class of change, still no build step),
   **`toolchain/setup_toolchain.py` (2026-09-21: `build_unix_port()` now builds TWO variants -
   `build-standard` without `MICROPY_PY_SYS_SETTRACE` as the test rig, `build-settrace` with it for
   `--coverage` only - so a from-scratch chroot run builds the Unix port twice and takes
@@ -786,7 +787,11 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   plus the new `toolchain/micropython_overrides.py` (PR #90's `MICROPY_ASYNC_KBD_INTR=0` Unix-port
   build override, SPECIFICATION.md Part B.14.1). That last pair is what a compiler-version-sensitive
   break would actually show up in, so it is the part worth the owner's next manual run; a
-  `scripts/test.sh` change is host tooling and low-risk. Kept here as the running list of what is
+  `scripts/test.sh` change is host tooling and low-risk. 2026-09-22 added two more to it, both pure
+  shell with no build impact: the `MemoryError` gate matches `memory allocation failed` as well as
+  the class name, and argument/`GC_THRESHOLD` validation moved ahead of the two live-tree sweeps so
+  a rejected invocation mutates nothing (it previously wiped `tests/_tmp` while the concurrent
+  MicroPython tier held scratch dirs under it). Kept here as the running list of what is
   owed, not as a merge blocker.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not

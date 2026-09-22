@@ -3,6 +3,7 @@ hazard is closed by ordering, and devices/zz_test_*.toml is a reserved live-tree
 Both are ordering/naming contracts, so they are asserted against the script's own source."""
 
 import re
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -410,6 +411,93 @@ def test_a_non_integer_gc_threshold_is_rejected_before_anything_is_built(repo_ro
     assert "GC_THRESHOLD must be an integer" in completed.stderr
 
 
+@pytest.mark.parametrize("value", ["999999999999999999999", "-999999999999999999999"])
+def test_an_out_of_range_gc_threshold_is_rejected_too(repo_root: Path, value: str) -> None:
+    # A well-formed integer the interpreter still cannot take: gc.threshold() converts to a machine
+    # word, so this reaches the runner and raises OverflowError per file - the same 255-traceback
+    # run the shape check prevents, which the shape check alone does not catch.
+    completed = subprocess.run(
+        ["/bin/bash", str(repo_root / "scripts" / "test.sh")],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "GC_THRESHOLD": value},
+        cwd=repo_root,
+        timeout=60,
+        check=False,
+    )
+    assert completed.returncode == 1, f"expected a fast rejection, got {completed.returncode}:\n{completed.stdout[-2000:]}\n{completed.stderr[-2000:]}"
+    assert "does not fit a machine word" in completed.stderr
+
+
+def _gc_threshold_check(repo_root: Path, tmp_path: Path, value: str) -> "subprocess.CompletedProcess[str]":
+    """Runs scripts/test.sh's GC_THRESHOLD validation block alone, extracted from the real source.
+
+    Deliberately not the whole script: an ACCEPTED value carries on into the live-tree sweeps, and
+    this file's tests run concurrently with 85 test files holding scratch dirs under tests/_tmp."""
+    text = _test_sh_text(repo_root)
+    lines = text.split("\n")
+    start = next((i for i, line in enumerate(lines) if line.startswith('if [ -n "${GC_THRESHOLD:-}"')), None)
+    assert start is not None, "scripts/test.sh no longer validates GC_THRESHOLD - update this test with it"
+    end = next(i for i in range(start, len(lines)) if lines[i] == "fi")
+    script = tmp_path / "check.sh"
+    script.write_text("#!/usr/bin/env bash\nset -euo pipefail\ncoverage=0\n" + "\n".join(lines[start : end + 1]) + "\n")
+    return subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", "GC_THRESHOLD": value}, check=False)
+
+
+@pytest.mark.parametrize("value", ["-1", "32768", "0", "2147483647"])
+def test_the_values_the_project_actually_uses_are_accepted(repo_root: Path, tmp_path: Path, value: str) -> None:
+    # The false-positive direction for both checks above. -1 is the (e) stage, 32768 is what the
+    # firmware ships; the other two are the range check's own inclusive edges.
+    completed = _gc_threshold_check(repo_root, tmp_path, value)
+    assert completed.returncode == 0, f"GC_THRESHOLD={value} must pass validation: {completed.stderr!r}"
+    assert completed.stderr == "", f"GC_THRESHOLD={value} must pass silently: {completed.stderr!r}"
+
+
+def test_argument_validation_happens_before_anything_in_the_live_tree_is_touched(repo_root: Path) -> None:
+    # Ordering, and a real race until 2026-09-22: the rejection tests above run a nested test.sh
+    # while tests_scripts/ is itself backgrounded alongside 85 files whose TmpScratch dirs live
+    # under tests/_tmp - so a nested run that swept before validating deleted them mid-test.
+    text = _test_sh_text(repo_root)
+    validate_at = text.find('if [ -n "${GC_THRESHOLD:-}"')
+    args_at = text.find("coverage=0")
+    assert validate_at != -1 and args_at != -1, "scripts/test.sh no longer parses arguments or validates GC_THRESHOLD - update this test with it"
+    for sweep in ("rm -rf tests/_tmp", _SWEEP_LINE):
+        sweep_at = text.find(sweep)
+        assert sweep_at != -1, f"scripts/test.sh no longer sweeps via {sweep!r}"
+        assert args_at < sweep_at, f"argument parsing must reject an unknown flag before {sweep!r} mutates the live tree"
+        assert validate_at < sweep_at, f"GC_THRESHOLD validation must run before {sweep!r} mutates the live tree"
+
+
+def test_a_rejected_invocation_leaves_the_live_tree_untouched(repo_root: Path, tmp_path: Path) -> None:
+    # The same invariant end to end rather than by source order, on a scratch key of this test's
+    # own so a concurrent file's dir is never the thing under test. Sentinels, not the real sweep
+    # targets: what is asserted is that a rejected run reaches neither sweep.
+    scratch = repo_root / "tests" / "_tmp" / "zz_test_sh_reject_sentinel"
+    scratch.mkdir(parents=True, exist_ok=True)
+    sentinel = scratch / "in_use.txt"
+    sentinel.write_text("held by a concurrently running test file\n")
+    fixture = repo_root / "devices" / "zz_test_reject_sentinel.toml"
+    fixture.write_text("# swept by scripts/test.sh's reserved-namespace sweep\n")
+    try:
+        completed = subprocess.run(
+            ["/bin/bash", str(repo_root / "scripts" / "test.sh")],
+            capture_output=True,
+            text=True,
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "GC_THRESHOLD": "32k"},
+            cwd=repo_root,
+            timeout=60,
+            check=False,
+        )
+        assert completed.returncode == 1, f"expected a rejection, got {completed.returncode}"
+        assert sentinel.is_file(), "a rejected run wiped tests/_tmp, which concurrently running test files are using for scratch"
+        assert fixture.is_file(), "a rejected run swept devices/zz_test_*.toml, which it never got far enough to need"
+    finally:
+        # ignore_errors, because the failure this test reports IS the tree being gone: a strict
+        # teardown would raise FileNotFoundError and bury the assertion that explains why.
+        fixture.unlink(missing_ok=True)
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
 # ---------------------------------------------------------------------------
 # The MemoryError gate. SPECIFICATION.md Part I.4(e) requires zero MemoryErrors from the suite,
 # caught-and-logged included; the twin tier asserted that on its own logs and this tier - the one
@@ -439,10 +527,32 @@ def test_a_caught_and_logged_memory_error_is_flagged(repo_root: Path, tmp_path: 
     assert "MemoryError" in flagged, "a MemoryError in a passing file's output must be flagged"
 
 
+def test_the_real_caught_and_degraded_form_is_flagged_though_it_never_says_memoryerror(repo_root: Path, tmp_path: Path) -> None:
+    # This is what src/ actually emits: pr.err("...", e) prints str(e), and the interpreter's own
+    # message carries no class name (verified against the built binary). A gate looking only for
+    # "MemoryError" sees uncaught tracebacks and misses every caught degrade - the silent case.
+    flagged = _flag(repo_root, tmp_path, "[test_x] 12/12 passed\n[test_x] BMP3XX Could not start timer: memory allocation failed, allocating 2048 bytes\n")
+    assert "memory allocation failed" in flagged, "a degrade handler logging only str(e) must still be flagged"
+
+
+def test_the_heap_is_locked_wording_is_flagged_too(repo_root: Path, tmp_path: Path) -> None:
+    # py/runtime.c raises MemoryError with two different messages; both begin "memory allocation
+    # failed", which is why the pattern matches that prefix rather than either full wording.
+    flagged = _flag(repo_root, tmp_path, "[test_x] WARN flush: memory allocation failed, heap is locked\n")
+    assert "heap is locked" in flagged
+
+
 def test_a_clean_run_is_not_flagged(repo_root: Path, tmp_path: Path) -> None:
     # The false-positive direction, and why the gate is affordable: measured over a full 85-file
-    # run, the suite's own output contains the string zero times.
+    # run, the suite's own output contains neither pattern once.
     assert _flag(repo_root, tmp_path, "[test_x] 12/12 passed\n[test_x] PASS test_allocates_a_buffer\n") == ""
+
+
+def test_the_suites_own_injected_allocation_failures_do_not_trip_the_gate(repo_root: Path, tmp_path: Path) -> None:
+    # 15 tests/ sites raise MemoryError("simulated allocation failure") on purpose to prove a
+    # degrade path. That wording is deliberately not the interpreter's, so the widened pattern
+    # still distinguishes a test's own injection from a real allocation failure on this host.
+    assert _flag(repo_root, tmp_path, "[test_x] NTP Could not start NTP timer: simulated allocation failure\n") == ""
 
 
 def test_the_flag_records_the_offending_lines_not_just_the_fact(repo_root: Path, tmp_path: Path) -> None:

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import heap_map
 import pytest
+from harness import MEMORY_ERROR_MARKERS
 from soak_tiers import SOAK_TIER_SECONDS
 
 if TYPE_CHECKING:
@@ -97,6 +98,9 @@ def test_single_core_timing_headroom_holds_under_normal_full_task_load(board: Bo
     # "CFGMGR_" is a per-line module-tag prefix (fires on every routine config read), not a one-time
     # boot marker - use the two genuinely one-time-per-setup() ConfigManager/FRAM messages instead.
     reboot_markers = [ln for ln in lines if "config is ready" in ln or "FRAM SPI FRAM Driver Setup complete" in ln]
-    traceback_markers = [ln for ln in lines if "Traceback" in ln or "MemoryError" in ln]
+    # "Traceback" catches a crash; MEMORY_ERROR_MARKERS is what catches a soak that allocated,
+    # failed, logged it and carried on - a pass at this bar until 2026-09-22, and the case the
+    # rule is actually named for (the board never prints the class name for a caught one).
+    traceback_markers = [ln for ln in lines if "Traceback" in ln or any(marker in ln for marker in MEMORY_ERROR_MARKERS)]
     assert not reboot_markers, f"observed what looks like an unexpected mid-soak reboot (WDT starvation?) - boot markers: {reboot_markers}\nfull log:\n{joined}"
     assert not traceback_markers, "observed an unexpected traceback/MemoryError during the soak window:\n" + "\n".join(traceback_markers)

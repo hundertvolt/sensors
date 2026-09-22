@@ -163,6 +163,59 @@ class TestBuildUnixPortAppliesTheOverride:
         assert "VARIANT=standard" in make_cmd
         assert f"VARIANT_DIR={toolchain_dir / 'build_overrides' / 'unix_kbd_intr_variant'}" in make_cmd
 
+    def _recorded_make_cmd(
+        self, setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, settrace: bool,
+    ) -> list[str]:
+        """Builds one variant against a fake tree and returns the make command it constructed."""
+        fake_mp_dir = _write_fake_micropython_tree(tmp_path / "toolchain" / "micropython")
+        toolchain_dir = tmp_path / "toolchain"
+        expected_dir = setup_toolchain.UNIX_SETTRACE_BUILD_DIR if settrace else setup_toolchain.UNIX_BUILD_DIR
+        build_dir = fake_mp_dir / "ports" / "unix" / expected_dir
+        recorded: list[list[str]] = []
+
+        def fake_run(cmd: list[str], cwd: Path | None = None, *, check: bool = True, env: dict[str, str] | None = None) -> str:
+            recorded.append(cmd)
+            if cmd[0] == "make":
+                build_dir.mkdir(parents=True, exist_ok=True)
+                (build_dir / "micropython").write_text("#!/bin/sh\necho fake\n")
+                return f"LINK {expected_dir}/micropython\n"
+            return "namespace(name='micropython')"
+
+        monkeypatch.setattr(setup_toolchain, "run", fake_run)
+        binary = setup_toolchain.build_unix_port(fake_mp_dir, toolchain_dir, jobs=4, settrace=settrace)
+        assert binary == build_dir / "micropython", f"the {expected_dir} variant must be returned from its own build dir"
+        return recorded[0]
+
+    def test_the_test_rig_variant_is_built_without_the_settrace_flag(
+        self, setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # The whole point of the 2026-09-21 split (Part E.5.2): compiled in, the flag allocates a
+        # frame and a code object per call, inflating every figure the memory work measures 4-5x.
+        # Re-adding it to the default path is silent until a binary is rebuilt - so assert it here.
+        make_cmd = self._recorded_make_cmd(setup_toolchain, tmp_path, monkeypatch, settrace=False)
+        flags = next(arg for arg in make_cmd if arg.startswith("CFLAGS_EXTRA="))
+        assert "MICROPY_PY_SYS_SETTRACE" not in flags, f"the test rig must be settrace-FREE, got {flags!r}"
+        assert not [arg for arg in make_cmd if arg.startswith("BUILD=")], "the rig takes the Makefile's own default build dir, never an explicit BUILD="
+
+    def test_the_coverage_variant_gets_the_flag_and_its_own_build_dir(
+        self, setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # --coverage genuinely needs sys.settrace, so the second binary must both carry the flag and
+        # land somewhere else - sharing one build dir is what made the path stop identifying the
+        # variant, which scripts/test.sh now has to probe the binary to recover.
+        make_cmd = self._recorded_make_cmd(setup_toolchain, tmp_path, monkeypatch, settrace=True)
+        flags = next(arg for arg in make_cmd if arg.startswith("CFLAGS_EXTRA="))
+        assert "-DMICROPY_PY_SYS_SETTRACE=1" in flags, f"--coverage's own binary must carry the flag, got {flags!r}"
+        assert f"BUILD={setup_toolchain.UNIX_SETTRACE_BUILD_DIR}" in make_cmd
+        assert setup_toolchain.UNIX_SETTRACE_BUILD_DIR != setup_toolchain.UNIX_BUILD_DIR, "the two variants must not share a build directory"
+
+    def test_a_setup_run_builds_both_variants(self, repo_root: Path) -> None:
+        # Structural: the real call is a multi-minute compile. What has to hold is that the
+        # verification sequence asks for the settrace variant at all - without it, --coverage has
+        # no binary and scripts/test.sh's own variant check fails a run it cannot repair.
+        source = (repo_root / "toolchain" / "setup_toolchain.py").read_text()
+        assert "build_unix_port(micropython_dir, toolchain_dir, jobs, settrace=True)" in source, "setup must build the --coverage variant too, or scripts/test.sh --coverage has nothing to run"
+
     def test_raises_before_ever_invoking_make_when_the_override_cannot_be_verified(
         self, setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:

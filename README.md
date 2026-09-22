@@ -148,6 +148,8 @@ is close to free; set `TEST_PARALLELISM=1` for strictly sequential runs), `TESTS
 real runtime, so it only fires on a genuine hang), and `GC_THRESHOLD` (run the MicroPython tier with
 that `gc.threshold()` set instead of the interpreter's own reactive default — `GC_THRESHOLD=32768
 scripts/test.sh` is the value the firmware's boot entry ships, and the suite has to pass both ways;
+a value that is not an integer, or does not fit a machine word, is rejected up front before the run
+touches anything, rather than failing inside the runner once per test file;
 see "Memory-safety discipline" in CLAUDE.md for why both runs are required and which one proves
 what). Every `tests/test_*.py` file runs as
 its own interpreter process and prints its own `PASS`/`FAIL` lines plus an `N/N passed` count as it
@@ -155,7 +157,9 @@ goes, each line prefixed with that file's own name in brackets (e.g. `[test_sens
 several files' output interleaves when they run concurrently; **the run ends with one rolled-up
 summary** (`tests_scripts/`'s own pass/fail, the
 MicroPython file count, every failed file named by path, and any file whose output contained a
-`MemoryError` — caught-and-logged counts, and fails the run, even if that file's own tests passed)
+`MemoryError` or the interpreter's own `memory allocation failed` wording — caught-and-logged
+counts, and fails the run, even if that file's own tests passed; both spellings are matched because
+`src/` logs the exception's message and not its class, so a real degrade never says "MemoryError")
 so a failure earlier in a long run doesn't require scrolling back through the log:
 
 ```

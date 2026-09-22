@@ -78,3 +78,16 @@ def test_a_bare_exit_with_no_args_is_a_pass(repo_root: Path, micropython_bin: Pa
     probe = _probe(tmp_path, "import sys\nsys.exit()\n")
     completed = _run(repo_root, micropython_bin, [_RUNNER, str(probe), str(_SHIPPED_THRESHOLD)])
     assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+
+
+def test_an_uncaught_exception_in_the_test_file_is_not_reported_as_a_pass(repo_root: Path, micropython_bin: Path, tmp_path: Path) -> None:
+    # The runner catches SystemExit and nothing else, on purpose: a file dying at import time must
+    # still fail the (f) stage. Nothing asserted that, and only SystemExit was covered - a broadened
+    # except here would turn every crashing file in that stage green.
+    probe = _probe(tmp_path, "raise RuntimeError('boom before any test ran')\n")
+    completed = _run(repo_root, micropython_bin, [_RUNNER, str(probe), str(_SHIPPED_THRESHOLD)])
+    assert completed.returncode != 0, f"a file that raised must not exit 0:\n{completed.stdout}\n{completed.stderr}"
+    # Combined, because the Unix port prints an uncaught traceback to STDOUT, not stderr (verified
+    # directly). scripts/test.sh merges the two with 2>&1 before the gate reads them, so either
+    # stream reaches the log there - but a test asserting on stderr alone sees nothing at all.
+    assert "RuntimeError" in completed.stdout + completed.stderr, f"the real cause must reach the log, not be swallowed: {completed.stdout!r} {completed.stderr!r}"

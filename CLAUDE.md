@@ -325,7 +325,15 @@ information):
   machine-checked, not left to whoever reads the log**: the twin tier checks each run's log
   (`scripts/_digital_twin_ci_suite.py`) and `scripts/test.sh` searches each test file's own output
   and fails the run, a passing file included — a degrade-and-pass is the silent case the bar is
-  about. Don't relax that to "only on a failing file". **One structural
+  about. Don't relax that to "only on a failing file". **There are FOUR such gates — the unit tier,
+  the twin tier and the flash/bench real-hardware soak gates — and all four match `MemoryError` OR
+  `memory allocation failed`, the second being the half that matters** — `src/` logs `str(e)`, not
+  the class, so a real caught-and-degraded allocation failure never contains the word
+  "MemoryError" at all (SPECIFICATION.md Part I.4(e) has the full account and the `py/runtime.c`
+  citation). Matching the class name alone catches only crashes, which is the case the bar is
+  *not* about; don't narrow any gate back to it. The hardware pair reads one shared
+  `tests_hardware/harness.py` `MEMORY_ERROR_MARKERS`, and
+  `tests_scripts/test_memory_error_gate_agreement.py` keeps all four agreeing. **One structural
   exception, added 2026-09-18 with the owner's approval: the boot-confined placement reset** —
   `gc.collect()` between the units of the two one-time setup lists and nowhere else, mechanically
   confined by `scripts/lint.sh` and `tests_scripts/test_gc_collect_sites.py` on the *sites* and by

@@ -28,6 +28,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Same NetworkManager connection names toolchain/setup_toolchain.py's ensure_bench_bridge() uses -
 # kept in exact sync with that module rather than re-derived, since a bench rig set up by `env
 # --tier bench` is what every bench test assumes is already there.
+# SPECIFICATION.md Part I.4(e)'s bar, as the board's own log shows it. BOTH spellings: src/'s
+# degrade handlers log str(e), so a real caught allocation failure reads "memory allocation
+# failed, ..." (py/runtime.c) and the class name appears only in an UNCAUGHT traceback.
+MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
+
 BENCH_BRIDGE_CONN = "br0"
 BENCH_ETH_CONN = "br0-eth0"
 BENCH_AP_CONN = "br0-wifi-ap"
