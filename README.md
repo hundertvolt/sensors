@@ -708,6 +708,13 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   result is migrated into the permanent docs; the file goes when the last row does. It authorizes
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
+- **[`CONNECTION_SCALING_PLAN.md`](CONNECTION_SCALING_PLAN.md)** — the working plan, verified
+  source findings and evaluation protocol for raising the simultaneous-TCP-connection ceiling: every
+  ceiling in the path from lwIP's own pools up to `WebserverService`'s admission limit, which of
+  them a plain `-D` can move and which need the `VARIANT_DIR` shim, and the two-sided
+  connections-gained-versus-contiguous-heap-lost bar any candidate setting has to clear. Holds the
+  measured results as they land; deleted once its conclusions are migrated into
+  `SPECIFICATION.md`/CLAUDE.md/BACKLOG.md.
 - **[`REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md`](REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md)** — the
   runnable handover for the next bench sitting: the boot placement reset measured as *placement*
   rather than as a contiguity number, which the board has never done because its device script takes
