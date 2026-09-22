@@ -484,3 +484,46 @@ release and fail loudly on an incompatible one:
   executes in full with every upstream value intact, and only then are the options redefined. A
   future release adding a sixth macro to that block keeps its upstream value rather than losing it
   — the failure mode a command-line `-D` would have produced.
+
+
+---
+
+# 10. A real defect the harder bursts found (2026-09-22)
+
+The point of §6 was that the tiers should *bite harder*, not merely tolerate more load. They did,
+and the first thing they bit was this project's own twin HTTP client.
+
+**The failure.** `test_digital_twin_webserver_concurrency_arzi.py` failed the (f) stage —
+`gc.threshold(32768)` — while the (e) stage passed on the same tree, in
+`high_concurrency_burst_at_historical_segfault_repro_scale_survives`:
+
+```
+ValueError: malformed HTTP status line: b''
+```
+
+**Root cause.** A connection refused by `_serve()`'s reject-when-full branch is closed **without a
+response ever being written**, and the peer sees either an RST or a clean FIN — kernel TCP state
+that `src/` does not choose. The RST arrives as an `OSError`, which every scenario's rejection
+handler catches. The FIN arrives as an *empty read*, which `digital_twin/_http_client.py`'s
+`parse_status_line()` raised as a `ValueError` — and eight call sites caught only `OSError`, so it
+escaped as a test failure. **The bug is in the test client, not in `src/`.**
+
+It surfaced now because this branch changed that scenario's burst from a fixed 12 to
+`max(12, ceiling * 3)` = 21, which made FIN-without-bytes the common refusal rather than a rare one.
+It is intermittent by nature, which is why it showed at (f) and not (e) — the shifted timing, not
+the threshold itself.
+
+**The tier that already had this right.** `tests_hardware/http_client.py` has carried the concept
+since the bench runs: `CEILING_CLOSE` includes `http.client.BadStatusLine` precisely because an
+empty status line *is* a ceiling refusal there, with a comment saying so and citing the measured
+FIN/RST split. The twin client simply never learned it — a genuine cross-tier inconsistency.
+
+**The fix, at the source rather than in eight `except` clauses.** `parse_status_line(b"")` now
+raises `CeilingRefusedError`, an `OSError` subclass, so every existing call site classifies it
+correctly without change and the meaning is explicit. A non-empty malformed line still raises
+`ValueError`, and the body-read `EOFError` paths are untouched: those happen *after* a status line,
+so they mean a truncated response, which is a real defect and must not be reclassified as a refusal.
+
+**Verified**: the failure reproduces on the unfixed tree in a worktree, and all six devices pass
+three consecutive (f)-stage rounds with the fix. `tests/test_digital_twin_http_client.py` pins both
+halves — the refusal is raised, and it is catchable as a plain `OSError`.

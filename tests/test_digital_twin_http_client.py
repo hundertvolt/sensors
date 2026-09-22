@@ -77,6 +77,30 @@ def test_parse_status_line_rejects_a_malformed_line() -> None:
         pass
 
 
+def test_an_empty_status_line_is_a_refusal_not_a_malformed_response() -> None:
+    # The server's reject-when-full branch closes without writing anything, so the client reads
+    # b"". That is a connection outcome, not a broken response, and every caller already treats a
+    # refusal as OSError - mirroring tests_hardware/http_client.py's CEILING_CLOSE, which covers
+    # the same case by including http.client.BadStatusLine.
+    try:
+        http_client.parse_status_line(b"")
+        raise AssertionError("expected CeilingRefusedError")
+    except http_client.CeilingRefusedError:
+        pass
+
+
+def test_a_ceiling_refusal_is_catchable_as_a_plain_oserror() -> None:
+    # Load-bearing: the concurrency scenarios classify a refusal with `except OSError`, and a
+    # ValueError there escaped as a test failure under a burst big enough to make FIN-without-bytes
+    # the common outcome rather than RST.
+    assert issubclass(http_client.CeilingRefusedError, OSError)
+    try:
+        http_client.parse_status_line(b"")
+        raise AssertionError("expected an OSError")
+    except OSError:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # parse_header_line() - header-line parsing
 # ---------------------------------------------------------------------------
