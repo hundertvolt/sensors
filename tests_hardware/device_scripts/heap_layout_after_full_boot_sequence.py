@@ -9,6 +9,8 @@ import time
 import micropython
 import sensortask_dev
 
+import system_service
+
 # Same doubling/halving bounds as heap_headroom_after_full_system_build.py, deliberately: the two
 # scripts' largest_block figures are only comparable if the probe is identical.
 _PROBE_MIN = 64
@@ -31,6 +33,43 @@ _STARTER_LOOP_GRACE_MS = 250
 # start_timers() waits on every timer's first fire. Guarded rather than awaited bare so a timer that
 # never fires fails this script honestly instead of hanging the suite (CLAUDE.md's known hang #2).
 _TIMERS_TIMEOUT_S = 15
+
+_ARM_LIVE = "collects"
+_ARM_SUPPRESSED = "suppressed"
+
+
+def _selected_arm() -> str:
+    # mpremote run takes no argv but does share globals with an `exec` earlier in the same raw-REPL
+    # session, which is how the suppressed arm is selected: exec "_ARM_OVERRIDE='suppressed'" first.
+    # Verified on this board, 2026-09-22; assigning sys.argv raises there, appending to it works.
+    arm = str(globals().get("_ARM_OVERRIDE", _ARM_LIVE))
+    if arm not in (_ARM_LIVE, _ARM_SUPPRESSED):
+        print(f"RESULT: FAIL unknown arm {arm!r} - expected {_ARM_LIVE!r} or {_ARM_SUPPRESSED!r}")
+        raise SystemExit(1)
+    return arm
+
+
+class _ProbeGc:
+    """Stands in for `gc` at the emitted collect sites: dumps a map at the positions asked for, then
+    forwards to the real collect only on the live arm. Ported from tests/_boot_contiguity_probe.py
+    so the board and the twin measure the same sequence at the same positions."""
+
+    # A dumped position collects on BOTH arms, via _dump_map() - the seam map has to be post-collect
+    # or the arms anchor at different places and nothing is comparable. The suppressed arm therefore
+    # keeps the leading collect and loses the per-unit ones, which makes it a conservative control.
+
+    def __init__(self, tag: str, *, live: bool, dump_at: "tuple[int, ...]") -> None:
+        self.tag = tag
+        self.live = live
+        self.dump_at = dump_at
+        self.calls = 0
+
+    def collect(self) -> None:
+        if self.calls in self.dump_at:
+            _dump_map(f"{self.tag}_{self.calls:02d}")
+        if self.live:
+            gc.collect()
+        self.calls += 1
 
 
 def _largest_block() -> int:
@@ -86,6 +125,16 @@ def _report_checked(label: str) -> "tuple[int, int]":
 
 
 async def _main() -> None:
+    arm = _selected_arm()
+    live = arm == _ARM_LIVE
+    # The seam: the generated module's first emitted collect, which runs before the batch's first
+    # setup unit. Without a map here heap_map.delta() has no `before` for the batch (7L).
+    batch_gc = _ProbeGc("batch", live=live, dump_at=(0,))
+    starter_gc = _ProbeGc("starter", live=live, dump_at=())
+    sensortask_dev.gc = batch_gc  # type: ignore[assignment]
+    system_service.gc = starter_gc  # type: ignore[assignment]
+    print(f"ARM {arm}")
+
     _report_checked("baseline")
     t0 = time.ticks_ms()
     try:
@@ -103,7 +152,7 @@ async def _main() -> None:
         return
     task_starters = sensortask_dev._collect_task_starters()
     timer_starters = sensortask_dev._collect_timer_starters()
-    print(f"LISTS starters={len(task_starters)} timers={len(timer_starters)}")
+    print(f"LISTS starters={len(task_starters)} timers={len(timer_starters)} batch_collects={batch_gc.calls}")
 
     # main()'s own order, minus ntp_force_sync(): that one needs a reachable NTP server, and a
     # network-dependent wait in the middle would put the measurement at the mercy of the bench LAN.
@@ -160,7 +209,8 @@ async def _main() -> None:
     gc.threshold(32768)  # what buildgen.codegen.generate_boot_entry_source() sets in the real firmware
     _report_checked("after_starter_list_production_threshold")
 
-    print(f"BOOT build_system_ms={build_ms} start_timers_ms={timers_ms} starter_loop_ms={starters_ms} settle_ms={_STARTER_SETTLE_MS}")
+    print(f"COUNTS batch_collects={batch_gc.calls} starter_collects={starter_gc.calls}")
+    print(f"BOOT arm={arm} build_system_ms={build_ms} start_timers_ms={timers_ms} starter_loop_ms={starters_ms} settle_ms={_STARTER_SETTLE_MS}")
     # No floor is asserted. No reading for this position exists yet on silicon, so a threshold here
     # would be invented rather than measured; the figure is the deliverable and the comparison is
     # between two firmware images at the same suite position (7D.2).

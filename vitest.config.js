@@ -37,6 +37,10 @@ export default defineConfig({
             // shadows the real `coverage` distribution scripts/_render_coverage.py imports, so a
             // web-coverage run turned scripts/typecheck.sh red. htmlcov_js/ matches htmlcov*/.
             reportsDirectory: "htmlcov_js",
+            // The v8 provider re-parses every file V8 reported coverage for as JavaScript, so the
+            // JSON the site fetches at runtime (html/definitions/, mockdata/) threw a rolldown
+            // parse stack per file before being dropped anyway - same report, without the noise.
+            exclude: ["**/*.json"],
         },
         browser: {
             enabled: true,

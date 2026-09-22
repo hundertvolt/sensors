@@ -708,28 +708,28 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   result is migrated into the permanent docs; the file goes when the last row does. It authorizes
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
-- **[`CONNECTION_SCALING_PLAN.md`](CONNECTION_SCALING_PLAN.md)** — the working plan, verified
-  source findings and evaluation protocol for raising the simultaneous-TCP-connection ceiling: every
-  ceiling in the path from lwIP's own pools up to `WebserverService`'s admission limit, which of
-  them a plain `-D` can move and which need the `VARIANT_DIR` shim, and the two-sided
-  connections-gained-versus-contiguous-heap-lost bar any candidate setting has to clear. Holds the
-  measured results as they land; deleted once its conclusions are migrated into
-  `SPECIFICATION.md`/CLAUDE.md/BACKLOG.md.
-- **[`REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md`](REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md)** — the
-  runnable handover for the next bench sitting: the boot placement reset measured as *placement*
-  rather than as a contiguity number, which the board has never done because its device script takes
-  no seam map. States the one-image/both-arms finding that removes the reflash an arm comparison
-  used to need, and which of the host figures transfer to the board and which do not.
-  `REAL_HARDWARE_TEST_QUEUE.md` §1E is its index row. Deleted once its results are migrated; it
+- **[`CONNECTION_SCALING_PLAN.md`](CONNECTION_SCALING_PLAN.md)** — the plan, verified source
+  findings, measured results and recommendation for raising the simultaneous-TCP-connection ceiling:
+  every ceiling in the path from lwIP's own pools up to `WebserverService`'s admission limit, why
+  those lwIP options are an *ensemble* rather than independent knobs, and the two-sided
+  connections-gained-versus-contiguous-heap-lost bar any candidate setting has to clear. Deleted
+  once its conclusions are migrated into `SPECIFICATION.md`/CLAUDE.md/BACKLOG.md.
+- **[`REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md`](REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md)**
+  — the runnable handover for the one question the digital twin structurally cannot answer: the
+  twin runs on the Unix port, which has no lwIP at all, so the PCB/pbuf ceiling has never been
+  confirmed on silicon. Written standalone for a session with no prior knowledge — a 40-minute fast
+  path, the full ensemble sweep, what to record per row, and the traps.
+  `REAL_HARDWARE_TEST_QUEUE.md` §4A is its index row. Deleted once its results are migrated; it
   authorizes nothing — CLAUDE.md's go-ahead gate still applies.
 
 Handover files are per-effort throwaways, each owned by the session or pull request named in its own
-first lines and deleted once its findings are migrated or confirmed not to apply — the boot-contiguity
-one above is the only one still live. The two real-hardware handovers that preceded it went that way
-on 2026-09-18 and `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` on 2026-09-22, their still-open asks
-consolidated into `REAL_HARDWARE_TEST_QUEUE.md` (rows R14 and §1F) and their durable findings migrated
-into `SPECIFICATION.md` (Part I.1 carries the external prior art the last one held). Do not treat a
-handover file as a durable reference, and prefer the queue above for anything bench-related.
+first lines and deleted once its findings are migrated or confirmed not to apply — the
+connection-scaling one above is the only one still live. `REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md`
+went that way on 2026-09-22 once the bench sitting closed E1-E4, the two before it on 2026-09-18,
+and `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` the same day, their still-open asks consolidated
+into `REAL_HARDWARE_TEST_QUEUE.md` and their durable findings migrated into `SPECIFICATION.md`
+(Part I.1 carries the external prior art the last one held). Do not treat a handover file as a
+durable reference, and prefer the queue above for anything bench-related.
 
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 

@@ -27,6 +27,8 @@ async def _main() -> None:
     sys_mgr = cm.ConfigManager(_SYS_PATH, _SYS_SCHEMA, "SYSTEM")
     await sys_mgr.setup()
     ok, validity = await sys_mgr.write_config({"DebugLevel": previous_level}, _SYS_SCHEMA)
+    await sys_mgr.flush_pending()  # write_config() only stages (Part F.2) - unflushed, the restore
+    # reports success while the on-disk DebugLevel keeps whatever the raise phase left there.
     if ok and validity.get("DebugLevel") in ("Valid", "Unchanged"):
         print(f"RESULT: PASS DebugLevel restored to {previous_level}")
     else:

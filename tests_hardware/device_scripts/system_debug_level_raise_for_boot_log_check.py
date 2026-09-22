@@ -31,12 +31,17 @@ async def _main() -> None:
     if not backup_ok:
         print(f"RESULT: FAIL could not back up the current DebugLevel={previous_level} before changing it")
         return
+    # write_config() only stages; the flash write is its own task (Part F.2). Unflushed, the backup
+    # file keeps setup()'s default PrevLevel=0 and the restore phase then drives DebugLevel to 0,
+    # which is the state that silently breaks the rest of the bench tier.
+    await backup_mgr.flush_pending()
 
     if previous_level >= _VERBOSE_LEVEL:
         print(f"RESULT: PASS DebugLevel already {previous_level} (>= {_VERBOSE_LEVEL}) - nothing to raise")
         return
 
     ok, validity = await sys_mgr.write_config({"DebugLevel": _VERBOSE_LEVEL}, _SYS_SCHEMA)
+    await sys_mgr.flush_pending()  # same reason as the backup write above
     if ok and validity.get("DebugLevel") in ("Valid", "Unchanged"):
         print(f"RESULT: PASS DebugLevel raised from {previous_level} to {_VERBOSE_LEVEL}")
     else:
