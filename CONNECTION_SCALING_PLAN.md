@@ -543,7 +543,16 @@ earlier commits of this branch carrying the same harder bursts, and the only cha
 `CeilingRefusedError` fix, which strictly converts an escaping `ValueError` into an `OSError` some
 call sites then classify as a refusal - it cannot turn a passing assertion into a failing one.
 
-Rather than re-run and hope, `scripts/test.sh` now appends its own failure verdict - the failed
-files and any `MemoryError` lines - to `$GITHUB_STEP_SUMMARY` when one is set. **Job summaries are
-retrievable through the REST API where logs are not**, so the next occurrence names its file from
-this environment instead of being a dead end. Local runs are unchanged (the variable is unset).
+**An attempt to make it diagnosable was made and reverted, and the reason matters.**
+`scripts/test.sh` was changed to append its failure verdict to `$GITHUB_STEP_SUMMARY`. That was
+wrong three times over: `tests_scripts/test_test_sh.py` deliberately extracts the verdict block and
+runs it standalone with only three variables set, so the new block hit `set -u` on the others and
+broke a real test; a nested `scripts/test.sh` inherits the variable and appends to its parent's
+summary; and - the deciding one - **GitHub's job summary is not exposed through the REST API this
+environment can reach**, verified by reading the failing check runs' `output.summary` and finding it
+empty. The channel would never have delivered what it promised. Reverted in full.
+
+So the honest position stands: a CI failure that does not reproduce locally is **not diagnosable
+from this environment**, because the log is the only channel carrying it and its host is denied by
+network policy. Whoever picks this up with log access should read the `unit-tests-coverage` run on
+`0344ab4` directly.
