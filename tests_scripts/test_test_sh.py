@@ -618,6 +618,58 @@ def test_the_gate_is_wired_into_the_run_and_into_the_verdict(repo_root: Path) ->
     assert "MemoryError seen" in text, "the summary must name the files, so a long log does not have to be re-read"
 
 
+# --- the failure annotations (the only channel off the runner that is not the raw log) -------------
+
+
+def _annotation_detail_line(repo_root: Path) -> str:
+    """The one line with real logic in the annotation block: it folds a failing file's captured
+    output into a single GitHub-escaped annotation body. Extracted rather than reimplemented, for
+    the same reason _verdict_block() is."""
+    match = re.search(r'^\s*annotation_detail="\$\(\{ tail.*$', _test_sh_text(repo_root), re.MULTILINE)
+    assert match is not None, "scripts/test.sh no longer builds an annotation body from a failing file's log"
+    return match.group(0).strip()
+
+
+def _run_annotation_detail(repo_root: Path, tmp_path: Path) -> tuple[int, str]:
+    script = tmp_path / "detail.sh"
+    script.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        f'results_dir="{tmp_path}"\nannotation_tag="test_x"\n'
+        f'{_annotation_detail_line(repo_root)}\necho "::error title=tests/test_x.py::$annotation_detail"\n',
+    )
+    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=False, timeout=30)
+    return done.returncode, done.stdout
+
+
+def test_a_failing_file_s_own_output_survives_into_one_annotation(repo_root: Path, tmp_path: Path) -> None:
+    (tmp_path / "test_x.memerr").write_text("")
+    (tmp_path / "test_x.log").write_text("[test_x] 50% done\n[test_x] AssertionError: boom\n")
+    code, out = _run_annotation_detail(repo_root, tmp_path)
+    assert code == 0, out
+    line = out.strip()
+    # GitHub reads an annotation as one line and `%` as the start of an escape, so both have to be
+    # encoded or everything past the first newline is silently dropped.
+    assert "\n" not in line, line
+    assert "50%25 done" in line, line
+    assert line.endswith("AssertionError: boom%0A"), line
+
+
+def test_a_missing_log_cannot_abort_the_summary_the_annotation_is_part_of(repo_root: Path, tmp_path: Path) -> None:
+    # `set -e` plus a failing command substitution would kill the run before it printed its verdict,
+    # which is the one thing a diagnostic aid must never do.
+    code, out = _run_annotation_detail(repo_root, tmp_path)
+    assert code == 0, out
+    assert out.strip() == "::error title=tests/test_x.py::", out
+
+
+def test_every_way_the_suite_goes_red_gets_an_annotation_and_only_under_actions(repo_root: Path) -> None:
+    text = _test_sh_text(repo_root)
+    # Three independent ways this script reports red, so three annotations - a failing file, a
+    # file that only logged an allocation failure, and the pytest tier.
+    assert text.count("::error title=") == 3, "each of the three red outcomes needs its own annotation"
+    assert text.count('if [ -n "${GITHUB_ACTIONS:-}" ]') == 3, "a local run must not print workflow commands at all"
+
+
 # --- --coverage's three exit codes (SPECIFICATION.md Part E.5.3) -----------------------------------
 
 

@@ -890,6 +890,11 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   single unrelated third-party source (a PPA that 403s or whose key expired) aborted the whole
   installer before it could install a package the main archive serves. Every `apt-get install`
   stays fatal. The chroot recipe never runs this script, so it changes nothing the legs cover.
+  A third `scripts/` change on 2026-09-22, shell only and inside the summary block:
+  `scripts/test.sh` re-emits each red outcome (a failed file, a file that only logged an allocation
+  failure, the pytest tier) as a GitHub workflow-command annotation, guarded on `GITHUB_ACTIONS` so
+  a local or chroot run prints nothing extra and behaves exactly as before. No build step, so the
+  chroot legs neither exercise nor are threatened by it.
   Kept here as the running list of what is owed, not as a merge blocker.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
