@@ -241,7 +241,12 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    **Owner's call, 2026-09-11: keep deferred** - stays as-is, revisit only if a real deployment
    symptom makes it pressing.
 8. **Two bench-rig capabilities would each move one test candidate from `[MANUAL]` to `[AUTO]` —
-   deferred, planned for later (project owner, 2026-09-11).** A programmable GPIO fault-injection
+   SETTLED 2026-09-22 (owner): no hardware will be bought for this, so the rig stays as it is and
+   both candidates are permanently `[MANUAL]`.** Not "planned for later" any more, which is how
+   this read from 2026-09-11 until the question was put again. One qualifier, from the same
+   sitting's answer about the UART fault catalog (SPECIFICATION.md Part E.6.6's fourth exception):
+   fault-injection hardware may arrive one day for that work, and if it does, the GPIO half below
+   is worth re-opening then — as a new entry, not by treating this one as still pending. A programmable GPIO fault-injection
    harness (upgrades the "genuinely wedged I2C bus → watchdog backstop" test) and a dedicated
    second WiFi test client (upgrades the real end-to-end hotspot session; today's host has one
    adapter, already hosting the AP). Both stay `[MANUAL]` until the rig exists — don't re-propose
