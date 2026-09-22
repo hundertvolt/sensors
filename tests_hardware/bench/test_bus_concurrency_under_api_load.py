@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 import http_client
 import pytest
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
-from harness import Board, wait_until
+from harness import Board, configured_max_connections, wait_until
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
@@ -21,9 +21,10 @@ PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
 VOC_MIN, VOC_MAX = 0, 500  # same bounds as device_scripts/sgp40_voc_algorithm_quality.py
 
 # Total concurrent worker count is _GET_WORKERS + 1 (the SGP40 reset thread runs alongside the GET
-# workers) - must stay under max_connections=4 with real margin, not exactly at it, or a brief
-# overlap under real wireless timing hits a genuine (but here undesired) reject-when-full.
-_GET_WORKERS = 2
+# workers) - must stay under the build's own max_connections with real margin, not exactly at it,
+# or a brief overlap under real wireless timing hits a genuine (but here undesired) reject-when-full.
+# Derived so a raised ceiling really means more concurrent bus-facing API load, keeping two slots free.
+_GET_WORKERS = max(2, configured_max_connections() - 3)
 _GET_ITERATIONS_PER_WORKER = 8
 _PUT_RESET_COUNT = 2
 

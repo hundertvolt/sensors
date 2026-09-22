@@ -149,7 +149,7 @@ def webserver_init_default(src_dir: Path, name: str) -> int:
             # concatenation: kw_defaults carries a None per argument that has no default, so the
             # two lists have different element types and only line up within their own group.
             positional = fn.args.args[len(fn.args.args) - len(fn.args.defaults):]
-            pairs: "list[tuple[ast.arg, ast.expr | None]]" = list(zip(fn.args.kwonlyargs, fn.args.kw_defaults, strict=True))
+            pairs: list[tuple[ast.arg, ast.expr | None]] = list(zip(fn.args.kwonlyargs, fn.args.kw_defaults, strict=True))
             pairs += list(zip(positional, fn.args.defaults, strict=True))
             for arg, default in pairs:
                 if arg.arg == name and isinstance(default, ast.Constant) and isinstance(default.value, int) and not isinstance(default.value, bool):

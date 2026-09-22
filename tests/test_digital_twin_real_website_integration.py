@@ -301,6 +301,42 @@ def test_real_website_put_to_unmatched_path_in_hotspot_mode_still_405() -> None:
     run_timed(scenario(), timeout_s=10.0)
 
 
+def test_a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website() -> None:
+    # Every other row here loads the real site one request at a time. A real browser opens two
+    # connections per page load after bundling/inlining (Part H.7), and several tabs can be open at
+    # once - so the ceiling's own worth of REAL page loads has to land together, not in sequence.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        assert sensortask_wozi.webserver is not None
+        ceiling: int = sensortask_wozi.webserver._max_connections
+        task = await _start_webserver()
+        try:
+
+            async def page_load() -> "list[int]":
+                # The real footprint: the page plus its own bundled script, concurrently.
+                return list(await asyncio.gather(_one("/"), _one("/js/app.js")))
+
+            async def _one(path: str) -> int:
+                res = await _http_client.fetch("127.0.0.1", port, "GET", path)
+                assert res.status_code == 200, (path, res.status_code)
+                return len(_decompress(res.body))
+
+            tabs = max(2, ceiling // 2)
+            sizes = await asyncio.gather(*(page_load() for _ in range(tabs)))
+            # Every tab got the real content, not a truncated or empty body from a contended
+            # static mount - the failure a concurrent burst against one frozen filesystem produces.
+            for index_bytes, app_bytes in sizes:
+                assert index_bytes > 1000, sizes
+                assert app_bytes > 1000, sizes
+            assert len({tuple(pair) for pair in sizes}) == 1, sizes  # identical for every tab
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=30.0)
+
+
 if __name__ == "__main__":
     import microtest
 

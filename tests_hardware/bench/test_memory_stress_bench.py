@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import http_client
 import pytest
 from error_log_helpers import get_errcount, reset_all_error_logs
-from harness import MEMORY_ERROR_MARKERS
+from harness import MEMORY_ERROR_MARKERS, configured_max_connections
 from soak_tiers import SOAK_TIER_SECONDS
 
 if TYPE_CHECKING:
@@ -26,7 +26,8 @@ _FRAM_BACKED_MODULES = ("SYSTEM", "SGP40", "BMP3XX", "SCD30", "ISL29125", "NEOPI
 # MemoryErrors within 45s. Not soak-tier gated - 120s needs no --soak-tier flag to run.
 _HAMMER_DURATION_S = 120.0
 _HAMMER_PATHS = ("/measurements", "/sensors")
-_HAMMER_THREAD_COUNT = 4
+_HAMMER_THREAD_COUNT = configured_max_connections()  # the build's own ceiling: the hammer must
+# saturate admission, so it scales with max_connections rather than restating what it once was
 
 
 def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> tuple[list[str], int, list[str]]:
@@ -49,7 +50,7 @@ def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> 
                     else:
                         request_errors.append(f"GET {path} -> {res.status_code}")
             except OSError as exc:
-                # At 5 concurrent threads against max_connections=4, ConnectionResetError is the
+                # With the hammer saturating max_connections, ConnectionResetError is the
                 # server's intended reject-when-full behavior, not a fault - not asserted against
                 # below; only genuine 200s count as proof the server stayed alive (BACKLOG.md open question 7).
                 with lock:
@@ -102,7 +103,7 @@ def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reb
     _assert_no_crash_or_reboot(lines)
     # A success here means the server accepted, processed and answered with valid JSON under load
     # - which a wedged-but-not-crashed server cannot fake, unlike an absent crash marker.
-    # max_connections=4 rejections do not count against it (_run_max_speed_hammer_load()).
+    # max_connections rejections do not count against it (_run_max_speed_hammer_load()).
     assert success_count > 100, f"too few successful requests got through during the hammer load ({success_count} ok, {len(request_errors)} rejected/errored) - server may have wedged"
     reset_all_error_logs(dut_ip)
 

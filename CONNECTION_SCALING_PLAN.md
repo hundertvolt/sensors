@@ -341,3 +341,28 @@ retained contiguity for one more connection. A setting that serves more connecti
 boot survivors unable to place is a worse setting, and 8 is where that starts on the only evidence
 available. If silicon disagrees, the number moves — the *relationship* in Part H.7 is what this
 branch fixes, not the number.
+
+## 8.6 What each tier does now, against §6's table
+
+Every row derives the ceiling from the build under test rather than restating a literal, so raising
+a device's own `max_connections` makes these bite harder instead of leaving them pinned.
+
+| Tier | Done |
+| --- | --- |
+| Unit (MicroPython) | `_make_service(max_connections=...)` already parameterised; **Section G added** — the backlog default, an explicit backlog, the clamp when one is too shallow, and that the value really reaches `start_server()` rather than merely being stored. 163/163 |
+| Twin (6 devices) | `_ceiling(module)`/`_backlog(module)` read off the real service; every burst now scales (exactly N, 2N, 3N, N of each kind, the 1..N sweep, held-open slots). **Two scenarios added**: the accept queue covering the ceiling, and a full ceiling of simultaneous request bodies. 17/17 per device |
+| Twin + real website | **Row added**: a full ceiling's worth of *real* page loads concurrently (index + bundled `app.js`, the real 2-connections-per-tab footprint), asserting every tab got identical, non-truncated content |
+| Browser | **`runLiveBackendConcurrentTabs` added**: parallel real Chromium tabs against one live twin, tab count derived from `devices/wozi.toml`, and every tab must load — not "at least one" |
+| Bus hazard | **Two rows added** (wozi and dev): a full-ceiling REST burst landing mid-run while every sensor task is on the shared bus. The file needed `prewarm_poll_set()` for the first time — real client connections grow the Unix port's pollfds array, which is a segfault, not a failure. 12/12 |
+| Flash/bench (real HW) | `configured_max_connections()` and `discover_max_connections()` added to `harness.py`; `test_end_to_end_timing.py`, `test_network_resilience.py` (including the PUT storm's repeat count), `test_memory_stress_bench.py` and `test_bus_concurrency_under_api_load.py` all derive from it. **One row added**: the board must admit exactly what this tree configures |
+
+**Not changed, and why**: `scripts/cross_browser_smoke.mjs` stays single-session. Its own scope note
+is that each real WebDriver round trip costs seconds and it is deliberately not a second exhaustive
+matrix; the concurrency question is answered by the Chromium tier above, and engine diversity is
+what that script exists for. Say so rather than widening it.
+
+**The unchanged bar held**: `scripts/test.sh` and `GC_THRESHOLD=32768 scripts/test.sh` both pass,
+85/85 MicroPython files and 1,496 pytest tests each, with **zero** `MemoryError` *or*
+`memory allocation failed` in either run's captured output. Lint and all three typecheck passes
+clean. One ratchet moved: `max-args` 22 -> 23, for the `backlog=` kwarg, which `pyproject.toml`'s own
+comment sanctions as a deliberate reviewed one-parameter addition — flagged rather than done quietly.
