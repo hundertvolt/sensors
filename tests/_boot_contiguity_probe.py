@@ -55,6 +55,10 @@ class _ProbeGc:
     asked for, then forwards to the real collect only on the live arm. Module-attribute
     reassignment is this project's mocking mechanism (MicroPython has no unittest.mock)."""
 
+    # A dumped position collects on BOTH arms, via _dump() - the seam map has to be post-collect or
+    # the two arms anchor at different places and nothing is comparable. So the suppressed arm keeps
+    # the leading collect and loses the per-module ones, which makes it a conservative control.
+
     def __init__(self, tag: str, *, live: bool, dump_at: "tuple[int, ...]") -> None:
         self.tag = tag
         self.live = live

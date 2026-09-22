@@ -712,9 +712,12 @@ runs — and `build-settrace` with it, which only `scripts/test.sh --coverage` u
 firmware never gets the flag either way. **The flag is not inert when unused** (measured
 2026-09-18), which is why the two cannot share one build: it makes the VM allocate a frame and a
 code object on every call and every generator resume, callback or not, inflating every allocation
-figure 4-5x relative to the firmware — see HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7. Since
+figure 4-5x relative to the firmware — E.5.2 has the measurements and
+HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7 the per-node table. Since
 the split, the plain suite's figures are the firmware's own scale, and the heavy files run faster
-for the same reason (`test_sensortask_wozi.py` 24.6s → 9.3s).
+for the same reason (`test_sensortask_wozi.py` 24.6s → 9.3s). Because a build directory's name no
+longer tells you which variant is in it, `scripts/test.sh` verifies the binary rather than the path
+(E.5.2's first consequence).
 
 **Prerequisites**: `sudo`; outbound network to GitHub/apt; `uv`; Ubuntu's `universe` component
 (default on real Ubuntu images — `gcc-arm-none-eabi` lives there).
@@ -2965,6 +2968,40 @@ event only when an exception actually passes through, so a `finally` that only e
 normal return path reads as uncovered. That is a real missing test — of cancellation — not an
 artefact; `test_a_cancelled_transaction_still_releases_the_re_entrancy_flag` is what it was hiding.
 
+### E.5.2 Why `--coverage` needs its own interpreter build
+
+`MICROPY_PY_SYS_SETTRACE` is **not** an inert hook check when no trace callback is installed —
+measured false on 2026-09-18, after an earlier note in this repo claimed it was. With the flag
+compiled in, `py/vm.c`'s `FRAME_ENTER()` calls `mp_prof_frame_enter()` on every bytecode entry,
+which allocates a frame object *and* a code object per call and per generator resume regardless of
+whether anything is tracing (`py/profile.c:190`).
+
+Against an otherwise identical settrace-free build of the same frozen manifest:
+
+| operation | settrace build | settrace-free build |
+|---|---|---|
+| `await asyncio.sleep(0)` | 1,152 B | 0 B |
+| one coroutine call | 224 B | 64 B |
+| one FRAM logger `setup()` | 651,680 B | 137,120 B (4.75x) |
+
+No test's *result* changes, but every allocation figure measured under that binary — the digital
+twin's and the memory-safety suite's alike — is inflated 4-5x, and non-uniformly, relative to the
+firmware. So `toolchain/setup_toolchain.py` builds **two** Unix-port variants rather than one
+(owner decision, 2026-09-21): `build-standard` **without** the flag is the test rig that plain
+`scripts/test.sh` runs, and `build-settrace` with it is used only by `--coverage`, which genuinely
+needs `sys.settrace` itself. `ports/rp2`'s firmware build never gets the flag either way.
+
+Two consequences worth keeping in mind:
+
+- **The build directory's path no longer identifies its variant.** A `~/pico-toolchain` predating
+  the split has a `build-standard` that still carries the flag, and it is executable — so an
+  existence check is satisfied while the suite silently measures on the inflated binary. CI is
+  covered because the toolchain cache key hashes `setup_toolchain.py`; locally, `scripts/test.sh`
+  asks the binary itself (`hasattr(sys, "settrace")`) and rebuilds when the answer is wrong.
+- **`--coverage`'s own figures stay inflated**, inherently — it cannot run without the flag. Read
+  coverage as line coverage only, never as an allocation measurement. The per-node conversion table
+  is in HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7 and §3A.
+
 ## E.6 Shared behaviors and the real-hardware test tier
 
 **`tests/_shared_rest_roundtrip.py`** holds the two genuine near-duplicate assertion *shapes* found
@@ -2982,8 +3019,11 @@ silently stalls waiting on one.
 **Real-hardware execution is standing practice**, on the bench Pi4, always under the project
 owner's go-ahead given directly in the running session (CLAUDE.md). Both tiers run clean end to end
 on real hardware; the earlier WiFi-reconnection flakiness this section used to flag is root-caused
-and mitigated (`tests_hardware/README.md`'s "Known assumptions and open findings"). Lint/type-check
-scope does **not** extend to `tests_hardware/` (matching `tests_scripts/`'s own non-scoping).
+and mitigated (`tests_hardware/README.md`'s "Known assumptions and open findings").
+`tests_hardware/` and `tests_scripts/` are both in lint/type-check scope: `scripts/lint.sh` runs
+ruff over `tests_hardware/` in full, and `host_typecheck.ini`'s CPython pass covers it —
+`device_scripts/` excluded there, being real MicroPython code the main `[tool.mypy]` pass checks
+instead. See CLAUDE.md's eight scopes.
 
 ### E.6.1 The five-backend model
 

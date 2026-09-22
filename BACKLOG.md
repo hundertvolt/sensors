@@ -664,7 +664,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     **Inline blocks then followed, scope by scope**, `src/` first (121 blocks) and `tests/` last as
     the largest by far. Final tallies, after three corrections to the measurement itself - divider
     rules (`# ----`) are separators, PEP 723 `# /// script` headers are metadata, and JSDoc
-    `@param`/`@returns` continuation lines are annotations, none of them commentary:
+    `@param`/`@returns` continuation lines are annotations, none of them commentary. Two further
+    counting rules a re-measurement needs, or it reports ~13 false positives: a bare `#` line
+    separates one block from the next (a long file header is several 3-line blocks, not one), and
+    CLAUDE.md's `# @web`/`# @wiring` tag runs are buildgen input rather than commentary:
 
     | scope | blocks | scope | blocks |
     | --- | --- | --- | --- |
@@ -772,8 +775,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   **`toolchain/setup_toolchain.py` (2026-09-21: `build_unix_port()` now builds TWO variants -
   `build-standard` without `MICROPY_PY_SYS_SETTRACE` as the test rig, `build-settrace` with it for
   `--coverage` only - so a from-scratch chroot run builds the Unix port twice and takes
-  correspondingly longer; `scripts/test.sh` picks the binary by mode and hard-fails if the one it
-  needs is absent, which is the single most likely way a reused chroot breaks here)**,
+  correspondingly longer; `scripts/test.sh` picks the binary by mode, then asks it which variant it
+  actually is (`hasattr(sys, "settrace")`) and rebuilds on a mismatch, because a REUSED chroot's
+  `build-standard` predates the split and still carries the flag while remaining executable - the
+  single most likely way a reused chroot breaks here, now detected rather than silently measured)**,
   `pyproject.toml` (+159), and on the web side
   `package.json`/`vitest.config.js`/`eslint.config.js` (2026-09-19's PUT-matrix split - npm scripts
   and a build-time define, which `env --tier generic` installs through but does not compile),

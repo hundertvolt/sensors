@@ -541,7 +541,12 @@ information):
   `build-standard` is the test rig and is built **without** `MICROPY_PY_SYS_SETTRACE`, while
   `build-settrace` carries the flag and is used only by `--coverage`; `ports/rp2`'s firmware build
   never gets it either way. `scripts/test.sh` picks by mode, and `build_unix_port()` in
-  `toolchain/setup_toolchain.py` builds both. **An earlier
+  `toolchain/setup_toolchain.py` builds both. **The build directory's name no longer identifies its
+  variant**, so `scripts/test.sh` asks the binary itself (`hasattr(sys, "settrace")`) and rebuilds
+  on a mismatch rather than trusting the path: a `~/pico-toolchain` predating the split holds a
+  `build-standard` that still carries the flag and is still executable, which an existence check
+  accepts — CI is covered instead by the toolchain cache key hashing `setup_toolchain.py`. Don't
+  re-diagnose a long-lived toolchain dir suddenly rebuilding its Unix ports once as a bug. **An earlier
   note here called the flag "an inert hook check when unused" — measured false on 2026-09-18**:
   with it compiled in, `py/vm.c`'s `FRAME_ENTER()` runs `mp_prof_frame_enter()` on every bytecode
   entry, which allocates a frame object and a code object per call and per generator resume whether

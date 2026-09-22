@@ -134,7 +134,7 @@ scripts/test.sh            # runs every test in tests/, under a real MicroPython
 scripts/test.sh --coverage # same, plus a src/-only line coverage report (HTML/XML/markdown) - see below
 ```
 
-`test.sh` takes no positional arguments (only the `--coverage` flag above); five environment
+`test.sh` takes no positional arguments (only the `--coverage` flag above); six environment
 variables tune it: `PICO_TOOLCHAIN_DIR` (where to find/build the toolchain, default
 `~/pico-toolchain`), `SKIP_APT=1` (skip apt package installs if the Unix port needs building and
 they're already present), `PER_FILE_TIMEOUT_S` (per-test-file timeout in seconds before a retry,
@@ -143,9 +143,13 @@ flat multiple of the core count: `test.sh` times a fixed loop in the very Unix-p
 tests run under and picks 4x usable cores at <=250ms, 2x at <=900ms, 1x beyond, honouring a cgroup
 CPU quota when one is set, because core *count* alone cannot tell a fast x86 runner from a Pi4
 (BACKLOG.md item 28). The suite is sleep-bound rather than CPU-bound, so oversubscribing a fast host
-is close to free; set `TEST_PARALLELISM=1` for strictly sequential runs), and `TESTS_SCRIPTS_TIMEOUT_S`
+is close to free; set `TEST_PARALLELISM=1` for strictly sequential runs), `TESTS_SCRIPTS_TIMEOUT_S`
 (whole-suite timeout for the backgrounded `tests_scripts/` pytest job, default 1200 — roughly 5x its
-real runtime, so it only fires on a genuine hang). Every `tests/test_*.py` file runs as
+real runtime, so it only fires on a genuine hang), and `GC_THRESHOLD` (run the MicroPython tier with
+that `gc.threshold()` set instead of the interpreter's own reactive default — `GC_THRESHOLD=32768
+scripts/test.sh` is the value the firmware's boot entry ships, and the suite has to pass both ways;
+see "Memory-safety discipline" in CLAUDE.md for why both runs are required and which one proves
+what). Every `tests/test_*.py` file runs as
 its own interpreter process and prints its own `PASS`/`FAIL` lines plus an `N/N passed` count as it
 goes, each line prefixed with that file's own name in brackets (e.g. `[test_sensortask_dev]`) since
 several files' output interleaves when they run concurrently; **the run ends with one rolled-up
@@ -164,8 +168,9 @@ Result: FAILED
 
 All three (`lint.sh`/`typecheck.sh`/`test.sh`) run in GitHub Actions CI
 (`.github/workflows/ci.yml`) on every push/PR, plus `test.sh --coverage` as its own non-gating
-`unit-tests-coverage` job (split out from the main test job so its own wall-clock cost never sits
-on the critical path other jobs wait on). Config lives in the root `pyproject.toml`; see CLAUDE.md's
+`unit-tests-coverage` job and `GC_THRESHOLD=32768 scripts/test.sh` as a gating
+`unit-tests-gc-threshold` one (both split out from the main test job so their own wall-clock cost
+never sits on the critical path other jobs wait on). Config lives in the root `pyproject.toml`; see CLAUDE.md's
 "Code quality tooling" section
 for the full rationale (why `ruff format` isn't used, why the MicroPython stubs install into a
 separate `typings/` directory instead of the main dev venv, why tests don't run under

@@ -316,7 +316,7 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest
 
 # The two Unix-port variants and what each backs. The plain test rig is settrace-FREE: with
 # MICROPY_PY_SYS_SETTRACE compiled in, py/vm.c allocates a frame and a code object per call and per
-# generator resume, inflating every allocation figure 4-5x (SPECIFICATION.md Part E.5.1).
+# generator resume, inflating every allocation figure 4-5x (SPECIFICATION.md Part E.5.2).
 UNIX_BUILD_DIR = "build-standard"
 UNIX_SETTRACE_BUILD_DIR = "build-settrace"
 
@@ -1076,8 +1076,8 @@ def main() -> int:
         "--clean",
         action="store_true",
         help="Wipe all build-artifact directories (picotool/build, mpy-cross/build, ports/rp2/build-<board>, "
-        "ports/unix/build-standard) before building, without re-cloning the git sources -- brings the "
-        "toolchain back to a from-scratch build state",
+        "and both Unix-port variants ports/unix/build-standard and ports/unix/build-settrace) before "
+        "building, without re-cloning the git sources -- brings the toolchain back to a from-scratch build state",
     )
 
     subparsers.add_parser(

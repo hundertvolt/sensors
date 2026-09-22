@@ -47,12 +47,9 @@ _REQUIRED_MAPS = ("baseline", "batch_00", "after_batch", "after_starter_loop_end
 # margin, with the best suppressed reading on the other side of it. Twin units (32 B blocks,
 # x86-64) and twin-only - the board's own tripwire stays the hardware test.
 #
-# These were re-derived on the settrace-FREE interpreter (SPECIFICATION.md Part E.5.1). On the old
-# settrace build the batch's own REACH above the seam discriminated 7.5x; without the 4-5x
-# allocation inflation the batch no longer pushes the frontier at all - 8,160 B in BOTH arms on
-# four of six devices - so that metric is gone. What survives, and is stronger, is how deep the new
-# blocks go BELOW the seam, plus the whole boot sequence's reach once the starter list has run
-# (§7E.3: the starter list is where most of measure B's value is).
+# Re-derived on the settrace-FREE interpreter (SPECIFICATION.md Part E.5.2), which cost the batch's
+# own reach its discrimination and left depth below the seam plus the whole sequence's reach as
+# what carries it. Full re-derivation, and what the old bounds were: MEASUREMENTS §7L.7 and §7L.3.
 
 # The batch's median new block must sit at least this far BELOW the seam's top survivor. The two
 # margins are thin because the ARMS are only 2.07x apart here, not because the bound is sloppy -
@@ -203,9 +200,9 @@ def test_the_whole_boot_sequence_places_its_survivors_low(boot_probe: Callable[[
 
 @pytest.mark.parametrize("device", _CONTROL_DEVICES)
 def test_suppressing_the_emitted_collects_breaks_both_bounds(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
-    # The control arm, and the reason the bounds above mean anything: the probe's own `gc` stand-in
-    # stops forwarding to the real collect, which is what deleting the emitted lines would do.
-    # A bound the broken configuration also satisfies is not a guard.
+    # The control arm, and the reason the bounds above mean anything: a bound the broken
+    # configuration also satisfies is not a guard. The arm keeps only the seam's own anchor collect
+    # (both arms need it to be comparable) and drops the per-module ones, so this UNDERSTATES.
     maps = boot_probe(device, _ARM_SUPPRESSED).maps
     seam, after = maps["batch_00"], maps["after_starter_loop_end"]
     batch_depth = -_median(seam, maps["after_batch"])
@@ -254,3 +251,29 @@ def test_a_real_boot_fires_exactly_the_collects_the_static_guards_count(
     assert counters["batch_collects"] == setup_calls + 1, f"{device}: the generated build_system() awaits {setup_calls} setup() calls, so it must collect {setup_calls + 1} times (one before the batch, one after each module) - a real boot fired {counters['batch_collects']}"
     assert counters["starter_collects"] == counters["starters"] + 1, f"{device}: {counters['starters']} task starters ran but the loop collected {counters['starter_collects']} times, not {counters['starters'] + 1}"
     assert source.count("gc.collect()") == setup_calls + 1, f"{device}: the generated module carries {source.count('gc.collect()')} gc.collect() lines against {setup_calls} setup() calls - one before the batch and one after each module is {setup_calls + 1}"
+
+
+_BOARD_SCRIPT = "tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py"
+# The probe's header claims it mirrors the board script's bounds, so that a twin reading and a
+# board reading are taken at the same positions of the same sequence. Nothing pinned that claim.
+_MIRRORED_BOUNDS = ("_STARTER_LOOP_TIMEOUT_MS", "_STARTER_LOOP_GRACE_MS", "_TIMERS_TIMEOUT_S")
+
+
+def _int_constants(source: str, names: tuple[str, ...]) -> dict[str, int]:
+    found: dict[str, int] = {}
+    for name in names:
+        match = re.search(rf"^{name} = (-?\d+)$", source, re.MULTILINE)
+        if match:
+            found[name] = int(match.group(1))
+    return found
+
+
+def test_the_twin_probe_and_the_board_script_read_at_the_same_positions(repo_root: Path) -> None:
+    # Drift here is silent and invalidates the handover: the board reading is only comparable to the
+    # twin's if both wait out the same starter loop by the same margin. Two files by necessity - a
+    # device script is pushed to the board standalone and can import nothing from tests_scripts/.
+    twin = _int_constants((repo_root / _PROBE).read_text(), _MIRRORED_BOUNDS)
+    board = _int_constants((repo_root / _BOARD_SCRIPT).read_text(), _MIRRORED_BOUNDS)
+    assert set(twin) == set(_MIRRORED_BOUNDS), f"{_PROBE} no longer declares {sorted(set(_MIRRORED_BOUNDS) - set(twin))} - update this guard with it"
+    assert set(board) == set(_MIRRORED_BOUNDS), f"{_BOARD_SCRIPT} no longer declares {sorted(set(_MIRRORED_BOUNDS) - set(board))} - update this guard with it"
+    assert twin == board, f"the twin probe and the board script disagree on {[name for name in _MIRRORED_BOUNDS if twin[name] != board[name]]}: {twin} against {board}"

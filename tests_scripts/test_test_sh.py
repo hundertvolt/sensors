@@ -341,3 +341,70 @@ def test_the_session_start_reclamation_is_a_no_op_on_a_clean_tree(repo_root: Pat
     cast("Callable[[], None]", conftest._reclaim_leaked_device_fixtures.__wrapped__)()  # no devices/ at all
     (tmp_path / "devices").mkdir()
     cast("Callable[[], None]", conftest._reclaim_leaked_device_fixtures.__wrapped__)()  # empty devices/
+
+
+# ---------------------------------------------------------------------------
+# The Unix-port variant check. Once build-standard stopped being the settrace build (Part E.5.2),
+# the path no longer identifies the binary - and a ~/pico-toolchain predating the split holds an
+# executable build-standard that still carries the flag, which an existence check accepts.
+# ---------------------------------------------------------------------------
+
+
+def _variant_of(repo_root: Path, tmp_path: Path, binary: Path) -> str:
+    """Runs scripts/test.sh's own unix_port_variant() against one binary, whatever it is."""
+    body = re.search(r"^unix_port_variant\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
+    assert body is not None, "scripts/test.sh no longer defines unix_port_variant() - update this test with it"
+    script = tmp_path / "variant.sh"
+    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\n{body.group(0)}\nunix_port_variant "{binary}"\n')
+    return subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def test_the_test_rig_binary_reports_itself_as_the_settrace_free_variant(repo_root: Path, tmp_path: Path, micropython_bin: Path) -> None:
+    # The real artifact, not a stub: this is the one assertion that would catch build-standard
+    # silently going back to carrying the flag, which is what the 4-5x inflation rides on.
+    assert _variant_of(repo_root, tmp_path, micropython_bin) == "plain"
+
+
+def test_the_coverage_binary_reports_itself_as_the_settrace_variant(repo_root: Path, tmp_path: Path, micropython_bin: Path) -> None:
+    settrace_bin = micropython_bin.parent.parent / "build-settrace" / "micropython"
+    if not settrace_bin.is_file():
+        pytest.skip(f"the --coverage variant is not built at {settrace_bin} - setup_toolchain.py setup builds both")
+    assert _variant_of(repo_root, tmp_path, settrace_bin) == "settrace"
+
+
+def test_an_unusable_binary_is_reported_as_such_rather_than_as_the_plain_variant(repo_root: Path, tmp_path: Path) -> None:
+    # The failure mode that matters: "plain" here would make a broken binary look like the right
+    # one, and the run would go on to fail 85 files with no word about why.
+    broken = tmp_path / "micropython"
+    broken.write_text("#!/bin/sh\nexit 1\n")
+    broken.chmod(0o755)
+    assert _variant_of(repo_root, tmp_path, broken) == "unusable"
+    assert _variant_of(repo_root, tmp_path, tmp_path / "does_not_exist") == "unusable"
+
+
+def test_a_wrong_variant_triggers_a_rebuild_rather_than_running_on_it(repo_root: Path) -> None:
+    text = _test_sh_text(repo_root)
+    # Structural, because the real branch shells out to a multi-minute toolchain build: what has to
+    # hold is that a variant mismatch reaches setup at all, and that the run dies if it still fails.
+    assert re.search(r'elif \[ "\$\(unix_port_variant "\$micropython_bin"\)" != "\$want_variant" \]; then\n(?:.*\n)*?\s*uv run toolchain/setup_toolchain\.py setup', text), (
+        "a build-standard that is the wrong variant must trigger the same setup rebuild a missing one does"
+    )
+    assert re.search(r'got_variant="\$\(unix_port_variant "\$micropython_bin"\)"\nif \[ "\$got_variant" != "\$want_variant" \]; then\n(?:.*\n)*?\s*exit 1', text), (
+        "after the rebuild the variant must be re-checked and the run must exit, never fall through onto the wrong binary"
+    )
+
+
+def test_a_non_integer_gc_threshold_is_rejected_before_anything_is_built(repo_root: Path) -> None:
+    # Validated once, up front: unchecked it reaches int() inside _threshold_runner.py and fails
+    # every one of the 85 files with a traceback, each retried, naming the real mistake nowhere.
+    completed = subprocess.run(
+        ["/bin/bash", str(repo_root / "scripts" / "test.sh")],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "GC_THRESHOLD": "32k"},
+        cwd=repo_root,
+        timeout=60,
+        check=False,
+    )
+    assert completed.returncode == 1, f"expected a fast rejection, got {completed.returncode}:\n{completed.stdout[-2000:]}\n{completed.stderr[-2000:]}"
+    assert "GC_THRESHOLD must be an integer" in completed.stderr

@@ -87,29 +87,68 @@ done
 # GC_THRESHOLD=32768 re-runs the MicroPython tier through tests/_threshold_runner.py with that
 # gc.threshold() set, which is CLAUDE.md's (f) stage. Unset (the default) is the (e) stage: the
 # interpreter's own reactive -1, where the design has to stand up on its own first.
+if [ -n "${GC_THRESHOLD:-}" ]; then
+    # Validated once here rather than 85 times inside the runner: an unparseable value would
+    # otherwise surface as one ValueError traceback per test file, each retried twice, with the
+    # actual mistake nowhere in the rolled-up summary.
+    if [[ ! "$GC_THRESHOLD" =~ ^-?[0-9]+$ ]]; then
+        echo "error: GC_THRESHOLD must be an integer - 32768 is what the firmware ships, -1 the reactive default - not '$GC_THRESHOLD'" >&2
+        exit 1
+    fi
+    if [ "$coverage" = "1" ]; then
+        # Said out loud rather than silently dropped: --coverage has its own runner, and a run that
+        # ignores an explicitly set threshold must not look like one that honored it.
+        echo "== note: --coverage uses its own runner, so GC_THRESHOLD=$GC_THRESHOLD is ignored for this run" >&2
+    fi
+fi
+
 toolchain_dir="${PICO_TOOLCHAIN_DIR:-$HOME/pico-toolchain}"
 # Two variants, built together by setup_toolchain.py. The plain run takes the settrace-FREE one:
 # compiling MICROPY_PY_SYS_SETTRACE in allocates a frame and a code object per call and per
-# generator resume, inflating every allocation figure 4-5x (SPECIFICATION.md Part E.5.1).
+# generator resume, inflating every allocation figure 4-5x (SPECIFICATION.md Part E.5.2).
 unix_dir="$toolchain_dir/micropython/ports/unix"
 if [ "$coverage" = "1" ]; then
     micropython_bin="$unix_dir/build-settrace/micropython"   # --coverage needs sys.settrace itself
+    want_variant="settrace"
 else
     micropython_bin="$unix_dir/build-standard/micropython"
+    want_variant="plain"
 fi
+
+skip_apt_flag=()
+if [ "${SKIP_APT:-0}" = "1" ]; then
+    skip_apt_flag=(--skip-apt)
+fi
+
+# Asks the binary which variant it is instead of trusting its path. Always exits 0, reporting an
+# unusable binary as such, so `set -e` never fires from inside the command substitution below.
+unix_port_variant() {
+    local probe=""
+    probe="$("$1" -c 'import sys; print("settrace" if hasattr(sys, "settrace") else "plain")' 2>/dev/null)" || true
+    case "$probe" in
+        settrace | plain) echo "$probe" ;;
+        *) echo "unusable" ;;
+    esac
+}
 
 if [ ! -x "$micropython_bin" ]; then
     echo "MicroPython Unix port not found at $micropython_bin - building it now" >&2
-    skip_apt_flag=()
-    if [ "${SKIP_APT:-0}" = "1" ]; then
-        skip_apt_flag=(--skip-apt)
-    fi
+    uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
+elif [ "$(unix_port_variant "$micropython_bin")" != "$want_variant" ]; then
+    # The path stopped identifying the variant when the two builds split: a toolchain dir predating
+    # that has a build-standard still carrying settrace, and it is executable - so an existence
+    # check passes and the plain suite would silently measure on the 4-5x inflated binary.
+    echo "== $micropython_bin is not the '$want_variant' variant - rebuilding both Unix ports" >&2
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
+
 if [ ! -x "$micropython_bin" ]; then
-    # A toolchain dir built before the two variants were split has only build-standard, and that
-    # one carries settrace - so --coverage would run against a binary that no longer exists here.
     echo "error: $micropython_bin is still missing after setup - rebuild with --clean" >&2
+    exit 1
+fi
+got_variant="$(unix_port_variant "$micropython_bin")"
+if [ "$got_variant" != "$want_variant" ]; then
+    echo "error: $micropython_bin reports itself as '$got_variant', not the '$want_variant' variant this run needs - rebuild with: uv run toolchain/setup_toolchain.py setup --clean" >&2
     exit 1
 fi
 
