@@ -1268,6 +1268,46 @@ def test_init_bmp_succeeds_against_healthy_bus_and_applies_stored_config() -> No
     assert run(reader.bmp.get_filter_coefficient()) == 0
 
 
+def test_the_three_reader_level_setting_getters_all_report_the_live_sensor() -> None:
+    # One of the three (pressure) was reached by the FRAM-backed bus-failure test; its two
+    # siblings were never called at this layer at all, so neither their pass-through nor the
+    # errno each logs was pinned. They are one contract - the maintenance-status trio.
+    i2c, reader = make_clean_reader("getter_trio")
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c)
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    assert run(reader._init_bmp()) is True
+    run(reader.bmp.set_pressure_oversampling(8))
+    run(reader.bmp.set_temperature_oversampling(4))
+    run(reader.bmp.set_filter_coefficient(3))
+    assert run(reader.get_pressure_oversampling()) == 8
+    assert run(reader.get_temperature_oversampling()) == 4
+    assert run(reader.get_filter_coefficient()) == 3
+
+
+def test_each_reader_level_setting_getter_degrades_with_its_own_errno_on_a_dead_bus() -> None:
+    # The numbers matter on their own: 15/17/19 are what /status reports and what a bench session
+    # reads back, and a shared or copy-pasted errno would make the three indistinguishable.
+    i2c, reader = make_clean_reader("getter_trio_dead")
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c)
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    assert run(reader._init_bmp()) is True
+
+    async def scenario() -> "ErrorLog":
+        fake(i2c).nak_addresses.add(_ADDR)  # every later transfer raises, as a pulled wire does
+        assert await reader.get_pressure_oversampling() is None
+        assert await reader.get_temperature_oversampling() is None
+        assert await reader.get_filter_coefficient() is None
+        return await reader.get_error_counter()
+
+    errnums = run(scenario())["BMP3XX"]["ErrNum"]
+    for errno in (15, 17, 19):
+        assert errno in errnums, f"errno {errno} missing from {errnums} - the three getters no longer report distinctly"
+
+
 def test_init_bmp_fails_and_logs_when_setup_raises() -> None:
     i2c, reader = make_clean_reader("init_bad_chip")
     seed_chip_id(i2c, 0x99)  # unrecognized chip ID -> bmp.setup() raises RuntimeError
@@ -1477,6 +1517,36 @@ def test_get_filter_coefficient_raises_oserror_on_deinitialized_bus() -> None:
     except OSError as e:
         raised = "failed to read filter coefficient" in str(e)
     assert raised
+
+
+def test_get_config_snapshot_raises_oserror_on_deinitialized_bus() -> None:
+    # The batch getter's own None guard, which the single-field ones above have tests for and it
+    # did not. Same layer contract: BMP3XX_I2C is allowed to raise, and a mid-batch fault must
+    # fail the whole snapshot rather than return two good fields and a wrong third.
+    i2c, bmp = ready_bmp()
+    i2c.deinit()
+    try:
+        run(bmp.get_config_snapshot())
+        raised = False
+    except OSError as e:
+        raised = "failed to read oversampling/filter bit-fields" in str(e)
+    assert raised
+
+
+def test_get_config_snapshot_refuses_a_reserved_osr_encoding_instead_of_indexing_past_the_table() -> None:
+    # _OSR_SETTINGS has six entries for a three-bit field, so encodings 6 and 7 are reserved by
+    # the datasheet and readable off a real chip. Unguarded, they would IndexError out of a
+    # method whose callers only expect OSError.
+    i2c, bmp = ready_bmp()
+    fake(i2c).registers[(_ADDR, _REGISTER_OSR)] = bytearray([0x07])  # osr_p = 7, reserved
+    try:
+        run(bmp.get_config_snapshot())
+        raised = False
+    except OSError as e:
+        raised = "reserved encoding" in str(e)
+    except IndexError:
+        raised = False
+    assert raised, "a reserved OSR encoding must surface as OSError, not IndexError or a wrong setting"
 
 
 def test_read_byte_raises_oserror_on_deinitialized_bus() -> None:

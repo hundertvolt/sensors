@@ -993,6 +993,29 @@ def test_d_counter_always_present_history_present_for_both_populated_and_zero_ca
     assert errcount["FREE"]["history"] == []
 
 
+def test_d_a_module_whose_log_holds_no_entry_of_its_own_still_gets_the_empty_shape() -> None:
+    # Distinct from the zero-counter case above, which returns a real entry reading 0: here the
+    # module's own name is absent from the log entirely. Without the fallback the response would
+    # carry a null that every js/ consumer would have to special-case.
+    empty = _FakeModule("EMPTY")
+
+    async def no_entry_at_all() -> "dict[str, Any]":
+        return {}
+
+    empty.get_error_counter = no_entry_at_all  # type: ignore[method-assign]
+    _service, app = _make_service(error_sources=[empty])
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    errcount = json.loads(status_body(res))["errcount"]
+    assert errcount["EMPTY"] == {"counter": 0, "history": []}
+
+
+def test_d_get_error_sources_reports_the_service_itself_for_a_uniform_caller() -> None:
+    # Part C.14's fan-in accessor. The generated _collect_error_sources() does not consult it - this
+    # service's /status entry is added directly - but D.10 keeps the shape so no caller special-cases it.
+    service, _app = _make_service()
+    assert service.get_error_sources() == [service]
+
+
 def test_d_reset_errors_calls_reset_error_counter_on_every_registered_module() -> None:
     mods = [_FakeModule(n) for n in ("SGP40", "BMP3XX", "NEOPIXEL", "DNS", "CFGMGR_SGP40")]
     for m in mods:

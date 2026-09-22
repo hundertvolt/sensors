@@ -1310,6 +1310,85 @@ def test_wrdi_stuck_warning_keeps_its_number_and_message() -> None:
     assert run(scenario()) is True  # the payload landed; only the WEL housekeeping is stuck
     assert recorded == [(("FRAM write enable latch did not clear after WRDI retry.",), 81)]
 
+
+# ---------------------------------------------------------------------------
+# The two-lock entry/exit itself. __aenter__ takes the driver's own lock and THEN the bus lock, so
+# each half has a failure mode of its own that no operation-level test reaches.
+# ---------------------------------------------------------------------------
+
+
+def test_aenter_releases_its_own_lock_if_the_bus_lock_cannot_be_acquired() -> None:
+    # Without __aenter__'s try/except the driver's own lock would leak permanently: `async with`
+    # never calls __aexit__ when __aenter__ raises, and every later FRAM operation would hang.
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+
+    async def boom() -> None:
+        raise OSError(5)
+
+    fram._bus_lock.acquire = boom  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+
+    async def scenario() -> bool:
+        try:
+            async with fram:
+                pass
+        except OSError:
+            return True
+        else:
+            return False
+
+    assert run(scenario()) is True
+    assert not fram.asy_lock.locked(), "the driver's own lock leaked when the bus lock failed"
+
+
+def test_a_later_operation_still_works_after_a_failed_bus_lock_acquisition() -> None:
+    # The consequence of the release above, stated as behavior rather than as lock state: one
+    # failed entry must not take the chunk layer down with it for the rest of the uptime.
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+    real_acquire = fram._bus_lock.acquire
+    calls = [0]
+
+    async def fail_once() -> None:
+        calls[0] += 1
+        if calls[0] == 1:
+            raise OSError(5)
+        await real_acquire()
+
+    fram._bus_lock.acquire = fail_once  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+
+    async def first() -> None:
+        async with fram:
+            pass
+
+    async def second() -> bool:
+        async with fram:
+            return await fram.set_values(b"ok!!", 0x00)
+
+    try:
+        run(first())
+    except OSError:
+        pass
+    # Bounded, not a bare await: a leaked lock makes the second entry wait forever, and a hanging
+    # test is never an acceptable failure mode here (CLAUDE.md's standing backstop).
+    assert run(asyncio.wait_for(second(), 1.0)) is True
+
+
+def test_aexit_tolerates_a_bus_lock_that_was_already_released() -> None:
+    # Same tolerance Lockable's own __aexit__ has, applied to the inner lock. Without it the double
+    # release would raise out of __aexit__ and the driver's own lock would never be released.
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+
+    async def scenario() -> None:
+        async with fram:
+            fram._bus_lock.release()  # released early by hand
+
+    run(scenario())  # must not raise
+    assert not fram.asy_lock.locked(), "the driver's own lock leaked after the inner double release"
+    assert not fram._bus_lock.locked()
+
+
 if __name__ == "__main__":
     import microtest
 

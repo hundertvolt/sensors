@@ -27,6 +27,8 @@ if TYPE_CHECKING:
     from machine import WDT
     from typing_extensions import Self
 
+    from config_manager import ConfigSchema
+
     T = TypeVar("T")
 
 
@@ -1283,6 +1285,26 @@ def test_setup_pushes_the_persisted_value_out_through_every_registered_setter() 
     # still gets called once, even for the unchanged default.
     assert calls == [0]
     assert svc.get_debug_level() == 0
+
+
+def test_setup_leaves_the_level_alone_when_the_persisted_value_cannot_be_read() -> None:
+    # The one branch in setup() no other test reaches: get_int_values() answering None, which is
+    # what a corrupt or unreadable store degrades to. The level must stay as constructed rather
+    # than being pushed out as a bogus value, and nothing may raise out of boot.
+    calls: list[int] = []
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc.set_level_setters([calls.append])
+    # Seeded away from the schema default, which _current_debug_level starts at: leaving it at 0
+    # would make "untouched" and "overwritten with 0" the same observation.
+    svc._current_debug_level = PrintLog.level_info()
+
+    async def unreadable(_schema: "ConfigSchema") -> "list[int] | None":
+        return None
+
+    svc.cfgmgr.get_int_values = unreadable  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    run(svc.setup())  # must not raise
+    assert svc.get_debug_level() == PrintLog.level_info(), "an unreadable store overwrote the level in place"
+    assert calls == [], "the level setters were called with a value that was never read back"
 
 
 def test_set_debug_level_persists_and_calls_every_registered_setter() -> None:

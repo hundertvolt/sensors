@@ -826,6 +826,63 @@ def test_release_wifi_lock_releases_a_held_lock() -> None:
     assert not client.wifi_mode_lock.locked()
 
 
+def test_locked_wlan_status_releases_the_lock_even_if_the_status_read_raises() -> None:
+    # Both of these finally bodies read as uncovered, which SPECIFICATION.md Part E.5.1 calls out
+    # as a real missing test rather than a tracer artefact: a finally only fires a trace event when
+    # something actually passes through it. A wedged wifi_mode_lock stalls every later mode change.
+    client = make_client()
+
+    def boom() -> int:
+        raise RuntimeError("simulated status read fault")
+
+    client._wlan_status_or_none = boom  # type: ignore[method-assign]  # deliberate monkeypatch
+
+    async def scenario() -> bool:
+        try:
+            await client._locked_wlan_status()
+        except RuntimeError:
+            return True
+        return False
+
+    assert run(scenario()) is True
+    assert not client.wifi_mode_lock.locked(), "the wifi mode lock leaked when the status read raised"
+
+
+def test_get_hotspot_stations_releases_the_lock_when_cancelled_mid_call() -> None:
+    # The other finally, reached the way it really would be: this one awaits a settle sleep while
+    # holding the lock, so a supervisor-driven cancellation can land inside the critical section.
+    client = make_client()
+
+    async def scenario() -> None:
+        task = asyncio.create_task(client._get_hotspot_stations())
+        await asyncio.sleep(0)  # let it acquire the lock and reach the settle sleep
+        assert client.wifi_mode_lock.locked(), "the call did not take the lock, so this proves nothing"
+        await _cancel(task)
+
+    run(scenario())
+    assert not client.wifi_mode_lock.locked(), "the wifi mode lock leaked on cancellation"
+
+
+def test_handle_reconnect_trigger_cancels_a_running_ledflash_task() -> None:
+    # The hotspot LED flasher is a real task; a reconnect that left it running would keep blinking
+    # the hotspot pattern after the mode change, and leak the task for the rest of the uptime.
+    client = make_client(hotspot_time_min=1)
+    run(client._hotspot_client_absent())  # arms the shutoff timer and starts a real ledflash task
+
+    async def scenario() -> "asyncio.Task[Any]":
+        await asyncio.sleep(0)
+        flash = client.ledflash
+        assert flash is not None, "no ledflash task to cancel, so this proves nothing"
+        await client._handle_reconnect_trigger()
+        await asyncio.sleep(0)  # let the cancellation actually land before it is observed
+        return flash
+
+    flash = run(scenario())
+    assert client.ledflash is None, "_handle_reconnect_trigger() left its ledflash reference behind"
+    # done(), not cancelled(): MicroPython's Task has no cancelled() at all (see typings/).
+    assert flash.done(), "the ledflash task was dropped rather than cancelled"
+
+
 def test_release_wifi_lock_is_a_noop_when_already_released() -> None:
     client = make_client()
     client._release_wifi_lock()  # must not raise

@@ -732,6 +732,19 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
 ## Deferred / explicitly out-of-scope work
 
+- **A test that fails only under the settrace binary is structurally invisible to CI, and one
+  did.** `unit-tests-coverage` is deliberately `continue-on-error` (coverage never gates anything
+  — CLAUDE.md's "Code quality tooling"), so the *test result* of that job cannot go red either,
+  only its coverage number is advisory. On 2026-09-22 `scripts/test.sh --coverage` really did exit
+  1 — `tests/test_uart_comm_hazard.py`, 84/85 files — on a tree whose (e) and (f) stages were both
+  85/85, and nothing in CI would ever have said so. The test itself is fixed (the corrupted-payload
+  checks now take `_SUSTAINED_TIMEOUT_MS` and assert the injection landed on the payload byte), but
+  the *gap* is not: the only tier that runs the settrace interpreter is also the only tier whose
+  failures are swallowed. Options, none taken: split the coverage job's exit code from its report
+  (fail on a test failure, stay advisory on coverage), or run one settrace-built file in a gating
+  lane. Owner's call — making the whole instrumented rerun gating is what `continue-on-error` was
+  added to prevent (run `34755468619`).
+
 - **`NTP_Host` keeps its 1024-character bound — SETTLED, owner, 2026-09-21: "keep it". Do not
   re-raise.** Fielded behaviour wins over the 4x over-permissiveness, exactly as the "same
   features, not a feature change" agreement implies, and `max_content_length` keeps its 1.56x

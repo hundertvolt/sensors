@@ -4,6 +4,7 @@ with an enormous free run at the end, turning a regression into a pass."""
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -155,3 +156,78 @@ def test_new_above_a_region_larger_than_the_heap_counts_everything() -> None:
     # heap is far larger than any region these tests ask about, so this only guards the arithmetic.
     placed = heap_map.delta(_parsed(), _with_top_block_allocated())
     assert placed.new_above(16384) == len(placed.new_offsets) == 1
+
+
+def test_a_map_with_nothing_allocated_at_all_is_refused() -> None:
+    # The interpreter is running the dump, so its own frame is allocated somewhere in it. An
+    # all-free map means the capture lost the kinds and kept the geometry - the deciles below
+    # would then read as a perfectly empty heap rather than as a broken read.
+    all_free = _REAL.replace("00000000: " + _REAL.splitlines()[3].split(": ")[1], "00000000: " + "." * 64).replace("00000800: " + "=" * 64, "00000800: " + "." * 64)
+    # Matched on the message: a mis-built fixture here would raise one of the other four and
+    # pass this test while proving nothing.
+    with pytest.raises(heap_map.HeapMapError, match="no allocated block at all"):
+        heap_map.parse(all_free)
+
+
+def test_the_map_summary_renders_every_figure_a_failing_assertion_quotes() -> None:
+    # summary() is only ever called from a real-hardware failure message, so a defect in it would
+    # surface as an error inside the diagnostic of a run that already cost bench time.
+    text = _parsed().summary()
+    for field in ("used=2048", "free=6144", "largest_free_run=4096", "free_above_top_survivor=4096", "gaps>=4K=1", "gaps>=16K=0"):
+        assert field in text, f"{field!r} missing from the map summary: {text!r}"
+    assert f"deciles={_parsed().deciles}" in text
+
+
+def test_the_delta_summary_renders_every_figure_too() -> None:
+    placed = heap_map.delta(_parsed(), _with_top_block_allocated())
+    text = placed.summary()
+    for field in ("new_blocks=1", "highest_new_pct=99", "new_in_top16K=1", "new_in_top32K=1"):
+        assert field in text, f"{field!r} missing from the delta summary: {text!r}"
+
+
+def test_an_empty_delta_summary_still_renders_rather_than_dividing_by_zero() -> None:
+    # The case a passing run produces: nothing placed high, so highest_new_pct() takes its -1
+    # branch. A guard that fails on the very next device would print this one first.
+    assert "highest_new_pct=-1" in heap_map.delta(_parsed(), _parsed()).summary()
+
+
+# The MAP/ENDMAP envelope is a contract between ONE parser regex and THREE independent emitters -
+# two device scripts and the twin probe. A drift on either side makes parse_labelled() find
+# nothing, and on the flash tier that only surfaces in a bench session.
+_EMITTERS = (
+    "tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py",
+    "tests_hardware/device_scripts/heap_headroom_after_full_system_build.py",
+    "tests/_boot_contiguity_probe.py",
+)
+
+
+def _emitted_envelope(source: str, label: str) -> tuple[str, str]:
+    """The open/close lines one emitter would actually print for `label`, from its own f-strings."""
+    opens = re.findall(r'print\(f"(=== MAP \{label\} ===)"\)', source)
+    closes = re.findall(r'print\(f"(=== ENDMAP \{label\} ===)"\)', source)
+    assert len(opens) == 1 and len(closes) == 1, f"expected one MAP and one ENDMAP print, found {len(opens)}/{len(closes)}"
+    return opens[0].replace("{label}", label), closes[0].replace("{label}", label)
+
+
+@pytest.mark.parametrize("emitter", _EMITTERS)
+def test_every_emitters_own_envelope_round_trips_through_the_parser(emitter: str) -> None:
+    # Built from the emitter's real format string rather than from a copy of it here, so a changed
+    # marker on either side fails this instead of silently yielding an empty result on the bench.
+    opened, closed = _emitted_envelope((REPO_ROOT / emitter).read_text(), "after_build_system")
+    found = heap_map.parse_labelled(f"noise before\n{opened}\n{_REAL}{closed}\ntrailing noise\n")
+    assert sorted(found) == ["after_build_system"], f"{emitter}'s MAP envelope is not what parse_labelled() looks for"
+    assert found["after_build_system"].heap_blocks == 256
+
+
+def test_an_unterminated_block_is_skipped_rather_than_swallowing_the_rest_of_the_log() -> None:
+    # A capture cut off mid-dump: the label must not come back with a half map, and a later
+    # complete block in the same log must still be found.
+    found = heap_map.parse_labelled(f"=== MAP lost ===\n{_REAL}=== MAP kept ===\n{_REAL}=== ENDMAP kept ===\n")
+    assert sorted(found) == ["kept"]
+
+
+def test_a_labels_own_endmap_is_what_closes_it() -> None:
+    # The backreference in the parser's regex: two interleaved blocks must not pair up across
+    # labels, which is what a plain `.*?ENDMAP` would do.
+    found = heap_map.parse_labelled(f"=== MAP first ===\n{_REAL}=== ENDMAP second ===\n")
+    assert found == {}

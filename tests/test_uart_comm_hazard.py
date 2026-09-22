@@ -718,15 +718,23 @@ def _check_a_corrupted_header_byte_is_caught_by_structural_validation(crc: "CrcM
 
 
 def _answer_payload_offset(marker: int = ord("v"), crc: "CrcMaker" = None) -> int:
-    # corrupt_indices addresses a STREAM offset, not a frame offset, and the responder's stream
-    # opens with the ACK to the GET before the answer train - so the payload byte's position is
-    # found from a clean run rather than assumed.
-    probe = hazard_pair(crc)
-    assert run(probe.with_listener(probe.initiator.uart_get(0x01)), limit=20) is not None
+    # corrupt_indices addresses a STREAM offset, not a frame offset, and the answer comes back as a
+    # multi-frame train behind the ACK - so the payload byte's position is searched for rather than
+    # computed. The sustained budget: a probe that timed out would derive an offset from a short stream.
+    probe = hazard_pair(crc, timeout_ms=_SUSTAINED_TIMEOUT_MS)
+    assert run(probe.with_listener(probe.initiator.uart_get(0x01)), limit=20) is not None, "the probe GET did not complete, so no offset can be derived from it"
     wire = probe.wire_from_responder()
     offset = wire.find(bytes([marker]), wire_frame(crc))  # past the ACK frame
     assert offset > 0, f"no answer payload byte found in the responder's wire log: {wire!r}"
     return offset
+
+
+def _check_the_probed_payload_offset_lands_on_a_frames_payload_start(crc: "CrcMaker") -> None:
+    # What the search above has to produce for the injection below to mean anything, asserted
+    # without assuming how many frames the train carries: a payload position of SOME whole frame.
+    # A shifted stream would otherwise put the corruption in a header and read as "rejected".
+    offset = _answer_payload_offset(crc=crc)
+    assert (offset - _POS) % wire_frame(crc) == 0, f"probed offset {offset} is not a frame's payload start ({wire_frame(crc)}-byte frames, header {_POS})"
 
 
 def _check_a_corrupted_payload_byte_is_delivered_undetected_without_a_crc(crc: "CrcMaker") -> None:
@@ -734,10 +742,16 @@ def _check_a_corrupted_payload_byte_is_delivered_undetected_without_a_crc(crc: "
     # the payload passes every structural check and reaches the caller as good data. A documented property
     # of the deployed configuration, pinned so enabling a CRC is visibly what changes it.
     offset = _answer_payload_offset(crc=crc)
-    pair = hazard_pair(crc)
+    # The sustained budget, not this tier's 1x: a transaction that times out returns None here too,
+    # which would read as "the corruption was caught" and quietly retire the claim below.
+    pair = hazard_pair(crc, timeout_ms=_SUSTAINED_TIMEOUT_MS)
     pair.link.direction_from(pair.fake_b).corrupt_indices = {offset: 0xFF}
     answer = run(pair.with_listener(pair.initiator.uart_get(0x01)), limit=20)
-    assert answer is not None, "the frame was rejected - then this test no longer pins what it claims"
+    wire = pair.wire_from_responder()
+    # Proves the injection landed on the payload byte rather than somewhere a shifted stream put
+    # it, so a future divergence names itself instead of arriving as "the frame was rejected".
+    assert len(wire) > offset and wire[offset] == (ord("v") ^ 0xFF), f"the corruption did not land on the answer payload at offset {offset}: {wire!r}"
+    assert answer is not None, f"no answer for a payload corruption at stream offset {offset} - this test no longer pins what it claims. Responder wire: {wire!r}"
     assert bytes(answer) == bytes([ord("v") ^ 0xFF]), f"expected a corrupted byte, got {bytes(answer)!r}"
     assert run(pair.initiator.get_error_counter())[pair.initiator.name]["ErrCount"] == 0, (
         "a payload corruption was somehow counted - the no-CRC envelope has changed"
@@ -748,8 +762,11 @@ def _check_with_a_crc_configured_the_same_payload_corruption_is_caught(crc: "Crc
     # Same injection, CRC16 on the bus objects: now the frame fails verification and is rejected.
     # This is what makes the test above a statement about configuration rather than about the
     # protocol being unable to detect corruption at all.
+    #
+    # The sustained budget for the same reason as above, and more so: a CRC yields once per byte,
+    # so this pair is the slowest one in the file and a timeout would make this pass vacuously.
     pair = Pair(
-        payload_size=_PAYLOAD, timeout=_TIMEOUT_MS, get_callback=echo_get(b"v"), set_callback=accept_set(),
+        payload_size=_PAYLOAD, timeout=_SUSTAINED_TIMEOUT_MS, get_callback=echo_get(b"v"), set_callback=accept_set(),
         crc_a=CRC16(), crc_b=CRC16(),
     )
     assert run(pair.setup()) is True

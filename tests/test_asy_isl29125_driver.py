@@ -448,6 +448,9 @@ def test_decode_config_rejects_the_wrong_length_and_none() -> None:
     assert ISL29125_I2C.decode_config(None) is None
     assert ISL29125_I2C.decode_config(bytes(2)) is None
     assert ISL29125_I2C.decode_config(bytes(4)) is None
+    # The TypeError half of the same guard: len() on a non-buffer, which a failed read that
+    # returned something unexpected rather than None would hand it.
+    assert ISL29125_I2C.decode_config(42) is None  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -1634,6 +1637,24 @@ def test_read_sensor_dict_reports_the_five_hardware_backed_fields() -> None:
     with _FastAsyncSleep():
         result = run(reader._read_sensor_dict())
     assert set(result) == {"Resolution", "Range", "IrCompOffset", "IrCompAdjust"}
+
+
+def test_read_sensor_dict_degrades_to_an_empty_dict_when_the_snapshot_cannot_be_decoded() -> None:
+    # The caller's own half of the guard above. Unhandled, the tuple unpack that follows would
+    # raise out of a REST GET rather than answering with whatever the driver still knows.
+    _i2c, reader = ready_reader("sensor_dict_undecodable")
+    reader._range_auto = False
+    reader.isl.decode_config = lambda _raw: None  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    with _FastAsyncSleep():
+        assert run(reader._read_sensor_dict()) == {}
+
+
+def test_a_snapshot_field_read_degrades_to_none_when_the_snapshot_cannot_be_decoded() -> None:
+    # Same guard on the single-field path, which every per-field getter goes through.
+    _i2c, reader = ready_reader("snapshot_field_undecodable")
+    reader.isl.decode_config = lambda _raw: None  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    with _FastAsyncSleep():
+        assert run(reader._snapshot_field(0, 29, "resolution")) is None
 
 
 def test_read_sensor_dict_key_names_produce_no_unknown_key_warning() -> None:

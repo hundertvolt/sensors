@@ -2977,10 +2977,25 @@ with no deterministic injection point under the Unix-port test heap. Kept, like 
 defence in depth in a module contracted never to raise is cheaper than the day the surrounding logic
 moves.
 
+Four more of the same class, enumerated on 2026-09-22 when the whole `src/` tier was re-read
+against the report line by line, so a later pass does not re-chase them: `config_manager.py`'s
+`except Exception` around `type(nt).__name__` (a namedtuple type always has one);
+`asy_wifi_service.py`'s `return None` after an `ifconfig()` length check (the real call is a fixed
+4-tuple per the stub, and its own comment says so); `asy_sgp40_driver.py`'s `readlen is None`
+early return (no caller passes it — the buffer above is sized for the one `readlen=1` the file
+uses); and `voc_algorithm.py`'s `_FIX16_OVERFLOW` return in the fixed-point divide, which mirrors
+Sensirion's own reference C and is unreachable for any input this driver produces. That pass left
+**31 genuinely uncovered lines across 8 files**, all of which now have tests — the register above
+is what remains, not a backlog.
+
 A `finally:` body is **not** one of these patterns, despite looking like one: its lines fire a trace
 event only when an exception actually passes through, so a `finally` that only ever runs on the
 normal return path reads as uncovered. That is a real missing test — of cancellation — not an
 artefact; `test_a_cancelled_transaction_still_releases_the_re_entrancy_flag` is what it was hiding.
+Two more were found exactly that way in the 2026-09-22 pass: `asy_wifi_service.py`'s
+`_locked_wlan_status()` and `_get_hotspot_stations()` both release `wifi_mode_lock` in a `finally`
+that nothing ever raised or cancelled through, so a leak there — which stalls every later mode
+change — was unguarded. Both have tests now.
 
 ### E.5.2 Why `--coverage` needs its own interpreter build
 

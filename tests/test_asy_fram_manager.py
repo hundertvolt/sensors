@@ -4,7 +4,7 @@ from _fram_chip_fake import FakeMB85RS64V
 
 import asy_fram_manager
 import asy_spi_driver
-from asy_fram_manager import AsyFramChunk, AsyFramChunkBuffer, AsyFramManager
+from asy_fram_manager import AsyFramChunk, AsyFramChunkBuffer, AsyFramChunkTimestampedBuffer, AsyFramManager
 from asy_spi_driver import SPI
 from crc_checks import CRC8, CRC16, CRC32, CRC_Pass
 
@@ -671,6 +671,7 @@ def test_ntp_callback_raising_degrades_to_not_synced_instead_of_propagating() ->
     ntp_synced, _utc, write_ok = run(scenario())
     assert ntp_synced is False
     assert write_ok is True  # still writes, with the uninitialized timestamp sentinel
+    assert 85 in run(manager.get_error_counter())["FRAM"]["ErrNum"], "the write-path callback failure needs its own errno to be told apart from the read-path one (87)"
 
 
 def test_mktime_overflow_degrades_to_uninit_timestamp_instead_of_propagating() -> None:
@@ -707,6 +708,7 @@ def test_mktime_overflow_degrades_to_uninit_timestamp_instead_of_propagating() -
 
     assert ntp_synced is False
     assert write_ok is True
+    assert 86 in run(manager.get_error_counter())["FRAM"]["ErrNum"]
 
     async def read_back() -> int | None:
         ts, _age, _data = await chunk.read()
@@ -749,6 +751,9 @@ def test_compare_with_zero_check_length_fails_cleanly_instead_of_hanging_forever
         return await asyncio.wait_for(chunk.read(), timeout=5)
 
     assert run(scenario()) == bytearray(b"data")  # block 1 unverifiable -> healed from block 0
+    # Pinned, not just "some error": a bench session reads these numbers out of the FRAM log to
+    # tell this apart from a real read failure (errno 37), which degrades identically from outside.
+    assert 48 in run(manager.get_error_counter())["FRAM"]["ErrNum"]
 
 
 def test_compare_with_huge_check_length_during_write_verification_degrades_safely() -> None:
@@ -1930,6 +1935,7 @@ def test_timestamped_read_ntp_callback_failure_during_age_computation_is_caught(
     assert ts is not None  # timestamp itself decoded fine
     assert age is None  # NTP check failed, so age can't be computed
     assert data == bytearray(b"data")
+    assert 87 in run(manager.get_error_counter())["FRAM"]["ErrNum"]
 
 
 def test_timestamped_read_age_computation_overflow_degrades_cleanly() -> None:
@@ -1964,6 +1970,7 @@ def test_timestamped_read_age_computation_overflow_degrades_cleanly() -> None:
     assert ts is not None  # timestamp itself decoded fine
     assert age is None  # age computation failed cleanly, not propagated
     assert data == bytearray(b"data")
+    assert 88 in run(manager.get_error_counter())["FRAM"]["ErrNum"]
 
 
 def test_manager_reset_error_counter_clears_history() -> None:
@@ -2037,6 +2044,76 @@ def test_timestamped_chunk_buffer_get_crc_buf_returns_the_trailing_crc_slice() -
     crc_buf = buf.get_crc_buf()
     assert crc_buf is not None
     assert len(crc_buf) == CRC8().length()
+
+
+# ---------------------------------------------------------------------------
+# The same accessors and both chunks' entry points on a buffer whose allocation FAILED. That is
+# LockableBuffer's documented MemoryError degrade (base_classes.py sets buf=None), so these are
+# the branches a real allocation failure reaches - they must degrade, never raise.
+# ---------------------------------------------------------------------------
+
+
+def _degraded_buffer() -> AsyFramChunkBuffer:
+    # A negative size takes the same buf=None path bytearray(size) raising MemoryError takes, with
+    # no injection needed - base_classes.py guards both together for exactly that reason.
+    buf = AsyFramChunkBuffer(-1, 0)
+    assert buf.get_buf() is None, "the fixture no longer produces an unallocated buffer"
+    return buf
+
+
+def _degraded_timestamped_buffer() -> AsyFramChunkTimestampedBuffer:
+    buf = AsyFramChunkTimestampedBuffer(-1, 0, 0)
+    assert buf.get_buf() is None, "the fixture no longer produces an unallocated buffer"
+    return buf
+
+
+def test_every_accessor_on_an_unallocated_chunk_buffer_returns_none() -> None:
+    buf = _degraded_buffer()
+    assert buf.get_crc_buf() is None
+    assert buf.get_data_buf() is None
+
+
+def test_every_accessor_on_an_unallocated_timestamped_buffer_returns_none() -> None:
+    # get_ts_buf() and get_crc_buf() slice around data_start/data_end, so an unguarded one would
+    # raise TypeError on None rather than returning it.
+    buf = _degraded_timestamped_buffer()
+    assert buf.get_ts_buf() is None
+    assert buf.get_crc_buf() is None
+    assert buf.get_data_buf() is None
+
+
+def test_the_timestamped_entry_points_degrade_on_a_foreign_unallocated_buffer() -> None:
+    # Distinct from the negative-size-chunk tests above, which degrade a chunk's OWN buffer: here
+    # a healthy chunk is handed someone else's failed allocation, the shape print_log.py's store
+    # really uses. Documented tuples, not just falsy - each caller unpacks three values.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC8())
+    assert chunk is not None
+    assert run(chunk.write_into(_degraded_timestamped_buffer())) == (False, None, False)
+    assert run(chunk.read_into(_degraded_timestamped_buffer())) == (False, None, None)
+
+
+def test_an_unallocated_buffer_never_reaches_the_chip_at_all() -> None:
+    # The property behind the two above: a degraded buffer is rejected before any SPI traffic, so a
+    # failed allocation cannot leave a half-written chunk - not even the WREN that opens the envelope.
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8())
+    assert chunk is not None
+    sent: list[bytes] = []
+    real_write = chip.write
+
+    def counting_write(buf: object) -> None:
+        sent.append(bytes(buf))  # type: ignore[call-overload]
+        real_write(buf)
+
+    chip.write = counting_write  # type: ignore[method-assign]  # deliberate monkeypatch
+    try:
+        assert run(chunk.write_into(_degraded_buffer())) is False
+    finally:
+        chip.write = real_write  # type: ignore[method-assign]
+    assert sent == [], f"a write from an unallocated buffer still drove the bus: {sent!r}"
 
 
 # ---------------------------------------------------------------------------
