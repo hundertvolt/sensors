@@ -859,6 +859,12 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   from them), and the generated header carries a sentinel the post-build check demands, so a shim
   that was never *found* fails even when the asked-for values match MicroPython's own defaults.
   Both are pure host-side Python with no new dependency; the chroot relevance is unchanged.
+  **`scripts/test.sh` gained one more block the same day**: when `$GITHUB_STEP_SUMMARY` is set and
+  the run failed, it appends the same verdict it already prints - failed files, and any
+  `MemoryError` lines - to GitHub's job summary. A run's *log* lives on a blob host some networks
+  deny outright, while the job summary is retrievable through the REST API, so a red CI job that
+  will not reproduce locally is otherwise undiagnosable from such a network. Guarded on the variable
+  being set, so a local run is byte-for-byte unchanged and the chroot legs are unaffected.
   That pair is what a compiler-version-sensitive
   break would actually show up in, so it is the part worth the owner's next manual run; a
   `scripts/test.sh` change is host tooling and low-risk. 2026-09-22 added two more to it, both pure

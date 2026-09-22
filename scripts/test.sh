@@ -510,6 +510,35 @@ fi
 if [ "$tests_scripts_result" = "FAIL" ]; then
     failed=1
 fi
+
+# Same verdict again into GitHub's own job summary, which is retrievable through the REST API -
+# unlike a run's log, whose blob host some networks deny outright, leaving a red job that will not
+# reproduce locally with no way to learn which file failed. Unset off CI, so local runs are unchanged.
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ "$failed" -ne 0 ]; then
+    {
+        echo "### Test failures"
+        echo ""
+        echo "- tests_scripts/ (CPython/pytest): \`$tests_scripts_result\`"
+        echo "- tests/test_*.py (MicroPython Unix port): $passed_count/$total_files files passed"
+        if [ "${#failed_files[@]}" -gt 0 ]; then
+            echo ""
+            echo "**Failed files**"
+            for f in "${failed_files[@]}"; do
+                echo "- \`$f\`"
+            done
+        fi
+        if [ "${#memory_error_files[@]}" -gt 0 ]; then
+            echo ""
+            echo "**MemoryError seen** (caught-and-logged counts too - SPECIFICATION.md Part I.4(e))"
+            for f in "${memory_error_files[@]}"; do
+                echo "- \`$f\`"
+                echo '  ```'
+                sed "s/^/  /" "$results_dir/$(basename "$f" .py).memerr"
+                echo '  ```'
+            done
+        fi
+    } >> "$GITHUB_STEP_SUMMARY"
+fi
 if [ "$failed" -eq 0 ] && [ "$coverage_render_failed" -eq 0 ]; then
     echo "Result: ALL PASSED"
 elif [ "$failed" -eq 0 ]; then

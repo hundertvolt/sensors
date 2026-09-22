@@ -527,3 +527,23 @@ so they mean a truncated response, which is a real defect and must not be reclas
 **Verified**: the failure reproduces on the unfixed tree in a worktree, and all six devices pass
 three consecutive (f)-stage rounds with the fix. `tests/test_digital_twin_http_client.py` pins both
 halves — the refusal is raised, and it is catchable as a plain `OSError`.
+
+
+## 10.1 One thing this branch could not diagnose, and what was done about it
+
+`unit-tests-coverage` went red once on `0344ab4` and could not be root-caused. **The run's log is
+unreachable from this environment** - GitHub serves it from a blob host the network gateway denies
+(`connect_rejected`, policy), and there is no alternate endpoint. What the API *does* give is step
+timing, which said the run completed (331 s) and the coverage reports rendered, so it was a test
+verdict rather than infrastructure.
+
+It did not reproduce: a full local `scripts/test.sh --coverage` passed 85/85, and 24 further runs
+of the six concurrency files under the real coverage runner were clean. The job had passed on two
+earlier commits of this branch carrying the same harder bursts, and the only change since was the
+`CeilingRefusedError` fix, which strictly converts an escaping `ValueError` into an `OSError` some
+call sites then classify as a refusal - it cannot turn a passing assertion into a failing one.
+
+Rather than re-run and hope, `scripts/test.sh` now appends its own failure verdict - the failed
+files and any `MemoryError` lines - to `$GITHUB_STEP_SUMMARY` when one is set. **Job summaries are
+retrievable through the REST API where logs are not**, so the next occurrence names its file from
+this environment instead of being a dead end. Local runs are unchanged (the variable is unset).
