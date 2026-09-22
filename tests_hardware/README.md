@@ -256,7 +256,9 @@ so far, every one found by running the test rather than reading it, and every on
   broke three scripts: the reboot-persistence marker never persisted, and the DebugLevel pair backed
   up `PrevLevel: 0` instead of the real 5 and then "restored" that, the two omissions cancelling so
   the *test passed*. Fixing only one of that pair drives the bench board to `DebugLevel = 0`.
-  `tests_scripts/test_device_script_config_flush.py` now pins this. Full account: MEASUREMENTS 7O.
+  `tests_scripts/test_device_script_config_flush.py` now pins this **per manager**: flushing one of
+  that cancelling pair does not cover the other, and a `_set_dict_cfg()` write is tracked to the
+  `.cfgmgr` it stages on. Full account: MEASUREMENTS 7O.
 
 ## Writing a new bench-tier test, and diagnosing a DUT that has gone quiet: two traps
 

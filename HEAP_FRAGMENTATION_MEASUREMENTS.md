@@ -4478,8 +4478,11 @@ then read `{"Marker": 424242}`, `{"PrevLevel": 5}` and `{"DebugLevel": 5}`.
 **The lesson generalises**: a `device_scripts/` file that writes config and then returns has no
 event loop left to commit it, so `flush_pending()` is mandatory there in a way it is not in
 production code. Two of the three affected scripts were passing tests while doing the wrong thing.
-`tests_scripts/test_device_script_config_flush.py` now pins it, with one justified exemption whose
-justification the guard re-derives; both halves were verified red by injecting the regression.
+`tests_scripts/test_device_script_config_flush.py` now pins it **per manager**, not per file: each
+staged write is matched to a `flush_pending()` on the object that actually holds it, so flushing one
+of a cancelling pair does not cover the other, and a `_set_dict_cfg()` write is tracked to its
+`.cfgmgr` (the delegation is itself pinned against `src/base_classes.py`). One justified exemption,
+whose justification the guard re-derives; verified red against seven injected regressions.
 
 ### 7O.4 S3's own status: NOT re-run green end to end, deliberately
 
