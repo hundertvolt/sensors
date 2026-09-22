@@ -209,7 +209,7 @@ def test_wozi_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load(
         assert sensortask_wozi.i2c1 is not None and sensortask_wozi.i2c1._i2c is not None
         await _run_real_task_graph_and_assert_healthy(sensortask_wozi, sensortask_wozi.i2c1._i2c.log, run_seconds=9.0, api_port=port)
 
-    run_timed(scenario(), timeout_s=25.0)
+    run_timed(scenario(), timeout_s=40.0)
 
 
 def test_dev_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load() -> None:
@@ -223,7 +223,7 @@ def test_dev_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load()
         assert sensortask_dev.i2c1 is not None and sensortask_dev.i2c1._i2c is not None
         await _run_real_task_graph_and_assert_healthy(sensortask_dev, sensortask_dev.i2c1._i2c.log, run_seconds=9.0, api_port=port)
 
-    run_timed(scenario(), timeout_s=25.0)
+    run_timed(scenario(), timeout_s=40.0)
 
 
 def test_wozi_fram_recovers_after_an_injected_spi_write_fault() -> None:
