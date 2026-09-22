@@ -2562,7 +2562,7 @@ a purely one-directional, no-cycle class-level reference — a consumer driver m
 driver's class, never the reverse — the same direction the topological construction order below
 already requires, so it doesn't reintroduce a real coupling cycle at the object-graph level.
 `asy_sgp40_driver.py` used to be the canonical example of this (importing `SCD30_Reader` for its
-old `comp_source` parameter's type) — §2.9's generalization removed that import entirely, since a
+old `comp_source` parameter's type) — C.14.3's generalization removed that import entirely, since a
 per-value producer is now resolved structurally (by attribute name) rather than nominally (by
 class), so `asy_sgp40_driver.py` no longer needs to know its compensation source's concrete type at
 all.
@@ -2632,7 +2632,7 @@ two different ones, entirely independently. `buildgen/`'s own `_VALUE_WIRING` dr
 (parallel to `_WIRING`, parsed by `buildgen/value_wiring.py`) says which constructor kwargs a
 per-value TOML field resolves to and whether it's required; a required field with nothing wired can
 still build clean via an explicit `{default = true, ...}` opt-in (the wiring-defaults mechanism,
-same document §2) — `_DefaultTemperatureSource`/`_DefaultHumiditySource` provide a constant
+Part L.6.2) — `_DefaultTemperatureSource`/`_DefaultHumiditySource` provide a constant
 fallback duck-typed to the same `get_data()` contract.
 
 ---

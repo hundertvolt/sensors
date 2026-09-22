@@ -49,9 +49,10 @@ both ran on silicon on 2026-09-18/19, the **request-body cap** (§1D) closed gre
 the replaced tripwire passes with 5.5x margin, and the bench tier has now been fully clean on four
 consecutive runs. All of it is written up in `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D-§7N.
 
-**The 2026-09-22 sitting closed ten rows and produced one real finding.** S1 (36 passed) and S2
-(98 passed) are both clean on a freshly built and flashed image from this branch's tip; T3, T6 and
-G7 close on those same runs; E1-E4 and T7 took the board's first placement reading. **The finding is
+**The 2026-09-22 sitting closed fifteen rows and produced one real finding.** Ten of them came off
+the bench runs: S1 (36 passed) and S2 (98 passed) are both clean on a freshly built and flashed
+image from this branch's tip; T3, T6 and G7 close on those same runs; E1-E4 and T7 took the board's
+first placement reading. The other five needed no board — G9, H2, N1, N4 and R16. **The finding is
 §7M**: the twin's two transferable ratios — 2.07x on batch median depth, 8.66x on cumulative reach —
 come out **0.69x (inverted) and 0.91x (no separation)** on silicon, with tight repeats and the
 obvious confound ruled out. What transfers is the batch's own reach (1.5x) and the sign of the

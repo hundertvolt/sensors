@@ -3646,11 +3646,11 @@ refilled it:
 | `SYSTEM` | 1 | `W4` |
 | every other module | 0 | — |
 
-**`WEBSERVER` is empty both times**, which is the assertion every §1D row makes and the one that
+**`WEBSERVER` is empty both times**, which is the assertion every queue §1D row makes and the one that
 matters: a 413 is raised inside vendored Microdot before any of our own code runs, so anything
 there would be a finding about this project. `NTP`'s entries are attributable —
 `test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing` is the second-to-last test
-in the run. Nothing unexplained appeared, so §2A F9's contamination hazard is not in play here.
+in the run. Nothing unexplained appeared, so queue §2A F9's contamination hazard is not in play here.
 
 ### 7I.2 W5's rewrite is confirmed on silicon — the red is one line further down
 
@@ -3714,7 +3714,7 @@ on the board followed, with the same zero-wrong-status result and a wider refusa
 before — 16/8, 19/5 and 20/4 answered/refused — which is the anti-vacuity floor of 4 doing its job
 rather than the row becoming easier to pass.
 
-**The suite's own verdict line is clean for the first time since the §1D rows were added:**
+**The suite's own verdict line is clean for the first time since the queue §1D rows were added:**
 
 ```
 98 passed, 4 skipped, 27 deselected in 2328.23s (0:38:48)
@@ -3740,7 +3740,7 @@ MAP  after_build_system: used=90192 free=102640 largest_free_run=93696
 DELTA boot placement: new_blocks=2169 highest_new_pct=51 new_in_top16K=0 new_in_top32K=0
 ```
 
-**`retained=0` on every `HEAP ` line**, so §2A F5's caveat does not apply and every figure here is
+**`retained=0` on every `HEAP ` line**, so queue §2A F5's caveat does not apply and every figure here is
 usable. Against §7H.4's reading on the pre-merge image:
 
 | §7G.2 check | threshold | §7H.4 | **§7I** | margin now |
@@ -3934,7 +3934,7 @@ own right — so the cleanup was explicit:
 | file | action |
 |---|---|
 | `config_HWTEST_DEBUGLEVEL_BACKUP.cfg`, `config_HWTEST_ISL29125.cfg`, `config_HWTEST_REBOOT.cfg` | **deleted** — test residue |
-| `config_HWTEST_ISL29125.cfgconfig_ISL29125.cfg` | **deleted** — this is §2A **F8**'s malformed two-names-concatenated file, whose residual was "fold it into the next run that already spends a flash write". This was that run. |
+| `config_HWTEST_ISL29125.cfgconfig_ISL29125.cfg` | **deleted** — this is queue §2A **F8**'s malformed two-names-concatenated file, whose residual was "fold it into the next run that already spends a flash write". This was that run. |
 | `config_BMP3XX.cfg`, `config_ISL29125.cfg`, `config_SGP40.cfg`, `config_NOTIFY.cfg` | **deleted** — regenerated at driver defaults on boot, i.e. a fresh device |
 | `config_NTP.cfg` | **kept** — it carries real locale (`GMTOffset`/`DSTOffset` 3600, `pool.ntp.org`), which a reset to defaults would have silently wiped |
 | `config_WIFI.cfg` | **rewritten**, same SSID/PW/Country, `Hostname` corrected from the stale `SensorNode` to `devices/dev.toml`'s own `SensorStationDev` |
