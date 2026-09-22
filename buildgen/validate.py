@@ -3,6 +3,7 @@ global-resource-collision class, and wiring-reference resolution. `build_model()
 `BuildError` naming device/instance/field, or returns a fully-resolved, safe-to-generate model."""
 
 import ast
+import importlib.util
 from pathlib import Path
 
 from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, ALLOWED_INSTANCE_FIELDS, BUS_ATTACHED_DRIVERS, BUS_KIND_BY_DRIVER, FIXED_ADDRESS_DRIVERS, REQUIRED_TOML_FIELDS
@@ -10,7 +11,7 @@ from buildgen.defaults import default_class_defines_attr, default_class_name, de
 from buildgen.driver_registry import SINGLETON_SERVICE_DRIVERS, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
 from buildgen.limits import LimitField, parse_limits
-from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, load_device, lwip_tcp_pcb_count, resolve_instance_key
+from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, load_device, lwip_macros, lwip_tcp_pcb_count, resolve_instance_key
 from buildgen.pico_gpio import I2C_ROLE, SPI_ROLE, UART_ROLE, gpio_exists
 from buildgen.requires_tag import RequiresTag, check_requires_tags, parse_requires_tags
 from buildgen.value_wiring import ValueWiringField, parse_value_wiring
@@ -157,6 +158,22 @@ def webserver_init_default(src_dir: Path, name: str) -> int:
     raise BuildError("<src>", f"WebserverService.__init__ no longer has a readable int default for {name!r} in {path} - the per-device key and the shipped default have to agree", field=name)
 
 
+VERSIONS_PATH_LABEL = "toolchain/versions.toml"
+
+
+def _lwip_ensemble_problems(macros: "dict[str, int]", max_connections: int) -> "list[str]":
+    """toolchain/micropython_overrides.py owns the relationships (they are lwIP's, not buildgen's).
+    Loaded by path because buildgen is a package and toolchain/ is a flat script directory - the
+    same bare-sibling shape tests_hardware/harness.py already uses for setup_toolchain."""
+    spec = importlib.util.spec_from_file_location("micropython_overrides", Path(__file__).resolve().parent.parent / "toolchain" / "micropython_overrides.py")
+    if spec is None or spec.loader is None:
+        raise BuildError("<toolchain>", "cannot load toolchain/micropython_overrides.py, which owns lwIP's own option relationships", field="max_connections")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    problems: list[str] = module.check_lwip_ensemble(macros, max_connections)
+    return problems
+
+
 def _check_connection_ceiling(model: DeviceModel, src_dir: Path) -> None:
     """The device's EFFECTIVE admission ceiling against the firmware's own lwIP PCB count. Config
     that outruns its build refuses connections it says it admits, which reads as an application
@@ -168,6 +185,12 @@ def _check_connection_ceiling(model: DeviceModel, src_dir: Path) -> None:
     lwip_pcbs = lwip_tcp_pcb_count()
     if max_connections >= lwip_pcbs:
         raise BuildError(model.device, f"[device].max_connections is {max_connections}, but this firmware's lwIP holds only {lwip_pcbs} TCP PCBs ([lwip].MEMP_NUM_TCP_PCB in toolchain/versions.toml) - Part H.7 keeps one slot of margin below that, so the ceiling here is {lwip_pcbs - 1}", field="max_connections")
+    # lwIP's options are an ensemble and its own checks size the shared pools for ONE connection.
+    # The N-connection half is checked here, where N is known - a device admitting more connections
+    # than the firmware's segment pool or send arena can actually serve is the failure this catches.
+    ensemble = _lwip_ensemble_problems(lwip_macros(), max_connections)
+    if ensemble:
+        raise BuildError(model.device, f"[device].max_connections is {max_connections}, which this firmware's lwIP settings cannot serve: " + "; ".join(ensemble) + f". Raise the matching [lwip] values in {VERSIONS_PATH_LABEL} or lower max_connections", field="max_connections")
     backlog = dev.get("backlog")
     if backlog is not None and backlog < max_connections:
         # An accept queue shallower than the ceiling drops arrivals inside lwIP, where nothing in

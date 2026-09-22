@@ -422,3 +422,90 @@ class TestApplyLwipConnectionCountsOverride:
     def test_every_settable_macro_is_one_the_pinned_source_actually_defines(self, overrides: ModuleType) -> None:
         assert set(overrides.LWIP_SETTABLE_MACROS) == set(overrides.LWIP_MACROS_GUARDED_IN_OPT_H) | set(overrides.LWIP_MACROS_PREDEFINED_BY_MICROPYTHON)
         assert not set(overrides.LWIP_MACROS_GUARDED_IN_OPT_H) & set(overrides.LWIP_MACROS_PREDEFINED_BY_MICROPYTHON)
+
+
+# ---------------------------------------------------------------------------
+# The ensemble. lwIP's options are not independent: lib/lwip/src/core/init.c turns each of these
+# into a compile-time #error, and opt.h derives four more values from them.
+# ---------------------------------------------------------------------------
+
+
+def _pinned() -> "dict[str, int]":
+    """MicroPython's own pinned block, which is itself a tuned set - see the test below."""
+    return {
+        "MEMP_NUM_TCP_PCB": 5, "MEMP_NUM_TCP_PCB_LISTEN": 8, "MEMP_NUM_PBUF": 16,
+        "PBUF_POOL_SIZE": 16, "MEMP_NUM_UDP_PCB": 5, "LWIP_STATS": 0, "MEM_SIZE": 8000,
+        "TCP_MSS": 800, "TCP_WND": 6400, "TCP_SND_BUF": 6400, "MEMP_NUM_TCP_SEG": 32,
+    }
+
+
+class TestLwipEnsemble:
+    def test_the_derived_values_match_lwips_own_formulas(self, overrides: ModuleType) -> None:
+        # opt.h computes these from TCP_MSS/TCP_SND_BUF; none is settable here, and most of
+        # init.c's sanity checks are really about them rather than the values actually set.
+        assert overrides.derive_lwip_dependents(_pinned()) == {
+            "TCP_SND_QUEUELEN": 32, "TCP_SNDLOWAT": 3200, "TCP_SNDQUEUELOWAT": 16, "PBUF_POOL_BUFSIZE": 856,
+        }
+
+    def test_micropythons_own_pinned_block_is_coherent(self, overrides: ModuleType) -> None:
+        # The evidence that these are a tuned SET, not independent knobs: the pinned block sits
+        # exactly on lwIP's own MEMP_NUM_TCP_SEG >= TCP_SND_QUEUELEN boundary, 32 against 32.
+        assert overrides.check_lwip_ensemble(_pinned()) == []
+        assert overrides.derive_lwip_dependents(_pinned())["TCP_SND_QUEUELEN"] == _pinned()["MEMP_NUM_TCP_SEG"]
+
+    def test_the_shipped_table_is_coherent_at_every_devices_own_ceiling(self, overrides: ModuleType, repo_root: Path) -> None:
+        import tomllib
+
+        with (repo_root / "toolchain" / "versions.toml").open("rb") as f:
+            macros = tomllib.load(f)["lwip"]
+        for toml_path in sorted((repo_root / "devices").glob("*.toml")):
+            if toml_path.name.startswith("zz_test_"):
+                continue
+            with toml_path.open("rb") as f:
+                ceiling = tomllib.load(f)["device"].get("max_connections")
+            assert overrides.check_lwip_ensemble(macros, ceiling) == [], f"{toml_path.name} admits {ceiling} connections the shipped [lwip] table cannot serve"
+
+    @pytest.mark.parametrize(
+        ("change", "expect"),
+        [
+            # Trap A's exact shape: TCP_MSS left at lwIP's own 536 fallback while the rest stands.
+            ({"TCP_MSS": 536}, "MEMP_NUM_TCP_SEG"),
+            ({"MEMP_NUM_TCP_SEG": 16}, "MEMP_NUM_TCP_SEG"),
+            ({"TCP_SND_BUF": 1000}, "TCP_SND_BUF"),
+            ({"PBUF_POOL_SIZE": 4}, "TCP_WND"),
+            ({"TCP_WND": 400}, "TCP_WND"),
+        ],
+    )
+    def test_one_value_moved_alone_is_refused_by_name(self, overrides: ModuleType, change: "dict[str, int]", expect: str) -> None:
+        problems = overrides.check_lwip_ensemble({**_pinned(), **change})
+        assert problems, f"{change} left the set incoherent but was accepted"
+        assert any(expect in p for p in problems), problems
+
+    def test_apply_refuses_an_incoherent_set_before_writing_anything(self, overrides: ModuleType, tmp_path: Path) -> None:
+        fake = _write_fake_lwip_tree(tmp_path / "micropython")
+        overrides_dir = tmp_path / "build_overrides"
+        with pytest.raises(overrides.OverrideError, match="not a coherent set"):
+            overrides.apply_lwip_connection_counts_override(fake, overrides_dir, _REAL_BOARD, {**_pinned(), "MEMP_NUM_TCP_SEG": 8})
+        assert not overrides_dir.exists()
+
+    @pytest.mark.parametrize("ceiling", [5, 8, 12])
+    def test_the_shared_pools_must_serve_every_admitted_connection_not_just_one(self, overrides: ModuleType, ceiling: int) -> None:
+        # lwIP's own checks size MEMP_NUM_TCP_SEG and MEM_SIZE for a single connection. Both are
+        # global while TCP_SND_QUEUELEN is per-connection, so a ceiling above what they can serve
+        # accepts work the stack cannot push - admission without service.
+        problems = overrides.check_lwip_ensemble(_pinned(), ceiling)
+        assert any("cannot each hold a full send window" in p for p in problems), problems
+        assert any("per admitted connection" in p for p in problems), problems
+
+    def test_the_mem_size_floor_is_the_fielded_designs_own_share(self, overrides: ModuleType) -> None:
+        # 8000 / 4 = 2000. A relationship, not a tuning target: raising the ceiling may not quietly
+        # give each connection a smaller share of the arena every outbound byte is copied into.
+        assert _pinned()["MEM_SIZE"] // 4 == overrides.MEM_SIZE_BYTES_PER_CONNECTION_FLOOR
+
+    def test_the_generated_header_carries_a_sentinel_the_build_check_demands(self, overrides: ModuleType, tmp_path: Path) -> None:
+        # Values alone cannot prove the shim was REACHED: a run asking for the defaults would
+        # verify clean against a build the override never touched.
+        fake = _write_fake_lwip_tree(tmp_path / "micropython")
+        overrides.apply_lwip_connection_counts_override(fake, tmp_path / "build_overrides", _REAL_BOARD, _pinned())
+        generated = (tmp_path / "build_overrides" / overrides.LWIP_OVERRIDE_BOARD_DIR_NAME / overrides.LWIP_OVERRIDE_INCLUDE_DIR_NAME / "lwipopts.h").read_text()
+        assert f"#define {overrides.LWIP_OVERRIDE_SENTINEL} 1" in generated

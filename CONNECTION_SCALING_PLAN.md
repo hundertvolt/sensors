@@ -366,3 +366,121 @@ what that script exists for. Say so rather than widening it.
 `memory allocation failed` in either run's captured output. Lint and all three typecheck passes
 clean. One ratchet moved: `max-args` 22 -> 23, for the `backlog=` kwarg, which `pyproject.toml`'s own
 comment sanctions as a deliberate reviewed one-parameter addition — flagged rather than done quietly.
+
+
+---
+
+# 9. Correction: the options are an ensemble (owner, 2026-09-22)
+
+§8 priced the ceiling with only `MEMP_NUM_TCP_PCB` moved, concluded "PCB slots are cheap and
+buffers are not", and recommended moving nothing else. **That was wrong, and the owner named it.**
+lwIP's options are not independent, and the configuration §8.5 recommended could accept connections
+it could not actually serve.
+
+## 9.1 What the source says, verified
+
+`lib/lwip/src/core/init.c` turns **nine** relationships between these options into compile-time
+`#error`s, and `opt.h` **derives** four further values from the ones this override sets —
+`TCP_SND_QUEUELEN`, `TCP_SNDLOWAT`, `TCP_SNDQUEUELOWAT`, `PBUF_POOL_BUFSIZE`. Both are now mirrored
+in `toolchain/micropython_overrides.py` (`check_lwip_ensemble()`, `derive_lwip_dependents()`), so an
+incoherent set is refused by name before it compiles.
+
+**MicroPython's own pinned block is itself a tuned set**, and it sits *exactly* on one of those
+boundaries: `MEMP_NUM_TCP_SEG` is 32, and the derived `TCP_SND_QUEUELEN` is
+`(4 x 6400 + 799) / 800` = **32**. Nothing about 8000 / 800 / 6400 / 6400 / 32 is arbitrary, and
+nothing in it can be moved alone.
+
+## 9.2 The two relationships lwIP does not check, which are the ones that bind
+
+lwIP's own checks size the shared pools for **one** connection. This firmware admits
+`max_connections` at once, and both of the pools involved are **global**:
+
+- **`MEMP_NUM_TCP_SEG` is global; `TCP_SND_QUEUELEN` is per connection.** At the pinned values one
+  connection can drain the whole 32-segment pool. The rest then hold data the stack has accepted
+  and cannot push — *admitted but not served*, which is precisely the failure the owner asked to
+  rule out. The override now requires
+  `MEMP_NUM_TCP_SEG >= max_connections x (TCP_SND_BUF / TCP_MSS)`.
+- **`MEM_SIZE` is the arena every outbound byte passes through.** Traced through the real source:
+  `extmod/modlwip.c:802` calls `tcp_write()` with `TCP_WRITE_FLAG_COPY` **unconditionally**, so the
+  payload is copied into a `PBUF_RAM` pbuf, and `pbuf_alloc()` takes `PBUF_RAM` from `mem_malloc()`
+  — the `MEM_SIZE` heap. Its per-connection share must not fall below the 2,000 B the 4-connection
+  design gave (8000 / 4).
+
+Run against what §8.5 recommended, both fail:
+
+```
+MEMP_NUM_TCP_SEG (32) < max_connections * (TCP_SND_BUF / TCP_MSS) (56)
+    - 7 connections cannot each hold a full send window
+MEM_SIZE (8000) leaves 1142 B per admitted connection, below the 2000 B floor
+```
+
+`PBUF_POOL_SIZE` is deliberately **not** scaled: it backs the *inbound* path, where demand is one
+small request per connection (bodies capped at 2,048 B), against ~978 B of GC heap per pbuf — the
+most expensive pool to grow. Stated rather than assumed; a `LWIP_STATS` row in the hardware handover
+is what would settle it.
+
+## 9.3 The honest cost — `[BUILD]`, coherent ensembles only
+
+Each point is a **complete** set derived from its ceiling (`MEMP_NUM_TCP_PCB` = N + 3,
+`MEMP_NUM_TCP_SEG` = N x 8, `MEM_SIZE` = N x 2000, the rest pinned), not one knob moved alone:
+
+| `max_connections` | PCB | SEG | `MEM_SIZE` | `.bss` | GC heap | vs pinned | % of heap |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 | 7 | 32 | 8,000 | 46,704 | 197,136 | -392 | 0.20% |
+| 5 | 8 | 40 | 10,000 | 49,028 | 194,812 | -2,716 | 1.37% |
+| 6 | 9 | 48 | 12,000 | 51,352 | 192,488 | -5,040 | 2.55% |
+| **7 (shipped)** | **10** | **56** | **14,000** | **53,676** | **190,164** | **-7,364** | **3.73%** |
+| 8 | 11 | 64 | 16,000 | 56,000 | 187,840 | -9,688 | 4.90% |
+| 9 | 12 | 72 | 18,000 | 58,324 | 185,516 | -12,012 | 6.08% |
+| 10 | 13 | 80 | 20,000 | 60,648 | 183,192 | -14,336 | 7.26% |
+
+**A servable connection costs 2,324 B of GC heap — twelve times the 196 B §8.2 measured for a PCB
+slot alone.** §8.2's per-option table is not withdrawn; it is just not the figure that decides
+anything. "PCB slots are cheap" is true and irrelevant.
+
+## 9.4 What this changes about the recommendation
+
+**The setting is unchanged — `max_connections = 7` — and the reasoning for it is now stronger, not
+weaker.** Two independent curves stop in the same place:
+
+- the twin's contiguity cliff, 13.8% retained at 7 against 4.0% at 8 (§8.3, unaffected by this
+  correction: the Unix port has no lwIP at all);
+- the ensemble cost, crossing 4% of the GC heap between 7 and 8.
+
+What changes is the **price**: 3.73% of the GC heap, not the 0.50% §8.5 claimed. The trade stated
+in both directions, corrected: 75% more connections, each of which the stack can genuinely push,
+for 7,364 B of GC heap and a ~30% relative loss of largest-contiguous-free under a 2x overload
+burst. `max_connections = 4` at a coherent ensemble costs only 392 B, so the whole price of this
+change is the six thousand-odd bytes between them.
+
+## 9.5 Serving, not just surviving
+
+The owner's second point: a setting must not merely bear the load, it must actually **serve** every
+connection it offers. Two scenarios now assert that directly, on all six twin devices, rather than
+inferring it from a status count:
+
+- **`every_admitted_connection_is_actually_served_a_complete_correct_response`** — the full
+  ceiling's worth of the heaviest real endpoints, three rounds back to back, each answered 200 with
+  a body that parses to a non-empty dict inside a bounded time. A count of 200s would pass a
+  truncated stream or a response that arrived minutes late; this does not.
+- **`a_full_ceiling_of_real_page_loads_is_served_without_truncation`** — an uncontended load first,
+  as the reference byte count, then the whole ceiling concurrently, every one of which must match
+  it exactly. `ext/microdot.py` streams a file in `send_file_buffer_size` chunks, so a stack out of
+  buffers mid-response **truncates rather than failing**, which is invisible to a status check.
+
+Both are mount-independent, so they mean the same thing under the stub and the real website.
+
+## 9.6 And the shim itself
+
+Two hardenings, from the owner's first point — the override must survive a compatible MicroPython
+release and fail loudly on an incompatible one:
+
+- **A sentinel.** The generated header defines `MICROPY_SENSORS_LWIP_OVERRIDE_APPLIED`, and the
+  post-build check demands it. Value comparison alone could not catch a shim that was never
+  *found*: a build asking for values that happen to equal MicroPython's defaults would verify clean
+  against a firmware the override never touched. It now fails.
+- **The atomic-block trap is structurally impossible in this design, not merely checked.** The
+  generated header `#include`s the real `lwipopts.h` *first*, so the `#ifndef MEM_SIZE` block
+  executes in full with every upstream value intact, and only then are the options redefined. A
+  future release adding a sixth macro to that block keeps its upstream value rather than losing it
+  — the failure mode a command-line `-D` would have produced.

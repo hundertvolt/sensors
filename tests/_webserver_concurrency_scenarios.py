@@ -622,6 +622,72 @@ async def _scenario_mixed_traffic_above_ceiling(device: str) -> None:
         await _cancel(task)
 
 
+@_register("every_admitted_connection_is_actually_served_a_complete_correct_response", 40.0)
+async def _scenario_all_admitted_are_really_served(device: str) -> None:
+    # Admission is not service. A ceiling the stack can accept but not push produces 200s with
+    # truncated bodies, or responses that arrive minutes late - both of which "count(200) == N"
+    # would pass. This asserts the whole ceiling's worth of REAL work completes, intact and bounded.
+    port = _next_test_port()
+    module = await _boot(port, device)
+    ceiling = _ceiling(module)
+    task = await _start_webserver(module)
+    try:
+        # The heaviest real endpoints, not the cheapest - /sensors and /status both grow with the
+        # device's own module count and are the two that stream (Part I.3).
+        paths = ("/sensors", "/status", "/measurements", "/networking", "/system")
+
+        async def one(path: str) -> "tuple[str, int, int, object]":
+            started = time.ticks_ms()
+            res = await _http_client.fetch("127.0.0.1", port, "GET", path)
+            return path, res.status_code, time.ticks_diff(time.ticks_ms(), started), res.json()
+
+        # Three rounds back to back at the full ceiling, so a leaked slot or a pool that only fills
+        # over time shows up rather than passing on a single cold burst.
+        for round_index in range(3):
+            results = await asyncio.gather(*(one(paths[i % len(paths)]) for i in range(ceiling)))
+            assert len(results) == ceiling, (round_index, results)
+            for path, status, elapsed_ms, body in results:
+                assert status == 200, (round_index, path, status)
+                # Complete and correct, not merely non-empty: a truncated stream still parses as a
+                # 200 with a short body, and this is the shape _stream_dict_response() produces.
+                assert isinstance(body, dict) and body, (round_index, path, body)
+                assert elapsed_ms < 10000, f"round {round_index}: {path} took {elapsed_ms}ms - admitted but not served in any useful time"
+        assert await _still_serving("127.0.0.1", port)
+    finally:
+        await _cancel(task)
+
+
+@_register("a_full_ceiling_of_real_page_loads_is_served_without_truncation", 40.0)
+async def _scenario_all_admitted_page_loads_complete(device: str) -> None:
+    # The static path has its own failure mode the JSON routes do not: ext/microdot.py streams a
+    # file in send_file_buffer_size chunks, so a stack that runs out of buffers mid-response
+    # truncates rather than failing. Every tab must get byte-identical content.
+    port = _next_test_port()
+    module = await _boot(port, device)
+    ceiling = _ceiling(module)
+    task = await _start_webserver(module)
+    try:
+        tabs = max(2, ceiling // 2)  # 2 connections per page load, the real post-inlining footprint
+
+        async def _index() -> int:
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/")
+            assert res.status_code == 200, res.status_code
+            return len(res.body)
+
+        # One uncontended load first, as the reference length - the strongest truncation check
+        # there is, and mount-independent (the stub page and the real website differ by ~25x).
+        reference = await _index()
+        assert reference > 0, reference
+        # The index twice per tab rather than index + a named asset: which assets exist depends on
+        # whether the stub or the real (inlined) website is mounted, and the hazard under test is
+        # concurrent streaming of one file, which this exercises directly either way.
+        sizes = await asyncio.gather(*(_index() for _ in range(tabs * 2)))
+        assert set(sizes) == {reference}, f"a concurrent page load was truncated - uncontended it is {reference} bytes, under load {sizes}"
+        assert await _still_serving("127.0.0.1", port)
+    finally:
+        await _cancel(task)
+
+
 @_register("the_accept_queue_is_never_shallower_than_the_admission_ceiling", 20.0)
 async def _scenario_backlog_covers_the_ceiling(device: str) -> None:
     # asyncio.start_server()'s own backlog default is 5 (extmod/asyncio/stream.py), so a raised

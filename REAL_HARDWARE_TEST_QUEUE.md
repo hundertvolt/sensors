@@ -441,7 +441,9 @@ knowledge, and carries the full method, the traps and the recording table. These
 | C2 | `test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures` — the board must admit exactly 7 | OPEN |
 | C3 | The rest of the bench tier at the shipped setting: `test_network_resilience.py`, `test_end_to_end_timing.py`, `test_bus_concurrency_under_api_load.py`, `test_memory_stress_bench.py`. All now scale their bursts with the configured ceiling | OPEN |
 | C4 | Record §7's full table for the shipped setting — contiguity after boot and under load, `.bss`/`.data`, latency, every `MemoryError`/`memory allocation failed` spelling, any watchdog reset | OPEN |
-| C5 | The sweep H1–H6 (PCB 5/10/12/16/24/32), finding the wall from both directions and characterising how it fails | OPEN |
+| C5 | The sweep H1–H6 — each row a **complete coherent lwIP ensemble** for its ceiling, not one knob moved (the build refuses an incoherent set by name) — finding the wall from both directions and characterising how it fails | OPEN |
+| C5b | At each row, that every admitted connection is actually **served**: a complete, correct body inside a bounded time, and a concurrent page load byte-identical to an uncontended one. A status count passes a truncated stream; this does not | OPEN |
+| C5c | Whether `PBUF_POOL_SIZE` really can stay at 16. It backs the inbound path and is the one pool this branch deliberately did not scale, on the reasoning that demand is one small capped request per connection — the assumption most worth testing on silicon | OPEN |
 | C6 | Only if a row in C5 fails for a reason that cannot be named: a `LWIP_STATS = 1` image, to see *which* pool exhausted rather than infer it | BLOCKED on C5 |
 
 **Why none of it could be done in the session that wrote it**: no real hardware was reachable, and

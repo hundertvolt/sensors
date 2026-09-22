@@ -853,7 +853,12 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   `toolchain/versions.toml` gained an `[lwip]` table that `build_firmware()` reads on every build -
   a malformed one fails the build loudly rather than silently building unpinned. The installer
   verification leg (`uv run toolchain/setup_toolchain.py`) is the one that exercises this, not the
-  lint/typecheck recipe.
+  lint/typecheck recipe. **Same day, extended**: the override now also validates the `[lwip]` table
+  as an *ensemble* before building (lwIP's options are not independent — `lib/lwip/src/core/init.c`
+  makes nine of their relationships compile-time `#error`s, and `opt.h` derives four more values
+  from them), and the generated header carries a sentinel the post-build check demands, so a shim
+  that was never *found* fails even when the asked-for values match MicroPython's own defaults.
+  Both are pure host-side Python with no new dependency; the chroot relevance is unchanged.
   That pair is what a compiler-version-sensitive
   break would actually show up in, so it is the part worth the owner's next manual run; a
   `scripts/test.sh` change is host tooling and low-risk. 2026-09-22 added two more to it, both pure

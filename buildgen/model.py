@@ -126,6 +126,17 @@ def load_device(path: Path) -> DeviceModel:
 VERSIONS_PATH = Path(__file__).resolve().parent.parent / "toolchain" / "versions.toml"
 
 
+def lwip_macros(path: Path = VERSIONS_PATH) -> "dict[str, int]":
+    """versions.toml's whole [lwip] table. The values are an ensemble, so the connection-ceiling
+    check reads all of them, not just the PCB count (SPECIFICATION.md Part B.14.2)."""
+    try:
+        with path.open("rb") as f:
+            table = tomllib.load(f)["lwip"]
+    except (OSError, KeyError, tomllib.TOMLDecodeError) as e:
+        raise BuildError("<toolchain>", f"cannot read the [lwip] table from {path} ({e}) - it is what bounds every device's max_connections", field="max_connections") from e
+    return dict(table)
+
+
 def lwip_tcp_pcb_count(path: Path = VERSIONS_PATH) -> int:
     """The firmware's own MEMP_NUM_TCP_PCB, read from the one file that pins it. A device's
     max_connections is checked against this rather than a literal, so config can never outrun the

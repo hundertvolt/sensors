@@ -92,6 +92,8 @@ def apply_unix_kbd_intr_override(micropython_dir: Path, overrides_dir: Path) -> 
 
 LWIP_OVERRIDE_BOARD_DIR_NAME = "lwip_connection_counts_board"
 LWIP_OVERRIDE_INCLUDE_DIR_NAME = "lwipopts_override"
+# Proves the generated header was REACHED, not merely written - see apply_...() below.
+LWIP_OVERRIDE_SENTINEL = "MICROPY_SENSORS_LWIP_OVERRIDE_APPLIED"
 
 # Split by how the PINNED source defines each macro, because that is what decides whether a plain
 # -D could ever be trusted for it - guarded ones would take a -D, predefined ones silently would
@@ -166,6 +168,78 @@ def verify_lwip_connection_counts_anchor(micropython_dir: Path, board: str) -> N
             raise OverrideError(f"lwip_connection_counts: {board}'s board directory no longer contains {name} ({board_cmake.parent}), so the generated board directory cannot relay it. {_LWIP_REVERIFY}")
 
 
+# lwIP's options are NOT independent. lib/lwip/src/core/init.c turns each relationship below into a
+# compile-time #error, and opt.h DERIVES four more values from the ones set here - so a value moved
+# alone either fails the build or silently changes something else. Mirrored here to fail before the
+# build, naming the relationship, rather than in a wall of preprocessor output.
+
+# 2,000 B = the pre-branch design's own MEM_SIZE 8000 over max_connections 4. A relationship, not a
+# tuning target: raising the ceiling may not quietly make each connection's share of the send arena
+# smaller than the configuration this project already ran in the field.
+MEM_SIZE_BYTES_PER_CONNECTION_FLOOR = 2000
+_PBUF_PROTOCOL_HEADER_BYTES = 54  # PBUF_LINK_HLEN 14 + PBUF_IP_HLEN 20 + PBUF_TRANSPORT_HLEN 20
+
+
+def derive_lwip_dependents(macros: dict[str, int]) -> dict[str, int]:
+    """The four values lwIP's own opt.h computes from the ones this override sets, by the same
+    formulas (TCP_SND_QUEUELEN / TCP_SNDLOWAT / TCP_SNDQUEUELOWAT / PBUF_POOL_BUFSIZE). They are
+    what most of init.c's sanity checks are really about, and none of them is settable here."""
+    mss, snd_buf = macros["TCP_MSS"], macros["TCP_SND_BUF"]
+    snd_queuelen = (4 * snd_buf + (mss - 1)) // mss
+    return {
+        "TCP_SND_QUEUELEN": snd_queuelen,
+        "TCP_SNDLOWAT": min(max(snd_buf // 2, 2 * mss + 1), snd_buf - 1),
+        "TCP_SNDQUEUELOWAT": max(snd_queuelen // 2, 5),
+        # LWIP_MEM_ALIGN_SIZE at MEM_ALIGNMENT 4 (lwipopts_common.h) over TCP_MSS plus the headers.
+        "PBUF_POOL_BUFSIZE": ((mss + 20 + 20 + 14) + 3) & ~3,
+    }
+
+
+def check_lwip_ensemble(macros: dict[str, int], max_connections: int | None = None) -> list[str]:
+    """Every relationship lwIP's own init.c enforces, plus the two it does NOT: its checks size the
+    shared pools for ONE connection, while this firmware admits max_connections at once. Returns
+    the violated relationships; empty means the set is coherent."""
+    d = derive_lwip_dependents(macros)
+    mss, snd_buf, wnd = macros["TCP_MSS"], macros["TCP_SND_BUF"], macros["TCP_WND"]
+    seg, pool, pool_buf = macros["MEMP_NUM_TCP_SEG"], macros["PBUF_POOL_SIZE"], d["PBUF_POOL_BUFSIZE"]
+    problems: list[str] = []
+    # --- lwIP's own, from lib/lwip/src/core/init.c's TCP sanity block ---
+    if seg < d["TCP_SND_QUEUELEN"]:
+        problems.append(f"MEMP_NUM_TCP_SEG ({seg}) < TCP_SND_QUEUELEN ({d['TCP_SND_QUEUELEN']}, derived from TCP_SND_BUF/TCP_MSS)")
+    if snd_buf < 2 * mss:
+        problems.append(f"TCP_SND_BUF ({snd_buf}) < 2 * TCP_MSS ({2 * mss})")
+    if d["TCP_SND_QUEUELEN"] < 2 * (snd_buf // mss):
+        problems.append(f"TCP_SND_QUEUELEN ({d['TCP_SND_QUEUELEN']}) < 2 * (TCP_SND_BUF / TCP_MSS) ({2 * (snd_buf // mss)})")
+    if d["TCP_SNDLOWAT"] >= snd_buf:
+        problems.append(f"TCP_SNDLOWAT ({d['TCP_SNDLOWAT']}) >= TCP_SND_BUF ({snd_buf})")
+    if mss >= (16 * 1024) - 1:
+        problems.append(f"TCP_MSS ({mss}) >= 16383, which underflows lwIP's own TCP_SNDLOWAT calculation")
+    if d["TCP_SNDQUEUELOWAT"] >= d["TCP_SND_QUEUELEN"]:
+        problems.append(f"TCP_SNDQUEUELOWAT ({d['TCP_SNDQUEUELOWAT']}) >= TCP_SND_QUEUELEN ({d['TCP_SND_QUEUELEN']})")
+    if pool_buf <= _PBUF_PROTOCOL_HEADER_BYTES:
+        problems.append(f"PBUF_POOL_BUFSIZE ({pool_buf}) leaves no room past the {_PBUF_PROTOCOL_HEADER_BYTES}-byte protocol headers")
+    if pool and wnd > pool * (pool_buf - _PBUF_PROTOCOL_HEADER_BYTES):
+        problems.append(f"TCP_WND ({wnd}) > PBUF_POOL_SIZE * (PBUF_POOL_BUFSIZE - headers) ({pool * (pool_buf - _PBUF_PROTOCOL_HEADER_BYTES)})")
+    if wnd < mss:
+        problems.append(f"TCP_WND ({wnd}) < TCP_MSS ({mss})")
+    if max_connections is None:
+        return problems
+    # --- the two lwIP does not check, because it sizes for one connection and we admit N ---
+    # Segments are a GLOBAL pool while TCP_SND_QUEUELEN is PER connection, so one connection can
+    # drain the pool. Every admitted connection must be able to hold a full send window at once, or
+    # the server accepts work it cannot actually push (SPECIFICATION.md Part H.7).
+    want_seg = max_connections * (snd_buf // mss)
+    if seg < want_seg:
+        problems.append(f"MEMP_NUM_TCP_SEG ({seg}) < max_connections * (TCP_SND_BUF / TCP_MSS) ({want_seg}) - {max_connections} connections cannot each hold a full send window")
+    # MEM_SIZE is the arena every outbound byte passes through: modlwip.c's tcp_write() always sets
+    # TCP_WRITE_FLAG_COPY, so the payload is copied into a PBUF_RAM pbuf, which is mem_malloc()'d
+    # from it. Its per-connection share may not fall below what the fielded design already gave.
+    per_connection = macros["MEM_SIZE"] // max_connections
+    if per_connection < MEM_SIZE_BYTES_PER_CONNECTION_FLOOR:
+        problems.append(f"MEM_SIZE ({macros['MEM_SIZE']}) leaves {per_connection} B per admitted connection, below the {MEM_SIZE_BYTES_PER_CONNECTION_FLOOR} B floor - every outbound byte is copied into this arena (modlwip.c's tcp_write TCP_WRITE_FLAG_COPY)")
+    return problems
+
+
 def _validate_lwip_macros(macros: dict[str, int]) -> None:
     missing = [name for name in LWIP_SETTABLE_MACROS if name not in macros]
     unknown = sorted(set(macros) - set(LWIP_SETTABLE_MACROS))
@@ -179,6 +253,17 @@ def _validate_lwip_macros(macros: dict[str, int]) -> None:
     for name, value in macros.items():
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise OverrideError(f"lwip_connection_counts: [lwip].{name} must be a non-negative int, got {value!r}")
+    # lwIP's own relationships, always - an incoherent set is a compile-time #error deep inside
+    # lib/lwip/src/core/init.c, and this says the same thing before the build with the relationship
+    # named. The N-connection ones are checked per device by buildgen, which knows N.
+    problems = check_lwip_ensemble(macros)
+    if problems:
+        raise OverrideError(
+            "lwip_connection_counts: [lwip] in toolchain/versions.toml is not a coherent set - lwIP's "
+            "options are NOT independent (lib/lwip/src/core/init.c turns each of these into a "
+            "compile-time #error, and opt.h derives TCP_SND_QUEUELEN/TCP_SNDLOWAT/TCP_SNDQUEUELOWAT/"
+            "PBUF_POOL_BUFSIZE from them):\n  - " + "\n  - ".join(problems),
+        )
 
 
 def apply_lwip_connection_counts_override(micropython_dir: Path, overrides_dir: Path, board: str, macros: dict[str, int]) -> dict[str, str]:
@@ -193,7 +278,10 @@ def apply_lwip_connection_counts_override(micropython_dir: Path, overrides_dir: 
     include_dir = override_dir / LWIP_OVERRIDE_INCLUDE_DIR_NAME
     include_dir.mkdir(parents=True, exist_ok=True)
 
-    redefines = "".join(f"#undef {name}\n#define {name} ({macros[name]})\n" for name in LWIP_SETTABLE_MACROS)
+    # The sentinel closes the one hole a value comparison cannot: if this header is never found,
+    # every option resolves to MicroPython's own default, and a run that happens to ASK for the
+    # defaults would verify clean against a build the override never touched.
+    redefines = f"#define {LWIP_OVERRIDE_SENTINEL} 1\n" + "".join(f"#undef {name}\n#define {name} ({macros[name]})\n" for name in LWIP_SETTABLE_MACROS)
     (include_dir / "lwipopts.h").write_text(
         "// Generated by toolchain/micropython_overrides.py - SPECIFICATION.md Part B.14.2.\n"
         "// Found ahead of ports/rp2/lwip_inc/lwipopts.h, so these win over both MicroPython's own\n"
@@ -273,7 +361,7 @@ def read_lwip_macros_from_build(build_dir: Path, macros: dict[str, int], compile
         args.extend(shlex.split(match.group(1)))
     # The option name goes inside a string literal: bare, the preprocessor expands it too and
     # the line comes back as `LWIPPROBE (16) = (16)`, with the option's identity gone.
-    probe_body = '#include "lwip/opt.h"\n' + "".join(f'{_LWIP_PROBE_MARK} "{name}" = {name}\n' for name in macros)
+    probe_body = '#include "lwip/opt.h"\n' + "".join(f'{_LWIP_PROBE_MARK} "{name}" = {name}\n' for name in (*macros, LWIP_OVERRIDE_SENTINEL))
     with tempfile.TemporaryDirectory() as tmp:
         probe = Path(tmp) / "lwip_option_probe.c"
         probe.write_text(probe_body)
@@ -295,6 +383,13 @@ def verify_lwip_macros_in_build(build_dir: Path, macros: dict[str, int], compile
     """read_lwip_macros_from_build() plus the assertion. Raises OverrideError naming every option
     whose resolved value differs from what was asked for."""
     found = read_lwip_macros_from_build(build_dir, macros, compiler)
+    if found.get(LWIP_OVERRIDE_SENTINEL) != 1:
+        raise OverrideError(
+            f"lwip_connection_counts: the generated lwipopts.h was never reached by the firmware's own "
+            f"translation unit - its sentinel {LWIP_OVERRIDE_SENTINEL} is absent, so every option came "
+            f"from MicroPython's defaults however the values below compare. The BOARD_DIR redirect or "
+            f"the include ordering it depends on has changed. {_LWIP_REVERIFY}",
+        )
     wrong = {name: (want, found.get(name)) for name, want in macros.items() if found.get(name) != want}
     if wrong:
         detail = ", ".join(f"{name}: asked {want}, built {got}" for name, (want, got) in sorted(wrong.items()))

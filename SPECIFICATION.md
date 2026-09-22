@@ -1191,22 +1191,74 @@ source is edited and nothing but `make` command-line variables is passed:
   is what closes the atomic-block trap: a `TCP_MSS` that silently reverted to 536 fails the build
   instead of shipping.
 
+### The options are an ensemble, not independent knobs
+
+**This is the part that decides what a raised ceiling really costs.** `lib/lwip/src/core/init.c`
+turns nine relationships between these options into compile-time `#error`s, and `opt.h` *derives*
+four further values — `TCP_SND_QUEUELEN`, `TCP_SNDLOWAT`, `TCP_SNDQUEUELOWAT`, `PBUF_POOL_BUFSIZE` —
+from the ones set here. So a value moved alone either fails the build or silently changes something
+else. **MicroPython's own pinned block is itself a tuned set**, sitting exactly on one of those
+boundaries: `MEMP_NUM_TCP_SEG` is 32 and the derived `TCP_SND_QUEUELEN` is
+`(4 x 6400 + 799) / 800` = 32.
+
+`micropython_overrides.py`'s `check_lwip_ensemble()` restates every one of them, so an incoherent
+set is refused **by name, before the build**, rather than as a wall of preprocessor output;
+`derive_lwip_dependents()` reproduces opt.h's four formulas. `apply_lwip_connection_counts_override()`
+runs it on every call.
+
+**Two relationships lwIP does *not* check, and they are the ones that matter here.** Its own checks
+size the shared pools for **one** connection, while this firmware admits `max_connections` at once:
+
+- **`MEMP_NUM_TCP_SEG` is a global pool; `TCP_SND_QUEUELEN` is per connection.** One connection can
+  drain the pool, leaving the rest holding data the stack has accepted but cannot push. The
+  override therefore requires `MEMP_NUM_TCP_SEG >= max_connections x (TCP_SND_BUF / TCP_MSS)` —
+  every admitted connection able to hold a full send window at once.
+- **`MEM_SIZE` is the arena every outbound byte passes through.** `extmod/modlwip.c:802` calls
+  `tcp_write()` with `TCP_WRITE_FLAG_COPY` unconditionally, so the payload is copied into a
+  `PBUF_RAM` pbuf, which `pbuf_alloc()` takes from `mem_malloc()` — that heap. The override
+  requires its per-connection share to stay at or above **2,000 B**, which is what the
+  4-connection design gave (8000 / 4). A relationship, not a tuning target.
+
+`buildgen/validate.py` runs the N-connection half per device, where N is known, and refuses a
+device whose `max_connections` the firmware's own pools cannot serve.
+
+**`PBUF_POOL_SIZE` is deliberately left alone.** It backs the *inbound* path, where this firmware's
+demand is one small request per connection (bodies capped at 2,048 B, Part I.6), against ~978 B of
+GC heap per pbuf — the most expensive pool to grow. Stated rather than assumed: confirming it on
+silicon is a `LWIP_STATS` row in the hardware handover.
+
 **Measured cost, from real builds** (`RPI_PICO_W`, v1.29.0, `.bss`/`.data` and
 `__GcHeapEnd - __GcHeapStart` read off each `firmware.elf`). Baseline is `.bss` 46,312 B, `.data`
 18,080 B, GC heap **197,528 B**:
 
+Per *individual* option, which is what a first pass measures and why it misleads:
+
 | change | GC heap delta | per unit |
 | --- | --- | --- |
-| `MEMP_NUM_TCP_PCB` 5 -> 32 | -5,292 B | **-196 B per PCB slot** |
+| `MEMP_NUM_TCP_PCB` 5 -> 32 | -5,292 B | -196 B per PCB slot |
 | `MEMP_NUM_TCP_SEG` 32 -> 64 | -1,884 B | -59 B per segment |
 | `LWIP_STATS` 0 -> 1 | -1,916 B | diagnostics only |
 | `MEM_SIZE` 8000 -> 16000 | -9,372 B | |
 | `PBUF_POOL_SIZE` 16 -> 32 | -15,644 B | -978 B per pbuf |
-| the 16000/1460 preset (`TCP_MSS` 1460 too) | **-19,932 B** | 10% of the whole GC heap |
 
-**PCB slots are cheap and buffers are not** - the headline the sweep produced, and the reason the
-shipped setting moves only the PCB count. Every build in that sweep succeeded, up to and including
-`MEMP_NUM_TCP_PCB = 32`: there is no compile-time wall in this range.
+Every one of those built, up to and including `MEMP_NUM_TCP_PCB = 32`: **there is no compile-time
+wall in this range.** But moving the PCB count alone is not a supported configuration, so the figure
+that matters is the **coherent ensemble** at each ceiling — `MEMP_NUM_TCP_PCB` = N + 3,
+`MEMP_NUM_TCP_SEG` = N x 8, `MEM_SIZE` = N x 2000, the rest pinned:
+
+| `max_connections` | PCB | SEG | `MEM_SIZE` | `.bss` | GC heap | vs pinned | % of heap |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 | 7 | 32 | 8,000 | 46,704 | 197,136 | -392 | 0.20% |
+| 5 | 8 | 40 | 10,000 | 49,028 | 194,812 | -2,716 | 1.37% |
+| 6 | 9 | 48 | 12,000 | 51,352 | 192,488 | -5,040 | 2.55% |
+| **7 (shipped)** | **10** | **56** | **14,000** | **53,676** | **190,164** | **-7,364** | **3.73%** |
+| 8 | 11 | 64 | 16,000 | 56,000 | 187,840 | -9,688 | 4.90% |
+| 9 | 12 | 72 | 18,000 | 58,324 | 185,516 | -12,012 | 6.08% |
+| 10 | 13 | 80 | 20,000 | 60,648 | 183,192 | -14,336 | 7.26% |
+
+**A connection costs 2,324 B of GC heap, not 196 B** — linear, and about twelve times what moving
+the PCB count alone suggests. "PCB slots are cheap" is true and irrelevant: the slot is the small
+part of what a servable connection needs.
 
 **Version-bump checklist**: re-read `lwipopts_common.h` and lwIP's `opt.h` at the new tag. If the
 anchors hold, `verify_lwip_connection_counts_anchor()` passing is the confirmation. If the atomic
@@ -4567,8 +4619,15 @@ relationship, not the number, is what this section fixes**: `max_connections` si
 `MEMP_NUM_TCP_PCB` with margin, currently 10 against 7. Three slots rather than one, because
 **TIME_WAIT pcbs come from that same pool** (`lib/lwip/src/core/tcp.c`'s `tcp_alloc()` reclaims the
 oldest TIME_WAIT only once `memp_malloc(MEMP_TCP_PCB)` has already failed) and keep-alive is
-unimplemented here, so every single request churns one. Raising `max_connections` without raising
-the pool buys nothing; raising the pool costs 196 B of GC heap per slot (B.14.2's table).
+unimplemented here, so every single request churns one.
+
+**The PCB count is the small part.** lwIP's options are an ensemble (B.14.2), and a *servable*
+connection also needs its share of two global pools: `MEMP_NUM_TCP_SEG` (a connection that cannot
+get a segment holds data the stack has accepted but cannot push) and `MEM_SIZE` (every outbound byte
+is copied into it — `modlwip.c`'s `tcp_write()` always passes `TCP_WRITE_FLAG_COPY`). Moved together,
+a connection costs **2,324 B of GC heap**, twelve times what the PCB slot alone suggests, and
+`max_connections = 7` costs **3.73%** of the heap. `check_lwip_ensemble()` refuses a ceiling the
+pools cannot serve, per device, at build time.
 
 **`backlog` is coupled to it, and must be.** `asyncio.start_server()` defaults to a backlog of 5
 (`extmod/asyncio/stream.py`), so before this was made a constructor knob any `max_connections`
@@ -4581,7 +4640,11 @@ lwIP at all** — its sockets are real host sockets — so it validates admissio
 simultaneous body allocation, task growth and latency, and **cannot** validate the PCB ceiling.
 The twin's own evidence for 7 is in `CONNECTION_SCALING_PLAN.md`: at a board-calibrated heap the
 largest contiguous free block retained under a 2x overload burst holds at 13.8% of its
-after-boot value through `max_connections = 7` and falls to 4.0% at 8. The lwIP half is queued for
+after-boot value through `max_connections = 7` and falls to 4.0% at 8. **Two independent curves stop
+at the same place** — that contiguity cliff, and the ensemble cost crossing 4% of the GC heap.
+Service, not just survival, is asserted directly: every admitted connection must come back with a
+complete, correct, parseable response inside a bounded time, over repeated rounds, and concurrent
+page loads must be byte-identical to an uncontended one. The lwIP half is queued for
 the bench (`REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md`) and is not yet confirmed on silicon.
 
 HTTP keep-alive is deliberately not implemented: vendored `ext/microdot.py` always closes after one
