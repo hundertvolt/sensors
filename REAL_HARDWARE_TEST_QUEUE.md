@@ -478,11 +478,12 @@ first FRAM chunks.
 
 ## 1F. Measure A/B's own leftover rows, carried over when the remediation plan closed
 
-`HEAP_REMEDIATION_PLAN.md`'s section T held six real-hardware rows. Two are done (T.5's boot cost,
-§7F.7) and two are partly answered; the rest never ran. The plan was deleted once its 53 other boxes
-were closed — documentation holds current state, not the path that got there (CLAUDE.md) — so the
-rows live here now, which is where a bench session looks for them. **The two done rows are not
-repeated**: T.5 is §7F.7, and the hold-time aggregate is A6 above.
+The (now deleted) remediation plan's section T held seven real-hardware rows. One is closed — T.5's
+boot cost, §7F.7 — two are partly answered, and four never ran; the six that are not closed are the
+table below. The plan was deleted once its other 53 boxes were closed — documentation holds current
+state, not the path that got there (CLAUDE.md) — so those rows live here now, which is where a bench
+session looks for them. **T.5 is not repeated**; T4 is listed because A6 above answers only its
+aggregate half, not the per-command figure Part F.5.8 still asks for.
 
 | # | Run (plan row) | Notes | Status |
 | --- | --- | --- | --- |

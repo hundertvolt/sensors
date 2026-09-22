@@ -23,10 +23,9 @@ def _is_gc_collect(node: ast.AST) -> bool:
 
 
 def _collect_call_sites(tree: ast.Module) -> "list[str]":
-    """Every `gc.collect(...)` call in this module, each labelled with the nearest enclosing
-    function - "<module>" for one at import time, which would run on every boot. Explicit descent
-    rather than ast.walk(): a walk from the module reaches calls inside functions too, and would
-    attribute them twice."""
+    """Every `gc.collect(...)` call in this module, labelled with the nearest enclosing function -
+    "<module>" for one at import time, which would run on every boot. Explicit descent, not
+    ast.walk(): a walk from the module reaches calls inside functions too and would double-count."""
     sites: list[str] = []
 
     def visit(node: ast.AST, owner: str) -> None:

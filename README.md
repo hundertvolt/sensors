@@ -698,8 +698,8 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   that constrain any fix, and every remedy candidate's ensembled numbers. Its §0A states the
   mechanism and §9 quarantines every figure a defective instrument produced or a later measurement
   overturned — check there before reusing any number found in an older transcript or doc. **Cited
-  by `SPECIFICATION.md` Part I and by two `src/` comments, so it is the evidence annex now rather
-  than a throwaway**: it goes when those citations do, and the rules and current-state facts it
+  from ~30 places — five `SPECIFICATION.md` Parts, `REAL_HARDWARE_TEST_QUEUE.md` and two `src/`
+  comments among them — so it is the evidence annex now rather than a throwaway**: it goes when those citations do, and the rules and current-state facts it
   established already live in `SPECIFICATION.md`/CLAUDE.md.
 - **[`REAL_HARDWARE_TEST_QUEUE.md`](REAL_HARDWARE_TEST_QUEUE.md)** — the single list of everything
   waiting on the dev bench (suite runs, targeted investigations, coverage gaps that need silicon,

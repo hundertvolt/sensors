@@ -29,10 +29,9 @@ WORST_CASE_ALLOCATION = 16_384
 
 
 def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> None:
-    # The one memory figure no fake can produce: the RP2040's real 264KB SRAM minus the firmware's
-    # own static footprint, measured after the real dev object graph exists. The device script
-    # checks survivor volume and contiguity; the placement check below needs the block map, which
-    # only the host can read back.
+    # The one memory figure no fake can produce: real 264KB SRAM minus the firmware's own static
+    # footprint, after the real dev object graph exists. The device script checks survivor volume
+    # and contiguity; the placement check below needs the block map, which only the host reads back.
     output = board.run_isolated(DEVICE_SCRIPTS / "heap_headroom_after_full_system_build.py", timeout_s=120.0)
     # Print on pass too, not only in the assertions below: run_isolated() captures device stdout
     # into a string, so a PASSING run used to discard the figures and 7F.6 lost exactly that number.

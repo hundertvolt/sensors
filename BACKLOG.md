@@ -651,8 +651,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     it rides the next real-hardware session rather than being pushed blind
     (`REAL_HARDWARE_TEST_QUEUE.md`).
 
-42. **Closed 2026-09-19 (owner decision 4): every header and inline comment block in the repo is
-    inside the 3-line cap.** The cap was tightened from "no hard numeric cap" to 3 lines per block
+42. **Closed 2026-09-19 (owner decision 4): every header and inline comment block in the repo's
+    Python, JS and CSS is inside the 3-line cap** — shell was never in the sweep, see the closing
+    paragraph. The cap was tightened from "no hard numeric cap" to 3 lines per block
     by the project owner on 2026-09-14, re-confirmed 2026-09-18, and the owner then asked for the
     same treatment applied once - not permanently - to everything outside `src/`.
 
@@ -695,6 +696,23 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     pass by the owner's explicit framing, not a standing gate: new code is expected to meet the cap
     as it is written, and nothing enforces it mechanically.
 
+    **What the pass did not cover — shell, measured 2026-09-22, owner's call.** Every sweep commit
+    touched `.py`/`.js`/`.css` only, so `scripts/*.sh` still carries **88** blocks over the cap, 40
+    of them in `scripts/test.sh` (whose file header alone is three blocks of 11, 14 and 6 lines).
+    Python, JS and CSS re-measure at **zero** today, header/docstring and inline alike, after seven
+    residual blocks were brought in on 2026-09-22. Four inline: `test_asy_webserver_service.py`
+    (which also still claimed the retired 8MB Unix-port heap), `flash/test_memory_stress.py` and two
+    `tests_hardware/bench/` files. Three docstrings: `tests_hardware/error_log_helpers.py`,
+    `test_gc_collect_sites.py`, and `test_memory_error_gate_agreement.py`, whose 4-line header this
+    branch had written itself. A blank line inside a docstring separates blocks exactly as a bare
+    `#` does, so the measurement counts blocks, not whole docstrings.
+
+    Shell is left as an owner decision rather than swept unasked: CLAUDE.md's cap says "all code in
+    the repo" but names only Python's `#` and JS's `//`, and these blocks are load-bearing
+    build-chain WHY notes, so a bulk rewrite is the kind that loses knowledge. New shell comments
+    are written to the cap either way — every block this branch added to `scripts/test.sh` is
+    inside it.
+
 43. **Closed 2026-09-19: `main` is merged in, and the "purely mechanical" assessment of that merge
     was wrong in four places.** The branch's base was `348be6d` (PR #70); `main` had moved 76
     commits ahead to `32e9a8e`, none of them in this branch's history. The recorded resolution held
@@ -731,6 +749,19 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     takes one side wholesale, run every tier before trusting it.
 
 ## Deferred / explicitly out-of-scope work
+
+- **48 `§` references in `buildgen/` and `tests_scripts/test_buildgen_*` point at a design record
+  that no longer exists**, found 2026-09-22 auditing this branch's cross-links. They cite the
+  retired `BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md` (folded into SPECIFICATION.md Part L and
+  deleted in `901e15d9`) — `§2`/`§2.3`/`§2.6`/`§2.9` for the wiring-defaults mechanism, `§5.x`/
+  `§7.x`/`§10.x` for validation coverage — across 11 files, 21 of them in
+  `tests_scripts/test_buildgen_validate.py`. Unqualified, so a reader follows them into
+  `HEAP_FRAGMENTATION_MEASUREMENTS.md`'s own `§2.x`, which is about heap fragmentation: worse than
+  a dead link. The prose around each still carries its WHY, so nothing is lost meanwhile. Fix is to
+  re-point them at Part L.6 (`buildgen/graph.py:47` already pairs `§2.9` with a real
+  `SPECIFICATION.md Part C.14.3` citation, which is the target shape) or drop the prefix where the
+  sentence stands alone — deferred because the section-to-Part mapping is not mechanical: some
+  cited numbers exist in no surviving revision of that file.
 
 - **A test that fails only under the settrace binary is structurally invisible to CI, and one
   did.** `unit-tests-coverage` is deliberately `continue-on-error` (coverage never gates anything
@@ -796,9 +827,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   `pyproject.toml` (+159), and on the web side
   `package.json`/`vitest.config.js`/`eslint.config.js` (2026-09-19's PUT-matrix split - npm scripts
   and a build-time define, which `env --tier generic` installs through but does not compile),
-  and - the class the lint/typecheck recipe never exercises at all - `toolchain/setup_toolchain.py`
-  plus the new `toolchain/micropython_overrides.py` (PR #90's `MICROPY_ASYNC_KBD_INTR=0` Unix-port
-  build override, SPECIFICATION.md Part B.14.1). That last pair is what a compiler-version-sensitive
+  and - the class the lint/typecheck recipe never exercises at all - the two `toolchain/` files:
+  `setup_toolchain.py` as described above, plus the new `micropython_overrides.py` (PR #90's
+  `MICROPY_ASYNC_KBD_INTR=0` Unix-port build override, SPECIFICATION.md Part B.14.1).
+  That pair is what a compiler-version-sensitive
   break would actually show up in, so it is the part worth the owner's next manual run; a
   `scripts/test.sh` change is host tooling and low-risk. 2026-09-22 added two more to it, both pure
   shell with no build impact: the `MemoryError` gate matches `memory allocation failed` as well as

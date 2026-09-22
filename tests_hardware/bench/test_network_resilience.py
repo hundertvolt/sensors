@@ -729,11 +729,12 @@ def test_put_oversized_body_is_rejected_with_413_over_the_normal_network(dut_ip:
 
 # ---------------------------------------------------------------------------
 # The request-body cap on real hardware, over real WiFi. tests/test_asy_webserver_service.py's
-# F.2b pins "an oversized body is never READ" directly, by counting the readexactly() sizes the
-# server asks its reader for. Over the wire that is not observable, so these mirror it on the one
-# thing that is: WHO answered. 413 comes from vendored microdot before any handler runs; 200 can
-# only come from the handler, which means the body was buffered and dispatched. Full account of
-# why both caps had to move together: SPECIFICATION.md Part I.6.
+# F.2b pins "an oversized body is never READ" by counting the readexactly() sizes the server asks
+# its reader for; over the wire that is not observable, so these mirror it on WHO answered.
+#
+# 413 comes from vendored microdot before any handler runs; 200 can only come from the handler,
+# which means the body was buffered and dispatched. Full account of why both caps had to move
+# together: SPECIFICATION.md Part I.6.
 # ---------------------------------------------------------------------------
 
 _BODY_CAP = 2048  # asy_webserver_service.py's max_content_length, now bound to max_body_length too

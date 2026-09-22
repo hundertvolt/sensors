@@ -1,7 +1,6 @@
-"""SPECIFICATION.md Part I.4(e)'s bar is asserted by four separate gates - the unit tier, the twin
-tier and the flash/bench hardware tiers - each with its own copy of the pattern. Three of the four
-were blind to a caught degrade until 2026-09-22; this keeps them agreeing, and the suite's own
-deliberate injections clear of the wording they grep for."""
+"""SPECIFICATION.md Part I.4(e)'s bar is asserted by four separate gates - unit, twin and the
+flash/bench hardware pair - each holding its own copy of the pattern. This keeps all four agreeing,
+and the suite's own deliberate injections clear of the wording they grep for."""
 
 import ast
 from pathlib import Path

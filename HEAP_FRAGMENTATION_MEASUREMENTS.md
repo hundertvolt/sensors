@@ -7,11 +7,13 @@ and its one unpersisted finding — the external prior art — moved into `SPECI
 
 **This file is the citation target, not a throwaway.** The rules and current-state facts it
 established are in `SPECIFICATION.md` Part I, CLAUDE.md and BACKLOG.md, as the migration convention
-requires; what stays here is the evidence *behind* them, which `SPECIFICATION.md` Part I cites by
-section in ~30 places and two `src/` comments cite directly. It goes when those citations do — not
+requires; what stays here is the evidence *behind* them, cited by section from ~30 places across the
+repo — 8 in `SPECIFICATION.md` (Parts B, C, E, F and I), 8 in `REAL_HARDWARE_TEST_QUEUE.md`, and two
+`src/` comments in `asy_fram_driver.py` that cite it directly. It goes when those citations do — not
 while the spec points at it for detail it deliberately does not carry. References below to
-`HEAP_REMEDIATION_PLAN.md` are provenance: that plan closed and was deleted on 2026-09-22, with its
-open real-hardware rows carried into `REAL_HARDWARE_TEST_QUEUE.md` §1F.
+`HEAP_REMEDIATION_PLAN.md`, and to "the handover's §2.x", are provenance only: both files were
+deleted on 2026-09-22, the plan's open real-hardware rows carried into
+`REAL_HARDWARE_TEST_QUEUE.md` §1F. A bare `§` anywhere else in this file means this file.
 
 **Only measurements that survived verification are recorded here.** Figures that were produced by a
 defective instrument, or that a later and stronger measurement overturned, are not mixed in — they
@@ -4551,7 +4553,7 @@ closed door. The general prohibition for business logic and the run phase stands
 
 ---
 
-## 12. Not started, carried forward from the handover
+## 12. Not started, carried forward from the deleted handover
 
 - Commit Tier 1 into the repo properly: the retained frozen-port build variant, the runtime
   neutralisations, the calibrated heap size, and the census tooling. Touches
@@ -4568,8 +4570,10 @@ closed door. The general prohibition for business logic and the run phase stands
 - ~~Fix the stale lint-selection sentence in CLAUDE.md's "Code quality tooling"~~ — **done in this
   session.** It claimed the selection was `E`/`F`/`W`/`I`/`UP`/`B` while `pyproject.toml:104` sets
   `select = ["ALL"]`, which CLAUDE.md itself referenced correctly in four other places.
-- Amend the handover's §2.7.1 twin table with §1.4's calibration finding, rather than leaving two
-  contradictory tables in the repo.
+- ~~Amend the handover's §2.7.1 twin table with §1.4's calibration finding, rather than leaving two
+  contradictory tables in the repo.~~ **Moot since 2026-09-22**: that handover was deleted, so the
+  second table is gone; §9 keeps it quarantined by name with §1.4 as the reason, which is what the
+  amendment was for.
 - Optional: rebuild the frozen port from the post-`f6a182d` tree and run the exact same-binary A/B
   (an `oldsleep` inverse-patch mode is already implemented) so the committed code is measured rather
   than approximated by the runtime `newsettle` patch.

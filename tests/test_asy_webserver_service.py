@@ -1288,12 +1288,12 @@ def test_f2_body_truncated_by_a_clean_peer_close_degrades_via_microdots_own_blan
 # F.2b - request-body buffering: an oversized body must never be read into memory at all.
 #
 # ext/microdot.py reads the body inside Request.create() (`:426`) and only answers 413 later, in
-# dispatch_request() (`:1443`) - so a body between max_body_length and max_content_length is
-# allocated in full and then thrown away. Leaving max_body_length at microdot's own 16 KB default
-# while max_content_length is 2048 opens exactly that band, and max_connections of them can be in
-# flight at once. WebserverService binds the two, and these tests pin that behaviourally: the
-# server must never ASK its reader for more than the cap, which is the direct cause rather than a
-# memory heuristic an 8MB Unix-port heap could never show (same framing as H.3/I.2's hammers).
+# dispatch_request() (`:1443`), so a body between max_body_length and max_content_length is
+# allocated in full and then thrown away - the band WebserverService closes by binding the two.
+#
+# These tests pin the direct cause, not a memory heuristic the Unix-port heap could never show: the
+# server must never ASK its reader for more than the cap (same framing as H.3/I.2's hammers). Why
+# both caps had to move together, with the measured schema maxima: SPECIFICATION.md Part I.6.
 
 
 class _BodySizeReader(_ScriptedReader):

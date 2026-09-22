@@ -428,9 +428,9 @@ information):
   `@typedef`/`@param`/`@returns` annotations are the same case** — `npm run typecheck` really
   checks them with `tsc`, so `js/definitions.js`'s ~37-line `@typedef` run is a type declaration,
   not a comment; the prose above it is not exempt. Applied across `src/` in one pass (project
-  owner's direction, 2026-09-18), and the header blocks are at zero repo-wide since the
-  concentrated run the same day; the remaining inline blocks are measured per scope in BACKLOG.md.
-  Keep new code to this bar.
+  owner's direction, 2026-09-18); Python, JS and CSS are at zero over-cap blocks, header and inline
+  alike, while shell was never swept — BACKLOG.md item 42 carries the per-scope measurement and the
+  one open decision. Keep new code to this bar.
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
@@ -468,7 +468,8 @@ information):
 - **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions). **Each tool is its own job/
   stage**, so a failure names the tool directly instead of a shared "lint" job going red:
   `lint-and-typecheck` (ruff + mypy), `shellcheck`, `actionlint`, `zizmor`, plus the test/build
-  stages (`unit-tests`, `unit-tests-coverage`, `digital-twin-e2e`, `firmware-build-verify`) and the
+  stages (`unit-tests`, `unit-tests-gc-threshold`, `unit-tests-coverage`, `digital-twin-e2e`,
+  `firmware-build-verify`) and the
   web tier. Note `unit-tests` keeps `needs: lint-and-typecheck` (the standing hang backstop below);
   the other lint stages run in parallel and gate nothing, so one of them failing no longer silently
   skips the whole test suite. `unit-tests-coverage` (Session 8's closing-consistency-pass PR) is the
@@ -551,38 +552,28 @@ information):
   `sys.settrace` inside MicroPython) and rendering (`scripts/_render_coverage.py`, a second
   self-contained `uv run` script, under CPython) are two separate stages glued together through
   `coverage.py`'s own `CoverageData` API — see SPECIFICATION.md Part E.5 ("Coverage") for the full
-  pipeline. **Two Unix-port binaries are built, not one** (owner decision, 2026-09-21):
-  `build-standard` is the test rig and is built **without** `MICROPY_PY_SYS_SETTRACE`, while
-  `build-settrace` carries the flag and is used only by `--coverage`; `ports/rp2`'s firmware build
-  never gets it either way. `scripts/test.sh` picks by mode, and `build_unix_port()` in
-  `toolchain/setup_toolchain.py` builds both. **The build directory's name no longer identifies its
-  variant**, so `scripts/test.sh` asks the binary itself (`hasattr(sys, "settrace")`) and rebuilds
-  on a mismatch rather than trusting the path: a `~/pico-toolchain` predating the split holds a
-  `build-standard` that still carries the flag and is still executable, which an existence check
-  accepts — CI is covered instead by the toolchain cache key hashing `setup_toolchain.py`. Don't
-  re-diagnose a long-lived toolchain dir suddenly rebuilding its Unix ports once as a bug. **An earlier
-  note here called the flag "an inert hook check when unused" — measured false on 2026-09-18**:
-  with it compiled in, `py/vm.c`'s `FRAME_ENTER()` runs `mp_prof_frame_enter()` on every bytecode
-  entry, which allocates a frame object and a code object per call and per generator resume whether
-  or not a trace callback is installed (`py/profile.c:190`). Against an otherwise identical
-  settrace-free build of the same frozen manifest: `await asyncio.sleep(0)` 1,152 B vs 0 B, a
-  coroutine call 224 vs 64 B, one FRAM logger `setup()` 651,680 vs 137,120 B (4.75x). It changes no
-  test's *result*, but every allocation figure measured under this binary — the digital twin's and
-  the memory-safety suite's alike — is inflated 4-5x, non-uniformly, relative to the firmware. Full
-  account and the per-node conversion table: HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7 and
-  §3A. **That was §11 item 0, and it is now decided and done**: the plain run uses the flag-free
-  binary, so its figures are the firmware's own scale, and the allocation-heavy files got faster
-  with it (`test_sensortask_wozi.py` 24.6s → 9.3s) while wait-bound ones are unchanged. Only
-  `--coverage` still measures under the inflated binary, which is inherent - it needs the flag. CI
-  (`.github/workflows/ci.yml`) runs it as its own non-gating job, `unit-tests-coverage` — separate
-  from `unit-tests` because `timeout-minutes` gates a whole job rather than its real step, so the
-  instrumented rerun would otherwise cancel a suite that had already passed (it did, on run
-  `34755468619`). A markdown summary goes to that run's
-  GitHub Actions Job Summary (not the repo's main page), the HTML report is a downloadable build
-  artifact (GitHub doesn't render it inline), and the Cobertura XML uploads to Codecov — which
-  needs this repo registered at codecov.io plus a token/OIDC setup that hasn't happened yet, so
-  that upload currently no-ops. Locally, `--coverage` only prints the output paths; nothing opens
-  automatically. See README.md's "Test coverage" section for the full user-facing rundown.
+  pipeline, which README.md's own "Test coverage" section also points at rather than restating.
+  **Two Unix-port binaries are built, not one** (owner decision, 2026-09-21): `build-standard`,
+  built **without** `MICROPY_PY_SYS_SETTRACE`, is the test rig every plain run uses, while
+  `build-settrace` carries the flag and is `--coverage`'s alone; `ports/rp2`'s firmware build never
+  gets it either way. `scripts/test.sh` picks by mode, and `build_unix_port()` in
+  `toolchain/setup_toolchain.py` builds both. **Why the flag cannot simply stay compiled in, the
+  measured 4-5x allocation inflation it causes, and why the build directory's name no longer
+  identifies its variant: SPECIFICATION.md Part E.5.2** — the operational consequences are that
+  `scripts/test.sh` asks the binary itself (`hasattr(sys, "settrace")`) and rebuilds on a mismatch,
+  so don't re-diagnose a long-lived toolchain dir rebuilding its Unix ports once as a bug; and that
+  any allocation figure taken under `--coverage` is inflated, coverage being line coverage only.
+  **That was HEAP_FRAGMENTATION_MEASUREMENTS.md §11 item 0, now decided and done**, and the
+  allocation-heavy files got faster with the flag gone (`test_sensortask_wozi.py` 24.6s → 9.3s)
+  while wait-bound ones are unchanged. CI (`.github/workflows/ci.yml`) runs the instrumented rerun
+  as its own non-gating job, `unit-tests-coverage` — separate from `unit-tests` because
+  `timeout-minutes` gates a whole job rather than its real step, so it would otherwise cancel a
+  suite that had already passed (it did, on run `34755468619`). A markdown summary goes to that
+  run's GitHub Actions Job Summary (not the repo's main page), the HTML report is a downloadable
+  build artifact (GitHub doesn't render it inline), and the Cobertura XML uploads to Codecov —
+  which needs this repo registered at codecov.io plus a token/OIDC setup that hasn't happened yet,
+  so that upload currently no-ops. Locally, `--coverage` only prints the output paths; nothing
+  opens automatically.
 - **A third party's momentary outage must never read as a red test result.** `scripts/test.sh`'s
   pytest tier shells out to `uv run`, and that implicitly builds the **whole** `dev` group first —
   ruff, mypy, shellcheck, zizmor and `actionlint-py` included, none of which `tests_scripts/` needs.

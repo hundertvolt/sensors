@@ -26,6 +26,7 @@ def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, b
     # kick_all_stations() first: a stale AP-side station-table entry for the DUT's MAC is the
     # dominant cause of a hard_reset()-triggered reconnect failing here - see kick_client()'s own
     # docstring. This is the primary regression coverage for that exact scenario.
+    #
     # One real association can fail for reasons outside the DUT (measured 2026-09-19: 1 miss in 3
     # full suite runs, 12/12 clean in isolation, CYW43 reporting status -1 after the firmware's own
     # two retries). A second cold boot separates that from a break, which fails both - queue F13.
