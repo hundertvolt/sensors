@@ -708,6 +708,9 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   result is migrated into the permanent docs; the file goes when the last row does. It authorizes
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
+
+**`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
+
 - **[`DEVICE_REFERENCE.md`](DEVICE_REFERENCE.md)** — notes for configuring/operating a deployed
   unit (Neopixel LED signal legend, SGP40 FRAM backup config semantics), not architecture/AI-session
   material — kept separate from README.md/CLAUDE.md/SPECIFICATION.md for that reason.

@@ -4888,8 +4888,11 @@ newly allocated blocks still land low — the reach above that list's own seam, 
 same suite (the probe rebinds `gc`, so no second image is needed) and asserts that the arm *violates*
 each bound, which is what keeps the bounds meaningful; it also asserts retention is arm-independent,
 since a divergence there would mean the collects had started compensating for a leak rather than
-moving placement. Bounds are derived from the measured worst case with margin and are **twin-only** —
-the board's own reading is still owed (HEAP_FRAGMENTATION_MEASUREMENTS.md §7L). **The prohibition in (e), (f) and (g) is otherwise unchanged**: no `gc.collect()` in
+moving placement. Bounds are derived from the measured worst case with margin and are **twin-only**. The board has
+since taken its own reading (2026-09-22, HEAP_FRAGMENTATION_MEASUREMENTS.md §7M) and does **not**
+reproduce the twin's two headline ratios at its own fill, so these bounds stay a twin-scale
+statement and none of them was ever to be copied to the board; measure B's silicon confirmation is
+a different metric (§7F) and is untouched by that. **The prohibition in (e), (f) and (g) is otherwise unchanged**: no `gc.collect()` in
 business logic, none in the run phase (the supervisor loop under the starter list is the run phase
 and is asserted to have none), and none as the remedy for memory pressure.
 
