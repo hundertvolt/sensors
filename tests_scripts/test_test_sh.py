@@ -616,3 +616,84 @@ def test_the_gate_is_wired_into_the_run_and_into_the_verdict(repo_root: Path) ->
     assert text.count('_flag_memory_errors "$tag" "$log_file"') == 2, "both the PASS and the FAIL exit of run_test_file() must flag, so a degraded pass is caught too"
     assert re.search(r'if \[ -s "\$results_dir/\$tag\.memerr" \]; then\n\s*failed=1', text), "a flagged file must set failed=1, not merely print"
     assert "MemoryError seen" in text, "the summary must name the files, so a long log does not have to be re-read"
+
+
+# --- --coverage's three exit codes (SPECIFICATION.md Part E.5.3) -----------------------------------
+
+
+def _verdict_block(repo_root: Path) -> str:
+    """scripts/test.sh's closing verdict-and-exit block, source text only. Extracted rather than
+    reimplemented: the point of these tests is that the real script maps the three outcomes onto
+    three codes, so a rewrite of this logic has to keep doing it."""
+    text = _test_sh_text(repo_root)
+    start = text.index('if [ "$tests_scripts_result" = "FAIL" ]; then')
+    return text[start:].rstrip("\n")
+
+
+def _verdict_exit_code(repo_root: Path, tmp_path: Path, *, failed: int, pytest_result: str, render_failed: int) -> tuple[int, str]:
+    script = tmp_path / "verdict.sh"
+    script.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        f'failed={failed}\ntests_scripts_result="{pytest_result}"\ncoverage_render_failed={render_failed}\n'
+        f"{_verdict_block(repo_root)}\n",
+    )
+    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=False, timeout=30)
+    return done.returncode, done.stdout
+
+
+def test_a_clean_run_still_exits_zero_and_says_so(repo_root: Path, tmp_path: Path) -> None:
+    code, out = _verdict_exit_code(repo_root, tmp_path, failed=0, pytest_result="PASS", render_failed=0)
+    assert code == 0
+    assert "ALL PASSED" in out
+
+
+def test_a_failed_test_under_the_settrace_build_is_not_advisory(repo_root: Path, tmp_path: Path) -> None:
+    # The defect this exists for: unit-tests-coverage is the only job that runs build-settrace, and
+    # while its whole run was continue-on-error a failure there was invisible. One really was.
+    code, out = _verdict_exit_code(repo_root, tmp_path, failed=1, pytest_result="PASS", render_failed=0)
+    assert code == 1, "a test failure must keep exiting 1, whatever the coverage report did"
+    assert "FAILED" in out
+
+
+def test_a_renderer_failure_alone_exits_three_rather_than_one(repo_root: Path, tmp_path: Path) -> None:
+    code, out = _verdict_exit_code(repo_root, tmp_path, failed=0, pytest_result="PASS", render_failed=1)
+    assert code == 3, "tests passing with only the report broken must be distinguishable from a test failure"
+    assert "TESTS PASSED, COVERAGE RENDERING FAILED" in out
+
+
+def test_a_test_failure_outranks_a_renderer_failure(repo_root: Path, tmp_path: Path) -> None:
+    # Both broken: the caller must hear about the test, since that is the one that gates.
+    code, _ = _verdict_exit_code(repo_root, tmp_path, failed=1, pytest_result="PASS", render_failed=1)
+    assert code == 1
+
+
+def test_the_pytest_tier_still_reaches_the_exit_status(repo_root: Path, tmp_path: Path) -> None:
+    code, _ = _verdict_exit_code(repo_root, tmp_path, failed=0, pytest_result="FAIL", render_failed=0)
+    assert code == 1
+
+
+def test_both_renderer_calls_tolerate_their_own_failure(repo_root: Path) -> None:
+    # Under `set -euo pipefail` a bare call aborts the script with the RENDERER's exit code, which
+    # the caller cannot tell from a failed test - so the split above would be unreachable.
+    text = _without_comments(_test_sh_text(repo_root))
+    renders = [line for line in text.splitlines() if "_render_coverage.py" in line]
+    assert len(renders) == 2, "expected exactly the src/ and digital_twin/ render calls"
+    for line in renders:
+        assert line.rstrip().endswith("|| coverage_render_failed=1"), f"unguarded renderer call: {line.strip()}"
+
+
+def test_ci_gates_the_coverage_reruns_test_result_but_not_its_report(repo_root: Path) -> None:
+    # Anchored inside the unit-tests-coverage JOB, not on the step name: the web tier has a step
+    # called "Run unit tests with coverage" too, and that one is advisory by design.
+    workflow = (repo_root / ".github" / "workflows" / "ci.yml").read_text()
+    rest = workflow[workflow.index("\n  unit-tests-coverage:") + 1 :]
+    next_job = re.search(r"\n  [a-z][\w-]*:\n", rest)
+    job = rest[: next_job.start()] if next_job else rest
+    step = job[job.index("- name: Run unit tests with coverage"):]
+    step = step[: step.index("- name: Add coverage summary")]
+    assert "continue-on-error" not in step, "the coverage rerun's test result must gate - that is the whole point of exit 3"
+    assert 'if [ "$status" -eq 3 ]' in step, "CI must tolerate exit 3, or a broken renderer turns the job red"
+    assert "scripts/test.sh --coverage" in step
+    # The other half of the split: a red test result must not also swallow the report that rendered.
+    reports = job[job.index("- name: Add coverage summary"):]
+    assert reports.count("always() &&") == 6, "every report step in this job must publish even on a red test result"

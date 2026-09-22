@@ -3107,6 +3107,31 @@ Two consequences worth keeping in mind:
   coverage as line coverage only, never as an allocation measurement. The per-node conversion table
   is in HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7 and §3A.
 
+### E.5.3 `--coverage`'s three exit codes, and why its test result gates while its report does not
+
+Coverage never gates (CLAUDE.md's "Code quality tooling"), but a *test* that fails only under the
+settrace build is a real failure, and for a while nothing could see one: `unit-tests-coverage` is
+the only tier that runs that binary and its whole run was `continue-on-error`, so the test result
+was swallowed along with the coverage number. It happened — `scripts/test.sh --coverage` exited 1
+on 2026-09-22 (`tests/test_uart_comm_hazard.py`, 84/85) on a tree whose (e) and (f) stages were
+both 85/85, and CI would never have said so.
+
+The fix separates the two signals rather than making the whole rerun gating, which is what
+`continue-on-error` was added to prevent (a slow instrumented run cancelled by the job cap took
+`digital-twin-e2e` with it on run `34755468619`). `scripts/test.sh` now exits:
+
+| code | meaning | CI |
+|---|---|---|
+| `0` | every test passed and both reports rendered | job green |
+| `1` | a test failed, or a `MemoryError` marker was seen | **job red** |
+| `3` | every test passed; only the coverage rendering failed | tolerated, job green |
+
+Both `_render_coverage.py` invocations are `|| coverage_render_failed=1`-guarded for this: under
+`set -euo pipefail` a bare call would abort the script with the *renderer's* exit code, which a
+caller cannot tell from a failed test. The summary line says which happened
+(`Result: TESTS PASSED, COVERAGE RENDERING FAILED`), and the owner's decision of 2026-09-22 chose
+this split over the alternative of running one settrace-built file in a gating lane.
+
 ## E.6 Shared behaviors and the real-hardware test tier
 
 **`tests/_shared_rest_roundtrip.py`** holds the two genuine near-duplicate assertion *shapes* found
@@ -3135,10 +3160,19 @@ instead. See CLAUDE.md's eight scopes.
 | | **mock** | **twin** | **flash** | **bench** | **manual** |
 |---|---|---|---|---|---|
 | Executes on | Unix-port, `tests/machine.py` fakes | Unix-port, `digital_twin/` fakes (real asyncio graph) | real RP2040, USB serial | real RP2040, USB + real WiFi bridge | rides on flash or bench |
-| Fault injection | synthetic, in-process | synthetic, higher-fidelity, same interface shape | none | real (bridge host: AP down/up, `iptables`, credential rotation) | a human closes the loop |
+| Fault injection | synthetic, in-process | synthetic, higher-fidelity, same interface shape | none | real (bridge host: AP down/up, `iptables`, station kick) | a human closes the loop |
 | Proves | raw bus byte/frame correctness, schema boundaries, NAK/CRC error paths | realistic stateful/concurrent/timing/persistence behavior of the whole system | real timing, WDT reset, Timer/IRQ, flash/littlefs persistence, BOOTSEL | real lwIP/WiFi transport, real fault-injected scenarios | unplug/replug, genuine power loss, a real second device joining a hotspot |
 
 `bench` ⊇ `flash` (same board, same one-time flash). `manual` is an execution *mode*, not a tier.
+
+**Credential rotation is deliberately not a bench capability** (owner decision, 2026-09-22). The
+harness carried a real `nmcli`-driven `BenchBridge.rotate_ap_password()` with zero call sites, so
+the table above claimed a fault nothing ever injected; a botched rotation on the shared rig's
+real AP is also exactly the destructive-network-change lockout Part B.13 exists for. The method is
+removed rather than left waiting for a design review — the DUT-side halves of that scenario are
+already covered (`test_invalid_credentials_rejected_without_triggering_a_lockout`,
+`test_garbage_ssid_via_rest_config_is_handled_gracefully`), and `nmcli` can rotate the PSK by hand
+if a one-off ever needs it.
 
 ### E.6.2 Shared behavior catalog + per-backend capability adapters
 
@@ -3201,7 +3235,7 @@ with flash ⊆ bench per E.6.1) to the whole test suite — C.8 is an instance o
 special case of it. A gap here is a real gap to close, the same way a missing bus-hazard tier is,
 not a documentation nicety.
 
-This does **not** override three already-established, deliberate exceptions — the rule is scoped by
+This does **not** override four already-established, deliberate exceptions — the rule is scoped by
 them, not in tension with them:
 
 1. **Only `dev` is ever physically bench-tested** (CLAUDE.md's own hard rule). `wozi`/`arzi`/
@@ -3220,6 +3254,14 @@ them, not in tension with them:
    calibrated-reference accuracy claim) gets `tests_hardware/manual/` coverage instead of an
    automated one — `manual` is a different *execution mode* of the same real-hardware tier (E.6's
    own "`manual` is an execution mode, not a tier"), not a waiver from this rule.
+4. **The UART fault-injection catalog stays mock-only until injection hardware exists** (owner
+   decision, 2026-09-22). `tests/`'s ~20 scenarios — corrupted byte, truncated frame, duplicate,
+   receive overrun, lost final ACK, peer reset mid-transaction — have only two real-hardware
+   equivalents (silence, baud desync), because nothing sits on `dev`'s crossover jumper to corrupt,
+   drop or duplicate real bytes. The alternative considered and declined was hand-building a corrupt
+   frame from a second raw `machine.UART`: the owner's answer is that fault-injection hardware will
+   come one day but is not available, so this is a class-2 exception for now rather than a gap to
+   close by improvisation. Revisit when that hardware exists.
 
 **Out of scope entirely**: a test with no hardware-facing behavior to verify in the first place
 (`math_helpers` formulas, config-schema validation, pure JSON/string handling, buildgen's own

@@ -472,11 +472,12 @@ information):
   `firmware-build-verify`) and the
   web tier. Note `unit-tests` keeps `needs: lint-and-typecheck` (the standing hang backstop below);
   the other lint stages run in parallel and gate nothing, so one of them failing no longer silently
-  skips the whole test suite. `unit-tests-coverage` (Session 8's closing-consistency-pass PR) is the
-  plain pass's own report-only, `continue-on-error` sibling — split into its own job so a coverage
-  run's own wall-clock cost (roughly the same again as the plain pass) never sits on the critical
-  path `digital-twin-e2e`/`firmware-build-verify` wait on; see `ci.yml`'s own job comments for the
-  full account.
+  skips the whole test suite. `unit-tests-coverage` is the plain pass's own instrumented sibling,
+  split into its own job so a coverage run's own wall-clock cost (roughly the same again) never sits
+  on the critical path `digital-twin-e2e`/`firmware-build-verify` wait on. **Its coverage number is
+  advisory but its test result is not** — owner decision, 2026-09-22, since it is the only job that
+  runs `build-settrace` and a failure unique to that binary was invisible while the whole job was
+  `continue-on-error`. The three exit codes and what CI does with each: SPECIFICATION.md Part E.5.3.
 - **`zizmor` audits the GitHub Actions workflows themselves** — `GITHUB_TOKEN` scope, checkout
   credential persistence, action pinning: the one part of the supply chain ruff/mypy can't see.
   Policy config is `.github/zizmor.yml` (only `unpinned-uses` is configured — `actions/*` may be
@@ -566,9 +567,10 @@ information):
   **That was HEAP_FRAGMENTATION_MEASUREMENTS.md §11 item 0, now decided and done**, and the
   allocation-heavy files got faster with the flag gone (`test_sensortask_wozi.py` 24.6s → 9.3s)
   while wait-bound ones are unchanged. CI (`.github/workflows/ci.yml`) runs the instrumented rerun
-  as its own non-gating job, `unit-tests-coverage` — separate from `unit-tests` because
-  `timeout-minutes` gates a whole job rather than its real step, so it would otherwise cancel a
-  suite that had already passed (it did, on run `34755468619`). A markdown summary goes to that
+  as its own job, `unit-tests-coverage` — separate from `unit-tests` because `timeout-minutes` gates
+  a whole job rather than its real step, so it would otherwise cancel a suite that had already
+  passed (it did, on run `34755468619`). Its coverage *report* never gates; its *test result* does
+  (Part E.5.3). A markdown summary goes to that
   run's GitHub Actions Job Summary (not the repo's main page), the HTML report is a downloadable
   build artifact (GitHub doesn't render it inline), and the Cobertura XML uploads to Codecov —
   which needs this repo registered at codecov.io plus a token/OIDC setup that hasn't happened yet,

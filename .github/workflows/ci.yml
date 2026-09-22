@@ -644,7 +644,8 @@ jobs:
   # above alike. Keep the job split even if the suite gets faster again.
   unit-tests-coverage:
     # Success-gated on purpose (no `if: !cancelled()`, unlike unit-tests' own edge above): there is
-    # nothing to measure if the suite did not pass, and this job gates nothing itself.
+    # nothing to measure if the plain suite did not pass. Note this job is no longer purely
+    # advisory - its own test step gates now, for the reason that step's comment gives.
     needs: unit-tests
     permissions:
       contents: read
@@ -667,35 +668,46 @@ jobs:
               sleep $((attempt * 10))
           done
           uv sync
-      # continue-on-error: true at every step below - a coverage-tooling failure must never read
-      # as a test regression; unit-tests above is the only real pass/fail signal for this suite.
-      # Re-runs the same suite under the same Unix port binary (always built with
-      # MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port()), wrapped by tests/_coverage_runner.py,
-      # to measure src/ AND digital_twin/ line coverage (two reports from one shared run - see
-      # scripts/test.sh's own comment).
-      - name: Run unit tests with coverage
-        run: scripts/test.sh --coverage
-        continue-on-error: true
+      # Every report step below is `always() && hashFiles(...)`: the gate and the report are
+      # separate signals, so a red test result must not also swallow whatever coverage did render.
+      # Re-runs the same suite under build-settrace, wrapped by tests/_coverage_runner.py, to
+      # measure src/ AND digital_twin/ line coverage (two reports from one shared run - see
+      # scripts/test.sh's own comment). Every step AFTER this one is continue-on-error, because a
+      # coverage-tooling failure must never read as a test regression.
+      #
+      # This step is NOT, and that is the point: build-settrace is the only interpreter variant no
+      # other job runs, so a test that fails only under it was invisible while the whole job was
+      # advisory - and one really was, on 2026-09-22. Exit 1 is a test failure and goes red; exit 3
+      # is "every test passed, only the report failed" and stays advisory (Part E.5.3).
+      - name: Run unit tests with coverage (the test result gates, the report does not)
+        run: |
+          status=0
+          scripts/test.sh --coverage || status=$?
+          if [ "$status" -eq 3 ]; then
+              echo "::warning::coverage rendering failed, but every test passed (exit 3) - report only"
+              exit 0
+          fi
+          exit "$status"
       - name: Add coverage summary to job summary
-        if: hashFiles('coverage_summary.md') != ''
+        if: ${{ always() && hashFiles('coverage_summary.md') != '' }}
         run: cat coverage_summary.md >> "$GITHUB_STEP_SUMMARY"
         continue-on-error: true
       - name: Add digital_twin/ coverage summary to job summary
-        if: hashFiles('coverage_summary_digital_twin.md') != ''
+        if: ${{ always() && hashFiles('coverage_summary_digital_twin.md') != '' }}
         run: cat coverage_summary_digital_twin.md >> "$GITHUB_STEP_SUMMARY"
         continue-on-error: true
       # Free for public repos; needs a CODECOV_TOKEN repo secret (or Codecov's tokenless PR-from-
       # fork support) once this repo is registered at codecov.io - not something CI itself can set
       # up. fail_ci_if_error keeps a missing/invalid token from ever failing the job either way.
       - name: Upload coverage to Codecov
-        if: hashFiles('coverage.xml') != ''
+        if: ${{ always() && hashFiles('coverage.xml') != '' }}
         uses: codecov/codecov-action@a99c28d3f0da835de33ff2feb2e15691c7b9641f # v7
         with:
           files: coverage.xml
           fail_ci_if_error: false
         continue-on-error: true
       - name: Upload digital_twin/ coverage to Codecov
-        if: hashFiles('coverage_digital_twin.xml') != ''
+        if: ${{ always() && hashFiles('coverage_digital_twin.xml') != '' }}
         uses: codecov/codecov-action@a99c28d3f0da835de33ff2feb2e15691c7b9641f # v7
         with:
           files: coverage_digital_twin.xml
@@ -703,14 +715,14 @@ jobs:
           fail_ci_if_error: false
         continue-on-error: true
       - name: Upload HTML coverage report artifact
-        if: hashFiles('htmlcov/index.html') != ''
+        if: ${{ always() && hashFiles('htmlcov/index.html') != '' }}
         uses: actions/upload-artifact@v7
         with:
           name: coverage-html
           path: htmlcov/
         continue-on-error: true
       - name: Upload digital_twin/ HTML coverage report artifact
-        if: hashFiles('htmlcov_digital_twin/index.html') != ''
+        if: ${{ always() && hashFiles('htmlcov_digital_twin/index.html') != '' }}
         uses: actions/upload-artifact@v7
         with:
           name: coverage-html-digital-twin

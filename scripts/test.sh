@@ -475,11 +475,15 @@ for test_file in "${test_files[@]}"; do
     fi
 done
 
+# Both `|| coverage_render_failed=1` rather than bare: under `set -e` a renderer failure would
+# abort here with ITS exit code, which the caller cannot tell from a failed test. Coverage is a
+# report and never gates, but the test result under this binary must (exit 3 below).
+coverage_render_failed=0
 if [ "$coverage" = "1" ]; then
     echo "== Rendering coverage report"
-    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir src --html-dir htmlcov --xml-file coverage.xml --markdown-file coverage_summary.md
+    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir src --html-dir htmlcov --xml-file coverage.xml --markdown-file coverage_summary.md || coverage_render_failed=1
     echo "== Rendering digital_twin/ coverage report"
-    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir digital_twin --html-dir htmlcov_digital_twin --xml-file coverage_digital_twin.xml --markdown-file coverage_summary_digital_twin.md
+    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir digital_twin --html-dir htmlcov_digital_twin --xml-file coverage_digital_twin.xml --markdown-file coverage_summary_digital_twin.md || coverage_render_failed=1
 fi
 
 # One rolled-up summary at the very end - each test_*.py file and tests_scripts/ already print
@@ -503,13 +507,21 @@ if [ "${#memory_error_files[@]}" -gt 0 ]; then
         sed "s/^/      /" "$results_dir/$(basename "$f" .py).memerr"
     done
 fi
-if [ "$failed" -eq 0 ] && [ "$tests_scripts_result" = "PASS" ]; then
+if [ "$tests_scripts_result" = "FAIL" ]; then
+    failed=1
+fi
+if [ "$failed" -eq 0 ] && [ "$coverage_render_failed" -eq 0 ]; then
     echo "Result: ALL PASSED"
+elif [ "$failed" -eq 0 ]; then
+    echo "Result: TESTS PASSED, COVERAGE RENDERING FAILED"
 else
     echo "Result: FAILED"
 fi
 
-if [ "$tests_scripts_result" = "FAIL" ]; then
-    failed=1
+# Three outcomes, three codes, because the caller acts differently on each: 1 = a test failed,
+# 3 = every test passed and only the report could not be rendered, 0 = both fine. CI gates on 1
+# and tolerates 3 (SPECIFICATION.md Part E.5.3); a test failure is never advisory.
+if [ "$failed" -eq 0 ] && [ "$coverage_render_failed" -eq 1 ]; then
+    exit 3
 fi
 exit "$failed"

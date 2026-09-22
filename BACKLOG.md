@@ -121,8 +121,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   test for UART's F.5.8 "never blocks" invariant against the actual shipped driver (not a hand-rolled
   clamp); wiring a periodic SET into the bench UART exerciser's live load; deciding whether the mock
   tier's ~20-scenario UART fault-injection catalog is a genuine real-hardware structural exception or
-  needs a raw-second-UART injection technique; a project-owner design review before any
-  `rotate_ap_password()` bench test (real AP credential rotation on the shared bench rig); a
+  needs a raw-second-UART injection technique (**answered
+  2026-09-22: a structural exception until injection hardware exists** — Part E.6.6's fourth item); a
   real-hardware test for `_reboot()`'s alarm-pool-exhaustion fallback; and a hard-reset-recovery bench
   test for NOTIFY's own FRAM chunk (needs an observable-write signal analogous to SGP40's `BackupTS`
   first). Re-running this sweep against other domains (it did not touch e.g. sensortask/system_service
@@ -774,19 +774,16 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   implementation-plan numbers (`§4.3`, `§5.1`, `§7.1`, `§10.x`) got: they described a phase ordering
   that documentation does not keep.
 
-- **A test that fails only under the settrace binary is structurally invisible to CI, and one
-  did.** `unit-tests-coverage` is deliberately `continue-on-error` (coverage never gates anything
-  — CLAUDE.md's "Code quality tooling"), so the *test result* of that job cannot go red either,
-  only its coverage number is advisory. On 2026-09-22 `scripts/test.sh --coverage` really did exit
-  1 — `tests/test_uart_comm_hazard.py`, 84/85 files — on a tree whose (e) and (f) stages were both
-  85/85, and nothing in CI would ever have said so. The test itself is fixed (the corrupted-payload
-  checks now take `_SUSTAINED_TIMEOUT_MS` and assert the injection landed on the payload byte), but
-  the *gap* is not: the only tier that runs the settrace interpreter is also the only tier whose
-  failures are swallowed. Options, none taken: split the coverage job's exit code from its report
-  (fail on a test failure, stay advisory on coverage), or run one settrace-built file in a gating
-  lane. Owner's call — making the whole instrumented rerun gating is what `continue-on-error` was
-  added to prevent (run `34755468619`).
-
+- **Closed 2026-09-22 (owner decision: split the exit code from the report).** A test that failed
+  only under the settrace binary was structurally invisible to CI, and one did: `scripts/test.sh
+  --coverage` really exited 1 — `tests/test_uart_comm_hazard.py`, 84/85 files — on a tree whose (e)
+  and (f) stages were both 85/85, and `unit-tests-coverage` being `continue-on-error` meant nothing
+  in CI would ever have said so. The alternative offered was running one settrace-built file in a
+  gating lane; the owner chose the split. `scripts/test.sh` now exits 1 for a test failure, 3 when
+  every test passed and only the report failed, 0 for both fine, with both `_render_coverage.py`
+  calls guarded so `set -e` cannot abort with the renderer's own code; CI gates on 1 and tolerates
+  3. Making the whole instrumented rerun gating — which `continue-on-error` was added to prevent
+  (run `34755468619`) — is still deliberately not done. Full account: SPECIFICATION.md Part E.5.3.
 - **`NTP_Host` keeps its 1024-character bound — SETTLED, owner, 2026-09-21: "keep it". Do not
   re-raise.** Fielded behaviour wins over the 4x over-permissiveness, exactly as the "same
   features, not a feature change" agreement implies, and `max_content_length` keeps its 1.56x
@@ -854,6 +851,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   Also 2026-09-22, `pyproject.toml`: the `tests/_coverage_runner.py = ["S102"]` per-file-ignore is
   gone, the suppression now sitting inline at the one `exec()` it covers the way
   `tests/_threshold_runner.py`'s already did — lint config only, no build impact.
+  And one more `scripts/test.sh` change the same day, shell only with no build step: the two
+  `_render_coverage.py` calls are `||`-guarded and the verdict block maps a renderer-only failure
+  onto exit 3, so a coverage-tooling failure stays distinguishable from a failed test.
   Kept here as the running list of what is owed, not as a merge blocker.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not

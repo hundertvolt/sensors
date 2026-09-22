@@ -1148,15 +1148,10 @@ shouldn't make unilaterally - disclosed rather than silently dropped, per BACKLO
   (no MITM device sits on the crossover jumper to corrupt/drop/duplicate real bytes) but - unlike the
   SCD30/FRAM-write-protect precedents above - this was never actually written down as one anywhere,
   and a hand-built corrupt frame via a second raw `machine.UART` write (the same technique the mock
-  tier's own `raw_frame()` helper uses in-process) is at least plausible. Needs someone with bench
-  access to actually try it before this can be closed either way.
-- **`BenchBridge.rotate_ap_password()` is built (real `nmcli`) but has zero call sites** - the bench
-  five-backend table (E.6.1) lists "credential rotation" as a real fault-injection capability the
-  harness supports, but no automated test or `manual/` script ever exercises it, so the documented
-  capability table currently overstates real coverage. Not attempted here deliberately: a botched
-  credential-rotation test on the shared bench rig's real AP risks exactly the kind of
-  destructive-network-change lockout CLAUDE.md's dead-man's-switch rule (Part B.13) exists for: this
-  needs a project-owner-reviewed design, not a blind first attempt.
+  tier's own `raw_frame()` helper uses in-process) is at least plausible. **Answered 2026-09-22
+  (owner): it is a structural exception, for now.** Fault-injection hardware will come one day but
+  is not available, so the catalog stays mock-only and is recorded as Part E.6.6's fourth
+  exception rather than improvised with a second raw UART. Revisit when that hardware exists.
 - **`_reboot()`'s own alarm-pool-exhaustion fallback (`_force_watchdog_starve = True`) is mock-only.**
   The technique to exhaust a real alarm pool already exists on real hardware
   (`fram_pause_unpause_and_gating.py`), so a flash-tier script is straightforward in principle - it
