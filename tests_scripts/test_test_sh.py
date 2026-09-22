@@ -2,6 +2,7 @@
 hazard is closed by ordering, and devices/zz_test_*.toml is a reserved live-tree fixture namespace.
 Both are ordering/naming contracts, so they are asserted against the script's own source."""
 
+import os
 import re
 import shutil
 import subprocess
@@ -81,9 +82,9 @@ def test_a_leaked_fixture_is_reclaimed_at_session_start_too(repo_root: Path) -> 
 
 
 # ---------------------------------------------------------------------------
-# TEST_PARALLELISM autodetection. Executed for real against stub interpreters rather than asserted
-# structurally: the whole point of the probe is what it DOES on a slow host, and the bench Pi4 that
-# motivated it (BACKLOG.md item 28) is not reachable from here.
+# TEST_PARALLELISM autodetection. Executed for real rather than asserted structurally: the point of
+# the probe is what it DOES on a slow host, and the bench Pi4 that motivated it (BACKLOG.md item 28)
+# is not reachable from here. The band choice runs against a stubbed clock - see _run_detector_with_clock.
 # ---------------------------------------------------------------------------
 
 
@@ -101,23 +102,60 @@ def _run_detector(repo_root: Path, tmp_path: Path, probe_sleep_s: float) -> tupl
     return jobs, cores, multiplier, probe_ms
 
 
-def test_a_fast_host_keeps_the_original_four_times_multiplier(repo_root: Path, tmp_path: Path) -> None:
-    jobs, cores, multiplier, probe_ms = _run_detector(repo_root, tmp_path, 0.0)
-    assert multiplier == 4, f"a ~0ms probe must stay on the pre-autodetection 4x default (probe {probe_ms}ms)"
-    assert jobs == cores * 4
+def _run_detector_with_clock(repo_root: Path, tmp_path: Path, elapsed_ms: int) -> tuple[int, int, int, int]:
+    """Same detector, with `date` stubbed so probe_ms is EXACTLY elapsed_ms rather than measured.
+
+    A sleeping stub cannot carry the band assertions. tests_scripts/ is backgrounded alongside the
+    whole MicroPython tier, so a 0.7s stub - nominally mid-band - reads 919-963ms under real suite
+    load and lands in the 1x band: reproduced 2026-09-22 under 96 spinners, after it turned the
+    (f) stage red on a tree where nothing was wrong."""
+    body = re.search(r"^_detect_parallelism\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
+    assert body is not None, "scripts/test.sh no longer defines _detect_parallelism() - update this test with it"
+    bin_dir = tmp_path / f"bin_{elapsed_ms}"
+    bin_dir.mkdir()
+    start_ns = 1_000_000_000_000
+    # Two successive readings, counted through a file: `date` is called once on each side of the
+    # probe, and each call is its own $(...) subshell, so the stub can keep state no other way.
+    stub_date = (
+        "#!/bin/sh\n"
+        'c="$0.calls"\n'
+        'n=$(cat "$c" 2>/dev/null || echo 0)\n'
+        'n=$((n + 1)); echo "$n" > "$c"\n'
+        f'if [ "$n" -eq 1 ]; then echo {start_ns}; else echo {start_ns + elapsed_ms * 1_000_000}; fi\n'
+    )
+    (bin_dir / "date").write_text(stub_date)
+    (bin_dir / "date").chmod(0o755)
+    stub = tmp_path / f"stub_{elapsed_ms}"
+    stub.write_text("#!/bin/sh\nexit 0\n")
+    stub.chmod(0o755)
+    script = tmp_path / f"probe_clock_{elapsed_ms}.sh"
+    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{stub}"\n{body.group(0)}\n_detect_parallelism\n')
+    env = dict(os.environ, PATH=f"{bin_dir}:{os.environ.get('PATH', '/usr/bin:/bin')}")
+    out = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env=env, check=True).stdout.split()
+    jobs, cores, multiplier, probe_ms = (int(v) for v in out)
+    assert probe_ms == elapsed_ms, f"the clock stub did not take effect: asked for {elapsed_ms}ms, detector measured {probe_ms}ms"
+    return jobs, cores, multiplier, probe_ms
 
 
-def test_a_bench_pi4_class_host_drops_to_two_times(repo_root: Path, tmp_path: Path) -> None:
-    # ~700ms is the class the real Pi4 lands in: 4 cores, but cores slow enough that 16 concurrent
-    # Unix-port processes starve a twin test's real-time budget.
-    jobs, cores, multiplier, _ = _run_detector(repo_root, tmp_path, 0.7)
-    assert multiplier == 2
-    assert jobs == cores * 2
+@pytest.mark.parametrize(
+    ("probe_ms", "expected"),
+    [(0, 4), (250, 4), (251, 2), (900, 2), (901, 1)],
+)
+def test_each_speed_band_picks_its_own_multiplier(repo_root: Path, tmp_path: Path, probe_ms: int, expected: int) -> None:
+    # Both inclusive edges as well as the middles: 250/900 are the boundaries scripts/test.sh
+    # compares with -le, and an edge silently flipping to -lt is the realistic way to break this.
+    # 2x is the bench Pi4's class - 4 cores, but slow enough that 16 processes starve a twin test.
+    jobs, cores, multiplier, _ = _run_detector_with_clock(repo_root, tmp_path, probe_ms)
+    assert multiplier == expected, f"a {probe_ms}ms probe must pick {expected}x"
+    assert jobs == cores * expected
 
 
-def test_a_genuinely_slow_host_drops_to_one_times(repo_root: Path, tmp_path: Path) -> None:
-    jobs, cores, multiplier, _ = _run_detector(repo_root, tmp_path, 1.0)
-    assert multiplier == 1
+def test_a_genuinely_slow_host_drops_to_one_times_on_the_real_clock(repo_root: Path, tmp_path: Path) -> None:
+    # The one band test kept on the REAL clock, and the only one that can be: load can only make
+    # the reading larger, which keeps a 1.2s stub inside the same >900ms band it is asserting.
+    # The 4x and 2x bands have a load-sensitive ceiling, which is what the stubbed clock above is for.
+    jobs, cores, multiplier, probe_ms = _run_detector(repo_root, tmp_path, 1.2)
+    assert multiplier == 1, f"a genuinely slow host must drop to 1x (probe {probe_ms}ms)"
     assert jobs == cores
 
 
@@ -210,8 +248,9 @@ def test_the_speed_probe_runs_before_the_pytest_job_loads_the_host(repo_root: Pa
     # the tests_scripts/ launch, measuring a host pytest already saturated - 131-141ms idle
     # against 391ms in situ, 8 jobs where 16 was warranted, non-deterministic run to run.
 
-    # Every unit test in this section runs the extracted function in isolation on an idle
-    # machine, so none of them can see it - only the ordering can, hence asserting it here.
+    # The band tests above cannot see it: they stub the clock precisely BECAUSE this tier is not
+    # idle - it runs alongside the whole MicroPython tier - so only the ordering can, hence
+    # asserting it here.
     text = _test_sh_text(repo_root)
     probe_at = text.find("_detect_parallelism() {")
     resolved_at = text.find('if [ -n "${TEST_PARALLELISM:-}" ]; then')
