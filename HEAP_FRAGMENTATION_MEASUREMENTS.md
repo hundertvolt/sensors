@@ -2257,9 +2257,16 @@ much contiguity this firmware actually needs.
 >
 > **Error 1 — the table's "largest single contiguous allocation" is per-allocation, and never asked
 > how many can be live at once.** `readexactly(content_length)` allocates a fresh `bytes` per
-> request and `max_connections` is 4, so the real simultaneous worst case was **4 x 16,384 =
-> 65,536 B** in four separate contiguous runs, against ~105,000 B free. It is now 4 x 2,048 =
+> request and `max_connections` was 4, so the real simultaneous worst case was **4 x 16,384 =
+> 65,536 B** in four separate contiguous runs, against ~105,000 B free. It became 4 x 2,048 =
 > 8,192 B.
+>
+> **Updated 2026-09-22**: `max_connections` is now **7** (SPECIFICATION.md Part H.7, and
+> `CONNECTION_SCALING_PLAN.md` for the sweep that chose it), so the simultaneous worst case is
+> **7 x 2,048 = 14,336 B** — still in separate contiguous runs of 2,048 B each, so the *largest
+> single* allocation the firmware can be asked for is unchanged. The figure scales with the
+> connection ceiling by construction, which is why raising that ceiling is a contiguity question
+> and not only a socket one.
 >
 > **Error 2 — "the tripwire sits about 5x above anything the firmware can be asked to allocate" is
 > now 16x**, because the worst reachable allocation fell to 2,048 B. §7G's thresholds are
