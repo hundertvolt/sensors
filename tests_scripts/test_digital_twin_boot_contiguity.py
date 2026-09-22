@@ -271,7 +271,7 @@ def _int_constants(source: str, names: tuple[str, ...]) -> dict[str, int]:
     return found
 
 
-def test_the_control_arm_devices_are_real_devices(repo_root: Path) -> None:
+def test_the_control_arm_devices_are_real_devices() -> None:
     # A name that stopped being a device would still parametrize, and the probe would then fail on
     # a missing generated module - a confusing import error in place of "this list is stale".
     assert set(_CONTROL_DEVICES) <= set(DEVICE_NAMES), f"{sorted(set(_CONTROL_DEVICES) - set(DEVICE_NAMES))} is no longer a real device - update the control arm with it"

@@ -531,9 +531,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     from **71 to 73 tests and 12 to 13 deselected**; the flash tier's 51/9 is unchanged, since the
     two new gates skip rather than deselect. Every count re-measured by a real `--collect-only` run.
     Neither adopted bench test has ever run on silicon: queue row R8.
-    Also settled here: of the six items `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` §1.0 calls
-    lost, five are accounted for on this branch or on `main` (checked item by item, not taken at
-    face value); only `REAL_HARDWARE_FINDINGS_PR103.md` is unaccounted for, and it never existed in
+    Also settled here: of the six items the (since deleted) harness/heap-fragmentation handover's
+    §1.0 called lost, five are accounted for on this branch or on `main` (checked item by item, not
+    taken at face value); only `REAL_HARDWARE_FINDINGS_PR103.md` is unaccounted for, and it never existed in
     any ref here — its substance appears to be what item 30 and queue row R1
     already carry. `claude/pr103-real-hardware-fram-validation` is not on the remote and has no PR.
 
@@ -791,13 +791,16 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   shell with no build impact: the `MemoryError` gate matches `memory allocation failed` as well as
   the class name, and argument/`GC_THRESHOLD` validation moved ahead of the two live-tree sweeps so
   a rejected invocation mutates nothing (it previously wiped `tests/_tmp` while the concurrent
-  MicroPython tier held scratch dirs under it). Kept here as the running list of what is
-  owed, not as a merge blocker.
+  MicroPython tier held scratch dirs under it). A third, text-only change the same day: the
+  out-of-range rejection's message now names the rp2040's own 32-bit machine word instead of
+  "a machine word" — the bound is the firmware's, since this 64-bit host accepts values up to its
+  own word and only raises `OverflowError` near 2^63 (measured against the pinned interpreter).
+  Kept here as the running list of what is owed, not as a merge blocker.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
   fixed.** The SPI form exists because the FRAM path drives the chip through blocking register
   writes and paid a coroutine pair plus a bus-lock cycle for every CS cycle (the heap-fragmentation
-  work, HEAP_REMEDIATION_PLAN.md A.1.1). `I2CDevice` has no CS pin, no per-session `configure()`
+  work, HEAP_FRAGMENTATION_MEASUREMENTS.md §3A/§3B). `I2CDevice` has no CS pin, no per-session `configure()`
   and no settle, so it has nothing equivalent to make synchronous: its `async with` is
   `Lockable`'s plain lock acquisition, and its own `async def` transfer wrappers already sit
   directly on blocking `machine.I2C` calls. Generalising the session shape to I2C is explicitly
@@ -1112,4 +1115,15 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   scenario exists at either tier to extend) - a real opportunity if a future session has the budget,
   not chased yet. The other two recombinations that matter (FRAM write vs. a real hardware reset;
   repeated WiFi flapping x concurrent bus load) already have coverage across every tier where they
-  are meaningful.
+  are meaningful.- **Part I.2's hotspot catalog has never been re-walked with a *placement* lens** — carried over
+  from the heap-fragmentation handover's own open list when that file was deleted (2026-09-22), and
+  the last item on it that had no home. I.2 scanned every `src/` file for *how much* each function
+  allocates, which is the question that matters for exhaustion; the defect this branch fixed was
+  about *where* long-lived objects land, and only its known instance (the FRAM logging path, plus
+  the two boot lists) was addressed. A second walk would ask a different question of the same files:
+  which of them still allocate something long-lived while bus or network churn is in flight?
+  Measures A and B removed the one confirmed case, and `tests_scripts/test_digital_twin_boot_contiguity.py`
+  would catch a new one *in the boot lists* — so this is a genuine open question about the run phase,
+  not a known gap, and no measurement points at one. Worth a pass if a future session has the budget;
+  SPECIFICATION.md Part I.1's prior-art note explains why the `__init__`/`setup()` split is the
+  structural answer wherever such a case is found.

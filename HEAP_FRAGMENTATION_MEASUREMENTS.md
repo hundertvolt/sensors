@@ -1,9 +1,17 @@
 # Heap fragmentation — confirmed measurements and findings
 
-Temporary file, same convention as `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`, whose Part 2 it
-continues: delete once its contents are migrated into `SPECIFICATION.md`/`CLAUDE.md`/`BACKLOG.md`.
-The handover states the defect and the ideas on the table; this file is the measured evidence base
-built on branch `claude/heap-fragmentation-remediation` (PR #105, base = PR #103's branch).
+The measured evidence base for the heap-fragmentation defect, built on branch
+`claude/heap-fragmentation-remediation` (PR #105, base = PR #103's branch). It continues the Part 2
+of `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`, deleted on 2026-09-22 once this file superseded it
+and its one unpersisted finding — the external prior art — moved into `SPECIFICATION.md` Part I.1.
+
+**This file is the citation target, not a throwaway.** The rules and current-state facts it
+established are in `SPECIFICATION.md` Part I, CLAUDE.md and BACKLOG.md, as the migration convention
+requires; what stays here is the evidence *behind* them, which `SPECIFICATION.md` Part I cites by
+section in ~30 places and two `src/` comments cite directly. It goes when those citations do — not
+while the spec points at it for detail it deliberately does not carry. References below to
+`HEAP_REMEDIATION_PLAN.md` are provenance: that plan closed and was deleted on 2026-09-22, with its
+open real-hardware rows carried into `REAL_HARDWARE_TEST_QUEUE.md` §1F.
 
 **Only measurements that survived verification are recorded here.** Figures that were produced by a
 defective instrument, or that a later and stronger measurement overturned, are not mixed in — they
@@ -4061,7 +4069,8 @@ Plan section C asked for a twin guard asserting **absolute largest-contiguous ag
 seam, after `build_system()` and after the starter list, at "the calibrated heap", with thresholds
 set from B.6's figures. Built instead as a **placement** guard, because the contiguity framing turned
 out not to survive its own premise. What shipped: `tests/_boot_contiguity_probe.py` (the boot driver)
-and `tests_scripts/test_digital_twin_boot_contiguity.py` (22 tests, 18 s, six devices).
+and `tests_scripts/test_digital_twin_boot_contiguity.py` (27 tests, six devices; 22 when 7L.3's
+bounds were first derived, and the bounds themselves are 7L.7's).
 
 ### 7L.1 Why the plan's own metric was replaced
 
@@ -4199,7 +4208,7 @@ suppressed. And **depth below the seam is the better metric anyway**: it is a me
 large allocation can move it, and it measures placement directly rather than through the frontier.
 
 **Re-verified by injection on the new binary**, not assumed: removing the per-module collect from
-`codegen.py` fails **13** of the 22 tests (batch placement on all six devices, the whole sequence on
+`codegen.py` fails **13** of the then-22 tests (batch placement on all six devices, the whole sequence on
 dev, and the count check on all six). Reverted afterwards.
 
 **One side effect worth recording.** The flag-free interpreter is also faster where it matters:

@@ -2882,6 +2882,20 @@ typecheck.sh` already do both automatically; running one such file directly, as 
 does for `test_math_helpers.py`, needs them done by hand first or the import fails with
 `ImportError: no module named 'sensortask_wozi'`.
 
+**The (f) stage is the same command with one variable set** (I.4(e)/(f) are the two stages, and
+both are run):
+
+```
+GC_THRESHOLD=32768 scripts/test.sh
+```
+
+`tests/_threshold_runner.py` then wraps each test file, applying `gc.threshold()` before the file's
+own body executes, and propagates its exit code unchanged — so the (f) stage fails a file exactly
+where the plain run would. The value is validated once in `scripts/test.sh` rather than 85 times
+inside the runner: a non-integer, or anything outside the rp2040's own 32-bit machine word, is
+rejected before the run touches the live tree. `--coverage` has its own runner and says so out loud
+when both are given, rather than silently ignoring the threshold.
+
 ## E.4 Hardware-touching files: mock at the raw bus-transaction level only
 
 `tests/machine.py` is a fake `machine` module (the Unix port's real one has no `I2C`/`SPI`/real
@@ -4460,6 +4474,41 @@ project ships pure-`.py`/frozen-bytecode only. Pico W's CYW43 firmware genuinely
 heap versus a plain Pico (roughly half the 264KB SRAM) — an accepted, unavoidable fact of this
 board choice.
 
+**External prior art, and what it forecloses.** Checked against the pinned v1.29.0 source and the
+upstream trackers, and kept here because each item rules out a class of proposal rather than
+suggesting one. MicroPython's own guidance is the hoisting rule verbatim, but only for *large*
+buffers (`docs/reference/constrained.rst:359-361`: "Where large permanent buffers or other objects
+are required it is best to instantiate these early in the process of program execution before
+fragmentation can occur") — the sub-kilobyte regime this project's own defect lives in appears
+undocumented anywhere. **No placement or lifetime API is exposed to Python at all**: `gc_alloc()`
+takes `(size_t n_bytes, unsigned int alloc_flags)` and nothing else (`py/gc.c:891`), leaving
+`gc.collect()`/`gc.threshold()`/`gc.disable()` as the only Python-visible knobs — all of which I.4
+forbids as remedies. **`MICROPY_GC_SPLIT_HEAP` is unavailable on this board**:
+`ports/rp2/mpconfigport.h:100-101` defines it as `MICROPY_HW_ENABLE_PSRAM`, and the Pico W has no
+PSRAM — it would add heap *areas* rather than lifetime separation in any case. **Upstream treats
+fragmentation as known and unfixed** (<https://github.com/micropython/micropython/issues/2057>: a
+compacting collector and a fixed-block allocator were both floated and rejected as too costly).
+
+**CircuitPython solved exactly this, and measured it** — the closest prior art there is.
+<https://github.com/adafruit/circuitpython/pull/547> ("Introduce a long lived section of the heap",
+merged 2018) allocates short-lived objects upward from the bottom and long-lived ones **downward
+from the top**, confining churn to one end: "a test import into a 20k heap that leaves ~6k free
+previously had the largest continuous free space of ~400 bytes. After this change, the largest
+continuous free space is over 3400 bytes" — **8.5x**, the same symptom shape as this project's. It
+was removed in CircuitPython 9 (<https://github.com/adafruit/circuitpython/pull/8281>), but because
+their `gc_make_long_lived()` *promotion* step — which **moves** an existing object — collided with an
+upstream `const` field, plus the merge cost; **not** because lifetime separation failed, and the
+maintainer's stated preference was to mark objects long-lived when they are allocated instead of
+moving them later. The C-level technique would need a fork of vendored MicroPython, which CLAUDE.md
+forbids; **the Python-level analogue needs no fork** — allocate the long-lived objects first, in a
+phase with no churn. C.13's sync-`__init__`/async-`setup()` split already does that structurally
+(long-lived state in `__init__`, churn-prone I/O in `setup()`), which is why that scheme is a
+placement rule as much as a readiness one, and why (f.1)'s two boot lists are the only places left
+where placement has to be managed explicitly. General embedded practice points the same way (arena
+or pool allocators grouped by lifetime, e.g. TensorFlow Lite Micro's fixed arena,
+<https://arxiv.org/pdf/2010.08678>): the principle transfers, the mechanism does not — no allocator
+can be installed under MicroPython's GC, and an asyncio webserver allocates continuously.
+
 ## I.2 Hotspot catalog — every `src/` file scanned, function by function
 
 **Needed a mitigation (fixed this session, I.3)**: `asy_webserver_service.py`'s
@@ -4578,10 +4627,17 @@ a crash but not a degrade). All four now match `MemoryError` *or* `memory alloca
 through one shared `tests_hardware/harness.py` `MEMORY_ERROR_MARKERS` for the hardware pair; their
 agreement is pinned by `tests_scripts/test_memory_error_gate_agreement.py`, which also fails a new
 hardware-tier assertion written with the bare class name. Don't narrow any of them back
-to it. The widened gate still costs nothing: measured over a full 85-file run at
-`gc.threshold(-1)`, the suite's output contains neither pattern once, and the suite's own 15
-deliberate injections raise `MemoryError("simulated allocation failure")` — wording chosen so a
-test proving a degrade path is never confused with a real allocation failure on the host.
+to it. **The board prints that text too**, which is what the hardware half of the gate rests on:
+`m_malloc_fail()` carries its message unconditionally, and rp2 resolves to
+`MICROPY_ERROR_REPORTING_NORMAL` (through `MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES`) — of the four
+reporting levels only `NONE`, which no port here uses, strips exception messages at all. The widened
+gate still costs nothing: measured over a full 85-file run at `gc.threshold(-1)`, the suite's output
+contains neither pattern once, and all 26 of the suite's own deliberate injections are worded clear
+of both — 25 read `"simulated allocation failure"` (11 written literally, 14 through the single
+`raise` in `tests/machine.py`'s Timer fake) and one reads `"starved"`. That wording is no longer left
+to whoever writes the next one: `tests_scripts/test_memory_error_gate_agreement.py` walks `tests/`
+and `digital_twin/` with `ast` for every injected exception message and fails one that borrows the
+interpreter's own words, which would otherwise turn every file it runs in red on a healthy tree.
 **One narrow, evidence-backed exception**: `digital_twin/run_generic_integration.py`'s
 `_mem_sampler()` calls `gc.collect()` on its own fixed wall-clock timer (`--mem-sample-interval-ms`,
 decoupled from the soak's request/response path entirely — E.9) purely to settle `gc.mem_free()`
@@ -4606,6 +4662,10 @@ change at all — it lifts an already-stable system further from a stability thr
 otherwise sit close to, it does not create that stability. Once applied, the *same* full suite must
 still pass with it enabled too — it's an additive safety margin layered on an already-safe design,
 never a swap of one mode for another, and never itself the explanation for why a test now passes.
+**That second run is a real command, not an aspiration**: `GC_THRESHOLD=32768 scripts/test.sh`
+(E.3) runs every file through `tests/_threshold_runner.py` with the shipped value set, and CI's own
+`unit-tests-gc-threshold` job does the same on every push — the twin CI was the only place the
+shipped value was exercised at all until 2026-09-21.
 
 **(f.1) The one structural exception: a boot-confined placement reset.** `gc.collect()` between the
 units of the two *one-time* setup lists — the generated setup batch (`buildgen.codegen`'s

@@ -333,7 +333,9 @@ information):
   citation). Matching the class name alone catches only crashes, which is the case the bar is
   *not* about; don't narrow any gate back to it. The hardware pair reads one shared
   `tests_hardware/harness.py` `MEMORY_ERROR_MARKERS`, and
-  `tests_scripts/test_memory_error_gate_agreement.py` keeps all four agreeing. **One structural
+  `tests_scripts/test_memory_error_gate_agreement.py` keeps all four agreeing — and keeps the
+  suite's own deliberate injections worded clear of what they grep for, since a message borrowing
+  the interpreter's own wording would fail every file it runs in on a healthy tree. **One structural
   exception, added 2026-09-18 with the owner's approval: the boot-confined placement reset** —
   `gc.collect()` between the units of the two one-time setup lists and nowhere else, mechanically
   confined by `scripts/lint.sh` and `tests_scripts/test_gc_collect_sites.py` on the *sites* and by

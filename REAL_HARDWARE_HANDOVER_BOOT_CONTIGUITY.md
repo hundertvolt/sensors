@@ -2,7 +2,7 @@
 
 The board-side counterpart of the host guard built this session:
 `tests_scripts/test_digital_twin_boot_contiguity.py` plus `tests/_boot_contiguity_probe.py`
-(`HEAP_REMEDIATION_PLAN.md` section C, `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7L). The host tier now
+(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7L; the plan section it was built from is closed and deleted). The host tier now
 measures `gc.collect()`'s boot-confined placement reset **directly** — where each list's survivors
 land — instead of inferring it from a contiguity fraction. The board has never taken that reading.
 

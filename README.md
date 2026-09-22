@@ -148,8 +148,8 @@ is close to free; set `TEST_PARALLELISM=1` for strictly sequential runs), `TESTS
 real runtime, so it only fires on a genuine hang), and `GC_THRESHOLD` (run the MicroPython tier with
 that `gc.threshold()` set instead of the interpreter's own reactive default — `GC_THRESHOLD=32768
 scripts/test.sh` is the value the firmware's boot entry ships, and the suite has to pass both ways;
-a value that is not an integer, or does not fit a machine word, is rejected up front before the run
-touches anything, rather than failing inside the runner once per test file;
+a value that is not an integer, or falls outside the rp2040's own 32-bit machine word, is rejected up
+front before the run touches anything, rather than failing inside the runner once per test file;
 see "Memory-safety discipline" in CLAUDE.md for why both runs are required and which one proves
 what). Every `tests/test_*.py` file runs as
 its own interpreter process and prints its own `PASS`/`FAIL` lines plus an `N/N passed` count as it
@@ -689,24 +689,18 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source is imported into this repo and reconciled, then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
-- **[`HEAP_REMEDIATION_PLAN.md`](HEAP_REMEDIATION_PLAN.md)** — the implementation to-do list for
-  the two approved heap-fragmentation measures (the wire-identical FRAM path restructure and the
-  boot-confined `gc.collect()` placement resets): what is fixed before a line is written, the
-  design decided per file, tests-first items per tier, the measurement and hardware steps, the
-  `SPECIFICATION.md` I.4 amendment, and what is out of scope. Deleted once every box is ticked and
-  its durable parts have moved into `SPECIFICATION.md`/CLAUDE.md/BACKLOG.md.
 - **[`HEAP_FRAGMENTATION_MEASUREMENTS.md`](HEAP_FRAGMENTATION_MEASUREMENTS.md)** — the measured
   evidence base for the heap-fragmentation defect (the collapse of the largest contiguous block
   across WP1+WP2; the 80,000 B floor it used to be measured against was retired by the owner on
   2026-09-19 and replaced by the three requirement-derived checks in its §7G):
   what the instrument is validated against and the six ways it silently lied before that, the
   per-module allocation census, the FRAM logging path priced per transaction, the negative results
-  that constrain any fix, and every remedy candidate's ensembled numbers. Continues
-  `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`'s Part 2, which states the defect and the ideas on
-  the table; read that first for context. Its §9 quarantines every figure a defective instrument
-  produced or a later measurement overturned — check there before reusing any number found in an
-  older transcript or doc. Deleted once its durable parts are migrated into `SPECIFICATION.md`
-  Part I / CLAUDE.md / BACKLOG.md and the defect is closed.
+  that constrain any fix, and every remedy candidate's ensembled numbers. Its §0A states the
+  mechanism and §9 quarantines every figure a defective instrument produced or a later measurement
+  overturned — check there before reusing any number found in an older transcript or doc. **Cited
+  by `SPECIFICATION.md` Part I and by two `src/` comments, so it is the evidence annex now rather
+  than a throwaway**: it goes when those citations do, and the rules and current-state facts it
+  established already live in `SPECIFICATION.md`/CLAUDE.md.
 - **[`REAL_HARDWARE_TEST_QUEUE.md`](REAL_HARDWARE_TEST_QUEUE.md)** — the single list of everything
   waiting on the dev bench (suite runs, targeted investigations, coverage gaps that need silicon,
   bench-host tasks), so one go-ahead session can work it in one pass instead of rediscovering it
@@ -721,18 +715,14 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   used to need, and which of the host figures transfer to the board and which do not.
   `REAL_HARDWARE_TEST_QUEUE.md` §1E is its index row. Deleted once its results are migrated; it
   authorizes nothing — CLAUDE.md's go-ahead gate still applies.
-- **[`HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`](HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md)** —
-  the other `*_HANDOVER*.md` file besides the boot-contiguity one above, owned by the session working
-  PR #105. Only its Part 2 is still live — Part 1's harness changes all landed on this branch, and
-  its one open bench ask is `REAL_HARDWARE_TEST_QUEUE.md` row R14 — and that half is superseded by
-  PR #105's own measurement/plan docs, which this branch carries, so the file goes when this PR
-  merges. These are
-  per-effort throwaways, each owned by the session or pull request named in its own first lines and
-  deleted once its findings are migrated or confirmed not to apply; the two real-hardware ones that
-  preceded it went that way on 2026-09-18, their still-open asks consolidated into
-  `REAL_HARDWARE_TEST_QUEUE.md` and their answered ones migrated into `SPECIFICATION.md`. Do not
-  treat a handover file as a durable reference, and prefer the queue above for anything
-  bench-related.
+
+Handover files are per-effort throwaways, each owned by the session or pull request named in its own
+first lines and deleted once its findings are migrated or confirmed not to apply — the boot-contiguity
+one above is the only one still live. The two real-hardware handovers that preceded it went that way
+on 2026-09-18 and `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` on 2026-09-22, their still-open asks
+consolidated into `REAL_HARDWARE_TEST_QUEUE.md` (rows R14 and §1F) and their durable findings migrated
+into `SPECIFICATION.md` (Part I.1 carries the external prior art the last one held). Do not treat a
+handover file as a durable reference, and prefer the queue above for anything bench-related.
 
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 

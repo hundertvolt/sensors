@@ -47,14 +47,15 @@ budget is not binding (150 of 450 rounds used). The real mechanism is the mock t
 `timeout` sitting at **1.25×** its own floor where CRC16 sits at 10× and the real link at 13.3×.
 Derivation: SPECIFICATION.md Part J.7.
 
-**Plan section C is built and closed host-side (2026-09-21)** — the boot placement reset now has a
-twin regression guard measuring placement directly, verified against four injected regressions
+**The boot placement reset's host guard is built and closed (2026-09-21)** — it measures placement
+directly, and was verified against four injected regressions
 (HEAP_FRAGMENTATION_MEASUREMENTS.md §7L). It opened **§1E**: the board has never taken that reading
 and cannot as its device script stands, and the four rows there are the cheapest bench work on this
 list — no wear, no reflash, both arms from one image.
 
-What is still owed: §1E, D1-gated work, the remaining R-rows, §1C's C2/C3/C4, and F1's SSID script —
-**all of it needs the bench.**
+What is still owed: §1E, **§1F** (measure A/B's own leftover rows, carried here when the remediation
+plan closed on 2026-09-22), D1-gated work, the remaining R-rows, §1C's C2/C3/C4, and F1's SSID
+script — **all of it needs the bench.**
 
 **The bench board no longer carries a test image.** On the owner's instruction (2026-09-19,
 end of sitting) it was reflashed with a **clean production `dev` image and `DebugLevel = 0`**, and
@@ -274,7 +275,7 @@ branch). The three things that matter here:
    replaced that awaited settle with a blocking `time.sleep_us(2)`. They need a new injection
    technique (timer IRQ, or the second core); they currently cover nothing.
 
-**A6's script.** Not committed as a test (T.4 decides whether it becomes one) — save it and run it
+**A6's script.** Not committed as a test (§1F's T4 decides whether it becomes one) — save it and run it
 with `scripts/mpremote_connect.sh exec "import machine; machine.WDT(timeout=8000)"` then
 `scripts/mpremote_connect.sh run /tmp/fram_hold_time.py`, mirroring what `Board.run_isolated()`
 does. Unlike every other FRAM device script it writes at the **top** of the address space and never
@@ -434,13 +435,19 @@ config write to make its point, that is the moment to add the marker, not before
 
 ---
 
-## 1E. The boot placement reset, measured as placement (plan section C's board half) — never run
+## 1E. The boot placement reset, measured as placement (the host guard's board half) — never run
 
 `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7L built the host guard
-(`tests_scripts/test_digital_twin_boot_contiguity.py`, 22 tests, all six devices) and measures
-`gc.collect()`'s boot-confined reset **directly**: the reach of each boot list's newly allocated
-blocks above its own seam, rather than a contiguity fraction. Live against suppressed separates by
-**7.5x** (setup batch) and **5.6x** (both lists), with retention arm-independent to 0.05%.
+(`tests_scripts/test_digital_twin_boot_contiguity.py`, 27 tests, all six devices) and measures
+`gc.collect()`'s boot-confined reset **directly**: where each boot list's newly allocated blocks
+land relative to its own seam, rather than a contiguity fraction. **Read §7L.7's figures, not
+§7L.3's** — the bounds were re-derived on the settrace-free interpreter, which changed both the
+metric and every number. Live against suppressed, as shipped: the **median's depth below the seam**
+across the batch, 452,832 B against 218,528 B (**2.07x**, and 2.36x/4.64x arm-against-arm on
+wozi/dev), and the whole sequence's **reach above the seam**, 16,352 B against 141,632 B
+(**8.66x**, 12.96x/13.93x arm-against-arm). Retention is arm-independent to 0.05%. The setup
+batch's own *reach* does **not** discriminate on this binary — 8,160 B in both arms on four of the
+six devices — so do not look for a batch-reach separation on the board either.
 
 **The board has taken no such reading, and cannot as it stands.**
 `tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py` dumps no map at the seam —
@@ -456,16 +463,39 @@ at runtime. This removes the second firmware image §7D's arm comparison needed.
 | --- | --- | --- | --- |
 | B7 | Seam map + board reach, live arm | Extended `heap_layout_after_full_boot_sequence.py` on `dev`; compute `delta(seam, after_batch)` and `delta(seam, after_starter_loop_end)` host-side. Board units (16 B blocks) — the parser derives the block size, never convert by hand | OPEN |
 | B8 | The same run, `--arm suppressed` | One invocation, same image, straight after B7 so the heap is aged alike. The board's first controlled A/B of the collects | OPEN |
-| B9 | The ratio, which is the transferable claim | Host says 7.5x / 5.6x. Same direction and order of magnitude confirms the mechanism on silicon; a ratio near 1.0 is a finding to record before anything else | OPEN |
+| B9 | The ratio, which is the transferable claim | Host says **2.07x** on batch median depth and **8.66x** on cumulative reach (§7L.7). Same direction and order of magnitude confirms the mechanism on silicon; a ratio near 1.0 is a finding to record before anything else | OPEN |
 | B10 | Does the board put the median at or below the seam top? | The host's live arm does, on all six devices — the strongest unit-free statement the metric makes | OPEN |
 
-**No absolute host bound may be copied to the board.** §7L's bytes are twin units, settrace-inflated
-4-5x (§1.2 item 7). The ratio, the sign of the median and the zero count above the band transfer;
-640 KiB and 1,280 KiB do not. No new floor is asserted by any row here (§7G's rule).
+**No absolute host bound may be copied to the board.** §7L's bytes are twin units (32 B blocks,
+x86-64). The ratio, the sign of the median and the zero count above the band transfer; the
+300 KiB, 256 KiB and 64 KiB bounds do not. No new floor is asserted by any row here (§7G's rule).
 
 **Zero wear.** No flash write, no persistence write, no marker, no reflash. Read the FRAM-backed
 `errcount` before any `ResetErrors`, and remember an isolated-driver script overwrites production's
 first FRAM chunks.
+
+---
+
+## 1F. Measure A/B's own leftover rows, carried over when the remediation plan closed
+
+`HEAP_REMEDIATION_PLAN.md`'s section T held six real-hardware rows. Two are done (T.5's boot cost,
+§7F.7) and two are partly answered; the rest never ran. The plan was deleted once its 53 other boxes
+were closed — documentation holds current state, not the path that got there (CLAUDE.md) — so the
+rows live here now, which is where a bench session looks for them. **The two done rows are not
+repeated**: T.5 is §7F.7, and the hold-time aggregate is A6 above.
+
+| # | Run (plan row) | Notes | Status |
+| --- | --- | --- | --- |
+| T1 | **The exact in-suite AFTER `largest_block`** (T.1) | A alone measured 20,592 → 28,864 B in-suite, +40.2% (§7D.3), and A + B **passes in-suite** against a BEFORE arm that fails — the first image ever to. What is still owed is only the precise AFTER figure: the test discarded it on a passing run, fixed host-side (§7F.6), so the next in-suite run yields it. Record it as §2.1's third and fourth [HW] columns. **Only like suite positions are comparable** (§7D.2) — a standalone reading does not answer this | PARTIAL |
+| T2 | **Bus-hazard tier 4 on the A + B arm** (T.2) | Tier 3 is done: §7F's AFTER arm ran the full flash suite with zero failures, covering all three FRAM tests, and §7F.7 calls out the two rewritten injectors passing on *both* arms — the first real-chip proof the hijacked payload is refused. `tests_hardware/bench/test_bus_concurrency_under_api_load.py`'s six were last run on the **A-only** arm (§7D.5). No wear marker is needed by any of them; FRAM is outside the wear gate | PARTIAL |
+| T3 | **Every FRAM device script green** (T.3) | All **13** under `tests_hardware/device_scripts/fram_*.py` — roundtrip, capacity, CS hijack, busy-status lockout, pause gating, write-protect, the two reset-race pairs and the error-log reset-race trio — plus `sgp40_fram_backup_restore.py`, which is not `fram_*`-named but is the same proof. They are the real-chip evidence that every safety measure survived the restructure. **Read the FRAM-backed `errcount` before any `ResetErrors`** (CLAUDE.md), and remember these scripts overwrite production's first chunks | OPEN |
+| T4 | **Per-command hold time, measured** (T.4) | A device script timing one byte-level write (5 CS) and one `check_length` read slice with `time.ticks_us()` around the synchronous stretch, reported in its own `RESULT:` line; the number goes into `SPECIFICATION.md` F.5.8 beside the UART 4.4 ms frame. A6's aggregate is already there (2,849 us non-yielding, 21,269 us bus hold) — this is the per-command figure F.5.8 says is still owed. **If it is above ~1 ms the per-command yield policy is already the finest the chip allows**, and the finding is recorded, not "fixed". A6's own script is saved but not committed; T4 decides whether it becomes a committed device script | OPEN |
+| T6 | **The run-phase memory check on silicon** (T.6) | `tests_hardware/flash/test_memory_stress.py`'s second test and `tests_hardware/bench/test_memory_stress_bench.py` green on the A + B image. Distinct from C8 below, which is about those two files' *gate* never having executed since it was widened — run them once and both rows close together | OPEN |
+| T7 | **The starter list's own reading, which no run has taken** (T.7, queue B6) | §7F.2's `after_starter_list` figures are taken 4 s into the run phase, and the twin loses most of B's gain inside the first ~2 s there (§7F.9) — so measure B's second site has never been measured on silicon at all. `heap_layout_after_full_boot_sequence.py` now reports `after_starter_loop_end`, detected by counting starters rather than waiting a constant. Two invocations, one per arm, each straight after that arm's suite run so the heap is aged. It also replaces the row §7F.8 withdrew and confirms `retained=0` on the probe | OPEN |
+
+**Zero wear on all of them.** No flash cycle, no persistence write, no reflash; T3's scripts write
+FRAM, which is outside the wear gate's scope by endurance. T7 shares B7/B8's invocation shape, so
+run it in the same sitting as §1E.
 
 ---
 

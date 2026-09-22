@@ -73,11 +73,11 @@ if [ -n "${GC_THRESHOLD:-}" ]; then
         echo "error: GC_THRESHOLD must be an integer - 32768 is what the firmware ships, -1 the reactive default - not '$GC_THRESHOLD'" >&2
         exit 1
     fi
-    # Range as well as shape: the regex accepts a value gc.threshold() cannot convert to a machine
-    # word, which then raises OverflowError INSIDE the runner, once per file - the very run this
-    # block prevents. Length first, so the comparisons never overflow bash's arithmetic either.
+    # Range as well as shape, on the FIRMWARE's 32-bit word rather than this 64-bit host's: a value
+    # above it can match no shippable setting, and one past the host's own word raises OverflowError
+    # inside the runner instead, once per file. Length first, so bash's own arithmetic can't overflow.
     if [ "${#GC_THRESHOLD}" -gt 11 ] || [ "$GC_THRESHOLD" -gt 2147483647 ] || [ "$GC_THRESHOLD" -lt -2147483648 ]; then
-        echo "error: GC_THRESHOLD=$GC_THRESHOLD does not fit a machine word - any negative value means the reactive default (-1 by convention, see py/modgc.c) and the firmware ships 32768" >&2
+        echo "error: GC_THRESHOLD=$GC_THRESHOLD is outside the rp2040's own 32-bit machine word - any negative value means the reactive default (-1 by convention, see py/modgc.c) and the firmware ships 32768" >&2
         exit 1
     fi
     if [ "$coverage" = "1" ]; then

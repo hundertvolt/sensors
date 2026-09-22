@@ -104,11 +104,8 @@ def _run_detector(repo_root: Path, tmp_path: Path, probe_sleep_s: float) -> tupl
 
 def _run_detector_with_clock(repo_root: Path, tmp_path: Path, elapsed_ms: int) -> tuple[int, int, int, int]:
     """Same detector, with `date` stubbed so probe_ms is EXACTLY elapsed_ms rather than measured.
-
-    A sleeping stub cannot carry the band assertions. tests_scripts/ is backgrounded alongside the
-    whole MicroPython tier, so a 0.7s stub - nominally mid-band - reads 919-963ms under real suite
-    load and lands in the 1x band: reproduced 2026-09-22 under 96 spinners, after it turned the
-    (f) stage red on a tree where nothing was wrong."""
+    A sleeping stub cannot carry the band assertions: backgrounded alongside the MicroPython tier,
+    a mid-band 0.7s stub read 919-963ms under 96 spinners on 2026-09-22 and chose the 1x band here."""
     body = re.search(r"^_detect_parallelism\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
     assert body is not None, "scripts/test.sh no longer defines _detect_parallelism() - update this test with it"
     bin_dir = tmp_path / f"bin_{elapsed_ms}"
@@ -452,9 +449,9 @@ def test_a_non_integer_gc_threshold_is_rejected_before_anything_is_built(repo_ro
 
 @pytest.mark.parametrize("value", ["999999999999999999999", "-999999999999999999999"])
 def test_an_out_of_range_gc_threshold_is_rejected_too(repo_root: Path, value: str) -> None:
-    # A well-formed integer the interpreter still cannot take: gc.threshold() converts to a machine
-    # word, so this reaches the runner and raises OverflowError per file - the same 255-traceback
-    # run the shape check prevents, which the shape check alone does not catch.
+    # A well-formed integer no shippable setting can match: past the host's own word it reaches the
+    # runner and raises OverflowError per file - the same 255-traceback run the shape check
+    # prevents, which the shape check alone does not catch.
     completed = subprocess.run(
         ["/bin/bash", str(repo_root / "scripts" / "test.sh")],
         capture_output=True,
@@ -465,14 +462,13 @@ def test_an_out_of_range_gc_threshold_is_rejected_too(repo_root: Path, value: st
         check=False,
     )
     assert completed.returncode == 1, f"expected a fast rejection, got {completed.returncode}:\n{completed.stdout[-2000:]}\n{completed.stderr[-2000:]}"
-    assert "does not fit a machine word" in completed.stderr
+    assert "outside the rp2040's own 32-bit machine word" in completed.stderr
 
 
 def _gc_threshold_check(repo_root: Path, tmp_path: Path, value: str) -> "subprocess.CompletedProcess[str]":
-    """Runs scripts/test.sh's GC_THRESHOLD validation block alone, extracted from the real source.
-
-    Deliberately not the whole script: an ACCEPTED value carries on into the live-tree sweeps, and
-    this file's tests run concurrently with 85 test files holding scratch dirs under tests/_tmp."""
+    """Runs scripts/test.sh's GC_THRESHOLD validation block alone, extracted from the real source -
+    not the whole script, since an ACCEPTED value carries on into the live-tree sweeps while this
+    file's tests run concurrently with 85 test files holding scratch dirs under tests/_tmp."""
     text = _test_sh_text(repo_root)
     lines = text.split("\n")
     start = next((i for i, line in enumerate(lines) if line.startswith('if [ -n "${GC_THRESHOLD:-}"')), None)
@@ -483,10 +479,21 @@ def _gc_threshold_check(repo_root: Path, tmp_path: Path, value: str) -> "subproc
     return subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", "GC_THRESHOLD": value}, check=False)
 
 
-@pytest.mark.parametrize("value", ["-1", "32768", "0", "2147483647"])
+@pytest.mark.parametrize("value", ["2147483648", "-2147483649"])
+def test_the_first_value_past_each_edge_is_rejected_on_range_alone(repo_root: Path, tmp_path: Path, value: str) -> None:
+    # 10 and 11 digits, so the length guard passes both and only the comparison rejects them. This
+    # HOST would accept either - its own machine word is 64-bit and gc.threshold() raises
+    # OverflowError only near 2^63 (measured) - so the bound asserted here is the rp2040's.
+    completed = _gc_threshold_check(repo_root, tmp_path, value)
+    assert completed.returncode == 1, f"GC_THRESHOLD={value} must be rejected on range: {completed.stdout!r} {completed.stderr!r}"
+    assert "outside the rp2040's own 32-bit machine word" in completed.stderr
+
+
+@pytest.mark.parametrize("value", ["-1", "32768", "0", "2147483647", "-2147483648"])
 def test_the_values_the_project_actually_uses_are_accepted(repo_root: Path, tmp_path: Path, value: str) -> None:
     # The false-positive direction for both checks above. -1 is the (e) stage, 32768 is what the
-    # firmware ships; the other two are the range check's own inclusive edges.
+    # firmware ships; the rest are the range check's own inclusive edges, where any negative value
+    # means the reactive default (py/modgc.c maps every one of them to (size_t)-1).
     completed = _gc_threshold_check(repo_root, tmp_path, value)
     assert completed.returncode == 0, f"GC_THRESHOLD={value} must pass validation: {completed.stderr!r}"
     assert completed.stderr == "", f"GC_THRESHOLD={value} must pass silently: {completed.stderr!r}"

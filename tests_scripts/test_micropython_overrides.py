@@ -209,6 +209,16 @@ class TestBuildUnixPortAppliesTheOverride:
         assert f"BUILD={setup_toolchain.UNIX_SETTRACE_BUILD_DIR}" in make_cmd
         assert setup_toolchain.UNIX_SETTRACE_BUILD_DIR != setup_toolchain.UNIX_BUILD_DIR, "the two variants must not share a build directory"
 
+    def test_the_shell_side_looks_for_both_variants_where_they_are_built(self, repo_root: Path, setup_toolchain: ModuleType) -> None:
+        # Both consumers spell the directory out, because they resolve a binary before anything can
+        # ask it what it is. A renamed constant would leave scripts/test.sh rebuilding into a path
+        # it never looks at, and tests_scripts/test_coverage_runner.py skipping itself in silence.
+        shell = (repo_root / "scripts" / "test.sh").read_text()
+        conftest = (repo_root / "tests_scripts" / "conftest.py").read_text()
+        for variant in (setup_toolchain.UNIX_BUILD_DIR, setup_toolchain.UNIX_SETTRACE_BUILD_DIR):
+            assert f'"$unix_dir/{variant}/micropython"' in shell, f"scripts/test.sh no longer resolves the {variant} binary - the constant and the shell have drifted apart"
+        assert f'"{setup_toolchain.UNIX_BUILD_DIR}"' in conftest, f"tests_scripts/conftest.py's micropython_bin fixture no longer points at {setup_toolchain.UNIX_BUILD_DIR}"
+
     def test_a_setup_run_builds_both_variants(self, repo_root: Path) -> None:
         # Structural: the real call is a multi-minute compile. What has to hold is that the
         # verification sequence asks for the settrace variant at all - without it, --coverage has
