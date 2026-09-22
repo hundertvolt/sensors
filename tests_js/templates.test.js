@@ -325,7 +325,7 @@ describe("buildErrcountGroup", () => {
         expect(mustQuery(wrapper, "h3").textContent).toBe("Errors");
     });
 
-    it("tags the card with data-group-key itself, like buildFieldGroupCard() does (regression - §12's layering contract names js/templates.js as the sole owner of this hook; it had drifted to being set externally by render.js instead)", () => {
+    it("tags the card with data-group-key itself, like buildFieldGroupCard() does (regression - SPECIFICATION.md Part H.3's layering contract names js/templates.js as the sole owner of this hook; it had drifted to being set externally by render.js instead)", () => {
         const wrapper = buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT);
         expect(wrapper.dataset.groupKey).toBe("errcount");
     });

@@ -1,5 +1,5 @@
 """Tests for buildgen.value_wiring: the `# @value-wiring <toml_field> <source_kwarg> <field_kwarg>
-<required|optional>` comment tag - per-value measurement wiring (matrix doc §2.9). Walks the same
+<required|optional>` comment tag - per-value measurement wiring (SPECIFICATION.md Part L.6.3). Walks the same
 accept/reject dimensions as test_buildgen_wiring.py; see that file's own dimension index."""
 
 from pathlib import Path

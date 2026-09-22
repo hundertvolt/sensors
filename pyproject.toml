@@ -344,10 +344,6 @@ max-returns = 12
 # sensortask_wozi.py/sensortask_dev.py assert their module-level singletons are non-None purely to
 # narrow the type for mypy after the `global` construction step (Part A.7) - type-narrowing
 # statements, not runtime validation of untrusted input.
-# tests/_coverage_runner.py runs each test file via exec() into a custom namespace under
-# sys.settrace - that IS the collection mechanism (SPECIFICATION.md Part E.5), documented in the
-# file's own header; there is no non-exec form of it.
-"tests/_coverage_runner.py" = ["S102"]
 # api_response.py calls the reader's `_set_dict_cfg` across objects by design - SPECIFICATION.md
 # Part C.5.2 documents that setter-dispatch contract by name, so the underscore is part of a
 # published interface here rather than a private-access slip.

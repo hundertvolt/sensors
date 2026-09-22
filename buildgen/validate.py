@@ -424,7 +424,7 @@ def _check_wiring_reference(model: DeviceModel, wf: WiringField, target_key_str:
 
 
 def _check_source_field_reference(model: DeviceModel, value: object, consumer_label: str, toml_field: str) -> None:
-    # Shared by warn_*'s per-signal getters and _VALUE_WIRING's per-value measurement wiring (§2.9)
+    # Shared by warn_*'s getters and _VALUE_WIRING's per-value wiring (SPECIFICATION.md Part L.6.3)
     # - both are the same generic {source, field} shape, resolved by attribute name alone rather
     # than a fixed producer_class.
     if not isinstance(value, dict) or "source" not in value or "field" not in value:
@@ -493,13 +493,13 @@ def _check_instance_wiring(model: DeviceModel) -> None:
             if toml_field.startswith("warn_"):
                 continue  # per-signal getters (source/field pairs) - checked separately below
             if toml_field in value_wiring_fields:
-                continue  # _VALUE_WIRING field (§2.9) - checked separately by _check_value_wiring()
+                continue  # _VALUE_WIRING field (SPECIFICATION.md Part L.6.3) - checked by _check_value_wiring()
             wf = _resolve_wiring_field(spec.wiring_schema, toml_field)
             if wf is None:
                 raise BuildError(model.device, f"{spec.label} declares wiring.{toml_field}, but its driver has no matching _WIRING entry", instance=spec.label, field=toml_field)
-            # §2's wiring-defaults mechanism: a {default = true, ...} sub-table opts out of
-            # resolving a real instance reference entirely - branch at the very top, before any
-            # string-only handling runs (§10.1 item 1's resolved branch-point decision).
+            # SPECIFICATION.md Part L.6.2's wiring-defaults mechanism: a {default = true, ...} sub-table
+            # opts out of resolving a real instance reference entirely - branch at the very top,
+            # before any string-only handling runs.
             if isinstance(value, dict) and value.get("default") is True:
                 _check_default_selection(model, spec, wf, toml_field, value)
                 continue
@@ -520,9 +520,9 @@ def _check_instance_wiring(model: DeviceModel) -> None:
 
 
 def _check_value_wiring(model: DeviceModel) -> None:
-    # §2.9's per-value measurement wiring: each field independently resolves to either a real
-    # {source, field} reference (any producer, matched by attribute name) or an explicit
-    # {default = true, ...} opt-in (§2) - never silently defaulted just because it's absent.
+    # SPECIFICATION.md Part L.6.3's per-value wiring: each field independently resolves to either a
+    # real {source, field} reference (any producer, matched by attribute name) or an explicit
+    # {default = true, ...} opt-in (L.6.2) - never silently defaulted just because it's absent.
     for spec in model.instances.values():
         for vwf in spec.value_wiring_schema:
             value = spec.wiring.get(vwf.toml_field)

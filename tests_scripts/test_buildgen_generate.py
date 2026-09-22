@@ -300,7 +300,7 @@ def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Pa
 
 
 def test_wiring_defaults_generate_inline_provider_construction(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    # §2.6's generated-code shape: the default provider is constructed inline, at the exact
+    # SPECIFICATION.md Part L.6.2's generated-code shape: the provider is constructed inline, at the exact
     # call-site the real wiring expression would occupy, with no separate named global.
     doc = base_doc()
     doc["instance"][4]["wiring"]["signal_sink"] = {"default": True}
@@ -310,14 +310,14 @@ def test_wiring_defaults_generate_inline_provider_construction(tmp_path: Path, s
     assert "_DefaultSignalSink().request_signal" in result.module_source
     assert "temperature_source=_DefaultTemperatureSource(temperature=20)" in result.module_source
     # Every defaulted per-value field always resolves to (provider, "value") - the fixed contract
-    # every _Default<Field> class's get_data() follows (§10.1 item 1) - not the real field name.
+    # every _Default<Field> class's get_data() follows - not the real field name.
     assert "temperature_field='value'" in result.module_source
     # humidity_source stays a real reference - not defaulted in this fixture.
     assert "humidity_source=scd30, humidity_field='Hum'" in result.module_source
 
 
 def test_device_level_led_target_unwired_omits_set_ext_led(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    # §7.1 #5: test_device_wiring_optional_field_absent_is_fine (test_buildgen_validate.py) already
+    # test_device_wiring_optional_field_absent_is_fine (test_buildgen_validate.py) already
     # confirms validate.py accepts neopixel-present-but-led_target-unwired - but nothing confirmed
     # the generated module itself comes out right (conn.set_ext_led(...) correctly omitted).
     doc = base_doc()

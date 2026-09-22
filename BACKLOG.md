@@ -760,18 +760,19 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
 ## Deferred / explicitly out-of-scope work
 
-- **48 `§` references in `buildgen/` and `tests_scripts/test_buildgen_*` point at a design record
-  that no longer exists**, found 2026-09-22 auditing this branch's cross-links. They cite the
+- **Closed 2026-09-22: every dangling `§` reference in the tree now resolves.** They cited the
   retired `BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md` (folded into SPECIFICATION.md Part L and
-  deleted in `901e15d9`) — `§2`/`§2.3`/`§2.6`/`§2.9` for the wiring-defaults mechanism, `§5.x`/
-  `§7.x`/`§10.x` for validation coverage — across 11 files, 21 of them in
-  `tests_scripts/test_buildgen_validate.py`. Unqualified, so a reader follows them into
-  `HEAP_FRAGMENTATION_MEASUREMENTS.md`'s own `§2.x`, which is about heap fragmentation: worse than
-  a dead link. The prose around each still carries its WHY, so nothing is lost meanwhile. Fix is to
-  re-point them at Part L.6 (`buildgen/graph.py:47` already pairs `§2.9` with a real
-  `SPECIFICATION.md Part C.14.3` citation, which is the target shape) or drop the prefix where the
-  sentence stands alone — deferred because the section-to-Part mapping is not mechanical: some
-  cited numbers exist in no surviving revision of that file.
+  deleted in `901e15d9`), and unqualified they led a reader into `HEAP_FRAGMENTATION_MEASUREMENTS.md`'s
+  own `§2.x`, which is about heap fragmentation — worse than a dead link. The mapping turned out to
+  be derivable after all: the pre-`df2359c9` revision of that file still carries every cited number,
+  so `git show df2359c9^:<file>` gave the section-to-Part mapping directly. **61 references across 53 lines, not the 48
+  first counted** — the sweep also found them in `src/asy_sgp40_driver.py` (two), `tests/`,
+  `tests_hardware/device_scripts/` (three), `js/templates.js` (citing a deleted website record's
+  `§8`/`§12`) and both `tests_scripts/buildgen_fixtures/*.toml`. Each is now either a real
+  `SPECIFICATION.md Part L.6.x`/`H.3` citation — the shape `buildgen/graph.py:47` already modelled —
+  or has the dead prefix dropped where the sentence stood alone, which is what the test-matrix and
+  implementation-plan numbers (`§4.3`, `§5.1`, `§7.1`, `§10.x`) got: they described a phase ordering
+  that documentation does not keep.
 
 - **A test that fails only under the settrace binary is structurally invisible to CI, and one
   did.** `unit-tests-coverage` is deliberately `continue-on-error` (coverage never gates anything
@@ -850,6 +851,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   out-of-range rejection's message now names the rp2040's own 32-bit machine word instead of
   "a machine word" — the bound is the firmware's, since this 64-bit host accepts values up to its
   own word and only raises `OverflowError` near 2^63 (measured against the pinned interpreter).
+  Also 2026-09-22, `pyproject.toml`: the `tests/_coverage_runner.py = ["S102"]` per-file-ignore is
+  gone, the suppression now sitting inline at the one `exec()` it covers the way
+  `tests/_threshold_runner.py`'s already did — lint config only, no build impact.
   Kept here as the running list of what is owed, not as a merge blocker.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
@@ -975,6 +979,14 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     declare it, so the ignore is gone.
   A flash-tier run should confirm both, whenever one is next scheduled
   (`REAL_HARDWARE_TEST_QUEUE.md` R10).
+  **Half closed on silicon, 2026-09-18.** `fram_write_protect_roundtrip.py` **PASSED** — the
+  keyword-only fix is good, and it incidentally exercised measure A's self-acquiring-the-bus path in
+  `set_write_protected()`. `wifi_service_reconnect_repro.py`'s `task.data` fix is confirmed (it now
+  runs deep into the real CYW43 reconnect, reaching `EPERM`, where it used to die at first contact)
+  but the script still **does not complete**: the board drops the USB CDC mid-run and `mpremote` ends
+  in `OSError: [Errno 5]`, so it likely needs `run_isolated_expect_reset()`. That half, plus the
+  garbage-SSID incident the same run caused, is `REAL_HARDWARE_TEST_QUEUE.md` §2A F1.
+
 - **`mypy tests_hardware/device_scripts` run STANDALONE reports two `Timer()` findings that no
   gate ever sees.** Both `timer_alarm_pool_exhaustion.py` and `scheduler_saturation_drop.py`
   construct a bare `machine.Timer()`, which is valid runtime usage the third-party board stub does

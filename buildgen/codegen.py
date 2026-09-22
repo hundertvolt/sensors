@@ -52,7 +52,7 @@ class _Ctx:
         return _identifier(label, self.model.device, instance=label, field="driver" if not key[1] else "name_ext")
 
     def default_provider_expr(self, toml_field: str, value: "TomlDoc") -> str:
-        # §2.6's generated-code shape: construct the default provider inline, at the exact
+        # SPECIFICATION.md Part L.6.2's generated-code shape: construct the provider inline, at the exact
         # call-site the real wiring expression would occupy - never a separate named global.
         class_name = default_class_name(toml_field)
         kwargs = ", ".join(f"{k}={v!r}" for k, v in value.items() if k != "default")

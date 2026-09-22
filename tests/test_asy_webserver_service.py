@@ -1895,7 +1895,7 @@ def test_g2_hotspot_redirect_does_not_log_a_warning_or_error() -> None:
 
 
 def test_g2_is_hotspot_active_raising_gets_the_shaped_500_via_the_existing_catch_all() -> None:
-    # Proves plan §2.4's "no bespoke try/except needed" decision directly: Part A.5's existing
+    # Proves the "no bespoke try/except needed" decision directly: SPECIFICATION.md Part A.5's existing
     # blanket app.errorhandler(Exception) already safely contains a raise from this callback.
     mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
 

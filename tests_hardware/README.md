@@ -371,6 +371,12 @@ a live question:
   do, regardless of `soft_reset_after`. See `harness.Board.run_isolated()`'s own docstring for the
   full finding. Tests that need to observe the *real* boot sequence correctly use `hard_reset()` +
   `tail_log()` instead, for exactly this reason.
+- **A device script's heap reading is taken inside `main.py`'s aged heap, so a standalone figure and
+  an in-suite one are not comparable.** Same consequence as the bullet above, and it has produced a
+  false conclusion once: freshly flashed, the heap probe read 95,104 B and passed; deep in a suite
+  the *same* firmware read 28,864 B and failed, with `free` unchanged to 0.2 % — the defect is
+  position-dependent and a cold build cannot see it. **Any heap figure must state its suite
+  position, or it is not a comparison** (HEAP_FRAGMENTATION_MEASUREMENTS.md §7D.2).
 - ~~Is it safe to poll a live, already-running system with `board.exec()`/`is_reachable()`?~~ —
   **resolved: no, never.** `mpremote`'s `enter_raw_repl()` unconditionally sends Ctrl-C plus, by
   default, a real Ctrl-D `machine.soft_reset()` before running anything — polling either one against

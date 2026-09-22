@@ -1,6 +1,6 @@
-"""Tests for buildgen.defaults: AST-discovering a driver's `_Default<Field>` classes (§2 of
-SPECIFICATION.md Part L.6) - the wiring-defaults mechanism's own schema-by-
-construction. Covers the three real default providers already in src/ plus every malformed shape."""
+"""Tests for buildgen.defaults: AST-discovering a driver's `_Default<Field>` classes
+(SPECIFICATION.md Part L.6.2) - the wiring-defaults mechanism's own schema-by-construction.
+Covers the three real default providers already in src/ plus every malformed shape."""
 
 from pathlib import Path
 
@@ -52,8 +52,8 @@ def test_find_default_class_notification_signal_sink(src_dir: Path) -> None:
 
 
 def test_find_default_class_not_declared_returns_none(src_dir: Path) -> None:
-    # asy_scd30_driver.py has no _Default<Field> class for fram_target (it's not a defaultable
-    # field per §2.7's scope - only the two original required=True fields need this mechanism).
+    # asy_scd30_driver.py has no _Default<Field> class for fram_target - it is not a defaultable
+    # field; only the two required=True wiring fields need this mechanism.
     assert find_default_class(src_dir / "asy_scd30_driver.py", "dev", "scd30", "fram_target") is None
 
 

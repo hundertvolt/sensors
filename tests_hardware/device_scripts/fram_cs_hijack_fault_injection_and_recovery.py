@@ -24,7 +24,7 @@ _POST_RECOVERY_PATTERN = bytes(range(0x40, 0x50))
 class _CsHijack:
     """Deasserts CS from inside the victim's own transfer, at the driver's synchronous seam. The
     earlier form raced an `await asyncio.sleep(0)` task into the CS window; measure A made that
-    window non-yielding, so the race could no longer land (§7D.5)."""
+    window non-yielding, so the race could no longer land (HEAP_FRAGMENTATION_MEASUREMENTS §7D.5)."""
 
     def __init__(self, fram: FRAM_SPI, payload_len: int) -> None:
         self._spidev = fram._spidev

@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 # For `import setup_toolchain` below - the same bare-sibling shape as that module's own
 # `import micropython_overrides` (host_typecheck.ini's own account of why both need a path slot).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "toolchain"))
+import setup_toolchain
 from setup_toolchain import detect_pico_serial_devices
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -30,12 +31,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # failed, ..." (py/runtime.c) and the class name appears only in an UNCAUGHT traceback.
 MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
 
-# Same NetworkManager connection names toolchain/setup_toolchain.py's ensure_bench_bridge() uses -
-# kept in exact sync with that module rather than re-derived, since a bench rig set up by `env
-# --tier bench` is what every bench test assumes is already there.
-BENCH_BRIDGE_CONN = "br0"
-BENCH_ETH_CONN = "br0-eth0"
-BENCH_AP_CONN = "br0-wifi-ap"
+# Read from the module that CREATES these NetworkManager connections rather than copied, so a
+# rename there cannot leave the bench tier looking for a rig nobody built - its skip gate
+# deselects rather than fails, which is exactly the way that goes unnoticed.
+BENCH_BRIDGE_CONN = setup_toolchain.BENCH_BRIDGE_CONN
+BENCH_ETH_CONN = setup_toolchain.BENCH_ETH_CONN
+BENCH_AP_CONN = setup_toolchain.BENCH_AP_CONN
 
 
 def _usb_reset_device(device: str) -> bool:

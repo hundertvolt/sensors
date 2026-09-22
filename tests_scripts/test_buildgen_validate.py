@@ -38,7 +38,7 @@ def test_malformed_toml_syntax(tmp_path: Path, src_dir: Path) -> None:
 
 
 def test_literal_duplicate_toml_key_in_one_table_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # §5.1 #1's first sub-case: tomllib itself rejects a repeated key in one table before buildgen
+    # tomllib itself rejects a repeated key in one table before buildgen
     # ever sees the parsed doc - load_device() wraps that TOMLDecodeError into the same BuildError
     # as any other malformed-syntax input. Not exercised by any existing test until now.
     path = write_text(tmp_path, "dev", '[device]\nname = "Test"\nname = "Test2"\n')
@@ -161,7 +161,7 @@ def test_hostname_longer_than_the_network_cap_is_rejected(tmp_path: Path, src_di
 
 @pytest.mark.parametrize("bad_name", [5, ""])
 def test_device_name_invalid_rejected(tmp_path: Path, src_dir: Path, bad_name: object) -> None:
-    # §7.1 #9: [device].name's own type/non-emptiness check, exercised only implicitly by every
+    # [device].name's own type/non-emptiness check, exercised only implicitly by every
     # other fixture supplying a valid name today.
     doc = base_doc()
     doc["device"]["name"] = bad_name
@@ -170,9 +170,9 @@ def test_device_name_invalid_rejected(tmp_path: Path, src_dir: Path, bad_name: o
 
 
 def test_empty_bus_table_with_bus_attached_instances_still_fails(tmp_path: Path, src_dir: Path) -> None:
-    # Phase 2 (§10.3): [bus.*] being empty/absent is no longer unconditionally rejected - but
-    # base_doc()'s scd30/sgp40/fram instances still reference "i2c0"/"spi0", so this now fails
-    # downstream via the ordinary undeclared-bus check instead of a blanket "no bus table" error.
+    # An empty/absent [bus.*] is not rejected on its own - but base_doc()'s scd30/sgp40/fram
+    # instances still reference "i2c0"/"spi0", so this fails downstream via the ordinary
+    # undeclared-bus check rather than a blanket "no bus table" error.
     doc = base_doc()
     doc["bus"] = {}
     with pytest.raises(BuildError, match="undeclared bus"):
@@ -180,7 +180,7 @@ def test_empty_bus_table_with_bus_attached_instances_still_fails(tmp_path: Path,
 
 
 def test_no_buses_and_no_instances_is_a_valid_minimal_device(tmp_path: Path, src_dir: Path) -> None:
-    # §4.3 axis 10 / §7.1 items 1-2, unblocked by Phase 2: a device with zero bus-attached
+    # A device with zero bus-attached
     # instances (no sensors, no FRAM at all) is a logically valid, simplest-possible shape.
     doc = base_doc()
     doc["bus"] = {}
@@ -190,7 +190,7 @@ def test_no_buses_and_no_instances_is_a_valid_minimal_device(tmp_path: Path, src
 
 
 def test_fram_entirely_absent_with_single_i2c_bus_is_fine(tmp_path: Path, src_dir: Path) -> None:
-    # §7.1 items 1-2, deferred from Phase 1 pending this same relaxation: FRAM absent means spi0
+    # FRAM absent means spi0
     # (its sole real consumer) is also absent, leaving a single shared I2C bus with no SPI at all.
     doc = base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "fram"]
@@ -211,7 +211,7 @@ def test_bus_id_with_unrecognized_kind_prefix_rejected(tmp_path: Path, src_dir: 
 
 
 def test_bus_id_bare_kind_with_no_port_digit_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # §5.1 #7/§7.2(A): "i2c" alone still starts with the recognized "i2c" prefix - the old
+    # "i2c" alone still starts with the recognized "i2c" prefix - the old
     # startswith()-only check let this through; the fixed real-id table closes it.
     doc = base_doc()
     doc["bus"]["i2c"] = doc["bus"].pop("i2c0")
@@ -222,7 +222,7 @@ def test_bus_id_bare_kind_with_no_port_digit_rejected(tmp_path: Path, src_dir: P
 
 
 def test_two_i2c_buses_legal_topology(tmp_path: Path, src_dir: Path) -> None:
-    # §4.3 axis 10: one pair from the I2C0 set, one from the I2C1 set - the same shape every real
+    # One pair from the I2C0 set, one from the I2C1 set - the same shape every real
     # device already uses (e.g. devices/wozi.toml), driven directly at the validate level here.
     doc = base_doc()
     doc["bus"]["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000}
@@ -252,7 +252,7 @@ def test_i2c_pin_belonging_to_the_other_i2c_index_rejected(tmp_path: Path, src_d
 
 
 def test_i2c_pin_role_transposed_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # §6.4: both pins are real, legal GP12/13 for i2c0 - just swapped (scl<->sda).
+    # SPECIFICATION.md Part L.6.5's role check: both pins are real, legal GP12/13 for i2c0 - swapped.
     doc = base_doc()
     doc["bus"]["i2c0"]["scl_pin"] = 12
     doc["bus"]["i2c0"]["sda_pin"] = 13
@@ -285,7 +285,7 @@ def test_gpio_with_no_spi_function_rejected(tmp_path: Path, src_dir: Path) -> No
 
 @pytest.mark.parametrize("field,value", [("irq_pin", 24), ("pin", 25), ("cs_pin", 23)])
 def test_wireless_reserved_gpio_rejected_on_any_pin_field(tmp_path: Path, src_dir: Path, field: str, value: int) -> None:
-    # GP23/24/25/29 - the scope note in §4.3: applies to every claimed pin device-wide, not just
+    # GP23/24/25/29 - SPECIFICATION.md Part L.6.5 applies to every claimed pin device-wide, not just
     # bus wire pins (irq_pin/pin/cs_pin here have no peripheral role to check, only existence).
     doc = base_doc()
     if field == "irq_pin":
@@ -315,7 +315,7 @@ def test_bus_missing_required_wire_pin(tmp_path: Path, src_dir: Path) -> None:
 
 @pytest.mark.parametrize("field", ["sck_pin", "mosi_pin", "miso_pin"])
 def test_spi_bus_missing_required_wire_pin(tmp_path: Path, src_dir: Path, field: str) -> None:
-    # §7.1 #8: only i2c0's scl_pin was individually tested; asy_spi_driver.SPI's three required
+    # Only i2c0's scl_pin was individually tested; asy_spi_driver.SPI's three required
     # wire pins go through the identical _BUS_WIRE_FIELDS loop but had no test of their own.
     doc = base_doc()
     del doc["bus"]["spi0"][field]
@@ -352,7 +352,7 @@ def test_unknown_driver(tmp_path: Path, src_dir: Path) -> None:
 
 
 def test_driver_resolvable_but_missing_buildspec_entry_reports_the_real_cause(tmp_path: Path) -> None:
-    # §6.3/§8.4/§10.5 item 1: a driver that resolves fine via driver_registry (a real
+    # SPECIFICATION.md Part L.6.6's onboarding check: a driver that resolves via driver_registry (a real
     # asy_<name>_driver.py with a SensorReader subclass) but has no buildspec.py entry at all -
     # must fail loud, naming the real cause, not report every one of its fields as "unrecognized".
     custom_src = tmp_path / "src"
@@ -432,7 +432,7 @@ def test_bus_timeout_wrong_type_rejected(tmp_path: Path, src_dir: Path) -> None:
 
 @pytest.mark.parametrize("bad_value", [True, 250000.0])
 def test_bus_timeout_bool_or_float_rejected(tmp_path: Path, src_dir: Path, bad_value: object) -> None:
-    # §5.3/§7.2(B): the isinstance(x, int) and not isinstance(x, bool) pattern is only exercised by
+    # The isinstance(x, int) and not isinstance(x, bool) pattern is only exercised by
     # one device-level field (hotspot_time_min) today; this locks the same guard in on bus timeout.
     doc = base_doc()
     doc["bus"]["i2c0"]["timeout"] = bad_value
@@ -475,7 +475,7 @@ def test_instance_address_field_wrong_type_rejected(tmp_path: Path, src_dir: Pat
 
 @pytest.mark.parametrize("field,bad_value", [("max_size", True), ("max_size", 8192.0), ("trigger_sec", True), ("trigger_sec", 3.0)])
 def test_instance_int_field_bool_or_float_rejected(tmp_path: Path, src_dir: Path, field: str, bad_value: object) -> None:
-    # §5.3/§7.2(B): the same isinstance guard as test_instance_int_field_wrong_type_rejected above,
+    # The same isinstance guard as test_instance_int_field_wrong_type_rejected above,
     # but for bool/float (both plausible copy-paste mistakes) rather than a quoted string.
     doc = base_doc()
     if field == "max_size":
@@ -731,7 +731,7 @@ def test_two_fixed_address_different_drivers_same_bus_do_not_collide(tmp_path: P
 
 @pytest.mark.parametrize("bad_address", [0x50, 0, 0x78])
 def test_bmp3xx_address_outside_legal_set_rejected(tmp_path: Path, src_dir: Path, bad_address: int) -> None:
-    # Phase 3 (§5.1 #11/§10.4): bmp3xx's address is well-typed and hardware-plausible but not one
+    # SPECIFICATION.md Part L.6.4's _LIMITS: bmp3xx's address is well-typed and plausible but not one
     # of the two real SDO-pin-selected values - a datasheet-reading mistake, not a TOML mistake.
     doc = base_doc()
     doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": bad_address})
@@ -762,7 +762,7 @@ def test_bmp3xx_trigger_sec_in_legal_range_is_fine(tmp_path: Path, src_dir: Path
 
 
 def test_two_bmp3xx_same_bus_different_legal_addresses_is_fine(tmp_path: Path, src_dir: Path) -> None:
-    # §7.1 #6: the actually-common real case ADDRESS_CAPABLE_DRIVERS exists for - two bmp3xx on one
+    # The actually-common real case ADDRESS_CAPABLE_DRIVERS exists for - two bmp3xx on one
     # bus, told apart by their two legal SDO-pin addresses - had no positive test until now (only
     # the same-address collision and different-bus reuse cases were covered).
     doc = base_doc()
@@ -779,7 +779,7 @@ def test_wiring_field_not_declared_by_driver(tmp_path: Path, src_dir: Path) -> N
 
 
 def test_instance_wiring_bogus_key_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # §5.1 #5/§7.2(B): an entirely fabricated [instance.wiring] key with no _WIRING match and no
+    # An entirely fabricated [instance.wiring] key with no _WIRING match and no
     # warn_ prefix - the `wf is None` branch should already catch this; no test exercised it
     # directly with a name that isn't just "the wrong driver's own real field" (the test above).
     doc = base_doc()
@@ -791,7 +791,7 @@ def test_instance_wiring_bogus_key_rejected(tmp_path: Path, src_dir: Path) -> No
 def test_wiring_value_not_a_string(tmp_path: Path, src_dir: Path) -> None:
     # Exercises _check_wiring_reference()'s own type check via notification's signal_sink - the
     # required, producer-class-constrained _WIRING field base_doc() has now that sgp40's own
-    # comp_source has been generalized away by §2.9 (see test_buildgen_value_wiring.py for that).
+    # comp_source has been generalized away by Part L.6.3 (see test_buildgen_value_wiring.py).
     doc = base_doc()
     doc["instance"][4]["wiring"]["signal_sink"] = 42
     with pytest.raises(BuildError, match="must be a string instance reference"):
@@ -820,7 +820,7 @@ def test_required_wiring_field_missing(tmp_path: Path, src_dir: Path) -> None:
 
 
 def test_signal_sink_default_opt_in_is_fine(tmp_path: Path, src_dir: Path) -> None:
-    # §1's original motivating scenario: a notification setup that shouldn't blink any LED.
+    # SPECIFICATION.md Part L.6.1's motivating scenario: a notification setup that blinks no LED.
     doc = base_doc()
     doc["instance"][4]["wiring"]["signal_sink"] = {"default": True}
     _build(tmp_path, src_dir, doc)  # no raise
@@ -854,7 +854,7 @@ def test_temperature_source_default_with_unknown_key_rejected(tmp_path: Path, sr
 
 
 def test_sgp40_without_any_scd30_using_both_defaults(tmp_path: Path, src_dir: Path) -> None:
-    # §1's original motivating scenario: an SGP40 with genuinely no SCD30 at all, defaulting both
+    # SPECIFICATION.md Part L.6.1's motivating scenario: an SGP40 with no SCD30 at all, defaulting both
     # compensation values via explicit {default = true} opt-ins.
     doc = base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "scd30"]
@@ -874,7 +874,7 @@ def test_optional_wiring_field_absent_is_fine(tmp_path: Path, src_dir: Path) -> 
 
 
 def test_notification_present_with_zero_warn_signals_is_fine(tmp_path: Path, src_dir: Path) -> None:
-    # §7.1 #3: warn_co2/warn_voc/warn_hum are each individually optional - a notification instance
+    # warn_co2/warn_voc/warn_hum are each individually optional - a notification instance
     # with signal_sink wired but no warn_* keys at all should build clean. base_doc() always wires
     # warn_co2, so this was never actually exercised.
     doc = base_doc()
@@ -971,7 +971,7 @@ def test_partial_instance_level_fram_wiring_is_fine(tmp_path: Path, src_dir: Pat
 
 
 def test_device_wiring_fram_target_left_unwired_is_fine(tmp_path: Path, src_dir: Path) -> None:
-    # §7.1 #4: the mirror image of the led_target test above - FRAM is present, but nothing wires
+    # The mirror image of the led_target test above - FRAM is present, but nothing wires
     # [device.wiring].fram_target to it. No existing test removed just this field while keeping the
     # fram instance itself.
     doc = base_doc()

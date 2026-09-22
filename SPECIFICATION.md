@@ -4949,6 +4949,15 @@ concurrent clients each receive a definitive status — cannot hold on this serv
 concurrency above 2. The server stayed responsive and did not reboot under the load, and `src/` is
 not implicated.
 
+**Why the rate is non-zero at exactly 4, which that curve leaves looking odd** [SRC]. A slot is
+released in `_serve()`'s `finally`, *after* `_close_writer(writer)` has awaited the close — so it
+outlives the response the client already holds. Four concurrent clients therefore need four
+genuinely free slots, and the `reset_all_error_logs()` PUT each of these tests makes immediately
+beforehand can still be holding one: 3 free slots, 4 clients, **1 refusal = the measured 25 %**.
+`test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` documents the same lag in its
+own comment and takes a `time.sleep(1.0)` settle for it. So "resets begin *at* the ceiling" is the
+slot-release lag, not a ceiling that is really 3.
+
 **What the test should have asserted, and now does** [SRC]. Across the 96 concurrent requests those
 runs recorded, **not one was answered with the wrong status** — every failure is a *refusal*. So the
 body cap held under concurrency and only the assertion was wrong. `_serve()`'s reject-when-full
