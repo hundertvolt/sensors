@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 
-import { runLiveBackendSmoke } from "./tests_js/_live_twin_command.js";
+import { runLiveBackendConcurrentTabs, runLiveBackendSmoke } from "./tests_js/_live_twin_command.js";
 import {
     applyField,
     applyUnchangedFieldExpectNothingToSubmit,
@@ -49,6 +49,7 @@ export default defineConfig({
             // API rather than Vitest's browser-side `page` object (SPECIFICATION.md Part H.7).
             commands: {
                 runLiveBackendSmoke,
+                runLiveBackendConcurrentTabs,
                 startLiveMatrix,
                 stopLiveMatrix,
                 getRealCurrentValues,

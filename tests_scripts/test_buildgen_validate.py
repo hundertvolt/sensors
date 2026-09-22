@@ -1374,3 +1374,85 @@ def test_uart_link_invalid_role_value_rejected(tmp_path: Path, src_dir: Path) ->
     doc["instance"][-1]["role"] = "peer"
     with pytest.raises(BuildError, match=r"role must be one of \['initiator', 'responder'\], got 'peer'"):
         _build(tmp_path, src_dir, doc)
+
+
+# ---------------------------------------------------------------------------
+# [device].max_connections / backlog, and the firmware ceiling they must fit under
+# (SPECIFICATION.md Parts H.7 and B.14.2)
+# ---------------------------------------------------------------------------
+
+
+def _lwip_pcbs() -> int:
+    from buildgen.model import lwip_tcp_pcb_count
+
+    return lwip_tcp_pcb_count()
+
+
+def test_max_connections_is_optional_and_falls_back_to_the_src_default(tmp_path: Path, src_dir: Path) -> None:
+    # Absent, WebserverService's own default applies - and the ceiling check below still runs
+    # against THAT, so saying nothing can never be a way past it.
+    doc = base_doc()
+    doc["device"].pop("max_connections", None)
+    _build(tmp_path, src_dir, doc)
+
+
+def test_the_src_default_itself_fits_under_the_pinned_lwip_pcb_count(src_dir: Path) -> None:
+    # The relationship Part H.7 states, checked as a relationship: one slot of margin below the
+    # firmware's own MEMP_NUM_TCP_PCB, whatever the sweep has settled that number on.
+    from buildgen.validate import webserver_init_default
+
+    assert webserver_init_default(src_dir, "max_connections") < _lwip_pcbs()
+
+
+def test_a_max_connections_at_the_pcb_ceiling_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["device"]["max_connections"] = _lwip_pcbs()
+    with pytest.raises(BuildError, match="one slot of margin"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_a_max_connections_below_one_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["device"]["max_connections"] = 0
+    with pytest.raises(BuildError, match="serves nothing"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_a_backlog_under_max_connections_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # The failure this prevents is invisible from src/: a shallow accept queue drops arrivals
+    # inside lwIP, so the device serves fewer connections than its own config admits.
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    doc["device"]["backlog"] = 2
+    with pytest.raises(BuildError, match="accept queue would drop"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_a_backlog_at_or_above_max_connections_is_accepted(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    doc["device"]["backlog"] = 3
+    _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("field", ["max_connections", "backlog"])
+def test_a_non_int_connection_field_is_rejected(tmp_path: Path, src_dir: Path, field: str) -> None:
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    doc["device"][field] = "4"
+    with pytest.raises(BuildError, match="must be an int"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_every_shipped_device_states_its_own_ceiling(repo_root: Path) -> None:
+    # The owner's decision (2026-09-22) is that the recommended setting ships on every device, so
+    # each one says what its ceiling is rather than inheriting a default nobody reads.
+    import tomllib
+
+    for toml_path in sorted((repo_root / "devices").glob("*.toml")):
+        if toml_path.name.startswith("zz_test_"):
+            continue
+        with toml_path.open("rb") as f:
+            device = tomllib.load(f)["device"]
+        assert "max_connections" in device, f"{toml_path.name} does not state [device].max_connections"
+        assert device["max_connections"] < _lwip_pcbs(), f"{toml_path.name}'s max_connections outruns the firmware's own lwIP PCB count"

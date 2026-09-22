@@ -980,7 +980,7 @@ nmcli connection up "Wired connection 1"
 
 ## B.14 MicroPython build overrides: a canonical, zero-touch patching framework
 
-**Standing need**: a handful of real problems (so far: one fixed, two identified and planned) need
+**Standing need**: a handful of real problems (so far: two implemented, one identified and planned) need
 MicroPython's own *build behavior* changed — not this project's code — and none of them are things
 upstream exposes as an ordinary, safe-by-default option. The wrong way to solve this is a one-off
 hand-edit to the fetched `$PICO_TOOLCHAIN_DIR/micropython` checkout: it has to be reapplied by hand
@@ -999,7 +999,8 @@ everything else that section already tracks.
 
 **Why not just a `CFLAGS_EXTRA -D...`, the way the mbedtls GCC-14 workaround and
 `MICROPY_PY_SYS_SETTRACE=1` already do it?** That remains the right tool whenever the target macro
-is itself written as `#ifndef X #define X ... #endif` upstream (lwIP's own options are - B.14.2).
+is itself written as `#ifndef X #define X ... #endif` upstream (SOME of lwIP's own options are, and
+some are not - B.14.2, which needed the generated-header mechanism for exactly that reason).
 It does **not** work for a plain, unguarded `#define` (B.14.1's case): confirmed directly
 (2026-09-15) that a later plain `#define` in the same translation unit always wins over an earlier
 command-line `-D`, unconditionally, and this project's own build already treats the resulting
@@ -1129,36 +1130,89 @@ MicroPython release makes deferred keyboard-interrupt delivery the Unix port's o
 inverts `MICROPY_ASYNC_KBD_INTR`'s default value), this whole override becomes a documented no-op
 and can be retired outright once confirmed.
 
-### B.14.2 `lwip_connection_counts` (documented, not yet implemented)
+### B.14.2 `lwip_connection_counts` (implemented) - the rp2 firmware's own lwIP options
 
-**Real future need**: increase the number of simultaneous TCP connections/`netconn`s lwIP allows
-(rp2 port firmware only - `ports/rp2/lwip_inc/lwipopts.h`), for scenarios needing more concurrent
-sockets than the built-in defaults allow (the real webserver's own `max_connections` ceiling is a
-separate, `src/`-level concern - this is about how many the underlying TCP stack itself can hold
-open at once, upstream of that).
+**Real need, now served**: raise the number of simultaneous TCP connections the firmware can hold,
+upstream of `asy_webserver_service.py`'s own `max_connections` ceiling, and make every lwIP option
+that bounds it settable from one reviewed file instead of the fetched checkout.
+`toolchain/versions.toml`'s `[lwip]` table is that file; `CONNECTION_SCALING_PLAN.md` carries the
+sweep the shipped values come from.
 
-**Mechanism, verified workable against the pinned source, not yet wired in**: unlike B.14.1's case,
-lwIP's own `lib/lwip/src/include/lwip/opt.h` guards every one of these options properly -
-```c
-#if !defined MEMP_NUM_TCP_PCB || defined __DOXYGEN__
-#define MEMP_NUM_TCP_PCB                5
-#endif
-```
-(likewise `MEMP_NUM_NETCONN`, default `4`, and every other `MEMP_NUM_*`/`TCP_*` count in that
-file) - and this project's own `ports/rp2/lwip_inc/lwipopts.h` does not currently set any of them,
-so there is nothing to conflict with. A plain `CFLAGS_EXTRA` `-D` addition in `build_firmware()`
-(the same mechanism already carrying the mbedtls GCC-14 workaround) would therefore work cleanly,
-e.g. `-DMEMP_NUM_TCP_PCB=8 -DMEMP_NUM_NETCONN=8` - no generated files, no `VARIANT_DIR`-style
-redirection needed at all.
+**Three things an earlier revision of this Part got wrong, each of which changes the
+implementation.** Re-verified 2026-09-22 against `v1.29.0` as actually fetched, not from memory:
 
-**What a real implementation still needs**: a `verify_lwip_connection_counts_anchor()` checking the
-exact `#if !defined MEMP_NUM_TCP_PCB` guard (and each other option actually being overridden) is
-still present and still a real, honored `#ifndef`-family guard at the pinned tag - a future lwIP
-import that, say, hardcodes these instead would need this override reworked, not silently ignored.
-Pick real target values against a concrete scenario (a specific concurrent-client count this
-project actually needs to support) rather than an arbitrary increase - each `MEMP_NUM_*` bump also
-grows the lwIP memory pool's own static RAM footprint, which is a real, finite budget on a Pico W
-(SPECIFICATION.md Part I.1's own CYW43-firmware-reduces-usable-heap finding applies here too).
+- **`MEMP_NUM_NETCONN` is dead on this port.** `extmod/lwip-include/lwipopts_common.h` sets
+  `LWIP_NETCONN 0` and `LWIP_SOCKET 0`, so the netconn/socket API is not compiled at all -
+  MicroPython drives lwIP through the raw/callback API in `extmod/modlwip.c`. The
+  `-DMEMP_NUM_NETCONN=8` this Part used to suggest would have done nothing at all.
+- **"does not currently set any of them" was false.** Only `MEMP_NUM_TCP_PCB` (and
+  `MEMP_NUM_TCP_PCB_LISTEN`, `MEMP_NUM_PBUF`, `PBUF_POOL_SIZE`) are genuinely unset and left to
+  lwIP's own `#if !defined X || defined __DOXYGEN__` guards. `MEMP_NUM_UDP_PCB` is a **bare
+  `#define`** (`4 + LWIP_MDNS_RESPONDER`), and so is `LWIP_STATS 0` - the same shape as
+  `MICROPY_ASYNC_KBD_INTR` in B.14.1, where a later plain `#define` beats an earlier `-D` and the
+  redefinition warning is a hard build failure here.
+- **`MEM_SIZE`, `TCP_MSS`, `TCP_WND`, `TCP_SND_BUF` and `MEMP_NUM_TCP_SEG` are one atomic
+  `#ifndef MEM_SIZE` block** (8000 / 800 / 6400 / 6400 / 32 as pinned). Defining `MEM_SIZE` alone
+  on the command line disables the *whole* block: `TCP_MSS` silently reverts to lwIP's own 536 and
+  the segment count to 16. They move together or not at all.
+
+**The mechanism, and why it is not `CFLAGS_EXTRA`.** `-D` would serve the guarded macros and
+nothing else, so the override would be split across two mechanisms with only one of them checked.
+An `-I` cannot close the gap: `py/mkrules.cmake:81` folds `$ENV{CFLAGS_EXTRA}` into
+`CMAKE_C_FLAGS`, and CMake emits `<DEFINES> <INCLUDES> <FLAGS>`, so a flag-borne include directory
+lands *after* `ports/rp2/CMakeLists.txt`'s own `target_include_directories(... PRIVATE lwip_inc)`
+and the real `lwipopts.h` still wins - the same ordering defeat B.14.1 measured on the Unix port.
+
+So the whole option set goes through **one generated header**, reached by MicroPython's own
+`_DIR`-suffixed redirect - `MICROPY_BOARD_DIR` here, exactly as B.14.1 uses `VARIANT_DIR` and as
+the project's own porting guide documents (`make BOARD=myboard BOARD_DIR=...`). No MicroPython
+source is edited and nothing but `make` command-line variables is passed:
+
+- `verify_lwip_connection_counts_anchor()` checks fifteen anchors before anything is written -
+  lwIP's own guard for each guarded macro, MicroPython's atomic `MEM_SIZE` block and its plain
+  `#define`s, the rp2 port's include of the common options, the three CMake lines the redirect
+  depends on, and the board directory's own shape. Each one is covered by its own parametrized
+  case in `tests_scripts/test_micropython_overrides.py`, which proves it is load-bearing by
+  removing it and requiring the failure.
+- `apply_lwip_connection_counts_override()` generates a board directory containing a
+  `lwipopts_override/lwipopts.h` that `#include`s the real `ports/rp2/lwip_inc/lwipopts.h` by
+  absolute path and then `#undef`/`#define`s every option; a `mpconfigboard.cmake` that relays the
+  real one, points `MICROPY_BOARD_PINS` back at the real `pins.csv`, and prepends the override
+  include directory with `include_directories(BEFORE ...)` - directory scope, which every target
+  there inherits *ahead* of its own target-level `lwip_inc`; plus relaying `mpconfigboard.h` and
+  `manifest.py`, the latter because the real board cmake points `MICROPY_FROZEN_MANIFEST` at
+  `${MICROPY_BOARD_DIR}`, which is now the generated directory. `BOARD=` is passed alongside
+  `BOARD_DIR=` so `BUILD ?= build-$(BOARD)` still resolves to `build-RPI_PICO_W`, the same
+  precaution B.14.1 takes with `VARIANT`.
+- **The values are verified in the built firmware, not assumed.** `verify_lwip_macros_in_build()`
+  reads the real `flags.make` CMake wrote for the `firmware` target and preprocesses lwIP's own
+  `opt.h` with exactly those `C_DEFINES`/`C_INCLUDES`/`C_FLAGS`, then compares each option's
+  resolved value against what was asked for. `build_firmware()` calls it after every build. This
+  is what closes the atomic-block trap: a `TCP_MSS` that silently reverted to 536 fails the build
+  instead of shipping.
+
+**Measured cost, from real builds** (`RPI_PICO_W`, v1.29.0, `.bss`/`.data` and
+`__GcHeapEnd - __GcHeapStart` read off each `firmware.elf`). Baseline is `.bss` 46,312 B, `.data`
+18,080 B, GC heap **197,528 B**:
+
+| change | GC heap delta | per unit |
+| --- | --- | --- |
+| `MEMP_NUM_TCP_PCB` 5 -> 32 | -5,292 B | **-196 B per PCB slot** |
+| `MEMP_NUM_TCP_SEG` 32 -> 64 | -1,884 B | -59 B per segment |
+| `LWIP_STATS` 0 -> 1 | -1,916 B | diagnostics only |
+| `MEM_SIZE` 8000 -> 16000 | -9,372 B | |
+| `PBUF_POOL_SIZE` 16 -> 32 | -15,644 B | -978 B per pbuf |
+| the 16000/1460 preset (`TCP_MSS` 1460 too) | **-19,932 B** | 10% of the whole GC heap |
+
+**PCB slots are cheap and buffers are not** - the headline the sweep produced, and the reason the
+shipped setting moves only the PCB count. Every build in that sweep succeeded, up to and including
+`MEMP_NUM_TCP_PCB = 32`: there is no compile-time wall in this range.
+
+**Version-bump checklist**: re-read `lwipopts_common.h` and lwIP's `opt.h` at the new tag. If the
+anchors hold, `verify_lwip_connection_counts_anchor()` passing is the confirmation. If the atomic
+`MEM_SIZE` block is restructured, or an option changes guard shape, update the anchor list and
+`LWIP_MACROS_GUARDED_IN_OPT_H`/`LWIP_MACROS_PREDEFINED_BY_MICROPYTHON` together - that split is
+what records *why* each macro needs the generated header rather than a `-D`.
 
 ### B.14.3 `littlefs_flash_storage_size` (documented, not yet implemented)
 
@@ -4499,13 +4553,36 @@ object graph against the twin's buses, and driving real HTTP. **Live-backend bro
 real, live-booted twin subprocess; `live-backend-put-matrix.test.js` extends this to every real
 writable field in `wozi.json`.
 
-**Connection-concurrency ceiling and mitigations**: real rp2040/lwIP has a hard ceiling of 5
-simultaneous TCP connections (lwIP's compile-time default). A page load stays well under it via
+**Connection-concurrency ceiling and mitigations**: the rp2040/lwIP ceiling is a compile-time
+pool this project now pins itself — `toolchain/versions.toml`'s `[lwip].MEMP_NUM_TCP_PCB`, injected
+per Part B.14.2 — rather than lwIP's own default of 5. A page load stays well under it via
 **bundling** (seven modules concatenated into one `js/app.js`, plain text concatenation, safe since
 none use default exports/dynamic imports/re-exports) and **inlining** (`style.css` and the device's
 `definitions.json` embedded directly into the staged `index.html`, with `<` escaped to avoid a
 literal `</script` closing the tag early) — 2 connections per page load (down from ~9).
-`max_connections` is `4` (raised from `3`), one more slot of the freed headroom.
+
+**`max_connections` is `7`** (raised from `4`, itself raised from `3`), stated per device in
+`devices/*.toml` and checked against the firmware's own PCB count by `buildgen/validate.py`. **The
+relationship, not the number, is what this section fixes**: `max_connections` sits below
+`MEMP_NUM_TCP_PCB` with margin, currently 10 against 7. Three slots rather than one, because
+**TIME_WAIT pcbs come from that same pool** (`lib/lwip/src/core/tcp.c`'s `tcp_alloc()` reclaims the
+oldest TIME_WAIT only once `memp_malloc(MEMP_TCP_PCB)` has already failed) and keep-alive is
+unimplemented here, so every single request churns one. Raising `max_connections` without raising
+the pool buys nothing; raising the pool costs 196 B of GC heap per slot (B.14.2's table).
+
+**`backlog` is coupled to it, and must be.** `asyncio.start_server()` defaults to a backlog of 5
+(`extmod/asyncio/stream.py`), so before this was made a constructor knob any `max_connections`
+above 5 was fiction — the accept queue dropped the rest inside lwIP, where nothing in `src/` could
+see it. It now derives `max_connections + 1`: enough that one over-ceiling arrival is queued and
+refused by `_serve()`'s own reject-when-full branch, visibly, rather than dropped unseen.
+
+**What 7 rests on, and what it does not.** The digital twin runs on the Unix port, which has **no
+lwIP at all** — its sockets are real host sockets — so it validates admission, rejection,
+simultaneous body allocation, task growth and latency, and **cannot** validate the PCB ceiling.
+The twin's own evidence for 7 is in `CONNECTION_SCALING_PLAN.md`: at a board-calibrated heap the
+largest contiguous free block retained under a 2x overload burst holds at 13.8% of its
+after-boot value through `max_connections = 7` and falls to 4.0% at 8. The lwIP half is queued for
+the bench (`REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md`) and is not yet confirmed on silicon.
 
 HTTP keep-alive is deliberately not implemented: vendored `ext/microdot.py` always closes after one
 request by design (no keep-alive support upstream either), and this project's hard rule never

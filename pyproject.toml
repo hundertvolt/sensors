@@ -300,16 +300,18 @@ convention = "google"
 
 # Complexity ceilings sit at this codebase's CURRENT measured maximum, so they gate REGRESSION
 # (nothing may get worse) without demanding a restructure of already-reviewed, shipped code.
-# max-args = 22 is asy_webserver_service.py's service constructor, whose arguments are
+# max-args = 23 is asy_webserver_service.py's service constructor, whose arguments are
 # keyword-defaulted wiring rather than a call-site burden. Ratchet these DOWNWARD as offenders are
 # genuinely simplified; never upward to accommodate new code EXCEPT a deliberate, reviewed one-
-# parameter addition like this one (21 -> 22, SPECIFICATION.md Part L.7's build_info= kwarg) -
-# raised on purpose, not as an unreviewed workaround, and not to be bumped again casually.
+# parameter addition like this one (21 -> 22, SPECIFICATION.md Part L.7's build_info= kwarg; then
+# 22 -> 23, Part H.7's backlog= kwarg, which exists because asyncio.start_server()'s own default of
+# 5 silently capped the accept queue below any raised max_connections) - each raised on purpose,
+# reviewed, and one parameter at a time, never as an unreviewed workaround.
 [tool.ruff.lint.mccabe]
 max-complexity = 20
 
 [tool.ruff.lint.pylint]
-max-args = 22
+max-args = 23
 max-branches = 20
 max-statements = 80
 max-returns = 12
@@ -486,6 +488,11 @@ max-returns = 12
 # from repo-controlled constants plus versions.toml/CLI arguments supplied by the person running the
 # installer - who could equally just run those commands themselves.
 "toolchain/setup_toolchain.py" = ["S603"]
+# Same property, one file over: the lwIP override's post-build check shells out to the ARM
+# preprocessor with the argv CMake itself recorded in the real build's flags.make. Both halves
+# are build outputs of this repo's own toolchain, and the call is -E only - it never links or
+# runs anything - so there is no untrusted input for the rule to protect against.
+"toolchain/micropython_overrides.py" = ["S603"]
 # ---- tests_hardware/ (real-hardware tier) ----
 # S603/S607: driving real hardware from the host IS this tier's job, and it has exactly one way to
 # do it - shelling out to the vendor/OS CLIs (`mpremote`, `picotool`, `nmcli`, `iw`, `iptables`,

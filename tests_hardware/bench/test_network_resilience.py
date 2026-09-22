@@ -20,7 +20,7 @@ from error_log_helpers import (
     get_errcount,
     reset_all_error_logs,
 )
-from harness import Board, HardwareTestFailureError, wait_until
+from harness import Board, HardwareTestFailureError, configured_max_connections, discover_max_connections, wait_until
 from rogue_udp_responder import RogueUdpResponder
 
 if TYPE_CHECKING:
@@ -595,12 +595,12 @@ def _restore_ssid_over(host: str, original_ssid: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# The real connection ceiling (max_connections=4, one below lwIP's MEMP_NUM_TCP_PCB=5) degrading
+# The real connection ceiling (max_connections, one below lwIP's own MEMP_NUM_TCP_PCB) degrading
 # cleanly at and above the limit, which test_end_to_end_timing.py's burst never holds enough slots
 # to reach. _open_conns increments on accept, so a bare connect() already occupies a slot.
 # ---------------------------------------------------------------------------
 
-_MAX_CONNECTIONS = 4
+_MAX_CONNECTIONS = configured_max_connections()  # the build's own ceiling, never a restated literal
 
 
 def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: str) -> None:
@@ -818,7 +818,9 @@ def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(du
     # releases its slot in a finally that runs after _close_writer(), so the PUT just made can
     # still hold one. Without it the workers start against 3 free slots, not 4.
     time.sleep(1.0)
-    sizes = [512, _BODY_CAP * 2, _BODY_CAP, _OLD_CONTENT_CAP, 64, _BODY_CAP + 1, 900, _BODY_CAP * 2] * 3
+    # Repeated enough times to stay well past the build's own ceiling however high it has been
+    # raised, so the storm keeps overloading admission rather than merely filling it.
+    sizes = [512, _BODY_CAP * 2, _BODY_CAP, _OLD_CONTENT_CAP, 64, _BODY_CAP + 1, 900, _BODY_CAP * 2] * max(3, _MAX_CONNECTIONS)
     answered: dict[int, int] = {}
     refused: dict[int, str] = {}
     other: dict[int, str] = {}
@@ -842,7 +844,7 @@ def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(du
         t.join(timeout=60.0)
         assert not t.is_alive(), "a worker thread never finished within 60s - possible real deadlock under concurrent mixed-body load"
 
-    # This opens 24 connections against max_connections=4, so most of them are refused at the
+    # This opens several times max_connections' worth of connections, so most are refused at the
     # ceiling by design (queue F10 measured ~25%, at every body size including 64 B). A refusal is
     # not a body-cap result, so it is counted, not failed - but ONLY a refusal.
     assert not other, f"{len(other)} worker(s) failed for a reason that is not the connection ceiling: {dict(list(other.items())[:8])}"
@@ -957,3 +959,26 @@ def test_abrupt_disconnect_mid_response_does_not_hang_the_server(dut_ip: str) ->
     # No hard assertion on WEBSERVER's error log: whether the server is still mid-write when this
     # RST lands (wrnno=3) is a genuine timing race, not deterministic - asserting either way risks flakiness.
     reset_all_error_logs(dut_ip)  # hygiene regardless of which way the race went
+
+
+# ---------------------------------------------------------------------------
+# The connection ceiling the BOARD actually holds, versus the one this tree configures. The only
+# check in the repo that can confirm a raised lwIP MEMP_NUM_TCP_PCB really took effect on silicon -
+# nothing in the twin can, it has no lwIP at all (SPECIFICATION.md Part B.14.2).
+# ---------------------------------------------------------------------------
+
+
+def test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures(dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
+    discovered = discover_max_connections(dut_ip)
+    configured = configured_max_connections()
+    # Equal, not merely "at least": a board holding FEWER than configured means lwIP ran out of
+    # PCBs below the application ceiling, which is the wall this whole investigation looks for;
+    # holding more means the image on the board is not the one this tree describes.
+    assert discovered == configured, (
+        f"the board admitted {discovered} simultaneous connections, this tree configures {configured}. "
+        f"Fewer means lwIP's own MEMP_NUM_TCP_PCB (toolchain/versions.toml) is exhausted below the "
+        f"application ceiling - record it in CONNECTION_SCALING_PLAN.md as the wall. More means the "
+        f"flashed image predates this tree."
+    )
+    assert_module_error_log_empty(dut_ip, "WEBSERVER")

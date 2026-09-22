@@ -260,9 +260,12 @@ class WebserverService:
         maintenance_sensors: "Sequence[tuple[str, MaintenanceFct]]" = (),
         error_sources: "Sequence[_ModuleLike]" = (),
         max_content_length: int = 2048,  # 1.56x the largest schema-permitted body, ~9x real traffic (I.6)
-        max_connections: int = 4,  # reject-when-full ceiling, one slot of margin below the
-        # confirmed MEMP_NUM_TCP_PCB=5 rp2-port ceiling - see SPECIFICATION.md Part H.7 for the
-        # real-browser-testing rationale behind this value (raised from an original 3).
+        max_connections: int = 7,  # reject-when-full ceiling, kept below the firmware's own
+        # MEMP_NUM_TCP_PCB (toolchain/versions.toml) with margin for TIME_WAIT churn - Part H.7
+        # holds that as a RELATIONSHIP, not a number; buildgen passes the per-device value.
+        backlog: int | None = None,  # listen queue depth; None derives max_connections + 1 so one
+        # over-ceiling arrival is queued and refused by _serve() rather than dropped unseen by
+        # lwIP's accept queue. Never below max_connections - see SPECIFICATION.md Part H.7.
         per_call_timeout_s: float = 5.0,
         outer_cap_s: float = 15.0,
         host: str = "0.0.0.0",
@@ -291,6 +294,10 @@ class WebserverService:
         self._maintenance_sensors = _index_pairs(maintenance_sensors)
         self._error_sources = _index_by_name(error_sources)
         self._max_connections = max_connections
+        # Clamped rather than rejected, matching LockedCounter's own out-of-range convention: a
+        # backlog under the ceiling silently caps concurrency below max_connections, which reads as
+        # an application bug. buildgen rejects the same mistake in config, where it can be named.
+        self._backlog = max_connections + 1 if backlog is None else max(backlog, max_connections)
         self._per_call_timeout_s = per_call_timeout_s
         self._outer_cap_s = outer_cap_s
         self._host = host
@@ -666,7 +673,9 @@ class WebserverService:
     async def _run(self) -> None:
         await self.pr.setup()  # required for all logged warnings and errors, matches every other
         # module's own main-loop convention (see e.g. asy_wifi_service.py's wlan_connect()).
-        server = await asyncio.start_server(self._serve, self._host, self._port)
+        # backlog is explicit, never MicroPython's own default of 5 (extmod/asyncio/stream.py):
+        # inherited, it silently caps the accept queue below any raised max_connections.
+        server = await asyncio.start_server(self._serve, self._host, self._port, backlog=self._backlog)
         await server.wait_closed()
 
     def _start_serving(self) -> "asyncio.Task[None]":

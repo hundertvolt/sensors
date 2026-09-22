@@ -159,7 +159,7 @@ def main() -> int:
         st.build_mpy_cross(micropython_dir, args.jobs)
 
         log(f"Building firmware for BOARD={board}, device={args.device!r}")
-        uf2 = st.build_firmware(micropython_dir, board, args.jobs, frozen_manifest=manifest_path)
+        uf2 = st.build_firmware(micropython_dir, board, args.jobs, frozen_manifest=manifest_path, toolchain_dir=args.toolchain_dir)
         shutil.copy(uf2, output)
 
     print(f"\nWrote {output}")

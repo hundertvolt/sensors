@@ -429,6 +429,26 @@ the 2026-09-19 tier-3/tier-4 runs (§7H.6).
 
 ---
 
+## 4A. Connection scaling (the raised TCP ceiling) — never run
+
+Opened 2026-09-22 by the connection-scaling branch. **`REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md`
+is the runnable form of all of this** — it is written standalone, for a session with no prior
+knowledge, and carries the full method, the traps and the recording table. These rows are the index.
+
+| Row | What | Status |
+| --- | --- | --- |
+| C1 | Flash this tree's own `dev` image and confirm the build's own lwIP-macro verification passes on the real build | OPEN |
+| C2 | `test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures` — the board must admit exactly 7 | OPEN |
+| C3 | The rest of the bench tier at the shipped setting: `test_network_resilience.py`, `test_end_to_end_timing.py`, `test_bus_concurrency_under_api_load.py`, `test_memory_stress_bench.py`. All now scale their bursts with the configured ceiling | OPEN |
+| C4 | Record §7's full table for the shipped setting — contiguity after boot and under load, `.bss`/`.data`, latency, every `MemoryError`/`memory allocation failed` spelling, any watchdog reset | OPEN |
+| C5 | The sweep H1–H6 (PCB 5/10/12/16/24/32), finding the wall from both directions and characterising how it fails | OPEN |
+| C6 | Only if a row in C5 fails for a reason that cannot be named: a `LWIP_STATS = 1` image, to see *which* pool exhausted rather than infer it | BLOCKED on C5 |
+
+**Why none of it could be done in the session that wrote it**: no real hardware was reachable, and
+the digital twin runs on the Unix port, which has no lwIP at all. Everything above the transport is
+already measured and green (`CONNECTION_SCALING_PLAN.md` §8.3/§8.4); the PCB and pbuf ceilings are
+structurally outside what the twin can see.
+
 ## 5. Excluded on purpose
 
 - **Nothing about the heap remediation is excluded any more.** Every measure — A, B, the placement

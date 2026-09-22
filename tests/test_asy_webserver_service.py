@@ -2632,7 +2632,58 @@ def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_writ
         gc.threshold(orig_threshold)
 
 
+
+# ---------------------------------------------------------------------------
+# Section G - the backlog knob and its coupling to max_connections
+# (SPECIFICATION.md Part H.7; asyncio.start_server()'s own default is 5)
+# ---------------------------------------------------------------------------
+
+
+def test_backlog_defaults_to_one_above_max_connections() -> None:
+    # Derived, not inherited: start_server()'s own default of 5 silently capped the accept queue
+    # below any raised ceiling, dropping arrivals inside lwIP where src/ could never see them.
+    for ceiling in (1, 3, 4, 7, 12):
+        service, _app = _make_service(max_connections=ceiling)
+        assert service._backlog == ceiling + 1, ceiling
+
+
+def test_an_explicit_backlog_is_honoured_when_it_covers_the_ceiling() -> None:
+    service, _app = _make_service(max_connections=4, backlog=9)
+    assert service._backlog == 9
+
+
+def test_a_backlog_below_the_ceiling_is_clamped_up_never_left_short() -> None:
+    # Clamped rather than raised, matching LockedCounter's own out-of-range convention. buildgen
+    # rejects the same mistake in config, where it can be named against the device that made it.
+    service, _app = _make_service(max_connections=6, backlog=2)
+    assert service._backlog == 6
+
+
+def test_the_server_passes_its_own_backlog_to_start_server() -> None:
+    # The whole point of the knob: an inherited default is what made any ceiling above 5 fiction,
+    # so the value has to reach start_server() rather than merely be stored.
+    service, _app = _make_service(max_connections=7)
+    recorded: dict[str, Any] = {}
+
+    class _FakeServer:
+        async def wait_closed(self) -> None:
+            return
+
+    async def fake_start_server(cb: "Any", host: str, port: int, backlog: int = 5) -> "_FakeServer":
+        recorded["host"], recorded["port"], recorded["backlog"] = host, port, backlog
+        return _FakeServer()
+
+    real_start_server = asyncio.start_server
+    asyncio.start_server = fake_start_server  # type: ignore[assignment]
+    try:
+        asyncio.run(service._run())
+    finally:
+        asyncio.start_server = real_start_server
+    assert recorded["backlog"] == 8, recorded
+
+
 if __name__ == "__main__":
     import microtest
 
     microtest.run(globals())
+

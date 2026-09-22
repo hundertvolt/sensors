@@ -3,7 +3,7 @@
 // API for navigating to an external origin - vitest-dev/vitest#7875). See SPECIFICATION.md Part H.7.
 
 import { spawn } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -117,6 +117,23 @@ async function stopTwin(proc) {
 }
 
 /**
+ * The admission ceiling the twin under test was built with, read from the same TOML buildgen reads
+ * rather than restated here - so raising a device's own max_connections makes the browser tier
+ * open more real tabs instead of leaving it pinned at a number that used to be right.
+ * @returns {number}
+ */
+export function configuredMaxConnections(device = "wozi") {
+    const toml = readFileSync(path.join(REPO_ROOT, "devices", `${device}.toml`), "utf8");
+    // Deliberately a line match, not a TOML parse: this file has no TOML dependency and the key is
+    // a plain top-level int in [device]. A miss throws rather than silently falling back.
+    const match = /^max_connections\s*=\s*(?<ceiling>\d+)\s*$/mu.exec(toml);
+    if (!match?.groups) {
+        throw new Error(`devices/${device}.toml does not state [device].max_connections - the browser tier derives its tab count from it`);
+    }
+    return Number(match.groups.ceiling);
+}
+
+/**
  * @param {{context: import("playwright").BrowserContext}} ctx
  * @returns {Promise<{skipped: true, reason: string} | {skipped: false, titleHasSensorStation: boolean, deviceName: string, debugLevelApplyStatus: string | null}>}
  */
@@ -191,6 +208,55 @@ export async function runLiveBackendSmoke({ context }) {
             livePage.removeAllListeners();
             await livePage.close().catch(() => { /* best-effort teardown - a page already gone is fine */ });
         }
+        await stopTwin(proc);
+    }
+}
+
+/**
+ * Parallel real-browser sessions against one live twin - the closest thing this project has to the
+ * real multi-client scenario, and the tier that actually exercises a raised connection ceiling in a
+ * browser rather than in a socket loop. Every tab loads the real site concurrently; each page load
+ * is 2 connections after bundling/inlining (SPECIFICATION.md Part H.7).
+ * @param {{context: import("playwright").BrowserContext}} ctx
+ * @returns {Promise<{skipped: true, reason: string} | {skipped: false, tabs: number, loaded: number, deviceNames: string[]}>}
+ */
+export async function runLiveBackendConcurrentTabs({ context }) {
+    if (!existsSync(MICROPYTHON_BIN)) {
+        return {
+            skipped: true,
+            reason: `MicroPython Unix port not built at ${MICROPYTHON_BIN} - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)`,
+        };
+    }
+    rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
+
+    // Half the ceiling, since each tab costs 2 connections - so the whole admission ceiling is
+    // genuinely in use at once rather than a fixed, long-stale 2.
+    const tabs = Math.max(2, Math.floor(configuredMaxConnections() / 2));
+    const proc = spawnTwin();
+    let stderr = "";
+    proc.stderr?.on("data", (/** @type {Buffer} */ chunk) => {
+        stderr += chunk.toString();
+    });
+
+    /** @type {import("playwright").Page[]} */
+    const pages = [];
+    try {
+        await waitUntilServing(READY_TIMEOUT_MS);
+        for (let i = 0; i < tabs; i += 1) {
+            // eslint-disable-next-line no-await-in-loop -- pages are CREATED sequentially and NAVIGATED together below; that is what makes the loads concurrent rather than the setup
+            pages.push(await context.newPage());
+        }
+        const results = await Promise.all(pages.map(async (page) => {
+            await page.goto(`http://${HOST}:${PORT}/`);
+            await page.waitForSelector('[data-section-key="system"]', { timeout: 20000 });
+            return (await page.locator("#device-name").textContent())?.trim() ?? "";
+        }));
+        return { skipped: false, tabs, loaded: results.length, deviceNames: results };
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`live-backend concurrent-tab check failed: ${message}\n--- twin stderr ---\n${stderr}`, { cause: err });
+    } finally {
+        await Promise.all(pages.map((page) => page.close().catch(() => { /* best-effort teardown - a page already gone is fine */ })));
         await stopTwin(proc);
     }
 }

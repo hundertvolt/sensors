@@ -843,6 +843,17 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   and - the class the lint/typecheck recipe never exercises at all - the two `toolchain/` files:
   `setup_toolchain.py` as described above, plus the new `micropython_overrides.py` (PR #90's
   `MICROPY_ASYNC_KBD_INTR=0` Unix-port build override, SPECIFICATION.md Part B.14.1).
+  **2026-09-22 adds a second override to that same class, and it changes the rp2 firmware build
+  rather than the Unix port**: `micropython_overrides.py`'s `lwip_connection_counts` (Part B.14.2)
+  generates an out-of-tree board directory and passes `BOARD_DIR=` to `make`, and
+  `setup_toolchain.py`'s `build_firmware()` now applies it unconditionally and then verifies the
+  resulting macros by preprocessing the real translation unit with the flags CMake recorded. Two
+  consequences for a chroot run: the firmware build gains a post-build `arm-none-eabi-gcc -E` step
+  (seconds, but it needs the ARM toolchain present, which the installer leg already provides), and
+  `toolchain/versions.toml` gained an `[lwip]` table that `build_firmware()` reads on every build -
+  a malformed one fails the build loudly rather than silently building unpinned. The installer
+  verification leg (`uv run toolchain/setup_toolchain.py`) is the one that exercises this, not the
+  lint/typecheck recipe.
   That pair is what a compiler-version-sensitive
   break would actually show up in, so it is the part worth the owner's next manual run; a
   `scripts/test.sh` change is host tooling and low-risk. 2026-09-22 added two more to it, both pure

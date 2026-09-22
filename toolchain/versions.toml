@@ -34,3 +34,26 @@ apt_packages = [
     # minimal image, where its absence only surfaces AFTER the whole toolchain build.
     "libcap2-bin",
 ]
+
+# lwIP build options for the rp2 firmware, injected through an out-of-tree lwipopts.h reached by
+# MicroPython's own BOARD_DIR redirect (SPECIFICATION.md Part B.14.2). Every option is listed even
+# when unchanged from the pinned defaults: MEM_SIZE/TCP_MSS/TCP_WND/TCP_SND_BUF/MEMP_NUM_TCP_SEG
+# are ONE atomic upstream block, so a partial set silently reverts TCP_MSS to lwIP's 536.
+#
+# The values are the recommended setting from CONNECTION_SCALING_PLAN.md's sweep. Only the PCB
+# count moved: it costs 196 B of GC heap per slot, where the buffer group costs 5-10x that per unit
+# of benefit and nothing measured says it binds. MEMP_NUM_TCP_PCB carries THREE slots above
+# max_connections, not one - TIME_WAIT pcbs come from this same pool (lwIP tcp.c tcp_alloc()) and
+# keep-alive is unimplemented, so every request churns one (SPECIFICATION.md Part H.7).
+[lwip]
+MEMP_NUM_TCP_PCB = 10
+MEMP_NUM_TCP_PCB_LISTEN = 8
+MEMP_NUM_PBUF = 16
+PBUF_POOL_SIZE = 16
+MEMP_NUM_UDP_PCB = 5
+LWIP_STATS = 0
+MEM_SIZE = 8000
+TCP_MSS = 800
+TCP_WND = 6400
+TCP_SND_BUF = 6400
+MEMP_NUM_TCP_SEG = 32

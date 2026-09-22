@@ -8,10 +8,10 @@ import asyncio.core as _core  # type: ignore[import-not-found]
 import select
 import socket
 
-_DEFAULT_CEILING = 512  # ~28x every concurrent-registration count observed in this codebase's own
-# soak/stress testing: max_connections=4 plus the background service sockets, peaking near 18 in
-# an adversarial 8-client burst. Still a raised threshold rather than a fix, per the docstring's
-# caveat, so the margin is generous - ~45ms of one-time startup is cheap enough not to cut close.
+_DEFAULT_CEILING = 512  # 24x the real peak, re-derived (not raised) when max_connections went to
+# 7: sampling asyncio's own IOQueue.map through the hardest burst any tier drives - 3x the ceiling,
+# 21 clients - peaks at 21 registrations, the burst itself dominating. Still a raised threshold
+# rather than a fix, per the docstring, so the margin stays generous; ~45ms of one-time startup.
 
 
 def prewarm_poll_set(ceiling: int = _DEFAULT_CEILING, port: int = 18099) -> None:

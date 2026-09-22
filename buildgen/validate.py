@@ -10,7 +10,7 @@ from buildgen.defaults import default_class_defines_attr, default_class_name, de
 from buildgen.driver_registry import SINGLETON_SERVICE_DRIVERS, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
 from buildgen.limits import LimitField, parse_limits
-from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, load_device, resolve_instance_key
+from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, load_device, lwip_tcp_pcb_count, resolve_instance_key
 from buildgen.pico_gpio import I2C_ROLE, SPI_ROLE, UART_ROLE, gpio_exists
 from buildgen.requires_tag import RequiresTag, check_requires_tags, parse_requires_tags
 from buildgen.value_wiring import ValueWiringField, parse_value_wiring
@@ -60,7 +60,15 @@ _UART_OPTIONAL_INT_FIELDS = ("rxbuf", "txbuf", "poll_wait_ms", "poll_idle_ms")
 _REQUIRED_DEVICE_FIELDS = ("name", "hostname", "hotspot_password", "conn_fail_to_hotspot", "hotspot_time_min")
 _HOSTNAME_MAX_LEN = 32  # network.hostname()'s real cap; asy_wifi_service._VAL_HOST carries the same number
 _REQUIRED_DEVICE_INT_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
-_ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | {"wiring"}
+# Optional: absent, each falls back to WebserverService.__init__'s own default, and the check below
+# runs against that EFFECTIVE value - so no device can outrun its firmware by simply saying nothing.
+_OPTIONAL_DEVICE_INT_FIELDS = ("max_connections", "backlog")
+_ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | frozenset(_OPTIONAL_DEVICE_INT_FIELDS) | {"wiring"}
+# The ceiling this device's own firmware can actually hold, one slot of margin below the lwIP PCB
+# count toolchain/versions.toml pins (SPECIFICATION.md Part H.7's relationship, not a fixed number).
+# Checked here rather than left to the src/ default, so a device that outruns its own build fails
+# the build instead of silently refusing connections its config says it admits.
+_MAX_CONNECTIONS_FLOOR = 1
 _WPA2_MIN_PASSWORD_LEN = 8  # WPA2-PSK's own minimum (IEEE 802.11i)
 _WPA2_MAX_PASSWORD_LEN = 63  # its maximum too; asy_wifi_service._VAL_HOTSPOT_PW carries the same pair
 
@@ -118,9 +126,53 @@ def _check_device_table(model: DeviceModel) -> None:
     # the device would quietly not answer to its own name. In practice a cap on [device].name.
     if len(dev["hostname"]) > _HOSTNAME_MAX_LEN:
         raise BuildError(model.device, f"[device].hostname is {len(dev['hostname'])} characters - network.hostname() caps at {_HOSTNAME_MAX_LEN}, so [device].name may be at most {_HOSTNAME_MAX_LEN - len('SensorStation')}", field="hostname")
+    for f in _OPTIONAL_DEVICE_INT_FIELDS:
+        if f in dev and not (isinstance(dev[f], int) and not isinstance(dev[f], bool)):
+            raise BuildError(model.device, f"[device].{f} must be an int, got {dev[f]!r}", field=f)
     unknown = set(dev) - _ALLOWED_DEVICE_FIELDS
     if unknown:
         raise BuildError(model.device, f"[device] declares unrecognized field(s) {sorted(unknown)} - typo, or copy-pasted from an unrelated table?", field=min(unknown))
+
+
+def webserver_init_default(src_dir: Path, name: str) -> int:
+    """One `WebserverService.__init__` keyword default, read out of the real source. buildgen never
+    imports src/ (it may use MicroPython-only syntax), so AST is the mechanism - the same one
+    tests_scripts/test_request_body_cap_headroom.py uses for max_content_length."""
+    path = src_dir / "asy_webserver_service.py"
+    try:
+        tree = ast.parse(path.read_text(), filename=str(path))
+    except (OSError, SyntaxError) as e:
+        raise BuildError("<src>", f"cannot read {path} to resolve WebserverService's own {name} default: {e}", field=name) from e
+    for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == "WebserverService"):
+        for fn in (n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "__init__"):
+            # Keyword-only and positional defaults are walked as two pairings rather than one
+            # concatenation: kw_defaults carries a None per argument that has no default, so the
+            # two lists have different element types and only line up within their own group.
+            positional = fn.args.args[len(fn.args.args) - len(fn.args.defaults):]
+            pairs: "list[tuple[ast.arg, ast.expr | None]]" = list(zip(fn.args.kwonlyargs, fn.args.kw_defaults, strict=True))
+            pairs += list(zip(positional, fn.args.defaults, strict=True))
+            for arg, default in pairs:
+                if arg.arg == name and isinstance(default, ast.Constant) and isinstance(default.value, int) and not isinstance(default.value, bool):
+                    return default.value
+    raise BuildError("<src>", f"WebserverService.__init__ no longer has a readable int default for {name!r} in {path} - the per-device key and the shipped default have to agree", field=name)
+
+
+def _check_connection_ceiling(model: DeviceModel, src_dir: Path) -> None:
+    """The device's EFFECTIVE admission ceiling against the firmware's own lwIP PCB count. Config
+    that outruns its build refuses connections it says it admits, which reads as an application
+    bug; Part H.7 keeps one slot of margin below the PCB count as a relationship, not a number."""
+    dev = model.doc["device"]
+    max_connections = dev.get("max_connections", webserver_init_default(src_dir, "max_connections"))
+    if max_connections < _MAX_CONNECTIONS_FLOOR:
+        raise BuildError(model.device, f"[device].max_connections is {max_connections} - a webserver admitting no connection at all serves nothing, so the floor is {_MAX_CONNECTIONS_FLOOR}", field="max_connections")
+    lwip_pcbs = lwip_tcp_pcb_count()
+    if max_connections >= lwip_pcbs:
+        raise BuildError(model.device, f"[device].max_connections is {max_connections}, but this firmware's lwIP holds only {lwip_pcbs} TCP PCBs ([lwip].MEMP_NUM_TCP_PCB in toolchain/versions.toml) - Part H.7 keeps one slot of margin below that, so the ceiling here is {lwip_pcbs - 1}", field="max_connections")
+    backlog = dev.get("backlog")
+    if backlog is not None and backlog < max_connections:
+        # An accept queue shallower than the ceiling drops arrivals inside lwIP, where nothing in
+        # src/ ever sees them - so the device silently serves fewer than its own config admits.
+        raise BuildError(model.device, f"[device].backlog is {backlog}, below the {max_connections} connections [device].max_connections admits - the accept queue would drop arrivals the ceiling says it accepts", field="backlog")
 
 
 def _check_bus_tables(model: DeviceModel) -> "dict[str, TomlDoc]":
@@ -591,6 +643,10 @@ def build_model(toml_path: Path, src_dir: Path) -> DeviceModel:
     _check_value_wiring(model)
     _check_device_wiring(model, src_dir)
     _check_requires_tags(model, buses)
+    # Last, because it is a coherence check between this device's config and the firmware it will
+    # ship in rather than a property of the TOML - anything genuinely wrong with the device should
+    # report before it, and it is the only stage that reads toolchain/versions.toml at all.
+    _check_connection_ceiling(model, src_dir)
     return model
 
 

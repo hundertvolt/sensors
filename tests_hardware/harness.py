@@ -31,6 +31,50 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # failed, ..." (py/runtime.c) and the class name appears only in an UNCAUGHT traceback.
 MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
 
+def configured_max_connections(device: str = "dev") -> int:
+    """The admission ceiling this repo's config would build for `device` - its own
+    [device].max_connections, else WebserverService's own default. It describes the TREE, not
+    necessarily the image on the board, so a test that cares asserts the two agree."""
+    sys.path.insert(0, str(REPO_ROOT))
+    import tomllib
+
+    from buildgen.validate import webserver_init_default
+
+    with (REPO_ROOT / "devices" / f"{device}.toml").open("rb") as f:
+        table = tomllib.load(f)["device"]
+    ceiling = table.get("max_connections")
+    return int(ceiling) if ceiling is not None else webserver_init_default(REPO_ROOT / "src", "max_connections")
+
+
+def discover_max_connections(host: str, port: int = 80, probe_limit: int = 64, settle_s: float = 1.0) -> int:
+    """The ceiling the BOARD actually holds, found by holding connections open one at a time until
+    one is refused. The only figure that is silicon's own rather than the tree's, and the one a
+    raised lwIP PCB count has to be confirmed against (SPECIFICATION.md Part B.14.2)."""
+    import socket
+    import time
+
+    time.sleep(settle_s)  # _serve()'s slot release outlives the response (Part I.6), so start clean
+    held: list[socket.socket] = []
+    try:
+        for admitted in range(probe_limit):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(10.0)
+            sock.connect((host, port))
+            held.append(sock)
+            time.sleep(0.2)  # a completed connect() is not yet an accepted, counted connection
+            try:
+                if sock.recv(4096) == b"":
+                    return admitted  # refused without a response: this one did not get a slot
+            except ConnectionResetError:
+                return admitted
+            except TimeoutError:
+                continue  # held open, as an admitted connection with nothing to say should be
+        raise AssertionError(f"no connection was refused within {probe_limit} attempts against {host} - the ceiling is higher than this probe looks, or admission is not bounded at all")
+    finally:
+        for sock in held:
+            sock.close()
+
+
 # Read from the module that CREATES these NetworkManager connections rather than copied, so a
 # rename there cannot leave the bench tier looking for a rig nobody built - its skip gate
 # deselects rather than fails, which is exactly the way that goes unnoticed.

@@ -244,3 +244,181 @@ class TestBuildUnixPortAppliesTheOverride:
         with pytest.raises(setup_toolchain.micropython_overrides.OverrideError):
             setup_toolchain.build_unix_port(fake_mp_dir, toolchain_dir, jobs=4)
         assert recorded == []
+
+
+# ---------------------------------------------------------------------------
+# lwip_connection_counts (SPECIFICATION.md Part B.14.2)
+# ---------------------------------------------------------------------------
+
+_REAL_BOARD = "RPI_PICO_W"
+_LWIP_MACROS = {
+    "MEMP_NUM_TCP_PCB": 12,
+    "MEMP_NUM_TCP_PCB_LISTEN": 8,
+    "MEMP_NUM_PBUF": 16,
+    "PBUF_POOL_SIZE": 16,
+    "MEMP_NUM_UDP_PCB": 5,
+    "LWIP_STATS": 0,
+    "MEM_SIZE": 8000,
+    "TCP_MSS": 800,
+    "TCP_WND": 6400,
+    "TCP_SND_BUF": 6400,
+    "MEMP_NUM_TCP_SEG": 32,
+}
+
+
+def _write_fake_lwip_tree(root: Path, *, drop: str | None = None, board: str = _REAL_BOARD) -> Path:
+    """A synthetic tree carrying every anchor the override checks; `drop` removes exactly one, so a
+    test can prove that anchor is really load-bearing rather than decorative."""
+    opt_h = root / "lib" / "lwip" / "src" / "include" / "lwip"
+    opt_h.mkdir(parents=True)
+    guards = "\n".join(f"#if !defined {m} || defined __DOXYGEN__\n#define {m} 1\n#endif" for m in ("MEMP_NUM_TCP_PCB", "MEMP_NUM_TCP_PCB_LISTEN", "MEMP_NUM_PBUF", "PBUF_POOL_SIZE") if m != drop)
+    (opt_h / "opt.h").write_text(guards + "\n")
+
+    common = root / "extmod" / "lwip-include"
+    common.mkdir(parents=True)
+    common_lines = [
+        "#define LWIP_NETCONN                    0",
+        "#define LWIP_STATS                      0",
+        "#define MEMP_NUM_UDP_PCB                (4 + LWIP_MDNS_RESPONDER)",
+        "#ifndef MEM_SIZE",
+        "#define MEM_SIZE (8000)",
+        "#define TCP_MSS (800)",
+        "#define TCP_WND (8 * TCP_MSS)",
+        "#define TCP_SND_BUF (8 * TCP_MSS)",
+        "#define MEMP_NUM_TCP_SEG (32)",
+        "#endif",
+    ]
+    (common / "lwipopts_common.h").write_text("\n".join(line for line in common_lines if line != drop) + "\n")
+
+    lwip_inc = root / "ports" / "rp2" / "lwip_inc"
+    lwip_inc.mkdir(parents=True)
+    inc_line = '#include "extmod/lwip-include/lwipopts_common.h"'
+    (lwip_inc / "lwipopts.h").write_text("" if inc_line == drop else inc_line + "\n")
+
+    cmake_lines = [
+        "include(${MICROPY_BOARD_DIR}/mpconfigboard.cmake)",
+        "target_include_directories(${MICROPY_TARGET} PRIVATE\n        lwip_inc\n    )",
+        "if(NOT MICROPY_BOARD_PINS)",
+    ]
+    (root / "ports" / "rp2" / "CMakeLists.txt").write_text("\n".join(line for line in cmake_lines if line != drop) + "\n")
+
+    board_dir = root / "ports" / "rp2" / "boards" / board
+    board_dir.mkdir(parents=True)
+    board_cmake_line = "set(MICROPY_FROZEN_MANIFEST ${MICROPY_BOARD_DIR}/manifest.py)"
+    (board_dir / "mpconfigboard.cmake").write_text('set(PICO_BOARD "pico_w")\n' if board_cmake_line == drop else f'set(PICO_BOARD "pico_w")\n{board_cmake_line}\n')
+    for name in ("mpconfigboard.h", "manifest.py", "pins.csv"):
+        if name != drop:
+            (board_dir / name).write_text("")
+    return root
+
+
+class TestVerifyLwipConnectionCountsAnchor:
+    def test_passes_against_the_real_pinned_source(self, overrides: ModuleType, micropython_dir: Path) -> None:
+        if not (micropython_dir / "lib" / "lwip" / "src" / "include" / "lwip" / "opt.h").is_file():
+            pytest.skip(f"no real toolchain checkout with lwIP submodules at {micropython_dir} - build it first (scripts/test.sh does)")
+        overrides.verify_lwip_connection_counts_anchor(micropython_dir, _REAL_BOARD)
+
+    def test_raises_when_the_tree_is_missing_entirely(self, overrides: ModuleType, tmp_path: Path) -> None:
+        with pytest.raises(overrides.OverrideError, match="not found"):
+            overrides.verify_lwip_connection_counts_anchor(tmp_path, _REAL_BOARD)
+
+    @pytest.mark.parametrize(
+        "dropped",
+        [
+            "MEMP_NUM_TCP_PCB",  # lwIP's own guard - without it a value could not be injected at all
+            "PBUF_POOL_SIZE",
+            "#ifndef MEM_SIZE",  # trap A: the atomic block
+            "#define TCP_MSS (800)",
+            "#define MEMP_NUM_UDP_PCB                (4 + LWIP_MDNS_RESPONDER)",  # trap B: a plain #define
+            "#define LWIP_STATS                      0",
+            "#define LWIP_NETCONN                    0",  # the fact that makes MEMP_NUM_NETCONN a no-op
+            '#include "extmod/lwip-include/lwipopts_common.h"',
+            "include(${MICROPY_BOARD_DIR}/mpconfigboard.cmake)",  # the BOARD_DIR redirect itself
+            "target_include_directories(${MICROPY_TARGET} PRIVATE\n        lwip_inc\n    )",
+            "if(NOT MICROPY_BOARD_PINS)",
+            "set(MICROPY_FROZEN_MANIFEST ${MICROPY_BOARD_DIR}/manifest.py)",
+            "pins.csv",
+            "manifest.py",
+            "mpconfigboard.h",
+        ],
+    )
+    def test_every_anchor_is_load_bearing(self, overrides: ModuleType, tmp_path: Path, dropped: str) -> None:
+        # One parametrization per anchor: each must fail the verify step on its own, or it is
+        # decorative and would let a restructuring release build silently unpatched.
+        _write_fake_lwip_tree(tmp_path, drop=dropped)
+        with pytest.raises(overrides.OverrideError):
+            overrides.verify_lwip_connection_counts_anchor(tmp_path, _REAL_BOARD)
+
+
+class TestApplyLwipConnectionCountsOverride:
+    def test_returns_board_and_board_dir(self, overrides: ModuleType, tmp_path: Path) -> None:
+        fake = _write_fake_lwip_tree(tmp_path / "micropython")
+        result = overrides.apply_lwip_connection_counts_override(fake, tmp_path / "build_overrides", _REAL_BOARD, _LWIP_MACROS)
+        assert result == {"BOARD": _REAL_BOARD, "BOARD_DIR": str(tmp_path / "build_overrides" / overrides.LWIP_OVERRIDE_BOARD_DIR_NAME)}
+
+    def test_never_writes_inside_the_micropython_tree(self, overrides: ModuleType, tmp_path: Path) -> None:
+        fake = _write_fake_lwip_tree(tmp_path / "micropython")
+        before = sorted(p.relative_to(fake) for p in fake.rglob("*"))
+        overrides.apply_lwip_connection_counts_override(fake, tmp_path / "build_overrides", _REAL_BOARD, _LWIP_MACROS)
+        after = sorted(p.relative_to(fake) for p in fake.rglob("*"))
+        assert before == after, "the fetched checkout must never gain, lose, or have a file rewritten"
+
+    def test_generated_lwipopts_includes_the_real_one_then_redefines_every_option(self, overrides: ModuleType, tmp_path: Path) -> None:
+        fake = _write_fake_lwip_tree(tmp_path / "micropython")
+        overrides.apply_lwip_connection_counts_override(fake, tmp_path / "build_overrides", _REAL_BOARD, _LWIP_MACROS)
+        generated = (tmp_path / "build_overrides" / overrides.LWIP_OVERRIDE_BOARD_DIR_NAME / overrides.LWIP_OVERRIDE_INCLUDE_DIR_NAME / "lwipopts.h").read_text()
+        real = fake / "ports" / "rp2" / "lwip_inc" / "lwipopts.h"
+        assert f'#include "{real}"' in generated
+        include_pos = generated.index(f'#include "{real}"')
+        for name, value in _LWIP_MACROS.items():
+            # Ordering is the whole mechanism: the #undef must follow the include, so it beats
+            # MicroPython's own plain #define, and the #define must follow the #undef.
+            assert include_pos < generated.index(f"#undef {name}") < generated.index(f"#define {name} ({value})"), name
+
+    def test_the_board_cmake_prepends_the_override_include_dir_and_relays_the_real_board(self, overrides: ModuleType, tmp_path: Path) -> None:
+        fake = _write_fake_lwip_tree(tmp_path / "micropython")
+        overrides.apply_lwip_connection_counts_override(fake, tmp_path / "build_overrides", _REAL_BOARD, _LWIP_MACROS)
+        override_dir = tmp_path / "build_overrides" / overrides.LWIP_OVERRIDE_BOARD_DIR_NAME
+        real_board = fake / "ports" / "rp2" / "boards" / _REAL_BOARD
+        cmake = (override_dir / "mpconfigboard.cmake").read_text()
+        # BEFORE, not a plain include_directories(): a plain one lands after the port's own
+        # target-level lwip_inc and the real lwipopts.h would silently win again.
+        assert f'include_directories(BEFORE "{override_dir / overrides.LWIP_OVERRIDE_INCLUDE_DIR_NAME}")' in cmake
+        assert f"include({real_board / 'mpconfigboard.cmake'})" in cmake
+        assert f'set(MICROPY_BOARD_PINS "{real_board / "pins.csv"}")' in cmake
+
+    def test_the_board_header_and_manifest_relay_rather_than_copy(self, overrides: ModuleType, tmp_path: Path) -> None:
+        # The real board cmake points MICROPY_FROZEN_MANIFEST at ${MICROPY_BOARD_DIR}, which is now
+        # the generated directory - so both have to be relayed, and by reference so neither drifts.
+        fake = _write_fake_lwip_tree(tmp_path / "micropython")
+        overrides.apply_lwip_connection_counts_override(fake, tmp_path / "build_overrides", _REAL_BOARD, _LWIP_MACROS)
+        override_dir = tmp_path / "build_overrides" / overrides.LWIP_OVERRIDE_BOARD_DIR_NAME
+        real_board = fake / "ports" / "rp2" / "boards" / _REAL_BOARD
+        assert (override_dir / "mpconfigboard.h").read_text() == f'#include "{real_board / "mpconfigboard.h"}"\n'
+        assert (override_dir / "manifest.py").read_text() == f'include("{real_board / "manifest.py"}")\n'
+
+    def test_is_idempotent(self, overrides: ModuleType, tmp_path: Path) -> None:
+        fake = _write_fake_lwip_tree(tmp_path / "micropython")
+        overrides_dir = tmp_path / "build_overrides"
+        first = overrides.apply_lwip_connection_counts_override(fake, overrides_dir, _REAL_BOARD, _LWIP_MACROS)
+        second = overrides.apply_lwip_connection_counts_override(fake, overrides_dir, _REAL_BOARD, _LWIP_MACROS)
+        assert first == second
+
+    def test_raises_without_applying_anything_when_the_anchor_is_gone(self, overrides: ModuleType, tmp_path: Path) -> None:
+        fake = _write_fake_lwip_tree(tmp_path / "micropython", drop="#ifndef MEM_SIZE")
+        overrides_dir = tmp_path / "build_overrides"
+        with pytest.raises(overrides.OverrideError):
+            overrides.apply_lwip_connection_counts_override(fake, overrides_dir, _REAL_BOARD, _LWIP_MACROS)
+        assert not overrides_dir.exists()
+
+    @pytest.mark.parametrize("macros", [{"MEMP_NUM_TCP_PCB": 8}, {**_LWIP_MACROS, "NOT_A_REAL_OPTION": 1}, {**_LWIP_MACROS, "TCP_MSS": -1}, {**_LWIP_MACROS, "LWIP_STATS": True}])
+    def test_rejects_a_partial_unknown_or_ill_typed_option_set(self, overrides: ModuleType, tmp_path: Path, macros: "dict[str, object]") -> None:
+        # A partial set is the one that matters: MEM_SIZE alone disables the whole upstream block,
+        # silently reverting TCP_MSS to lwIP's 536 and the segment count to 16 (trap A).
+        fake = _write_fake_lwip_tree(tmp_path / "micropython")
+        with pytest.raises(overrides.OverrideError):
+            overrides.apply_lwip_connection_counts_override(fake, tmp_path / "build_overrides", _REAL_BOARD, macros)
+
+    def test_every_settable_macro_is_one_the_pinned_source_actually_defines(self, overrides: ModuleType) -> None:
+        assert set(overrides.LWIP_SETTABLE_MACROS) == set(overrides.LWIP_MACROS_GUARDED_IN_OPT_H) | set(overrides.LWIP_MACROS_PREDEFINED_BY_MICROPYTHON)
+        assert not set(overrides.LWIP_MACROS_GUARDED_IN_OPT_H) & set(overrides.LWIP_MACROS_PREDEFINED_BY_MICROPYTHON)

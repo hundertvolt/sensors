@@ -204,3 +204,140 @@ record. Ask the owner for a go-ahead if one is wanted; do not assume it.
 - Report cross-file discrepancies rather than silently fixing them.
 - No test may inflict avoidable wear on real hardware or the host SSD; prove invariants
   structurally rather than by brute-force scale.
+
+---
+
+# 8. Results (2026-09-22)
+
+**No real hardware this session** (owner, 2026-09-22: the bench is not reachable from here). The
+lwIP half of every ceiling below is therefore priced from real firmware builds and **not** confirmed
+on silicon; `REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md` is the runnable form of what is owed,
+written standalone for a session with no prior knowledge. Marked `[BUILD]`, `[TWIN]` and `[HW]`
+throughout, and there is no `[HW]` yet.
+
+## 8.1 What the mechanism turned out to need
+
+§3 guessed "guarded macros → `-D`, unguarded → generated header". **Both halves go through the
+generated header**, because the split cannot be made safely: `py/mkrules.cmake:81` folds
+`$ENV{CFLAGS_EXTRA}` into `CMAKE_C_FLAGS`, and CMake emits `<DEFINES> <INCLUDES> <FLAGS>`, so an
+`-I` in it lands *after* the rp2 port's own `target_include_directories(... PRIVATE lwip_inc)` and
+loses. The redirect that works is `MICROPY_BOARD_DIR`, the rp2 analogue of B.14.1's `VARIANT_DIR`
+and the mechanism MicroPython's own porting guide documents. Full account: `SPECIFICATION.md` Part
+B.14.2, rewritten with the three corrections §2 owed it.
+
+Two source facts §2 did not have, both verified against the pinned tree:
+
+- `MEMP_NUM_PBUF` (16) and `PBUF_POOL_SIZE` (16) are **also** unset by MicroPython and
+  `#if !defined`-guarded, so they belong in the same table. `PBUF_POOL` is the largest single lwIP
+  pool in the shipped firmware at 14,275 B.
+- **TIME_WAIT pcbs come from `MEMP_TCP_PCB`, the same pool as live connections**
+  (`lib/lwip/src/core/tcp.c`'s `tcp_alloc()` only reclaims the oldest TIME_WAIT *after*
+  `memp_malloc()` has already failed). Keep-alive is unimplemented, so every request churns one.
+  This is why the shipped margin is three slots, not §2's assumed one.
+
+## 8.2 The firmware sweep — `[BUILD]`, real builds, real ELFs
+
+`RPI_PICO_W`, v1.29.0. Baseline `.bss` 46,312 B, `.data` 18,080 B, GC heap
+(`__GcHeapEnd - __GcHeapStart`) **197,528 B**. Every option verified in the built translation unit,
+not assumed.
+
+| setting | `.bss` | GC heap | delta | TCP PCB pool | `ram_heap` | PBUF pool |
+| --- | --- | --- | --- | --- | --- | --- |
+| baseline (PCB 5) | 46,312 | 197,528 | — | 983 | 8,019 | 14,275 |
+| PCB 6 | 46,508 | 197,332 | −196 | 1,179 | 8,019 | 14,275 |
+| PCB 8 | 46,900 | 196,940 | −588 | 1,571 | 8,019 | 14,275 |
+| **PCB 10 (shipped)** | **47,292** | **196,548** | **−980** | **1,963** | 8,019 | 14,275 |
+| PCB 12 | 47,684 | 196,156 | −1,372 | 2,355 | 8,019 | 14,275 |
+| PCB 16 | 48,468 | 195,372 | −2,156 | 3,139 | 8,019 | 14,275 |
+| PCB 24 | 50,036 | 193,804 | −3,724 | 4,707 | 8,019 | 14,275 |
+| PCB 32 | 51,604 | 192,236 | −5,292 | 6,275 | 8,019 | 14,275 |
+| PCB 12 + `MEMP_NUM_TCP_SEG` 64 | 48,196 | 195,644 | −1,884 | 2,355 | 8,019 | 14,275 |
+| PCB 12 + `LWIP_STATS` 1 | 48,228 | 195,612 | −1,916 | 2,355 | 8,019 | 14,275 |
+| PCB 12 + `MEM_SIZE` 12000 | 51,684 | 192,156 | −5,372 | 2,355 | 12,019 | 14,275 |
+| PCB 12 + `MEM_SIZE` 16000 | 55,684 | 188,156 | −9,372 | 2,355 | 16,019 | 14,275 |
+| PCB 12 + `PBUF_POOL_SIZE` 32 | 61,956 | 181,884 | −15,644 | 2,355 | 8,019 | 28,547 |
+| PCB 12 + the 16000/1460 preset | 66,244 | 177,596 | **−19,932** | 2,355 | 16,019 | 24,835 |
+
+**Every build succeeded, including `MEMP_NUM_TCP_PCB = 32`. There is no compile-time wall in this
+range** — §2's expectation that the wall would be a build-level buffer limit is wrong, at least up
+to here.
+
+**PCB slots cost exactly 196 B each; buffers cost 5–10x that per unit of benefit.** That single
+ratio is what decides the recommendation: the connection count is the cheap knob and the buffer
+group is not, so the shipped setting moves only the PCB count and leaves the `MEM_SIZE` group and
+the pbuf pools at their pinned values. §2's "likely real binding constraint" — that buffering, not
+PCB count, is what binds — remains *plausible* but is now explicitly untested: nothing measurable
+here says it binds, and only silicon can say whether it does.
+
+## 8.3 The twin sweep — `[TWIN]`, above the transport only
+
+The Unix port has **no lwIP**, so none of this is a connection-ceiling result. Heap calibrated by
+fill fraction the way `HEAP_FRAGMENTATION_MEASUREMENTS.md` §1.4 prescribes: at
+`-X heapsize=1200k` the booted `wozi` graph sits **42.8%** full against the board's 44%.
+Instrument is `micropython.mem_info(1)` parsed by `tests_hardware/heap_map.py` (§7G.1's
+non-perturbing instrument), not the allocating probe.
+
+**Exactness of admission** — at burst = N, every N from 2 to 63 served exactly N with **zero**
+rejections. Admission is exact at every count tried.
+
+**The trade, ensembled over 5 runs per setting at burst = 2N:**
+
+| `max_connections` | largest free run, after boot | under load | retained | p50 | `MemoryError` |
+| --- | --- | --- | --- | --- | --- |
+| 4 | 409,760 | 80,832 | 19.7% | 5.4 ms | 0 |
+| 5 | 407,392 | 67,648 | 16.6% | 6.7 ms | 0 |
+| 6 | 405,440 | 147,840 | 36.5% | 7.7 ms | 0 |
+| **7 (shipped)** | **403,584** | **55,712** | **13.8%** | **9.0 ms** | **0** |
+| 8 | 402,464 | 16,032 | **4.0%** | 10.6 ms | 0 |
+| 9 | 399,584 | 23,104 | 5.8% | 12.0 ms | 0 |
+| 10 | 387,456 | 8,032 | 2.1% | 13.1 ms | 0 |
+| 11 | 385,472 | 7,808 | 2.0% | 14.4 ms | 0 |
+
+**The cliff is between 7 and 8** — a 3.5x drop in retained contiguity, reproducible across all five
+runs at each setting. N = 6's 36.5% is the placement lottery §1.3 of the measurements document
+warns about (it too is stable across its five runs), which is exactly why adjacent settings are
+ranked from an ensemble and not from single readings.
+
+**p50 latency grows about 1.3 ms per added connection** under a 2x burst, linearly, all the way out
+to N = 63 (83 ms). That is real scheduler cost, not noise, and it is the second reason not to push
+the count further than the memory argument alone would allow.
+
+## 8.4 The wall, from both directions — `[TWIN]`
+
+- **Highest setting that passes everything: 63.** Serves 63 of 63 at burst = N and 126 of 126 at
+  2N, zero rejections, no allocation failure. Admission itself does not break.
+- **First setting that fails: 47, at a 3x burst.** A `MemoryError` allocating 1,017 bytes appears
+  **caught and degraded** — the run's own assertions still passed. Under CLAUDE.md I.4(e) that is
+  already a failure, not a pass, and it is exactly the silent case that rule exists to catch.
+- **How it fails at 63 with a 3x burst: uncaught `MemoryError`** allocating 2,048 bytes, and the
+  process dies. Not a clean rejection, not a stall, not a watchdog — heap exhaustion under
+  contiguity collapse, on a small allocation.
+
+So the failure mode is **contiguity collapse → `MemoryError` on a 1–2 KB allocation**, first caught,
+then fatal. It is not the "no free PCB" wall §2 expected, because the twin has no PCBs at all; on
+silicon that wall may well arrive first, and §5's warning stands — **a green twin run is not a
+validated connection ceiling.**
+
+## 8.5 Recommendation, and the trade in both directions
+
+**`max_connections = 7`, `MEMP_NUM_TCP_PCB = 10`, `backlog = 8`, every buffer left alone.**
+Shipped on all six devices (owner's decision, 2026-09-22).
+
+**For it.** 75% more simultaneous connections for **980 B** of the 197,528 B GC heap — 0.50%.
+Admission stays exact at 7; the three-slot PCB margin covers the accept-queue arrival being refused
+plus TIME_WAIT churn from a design with no keep-alive; the backlog coupling closes a ceiling that
+was fiction above 5 whatever `max_connections` said. Zero `MemoryError` at either gc threshold,
+across every tier, at the shipped value.
+
+**Against it.** Under a 2x overload burst the twin retains 13.8% of its after-boot largest
+contiguous free block, against 19.7% at `max_connections = 4` — a real 30% relative loss of
+contiguity on a project whose known defect *is* contiguity. p50 latency under that burst goes from
+5.4 ms to 9.0 ms. And the lwIP half is unconfirmed: if the board's PCB pool or pbuf supply binds
+before 7, the firmware will refuse connections its own config admits, which reads as an application
+bug and is not one — that is precisely what the handover's §4 row exists to catch.
+
+**Why not 8, which the connection count alone would have allowed.** 8 costs another 3.5x of
+retained contiguity for one more connection. A setting that serves more connections but leaves the
+boot survivors unable to place is a worse setting, and 8 is where that starts on the only evidence
+available. If silicon disagrees, the number moves — the *relationship* in Part H.7 is what this
+branch fixes, not the number.
