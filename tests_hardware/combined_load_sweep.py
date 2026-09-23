@@ -28,16 +28,23 @@ _THRESHOLD_LINE = "gc.threshold(-1)\n"
 
 
 def _reference_lengths(ip: str) -> dict[str, int]:
-    # Idle fetches, retried: the first request after boot can land on a board still settling.
+    # Idle fetches, retried until a 200 whose body matches its Content-Length: every boot of the device
+    # script drops and rejoins WLAN at uptime ~6 s, and a fetch caught by it once came back 0 B (§10.10).
     lengths: dict[str, int] = {}
     for path in STATIC:
         for _ in range(10):
             try:
-                lengths[path] = len(http_client.fetch(ip, 80, "GET", path, timeout_s=30.0).body)
-                break
+                response = http_client.fetch(ip, 80, "GET", path, timeout_s=30.0)
             except Exception as e:
                 print(f"   reference fetch {path} retry: {e!r}")
                 time.sleep(2.0)
+                continue
+            framed = response.headers.get("Content-Length") == str(len(response.body))
+            if response.status_code == 200 and response.body and framed:
+                lengths[path] = len(response.body)
+                break
+            print(f"   reference fetch {path} retry: status {response.status_code}, {len(response.body)} B, Content-Length {response.headers.get('Content-Length')}")
+            time.sleep(2.0)
     return lengths
 
 
@@ -100,8 +107,12 @@ def run_level(board: Board, bench: BenchBridge, ip: str, script: Path, n: int, r
         (raw_dir / f"combined_load_N{n}_{int(time.time())}.txt").write_text(output)
     threshold = next((line for line in output.splitlines() if line.startswith("GC_THRESHOLD=")), "GC_THRESHOLD=?")
     allocation_lines = [line.strip() for line in output.splitlines() if any(marker in line for marker in MEMORY_ERROR_MARKERS)]
-    samples = [m for label, m in sorted(heap_map.parse_labelled(output).items()) if label.startswith("t")]
-    worst_run = min((m.largest_free_run for m in samples), default=-1)
+    try:  # one torn heap-map capture once cost a whole level's host tally (§10.10): report it, don't crash
+        samples = [m for label, m in sorted(heap_map.parse_labelled(output).items()) if label.startswith("t")]
+        worst_run = min((m.largest_free_run for m in samples), default=-1)
+    except heap_map.HeapMapError as e:
+        print(f"     heap map unreadable, worst free run not measured: {e}")
+        worst_run = -1
     served = result.get("served", 0)
     failures = result.get("failures", {})
     stable = served == n * ROUNDS and not allocation_lines and not driver.is_alive()

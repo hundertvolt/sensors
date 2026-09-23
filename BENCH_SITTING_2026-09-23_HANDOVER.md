@@ -684,3 +684,96 @@ N= 5 GC_THRESHOLD=-1 | served 59/60 over 12 rounds | worst placeable2K=0 worst_l
 N= 4 GC_THRESHOLD=-1 | served 47/48 over 12 rounds | worst placeable2K=0 worst_largest_run=640 | MemoryError lines=0 | {"/status URLError:TimeoutError('timed out')": 1, 'rounds': {4}}
 ```
 
+
+## 10.10 Third sitting (evening) — `REAL_HARDWARE_HANDOVER_STATIC_FIX.md` on silicon, image F′
+
+Owner's go-ahead in this conversation. All figures at `gc.threshold(-1)`, every device output shows
+`GC_THRESHOLD=-1`. **Owner's requirement, restated this sitting: 10 concurrent connections must be
+stable on every run; the shipped limit of 8 is safety margin, so "stable at 8" is not a pass
+verdict.** F′ caps at 8 by design, so it cannot answer that question; image G′ (§10.11, next) does.
+
+### 10.10.1 Before anything
+
+- `errcount` read before flashing (board on image F, which had already run device scripts in §10,
+  so this is **not** clean evidence — CLAUDE.md's FRAM caveat): WIFI 4 (W6 ×2), UART_init 45 /
+  UART_resp 46 (the E20/E22/W10 pattern of the crossover link), NTP 11, SYSTEM 10 (W4, E5, W13, W20,
+  E4), BMP3XX 8 (E11/E1 pairs), WEBSERVER 296 (E1 = "Unexpected error serving connection", the
+  pre-fix 1,025 B static reads of §10.5). Everything else 0. `DebugLevel` 5.
+
+### 10.10.2 Image F′ — built, verified, flashed
+
+- Branch tip `b0775c3`, `uv run scripts/build_firmware.py dev`, unmodified `devices/dev.toml`
+  (`max_connections = 8`). lwIP macros read back from the firmware translation unit: PCB 11 /
+  PCB_LISTEN 8 / SEG 64 / `MEM_SIZE` 16,000 / PBUF 16 / PBUF_POOL 16 / MSS 800 / WND 6,400 /
+  SND_BUF 6,400 — all reached the firmware; ensemble check clean at `max_connections = 8`.
+- GC heap `0x20040000 - 0x200122c0` = **187,712 B**, identical to F.
+- On the wire (step 2): `GET /` → `HTTP/1.0 200`, `Content-Encoding: gzip`, **`Content-Length: 9292`**,
+  body passes `gzip -t`; `GET /js/app.js` → **`Content-Length: 16292`**, 16,292 B, `gzip -t` passes.
+
+### 10.10.3 H1 — `test_serving_heap_at_default_gc.py`: **2 passed** (393 s)
+
+- Need (largest free run per source/route, board's own allocation probe): `route:/status` 320 B
+  (churn 82,240 B), **`route:/` 320 B** (churn 14,976 B; pre-fix 1,536 B in the twin, never probed
+  on silicon), `route:/measurements` 256 B, `route:/sensors` 256 B, `route:/networking` 192 B,
+  `/system` and `/notification` 160 B, every status/data/cfg/settings source ≤ 160 B, every
+  `errcount:*` 96 B. Matches the twin's fixed column (320 / 320 / ≤ 192 B) to the byte.
+- Sweep on one boot, ceiling 8: N=4 `{'200': 48}`, N=6 `{'200': 72}`, N=8 `{'200': 96}`,
+  N=10 `{'200': 96, 'refused': 24}` — every body matches its `Content-Length`;
+  **allocation failures 0**.
+- Idle heap before load (pre00-02): free 82,128 B, largest free run 8,944 / 11,424 / 9,840 B.
+  After load (post00-02): free 80,720 B, largest free run 10,672 / 6,752 / 10,512 B. Under load the
+  largest run went as low as 576 B (load21, free 2,784 B) with no allocation failing.
+
+### 10.10.4 H2 — `combined_load_sweep.py 2 4 5 5 6 6 7 7 8 8`, one fresh boot per level
+
+```
+N= 2 GC_THRESHOLD=-1 | STABLE | complete 24/24 | device allocation-failure lines 0 | worst largest free run 368 B | reference {'/': 9292, '/js/app.js': 16292}
+N= 4 GC_THRESHOLD=-1 | STABLE | complete 48/48 | device allocation-failure lines 0 | worst largest free run 1168 B | reference {'/': 9292, '/js/app.js': 16292}
+N= 5 GC_THRESHOLD=-1 | STABLE | complete 60/60 | device allocation-failure lines 0 | worst largest free run 704 B | reference {'/': 9292, '/js/app.js': 16292}
+N= 5 GC_THRESHOLD=-1 | UNSTABLE | complete 48/60 | device allocation-failure lines 0 | worst largest free run 1040 B | reference {'/': 0, '/js/app.js': 16292}
+     1 x / truncated9292 (round 0)     [... one per round, rounds 0-11: 12 in total]
+N= 6 GC_THRESHOLD=-1 | STABLE | complete 72/72 | device allocation-failure lines 0 | worst largest free run 112 B | reference {'/': 9292, '/js/app.js': 16292}
+N= 6 GC_THRESHOLD=-1 | STABLE | complete 72/72 | device allocation-failure lines 0 | worst largest free run 1136 B | reference {'/': 9292, '/js/app.js': 16292}
+N= 7 GC_THRESHOLD=-1 | STABLE | complete 84/84 | device allocation-failure lines 0 | worst largest free run 832 B | reference {'/': 9292, '/js/app.js': 16292}
+N= 7 GC_THRESHOLD=-1 | STABLE | complete 84/84 | device allocation-failure lines 0 | worst largest free run 848 B | reference {'/': 9292, '/js/app.js': 16292}
+N= 8 GC_THRESHOLD=-1 | STABLE | complete 96/96 | device allocation-failure lines 0 | worst largest free run 448 B | reference {'/': 9292, '/js/app.js': 16292}
+N= 8 GC_THRESHOLD=-1 | STABLE | complete 96/96 | device allocation-failure lines 0 | worst largest free run 464 B | reference {'/': 9292, '/js/app.js': 16292}
+# re-run of N=5 twice, with the reference check of 10.10.5 in place
+N= 5 GC_THRESHOLD=-1 | STABLE | complete 60/60 | device allocation-failure lines 0 | worst largest free run 288 B | reference {'/': 9292, '/js/app.js': 16292}
+N= 5  — driver crashed parsing a torn heap-map capture (10.10.5); host tally lost. Device side:
+        0 allocation lines, 0 WEBSERVER lines, device script's own "RESULT: PASS window complete".
+```
+
+- **The UNSTABLE N=5 is an instrument artefact, not a device failure.** All 12 `/` bodies it
+  flagged were 9,292 B — complete, the same length every other run's reference has. The idle
+  reference fetch for `/` itself came back as a **0-byte body with no transport error** (status not recorded), so every correct
+  page compared unequal. Cause of the timing: every boot of the device script drops and rejoins
+  WLAN at uptime ~6 s (`WIFI WLAN reconnect triggered!` → `Reconnecting WLAN...` →
+  `WLAN is disconnected` → re-join; present in **all 10** boots' raw output). The driver's readiness
+  probe gets its `/status` 200 over the old link, and in this one boot the reference fetch landed in
+  the drop: the device logged `WEBSERVER Connection reclaimed (socket error): [Errno 113]
+  EHOSTUNREACH` — the only WEBSERVER line in any of the ten boots. **Not explained**: why the host
+  saw a clean empty body rather than an exception. `urllib` raises `IncompleteRead` on a short body
+  against a `Content-Length`, so the client cannot have received F′'s static headers followed by a
+  cut; the tool did not record the reference's status or headers, so what it did receive is lost.
+- Across all 12 boots: **zero device allocation-failure lines, no `1025` read anywhere, no JSON
+  route failure, no host-side stall** (the two pre-fix N=4 `URLError`/timeouts did not recur).
+
+### 10.10.5 Instrument fixes made during the sitting (`tests_hardware/combined_load_sweep.py`)
+
+1. The reference fetch now retries until it gets a 200 whose non-empty body length equals its
+   `Content-Length`, printing status/size/header on every rejected attempt — so a fetch caught by
+   the boot-time WLAN drop is retried instead of becoming the yardstick.
+2. `heap_map.HeapMapError` from one torn capture (`map covers 11459 blocks of 16 B against a
+   reported total of 183360 B`) no longer kills the level: it is printed, the worst free run is
+   reported as -1, and the host tally and allocation-line verdict still print.
+
+### 10.10.6 Verdict on F′, and what it does not answer
+
+- **F′ is stable through its own ceiling of 8 at `gc.threshold(-1)`**: H1 clean, and 11 of 11
+  per-boot H2 runs with a readable host tally clean (the twelfth device-clean, tally lost). The
+  static-file defect of §10.5 is fixed on silicon. Pre-fix, the verified maximum was 4.
+- **It does not meet the owner's requirement**: at N=10, F′ refuses 2 of every 10 by construction
+  (`max_connections = 8`). Whether 10 is stable is G′'s question (§10.11).
+- H3 (`/status` timing) and H4 (full bench tier) on F′: **not run yet** — deferred behind G′ at the
+  owner's restated priority.

@@ -239,7 +239,11 @@ board, and that caught bugs each time. *Scratch* stand-ins:
   - Host threads send 12 rounds of N concurrent GETs over
     `/status /sensors / /measurements /status /networking /sensors /system /js/app.js`.
   - The static bodies must match an idle reference fetch (made after the board answers `/status`);
-    the JSON bodies must parse.
+    the JSON bodies must parse. The reference is accepted only as a 200 whose non-empty body equals
+    its `Content-Length`, retried otherwise: every device-script boot drops and rejoins WLAN at
+    ~6 s, and a reference caught in that drop once came back 0 B (sitting §10.10.4).
+  - A torn heap-map capture (`HeapMapError`) is printed and its free run reported as -1; it no
+    longer kills the level and its host tally.
   - **STABLE** means every body complete, zero device lines matching `MEMORY_ERROR_MARKERS`, and the
     driver thread finished. Between levels it runs `kick_all_stations()`, a hard reset and a 45 s
     settle. Exit 0 only if every level is STABLE.

@@ -62,17 +62,17 @@ through 12.
 
 | row | measurement | pre-fix silicon (§10.6/§10.9) | twin, fixed | `[HW]` |
 | --- | --- | --- | --- | --- |
-| H1 | need: `route:/` / worst JSON route / worst source | `/` not probed; JSON 320 B / ≤ 144 B | 320 B / 320 B / ≤ 192 B (pre-fix `/`: 1,536 B) | ___ |
-| H1 | sweep N = 4 / 6 / 8: device allocation lines | F: 11 × 1,025 B over the run | 0 / 0 / 0, every body complete | ___ |
-| H1 | sweep N = 10: served complete + refused | 96 + 24, but truncated bodies counted as served | 96 + 24 refused, 0 lines (refusal not modelled by this twin build) | ___ |
-| H1 | idle largest free run, before vs after load | 10,080-15,232 → 7,008-9,760 B | — | ___ |
-| H2 | N = 2, 4: STABLE runs | 2: 1/1; 4: 2/2 (one host-side stall with no device line) | stable | ___ |
-| H2 | N = 5 (×2), 6 (×2): STABLE runs | 5: 2/3; 6: 1/2 — every failure `/`, 1,025 B | stable | ___ |
-| H2 | N = 7 (×2), 8 (×2): STABLE runs | 7: 0/2; 8: 0/1 — every failure `/`, 1,025 B | stable at 8 (7 not run) | ___ |
-| H2 | any JSON-route failure at any level | none up to 8 | none up to 8 | ___ |
-| H2 | host-side stalls with no device line (the pre-fix N = 4 `URLError`/timeout) | 2 in 4 runs at N = 4 | not modelled | ___ |
-| H3 | `/status` p50 / p95 | the sitting's own figures | not modelled | ___ |
-| H4 | bench tier passed / skipped / deselected | 103 / 4 / 27 (image A, pre-fix) | — | ___ |
+| H1 | need: `route:/` / worst JSON route / worst source | `/` not probed; JSON 320 B / ≤ 144 B | 320 B / 320 B / ≤ 192 B (pre-fix `/`: 1,536 B) | **320 B / 320 B (`/status`) / ≤ 160 B** — twin to the byte |
+| H1 | sweep N = 4 / 6 / 8: device allocation lines | F: 11 × 1,025 B over the run | 0 / 0 / 0, every body complete | **0 / 0 / 0**, 48/72/96 × 200, every body = `Content-Length` |
+| H1 | sweep N = 10: served complete + refused | 96 + 24, but truncated bodies counted as served | 96 + 24 refused, 0 lines (refusal not modelled by this twin build) | **96 + 24 refused, 0 lines** |
+| H1 | idle largest free run, before vs after load | 10,080-15,232 → 7,008-9,760 B | — | **8,944-11,424 → 6,752-10,672 B** (free 82,128 → 80,720 B) |
+| H2 | N = 2, 4: STABLE runs | 2: 1/1; 4: 2/2 (one host-side stall with no device line) | stable | **2: 1/1; 4: 1/1** |
+| H2 | N = 5 (×2), 6 (×2): STABLE runs | 5: 2/3; 6: 1/2 — every failure `/`, 1,025 B | stable | **5: 3/3 device-clean** (1 host UNSTABLE = 0 B reference during the boot WLAN drop, all 12 flagged pages 9,292 B complete; 1 host tally lost to a torn heap map, device PASS, 0 lines) **; 6: 2/2** |
+| H2 | N = 7 (×2), 8 (×2): STABLE runs | 7: 0/2; 8: 0/1 — every failure `/`, 1,025 B | stable at 8 (7 not run) | **7: 2/2; 8: 2/2** |
+| H2 | any JSON-route failure at any level | none up to 8 | none up to 8 | **none up to 8** |
+| H2 | host-side stalls with no device line (the pre-fix N = 4 `URLError`/timeout) | 2 in 4 runs at N = 4 | not modelled | **0 in 12 boots** |
+| H3 | `/status` p50 / p95 | the sitting's own figures | not modelled | not run — deferred behind G′ (owner: 10 is the bar) |
+| H4 | bench tier passed / skipped / deselected | 103 / 4 / 27 (image A, pre-fix) | — | not run — deferred behind G′ |
 
 **Status of the tools as handed over**: `test_serving_heap_at_default_gc.py` and both its device
 scripts were run end to end against the twin on this firmware (need test passes; sweep clean at
@@ -81,6 +81,12 @@ session) was then run the same way — its own `run_level()` with the device scr
 this firmware and dev's site: **STABLE at N = 4, 6 and 8, every body complete, zero allocation
 lines**. On the pre-fix firmware it reports UNSTABLE at N = 8, from its host-side body check alone
 (`CATALOG_INSTRUMENTATION.md` §6).
+
+**Result, 2026-09-23 evening** (`BENCH_SITTING_2026-09-23_HANDOVER.md` §10.10): F′ is stable
+through its own ceiling of 8 — the static fix holds on silicon. **That is not the pass verdict**:
+the owner restated that **10 concurrent connections must be stable on every run**, 8 being margin.
+F′ refuses 2 of 10 by construction, so the question moved to G′ (§3's "not part of this sitting"),
+now being run.
 
 ## 5. What a result means
 
