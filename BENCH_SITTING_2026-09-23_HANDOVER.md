@@ -1131,3 +1131,21 @@ PEAK_AT conns=9 samples=2 min_free_after_gc=47840
 - **At peak, N=6 on H leaves 25,360 B free (14.2 % of 178,816 B)**, largest free block 2,208 B;
   26,288 B (14.7 %) with exactly 6 open. §10.12's sampled figure for N=6 (47,200 B, 25.7 %, on F′)
   overstated the free heap at the true peak by ~20 KB. The owner stopped the run here for §10.15.
+
+### 10.15 Pending — image built for 8 (F′), N = 7 and 8 (owner's request, paused for the day)
+
+Owner's request: an image built for 8 connections, N = 7 and 8, at `gc.threshold(-1)` and at
+`32768`, true failures (refusals excluded) plus heap-usage percentages. **Started and stopped by the
+owner before the first level finished — no results.** State left behind:
+
+- Board on **F′** (tip, `max_connections = 8`, GC heap 187,712 B / `mem_info` 183,360 B, build
+  2026-09-23T20:55:14Z), reset to normal operation, serving. `devices/dev.toml` and
+  `toolchain/versions.toml` are back at the tip; image H's recipe is in §10.13.
+- The planned runs, one fresh boot per level (~3.8 min each, ~30 min in all):
+  1. `combined_load_sweep.py 7 8 --peak` — failures at `-1`
+  2. `… 7 8 --peak --threshold 32768` — failures at `32768`
+  3. `… 7 8 --peak --margin` and 4. `… --peak --margin --threshold 32768` — exact live set
+     (collects every 100 ms; its verdict is instrumentation only)
+- Expected against H at 8 (§10.14.2): fewer connections in flight (anything above 8, including
+  connections still closing, is refused before a handler runs) and 4,648 B more heap — so fewer
+  memory failures, more refusals.
