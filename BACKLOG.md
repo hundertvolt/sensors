@@ -532,7 +532,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     `test_an_out_of_band_knob_is_rejected_by_the_schema_rung_not_the_setter`. The bench tier moved
     from **71 to 73 tests and 12 to 13 deselected**; the flash tier's 51/9 is unchanged, since the
     two new gates skip rather than deselect. Every count re-measured by a real `--collect-only` run.
-    Neither adopted bench test has ever run on silicon: queue row R8.
+    Both adopted bench tests first ran on silicon 2026-09-23 and passed (queue row R8, closed).
     Also settled here: of the six items the (since deleted) harness/heap-fragmentation handover's
     §1.0 called lost, five are accounted for on this branch or on `main` (checked item by item, not
     taken at face value); only `REAL_HARDWARE_FINDINGS_PR103.md` is unaccounted for, and it never existed in
