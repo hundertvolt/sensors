@@ -231,3 +231,12 @@ def test_a_labels_own_endmap_is_what_closes_it() -> None:
     # labels, which is what a plain `.*?ENDMAP` would do.
     found = heap_map.parse_labelled(f"=== MAP first ===\n{_REAL}=== ENDMAP second ===\n")
     assert found == {}
+
+
+def test_placeable_counts_capacity_not_runs() -> None:
+    # The distinction that made a real bench row fail: one big run is a single gap but holds many
+    # blocks, and a simultaneous demand is a question about capacity, not about how many gaps exist.
+    parsed = _parsed()
+    assert parsed.gaps_at_least(4096) == 1
+    assert parsed.placeable(4096) >= parsed.gaps_at_least(4096)
+    assert parsed.placeable(1) == sum(parsed.free_runs)

@@ -443,9 +443,18 @@ class TestLwipEnsemble:
     def test_the_derived_values_match_lwips_own_formulas(self, overrides: ModuleType) -> None:
         # opt.h computes these from TCP_MSS/TCP_SND_BUF; none is settable here, and most of
         # init.c's sanity checks are really about them rather than the values actually set.
+        # 876, not 856: pbuf.h's PBUF_IP_HLEN is 40 under LWIP_IPV6, which the rp2 port enables.
         assert overrides.derive_lwip_dependents(_pinned()) == {
-            "TCP_SND_QUEUELEN": 32, "TCP_SNDLOWAT": 3200, "TCP_SNDQUEUELOWAT": 16, "PBUF_POOL_BUFSIZE": 856,
+            "TCP_SND_QUEUELEN": 32, "TCP_SNDLOWAT": 3200, "TCP_SNDQUEUELOWAT": 16, "PBUF_POOL_BUFSIZE": 876,
         }
+
+    def test_the_pbuf_header_allowance_matches_the_ipv6_enabled_port(self, overrides: ModuleType) -> None:
+        # The constant that was wrong: the rp2 port sets LWIP_IPV6 = 1, so pbuf.h takes IP_HLEN 40.
+        # It cancels out of the TCP_WND-vs-pool check (both sides shift by 20) but not out of
+        # PBUF_POOL_BUFSIZE itself, which is what the pool's real RAM cost is computed from.
+        assert overrides._PBUF_PROTOCOL_HEADER_BYTES == 14 + 40 + 20  # LINK + IP(v6) + TRANSPORT
+        usable = overrides.derive_lwip_dependents(_pinned())["PBUF_POOL_BUFSIZE"] - overrides._PBUF_PROTOCOL_HEADER_BYTES
+        assert usable == _pinned()["TCP_MSS"] + 2  # TCP_MSS plus the 4-byte alignment pad
 
     def test_micropythons_own_pinned_block_is_coherent(self, overrides: ModuleType) -> None:
         # The evidence that these are a tuned SET, not independent knobs: the pinned block sits

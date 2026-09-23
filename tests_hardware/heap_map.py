@@ -38,6 +38,12 @@ class HeapMap(NamedTuple):
     def gaps_at_least(self, size: int) -> int:
         return sum(1 for run in self.free_runs if run >= size)
 
+    def placeable(self, size: int) -> int:
+        """How many `size`-byte blocks the heap could still place. Not gaps_at_least(): one 40 KB
+        run is ONE gap but holds nineteen 2 KB buffers, and it is the capacity that has to cover a
+        simultaneous demand (REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md 5B rule 10)."""
+        return sum(run // size for run in self.free_runs)
+
     def summary(self) -> str:
         return (
             f"used={self.used_bytes} free={self.free_bytes} largest_free_run={self.largest_free_run} "

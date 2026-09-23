@@ -177,7 +177,9 @@ def verify_lwip_connection_counts_anchor(micropython_dir: Path, board: str) -> N
 # tuning target: raising the ceiling may not quietly make each connection's share of the send arena
 # smaller than the configuration this project already ran in the field.
 MEM_SIZE_BYTES_PER_CONNECTION_FLOOR = 2000
-_PBUF_PROTOCOL_HEADER_BYTES = 54  # PBUF_LINK_HLEN 14 + PBUF_IP_HLEN 20 + PBUF_TRANSPORT_HLEN 20
+# PBUF_LINK_HLEN 14 + PBUF_IP_HLEN 40 + PBUF_TRANSPORT_HLEN 20 + PBUF_LINK_ENCAPSULATION_HLEN 0.
+# IP_HLEN is 40, not 20: pbuf.h picks it on LWIP_IPV6, which ports/rp2/lwip_inc/lwipopts.h enables.
+_PBUF_PROTOCOL_HEADER_BYTES = 74
 
 
 def derive_lwip_dependents(macros: dict[str, int]) -> dict[str, int]:
@@ -191,7 +193,7 @@ def derive_lwip_dependents(macros: dict[str, int]) -> dict[str, int]:
         "TCP_SNDLOWAT": min(max(snd_buf // 2, 2 * mss + 1), snd_buf - 1),
         "TCP_SNDQUEUELOWAT": max(snd_queuelen // 2, 5),
         # LWIP_MEM_ALIGN_SIZE at MEM_ALIGNMENT 4 (lwipopts_common.h) over TCP_MSS plus the headers.
-        "PBUF_POOL_BUFSIZE": ((mss + 20 + 20 + 14) + 3) & ~3,
+        "PBUF_POOL_BUFSIZE": ((mss + _PBUF_PROTOCOL_HEADER_BYTES) + 3) & ~3,
     }
 
 

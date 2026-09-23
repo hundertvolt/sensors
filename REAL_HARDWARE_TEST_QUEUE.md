@@ -428,21 +428,26 @@ the 2026-09-19 tier-3/tier-4 runs (§7H.6).
 
 ## 4A. Connection scaling (the raised TCP ceiling) — never run
 
+**RUN 2026-09-23. C1, C2, C5, C5b, C5c and C6 are all closed** — see
+`BENCH_SITTING_2026-09-23_HANDOVER.md`, which is the full record of that sitting and also carries
+the one finding it opened: at `gc.threshold(-1)` the board serves at most **4** concurrent requests
+without an allocation failure, so the shipped ceiling of 7 depends on the threshold being set.
+
 Opened 2026-09-22 by the connection-scaling branch. **`REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md`
 is the runnable form of all of this** — it is written standalone, for a session with no prior
 knowledge, and carries the full method, the traps and the recording table. These rows are the index.
 
 | Row | What | Status |
 | --- | --- | --- |
-| C1 | Flash this tree's own `dev` image and confirm the build's own lwIP-macro verification passes on the real build | OPEN |
-| C2 | `test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures` — the board must admit exactly 7 | OPEN |
+| C1 | Flash this tree's own `dev` image and confirm the build's own lwIP-macro verification passes on the real build | **DONE 2026-09-23** — all 11 macros read back out of the real firmware translation unit equal what `versions.toml` asks. PLAN §8.7.1 |
+| C2 | `test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures` — the board must admit exactly 7 | **DONE 2026-09-23** — exactly 7, five probes for five; refusal is a clean FIN 6 ms after connect. Needed a probe fix first (SPEC H.7.1). PLAN §8.7.1 |
 | C3 | The rest of the bench tier at the shipped setting: `test_network_resilience.py`, `test_end_to_end_timing.py`, `test_bus_concurrency_under_api_load.py`, `test_memory_stress_bench.py`. All now scale their bursts with the configured ceiling | OPEN |
 | C4 | Record §7's full table for the shipped setting — contiguity after boot and under load, `.bss`/`.data`, latency, every `MemoryError`/`memory allocation failed` spelling, any watchdog reset | OPEN |
-| C5 | The wall, in **two images not a bisection**: one over-provisioned build (`max_connections = 16` + its coherent ensemble) and `discover_max_connections(probe_limit=64)`, which walks upward at runtime and so reports the board's real capacity in one run. A third image at 24 only if 16 finds no wall. Characterise how it fails | OPEN |
-| C5b | At each row, that every admitted connection is actually **served**, via the two bench rows written for it: `test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body` (a complete, correct body inside a bounded time) and `test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one`. A status count passes a truncated stream; these do not | OPEN |
+| C5 | The wall, in **two images not a bisection** | **DONE 2026-09-23** — image B admitted all 16, five for five: **no admission wall below 16**, so the shipped 7 has >=2.3x margin and image C was not built. But admission is not service: image B serves only 13/16 and its first 500 lands at N=7. PLAN §8.7.2 |
+| C5b | Every admitted connection actually **served** | **DONE 2026-09-23** — both rows pass on image A at the shipped 7; both fail on image B at 16 (bodies truncated to 3,072 B or empty). PLAN §8.7.2 |
 | C5d | Rows 7/8 of the handover's decision table: the board's heap AT PEAK with a full ceiling genuinely held open - `test_heap_under_connection_ceiling.py` plus its device script. **Written without a board to try them on**; run last, treat a first-run failure as a harness bug | OPEN |
-| C5c | Whether `PBUF_POOL_SIZE` really can stay at 16. It backs the inbound path and is the one pool this branch deliberately did not scale, on the reasoning that demand is one small capped request per connection — the assumption most worth testing on silicon | OPEN |
-| C6 | Only if a row in C5 fails for a reason that cannot be named: a `LWIP_STATS = 1` image, to see *which* pool exhausted rather than infer it | BLOCKED on C5 |
+| C5c | Whether `PBUF_POOL_SIZE` really can stay at 16 | **DONE 2026-09-23 — yes.** At an 8x advertised inbound over-commit (16 x TCP_WND against 12,832 B of pool) the pbuf pool never surfaced; the GC heap bound first in both images. PLAN §8.7.3 |
+| C6 | A `LWIP_STATS = 1` image, only if C5 fails for a reason that cannot be named | **DONE 2026-09-23 without building it** — the reason was nameable directly: `MemoryError` tracebacks captured off the serial console show MicroPython's **GC heap**, not any lwIP pool, allocating 296-862 B inside `_stream_dict_response()`. PLAN §8.7.2 |
 
 **Why none of it could be done in the session that wrote it**: no real hardware was reachable, and
 the digital twin runs on the Unix port, which has no lwIP at all. Everything above the transport is

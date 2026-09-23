@@ -4676,6 +4676,36 @@ touches that file's behavior; persistent connections proved fragile when tried i
 `max_connections` only ever rejects a *new* arrival — never touches an already-open connection,
 reclaimed only by its own timeout.
 
+### H.7.1 A connection's real lifetime, and what it does to every instrument that holds one
+
+Measured on the dev bench, 2026-09-23. **Two timeouts bound how long any connection can be held
+open, and every host-side instrument that holds connections has to respect both** — three in this
+repo did not, and each failed silently rather than loudly.
+
+- A connection that is admitted and then says nothing is closed after `per_call_timeout_s` (5.0),
+  answering `HTTP/1.0 400 N/A`, not a bare FIN. Measured: **5.12 / 5.14 / 5.16 s**.
+- A connection that keeps dripping bytes survives the per-call timeout but not the `outer_cap_s`
+  (15.0) around the whole request. Measured with a header line every 2 s: **15.08 / 15.13 s**.
+  **No connection can be held longer than ~15 s on this firmware**, whatever the client does.
+- A slot is released in `_serve()`'s `finally`, after the writer close has been awaited, so it
+  outlives the client's own close. Measured drain after a full ceiling was released: **0.71–0.84 s**.
+
+The consequences, all found by running these instruments on silicon for the first time:
+
+1. **A walk whose per-connection dwell exceeds 5 s can never reach a ceiling.**
+   `discover_max_connections()` used `settimeout(10.0)`, so each connection died before the next was
+   opened and at most ~2 were ever held at once; against a board whose true ceiling was 4 it walked
+   past 12 and raised "the ceiling is higher than this probe looks". It now dwells 0.3 s, fails loudly
+   if a held connection answers instead of staying open, and re-checks every counted socket is still
+   open when the refusal lands.
+2. **A caller that measured the ceiling has just filled it**, so an immediate follow-up request is
+   refused. The probe now waits for the slots to drain inside its own `finally`, so the guarantee is
+   in one place rather than being a per-call-site obligation.
+3. **"Hold N open and sample" is not achievable by opening N and waiting.** A full ceiling is
+   *sustained* by replacing each connection as the firmware reclaims it, and the sampled minimum of
+   the live count — not the count at open time — is what makes a heap dump a peak reading.
+
+
 ### Cross-browser coverage
 
 Vitest's browser mode only automates Chromium-family browsers via Playwright.

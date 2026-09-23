@@ -17,11 +17,11 @@ _WINDOW_S = 90
 
 
 def _dump(label: str) -> None:
-    # Marker-delimited so heap_map.parse_labelled() can split the stream host-side; mem_info(1)
-    # writes to the platform print, which is this board's USB serial console.
-    print(f"<<<MEM {label}")
+    # heap_map.parse_labelled()'s own delimiters, matched exactly - it keys on the label and
+    # requires the ENDMAP to repeat it; mem_info(1) writes to this board's USB serial console.
+    print(f"=== MAP {label} ===")
     micropython.mem_info(1)
-    print("MEM>>>")
+    print(f"=== ENDMAP {label} ===")
 
 
 async def _sampler() -> None:

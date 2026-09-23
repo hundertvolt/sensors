@@ -536,6 +536,112 @@ what that script exists for. Say so rather than widening it.
 clean. One ratchet moved: `max-args` 22 -> 23, for the `backlog=` kwarg, which `pyproject.toml`'s own
 comment sanctions as a deliberate reviewed one-parameter addition — flagged rather than done quietly.
 
+## 8.7 The bench sitting — `[HW]`, the first silicon in this whole document
+
+Run 2026-09-23 on the dev bench (RPI_PICO_W, MicroPython 1.29.0, `DebugLevel = 5`). Two images, per
+§5's two-image design; image C was not needed and neither was §6's `LWIP_STATS` build.
+
+### 8.7.1 The decision table, filled in
+
+| # | question | `[HW]` result |
+| --- | --- | --- |
+| 1 | Board admits exactly the configured 7? | **Yes — 7,7,7,7,7** over five probes. With lwIP's own default pool of 5 this is impossible, so `MEMP_NUM_TCP_PCB = 10` demonstrably took effect |
+| 2 | Does it **serve** all 7 completely? | **Yes**, bodies complete and parsed, inside 30 s |
+| 3 | Concurrent page load byte-identical? | **Yes**, 6 concurrent index loads all 9,292 B |
+| 4 | Any FRAM-backed module logged a new error? | **No** |
+| 5 | Where is the board's wall? | **No admission wall below 16.** The over-provisioned image admitted all 16, five for five — the application ceiling stops the probe, not lwIP. The shipped 7 has **>= 2.3x** admission margin |
+| 6 | Which pool runs out? | **None of lwIP's — the GC heap.** Caught directly off the serial console, so this is measured rather than inferred |
+| 7 | `.bss`/GC heap | A: `.bss` 53,676 B, GC heap **190,036 B**. B: `.bss` 74,592 B, GC heap **169,120 B** |
+| 9 | Latency at the shipped ceiling | slowest of a 7-wide burst **1.95–2.18 s**; 4-wide **1.03–1.07 s** |
+| 10 | Any watchdog reset? | **None** across the whole sitting |
+
+**Row 1's refusal presents as a clean FIN, 6 ms after connect** — not an RST, not a silent drop, not
+a stall. That is the answer to the recording table's "how a failure presents".
+
+**The per-connection permanent cost reproduces exactly.** `.bss` grew 74,592 − 53,676 = 20,916 B for
+9 more connections = **2,324 B each**, matching §8.1's `[BUILD]` figure to the byte, from two real
+ELFs built five hours apart. The GC heap fell by exactly the same 20,916 B.
+
+### 8.7.2 The finding: admission and service part company, and lwIP was never the constraint
+
+Same load shape, concurrency varied, error logs reset immediately before image A's run:
+
+| N | image A (shipped, ceiling 7) | image B (over-provisioned, ceiling 16) |
+| --- | --- | --- |
+| 4 | 4/4 `{200:4}` | 4/4 `{200:4}` |
+| 6 | 6/6 `{200:6}` | 6/6 `{200:6}` |
+| **7** | **7/7 `{200:7}`** | **6/7 `{200:6, 500:1}`** |
+| 8 | 7/8 `{200:7, refused:1}` | 7/8 `{200:7, 500:1}` |
+| 10 | 7/10 `{200:7, refused:3}` | 8/10 `{200:8, 500:2}` |
+| 12 | 8/12 `{200:8, refused:4}` | 9/12 `{200:9, 500:3}` |
+| 14 | 10/14 `{200:10, refused:4}` | 11/14 `{200:11, 500:3}` |
+| 16 | 7/16 `{200:7, refused:9}` | 13/16 `{200:13, 500:3}` |
+
+Image A logged **zero** error-log entries across the whole sweep. Image B's 500s are caught
+`MemoryError`s, captured live:
+
+```
+asy_webserver_service.py:279 _get_status -> :295 _build_status_pieces
+  -> :43 _append_coalesced_object -> :37 _coalesce_json_fragments
+MemoryError: memory allocation failed, allocating 862 bytes
+asy_webserver_service.py:279 _get_status -> :293 _build_status_pieces -> :321 _dump_errcount_entry
+MemoryError: memory allocation failed, allocating 296 bytes
+asy_webserver_service.py:161 _get_measurements -> :54 _stream_dict_response -> :49 _append_coalesced_object
+MemoryError: memory allocation failed, allocating 509 bytes
+```
+
+The failing allocations are **small** (296–862 B), so this is GC-heap exhaustion under concurrent
+streaming, not one oversized request. Under Part I.4(e) a caught-and-degraded `MemoryError` is a
+failure, so **image B fails the memory bar at its own configured ceiling**.
+
+**The qualitative difference is the result.** Above its ceiling image A *refuses* — the excess
+arrives as a reset, which is reject-when-full working as designed, and every admitted request still
+returns a complete body. Image B *admits* the work and then fails it with a 500. **A raised ceiling
+does not buy capacity; past the point the heap can serve, it converts a clean refusal into a
+served-but-broken response.** And the ceiling is paid for out of the same 264 KB: image B's 9 extra
+connections cost 20,916 B of the very heap that serves them, which is why its first 500 lands at
+**N = 7** — precisely where image A is still clean.
+
+**What this says about the shipped 7**: it is comfortable on admission (2.3x margin to 16, and no
+lwIP wall was found at all) and it sits just under where *service* starts to degrade on a heap
+20 KB smaller. Raising it further is not an lwIP question and cannot be answered by moving lwIP
+options — it is a GC-heap question, and every lwIP option moved to support a higher ceiling makes
+the heap smaller.
+
+### 8.7.3 What the over-commit analysis predicted, and what actually bound
+
+Nothing in lwIP or in `check_lwip_ensemble()` checks the *aggregate* of a per-connection option
+against a shared pool. Two such over-commits exist by construction:
+
+| image | inbound `N x TCP_WND` vs `PBUF_POOL` capacity (12,832 B) | outbound `N x TCP_SND_BUF` vs `MEM_SIZE` |
+| A (N=7) | 44,800 B — **3.5x** | 44,800 B vs 14,000 — 3.2x |
+| B (N=16) | 102,400 B — **8.0x** | 102,400 B vs 32,000 — 3.2x |
+
+**Neither bound.** C5c's question — whether `PBUF_POOL_SIZE = 16` can stay unscaled — is answered
+**yes** for this workload: at an 8x advertised over-commit the pbuf pool never surfaced, because real
+inbound demand is one small capped request per connection. The GC heap bound first, in both images.
+
+### 8.7.4 Corrections to this document's own assumptions
+
+- **`PBUF_IP_HLEN` is 40, not 20.** `ports/rp2/lwip_inc/lwipopts.h` sets `LWIP_IPV6 = 1`, so
+  `pbuf.h` takes the IPv6 branch. `derive_lwip_dependents()` computed `PBUF_POOL_BUFSIZE` as 856
+  where the compiler's own value is **876**, and `_PBUF_PROTOCOL_HEADER_BYTES` was 54 where it is
+  **74**. The two errors cancel exactly in the one check where both appear (`TCP_WND` against
+  `PBUF_POOL_SIZE * (BUFSIZE - headers)`: the usable 802 B/pbuf is the same either way), so **no
+  verdict this document ever reported was wrong** — but the pool's real RAM cost was understated by
+  20 B per pbuf. Both constants fixed, with a test pinning the IPv6-derived value.
+- **Every ensemble was re-audited independently**, all 18 relevant `#error` conditions re-derived
+  from `lib/lwip/src/core/init.c` rather than trusted through `check_lwip_ensemble()`, with the
+  switches that decide which checks are live ground-truthed out of the real translation unit:
+  `LWIP_DISABLE_TCP_SANITY_CHECKS` undefined (so all of them are live), `MEMP_MEM_MALLOC = 0`,
+  `MEM_USE_POOLS = 0`, `MEM_ALIGNMENT = 4`, `LWIP_WND_SCALE = 0`, `TCP_MSL = 60000`, and
+  `LWIP_NETCONN = LWIP_SOCKET = 0` — which independently confirms §9's correction that
+  `MEMP_NUM_NETCONN` is dead on this port. **Images A, B and C: zero failing conditions each.**
+- **The instruments themselves were wrong in three ways**, all found by running them on silicon for
+  the first time, all fixed, and all recorded in SPECIFICATION.md Part H.7.1: a probe that dwelled
+  longer than the firmware's own idle timeout, a test with no settle after filling the ceiling it
+  had just measured, and a "hold N open" helper that could not hold anything for more than 5 s.
+
 
 ---
 
@@ -779,3 +885,16 @@ so the channel would never have delivered what it promised. Reverted in full; th
 channel is its replacement, and its escaping and its "a missing log must never abort the run it
 reports on" property are executed against the real extracted source line rather than asserted by
 eye.
+
+### 8.7.5 The threshold turned out to be load-bearing, and that is the sitting's open finding
+
+`buildgen/codegen.py`'s generated boot entry sets `gc.threshold(32768)`, so every figure above went
+through a board that had it. Re-measured at MicroPython's own reactive `-1` under combined load —
+the real task graph plus 12 rounds of N concurrent requests across both streaming endpoints and the
+static index — **the highest concurrency the board serves with zero allocation failures is 4**:
+7 → 28 `MemoryError` lines, 6 → 18, 5 → 14, **4 → 0** (repeated), 3 → 0, 2 → 0. The failure is the
+same ~870 B allocation inside `_stream_dict_response()` that image B showed.
+
+So the shipped 7 works *with* the threshold and does not stand on its own without it, which is the
+one thing CLAUDE.md's memory-safety ladder says a threshold may not be used for. Full method,
+numbers and consequences: `BENCH_SITTING_2026-09-23_HANDOVER.md` §4.

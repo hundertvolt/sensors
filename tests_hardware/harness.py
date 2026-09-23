@@ -17,6 +17,7 @@ import serial
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import Any
 
 # For `import setup_toolchain` below - the same bare-sibling shape as that module's own
 # `import micropython_overrides` (host_typecheck.ini's own account of why both need a path slot).
@@ -46,33 +47,78 @@ def configured_max_connections(device: str = "dev") -> int:
     return int(ceiling) if ceiling is not None else webserver_init_default(REPO_ROOT / "src", "max_connections")
 
 
-def discover_max_connections(host: str, port: int = 80, probe_limit: int = 64, settle_s: float = 1.0) -> int:
+def discover_max_connections(host: str, port: int = 80, probe_limit: int = 64, settle_s: float = 1.0, dwell_s: float = 0.3) -> int:
     """The ceiling the BOARD actually holds, found by holding connections open one at a time until
     one is refused. The only figure that is silicon's own rather than the tree's, and the one a
     raised lwIP PCB count has to be confirmed against (SPECIFICATION.md Part B.14.2)."""
     import socket
     import time
 
+    # `dwell_s` must stay well under the server's own per-call read timeout, because an admitted
+    # connection that says nothing is closed with a 400 once that fires - so a slow walk frees
+    # slots as fast as it takes them and never reaches the ceiling (SPECIFICATION.md Part H.7.1).
     time.sleep(settle_s)  # _serve()'s slot release outlives the response (Part I.6), so start clean
     held: list[socket.socket] = []
+    started = time.monotonic()
     try:
         for admitted in range(probe_limit):
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(10.0)
+            sock.settimeout(dwell_s)
             sock.connect((host, port))
             held.append(sock)
-            time.sleep(0.2)  # a completed connect() is not yet an accepted, counted connection
             try:
-                if sock.recv(4096) == b"":
-                    return admitted  # refused without a response: this one did not get a slot
+                payload = sock.recv(4096)
             except ConnectionResetError:
-                return admitted
+                _assert_probe_held(held[:-1], started)
+                return admitted  # refused by reset: this one did not get a slot
             except TimeoutError:
                 continue  # held open, as an admitted connection with nothing to say should be
+            if payload == b"":
+                _assert_probe_held(held[:-1], started)
+                return admitted  # refused without a response: this one did not get a slot
+            raise AssertionError(f"connection {admitted} against {host} answered {payload[:40]!r} instead of being held open - the walk outran the server's own idle timeout, so this reading is not a ceiling (see discover_max_connections's own note)")
         raise AssertionError(f"no connection was refused within {probe_limit} attempts against {host} - the ceiling is higher than this probe looks, or admission is not bounded at all")
     finally:
         for sock in held:
             sock.close()
+        _wait_for_slots_to_drain(host, port)
+
+
+def _wait_for_slots_to_drain(host: str, port: int, timeout_s: float = 10.0) -> None:
+    """Block until the board admits a connection again. A slot is released in _serve()'s finally,
+    AFTER the writer close is awaited, so it outlives the client's own close by ~0.8s here - and a
+    caller that measured the ceiling has just filled every one of them."""
+    import socket
+
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.3)
+        try:
+            sock.connect((host, port))
+            sock.recv(4096)  # a refusal answers immediately; an admitted connection times out
+        except (TimeoutError, BlockingIOError):
+            return  # held open, so a slot was free: the board is serveable again
+        except OSError:
+            pass  # refused or unreachable, both meaning "not yet"
+        finally:
+            sock.close()
+        time.sleep(0.1)
+    raise AssertionError(f"{host}:{port} never admitted a connection again within {timeout_s}s of the probe releasing its own - the slots did not drain")
+
+
+def _assert_probe_held(admitted_socks: list[Any], started: float) -> None:
+    """Every connection the probe counted must still be open at the moment the refusal landed,
+    or they were never held simultaneously and the count is an artefact of the walk's own pace."""
+    for index, sock in enumerate(admitted_socks):
+        sock.settimeout(0.05)
+        try:
+            payload = sock.recv(4096)
+        except (TimeoutError, BlockingIOError):
+            continue  # still open with nothing to say, which is what an admitted connection does
+        except ConnectionResetError:
+            payload = b"<reset>"
+        raise AssertionError(f"connection {index} was no longer held ({payload[:40]!r}) {time.monotonic() - started:.2f}s into the walk - the count is not a simultaneous ceiling")
 
 
 # Read from the module that CREATES these NetworkManager connections rather than copied, so a
