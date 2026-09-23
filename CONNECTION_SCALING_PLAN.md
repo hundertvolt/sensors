@@ -529,30 +529,58 @@ three consecutive (f)-stage rounds with the fix. `tests/test_digital_twin_http_c
 halves — the refusal is raised, and it is catchable as a plain `OSError`.
 
 
-## 10.1 One thing this branch could not diagnose, and what was done about it
+## 10.1 The CI flake this branch could not reproduce, and the channel built to catch it
 
-`unit-tests-coverage` went red once on `0344ab4` and could not be root-caused. **The run's log is
-unreachable from this environment** - GitHub serves it from a blob host the network gateway denies
-(`connect_rejected`, policy), and there is no alternate endpoint. What the API *does* give is step
-timing, which said the run completed (331 s) and the coverage reports rendered, so it was a test
-verdict rather than infrastructure.
+**The shape of it.** Six of this branch's twelve CI runs went red, and never twice in the same
+place: `unit-tests` on three, `Unit tests (shipped gc.threshold)` on two, `unit-tests-coverage` on
+one, with `d0ba4c2`, `73fcb68` and `50d47d1` fully green in between. All three lanes run the same
+MicroPython suite, so that is one flaky suite, not three broken lanes - and the first red run is
+`9751814`, the commit that raised the ceiling and scaled every burst to it. The correlation points
+at this branch's own concurrency scenarios. It is a correlation; nothing here proves it.
 
-It did not reproduce: a full local `scripts/test.sh --coverage` passed 85/85, and 24 further runs
-of the six concurrency files under the real coverage runner were clean. The job had passed on two
-earlier commits of this branch carrying the same harder bursts, and the only change since was the
-`CeilingRefusedError` fix, which strictly converts an escaping `ValueError` into an `OSError` some
-call sites then classify as a refusal - it cannot turn a passing assertion into a failing one.
+**The log is unreachable from this environment.** GitHub serves runner logs from
+`productionresultssa*.blob.core.windows.net`, and the gateway answers 403 to CONNECT for that host
+(`connect_rejected`, policy - visible in `$HTTPS_PROXY/__agentproxy/status`). Job summaries are not
+in the REST API either, verified by reading a failing check run's empty `output.summary`. The
+github.com log endpoints the web UI uses answer 403 to a token. What *is* served is **check-run
+annotations** - so `scripts/test.sh` now emits one `::error` per red outcome: a failed file with the
+last 40 lines of its own captured output, a file that only logged an allocation failure, and the
+pytest tier. Guarded on `GITHUB_ACTIONS`, so a local or clean-chroot run is unchanged.
 
-**An attempt to make it diagnosable was made and reverted, and the reason matters.**
-`scripts/test.sh` was changed to append its failure verdict to `$GITHUB_STEP_SUMMARY`. That was
-wrong three times over: `tests_scripts/test_test_sh.py` deliberately extracts the verdict block and
-runs it standalone with only three variables set, so the new block hit `set -u` on the others and
-broke a real test; a nested `scripts/test.sh` inherits the variable and appends to its parent's
-summary; and - the deciding one - **GitHub's job summary is not exposed through the REST API this
-environment can reach**, verified by reading the failing check runs' `output.summary` and finding it
-empty. The channel would never have delivered what it promised. Reverted in full.
+**What reproduction attempts ruled out.** None of these reproduced a single failure:
 
-So the honest position stands: a CI failure that does not reproduce locally is **not diagnosable
-from this environment**, because the log is the only channel carrying it and its host is denied by
-network policy. Whoever picks this up with log access should read the `unit-tests-coverage` run on
-`0344ab4` directly.
+| attempt | shape | result |
+|---|---|---|
+| Six concurrency files together, 9 rounds | 54 file runs, unfixed tree | 0 failures |
+| Full suite, `TEST_PARALLELISM=32` | 2x CI's oversubscription | 85/85, 0 markers |
+| Full suite, `taskset -c 0,1` | 2 cores x 4 = 8 jobs, a runner's exact shape | 85/85, 0 markers |
+| Per-scenario timing, 6 devices on 2 cores | the wall-clock-budget hypothesis | see below |
+
+The timing run kills the budget hypothesis outright: under 3x oversubscription on two cores,
+`every_admitted_connection_is_actually_served_a_complete_correct_response` takes **2.5 s against
+its 40 s budget**, consistent to within 60 ms across all six devices, and the heaviest scenario in
+the file is 6.8 s. No `run_timed()` budget is anywhere near firing.
+
+**What was changed, and what it is not.** The scenario that demands the whole ceiling three times
+in a row now starts each round from an asserted zero rather than a hoped-for one: `_drained()`
+polls the service's own `_open_conns` counter to zero with a bounded budget, and the scenario
+asserts it got there. This is motivated by Part I.6 - a slot is released in `_serve()`'s `finally`,
+*after* the close is awaited, so it outlives the response the client already holds - and it is
+strictly stronger than what it replaces: a slot that never comes back now fails immediately with
+its own message, proven by a control arm that forces the counter to read non-zero and sees both
+scenarios fail as intended. It costs ~70 ms, against the ~1 s a blind sleep would have cost.
+
+**It is a hardening, not an established fix.** The lag it removes was never observed locally: a
+direct mechanism probe measured 0 refusals with and without a settle, and the drain returns on its
+first poll. Whether it is what CI was hitting is unknown until the annotations catch a real one.
+
+**An earlier attempt to make this diagnosable was made and reverted, and the reason matters.**
+`scripts/test.sh` was changed to append its verdict to `$GITHUB_STEP_SUMMARY`. That was wrong three
+times over: `tests_scripts/test_test_sh.py` deliberately extracts the verdict block and runs it
+standalone with only three variables set, so the new block hit `set -u` on the others and broke a
+real test; a nested `scripts/test.sh` inherits the variable and appends to its parent's summary;
+and - the deciding one - the job summary is not exposed through any API this environment can reach,
+so the channel would never have delivered what it promised. Reverted in full; the annotation
+channel above is the replacement, and its escaping and its "a missing log must never abort the run
+it reports on" property are executed against the real extracted source line rather than asserted by
+eye.

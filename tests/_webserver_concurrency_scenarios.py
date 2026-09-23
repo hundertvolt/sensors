@@ -177,6 +177,20 @@ async def _still_serving(host: str, port: int, timeout_s: float = 5.0) -> bool:
         await asyncio.sleep(0.1)
 
 
+async def _drained(module: "Any", timeout_s: float = 10.0) -> bool:
+    """Waits for the service's own admission counter to return to zero, and reports whether it did.
+    A slot is released in _serve()'s finally, AFTER the close is awaited, so it outlives the response
+    the client already holds (Part I.6) - a burst demanding the full ceiling has to start from zero."""
+    assert module.webserver is not None
+    start = time.ticks_ms()
+    while True:
+        if (await module.webserver._open_conns.get_value() or 0) == 0:
+            return True
+        if time.ticks_diff(time.ticks_ms(), start) >= timeout_s * 1000:
+            return False
+        await asyncio.sleep(0.05)
+
+
 async def _browser_page_load(host: str, port: int) -> "list[int]":
     """One browser tab's page-load burst: two concurrent GETs, the real post-inlining footprint
     (SPECIFICATION.md Part H.7). Served from the default html_stub mount, not the real website -
@@ -641,9 +655,11 @@ async def _scenario_all_admitted_are_really_served(device: str) -> None:
             res = await _http_client.fetch("127.0.0.1", port, "GET", path)
             return path, res.status_code, time.ticks_diff(time.ticks_ms(), started), res.json()
 
-        # Three rounds back to back at the full ceiling, so a leaked slot or a pool that only fills
-        # over time shows up rather than passing on a single cold burst.
+        # Three rounds at the full ceiling, so a leaked slot or a pool that only fills over time
+        # shows up rather than passing on a single cold burst. Each starts from a real zero, which
+        # is asserted rather than slept for - a slot that never comes back fails here, not later.
         for round_index in range(3):
+            assert await _drained(module), f"round {round_index}: the previous round's slots never came back"
             results = await asyncio.gather(*(one(paths[i % len(paths)]) for i in range(ceiling)))
             assert len(results) == ceiling, (round_index, results)
             for path, status, elapsed_ms, body in results:
@@ -678,6 +694,7 @@ async def _scenario_all_admitted_page_loads_complete(device: str) -> None:
         # there is, and mount-independent (the stub page and the real website differ by ~25x).
         reference = await _index()
         assert reference > 0, reference
+        assert await _drained(module), "the reference load's own slot never came back"
         # The index twice per tab rather than index + a named asset: which assets exist depends on
         # whether the stub or the real (inlined) website is mounted, and the hazard under test is
         # concurrent streaming of one file, which this exercises directly either way.
