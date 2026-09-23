@@ -76,9 +76,10 @@ through 12.
 
 **Status of the tools as handed over**: `test_serving_heap_at_default_gc.py` and both its device
 scripts were run end to end against the twin on this firmware (need test passes; sweep clean at
-every level with every body complete). `combined_load_sweep.py` was committed by the hardware
-session; its own twin validation was still running when this file was pushed — the next commit
-records the outcome here.
+every level with every body complete). `combined_load_sweep.py` (committed by the hardware
+session) was then run the same way — its own `run_level()` with the device script in the twin, on
+this firmware and dev's site: **STABLE at N = 4, 6 and 8, every body complete, zero allocation
+lines** (`CATALOG_INSTRUMENTATION.md` §5).
 
 ## 5. What a result means
 
