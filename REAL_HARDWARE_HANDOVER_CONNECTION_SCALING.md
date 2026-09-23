@@ -61,9 +61,15 @@ silicon" and needs no sweep.
    `tests_hardware/bench/test_network_resilience.py::test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures`
    This opens connections one at a time until one is refused, and asserts the count equals what the
    tree configures (7). **It is the single most important row in this file.**
-4. Run `tests_hardware/bench/test_end_to_end_timing.py` and the rest of
+4. Run the two rows that check the board can *serve* what it admits rather than merely accept it —
+   same file, and the silicon half of the twin's own scenarios of the same name:
+   `test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body` (a full ceiling at
+   once, each answered 200 with a complete parsed body inside 30 s) and
+   `test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one` (a truncated stream still
+   reads as a 200, so byte counts are compared against an uncontended load).
+5. Run `tests_hardware/bench/test_end_to_end_timing.py` and the rest of
    `test_network_resilience.py`. Both now scale their bursts with the configured ceiling.
-5. Record §7's table for this one setting and stop.
+6. Record §7's table for this one setting and stop.
 
 ## 5. The full sweep, if you have a longer sitting
 
@@ -138,8 +144,8 @@ Everything below, for every setting you try. A row without these is not a result
 | any `MemoryError` **or** `memory allocation failed` | both spellings; a caught-and-degraded one counts as a failure, not a pass |
 | any watchdog reset | `GET /status`'s `errcount`, SYSTEM chunk |
 | p50 / p95 response time under full load | `tests_hardware/bench/test_end_to_end_timing.py` |
-| **every admitted connection actually SERVED** | a full ceiling of concurrent requests must each return a complete, correct body — not just a 200. A truncated stream and a response that arrives a minute late both pass a status check and both fail this |
-| a concurrent page load's byte count vs an uncontended one | they must be equal; `ext/microdot.py` streams in `send_file_buffer_size` chunks, so a stack out of buffers truncates rather than failing |
+| **every admitted connection actually SERVED** | `test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body` — a full ceiling of concurrent requests must each return a complete, correct body — not just a 200. A truncated stream and a response that arrives a minute late both pass a status check and both fail this |
+| a concurrent page load's byte count vs an uncontended one | `test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one` — they must be equal; `ext/microdot.py` streams in `send_file_buffer_size` chunks, so a stack out of buffers truncates rather than failing |
 
 **Where to write it**: `CONNECTION_SCALING_PLAN.md` §8, which already holds the host-side sweep and
 the twin sweep in the same shape. Mark every hardware row `[HW]`, as the other measurement documents

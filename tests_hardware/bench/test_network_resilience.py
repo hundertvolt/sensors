@@ -1,7 +1,7 @@
 """Bench-tier automated tests for real WiFi outage/flap, NTP/DNS servers answering with garbage
-(BACKLOG.md open question #5), the webserver's max_connections=4 ceiling, malformed REST requests,
-and slowloris/abrupt disconnects - DHCP-client flakiness is deliberately out of scope (see BACKLOG.md).
-"""
+(BACKLOG.md open question #5), the webserver's own admission ceiling and whether silicon really holds
+and serves it, malformed REST requests, and slowloris/abrupt disconnects - DHCP-client flakiness is
+deliberately out of scope (see BACKLOG.md)."""
 
 from __future__ import annotations
 
@@ -980,5 +980,81 @@ def test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures(dut
         f"Fewer means lwIP's own MEMP_NUM_TCP_PCB (toolchain/versions.toml) is exhausted below the "
         f"application ceiling - record it in CONNECTION_SCALING_PLAN.md as the wall. More means the "
         f"flashed image predates this tree."
+    )
+    assert_module_error_log_empty(dut_ip, "WEBSERVER")
+
+
+# ---------------------------------------------------------------------------
+# Admission is not service. A ceiling the stack accepts but cannot push produces 200s with truncated
+# bodies, or responses that arrive minutes late - both of which a status-code check passes. These
+# two are the silicon half of the twin's own scenarios of the same name.
+# ---------------------------------------------------------------------------
+
+
+def test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body(dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
+    ceiling = configured_max_connections()
+    # The heaviest real endpoints, not the cheapest: /sensors and /status both grow with the
+    # device's own module count and are the two that stream (SPECIFICATION.md Part I.3).
+    paths = ("/sensors", "/status", "/measurements", "/networking", "/system")
+    results: list[tuple[str, int | str, float, int]] = [("", 0, 0.0, 0)] * ceiling
+
+    def _client(i: int) -> None:
+        path = paths[i % len(paths)]
+        started = time.monotonic()
+        try:
+            res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=30.0)
+            body = res.json() if res.status_code == 200 else {}
+            results[i] = (path, res.status_code, time.monotonic() - started, len(body) if isinstance(body, dict) else 0)
+        except (OSError, ValueError) as exc:
+            # ValueError too: a truncated body fails in json.loads(), which IS the case under test -
+            # it has to land in results with its path rather than as a bare traceback.
+            results[i] = (path, repr(exc), time.monotonic() - started, 0)
+
+    time.sleep(1.0)  # a slot is released after _serve() awaits the close, so it outlives the response (Part I.6)
+    threads = [threading.Thread(target=_client, args=(i,)) for i in range(ceiling)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=40.0)
+
+    # Every one of them, not "at least the ceiling": this burst IS the ceiling, so a refusal here
+    # means the board cannot serve what it admits - the whole point of the exercise.
+    for path, status, elapsed_s, keys in results:
+        assert status == 200, f"{path} returned {status!r} in a {ceiling}-wide burst at the configured ceiling: {results}"
+        # Complete and correct, not merely non-empty: a truncated stream still parses as a 200 with
+        # a short body, and that is the shape _stream_dict_response() produces.
+        assert keys > 0, f"{path} returned a 200 with an empty or non-dict body - a truncated stream: {results}"
+        assert elapsed_s < 30.0, f"{path} took {elapsed_s:.1f}s - admitted but not served in any useful time: {results}"
+    assert_module_error_log_empty(dut_ip, "WEBSERVER")
+
+
+def test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one(dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
+    # ext/microdot.py streams a file in send_file_buffer_size chunks, so a stack out of buffers
+    # truncates rather than failing - the one failure mode a status check structurally cannot see.
+    reference = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=30.0)
+    assert reference.status_code == 200, reference.status_code
+    assert len(reference.body) > 0, "the index page is empty uncontended - nothing to compare against"
+    time.sleep(1.0)  # its own slot outlives the response it already returned (Part I.6)
+
+    tabs = max(2, configured_max_connections() // 2)  # 2 connections per real page load, post-inlining
+    sizes: list[int | str] = [0] * (tabs * 2)
+
+    def _index(i: int) -> None:
+        try:
+            res = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=30.0)
+            sizes[i] = len(res.body) if res.status_code == 200 else f"status {res.status_code}"
+        except OSError as exc:
+            sizes[i] = repr(exc)
+
+    threads = [threading.Thread(target=_index, args=(i,)) for i in range(tabs * 2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=40.0)
+    assert set(sizes) == {len(reference.body)}, (
+        f"a concurrent page load was truncated or refused - uncontended the index is "
+        f"{len(reference.body)} bytes, under {tabs * 2} concurrent loads it was {sizes}"
     )
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
