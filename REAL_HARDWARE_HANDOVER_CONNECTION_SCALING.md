@@ -229,40 +229,88 @@ Everything below, for every setting you try. A row without these is not a result
 the twin sweep in the same shape. Mark every hardware row `[HW]`, as the other measurement documents
 in this repo do.
 
-## 8. What the host side already established, so you do not repeat it
+## 8. Every number the host side established, and what it is worth
 
-All of this is [TWIN] or from a real firmware build; none of it is silicon.
+Tier tags throughout: `[BUILD]` is a real firmware build (deterministic), `[TWIN]` is the Unix-port
+digital twin (no lwIP at all), `[HOST]` is the CPython suite driving the twin as a subprocess.
+**Nothing here is silicon.**
 
-- **PCB slots cost 196 B of GC heap each**, measured across builds at
-  `MEMP_NUM_TCP_PCB` ∈ {5, 6, 8, 10, 12, 16, 24, 32}. Every one of those built cleanly: **there is
-  no compile-time wall in that range.** Baseline GC heap is 197,528 B.
-- **Buffers cost far more per option**: `PBUF_POOL_SIZE` 16→32 is −15,644 B, and lwIP's own
-  16000/1460 preset is −19,932 B, a tenth of the whole GC heap.
-- **A connection has two costs and they are different kinds of cost.** **Permanent: 2,324 B of
-  `.bss`**, exact and linear across 4→16, from ELF sizes — gone from the GC heap forever, used or
-  not. **Transient: ~5,170 B live while being served**, plus ~12,500 B of churn the collector takes
-  back. Ten rounds of N concurrent requests leave ~1.6 KB behind *in total, flat rather than per
-  connection*, and placement capacity is no worse afterwards — so the transient half is genuinely
-  returned. **The cost of 7→8 is 2,324 B permanent, not 7,488 B**; an earlier version of this file
-  added the transient half to the permanent one, which is the mistake §5B rule 9 exists to prevent.
-  Two sampling traps, both hit here first: reading runtime cost *without* collecting first gives
-  ~17,700 B of which **71% is garbage**, and reusing one process across repeats makes the survivor
-  number meaningless (it produced negative survivors). The permanent half is `[BUILD]`; the
-  transient half is `[TWIN]`.
-- **Above the transport, the twin serves every connection count it was asked for, up to 63**, with
-  zero rejections at burst = N and no allocation failure anywhere below N = 47.
-- **The twin's wall is a `MemoryError` on a small allocation.** At N = 47 with a 3x burst one
-  appears *caught and degraded*; at N = 63 it is uncaught and the process dies. The contiguity
-  *gradient* that once accompanied this is withdrawn - `CONNECTION_SCALING_PLAN.md` §8.3.1 has
-  why, and §5B above has what to do instead. Treat 47 and 63 as the twin's wall, nothing more.
-- **Latency does NOT grow with the ceiling at fixed load.** An earlier claim of "1.3 ms per added
-  connection" came from a sweep whose offered load scaled with the setting; pinned at concurrency 4,
-  p50 is flat from `max_connections` 4 to 16 (§8.3.2). Do not spend board time re-deriving a
-  gradient that is not there — measure latency under YOUR realistic load, against the shipped
-  setting, and compare it to the same load at the old ceiling of 4.
+### 8.1 What survived scrutiny
 
-The open question is whether the board's own wall arrives **before** any of that — and if so, which
-pool it is.
+| what | value | tier | why it is trustworthy |
+| --- | --- | --- | --- |
+| **Permanent cost of a connection** | **2,324 B of `.bss`** | `[BUILD]` | every step identical across `max_connections` 4→16; arithmetic on static array sizes from real ELFs, not a sample. Zero variance. |
+| PCB slot alone | 196 B | `[BUILD]` | same, across `MEMP_NUM_TCP_PCB` ∈ {5,6,8,10,12,16,24,32}; all built cleanly, so **no compile-time wall in that range** |
+| Baseline GC heap | 197,528 B stock; 190,164 B at the shipped ensemble | `[BUILD]` | `__GcHeapEnd - __GcHeapStart` |
+| Buffer options cost far more | `PBUF_POOL_SIZE` 16→32 = −15,644 B; lwIP's 16000/1460 preset = −19,932 B | `[BUILD]` | a tenth of the whole heap for the preset |
+| **Transient cost while serving** | **~5,170 B live per connection**, 0.5% spread | `[TWIN]` | measured with every connection parked mid-body, after a collect |
+| **It is genuinely returned** | 40/70/80 served requests leave ~1.6 KB **in total, flat not per connection**; placement capacity no worse after | `[TWIN]` | fresh process per repeat; a shared one gives meaningless (even negative) survivor deltas |
+| **All modules hammering, full ceiling** | **7/7 served every round, 0 `MemoryError`, clean shutdown — at `gc.threshold(-1)` AND 32768** | `[HOST]` | Run 11b, driver in its own process (Part E.9) |
+| Admission exactness | exact at every count tried, 2→63 | `[TWIN]` | deterministic |
+| Latency vs ceiling **at fixed load** | **flat**: 4.5 / 4.5 / 4.2 / 4.4 / 4.3 ms at `max_connections` 4 / 7 / 8 / 12 / 16 | `[TWIN]` | concurrency pinned at 4 for every setting |
+
+### 8.2 What was measured and then withdrawn — do not re-derive these
+
+Four claims this branch published and retracted. They are listed so the board's time is not spent
+reproducing them, and because each names a measurement trap worth avoiding.
+
+| withdrawn claim | why it was wrong |
+| --- | --- |
+| "3.5x contiguity cliff between 7 and 8" | sampled **after** the burst with an **allocating** probe, normalised against the after-boot value. Re-measured correctly, the within-N spread (6–12 slots) exceeds the between-N step (0–4) for **every** adjacent pair — the metric cannot rank adjacent settings at all |
+| "p50 grows ~1.3 ms per added connection" | the sweep's burst was `2N`, so the offered **load scaled with the setting**. At fixed load it is flat (§8.1) |
+| "the bar is 18 connections" | measured with the twin's own client **inside the DUT's process**. Every failure was `MemoryError` in `_http_client._read_exact` allocating a ~5.5 KB body the test never read — the harness, not the firmware |
+| "~12 KB of free heap needed per connection" | same in-process harness. With the client draining instead of buffering, the same load passed 42/42 on a heavily fragmented heap |
+
+Three repo mechanisms exist to prevent exactly these, and all three were found only after the fact:
+SPECIFICATION.md **Part E.9** (driver/DUT process separation), `fetch(read_body=False)`'s **drain
+siblings** (`tests/test_digital_twin_http_client.py` documents the CI regression that motivated
+them), and `heap_map.gaps_at_least()` (**the** placement metric). §5B's rules are the distilled form.
+
+### 8.3 The decision table — fill the `[HW]` column, then decide
+
+This is what the sitting is for. Everything left of the last column is already known; the last
+column is what only silicon can say.
+
+| # | question | host-side answer | `[HW]` result | decides |
+| --- | --- | --- | --- | --- |
+| 1 | Does the board admit exactly the configured 7? | n/a — twin has no lwIP | ___ | whether `MEMP_NUM_TCP_PCB = 10` really took effect |
+| 2 | Does it **serve** all 7 completely, bodies intact? | yes `[HOST]` | ___ | whether the ceiling is real or nominal |
+| 3 | Is a concurrent page load byte-identical to an uncontended one? | yes `[TWIN]` | ___ | whether buffers truncate under load |
+| 4 | Did **any** FRAM-backed module log a new error during the burst? | n/a | ___ | the all-sides memory bar on silicon |
+| 5 | **Where is the board's wall?** (image B, `discover_max_connections`) | 47 caught / 63 fatal `[TWIN]`, transport path only | ___ | the real margin above 7 |
+| 6 | Which pool runs out at the wall? | unknown | ___ | whether `PBUF_POOL_SIZE = 16` was the right call (§5A) |
+| 7 | Largest contiguous free block after boot, and at peak with 7 held | n/a | ___ | headroom for everything else |
+| 8 | `gaps_at_least(2048)` at peak | n/a | ___ | whether the simultaneous demand can be **placed** |
+| 9 | p50/p95 at the shipped 7 vs at 4, under the same real load | flat `[TWIN]` | ___ | whether the raise costs users anything |
+| 10 | Any watchdog reset across all of it? | none `[TWIN]`/`[HOST]` | ___ | stability |
+
+Rows 1–4 come from image A (§4). Rows 5–8 come from image B (§5). Row 9 is
+`test_end_to_end_timing.py` on both images. Row 6 needs §6's `LWIP_STATS` image and **only if row 5
+finds a wall**.
+
+**The instruments, by row:**
+
+| row | test |
+| --- | --- |
+| 1 | `test_network_resilience.py::test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures` |
+| 2 | `test_network_resilience.py::test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body` |
+| 3 | `test_network_resilience.py::test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one` |
+| 4 | the same test as row 2 — it now snapshots **every** FRAM-backed module's counter and names any that grew |
+| 5 | `test_heap_under_connection_ceiling.py::test_report_the_boards_own_connection_wall` (image B) |
+| 7, 8 | `test_heap_under_connection_ceiling.py::test_heap_at_peak_while_a_full_ceiling_is_held` |
+| 9 | `test_end_to_end_timing.py` |
+| 10 | `GET /status`'s `errcount`, SYSTEM chunk, after every row |
+
+**One caveat you need before you start.** `test_heap_at_peak_while_a_full_ceiling_is_held` and its
+device script `heap_under_connection_ceiling.py` were **written without a board to try them on**.
+They ride proven pieces — the device script runs the real `sensortask_dev.main()` and adds only a
+`mem_info(1)` sampler, which is Part E.9's prescribed shape — but the READY/IP handshake between the
+script and the host thread has never executed. **Run them last**, so nothing else in the sitting is
+blocked if they need a fix, and treat a failure there as a harness bug until proven otherwise. Every
+other row uses a test that has run before.
+
+**The open question** is whether the board's own wall arrives before any of the twin's numbers — and
+if so, which pool it is.
 
 ## 9. Traps
 
