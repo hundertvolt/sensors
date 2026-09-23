@@ -4720,7 +4720,7 @@ fix works by making the transient demand fit the dust, so neither has to change.
   the board's own ~800 B largest run under load. I.3 now carries the 256 B rule and its reason.
 - The twin CI never saw any of this because it runs non-frozen at a 2 MB heap. Checked: the plain
   CI binary at 1250k does not boot, and at 1350k it is clean — its 541 KB of import residue does not
-  model the board. A gate needs the frozen port, which is §12's first item.
+  model the board. A gate would need the frozen port, which the owner decided against (§12, BACKLOG 45).
 
 ### 7Q.8 What is not claimed
 
