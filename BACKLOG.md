@@ -890,6 +890,12 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   single unrelated third-party source (a PPA that 403s or whose key expired) aborted the whole
   installer before it could install a package the main archive serves. Every `apt-get install`
   stays fatal. The chroot recipe never runs this script, so it changes nothing the legs cover.
+  A fourth `scripts/` change on 2026-09-23, Python only:
+  `scripts/_digital_twin_ci_suite.py` gains Run 11b, a host-side full-ceiling concurrency run
+  (threads + real sockets from the CPython suite process, per SPECIFICATION.md Part E.9), plus two
+  helpers - one reading the device's own `max_connections` from `devices/<device>.toml`, one firing
+  a barrier-synchronised concurrent burst. Test orchestration only, no build step, so the chroot
+  legs neither exercise nor are threatened by it.
   A third `scripts/` change on 2026-09-22, shell only and inside the summary block:
   `scripts/test.sh` re-emits each red outcome (a failed file, a file that only logged an allocation
   failure, the pytest tier) as a GitHub workflow-command annotation, guarded on `GITHUB_ACTIONS` so

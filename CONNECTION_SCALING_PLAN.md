@@ -420,64 +420,50 @@ question is far tighter on silicon even though the *budget* question is not.
 same thing with every module competing for the heap and lands roughly 3x lower. Read 47 and 63 as
 an upper bound on the transport-facing path in isolation, never as the device's capacity.
 
-### 8.4.2 Every module hammering at once — the real bar, `[TWIN]`
+### 8.4.2 Every module hammering at once — measured from outside the DUT
 
 The owner's hardest requirement: maximum concurrent allocation pressure **from all sides at once**,
-with **no `MemoryError` at `gc.threshold` unset**. The load is the real `sensortask_wozi` graph with
-every timer and task started — three sensor drivers on the shared I2C bus, FRAM on its own SPI,
-WiFi, the watchdog feed — plus six rounds of a full-ceiling REST burst landing mid-transaction, at
-a heap sized to the board's own 44% fill fraction (§1.4's calibration, `-X heapsize=1200k`). Pass
-requires **every** request served (not merely survived), every sensor still returning real data,
-FRAM re-probing present, the watchdog never starved, and zero markers of either spelling.
+with **no `MemoryError` at `gc.threshold` unset**. The authoritative measurement is
+`scripts/_digital_twin_ci_suite.py`'s **Run 11b**, because it is the only one that obeys
+SPECIFICATION.md Part E.9: the twin is a subprocess with its own heap and the driver is the CPython
+suite process, one real socket per request, all threads on a barrier so the burst is genuinely
+simultaneous. Three back-to-back rounds with a Part I.6 settle, the five heaviest endpoints, and
+**every** connection must be served, not merely survived.
 
-| `max_connections` | requests served | sensors + FRAM | watchdog | `MemoryError` |
-| --- | --- | --- | --- | --- |
-| **7 (shipped)** | **42 / 42** | ok | never starved | **0** |
-| 10 | 60 / 60 | ok | never starved | 0 |
-| 14 | 84 / 84 | ok | never starved | 0 |
-| 16 | 96 / 96 | ok | never starved | 0 |
-| **18** | **108 / 108** | **ok** | **never starved** | **0** |
-| 19 | — | — | — | **1** |
-| 20 (x2) | — | — | — | **1** each |
+| gc.threshold | round 0 | round 1 | round 2 | still serving | `MemoryError` in the twin's log | shutdown |
+| --- | --- | --- | --- | --- | --- | --- |
+| **-1 (unset)** | 7/7 | 7/7 | 7/7 | yes | **0** | clean |
+| **32768 (shipped)** | 7/7 | 7/7 | 7/7 | yes | **0** | clean |
 
-**The bar is 18, against 47 for connections alone** — 19 fails, and 20 fails identically on both
-repeats. The shipped 7 therefore keeps roughly a 2.5x margin under all-sides pressure, not the 6.7x
-the isolated figure implied.
+The whole suite passes at both thresholds with this run in it. The requirement is met at the
+shipped ceiling, and it is now a **gate** rather than a measurement: the ceiling is read host-side
+from `devices/<device>.toml`, so raising a device's `max_connections` drives more concurrency here
+automatically, and `_check_no_memory_error_in_log` already runs on every spawned run's log.
 
-**One confound, and it is not small.** The failure at 19 and 20 alike is
-`MemoryError: memory allocation failed, allocating 5509 bytes` inside
-`digital_twin/_http_client.py`'s `_read_exact` — **the test client, not the firmware**. On the twin
-both live in one process and share one heap, and at N = 20 the client is holding 20 concurrent
-~5.5 KB response bodies, about 110 KB, beside the server it is testing. N = 18 passes with 163 KB
-still free, so this is a transient spike rather than exhaustion. **So 18-20 is the bar for
-*client-and-server-in-one-heap*; the device's own bar is higher and this tier structurally cannot
-measure it.** On hardware the client is an external host and the confound disappears, which is the
-sharpest reason the handover's bisection is the authoritative measurement rather than a formality.
+**The in-process figures this section used to report are withdrawn.** An earlier version claimed a
+bar of 18 connections and a requirement of ~12 KB of free heap per connection, measured with the
+twin's own `_http_client` inside the DUT's process. Part E.9 says why that cannot work — *"every
+byte it allocates competes with the exact allocation behavior the test exists to observe, turning a
+test of the code under test into an accidental test of the test's own bookkeeping"* — and it names
+the Run 11 soak as the precedent that made the same mistake in 2026-09-14. Every failure those
+sweeps found was `MemoryError` inside `digital_twin/_http_client.py`'s `_read_exact`, allocating the
+~5.5 KB contiguous buffer for a response body the test never even looked at. With the client
+draining instead of buffering, the same load passed 42/42 on a heavily fragmented heap with zero
+markers.
 
-### 8.4.3 How much free heap a connection needs
+So 18 and 12 KB describe **a client and a server sharing one heap**, not the firmware. They are kept
+here only as the record of a measurement that could not have answered the question. Two further
+artifacts of the same family were found and fixed alongside them:
+`tests/test_digital_twin_http_client.py` already documented `fetch(read_body=False)`'s drain
+siblings as *"the real fix for a digital-twin CI regression"* with the rule *"never look at a
+fetched body, so must never materialize one"* — and seven call sites across the twin tier were
+breaking it; and the sweep's own ballast guarded on `gc.mem_free()`, which is total free rather than
+the largest contiguous run, so the scaffolding itself raised the `MemoryError` being attributed to
+the code under test.
 
-Separately from the count: how full can the heap already be and still serve a full ceiling? Ballast
-of long-lived 512 B blocks (survivor-class, and small enough that the remaining free space is
-genuinely broken up), then three rounds of a full ceiling of `PUT` requests with real bodies:
-
-| free per connection | free at start | served | `MemoryError` |
-| --- | --- | --- | --- |
-| 65,536 B | 458,688 | 21 / 21 | 0 |
-| 32,768 B | 229,120 | 21 / 21 | 0 |
-| 16,384 B | 114,336 | 21 / 21 | 0 |
-| **12,288 B** | **85,632** | **21 / 21** | **0** |
-| 10,240 B | 71,488 | 18 / 21 | 3 |
-
-**About 12 KB of free heap per admitted connection**, at `gc.threshold(-1)`. That is the live 5,170 B
-(§8.3.3) plus room for the churn, which at the default threshold is not collected until an
-allocation has already failed. At N = 7 the requirement is 86,016 B; the board boots 44% full [HW],
-leaving ~106,500 B of its 190,164 B heap — so it **fits with roughly 24% margin**.
-
-**Setting the threshold does not buy headroom here.** At 12,288 B per connection with
-`GC_THRESHOLD=32768`, 0 of 21 were served — with **zero** memory markers, so those are timeouts from
-collection frequency on a nearly-full heap, not allocation failures. At 8,192 B it was worse than
-the default (10/21 and 9 markers, against 11/21 and 5). Consistent with CLAUDE.md's standing rule
-that the threshold is defence in depth and never the fix.
+**What the twin still cannot answer.** It has no lwIP, so Run 11b proves the application layer
+serves its ceiling under all-sides pressure and says nothing about PCB or pbuf exhaustion. That
+remains the hardware bisection's job.
 
 ## 8.5 Recommendation, and the trade in both directions
 
