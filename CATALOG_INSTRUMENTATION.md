@@ -243,7 +243,10 @@ board, and that caught bugs each time. *Scratch* stand-ins:
     driver thread finished. Between levels it runs `kick_all_stations()`, a hard reset and a 45 s
     settle. Exit 0 only if every level is STABLE.
   - Validated in the twin (dev's site, fixed firmware): STABLE at 4, 6 and 8, with every body
-    complete.
+    complete. On the pre-fix firmware at G's heap it reports **UNSTABLE at N = 8**: two `/` bodies
+    were cut off, at 0 and 1,024 B. The device printed no line for them (the twin does not print
+    `err_s` for this tool), so **the host-side body check alone catches the defect**, which is why
+    it exists.
 - **`tests_hardware/bench/test_network_resilience.py`**:
   - `test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures`;
   - `test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body`;

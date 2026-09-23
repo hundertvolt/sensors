@@ -79,7 +79,8 @@ scripts were run end to end against the twin on this firmware (need test passes;
 every level with every body complete). `combined_load_sweep.py` (committed by the hardware
 session) was then run the same way — its own `run_level()` with the device script in the twin, on
 this firmware and dev's site: **STABLE at N = 4, 6 and 8, every body complete, zero allocation
-lines** (`CATALOG_INSTRUMENTATION.md` §5).
+lines**. On the pre-fix firmware it reports UNSTABLE at N = 8, from its host-side body check alone
+(`CATALOG_INSTRUMENTATION.md` §6).
 
 ## 5. What a result means
 
