@@ -389,3 +389,155 @@ permanent entry. Three queue rows this run made reachable:
 - **Two suites that both bind real ports must not overlap** (already in CLAUDE.md) — and the same
   applies to a device script that stops `main.py` while later tests still need the webserver.
 
+---
+
+## 10. Second sitting (afternoon) — `REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md` §0 on silicon
+
+Run against tip `ece5772`/`0ce9f92` (the bounded `_PieceWriter`, `max_connections` 8, ensemble
+PCB 11 / SEG 64 / `MEM_SIZE` 16000). Everything at **`gc.threshold(-1)`**, set explicitly by each
+device script (`GC_THRESHOLD=-1` confirmed in every output). **Status: in progress** — image F's
+per-level combined-load sweep was still running at the time of this commit; §10.6 is filled in by
+the next commit.
+
+### 10.1 Before anything
+
+- `GET /status` read **before** any write (`DebugLevel` 5, uptime 7608 s, still image A):
+  every module 0 except **NTP** 11 (ten `E` entries, nums 1,1,1,1,1,2,20,1,1,1) and **SYSTEM** 1
+  (`W4`). These are leftovers of S3 and the morning's device scripts, not fresh evidence.
+- After image G's run the log had grown (BMP3XX 8, FRAM 2, SYSTEM 10, UART_init 14, UART_resp 14,
+  WEBSERVER 180, WIFI 3). Both §0 device scripts build their own `AsyFramManager`, so these are
+  **not** clean evidence (CLAUDE.md FRAM caveat) — but BMP3XX/UART/SYSTEM entries appearing only
+  after a run that exhausted the heap are consistent with sensor and link tasks failing too, not
+  just HTTP.
+
+### 10.2 Images, built and verified
+
+| image | `max_connections` | PCB / SEG / `MEM_SIZE` | GC heap | lwIP macros in the TU | ensemble check |
+| --- | --- | --- | --- | --- | --- |
+| G (local edit, never committed) | 16 | 19 / 128 / 32000 | **169,120 B** | all 11 match | clean |
+| F (the tip as it ships) | 8 | 11 / 64 / 16000 | **187,712 B** | all 11 match | clean |
+
+G has exactly the **18,592 B** less heap the handover predicts. `devices/dev.toml` and
+`toolchain/versions.toml` were restored with `git checkout` before F was built. Two flashes; the
+board is now on **F**.
+
+### 10.3 W1 part 1 — per-source/route allocation need: **PASS on both images, matches the twin**
+
+`test_every_source_and_route_fits_a_small_free_run`: worst route **`/status` 320 B**, `/sensors`
+and `/measurements` 256 B, `/networking` 192 B, `/system` 160 B, `/notification` 128-144 B, every
+data/config source ≤ 144 B, every errcount entry 112 B. Twin prediction was 320 B / ≤ 192 B —
+exact. **But the probe list has no static-file route** (`/`, `/<path>`), which is where the real
+failure is (§10.5). The bounded writer does what it claims; it just does not cover everything.
+
+### 10.4 W1/W2 sweep — `test_serving_sweep_at_the_reactive_default`: **FAILED on both images**
+
+**Image G (ceiling 16, levels 4..18, cumulative on one boot):** 112 × `allocating 1025 bytes`, plus
+~180 route failures at 172-257 B (the writer's own pieces, `_PieceWriter.flush`/`add`,
+`asy_webserver_service.py:38-65`) and 1 × 232 B at `microdot.py:383` (`Request.__init__`). The
+first 1025 failure came ~35 s into the load (board uptime 75 s), i.e. at the lowest levels. At the
+first route failure (`fail1`): free 20,864 B but max free run **15 blocks = 240 B**; one dump later
+free was 5,888 B — at G's high levels the heap is **exhausted**, not merely fragmented. The run
+ended with the board's USB CDC vanishing (`OSError: [Errno 5]` in mpremote) at board uptime
+~425 s, before the device script's own window closed — **the board reset itself under load**
+(cause not captured; the fixture then hard-reset it). No tallies were printed because the device
+script's run was the thing that failed.
+
+**Image F (ceiling 8, levels 4/6/8/10):** tallies `N=4 {200:48}`, `N=6 {200:72}`, `N=8 {200:96}`,
+`N=10 {200:96, refused:24}` — admission and clean refusal exactly as predicted — **but 11 ×
+`allocating 1025 bytes`**. The tally reads "all served" because this test only reads the status
+line (`_one_request()`), so a **truncated body counts as a 200**. That is an instrument gap (§10.7).
+
+Heap recovery (F, W1 row 3): idle **before** load `largest_free_run` 10,080-15,232 B, free ~82 KB;
+idle **after** 7,008-9,760 B, free ~80 KB. Free bytes fully recover; the largest run recovers to
+~2/3. During load the largest run dipped as low as **464 B** (free 1,136 B, `load01`) — at N=4.
+
+### 10.5 THE STATIC FILE SERVING DEFECT
+
+**What the client sees:** `GET /` answered `HTTP/1.0 200 OK`, then a **truncated** gzip body, then
+FIN. With the driver checking the body length against an idle reference (9,292 B compressed;
+49,651 B decompressed), this was 10 of 72 requests at N=6 and 11 of 96 at N=8 on image G. No error
+reaches the client.
+
+**Mechanism, traced:**
+1. `_serve_static()` (`src/asy_webserver_service.py:~628`) returns microdot's
+   `send_file(..., compressed=True, file_extension=".gz")` — a `Response` wrapping an open file.
+2. Microdot writes the status line and headers **first**, then iterates the body:
+   `buf = response.body.read(response.send_file_buffer_size)` (`ext/microdot.py:746`), with
+   `send_file_buffer_size = 1024` (`ext/microdot.py:567`). Each `read(1024)` allocates a **fresh
+   1,025 B bytes object** (1024 + the terminating NUL MicroPython adds). A 9,292 B page is ten of
+   them, per request, each needing one contiguous 1,025 B run.
+3. When one fails, the `MemoryError` escapes microdot's body write — **the one real gap SPEC A.5
+   already names** (microdot guards the handler, not the response write) — and lands in
+   `_serve()`'s `except Exception` (`asy_webserver_service.py:697`), logged as
+   `WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes`;
+   the socket is closed.
+4. The response is **HTTP/1.0 with `Connection: close` and no `Content-Length`** (checked with
+   `curl -D -`: headers are only `Content-Type: text/html`, `Content-Encoding: gzip`,
+   `Connection: close`). The end of the body is signalled only by FIN, so **a cut-off body is
+   indistinguishable from a complete one at the HTTP layer.** A browser gets a 200 and a corrupt
+   gzip stream.
+
+**Why it is a delivery bug, not only a resource limit** (the owner's point): a resource failure
+should end in an error response or no response — never a success status with wrong content. Two
+independent defects combine:
+- **(a) an unbounded-by-design allocation on the static path**: 1 KB contiguous per chunk, per
+  request, four times the 256 B the JSON routes were just bounded to. The §0 fix did not touch it,
+  and the per-route probe (§10.3) does not include the route, so the twin evidence could not see it.
+- **(b) a failure after the 200 is invisible**: no `Content-Length`. The frozen VFS knows each
+  file's size (`os.stat`), so the length could be sent; a truncated body would then be a
+  client-visible `IncompleteRead`, not silent corruption.
+
+**Fix candidates (not applied — owner's decision):** set `Response.send_file_buffer_size` to 256
+from our code (a class attribute; no edit to vendored `ext/microdot.py`), or wrap the file in a
+`readinto()`-based iterator over one preallocated buffer (zero per-chunk allocation); and send
+`Content-Length` for static files. Then add `/` to `allocation_need_per_source.py`'s probes and a
+body-length check to the sweep test.
+
+**Earlier data this touches:** the morning's §4 driver only checked `len(body) > 0` for `/`, so a
+truncated static page there would also have passed as served. At N ≤ 4 that run had 0 allocation
+lines on the device, so the "4" stands; the failures at N ≥ 5 may have included 1025s in addition
+to the ~870 B JSON pieces.
+
+### 10.6 Maximum stable concurrency at `gc.threshold(-1)`, combined load, measured per level
+
+Same definition as §4 (real task graph, every sensor/UART/NTP task running, 12 rounds of N
+concurrent GETs across `/status`, `/sensors`, `/`, `/measurements`, `/networking`, `/system`), one
+**fresh boot per level**, now with the static page's **body length** checked and every host error's
+reason recorded. "Stable" = every request 200 with a complete body **and zero allocation-failure
+lines on the device**.
+
+**Image G (ceiling 16):**
+
+| N | served (complete) | device allocation-failure lines | notes |
+| --- | --- | --- | --- |
+| 2 | 24/24 | 0 | worst largest free run 640 B |
+| 4 | 47/48, then **48/48** | **0, 0** | the one miss: a host-side `URLError` on `/sensors`, no device-side line |
+| 6 | 62/72 | 10 | all 10 are `/` truncated (1025 B) |
+| 8 | 85/96 | 11 | all 11 are `/` truncated (1025 B) |
+| 10 | 95/120 | 36 | 12 `/` truncated, 12 × `/status` 500 (251-256 B pieces), 1 host timeout |
+| 12 | 99/144 | 66 | 24 `/` truncated, 20 × `/status` 500, 1 × `/measurements` 500; worst run 128 B |
+
+(A first N=10 attempt was void: the driver's own reference fetch was reset and its thread died; fixed
+and re-run.)
+
+**Image G result: max stable = 4, first failure at 6.** The first failure at 6 is the static
+page. Route (JSON) failures appear only from 10 upward, so **the JSON fix did move the JSON wall
+from 5 (image A, 190,036 B heap) to ~10** — on a heap 20,916 B smaller — the static path is what now binds.
+
+**Image F (ceiling 8):** *running at the time of this commit (levels 2, 3, 4, 5, 6, 8).*
+
+### 10.7 Instrument gaps found in this sitting
+
+- `test_serving_sweep_at_the_reactive_default` counts a response as served from its **status line
+  alone**; a truncated body is a 200 there. It still failed correctly, only because the
+  allocation-marker gate caught the log lines. It should check the body against a reference length.
+- `allocation_need_per_source.py` probes every JSON route and data source but **no static route**.
+- The morning's combined-load driver (`stability_sweep.py`, scratch) had the same `len > 0` gap for
+  `/`; the version used in §10.6 checks the length and records each error's reason.
+
+### 10.8 What was NOT done (deliberately)
+
+W3 (`test_end_to_end_timing.py`) and W4 (the full bench tier on F) are **not run**: the handover says
+"if W2 fails below 10 on silicon … record it and stop", and both would have to be re-run on a fixed
+image anyway.
+

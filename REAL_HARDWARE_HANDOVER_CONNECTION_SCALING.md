@@ -79,13 +79,13 @@ finding, not a harness bug to explain away — the instruments were all run agai
 
 | row | image | measurement | twin prediction | `[HW]` |
 | --- | --- | --- | --- | --- |
-| W2 | G | failures at N = 10 / 12 / 14 / 16 / 18 | 0 / 0 / then 0 or >0 (bracket 12-18) | ___ |
-| W2 | G | first failing level, and its sizes and sites | 14-20; ~250 B pieces, `microdot.py:383` | ___ |
-| W1 | F | largest need of any route / any source | 320 B / ≤ 192 B | ___ |
-| W1 | F | failures at N = 4 / 6 / 8 / 10 | 0 / 0 / 0 / 0 | ___ |
-| W1 | F | largest free run, idle before vs after the load | unsettled in the twin | ___ |
-| W3 | F | `/status` p50 / p95 | not modelled (twin has no lwIP) | ___ |
-| W4 | F | bench tier passed / skipped / deselected | — | ___ |
+| W2 | G | failures at N = 10 / 12 / 14 / 16 / 18 | 0 / 0 / then 0 or >0 (bracket 12-18) | **FAILED below 10**: per-boot N=6: 10, N=8: 11, N=10: 36, N=12: 66 allocation lines; cumulative sweep 112 × 1025 B + ~180 route pieces, board reset itself at ~425 s (sitting doc §10.4/10.6) |
+| W2 | G | first failing level, and its sizes and sites | 14-20; ~250 B pieces, `microdot.py:383` | **N=6: 1,025 B in microdot's `send_file` body read (`ext/microdot.py:746`) — a truncated 200 on `/`**. JSON pieces (251-256 B, `_PieceWriter`) and `microdot.py:383` (232 B) first at N=10 |
+| W1 | F | largest need of any route / any source | 320 B / ≤ 192 B | **320 B (`/status`) / ≤ 144 B — matches**; but no static route is probed |
+| W1 | F | failures at N = 4 / 6 / 8 / 10 | 0 / 0 / 0 / 0 | **FAILED: 11 × 1,025 B** across the run; tallies 48/72/96 served + 24 refused at N=10, but the tally counts truncated bodies as served |
+| W1 | F | largest free run, idle before vs after the load | unsettled in the twin | before 10,080-15,232 B, after 7,008-9,760 B; free ~82 KB → ~80 KB. Partial recovery |
+| W3 | F | `/status` p50 / p95 | not modelled (twin has no lwIP) | not run — stopped per the rule below |
+| W4 | F | bench tier passed / skipped / deselected | — | not run — stopped per the rule below |
 
 If W2 fails **below** 10 on silicon, 8 is not the margin it was meant to be: record it and stop —
 that is the owner's decision, not the sitting's.
