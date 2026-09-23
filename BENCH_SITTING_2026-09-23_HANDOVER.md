@@ -329,27 +329,50 @@ Derived values confirmed against `opt.h`'s own formulas: `TCP_SND_QUEUELEN` 32, 
 
 **Images A, B and C: zero failing conditions each.** The ensembles are globally coherent.
 
+**Addendum, same day: the two ensembles this sitting's follow-up needs were audited the same way,
+before the tip moved to one of them.** N = 8 (PCB 11 / SEG 64 / `MEM_SIZE` 16000 — **the ensemble
+the tip now ships**, commit `79cb3b1`) and N = 10 (PCB 13 / SEG 80 / `MEM_SIZE` 20000): **zero
+failing conditions each**, and `check_lwip_ensemble()` agrees. Their inbound over-commit is 4.0x and
+5.0x, bracketed by image A's 3.5x and image B's 8.0x — neither of which bound (§3.5).
+
 ## 7. Suite results on this image
 
 | Suite | Result |
 | --- | --- |
 | Flash tier, default | **36 passed, 3 skipped, 12 deselected**, 15:16 — clean |
 | Bench tier, default | **103 passed, 4 skipped, 27 deselected**, 43:50 — clean |
-| Bench tier, `--allow-persistence-writes` (S3) | **RUNNING when this document was written — the next session must read `bench_persist.log` and record the outcome here** |
+| Bench tier, `--allow-persistence-writes` (S3) | **124 passed, 4 skipped, 6 deselected**, 53:55 — **clean, the first end-to-end green gated run** (2026-09-22's was `1 failed, 118 passed` and never re-run green) |
 
 D1's ordering condition (a clean default run before the gated one) is **satisfied on this image** by
 the two rows above. Read the *deselected* count, not just the word "clean": the wear gates deselect
 rather than skip, so "everything that ran, passed" is not "everything ran".
 
+**What S3 does and does not validate.** It ran on image A as rebuilt at step 5 (`buildDate
+2026-09-23T07:41:10Z`, `max_connections = 7`, the pre-fix `src/`). The tip has since moved — the
+bounded `_PieceWriter` in `asy_webserver_service.py` and `max_connections = 8` (commit `79cb3b1`) —
+so **S3 is a clean baseline for the image before that change, not a validation of the tip.**
+`REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md` §0.4's W4 re-runs the default tier on the tip; a gated
+run on the tip is a separate decision, and the wear rule says not to repeat one unasked.
+
+The 21 tests that ran only because of the flag all passed. The four skips are the expected opt-in
+ones: the two NeoPixel-rig programs, the flash-cycle reflash test, and the hotspot tier's one
+permanent entry. Three queue rows this run made reachable:
+
+| row | what S3 shows |
+| --- | --- |
+| **R8** | **Closed.** Both tests ran on silicon for the first time and passed: `test_isl29125_calibrate_command_push_over_real_rest` and `test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value` — the adaptation to this branch's nested `PUT /sensors` body was where a first run was expected to go wrong, and it did not |
+| **R5** | **A second green run** of the BMP3XX deferred-config-write arm (`test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load`, `test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback`), after 2026-09-17's first. Whether two runs is "durable" is the owner's call |
+| **R1, R4** | **Not answered.** They ride on the gated run but need their own investigation — R1 is a root-cause bisection (`RangeAuto=false`), R4 a pre-populate-then-sweep that no suite test performs. S3 passing says nothing either way |
+
 ## 8. What is still owed
 
 | # | Row | Why |
 | --- | --- | --- |
-| 1 | **Record S3's result** | It was still running; §7 has the log path |
+| 1 | ~~Record S3's result~~ — **done**, §7: 124 passed, clean | — |
 | 2 | **Decide what to do about §4** — *root-caused and fixed in the twin the same day, limit set to 8 by the owner; silicon confirmation is `REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md` §0* | The threshold is load-bearing at the shipped ceiling. Owner's call: lower `max_connections`, relieve the allocation pressure in `_stream_dict_response()`, or accept the threshold as load-bearing and say so in the docs |
 | 3 | **Qualify the claim in `HEAP_FRAGMENTATION_MEASUREMENTS.md`** — *done, §7H.3's note and §7Q* | "stable without the threshold … yes" holds for the unit tier and the twin, not for the board under combined load |
 | 4 | **One more image, if the exact boundary is wanted** | A right-sized N=4 (or N=5) ensemble returns ~6 KB of heap; 5 might pass. One build, one flash |
-| 5 | R1, R2, R3, R4, R5, R6, R7, R8, R9, R13 | Untouched by this sitting. **R3 has fresh evidence**: the spurious `W4` is in §2's log |
+| 5 | R1, R2, R3, R4, R6, R7, R9, R13 | Untouched by this sitting. **R3 has fresh evidence**: the spurious `W4` is in §2's log. R8 closed and R5 advanced by S3 (§7) |
 | 6 | M1, S3b, S4, F1, T1, T2, T4, G1/G3/G4/G6/G8/G10, H1 | Untouched |
 
 ## 9. Traps this sitting learned the hard way
