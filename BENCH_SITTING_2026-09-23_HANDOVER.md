@@ -826,3 +826,69 @@ N= 5  — driver crashed parsing a torn heap-map capture (10.10.5); host tally l
   still there at uptime 170 s, with the bench AP (`br0-wifi-ap`) up. A `kick_all_stations()` +
   hard reset brought it back (`WLAN connection established`, `/status` 200 at uptime 53 s). One
   occurrence; recorded, not chased.
+
+### 10.11.4 H2 on G′ — `combined_load_sweep.py 8 10 10 10 12 12`: **UNSTABLE at every level**
+
+Run alone on a freshly rejoined board (after 10.11.3), one fresh boot per level:
+
+```
+N= 8 GC_THRESHOLD=-1 | UNSTABLE | complete 94/96 | device allocation-failure lines 4 | worst largest free run 48 B | reference {'/': 9292, '/js/app.js': 16292}
+     2 x /status status500 (rounds 3, 5)
+   reference fetch / retry: status 200, 0 B, Content-Length None        [before the N=10 boot below]
+N=10 GC_THRESHOLD=-1 | UNSTABLE | complete 106/120 | device allocation-failure lines 28 | worst largest free run 144 B
+     14 x /status status500 (every round 0-11; twice in rounds 8 and 11)
+N=10 GC_THRESHOLD=-1 | UNSTABLE | complete 107/120 | device allocation-failure lines 26 | worst largest free run 80 B
+     13 x /status status500 (every round; twice in round 3)
+N=10 GC_THRESHOLD=-1 | UNSTABLE | complete 108/120 | device allocation-failure lines 24 | worst largest free run 192 B
+     12 x /status status500 (every round, once each)
+N=12 GC_THRESHOLD=-1 | UNSTABLE | complete 120/144 | device allocation-failure lines 47 | worst largest free run 144 B
+     21 x /status status500 (every round), 1 x /sensors status400, 1 x /sensors timed out (round 11),
+     1 x / IncompleteRead(0 bytes read, 9292 more expected)
+N=12 GC_THRESHOLD=-1 | UNSTABLE | complete 117/144 | device allocation-failure lines 42 | worst largest free run 176 B
+     16 x /status status500, 1 x /measurements status500, 2 x /status status400, 1 x / status400,
+     5 x / IncompleteRead(0 of 9292), 3 x /js/app.js IncompleteRead(0 of 16292),
+     1 x /js/app.js IncompleteRead(256 bytes read, 16036 more expected)
+```
+
+Device side, per boot (sizes are the `allocating N bytes` of each failure; sites from the tracebacks):
+
+| boot | route-handler 500s | "Unexpected error serving connection" | other tasks hit | failing sizes |
+| --- | --- | --- | --- | --- |
+| N=8 | 2 | 0 | — | 251, 256 |
+| N=10 #1 | 14 | 0 | — | 242-257 (254 ×8, 255 ×6, 253 ×6, 257 ×4) |
+| N=10 #2 | 13 | 0 | — | 250-256 |
+| N=10 #3 | 12 | 0 | — | 250-257 |
+| N=12 #1 | 21 | 1 | `SYSTEM Task 12 ended with exception`, `BMP3XX Read failed` | 220-256 |
+| N=12 #2 | 15 | 9 | — | 232 ×3, 251-257 |
+
+- **The wall at 10 is the `/status` JSON piece**: every 500 at N=8 and N=10 has the same stack —
+  `_get_status` → `_build_status_pieces` → `_write_errcount_entry` → `_PieceWriter.add_value` →
+  `add` → `flush`, failing to allocate one joined piece of 242-257 B (`chunk_bytes` = 256).
+  `/status` is 2 of the 9 paths in the mix and it failed in **every one of the 36 rounds at N=10**.
+  No other route failed at 8 or 10; bodies that were served were complete.
+- **At 12 it spreads**: 400s (microdot could not build the `Request` — 232 B is its size, as the
+  handover predicted), static files cut off after their headers — now **visible** to the client as
+  `IncompleteRead` against `Content-Length`, exactly what the static fix was for — and non-web
+  tasks (a supervised task restart, a BMP3XX read).
+- **G′ is worse than F′ at 8** (2 × 500 vs 0 in 12 boots): 18,592 B less GC heap, spent on lwIP
+  PCBs/segments/`MEM_SIZE` sized for 16 connections.
+- The reference validator of 10.10.5 did its job once here: before one boot the idle `GET /` came
+  back **status 200, 0 B, no `Content-Length`** and was retried. That is the second sighting of
+  this empty 200 (10.10.4 was the first), both in the boot-time WLAN drop window. F′'s static
+  response always carries `Content-Length`, so this empty 200 did not come from `_serve_static()`;
+  its origin is **unexplained**.
+
+### 10.11.5 Verdict: the owner's bar of 10 is **not met** on any image measured
+
+| image | limit | GC heap | N=8 | N=10 | first failing allocation |
+| --- | --- | --- | --- | --- | --- |
+| F′ (tip, shipped config) | 8 | 187,712 B | stable, 2/2 | refuses 2 of 10 by design | none through 8 |
+| G′ (tip + §0.3 over-provisioned lwIP) | 16 | 169,120 B | 0/1 stable | **0/3 stable**, ~1 `/status` in 10 fails every round | the 256 B `/status` piece |
+
+- The failure at 10 is a design-level memory limit (JSON piece allocations into a heap whose holes
+  are smaller than 256 B once 10 connections are in flight), not a threshold question — all runs
+  at `gc.threshold(-1)` as required, and CLAUDE.md forbids a threshold as the fix.
+- What would have to change is the owner's call. Candidates, not yet measured: a right-sized image
+  (`max_connections` 10-12 with an lwIP ensemble sized for it, recovering part of G′'s 18.6 KB);
+  a smaller `chunk_bytes`; and reducing what each in-flight connection holds.
+- Board left on **G′**, idle. `devices/dev.toml` / `toolchain/versions.toml` G′ edits are local only.

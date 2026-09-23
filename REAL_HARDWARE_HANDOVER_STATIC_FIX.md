@@ -85,8 +85,10 @@ lines**. On the pre-fix firmware it reports UNSTABLE at N = 8, from its host-sid
 **Result, 2026-09-23 evening** (`BENCH_SITTING_2026-09-23_HANDOVER.md` §10.10): F′ is stable
 through its own ceiling of 8 — the static fix holds on silicon. **That is not the pass verdict**:
 the owner restated that **10 concurrent connections must be stable on every run**, 8 being margin.
-F′ refuses 2 of 10 by construction, so the question moved to G′ (§3's "not part of this sitting"),
-now being run.
+F′ refuses 2 of 10 by construction, so the question moved to G′ (§3's "not part of this sitting").
+**G′ fails it**: UNSTABLE in 3 of 3 per-boot runs at N = 10 (and at 8 and 12) — ~1 `/status` in 10
+answers 500 in every round, each on a 242-257 B `_PieceWriter` piece; H1's one-boot sweep ran the
+heap out entirely (68-138 B failures). Sitting §10.11. **No image measured meets 10.**
 
 ## 5. What a result means
 
