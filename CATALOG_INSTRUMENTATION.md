@@ -53,8 +53,7 @@ make -j8 BUILD=build-heapprobe32 \
   `MICROPYPATH=<dir>:.frozen` A/Bs one module without a rebuild. Shadow every arm, the control
   included, so the shadow's own compile cost is common to all of them. The same trick on the ordinary
   binary is how "fails when reverted" is proven for unit tests.
-- Proposed as a CI gate: `BACKLOG.md` item 44. That needs a `toolchain/` change and the apt package,
-  and it has not been done.
+- **Never a committed tool or CI gate** (owner, 2026-09-23; `BACKLOG.md` items 44 and 45).
 
 **Calibration to the board** (32-bit twin, shipped code at the time, 12 rounds, failures per run at
 N = 4 / 5 / 7):

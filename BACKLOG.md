@@ -775,6 +775,24 @@ cites is deleted outright, its permanent content migrated per the policy above. 
       in the 64-bit twin, the only module outside the webserver to fail anywhere in the sweeps. It
       did not fail on the board-faithful 32-bit twin. Recorded, not chased.
 
+45. **Before this branch merges: the connection-scaling work's temporary files are processed, then
+    deleted** (owner, 2026-09-23: "no twin32 to be kept at all … same for any temporary file we
+    created here"). Each one's lasting content moves first — rules and current state to
+    `SPECIFICATION.md`/`CLAUDE.md`/`BACKLOG.md`, measured evidence to
+    `HEAP_FRAGMENTATION_MEASUREMENTS.md` (the permanent citation target, which keeps the 32-bit twin's
+    what-for and how-to, §7Q.9/§7Q.14/§10), open hardware rows to `REAL_HARDWARE_TEST_QUEUE.md`:
+    - `CONNECTION_SCALING_PLAN.md` — the plan and its findings.
+    - `REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md` and `REAL_HARDWARE_HANDOVER_STATIC_FIX.md` — once
+      their recording tables are filled and migrated.
+    - `BENCH_SITTING_2026-09-23_HANDOVER.md` — the sitting's record (the hardware session's own file).
+    - `CATALOG_UNIT_TESTS.md` and `CATALOG_INSTRUMENTATION.md` — this session's working catalogs.
+    - `tests_hardware/combined_load_sweep.py` — the hardware session's per-boot sweep tool, and
+      `tests_hardware/device_scripts/serving_stability_under_combined_load.py` if nothing else still
+      runs it; what the tool does is recorded in the instrumentation catalog for migration.
+    - Never committed, never to be: the 32-bit and 64-bit frozen twin builds, their manifests and
+      every scratch harness (sweep, driver, twin validators) — documentation only.
+    The committed tests and hardware bench tests this work added are permanent and stay.
+
 ## Deferred / explicitly out-of-scope work
 
 - **Closed 2026-09-22: every dangling `§` reference in the tree now resolves.** They cited the

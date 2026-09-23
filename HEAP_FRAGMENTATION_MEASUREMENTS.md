@@ -5234,11 +5234,13 @@ closed door. The general prohibition for business logic and the run phase stands
 
 ## 12. Not started, carried forward from the deleted handover
 
-- Commit Tier 1 into the repo properly: the retained frozen-port build variant, the runtime
+- ~~Commit Tier 1 into the repo properly: the retained frozen-port build variant, the runtime
   neutralisations, the calibrated heap size, and the census tooling. Touches
   `toolchain/setup_toolchain.py` and adds a `scripts/` entry, so it owes BACKLOG.md's running list
   for the owner's next manual two-target chroot run (Ubuntu noble/GCC 13 **and** Debian
-  trixie/GCC 14) — periodic since 2026-09-18, not a blocking gate.
+  trixie/GCC 14) — periodic since 2026-09-18, not a blocking gate.~~ **Decided 2026-09-23 (owner): not committed** — the frozen-port twins,
+  64-bit and 32-bit alike, and their tooling stay ad-hoc instruments documented here (§7Q.9, §10),
+  never a committed build variant or CI gate. BACKLOG.md item 45.
 - ~~The `buildgen` seam + contiguity guard, written test-first and verified to fail when the
   invariant is deliberately broken.~~ **Built 2026-09-21 — §7L**, as
   `tests_scripts/test_digital_twin_boot_contiguity.py` plus `tests/_boot_contiguity_probe.py`, and
