@@ -555,11 +555,21 @@ pytest tier. Guarded on `GITHUB_ACTIONS`, so a local or clean-chroot run is unch
 | Full suite, `TEST_PARALLELISM=32` | 2x CI's oversubscription | 85/85, 0 markers |
 | Full suite, `taskset -c 0,1` | 2 cores x 4 = 8 jobs, a runner's exact shape | 85/85, 0 markers |
 | Per-scenario timing, 6 devices on 2 cores | the wall-clock-budget hypothesis | see below |
+| The same six files under `build-settrace` | the `unit-tests-coverage` lane specifically | 19/19 x 6, 0 markers |
 
 The timing run kills the budget hypothesis outright: under 3x oversubscription on two cores,
 `every_admitted_connection_is_actually_served_a_complete_correct_response` takes **2.5 s against
 its 40 s budget**, consistent to within 60 ms across all six devices, and the heaviest scenario in
-the file is 6.8 s. No `run_timed()` budget is anywhere near firing.
+the file is 6.8 s against 60 s. No `run_timed()` budget is anywhere near firing.
+
+The coverage lane is not the exception it looks like either. `build-settrace` inflates
+*allocations* 4-5x (Part E.5.2), but these scenarios are dominated by real network waits rather
+than traced execution, so the **wall-clock** inflation measured here is only **1.32x** - 47.6 s
+against 36.2 s for the same six files under identical contention. Every budget keeps at least 4x
+headroom in that lane too, including the two tightest ratios in the file
+(`a_slot_freed_by_a_stale_connections_timeout...` at 5.8 s of 30 s, and the segfault-repro-scale
+burst at 6.8 s of 60 s). The per-file 240 s timeout is never in reach either: a whole file is
+36-48 s under 3x oversubscription.
 
 **What was changed, and what it is not.** The scenario that demands the whole ceiling three times
 in a row now starts each round from an asserted zero rather than a hoped-for one: `_drained()`
