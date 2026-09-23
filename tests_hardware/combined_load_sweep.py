@@ -209,7 +209,7 @@ def run_level(board: Board, bench: BenchBridge, ip: str, script: Path, n: int, r
     if peak:
         for line in _peak_lines(output):
             print(f"     {line}")
-    if margin:
+    if margin and not peak:  # --peak --margin reports through _peak_lines(); the maps it summarises are not taken
         try:
             print(f"     {_margin_line(output)}")
         except heap_map.HeapMapError as e:
