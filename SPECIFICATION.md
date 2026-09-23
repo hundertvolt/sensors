@@ -4657,9 +4657,12 @@ and is **withdrawn**: the measurement sampled after the burst rather than during
 allocating probe rather than `mem_info(1)`, and normalised against the after-boot value in a way
 that turned comfortable headroom into an apparent cliff. Re-measured at true peak with the right
 instrument, the within-N spread exceeds the between-N step for every adjacent pair, so **contiguity
-cannot rank 7 against 8 at all** (§8.3.1). What is left for 7 is deterministic: the coherent
-ensemble costs 3.73% of the GC heap against 4.90% at 8, and p50 latency grows ~1.3 ms per added
-connection. 7 is a margin decision under uncertainty, not a measured cliff.
+cannot rank 7 against 8 at all** (§8.3.1). A second argument, "p50 latency grows ~1.3 ms per added
+connection", is withdrawn on the same grounds: that sweep's offered load scaled with the setting,
+and at fixed load latency is flat from 4 to 16 (§8.3.2). What is left is memory, and it is exact: a
+connection costs 2,324 B statically (ELF sizes, zero variance) plus 5,170 B live while it is being
+served, so 7→8 costs 7,488 B, about 3.9% of the GC heap, taking peak occupancy from 27.6% to 31.9%
+(§8.3.3). 7 is a memory-budget decision under uncertainty, not a measured cliff.
 Service, not just survival, is asserted directly: every admitted connection must come back with a
 complete, correct, parseable response inside a bounded time, over repeated rounds, and concurrent
 page loads must be byte-identical to an uncontended one. The lwIP half is queued for

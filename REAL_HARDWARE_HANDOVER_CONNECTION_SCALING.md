@@ -149,7 +149,16 @@ follow and they save an entire sitting.
    does, the measurement is dominated by placement luck and must not be used to rank anything —
    report it as inconclusive rather than rationalising the outlier. (That rationalisation is exactly
    what produced the withdrawn result.)
-6. **Prefer the deterministic quantities**, which is where board time actually pays: the exact
+6. **Collect immediately before any heap sample, and say that you did.** `used_bytes` at peak
+   without a collect is live objects *plus* garbage the burst made and the collector has not swept:
+   on the twin that is 71% garbage, enough to overstate per-connection cost 3.4x. A collect can
+   only free unreferenced objects, so it yields the live set without disturbing what is under test.
+7. **Never let the offered load scale with the setting under test.** The withdrawn latency result
+   came from a sweep firing `burst = 2 x max_connections`, which measured "latency when you also
+   offer twice as many requests". Pin the load and vary only the ceiling; at fixed concurrency,
+   latency is flat from 4 to 16 on the twin. If you want a latency number for the board, measure
+   *your realistic load* against the shipped setting and against the old ceiling of 4.
+8. **Prefer the deterministic quantities**, which is where board time actually pays: the exact
    admission ceiling (§4, deterministic), heap and `.bss`/`.data` cost from the ELF (zero variance),
    latency percentiles (averaged over many requests, so noise averages down), and the wall itself
    (a step change). Gradients of contiguity against N are the one thing this instrument cannot give
@@ -200,17 +209,24 @@ All of this is [TWIN] or from a real firmware build; none of it is silicon.
   no compile-time wall in that range.** Baseline GC heap is 197,528 B.
 - **Buffers cost far more per option**: `PBUF_POOL_SIZE` 16→32 is −15,644 B, and lwIP's own
   16000/1460 preset is −19,932 B, a tenth of the whole GC heap.
-- **But the figure that decides anything is the coherent ensemble**: a *servable* connection costs
-  **2,324 B of GC heap**, linear, about twelve times the PCB slot alone. `max_connections = 7`
-  costs 3.73% of the heap; 8 costs 4.90%.
+- **A connection has two costs, and they were once conflated.** **Static: 2,324 B**, exact and
+  linear across 4→16, from ELF sizes — permanent whether the connection is used. **Runtime live at
+  peak: 5,170 B**, 0.5% spread, measured with every connection parked mid-body. Peak occupancy is
+  27.6% of the GC heap at 7 and 31.9% at 8; the marginal cost of 7→8 is 7,488 B, ~3.9%. Sampling
+  runtime cost *without* a collect first reads ~17,700 B, of which **71% is garbage** — take the
+  collect, or you will overstate it 3.4x. The static half is `[BUILD]`; the runtime half is
+  `[TWIN]` and wants confirming on silicon.
 - **Above the transport, the twin serves every connection count it was asked for, up to 63**, with
   zero rejections at burst = N and no allocation failure anywhere below N = 47.
 - **The twin's wall is a `MemoryError` on a small allocation.** At N = 47 with a 3x burst one
   appears *caught and degraded*; at N = 63 it is uncaught and the process dies. The contiguity
   *gradient* that once accompanied this is withdrawn - `CONNECTION_SCALING_PLAN.md` §8.3.1 has
   why, and §5B above has what to do instead. Treat 47 and 63 as the twin's wall, nothing more.
-- **p50 latency grows about 1.3 ms per added connection** under a 2x burst (5.4 ms at N = 4,
-  9.0 ms at N = 7, 14.4 ms at N = 11).
+- **Latency does NOT grow with the ceiling at fixed load.** An earlier claim of "1.3 ms per added
+  connection" came from a sweep whose offered load scaled with the setting; pinned at concurrency 4,
+  p50 is flat from `max_connections` 4 to 16 (§8.3.2). Do not spend board time re-deriving a
+  gradient that is not there — measure latency under YOUR realistic load, against the shipped
+  setting, and compare it to the same load at the old ceiling of 4.
 
 The open question is whether the board's own wall arrives **before** any of that — and if so, which
 pool it is.

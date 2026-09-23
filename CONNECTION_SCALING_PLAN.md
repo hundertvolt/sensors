@@ -278,9 +278,9 @@ fill fraction the way `HEAP_FRAGMENTATION_MEASUREMENTS.md` §1.4 prescribes: at
 **Exactness of admission** — at burst = N, every N from 2 to 63 served exactly N with **zero**
 rejections. Admission is exact at every count tried. This part is deterministic and stands.
 
-**p50 latency grows about 1.3 ms per added connection** under a 2x burst, linearly, all the way out
-to N = 63 (83 ms). Each figure is a percentile over many requests, so placement noise averages down
-rather than dominating — unlike §8.3.1's contiguity figures. This part stands too.
+**The latency claim is withdrawn too — see §8.3.2.** An earlier version reported "p50 grows about
+1.3 ms per added connection" and used it as the second argument for 7. The sweep's burst was `2N`,
+so the offered load grew with the setting under test; at fixed load the effect disappears.
 
 ### 8.3.1 The contiguity measurement was wrong, and is withdrawn
 
@@ -341,6 +341,61 @@ differences (4 versus 6) and cannot rank adjacent connection counts at all** at 
 count this project would pay for. Any future use of it needs its within-N spread established first,
 and only differences larger than that spread may be read as signal.
 
+### 8.3.2 The latency claim is withdrawn: the load grew with the setting
+
+The sweep fired `burst = max_connections * multiplier`, so N = 4 was offered 8 requests and N = 11
+was offered 22. "p50 grows 1.3 ms per added connection" therefore measured **latency when you also
+offer twice as many requests**, not the cost of a larger ceiling. The independent variable was
+entangled with the load — the same defect as §8.3.1, in a different dress.
+
+The per-setting data was otherwise sound (5 repeats, medians 5.4, 6.7, 7.7, 9.0, 10.6, 12.0, 13.1,
+14.4 ms for N = 4…11, monotone over all eight points, within-N spread 0.5 ms on the clean rows).
+Monotone-over-eight is strong evidence of *something*; it just is not evidence about the ceiling.
+
+**Re-measured at fixed offered load** — concurrency pinned at 4 for every setting, 25 rounds,
+3 repeats, only served requests counted:
+
+| `max_connections` | 4 | 7 | 8 | 12 | 16 |
+| --- | --- | --- | --- | --- | --- |
+| p50 (ms), per repeat | 4.69 4.30 4.53 | 4.68 4.54 4.40 | 4.17 4.23 4.25 | 4.27 4.40 4.37 | 4.36 4.28 4.22 |
+
+**Flat.** The variation across settings (~0.3 ms) is smaller than the variation within one (~0.4 ms),
+and if anything the higher ceilings are marginally faster. **Raising the ceiling costs no latency at
+fixed load**, which is the question the decision actually needed answered. The rising curve was the
+load, not the setting.
+
+### 8.3.3 What a connection really costs, static and runtime
+
+This is what the two withdrawn arguments were reaching for, measured directly. Two different costs,
+and the documents previously conflated them under "a *servable* connection costs 2,324 B":
+
+- **Static — 2,324 B per connection**, from real firmware builds. `.bss` grows by exactly that per
+  added connection across `max_connections` 4→16, **every step identical, zero variance**: it is
+  arithmetic on static array sizes, not a sample. Permanent, whether the connection is ever used.
+- **Runtime live at peak — 5,170 B per connection**, measured with all N parked mid-body in
+  `readexactly()`: 5,192 / 5,170 / 5,164 B at N = 4 / 7 / 8, a 0.5% spread. Present only while the
+  connection is actually being served.
+- **Transient garbage — about 12,500 B per connection**, reclaimed by the collector. Churn, not
+  occupancy; it drives collection frequency, not the high-water mark.
+
+That third line is why the raw reading had to be checked: sampling `used_bytes` at peak *without*
+collecting first gives ~17,700 B per connection, **71% of which is garbage**. Publishing that would
+have overstated the runtime cost 3.4x — the same "single reading at an uncontrolled GC state" error
+as §8.3.1. A collect immediately before the sample can only free unreferenced objects, so it yields
+the live set without disturbing what is under test.
+
+**Peak occupancy, the figure the decision turns on:**
+
+| `max_connections` | static | runtime live at peak | total | of that build's GC heap |
+| --- | --- | --- | --- | --- |
+| 4 | 9,296 | 20,768 | 30,064 | 15.2% of 197,136 |
+| **7** | **16,268** | **36,190** | **52,458** | **27.6% of 190,164** |
+| 8 | 18,592 | 41,312 | 59,904 | 31.9% of 187,840 |
+
+The marginal cost of 7→8 is **7,488 B, about 3.9% of the heap** — three times the 2,324 B the
+static figure alone suggested. `[TWIN]` for the runtime half: MicroPython object sizes do not depend
+on heap size, so it should transfer, but it is unconfirmed on silicon.
+
 ## 8.4 The wall, from both directions — `[TWIN]`
 
 - **Highest setting that passes everything: 63.** Serves 63 of 63 at burst = N and 126 of 126 at
@@ -362,41 +417,41 @@ validated connection ceiling.**
 **`max_connections = 7`, `MEMP_NUM_TCP_PCB = 10`, `backlog = 8`, every buffer left alone.**
 Shipped on all six devices (owner's decision, 2026-09-22).
 
-**The basis changed when §8.3.1's contiguity result was withdrawn.** That result was the original
-deciding argument, and it does not survive. What is left is deterministic or averaged, and none of
-it rests on a single noisy reading:
+**Two of the three original arguments did not survive scrutiny** (§8.3.1, §8.3.2). The contiguity
+"cliff between 7 and 8" was an artifact of sampling after the burst with an allocating probe, and
+re-measured correctly the metric cannot rank adjacent settings at any repeat count worth paying
+for. The "1.3 ms per added connection" was an artifact of a sweep whose offered load scaled with
+the setting; at fixed load, latency is **flat** from 4 to 16. Neither is evidence against 8.
 
-**For it.**
-- **Cost, from real firmware builds — zero variance.** The coherent ensemble for 7 costs 3.73% of
-  the 197,528 B GC heap; 8 costs 4.90% (§9.3). These come from ELF section sizes, not sampling.
-- **Admission is exact at 7**, deterministic, at every tier.
-- **The PCB margin is architectural**: three spare slots cover the over-ceiling arrival that
-  `backlog` deliberately queues to be refused, plus TIME_WAIT churn from a design with no
+**What the decision actually rests on, after that:**
+
+- **Memory, and only memory.** A connection costs **2,324 B statically** (exact, zero variance,
+  from ELF sizes) plus **5,170 B live at peak** (0.5% spread, measured with every connection parked
+  mid-body). Going 7→8 costs **7,488 B, ~3.9% of the GC heap**; peak occupancy goes from 27.6% to
+  31.9% (§8.3.3). That is the whole quantitative case.
+- **The PCB margin is architectural, not measured**: three spare slots cover the over-ceiling
+  arrival `backlog` deliberately queues to be refused, plus TIME_WAIT churn in a design with no
   keep-alive, where every request burns a pcb (§2).
-- **The backlog coupling closes a ceiling that was fiction above 5** whatever `max_connections`
-  said — `asyncio.start_server()`'s own default.
-- Zero `MemoryError` at either gc threshold, across every tier, at the shipped value.
+- **Admission is exact at 7**, deterministic, at every tier, and the backlog coupling closes a
+  ceiling that was fiction above 5 whatever `max_connections` said.
+- **Zero `MemoryError`** at either gc threshold, across every tier, at the shipped value.
 
-**Against it.**
-- **p50 latency under a 2x burst goes from 5.4 ms at N = 4 to 9.0 ms at N = 7**, about 1.3 ms per
-  added connection. This is a percentile over many requests, so it is not the single-sample kind of
-  figure §8.3.1 withdrew.
-- **The lwIP half is unconfirmed.** If the board's PCB pool or pbuf supply binds before 7, the
-  firmware refuses connections its own config admits — which reads as an application bug and is
-  not one.
+**Against it.** The lwIP half is unconfirmed: if the board's PCB pool or pbuf supply binds before 7,
+the firmware refuses connections its own config admits — which reads as an application bug and is
+not one. And the runtime half of the cost figure is `[TWIN]`; object sizes should transfer, but that
+is an argument, not a measurement.
 
-**Why not 8.** Honestly: **contiguity does not distinguish 7 from 8, and this document previously
-claimed it did.** The surviving arguments are the 1.17-percentage-point heap cost and 1.3 ms of
-added p50 latency — real but modest. 7 was chosen as the smaller step on a device whose known
-defect is contiguity, taken as a margin decision under uncertainty rather than as a measured cliff.
-**Anyone revisiting this should know the contiguity evidence is absent, not against 8.**
+**Why not 8, stated honestly.** Because it commits another 3.9% of a 190 KB heap on a device whose
+known defect is memory, for a connection nobody has shown is needed. That is a budget judgement, not
+a measured cliff — **the contiguity and latency evidence that once appeared to condemn 8 is absent,
+not against it.** Anyone revisiting this should weigh 7,488 B against the traffic they actually
+have.
 
-**What would actually settle it** is the functional wall on silicon, because a wall is a step change
-and therefore robust to the placement noise that defeats the gradient metrics: the first N at which
-a `MemoryError` appears at all, caught or not. On the twin that is N = 47 (§8.4), far above either
-candidate. The board's own number is what `REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md` exists to
-collect, and §5 of that file now spends its sitting on bisecting to it rather than on a grid of
-adjacent settings that cannot be told apart.
+**What would settle it** is the functional wall on silicon, because a wall is a step change and so
+robust to the noise that defeats gradient metrics: the first N at which a `MemoryError` appears at
+all, caught or not. On the twin that is N = 47 (§8.4), far above either candidate.
+`REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md` §5 bisects to the board's own number rather than
+gridding settings that cannot be told apart.
 
 ## 8.6 What each tier does now, against §6's table
 
@@ -506,9 +561,10 @@ adjacent settings at all. What remains is one curve, not two:
 
 What changes is the **price**: 3.73% of the GC heap, not the 0.50% §8.5 claimed. The trade stated
 in both directions, corrected: 75% more connections, each of which the stack can genuinely push,
-for 7,364 B of GC heap and ~3.6 ms of added p50 latency under a 2x overload burst. (An earlier
-version of this sentence also charged "a ~30% relative loss of largest-contiguous-free"; that
-figure came from the withdrawn measurement and is removed rather than restated.)
+for 7,364 B of GC heap statically, plus ~5,170 B per connection live while it is being served
+(§8.3.3). (Earlier versions of this sentence also charged "a ~30% relative loss of
+largest-contiguous-free" and added p50 latency; both came from measurements since withdrawn
+(§8.3.1, §8.3.2) and are removed rather than restated.)
 `max_connections = 4` at a coherent ensemble costs only 392 B, so the whole price of this change is
 the six thousand-odd bytes between them.
 
