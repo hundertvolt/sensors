@@ -143,7 +143,10 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
 
 
 async def _healthy_request(host: str, port: int, path: str = "/measurements") -> int:
-    res = await _http_client.fetch(host, port, "GET", path)
+    # read_body=False throughout this file wherever only the status is read: an in-process client
+    # that materializes a body it never looks at competes with the DUT for the same heap, which is
+    # the regression fetch()'s drain siblings were added for (Part E.9, test_digital_twin_http_client.py).
+    res = await _http_client.fetch(host, port, "GET", path, read_body=False)
     return res.status_code
 
 
@@ -197,7 +200,7 @@ async def _browser_page_load(host: str, port: int) -> "list[int]":
     this file is about connection count and timing, not content."""
 
     async def _get(path: str) -> int:
-        res = await _http_client.fetch(host, port, "GET", path)
+        res = await _http_client.fetch(host, port, "GET", path, read_body=False)
         return res.status_code
 
     return list(await asyncio.gather(_get("/"), _get("/style.css")))
@@ -209,7 +212,7 @@ async def _openhab_poll(host: str, port: int) -> "list[int]":
     once rather than one at a time."""
 
     async def _get(path: str) -> int:
-        res = await _http_client.fetch(host, port, "GET", path)
+        res = await _http_client.fetch(host, port, "GET", path, read_body=False)
         return res.status_code
 
     return list(await asyncio.gather(_get("/measurements"), _get("/status")))
@@ -241,7 +244,7 @@ async def _real_config_write(host: str, port: int, interval: int) -> int:
     """A real config write reaching ConfigManager.write_config() through the real object graph
     (SCD30 is on every device, Part L.3) - unlike _slow_but_healthy_put()'s no-op above. Proves
     concurrent GET polling survives a real write; bench and unit equivalents exist per tier."""
-    res = await _http_client.fetch(host, port, "PUT", "/sensors", {"SCD30": {"Interval": interval}})
+    res = await _http_client.fetch(host, port, "PUT", "/sensors", {"SCD30": {"Interval": interval}}, read_body=False)
     return res.status_code
 
 
@@ -614,7 +617,7 @@ async def _scenario_mixed_traffic_above_ceiling(device: str) -> None:
 
         async def _get_tolerant(path: str) -> "int | str":
             try:
-                res = await _http_client.fetch("127.0.0.1", port, "GET", path)
+                res = await _http_client.fetch("127.0.0.1", port, "GET", path, read_body=False)
             except OSError:
                 return "rejected"
             else:
@@ -754,7 +757,7 @@ async def _scenario_simultaneous_bodies(device: str) -> None:
         # refused one byte over, with every simultaneous read still a separate live allocation.
         async def _sized(nbytes: int) -> "int | str":
             try:
-                res = await _http_client.fetch("127.0.0.1", port, "PUT", "/networking", {"NTP_Host": "x" * nbytes})
+                res = await _http_client.fetch("127.0.0.1", port, "PUT", "/networking", {"NTP_Host": "x" * nbytes}, read_body=False)
             except OSError:
                 return "rejected"
             else:

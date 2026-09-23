@@ -96,7 +96,9 @@ async def _api_burst_at_the_ceiling(module: "ModuleType", host: str, port: int) 
 
     async def one(path: str) -> object:
         try:
-            res = await _http_client.fetch(host, port, "GET", path)
+            # read_body=False: only the status is read here, and a body materialized in the twin's
+            # own process competes with the code under test for its heap (Part E.9).
+            res = await _http_client.fetch(host, port, "GET", path, read_body=False)
         except OSError:
             return "rejected"  # the documented reject-when-full outcome, not a failure here
         else:
