@@ -395,9 +395,8 @@ permanent entry. Three queue rows this run made reachable:
 
 Run against tip `ece5772`/`0ce9f92` (the bounded `_PieceWriter`, `max_connections` 8, ensemble
 PCB 11 / SEG 64 / `MEM_SIZE` 16000). Everything at **`gc.threshold(-1)`**, set explicitly by each
-device script (`GC_THRESHOLD=-1` confirmed in every output). **Status: in progress** — image F's
-per-level combined-load sweep was still running at the time of this commit; §10.6 is filled in by
-the next commit.
+device script (`GC_THRESHOLD=-1` confirmed in every output). **Complete**: both images, W1/W2, and
+the verified per-level answer in §10.6. The board is left on **F**.
 
 ### 10.1 Before anything
 
@@ -529,7 +528,37 @@ and re-run.)
 page. Route (JSON) failures appear only from 10 upward, so **the JSON fix did move the JSON wall
 from 5 (image A, 190,036 B heap) to ~10** — on a heap 20,916 B smaller — the static path is what now binds.
 
-**Image F (ceiling 8):** *running at the time of this commit (levels 2, 3, 4, 5, 6, 8).*
+**Image F (ceiling 8) — the tip as it ships.** Every level after N=6's first pass was repeated
+because a single clean run did not hold up:
+
+| N | runs | served (complete) per run | device allocation-failure lines | notes |
+| --- | --- | --- | --- | --- |
+| 2 | 1 | 24/24 | 0 | |
+| 3 | 1 | 36/36 | 0 | |
+| **4** | 2 | 48/48, 47/48 | **0, 0** | the one miss: `/status` `TimeoutError` after 30 s, **no line at all on the device** (no allocation failure, no reclaim warning) |
+| 5 | 3 | 60/60, 60/60, **59/60** | 0, 0, **1** | the failure: `/` truncated, 1,025 B |
+| 6 | 2 | 72/72, **71/72** | 0, **1** | `/` truncated, 1,025 B |
+| 7 | 2 | 80/84, 82/84 | 4, 2 | all `/` truncated, 1,025 B |
+| 8 | 1 | 90/96 | 6 | all `/` truncated, 1,025 B; worst largest free run 80 B |
+
+**Every failure on F, at every level, is the static page.** Not one JSON route failed on F at any
+level up to its ceiling of 8 — the bounded writer holds on silicon. The static page fails
+*probabilistically* from 5 upward (1 in 60-72 requests at 5-6, rising with N), which is why single
+runs at 5 and 6 passed and repeats did not.
+
+**Verified answer for the tip at `gc.threshold(-1)` under combined load: 4.** N=4 is the highest
+level with zero allocation failures on every run (4 runs across G and F, 192 requests, 0 device
+lines). It is not perfectly clean: in 2 of those 4 runs a single request stalled on the host
+(`/sensors` `URLError` on G, `/status` 30 s timeout on F) with nothing logged on the device.
+Every run shows the same one `WLAN is disconnected` / `reconnect triggered` pair, clean runs
+included, so that pair is the boot-time reconnect after `mpremote` interrupts `main.py`, not the
+cause. **Cause of the stalls: not established.** 5 fails 1 run in 3, 6 fails 1 in 2, 7 and 8 fail every time.
+
+What this does and does not say: the JSON routes are no longer what limits concurrency (none
+failed up to 8 on F, and on G none until 10). The static page's 1,025 B chunk reads are what limits
+it now, and they turn a memory failure into a silent truncated 200 (§10.5). With that path bounded
+like the JSON ones, the board has to be measured again: the JSON evidence suggests at least 8, but
+nothing on the static path has been measured yet.
 
 ### 10.7 Instrument gaps found in this sitting
 
