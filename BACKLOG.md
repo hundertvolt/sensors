@@ -915,6 +915,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   14000 → 16000, every relationship unchanged and `check_lwip_ensemble()` passing. A firmware build
   runs the post-build macro verification against these, so it is the installer leg
   (`uv run toolchain/setup_toolchain.py`) that covers it; the lint/typecheck recipe does not.
+  **2026-09-23, `pyproject.toml`**: ruff's `max-args` 23 → 24, the documented one-parameter ratchet,
+  for `WebserverService`'s `chunk_bytes=` (owner: JSON pieces and static reads bound by one
+  parameter, SPECIFICATION.md Part I.3). Lint config only, no build impact.
   Kept here as the running list of what is owed, not as a merge blocker.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not

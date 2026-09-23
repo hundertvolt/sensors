@@ -1840,7 +1840,7 @@ def test_g_static_index_filename_is_configurable() -> None:
 # mount and a stub sensor whose sizes span many far-below-chunk objects, every edge of the 256 B
 # chunk, and objects that take many chunks - read back write by write, as a socket would see them.
 
-_WIRE_CHUNK_BYTES = 256  # _STATIC_CHUNK_BYTES and _MAX_STATUS_PIECE_BYTES, as observed from outside
+_WIRE_CHUNK_BYTES = 256  # WebserverService's chunk_bytes default, as observed from outside
 _TINY_SIZES = tuple(range(64))
 _EDGE_SIZES = (127, 128, 129, 255, 256, 257, 511, 512, 513, 767, 768, 769)
 _LARGE_SIZES = (1023, 1024, 1025, 9292, 65553)  # 9292: the real page the bench sitting saw cut off
@@ -1898,6 +1898,26 @@ def test_g3_a_json_route_mixing_tiny_medium_and_huge_values_is_written_in_bounde
     assert json.loads(b"".join(body)) == {"STUB": data}
     assert max(len(chunk) for chunk in body) <= _WIRE_CHUNK_BYTES, sorted(len(c) for c in body)[-5:]
     assert len(body) > 100  # the huge values really were split, not merely absent
+
+
+def test_g3_one_chunk_bytes_parameter_bounds_json_pieces_and_static_reads_alike() -> None:
+    # The two must never drift apart: one constructor value drives both, at a size of neither default.
+    mount = _mount_static_fixture({"page.bin": _patterned(1000)})
+    stub = _NestedCfgModule("STUB", values={}, data={f"t{i}": "z" * (i % 30) for i in range(120)})
+    service, _app = _make_service(sensors=[stub], static_mount=mount, chunk_bytes=100)
+    for path in ("/page.bin", "/measurements"):
+        _status, _headers, body = _get_on_the_wire(service, path)
+        assert max(len(chunk) for chunk in body) <= 100, (path, sorted(len(c) for c in body)[-3:])
+        assert len(body) > 5, path  # really chunked at 100, not merely small
+    _status, _headers, body = _get_on_the_wire(service, "/page.bin")
+    assert [len(chunk) for chunk in body] == [100] * 10 + [0]  # microdot reads on until a short read
+
+
+def test_g3_a_zero_chunk_bytes_is_clamped_so_a_static_read_still_ends() -> None:
+    mount = _mount_static_fixture({"page.bin": _patterned(5)})
+    service, _app = _make_service(static_mount=mount, chunk_bytes=0)
+    status, _headers, body = _get_on_the_wire(service, "/page.bin")  # a read(0) loop would time out here
+    assert status == "200" and b"".join(body) == _patterned(5)
 
 
 def test_g3_a_single_scalar_longer_than_the_cap_is_the_one_piece_allowed_past_it_and_stays_whole() -> None:
@@ -2295,7 +2315,7 @@ def test_h2_stream_module_names_with_special_characters_are_correctly_escaped() 
     assert set(errcount.keys()) == {'SGP"40', "WEBSERVER"}
 
 
-_HAMMER_PIECE_BUDGET = 256  # the firmware's _MAX_STATUS_PIECE_BYTES, restated: a const() is not a
+_HAMMER_PIECE_BUDGET = 256  # the firmware's chunk_bytes default, restated: a const() is not a
 # module attribute, so it cannot be imported. No margin - pieces are bounded by the cap itself.
 
 
@@ -2404,7 +2424,7 @@ def test_h2_piece_writer_never_holds_more_than_sixteen_pending_fragments() -> No
 
 def test_h2_piece_writer_flush_is_idempotent_and_an_empty_writer_adds_nothing() -> None:
     pieces: list[str] = []
-    writer = _PieceWriter(pieces)
+    writer = _PieceWriter(pieces, _WIRE_CHUNK_BYTES)
     writer.flush()
     writer.add("x")
     writer.flush()
@@ -2480,7 +2500,7 @@ def test_h3_hammer_concurrent_status_requests_stay_valid_with_the_chosen_gc_thre
 
 
 def test_i1_empty_dict_produces_the_same_valid_empty_object_as_plain_json_dumps() -> None:
-    res = run(_stream_dict_response({}))
+    res = run(_stream_dict_response({}, _WIRE_CHUNK_BYTES))
     assert json.loads(status_body(res)) == {}
 
 
@@ -2488,13 +2508,13 @@ def test_i1_output_is_byte_identical_to_microdots_own_single_json_dumps_path() -
     # The whole point of this primitive: identical JSON on the wire, just assembled without ever
     # holding one buffer sized to the full aggregate (see _stream_dict_response()'s own comment).
     result = {"A": 1, "B": {"nested": True}, "C": [1, 2, 3], "D": None}
-    streamed = run(_stream_dict_response(result))
+    streamed = run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))
     plain = Response(result)  # Microdot's own dict path - one json.dumps() over the whole thing
     assert json.loads(status_body(streamed)) == json.loads(plain.body)
 
 
 def test_i1_sets_content_type_and_an_exact_content_length_header() -> None:
-    res = run(_stream_dict_response({"A": 1}))
+    res = run(_stream_dict_response({"A": 1}, _WIRE_CHUNK_BYTES))
     assert res.headers["Content-Type"] == "application/json; charset=UTF-8"
     body = status_body(res)
     assert res.headers["Content-Length"] == str(len(body))
@@ -2505,8 +2525,8 @@ def test_i1_many_entries_are_coalesced_into_size_bounded_batches_not_one_growing
     # _coalesce_json_fragments()/_append_coalesced_object() mechanism, applied here to a flat
     # top-level dict instead of /status's own nested section.
     result = {f"Field{i}": "x" * 100 for i in range(30)}  # ~30*(11+100) bytes, several times over
-    # _MAX_STATUS_PIECE_BYTES if joined into one piece
-    res = run(_stream_dict_response(result))
+    # chunk_bytes if joined into one piece
+    res = run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))
     chunks = list(res.body)
     encoded = [c.encode() if isinstance(c, str) else c for c in chunks]
     assert all(len(c) < 1200 for c in encoded), [len(c) for c in encoded]
@@ -2529,7 +2549,7 @@ def test_i1_a_two_level_measurement_value_serialises_correctly_and_is_not_re_wra
         },
     }
     # status_body() drains res.body, which is a generator - read it once, assert on the result.
-    body = json.loads(status_body(run(_stream_dict_response(result))))
+    body = json.loads(status_body(run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))))
     assert body == result
     assert isinstance(body["ISL29125"]["RGB"], dict)  # a dict, not the string '{"R": 0.1234, ...}'
     assert body == json.loads(Response(result).body)  # byte-for-byte Microdot's own dict path
@@ -2537,7 +2557,7 @@ def test_i1_a_two_level_measurement_value_serialises_correctly_and_is_not_re_wra
 
 def test_i1_a_key_with_special_characters_is_correctly_escaped_not_hand_concatenated() -> None:
     result = {'Weird"Key': 1}
-    res = run(_stream_dict_response(result))
+    res = run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))
     assert json.loads(status_body(res)) == result
 
 

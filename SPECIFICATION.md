@@ -4911,8 +4911,9 @@ question in F.5.8.
 Every GET route whose response grows with device configuration — `/status`, `/sensors`,
 `/measurements`, `/networking`, `/system`, `/notification` — writes its JSON through one
 `_PieceWriter` and hands Microdot `Response(iter(pieces), ...)` with an exact Content-Length. The
-writer concatenates adjacent JSON text fragments into pieces of at most `_MAX_STATUS_PIECE_BYTES`
-(**256**) without ever splitting a fragment, and `add_value()` writes a value the way
+writer concatenates adjacent JSON text fragments into pieces of at most `chunk_bytes` — one
+`WebserverService` constructor parameter, default **256**, that also sets the static-file read size
+below, so the two bounds cannot drift apart — without ever splitting a fragment, and `add_value()` writes a value the way
 `json.dumps()` would — dicts, lists and tuples walked, only keys and scalars dumped, with
 `json.dumps()`'s own `", "`/`": "` separators and its non-string-key rule (`True` → `"true"`). No
 value, however nested, is ever built as one string, so **the largest allocation on the path is one
@@ -4954,8 +4955,8 @@ response the writer does not build: microdot's `send_file` streams the file, rea
 1,025 B allocation, four times the JSON cap. On silicon that failed from N = 6, and worse, *after*
 the `200` and its headers were out: the response is HTTP/1.0 with no `Content-Length`, so the
 client saw a cut-off gzip page as a complete one. `_serve_static()` now opens the file itself,
-passes it to `send_file(stream=...)`, sets that attribute on the one response to
-`_STATIC_CHUNK_BYTES` (**256**) and adds `Content-Length` from the stream's own size. The attribute
+passes it to `send_file(stream=...)`, sets that attribute on the one response to the same
+`chunk_bytes` (**256**) and adds `Content-Length` from the stream's own size. The attribute
 is microdot's own, public, per-instance knob — nothing in `ext/microdot.py` changes — and the page
 now needs 320 B on the 32-bit twin with `dev`'s own site (1,536 B before). **A write-phase failure is never a success**:
 a response whose body can still fail after its status line goes out must carry its length, so the
@@ -4976,7 +4977,8 @@ this small regardless of contiguity; reverting each fix now fails exactly the ha
 exercising that route. The `G.3` tests read responses back write by write through `_serve()`, from
 a build-independent stub mount (64 tiny files, every edge of 256, pages up to 64 KB) and a stub
 sensor mixing hundreds of tiny values with multi-kilobyte ones: every write at most 256 B, every
-static body whole with its `Content-Length`. Reverting either the chunk size or the length fails them.
+static body whole with its `Content-Length`. Reverting either the chunk size or the length fails them,
+and serving at a `chunk_bytes` of 100 fails if either path stops following the parameter.
 One documented exception is pinned too: a single scalar longer than the cap goes out as one piece,
 since `_PieceWriter` never splits a fragment; no source comes near that (table above).
 
@@ -5140,7 +5142,7 @@ finding — it governs every test in this repo from now on, digital-twin and rea
 Every parameter this audit's Unix-port tests couldn't reach (a host-sized heap vs. RP2040's real budget)
 was confirmed on real target hardware (2026-09-08): `gc.threshold(32768)` (real hammer-load
 `mem_free` floor 91312 bytes vs. 128 bytes at the reactive-only default), the real GC pause-length
-range (I.1), and `_MAX_STATUS_PIECE_BYTES`'s real headroom (I.3).
+range (I.1), and the piece cap's real headroom (I.3; then `_MAX_STATUS_PIECE_BYTES`, now `chunk_bytes`).
 `tests_hardware/bench/test_memory_stress_bench.py` carries the permanent real-hardware regression
 coverage (a 120s always-run hammer test plus a `long_soak`-gated 600s variant) — nothing from this
 audit remains open pending hardware. Those assert the *outcome* (no `MemoryError`, no reboot,

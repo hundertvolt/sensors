@@ -11,6 +11,9 @@ like `REAL_HARDWARE_TEST_QUEUE.md`: delete it once every row below is recorded a
 
 ## 00. THE NEXT SITTING — the static-file fix (written 2026-09-23 evening, after §0 ran)
 
+**Superseded by `REAL_HARDWARE_HANDOVER_STATIC_FIX.md`**, which is self-contained and runs the same
+measurements with the committed per-boot tool. Kept below for its reasoning only.
+
 **§0 ran on silicon the same afternoon** (`BENCH_SITTING_2026-09-23_HANDOVER.md` §10, results in
 §0.5 below). The JSON fix held — every route's need matched the twin to the byte — but **the static
 page failed from N = 6**: microdot's `send_file` read the page 1,024 B at a time, each read one
@@ -21,7 +24,8 @@ fresh 1,025 B allocation, and a failed one cut the body off behind a `200` that 
 ### 00.1 What changed, in four lines
 
 - **Static files go out in 256 B reads**, the same hole size as the JSON pieces: `_serve_static()`
-  sets microdot's own per-response `Response.send_file_buffer_size`. `ext/microdot.py` is untouched.
+  sets microdot's own per-response `Response.send_file_buffer_size` from `chunk_bytes`, the one
+  `WebserverService` parameter that also caps the JSON pieces. `ext/microdot.py` is untouched.
 - **Every static response carries `Content-Length`**, so a body cut off after the `200` is a
   client-visible short read, not a silently wrong page. (SPEC I.3, "Static files")
 - **The instruments now see it**: the need test probes `route:/` through microdot's own body loop,

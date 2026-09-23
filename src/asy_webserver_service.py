@@ -105,11 +105,9 @@ _PAUSE_TIME_FIELD: "cm.FieldSchema" = ("PauseTime", "int", 0, 0, _PAUSE_TIME_MAX
 # SPECIFICATION.md Part A.8) instead of a second, hand-rolled strict check.
 
 _MAX_PENDING_FRAGMENTS = const(16)  # _PieceWriter's list never outgrows 16 slots (64 B on the RP2040)
-_MAX_STATUS_PIECE_BYTES = const(256)  # _PieceWriter's per-piece cap for every streamed route. Sized
-# to the holes a fragmented heap still has at gc.threshold(-1), not to its one large run: under load
-# that run is gone and ~870 B pieces fail with ~100 KB free (SPECIFICATION.md Part I.3).
-_STATIC_CHUNK_BYTES = const(256)  # per-response Response.send_file_buffer_size (microdot's is 1024):
-# each body read allocates one chunk, so static files meet the same hole size as the JSON pieces.
+_DEFAULT_CHUNK_BYTES = const(256)  # chunk_bytes' default: one bound for JSON pieces and static reads,
+# sized to the holes a fragmented heap still has at gc.threshold(-1), not to its one large run -
+# under load that run is gone and ~870 B pieces fail with ~100 KB free (SPECIFICATION.md Part I.3).
 
 _ERROR_SHAPES = (  # (status_code, descr) - registered via @app.errorhandler for shaped JSON bodies,
     # per "Criteria for this step to finish": at least 400/404/405/413/500 wired.
@@ -137,7 +135,7 @@ def _index_pairs(items: "Iterable[tuple[str, MaintenanceFct]]") -> "dict[str, Ma
 class _PieceWriter:
     # Concatenates adjacent JSON text fragments into pieces of at most max_bytes, never splitting
     # one - so the largest allocation is bounded by the largest fragment, not by the response.
-    def __init__(self, pieces: "list[str]", max_bytes: int = _MAX_STATUS_PIECE_BYTES) -> None:
+    def __init__(self, pieces: "list[str]", max_bytes: int) -> None:
         self._pieces = pieces
         self._group: list[str] = []
         self._size = 0
@@ -180,12 +178,12 @@ class _PieceWriter:
             self.add(json.dumps(value))
 
 
-async def _stream_dict_response(result: "dict[str, Any]") -> "Response":
+async def _stream_dict_response(result: "dict[str, Any]", chunk_bytes: int) -> "Response":
     # Memory-bounded streaming for any GET route whose response scales with device configuration
     # (SPECIFICATION.md Part I.3): the same bytes the old per-key json.dumps() fragments produced,
     # written value by value, so no allocation is a whole key's value, let alone the response.
     pieces: list[str] = []
-    writer = _PieceWriter(pieces)
+    writer = _PieceWriter(pieces, chunk_bytes)
     writer.add("{")
     for index, (key, value) in enumerate(result.items()):
         writer.add(("," if index else "") + json.dumps(key) + ":")
@@ -283,6 +281,9 @@ class WebserverService:
         maintenance_sensors: "Sequence[tuple[str, MaintenanceFct]]" = (),
         error_sources: "Sequence[_ModuleLike]" = (),
         max_content_length: int = 2048,  # 1.56x the largest schema-permitted body, ~9x real traffic (I.6)
+        chunk_bytes: int = _DEFAULT_CHUNK_BYTES,  # the largest single write of any response body: each
+        # streamed JSON piece and each static-file read. One parameter, so the two can never drift
+        # apart (SPECIFICATION.md Part I.3). Clamped to >= 1: a read of 0 would never end microdot's loop.
         max_connections: int = 8,  # reject-when-full ceiling, kept below the firmware's own
         # MEMP_NUM_TCP_PCB (toolchain/versions.toml) with margin for TIME_WAIT churn - Part H.7
         # holds that as a RELATIONSHIP, not a number; buildgen passes the per-device value.
@@ -317,6 +318,7 @@ class WebserverService:
         self._maintenance_sensors = _index_pairs(maintenance_sensors)
         self._error_sources = _index_by_name(error_sources)
         self._max_connections = max_connections
+        self._chunk_bytes = max(chunk_bytes, 1)
         # Clamped rather than rejected, matching LockedCounter's own out-of-range convention: a
         # backlog under the ceiling silently caps concurrency below max_connections, which reads as
         # an application bug. buildgen rejects the same mistake in config, where it can be named.
@@ -378,14 +380,14 @@ class WebserverService:
         result: dict[str, Any] = {}
         for module in self._sensors.values():
             result.update(await module.get_dict_data())
-        return await _stream_dict_response(result)
+        return await _stream_dict_response(result, self._chunk_bytes)
 
     async def _get_sensors(self, _request: "_RequestLike") -> "Response":
         # .update(), not result[name] = ... - see _get_measurements()'s own comment above.
         result: dict[str, Any] = {}
         for module in self._sensors.values():
             result.update(await module.get_dict_cfg())
-        return await _stream_dict_response(result)  # see _get_measurements()'s own comment above
+        return await _stream_dict_response(result, self._chunk_bytes)  # see _get_measurements()'s own comment above
 
     async def _put_sensors(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
@@ -446,7 +448,7 @@ class WebserverService:
         # Streamed via _stream_dict_response() - see that function's own comment: this scales with
         # however many SettingsGroup entries this device variant's own build wires up (CLAUDE.md's
         # memory-safety hard rule).
-        return await _stream_dict_response(await self._get_settings_flat("networking"))
+        return await _stream_dict_response(await self._get_settings_flat("networking"), self._chunk_bytes)
 
     async def _put_networking(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
@@ -459,7 +461,7 @@ class WebserverService:
         result = await self._get_settings_flat("system")  # see _get_networking()'s own comment
         if self._build_info is not None:
             result["build"] = self._build_info
-        return await _stream_dict_response(result)
+        return await _stream_dict_response(result, self._chunk_bytes)
 
     async def _put_system(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
@@ -487,7 +489,7 @@ class WebserverService:
         return "Valid" if ok else "Failed"
 
     async def _get_notification(self, _request: "_RequestLike") -> "Response":
-        return await _stream_dict_response(await self._get_settings_flat("notification"))  # see _get_networking()'s own comment
+        return await _stream_dict_response(await self._get_settings_flat("notification"), self._chunk_bytes)  # see _get_networking()'s own comment
 
     async def _put_notification(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
@@ -556,7 +558,7 @@ class WebserverService:
         # and no piece exceeds the cap, whatever a section holds - one entry per registered error
         # source, for "errcount" (Part I.3). Values are written, never json.dumps()'d whole.
         pieces: list[str] = []
-        writer = _PieceWriter(pieces)
+        writer = _PieceWriter(pieces, self._chunk_bytes)
         for prefix, key in (('{"networking":', "networking"), (',"system":', "system"), (',"notification":', "notification")):
             writer.add(prefix)
             await self._write_status_source(writer, key)
@@ -644,7 +646,7 @@ class WebserverService:
         stream.seek(0)  # so a write that fails after the 200 would reach the client as a complete page
         response = send_file(filename, compressed=True, stream=stream)
         response.headers["Content-Length"] = str(size)
-        response.send_file_buffer_size = _STATIC_CHUNK_BYTES
+        response.send_file_buffer_size = self._chunk_bytes  # microdot's own per-response knob
         return response
 
     # -- error handling ----------------------------------------------------------------------------
