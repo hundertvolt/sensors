@@ -23,8 +23,9 @@ if TYPE_CHECKING:
     from harness import Board
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
-# The sitting's own load shape: both streaming endpoints, the largest static response, and the rest.
-_PATHS = ("/status", "/sensors", "/", "/measurements", "/networking", "/system")
+# The sitting's own load shape - both streaming endpoints, the page, and the rest - plus the script
+# every page load fetches next, the largest static file the device serves.
+_PATHS = ("/status", "/sensors", "/", "/measurements", "/networking", "/system", "/js/app.js")
 _ROUNDS = 12
 _ROUND_SETTLE_S = 1.0  # a slot outlives the response its client holds (Part I.6)
 _LEVEL_GAP_S = 3.0  # between levels - under the device script's own 10 s quiet-to-leave

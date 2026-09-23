@@ -46,9 +46,9 @@ def _dump(label: str) -> None:
 def _dumping_on_failure(route: "_Route") -> "_Route":
     # Re-raises unchanged, so the served outcome is exactly production's; no collect before the
     # dump - MicroPython already ran one before it raised.
-    async def wrapped(self: "WebserverService", *args: object) -> object:
+    async def wrapped(self: "WebserverService", *args: object, **kwargs: object) -> object:
         try:
-            return await route(self, *args)
+            return await route(self, *args, **kwargs)  # kwargs: microdot passes URL parts by name
         except MemoryError:
             if _failure_maps[0] < _MAX_FAILURE_MAPS:
                 _failure_maps[0] += 1

@@ -4957,7 +4957,7 @@ client saw a cut-off gzip page as a complete one. `_serve_static()` now opens th
 passes it to `send_file(stream=...)`, sets that attribute on the one response to
 `_STATIC_CHUNK_BYTES` (**256**) and adds `Content-Length` from the stream's own size. The attribute
 is microdot's own, public, per-instance knob — nothing in `ext/microdot.py` changes — and the page
-now needs 336 B on the 32-bit twin (1,536 B before). **A write-phase failure is never a success**:
+now needs 320 B on the 32-bit twin with `dev`'s own site (1,536 B before). **A write-phase failure is never a success**:
 a response whose body can still fail after its status line goes out must carry its length, so the
 failure reaches the client as a short read.
 

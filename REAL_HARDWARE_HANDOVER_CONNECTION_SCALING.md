@@ -27,14 +27,16 @@ fresh 1,025 B allocation, and a failed one cut the body off behind a `200` that 
 - **The instruments now see it**: the need test probes `route:/` through microdot's own body loop,
   and the sweep counts a response as served only if its body matches its `Content-Length`
   (`-truncated`, or `-unframed` when there is no length at all). Both gaps are §10.7's.
-- **Why the twin missed it**: its default page is a sub-1 KB stub, and a failure in the write phase
+- **Why the twin missed it**: its default page is the sub-1 KB `html_stub`, and a failure in the write phase
   reaches only the FRAM log, which the twin never printed. Both are closed (MEASUREMENTS §7Q.14).
 
 ### 00.2 Before anything
 
 §0.2 applies unchanged: go-ahead in your own conversation, `DebugLevel = 5`, **read `errcount`
-before anything writes**. If §10.6's image-F sweep is still unrecorded, record it first — it is the
-baseline this sitting is compared against.
+before anything writes**. The baseline is §10.6's image-F table (pre-fix): 4 clean on every run; 5
+fails 1 run in 3, 6 fails 1 in 2, 7 and 8 every run — every failure the static page's 1,025 B read,
+no JSON route at any level. It also records two single host-side stalls at N = 4 with nothing on the
+device; a repeat of that here is a finding in its own right, not noise.
 
 ### 00.3 Image F′ — the tip (rows W5, W6)
 
@@ -49,14 +51,14 @@ baseline this sitting is compared against.
 
 | row | measurement | twin prediction (32-bit, F's heap) | `[HW]` |
 | --- | --- | --- | --- |
-| W5 | need of `route:/` / worst JSON route | 336 B / 320-336 B (pre-fix `route:/`: 1,536 B) | ___ |
+| W5 | need of `route:/` / worst JSON route | 320 B / 320 B (pre-fix `route:/`: 1,536 B) | ___ |
 | W5 | sweep N = 4 / 6 / 8 / 10: failures, and served-complete | 0 failures, every body complete; 48 / 72 / 96, then 96 + 24 refused at 10 (the refusal is the limit's, which this twin build did not set) | ___ |
-| W6 | per-boot N = 2 / 4 / 6 / 8, complete / failure lines | 4 / 6 / 8 measured: all complete, 0 failures (pre-fix, the same twin: 6 pages cut off at 8) | ___ |
+| W6 | per-boot N = 2 / 4 / 5 / 6 / 7 / 8, complete / failure lines — repeat 5 and 6 at least twice, as §10.6 did | 4 / 6 / 8 measured: all complete, 0 failures, also with `/js/app.js` in the load (pre-fix, the same twin: first page cut off at 6) | ___ |
 | — | `/` bytes on the wire vs an idle fetch | identical, with `Content-Length` equal to the file's size | ___ |
 
 **Read the prediction with §7Q.14's caveat**: on image G the board's first JSON failures came at
-N = 10, where the twin's same-arm run put them at 12 — the twin is about two levels optimistic near
-the wall. At F's limit of 8 that margin is what W6 measures.
+N = 10, where the twin shows none through 12 on the same code — near the wall the twin is optimistic
+by two levels or more. At F's limit of 8 that margin is what W6 measures.
 
 ---
 
