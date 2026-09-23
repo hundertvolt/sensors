@@ -58,11 +58,18 @@ samples per level; 4 and 5 were not run in the twin.
 
 | N | stability arm (step 3) | idle free, post-collect | min free under load | min free, % of heap | median free under load | min largest free run | twin estimate, min free on F′ |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 4 | ___ | ___ | ___ | ___ | ___ | ___ | not run |
-| 5 | ___ | ___ | ___ | ___ | ___ | ___ | not run |
-| 6 | ___ | ___ | ___ | ___ | ___ | ___ | ~38 KB, ~20 % (largest run ≥ 1.3 KB) |
-| 7 | ___ | ___ | ___ | ___ | ___ | ___ | ~27 KB, ~15 % (largest run ≥ 0.9 KB) |
+| 4 | **STABLE** 48/48, 0 lines | 82,528 B (45.0 %) | **61,136 B** | **33.3 %** | 63,840 B (34.8 %) | 2,192 B | not run |
+| 5 | **STABLE** 60/60, 0 lines | 82,592 B (45.0 %) | **50,784 B** | **27.7 %** | 63,096 B (34.4 %) | 1,760 B | not run |
+| 6 | **STABLE** 72/72, 0 lines | 82,528 B (45.0 %) | **47,200 B** | **25.7 %** | 60,256 B (32.9 %) | 1,728 B | ~38 KB, ~20 % (largest run ≥ 1.3 KB) |
+| 7 | **STABLE** 84/84, 0 lines | 82,592 B (45.0 %) | **45,168 B** | **24.6 %** | 50,016 B (27.3 %) | 1,200 B | ~27 KB, ~15 % (largest run ≥ 0.9 KB) |
 | 8 (reference, F′ §10.10) | STABLE 12/12 boots | — | not measured | — | — | — | ~20 KB, ~11 % (largest run ≥ 0.9 KB) |
+
+**Result, 2026-09-23 evening** (`BENCH_SITTING_2026-09-23_HANDOVER.md` §10.12): image F′,
+`gc.threshold(-1)`, heap base 183,360 B (`mem_info` total). Stable at every level. Idle and median
+above are **re-derived from the raw maps** (§10.12.4): the tool's own "idle" is a mid-boot sample
+and its "median under load" spans the post-load idle, so neither is usable as printed (§10.12.3).
+Minimums are 5 s snapshots and can only understate the true peak. The board has **more** headroom
+than the twin estimate: +9 KB at 6, +18 KB at 7.
 
 ## 5. What a result means
 

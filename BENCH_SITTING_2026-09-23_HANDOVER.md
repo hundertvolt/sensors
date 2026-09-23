@@ -892,3 +892,85 @@ Device side, per boot (sizes are the `allocating N bytes` of each failure; sites
   (`max_connections` 10-12 with an lwIP ensemble sized for it, recovering part of G′'s 18.6 KB);
   a smaller `chunk_bytes`; and reducing what each in-flight connection holds.
 - Board left on **G′**, idle. `devices/dev.toml` / `toolchain/versions.toml` G′ edits are local only.
+
+## 10.12 Fourth sitting (evening) — `REAL_HARDWARE_HANDOVER_FREE_HEAP.md` (W7) on image F′
+
+Owner's go-ahead in this conversation. Every level's line reads `GC_THRESHOLD=-1`; `--threshold`
+was not passed.
+
+### 10.12.1 Before anything, and the image
+
+- `errcount` before anything wrote to the board (board on G′, uptime 4,666 s, after the §10.11 runs —
+  context, not evidence): WIFI 14 (W6 ×4 in history), UART_init 117 / UART_resp 124 (E20/E22/W10),
+  SGP40 10 (W11/W13), NTP 11, SYSTEM 14 (W13, E5, W20, E4), BMP3XX 12 (E11/E1 pairs), WEBSERVER 412
+  (E4 = route-handler exception — §10.11's `/status` 500s — and E1). Everything else 0.
+- G′'s local edits discarded, tip `2eba7e7`, `max_connections = 8`. lwIP read back from the firmware:
+  PCB 11 / SEG 64 / `MEM_SIZE` 16,000, all macros reached it. GC heap by the linker
+  `0x20040000 - 0x200122c0` = **187,712 B**; `mem_info` reports **183,360 B** total (the GC's own
+  allocation/finaliser tables take the other 4,352 B) — the percentage base below is 183,360 B.
+- **After the flash the board fell back to hotspot mode again** (`WIFI Hotspot mode is active`,
+  `Connected stations: []` at uptime 85-90 s, bench AP up) — the second such fallback today after a
+  reset (the first is §10.11.3). `kick_all_stations()` + hard reset recovered it. Now a pattern
+  worth an owner look, not chased here.
+- Sanity: `GET /` `Content-Length: 9292`, `gzip -t` passes; build date 18:36:06Z.
+
+### 10.12.2 Stability arm (the verdict): **STABLE at 4, 5, 6 and 7**
+
+```
+N= 4 GC_THRESHOLD=-1 | STABLE | complete 48/48 | device allocation-failure lines 0 | worst largest free run 1488 B | reference {'/': 9292, '/js/app.js': 16292}
+N= 5 GC_THRESHOLD=-1 | STABLE | complete 60/60 | device allocation-failure lines 0 | worst largest free run 1056 B | reference {'/': 9292, '/js/app.js': 16292}
+N= 6 GC_THRESHOLD=-1 | STABLE | complete 72/72 | device allocation-failure lines 0 | worst largest free run 512 B | reference {'/': 9292, '/js/app.js': 16292}
+N= 7 GC_THRESHOLD=-1 | STABLE | complete 84/84 | device allocation-failure lines 0 | worst largest free run 384 B | reference {'/': 9292, '/js/app.js': 16292}
+```
+
+(Uncollected samples: "worst largest free run" is garbage-filled heap at the reactive default and
+says nothing about headroom — that is what the margin arm is for.)
+
+### 10.12.3 Margin arm (`--margin`, `gc.collect()` before each 5 s sample): the tool's lines
+
+```
+N= 4 GC_THRESHOLD=-1 | STABLE | complete 48/48 | device allocation-failure lines 0 | worst largest free run 2192 B | reference {'/': 9292, '/js/app.js': 16292}
+     margin (post-collect, heap 183360 B): idle 64624 B (35.2 %) | under load min 61136 B (33.3 %), median 82528 B (45.0 %) | largest free run min 2192 B, median 11536 B | samples 29
+N= 5 GC_THRESHOLD=-1 | STABLE | complete 60/60 | device allocation-failure lines 0 | worst largest free run 1760 B | reference {'/': 9292, '/js/app.js': 16292}
+     margin (post-collect, heap 183360 B): idle 52816 B (28.8 %) | under load min 50784 B (27.7 %), median 82592 B (45.0 %) | largest free run min 1760 B, median 12240 B | samples 29
+N= 6 GC_THRESHOLD=-1 | STABLE | complete 72/72 | device allocation-failure lines 0 | worst largest free run 1728 B | reference {'/': 9292, '/js/app.js': 16292}
+     margin (post-collect, heap 183360 B): idle 71328 B (38.9 %) | under load min 47200 B (25.7 %), median 82528 B (45.0 %) | largest free run min 1728 B, median 9056 B | samples 28
+N= 7 GC_THRESHOLD=-1 | STABLE | complete 84/84 | device allocation-failure lines 0 | worst largest free run 1200 B | reference {'/': 9292, '/js/app.js': 16292}
+     margin (post-collect, heap 183360 B): idle 69008 B (37.6 %) | under load min 45168 B (24.6 %), median 82592 B (45.0 %) | largest free run min 1200 B, median 8112 B | samples 28
+```
+
+**Two of the tool's three figures are mislabelled — read 10.12.4, not these, for idle and median:**
+
+- **"idle" is not idle**: it is the `after_boot` dump, taken 20 s into the device script's boot
+  (`asyncio.sleep(20)`), and at that point boot-time objects and, from N=5 on, the first load round
+  are still live (post-collect used 118,736 B at N=4 vs ~100,800 B once settled). It swings
+  52.8-71.3 KB between boots for that reason. The handover's stop rule ("idle far from ~82 KB") was
+  therefore **not** applied: the image is verified (10.12.1) and the settled idle is exactly 82.5 KB.
+- **"median under load" is the settled idle**: the median runs over all ~28 samples of the 150 s
+  window, but the 12 rounds of load occupy only the first 27-45 s (6-8 samples); the rest are
+  post-load idle, so every level's "median under load" reads 45.0 %.
+- The min figures are right — the minimum does fall in the load window.
+
+### 10.12.4 Margin arm, re-derived from the raw maps (load window vs settled idle)
+
+Load window = the samples up to the last one below 76,000 B free (each level's timeline shows a
+clean step to ~80 KB when the host's 12 rounds end); settled idle = median of every sample after it,
+both from `heap_map.parse_labelled()` over each level's raw output.
+
+| N | stability arm | settled idle free, post-collect | load samples | **min free under load** | median free under load | min largest free run under load | median largest run under load | load uses at most |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 | STABLE 48/48 | 82,528 B (45.0 %) | 6 | **61,136 B (33.3 %)** | 63,840 B (34.8 %) | 2,192 B | 3,592 B | 21,392 B |
+| 5 | STABLE 60/60 | 82,592 B (45.0 %) | 8 | **50,784 B (27.7 %)** | 63,096 B (34.4 %) | 1,760 B | 3,896 B | 31,808 B |
+| 6 | STABLE 72/72 | 82,528 B (45.0 %) | 8 | **47,200 B (25.7 %)** | 60,256 B (32.9 %) | 1,728 B | 6,040 B | 35,328 B |
+| 7 | STABLE 84/84 | 82,592 B (45.0 %) | 8 | **45,168 B (24.6 %)** | 50,016 B (27.3 %) | 1,200 B | 2,368 B | 37,424 B |
+
+- **Caveat on the minimum**: 6-8 snapshots, 5.3 s apart, per load window — a peak between two
+  snapshots is not seen, so the true minimum can only be lower than these.
+- The largest free run is the number the published guidance says matters: under load it fell to
+  1.2-2.2 KB even post-collect, against a 256 B biggest single allocation in the serving path — it
+  held at every level, consistent with the stability arm.
+- vs the twin estimate on F′: 6 ~38 KB (~20 %) → measured 47.2 KB (25.7 %); 7 ~27 KB (~15 %) →
+  measured 45.2 KB (24.6 %). **The board has more headroom than the twin predicted**, by ~9 KB at 6
+  and ~18 KB at 7 (the twin's 4 and 5 were not run).
+- Against the general embedded practice of 20-30 % free at peak (handover §5): 4 and 5 are above
+  it, 6 and 7 inside it (25.7 %, 24.6 %).
