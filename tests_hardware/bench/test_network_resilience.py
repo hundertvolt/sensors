@@ -17,6 +17,7 @@ import pytest
 from error_log_helpers import (
     assert_module_error_log_contains,
     assert_module_error_log_empty,
+    assert_no_module_logged_a_new_error,
     get_errcount,
     reset_all_error_logs,
 )
@@ -993,6 +994,7 @@ def test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures(dut
 
 def test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body(dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
+    before = get_errcount(dut_ip)
     ceiling = configured_max_connections()
     # The heaviest real endpoints, not the cheapest: /sensors and /status both grow with the
     # device's own module count and are the two that stream (SPECIFICATION.md Part I.3).
@@ -1027,6 +1029,9 @@ def test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body(du
         assert keys > 0, f"{path} returned a 200 with an empty or non-dict body - a truncated stream: {results}"
         assert elapsed_s < 30.0, f"{path} took {elapsed_s:.1f}s - admitted but not served in any useful time: {results}"
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    # On silicon every sensor task is always running, so a full-ceiling burst IS the all-modules
+    # pressure case - and a heap it starves can surface the failure in any logger, not the webserver.
+    assert_no_module_logged_a_new_error(dut_ip, before, f"a {ceiling}-wide burst at the configured ceiling")
 
 
 def test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one(dut_ip: str) -> None:

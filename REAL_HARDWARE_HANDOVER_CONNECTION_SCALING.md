@@ -71,33 +71,51 @@ silicon" and needs no sweep.
    `test_network_resilience.py`. Both now scale their bursts with the configured ceiling.
 6. Record §7's table for this one setting and stop.
 
-## 5. The full sweep: bisect to the wall, do not grid adjacent settings
+## 5. Finding the board's own wall in two images, not a bisection
 
-**Read §5B before you plan the sitting.** The host side already burned a measurement on the wrong
-question; the short version is that contiguity metrics cannot tell N = 7 from N = 8, so do not
-spend board time trying. What silicon can answer, and the twin cannot, is **where the wall is** —
-and a wall is a step change, robust to the noise that defeats the gradients.
+**Read §5B before planning the sitting.** The short version: contiguity metrics cannot tell N = 7
+from N = 8, so do not spend board time trying. What silicon can answer and the twin cannot is where
+the **wall** is — and a wall is a step change, robust to the noise that defeats gradients.
 
-**Bisect, do not grid.** The wall is the first `max_connections` at which a `MemoryError` appears at
-all — caught-and-degraded counts, under CLAUDE.md I.4(e) — or at which the board admits fewer
-connections than it is configured for. Start from the shipped setting, double until something
-fails, then bisect between the last pass and the first fail. Each step is one rebuild and one flash,
-and about six images find the wall anywhere below 64.
+**Two images, because the probe walks upward at runtime.** `max_connections` is compiled in, but
+`discover_max_connections()` (`tests_hardware/harness.py`) opens connections one at a time until one
+is refused, up to `probe_limit`. So a single over-provisioned image reports the board's real
+concurrent-connection capacity in one run — whether the binding constraint is lwIP's PCB pool, its
+pbuf supply, or the GC heap. A bisection over many images answers the same question and costs one
+build-and-flash per step.
 
-| step | `max_connections` | `MEMP_NUM_TCP_PCB` | `MEMP_NUM_TCP_SEG` | `MEM_SIZE` | purpose |
+| image | `max_connections` | `MEMP_NUM_TCP_PCB` | `MEMP_NUM_TCP_SEG` | `MEM_SIZE` | what it answers |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 7 | 10 | 56 | 14,000 | **the shipped setting — must pass** |
-| 2 | 14 | 17 | 112 | 28,000 | double; if it passes the wall is high |
-| 3 | 28 | 31 | 224 | 56,000 | double again — expect a failure at or before here |
-| … | bisect between the last pass and the first failure | | | | |
+| **A** | 7 | 10 | 56 | 14,000 | **the shipped setting works on silicon** — §4, do this first regardless |
+| **B** | 16 | 19 | 128 | 32,000 | `discover_max_connections(probe_limit=64)` reports the real wall |
+| C *(only if B finds none)* | 24 | 27 | 192 | 48,000 | same probe, higher ceiling |
+
+Image B costs 16 x 2,324 B = 37,184 B of GC heap, leaving ~160,000 B against a graph that boots
+~84,000 B full — about 52%, comfortable. Image C leaves ~141,000 B (~60% full), which is tight but
+should boot; **32 is not recommended** (~68% full) and would confound a heap wall with a PCB wall.
+
+**Read B's result like this:**
+- **Probe returns < 16** → that is the wall. Record §7, then go to §6 to find out *which* pool ran
+  out rather than inferring it. This is the interesting outcome.
+- **Probe returns exactly 16** → no wall below 16, so the shipped 7 has at least 2.3x margin. That
+  is very likely all the decision needs; image C is optional curiosity.
+
+**Then check it can SERVE what it admits at that number**, not merely accept it: run
+`test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body` and
+`test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one` against image B. On silicon
+every sensor task is always running, so a full-ceiling burst **is** the all-modules pressure case —
+the twin needs `scripts/_digital_twin_ci_suite.py`'s Run 11b to arrange it deliberately, the board
+gets it for free. The first of those two now also asserts that **no** FRAM-backed module logged a
+new error during the burst, not just `WEBSERVER`, because a starved heap surfaces wherever it
+surfaces.
 
 Set every `devices/*.toml`'s `[device].max_connections` and `[lwip]` to the **whole coherent
-ensemble** for the row (§5A). The build refuses an incoherent set by name, so you cannot get this
-wrong silently. Record §7 for every row, pass or fail.
+ensemble** for the row (§5A). `buildgen` refuses an incoherent set by name before the build, and the
+build itself verifies the macros reached the real translation unit — so neither can go wrong
+silently.
 
-**If a row fails, that is the result.** Characterise it — clean rejection, silent drop, stall,
-`MemoryError` (with the failing allocation's size), or watchdog — and go to §6 to find out *which*
-pool ran out. Do not raise a threshold or a heap size to make it go away.
+**Flash-cycle cost: two writes, three if you run C.** Negligible against the part's endurance, but
+it is real wear, so do not re-flash to re-run a test the same image can repeat.
 
 ## 5A. The options are an ensemble — read this before touching any of them
 
