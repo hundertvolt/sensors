@@ -14,10 +14,15 @@ import sensortask_dev
 # (SPECIFICATION.md Part I.4). -1 is MicroPython's own reactive default.
 gc.threshold(-1)
 _SAMPLE_INTERVAL_MS = 5000
+_COLLECT_BEFORE_SAMPLE = False  # combined_load_sweep.py --margin sets True: each dump then shows only the live
+# set, the free-heap margin under load. Instrumentation, never the fix: it also cleans the heap every
+# sample, so a margin run's stability verdict is not evidence - the plain run's is.
 _WINDOW_S = 150
 
 
 def _dump(label: str) -> None:
+    if _COLLECT_BEFORE_SAMPLE:
+        gc.collect()
     print(f"=== MAP {label} ===")
     micropython.mem_info(1)
     print(f"=== ENDMAP {label} ===")

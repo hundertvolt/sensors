@@ -785,7 +785,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     mention reduced to a pointer. Every reference to a removed file is rewritten in the same pass.
     Removed, all of them:
     - `CONNECTION_SCALING_PLAN.md`
-    - `REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md`, `REAL_HARDWARE_HANDOVER_STATIC_FIX.md`
+    - `REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md`, `REAL_HARDWARE_HANDOVER_STATIC_FIX.md`,
+      `REAL_HARDWARE_HANDOVER_FREE_HEAP.md`
     - `BENCH_SITTING_2026-09-23_HANDOVER.md`
     - `CATALOG_UNIT_TESTS.md`, `CATALOG_INSTRUMENTATION.md`
     - `tests_hardware/combined_load_sweep.py`,

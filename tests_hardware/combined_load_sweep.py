@@ -25,6 +25,7 @@ PATHS = ("/status", "/sensors", "/", "/measurements", "/status", "/networking", 
 STATIC = ("/", "/js/app.js")
 ROUNDS = 12
 _THRESHOLD_LINE = "gc.threshold(-1)\n"
+_MARGIN_LINE = "_COLLECT_BEFORE_SAMPLE = False"
 
 
 def _reference_lengths(ip: str) -> dict[str, int]:
@@ -97,7 +98,27 @@ def _drive(ip: str, n: int, result: dict[str, object]) -> None:
     result.update(reference=reference, served=served, failures=failures)
 
 
-def run_level(board: Board, bench: BenchBridge, ip: str, script: Path, n: int, raw_dir: Path | None) -> bool:
+def _margin_line(output: str) -> str:
+    """Post-collect free heap from a --margin run: idle after boot vs the worst and median sample under load."""
+    maps = heap_map.parse_labelled(output)
+    idle = maps.get("after_boot")
+    samples = [m for label, m in sorted(maps.items()) if label.startswith("t")]
+    if idle is None or not samples:
+        return "margin: no post-collect samples captured"
+    frees = sorted(m.free_bytes for m in samples)
+    runs = sorted(m.largest_free_run for m in samples)
+    total = idle.total_bytes
+
+    def pct(value: int) -> str:
+        return f"{value} B ({100 * value / total:.1f} %)"
+
+    return (
+        f"margin (post-collect, heap {total} B): idle {pct(idle.free_bytes)} | under load min {pct(frees[0])}, "
+        f"median {pct(frees[len(frees) // 2])} | largest free run min {runs[0]} B, median {runs[len(runs) // 2]} B | samples {len(samples)}"
+    )
+
+
+def run_level(board: Board, bench: BenchBridge, ip: str, script: Path, n: int, raw_dir: Path | None, *, margin: bool = False) -> bool:
     result: dict[str, object] = {}
     driver = threading.Thread(target=_drive, args=(ip, n, result), daemon=True)
     driver.start()
@@ -120,6 +141,11 @@ def run_level(board: Board, bench: BenchBridge, ip: str, script: Path, n: int, r
         f"N={n:2d} {threshold} | {'STABLE' if stable else 'UNSTABLE'} | complete {served}/{n * ROUNDS} | "
         f"device allocation-failure lines {len(allocation_lines)} | worst largest free run {worst_run} B | reference {result.get('reference')}",
     )
+    if margin:
+        try:
+            print(f"     {_margin_line(output)}")
+        except heap_map.HeapMapError as e:
+            print(f"     margin not measured, a heap map was unreadable: {e}")
     for key, count in sorted(failures.items()) if isinstance(failures, dict) else ():
         print(f"     {count} x {key}")
     for line in allocation_lines[:6]:
@@ -136,6 +162,7 @@ def main() -> int:
     parser.add_argument("--threshold", type=int, default=-1, help="gc.threshold for the run (default -1, MicroPython's own reactive default)")
     parser.add_argument("--ip", default=os.environ.get("DUT_IP"), help="the DUT's address (default $DUT_IP)")
     parser.add_argument("--raw-dir", type=Path, default=None, help="save each level's full device output here")
+    parser.add_argument("--margin", action="store_true", help="gc.collect() before each heap sample and report the post-collect free heap; instrumentation - its STABLE/UNSTABLE is not evidence")
     args = parser.parse_args()
     if not args.ip:
         parser.error("the DUT's IP is needed: --ip or $DUT_IP")
@@ -143,9 +170,12 @@ def main() -> int:
     if _THRESHOLD_LINE not in source:
         parser.error(f"{DEVICE_SCRIPT.name} no longer carries the line this driver substitutes")
     variant = Path(os.environ.get("TMPDIR", "/tmp")) / f"combined_load_threshold_{args.threshold}.py"  # noqa: S108 - a scratch copy of a device script
-    variant.write_text(source.replace(_THRESHOLD_LINE, f"gc.threshold({args.threshold})\n", 1))
+    if _MARGIN_LINE not in source:
+        parser.error(f"{DEVICE_SCRIPT.name} no longer carries the line --margin substitutes")
+    source = source.replace(_THRESHOLD_LINE, f"gc.threshold({args.threshold})\n", 1)
+    variant.write_text(source.replace(_MARGIN_LINE, "_COLLECT_BEFORE_SAMPLE = True", 1) if args.margin else source)
     board, bench = Board(), BenchBridge()
-    verdicts = [run_level(board, bench, args.ip, variant, n, args.raw_dir) for n in args.levels]
+    verdicts = [run_level(board, bench, args.ip, variant, n, args.raw_dir, margin=args.margin) for n in args.levels]
     return 0 if all(verdicts) else 1
 
 
