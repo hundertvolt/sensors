@@ -6,9 +6,11 @@ time. None of it belongs in the everyday suites — too slow, too build-specific
 board. Its companion, `CATALOG_UNIT_TESTS.md`, holds the tests that do. Only methods that finally
 worked are listed; withdrawn claims and dead ends are one line each in §9.
 
-**Keep it current.** New or changed instruments on this topic get their entry here in the same
-commit. **Scratch tooling does not survive the session container**: every item marked *scratch*
-existed only in a session's scratch directory, so its entry carries what is needed to rebuild it.
+**Temporary, this session's working catalog only.** Kept current while this work continues (a
+instrument added, changed or retired on this topic gets its entry in the same commit), then processed
+into the permanent docs and **deleted before the branch merges**. The twin32 tooling itself is never committed
+(owner, 2026-09-23); what survives the merge is its documentation (MEASUREMENTS §7Q, §10). Scratch
+entries here carry what is needed to rebuild them for the rest of this session.
 
 ---
 

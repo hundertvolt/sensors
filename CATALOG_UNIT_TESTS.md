@@ -7,9 +7,9 @@ web tier. For each: what it pins, the defect or decision it guards, and **how it
 broken code** — a test never seen failing is marked so. Its companion, `CATALOG_INSTRUMENTATION.md`,
 holds everything that measures rather than tests.
 
-**Keep it current.** A test added, strengthened or retired by later work on this topic gets its row
-here in the same commit. Only tests that finally held are listed; one-line lessons from failed
-approaches sit at the end.
+**Temporary, this session's working catalog only.** Kept current while this work continues (a
+test added, changed or retired on this topic gets its entry in the same commit), then processed
+into the permanent docs and **deleted before the branch merges**.
 
 **How they run.** The whole suite twice, both green with zero `MemoryError`/`memory allocation
 failed` markers: `scripts/test.sh` (reactive default, `gc.threshold(-1)`) and

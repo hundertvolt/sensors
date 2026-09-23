@@ -760,17 +760,13 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     from `npm run test:unit` rather than from reading 150 conflict hunks. After a resolution that
     takes one side wholesale, run every tier before trusting it.
 
-44. **Three follow-ups to the serving fix (2026-09-23), none blocking.** Evidence:
+44. **Follow-ups to the serving fix (2026-09-23), none blocking.** Evidence:
     HEAP_FRAGMENTATION_MEASUREMENTS.md §7Q.
-    - **A twin gate that can see this class of defect.** The CI twin runs non-frozen at a 2 MB heap
-      on a 64-bit build and never came near it. What reproduces the board — its failing sites and
-      sizes — is a **32-bit, frozen** Unix port at a calibrated heap: `make BUILD=... CC="gcc -m32"
-      CXX="g++ -m32" LD="gcc -m32" MICROPY_PY_FFI=0 FROZEN_MANIFEST=<src/ext/generated/twin>`, which
-      needs `gcc-multilib`. That is a `toolchain/` change (a third Unix-port variant, and an apt
-      package) plus a CI job, so it owes the chroot list above and is §12's first item, widened.
-      Such a gate must also serve the real site, not `html_stub`'s sub-1 KB page, and surface
-      write-phase errors (they reach only `err_s`): the twin missed the 1,025 B static read for
-      exactly those two reasons (§7Q.14).
+    - **The 32-bit frozen twin stays an ad-hoc instrument, never a committed tool or CI gate**
+      (owner, 2026-09-23). It is what reproduced the board's failing sites and sizes; the what-for
+      and how-to — build recipe, calibration, and the dev-site and `err_s` lessons — are
+      documented in HEAP_FRAGMENTATION_MEASUREMENTS.md §7Q.9, §7Q.14 and §10, and nothing of it
+      is merged.
     - **The next wall is vendored.** Past 10 connections the first allocation to fail in the 64-bit
       twin is `ext/microdot.py:383`, the `Request` object's own attribute table growing as its
       `__init__` sets ~20 attributes (~232 B on the RP2040). Not ours to change; recorded so it is

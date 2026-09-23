@@ -4738,6 +4738,8 @@ BUILD=build-heapprobe32 CC="gcc -m32" CXX="g++ -m32" LD="gcc -m32" MICROPY_PY_FF
 FROZEN_MANIFEST=<src, ext, generated, digital_twin, frozen_modules>` with `gcc-multilib` (1.29.0's
 Makefile ignores `MICROPY_FORCE_32BIT`; upstream CI cross-compiles instead): 4-byte pointers,
 16-byte GC blocks, `import sensortask_dev` 55 KB instead of 108 KB.
+**An ad-hoc instrument, never a committed tool or CI gate** (owner, 2026-09-23): nothing of it is
+merged, and this section, §7Q.14 and §10 are its documentation — what it is for and how to rebuild it.
 
 **It reproduces the sitting's failure sites exactly**, where the 64-bit twin saw only the first:
 `/status` coalescing at ~870 B, `_dump_errcount_entry` at **296 B** (the board logged 296 twice), and
