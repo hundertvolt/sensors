@@ -163,6 +163,17 @@ follow and they save an entire sitting.
    latency percentiles (averaged over many requests, so noise averages down), and the wall itself
    (a step change). Gradients of contiguity against N are the one thing this instrument cannot give
    you.
+9. **Do not measure a transient allocation with survivor methods.** A connection's runtime
+   allocation is freed when the connection closes; a boot survivor is not. Never add the two into
+   one "cost". For the permanent half measure `.bss`/GC-heap from the ELF. For the transient half
+   ask the only two questions that matter: does it **fully return** (serve many rounds in a **fresh
+   process**, collect, and compare live bytes to before — the residue must be flat in total rather
+   than growing per connection), and does the churn **leave the heap no worse** (placement capacity
+   before versus after). Neither is a budget fraction.
+10. **At peak, ask whether there are enough sufficiently long pieces — not whether the heap is
+   unfragmented.** The demand is N simultaneous 2,048 B request buffers plus the response path, so
+   the figure is `gaps_at_least(2048)` against that demand. A heap with 40 KB free in 512 B pieces
+   fails; one with the same free split into ten 4 KB gaps is fine. Total free bytes answers neither.
 
 ## 6. Seeing *which* pool ran out, rather than inferring it
 
@@ -209,13 +220,17 @@ All of this is [TWIN] or from a real firmware build; none of it is silicon.
   no compile-time wall in that range.** Baseline GC heap is 197,528 B.
 - **Buffers cost far more per option**: `PBUF_POOL_SIZE` 16→32 is −15,644 B, and lwIP's own
   16000/1460 preset is −19,932 B, a tenth of the whole GC heap.
-- **A connection has two costs, and they were once conflated.** **Static: 2,324 B**, exact and
-  linear across 4→16, from ELF sizes — permanent whether the connection is used. **Runtime live at
-  peak: 5,170 B**, 0.5% spread, measured with every connection parked mid-body. Peak occupancy is
-  27.6% of the GC heap at 7 and 31.9% at 8; the marginal cost of 7→8 is 7,488 B, ~3.9%. Sampling
-  runtime cost *without* a collect first reads ~17,700 B, of which **71% is garbage** — take the
-  collect, or you will overstate it 3.4x. The static half is `[BUILD]`; the runtime half is
-  `[TWIN]` and wants confirming on silicon.
+- **A connection has two costs and they are different kinds of cost.** **Permanent: 2,324 B of
+  `.bss`**, exact and linear across 4→16, from ELF sizes — gone from the GC heap forever, used or
+  not. **Transient: ~5,170 B live while being served**, plus ~12,500 B of churn the collector takes
+  back. Ten rounds of N concurrent requests leave ~1.6 KB behind *in total, flat rather than per
+  connection*, and placement capacity is no worse afterwards — so the transient half is genuinely
+  returned. **The cost of 7→8 is 2,324 B permanent, not 7,488 B**; an earlier version of this file
+  added the transient half to the permanent one, which is the mistake §5B rule 9 exists to prevent.
+  Two sampling traps, both hit here first: reading runtime cost *without* collecting first gives
+  ~17,700 B of which **71% is garbage**, and reusing one process across repeats makes the survivor
+  number meaningless (it produced negative survivors). The permanent half is `[BUILD]`; the
+  transient half is `[TWIN]`.
 - **Above the transport, the twin serves every connection count it was asked for, up to 63**, with
   zero rejections at burst = N and no allocation failure anywhere below N = 47.
 - **The twin's wall is a `MemoryError` on a small allocation.** At N = 47 with a 3x burst one

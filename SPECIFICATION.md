@@ -4659,10 +4659,12 @@ that turned comfortable headroom into an apparent cliff. Re-measured at true pea
 instrument, the within-N spread exceeds the between-N step for every adjacent pair, so **contiguity
 cannot rank 7 against 8 at all** (§8.3.1). A second argument, "p50 latency grows ~1.3 ms per added
 connection", is withdrawn on the same grounds: that sweep's offered load scaled with the setting,
-and at fixed load latency is flat from 4 to 16 (§8.3.2). What is left is memory, and it is exact: a
-connection costs 2,324 B statically (ELF sizes, zero variance) plus 5,170 B live while it is being
-served, so 7→8 costs 7,488 B, about 3.9% of the GC heap, taking peak occupancy from 27.6% to 31.9%
-(§8.3.3). 7 is a memory-budget decision under uncertainty, not a measured cliff.
+and at fixed load latency is flat from 4 to 16 (§8.3.2). What is left is permanent memory, and it is small: a
+connection costs **2,324 B of `.bss` forever** (ELF sizes, zero variance), so 7→8 costs 2,324 B,
+about 1.2% of the GC heap. Its ~5,170 B of runtime allocation is **transient** — 70 served requests
+leave ~1.6 KB behind in total, flat rather than per connection, with placement capacity no worse
+afterwards — and must not be added to a survivor budget, which an earlier version of this paragraph
+did (§8.3.3). 7 is a small-margin budget decision under uncertainty, not a measured cliff.
 Service, not just survival, is asserted directly: every admitted connection must come back with a
 complete, correct, parseable response inside a bounded time, over repeated rounds, and concurrent
 page loads must be byte-identical to an uncontended one. The lwIP half is queued for

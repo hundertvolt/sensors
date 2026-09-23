@@ -364,37 +364,48 @@ and if anything the higher ceilings are marginally faster. **Raising the ceiling
 fixed load**, which is the question the decision actually needed answered. The rising curve was the
 load, not the setting.
 
-### 8.3.3 What a connection really costs, static and runtime
+### 8.3.3 What a connection really costs — and why only one of the two numbers counts
 
-This is what the two withdrawn arguments were reaching for, measured directly. Two different costs,
-and the documents previously conflated them under "a *servable* connection costs 2,324 B":
+Two costs, and they are **not the same kind of cost**. An earlier version of this section added them
+together and reported "peak occupancy 27.6% → 31.9%", which treats transient allocation as if it
+were permanently committed budget. It is not, and the distinction is the whole point.
 
-- **Static — 2,324 B per connection**, from real firmware builds. `.bss` grows by exactly that per
-  added connection across `max_connections` 4→16, **every step identical, zero variance**: it is
-  arithmetic on static array sizes, not a sample. Permanent, whether the connection is ever used.
-- **Runtime live at peak — 5,170 B per connection**, measured with all N parked mid-body in
-  `readexactly()`: 5,192 / 5,170 / 5,164 B at N = 4 / 7 / 8, a 0.5% spread. Present only while the
-  connection is actually being served.
-- **Transient garbage — about 12,500 B per connection**, reclaimed by the collector. Churn, not
-  occupancy; it drives collection frequency, not the high-water mark.
+**Permanent — 2,324 B per connection, survivor-class.** `.bss` grows by exactly that per added
+connection across `max_connections` 4→16, **every step identical, zero variance**: arithmetic on
+static array sizes from real ELFs, not a sample. It shrinks the GC heap available to everything
+else, forever, whether or not the connection is ever used. This is the number that belongs in the
+same conversation as boot survivors, and **it is the cost of the decision**.
 
-That third line is why the raw reading had to be checked: sampling `used_bytes` at peak *without*
-collecting first gives ~17,700 B per connection, **71% of which is garbage**. Publishing that would
-have overstated the runtime cost 3.4x — the same "single reading at an uncontrolled GC state" error
-as §8.3.1. A collect immediately before the sample can only free unreferenced objects, so it yields
-the live set without disturbing what is under test.
+**Transient — about 5,170 B live per connection while it is being served**, plus ~12,500 B of churn
+the collector reclaims. It occupies the heap only between accept and close. Measuring it against a
+survivor budget overstates it, because the heap gets it all back:
 
-**Peak occupancy, the figure the decision turns on:**
-
-| `max_connections` | static | runtime live at peak | total | of that build's GC heap |
+| N | requests served | total left behind after | per connection-cycle | gaps >= 2048 B, before → after |
 | --- | --- | --- | --- | --- |
-| 4 | 9,296 | 20,768 | 30,064 | 15.2% of 197,136 |
-| **7** | **16,268** | **36,190** | **52,458** | **27.6% of 190,164** |
-| 8 | 18,592 | 41,312 | 59,904 | 31.9% of 187,840 |
+| 4 | 40 | 1,472 B | 36.8 B | 23 → 24 |
+| 7 | 70 | 1,632 B | 23.3 B | 23 → 24 |
+| 8 | 80 | 1,632 B | 20.4 B | 23 → 26 |
 
-The marginal cost of 7→8 is **7,488 B, about 3.9% of the heap** — three times the 2,324 B the
-static figure alone suggested. `[TWIN]` for the runtime half: MicroPython object sizes do not depend
-on heap size, so it should transfer, but it is unconfirmed on silicon.
+Ten rounds of N concurrent served requests, **one fresh process per repeat** (a shared process makes
+a survivor number meaningless: each repeat inherits the last one's state, which produced *negative*
+survivor deltas in a first attempt), both samples post-collect. The residue is **flat in total, not
+per connection** — the same ~1.6 KB whether 40 or 80 requests were served — so it is one-off
+lazily-created state, not per-connection accumulation. Placement capacity is unchanged or slightly
+better afterwards, so the churn leaves no lasting fragmentation either.
+
+**So the question to ask about transient allocation is not "how much budget does it eat" but "at
+peak, are there enough sufficiently long free pieces to satisfy the whole simultaneous demand?"** —
+a heap does not need to be unfragmented, it needs enough gaps of the right size. That is
+`gaps_at_least(2048)` against N plus the response path (§8.3.1's corrected metric), not a fraction
+of total heap.
+
+**The decision figure for 7→8 is therefore 2,324 B permanent, not the 7,488 B a previous version of
+this document claimed.** The transient 5,170 B is real but returned, and is bounded by placement
+capacity rather than by budget.
+
+**Caveat.** The transient figures are `[TWIN]`. MicroPython object sizes do not depend on heap size,
+so they should transfer, but the twin has 1,200 KB where the board has ~190 KB — the *placement*
+question is far tighter on silicon even though the *budget* question is not.
 
 ## 8.4 The wall, from both directions — `[TWIN]`
 
@@ -425,10 +436,14 @@ the setting; at fixed load, latency is **flat** from 4 to 16. Neither is evidenc
 
 **What the decision actually rests on, after that:**
 
-- **Memory, and only memory.** A connection costs **2,324 B statically** (exact, zero variance,
-  from ELF sizes) plus **5,170 B live at peak** (0.5% spread, measured with every connection parked
-  mid-body). Going 7→8 costs **7,488 B, ~3.9% of the GC heap**; peak occupancy goes from 27.6% to
-  31.9% (§8.3.3). That is the whole quantitative case.
+- **Permanent memory, and only that.** A connection costs **2,324 B of `.bss` forever**, whether
+  used or not — exact, zero variance, from ELF sizes. Going 7→8 costs **2,324 B permanently, 1.2%
+  of the GC heap**. Its ~5,170 B of live runtime allocation is **transient**: measured in a fresh
+  process, 70 served requests leave ~1.6 KB behind in total — flat, not per connection — and
+  placement capacity is no worse afterwards (§8.3.3). Transient allocation is bounded by whether
+  the heap has enough gaps of the right size at peak, not by a budget, and must not be added to a
+  survivor figure. An earlier version of this section did exactly that and inflated the cost of
+  7→8 to 7,488 B.
 - **The PCB margin is architectural, not measured**: three spare slots cover the over-ceiling
   arrival `backlog` deliberately queues to be refused, plus TIME_WAIT churn in a design with no
   keep-alive, where every request burns a pcb (§2).
@@ -441,11 +456,12 @@ the firmware refuses connections its own config admits — which reads as an app
 not one. And the runtime half of the cost figure is `[TWIN]`; object sizes should transfer, but that
 is an argument, not a measurement.
 
-**Why not 8, stated honestly.** Because it commits another 3.9% of a 190 KB heap on a device whose
-known defect is memory, for a connection nobody has shown is needed. That is a budget judgement, not
-a measured cliff — **the contiguity and latency evidence that once appeared to condemn 8 is absent,
-not against it.** Anyone revisiting this should weigh 7,488 B against the traffic they actually
-have.
+**Why not 8, stated honestly.** Because it commits another 2,324 B of a ~190 KB heap permanently,
+on a device whose known defect is memory, for a connection nobody has shown is needed. That is a
+budget judgement on a small number, not a measured cliff — **the contiguity and latency evidence
+that once appeared to condemn 8 is absent, not against it, and the memory case is 2,324 B rather
+than the 7,488 B this document briefly claimed.** Anyone revisiting this should weigh 2,324 B
+against the traffic they actually have; it is not much.
 
 **What would settle it** is the functional wall on silicon, because a wall is a step change and so
 robust to the noise that defeats gradient metrics: the first N at which a `MemoryError` appears at
