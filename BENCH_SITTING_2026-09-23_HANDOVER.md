@@ -974,3 +974,83 @@ both from `heap_map.parse_labelled()` over each level's raw output.
   and ~18 KB at 7 (the twin's 4 and 5 were not run).
 - Against the general embedded practice of 20-30 % free at peak (handover §5): 4 and 5 are above
   it, 6 and 7 inside it (25.7 %, 24.6 %).
+
+## 10.13 N = 8, 9, 10 — F′ at 8, and image H (lwIP sized for 10)
+
+Owner's request after §10.12: the same two arms at 8, 9 and 10, "so the effects are better
+visible". F′ caps at 8, so 9 and 10 ran on **image H**, local edits only, never committed:
+`devices/dev.toml` `max_connections = 10`, `toolchain/versions.toml` `MEMP_NUM_TCP_PCB = 13` (F′'s
++3), `MEMP_NUM_TCP_SEG = 80` (= 10 × 8, the ensemble floor), `MEM_SIZE = 20000` (10 × the 2,000 B
+floor). All macros read back from the firmware, ensemble clean at 10. GC heap by the linker
+`0x20040000 - 0x200134e8` = **183,064 B** — exactly 2 × 2,324 B below F′, as SPECIFICATION.md's
+per-connection figure predicts; `mem_info` total **178,816 B**.
+
+**These are the §10.12 arms — sampled, not peak.** 12 rounds of N parallel GETs with 0.5 s
+pauses, no forced internal load, one heap snapshot per ~5.3 s. The owner asked whether this is
+peak load: it is not. The minimums below can only overstate the free heap at the true peak.
+§10.14 is the peak-load measurement that replaces them.
+
+After flashing H the board **fell back to hotspot mode a third time** (uptime 210 s, bench AP up on
+channel 6 with no station); `ensure_up`'s kick + reset did not recover it within its 200 s window,
+a second kick + reset did (joined at uptime 5 s).
+
+### 10.13.1 Result lines, verbatim
+
+```
+# F′, N=8, stability arm (one torn heap-map capture, reported by the 10.10.5 handling)
+     heap map unreadable, worst free run not measured: map covers 11459 blocks of 16 B against a reported total of 183360 B - the capture is incomplete
+N= 8 GC_THRESHOLD=-1 | STABLE | complete 96/96 | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+# F′, N=8, margin arm
+N= 8 GC_THRESHOLD=-1 | STABLE | complete 96/96 | device allocation-failure lines 0 | worst largest free run 992 B | reference {'/': 9292, '/js/app.js': 16292}
+     margin (post-collect, heap 183360 B): idle 80608 B (44.0 %) | under load min 37872 B (20.7 %), median 82032 B (44.7 %) | largest free run min 992 B, median 9584 B | samples 28
+# H, stability arm
+N= 8 GC_THRESHOLD=-1 | STABLE | complete 96/96 | device allocation-failure lines 0 | worst largest free run 848 B | reference {'/': 9292, '/js/app.js': 16292}
+N= 9 GC_THRESHOLD=-1 | STABLE | complete 108/108 | device allocation-failure lines 0 | worst largest free run 208 B | reference {'/': 9292, '/js/app.js': 16292}
+N=10 GC_THRESHOLD=-1 | UNSTABLE | complete 117/120 | device allocation-failure lines 6 | worst largest free run 224 B | reference {'/': 9292, '/js/app.js': 16292}
+     1 x /status status500 (round 11)
+     1 x /status status500 (round 3)
+     1 x /status status500 (round 4)
+     device: MemoryError: memory allocation failed, allocating 257 bytes
+     device: WEBSERVER Unhandled exception in route handler: memory allocation failed, allocating 257 bytes
+     device: MemoryError: memory allocation failed, allocating 252 bytes
+     device: WEBSERVER Unhandled exception in route handler: memory allocation failed, allocating 252 bytes
+     device: MemoryError: memory allocation failed, allocating 252 bytes
+     device: WEBSERVER Unhandled exception in route handler: memory allocation failed, allocating 252 bytes
+# H, margin arm
+N= 8 GC_THRESHOLD=-1 | STABLE | complete 96/96 | device allocation-failure lines 0 | worst largest free run 1408 B | reference {'/': 9292, '/js/app.js': 16292}
+     margin (post-collect, heap 178816 B): idle 75952 B (42.5 %) | under load min 38000 B (21.3 %), median 77808 B (43.5 %) | largest free run min 1408 B, median 8752 B | samples 28
+N= 9 GC_THRESHOLD=-1 | STABLE | complete 108/108 | device allocation-failure lines 0 | worst largest free run 1024 B | reference {'/': 9292, '/js/app.js': 16292}
+     margin (post-collect, heap 178816 B): idle 72672 B (40.6 %) | under load min 34800 B (19.5 %), median 76944 B (43.0 %) | largest free run min 1024 B, median 6096 B | samples 28
+N=10 GC_THRESHOLD=-1 | UNSTABLE | complete 117/120 | device allocation-failure lines 6 | worst largest free run 288 B | reference {'/': 9292, '/js/app.js': 16292}
+     margin (post-collect, heap 178816 B): idle 30464 B (17.0 %) | under load min 20592 B (11.5 %), median 76976 B (43.0 %) | largest free run min 288 B, median 5328 B | samples 27
+     1 x /status status500 (round 1)
+     1 x /status status500 (round 3)
+     1 x /status status500 (round 6)
+     device: MemoryError: memory allocation failed, allocating 256 bytes
+     device: WEBSERVER Unhandled exception in route handler: memory allocation failed, allocating 256 bytes
+     device: MemoryError: memory allocation failed, allocating 249 bytes
+     device: WEBSERVER Unhandled exception in route handler: memory allocation failed, allocating 249 bytes
+     device: MemoryError: memory allocation failed, allocating 254 bytes
+     device: WEBSERVER Unhandled exception in route handler: memory allocation failed, allocating 254 bytes
+```
+
+### 10.13.2 Re-derived (method of §10.12.4)
+
+| image | N | stability arm | settled idle | min free under load | median under load | min largest run under load | load uses at most |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| F′ | 7 | STABLE 84/84 | 82,592 B (45.0 %) | 45,168 B (24.6 %) | 50,016 B (27.3 %) | 1,200 B | 37,424 B |
+| F′ | 8 | STABLE 96/96 | 82,656 B (45.1 %) | 37,872 B (20.7 %) | 48,944 B (26.7 %) | 992 B | 44,784 B |
+| H | 8 | STABLE 96/96 | 78,112 B (43.7 %) | 38,000 B (21.3 %) | 44,096 B (24.7 %) | 1,408 B | 40,112 B |
+| H | 9 | STABLE 108/108 | 77,472 B (43.3 %) | 34,800 B (19.5 %) | 56,528 B (31.6 %) | 1,024 B | 42,672 B |
+| H | 10 | **UNSTABLE 117/120** | 77,600 B (43.4 %) | **20,592 B (11.5 %)** | **24,208 B (13.5 %)** | **288 B** | **57,008 B** |
+
+- **10 fails on H too, in both arms — including the margin arm, which collects every 5 s.** 3
+  `/status` 500s per run (stability: rounds 3, 4, 11; margin: rounds 1, 3, 6), each a
+  `_PieceWriter` piece of 249-257 B (`_get_status` → `add_value` → `add` → `flush`). Much better
+  than G′'s 12-14 per run at 10 (§10.11.4) — H has 13,944 B more heap than G′ — but not stable.
+- **The step from 9 to 10 is not linear**: under load, 8 → 9 costs ~3 KB more at the minimum and
+  9 → 10 costs ~14 KB, and the median under load drops from 31.6 % to 13.5 %. At 10 the whole load
+  window sits at 20-31 KB free with the largest run below 1.3 KB in every sample; at 9 only two
+  samples go below 42 KB. The load also lasts longer at 10 (12 samples vs 9): requests queue.
+- F′ and H agree at 8 within 130 B at the minimum (37,872 vs 38,000 B), so the 4,648 B of static
+  heap H gives up for its two extra PCBs does not change the load's own footprint.
