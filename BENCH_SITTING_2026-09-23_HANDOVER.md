@@ -575,3 +575,112 @@ W3 (`test_end_to_end_timing.py`) and W4 (the full bench tier on F) are **not run
 "if W2 fails below 10 on silicon … record it and stop", and both would have to be re-run on a fixed
 image anyway.
 
+### 10.9 The per-boot sweep tool, and its raw output
+
+The driver behind §10.6 is now `tests_hardware/combined_load_sweep.py` (it was a scratch script
+during the sitting). Usage: `DUT_IP=<ip> uv run python tests_hardware/combined_load_sweep.py 2 4 5 5 6 6 8
+--raw-dir <dir>`. That is one fresh boot per listed level, a repeated level means a repeated run, and the
+exit code is 0 only if every level is STABLE. It
+runs `device_scripts/serving_stability_under_combined_load.py` with `gc.threshold` substituted
+(`--threshold`, default -1). **One deliberate difference from §10.6:** its load mix adds
+`/js/app.js` (every page load fetches it, and the handover's sweep now loads it too), and it checks
+that script's body length as well. So a result from it is the §10.6 measurement plus one more static
+file, not a like-for-like repeat of it.
+
+Raw result lines of the sitting, verbatim (`MemoryError lines` counts every device line matching
+`MEMORY_ERROR_MARKERS`; `BAD200` on `/` is a body shorter than the idle reference of 9,292 B):
+
+```
+# image G, levels 2 4 6 8 10 12 (N=10 void: driver thread died)
+                  ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                              '_open', req)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                              ~~~~~~~~~~~~~~~~~^^
+               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+           ~~~~~~~~~~~~~~~~~~~~^^^
+N= 2 GC_THRESHOLD=-1 | served 24/24 over 12 rounds | worst placeable2K=0 worst_largest_run=640 | MemoryError lines=0 | {}
+N= 4 GC_THRESHOLD=-1 | served 47/48 over 12 rounds | worst placeable2K=0 worst_largest_run=336 | MemoryError lines=0 | {'/sensors URLError': 1, 'rounds': {8}}
+N= 6 GC_THRESHOLD=-1 | served 62/72 over 12 rounds | worst placeable2K=0 worst_largest_run=320 | MemoryError lines=10 | {'/ BAD200': 10, 'rounds': {1, 3, 4, 5, 6, 7, 8, 9, 10, 11}}
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+N= 8 GC_THRESHOLD=-1 | served 85/96 over 12 rounds | worst placeable2K=0 worst_largest_run=432 | MemoryError lines=11 | {'/ BAD200': 11, 'rounds': {0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11}}
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+N=10 GC_THRESHOLD=-1 | served 0/0 over 12 rounds | worst placeable2K=0 worst_largest_run=624 | MemoryError lines=0 | {}
+N=12 GC_THRESHOLD=-1 | served 99/144 over 12 rounds | worst placeable2K=0 worst_largest_run=128 | MemoryError lines=66 | {'/ BAD200': 24, 'rounds': {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, '/status BAD500': 20, '/measurements BAD500': 1}
+      MemoryError: memory allocation failed, allocating 252 bytes
+      WEBSERVER Unhandled exception in route handler: memory allocation failed, allocating 252 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      MemoryError: memory allocation failed, allocating 253 bytes
+      MemoryError: memory allocation failed, allocating 256 bytes
+      site: File "asy_webserver_service.py", line 55, in add_value
+      site: File "asy_webserver_service.py", line 56, in add_value
+      site: File "asy_webserver_service.py", line 61, in add_value
+      site: File "asy_webserver_service.py", line 62, in add_value
+      site: File "asy_webserver_service.py", line 65, in add_value
+      site: File "asy_webserver_service.py", line 73, in _stream_dict_response
+      site: File "microdot.py", line 1464, in dispatch_request
+      site: File "microdot.py", line 45, in invoke_handler
+
+# image G, repeat 4 and 10
+N= 4 GC_THRESHOLD=-1 | served 48/48 over 12 rounds | worst placeable2K=0 worst_largest_run=240 | MemoryError lines=0 | {}
+N=10 GC_THRESHOLD=-1 | served 95/120 over 12 rounds | worst placeable2K=0 worst_largest_run=128 | MemoryError lines=36 | {'/ BAD200': 12, 'rounds': {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, '/status BAD500': 12, "/sensors URLError:TimeoutError('timed out')": 1}
+      MemoryError: memory allocation failed, allocating 256 bytes
+      WEBSERVER Unhandled exception in route handler: memory allocation failed, allocating 256 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      MemoryError: memory allocation failed, allocating 251 bytes
+      WEBSERVER Unhandled exception in route handler: memory allocation failed, allocating 251 bytes
+      site: File "asy_webserver_service.py", line 42, in add
+      site: File "asy_webserver_service.py", line 46, in flush
+      site: File "asy_webserver_service.py", line 54, in add_value
+      site: File "asy_webserver_service.py", line 55, in add_value
+      site: File "asy_webserver_service.py", line 62, in add_value
+      site: File "asy_webserver_service.py", line 65, in add_value
+      site: File "microdot.py", line 1464, in dispatch_request
+      site: File "microdot.py", line 45, in invoke_handler
+
+# image F, levels 2 3 4 5 6 8
+N= 2 GC_THRESHOLD=-1 | served 24/24 over 12 rounds | worst placeable2K=0 worst_largest_run=384 | MemoryError lines=0 | {}
+N= 3 GC_THRESHOLD=-1 | served 36/36 over 12 rounds | worst placeable2K=0 worst_largest_run=1632 | MemoryError lines=0 | {}
+N= 4 GC_THRESHOLD=-1 | served 48/48 over 12 rounds | worst placeable2K=0 worst_largest_run=752 | MemoryError lines=0 | {}
+N= 5 GC_THRESHOLD=-1 | served 60/60 over 12 rounds | worst placeable2K=0 worst_largest_run=560 | MemoryError lines=0 | {}
+N= 6 GC_THRESHOLD=-1 | served 72/72 over 12 rounds | worst placeable2K=0 worst_largest_run=640 | MemoryError lines=0 | {}
+N= 8 GC_THRESHOLD=-1 | served 90/96 over 12 rounds | worst placeable2K=0 worst_largest_run=80 | MemoryError lines=6 | {'/ BAD200': 6, 'rounds': {0, 2, 3, 5, 7, 10}}
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+
+# image F, repeat 6, then 7 twice
+N= 6 GC_THRESHOLD=-1 | served 71/72 over 12 rounds | worst placeable2K=0 worst_largest_run=1296 | MemoryError lines=1 | {'/ BAD200': 1, 'rounds': {5}}
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+N= 7 GC_THRESHOLD=-1 | served 80/84 over 12 rounds | worst placeable2K=0 worst_largest_run=336 | MemoryError lines=4 | {'/ BAD200': 4, 'rounds': {10, 2, 3, 5}}
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+N= 7 GC_THRESHOLD=-1 | served 82/84 over 12 rounds | worst placeable2K=0 worst_largest_run=608 | MemoryError lines=2 | {'/ BAD200': 2, 'rounds': {2, 5}}
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+
+# image F, 5 twice, then 4
+N= 5 GC_THRESHOLD=-1 | served 60/60 over 12 rounds | worst placeable2K=0 worst_largest_run=784 | MemoryError lines=0 | {}
+N= 5 GC_THRESHOLD=-1 | served 59/60 over 12 rounds | worst placeable2K=0 worst_largest_run=624 | MemoryError lines=1 | {'/ BAD200': 1, 'rounds': {6}}
+      WEBSERVER Unexpected error serving connection: memory allocation failed, allocating 1025 bytes
+N= 4 GC_THRESHOLD=-1 | served 47/48 over 12 rounds | worst placeable2K=0 worst_largest_run=640 | MemoryError lines=0 | {"/status URLError:TimeoutError('timed out')": 1, 'rounds': {4}}
+```
+

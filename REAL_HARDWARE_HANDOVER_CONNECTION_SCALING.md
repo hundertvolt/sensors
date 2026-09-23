@@ -42,7 +42,7 @@ device; a repeat of that here is a finding in its own right, not noise.
 
 1. `uv run scripts/build_firmware.py dev`, flash. The lwIP verification must pass with 11 / 64 / 16,000.
 2. `uv run pytest tests_hardware/bench/test_serving_heap_at_default_gc.py -s` (W5), ~10 minutes.
-3. The per-boot combined-load sweep of §10.6 (fresh boot per level, body lengths checked), levels
+3. The per-boot combined-load sweep of §10.6 — `tests_hardware/combined_load_sweep.py` (sitting doc §10.9; fresh boot per level, body lengths checked), levels
    2, 4, 6, 8 (W6). Same definition of stable: every request `200` with a complete body **and** zero
    allocation-failure lines on the device.
 4. If both are clean: W3 and W4 from §0.4, which §0 held back. **The board is left on F′.**
