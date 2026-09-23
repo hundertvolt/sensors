@@ -181,3 +181,38 @@ def parse_labelled(text: str) -> dict[str, HeapMap]:
     for match in re.finditer(r"^=== MAP (\S+) ===$(.*?)^=== ENDMAP \1 ===$", text, re.MULTILINE | re.DOTALL):
         found[match.group(1)] = parse(match.group(2))
     return found
+
+
+_ALLOCATION_FAILED = re.compile(r"MemoryError|memory allocation failed")
+
+
+def parse_allocation_need(text: str) -> dict[str, int | None]:
+    """allocation_need_per_source.py's output, reduced to the smallest effective largest-free-run (in
+    bytes) at which each probe succeeded cleanly, and at every larger rung too. None if it never did.
+    A caught-and-logged failure between a probe's TRY and RES lines counts as a failure (I.4(e))."""
+    block = int(re.search(r"^BLOCK=(\d+)", text, re.MULTILINE).group(1))  # type: ignore[union-attr]
+    rung_bytes = 0
+    clean: dict[str, list[tuple[int, bool]]] = {}
+    label = ""
+    since_try: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("SIEVE "):
+            rung_bytes = 0
+        elif line.startswith(" No. of 1-blocks") and "max free sz" in line:
+            rung_bytes = int(line.rsplit("max free sz: ", 1)[1]) * block
+        elif line.startswith("TRY "):
+            label, since_try = line[4:], []
+        elif line.startswith("RES ") and label:
+            ok = line.endswith(" ok") and not any(_ALLOCATION_FAILED.search(seen) for seen in since_try)
+            clean.setdefault(label, []).append((rung_bytes, ok))
+            label = ""
+        elif label:
+            since_try.append(line)
+    need: dict[str, int | None] = {}
+    for probe, results in clean.items():
+        need[probe] = None
+        for index, (size, _ok) in enumerate(results):
+            if all(ok for _size, ok in results[index:]):
+                need[probe] = size
+                break
+    return need

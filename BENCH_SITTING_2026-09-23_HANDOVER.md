@@ -346,8 +346,8 @@ rather than skip, so "everything that ran, passed" is not "everything ran".
 | # | Row | Why |
 | --- | --- | --- |
 | 1 | **Record S3's result** | It was still running; §7 has the log path |
-| 2 | **Decide what to do about §4** | The threshold is load-bearing at the shipped ceiling. Owner's call: lower `max_connections`, relieve the allocation pressure in `_stream_dict_response()`, or accept the threshold as load-bearing and say so in the docs |
-| 3 | **Qualify the claim in `HEAP_FRAGMENTATION_MEASUREMENTS.md`** | "stable without the threshold … yes" holds for the unit tier and the twin, not for the board under combined load |
+| 2 | **Decide what to do about §4** — *root-caused and fixed in the twin the same day, limit set to 8 by the owner; silicon confirmation is `REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md` §0* | The threshold is load-bearing at the shipped ceiling. Owner's call: lower `max_connections`, relieve the allocation pressure in `_stream_dict_response()`, or accept the threshold as load-bearing and say so in the docs |
+| 3 | **Qualify the claim in `HEAP_FRAGMENTATION_MEASUREMENTS.md`** — *done, §7H.3's note and §7Q* | "stable without the threshold … yes" holds for the unit tier and the twin, not for the board under combined load |
 | 4 | **One more image, if the exact boundary is wanted** | A right-sized N=4 (or N=5) ensemble returns ~6 KB of heap; 5 might pass. One build, one flash |
 | 5 | R1, R2, R3, R4, R5, R6, R7, R8, R9, R13 | Untouched by this sitting. **R3 has fresh evidence**: the spurious `W4` is in §2's log |
 | 6 | M1, S3b, S4, F1, T1, T2, T4, G1/G3/G4/G6/G8/G10, H1 | Untouched |

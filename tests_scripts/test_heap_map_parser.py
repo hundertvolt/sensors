@@ -240,3 +240,41 @@ def test_placeable_counts_capacity_not_runs() -> None:
     assert parsed.gaps_at_least(4096) == 1
     assert parsed.placeable(4096) >= parsed.gaps_at_least(4096)
     assert parsed.placeable(1) == sum(parsed.free_runs)
+
+
+def _need_output(*rungs: tuple[int, list[tuple[str, str, str]]]) -> str:
+    # allocation_need_per_source.py's own line shapes: SIEVE, a mem_info() summary, then TRY/RES.
+    lines = ["CHURN route:/status 1000", "BLOCK=16 PROBES=2"]
+    for max_free_blocks, probes in rungs:
+        lines += ["SIEVE 1", "GC: total: 1000, used: 10, free: 990", f" No. of 1-blocks: 1, 2-blocks: 0, max blk sz: 4, max free sz: {max_free_blocks}"]
+        for label, logged, result in probes:
+            lines.append(f"TRY {label}")
+            if logged:
+                lines.append(logged)
+            lines.append(f"RES {label} {result}")
+    lines.append("RESULT: PASS")
+    return "\n".join(lines)
+
+
+def test_allocation_need_is_the_first_rung_from_which_every_larger_one_is_clean() -> None:
+    text = _need_output(
+        (8, [("a", "", "fail"), ("b", "", "ok")]),
+        (16, [("a", "", "ok"), ("b", "", "fail")]),  # b fails again higher up: its earlier ok was luck
+        (32, [("a", "", "ok"), ("b", "", "ok")]),
+    )
+    assert heap_map.parse_allocation_need(text) == {"a": 16 * 16, "b": 32 * 16}
+
+
+def test_a_caught_and_logged_allocation_failure_counts_as_a_failure() -> None:
+    # I.4(e): a probe that degrades internally still returns normally, so RES says ok - only the log
+    # between its TRY and RES shows it. That must not read as a clean pass.
+    text = _need_output(
+        (8, [("a", "Status stream source failed: SYSTEM memory allocation failed, allocating 300 bytes", "ok")]),
+        (16, [("a", "", "ok")]),
+    )
+    assert heap_map.parse_allocation_need(text) == {"a": 16 * 16}
+
+
+def test_a_probe_that_never_succeeds_reads_as_none() -> None:
+    text = _need_output((8, [("a", "", "fail")]), (16, [("a", "", "fail")]))
+    assert heap_map.parse_allocation_need(text) == {"a": None}

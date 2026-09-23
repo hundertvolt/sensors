@@ -104,9 +104,10 @@ _PAUSE_TIME_FIELD: "cm.FieldSchema" = ("PauseTime", "int", 0, 0, _PAUSE_TIME_MAX
 # can reuse config_manager.py's own type_or_range_error() (and its int<->float coercion policy,
 # SPECIFICATION.md Part A.8) instead of a second, hand-rolled strict check.
 
-_MAX_STATUS_PIECE_BYTES = const(1024)  # _coalesce_json_fragments()'s own per-piece cap for
-# /status's "sensors"/"errcount" sections - see that function's own comment and SPECIFICATION.md
-# Part I for why a per-*section* bound isn't enough on its own (real hardware, 2026-09-05).
+_MAX_PENDING_FRAGMENTS = const(16)  # _PieceWriter's list never outgrows 16 slots (64 B on the RP2040)
+_MAX_STATUS_PIECE_BYTES = const(256)  # _PieceWriter's per-piece cap for every streamed route. Sized
+# to the holes a fragmented heap still has at gc.threshold(-1), not to its one large run: under load
+# that run is gone and ~870 B pieces fail with ~100 KB free (SPECIFICATION.md Part I.3).
 
 _ERROR_SHAPES = (  # (status_code, descr) - registered via @app.errorhandler for shaped JSON bodies,
     # per "Criteria for this step to finish": at least 400/404/405/413/500 wired.
@@ -131,44 +132,64 @@ def _index_pairs(items: "Iterable[tuple[str, MaintenanceFct]]") -> "dict[str, Ma
     return dict(items)
 
 
-def _coalesce_json_fragments(parts: "list[str]", max_bytes: int = _MAX_STATUS_PIECE_BYTES) -> "list[str]":
-    # Batches already-independent JSON fragments into as few pieces as practical under max_bytes -
-    # see SPECIFICATION.md Part I.3 for why byte-budget batching, not per-module/per-section.
-    batches: list[str] = []
-    current = ""
-    for part in parts:
-        if not current:
-            current = part
-        elif len(current) + 1 + len(part) > max_bytes:
-            batches.append(current)
-            current = part
+class _PieceWriter:
+    # Concatenates adjacent JSON text fragments into pieces of at most max_bytes, never splitting
+    # one - so the largest allocation is bounded by the largest fragment, not by the response.
+    def __init__(self, pieces: "list[str]", max_bytes: int = _MAX_STATUS_PIECE_BYTES) -> None:
+        self._pieces = pieces
+        self._group: list[str] = []
+        self._size = 0
+        self._max_bytes = max_bytes
+
+    def add(self, fragment: str) -> None:
+        if self._group and self._size + len(fragment) > self._max_bytes:
+            self.flush()
+        self._group.append(fragment)
+        self._size += len(fragment)
+        if len(self._group) == _MAX_PENDING_FRAGMENTS:
+            # Collapsed, never left to grow: a piece of tiny fragments would otherwise need a list
+            # array as large as the piece itself - the very block this writer exists to avoid.
+            self._group = ["".join(self._group)]
+
+    def flush(self) -> None:
+        if self._group:
+            self._pieces.append("".join(self._group))
+            self._group = []
+            self._size = 0
+
+    def add_value(self, value: object) -> None:
+        # Exactly json.dumps(value)'s text, never built as one string: dicts, lists and tuples are
+        # walked and only their keys and scalars dumped, with json.dumps()'s own ", "/": ".
+        if isinstance(value, dict):
+            self.add("{")
+            for index, (key, item) in enumerate(value.items()):
+                # json.dumps() quotes a non-str key's own JSON text (True -> "true"), never str(key).
+                self.add((", " if index else "") + (json.dumps(key) if isinstance(key, str) else '"' + json.dumps(key) + '"') + ": ")
+                self.add_value(item)
+            self.add("}")
+        elif isinstance(value, (list, tuple)):
+            self.add("[")
+            for index, item in enumerate(value):
+                if index:
+                    self.add(", ")
+                self.add_value(item)
+            self.add("]")
         else:
-            current += "," + part
-    if current:
-        batches.append(current)
-    return batches
-
-
-def _append_coalesced_object(pieces: "list[str]", prefix: str, parts: "list[str]", suffix: str) -> None:
-    # Appends a `{...}` object built from _coalesce_json_fragments(parts) to pieces, fusing
-    # prefix/suffix onto the first/last batch rather than adding them as separate pieces - keeps
-    # the common case (fits in one batch) down to exactly one piece per section.
-    batches = _coalesce_json_fragments(parts)
-    if not batches:
-        pieces.append(prefix + suffix)
-        return
-    pieces.append(prefix + batches[0])
-    pieces.extend("," + batch for batch in batches[1:])
-    pieces[-1] += suffix
+            self.add(json.dumps(value))
 
 
 async def _stream_dict_response(result: "dict[str, Any]") -> "Response":
     # Memory-bounded streaming for any GET route whose response scales with device configuration
-    # (SPECIFICATION.md Part I.3, including why the JSON is byte-identical to json.dumps()). Not
-    # used for /status, whose sub-sections need their own per-fragment dumps first.
-    parts = [json.dumps(k) + ":" + json.dumps(v) for k, v in result.items()]
+    # (SPECIFICATION.md Part I.3): the same bytes the old per-key json.dumps() fragments produced,
+    # written value by value, so no allocation is a whole key's value, let alone the response.
     pieces: list[str] = []
-    _append_coalesced_object(pieces, "{", parts, "}")
+    writer = _PieceWriter(pieces)
+    writer.add("{")
+    for index, (key, value) in enumerate(result.items()):
+        writer.add(("," if index else "") + json.dumps(key) + ":")
+        writer.add_value(value)
+    writer.add("}")
+    writer.flush()
     encoded = [p.encode() for p in pieces]
     content_length = sum(len(p) for p in encoded)
     return Response(
@@ -260,7 +281,7 @@ class WebserverService:
         maintenance_sensors: "Sequence[tuple[str, MaintenanceFct]]" = (),
         error_sources: "Sequence[_ModuleLike]" = (),
         max_content_length: int = 2048,  # 1.56x the largest schema-permitted body, ~9x real traffic (I.6)
-        max_connections: int = 7,  # reject-when-full ceiling, kept below the firmware's own
+        max_connections: int = 8,  # reject-when-full ceiling, kept below the firmware's own
         # MEMP_NUM_TCP_PCB (toolchain/versions.toml) with margin for TIME_WAIT churn - Part H.7
         # holds that as a RELATIONSHIP, not a number; buildgen passes the per-device value.
         backlog: int | None = None,  # listen queue depth; None derives max_connections + 1 so one
@@ -529,53 +550,62 @@ class WebserverService:
         )
 
     async def _build_status_pieces(self) -> "list[str]":
-        # Fixed pieces for the three small top-level keys, by ordinary string concatenation - not
-        # one piece per punctuation character (Part F.1's +53% finding). "sensors"/"errcount" are
-        # variable-length and go through _coalesce_json_fragments() instead (Part I.3).
-        pieces = ['{"networking":' + await self._dump_status_source("networking")]
-        pieces.append(',"system":' + await self._dump_status_source("system"))
-        pieces.append(',"notification":' + await self._dump_status_source("notification"))
+        # One _PieceWriter, flushed at every top-level section: each section starts its own piece
+        # and no piece exceeds the cap, whatever a section holds - one entry per registered error
+        # source, for "errcount" (Part I.3). Values are written, never json.dumps()'d whole.
+        pieces: list[str] = []
+        writer = _PieceWriter(pieces)
+        for prefix, key in (('{"networking":', "networking"), (',"system":', "system"), (',"notification":', "notification")):
+            writer.add(prefix)
+            await self._write_status_source(writer, key)
+            writer.flush()
 
-        sensor_parts = []
-        for name, fct in self._maintenance_sensors.items():
-            sensor_parts.append(json.dumps(name) + ":" + await self._dump_maintenance(fct, name))
-        _append_coalesced_object(pieces, ',"sensors":{', sensor_parts, "}")
+        writer.add(',"sensors":{')
+        for index, (name, fct) in enumerate(self._maintenance_sensors.items()):
+            writer.add(("," if index else "") + json.dumps(name) + ":")
+            await self._write_guarded(writer, fct, name)
+        writer.add("}")
+        writer.flush()
 
-        errcount_parts = []
+        writer.add(',"errcount":{')
         for name, module in self._error_sources.items():
-            errcount_parts.append(json.dumps(name) + ":" + await self._dump_errcount_entry(module.get_error_counter, name))
+            writer.add(json.dumps(name) + ":")
+            await self._write_errcount_entry(writer, module.get_error_counter, name)
+            writer.add(",")
         # This service's own entry (Part A.8's registration contract). WebserverService satisfies
         # only the error-counter subset of _ModuleLike, not the full sensor/settings surface, so it
         # is added here directly rather than registered into self._error_sources.
-        errcount_parts.append(json.dumps(_NAME) + ":" + await self._dump_errcount_entry(self.pr.get_log, _NAME))
-        _append_coalesced_object(pieces, ',"errcount":{', errcount_parts, "}}")
+        writer.add(json.dumps(_NAME) + ":")
+        await self._write_errcount_entry(writer, self.pr.get_log, _NAME)
+        writer.add("}}")
+        writer.flush()
         return pieces
 
-    async def _dump_status_source(self, key: str) -> str:
+    async def _write_status_source(self, writer: "_PieceWriter", key: str) -> None:
         source = self._status_sources.get(key)
         if source is None:
-            return "{}"
+            writer.add("{}")
+            return
+        await self._write_guarded(writer, source, key)
+
+    async def _write_guarded(self, writer: "_PieceWriter", fct: "Callable[[], Coroutine[Any, Any, dict[str, Any]]]", name: str) -> None:
         try:  # caller-supplied callback, could misbehave - degrades this one key instead of letting
             # one failing source discard every other section's already-fetched data.
-            return json.dumps(await source())
-        except Exception as e:
-            await self.pr.err_s("Status stream source failed:", key, e, errno=6)
-            return '{"error":"unavailable"}'
-
-    async def _dump_maintenance(self, fct: "MaintenanceFct", name: str) -> str:
-        try:  # see _dump_status_source()'s own comment - identical reasoning, different source kind.
-            return json.dumps(await fct())
+            value = await fct()
         except Exception as e:
             await self.pr.err_s("Status stream source failed:", name, e, errno=6)
-            return '{"error":"unavailable"}'
+            writer.add('{"error":"unavailable"}')
+            return
+        writer.add_value(value)
 
-    async def _dump_errcount_entry(self, get_log_fct: "Callable[[], Coroutine[Any, Any, ErrorLog]]", name: str) -> str:
-        try:  # see _dump_status_source()'s own comment - identical reasoning, different source kind.
+    async def _write_errcount_entry(self, writer: "_PieceWriter", get_log_fct: "Callable[[], Coroutine[Any, Any, ErrorLog]]", name: str) -> None:
+        try:  # see _write_guarded()'s own comment - identical reasoning, different source kind.
             raw = await get_log_fct()
         except Exception as e:
             await self.pr.err_s("Status stream source failed:", name, e, errno=6)
-            return '{"error":"unavailable"}'
-        return json.dumps(_shape_errcount_entry(raw, name))
+            writer.add('{"error":"unavailable"}')
+            return
+        writer.add_value(_shape_errcount_entry(raw, name))
 
     async def _put_status(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)

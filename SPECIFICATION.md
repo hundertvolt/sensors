@@ -4626,10 +4626,11 @@ none use default exports/dynamic imports/re-exports) and **inlining** (`style.cs
 `definitions.json` embedded directly into the staged `index.html`, with `<` escaped to avoid a
 literal `</script` closing the tag early) — 2 connections per page load (down from ~9).
 
-**`max_connections` is `7`** (raised from `4`, itself raised from `3`), stated per device in
+**`max_connections` is `8`** (owner, 2026-09-23: "target 10 parallel connections ground stable,
+keep the limit to 8 as safety margin"; before that 7, 4 and 3), stated per device in
 `devices/*.toml` and checked against the firmware's own PCB count by `buildgen/validate.py`. **The
 relationship, not the number, is what this section fixes**: `max_connections` sits below
-`MEMP_NUM_TCP_PCB` with margin, currently 10 against 7. Three slots rather than one, because
+`MEMP_NUM_TCP_PCB` with margin, currently 11 against 8. Three slots rather than one, because
 **TIME_WAIT pcbs come from that same pool** (`lib/lwip/src/core/tcp.c`'s `tcp_alloc()` reclaims the
 oldest TIME_WAIT only once `memp_malloc(MEMP_TCP_PCB)` has already failed) and keep-alive is
 unimplemented here, so every single request churns one.
@@ -4639,7 +4640,8 @@ connection also needs its share of two global pools: `MEMP_NUM_TCP_SEG` (a conne
 get a segment holds data the stack has accepted but cannot push) and `MEM_SIZE` (every outbound byte
 is copied into it — `modlwip.c`'s `tcp_write()` always passes `TCP_WRITE_FLAG_COPY`). Moved together,
 a connection costs **2,324 B of GC heap**, twelve times what the PCB slot alone suggests, and
-`max_connections = 7` costs **3.73%** of the heap. `check_lwip_ensemble()` refuses a ceiling the
+raising `max_connections` from 4 to 8 costs 9,296 B, **~5%** of the heap. For 8 the ensemble is
+`MEMP_NUM_TCP_PCB` 11, `MEMP_NUM_TCP_SEG` 64 (8 x 8), `MEM_SIZE` 16,000 (2,000 B per connection). `check_lwip_ensemble()` refuses a ceiling the
 pools cannot serve, per device, at build time.
 
 **`backlog` is coupled to it, and must be.** `asyncio.start_server()` defaults to a backlog of 5
@@ -4648,7 +4650,15 @@ above 5 was fiction — the accept queue dropped the rest inside lwIP, where not
 see it. It now derives `max_connections + 1`: enough that one over-ceiling arrival is queued and
 refused by `_serve()`'s own reject-when-full branch, visibly, rather than dropped unseen.
 
-**What 7 rests on, and what it does not.** The digital twin runs on the Unix port, which has **no
+**What the ceiling rests on, and what it does not.** *Serving* at MicroPython's own gc default is
+now the binding constraint, not lwIP: the 2026-09-23 sitting found the board served at most **4**
+concurrent requests at `gc.threshold(-1)`, admitting 16 on an over-provisioned image. Part I.3's
+fix is what 8 stands on. On the 32-bit twin, at heaps calibrated to either side of the board's own
+`-1` curve and reduced by each image's own lwIP cost, the fixed firmware serves **10 concurrent
+requests with zero allocation failures at both**, and its ceiling lies between **12 and 18**
+depending on which side the board is on (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q.12), so 8 has the
+margin the owner asked for. Silicon confirmation: `REAL_HARDWARE_TEST_QUEUE.md` §4B.
+**The earlier evidence for 7, kept as history.** The digital twin runs on the Unix port, which has **no
 lwIP at all** — its sockets are real host sockets — so it validates admission, rejection,
 simultaneous body allocation, task growth and latency, and **cannot** validate the PCB ceiling.
 The twin's own evidence for 7 is in `CONNECTION_SCALING_PLAN.md`, and it is narrower than an
@@ -4897,31 +4907,51 @@ question in F.5.8.
 
 ## I.3 The shared primitive: `_stream_dict_response()`
 
-Generalizes the already-shipped `/status` mitigation to any flat, dict-shaped GET response: one
-small `json.dumps(key) + ":" + json.dumps(value)` fragment per top-level entry, batched into as few
-pieces as practical under a `_MAX_STATUS_PIECE_BYTES` (1024) byte budget, handed to Microdot as
-`Response(iter(pieces), ...)` — byte-identical JSON, with the largest single allocation bounded
-regardless of how large the result grows. `/status` itself is untouched (its own sub-sections need
-per-fragment dumps before coalescing). **Why byte-budget batching, not per-module/per-section**:
-one piece per section scales with real module count (17 on real hardware, ~4.9KB — almost as large
-as the original whole-aggregate failure); one piece per module would push piece count high enough
-to hit the measured +53% throughput regression from per-write `asyncio.wait_for()` overhead (F.1).
-Byte-budget batching bounds both piece size and count regardless of module count.
-`_MAX_STATUS_PIECE_BYTES = 1024`'s real headroom, confirmed on real hardware: the smallest
-largest-allocatable-contiguous-block under real hammer load was 49152 bytes — **~48x headroom**.
-**Flagged, not corrected (2026-09-19):** 49152 is exactly `192 KB / 4`, which is also the value a
-binary-search largest-block probe over `[0, 192 KB]` returns when it pins its own buffer — the
-artefact `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7F.8 established, and this repo's only committed
-such probe uses exactly that ceiling. The instrument behind this figure arrived with a merge from
-`main` and is not in the tree, so this cannot be checked here. **The conclusion is unaffected
-either way**: the artefact only ever *understates*, so the real headroom is 48x or better. Recorded
-so the number is not reused as a measurement of the heap. **The artefact itself was reproduced on
-this board on 2026-09-22**, at exactly this value: a boot-placement run reported
-`largest_block=49152 retained=49152` at its control position, and a reread from a fresh frame
-returned 14,928 — so 49152-with-retained-equal is confirmed to be what the probe emits on real
-`dev` hardware when it pins its own buffer, not merely on the twin. That does not prove I.3's figure
-came from the artefact (the instrument behind it is still not in this tree), but it removes the last
-doubt about the mechanism. Queue row R16.
+Every GET route whose response grows with device configuration — `/status`, `/sensors`,
+`/measurements`, `/networking`, `/system`, `/notification` — writes its JSON through one
+`_PieceWriter` and hands Microdot `Response(iter(pieces), ...)` with an exact Content-Length. The
+writer concatenates adjacent JSON text fragments into pieces of at most `_MAX_STATUS_PIECE_BYTES`
+(**256**) without ever splitting a fragment, and `add_value()` writes a value the way
+`json.dumps()` would — dicts, lists and tuples walked, only keys and scalars dumped, with
+`json.dumps()`'s own `", "`/`": "` separators and its non-string-key rule (`True` → `"true"`). No
+value, however nested, is ever built as one string, so **the largest allocation on the path is one
+piece**. Its pending-fragment list is collapsed every `_MAX_PENDING_FRAGMENTS` (16), because a piece
+made of tiny fragments (`", "`, single digits) would otherwise need a list array as large as the
+piece. The bytes are **identical** to what the routes emitted before (the top level keeps its own
+`,`/`:`), pinned against MicroPython's own `json.dumps()` by `tests/test_asy_webserver_service.py`
+and compared route by route against the pre-fix firmware in the twin. `/status` flushes at each
+top-level section, so each section starts a piece. **Why byte-budget batching, not one piece per
+fragment**: every piece is one write through a per-write `asyncio.wait_for()`, measured at +53%
+throughput cost when pushed to one per character (F.1). At 256 B `dev`'s `/status` is 29 pieces (11
+at the old 1024 B); its wall-clock on silicon is `REAL_HARDWARE_TEST_QUEUE.md` row W3.
+
+**Why 256, and why the old 1024 was wrong (2026-09-23).** A piece cap is only a bound if the heap
+can still place a piece of that size *under load*, and at `gc.threshold(-1)` it cannot place 1024.
+The bench sitting (`BENCH_SITTING_2026-09-23_HANDOVER.md` §4) served at most 4 concurrent requests
+without a `MemoryError`; its failures were ~870 B `/status` pieces, a 296 B errcount entry and a
+509 B `/measurements` fragment, with the largest free run driven to ~800 B. A **32-bit** frozen twin
+(the RP2040's own pointer and block size) reproduces exactly those three sites, and shows why
+(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q): a loaded heap keeps ~100 KB free as hundreds of small
+holes and no large run, so an allocation succeeds only if it fits the holes. Allocation *size* is
+the variable, churn *volume* is not: a first version of this fix made 14% *more* churn and removed
+the failures all the same. (The final one happens to cut `/status`'s churn 4.5x, 70,208 → 15,648 B,
+because no value is serialised whole any more; `/measurements` and `/sensors` rise 1.5x and 1.1x.)
+Measured on that twin by shaping the heap so no free run exceeds S
+(`tests_hardware/device_scripts/allocation_need_per_source.py`), the largest block each path needs:
+
+| | as shipped | now |
+| --- | --- | --- |
+| `/status` | **1,024 B** | 320 B |
+| `/sensors` | 768 B | 256 B |
+| `/measurements` | 512 B | 256 B |
+| `/networking`, `/system`, `/notification` | ≤ 192 B | ≤ 192 B |
+| every individual data source (status, maintenance, error log, sensor data/config, settings) | ≤ 192 B | ≤ 192 B |
+
+The sources were never the problem; the assembly was. **256, not smaller**: at 128 the list holding
+a response's pieces grows to 64 slots, a 256 B array, and the measured ceiling does not move (§7Q),
+while the write count doubles. The earlier "**~48x headroom**, 49152 bytes under real hammer load"
+for the 1024 B cap is **withdrawn**: already flagged as the pinned-buffer probe artefact (queue row
+R16), it is contradicted outright by the board's own ~800 B largest run under load.
 
 Test coverage: direct primitive tests; a hammer test at the real 17-module scale for each fixed
 route; a combined final test hammering all six memory-bounded GET routes concurrently. Every hammer

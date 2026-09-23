@@ -445,7 +445,7 @@ knowledge, and carries the full method, the traps and the recording table. These
 | C4 | Record §7's full table for the shipped setting — contiguity after boot and under load, `.bss`/`.data`, latency, every `MemoryError`/`memory allocation failed` spelling, any watchdog reset | OPEN |
 | C5 | The wall, in **two images not a bisection** | **DONE 2026-09-23** — image B admitted all 16, five for five: **no admission wall below 16**, so the shipped 7 has >=2.3x margin and image C was not built. But admission is not service: image B serves only 13/16 and its first 500 lands at N=7. PLAN §8.7.2 |
 | C5b | Every admitted connection actually **served** | **DONE 2026-09-23** — both rows pass on image A at the shipped 7; both fail on image B at 16 (bodies truncated to 3,072 B or empty). PLAN §8.7.2 |
-| C5d | Rows 7/8 of the handover's decision table: the board's heap AT PEAK with a full ceiling genuinely held open - `test_heap_under_connection_ceiling.py` plus its device script. **Written without a board to try them on**; run last, treat a first-run failure as a harness bug | OPEN |
+| C5d | Rows 7/8 of the handover's decision table: the board's heap AT PEAK with a full ceiling genuinely held open - `test_heap_under_connection_ceiling.py` plus its device script | **DONE 2026-09-23** — held at the ceiling 98% of samples, 15 placeable 2 KB blocks at worst against a demand of 7, after four instrument defects were fixed. `BENCH_SITTING_2026-09-23_HANDOVER.md` §3.4 (this row was left OPEN by that sitting's commit and is closed here from its own record) |
 | C5c | Whether `PBUF_POOL_SIZE` really can stay at 16 | **DONE 2026-09-23 — yes.** At an 8x advertised inbound over-commit (16 x TCP_WND against 12,832 B of pool) the pbuf pool never surfaced; the GC heap bound first in both images. PLAN §8.7.3 |
 | C6 | A `LWIP_STATS = 1` image, only if C5 fails for a reason that cannot be named | **DONE 2026-09-23 without building it** — the reason was nameable directly: `MemoryError` tracebacks captured off the serial console show MicroPython's **GC heap**, not any lwIP pool, allocating 296-862 B inside `_stream_dict_response()`. PLAN §8.7.2 |
 
@@ -453,6 +453,28 @@ knowledge, and carries the full method, the traps and the recording table. These
 the digital twin runs on the Unix port, which has no lwIP at all. Everything above the transport is
 already measured and green (`CONNECTION_SCALING_PLAN.md` §8.3/§8.4); the PCB and pbuf ceilings are
 structurally outside what the twin can see.
+
+## 4B. Serving at `gc.threshold(-1)` — the 2026-09-23 finding, fixed, and the limit raised to 8
+
+Opened by the sitting's §4 (at most 4 concurrent requests without a `MemoryError` at MicroPython's
+own default). **Root-caused and fixed in the twin the same day** — `HEAP_FRAGMENTATION_MEASUREMENTS.md`
+§7Q is the full account, `SPECIFICATION.md` I.3 the rule it produced. In one line: a loaded heap at
+`-1` keeps ~100 KB free as small holes and no large run, and the routes assembled their JSON in
+pieces of up to ~870 B; every route now writes through a bounded writer whose largest allocation is
+one 256 B piece. The owner then set `max_connections = 8`, targeting 10 stable (SPECIFICATION.md
+H.7). **`REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md` §0 is the runnable procedure for all of it.**
+
+The instrument is `tests_hardware/bench/test_serving_heap_at_default_gc.py` — about 10 minutes, part
+of the routine bench tier, the board restored once at the end. Both device scripts it drives, and
+the test's own functions, host driver and assertions, were run against the twin before this row was
+written — the sweep passed there in 155 s, and it caught three instrument defects first (§7Q.13).
+
+| Row | What | Status |
+| --- | --- | --- |
+| W1 | **The fix on silicon, at the shipped limit**: flash this branch's tip (image F), run the file. `test_every_source_and_route_fits_a_small_free_run` — twin prediction: no route or source needs a free run above 320 B (as shipped, `/status` needed 1,024). `test_serving_sweep_at_the_reactive_default` — N = 4, 6, 8, 10 at `gc.threshold(-1)` on one boot: **zero allocation failures**, 8 served per round at N = 10 and 2 refused cleanly. It also answers the recovery question the twin could not: its `pre`/`post` dumps are the idle heap before and after the load | OPEN |
+| W2 | **10 served, and the board's real ceiling**: image G, `max_connections = 16` with image B's ensemble (§0 has the exact edit), the same file — levels 4..18. Twin prediction: **clean through 12 at the board's harsher calibration, through 18 at its gentler one** — the sweep's 4-18 spans exactly that bracket. Image G carries 18,592 B more `.bss` than F, so its wall is if anything a little lower than a right-sized image's | OPEN |
+| W3 | `/status` wall-clock with 29 pieces instead of 11: `test_end_to_end_timing.py` on image F against the sitting's own figures. F.1's +53% was per *character*; this is per ~250 B | OPEN |
+| W4 | The whole bench tier on image F, default flags — the new file included | OPEN |
 
 ## 5. Excluded on purpose
 

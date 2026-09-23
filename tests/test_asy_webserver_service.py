@@ -17,7 +17,7 @@ from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
 from microdot import Microdot, Request, Response  # type: ignore[import-not-found]
 
 import config_manager as cm
-from asy_webserver_service import SettingsGroup, WebserverService, _stream_dict_response, _TimeoutStreamProxy
+from asy_webserver_service import SettingsGroup, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
 
 try:
     from typing import TYPE_CHECKING
@@ -2221,10 +2221,14 @@ def test_h2_stream_module_names_with_special_characters_are_correctly_escaped() 
     assert set(errcount.keys()) == {'SGP"40', "WEBSERVER"}
 
 
+_HAMMER_PIECE_BUDGET = 256  # the firmware's _MAX_STATUS_PIECE_BYTES, restated: a const() is not a
+# module attribute, so it cannot be imported. No margin - pieces are bounded by the cap itself.
+
+
 def test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_not_one_growing_blob() -> None:
     # Real-hardware finding: 17 registered modules joined into one "errcount" piece reached ~4.9KB
     # - nearly the whole pre-streaming aggregate, and enough to cause a reproducible MemoryError.
-    # Simulates that scale and checks _coalesce_json_fragments() splits it into bounded pieces.
+    # Simulates that scale and checks the _PieceWriter splits it into bounded pieces.
     modules = []
     for i in range(20):
         m = _FakeModule(f"MODULE{i}")
@@ -2235,15 +2239,103 @@ def test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_no
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     chunks = list(res.body)
     encoded = [c.encode() if isinstance(c, str) else c for c in chunks]
-    # A generous margin over _MAX_STATUS_PIECE_BYTES for the small fixed prefix/suffix
-    # _append_coalesced_object() fuses onto the first/last batch - the point being asserted here is
-    # "nowhere near the ~4.9KB real-hardware failure size", not an exact byte count.
-    assert all(len(c) < 1200 for c in encoded), [len(c) for c in encoded]
+    # Exactly the cap, no margin: every fragment here is far smaller than it, so any piece above it
+    # means a whole module entry was built as one string again (SPECIFICATION.md Part I.3).
+    assert all(len(c) <= _HAMMER_PIECE_BUDGET for c in encoded), [len(c) for c in encoded]
     assert len(chunks) > 5  # proof the errcount section really did split into multiple pieces
     body = json.loads(b"".join(encoded))
     assert len(body["errcount"]) == 21  # 20 fake modules + this service's own WEBSERVER entry
     for i in range(20):
         assert body["errcount"][f"MODULE{i}"] == {"counter": 10, "history": [{"num": 1, "type": "E"}] * 10}
+
+
+def _errcount_log(name: str, count: int, nums: "list[int]", types: "list[str]") -> "dict[str, Any]":
+    return {name: {"ErrCount": count, "ErrNum": nums, "ErrType": types}}
+
+
+def _written(value: object, max_bytes: int = 256) -> "list[str]":
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, max_bytes=max_bytes)
+    writer.add_value(value)
+    writer.flush()
+    return pieces
+
+
+def test_h2_add_value_is_byte_identical_to_json_dumps() -> None:
+    # The whole fix rests on this: MicroPython's OWN json.dumps() text - key order, ", "/": "
+    # separators, escaping, float repr - reproduced by walking the value instead of dumping it.
+    values: list[object] = [
+        None, True, False, 0, -3, 12345678, 1.5, -0.25, 1e-7, "", "plain", 'q"x\\y\n\u00e9', [], {}, (), [[]], {"a": {}},
+        [1, "two", None, 2.5, [3, [4, {"five": 5}]]],
+        (1, (2, 3)),
+        {"GainMeas": None, "CCT": None, "RGB": {"G": None, "B": 0.5, "R": 1}, "Lux": 12.25, "Flags": [True, False]},
+        {1: 2, "k": {"nested": [{"deep": [1, 2, {"deeper": "yes"}]}]}},
+        {True: 1, None: 2, 1.5: 3, -3: 4, (1, 2): 5, 'a"b': 6},  # json.dumps()'s own non-str key rule
+    ]
+    values.extend(
+        _shape_errcount_entry(_errcount_log("M", count, [(i * 37) % 991 - 3 for i in range(length)], [kinds[i % len(kinds)] for i in range(length)]), "M")
+        for count in (0, 1, 12345)
+        for length in (0, 1, 10, 17)
+        for kinds in (("N",), ("E", "W"), ('q"x', "\\", "E"))
+    )
+    for value in values:
+        assert "".join(_written(value)) == json.dumps(value), value
+
+
+def test_h2_add_value_bounds_every_piece_however_large_the_value() -> None:
+    # A value far larger than the cap - the case one json.dumps() per value turned into one large
+    # allocation per value - comes out in pieces no larger than the cap.
+    big = {f"Sensor{i}": {"Reading": i * 1.5, "History": [{"num": n, "type": "E"} for n in range(12)]} for i in range(8)}
+    pieces = _written(big, max_bytes=128)
+    assert "".join(pieces) == json.dumps(big)
+    assert max(len(p) for p in pieces) <= 128, [len(p) for p in pieces]
+    assert len(pieces) > len(json.dumps(big)) // 128
+
+
+def test_h2_errcount_entry_is_never_one_string() -> None:
+    # The allocation this bounds on silicon: a whole 10-element entry is ~290 B, above the holes a
+    # loaded heap keeps at gc.threshold(-1) (BENCH_SITTING_2026-09-23 section 4).
+    entry = _shape_errcount_entry(_errcount_log("M", 10, list(range(90, 100)), ["E"] * 10), "M")
+    pieces = _written(entry, max_bytes=64)
+    assert "".join(pieces) == json.dumps(entry)
+    assert max(len(p) for p in pieces) <= 64
+
+
+def test_h2_piece_writer_bounds_every_piece_and_never_splits_a_fragment() -> None:
+    fragments = ["a" * n for n in (5, 100, 120, 30, 256, 1, 300, 7, 7)]
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, max_bytes=256)
+    for fragment in fragments:
+        writer.add(fragment)
+    writer.flush()
+    assert "".join(pieces) == "".join(fragments)
+    # A fragment larger than the cap stands alone rather than being cut; everything else fits it.
+    assert [len(p) for p in pieces] == [255, 256, 1, 300, 14]
+
+
+def test_h2_piece_writer_never_holds_more_than_sixteen_pending_fragments() -> None:
+    # Streamed values arrive as many tiny fragments (", ", ": ", single digits); left to grow, the
+    # pending list's own array would be as large as the piece - the allocation the writer bounds.
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, max_bytes=256)
+    fragments = [", ", "1", ": ", '"k"'] * 200
+    for fragment in fragments:
+        writer.add(fragment)
+        assert len(writer._group) <= 16, len(writer._group)
+    writer.flush()
+    assert "".join(pieces) == "".join(fragments)
+    assert max(len(p) for p in pieces) <= 256
+    assert min(len(p) for p in pieces[:-1]) > 200  # still full pieces, not one per 16 fragments
+
+
+def test_h2_piece_writer_flush_is_idempotent_and_an_empty_writer_adds_nothing() -> None:
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces)
+    writer.flush()
+    writer.add("x")
+    writer.flush()
+    writer.flush()
+    assert pieces == ["x"]
 
 
 # -- H.3: gc.threshold() companions to the real-hardware hammer-load investigation ---------------
@@ -2375,8 +2467,6 @@ def test_i1_a_key_with_special_characters_is_correctly_escaped_not_hand_concaten
     assert json.loads(status_body(res)) == result
 
 
-_HAMMER_PIECE_BUDGET = 1200  # same generous margin over _MAX_STATUS_PIECE_BYTES (1024) as the H.2
-# coalescing test above - not an exact byte count, just "nowhere near" an unbounded aggregate.
 
 
 def _assert_body_is_bounded_stream(res: "Response", path: str) -> bytes:

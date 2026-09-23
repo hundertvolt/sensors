@@ -223,23 +223,12 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    home. Kept here as a closed stub, at its original number, only because several `tests/`/
    `tests_hardware/` code comments still cite it as "BACKLOG.md open question 6" - don't renumber
    this item while those references exist.
-7. **Should `asy_webserver_service.py`'s `max_connections=4` be raised?** Confirmed on real
-   hardware (dev-bench, hotspot mode): a realistic 8-way concurrent client burst against `/`
-   (simulating several phones/tabs hitting the DUT at once) got 7/8 real `302` responses (some
-   queued 0.5-1.5s behind Microdot's own accept loop) and 1/8 flatly connection-refused (`000` in
-   ~37ms) — `_serve()`'s existing "silently close, no accept, no response ever written"
-   reject-when-full behavior working exactly as designed (see `tests_hardware/README.md`'s Fourth
-   pass section for the mechanism), just with real, measurable client-visible impact under a more
-   realistic burst shape than the pre-existing exactly-at-the-limit tests use. Not fixed — raising
-   the cap costs RAM per additional held-open connection buffer on an RP2040 with a fixed, already
-   tight budget, a real tradeoff only the project owner should weigh in on; left exactly as-is
-   pending that decision. **New real evidence for this same tradeoff (2026-09-04)**: this file's own
-   "real, easily-reproducible `MemoryError` under sustained real concurrent HTTP load" entry -
-   concrete confirmation that concurrent request handling can already push the heap into real,
-   if transient, near-exhaustion troughs at the *current* `max_connections=4` - a data point against
-   raising the cap without also addressing headroom, not just a RAM-per-buffer cost argument.
-   **Owner's call, 2026-09-11: keep deferred** - stays as-is, revisit only if a real deployment
-   symptom makes it pressing.
+7. **Closed 2026-09-23: the connection limit is `8`**, owner's decision ("target 10 parallel
+   connections ground stable, keep the limit to 8 as safety margin"). It was raised 4 → 7 on the
+   connection-scaling branch; the 2026-09-23 sitting then showed 7 held only with
+   `gc.threshold(32768)` set, the board serving at most 4 at MicroPython's own default. The cause
+   and the fix are SPECIFICATION.md Part I.3; the limit, its lwIP ensemble and what it rests on are
+   Part H.7. Silicon confirmation of 8 and of 10: REAL_HARDWARE_TEST_QUEUE.md §4B.
 8. **Two bench-rig capabilities would each move one test candidate from `[MANUAL]` to `[AUTO]` —
    SETTLED 2026-09-22 (owner): no hardware will be bought for this, so the rig stays as it is and
    both candidates are permanently `[MANUAL]`.** Not "planned for later" any more, which is how
@@ -771,6 +760,22 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     from `npm run test:unit` rather than from reading 150 conflict hunks. After a resolution that
     takes one side wholesale, run every tier before trusting it.
 
+44. **Three follow-ups to the serving fix (2026-09-23), none blocking.** Evidence:
+    HEAP_FRAGMENTATION_MEASUREMENTS.md §7Q.
+    - **A twin gate that can see this class of defect.** The CI twin runs non-frozen at a 2 MB heap
+      on a 64-bit build and never came near it. What reproduces the board — its failing sites and
+      sizes — is a **32-bit, frozen** Unix port at a calibrated heap: `make BUILD=... CC="gcc -m32"
+      CXX="g++ -m32" LD="gcc -m32" MICROPY_PY_FFI=0 FROZEN_MANIFEST=<src/ext/generated/twin>`, which
+      needs `gcc-multilib`. That is a `toolchain/` change (a third Unix-port variant, and an apt
+      package) plus a CI job, so it owes the chroot list above and is §12's first item, widened.
+    - **The next wall is vendored.** Past 10 connections the first allocation to fail in the 64-bit
+      twin is `ext/microdot.py:383`, the `Request` object's own attribute table growing as its
+      `__init__` sets ~20 attributes (~232 B on the RP2040). Not ours to change; recorded so it is
+      not rediscovered as a new defect.
+    - **The UART link exerciser's 264 B receive path** (`asy_uart_comm.py:913`) failed twice at 10
+      in the 64-bit twin, the only module outside the webserver to fail anywhere in the sweeps. It
+      did not fail on the board-faithful 32-bit twin. Recorded, not chased.
+
 ## Deferred / explicitly out-of-scope work
 
 - **Closed 2026-09-22: every dangling `§` reference in the tree now resolves.** They cited the
@@ -901,6 +906,12 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   failure, the pytest tier) as a GitHub workflow-command annotation, guarded on `GITHUB_ACTIONS` so
   a local or chroot run prints nothing extra and behaves exactly as before. No build step, so the
   chroot legs neither exercise nor are threatened by it.
+  **2026-09-23, `toolchain/versions.toml` — the class the installer leg exercises**: the `[lwip]`
+  ensemble re-sized for `max_connections = 8` (owner, 2026-09-23: "target 10 ground stable, keep the
+  limit to 8 as safety margin") — `MEMP_NUM_TCP_PCB` 10 → 11, `MEMP_NUM_TCP_SEG` 56 → 64, `MEM_SIZE`
+  14000 → 16000, every relationship unchanged and `check_lwip_ensemble()` passing. A firmware build
+  runs the post-build macro verification against these, so it is the installer leg
+  (`uv run toolchain/setup_toolchain.py`) that covers it; the lint/typecheck recipe does not.
   Kept here as the running list of what is owed, not as a merge blocker.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not

@@ -898,3 +898,18 @@ same ~870 B allocation inside `_stream_dict_response()` that image B showed.
 So the shipped 7 works *with* the threshold and does not stand on its own without it, which is the
 one thing CLAUDE.md's memory-safety ladder says a threshold may not be used for. Full method,
 numbers and consequences: `BENCH_SITTING_2026-09-23_HANDOVER.md` §4.
+
+### 8.7.6 Resolved in the twin the same day, and the limit raised to 8
+
+The open finding above is root-caused and fixed: the routes assembled their JSON in pieces of up to
+~880 B, and a heap loaded at `-1` keeps ~100 KB free with no free run that large. Every streamed
+route now writes through a bounded writer whose largest allocation is one 256 B piece, byte-identical
+on the wire (SPECIFICATION.md I.3; evidence `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q). On a 32-bit
+twin calibrated to this sitting's own `-1` curve — it reproduces the three failing call sites and
+their sizes — the fixed firmware serves **10 concurrent requests with zero allocation failures** at
+heaps bracketing the board's own curve, each reduced by the image's own lwIP cost, and its ceiling
+lies between 12 and 18 depending on which side of that bracket the board is. The owner set
+`max_connections = 8` on that basis ("target 10 ground stable, keep the limit to 8 as safety
+margin"), with the ensemble re-sized to PCB 11 / SEG 64 / `MEM_SIZE` 16,000 (SPECIFICATION.md H.7).
+§8.5's recommendation of 7 is superseded. Silicon confirmation of both is
+`REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md` §0.

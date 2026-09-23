@@ -9,6 +9,89 @@ like `REAL_HARDWARE_TEST_QUEUE.md`: delete it once every row below is recorded a
 
 ---
 
+## 0. THE NEXT SITTING — the serving fix and the limit of 8 (written 2026-09-23, after §1-§9 ran)
+
+**§1-§9 below were run on silicon on 2026-09-23**; `BENCH_SITTING_2026-09-23_HANDOVER.md` is their
+record. That sitting found one thing they did not ask: **at MicroPython's own gc default the board
+served at most 4 concurrent requests** — lwIP admitted 16, the GC heap could not serve them. This
+section is the runnable follow-up. It needs **two flashes** and about **45 minutes** including both
+builds. Everything it asks for has a twin prediction next to it; a result that disagrees is the
+finding, not a harness bug to explain away — the instruments were all run against the twin first.
+
+### 0.1 What changed since the sitting, in four lines
+
+- **Every streamed GET route** (`/status`, `/sensors`, `/measurements`, `/networking`, `/system`,
+  `/notification`) writes its JSON through a bounded writer: the largest allocation on the path is
+  one 256 B piece, where it was up to ~880 B. The bytes on the wire are **identical**. (SPEC I.3)
+- **`max_connections` is 8** (owner: "target 10 ground stable, keep the limit to 8 as safety
+  margin"), lwIP ensemble `MEMP_NUM_TCP_PCB` 11 / `MEMP_NUM_TCP_SEG` 64 / `MEM_SIZE` 16,000. (SPEC H.7)
+- **All evaluation is at `gc.threshold(-1)`** — the device scripts set it explicitly, because
+  `mpremote` does not reset the interpreter and the boot entry's own threshold would still be set.
+- The twin that predicted all this is a **32-bit** frozen Unix port at a heap calibrated to the
+  board's own §4 curve — it reproduces the sitting's three failing call sites and sizes exactly.
+  (MEASUREMENTS §7Q)
+
+### 0.2 Before anything
+
+- The owner's go-ahead **in your own conversation** (CLAUDE.md). `DebugLevel = 5`.
+- **Read `GET /status`'s `errcount` and write it down before anything writes.** Both device scripts
+  below build their own `AsyFramManager` over the same FRAM chip, so afterwards the log is not
+  evidence (CLAUDE.md, the FRAM-log rule and its caveat).
+- **Traps that cost the last sitting time**: a `pgrep -f "<pattern>"` or `pkill -f` wait loop
+  matches its own command line; `mpremote` does not reset the interpreter; a host-side load thread
+  that outlives its test takes every later test down (the new file joins and asserts on it).
+
+### 0.3 Image G first — 10 served, and the board's real ceiling (row W2)
+
+1. Edit **locally, never committed**: `devices/dev.toml` `max_connections = 16`, and
+   `toolchain/versions.toml` `[lwip]` `MEMP_NUM_TCP_PCB = 19`, `MEMP_NUM_TCP_SEG = 128`,
+   `MEM_SIZE = 32000` — image B's coherent ensemble (§5). `buildgen` refuses an incoherent set.
+2. `uv run scripts/build_firmware.py dev`, flash (`tests_hardware/README.md`). Record `.bss` and
+   the GC heap (`__GcHeapEnd - __GcHeapStart`) from the ELF — expect ~18,592 B less heap than F.
+3. `uv run pytest tests_hardware/bench/test_serving_heap_at_default_gc.py -s` (the bench fixtures
+   need the board and the bridge). The sweep reads the ceiling from your local `dev.toml`, so it
+   runs levels **4, 6, … 18**, 12 rounds each, on one boot. ~12 minutes.
+4. Record per level: served / 500 / 400 / refused, and every `memory allocation failed, allocating
+   N bytes` with its traceback site. **Twin prediction: zero failures through 12**; from 14 on, failures
+   at pieces (~250 B), at `microdot.py:383` (the `Request` object's own attribute table, ~232 B) and
+   at the list holding a response's pieces — at the twin's harsher calibration. At its gentler one it
+   is clean through 18, so the real wall anywhere in 12-18 is consistent with the twin; below 10 is
+   not. G's extra `.bss` makes its wall, if anything, lower than a right-sized image's.
+5. `git checkout -- devices/dev.toml toolchain/versions.toml` before the next build.
+
+### 0.4 Image F — the tip as it ships (rows W1, W3, W4)
+
+1. `uv run scripts/build_firmware.py dev`, flash. The build's own lwIP verification must pass with
+   11 / 64 / 16,000.
+2. `test_serving_heap_at_default_gc.py` again (W1), ~10 minutes. **Twin predictions**:
+   `test_every_source_and_route_fits_a_small_free_run` — every route and every data source runs
+   on a heap whose largest free run is 384 B (twin: worst route 320 B, every source ≤ 192 B); as shipped `/status` needed 1,024. The sweep —
+   levels 4, 6, 8, 10: **zero allocation failures**, at N = 10 exactly 8 served per round and 2
+   refused cleanly.
+3. From the same run, the question the twin could not settle: **does the heap recover** after the
+   load? Compare the `pre` and `post` dumps' `largest_free_run`/`runs`.
+4. `test_end_to_end_timing.py` (W3): `/status` now goes out as 29 pieces instead of 11; compare
+   against the sitting's own timing.
+5. The full bench tier, default flags (W4): `scripts/run_bench_hardware_suite.sh`. Read the
+   deselected count, not just "clean". **The board is left on F.**
+
+### 0.5 Recording table
+
+| row | image | measurement | twin prediction | `[HW]` |
+| --- | --- | --- | --- | --- |
+| W2 | G | failures at N = 10 / 12 / 14 / 16 / 18 | 0 / 0 / then 0 or >0 (bracket 12-18) | ___ |
+| W2 | G | first failing level, and its sizes and sites | 14-20; ~250 B pieces, `microdot.py:383` | ___ |
+| W1 | F | largest need of any route / any source | 320 B / ≤ 192 B | ___ |
+| W1 | F | failures at N = 4 / 6 / 8 / 10 | 0 / 0 / 0 / 0 | ___ |
+| W1 | F | largest free run, idle before vs after the load | unsettled in the twin | ___ |
+| W3 | F | `/status` p50 / p95 | not modelled (twin has no lwIP) | ___ |
+| W4 | F | bench tier passed / skipped / deselected | — | ___ |
+
+If W2 fails **below** 10 on silicon, 8 is not the margin it was meant to be: record it and stop —
+that is the owner's decision, not the sitting's.
+
+---
+
 ## 1. What this is about, in one paragraph
 
 The firmware serves HTTP from `src/asy_webserver_service.py`. It admits at most
