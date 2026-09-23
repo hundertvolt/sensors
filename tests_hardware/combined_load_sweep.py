@@ -161,22 +161,26 @@ def _peak_lines(output: str) -> list[str]:
 
 
 def _margin_line(output: str) -> str:
-    """Post-collect free heap from a --margin run: idle after boot vs the worst and median sample under load."""
-    maps = heap_map.parse_labelled(output)
-    idle = maps.get("after_boot")
-    samples = [m for label, m in sorted(maps.items()) if label.startswith("t")]
-    if idle is None or not samples:
-        return "margin: no post-collect samples captured"
-    frees = sorted(m.free_bytes for m in samples)
-    runs = sorted(m.largest_free_run for m in samples)
-    total = idle.total_bytes
+    """Post-collect free heap from a --margin run: settled idle (the window's last third, after the load)
+    against the load window, i.e. every sample up to the last one below 95 % of that idle."""
+    samples = [m for label, m in sorted(heap_map.parse_labelled(output).items()) if label.startswith("t")]
+    if len(samples) < 6:
+        return "margin: too few post-collect samples captured"
+    idle = sorted(m.free_bytes for m in samples[-len(samples) // 3 :])[len(samples) // 6]
+    last_loaded = max((i for i, m in enumerate(samples) if m.free_bytes < 0.95 * idle), default=-1)
+    if last_loaded < 0:
+        return f"margin: no sample below 95 % of the settled idle {idle} B - no load window found"
+    load = samples[: last_loaded + 1]
+    frees = sorted(m.free_bytes for m in load)
+    runs = sorted(m.largest_free_run for m in load)
+    total = samples[0].total_bytes
 
     def pct(value: int) -> str:
         return f"{value} B ({100 * value / total:.1f} %)"
 
     return (
-        f"margin (post-collect, heap {total} B): idle {pct(idle.free_bytes)} | under load min {pct(frees[0])}, "
-        f"median {pct(frees[len(frees) // 2])} | largest free run min {runs[0]} B, median {runs[len(runs) // 2]} B | samples {len(samples)}"
+        f"margin (post-collect, heap {total} B): settled idle {pct(idle)} | under load min {pct(frees[0])}, "
+        f"median {pct(frees[len(frees) // 2])} | largest free run min {runs[0]} B, median {runs[len(runs) // 2]} B | load samples {len(load)} of {len(samples)}"
     )
 
 
@@ -209,6 +213,8 @@ def run_level(board: Board, bench: BenchBridge, ip: str, script: Path, n: int, r
     if peak:
         for line in _peak_lines(output):
             print(f"     {line}")
+        device_rejected = next((part.split("=", 1)[1] for line in output.splitlines() if line.startswith("PEAK_SUMMARY") for part in line.split() if part.startswith("rejected=")), "?")
+        print(f"     refusals cross-check: host counted {refused}, device rejected {device_rejected} (a gap means a reset the ceiling did not cause)")
     if margin and not peak:  # --peak --margin reports through _peak_lines(); the maps it summarises are not taken
         try:
             print(f"     {_margin_line(output)}")

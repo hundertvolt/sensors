@@ -52,6 +52,16 @@ async def _peak_sampler(webserver: "WebserverService") -> None:
     # Never collects. A rise of >= 2 KB in mem_free() between two 20 ms reads marks a GC the run's own
     # threshold triggered (explicit C-side frees are small: every serving allocation is <= 256 B), so
     # that reading is heap minus live set; a user-class __del__ or weakref sentinel is not on rp2.
+    rejected = [0]  # reject-when-full closes, counted on the device so the host's "refused" can be checked
+    counter, limit, increment = webserver._open_conns, webserver._max_connections, webserver._open_conns.increment
+
+    async def _counting_increment() -> int:
+        current = await increment()
+        if current > limit:
+            rejected[0] += 1
+        return current
+
+    counter.increment = _counting_increment  # type: ignore[method-assign]  # instrumentation only, never src/
     started = time.ticks_ms()
     low: dict[int, int] = {}  # open connections -> lowest post-GC free heap seen at that count
     seen: dict[int, int] = {}  # open connections -> samples taken at that count
@@ -72,7 +82,7 @@ async def _peak_sampler(webserver: "WebserverService") -> None:
                 micropython.mem_info()
         previous = free
         await asyncio.sleep_ms(_PEAK_SAMPLE_MS)
-    print(f"PEAK_SUMMARY heap={gc.mem_free() + gc.mem_alloc()} min_free_after_gc={overall} collections={collections}")
+    print(f"PEAK_SUMMARY heap={gc.mem_free() + gc.mem_alloc()} min_free_after_gc={overall} collections={collections} rejected={rejected[0]}")
     for conns in sorted(seen):
         print(f"PEAK_AT conns={conns} samples={seen[conns]} min_free_after_gc={low.get(conns, -1)}")
 

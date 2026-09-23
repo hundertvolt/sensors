@@ -82,6 +82,15 @@ Between levels: `kick_all_stations()`, hard reset, 45 s settle.
 - The reference fetch is accepted only as a 200 whose non-empty body equals its `Content-Length`
   (every device-script boot drops and rejoins WLAN at ~6 s uptime and a reference once came back 0 B).
 - A torn heap-map capture is reported, not fatal.
+- **`refused` is cross-checked on the device** (added after this day's runs): in `--peak` the device
+  script counts every `_serve()` reject-when-full close and prints it as `PEAK_SUMMARY … rejected=K`;
+  the tool prints `refusals cross-check: host counted R, device rejected K`. `is_ceiling_close()`
+  books any reset without a response as a refusal, so **R > K means resets the ceiling did not
+  cause** (lwIP, a crash between accept and response) hiding among the "expected" ones. Validated
+  in the twin: limit 4, 6 clients, host 1,549 resets = device 1,549 rejections.
+- **`--margin`'s printed idle and median are fixed** (same commit): idle is now the settled idle (the
+  window's last third), and min/median span only the load window (every sample up to the last one
+  below 95 % of that idle) — the re-derivation of §5.3, done by the tool.
 
 ### 4.2 The peak sampler, and what its heap figure is worth
 
