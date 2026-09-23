@@ -777,3 +777,52 @@ N= 5  — driver crashed parsing a torn heap-map capture (10.10.5); host tally l
   (`max_connections = 8`). Whether 10 is stable is G′'s question (§10.11).
 - H3 (`/status` timing) and H4 (full bench tier) on F′: **not run yet** — deferred behind G′ at the
   owner's restated priority.
+
+## 10.11 Image G′ — the owner's bar of 10, at `gc.threshold(-1)` (in progress)
+
+### 10.11.1 Image G′ — built, verified, flashed
+
+- Same firmware code as F′ (the four commits pulled in between touched docs only), plus the local,
+  **never committed** edits of handover §0.3: `devices/dev.toml` `max_connections = 16`,
+  `toolchain/versions.toml` `MEMP_NUM_TCP_PCB = 19`, `MEMP_NUM_TCP_SEG = 128`, `MEM_SIZE = 32000`.
+  Every lwIP macro read back from the firmware translation unit; ensemble check clean at 16.
+- GC heap `0x20040000 - 0x20016b60` = **169,120 B** — 18,592 B less than F′, identical to G.
+  Board up, `GET /` `Content-Length: 9292`.
+
+### 10.11.2 H1 on G′ — `test_serving_heap_at_default_gc.py`: **1 passed, 1 FAILED** (524 s)
+
+- Need test: **passes**, the same figures as F′ within one block — `route:/status` 320 B,
+  `route:/` 320 B, `/measurements` and `/sensors` 256 B, `/networking` and `/system` 192 B,
+  `/notification` 128 B, every `errcount:*` 80 B.
+- Sweep (one boot, levels 4, 6, …, 18 against the ceiling of 16): **FAILED — the heap ran out, it
+  did not merely fragment.** At uptime 381 s, in the last captured load sample (`load60`), the
+  device logged, in this order:
+  - `SCD30 PrintLog: History write failed!` / `SCD30 Error reading config from sensor: memory
+    allocation failed, allocating 80 bytes`
+  - `BMP3XX PrintLog: History write failed!` / `BMP3XX Error reading config from sensor: memory
+    allocation failed, allocating 68 bytes`
+  - a route-handler `MemoryError: memory allocation failed, allocating 138 bytes` at
+    `_get_sensors` → `_stream_dict_response` (`asy_webserver_service.py:73`) → `_PieceWriter.add_value`
+    (`:54`) → `_PieceWriter.add` (`:42`)
+  - and the device script's own sampler died: `RESULT: FAIL MemoryError('memory allocation failed,
+    allocating 72 bytes')`.
+  Allocations of 68-138 B failing means the free pool itself was exhausted, not that a large block
+  could not be placed — a different failure class from F's 1,025 B static reads. Sensor tasks and
+  FRAM history writes, not only the webserver, were hit.
+- **Instrument gap**: pytest's assertion message carries only the last 2,000 characters of device
+  output, and the host tallies print only after that assertion, so **which level broke is not
+  recorded** (it was one of 4-18). The per-boot H2 (below) answers the level question directly.
+
+### 10.11.3 A watchdog reset and a failed rejoin between H1 and H2
+
+- H1 ended 17:51:56; the chained H2 started its `mpremote` session ~17:52:26 (a 30 s gap); at
+  **17:52:35** the board's USB dropped and re-enumerated (`usb 1-1.4: USB disconnect` in the kernel
+  log), so H2 died on its first level with `OSError: [Errno 5]` on the serial port — no data. The
+  ~9 s between attach and reset matches the 8,388 ms hardware watchdog going unfed; a probable
+  cause is the new session attaching while the board was still in its boot, but that is **not
+  confirmed**.
+- After that reset the board **did not rejoin the bench WLAN**: it fell back to hotspot mode
+  (`WIFI Hotspot mode is active`, `Connected stations: []`; `NTP Network not available`) and was
+  still there at uptime 170 s, with the bench AP (`br0-wifi-ap`) up. A `kick_all_stations()` +
+  hard reset brought it back (`WLAN connection established`, `/status` 200 at uptime 53 s). One
+  occurrence; recorded, not chased.
