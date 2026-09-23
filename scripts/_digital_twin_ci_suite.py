@@ -12,12 +12,14 @@ import argparse
 import http.client
 import json
 import os
+import re
 import signal
 import socket
 import statistics
 import struct
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -182,6 +184,7 @@ def _check(*, condition: bool, msg: str) -> None:
 # allocation failure prints "memory allocation failed, ..." (py/runtime.c:1692/1696) with no
 # "MemoryError" anywhere - the class name alone only ever sees an UNCAUGHT traceback.
 _MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
+_CEILING_ROUNDS = 3  # back-to-back, so a leaked slot or a pool that only fills over time shows up
 
 
 def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
@@ -193,6 +196,45 @@ def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
         condition=not any(marker in log_text for marker in _MEMORY_ERROR_MARKERS),
         msg=f"{run_label}: log contains zero MemoryErrors (caught-and-logged counts as a failure too)",
     )
+
+
+def _configured_max_connections(device: str) -> int:
+    """The admission ceiling this tree builds for `device` - its own [device].max_connections, else
+    WebserverService's own default. Read host-side from the same TOML buildgen reads, so raising a
+    device's ceiling makes this run drive more concurrency instead of a stale literal."""
+    import tomllib  # noqa: PLC0415 - stdlib, and only this one helper needs it
+
+    with (REPO_ROOT / "devices" / f"{device}.toml").open("rb") as f:
+        configured = tomllib.load(f).get("device", {}).get("max_connections")
+    if isinstance(configured, int):
+        return configured
+    source = (REPO_ROOT / "src" / "asy_webserver_service.py").read_text()
+    match = re.search(r"^\s*max_connections: int = (\d+)", source, re.MULTILINE)
+    if match is None:
+        raise RuntimeError("neither devices/*.toml nor WebserverService.__init__ names a max_connections default")
+    return int(match.group(1))
+
+
+def _concurrent_get(paths: list[str], timeout: float = 30.0) -> list[object]:
+    """One real socket per request, all in flight together, driven from THIS process. Each thread
+    opens its own connection and waits on a barrier, so the burst really is simultaneous rather
+    than a fast sequence the DUT could serve one at a time."""
+    results: list[object] = [None] * len(paths)
+    barrier = threading.Barrier(len(paths))
+
+    def one(index: int, path: str) -> None:
+        try:
+            barrier.wait(timeout=timeout)
+            results[index] = _http("GET", path, timeout=timeout)[0]
+        except (OSError, http.client.HTTPException, threading.BrokenBarrierError) as exc:
+            results[index] = repr(exc)
+
+    threads = [threading.Thread(target=one, args=(i, path)) for i, path in enumerate(paths)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=timeout + 5.0)
+    return results
 
 
 def _clean_state() -> None:
@@ -1009,6 +1051,43 @@ def _run_10_watchdog_hang_backstop(ctx: RunContext) -> None:
     _check(condition=wdt10 is not None and wdt10 >= 1, msg=f"Run 10: the watchdog backstop actually engaged for a genuinely wedged bus (would_have_triggered_count={wdt10!r})")
 
 
+def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
+    # ---- Run 11b: the admission ceiling under real simultaneous load, driven entirely from THIS
+    # process. Part E.9: a client sharing the DUT's heap measures its own bookkeeping, and an
+    # in-process attempt at exactly this proved it - every "limit" it found was the test client's
+    # own contiguous response buffer, not the firmware's (CONNECTION_SCALING_PLAN.md 8.4.2). ----
+    _clean_state()
+    ceiling = _configured_max_connections(ctx.device)
+    log11b = ctx.logs_dir / "run11b_full_ceiling_concurrency.log"
+    proc = _spawn(ctx, [], log11b)
+    try:
+        _wait_until_serving(proc)
+        # The heaviest real endpoints, not the cheapest: /sensors and /status both grow with the
+        # device's own module count and are the two that stream (Part I.3).
+        endpoints = ("/sensors", "/status", "/measurements", "/networking", "/system")
+        for round_index in range(_CEILING_ROUNDS):
+            if round_index:
+                # A slot is released in _serve()'s finally, AFTER the close is awaited, so it
+                # outlives the response the client already holds (Part I.6).
+                time.sleep(1.0)
+            results = _concurrent_get([endpoints[i % len(endpoints)] for i in range(ceiling)])
+            served = sum(1 for r in results if r == _HTTP_OK)
+            # Every one of them, not "at least one": this burst IS the ceiling, so anything short
+            # means the device cannot serve what its own config admits.
+            _check(
+                condition=served == ceiling,
+                msg=f"Run 11b round {round_index}: all {ceiling} simultaneous connections served (got {served}; {results})",
+            )
+        # Still healthy afterwards, so a burst that merely postponed its damage is still caught.
+        status, _ = _http("GET", "/status")
+        _check(condition=status == _HTTP_OK, msg="Run 11b: still serving after the ceiling bursts")
+    except Exception as exc:  # CI orchestration: surface any failure as a suite failure, not a crash
+        _fail(f"Run 11b (full-ceiling concurrency): {exc!r}")
+    finally:
+        ec = _shutdown(proc, "Run 11b")
+        _check(condition=ec == 0, msg=f"Run 11b: clean shutdown (exit code {ec})")
+
+
 @dataclass
 class _SoakAttempt:
     """One independent boot's worth of Run 11 raw results - http_failures/wdt/shutdown_ec are
@@ -1171,6 +1250,7 @@ def run_suite(ctx: RunContext) -> None:
     _run_9_ntp_unreachable(ctx)
     _run_10_watchdog_hang_backstop(ctx)
     _run_11_soak(ctx)
+    _run_11b_full_ceiling_concurrency(ctx)
 
 
 def _drivers_in_plan(plan: dict[str, Any]) -> frozenset[str]:
