@@ -1054,3 +1054,80 @@ N=10 GC_THRESHOLD=-1 | UNSTABLE | complete 117/120 | device allocation-failure l
   samples go below 42 KB. The load also lasts longer at 10 (12 samples vs 9): requests queue.
 - F′ and H agree at 8 within 130 B at the minimum (37,872 vs 38,000 B), so the 4,648 B of static
   heap H gives up for its two extra PCBs does not change the load's own footprint.
+
+## 10.14 Peak load — saturated connections plus forced internal work (owner's request)
+
+The owner asked whether §10.12/§10.13 measured peak load. They did not (sampled rounds with pauses,
+no forced internal load), so the sweep tool gained a peak mode, and a series was run on image H.
+
+### 10.14.1 The instrument: `combined_load_sweep.py --peak`
+
+- **Load**: N host threads send back to back for 60 s over the full 9-path mix; thread 0 replaces
+  one GET every 3 s with the hammer test's dispatch-only `PUT /sensors {"SGP40": {"SGPResetVOC":
+  true}}` (`bench/test_memory_stress_bench.py`'s own internal-work trigger, nothing persisted), so
+  exactly N requests are in flight from the host at all times.
+- **Device sampler** (`_peak_sampler` in `serving_stability_under_combined_load.py`, replaces the
+  heap maps): every 20 ms reads `gc.mem_free()` and the webserver's open-connection count (a plain
+  `int` read — no coroutine, no allocation), prints only at a new minimum. It never collects, so
+  **the run's stability verdict and failure count are evidence**, at the run's own threshold.
+- **Its heap figure is not usable, and is not reported as a peak.** It treats a rise of >= 2 KB in
+  free heap between two reads as a GC and takes that reading as heap minus live set. Under load the
+  sampler actually ran every ~60 ms (not 20) while the heap churned ~250 KB/s at `-1` (206 GCs in the
+  window at N=6), so a "post-GC" reading lands anywhere in the refill and understates free heap by up
+  to ~15-30 KB — visible at 0 connections, where it read 47.8 KB against a settled idle of ~77 KB.
+  An exact GC signal does not exist on this build: `objtype.c` never allocates user-class instances
+  with the finaliser bit (so `__del__` never runs on them), and `MICROPY_PY_WEAKREF` is only on at
+  the EVERYTHING ROM level (rp2 builds EXTRA_FEATURES).
+- **Exact live set** therefore needs `--peak --margin`: the same load, the sampler collects before
+  every read, 100 ms apart. That makes the threshold irrelevant and the verdict instrumentation only.
+- **Refusals are expected, not failures** (owner's rule): a connection closed at the
+  `max_connections` ceiling before any response (`http_client.is_ceiling_close()`, the hammer
+  test's own classification) is counted and printed as `refused … (expected)` and does not affect
+  the verdict. STABLE = zero other failures and zero device allocation-failure lines. Applied to
+  both the peak and the round modes.
+
+### 10.14.2 Image H (limit 10), peak load, non-collecting sampler — failures
+
+| N | threshold | requests | refused (expected) | **true failures** | of which `/status` 500 (242-257 B piece) | device allocation lines | GCs in window |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 6 | -1 | 132 | 0 | **0 (0.00 %)** | 0 | 0 | 206 |
+| 7 | -1 | 133 | 0 | **0 (0.00 %)** | 0 | 0 | 219 |
+| 8 | -1 | 133 | 1 | **0 (0.00 %)** | 0 | 0 | 245 |
+| 9 | -1 | 180 | 53 | **3 (1.67 %)** | 3 | 6 | 267 |
+| 6 | 32768 | 118 | 0 | **0 (0.00 %)** | 0 | 0 | 410 |
+| 7 | 32768 | 125 | 0 | **0 (0.00 %)** | 0 | 0 | 416 |
+| 8 | 32768 | 128 | 7 | **1 (0.78 %)** | 1 | 2 | 407 |
+| 9 | 32768 | 185 | 60 | **6 (3.24 %)** | 6 | 12 | 395 |
+
+(Printed by the tool, before the refusal rule, as "failed 1 (0.75 %)", "failed 56 (31.11 %)",
+"failed 8 (6.25 %)", "failed 66 (35.68 %)" for 8/-1, 9/-1, 8/32768, 9/32768 — those counts include
+the refusals.)
+
+- **Throughput is flat, ~2.2 requests/s, from 6 to 9**: the board is the bottleneck; more clients
+  only lengthen each request.
+- **The ceiling is reached below N + 2**: the open-connection count includes connections still in
+  `_close_writer()` (bounded `wait_closed()`), while the client already has its complete body
+  (`Content-Length`) and has opened its next connection. With 8 threads the count sat at 8 for ~560
+  samples, at 9 for ~230-300 and at 10 for ~40-50; with 9 threads at 10 for ~270-300. So a limit of N
+  does not mean N back-to-back clients are never refused. Under the owner's rule that is expected
+  behaviour; whether the counter should drop at response-written rather than at close is a design
+  question for the owner, not changed here (closing connections still hold their lwIP PCBs).
+- `gc.threshold(32768)` doubled the GC count and left more contiguous space at the minimum (largest
+  free block 3,600 B vs 704 B at N=6), but was **not** better on failures here: 1 vs 0 at 8, 6 vs 3 at
+  9 — single runs, so not separable from chance.
+
+### 10.14.3 Image H, peak load, collecting sampler (exact live set) — stopped by the owner after N=6
+
+```
+N= 6 GC_THRESHOLD=-1 | STABLE | complete 132/132 | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+at the minimum (t=52054ms conns=8 free=25360): No. of 1-blocks: 2874, 2-blocks: 491, max blk sz: 64, max free sz: 138
+PEAK_SUMMARY heap=178816 min_free_after_gc=25360 collections=1045
+PEAK_AT conns=6 samples=208 min_free_after_gc=26288
+PEAK_AT conns=7 samples=83 min_free_after_gc=30832
+PEAK_AT conns=8 samples=7 min_free_after_gc=25360
+PEAK_AT conns=9 samples=2 min_free_after_gc=47840
+```
+
+- **At peak, N=6 on H leaves 25,360 B free (14.2 % of 178,816 B)**, largest free block 2,208 B;
+  26,288 B (14.7 %) with exactly 6 open. §10.12's sampled figure for N=6 (47,200 B, 25.7 %, on F′)
+  overstated the free heap at the true peak by ~20 KB. The owner stopped the run here for §10.15.

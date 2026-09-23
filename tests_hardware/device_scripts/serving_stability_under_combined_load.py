@@ -9,6 +9,14 @@ import time
 import micropython
 import sensortask_dev
 
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from asy_webserver_service import WebserverService
+
 # Set explicitly, not merely left alone: mpremote interrupts main.py but does NOT reset the
 # interpreter, so the boot entry's own gc.threshold(32768) is still in force when this starts
 # (SPECIFICATION.md Part I.4). -1 is MicroPython's own reactive default.
@@ -17,6 +25,9 @@ _SAMPLE_INTERVAL_MS = 5000
 _COLLECT_BEFORE_SAMPLE = False  # combined_load_sweep.py --margin sets True: each dump then shows only the live
 # set, the free-heap margin under load. Instrumentation, never the fix: it also cleans the heap every
 # sample, so a margin run's stability verdict is not evidence - the plain run's is.
+_PEAK_SAMPLE_MS = 0  # combined_load_sweep.py --peak sets 20: a low-water sampler replaces the maps. It never
+# collects and allocates only on a new minimum, so a --peak run's stability verdict IS evidence.
+_GC_RISE_BYTES = 2048
 _WINDOW_S = 150
 
 
@@ -37,6 +48,35 @@ async def _sampler() -> None:
         await asyncio.sleep_ms(_SAMPLE_INTERVAL_MS)
 
 
+async def _peak_sampler(webserver: "WebserverService") -> None:
+    # Never collects. A rise of >= 2 KB in mem_free() between two 20 ms reads marks a GC the run's own
+    # threshold triggered (explicit C-side frees are small: every serving allocation is <= 256 B), so
+    # that reading is heap minus live set; a user-class __del__ or weakref sentinel is not on rp2.
+    started = time.ticks_ms()
+    low: dict[int, int] = {}  # open connections -> lowest post-GC free heap seen at that count
+    seen: dict[int, int] = {}  # open connections -> samples taken at that count
+    previous, overall, collections = gc.mem_free(), -1, 0
+    while time.ticks_diff(time.ticks_ms(), started) < _WINDOW_S * 1000:
+        if _COLLECT_BEFORE_SAMPLE:  # --peak --margin: an exact live set every sample, at the cost of the verdict
+            gc.collect()
+        free = gc.mem_free()
+        conns = webserver._open_conns.value or 0  # a plain int read: no coroutine, no allocation
+        seen[conns] = seen.get(conns, 0) + 1
+        if _COLLECT_BEFORE_SAMPLE or free >= previous + _GC_RISE_BYTES:
+            collections += 1
+            if free < low.get(conns, free + 1):
+                low[conns] = free
+            if overall < 0 or free < overall:
+                overall = free
+                print(f"PEAK_NEW_MIN t={time.ticks_diff(time.ticks_ms(), started)}ms conns={conns} free={free}")
+                micropython.mem_info()
+        previous = free
+        await asyncio.sleep_ms(_PEAK_SAMPLE_MS)
+    print(f"PEAK_SUMMARY heap={gc.mem_free() + gc.mem_alloc()} min_free_after_gc={overall} collections={collections}")
+    for conns in sorted(seen):
+        print(f"PEAK_AT conns={conns} samples={seen[conns]} min_free_after_gc={low.get(conns, -1)}")
+
+
 async def _run() -> None:
     print(f"GC_THRESHOLD={gc.threshold()}")
     main_task = asyncio.get_event_loop().create_task(sensortask_dev.main())
@@ -44,7 +84,11 @@ async def _run() -> None:
     _dump("after_boot")
     print("READY")
     try:
-        await _sampler()
+        if _PEAK_SAMPLE_MS:
+            assert sensortask_dev.webserver is not None
+            await _peak_sampler(sensortask_dev.webserver)
+        else:
+            await _sampler()
     finally:
         main_task.cancel()
     print("RESULT: PASS window complete")

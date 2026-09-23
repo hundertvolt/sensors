@@ -24,8 +24,11 @@ DEVICE_SCRIPT = Path(__file__).resolve().parent / "device_scripts" / "serving_st
 PATHS = ("/status", "/sensors", "/", "/measurements", "/status", "/networking", "/sensors", "/system", "/js/app.js")
 STATIC = ("/", "/js/app.js")
 ROUNDS = 12
+PEAK_LOAD_S = 60.0
+PUT_INTERVAL_S = 3.0  # the hammer test's own cadence (bench/test_memory_stress_bench.py)
 _THRESHOLD_LINE = "gc.threshold(-1)\n"
 _MARGIN_LINE = "_COLLECT_BEFORE_SAMPLE = False"
+_PEAK_LINE = "_PEAK_SAMPLE_MS = 0"
 
 
 def _reference_lengths(ip: str) -> dict[str, int]:
@@ -54,7 +57,7 @@ def _one(ip: str, path: str, reference: dict[str, int]) -> str:
     try:
         response = http_client.fetch(ip, 80, "GET", path, timeout_s=30.0)
     except Exception as e:
-        return f"{type(e).__name__}:{getattr(e, 'reason', e)!r}"[:80]
+        return "refused" if http_client.is_ceiling_close(e) else f"{type(e).__name__}:{getattr(e, 'reason', e)!r}"[:80]
     if response.status_code != 200:
         return f"status{response.status_code}"
     if path in STATIC:
@@ -67,15 +70,8 @@ def _one(ip: str, path: str, reference: dict[str, int]) -> str:
 
 
 def _drive(ip: str, n: int, result: dict[str, object]) -> None:
-    for _ in range(600):  # the device script's own boot has to start serving first
-        try:
-            if http_client.fetch(ip, 80, "GET", "/status", timeout_s=3.0).status_code == 200:
-                break
-        except Exception:
-            time.sleep(1.0)
-    time.sleep(2.0)
-    reference = _reference_lengths(ip)
-    served = 0
+    reference = _wait_until_serving(ip)
+    served = refused = 0
     failures: dict[str, int] = {}
     for round_index in range(ROUNDS):
         outcomes = [""] * n
@@ -91,11 +87,77 @@ def _drive(ip: str, n: int, result: dict[str, object]) -> None:
         for i, outcome in enumerate(outcomes):
             if outcome == "ok":
                 served += 1
+            elif outcome == "refused":
+                refused += 1
             else:
                 key = f"{PATHS[i % len(PATHS)]} {outcome or 'hang'} (round {round_index})"
                 failures[key] = failures.get(key, 0) + 1
         time.sleep(0.5)
-    result.update(reference=reference, served=served, failures=failures)
+    result.update(reference=reference, served=served, refused=refused, failures=failures)
+
+
+def _wait_until_serving(ip: str) -> dict[str, int]:
+    for _ in range(600):  # the device script's own boot has to start serving first
+        try:
+            if http_client.fetch(ip, 80, "GET", "/status", timeout_s=3.0).status_code == 200:
+                break
+        except Exception:
+            time.sleep(1.0)
+    time.sleep(2.0)
+    return _reference_lengths(ip)
+
+
+def _drive_peak(ip: str, n: int, result: dict[str, object]) -> None:
+    """--peak: N threads back to back for PEAK_LOAD_S, the full path mix, and thread 0 swaps one GET for
+    the hammer test's dispatch-only SGP40 reset every 3 s - saturated admission plus forced sensor work."""
+    reference = _wait_until_serving(ip)
+    stop = threading.Event()
+    lock = threading.Lock()
+    outcomes: dict[str, int] = {}
+
+    def worker(index: int) -> None:
+        position, next_put = index, time.monotonic() + PUT_INTERVAL_S
+        while not stop.is_set():
+            if index == 0 and time.monotonic() >= next_put:
+                next_put += PUT_INTERVAL_S
+                key = "PUT /sensors " + _put_reset(ip)
+            else:
+                path = PATHS[position % len(PATHS)]
+                position += 1
+                key = f"{path} {_one(ip, path, reference)}"
+            with lock:
+                outcomes[key] = outcomes.get(key, 0) + 1
+
+    threads = [threading.Thread(target=worker, args=(i,), daemon=True) for i in range(n)]
+    for thread in threads:
+        thread.start()
+    time.sleep(PEAK_LOAD_S)
+    stop.set()
+    for thread in threads:
+        thread.join(timeout=40.0)
+    total = sum(outcomes.values())
+    refused = sum(v for k, v in outcomes.items() if k.endswith(" refused"))
+    failed = {k: v for k, v in outcomes.items() if not k.endswith((" ok", " refused"))}
+    result.update(reference=reference, served=total - refused - sum(failed.values()), total=total, refused=refused, failures=failed)
+
+
+def _put_reset(ip: str) -> str:
+    try:
+        response = http_client.fetch(ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=30.0)
+    except Exception as e:
+        return "refused" if http_client.is_ceiling_close(e) else f"{type(e).__name__}:{getattr(e, 'reason', e)!r}"[:80]
+    return "ok" if response.status_code == 200 else f"status{response.status_code}"
+
+
+def _peak_lines(output: str) -> list[str]:
+    """The device's post-GC low-water figures (serving_stability_under_combined_load.py's _peak_sampler)."""
+    lines = [line.strip() for line in output.splitlines() if line.startswith(("PEAK_SUMMARY", "PEAK_AT"))]
+    new_min = [line for line in output.splitlines() if line.startswith("PEAK_NEW_MIN")]
+    if new_min:  # the largest free block at the overall minimum: mem_info() follows that line, in blocks
+        tail = output.split(new_min[-1], 1)[1]
+        block = next((line for line in tail.splitlines() if "max free sz" in line), "")
+        lines.insert(0, f"at the minimum ({new_min[-1].split(' ', 1)[1]}): {block.strip()}")
+    return lines or ["peak: no PEAK_SUMMARY in the device output"]
 
 
 def _margin_line(output: str) -> str:
@@ -118,9 +180,9 @@ def _margin_line(output: str) -> str:
     )
 
 
-def run_level(board: Board, bench: BenchBridge, ip: str, script: Path, n: int, raw_dir: Path | None, *, margin: bool = False) -> bool:
+def run_level(board: Board, bench: BenchBridge, ip: str, script: Path, n: int, raw_dir: Path | None, *, margin: bool = False, peak: bool = False) -> bool:
     result: dict[str, object] = {}
-    driver = threading.Thread(target=_drive, args=(ip, n, result), daemon=True)
+    driver = threading.Thread(target=_drive_peak if peak else _drive, args=(ip, n, result), daemon=True)
     driver.start()
     output = board.run_isolated(script, timeout_s=260.0)
     driver.join(timeout=120.0)
@@ -134,13 +196,19 @@ def run_level(board: Board, bench: BenchBridge, ip: str, script: Path, n: int, r
     except heap_map.HeapMapError as e:
         print(f"     heap map unreadable, worst free run not measured: {e}")
         worst_run = -1
-    served = result.get("served", 0)
+    served, total = int(str(result.get("served", 0))), int(str(result.get("total", n * ROUNDS)))
+    refused = int(str(result.get("refused", 0)))  # a reject-when-full close at the ceiling: expected under saturation, never a failure
     failures = result.get("failures", {})
-    stable = served == n * ROUNDS and not allocation_lines and not driver.is_alive()
+    failed = total - served - refused
+    rate = f"{100 * failed / total:.2f} %" if total else "n/a"
+    stable = failed == 0 and not allocation_lines and not driver.is_alive()
     print(
-        f"N={n:2d} {threshold} | {'STABLE' if stable else 'UNSTABLE'} | complete {served}/{n * ROUNDS} | "
+        f"N={n:2d} {threshold} | {'STABLE' if stable else 'UNSTABLE'} | complete {served}/{total} | refused {refused} (expected) | failed {failed} ({rate}) | "
         f"device allocation-failure lines {len(allocation_lines)} | worst largest free run {worst_run} B | reference {result.get('reference')}",
     )
+    if peak:
+        for line in _peak_lines(output):
+            print(f"     {line}")
     if margin:
         try:
             print(f"     {_margin_line(output)}")
@@ -162,6 +230,7 @@ def main() -> int:
     parser.add_argument("--threshold", type=int, default=-1, help="gc.threshold for the run (default -1, MicroPython's own reactive default)")
     parser.add_argument("--ip", default=os.environ.get("DUT_IP"), help="the DUT's address (default $DUT_IP)")
     parser.add_argument("--raw-dir", type=Path, default=None, help="save each level's full device output here")
+    parser.add_argument("--peak", action="store_true", help="saturated load (N threads back to back for 60 s, the SGP40 reset PUT every 3 s) and the device's non-collecting post-GC low-water sampler; its verdict IS evidence")
     parser.add_argument("--margin", action="store_true", help="gc.collect() before each heap sample and report the post-collect free heap; instrumentation - its STABLE/UNSTABLE is not evidence")
     args = parser.parse_args()
     if not args.ip:
@@ -173,9 +242,15 @@ def main() -> int:
     if _MARGIN_LINE not in source:
         parser.error(f"{DEVICE_SCRIPT.name} no longer carries the line --margin substitutes")
     source = source.replace(_THRESHOLD_LINE, f"gc.threshold({args.threshold})\n", 1)
-    variant.write_text(source.replace(_MARGIN_LINE, "_COLLECT_BEFORE_SAMPLE = True", 1) if args.margin else source)
+    if args.margin:
+        source = source.replace(_MARGIN_LINE, "_COLLECT_BEFORE_SAMPLE = True", 1)
+    if args.peak:
+        if _PEAK_LINE not in source:
+            parser.error(f"{DEVICE_SCRIPT.name} no longer carries the line --peak substitutes")
+        source = source.replace(_PEAK_LINE, f"_PEAK_SAMPLE_MS = {100 if args.margin else 20}", 1)
+    variant.write_text(source)
     board, bench = Board(), BenchBridge()
-    verdicts = [run_level(board, bench, args.ip, variant, n, args.raw_dir, margin=args.margin) for n in args.levels]
+    verdicts = [run_level(board, bench, args.ip, variant, n, args.raw_dir, margin=args.margin, peak=args.peak) for n in args.levels]
     return 0 if all(verdicts) else 1
 
 
