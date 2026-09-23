@@ -4651,10 +4651,15 @@ refused by `_serve()`'s own reject-when-full branch, visibly, rather than droppe
 **What 7 rests on, and what it does not.** The digital twin runs on the Unix port, which has **no
 lwIP at all** — its sockets are real host sockets — so it validates admission, rejection,
 simultaneous body allocation, task growth and latency, and **cannot** validate the PCB ceiling.
-The twin's own evidence for 7 is in `CONNECTION_SCALING_PLAN.md`: at a board-calibrated heap the
-largest contiguous free block retained under a 2x overload burst holds at 13.8% of its
-after-boot value through `max_connections = 7` and falls to 4.0% at 8. **Two independent curves stop
-at the same place** — that contiguity cliff, and the ensemble cost crossing 4% of the GC heap.
+The twin's own evidence for 7 is in `CONNECTION_SCALING_PLAN.md`, and it is narrower than an
+earlier version of this paragraph claimed. A "contiguity cliff between 7 and 8" was reported here
+and is **withdrawn**: the measurement sampled after the burst rather than during it, used an
+allocating probe rather than `mem_info(1)`, and normalised against the after-boot value in a way
+that turned comfortable headroom into an apparent cliff. Re-measured at true peak with the right
+instrument, the within-N spread exceeds the between-N step for every adjacent pair, so **contiguity
+cannot rank 7 against 8 at all** (§8.3.1). What is left for 7 is deterministic: the coherent
+ensemble costs 3.73% of the GC heap against 4.90% at 8, and p50 latency grows ~1.3 ms per added
+connection. 7 is a margin decision under uncertainty, not a measured cliff.
 Service, not just survival, is asserted directly: every admitted connection must come back with a
 complete, correct, parseable response inside a bounded time, over repeated rounds, and concurrent
 page loads must be byte-identical to an uncontended one. The lwIP half is queued for

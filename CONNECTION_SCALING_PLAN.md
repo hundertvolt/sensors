@@ -274,33 +274,72 @@ here says it binds, and only silicon can say whether it does.
 The Unix port has **no lwIP**, so none of this is a connection-ceiling result. Heap calibrated by
 fill fraction the way `HEAP_FRAGMENTATION_MEASUREMENTS.md` §1.4 prescribes: at
 `-X heapsize=1200k` the booted `wozi` graph sits **42.8%** full against the board's 44%.
-Instrument is `micropython.mem_info(1)` parsed by `tests_hardware/heap_map.py` (§7G.1's
-non-perturbing instrument), not the allocating probe.
 
 **Exactness of admission** — at burst = N, every N from 2 to 63 served exactly N with **zero**
-rejections. Admission is exact at every count tried.
-
-**The trade, ensembled over 5 runs per setting at burst = 2N:**
-
-| `max_connections` | largest free run, after boot | under load | retained | p50 | `MemoryError` |
-| --- | --- | --- | --- | --- | --- |
-| 4 | 409,760 | 80,832 | 19.7% | 5.4 ms | 0 |
-| 5 | 407,392 | 67,648 | 16.6% | 6.7 ms | 0 |
-| 6 | 405,440 | 147,840 | 36.5% | 7.7 ms | 0 |
-| **7 (shipped)** | **403,584** | **55,712** | **13.8%** | **9.0 ms** | **0** |
-| 8 | 402,464 | 16,032 | **4.0%** | 10.6 ms | 0 |
-| 9 | 399,584 | 23,104 | 5.8% | 12.0 ms | 0 |
-| 10 | 387,456 | 8,032 | 2.1% | 13.1 ms | 0 |
-| 11 | 385,472 | 7,808 | 2.0% | 14.4 ms | 0 |
-
-**The cliff is between 7 and 8** — a 3.5x drop in retained contiguity, reproducible across all five
-runs at each setting. N = 6's 36.5% is the placement lottery §1.3 of the measurements document
-warns about (it too is stable across its five runs), which is exactly why adjacent settings are
-ranked from an ensemble and not from single readings.
+rejections. Admission is exact at every count tried. This part is deterministic and stands.
 
 **p50 latency grows about 1.3 ms per added connection** under a 2x burst, linearly, all the way out
-to N = 63 (83 ms). That is real scheduler cost, not noise, and it is the second reason not to push
-the count further than the memory argument alone would allow.
+to N = 63 (83 ms). Each figure is a percentile over many requests, so placement noise averages down
+rather than dominating — unlike §8.3.1's contiguity figures. This part stands too.
+
+### 8.3.1 The contiguity measurement was wrong, and is withdrawn
+
+An earlier version of this section reported a "3.5x cliff in retained contiguity between 7 and 8"
+and made it the deciding argument for `max_connections = 7`. **That result was an artifact.** Three
+compounding defects, found by re-reading the harness after the owner asked how and when contiguity
+was being sampled:
+
+- **The sample was taken after the burst, not during it.** The probe ran once both
+  `await asyncio.gather(...)` calls had completed and every connection was already closed, so it
+  measured allocator residue at an uncontrolled GC state. Peak concurrent pressure was never
+  sampled at all.
+- **The instrument perturbed what it measured**, and this document misdescribed it. It was a
+  doubling-then-bisecting `bytearray` probe — it allocates the largest block it can find and frees
+  it, changing the fragmentation state. The text claimed `mem_info(1)` parsed by
+  `tests_hardware/heap_map.py`, the documented non-perturbing instrument. It was not used, and
+  `heap_map.py`'s own `gaps_at_least(size)` — the metric that matters — was sitting unused.
+- **The normalisation hid the answer.** "% of the after-boot largest free run" turned 16,032 B into
+  a "4.0% cliff". Against the 2,048 B that microdot's `readexactly()` allocates contiguously per
+  connection (`max_content_length`, `asy_webserver_service.py:262`), that is 7.8x headroom — which
+  is why function in fact survived to N = 46.
+
+The tell was in the published table and was rationalised instead of investigated: the series was
+non-monotonic (N = 6 above N = 4, N = 9 above N = 8). N = 6 was explained away as "the placement
+lottery" while the adjacent 7-to-8 step was read as signal. Noise that can produce a 2.6x rise can
+produce a 3.5x fall.
+
+**Re-measured correctly** — sampling at true peak with all N connections parked mid-body in
+`readexactly()` (asserted, `held = N`), `mem_info(1)` captured and parsed host-side by
+`heap_map.py`, reporting placement capacity for 2,048 B blocks, 5 repeats per setting:
+
+| N | placement slots >= 2048 B, per repeat | spread | median |
+| --- | --- | --- | --- |
+| 4 | 18, 19, 20, 24, 24 | 6 | 20 |
+| 6 | 9, 12, 12, 14, 15 | 6 | 12 |
+| 7 | 11, 11, 13, 18, 19 | 8 | 13 |
+| 8 | 5, 9, 11, 13, 16 | 11 | 11 |
+| 10 | 5, 9, 11, 13, 13 | 8 | 11 |
+| 12 | 5, 6, 7, 11, 17 | 12 | 7 |
+| 16 | 4, 8, 9, 10, 13 | 9 | 9 |
+
+**The within-N spread exceeds the between-N step for every adjacent pair**, so no adjacent pair is
+resolvable:
+
+| pair | median step | within-N spread | resolvable |
+| --- | --- | --- | --- |
+| 4 vs 6 | 8 | 6 | yes |
+| 6 vs 7 | 1 | 8 | no |
+| **7 vs 8** | **2** | **11** | **no** |
+| 8 vs 10 | 0 | 11 | no |
+| 10 vs 12 | 4 | 12 | no |
+| 12 vs 16 | 2 | 12 | no |
+
+Correcting the sample point and the instrument was **not** enough: largest-free-run still fails a
+monotonicity check even when sampled at true peak, and placement-slot count passed that check at 3
+repeats only to fail it at 5. The honest conclusion is that **this metric resolves coarse
+differences (4 versus 6) and cannot rank adjacent connection counts at all** at any repetition
+count this project would pay for. Any future use of it needs its within-N spread established first,
+and only differences larger than that spread may be read as signal.
 
 ## 8.4 The wall, from both directions — `[TWIN]`
 
@@ -323,24 +362,41 @@ validated connection ceiling.**
 **`max_connections = 7`, `MEMP_NUM_TCP_PCB = 10`, `backlog = 8`, every buffer left alone.**
 Shipped on all six devices (owner's decision, 2026-09-22).
 
-**For it.** 75% more simultaneous connections for **980 B** of the 197,528 B GC heap — 0.50%.
-Admission stays exact at 7; the three-slot PCB margin covers the accept-queue arrival being refused
-plus TIME_WAIT churn from a design with no keep-alive; the backlog coupling closes a ceiling that
-was fiction above 5 whatever `max_connections` said. Zero `MemoryError` at either gc threshold,
-across every tier, at the shipped value.
+**The basis changed when §8.3.1's contiguity result was withdrawn.** That result was the original
+deciding argument, and it does not survive. What is left is deterministic or averaged, and none of
+it rests on a single noisy reading:
 
-**Against it.** Under a 2x overload burst the twin retains 13.8% of its after-boot largest
-contiguous free block, against 19.7% at `max_connections = 4` — a real 30% relative loss of
-contiguity on a project whose known defect *is* contiguity. p50 latency under that burst goes from
-5.4 ms to 9.0 ms. And the lwIP half is unconfirmed: if the board's PCB pool or pbuf supply binds
-before 7, the firmware will refuse connections its own config admits, which reads as an application
-bug and is not one — that is precisely what the handover's §4 row exists to catch.
+**For it.**
+- **Cost, from real firmware builds — zero variance.** The coherent ensemble for 7 costs 3.73% of
+  the 197,528 B GC heap; 8 costs 4.90% (§9.3). These come from ELF section sizes, not sampling.
+- **Admission is exact at 7**, deterministic, at every tier.
+- **The PCB margin is architectural**: three spare slots cover the over-ceiling arrival that
+  `backlog` deliberately queues to be refused, plus TIME_WAIT churn from a design with no
+  keep-alive, where every request burns a pcb (§2).
+- **The backlog coupling closes a ceiling that was fiction above 5** whatever `max_connections`
+  said — `asyncio.start_server()`'s own default.
+- Zero `MemoryError` at either gc threshold, across every tier, at the shipped value.
 
-**Why not 8, which the connection count alone would have allowed.** 8 costs another 3.5x of
-retained contiguity for one more connection. A setting that serves more connections but leaves the
-boot survivors unable to place is a worse setting, and 8 is where that starts on the only evidence
-available. If silicon disagrees, the number moves — the *relationship* in Part H.7 is what this
-branch fixes, not the number.
+**Against it.**
+- **p50 latency under a 2x burst goes from 5.4 ms at N = 4 to 9.0 ms at N = 7**, about 1.3 ms per
+  added connection. This is a percentile over many requests, so it is not the single-sample kind of
+  figure §8.3.1 withdrew.
+- **The lwIP half is unconfirmed.** If the board's PCB pool or pbuf supply binds before 7, the
+  firmware refuses connections its own config admits — which reads as an application bug and is
+  not one.
+
+**Why not 8.** Honestly: **contiguity does not distinguish 7 from 8, and this document previously
+claimed it did.** The surviving arguments are the 1.17-percentage-point heap cost and 1.3 ms of
+added p50 latency — real but modest. 7 was chosen as the smaller step on a device whose known
+defect is contiguity, taken as a margin decision under uncertainty rather than as a measured cliff.
+**Anyone revisiting this should know the contiguity evidence is absent, not against 8.**
+
+**What would actually settle it** is the functional wall on silicon, because a wall is a step change
+and therefore robust to the placement noise that defeats the gradient metrics: the first N at which
+a `MemoryError` appears at all, caught or not. On the twin that is N = 47 (§8.4), far above either
+candidate. The board's own number is what `REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md` exists to
+collect, and §5 of that file now spends its sitting on bisecting to it rather than on a grid of
+adjacent settings that cannot be told apart.
 
 ## 8.6 What each tier does now, against §6's table
 
@@ -440,18 +496,21 @@ anything. "PCB slots are cheap" is true and irrelevant.
 
 ## 9.4 What this changes about the recommendation
 
-**The setting is unchanged — `max_connections = 7` — and the reasoning for it is now stronger, not
-weaker.** Two independent curves stop in the same place:
+**The setting is unchanged — `max_connections = 7` — but the reasoning is narrower than this
+section once claimed.** It asserted that "two independent curves stop in the same place". One of
+those curves has since been withdrawn (§8.3.1): the twin's contiguity gradient was an artifact of
+sampling after the burst with an allocating probe, and re-measured correctly it cannot rank
+adjacent settings at all. What remains is one curve, not two:
 
-- the twin's contiguity cliff, 13.8% retained at 7 against 4.0% at 8 (§8.3, unaffected by this
-  correction: the Unix port has no lwIP at all);
-- the ensemble cost, crossing 4% of the GC heap between 7 and 8.
+- the ensemble cost, crossing 4% of the GC heap between 7 and 8 — deterministic, from ELF sizes.
 
 What changes is the **price**: 3.73% of the GC heap, not the 0.50% §8.5 claimed. The trade stated
 in both directions, corrected: 75% more connections, each of which the stack can genuinely push,
-for 7,364 B of GC heap and a ~30% relative loss of largest-contiguous-free under a 2x overload
-burst. `max_connections = 4` at a coherent ensemble costs only 392 B, so the whole price of this
-change is the six thousand-odd bytes between them.
+for 7,364 B of GC heap and ~3.6 ms of added p50 latency under a 2x overload burst. (An earlier
+version of this sentence also charged "a ~30% relative loss of largest-contiguous-free"; that
+figure came from the withdrawn measurement and is removed rather than restated.)
+`max_connections = 4` at a coherent ensemble costs only 392 B, so the whole price of this change is
+the six thousand-odd bytes between them.
 
 ## 9.5 Serving, not just surviving
 

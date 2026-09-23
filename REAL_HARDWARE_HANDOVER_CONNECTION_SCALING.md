@@ -71,25 +71,33 @@ silicon" and needs no sweep.
    `test_network_resilience.py`. Both now scale their bursts with the configured ceiling.
 6. Record §7's table for this one setting and stop.
 
-## 5. The full sweep, if you have a longer sitting
+## 5. The full sweep: bisect to the wall, do not grid adjacent settings
 
-The point is to find the wall **from both directions**: the highest setting that passes everything,
-and the first that fails — and to characterise *how* it fails.
+**Read §5B before you plan the sitting.** The host side already burned a measurement on the wrong
+question; the short version is that contiguity metrics cannot tell N = 7 from N = 8, so do not
+spend board time trying. What silicon can answer, and the twin cannot, is **where the wall is** —
+and a wall is a step change, robust to the noise that defeats the gradients.
 
-For each row: set every `devices/*.toml`'s `[device].max_connections`, set `[lwip]` to the **whole
-coherent ensemble** for it (§5A), rebuild, reflash, and record §7. The build refuses an incoherent
-set by name, so you cannot get this wrong silently.
+**Bisect, do not grid.** The wall is the first `max_connections` at which a `MemoryError` appears at
+all — caught-and-degraded counts, under CLAUDE.md I.4(e) — or at which the board admits fewer
+connections than it is configured for. Start from the shipped setting, double until something
+fails, then bisect between the last pass and the first fail. Each step is one rebuild and one flash,
+and about six images find the wall anywhere below 64.
 
-| # | `max_connections` | `MEMP_NUM_TCP_PCB` | `MEMP_NUM_TCP_SEG` | `MEM_SIZE` | why this row |
+| step | `max_connections` | `MEMP_NUM_TCP_PCB` | `MEMP_NUM_TCP_SEG` | `MEM_SIZE` | purpose |
 | --- | --- | --- | --- | --- | --- |
-| H1 | 4 | 7 | 32 | 8,000 | the pre-branch ceiling at a coherent ensemble, for comparison |
-| H2 | 7 | 10 | 56 | 14,000 | **the shipped setting** — the row that must pass |
-| H3 | 8 | 11 | 64 | 16,000 | first row past the twin's own contiguity cliff |
-| H4 | 10 | 13 | 80 | 20,000 | |
-| H5 | 12 | 15 | 96 | 24,000 | |
-| H6 | 16 | 19 | 128 | 32,000 | 12.6% of the GC heap — expect trouble above the transport too |
+| 1 | 7 | 10 | 56 | 14,000 | **the shipped setting — must pass** |
+| 2 | 14 | 17 | 112 | 28,000 | double; if it passes the wall is high |
+| 3 | 28 | 31 | 224 | 56,000 | double again — expect a failure at or before here |
+| … | bisect between the last pass and the first failure | | | | |
 
-Stop one row after the first failure; two failing rows in a row is enough to call the wall.
+Set every `devices/*.toml`'s `[device].max_connections` and `[lwip]` to the **whole coherent
+ensemble** for the row (§5A). The build refuses an incoherent set by name, so you cannot get this
+wrong silently. Record §7 for every row, pass or fail.
+
+**If a row fails, that is the result.** Characterise it — clean rejection, silent drop, stall,
+`MemoryError` (with the failing allocation's size), or watchdog — and go to §6 to find out *which*
+pool ran out. Do not raise a threshold or a heap size to make it go away.
 
 ## 5A. The options are an ensemble — read this before touching any of them
 
@@ -115,6 +123,38 @@ request per connection, bodies capped at 2,048 B) and costs ~978 B of GC heap pe
 the assumption most worth testing on silicon** — if §6's `LWIP_STATS` shows pbuf-pool exhaustion,
 this is the door to open, and `PBUF_POOL_SIZE` / `MEMP_NUM_PBUF` are the settings.
 
+## 5B. How to measure contiguity — and what it cannot tell you
+
+The host-side sweep got this wrong in three ways and the corrected result is in
+`CONNECTION_SCALING_PLAN.md` §8.3.1. The rules below are what came out of it. They cost nothing to
+follow and they save an entire sitting.
+
+1. **Sample at true peak, and prove it.** The original probe ran after the burst had completed and
+   every connection was closed — it measured allocator residue, not pressure. A valid sample is
+   taken while all N connections are open *and parked mid-request*, with their bodies allocated;
+   assert the count you actually held, and record it beside the figure.
+2. **Use a non-perturbing instrument.** `micropython.mem_info(1)`, captured over serial and parsed
+   host-side by `tests_hardware/heap_map.py`. Never a probe that allocates to find out how much it
+   can allocate — that changes the fragmentation it is reporting. On the board this is *easier*
+   than on the twin, because the dump goes to the serial console you are already reading.
+3. **Report absolute bytes and placement capacity, never a percentage of the after-boot value.**
+   The figure that predicts failure is `heap_map.gaps_at_least(2048)` — how many of microdot's
+   per-connection `readexactly()` buffers (`max_content_length = 2048`) can still be placed. A
+   percentage of the boot value made 16,032 B read as a "4.0% cliff" when it was 7.8x headroom.
+4. **Establish the within-N spread before comparing any two settings.** Repeat the *same* N at
+   least five times first. On the twin the spread was 6-12 slots while the step between adjacent
+   settings was 0-4, so **no adjacent pair was resolvable**. Only differences larger than the spread
+   you measured are signal.
+5. **Run the monotonicity check as a validity gate.** Contiguity must not rise as N rises. If it
+   does, the measurement is dominated by placement luck and must not be used to rank anything —
+   report it as inconclusive rather than rationalising the outlier. (That rationalisation is exactly
+   what produced the withdrawn result.)
+6. **Prefer the deterministic quantities**, which is where board time actually pays: the exact
+   admission ceiling (§4, deterministic), heap and `.bss`/`.data` cost from the ELF (zero variance),
+   latency percentiles (averaged over many requests, so noise averages down), and the wall itself
+   (a step change). Gradients of contiguity against N are the one thing this instrument cannot give
+   you.
+
 ## 6. Seeing *which* pool ran out, rather than inferring it
 
 `[lwip].LWIP_STATS` is `0` as shipped. Set it to `1`, rebuild and reflash, and lwIP keeps per-pool
@@ -138,7 +178,7 @@ Everything below, for every setting you try. A row without these is not a result
 | connections cleanly rejected | the same probe; a refusal is an empty read or a reset, both fine |
 | **how a failure presents** | clean rejection / silent drop / stall / `MemoryError` / watchdog reset — this is the point of the exercise |
 | largest contiguous free block, after boot | `micropython.mem_info(1)`, parsed by `tests_hardware/heap_map.py` |
-| largest contiguous free block, under full load | the same, taken while the ceiling is saturated |
+| **placement slots at peak**, `gaps_at_least(2048)` | the same dump, taken while all N connections are open and parked mid-request — **record how many you actually held beside it**, and repeat 5x, reporting min/median/max, never one reading (§5B) |
 | free heap, both points | the same dump's `GC: total/used/free` line |
 | `.bss` / `.data` and GC heap from the map file | `arm-none-eabi-size -A firmware.elf` and `__GcHeapEnd - __GcHeapStart` |
 | any `MemoryError` **or** `memory allocation failed` | both spellings; a caught-and-degraded one counts as a failure, not a pass |
@@ -165,10 +205,10 @@ All of this is [TWIN] or from a real firmware build; none of it is silicon.
   costs 3.73% of the heap; 8 costs 4.90%.
 - **Above the transport, the twin serves every connection count it was asked for, up to 63**, with
   zero rejections at burst = N and no allocation failure anywhere below N = 47.
-- **The twin's wall is contiguity, then `MemoryError`.** At a board-calibrated heap, the largest
-  contiguous free block retained under a 2x overload burst is 13.8% of its after-boot value at
-  N = 7 and 4.0% at N = 8. At N = 47 with a 3x burst a `MemoryError` appears *caught and degraded*;
-  at N = 63 it is uncaught and the process dies.
+- **The twin's wall is a `MemoryError` on a small allocation.** At N = 47 with a 3x burst one
+  appears *caught and degraded*; at N = 63 it is uncaught and the process dies. The contiguity
+  *gradient* that once accompanied this is withdrawn - `CONNECTION_SCALING_PLAN.md` §8.3.1 has
+  why, and §5B above has what to do instead. Treat 47 and 63 as the twin's wall, nothing more.
 - **p50 latency grows about 1.3 ms per added connection** under a 2x burst (5.4 ms at N = 4,
   9.0 ms at N = 7, 14.4 ms at N = 11).
 
