@@ -407,21 +407,77 @@ capacity rather than by budget.
 so they should transfer, but the twin has 1,200 KB where the board has ~190 KB — the *placement*
 question is far tighter on silicon even though the *budget* question is not.
 
-## 8.4 The wall, from both directions — `[TWIN]`
+## 8.4 The wall — connections alone, and then with everything hammering
 
-- **Highest setting that passes everything: 63.** Serves 63 of 63 at burst = N and 126 of 126 at
-  2N, zero rejections, no allocation failure. Admission itself does not break.
-- **First setting that fails: 47, at a 3x burst.** A `MemoryError` allocating 1,017 bytes appears
-  **caught and degraded** — the run's own assertions still passed. Under CLAUDE.md I.4(e) that is
-  already a failure, not a pass, and it is exactly the silent case that rule exists to catch.
-- **How it fails at 63 with a 3x burst: uncaught `MemoryError`** allocating 2,048 bytes, and the
-  process dies. Not a clean rejection, not a stall, not a watchdog — heap exhaustion under
-  contiguity collapse, on a small allocation.
+### 8.4.1 Connections alone — `[TWIN]`, and far too optimistic
 
-So the failure mode is **contiguity collapse → `MemoryError` on a 1–2 KB allocation**, first caught,
-then fatal. It is not the "no free PCB" wall §2 expected, because the twin has no PCBs at all; on
-silicon that wall may well arrive first, and §5's warning stands — **a green twin run is not a
-validated connection ceiling.**
+- **Highest setting that passes: 63.** Serves 63 of 63 at burst = N and 126 of 126 at 2N.
+- **First setting that fails: 47**, at a 3x burst: a `MemoryError` allocating 1,017 bytes appears
+  **caught and degraded**, which under CLAUDE.md I.4(e) is already a failure.
+- **At 63 with a 3x burst it is fatal**: uncaught `MemoryError` on 2,048 bytes, the process dies.
+
+**These numbers describe a system doing nothing else, and that is not the bar.** §8.4.2 measures the
+same thing with every module competing for the heap and lands roughly 3x lower. Read 47 and 63 as
+an upper bound on the transport-facing path in isolation, never as the device's capacity.
+
+### 8.4.2 Every module hammering at once — the real bar, `[TWIN]`
+
+The owner's hardest requirement: maximum concurrent allocation pressure **from all sides at once**,
+with **no `MemoryError` at `gc.threshold` unset**. The load is the real `sensortask_wozi` graph with
+every timer and task started — three sensor drivers on the shared I2C bus, FRAM on its own SPI,
+WiFi, the watchdog feed — plus six rounds of a full-ceiling REST burst landing mid-transaction, at
+a heap sized to the board's own 44% fill fraction (§1.4's calibration, `-X heapsize=1200k`). Pass
+requires **every** request served (not merely survived), every sensor still returning real data,
+FRAM re-probing present, the watchdog never starved, and zero markers of either spelling.
+
+| `max_connections` | requests served | sensors + FRAM | watchdog | `MemoryError` |
+| --- | --- | --- | --- | --- |
+| **7 (shipped)** | **42 / 42** | ok | never starved | **0** |
+| 10 | 60 / 60 | ok | never starved | 0 |
+| 14 | 84 / 84 | ok | never starved | 0 |
+| 16 | 96 / 96 | ok | never starved | 0 |
+| **18** | **108 / 108** | **ok** | **never starved** | **0** |
+| 19 | — | — | — | **1** |
+| 20 (x2) | — | — | — | **1** each |
+
+**The bar is 18, against 47 for connections alone** — 19 fails, and 20 fails identically on both
+repeats. The shipped 7 therefore keeps roughly a 2.5x margin under all-sides pressure, not the 6.7x
+the isolated figure implied.
+
+**One confound, and it is not small.** The failure at 19 and 20 alike is
+`MemoryError: memory allocation failed, allocating 5509 bytes` inside
+`digital_twin/_http_client.py`'s `_read_exact` — **the test client, not the firmware**. On the twin
+both live in one process and share one heap, and at N = 20 the client is holding 20 concurrent
+~5.5 KB response bodies, about 110 KB, beside the server it is testing. N = 18 passes with 163 KB
+still free, so this is a transient spike rather than exhaustion. **So 18-20 is the bar for
+*client-and-server-in-one-heap*; the device's own bar is higher and this tier structurally cannot
+measure it.** On hardware the client is an external host and the confound disappears, which is the
+sharpest reason the handover's bisection is the authoritative measurement rather than a formality.
+
+### 8.4.3 How much free heap a connection needs
+
+Separately from the count: how full can the heap already be and still serve a full ceiling? Ballast
+of long-lived 512 B blocks (survivor-class, and small enough that the remaining free space is
+genuinely broken up), then three rounds of a full ceiling of `PUT` requests with real bodies:
+
+| free per connection | free at start | served | `MemoryError` |
+| --- | --- | --- | --- |
+| 65,536 B | 458,688 | 21 / 21 | 0 |
+| 32,768 B | 229,120 | 21 / 21 | 0 |
+| 16,384 B | 114,336 | 21 / 21 | 0 |
+| **12,288 B** | **85,632** | **21 / 21** | **0** |
+| 10,240 B | 71,488 | 18 / 21 | 3 |
+
+**About 12 KB of free heap per admitted connection**, at `gc.threshold(-1)`. That is the live 5,170 B
+(§8.3.3) plus room for the churn, which at the default threshold is not collected until an
+allocation has already failed. At N = 7 the requirement is 86,016 B; the board boots 44% full [HW],
+leaving ~106,500 B of its 190,164 B heap — so it **fits with roughly 24% margin**.
+
+**Setting the threshold does not buy headroom here.** At 12,288 B per connection with
+`GC_THRESHOLD=32768`, 0 of 21 were served — with **zero** memory markers, so those are timeouts from
+collection frequency on a nearly-full heap, not allocation failures. At 8,192 B it was worse than
+the default (10/21 and 9 markers, against 11/21 and 5). Consistent with CLAUDE.md's standing rule
+that the threshold is defence in depth and never the fix.
 
 ## 8.5 Recommendation, and the trade in both directions
 
