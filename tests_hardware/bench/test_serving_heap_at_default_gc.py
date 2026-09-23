@@ -29,10 +29,10 @@ _ROUNDS = 12
 _ROUND_SETTLE_S = 1.0  # a slot outlives the response its client holds (Part I.6)
 _LEVEL_GAP_S = 3.0  # between levels - under the device script's own 10 s quiet-to-leave
 _PRE_IDLE_S = 30.0  # the device starts dumping 20 s into its own boot: this leaves ~4 idle dumps first
-# The 32-bit twin (the board's own block and pointer size): with the fix the worst route needs 320 B,
-# every source <=192 B; as shipped, /status needed 1,024 B. One sieve rung above the fix's own need,
-# so ladder granularity cannot flip it, and far below the shipped sizes (SPECIFICATION.md Part I.3).
-_MAX_ROUTE_NEED = 384
+# Fixed, the worst route needs 320-336 B (board and 32-bit twin); pre-fix needs were 512-1,536 B.
+# Between rungs 24 (measures 384-400 B) and 32 (512 B), so the measured rung cannot flip the
+# verdict either way (SPECIFICATION.md Part I.3).
+_MAX_ROUTE_NEED = 480
 
 
 def _one_request(dut_ip: str, path: str, barrier: threading.Barrier, outcomes: list[str], index: int) -> None:
@@ -47,10 +47,20 @@ def _one_request(dut_ip: str, path: str, barrier: threading.Barrier, outcomes: l
     try:
         barrier.wait()
         sock.sendall(f"GET {path} HTTP/1.0\r\nHost: dut\r\nConnection: close\r\n\r\n".encode())
-        head = sock.recv(64)
-        outcomes[index] = head.split(b" ")[1].decode() if head.startswith(b"HTTP/") else "refused"
-        while sock.recv(1024):
-            pass
+        received = b""
+        while b"\r\n\r\n" not in received and (chunk := sock.recv(256)):
+            received += chunk
+        if not received.startswith(b"HTTP/"):
+            outcomes[index] = "refused"
+            return
+        head, _, body = received.partition(b"\r\n\r\n")
+        body_len = len(body)
+        while chunk := sock.recv(1024):
+            body_len += len(chunk)
+        # A body cut off after the 200 went out is not a served request: every route sends its length.
+        lengths = [line.split(b":", 1)[1] for line in head.split(b"\r\n") if line.lower().startswith(b"content-length:")]
+        verdict = "-unframed" if not lengths else "" if int(lengths[0]) == body_len else "-truncated"
+        outcomes[index] = head.split(b" ")[1].decode() + verdict
     except (OSError, threading.BrokenBarrierError) as e:
         outcomes[index] = "refused" if isinstance(e, ConnectionResetError) else f"io:{type(e).__name__}"
     finally:

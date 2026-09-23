@@ -768,6 +768,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
       CXX="g++ -m32" LD="gcc -m32" MICROPY_PY_FFI=0 FROZEN_MANIFEST=<src/ext/generated/twin>`, which
       needs `gcc-multilib`. That is a `toolchain/` change (a third Unix-port variant, and an apt
       package) plus a CI job, so it owes the chroot list above and is §12's first item, widened.
+      Such a gate must also serve the real site, not `html_stub`'s sub-1 KB page, and surface
+      write-phase errors (they reach only `err_s`): the twin missed the 1,025 B static read for
+      exactly those two reasons (§7Q.14).
     - **The next wall is vendored.** Past 10 connections the first allocation to fail in the 64-bit
       twin is `ext/microdot.py:383`, the `Request` object's own attribute table growing as its
       `__init__` sets ~20 attributes (~232 B on the RP2040). Not ours to change; recorded so it is

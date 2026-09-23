@@ -9,7 +9,58 @@ like `REAL_HARDWARE_TEST_QUEUE.md`: delete it once every row below is recorded a
 
 ---
 
-## 0. THE NEXT SITTING — the serving fix and the limit of 8 (written 2026-09-23, after §1-§9 ran)
+## 00. THE NEXT SITTING — the static-file fix (written 2026-09-23 evening, after §0 ran)
+
+**§0 ran on silicon the same afternoon** (`BENCH_SITTING_2026-09-23_HANDOVER.md` §10, results in
+§0.5 below). The JSON fix held — every route's need matched the twin to the byte — but **the static
+page failed from N = 6**: microdot's `send_file` read the page 1,024 B at a time, each read one
+fresh 1,025 B allocation, and a failed one cut the body off behind a `200` that carried no
+`Content-Length`, so the browser got a corrupt page and no error. This section is the follow-up:
+**one flash** (the tip), about **30 minutes**.
+
+### 00.1 What changed, in four lines
+
+- **Static files go out in 256 B reads**, the same hole size as the JSON pieces: `_serve_static()`
+  sets microdot's own per-response `Response.send_file_buffer_size`. `ext/microdot.py` is untouched.
+- **Every static response carries `Content-Length`**, so a body cut off after the `200` is a
+  client-visible short read, not a silently wrong page. (SPEC I.3, "Static files")
+- **The instruments now see it**: the need test probes `route:/` through microdot's own body loop,
+  and the sweep counts a response as served only if its body matches its `Content-Length`
+  (`-truncated`, or `-unframed` when there is no length at all). Both gaps are §10.7's.
+- **Why the twin missed it**: its default page is a sub-1 KB stub, and a failure in the write phase
+  reaches only the FRAM log, which the twin never printed. Both are closed (MEASUREMENTS §7Q.14).
+
+### 00.2 Before anything
+
+§0.2 applies unchanged: go-ahead in your own conversation, `DebugLevel = 5`, **read `errcount`
+before anything writes**. If §10.6's image-F sweep is still unrecorded, record it first — it is the
+baseline this sitting is compared against.
+
+### 00.3 Image F′ — the tip (rows W5, W6)
+
+1. `uv run scripts/build_firmware.py dev`, flash. The lwIP verification must pass with 11 / 64 / 16,000.
+2. `uv run pytest tests_hardware/bench/test_serving_heap_at_default_gc.py -s` (W5), ~10 minutes.
+3. The per-boot combined-load sweep of §10.6 (fresh boot per level, body lengths checked), levels
+   2, 4, 6, 8 (W6). Same definition of stable: every request `200` with a complete body **and** zero
+   allocation-failure lines on the device.
+4. If both are clean: W3 and W4 from §0.4, which §0 held back. **The board is left on F′.**
+
+### 00.4 Recording table
+
+| row | measurement | twin prediction (32-bit, F's heap) | `[HW]` |
+| --- | --- | --- | --- |
+| W5 | need of `route:/` / worst JSON route | 336 B / 320-336 B (pre-fix `route:/`: 1,536 B) | ___ |
+| W5 | sweep N = 4 / 6 / 8 / 10: failures, and served-complete | 0 failures, every body complete; 48 / 72 / 96, then 96 + 24 refused at 10 (the refusal is the limit's, which this twin build did not set) | ___ |
+| W6 | per-boot N = 2 / 4 / 6 / 8, complete / failure lines | 4 / 6 / 8 measured: all complete, 0 failures (pre-fix, the same twin: 6 pages cut off at 8) | ___ |
+| — | `/` bytes on the wire vs an idle fetch | identical, with `Content-Length` equal to the file's size | ___ |
+
+**Read the prediction with §7Q.14's caveat**: on image G the board's first JSON failures came at
+N = 10, where the twin's same-arm run put them at 12 — the twin is about two levels optimistic near
+the wall. At F's limit of 8 that margin is what W6 measures.
+
+---
+
+## 0. The first follow-up sitting — RUN 2026-09-23 afternoon (written after §1-§9 ran; results in §0.5)
 
 **§1-§9 below were run on silicon on 2026-09-23**; `BENCH_SITTING_2026-09-23_HANDOVER.md` is their
 record. That sitting found one thing they did not ask: **at MicroPython's own gc default the board

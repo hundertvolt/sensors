@@ -1836,6 +1836,80 @@ def test_g_static_index_filename_is_configurable() -> None:
     assert res.body.read() == b"custom index"
 
 
+# G.3 - the per-write bound on the wire (SPECIFICATION.md Part I.3). Build-independent: a synthetic
+# mount and a stub sensor whose sizes span many far-below-chunk objects, every edge of the 256 B
+# chunk, and objects that take many chunks - read back write by write, as a socket would see them.
+
+_WIRE_CHUNK_BYTES = 256  # _STATIC_CHUNK_BYTES and _MAX_STATUS_PIECE_BYTES, as observed from outside
+_TINY_SIZES = tuple(range(64))
+_EDGE_SIZES = (127, 128, 129, 255, 256, 257, 511, 512, 513, 767, 768, 769)
+_LARGE_SIZES = (1023, 1024, 1025, 9292, 65553)  # 9292: the real page the bench sitting saw cut off
+
+
+class _ChunkRecordingWriter(_ScriptedWriter):
+    # Keeps every awrite() apart: the bound under test is per write, which .written erases.
+    def __init__(self) -> None:
+        super().__init__()
+        self.chunks: list[bytes] = []
+
+    async def awrite(self, data: bytes) -> None:
+        self.chunks.append(bytes(data))
+        await super().awrite(data)
+
+
+def _get_on_the_wire(service: "WebserverService", path: str) -> "tuple[str, dict[str, str], list[bytes]]":
+    writer = _ChunkRecordingWriter()
+    run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", path))], eof=True), writer), timeout_s=5.0)
+    end = writer.chunks.index(b"\r\n")  # microdot writes the header block's blank line on its own
+    lines = b"".join(writer.chunks[:end]).decode().split("\r\n")
+    headers = dict(line.split(": ", 1) for line in lines[1:] if line)
+    return lines[0].split(" ")[1], {k.lower(): v for k, v in headers.items()}, writer.chunks[end + 1 :]
+
+
+def _patterned(size: int) -> bytes:
+    return bytes((i * 7 + size) & 0xFF for i in range(size))  # distinct per size, so no two files match
+
+
+def test_g3_every_static_file_arrives_whole_with_its_length_in_writes_of_at_most_256_bytes() -> None:
+    sizes = _TINY_SIZES + _EDGE_SIZES + _LARGE_SIZES
+    mount = _mount_static_fixture({f"f{size}.bin": _patterned(size) for size in sizes})
+    service, _app = _make_service(static_mount=mount)
+    for size in sizes:
+        status, headers, body = _get_on_the_wire(service, f"/f{size}.bin")
+        assert status == "200", (size, status)
+        # Without Content-Length this HTTP/1.0 body ends only at FIN, so a cut-off page looked whole.
+        assert headers.get("content-length") == str(size), (size, headers)
+        assert b"".join(body) == _patterned(size), size
+        assert max(len(chunk) for chunk in body) <= _WIRE_CHUNK_BYTES, (size, [len(c) for c in body])
+        assert all(len(chunk) == _WIRE_CHUNK_BYTES for chunk in body[:-1]), (size, [len(c) for c in body])
+    assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 0
+
+
+def test_g3_a_json_route_mixing_tiny_medium_and_huge_values_is_written_in_bounded_pieces() -> None:
+    data: dict[str, Any] = {f"t{i}": i for i in range(300)}  # many fragments far below the cap
+    data.update({f"m{width}": "x" * width for width in (40, 127, 128, 200, 240, 250)})  # near the cap
+    data["huge_list"] = list(range(0, 28000, 7))  # one value worth ~80 pieces
+    data["huge_dict"] = {f"k{i}": [i, "v" * (i % 50)] for i in range(150)}
+    stub = _NestedCfgModule("STUB", values={}, data=data)
+    service, _app = _make_service(sensors=[stub])
+    status, headers, body = _get_on_the_wire(service, "/measurements")
+    assert status == "200"
+    assert headers.get("content-length") == str(sum(len(chunk) for chunk in body))
+    assert json.loads(b"".join(body)) == {"STUB": data}
+    assert max(len(chunk) for chunk in body) <= _WIRE_CHUNK_BYTES, sorted(len(c) for c in body)[-5:]
+    assert len(body) > 100  # the huge values really were split, not merely absent
+
+
+def test_g3_a_single_scalar_longer_than_the_cap_is_the_one_piece_allowed_past_it_and_stays_whole() -> None:
+    # _PieceWriter never splits a fragment, so this is the documented limit, not a bound: no
+    # source ships a scalar near it today (Part I.3's need table, <= 192 B per source).
+    stub = _NestedCfgModule("STUB", values={}, data={"small": 1, "scalar": "y" * 600, "after": 2})
+    service, _app = _make_service(sensors=[stub])
+    _status, _headers, body = _get_on_the_wire(service, "/measurements")
+    assert [chunk for chunk in body if len(chunk) > _WIRE_CHUNK_BYTES] == [json.dumps("y" * 600).encode()]
+    assert json.loads(b"".join(body)) == {"STUB": {"small": 1, "scalar": "y" * 600, "after": 2}}
+
+
 # G.2 - hotspot-mode captive-portal redirect fallback (SPECIFICATION.md Part A.5).
 # `is_hotspot_active` only changes _serve_static()'s `except OSError` fallback branch; its default
 # (None) must reproduce today's plain-404 behavior, since no existing call site passes it.

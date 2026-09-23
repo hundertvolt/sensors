@@ -493,6 +493,11 @@ from our code (a class attribute; no edit to vendored `ext/microdot.py`), or wra
 `Content-Length` for static files. Then add `/` to `allocation_need_per_source.py`'s probes and a
 body-length check to the sweep test.
 
+*Annotation, 2026-09-23 evening (the twin session): applied — the first candidate plus
+`Content-Length`, and both instrument additions. Microdot's own per-response
+`send_file_buffer_size`, no vendored edit. `REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md` §00 is
+the re-run; MEASUREMENTS §7Q.14 the twin evidence.*
+
 **Earlier data this touches:** the morning's §4 driver only checked `len(body) > 0` for `/`, so a
 truncated static page there would also have passed as served. At N ≤ 4 that run had 0 allocation
 lines on the device, so the "4" stands; the failures at N ≥ 5 may have included 1025s in addition

@@ -619,7 +619,8 @@ refactored build's generic pipeline tests. `scripts/build_frozen_html.sh` gzips 
 source dir(s) (`html_stub/` default, `HTML_SRC_DIRS` overridable), then runs `python -m freezefs
 <tmp> frozen_modules/frozen_html.py --on-import mount --target /html --overwrite always` (never
 `--compress`: this project pre-gzips by hand, served via Microdot's `send_file(...,
-compressed=True, file_extension=".gz")`). Output goes to `frozen_modules/` (gitignored), not
+compressed=True)` over a stream `_serve_static()` opens itself, in 256 B reads and with
+`Content-Length` — Part I.3, "Static files"). Output goes to `frozen_modules/` (gitignored), not
 `.frozen/`: `.frozen/` is a hardcoded MicroPython import-machinery sentinel
 (`MP_FROZEN_PATH_PREFIX`) — any path starting with that string routes to the compiled-in frozen
 table, so a real on-disk file there is silently unimportable. **The merge of several source dirs is
@@ -4947,6 +4948,19 @@ Measured on that twin by shaping the heap so no free run exceeds S
 | `/networking`, `/system`, `/notification` | ≤ 192 B | ≤ 192 B |
 | every individual data source (status, maintenance, error log, sensor data/config, settings) | ≤ 192 B | ≤ 192 B |
 
+**Static files (2026-09-23, from the same sitting's afternoon run).** The static page is the one
+response the writer does not build: microdot's `send_file` streams the file, reading
+`Response.send_file_buffer_size` bytes per write — **1,024** by default, so each read is one fresh
+1,025 B allocation, four times the JSON cap. On silicon that failed from N = 6, and worse, *after*
+the `200` and its headers were out: the response is HTTP/1.0 with no `Content-Length`, so the
+client saw a cut-off gzip page as a complete one. `_serve_static()` now opens the file itself,
+passes it to `send_file(stream=...)`, sets that attribute on the one response to
+`_STATIC_CHUNK_BYTES` (**256**) and adds `Content-Length` from the stream's own size. The attribute
+is microdot's own, public, per-instance knob — nothing in `ext/microdot.py` changes — and the page
+now needs 336 B on the 32-bit twin (1,536 B before). **A write-phase failure is never a success**:
+a response whose body can still fail after its status line goes out must carry its length, so the
+failure reaches the client as a short read.
+
 The sources were never the problem; the assembly was. **256, not smaller**: at 128 the list holding
 a response's pieces grows to 64 slots, a 256 B array, and the measured ceiling does not move (§7Q),
 while the write count doubles. The earlier "**~48x headroom**, 49152 bytes under real hammer load"
@@ -4959,7 +4973,12 @@ helper asserts the response is a genuinely bounded *stream* (an iterator, never 
 `str`/`bytes`, each piece under a margin) — added after confirming the original hammer tests would
 still pass even with a fix fully reverted, since an 8MB Unix-port heap trivially absorbs a payload
 this small regardless of contiguity; reverting each fix now fails exactly the hammer tests
-exercising that route.
+exercising that route. The `G.3` tests read responses back write by write through `_serve()`, from
+a build-independent stub mount (64 tiny files, every edge of 256, pages up to 64 KB) and a stub
+sensor mixing hundreds of tiny values with multi-kilobyte ones: every write at most 256 B, every
+static body whole with its `Content-Length`. Reverting either the chunk size or the length fails them.
+One documented exception is pinned too: a single scalar longer than the cap goes out as one piece,
+since `_PieceWriter` never splits a fragment; no source comes near that (table above).
 
 ## I.4 The standing multi-stage memory-error handling scheme
 

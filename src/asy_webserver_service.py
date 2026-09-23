@@ -108,6 +108,8 @@ _MAX_PENDING_FRAGMENTS = const(16)  # _PieceWriter's list never outgrows 16 slot
 _MAX_STATUS_PIECE_BYTES = const(256)  # _PieceWriter's per-piece cap for every streamed route. Sized
 # to the holes a fragmented heap still has at gc.threshold(-1), not to its one large run: under load
 # that run is gone and ~870 B pieces fail with ~100 KB free (SPECIFICATION.md Part I.3).
+_STATIC_CHUNK_BYTES = const(256)  # per-response Response.send_file_buffer_size (microdot's is 1024):
+# each body read allocates one chunk, so static files meet the same hole size as the JSON pieces.
 
 _ERROR_SHAPES = (  # (status_code, descr) - registered via @app.errorhandler for shaped JSON bodies,
     # per "Criteria for this step to finish": at least 400/404/405/413/500 wired.
@@ -631,13 +633,19 @@ class WebserverService:
             # even though freezefs's own VfsFrozen already refuses to escape its mount root.
         assert self._static_mount is not None  # only ever registered as a route when it isn't
         try:
-            return send_file(self._static_mount + "/" + filename, compressed=True, file_extension=".gz")
+            stream = open(self._static_mount + "/" + filename + ".gz", "rb")
         except OSError:  # no such file in the mounted filesystem
             if self._is_hotspot_active is not None and self._is_hotspot_active():
                 # Captive-portal redirect fallback, triggering phones' "Sign in to network" popup -
                 # see SPECIFICATION.md Part A.5 for the full mechanism and why no try/except is needed.
                 return redirect("/")
             abort(404)
+        size = stream.seek(0, 2)  # sent as Content-Length: without it this HTTP/1.0 body ends only at FIN,
+        stream.seek(0)  # so a write that fails after the 200 would reach the client as a complete page
+        response = send_file(filename, compressed=True, stream=stream)
+        response.headers["Content-Length"] = str(size)
+        response.send_file_buffer_size = _STATIC_CHUNK_BYTES
+        return response
 
     # -- error handling ----------------------------------------------------------------------------
 

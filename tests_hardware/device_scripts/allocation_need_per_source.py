@@ -88,15 +88,20 @@ def _sources(ws: "WebserverService") -> "list[tuple[str, Callable[[], Awaitable[
         ("/notification", ws._get_notification),
     ):
         probes.append((f"route:{path}", _whole_route(handler)))
+    if ws._static_mount is not None:  # the page the 2026-09-23 sitting saw cut off, 1 KB per read
+        probes.append(("route:/", _whole_route(ws._get_static_index)))
     return probes
 
 
 def _whole_route(handler: "Callable[[Any], Awaitable[Any]]") -> "Callable[[], Awaitable[Any]]":
-    # The handler AND the encoding microdot does when it writes the body - everything but the
-    # socket write and microdot's own request parsing.
+    # The handler AND microdot's own body loop (Response.body_iter(), a file's chunked reads
+    # included) - everything but the socket write and microdot's own request parsing.
     async def run() -> int:
         response = await handler(_NO_REQUEST)
-        return sum(len(piece if isinstance(piece, bytes) else piece.encode()) for piece in response.body)
+        total = 0
+        async for piece in response.body_iter():
+            total += len(piece)
+        return total
 
     return run
 

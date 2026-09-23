@@ -4820,6 +4820,12 @@ the two calibrations; image G in the handover's §0 sweeps 4-18 on silicon, whic
 Past the wall the failing allocations are the pieces (~250 B), microdot's `Request` table (~232 B)
 and the pieces list: nothing large is left, the heap simply runs out of holes of that size.
 
+**Qualified by §7Q.14 (same day):** these runs served the sub-1 KB stub page, not the real site, and
+could not see a failure in the response-write phase (it reaches only the FRAM log). Re-run with the
+real page and every body checked, the fixed code gives the same wall at 560k (clean through 12,
+failures at 14), but on silicon image G's first JSON failures came at 10 — the twin runs about two
+levels optimistic near the wall.
+
 ### 7Q.13 The hardware instruments, run against the twin first
 
 Both device scripts and the bench test's own functions ran against the 32-bit twin before any of it
@@ -4834,6 +4840,51 @@ script's unexplained timeout was the same bug). The twin's own recovery reading 
 before the load, largest free run 3,296 B and room for 315 blocks of 256 B; idle after, 1,456-2,784 B
 and ~235 — partial recovery. The board's answer is queue row W1.
 
+### 7Q.14 The static page — what silicon found and the twin missed (2026-09-23 evening)
+
+**The finding** (`BENCH_SITTING_2026-09-23_HANDOVER.md` §10.5): on both images the sweep failed on
+`allocating 1025 bytes` in microdot's `send_file` body loop (`ext/microdot.py:746`), from N = 6 on
+image G. Each `read(1024)` is a fresh 1,025 B bytes object; a failed one raises *after* the `200` and
+headers are out, and with HTTP/1.0 and no `Content-Length` the client reads the cut-off gzip body as
+complete. Per-level on G: stable at 4, first failure at 6 (all `/`), JSON failures only from 10.
+
+**Why the twin missed it — two gaps, both closed.** (1) The twin mounts `html_stub`, whose index is
+under 1 KB: one short read, never a 1,025 B one. The frozen fixture site (`frozen_website_wozi`,
+7,175 B gzipped) is now aliased in for these runs. (2) A write-phase `MemoryError` lands in
+`_serve()`'s `except Exception` and goes only to `err_s`, which prints nothing at the twin's debug
+level; the harness now prints every `err_s`, and the driver checks every body against its
+`Content-Length` (or the page's known size where none is sent).
+
+**Reproduced, then fixed** — 32-bit twin, `-1`, 12 rounds, fresh boot per level; "cut" = a `200`
+whose body is short; failures are the device's own allocation-failure lines:
+
+| heap | N | tip (pre-fix) | fix |
+| --- | --- | --- | --- |
+| G's, 560k (552,524 B) | 4 | clean | clean |
+| | 6 | 3 cut, 3 × 1,025 B | clean |
+| | 8 | 7 cut, 7 × 1,025 B | clean |
+| | 10 | 19 cut, 1,025 B + 804 B | 1 × 804 B, all complete |
+| | 12 | 16 cut, 1 × 500 (253 B) | clean |
+| | 14 / 16 | — | 9 / 11 × 500 (250-257 B pieces) — the §7Q.12 wall |
+| F's, 560k (571,116 B) | 4 / 6 | clean | clean |
+| | 8 | 6 cut, 6 × 1,025 B | clean |
+
+The tip arm's first failure at G's N = 6 on the 1,025 B read is **exactly the board's**. The 804 B
+failures are the twin's own: `network.WLAN` is a Python fake whose 200-slot call-log deque is
+(200 + 1) × 4 B; on the board it is a C object.
+
+**The fix** (SPEC I.3, "Static files"): `_serve_static()` opens the file, hands it to
+`send_file(stream=...)`, sets microdot's own per-response `send_file_buffer_size` to 256 and adds
+`Content-Length`. No vendored edit. Per-source need on F's heap: `route:/` **336 B** (tip 1,536 B),
+every JSON route 192-336 B.
+
+**The instruments, re-validated in the twin**: the need test now probes `route:/` through microdot's
+own `Response.body_iter()` — passes on the fix, fails on the tip with `route:/` at 1,536 B. Its gate
+moved from 384 to **480 B**: the same fixed `/status` measured 336 B in one run and 400 B in another,
+because a rung's *effective* size (its measured largest run) wanders within a rung. 480 sits between
+rung 24 (384-400 B) and rung 32 (512 B). The sweep test now labels a short body `-truncated` and a
+missing length `-unframed`; on the fix every level is complete with zero failures, on the tip every
+`/` is `-unframed`.
 ## 8. What is committed
 
 **Reverted, 2026-09-18, at the owner's instruction.** Every change this investigation made to
@@ -5002,6 +5053,7 @@ built per §1.4 and run from the repo root with `MICROPYPATH=.frozen`.
 | `build-heapprobe32` | §7Q.9's 32-bit frozen twin: `make BUILD=build-heapprobe32 VARIANT_DIR=<toolchain>/build_overrides/unix_kbd_intr_variant CC="gcc -m32" CXX="g++ -m32" LD="gcc -m32" MICROPY_PY_FFI=0 CFLAGS_EXTRA=-Wno-array-bounds FROZEN_MANIFEST=<manifest freezing src, ext, generated, digital_twin, frozen_modules>` in `ports/unix`; needs `gcc-multilib`. The generated `dev` module was frozen with `max_connections=64` so admission never caps a sweep |
 | `sweep.py` / `drive.py` / `boot.py` | §7Q's serving sweep: boot the frozen twin at a heap and threshold (`TWIN_BIN`, `SHADOW` for a module arm), drive N simultaneous requests x R rounds from a separate CPython process with bodies drained, count allocation failures from the log. `boot.py` runs the frozen `run_generic_integration` plus a `mem_info` sampler (`COLLECT=1` adds a collected dump) |
 | `classify.py` | groups a log's `MemoryError` tracebacks by size and the last three frames — how every wall in §7Q.11 was attributed |
+| `boot_site.py`, `SITE=1` | §7Q.14: `boot.py` / `twin_wrap.py` with `frozen_html` aliased to the frozen fixture site, and (`boot_site.py`) every `err_s` printed so write-phase failures reach the log; `drive.py` checks each body against its `Content-Length` |
 | `twin_wrap.py` / `validate_bench.py` | runs a device script UNCHANGED in the twin (the setup `run_generic_integration` does first, then the script's own source); `validate_bench.py` imports the bench test module and runs its own test functions with a fake `Board` whose `run_isolated()` is `twin_wrap.py` (§7Q.13) |
 | `build-nosettrace` | `make -j8 BUILD=build-nosettrace VARIANT=standard VARIANT_DIR=<toolchain>/build_overrides/unix_kbd_intr_variant "CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=0 -Wno-array-bounds" FROZEN_MANIFEST=<scratchpad>/manifest_heap.py` in `ports/unix` — the heapprobe recipe with the flag off, into its own build dir; builds clean with no warnings |
 
