@@ -529,68 +529,80 @@ three consecutive (f)-stage rounds with the fix. `tests/test_digital_twin_http_c
 halves — the refusal is raised, and it is catchable as a plain `OSError`.
 
 
-## 10.1 The CI flake this branch could not reproduce, and the channel built to catch it
+## 10.1 The CI flake: a port collision at module import, found by instrumenting CI
 
-**The shape of it.** Six of this branch's twelve CI runs went red, and never twice in the same
-place: `unit-tests` on three, `Unit tests (shipped gc.threshold)` on two, `unit-tests-coverage` on
-one, with `d0ba4c2`, `73fcb68` and `50d47d1` fully green in between. All three lanes run the same
-MicroPython suite, so that is one flaky suite, not three broken lanes - and the first red run is
-`9751814`, the commit that raised the ceiling and scaled every burst to it. The correlation points
-at this branch's own concurrency scenarios. It is a correlation; nothing here proves it.
+**What it was.** `digital_twin/unix_port_poll_prewarm.py`'s `prewarm_poll_set()` bound a *fixed*
+loopback port, 18099. It runs as the first statement of every file that boots a device, and
+`scripts/test.sh` dispatches up to 16 files concurrently as separate processes, so two importing
+within the same ~45 ms window both tried to bind it. `SO_REUSEADDR` does not permit two live
+listeners on one port - that is `SO_REUSEPORT` - so the loser died with `OSError: [Errno 98]
+EADDRINUSE` at import, before any test body ran, in whichever lane happened to lose.
 
-**The log is unreachable from this environment.** GitHub serves runner logs from
-`productionresultssa*.blob.core.windows.net`, and the gateway answers 403 to CONNECT for that host
-(`connect_rejected`, policy - visible in `$HTTPS_PROXY/__agentproxy/status`). Job summaries are not
-in the REST API either, verified by reading a failing check run's empty `output.summary`. The
-github.com log endpoints the web UI uses answer 403 to a token. What *is* served is **check-run
-annotations** - so `scripts/test.sh` now emits one `::error` per red outcome: a failed file with the
-last 40 lines of its own captured output, a file that only logged an allocation failure, and the
-pytest tier. Guarded on `GITHUB_ACTIONS`, so a local or clean-chroot run is unchanged.
+Three processes wanted that port, and this branch added the third:
 
-**What reproduction attempts ruled out.** None of these reproduced a single failure:
-
-| attempt | shape | result |
+| caller | port | added |
 |---|---|---|
-| Six concurrency files together, 9 rounds | 54 file runs, unfixed tree | 0 failures |
-| Full suite, `TEST_PARALLELISM=32` | 2x CI's oversubscription | 85/85, 0 markers |
-| Full suite, `taskset -c 0,1` | 2 cores x 4 = 8 jobs, a runner's exact shape | 85/85, 0 markers |
-| Per-scenario timing, 6 devices on 2 cores | the wall-clock-budget hypothesis | see below |
-| The same six files under `build-settrace` | the `unit-tests-coverage` lane specifically | 19/19 x 6, 0 markers |
+| `tests/test_digital_twin_uart_link.py` -> `prewarm_poll_set()` | 18099 | pre-existing |
+| `tests/test_digital_twin_http_client.py:336` -> `start_server` | 18099 | pre-existing |
+| `tests/test_digital_twin_bus_hazard_concurrency.py` -> `prewarm_poll_set()` | 18099 | **this branch** |
 
-The timing run kills the budget hypothesis outright: under 3x oversubscription on two cores,
-`every_admitted_connection_is_actually_served_a_complete_correct_response` takes **2.5 s against
-its 40 s budget**, consistent to within 60 ms across all six devices, and the heaviest scenario in
-the file is 6.8 s against 60 s. No `run_timed()` budget is anywhere near firing.
+That is why six of twelve runs went red starting exactly at the commit that raised the ceiling:
+that same commit added the bus-hazard file's prewarm call, which the new full-ceiling REST burst
+needed to avoid the `modselect.c` segfault. The fixed port was a latent defect with two users; a
+third made it fire about half the time. Note the prewarm's 18099 sat directly on the first port of
+`test_digital_twin_http_client.py`'s own 18099-18103 canned-server band - a second collision,
+between two different files, underneath the self-clash.
 
-The coverage lane is not the exception it looks like either. `build-settrace` inflates
-*allocations* 4-5x (Part E.5.2), but these scenarios are dominated by real network waits rather
-than traced execution, so the **wall-clock** inflation measured here is only **1.32x** - 47.6 s
-against 36.2 s for the same six files under identical contention. Every budget keeps at least 4x
-headroom in that lane too, including the two tightest ratios in the file
-(`a_slot_freed_by_a_stale_connections_timeout...` at 5.8 s of 30 s, and the segfault-repro-scale
-burst at 6.8 s of 60 s). The per-file 240 s timeout is never in reach either: a whole file is
-36-48 s under 3x oversubscription.
+**The fix.** `_bind_free_listener()` scans upward from `_PORT_SCAN_BASE = 17400` across a 64-port
+window, taking the first that binds and raising an `OSError` naming the window if none does - never
+a silent fallback. A fresh socket per attempt, and 17400-17463 is a band nothing else in the repo
+uses. Port 0 would be the obvious answer and is not available: the Unix port exposes no
+`getsockname()`, so an ephemeral bind could never be read back to connect to (verified against the
+pinned interpreter).
 
-**What was changed, and what it is not.** The scenario that demands the whole ceiling three times
-in a row now starts each round from an asserted zero rather than a hoped-for one: `_drained()`
-polls the service's own `_open_conns` counter to zero with a bounded budget, and the scenario
-asserts it got there. This is motivated by Part I.6 - a slot is released in `_serve()`'s `finally`,
-*after* the close is awaited, so it outlives the response the client already holds - and it is
-strictly stronger than what it replaces: a slot that never comes back now fails immediately with
-its own message, proven by a control arm that forces the counter to read non-zero and sees both
-scenarios fail as intended. It costs ~70 ms, against the ~1 s a blind sleep would have cost.
+**Proven both ways, by experiment rather than reasoning.** Thirty concurrent prewarms:
 
-**It is a hardening, not an established fix.** The lag it removes was never observed locally: a
-direct mechanism probe measured 0 refusals with and without a settle, and the drain returns on its
-first poll. Whether it is what CI was hitting is unknown until the annotations catch a real one.
+| | EADDRINUSE |
+|---|---|
+| fixed port 18099 (old) | **28 / 30** |
+| scanned window (new) | **0 / 30** |
 
-**An earlier attempt to make this diagnosable was made and reverted, and the reason matters.**
+`tests/test_digital_twin_poll_prewarm.py` pins it: a held base is skipped, a full window is walked
+to its last port, an exhausted window fails loudly and names itself, the real entry point still
+prewarms with its base taken, and the band stays clear of the canned-server range.
+
+**How it was found, after everything else failed.** The failing log is unreachable from the
+environment this was built in - GitHub serves runner logs from a storage host the network policy
+denies (403 on CONNECT), job summaries are not in the REST API, and the web UI's log endpoints
+reject a token. So `scripts/test.sh` now re-emits each red outcome as a workflow annotation, which
+the checks API *does* serve. It caught the real failure on its first red run and named the file and
+the traceback outright.
+
+That mattered, because **every hypothesis formed without it was wrong.** The suspicion fell on this
+branch's own ceiling-scaled concurrency scenarios, and none of it reproduced: 54 targeted runs of
+the six concurrency files, a full suite at double CI's oversubscription, a full suite pinned to two
+cores at a runner's exact 8-job shape, and the same six files under `build-settrace` - all clean.
+Per-scenario timing ruled the budgets out too (the heaviest new scenario takes 2.5 s of its 40 s;
+a whole file 36-48 s of a 240 s per-file timeout; the coverage lane's wall-clock inflation is 1.32x,
+not the 4-5x its *allocation* inflation suggests, since these scenarios wait on sockets rather than
+execute traced Python). None of that was near the truth, which was a fixed port in a file the
+investigation never looked at. The lesson is the instrumentation, not the guesses.
+
+**One hardening from that dead end was kept on its own merits**, and it is not a fix for anything
+observed: the scenario demanding the whole ceiling three times in a row now starts each round from
+an *asserted* zero - `_drained()` polls the service's own `_open_conns` counter with a bounded
+budget and the scenario asserts it got there - rather than trusting Part I.6's post-close slot
+release to have already happened. A control arm forcing the counter non-zero makes both scenarios
+fail as intended, so it is live rather than vacuous, and it costs ~70 ms against the ~1 s a blind
+sleep would have.
+
+**An earlier attempt at a diagnostic channel was made and reverted, and the reason matters.**
 `scripts/test.sh` was changed to append its verdict to `$GITHUB_STEP_SUMMARY`. That was wrong three
 times over: `tests_scripts/test_test_sh.py` deliberately extracts the verdict block and runs it
 standalone with only three variables set, so the new block hit `set -u` on the others and broke a
 real test; a nested `scripts/test.sh` inherits the variable and appends to its parent's summary;
 and - the deciding one - the job summary is not exposed through any API this environment can reach,
 so the channel would never have delivered what it promised. Reverted in full; the annotation
-channel above is the replacement, and its escaping and its "a missing log must never abort the run
-it reports on" property are executed against the real extracted source line rather than asserted by
+channel is its replacement, and its escaping and its "a missing log must never abort the run it
+reports on" property are executed against the real extracted source line rather than asserted by
 eye.
