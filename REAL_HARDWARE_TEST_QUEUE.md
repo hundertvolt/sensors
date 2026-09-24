@@ -15,7 +15,7 @@ Status values: **OPEN** (owed), **BLOCKED** (waiting on a decision or another ro
 
 ## The finalisation checklist — everything still owed, in one place
 
-Grouped by what each row *needs*, not by which effort opened it. **29 rows owed.** D1 and D2 are the
+Grouped by what each row *needs*, not by which effort opened it. **30 rows owed.** D1 and D2 are the
 owner's standing answers and no sitting re-asks them. G10 is blocked on something the project does
 not have (the C source).
 This table is an index; the row's own entry below is what to read before running it.
@@ -33,7 +33,7 @@ This table is an index; the row's own entry below is what to read before running
 | **The bench host itself** | H1 | Owner-run; needs no board |
 | **Long soak and the light rig** | S4, M1 | Deliberately separate sittings. M1 is interactive and records the rig geometry S3b depends on |
 | **Findings still open** | F1, F17 | F1: the script that stranded the bench once; read its row in full before running it. F17 rides along with W4 |
-| **The connection limit of 6** (§4A) | W3, W4 | The next regular bench run; the limit itself is settled |
+| **The connection limit of 6** (§4A) | W3, W4, W5 | The next regular bench run; the limit itself is settled. W5 needs `--allow-persistence-writes` |
 
 **What "finished on real hardware" means**: every row above DONE or explicitly EXCLUDED, each
 result migrated into `SPECIFICATION.md`/`CLAUDE.md`/`BACKLOG.md`, and this file deleted. That takes
@@ -291,6 +291,7 @@ decision (2026-09-24) these two get no dedicated sitting; they run with the next
 | --- | --- | --- |
 | W3 | `/status` wall-clock at 256 B pieces (`dev`'s `/status` is 29 pieces, 11 at the old 1,024 B): `tests_hardware/bench/test_end_to_end_timing.py` on the tree under test. F.1's +53 % was per *character*; this is per ~250 B | OPEN |
 | W4 | The whole bench tier on the tree under test at `max_connections = 6`, default flags — `test_network_resilience.py`, `test_serving_heap_at_default_gc.py`, `test_heap_under_connection_ceiling.py`, `test_memory_stress_bench.py` and `test_bus_concurrency_under_api_load.py` all scale with the configured ceiling. The last full bench tier was image A (limit 7, pre-fix `src/`, §7R.2). First silicon run of `src/asy_webserver_service.py`'s post-E6′ changes (one-write header block, reset guard, slot release on `MemoryError`) and of the rewritten bench instruments | OPEN |
+| W5 | **The one response piece the 256 B cap does not bound, under the load the limit was measured at.** `_PieceWriter` never splits a fragment, so a single scalar longer than `chunk_bytes` is one over-cap piece, and `NTP_Host`'s settled 1,024-character bound makes a ~1,026 B piece reachable on `/networking` and in `/status`'s networking section (SPECIFICATION.md Part I.3). Every figure behind the limit of 6 was taken at the 12-character default, and the peak measurement leaves ~1.5 KB of largest free block — so this fits by argument, never by measurement, and would not fit the 528 B measured at 7. Set `NTP_Host` to its bound through the REST path, then run `test_network_resilience.py`'s peak arm and confirm both routes still come back complete and parseable. Costs one flash cycle for the config write, so it rides a run that already has `--allow-persistence-writes`; restore the old value afterwards | OPEN |
 
 ## 5. Excluded on purpose
 
