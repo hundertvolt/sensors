@@ -4680,7 +4680,8 @@ than one, because **TIME_WAIT pcbs come from that same pool** (`lib/lwip/src/cor
 `tcp_alloc()` reclaims the oldest TIME_WAIT only once `memp_malloc(MEMP_TCP_PCB)` has already failed)
 and keep-alive is unimplemented here, so every single request churns one; the third covers the one
 over-ceiling arrival `backlog` queues to be refused. `buildgen/validate.py` itself demands only one
-slot of margin — the three are the shipped pattern, not yet an enforced rule.
+slot of margin — the three are the shipped pattern, pinned for every device by
+`tests_scripts/test_buildgen_validate.py`, but not a build error (BACKLOG item 44).
 
 **The PCB count is the small part.** lwIP's options are an ensemble (B.14.2), and a *servable*
 connection also needs its share of two global pools: `MEMP_NUM_TCP_SEG` (a connection that cannot
@@ -4740,13 +4741,18 @@ Service, not just survival, is asserted at every tier: every admitted connection
 a complete, correct, parseable response inside a bounded time, over repeated rounds, and concurrent
 page loads must be byte-identical to an uncontended one. A test that only counts `200`s passes on a
 truncated body. **Where**: `tests/test_asy_webserver_service.py` (the `backlog` default, clamp and
-hand-off to `start_server()`; reject-when-full writes nothing and leaves the count unchanged);
+hand-off to `start_server()`; reject-when-full writes nothing and leaves the count unchanged; a slot
+is held until the close completes, not until the response is written);
 `tests/_webserver_concurrency_scenarios.py` on all six devices, every burst derived from the
 device's own ceiling, never a literal, each full-ceiling round starting from an asserted zero on
-`_open_conns` rather than a blind sleep; `scripts/_digital_twin_ci_suite.py`'s Run 11b, the exact
+`_open_conns` rather than a blind sleep, and a ceiling of closing connections refusing the next
+arrival after every client already holds its whole response; `scripts/_digital_twin_ci_suite.py`'s Run 11b, the exact
 ceiling from a separate process at both thresholds (`digital_twin/README.md`); the bus-hazard and
 real-website twin tiers and `tests_js/live-backend.test.js`, scaled to the ceiling; the pytest tier's
-`TestLwipEnsemble` and `test_buildgen_validate.py` for the configuration; and the bench tier's
+`TestLwipEnsemble` and `test_buildgen_validate.py` for the configuration, three spare PCBs
+included; the pytest tier's structural pins on the bench instruments (H.7.1's timeouts, the board
+restored after a device script, every heap-measuring device script setting and printing its
+`gc.threshold`); and the bench tier's
 `test_network_resilience.py` (exact admission, complete bodies, no module logging a new error),
 `test_serving_heap_at_default_gc.py` and `test_heap_under_connection_ceiling.py` on silicon.
 
@@ -4784,6 +4790,10 @@ The consequences, all found by running these instruments on silicon for the firs
 3. **"Hold N open and sample" is not achievable by opening N and waiting.** A full ceiling is
    *sustained* by replacing each connection as the firmware reclaims it, and the sampled minimum of
    the live count — not the count at open time — is what makes a heap dump a peak reading.
+
+`tests_scripts/test_request_timeout_ceiling.py` pins both instruments inside both timeouts, read
+from `src/`: the probe's whole walk to the largest shipped ceiling under `per_call_timeout_s`, the
+holder's drip under it and its recycle under `outer_cap_s`.
 
 
 ### Cross-browser coverage

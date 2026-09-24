@@ -358,8 +358,8 @@ fixes, each visible only once the one above was in: no connection outlives `oute
 a silent one closes after 5 s), so holders drip a header line and recycle at 10 s; started together
 they expire together, so each is staggered by `i × 10 s / N`; the holder threads are stoppable and
 joined (one that outlived its test failed the next 37 network tests); and since `run_isolated()`
-leaves `main.py` stopped, the test restores the board — `kick_all_stations()`, `hard_reset()`, wait
-for HTTP — in its own `finally`. A pytest assertion message keeps only the last 2,000 characters of
+leaves `main.py` stopped, the test restores the board — `harness.restore_board_to_serving()`:
+`kick_all_stations()`, `hard_reset()`, wait for HTTP — in its own `finally`. A pytest assertion message keeps only the last 2,000 characters of
 device output and host tallies print after it, so which level of a one-boot sweep broke is lost:
 per-level answers need one boot per level.
 

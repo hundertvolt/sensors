@@ -125,6 +125,7 @@ def _report_checked(label: str) -> "tuple[int, int]":
 
 
 async def _main() -> None:
+    print(f"GC_THRESHOLD={gc.threshold()}")  # inherited until the switch below: the build runs under it
     arm = _selected_arm()
     live = arm == _ARM_LIVE
     # The seam: the generated module's first emitted collect, which runs before the batch's first
@@ -207,6 +208,7 @@ async def _main() -> None:
     # 7F.2's 49,152 was misread as a layout figure (MEASUREMENTS 7F.8).
     _report_checked("after_starter_list_control")
     gc.threshold(32768)  # what buildgen.codegen.generate_boot_entry_source() sets in the real firmware
+    print(f"GC_THRESHOLD={gc.threshold()}")
     _report_checked("after_starter_list_production_threshold")
 
     print(f"COUNTS batch_collects={batch_gc.calls} starter_collects={starter_gc.calls}")

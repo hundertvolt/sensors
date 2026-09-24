@@ -91,6 +91,7 @@ def _report_checked(label: str) -> "tuple[int, int]":
 
 
 async def _main() -> None:
+    print(f"GC_THRESHOLD={gc.threshold()}")  # inherited until the switch below: the build runs under it
     _report_checked("baseline")
     # The "before" half of the placement delta: what the BOOT adds up high is attributable only by
     # comparing against what was already there, which is what makes that check independent of the
@@ -110,6 +111,7 @@ async def _main() -> None:
     # with a difference between two probe runs at the same position (MEASUREMENTS 7F.8).
     _report_checked("after_build_system_control")
     gc.threshold(32768)  # what buildgen.codegen.generate_boot_entry_source() sets in the real firmware
+    print(f"GC_THRESHOLD={gc.threshold()}")
     _report_checked("after_build_system_production_threshold")
 
     # Two of the three checks the owner's 2026-09-19 statement asks for. The third - that long-lived

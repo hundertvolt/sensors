@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import heap_map
 import http_client
 import pytest
-from harness import MEMORY_ERROR_MARKERS, configured_max_connections, wait_until
+from harness import MEMORY_ERROR_MARKERS, configured_max_connections, restore_board_to_serving
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -107,23 +107,11 @@ def sweep_levels(dut_ip: str, levels: list[int], stop: threading.Event, tallies:
         stop.wait(_LEVEL_GAP_S)
 
 
-def _restore_board_to_serving(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    """run_isolated() leaves main.py stopped; every later bench test needs the webserver back."""
-    bench.kick_all_stations()  # stale AP-side station entries stop the DUT reassociating (README)
-    board.hard_reset()
-    wait_until(
-        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
-        timeout_s=90.0,
-        poll_interval_s=3.0,
-        description="DUT serving HTTP again after the device scripts left main.py stopped",
-    )
-
-
 @pytest.fixture(scope="module")
 def isolated_board(board: Board, bench: BenchBridge, dut_ip: str) -> Iterator[Board]:
     # Both tests stop main.py; the board is put back ONCE, after the last of them, not per test.
     yield board
-    _restore_board_to_serving(board, bench, dut_ip)
+    restore_board_to_serving(board, bench, dut_ip)
 
 
 def test_every_source_and_route_fits_a_small_free_run(isolated_board: Board) -> None:

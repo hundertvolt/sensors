@@ -1456,3 +1456,23 @@ def test_every_shipped_device_states_its_own_ceiling(repo_root: Path) -> None:
             device = tomllib.load(f)["device"]
         assert "max_connections" in device, f"{toml_path.name} does not state [device].max_connections"
         assert device["max_connections"] < _lwip_pcbs(), f"{toml_path.name}'s max_connections outruns the firmware's own lwIP PCB count"
+
+
+_PCBS_FOR_CLOSING_CONNECTIONS = 3
+
+
+def test_every_shipped_ceiling_leaves_three_pcbs_for_connections_still_closing(repo_root: Path, src_dir: Path) -> None:
+    # The shipped pattern, measured on silicon (SPECIFICATION.md H.7): closing and TIME_WAIT
+    # connections hold PCBs from the same pool. Pins what ships; the validator's own one-slot
+    # rule is unchanged, and making +3 a build error is BACKLOG 44's owner decision.
+    import tomllib
+
+    from buildgen.validate import webserver_init_default
+
+    ceilings = {"src default": webserver_init_default(src_dir, "max_connections")}
+    for toml_path in sorted((repo_root / "devices").glob("*.toml")):
+        if not toml_path.name.startswith("zz_test_"):
+            with toml_path.open("rb") as f:
+                ceilings[toml_path.name] = tomllib.load(f)["device"].get("max_connections", ceilings["src default"])
+    for where, ceiling in ceilings.items():
+        assert ceiling + _PCBS_FOR_CLOSING_CONNECTIONS <= _lwip_pcbs(), f"{where}: max_connections {ceiling} leaves {_lwip_pcbs() - ceiling} of {_lwip_pcbs()} lwIP PCBs, fewer than the {_PCBS_FOR_CLOSING_CONNECTIONS} closing connections hold"

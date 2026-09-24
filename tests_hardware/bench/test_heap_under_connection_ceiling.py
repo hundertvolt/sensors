@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import heap_map
 import http_client
 import pytest
-from harness import MEMORY_ERROR_MARKERS, configured_max_connections, discover_max_connections, wait_until
+from harness import MEMORY_ERROR_MARKERS, configured_max_connections, discover_max_connections, restore_board_to_serving
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
@@ -107,20 +107,6 @@ def _hold_ceiling_open(dut_ip: str, ceiling: int, seconds: float, held_out: list
     held_out.extend((min(observed, default=0), max(observed, default=0), at_ceiling, len(observed)))
 
 
-def _restore_board_to_serving(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    """run_isolated() leaves main.py stopped, so the webserver is gone until a real hard reset. This
-    is the only bench test that runs a device script, and without this every bench test after it
-    fails on a refused connection."""
-    bench.kick_all_stations()  # stale AP-side station entries stop the DUT reassociating (README)
-    board.hard_reset()
-    wait_until(
-        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
-        timeout_s=90.0,
-        poll_interval_s=3.0,
-        description="DUT serving HTTP again after the device script left main.py stopped",
-    )
-
-
 def test_heap_at_peak_while_a_full_ceiling_is_held(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     ceiling = configured_max_connections()
     held_out: list[int] = []
@@ -131,7 +117,7 @@ def test_heap_at_peak_while_a_full_ceiling_is_held(board: Board, bench: BenchBri
     finally:
         hammer.join(timeout=_HOLD_S + 30.0)  # never leave the load generator running past this test
         holder_alive = hammer.is_alive()
-        _restore_board_to_serving(board, bench, dut_ip)
+        restore_board_to_serving(board, bench, dut_ip)
     assert not holder_alive, "the connection holder is still running after its own test - it will hammer the board through every test that follows"
 
     assert not any(marker in output for marker in MEMORY_ERROR_MARKERS), f"the board logged an allocation failure while serving a full ceiling: {output[-2000:]}"

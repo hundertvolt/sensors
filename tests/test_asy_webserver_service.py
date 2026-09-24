@@ -1219,6 +1219,51 @@ def test_f1_a_slot_freed_by_reclaim_accepts_the_next_connection_immediately() ->
     run_timed(scenario(), timeout_s=5.0)
 
 
+class _GatedCloseWriter(_ScriptedWriter):
+    # wait_closed() returns only once the test opens the gate - a close lwIP is still finishing.
+    def __init__(self, gate: "asyncio.Event") -> None:
+        super().__init__()
+        self._gate = gate
+
+    async def wait_closed(self) -> None:
+        self.wait_closed_called = True
+        await self._gate.wait()
+
+
+def test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_written() -> None:
+    # Today's semantics, pinned (SPECIFICATION.md H.7): the client already holds its whole response,
+    # yet the slot counts until _close_writer() returns - the source of the ~70 % refusals of back-to-back
+    # clients on silicon. Releasing it earlier is BACKLOG 44's owner decision and must change this test.
+    service, _app = _make_service(max_connections=1, per_call_timeout_s=5.0, outer_cap_s=5.0)
+
+    async def scenario() -> None:
+        gate = asyncio.Event()
+        closing = _GatedCloseWriter(gate)
+        reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True)
+        task = asyncio.get_event_loop().create_task(service._serve(reader, closing))
+        for _ in range(200):
+            if closing.wait_closed_called:
+                break
+            await asyncio.sleep(0.01)
+        assert closing.wait_closed_called, "the connection never reached its close"
+        assert closing.written.startswith(b"HTTP/1.") and b"\r\n\r\n" in closing.written, closing.written
+        held = await service._open_conns.get_value()
+        assert held == 1, f"the response is out but the close is not; the slot must still count, got {held}"
+
+        refused = _ScriptedWriter()
+        await service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True), refused)
+        assert refused.written == b"" and refused.close_called  # refused like any over-ceiling client
+
+        gate.set()
+        await task
+        assert await service._open_conns.get_value() == 0
+        admitted = _ScriptedWriter()
+        await service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True), admitted)
+        assert admitted.written.startswith(b"HTTP/1."), admitted.written
+
+    run_timed(scenario(), timeout_s=5.0)
+
+
 # F.2 - mid-request, headers/request-line
 
 

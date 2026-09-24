@@ -741,6 +741,45 @@ async def _scenario_backlog_covers_the_ceiling(device: str) -> None:
         await _cancel(task)
 
 
+@_register("a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response", 30.0)
+async def _scenario_closing_connection_holds_its_slot(device: str) -> None:
+    # Today's semantics, pinned at each device's own ceiling (SPECIFICATION.md H.7): a slot is freed
+    # only once _close_writer() returns. Releasing it earlier is BACKLOG 44's owner decision and must
+    # change this scenario and test_asy_webserver_service.py's F1 twin of it together.
+    port = _next_test_port()
+    module = await _boot(port, device)
+    ceiling = _ceiling(module)
+    service = module.webserver
+    gate = asyncio.Event()
+    real_close_writer = service._close_writer
+
+    async def close_then_linger(writer: "Any") -> None:
+        await real_close_writer(writer)  # the client sees its FIN, so a streamed body ends normally
+        await gate.wait()  # ...but the close is not finished as far as the slot is concerned
+
+    service._close_writer = close_then_linger  # type: ignore[method-assign]
+    task = await _start_webserver(module)
+    try:
+        assert await _drained(module)
+        results = await asyncio.gather(*(_http_client.fetch("127.0.0.1", port, "GET", "/status") for _ in range(ceiling)))
+        for res in results:
+            assert res.status_code == 200, res.status_code
+            assert isinstance(res.json(), dict) and res.json(), "every client holds its complete response"
+        held = await service._open_conns.get_value()
+        assert held == ceiling, f"every response is out but no close has finished; all {ceiling} slots must still count, got {held}"
+        try:
+            beyond: int | str = await _healthy_request("127.0.0.1", port)
+        except OSError:
+            beyond = "rejected"
+        assert beyond == "rejected", beyond
+        gate.set()
+        assert await _drained(module), "the slots never came back once the closes finished"
+        assert await _still_serving("127.0.0.1", port)
+    finally:
+        gate.set()
+        await _cancel(task)
+
+
 @_register("a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly", 30.0)
 async def _scenario_simultaneous_bodies(device: str) -> None:
     # max_connections bodies can be in flight at once, each one a contiguous allocation, so the

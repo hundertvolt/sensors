@@ -107,6 +107,7 @@ def _whole_route(handler: "Callable[[Any], Awaitable[Any]]") -> "Callable[[], Aw
 
 
 async def _run() -> None:
+    print(f"GC_THRESHOLD={gc.threshold()}")
     await sensortask_dev.build_system(web_host="127.0.0.1", web_port=8080)
     ws = sensortask_dev.webserver
     assert ws is not None

@@ -771,24 +771,16 @@ cites is deleted outright, its permanent content migrated per the policy above. 
       piece; a smaller `chunk_bytes`, or less per `/status` piece, is what would move it. Not needed
       at 6.
     - **Owner decision: enforce PCB = limit + 3?** It is the shipped pattern and the H.7 reasoning,
-      but `buildgen/validate.py` demands only one spare slot and `check_lwip_ensemble()` has no PCB
-      floor per connection.
-    - **Tests proposed, not written** — each pins something the sittings proved; the owner decides:
-      (1) a slot is held until the close completes — `_serve()` decrements `_open_conns` only after
-      `_close_writer()` returns (a writer whose `wait_closed()` blocks on an `Event`; the count stays 1
-      until released), so the first bullet's decision becomes a deliberate change to a test;
-      (2) every device script that measures heap or serving sets `gc.threshold` itself **and** prints
-      `GC_THRESHOLD=` (6 call it, only `serving_at_default_gc.py` prints it; `mpremote` does not reset
-      the interpreter, so a result line without it is void) — structural, `tests_scripts/`;
-      (3) a host instrument that holds connections stays inside the firmware's timeouts —
-      `harness.discover_max_connections()`'s default `dwell_s` under `per_call_timeout_s`, and
-      `test_heap_under_connection_ceiling.py`'s `_RECYCLE_S` under `outer_cap_s`, read from `src/`'s
-      AST as `tests_scripts/test_request_timeout_ceiling.py` does; both instruments failed silently on
-      silicon when they did not (SPECIFICATION.md H.7.1);
-      (4) every bench test that calls `run_isolated()` restores the board to serving in a `finally`
-      (one that did not failed every later network test of its run). `_restore_board_to_serving()`
-      exists twice, identically, in `test_heap_under_connection_ceiling.py` and
-      `test_serving_heap_at_default_gc.py` — one shared helper in `harness.py` would be its home.
+      pinned for every shipped device by a test, but `buildgen/validate.py` demands only one spare
+      slot and `check_lwip_ensemble()` has no PCB floor per connection, so a new device can still
+      ship with less.
+    - **The sittings' lessons are tests now**, so a change to any of them is a deliberate edit to
+      one: the slot held until the close (`test_asy_webserver_service.py` F1 and the per-device
+      scenario, the first bullet's decision); three spare PCBs per shipped ceiling
+      (`test_buildgen_validate.py`, the third's); the instruments inside the firmware's timeouts
+      (`test_request_timeout_ceiling.py`); every heap-measuring device script setting and printing its
+      `gc.threshold` (`test_device_script_gc_threshold.py`); the board restored after a device script,
+      through one shared `harness.restore_board_to_serving()` (`test_bench_restores_serving.py`).
     - **The 32-bit frozen twin stays an ad-hoc instrument, never a committed tool or CI gate**
       (owner, 2026-09-23). It reproduced the board's failing sites and sizes and, throttled to the
       board's throughput, its peak-load failure rates; the what-for and how-to are

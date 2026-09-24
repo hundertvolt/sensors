@@ -1,6 +1,6 @@
-"""Pins the product's own per-request ceiling (asy_webserver_service.py's `outer_cap_s` default) to
-every place that mirrors or derives from it - the web UI's own give-up time and both test tiers'
-ResetErrors client timeouts. Parsed from real source, since src/ can't be imported under CPython."""
+"""Pins the product's own request timeouts (asy_webserver_service.py's `outer_cap_s`/`per_call_timeout_s`)
+to every place that mirrors or must stay inside them - the web UI's give-up time, both tiers' ResetErrors
+timeouts, the bench's connection-holding instruments. Read with ast, since src/ can't be imported here."""
 
 import ast
 import re
@@ -89,6 +89,46 @@ def test_the_bench_tiers_reset_errors_timeout_sits_above_the_same_ceiling(repo_r
     # It must also actually be the value the helper passes - a named constant that no call site uses
     # would satisfy the bound above while every real request still ran on a stale literal.
     assert "timeout_s=_RESET_ERRORS_TIMEOUT_S" in helpers.read_text(), "reset_all_error_logs() must pass _RESET_ERRORS_TIMEOUT_S, not a literal of its own"
+
+
+# The two instruments that HOLD connections open against the board. Both failed silently on silicon
+# when they outlived the firmware's own timeouts (SPECIFICATION.md H.7.1): the probe walked past the
+# ceiling, the holder measured an idle heap. Neither timeout is per-device, so src/'s default is every device's.
+
+
+@pytest.fixture(scope="session")
+def per_call_timeout_s(repo_root: Path) -> float:
+    return _default_for_parameter(repo_root / "src" / "asy_webserver_service.py", "per_call_timeout_s")
+
+
+def _largest_shipped_ceiling(repo_root: Path) -> int:
+    import tomllib
+
+    from buildgen.validate import webserver_init_default
+
+    ceilings = [webserver_init_default(repo_root / "src", "max_connections")]
+    for toml_path in sorted((repo_root / "devices").glob("*.toml")):
+        if not toml_path.name.startswith("zz_test_"):
+            with toml_path.open("rb") as f:
+                ceilings.append(tomllib.load(f)["device"].get("max_connections", ceilings[0]))
+    return max(ceilings)
+
+
+def test_the_ceiling_probe_reaches_every_devices_ceiling_before_its_first_connection_times_out(repo_root: Path, per_call_timeout_s: float) -> None:
+    # discover_max_connections() opens one connection per dwell_s and needs the first still held when
+    # the refused one arrives - ceiling + 1 dwells, all inside the server's idle-read timeout.
+    dwell_s = _default_for_parameter(repo_root / "tests_hardware" / "harness.py", "dwell_s")
+    walk_s = (_largest_shipped_ceiling(repo_root) + 1) * dwell_s
+    assert walk_s < per_call_timeout_s, f"a {walk_s:.1f}s walk (dwell_s {dwell_s}s) outlives the server's {per_call_timeout_s}s per-call timeout - the first slots are freed before the ceiling is reached"
+
+
+def test_the_ceiling_holder_recycles_and_drips_inside_the_servers_own_timeouts(repo_root: Path, outer_cap_s: float, per_call_timeout_s: float) -> None:
+    # test_heap_under_connection_ceiling.py keeps a ceiling full by dripping a header line (under the
+    # idle-read timeout) and recycling each connection (under the whole-request cap).
+    holder = repo_root / "tests_hardware" / "bench" / "test_heap_under_connection_ceiling.py"
+    drip_s, recycle_s = _module_constant(holder, "_DRIP_INTERVAL_S"), _module_constant(holder, "_RECYCLE_S")
+    assert drip_s < per_call_timeout_s, f"_DRIP_INTERVAL_S ({drip_s}s) must sit under per_call_timeout_s ({per_call_timeout_s}s), or a held connection is closed as silent"
+    assert recycle_s < outer_cap_s, f"_RECYCLE_S ({recycle_s}s) must sit under outer_cap_s ({outer_cap_s}s), or the server reclaims the connection first and the heap is measured idle"
 
 
 # ---------------------------------------------------------------------------

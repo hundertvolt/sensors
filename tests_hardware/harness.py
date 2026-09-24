@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
+    from bench_control import BenchBridge
+
 # For `import setup_toolchain` below - the same bare-sibling shape as that module's own
 # `import micropython_overrides` (host_typecheck.ini's own account of why both need a path slot).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "toolchain"))
@@ -192,6 +194,22 @@ def wait_until(
         last_exc = exc
     detail = f" (last error: {last_exc!r})" if last_exc is not None else ""
     raise TimeoutError(f"timed out after {timeout_s}s waiting for: {description}{detail}")
+
+
+def restore_board_to_serving(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    """run_isolated() leaves main.py stopped, so the webserver is gone until a real hard reset. A bench
+    test that runs a device script calls this in a finally or a fixture's teardown, or every network test
+    after it fails on a refused connection (tests_scripts/test_bench_restores_serving.py pins it)."""
+    import http_client
+
+    bench.kick_all_stations()  # stale AP-side station entries stop the DUT reassociating (README)
+    board.hard_reset()
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
+        timeout_s=90.0,
+        poll_interval_s=3.0,
+        description="DUT serving HTTP again after a device script left main.py stopped",
+    )
 
 
 @dataclass

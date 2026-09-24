@@ -3,14 +3,16 @@ can hold a full ceiling of connections open and see what the heap looks like AT 
 only mem_info(1) - the one value with no other way out (SPECIFICATION.md Part E.9)."""
 
 import asyncio
+import gc
 import time
 
 import micropython
 import sensortask_dev
 
-# Sampling only: no collect before a dump. A collect here would report the live set, but what the
-# ceiling question needs is what the allocator actually has to work with while requests are in
-# flight - garbage included, because at gc.threshold(-1) that is the real state.
+# Sampling only, never a collect before a dump: the ceiling question is what the allocator has to
+# work with while requests are in flight, garbage included. The threshold is the boot entry's own,
+# set rather than inherited - it is what MEASUREMENTS 7R.2 was taken at.
+gc.threshold(32768)
 _SAMPLE_INTERVAL_MS = 1000
 # Long enough for the host to see READY, settle, and drive several full-ceiling rounds.
 _WINDOW_S = 90
@@ -34,6 +36,7 @@ async def _sampler() -> None:
 
 
 async def _run() -> None:
+    print(f"GC_THRESHOLD={gc.threshold()}")
     main_task = asyncio.get_event_loop().create_task(sensortask_dev.main())
     # No readiness probe from in here: a request driven from this process would share the heap
     # under measurement, which is the whole thing Part E.9 forbids. The host waits for READY and
