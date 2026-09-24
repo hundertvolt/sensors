@@ -773,6 +773,22 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     - **Owner decision: enforce PCB = limit + 3?** It is the shipped pattern and the H.7 reasoning,
       but `buildgen/validate.py` demands only one spare slot and `check_lwip_ensemble()` has no PCB
       floor per connection.
+    - **Tests proposed, not written** — each pins something the sittings proved; the owner decides:
+      (1) a slot is held until the close completes — `_serve()` decrements `_open_conns` only after
+      `_close_writer()` returns (a writer whose `wait_closed()` blocks on an `Event`; the count stays 1
+      until released), so the first bullet's decision becomes a deliberate change to a test;
+      (2) every device script that measures heap or serving sets `gc.threshold` itself **and** prints
+      `GC_THRESHOLD=` (6 call it, only `serving_at_default_gc.py` prints it; `mpremote` does not reset
+      the interpreter, so a result line without it is void) — structural, `tests_scripts/`;
+      (3) a host instrument that holds connections stays inside the firmware's timeouts —
+      `harness.discover_max_connections()`'s default `dwell_s` under `per_call_timeout_s`, and
+      `test_heap_under_connection_ceiling.py`'s `_RECYCLE_S` under `outer_cap_s`, read from `src/`'s
+      AST as `tests_scripts/test_request_timeout_ceiling.py` does; both instruments failed silently on
+      silicon when they did not (SPECIFICATION.md H.7.1);
+      (4) every bench test that calls `run_isolated()` restores the board to serving in a `finally`
+      (one that did not failed every later network test of its run). `_restore_board_to_serving()`
+      exists twice, identically, in `test_heap_under_connection_ceiling.py` and
+      `test_serving_heap_at_default_gc.py` — one shared helper in `harness.py` would be its home.
     - **The 32-bit frozen twin stays an ad-hoc instrument, never a committed tool or CI gate**
       (owner, 2026-09-23). It reproduced the board's failing sites and sizes and, throttled to the
       board's throughput, its peak-load failure rates; the what-for and how-to are
@@ -788,22 +804,17 @@ cites is deleted outright, its permanent content migrated per the policy above. 
       in the 64-bit twin, the only module outside the webserver to fail anywhere in the sweeps. It
       did not fail on the board-faithful 32-bit twin. Recorded, not chased.
 
-45. **Before this branch merges: every temporary file of the connection-scaling work is removed,
-    after its content is evaluated and distributed to the canonical places, single source of truth**
-    (owner, 2026-09-23). Evaluated means each finding is kept, merged or dropped on its merits, not
-    copied wholesale; distributed means each surviving fact lands in exactly one canonical home —
-    rules and current state in `SPECIFICATION.md`/`CLAUDE.md`/`BACKLOG.md`, measured evidence in
-    `HEAP_FRAGMENTATION_MEASUREMENTS.md` (which keeps the frozen twins' and the removed silicon
-    sweep's what-for and how-to, §7Q.9/§7Q.14/§7R/§10), still-open hardware rows in
-    `REAL_HARDWARE_TEST_QUEUE.md` — with every other mention reduced to a pointer.
-    **Done 2026-09-24 for everything but the two catalogs**: the plan, the five hardware handovers,
-    the bench-sitting log and the silicon sweep tool (`tests_hardware/combined_load_sweep.py` and
-    its device script) are gone, their content in §7R, SPECIFICATION.md H.7/B.14.2/E.3,
-    `digital_twin/README.md`, the queue's §4A and item 44. **Still to go at merge**:
-    `CATALOG_UNIT_TESTS.md` and `CATALOG_INSTRUMENTATION.md`, the owner's working catalogs of test
-    candidates and instruments, distributed the same way once the owner has decided on them.
-    Never committed, never to be: the 64-bit and 32-bit frozen twin builds, their manifests and every
-    scratch harness. The committed unit tests and hardware bench tests this work added stay.
+45. **Done 2026-09-24: the connection-scaling work added no file beyond its tests.** Every temporary
+    file — the plan, five hardware handovers, the bench-sitting log, the two working catalogs and the
+    silicon sweep tool with its device script — was evaluated and distributed single source of truth,
+    then deleted (owner, 2026-09-23/24). Measured evidence and every instrument's what-for, how-to and
+    pitfalls: `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q, §7R, §9, §10. Rules and current state:
+    SPECIFICATION.md B.14.2, E.3, E.8, H.7, I.3. Harness habits and bench traps:
+    `tests_hardware/README.md` and `digital_twin/README.md`. Open follow-ups: item 44 and the queue's
+    §4A. What the branch adds as new files is tests only — `tests/test_digital_twin_poll_prewarm.py`
+    and the bench tier's `test_serving_heap_at_default_gc.py` and `test_heap_under_connection_ceiling.py`
+    with the three device scripts they drive. The frozen twin builds, their manifests and every
+    scratch harness were never committed.
 
 ## Deferred / explicitly out-of-scope work
 

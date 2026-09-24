@@ -708,12 +708,6 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   result is migrated into the permanent docs; the file goes when the last row does. It authorizes
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
-- **[`CATALOG_UNIT_TESTS.md`](CATALOG_UNIT_TESTS.md)** and
-  **[`CATALOG_INSTRUMENTATION.md`](CATALOG_INSTRUMENTATION.md)** — the connection-scaling work's
-  working catalogs: every test it added or sharpened with how each was shown to bite, the test
-  candidates still to decide, and every instrument it used with how to rebuild it. Temporary —
-  distributed and deleted before that branch merges (BACKLOG.md item 45).
-
 Handover files are per-effort throwaways, each owned by the session or pull request named in its own
 first lines and deleted once its findings are migrated or confirmed not to apply — none is live
 now. The connection-scaling plan, its five handovers and its bench-sitting log went on 2026-09-24,

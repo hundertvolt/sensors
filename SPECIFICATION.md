@@ -1270,6 +1270,11 @@ anchors hold, `verify_lwip_connection_counts_anchor()` passing is the confirmati
 `LWIP_MACROS_GUARDED_IN_OPT_H`/`LWIP_MACROS_PREDEFINED_BY_MICROPYTHON` together - that split is
 what records *why* each macro needs the generated header rather than a `-D`.
 
+**Diagnosing which pool ran out**: `LWIP_STATS = 1` keeps per-pool exhaustion counters for 1,916 B
+of heap, but this firmware never calls lwIP's C `stats_display()`, so reading them needs a probe of
+its own. It was never needed: the serial console's `MemoryError` tracebacks named the GC heap
+directly every time.
+
 ### B.14.3 `littlefs_flash_storage_size` (documented, not yet implemented)
 
 **Real future need**: reduce (or otherwise resize) the bytes of on-board flash the rp2 port
@@ -3088,7 +3093,10 @@ tier. The checks API serves annotations, while runner logs come from a storage h
 environments (a cloud session among them) cannot reach, and job summaries are in no API at all. It
 named the CI flake `unix_port_poll_prewarm.py`'s fixed port caused on its first red run, after
 every hypothesis formed without it had been wrong. `tests_scripts/test_test_sh.py` pins it,
-including that a missing log can never abort the summary the annotation is part of.
+including that a missing log can never abort the summary the annotation is part of. Appending the
+verdict to `$GITHUB_STEP_SUMMARY` instead was tried and reverted: job summaries are in no API, a
+nested `scripts/test.sh` appended to its parent's, and `set -u` broke the test that runs the verdict
+block standalone.
 
 ## E.4 Hardware-touching files: mock at the raw bus-transaction level only
 
@@ -3469,6 +3477,30 @@ is a rule rather than an anecdote. E.7 is the largest of them and keeps its own 
 - **Cross-test contamination is real.** One process, one task queue, and no parent/child tracking in
   MicroPython asyncio, so listeners parked by earlier tests keep allocating. Isolate before
   believing a per-test number.
+- **A heap figure about serving load is only as good as the twin that produced it** (the
+  connection-limit work, 2026-09-22/24; evidence `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q/§7R/§9).
+  A 64-bit twin doubles dicts, lists and frames but not strings, so it ranks the wrong allocation
+  first; a non-frozen one spends ~541 KB on imports the board keeps in flash; the stub site never
+  makes a 1 KB read; and a write-phase failure reaches only `err_s`, which prints nothing at the
+  twin's debug level. Use a 32-bit frozen build with `dev`'s own site and every `err_s` printed, and
+  calibrate its heap on the board's own failure curve. Even then an unthrottled twin serves
+  50-100x faster than the board, its requests hardly overlap, and it is optimistic about the wall
+  by two levels or more — throttle it to the board's throughput before trusting a limit.
+- **Allocation size is the variable, not churn volume.** A loaded heap at `gc.threshold(-1)` keeps
+  ~100 KB free as small holes and no large run; a fix that made 14 % *more* churn removed every
+  failure, and cutting churn never did. `gc.threshold(32768)` hid it in the twin by re-placing the
+  working set, and on silicon at peak did not reduce failures at all.
+- **A contiguity figure needs its sample point, instrument and spread established first.** Sample
+  at a proven peak (all N held, asserted), with a non-perturbing instrument (`mem_info(1)` parsed by
+  `tests_hardware/heap_map.py`, never an allocate-to-probe loop), report placement capacity
+  (`placeable(size)`, not a count of gaps and not a percentage of the after-boot value), repeat the
+  same N until its spread is known, and treat a figure that rises with N as placement luck. A "3.5x
+  cliff between 7 and 8" failed all five and was withdrawn: the within-N spread exceeded every
+  adjacent step. **Never let the offered load scale with the setting under test** — "1.3 ms per
+  added connection" was the load doubling, flat at a fixed load. **Never add a transient live set to
+  a permanent budget**: survivors are measured in a fresh process per repeat, after a collect, and
+  a connection's returned ~5 KB is a placement question, not a cost. Ballast guards use the largest
+  free run, never `gc.mem_free()`.
 - **`ErrNum` mixes errnos and wrnnos in one ring sharing a number space** (wrnno 10 = resync,
   errno 10 = bad `payload_size`), and every fault also resyncs, so the newest entry is almost always
   the resync warning. Filter on `ErrType == "E"`.
@@ -3481,7 +3513,9 @@ so deleting the gate left the log empty too and the test still passed. A guard i
 by removing what it guards and watching it fail — the same standard I3.4's revert-and-confirm pass
 applies to fixes, applied to test oracles.
 
-**Run it as a scripted sweep, not by hand.** One list of `(source file, exact anchor, replacement,
+**Proving a test bites needs no edit to `src/`**: a modified copy of one module in a directory placed
+ahead of `src` on `MICROPYPATH` wins the import, and the test must then fail. **Run it as a scripted
+sweep, not by hand.** One list of `(source file, exact anchor, replacement,
 expected failing tests)`; for each entry, write the mutation, run only the affected test file,
 require the named test to be in the failures, restore the file in a `finally` regardless. Cheap
 enough to run over twenty-odd guards in one pass, and it answers a question reading cannot: 27
@@ -4704,7 +4738,17 @@ connection's ~5,170 B of runtime allocation is **transient** — 70 served reque
 behind in total, flat rather than per connection — so it is never added to a survivor budget.
 Service, not just survival, is asserted at every tier: every admitted connection must come back with
 a complete, correct, parseable response inside a bounded time, over repeated rounds, and concurrent
-page loads must be byte-identical to an uncontended one.
+page loads must be byte-identical to an uncontended one. A test that only counts `200`s passes on a
+truncated body. **Where**: `tests/test_asy_webserver_service.py` (the `backlog` default, clamp and
+hand-off to `start_server()`; reject-when-full writes nothing and leaves the count unchanged);
+`tests/_webserver_concurrency_scenarios.py` on all six devices, every burst derived from the
+device's own ceiling, never a literal, each full-ceiling round starting from an asserted zero on
+`_open_conns` rather than a blind sleep; `scripts/_digital_twin_ci_suite.py`'s Run 11b, the exact
+ceiling from a separate process at both thresholds (`digital_twin/README.md`); the bus-hazard and
+real-website twin tiers and `tests_js/live-backend.test.js`, scaled to the ceiling; the pytest tier's
+`TestLwipEnsemble` and `test_buildgen_validate.py` for the configuration; and the bench tier's
+`test_network_resilience.py` (exact admission, complete bodies, no module logging a new error),
+`test_serving_heap_at_default_gc.py` and `test_heap_under_connection_ceiling.py` on silicon.
 
 HTTP keep-alive is deliberately not implemented: vendored `ext/microdot.py` always closes after one
 request by design (no keep-alive support upstream either), and this project's hard rule never
@@ -5005,7 +5049,9 @@ sensor mixing hundreds of tiny values with multi-kilobyte ones: every write at m
 static body whole with its `Content-Length`. Reverting either the chunk size or the length fails them,
 and serving at a `chunk_bytes` of 100 fails if either path stops following the parameter.
 One documented exception is pinned too: a single scalar longer than the cap goes out as one piece,
-since `_PieceWriter` never splits a fragment; no source comes near that (table above).
+since `_PieceWriter` never splits a fragment; no source comes near that (table above). And a
+`chunk_bytes` of 0 is clamped: microdot's body loop ends only on a short read, and `read(0)` never
+is one, so an unclamped 0 would hold the connection until its timeout.
 
 ## I.4 The standing multi-stage memory-error handling scheme
 

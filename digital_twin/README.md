@@ -870,6 +870,13 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
 
 ## Known gaps / follow-ups for later sessions
 
+- **Unix-port facts that break a harness written by habit** (found building the 2026-09-23/24
+  serving sweeps, `HEAP_FRAGMENTATION_MEASUREMENTS.md` §10): no `socket.getsockname()`;
+  `getaddrinfo()` returns a packed `sockaddr`; `asyncio` offers `Lock` and `Event` but no
+  `Semaphore`; `os.environ` is missing, so read `os.getenv()`; and `micropython.mem_info()` with
+  any argument prints the full block map. **`scripts/run_digital_twin_ci.sh` leaves
+  `frozen_modules/frozen_html.py` holding the device's real site**, so a concurrency file run ad hoc
+  afterwards fails on `html_stub/`'s `/style.css`; `scripts/test.sh` rebuilds the stub first.
 - **BMP3xx's fixed calibration block is not sourced from a real chip.** It's a real-shaped,
   hand-picked set of raw coefficient bytes, verified directly (by inverting the real cubic
   compensation formula — temperature inversion is quadratic, pressure then linear in raw ADC once
