@@ -79,9 +79,8 @@ load. The answer is **not entirely**; every figure in this file must be read wit
 
 ## 2. State (updated 2026-09-24)
 
-- **Board**: image **E6** (built for 6, local edits only — recipe in §5.8), build
-  `2026-09-24T05:20:20Z`, serving at `192.168.85.57`, `DebugLevel` 5. **The tip is now the limit-6
-  configuration (E6′, owner's decision 2026-09-24)**; its confirmation is `REAL_HARDWARE_HANDOVER_LIMIT_6.md`.
+- **Board**: image **E6′** — the tip with the committed limit of 6 (`ca68672`), build
+  `2026-09-24T06:45:32Z`, serving at `192.168.85.57`, `DebugLevel` 5.
 - **Repo**: branch `claude/tcp-connection-scaling`, everything pushed. `devices/dev.toml` and
   `toolchain/versions.toml` are at the tip (images G′ and H were local edits only, never committed;
   their recipes are in §3).
@@ -746,6 +745,35 @@ N= 7 GC_THRESHOLD=-1 | STABLE | complete 106/356 | refused 250 (expected) | fail
      PEAK_AT conns=6 samples=20 min_free_after_gc=36128
      PEAK_AT conns=7 samples=252 min_free_after_gc=23824
      refusals cross-check: host counted 250, device rejected 235 (a gap means a reset the ceiling did not cause)
+```
+
+### 5.9 The committed limit of 6 confirmed on the tip (image E6′) — run 2026-09-24
+
+The owner chose `max_connections = 6`; the tip (`ca68672`) sets it in every `devices/*.toml` with
+lwIP at PCB 9 / SEG 48 / `MEM_SIZE` 12,000. Procedure: `REAL_HARDWARE_HANDOVER_LIMIT_6.md`.
+
+- **Before**: `errcount` (board on E6, uptime 2,139 s, after the §5.6-§5.8 device scripts — context
+  only): WIFI 42 (W6), UART_init 158 / UART_resp 203 (E20/E22/W10), SGP40 26 (W10/W11/W13), NTP 11,
+  **FRAM 2 (E31, W73) — new since the reading of 2026-09-23 (§9)**, SYSTEM 14, BMP3XX 12,
+  WEBSERVER 433 (E4). Not chased; recorded because the one silent reset (§5.8) happened between
+  the two readings.
+- **E6′ is E6**: `uv run scripts/build_firmware.py dev` from the unmodified tip; every lwIP macro read
+  back from the firmware (PCB 9 / SEG 48 / `MEM_SIZE` 12,000), ensemble clean at 6; linker GC heap
+  **192,360 B**; on the board `alloc + free` = 55,968 + 131,936 = **187,904 B** (`mem_info` total) —
+  both identical to E6. Build `2026-09-24T06:45:32Z` read back over HTTP. The `.uf2` is not
+  byte-identical to E6's (build date; `WebserverService`'s default argument, which buildgen
+  overrides).
+- **Clean under peak load, no instrumentation** (`combined_load_sweep.py 6 6 --peak --no-sampler`,
+  `gc.threshold(-1)`): **0 true failures in 890 requests, 0 device allocation lines**, 625 refused
+  (70.2 % in both boots), 265 complete. With E6's three boots: **0 in 2,255 requests** at 6.
+- The script's own pre-boot allocation grew 288 B against E6 (55,968 vs 55,680 B) — the new
+  rejection-counter code in the device script, not the firmware.
+
+```
+N= 6 GC_THRESHOLD=-1 | STABLE | complete 128/430 | refused 302 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     FOOTPRINT script_before_boot alloc=55968 free=131936
+N= 6 GC_THRESHOLD=-1 | STABLE | complete 137/460 | refused 323 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     FOOTPRINT script_before_boot alloc=55984 free=131920
 ```
 
 ## 6. Findings

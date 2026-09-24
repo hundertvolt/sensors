@@ -62,9 +62,12 @@ figures (+ 2,720 B, the device script's own footprint).
 
 | step | measurement | E6 (2026-09-24) | `[HW]` E6′ |
 | --- | --- | --- | --- |
-| 1 | lwIP macros / linker heap / `mem_info` total | 9 / 48 / 12,000; 192,360 B; 187,904 B | ___ |
-| 2 | true failures / requests, per boot | 0/467, 0/401, 0/497 | ___ |
-| 2 | refused, per boot | 70.2 %, 69.8 %, 70.0 % | ___ |
+| 1 | lwIP macros / linker heap / `mem_info` total | 9 / 48 / 12,000; 192,360 B; 187,904 B | **9 / 48 / 12,000 (all macros read back); 192,360 B; 187,904 B — identical** |
+| 2 | true failures / requests, per boot | 0/467, 0/401, 0/497 | **0/430, 0/460** — 0 device allocation lines |
+| 2 | refused, per boot | 70.2 %, 69.8 %, 70.0 % | **70.2 % (302), 70.2 % (323)** |
+
+**Result, 2026-09-24** (build `2026-09-24T06:45:32Z`, `REAL_HARDWARE_HANDOVER_PEAK_LOAD.md` §5.9):
+**the committed limit of 6 is confirmed.** Step 1 identical to E6, step 2 clean in both boots.
 
 ## 5. What a result means
 
