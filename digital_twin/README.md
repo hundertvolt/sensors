@@ -84,7 +84,8 @@ Kept completely separate so nothing here can accidentally affect the determinist
   across a 64-port window rather than binding one fixed port, and fails loudly naming the window if
   none binds: `scripts/test.sh` runs usable cores x 1-4 files at once (`TEST_PARALLELISM`
   overrides), so a fixed port made concurrent imports die
-  with `EADDRINUSE`, and port 0 is no alternative since this port has no `getsockname()`.
+  with `EADDRINUSE` (28 of 30 concurrent prewarms; 0 of 30 with the scan), and port 0 is no
+  alternative since this port has no `getsockname()`.
 - `unix_port_gc_unwedge.py` — its sibling for a second Unix-port quirk: a SIGINT landing inside
   `gc_collect()` leaves the GC heap permanently locked, so the shutdown flush dies with a
   misleading `MemoryError: ... heap is locked` on a heap that is mostly free. Measured at ~5% on
@@ -763,7 +764,7 @@ only the separate digital-twin-e2e job.
 > the interpreter instead of through `scripts/test.sh` skips the `setcap` grant, so `DNSServer`'s
 > `bind()` to port 53 fails and the task never starts — check `getcap` on the binary before drawing
 > any conclusion from a standalone run. The other cause is plain CPU starvation exhausting the
-> assertion's own budget (BACKLOG.md item 28), which needs no missing capability at all. Neither is a
+> assertion's own budget (README.md's `TEST_PARALLELISM` entry), which needs no missing capability at all. Neither is a
 > bug in the code under test.
 
 Works
