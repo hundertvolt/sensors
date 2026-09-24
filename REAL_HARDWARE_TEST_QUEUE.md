@@ -22,7 +22,7 @@ This table is an index; the row's own entry below is what to read before running
 
 | Group | Rows | What it needs |
 | --- | --- | --- |
-| **Per-sitting confirmation** | D3 | Which image. Always this branch's own tip; never a `wozi` build |
+| **Per-sitting confirmation** | D3 | Which image. Always a `dev` build of the tree under test; never a `wozi` build |
 | **The suite runs** | S3b | `--allow-neopixel-sweep`, with M1 first |
 | **Heap placement readings** | T1 | The in-suite AFTER `largest_block` |
 | **Measure A's leftovers** | T2, T4 | T4 is a script to write first |
@@ -33,7 +33,7 @@ This table is an index; the row's own entry below is what to read before running
 | **The bench host itself** | H1 | Owner-run; needs no board |
 | **Long soak and the light rig** | S4, M1 | Deliberately separate sittings. M1 is interactive and records the rig geometry S3b depends on |
 | **Findings still open** | F1 | The script that stranded the bench once. Read its row in full before running it |
-| **The connection limit of 6** (§4A) | W3, W4 | The regular pre-merge bench run on the tip; the limit itself is settled |
+| **The connection limit of 6** (§4A) | W3, W4 | The next regular bench run; the limit itself is settled |
 
 **What "finished on real hardware" means**: every row above DONE or explicitly EXCLUDED, each
 result migrated into `SPECIFICATION.md`/`CLAUDE.md`/`BACKLOG.md`, and this file deleted. That takes
@@ -41,12 +41,12 @@ one bench sitting, the writing work, the owner's call on R5 and the owner's own 
 
 ## If there is time for one sitting only
 
-**Board state**: image E6′, the tip at `max_connections = 6` (`HEAP_FRAGMENTATION_MEASUREMENTS.md`
+**Board state**: image E6′, the committed `src/` at `max_connections = 6` (`HEAP_FRAGMENTATION_MEASUREMENTS.md`
 §7R.1), `buildDate 2026-09-24T06:45:32Z`, `DebugLevel` 5. Check `buildDate` against the tree and
 reflash if `src/` has moved.
 
 1. **Run sheet Step 1** — the `errcount` reading, before anything writes.
-2. **§4A's W4** — the whole bench tier on the tip at the limit of 6, default flags; then W3.
+2. **§4A's W4** — the whole bench tier on the tree under test at the limit of 6, default flags; then W3.
 3. **M1, then S3b** — the light rig is in place (D2), and M1 is what writes the geometry down so
    the next sitting does not have to re-establish it. ~10 minutes together.
 4. **F1's SSID script** — read §2A F1 in full first: this is the script that stranded the bench,
@@ -64,13 +64,13 @@ These change what gets run, so settle them first.
 - **D1 and D2 are the owner's standing answers (2026-09-22)**; a sitting does not re-ask them.
 - **D1 is sequenced**: the gated rows run only once the default run is green, so a gated failure is
   the gated test's own.
-- **D3** is confirmed every sitting; the answer is always this branch's own tip.
+- **D3** is confirmed every sitting; the answer is always a `dev` build of the tree under test.
 
 | # | Decision | Why it matters | Status |
 | --- | --- | --- | --- |
 | D1 | **Does the bench spend flash/NVM writes this round?** A default run deselects 13 of the bench tier's 85 tests and 9 of the flash tier's 51; `--allow-persistence-writes` runs them and spends real cycles. `--allow-scd30-extra-write` is AND-gated on top for one further SCD30 NVM write. | Several rows below are *only* reachable with the flag — R1 and R4 in particular. Deselection is invisible to the pass/fail check, so this must be a knowing choice (CLAUDE.md's wear rule). | **ANSWERED 2026-09-22: yes, after a clean default run.** Not a per-sitting question any more; the ordering is the condition |
 | D2 | **Is the NeoPixel-aimed-at-the-ISL29125 rig set up?** | Gates `--allow-neopixel-sweep` (S3b, ~10 min). | **ANSWERED 2026-09-22: yes.** Pass `--allow-neopixel-sweep`; run M1 first, which records the rig geometry |
-| D3 | **Which firmware image.** Every row below assumes a `dev` build from this branch's own tip via `scripts/build_firmware.py dev`. | CLAUDE.md's hard rule: a `wozi` build flashed onto the dev bench "tests nothing at all" and has produced false bugs before. | OPEN |
+| D3 | **Which firmware image.** Every row below assumes a `dev` build of the tree under test via `scripts/build_firmware.py dev`. | CLAUDE.md's hard rule: a `wozi` build flashed onto the dev bench "tests nothing at all" and has produced false bugs before. | OPEN |
 
 ---
 
@@ -83,7 +83,7 @@ the ones above it. `tests_hardware/README.md` stays the reference for *how* a st
 command, and what to write down.
 
 **Step 1 - record the board's current state, before touching anything.**
-`GET /status` and save the whole `errcount` table verbatim into this session's notes. It is the one
+`GET /status` and save the whole `errcount` table verbatim into the sitting's notes. It is the one
 diagnostic a reboot does not erase and `ResetErrors` destroys irreversibly (CLAUDE.md). Then ask
 what was last run against this board: an isolated-driver device script builds its own
 `AsyFramManager` over the same chip and can leave a plausible-looking fabricated entry behind
@@ -93,7 +93,7 @@ board's recent history allows it to be.
 **Step 2 - answer D1, D2 and D3 (section 0) and write the answers down.** They decide which of the
 steps below run at all. Nothing later re-asks.
 
-**Step 3 - build and flash this branch's own `dev` image.**
+**Step 3 - build and flash the `dev` image of the tree under test.**
 `scripts/build_firmware.py dev`, then flash it. Never a `wozi` build (CLAUDE.md: it "tests nothing
 at all" and has produced false bugs).
 
@@ -110,7 +110,7 @@ here.
 **Step 6 - the wear-gated run, only once steps 4 and 5 are green** (D1's condition).
 `scripts/run_bench_hardware_suite.sh --allow-persistence-writes` — a strict superset of the flash
 one. R1 and R4 need it; without it they are deselected. The last gated run (2026-09-23, clean,
-§7R.2) was image A, not the tip. Add `--allow-scd30-extra-write` only if a second SCD30 NVM write is
+§7R.2) was image A, not the current tree. Add `--allow-scd30-extra-write` only if a second SCD30 NVM write is
 genuinely wanted on top.
 
 **Step 7 - the NeoPixel light programs.** D2 is a standing yes: the rig is in place.
@@ -244,7 +244,7 @@ decision (R5's "is it durable" aside).
 | R6 | **The `CFGMGR_SYSTEM` setup-order fix's unexplained +0.90 s of boot latency.** Boot latency itself is measured and needs no re-run: pre-WP **7.74 s** → WP1+WP2 **9.80 s** → WP1–WP8 **9.76 s** → +`CFGMGR_SYSTEM` fix **10.66 s** (medians of 5, spread ±0.06 s; 23 reboots, no `WDT_RESET`). Those figures were taken by PR #102, which the owner closed unmerged on 2026-09-18 — they are migrated into `SPECIFICATION.md` Part A.7's boot-latency note, so nothing is lost with the PR. What remains open is only the sub-question: **+0.90 s** is far more than one extra FRAM-backed logger's `setup()` should cost, and is unexplained. Worth understanding before the same reorder is assumed free elsewhere; it does not threaten the watchdog budget, so it is not a reason to revert. | SPECIFICATION.md Part A.7; BACKLOG 33 | OPEN |
 | R9 | **Half closed: the shadow-divergence fix RAN and passed on silicon (§7H.6, the first fully clean bench tier); the `Overrange` field that replaced `W12` has still never run.** `configure()`'s device-session lock was widened to span the whole validate-mutate-write(-rollback) sequence (WP-era fix, unit-tested by `test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight`), but the false `wrnno=11` it fixes only ever manifested under real concurrent bench load - so only real load re-confirms it. Same run covers the `Overrange` half: `device_scripts/isl29125_mechanism_envelope.py` now reads the live field instead of the retired `W12` log entry. | BACKLOG, "Open questions" first entry | OPEN |
 | R7 | **`SPECIFICATION.md` Part A.7's FRAM setup-cost figures are twin-only.** `digital_twin/_fram_chip.py` answers SPI opcodes in memory with zero wire time, so every number there excludes the real per-transaction cost. Re-measure on silicon. Largely the same instrumentation as R6. **Premise corrected by A6 (2026-09-18):** the omitted term is *not* mainly SPI wire time — at 1 MHz six transactions are ~300 us of the measured 2,849 us, so ~90 % is MicroPython interpreter / `machine.SPI` call overhead. Frame the re-measurement that way. | SPECIFICATION.md Part A.7 | OPEN |
-| R13 | **UART `wrnno` 11 now takes the fault episode's one persisted slot when the drain hits its bound** (BACKLOG item 23, 2026-09-18). The bench exerciser drives the real crossover jumper, so a deliberately babbling peer is reproducible there in a way no mock is: confirm `GET /status` shows `W11` rather than `W10` for `UART_init`/`UART_resp` after one, and that a *boot* drain against the same babbling peer persists nothing at all. Low urgency - the mock tier covers the logic; this confirms it against a real UART's own timing. | BACKLOG item 23 | OPEN |
+| R13 | **UART `wrnno` 11 now takes the fault episode's one persisted slot when the drain hits its bound** (SPECIFICATION.md C.7.1, 2026-09-18). The bench exerciser drives the real crossover jumper, so a deliberately babbling peer is reproducible there in a way no mock is: confirm `GET /status` shows `W11` rather than `W10` for `UART_init`/`UART_resp` after one, and that a *boot* drain against the same babbling peer persists nothing at all. Low urgency - the mock tier covers the logic; this confirms it against a real UART's own timing. | SPECIFICATION.md C.7.1 | OPEN |
 
 ---
 
@@ -276,21 +276,20 @@ Each is a test to *write* or a method to settle against real hardware, not just 
 
 | # | Task | Status |
 | --- | --- | --- |
-| H1 | **The two-chroot verification, unsatisfied since 2026-09-12** — an owner-run periodic check since 2026-09-18, not a gate that blocks anything. Everything this branch changed in `scripts/`, `pyproject.toml` and — the highest-risk part, which the lint/typecheck recipe never exercises — `toolchain/setup_toolchain.py` + the new `toolchain/micropython_overrides.py`. The bench Pi4 already runs trixie/GCC 14.2, so it is the right host for the leg that has never run. **Two things make this run heavier than the last one**: `build_unix_port()` now builds **two** Unix ports (`build-standard` and `build-settrace`, Part E.5.2), so that step costs roughly twice the time and disk it used to; and `scripts/test.sh` was rewritten around them, so the chroot leg's `scripts/test.sh` invocation is exercising a different script than the recipe was last satisfied against. Also worth running once there: `GC_THRESHOLD=32768 scripts/test.sh`, the (f) stage, which no chroot leg has ever executed. Full account and the running list of what the next manual run has to cover: BACKLOG.md's own entry. | OPEN |
+| H1 | **The two-chroot verification, unsatisfied since 2026-09-12** — an owner-run periodic check since 2026-09-18, not a gate that blocks anything. Everything changed since 2026-09-12 in `scripts/`, `pyproject.toml` and — the highest-risk part, which the lint/typecheck recipe never exercises — `toolchain/setup_toolchain.py` + the new `toolchain/micropython_overrides.py`. The bench Pi4 already runs trixie/GCC 14.2, so it is the right host for the leg that has never run. **Two things make this run heavier than the last one**: `build_unix_port()` now builds **two** Unix ports (`build-standard` and `build-settrace`, Part E.5.2), so that step costs roughly twice the time and disk it used to; and `scripts/test.sh` was rewritten around them, so the chroot leg's `scripts/test.sh` invocation is exercising a different script than the recipe was last satisfied against. Also worth running once there: `GC_THRESHOLD=32768 scripts/test.sh`, the (f) stage, which no chroot leg has ever executed. Full account and the running list of what the next manual run has to cover: BACKLOG.md's own entry. | OPEN |
 
 ---
 
 ## 4A. The connection limit of 6 — what silicon still owes
 
 The limit itself is settled and confirmed on the committed image (SPECIFICATION.md H.7, evidence
-`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R); every row that measured it is closed and deleted. No more
-real-hardware runs happen on the branch that set it (owner, 2026-09-24), so these two wait for the
-regular pre-merge bench run:
+`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R); every row that measured it is closed and deleted. By owner
+decision (2026-09-24) these two get no dedicated sitting; they run with the next regular bench run:
 
 | Row | What | Status |
 | --- | --- | --- |
-| W3 | `/status` wall-clock at 256 B pieces (`dev`'s `/status` is 29 pieces, 11 at the old 1,024 B): `tests_hardware/bench/test_end_to_end_timing.py` on the tip. F.1's +53 % was per *character*; this is per ~250 B | OPEN |
-| W4 | The whole bench tier on the tip at `max_connections = 6`, default flags — `test_network_resilience.py`, `test_serving_heap_at_default_gc.py`, `test_heap_under_connection_ceiling.py`, `test_memory_stress_bench.py` and `test_bus_concurrency_under_api_load.py` all scale with the configured ceiling. The last full bench tier was image A (limit 7, pre-fix `src/`, §7R.2) | OPEN |
+| W3 | `/status` wall-clock at 256 B pieces (`dev`'s `/status` is 29 pieces, 11 at the old 1,024 B): `tests_hardware/bench/test_end_to_end_timing.py` on the tree under test. F.1's +53 % was per *character*; this is per ~250 B | OPEN |
+| W4 | The whole bench tier on the tree under test at `max_connections = 6`, default flags — `test_network_resilience.py`, `test_serving_heap_at_default_gc.py`, `test_heap_under_connection_ceiling.py`, `test_memory_stress_bench.py` and `test_bus_concurrency_under_api_load.py` all scale with the configured ceiling. The last full bench tier was image A (limit 7, pre-fix `src/`, §7R.2) | OPEN |
 
 ## 5. Excluded on purpose
 
@@ -300,8 +299,8 @@ regular pre-merge bench run:
 - **PR #84's three bench passes** (`reactive` full suite 95 passed/2 skipped; `reactive` + churn
   pressure tests 3 passed; `threshold` full suite 95 passed/2 skipped) are already run, on that PR's
   own branch, and do not need repeating. **The PR itself was closed unmerged on 2026-09-18 by owner
-  decision** (BACKLOG 33), so its `--gc-policy` / `--memory-pressure` machinery is not available to
-  any run listed above and is not coming — none of PR #84 is on this branch, and the tooling is
+  decision**, so its `--gc-policy` / `--memory-pressure` machinery is not available to
+  any run listed above and is not coming — none of PR #84 is in the tree, and the tooling is
   unshipped by decision rather than pending.
 - **The two unprovisioned bench-rig capabilities** (was H3): a programmable GPIO fault-injection
   harness and a second WiFi test client, each of which would move one `[MANUAL]` candidate to

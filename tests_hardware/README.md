@@ -34,9 +34,9 @@ deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below
    had no real USB device for the build to detect/link against). Before running anything that calls
    `picotool load` (`tests_hardware/flash/test_toolchain_flash_boot.py`'s
    `test_real_uf2_reflash_and_boot_smoke_test`, `tests_hardware/manual/manual_toolchain.py`),
-   rebuild picotool on the real hardware session's own machine (or confirm the apt-packaged
-   `picotool` there already has USB support - check for the same warning line) rather than assuming
-   this session's cached build works.
+   rebuild picotool on the bench host itself (or confirm the apt-packaged `picotool` there already
+   has USB support - check for the same warning line) rather than assuming a sandbox-cached build
+   works.
 4. **The NeoPixel sweep rig** - only for `--allow-neopixel-sweep`, and not provisioned by any
    `setup_toolchain.py` tier because it is physical, not software. The board's own WS2812 (GP18 on
    this bench) has to be aimed at the ISL29125's window at a fixed, recorded distance, with ambient
@@ -511,10 +511,10 @@ a live question:
   actually honor it?~~ — **resolved: yes.** See the "WiFi reconnection flakiness" finding below —
   `kick_all_stations()` (built on this primitive) is the confirmed fix.
 - **`nmcli -g IP4.ADDRESS`/`IP4.GATEWAY device show <iface>`'s exact output shape** (CIDR-suffixed
-  address vs. plain gateway) is well-established, long-stable nmcli behavior, but this session's
-  sandbox has no systemd/D-Bus to actually run NetworkManager against and confirm live - unlike
+  address vs. plain gateway) is well-established, long-stable nmcli behavior, but the authoring
+  sandbox had no systemd/D-Bus to actually run NetworkManager against and confirm live - unlike
   `nmcli device wifi connect`'s own syntax, which *was* confirmed directly against real `nmcli
-  --help` output (installed in this sandbox specifically to check it) during this same session. See
+  --help` output (installed in that sandbox specifically to check it). See
   `bench_control.BenchBridge.own_ip_on()`/`gateway_ip()`'s own docstrings.
 - **A permanent-WLAN-deactivation risk in the role-reversal scenario's own stage 6, found during a
   second, deeper re-audit of this tier's claims against `src/asy_wifi_service.py`**: by stage 6 the
@@ -793,7 +793,7 @@ tests closed these (54 -> 65, `bench/test_network_resilience.py` plus two new
   table PREROUTING DNAT-to-loopback redirects the real port to a local rogue UDP responder that
   answers every query with a fixed non-protocol payload, closing BACKLOG.md's open question #5's
   "garbage response" half specifically (the *unresponsive* half was already covered). Flagged the
-  same way `own_ip_on()`/`gateway_ip()` already were: this session's sandbox has no systemd/D-Bus to
+  same way `own_ip_on()`/`gateway_ip()` already were: the authoring sandbox had no systemd/D-Bus to
   confirm the DNAT combination against a real NetworkManager-managed bridge, so it's a standard,
   well-documented iptables pattern, not something verified live here.
 - **Real socket-limit degradation** (`test_connections_at_and_above_the_real_socket_limit_degrade_cleanly`):
@@ -1129,13 +1129,13 @@ coverage this specific hazard can ever have, by construction of `src/` itself - 
 rather than left as a silent asymmetry between the two tiers.
 
 Same honesty note as the Seventh pass: none of this pass's changes have been run against real
-hardware either (still no go-ahead this session) - `ruff`/`mypy` clean, structurally consistent with
+hardware either (no go-ahead at the time) - `ruff`/`mypy` clean, structurally consistent with
 proven scripts, but unverified on silicon until a real bench session confirms it.
 
 ## Ninth pass - auditing the flash-tier/bench-tier bus-hazard pairing itself, and a real miscoverage found
 
 Direct follow-up question: does *every* pre-existing flash-tier bus-hazard test (not just the ones
-this session added) actually have a bench-tier counterpart? Checking systematically found one
+earlier passes added) actually have a bench-tier counterpart? Checking systematically found one
 genuine, surprising miscoverage plus two closeable gaps:
 
 - **SGP40's general-call hazard has ZERO real bench-tier coverage, despite `test_bus_concurrency_
@@ -1167,7 +1167,7 @@ genuine, surprising miscoverage plus two closeable gaps:
   one, right next to the existing note.
 
 Same honesty note again: the two new/closed items above are `ruff`/`mypy`-clean but unverified
-against real silicon this session.
+against real silicon when written.
 
 ## Tenth pass - full test-suite sweep for tier/layering completeness and wrongly-trusted tests, beyond bus-hazard (project owner, 2026-09-15, BACKLOG.md HIGH PRIORITY item)
 
@@ -1286,7 +1286,7 @@ never asserts the reset's own effect) but says so in its own comment - not a new
 Ninth pass's bug, just worth naming.
 
 Same honesty note as every real-hardware addition in this file: the new/changed files above are
-`ruff`/`mypy`-clean but unverified against real silicon this session.
+`ruff`/`mypy`-clean but unverified against real silicon when written.
 
 ## Persistence-write gating: one global flag plus an AND-gated extra flag
 

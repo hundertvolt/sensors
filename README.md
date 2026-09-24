@@ -709,9 +709,9 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
 
-Handover files are per-effort throwaways, owned by the session named in their first lines and
-deleted once their findings are migrated. None is live now. Do not treat one as a durable reference;
-prefer the queue above for anything bench-related.
+A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
+lines and deleted once its findings are migrated. Never treat one as a durable reference; prefer the
+queue above for anything bench-related.
 
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 
@@ -728,15 +728,14 @@ prefer the queue above for anything bench-related.
   source couldn't be established (`captive_dns.py`/`asy_ntp_client.py`/`asy_udp_socket.py`) and a
   disclosure that parts of this codebase were written with AI assistance.
 
-**`digital_twin/README.md`** (permanent, not yet folded into `SPECIFICATION.md`):
+**`digital_twin/README.md`** (permanent, kept current):
 
 - **`digital_twin/README.md`** — the standing reference for the hardware simulator: what's there,
   how to swap it in for a Unix-port run, FRAM/SCD30 persistence, running its own tests, and how to
   add a new chip fake when a new sensor driver lands (required per `SPECIFICATION.md` Part C.11
-  point 9). Its own lifecycle isn't yet settled (still genuinely useful, but a later session may
-  decide to fold it into `SPECIFICATION.md` the way `src/README.md`/`tests/README.md` were) —
-  listed here for now so it isn't only locatable by cross-reference in the meantime. See
-  `SPECIFICATION.md` Part A.10 for how it fits into the rest of the architecture.
+  point 9). Folding it into `SPECIFICATION.md`, the way `src/README.md`/`tests/README.md` were, is
+  an open option. See `SPECIFICATION.md` Part A.10 for how it fits into the rest of the
+  architecture.
 
 **`tests_hardware/README.md`** (permanent, kept current):
 

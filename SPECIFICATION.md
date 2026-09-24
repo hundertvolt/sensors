@@ -835,7 +835,7 @@ build a real `firmware.uf2` for wozi and verify it** — the "no RP2040 firmware
 this paragraph used to claim is long gone. Web side: `web-lint-and-typecheck`, `web-unit-tests`, `web-put-matrix` (3 shards),
 `web-coverage`, `web-cross-browser-smoke`. The live PUT matrix is its own sharded job because it
 is the web tier's whole wall clock - 567s of the suite's 578s, measured 2026-09-19 - and kept
-rolling a 20-minute budget while taking three other jobs' signals with it (BACKLOG item 36).
+rolling a 20-minute budget while taking three other jobs' signals with it.
 
 Cache key hashes **both** `versions.toml` and `setup_toolchain.py` — keying on `versions.toml`
 alone once let a stale cached binary (built before `MICROPY_PY_SYS_SETTRACE=1`) survive across
@@ -1791,7 +1791,7 @@ while the ring still says what else happened.
 | `asy_webserver_service.py` (`WEBSERVER`) | 1-6 | 1-5 | 1=unexpected exception in dispatch, 2=`system_cmd` callback, 3=`notification_led` callback, 4=uncaught exception via `errorhandler(Exception)`, 5=`notification_pause` callback, 6=one `/status` streamed-fragment source failed. `wrnno` 1-5=connection-lifecycle reclaim reasons. |
 | `asy_neopixel_driver.py` | — | — | No persisted logging. |
 | `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client) | — | — | Deliberately no logging — every failure surfaces to exactly one upstream owner. Coverage audit closed, no gaps. |
-| `asy_uart_comm.py` (`UART`, `_NAME` only as the default) | 10-34 | 10-14 | 10-16=construction refusals (payload_size, timeout, role, bus handle, allocation — the module's own buffers *and* a frame codec whose one long-lived scratch failed, since a codec that reports itself not ready would otherwise fail every write instead — rxbuf, missing callback), 17=not-ready gate, 18=role refusal, 19=frame validation, 20=missing/mismatched ACK, 21=write, 22=read timeout, 23=payload too large, 24=destination allocation, 25=size mismatch, 26=callback, 27=re-entrant call, 28=wrong frame kind, 29=GET id mismatch, 30=listen loop, 31=peer initiated simultaneously, 32=bytes arriving but no frame ever valid (a CRC/baud/`payload_size` mismatch), 33=streamed chunk short-filled, 34=a caller's own argument refused (command id outside a byte, a non-integer or negative size, a non-buffer payload or destination). `wrnno` 10=resync, 11=drain bound reached, 12=fault episode cleared, 13=a *rise* in the driver's cumulative `cancel_unacknowledged` (reading it as a flag reported every later healthy cancel as wedged), 14=a callback declined a command id. **Exactly one of 10/11/14 is persisted per fault episode, and 14 at most once per command id until a `reset_error_counter()`** — deduping only the `errno` left every fault still persisting its own resync warning, which refilled the bounded history and evicted the entry naming the cause — and 14 escaped that fix until 2026-09-12, so a peer polling one unimplemented id spent two slots per refusal and erased a ten-slot history in five rounds; remembering only the *last* declined id then left an alternation between two unimplemented ids flooding it just the same, which a 32-byte one-bit-per-id map closed on 2026-09-13. **`wrnno` 11 outranks 10 for the episode's single slot** (owner decision, 2026-09-18, closing BACKLOG open question 23) — `_resync()` drains first and then persists 11 when the drain hit its bound, 10 otherwise, so "the peer never stopped sending", the one signal separating a babbling or misconfigured peer from ordinary line noise, is what a field log actually carries. The budget is unchanged at one persisted warning per episode. The same change closed the inverse leak: `setup()`'s boot drain is deliberately not a fault and not counted, yet it used to persist 11 on every boot of a babbling link, because the bound logged itself rather than flagging the caller. Numbered from 10 to stay clear of `base_classes.py`'s reservation even though this is not a `SensorReader` subclass, and disjoint from any owner's own range where the logger is reached through. |
+| `asy_uart_comm.py` (`UART`, `_NAME` only as the default) | 10-34 | 10-14 | 10-16=construction refusals (payload_size, timeout, role, bus handle, allocation — the module's own buffers *and* a frame codec whose one long-lived scratch failed, since a codec that reports itself not ready would otherwise fail every write instead — rxbuf, missing callback), 17=not-ready gate, 18=role refusal, 19=frame validation, 20=missing/mismatched ACK, 21=write, 22=read timeout, 23=payload too large, 24=destination allocation, 25=size mismatch, 26=callback, 27=re-entrant call, 28=wrong frame kind, 29=GET id mismatch, 30=listen loop, 31=peer initiated simultaneously, 32=bytes arriving but no frame ever valid (a CRC/baud/`payload_size` mismatch), 33=streamed chunk short-filled, 34=a caller's own argument refused (command id outside a byte, a non-integer or negative size, a non-buffer payload or destination). `wrnno` 10=resync, 11=drain bound reached, 12=fault episode cleared, 13=a *rise* in the driver's cumulative `cancel_unacknowledged` (reading it as a flag reported every later healthy cancel as wedged), 14=a callback declined a command id. **Exactly one of 10/11/14 is persisted per fault episode, and 14 at most once per command id until a `reset_error_counter()`** — deduping only the `errno` left every fault still persisting its own resync warning, which refilled the bounded history and evicted the entry naming the cause — and 14 escaped that fix until 2026-09-12, so a peer polling one unimplemented id spent two slots per refusal and erased a ten-slot history in five rounds; remembering only the *last* declined id then left an alternation between two unimplemented ids flooding it just the same, which a 32-byte one-bit-per-id map closed on 2026-09-13. **`wrnno` 11 outranks 10 for the episode's single slot** (owner decision, 2026-09-18, ) — `_resync()` drains first and then persists 11 when the drain hit its bound, 10 otherwise, so "the peer never stopped sending", the one signal separating a babbling or misconfigured peer from ordinary line noise, is what a field log actually carries. The budget is unchanged at one persisted warning per episode. The same change closed the inverse leak: `setup()`'s boot drain is deliberately not a fault and not counted, yet it used to persist 11 on every boot of a babbling link, because the bound logged itself rather than flagging the caller. Numbered from 10 to stay clear of `base_classes.py`'s reservation even though this is not a `SensorReader` subclass, and disjoint from any owner's own range where the logger is reached through. |
 | `asy_uart_driver.py` | — | — | Deliberately no logging — every failure surfaces to its one upstream owner (`asy_uart_comm.py`), the same treatment the other bus drivers get. `cancel_unacknowledged` is a plain counter that owner reads and logs under its own `wrnno` 13. |
 
 ## C.8 Concurrency & locking model
@@ -2117,9 +2117,8 @@ tuple, not `NamedTuple` (internal, not the public model, C.6).
 
 A chip fake drifts from the part it models silently: every test still passes, because the tests and
 the fake share the same wrong assumption. The ISL29125 is the first driver with a standing guard
-against that, and the pattern generalises to any new bus-facing device. Ported here from `main`'s
-own PR #75; the findings below were measured on `main`'s real hardware run and apply unchanged to
-this branch's byte-identical driver/chip-fake port.
+against that, and the pattern generalises to any new bus-facing device. The findings below were
+measured on real hardware (PR #75) and apply unchanged to the current driver and chip fake.
 
 `tests_hardware/device_scripts/isl29125_mock_conformance_probe.py` is one probe that talks **raw
 `machine.I2C` only** — the single layer the real board and `digital_twin/machine.py` both
@@ -2144,7 +2143,7 @@ value** and covered by the probe's own derived yes/no keys instead, so nothing i
 | `BOUTF` after a status read | **cleared by the read itself** | survived the read |
 | The threshold persistence counter | restarts when `RGBTHF` is **cleared**, not on every status read (C.11.1.2) | reset on every read that touched `0x08` |
 
-`digital_twin/_isl29125_chip.py` (already ported onto this branch, byte-identical) models every row
+`digital_twin/_isl29125_chip.py` models every row
 above; the findings are recorded here purely as the evidence trail for why it looks the way it
 does.
 
@@ -2229,9 +2228,8 @@ is no longer a software-only knob: changing it writes CONFIG3.
 The dedicated `wrnno` this trap used to need is gone along with the field it warned about: a
 warning the derivation makes unreachable is complexity without a reader. The dead-line detector
 therefore has a single meaning again — five decisions in a row went to the periodic path, so the
-line looks dead — which is the question it was always meant to answer. **This branch's own C.7.1
-table has no ISL29125 row yet** (flagged separately, below) — check the driver's own `errno=`/
-`wrnno=` call sites directly for the current numbering rather than trusting a number quoted here.
+line looks dead — which is the question it was always meant to answer. The current `errno`/`wrnno`
+numbering is C.7.1's ISL29125 row — trust that, not a number quoted here.
 
 Measured on the bench (2026-09-13), six forced crossings per setting, one reader, same scene:
 
@@ -2292,8 +2290,7 @@ an input, p6/p10); `CONVEN` (muxes conversion-done onto the pin the thresholds n
 `CONVENF` (redundant — the data registers are double-buffered, p13).
 
 **Prior art, and the three places this driver departs from it.** Four independent implementations
-were read on `main`: the legacy `python/IndividualDrivers/` driver (this branch's own legacy tree
-holds the same file, reference-only per CLAUDE.md), `jposada202020/MicroPython_ISL29125`,
+were read: the legacy `python/IndividualDrivers/` driver (reference-only per CLAUDE.md), `jposada202020/MicroPython_ISL29125`,
 SparkFun's Arduino library, and RIOT-OS `drivers/isl29125` (plus Linux's `drivers/iio/light/
 isl29125.c` in a later pass).
 
@@ -2526,19 +2523,17 @@ absent; what survives is the decision.
     evaluates the same switch condition, so the interrupt is the *fast* path and the periodic read
     the *guaranteed* one, both on the same thresholds, dwell and settle.
 18. **Scope is the `dev` variant only.** `wozi` carries no colour sensor and is not to be changed —
-    on this branch specifically, `devices/wozi.toml` declares no `isl29125` instance and must not
-    gain one.
+    `devices/wozi.toml` declares no `isl29125` instance and must not gain one.
 19. **Every emitted value carries a declared unit and a declared precision.** The precision is a
     decided, tested property of each field, not an artefact of binary floating point. No driver in
     `src/` rounds any output; the renderer's `decimals` hint does it (Part H.5), so all four drivers
     stay identical to each other.
 20. **Construction and `setup()` must complete on a bus where the chip never answers.** Not a
     restatement of 16 — that is a chip present and misbehaving, this is one absent for the whole
-    run. This branch's own build-graph/digital-twin test coverage for `dev` must prove this property
-    holds for the buildgen-generated object graph, the same way `main`'s hand-written
-    `tests/test_sensortask_dev.py` proved it for its own hand-written one — confirm this is actually
-    covered rather than assuming it, since the two branches' construction paths are not the same
-    code.
+    run. The build-graph/digital-twin test coverage for `dev` must prove this property holds for the
+    buildgen-generated object graph, not only for the hand-written one `tests/test_sensortask_dev.py`
+    covers — confirm this is actually covered rather than assuming it; the two construction paths
+    are not the same code.
 21. **ADDED LATER (2026-09-15), not one of the original twenty above.** Saturation status is a
     measurement-output field (`Overrange`), never a log entry. Originally logged as `wrnno=12`
     ("saturated on the high range" — C.7.1's table), retired after a real-hardware bench test
@@ -2607,7 +2602,7 @@ name>"` logger — so a name extension threads through the config filename autom
 separate mechanism needed.
 
 **REST dict keys must use `self.name` too, not a driver's `_NAME` module constant.** This was a
-real, confirmed gap found during this session's audit: every `get_dict_cfg()` across the three
+real, confirmed gap found by audit: every `get_dict_cfg()` across the three
 promoted drivers called `self._get_dict_cfg(_NAME, ...)` with the *literal* constant, and every
 `get_dict_data()` called `make_dict(data, _FIELDS)`, which itself introspects `type(nt).__name__`
 — the namedtuple's own fixed class name — neither keyed off `self.name` at all. With only one
@@ -2887,13 +2882,9 @@ Consistent control-flow order: `None`-check, range-check (plain guard), then `tr
 computation. **Keep documentation itself concise — a module docstring is a short header, not an
 essay.** A permanent design fact belongs in CLAUDE.md/this document; an open question belongs in
 BACKLOG.md. **CLAUDE.md's comment-discipline rule is the authority and this line used to contradict
-it** (corrected 2026-09-13): the **3 lines, prefer fewer** cap is on the *module header block*;
-inline `#` comments have **no hard numeric cap** but must stay a few short, load-bearing WHY notes
-next to the line they explain, never a multi-paragraph block of narrative reasoning. The codebase
-follows CLAUDE.md, not the old wording — `sensortask_wozi.py` alone carries fifteen blocks longer
-than three lines. Where a file has settled on its own tighter norm, match *it* (D.10):
-`asy_uart_comm.py` is uniformly ≤ 3, and the three blocks that drifted past it were trimmed back in
-the same pass that found this.
+it**: the **3 lines, prefer fewer** cap holds for the module header block and for every inline
+comment block alike — a few short, load-bearing WHY notes next to the line they explain, never
+narrative. Every scope measures zero over-cap blocks (CLAUDE.md states how to count).
 
 ## D.12 Unit tests
 
@@ -4997,7 +4988,7 @@ and an 840 B largest block). The 20-30 % free at peak that H.7 uses is general e
 
 ## I.2 Hotspot catalog — every `src/` file scanned, function by function
 
-**Needed a mitigation (fixed this session, I.3)**: `asy_webserver_service.py`'s
+**Needed a mitigation (fixed, I.3)**: `asy_webserver_service.py`'s
 `_get_measurements()`, `_get_sensors()`, `_get_networking()`, `_get_system()`,
 `_get_notification()` — each built a dict and returned it directly, letting Microdot's
 `Response.__init__` run one `json.dumps()` over the whole aggregate, the identical shape `/status`
@@ -5363,7 +5354,7 @@ stream is answered request-by-request. `WEBSERVER`'s error log stayed **empty** 
 is the assertion that matters: a 413 is raised inside vendored Microdot before any of our own code
 is reached, so anything appearing there would be a finding about this project.
 
-**W5 fails, and not for the reason it was written to catch** [HW]. Its own handover predicted a
+**W5 fails, and not for the reason it was written to catch** [HW]. Its original write-up predicted a
 soft spot where an oversized body draws a clean reset instead of a 413, and prescribed relaxing the
 oversized arm. That prescription is wrong here: **half the resets are on bodies well under the
 cap** — 64, 512, 900 and 2048 B — in 5 of 5 runs. A control with every body under the cap, and a
@@ -5395,7 +5386,7 @@ tolerating a ceiling close alone: any other exception, a timeout included, still
 hang cannot hide behind it, and a floor on answers plus a required 200-and-413 pair stop it passing
 vacuously. Replayed against all four recorded runs it passes each one.
 
-**Confirmed on silicon, 2026-09-19** [HW]. In the post-merge full bench run and in three dedicated
+**Confirmed on silicon, 2026-09-19** [HW]. In the full bench run after the 2026-09-19 base merge (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7I) and in three dedicated
 repeats afterwards, **all four of those assertions hold every time**: 20 of 24 requests answered
 against a floor of 4, both verdicts present, no non-ceiling exception, and — the claim the cap
 actually owns — **not one request answered with the wrong status**. So the body cap is now
@@ -5451,7 +5442,7 @@ payload is an empty `bytearray()` rather than `None`.
 Python implementation's *intended* behavior and is owner-validated over many real transmissions — but
 **how far that mirroring extends to the known flaws is unverified**: it may share some, not others,
 and may have introduced its own. Establishing that is future work, never an assumption to build on.
-The C source is not yet in this repo; importing and reconciling it is a future session's job
+The C source is not yet in this repo; importing and reconciling it is open work
 (BACKLOG.md). Until then:
 
 - **Every protocol-level change is logged in `UART_C_PORT_CHANGELOG.md`** — a temporary file, deleted
@@ -5912,7 +5903,7 @@ draft instance added), not by inspection alone.
 ## K.4 `@web`/`@web-group` tags — the website comes from these, never hand-edited JSON
 
 `html/definitions/<device>.json` is generated at build time from every tagged `src/` file (Part
-H.5.1); it is never hand-maintained on this branch. Add `# @web-group`/`# @web <Field> ...` tags for
+H.5.1); it is never hand-maintained. Add `# @web-group`/`# @web <Field> ...` tags for
 every field the website should show, in both the `measurements` and `sensors` sections as
 applicable — `src/asy_bmp3xx_driver.py` (simple) and `src/asy_isl29125_driver.py` (uses `special:`
 sentinel labels, `decimals` rounding hints, and `path="A.B"` for a value nested inside the
@@ -5951,7 +5942,7 @@ verifiable — see below), out-of-range on both sides of every bound, exact boun
 **If the driver pulls in or extends a *shared* module** (Part G's own catalog, or `math_helpers`
 specifically), **that module needs its own direct, dedicated tests too — exercising it only
 incidentally through the new driver's own fixture values is not enough.** This is a real gap found
-and fixed this session (PR #87): `math_helpers.py` gained five new functions for ISL29125 (colour-
+and fixed in PR #87: `math_helpers.py` gained five new functions for ISL29125 (colour-
 space conversion, McCamy CCT, the shared EMA), and the promotion's own PR left `tests/
 test_math_helpers.py` untouched — every other function there has its own suite, and these silently
 didn't. Where possible, check new formula code against an independently-known reference value, not
@@ -6016,7 +6007,7 @@ Placement within the `[[instance]]` list has FRAM-chunk-order consequences (bump
 Part A.7) — no hard rule on where to put it beyond "after every earlier sensor whose chunk layout
 shouldn't move," which usually just means "last." The TOML is now the only host-side copy of these
 facts: `tests_hardware/bus_topology.py`, a hand-kept mirror that nothing imported and no tooling
-cross-checked, was deleted (2026-09-18, BACKLOG item 20). Its one enforced invariant — no device
+cross-checked, was deleted (2026-09-18). Its one enforced invariant — no device
 address inside an I2C-reserved range — moved to `tests_scripts/test_device_tomls.py`, where it runs
 against the real device set rather than two hardcoded tuples. The on-target sweep
 (`device_scripts/bus_topology_autodetect_and_hazard_sweep.py`) keeps its own address table, since it

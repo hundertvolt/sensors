@@ -1483,7 +1483,7 @@ def test_poll_sta_connect_status_undefined_state_persists_wrnno_7() -> None:
     assert _last_err(counter, "ErrType") == "W"
 
 
-# BACKLOG item 35: one persisted slot per connect ATTEMPT empties the ten-slot ring in ten retries,
+# SPECIFICATION.md Part C.7.1: one persisted slot per connect ATTEMPT empties the ten-slot ring in ten retries,
 # evicting whatever preceded the outage. The episode rule is per distinct code, not per episode as
 # asy_uart_comm.py's own _episode_wrn() is - see that module and SPECIFICATION.md Part C.7.1.
 
@@ -1722,7 +1722,7 @@ def test_attempt_sta_connect_missing_config_persists_wrnno_3() -> None:
 
 
 def test_attempt_sta_connect_empty_ssid_forces_immediate_hotspot_fallback() -> None:
-    # Pre-existing behavior (not new this session), kept here because it's the one branch of
+    # Long-standing behavior, kept here because it's the one branch of
     # _attempt_sta_connect() the missing-config test above doesn't otherwise exercise.
     client = make_client(conn_fail_to_hotspot=5)  # default SSID is "" until configured
     run(client._attempt_sta_connect())

@@ -116,7 +116,7 @@ def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(repo
     assert f"_WEBSITE_VERSION = const({WEBSITE_VERSION!r})" in result.module_source
     assert "_BUILD_DATE = const('2026-09-12T10:00:00Z')" in result.module_source
     assert 'build_info={"firmwareVersion": _FIRMWARE_VERSION, "websiteVersion": _WEBSITE_VERSION, "buildDate": _BUILD_DATE}' in result.module_source
-    # Regression guard against this session's own earlier, corrected design: the version no longer
+    # Regression guard against an earlier, corrected design: the version no longer
     # lives on GET /status's "system" section.
     assert '"FirmwareVersion": _FIRMWARE_VERSION' not in result.module_source
 

@@ -885,7 +885,7 @@ def test_zero_length_buffer_operations_are_harmless() -> None:
 
 
 def test_empty_reg_format_returns_none_instead_of_raising() -> None:
-    # A real gap this session's own testing found: struct.unpack("", ...) returns an empty
+    # A real gap found by testing: struct.unpack("", ...) returns an empty
     # tuple, so indexing [0] unconditionally used to raise IndexError for this legitimate (if
     # degenerate) reg_format - fixed to return None like any other non-hardware failure.
     i2c = make_i2c()

@@ -549,7 +549,7 @@ class UART_Comm:
         while True:
             if time.ticks_diff(time.ticks_ms(), start) > bound_ms:
                 # Visible only, and flagged rather than persisted here: the caller owns the episode's
-                # one slot, and setup()'s boot drain owns no episode at all (item 23).
+                # one slot, and setup()'s boot drain owns no episode at all (SPECIFICATION.md C.7.1).
                 self._drain_bound_hit = True
                 self.pr.wrn("Drain bound reached, resyncing anyway")
                 break

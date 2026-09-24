@@ -9,12 +9,12 @@ constraints.
 
 **Anything in here that needs the dev bench is also listed in `REAL_HARDWARE_TEST_QUEUE.md`**, which
 is the single running queue a go-ahead session works through in one pass. Items stay tracked here as
-usual; that file exists so the real-hardware subset does not have to be reassembled from this file,
-`tests_hardware/README.md` and the handover docs every time.
+usual; that file exists so the real-hardware subset does not have to be reassembled from this file
+and `tests_hardware/README.md` every time.
 
 **The numbered list below has gaps, and its numbers are never reused or renumbered.** Code comments
 and `SPECIFICATION.md` cite items by number, so a resolved item whose number is cited stays as a
-short closed stub saying what the answer was (items 1, 5, 6, 9, 12, 15, 20, 23, 31, 33 today); one whose number nothing
+short closed stub saying what the answer was (items 1, 5, 6, 9, 12 today); one whose number nothing
 cites is deleted outright, its permanent content migrated per the policy above. A gap therefore means
 "resolved and removed", never "lost".
 
@@ -38,9 +38,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   `test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load`) against the
   real dev board, once a real-hardware go-ahead exists for a session - this entry stays until that
   confirmation lands.
-  **Half of that confirmation has since landed, and it split the two arms — read item 30 with this
-  entry, not separately** (noted 2026-09-18 by the pre-merge sweep; the two were written a day apart
-  and never cross-referenced). The bench session of 2026-09-17, on firmware carrying this WP5 fix,
+  **Half of that confirmation has landed, and it split the two arms — read item 30 with this
+  entry, not separately.** The bench session of 2026-09-17, on firmware carrying this WP5 fix,
   found the **BMP3XX arm passing** and the **ISL29125 arm still failing** (four-arm isolation: PUT
   alone 0/10, PUT + 1 reader 0/6, PUT + 2 readers **6/18**, plain GET + 2 readers 0/6). So the
   deferral fixed what it was built to fix - the *shared* synchronous flash write is no longer the
@@ -274,22 +273,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     interrupted read *does* leave the chunk marked busy and unreadable until rewritten - that is
     intended behavior, not a second bug to weigh here: see SPECIFICATION.md Part A.4's FRAM entry.
 
-20. **`tests_hardware/bus_topology.py` deleted as dead code - closed (owner decision, 2026-09-18).**
-    It was a hand-kept, tool-uncross-checked third copy of `devices/dev.toml`'s/`wozi.toml`'s wiring
-    facts, and nothing in the repo imported it: the real on-target sweep CLAUDE.md's bus-hazard rule
-    cited it for runs `device_scripts/bus_topology_autodetect_and_hazard_sweep.py` instead, which
-    live-detects the topology and carries its own address table.
-    **What moved rather than went away**: its only enforced content was the assertion that no declared
-    device address falls in an I2C-reserved range (0x00-0x07, 0x78-0x7F). That is now
-    `tests_scripts/test_device_tomls.py`'s `test_no_declared_i2c_address_falls_in_a_reserved_range`
-    (+ the fixed-address half against `buildgen.twin_wiring.FIXED_ADDRESSES`, + a guard that the sweep
-    is not silently seeing no addresses at all) - run against the real device set in an enforced lint/
-    test scope, rather than over two hardcoded tuples in a file nothing loaded.
-    The on-target script keeps its own `KNOWN_ADDRESSES` deliberately - it is MicroPython on the board
-    and cannot import host code; that is now stated in its own comment and in Part K.7's checklist
-    instead of a cross-reference to a file that no longer exists. CLAUDE.md's bus-hazard rule, Part
-    K.7 and the new-driver checklist all repointed.
-
 22. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
    Part C.7 reserves `errno` 1-9 and `wrnno` 1-2 for `SensorReader`/`SensorReaderConfig`, and
    `api_response.py`'s `handle_set_cmd()` owns the fixed cross-module slot `errno=99`; the project
@@ -305,27 +288,13 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    **No live clash exists** - none of the seven currently shares a logger with a `SensorReader`
    instance, so the reserved codes never reach the same history stream. It becomes a real defect
    the moment one of them gains a `logger=` reach-through, which is exactly the pattern
-   `AsyFramManager`/`FRAM_SPI` already use and which the UART promotion adopts. **Where to fix**:
-   a renumbering pass is mechanical but not free - every changed code is a persisted value in
-   deployed units' FRAM histories and appears in `SPECIFICATION.md` C.7.1's table, the errcount
-   UI's raw `num`, and existing tests. Needs an owner decision on whether to renumber in place
-   (invalidating persisted history semantics for those modules on the next deployment) or only on
-   each module's next substantial touch. Flagged, deliberately not fixed drive-by - see CLAUDE.md's
-   "flag, don't silently change" rule.
-
-23. **`asy_uart_comm.py`'s `wrnno` 11 now outranks 10 - fixed (owner decision, 2026-09-18).**
-    Kept as a closed stub only because `SPECIFICATION.md` C.7.1 cites this number. 11 ("drain bound
-    reached - the peer never stopped sending") could never reach the FRAM history through the path
-    that produces it: `_resync()` persisted 10 first and spent the episode's one slot. `_drain()` now
-    flags the condition instead of logging it, and `_resync()` logs after the drain, choosing the more
-    specific code. The one-persisted-warning-per-episode budget is unchanged - the owner's own
-    condition on this fix, and the reason 11 takes the slot rather than adding one.
-    The same change closed the inverse leak nobody had looked for: `setup()`'s boot drain is
-    deliberately not a fault and not counted, yet against a babbling peer it persisted 11 on **every
-    boot**, because the bound logged itself rather than flagging its caller. It now persists nothing.
-    Covered by three tests in `tests/test_asy_uart_comm.py` (the bound case takes the slot, the quiet
-    case is unchanged, the boot drain persists nothing - the first proven non-vacuous by inverting the
-    choice and watching it fail); `UART_C_PORT_CHANGELOG.md` B32; SPECIFICATION.md C.7.1 restated.
+   `AsyFramManager`/`FRAM_SPI` already use and `asy_uart_comm.py` adopted (it numbers from 10,
+   C.7.1). **Where to fix**: a renumbering pass is mechanical but not free - every changed code
+   is a persisted value in deployed units' FRAM histories and appears in `SPECIFICATION.md`
+   C.7.1's table, the errcount UI's raw `num`, and existing tests. Needs an owner decision on
+   whether to renumber in place (invalidating persisted history semantics for those modules on
+   the next deployment) or only on each module's next substantial touch. Flagged, deliberately
+   not fixed drive-by - see CLAUDE.md's "flag, don't silently change" rule.
 
 24. **`PUT /status {"ResetErrors": true}` costs a large, slowly-growing fraction of the product's
     own request ceiling. Now measured on real hardware; one question left.**
@@ -388,10 +357,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     driver reports a misleading status during an AP-down transition and
     `asy_wifi_service.py`'s `_poll_sta_connect_status()` faithfully records it (making the test's
     expectation wrong), or the status mapping there is off. Not chased — one look should tell which.
-    **Read item 35 with this one** (added 2026-09-18): `_poll_sta_connect_status()` persists one
-    warning per connect *attempt*, and an outage retries, so "W4 twice" may be two attempts rather
-    than two verdicts about one. That does not by itself explain a wrong-password verdict on a
-    correct password, but it does change what the bench run should be looking at.
+    That sighting predates the per-episode dedupe (SPECIFICATION.md Part C.7.1): back then
+    `_poll_sta_connect_status()` persisted one warning per connect *attempt*, so "W4 twice" may be
+    two attempts rather than two verdicts. That does not explain a wrong-password verdict on a
+    correct password, which the second sighting below confirms is still open.
     **Second sighting (2026-09-23)**: the clean pre-sitting `errcount` on the dev bench (image of
     2026-09-22) held WIFI history `N0 N0 N0 W10 W6 W5 W4 W5 W6 W6` — a `W4` on a network whose
     password never changed, outside any outage test.
@@ -424,30 +393,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     {"ISL29125": {"RangeAuto": false}}` drops the third leg without touching any code — if the reset
     rate falls, the re-arm is implicated; if it does not, it is the first two.
 
-31. **The website's errcount catalog is keyed per logger INSTANCE now - fixed (owner decision,
-    2026-09-18).** `buildgen/definitions.py`'s `_errcount_group()` took only a `set[str]` of have-keys
-    and emitted one fixed row per driver kind, plus two hardcoded `UART_init`/`UART_resp` rows, while
-    the API derives its keys from the live object graph (`SensorReaderConfig.get_error_sources()`
-    returns `[self, self.cfgmgr]`; the generated `_collect_error_sources()` loops over every
-    constructed module). It now takes the `DeviceModel` and emits one row per instance from
-    `spec.resolved_name` - the same string the API publishes - with the label suffixed by `name_ext`
-    (`_NAME_EXT_LABEL` keeps `init`/`resp` rendering as "Initiator"/"Responder", so no real device's
-    UI text moved). `uart_link` became an ordinary catalog entry; the hardcoded pair is gone.
-    **No real device changed**: the golden-file comparison against all six hand-written
-    `html/definitions/*.json` still passes byte-for-byte, which is what "latent, not live" meant.
-    Both synthetic fixtures are now correct, and `_KNOWN_CATALOG_DRIFT` in
-    `tests_scripts/test_digital_twin_generated_boot.py` is deleted rather than updated - the parity
-    check runs with no exemptions at all, against real booted devices (8 passed).
-    **Left for a later audit, deliberately out of this fix's scope**: the cross-cutting `status`/
-    `errcount` sections of `definitions.py` are still a hand-maintained catalog rather than
-    `@web`-tag-derived the way every per-driver section already is. That is the same class of gap as
-    the `buildspec.py` schema entry below (owner: keep hand-maintained, the drivers are an integral
-    part of the repo) - worth one deliberate look at whether the two should be decided together,
-    not a mechanical continuation of this change.
-
 32. **The bench tier's `ResetErrors` timeout was raised 10.0s → 30.0s with no elapsed-time budget
-    to replace what that bound was incidentally enforcing.** Recorded 2026-09-17 during a
-    self-audit of this branch; it is the one change on it that loosens rather than tightens.
+    to replace what that bound was incidentally enforcing.** Recorded 2026-09-17: a loosening with
+    no compensating check.
     The old `10.0` was genuinely miscalibrated — it sat *below* the product's own
     `outer_cap_s = 15.0`, so a legitimate sweep (measured 6.32s idle, **11.58s under three
     concurrent readers** on the dev bench) failed as a client timeout before the server could abort,
@@ -467,87 +415,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     **Close this by** taking the curve, then adding the bench analogue of the twin's own budget
     check to `tests_hardware/error_log_helpers.py`.
 
-33. **Closed 2026-09-18 (owner decision): the two open pull requests that targeted this branch are
-    dropped, not landed.** PR #102 (`claude/real-hardware-boot-latency-measurements`) and PR #84
-    (`claude/real-hardware-memory-validation-p3vkxr`) were real-hardware *workers*, never merge
-    candidates, so the `main` merge orphaning them is not a loss. Both are closed on GitHub; their
-    branches stay on the remote, so the diffs remain readable if anything is wanted later.
-    **Carried across before closing**: PR #102's real boot-latency figures and its disproven
-    `webserver` lazy-setup hypothesis are now in SPECIFICATION.md Part A.7's boot-latency note, its
-    unexplained **+0.90s** `CFGMGR_SYSTEM` cost is queue row R6.
-    **Deliberately NOT carried, which is the one thing to know if this is ever revisited**: none of
-    PR #84 exists on any other branch — `buildgen/gc_policy.py`, `scripts/build_firmware.py
-    --gc-policy`, `--memory-pressure`, `tests_hardware/device_modules/memory_pressure.py`,
-    `tests_scripts/test_hardware_harness_transients.py` and a Part I.6 that was only ever written on
-    that branch (nothing here references it, and no such section exists in SPECIFICATION.md) — so that
-    build-and-instrument tooling, and the four validation-apparatus fixes that came with it, are
-    unshipped by decision rather than by oversight. Its three bench passes stand as executed (queue
-    §5).
-    **The adoption record stays valid**: `main`'s
-    ISL29125 tests were assessed one by one and the worthwhile ones adopted here 2026-09-18 — the
-    calibrate-command and gain-ratio-across-a-real-reboot bench tests (the second gaining the
-    `@pytest.mark.persistence_write` `main` lacked, since it owns two persisting PUTs), the
-    manual-tier lux/reference-meter test that also records the rig geometry, and — the highest
-    operational value — `main`'s `neopixel_sweep` gate on the two long lighting tests with its
-    contextual entry in `scripts/_require_clean_hardware_run.sh`. **Not** adopted: `main`'s five
-    real-Microdot setter tests, near-redundant against this branch's own driver-tier coverage; the
-    one thing none of them pinned — *which* rung rejects an out-of-band value — is now pinned by
-    `test_an_out_of_band_knob_is_rejected_by_the_schema_rung_not_the_setter`. The bench tier moved
-    from **71 to 73 tests and 12 to 13 deselected**; the flash tier's 51/9 is unchanged, since the
-    two new gates skip rather than deselect. Every count re-measured by a real `--collect-only` run.
-    Both adopted bench tests passed on silicon 2026-09-23 (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.2).
-    Also settled here: of the six items the (since deleted) harness/heap-fragmentation handover's
-    §1.0 called lost, five are accounted for on this branch or on `main` (checked item by item, not
-    taken at face value); only `REAL_HARDWARE_FINDINGS_PR103.md` is unaccounted for, and it never existed in
-    any ref here — its substance appears to be what item 30 and queue row R1
-    already carry. `claude/pr103-real-hardware-fram-validation` is not on the remote and has no PR.
-
-
-35. **Closed 2026-09-19 (owner decision): the two persisted-warning flood paths are episode-scoped
-    now, per distinct code.** `asy_wifi_service.py`'s `_poll_sta_connect_status()` spent a slot per
-    connect *attempt* and `asy_fram_manager.py`'s chunk `_read()`/`_write()` spent one per degraded
-    operation, so a ten-retry outage or one dead cell emptied the owning module's ten-slot ring by
-    itself. Both now dedupe per distinct code per episode, ended by a successful STA connection and
-    by a clean read/write respectively. The owner's condition was "reflect reality and do not miss
-    real failures", which ruled out `asy_uart_comm.py`'s own first-wins rule twice over, and the
-    shape that satisfies both is new: `PrintLogHistory.wrn_s()/err_s()` take `repeat=True`, which
-    **still counts the occurrence and still writes the count through to FRAM** but spends no history
-    slot. So `/status` still says a device failed to connect five times while the ring still holds
-    what preceded the outage - and a changed verdict (`W4` beside `W5`, item 29's own shape) still
-    persists, which a first-wins rule would have destroyed. Stated once in SPECIFICATION.md Part
-    C.7.1, which also records why the three implementing modules define an episode differently.
-    Covered at the unit tier (three tests each, all bite-verified) and end to end in the twin suite:
-    Run 7 now asserts five counted attempts occupying one slot, Run 8 that both numbers survive the
-    reboot. `asy_uart_comm.py` was deliberately left on its own rule - its repeats are consequences
-    of one fault whose `errno` was already counted, not independent events.
-
-36. **Closed 2026-09-19 (owner decision): the filter compares against the push now, and the live
-    PUT matrix is its own sharded job.** Two separate causes, both measured rather than guessed.
-    *The filter*: `dorny/paths-filter` given no `base:` compares a push to a non-default branch
-    against the **default branch**, so on a long-lived branch every push matched whatever it had
-    touched weeks ago - `Detected 281 changed files`, `Filter web = true`, on a commit that changed
-    one `.md` file. It now passes `base: ${{ github.ref }}`, upstream's own documented idiom for
-    "what did this push change". A `pull_request` still compares through the API against the PR's
-    base and so still runs the full web tier before merge, which is what a pre-merge status check
-    wants; a branch's first push, where no common ancestor exists, counts every file as added and
-    runs, which is the safe direction. *The budget*: the web suite is 578s for 778 tests, and
-    `tests_js/live-backend-put-matrix.test.js` alone is **567s of it** (243 tests) - so that one
-    file was the whole ceiling problem, and splitting `web-coverage` out earlier helped so little
-    because it was never the coverage rerun. It is now `web-put-matrix`, three parallel shards
-    (measured: 80 tests in 182s per shard), leaving `web-unit-tests` at 110s for the other 535
-    tests and `web-coverage` cheap for the same reason. `timeout-minutes` stays at 20 everywhere:
-    no job is near it any more, so raising it would have hidden a real hang instead of removing a
-    real cost. Shard plumbing worth knowing about, since three obvious routes silently do nothing:
-    a shell variable does not reach a Vitest browser test (Vite fills `import.meta.env` from `.env`
-    files only), `define` rewrites exact expression text so a type-cast read is not substituted,
-    and a `JSON.stringify`'d define value arrives double-quoted. The partition itself is proven by
-    `tests_js/mock-server-put-matrix.test.js` rather than trusted.
-
-37. **Five cross-file consistency findings carried over from `main`, each re-verified on this branch
-    (2026-09-18) and each still needing an owner yes/no.** They were raised on `main` by the
-    ISL29125 promotion's bird's-eye `src/` scan (2026-09-12) with recommendations added 2026-09-13,
-    and this branch had never picked them up. None is a bug; each is a place two files answer the
-    same question differently.
+37. **Four cross-file consistency findings, each re-verified 2026-09-18 and each still needing an
+    owner yes/no.** Raised by the ISL29125 promotion's bird's-eye `src/` scan (2026-09-12), with
+    recommendations added 2026-09-13. None is a bug; each is a place two files answer the same
+    question differently.
     - **`FiltCoeff` means two different things** - BMP3xx's on-chip IIR register (discrete `int`
       from `_IIR_SETTINGS`) and the ISL29125's software EMA coefficient (`float`, -1.0 = off), same
       field name on the same `/sensors` endpoint. No wire collision (the sensor group namespaces
@@ -561,44 +432,28 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     - **`from asyncio import ThreadSafeFlag` appears in exactly one file** (`asy_scd30_driver.py`);
       every other file writes `asyncio.ThreadSafeFlag`. **Recommendation: change the one file** -
       four lines, no behavioural risk, the cheapest of the five.
-    - **`_N_*_CFG` constants group on two axes** - by type (BMP3xx, ISL29125) and by purpose
-      (SGP40). **Closed as "both, and the rule is whichever axis separates them"**: the ISL29125
-      ended up with two float batches, which no type-based name can tell apart, hence
-      `_N_STORE_CFG` beside `_N_FLOAT_CFG` - SGP40's own reasoning. Both are present here.
     - **Return-annotation quoting is mixed project-wide**: 22 `src/` files carry quoted subscripted
       return annotations, 11 carry unquoted ones, 9 carry both. MicroPython never evaluates
       annotations, so both are safe and there is simply no stated convention. **Recommendation:
       state the rule, do not mass-edit** - quote an annotation naming a `TYPE_CHECKING`-only
       import, leave the rest bare, as a sentence in SPECIFICATION.md Part D.
 
-38. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves, and
-    the owner's standing direction (2026-09-11) is that every module aligns to it** - carried over
-    from `main`, re-verified here 2026-09-18. Part C.7 reserves `errno` 1-9 and `wrnno` 1-2;
-    `api_response.py` owns the fixed cross-module slot 99. Non-conformant: `config_manager.py`,
-    `system_service.py`, `asy_webserver_service.py`, `captive_dns.py` (all `errno` and `wrnno`),
-    plus `asy_wifi_service.py`, `asy_ntp_client.py` and `asy_notification_service.py` on `wrnno`
-    alone. **No live clash exists** - none of the seven currently shares a logger with a
-    `SensorReader` instance. It becomes a real defect the moment one gains a `logger=`
-    reach-through, which is exactly what `AsyFramManager`/`FRAM_SPI` do and what this branch's
-    `asy_uart_comm.py` adopted (C.7.1 records it numbering from 10 for that reason). Renumbering is
-    mechanical but not free: every changed code is a persisted value in deployed FRAM histories and
-    appears in C.7.1, the errcount UI's raw `num`, and existing tests. Needs an owner decision.
+38. **Merged into item 22** (re-verified 2026-09-18; `asy_uart_comm.py` numbers from 10, C.7.1).
 
 39. **An interrupted `setup_toolchain.py env --tier flash` can leave the Unix-port binary without a
-    frozen `asyncio`, and `scripts/test.sh` uses it anyway** - carried over from `main` (hit
-    2026-09-13). `run_verification_sequence()` builds the interpreter twice (frozen-verification
+    frozen `asyncio`, and `scripts/test.sh` uses it anyway** (hit 2026-09-13). `run_verification_sequence()` builds the interpreter twice (frozen-verification
     manifest, then a vanilla rebuild restoring the real test rig); interrupting between the two
     leaves every `tests/test_*.py` dying with `ImportError: no module named 'asyncio'`, which reads
     as a code failure and is not one. `scripts/test.sh` only checks `[ ! -x "$micropython_bin" ]`,
     so a broken binary is indistinguishable from a good one. Recovery: `rm` the binary and re-run.
     **Recommendation: make that guard a capability check** (`"$micropython_bin" -c "import asyncio"`
-    beside the `-x` test, rebuilding when it fails). `main` deferred it because `scripts/` was
-    inside a blocking two-chroot pre-push gate; that gate became an owner-run periodic check on
+    beside the `-x` test, rebuilding when it fails). It was deferred while `scripts/` sat inside
+    a blocking two-chroot pre-push gate; that gate became an owner-run periodic check on
     2026-09-18, so the recommendation is actionable now and only needs the owner's go-ahead.
 
 40. **`SPECIFICATION.md` carries seven subsections about one sensor, and no other sensor has any**
-    - carried over from `main`, where the owner ruled (2026-09-14) to leave the document exactly as
-    it stands and tidy this in a session of its own. Three patterns exist and only the third is the
+    - the owner ruled (2026-09-14) to leave the document exactly as it stands and tidy this in a
+    session of its own. Three patterns exist and only the third is the
     question: *generic rule, named instance* (C.4.3, C.7, D.15 - the dominant, legitimate one);
     *sections named after a module that IS the architecture* (A.7, A.8, C.5, C.6, C.7, Part J -
     Part J additionally being a two-implementation interface definition); and *dedicated
@@ -606,7 +461,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     C.11.1.1-C.11.1.3). Recorded so that session does not re-derive the scan.
 
 41. **Two device scripts still hand-list their `cfgmgr._cache` keys and will silently miss a new
-    schema field** - carried over from `main`, verified here 2026-09-18.
+    schema field** - verified 2026-09-18.
     `bmp3xx_plausibility_read.py` and `sgp40_fram_backup_restore.py` prime the cache from a literal
     dict; the four ISL29125 scripts already derive it from the driver's own schema
     (`{field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}`) and then
@@ -616,113 +471,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     it rides the next real-hardware session rather than being pushed blind
     (`REAL_HARDWARE_TEST_QUEUE.md`).
 
-42. **Closed: every header and inline comment block in the repo is inside the 3-line cap** — Python,
-    JS and CSS on 2026-09-19 (owner decision 4), shell on 2026-09-22 (owner's follow-up), see the
-    closing paragraphs. The cap was tightened from "no hard numeric cap" to 3 lines per block
-    by the project owner on 2026-09-14, re-confirmed 2026-09-18, and the owner then asked for the
-    same treatment applied once - not permanently - to everything outside `src/`.
-
-    **Header blocks reached zero first** (2026-09-18): 65 over-cap Python module/class/function
-    docstrings plus two JS/CSS file headers. Most duplicated a rule the spec already stated, so the
-    fix was a pointer, not a deletion; the three per-device scenario libraries' shared rationale
-    became SPECIFICATION.md Part E.2.1, its single point of truth.
-
-    **Inline blocks then followed, scope by scope**, `src/` first (121 blocks) and `tests/` last as
-    the largest by far. Final tallies, after three corrections to the measurement itself - divider
-    rules (`# ----`) are separators, PEP 723 `# /// script` headers are metadata, and JSDoc
-    `@param`/`@returns` continuation lines are annotations, none of them commentary. Two further
-    counting rules a re-measurement needs, or it reports ~13 false positives: a bare `#` line
-    separates one block from the next (a long file header is several 3-line blocks, not one), and
-    CLAUDE.md's `# @web`/`# @wiring` tag runs are buildgen input rather than commentary:
-
-    | scope | blocks | scope | blocks |
-    | --- | --- | --- | --- |
-    | `tests/` | 710 | `tests_js/` | 44 |
-    | `tests_scripts/` | 101 | `js/` | 28 |
-    | `tests_hardware/` | 97 | `toolchain/` | 4 |
-    | `scripts/` | 76 | `html/` | 2 |
-    | `buildgen/` | 62 | | |
-    | `digital_twin/` | 48 | | |
-
-    Nothing was dropped outright. Each block kept the load-bearing WHY next to the line it explains;
-    implementation-history narrative ("found via", "corrected during implementation", test counts
-    from a since-changed suite) went, per the documentation rule that docs carry current state and
-    rules, not the path that got there; and an architectural fact already owned by a
-    SPECIFICATION.md Part became a pointer to it rather than a restatement.
-
-    Stale facts surfaced and were corrected in passing: `tests/test_asy_webserver_service.py` and
-    SPECIFICATION.md Part I.5 both still described the Unix-port harness as an 8MB heap
-    (`scripts/test.sh` moved it to 16M, and that file's own comment owns the history), and the
-    UDP-socket suite named `async_connect.py` and the deleted `improved-quality/` as its upstream
-    callers, where the real ones are `src/asy_ntp_client.py` and `src/captive_dns.py`.
-
-    Machine-read tag lines (`# @web`, `# @wiring`, `# @limits`, `# @requires`) and
-    `js/definitions.js`'s `@typedef` run stay exempt as data, per CLAUDE.md. This was a one-time
-    pass by the owner's explicit framing, not a standing gate: new code is expected to meet the cap
-    as it is written, and nothing enforces it mechanically.
-
-    **The Python/JS/CSS residue, 2026-09-22.** Seven blocks were still over: four inline
-    (`test_asy_webserver_service.py`, which also still claimed the retired 8MB Unix-port heap,
-    `flash/test_memory_stress.py`, and two `tests_hardware/bench/` files) and three docstrings
-    (`tests_hardware/error_log_helpers.py`, `test_gc_collect_sites.py`, and
-    `test_memory_error_gate_agreement.py`, whose 4-line header this branch had written itself). A
-    blank line inside a docstring separates blocks exactly as a bare `#` does, so the measurement
-    counts blocks, not whole docstrings.
-
-    **Shell, 2026-09-22, on the owner's follow-up direction.** The earlier sweep had touched
-    `.py`/`.js`/`.css` only, leaving **88** over-cap blocks in `scripts/*.sh`, 40 of them in
-    `scripts/test.sh`, whose file header alone was three blocks of 11, 14 and 6 lines. All 13
-    scripts are now at zero, on the same rule as before: nothing dropped, the load-bearing WHY kept
-    next to the line it explains, implementation-history narrative out, and anything architectural
-    migrated to the doc that owns it rather than restated. The four legacy `build-*.sh` at the repo
-    root stay out of scope, reference-only forever.
-
-    What that migration produced, since these are now the citation targets: **Part E.1** gained the
-    reserved `devices/zz_test_*.toml` namespace, the `tests/_tmp` sweep rationale and the port-base
-    /`TmpScratch`-key disjointness rule (including "a new socket-binding test file claims an unused
-    base below 32768"); **Part E.3.1** is new and owns the `-X heapsize` history and the per-file
-    timeout/override figures, which CLAUDE.md had until now deliberately pointed at `scripts/
-    test.sh`'s own comment for; **Part H.2** gained the never-staged `mock-server.js` and the
-    concatenation-order rule; **Part H.7** gained why each browser engine comes from the channel it
-    does; **Part A.9** gained the recursive multi-source merge; and `tests_hardware/README.md`
-    gained why both suite wrappers go through `_require_clean_hardware_run.sh` at all — pytest exits
-    0 for an all-skipped run exactly as for an all-passed one.
-
-43. **Closed 2026-09-19: `main` is merged in, and the "purely mechanical" assessment of that merge
-    was wrong in four places.** The branch's base was `348be6d` (PR #70); `main` had moved 76
-    commits ahead to `32e9a8e`, none of them in this branch's history. The recorded resolution held
-    in outline - take this branch's side on all 36 content conflicts, keep the three modify/delete
-    files deleted (`src/sensortask_dev.py`, `digital_twin/run_dev_integration.py`,
-    `tests_hardware/bus_topology.py`, all buildgen-generated or retired here) - and `arduino/`, the
-    BSEC 2.6.1.0 vendor release plus sketches, came in as the pure addition it was expected to be.
-
-    What the assessment missed is that `main`'s ISL29125 branch also carried **general fixes this
-    branch never had**, because the two forked before the promotion existed on any shared ref.
-    Taking this branch's side wholesale would have silently reverted all four:
-
-    - `.github/workflows/ci.yml`: `uv sync` retried in **every** job that syncs, not just the test
-      lanes. `main` hit HTTP 500 on 2026-09-13 and 504 on 2026-09-14, both on lanes touching no
-      shell script. Adopted, with the three later sites pointing at the first one's reasoning.
-    - `tests/machine.py` and `digital_twin/machine.py`: `Pin.PULL_UP`/`PULL_DOWN` corrected to the
-      real rp2 values (`GPIO_PULL_UP` 1, `GPIO_PULL_DOWN` 2, `ports/rp2/machine_pin.c` at v1.29.0).
-      Both fakes here had `PULL_UP = 2` and no `PULL_DOWN` at all. Adopted in both. Every use site
-      is symbolic, so nothing depended on the wrong number - only the fakes' fidelity did.
-    - `js/mock-server.js`: magnitude-aware jitter. The old spread was sized for readings of order
-      hundreds, so on the ISL29125's normalised 0-1 leaves a 0.05 floor is +-178% - it drove them
-      negative and quantised them to 0.00. Adopted.
-
-    Two further gaps were **this branch's own**, caught by `main`'s new
-    `tests_js/definitions-mockdata-coverage.test.js`: `mockdata/dev.json` had no `BMP3XX`
-    measurements at all, and no `UARTLINK` status counters, though dev's definitions declare both
-    (the latter a WP3 leftover - the fields were added to the definitions and never to the mock).
-    Both added.
-
-    **The hazard worth remembering**: an auto-merged *test* file next to an `--ours`-resolved
-    *source* file. Git reports no conflict, so nothing flags it, and the test then fails against
-    source that lacks the feature it pins. Three of the four fixes above surfaced exactly that way,
-    from `npm run test:unit` rather than from reading 150 conflict hunks. After a resolution that
-    takes one side wholesale, run every tier before trusting it.
-
 44. **Board anomalies from the connection-limit sittings — recorded, not chased; each needs
     silicon** (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.5):
     - One silent reset in 1 of 9 instrumented peak-load boots, cause lost.
@@ -731,30 +479,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
 ## Deferred / explicitly out-of-scope work
 
-- **Closed 2026-09-22: every dangling `§` reference in the tree now resolves.** They cited the
-  retired `BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md` (folded into SPECIFICATION.md Part L and
-  deleted in `901e15d9`), and unqualified they led a reader into `HEAP_FRAGMENTATION_MEASUREMENTS.md`'s
-  own `§2.x`, which is about heap fragmentation — worse than a dead link. The mapping turned out to
-  be derivable after all: the pre-`df2359c9` revision of that file still carries every cited number,
-  so `git show df2359c9^:<file>` gave the section-to-Part mapping directly. **61 references across 53 lines, not the 48
-  first counted** — the sweep also found them in `src/asy_sgp40_driver.py` (two), `tests/`,
-  `tests_hardware/device_scripts/` (three), `js/templates.js` (citing a deleted website record's
-  `§8`/`§12`) and both `tests_scripts/buildgen_fixtures/*.toml`. Each is now either a real
-  `SPECIFICATION.md Part L.6.x`/`H.3` citation — the shape `buildgen/graph.py:47` already modelled —
-  or has the dead prefix dropped where the sentence stood alone, which is what the test-matrix and
-  implementation-plan numbers (`§4.3`, `§5.1`, `§7.1`, `§10.x`) got: they described a phase ordering
-  that documentation does not keep.
-
-- **Closed 2026-09-22 (owner decision: split the exit code from the report).** A test that failed
-  only under the settrace binary was structurally invisible to CI, and one did: `scripts/test.sh
-  --coverage` really exited 1 — `tests/test_uart_comm_hazard.py`, 84/85 files — on a tree whose (e)
-  and (f) stages were both 85/85, and `unit-tests-coverage` being `continue-on-error` meant nothing
-  in CI would ever have said so. The alternative offered was running one settrace-built file in a
-  gating lane; the owner chose the split. `scripts/test.sh` now exits 1 for a test failure, 3 when
-  every test passed and only the report failed, 0 for both fine, with both `_render_coverage.py`
-  calls guarded so `set -e` cannot abort with the renderer's own code; CI gates on 1 and tolerates
-  3. Making the whole instrumented rerun gating — which `continue-on-error` was added to prevent
-  (run `34755468619`) — is still deliberately not done. Full account: SPECIFICATION.md Part E.5.3.
 - **`NTP_Host` keeps its 1024-character bound — SETTLED, owner, 2026-09-21: "keep it". Do not
   re-raise.** Fielded behaviour wins over the 4x over-permissiveness, exactly as the "same
   features, not a feature change" agreement implies, and `max_content_length` keeps its 1.56x
@@ -788,7 +512,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   installer verification all stand exactly as CLAUDE.md documents them; what changed is who runs
   them and when. The owner runs them manually every now and then, on the bench Pi4 (trixie/GCC 14.2)
   or their own box, rather than a session blocking a push on a chroot it usually cannot build.
-  The legs were last satisfied 2026-09-12. Changed on this branch since, against `main`:
+  The legs were last satisfied 2026-09-12. Changed since:
   `scripts/test.sh` (+520 lines - parallelism autodetection, the backgrounded `tests_scripts/` job
   and its timeout, the heap-size and port-base moves), `scripts/typecheck.sh`, `scripts/lint.sh`,
   `scripts/build_firmware.py`, `scripts/_require_clean_hardware_run.sh`,
@@ -867,7 +591,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     with a 200 and a parsed JSON object); `scripts/test.sh` re-emits each red outcome as a GitHub
     annotation from one `GITHUB_ACTIONS` block (pytest tier first, per-file ones capped at 8 plus
     "and N more"), so a local or chroot run prints nothing extra.
-  Kept here as the running list of what is owed, not as a merge blocker.
+  Kept here as the running list of what the owner's next manual run has to cover.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
   fixed.** The SPI form exists because the FRAM path drives the chip through blocking register
@@ -881,8 +605,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   flag-don't-silently-fix rule for cross-file API divergence (Part D.10), as a known and deliberate
   asymmetry rather than an inconsistency to tidy up.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
-  `build_info=` parameter) only got the noble leg of CLAUDE.md's required two-target clean-chroot
-  pre-push verification** — the narrower, earlier instance of the entry above. The trixie leg — required by the same rule whenever `pyproject.toml`
+  `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
+  verification** — the narrower, earlier instance of the entry above. The trixie leg — required by the same rule whenever `pyproject.toml`
   changes, specifically to catch a GCC>=14-only issue the noble/GCC-13 leg can't see (the precedent:
   the mbedtls `-Warray-bounds` false positive, SPECIFICATION.md Part B.7.1) — couldn't be run from
   that session's own sandbox: `debootstrap --variant=minbase trixie` needs `deb.debian.org`, which
@@ -910,9 +634,11 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   The drivers are an integral part of this repo, not third-party definitions arriving from outside,
   so one table edit per new driver is an acceptable cost — and the small half above already turns
   forgetting it into a named error rather than a confusing one. Kept only to record that the
-  alternative was considered and declined; don't re-propose it. (Item 31's closing note flags that
-  `definitions.py`'s cross-cutting `status`/`errcount` catalog is the same class of hand-maintained
-  table, worth deciding alongside this one if it is ever revisited.)
+  alternative was considered and declined; don't re-propose it.
+  **Still undecided, same class**: `buildgen/definitions.py`'s cross-cutting `status`/`errcount`
+  sections are a hand-maintained catalog, where every per-driver section is `@web`-tag-derived
+  (the errcount rows are already per logger instance, keyed by `resolved_name`). Whether it stays
+  hand-maintained like `buildspec.py` needs one deliberate owner look, not a mechanical change.
 - **`[device].name`/`hostname`/`hotspot_password` are wired into the boot path now - done (owner
   decision, 2026-09-18).** Every device really did boot as `SensorNode` whatever its TOML said; the
   three fields were validated and then reached nothing. `AsyConnTime.__init__` takes `hostname=`/
@@ -1021,7 +747,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     cause**: `self-repository` wants `uses: $/.github/...` (GitHub's July-2026 syntax), which
     actionlint 1.7.12 - the other hard gate over the same files - rejects outright as invalid.
     Revisit when actionlint learns it. Runs `--offline` so it behaves identically in CI, on a dev
-    box, and in the clean-chroot pre-push recipe.
+    box, and in the clean-chroot recipe.
   - **`import-linter`** - **rejected, measured; structurally incompatible.** It validates that every
     `root_packages` entry is a real package and refuses flat modules ("'x' is a module, not a
     package"), and `src/` is deliberately a flat set of modules with no `__init__.py` - they are
@@ -1062,8 +788,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   - The **memory-leak soak test** equivalent is
     `tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic`
     — real, committed, `@pytest.mark.long_soak`, and **still not yet actually completed cleanly**
-    as of 2026-09-04 (one real attempt this session was aborted by an unrelated cascading DUT-
-    unreachable failure elsewhere in the same run - see this file's own `BENCH_AP_PASSWORD` entry -
+    as of 2026-09-04 (the one real attempt that day was aborted by an unrelated cascading DUT-
+    unreachable failure elsewhere in the same run - see open question 9's `BENCH_AP_PASSWORD` -
     before this test itself ever got a genuine clean pass/fail). Deliberately does **not** use the
     Unix-port twin's own `gc.mem_free()` recovery-peak-trend methodology — confirmed impossible on
     real hardware without disturbing the very system being measured (`mpremote exec()` always
@@ -1118,8 +844,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   addition beyond feature-parity rather than a postponed fix — owner-confirmed this stays as-is.
   The protocol module is standalone by design: its BME688/BSEC first use case is explicitly out of
   scope and was **not** part of the promotion.
-- **Owner requirement for the final wiring stage — fulfilled, entry kept only until the large
-  post-merge audit closes.** Every `sensortask-*.py` built as part of the real rewrite needs a full
+- **Owner requirement for the final wiring stage — fulfilled; held here only until the owner's
+  audit of the whole refactor closes.** Every `sensortask-*.py` built as part of the real rewrite needs a full
   Unix-port equivalent, runnable on a local computer, with whatever hardware is physically
   unavailable there mocked at the lowest level of bus data exchange (i.e. the same mocking boundary
   SPECIFICATION.md Part E.4/`tests/machine.py` already establish for unit tests — fake
@@ -1128,9 +854,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   physical hardware. **Fulfilled**: `digital_twin/` is the lowest-level-mocking module this
   requirement calls for (see `SPECIFICATION.md` Part A.10), and `scripts/run_unix_port_integration.sh`
   runs the whole wired-together (buildgen-generated) `sensortask_wozi.py` against it end to end (see
-  `digital_twin/README.md`'s "Swapping the twin in for a Unix-port run" section). This entry should
-  come out once the whole effort's large post-merge audit closes, per this file's own stated
-  resolved-item policy — not yet removed on its own, since that audit hasn't closed yet.
+  `digital_twin/README.md`'s "Swapping the twin in for a Unix-port run" section). Comes out when
+  that audit closes.
 - **Config-duplication centralization** — same keys hand-kept in sync across `_DEFAULT_CONFIG`, the
   REST handler, and the HTML form. Owned by the refactor: each promoted `*_Reader`'s own `_VAL_*`
   schema tuple + `get_dict_cfg()`/`get_dict_data()` is the intended single source, not fully wired
@@ -1195,11 +920,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   scenario exists at either tier to extend) - a real opportunity if a future session has the budget,
   not chased yet. The other two recombinations that matter (FRAM write vs. a real hardware reset;
   repeated WiFi flapping x concurrent bus load) already have coverage across every tier where they
-  are meaningful.- **Part I.2's hotspot catalog has never been re-walked with a *placement* lens** — carried over
-  from the heap-fragmentation handover's own open list when that file was deleted (2026-09-22), and
-  the last item on it that had no home. I.2 scanned every `src/` file for *how much* each function
-  allocates, which is the question that matters for exhaustion; the defect this branch fixed was
-  about *where* long-lived objects land, and only its known instance (the FRAM logging path, plus
+  are meaningful.
+- **Part I.2's hotspot catalog has never been re-walked with a *placement* lens.** I.2 scanned
+  every `src/` file for *how much* each function allocates, which is the question that matters for
+  exhaustion; the heap-fragmentation defect (Part I.4(f.1)) was about *where* long-lived objects land, and only its known instance (the FRAM logging path, plus
   the two boot lists) was addressed. A second walk would ask a different question of the same files:
   which of them still allocate something long-lived while bus or network churn is in flight?
   Measures A and B removed the one confirmed case, and `tests_scripts/test_digital_twin_boot_contiguity.py`

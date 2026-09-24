@@ -100,7 +100,7 @@ _BOUNDED_FAULT_COUNT = 3  # injected bus failures per bounded-fault run - SGP40'
 _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the failure count that trips hotspot fallback
 # All five are the same verdict, so the episode rule spends ONE history slot on them while still
 # counting all five (asy_wifi_service.py's _episode_wrn(), SPECIFICATION.md Part C.7.1). Counter
-# and slot count are therefore different numbers here, deliberately - BACKLOG item 35.
+# and slot count are therefore different numbers here, deliberately - SPECIFICATION.md Part C.7.1.
 _WIFI_PERSISTED_WARNINGS = 1
 
 # ResetErrors resets every source in turn, each FRAM-backed one paying a real chunk write, so it

@@ -240,7 +240,7 @@ information):
   test_digital_twin_bus_hazard_concurrency.py` (digital twin), `tests_hardware/flash/
   test_bus_concurrency.py` + `tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py`
   (real hardware, dev bench — that script is what the flash-tier sweep actually runs; the old
-  host-side `tests_hardware/bus_topology.py` mirror was deleted as dead code, BACKLOG item 20), and
+  host-side `tests_hardware/bus_topology.py` mirror was deleted as dead code), and
   `tests_hardware/bench/test_bus_concurrency_under_api_load.py` (real hardware, full HTTP stack).
   Full checklist, plus the two real-hardware write-safety constraints any new device's own on-chip
   NVM or the RP2040's own flash filesystem must respect: SPECIFICATION.md Part C.8's own standing
@@ -429,8 +429,10 @@ information):
   checks them with `tsc`, so `js/definitions.js`'s ~37-line `@typedef` run is a type declaration,
   not a comment; the prose above it is not exempt. Applied across `src/` in one pass (project
   owner's direction, 2026-09-18) and repo-wide since: **every scope measures zero over-cap blocks,
-  header and inline alike — Python, JS, CSS and, since 2026-09-22, `scripts/`'s shell** (BACKLOG.md
-  item 42 records what each sweep moved and where). Keep new code to this bar.
+  header and inline alike — Python, JS, CSS and, since 2026-09-22, `scripts/`'s shell**. Keep new
+  code to this bar; nothing enforces it mechanically. How a re-measurement counts: a bare `#` line,
+  or a blank line inside a docstring, separates blocks; divider rules (`# ----`), PEP 723
+  `# /// script` headers and JSDoc `@param`/`@returns` continuation lines are not commentary.
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
@@ -776,6 +778,9 @@ information):
   only those files carry the `# noqa`. This is not an inconsistency to tidy up: adding the
   suppression to a `sys.path`-only file makes `RUF100` (unused-noqa, live via `select = ["ALL"]`)
   fail the lint gate, so the two groups genuinely have to differ.
+- **A merge resolved by taking one side wholesale hides test/source mismatches — run every tier
+  after it.** An auto-merged test file next to an `--ours`-resolved source file raises no conflict,
+  then fails against source that lacks the feature it pins.
 - **A merge that touches `uv.lock` can silently bypass the tool pins — always re-verify after
   one.** `uv.lock` is a plain text file, so git merges it line by line: a branch that pins the
   tools and a branch that only refreshes versions produce a lock carrying **one side's

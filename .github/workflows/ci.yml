@@ -38,7 +38,7 @@ jobs:
     # js/, tests_js/) or its own tooling config. That needs the explicit `base:` below: given none,
     # `dorny/paths-filter` compares a push against the repository's default branch, so on a
     # long-lived branch every push matched whatever it had touched weeks ago and the whole web tier
-    # ran on markdown-only commits (BACKLOG item 36). Kept as a single workflow file with a
+    # ran on markdown-only commits. Kept as a single workflow file with a
     # changes-detection job feeding `if:` conditions, deliberately not a second workflow
     # file with its own trigger-level `paths:` filter (which can leave a PR stuck on a required
     # status check that never fires because the whole workflow never triggered - see
@@ -177,7 +177,7 @@ jobs:
     # driven through a real browser against a real digital twin. Split out of web-unit-tests and
     # sharded because it IS the web tier's wall clock - measured locally, 567s of the suite's 578s,
     # 243 of its 778 tests - so it repeatedly rolled a 20-minute budget and took the other 535
-    # tests' signal, the coverage report and the cross-browser smoke down with it (BACKLOG item 36).
+    # tests' signal, the coverage report and the cross-browser smoke down with it.
     # Each shard is its own runner, so the harness's fixed twin port (tests_js/_live_matrix_command.js)
     # never collides; the partition itself is proven by tests_js/mock-server-put-matrix.test.js.
     #
@@ -236,7 +236,7 @@ jobs:
   # Playwright + a real digital-twin subprocess boot, same suite run a second time) could still get
   # the entire job - including the already-passed real test step above - killed by the timeout and
   # block the downstream web-cross-browser-smoke job that only actually needs the real test result.
-  # Confirmed on this branch's own PR #50 (run `33856690559`, BACKLOG.md's former "HIGH PRIORITY"
+  # Confirmed on PR #50 (run `33856690559`, BACKLOG.md's former "HIGH PRIORITY"
   # entry): "Run unit tests (Vitest, real-browser mode)" had already succeeded when the job was
   # killed mid-"Run unit tests with coverage". Coverage is a report, never a gate (CLAUDE.md's
   # "Code quality tooling", SPECIFICATION.md Part E.5) - giving it a wholly separate job with its
@@ -620,8 +620,8 @@ jobs:
         run: GC_THRESHOLD=32768 scripts/test.sh
 
   # Split out of unit-tests above (Session 8's closing-consistency-pass PR), exactly as
-  # web-coverage was split out of web-unit-tests and for the same reason - which this branch then
-  # proved again on the Python side. Coverage is a report, not a gate (CLAUDE.md's "Code quality
+  # web-coverage was split out of web-unit-tests and for the same reason - which the Python side
+  # then proved again. Coverage is a report, not a gate (CLAUDE.md's "Code quality
   # tooling", SPECIFICATION.md Part E.5, "Coverage") - never lets anything downstream wait on or
   # fail because of it: re-running the whole real-interpreter suite a second time under
   # tests/_coverage_runner.py's sys.settrace wrapper roughly doubled unit-tests' own wall-clock

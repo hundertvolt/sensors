@@ -895,7 +895,7 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
   `--module`/`--wiring-plan` mechanism (SPECIFICATION.md Part L.4): its target bug is a
   device-independent MicroPython Unix-port interpreter bug, unrelated to any device's own sensor
   wiring, and it's never invoked by `scripts/run_digital_twin_ci.sh` or any `tests/test_*.py` file
-  — so it carries none of that session's "narrowed to a boot+REST smoke check" concern. Run
+  — so no CI-coverage concern applies to it. Run
   manually, same `MICROPYPATH` as `run_generic_integration.py`. Its target bug is root-caused and
   fixed, not open: a dangling-pointer dereference at `extmod/modselect.c:132` in the pinned
   MicroPython Unix port (traced at `v1.28.0`, and `extmod/modselect.c` is unchanged at the current
