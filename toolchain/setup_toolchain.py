@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -115,6 +116,21 @@ def run(cmd: list[str], cwd: Path | None = None, *, check: bool = True, env: dic
     if check and result.returncode != 0:
         raise SetupError(f"command failed (exit {result.returncode}): {' '.join(cmd)}")
     return result.stdout
+
+
+UV_SYNC_ATTEMPTS = 3  # mirrors ci.yml's unit-tests job: a third party's momentary outage is not a failed install
+
+
+def run_retried(cmd: list[str], cwd: Path | None = None, *, attempts: int = UV_SYNC_ATTEMPTS, backoff_s: float = 10.0) -> str:
+    """run(), retried with a growing pause - for a step that downloads from a third party (uv sync
+    builds actionlint-py, which fetches its binary from a release URL; a 502 there once failed a clean install)."""
+    for attempt in range(1, attempts):
+        try:
+            return run(cmd, cwd=cwd)
+        except SetupError as e:
+            log(f"{e} - attempt {attempt}/{attempts}, retrying in {attempt * backoff_s:.0f}s")
+            time.sleep(attempt * backoff_s)
+    return run(cmd, cwd=cwd)
 
 
 def load_versions(path: Path) -> dict[str, Any]:
@@ -1000,7 +1016,7 @@ def run_project_dependency_install(repo_root: Path, toolchain_dir: Path, *, skip
     env=None (inherit the caller's), unlike every other subprocess here: build_env()'s fixed PATH
     would hide the caller's own uv/npm install."""
     log("Installing Python project dependencies (uv sync)")
-    run(["uv", "sync"], cwd=repo_root)
+    run_retried(["uv", "sync"], cwd=repo_root)
     if skip_npm:
         log("Skipping npm ci (--skip-npm)")
         return

@@ -542,6 +542,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   requires `HTML_SRC_DIRS` and `scripts/test.sh` builds the real wozi site as `frozen_html`
   (`build_website.sh`, pure Python, no Node); `test.sh`'s variant probe also imports `asyncio`.
   Both run in a chroot's `scripts/test.sh` leg with nothing new to install.
+  **2026-09-24, `toolchain/setup_toolchain.py`**: `env`'s `uv sync` is retried three times with a
+  10 s / 20 s pause (`run_retried()`, mirroring `ci.yml`'s `unit-tests`), after a clean-sandbox install
+  failed on one HTTP 502 from `actionlint-py`'s release download. Same command, same dependencies;
+  the installer leg only gains the retry.
   **Partial evidence, not a leg**: a session sandbox (GCC 13.3, not a `--variant=minbase` chroot)
   ran `env --tier generic` and then `uv run toolchain/setup_toolchain.py` from an empty toolchain
   directory on 2026-09-24 — all eight verification checks passed and the lwIP readback was clean.

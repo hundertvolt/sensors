@@ -476,6 +476,43 @@ def test_run_project_dependency_install_runs_npm_ci_when_available(setup_toolcha
     assert recorded_run == [["uv", "sync"], ["npm", "ci"], ["npx", "playwright", "install", "chromium"]]
 
 
+def _flaky_run(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, failures: int) -> "tuple[list[list[str]], list[float]]":
+    # run() failing its first `failures` calls the way a 502 from a release download does, then succeeding.
+    calls: list[list[str]] = []
+    pauses: list[float] = []
+
+    def fake_run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
+        calls.append(cmd)
+        if len(calls) <= failures:
+            raise setup_toolchain.SetupError(f"command failed (exit 1): {' '.join(cmd)}")
+        return ""
+
+    monkeypatch.setattr(setup_toolchain, "run", fake_run)
+    monkeypatch.setattr(setup_toolchain.time, "sleep", pauses.append)
+    return calls, pauses
+
+
+def test_uv_sync_rides_out_a_transient_download_failure(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls, pauses = _flaky_run(setup_toolchain, monkeypatch, failures=2)
+    setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=True, skip_apt=True)
+    assert calls == [["uv", "sync"]] * 3
+    assert pauses == [10.0, 20.0]
+
+
+def test_uv_sync_still_fails_loudly_once_every_attempt_failed(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls, pauses = _flaky_run(setup_toolchain, monkeypatch, failures=3)
+    with pytest.raises(setup_toolchain.SetupError, match="uv sync"):
+        setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=True, skip_apt=True)
+    assert len(calls) == setup_toolchain.UV_SYNC_ATTEMPTS == 3
+    assert pauses == [10.0, 20.0]  # no pause after the last attempt
+
+
+def test_uv_sync_that_succeeds_first_time_never_pauses(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls, pauses = _flaky_run(setup_toolchain, monkeypatch, failures=0)
+    setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=True, skip_apt=True)
+    assert (calls, pauses) == ([["uv", "sync"]], [])
+
+
 # --- the pinned Node install (.nvmrc) --------------------------------------------------------
 
 
