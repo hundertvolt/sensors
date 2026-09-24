@@ -244,9 +244,22 @@ board, and that caught bugs each time. *Scratch* stand-ins:
     ~6 s, and a reference caught in that drop once came back 0 B (sitting §10.10.4).
   - A torn heap-map capture (`HeapMapError`) is printed and its free run reported as -1; it no
     longer kills the level and its host tally.
-  - **STABLE** means every body complete, zero device lines matching `MEMORY_ERROR_MARKERS`, and the
-    driver thread finished. Between levels it runs `kick_all_stations()`, a hard reset and a 45 s
-    settle. Exit 0 only if every level is STABLE.
+  - **STABLE** means zero true failures, zero device lines matching `MEMORY_ERROR_MARKERS`, and the
+    driver thread finished. A connection reset before any response (`is_ceiling_close()`) is a
+    refusal, counted separately as expected (owner's rule, 2026-09-23). Between levels it runs
+    `kick_all_stations()`, a hard reset and a 45 s settle. Exit 0 only if every level is STABLE.
+  - **Modes** (`REAL_HARDWARE_HANDOVER_PEAK_LOAD.md` §4.1 and §8 hold the full account and the
+    measurement principles):
+    - default "rounds" — 12 rounds of N parallel GETs with pauses; typical load, not peak.
+    - `--margin` — rounds with a `gc.collect()` before each heap map; prints settled idle and the
+      load window's min/median. Instrumentation: its verdict is not evidence.
+    - `--peak` — N clients back to back for 60 s plus the hammer test's SGP40 reset PUT every 3 s;
+      a 20 ms device sampler that never collects (verdict is evidence; its heap figure is biased low)
+      and a device-side count of reject-when-full closes, cross-checked against the host's refusals.
+    - `--peak --margin` — the same load, a collect every 100 ms: the exact peak live set per
+      open-connection count. Its verdict is not evidence.
+    - `--peak --no-sampler` — the same load with nothing on the device but the production task
+      graph; prints the script's heap footprint once. The instrumentation control.
   - Validated in the twin (dev's site, fixed firmware): STABLE at 4, 6 and 8, with every body
     complete. On the pre-fix firmware at G's heap it reports **UNSTABLE at N = 8**: two `/` bodies
     were cut off, at 0 and 1,024 B. The device printed no line for them (the twin does not print

@@ -1,6 +1,6 @@
-# Real-hardware handover: connection limit, peak load and heap margin — every result of 2026-09-23
+# Real-hardware handover: connection limit, peak load and heap margin — every result of 2026-09-23/24
 
-**Read this file alone.** It collects every real-hardware result of 2026-09-23 on the dev board
+**Read this file alone.** It collects every real-hardware result of 2026-09-23 and 2026-09-24 on the dev board
 (RP2040 Pico W, MicroPython 1.29, lwIP 2.2.1) for choosing the webserver's connection limit, and
 says what is still open. Raw result lines are reproduced verbatim where they are the evidence.
 `BENCH_SITTING_2026-09-23_HANDOVER.md` §10 holds the same material as a sitting log, in the order
@@ -400,7 +400,7 @@ live set; its verdict is instrumentation only, and the threshold is moot under i
 
 - **At 7 no true failure in any of 4 runs; at 8 a `/status` piece failed in 3 of 4 runs** (twice
   0.26-0.55 %, once 0.30 %). H at 8 under the same load (§5.4): 0 at −1, 1 at 32768 — so F′'s extra
-  4,544 B of heap and its harder ceiling did **not** make 8 clean, against the expectation in §7.
+  4,544 B of heap and its harder ceiling did **not** make 8 clean, against expectation (§6.1 item 4).
 - **Peak heap in use at 7: 85.8-88.6 % of the heap; at 8: 88.8-89.9 %.** The largest free block at
   8 falls to 400-512 B — two 256 B pieces' worth.
 - **Refusals dominate at 8 on a limit of 8**: 65-71 % of all requests refused, because connections
@@ -696,53 +696,228 @@ N= 7 GC_THRESHOLD=-1 | STABLE | complete 106/356 | refused 250 (expected) | fail
 
 ## 6. Findings
 
-1. **The wall is the `/status` JSON piece, not the static files any more.** Every true failure at
-   8-10 on every image is `/status` failing to allocate one 242-257 B `_PieceWriter` piece
-   (`chunk_bytes` = 256). No other route failed at those levels; bodies that were served were
-   complete. At 12 the failures spread to microdot's 232 B `Request` (400s), static bodies cut after
-   their headers, and non-web tasks.
-2. **10 needs more heap than the board has.** G′ (169,120 B) fails 3/3 at 10 with ~1 `/status` in 10
-   failing every round; H (183,064 B) still fails 10 in both arms (3 per run); the step 9 → 10 costs
-   ~14 KB under rounds load against ~3 KB for 8 → 9.
-3. **The connection counter includes closing connections.** `_serve()` decrements `_open_conns` only
+### 6.1 The connection limit
+
+1. **Measured headroom per limit, each image at its own limit, peak load, `gc.threshold(-1)`**
+   (§5.6-§5.8; production-equivalent free heap = measured + the device script's 2,720 B):
+
+   | limit (image) | true failures, uninstrumented | free heap at peak | largest free block at peak | verdict |
+   | --- | --- | --- | --- | --- |
+   | 6 (E6) | 0 in 1,365 requests (3 boots) | 21.2-21.7 % | ~1.5 KB | clean, inside the 20-30 % practice |
+   | 7 (E7) | 0 in 1,334 requests (3 boots) | 14.3 % | 528 B | clean, below the practice |
+   | 8 (F′, shipped) | 1 in 1,319 (3 boots); 4 more in 4 instrumented boots | 11.6-12.7 % | 400-512 B | **fails** |
+   | 9 (H) | 3 and 6 per run (1.7 %, 3.2 %) | — | — | fails |
+   | 10 (G′, H) | ~1 `/status` in 10 fails every round (G′); 3 per run (H) | 11.5 % sampled (H) | 288 B (H) | fails |
+
+2. **Each admitted connection costs ~13-14 KB of heap at peak** (the live set of one in-flight
+   request with its streams, `Request`/`Response`, handler frame and pieces) **plus 2,324 B of static
+   heap** for its lwIP share (one PCB, 8 segments, 2,000 B of `MEM_SIZE`). Measured exactly for the
+   static part (E6/E7/F′/H/G′ linker figures), from the peak live set for the dynamic part.
+3. **10 is not reachable on this heap**: G′ (169,120 B) fails 3/3 at 10, H (183,064 B) fails 10 in
+   both arms; under rounds load the step 9 → 10 already cost ~14 KB against ~3 KB for 8 → 9, and at 12
+   the failures spread from `/status` to microdot's `Request` (400s), static bodies and non-web tasks.
+4. **An image built for 8 is not cleaner at 8 than one built for 10** (F′ at 8: failures in 4 of 7
+   boots; H at 8: 0 and 1 in single runs), against the expectation that the tighter ceiling and
+   4,544 B more heap would help. Not explained; one hypothesis, untested: with a tight ceiling,
+   refused clients retry at once, and every refused accept still allocates its stream objects and a
+   task before the close, so the churn is higher.
+
+### 6.2 What fails, and what does not
+
+5. **The wall is the `/status` JSON piece.** Every true failure at 8-10 on every image is `/status`
+   failing to allocate one 242-257 B `_PieceWriter` piece (`chunk_bytes` = 256): `_get_status` →
+   `_build_status_pieces` → `_write_errcount_entry` → `add_value` → `add` → `flush`. No other route
+   failed at those levels; every body that was served was complete (static `Content-Length`
+   verified on every response).
+6. **The static-file defect of 2026-09-23 is fixed on silicon**: `route:/` needs 320 B instead of
+   1,536 B, no `1025` read anywhere since, and a cut static body is now client-visible
+   (`IncompleteRead` against `Content-Length`) instead of a silent `200`.
+7. **At the limit, the free pool empties, it does not merely fragment**: on G′ the one-boot sweep
+   failed allocations of 68-138 B in sensor config reads, FRAM history writes and the device script
+   itself. Below the limit the largest free block (0.4-1.5 KB at peak) is still larger than any
+   single serving allocation (≤ 257 B).
+
+### 6.3 Behaviour under saturation
+
+8. **The connection counter includes closing connections.** `_serve()` decrements `_open_conns` only
    after `_close_writer()` (bounded `wait_closed()`), while the client already has its complete body
-   (`Content-Length`) and has opened its next connection. With 8 back-to-back clients on H the count
-   sat at 8 for ~560 samples, at 9 for ~230-300, at 10 for ~40-50 — so a limit of N refuses some of
-   N back-to-back clients. Expected behaviour by the owner's rule; **whether the count should drop
-   when the response is written instead of at close is a design question for the owner — not
-   changed** (closing connections still hold lwIP PCBs, which is why the limit sits below
-   `MEMP_NUM_TCP_PCB`).
-4. **Throughput is flat at ~2.2 requests/s from 6 to 9 clients** under peak load: the board is the
-   bottleneck; more clients only lengthen each request (and hold more heap at once).
-5. **`gc.threshold(32768)` vs −1 under peak load**: ~1.7-2× the collections; more contiguous space at
-   6 clients; **no fewer failures** (8: 1 vs 0; 9: 6 vs 3) — single runs, not separable from chance.
-6. **Rounds load understates peak memory use by ~20 KB at 6 clients** (§5.5 vs §5.3): pauses between
-   rounds and 5 s snapshots miss the moment when all N allocate at once.
-7. **The board fell back to hotspot mode after a reset three times** (after a likely watchdog reset
-   between two tests, after flashing F′, after flashing H), with the bench AP up and no station
-   associated; `kick_all_stations()` + hard reset recovered it (once only on the second try). Not
-   investigated.
-8. **Likely watchdog reset**: a new `mpremote` session attached ~30 s after a test's own teardown
-   reset, and the board reset ~9 s later (the 8,388 ms WDT), so the next test died on
-   `OSError: [Errno 5]`. Cause not confirmed; leave > 45 s between runs.
-9. **An empty `200` with no `Content-Length` came back twice** from an idle `GET /` fetched during the
-   boot-time WLAN drop. The static route always sends `Content-Length`, so it cannot have come from
-   `_serve_static()`; origin unexplained.
-10. **Twin vs board**: the twin was optimistic about the wall (pre-fix G failed JSON at 10, the twin
-    at none through 12) but pessimistic about free heap under rounds load (board +9 KB at 6, +18 KB
+   (`Content-Length`) and has opened its next connection. So a limit of N refuses some of N
+   back-to-back clients; with 8 clients on H the count reached 10. Expected behaviour by the owner's
+   rule; **whether it should drop when the response is written is an owner decision — not changed**
+   (closing connections still hold lwIP PCBs, which is why the limit sits below `MEMP_NUM_TCP_PCB`).
+9. **~70 % of requests are refused at every limit** (6, 7, 8) under back-to-back clients, and the
+   completed count is flat: 121-149 per 60 s boot at 6, 123-136 at 7, 122-134 at 8 (~2.2 requests/s).
+   **The board, not the limit, sets throughput**; a higher limit only makes each request slower and
+   holds more heap at once.
+10. **Refusals are cleanly separable from failures**: a reject-when-full close gives the client a
+    reset before any response; the device's own count of rejections matches the host's to within
+    the counter-installation window (host 0-21 higher, §6.5 item 16), and no socket-error line
+    appears on the device.
+
+### 6.4 The gc threshold
+
+11. **`gc.threshold(32768)` vs −1 under peak load**: ~1.7-2× the collections and more contiguous
+    space at 6 clients, but **no fewer failures** (H at 8: 1 vs 0, at 9: 6 vs 3; F′ at 8: 1 vs 2) —
+    single runs per cell, not separable from chance. The limit decides, not the threshold.
+
+### 6.5 The instruments themselves
+
+12. **The instrumentation does not cause the wall** (§5.7): with no sampler at all, F′ at 8 still
+    failed the same 252 B `/status` piece (1 in 3 boots).
+13. **The samplers do cost something**: ~10-20 % of throughput (completed requests 105-116 with a
+    sampler, 122-134 without), and the instrumented boots failed more often (at −1: 3 in 757 requests
+    vs 1 in 1,319). Figures from instrumented runs are therefore pessimistic, not optimistic.
+14. **The device script's own heap cost is 2,720 B** (55,680 B allocated before boot vs 52,960 B for an
+    import-only script). Production (frozen `main.py`) does not pay it; every device-script heap
+    figure is that much pessimistic.
+15. **Rounds load understates peak memory use by ~20 KB at 6 clients** (§5.5 vs §5.3): pauses between
+    rounds and 5 s snapshots miss the moment when all N allocate at once.
+16. **The non-collecting sampler's heap figure is biased low by up to 15-30 KB**: it reads "just
+    after a GC" late under load (every ~60 ms against a heap churning ~250 KB/s), and rp2 offers no
+    exact GC signal (no `__del__` on user-class instances, no `weakref`). Only the collecting sampler
+    gives an exact live set. The refusal cross-check has a known gap: the device counter is installed
+    at `READY`, a few seconds after the host's load starts.
+17. **Tool output labels can be wrong**: `--margin`'s printed "idle" was a mid-boot sample and its
+    "median under load" spanned the post-load idle (fixed in `53ac222`); caught only by re-deriving
+    from the raw maps.
+
+### 6.6 Board and bench anomalies (recorded, not chased)
+
+18. **One silent reset** in the first E6 collecting boot (§5.8): output stops ~40 s into the load
+    with 33.5 KB free, no error line; watchdog (the harness arms `machine.WDT(timeout=8000)` around
+    every device script) or a hard fault — cause lost. 1 in 9 peak-load collecting boots; none in any
+    uninstrumented boot; two repeats clean.
+19. **Hotspot fallback after a reset, three times** (after a likely watchdog reset between two tests,
+    after flashing F′, after flashing H): bench AP up, no station associated; `kick_all_stations()` +
+    hard reset recovered it (once only on the second try).
+20. **Likely watchdog reset at `mpremote` attach**: a new session ~30 s after a test's own teardown
+    reset, board reset ~9 s later, next test dead on `OSError: [Errno 5]`. Cause not confirmed.
+21. **An empty `200` with no `Content-Length`**, twice, from an idle `GET /` during the boot-time WLAN
+    drop — not from `_serve_static()`, which always sets it; origin unexplained.
+22. **Twin vs board**: the twin was optimistic about the wall (pre-fix G failed JSON at 10, the twin
+    at none through 12) and pessimistic about free heap under rounds load (board +9 KB at 6, +18 KB
     at 7).
 
-## 7. Open — next sitting
+## 7. Open
 
-1. **The exact peak live set on H at 7, 8, 9** — `--peak --margin`; only N = 6 exists (§5.5); F′ at 7/8 is in §5.6.
-2. **Repeats**: most peak rows are one run. The 0-vs-1 failure differences at 8 need ≥ 3 boots per
-   cell before they mean anything.
-3. **Owner decisions**: the limit itself; whether `_open_conns` should drop at response-written
-   (§6.3); whether to reduce what `/status` needs (a smaller `chunk_bytes`, or less per piece).
-4. Deferred from the static-fix handover: H3 (`/status` p50/p95, `test_end_to_end_timing.py`) and
-   H4 (full bench tier) on F′.
+1. **Owner decision: the limit.** §6.1 is the basis: 6 is the only limit inside 20-30 % free at
+   peak; 7 is clean but at 14 %; 8 fails. Whichever is chosen, `devices/*.toml` `max_connections`
+   and the `[lwip]` ensemble move together (PCB = limit + 3, SEG = limit × 8, `MEM_SIZE` = limit ×
+   2,000 is the measured pattern; `check_lwip_ensemble()` enforces the floors).
+2. **Owner decisions, design**: whether `_open_conns` should drop at response-written (§6.3 item 8);
+   whether to reduce what `/status` needs (smaller `chunk_bytes`, or less per piece), which is what
+   would move the wall.
+3. **Repeats for the chosen limit**: the free-heap figures at peak rest on 1-2 collecting boots per
+   image; ≥ 3 would give a spread.
+4. **The silent reset** (§6.6 item 18) if it recurs: the re-run script captures
+   `machine.reset_cause()` right after the serial error.
+5. **Tool fixes, small**: install the device's rejection counter as soon as the webserver exists,
+   not at `READY` (§6.5 item 16).
+6. Deferred from the static-fix handover: H3 (`/status` p50/p95, `test_end_to_end_timing.py`) and
+   H4 (full bench tier), on the image with the chosen limit.
 
-## 8. Traps paid for today
+## 8. Measurement principles
+
+How the figures in this file were obtained, and the rules they rest on. Documentation, not code:
+the tools that implement them are listed in §4, and a future instrument should follow the same
+rules whatever its implementation.
+
+### 8.1 Fix the question and the pass criterion before measuring
+
+- **Every figure answers a stated question**: "is limit N stable", "how much heap is left at peak",
+  "does the instrument cause the effect". A figure without its question is not reported.
+- **The owner's definitions are the criteria, written down first** (§1): "no gc threshold" is
+  MicroPython's own `gc.threshold(-1)`; peak load is maximum connection load coinciding with forced
+  internal work; a refusal at a saturated ceiling is expected behaviour; a memory error is a true
+  failure; stable means zero true failures **and** zero allocation-failure lines on the device,
+  caught-and-logged ones included (CLAUDE.md's memory-safety bar).
+- **The load must match the question.** Rounds with pauses measure typical load; they are not peak
+  and overstate free heap by ~20 KB (§6.5 item 15). Peak means clients back to back at the ceiling
+  for the whole window, plus the hammer test's internal-work trigger, on the full production task
+  graph with every path the website really fetches.
+
+### 8.2 Separate the verdict from the measurement
+
+- **Every instrument is classified as invasive or non-invasive, and every run states which figures it
+  is valid for.** An instrument that changes the system under test may measure, but may not judge:
+  a `gc.collect()` before each sample cleans the heap, so a collecting run's stability verdict is
+  never evidence (§4.1's table has a "verdict is evidence?" column for exactly this).
+- **The verdict comes from the least-instrumented run that can give it**; the heap figure comes from
+  the run that can measure it exactly. Where one run cannot give both, two runs are made rather than
+  one run that gives both approximately — and when the owner asked for one run, the reason it could
+  not be done exactly was stated, with the bias of the approximation (§6.5 item 16).
+- **A collect or a threshold is only ever instrumentation or defence in depth, never the fix**
+  (CLAUDE.md): no run's result is credited to a `gc.collect()`, and the threshold under test is set
+  explicitly by every device script and printed in every result line (`GC_THRESHOLD=`). A line
+  without it is void.
+
+### 8.3 Controls: rule out the instrument as the cause
+
+- **When the instrument could plausibly produce the effect it reports, the same load is run without
+  it** (§5.7: no sampler, no counter, only host counts and device allocation lines). The control
+  decides; argument alone does not.
+- **The instrument's own cost is measured and reported**, not assumed away: the device script's heap
+  footprint (2,720 B, from the same measurement taken with and without the script) and the samplers'
+  throughput cost (~10-20 %). Heap figures are given both as measured and production-equivalent.
+
+### 8.4 Two independent views, and a gap is a finding
+
+- **Counts are taken on both sides where both sides can see them**: host refusals against the
+  device's own reject-when-full count; host failures against device allocation-failure lines (two
+  lines per failure: the `MemoryError` and the webserver's handler line). A mismatch is investigated
+  before either number is trusted (§6.5 item 16: the device counter starts later than the load).
+- **Every served body is checked, not only the status code**: static bodies against an idle
+  reference and their `Content-Length`, JSON bodies by parsing. A `200` is not a success on its own
+  — that is how the static-file defect hid.
+- **The reference itself is validated** (a 200 whose non-empty body equals its `Content-Length`),
+  because a reference taken during the boot-time WLAN drop once came back empty and made every
+  correct page look truncated.
+
+### 8.5 Verify the object under test
+
+- **Every image is verified before its figures count**: every lwIP macro read back out of the built
+  firmware's own translation unit; the ensemble check at the image's limit; the GC heap computed
+  from the linker symbols and checked against the prediction (2,324 B per connection, matched to the
+  byte on E6, E7, H, G′); the build date read back from the running board; `Content-Length` and
+  `gzip -t` on the static files. The `mem_info` total (not the linker figure) is the percentage
+  base, and it is stated.
+- **Local-only images are recorded by recipe** (§3, §5.8) and never committed; the repo is returned to
+  the tip after each build.
+
+### 8.6 One fresh boot per data point, and enough of them
+
+- **Each level is its own boot**, so no run inherits another's heap; a repeated level is a repeated
+  run. Failures near the wall are probabilistic (1 in 2-3 boots before the static fix; 4 in 7 boots
+  for F′ at 8), so **one clean run proves little**: per-boot rows are reported alongside totals, and
+  a single-run difference (0 vs 1 failure) is called "not separable from chance", not a result.
+- **Everything is reported as count and percentage**: failures of all requests, refusals separately,
+  heap in bytes and in % of the stated base, plus the largest free block — the figure that decides
+  whether the next allocation can be placed.
+
+### 8.7 Know the instrument's limits, and state the bias direction
+
+- **Sampling misses peaks**: a snapshot every 5 s cannot see the instant all N allocate; the
+  interval is stated and a sampled minimum is labelled as bounding the true peak from one side only.
+- **What the runtime cannot tell is not faked**: rp2 has no exact end-of-GC signal, so the
+  non-collecting sampler's heap figure is documented as biased low and not reported as a peak.
+- **Tool summaries are not taken for granted**: where a printed label looked wrong (`--margin`'s
+  "idle" and "median"), the figure was re-derived from the raw maps and the tool fixed afterwards.
+
+### 8.8 Evidence hygiene
+
+- **FRAM error logs are read before anything writes to the board**, and treated as context, not
+  evidence, once device scripts have run (they build their own `AsyFramManager` over the same chip).
+- **The reset cause is captured immediately** after an unexpected reset, before any flash or reboot
+  can overwrite it (lost once in §5.8; the re-run script now reads `machine.reset_cause()` at once).
+- **Raw result lines go into the record verbatim**, alongside the derived tables, so every table can
+  be recomputed.
+- **Neither the tool nor the device script is edited while chained runs are pending** — each new
+  invocation re-reads both.
+- **Bench state is restored between runs**: stations kicked and the board hard-reset between levels,
+  45 s settle, hotspot fallback recovered by kick + reset, and nothing attached to the serial port
+  within ~45 s of a reset (the harness arms an 8 s watchdog on every device-script run).
+
+## 9. Traps paid for these two days
 
 - `pkill -f` / `pgrep -f` with a pattern that also appears in the calling shell's own command line
   kills or matches that shell. List by PID (`ps … | awk '/[p]attern/'`) instead.
