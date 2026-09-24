@@ -384,10 +384,10 @@ block operation (`SPECIFICATION.md` C.8), and the boot-confined collects
 
 ---
 
-## M8. Open research gaps
+## M8. Research gaps, closed as not pursued
 
-Four, with no decision riding on them (BACKLOG.md item 49): what in the old churn did the stranding
-at a given dose; whether parallelism matters after boot, once the task graph is live (the boot batch
+**Closed by the owner, 2026-09-24** — re-open only if a new layout symptom appears. The four: what
+in the old churn did the stranding at a given dose; whether parallelism matters after boot, once the task graph is live (the boot batch
 has none); the per-object picture on the board's 16 B blocks, where the one-block immunity boundary
 falls at a different byte size; and a same-binary A/B of the committed chip-select settle. The
-remedy shipped and holds on silicon, so none gates anything.
+remedy shipped and holds on silicon, so none gated anything.

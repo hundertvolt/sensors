@@ -465,13 +465,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
       WDT, and the board takes a hard reset ~8 s later; the occurrence was ~9 s after attach). It is
       `tests_hardware/README.md`'s "> 45 s between a reset and the next attach" trap, not a finding.
 
-49. **Four heap-fragmentation research gaps stay open with no decision riding on them**
-    (HEAP_FRAGMENTATION_MEASUREMENTS.md §M8): what in the old churn did the stranding at a
-    given dose; whether parallelism matters after boot; the per-object picture on the board's
-    16-byte blocks; and a same-binary A/B of the committed settle. The remedy shipped and holds on
-    silicon (archive §7H, §7R), so none gates anything. **Recommendation: close all four as not
-    pursued**, leaving §M8 as their record; re-open only if a new layout symptom appears.
-
 ## Deferred / explicitly out-of-scope work
 
 - **`arduino/` is out of this project's scope - SETTLED, owner, 2026-09-24.** That covers the UART
