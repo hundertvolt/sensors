@@ -98,12 +98,14 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   Unix-port-tests were pulled forward out of this order already, once `math_helpers.py` cleared the
   `src/` bar, and that's now standing practice for every new file, not a one-off.
 
-- **The UART protocol's C implementation is not in this repo yet.** It runs on the Arduino peer and
-  is the protocol's second implementation (SPECIFICATION.md Part J). A future session imports it,
-  then reconciles it against `UART_C_PORT_CHANGELOG.md` — the running log of protocol changes made
-  during the Python module's `src/` promotion — re-verifying each entry's conformance assumption
-  against the real C source. That log file is deleted once the reconciliation is done; this entry
-  comes out with it. **It is prototypical, exactly like this repo's legacy Python, with no device in
+- **The UART protocol's C implementation is imported but not reconciled.** It runs on the Arduino
+  peer and is the protocol's second implementation (SPECIFICATION.md Part J); the owner imported it
+  on 2026-09-13 as `arduino/libraries/Async_UART_Comm/` (with `Async_UART/` and `CRC_Check/` beside
+  it). What is owed is the reconciliation against `UART_C_PORT_CHANGELOG.md` — the running log of
+  protocol changes made during the Python module's `src/` promotion — re-verifying each entry's
+  conformance assumption against that source. It needs no bench, so it is cloud work, and it gates
+  queue row G10. That log file is deleted once the reconciliation is done; this entry comes out with
+  it. **It is prototypical, exactly like this repo's legacy Python, with no device in
   the field running it** (owner, 2026-09-11) — so the reconciliation has no deployed pair to keep
   working and no flag day to schedule; both sides are simply reflashed together. Real hardware
   running the C side exists and can be connected to the dev board, so the reconciliation session can
@@ -486,17 +488,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 46. **Retire `html_stub/`?** `scripts/build_frozen_html.sh` and the twin's CI default to it (SPEC
     A.9); the owner's rule (2026-09-23) is that `dev`'s real website is the most biting test. Needs
     the owner's yes/no; a change touches `scripts/`, so it needs a chroot entry.
-
-47. **Does every driver's own arithmetic need a finiteness gate before its value reaches a
-    response?** MicroPython's `json.dumps()` never raises and emits bare `nan`/`inf`
-    (SPECIFICATION.md Part F.1, pinned by `tests/test_strict_json.py`), so one non-finite
-    measurement ships a body `JSON.parse()` rejects — the whole page's data, with nothing logged
-    anywhere. Overflow reaches `inf` silently (`1e308 * 10`); `0.0/0.0` and `math.log(0)` raise
-    instead, and `math_helpers.ema_step()` already gates on `math.isfinite()` so a filter's state
-    cannot be poisoned. What is unaudited is the unsmoothed path: no driver's own conversion was
-    swept for a value that could overflow, and no test injects one. The options are a per-driver
-    audit, one gate in the response layer (`_PieceWriter.add_value()`, which would cost a check per
-    scalar on the hot path), or accepting it as unreachable on argument. Not a drive-by change.
 
 ## Deferred / explicitly out-of-scope work
 

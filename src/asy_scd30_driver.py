@@ -8,6 +8,7 @@ Source: Sensirion CO2 Sensors SCD30 Interface Description & Datasheet (datasheet
 """
 
 import asyncio
+import math
 import time
 from asyncio import ThreadSafeFlag
 from collections import namedtuple
@@ -618,6 +619,13 @@ class SCD30_I2C:
             if not crcs_good:
                 raise RuntimeError("CRC check failed while reading data")
 
-            self._co2 = cast(float, unpack(">f", self._buffer[0:2] + self._buffer[3:5])[0])
-            self._temperature = cast(float, unpack(">f", self._buffer[6:8] + self._buffer[9:11])[0])
-            self._relative_humidity = cast(float, unpack(">f", self._buffer[12:14] + self._buffer[15:17])[0])
+            co2 = cast(float, unpack(">f", self._buffer[0:2] + self._buffer[3:5])[0])
+            temperature = cast(float, unpack(">f", self._buffer[6:8] + self._buffer[9:11])[0])
+            humidity = cast(float, unpack(">f", self._buffer[12:14] + self._buffer[15:17])[0])
+            # The words are raw IEEE-754 and CRC-valid NaN/inf still decode; MicroPython's json.dumps()
+            # would ship them as bare nan/inf, breaking the whole page (Part F.1). A failed read instead.
+            if not (math.isfinite(co2) and math.isfinite(temperature) and math.isfinite(humidity)):
+                raise ValueError(f"non-finite measurement (co2={co2}, t={temperature}, rh={humidity})")
+            self._co2 = co2
+            self._temperature = temperature
+            self._relative_humidity = humidity

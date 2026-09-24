@@ -3758,12 +3758,17 @@ three and emits `NaN`/`Infinity` for the last; MicroPython emits text no `JSON.p
 reports nothing. Two consequences. A route handler therefore cannot rely on serialization failing
 loudly — it will not fail at all — so a value's shape is the caller's obligation, which is why
 `_write_guarded()` needing `json.dumps()` inside its own `try` is moot (I.3). And a non-finite
-measurement would emit a body that breaks the whole web page with no error anywhere; MicroPython
-produces `inf` silently on overflow (`1e308 * 10`), while `0.0/0.0` and `math.log(0)` raise. The
-existing mitigation is in the shared primitive, not the response layer: `math_helpers.ema_step()`
-gates on `math.isfinite()` rather than a range, so one NaN cannot poison a filter's state. Whether
-every driver's own arithmetic needs the same gate before its value reaches a response is BACKLOG's
-open question, not something to add per driver on spec.
+measurement would emit a body that breaks the whole web page with no error anywhere. Operators
+overflow to `inf` silently — at ~3.4e38 on rp2, whose floats are single precision
+(`MICROPY_FLOAT_IMPL_FLOAT`), not 1e308 as on the Unix port — while `0.0/0.0` raises and `math`
+functions raise `ValueError` rather than return `inf`/`nan` (`math.exp(1000)`, `math.log(0)`).
+**Every measurement source is gated at the driver, not in the response layer** (audited
+2026-09-24): BMP3xx range-checks its compensated output against the datasheet's operating range,
+which a NaN fails; ISL29125 and SGP40 compute from bounded integer counts; every `math_helpers`
+derivation range-checks its inputs first; `ema_step()` gates on `math.isfinite()` so one NaN cannot
+poison a filter's state; and SCD30, whose words are raw IEEE-754 that CRC-valid NaN/inf still
+decodes from, rejects a non-finite word as a failed read (`read_measurement()`). A new source
+decoding floats or computing without a range gate needs the same.
 
 **Always check current MicroPython/Microdot documentation before asserting how an API behaves** —
 never rely on training-data memory. **Whenever the pinned version changes (and periodically
@@ -5469,8 +5474,8 @@ payload is an empty `bytearray()` rather than `None`.
 Python implementation's *intended* behavior and is owner-validated over many real transmissions — but
 **how far that mirroring extends to the known flaws is unverified**: it may share some, not others,
 and may have introduced its own. Establishing that is future work, never an assumption to build on.
-The C source is not yet in this repo; importing and reconciling it is open work
-(BACKLOG.md). Until then:
+The C source is in the repo since 2026-09-13 (`arduino/libraries/Async_UART_Comm/`, with
+`Async_UART/` and `CRC_Check/`); reconciling it is open work (BACKLOG.md). Until then:
 
 - **Every protocol-level change is logged in `UART_C_PORT_CHANGELOG.md`** — a temporary file, deleted
   once the C side is reconciled. A change is protocol-level ("Class A") if it alters the bytes
@@ -5480,7 +5485,7 @@ The C source is not yet in this repo; importing and reconciling it is open work
   bytes.** A receiver-strictness change rejects only frames a *conforming* peer never sends, so a
   mixed-version pair (new Python ↔ old C) keeps working and the peer's reflash can happen in either
   order — **conditional on the C side actually conforming, which each such change must re-verify
-  against the C source once it is imported.** A change to emitted bytes is a coordinated flag-day
+  against the C source.** A change to emitted bytes is a coordinated flag-day
   needing an explicit owner decision.
 
 ## J.2 Role model

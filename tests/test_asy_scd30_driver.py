@@ -411,6 +411,46 @@ def test_read_measurement_raises_on_crc_mismatch_in_any_of_the_six_words() -> No
         assert raised, f"CRC corruption at byte {crc_pos} was not detected"
 
 
+def test_read_measurement_rejects_a_non_finite_word_in_any_position_and_keeps_the_cache() -> None:
+    # CRC-valid NaN/inf still decodes, and json.dumps() would ship it as bare nan/inf (Part F.1).
+    # Every position and every non-finite kind: one gate per word, not one per frame, is the claim.
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        for position in range(3):
+            values = [412.5, 23.4, 45.6]
+            values[position] = bad
+            scd, i2c = make_scd()
+            scd._co2, scd._temperature, scd._relative_humidity = 1.0, 2.0, 3.0
+            i2c.read_queue.append(register_frame(1))
+            i2c.read_queue.append(data_frame(values[0], values[1], values[2]))
+            try:
+                run(scd.read_measurement())
+                raised = False
+            except ValueError as e:
+                raised = "non-finite" in str(e)
+            assert raised, f"{bad} in word {position} was accepted"
+            assert (scd._co2, scd._temperature, scd._relative_humidity) == (1.0, 2.0, 3.0)
+
+
+def test_reader_turns_a_non_finite_measurement_into_a_logged_failed_read_and_stores_nothing() -> None:
+    # Caller side of the gate above: _read_scd()'s blanket except logs errno=11 and _store_scd()
+    # discards the all-None result, so the published data never carries the value.
+    reader = make_reader()
+    i2c = reader_fake_i2c(reader)
+    i2c.read_queue.append(register_frame(1))
+    i2c.read_queue.append(data_frame(float("nan"), 23.4, 45.6))
+
+    async def scenario() -> "tuple[object, SCD30, ErrorLog]":
+        results = await reader._read_scd()
+        await reader._store_scd(results)
+        return results, await reader.get_data(), await reader.get_error_counter()
+
+    results, data, log = run(scenario())
+    assert results == (None, None, None, None)
+    assert data.CO2 is None and data.Temp is None and data.Hum is None
+    err_num = log["SCD30"]["ErrNum"]
+    assert isinstance(err_num, list) and err_num[-1] == 11
+
+
 def test_read_measurement_not_ready_leaves_cached_values_untouched_and_issues_no_measurement_read() -> None:
     # Matches the legacy driver's own proven behavior: a not-ready read_measurement() call must
     # neither raise nor clear the cache - it just leaves whatever was last read in place. Reverted
