@@ -537,6 +537,10 @@ is why a 2-block change of one object's size moves the result and why nothing co
   reproduces it, and the corpus's baseline is the one the hardware test asserts on. Whether the
   *boot-collect scheme* moves the board the way it moves the twin is since measured on silicon: it
   does, by more (§7H.1-§7H.3).
+- **Which threshold the pre-2026-09-24 device-script readings ran at** (§1, §7D, §7F, §7H, the
+  20,592 B): rp2 runs `gc_init()` once, outside the soft-reset loop (§7R intro), so an `mpremote` run
+  may have inherited the boot entry's 32768. The two flash-tier scripts still only print it
+  (`GC_THRESHOLD=`); the next T1 run says which.
 - **Gap 10, hardware** — the defect and both remedies are measured on silicon since 2026-09-18
   (§7D, §7F, §7H, §7M); what stays unmeasured is the per-object question. A GC block is 16 B there
   against 32 B here, so the "1-block objects are immune" boundary in §0B.2 falls at a different byte
@@ -4533,7 +4537,7 @@ and R5's BMP3XX config-write arms passed a second time; R1 and R4 still need the
 ## 7P. State the bench was left in on 2026-09-22 — SUPERSEDED 2026-09-23
 
 **Not the board's current state.** From 2026-09-23 the board was reflashed with every image in
-§7R.1 and was last flashed with E6′ (the committed tip at limit 6); its `DebugLevel`, config files
+§7R.1 and was last flashed with E6′ (the 2026-09-24 06:45 tip at limit 6); its `DebugLevel`, config files
 and `errcount` since then are not recorded (§7R.5 has the FRAM E31/W73 entries that appeared). Read
 `/system`'s `build.buildDate`, the config files and `errcount` on the board before trusting
 anything below. What stays useful: the `config_HWTEST_DEBUGLEVEL_BACKUP.cfg` check, the hand-back
@@ -4935,7 +4939,7 @@ full production task graph. Every static body is checked against a validated idl
 | F, F′ | 8 | 11 / 64 / 16,000 | 187,712 B | 183,360 B | F′ = static fix |
 | H | 10 | 13 / 80 / 20,000 | 183,064 B | 178,816 B | |
 | E7 | 7 | 10 / 56 / 14,000 | 190,036 B | 185,664 B | |
-| **E6, E6′** | **6** | **9 / 48 / 12,000** | **192,360 B** | **187,904 B** | E6′ = the committed tip |
+| **E6, E6′** | **6** | **9 / 48 / 12,000** | **192,360 B** | **187,904 B** | E6′ = the 2026-09-24 06:45 tip |
 
 Every lwIP macro was read back out of each firmware's own translation unit and matched, and every
 linker heap equals 187,712 + (8 − L) × 2,324 B to the byte; `mem_info` reports 4,248-4,456 B less
@@ -5068,7 +5072,7 @@ Percentages are as measured; production-equivalent adds back the device script's
   the device but the task graph. The samplers cost ~10-20 % of throughput, so instrumented figures
   are pessimistic; the device script's own code and globals cost 2,720 B (52,960 B for an
   import-only script against 55,680 B), 3,008 B once it gained the rejection counter.
-- **The committed image is the measured one**: E6′ built from the tip reads back 9 / 48 / 12,000,
+- **The shipped configuration is the measured one**: E6′ built from the tip reads back 9 / 48 / 12,000,
   192,360 B and 187,904 B, identical to E6, and was clean in both peak boots (0 in 890).
 
 **The throughput-matched twin reproduces this.** The 32-bit twin with its serving throttled to the

@@ -472,10 +472,14 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     (`REAL_HARDWARE_TEST_QUEUE.md`).
 
 44. **Board anomalies from the connection-limit sittings — recorded, not chased; each needs
-    silicon** (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.5):
+    silicon** (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.5; queue row F17):
     - One silent reset in 1 of 9 instrumented peak-load boots, cause lost.
     - Hotspot fallback after a reset, three times.
     - A likely watchdog reset at `mpremote` attach.
+
+46. **Retire `html_stub/`?** `scripts/build_frozen_html.sh` and the twin's CI default to it (SPEC
+    A.9); the owner's rule (2026-09-23) is that `dev`'s real website is the most biting test. Needs
+    the owner's yes/no; a change touches `scripts/`, so it needs a chroot entry.
 
 ## Deferred / explicitly out-of-scope work
 

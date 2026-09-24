@@ -4736,7 +4736,7 @@ PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEAS
 
 | limit | true failures, uninstrumented | free heap at peak | largest free block at peak |
 | --- | --- | --- | --- |
-| **6** | **0 of 2,255** (5 boots, the committed image among them) | **~21 %** | ~1.5 KB (five 256 B pieces) |
+| **6** | **0 of 2,255** (5 boots, E6′ among them) | **~21 %** | ~1.5 KB (five 256 B pieces) |
 | 7 | 0 of 1,334 | ~14 % | 528 B (one piece) |
 | 8 | 1 of 1,319, and in 3 of 4 instrumented boots | ~12 % | 400-512 B |
 | 10 | ~1 `/status` in 10, every round | ≤ 11.5 % (rounds load, not peak — upper bound) | ≤ 288 B (same) |
