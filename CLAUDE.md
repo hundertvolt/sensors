@@ -427,7 +427,15 @@ information):
   construction (SPECIFICATION.md Part L.6.4) — the prose introducing them is not exempt. **JSDoc
   `@typedef`/`@param`/`@returns` annotations are the same case** — `npm run typecheck` really
   checks them with `tsc`, so `js/definitions.js`'s ~37-line `@typedef` run is a type declaration,
-  not a comment; the prose above it is not exempt. Applied across `src/` in one pass (project
+  not a comment; the prose above it is not exempt. **PEP 723 inline script metadata is the same
+  case** — the `# /// script` … `# ///` block four `uv run` scripts carry is read by `uv` itself.
+  **What counts as one block, since a naive line count measures this tree anywhere from 0 to 458**:
+  prose lines only, so a docstring's own lone `"""` line is punctuation; a `# ────` banner rule and a
+  bare `#` separate paragraphs rather than joining them; and a trailing comment on a code line
+  annotates that line, so it never starts a block (a column of annotated data entries is not one
+  long block). `tests_scripts/test_comment_block_cap.py` encodes exactly that and gates it at zero
+  for Python and shell across all eight scopes — JS and CSS keep their own syntax and stay
+  review-enforced. Applied across `src/` in one pass (project
   owner's direction, 2026-09-18) and repo-wide since: **every scope measures zero over-cap blocks,
   header and inline alike — Python, JS, CSS and, since 2026-09-22, `scripts/`'s shell**. Keep new
   code to this bar; nothing enforces it mechanically. How a re-measurement counts: a bare `#` line,
