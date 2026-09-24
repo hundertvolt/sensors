@@ -120,14 +120,14 @@ information):
   implementation in C on the Arduino peer — so its wire format, accept/reject rules and recovery
   timings are a two-implementation contract, not this repo's to change unilaterally.** The protocol
   itself is specified in SPECIFICATION.md Part J; **every change made to it gets an entry in
-  `UART_C_PORT_CHANGELOG.md`** (a temporary file, deleted once the C side is imported and
-  reconciled), classified as protocol-level ("must be mirrored in C") or Python-internal ("no C
+  `UART_C_PORT_CHANGELOG.md`** (a temporary file, deleted once the C side is reconciled — its source
+  is in the repo since 2026-09-13, `arduino/libraries/Async_UART_Comm/`), classified as protocol-level ("must be mirrored in C") or Python-internal ("no C
   impact") — the second class is logged too, so a future session doesn't re-derive it. Prefer a
   protocol-level change that only tightens *receiver* validation over one that alters emitted bytes:
   the former keeps a mixed-version pair working, the latter is a coordinated flag-day needing the
   owner's decision. **The C side's conformance is expected but unverified** — it mirrors the Python
   implementation's intended behavior, but may not share every known flaw and may have its own, so
-  every Class A entry must be re-verified against the real C source once it lands. **It is, however,
+  every Class A entry must be re-verified against that C source; nothing has been reconciled yet. **It is, however,
   prototypical — exactly like this repo's legacy Python — with no device in the field running it**
   (owner, 2026-09-11), so no change recorded in the changelog can break a live pair: both sides are
   reflashed together at reconciliation, and the flag-day framing above describes an obligation to

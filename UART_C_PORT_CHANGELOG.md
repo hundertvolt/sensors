@@ -1,10 +1,11 @@
 # UART protocol — changes to apply to the C implementation
 
-**Temporary file. Delete it once the C implementation has been imported and reconciled** — it exists
+**Temporary file. Delete it once the C implementation has been reconciled** — it exists
 only to carry protocol decisions across the gap until then, and has no value afterwards.
 
 The UART message protocol (`SPECIFICATION.md` Part J) has two implementations: this repo's Python
-module, and a C implementation on the Arduino peer that is not yet in this repo. The C side mirrors
+module, and a C implementation on the Arduino peer, imported on 2026-09-13 as
+`arduino/libraries/Async_UART_Comm/` and not yet reconciled. The C side mirrors
 the Python implementation's *intended* behavior and is owner-validated over many real transmissions,
 but **how far that mirroring extends to the known flaws is unverified** — it may share some, not
 others, and may have introduced its own. Every entry below is therefore a task for the reconciliation
@@ -33,7 +34,7 @@ Every change to the module during its `src/` promotion gets an entry, in one of 
 emitted bytes.** A receiver-strictness change rejects only frames a *conforming* peer never sends, so
 new-Python ↔ old-C keeps working and the Arduino reflash can happen in either order. That safety
 argument is conditional on the C side genuinely conforming, so **each Class A entry must be
-re-verified against the real C source when it lands** — the "verify in C" column says what to check.
+re-verified against that C source** — the "verify in C" column says what to check.
 A change that alters emitted bytes is a coordinated flag-day, and **the project owner has decided
 (2026-09-11) that the Python side may lead it**: changing Python behaviour is allowable without
 waiting for the C implementation, provided every change is recorded here for the reconciliation

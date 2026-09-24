@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 
     _Route = Callable[..., Awaitable[object]]
 
-# Explicit, never inherited: mpremote soft-resets on raw-REPL entry, but rp2's main.c runs gc_init()
-# once, outside the soft-reset loop, so the boot entry's threshold survives it. -1 is the default.
+# Explicit, never inherited: mpremote's raw-REPL soft reset keeps whatever threshold was in force -
+# the boot entry's 32768, or -1 if the attach interrupted main.py first (MEASUREMENTS 0B.7).
 gc.threshold(-1)
 _BOOT_S = 20
 _POLL_MS = 1000

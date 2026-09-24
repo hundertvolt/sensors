@@ -688,7 +688,8 @@ When a new doc is added, add it here too instead of letting the map go stale aga
 - **[`UART_C_PORT_CHANGELOG.md`](UART_C_PORT_CHANGELOG.md)** — the running log of UART-protocol
   changes that must be mirrored into the Arduino peer's C implementation of the same protocol (plus
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
-  across the gap until that C source is imported into this repo and reconciled, then gets deleted.
+  across the gap until that C source (`arduino/libraries/Async_UART_Comm/`, imported 2026-09-13) is
+  reconciled, then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
 - **[`HEAP_FRAGMENTATION_MEASUREMENTS.md`](HEAP_FRAGMENTATION_MEASUREMENTS.md)** — the measured
   evidence base for the heap-fragmentation defect (the collapse of the largest contiguous block

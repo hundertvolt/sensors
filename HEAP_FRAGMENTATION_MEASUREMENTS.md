@@ -96,7 +96,7 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | C9 | Cutting the 74 chip-select sessions to ~6 will clear the contiguity floor | **withdrawn as stated; the achievable side reopened by §3B** | ~12x against a required 40-100x; 70,000 B per logger measures in_big 14 / span 97%, inside the saturated regime (§6A.8). §3B now reaches 38-90x *without* cutting a session; the required side was computed in settrace bytes and is not re-derived (§3A.6), so whether that clears the floor is untested |
 | C12 | The status-byte pair, the two copies and the per-write WREN/WRDI envelope are redundant bookkeeping | **withdrawn — owner's account, 2026-09-18** | each element is grounded (§3B.1): the status bytes are a lock against a copy caught mid-operation, the pair written separately so a torn pair is detectable; the copies restore the last valid value; the CRC catches bus errors; each CS cycle is what commits a command at the chip. The wire protocol is the integrity feature; the cost is the Python that carries it |
 | C10 | Loop yields are protective for layout | **withdrawn — a settrace artifact** | it held, confound-checked, on the settrace build (§6A.4), where each yield allocated a 28-block object that competed for no survivor's hole and forced early collections. On the real VM a yield allocates 0 B (§1.2 item 7), so it can be neither protective nor harmful to layout |
-| C13 | Every figure in this file is the `gc.threshold(-1)` picture, and the firmware ships `gc.threshold(32768)`, where the twin shows no layout defect at any churn dose | **confirmed [SRC] + [TWIN]; the qualitative half was the handover's, and the [HW] question it raised is resolved** | the threshold is set in the generated boot entry, which neither the harnesses nor the hardware test's own device script execute (§1.5; §0B.7 records the one premise still open); at 32,768 B `base` keeps 87% against 18%, survivors span 12% of the heap against 92%, and every churn dose from zero to base's own clears the floor (§7A.5). The handover's §2.12 already recorded that a threshold set before `build_system()` makes the twin look healthy and called it masking; what is new is the quantification and the [SRC] trace. The [HW] 20,592 B is a deliberate pre-threshold reading, so board and twin agree and the corpus's baseline is the one the hardware test asserts on (§1.5) |
+| C13 | Every figure in this file is the `gc.threshold(-1)` picture, and the firmware ships `gc.threshold(32768)`, where the twin shows no layout defect at any churn dose | **confirmed [SRC] + [TWIN]; the qualitative half was the handover's, and the [HW] question it raised is resolved** | the threshold is set in the generated boot entry, which neither the harnesses nor the hardware test's own device script execute (§1.5; §0B.7 records why that premise held only when an attach interrupted `main.py`); at 32,768 B `base` keeps 87% against 18%, survivors span 12% of the heap against 92%, and every churn dose from zero to base's own clears the floor (§7A.5). The handover's §2.12 already recorded that a threshold set before `build_system()` makes the twin look healthy and called it masking; what is new is the quantification and the [SRC] trace. The [HW] 20,592 B is a deliberate pre-threshold reading, so board and twin agree and the corpus's baseline is the one the hardware test asserts on (§1.5) |
 | C11 | Pre-allocating each module's permanent objects at construction is the remedy the evidence favours | **refuted** | the mechanism is real — the same objects placed pre-seam give in_big 0 and 100% kept where in-window they give 380 and 12% — but it holds only below the churn threshold. At the real 843,232 B dose pre-seam objects are unprotected (kept ~50%), and the real system's 76 survivors are already an order of magnitude below the survivor axis's own onset, so that axis is not the binding constraint (§6A.12) |
 
 ## 0A. The model
@@ -539,20 +539,24 @@ is why a 2-block change of one object's size moves the result and why nothing co
   *boot-collect scheme* moves the board the way it moves the twin is since measured on silicon: it
   does, by more (§7H.1-§7H.3).
 - **Which threshold the pre-2026-09-24 device-script readings ran at** (§1, §7D, §7F, §7H, the
-  20,592 B) — **still open: the source and the silicon disagree** (2026-09-24). The source says
-  32768, inherited: `gc_alloc_threshold` is written only by `gc_init()` (`py/gc.c`) and
-  `gc.threshold()` (`py/modgc.c`); rp2's `main.c` calls `gc_init()` once, *before* its soft-reset
-  loop; the frozen `main.py` has set `gc.threshold(32768)` at module level since 2026-09-09; and
-  `mpremote run` executes in that same interpreter. **§7H.3 says otherwise**: two invocations on one
-  image, differing only in an explicit `gc.threshold(32768)` before the run, read 12% against 80% at
-  the settle and 1,244 ms apart in the starter loop — which setting a value already in force cannot
-  produce. Neither side is wrong on its own evidence; one of the chain's links is not what the board
-  did (most likely which image, or `main.py` never reaching its threshold line), and nothing in the
-  repo records which. So the pre-2026-09-24 corpus keeps the labels it had. **Going forward it no
-  longer matters**: every heap-measuring device script sets its own threshold at module level,
-  the two flash-tier ones at `-1`, and `tests_scripts/test_device_script_gc_threshold.py` fails a
-  `GC_THRESHOLD=` reported before the script's own first set. One read after any attach, before a
-  script sets anything — `mpremote exec "import gc; print(gc.threshold())"` — answers it outright.
+  20,592 B) — **mechanism answered from [SRC] on 2026-09-24; the per-run value is unrecoverable, so
+  the pre-2026-09-24 corpus keeps its labels.** Source and silicon never disagreed: the broken link
+  was the assumption that `main.py` had reached its `gc.threshold(32768)` line. That line comes
+  *after* `from sensortask_<device> import main` (`buildgen/codegen.py`'s
+  `generate_boot_entry_source()`), and `mpremote`'s first act on attach is a Ctrl-C
+  (`transport_serial.py`'s `enter_raw_repl()`), so an attach landing during that import leaves
+  `gc_init()`'s `-1` in force. The raw-REPL soft reset that follows runs no `main.py` and resets no
+  threshold (`ports/rp2/main.c` at v1.29.0: `gc_init()` once, before the loop; `main.py` only in
+  `PYEXEC_MODE_FRIENDLY_REPL`).
+  `Board.run_isolated()` makes both outcomes routine. The port only appears at `mp_usbd_init()`,
+  immediately before `main.py`, and `_mpremote()`'s grace loop retries every 0.5 s until it does, so
+  an attach right after a reset lands in the import. Back-to-back scripts inside the ~8 s watchdog
+  window never pass a fresh boot at all and inherit whatever the previous script set. An inherited
+  value is therefore a property of attach history, not of the image — §7H.3's 12% arm fits a `-1`
+  inherit. **Going forward it does not matter**: every heap-measuring device script sets its own
+  threshold at module level, the two flash-tier ones at `-1`, and
+  `tests_scripts/test_device_script_gc_threshold.py` fails a `GC_THRESHOLD=` reported before the
+  script's own first set. Optional silicon confirmation of the race is queue row T1's.
 - **Gap 10, hardware** — the defect and both remedies are measured on silicon since 2026-09-18
   (§7D, §7F, §7H, §7M); what stays unmeasured is the per-object question. A GC block is 16 B there
   against 32 B here, so the "1-block objects are immune" boundary in §0B.2 falls at a different byte
@@ -782,8 +786,8 @@ on**, which is the stronger statement than the one this section originally made.
 > level since 2026-09-09; by source alone, a script run after it inherits that value. §7H.3's own
 > silicon disagrees — setting 32768 explicitly moved the settle reading 12% -> 80% and cut 1,244 ms
 > off the starter loop, which an already-in-force value cannot do — so the resolution above stands on
-> the evidence the board gave. The script printed no `GC_THRESHOLD=` line until 2026-09-24, so this
-> reading cannot be re-checked; §0B.7 carries both sides and the one-line read that settles it.
+> the evidence the board gave. §0B.7 names the link that breaks: an attach that interrupts
+> `main.py` before its threshold line leaves `-1` in force, so both are right.
 
 The handover said the qualitative half of this first, and it belongs to it: its §2.12's "setting the
 threshold *before* `build_system()` makes the twin heap look healthy - that is the threshold masking
