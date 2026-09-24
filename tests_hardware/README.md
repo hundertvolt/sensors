@@ -234,8 +234,8 @@ rather than that a setting is wrong.
 
 ## Writing a new device script: four habits
 
-A test depending on an unstated rig condition is this tier's recurring failure mode - six instances
-so far, every one found by running the test rather than reading it, and every one green first:
+A test depending on an unstated rig condition is this tier's recurring failure mode - each instance
+found by running the test rather than reading it, and every one green first:
 
 - **Provide your own light.** `isl29125_plausibility_read.py` passed while a preceding test left the
   pixel latched white, then failed once another parked it dark - its result depended on test ORDER,
@@ -249,132 +249,112 @@ so far, every one found by running the test rather than reading it, and every on
   sat inside the band. Every scenario now carries `min_switches` and a must-use-both-ranges flag
   beside its ceiling: `threshold_oscillation_crossing` must switch at least 4 times and
   `hysteresis_band_dwell_no_chatter` exactly zero, so an edit making either vacuous fails the other.
-- **`await flush_pending()` after any config write.** `write_config()` only *stages*; the flash write
-  is its own task (SPECIFICATION.md Part F.2). Production keeps an event loop running, but a device
-  script that writes and then returns lets `asyncio.run()` discard the flush, and the file is left
-  holding `setup()`'s defaults - while `write_config()` has already reported success. This silently
-  broke three scripts: the reboot-persistence marker never persisted, and the DebugLevel pair backed
-  up `PrevLevel: 0` instead of the real 5 and then "restored" that, the two omissions cancelling so
-  the *test passed*. Fixing only one of that pair drives the bench board to `DebugLevel = 0`.
-  `tests_scripts/test_device_script_config_flush.py` now pins this **per manager**: flushing one of
-  that cancelling pair does not cover the other, and a `_set_dict_cfg()` write is tracked to the
-  `.cfgmgr` it stages on. Full account: MEASUREMENTS 7O.
+- **`await flush_pending()` after any config write.** `write_config()` only *stages* (SPECIFICATION.md
+  Part F.2); a script that returns before the flush loses the write while `write_config()` has
+  already reported success. `tests_scripts/test_device_script_config_flush.py` pins this **per
+  manager**, a `_set_dict_cfg()` write tracked to the `.cfgmgr` it stages on. Evidence (three scripts
+  broken, two omissions cancelling so the test passed): `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7O.
 
 ## Writing a new bench-tier test, and diagnosing a DUT that has gone quiet: two traps
 
-Both cost real bench time more than once, and neither is discoverable by reading the code.
+Neither is discoverable by reading the code.
 
 - **A DUT that has gone unreachable is usually your own `mpremote` call, and every serial check you
   make to diagnose it re-causes the symptom.** `exec` and `run` interrupt the running firmware into
   the REPL, so `main.py` stops and the board leaves the network; `run_isolated()`'s armed
-  `WDT(timeout=8000)` then resets it ~8 s after the command ends. It cost time on 2026-09-18 and
-  again on 2026-09-19, each time as the same loop: curl fails -> `exec` to inspect the config ->
-  the inspection strands `main.py` again -> curl still fails. **The config was intact every time.**
+  `WDT(timeout=8000)` then resets it ~8 s after the command ends. The loop to avoid: curl fails ->
+  `exec` to inspect the config -> the inspection strands `main.py` again -> curl still fails.
   Diagnose *passively*: `hard_reset()`, then `Board.tail_log()` with no `exec`/`run` at all, and
   only then curl. `tail_log()` replays buffered history, so several identical "WLAN connection
   established" blocks are **not** a reboot loop - poll `SysUptime` and watch it advance, which is
   the cheap discriminator.
-- **A test that opens as many concurrent connections as `max_connections` (6 today; 4 when this was
-  measured) cannot expect a definitive status from all of them**, whatever it is testing. `_serve()`'s reject-when-full branch
-  closes without writing a response: the client sees a FIN, or an RST once its request bytes had
-  already arrived (modlwip drops unread pbufs without `tcp_recved()`, so lwIP's `tcp_close()` resets
-  when `rcv_wnd != TCP_WND_MAX`) - `test_connections_at_and_above_the_real_socket_limit_degrade_cleanly`
-  accepts either for exactly that reason. Measured 2026-09-19 with tiny bodies, so it is nothing to do with payload size:
-  concurrency 2 -> 0% reset, 4 -> 25%, 8 -> 12%, 24 -> 25%. Resets begin **at** the ceiling, not
-  beyond it. **Before calling such a reset a defect, run the all-small-bodies control** - two
-  minutes, and it separates the feature under test from the connection ceiling. It is what turned a
-  suspected request-body-cap defect into a measured property of the server.
+- **A test that opens as many concurrent connections as the device's `max_connections`
+  (`devices/*.toml`) cannot expect a definitive status from all of them**, whatever it is testing:
+  the reject-when-full branch closes without a response, a FIN or an RST (SPECIFICATION.md Part
+  H.7), and a slot is held until its socket closes. Measured with tiny bodies at a limit of 4:
+  concurrency 2 -> 0% reset, 4 -> 25%, 8 -> 12%, 24 -> 25% - resets begin **at** the ceiling.
+  **Before calling such a reset a defect, run the all-small-bodies control** - two minutes, and it
+  separates the feature under test from the connection ceiling.
 
-Both halves of the second trap generalise into one rule for any test that exceeds the ceiling:
-**assert the property your feature owns, not that every client is served.** A body-cap test owns
-"every client that IS answered is answered correctly"; being answered at all is the ceiling's
-business. Pair that with a floor on how many were answered, or the test passes vacuously on a run
-where nearly everything was refused - the same "assert a minimum engagement beside every ceiling"
-habit the section above states for device scripts.
+The rule for any test that reaches the ceiling: **assert the property your feature owns, not that
+every client is served.** A body-cap test owns "every client that IS answered is answered
+correctly"; being answered at all is the ceiling's business. Pair that with a floor on how many
+were answered, or the test passes vacuously on a run where nearly everything was refused - the
+same "assert a minimum engagement beside every ceiling" habit as for device scripts.
 
-## Measuring heap and serving under load: what the connection-limit sittings taught
+## Measuring heap and serving under load
 
-From the 2026-09-23/24 sittings that set `max_connections = 6` (results:
-`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R; the removed sweep tool that produced them: its §10).
-Every item below cost a run or a wrong figure first.
+Rules from the sittings that set `max_connections = 6`; results and evidence:
+`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R (the removed sweep tool's recipe: its §10).
 
 **Fix the question and the pass criterion before measuring.**
 - **Stable** = zero true failures **and** zero device lines matching `MEMORY_ERROR_MARKERS`,
   caught-and-logged ones included. A reset before any response at the ceiling is a refusal and
-  expected (`http_client.is_ceiling_close()`); everything else — a short body, a 4xx/5xx, a timeout —
-  is a failure.
-- **Peak is not rounds.** Rounds of N parallel requests with pauses are typical load and overstated
-  free heap at 6 by ~20 KB. Peak is as many back-to-back clients as the limit plus forced internal
-  work (the hammer test's dispatch-only SGP40 reset PUT every 3 s), on the full task graph, over every
-  path a page load really fetches (`/js/app.js` included).
+  expected (`http_client.is_ceiling_close()`, owner's rule); everything else — a short body, a
+  4xx/5xx, a timeout — is a failure.
+- **Peak is not rounds.** Rounds of N parallel requests with pauses are typical load and overstate
+  free heap (§7R.4). Peak is as many back-to-back clients as the limit plus forced internal work (the
+  hammer test's dispatch-only SGP40 reset PUT every 3 s), on the full task graph, over every path a
+  page load really fetches (`/js/app.js` included).
 - **Check every body, not the status.** A static body against a validated idle reference and its
-  `Content-Length`, a JSON body by parsing. The static-page defect hid behind `200`s for a whole
-  sitting. The reference itself must be a 200 whose non-empty body equals its `Content-Length`,
-  retried: every device-script boot drops and rejoins WLAN at ~6 s uptime, and a reference caught in
-  that drop once came back 0 B, so every correct page read as truncated.
+  `Content-Length`, a JSON body by parsing. The reference itself must be a 200 whose non-empty body
+  equals its `Content-Length`, retried: every device-script boot drops and rejoins WLAN at ~6 s
+  uptime.
 
 **Separate the verdict from the measurement.**
 - An instrument that changes the system may measure but not judge: a run that calls `gc.collect()`
   before each sample gives the exact live set, and its stability verdict is not evidence. Take the
   verdict from the least-instrumented run that can give it, the heap figure from the run that
   measures it exactly — two runs rather than one approximate one.
-- **Run the control**: the same load with nothing on the device but the task graph. It is what
-  showed the `/status` wall at 8 was real, not the sampler's.
-- **Price the instrument**: a device script's own code and globals cost 2,720 B of heap (compare
-  its `gc.mem_alloc()` after a collect with a two-line script that only imports `sensortask_dev`:
-  52,960 B), which production's frozen `main.py` does not pay; samplers cost ~10-20 % of throughput.
-  Report heap both as measured and production-equivalent, as a percentage of `mem_info`'s total
-  (the linker's `0x20040000 − __GcHeapStart` minus the GC's own 4,352 B of tables).
+- **Run the control**: the same load with nothing on the device but the task graph.
+- **Price the instrument**: a device script's own code and globals cost heap production's frozen
+  `main.py` does not pay (2,720 B: its `gc.mem_alloc()` after a collect against an import-only
+  script's, §7R.4); samplers cost ~10-20 % of throughput. Report heap both as measured and
+  production-equivalent, as a percentage of `mem_info`'s total (the linker's
+  `0x20040000 − __GcHeapStart` minus the GC's own tables, ~4.3-4.5 KB scaling with heap, §7R.1).
 - **rp2 has no exact end-of-GC signal** — `__del__` never runs on user-class instances and
-  `MICROPY_PY_WEAKREF` is off — so a sampler that never collects cannot find the live set; reading
-  `gc.mem_free()` after a rise of ≥ 2 KB lands anywhere in the refill and read 15-30 KB low. Read
-  `_open_conns.value` as a plain int (no coroutine, no allocation); an `await`-less
-  `get_value()` is a coroutine object, always truthy, and once made a script "see load" forever.
+  `MICROPY_PY_WEAKREF` is off — so a sampler that never collects cannot find the live set (§7R.4,
+  §9). Read `_open_conns.value` as a plain int (no coroutine, no allocation); an `await`-less
+  `get_value()` is a coroutine object, always truthy.
 
-**Re-derive a tool's printed summary from the raw output when a label looks wrong.** The margin
-sweep's printed "idle" was a mid-boot sample and its "median under load" spanned the post-load idle;
-both were caught only by re-reading the raw heap maps, and every minimum from a 5 s snapshot bounds
-the true peak from one side only.
+**Re-derive a tool's printed summary from the raw output when a label looks wrong**, and remember
+a minimum from a 5 s snapshot bounds the true peak from one side only.
 
 **Count on both sides, and treat a gap as a finding.** Wrap `_open_conns.increment` to count every
 increment above the limit — installed as soon as `sensortask_dev.webserver` exists, not at a
-`READY` line, or the first seconds of load reach only the host's count (host exceeded device by
-0-21 until it was moved). Device allocation lines come in pairs per failure (the `MemoryError` and
-the webserver's `Unhandled exception in route handler`), so lines ÷ 2 = host 500s.
+`READY` line, or the first seconds of load reach only the host's count. Device allocation lines come
+in pairs per failure (the `MemoryError` and the webserver's `Unhandled exception in route
+handler`), so lines ÷ 2 = host 500s.
 
 **Verify the image before its figures count.** Read every lwIP macro back out of the firmware
 (`micropython_overrides.read_lwip_macros_from_build()`), run `check_lwip_ensemble()` at the image's
-limit, and check the linker heap against 187,712 + (8 − L) × 2,324 B — it matched to the byte on
-every image built. On the board: `/system`'s `build.buildDate`, static `Content-Length`, `gzip -t`.
-Local-only images (a `max_connections`/`[lwip]` edit) are built, recorded by recipe and reverted at
-once; keep each `.uf2` aside so a later level can reflash without a rebuild.
+limit, and check the linker heap against §7R.1's per-connection formula. On the board: `/system`'s
+`build.buildDate`, static `Content-Length`, `gzip -t`. Local-only images (a
+`max_connections`/`[lwip]` edit) are built, recorded by recipe and reverted at once; keep each
+`.uf2` aside so a later level can reflash without a rebuild.
 
-**One fresh boot per data point, and enough of them.** Failures near the wall are probabilistic (8
-failed in 4 of 7 boots on the image built for 8), so a single clean run proves little and 0 vs 1 is
-chance: zero failures in ~1,350 requests only bounds the rate at ~0.2 %. The heap margin is what
-separates neighbouring limits.
+**One fresh boot per data point, and enough of them.** Failures near the wall are probabilistic, so
+zero failures in one boot proves little (§7R.4); the heap margin separates neighbouring limits. The
+bench tests' assertion messages carry only `output[-2000:]` of device output and host tallies print
+after it, so a one-boot sweep loses which level broke: per-level answers need one boot per level.
 
-**Holding a ceiling open** (`bench/test_heap_under_connection_ceiling.py`) needed four layered
-fixes, each visible only once the one above was in: no connection outlives `outer_cap_s` (15 s;
-a silent one closes after 5 s), so holders drip a header line and recycle at 10 s; started together
-they expire together, so each is staggered by `i × 10 s / N`; a connection counts as held only once
-a 0.3 s read of it stays silent (a refusal is a FIN ~6 ms after connect, or an RST); the holder
-threads are stoppable by the test's own `stop` and joined (one that outlived its test failed the next
-37 network tests); and since `run_isolated()`
-leaves `main.py` stopped, the test restores the board — `harness.restore_board_to_serving()`:
-`kick_all_stations()`, `hard_reset()`, wait for HTTP — in its own `finally`. A pytest assertion message keeps only the last 2,000 characters of
-device output and host tallies print after it, so which level of a one-boot sweep broke is lost:
-per-level answers need one boot per level. The ceiling probe and the ceiling test hold theirs with
-`harness.HELD_REQUEST_LINE` (`HOLD / HTTP/1.0`) and close them with a plain FIN: EOF ends microdot's
-headers and it answers what was asked, so an unrouted method costs a small 405 where `GET /status`
-cost a full `/status` per held socket. Never an RST: once the server has read one, modlwip writes
-microdot's 400 through a NULL pcb (`lwip_tcp_send()` after `STATE_PEER_RST_HANDLED`).
+**Holding a ceiling open** (`bench/test_heap_under_connection_ceiling.py`) needs five layered
+measures, each visible only once the one above was in: no connection outlives the SPECIFICATION.md
+Part H.7.1 timeouts, so holders drip a header line and recycle (`_RECYCLE_S`); started together they
+expire together, so each is staggered by `i × _RECYCLE_S / N`; a connection counts as held only once
+a 0.3 s read of it stays silent (a refusal answers at once); the holder threads are stoppable by the
+test's own `stop` and joined; and since `run_isolated()` leaves `main.py` stopped, the test restores
+the board — `harness.restore_board_to_serving()`: `kick_all_stations()`, `hard_reset()`, wait for
+HTTP — in its own `finally`. `harness.discover_max_connections()` and
+`test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` hold theirs with
+`harness.HELD_REQUEST_LINE` (`HOLD / HTTP/1.0`) and close with a plain FIN: EOF ends microdot's
+headers and it answers what was asked, so a held socket costs only a small 405.
 
-**Bench traps from the same sittings.**
+**Bench traps** (occurrences: §7R.5).
 - Leave > 45 s between a reset and the next `mpremote` attach; a watchdog reset ~9 s after an early
-  attach is the likely cause of one dead run.
-- After a reset or a flash the board fell back to hotspot mode three times; `kick_all_stations()` +
-  `hard_reset()` recovered it each time (once only on the second try).
+  attach is the likely, unconfirmed cause of one dead run.
+- After a reset or a flash the board can fall back to hotspot mode; `kick_all_stations()` +
+  `hard_reset()` recovers it, occasionally only on a second try.
 - After an unexpected reset, read `machine.reset_cause()` over `mpremote exec` before anything
   flashes or reboots the board; `journalctl -k` times the USB disconnect.
 - A `pkill -f`/`pgrep -f` wait loop matches its own command line; list by PID or wait on a log marker.
@@ -553,9 +533,6 @@ a live question:
   check on a previous connection (this bench's own repeated automated test runs are a plausible
   source) — forgetting the saved network and rejoining fresh rules this out. No code changed as a
   result of this investigation.
-- **Real client-visible rejection at `max_connections` (6) under a realistic multi-client burst** is
-  expected, not a defect: a slot is held until its connection's close completes, so back-to-back
-  clients see ~70 % refused at every limit - `SPECIFICATION.md` Part H.7 has the settled limit.
 - **This whole tier's log-based synchronization depends on the DUT's live `DebugLevel` being high
   enough — confirmed directly, the hard way (2026-09-04): a full 77-test bench run produced 2 real
   failures + 48 errors, none of them a real regression.** `tests_hardware/conftest.py`'s `dut_ip`

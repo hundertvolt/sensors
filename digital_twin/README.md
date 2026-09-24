@@ -79,13 +79,12 @@ Kept completely separate so nothing here can accidentally affect the determinist
   `v1.29.0` pin, so the account and the workaround both still stand verbatim). Called as the first
   statement of `run_generic_integration.py`'s and `segfault_stress_repro.py`'s own `main()`, and at
   import by every `tests/` entry point that boots a `sensortask_*` module with real sockets (the
-  sensortask, bus-hazard, real-website, construction and webserver-concurrency files), before
+  sensortask, bus-hazard, UART-link, real-website, construction and webserver-concurrency files), before
   anything else in the process registers a poll object. Its listener scans upward from port 17400
   across a 64-port window rather than binding one fixed port, and fails loudly naming the window if
   none binds: `scripts/test.sh` runs usable cores x 1-4 files at once (`TEST_PARALLELISM`
-  overrides), and a fixed port (with no
-  `getsockname()` on this port, an ephemeral bind cannot be read back) made concurrent imports die
-  with `EADDRINUSE` — 28 of 30 concurrent prewarms before, 0 of 30 after.
+  overrides), so a fixed port made concurrent imports die
+  with `EADDRINUSE`, and port 0 is no alternative since this port has no `getsockname()`.
 - `unix_port_gc_unwedge.py` — its sibling for a second Unix-port quirk: a SIGINT landing inside
   `gc_collect()` leaves the GC heap permanently locked, so the shutdown flush dies with a
   misleading `MemoryError: ... heap is locked` on a heap that is mostly free. Measured at ~5% on
@@ -124,7 +123,8 @@ Kept completely separate so nothing here can accidentally affect the determinist
   as the refusal they are, while a non-empty malformed status line still raises `ValueError`.
   `.json()` checks every body with `tests/_strict_json.py` first, since the interpreter's own
   `json.loads()` accepts a missing or stray comma the browser rejects (SPECIFICATION.md Part F.1);
-  it imports that on first call, so a standalone run without `tests/` on its path still loads.
+  the import sits inside `.json()`, so `_http_client` itself imports without `tests/` on the path
+  (as `segfault_stress_repro.py` needs); only `.json()` requires it.
 - `launch.py` — standalone, `src/`-free CLI demo (`micropython digital_twin/launch.py [options]`):
   brings up the same bus wiring `sensortask_wozi.build_system()` uses and periodically drives one
   real bus-level read per sensor, a `WLAN.connect()` attempt, and WDT feeding. `--fault
@@ -558,37 +558,26 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
     separation" Part) and computes the same early-quarter-vs-late-quarter memory-trend check the
     twin used to run on itself (`_mem_trend()`, unit-tested directly in
     `tests_scripts/test_digital_twin_ci_suite_soak.py` — no live subprocess needed for that half).
-    Run 11 has no per-threshold variant of its own (run 11b below is a separate check, not one):
-    since the *whole* suite now runs once per `gc_threshold` value (see above), run 11 already gets
-    its own real-default pass and chosen-threshold pass for free, the same as every other run here. This moved host-side because
-    of a real false-positive lesson, not just tidiness: the soak check used to run its own
-    warmup/cycle loop and `gc.collect()`-based trend check *inside* the twin process — a driver
-    contaminating the very DUT resources it was trying to measure, the exact anti-pattern
-    SPECIFICATION.md's new rule now forbids — and a `gc.collect()` call embedded in that in-DUT
-    trend check was itself flagged as a violation of the "no `gc.collect()` propping up a result"
-    rule (SPECIFICATION.md Part I.4(e)) before the whole check was moved out. It also exists because
-    of an earlier, unrelated regression: an earlier session found a genuine CI `MemoryError` here
-    (repeated `allocating ~6100 bytes` failures on `GET /status`) and initially "fixed" it by giving
-    the twin's boot entry `gc.threshold(32768)` for the first time, framing the twin never having
-    set it as the root cause. The project owner rejected that framing — errors going away under a
-    threshold change is not proof the underlying allocation pattern is safe, only that collection
-    now happens earlier. The actual root cause was `digital_twin/_http_client.py`'s own
-    `Stream.readexactly()`/`read(-1)` growth-by-concatenation accumulation on the client side, fixed
-    by `_read_exact()`/`_read_until_close()` (one right-sized buffer per `fetch()`, no
-    `gc.threshold()` involved) — confirmed by the `gc_threshold=-1` pass running clean with that fix
-    in place and the twin's own boot entry forced back to the real default.
+    Run 11 gets its real-default and chosen-threshold passes from the whole suite running once per
+    `gc_threshold`, like every run. The check is host-side because an in-DUT loop contaminates the
+    resources it measures (SPECIFICATION.md's "Driver/DUT process separation" Part; no `gc.collect()`
+    propping up a result, Part I.4(e)). A CI `MemoryError` here (`allocating ~6100 bytes` on
+    `GET /status`) is the standing example of the owner's rule that a threshold is never the fix: its
+    root cause was the client's growth-by-concatenation reads, fixed by `_http_client.py`'s
+    `_read_exact()`/`_read_until_close()` (one right-sized buffer per `fetch()`).
 
     **Run 11b — the full connection ceiling under real simultaneous load** (`_run_11b_full_ceiling_
     concurrency()`). A fresh twin; the host reads the device's own ceiling through buildgen's
     `device_max_connections()` (`devices/<device>.toml`, else `src/`'s default) and fires exactly
-    that many simultaneous GETs over the five heaviest routes, three rounds, from CPython threads on
+    that many simultaneous GETs cycling over `/sensors`, `/status`, `/measurements`, `/networking` and
+    `/system`, three rounds, from CPython threads on
     a barrier with one real socket each — every one must be served `200` with a body that parses as
     a JSON object, the twin must still serve afterwards and shut down
     cleanly, and the suite's own no-`MemoryError` log check applies at both thresholds. A 1 s settle
     precedes **every** round, the first included: a slot is released only after the close is awaited
     (SPECIFICATION.md H.7.1), and the readiness probe's own connection is still counted when round 0
-    would otherwise start, which refused one of an exact-ceiling burst on every device. The in-DUT
-    attempt this replaced measured its own client's buffers (SPECIFICATION.md E.9).
+    would otherwise start. Driven from a separate process because an in-process client measures its
+    own buffers (SPECIFICATION.md Part E.9).
 
 Each run's subprocess stdout/stderr is captured to `digital_twin_ci_logs/run<N>_*.log` (gitignored;
 uploaded as a CI build artifact via the `digital-twin-e2e` job's own `if: always()` upload step, so
@@ -875,15 +864,19 @@ the main pass for exactly this reason (see `pyproject.toml`'s own `[tool.mypy]` 
 the full account, including a real `mypy src tests`-only finding this design caught) and checked
 correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own docstring.
 
+## Harness pitfalls
+
+- **Unix-port facts that break a harness written by habit** (confirmed against the pinned build):
+  no `socket.getsockname()`; `getaddrinfo()` returns a packed `sockaddr`; `asyncio` offers `Lock`
+  and `Event` but no `Semaphore`; `os.environ` is missing, so read `os.getenv()`; and
+  `micropython.mem_info()` with any argument prints the full block map.
+- **`scripts/run_digital_twin_ci.sh` leaves `frozen_modules/frozen_html.py` holding the device's
+  real site**, so a `tests/test_digital_twin_webserver_concurrency_*.py` run by hand afterwards fails
+  on `html_stub/`'s `/style.css`; rerun `scripts/build_frozen_html.sh` or use `scripts/test.sh`,
+  which rebuilds the stub first.
+
 ## Known gaps / follow-ups for later sessions
 
-- **Unix-port facts that break a harness written by habit** (each confirmed against the pinned
-  Unix-port build; recorded here, not elsewhere): no `socket.getsockname()`;
-  `getaddrinfo()` returns a packed `sockaddr`; `asyncio` offers `Lock` and `Event` but no
-  `Semaphore`; `os.environ` is missing, so read `os.getenv()`; and `micropython.mem_info()` with
-  any argument prints the full block map. **`scripts/run_digital_twin_ci.sh` leaves
-  `frozen_modules/frozen_html.py` holding the device's real site**, so a concurrency file run ad hoc
-  afterwards fails on `html_stub/`'s `/style.css`; `scripts/test.sh` rebuilds the stub first.
 - **BMP3xx's fixed calibration block is not sourced from a real chip.** It's a real-shaped,
   hand-picked set of raw coefficient bytes, verified directly (by inverting the real cubic
   compensation formula — temperature inversion is quadratic, pressure then linear in raw ADC once
