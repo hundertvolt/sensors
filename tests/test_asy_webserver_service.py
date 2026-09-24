@@ -1936,7 +1936,7 @@ def test_g_static_index_filename_is_configurable() -> None:
     assert res.body.read() == b"custom index"
 
 
-# G.3 - the per-write bound on the wire (SPECIFICATION.md Part I.3). Build-independent: a synthetic
+# The per-write bound on the wire (SPECIFICATION.md Part I.3). Build-independent: a synthetic
 # mount and a stub sensor whose sizes span many far-below-chunk objects, every edge of the 256 B
 # chunk, and objects that take many chunks - read back write by write, as a socket would see them.
 

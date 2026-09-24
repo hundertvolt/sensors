@@ -667,8 +667,8 @@ can't yet complete the chain stays out until the missing piece exists (flagged p
 `strategy.matrix` over all 6 real device variants as of SPECIFICATION.md Part L.4): wipes
 leftover twin state; builds the Unix port and the real production website for that device
 (`scripts/build_website.sh <device>`); `scripts/_digital_twin_ci_suite.py` drives
-`run_generic_integration.py` through fourteen runs (1-11 plus 5b/5c, sub-runs of run 5, and 11b,
-the full connection ceiling under simultaneous load — 17 subprocesses for wozi, 18 for dev); fresh
+`run_generic_integration.py` through its 14-run suite, once per gc threshold
+(`digital_twin/README.md` has the runs and the per-device subprocess counts): fresh
 boot + every endpoint; settings
 persistence across reboot; a sustained fault matrix, derived from that device's own real wiring
 plan, proving graceful degradation and that the watchdog never starves under bounded failure; a
@@ -1003,8 +1003,8 @@ everything else that section already tracks.
 
 **Why not just a `CFLAGS_EXTRA -D...`, the way the mbedtls GCC-14 workaround and
 `MICROPY_PY_SYS_SETTRACE=1` already do it?** That remains the right tool whenever the target macro
-is itself written as `#ifndef X #define X ... #endif` upstream (SOME of lwIP's own options are, and
-some are not - B.14.2, which needed the generated-header mechanism for exactly that reason).
+is itself written as `#ifndef X #define X ... #endif` upstream (only some of lwIP's own options are -
+B.14.2, which therefore uses a generated header).
 It does **not** work for a plain, unguarded `#define` (B.14.1's case): confirmed directly
 (2026-09-15) that a later plain `#define` in the same translation unit always wins over an earlier
 command-line `-D`, unconditionally, and this project's own build already treats the resulting
@@ -1142,14 +1142,13 @@ that bounds it settable from one reviewed file instead of the fetched checkout.
 `toolchain/versions.toml`'s `[lwip]` table is that file; the cost tables below and H.7's limit are
 what the shipped values come from.
 
-**Three things an earlier revision of this Part got wrong, each of which changes the
-implementation.** Re-verified 2026-09-22 against `v1.29.0` as actually fetched, not from memory:
+**Three pinned-source facts the mechanism rests on** (verified against `v1.29.0` as fetched):
 
 - **`MEMP_NUM_NETCONN` is dead on this port.** `extmod/lwip-include/lwipopts_common.h` sets
   `LWIP_NETCONN 0` and `LWIP_SOCKET 0`, so the netconn/socket API is not compiled at all -
-  MicroPython drives lwIP through the raw/callback API in `extmod/modlwip.c`. The
-  `-DMEMP_NUM_NETCONN=8` this Part used to suggest would have done nothing at all.
-- **"does not currently set any of them" was false.** Only `MEMP_NUM_TCP_PCB` (and
+  MicroPython drives lwIP through the raw/callback API in `extmod/modlwip.c`, so a
+  `MEMP_NUM_NETCONN` setting does nothing.
+- **MicroPython presets most of the options.** Only `MEMP_NUM_TCP_PCB` (and
   `MEMP_NUM_TCP_PCB_LISTEN`, `MEMP_NUM_PBUF`, `PBUF_POOL_SIZE`) are genuinely unset and left to
   lwIP's own `#if !defined X || defined __DOXYGEN__` guards. `MEMP_NUM_UDP_PCB` is a **bare
   `#define`** (`4 + LWIP_MDNS_RESPONDER`), and so is `LWIP_STATS 0` - the same shape as
@@ -1178,9 +1177,10 @@ source is edited and nothing but `make` command-line variables is passed:
 - `verify_lwip_connection_counts_anchor()` checks twenty-one anchors before anything is written -
   lwIP's own guard for each guarded macro, MicroPython's atomic `MEM_SIZE` block and its plain
   `#define`s, the rp2 port's include of the common options, the three CMake lines the redirect
-  depends on, and the board directory's three relayed files. Each one is covered by its own
-  parametrized case in `tests_scripts/test_micropython_overrides.py`, which proves it is
-  load-bearing by removing it and requiring the failure; a completeness test pins that list to the
+  depends on, the board cmake's `MICROPY_FROZEN_MANIFEST` line, and the three board files the
+  generated directory relays or points at (`mpconfigboard.h`, `manifest.py`, `pins.csv`). Each one
+  is covered by its own parametrized case in `tests_scripts/test_micropython_overrides.py`, which
+  proves it is load-bearing by removing it and requiring the failure; a completeness test pins that list to the
   code's own.
 - `apply_lwip_connection_counts_override()` generates a board directory containing a
   `lwipopts_override/lwipopts.h` that `#include`s the real `ports/rp2/lwip_inc/lwipopts.h` by
@@ -1200,7 +1200,7 @@ source is edited and nothing but `make` command-line variables is passed:
   build. This proves the generated header was reached at all — a sentinel catches it even when
   the values asked for equal the defaults — and any value that did not land fails the build.
 
-### The options are an ensemble, not independent knobs
+#### B.14.2.1 The options are an ensemble, not independent knobs
 
 **This is the part that decides what a raised ceiling really costs.** `lib/lwip/src/core/init.c`
 turns sixteen relationships over these options and the values derived from them into
@@ -1235,7 +1235,7 @@ at once (and a `max_connections` below 1 is refused by name, since every share d
   4-connection design gave (8000 / 4). A relationship, not a tuning target. When the arena is
   empty, `modlwip.c`'s write retries `tcp_write()` up to 200 x 50 ms, blocking the whole VM for up to
   10 s even on a non-blocking socket, and no asyncio timeout can interrupt it. Never observed on
-  silicon, where the GC heap always bound first (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.2).
+  silicon (H.7: lwIP is never the constraint).
 
 `buildgen/validate.py` runs the N-connection half per device, where N is known, and refuses a
 device whose `max_connections` the firmware's own pools cannot serve.
@@ -1243,9 +1243,8 @@ device whose `max_connections` the firmware's own pools cannot serve.
 **`PBUF_POOL_SIZE` is deliberately left alone.** It backs the *inbound* path, where this firmware's
 demand is one small request per connection (bodies capped at 2,048 B, Part I.6), against ~892 B of
 GC heap per pbuf — the most expensive pool to grow. **Confirmed on silicon**: at an 8x advertised
-inbound over-commit (16 connections x `TCP_WND` against the pool) it never surfaced, and no lwIP pool
-bound anywhere up to 16 connections — the GC heap always bound first
-(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.2). The checker derives `PBUF_POOL_BUFSIZE` with the
+inbound over-commit (16 connections x `TCP_WND` against the pool) it never surfaced
+(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.2; H.7). The checker derives `PBUF_POOL_BUFSIZE` with the
 IPv6-enabled port's 74 B of protocol headers (`LWIP_IPV6 = 1`, so `PBUF_IP_HLEN` is 40): 876 B.
 
 **Measured cost, from real builds** (`RPI_PICO_W`, v1.29.0, `.bss`/`.data` and
@@ -1282,6 +1281,9 @@ that matters is the **coherent ensemble** at each ceiling — `MEMP_NUM_TCP_PCB`
 | 8 | 11 | 64 | 16,000 | 56,000 | 187,840 | -9,688 | 4.90% |
 | 9 | 12 | 72 | 18,000 | 58,324 | 185,516 | -12,012 | 6.08% |
 | 10 | 13 | 80 | 20,000 | 60,648 | 183,192 | -14,336 | 7.26% |
+
+Absolute heaps are from the builds of that day; the deltas are what transfer. The shipped image's own
+linker heap is 192,360 B (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.1).
 
 **A connection costs 2,324 B of GC heap, not 196 B** — linear, and about twelve times what moving
 the PCB count alone suggests. "PCB slots are cheap" is true and irrelevant: the slot is the small
@@ -2700,7 +2702,7 @@ a purely one-directional, no-cycle class-level reference — a consumer driver m
 driver's class, never the reverse — the same direction the topological construction order below
 already requires, so it doesn't reintroduce a real coupling cycle at the object-graph level.
 `asy_sgp40_driver.py` used to be the canonical example of this (importing `SCD30_Reader` for its
-old `comp_source` parameter's type) — C.14.3's generalization removed that import entirely, since a
+old `comp_source` parameter's type) — L.6.3's generalization removed that import entirely, since a
 per-value producer is now resolved structurally (by attribute name) rather than nominally (by
 class), so `asy_sgp40_driver.py` no longer needs to know its compensation source's concrete type at
 all.
@@ -2973,11 +2975,10 @@ sequential, and the whole 51000-57000 tier sitting *inside* the OS ephemeral ran
 (32768-60999), where any concurrent ephemeral bind could be handed one of those exact ports,
 `tests_scripts/`'s own `_free_port()` included now that it runs alongside. For UDP both modes are
 silent rather than `EADDRINUSE`, so the symptom is an inexplicable timeout, not an error. The tier
-moved below the ephemeral range, where the twin tier already sat: TCP bases are now 17400-17463
-(`unix_port_poll_prewarm.py`'s scan band) and 17500-17507 (its own test band), 18080 (the CI
-suite), 18099-18103 (`test_digital_twin_http_client.py`'s canned servers), 19099, 19100+ / 19300+ /
-19401-19413 / 19420 / 19481 / 19482 / 19500 + 10 per device / 19700 + 200 per device (twin, JS
-twins and cross-browser smoke), and UDP 21000 / 22000 / 23000 / 24000 / 25000 / 26000 / 27000
+moved below the ephemeral range, where the twin tier already sat: TCP bases sit in 17400-19999,
+each claimed by a module-level `PORT`/`_PORT*` constant in the file that binds it (the twin tier,
+`unix_port_poll_prewarm.py`'s scan band, the CI suite's 18080, the JS twins and the cross-browser
+smoke), and UDP 21000 / 22000 / 23000 / 24000 / 25000 / 26000 / 27000
 (`udp_socket` / `captive_dns` / `ntp_client` / `dns_client` / `ntp_wifi_dns` / `ntp_fram_system` /
 `wifi_service`). **A new test file that binds a socket claims an unused base below 32768** — never a
 neighbour's, never inside the ephemeral range.
@@ -3058,6 +3059,15 @@ typecheck.sh` already do both automatically; running one such file directly, as 
 does for `test_math_helpers.py`, needs them done by hand first or the import fails with
 `ImportError: no module named 'sensortask_wozi'`.
 
+**Under GitHub Actions every red outcome is also an `::error` annotation** — the pytest tier first,
+then a failed file with the last 40 lines of its own log or a file that failed only the
+allocation-marker check, eight at most and an "and N more" one after, inside GitHub's ten per step.
+Annotations are served by the checks API, while runner logs come from a storage host some
+environments (a cloud session among them) cannot reach. `tests_scripts/test_test_sh.py` pins it,
+including that a missing log can never abort the summary the annotation is part of. **Never write
+the verdict to `$GITHUB_STEP_SUMMARY`**: job summaries are in no API, and a nested `scripts/test.sh`
+would append to its parent's.
+
 ### E.3.1 The Unix-port test heap, and the two timeouts around each file
 
 **`-X heapsize=16M`** (against the port's own 2MB default) is a test-harness setting only, unrelated
@@ -3112,17 +3122,6 @@ where the plain run would. The value is validated once in `scripts/test.sh` rath
 inside the runner: a non-integer, or anything outside the rp2040's own 32-bit machine word, is
 rejected before the run touches the live tree. `--coverage` has its own runner and says so out loud
 when both are given, rather than silently ignoring the threshold.
-
-**Under GitHub Actions every red outcome is also an `::error` annotation** — the pytest tier first,
-then a failed file with the last 40 lines of its own log or a file that failed only the
-allocation-marker check, eight at most and an "and N more" one after, inside GitHub's ten per step. The checks API serves annotations, while runner logs come from a storage host some
-environments (a cloud session among them) cannot reach, and job summaries are in no API at all. It
-named the CI flake `unix_port_poll_prewarm.py`'s fixed port caused on its first red run, after
-every hypothesis formed without it had been wrong. `tests_scripts/test_test_sh.py` pins it,
-including that a missing log can never abort the summary the annotation is part of. Appending the
-verdict to `$GITHUB_STEP_SUMMARY` instead was tried and reverted: job summaries are in no API, a
-nested `scripts/test.sh` appended to its parent's, and `set -u` broke the test that runs the verdict
-block standalone.
 
 ## E.4 Hardware-touching files: mock at the raw bus-transaction level only
 
@@ -3212,14 +3211,13 @@ against the report line by line, so a later pass does not re-chase them: `config
 4-tuple per the stub, and its own comment says so); `asy_sgp40_driver.py`'s `readlen is None`
 early return (no caller passes it — the buffer above is sized for the one `readlen=1` the file
 uses); and `voc_algorithm.py`'s `_FIX16_OVERFLOW` return in the fixed-point divide, which mirrors
-Sensirion's own reference C and is unreachable for any input this driver produces. That pass left
-**31 genuinely uncovered lines across 8 files**, all of which now have tests — the register above
-is what remains, not a backlog.
-
-Six more re-checks were added on 2026-09-24: `asy_fram_manager.py`'s four `None` returns after a
-buffer accessor (`LockableBuffer.buf` is fixed at construction, so once one accessor on it returned
-non-`None` every later one does), `crc_checks.py`'s `_crc()` `poly is None` return (each caller checks
-`poly` first), and `asy_fram_driver.py`'s `verify_present()` ID-check error (its own comment has why).
+Sensirion's own reference C and is unreachable for any input this driver produces. Six more:
+`asy_fram_manager.py`'s four `None` returns after a buffer accessor (`LockableBuffer.buf` is fixed at
+construction, so once one accessor on it returned non-`None` every later one does), `crc_checks.py`'s
+`_crc()` `poly is None` return (each caller checks `poly` first), and `asy_fram_driver.py`'s
+`verify_present()` ID-check error (its own comment has why). That pass left **31 genuinely uncovered
+lines across 8 files**, all of which now have tests — the register above is what remains, not a
+backlog.
 
 A `finally:` body is **not** one of these patterns, despite looking like one: its lines fire a trace
 event only when an exception actually passes through, so a `finally` that only ever runs on the
@@ -3519,19 +3517,21 @@ is a rule rather than an anecdote. E.7 is the largest of them and keeps its own 
   by two levels or more — throttle it to the board's throughput before trusting a limit.
 - **Allocation size is the variable, not churn volume.** A loaded heap at `gc.threshold(-1)` keeps
   ~100 KB free as small holes and no large run; a fix that made 14 % *more* churn removed every
-  failure, and cutting churn never did. `gc.threshold(32768)` hid it in the twin by re-placing the
-  working set, and on silicon at peak did not reduce failures at all.
+  failure, and cutting churn never did (§7Q.11). `gc.threshold(32768)` hid it in the twin by
+  re-placing the working set, and on silicon at peak did not reduce failures at all.
 - **A contiguity figure needs its sample point, instrument and spread established first.** Sample
   at a proven peak (all N held, asserted), with a non-perturbing instrument (`mem_info(1)` parsed by
   `tests_hardware/heap_map.py`, never an allocate-to-probe loop), report placement capacity
   (`placeable(size)`, not a count of gaps and not a percentage of the after-boot value), repeat the
-  same N until its spread is known, and treat a figure that rises with N as placement luck. A "3.5x
-  cliff between 7 and 8" failed all five and was withdrawn: the within-N spread exceeded every
-  adjacent step. **Never let the offered load scale with the setting under test** — "1.3 ms per
-  added connection" was the load doubling, flat at a fixed load. **Never add a transient live set to
-  a permanent budget**: survivors are measured in a fresh process per repeat, after a collect, and
-  a connection's returned ~5 KB is a placement question, not a cost. Ballast guards use the largest
-  free run, never `gc.mem_free()`.
+  same N until its spread is known, and treat a figure that rises with N as placement luck.
+  **Collect before any heap sample, and say so**: uncollected `used_bytes` at peak was 71 % garbage
+  on the twin, overstating per-connection cost 3.4x. **Never let the offered load scale with the
+  setting under test** — at a fixed offered load, latency is flat across limits 4 to 16.
+  **Never add a transient live set to a permanent budget**: survivors are measured in a fresh process
+  per repeat, after a collect, and a connection's returned ~5,170 B (64-bit twin at `-X
+  heapsize=1200k`, 42.8 % full against the board's 44 %) is a placement question, not a cost.
+  Ballast guards use the largest free run, never `gc.mem_free()`. (§9 lists the figures these rules
+  retired.)
 - **`ErrNum` mixes errnos and wrnnos in one ring sharing a number space** (wrnno 10 = resync,
   errno 10 = bad `payload_size`), and every fault also resyncs, so the newest entry is almost always
   the resync warning. Filter on `ErrType == "E"`.
@@ -3943,7 +3943,7 @@ FRAM entry has the full account.
   then leaves **130,224 B free with a 115,536 B largest obtainable single block** (148,448/146,112
   before the build), at MicroPython's own reactive-only `gc.threshold(-1)` default — a proactive
   threshold changes neither figure. Against a largest known single allocation of ~5.7 KB (`GET
-  /status`, itself streamed in 1 KB fragments since Part I.3), that is ample. Kept honest by
+  /status`, itself streamed in 256 B `chunk_bytes` pieces, Part I.3), that is ample. Kept honest by
   `tests_hardware/flash/test_memory_stress.py`'s
   `test_real_gc_heap_headroom_survives_a_full_system_build`, so a future bump relocating more code
   into SRAM shows up as a test failure rather than as slow attrition. **That test's thresholds
@@ -4171,10 +4171,9 @@ MicroPython interpreter and `machine.SPI` call overhead, not wire time** (six sh
 1 MHz is ~300 us), which is why a faster clock would not shorten it and why per-command yielding is
 already the finest granularity the chip allows. No device TOML wires a second SPI device, so the
 21 ms figure is a contract statement rather than an observed contention. **That is structurally
-untestable rather than merely untested** (queue row N4, recorded 2026-09-22): with no second device
-on the bus in any variant, nothing can observe FRAM's whole-block hold from the outside, so 21,269 us
-is the closest evidence obtainable — and it is what a second device *would* wait, not the ~600 us an
-earlier draft of the row assumed. T.4's per-command timing is still owed.
+untestable rather than merely untested**: with no second device on the bus in any variant, nothing
+can observe FRAM's whole-block hold from the outside, so 21,269 us is the closest evidence
+obtainable — and it is what a second device *would* wait. T.4's per-command timing is still owed.
 
 The write side is the same shape but bounded, and needed no change: `mp_machine_uart_write()`
 short-writes rather than waiting once `timeout` (0 here) elapses, and `_write_all()` gates on
@@ -4605,13 +4604,14 @@ contain a literal `"` (no escaping), and every tag is a single physical line (no
 syntax, unlike `@wiring`'s bracketed-continuation-line allowance — a `@web` tag's payload never
 needs it).
 
-**The served page is checked against this generator on real hardware** (queue row G9, closed
-2026-09-22). `tests_hardware/website_identity.py` runs `build_model()` + `generate_definitions()`
+**The served page is checked against this generator on real hardware.**
+`tests_hardware/website_identity.py` runs `build_model()` + `generate_definitions()`
 for the device under test, pulls the errcount group's module keys out of the result, and asserts the
 page the DUT actually serves names every one of them, identifies itself as that device
-(`"id": "dev"`), and names no other device's id. Both website tests use it — over the bridge network
-and over the hotspot link — replacing a `200`-and-non-empty check that a build carrying another
-device's definitions, or one predating this generator, passed just as happily. Nothing is hardcoded:
+(`"id": "dev"`), and names no other device's id. `tests_hardware/bench/test_rest_endpoints_over_sta.py`
+(bridge network) and `test_hotspot_role_reversal.py` (hotspot link) both use it: a
+`200`-and-non-empty check would pass a build carrying another device's definitions, or one
+predating this generator. Nothing is hardcoded:
 a new `[[instance]]` is covered the day it is declared. The body is gzip, keyed on
 `Content-Encoding` rather than sniffed, because the firmware serves `index.html.gz`.
 
@@ -4699,35 +4699,32 @@ object graph against the twin's buses, and driving real HTTP. **Live-backend bro
 real, live-booted twin subprocess; `live-backend-put-matrix.test.js` extends this to every real
 writable field in `wozi.json`.
 
+### The connection ceiling (`max_connections`, `backlog`, lwIP pcbs)
+
 **Connection-concurrency ceiling and mitigations**: the rp2040/lwIP ceiling is a compile-time
-pool this project now pins itself — `toolchain/versions.toml`'s `[lwip].MEMP_NUM_TCP_PCB`, injected
+pool this project pins itself — `toolchain/versions.toml`'s `[lwip].MEMP_NUM_TCP_PCB`, injected
 per Part B.14.2 — rather than lwIP's own default of 5. A page load stays well under it via
 **bundling** (seven modules concatenated into one `js/app.js`, plain text concatenation, safe since
 none use default exports/dynamic imports/re-exports) and **inlining** (`style.css` and the device's
 `definitions.json` embedded directly into the staged `index.html`, with `<` escaped to avoid a
 literal `</script` closing the tag early) — 2 connections per page load (down from ~9).
 
-**`max_connections` is `6`** (owner, 2026-09-24, on the silicon evidence below; before that 8, 7, 4
-and 3), stated per device in `devices/*.toml` and checked against the firmware's own PCB count by
-`buildgen/validate.py`. **The relationship, not the number, is what this section fixes**:
-`MEMP_NUM_TCP_PCB` is at least `max_connections + 3`, currently 9 against 6, and anything less is a
-build error (`check_lwip_ensemble()`'s `SPARE_TCP_PCBS`, 2026-09-24). Closing connections hold pcbs
-from the same pool after their slot is free, and keep-alive is unimplemented here, so every request
-closes one: `lib/lwip/src/core/tcp.c`'s `tcp_alloc()` reclaims TIME_WAIT, LAST_ACK and CLOSING pcbs
-when the pool is empty, but a FIN_WAIT one only at a lower priority, which none of ours has, and
+**`max_connections` is `6`** (owner decision, evidence below), stated per device in
+`devices/*.toml` and checked against the firmware's own PCB count by `buildgen/validate.py`. **The
+relationship, not the number, is what this section fixes**: `MEMP_NUM_TCP_PCB` is at least
+`max_connections + 3`, currently 9 against 6, and anything less is a build error
+(`check_lwip_ensemble()`'s `SPARE_TCP_PCBS`). Closing connections hold pcbs from the same pool after
+their slot is free, and keep-alive is unimplemented here, so every request closes one:
+`lib/lwip/src/core/tcp.c`'s `tcp_alloc()` reclaims TIME_WAIT, LAST_ACK and CLOSING pcbs when the
+pool is empty, but a FIN_WAIT one only at a lower priority, which none of ours has, and
 `extmod/modlwip.c` aborts a close still unfinished only after 10 s
-(`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`). Arrivals `backlog` holds until asyncio accepts them, and
-refused ones still closing, hold pcbs from the same pool. Every limit measured on silicon ran at
-this pattern; nothing leaner ever has.
+(`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`). Arrivals waiting in the `backlog` queue, and refused
+connections still closing, also hold pcbs from the same pool. Every limit measured on silicon ran
+with these three spares; nothing leaner has been measured.
 
-**The PCB count is the small part.** lwIP's options are an ensemble (B.14.2), and a *servable*
-connection also needs its share of two global pools: `MEMP_NUM_TCP_SEG` (a connection that cannot
-get a segment holds data the stack has accepted but cannot push) and `MEM_SIZE` (every outbound byte
-is copied into it — `modlwip.c`'s `tcp_write()` always passes `TCP_WRITE_FLAG_COPY`). Moved together,
-a connection costs **2,324 B of GC heap**, twelve times what the PCB slot alone suggests; against
-the fielded 4-connection set (PCB 5, SEG 32, `MEM_SIZE` 8,000) the shipped one costs 5,040 B, 2.55 %. For 6 the ensemble is `MEMP_NUM_TCP_PCB` 9, `MEMP_NUM_TCP_SEG` 48
-(6 x 8), `MEM_SIZE` 12,000 (2,000 B per connection). `check_lwip_ensemble()` refuses a ceiling the
-pools cannot serve, per device, at build time.
+**The PCB count is the small part.** A servable connection also needs its share of
+`MEMP_NUM_TCP_SEG` and `MEM_SIZE`; the ensemble, its per-device build-time check and its cost
+(2,324 B of GC heap per connection) are B.14.2.
 
 **`backlog` is coupled to it, and must be.** It sizes `extmod/modlwip.c`'s ring of connections lwIP
 has established but asyncio has not yet accepted; an arrival that finds it full is reset inside
@@ -4735,56 +4732,49 @@ lwIP (`ERR_BUF`), where nothing in `src/` can see it. `extmod/asyncio/stream.py`
 every arrival on its next turn and hands it to `_serve()`, so `backlog` never limits how many
 connections are open at once — it limits how many can land while the event loop is busy
 elsewhere, the normal case on this CPU-bound board under load. `asyncio.start_server()`'s own
-default of 5 would reset the sixth of a burst landing within one turn; `backlog` now derives
+default of 5 would reset the sixth of a burst landing within one turn; `backlog` derives
 `max_connections + 1`, so a whole ceiling's burst survives a stalled loop and one over-ceiling
-arrival is refused visibly by `_serve()`. It is bounded on both sides: under `max_connections` is a
-build error, and so is anything above `max_connections + 1`, because every queued arrival holds a
-pcb and every one past that would be refused anyway.
+arrival is refused visibly by `_serve()`. buildgen refuses a `[device].backlog` below
+`max_connections` or above `max_connections + 1` (every queued arrival holds a pcb, and every one
+past that would be refused anyway); `WebserverService` itself only clamps a lower value up to
+`max_connections`.
 
-**Why 6: stability under peak load, not throughput.** Measured on silicon 2026-09-23/24 at
-`gc.threshold(-1)` under the hammer test's peak load (as many back-to-back clients as the limit,
-plus the SGP40 reset PUT), each image built for and tested at its own limit
-(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R):
+**Why 6: stability under peak load, not throughput.** Measured on silicon at `gc.threshold(-1)`
+under the hammer test's peak load (as many back-to-back clients as the limit, plus the SGP40 reset
+PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R):
 
 | limit | true failures, uninstrumented | free heap at peak | largest free block at peak |
 | --- | --- | --- | --- |
 | **6** | **0 of 2,255** (5 boots, the committed image among them) | **~21 %** | ~1.5 KB (five 256 B pieces) |
 | 7 | 0 of 1,334 | ~14 % | 528 B (one piece) |
 | 8 | 1 of 1,319, and in 3 of 4 instrumented boots | ~12 % | 400-512 B |
-| 10 | ~1 `/status` in 10, every round | ~11 % (sampled) | 288 B |
+| 10 | ~1 `/status` in 10, every round | ≤ 11.5 % (rounds load, not peak — upper bound) | ≤ 288 B (same) |
 
+- **Mechanism** (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.4): the board is CPU-bound at ~2.2
+  requests/s, so a higher limit serves nothing more and only holds more responses at once — each
+  open connection ~7.5-8 KB of live heap at peak (streams, `Request`, handler, the built response).
+  The failure is a hole too small for one ≤ 257 B `/status` piece; only 6 keeps the conventional
+  20-30 % free at peak with several pieces' worth of contiguous space.
 - **lwIP is never the constraint.** An image provisioned for 16 admitted 16 on every probe, no pool
   surfaced, and the GC heap bound first — while a raised ceiling turns a clean refusal into an
   admitted request answered 500. A refusal is a FIN ~6 ms after connect, or an RST if the client's
-request bytes had already arrived (`modlwip.c` frees them unread, and lwIP's `tcp_close()` resets a
-connection with unread data).
-- **The board is CPU-bound at ~2.2 requests/s from 6 to 9 clients**, so a higher limit serves nothing
-  more: each request only lives longer (~N / 2.2 s) and more responses are held at once. Every open
-  connection holds ~7.5-8 KB of live heap at peak (streams, `Request`, handler, the built response),
-  on top of its 2,324 B of static capacity.
-- **The failure is a hole too small for one ≤ 257 B piece** — always `/status`'s `_PieceWriter`, the
-  biggest builder — and at the limit's extreme the pool empties and sensor/FRAM tasks fail too.
-  Zero-failure counts over ~1,350 requests cannot separate 6/7/8; the margin can, and only 6 keeps
-  the conventional 20-30 % free at peak with several pieces' worth of contiguous space.
+  request bytes had already arrived (`modlwip.c` frees them unread, and lwIP's `tcp_close()` resets
+  a connection with unread data).
 - **Refusals are expected, not failures**: a connection counts until it has closed (H.7.1), so
   back-to-back clients see ~70 % refused at every limit; the device's own rejection count matches
-  the host's exactly. **It stays that way** (settled 2026-09-24, BACKLOG item 44): dropping the
-  count once the response is written would admit a new connection while the old one still holds its
-  heap and its pcb, and the board is CPU-bound, so the earlier admission serves nothing more — it
-  only pushes both pools past what the limit was measured at. The unit and per-device twin tests
-  pin it.
+  the host's exactly. **It stays that way** (settled 2026-09-24): dropping the count once the
+  response is written would admit a new connection while the old one still holds its heap and its
+  pcb, and the board is CPU-bound, so the earlier admission serves nothing more — it only pushes
+  both pools past what the limit was measured at. The unit and per-device twin tests pin it.
 - **`gc.threshold(32768)` does not move the limit**: more collections, no fewer failures.
 - A browser opens at most 6 connections per host and a page load here needs 2, so 6 costs nothing.
 
 **What the digital twin can and cannot say here.** The ordinary twin runs on the Unix port, which has
 **no lwIP at all** — its sockets are real host sockets — so it validates admission, rejection,
-simultaneous body allocation, task growth and latency, and **cannot** validate a PCB ceiling. It also
-serves 50-100x faster than the board, so its requests hardly overlap and it is optimistic about the
-serving wall by two levels or more; only a 32-bit frozen twin throttled to the board's own
-throughput reproduces the limit (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.4; an ad-hoc instrument, never a gate). Two twin
-facts that do transfer: at a fixed offered load, latency is flat across limits 4 to 16, and a
-connection's ~5,170 B of runtime allocation is **transient** — 70 served requests leave ~1.6 KB
-behind in total, flat rather than per connection — so it is never added to a survivor budget.
+simultaneous body allocation, task growth and latency, and **cannot** validate a PCB ceiling. Its
+heap and latency figures about serving load follow E.8's twin rules; only a 32-bit frozen twin
+throttled to the board's own throughput reproduces the limit
+(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.4; an ad-hoc instrument, never a gate).
 Service, not just survival, is asserted at every tier: every admitted connection must come back with
 a complete, correct, parseable response inside a bounded time, over repeated rounds, and concurrent
 page loads must be byte-identical to an uncontended one. A test that only counts `200`s passes on a
@@ -4794,15 +4784,15 @@ is held until the close completes, not until the response is written);
 `tests/_webserver_concurrency_scenarios.py` on all six devices, every burst derived from the
 device's own ceiling, never a literal, each full-ceiling round starting from an asserted zero on
 `_open_conns` rather than a blind sleep, and a ceiling of closing connections refusing the next
-arrival after every client already holds its whole response; `scripts/_digital_twin_ci_suite.py`'s Run 11b, the exact
-ceiling from a separate process at both thresholds (`digital_twin/README.md`); the bus-hazard and
-real-website twin tiers and `tests_js/live-backend.test.js`, scaled to the ceiling; the pytest tier's
-`TestLwipEnsemble` and `test_buildgen_validate.py` for the configuration, three spare PCBs
-included; the pytest tier's structural pins on the bench instruments (H.7.1's timeouts, the board
-restored after a device script, every heap-measuring device script setting and printing its
-`gc.threshold`); and the bench tier's
-`test_network_resilience.py` (exact admission, complete bodies, no module logging a new error),
-`test_serving_heap_at_default_gc.py` and `test_heap_under_connection_ceiling.py` on silicon.
+arrival after every client already holds its whole response; `scripts/_digital_twin_ci_suite.py`'s
+Run 11b, the exact ceiling from a separate process at both thresholds (`digital_twin/README.md`);
+the bus-hazard and real-website twin tiers and `tests_js/live-backend.test.js`, scaled to the
+ceiling; the pytest tier's `TestLwipEnsemble` and `test_buildgen_validate.py` for the configuration,
+three spare PCBs included; the pytest tier's structural pins on the bench instruments (H.7.1's
+timeouts, the board restored after a device script, every heap-measuring device script setting and
+printing its `gc.threshold`); and the bench tier's `test_network_resilience.py` (exact admission,
+complete bodies, no module logging a new error), `test_serving_heap_at_default_gc.py` and
+`test_heap_under_connection_ceiling.py` on silicon.
 
 HTTP keep-alive is deliberately not implemented: vendored `ext/microdot.py` always closes after one
 request by design (no keep-alive support upstream either), and this project's hard rule never
@@ -4813,8 +4803,8 @@ reclaimed only by its own timeout.
 ### H.7.1 A connection's real lifetime, and what it does to every instrument that holds one
 
 Measured on the dev bench, 2026-09-23. **Two timeouts bound how long any connection can be held
-open, and every host-side instrument that holds connections has to respect both** — three in this
-repo did not, and each failed silently rather than loudly.
+open, and every host-side instrument that holds connections stays inside both** — one that does not
+fails silently, not loudly.
 
 - A connection that is admitted and then says nothing is closed after `per_call_timeout_s` (5.0),
   answering `HTTP/1.0 400 N/A`, not a bare FIN. Measured: **5.12 / 5.14 / 5.16 s**.
@@ -4830,49 +4820,18 @@ repo did not, and each failed silently rather than loudly.
   so microdot's 400 would reach `tcp_write(NULL)`, log a spurious warning and could spin until the
   per-call timeout; `_TimeoutStreamProxy` drops every write once a read of the pair raised `OSError`.
 
-The consequences, all found by running these instruments on silicon for the first time:
+What follows for the instruments:
 
-1. **A walk whose per-connection dwell exceeds 5 s can never reach a ceiling.**
-   `discover_max_connections()` used `settimeout(10.0)`, so each connection died before the next was
-   opened and at most ~2 were ever held at once; against a board whose true ceiling was 4 it walked
-   past 12 and raised "the ceiling is higher than this probe looks". It now dwells 0.3 s and sends
-   every held connection `harness.HELD_REQUEST_LINE` (`HOLD / HTTP/1.0`), then a header line per
-   step, so the per-call timeout never frees a slot mid-walk and only the outer cap bounds it
-   (40 × 0.3 s). They are closed with a plain FIN: EOF ends microdot's headers and it answers an
-   unrouted method with a small 405, where the old `GET /status` probe cost a full `/status` each. It fails loudly if a held
-   connection answers instead of staying open, and re-checks every counted socket is still open when
-   the refusal lands. A connect that is refused or times out is the wall itself, counted rather than
-   raised, and has its own 2 s timeout, apart from the read's, so a slow handshake is never read
-   as a held connection.
-2. **A caller that measured the ceiling has just filled it**, so an immediate follow-up request is
-   refused. After a successful walk the probe waits until the whole discovered ceiling can be held
-   at once again — not one slot — then allows `settle_s` for its own check connections to release
-   theirs, backing off the same interval after a partial set. After a failed walk it drains one slot
-   best-effort and keeps the walk's own error as the headline.
-3. **"Hold N open and sample" is not achievable by opening N and waiting.** A full ceiling is
-   *sustained* by replacing each connection as the firmware reclaims it, and the sampled minimum of
-   the live count — not the count at open time — is what makes a heap dump a peak reading. A
-   connection counts as held only once a 0.3 s read of it stays silent; counted at `sendall`, every
-   refusal read as held.
+- **A walk's per-connection dwell stays under `per_call_timeout_s`, and the whole walk under
+  `outer_cap_s`**, or no ceiling is ever reached: each connection dies before the next is opened.
+- **A caller that measured the ceiling has just filled it**, so an immediate follow-up request is
+  refused until the whole ceiling has drained again.
+- **"Hold N open and sample" is not achievable by opening N and waiting.** A full ceiling is
+  *sustained* by replacing each connection as the firmware reclaims it, and the sampled minimum of
+  the live count — not the count at open time — is what makes a heap dump a peak reading.
 
-`tests_scripts/test_request_timeout_ceiling.py` pins both instruments inside both timeouts, read
-from `src/`: the probe's dwell under `per_call_timeout_s` and its whole `probe_limit` walk under
-`outer_cap_s`, the holder's drip under the first and its recycle under the second. It also runs the
-holder against a loopback server: a parked connection is kept through every drip until its recycle
-time, a server that answers gets a fresh one, a server that refuses everything never has one
-counted, and the holder starts nothing when the script's server never answers and ends as soon as
-its test sets `stop`. Until 2026-09-24 the first empty read of a
-non-blocking socket ended the drip loop, so every connection was recycled after one drip rather
-than at 10 s. `tests_scripts/test_ceiling_probe.py` runs the probe and its drain wait against a
-loopback server shaped like `_serve()`: the walk finds the ceiling, padding outlasts an idle timeout
-a plain walk cannot, a refused connect counts as the wall, a connect timeout never reads as a
-free slot, the walk returns only once its whole ceiling is admittable again against a server that
-keeps serving each closed probe, and an answered walk, an exhausted `probe_limit`, a connection
-closed mid-walk and an RST refusal each fail or count by name. `tests_scripts/test_bench_harness_helpers.py`
-covers the readiness wait, the board restore's call order, the error-log comparison, and pins every
-bench thread worker to catch `http_client.HTTP_ERROR` as well as `OSError`. Both instruments that wait for a device script's own server first let main.py's go quiet
-(`harness.wait_for_script_server()`), so main.py can never answer the readiness probe.
-
+How `harness.discover_max_connections()` and `bench/test_heap_under_connection_ceiling.py` do this,
+and the pytest tier that pins them: `tests_hardware/README.md`, "Holding a ceiling open".
 
 ### Cross-browser coverage
 
@@ -4884,7 +4843,10 @@ own Chromium. Each engine, desktop and mobile viewport: nav → drawer → Senso
 Apply → confirm the backend validated it and the UI reflects it (polling for both
 `data-apply-status` and the current-value caption together, since the caption refreshes via a
 separate, slightly later GET). Deliberately narrow scope (not a second exhaustive PUT matrix — each
-real WebDriver round trip costs seconds). `scripts/setup_cross_browser_toolchain.sh` installs the
+real WebDriver round trip costs seconds), and single-session: concurrency is covered by
+`tests_js/live-backend.test.js`'s `runLiveBackendConcurrentTabs` (`max_connections // 2` parallel
+Chromium tabs against one twin, so the ceiling is never exceeded; every tab must load).
+`scripts/setup_cross_browser_toolchain.sh` installs the
 three non-Chromium toolchains (idempotent), shared between CI and local dev; CI always installs all
 three (a skip there is the bug to chase).
 
@@ -5029,6 +4991,10 @@ or pool allocators grouped by lifetime, e.g. TensorFlow Lite Micro's fixed arena
 <https://arxiv.org/pdf/2010.08678>): the principle transfers, the mechanism does not — no allocator
 can be installed under MicroPython's GC, and an asyncio webserver allocates continuously.
 
+**No free-heap target is published.** No MicroPython maintainer, doc or web framework states one; the
+documented point is the largest free block (a Pico W forum case failed an allocation with 120 KB free
+and an 840 B largest block). The 20-30 % free at peak that H.7 uses is general embedded practice.
+
 ## I.2 Hotspot catalog — every `src/` file scanned, function by function
 
 **Needed a mitigation (fixed this session, I.3)**: `asy_webserver_service.py`'s
@@ -5058,12 +5024,12 @@ because each of these methods fills and decodes it with no `await` in between an
 `Pin.irq` callback in this codebase touches I2C — both verified against the real code. A read larger
 than the scratch (nothing today; BMP3XX's 21-byte calibration block is the largest) falls back to
 the allocating call rather than being refused. **That fallback is structurally unexercised on this
-hardware** (queue row N1, recorded 2026-09-22): no driver in the tree issues a read above 32 bytes,
+hardware**: no driver in the tree issues a read above 32 bytes,
 so it is dead on `dev` by construction, not merely untested. It stays because the next chip's
 calibration block need not be small, and the same treatment is given to the second-SPI-device
 question in F.5.8.
 
-## I.3 The shared primitive: `_stream_dict_response()`
+## I.3 Bounded response assembly: `_PieceWriter` and static reads
 
 Every GET route whose response grows with device configuration — `/status`, `/sensors`,
 `/measurements`, `/networking`, `/system`, `/notification` — writes its JSON through one
@@ -5078,35 +5044,26 @@ piece**. Its pending-fragment list is collapsed every `_MAX_PENDING_FRAGMENTS` (
 made of tiny fragments (`", "`, single digits) would otherwise need a list array as large as the
 piece. The bytes are **identical** to what the routes emitted before (the top level keeps its own
 `,`/`:`), pinned against MicroPython's own `json.dumps()` by `tests/test_asy_webserver_service.py`
-and compared route by route against the pre-fix firmware in the twin. `/status` flushes at each
-top-level section, so each section starts a piece. **Why byte-budget batching, not one piece per
-fragment**: every piece is one write through a per-write `asyncio.wait_for()`, measured at +53%
-throughput cost when pushed to one per character (F.1). At 256 B `dev`'s `/status` is 29 pieces (11
+(route by route against the pre-fix firmware: `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q.11).
+`/status` flushes at each top-level section, so each section starts a piece. **Why byte-budget
+batching, not one piece per fragment**: every piece is one write through a per-write
+`asyncio.wait_for()`, measured at +53% throughput cost when pushed to one per character (F.1).
+**Nor one piece per section**: that scales with module count (17 on real hardware, ~4.9 KB for one
+section, almost the original whole-aggregate failure). At 256 B `dev`'s `/status` is 29 pieces (11
 at the old 1024 B); its wall-clock on silicon is `REAL_HARDWARE_TEST_QUEUE.md` row W3.
 
-**Why 256, and why the old 1024 was wrong (2026-09-23).** A piece cap is only a bound if the heap
-can still place a piece of that size *under load*, and at `gc.threshold(-1)` it cannot place 1024.
-The 2026-09-23 bench sitting (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.3) served at most 4 concurrent requests
-without a `MemoryError`; its failures were ~870 B `/status` pieces, a 296 B errcount entry and a
-509 B `/measurements` fragment, with the largest free run driven to ~800 B. A **32-bit** frozen twin
-(the RP2040's own pointer and block size) reproduces exactly those three sites, and shows why
-(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q): a loaded heap keeps ~100 KB free as hundreds of small
-holes and no large run, so an allocation succeeds only if it fits the holes. Allocation *size* is
-the variable, churn *volume* is not: a first version of this fix made 14% *more* churn and removed
-the failures all the same. (The final one happens to cut `/status`'s churn 4.5x, 70,208 → 15,648 B,
-because no value is serialised whole any more; `/measurements` and `/sensors` rise 1.5x and 1.1x.)
-Measured on that twin by shaping the heap so no free run exceeds S
-(`tests_hardware/device_scripts/allocation_need_per_source.py`), the largest block each path needs:
+**Why 256.** A piece cap is only a bound if the heap can still place a piece of that size *under
+load*, and at `gc.threshold(-1)` it cannot place 1,024: with 1,024 B pieces the board served at most
+4 concurrent requests without a `MemoryError`, failing in ~870 B `/status` pieces, a 296 B errcount
+entry and a 509 B `/measurements` fragment, the largest free run driven to ~800 B
+(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.3). A **32-bit** frozen twin (the RP2040's own pointer
+and block size) reproduces exactly those three sites. A loaded heap keeps ~100 KB free as small
+holes and no large run, so allocation size, not churn volume, is what fails (E.8, §7Q). Measured
+need per path on that twin (`tests_hardware/device_scripts/allocation_need_per_source.py`):
+`/status` 320 B (1,024 B with the old cap), every other route and data source ≤ 256 B —
+`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q.10.
 
-| | as shipped | now |
-| --- | --- | --- |
-| `/status` | **1,024 B** | 320 B |
-| `/sensors` | 768 B | 256 B |
-| `/measurements` | 512 B | 256 B |
-| `/networking`, `/system`, `/notification` | ≤ 192 B | ≤ 192 B |
-| every individual data source (status, maintenance, error log, sensor data/config, settings) | ≤ 192 B | ≤ 192 B |
-
-**Static files (2026-09-23, from the same sitting's afternoon run).** The static page is the one
+**Static files.** The static page is the one
 response the writer does not build: microdot's `send_file` streams the file, reading
 `Response.send_file_buffer_size` bytes per write — **1,024** by default, so each read is one fresh
 1,025 B allocation, four times the JSON cap. On silicon that failed from N = 6, and worse, *after*
@@ -5117,7 +5074,7 @@ passes it to `send_file(stream=...)`, sets that attribute on the one response to
 is microdot's own, public, per-instance knob — nothing in `ext/microdot.py` changes — and the page
 now needs 320 B on the 32-bit twin with `dev`'s own site (1,536 B before). **A write-phase failure is never a success**:
 a response whose body can still fail after its status line goes out must carry its length, so the
-failure reaches the client as a short read. The same holds inside the header block (2026-09-24):
+failure reaches the client as a short read. The same holds inside the header block:
 microdot writes the status line and each header apart, and a client that reads EOF mid-headers
 (Python's `http.client` among them) takes it as their end — a `200` with no `Content-Length` and no
 body, read as complete: the empty `200` silicon showed twice (`HEAP_FRAGMENTATION_MEASUREMENTS.md`
@@ -5126,9 +5083,7 @@ write, so a cut response ends before its status line or after its `Content-Lengt
 
 The sources were never the problem; the assembly was. **256, not smaller**: at 128 the list holding
 a response's pieces grows to 64 slots, a 256 B array, and the measured ceiling does not move (§7Q),
-while the write count doubles. The earlier "**~48x headroom**, 49152 bytes under real hammer load"
-for the 1024 B cap is **withdrawn**: already flagged as the pinned-buffer probe artefact (queue row
-R16), it is contradicted outright by the board's own ~800 B largest run under load.
+while the write count doubles.
 
 Test coverage: direct primitive tests; a hammer test at the real 17-module scale for each fixed
 route; a combined final test hammering all six memory-bounded GET routes concurrently. Every hammer
@@ -5136,7 +5091,8 @@ helper asserts the response is a genuinely bounded *stream* (an iterator, never 
 `str`/`bytes`, each piece under a margin) — added after confirming the original hammer tests would
 still pass even with a fix fully reverted, since an 8MB Unix-port heap trivially absorbs a payload
 this small regardless of contiguity; reverting each fix now fails exactly the hammer tests
-exercising that route. The `G.3` tests read responses back write by write through `_serve()`, from
+exercising that route. `tests/test_asy_webserver_service.py`'s per-write-bound tests read
+responses back write by write through `_serve()`, from
 a build-independent stub mount (64 tiny files, every edge of 256, pages up to 64 KB) and a stub
 sensor mixing hundreds of tiny values with multi-kilobyte ones: every write at most 256 B, every
 static body whole with its `Content-Length`. Reverting either the chunk size or the length fails them,
@@ -5306,7 +5262,9 @@ finding — it governs every test in this repo from now on, digital-twin and rea
 Every parameter this audit's Unix-port tests couldn't reach (a host-sized heap vs. RP2040's real budget)
 was confirmed on real target hardware (2026-09-08): `gc.threshold(32768)` (real hammer-load
 `mem_free` floor 91312 bytes vs. 128 bytes at the reactive-only default), the real GC pause-length
-range (I.1), and the piece cap's real headroom (I.3; then `_MAX_STATUS_PIECE_BYTES`, now `chunk_bytes`).
+range (I.1). The piece cap's 2026-09-08 headroom figure (~48x) is withdrawn
+(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q.7); the current bound, `chunk_bytes` = 256, rests on its
+§7Q/§7R.
 `tests_hardware/bench/test_memory_stress_bench.py` carries the permanent real-hardware regression
 coverage (a 120s always-run hammer test plus a `long_soak`-gated 600s variant) — nothing from this
 audit remains open pending hardware. Those assert the *outcome* (no `MemoryError`, no reboot,

@@ -348,7 +348,35 @@ the board — `harness.restore_board_to_serving()`: `kick_all_stations()`, `hard
 HTTP — in its own `finally`. `harness.discover_max_connections()` and
 `test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` hold theirs with
 `harness.HELD_REQUEST_LINE` (`HOLD / HTTP/1.0`) and close with a plain FIN: EOF ends microdot's
-headers and it answers what was asked, so a held socket costs only a small 405.
+headers and it answers what was asked, so a held socket costs only a small 405 and is released
+the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
+
+- **The ceiling probe** (`discover_max_connections()`) dwells 0.3 s per step and pads every held
+  connection with a header line (`HELD_PAD_LINE`) per step, so the per-call timeout never frees a
+  slot mid-walk and only the outer cap bounds it (`probe_limit` 40 × 0.3 s). It fails loudly if a
+  held connection answers instead of staying open, and re-checks every counted socket is still open
+  when the refusal lands. A connect that is refused or times out is the wall itself, counted rather
+  than raised, with its own 2 s timeout apart from the read's, so a slow handshake is never read as
+  a held connection. After a successful walk it waits until the whole discovered ceiling can be
+  held at once again — not one slot — then allows `settle_s` for its own check connections to
+  release theirs, backing off the same interval after a partial set; after a failed walk it drains
+  one slot best-effort and keeps the walk's own error as the headline.
+- **Pinned by the pytest tier.** `tests_scripts/test_request_timeout_ceiling.py` reads both
+  timeouts from `src/` and keeps the probe's dwell and the holder's drip under `per_call_timeout_s`,
+  the whole walk and the holder's recycle under `outer_cap_s`; against a loopback server it checks
+  the holder keeps a parked connection through every drip until its recycle time, replaces one a
+  server answered, never counts one against a server that refuses everything, starts nothing when
+  the script's server never answers, and ends once its test sets `stop`.
+  `tests_scripts/test_ceiling_probe.py` runs the probe and its drain wait against a loopback server
+  shaped like `_serve()`: the walk finds the ceiling, padding outlasts an idle timeout a plain walk
+  cannot, a refused connect counts as the wall, a connect timeout never reads as a free slot, the
+  walk returns only once its whole ceiling is admittable again, and an answered walk, an exhausted
+  `probe_limit`, a connection closed mid-walk and an RST refusal each fail or count by name.
+  `tests_scripts/test_bench_harness_helpers.py` covers the readiness wait, the board restore's call
+  order and the error-log comparison, and pins every bench thread worker to catch
+  `http_client.HTTP_ERROR` as well as `OSError`.
+- **Both instruments that wait for a device script's own server** first let main.py's go quiet
+  (`harness.wait_for_script_server()`), so main.py can never answer the readiness probe.
 
 **Bench traps** (occurrences: §7R.5).
 - Leave > 45 s between a reset and the next `mpremote` attach; a watchdog reset ~9 s after an early
