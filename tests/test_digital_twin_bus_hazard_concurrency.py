@@ -100,7 +100,7 @@ async def _api_burst_at_the_ceiling(module: "ModuleType", host: str, port: int) 
             # own process competes with the code under test for its heap (Part E.9).
             res = await _http_client.fetch(host, port, "GET", path, read_body=False)
         except OSError:
-            return "rejected"  # the documented reject-when-full outcome, not a failure here
+            return "rejected"  # kept as a value, so a refused slot is named in the assertion
         else:
             return res.status_code
 
@@ -123,9 +123,10 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
             # Mid-run, not before or after: the point is a full ceiling of REST work landing while
             # the sensor tasks are genuinely mid-transaction on the shared bus.
             await asyncio.sleep(run_seconds / 2)
+            # Exactly the ceiling from a fresh server nothing else connects to, so every slot is
+            # free: a single "rejected" means the device refused what its own config admits.
             api_results = await _api_burst_at_the_ceiling(module, "127.0.0.1", api_port)
-            assert api_results.count(200) >= 1, api_results
-            assert all(r in (200, "rejected") for r in api_results), api_results
+            assert api_results == [200] * module.webserver._max_connections, api_results
             await asyncio.sleep(run_seconds / 2)
         else:
             await asyncio.sleep(run_seconds)

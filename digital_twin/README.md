@@ -77,10 +77,13 @@ Kept completely separate so nothing here can accidentally affect the determinist
   pinned MicroPython Unix port's `extmod/modselect.c` (see "Known gaps / follow-ups" below
   for the full account; `extmod/modselect.c` took zero commits between `v1.28.0` and the current
   `v1.29.0` pin, so the account and the workaround both still stand verbatim). Called as the first
-  statement of `run_generic_integration.py`'s and `segfault_stress_repro.py`'s own `main()`, before
+  statement of `run_generic_integration.py`'s and `segfault_stress_repro.py`'s own `main()`, and at
+  import by every `tests/` entry point that boots a `sensortask_*` module with real sockets (the
+  sensortask, bus-hazard, real-website, construction and webserver-concurrency files), before
   anything else in the process registers a poll object. Its listener scans upward from port 17400
   across a 64-port window rather than binding one fixed port, and fails loudly naming the window if
-  none binds: `scripts/test.sh` runs up to 16 files at once, and a fixed port (with no
+  none binds: `scripts/test.sh` runs usable cores x 1-4 files at once (`TEST_PARALLELISM`
+  overrides), and a fixed port (with no
   `getsockname()` on this port, an ephemeral bind cannot be read back) made concurrent imports die
   with `EADDRINUSE` — 28 of 30 concurrent prewarms before, 0 of 30 after.
 - `unix_port_gc_unwedge.py` — its sibling for a second Unix-port quirk: a SIGINT landing inside
@@ -381,7 +384,7 @@ it checks and why; this section is the practical how-to.
 
 ```bash
 scripts/run_digital_twin_ci.sh          # wozi (default): clean -> build -> test, same as CI runs it
-scripts/run_digital_twin_ci.sh dev      # any other real device: same 12-run suite, that device's own module
+scripts/run_digital_twin_ci.sh dev      # any other real device: same 14-run suite, that device's own module
 ```
 
 **Clean**: removes any leftover `digital_twin/fram_state.json`/`digital_twin/scd30_state.json`/
@@ -399,11 +402,11 @@ placeholder). Must succeed before any test phase runs.
 `uv run` CPython script (stdlib-only — no `uv sync` needed) that drives
 `digital_twin/run_generic_integration.py` as a real subprocess, over real HTTP/UDP (`http.client`/
 `socket`, not `_http_client.py` — this script runs under CPython, not the twin's own MicroPython
-process), through a sequence of real subprocess runs (12 top-level, two of them - 5b/5c - sub-runs of run
-5; 5c itself spawns one process per bus-attached driver plus one, so the subprocess total is
-device-dependent - 16 for `wozi`, 17 for `dev`) on a fixed port (`18080`, distinct from
+process), through a sequence of real subprocess runs (14: runs 1-11 plus 5b/5c, sub-runs of run 5, and
+11b; 5c itself spawns one process per bus-attached driver plus one, so the subprocess total is
+device-dependent - 17 for `wozi`, 18 for `dev`, one more if run 11's soak retries) on a fixed port (`18080`, distinct from
 the manual entry point's `8080` default, so both can run side by side without colliding). **The
-whole 12-top-level-run sequence itself runs twice, not just once** — `main()` calls `run_suite()`
+whole 14-run sequence itself runs twice, not just once** — `main()` calls `run_suite()`
 once at `--gc-threshold -1` (MicroPython's own real reactive-only default) and once at `32768` (the
 project's chosen value, matching every real firmware boot), each pass writing its own subdirectory
 under `digital_twin_ci_logs/` (`gc_threshold_neg1/`, `gc_threshold_32768/`). This is CLAUDE.md's/
@@ -552,9 +555,9 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
     separation" Part) and computes the same early-quarter-vs-late-quarter memory-trend check the
     twin used to run on itself (`_mem_trend()`, unit-tested directly in
     `tests_scripts/test_digital_twin_ci_suite_soak.py` — no live subprocess needed for that half).
-    This one run is **not** split into an 11a/11b pair any more: since the *whole* suite now runs
-    once per `gc_threshold` value (see above), run 11 already gets its own real-default pass and
-    chosen-threshold pass for free, the same as every other run here. This moved host-side because
+    Run 11 has no per-threshold variant of its own (run 11b below is a separate check, not one):
+    since the *whole* suite now runs once per `gc_threshold` value (see above), run 11 already gets
+    its own real-default pass and chosen-threshold pass for free, the same as every other run here. This moved host-side because
     of a real false-positive lesson, not just tidiness: the soak check used to run its own
     warmup/cycle loop and `gc.collect()`-based trend check *inside* the twin process — a driver
     contaminating the very DUT resources it was trying to measure, the exact anti-pattern
@@ -573,10 +576,11 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
     in place and the twin's own boot entry forced back to the real default.
 
     **Run 11b — the full connection ceiling under real simultaneous load** (`_run_11b_full_ceiling_
-    concurrency()`). A fresh twin; the host reads the device's own `max_connections` from
-    `devices/<device>.toml` and fires exactly that many simultaneous GETs over the five heaviest
-    routes, three rounds, from CPython threads on a barrier with one real socket each — every one
-    must be served `200` with a parsed body, the twin must still serve afterwards and shut down
+    concurrency()`). A fresh twin; the host reads the device's own ceiling through buildgen's
+    `device_max_connections()` (`devices/<device>.toml`, else `src/`'s default) and fires exactly
+    that many simultaneous GETs over the five heaviest routes, three rounds, from CPython threads on
+    a barrier with one real socket each — every one must be served `200` with a body that parses as
+    a JSON object, the twin must still serve afterwards and shut down
     cleanly, and the suite's own no-`MemoryError` log check applies at both thresholds. A 1 s settle
     precedes **every** round, the first included: a slot is released only after the close is awaited
     (SPECIFICATION.md H.7.1), and the readiness probe's own connection is still counted when round 0
@@ -870,8 +874,8 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
 
 ## Known gaps / follow-ups for later sessions
 
-- **Unix-port facts that break a harness written by habit** (found building the 2026-09-23/24
-  serving sweeps, `HEAP_FRAGMENTATION_MEASUREMENTS.md` §10): no `socket.getsockname()`;
+- **Unix-port facts that break a harness written by habit** (each confirmed against the pinned
+  Unix-port build; recorded here, not elsewhere): no `socket.getsockname()`;
   `getaddrinfo()` returns a packed `sockaddr`; `asyncio` offers `Lock` and `Event` but no
   `Semaphore`; `os.environ` is missing, so read `os.getenv()`; and `micropython.mem_info()` with
   any argument prints the full block map. **`scripts/run_digital_twin_ci.sh` leaves

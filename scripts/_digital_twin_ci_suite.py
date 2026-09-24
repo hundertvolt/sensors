@@ -162,7 +162,7 @@ class RunContext:
 
 # Sharpened memory-safety discipline (CLAUDE.md, SPECIFICATION.md Part I.4(e), 2026-09-14): every
 # OK/FAIL line is tagged with which gc.threshold() pass produced it, set once per run_suite() call -
-# every one of the ~14 run functions below stays untouched, no per-message edits needed.
+# every one of the 14 run functions below stays untouched, no per-message edits needed.
 _CURRENT_PASS_LABEL = ""
 
 
@@ -208,16 +208,15 @@ def _configured_max_connections(device: str) -> int:
 
 
 def _concurrent_get(paths: list[str], timeout: float = 30.0) -> list[object]:
-    """One real socket per request, all in flight together, driven from THIS process. Each thread
-    waits on a barrier and then opens its own connection, so the burst really is simultaneous
-    rather than a fast sequence the DUT could serve one at a time."""
+    """One real socket per request, all in flight together from THIS process, behind a barrier so the
+    burst is truly simultaneous. Each result is (status, parsed JSON body), or the error's repr."""
     results: list[object] = [None] * len(paths)
     barrier = threading.Barrier(len(paths))
 
     def one(index: int, path: str) -> None:
         try:
             barrier.wait(timeout=timeout)
-            results[index] = _http("GET", path, timeout=timeout)[0]
+            results[index] = _http("GET", path, timeout=timeout)
         except (OSError, ValueError, http.client.HTTPException, threading.BrokenBarrierError) as exc:  # ValueError: a malformed JSON body
             results[index] = repr(exc)
 
@@ -227,6 +226,11 @@ def _concurrent_get(paths: list[str], timeout: float = 30.0) -> list[object]:
     for thread in threads:
         thread.join(timeout=timeout + 5.0)
     return results
+
+
+def _describe_results(results: list[object]) -> list[object]:
+    # Status and body type only: a full ceiling of /sensors bodies would bury which one failed.
+    return [(r[0], type(r[1]).__name__) if isinstance(r, tuple) else r for r in results]
 
 
 def _clean_state() -> None:
@@ -1044,10 +1048,9 @@ def _run_10_watchdog_hang_backstop(ctx: RunContext) -> None:
 
 
 def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
-    # ---- Run 11b: the admission ceiling under real simultaneous load, driven entirely from THIS
-    # process. Part E.9: a client sharing the DUT's heap measures its own bookkeeping, and an
-    # in-process attempt at exactly this proved it - every "limit" it found was the test client's
-    # own contiguous response buffer, not the firmware's (HEAP_FRAGMENTATION_MEASUREMENTS.md §9). ----
+    # ---- Run 11b: the admission ceiling under real simultaneous load, driven from THIS process: a
+    # client sharing the DUT's heap measures its own buffers, not the firmware's (Part E.9; an
+    # in-process attempt proved it, HEAP_FRAGMENTATION_MEASUREMENTS.md §9). ----
     _clean_state()
     try:  # a ceiling that cannot be read fails this run, never the whole suite and its later passes
         ceiling = _configured_max_connections(ctx.device)
@@ -1063,16 +1066,16 @@ def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
         endpoints = ("/sensors", "/status", "/measurements", "/networking", "/system")
         for round_index in range(_CEILING_ROUNDS):
             # A slot is released in _serve()'s finally, AFTER the close is awaited, so it outlives the
-            # response the client already holds (Part I.6) - round 0's too: the readiness probe's own
+            # response the client already holds (Part H.7.1) - round 0's too: the readiness probe's own
             # connection is still counted right after _wait_until_serving(), refusing one of a full burst.
             time.sleep(1.0)
             results = _concurrent_get([endpoints[i % len(endpoints)] for i in range(ceiling)])
-            served = sum(1 for r in results if r == _HTTP_OK)
-            # Every one of them, not "at least one": this burst IS the ceiling, so anything short
-            # means the device cannot serve what its own config admits.
+            # Every one of them, with a parsed JSON object: this burst IS the ceiling, so anything
+            # short means the device cannot serve what its own config admits.
+            served = sum(1 for r in results if isinstance(r, tuple) and r[0] == _HTTP_OK and isinstance(r[1], dict))
             _check(
                 condition=served == ceiling,
-                msg=f"Run 11b round {round_index}: all {ceiling} simultaneous connections served (got {served}; {results})",
+                msg=f"Run 11b round {round_index}: all {ceiling} simultaneous connections served 200 with a parsed JSON body (got {served}; {_describe_results(results)})",
             )
         # Still healthy afterwards, so a burst that merely postponed its damage is still caught.
         status, _ = _http("GET", "/status")
@@ -1226,7 +1229,7 @@ def _mem_trend(samples: list[int]) -> tuple[float, float, int, float, float] | N
 
 
 def run_suite(ctx: RunContext) -> None:
-    # Runs the whole 12-top-level-run sequence once at ctx.gc_threshold; main() says why the
+    # Runs the whole 14-run sequence (Runs 1-11 plus 5b, 5c, 11b) once at ctx.gc_threshold; main() says why the
     # whole function runs twice. It tallies nothing itself - _FAILURES is shared on purpose, so
     # main() prints one combined report naming every failure from either pass.
     global _CURRENT_PASS_LABEL

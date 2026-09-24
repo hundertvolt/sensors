@@ -743,7 +743,7 @@ jobs:
     # duplicate of it.
     #
     # strategy.matrix over all 6 real devices (SPECIFICATION.md Part L.4, mirroring
-    # firmware-build-verify's own precedent below) - each device's own 11-run suite is an
+    # firmware-build-verify's own precedent below) - each device's own 14-run suite is an
     # independent job, attributable directly in the job list, rather than one long serial script
     # that would otherwise need roughly 6x the wall-clock budget of a single device's run (several
     # runs in the suite each wait tens of seconds for a real state-machine transition - a WiFi

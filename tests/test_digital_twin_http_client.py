@@ -78,10 +78,9 @@ def test_parse_status_line_rejects_a_malformed_line() -> None:
 
 
 def test_an_empty_status_line_is_a_refusal_not_a_malformed_response() -> None:
-    # The server's reject-when-full branch closes without writing anything, so the client reads
-    # b"". That is a connection outcome, not a broken response, and every caller already treats a
-    # refusal as OSError - mirroring tests_hardware/http_client.py's CEILING_CLOSE, which covers
-    # the same case by including http.client.BadStatusLine.
+    # Reject-when-full closes without writing, so the client reads b"": a refusal, which every
+    # caller treats as OSError - as tests_hardware/http_client.py's CEILING_CLOSE does by
+    # including http.client.BadStatusLine.
     try:
         http_client.parse_status_line(b"")
         raise AssertionError("expected CeilingRefusedError")

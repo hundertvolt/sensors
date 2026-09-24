@@ -499,16 +499,6 @@ if [ "${#failed_files[@]}" -gt 0 ]; then
     for f in "${failed_files[@]}"; do
         echo "  - $f"
     done
-    # A workflow-command annotation is the only channel that carries a failing file's own output
-    # off the runner without reading the raw log, which GitHub serves from a storage host some
-    # environments cannot reach at all - and it puts the failure on the PR page for a human too.
-    if [ -n "${GITHUB_ACTIONS:-}" ]; then
-        for f in "${failed_files[@]}"; do
-            annotation_tag="$(basename "$f" .py)"
-            annotation_detail="$({ tail -n 40 "$results_dir/$annotation_tag.log" 2>/dev/null || true; } | sed -e 's/%/%25/g' -e 's/\r$//' | awk '{printf "%s%%0A", $0}')"
-            echo "::error title=$f::$annotation_detail"
-        done
-    fi
 fi
 if [ "${#memory_error_files[@]}" -gt 0 ]; then
     echo "MemoryError seen (caught-and-logged counts too - SPECIFICATION.md Part I.4(e)):"
@@ -516,16 +506,41 @@ if [ "${#memory_error_files[@]}" -gt 0 ]; then
         echo "  - $f"
         sed "s/^/      /" "$results_dir/$(basename "$f" .py).memerr"
     done
-    if [ -n "${GITHUB_ACTIONS:-}" ]; then
-        for f in "${memory_error_files[@]}"; do
-            annotation_tag="$(basename "$f" .py)"
-            annotation_detail="$({ cat "$results_dir/$annotation_tag.memerr" 2>/dev/null || true; } | sed -e 's/%/%25/g' -e 's/\r$//' | awk '{printf "%s%%0A", $0}')"
-            echo "::error title=$f (allocation failure)::$annotation_detail"
-        done
-    fi
 fi
-if [ -n "${GITHUB_ACTIONS:-}" ] && [ "$tests_scripts_result" = "FAIL" ]; then
-    echo "::error title=tests_scripts/ (CPython/pytest)::the pytest tier failed - its own output is in this step's log, above the summary"
+# A workflow-command annotation is the only channel that carries a failing file's own output off
+# the runner without reading the raw log, which GitHub serves from a storage host some environments
+# cannot reach at all - and it puts the failure on the PR page for a human too.
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    # GitHub keeps only 10 error annotations per step: the pytest tier's goes first, per-file ones
+    # stop at 8, and a last one counts the rest, so nothing past the cap vanishes without a trace.
+    if [ "$tests_scripts_result" != "PASS" ]; then
+        echo "::error title=tests_scripts/ (CPython/pytest)::the pytest tier failed - its own output is in this step's log, above the summary"
+    fi
+    annotations_left=8
+    annotations_withheld=0
+    for f in ${failed_files[@]+"${failed_files[@]}"}; do
+        if [ "$annotations_left" -eq 0 ]; then
+            annotations_withheld=$((annotations_withheld + 1))
+            continue
+        fi
+        annotation_tag="$(basename "$f" .py)"
+        annotation_detail="$({ tail -n 40 "$results_dir/$annotation_tag.log" 2>/dev/null || true; } | sed -e 's/%/%25/g' -e 's/\r$//' | awk '{printf "%s%%0A", $0}')"
+        echo "::error title=$f::$annotation_detail"
+        annotations_left=$((annotations_left - 1))
+    done
+    for f in ${memory_error_files[@]+"${memory_error_files[@]}"}; do
+        if [ "$annotations_left" -eq 0 ]; then
+            annotations_withheld=$((annotations_withheld + 1))
+            continue
+        fi
+        annotation_tag="$(basename "$f" .py)"
+        annotation_detail="$({ cat "$results_dir/$annotation_tag.memerr" 2>/dev/null || true; } | sed -e 's/%/%25/g' -e 's/\r$//' | awk '{printf "%s%%0A", $0}')"
+        echo "::error title=$f (allocation failure)::$annotation_detail"
+        annotations_left=$((annotations_left - 1))
+    done
+    if [ "$annotations_withheld" -gt 0 ]; then
+        echo "::error title=and $annotations_withheld more::$annotations_withheld further failing-file annotation(s) withheld at GitHub's 10-per-step cap - the step log's summary names every file"
+    fi
 fi
 if [ "$tests_scripts_result" = "FAIL" ]; then
     failed=1

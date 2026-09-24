@@ -18,8 +18,8 @@ const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix",
 const MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen";
 const HOST = "127.0.0.1";
 // Distinct from every other fixed port this repo already uses for a twin/integration run - see
-// tests_js/_live_twin_command.js's own comment for the full enumeration this continues (19411,
-// 19412 already taken by that file and _live_matrix_command.js).
+// tests_js/_live_twin_command.js's own comment for the full enumeration this continues (19481,
+// 19482 already taken by that file and _live_matrix_command.js).
 const PORT = 19420;
 const TWIN_URL = `http://${HOST}:${PORT}/`;
 const READY_TIMEOUT_MS = 20000;

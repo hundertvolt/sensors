@@ -984,6 +984,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   - Recorded late from this branch: `pyproject.toml`'s `S603` per-file ignore for
     `toolchain/micropython_overrides.py` and the `max-args` step 22 -> 23 for `backlog=`, and
     `scripts/build_firmware.py` passing `toolchain_dir=`, so every device build applies the override.
+  - `scripts/test.sh`: every annotation comes from one `GITHUB_ACTIONS` block, the pytest tier
+    first, per-file ones capped at 8 plus one "and N more" (GitHub keeps ten per step).
+  - `scripts/_digital_twin_ci_suite.py`: Run 11b counts a request served only with a 200 and a
+    parsed JSON object; `scripts/run_digital_twin_ci.sh` and `cross_browser_smoke.mjs` comments only.
   The compiler choice is the one change a chroot leg can see: the installer leg's build must still
   read back the set it asked for.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus

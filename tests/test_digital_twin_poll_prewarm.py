@@ -123,7 +123,10 @@ def test_the_prewarm_itself_still_grows_the_poll_set_when_its_base_is_taken() ->
     except OSError:
         holder = None  # another file's prewarm holds it right now, which takes it just as well
     try:
-        prewarm_poll_set(ceiling=8)
+        addr = prewarm_poll_set(ceiling=8)
+        if holder is not None:  # held by this test, so the prewarm must have scanned past it
+            assert _port_of(addr) != _PORT_SCAN_BASE, _port_of(addr)
+        assert _PORT_SCAN_BASE <= _port_of(addr) < _PORT_SCAN_BASE + _PORT_SCAN_WINDOW, _port_of(addr)
     finally:
         if holder is not None:
             holder.close()

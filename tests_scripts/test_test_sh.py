@@ -664,10 +664,88 @@ def test_a_missing_log_cannot_abort_the_summary_the_annotation_is_part_of(repo_r
 
 def test_every_way_the_suite_goes_red_gets_an_annotation_and_only_under_actions(repo_root: Path) -> None:
     text = _test_sh_text(repo_root)
-    # Three independent ways this script reports red, so three annotations - a failing file, a
-    # file that only logged an allocation failure, and the pytest tier.
-    assert text.count("::error title=") == 3, "each of the three red outcomes needs its own annotation"
-    assert text.count('if [ -n "${GITHUB_ACTIONS:-}" ]') == 3, "a local run must not print workflow commands at all"
+    # Three independent ways this script reports red - a failing file, a file that only logged an
+    # allocation failure, the pytest tier - plus the count of whatever the 10-per-step cap withheld.
+    assert text.count("::error title=") == 4, "each of the three red outcomes needs its own annotation, plus the overflow count"
+    assert text.count('if [ -n "${GITHUB_ACTIONS:-}" ]') == 1, "a local run must not print workflow commands at all"
+    assert _annotation_block(repo_root).count("::error title=") == 4, "every annotation must be emitted from the one GITHUB_ACTIONS-gated block"
+
+
+def _memerr_detail_line(repo_root: Path) -> str:
+    """The allocation-failure annotation's body line, extracted exactly as _annotation_detail_line()
+    extracts the failing-file one: the same escaping, but over the .memerr marker, read whole."""
+    match = re.search(r'^\s*annotation_detail="\$\(\{ cat.*\.memerr.*$', _test_sh_text(repo_root), re.MULTILINE)
+    assert match is not None, "scripts/test.sh no longer builds an annotation body from a file's .memerr marker"
+    return match.group(0).strip()
+
+
+def _run_memerr_detail(repo_root: Path, tmp_path: Path) -> tuple[int, str]:
+    script = tmp_path / "memerr_detail.sh"
+    script.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        f'results_dir="{tmp_path}"\nannotation_tag="test_x"\n'
+        f'{_memerr_detail_line(repo_root)}\nprintf "%s" "$annotation_detail"\n',
+    )
+    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=False, timeout=30)
+    return done.returncode, done.stdout
+
+
+def test_an_allocation_failure_marker_survives_into_one_escaped_annotation(repo_root: Path, tmp_path: Path) -> None:
+    (tmp_path / "test_x.memerr").write_text("a 50% b\nc\n")
+    code, out = _run_memerr_detail(repo_root, tmp_path)
+    assert code == 0, out
+    assert out == "a 50%25 b%0Ac%0A", out
+
+
+def test_a_missing_memerr_marker_cannot_abort_the_summary_either(repo_root: Path, tmp_path: Path) -> None:
+    code, out = _run_memerr_detail(repo_root, tmp_path)
+    assert code == 0, out
+    assert out == "", out
+
+
+def _annotation_block(repo_root: Path) -> str:
+    """The whole GITHUB_ACTIONS-gated annotation block: from its gate to the first top-level `fi`."""
+    match = re.search(r'^if \[ -n "\$\{GITHUB_ACTIONS:-\}" \]; then\n.*?^fi$', _test_sh_text(repo_root), re.MULTILINE | re.DOTALL)
+    assert match is not None, "scripts/test.sh no longer emits its annotations from one top-level GITHUB_ACTIONS block"
+    return match.group(0)
+
+
+def _run_annotation_block(repo_root: Path, tmp_path: Path, failed: int, memory: int, *, pytest_failed: bool) -> list[str]:
+    failed_files = [f"tests/test_f{i}.py" for i in range(failed)]
+    memory_files = [f"tests/test_m{i}.py" for i in range(memory)]
+    for name in failed_files + memory_files:
+        tag = Path(name).stem
+        (tmp_path / f"{tag}.log").write_text(f"[{tag}] boom\n")
+        (tmp_path / f"{tag}.memerr").write_text(f"[{tag}] memory allocation failed\n")
+    script = tmp_path / "block.sh"
+    script.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\nGITHUB_ACTIONS=true\n"
+        f'results_dir="{tmp_path}"\ntests_scripts_result="{"FAIL" if pytest_failed else "PASS"}"\n'
+        f"failed_files=({' '.join(failed_files)})\nmemory_error_files=({' '.join(memory_files)})\n"
+        f"{_annotation_block(repo_root)}\n",
+    )
+    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True, timeout=30)
+    return [line for line in done.stdout.splitlines() if line.startswith("::error")]
+
+
+def test_the_annotations_never_pass_github_s_ten_per_step_cap_and_the_pytest_tier_s_comes_first(repo_root: Path, tmp_path: Path) -> None:
+    # GitHub drops every error annotation past the tenth in a step, so the one naming a whole tier
+    # must not be the one lost behind a long list of files, and the files past the cap are counted.
+    lines = _run_annotation_block(repo_root, tmp_path, failed=9, memory=3, pytest_failed=True)
+    assert len(lines) == 10, lines
+    assert lines[0].startswith("::error title=tests_scripts/ (CPython/pytest)::"), lines
+    assert [line.split("::")[1] for line in lines[1:9]] == [f"error title=tests/test_f{i}.py" for i in range(8)], lines
+    assert lines[9].startswith("::error title=and 4 more::4 further"), lines
+
+
+def test_a_run_under_the_cap_gets_every_annotation_and_no_overflow_line(repo_root: Path, tmp_path: Path) -> None:
+    lines = _run_annotation_block(repo_root, tmp_path, failed=2, memory=1, pytest_failed=False)
+    assert [line.split("::")[1] for line in lines] == ["error title=tests/test_f0.py", "error title=tests/test_f1.py", "error title=tests/test_m0.py (allocation failure)"], lines
+    assert "[test_m0] memory allocation failed%0A" in lines[2], lines
+
+
+def test_an_all_green_run_under_actions_prints_no_annotation_at_all(repo_root: Path, tmp_path: Path) -> None:
+    assert _run_annotation_block(repo_root, tmp_path, failed=0, memory=0, pytest_failed=False) == []
 
 
 # --- --coverage's three exit codes (SPECIFICATION.md Part E.5.3) -----------------------------------

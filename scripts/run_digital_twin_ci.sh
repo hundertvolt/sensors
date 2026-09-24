@@ -5,7 +5,7 @@
 #
 # Usage: scripts/run_digital_twin_ci.sh [device]   (default: wozi)
 # Device-generic since Part L.4: ci.yml's digital-twin-e2e job runs this once per real device via
-# its own strategy.matrix, so each device's 11-run suite is attributable on its own.
+# its own strategy.matrix, so each device's 14-run suite is attributable on its own.
 #
 # Clean wipes leftover digital_twin/*.json state and digital_twin/config/ so every run starts blank
 # - deliberately redundant with _digital_twin_ci_suite.py's own identical clean, not either/or.

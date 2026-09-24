@@ -16,14 +16,13 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import Any
 
-_DEFAULT_CEILING = 512  # 24x the real peak, re-derived (not raised) when max_connections went to
-# 7: sampling asyncio's own IOQueue.map through the hardest burst any tier drives - 3x the ceiling,
-# 21 clients - peaks at 21 registrations, the burst itself dominating. Still a raised threshold
-# rather than a fix, per the docstring, so the margin stays generous; ~45ms of one-time startup.
+_DEFAULT_CEILING = 512  # ~28x the real peak: every device's max_connections is 6, and the hardest
+# burst any tier drives is max(12, 3 x 6) = 18 clients (_webserver_concurrency_scenarios.py). A
+# raised threshold, not a fix (see the docstring), so the margin stays generous; ~45ms at startup.
 
 # Its own band, clear of test_digital_twin_http_client.py's canned servers at 18099-18103. Scanned
-# rather than fixed: scripts/test.sh runs up to 16 files concurrently, each calling this at import,
-# and SO_REUSEADDR does not let two live listeners share a port (that is SO_REUSEPORT).
+# rather than fixed: scripts/test.sh runs usable cores x 1-4 files at once, each calling this at
+# import, and SO_REUSEADDR does not let two live listeners share a port (that is SO_REUSEPORT).
 _PORT_SCAN_BASE = 17400
 _PORT_SCAN_WINDOW = 64
 
@@ -46,9 +45,9 @@ def _bind_free_listener(port: int, ceiling: int, window: int = _PORT_SCAN_WINDOW
     raise OSError(f"no free loopback port in {port}..{port + window - 1} to prewarm the poll set")
 
 
-def prewarm_poll_set(ceiling: int = _DEFAULT_CEILING, port: int = _PORT_SCAN_BASE) -> None:
+def prewarm_poll_set(ceiling: int = _DEFAULT_CEILING, port: int = _PORT_SCAN_BASE) -> "Any":  # noqa: ANN401 - a packed sockaddr here, a tuple under CPython
     """Grow asyncio's shared `select.poll()` pollfds array to `ceiling` slots via real loopback connections, then release them. Must run before any other code registers a poll object.
-    `port` is the first of _PORT_SCAN_WINDOW candidates tried, and only has to be free for the brief window this function runs."""
+    `port` is the first of _PORT_SCAN_WINDOW candidates tried and only has to be free while this runs; returns the packed sockaddr it actually bound."""
     _core.get_event_loop()  # idempotent - ensures _io_queue exists without assuming it already does
     poller = _core._io_queue.poller
     listener, addr = _bind_free_listener(port, ceiling)
@@ -69,3 +68,4 @@ def prewarm_poll_set(ceiling: int = _DEFAULT_CEILING, port: int = _PORT_SCAN_BAS
             poller.unregister(s)
             s.close()
         listener.close()
+    return addr

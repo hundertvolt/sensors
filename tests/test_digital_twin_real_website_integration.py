@@ -10,10 +10,16 @@ sys.path.insert(0, "ext")  # reaches the real, vendored ext/microdot.py - same c
 # test_digital_twin_sensortask_integration.py's own comment.
 sys.path.insert(0, "digital_twin")
 
+from unix_port_poll_prewarm import prewarm_poll_set
+
+# Before anything registers a poll object: this file boots sensortask_wozi and drives concurrent
+# real connections, and on the Unix port pollfds growth past that is a segfault (digital_twin/README.md).
+prewarm_poll_set()
+
 # Must run before `import sensortask_wozi` below: MicroPython's import machinery checks sys.modules by name
 # before touching the filesystem (v1.29.0's py/builtinimport.c, the same lookup CPython does), so pre-
 # registering "frozen_html" binds that import to the real website, not the html_stub build.
-import frozen_website_wozi  # type: ignore[import-not-found]  # mounts /html with the real website content
+import frozen_website_wozi  # type: ignore[import-not-found]  # noqa: E402 - after the prewarm; mounts /html with the real website content
 
 sys.modules["frozen_html"] = frozen_website_wozi
 
@@ -315,7 +321,10 @@ def test_a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website
         try:
 
             async def page_load() -> "list[int]":
-                # The real footprint: the page plus its own bundled script, concurrently.
+                # The real footprint: the page plus its own bundled script, concurrently whenever
+                # the ceiling admits both at once, so no burst here ever exceeds it.
+                if ceiling < 2:
+                    return [await _one("/"), await _one("/js/app.js")]
                 return list(await asyncio.gather(_one("/"), _one("/js/app.js")))
 
             async def _one(path: str) -> int:
@@ -323,7 +332,7 @@ def test_a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website
                 assert res.status_code == 200, (path, res.status_code)
                 return len(_decompress(res.body))
 
-            tabs = max(2, ceiling // 2)
+            tabs = max(1, ceiling // 2)  # 2 connections a tab, never past the ceiling
             sizes = await asyncio.gather(*(page_load() for _ in range(tabs)))
             # Every tab got the real content, not a truncated or empty body from a contended
             # static mount - the failure a concurrent burst against one frozen filesystem produces.

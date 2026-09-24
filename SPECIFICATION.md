@@ -667,8 +667,9 @@ can't yet complete the chain stays out until the missing piece exists (flagged p
 `strategy.matrix` over all 6 real device variants as of SPECIFICATION.md Part L.4): wipes
 leftover twin state; builds the Unix port and the real production website for that device
 (`scripts/build_website.sh <device>`); `scripts/_digital_twin_ci_suite.py` drives
-`run_generic_integration.py` through twelve top-level subprocess runs (two of them, 5b/5c, further
-sub-runs of run 5 — fourteen real subprocess runs in total; fresh boot + every endpoint; settings
+`run_generic_integration.py` through fourteen runs (1-11 plus 5b/5c, sub-runs of run 5, and 11b,
+the full connection ceiling under simultaneous load — 17 subprocesses for wozi, 18 for dev); fresh
+boot + every endpoint; settings
 persistence across reboot; a sustained fault matrix, derived from that device's own real wiring
 plan, proving graceful degradation and that the watchdog never starves under bounded failure; a
 persistence-correctness sweep; recovery after a bounded fault clears; hotspot fallback with a real
@@ -2972,8 +2973,11 @@ sequential, and the whole 51000-57000 tier sitting *inside* the OS ephemeral ran
 (32768-60999), where any concurrent ephemeral bind could be handed one of those exact ports,
 `tests_scripts/`'s own `_free_port()` included now that it runs alongside. For UDP both modes are
 silent rather than `EADDRINUSE`, so the symptom is an inexplicable timeout, not an error. The tier
-moved below the ephemeral range, where the twin tier already sat: bases are now 19100 / 19300 /
-19400 / 19500+ / 19700+ (twin, TCP) and 21000 / 22000 / 23000 / 24000 / 25000 / 26000 / 27000
+moved below the ephemeral range, where the twin tier already sat: TCP bases are now 17400-17463
+(`unix_port_poll_prewarm.py`'s scan band) and 17500-17507 (its own test band), 18080 (the CI
+suite), 18099-18103 (`test_digital_twin_http_client.py`'s canned servers), 19099, 19100+ / 19300+ /
+19401-19413 / 19420 / 19481 / 19482 / 19500 + 10 per device / 19700 + 200 per device (twin, JS
+twins and cross-browser smoke), and UDP 21000 / 22000 / 23000 / 24000 / 25000 / 26000 / 27000
 (`udp_socket` / `captive_dns` / `ntp_client` / `dns_client` / `ntp_wifi_dns` / `ntp_fram_system` /
 `wifi_service`). **A new test file that binds a socket claims an unused base below 32768** — never a
 neighbour's, never inside the ephemeral range.
@@ -3109,9 +3113,9 @@ inside the runner: a non-integer, or anything outside the rp2040's own 32-bit ma
 rejected before the run touches the live tree. `--coverage` has its own runner and says so out loud
 when both are given, rather than silently ignoring the threshold.
 
-**Under GitHub Actions every red outcome is also an `::error` annotation** — a failed file with the
-last 40 lines of its own log, a file that failed only the allocation-marker check, and the pytest
-tier. The checks API serves annotations, while runner logs come from a storage host some
+**Under GitHub Actions every red outcome is also an `::error` annotation** — the pytest tier first,
+then a failed file with the last 40 lines of its own log or a file that failed only the
+allocation-marker check, eight at most and an "and N more" one after, inside GitHub's ten per step. The checks API serves annotations, while runner logs come from a storage host some
 environments (a cloud session among them) cannot reach, and job summaries are in no API at all. It
 named the CI flake `unix_port_poll_prewarm.py`'s fixed port caused on its first red run, after
 every hypothesis formed without it had been wrong. `tests_scripts/test_test_sh.py` pins it,

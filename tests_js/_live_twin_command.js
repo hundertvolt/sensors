@@ -2,8 +2,8 @@
 // and drives a real Playwright page against it directly (Vitest's own browser-mode `page` has no
 // API for navigating to an external origin - vitest-dev/vitest#7875). See SPECIFICATION.md Part H.7.
 
-import { spawn } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,10 +16,10 @@ const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix",
 // "pretest:coverage" hooks generate it fresh there, via buildgen, before this spawns.
 const MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen";
 const HOST = "127.0.0.1";
-// Distinct from every other fixed twin/integration port here (8080, 18080, 19300+ - see
-// digital_twin/README.md's "never together" note). Launched from Node rather than Python, so
-// there is no real collision risk; a distinct value just keeps a process listing attributable.
-const PORT = 19411;
+// Clear of every fixed port and band tests/, tests_scripts/, scripts/ and digital_twin/ bind (the
+// full map is in SPECIFICATION.md Part E.1): a twin tier running on the same host at the same time
+// would otherwise refuse this one's bind. 19482 is _live_matrix_command.js's, in one `npm test` run.
+const PORT = 19481;
 const READY_TIMEOUT_MS = 20000;
 const SHUTDOWN_TIMEOUT_MS = 15000;
 
@@ -116,22 +116,24 @@ async function stopTwin(proc) {
     }
 }
 
+// Delegated to buildgen rather than re-parsed here, so a key left out falls back to src/'s own
+// default exactly as the build does. package.json's "pretest" hook already needs uv on PATH.
+const CEILING_SCRIPT = "import sys; from pathlib import Path; from buildgen.validate import device_max_connections; print(device_max_connections(Path(sys.argv[1]), Path(sys.argv[2])))";
+
 /**
- * The admission ceiling the twin under test was built with, read from the same TOML buildgen reads
- * rather than restated here - so raising a device's own max_connections makes the browser tier
- * open more real tabs instead of leaving it pinned at a number that used to be right.
+ * The admission ceiling `devices/<device>.toml` builds, as buildgen itself resolves it.
+ * @param {string} [device]
+ * @param {string} [devicesDir] - the TOML directory, overridable for tests
  * @returns {number}
  */
-export function configuredMaxConnections(device = "wozi") {
-    const toml = readFileSync(path.join(REPO_ROOT, "devices", `${device}.toml`), "utf8");
-    // Deliberately a line match, not a TOML parse: this file has no TOML dependency and the key is
-    // a plain int in [device], so only that table's lines are searched. A miss throws, never guesses.
-    const deviceTable = /^\[device\]\s*$(?<body>[\s\S]*?)(?=^\[|(?![\s\S]))/mu.exec(toml)?.groups?.body ?? "";
-    const match = /^max_connections\s*=\s*(?<ceiling>\d+)\s*(?:#.*)?$/mu.exec(deviceTable);
-    if (!match?.groups) {
-        throw new Error(`devices/${device}.toml does not state [device].max_connections - the browser tier derives its tab count from it`);
+export function configuredMaxConnections(device = "wozi", devicesDir = path.join(REPO_ROOT, "devices")) {
+    const tomlPath = path.join(devicesDir, `${device}.toml`);
+    const out = execFileSync("uv", ["run", "--quiet", "python", "-c", CEILING_SCRIPT, tomlPath, path.join(REPO_ROOT, "src")], { cwd: REPO_ROOT, encoding: "utf8" });
+    const ceiling = Number(out.trim());
+    if (!Number.isInteger(ceiling) || ceiling < 1) {
+        throw new Error(`buildgen resolved no usable max_connections for ${tomlPath}: ${JSON.stringify(out)}`);
     }
-    return Number(match.groups.ceiling);
+    return ceiling;
 }
 
 /**
@@ -214,10 +216,8 @@ export async function runLiveBackendSmoke({ context }) {
 }
 
 /**
- * Parallel real-browser sessions against one live twin - the closest thing this project has to the
- * real multi-client scenario, and the tier that actually exercises a raised connection ceiling in a
- * browser rather than in a socket loop. Every tab loads the real site concurrently; each page load
- * is 2 connections after bundling/inlining (SPECIFICATION.md Part H.7).
+ * Parallel real-browser tabs against one live twin: the tier exercising the connection ceiling from
+ * a real browser rather than a socket loop. Every tab navigates at once (SPECIFICATION.md Part H.7).
  * @param {{context: import("playwright").BrowserContext}} ctx
  * @returns {Promise<{skipped: true, reason: string} | {skipped: false, tabs: number, loaded: number, deviceNames: string[]}>}
  */
@@ -230,9 +230,9 @@ export async function runLiveBackendConcurrentTabs({ context }) {
     }
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
 
-    // Half the ceiling, since each tab costs 2 connections - so the whole admission ceiling is
-    // genuinely in use at once rather than a fixed, long-stale 2.
-    const tabs = Math.max(2, Math.floor(configuredMaxConnections() / 2));
+    // Half the ceiling, so it is never exceeded: a tab fetches index.html then app.js and poll-manager
+    // serialises its REST calls, so a tab holds one slot, two while a finished one is still releasing.
+    const tabs = Math.max(1, Math.floor(configuredMaxConnections() / 2));
     const proc = spawnTwin();
     let stderr = "";
     proc.stderr?.on("data", (/** @type {Buffer} */ chunk) => {
