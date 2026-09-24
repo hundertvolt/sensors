@@ -2044,13 +2044,27 @@ def test_g3_a_zero_chunk_bytes_is_clamped_so_a_static_read_still_ends() -> None:
 
 
 def test_g3_a_single_scalar_longer_than_the_cap_is_the_one_piece_allowed_past_it_and_stays_whole() -> None:
-    # _PieceWriter never splits a fragment, so this is the documented limit, not a bound: no
-    # source ships a scalar near it today (Part I.3's need table, <= 192 B per source).
+    # _PieceWriter never splits a fragment, so this is the documented limit, not a bound. Part
+    # I.3's need table was measured at every field's DEFAULT value; the next test takes the worst
+    # case a schema actually permits.
     stub = _NestedCfgModule("STUB", values={}, data={"small": 1, "scalar": "y" * 600, "after": 2})
     service, _app = _make_service(sensors=[stub])
     _status, _headers, body = _get_on_the_wire(service, "/measurements")
     assert [chunk for chunk in body if len(chunk) > _WIRE_CHUNK_BYTES] == [json.dumps("y" * 600).encode()]
     assert json.loads(b"".join(body)) == {"STUB": {"small": 1, "scalar": "y" * 600, "after": 2}}
+
+
+def test_g3_a_scalar_at_ntp_hosts_own_bound_still_makes_exactly_one_whole_piece() -> None:
+    # The longest string any schema permits: asy_ntp_client's NTP_Host, 1,024 characters. Mirrored
+    # as a literal because const() leaves no module attribute to read - test_asy_ntp_client.py
+    # pins the bound itself, and BACKLOG's NTP_Host entry lists every file a change must touch.
+    longest = 1024
+    stub = _NestedCfgModule("STUB", values={}, data={"host": "y" * longest})
+    service, _app = _make_service(sensors=[stub])
+    _status, _headers, body = _get_on_the_wire(service, "/measurements")
+    over = [chunk for chunk in body if len(chunk) > _WIRE_CHUNK_BYTES]
+    assert over == [json.dumps("y" * longest).encode()], [len(c) for c in over]
+    assert len(over[0]) == longest + 2, len(over[0])  # the two quotes; no escaping in this value
 
 
 # G.2 - hotspot-mode captive-portal redirect fallback (SPECIFICATION.md Part A.5).

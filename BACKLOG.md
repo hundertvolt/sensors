@@ -523,8 +523,11 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   `tests_scripts/test_request_body_cap_headroom.py` derives all of this, so a change here is
   re-measured rather than re-estimated.
   **Not a one-token change**: `html/definitions/{dev,wozi}.json` carry the bound as
-  `"maxLength": 1024` and are generated *and committed*, so they need regenerating, and
-  `tests/test_asy_ntp_client.py:53` mirrors the tuple verbatim. **Unchecked**: whether a stored
+  `"maxLength": 1024` and are generated *and committed*, so they need regenerating,
+  `tests/test_asy_ntp_client.py:53` mirrors the tuple verbatim, and
+  `tests/test_asy_webserver_service.py`'s
+  `test_g3_a_scalar_at_ntp_hosts_own_bound_still_makes_exactly_one_whole_piece` mirrors the number
+  as the largest response piece any schema permits (SPECIFICATION.md Part I.3). **Unchecked**: whether a stored
   value outside a tightened bound is rejected on the next write or silently falls back to the
   default — trace the read path before changing it.
 
