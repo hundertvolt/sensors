@@ -49,9 +49,12 @@ def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any
 CEILING_CLOSE = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, http.client.BadStatusLine)
 
 
-def is_ceiling_close(exc: BaseException) -> bool:
-    """True if exc is a connection-ceiling refusal rather than a real transport failure.
+# A malformed or cut-off answer - a body short of its Content-Length, a garbled status line. An
+# HTTPException, not an OSError, so a caller catching transport failures has to name it too.
+HTTP_ERROR = http.client.HTTPException
 
-    urllib wraps the transport error in URLError.reason; http.client.RemoteDisconnected subclasses
-    both ConnectionResetError and BadStatusLine, so the tuple above already covers it."""
+
+def is_ceiling_close(exc: BaseException) -> bool:
+    """True if exc is a connection-ceiling refusal, not a real transport failure. urllib wraps it
+    in URLError.reason; RemoteDisconnected subclasses ConnectionResetError, so the tuple covers it."""
     return isinstance(exc, CEILING_CLOSE) or isinstance(getattr(exc, "reason", None), CEILING_CLOSE)

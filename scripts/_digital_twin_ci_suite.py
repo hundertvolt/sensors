@@ -18,6 +18,7 @@ import statistics
 import struct
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -99,7 +100,7 @@ _BOUNDED_FAULT_COUNT = 3  # injected bus failures per bounded-fault run - SGP40'
 _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the failure count that trips hotspot fallback
 # All five are the same verdict, so the episode rule spends ONE history slot on them while still
 # counting all five (asy_wifi_service.py's _episode_wrn(), SPECIFICATION.md Part C.7.1). Counter
-# and slot count are therefore different numbers here, deliberately - BACKLOG item 35.
+# and slot count are therefore different numbers here, deliberately - SPECIFICATION.md Part C.7.1.
 _WIFI_PERSISTED_WARNINGS = 1
 
 # ResetErrors resets every source in turn, each FRAM-backed one paying a real chunk write, so it
@@ -161,7 +162,7 @@ class RunContext:
 
 # Sharpened memory-safety discipline (CLAUDE.md, SPECIFICATION.md Part I.4(e), 2026-09-14): every
 # OK/FAIL line is tagged with which gc.threshold() pass produced it, set once per run_suite() call -
-# every one of the ~14 run functions below stays untouched, no per-message edits needed.
+# every one of the 14 run functions below stays untouched, no per-message edits needed.
 _CURRENT_PASS_LABEL = ""
 
 
@@ -182,6 +183,7 @@ def _check(*, condition: bool, msg: str) -> None:
 # allocation failure prints "memory allocation failed, ..." (py/runtime.c:1692/1696) with no
 # "MemoryError" anywhere - the class name alone only ever sees an UNCAUGHT traceback.
 _MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
+_CEILING_ROUNDS = 3  # back-to-back, so a leaked slot or a pool that only fills over time shows up
 
 
 def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
@@ -193,6 +195,42 @@ def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
         condition=not any(marker in log_text for marker in _MEMORY_ERROR_MARKERS),
         msg=f"{run_label}: log contains zero MemoryErrors (caught-and-logged counts as a failure too)",
     )
+
+
+def _configured_max_connections(device: str) -> int:
+    """The admission ceiling this tree builds for `device`, read by buildgen's own helper - so raising
+    a device's ceiling makes this run drive more concurrency instead of a stale literal."""
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))  # buildgen sits beside scripts/, as for _generate_sensortask_modules.py
+    from buildgen.validate import device_max_connections  # noqa: PLC0415 - needs the path entry above
+
+    return device_max_connections(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src")
+
+
+def _concurrent_get(paths: list[str], timeout: float = 30.0) -> list[object]:
+    """One real socket per request, all in flight together from THIS process, behind a barrier so the
+    burst is truly simultaneous. Each result is (status, parsed JSON body), or the error's repr."""
+    results: list[object] = [None] * len(paths)
+    barrier = threading.Barrier(len(paths))
+
+    def one(index: int, path: str) -> None:
+        try:
+            barrier.wait(timeout=timeout)
+            results[index] = _http("GET", path, timeout=timeout)
+        except (OSError, ValueError, http.client.HTTPException, threading.BrokenBarrierError) as exc:  # ValueError: a malformed JSON body
+            results[index] = repr(exc)
+
+    threads = [threading.Thread(target=one, args=(i, path)) for i, path in enumerate(paths)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=timeout + 5.0)
+    return results
+
+
+def _describe_results(results: list[object]) -> list[object]:
+    # Status and body type only: a full ceiling of /sensors bodies would bury which one failed.
+    return [(r[0], type(r[1]).__name__) if isinstance(r, tuple) else r for r in results]
 
 
 def _clean_state() -> None:
@@ -1009,6 +1047,46 @@ def _run_10_watchdog_hang_backstop(ctx: RunContext) -> None:
     _check(condition=wdt10 is not None and wdt10 >= 1, msg=f"Run 10: the watchdog backstop actually engaged for a genuinely wedged bus (would_have_triggered_count={wdt10!r})")
 
 
+def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
+    # ---- Run 11b: the admission ceiling under real simultaneous load, driven from THIS process: a
+    # client sharing the DUT's heap measures its own buffers, not the firmware's (Part E.9; an
+    # in-process attempt proved it, HEAP_FRAGMENTATION_MEASUREMENTS.md §9). ----
+    _clean_state()
+    try:  # a ceiling that cannot be read fails this run, never the whole suite and its later passes
+        ceiling = _configured_max_connections(ctx.device)
+    except Exception as exc:  # CI orchestration, the same as this run's own catch below
+        _fail(f"Run 11b (full-ceiling concurrency): cannot read the device's ceiling: {exc!r}")
+        return
+    log11b = ctx.logs_dir / "run11b_full_ceiling_concurrency.log"
+    proc = _spawn(ctx, [], log11b)
+    try:
+        _wait_until_serving(proc)
+        # The heaviest real endpoints, not the cheapest: /sensors and /status both grow with the
+        # device's own module count and are the two that stream (Part I.3).
+        endpoints = ("/sensors", "/status", "/measurements", "/networking", "/system")
+        for round_index in range(_CEILING_ROUNDS):
+            # A slot is released in _serve()'s finally, AFTER the close is awaited, so it outlives the
+            # response the client already holds (Part H.7.1) - round 0's too: the readiness probe's own
+            # connection is still counted right after _wait_until_serving(), refusing one of a full burst.
+            time.sleep(1.0)
+            results = _concurrent_get([endpoints[i % len(endpoints)] for i in range(ceiling)])
+            # Every one of them, with a parsed JSON object: this burst IS the ceiling, so anything
+            # short means the device cannot serve what its own config admits.
+            served = sum(1 for r in results if isinstance(r, tuple) and r[0] == _HTTP_OK and isinstance(r[1], dict))
+            _check(
+                condition=served == ceiling,
+                msg=f"Run 11b round {round_index}: all {ceiling} simultaneous connections served 200 with a parsed JSON body (got {served}; {_describe_results(results)})",
+            )
+        # Still healthy afterwards, so a burst that merely postponed its damage is still caught.
+        status, _ = _http("GET", "/status")
+        _check(condition=status == _HTTP_OK, msg="Run 11b: still serving after the ceiling bursts")
+    except Exception as exc:  # CI orchestration: surface any failure as a suite failure, not a crash
+        _fail(f"Run 11b (full-ceiling concurrency): {exc!r}")
+    finally:
+        ec = _shutdown(proc, "Run 11b")
+        _check(condition=ec == 0, msg=f"Run 11b: clean shutdown (exit code {ec})")
+
+
 @dataclass
 class _SoakAttempt:
     """One independent boot's worth of Run 11 raw results - http_failures/wdt/shutdown_ec are
@@ -1151,7 +1229,7 @@ def _mem_trend(samples: list[int]) -> tuple[float, float, int, float, float] | N
 
 
 def run_suite(ctx: RunContext) -> None:
-    # Runs the whole 12-top-level-run sequence once at ctx.gc_threshold; main() says why the
+    # Runs the whole 14-run sequence (Runs 1-11 plus 5b, 5c, 11b) once at ctx.gc_threshold; main() says why the
     # whole function runs twice. It tallies nothing itself - _FAILURES is shared on purpose, so
     # main() prints one combined report naming every failure from either pass.
     global _CURRENT_PASS_LABEL
@@ -1171,6 +1249,7 @@ def run_suite(ctx: RunContext) -> None:
     _run_9_ntp_unreachable(ctx)
     _run_10_watchdog_hang_backstop(ctx)
     _run_11_soak(ctx)
+    _run_11b_full_ceiling_concurrency(ctx)
 
 
 def _drivers_in_plan(plan: dict[str, Any]) -> frozenset[str]:

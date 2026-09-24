@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 import http_client
 import pytest
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
-from harness import Board, wait_until
+from harness import Board, configured_max_connections, wait_until
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
@@ -20,20 +20,18 @@ CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
 PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
 VOC_MIN, VOC_MAX = 0, 500  # same bounds as device_scripts/sgp40_voc_algorithm_quality.py
 
-# Total concurrent worker count is _GET_WORKERS + 1 (the SGP40 reset thread runs alongside the GET
-# workers) - must stay under max_connections=4 with real margin, not exactly at it, or a brief
-# overlap under real wireless timing hits a genuine (but here undesired) reject-when-full.
-_GET_WORKERS = 2
+# _GET_WORKERS + 1 concurrent clients (the SGP40 reset thread too), two slots under the build's own
+# max_connections: at it, real wireless timing overlaps into an undesired reject-when-full. Derived,
+# so a raised ceiling really means more concurrent bus-facing API load.
+_GET_WORKERS = max(2, configured_max_connections() - 3)
 _GET_ITERATIONS_PER_WORKER = 8
 _PUT_RESET_COUNT = 2
 
 
 def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any] | None = None, timeout_s: float = 15.0) -> http_client.HttpResponse:
-    """http_client.fetch(), retrying only a connection-ceiling refusal - never a real transport failure.
-
-    Name and positional signature mirror it deliberately: tests_scripts/
-    test_persistence_write_marker_completeness.py reads PUT bodies by AST and would not see through
-    a differently-shaped wrapper, silently losing sight of a persisting write (queue F15)."""
+    """http_client.fetch(), retrying only a connection-ceiling refusal, never a transport failure. Same
+    name and positional signature on purpose: tests_scripts/test_persistence_write_marker_completeness.py
+    reads PUT bodies by AST and would silently lose a persisting write behind another shape (F15)."""
     for attempt in range(3):
         try:
             return http_client.fetch(host, port, method, path, json_body, timeout_s=timeout_s)

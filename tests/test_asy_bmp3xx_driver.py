@@ -865,7 +865,7 @@ def make_clean_reader(name: str, max_module_error: int = 5) -> "tuple[I2C, BMP3x
 
 
 def test_reader_set_trigger_secs_logs_and_does_not_raise_on_bad_value() -> None:
-    # Regression test for this session's exception-safety audit finding: set_trigger_secs() used
+    # Regression test for an exception-safety audit finding: set_trigger_secs() used
     # to call int(value) unguarded, unlike every other low-level forward in this class, so a bad
     # value would raise straight out of it instead of being logged like its siblings.
     reader = make_reader("bad_trigger")  # bus is irrelevant - set_trigger_secs never touches it

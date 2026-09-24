@@ -6,6 +6,7 @@ under the MicroPython Unix port. See tests_hardware/README.md for how to run thi
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -16,7 +17,11 @@ from typing import TYPE_CHECKING
 import serial
 
 if TYPE_CHECKING:
+    import threading
     from collections.abc import Callable
+    from typing import Any
+
+    from bench_control import BenchBridge
 
 # For `import setup_toolchain` below - the same bare-sibling shape as that module's own
 # `import micropython_overrides` (host_typecheck.ini's own account of why both need a path slot).
@@ -30,6 +35,142 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # degrade handlers log str(e), so a real caught allocation failure reads "memory allocation
 # failed, ..." (py/runtime.c) and the class name appears only in an UNCAUGHT traceback.
 MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
+
+def configured_max_connections(device: str = "dev") -> int:
+    """The admission ceiling this repo's config would build for `device`. It describes the TREE, not
+    necessarily the image on the board, so a test that cares asserts the two agree."""
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from buildgen.validate import device_max_connections
+
+    return device_max_connections(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src")
+
+
+# The request line every connection held open against the board sends. A FIN close ends its headers,
+# so microdot answers whatever it asked: an unrouted method is a small 405, never a route's work. Not
+# an RST - a read of it leaves modlwip writing the 400 to a NULL pcb (SPECIFICATION.md Part H.7.1).
+HELD_REQUEST_LINE = b"HOLD / HTTP/1.0\r\n"
+HELD_PAD_LINE = b"X-Pad: y\r\n"  # one header line, which resets the server's per-call read timeout
+
+
+def discover_max_connections(host: str, port: int = 80, probe_limit: int = 40, settle_s: float = 1.0, dwell_s: float = 0.3) -> int:
+    """The ceiling the BOARD actually holds, found by holding connections open one at a time until
+    one is refused. The only figure that is silicon's own rather than the tree's, and the one a
+    raised lwIP PCB count has to be confirmed against (SPECIFICATION.md Part B.14.2)."""
+    time.sleep(settle_s)  # _serve()'s slot release outlives the response (Part I.6), so start clean
+    held: list[socket.socket] = []
+    try:
+        admitted = _walk_to_the_wall(host, port, probe_limit, dwell_s, held)
+    except AssertionError as walk_error:
+        _close_all(held)
+        try:  # best effort, one slot: the next test starts cleaner, and the walk's error stays the headline
+            _wait_for_slots_to_drain(host, port, 1, release_s=settle_s)
+        except AssertionError as drain_error:
+            walk_error.args = (f"{walk_error} (and the drain wait after it failed too: {drain_error})",)
+        raise
+    finally:
+        _close_all(held)
+    _wait_for_slots_to_drain(host, port, max(admitted, 1), release_s=settle_s)
+    return admitted
+
+
+def _walk_to_the_wall(host: str, port: int, probe_limit: int, dwell_s: float, held: list[socket.socket]) -> int:
+    """discover_max_connections()'s walk. Every held connection is sent a request line, then a header
+    line per step, so the per-call read timeout never frees a slot mid-walk; only the outer cap bounds
+    it, which is why probe_limit * dwell_s stays under it (SPECIFICATION.md Part H.7.1)."""
+    started = time.monotonic()
+    for admitted in range(probe_limit):
+        for index, open_sock in enumerate(held):
+            try:
+                open_sock.sendall(HELD_PAD_LINE)
+            except OSError as exc:
+                raise AssertionError(f"connection {index} was no longer held ({exc!r}) {time.monotonic() - started:.2f}s into the walk - the count is not a simultaneous ceiling") from exc
+        sock = _open_probe(host, port)
+        if sock is None:  # refused or unanswered at connect: the stack itself has no slot left
+            _assert_probe_held(held, started)
+            return admitted
+        held.append(sock)
+        sock.settimeout(dwell_s)
+        try:
+            sock.sendall(HELD_REQUEST_LINE)
+            payload = sock.recv(4096)
+        except TimeoutError:
+            continue  # held open mid-request, as an admitted connection should be
+        except OSError:  # reset or broken pipe: closed before it was ever served
+            payload = b""
+        if payload == b"":
+            _assert_probe_held(held[:-1], started)
+            return admitted  # refused without a response: this one did not get a slot
+        raise AssertionError(f"connection {admitted} against {host} answered {payload[:40]!r} instead of being held open - the server answered a request it should still be waiting on, so this reading is not a ceiling")
+    raise AssertionError(f"no connection was refused within {probe_limit} attempts against {host} - the ceiling is higher than this probe looks, or admission is not bounded at all")
+
+
+def _close_all(socks: list[socket.socket]) -> None:
+    for sock in socks:
+        sock.close()
+
+
+def _open_probe(host: str, port: int, connect_timeout_s: float = 2.0) -> socket.socket | None:
+    """A connected socket, or None when the connect itself fails - its own timeout, apart from the
+    probe's read timeout, so a slow handshake is never mistaken for a held-open connection."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(connect_timeout_s)
+    try:
+        sock.connect((host, port))
+    except OSError:
+        sock.close()
+        return None
+    return sock
+
+
+def _still_open(sock: socket.socket) -> bool:
+    """True while the server has neither answered nor closed: a read would still block."""
+    sock.setblocking(False)
+    try:
+        sock.recv(4096)
+    except BlockingIOError:
+        return True
+    except OSError:
+        return False  # reset: refused
+    return False  # data or EOF: answered or refused
+
+
+def _wait_for_slots_to_drain(host: str, port: int, admitted: int, timeout_s: float = 10.0, release_s: float = 1.0, hold_s: float = 0.3) -> None:
+    """Block until `admitted` connections are held at once again - the whole ceiling, not one slot -
+    then give that check's own connections `release_s` to free theirs: a slot outlives its client's
+    close by 0.71-0.84 s (SPECIFICATION.md Part H.7.1), which no probe observes without taking one."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        probes: list[socket.socket] = []
+        try:
+            while len(probes) < admitted and (sock := _open_probe(host, port)) is not None:
+                probes.append(sock)
+            time.sleep(hold_s)  # a refusal closes within milliseconds; an admitted one stays silent
+            held = sum(_still_open(sock) for sock in probes)
+        finally:
+            _close_all(probes)
+        if held == admitted:
+            time.sleep(release_s)
+            return
+        # A partial set holds slots of its own until release_s after its close: retrying sooner can
+        # alternate forever between two half-drained sets, never seeing the whole ceiling at once.
+        time.sleep(release_s if held else 0.1)
+    raise AssertionError(f"{host}:{port} never held {admitted} connections at once again within {timeout_s}s of the probe releasing its own - the slots did not drain")
+
+
+def _assert_probe_held(admitted_socks: list[Any], started: float) -> None:
+    """Every connection the probe counted must still be open at the moment the refusal landed,
+    or they were never held simultaneously and the count is an artefact of the walk's own pace."""
+    for index, sock in enumerate(admitted_socks):
+        sock.settimeout(0.05)
+        try:
+            payload = sock.recv(4096)
+        except TimeoutError:
+            continue  # still open with nothing to say, which is what an admitted connection does
+        except OSError:
+            payload = b"<reset>"
+        raise AssertionError(f"connection {index} was no longer held ({payload[:40]!r}) {time.monotonic() - started:.2f}s into the walk - the count is not a simultaneous ceiling")
+
 
 # Read from the module that CREATES these NetworkManager connections rather than copied, so a
 # rename there cannot leave the bench tier looking for a rig nobody built - its skip gate
@@ -102,6 +243,47 @@ def wait_until(
         last_exc = exc
     detail = f" (last error: {last_exc!r})" if last_exc is not None else ""
     raise TimeoutError(f"timed out after {timeout_s}s waiting for: {description}{detail}")
+
+
+def restore_board_to_serving(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    """run_isolated() leaves main.py stopped, so the webserver is gone until a real hard reset. A bench
+    test that runs a device script calls this in a finally or a fixture's teardown, or every network test
+    after it fails on a refused connection (tests_scripts/test_bench_restores_serving.py pins it)."""
+    import http_client
+
+    bench.kick_all_stations()  # stale AP-side station entries stop the DUT reassociating (README)
+    board.hard_reset()
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
+        timeout_s=90.0,
+        poll_interval_s=3.0,
+        description="DUT serving HTTP again after a device script left main.py stopped",
+    )
+
+
+def wait_for_script_server(dut_ip: str, stop: threading.Event, path: str = "/status", timeout_s: float = 120.0, handover_s: float = 20.0) -> bool:
+    """True once a device script's own server answers `path` with a 200. main.py's server may still
+    be answering when this starts, so it first waits (up to `handover_s`) for that one to go quiet;
+    `stop` ends the wait early, so it never outlives its test."""
+    import http_client
+
+    def serves() -> bool:
+        try:
+            return http_client.fetch(dut_ip, 80, "GET", path, timeout_s=3.0).status_code == 200
+        except (OSError, http_client.HTTP_ERROR):
+            return False
+
+    handover_until = time.monotonic() + handover_s
+    while time.monotonic() < handover_until and serves():
+        if stop.wait(0.5):
+            return False
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if serves():
+            return True
+        if stop.wait(1.0):
+            return False
+    return False
 
 
 @dataclass

@@ -34,9 +34,9 @@ deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below
    had no real USB device for the build to detect/link against). Before running anything that calls
    `picotool load` (`tests_hardware/flash/test_toolchain_flash_boot.py`'s
    `test_real_uf2_reflash_and_boot_smoke_test`, `tests_hardware/manual/manual_toolchain.py`),
-   rebuild picotool on the real hardware session's own machine (or confirm the apt-packaged
-   `picotool` there already has USB support - check for the same warning line) rather than assuming
-   this session's cached build works.
+   rebuild picotool on the bench host itself (or confirm the apt-packaged `picotool` there already
+   has USB support - check for the same warning line) rather than assuming a sandbox-cached build
+   works.
 4. **The NeoPixel sweep rig** - only for `--allow-neopixel-sweep`, and not provisioned by any
    `setup_toolchain.py` tier because it is physical, not software. The board's own WS2812 (GP18 on
    this bench) has to be aimed at the ISL29125's window at a fixed, recorded distance, with ambient
@@ -234,8 +234,8 @@ rather than that a setting is wrong.
 
 ## Writing a new device script: four habits
 
-A test depending on an unstated rig condition is this tier's recurring failure mode - six instances
-so far, every one found by running the test rather than reading it, and every one green first:
+A test depending on an unstated rig condition is this tier's recurring failure mode - each instance
+found by running the test rather than reading it, and every one green first:
 
 - **Provide your own light.** `isl29125_plausibility_read.py` passed while a preceding test left the
   pixel latched white, then failed once another parked it dark - its result depended on test ORDER,
@@ -249,47 +249,147 @@ so far, every one found by running the test rather than reading it, and every on
   sat inside the band. Every scenario now carries `min_switches` and a must-use-both-ranges flag
   beside its ceiling: `threshold_oscillation_crossing` must switch at least 4 times and
   `hysteresis_band_dwell_no_chatter` exactly zero, so an edit making either vacuous fails the other.
-- **`await flush_pending()` after any config write.** `write_config()` only *stages*; the flash write
-  is its own task (SPECIFICATION.md Part F.2). Production keeps an event loop running, but a device
-  script that writes and then returns lets `asyncio.run()` discard the flush, and the file is left
-  holding `setup()`'s defaults - while `write_config()` has already reported success. This silently
-  broke three scripts: the reboot-persistence marker never persisted, and the DebugLevel pair backed
-  up `PrevLevel: 0` instead of the real 5 and then "restored" that, the two omissions cancelling so
-  the *test passed*. Fixing only one of that pair drives the bench board to `DebugLevel = 0`.
-  `tests_scripts/test_device_script_config_flush.py` now pins this **per manager**: flushing one of
-  that cancelling pair does not cover the other, and a `_set_dict_cfg()` write is tracked to the
-  `.cfgmgr` it stages on. Full account: MEASUREMENTS 7O.
+- **`await flush_pending()` after any config write.** `write_config()` only *stages* (SPECIFICATION.md
+  Part F.2); a script that returns before the flush loses the write while `write_config()` has
+  already reported success. `tests_scripts/test_device_script_config_flush.py` pins this **per
+  manager**, a `_set_dict_cfg()` write tracked to the `.cfgmgr` it stages on. Evidence (three scripts
+  broken, two omissions cancelling so the test passed): `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7O.
 
 ## Writing a new bench-tier test, and diagnosing a DUT that has gone quiet: two traps
 
-Both cost real bench time more than once, and neither is discoverable by reading the code.
+Neither is discoverable by reading the code.
 
 - **A DUT that has gone unreachable is usually your own `mpremote` call, and every serial check you
   make to diagnose it re-causes the symptom.** `exec` and `run` interrupt the running firmware into
   the REPL, so `main.py` stops and the board leaves the network; `run_isolated()`'s armed
-  `WDT(timeout=8000)` then resets it ~8 s after the command ends. It cost time on 2026-09-18 and
-  again on 2026-09-19, each time as the same loop: curl fails -> `exec` to inspect the config ->
-  the inspection strands `main.py` again -> curl still fails. **The config was intact every time.**
+  `WDT(timeout=8000)` then resets it ~8 s after the command ends. The loop to avoid: curl fails ->
+  `exec` to inspect the config -> the inspection strands `main.py` again -> curl still fails.
   Diagnose *passively*: `hard_reset()`, then `Board.tail_log()` with no `exec`/`run` at all, and
   only then curl. `tail_log()` replays buffered history, so several identical "WLAN connection
   established" blocks are **not** a reboot loop - poll `SysUptime` and watch it advance, which is
   the cheap discriminator.
-- **A test that opens more concurrent connections than `max_connections = 4` cannot expect a
-  definitive status from all of them**, whatever it is testing. `_serve()`'s reject-when-full branch
-  closes without writing a response, and `src/` does not choose whether the client sees FIN or RST -
-  `test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` accepts either for exactly
-  that reason. Measured 2026-09-19 with tiny bodies, so it is nothing to do with payload size:
-  concurrency 2 -> 0% reset, 4 -> 25%, 8 -> 12%, 24 -> 25%. Resets begin **at** the ceiling, not
-  beyond it. **Before calling such a reset a defect, run the all-small-bodies control** - two
-  minutes, and it separates the feature under test from the connection ceiling. It is what turned a
-  suspected request-body-cap defect into a measured property of the server.
+- **A test that opens as many concurrent connections as the device's `max_connections`
+  (`devices/*.toml`) cannot expect a definitive status from all of them**, whatever it is testing:
+  the reject-when-full branch closes without a response, a FIN or an RST (SPECIFICATION.md Part
+  H.7), and a slot is held until its socket closes. Measured with tiny bodies at a limit of 4:
+  concurrency 2 -> 0% reset, 4 -> 25%, 8 -> 12%, 24 -> 25% - resets begin **at** the ceiling.
+  **Before calling such a reset a defect, run the all-small-bodies control** - two minutes, and it
+  separates the feature under test from the connection ceiling.
 
-Both halves of the second trap generalise into one rule for any test that exceeds the ceiling:
-**assert the property your feature owns, not that every client is served.** A body-cap test owns
-"every client that IS answered is answered correctly"; being answered at all is the ceiling's
-business. Pair that with a floor on how many were answered, or the test passes vacuously on a run
-where nearly everything was refused - the same "assert a minimum engagement beside every ceiling"
-habit the section above states for device scripts.
+The rule for any test that reaches the ceiling: **assert the property your feature owns, not that
+every client is served.** A body-cap test owns "every client that IS answered is answered
+correctly"; being answered at all is the ceiling's business. Pair that with a floor on how many
+were answered, or the test passes vacuously on a run where nearly everything was refused - the
+same "assert a minimum engagement beside every ceiling" habit as for device scripts.
+
+## Measuring heap and serving under load
+
+Rules from the sittings that set `max_connections = 6`; results and evidence:
+`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R (the removed sweep tool's recipe: its §10).
+
+**Fix the question and the pass criterion before measuring.**
+- **Stable** = zero true failures **and** zero device lines matching `MEMORY_ERROR_MARKERS`,
+  caught-and-logged ones included. A reset before any response at the ceiling is a refusal and
+  expected (`http_client.is_ceiling_close()`, owner's rule); everything else — a short body, a
+  4xx/5xx, a timeout — is a failure.
+- **Peak is not rounds.** Rounds of N parallel requests with pauses are typical load and overstate
+  free heap (§7R.4). Peak is as many back-to-back clients as the limit plus forced internal work (the
+  hammer test's dispatch-only SGP40 reset PUT every 3 s), on the full task graph, over every path a
+  page load really fetches (`/js/app.js` included).
+- **Check every body, not the status.** A static body against a validated idle reference and its
+  `Content-Length`, a JSON body by parsing. The reference itself must be a 200 whose non-empty body
+  equals its `Content-Length`, retried: every device-script boot drops and rejoins WLAN at ~6 s
+  uptime.
+
+**Separate the verdict from the measurement.**
+- An instrument that changes the system may measure but not judge: a run that calls `gc.collect()`
+  before each sample gives the exact live set, and its stability verdict is not evidence. Take the
+  verdict from the least-instrumented run that can give it, the heap figure from the run that
+  measures it exactly — two runs rather than one approximate one.
+- **Run the control**: the same load with nothing on the device but the task graph.
+- **Price the instrument**: a device script's own code and globals cost heap production's frozen
+  `main.py` does not pay (2,720 B: its `gc.mem_alloc()` after a collect against an import-only
+  script's, §7R.4); samplers cost ~10-20 % of throughput. Report heap both as measured and
+  production-equivalent, as a percentage of `mem_info`'s total (the linker's
+  `0x20040000 − __GcHeapStart` minus the GC's own tables, ~4.3-4.5 KB scaling with heap, §7R.1).
+- **rp2 has no exact end-of-GC signal** — `__del__` never runs on user-class instances and
+  `MICROPY_PY_WEAKREF` is off — so a sampler that never collects cannot find the live set (§7R.4,
+  §9). Read `_open_conns.value` as a plain int (no coroutine, no allocation); an `await`-less
+  `get_value()` is a coroutine object, always truthy.
+
+**Re-derive a tool's printed summary from the raw output when a label looks wrong**, and remember
+a minimum from a 5 s snapshot bounds the true peak from one side only.
+
+**Count on both sides, and treat a gap as a finding.** Wrap `_open_conns.increment` to count every
+increment above the limit — installed as soon as `sensortask_dev.webserver` exists, not at a
+`READY` line, or the first seconds of load reach only the host's count. Device allocation lines come
+in pairs per failure (the `MemoryError` and the webserver's `Unhandled exception in route
+handler`), so lines ÷ 2 = host 500s.
+
+**Verify the image before its figures count.** Read every lwIP macro back out of the firmware
+(`micropython_overrides.read_lwip_macros_from_build()`), run `check_lwip_ensemble()` at the image's
+limit, and check the linker heap against §7R.1's per-connection formula. On the board: `/system`'s
+`build.buildDate`, static `Content-Length`, `gzip -t`. Local-only images (a
+`max_connections`/`[lwip]` edit) are built, recorded by recipe and reverted at once; keep each
+`.uf2` aside so a later level can reflash without a rebuild.
+
+**One fresh boot per data point, and enough of them.** Failures near the wall are probabilistic, so
+zero failures in one boot proves little (§7R.4); the heap margin separates neighbouring limits. The
+bench tests' assertion messages carry only `output[-2000:]` of device output and host tallies print
+after it, so a one-boot sweep loses which level broke: per-level answers need one boot per level.
+
+**Holding a ceiling open** (`bench/test_heap_under_connection_ceiling.py`) needs five layered
+measures, each visible only once the one above was in: no connection outlives the SPECIFICATION.md
+Part H.7.1 timeouts, so holders drip a header line and recycle (`_RECYCLE_S`); started together they
+expire together, so each is staggered by `i × _RECYCLE_S / N`; a connection counts as held only once
+a 0.3 s read of it stays silent (a refusal answers at once); the holder threads are stoppable by the
+test's own `stop` and joined; and since `run_isolated()` leaves `main.py` stopped, the test restores
+the board — `harness.restore_board_to_serving()`: `kick_all_stations()`, `hard_reset()`, wait for
+HTTP — in its own `finally`. `harness.discover_max_connections()` and
+`test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` hold theirs with
+`harness.HELD_REQUEST_LINE` (`HOLD / HTTP/1.0`) and close with a plain FIN: EOF ends microdot's
+headers and it answers what was asked, so a held socket costs only a small 405 and is released
+the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
+
+- **The ceiling probe** (`discover_max_connections()`) dwells 0.3 s per step and pads every held
+  connection with a header line (`HELD_PAD_LINE`) per step, so the per-call timeout never frees a
+  slot mid-walk and only the outer cap bounds it (`probe_limit` 40 × 0.3 s). It fails loudly if a
+  held connection answers instead of staying open, and re-checks every counted socket is still open
+  when the refusal lands. A connect that is refused or times out is the wall itself, counted rather
+  than raised, with its own 2 s timeout apart from the read's, so a slow handshake is never read as
+  a held connection. After a successful walk it waits until the whole discovered ceiling can be
+  held at once again — not one slot — then allows `settle_s` for its own check connections to
+  release theirs, backing off the same interval after a partial set; after a failed walk it drains
+  one slot best-effort and keeps the walk's own error as the headline.
+- **Pinned by the pytest tier.** `tests_scripts/test_request_timeout_ceiling.py` reads both
+  timeouts from `src/` and keeps the probe's dwell and the holder's drip under `per_call_timeout_s`,
+  the whole walk and the holder's recycle under `outer_cap_s`; against a loopback server it checks
+  the holder keeps a parked connection through every drip until its recycle time, replaces one a
+  server answered, never counts one against a server that refuses everything, starts nothing when
+  the script's server never answers, and ends once its test sets `stop`.
+  `tests_scripts/test_ceiling_probe.py` runs the probe and its drain wait against a loopback server
+  shaped like `_serve()`: the walk finds the ceiling, padding outlasts an idle timeout a plain walk
+  cannot, a refused connect counts as the wall, a connect timeout never reads as a free slot, the
+  walk returns only once its whole ceiling is admittable again, and an answered walk, an exhausted
+  `probe_limit`, a connection closed mid-walk and an RST refusal each fail or count by name.
+  `tests_scripts/test_bench_harness_helpers.py` covers the readiness wait, the board restore's call
+  order and the error-log comparison, and pins every bench thread worker to catch
+  `http_client.HTTP_ERROR` as well as `OSError`.
+- **Both instruments that wait for a device script's own server** first let main.py's go quiet
+  (`harness.wait_for_script_server()`), so main.py can never answer the readiness probe.
+
+**Bench traps** (occurrences: §7R.5).
+- Leave > 45 s between a reset and the next `mpremote` attach; a watchdog reset ~9 s after an early
+  attach is the likely, unconfirmed cause of one dead run.
+- After a reset or a flash the board can fall back to hotspot mode; `kick_all_stations()` +
+  `hard_reset()` recovers it, occasionally only on a second try.
+- After an unexpected reset, read `machine.reset_cause()` over `mpremote exec` before anything
+  flashes or reboots the board; `journalctl -k` times the USB disconnect.
+- A `pkill -f`/`pgrep -f` wait loop matches its own command line; list by PID or wait on a log marker.
+- A running process keeps its loaded code, while a new invocation of a host tool re-reads it and its
+  device script — don't edit either between chained runs.
+- A FRAM pair E31 (status byte not IDLE at a write) + W73 (block 1 invalid, restored from block 0)
+  is what a block write cut off by a reset leaves; the two-copy scheme recovers it.
 
 ## The ISL29125 mock-conformance probe
 
@@ -411,10 +511,10 @@ a live question:
   actually honor it?~~ — **resolved: yes.** See the "WiFi reconnection flakiness" finding below —
   `kick_all_stations()` (built on this primitive) is the confirmed fix.
 - **`nmcli -g IP4.ADDRESS`/`IP4.GATEWAY device show <iface>`'s exact output shape** (CIDR-suffixed
-  address vs. plain gateway) is well-established, long-stable nmcli behavior, but this session's
-  sandbox has no systemd/D-Bus to actually run NetworkManager against and confirm live - unlike
+  address vs. plain gateway) is well-established, long-stable nmcli behavior, but the authoring
+  sandbox had no systemd/D-Bus to actually run NetworkManager against and confirm live - unlike
   `nmcli device wifi connect`'s own syntax, which *was* confirmed directly against real `nmcli
-  --help` output (installed in this sandbox specifically to check it) during this same session. See
+  --help` output (installed in that sandbox specifically to check it). See
   `bench_control.BenchBridge.own_ip_on()`/`gateway_ip()`'s own docstrings.
 - **A permanent-WLAN-deactivation risk in the role-reversal scenario's own stage 6, found during a
   second, deeper re-audit of this tier's claims against `src/asy_wifi_service.py`**: by stage 6 the
@@ -461,8 +561,6 @@ a live question:
   check on a previous connection (this bench's own repeated automated test runs are a plausible
   source) — forgetting the saved network and rejoining fresh rules this out. No code changed as a
   result of this investigation.
-- **`max_connections=4` real client-visible rejection under a realistic multi-client burst** — see
-  BACKLOG.md open question 7 for the full finding and the still-open raise-the-cap decision.
 - **This whole tier's log-based synchronization depends on the DUT's live `DebugLevel` being high
   enough — confirmed directly, the hard way (2026-09-04): a full 77-test bench run produced 2 real
   failures + 48 errors, none of them a real regression.** `tests_hardware/conftest.py`'s `dut_ip`
@@ -695,7 +793,7 @@ tests closed these (54 -> 65, `bench/test_network_resilience.py` plus two new
   table PREROUTING DNAT-to-loopback redirects the real port to a local rogue UDP responder that
   answers every query with a fixed non-protocol payload, closing BACKLOG.md's open question #5's
   "garbage response" half specifically (the *unresponsive* half was already covered). Flagged the
-  same way `own_ip_on()`/`gateway_ip()` already were: this session's sandbox has no systemd/D-Bus to
+  same way `own_ip_on()`/`gateway_ip()` already were: the authoring sandbox had no systemd/D-Bus to
   confirm the DNAT combination against a real NetworkManager-managed bridge, so it's a standard,
   well-documented iptables pattern, not something verified live here.
 - **Real socket-limit degradation** (`test_connections_at_and_above_the_real_socket_limit_degrade_cleanly`):
@@ -1031,13 +1129,13 @@ coverage this specific hazard can ever have, by construction of `src/` itself - 
 rather than left as a silent asymmetry between the two tiers.
 
 Same honesty note as the Seventh pass: none of this pass's changes have been run against real
-hardware either (still no go-ahead this session) - `ruff`/`mypy` clean, structurally consistent with
+hardware either (no go-ahead at the time) - `ruff`/`mypy` clean, structurally consistent with
 proven scripts, but unverified on silicon until a real bench session confirms it.
 
 ## Ninth pass - auditing the flash-tier/bench-tier bus-hazard pairing itself, and a real miscoverage found
 
 Direct follow-up question: does *every* pre-existing flash-tier bus-hazard test (not just the ones
-this session added) actually have a bench-tier counterpart? Checking systematically found one
+earlier passes added) actually have a bench-tier counterpart? Checking systematically found one
 genuine, surprising miscoverage plus two closeable gaps:
 
 - **SGP40's general-call hazard has ZERO real bench-tier coverage, despite `test_bus_concurrency_
@@ -1069,7 +1167,7 @@ genuine, surprising miscoverage plus two closeable gaps:
   one, right next to the existing note.
 
 Same honesty note again: the two new/closed items above are `ruff`/`mypy`-clean but unverified
-against real silicon this session.
+against real silicon when written.
 
 ## Tenth pass - full test-suite sweep for tier/layering completeness and wrongly-trusted tests, beyond bus-hazard (project owner, 2026-09-15, BACKLOG.md HIGH PRIORITY item)
 
@@ -1188,7 +1286,7 @@ never asserts the reset's own effect) but says so in its own comment - not a new
 Ninth pass's bug, just worth naming.
 
 Same honesty note as every real-hardware addition in this file: the new/changed files above are
-`ruff`/`mypy`-clean but unverified against real silicon this session.
+`ruff`/`mypy`-clean but unverified against real silicon when written.
 
 ## Persistence-write gating: one global flag plus an AND-gated extra flag
 

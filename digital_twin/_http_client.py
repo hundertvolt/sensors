@@ -26,9 +26,12 @@ class HttpResponse:
     # dict - hence dict rather than a bare value. The value side stays Any because callers index
     # nested levels, which no non-Any JSON alias expresses without a cast at every site.
     def json(self) -> "dict[str, Any]":
-        # json.loads()'s stub types its argument AnyStr and so rejects bytearray - a stub gap,
-        # not a runtime one: mod_json_loads() reads through mp_get_buffer_raise(), the generic
-        # buffer protocol bytearray implements (confirmed against the pinned source).
+        # Checked strictly first: the interpreter's json.loads() parses a separator slip the
+        # browser's JSON.parse() rejects. Its stub types the argument AnyStr, refusing bytearray -
+        # a stub gap only: mod_json_loads() reads any buffer (confirmed against the pinned source).
+        from _strict_json import check_strict_json  # here, not at the top: tests/ is absent from a standalone twin's path
+
+        check_strict_json(self.body)
         decoded: dict[str, Any] = json.loads(self.body)  # type: ignore[type-var]
         return decoded
 
@@ -42,8 +45,18 @@ def build_request(method: str, path: str, host: str, json_body: "dict[str, objec
     return ("\r\n".join(lines) + "\r\n\r\n").encode() + body
 
 
+class CeilingRefusedError(OSError):
+    """The server closed without writing any response at all - asy_webserver_service.py's
+    reject-when-full branch. An OSError subclass because that is what a refusal is to every caller,
+    and whether the peer sees FIN or RST is kernel TCP state that src/ does not choose."""
+
+
 def parse_status_line(line: bytes) -> int:
-    # e.g. b"HTTP/1.1 200 OK\r\n" -> 200
+    # e.g. b"HTTP/1.1 200 OK\r\n" -> 200. An EMPTY line is not a malformed response, it is a
+    # connection closed before one was written - the same case tests_hardware/http_client.py's
+    # CEILING_CLOSE covers by including http.client.BadStatusLine.
+    if not line:
+        raise CeilingRefusedError("server closed the connection without writing a response (reject-when-full)")
     parts = line.split(b" ", 2)
     if len(parts) < 2:
         raise ValueError(f"malformed HTTP status line: {line!r}")

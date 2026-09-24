@@ -17,7 +17,7 @@ from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
 from microdot import Microdot, Request, Response  # type: ignore[import-not-found]
 
 import config_manager as cm
-from asy_webserver_service import SettingsGroup, WebserverService, _stream_dict_response, _TimeoutStreamProxy
+from asy_webserver_service import SettingsGroup, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
 
 try:
     from typing import TYPE_CHECKING
@@ -1219,6 +1219,52 @@ def test_f1_a_slot_freed_by_reclaim_accepts_the_next_connection_immediately() ->
     run_timed(scenario(), timeout_s=5.0)
 
 
+class _GatedCloseWriter(_ScriptedWriter):
+    # wait_closed() returns only once the test opens the gate - a close lwIP is still finishing.
+    def __init__(self, gate: "asyncio.Event") -> None:
+        super().__init__()
+        self._gate = gate
+
+    async def wait_closed(self) -> None:
+        self.wait_closed_called = True
+        await self._gate.wait()
+
+
+def test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_written() -> None:
+    # Settled (SPECIFICATION.md H.7): the client already holds its whole response, yet the slot counts
+    # until _close_writer() returns - its heap and pcb are still live, and the board is CPU-bound, so
+    # an earlier admission serves nothing more. The ~70 % refusals of back-to-back clients follow.
+    service, _app = _make_service(max_connections=1, per_call_timeout_s=5.0, outer_cap_s=5.0)
+
+    async def scenario() -> None:
+        gate = asyncio.Event()
+        closing = _GatedCloseWriter(gate)
+        reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True)
+        task = asyncio.get_event_loop().create_task(service._serve(reader, closing))
+        try:  # the gate always opens: a task left parked on it would wake inside a later test's loop
+            for _ in range(200):
+                if closing.wait_closed_called:
+                    break
+                await asyncio.sleep(0.01)
+            assert closing.wait_closed_called, "the connection never reached its close"
+            assert closing.written.startswith(b"HTTP/1.") and b"\r\n\r\n" in closing.written, closing.written
+            held = await service._open_conns.get_value()
+            assert held == 1, f"the response is out but the close is not; the slot must still count, got {held}"
+
+            refused = _ScriptedWriter()
+            await service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True), refused)
+            assert refused.written == b"" and refused.close_called  # refused like any over-ceiling client
+        finally:
+            gate.set()
+            await task
+        assert await service._open_conns.get_value() == 0
+        admitted = _ScriptedWriter()
+        await service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True), admitted)
+        assert admitted.written.startswith(b"HTTP/1."), admitted.written
+
+    run_timed(scenario(), timeout_s=5.0)
+
+
 # F.2 - mid-request, headers/request-line
 
 
@@ -1565,6 +1611,60 @@ def test_close_writer_logs_a_persisted_warning_when_wait_closed_raises() -> None
     assert service.pr.err_count == 1
 
 
+def test_a_close_whose_own_warning_runs_out_of_heap_still_frees_the_slot() -> None:
+    # At the limit's extreme the heap empties (Part H.7), so the warning a failed close() logs can
+    # itself raise MemoryError; the slot must be freed anyway, or every later connection is refused.
+    service, _app = _make_service(max_connections=1)
+
+    async def out_of_heap(*_args: "Any", **_kwargs: "Any") -> None:
+        raise MemoryError("simulated exhausted heap")
+
+    service.pr.wrn_s = out_of_heap  # type: ignore[method-assign]  # deliberate monkeypatch
+    for _ in range(3):
+        try:
+            run_timed(service._serve(_ClosedReader(), _RaisingCloseWriter()))
+        except MemoryError:
+            pass  # escaping is acceptable here; keeping the slot is not
+        assert run(service._open_conns.get_value()) == 0
+
+
+class _HangingWriter(_ScriptedWriter):
+    async def awrite(self, data: bytes) -> None:
+        await asyncio.Event().wait()
+
+
+def test_a_write_phase_timeout_is_logged_once_not_twice() -> None:
+    # A write timeout escapes microdot (it catches OSError only) and reaches _serve()'s own log;
+    # the proxy logging it as well counted one reclaimed connection as two warnings.
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=2.0)
+    request = _request_bytes("GET", "/status")
+    run_timed(service._serve(_ScriptedReader([(0.0, request)]), _HangingWriter()), timeout_s=2.0)
+    entry = next(iter(run(service.get_error_counter()).values()))
+    assert entry["ErrCount"] == 1, entry
+    assert run(service._open_conns.get_value()) == 0
+
+
+class _ResetReader:
+    # A peer that reset mid-request: modlwip raises ECONNRESET on the read, then frees the pcb.
+    async def readline(self) -> bytes:
+        raise OSError(104, "ECONNRESET")
+
+    async def readexactly(self, _n: int) -> bytes:
+        raise OSError(104, "ECONNRESET")
+
+
+def test_nothing_is_written_to_a_peer_whose_read_saw_a_reset() -> None:
+    # microdot mutes the reset and answers 400 anyway; on silicon that write reaches tcp_write(NULL)
+    # (state 6 passes modlwip's error check), logs a spurious warning and can spin a slot for 5 s.
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=1.0)
+    writer = _ScriptedWriter()
+    run_timed(service._serve(_ResetReader(), writer), timeout_s=2.0)
+    assert writer.written == b"", writer.written
+    assert writer.close_called is True
+    assert service.pr.err_count == 0, service.pr.err_count
+    assert run(service._open_conns.get_value()) == 0
+
+
 def test_timeout_stream_proxy_close_and_wait_closed_forward_to_the_wrapped_stream() -> None:
     # Direct coverage of the two Stream-forwarding methods ext/microdot.py never calls in Section
     # F's scenarios (close() is sync; wait_closed() only ever reaches the raw writer, via
@@ -1834,6 +1934,123 @@ def test_g_static_index_filename_is_configurable() -> None:
     res = run(app.dispatch_request(_make_request(app, "GET", "/", None)))
     assert res.status_code == 200
     assert res.body.read() == b"custom index"
+
+
+# The per-write bound on the wire (SPECIFICATION.md Part I.3). Build-independent: a synthetic
+# mount and a stub sensor whose sizes span many far-below-chunk objects, every edge of the 256 B
+# chunk, and objects that take many chunks - read back write by write, as a socket would see them.
+
+_WIRE_CHUNK_BYTES = 256  # WebserverService's chunk_bytes default, as observed from outside
+_TINY_SIZES = tuple(range(64))
+_EDGE_SIZES = (127, 128, 129, 255, 256, 257, 511, 512, 513, 767, 768, 769)
+_LARGE_SIZES = (1023, 1024, 1025, 9292, 65553)  # 9292: the real page the bench sitting saw cut off
+
+
+class _ChunkRecordingWriter(_ScriptedWriter):
+    # Keeps every awrite() apart: the bound under test is per write, which .written erases.
+    def __init__(self) -> None:
+        super().__init__()
+        self.chunks: list[bytes] = []
+
+    async def awrite(self, data: bytes) -> None:
+        self.chunks.append(bytes(data))
+        await super().awrite(data)
+
+
+def _get_on_the_wire(service: "WebserverService", path: str) -> "tuple[str, dict[str, str], list[bytes]]":
+    writer = _ChunkRecordingWriter()
+    run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", path))], eof=True), writer), timeout_s=5.0)
+    head = writer.chunks[0]  # the whole header block is one write (_TimeoutStreamProxy.awrite)
+    assert head.endswith(b"\r\n\r\n") and head.count(b"\r\n\r\n") == 1, head
+    lines = head.decode().split("\r\n")
+    headers = dict(line.split(": ", 1) for line in lines[1:] if line)
+    return lines[0].split(" ")[1], {k.lower(): v for k, v in headers.items()}, writer.chunks[1:]
+
+
+def _patterned(size: int) -> bytes:
+    return bytes((i * 7 + size) & 0xFF for i in range(size))  # distinct per size, so no two files match
+
+
+def test_g3_every_static_file_arrives_whole_with_its_length_in_writes_of_at_most_256_bytes() -> None:
+    sizes = _TINY_SIZES + _EDGE_SIZES + _LARGE_SIZES
+    mount = _mount_static_fixture({f"f{size}.bin": _patterned(size) for size in sizes})
+    service, _app = _make_service(static_mount=mount)
+    for size in sizes:
+        status, headers, body = _get_on_the_wire(service, f"/f{size}.bin")
+        assert status == "200", (size, status)
+        # Without Content-Length this HTTP/1.0 body ends only at FIN, so a cut-off page looked whole.
+        assert headers.get("content-length") == str(size), (size, headers)
+        assert b"".join(body) == _patterned(size), size
+        assert max(len(chunk) for chunk in body) <= _WIRE_CHUNK_BYTES, (size, [len(c) for c in body])
+        assert all(len(chunk) == _WIRE_CHUNK_BYTES for chunk in body[:-1]), (size, [len(c) for c in body])
+    assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 0
+
+
+def test_g3_a_json_route_mixing_tiny_medium_and_huge_values_is_written_in_bounded_pieces() -> None:
+    data: dict[str, Any] = {f"t{i}": i for i in range(300)}  # many fragments far below the cap
+    data.update({f"m{width}": "x" * width for width in (40, 127, 128, 200, 240, 250)})  # near the cap
+    data["huge_list"] = list(range(0, 28000, 7))  # one value worth ~80 pieces
+    data["huge_dict"] = {f"k{i}": [i, "v" * (i % 50)] for i in range(150)}
+    stub = _NestedCfgModule("STUB", values={}, data=data)
+    service, _app = _make_service(sensors=[stub])
+    status, headers, body = _get_on_the_wire(service, "/measurements")
+    assert status == "200"
+    assert headers.get("content-length") == str(sum(len(chunk) for chunk in body))
+    assert json.loads(b"".join(body)) == {"STUB": data}
+    assert max(len(chunk) for chunk in body) <= _WIRE_CHUNK_BYTES, sorted(len(c) for c in body)[-5:]
+    assert len(body) > 100  # the huge values really were split, not merely absent
+
+
+def test_g3_one_chunk_bytes_parameter_bounds_json_pieces_and_static_reads_alike() -> None:
+    # The two must never drift apart: one constructor value drives both, at a size of neither default.
+    mount = _mount_static_fixture({"page.bin": _patterned(1000)})
+    stub = _NestedCfgModule("STUB", values={}, data={f"t{i}": "z" * (i % 30) for i in range(120)})
+    service, _app = _make_service(sensors=[stub], static_mount=mount, chunk_bytes=100)
+    for path in ("/page.bin", "/measurements"):
+        _status, _headers, body = _get_on_the_wire(service, path)
+        assert max(len(chunk) for chunk in body) <= 100, (path, sorted(len(c) for c in body)[-3:])
+        assert len(body) > 5, path  # really chunked at 100, not merely small
+    _status, _headers, body = _get_on_the_wire(service, "/page.bin")
+    assert [len(chunk) for chunk in body] == [100] * 10 + [0]  # microdot reads on until a short read
+
+
+class _BodyFailingWriter(_ChunkRecordingWriter):
+    # Takes the first write, then fails like a peer that vanished mid-response.
+    async def awrite(self, data: bytes) -> None:
+        if self.chunks:
+            raise OSError(104, "ECONNRESET")
+        await super().awrite(data)
+
+
+def test_g3_the_header_block_is_one_write_so_a_cut_response_still_carries_its_length() -> None:
+    # microdot writes each header apart, and a client reading EOF mid-headers takes it as their end:
+    # a 200 with no Content-Length and no body, read as complete (MEASUREMENTS §7R.5's empty 200).
+    mount = _mount_static_fixture({"page.bin": _patterned(1000)})
+    service, _app = _make_service(static_mount=mount)
+    for path in ("/page.bin", "/status", "/measurements", "/no-such-page"):
+        _status, headers, _body = _get_on_the_wire(service, path)  # asserts the one-write head itself
+        assert "content-length" in headers, (path, headers)
+    writer = _BodyFailingWriter()
+    run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", "/page.bin"))], eof=True), writer), timeout_s=5.0)
+    assert len(writer.chunks) == 1, writer.chunks
+    assert writer.chunks[0].startswith(b"HTTP/1.0 200 OK\r\n") and b"Content-Length: 1000\r\n" in writer.chunks[0], writer.chunks
+
+
+def test_g3_a_zero_chunk_bytes_is_clamped_so_a_static_read_still_ends() -> None:
+    mount = _mount_static_fixture({"page.bin": _patterned(5)})
+    service, _app = _make_service(static_mount=mount, chunk_bytes=0)
+    status, _headers, body = _get_on_the_wire(service, "/page.bin")  # a read(0) loop would time out here
+    assert status == "200" and b"".join(body) == _patterned(5)
+
+
+def test_g3_a_single_scalar_longer_than_the_cap_is_the_one_piece_allowed_past_it_and_stays_whole() -> None:
+    # _PieceWriter never splits a fragment, so this is the documented limit, not a bound: no
+    # source ships a scalar near it today (Part I.3's need table, <= 192 B per source).
+    stub = _NestedCfgModule("STUB", values={}, data={"small": 1, "scalar": "y" * 600, "after": 2})
+    service, _app = _make_service(sensors=[stub])
+    _status, _headers, body = _get_on_the_wire(service, "/measurements")
+    assert [chunk for chunk in body if len(chunk) > _WIRE_CHUNK_BYTES] == [json.dumps("y" * 600).encode()]
+    assert json.loads(b"".join(body)) == {"STUB": {"small": 1, "scalar": "y" * 600, "after": 2}}
 
 
 # G.2 - hotspot-mode captive-portal redirect fallback (SPECIFICATION.md Part A.5).
@@ -2221,10 +2438,14 @@ def test_h2_stream_module_names_with_special_characters_are_correctly_escaped() 
     assert set(errcount.keys()) == {'SGP"40', "WEBSERVER"}
 
 
+_HAMMER_PIECE_BUDGET = 256  # the firmware's chunk_bytes default, restated: a const() is not a
+# module attribute, so it cannot be imported. No margin - pieces are bounded by the cap itself.
+
+
 def test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_not_one_growing_blob() -> None:
     # Real-hardware finding: 17 registered modules joined into one "errcount" piece reached ~4.9KB
     # - nearly the whole pre-streaming aggregate, and enough to cause a reproducible MemoryError.
-    # Simulates that scale and checks _coalesce_json_fragments() splits it into bounded pieces.
+    # Simulates that scale and checks the _PieceWriter splits it into bounded pieces.
     modules = []
     for i in range(20):
         m = _FakeModule(f"MODULE{i}")
@@ -2235,15 +2456,103 @@ def test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_no
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     chunks = list(res.body)
     encoded = [c.encode() if isinstance(c, str) else c for c in chunks]
-    # A generous margin over _MAX_STATUS_PIECE_BYTES for the small fixed prefix/suffix
-    # _append_coalesced_object() fuses onto the first/last batch - the point being asserted here is
-    # "nowhere near the ~4.9KB real-hardware failure size", not an exact byte count.
-    assert all(len(c) < 1200 for c in encoded), [len(c) for c in encoded]
+    # Exactly the cap, no margin: every fragment here is far smaller than it, so any piece above it
+    # means a whole module entry was built as one string again (SPECIFICATION.md Part I.3).
+    assert all(len(c) <= _HAMMER_PIECE_BUDGET for c in encoded), [len(c) for c in encoded]
     assert len(chunks) > 5  # proof the errcount section really did split into multiple pieces
     body = json.loads(b"".join(encoded))
     assert len(body["errcount"]) == 21  # 20 fake modules + this service's own WEBSERVER entry
     for i in range(20):
         assert body["errcount"][f"MODULE{i}"] == {"counter": 10, "history": [{"num": 1, "type": "E"}] * 10}
+
+
+def _errcount_log(name: str, count: int, nums: "list[int]", types: "list[str]") -> "dict[str, Any]":
+    return {name: {"ErrCount": count, "ErrNum": nums, "ErrType": types}}
+
+
+def _written(value: object, max_bytes: int = 256) -> "list[str]":
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, max_bytes=max_bytes)
+    writer.add_value(value)
+    writer.flush()
+    return pieces
+
+
+def test_h2_add_value_is_byte_identical_to_json_dumps() -> None:
+    # The whole fix rests on this: MicroPython's OWN json.dumps() text - key order, ", "/": "
+    # separators, escaping, float repr - reproduced by walking the value instead of dumping it.
+    values: list[object] = [
+        None, True, False, 0, -3, 12345678, 1.5, -0.25, 1e-7, "", "plain", 'q"x\\y\n\u00e9', [], {}, (), [[]], {"a": {}},
+        [1, "two", None, 2.5, [3, [4, {"five": 5}]]],
+        (1, (2, 3)),
+        {"GainMeas": None, "CCT": None, "RGB": {"G": None, "B": 0.5, "R": 1}, "Lux": 12.25, "Flags": [True, False]},
+        {1: 2, "k": {"nested": [{"deep": [1, 2, {"deeper": "yes"}]}]}},
+        {True: 1, None: 2, 1.5: 3, -3: 4, (1, 2): 5, 'a"b': 6},  # json.dumps()'s own non-str key rule
+    ]
+    values.extend(
+        _shape_errcount_entry(_errcount_log("M", count, [(i * 37) % 991 - 3 for i in range(length)], [kinds[i % len(kinds)] for i in range(length)]), "M")
+        for count in (0, 1, 12345)
+        for length in (0, 1, 10, 17)
+        for kinds in (("N",), ("E", "W"), ('q"x', "\\", "E"))
+    )
+    for value in values:
+        assert "".join(_written(value)) == json.dumps(value), value
+
+
+def test_h2_add_value_bounds_every_piece_however_large_the_value() -> None:
+    # A value far larger than the cap - the case one json.dumps() per value turned into one large
+    # allocation per value - comes out in pieces no larger than the cap.
+    big = {f"Sensor{i}": {"Reading": i * 1.5, "History": [{"num": n, "type": "E"} for n in range(12)]} for i in range(8)}
+    pieces = _written(big, max_bytes=128)
+    assert "".join(pieces) == json.dumps(big)
+    assert max(len(p) for p in pieces) <= 128, [len(p) for p in pieces]
+    assert len(pieces) > len(json.dumps(big)) // 128
+
+
+def test_h2_errcount_entry_is_never_one_string() -> None:
+    # The allocation this bounds on silicon: a whole 10-element entry is ~290 B, above the holes a
+    # loaded heap keeps at gc.threshold(-1) (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.3).
+    entry = _shape_errcount_entry(_errcount_log("M", 10, list(range(90, 100)), ["E"] * 10), "M")
+    pieces = _written(entry, max_bytes=64)
+    assert "".join(pieces) == json.dumps(entry)
+    assert max(len(p) for p in pieces) <= 64
+
+
+def test_h2_piece_writer_bounds_every_piece_and_never_splits_a_fragment() -> None:
+    fragments = ["a" * n for n in (5, 100, 120, 30, 256, 1, 300, 7, 7)]
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, max_bytes=256)
+    for fragment in fragments:
+        writer.add(fragment)
+    writer.flush()
+    assert "".join(pieces) == "".join(fragments)
+    # A fragment larger than the cap stands alone rather than being cut; everything else fits it.
+    assert [len(p) for p in pieces] == [255, 256, 1, 300, 14]
+
+
+def test_h2_piece_writer_never_holds_more_than_sixteen_pending_fragments() -> None:
+    # Streamed values arrive as many tiny fragments (", ", ": ", single digits); left to grow, the
+    # pending list's own array would be as large as the piece - the allocation the writer bounds.
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, max_bytes=256)
+    fragments = [", ", "1", ": ", '"k"'] * 200
+    for fragment in fragments:
+        writer.add(fragment)
+        assert len(writer._group) <= 16, len(writer._group)
+    writer.flush()
+    assert "".join(pieces) == "".join(fragments)
+    assert max(len(p) for p in pieces) <= 256
+    assert min(len(p) for p in pieces[:-1]) > 200  # still full pieces, not one per 16 fragments
+
+
+def test_h2_piece_writer_flush_is_idempotent_and_an_empty_writer_adds_nothing() -> None:
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, _WIRE_CHUNK_BYTES)
+    writer.flush()
+    writer.add("x")
+    writer.flush()
+    writer.flush()
+    assert pieces == ["x"]
 
 
 # -- H.3: gc.threshold() companions to the real-hardware hammer-load investigation ---------------
@@ -2314,7 +2623,7 @@ def test_h3_hammer_concurrent_status_requests_stay_valid_with_the_chosen_gc_thre
 
 
 def test_i1_empty_dict_produces_the_same_valid_empty_object_as_plain_json_dumps() -> None:
-    res = run(_stream_dict_response({}))
+    res = run(_stream_dict_response({}, _WIRE_CHUNK_BYTES))
     assert json.loads(status_body(res)) == {}
 
 
@@ -2322,13 +2631,13 @@ def test_i1_output_is_byte_identical_to_microdots_own_single_json_dumps_path() -
     # The whole point of this primitive: identical JSON on the wire, just assembled without ever
     # holding one buffer sized to the full aggregate (see _stream_dict_response()'s own comment).
     result = {"A": 1, "B": {"nested": True}, "C": [1, 2, 3], "D": None}
-    streamed = run(_stream_dict_response(result))
+    streamed = run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))
     plain = Response(result)  # Microdot's own dict path - one json.dumps() over the whole thing
     assert json.loads(status_body(streamed)) == json.loads(plain.body)
 
 
 def test_i1_sets_content_type_and_an_exact_content_length_header() -> None:
-    res = run(_stream_dict_response({"A": 1}))
+    res = run(_stream_dict_response({"A": 1}, _WIRE_CHUNK_BYTES))
     assert res.headers["Content-Type"] == "application/json; charset=UTF-8"
     body = status_body(res)
     assert res.headers["Content-Length"] == str(len(body))
@@ -2339,8 +2648,8 @@ def test_i1_many_entries_are_coalesced_into_size_bounded_batches_not_one_growing
     # _coalesce_json_fragments()/_append_coalesced_object() mechanism, applied here to a flat
     # top-level dict instead of /status's own nested section.
     result = {f"Field{i}": "x" * 100 for i in range(30)}  # ~30*(11+100) bytes, several times over
-    # _MAX_STATUS_PIECE_BYTES if joined into one piece
-    res = run(_stream_dict_response(result))
+    # chunk_bytes if joined into one piece
+    res = run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))
     chunks = list(res.body)
     encoded = [c.encode() if isinstance(c, str) else c for c in chunks]
     assert all(len(c) < 1200 for c in encoded), [len(c) for c in encoded]
@@ -2363,7 +2672,7 @@ def test_i1_a_two_level_measurement_value_serialises_correctly_and_is_not_re_wra
         },
     }
     # status_body() drains res.body, which is a generator - read it once, assert on the result.
-    body = json.loads(status_body(run(_stream_dict_response(result))))
+    body = json.loads(status_body(run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))))
     assert body == result
     assert isinstance(body["ISL29125"]["RGB"], dict)  # a dict, not the string '{"R": 0.1234, ...}'
     assert body == json.loads(Response(result).body)  # byte-for-byte Microdot's own dict path
@@ -2371,12 +2680,10 @@ def test_i1_a_two_level_measurement_value_serialises_correctly_and_is_not_re_wra
 
 def test_i1_a_key_with_special_characters_is_correctly_escaped_not_hand_concatenated() -> None:
     result = {'Weird"Key': 1}
-    res = run(_stream_dict_response(result))
+    res = run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))
     assert json.loads(status_body(res)) == result
 
 
-_HAMMER_PIECE_BUDGET = 1200  # same generous margin over _MAX_STATUS_PIECE_BYTES (1024) as the H.2
-# coalescing test above - not an exact byte count, just "nowhere near" an unbounded aggregate.
 
 
 def _assert_body_is_bounded_stream(res: "Response", path: str) -> bytes:
@@ -2632,7 +2939,143 @@ def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_writ
         gc.threshold(orig_threshold)
 
 
+
+# ---------------------------------------------------------------------------
+# Section G - the backlog knob and its coupling to max_connections
+# (SPECIFICATION.md Part H.7; asyncio.start_server()'s own default is 5)
+# ---------------------------------------------------------------------------
+
+
+def test_backlog_defaults_to_one_above_max_connections() -> None:
+    # Derived, not inherited: start_server()'s own default of 5 silently capped the accept queue
+    # below any raised ceiling, dropping arrivals inside lwIP where src/ could never see them.
+    for ceiling in (1, 3, 4, 7, 12):
+        service, _app = _make_service(max_connections=ceiling)
+        assert service._backlog == ceiling + 1, ceiling
+
+
+def test_an_explicit_backlog_is_honoured_when_it_covers_the_ceiling() -> None:
+    service, _app = _make_service(max_connections=4, backlog=9)
+    assert service._backlog == 9
+
+
+def test_a_backlog_below_the_ceiling_is_clamped_up_never_left_short() -> None:
+    # Clamped rather than raised, matching LockedCounter's own out-of-range convention. buildgen
+    # rejects the same mistake in config, where it can be named against the device that made it.
+    service, _app = _make_service(max_connections=6, backlog=2)
+    assert service._backlog == 6
+
+
+def test_the_server_passes_its_own_backlog_to_start_server() -> None:
+    # The whole point of the knob: inherited, the default of 5 resets the sixth of a burst landing
+    # while the loop is busy, so the value has to reach start_server() rather than merely be stored.
+    service, _app = _make_service(max_connections=7)
+    recorded: dict[str, Any] = {}
+
+    class _FakeServer:
+        async def wait_closed(self) -> None:
+            return
+
+    async def fake_start_server(cb: "Any", host: str, port: int, backlog: int = 5) -> "_FakeServer":
+        recorded["host"], recorded["port"], recorded["backlog"] = host, port, backlog
+        return _FakeServer()
+
+    real_start_server = asyncio.start_server
+    asyncio.start_server = fake_start_server  # type: ignore[assignment]
+    try:
+        asyncio.run(service._run())
+    finally:
+        asyncio.start_server = real_start_server
+    assert recorded["backlog"] == 8, recorded
+
+
+# -- Mutation-found gaps: each test below fails against one specific plausible slip ---------------
+
+
+def test_h2_piece_writer_keeps_a_piece_that_lands_exactly_on_the_cap_whole() -> None:
+    # The cap is inclusive: two fragments summing to exactly max_bytes share one piece, and only
+    # the next one starts a new piece - ">=" would split at the cap and double the write count.
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, max_bytes=4)
+    for fragment in ("ab", "cd", "e"):
+        writer.add(fragment)
+    writer.flush()
+    assert pieces == ["abcd", "e"], pieces
+
+
+def test_h2_a_tuple_value_is_walked_like_a_list_never_dumped_as_one_string() -> None:
+    # json.dumps() renders a tuple as a list, so dumping one whole produces the same text - as a
+    # single allocation the size of the value, which is exactly what the writer exists to avoid.
+    value = tuple(range(60))
+    pieces = _written(value, max_bytes=16)
+    assert "".join(pieces) == json.dumps(value)
+    assert max(len(p) for p in pieces) <= 16, [len(p) for p in pieces]
+
+
+def test_a_streamed_bodys_content_length_counts_bytes_not_characters() -> None:
+    # A device or sensor name is free text; with any non-ASCII character in it, a character count
+    # declares a short body and the client stops reading before the closing brace.
+    res = run(_stream_dict_response({"Name": "Wohnzimmer \u00e4\u00f6\u00fc \u20ac"}, _WIRE_CHUNK_BYTES))
+    body = status_body(res)
+    assert int(res.headers["Content-Length"]) == len(body), (res.headers["Content-Length"], len(body))
+    assert len(body) > len(body.decode())
+    assert json.loads(body) == {"Name": "Wohnzimmer \u00e4\u00f6\u00fc \u20ac"}
+
+
+def test_serve_never_swallows_its_own_tasks_cancellation_and_still_frees_the_slot() -> None:
+    # A shutdown cancels every connection task; swallowed, the task would end "normally" and
+    # whoever cancelled it could never tell - while the slot must be released either way.
+    service, app = _make_service(outer_cap_s=10.0)
+
+    async def _hang(_reader: object, _writer: object) -> None:
+        await asyncio.Event().wait()
+
+    app.handle_request = _hang
+    writer = _ScriptedWriter()
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(service._serve(_ScriptedReader([]), writer))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            return True
+        return False
+
+    assert run_timed(scenario()) is True, "the cancellation was swallowed"
+    assert writer.close_called is True
+    assert run(service._open_conns.get_value()) == 0
+
+
+def test_a_body_that_never_arrives_is_logged_as_a_read_phase_timeout() -> None:
+    # The body is read with readexactly(), not readline(): microdot swallows a timeout there as it
+    # does for the headers, so the proxy's own log is the only trace this connection ever leaves.
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=2.0)
+    request = _request_bytes("PUT", "/status", b"", {"Content-Length": "10"})
+    run_timed(service._serve(_ScriptedReader([(0.0, request)]), _ScriptedWriter()), timeout_s=2.0)
+    entry = next(iter(run(service.get_error_counter()).values()))
+    assert entry["ErrCount"] == 1, entry
+    assert run(service._open_conns.get_value()) == 0
+
+
+class _ResetDuringBodyReader(_ScriptedReader):
+    async def readexactly(self, _n: int) -> bytes:
+        raise OSError(104, "ECONNRESET")
+
+
+def test_nothing_is_written_to_a_peer_that_reset_while_its_body_was_read() -> None:
+    # The same peer-gone rule as a reset during the headers, reached through the other read method.
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=1.0)
+    request = _request_bytes("PUT", "/status", b"", {"Content-Length": "10"})
+    writer = _ScriptedWriter()
+    run_timed(service._serve(_ResetDuringBodyReader([(0.0, request)]), writer), timeout_s=2.0)
+    assert writer.written == b"", writer.written
+    assert run(service._open_conns.get_value()) == 0
+
+
 if __name__ == "__main__":
     import microtest
 
     microtest.run(globals())
+

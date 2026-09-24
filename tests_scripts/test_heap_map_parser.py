@@ -198,6 +198,8 @@ _EMITTERS = (
     "tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py",
     "tests_hardware/device_scripts/heap_headroom_after_full_system_build.py",
     "tests/_boot_contiguity_probe.py",
+    "tests_hardware/device_scripts/heap_under_connection_ceiling.py",
+    "tests_hardware/device_scripts/serving_at_default_gc.py",
 )
 
 
@@ -231,3 +233,69 @@ def test_a_labels_own_endmap_is_what_closes_it() -> None:
     # labels, which is what a plain `.*?ENDMAP` would do.
     found = heap_map.parse_labelled(f"=== MAP first ===\n{_REAL}=== ENDMAP second ===\n")
     assert found == {}
+
+
+def test_placeable_counts_capacity_not_runs() -> None:
+    # The distinction that made a real bench row fail: one big run is a single gap but holds many
+    # blocks, and a simultaneous demand is a question about capacity, not about how many gaps exist.
+    parsed = _parsed()
+    assert parsed.gaps_at_least(4096) == 1
+    assert parsed.placeable(4096) >= parsed.gaps_at_least(4096)
+    assert parsed.placeable(1) == sum(parsed.free_runs)
+
+
+def _need_output(*rungs: tuple[int, list[tuple[str, str, str]]]) -> str:
+    # allocation_need_per_source.py's own line shapes: SIEVE, a mem_info() summary, then TRY/RES.
+    lines = ["CHURN route:/status 1000", "BLOCK=16 PROBES=2"]
+    for max_free_blocks, probes in rungs:
+        lines += ["SIEVE 1", "GC: total: 1000, used: 10, free: 990", f" No. of 1-blocks: 1, 2-blocks: 0, max blk sz: 4, max free sz: {max_free_blocks}"]
+        for label, logged, result in probes:
+            lines.append(f"TRY {label}")
+            if logged:
+                lines.append(logged)
+            lines.append(f"RES {label} {result}")
+    lines.append("RESULT: PASS")
+    return "\n".join(lines)
+
+
+def test_allocation_need_is_the_first_rung_from_which_every_larger_one_is_clean() -> None:
+    text = _need_output(
+        (8, [("a", "", "fail"), ("b", "", "ok")]),
+        (16, [("a", "", "ok"), ("b", "", "fail")]),  # b fails again higher up: its earlier ok was luck
+        (32, [("a", "", "ok"), ("b", "", "ok")]),
+    )
+    assert heap_map.parse_allocation_need(text) == {"a": 16 * 16, "b": 32 * 16}
+
+
+def test_a_caught_and_logged_allocation_failure_counts_as_a_failure() -> None:
+    # I.4(e): a probe that degrades internally still returns normally, so RES says ok - only the log
+    # between its TRY and RES shows it. That must not read as a clean pass.
+    text = _need_output(
+        (8, [("a", "Status stream source failed: SYSTEM memory allocation failed, allocating 300 bytes", "ok")]),
+        (16, [("a", "", "ok")]),
+    )
+    assert heap_map.parse_allocation_need(text) == {"a": 16 * 16}
+
+
+def test_a_probe_that_never_succeeds_reads_as_none() -> None:
+    text = _need_output((8, [("a", "", "fail")]), (16, [("a", "", "fail")]))
+    assert heap_map.parse_allocation_need(text) == {"a": None}
+
+
+def test_a_rung_whose_mem_info_summary_is_missing_is_refused_rather_than_read_as_zero() -> None:
+    # Unrefused, every probe on it would need 0 B and pass any bound without a measurement behind it.
+    text = _need_output((8, [("a", "", "ok")])).replace(" No. of 1-blocks", " (summary reformatted)")
+    with pytest.raises(ValueError, match="no mem_info"):
+        heap_map.parse_allocation_need(text)
+
+
+def test_output_without_its_block_line_is_refused_by_name() -> None:
+    # A capture cut off before the header: every rung's bytes hang on BLOCK=, so there is nothing to size.
+    text = _need_output((8, [("a", "", "ok")])).replace("BLOCK=16 PROBES=2\n", "")
+    with pytest.raises(ValueError, match="no BLOCK= line"):
+        heap_map.parse_allocation_need(text)
+
+
+def test_churn_keeps_a_negative_reading() -> None:
+    # A probe during which a collect ran frees more than it allocates; dropping it hid that probe.
+    assert heap_map.parse_churn("CHURN route:/status 1000\nCHURN source:SGP40 -48\nRESULT: PASS\n") == {"route:/status": 1000, "source:SGP40": -48}

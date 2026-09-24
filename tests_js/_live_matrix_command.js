@@ -19,9 +19,9 @@ const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix",
 // "pretest:coverage" hooks generate it fresh there, via buildgen, before this spawns.
 const MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen";
 const HOST = "127.0.0.1";
-// Distinct from every other fixed port this repo uses - see tests_js/_live_twin_command.js's own
-// PORT comment for the full list; this harness's twin runs alongside that file's in one `npm test` run.
-const PORT = 19412;
+// Clear of every fixed port this repo binds - see tests_js/_live_twin_command.js's own PORT comment;
+// this harness's twin runs alongside that file's (19481) in one `npm test` run.
+const PORT = 19482;
 const READY_TIMEOUT_MS = 20000;
 const SHUTDOWN_TIMEOUT_MS = 15000;
 const APPLY_STATUS_TIMEOUT_MS = 5000;

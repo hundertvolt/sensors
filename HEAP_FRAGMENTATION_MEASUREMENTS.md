@@ -1,15 +1,17 @@
 # Heap fragmentation — confirmed measurements and findings
 
-The measured evidence base for the heap-fragmentation defect, built on branch
-`claude/heap-fragmentation-remediation` (PR #105, base = PR #103's branch). It continues the Part 2
+The measured evidence base for the heap-fragmentation defect, begun in PR #105 and
+extended through 2026-09-24. It continues the Part 2
 of `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`, deleted on 2026-09-22 once this file superseded it
 and its one unpersisted finding — the external prior art — moved into `SPECIFICATION.md` Part I.1.
 
 **This file is the citation target, not a throwaway.** The rules and current-state facts it
 established are in `SPECIFICATION.md` Part I, CLAUDE.md and BACKLOG.md, as the migration convention
-requires; what stays here is the evidence *behind* them, cited by section from ~30 places across the
-repo — 8 in `SPECIFICATION.md` (Parts B, C, E, F and I), 8 in `REAL_HARDWARE_TEST_QUEUE.md`, and two
-`src/` comments in `asy_fram_driver.py` that cite it directly. It goes when those citations do — not
+requires; what stays here is the evidence *behind* them, cited by section from across the repo —
+`SPECIFICATION.md`, `REAL_HARDWARE_TEST_QUEUE.md`, BACKLOG.md, the READMEs, and two `src/` comments
+in `asy_fram_driver.py`. **§7Q/§7R (2026-09-23/24) are the evidence behind
+`SPECIFICATION.md` H.7's `max_connections = 6`, I.3's 256 B bound and B.14.2's lwIP ensemble.** It
+goes when those citations do — not
 while the spec points at it for detail it deliberately does not carry. References below to
 `HEAP_REMEDIATION_PLAN.md`, and to "the handover's §2.x", are provenance only: both files were
 deleted on 2026-09-22, the plan's open real-hardware rows carried into
@@ -36,13 +38,13 @@ narrowed to the factors that control the defect.
 Note also §2.1's calibration: the twin heap is sized by **fill fraction**, not by copying a number
 from the handover.
 
-Provenance, same markers the handover uses:
+Provenance, same markers the deleted handover used:
 - **[TWIN]** = measured host-side in the digital twin, on a frozen MicroPython 1.29.0 Unix port,
-  by this branch's sessions. Independently reproducible; the harnesses are named in §10.
+  by this investigation. Independently reproducible; the harnesses are named in §10.
 - **[SRC]** = read directly from the code in this repo, verified.
 - **[HW]** = real `dev` bench board. Figures before §7D are cited from the handover, not
-  re-measured — the branch had no go-ahead when they were written. **§7D is this branch's own
-  real-hardware measurement** (go-ahead given 2026-09-18) and supersedes the twin where they
+  re-measured — there was no real-hardware go-ahead when they were written. **§7D is the
+  investigation's first own real-hardware measurement** (go-ahead given 2026-09-18) and supersedes the twin where they
   disagree; §7D.4 names each correction.
 - **[EXT]** = external source, URL given.
 
@@ -58,7 +60,7 @@ churn work (so no collection can intervene — see §1.2).
 
 The sections below are evidence; this is the map of the reasoning that produced them, kept so no
 falsified theory gets re-proposed and so every conclusion carries its strength and its author.
-**[O]** = the project owner's hypothesis, **[C]** = this session's. Standing is one of *confirmed*,
+**[O]** = the project owner's hypothesis, **[C]** = the investigation's. Standing is one of *confirmed*,
 *suggestive*, *refuted*, *withdrawn* (mine, on my own later evidence) or *untested*.
 
 ### 0.1 The owner's hypotheses
@@ -79,7 +81,7 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | O13 | `gc.collect()`, confined to the boot lists - start, between each module, end, and the same for the async setup list - keeps the boot's permanent survivors packed at the bottom of the heap by giving each of them a fitting hole low down, and stays forbidden everywhere else. Clarified by the owner, 2026-09-18: survivors are never moved, and packing the *later* ones low is what was meant by "compacted" | **confirmed exactly as stated, and both halves of the original caveat are now superseded** — the floor it "fell short of" was retired by the owner 2026-09-19 (§7G), and "null at the shipped threshold" was a twin reading at a fixed threshold: on silicon the threshold is what carries the gain into the run phase (§7H.3) | each collect resets the allocator's free-scan index, so the next module's survivors take the lowest fitting hole instead of a hole above the churn's high-water mark - deciles 20/5/4/2/1/5/5/13/4/5 at span 92% become 29/7/0/0/1/0/0/0/32/0 at median gap 224 B (§7A.4), and the number of collects gives a clean dose-response (§7A.2). On the board's own metric at the board's own fill it is worth 3.2-6.9x, reaching 45% of free after `build_system()` and 58% after the task list, against a tripwire of 55-74% that is itself ~5x above the firmware's own worst reachable allocation (§7A.8, §7A.9): the strongest single remedy measured, and still short. At the shipped `gc.threshold(32768)` (§1.5) it changes nothing (§7A.6) |
 | O11 | The survivor population is itself one of the conditions | **confirmed, decisively** | churn alone 0%, survivors alone -18%, both together **-88%** of the largest free block (§6A.11) |
 
-### 0.2 This session's hypotheses
+### 0.2 The investigation's hypotheses
 
 | # | hypothesis | standing | evidence |
 |---|---|---|---|
@@ -527,17 +529,23 @@ is why a 2-block change of one object's size moves the result and why nothing co
 - **Gap 9, parallelism** — the question is now narrower than "not re-run": §0B.6 shows the real
   startup phase has *none*, so §6A.10's added-parallelism arm describes a regime the boot batch
   never enters. What is still untested is whether parallelism matters *after* boot, once the task
-  graph is live (§12).
+  graph is live.
 - ~~Which configuration the [HW] symptom belongs to~~ — **answered from [SRC] the same day**
   (§1.5): the hardware test's device script runs `build_system()` itself, asserts before any
   threshold is set, and only then reports a second, unasserted line with
   `gc.threshold(32768)` applied. The board's 20,592 B is a deliberate no-threshold reading, the twin
-  reproduces it, and the corpus's baseline is the one the hardware test asserts on. What remains
-  untested on hardware is whether the *boot-collect scheme* moves the board the way it moves the
-  twin, which needs a go-ahead and a device-script run, not a new question.
-- **Gap 10, hardware** — unchanged, and no go-ahead. A GC block is 16 B there against 32 B here, so
-  the "1-block objects are immune" boundary in §0B.2 falls at a different byte size on the board and
-  the eligible population may be a different fraction of the whole.
+  reproduces it, and the corpus's baseline is the one the hardware test asserts on. Whether the
+  *boot-collect scheme* moves the board the way it moves the twin is since measured on silicon: it
+  does, by more (§7H.1-§7H.3).
+- **Which threshold the pre-2026-09-24 device-script readings ran at** (§1, §7D, §7F, §7H, the
+  20,592 B): rp2 runs `gc_init()` once, outside the soft-reset loop (§7R intro), so an `mpremote` run
+  may have inherited the boot entry's 32768. The two flash-tier scripts still only print it
+  (`GC_THRESHOLD=`); the next T1 run says which.
+- **Gap 10, hardware** — the defect and both remedies are measured on silicon since 2026-09-18
+  (§7D, §7F, §7H, §7M); what stays unmeasured is the per-object question. A GC block is 16 B there
+  against 32 B here, so the "1-block objects are immune" boundary in §0B.2 falls at a different byte
+  size on the board and the eligible population may be a different fraction of the whole. §7M.4
+  already shows the twin's placement ratios do not transfer at the board's fill.
 
 ## 1. The instrument
 
@@ -2247,7 +2255,7 @@ as "the heap's layout has regressed this far", not as "an allocation is failing"
 allocated, only what is answered: `Request.max_body_length` stays at microdot's 16 KB default, so a
 12 KB `PUT` to any route is read into one contiguous buffer before the 413. `ext/microdot.py` is
 vendored and never edited; the one-line fix belongs next to the existing
-`Request.max_content_length` assignment in `asy_webserver_service.py`. Not this branch's to make -
+`Request.max_content_length` assignment in `asy_webserver_service.py`. Outside the heap work's scope -
 it is a webserver change, not a heap-layout one - but it is the single allocation that decides how
 much contiguity this firmware actually needs.
 
@@ -2257,9 +2265,11 @@ much contiguity this firmware actually needs.
 >
 > **Error 1 — the table's "largest single contiguous allocation" is per-allocation, and never asked
 > how many can be live at once.** `readexactly(content_length)` allocates a fresh `bytes` per
-> request and `max_connections` is 4, so the real simultaneous worst case was **4 x 16,384 =
-> 65,536 B** in four separate contiguous runs, against ~105,000 B free. It is now 4 x 2,048 =
-> 8,192 B.
+> request, so the simultaneous worst case is `max_connections` x the cap: **6 x 2,048 = 12,288 B**
+> at today's limit (SPECIFICATION.md Part H.7), in separate 2,048 B runs — the *largest single*
+> allocation stays 2,048 B. Before I.6's cap, at 4 connections, it was 4 x 16,384 = 65,536 B against ~105,000 B free.
+> The figure scales with the connection ceiling by construction, which is why raising that ceiling
+> is a contiguity question and not only a socket one.
 >
 > **Error 2 — "the tripwire sits about 5x above anything the firmware can be asked to allocate" is
 > now 16x**, because the worst reachable allocation fell to 2,048 B. §7G's thresholds are
@@ -2369,7 +2379,7 @@ at run - and the project already uses the second.
 
 The actual defect is the boot design: it interleaves each module's permanent allocations with ~1 MB
 of same-size-class churn on that allocator with no placement discipline. Neither party alone. What is
-missing is a boot-phase contract, which is what §12's seam + contiguity guard would enforce.
+missing is a boot-phase contract, which is what the seam + contiguity guard (§7L) enforces.
 
 ### 7B.5 Recommendation
 
@@ -2385,7 +2395,7 @@ missing is a boot-phase contract, which is what §12's seam + contiguity guard w
    amendment states what it is.
 4. Keep `threshold(32768)`. Do not lower the floor. Do not take B alone: it fails the tripwire at the
    device script's measurement point and would set the precedent without the design fix.
-5. Add §12's per-module contiguity guard, which restores the sensitivity B takes from the tripwire.
+5. Add the per-module contiguity guard (built: §7L), which restores the sensitivity B takes from the tripwire.
 
 ---
 
@@ -2510,8 +2520,8 @@ the 560k arm is the 6 `k` perturbations `base` has, so the comparison is like fo
 **Only the `k` family is comparable across the two arms — `q` is not, and this had to be found
 before the numbers could be read at all.** The two families (§1.3) perturb by different mechanisms:
 `k` retains one `bytearray(32 * k)` **at the seam**, which is code-path independent and valid in
-both arms; `q` injects `q` transient `bytearray(32)`s **inside `SPIDevice.__aenter__`**. On the base
-branch `FRAM_SPI` enters that async session once per CS cycle (six `async with self._spidev` sites,
+both arms; `q` injects `q` transient `bytearray(32)`s **inside `SPIDevice.__aenter__`**. In the pre-A
+code `FRAM_SPI` enters that async session once per CS cycle (six `async with self._spidev` sites,
 74 entries per blank logger `setup()`), so `q` fires 74 times per logger. Under A the driver takes
 `self._spidev.asy_lock` directly and drives the chip through the synchronous session, so
 `SPIDevice.__aenter__` **never runs on the FRAM path at all** and `q` fires **zero** times. `q`
@@ -2546,7 +2556,7 @@ finding that small-object churn is protective rather than harmful, but it is not
 
 **Gap, stated rather than papered over**: `base` has only the 6 `k` runs at 560k, so whether it too
 drifts with larger seam survivors there is unmeasured. Closing it needs the pre-restructure frozen
-binary rebuilt, which this session overwrote in place.
+binary rebuilt, which was overwritten in place on 2026-09-18.
 
 The cost side of A.1.3's buffer hoisting, which is where the small loss comes from:
 
@@ -2670,10 +2680,10 @@ saving worth under 10% of a block operation's ~3,200 B, and it is not worth 21 m
 
 ---
 
-## 7D. Measure A on real silicon — the first [HW] figures this branch produced (2026-09-18)
+## 7D. Measure A on real silicon — the investigation's first own [HW] figures (2026-09-18)
 
 **Provenance: [HW] throughout.** Real `dev` bench board, real-hardware go-ahead given directly by
-the project owner in the running session. This is the section §7A.7 named as missing ("No hardware.
+the project owner. This is the section §7A.7 named as missing ("No hardware.
 Every figure is [TWIN] ... it is the question that decides whether any of this is needed on a real
 unit") and §1.5 bounded the whole corpus against. It answers it.
 
@@ -2687,8 +2697,8 @@ Measure A's source changes are confined to `asy_fram_driver.py`, `asy_fram_manag
 `asy_spi_driver.py`, and those three files were touched **only** by A's four implementation commits
 (`7132088`, `c621cfb`, `9415902`, `8951387`) since `335479d^` = `ec13efc`. The new synchronous API
 (`session_begin`/`write_sync`/`set_values_sync`/...) has zero references anywhere outside them.
-So the "before" arm is **this branch's tip with exactly those three files checked out at
-`ec13efc`** — isolating A, where the branch-tip form would have dragged in every unrelated merge
+So the "before" arm is **the 2026-09-18 tip with exactly those three files checked out at
+`ec13efc`** — isolating A, where the tip's full form would have dragged in every unrelated merge
 difference as well.
 
 Independent evidence the two images really differ: 2,234,880 B vs 2,237,440 B (+2,560 B), and the
@@ -2828,17 +2838,17 @@ dominant term is **interpreter overhead per transaction**, not wire time.
 
 ### 7D.8 What is still not answered
 
-- **Measure B is unmeasured on hardware.** It was built later the same day (`7ccbe8d`) and measured
+- **Measure B is unmeasured on hardware** (SUPERSEDED: measured on silicon in §7F/§7H). It was built later the same day (`7ccbe8d`) and measured
   in the twin (§7E), so the A+B column of §7B.3 and §7A's whole dose-response remain [TWIN] — but the
   reason is now bench time rather than unbuilt code. The runnable form is
-  `REAL_HARDWARE_HANDOVER_MEASURE_B.md` (queue §1B; **deleted 2026-09-19** once §7H migrated its
-  results), which also carried the instrument §7E.3's
+  `REAL_HARDWARE_HANDOVER_MEASURE_B.md` (**deleted 2026-09-19**; its results are §7F and §7H), which also carried the instrument §7E.3's
   fault made necessary: a device script that reaches the starter list, not just `build_system()`.
-- **The `gc.threshold(32768)` question §1.5 raises is still open at the decisive point.** The
+- **The `gc.threshold(32768)` question §1.5 raises was still open at the decisive point.** The
   device script reads `after_build_system` at MicroPython's reactive default and then sets 32768;
   in every run on both arms the two lines were identical, so the threshold moved nothing *at that
   instant*. That is not the same as measuring the firmware's own boot path under its own threshold
-  from the start, which remains untested on hardware.
+  from the start, which remained untested on hardware. **Answered 2026-09-19 in §7H.3**: set from
+  the start, the threshold holds B's placement gain through the run phase.
 - **The run phase over months of uptime** is still untouched, exactly as §7A.7 says — though §7D.5's
   UART result is the first real-hardware evidence that A helps there.
   **Sharpened 2026-09-19 (§7F.9):** it is not only months that are untouched. On the twin the run
@@ -2956,13 +2966,13 @@ fact from the remedy's side.
 ## 7F. A + B on real silicon — the run §7E was waiting for (2026-09-18, PARTIAL)
 
 **Provenance: [HW] throughout.** Real `dev` bench board, go-ahead given directly by the project
-owner in the running session. Run against `REAL_HARDWARE_HANDOVER_MEASURE_B.md`'s protocol (that
+owner. Run against `REAL_HARDWARE_HANDOVER_MEASURE_B.md`'s protocol (that
 file has since been deleted, its results migrated here).
-**This run is incomplete** — §7F.6 lists exactly what is still owed and why; nothing below depends
-on the missing pieces.
+**This run was incomplete** — §7F.6 lists what it left owed, all of it closed on 2026-09-19 (§7H);
+nothing below depends on the missing pieces.
 
-Arms built per that handover's §4.1 isolation: the AFTER arm is the branch tip; the BEFORE arm is
-the tip with `src/system_service.py` and `buildgen/codegen.py` at `da9bcf1` (= `7ccbe8d^`) and the
+Arms built per that handover's §4.1 isolation: the AFTER arm is the 2026-09-18 tip; the BEFORE arm is
+that tip with `src/system_service.py` and `buildgen/codegen.py` at `da9bcf1` (= `7ccbe8d^`) and the
 device module **regenerated**, so it is A-only. Verified before flashing: freshly generated
 `sensortask_dev` carries **11** `gc.collect()` on the AFTER arm and **0** on the BEFORE arm;
 `src/system_service.py` carries **2** and **0**. The two `.uf2` files differ in 523,556 bytes.
@@ -3014,7 +3024,7 @@ on the AFTER arm.
 **Two rows of this table do not mean what they say, and both were found out after it was written.**
 
 **The threshold row is withdrawn — §7F.8.** It read exactly 49,152 B on both arms where the line
-above differs by 8,720 B. That is the ninth instrument artefact on this branch: the probe pinned its
+above differs by 8,720 B. That is the investigation's ninth instrument artefact: the probe pinned its
 own buffer and returned the first size that succeeded, always `_PROBE_MAX >> k`, and 49,152 is
 `192 KB / 4`. Not a layout figure, not the threshold — the threshold hypothesis was tested and
 refuted separately (the probe returns the same value at `threshold(-1)` and `threshold(32768)` at
@@ -3051,7 +3061,7 @@ collects cannot improve a layout that is not broken, and they cost. The configur
 defect does exist is the in-suite one, and there the same two images give 28,736 B → PASS.
 
 **So P2 is untested, not refuted.** Testing it needs an aged-heap AFTER reading, which §7F.5's
-second defect prevented this session from taking. Anyone reading the §7F.2 table in isolation will
+second defect prevented on 2026-09-18. Anyone reading the §7F.2 table in isolation will
 conclude B is harmful; it is the single most misreadable number in this file.
 
 **Amended 2026-09-19, and the position was only half the reason.** §7F.9 measured the same two arms
@@ -3060,7 +3070,7 @@ about is taken **4 seconds into the run phase**, by which point the twin has alr
 B's gain on every heap size tried — so the 87/89 and 60/70 pairs are run-phase readings on both
 arms, and a fresh heap is not the only thing standing between them and P2. Read at the starter
 loop's own end, where B's second site actually acts, the twin gives A + B **20 / 50 / 59%** against
-A-only's **6 / 5 / 11%**. P2 is still owed on silicon, but it now has an instrument that can see it
+A-only's **6 / 5 / 11%**. P2 was still owed on silicon (confirmed 2026-09-19, §7H.2), but it now had an instrument that can see it
 (`after_starter_loop_end`) and a quantitative prediction to be read against.
 
 ### 7F.5 Two defects in the handover's own method, found by following it
@@ -3090,7 +3100,7 @@ That aged reading is worth keeping on its own: **10,128 B / 10% on the BEFORE ar
 boot sequence** is the worst layout figure this project has measured on silicon, and it is the
 position P2 needs on the AFTER arm.
 
-### 7F.6 What is still owed
+### 7F.6 What it left owed — all closed 2026-09-19 (§7H)
 
 - **The exact AFTER in-suite `largest_block`.** `heap_headroom_after_full_system_build.py` prints
   its `HEAP` lines unconditionally, but `test_memory_stress.py` only surfaces the captured output
@@ -3098,7 +3108,7 @@ position P2 needs on the AFTER arm.
   confirmed by re-running the suite with it; `Board.run_isolated()` captures device stdout into a
   Python string rather than letting it reach the terminal. Getting the number needs a one-line
   change to that test to print the captured output on pass. P1 stands without it.
-  **Done host-side 2026-09-18 (PR #105 session), not yet run:** the test now prints every `HEAP `
+  **Done host-side 2026-09-18, first run 2026-09-19 (§7H.1):** the test now prints every `HEAP `
   line whatever the verdict. `-s` was powerless before because the test never emitted the string at
   all; now that it does, `scripts/run_flash_hardware_suite.sh -s` surfaces the figures on a passing
   run, so the next in-suite run yields the number without having to make the test fail to see it.
@@ -3109,7 +3119,7 @@ position P2 needs on the AFTER arm.
   Two invocations. Everything §7F.2 records stays valid except the withdrawn row.
 - **An aged-heap AFTER reading**, which is what P2 actually turns on (§7F.4), and which needs
   §7F.5's second defect addressed first.
-  **Amended (PR #105 session): it does not.** §7F.5's own run 1 — 10,128 B / 10% on the BEFORE arm,
+  **Amended: it does not.** §7F.5's own run 1 — 10,128 B / 10% on the BEFORE arm,
   taken right after the suite — is a valid aged reading obtained *with* the defect present. The
   defect breaks the saturation **check**, not the reading, so the AFTER arm's aged figure costs one
   invocation at the end of the next suite run. The check itself is replaced rather than repaired:
@@ -3353,7 +3363,8 @@ do not transfer anyway (§1.4). A calibrated-heap layout gate means a `scripts/`
 heapsize decision, which is the owner's call and bigger than this change. Recorded as an option, not
 built.
 
-**`free_above_top_survivor` has never been measured on real hardware**, on any image. Its threshold
+**`free_above_top_survivor` had never been measured on real hardware** when this was written; its
+first silicon run is §7H.4. Its threshold
 is derived from the requirement rather than fitted to a reading, which is the only honest way to set
 it before the first run — but it does mean the first bench run is where it is found out. **A failure
 there is a finding, not automatically a regression**: it would say that long-lived objects do reach
@@ -3437,7 +3448,7 @@ the `before` map is never counted however high it sits.
 
 ## 7H. The 2026-09-19 sitting — P2 settled, the new checks' first silicon run (COMPLETE)
 
-**Provenance: [HW] throughout.** Real `dev` bench board, owner's go-ahead in the running session.
+**Provenance: [HW] throughout.** Real `dev` bench board, owner's go-ahead.
 This sitting closed every item §7F.6 left owed, ran §7G's replacement checks for the first time,
 and overturned one claim §7D.5 made.
 
@@ -3514,6 +3525,11 @@ directly on §1.5 and §7D.8: **the threshold is what carries B's placement gain
 > pushing an already-stable system further from the edge, not the thing that makes it stable. What
 > this measurement adds is only that it also preserves a layout benefit B creates — which is a
 > reason to keep it, never a reason the design may lean on it.
+>
+> **Qualified 2026-09-23 (§7Q):** "stable without the threshold" held for the two tiers cited, not
+> for the board under concurrent HTTP load, which served at most 4 requests at `-1`. Root-caused
+> and fixed in the twin in §7Q; confirmed on silicon in §7R.3 (F′ clean through 8 at rounds load)
+> and §7R.4 (limit 6 clean at peak).
 
 **Stated as one reading per condition, not a repeated measurement.** Two arms x one invocation, and
 the settle-point figure is the one that moves most. Worth repeating before anything is concluded
@@ -3604,11 +3620,11 @@ else in §7D depends on it; A's layout result (§7D.3) is a different measuremen
 
 ---
 
-## 7I. The post-merge full bench run (2026-09-19, owner's instruction — COMPLETE)
+## 7I. The full bench run after the 2026-09-19 base merge (owner's instruction — COMPLETE)
 
 One full bench-tier run at default flags, no arguments, no wear flags, no soak — the mandate of
 `REAL_HARDWARE_HANDOVER_POST_MERGE_BENCH_RUN.md` (since deleted, its results being these), run
-after the branch merged 22 commits of base
+after 22 commits of base were merged in
 plus the `arduino/` import and the ISL29125 promotion. The verdict line in full:
 
 ```
@@ -3619,7 +3635,8 @@ The handover asked for the deselected count to be read rather than the word "cle
 the reference figure** from the two preceding sittings, and **97 passed / 4 skipped** matches the
 reference too. The four skips are the two NeoPixel-rig light programs, the `--allow-flash-cycle`
 reflash smoke test, and the spoofed-off-subnet-source row. **The one failure is W5 — and not on any
-assertion about the body cap** (§7I.2).
+assertion about the body cap** (§7I.2). W1-W5 in §7I/§7J are the five body-cap bench mirrors
+(SPECIFICATION.md Part I.6, results here), not the connection-limit rows W3/W4 of the queue's §4A.
 
 **The image.** `src/` changed by exactly one line since the previously flashed build, and it is a
 comment (`max_content_length`'s own `1.8x` → `1.56x` margin note), so the frozen bytecode is
@@ -3646,7 +3663,7 @@ refilled it:
 | `SYSTEM` | 1 | `W4` |
 | every other module | 0 | — |
 
-**`WEBSERVER` is empty both times**, which is the assertion every queue §1D row makes and the one that
+**`WEBSERVER` is empty both times**, which is the assertion every body-cap bench row (W1-W5) makes and the one that
 matters: a 413 is raised inside vendored Microdot before any of our own code runs, so anything
 there would be a finding about this project. `NTP`'s entries are attributable —
 `test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing` is the second-to-last test
@@ -3714,7 +3731,7 @@ on the board followed, with the same zero-wrong-status result and a wider refusa
 before — 16/8, 19/5 and 20/4 answered/refused — which is the anti-vacuity floor of 4 doing its job
 rather than the row becoming easier to pass.
 
-**The suite's own verdict line is clean for the first time since the queue §1D rows were added:**
+**The suite's own verdict line is clean for the first time since the body-cap rows W1-W5 were added:**
 
 ```
 98 passed, 4 skipped, 27 deselected in 2328.23s (0:38:48)
@@ -3741,7 +3758,7 @@ DELTA boot placement: new_blocks=2169 highest_new_pct=51 new_in_top16K=0 new_in_
 ```
 
 **`retained=0` on every `HEAP ` line**, so queue §2A F5's caveat does not apply and every figure here is
-usable. Against §7H.4's reading on the pre-merge image:
+usable. Against §7H.4's reading on the image before that merge:
 
 | §7G.2 check | threshold | §7H.4 | **§7I** | margin now |
 |---|---|---|---|---|
@@ -3918,8 +3935,8 @@ chokepoint. Closing it surfaced two live defects in the guard itself.
 
 ### 7J.6 State the bench was left in — SUPERSEDED by §7P (2026-09-22)
 
-**Read §7P instead for the board's current state.** The hand-back described below was undone on
-2026-09-22: the board was reflashed from this branch's tip and `DebugLevel` put back to 5. What
+**Not the board's current state (see §7P's note).** The hand-back described below was undone on
+2026-09-22: the board was reflashed with the 2026-09-22 `dev` image and `DebugLevel` put back to 5. What
 stays useful here is the *recipe* — this is still how to hand the board back as an ordinary quiet
 device, and §7P points at it for exactly that.
 
@@ -3962,7 +3979,7 @@ a `DebugLevel` of 0 silences what they parse — confirmed immediately here, whe
 
 **F16**: CI run `35468454090` reported `tests/test_uart_comm_hazard.py` at 95/96, `only 149/150
 hammered transactions completed`. Nothing in this sitting touches the mock tier, and the three
-preceding CI runs on this branch were green. Re-run locally **5 times on the same Unix-port binary:
+preceding CI runs were green. Re-run locally **5 times on the same Unix-port binary:
 96/96 every time**, which is why it was recorded as CI-only and explicitly **not** written off as a
 flake on that evidence. **That caution was right and the framing was wrong**: it reproduces readily
 once the host is loaded the way `scripts/test.sh` itself loads it, and the lead recorded here — that
@@ -4207,6 +4224,11 @@ byte-identical across repeats; the cumulative ones vary a few percent with task 
 | both lists | median depth below seam | 356,576 | 108,352 | 256 KiB | 1.36x / 2.42x |
 | both lists | blocks > 128 KiB up | **0** everywhere | 98 | 32 | — / 3.06x |
 
+**Heap-size independent, re-verified on the settrace-free binary**: wozi measures a batch median of
+**−481,376 B at both `-X heapsize=8M` and `16M`**, a cumulative reach of **16,352 B** at both, and 0
+blocks above the band at both — byte-identical, both arms. So `test.sh`'s fixed heap size needs no
+fill calibration, and the bounds are absolute offsets from the seam.
+
 Two things follow. **The discrimination moved to the starter list**, which is §7E.3's finding
 arriving from the other direction: the batch alone barely moves the frontier once its churn is real
 rather than inflated, while the starter list's 22 tasks still do — 16,352 B live against 141,632 B
@@ -4227,10 +4249,10 @@ what a per-call allocation cost predicts.
 ## 7M. The board's own placement reading — E1-E4 and T7, and the twin's ratios do NOT transfer (2026-09-22)
 
 §7L built the host guard and derived its bounds; the board had never taken the reading. It has now,
-on `dev`, from this branch's own image (`buildDate 2026-09-22T16:11:57Z`), both arms off that one
+on `dev`, from the 2026-09-22 image (`buildDate 2026-09-22T16:11:57Z`), both arms off that one
 image with no reflash. **The headline is that the twin's two transferable ratios do not reproduce
-on silicon**, which is the outcome the (now deleted) boot-contiguity handover's §3 (B9) named in
-advance as "a finding either way" and told this session to record before touching anything.
+on silicon** — named in advance as "a finding either way", to be recorded before anything was
+changed.
 
 ### 7M.1 The instrument
 
@@ -4245,7 +4267,7 @@ assumed: under `mpremote run`, `sys.argv` reads back `[]` and **assigning** it r
 in the same raw-REPL session does reach the run's globals. (Appending to `sys.argv` in place also
 works, but leaves the arm at index 0, with no script-name slot — an off-by-one waiting to happen.)
 
-`_report_checked()`'s existing probe readings were left in place, as the handover asked, so the run
+`_report_checked()`'s existing probe readings were left in place, so the run
 stays comparable with §7H.4.
 
 ### 7M.2 What the board measures
@@ -4268,7 +4290,8 @@ definitions are `tests_scripts/test_digital_twin_boot_contiguity.py`'s own, reus
 Two of those rows need stating in words rather than as a ratio. **The whole sequence's median
 straddles the seam**: live sits 976 B *below* it, suppressed 1,840 B *above* it. A ratio across zero
 is meaningless, so the honest figure is the **difference, 2,816 B, with the live arm lower** — which
-is B10's qualitative claim, and it holds. And the **>128 KiB band the twin uses cannot exist here**:
+is the qualitative claim that the live arm's median sits lower than the suppressed arm's, and it
+holds. And the **>128 KiB band the twin uses cannot exist here**:
 128 KiB above a seam at 98,720 B is past the top of a 192,832 B heap, so the 0-in-both-arms reading
 is an artefact of heap size, not evidence. The table uses 64 KiB instead, and it is 0 in both arms too.
 
@@ -4321,12 +4344,12 @@ guard's bounds remain host bounds; none of them was ever to be copied to the boa
 own site, which no silicon run had ever measured — and the probe reports `retained=0` there in both,
 confirming the reading is a figure rather than a floor.
 
-### 7M.5 Every run, in board units — the handover's own evidence requirement
+### 7M.5 Every run, in board units
 
 Board heap geometry, derived by the parser and never converted by hand:
 **`block_bytes=16`, `heap_blocks=12052`, `total_bytes=192832`.**
 
-Depths are positive **below** the seam. Both band counts the handover named are included; both are
+Depths are positive **below** the seam. Both band counts the twin uses (>128 KiB, >512 KiB) are included; both are
 **0 in every run of every arm**, and structurally so — 128 KiB above a seam at ~98,700 B already
 exceeds the 192,832 B heap, and 512 KiB exceeds it by more than 2.5x. Neither band can discriminate
 anything on this hardware, which is a property of the board, not a result.
@@ -4372,7 +4395,7 @@ script's own reread cleared it — the same event §7G/R16 describe, reproduced 
 **What is NOT recorded here, and why.** The raw `micropython.mem_info(1)` block maps behind these
 figures are 8,370 lines across the twelve runs. They are the parser's *input*, fully reduced by the
 table above, and this repo gitignores run logs (`digital_twin_ci_logs/`), so they were not committed
-and did not survive the session. Regenerate them with, per arm:
+and were not kept. Regenerate them with, per arm:
 `mpremote connect <dev> exec "import machine; machine.WDT(timeout=8000)" [exec "_ARM_OVERRIDE='suppressed'"] run tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py soft-reset`,
 then `tests_hardware/heap_map.py`'s `parse_labelled()`/`delta()` host-side against `batch_00`,
 `after_build_system` and `after_starter_loop_end`.
@@ -4382,7 +4405,7 @@ then `tests_hardware/heap_map.py`'s `parse_labelled()`/`delta()` host-side again
 
 ## 7N. The 2026-09-22 sitting's own record — the suite runs, and three rows that closed with them
 
-**Image**: `scripts/build_firmware.py dev` from this branch's tip, `buildDate 2026-09-22T16:11:57Z`,
+**Image**: `scripts/build_firmware.py dev` from the 2026-09-22 tree, `buildDate 2026-09-22T16:11:57Z`,
 flashed with `picotool load -x -v` (verified OK). One deliberate flash cycle, which is run-sheet
 step 3. The board had been left as an ordinary production device at `DebugLevel = 0` (§7J.6); that
 was restored to 5 over the serial REPL before any tier ran, since several tests parse a log that 0
@@ -4422,9 +4445,9 @@ reading and is the one to trust.
 
 ---
 
-## 7O. The wear-gated run (S3), and the two-bugs-cancelling defect it was the only way to find
+## 7O. The wear-gated run, and the two-bugs-cancelling defect it was the only way to find
 
-S3 ran on 2026-09-22 after S1/S2 came back clean, which is exactly the ordering D1's standing yes
+The wear-gated run (`--allow-persistence-writes`) ran on 2026-09-22 after S1/S2 came back clean, which is exactly the ordering D1's standing yes
 requires — so the one failure it produced is attributable to the gated set rather than to anything
 the default runs would also have shown. That is the whole point of the ordering, and it paid for
 itself on the first try.
@@ -4484,51 +4507,52 @@ of a cancelling pair does not cover the other, and a `_set_dict_cfg()` write is 
 `.cfgmgr` (the delegation is itself pinned against `src/base_classes.py`). One justified exemption,
 whose justification the guard re-derives; verified red against seven injected regressions.
 
-### 7O.4 S3's own status: NOT re-run green end to end, deliberately
+### 7O.4 The gated set's status: clean end to end on 2026-09-23 (§7R.2)
 
-**The full gated suite has been run exactly once** (the `1 failed, 118 passed` above). After the fix,
-only `test_reboot_persistence.py` was re-run — `2 passed` — and the fix was confirmed by reading the
-board's own files rather than by re-running anything else.
-
-A second full gated pass was started and **the owner stopped it (2026-09-22)**: permission to spend
-wear covers one run, not a standing licence, and re-running a ~50-minute wear-spending suite to
-"confirm green" after a single fixed failure is exactly the loop the gate exists to prevent. That
-aborted run reached 15% and did spend six gated tests before it was killed
+The 2026-09-22 run is the one failure above, found and fixed; the fix was verified by re-running
+`test_reboot_persistence.py` (`2 passed`) and reading the board's own files. A second full gated
+pass that day was **stopped by the owner**: permission to spend wear covers one run, not a standing
+licence, and re-running a ~50-minute wear-spending suite to "confirm green" after a single fixed
+failure is the loop the gate exists to prevent. That aborted pass spent six gated tests
 (`test_bus_concurrency.py`'s five cross/same-device session tests plus
-`test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads`); it never reached the
-reboot-persistence pair. **So: the gated set's own result stands at one failure, found and fixed,
-with the fix verified on the two tests that carried it — and anyone wanting a clean full gated run
-has to decide to spend one.**
+`test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads`). The next authorised gated
+run, on 2026-09-23, came back **124 passed / 4 skipped / 6 deselected** on image A — the first clean
+one end to end (§7R.2).
 
-**"End to end" means 119 of 129 tests.** Ten never executed even with the flag, all by design, so a
-green gated run would still not be the whole tier:
+**"End to end" excludes ten tests**, all by design, so a green gated run is still not the whole
+tier:
 
 | | why |
 |---|---|
 | **6 deselected** — `test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout`, `test_single_core_timing_headroom_holds_under_normal_full_task_load`, `test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved`, `test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic`, `test_ticks_ms_real_2pow30_rollover` | `long_soak`/`multi_day_rollover`, which both wrappers exclude **unconditionally** whatever flags are passed — queue row S4's territory, and G6's deferred ~12.4-day run |
 | **4 skipped** — the two ISL29125 light programs, `test_real_uf2_reflash_and_boot_smoke_test`, `test_spoofed_off_subnet_source_address_is_ignored` | the first two want `--allow-neopixel-sweep` (S3b), the third is `flash_cycle` |
 
-**What a fresh gated pass would actually buy** is not reassurance about the fix — the re-run plus the
-on-disk values prove that more directly than a green suite would — but **R1, R4, R5 and R8's reboot
-arm**, which this run made reachable and whose results nobody has yet read out. That is the reason to
-spend one, if there is one.
+The 2026-09-23 run read out what this one had made reachable: both R8 tests passed (their first run)
+and R5's BMP3XX config-write arms passed a second time; R1 and R4 still need their own investigation
+(queue §2).
 
 
 ---
 
-## 7P. State the bench was left in — READ THIS BEFORE THE NEXT BENCH RUN
+## 7P. State the bench was left in on 2026-09-22 — SUPERSEDED 2026-09-23
 
-Supersedes §7J.6, which described the 2026-09-19 production hand-back. **That hand-back has been
-undone**: the board is a test board again, not the quiet LAN device §7J.6 left behind.
+**Not the board's current state.** From 2026-09-23 the board was reflashed with every image in
+§7R.1 and was last flashed with E6′ (the 2026-09-24 06:45 tip at limit 6); its `DebugLevel`, config files
+and `errcount` since then are not recorded (§7R.5 has the FRAM E31/W73 entries that appeared). Read
+`/system`'s `build.buildDate`, the config files and `errcount` on the board before trusting
+anything below. What stays useful: the `config_HWTEST_DEBUGLEVEL_BACKUP.cfg` check, the hand-back
+recipe, and §7P.1.
+
+It superseded §7J.6, the 2026-09-19 production hand-back, which it undid.
 
 | | value |
 |---|---|
-| firmware | this branch's tip, `buildDate 2026-09-22T16:11:57Z`, flashed with `picotool load -x -v` |
+| firmware | the 2026-09-22 `dev` image, `buildDate 2026-09-22T16:11:57Z`, flashed with `picotool load -x -v` |
 | `DebugLevel` | **5** — restored over the serial REPL before any tier ran, and deliberately left there |
 | network | STA on `sensors-bench-fa9707`, DHCP `192.168.85.57`, RSSI -49, NTP synced, reachable as `SensorStationDev.fritz.box` |
 | UART link | 713 transfers, 0 failures |
 
-**Config files left on the board.** Two are this session's test residue and are safe to delete; the
+**Config files left on the board.** Two are residue of the 2026-09-22 tests and are safe to delete; the
 rest are ordinary.
 
 | file | note |
@@ -4557,15 +4581,556 @@ re-applied: delete the two `config_HWTEST_*` files, reset `DebugLevel` to 0, and
   boot showed the association completing ~45 s in, then every task healthy. **Raise `DebugLevel`
   before concluding anything from a quiet board**, and prefer the passive `tail_log()` diagnosis
   §7J/CLAUDE.md already prescribe over `exec`, which re-causes the symptom.
-- **`sys.argv` cannot be assigned on this port.** `import sys; sys.argv = [...]` raises
-  `AttributeError: 'module' object has no attribute 'argv'`, although reading it returns `[]` and
-  appending to it works. This matters because `mpremote run` passes no argv at all — the mechanism
-  that does work is a plain global set by an `exec` earlier in the same raw-REPL session, which
-  reaches the run's globals (`exec "_ARM_OVERRIDE='suppressed'" run script.py`). Verified directly
-  on this board, 2026-09-22; `heap_layout_after_full_boot_sequence.py` uses it.
+- **`sys.argv` cannot be assigned on this port**, and `mpremote run` passes none: select a
+  script's arm with a global set by an earlier `exec` in the same raw-REPL session (§7M.1).
 
 
 ---
+
+## 7Q. Serving at `gc.threshold(-1)` — the board's 4-request ceiling, reproduced, root-caused and fixed [TWIN] (2026-09-23)
+
+**Read §7Q.9 first for anything quantitative.** §7Q.1-§7Q.8 were measured on the 64-bit twin, where
+dicts, lists and frames are twice their RP2040 size and strings are not, so its ratios transfer and
+its rankings of *which* allocation fails first do not; §7Q.9-§7Q.13 are the 32-bit twin, which has
+the board's own object sizes and reproduces its three failing call sites exactly. "The fix" in
+§7Q.5 is the first version; the final design is SPECIFICATION.md I.3, and the walls it met are §7Q.11.
+
+The 2026-09-23 bench sitting (§7R.3) found that at MicroPython's own reactive default the board
+serves at most **4** concurrent requests without a `MemoryError`, every failure a ~870 B allocation
+inside `/status`'s piece coalescing, the largest free run driven to ~800 B. This section is the
+same-day twin investigation of it. Everything here is **[TWIN]**; §7R is what silicon then showed.
+
+### 7Q.1 The instrument
+
+- **Frozen Unix port**, §1.4's recipe: `src/`, `ext/`, `build/generated_src/`, `digital_twin/` and
+  `frozen_modules/` frozen, the variant's own manifest included. `import sensortask_dev` then costs
+  108,512 B instead of ~541,000. Path still wins over frozen on this port (verified), so one module
+  can be shadowed from a directory to A/B it — **every arm below shadows the same file**, the control
+  an unmodified copy, so the shadow's own compile cost is common to all.
+- **Heap 720k**: `digital_twin/_fram_chip.py` allocates a 262,144 B image, so the working heap is the
+  remainder. At 720k the control fails at every N from 2 up (the board is clean to 4), so this is
+  **harsher than the board**; 780k fails only at N=7 (2 failures), 820k-900k are clean through N=7.
+  The system sits on a cliff between 720k and 820k — which is itself the finding's shape (§0A.3's
+  knife edge, at runtime).
+- **Load**: the sitting's own shape, 12 rounds of N simultaneous requests across `/status`,
+  `/sensors`, `/`, `/measurements`, `/networking`, `/system`, from a separate CPython process (Part
+  E.9), bodies drained not materialised. Allocation failures counted from the twin's own log.
+
+### 7Q.2 The reproduction
+
+| | board, image A (§7R.3) | twin, 720k |
+| --- | --- | --- |
+| failing allocation | ~870 B, `/status` coalescing | **863-881 B**, pre-fix `_get_status` coalescing (`"," + batch`) |
+| worst largest free run at N=7 | 800 B | 672-1,248 B |
+| failures at N=7, 12 rounds | 28 lines (~14 failures) | 20-21 |
+| same load at `gc.threshold(32768)` | clean | **0 at N=4/7/8**, worst largest run 9.7-45 KB |
+
+### 7Q.3 What one `/status` costs
+
+Priced on a booted, idle system, one collection-free window per call, 3 reps (zero spread):
+
+| | churn |
+| --- | --- |
+| whole route | **105,472 B for a 6,709 B body** |
+| 21 errcount entries | 2,752 B each: `get_error_counter()` 736, `_shape_errcount_entry()` 1,440, `json.dumps()` 320 |
+| coalescing those 21 fragments | 15,104 B (`"".join` would be 7,008) |
+| pieces emitted | `[234, 209, 64, 101, 880, 881, 863, 871, 872, 865, 869]` |
+
+**The seven ~870 B pieces are the failing allocations**, and they are there because
+`_MAX_STATUS_PIECE_BYTES` was 1024. `/measurements` is 10,560 B and `/sensors` 24,544 B; their
+largest single `json.dumps()` is 177 and 217 B, their pieces 399 and 584 B.
+
+### 7Q.4 The heap at the instant of failure
+
+A map dumped from inside the `except MemoryError` of a wrapped `_get_status` (no collect needed:
+MicroPython collected before raising). Holes counted by size:
+
+| dump | free | runs | ≥128 | ≥256 | ≥300 | ≥512 | **≥870** | ≥2048 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| idle, before load | 179,520-190,336 | ~868 | 322-370 | 160-201 | 125-157 | 81-93 | 39-44 | 5-15 |
+| **fail1-fail3** | **100,832-110,432** | ~825 | 291-312 | 112-138 | **74-95** | 26-38 | **0** | 0 |
+| idle, after load | 164,768-167,360 | ~910 | 386-397 | 199-204 | 138-156 | 73-80 | 22-27 | 2-3 |
+
+At the instant a ~870 B piece failed, the heap had ~105 KB free and could still have placed **~85
+allocations of 300 B, ~125 of 256 B and ~300 of 128 B**. Free space is never the constraint;
+the size of the request is.
+
+Whether the heap *recovers* after the load cannot be settled here: with the committed runner the
+post-collect largest run went 9.8-18.4 KB idle → 1.5-4.7 KB loaded → **1.5-2.4 KB after 30 s idle**
+(no recovery); with the device-script harness the pre-load heap was already at 2.4-6.0 KB and came
+back to 2.3-3.8 KB. The two harnesses boot differently. Answered on silicon in §7R.3: partial
+recovery of contiguity, full recovery of free bytes.
+
+### 7Q.5 The levers — all at 720k, `-1`, 12 rounds, failures per run
+
+| arm | what it changes | N=7 | N=8 | failing sizes |
+| --- | --- | --- | --- | --- |
+| control (shadowed copy) | — | 21 | 20 | 863-881 |
+| `join` | `+=` ladder → `"".join`, churn −9% | 22 | 21 | 863-881 |
+| cap 512 / 256 / 128 | `_MAX_STATUS_PIECE_BYTES` only | 3-5 | 3-5 | **285-300** |
+| cap 256 + `join` (+ in-place encode) | also halves a request's peak live set | 7-8 | 9 | 285-300 |
+| response gate, 1 / 2 / 3 slots | serialises response *construction* | 8 / 10 / 8 | 12 / 11 / 8 | 285-300 |
+| split only, cap still 1024 | errcount entries split, pieces pack closer to the cap | 14 | 13 | **1011-1017** |
+| hypothesis arm (not shippable) | history truncated to 3, fragments ~117 B | **0** | **0** | — |
+| **the fix, 3 repeats** | cap 256 **and** errcount entries split at history elements | **0, 0, 1** | **0, 0, 0** | 464 (once) |
+| the fix, N=5, 3 repeats | | 0, 0, 0 | | |
+
+Three results carry the conclusion:
+
+1. **Allocation size is the variable; churn volume is not.** A 9% churn cut changed nothing; a hand-
+   built errcount string that cut the intermediate dicts **raised** churn to 189,888 B and was
+   dropped; the fix itself makes **14% more** churn (120,000 B) and removes the failures. This is
+   §6A.2's boot-phase finding (size 5 → 9 blocks flips the outcome at constant volume), at runtime.
+2. **The failing size follows the largest allocation exactly**: 870 B pieces → 870 B failures; cap
+   them and the ~290 B errcount fragments fail instead; pack the split fragments towards 1024 and
+   1011-1017 B fail. Only when *every* allocation on the path fits the holes does it stop.
+3. **Serialising construction does not help** — even one `/status` under construction at a time
+   fails at ~290 B. What consumes the heap's one large run is the whole concurrent request
+   population (Request objects, streams, finished responses held while they are written), not the
+   builder alone.
+
+The one failure left in the fix's nine runs is **not in this repo's code**: 464 B at
+`ext/microdot.py:383`, the `Request` object's own attribute table growing as `__init__` sets ~20
+attributes (~232 B on the RP2040's 32-bit words). Vendored, so it is not ours to change; it fits
+the holes the board keeps, and it appeared once in ~750 requests at a heap harsher than the board.
+
+### 7Q.6 The model
+
+The idle heap is **one large free run plus hundreds of small holes** — §0A.2's dust, left by import
+and boot survivors. A request whose allocations fit the small holes can be served from them
+indefinitely. A request that needs a mid-sized block (870 B) can only be served from the large
+run. At `gc.threshold(-1)` nothing collects until an allocation fails, so the concurrent request
+population — Request objects, streams, response pieces held while they are written — is allocated
+progressively up through the whole heap between collections, and whatever of it is live when the
+next collection happens stays exactly where it landed: **the collector never moves anything**
+(§0A.1). Those request-lifetime objects split the large run, and the next 870 B request finds
+~105 KB free and nowhere to put 870 contiguous bytes.
+
+**Why the default GC cannot resolve it**: it does collect — every `MemoryError` above is raised
+*after* a full collection that freed all the garbage. What it cannot do is move a live object, and
+the obstruction is live objects. **Why `gc.threshold(32768)` hides it**: at 32 KB a collection runs
+~3 times per single `/status` in the twin (105 KB of churn), each resetting the allocator's scan to the bottom (§0A.1), so the
+request population is repeatedly re-placed low and the large run is never entered. That is a
+layout benefit, not stability — CLAUDE.md's standing rule — and it is exactly what the (e) stage
+exists to catch.
+
+**On "it is not about survivors"**: the obstruction during load is transient, request-lifetime
+objects — that part is right. But the reason the free space *outside* the large run cannot serve a
+mid-sized request is the permanent dust from import and boot. Both are needed for the failure; the
+fix works by making the transient demand fit the dust, so neither has to change.
+
+### 7Q.7 What it corrects
+
+- **§7H.3's "whether the system is *stable* without the threshold is settled and the answer is yes"**
+  holds for the tiers it cites (the unit suite and the twin CI at their default heap sizes, neither
+  of which runs real concurrent HTTP under heap pressure). It did not hold for the board under
+  combined load until this fix; a note there points here.
+- **`SPECIFICATION.md` I.3's "~48x headroom" for the 1024 B cap is withdrawn** — contradicted by
+  the board's own ~800 B largest run under load. I.3 now carries the 256 B rule and its reason.
+- The twin CI never saw any of this because it runs non-frozen at a 2 MB heap. Checked: the plain
+  CI binary at 1250k does not boot, and at 1350k it is clean — its 541 KB of import residue does not
+  model the board. A gate would need the frozen port, which the owner decided against (§7Q.9).
+
+### 7Q.8 What is not claimed
+
+That the board is stable at 8 or 10: every figure in this section is the twin's, and silicon later
+showed neither is (§7R). What is claimed is that the twin reproduces the board's own failure sites
+(§7Q.9), which is what made the fix testable before a board was.
+
+### 7Q.9 The 32-bit twin — the board's own object sizes
+
+The 64-bit twin put the next wall at 10 connections in `ext/microdot.py`'s `Request` object (464 B),
+but that is a dict: on the RP2040 it is ~232 B, while a 256-character piece is ~272 B on both. A
+twin whose pointers are twice the board's ranks the walls wrongly. **Built 32-bit** (recipe and
+pitfalls: §10, `build-heapprobe32`): 4-byte pointers, 16-byte GC blocks, `import sensortask_dev`
+55 KB instead of 108 KB.
+**An ad-hoc instrument, never a committed tool or CI gate** (owner, 2026-09-23): nothing of it is
+merged, and this section, §7Q.14 and §10 are its documentation — what it is for and how to rebuild it.
+
+**It reproduces the sitting's failure sites exactly**, where the 64-bit twin saw only the first:
+`/status` coalescing at ~870 B, `_dump_errcount_entry` (pre-fix name; now `_write_errcount_entry`) at **296 B** (the board logged 296 twice), and
+`_get_measurements → _stream_dict_response` at 560-614 B (the board logged 509). Calibrated against
+the board's own curve (image A, §7R.3: clean at 4, ~7 failures at 5, ~14 at 7, 12 rounds), shipped code:
+
+| heap | N=4 | N=5 | N=7 |
+| --- | --- | --- | --- |
+| 500k | — | 24 | 36 |
+| 530k | 11 | 12 | 24 |
+| **560k** | 6 | **7** | **13** |
+| **600k** | **0** | 0 | 2 |
+
+The board sits between 560k and 600k: 560k matches its N=5 and N=7 exactly and is harsher at N=4.
+**Both are used below as the two bounds.** Each image's own lwIP cost is taken off the heap — 2,324 B
+per connection the image is sized for, byte for byte the board's (the twin's 262,144 B fake FRAM
+image lives in the same heap, which is why the absolute sizes are larger than 190,036 B).
+
+### 7Q.10 What each source and route needs — measured, not inferred
+
+`tests_hardware/device_scripts/allocation_need_per_source.py` shapes the heap so no free run exceeds
+S, for rising S, and runs every data source and every whole GET route on it; the smallest S at which
+a probe succeeds cleanly at every larger rung too is its need. Two instrument defects found and fixed
+before any figure was used: the first sieve let lowest-fit put each blocker into low dust instead of
+next to its hole, so payloads merged into runs of up to 32 KB (rungs came out 256, 160, 288, 4,576 ...);
+the rebuild fills every free block bottom-up with 1-block chain nodes (1-block allocations advance
+the scan hint, so they land in address order) and keeps one in every k+1. And a `range()` object in
+the fill loop left garbage inside the pattern. It is exact from ~6 blocks up; below that a few
+blocks of its own residue floor the reading, which is why sources read "≤ 192 B". Two more rules it
+needs: every line printed on a shaped heap is built before the heap is shaped, and the watchdog is
+fed per rung on the twin (its fake allocates) and per probe on the board.
+
+| 32-bit twin, `dev` | as shipped | final |
+| --- | --- | --- |
+| `/status` | **1,024 B** | 320 B |
+| `/sensors` | 768 B | 256 B |
+| `/measurements` | 512 B | 256 B |
+| flat settings routes | ≤ 192 B | ≤ 192 B |
+| every individual source | ≤ 192 B | ≤ 192 B |
+
+**The modules were never the problem; the assembly was.** Checked on all six device configurations
+on the 64-bit twin: shipped `/status` needs 1,024 B on every one, the fixed routes ≤ 288 B.
+
+### 7Q.11 The walls the final design met — measured (design: SPECIFICATION.md I.3)
+
+| step | wall it met | measured |
+| --- | --- | --- |
+| errcount entries split at history elements (the first fix, §7Q.5) | microdot's `Request` and our own ~250 B pieces at 10 | 64-bit twin clean at 5-8 (§7Q.9 for why that ranking was wrong) |
+| values written, never dumped whole (`_PieceWriter.add_value()`) | a sensor's whole-value `json.dumps()`: 276 B on `/measurements` at 14 | removed; all six routes byte-identical to the shipped firmware; the non-string-key rule was found by the unit test that pins it |
+| the writer's own fragment list, collapsed every 16 | 256-512 B failures at `self._group.append` | removed |
+| cap 128 instead of 256 | the pieces list grows to 64 slots, a 256 B array | at 14 connections failures fell only from ~13 to 7-9, never to zero, for twice the writes |
+
+**Churn** does not decide the outcome: the first fix made 14 % more and still removed the failures;
+the final design cuts `/status` 4.5x (70,208 → 15,648 B) and raises `/measurements` 1.5x and
+`/sensors` 1.1x.
+
+### 7Q.12 8, 10, and the ceiling — final code, 32-bit twin — SUPERSEDED as a board prediction (§9)
+
+**Twin data only; the board failed at 10 (§7R.3).** These runs served the sub-1 KB stub page and
+could not see a write-phase failure (§7Q.14; re-run with the real `dev` page the twin's wall stays
+at 14), and an unthrottled twin is optimistic near the wall (SPECIFICATION.md E.8). The
+throughput-matched twin of §7R.4 is the one whose predictions held. 12 rounds per run:
+
+| image sized for | at 560k (the board's harsher side) | at 600k (its gentler side) |
+| --- | --- | --- |
+| 8 | **0, 0, 0** failures (96/96 served each) | |
+| 10 | **0, 0, 0** (120/120 each) | |
+| 12 | **0, 0** (144/144 each) | |
+| 13 | 8, 10 | |
+| 14 | 13, 13 | **0, 0** |
+| 16 | | **0** |
+| 18 | | **0** (216/216) |
+| 20 | | 16 |
+| 24 | | 33 |
+
+Past the twin's wall the failing allocations are the pieces (~250 B), microdot's `Request` table
+(~232 B) and the pieces list: nothing large is left, the heap simply runs out of holes of that size
+— the same sites silicon then showed (§7R.3).
+
+### 7Q.13 The hardware instruments, run against the twin first
+
+Both device scripts (`tests_hardware/device_scripts/allocation_need_per_source.py`,
+`serving_at_default_gc.py`) and `tests_hardware/bench/test_serving_heap_at_default_gc.py`'s own
+functions ran against the 32-bit twin before any of it went to a board: a fake `Board` whose
+`run_isolated()` runs the device script in the twin, driving the test module's own `sweep_levels()`,
+tallies and assertions unchanged. The per-source test
+(`test_every_source_and_route_fits_a_small_free_run`) passed in 9 s; the sweep
+(`test_serving_sweep_at_the_reactive_default`) passed in 155 s — 48/48, 72/72, 96/96 at N = 4/6/8, and 96 served + 24
+refused cleanly at N = 10, zero allocation failures. **Three instrument defects were found this way
+and not on silicon**: the first sieve's merged holes (§7Q.10), and in the sweep script an
+`_open_conns.get_value()` read without `await` — the counter is async, the coroutine object is always
+truthy, so the script saw load forever and never reached its idle-after phase (the first recovery
+script's unexplained timeout was the same bug). The twin's own recovery reading from that run: idle
+before the load, largest free run 3,296 B and room for 315 blocks of 256 B; idle after, 1,456-2,784 B
+and ~235 — partial recovery. The board's answer is §7R.3: partial recovery of contiguity, full
+recovery of free bytes.
+
+### 7Q.14 The static page — what silicon found and the twin missed (2026-09-23 evening)
+
+**The finding** (§7R.3): on both images the sweep failed on
+`allocating 1025 bytes` in microdot's `send_file` body loop (`ext/microdot.py:746`), from N = 6 on
+image G. Each `read(1024)` is a fresh 1,025 B bytes object; a failed one raises *after* the `200` and
+headers are out, and with HTTP/1.0 and no `Content-Length` the client reads the cut-off gzip body as
+complete. Per-level on G: stable at 4, first failure at 6 (all `/`), JSON failures only from 10.
+
+**Why the twin missed it — two gaps, both closed.** (1) The twin mounts `html_stub`, whose index is
+under 1 KB: one short read, never a 1,025 B one. These runs now freeze **the `dev` device's own
+website** (`scripts/build_website.sh dev`: `index.html.gz` 9,292 B — byte for byte the page the
+board served — and `js/app.js.gz` 16,292 B); `dev` carries every module, so its site is the largest
+and the most biting. (2) A write-phase `MemoryError` lands in `_serve()`'s `except Exception` and
+goes only to `err_s`, which prints nothing at the twin's debug level; the harness now prints every
+`err_s`, and the driver checks every body against its `Content-Length` (or the page's known size
+where none is sent).
+
+**Reproduced, then fixed** — 32-bit twin, `dev`'s site, `-1`, 12 rounds, fresh boot per level; "cut"
+= a `200` whose body is short; failures are the device's own allocation-failure lines:
+
+| heap | N | tip (pre-fix) | fix |
+| --- | --- | --- | --- |
+| G's, 560k (552,524 B) | 4 | clean | clean |
+| | 6 | 2 cut, 2 × 1,025 B | clean |
+| | 8 | 10 cut, 10 × 1,025 B | clean |
+| | 10 | 18 cut, 1,025 B + 804 B | clean |
+| | 12 | 21 cut, 1,025 B + 804 B | 1 × 804 B, all complete |
+| | 14 | — | 10 × 500 (249-257 B pieces) — the §7Q.12 wall |
+| F's, 560k (571,116 B) | 4 | clean | clean |
+| | 6 | 1 cut, 1 × 1,025 B | clean |
+| | 8 | 2 cut, 2 × 1,025 B | clean |
+| F's, with `/js/app.js` added to the load | 4 / 6 / 8 | — | clean |
+
+The tip arm's first failure at N = 6 on the 1,025 B read is **exactly the board's**, on both heaps.
+The 804 B failures are the twin's own: `network.WLAN` is a Python fake whose 200-slot call-log deque
+is (200 + 1) × 4 B; on the board it is a C object. The smaller `wozi` site (7,175 B) gives the same
+picture with F's first cut only at N = 8.
+
+**The fix** (SPEC I.3, "Static files"): `_serve_static()` opens the file, hands it to
+`send_file(stream=...)`, sets microdot's own per-response `send_file_buffer_size` to 256 and adds
+`Content-Length`. No vendored edit. Per-source need on F's heap, `dev`'s site: `route:/` **320 B** (tip 1,536 B),
+every JSON route 192-320 B.
+
+**The instruments, re-validated in the twin**: the need test (`_MAX_ROUTE_NEED` in
+`test_serving_heap_at_default_gc.py`) now probes `route:/` through microdot's
+own `Response.body_iter()` — passes on the fix, fails on the tip with `route:/` at 1,536 B. Its gate
+moved from 384 to **480 B**: the same fixed `/status` measured 336 B in one run and 400 B in another,
+because a rung's *effective* size (its measured largest run) wanders within a rung. 480 sits between
+rung 24 (384-400 B) and rung 32 (512 B). The sweep test now labels a short body `-truncated` and a
+missing length `-unframed`; on the fix every level is complete with zero failures, on the tip every
+`/` is `-unframed`. The sweep's load includes `/js/app.js`, which every page load fetches next.
+
+---
+
+## 7R. Serving on silicon: lwIP, the static page, and the connection limit under peak load [HW; §7R.6 TWIN] (2026-09-23/24)
+
+The silicon record behind `SPECIFICATION.md` H.7's limit of 6, I.3's 256 B bound and B.14.2's
+ensemble. Dev bench, RPI_PICO_W, MicroPython 1.29.0. **Every verdict is at `gc.threshold(-1)`**, set
+by the device script itself (`mpremote` soft-resets on raw-REPL entry, but rp2's `main.c` runs
+`gc_init()` once, outside the soft-reset loop, so the boot entry's 32768 would otherwise still be
+in force), and every result line carries `GC_THRESHOLD=`; the labelled `32768` series and the
+collecting runs (`--margin`) are the exceptions, and a collecting run's verdict is not evidence.
+**Stable**, **refusal** and the other measuring rules are `tests_hardware/README.md`'s ("Measuring
+heap and serving under load"); this section is their evidence.
+
+**Two load shapes**, and only the second is peak. **Rounds**: 12 rounds of N parallel GETs over
+`/status /sensors / /measurements /status /networking /sensors /system /js/app.js` with 0.5 s
+pauses. **Peak**: N clients back to back for 60 s over the same mix, thread 0 swapping one GET for
+the hammer test's dispatch-only `PUT /sensors {"SGP40": {"SGPResetVOC": true}}` every 3 s, on the
+full production task graph. Every static body is checked against a validated idle reference and its
+`Content-Length`, every JSON body parsed. One fresh boot per data point, except the one-boot sweeps
+§7R.3 labels as such. The instruments and how to rebuild them: §10.
+
+**Scope (owner asked, 2026-09-24)** — every figure below holds only within it:
+
+- **The application's own `max_connections` check was in front of Microdot in every run**; every
+  refusal comes from it, never from lwIP. `backlog` was `max_connections + 1` and the 5 s / 15 s
+  timeouts were active (SPECIFICATION.md H.7, H.7.1). An uncapped Microdot was never tested.
+- **HTTP on port 80 only.** Not in the load: `/notification`, every PUT other than the SGP40 reset,
+  and every other port (the captive-portal DNS on 53 among them).
+- **Hammering only in the peak runs**; rounds are typical load, not peak.
+- **Internal load**: the whole `sensortask_dev.main()` task graph plus the SGP40 reset PUT. An NTP
+  sync, a WLAN reconnect, an SCD30 read, an SGP40 backup and a FRAM block write coincided with the
+  load only as their normal schedule made them.
+- **The device script, not production `main.py`, ran the task graph**, under `run_isolated()`'s
+  8 s watchdog; its own code costs 2,720 B of heap (§7R.4).
+
+### 7R.1 The images
+
+| image | `max_connections` | PCB / SEG / `MEM_SIZE` | GC heap (linker) | `mem_info` total | what |
+| --- | --- | --- | --- | --- | --- |
+| A | 7 | 10 / 56 / 14,000 | 190,036 B | — | pre-fix `src/`, the first sitting |
+| B, G, G′ | 16 | 19 / 128 / 32,000 | 169,120 B | — | over-provisioned; G′ with both serving fixes |
+| F, F′ | 8 | 11 / 64 / 16,000 | 187,712 B | 183,360 B | F′ = static fix |
+| H | 10 | 13 / 80 / 20,000 | 183,064 B | 178,816 B | |
+| E7 | 7 | 10 / 56 / 14,000 | 190,036 B | 185,664 B | |
+| **E6, E6′** | **6** | **9 / 48 / 12,000** | **192,360 B** | **187,904 B** | E6′ = the 2026-09-24 06:45 tip |
+
+Every lwIP macro was read back out of each firmware's own translation unit and matched, and every
+linker heap equals 187,712 + (8 − L) × 2,324 B to the byte; `mem_info` reports 4,248-4,456 B less
+(~2.3 %, the GC's own tables, scaling with the heap), and it is the percentage base below. `.bss`
+A → B grew 20,916 B for 9 connections, 2,324 B each, from two ELFs built hours apart.
+
+### 7R.2 lwIP never bound anything (image A/B, boot entry's `gc.threshold(32768)`)
+
+- **Admission is exact**: A admitted 7 on five probes out of five. A refusal is a **FIN ~6 ms after
+  connect** (an RST if the request bytes had already arrived, SPECIFICATION.md H.7) — never a silent
+  drop or a stall.
+- **No admission wall below 16**: B admitted 16 on five probes out of five, so the application's own
+  cap stops the probe, not lwIP. `LWIP_STATS` was never needed.
+- **The GC heap binds first**: B's failures, captured off the serial console, were caught
+  `MemoryError`s of 296-862 B inside the pre-fix JSON assembly. **A raised ceiling converts a clean
+  refusal into a served-but-broken response**: at the same load A refused above 7 with every admitted
+  body complete, while B admitted and answered 500 from N = 7, its 9 extra connections having cost
+  20,916 B of the heap that serves them.
+- **`PBUF_POOL_SIZE` 16 is enough** (inbound over-commit, `N × TCP_WND` against 12,832 B of pool
+  payload, 16 × (876 − 74): 3.5× on A, 8.0× on B): the pool never surfaced, because real inbound
+  demand is one small capped request per connection (`cyw43_lwip.c:281` allocates every received packet from it).
+- **Parked connections are cheap**: a full ceiling of 7 held mid-request (sustained by staggered
+  recycling, `SPECIFICATION.md` H.7.1) left room for 15 placeable 2,048 B
+  blocks at worst, against a demand of 7 — a single-N capacity reading, not a comparison across
+  limits (§9). That holder recycled after every ~2 s drip rather than at 10 s (fixed 2026-09-24,
+  H.7.1); the count's at-ceiling fraction was asserted either way, so the reading stands as a peak one.
+- **Independent ensemble audit**: the `#error` conditions in `lib/lwip/src/core/init.c` re-derived
+  by hand — 18 by the audit's own count of relevant ones, of which `check_lwip_ensemble()` restates
+  the sixteen over the options set or derived here (SPECIFICATION.md B.14.2) — with the switches
+  deciding which are live ground-truthed out of the translation unit
+  (`LWIP_DISABLE_TCP_SANITY_CHECKS` undefined, `MEMP_MEM_MALLOC = MEM_USE_POOLS = 0`,
+  `MEM_ALIGNMENT = 4`, `LWIP_WND_SCALE = 0`, `TCP_MSL = 60000`, `LWIP_NETCONN = LWIP_SOCKET = 0`):
+  zero failing conditions on every image. `LWIP_IPV6 = 1`, so `PBUF_IP_HLEN` is 40 and
+  `PBUF_POOL_BUFSIZE` 876 B (the checker's two constants were corrected; no verdict changed).
+- **Latency at 7** (image A, `32768`): the slowest of a 7-wide burst 1.95-2.18 s, of a 4-wide one
+  1.03-1.07 s. No watchdog reset across the sitting.
+- **The earliest datum, at limit 4** (dev bench, hotspot mode, 2026-09-04 or before): an 8-way burst
+  on `/` got 7 × `302`, some queued 0.5-1.5 s, and 1 refusal in ~37 ms.
+
+**Full suite runs on image A** (a baseline for that image, not a validation of the tip): flash tier
+36 passed / 3 skipped / 12 deselected; bench tier 103 / 4 / 27; bench with
+`--allow-persistence-writes` **124 passed / 4 skipped / 6 deselected** — the first clean gated run
+end to end, in which the two ISL29125 calibration tests passed on their first run and the BMP3XX
+config-write arms passed a second time (§7O.4).
+
+### 7R.3 At the reactive default, before and after the two serving fixes
+
+**Before (image A, rounds, per-boot)**: 4 was the highest clean level — N = 5 / 6 / 7 gave 14 / 18 /
+28 allocation lines, each a ~870 B `/status` piece. §7Q is the root cause and the fix.
+
+**After the JSON fix, before the static fix (images F and G)**: **every failure on F up to its
+limit of 8 was the static page** — microdot's `send_file` reading 1,024 B per write, a fresh
+1,025 B allocation each, cut off **behind a `200` with no `Content-Length`**, so the client saw a
+corrupt page as complete. It was probabilistic: 5 failed 1 run in 3, 6 one in 2, 7 and 8 every run.
+On G the static page failed from 6 and the JSON pieces only from 10. §7Q.14 is the fix.
+
+**After both (F′, rounds)**: the need test matches the 32-bit twin to the byte — `route:/` and
+`route:/status` 320 B, `/sensors` and `/measurements` 256 B, `/networking` 192 B, `/system` and
+`/notification` 160 B, every data/config source ≤ 160 B, every errcount entry 96 B. The one-boot
+sweep at 4 / 6 / 8 served every body complete with zero allocation lines, 10 gave 96 + 24 refused.
+Per boot, 2 to 8 were stable in 12 boots. Idle largest free run before and after the load:
+8,944-11,424 → 6,752-10,672 B, free 82,128 → 80,720 B — a partial recovery of contiguity, a full one
+of free bytes.
+
+**10 is not reachable on this heap.** G′ (16, 169,120 B) at 10 failed every per-boot run, 3 of 3,
+~1 `/status` in 10 answering 500 in every round, each a 242-257 B `_PieceWriter` piece; its one-boot
+sweep up to 18 emptied the pool outright — 68-138 B allocations failing in SCD30 and BMP3XX config
+reads, FRAM history writes and the device script. H (10, 183,064 B) at 10: 3 × `/status` 500 per
+run, in both arms. At 12 on G′ the failures spread to microdot's 232 B `Request` (400s), cut static
+bodies (visible now, as `IncompleteRead`) and non-web tasks.
+
+**Free heap under rounds load** (post-collect every ~5.3 s; sampled, so the minimum is an upper
+bound on the true peak, and a later peak measurement showed it overstates by ~20 KB at 6):
+
+| image, N | min free under load | min largest free run |
+| --- | --- | --- |
+| F′, 4 / 5 / 6 / 7 / 8 | 33.3 / 27.7 / 25.7 / 24.6 / 20.7 % | 2,192 / 1,760 / 1,728 / 1,200 / 992 B |
+| H, 8 / 9 / 10 | 21.3 / 19.5 / **11.5 %** | 1,408 / 1,024 / **288 B** |
+
+### 7R.4 Peak load, each image at its own limit — the decision data
+
+**True failures, no instrumentation on the device** (`--peak --no-sampler`, one boot per row):
+
+| limit (image) | boots | requests | refused | **true failures** |
+| --- | --- | --- | --- | --- |
+| **6 (E6 3, E6′ 2)** | **5** | **2,255** | **70.0-70.2 %** | **0** |
+| 7 (E7) | 3 | 1,334 | 70.5 % | **0** |
+| 8 (F′) | 3 | 1,319 | 70.7 % | **1** (252 B `/status` piece) |
+
+With a sampler: F′ at 8 failed in 3 more of 4 instrumented boots (0.26-0.55 %); H at 9 failed 1.7 %
+(`-1`) and 3.2 % (32768). Every failure at 8-10 on every image was the same allocation, one
+242-257 B `/status` piece (`_get_status` → `_build_status_pieces` → `_write_errcount_entry` →
+`add_value` → `add` → `flush`); no other route failed and every served body was complete.
+
+**Free heap at peak** (`--peak --margin`: a `gc.collect()` every 100 ms, so the exact live set).
+Percentages are as measured; production-equivalent adds back the device script's own 2,720 B
+(≈ +1.4 points). The figure at 6 rests on 2 collecting boots and at 7 on 1; ≥ 3 would give a spread
+(optional — the limit is settled):
+
+| limit (image) | free at peak, as measured | largest free block at the minimum | idle, 0 open |
+| --- | --- | --- | --- |
+| **6 (E6, 2 boots)** | **21.2-21.7 %** | **1,456-1,504 B** | 44.3-44.6 % |
+| 7 (E7) | 14.3 % | 528 B | 41.6 % |
+| 8 (F′, `-1` / 32768) | 11.6 / 12.7 % | 512 / 400 B | — |
+
+**The mechanism**, each point measured:
+
+- **The board is CPU-bound at ~2.2 requests/s at every limit from 6 to 9** — completed requests per
+  60 s boot are 121-149 at 6, 123-136 at 7, 122-134 at 8. A higher limit serves nothing more; each
+  request lives longer (~N / 2.2 s), so more responses are held at once.
+- **Each open connection holds ~7.5-8 KB of live heap at peak** (idle-to-peak drop per open
+  connection: 45.2 KB / 6 on E6, 53.4 KB / 7 on E7, 48.8 KB / 6 on H with 6 clients), on top of its 2,324 B of
+  static lwIP capacity.
+- **The wall is a hole too small for one ≤ 257 B piece**, and at the limit's extreme the pool
+  empties outright. Zero-failure counts over ~1,350 requests only bound the rate at ~0.2 %, so they
+  cannot separate 6, 7 and 8; the heap margin can (the limit drawn from it: SPECIFICATION.md H.7).
+- **~70 % of requests are refused at every limit when as many clients as the limit run back to
+  back**, because `_open_conns`
+  counts a connection until `_close_writer()` has finished, while its client already holds the
+  complete body and has opened the next one. With 8 clients on H the count reached 10. The device's
+  own count of reject-when-full closes matches the host's refusals exactly once it is installed at
+  webserver creation (before that, host exceeded device by 0-21: the counter started seconds late).
+- **`gc.threshold(32768)` does not reduce failures**: ~1.7-2× the collections and more contiguous
+  space at 6, but H at 8 gave 1 vs 0 and at 9 gave 6 vs 3 — single runs, not separable from chance.
+- **An image built for 8 is not cleaner at 8 than one built for 10** (F′ 4 of 7 boots failing, H 0
+  and 1), against the expectation that 4,648 B more heap and a tighter cap would help. Unexplained;
+  one untested hypothesis is that refused clients retry at once and every refused accept still costs
+  its stream objects and a task.
+- **The instrumentation does not cause the wall**: the same 252 B piece fails at 8 with nothing on
+  the device but the task graph. The samplers cost ~10-20 % of throughput, so instrumented figures
+  are pessimistic; the device script's own code and globals cost 2,720 B (52,960 B for an
+  import-only script against 55,680 B), 3,008 B once it gained the rejection counter.
+- **The shipped configuration is the measured one**: E6′ built from the tip reads back 9 / 48 / 12,000,
+  192,360 B and 187,904 B, identical to E6, and was clean in both peak boots (0 in 890).
+
+**The throughput-matched twin reproduces this.** The 32-bit twin with its serving throttled to the
+board's rate (a CPU quota of 3.5 % of one core once it serves, `MAXCONN` patched into the generated
+module so admission is real) and its heap calibrated on the peak-load failures (F′ ≈ 564,648 B; H
+between 554,000 and 560,000 B) predicted F′ at 7 clean and at 8 ≈ 0.3 %, and silicon matched both;
+host refusals equalled device rejections exactly (1,336 = 1,336). It refuses less than the board
+below the limit, so its refusal percentages are not used. Unthrottled, the twin serves 50-100×
+faster, its requests hardly overlap, and it is optimistic by two levels or more (§7Q.12,
+SPECIFICATION.md E.8).
+
+### 7R.5 Anomalies — recorded, not chased
+
+- **One silent reset** in the first E6 collecting boot: output stopped ~40 s into the load with
+  33.5 KB free and no error line; watchdog or hard fault, cause lost. 1 in 9 peak-load collecting
+  boots, none in any uninstrumented boot.
+- **Hotspot fallback after a reset, three times** (after a likely watchdog reset between two tests,
+  after flashing F′, after flashing H); `kick_all_stations()` + hard reset recovered it each time
+  (once only on a second try).
+- **A self-reset under heap exhaustion** on pre-fix image G (limit 16, one-boot sweep 4-18 at `-1`):
+  at the first route failure 20,864 B were free with a largest run of 240 B, one dump later 5,888 B;
+  then the USB CDC dropped (`OSError: [Errno 5]` in `mpremote`) at ~425 s uptime. Cause not captured.
+- **A likely watchdog reset at `mpremote` attach** ~30 s after a test's own teardown reset, ~9 s
+  after attaching. Not confirmed.
+- **An empty `200` with no `Content-Length`**, twice, from an idle `GET /` during the boot-time WLAN
+  drop. **Explained 2026-09-24, off silicon**: `_serve_static()` does set the length, but microdot
+  writes the status line and each header apart, and `http.client` reads EOF mid-headers as their end,
+  giving exactly `200`, no `Content-Length`, 0 B — so this was a response cut inside its header block
+  (checked against a local socket). Fixed by sending the block as one write (SPECIFICATION.md I.3).
+- **Two host-side stalls at N = 4** before the static fix (a `URLError` and a 30 s timeout, nothing
+  on the device); none in the 12 boots after it.
+- **FRAM E31 + W73**, new between the two days' readings: a status byte found not IDLE at a write,
+  then block 1 invalid and restored from block 0 — the signature of a block write cut off by a
+  reset, most plausibly the silent reset above, recovered by the two-copy scheme.
+
+### 7R.6 Levers past the limit, after the fix [TWIN] (2026-09-23)
+
+The 32-bit twin, unthrottled, heap 528,000 B (calibrated on image G's first JSON failures at 10,
+§7R.3), dev's site, `-1`, 12 rounds; failed requests per run at N=10 (120 requests). Unthrottled it
+is optimistic (§7Q.12), so only the arms' order carries over, not their absolute levels:
+
+| arm | N=10, failures per run | failing sizes / what else |
+| --- | --- | --- |
+| the committed fix (control) | 10, 9, 9 | 241-257 B pieces, 804 B; 7 at N=8 |
+| response gate, 4 in flight | 1, 2, 2 | 8 of 192 at N=16 |
+| response gate, 2 in flight | 2, 2, 3 | 13 of 192 at N=16 |
+| `chunk_bytes` 128 | 4, 5 | 124-256 B |
+| `chunk_bytes` 64 | 15, 12 | **worse**: 512 B, the pieces list itself |
+| lazy JSON (pieces built at write time), 256 / 128 / 64 | 16-19 / 7-9 / 2-7 | **harmful**: truncated `200`s and `400`s, failures after the headers went out |
+
+No lever clears the wall at 10. A gate cuts failures about 5x but never to zero; a smaller chunk
+helps only to 128 and 64 moves the failure onto the pieces list; lazy generation turns a clean `500`
+into a truncated body. None was adopted: the limit is set by the heap margin (§7R.4), not moved.
+
+**Not a UART defect**: the UART link exerciser's 264 B receive failed twice at 10 connections in the
+64-bit twin (never in the 32-bit one) because the webserver had exhausted the heap. `uart_get()`'s
+own destination allocation is guarded (`_ERR_DEST_ALLOC`, errno 24, `src/asy_uart_comm.py`) and the
+task is supervised.
 
 ## 8. What is committed
 
@@ -4610,7 +5175,7 @@ That broke a real test, deterministically, not as a flake:
 — `AssertionError: real hotspot activation never started the real DNSServer task`. It waits up to
 25 s of real time for the WiFi state machine to reach hotspot fallback while the rest of the system
 runs, and the starved loop never got it there. **Bisected to a single variable**: reverting only
-`src/asy_spi_driver.py` to the base branch's version makes the file pass 13/13; with `f6a182d` it
+`src/asy_spi_driver.py` to its pre-`f6a182d` version makes the file pass 13/13; with `f6a182d` it
 fails 12/13 in every isolated run. Two CI runs on docs-only commits had already failed — first
 `test_uart_comm_hazard`, then this file — which initially looked like runner contention and was not.
 
@@ -4647,7 +5212,7 @@ invariant directly. The `except BaseException` path stays covered by
 **Bus-hazard tiers:** the mock tier was added and the twin tier runs in the suite. The two
 real-hardware tiers (`tests_hardware/flash/test_bus_concurrency.py`,
 `tests_hardware/bench/test_bus_concurrency_under_api_load.py`) were **not** run — no go-ahead in that
-conversation, and CS timing deserves one.
+conversation, and CS timing deserves one. Both tiers have since passed on silicon (§7H.6, §7N).
 
 **One unrelated suite failure, attributed not adjusted:**
 `tests/test_uart_comm_hazard.py::test_sustained_hammering_never_degrades_or_grows_the_heap_nocrc`
@@ -4690,14 +5255,24 @@ transcript.
 | the handover's §2.4 "JSON-derived strings in `_cache`" hypothesis | refuted: exactly **one** str/bytes survivor in the whole batch (§2.2) |
 | the handover's §2.5 "**6** CS sessions per byte-level write" | `get_write_protected()` issues no bus traffic. It is **5**, and only 5 closes the arithmetic (§3.1) |
 | the handover's §2.10.1 proposed enforcement metric | at 400k it reads 100% on a heap fragmented to 0.10 contiguity, and its own probe perturbs the result favourably (+67% at 400k, +16% at 560k) because the binary search's collections reset the allocation scan hint |
+| "a 3.5x contiguity cliff between 7 and 8 connections" (the first argument for a limit of 7) | sampled **after** the burst with an allocating probe, normalised against the after-boot value. At true peak with `mem_info(1)`, 5 repeats, the within-N spread of placeable 2,048 B blocks (6-12) exceeds the between-N step (0-4) for every adjacent pair from 4 to 16: that metric cannot rank adjacent limits at all |
+| "p50 latency grows ~1.3 ms per added connection" | the sweep's burst was `2 x max_connections`, so the load grew with the setting. At a fixed offered load of 4, p50 is flat at 4.2-4.5 ms for limits 4 to 16 [TWIN] |
+| "an 18-connection bar" and "~12 KB of free heap needed per connection" | measured with the twin's own `_http_client` inside the DUT's process; every failure was the client's ~5.5 KB body buffer. Draining instead, the same load passed 42/42 (SPECIFICATION.md E.9) |
+| "47 connections caught / 63 fatal" as the twin's wall | the transport path in isolation, nothing else running; with every module loaded it lands ~3x lower. An upper bound, never a capacity |
+| "7 → 8 costs 7,488 B" | added the ~5,170 B transient live set per connection to the 2,324 B permanent one. The transient is returned (70 served requests leave ~1.6 KB in total, flat, [TWIN]) and belongs to a placement question, not a budget |
+| "twin: 10 stable, the ceiling 12-18" (§7Q.12) as a prediction for the board | an unthrottled twin, stub page. Silicon failed at 10 on G′ and H (§7R.3) |
+| rounds-load free heap read as the peak (e.g. 25.7 % at 6 on F′) | pauses and 5 s snapshots miss the moment all N allocate; ~20 KB too optimistic at 6 against the collecting peak sampler (§7R.4) |
+| the non-collecting peak sampler's heap figure | reads "just after a GC" late (every ~60 ms against ~250 KB/s of churn), biased low by up to 15-30 KB; rp2 has no exact end-of-GC signal. Its verdict and failure counts stand |
+| "each admitted connection costs ~13-14 KB at peak plus 2,324 B static" | the 13-14 KB is the E6 → E7 drop in free heap at peak, which already contains the static 2,324 B and idle-to-idle noise; the live set per open connection is ~7.5-8 KB (§7R.4) |
 
 ---
 
 ## 10. Reproducing this
 
-Nothing in this file's tooling is committed — the harnesses live in the session scratchpad and are
-listed so a future session knows what to rebuild rather than rediscover. All need a frozen Unix port
-built per §1.4 and run from the repo root with `MICROPYPATH=.frozen`.
+The harnesses below are scratchpad tools, never committed unless a row says so — listed so a future
+session knows what to rebuild rather than rediscover. [TWIN] rows need a frozen Unix port built per
+§1.4 (or `build-heapprobe32` for §7Q/§7R), run from the repo root with `MICROPYPATH=.frozen`; [HW]
+rows ran on the bench.
 
 | harness | what it does |
 |---|---|
@@ -4732,14 +5307,49 @@ built per §1.4 and run from the repo root with `MICROPYPATH=.frozen`.
 | `gcfloor.py` | §7A.8's board-comparable metric: largest contiguous over free after the batch, with the bare fill recomputed by subtracting the probe's own ~52,700 B of retained instrument, per arm |
 | `gcens.sh` / `gcsum.py` / `gcsum2.py` / `gcx.py` / `gch.py` | §7A's ensembles: `gcens.sh <variant> <build> <heapsize> <tag>` emits the 15 perturbation runs; `gcsum2.py` tabulates worst/median/best kept% with retained and free bytes per arm, `gcx.py` the task-list arms, `gch.py` the heap-size x threshold sweep behind §1.5 |
 | `proto.py` | §3B: records every CS edge and transfer on the twin's `machine.SPI`/`Pin` for the current path and for each wire-identical prototype (`SyncFramChip`, `ProtoChunk`, `Proto2Chunk`) and asserts the traces equal; prices each in a collection-free window, first with the twin's fakes as they are, then with `machine.SPI.init/write/readinto` and `FramChip.write/readinto` replaced by allocation-free equivalents (the board-equivalent pass — the raw replay of the whole trace then costs 128 B). No argv; uses `build/generated_src/sensortask_dev_wiring_plan.json` |
+| `build-heapprobe32` | §7Q.9's 32-bit frozen twin. In `ports/unix`: `make BUILD=build-heapprobe32 VARIANT_DIR=<toolchain>/build_overrides/unix_kbd_intr_variant CC="gcc -m32" CXX="g++ -m32" LD="gcc -m32" MICROPY_PY_FFI=0 CFLAGS_EXTRA=-Wno-array-bounds FROZEN_MANIFEST=<manifest>`, ~2 minutes. **Pitfalls**: `gcc-multilib` must be installed (a C program printing `sizeof(void*)` under `gcc -m32` prints 4) and `file` on the binary must say `ELF 32-bit LSB pie, Intel 80386` — 1.29's Makefile silently ignores `MICROPY_FORCE_32BIT` and builds 64-bit (upstream CI cross-compiles instead). **Manifest**: `include()`s `<toolchain>/build_overrides/unix_kbd_intr_variant/manifest.py` and `freeze()`s `src`, `ext`, a copy of `build/generated_src` with `dev`'s `max_connections` patched to 64 so admission never caps a sweep, `digital_twin`, `frozen_modules` and a directory holding `scripts/build_website.sh dev <dir>/frozen_website_dev.py`. A pre-fix arm freezes `git archive <rev> src` into its own build dir. **A/B without a rebuild**: a module on `MICROPYPATH` still wins over a frozen one, so `MICROPYPATH=<dir>:.frozen` shadows one module — shadow the control too, so the shadow's compile cost is common to every arm |
+| `maps.py` / `bodies.py`, `equiv.py` / `bigdumps.py` / `respcost.py`, `statparts.py` / `latency.py` | §7Q's analysis helpers (which script did which is not recorded; together they did): free, largest run and `placeable(n)` per dump (`mem_info`'s `max free sz` is in blocks — ×16 on the 32-bit twin, ×32 on 64-bit; a hard-coded ×32 once doubled every 32-bit figure); a sha256 of every route's whole body per arm, which proved the fix byte-identical on all six routes; a spy on `json.dumps` for each route's largest single dump; one request priced step by step as `gc.collect(); a = gc.mem_alloc(); …`, 3 reps, zero spread; 60 sequential `/status`, median and p90 |
+| `validate_sweep_tool.py` | ran the (since removed) silicon sweep's own `run_level()` against the twin with a fake `BenchBridge` and its 45 s post-reset settle capped — the same idea as `validate_bench.py`. On the pre-fix firmware it reported UNSTABLE at 8 from its host-side body check alone, the device printing nothing |
+| `sweep.py` / `drive.py` / `boot.py` | §7Q's serving sweep: boot the frozen twin at a heap and threshold (`TWIN_BIN`, `SHADOW` for a module arm), drive N simultaneous requests x R rounds from a separate CPython process — one real socket per request, a `threading.Barrier(N)` so the burst is simultaneous, bodies drained never kept, a 1 s settle between rounds because a slot outlives its response — and count allocation failures from the log. `boot.py` runs the frozen `run_generic_integration` plus a `mem_info` sampler (env `SAMPLE_MS`, `MAPS`; `COLLECT=1` adds a collected dump) |
+| `classify.py` | groups a log's `MemoryError` tracebacks by size and the last three frames — how every wall in §7Q.11 was attributed |
+| `boot_site.py`, `SITE=1` | §7Q.14: `boot.py` / `twin_wrap.py` with `frozen_html` aliased to `dev`'s own website (`scripts/build_website.sh dev`, frozen into the binary), and (`boot_site.py`) every `err_s` printed so write-phase failures reach the log; `drive.py` checks each body against its `Content-Length` |
+| `twin_wrap.py` / `validate_bench.py` | `twin_wrap.py` runs a device script **unchanged** in the twin after `run_generic_integration`'s setup (`prewarm_poll_set()`, the UDP address shim, the FRAM/SCD30 state paths, the device's wiring plan), then `exec`s the script's source; run it on port 80 from a directory holding the device's `config_*.cfg`; `SITE=1` aliases `dev`'s site. A device script's wrapper around a route handler must pass through every keyword microdot passes (`_get_static` gets `filename`), or every static request becomes a 500. `validate_bench.py` imports the bench test module and runs its own test functions with a fake `Board` whose `run_isolated()` is `twin_wrap.py` (§7Q.13) |
 | `build-nosettrace` | `make -j8 BUILD=build-nosettrace VARIANT=standard VARIANT_DIR=<toolchain>/build_overrides/unix_kbd_intr_variant "CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=0 -Wno-array-bounds" FROZEN_MANIFEST=<scratchpad>/manifest_heap.py` in `ports/unix` — the heapprobe recipe with the flag off, into its own build dir; builds clean with no warnings |
+| `combined_load_sweep.py` + `serving_stability_under_combined_load.py` [HW] | §7R's silicon tool, committed then removed once the limit was settled — §10.1 |
+| `boot_peak.py` / `drive_peak.py` / `sweep_peak.py` | §7R.4's throughput-matched peak twin. `boot_peak.py`: dev's site aliased, every `err_s` printed, the silicon peak sampler's logic (never collects unless `COLLECT=1`; `PEAK_AT` per open-connection count) and a rejection counter wrapped on `_open_conns.increment` as soon as `sensortask_dev.webserver` exists. `drive_peak.py <port> <N> [dur]`: the silicon `--peak` load. `sweep_peak.py <heap> <thr> <Nlist> <tag>`: a fresh twin per level; env `QUOTA` (% of one core, cgroup v1 `cpu.cfs_quota_us` under `/sys/fs/cgroup/cpu/twintest`, applied only once the twin serves), `MAXCONN` (patched into the frozen generated `sensortask_dev.py` as `max_connections=int(os.getenv("MAXCONN") or "64")`), `SETTLE`, `DUR`; waits 12 s after the load so the last 10 s `PEAK_SUMMARY` holds every rejection, and counts host resets beyond the device's rejections as true failures. Calibrated: `QUOTA=3.5`, F′'s heap ≈ 564,648 B |
 
-Two runtime neutralisations are applied in every harness, and are twin artifacts with no counterpart
-on the device: `_fram_chip.FramChip.__init__` shrunk from a 262 KB backing bytearray to 8 KB (the
+Two runtime neutralisations are applied in the layout harnesses above, and are twin artifacts with no
+counterpart on the device (the §7Q/§7R serving harnesses keep the full 262,144 B FRAM image, §7Q.1): `_fram_chip.FramChip.__init__` shrunk from a 262 KB backing bytearray to 8 KB (the
 address space is left unchanged so chunk decoding is identical), and `machine.I2C.log`/`SPI.log`
 replaced with a sink. **Note that `digital_twin/machine.py`'s `SPI.write` does `data = bytes(buf)`
 and constructs its log tuple as a call argument**, so a sink stops the retention but not the
 allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
+
+### 10.1 The removed silicon sweep tool [HW]
+
+`tests_hardware/combined_load_sweep.py` (host) + `tests_hardware/device_scripts/serving_stability_under_combined_load.py`
+(device), last present at commit `4914a25`. The measuring rules it applied (idle reference, refusal
+classification, rejection counter placement) are `tests_hardware/README.md`'s.
+
+- **Host**: `DUT_IP=<ip> uv run python tests_hardware/combined_load_sweep.py <levels…> [--threshold T]
+  [--peak [--margin | --no-sampler]] [--margin] [--raw-dir d]`.
+- **Per level**: one fresh boot through `Board.run_isolated()` (which arms an 8 s `WDT`), then
+  `kick_all_stations()`, hard reset and a 45 s settle; switches are substituted into a copy of the
+  device script.
+- **Output**: one verdict line per level (ok / refused via `http_client.is_ceiling_close()` / true
+  failure), the device's allocation lines, its `PEAK_*` lines and a host-vs-device refusal
+  cross-check.
+- **Device**: sets and prints `gc.threshold`, starts `sensortask_dev.main()`, wraps
+  `_open_conns.increment` to count rejections (peak mode), and after 20 s runs a 150 s window with
+  one probe:
+
+| mode | probe |
+| --- | --- |
+| rounds (default) | `mem_info(1)` maps every 5 s |
+| `--margin` | the same after `gc.collect()` |
+| `--peak` | 20 ms `gc.mem_free()` + `_open_conns.value` low-water sampler |
+| `--peak --margin` | the same, collecting every 100 ms — exact live set, verdict not evidence |
+| `--no-sampler` | nothing — the control |
 
 ---
 
@@ -4856,7 +5466,7 @@ later reader sees what was decided and on what evidence. **Nothing is open here 
    between per-block-operation and per-*chunk*-operation locking (lever 3), one rung further down —
    both §3B prototypes already locked per block operation, so the per-command rung was never
    measured there. Rebuilt at the chosen scope, a blank logger `setup()` costs **13,696 B against
-   the base branch's 122,880 (9.0x)** and a valid one 9,152 against 80,384 (8.8x), with the wire
+   the pre-A code's 122,880 (9.0x)** and a valid one 9,152 against 80,384 (8.8x), with the wire
    traces byte-identical across both scopes. The cost accepted: a second SPI device waits for a
    block operation (~25 CS, ~600 us) instead of a command (~5 CS, ~100 us); there is no second SPI
    device in any device TOML today. **Lever 3 (per chunk operation) is not taken** — it is worth
@@ -4900,27 +5510,12 @@ closed door. The general prohibition for business logic and the run phase stands
 
 ---
 
-## 12. Not started, carried forward from the deleted handover
+## 12. Carried forward from the deleted handover
 
-- Commit Tier 1 into the repo properly: the retained frozen-port build variant, the runtime
-  neutralisations, the calibrated heap size, and the census tooling. Touches
-  `toolchain/setup_toolchain.py` and adds a `scripts/` entry, so it owes BACKLOG.md's running list
-  for the owner's next manual two-target chroot run (Ubuntu noble/GCC 13 **and** Debian
-  trixie/GCC 14) — periodic since 2026-09-18, not a blocking gate.
-- ~~The `buildgen` seam + contiguity guard, written test-first and verified to fail when the
-  invariant is deliberately broken.~~ **Built 2026-09-21 — §7L**, as
-  `tests_scripts/test_digital_twin_boot_contiguity.py` plus `tests/_boot_contiguity_probe.py`, and
-  verified against four injected regressions. Its stated metric was **replaced**: "absolute
-  contiguity against free" is heap-size dependent, so the guard asserts the reach of each list's new
-  blocks above its own seam, which measured byte-identical at 8M and 16M (§7L.1). The perturbation
-  is held constant as this item required.
-- ~~Fix the stale lint-selection sentence in CLAUDE.md's "Code quality tooling"~~ — **done in this
-  session.** It claimed the selection was `E`/`F`/`W`/`I`/`UP`/`B` while `pyproject.toml:104` sets
-  `select = ["ALL"]`, which CLAUDE.md itself referenced correctly in four other places.
-- ~~Amend the handover's §2.7.1 twin table with §1.4's calibration finding, rather than leaving two
-  contradictory tables in the repo.~~ **Moot since 2026-09-22**: that handover was deleted, so the
-  second table is gone; §9 keeps it quarantined by name with §1.4 as the reason, which is what the
-  amendment was for.
-- Optional: rebuild the frozen port from the post-`f6a182d` tree and run the exact same-binary A/B
-  (an `oldsleep` inverse-patch mode is already implemented) so the committed code is measured rather
-  than approximated by the runtime `newsettle` patch.
+- **The frozen-port twins stay ad-hoc (owner, 2026-09-23)**: 64-bit and 32-bit alike, they and their
+  tooling are instruments documented here (§7Q.9, §10), never a committed build variant or CI gate.
+- **The contiguity guard is built** (§7L): `tests_scripts/test_digital_twin_boot_contiguity.py` plus
+  `tests/_boot_contiguity_probe.py`, asserting each list's reach above its own seam (§7L.1).
+- Optional, not started: rebuild the frozen port from the post-`f6a182d` tree and run the exact
+  same-binary A/B (an `oldsleep` inverse-patch mode is already implemented) so the committed code is
+  measured rather than approximated by the runtime `newsettle` patch.

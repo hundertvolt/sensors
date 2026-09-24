@@ -38,6 +38,12 @@ class HeapMap(NamedTuple):
     def gaps_at_least(self, size: int) -> int:
         return sum(1 for run in self.free_runs if run >= size)
 
+    def placeable(self, size: int) -> int:
+        """How many `size`-byte blocks the heap could still place. Not gaps_at_least(): one 40 KB
+        run is ONE gap but holds nineteen 2 KB buffers, and it is the capacity that has to cover a
+        simultaneous demand (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.2)."""
+        return sum(run // size for run in self.free_runs)
+
     def summary(self) -> str:
         return (
             f"used={self.used_bytes} free={self.free_bytes} largest_free_run={self.largest_free_run} "
@@ -175,3 +181,49 @@ def parse_labelled(text: str) -> dict[str, HeapMap]:
     for match in re.finditer(r"^=== MAP (\S+) ===$(.*?)^=== ENDMAP \1 ===$", text, re.MULTILINE | re.DOTALL):
         found[match.group(1)] = parse(match.group(2))
     return found
+
+
+def parse_churn(text: str) -> dict[str, int]:
+    """allocation_need_per_source.py's CHURN lines: each probe's net mem_alloc() change, in bytes -
+    negative when a collect ran inside it, which a digits-only pattern silently dropped."""
+    return {m.group(1): int(m.group(2)) for m in re.finditer(r"^CHURN (\S+) (-?\d+)", text, re.MULTILINE)}
+
+
+_ALLOCATION_FAILED = re.compile(r"MemoryError|memory allocation failed")
+
+
+def parse_allocation_need(text: str) -> dict[str, int | None]:
+    """allocation_need_per_source.py's output, reduced to the smallest effective largest-free-run (in
+    bytes) at which each probe succeeded cleanly, and at every larger rung too. None if it never did.
+    A caught-and-logged failure between a probe's TRY and RES lines counts as a failure (I.4(e))."""
+    block_line = re.search(r"^BLOCK=(\d+)", text, re.MULTILINE)
+    if block_line is None:  # without the block size no rung can be sized in bytes
+        raise ValueError("no BLOCK= line: the script's output was cut off or its header changed")
+    block = int(block_line.group(1))
+    rung_bytes = 0
+    clean: dict[str, list[tuple[int, bool]]] = {}
+    label = ""
+    since_try: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("SIEVE "):
+            rung_bytes = 0
+        elif line.startswith(" No. of 1-blocks") and "max free sz" in line:
+            rung_bytes = int(line.rsplit("max free sz: ", 1)[1]) * block
+        elif line.startswith("TRY "):
+            if rung_bytes == 0:  # a need of 0 would pass every bound with nothing measured
+                raise ValueError(f"probe {line[4:]!r} ran with no mem_info() summary since its SIEVE line - its rung is unknown")
+            label, since_try = line[4:], []
+        elif line.startswith("RES ") and label:
+            ok = line.endswith(" ok") and not any(_ALLOCATION_FAILED.search(seen) for seen in since_try)
+            clean.setdefault(label, []).append((rung_bytes, ok))
+            label = ""
+        elif label:
+            since_try.append(line)
+    need: dict[str, int | None] = {}
+    for probe, results in clean.items():
+        need[probe] = None
+        for index, (size, _ok) in enumerate(results):
+            if all(ok for _size, ok in results[index:]):
+                need[probe] = size
+                break
+    return need

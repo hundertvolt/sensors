@@ -2,11 +2,14 @@
 own test, driven by a deliberately malformed fixture built from _toml_fixtures.base_doc() - never
 just incidentally exercised by the six real device TOMLs happening to be valid."""
 
+import importlib.util
 import shutil
 from pathlib import Path
+from types import ModuleType
 from typing import TYPE_CHECKING
 
 import pytest
+from _script_loader import load_script_module
 from _toml_fixtures import base_doc, write_doc, write_text
 
 from buildgen.errors import BuildError
@@ -21,6 +24,11 @@ if TYPE_CHECKING:
 @pytest.fixture
 def src_dir(repo_root: Path) -> Path:
     return repo_root / "src"
+
+
+@pytest.fixture(scope="session")
+def overrides(repo_root: Path) -> ModuleType:
+    return load_script_module(repo_root / "toolchain" / "micropython_overrides.py", "micropython_overrides")
 
 
 def _build(tmp_path: Path, src_dir: Path, doc: "TomlDoc", name: str = "dev") -> "DeviceModel":
@@ -1374,3 +1382,206 @@ def test_uart_link_invalid_role_value_rejected(tmp_path: Path, src_dir: Path) ->
     doc["instance"][-1]["role"] = "peer"
     with pytest.raises(BuildError, match=r"role must be one of \['initiator', 'responder'\], got 'peer'"):
         _build(tmp_path, src_dir, doc)
+
+
+# ---------------------------------------------------------------------------
+# [device].max_connections / backlog, and the firmware ceiling they must fit under
+# (SPECIFICATION.md Parts H.7 and B.14.2)
+# ---------------------------------------------------------------------------
+
+
+def _lwip_pcbs() -> int:
+    from buildgen.model import lwip_macros
+
+    return lwip_macros()["MEMP_NUM_TCP_PCB"]
+
+
+def test_max_connections_is_optional_and_falls_back_to_the_src_default(tmp_path: Path, src_dir: Path) -> None:
+    # Absent, WebserverService's own default applies - and the ceiling check below still runs
+    # against THAT, so saying nothing can never be a way past it.
+    doc = base_doc()
+    doc["device"].pop("max_connections", None)
+    _build(tmp_path, src_dir, doc)
+
+
+def test_the_src_default_itself_is_servable_by_the_pinned_lwip_table(src_dir: Path, overrides: ModuleType) -> None:
+    # A device that states no ceiling builds at this one, so it answers to the same per-connection
+    # relationships every stated ceiling does - three spare PCBs included (Part H.7).
+    from buildgen.model import lwip_macros
+    from buildgen.validate import webserver_init_default
+
+    assert overrides.check_lwip_ensemble(lwip_macros(), webserver_init_default(src_dir, "max_connections")) == []
+
+
+def test_a_max_connections_leaving_fewer_than_three_spare_pcbs_is_rejected(tmp_path: Path, src_dir: Path, overrides: ModuleType) -> None:
+    # Two spare is the first value refused: a closing connection's FIN_WAIT pcb outlives its slot,
+    # and lwIP never reclaims one at equal priority (toolchain/micropython_overrides.py).
+    doc = base_doc()
+    doc["device"]["max_connections"] = _lwip_pcbs() - overrides.SPARE_TCP_PCBS + 1
+    with pytest.raises(BuildError, match=r"MEMP_NUM_TCP_PCB \(\d+\) < max_connections \+ 3"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_a_max_connections_below_one_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["device"]["max_connections"] = 0
+    with pytest.raises(BuildError, match="serves nothing"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_a_backlog_under_max_connections_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # The failure this prevents is invisible from src/: a queue shallower than the ceiling lets lwIP
+    # reset part of a burst that lands while the event loop is busy, before _serve() ever sees it.
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    doc["device"]["backlog"] = 2
+    with pytest.raises(BuildError, match="accept queue would drop"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_a_backlog_at_or_above_max_connections_is_accepted(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    doc["device"]["backlog"] = 3
+    _build(tmp_path, src_dir, doc)
+
+
+def test_a_backlog_above_one_over_max_connections_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # Every queued arrival holds a pcb, and every one past a full ceiling plus one is refused by
+    # _serve() anyway, so a deeper queue buys nothing but pcbs held for arrivals it turns away.
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    doc["device"]["backlog"] = 4
+    _build(tmp_path, src_dir, doc)
+    doc["device"]["backlog"] = 5
+    with pytest.raises(BuildError, match=r"above max_connections \+ 1 \(4\)"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize(
+    ("table", "expect"),
+    [
+        ({"MEMP_NUM_TCP_PCB": 9}, "must set exactly"),
+        ("TCP_MSS", "must be at least 1"),
+        ("MEM_SIZE", "must be a non-negative int"),
+    ],
+)
+def test_a_malformed_lwip_table_is_a_named_build_error_never_a_traceback(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch, table: "object", expect: str) -> None:
+    # The toolchain's own shape check runs first, so a typo in versions.toml names itself here
+    # instead of surfacing as a TypeError or ZeroDivisionError inside the ensemble arithmetic.
+    from buildgen import validate
+    from buildgen.model import lwip_macros
+
+    pinned = lwip_macros()
+    bad: dict[str, object] = dict(table) if isinstance(table, dict) else {**pinned, str(table): 0 if table == "TCP_MSS" else "12000"}
+    monkeypatch.setattr(validate, "lwip_macros", lambda: bad)
+    with pytest.raises(BuildError, match=expect):
+        _build(tmp_path, src_dir, base_doc())
+
+
+def test_an_lwip_entry_that_is_not_a_table_is_refused_by_the_loader(tmp_path: Path) -> None:
+    from buildgen.model import lwip_macros
+
+    versions = write_text(tmp_path, "versions", "lwip = 5\n")
+    with pytest.raises(BuildError, match=r"\[lwip\] in .* must be a table"):
+        lwip_macros(versions)
+
+
+@pytest.mark.parametrize(
+    ("content", "why"),
+    [
+        (None, "No such file"),
+        ("[micropython]\nref = 'v1.29.0'\n", "'lwip'"),
+        ("[lwip\n", "Expected ']'"),
+    ],
+)
+def test_an_unreadable_lwip_table_is_a_named_build_error_never_a_traceback(tmp_path: Path, content: "str | None", why: str) -> None:
+    # Missing file, missing table, broken TOML: the three ways the loader can fail, each naming
+    # the file and the ceiling it bounds rather than escaping as OSError/KeyError/TOMLDecodeError.
+    from buildgen.model import lwip_macros
+
+    versions = tmp_path / "versions.toml" if content is None else write_text(tmp_path, "versions", content)
+    with pytest.raises(BuildError, match=r"cannot read the \[lwip\] table from .*versions\.toml") as info:
+        lwip_macros(versions)
+    assert why in str(info.value), info.value
+    assert info.value.field == "max_connections"
+
+
+def test_an_unloadable_override_module_is_a_named_build_error(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(importlib.util, "spec_from_file_location", lambda *_a, **_k: None)
+    with pytest.raises(BuildError, match=r"cannot load toolchain/micropython_overrides\.py"):
+        _build(tmp_path, src_dir, base_doc())
+
+
+def _webserver_src(tmp_path: Path, init: str) -> Path:
+    (tmp_path / "asy_webserver_service.py").write_text(f"class Other:\n    def __init__(self, max_connections=99): ...\n\nclass WebserverService:\n    {init}\n")
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    ("init", "want"),
+    [
+        ("def __init__(self, a, *, max_connections: int = 7, backlog: int = 8): ...", 7),
+        ("def __init__(self, a, max_connections=5, backlog=6): ...", 5),
+        ("def __init__(self, max_connections, *, backlog=6, other=max_connections): ...", None),
+        ("def __init__(self, *, max_connections=True): ...", None),
+        ("def __init__(self, *, max_connections=MAX): ...", None),
+        ("def setup(self, *, max_connections=4): ...", None),
+    ],
+)
+def test_webserver_init_default_reads_only_an_int_literal_of_the_real_class(tmp_path: Path, init: str, want: "int | None") -> None:
+    # Keyword-only and positional defaults both count; a same-named argument on another class, a
+    # bool, a name, or a method other than __init__ never does - each is refused by name instead.
+    from buildgen.validate import webserver_init_default
+
+    src = _webserver_src(tmp_path, init)
+    if want is not None:
+        assert webserver_init_default(src, "max_connections") == want
+        return
+    with pytest.raises(BuildError, match=r"no longer has a readable int default for 'max_connections'"):
+        webserver_init_default(src, "max_connections")
+
+
+@pytest.mark.parametrize("content", [None, "class WebserverService(:\n"])
+def test_an_unreadable_webserver_source_is_a_named_build_error(tmp_path: Path, content: "str | None") -> None:
+    from buildgen.validate import webserver_init_default
+
+    if content is not None:
+        (tmp_path / "asy_webserver_service.py").write_text(content)
+    with pytest.raises(BuildError, match=r"cannot read .*asy_webserver_service\.py to resolve WebserverService's own backlog default") as info:
+        webserver_init_default(tmp_path, "backlog")
+    assert info.value.field == "backlog"
+
+
+@pytest.mark.parametrize("field", ["max_connections", "backlog"])
+def test_a_non_int_connection_field_is_rejected(tmp_path: Path, src_dir: Path, field: str) -> None:
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    doc["device"][field] = "4"
+    with pytest.raises(BuildError, match="must be an int"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_device_max_connections_reads_the_toml_else_the_src_default(tmp_path: Path, src_dir: Path) -> None:
+    # The one reader every host-side instrument sizes its load with, so it must agree with the build.
+    from buildgen.validate import device_max_connections, webserver_init_default
+
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    assert device_max_connections(write_doc(tmp_path, "stated", doc), src_dir) == 3
+    doc["device"].pop("max_connections")
+    assert device_max_connections(write_doc(tmp_path, "unstated", doc), src_dir) == webserver_init_default(src_dir, "max_connections")
+
+
+def test_every_shipped_device_states_its_own_ceiling(repo_root: Path) -> None:
+    # The owner's decision (2026-09-22) is that the recommended setting ships on every device, so
+    # each one says what its ceiling is rather than inheriting a default nobody reads.
+    import tomllib
+
+    for toml_path in sorted((repo_root / "devices").glob("*.toml")):
+        if toml_path.name.startswith("zz_test_"):
+            continue
+        with toml_path.open("rb") as f:
+            device = tomllib.load(f)["device"]
+        assert "max_connections" in device, f"{toml_path.name} does not state [device].max_connections"
+

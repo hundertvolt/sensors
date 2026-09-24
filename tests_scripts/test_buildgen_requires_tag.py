@@ -1,6 +1,6 @@
 """Tests for buildgen.requires_tag: the `# @requires bus.<field><op><value>` comment-tag parser
 and enforcement (SPECIFICATION.md Part L.5's build-tooling quality bar). Covers the real
-SCD30 clock-stretch tag this session added plus every malformed/violated case."""
+SCD30 clock-stretch tag plus every malformed/violated case."""
 
 # SPECIFICATION.md Part L.5 names this file's own matrix dimensions and the rule behind them: the
 # accept side as a full cross-product, since silently accepting the wrong thing is what the tag

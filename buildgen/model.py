@@ -121,3 +121,20 @@ def load_device(path: Path) -> DeviceModel:
         instances[key] = InstanceSpec(inst["driver"], inst.get("name_ext", ""), fields_only, wiring, i)
 
     return DeviceModel(device, path, doc, instances)
+
+
+VERSIONS_PATH = Path(__file__).resolve().parent.parent / "toolchain" / "versions.toml"
+
+
+def lwip_macros(path: Path = VERSIONS_PATH) -> "dict[str, int]":
+    """versions.toml's whole [lwip] table. The values are an ensemble, so the connection-ceiling
+    check reads all of them, not just the PCB count (SPECIFICATION.md Part B.14.2)."""
+    try:
+        with path.open("rb") as f:
+            table = tomllib.load(f)["lwip"]
+    except (OSError, KeyError, tomllib.TOMLDecodeError) as e:
+        raise BuildError("<toolchain>", f"cannot read the [lwip] table from {path} ({e}) - it is what bounds every device's max_connections", field="max_connections") from e
+    if not isinstance(table, dict):
+        raise BuildError("<toolchain>", f"[lwip] in {path} must be a table, got {table!r}", field="max_connections")
+    return dict(table)
+

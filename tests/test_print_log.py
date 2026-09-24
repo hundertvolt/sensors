@@ -296,7 +296,7 @@ def test_err_count_increments_normally_right_below_the_cap() -> None:
 def test_history_length_zero_never_records_but_still_counts() -> None:
     # An unusual but typed-valid construction: a zero-length bounded deque. Empirically confirmed
     # under the real MicroPython interpreter that append()/extend() on it are silent no-ops, not
-    # a crash (see the deque investigation in this session).
+    # a crash.
     hist = PrintLogHistory(history_length=0)
     run(hist.err_s("e", errno=1))
     assert hist.err_count == 1

@@ -47,8 +47,7 @@ __pycache__/
 *.pyc
 
 # mypy's own incremental-cache directory (scripts/typecheck.sh) - reinstallable, never meant to be
-# committed; found untracked (unlike .ruff_cache/, already covered by a broader global-gitignore
-# pattern most setups already carry) while running scripts/typecheck.sh in this session.
+# committed; listed here because, unlike .ruff_cache/, no common global-gitignore pattern covers it.
 .mypy_cache/
 
 # Agent-tool-managed isolated git worktrees (each is its own nested checkout with its own .git) -

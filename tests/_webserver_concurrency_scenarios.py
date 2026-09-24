@@ -23,6 +23,7 @@ Section F. Not a test file; SPECIFICATION.md Parts H.7 and E.2.1 have the ration
 import asyncio
 import gc
 import json
+import socket
 import sys
 import time
 
@@ -33,6 +34,7 @@ sys.path.insert(0, "digital_twin")
 import _http_client
 import machine
 from _tmp_scratch import TmpScratch
+from microdot import Request  # type: ignore[import-not-found]
 
 try:
     from typing import TYPE_CHECKING
@@ -100,6 +102,27 @@ async def _boot(port: int, device: str) -> "Any":
     return module
 
 
+_BODY_CAP = 2048  # WebserverService's shipped max_content_length (Part I.6), stated, never read back
+
+
+def _ceiling(module: "Any") -> int:
+    """The admission ceiling of the build under test, read off the real service rather than
+    restated - every burst below scales with it, so raising a device's own max_connections makes
+    these scenarios bite harder instead of leaving them pinned at a number that used to be right."""
+    assert module.webserver is not None
+    ceiling: int = module.webserver._max_connections
+    # The bursts below floor at 2 page loads' or OpenHAB's pair of slots: under 4 they would exceed
+    # the ceiling and assert refusals away, so such a device needs scenario shapes of its own.
+    assert ceiling >= 4, f"max_connections {ceiling} is below the 4 these scenarios are shaped for"
+    return ceiling
+
+
+def _backlog(module: "Any") -> int:
+    assert module.webserver is not None
+    depth: int = module.webserver._backlog
+    return depth
+
+
 async def _start_webserver(module: "Any") -> "asyncio.Task[None]":
     assert module.webserver is not None
     task: asyncio.Task[None] = module.webserver.get_task_starters()[0]()
@@ -127,7 +150,10 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
 
 
 async def _healthy_request(host: str, port: int, path: str = "/measurements") -> int:
-    res = await _http_client.fetch(host, port, "GET", path)
+    # read_body=False throughout this file wherever only the status is read: an in-process client
+    # that materializes a body it never looks at competes with the DUT for the same heap, which is
+    # the regression fetch()'s drain siblings were added for (Part E.9, test_digital_twin_http_client.py).
+    res = await _http_client.fetch(host, port, "GET", path, read_body=False)
     return res.status_code
 
 
@@ -161,13 +187,27 @@ async def _still_serving(host: str, port: int, timeout_s: float = 5.0) -> bool:
         await asyncio.sleep(0.1)
 
 
+async def _drained(module: "Any", timeout_s: float = 10.0) -> bool:
+    """Waits for the service's own admission counter to return to zero, and reports whether it did.
+    A slot is released in _serve()'s finally, AFTER the close is awaited, so it outlives the response
+    the client already holds (Part H.7.1) - a burst demanding the full ceiling has to start from zero."""
+    assert module.webserver is not None
+    start = time.ticks_ms()
+    while True:
+        if (await module.webserver._open_conns.get_value() or 0) == 0:
+            return True
+        if time.ticks_diff(time.ticks_ms(), start) >= timeout_s * 1000:
+            return False
+        await asyncio.sleep(0.05)
+
+
 async def _browser_page_load(host: str, port: int) -> "list[int]":
     """One browser tab's page-load burst: two concurrent GETs, the real post-inlining footprint
     (SPECIFICATION.md Part H.7). Served from the default html_stub mount, not the real website -
     this file is about connection count and timing, not content."""
 
     async def _get(path: str) -> int:
-        res = await _http_client.fetch(host, port, "GET", path)
+        res = await _http_client.fetch(host, port, "GET", path, read_body=False)
         return res.status_code
 
     return list(await asyncio.gather(_get("/"), _get("/style.css")))
@@ -179,7 +219,7 @@ async def _openhab_poll(host: str, port: int) -> "list[int]":
     once rather than one at a time."""
 
     async def _get(path: str) -> int:
-        res = await _http_client.fetch(host, port, "GET", path)
+        res = await _http_client.fetch(host, port, "GET", path, read_body=False)
         return res.status_code
 
     return list(await asyncio.gather(_get("/measurements"), _get("/status")))
@@ -211,7 +251,7 @@ async def _real_config_write(host: str, port: int, interval: int) -> int:
     """A real config write reaching ConfigManager.write_config() through the real object graph
     (SCD30 is on every device, Part L.3) - unlike _slow_but_healthy_put()'s no-op above. Proves
     concurrent GET polling survives a real write; bench and unit equivalents exist per tier."""
-    res = await _http_client.fetch(host, port, "PUT", "/sensors", {"SCD30": {"Interval": interval}})
+    res = await _http_client.fetch(host, port, "PUT", "/sensors", {"SCD30": {"Interval": interval}}, read_body=False)
     return res.status_code
 
 
@@ -241,10 +281,11 @@ async def _scenario_n_healthy_up_to_max(device: str) -> None:
     module = await _boot(port, device)
     task = await _start_webserver(module)
     try:
-        # 4 matches WebserverService's own real max_connections default
-        # (src/asy_webserver_service.py) - every one of these must be admitted, not rejected.
-        results = await asyncio.gather(*(_healthy_request("127.0.0.1", port) for _ in range(4)))
-        assert results.count(200) == 4, results
+        # The build's own ceiling, not a restated 4: every one of these must be admitted, never
+        # rejected, however high the device's max_connections has been raised.
+        ceiling = _ceiling(module)
+        results = await asyncio.gather(*(_healthy_request("127.0.0.1", port) for _ in range(ceiling)))
+        assert results.count(200) == ceiling, (ceiling, results)
     finally:
         await _cancel(task)
 
@@ -263,7 +304,7 @@ async def _scenario_beyond_max_rejected_cleanly(device: str) -> None:
                 return "rejected"  # the documented reject-when-full outcome - a clean reset,
                 # not an exception this test should treat as a real failure.
 
-        results = await asyncio.gather(*(one() for _ in range(8)))
+        results = await asyncio.gather(*(one() for _ in range(_ceiling(module) * 2)))
         # max_connections bounds how many are open at once, not the total resolved across the whole burst:
         # against a fast local server an early connection can finish and free its slot before a later one
         # arrives, so more than max_connections can legitimately succeed in total (a real run here saw 6/8).
@@ -287,8 +328,9 @@ async def _scenario_mixed_healthy_and_flaky(device: str) -> None:
     module = await _boot(port, device)
     task = await _start_webserver(module)
     try:
-        healthy = [_healthy_request("127.0.0.1", port) for _ in range(2)]
-        flaky = [_flaky_connection("127.0.0.1", port) for _ in range(2)]
+        ceiling = _ceiling(module)
+        healthy = [_healthy_request("127.0.0.1", port) for _ in range(ceiling - ceiling // 2)]
+        flaky = [_flaky_connection("127.0.0.1", port) for _ in range(ceiling // 2)]
         results = await asyncio.gather(*healthy, *flaky, return_exceptions=True)
         healthy_results = results[: len(healthy)]
         assert all(r == 200 for r in healthy_results), results  # the healthy requests must
@@ -304,7 +346,7 @@ async def _scenario_all_flaky(device: str) -> None:
     module = await _boot(port, device)
     task = await _start_webserver(module)
     try:
-        await asyncio.gather(*(_flaky_connection("127.0.0.1", port) for _ in range(4)), return_exceptions=True)
+        await asyncio.gather(*(_flaky_connection("127.0.0.1", port) for _ in range(_ceiling(module))), return_exceptions=True)
         assert await _still_serving("127.0.0.1", port)
     finally:
         await _cancel(task)
@@ -332,7 +374,7 @@ async def _scenario_high_concurrency_burst(device: str) -> None:
                 except OSError:
                     return "rejected"
 
-            results = await asyncio.gather(*(one() for _ in range(12)))
+            results = await asyncio.gather(*(one() for _ in range(max(12, _ceiling(module) * 3))))
             assert all(r in (200, "rejected") for r in results), results
             assert await _still_serving("127.0.0.1", port)
     finally:
@@ -345,14 +387,13 @@ async def _scenario_each_count_up_to_max(device: str) -> None:
     module = await _boot(port, device)
     task = await _start_webserver(module)
     try:
-        for n in range(1, 5):  # 1..max_connections=4 inclusive - every count in this range
+        for n in range(1, _ceiling(module) + 1):  # every count up to the build's own ceiling
             # must be admitted in full, not just the exact ceiling (already covered above).
             results = await asyncio.gather(*(_healthy_request("127.0.0.1", port) for _ in range(n)))
             assert results.count(200) == n, (n, results)
-            # A brief settle delay between rounds - the benign timing window _still_serving()'s docstring
-            # documents: without it a round's connections can still be mid-close when the next burst
-            # arrives, making the slots look fuller than they are and resetting one of the next round's.
-            await asyncio.sleep(0.2)
+            # Each round from zero: a slot outlives its response until the close completes, so a fixed
+            # settle could still leave the next round's full ceiling one slot short under load.
+            assert await _drained(module), f"round {n}'s connections never released their slots"
     finally:
         await _cancel(task)
 
@@ -360,13 +401,14 @@ async def _scenario_each_count_up_to_max(device: str) -> None:
 @_register("above_max_connections_mixed_healthy_and_flaky_at_least_one_healthy_succeeds", 20.0)
 async def _scenario_above_max_mixed(device: str) -> None:
     # test_mixed_healthy_and_flaky_connections_dont_wedge_the_server above only exercises exactly
-    # max_connections total (2 healthy + 2 flaky = 4) - this is genuinely above it (4 + 4 = 8).
+    # the ceiling - this is genuinely above it, one full ceiling of each kind.
     port = _next_test_port()
     module = await _boot(port, device)
     task = await _start_webserver(module)
     try:
-        healthy = [_healthy_request("127.0.0.1", port) for _ in range(4)]
-        flaky = [_flaky_connection("127.0.0.1", port) for _ in range(4)]
+        ceiling = _ceiling(module)
+        healthy = [_healthy_request("127.0.0.1", port) for _ in range(ceiling)]
+        flaky = [_flaky_connection("127.0.0.1", port) for _ in range(ceiling)]
         results = await asyncio.gather(*healthy, *flaky, return_exceptions=True)
         healthy_results = results[: len(healthy)]
         assert healthy_results.count(200) >= 1, results  # not every healthy attempt is
@@ -378,13 +420,13 @@ async def _scenario_above_max_mixed(device: str) -> None:
 
 @_register("above_max_connections_all_flaky_survives", 20.0)
 async def _scenario_above_max_all_flaky(device: str) -> None:
-    # test_all_flaky_connections_dont_wedge_the_server above only exercises exactly max_connections
-    # (4) flaky connections - this is genuinely above it (8, double the ceiling).
+    # test_all_flaky_connections_dont_wedge_the_server above only exercises exactly the ceiling's
+    # worth of flaky connections - this is genuinely above it, double.
     port = _next_test_port()
     module = await _boot(port, device)
     task = await _start_webserver(module)
     try:
-        await asyncio.gather(*(_flaky_connection("127.0.0.1", port) for _ in range(8)), return_exceptions=True)
+        await asyncio.gather(*(_flaky_connection("127.0.0.1", port) for _ in range(_ceiling(module) * 2)), return_exceptions=True)
         assert await _still_serving("127.0.0.1", port)
     finally:
         await _cancel(task)
@@ -445,11 +487,12 @@ async def _scenario_existing_survive_overflow(device: str) -> None:
     module = await _boot(port, device)
     task = await _start_webserver(module)
     try:
-        # Two legitimately slow (but healthy) connections occupy 2 of max_connections=4's own
-        # slots for a real wall-clock window - long enough for a concurrent overflow burst to
-        # land while they're still in flight.
+        # Half the ceiling's slots held by legitimately slow (but healthy) connections for a real
+        # wall-clock window - long enough for a concurrent overflow burst to land mid-flight.
+        ceiling = _ceiling(module)
+        slow_count = max(2, ceiling // 2)
         evtloop = asyncio.get_event_loop()
-        slow = [evtloop.create_task(_slow_but_healthy_put("127.0.0.1", port, 1.0)) for _ in range(2)]
+        slow = [evtloop.create_task(_slow_but_healthy_put("127.0.0.1", port, 1.0)) for _ in range(slow_count)]
         await asyncio.sleep(0.3)  # let both slow connections actually open and start reading
 
         async def one() -> "int | str":
@@ -458,16 +501,15 @@ async def _scenario_existing_survive_overflow(device: str) -> None:
             except OSError:
                 return "rejected"
 
-        # 6 more concurrent attempts while the 2 slow ones are still open - above the remaining
-        # headroom (4 - 2 = 2 free slots), so at least one of these must be rejected, not
-        # silently dropped and not a crash of either already-in-flight slow connection.
-        overflow_results = await asyncio.gather(*(one() for _ in range(6)))
+        # Enough concurrent attempts to exceed the remaining headroom by a full ceiling, so at
+        # least one must be rejected - not silently dropped, and not a crash of a slow connection.
+        overflow_results = await asyncio.gather(*(one() for _ in range(ceiling - slow_count + ceiling)))
         assert overflow_results.count("rejected") >= 1, overflow_results
 
         slow_results = await asyncio.gather(*slow)
-        # The actual point of this test: neither pre-existing slow connection was disturbed by
-        # the overflow burst landing mid-flight - both still complete normally with a real 200.
-        assert slow_results == [200, 200], slow_results
+        # The actual point of this test: no pre-existing slow connection was disturbed by the
+        # overflow burst landing mid-flight - every one still completes normally with a real 200.
+        assert slow_results == [200] * slow_count, slow_results
     finally:
         await _cancel(task)
 
@@ -485,7 +527,7 @@ async def _scenario_stale_slot_reclaimed(device: str) -> None:
         # "Slowloris-shaped" gap _flaky_connection() itself doesn't quite cover (it does send a
         # partial request line) - these are reclaimed by outer_cap_s, not a per-call timeout.
         hanging = []
-        for _ in range(4):
+        for _ in range(_ceiling(module)):
             _reader, writer = await asyncio.open_connection("127.0.0.1", port)
             hanging.append(writer)
         await asyncio.sleep(0.2)
@@ -513,8 +555,10 @@ async def _scenario_multiple_browser_sessions(device: str) -> None:
     module = await _boot(port, device)
     task = await _start_webserver(module)
     try:
-        # Two browser tabs open at once - 2 connections each, 4 total, exactly max_connections.
-        results = await asyncio.gather(_browser_page_load("127.0.0.1", port), _browser_page_load("127.0.0.1", port))
+        # As many browser tabs at once as the ceiling admits - 2 connections each (the real
+        # post-bundling page-load footprint, Part H.7), so the whole ceiling is genuinely in use.
+        tabs = max(2, _ceiling(module) // 2)
+        results = await asyncio.gather(*(_browser_page_load("127.0.0.1", port) for _ in range(tabs)))
         for page_results in results:
             assert page_results == [200, 200], results
     finally:
@@ -523,19 +567,20 @@ async def _scenario_multiple_browser_sessions(device: str) -> None:
 
 @_register("realistic_mixed_openhab_polling_and_browser_session_concurrently", 20.0)
 async def _scenario_openhab_and_browser(device: str) -> None:
-    # The project owner's own named example: an OpenHAB instance polling two endpoints alongside a
-    # website open for manual sensor calibration - 2 + 2 = 4, exactly max_connections, all must
-    # succeed cleanly together.
+    # The project owner's own named example: an OpenHAB instance polling two endpoints alongside
+    # open website tabs for manual sensor calibration, filling the whole ceiling - all must succeed
+    # cleanly together, however high that ceiling has been raised.
     port = _next_test_port()
     module = await _boot(port, device)
     task = await _start_webserver(module)
     try:
-        browser, openhab = await asyncio.gather(
-            _browser_page_load("127.0.0.1", port),
+        tabs = max(1, _ceiling(module) // 2 - 1)  # 2 connections each, beside OpenHAB's own 2
+        gathered = await asyncio.gather(
+            *(_browser_page_load("127.0.0.1", port) for _ in range(tabs)),
             _openhab_poll("127.0.0.1", port),
         )
-        assert browser == [200, 200], browser
-        assert openhab == [200, 200], openhab
+        for page_results in gathered:
+            assert page_results == [200, 200], gathered
     finally:
         await _cancel(task)
 
@@ -546,21 +591,21 @@ async def _scenario_polling_and_config_write(device: str) -> None:
     # GET+write shape stays healthy against the real assembled twin. ConfigManager's asyncio.Lock rules out
     # a data race (Part C.7); this is the "stays healthy" concern, now with a writer present.
     #
-    # Exactly max_connections=4 at once (2 polling GETs, 2 writes), the same "all must succeed cleanly" bar
-    # as the up-to-max scenario - not pushed past the ceiling, which is a separate, already-covered concern.
+    # Exactly the ceiling at once (2 polling GETs plus writes filling the rest), the same "all must succeed
+    # cleanly" bar as the up-to-max scenario - not pushed past it, which is a separate, covered concern.
     port = _next_test_port()
     module = await _boot(port, device)
     task = await _start_webserver(module)
     try:
 
+        writes = max(2, _ceiling(module) - 2)  # the slots OpenHAB's own pair of GETs leaves free
+
         async def _writes() -> "list[int]":
-            return list(
-                await asyncio.gather(_real_config_write("127.0.0.1", port, 5), _real_config_write("127.0.0.1", port, 6)),
-            )
+            return list(await asyncio.gather(*(_real_config_write("127.0.0.1", port, 5 + i) for i in range(writes))))
 
         openhab_result, write_results = await asyncio.gather(_openhab_poll("127.0.0.1", port), _writes())
         assert openhab_result == [200, 200], openhab_result
-        assert write_results == [200, 200], write_results
+        assert write_results == [200] * writes, write_results
         assert await _still_serving("127.0.0.1", port)
     finally:
         await _cancel(task)
@@ -568,9 +613,9 @@ async def _scenario_polling_and_config_write(device: str) -> None:
 
 @_register("realistic_mixed_traffic_above_the_connection_ceiling_degrades_gracefully", 20.0)
 async def _scenario_mixed_traffic_above_ceiling(device: str) -> None:
-    # Same mix as above, pushed past max_connections=4: a second browser tab opens while OpenHAB is
-    # already polling and the first tab is still loading - 6 connections at once against a ceiling
-    # of 4. Some individual GETs may see a rejected connection, but nothing must crash or wedge.
+    # Same mix as above, pushed past the ceiling: more tabs open than it admits while OpenHAB is
+    # already polling. Some individual GETs may see a rejected connection, but nothing must crash
+    # or wedge, and the burst scales with whatever the build under test admits.
     port = _next_test_port()
     module = await _boot(port, device)
     task = await _start_webserver(module)
@@ -578,7 +623,7 @@ async def _scenario_mixed_traffic_above_ceiling(device: str) -> None:
 
         async def _get_tolerant(path: str) -> "int | str":
             try:
-                res = await _http_client.fetch("127.0.0.1", port, "GET", path)
+                res = await _http_client.fetch("127.0.0.1", port, "GET", path, read_body=False)
             except OSError:
                 return "rejected"
             else:
@@ -590,10 +635,191 @@ async def _scenario_mixed_traffic_above_ceiling(device: str) -> None:
         async def poll_tolerant() -> "list[int | str]":
             return list(await asyncio.gather(_get_tolerant("/measurements"), _get_tolerant("/status")))
 
-        results = await asyncio.gather(page_load_tolerant(), page_load_tolerant(), poll_tolerant())
+        tabs = _ceiling(module) // 2 + 1  # one tab's worth past the ceiling, beside OpenHAB's own 2
+        results = await asyncio.gather(*(page_load_tolerant() for _ in range(tabs)), poll_tolerant())
         flat = [r for group in results for r in group]
         assert flat.count(200) >= 1, flat
         assert all(r in (200, "rejected") for r in flat), flat
+        assert await _still_serving("127.0.0.1", port)
+    finally:
+        await _cancel(task)
+
+
+@_register("every_admitted_connection_is_actually_served_a_complete_correct_response", 40.0)
+async def _scenario_all_admitted_are_really_served(device: str) -> None:
+    # Admission is not service. A ceiling the stack can accept but not push produces 200s with
+    # truncated bodies, or responses that arrive minutes late - both of which "count(200) == N"
+    # would pass. This asserts the whole ceiling's worth of REAL work completes, intact and bounded.
+    port = _next_test_port()
+    module = await _boot(port, device)
+    ceiling = _ceiling(module)
+    task = await _start_webserver(module)
+    try:
+        # The heaviest real endpoints, not the cheapest - /sensors and /status both grow with the
+        # device's own module count and are the two that stream (Part I.3).
+        paths = ("/sensors", "/status", "/measurements", "/networking", "/system")
+
+        async def one(path: str) -> "tuple[str, int, int, object]":
+            started = time.ticks_ms()
+            res = await _http_client.fetch("127.0.0.1", port, "GET", path)
+            return path, res.status_code, time.ticks_diff(time.ticks_ms(), started), res.json()
+
+        # Three rounds at the full ceiling, so a leaked slot or a pool that only fills over time
+        # shows up rather than passing on a single cold burst. Each starts from a real zero, which
+        # is asserted rather than slept for - a slot that never comes back fails here, not later.
+        for round_index in range(3):
+            assert await _drained(module), f"round {round_index}: the previous round's slots never came back"
+            results = await asyncio.gather(*(one(paths[i % len(paths)]) for i in range(ceiling)))
+            assert len(results) == ceiling, (round_index, results)
+            for path, status, elapsed_ms, body in results:
+                assert status == 200, (round_index, path, status)
+                # Complete and correct, not merely non-empty: a truncated stream still parses as a
+                # 200 with a short body, and this is the shape _stream_dict_response() produces.
+                assert isinstance(body, dict) and body, (round_index, path, body)
+                assert elapsed_ms < 10000, f"round {round_index}: {path} took {elapsed_ms}ms - admitted but not served in any useful time"
+        assert await _still_serving("127.0.0.1", port)
+    finally:
+        await _cancel(task)
+
+
+@_register("a_full_ceiling_of_real_page_loads_is_served_without_truncation", 40.0)
+async def _scenario_all_admitted_page_loads_complete(device: str) -> None:
+    # The static path has its own failure mode the JSON routes do not: ext/microdot.py streams a
+    # file in send_file_buffer_size chunks, so a stack that runs out of buffers mid-response
+    # truncates rather than failing. Every tab must get byte-identical content.
+    port = _next_test_port()
+    module = await _boot(port, device)
+    ceiling = _ceiling(module)
+    task = await _start_webserver(module)
+    try:
+        tabs = max(2, ceiling // 2)  # 2 connections per page load, the real post-inlining footprint
+
+        async def _index() -> bytes:
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/")
+            assert res.status_code == 200, res.status_code
+            return bytes(res.body)
+
+        # One uncontended load first, as the reference body - the strongest truncation check
+        # there is, and mount-independent (the stub page and the real website differ by ~25x).
+        reference = await _index()
+        assert len(reference) > 0, len(reference)
+        assert await _drained(module), "the reference load's own slot never came back"
+        # The index twice per tab rather than index + a named asset: which assets exist depends on
+        # whether the stub or the real (inlined) website is mounted, and the hazard under test is
+        # concurrent streaming of one file, which this exercises directly either way.
+        bodies = await asyncio.gather(*(_index() for _ in range(tabs * 2)))
+        sizes = [len(body) for body in bodies]
+        assert set(bodies) == {reference}, f"a concurrent page load differs - uncontended it is {len(reference)} bytes, under load {sizes}"
+        assert await _still_serving("127.0.0.1", port)
+    finally:
+        await _cancel(task)
+
+
+@_register("the_accept_queue_is_never_shallower_than_the_admission_ceiling", 20.0)
+async def _scenario_backlog_covers_the_ceiling(device: str) -> None:
+    # backlog only matters while the event loop is busy: arrivals then wait in the accept queue, and
+    # past it the stack drops them. So the burst lands while the loop is stalled on purpose, and a
+    # whole ceiling of it has to reach _serve() within one SYN retry (1 s on Linux) of the stall.
+    port = _next_test_port()
+    module = await _boot(port, device)
+    ceiling = _ceiling(module)
+    assert _backlog(module) >= ceiling, (_backlog(module), ceiling)
+    task = await _start_webserver(module)
+    clients = []
+    try:
+        assert await _still_serving("127.0.0.1", port)
+        assert await _drained(module), "the readiness probe's slot never came back"
+        addr = socket.getaddrinfo("127.0.0.1", port)[0][-1]
+        for _ in range(ceiling):
+            client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            clients.append(client)
+            client.setblocking(False)
+            try:
+                client.connect(addr)
+            except OSError:
+                pass  # EINPROGRESS: the kernel finishes the handshake while the loop is stalled
+        time.sleep_ms(200)  # the stall: no await, so nothing is accepted until it ends
+        await asyncio.sleep(0.5)
+        reached = await module.webserver._open_conns.get_value()
+        assert reached == ceiling, f"{reached} of a {ceiling}-arrival burst reached _serve() - the rest waited out a dropped SYN"
+    finally:
+        for client in clients:
+            client.close()
+        await _cancel(task)
+    assert await _drained(module), "the burst's slots never came back"
+
+
+@_register("a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response", 30.0)
+async def _scenario_closing_connection_holds_its_slot(device: str) -> None:
+    # Settled, pinned at each device's own ceiling (SPECIFICATION.md H.7): a slot is freed only once
+    # _close_writer() returns, while the closing connection still holds heap and a pcb. Changes with
+    # test_asy_webserver_service.py's F1 twin of it, never alone.
+    port = _next_test_port()
+    module = await _boot(port, device)
+    ceiling = _ceiling(module)
+    service = module.webserver
+    gate = asyncio.Event()
+    real_close_writer = service._close_writer
+
+    async def close_then_linger(writer: "Any") -> None:
+        await real_close_writer(writer)  # the client sees its FIN, so a streamed body ends normally
+        await gate.wait()  # ...but the close is not finished as far as the slot is concerned
+
+    service._close_writer = close_then_linger  # type: ignore[method-assign]
+    task = await _start_webserver(module)
+    try:
+        assert await _drained(module)
+        results = await asyncio.gather(*(_http_client.fetch("127.0.0.1", port, "GET", "/status") for _ in range(ceiling)))
+        for res in results:
+            assert res.status_code == 200, res.status_code
+            assert isinstance(res.json(), dict) and res.json(), "every client holds its complete response"
+        held = await service._open_conns.get_value()
+        assert held == ceiling, f"every response is out but no close has finished; all {ceiling} slots must still count, got {held}"
+        try:
+            beyond: int | str = await _healthy_request("127.0.0.1", port)
+        except OSError:
+            beyond = "rejected"
+        assert beyond == "rejected", beyond
+        gate.set()
+        assert await _drained(module), "the slots never came back once the closes finished"
+        assert await _still_serving("127.0.0.1", port)
+    finally:
+        gate.set()
+        await _cancel(task)
+
+
+@_register("a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly", 30.0)
+async def _scenario_simultaneous_bodies(device: str) -> None:
+    # max_connections bodies can be in flight at once, each one a contiguous allocation, so the
+    # simultaneous contiguous demand is max_connections x max_content_length (Part I.6) - the
+    # single most likely source of a new MemoryError when the ceiling goes up.
+    port = _next_test_port()
+    module = await _boot(port, device)
+    ceiling = _ceiling(module)
+    task = await _start_webserver(module)
+    try:
+        results = await asyncio.gather(*(_real_config_write("127.0.0.1", port, 5 + i) for i in range(ceiling)))
+        assert list(results) == [200] * ceiling, results
+        # Then the same count again with bodies at the cap's own boundary: read at the cap (the
+        # schema may still refuse the value), 413 one byte over - each a separate live allocation.
+        assert Request.max_content_length == _BODY_CAP, Request.max_content_length
+        padding = _BODY_CAP - len(json.dumps({"NTP_Host": ""}))
+
+        async def _sized(nbytes: int) -> "int | str":
+            body = {"NTP_Host": "x" * nbytes}
+            try:
+                res = await _http_client.fetch("127.0.0.1", port, "PUT", "/networking", body, read_body=False)
+            except OSError:
+                return "rejected"  # a 413 sent over a body it never read can arrive as a reset
+            else:
+                return res.status_code
+
+        assert await _drained(module), "the first burst's slots never came back"
+        at_cap = await asyncio.gather(*(_sized(padding) for _ in range(ceiling)))
+        assert all(r not in (413, "rejected") for r in at_cap), at_cap
+        assert await _drained(module), "the at-cap burst's slots never came back"
+        over = await asyncio.gather(*(_sized(padding + 1) for _ in range(ceiling)))
+        assert all(r in (413, "rejected") for r in over), over
         assert await _still_serving("127.0.0.1", port)
     finally:
         await _cancel(task)

@@ -15,77 +15,38 @@ Status values: **OPEN** (owed), **BLOCKED** (waiting on a decision or another ro
 
 ## The finalisation checklist — everything still owed, in one place
 
-Grouped by what each row *needs*, not by which effort opened it. **28 rows owed** — fifteen closed in
-the 2026-09-22 sitting (S1, S2, T3, T6, G7, E1-E4, T7, N1, N4, R16, G9, H2), whose results are in
-`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7M and §7N, `SPECIFICATION.md` I.2/F.5.8/I.3, and BACKLOG 28. D1 and D2 are the owner's standing answers and no
-sitting re-asks them. One row is blocked on something the project does not have (G10's C source);
-**S3 is blocked on nothing technical** — it was denied by the running session's own permission
-classifier, since it opts into spending real flash/NVM endurance, and needs the owner to allow it.
+Grouped by what each row *needs*, not by which effort opened it. **29 rows owed.** D1 and D2 are the
+owner's standing answers and no sitting re-asks them. G10 is blocked on something the project does
+not have (the C source).
 This table is an index; the row's own entry below is what to read before running it.
 
 | Group | Rows | What it needs |
 | --- | --- | --- |
-| **Per-sitting confirmation** | D3 | Which image. Always this branch's own tip; never a `wozi` build |
-| **The suite runs** | S3, S3b | **S1 and S2 are DONE** (2026-09-22, both clean — §7N), which satisfies D1's ordering condition, so S3 (`--allow-persistence-writes`) is now owed rather than conditional. S3b needs `--allow-neopixel-sweep` and M1 first |
-| **Heap placement readings** | T1 | **E1-E4 and T7 are DONE** (2026-09-22 — §7M), and the finding is that the twin's ratios do not transfer at the board's fill. T1 still wants the in-suite AFTER `largest_block` |
-| **Measure A's leftovers** | T2, T4 | **T3 is DONE**: all 14 FRAM device scripts are driven by flash-tier tests that passed in S1 and S2, so it needed no separate run. T4 is one to write |
-| **Memory gates and the (e) stage** | G8 | **G7 and T6 are DONE** — both memory-gate files ran and passed on this image (§7N). G8 is still a script to write first |
-| **New features, and records that need no run** | N1-N4, R16 | N1/N4/R16 are one line in `SPECIFICATION.md` each, no bench time. N2/N3 are one look each |
-| **Targeted investigations** | R1-R9, R13 | Bench time. R1, R4, R5 and R8's reboot arm ride on S3 |
-| **Tests still to write** | G1, G3, G4, G6, G10 | Code first, bench second. **G9 is DONE** (2026-09-22): `tests_hardware/website_identity.py` derives the expected names from `devices/dev.toml` through buildgen and both website tests now use it. G6 is adapt-now-measure-later by decision; G10 waits on the C source |
-| **The bench host itself** | H1 | **H2 is DONE** (2026-09-22): the Pi4 reports 4x, not the predicted 2x, and the suite is green there — migrated to BACKLOG item 28, which is now closed. H1 needs no board either |
+| **Per-sitting confirmation** | D3 | Which image. Always a `dev` build of the tree under test; never a `wozi` build |
+| **The suite runs** | S3b | `--allow-neopixel-sweep`, with M1 first |
+| **Heap placement readings** | T1 | The in-suite AFTER `largest_block` |
+| **Measure A's leftovers** | T2, T4 | T4 is a script to write first |
+| **Memory gates and the (e) stage** | G8 | A script to write first |
+| **New features** | N2, N3 | One look each; N3 rides on R13 |
+| **Targeted investigations** | R1-R7, R9, R13 | Bench time. R1 and R4 need their own run with `--allow-persistence-writes` |
+| **Tests still to write** | G1, G3, G4, G6, G10 | Code first, bench second. G6 is adapt-now-measure-later by decision; G10 waits on the C source |
+| **The bench host itself** | H1 | Owner-run; needs no board |
 | **Long soak and the light rig** | S4, M1 | Deliberately separate sittings. M1 is interactive and records the rig geometry S3b depends on |
-| **Findings still open** | F1 | The script that stranded the bench once. Read its row in full before running it |
+| **Findings still open** | F1, F17 | F1: the script that stranded the bench once; read its row in full before running it. F17 rides along with W4 |
+| **The connection limit of 6** (§4A) | W3, W4 | The next regular bench run; the limit itself is settled |
 
 **What "finished on real hardware" means**: every row above DONE or explicitly EXCLUDED, each
-result migrated into `SPECIFICATION.md`/`CLAUDE.md`/`BACKLOG.md`, and this file deleted. Since
-2026-09-22 that is reachable by one bench sitting plus the writing work — no row is waiting on an
-owner decision any more.
+result migrated into `SPECIFICATION.md`/`CLAUDE.md`/`BACKLOG.md`, and this file deleted. That takes
+one bench sitting, the writing work, the owner's call on R5 and the owner's own H1 run.
 
-## Where things stand (2026-09-22, after the evening sitting)
+## If there is time for one sitting only
 
-Every measurement row that opened this file is closed. **Measure A** (§1A) and **measure B** (§1B)
-both ran on silicon on 2026-09-18/19, the **request-body cap** (§1D) closed green three times over,
-the replaced tripwire passes with 5.5x margin, and the bench tier has now been fully clean on four
-consecutive runs. All of it is written up in `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D-§7N.
+**Board state**: image E6′, `src/` as of 2026-09-24 06:45 at `max_connections = 6` (`HEAP_FRAGMENTATION_MEASUREMENTS.md`
+§7R.1), `buildDate 2026-09-24T06:45:32Z`, `DebugLevel` 5. Check `buildDate` against the tree and
+reflash: `src/asy_webserver_service.py` has moved since E6′.
 
-**The 2026-09-22 sitting closed fifteen rows and produced one real finding.** Ten of them came off
-the bench runs: S1 (36 passed) and S2 (98 passed) are both clean on a freshly built and flashed
-image from this branch's tip; T3, T6 and G7 close on those same runs; E1-E4 and T7 took the board's
-first placement reading. The other five needed no board — G9, H2, N1, N4 and R16. **The finding is
-§7M**: the twin's two transferable ratios — 2.07x on batch median depth, 8.66x on cumulative reach —
-come out **0.69x (inverted) and 0.91x (no separation)** on silicon, with tight repeats and the
-obvious confound ruled out. What transfers is the batch's own reach (1.5x) and the sign of the
-whole-sequence median. It changes no threshold and impugns no shipped collect; it bounds what the
-host guard's numbers are a statement *about*. Read §7M before using any of §7L's figures as a claim
-about the board.
-
-**The board now runs this branch's tip at `DebugLevel = 5`**, not the 2026-09-19 production image at
-0. It was rebuilt (`buildDate 2026-09-22T16:11:57Z`), reflashed with `picotool load -x -v`, and the
-`DebugLevel` restored over the serial REPL before any tier ran. If the board is wanted back as an
-ordinary quiet device, MEASUREMENTS §7J.6 is still the recipe — it has to be re-applied.
-
-**One caution for the next reader of the FRAM error logs**: this sitting ran ten isolated-driver boot
-scripts, which build their own `AsyFramManager` over the same chip, so production's first chunks are
-overwritten. §7N records the clean pre-sitting `errcount` reading, which is the trustworthy one.
-
-**Every handover file this queue used to point at is now deleted.**
-`REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md` went with E1-E4, which is the condition its own "Done
-when" set; the `_ProbeGc` port it carried lives in
-`tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py` now.
-
-## If there is time for one sitting only (revised 2026-09-22, after the evening sitting)
-
-Steps 1-5 of the previous version are done and are not repeated. The board already carries this
-branch's tip at `DebugLevel = 5`, so a sitting that follows soon can skip the rebuild — but **check
-`buildDate` against the tree before trusting that**, and reflash if `src/` has moved.
-
-1. **Read `GET /status`'s `errcount` and write it down verbatim, before anything writes.**
-   CLAUDE.md's rule, and it has cost real evidence twice now (MEASUREMENTS §7I.1).
-2. **The wear-gated re-run (S3)** — `--allow-persistence-writes` on the bench wrapper, which is a
-   strict superset of the flash one. D1's ordering condition is **satisfied**: S1 and S2 came back
-   clean on 2026-09-22. This unlocks R1, R4, R5 and R8's reboot arm, none of which is reachable
-   without it. It is the single highest-value thing left on this list.
+1. **Run sheet Step 1** — the `errcount` reading, before anything writes.
+2. **§4A's W4** — the whole bench tier on the tree under test at the limit of 6, default flags; then W3.
 3. **M1, then S3b** — the light rig is in place (D2), and M1 is what writes the geometry down so
    the next sitting does not have to re-establish it. ~10 minutes together.
 4. **F1's SSID script** — read §2A F1 in full first: this is the script that stranded the bench,
@@ -100,21 +61,16 @@ Everything else in this file can wait for another sitting.
 
 These change what gets run, so settle them first.
 
-**D1 and D2 are answered standingly by the owner (2026-09-22), so a sitting does not re-ask them.**
-**D1 yes, but sequenced**: the wear-gated rows run *once the suite is already green without them* —
-a default run first, then the same two suites with `--allow-persistence-writes`, never both
-questions open at the same time. So a failure in the gated set is the gated test's own, not
-something the default run would also have shown. **D2 yes** — the NeoPixel-aimed-at-the-ISL29125
-rig is in place, so `--allow-neopixel-sweep` may be passed; M1 records the geometry once, which
-nothing has yet. **D3** stays a per-sitting confirmation, and its answer is always this branch's own
-tip. **D4 is retired** — it asked whether §1A's before/after pair was being run, and §1A is closed;
-one image suffices now.
+- **D1 and D2 are the owner's standing answers (2026-09-22)**; a sitting does not re-ask them.
+- **D1 is sequenced**: the gated rows run only once the default run is green, so a gated failure is
+  the gated test's own.
+- **D3** is confirmed every sitting; the answer is always a `dev` build of the tree under test.
 
 | # | Decision | Why it matters | Status |
 | --- | --- | --- | --- |
-| D1 | **Does the bench spend flash/NVM writes this round?** A default run deselects 13 of the bench tier's 73 tests and 9 of the flash tier's 51; `--allow-persistence-writes` runs them and spends real cycles. `--allow-scd30-extra-write` is AND-gated on top for one further SCD30 NVM write. | Several rows below are *only* reachable with the flag — R1 and R4 in particular. Deselection is invisible to the pass/fail check, so this must be a knowing choice (CLAUDE.md's wear rule). | **ANSWERED 2026-09-22: yes, after a clean default run.** Not a per-sitting question any more; the ordering is the condition |
-| D2 | **Is the NeoPixel-aimed-at-the-ISL29125 rig set up?** The gating question is **settled** — `main`'s `@pytest.mark.neopixel_sweep` + `--allow-neopixel-sweep` has been adopted here (2026-09-18), so `test_isl29125_survives_recombined_realistic_lighting_scenarios` (~8.5 min) and `test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration` (~99 s) now skip by default instead of failing on a bench without the rig. What remains is the physical question: decide whether to pass the flag this round. | The 2026-09-17 bench session ran both ungated and they passed after the `_park()` fix, which suggests the rig *is* in place — confirm rather than assume, and record the geometry via the manual tier's `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry` (M1) so the next session does not have to. Opting in costs ~10 min. | **ANSWERED 2026-09-22: yes, the rig is in place.** Pass the flag; run M1 first, which is what records the geometry |
-| D3 | **Which firmware image.** Every row below assumes a `dev` build from this branch's own tip via `scripts/build_firmware.py dev`. | CLAUDE.md's hard rule: a `wozi` build flashed onto the dev bench "tests nothing at all" and has produced false bugs before. | OPEN |
+| D1 | **Does the bench spend flash/NVM writes this round?** A default run deselects 13 of the bench tier's 85 tests and 9 of the flash tier's 51; `--allow-persistence-writes` runs them and spends real cycles. `--allow-scd30-extra-write` is AND-gated on top for one further SCD30 NVM write. | Several rows below are *only* reachable with the flag — R1 and R4 in particular. Deselection is invisible to the pass/fail check, so this must be a knowing choice (CLAUDE.md's wear rule). | **ANSWERED 2026-09-22: yes, after a clean default run.** Not a per-sitting question any more; the ordering is the condition |
+| D2 | **Is the NeoPixel-aimed-at-the-ISL29125 rig set up?** | Gates `--allow-neopixel-sweep` (S3b, ~10 min). | **ANSWERED 2026-09-22: yes.** Pass `--allow-neopixel-sweep`; run M1 first, which records the rig geometry |
+| D3 | **Which firmware image.** Every row below assumes a `dev` build of the tree under test via `scripts/build_firmware.py dev`. | CLAUDE.md's hard rule: a `wozi` build flashed onto the dev bench "tests nothing at all" and has produced false bugs before. | OPEN |
 
 ---
 
@@ -127,7 +83,7 @@ the ones above it. `tests_hardware/README.md` stays the reference for *how* a st
 command, and what to write down.
 
 **Step 1 - record the board's current state, before touching anything.**
-`GET /status` and save the whole `errcount` table verbatim into this session's notes. It is the one
+`GET /status` and save the whole `errcount` table verbatim into the sitting's notes. It is the one
 diagnostic a reboot does not erase and `ResetErrors` destroys irreversibly (CLAUDE.md). Then ask
 what was last run against this board: an isolated-driver device script builds its own
 `AsyFramManager` over the same chip and can leave a plausible-looking fabricated entry behind
@@ -137,7 +93,7 @@ board's recent history allows it to be.
 **Step 2 - answer D1, D2 and D3 (section 0) and write the answers down.** They decide which of the
 steps below run at all. Nothing later re-asks.
 
-**Step 3 - build and flash this branch's own `dev` image.**
+**Step 3 - build and flash the `dev` image of the tree under test.**
 `scripts/build_firmware.py dev`, then flash it. Never a `wozi` build (CLAUDE.md: it "tests nothing
 at all" and has produced false bugs).
 
@@ -148,15 +104,13 @@ the watchdog-starvation banner passed here on 2026-09-19, so a new failure in ei
 image's, not a known-broken test.
 
 **Step 5 - the bench tier.** `scripts/run_bench_hardware_suite.sh`
-A strict superset of step 4; same deselected-count caveat. G7, T6, R9 and R13's observations all
-ride along here.
+A strict superset of step 4; same deselected-count caveat. R9 and R13's observations ride along
+here.
 
-**Step 6 - the wear-gated re-run, once steps 4 and 5 are green.** D1 is a standing yes with that
-ordering as its condition (section 0), so this is owed rather than optional — but never before the
-default run is clean.
-`scripts/run_flash_hardware_suite.sh --allow-persistence-writes` and the same for the bench script.
-This is what makes R1, R4, R5 and R8's reboot arm reachable at all; without it they are deselected
-and answered by nothing. Add `--allow-scd30-extra-write` only if a second SCD30 NVM write is
+**Step 6 - the wear-gated run, only once steps 4 and 5 are green** (D1's condition).
+`scripts/run_bench_hardware_suite.sh --allow-persistence-writes` — a strict superset of the flash
+one. R1 and R4 need it; without it they are deselected. The last gated run (2026-09-23, clean,
+§7R.2) was image A, not the current tree. Add `--allow-scd30-extra-write` only if a second SCD30 NVM write is
 genuinely wanted on top.
 
 **Step 7 - the NeoPixel light programs.** D2 is a standing yes: the rig is in place.
@@ -168,12 +122,12 @@ first (it is what records the rig geometry), then
 `RangeAuto=false` bisection, and restore `RangeAuto` afterwards), R2's reader-count curve at 0, 1,
 2, 3, 4 and 6 readers, then R3, R6/R7 and R13.
 
-**Step 9 - the long soak, deliberately and separately.** `scripts/run_bench_soak_tests.sh`, tier
-chosen on purpose (short 60 s / mid 600 s / long 6 h). Never bundled into steps 4-6; the suite
+**Step 9 - the long soak, deliberately and separately.** `scripts/run_bench_soak_tests.sh --tier
+{short,mid,long}`, chosen on purpose (60 s / 600 s / 6 h). Never bundled into steps 4-6; the suite
 runners exclude it unconditionally.
 
-**Step 10 - the bench host itself** (section 4): H1's two chroot legs and H2's parallelism probe.
-Neither touches the board, so they can run while it is busy.
+**Step 10 - the bench host itself** (section 4): H1's two chroot legs. They do not touch the board,
+so they can run while it is busy.
 
 **Step 11 - close out.** For each row answered: migrate the result into `SPECIFICATION.md`,
 `CLAUDE.md` or `BACKLOG.md` as the row says, then delete the row. **When the last row goes, delete
@@ -181,28 +135,15 @@ this file** - it is a queue, not a record.
 
 | # | Suite run | Notes | Status |
 | --- | --- | --- | --- |
-| S3 | The same two with `--allow-persistence-writes` (the bench wrapper alone suffices — it is a strict superset of the flash one) | **RUN ONCE, 2026-09-22: `1 failed, 118 passed, 4 skipped, 6 deselected`, 49:40.** The failure was real and is fixed — `write_config()` only stages, and three `device_scripts/` files never flushed, so two of them were passing tests while writing defaults (MEASUREMENTS §7O). Re-verified on the two affected tests only (`2 passed`) plus the board's own files; a guard now pins it. **Not re-run green end to end, by owner decision** — a second gated pass was stopped mid-run, because permission to spend wear covers one run and "re-run to confirm" is the loop the gate exists to prevent. What is still owed: R1, R4, R5 and R8's reboot arm, which this run made reachable but which nobody has yet read the results of | OPEN — R1/R4/R5/R8 still owed from it |
 | S3b | `scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep` | Only if D2 says the rig is in place. Runs the two long ISL29125 light programs (~10 min combined); they skip otherwise. | OPEN — D2 answered yes, 2026-09-22: the rig is in place |
 | M1 | `scripts/run_manual_hardware_tests.sh --only isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry` | Interactive. Repeatability on an unchanged scene, continuity across the range switch, **and** setting up and writing down the rig geometry S3b depends on. Worth doing before S3b, not after. | OPEN |
-| S4 | Long memory soak (`long_soak` tier), never bundled into S1/S2 | A real long-duration memory-soak run has still never been executed (README.md's own "Further reading" note, carried from the retired hardware-planning docs). Pick the tier deliberately: short=60 s / mid=600 s / long=6 h. | OPEN |
-
-**Before any of this**: read `GET /status`'s `errcount` and record it. CLAUDE.md's rule — the
-FRAM-persisted per-module logs are the one piece of diagnostic evidence a reboot does not erase, and
-`ResetErrors` destroys them irreversibly. Also check what has already been run against the board: an
-isolated-driver device script builds its own `AsyFramManager` over the same chip and can leave a
-plausible-looking fabricated entry behind (`tests_hardware/README.md` has the mechanism).
+| S4 | Long memory soak (`long_soak` tier), never bundled into the suite runs (Steps 4-6) | A real long-duration memory-soak run has still never been executed (README.md's own "Further reading" note, carried from the retired hardware-planning docs). Pick the tier deliberately: short=60 s / mid=600 s / long=6 h. | OPEN |
 
 ---
 
-## 1A. Measure A — the FRAM path restructure — CLOSED, with one script that outlived it
+## 1A. A6's FRAM timing script — the input to T4
 
-Every row (A0-A9) ran on 2026-09-18 and is written up in `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D:
-the matched in-suite pair, the hold time on real wire, the boot cost, and the two fault injectors A
-broke and §7F.7 then confirmed fixed on both arms. Three residuals outlived the table and are rows
-of their own now — **N4** (the second-SPI-device question, structurally untestable, owed a line in
-`SPECIFICATION.md`), **T2** (three of `test_bus_concurrency_under_api_load.py`'s six need D1) and
-**F3** (a standalone heap reading measures the wrong thing — now recorded in
-`tests_hardware/README.md`, so closed).
+Measure A's results are `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D.
 
 **A6's timing script is not committed and this is the only copy.** T4 is the row that decides
 whether it becomes a device script. Run it with
@@ -267,24 +208,7 @@ asyncio.run(_main())
 
 ---
 
-## 1B. Measure B — the boot-confined placement reset — CLOSED
-
-Every row (B1-B7) ran on 2026-09-18/19: P1 to P5 all confirmed on silicon, the threshold-first
-reading established that the shipped `gc.threshold(32768)` is what carries B's placement gain into
-the run phase rather than merely adding to it, and the replaced tripwire passed with 5.5x margin on
-its first silicon run. Written up in `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7F and §7H.
-
-What measure B still owes is **placement rather than contiguity** — §1E — and the starter list's
-own reading, **T7**. Neither needs a second image.
-
----
-
 ## 1C. Added features no measurement row covered, and the records they need
-
-**The I2C shared scratch buffer is closed** (was C1): `asy_i2c_driver.py`'s one long-lived 32-byte
-`bytearray` per bus is a bus-facing change, so CLAUDE.md's four-tier rule applied — tier 3 green
-across two full flash suites and tier 4 green in the bench tier, 2026-09-19, §7H.6. The rows below
-are what that run did not speak to.
 
 | # | Item | Notes | Status |
 | --- | --- | --- | --- |
@@ -293,121 +217,52 @@ are what that run did not speak to.
 
 ---
 
-## 1D. The request-body cap (Part I.6) — CLOSED
-
-All five bench mirrors (W1-W5) ran on 2026-09-19 and pass: the boundary is exact at 2047/2048/2049,
-the 3072-4096 band that used to be accepted now answers 413, the largest body any schema can
-produce still fits (on the corrected 1312 B figure `tests_scripts/test_request_body_cap_headroom.py`
-derives rather than quotes), a mixed stream is answered per request, and the concurrency row has
-been green three times running since its post-load health check was fixed. Write-up:
-MEASUREMENTS §7I.2 and §7J.2. **W2 is the row that told this firmware from the previous one**; the
-mock tier, not the wire, is what proves the body is never *read* (Part I.6).
-
-**Zero wear, and it must stay that way.** Every one pads an *unknown* sensor key, which
-`PUT /sensors` ignores silently — so nothing validates, nothing persists and no `CFGMGR_*` logger
-fires. None of them is `@pytest.mark.persistence_write`-marked and none should become so; if one
-ever needs an *accepted* config write to make its point, that is the moment to add the marker.
-
----
-
-## 1E. The boot placement reset, measured as placement — CLOSED 2026-09-22, and it did not confirm
-
-E1-E4 ran on `dev` on 2026-09-22, both arms from one image with no reflash, and **T7 closed with the
-same runs**. The full write-up is `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7M; the short version is that
-the board does **not** reproduce the twin's transferable ratios.
-
-| metric | twin (§7L.7) | board (median of 3 per arm) |
-|---|---|---|
-| batch median depth below seam | 2.07x live | **0.69x — inverted** |
-| whole sequence reach above seam | 8.66x live | **0.91x — no separation** |
-| batch reach above seam | no discrimination | **1.53x, correct direction** |
-| whole sequence median | 3.3x live | **sign discriminates** (live 976 B below the seam, suppressed 1,840 B above) |
-| retention (`used_bytes`) | arm-independent to 0.05% | **0.05% — matches** |
-
-Repeats are tight, and the one credible confound — the script's own pre-batch probe, which allocates
-132,672 B of a 135,008 B pool on a 192,832 B heap and so defragments the heap immediately before the
-measurement — was tested with a variant that removes it. Every magnitude moved; no direction did.
-
-**The likely reason is fill, and §7M states it as interpretation rather than measurement**: the
-twin's own absolute figures are each larger than this board's entire heap, which is already 51%
-allocated at the seam. **No threshold was fitted to any of this** (§7G's rule), and measure B's
-silicon confirmation is untouched — that was §7F's contiguity evidence, a different metric.
-
-**Every run's figures are in §7M.5**, in board units (16 B blocks, 12,052 blocks, 192,832 B total),
-including both band counts the handover named — `>128 KiB` and `>512 KiB` are **0 in every run of
-both arms**, structurally, since 128 KiB above a seam at ~98,700 B already exceeds the whole heap.
-The raw `mem_info(1)` block maps (8,370 lines) were not committed — this repo gitignores run logs —
-and §7M.5 carries the exact command to regenerate them.
-
-The instrument change is committed: `heap_layout_after_full_boot_sequence.py` now carries the
-`_ProbeGc` port and dumps a seam map, with the arm selected by
-`exec "_ARM_OVERRIDE='suppressed'"` in the same raw-REPL session (assigning `sys.argv` raises on
-this board — verified, not assumed). `REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md` is deleted, which
-is what its own "Done when" required.
-
----
-
-## 1F. Measure A/B's own leftover rows, carried over when the remediation plan closed
-
-The (now deleted) remediation plan's section T held seven real-hardware rows. **Four are now
-closed** — T.5's boot cost (§7F.7), plus T3, T6 and T7 in the 2026-09-22 sitting (§7M, §7N) — and
-the three below are what is left, two of them partly answered. The plan was deleted once its other
-53 boxes were closed — documentation holds current state, not the path that got there (CLAUDE.md) —
-so those rows live here now, which is where a bench session looks for them. T4 is listed because A6
-above answers only its aggregate half, not the per-command figure Part F.5.8 still asks for.
+## 1F. Measure A/B's remaining silicon rows
 
 | # | Run (plan row) | Notes | Status |
 | --- | --- | --- | --- |
 | T1 | **The exact in-suite AFTER `largest_block`** (T.1) | A alone measured 20,592 → 28,864 B in-suite, +40.2% (§7D.3), and A + B **passes in-suite** against a BEFORE arm that fails — the first image ever to. What is still owed is only the precise AFTER figure: the test discarded it on a passing run, fixed host-side (§7F.6), so the next in-suite run yields it. Record it as §2.1's third and fourth [HW] columns. **Only like suite positions are comparable** (§7D.2) — a standalone reading does not answer this | PARTIAL |
-| T2 | **Bus-hazard tier 4 on the A + B arm** (T.2) | Tier 3 is done: §7F's AFTER arm ran the full flash suite with zero failures, covering all three FRAM tests, and §7F.7 calls out the two rewritten injectors passing on *both* arms — the first real-chip proof the hijacked payload is refused. `tests_hardware/bench/test_bus_concurrency_under_api_load.py`'s six were last run on the **A-only** arm (§7D.5). No wear marker is needed by any of them; FRAM is outside the wear gate | PARTIAL |
+| T2 | **Bus-hazard tier 4 on the A + B arm** (T.2) | Tier 3 is done: §7F's AFTER arm ran the full flash suite with zero failures, covering all three FRAM tests, and §7F.7 calls out the two rewritten injectors passing on *both* arms — the first real-chip proof the hijacked payload is refused. `tests_hardware/bench/test_bus_concurrency_under_api_load.py`'s six were last run on the **A-only** arm (§7D.5). Three of the six are `persistence_write`-marked, so they need `--allow-persistence-writes` | PARTIAL |
 | T4 | **Per-command hold time, measured** (T.4) | A device script timing one byte-level write (5 CS) and one `check_length` read slice with `time.ticks_us()` around the synchronous stretch, reported in its own `RESULT:` line; the number goes into `SPECIFICATION.md` F.5.8 beside the UART 4.4 ms frame. A6's aggregate is already there (2,849 us non-yielding, 21,269 us bus hold) — this is the per-command figure F.5.8 says is still owed. **If it is above ~1 ms the per-command yield policy is already the finest the chip allows**, and the finding is recorded, not "fixed". A6's own script is saved but not committed; T4 decides whether it becomes a committed device script | OPEN |
 
-**Zero wear on all three.** No flash cycle, no persistence write, no reflash.
+No flash cycle and no reflash; T2's three `persistence_write` tests spend a config write each.
 
 ---
 
 ## 2. Targeted investigations
 
-**Owner confirmation, 2026-09-18**: R1 (item 30), R2 (item 32's reader-count curve), R3 (item 29's
-spurious `W4`) and R5 (WP5's BMP3XX arm) are all confirmed as owed for the next go-ahead run - they
-were put to the owner as open decisions and the answer was "record for the real-hardware run", not
-"drop". Nothing about them is waiting on a further decision; they are waiting on bench time.
+R1, R2, R3 and R5 are confirmed as owed by the owner (2026-09-18); they wait on bench time, not on a
+decision (R5's "is it durable" aside).
 
 | # | Investigation | Source | Status |
 | --- | --- | --- | --- |
-| R1 | **BACKLOG item 30 — the ISL29125 HTTP connection reset under concurrent API load.** Owner's direction is to root-cause and resolve, not re-measure. Shape is established: needs **both** a config-persisting PUT **and** ≥2 concurrent readers (PUT alone 0/10, PUT+1 reader 0/6, PUT+2 readers **6/18**, plain GET+2 readers 0/6); failures land at 21–72 ms against 0.5–2.2 s for successes, and `WEBSERVER`'s counter stays 0 so FRAM forensics will not help. **Do the no-code bisection first**: `PUT /sensors {"ISL29125": {"RangeAuto": false}}` drops `_switch_range()` from the three-step push, leaving only `configure()` + `_reapply_persist()`. Rate falls → the threshold re-arm is implicated; unchanged → it is the first two. Restore `RangeAuto` afterwards. | BACKLOG 30 | OPEN — needs S3's wear-gated run, which is now owed rather than blocked |
+| R1 | **BACKLOG item 30 — the ISL29125 HTTP connection reset under concurrent API load.** Owner's direction is to root-cause and resolve, not re-measure. Shape is established: needs **both** a config-persisting PUT **and** ≥2 concurrent readers (PUT alone 0/10, PUT+1 reader 0/6, PUT+2 readers **6/18**, plain GET+2 readers 0/6); failures land at 21–72 ms against 0.5–2.2 s for successes, and `WEBSERVER`'s counter stays 0 so FRAM forensics will not help. **Do the no-code bisection first**: `PUT /sensors {"ISL29125": {"RangeAuto": false}}` drops `_switch_range()` from the three-step push, leaving only `configure()` + `_reapply_persist()`. Rate falls → the threshold re-arm is implicated; unchanged → it is the first two. Restore `RangeAuto` afterwards. | BACKLOG 30 | OPEN — S3 ran (§7R.2) without answering it; needs its own run with `--allow-persistence-writes` |
 | R2 | **BACKLOG item 32 — the `ResetErrors` reader-count curve.** Elapsed time at **0, 1, 2, 3, 4, 6** concurrent `GET /status` readers. Two points exist (6.32 s idle, 11.58 s at 3 readers = 77 % of the 15 s server cap); two points cannot say whether the curve flattens. | BACKLOG 32 | OPEN |
-| R3 | **BACKLOG item 29 — the spurious `W4`.** A real outage logged `W4` ("WLAN wrong password") twice alongside the expected `W5`, on a network whose password never changed. One look at whether CYW43 genuinely reports that mid-transition (making `_assert_wifi_log_has_only_benign_ap_not_found_warning()` wrong) or whether `_poll_sta_connect_status()` mis-maps it. Do not chase far. | BACKLOG 29 | OPEN |
-| R4 | **`ResetErrors` completeness under contention.** Pre-populate the FRAM error logs on several modules, then sweep under R2's reader load and confirm every counter reads back 0. All previous correctness checks were made at idle or with the logs already empty; a silently skipped chunk is invisible today because the call still answers `200`. | CLAUDE.md's FRAM `errcount` rule | OPEN — needs S3's wear-gated run |
-| R5 | **BACKLOG "Refactor targets" — the WP5 deferred-config-write re-confirmation.** The BMP3XX arm passed on 2026-09-17 on WP5 firmware; make that durable rather than one run. The ISL29125 arm is R1, not this row. | BACKLOG, first entry | OPEN — needs S3's wear-gated run |
-| R6 | **The `CFGMGR_SYSTEM` setup-order fix's unexplained +0.90 s of boot latency.** Boot latency itself is measured and needs no re-run: pre-WP **7.74 s** → WP1+WP2 **9.80 s** → WP1–WP8 **9.76 s** → +`CFGMGR_SYSTEM` fix **10.66 s** (medians of 5, spread ±0.06 s; 23 reboots, no `WDT_RESET`). Those figures were taken by PR #102, which the owner closed unmerged on 2026-09-18 — they are migrated into `SPECIFICATION.md` Part A.7's boot-latency note, so nothing is lost with the PR. What remains open is only the sub-question: **+0.90 s** is far more than one extra FRAM-backed logger's `setup()` should cost, and is unexplained. Worth understanding before the same reorder is assumed free elsewhere; it does not threaten the watchdog budget, so it is not a reason to revert. | SPECIFICATION.md Part A.7; BACKLOG 33 | OPEN |
-| R8 | **Two newly adopted bench tests, never yet run on silicon** (ported from `main` 2026-09-18, see BACKLOG item 33). `test_isl29125_calibrate_command_push_over_real_rest` pins that a calibration run never moves the *applied* `GainRatio` and that `GainMeas` reaches `/measurements`; `test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value` pins that ratio across a real hard reset. The second is `@pytest.mark.persistence_write`-marked here (it owns two persisting PUTs) where `main` left it unmarked, so it needs D1. Both were written against `main`'s API shape and adapted to this branch's nested `PUT /sensors {"ISL29125": {...}}` body — expect the adaptation to be where a first run goes wrong, if anywhere. | BACKLOG 33 | OPEN — the reboot arm needs S3's wear-gated run |
+| R3 | **BACKLOG item 29 — the spurious `W4`.** A real outage logged `W4` ("WLAN wrong password") twice alongside the expected `W5`, on a network whose password never changed. One look at whether CYW43 genuinely reports that mid-transition (making `_assert_wifi_log_has_only_benign_ap_not_found_warning()` wrong) or whether `_poll_sta_connect_status()` mis-maps it; a second `W4` appeared outside any outage test (BACKLOG 29). Do not chase far. | BACKLOG 29 | OPEN |
+| R4 | **`ResetErrors` completeness under contention.** Pre-populate the FRAM error logs on several modules, then sweep under R2's reader load and confirm every counter reads back 0. All previous correctness checks were made at idle or with the logs already empty; a silently skipped chunk is invisible today because the call still answers `200`. | CLAUDE.md's FRAM `errcount` rule | OPEN — S3 ran (§7R.2) without answering it; needs its own run with `--allow-persistence-writes` |
+| R5 | **BACKLOG "Refactor targets" — the WP5 deferred-config-write re-confirmation.** The BMP3XX arm passed on 2026-09-17 on WP5 firmware; make that durable rather than one run. The ISL29125 arm is R1, not this row. | BACKLOG, first entry | OPEN — **second green run 2026-09-23** in S3 (both BMP3XX config-write arms passed); whether two runs is durable is the owner's call |
+| R6 | **The `CFGMGR_SYSTEM` setup-order fix's unexplained +0.90 s of boot latency.** Boot latency itself is measured and needs no re-run: pre-WP **7.74 s** → WP1+WP2 **9.80 s** → WP1–WP8 **9.76 s** → +`CFGMGR_SYSTEM` fix **10.66 s** (medians of 5, spread ±0.06 s; 23 reboots, no `WDT_RESET`). Those figures were taken by PR #102, which the owner closed unmerged on 2026-09-18 — they are migrated into `SPECIFICATION.md` Part A.7's boot-latency note, so nothing is lost with the PR. What remains open is only the sub-question: **+0.90 s** is far more than one extra FRAM-backed logger's `setup()` should cost, and is unexplained. Worth understanding before the same reorder is assumed free elsewhere; it does not threaten the watchdog budget, so it is not a reason to revert. | SPECIFICATION.md Part A.7| OPEN |
 | R9 | **Half closed: the shadow-divergence fix RAN and passed on silicon (§7H.6, the first fully clean bench tier); the `Overrange` field that replaced `W12` has still never run.** `configure()`'s device-session lock was widened to span the whole validate-mutate-write(-rollback) sequence (WP-era fix, unit-tested by `test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight`), but the false `wrnno=11` it fixes only ever manifested under real concurrent bench load - so only real load re-confirms it. Same run covers the `Overrange` half: `device_scripts/isl29125_mechanism_envelope.py` now reads the live field instead of the retired `W12` log entry. | BACKLOG, "Open questions" first entry | OPEN |
 | R7 | **`SPECIFICATION.md` Part A.7's FRAM setup-cost figures are twin-only.** `digital_twin/_fram_chip.py` answers SPI opcodes in memory with zero wire time, so every number there excludes the real per-transaction cost. Re-measure on silicon. Largely the same instrumentation as R6. **Premise corrected by A6 (2026-09-18):** the omitted term is *not* mainly SPI wire time — at 1 MHz six transactions are ~300 us of the measured 2,849 us, so ~90 % is MicroPython interpreter / `machine.SPI` call overhead. Frame the re-measurement that way. | SPECIFICATION.md Part A.7 | OPEN |
+| R13 | **UART `wrnno` 11 now takes the fault episode's one persisted slot when the drain hits its bound** (SPECIFICATION.md C.7.1, 2026-09-18). The bench exerciser drives the real crossover jumper, so a deliberately babbling peer is reproducible there in a way no mock is: confirm `GET /status` shows `W11` rather than `W10` for `UART_init`/`UART_resp` after one, and that a *boot* drain against the same babbling peer persists nothing at all. Low urgency - the mock tier covers the logic; this confirms it against a real UART's own timing. | SPECIFICATION.md C.7.1 | OPEN |
 
-| R13 | **UART `wrnno` 11 now takes the fault episode's one persisted slot when the drain hits its bound** (BACKLOG item 23, 2026-09-18). The bench exerciser drives the real crossover jumper, so a deliberately babbling peer is reproducible there in a way no mock is: confirm `GET /status` shows `W11` rather than `W10` for `UART_init`/`UART_resp` after one, and that a *boot* drain against the same babbling peer persists nothing at all. Low urgency - the mock tier covers the logic; this confirms it against a real UART's own timing. | BACKLOG item 23 | OPEN |
 ---
 
 ## 2A. Findings still open from the two bench sittings
 
-Sixteen findings (F1-F16) were opened by the 2026-09-18 and 2026-09-19 sittings. **Fifteen are
-closed**, written up in `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7I, §7J and §7K, and the ones whose
-lesson outlives the fix are section 6's standing traps or, for F3's standalone-versus-in-suite heap
-trap, `tests_hardware/README.md`'s own list. One is still open, and it needs one careful
-invocation rather than a suite run.
+F2-F16 are closed (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7I-§7K; lasting lessons in section 6 and
+`tests_hardware/README.md`). F1 needs one careful invocation, not a suite run; F17 rides along with W4.
 
 | # | Finding | Status |
 | --- | --- | --- |
-| F1 | **`wifi_service_reconnect_repro.py` persists a garbage SSID and never restores it.** Its own step "overwriting SSID with a garbage value via the real `_set_dict_cfg()` path" writes `SSID = "wozi-diag2-net-does-not-exist"` into `config_WIFI.cfg` on the RP2040 **flash filesystem**. Because the script then dies on the reset — the board drops the USB CDC mid-run and `mpremote` ends in `OSError: [Errno 5]`, which is why it likely needs `run_isolated_expect_reset()` — the restore never runs. Observed directly: the DUT went unreachable and the REPL showed the garbage value. Recovered by writing the real SSID (`sensors-bench-fa9707`) back over the serial REPL and hard-resetting; stored password was untouched. **This is the exact class of incident CLAUDE.md's stage-0 trap warns about, via a script no warning covers** — `test_hotspot_role_reversal.py` got a stage-7 restore after the 2026-09-17 incident; this script never did. It also is **not** `@pytest.mark.persistence_write`-marked although the write is test-owned, which `tests_scripts/test_persistence_write_marker_completeness.py` cannot catch because it pins pytest tests, not `device_scripts/` invoked directly. | **FIXED 2026-09-18** (PR #105 session), still unverified on silicon — §1B's session decided B-D3 as *no* and deliberately did not run it, this being the script that stranded the bench. Both halves were wrong, not just the missing restore: `REAL_SSID` was hardcoded to `"sensors-bench-ap"` while the bench's own is `sensors-bench-fa9707`, so the restore would have written a *second* wrong SSID had it run at all. It now reads the live value through `_get_dict_cfg()` before overwriting, **aborts** rather than overwriting if it cannot read it back, and restores in a `finally` that re-reads instead of trusting a flag — so it is correct on both early returns and on any exception inside the repro. The snapshot also carries the real password, so it is never logged. **Marker decision: answered 2026-09-19, and the answer is that no marker is needed, because the production write is gone.** The script now points `conn.cfgmgr.config_file` at a scratch `config_HWTEST_WIFI.cfg` immediately after reading the real SSID, so `config_WIFI.cfg` is never opened for writing at all — the repro is driven by the in-memory cache, which is unchanged. That closes the hazard *structurally* rather than relying on a restore that a crash, a reset or a racing deferred flush can skip (`write_config()` stages and a separate task commits, so the old form could strand the board even on a clean exit path). Same convention as `reboot_persist_write.py`'s `config_HWTEST_REBOOT.cfg` and `isl29125_mechanism_envelope.py`'s `config_HWTEST_ISL29125.cfg` — those two were the only other `device_scripts/` files that own a persisting write, checked by grep, so the convention now covers all three. The scratch file is removed in a `finally` after `flush_pending()`, because it holds a full WIFI config including the real password. **Residual, and it is the owner's to weigh, not a blocker**: one scratch-file write still spends a flash cycle, and a directly-invoked device script has no pytest marker to gate that — CLAUDE.md's go-ahead rule is what gates it, and the script's own log line now says what it is about to do. |
+| F1 | **`tests_hardware/device_scripts/wifi_service_reconnect_repro.py` once stranded the bench** by persisting a garbage SSID it never restored. The script now reads the live SSID first, diverts every persist to a scratch `config_HWTEST_WIFI.cfg`, restores the cache in a `finally` and removes the scratch file after `flush_pending()` (its own comments carry the mechanism). Run it once on silicon to verify. | **FIXED 2026-09-18, unverified on silicon.** Residual, the owner's to weigh: the scratch write still spends one flash cycle, gated only by CLAUDE.md's go-ahead rule |
+| F17 | **Board anomalies of the connection-limit sittings** (BACKLOG item 44, `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.5): a silent reset, hotspot fallbacks, a likely watchdog reset at `mpremote` attach. During W4, read `machine.reset_cause()` after any unexpected reset and note every hotspot fallback; no sitting of its own | OPEN |
 
 ---
 
 ## 3. Coverage gaps that need a bench session to close
 
-From `tests_hardware/README.md`'s "Tenth pass" plus this branch's own additions. Each is a test to
-*write* or a method to settle against real hardware, not just a run — except G7, which is written
-and simply has never executed. **G1's predecessor is closed**: F.5.8's real-driver proof landed with
-the 2026-09-19 tier-3/tier-4 runs (§7H.6).
+Each is a test to *write* or a method to settle against real hardware, not just a run.
 
 | # | Gap | Status |
 | --- | --- | --- |
@@ -415,29 +270,38 @@ the 2026-09-19 tier-3/tier-4 runs (§7H.6).
 | G3 | **`_reboot()`'s alarm-pool-exhaustion fallback (`_force_watchdog_starve = True`) is mock-only.** | OPEN |
 | G4 | **NOTIFY's own FRAM chunk has no hard-reset-recovery bench test**, unlike SGP40's. Needs an observable-write signal analogous to SGP40's `BackupTS` first. | OPEN |
 | G6 | **`test_ticks_ms_real_2pow30_rollover` needs a measurement method that does not poll with `board.exec()`.** BACKLOG item 12 established on real hardware that every `exec` starves the watchdog and hard-resets the board ~8 s later, zeroing the counter — so the hour-by-hour poll can never climb toward 2**30, and a later read landing below an earlier one is the reboot, not a wrap. The vacuous-pass hole is closed (a drop now only counts as a wrap when the previous read was already within two hours of 2**30, so the ambiguity fails honestly), but that makes the test *fail* rather than measure. A real method has to leave the board running: feed or disable the watchdog from inside the polled code, or observe passively via `tail_log()`. Design decision, then a genuine ~12.4-day run behind `--allow-multi-day-rollover-wait`. | **DECIDED 2026-09-22: adapt the method, defer the measurement.** Do not drop the test — the chosen answer is a method that leaves the board running (feed or disable the watchdog from inside the polled code, or observe passively via `tail_log()`). The ~12.4-day run itself is deliberately not scheduled: we do not measure it yet, and the test is deselected by default behind `--allow-multi-day-rollover-wait`, so deferring costs nothing today |
-| G8 | **CLAUDE.md's (e) stage has never been asserted on silicon.** I.4(e)/(f) says the suite must pass at `gc.threshold(-1)` with zero allocation failures *before* it is run at the shipped `gc.threshold(32768)`, and both halves are machine-checked — but only on the host and twin tiers. `scripts/build_firmware.py` stages the generated boot entry as `main.py`, and it sets `gc.threshold(32768)` before `asyncio.run(main())` — so **every flash- and bench-tier run, which all drive the live firmware over REST, is an (f)-stage run.** The device scripts are the other way round: importing `sensortask_dev` never executes `main.py`, so they read at the reactive default (`heap_layout_after_full_boot_sequence.py` sets 32768 explicitly when it wants the production arm) — but they only ever measure **boot placement**, never the run phase under load. So the (e) bar itself, zero allocation failures under real load, has no silicon arm. It needs no second image either: boot the full system by importing it, drive host-side API load against it for a bounded window, and assert `harness.MEMORY_ERROR_MARKERS` never appears in the log. Zero wear: no flash cycle, no persistence write, no reflash. | OPEN — script to write |
+| G8 | **CLAUDE.md's (e) stage has never been asserted on silicon.** I.4(e)/(f) says the suite must pass at `gc.threshold(-1)` with zero allocation failures *before* it is run at the shipped `gc.threshold(32768)`, and both halves are machine-checked — but only on the host and twin tiers. `scripts/build_firmware.py` stages the generated boot entry as `main.py`, and it sets `gc.threshold(32768)` before `asyncio.run(main())` — so **every flash- and bench-tier run, which all drive the live firmware over REST, is an (f)-stage run.** The device scripts are the other way round: importing `sensortask_dev` never executes `main.py`, so they read at whatever threshold they inherit — the boot entry's 32768 after an `mpremote` attach, HFM §7R (`heap_layout_after_full_boot_sequence.py` sets 32768 explicitly when it wants the production arm) — but they only ever measure **boot placement**, never the run phase under load. So the (e) bar itself, zero allocation failures under real load, has no silicon arm. It needs no second image either: boot the full system by importing it, drive host-side API load against it for a bounded window, and assert `harness.MEMORY_ERROR_MARKERS` never appears in the log. Zero wear: no flash cycle, no persistence write, no reflash. | OPEN — script to write |
 | G10 | **The UART protocol's second implementation has never been exercised against this one.** `UART_C_PORT_CHANGELOG.md`'s Class A entries each say "re-verify against the real C source when it lands", and the owner has confirmed real hardware running the C side exists and can be connected to the dev board — which would test `asy_uart_comm.py` against a genuine second implementation rather than against itself over the crossover jumper. Until the C source is in this repo the reconciliation cannot be checked, so this is listed for completeness, not as owed work. | BLOCKED on the C implementation landing |
 
 ## 4. Bench-host tasks (not the board)
 
 | # | Task | Status |
 | --- | --- | --- |
-| H1 | **The two-chroot verification, unsatisfied since 2026-09-12** — an owner-run periodic check since 2026-09-18, not a gate that blocks anything. Everything this branch changed in `scripts/`, `pyproject.toml` and — the highest-risk part, which the lint/typecheck recipe never exercises — `toolchain/setup_toolchain.py` + the new `toolchain/micropython_overrides.py`. The bench Pi4 already runs trixie/GCC 14.2, so it is the right host for the leg that has never run. **Two things make this run heavier than the last one**: `build_unix_port()` now builds **two** Unix ports (`build-standard` and `build-settrace`, Part E.5.2), so that step costs roughly twice the time and disk it used to; and `scripts/test.sh` was rewritten around them, so the chroot leg's `scripts/test.sh` invocation is exercising a different script than the recipe was last satisfied against. Also worth running once there: `GC_THRESHOLD=32768 scripts/test.sh`, the (f) stage, which no chroot leg has ever executed. Full account and the running list of what the next manual run has to cover: BACKLOG.md's own entry. | OPEN |
+| H1 | **The two-chroot verification, unsatisfied since 2026-09-12** — an owner-run periodic check since 2026-09-18, not a gate that blocks anything. Everything changed since 2026-09-12 in `scripts/`, `pyproject.toml` and — the highest-risk part, which the lint/typecheck recipe never exercises — `toolchain/setup_toolchain.py` + the new `toolchain/micropython_overrides.py`. The bench Pi4 already runs trixie/GCC 14.2, so it is the right host for the leg that has never run. **Two things make this run heavier than the last one**: `build_unix_port()` now builds **two** Unix ports (`build-standard` and `build-settrace`, Part E.5.2), so that step costs roughly twice the time and disk it used to; and `scripts/test.sh` was rewritten around them, so the chroot leg's `scripts/test.sh` invocation is exercising a different script than the recipe was last satisfied against. Also worth running once there: `GC_THRESHOLD=32768 scripts/test.sh`, the (f) stage, which no chroot leg has ever executed. Full account and the running list of what the next manual run has to cover: BACKLOG.md's own entry. | OPEN |
 
 ---
 
+## 4A. The connection limit of 6 — what silicon still owes
+
+The limit itself is settled and confirmed on the committed image (SPECIFICATION.md H.7, evidence
+`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R); every row that measured it is closed and deleted. By owner
+decision (2026-09-24) these two get no dedicated sitting; they run with the next regular bench run:
+
+| Row | What | Status |
+| --- | --- | --- |
+| W3 | `/status` wall-clock at 256 B pieces (`dev`'s `/status` is 29 pieces, 11 at the old 1,024 B): `tests_hardware/bench/test_end_to_end_timing.py` on the tree under test. F.1's +53 % was per *character*; this is per ~250 B | OPEN |
+| W4 | The whole bench tier on the tree under test at `max_connections = 6`, default flags — `test_network_resilience.py`, `test_serving_heap_at_default_gc.py`, `test_heap_under_connection_ceiling.py`, `test_memory_stress_bench.py` and `test_bus_concurrency_under_api_load.py` all scale with the configured ceiling. The last full bench tier was image A (limit 7, pre-fix `src/`, §7R.2). First silicon run of `src/asy_webserver_service.py`'s post-E6′ changes (one-write header block, reset guard, slot release on `MemoryError`) and of the rewritten bench instruments | OPEN |
+
 ## 5. Excluded on purpose
 
-- **Nothing about the heap remediation is excluded any more.** Every measure — A, B, the placement
-  guard (the old plan's section C) and section D — is built, closed and written up in
-  `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D-§7L; the plan itself was deleted on 2026-09-22 once its
-  last box closed, its open real-hardware rows carried into §1F. What the board still owes from that
-  work is §1E, §1F and T1 — listed as owed, not excluded.
+- **Nothing about the heap remediation is excluded.** Measures A, B, the placement guard and
+  section D are closed (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D-§7M); what the board still owes
+  from that work is §1F.
 - **PR #84's three bench passes** (`reactive` full suite 95 passed/2 skipped; `reactive` + churn
   pressure tests 3 passed; `threshold` full suite 95 passed/2 skipped) are already run, on that PR's
   own branch, and do not need repeating. **The PR itself was closed unmerged on 2026-09-18 by owner
-  decision** (BACKLOG 33), so its `--gc-policy` / `--memory-pressure` machinery is not available to
-  any run listed above and is not coming — none of PR #84 is on this branch, and the tooling is
+  decision**, so its `--gc-policy` / `--memory-pressure` machinery is not available to
+  any run listed above and is not coming — none of PR #84 is in the tree, and the tooling is
   unshipped by decision rather than pending.
 - **The two unprovisioned bench-rig capabilities** (was H3): a programmable GPIO fault-injection
   harness and a second WiFi test client, each of which would move one `[MANUAL]` candidate to
@@ -456,6 +320,9 @@ the 2026-09-19 tier-3/tier-4 runs (§7H.6).
 Condensed from CLAUDE.md and SPECIFICATION.md, because they are the ones that have actually cost
 something:
 
+- **The board's FRAM error logs are not a clean production record.** Every sitting since 2026-09-22
+  ran isolated-driver device scripts, which overwrite production's first chunks. Read `errcount`
+  before anything writes (Run sheet Step 1) and judge older entries by what has run since.
 - **`bench.kick_all_stations()` (deauth) generates no WIFI log entries** — a persistence check built
   on it passes vacuously `0 → 0`. Use a real `bench.ap_down()` outage.
 - **Any destructive test of the bench host's own network config keeps a recovery dead-man's-switch
@@ -482,10 +349,11 @@ something:
   only then curl. Note `tail_log()` replays buffered history, so several identical
   "WLAN connection established" blocks are not a reboot loop — confirm that by polling `SysUptime`
   and watching it advance, which is the cheap discriminator.
-- **A bench-tier test that opens more concurrent connections than `max_connections = 4` cannot
-  expect a definitive status from all of them.** Measured 2026-09-19 with tiny bodies, so nothing
-  to do with body size: concurrency 2 → 0% reset, 4 → 25%, 8 → 12%, 24 → 25%. Resets start **at**
-  the ceiling, not beyond it. Before calling such a reset a defect, run the all-small-bodies control
+- **A bench-tier test that opens as many concurrent connections as `max_connections` (6 today; 4
+  when this was measured) cannot expect a definitive status from all of them.** Measured 2026-09-19
+  with tiny bodies, so nothing to do with body size: concurrency 2 → 0% reset, 4 → 25%, 8 → 12%,
+  24 → 25%. Resets start **at** the ceiling, not beyond it — a slot is held until its close has
+  finished, and back-to-back clients at the limit see ~70 % refused (SPECIFICATION.md H.7). Before calling such a reset a defect, run the all-small-bodies control
   — it is two minutes and it separates "the feature under test" from "the connection ceiling"
   (SPECIFICATION.md Part I.6).
 - **The connection-slot lag cuts both ways — a check made immediately *after* a burst is as
@@ -509,5 +377,5 @@ something:
 - **Don't chase `asy_fram_manager.py`/`asy_fram_driver.py` internals** from anything found here —
   heavily audited, and any real change there needs its own scoped review (SPECIFICATION.md C.3.1).
   **§1A is the one carve-out**: those two files plus `asy_spi_driver.py` are what measure A rewrote
-  under an owner-granted scoped exception, so a failure in §1A's or §1F's rows is a finding *about* that change
+  under an owner-granted scoped exception, so a failure in A6's script or §1F's rows is a finding *about* that change
   and belongs back to the PR #105 session — still not a drive-by fix here.

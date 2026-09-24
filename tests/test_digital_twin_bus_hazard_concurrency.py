@@ -9,12 +9,20 @@ import sys
 sys.path.insert(0, "ext")  # same convention as test_digital_twin_sensortask_integration.py's own comment
 sys.path.insert(0, "digital_twin")
 
+import _http_client
 import machine
-import sensortask_dev
-import sensortask_wozi
 from _tmp_scratch import TmpScratch
+from unix_port_poll_prewarm import prewarm_poll_set
 
-from crc_checks import CRC8
+# Required of any entry point booting a sensortask_* module under the twin, and this file now also
+# drives real client connections at the ceiling: growing the Unix port's pollfds array corrupts
+# non-fd poll objects already in it, which is a segfault, not a test failure.
+prewarm_poll_set()
+
+import sensortask_dev  # noqa: E402 - must follow the prewarm above, which is the point of it
+import sensortask_wozi  # noqa: E402
+
+from crc_checks import CRC8  # noqa: E402 - same reason as the two device imports above
 
 try:
     from typing import TYPE_CHECKING
@@ -79,7 +87,28 @@ _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 _I2C_DRIVER_HEALTH_FIELD: "dict[str, str]" = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
 
 
-async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_bus_log: "Container[object]", run_seconds: float) -> None:
+async def _api_burst_at_the_ceiling(module: "ModuleType", host: str, port: int) -> "list[object]":
+    """A full ceiling's worth of concurrent REST requests, derived from the build under test.
+    CLAUDE.md's four-tier bus-hazard rule wants API load and bus traffic together, and a raised
+    max_connections means more of both at once - so the burst scales with the ceiling."""
+    assert module.webserver is not None
+    ceiling: int = module.webserver._max_connections
+
+    async def one(path: str) -> object:
+        try:
+            # read_body=False: only the status is read here, and a body materialized in the twin's
+            # own process competes with the code under test for its heap (Part E.9).
+            res = await _http_client.fetch(host, port, "GET", path, read_body=False)
+        except OSError:
+            return "rejected"  # kept as a value, so a refused slot is named in the assertion
+        else:
+            return res.status_code
+
+    paths = ("/measurements", "/sensors", "/status", "/system")
+    return list(await asyncio.gather(*(one(paths[i % len(paths)]) for i in range(ceiling))))
+
+
+async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_bus_log: "Container[object]", run_seconds: float, api_port: "int | None" = None) -> None:
     # Shared scenario body for both variants: starts the real timer/task starters build_system()
     # itself would, then asserts the run produced fresh data from every sensor and never starved
     # the watchdog - not just "didn't crash".
@@ -90,7 +119,17 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
     tasks = [starter() for starter in module._collect_task_starters()]
     tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(module.watchdog)))
     try:
-        await asyncio.sleep(run_seconds)
+        if api_port is not None:
+            # Mid-run, not before or after: the point is a full ceiling of REST work landing while
+            # the sensor tasks are genuinely mid-transaction on the shared bus.
+            await asyncio.sleep(run_seconds / 2)
+            # Exactly the ceiling from a fresh server nothing else connects to, so every slot is
+            # free: a single "rejected" means the device refused what its own config admits.
+            api_results = await _api_burst_at_the_ceiling(module, "127.0.0.1", api_port)
+            assert api_results == [200] * module.webserver._max_connections, api_results
+            await asyncio.sleep(run_seconds / 2)
+        else:
+            await asyncio.sleep(run_seconds)
         assert module.watchdog.would_have_triggered_count == 0
 
         sgp_data = await module.sgp40.get_data()
@@ -160,6 +199,34 @@ def test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_gener
         await _run_real_task_graph_and_assert_healthy(sensortask_dev, sensortask_dev.i2c1._i2c.log, run_seconds=9.0)
 
     run_timed(scenario(), timeout_s=20.0)
+
+
+def test_wozi_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load() -> None:
+    # The twin leg of CLAUDE.md's four-tier bus-hazard rule for the raised connection ceiling:
+    # max_connections concurrent REST requests landing while every sensor task is on the bus.
+    machine.configure_i2c_wiring("wozi")
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        assert sensortask_wozi.i2c1 is not None and sensortask_wozi.i2c1._i2c is not None
+        await _run_real_task_graph_and_assert_healthy(sensortask_wozi, sensortask_wozi.i2c1._i2c.log, run_seconds=9.0, api_port=port)
+
+    run_timed(scenario(), timeout_s=40.0)
+
+
+def test_dev_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load() -> None:
+    # dev's own three-driver i2c1 grouping under the same combined load; its real-hardware
+    # counterpart is tests_hardware/bench/test_bus_concurrency_under_api_load.py.
+    machine.configure_i2c_wiring("dev")
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await sensortask_dev.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        assert sensortask_dev.i2c1 is not None and sensortask_dev.i2c1._i2c is not None
+        await _run_real_task_graph_and_assert_healthy(sensortask_dev, sensortask_dev.i2c1._i2c.log, run_seconds=9.0, api_port=port)
+
+    run_timed(scenario(), timeout_s=40.0)
 
 
 def test_wozi_fram_recovers_after_an_injected_spi_write_fault() -> None:

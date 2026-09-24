@@ -126,6 +126,7 @@ async def _main() -> None:
     # that is the harder case by far - 264kB of RAM, no 8MB Unix-port heap to hide in.
     gc.collect()
     gc.threshold(-1)
+    print(f"GC_THRESHOLD={gc.threshold()}")
 
     uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
     uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)

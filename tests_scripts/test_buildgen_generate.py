@@ -116,7 +116,7 @@ def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(repo
     assert f"_WEBSITE_VERSION = const({WEBSITE_VERSION!r})" in result.module_source
     assert "_BUILD_DATE = const('2026-09-12T10:00:00Z')" in result.module_source
     assert 'build_info={"firmwareVersion": _FIRMWARE_VERSION, "websiteVersion": _WEBSITE_VERSION, "buildDate": _BUILD_DATE}' in result.module_source
-    # Regression guard against this session's own earlier, corrected design: the version no longer
+    # Regression guard against an earlier, corrected design: the version no longer
     # lives on GET /status's "system" section.
     assert '"FirmwareVersion": _FIRMWARE_VERSION' not in result.module_source
 
@@ -549,3 +549,24 @@ def test_cli_entry_point_reports_a_build_error_and_exits_nonzero(tmp_path: Path,
     assert result.returncode == 1
     assert "buildgen:" in result.stderr  # a human-readable reason, never a raw traceback
     assert "Traceback" not in result.stderr
+
+
+def _webserver_keywords(source: str) -> dict[str, object]:
+    calls = [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "WebserverService"]
+    assert len(calls) == 1, len(calls)
+    return {kw.arg: ast.literal_eval(kw.value) for kw in calls[0].keywords if kw.arg in ("max_connections", "backlog")}
+
+
+@pytest.mark.parametrize(
+    ("stated", "expected"),
+    [({"max_connections": 3, "backlog": 4}, {"max_connections": 3, "backlog": 4}), ({"max_connections": 5}, {"max_connections": 5}), ({}, {})],
+)
+def test_the_stated_connection_ceiling_reaches_the_webserver_and_an_absent_one_is_left_to_its_default(tmp_path: Path, src_dir: Path, ext_dir: Path, stated: dict[str, int], expected: dict[str, int]) -> None:
+    # validate.py checks the stated values against the firmware's lwIP pools; that check is only
+    # worth anything if the same values are the ones the device is then built with.
+    doc = base_doc()
+    for key in ("max_connections", "backlog"):
+        doc["device"].pop(key, None)
+    doc["device"].update(stated)
+    result = generate_device(write_doc(tmp_path, "ceiling", doc), src_dir, ext_dir)
+    assert _webserver_keywords(result.module_source) == expected

@@ -122,6 +122,19 @@ def load_versions(path: Path) -> dict[str, Any]:
         return tomllib.load(f)
 
 
+VERSIONS_PATH = Path(__file__).parent / "versions.toml"
+
+
+def load_lwip_macros(path: Path = VERSIONS_PATH) -> dict[str, int]:
+    """versions.toml's [lwip] table - the single source of truth for the firmware's lwIP options,
+    so one file drives a build and the connection-scaling sweep is reproducible rather than a
+    sequence of hand edits (SPECIFICATION.md Part B.14.2)."""
+    table = load_versions(path).get("lwip")
+    if not isinstance(table, dict):
+        raise SetupError(f"{path} has no [lwip] table - the rp2 firmware's lwIP options are pinned there, not in the fetched checkout (SPECIFICATION.md Part B.14.2)")
+    return dict(table)
+
+
 def write_micropython_ref(path: Path, ref: str) -> None:
     text = path.read_text()
     new_text = re.sub(r'(?m)^ref = ".*"$', f'ref = "{ref}"', text, count=1)
@@ -289,17 +302,21 @@ def fetch_unix_submodules(micropython_dir: Path) -> None:
     run(["make", "submodules"], cwd=unix_dir, env=network_env())
 
 
-def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest: Path | None = None) -> Path:
-    """Builds the RP2 firmware. Pass frozen_manifest (an absolute path to a manifest.py written
-    by write_freeze_manifest()) to freeze an extra module in via FROZEN_MANIFEST=, which takes
-    precedence over the board's own default manifest; omit it for a vanilla build."""
+def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest: Path | None = None, *, toolchain_dir: Path | None = None, lwip_macros: dict[str, int] | None = None) -> Path:
+    """Builds the RP2 firmware, optionally with an extra FROZEN_MANIFEST=. Always applies and then
+    verifies the lwip_connection_counts override (lwip_macros defaults to versions.toml's [lwip],
+    toolchain_dir to micropython_dir's parent); full contract in SPECIFICATION.md Part B.14.2."""
     rp2_dir = micropython_dir / "ports" / "rp2"
-    label = "with the frozen verification module (build-only check)" if frozen_manifest else "standard, unchanged"
+    label = "with the frozen verification module (build-only check)" if frozen_manifest else "board manifest, pinned lwIP options"
     log(f"Building firmware for BOARD={board} ({label})")
     build_dir = rp2_dir / f"build-{board}"
     if build_dir.exists():
         shutil.rmtree(build_dir)
-    make_cmd = ["make", f"BOARD={board}", f"-j{jobs}", f"CFLAGS_EXTRA={_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND}"]
+    if lwip_macros is None:
+        lwip_macros = load_lwip_macros()
+    overrides_dir = (toolchain_dir if toolchain_dir is not None else micropython_dir.parent) / "build_overrides"
+    override_make_vars = micropython_overrides.apply_lwip_connection_counts_override(micropython_dir, overrides_dir, board, lwip_macros)
+    make_cmd = ["make", f"-j{jobs}", f"CFLAGS_EXTRA={_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND}", *(f"{key}={value}" for key, value in override_make_vars.items())]
     if frozen_manifest is not None:
         make_cmd.append(f"FROZEN_MANIFEST={frozen_manifest}")
     out = run(make_cmd, cwd=rp2_dir, env=build_env())
@@ -311,6 +328,9 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest
     uf2 = build_dir / "firmware.uf2"
     if not uf2.exists():
         raise SetupError(f"firmware build did not produce {uf2}")
+    # After the build, not before: a generated header that was written but never found would
+    # otherwise ship a firmware whose connection ceiling silently differs from what was asked for.
+    micropython_overrides.verify_lwip_macros_in_build(build_dir, lwip_macros)
     return uf2
 
 
@@ -469,7 +489,7 @@ def run_verification_sequence(micropython_dir: Path, toolchain_dir: Path, board:
 
         rp2_manifest = test_dir / "manifest_rp2.py"
         write_freeze_manifest(rp2_manifest, f"boards/{board}/manifest.py")
-        build_firmware(micropython_dir, board, jobs, frozen_manifest=rp2_manifest)
+        build_firmware(micropython_dir, board, jobs, frozen_manifest=rp2_manifest, toolchain_dir=toolchain_dir)
         # test_dir (the test module + both manifests) is removed automatically once this
         # "with" block exits - nothing further to clean up for those.
 
@@ -1117,7 +1137,7 @@ def main() -> int:
         argv = ["setup"]
     args = parser.parse_args(argv)
 
-    versions_path = Path(__file__).parent / "versions.toml"
+    versions_path = VERSIONS_PATH
     versions = load_versions(versions_path)
 
     if args.command == "test":
@@ -1130,6 +1150,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except SetupError as exc:
+    except (SetupError, micropython_overrides.OverrideError) as exc:  # both name their own cause and fix
         print(f"\nFAILED: {exc}", file=sys.stderr)
         sys.exit(1)

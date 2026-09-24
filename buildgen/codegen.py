@@ -431,7 +431,7 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
         (ctx.instance_var(n) for n in construction_order if isinstance(n, tuple) and instances[n].driver == "uart_link" and instances[n].fields.get("role") == "initiator"),
         None,
     )
-    _emit_webserver(lines, have, sensor_vars, uart_initiator_var, _device_fram_arg(model, ctx))
+    _emit_webserver(lines, have, sensor_vars, uart_initiator_var, _device_fram_arg(model, ctx), dev)
 
     lines.append("    timers_running = ThreadSafeFlag()")
     lines.append("    sysfunct.set_level_setters(_collect_level_setters())")
@@ -594,7 +594,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
         lines.append("")
 
 
-def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", uart_initiator_var: "str | None", fram_arg: str) -> None:
+def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", uart_initiator_var: "str | None", fram_arg: str, dev: "TomlDoc") -> None:
     lines.append("    app = Microdot()")
     lines.append("    webserver = WebserverService(")
     lines.append("        app,")
@@ -639,6 +639,11 @@ def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str
     lines.append("        is_hotspot_active=conn.is_hotspot_active,")
     lines.append("        host=web_host,")
     lines.append("        port=web_port,")
+    # Emitted only when the device states one: absent, WebserverService's own default applies, and
+    # validate.py has already checked THAT value against the firmware's lwIP PCB count.
+    for key in ("max_connections", "backlog"):
+        if key in dev:
+            lines.append(f"        {key}={dev[key]},")
     if fram_arg:
         lines.append(f"        {fram_arg},")
     lines.append("    )")

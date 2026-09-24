@@ -2582,7 +2582,7 @@ def test_a_chunk_whose_scratch_buffer_cannot_be_allocated_still_reads() -> None:
 
 
 # ---------------------------------------------------------------------------
-# BACKLOG item 35 - a degraded condition warns on every operation, so persisting each one refills
+# SPECIFICATION.md Part C.7.1 - a degraded condition warns on every operation, so persisting each one refills
 # the owning module's bounded history by itself. Episode-scoped per distinct code, like
 # asy_uart_comm.py's own _episode_wrn(); SPECIFICATION.md Part C.7.1 states the rule.
 # ---------------------------------------------------------------------------

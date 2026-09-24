@@ -2,7 +2,7 @@
 // and drives a real Playwright page against it directly (Vitest's own browser-mode `page` has no
 // API for navigating to an external origin - vitest-dev/vitest#7875). See SPECIFICATION.md Part H.7.
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -16,10 +16,10 @@ const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix",
 // "pretest:coverage" hooks generate it fresh there, via buildgen, before this spawns.
 const MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen";
 const HOST = "127.0.0.1";
-// Distinct from every other fixed twin/integration port here (8080, 18080, 19300+ - see
-// digital_twin/README.md's "never together" note). Launched from Node rather than Python, so
-// there is no real collision risk; a distinct value just keeps a process listing attributable.
-const PORT = 19411;
+// Clear of every fixed port and band tests/, tests_scripts/, scripts/ and digital_twin/ bind (the
+// full map is in SPECIFICATION.md Part E.1): a twin tier running on the same host at the same time
+// would otherwise refuse this one's bind. 19482 is _live_matrix_command.js's, in one `npm test` run.
+const PORT = 19481;
 const READY_TIMEOUT_MS = 20000;
 const SHUTDOWN_TIMEOUT_MS = 15000;
 
@@ -116,6 +116,26 @@ async function stopTwin(proc) {
     }
 }
 
+// Delegated to buildgen rather than re-parsed here, so a key left out falls back to src/'s own
+// default exactly as the build does. package.json's "pretest" hook already needs uv on PATH.
+const CEILING_SCRIPT = "import sys; from pathlib import Path; from buildgen.validate import device_max_connections; print(device_max_connections(Path(sys.argv[1]), Path(sys.argv[2])))";
+
+/**
+ * The admission ceiling `devices/<device>.toml` builds, as buildgen itself resolves it.
+ * @param {string} [device]
+ * @param {string} [devicesDir] - the TOML directory, overridable for tests
+ * @returns {number}
+ */
+export function configuredMaxConnections(device = "wozi", devicesDir = path.join(REPO_ROOT, "devices")) {
+    const tomlPath = path.join(devicesDir, `${device}.toml`);
+    const out = execFileSync("uv", ["run", "--quiet", "python", "-c", CEILING_SCRIPT, tomlPath, path.join(REPO_ROOT, "src")], { cwd: REPO_ROOT, encoding: "utf8" });
+    const ceiling = Number(out.trim());
+    if (!Number.isInteger(ceiling) || ceiling < 1) {
+        throw new Error(`buildgen resolved no usable max_connections for ${tomlPath}: ${JSON.stringify(out)}`);
+    }
+    return ceiling;
+}
+
 /**
  * @param {{context: import("playwright").BrowserContext}} ctx
  * @returns {Promise<{skipped: true, reason: string} | {skipped: false, titleHasSensorStation: boolean, deviceName: string, debugLevelApplyStatus: string | null}>}
@@ -191,6 +211,53 @@ export async function runLiveBackendSmoke({ context }) {
             livePage.removeAllListeners();
             await livePage.close().catch(() => { /* best-effort teardown - a page already gone is fine */ });
         }
+        await stopTwin(proc);
+    }
+}
+
+/**
+ * Parallel real-browser tabs against one live twin: the tier exercising the connection ceiling from
+ * a real browser rather than a socket loop. Every tab navigates at once (SPECIFICATION.md Part H.7).
+ * @param {{context: import("playwright").BrowserContext}} ctx
+ * @returns {Promise<{skipped: true, reason: string} | {skipped: false, tabs: number, loaded: number, deviceNames: string[]}>}
+ */
+export async function runLiveBackendConcurrentTabs({ context }) {
+    if (!existsSync(MICROPYTHON_BIN)) {
+        return {
+            skipped: true,
+            reason: `MicroPython Unix port not built at ${MICROPYTHON_BIN} - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)`,
+        };
+    }
+    rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
+
+    // Half the ceiling, so it is never exceeded: a tab fetches index.html then app.js and poll-manager
+    // serialises its REST calls, so a tab holds one slot, two while a finished one is still releasing.
+    const tabs = Math.max(1, Math.floor(configuredMaxConnections() / 2));
+    const proc = spawnTwin();
+    let stderr = "";
+    proc.stderr?.on("data", (/** @type {Buffer} */ chunk) => {
+        stderr += chunk.toString();
+    });
+
+    /** @type {import("playwright").Page[]} */
+    const pages = [];
+    try {
+        await waitUntilServing(READY_TIMEOUT_MS);
+        for (let i = 0; i < tabs; i += 1) {
+            // eslint-disable-next-line no-await-in-loop -- pages are CREATED sequentially and NAVIGATED together below; that is what makes the loads concurrent rather than the setup
+            pages.push(await context.newPage());
+        }
+        const results = await Promise.all(pages.map(async (page) => {
+            await page.goto(`http://${HOST}:${PORT}/`);
+            await page.waitForSelector('[data-section-key="system"]', { timeout: 20000 });
+            return (await page.locator("#device-name").textContent())?.trim() ?? "";
+        }));
+        return { skipped: false, tabs, loaded: results.length, deviceNames: results };
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`live-backend concurrent-tab check failed: ${message}\n--- twin stderr ---\n${stderr}`, { cause: err });
+    } finally {
+        await Promise.all(pages.map((page) => page.close().catch(() => { /* best-effort teardown - a page already gone is fine */ })));
         await stopTwin(proc);
     }
 }
