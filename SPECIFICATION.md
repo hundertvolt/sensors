@@ -1967,6 +1967,10 @@ assumes defect-free hardware and a device config that matches it. An absent or d
 wiring/construction config that doesn't match the board, is a massive config failure or a hardware
 defect that no software handles cleanly — so today's init-failure restart (and the reboot it leads
 to) is not a C.7.2 case, and neither is a UART link whose `setup()` refused its construction.
+The two refusals a device TOML can actually cause — a reply timeout below 2 × `poll_wait_ms` +
+`poll_idle_ms` + the GC pause (errno 11), an `rxbuf` below one frame or one poll's arrivals
+(errno 15) — are build errors instead (`buildgen/validate.py`'s `_check_uart_link_buses()`, reading
+the thresholds out of `asy_uart_comm.py`); every other refusal needs code the generator never emits.
 
 ## C.8 Concurrency & locking model
 

@@ -157,6 +157,23 @@ def init_int_default(src_dir: Path, filename: str, class_name: str, name: str) -
     raise BuildError("<src>", f"{class_name}.__init__ no longer has a readable int default for {name!r} in {path} - the per-device key and the shipped default have to agree", field=name)
 
 
+def module_int_const(src_dir: Path, filename: str, name: str) -> int:
+    """One module-level `NAME = const(<int>)` of a src/ file, by AST like init_int_default()."""
+    path = src_dir / filename
+    try:
+        tree = ast.parse(path.read_text(), filename=str(path))
+    except (OSError, SyntaxError) as e:
+        raise BuildError("<src>", f"cannot read {path} to resolve its {name}: {e}", field=name) from e
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            value = node.value
+            if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "const" and len(value.args) == 1:
+                value = value.args[0]
+            if isinstance(value, ast.Constant) and isinstance(value.value, int) and not isinstance(value.value, bool):
+                return value.value
+    raise BuildError("<src>", f"{path} no longer has a readable int {name} - the build-time check mirroring it has to follow", field=name)
+
+
 def webserver_init_default(src_dir: Path, name: str) -> int:
     """One `WebserverService.__init__` keyword default - see init_int_default()."""
     return init_int_default(src_dir, "asy_webserver_service.py", "WebserverService", name)
@@ -223,6 +240,40 @@ def _check_ntp_backoff(model: DeviceModel, src_dir: Path) -> None:
         raise BuildError(model.device, f"[device].ntp_retry_s is {retry_s} - NTP checks its sync state every {_NTP_CHECK_TICK_S}s, so no shorter retry interval exists", field="ntp_retry_s")
     if retry_max_s < retry_s:
         raise BuildError(model.device, f"[device].ntp_retry_max_s is {retry_max_s}, below the {retry_s}s first retry interval it caps", field="ntp_retry_max_s")
+
+
+def _uart_bus_value(src_dir: Path, table: TomlDoc, name: str) -> int:
+    # A bus table's stated value, else asy_uart_driver.UART's own default - poll_idle_ms's None
+    # default means "poll_wait_ms", mirrored here rather than read.
+    if name in table:
+        return int(table[name])
+    if name == "poll_idle_ms":
+        return _uart_bus_value(src_dir, table, "poll_wait_ms")
+    return init_int_default(src_dir, "asy_uart_driver.py", "UART", name)
+
+
+def _check_uart_link_buses(model: DeviceModel, src_dir: Path) -> None:
+    """UART_Comm.setup() refuses a link whose bus cannot carry its protocol (errno 11/15) - a config
+    mismatch the owner puts out of runtime scope (Part C.7.2), so the build refuses it instead.
+    Mirrors _min_timeout()/_min_rxbuf(); generated code wires no CRC or framing, so both add 0."""
+    links = [spec for spec in model.instances.values() if spec.driver == "uart_link"]
+    if not links:
+        return
+    comm = "asy_uart_comm.py"
+    header, gc_pause, jitter = (module_int_const(src_dir, comm, n) for n in ("_HEADER_LEN", "_GC_PAUSE_WORST_MS", "_POLL_JITTER_MS"))
+    payload = init_int_default(src_dir, "asy_uart_link_driver.py", "UartLinkExerciser", "payload_size")
+    timeout = init_int_default(src_dir, "asy_uart_link_driver.py", "UartLinkExerciser", "timeout")
+    buses = model.doc.get("bus", {})
+    for spec in links:
+        bus_name = spec.fields["bus"]
+        table = buses[bus_name]
+        poll_wait, poll_idle, rxbuf = (_uart_bus_value(src_dir, table, n) for n in ("poll_wait_ms", "poll_idle_ms", "rxbuf"))
+        min_timeout = 2 * poll_wait + poll_idle + gc_pause
+        if timeout < min_timeout:
+            raise BuildError(model.device, f"bus.{bus_name}: {spec.label}'s {timeout}ms reply timeout is below the {min_timeout}ms its polls need (2 x poll_wait_ms {poll_wait} + poll_idle_ms {poll_idle} + {gc_pause}ms GC pause) - every request would time out on a sound link (Part J.6)", field="poll_idle_ms", instance=spec.label)
+        min_rxbuf = max(header + payload, (int(table["baudrate"]) // 10) * (poll_wait + jitter) // 1000)
+        if rxbuf < min_rxbuf:
+            raise BuildError(model.device, f"bus.{bus_name}: rxbuf {rxbuf} is below the {min_rxbuf} bytes {spec.label} needs (one {header + payload}-byte frame, or baudrate {table['baudrate']} over poll_wait_ms {poll_wait} + {jitter}ms jitter, whichever is larger)", field="rxbuf", instance=spec.label)
 
 
 def _check_bus_tables(model: DeviceModel) -> "dict[str, TomlDoc]":
@@ -698,6 +749,7 @@ def build_model(toml_path: Path, src_dir: Path) -> DeviceModel:
     # report before it, and it is the only stage that reads toolchain/versions.toml at all.
     _check_connection_ceiling(model, src_dir)
     _check_ntp_backoff(model, src_dir)
+    _check_uart_link_buses(model, src_dir)
     return model
 
 

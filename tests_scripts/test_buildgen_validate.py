@@ -1242,11 +1242,93 @@ def _with_uart_pair(doc: "TomlDoc") -> "TomlDoc":
     # per bus. GP16/17 rather than dev.toml's GP0/1, and scd30's irq_pin moved, because base_doc()
     # and dev.toml are independently-evolved fixtures whose pin claims were never meant to meet.
     next(i for i in doc["instance"] if i["driver"] == "scd30")["irq_pin"] = 6
-    doc["bus"]["uart0"] = {"tx_pin": 16, "rx_pin": 17, "baudrate": 115200}
-    doc["bus"]["uart1"] = {"tx_pin": 8, "rx_pin": 9, "baudrate": 115200}
+    # dev.toml's bus knobs too: at 115200 baud the driver's default rxbuf (256) and 20ms poll
+    # cannot hold one poll's arrivals, which UART_Comm.setup() refuses (_check_uart_link_buses()).
+    knobs = {"baudrate": 115200, "rxbuf": 512, "txbuf": 512, "poll_wait_ms": 2, "poll_idle_ms": 50}
+    doc["bus"]["uart0"] = {"tx_pin": 16, "rx_pin": 17, **knobs}
+    doc["bus"]["uart1"] = {"tx_pin": 8, "rx_pin": 9, **knobs}
     doc["instance"].append({"driver": "uart_link", "name_ext": "init", "bus": "uart0", "role": "initiator"})
     doc["instance"].append({"driver": "uart_link", "name_ext": "resp", "bus": "uart1", "role": "responder"})
     return doc
+
+
+def test_a_uart_link_whose_polls_outlast_its_reply_timeout_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # 2 x 2 + poll_idle_ms + 21ms GC pause against UartLinkExerciser's 1000ms timeout: 975 is the
+    # last idle poll that fits, 976 the first UART_Comm.setup() refuses with errno 11.
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart1"]["poll_idle_ms"] = 975
+    _build(tmp_path, src_dir, doc)
+    doc["bus"]["uart1"]["poll_idle_ms"] = 976
+    with pytest.raises(BuildError, match=r"bus\.uart1: .*1000ms reply timeout is below the 1001ms") as info:
+        _build(tmp_path, src_dir, doc)
+    assert info.value.field == "poll_idle_ms"
+
+
+def test_a_uart_rxbuf_below_one_polls_arrivals_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # 115200 baud over 2 + 5ms = 80 bytes per poll, above the 53-byte frame: 80 fits, 79 is errno 15.
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart0"]["rxbuf"] = 80
+    _build(tmp_path, src_dir, doc)
+    doc["bus"]["uart0"]["rxbuf"] = 79
+    with pytest.raises(BuildError, match=r"bus\.uart0: rxbuf 79 is below the 80 bytes") as info:
+        _build(tmp_path, src_dir, doc)
+    assert info.value.field == "rxbuf"
+
+
+def test_a_uart_rxbuf_below_one_frame_is_rejected_at_a_slow_baudrate(tmp_path: Path, src_dir: Path) -> None:
+    # At 9600 baud a poll brings 6 bytes, so the 5-byte header + 48-byte payload frame is the floor.
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart0"]["baudrate"] = 9600
+    doc["bus"]["uart0"]["rxbuf"] = 53
+    _build(tmp_path, src_dir, doc)
+    doc["bus"]["uart0"]["rxbuf"] = 52
+    with pytest.raises(BuildError, match=r"rxbuf 52 is below the 53 bytes .*one 53-byte frame"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_uart_link_bus_check_falls_back_to_the_driver_defaults(tmp_path: Path, src_dir: Path) -> None:
+    # No knobs stated: UART's own defaults (rxbuf 256, poll_wait_ms 20, poll_idle_ms = poll_wait_ms)
+    # are what boots, so they are what gets checked - fine at 9600 baud, refused at 115200.
+    doc = _with_uart_pair(base_doc())
+    for bus in ("uart0", "uart1"):
+        doc["bus"][bus] = {"tx_pin": doc["bus"][bus]["tx_pin"], "rx_pin": doc["bus"][bus]["rx_pin"], "baudrate": 9600}
+    _build(tmp_path, src_dir, doc)
+    doc["bus"]["uart0"]["baudrate"] = 115200
+    with pytest.raises(BuildError, match=r"rxbuf 256 is below the 288 bytes"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_an_unstated_poll_idle_ms_is_checked_as_poll_wait_ms(tmp_path: Path, src_dir: Path) -> None:
+    # UART's poll_idle_ms=None means "poll at poll_wait_ms", so 3 x 326 + 21 = 999 fits and 327 does not.
+    doc = _with_uart_pair(base_doc())
+    del doc["bus"]["uart1"]["poll_idle_ms"]
+    doc["bus"]["uart1"]["baudrate"] = 9600  # keeps rxbuf 512 above one long poll's arrivals
+    doc["bus"]["uart1"]["poll_wait_ms"] = 326
+    _build(tmp_path, src_dir, doc)
+    doc["bus"]["uart1"]["poll_wait_ms"] = 327
+    with pytest.raises(BuildError, match=r"poll_idle_ms 327"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_module_int_const_reads_a_const_or_a_plain_int_and_names_a_miss(tmp_path: Path) -> None:
+    from buildgen.validate import module_int_const
+
+    (tmp_path / "m.py").write_text("_A = const(21)\n_B = 5\n_C = const(True)\n_D = const(_A)\n")
+    assert module_int_const(tmp_path, "m.py", "_A") == 21
+    assert module_int_const(tmp_path, "m.py", "_B") == 5
+    for name in ("_C", "_D", "_MISSING"):
+        with pytest.raises(BuildError, match=f"no longer has a readable int {name}"):
+            module_int_const(tmp_path, "m.py", name)
+    with pytest.raises(BuildError, match=r"cannot read .*nope\.py"):
+        module_int_const(tmp_path, "nope.py", "_A")
+
+
+def test_every_shipped_device_passes_the_uart_link_bus_check(src_dir: Path) -> None:
+    # dev is the only device with a link; this pins that its bench tuning really boots the link.
+    from buildgen.validate import build_model
+
+    for toml_path in sorted((src_dir.parent / "devices").glob("*.toml")):
+        build_model(toml_path, src_dir)
 
 
 def test_uart_link_pair_on_its_own_uart_buses_is_valid(tmp_path: Path, src_dir: Path) -> None:
