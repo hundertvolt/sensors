@@ -23,6 +23,60 @@ removed with the others before the branch merges.
    failure. A memory error is a true failure.** The sweep tool counts them separately since §4.3.
 5. Report **number and percentage** of failures, and heap usage as a **percentage** of the GC heap.
 
+## 1a. Scope: what exactly was tested, and what was not
+
+Stated explicitly after the owner asked (2026-09-24) whether every test served all ports over
+Microdot with no cap but lwIP's, at `gc.threshold(-1)`, hammered concurrently with high internal
+load. The answer is **not entirely**; every figure in this file must be read with this scope.
+
+1. **The application's own connection cap was in front of Microdot in every run.** Not only lwIP's
+   caps applied:
+   - `WebserverService._serve()` (`src/asy_webserver_service.py`) refused every connection above the
+     image's `max_connections` (6, 7, 8, 10 or 16). **All refusals in this file come from that check**,
+     not from lwIP; the device's own rejection count matches the host's within the known
+     counter-installation gap (§6.5 item 16).
+   - The lwIP caps never bound: every image carried `MEMP_NUM_TCP_PCB` = limit + 3 (G′: 19 for 16).
+   - The production webserver's other bounds were active too: a listen queue (`backlog`) of
+     `max_connections + 1`, a 5 s per-call read/write timeout, and a 15 s cap on each connection.
+   - Microdot itself (`ext/microdot.py`) has no connection cap; this firmware does not use its
+     `start_server()` but passes each accepted connection to `Microdot.handle_request()`.
+   - **So the results describe the production webserver at limit N**, the value being chosen. An
+     uncapped Microdot was never tested; that would need a code change, and the lwIP slots (or the
+     heap) would then be the only bound.
+2. **HTTP on port 80 only — not all ports.** The load mix: `/status` (twice per cycle), `/sensors`
+   (twice), `/measurements`, `/networking`, `/system`, the static `/` (9,292 B) and `/js/app.js`
+   (16,292 B); the only write is `PUT /sensors {"SGP40": {"SGPResetVOC": true}}` (dispatch-only,
+   nothing persisted). **Not in the load**: `/notification`, every other PUT, and every other port
+   (e.g. the captive-portal DNS on 53).
+3. **`gc.threshold(-1)` for every verdict, with two labelled exceptions.** Every result line carries
+   `GC_THRESHOLD=`: the `32768` series (H at 6-9, F′ at 7-8) were run on request and are labelled
+   so. The collecting runs (`--margin`, `--peak --margin`) call `gc.collect()` before each sample
+   (every 5 s in rounds mode, every 100 ms in peak mode); they are instrumentation, and their
+   stability verdict is not counted as evidence (§8.2).
+4. **Hammering — only in the peak runs.**
+   - **Peak runs** (`--peak`: §5.4-§5.8, i.e. H at 6-9 and everything from 2026-09-24): N clients back
+     to back for 60 s at the limit, no pauses.
+   - **Not hammering**: every earlier series (§5.1-§5.3: the static-fix verification, G′, F′ at 4-8,
+     H at 8-10) used rounds of N parallel requests with 0.5 s pauses, and is labelled "sampled, not
+     peak".
+5. **Internal load: the full production task graph plus the hammer test's trigger — not every
+   internal load forced at once.**
+   - Running throughout: `sensortask_dev.main()`'s whole task graph — SCD30, SGP40, BMP3XX, ISL29125,
+     FRAM logging, NeoPixel, notifications, the WiFi and NTP services, the UART link pair with its
+     continuous exerciser traffic, and the task supervisor.
+   - Forced on top: the SGP40 reset PUT every 3 s (the hammer test's own internal-work trigger,
+     `tests_hardware/bench/test_memory_stress_bench.py`).
+   - **Not forced into the load window**: an NTP sync, a WLAN reconnect, an SCD30 read, an SGP40
+     backup, a FRAM block write — each coincided with the load only as its normal schedule made it.
+     This is the hammer test's definition of peak, not the maximum of every internal load at the
+     same instant.
+6. **The device script, not the production entry point, ran the task graph.**
+   - It was started through `mpremote`; `run_isolated()` arms its own `machine.WDT(timeout=8000)`
+     around every device script (production arms the same 8 s watchdog itself).
+   - The script's own compiled code and globals cost **2,720 B** of heap that the frozen production
+     `main.py` does not (§5.7); heap figures are given measured and production-equivalent.
+   - Every device-script boot drops and rejoins WLAN at ~6 s uptime, before the load starts.
+
 ## 2. State (updated 2026-09-24)
 
 - **Board**: image **E6** (built for 6, local edits only — recipe in §5.8), build
