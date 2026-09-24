@@ -127,11 +127,11 @@ fi
 #
 # One hazard is NOT closed: a twin test asserting a real background transition inside a fixed budget
 # measures host speed, so CPU starvation fails it while the code is healthy. Reproduced with twelve
-# busy-loops and no parallel test processes at all - BACKLOG.md item 28 carries what is left.
+# busy-loops and no parallel test processes at all; the probe below is what keeps a slow host clear.
 #
 # So the multiplier is autodetected from core SPEED, not core count: the same 4 cores are
-# comfortable at 16 processes on a fast x86 host and starve a Pi4 (item 28 has the thresholds and
-# the calibration). TEST_PARALLELISM overrides everything, which is the escape hatch if it misjudges.
+# comfortable at 16 processes on a fast x86 host and starve a slow one (bands: README.md's
+# TEST_PARALLELISM entry). TEST_PARALLELISM overrides everything, the escape hatch if it misjudges.
 #
 # THIS BLOCK'S PLACEMENT IS LOAD-BEARING: it must stay ahead of the tests_scripts/ background
 # launch, because the probe times a real process on a real host and would otherwise measure a

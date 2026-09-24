@@ -52,7 +52,7 @@ def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> 
             except (OSError, http_client.HTTP_ERROR) as exc:
                 # With the hammer saturating max_connections, ConnectionResetError is the
                 # server's intended reject-when-full behavior, not a fault - not asserted against
-                # below; only genuine 200s count as proof the server stayed alive (BACKLOG.md open question 7).
+                # below; only genuine 200s count as proof the server stayed alive (SPECIFICATION.md H.7).
                 with lock:
                     request_errors.append(f"GET {path} -> {exc!r}")
 

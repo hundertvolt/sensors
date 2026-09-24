@@ -48,7 +48,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   proves - but a second, ISL29125-specific mechanism remains, and that residual is item 30, where the
   next step (the `RangeAuto=false` bisection) already lives. **What is genuinely still owed here is
   therefore only the BMP3XX arm's re-confirmation being treated as durable** rather than one bench
-  run; the ISL29125 arm is not "pending re-confirmation", it is a known open defect with its own item.
+  run — it passed again 2026-09-23 in S3's gated run (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.2);
+  whether two runs is durable is the owner's call; the ISL29125 arm is not "pending re-confirmation", it is a known open defect with its own item.
 
   Note the bench re-run that produced these numbers needs `--allow-persistence-writes`: the write path
   is now gated behind `@pytest.mark.persistence_write`, so a default bench run deselects both arms and
@@ -223,11 +224,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    home. Kept here as a closed stub, at its original number, only because several `tests/`/
    `tests_hardware/` code comments still cite it as "BACKLOG.md open question 6" - don't renumber
    this item while those references exist.
-7. **Closed 2026-09-24: the connection limit is `6`**, owner's decision after 10 proved
-   unreachable on this heap and 8 failed under peak load: 6 is clean with ~21 % heap free at peak,
-   and the board's throughput is the same at any limit. The limit, its lwIP ensemble and the reasons
-   are SPECIFICATION.md Part H.7; the silicon evidence, the committed image included, is
-   HEAP_FRAGMENTATION_MEASUREMENTS.md §7R. Kept as a stub at its number; open follow-ups are item 44.
 8. **Two bench-rig capabilities would each move one test candidate from `[MANUAL]` to `[AUTO]` —
    SETTLED 2026-09-22 (owner): no hardware will be bought for this, so the rig stays as it is and
    both candidates are permanently `[MANUAL]`.** Not "planned for later" any more, which is how
@@ -384,39 +380,11 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     7.396s / 5.207s at `gc.threshold(-1)`. Useful for spotting a twin-side regression; not a
     predictor of real-hardware cost in either direction.
 
-28. **`TEST_PARALLELISM` now autodetects host capability — the residual is a calibration question,
-    not an open design decision.** The 4x-core-count default failed a healthy twin test on the bench
-    Pi4 through CPU starvation alone (reproduced with twelve synthetic busy-loops and no parallel
-    test processes), while being entirely safe on a fast 4-core x86 host — core *count* cannot tell
-    those apart. `scripts/test.sh` now times a fixed integer loop in the very interpreter the tests
-    run under and picks the multiplier from that (4x at <=250ms, 2x at <=900ms, 1x beyond), honouring
-    a cgroup CPU quota when one is set, with `TEST_PARALLELISM` still overriding everything.
-    Measured: 131-141ms (8 samples) -> 16 jobs on this project's x86 sandbox, unchanged from before,
-    and a simulated Pi4-class 704ms -> 8 jobs.
-    **One correction, 2026-09-18**: an earlier revision of this item quoted "117ms -> 16 jobs
-    (unchanged from before)" as if that were what the script did. It was not — those figures were
-    measured in isolation, while the probe itself sat *after* the `tests_scripts/` background launch
-    and therefore timed the host with pytest saturating every core. In situ it read **391ms and
-    picked 8**, not 16, on the very sandbox it was calibrated against. Fixed by moving the whole
-    resolution ahead of that launch (nothing in it depends on anything in between), and
-    `tests_scripts/test_test_sh.py` now asserts that ordering — the unit tests around it all run the
-    extracted function in isolation on an idle machine, so none of them could have caught it. The
-    wall-clock cost on that host was small (4m30.9s autodetected vs 4m26.6s pinned at 16) only
-    because the backgrounded pytest tier at 263s was the binding constraint at both settings; the
-    real defects were the non-determinism and that the probe was not measuring what it claimed to.
-    **CLOSED 2026-09-22 — measured on the real Pi4, and the premise was wrong.** The bench Pi4
-    reports `== Test parallelism: 16 (4 usable cores x 4, interpreter speed probe 139ms)`: 139ms is
-    comfortably inside the 4x band, so it probes as a **fast** host and takes the top multiplier —
-    not the 2x every earlier note assumed from the simulated slow host. The 704ms simulation simply
-    did not resemble this machine. **The suite is green there at 4x**: `1458 passed, 7 skipped` in
-    `tests_scripts/`, `85/85` MicroPython files, 473.99s, and the twin assertion this item exists
-    for — `test_digital_twin_sensortask_integration.py`'s
-    `test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led` —
-    passes with its file at 13/13, plus zero real allocation failures. So there is **nothing to
-    re-tune and no 1x fallback to introduce**; the original starvation was the 4x-core-count default
-    on a *loaded* host, which the probe already fixed. Note `_wait_until()` counts poll *iterations*,
-    not wall clock, so making it a true wall-clock timer would still make this worse rather than
-    better — kept because it is a standing trap, not a residual.
+28. **Two `TEST_PARALLELISM` facts with no permanent home yet** (the autodetection itself:
+    README.md's `TEST_PARALLELISM` entry and `scripts/test.sh`):
+    - The bench Pi4 probes at ~139 ms, i.e. as a fast host: 16 jobs (4 cores x 4), suite green there.
+    - `tests/test_digital_twin_sensortask_integration.py`'s `_wait_until()` counts poll iterations,
+      not wall clock; a wall-clock timer would make CPU starvation fail it sooner, not later.
 
 29. **A real WiFi outage logs `W4` ("WLAN wrong password") twice alongside the expected `W5`
     ("access point not found"), on a network whose password never changed.** Observed on the dev
@@ -430,6 +398,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     warning per connect *attempt*, and an outage retries, so "W4 twice" may be two attempts rather
     than two verdicts about one. That does not by itself explain a wrong-password verdict on a
     correct password, but it does change what the bench run should be looking at.
+    **Second sighting (2026-09-23)**: the clean pre-sitting `errcount` on the dev bench (image of
+    2026-09-22) held WIFI history `N0 N0 N0 W10 W6 W5 W4 W5 W6 W6` — a `W4` on a network whose
+    password never changed, outside any outage test.
 
 30. **ISL29125 HTTP connection reset under concurrent API load — root-cause not yet established.**
     Owner's direction: chase, root-cause and resolve. Needs **both** a config-persisting PUT and >=2
@@ -509,8 +480,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     branches stay on the remote, so the diffs remain readable if anything is wanted later.
     **Carried across before closing**: PR #102's real boot-latency figures and its disproven
     `webserver` lazy-setup hypothesis are now in SPECIFICATION.md Part A.7's boot-latency note, its
-    unexplained **+0.90s** `CFGMGR_SYSTEM` cost is queue row R6. `REAL_HARDWARE_HANDOVER.md` itself was
-    deleted once every step it asked for was answered and migrated, as its own first lines instruct.
+    unexplained **+0.90s** `CFGMGR_SYSTEM` cost is queue row R6.
     **Deliberately NOT carried, which is the one thing to know if this is ever revisited**: none of
     PR #84 exists on any other branch — `buildgen/gc_policy.py`, `scripts/build_firmware.py
     --gc-policy`, `--memory-pressure`, `tests_hardware/device_modules/memory_pressure.py`,
@@ -519,7 +489,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     build-and-instrument tooling, and the four validation-apparatus fixes that came with it, are
     unshipped by decision rather than by oversight. Its three bench passes stand as executed (queue
     §5).
-    **The adoption record this item's number is cited for (queue row R8) stays valid**: `main`'s
+    **The adoption record stays valid**: `main`'s
     ISL29125 tests were assessed one by one and the worthwhile ones adopted here 2026-09-18 — the
     calibrate-command and gain-ratio-across-a-real-reboot bench tests (the second gaining the
     `@pytest.mark.persistence_write` `main` lacked, since it owns two persisting PUTs), the
@@ -531,7 +501,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     `test_an_out_of_band_knob_is_rejected_by_the_schema_rung_not_the_setter`. The bench tier moved
     from **71 to 73 tests and 12 to 13 deselected**; the flash tier's 51/9 is unchanged, since the
     two new gates skip rather than deselect. Every count re-measured by a real `--collect-only` run.
-    Both adopted bench tests first ran on silicon 2026-09-23 and passed (queue row R8, closed).
+    Both adopted bench tests passed on silicon 2026-09-23 (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.2).
     Also settled here: of the six items the (since deleted) harness/heap-fragmentation handover's
     §1.0 called lost, five are accounted for on this branch or on `main` (checked item by item, not
     taken at face value); only `REAL_HARDWARE_FINDINGS_PR103.md` is unaccounted for, and it never existed in
@@ -759,59 +729,14 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     from `npm run test:unit` rather than from reading 150 conflict hunks. After a resolution that
     takes one side wholesale, run every tier before trusting it.
 
-44. **Follow-ups to the serving fix and the connection limit (2026-09-23/24) — all settled
-    2026-09-24 except the board anomalies, which only silicon can chase.** Evidence:
-    HEAP_FRAGMENTATION_MEASUREMENTS.md §7Q and §7R.
-    - **Settled: a connection counts until its close has finished**, not once its response is
-      written. The closing connection still holds heap and a pcb and the board is CPU-bound, so an
-      earlier admission serves nothing more and only pushes both pools past what 6 was measured at;
-      the ~70 % refusals of back-to-back clients are the expected price (SPECIFICATION.md H.7).
-    - **Settled: the wall is not moved.** Every failure at 8-10 was one 242-257 B `/status` piece;
-      at 6 the largest free block at peak is ~1.5 KB, so nothing needs it. The lever, if a higher
-      limit is ever wanted, is less per `/status` piece (Part I.3): in the twin no lever cleared 10 -
-      a gate cut failures ~5x, `chunk_bytes` 128 helped, 64 and lazy JSON made it worse (§7R.6).
-    - **Settled: `MEMP_NUM_TCP_PCB >= max_connections + 3` is a build error**, the third
-      per-connection rule in `check_lwip_ensemble()` (`SPARE_TCP_PCBS`) beside the segment and arena
-      ones. A FIN_WAIT pcb outlives its slot and lwIP never reclaims one at equal priority, and every
-      limit measured on silicon ran at +3 (SPECIFICATION.md H.7).
-    - **Settled: the empty `200` without `Content-Length`** (§7R.5) was a response cut inside its
-      header block, which `http.client` reads as complete. The block is now one write
-      (SPECIFICATION.md I.3).
-    - **Settled: the UART link exerciser's 264 B receive** that failed twice at 10 connections in the
-      64-bit twin, and never on the board-faithful 32-bit one, is not a UART defect: an allocation
-      failing in a heap the webserver had exhausted at a limit that does not ship. `uart_get()`'s
-      own destination allocation is guarded (errno 24) and the task is supervised.
-    - **The sittings' lessons are tests now**, so a change to any of them is a deliberate edit to
-      one: the slot held until the close (`test_asy_webserver_service.py` F1 and the per-device
-      scenario); three spare PCBs (`TestLwipEnsemble`, `test_buildgen_validate.py`); the header block
-      in one write (`test_asy_webserver_service.py` G.3); the instruments inside the firmware's
-      timeouts (`test_request_timeout_ceiling.py`); every heap-measuring device script setting and
-      printing its `gc.threshold` (`test_device_script_gc_threshold.py`); the board restored after a
-      device script, through one shared `harness.restore_board_to_serving()`
-      (`test_bench_restores_serving.py`).
-    - **The 32-bit frozen twin stays an ad-hoc instrument, never a committed tool or CI gate**
-      (owner, 2026-09-23). It reproduced the board's failing sites and sizes and, throttled to the
-      board's throughput, its peak-load failure rates; the what-for and how-to are
-      HEAP_FRAGMENTATION_MEASUREMENTS.md §7Q.9, §7Q.14, §7R.4 and §10, and nothing of it is merged.
-    - **The next wall is vendored.** Past 10 connections the first allocation to fail is
-      `ext/microdot.py:383`, the `Request` object's own attribute table (~232 B on the RP2040), seen
-      as 400s on silicon at 12. Not ours to change; recorded so it is not rediscovered.
-    - **Still open — board anomalies, recorded not chased** (§7R.5): one silent reset in one
-      instrumented boot (1 in 9, cause lost); hotspot fallback after a reset, three times; a likely
-      watchdog reset at `mpremote` attach. Each needs silicon.
-
-45. **Done 2026-09-24: the connection-scaling work added no file beyond its tests.** Every temporary
-    file — the plan, five hardware handovers, the bench-sitting log, the two working catalogs and the
-    silicon sweep tool with its device script — was evaluated and distributed single source of truth,
-    then deleted (owner, 2026-09-23/24). Measured evidence and every instrument's what-for, how-to and
-    pitfalls: `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q, §7R, §9, §10. Rules and current state:
-    SPECIFICATION.md B.14.2, E.3, E.8, H.7, I.3. Harness habits and bench traps:
-    `tests_hardware/README.md` and `digital_twin/README.md`. Open follow-ups: item 44 and the queue's
-    §4A. What the branch adds as new files is test code only — `tests/test_digital_twin_poll_prewarm.py`,
-    the strict JSON check `tests/_strict_json.py` with its `tests/test_strict_json.py`,
-    and the bench tier's `test_serving_heap_at_default_gc.py` and `test_heap_under_connection_ceiling.py`
-    with the three device scripts they drive. The frozen twin builds, their manifests and every
-    scratch harness were never committed.
+44. **Board anomalies from the connection-limit sittings — recorded, not chased; each needs
+    silicon** (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.5):
+    - One silent reset in 1 of 9 instrumented peak-load boots, cause lost.
+    - Hotspot fallback after a reset, three times.
+    - A likely watchdog reset at `mpremote` attach.
+    - Not a UART defect, no home yet: the UART link exerciser's 264 B receive failed twice at 10
+      connections in the 64-bit twin (never the 32-bit one) because the webserver had exhausted
+      the heap; `uart_get()`'s own allocation is guarded (errno 24) and the task is supervised.
 
 ## Deferred / explicitly out-of-scope work
 
@@ -900,19 +825,19 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   generates an out-of-tree board directory and passes `BOARD_DIR=` to `make`, and
   `setup_toolchain.py`'s `build_firmware()` now applies it unconditionally and then verifies the
   resulting macros by preprocessing the real translation unit with the flags CMake recorded. Two
-  consequences for a chroot run: the firmware build gains a post-build `arm-none-eabi-gcc -E` step
-  (seconds, but it needs the ARM toolchain present, which the installer leg already provides), and
+  consequences for a chroot run: the firmware build gains a post-build `-E` step with the C compiler
+  CMake recorded (seconds, but it needs the ARM toolchain present, which the installer leg already provides), and
   `toolchain/versions.toml` gained an `[lwip]` table that `build_firmware()` reads on every build -
   a malformed one fails the build loudly rather than silently building unpinned. The installer
   verification leg (`uv run toolchain/setup_toolchain.py`) is the one that exercises this, not the
   lint/typecheck recipe. **Same day, extended**: the override now also validates the `[lwip]` table
   as an *ensemble* before building (lwIP's options are not independent — `lib/lwip/src/core/init.c`
-  makes nine of their relationships compile-time `#error`s, and `opt.h` derives four more values
+  makes sixteen of their relationships compile-time `#error`s, and `opt.h` derives four more values
   from them), and the generated header carries a sentinel the post-build check demands, so a shim
   that was never *found* fails even when the asked-for values match MicroPython's own defaults.
   Both are pure host-side Python with no new dependency; the chroot relevance is unchanged.
-  2026-09-22 added two more to `scripts/test.sh`, both pure shell with no build impact: the `MemoryError` gate matches `memory allocation failed` as well as
-  the class name, and argument/`GC_THRESHOLD` validation moved ahead of the two live-tree sweeps so
+  2026-09-22 added two more to `scripts/test.sh`, both pure shell with no build impact: the
+  `MemoryError` gate matches `memory allocation failed` as well as the class name, and argument/`GC_THRESHOLD` validation moved ahead of the two live-tree sweeps so
   a rejected invocation mutates nothing (it previously wiped `tests/_tmp` while the concurrent
   MicroPython tier held scratch dirs under it). A third, text-only change the same day: the
   out-of-range rejection's message now names the rp2040's own 32-bit machine word instead of
@@ -931,66 +856,27 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   single unrelated third-party source (a PPA that 403s or whose key expired) aborted the whole
   installer before it could install a package the main archive serves. Every `apt-get install`
   stays fatal. The chroot recipe never runs this script, so it changes nothing the legs cover.
-  **2026-09-22, `scripts/test.sh`**, shell only and inside the summary block:
-  it re-emits each red outcome (a failed file, a file that only logged an allocation
-  failure, the pytest tier) as a GitHub workflow-command annotation, guarded on `GITHUB_ACTIONS` so
-  a local or chroot run prints nothing extra and behaves exactly as before. No build step, so the
-  chroot legs neither exercise nor are threatened by it.
-  **2026-09-23, `scripts/_digital_twin_ci_suite.py`**, Python only:
-  it gains Run 11b, a host-side full-ceiling concurrency run
-  (threads + real sockets from the CPython suite process, per SPECIFICATION.md Part E.9), plus two
-  helpers - one reading the device's own `max_connections` from `devices/<device>.toml`, one firing
-  a barrier-synchronised concurrent burst. Test orchestration only, no build step, so the chroot
-  legs neither exercise nor are threatened by it.
-  **2026-09-23, `toolchain/versions.toml` — the class the installer leg exercises**: the `[lwip]`
-  ensemble re-sized for `max_connections = 8` (owner, 2026-09-23: "target 10 ground stable, keep the
-  limit to 8 as safety margin") — `MEMP_NUM_TCP_PCB` 10 → 11, `MEMP_NUM_TCP_SEG` 56 → 64, `MEM_SIZE`
-  14000 → 16000, every relationship unchanged and `check_lwip_ensemble()` passing. A firmware build
-  runs the post-build macro verification against these, so it is the installer leg
-  (`uv run toolchain/setup_toolchain.py`) that covers it; the lint/typecheck recipe does not.
-  **2026-09-23, `pyproject.toml`**: ruff's `max-args` 23 → 24, the documented one-parameter ratchet,
-  for `WebserverService`'s `chunk_bytes=` (owner: JSON pieces and static reads bound by one
-  parameter, SPECIFICATION.md Part I.3). Lint config only, no build impact.
-  **2026-09-24, `scripts/_digital_twin_ci_suite.py`**: Run 11b pauses 1 s before its first
-  full-ceiling burst too, not only between bursts — the readiness probe's connection is still
-  counted while it closes, which refused one of 6 at the new limit. Test orchestration only, no build
-  step, so the chroot legs neither exercise nor are threatened by it.
-  **2026-09-24, `toolchain/versions.toml` — the installer leg again**: the `[lwip]` ensemble
-  re-sized for `max_connections = 6` (owner, 2026-09-24, on the peak-load evidence of SPECIFICATION.md
-  Part H.7) — `MEMP_NUM_TCP_PCB` 11 → 9, `MEMP_NUM_TCP_SEG` 64 → 48, `MEM_SIZE` 16000 → 12000, the
-  same pattern (limit + 3, limit × 8, limit × 2,000), `check_lwip_ensemble()` clean at 6 and refusing 7.
-  **2026-09-24, `toolchain/micropython_overrides.py`**: `check_lwip_ensemble()` gains its third
-  per-connection rule, `MEMP_NUM_TCP_PCB >= max_connections + SPARE_TCP_PCBS` (3), so the pattern
-  every shipped ceiling already follows is a build error to break (SPECIFICATION.md H.7). Pure
-  host-side Python; buildgen runs it per device, while the firmware build's own ensemble check has
-  no ceiling to apply it to, so no chroot leg's outcome changes. `versions.toml`: comments only.
-  **2026-09-24, `scripts/_digital_twin_ci_suite.py`**: `_configured_max_connections()` reads the
-  `src/` default through buildgen's own `webserver_init_default()` rather than a second regex over
-  the same line. Test orchestration only, no build step.
-  **2026-09-24, review pass — `toolchain/` and `scripts/` once more**:
-  - `micropython_overrides.py`: `validate_lwip_macros()` is now public, buildgen calls it first, and
-    it refuses `TCP_MSS` 0.
-  - The lwIP readback now treats an unexpanded option name as absent, so an unreached override
-    header reports its sentinel instead of failing to parse.
-  - `setup_toolchain.py`'s entry point reports an `OverrideError` like a `SetupError`, and two
-    labels are reworded.
-  - `_digital_twin_ci_suite.py`: Run 11b reads its ceiling inside its own failure guard.
-  All of this is host-side Python with no new dependency, and the firmware build's inputs are
-  unchanged, so no chroot leg's outcome moves; the installer leg still covers the setup change.
+  **The connection-limit work (2026-09-23/24) adds, by what covers it:**
+  - **Installer leg** (`uv run toolchain/setup_toolchain.py`), the only leg a change here can move:
+    `versions.toml`'s `[lwip]` sized for `max_connections = 6` (PCB 9, SEG 48, `MEM_SIZE` 12000 —
+    limit + 3, limit × 8, limit × 2,000); the lwIP readback now runs the C compiler CMake recorded
+    (not `arm-none-eabi-gcc` from `PATH`) under a 120 s timeout, and must still read back the set it
+    asked for; `setup_toolchain.py` reports an `OverrideError` like a `SetupError`.
+  - **Host-side Python, no build input changed**: `micropython_overrides.py`'s
+    `check_lwip_ensemble()` restates all sixteen `init.c` checks, adds `MEMP_NUM_TCP_PCB >=
+    max_connections + SPARE_TCP_PCBS` (3) and refuses `max_connections` below 1;
+    `validate_lwip_macros()` is public, buildgen calls it first, and it refuses `TCP_MSS` 0; an
+    unexpanded option name reads back as absent; `scripts/build_firmware.py` passes `toolchain_dir=`,
+    so every device build applies the override.
+  - **Lint config only**: `pyproject.toml`'s `max-args` 24 (`backlog=`, `chunk_bytes=`) and the
+    `S603` per-file ignore for `toolchain/micropython_overrides.py`.
+  - **Test orchestration, no build step**: `_digital_twin_ci_suite.py`'s Run 11b (full-ceiling
+    burst per SPECIFICATION.md Part E.9; 1 s settle before every burst; ceiling read through
+    buildgen's `webserver_init_default()` inside its failure guard; a request counts as served only
+    with a 200 and a parsed JSON object); `scripts/test.sh` re-emits each red outcome as a GitHub
+    annotation from one `GITHUB_ACTIONS` block (pytest tier first, per-file ones capped at 8 plus
+    "and N more"), so a local or chroot run prints nothing extra.
   Kept here as the running list of what is owed, not as a merge blocker.
-  **2026-09-24, spec audit — `toolchain/`, `pyproject.toml`, `scripts/`**:
-  - `micropython_overrides.py`: `check_lwip_ensemble()` restates all sixteen `init.c` checks and
-    refuses `max_connections` below 1; the readback runs the C compiler CMake recorded (not
-    `arm-none-eabi-gcc` from `PATH`) under a 120 s timeout, and C division truncates.
-  - Recorded late from this branch: `pyproject.toml`'s `S603` per-file ignore for
-    `toolchain/micropython_overrides.py` and the `max-args` step 22 -> 23 for `backlog=`, and
-    `scripts/build_firmware.py` passing `toolchain_dir=`, so every device build applies the override.
-  - `scripts/test.sh`: every annotation comes from one `GITHUB_ACTIONS` block, the pytest tier
-    first, per-file ones capped at 8 plus one "and N more" (GitHub keeps ten per step).
-  - `scripts/_digital_twin_ci_suite.py`: Run 11b counts a request served only with a 200 and a
-    parsed JSON object; `scripts/run_digital_twin_ci.sh` and `cross_browser_smoke.mjs` comments only.
-  The compiler choice is the one change a chroot leg can see: the installer leg's build must still
-  read back the set it asked for.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
   fixed.** The SPI form exists because the FRAM path drives the chip through blocking register

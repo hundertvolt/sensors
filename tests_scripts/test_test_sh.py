@@ -83,8 +83,7 @@ def test_a_leaked_fixture_is_reclaimed_at_session_start_too(repo_root: Path) -> 
 
 # ---------------------------------------------------------------------------
 # TEST_PARALLELISM autodetection. Executed for real rather than asserted structurally: the point of
-# the probe is what it DOES on a slow host, and the bench Pi4 that motivated it (BACKLOG.md item 28)
-# is not reachable from here. The band choice runs against a stubbed clock - see _run_detector_with_clock.
+# the probe is what it DOES on a slow host, and no slow host is reachable from here. The band choice runs against a stubbed clock - see _run_detector_with_clock.
 # ---------------------------------------------------------------------------
 
 
