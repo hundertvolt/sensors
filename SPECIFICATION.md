@@ -34,15 +34,13 @@ datasheets/              Real datasheet PDFs for the chips this codebase drives 
   bmp3xx/, fram/, isl29125/, pico w/, scd30/, sgp40/
 arduino/                 The Arduino peer's side, imported 2026-09-13: the UART protocol's C
                           implementation (libraries/Async_UART_Comm/ + Async_UART/, CRC_Check/;
-                          Part J, not yet reconciled), BME688/BSEC sketches and vendored libraries.
-                          In no lint/type/test scope
+                          Part J), BME688/BSEC sketches and vendored libraries. Outside this
+                          project's scope (owner, 2026-09-24): no lint/type/test, no reconciliation
 dev_legacy/              The dev bench unit's wiring/state reference, plus a 2026-08-27 snapshot of
                           its on-device filesystem (reference only, in no lint/type/test scope)
 html_raw/               Legacy, still-deployed per-device HTML/CSS/JS - targets the pre-refactor
   arzi/, dev/, wozi/,     REST shape, superseded by html/ for devices the refactor has reached (H.1)
   general/
-html_stub/              Placeholder website content for the refactored build's generic pipeline
-                          tests (A.9)
 html/, js/, tests_js/,  The real, refactored website - source, tests, prototype-only mock-backend
   mockdata/               fixtures (Part H)
 modules/                Auto-started entry points, one set copied into the firmware build per device
@@ -61,7 +59,7 @@ src/                     Fully-reviewed/tested refactor code, freely editable (P
                           been fully retired and deleted.
 ext/                     Vendored third-party code, hands-off (CLAUDE.md)
   microdot.py               Microdot v2.6.2, unmodified (A.5)
-  freezefs/                 freezefs 2.4, unmodified - gzip+freeze pipeline for html_stub/ (A.9)
+  freezefs/                 freezefs 2.4, unmodified - the website's gzip+freeze pipeline (A.9)
 devices/                 One TOML file per device variant (SPECIFICATION.md Part L) - the single source
                           of truth for that device's hardware/wiring facts; buildgen/ turns each one
                           into a real firmware build.
@@ -625,11 +623,10 @@ Connection hardening (per-call/outer-cap timeouts, reject-when-full, no bespoke 
 and `Connection: close` live in `WebserverService`/`_TimeoutStreamProxy` — see that module's own
 comments and `tests/test_asy_webserver_service.py`.
 
-## A.9 Website stub / frozen-HTML pipeline
+## A.9 The frozen-HTML pipeline
 
-`html_stub/` (7 flat files) is placeholder content standing in for real website content in the
-refactored build's generic pipeline tests. `scripts/build_frozen_html.sh` gzips a temp copy of the
-source dir(s) (`html_stub/` default, `HTML_SRC_DIRS` overridable), then runs `python -m freezefs
+`scripts/build_frozen_html.sh` gzips a temp copy of the source dir(s) `HTML_SRC_DIRS` names
+(required; `scripts/build_website.sh` stages the real website and sets it), then runs `python -m freezefs
 <tmp> frozen_modules/frozen_html.py --on-import mount --target /html --overwrite always` (never
 `--compress`: this project pre-gzips by hand, served via Microdot's `send_file(...,
 compressed=True)` over a stream `_serve_static()` opens itself, in 256 B reads and with
@@ -645,20 +642,14 @@ generated
 `sensortask_<device>.py` does a module-level `import frozen_html`, mounting `/html` as a side
 effect; `WebserverService(..., static_mount="/html")` registers the static route pair.
 
-`tests/test_frozen_html_integration.py` is the real-pipeline proof;
-`tests/test_asy_webserver_service.py`'s Section G exercises the generic route-wiring against a
-synthetic fixture. The real, non-stub website is Part H.
-
-**`scripts/test.sh` and `npm test` both write `frozen_modules/frozen_html.py`, with different
-content — never run the two concurrently.** `scripts/test.sh` puts the *stub* there (and the real
-wozi site in the separately-named `frozen_website_wozi.py`); `npm`'s `pretest` hook runs
-`scripts/build_website.sh wozi` with no output argument, which defaults to that same
-`frozen_html.py` and stages the *real* site. Interleaving them makes whichever suite loses the race
-fail confusingly — `test_frozen_html_integration.py` 404s on stub-only paths, or
-`tests_js/live-backend*.test.js` times out waiting for a real section in the placeholder page. Both
-are harmless artifacts of a local run, not regressions; CI never hits this (each tier is its own
-runner). Run one suite at a time locally, and drive the JS side through `npm test` so its `pretest`
-hook actually stages the right content.
+There is no placeholder site: `scripts/test.sh`, `npm test`'s `pretest` hook and the twin runners
+all build the real website (`scripts/build_website.sh`, Part H) into `frozen_modules/frozen_html.py`
+- wozi's for the unit and web tiers, the booted device's for the twin runners. The retired
+`html_stub/` (removed 2026-09-24, owner's rule that the real site is the most biting test) left one
+case the real site has no file for, the binary `application/octet-stream` fallback, which Section G
+of `tests/test_asy_webserver_service.py` now pins on its synthetic fixture beside the generic
+route-wiring; `tests/test_website_build_integration.py` is the real-pipeline proof. The two suites
+still must not run concurrently, for their ports (CLAUDE.md), not for this file any more.
 
 ## A.10 Digital twin (hardware simulator)
 
@@ -3396,7 +3387,10 @@ Two consequences worth keeping in mind:
   the split has a `build-standard` that still carries the flag, and it is executable — so an
   existence check is satisfied while the suite silently measures on the inflated binary. CI is
   covered because the toolchain cache key hashes `setup_toolchain.py`; locally, `scripts/test.sh`
-  asks the binary itself (`hasattr(sys, "settrace")`) and rebuilds when the answer is wrong.
+  asks the binary itself (`hasattr(sys, "settrace")`) and rebuilds when the answer is wrong. The
+  same probe imports `asyncio`: a `setup` interrupted between its frozen-verification build and
+  the vanilla rebuild leaves an executable binary with no frozen `asyncio`, on which every test
+  file dies with `ImportError` — that too reads as unusable and triggers the rebuild.
 - **`--coverage`'s own figures stay inflated**, inherently — it cannot run without the flag. Read
   coverage as line coverage only, never as an allocation measurement. The per-node conversion table
   is in HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7 and §3A.
@@ -4608,8 +4602,7 @@ bytecode → mount on startup → served via Microdot as gzip-compressed HTML (A
 **Predecessor**: `html_raw/{general,arzi,dev,wozi}` is the legacy, still-deployed site targeting
 the legacy REST shape (PUT-with-`cmd`-envelope, `Led`-prefixed fields) predating
 `asy_webserver_service.py` (A.8). This Part's website targets the refactored REST shape from the
-start — not a reskin. `html_stub/` (A.9) is a separate placeholder used only by the generic
-frozen-HTML pipeline's own tests.
+start — not a reskin.
 
 ## H.2 Folder structure and module map
 
@@ -5646,7 +5639,8 @@ Python implementation's *intended* behavior and is owner-validated over many rea
 **how far that mirroring extends to the known flaws is unverified**: it may share some, not others,
 and may have introduced its own. Establishing that is future work, never an assumption to build on.
 The C source is in the repo since 2026-09-13 (`arduino/libraries/Async_UART_Comm/`, with
-`Async_UART/` and `CRC_Check/`); reconciling it is open work (BACKLOG.md). Until then:
+`Async_UART/` and `CRC_Check/`); reconciling it is outside this project's scope (owner,
+2026-09-24). Until someone does:
 
 - **Every protocol-level change is logged in `UART_C_PORT_CHANGELOG.md`** — a temporary file, deleted
   once the C side is reconciled. A change is protocol-level ("Class A") if it alters the bytes

@@ -15,9 +15,8 @@ Status values: **OPEN** (owed), **BLOCKED** (waiting on a decision or another ro
 
 ## The finalisation checklist — everything still owed, in one place
 
-Grouped by what each row *needs*, not by which effort opened it. **31 rows owed.** D1 and D2 are the
-owner's standing answers and no sitting re-asks them. G10 is blocked on cloud work that comes
-first (the C-side reconciliation, BACKLOG).
+Grouped by what each row *needs*, not by which effort opened it. **30 rows owed.** D1 and D2 are the
+owner's standing answers and no sitting re-asks them. G10 is excluded (section 5).
 This table is an index; the row's own entry below is what to read before running it.
 
 | Group | Rows | What it needs |
@@ -29,7 +28,7 @@ This table is an index; the row's own entry below is what to read before running
 | **Memory gates and the (e) stage** | G8 | A script to write first |
 | **New features** | N2, N3 | One look each; N3 rides on R13 |
 | **Targeted investigations** | R1, R2, R4-R7, R9, R13 | Bench time. R4 needs its own run with `--allow-persistence-writes`; R1's first answer is read off Step 6's |
-| **Tests still to write** | G1, G3, G4, G6, G10, G11, G12 | Code first, bench second. G6 is adapt-now-measure-later by decision; G10 waits on the C-side reconciliation (cloud work) |
+| **Tests still to write** | G1, G3, G4, G6, G11, G12 | Code first, bench second. G6 is adapt-now-measure-later by decision |
 | **The bench host itself** | H1 | Owner-run; needs no board |
 | **Long soak and the light rig** | S4, M1 | Deliberately separate sittings. M1 is interactive and records the rig geometry S3b depends on |
 | **Findings still open** | F1, F17 | F1: the script that stranded the bench once; read its row in full before running it. F17 rides along with W4 |
@@ -273,7 +272,6 @@ Each is a test to *write* or a method to settle against real hardware, not just 
 | G8 | **CLAUDE.md's (e) stage has never been asserted on silicon.** I.4(e)/(f) says the suite must pass at `gc.threshold(-1)` with zero allocation failures *before* it is run at the shipped `gc.threshold(32768)`, and both halves are machine-checked — but only on the host and twin tiers. `scripts/build_firmware.py` stages the generated boot entry as `main.py`, and it sets `gc.threshold(32768)` before `asyncio.run(main())` — so **every flash- and bench-tier run, which all drive the live firmware over REST, is an (f)-stage run.** The device scripts are the other way round: importing `sensortask_dev` never executes `main.py`, and every heap-measuring one sets its own threshold (HFM §0B.7; `heap_layout_after_full_boot_sequence.py` sets 32768 explicitly when it wants the production arm) — but they only ever measure **boot placement**, never the run phase under load. So the (e) bar itself, zero allocation failures under real load, has no silicon arm. It needs no second image either: boot the full system by importing it, drive host-side API load against it for a bounded window, and assert `harness.MEMORY_ERROR_MARKERS` never appears in the log. Zero wear: no flash cycle, no persistence write, no reflash. | OPEN — script to write |
 | G11 | **Two device scripts hand-list their `cfgmgr._cache` keys** (BACKLOG item 41): `bmp3xx_plausibility_read.py` and `sgp40_fram_backup_restore.py` prime the cache from a literal dict and would silently read a default that no longer exists after a schema change. The fix is the two-line derivation the four ISL29125 scripts already use (`{field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}`, then override only what the script changes); deferred to a sitting on purpose, since only the board validates it. Write it at the start of the sitting, then run both scripts through the flash tier | OPEN — code at the sitting |
 | G12 | **UART's F.5.8 "never blocks" invariant has no real-hardware run against the shipped driver.** `device_scripts/uart_read_never_blocks_the_loop.py` deliberately uses raw `machine.UART`, so no silicon run calls `asy_uart_driver`'s own `ready()`/`_buffered()` clamp; F.5.9 already has the real-driver analogue (`uart_idle_poll_rate.py`). Write the same shape for F.5.8 over the crossover jumper (tests_hardware/README.md's "Tenth pass") | OPEN — script to write |
-| G10 | **The UART protocol's second implementation has never been exercised against this one.** `UART_C_PORT_CHANGELOG.md`'s Class A entries each say "re-verify against that C source", and the owner has confirmed real hardware running the C side exists and can be connected to the dev board — which would test `asy_uart_comm.py` against a genuine second implementation rather than against itself over the crossover jumper. The C source is in the repo since 2026-09-13 (`arduino/libraries/Async_UART_Comm/`); the reconciliation against it is cloud work (BACKLOG) and comes first, since a bench run of two unreconciled implementations only rediscovers what reading them finds. | BLOCKED on the reconciliation |
 
 ## 4. Bench-host tasks (not the board)
 
@@ -297,6 +295,9 @@ decision (2026-09-24) these two get no dedicated sitting; they run with the next
 
 ## 5. Excluded on purpose
 
+- **G10, the UART protocol run against its C implementation** on the Arduino peer: `arduino/` is
+  outside this project's scope (owner, 2026-09-24), reconciliation included, so the pairing test
+  is too.
 - **Nothing about the heap remediation is excluded.** Measures A, B, the placement guard and
   section D are closed (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D-§7M); what the board still owes
   from that work is §1F.

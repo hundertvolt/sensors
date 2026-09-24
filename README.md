@@ -429,8 +429,8 @@ bus wiring — real-time-firing `Timer`s, randomized-but-plausible sensor values
 with no physical hardware attached. `wozi` is the default device (`scripts/run_unix_port_integration.sh`,
 `scripts/run_digital_twin_ci.sh`); every real device is fully supported end-to-end via `--device`
 (`digital_twin/run_generic_integration.py`) — see `digital_twin/README.md`. The default run serves
-the real, production `wozi` website (`scripts/build_website.sh wozi`), not the `html_stub`
-placeholder — see `SPECIFICATION.md` Part H.7 for the full account.
+the real, production `wozi` website (`scripts/build_website.sh wozi`) — see `SPECIFICATION.md` Part
+H.7 for the full account.
 
 **Quick start: twin + real website, in one command** (builds the MicroPython Unix port and the
 website automatically if either is missing, then serves both forever):
@@ -546,7 +546,7 @@ scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080
 
 Leave this running in its own terminal. In a second terminal, walk every GET endpoint plus the
 real website (`scripts/run_unix_port_integration.sh` builds and serves the real `wozi` site by
-default — not the `html_stub` placeholder, see "Digital twin" above):
+default, see "Digital twin" above):
 
 ```sh
 curl -s http://127.0.0.1:8080/measurements | python3 -m json.tool
@@ -689,7 +689,7 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   changes that must be mirrored into the Arduino peer's C implementation of the same protocol (plus
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source (`arduino/libraries/Async_UART_Comm/`, imported 2026-09-13) is
-  reconciled, then gets deleted.
+  reconciled - outside this project's scope (owner, 2026-09-24) - then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
 - **[`HEAP_FRAGMENTATION_MEASUREMENTS.md`](HEAP_FRAGMENTATION_MEASUREMENTS.md)** — the measured
   evidence base for the heap-fragmentation defect (the collapse of the largest contiguous block

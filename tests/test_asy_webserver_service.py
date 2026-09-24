@@ -1838,7 +1838,7 @@ def test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_fla
 # ---------------------------------------------------------------------------
 # Section G - static-route serving (SPECIFICATION.md Part A.9). Exercises the generic route-wiring
 # mechanism against a synthetic VfsFrozen fixture; the real built frozen_html.py artifact gets its
-# own integration test in tests/test_frozen_html_integration.py.
+# own integration test in tests/test_website_build_integration.py.
 # ---------------------------------------------------------------------------
 
 _next_static_mount = 0
@@ -1846,7 +1846,7 @@ _next_static_mount = 0
 
 def _mount_static_fixture(files: "dict[str, bytes]") -> str:
     # A hand-built VfsFrozen (ext/freezefs/ffsmount.py) exercising the same runtime VFS a real
-    # `import frozen_html` produces, without depending on build_frozen_html.sh's stub content.
+    # `import frozen_html` produces, without depending on any real website's content.
     # Entries store plain bytes under a ".gz" name: send_file() never inspects file contents.
 
     # A unique mount point per call - os.mount() raises EEXIST on a repeat target, and every test
@@ -1886,6 +1886,17 @@ def test_g_static_wildcard_serves_a_named_file_with_the_right_content_type() -> 
     assert res.body.read() == b"body{color:red}"
     assert res.headers["Content-Type"].startswith("text/css")
     assert res.headers["Content-Encoding"] == "gzip"
+
+
+def test_g_static_binary_file_of_an_unmapped_type_falls_back_to_octet_stream() -> None:
+    # favicon.ico is not in microdot's Response.types_map, so it must still serve, as binary.
+    icon = bytes(range(256))
+    mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>", "favicon.ico": icon})
+    _, app = _make_service(static_mount=mount)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/favicon.ico", None)))
+    assert res.status_code == 200
+    assert res.body.read() == icon
+    assert res.headers["Content-Type"] == "application/octet-stream"
 
 
 def test_g_static_missing_file_returns_404_via_the_shaped_error_handler() -> None:

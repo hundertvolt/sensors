@@ -3,8 +3,8 @@
 # owns the whole pipeline: the freezefs invocation, why never --compress, and why the output goes to
 # frozen_modules/ rather than the .frozen/ import sentinel).
 #
-# Usage: scripts/build_frozen_html.sh [output_path]   # default frozen_modules/frozen_html.py
-# Source dirs default to html_stub; HTML_SRC_DIRS overrides with a space-separated list, merged
+# Usage: HTML_SRC_DIRS="dir ..." scripts/build_frozen_html.sh [output_path]   # default frozen_modules/frozen_html.py
+# HTML_SRC_DIRS is required (scripts/build_website.sh sets it): a space-separated list merged
 # recursively into one build tree. Output is a gitignored build artifact, never committed.
 #
 # ext/freezefs is vendored and unmodified. Don't copy build-wozi.sh's literal invocation: that
@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-src_dirs="${HTML_SRC_DIRS:-html_stub}"
+src_dirs="${HTML_SRC_DIRS:?HTML_SRC_DIRS must name the source dir(s) - scripts/build_website.sh sets it}"
 out_file="${1:-frozen_modules/frozen_html.py}"
 mount_target="/html"
 

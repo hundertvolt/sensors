@@ -11,7 +11,7 @@
 # MICROPY_PY_SYS_SETTRACE, and renders two reports (src/ and digital_twin/) from one raw dump.
 # The whole pipeline, and why it needs its own binary: SPECIFICATION.md Parts E.5 and E.5.2.
 #
-# Also rebuilds frozen_modules/frozen_html.py before every run - the website placeholder every
+# Also rebuilds frozen_modules/frozen_html.py before every run - the real wozi website every
 # generated sensortask_<device>.py imports at module level. Why frozen_modules/ rather than
 # .frozen/, which is a hardcoded MicroPython import sentinel: SPECIFICATION.md Part A.9.
 set -euo pipefail
@@ -89,11 +89,12 @@ if [ "${SKIP_APT:-0}" = "1" ]; then
     skip_apt_flag=(--skip-apt)
 fi
 
-# Asks the binary which variant it is instead of trusting its path. Always exits 0, reporting an
-# unusable binary as such, so `set -e` never fires from inside the command substitution below.
+# Asks the binary which variant it is instead of trusting its path, and whether its frozen asyncio
+# imports: a build interrupted between its two passes lacks it (Part E.5.2). Always exits 0,
+# reporting an unusable binary as such, so `set -e` never fires inside the substitution below.
 unix_port_variant() {
     local probe=""
-    probe="$("$1" -c 'import sys; print("settrace" if hasattr(sys, "settrace") else "plain")' 2>/dev/null)" || true
+    probe="$("$1" -c 'import sys, asyncio; print("settrace" if hasattr(sys, "settrace") else "plain")' 2>/dev/null)" || true
     case "$probe" in
         settrace | plain) echo "$probe" ;;
         *) echo "unusable" ;;
@@ -286,17 +287,11 @@ else
     sudo setcap 'cap_net_bind_service=+ep' "$micropython_bin"
 fi
 
-# A gitignored build artifact, rebuilt fresh every run - sub-second, no toolchain (Part A.9). Every
-# generated device module does a module-level `import frozen_html`, so this has to exist on
-# MICROPYPATH before the loop below, not only for the webserver-specific files.
-echo "== Building frozen_modules/frozen_html.py"
-scripts/build_frozen_html.sh
-
-# A second, real-content frozen module beside the stub one (Part H.7), equally cheap. Its own
-# distinct module name means it never collides with frozen_html's /html mount; only
-# tests/test_website_build_integration.py imports it.
-echo "== Building frozen_modules/frozen_website_wozi.py"
-scripts/build_website.sh wozi frozen_modules/frozen_website_wozi.py
+# The real wozi website, a gitignored artifact rebuilt every run - sub-second, no toolchain (Part
+# A.9). Every generated device module does a module-level `import frozen_html`, so it has to exist
+# on MICROPYPATH before the loop below, not only for the webserver-specific files.
+echo "== Building frozen_modules/frozen_html.py (the real wozi website)"
+scripts/build_website.sh wozi
 
 # tests_scripts/ is already running in the background, launched right after the toolchain check -
 # nothing to do here. RUN_SLOW_FIRMWARE_BUILD stays unset for it, keeping the one real ARM firmware

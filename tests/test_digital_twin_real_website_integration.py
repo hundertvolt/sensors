@@ -1,5 +1,5 @@
-"""Boots the real sensortask_wozi object graph (digital_twin) with the REAL website - not
-html_stub - wired in as `frozen_html`, and proves it over real HTTP: the Unix-port counterpart to
+"""Boots the real sensortask_wozi object graph (digital_twin) with the real website its `import
+frozen_html` mounts, and proves it over real HTTP: the Unix-port counterpart to
 scripts/build_firmware.py's real ARM build, which can only be compiled here, never executed."""
 
 import asyncio
@@ -15,13 +15,6 @@ from unix_port_poll_prewarm import prewarm_poll_set
 # Before anything registers a poll object: this file boots sensortask_wozi and drives concurrent
 # real connections, and on the Unix port pollfds growth past that is a segfault (digital_twin/README.md).
 prewarm_poll_set()
-
-# Must run before `import sensortask_wozi` below: MicroPython's import machinery checks sys.modules by name
-# before touching the filesystem (v1.29.0's py/builtinimport.c, the same lookup CPython does), so pre-
-# registering "frozen_html" binds that import to the real website, not the html_stub build.
-import frozen_website_wozi  # type: ignore[import-not-found]  # noqa: E402 - after the prewarm; mounts /html with the real website content
-
-sys.modules["frozen_html"] = frozen_website_wozi
 
 import _http_client  # noqa: E402
 import sensortask_wozi  # noqa: E402
@@ -92,8 +85,8 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
 
 
 def _decompress(body: "bytes | bytearray") -> bytes:
-    # Same technique as test_frozen_html_integration.py/test_website_build_integration.py - see
-    # either file's own comment for why deflate.DeflateIO(..., AUTO, ...) is the right call here.
+    # Same technique as test_website_build_integration.py's _decompress() - see its comment for why
+    # deflate.DeflateIO(..., AUTO, ...) is the right call here.
     import io
 
     import deflate
@@ -102,7 +95,7 @@ def _decompress(body: "bytes | bytearray") -> bytes:
     return d.read()  # type: ignore[no-any-return]
 
 
-def test_real_website_root_serves_the_actual_production_index_html_not_the_stub() -> None:
+def test_real_website_root_serves_the_actual_production_index_html() -> None:
     port = _next_test_port()
 
     async def scenario() -> None:
@@ -113,7 +106,7 @@ def test_real_website_root_serves_the_actual_production_index_html_not_the_stub(
             assert res.status_code == 200
             assert res.headers["Content-Encoding"] == "gzip"
             body = _decompress(res.body)
-            assert b"Sensor Station" in body  # the real prod index.html's own title - never "Hello, wozi!" (html_stub's marker)
+            assert b"Sensor Station" in body  # the real prod index.html's own title
         finally:
             await _cancel(task)
 
@@ -127,7 +120,7 @@ def test_real_website_inlined_definitions_matches_the_booted_devices_own_id() ->
     #
     # "wozi" is hardcoded deliberately, not a stale device-specific leftover (Part L.4, re-verified): this
     # file's device.id assertion comes from whichever device's real website bundle scripts/test.sh built -
-    # frozen_website_wozi.py, the only one - never from sensortask_wozi.py's construction.
+    # frozen_html.py, the only one - never from sensortask_wozi.py's construction.
     #
     # Generalizing it would mean teaching scripts/test.sh to build a second real gzip+freezefs+inlined
     # bundle per device, real added build cost for all 6, just to re-prove a pipeline this file already

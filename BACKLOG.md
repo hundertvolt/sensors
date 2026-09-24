@@ -98,19 +98,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   Unix-port-tests were pulled forward out of this order already, once `math_helpers.py` cleared the
   `src/` bar, and that's now standing practice for every new file, not a one-off.
 
-- **The UART protocol's C implementation is imported but not reconciled.** It runs on the Arduino
-  peer and is the protocol's second implementation (SPECIFICATION.md Part J); the owner imported it
-  on 2026-09-13 as `arduino/libraries/Async_UART_Comm/` (with `Async_UART/` and `CRC_Check/` beside
-  it). What is owed is the reconciliation against `UART_C_PORT_CHANGELOG.md` — the running log of
-  protocol changes made during the Python module's `src/` promotion — re-verifying each entry's
-  conformance assumption against that source. It needs no bench, so it is cloud work, and it gates
-  queue row G10. That log file is deleted once the reconciliation is done; this entry comes out with
-  it. **It is prototypical, exactly like this repo's legacy Python, with no device in
-  the field running it** (owner, 2026-09-11) — so the reconciliation has no deployed pair to keep
-  working and no flag day to schedule; both sides are simply reflashed together. Real hardware
-  running the C side exists and can be connected to the dev board, so the reconciliation session can
-  test the two implementations against each other for real rather than only reading them side by
-  side.
 - **The full test-suite scan for tier/layering-completeness and wrongly-trusted-hazard tests
   (project owner, 2026-09-15) has now run once, beyond bus-hazard's own corner** — UART,
   WiFi/network/NTP/DNS, FRAM/memory/reboot/watchdog, and webserver/notification/config-push were all
@@ -446,17 +433,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
 38. **Merged into item 22** (re-verified 2026-09-18; `asy_uart_comm.py` numbers from 10, C.7.1).
 
-39. **An interrupted `setup_toolchain.py env --tier flash` can leave the Unix-port binary without a
-    frozen `asyncio`, and `scripts/test.sh` uses it anyway** (hit 2026-09-13). `run_verification_sequence()` builds the interpreter twice (frozen-verification
-    manifest, then a vanilla rebuild restoring the real test rig); interrupting between the two
-    leaves every `tests/test_*.py` dying with `ImportError: no module named 'asyncio'`, which reads
-    as a code failure and is not one. `scripts/test.sh` only checks `[ ! -x "$micropython_bin" ]`,
-    so a broken binary is indistinguishable from a good one. Recovery: `rm` the binary and re-run.
-    **Recommendation: make that guard a capability check** (`"$micropython_bin" -c "import asyncio"`
-    beside the `-x` test, rebuilding when it fails). It was deferred while `scripts/` sat inside
-    a blocking two-chroot pre-push gate; that gate became an owner-run periodic check on
-    2026-09-18, so the recommendation is actionable now and only needs the owner's go-ahead.
-
 40. **`SPECIFICATION.md` carries seven subsections about one sensor, and no other sensor has any**
     - the owner ruled (2026-09-14) to leave the document exactly as it stands and tidy this in a
     session of its own. Three patterns exist and only the third is the
@@ -489,18 +465,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
       WDT, and the board takes a hard reset ~8 s later; the occurrence was ~9 s after attach). It is
       `tests_hardware/README.md`'s "> 45 s between a reset and the next attach" trap, not a finding.
 
-46. **Retire `html_stub/`?** `scripts/build_frozen_html.sh` and the twin's CI default to it (SPEC
-    A.9); the owner's rule (2026-09-23) is that `dev`'s real website is the most biting test. Needs
-    the owner's yes/no; a change touches `scripts/`, so it needs a chroot entry.
-
-48. **`arduino/`'s licensing is unreviewed.** `THIRD_PARTY_LICENSES.md` covers `src/`, `ext/` and
-    the legacy tree, not the 2026-09-13 import. Most vendored libraries carry their own licence file
-    (Adafruit BusIO/FRAM_SPI, BME68x, `wdt_samd21`, `bsec2`'s BSD-3-Clause), `FlashStorage` carries
-    none, and the owner's own three (`Async_UART*`, `CRC_Check`) carry no header; `bsec2`'s LICENSE puts its binaries
-    under Bosch's separate BSEC terms, and `bsec2-6-1-0_generic_release/` (the website release,
-    `libalgobsec.a` per toolchain) ships no licence text at all. Whether those terms allow
-    redistribution in this repository was not checked. The owner's call; nothing here is shipped.
-
 49. **Four heap-fragmentation research gaps stay open with no decision riding on them**
     (HEAP_FRAGMENTATION_MEASUREMENTS.md §0B.7, §12): what in the old churn did the stranding at a
     given dose; whether parallelism matters after boot; the per-object picture on the board's
@@ -510,6 +474,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
 ## Deferred / explicitly out-of-scope work
 
+- **`arduino/` is out of this project's scope - SETTLED, owner, 2026-09-24.** That covers the UART
+  protocol's C implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and
+  the BME688/BSEC material with its licensing. Nothing here tracks work on it; don't re-raise.
 - **`NTP_Host` keeps its 1024-character bound — SETTLED, owner, 2026-09-21: "keep it". Do not
   re-raise.** Fielded behaviour wins over the 4x over-permissiveness, exactly as the "same
   features, not a feature change" agreement implies, and `max_content_length` keeps its 1.56x
@@ -628,6 +595,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   **2026-09-24, comments only**: `pyproject.toml`, `toolchain/versions.toml`, `scripts/typecheck.sh`,
   `ci.yml` and the composite action had their comments cut to the 3-line cap; no setting, pin or
   step changed, so nothing here moves either leg.
+  **2026-09-24, `scripts/` behaviour**: `html_stub/` is retired, so `build_frozen_html.sh` now
+  requires `HTML_SRC_DIRS` and `scripts/test.sh` builds the real wozi site as `frozen_html`
+  (`build_website.sh`, pure Python, no Node); `test.sh`'s variant probe also imports `asyncio`.
+  Both run in a chroot's `scripts/test.sh` leg with nothing new to install.
   **Partial evidence, not a leg**: a session sandbox (GCC 13.3, not a `--variant=minbase` chroot)
   ran `env --tier generic` and then `uv run toolchain/setup_toolchain.py` from an empty toolchain
   directory on 2026-09-24 — all eight verification checks passed and the lwIP readback was clean.

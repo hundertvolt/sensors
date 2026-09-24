@@ -2,13 +2,9 @@
 scripts/build_website.sh's staged, recursive merge - html/ + the production js/ module set, for one
 device - imports, mounts and serves correctly through a real WebserverService/Microdot() app."""
 
-# The real chain: html/ and js/ -> scripts/build_website.sh wozi -> frozen_modules/ frozen_website_wozi.py
-# -> `import frozen_website_wozi` (mount on import) -> WebserverService( static_mount=...). The prototype-
-# only files are confirmed absent from the result.
-#
-# Requires frozen_modules/frozen_website_wozi.py already on MICROPYPATH; scripts/test.sh regenerates it
-# before running the suite. That import mounts /html as an unconditional side effect, safe once per process,
-# and distinct from test_frozen_html_integration.py's own `import frozen_html`.
+# The real chain: html/ and js/ -> scripts/build_website.sh wozi -> frozen_modules/frozen_html.py ->
+# `import frozen_html` (mount on import) -> WebserverService(static_mount=...). scripts/test.sh builds it
+# first; the import mounts /html once per process. The prototype-only files are confirmed absent.
 
 import asyncio
 import json
@@ -16,7 +12,7 @@ import sys
 
 sys.path.insert(0, "ext")
 
-import frozen_website_wozi  # type: ignore[import-not-found]  # noqa: F401  # mounts /html on import
+import frozen_html  # type: ignore[import-not-found]  # noqa: F401  # mounts /html on import
 from microdot import Microdot, Request  # type: ignore[import-not-found]
 
 from asy_webserver_service import WebserverService
@@ -43,8 +39,9 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 def _decompress(body: "_ResponseBody") -> bytes:
-    # See test_frozen_html_integration.py's own _decompress() for the full rationale - identical
-    # mechanism, applied here to the real website's gzip-Content-Encoding bytes instead.
+    # send_file() streams from a file-like object, so .read() first; DeflateIO(AUTO) detects the gzip
+    # header (confirmed on v1.29.0). No `with`: the real object supports it but the stubs don't declare
+    # __enter__/__exit__ (the same stub-gap class as Timer()/I2C.deinit()), and a BytesIO needs no close.
     import io
 
     import deflate

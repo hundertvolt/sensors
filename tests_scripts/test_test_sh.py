@@ -419,6 +419,16 @@ def test_an_unusable_binary_is_reported_as_such_rather_than_as_the_plain_variant
     assert _variant_of(repo_root, tmp_path, tmp_path / "does_not_exist") == "unusable"
 
 
+def test_a_binary_whose_frozen_asyncio_is_missing_is_unusable_not_plain(repo_root: Path, tmp_path: Path, micropython_bin: Path) -> None:
+    # An interrupted two-pass build leaves a runnable binary without frozen asyncio, which every test
+    # file then dies on. Stood in for by the real binary with sys.path cleared: frozen modules
+    # resolve through its ".frozen" entry, while the builtin sys still imports.
+    no_asyncio = tmp_path / "micropython"
+    no_asyncio.write_text(f'#!/usr/bin/env bash\nexec "{micropython_bin}" -c "import sys; sys.path.clear()\n$2"\n')
+    no_asyncio.chmod(0o755)
+    assert _variant_of(repo_root, tmp_path, no_asyncio) == "unusable"
+
+
 def test_a_wrong_variant_triggers_a_rebuild_rather_than_running_on_it(repo_root: Path) -> None:
     text = _test_sh_text(repo_root)
     # Structural, because the real branch shells out to a multi-minute toolchain build: what has to

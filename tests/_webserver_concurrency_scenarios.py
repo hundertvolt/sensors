@@ -203,14 +203,13 @@ async def _drained(module: "Any", timeout_s: float = 10.0) -> bool:
 
 async def _browser_page_load(host: str, port: int) -> "list[int]":
     """One browser tab's page-load burst: two concurrent GETs, the real post-inlining footprint
-    (SPECIFICATION.md Part H.7). Served from the default html_stub mount, not the real website -
-    this file is about connection count and timing, not content."""
+    (SPECIFICATION.md Part H.7): the page and its one bundle, from the real website mount."""
 
     async def _get(path: str) -> int:
         res = await _http_client.fetch(host, port, "GET", path, read_body=False)
         return res.status_code
 
-    return list(await asyncio.gather(_get("/"), _get("/style.css")))
+    return list(await asyncio.gather(_get("/"), _get("/js/app.js")))
 
 
 async def _openhab_poll(host: str, port: int) -> "list[int]":
@@ -630,7 +629,7 @@ async def _scenario_mixed_traffic_above_ceiling(device: str) -> None:
                 return res.status_code
 
         async def page_load_tolerant() -> "list[int | str]":
-            return list(await asyncio.gather(_get_tolerant("/"), _get_tolerant("/style.css")))
+            return list(await asyncio.gather(_get_tolerant("/"), _get_tolerant("/js/app.js")))
 
         async def poll_tolerant() -> "list[int | str]":
             return list(await asyncio.gather(_get_tolerant("/measurements"), _get_tolerant("/status")))

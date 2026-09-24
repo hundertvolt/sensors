@@ -120,14 +120,15 @@ information):
   implementation in C on the Arduino peer — so its wire format, accept/reject rules and recovery
   timings are a two-implementation contract, not this repo's to change unilaterally.** The protocol
   itself is specified in SPECIFICATION.md Part J; **every change made to it gets an entry in
-  `UART_C_PORT_CHANGELOG.md`** (a temporary file, deleted once the C side is reconciled — its source
-  is in the repo since 2026-09-13, `arduino/libraries/Async_UART_Comm/`), classified as protocol-level ("must be mirrored in C") or Python-internal ("no C
+  `UART_C_PORT_CHANGELOG.md`** (a temporary file, deleted once the C side is reconciled — its source is in the repo since
+  2026-09-13, `arduino/libraries/Async_UART_Comm/`, but reconciling it is outside this project's
+  scope, owner, 2026-09-24), classified as protocol-level ("must be mirrored in C") or Python-internal ("no C
   impact") — the second class is logged too, so a future session doesn't re-derive it. Prefer a
   protocol-level change that only tightens *receiver* validation over one that alters emitted bytes:
   the former keeps a mixed-version pair working, the latter is a coordinated flag-day needing the
   owner's decision. **The C side's conformance is expected but unverified** — it mirrors the Python
   implementation's intended behavior, but may not share every known flaw and may have its own, so
-  every Class A entry must be re-verified against that C source; nothing has been reconciled yet. **It is, however,
+  every Class A entry must be re-verified against that C source whenever it is reconciled. **It is, however,
   prototypical — exactly like this repo's legacy Python — with no device in the field running it**
   (owner, 2026-09-11), so no change recorded in the changelog can break a live pair: both sides are
   reflashed together at reconciliation, and the flag-day framing above describes an obligation to
@@ -346,7 +347,7 @@ information):
   allocation. Full account and its measured effect: `SPECIFICATION.md` Part I.4(f.1). **Both stages are
   runnable and both are run**: `scripts/test.sh` is the (e) stage at MicroPython's own reactive
   `-1`, and `GC_THRESHOLD=32768 scripts/test.sh` is the (f) stage with the value the firmware's boot
-  entry sets — every file, with zero `MemoryError`s at each (87/87 on 2026-09-24), plus CI's own `unit-tests` and
+  entry sets — every file, with zero `MemoryError`s at each (86/86 on 2026-09-24), plus CI's own `unit-tests` and
   `unit-tests-gc-threshold` jobs. The (e) run is what proves the design stands on its own; the
   threshold is defence in depth on top of it, never a substitute for it. It is also not redundant:
   on silicon it is what carries the boot placement gain into the run phase (80% held against 12% at
@@ -721,7 +722,7 @@ information):
   (`AssertionError: [200, 404, 200, 404, 'rejected', 'rejected']`), an empty body where stub content
   was expected, a 404 for a page that plainly exists - exactly what a broken static mount or a bad
   merge would produce. Confirmed 2026-09-13: nine failures across
-  `test_digital_twin_webserver_concurrency.py` and `test_frozen_html_integration.py` on a merge
+  `test_digital_twin_webserver_concurrency.py` and the static-site integration tests on a merge
   commit, all nine gone on a re-run with nothing else running. Run the two tiers one after the
   other; don't re-diagnose this pattern as a code or merge defect. `scripts/test.sh`'s own
   backgrounded `tests_scripts/` tier is a deliberate non-instance: its HTTP ports are ephemeral

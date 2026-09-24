@@ -167,9 +167,8 @@ Under the hood (builds the toolchain, generates every device's `sensortask_<devi
 `sensortask_<device>_wiring_plan.json` into `build/generated_src/` via
 `scripts/_generate_sensortask_modules.py` — see "Booting a generated device" below for the general
 mechanism this is built on — then builds the real website for the chosen device into
-`frozen_modules/frozen_html.py` via `scripts/build_website.sh <device>` — **not**
-`scripts/build_frozen_html.sh`'s own `html_stub` default; this is the twin's normal, default
-wiring, matching what a real deployed unit actually serves, not a placeholder — then runs
+`frozen_modules/frozen_html.py` via `scripts/build_website.sh <device>`, matching what a real
+deployed unit serves — then runs
 `digital_twin/run_generic_integration.py --module sensortask_<device> --wiring-plan
 build/generated_src/sensortask_<device>_wiring_plan.json --device <device>` — the real orchestrator,
 not the generated boot entry directly, since it also needs to drive the soak/fault-injection/
@@ -399,8 +398,8 @@ whatever a previous local run or CI job happened to leave behind.
 convention as `scripts/test.sh`/`scripts/run_unix_port_integration.sh`), generates every real
 device's own `sensortask_<device>.py` + wiring-plan JSON into `build/generated_src/`
 (`scripts/_generate_sensortask_modules.py`), and the real website for the chosen device into
-`frozen_modules/frozen_html.py` (`scripts/build_website.sh <device>`, not the `html_stub`
-placeholder). Must succeed before any test phase runs.
+`frozen_modules/frozen_html.py` (`scripts/build_website.sh <device>`). Must succeed before any
+test phase runs.
 
 **Test**: hands off to `scripts/_digital_twin_ci_suite.py --device <device>`, a self-contained
 `uv run` CPython script (stdlib-only — no `uv sync` needed) that drives
@@ -871,10 +870,6 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
   no `socket.getsockname()`; `getaddrinfo()` returns a packed `sockaddr`; `asyncio` offers `Lock`
   and `Event` but no `Semaphore`; `os.environ` is missing, so read `os.getenv()`; and
   `micropython.mem_info()` with any argument prints the full block map.
-- **`scripts/run_digital_twin_ci.sh` leaves `frozen_modules/frozen_html.py` holding the device's
-  real site**, so a `tests/test_digital_twin_webserver_concurrency_*.py` run by hand afterwards fails
-  on `html_stub/`'s `/style.css`; rerun `scripts/build_frozen_html.sh` or use `scripts/test.sh`,
-  which rebuilds the stub first.
 
 ## Known gaps / follow-ups for later sessions
 

@@ -253,8 +253,8 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
     run_timed(scenario(), timeout_s=10.0)
 
 
-def test_static_site_stub_is_served_over_real_http() -> None:
-    # See SPECIFICATION.md Part A.9 - the frozen_html website stub, served by WebserverService's own
+def test_static_site_is_served_over_real_http() -> None:
+    # See SPECIFICATION.md Part A.9 - the frozen_html website, served by WebserverService's own
     # generic "/" route (registered last, after every API route above - a real API route must never
     # be shadowed by the wildcard, per tests/test_asy_webserver_service.py's own Section G).
     port = _next_test_port()

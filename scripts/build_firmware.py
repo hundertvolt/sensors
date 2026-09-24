@@ -98,9 +98,8 @@ def build_stage_dir(stage_dir: Path, device: str) -> None:
     (stage_dir / f"{entry_module}.py").write_text(generated.module_source)
     (stage_dir / "main.py").write_text(generated.boot_entry_source)
 
-    # The real website, built fresh for this device and frozen under the same "frozen_html" name
-    # the generated entry module's own `import frozen_html` already expects (SPECIFICATION.md Part
-    # A.9) - no generated-module change needed to pick up the real content instead of html_stub/.
+    # This device's real website, frozen under the "frozen_html" name the generated entry module's
+    # own `import frozen_html` expects (SPECIFICATION.md Part A.9).
     log(f"Building the real website for device={device!r}")
     subprocess.run(
         [str(REPO_ROOT / "scripts" / "build_website.sh"), device, str(stage_dir / "frozen_html.py")],

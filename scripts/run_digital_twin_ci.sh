@@ -11,8 +11,8 @@
 # - deliberately redundant with _digital_twin_ci_suite.py's own identical clean, not either/or.
 #
 # Build needs the Unix port (same $PICO_TOOLCHAIN_DIR/SKIP_APT convention as scripts/test.sh) and
-# the real production website for $device, via build_website.sh rather than build_frozen_html.sh's
-# html_stub default. `set -e` fails the job here before any twin subprocess launches.
+# the real production website for $device, via build_website.sh. `set -e` fails the job here
+# before any twin subprocess launches.
 #
 # Test hands off to scripts/_digital_twin_ci_suite.py - CPython, orchestrating the MicroPython
 # subprocess over plain HTTP - which drives run_generic_integration.py through $device's own

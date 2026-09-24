@@ -5,7 +5,8 @@ only to carry protocol decisions across the gap until then, and has no value aft
 
 The UART message protocol (`SPECIFICATION.md` Part J) has two implementations: this repo's Python
 module, and a C implementation on the Arduino peer, imported on 2026-09-13 as
-`arduino/libraries/Async_UART_Comm/` and not yet reconciled. The C side mirrors
+`arduino/libraries/Async_UART_Comm/` and not yet reconciled; that reconciliation is outside this
+project's scope (owner, 2026-09-24), so this file waits for whoever takes it up. The C side mirrors
 the Python implementation's *intended* behavior and is owner-validated over many real transmissions,
 but **how far that mirroring extends to the known flaws is unverified** — it may share some, not
 others, and may have introduced its own. Every entry below is therefore a task for the reconciliation

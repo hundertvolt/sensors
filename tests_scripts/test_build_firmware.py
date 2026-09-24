@@ -158,13 +158,12 @@ def test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files(build
 
 
 @pytest.mark.parametrize("device", ["wozi", "dev"])
-def test_build_stage_dir_frozen_html_contains_the_real_website_not_the_stub(build_firmware: ModuleType, tmp_path: Path, device: str) -> None:
+def test_build_stage_dir_frozen_html_contains_the_real_website(build_firmware: ModuleType, tmp_path: Path, device: str) -> None:
     build_firmware.build_stage_dir(tmp_path, device)
     frozen_html_text = (tmp_path / "frozen_html.py").read_text()
     assert "/index.html.gz" in frozen_html_text
-    # /js/app.js.gz alone distinguishes this from html_stub's frozen build, which has no js/
-    # directory at all. No separate definitions or style check any more: both are inlined into
-    # index.html at build time now (Part H.7), never staged as their own files.
+    # /js/app.js.gz marks the real bundled website. No separate definitions or style check: both are
+    # inlined into index.html at build time (Part H.7), never staged as their own files.
     assert "/js/app.js.gz" in frozen_html_text
 
 
