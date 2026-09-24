@@ -705,6 +705,11 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
 
+- **[`HARDWARE_TEST_HANDOVER.md`](HARDWARE_TEST_HANDOVER.md)** — the briefing and running order
+  for the next dev-bench sitting: what changed on silicon since the board's image, the steps in
+  order with their flags and wear, and where each result goes. Names the queue's rows rather
+  than restating them; deleted once that sitting's results are migrated.
+
 A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
 lines and deleted once its findings are migrated. Never treat one as a durable reference; prefer the
 queue above for anything bench-related.
