@@ -2,13 +2,7 @@
 (and tests_hardware/'s CPython runner). Flat module, not a `_shared/` subpackage, matching this
 directory's existing convention for shared-but-nonpublic test modules."""
 
-import sys
-
-# Scoped to this one import: left on the path, digital_twin/'s machine/network fakes could shadow tests/' own.
-sys.path.insert(0, "digital_twin")
 from _strict_json import check_strict_json
-
-sys.path.pop(0)
 
 try:
     from typing import TYPE_CHECKING

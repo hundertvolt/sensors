@@ -1,10 +1,7 @@
-"""digital_twin/_strict_json.py: accepts exactly RFC 8259 JSON, and rejects each separator slip the
+"""tests/_strict_json.py: accepts exactly RFC 8259 JSON, and rejects each separator slip the
 interpreter's own lenient json.loads() lets through - which is the whole reason it exists."""
 
 import json
-import sys
-
-sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 from _strict_json import check_strict_json
 from microtest import run

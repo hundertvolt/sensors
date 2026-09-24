@@ -808,7 +808,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     SPECIFICATION.md B.14.2, E.3, E.8, H.7, I.3. Harness habits and bench traps:
     `tests_hardware/README.md` and `digital_twin/README.md`. Open follow-ups: item 44 and the queue's
     §4A. What the branch adds as new files is test code only — `tests/test_digital_twin_poll_prewarm.py`,
-    the strict JSON check `digital_twin/_strict_json.py` with its `tests/test_digital_twin_strict_json.py`,
+    the strict JSON check `tests/_strict_json.py` with its `tests/test_strict_json.py`,
     and the bench tier's `test_serving_heap_at_default_gc.py` and `test_heap_under_connection_ceiling.py`
     with the three device scripts they drive. The frozen twin builds, their manifests and every
     scratch harness were never committed.

@@ -122,9 +122,9 @@ Kept completely separate so nothing here can accidentally affect the determinist
   or a clean FIN (kernel TCP state `src/` does not choose): `parse_status_line(b"")` therefore raises
   `CeilingRefusedError`, an `OSError` subclass, so every caller's `except OSError` treats both shapes
   as the refusal they are, while a non-empty malformed status line still raises `ValueError`.
-- `_strict_json.py` — a strict RFC 8259 recognizer. `_http_client.py`'s `.json()` and the unit tier's
-  `drain_json_response_body()` both run every body through it, because the interpreter's own
-  `json.loads()` accepts a missing or stray comma the browser rejects (SPECIFICATION.md Part F.1).
+  `.json()` checks every body with `tests/_strict_json.py` first, since the interpreter's own
+  `json.loads()` accepts a missing or stray comma the browser rejects (SPECIFICATION.md Part F.1);
+  it imports that on first call, so a standalone run without `tests/` on its path still loads.
 - `launch.py` — standalone, `src/`-free CLI demo (`micropython digital_twin/launch.py [options]`):
   brings up the same bus wiring `sensortask_wozi.build_system()` uses and periodically drives one
   real bus-level read per sensor, a `WLAN.connect()` attempt, and WDT feeding. `--fault

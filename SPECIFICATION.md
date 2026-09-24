@@ -3758,7 +3758,7 @@ re-run cleanup from plain synchronous code in an outer `except KeyboardInterrupt
 
 **MicroPython's `json.loads()` is not a JSON validator**: `extmod/modjson.c`'s tokenizer skips
 `,` and `:` exactly like whitespace, so `'{,"a":1 "b":2}'` parses as `{"a": 1, "b": 2}`. The browser's
-`JSON.parse()` rejects that, so a test of emitted JSON checks it with `digital_twin/_strict_json.py`.
+`JSON.parse()` rejects that, so a test of emitted JSON checks it with `tests/_strict_json.py`.
 
 **Always check current MicroPython/Microdot documentation before asserting how an API behaves** —
 never rely on training-data memory. **Whenever the pinned version changes (and periodically
