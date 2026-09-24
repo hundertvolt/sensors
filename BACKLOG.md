@@ -370,15 +370,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     **Close this by** taking the curve, then adding the bench analogue of the twin's own budget
     check to `tests_hardware/error_log_helpers.py`.
 
-40. **`SPECIFICATION.md` carries seven subsections about one sensor, and no other sensor has any**
-    - the owner ruled (2026-09-14) to leave the document exactly as it stands and tidy this in a
-    session of its own. Three patterns exist and only the third is the
-    question: *generic rule, named instance* (C.4.3, C.7, D.15 - the dominant, legitimate one);
-    *sections named after a module that IS the architecture* (A.7, A.8, C.5, C.6, C.7, Part J -
-    Part J additionally being a two-implementation interface definition); and *dedicated
-    single-chip technical sections*, which only the ISL29125 has (C.11.1 through C.11.5, including
-    C.11.1.1-C.11.1.3). Recorded so that session does not re-derive the scan.
-
 41. **Two device scripts still hand-list their `cfgmgr._cache` keys and will silently miss a new
     schema field** - verified 2026-09-18.
     `bmp3xx_plausibility_read.py` and `sgp40_fram_backup_restore.py` prime the cache from a literal

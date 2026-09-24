@@ -29,7 +29,7 @@ _MAGNUS_T_MAX = const(40.0)
 _MAGNUS_RH_MAX = const(100.0)
 _MAGNUS_AH_MAX = const(100.0)
 # Colour-chain domains. The RGB triples these take are already normalised 0-1 by the driver's own
-# scaling chain (SPECIFICATION.md Part C.11.2), so anything outside means that chain is
+# scaling chain (SPECIFICATION.md Part M.1.3), so anything outside means that chain is
 # broken, not that the light was unusual - hence a reject rather than a clamp.
 _COLOUR_IN_MIN = const(0.0)
 _COLOUR_IN_MAX = const(1.0)
@@ -161,7 +161,7 @@ def rgb_to_hsb(red: float | None, green: float | None, blue: float | None) -> "t
 
 def rgb_to_xyz(red: float | None, green: float | None, blue: float | None) -> "tuple[float, float, float] | None":
     # sRGB/Rec.709 D65 primaries, pinned as literals: a second published rounding differs in the
-    # 6th decimal, so these must not be "corrected" (Part C.11.2). No gamma decode - this sensor is
+    # 6th decimal, so these must not be "corrected" (Part M.1.3). No gamma decode - this sensor is
     # linear in irradiance. A documented PLACEHOLDER: p13 Eq. 1 says the coefficients are per-setup.
     if red is None or green is None or blue is None:
         return None

@@ -88,7 +88,7 @@ _CYCLE_MS_16BIT = const(303)  # 3 x tINT, tINT = 101ms typ at 16 bits (p3)
 _CYCLE_MS_12BIT = const(19)  # 3 x ~6.3ms: p6 makes tINT an n-bit counter on one oscillator, 101 x 2**-4
 
 # Device/maths constants, deliberately NOT config fields - requirement 1 (SPECIFICATION.md Part
-# C.11.5) governs preferences, and none of these is one (C.11.2's own classification note).
+# M.1.1) governs preferences, and none of these is one (M.1.3's own classification note).
 _DARK_COUNTS = const(1)  # DDark typ 1 / max 5 counts at range 0 (p3, Electrical Specifications)
 _CCT_FLOOR_COUNTS = const(64)  # ~13x the worst-case dark count: below it a 5-count additive error
 # moves a channel ratio by more than ~8%, and chromaticity noise grows far faster than hue noise.
@@ -96,7 +96,7 @@ _GAIN_RATIO_NOMINAL = const(26.666666666666668)  # 10000/375 - the ratio a fresh
 _GAIN_RATIO_MIN = const(20.0)  # a plausibility gate around nominal, applied where an untrusted
 _GAIN_RATIO_MAX = const(34.0)  # value enters (on load and on learn), never in the hot path
 # Calibration is a bounded, user-started run, never a background schedule: the driver only ever
-# READS GainRatio, so nothing it does can write the flash (SPECIFICATION.md Part C.11.3).
+# READS GainRatio, so nothing it does can write the flash (SPECIFICATION.md Part M.1.5).
 _CAL_WINDOW_MS = const(120000)  # hard stop on a run that never converges - ~100 attempts at 16 bit
 _CAL_HOLD_MS = const(600000)  # how long a finished run's candidate stays readable before it clears
 _CAL_CONVERGE_N = const(3)  # consecutive stable ratios that must agree before the run stops early
@@ -256,7 +256,7 @@ class ISL29125_Reader(SensorReaderConfig):
         self._reconciled_write_failures = 0
         # Set by the pin handler, consumed once per read cycle. RGBTHF cannot stand in for it: the
         # CHIP raises that flag, so it is set just the same when the line itself is dead - the
-        # missing-pull-up case requirement 17 names (SPECIFICATION.md Part C.11.5).
+        # missing-pull-up case requirement 17 names (SPECIFICATION.md Part M.1.1).
         self._irq_fired = False
         self._gain_ratio = _GAIN_RATIO_NOMINAL  # the APPLIED factor, replaced only by a config push
         # Calibration-run state, all RAM-only: a run is user-started, bounded, and publishes a
@@ -627,7 +627,7 @@ class ISL29125_Reader(SensorReaderConfig):
     async def _measure_gain_ratio(self, green_counts: int) -> None:
         # Only runs inside a user-started window. A SANDWICH - this range, the other, then this one
         # again - because the dominant error is the scene moving between the two readings, which a
-        # pair alone cannot tell from a real ratio. Publishes a candidate, never adopts it (C.11.3).
+        # pair alone cannot tell from a real ratio. Publishes a candidate, never adopts it (M.1.5).
         if not self._calibrating:
             return
         if time.ticks_diff(time.ticks_ms(), self._cal_until_ms) >= 0:
@@ -1279,7 +1279,7 @@ class ISL29125_I2C:
     def persist_for_interval(self, trigger_secs: int) -> int:
         # PRST is DERIVED: the largest transient rejection whose window still closes inside one
         # sample interval, so the chip always gets to raise RGBTHF before the periodic re-check would
-        # decide. Configuring it by hand left the fast path structurally dead (Part C.11.1.3).
+        # decide. Configuring it by hand left the fast path structurally dead (Part M.1.4).
         cycle = self.cycle_ms()
         options: tuple[int, ...] = _PRST_SETTINGS  # const() is Any to mypy; same annotation decode_config() uses
         for persist in reversed(options):
@@ -1418,7 +1418,7 @@ class ISL29125_I2C:
         await self.verify_device_id()
         await self.reset()
         # BOUTF is high at power-up (p12). Kept even though the 0x46 reset and any status read both
-        # clear it on real silicon (Part C.11.1.1): it is the one clear the datasheet promises, costs
+        # clear it on real silicon (Part M.1.2): it is the one clear the datasheet promises, costs
         # one transaction per init, and makes the post-setup state mechanism-independent.
         await self.clear_brownout()
         # SYNC and CONVEN are written explicitly rather than left at their reset default, so neither
@@ -1429,7 +1429,7 @@ class ISL29125_I2C:
     async def reset(self) -> None:
         # The datasheet specifies no post-reset settle, so the verify read IS the settle. CONFIG1-3
         # only, NOT status the way SparkFun's reset() does: reading 0x08 would consume a destructive
-        # read outside the one-per-cycle invariant read_status() depends on (C.11.1.1).
+        # read outside the one-per-cycle invariant read_status() depends on (M.1.2).
         async with self.i2c_isl29125 as isl, isl.i2c_device as i2c:
             await i2c.set_register_struct(_REGISTER_DEVICE_ID, "B", _CMD_RESET)
             config = await i2c.get_register_struct(_REGISTER_CONFIG1, "3s")

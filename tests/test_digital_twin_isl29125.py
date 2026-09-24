@@ -328,7 +328,7 @@ def test_persistence_restarts_when_the_reading_comes_back_inside_the_window() ->
 
 
 def test_a_status_read_that_finds_the_flag_clear_leaves_the_persistence_counter_running() -> None:
-    # Measured on real silicon (Part C.11.1.2): the persistence counter restarts when RGBTHF is
+    # Measured on real silicon (Part M.1.2): the persistence counter restarts when RGBTHF is
     # CLEARED, not on every status read. The driver reads 0x08 once per sample, so a read that reset
     # the count would knock it back before it ever reached PRST - a permanently dead fast path.
     pin = _RecordingPin()

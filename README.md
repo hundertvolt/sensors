@@ -668,8 +668,8 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   repository/architecture overview, the toolchain/build-environment installer, the sensor driver
   architecture spec, the `src/` production-quality checklist, testing & coverage,
   MicroPython/RP2040 platform-target facts, the cross-cutting shared-pattern/primitive-reuse
-  catalog, the website's own architecture, the new-driver checklist, and the device-TOML/`buildgen`
-  build chain — all in one place, organized into lettered Parts (A-L) for different needs. Produced by a first-pass doc-scatter cleanup that merged
+  catalog, the website's own architecture, the new-driver checklist, the device-TOML/`buildgen`
+  build chain and a per-chip reference — all in one place, organized into lettered Parts (A-M) for different needs. Produced by a first-pass doc-scatter cleanup that merged
   `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, most of this
   file's former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Build
   process" content, and the spec-shaped parts of `CLAUDE.md`/`BACKLOG.md` into one document. Start

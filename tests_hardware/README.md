@@ -211,7 +211,7 @@ in software every sample with no persistence requirement. **The shorter window d
 | 2 | 606 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 500-800 ms |
 | 1 | 303 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 200-613 ms |
 
-That is why the window is derived rather than configured (SPECIFICATION.md Part C.11.1.3), and why
+That is why the window is derived rather than configured (SPECIFICATION.md Part M.1.4), and why
 `wrnno=13` - five range decisions in a row taken by the periodic path - means the INT line looks dead
 rather than that a setting is wrong.
 
@@ -401,7 +401,7 @@ every protocol key is diffed (`tests_hardware/isl29125_conformance.py` holds the
 table). It talks raw `machine.I2C` only, so it needs nothing from `src/` on the board and no
 `mpremote mount`, and it needs the Unix port already built - it raises a `FileNotFoundError` naming
 the path rather than skipping. A failure means the fake and the part disagree: decide which is wrong
-from the datasheet **and** a fresh measurement, never from the fake (SPECIFICATION.md Part C.11.1
+from the datasheet **and** a fresh measurement, never from the fake (SPECIFICATION.md Part M.1.2
 lists what the first real run found).
 
 ## Known assumptions and open findings

@@ -427,7 +427,7 @@ def test_rgb_to_xyz_pure_red_matches_the_sRGB_matrix_column() -> None:
 
 def test_rgb_to_xyz_coefficients_are_the_pinned_literals() -> None:
     # Exact equality, not approx(): two published roundings of this matrix differ in the 6th decimal
-    # (Part C.11.2) and both would pass a 1e-6 tolerance. The constants are const()-folded and not
+    # (Part M.1.3) and both would pass a 1e-6 tolerance. The constants are const()-folded and not
     # readable as attributes, so reading them back through a pure primary is the only way to pin.
     assert mh.rgb_to_xyz(1.0, 0.0, 0.0) == (0.4124564, 0.2126729, 0.0193339)
     assert mh.rgb_to_xyz(0.0, 1.0, 0.0) == (0.3575761, 0.7151522, 0.1191920)

@@ -252,7 +252,7 @@ def test_a_real_threshold_crossing_drives_the_interrupt_line_into_the_read_event
     async def scenario() -> "tuple[bool, int]":
         # Two conversions with no driver read between: the derived PRST is 2, so the chip holds the
         # interrupt off until a change has persisted that long. Two cycles (606ms at 16 bit) keeps
-        # the window inside the 1s SampleInterv, so the interrupt can lead the re-check (C.11.1.3).
+        # the window inside the 1s SampleInterv, so the interrupt can lead the re-check (M.1.4).
         for index in range(2):
             chip.set_illumination(5.0)  # far below the down threshold: the window is crossed
             if index < 1:

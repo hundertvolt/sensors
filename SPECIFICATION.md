@@ -22,6 +22,7 @@ would recreate the scattering problem this document exists to fix).
 - **Part J** — UART Message Protocol (`asy_uart_comm.py`)
 - **Part K** — Adding a New Sensor/Module: The Full Checklist
 - **Part L** — Build Chain: Device TOML Schema & the `buildgen` Generator
+- **Part M** — Chip Reference (per-chip measured behaviour and settled requirements)
 
 ---
 
@@ -1925,7 +1926,7 @@ while the ring still says what else happened.
 | `asy_fram_manager.py`/`asy_fram_driver.py` (`FRAM`) | 10-100 | 60-84 | `AsyFramManager` 10-88 (busy/idle status-byte helper spreads a base across 2-7 values per call); `FRAM_SPI` 89-98 (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout, device-ID guard) + `wrnno` 81-83 (WRDI-stuck, WEL-didn't-set ×2). **WP8**: 99=`get_values()`'s own "access not locked" internal-contract violation, 100=`set_values()`'s (each its own number per the "grouped by the raising method" convention, matching the sibling not-initialized pair); `wrnno` 84=`_write()`'s "currently write protected" refusal — a benign, expected outcome (matches `AsyFramManager`'s own "communication paused" `wrn_s` precedent, `wrnno` 60/70/80), so `wrnno` rather than `errno` unlike the two lock violations. **Re-traced after the 2026-09-18 synchronous restructure and every number and meaning is unchanged** (manager `errno` 17-88 + `wrnno` 80, driver `errno` 89-100 + `wrnno` 81-84, checked against the source rather than assumed). What moved is the raising site, which this column's "grouped by the raising method" convention has to be read against: 90/91/99 and 92/93/84/82/81 are now raised by `report_get_values()`/`report_set_values()`, the reporters that own `get_values()`'/`set_values()`' messages, because a synchronous body holding the bus lock must not await a persisted log entry. The chunk's own 60 and 70-73 follow the repeat rule above, per distinct code per degraded episode, which a clean read or write ends — a dead cell or a held mempause warns on every single operation otherwise, and the chunk logs into its OWNER's FRAM-backed history, not the manager's. |
 | `asy_bmp3xx_driver.py` (`BMP3XX`) | 10-22 | — | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched snapshot read. |
 | `asy_scd30_driver.py` (`SCD30`) | 10-25 | — | 10=init, 11=periodic read, 12=unused (no init-time config), 13=stop-continuous-measurement, 14-25=per-field forwards. |
-| `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15/17/19/21=resolution/range/IR-offset/IR-adjust getters, 16/18/20/22=their setters, 24=derived-persistence reapply, 25=trigger-interval, 26=gain-ratio/filter-coefficient setters (shared), 27=autorange-threshold/dwell setters (shared), 28=`_read_sensor_dict()`, 29=auto-range threshold-register write, 30=auto-range RNG-bit write, 31=status read, 32=all-ones bus-fault confirmation, 33=brownout re-apply, 34=diverged-config re-apply, 35=paired gain-ratio calibration leg (`_read_on()`), 38=`set_range_auto()`. `wrnno` 10=brownout detected, 11=chip config diverged from shadow, 13=range decided by the periodic path only for 5 decisions running (the interrupt line may be dead, requirement 17/C.11.5). **12 is retired, not reused**: it used to mean "saturated on the high range", but that status is a harmless, transient, always-current measurement fact, not a fault — it now lives in the measurement output as the `Overrange` field (mode-aware: true whenever nothing left could mitigate the saturation — the configured range itself under Fixed range, or Automatic Range already on its highest setting) rather than as a log entry. |
+| `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15/17/19/21=resolution/range/IR-offset/IR-adjust getters, 16/18/20/22=their setters, 24=derived-persistence reapply, 25=trigger-interval, 26=gain-ratio/filter-coefficient setters (shared), 27=autorange-threshold/dwell setters (shared), 28=`_read_sensor_dict()`, 29=auto-range threshold-register write, 30=auto-range RNG-bit write, 31=status read, 32=all-ones bus-fault confirmation, 33=brownout re-apply, 34=diverged-config re-apply, 35=paired gain-ratio calibration leg (`_read_on()`), 38=`set_range_auto()`. `wrnno` 10=brownout detected, 11=chip config diverged from shadow, 13=range decided by the periodic path only for 5 decisions running (the interrupt line may be dead, requirement 17/M.1.1). **12 is retired, not reused**: it used to mean "saturated on the high range", but that status is a harmless, transient, always-current measurement fact, not a fault — it now lives in the measurement output as the `Overrange` field (mode-aware: true whenever nothing left could mitigate the saturation — the configured range itself under Fixed range, or Automatic Range already on its highest setting) rather than as a log entry. |
 | `asy_sgp40_driver.py` (`SGP40`) | 10-18 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13-18=backup read/write/clear/deserialize/serialize/compensation. `wrnno`=backup missing/stale — a missing/not-yet-available *compensation* reading is no longer one of these (C.14.2's own note), only a genuine compensation-source read exception (`errno=18`) still logs. |
 | `asy_wifi_service.py` (`WIFI`) | 11-19 | 1-7 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout; `wrnno` 1-3=missing-config, 4-7=WLAN status (4 is cyw43-driver's catch-all for any failed auth or handshake, an AP dropping mid-association included - not proof of a wrong password, BACKLOG item 29) — 4-7 follow the repeat rule above, one slot per distinct verdict per connect episode, which a successful connection ends. **WP8**: 19=the hotspot auto-shutoff timer's own soft-callback-drop self-heal (`_hotspot_client_absent()`, F.1) actually firing — a real, actionable event, not the routine WiFi-mode-transition noise this file's own module docstring already documents everything else here as. |
 | `asy_ntp_client.py` (`NTP`) | 11-20 | 1-3 | 11=missing-config...19=time-calc, 18/20=interval-fallback/give-up; `wrnno`=callback failures. |
@@ -2261,440 +2262,22 @@ tuple, not `NamedTuple` (internal, not the public model, C.6).
 ### C.11.1 Keeping a chip fake honest — the conformance probe
 
 A chip fake drifts from the part it models silently: every test still passes, because the tests and
-the fake share the same wrong assumption. The ISL29125 is the first driver with a standing guard
-against that, and the pattern generalises to any new bus-facing device. The findings below were
-measured on real hardware (PR #75) and apply unchanged to the current driver and chip fake.
-
-`tests_hardware/device_scripts/isl29125_mock_conformance_probe.py` is one probe that talks **raw
-`machine.I2C` only** — the single layer the real board and `digital_twin/machine.py` both
-implement — so the identical file runs against real silicon over `mpremote` and against the chip
-fake under the Unix port. `tests_hardware/isl29125_conformance.py` runs the twin half and diffs
-the two; the flash-tier gate that calls it is
-`tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_register_probe_matches_the_digital_twins_fake_chip`
-(wired 2026-09-15 — the porting session above had left this orphaned, per its own note that used to
-stand here). Keys whose value depends on the light falling on the part are excluded **by
-value** and covered by the probe's own derived yes/no keys instead, so nothing is merely unchecked.
-
-**What the first real run found (2026-09-12), every item a fake that no test could have caught:**
-
-| Behaviour | Real ISL29125 | The fake had |
-|---|---|---|
-| Address pointer | flat across the whole `0x00`-`0x0E` map — a 16-byte read from `0x00` returns id, `CONFIG1`-`3`, both thresholds, status and all six data bytes | one pointer per register block, zero-padding at each block's end |
-| Past `0x0E` | keeps clocking zeros; does **not** roll over to `0x00`, despite p6's burst-*write* text | zero padding (correct) |
-| Reserved config bits | read back zero — `0xFF` gives `3f`/`bf`/`1f`, matching the driver's own `_CONFIG*_MASK` | echoed whatever was written |
-| `CONVENF` (`0x08` B1) | set by a completed conversion, cleared by the status read, flat `0x00` while powered down | never modelled at all |
-| `RGBCF` (`0x08` B5:4) | **not** cleared by the status read; zero while powered down | not cleared (correct); retained in power-down (wrong) |
-| `BOUTF` after the `0x46` reset | reads `0x00` — the reset command does not raise it | restored to `0x04`, treating reset like a power-up |
-| `BOUTF` after a status read | **cleared by the read itself** | survived the read |
-| The threshold persistence counter | restarts when `RGBTHF` is **cleared**, not on every status read (C.11.1.2) | reset on every read that touched `0x08` |
-
-`digital_twin/_isl29125_chip.py` models every row
-above; the findings are recorded here purely as the evidence trail for why it looks the way it
-does.
-
-#### C.11.1.1 `BOUTF`'s real lifecycle — settled 2026-09-13, and p12 is wrong about it
-
-Measured on a genuinely just-powered board, with a status read as the **first** transaction (the
-pre-ISL firmware never touches the part, so nothing had disturbed it):
-
-| event | `BOUTF` | source |
-|---|---|---|
-| power-up | **set** (`0x08` reads `0x04`) | measured; p12 agrees |
-| a status read of `0x08` | **cleared** | measured; **p12 contradicts this** |
-| the `0x46` reset command | **cleared** | measured (first probe run: reset, then read `0x00`, with no status read before it) |
-| a write of `0x00` to `0x08` | cleared | measured; p12 agrees |
-
-p12 says the flag "should be reset to LOW by an I2C **write** command during the initial
-configuration". The write does work — it is simply not the only thing that clears it. The
-destructive status read clears `BOUTF` alongside `RGBTHF` and `CONVENF`; only the `RGBCF` field
-survives a read.
-
-**Consequences.** The fake models all four rows now, and separates the two events that look alike:
-`_reset()` is the `0x46` **command**, `simulate_brownout()` is the **supply** event that raises the
-flag again — a test wanting a brownout must call the latter. For the driver this is benign and
-was already handled: `_handle_status()` reads `0x08` exactly once per cycle, so a real brownout is
-reported exactly once, which is what `_recover_brownout()`'s own `_brownout_seen` latch already
-assumes. Nothing in `src/` needed changing.
-
-#### C.11.1.2 The threshold persistence counter and the once-per-cycle status read
-
-Found by reading the fake rather than by the probe, then settled on the board (2026-09-13). The
-fake reset `_prst_count` on **every** read that transferred `0x08`. If that were right, the
-driver's own defaults would make the hardware interrupt unreachable: `PRST = 4` needs
-four consecutive out-of-window RGB cycles (4 × 303 ms ≈ 1.21 s at 16 bit), `SampleInterv = 1`
-reads the status register every second, and a count knocked back to zero each second never reaches
-four.
-
-Measured directly, with both thresholds parked at `0x0000` so the window is crossed in any light
-and the persistence counter is the only variable:
-
-| `PRST` | no reads for 3 s | one read per second, 8 reads |
-|---|---|---|
-| 1 | `RGBTHF` set | set in **8 of 8** |
-| 4 | `RGBTHF` set | set in **4 of 8**, strictly alternating, INT low on exactly those |
-
-The alternation is the whole answer. A read at t = 1 s finds the flag clear and does **not**
-disturb the count, so the flag still sets at ≈ 1.21 s and the read at t = 2 s sees it — and that
-read, which does clear it, restarts the count, so t = 3 s misses and t = 4 s sees it again. A
-counter reset by every read would have produced 0 of 8; one never reset at all would have produced
-8 of 8 (the flag would re-raise on the very next conversion after each clear). Neither happened.
-
-**Reproducing it.** The *unit* half (RGB cycles, not channel integrations) is automated and now
-asserted: `tests_hardware/device_scripts/isl29125_real_irq_edge.py`'s `_measure_persist_unit()`
-times a `PRST` = 4 assertion and fails the script if the answer is not `rgb_cycles`, because
-`persist_for_interval()` is built on it. The *restart* half above was a one-off bench probe, not a
-committed script; the table's own method is the recipe — park both thresholds at `0x0000` so any
-light crosses the window, then vary only the status-read cadence.
-
-**Consequences.** The fake now resets `_prst_count` only inside the `if self._status &
-_STATUS_RGBTHF` branch. `src/` needed no change — the driver already reads `0x08` exactly once per
-cycle, which is the cadence this was measured at. What it does change is the twin: before the fix,
-any twin-tier scenario at the real defaults was silently exercising the periodic fallback only,
-with the interrupt path dead and nothing saying so.
-
-#### C.11.1.3 The persistence window is derived from `SampleInterv`, never configured
-
-Requirement 5 makes the threshold interrupt's GPIO mandatory and requirement 17 makes the periodic
-re-check the safety net *behind* it. At the shipped defaults it was the other way round, and the
-arithmetic says so: `PRST = 4` means four whole RGB cycles, 4 × 303 ms = **1212 ms** at
-16 bit, while `SampleInterv = 1` re-evaluates the same switch condition in software every
-**1000 ms** — with no persistence requirement at all. The software path therefore won every race,
-and the hardware fast path was dead by construction.
-
-**Settled 2026-09-13 by removing the field from the API entirely** (owner's decision): correcting
-the default only moved the trap, since any later `SampleInterv` change could walk back into it.
-`ISL29125_I2C.persist_for_interval()` now derives PRST as **the largest setting whose window still
-closes inside one sample interval**, so the invariant holds for every combination the schema can
-express rather than for the shipped pair alone. At 16 bit / 1 s that picks 2 — the configuration
-measured below — and at 12 bit, where a cycle is ~16× shorter, it picks 8 and rejects far more
-transient noise at no cost. Both inputs re-apply it when they change, which is why `SampleInterv`
-is no longer a software-only knob: changing it writes CONFIG3.
-
-The dedicated `wrnno` this trap used to need is gone along with the field it warned about: a
-warning the derivation makes unreachable is complexity without a reader. The dead-line detector
-therefore has a single meaning again — five decisions in a row went to the periodic path, so the
-line looks dead — which is the question it was always meant to answer. The current `errno`/`wrnno`
-numbering is C.7.1's ISL29125 row — trust that, not a number quoted here.
-
-Measured on the bench (2026-09-13), six forced crossings per setting, one reader, same scene:
-
-| `PRST` | window at 16 bit | interrupt-led | periodic-led | switch latency |
-|---|---|---|---|---|
-| 4 | 1212 ms | 1 of 6 | **5 of 6** | pinned at ~1000 ms — the sample interval, not the light |
-| 2 | 606 ms | **6 of 6** | 0 | 500-800 ms |
-| 1 | 303 ms | **6 of 6** | 0 | 200-613 ms |
-
-**Re-measured 2026-09-14**, after the settle window was fixed at two cycles (C.11.2). Three runs
-of `isl29125_real_irq_edge.py`: **2.73 / 2.71 / 2.71 s**, all interrupt-led against a 30 s periodic
-fallback. **That is not a regression against the 500–800 ms above, and the two numbers are not
-comparable**: this script sets `SampleInterv = 30`, which the derivation turns into the largest PRST
-the part offers (8 cycles, 2424 ms) — so most of the difference is the chip being *asked* to wait
-longer before raising RGBTHF at all, and only ~303 ms of it is the settle doubling. The INT still
-leads decisively. `settle discard 605/606` is directly visible in the driver's debug output.
-
-**Two changes came out of the original measurement.** The window is **derived**, so at a 1 s interval
-and 16 bit the driver picks 2 — still a cycle of transient rejection, and comfortably inside the
-interval — while a longer interval or 12-bit resolution buys more. And the detector now keys on the
-**line**, not the flag — see below. A third change, a separate warning for "the window outlasts the
-interval", was made and then removed once deriving the window made that case unreachable.
-
-**Why the flag alone was not enough.** `_note_decision_source()` originally counted a decision as
-interrupt-led whenever `RGBTHF` was set in the status byte. But `RGBTHF` is raised by the *chip*,
-so it is set exactly the same when the INT line is open — a missing pull-up or a broken jumper,
-which is the fault requirement 17 (C.11.5) names. The driver now records the pin edge itself
-(`_irq_fired`, set in the handler and consumed once per cycle) and requires **both** halves. This
-also un-blinded the twin's own `isl29125:int_stuck_high` fault test, which had been passing for an
-unrelated timing reason rather than because the detector worked.
-
-**What this cost in test terms**: `test_isl29125_survives_recombined_realistic_lighting_scenarios`
-(ported here as `tests_hardware/device_scripts/isl29125_lighting_scenarios.py`, wired into
-`tests_hardware/flash/test_sensor_accuracy.py` 2026-09-15 — real segment durations sum to ~8.5
-minutes, a genuinely long single test, not yet run against silicon) checks the dead-line warning
-per scenario *and* asserts the run made at least five range switches, so the check can actually
-fire.
-
-### C.11.2 ISL29125 reference layer — the prior art, and the traps it closes
-
-Every item here is something a future reader would otherwise re-derive, or "correct" back to a
-worse answer.
-
-**One owner per register — the property that makes the shadow model safe.** The driver keeps a
-local shadow of `CONFIG1`-`CONFIG3` and writes it back whole; that is only sound while exactly one
-function may touch each register.
-
-| Register | Contents | Sole writer | Read by |
-|---|---|---|---|
-| `0x00` | Device ID / reset command | `reset()` (writes `0x46`) | `get_device_id()` |
-| `0x01`-`0x03` | `CONFIG1`/`2`/`3` | `configure()` only | `get_config_snapshot()` only (one 3-byte burst, undecoded) |
-| `0x04`-`0x07` | Low/high thresholds | `set_thresholds()` only | never read back |
-| `0x08` | Status (`RGBTHF`/`CONVENF`/`BOUTF`/`RGBCF`) | `clear_brownout()` only | `read_status()`, **exactly once per cycle, destructive** |
-| `0x09`-`0x0E` | Green, Red, Blue data, in that order | never written | `read_counts()`, one 6-byte burst |
-
-Deliberately unused, with the reason, so nobody adds them later: `SYNC` (inverts the INT pin into
-an input, p6/p10); `CONVEN` (muxes conversion-done onto the pin the thresholds need); `RGBCF` and
-`CONVENF` (redundant — the data registers are double-buffered, p13).
-
-**Prior art, and the three places this driver departs from it.** Four independent implementations
-were read: the legacy `python/IndividualDrivers/` driver (reference-only per CLAUDE.md), `jposada202020/MicroPython_ISL29125`,
-SparkFun's Arduino library, and RIOT-OS `drivers/isl29125` (plus Linux's `drivers/iio/light/
-isl29125.c` in a later pass).
-
-1. **RIOT is the only prior art for the normalisation chain**, and this driver copies its shape
-   (6-byte burst, `<< 4` for 12-bit, `range_FS / 65535.0` per LSB) deliberately — Linux's IIO
-   driver independently confirms the same per-LSB scaling. The other three read per-channel and do
-   no lux conversion at all.
-2. **Nobody does auto-range or CCT.** Both are this driver's own, which is why its twin-tier tests
-   carry more weight than usual: there is no reference implementation to differential-test against.
-3. **RIOT's threshold scaling truncates, and that is a bug not to inherit.** `65535 / 375` in
-   integer arithmetic is 174, not 174.76. `ISL29125_I2C.fraction_to_counts()` exists as a named method with
-   a test named after this specifically (`..._does_not_truncate_like_the_riot_driver`) so it cannot
-   recur.
-
-SparkFun's `reset()` additionally verifies `CONFIG1`-`CONFIG3` **and** status all read `0x00`; this
-driver verifies the config registers only, for two independent reasons (C.11.1.1 and the
-destructive-read invariant above).
-
-**Colour chain (`math_helpers.py`).** Three decisions that look like defects unless you know them:
-
-- The **sRGB/Rec.709 D65 matrix is pinned as literals** because two published roundings of the same
-  matrix differ in the 6th decimal (the CSS WG corrected its own), and both pass a `1e-6`
-  tolerance. `test_rgb_to_xyz_coefficients_are_the_pinned_literals()` asserts the literals exactly
-  rather than recomputing them from primaries, which would pass against either set.
-- **The two published McCamy forms are algebraically identical**, not contradictory: flipping the
-  sign of the denominator flips `n`, which flips the sign of the odd-power terms. Do not "correct"
-  one into the other — it changes nothing but the reviewer's confidence.
-- **The matrix is a placeholder by the datasheet's own statement**, not for want of a better source:
-  FN8424 p13 Eq. 1 says its coefficients "will be changed respectively depending on the system
-  setup". A per-unit matrix is the calibration hook; the reported colour is relative. There is
-  deliberately **no gamma decode** — the sRGB transfer function undoes display encoding, while this
-  sensor's output is linear in irradiance. The colour helpers take triples already normalised 0-1
-  by the driver's own chain, so an out-of-domain input means that chain is broken and is rejected
-  rather than clamped.
-
-**Config-field classification.** Device and maths constants are not config fields: requirement 1
-(C.11.5) governs *preferences*, and a dark-count offset, a CCT floor or a gain-learn period is not
-one.
-
-**The switch-down point is derived, not configured** (owner, 2026-09-14). It was `AutoRangeDown`,
-a field carrying the one relation a per-field schema cannot express — `d <= u / (2r)`, with `r` the
-range ratio — policed at runtime by `_check_cross_field()`. That made it the same class of trap
-`AutoRangePersist` was (C.11.1.3): a user-facing number whose only correct values are a function of
-another field, where a wrong one is a rejection the user has to decode, and where a single PUT
-moving both ends could pass or fail on key order alone. `_down_thresh()` now returns
-`AutoRangeThresh / _AR_DOWN_DIVISOR`, and the field and the cross-field check are both gone.
-`AutoRangeUp` was renamed `AutoRangeThresh` to match: it sets both ends of the hysteresis now, not
-just the upper one.
-
-The divisor stays `2 × 26.67`, the part's **nominal** range ratio, deliberately not the measured
-`GainRatio`. The factor 2 absorbs that field's whole 20.0–34.0 band — at the worst end a light
-sitting exactly at the threshold reads `t/34` after the switch, still 1.57× above `t/53.33` — so
-coupling the two would add a dependency without moving a single decision.
-
-**The settle margin is a constant, not a field** (same pass). `AutoRangeSettle` exposed 1–10
-conversion cycles to discard after a range change, where the hardware has exactly one principled
-answer and no scene, light level or resolution makes another one right. It is `_SETTLE_CYCLES = 2`:
-two rather than one because the ADC restarts during the I²C write itself (p10, Table 7) while the
-driver arms its deadline once that write has *returned*, so one cycle can land on the wrong side of
-that tie. `ISL29125_I2C.settle_cycles` went with the field — the protocol layer no longer carries
-reader policy across the layer boundary at all.
-
-**The Renesas application notes are unobtainable — do not re-attempt.** The four Intersil notes the
-promotion wanted are not reachable (the vendor site refuses, no mirror carries them, and the
-"AN1910" hits elsewhere are NXP's and Microchip's unrelated documents of the same number). Both
-things they were wanted for are settled without them: the 12-bit cycle time comes from the
-datasheet's own oscillator/counter model (p6, "the n-bit (n = 12, 16) counter inside the ADC", so
-101 ms × 2⁻⁴ ≈ 6.3 ms), and the CCT matrix is a placeholder by p13's own wording.
-
-### C.11.3 Calibration is user-triggered, user-applied, and writes nothing by itself
-
-Owner's design, 2026-09-13, replacing an hourly background learner that persisted its own result
-to a FRAM chunk. Three separate properties, and each is load-bearing:
-
-**The applied factor is ordinary config.** `GainRatio` is a schema field like any other — `float`,
-plausibility-banded to 20.0–34.0, defaulting to the nominal 26.667 — and `_gain_correction()` is
-its only reader. **Only a user PUT ever changes it.** The driver never writes its own config, so
-every flash write on this module stays on the REST path, which is the property Part F.2's
-power-cycle recovery argument depends on. It is also what made a separate persisted-learner FRAM
-chunk unnecessary.
-
-**Measuring is a bounded run, started by hand.** `ISLCalibrate` is command-only (the special-alone
-schema shape, C.5.2.1) and starts a window of `_CAL_WINDOW_MS`. While it is open the read loop's
-own path takes sandwiches; the run ends early on convergence, or when the window closes. Nothing
-schedules it, so normal operation pays nothing: a sandwich costs two range switches and two settle
-windows, which would otherwise be a permanent tax on every sample interval.
-
-**The measurement is a sandwich, not a pair, and that is the whole point.** Read this range, the
-other, then **this range again**. The dominant error in this measurement is the scene changing
-between the two legs, and a pair alone cannot distinguish a real ratio from a light that moved —
-both produce a plausible number. If the first and third readings disagree by more than
-`_CAL_STABILITY_TOL`, the sandwich is discarded however good the ratio looks. Convergence then
-requires `_CAL_CONVERGE_N` consecutive stable sandwiches agreeing within `_CAL_CONVERGE_TOL`,
-because a slow drift produces a run of self-consistent wrong answers.
-
-**The result is a measurement, not a setting.** A candidate is published as `GainMeas`, riding the
-same tuple as `Lux` and the colour fields, and held for `_CAL_HOLD_MS` before clearing. The user
-reads it and copies it into `GainRatio` if they want it used. **A refused measurement is reported
-by absence**: `GainMeas` stays `None`, which is the feedback — there is deliberately no warning for
-an unusable scene, because a scene outside the overlap band is a fact about the light, not a fault.
-Refusal reasons go to the debug log only. A real bus failure during a leg still logs an error.
-
-**Proven on real silicon, 2026-09-14 (on `main`)** — the first sandwich any real chip has measured.
-Three runs at ~138 lx (~37% of the low range's full scale), each converging early on three agreeing
-readings within ~6–8 s: `24.012 → 23.916 → 24.131`, `23.703 → 23.841 → 23.915`, `24.128 → 24.046 →
-23.869`. All nine candidates inside 23.70–24.13, a 1.8% spread. `GainRatio` read 26.666666 before
-and after every run, confirming the driver never writes its own config. With the pixel parked dark
-the sequence is empty and the error log stays empty — refusal by absence, exactly as designed.
-
-**Applying the measured ratio cut the cross-range continuity step from 11.4% to 0.4%**, a ~28×
-reduction on the same stationary light. That is the half of the mechanism nothing had exercised
-before, and it is what the whole design is for.
-
-**One interaction the bench found, and it is not a defect in either half** (2026-09-14). The
-overlap-band gate tests **`green_counts`** — green is the quantity the sandwich divides, so it is
-green that must clear the dark floor — while `_evaluate_range()` decides on **`max(counts)`**,
-because a clipped red destroys Hue/Sat/CCT whatever green is doing. Both are right for their own
-question. The consequence is that a strongly-coloured scene can be parked by auto-range on the high
-range, where its green is too small to calibrate from, even though the *same* light on the low range
-gives green ~24× larger and calibrates immediately. Measured: a blue-dominant white at ~153 lx
-approached from above holds the high range with peak > 1044 counts and green ~1006, and calibration
-refuses for the whole 120 s window. Approached from below it settles on the low range and converges
-at once. **The operator procedure is therefore to park the scene dark first and let auto-range settle
-onto the low range before raising it to the overlap level.** Loosening the gate to peak would be
-worse, not better: it would admit scenes whose green is at the dark floor and silently produce a bad
-ratio instead of refusing.
-
-**One consequence worth knowing**: the third leg runs even when the second failed, because it is
-also what puts the range back. Skipping it on a clipped or unreadable partner would strand every
-later sample on the wrong range — caught by its own test, not by reasoning.
-
-### C.11.4 The range ratio is not a constant — it varies with signal level
-
-**Not an open question and not a defect: a measured property of the part, recorded because it sets
-the limit of what any single `GainRatio` can do.** Unresolvable with one device and no reference
-meter, so this is recorded as a bound, not tracked as something to decide.
-
-Measured 2026-09-12 on `main`'s bench unit, static light, protocol layer only, with the stale
-conversion window discarded. Six illuminants × three channels = 18 independent estimates, and the
-pattern is unambiguous: in every scene the **brightest** channel has the **lowest** ratio,
-regardless of colour. That makes it a level effect, not a spectral one.
-
-| scene | low counts (G,R,B) | ratio (G,R,B) |
-|---|---|---|
-| ambient | 7645, 5995, 4101 | 28.11, 28.01, 28.09 |
-| red `(6,0,0)` | 20298, **29674**, 8415 | 27.14, **24.44**, 29.32 |
-| green `(0,6,0)` | **29068**, 9816, 16555 | **24.89**, 29.30, 27.92 |
-| blue `(0,0,6)` | 13497, 5940, **37436** | 29.73, 28.15, **23.40** |
-| white `(4,4,4)` | 32469, 24548, 36331 | 24.19, 25.05, 23.42 |
-
-A level sweep agrees independently: low-range peak 7637 → 28.08, 36106 → 23.29, 50408 → 22.49,
-64078 → 21.55. A third data point (2026-09-13, the envelope test's continuity measurement): one
-stationary light at ~140 lx read 132.50 lx pinned to the 375 range against 147.76 lx pinned to the
-10000 range, an 11.5 % step implying ~23.9 — sitting exactly between the ~28 at ambient and the ~22
-near full scale.
-
-PWM dimming cannot explain it: both ranges share the same 101 ms integration, so a duty-cycle
-artefact cancels in the ratio. The likeliest reading is **low-range compression well below full
-scale**. A high-range under-read at small counts fits the same data equally well, and separating the
-two needs a reference meter, so this stays stated as the observation rather than as a mechanism.
-
-**What it means for the driver.** The model is one scalar — `GainRatio`, plausibility-banded to
-20.0–34.0 — and the whole observed span sits *inside* that band, so the guard never fires on it. A
-ratio measured in the overlap band (where the low range is near its top) reads ~22–23, which is
-right for switch-point continuity and is arguably exactly where it should be measured. The corollary
-is the uncomfortable one: at genuinely low light the true ratio is ~28, so an applied 22.5 makes a
-low-light cross-range comparison **worse**, not better. A measured instance of that: the driver
-reported one static ambient as 37.84 lx on the high range against 39.91 lx on the low, 5.5 % apart —
-matching nominal 26.67 against the true 28.08 exactly. **28.16 is therefore not "this unit's gain
-ratio"; it is its ratio at ambient level only.**
-
-C.11.3's design is what makes that survivable rather than a flaw. Calibration is a user-triggered run
-under conditions the operator arranges, and the candidate is applied only if the operator copies it
-across — so the model is still one scalar, but *which* scalar is a deliberate choice rather than a
-property of whatever light happened to pass a gate. **Calibrate at the level you care about**, and
-expect a ratio measured near the switch point to stay right there and drift by the amounts tabulated
-above elsewhere.
-
-**Do not re-raise this as actionable.** Whether the ~28 → ~22 span is this specimen or the part needs
-a second board and a reference meter, neither of which exists — it is not a decision anyone can make.
-The measurements stay here because they bound what a single number can achieve, and because a second
-unit arriving later would make them the baseline to compare against.
-
-### C.11.5 ISL29125 settled requirements — the project owner's own list
-
-The twenty decisions the promotion was designed against, as the project owner settled them. **These
-are the "requirement N" the driver, its tests and the sections above cite by number** — the
-numbering is load-bearing and must not be re-flowed. Each item's own working-out is deliberately
-absent; what survives is the decision.
-
-1. **Every setting is API-settable and persisted.** No compile-time constant for anything a user
-   might want to change. Device and maths constants are not settings — C.11.2's classification note
-   is this requirement applied.
-2. **Resolution** is a user-selected config field (12 or 16 bit), never auto-managed.
-3. **Range** is either a fixed value or `auto`, and the auto-range parameters are themselves
-   settable.
-4. **Outputs are lux, RGB and HSB, each normalised over the full span** — the pinned range when one
-   is selected, the whole auto-range span when `RangeAuto` is on.
-5. **The threshold interrupt is used, and its GPIO is mandatory**, the same way `asy_scd30_driver.py`
-   treats its RDY pin. Not optional, so there is no `None` pin to guard against by construction.
-6. **IR compensation is an API parameter.** The sensor is openly exposed — no IR-tinted cover — so
-   the datasheet's bare-sensor guidance of ~40 codes is the applicable default, not p10's `0xBF`.
-7. **Register ownership is the driver's.** The chip's hardware interrupt never surfaces to the user;
-   if an interrupt-as-event notification is ever wanted, software raises it — the INT pin and the
-   threshold registers stay private.
-8. **RGB output is normalised 0-1.**
-9. **HSB's low-light behaviour is accepted** — no log scaling and no validity flag. Settled; do not
-   re-propose either.
-10. **The API follows the same conventions as the other promoted drivers** (Part C).
-11. **Measurement output is structured**: `RGB` and `HSB` are nested sub-objects, never flattened
-    sibling keys.
-12. **`OperationMode` is not exposed.** The driver sets and keeps RGB mode itself.
-13. **`CCT` is part of the output**, carrying its placeholder-matrix and low-light-floor caveats
-    (C.11.2).
-14. **SUPERSEDED.** It required auto-range to be fully tunable — switch points, hardware transient
-    rejection, settle margin, dwell, and a command to discard a learned ratio. Three of those are
-    gone: the persistence window is derived (C.11.1.3), the settle margin is a constant (C.11.2),
-    and the ratio is an ordinary config value with nothing to discard (C.11.3). What remains
-    settable is `AutoRangeThresh` and `AutoRangeDwell`.
-15. **Logging and error history follow the promoted-driver pattern in full** — a `PrintLog` per
-    module plus one per `ConfigManager`, FRAM-backed when a `fram=` is supplied, the `_error_check()`
-    leaky bucket, and its own range in C.7.1's table.
-16. **The driver is self-healing and never reports a stale value as fresh.** `BOUTF` set means the
-    chip lost its configuration, so the whole shadow is re-applied and the cycle discarded; startup
-    tolerates transient I²C failure on the same leaky-bucket terms as steady state; and a sample the
-    driver cannot prove is current is reported as `None`, never as the last reading re-stamped.
-17. **Auto-range must not depend on the interrupt alone.** If the INT line never asserts — a missing
-    pull-up, a broken jumper, a mis-set `INTSEL` — auto-range would freeze on whatever range it
-    started on, with only saturated or near-zero readings to show for it. The periodic read
-    evaluates the same switch condition, so the interrupt is the *fast* path and the periodic read
-    the *guaranteed* one, both on the same thresholds, dwell and settle.
-18. **Scope is the `dev` variant only.** `wozi` carries no colour sensor and is not to be changed —
-    `devices/wozi.toml` declares no `isl29125` instance and must not gain one.
-19. **Every emitted value carries a declared unit and a declared precision.** The precision is a
-    decided, tested property of each field, not an artefact of binary floating point. No driver in
-    `src/` rounds any output; the renderer's `decimals` hint does it (Part H.5), so all four drivers
-    stay identical to each other.
-20. **Construction and `setup()` must complete on a bus where the chip never answers.** Not a
-    restatement of 16 — that is a chip present and misbehaving, this is one absent for the whole
-    run. The build-graph/digital-twin test coverage for `dev` must prove this property holds for the
-    buildgen-generated object graph, not only for the hand-written one `tests/test_sensortask_dev.py`
-    covers — confirm this is actually covered rather than assuming it; the two construction paths
-    are not the same code.
-21. **ADDED LATER (2026-09-15), not one of the original twenty above.** Saturation status is a
-    measurement-output field (`Overrange`), never a log entry. Originally logged as `wrnno=12`
-    ("saturated on the high range" — C.7.1's table), retired after a real-hardware bench test
-    failure showed a harmless, transient, always-current sensor state should never be able to fail
-    an error-log-empty assertion. `Overrange` is mode-aware: true whenever nothing left could
-    mitigate the saturation — the configured range itself under Fixed range (auto-range off, so
-    nothing will ever switch it), or Automatic Range already parked on its highest setting with
-    nowhere further to switch. A saturated low-range sample *under* Automatic Range is deliberately
-    excluded — requirement 17's own switch-up condition is already firing for it, so there is still
-    an option left.
-
-**One standing consequence, because it recurs**: CLAUDE.md's rule to verify a driver against the
-legacy driver's own actually-proven field behaviour **has no purchase for this device**. The legacy
-ISL29125 only ever ran a single config-and-read smoke test, and the project owner confirmed there is
-nothing to preserve on those grounds — so the legacy code is evidence of intent at most, never of
-proven behaviour, for naming, defaults and API shape alike.
+the fake share the same wrong assumption. The guard is a **conformance probe**: one device script
+that talks **raw `machine.I2C` only** — the single layer the real board and
+`digital_twin/machine.py` both implement — so the identical file runs against real silicon over
+`mpremote` and against the chip fake under the Unix port, and a host-side helper diffs the two.
+Keys whose value depends on the light (or any other uncontrolled input) are excluded **by value**
+and covered by derived yes/no keys instead, so nothing is merely unchecked. When the two disagree,
+decide which is wrong from the datasheet **and** a fresh measurement, never from the fake.
+
+The ISL29125 is the first driver with one (`tests_hardware/device_scripts/
+isl29125_mock_conformance_probe.py`, diffed by `tests_hardware/isl29125_conformance.py`, gated by
+`tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_register_probe_matches_the_digital_twins_fake_chip`);
+what its first real run found is Part M.1.2. Build one for every new bus-facing chip.
+
+**Chip-specific facts go to Part M, not here.** Part C states what every driver shares; a single
+part's measured behaviour, reference-layer traps and settled requirements get their own Part M
+section, so Part C stays readable as the general specification.
 
 ## C.12 Testing
 
@@ -6244,12 +5827,11 @@ assumed fine because nothing failed.
 
 ## K.9 Documentation
 
-- **SPECIFICATION.md Part C** — new `C.11.x` subsections for any real, datasheet-derived design
-  decisions or settled project-owner rulings worth recording permanently (the `C.11.1`–`C.11.5`
-  ISL29125 subsections — the conformance-probe methodology, reference-layer traps, calibration
-  model, range-ratio behavior, settled requirements list — are the shape to follow: real findings,
-  with real evidence, not narrative). A `C.7.1` errno/wrnno table row if the driver claims a new
-  range. Update C.8's per-device bus-sharing note if this driver changes which devices share a bus.
+- **SPECIFICATION.md Part M** — a new `M.<n>` section for any real, datasheet-derived findings or
+  settled project-owner rulings specific to this chip (M.1, the ISL29125's, is the shape to follow:
+  measured behaviour, reference-layer traps, settled requirements — real evidence, not narrative);
+  Part C gains a subsection only for a rule every driver shares. A `C.7.1` errno/wrnno table row if
+  the driver claims a new range. Update C.8's per-device bus-sharing note if this driver changes which devices share a bus.
 - **`DEVICE_REFERENCE.md`** — end-user-facing notes only (its own docstring: "not an AI-session or
   architecture doc"), so add an entry only if the new driver introduces a real user-configurable
   behavior worth explaining to someone operating a deployed unit — not a routine promotion step for
@@ -6904,3 +6486,220 @@ one), not `toolchain/versions.toml` (which pins external dependency versions, a 
 "version"), and not a `pyproject.toml` field (the shipped product is never `pip`-versioned). No
 bump mechanism exists: one clear, documented place to change the two constants, no automation,
 matching `toolchain/versions.toml`'s own precedent.
+
+---
+
+# Part M — Chip Reference
+
+One section per chip whose behaviour needed more than its datasheet and its driver's own comments:
+measured behaviour the datasheet gets wrong, traps a later reader would "fix" back, and the owner's
+settled requirements. Part C is the general specification; this Part is where a single part's facts
+live (C.11.1). Only the ISL29125 has needed one so far.
+
+## M.1 ISL29125 (RGB light sensor, `asy_isl29125_driver.py`)
+
+Scope is the `dev` variant only (M.1.1, requirement 18). CLAUDE.md's rule to verify a driver against
+the legacy driver's field-proven behaviour **has no purchase here**: the legacy ISL29125 only ever
+ran a single config-and-read smoke test, so the legacy code is evidence of intent at most, never of
+proven behaviour, for naming, defaults and API shape alike (owner).
+
+### M.1.1 Settled requirements — the project owner's list
+
+The decisions the driver was designed against. **These are the "requirement N" the driver, its tests
+and this Part cite by number** — the numbering is load-bearing and must not be re-flowed.
+
+1. **Every setting is API-settable and persisted.** No compile-time constant for anything a user
+   might want to change. Device and maths constants are not settings (M.1.3's classification note).
+2. **Resolution** is a user-selected config field (12 or 16 bit), never auto-managed.
+3. **Range** is either a fixed value or `auto`, and the auto-range parameters are themselves
+   settable.
+4. **Outputs are lux, RGB and HSB, each normalised over the full span** — the pinned range when one
+   is selected, the whole auto-range span when `RangeAuto` is on.
+5. **The threshold interrupt is used, and its GPIO is mandatory**, the same way `asy_scd30_driver.py`
+   treats its RDY pin — so there is no `None` pin to guard against by construction.
+6. **IR compensation is an API parameter.** The sensor is openly exposed — no IR-tinted cover — so
+   the datasheet's bare-sensor guidance of ~40 codes is the applicable default, not p10's `0xBF`.
+7. **Register ownership is the driver's.** The chip's hardware interrupt never surfaces to the user;
+   an interrupt-as-event notification, if ever wanted, is raised in software.
+8. **RGB output is normalised 0-1.**
+9. **HSB's low-light behaviour is accepted** — no log scaling and no validity flag. Do not re-propose
+   either.
+10. **The API follows the same conventions as the other promoted drivers** (Part C).
+11. **Measurement output is structured**: `RGB` and `HSB` are nested sub-objects, never flattened
+    sibling keys.
+12. **`OperationMode` is not exposed.** The driver sets and keeps RGB mode itself.
+13. **`CCT` is part of the output**, carrying its placeholder-matrix and low-light-floor caveats
+    (M.1.3).
+14. **SUPERSEDED.** Auto-range was to be fully tunable; the persistence window is now derived and the
+    settle margin a constant (M.1.4), and the ratio is ordinary config (M.1.5). What remains settable
+    is `AutoRangeThresh` and `AutoRangeDwell`.
+15. **Logging and error history follow the promoted-driver pattern in full** — a `PrintLog` per
+    module plus one per `ConfigManager`, FRAM-backed when a `fram=` is supplied, the
+    `_error_check()` leaky bucket, and its own range in C.7.1's table.
+16. **The driver is self-healing and never reports a stale value as fresh.** `BOUTF` set means the
+    chip lost its configuration, so the whole shadow is re-applied and the cycle discarded; startup
+    tolerates transient I²C failure on the same leaky-bucket terms as steady state; a sample the
+    driver cannot prove is current is reported as `None`, never re-stamped.
+17. **Auto-range must not depend on the interrupt alone.** If the INT line never asserts — a missing
+    pull-up, a broken jumper, a mis-set `INTSEL` — the periodic read evaluates the same switch
+    condition: the interrupt is the *fast* path, the periodic read the *guaranteed* one, on the same
+    thresholds, dwell and settle.
+18. **Scope is the `dev` variant only.** `devices/wozi.toml` declares no `isl29125` instance and must
+    not gain one.
+19. **Every emitted value carries a declared unit and a declared precision**, a tested property of
+    each field. No driver in `src/` rounds any output; the renderer's `decimals` hint does (H.5).
+20. **Construction and `setup()` must complete on a bus where the chip never answers** — a chip
+    absent for the whole run, not 16's misbehaving one — proven for the buildgen-generated object
+    graph, not only the hand-written one.
+21. **Added 2026-09-15.** Saturation status is a measurement-output field (`Overrange`), never a log
+    entry: a harmless, always-current state must not be able to fail an error-log-empty assertion.
+    It is true whenever nothing left could mitigate the saturation — the configured range under a
+    fixed range, or auto-range already parked on its highest setting. A saturated low-range sample
+    under auto-range is excluded, since requirement 17's switch-up is already firing for it.
+
+### M.1.2 Measured chip behaviour — what the datasheet and the first fake got wrong
+
+Measured on real hardware (2026-09-12/13) through the conformance probe (C.11.1);
+`digital_twin/_isl29125_chip.py` models every row. Nothing in `src/` needed changing for any of them.
+
+| Behaviour | Real ISL29125 |
+|---|---|
+| Address pointer | flat across `0x00`-`0x0E` — a 16-byte read from `0x00` returns id, `CONFIG1`-`3`, both thresholds, status and all six data bytes |
+| Past `0x0E` | keeps clocking zeros; does **not** roll over to `0x00`, despite p6's burst-*write* text |
+| Reserved config bits | read back zero — `0xFF` gives `3f`/`bf`/`1f`, matching the driver's `_CONFIG*_MASK` |
+| `CONVENF` (`0x08` B1) | set by a completed conversion, cleared by the status read, `0x00` while powered down |
+| `RGBCF` (`0x08` B5:4) | **not** cleared by the status read; zero while powered down |
+| `BOUTF` (`0x08` B2) | set at power-up; **cleared** by a status read, by the `0x46` reset command, and by writing `0x00` to `0x08`. p12 names only the write |
+| Threshold persistence counter | restarts when `RGBTHF` is **cleared**, not on every status read |
+
+**`BOUTF`.** Because the destructive status read clears it and `_handle_status()` reads `0x08`
+exactly once per cycle, a real brownout is reported exactly once — what `_recover_brownout()`'s
+`_brownout_seen` latch assumes. The fake keeps the two look-alike events apart: `_reset()` is the
+`0x46` **command**, `simulate_brownout()` the **supply** event that raises the flag again.
+
+**The persistence counter** was settled with both thresholds parked at `0x0000`, so any light crosses
+the window and the counter is the only variable. At `PRST = 4`, one status read per second set
+`RGBTHF` in exactly 4 of 8 reads, strictly alternating: a read finding the flag clear leaves the
+count alone, a read that clears it restarts the count. A counter reset by every read would give 0 of
+8 and make the interrupt unreachable at the defaults. `isl29125_real_irq_edge.py`'s
+`_measure_persist_unit()` asserts the unit (RGB cycles) on silicon, because
+`persist_for_interval()` is built on it; the restart half is reproduced by the method above.
+
+### M.1.3 Register ownership, prior art and the colour chain
+
+**One owner per register — the property that makes the shadow model safe.** The driver keeps a
+shadow of `CONFIG1`-`CONFIG3` and writes it back whole; that is sound only while exactly one
+function touches each register.
+
+| Register | Contents | Sole writer | Read by |
+|---|---|---|---|
+| `0x00` | Device ID / reset command | `reset()` (writes `0x46`) | `get_device_id()` |
+| `0x01`-`0x03` | `CONFIG1`/`2`/`3` | `configure()` only | `get_config_snapshot()` only (one 3-byte burst, undecoded) |
+| `0x04`-`0x07` | Low/high thresholds | `set_thresholds()` only | never read back |
+| `0x08` | Status (`RGBTHF`/`CONVENF`/`BOUTF`/`RGBCF`) | `clear_brownout()` only | `read_status()`, **exactly once per cycle, destructive** |
+| `0x09`-`0x0E` | Green, Red, Blue data, in that order | never written | `read_counts()`, one 6-byte burst |
+
+Deliberately unused, so nobody adds them later: `SYNC` (inverts the INT pin into an input,
+p6/p10); `CONVEN` (muxes conversion-done onto the pin the thresholds need); `RGBCF` and `CONVENF`
+(redundant — the data registers are double-buffered, p13). `reset()` verifies the config registers
+only, not the status byte SparkFun also checks, because the status read is destructive and
+`BOUTF`'s real lifecycle (M.1.2) makes that check wrong.
+
+**Prior art.** Five implementations were read: the legacy driver, `jposada202020/MicroPython_ISL29125`,
+SparkFun's Arduino library, RIOT-OS `drivers/isl29125` and Linux's `drivers/iio/light/isl29125.c`.
+(1) RIOT is the only prior art for the normalisation chain, and this driver copies its shape
+deliberately (6-byte burst, `<< 4` for 12 bit, `range_FS / 65535.0` per LSB); Linux confirms the
+scaling. (2) **Nobody does auto-range or CCT** — both are this driver's own, so its twin-tier tests
+carry extra weight: there is no reference to differential-test against. (3) **RIOT's threshold
+scaling truncates** (`65535 / 375` is 174 in integer arithmetic, not 174.76); the named
+`fraction_to_counts()` and its `..._does_not_truncate_like_the_riot_driver` test keep that out.
+
+**Colour chain (`math_helpers.py`)** — three decisions that look like defects:
+- The **sRGB/Rec.709 D65 matrix is pinned as literals**: two published roundings differ in the 6th
+  decimal and both pass a `1e-6` tolerance, so
+  `test_rgb_to_xyz_coefficients_are_the_pinned_literals()` asserts the literals exactly.
+- **The two published McCamy forms are algebraically identical** (flipping the denominator's sign
+  flips `n` and the odd-power terms). Do not "correct" one into the other.
+- **The matrix is a placeholder by the datasheet's own statement** (FN8424 p13 Eq. 1: coefficients
+  "will be changed ... depending on the system setup"), so the reported colour is relative. There is
+  **no gamma decode**: this sensor's output is linear in irradiance. The helpers take triples already
+  normalised 0-1, so an out-of-domain input means the chain is broken and is rejected, not clamped.
+
+**Config-field classification.** Requirement 1 governs *preferences*; a dark-count offset, a CCT
+floor or a gain-learn period is a device or maths constant, not a config field.
+
+**The Renesas application notes are unobtainable — do not re-attempt.** Nothing needs them: the
+12-bit cycle time follows from p6's oscillator/counter model (101 ms × 2⁻⁴ ≈ 6.3 ms), and the CCT
+matrix is a placeholder by p13's own wording.
+
+### M.1.4 Auto-range: derived windows, one constant, and a detector that watches the line
+
+The rule behind every item here (owner, 2026-09-13/14): **a value whose only correct settings are a
+function of another field is derived, never exposed** — exposing it just moves the trap to the next
+change of the other field.
+
+- **The persistence window is derived from `SampleInterv`.** `persist_for_interval()` picks the
+  largest `PRST` whose window still closes inside one sample interval, so the interrupt can always
+  lead the periodic re-check (requirement 17 makes the re-check the safety net, not the race winner).
+  At 16 bit / 1 s that is 2; at 12 bit, where a cycle is ~16× shorter, it is 8. Changing
+  `SampleInterv` or the resolution re-applies it, so `SampleInterv` writes `CONFIG3`. Measured
+  (2026-09-13): a hand-set `PRST = 4` (1,212 ms) lost 5 of 6 crossings to the 1,000 ms periodic path;
+  `PRST = 2` (606 ms) led 6 of 6.
+- **The switch-down point is derived**: `_down_thresh()` returns
+  `AutoRangeThresh / _AR_DOWN_DIVISOR`, with the divisor `2 × 26.67` — the part's *nominal* range
+  ratio, deliberately not the measured `GainRatio`. The factor 2 absorbs the whole 20.0–34.0 band, so
+  coupling the two would change no decision. `AutoRangeThresh` sets both ends of the hysteresis.
+- **The settle margin is a constant**, `_SETTLE_CYCLES = 2`: the ADC restarts during the I²C write
+  itself (p10, Table 7) while the driver arms its deadline once the write has *returned*, so one cycle
+  can land on the wrong side of that tie. No scene, light level or resolution makes another value
+  right.
+- **The dead-line detector keys on the INT edge, not the flag.** `RGBTHF` is raised by the chip, so
+  it is set just the same when the INT line is open — requirement 17's fault. The driver records the
+  pin edge itself (`_irq_fired`, set in the handler and consumed once per cycle) and counts a
+  decision as interrupt-led only with **both**; five periodic-led decisions in a row warn that the
+  line looks dead (C.7.1's ISL29125 row has the number).
+
+### M.1.5 Calibration: user-triggered, user-applied, writes nothing by itself
+
+Owner's design (2026-09-13), replacing a background learner that persisted its own result.
+
+- **The applied factor is ordinary config.** `GainRatio` (`float`, banded 20.0–34.0, default
+  26.667) is read only by `_gain_correction()` and **changed only by a user PUT**: the driver never
+  writes its own config, so every flash write stays on the REST path Part F.2's power-cycle recovery
+  argument depends on.
+- **Measuring is a bounded run, started by hand.** `ISLCalibrate` is command-only (C.5.2.1) and
+  opens a window of `_CAL_WINDOW_MS`; nothing schedules it, so normal operation pays nothing.
+- **The measurement is a sandwich**: this range, the other, this range again. A pair cannot tell a
+  real ratio from a light that moved; if the two outer legs disagree by more than
+  `_CAL_STABILITY_TOL` the sandwich is discarded. Convergence needs `_CAL_CONVERGE_N` consecutive
+  stable sandwiches within `_CAL_CONVERGE_TOL`, because a slow drift yields self-consistent wrong
+  answers. The third leg runs even when the second failed — it is also what puts the range back.
+- **The result is a measurement, not a setting.** A candidate is published as `GainMeas` for
+  `_CAL_HOLD_MS`; the user copies it into `GainRatio` if wanted. **A refusal is reported by absence**
+  (`GainMeas` stays `None`): an unusable scene is a fact about the light, not a fault, so it logs only
+  at debug level. A real bus failure during a leg still logs an error.
+- **The overlap gate tests green, auto-range decides on the brightest channel** — both right for
+  their own question. So a strongly coloured scene can be parked on the high range where its green is
+  too small to calibrate from. **Operator procedure: park the scene dark first, let auto-range settle
+  on the low range, then raise the light to the overlap level.**
+
+Proven on silicon (2026-09-14): three runs at ~138 lx each converged within ~6–8 s, nine candidates
+within 23.70–24.13, `GainRatio` unchanged throughout; applying the measured ratio cut the
+cross-range continuity step on a stationary light from 11.4 % to 0.4 %.
+
+### M.1.6 The range ratio varies with signal level
+
+A measured property of the part, recorded because it bounds what one `GainRatio` can do; not an open
+question and not a defect. In every scene measured (six illuminants × three channels, 2026-09-12)
+the **brightest channel has the lowest ratio**, whatever its colour — a level effect, not a spectral
+one: ~28 at ambient falling to ~22 near low-range full scale (a level sweep read 28.08, 23.29, 22.49
+and 21.55 at low-range peaks of 7,637, 36,106, 50,408 and 64,078). PWM dimming cannot explain it
+(both ranges share the 101 ms integration). Low-range compression and high-range under-read at small
+counts fit equally well; telling them apart needs a reference meter.
+
+**What it means**: the whole span sits inside `GainRatio`'s 20.0–34.0 band, so the guard never
+fires, but no single value is right everywhere — a ratio measured in the overlap band (~22–23) is
+right at the switch point and makes low-light cross-range comparisons slightly worse. M.1.5's
+design makes that a choice rather than a flaw: **calibrate at the level you care about.** Whether the
+span is this specimen or the part needs a second board and a reference meter; do not re-raise it as
+actionable. `tests_hardware/device_scripts/isl29125_mechanism_envelope.py` adds a data point per run.
