@@ -71,6 +71,12 @@ def _remove(path: str) -> None:
         pass  # already gone
 
 
+def _last_errno(mgr: "cm.ConfigManager") -> int:
+    nums = run(mgr.pr.get_log())[mgr.name]["ErrNum"]
+    assert isinstance(nums, list)
+    return int(nums[-1])
+
+
 def _make(name: str, cfg_vals: "cm.ConfigSchema" = _SCHEMA) -> "tuple[cm.ConfigManager, str]":
     path = _tmp_path(name)
     _remove(path)
@@ -860,14 +866,16 @@ def test_configmanager_empty_schema_is_invalid() -> None:
         _remove(path)
 
 
-def test_configmanager_non_string_filename_returns_invalid_not_uncaught() -> None:
+def test_configmanager_non_string_filename_runs_unpersisted_not_uncaught() -> None:
     # os.stat()/open() raise TypeError (not OSError) for a non-string path on this interpreter -
-    # setup() must treat that the same as "file not found" rather than letting it propagate.
+    # setup() treats that as "file not found" and a failed write: defaults served, never raised (C.7.3).
     bad_filenames: list[Any] = [None, 123, ["x"], {}, 12.5]
     for bad_filename in bad_filenames:
         mgr = cm.ConfigManager(bad_filename, _VAL_INT, "TEST")
         run(mgr.setup())
-        assert mgr.valid is False
+        assert mgr.valid is True
+        assert run(mgr.get_int_values(_VAL_INT)) == [5]
+        assert _last_errno(mgr) == 4
 
 
 def test_configmanager_none_or_non_iterable_schema_is_invalid() -> None:
@@ -1336,14 +1344,16 @@ def test_configmanager_extraneous_and_missing_key_combined() -> None:
         _remove(path)
 
 
-def test_configmanager_parent_directory_missing_leaves_invalid() -> None:
+def test_configmanager_parent_directory_missing_runs_on_defaults_unpersisted() -> None:
     # Exercises both OSError paths in setup(): os.stat() fails on the initial read, and
     # open(..., "w") also fails on the fallback write - neither is reachable in isolation without
     # a nonexistent parent directory, since every other test's tmp dir exists.
     path = _scratch.dir() + "no_such_subdir/x.cfg"
     mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
     run(mgr.setup())
-    assert mgr.valid is False
+    assert mgr.valid is True
+    assert run(mgr.get_dict(["Count", "Offset", "Name", "Enabled"])) == {"Count": 5, "Offset": 1.5, "Name": "abc", "Enabled": True}
+    assert _last_errno(mgr) == 4
 
 
 def test_get_dict_on_invalid_manager_returns_none() -> None:
@@ -1936,7 +1946,7 @@ def test_write_config_repairs_a_file_corrupted_after_valid_init() -> None:
         _remove(path)
 
 
-def test_write_config_genuine_write_failure_leaves_cache_unchanged() -> None:
+def test_write_config_genuine_write_failure_keeps_the_new_value_in_effect() -> None:
     # A real write failure, unlike the pre-existing corrupt file above which gets silently repaired: the
     # parent directory is removed after a valid init, so open(path, "w") genuinely raises OSError inside the
     # deferred flush.
@@ -1944,8 +1954,8 @@ def test_write_config_genuine_write_failure_leaves_cache_unchanged() -> None:
     # write_config() itself no longer touches the filesystem (Part F.2), so it reports validation success
     # regardless and the failure only surfaces as a logged errno once the flush runs.
     #
-    # _cache must be committed only after a successful write, so it stays at the old value here, and a later
-    # read must not see the failed staged value either.
+    # The validated value stays in effect (C.7.3): its push already reached the module, so reverting the
+    # read side to the old value would report a setting the device is no longer running.
     subdir = _scratch.dir() + "writefail_subdir"
     try:
         os.mkdir(subdir)
@@ -1972,8 +1982,10 @@ def test_write_config_genuine_write_failure_leaves_cache_unchanged() -> None:
         assert (ok, results) == (True, {"Count": "Valid"})  # validation succeeded - write only staged so far
         assert staged_view == {"Count": 8}  # read-your-write, while the flush is still pending
         run(mgr.flush_pending())  # now the deferred flush actually runs, and fails
-        assert mgr._cache == {"Count": 5}  # untouched - still the original default
-        assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # staged value cleared once the flush failed
+        assert mgr._cache == {"Count": 8}
+        assert mgr._staged is None
+        assert run(mgr.get_dict(["Count"])) == {"Count": 8}
+        assert _last_errno(mgr) == 14
     finally:
         _remove(path)  # a no-op here - the parent directory is gone, so there's nothing to remove
         try:
@@ -2224,10 +2236,10 @@ class _MemoryErrorJson:
         return decoded
 
 
-def test_write_config_memoryerror_from_json_dump_leaves_cache_unchanged() -> None:
+def test_write_config_memoryerror_from_json_dump_keeps_the_new_value_in_effect() -> None:
     # MemoryError is not an OSError subclass (CLAUDE.md), _flush_staged's except clause lists it explicitly,
-    # and this is the only way that arm is reached. Same "commit _cache only after a successful write"
-    # contract as the genuine-write-failure test above, with heap exhaustion as the cause.
+    # and this is the only way that arm is reached. Same "the value stays in effect, only persistence
+    # failed" contract as the genuine-write-failure test above, with heap exhaustion as the cause.
     #
     # The fault must stay patched in through flush_pending(), where the real json.dump() now happens, not
     # only through write_config()'s own return.
@@ -2242,18 +2254,20 @@ def test_write_config_memoryerror_from_json_dump_leaves_cache_unchanged() -> Non
             run(mgr.flush_pending())  # now the deferred flush actually runs, and fails
         finally:
             cm.json = original_json
-        assert mgr._cache == {"Count": 5}  # untouched - still the original default
-        assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # staged value cleared once the flush failed
+        assert mgr._cache == {"Count": 8}
+        assert run(mgr.get_dict(["Count"])) == {"Count": 8}
         # The on-disk file is a different matter: open(..., "w") already truncated it before json.dump()
-        # ran, so a mid-dump failure leaves it unparseable. _cache stays authoritative, and the next
-        # successful write repairs the file exactly as it does for any other out-of-band corruption.
+        # ran, so a mid-dump failure leaves it unparseable. _cache stays authoritative; the same value
+        # again is "Unchanged" and writes nothing, and the next real change persists the whole snapshot.
         with open(path) as f:
             assert f.read() == ""
         ok, results = run(mgr.write_config({"Count": 8}, _VAL_INT))  # no fault injected this time
+        assert (ok, results) == (True, {"Count": "Unchanged"})
+        ok, results = run(mgr.write_config({"Count": 9}, _VAL_INT))
         assert (ok, results) == (True, {"Count": "Valid"})
         run(mgr.flush_pending())
         with open(path) as f:
-            assert json.load(f) == {"Count": 8}
+            assert json.load(f) == {"Count": 9}
     finally:
         _remove(path)
 
@@ -2284,7 +2298,7 @@ def test_configmanager_setup_memoryerror_from_json_load_degrades_to_defaults() -
         _remove(path)
 
 
-def test_configmanager_setup_memoryerror_from_json_dump_leaves_config_invalid() -> None:
+def test_configmanager_setup_memoryerror_from_json_dump_runs_on_defaults_unpersisted() -> None:
     # setup()'s *other* MemoryError arm, around its own default-writing json.dump(): no file
     # exists, so the defaults have to be written out, and that write is what exhausts the heap.
     path = _tmp_path("memerrsetupdump.cfg")
@@ -2297,10 +2311,233 @@ def test_configmanager_setup_memoryerror_from_json_dump_leaves_config_invalid() 
             run(mgr.setup())
         finally:
             cm.json = original_json
-        assert mgr.valid is False  # degraded, not raised
-        assert run(mgr.get_dict(["Count"])) is None
+        assert mgr.valid is True  # degraded to unpersisted, not raised and not refused (C.7.3)
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}
+        assert _last_errno(mgr) == 4
     finally:
         _remove(path)
+
+
+# ---------------------------------------------------------------------------
+# SPECIFICATION.md C.7.3: a failed write costs persistence, never the config, and nothing ever
+# retries a write - so no failure, however persistent, can loop writes into the flash filesystem.
+# ---------------------------------------------------------------------------
+
+_real_open = open
+
+
+class _WriteCountingOpen:
+    # Replaces config_manager's own `open` (module globals shadow builtins), counting every open for
+    # writing - the only way this module reaches the flash - and optionally failing each one.
+    def __init__(self, *, fail_writes: bool = False, error: "BaseException | None" = None) -> None:
+        self.writes = 0
+        self.reads = 0
+        self.fail_writes = fail_writes
+        self.error = OSError(28, "ENOSPC") if error is None else error
+
+    def __call__(self, path: str, mode: str = "r") -> object:
+        if "w" in mode:
+            self.writes += 1
+            if self.fail_writes:
+                raise self.error
+        else:
+            self.reads += 1
+        return _real_open(path, mode)
+
+    def __enter__(self) -> "_WriteCountingOpen":
+        cm.open = self  # type: ignore[attr-defined]
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        del cm.open  # type: ignore[attr-defined]
+
+
+def _log_entry(mgr: "cm.ConfigManager") -> "tuple[int, list[int]]":
+    # (count, codes) of the persisted ERRORS only - a missing file's wrnno 3 is routine, not a failure.
+    entry = run(mgr.pr.get_log())[mgr.name]
+    nums, types = entry["ErrNum"], entry["ErrType"]
+    assert isinstance(nums, list) and isinstance(types, list)
+    errs = [int(n) for n, t in zip(nums, types) if t == "E"]  # noqa: B905 - MicroPython zip() rejects strict=
+    return len(errs), errs
+
+
+def test_setup_write_failure_attempts_exactly_one_write_and_serves_the_validated_config() -> None:
+    path = _tmp_path("c73_setup_once.cfg")
+    _remove(path)
+    with _WriteCountingOpen(fail_writes=True) as fake:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
+    assert fake.writes == 1
+    assert mgr.valid is True
+    assert run(mgr.get_int_values(_VAL_INT)) == [5]
+    assert run(mgr.get_float_values(_VAL_FLOAT)) == [1.5]
+    assert run(mgr.get_str_values(_VAL_STR)) == ["abc"]
+    assert run(mgr.get_bool_values(_VAL_BOOL)) == [True]
+    assert _log_entry(mgr) == (1, [4])
+
+
+def test_setup_write_failure_keeps_the_valid_keys_of_a_partly_bad_file() -> None:
+    # The repair is computed before the write, so a failing write still runs on the repaired values:
+    # the file's good keys, the default for its bad one.
+    path = _tmp_path("c73_partial.cfg")
+    with _real_open(path, "w") as f:
+        f.write('{"Count": 7, "Offset": "not-a-float", "Name": "xy", "Enabled": false}')
+    try:
+        with _WriteCountingOpen(fail_writes=True) as fake:
+            mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+            run(mgr.setup())
+        assert fake.writes == 1
+        assert run(mgr.get_dict(["Count", "Offset", "Name", "Enabled"])) == {"Count": 7, "Offset": 1.5, "Name": "xy", "Enabled": False}
+    finally:
+        _remove(path)
+
+
+def test_setup_with_a_valid_file_writes_nothing_at_all() -> None:
+    path = _tmp_path("c73_nowrite.cfg")
+    _remove(path)
+    run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())  # creates it
+    try:
+        with _WriteCountingOpen(fail_writes=True) as fake:
+            mgr = cm.ConfigManager(path, _VAL_INT, "TEST")
+            run(mgr.setup())
+        assert (fake.writes, fake.reads) == (0, 1)
+        assert _log_entry(mgr) == (0, [])
+    finally:
+        _remove(path)
+
+
+def test_setup_write_failure_for_each_error_class_is_logged_never_raised() -> None:
+    for error in (OSError(28, "ENOSPC"), OSError(5, "EIO"), MemoryError("simulated heap exhaustion"), TypeError("simulated bad path")):
+        path = _tmp_path("c73_errclass.cfg")
+        _remove(path)
+        with _WriteCountingOpen(fail_writes=True, error=error) as fake:
+            mgr = cm.ConfigManager(path, _VAL_INT, "TEST")
+            run(mgr.setup())
+        assert (fake.writes, mgr.valid, _log_entry(mgr)) == (1, True, (1, [4])), error
+
+
+def test_no_read_path_ever_writes_after_a_failed_setup_write() -> None:
+    # The write-loop guarantee on the read side: a thousand reads of every shape touch the flash zero
+    # times, where a refused config used to end the reader's task and reboot into the same write.
+    path = _tmp_path("c73_reads.cfg")
+    _remove(path)
+    with _WriteCountingOpen(fail_writes=True) as fake:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
+        for _ in range(250):
+            run(mgr.get_int_values(_VAL_INT))
+            run(mgr.get_float_values(_VAL_FLOAT))
+            run(mgr.get_dict(["Count", "Name"]))
+            run(mgr.flush_pending())
+        assert fake.writes == 1  # setup()'s single attempt, nothing since
+    assert _log_entry(mgr) == (1, [4])
+
+
+def test_writes_follow_accepted_changes_only_never_failures() -> None:
+    # One write per accepted CHANGE, zero for an unchanged, invalid or unknown value - and a failed
+    # flush is not retried: the same value again is "Unchanged", so persistent failure cannot loop.
+    path = _tmp_path("c73_puts.cfg")
+    _remove(path)
+    mgr, path = _make("c73_puts.cfg", cfg_vals=_VAL_INT)
+    try:
+        with _WriteCountingOpen(fail_writes=True) as fake:
+            for value, want in ((8, "Valid"), (8, "Unchanged"), (8, "Unchanged"), (99, "Invalid"), (9, "Valid")):
+                ok, results = run(mgr.write_config({"Count": value}, _VAL_INT))
+                run(mgr.flush_pending())
+                assert (ok, results) == (True, {"Count": want}), value
+            ok, results = run(mgr.write_config({"Nope": 1}, _VAL_INT))
+            run(mgr.flush_pending())
+            assert results == {"Nope": "Invalid"}
+            assert fake.writes == 2  # exactly the two changes
+        assert run(mgr.get_dict(["Count"])) == {"Count": 9}
+        assert _log_entry(mgr)[1] == [14, 12, 14, 10]  # failed flush, range, failed flush, unknown key
+    finally:
+        _remove(path)
+
+
+def test_many_failed_flushes_still_write_once_per_change() -> None:
+    mgr, path = _make("c73_many.cfg", cfg_vals=_VAL_INT)
+    try:
+        with _WriteCountingOpen(fail_writes=True) as fake:
+            for value in (1, 2, 3, 4, 5, 6):
+                run(mgr.write_config({"Count": value}, _VAL_INT))
+                run(mgr.flush_pending())
+                run(mgr.flush_pending())  # a second wait adds nothing
+            assert fake.writes == 6
+        assert mgr._staged is None and mgr._pending_flush is None
+    finally:
+        _remove(path)
+
+
+def test_self_heals_a_failed_setup_write_on_the_next_accepted_change() -> None:
+    # The flash comes back: the next real change writes the full snapshot, repaired defaults included,
+    # and a fresh boot then finds a valid file and writes nothing.
+    path = _tmp_path("c73_heal.cfg")
+    _remove(path)
+    try:
+        with _WriteCountingOpen(fail_writes=True):
+            mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+            run(mgr.setup())
+        with _WriteCountingOpen() as fake:
+            assert run(mgr.write_config({"Count": 3}, _VAL_INT)) == (True, {"Count": "Valid"})
+            run(mgr.flush_pending())
+            assert fake.writes == 1
+        with _real_open(path) as f:
+            assert json.load(f) == {"Count": 3, "Offset": 1.5, "Name": "abc", "Enabled": True}
+        with _WriteCountingOpen() as fake:
+            again = cm.ConfigManager(path, _SCHEMA, "TEST")
+            run(again.setup())
+            assert fake.writes == 0
+        assert run(again.get_int_values(_VAL_INT)) == [3]
+    finally:
+        _remove(path)
+
+
+def test_self_heals_a_failed_setup_write_on_the_next_boot_with_one_write() -> None:
+    path = _tmp_path("c73_reboot.cfg")
+    _remove(path)
+    try:
+        with _WriteCountingOpen(fail_writes=True):
+            run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())
+        with _WriteCountingOpen() as fake:
+            mgr = cm.ConfigManager(path, _VAL_INT, "TEST")
+            run(mgr.setup())
+            assert fake.writes == 1  # the next boot's one repair write
+        with _real_open(path) as f:
+            assert json.load(f) == {"Count": 5}
+    finally:
+        _remove(path)
+
+
+def test_self_heals_a_failed_flush_on_the_next_accepted_change() -> None:
+    mgr, path = _make("c73_flushheal.cfg", cfg_vals=_VAL_INT)
+    try:
+        with _WriteCountingOpen(fail_writes=True):
+            run(mgr.write_config({"Count": 7}, _VAL_INT))
+            run(mgr.flush_pending())
+        assert run(mgr.get_int_values(_VAL_INT)) == [7]  # still in effect while unpersisted
+        with _WriteCountingOpen() as fake:
+            run(mgr.write_config({"Count": 8}, _VAL_INT))
+            run(mgr.flush_pending())
+            assert fake.writes == 1
+        with _real_open(path) as f:
+            assert json.load(f) == {"Count": 8}
+    finally:
+        _remove(path)
+
+
+def test_the_only_flash_writes_in_config_manager_are_the_two_known_sites() -> None:
+    # Structural half of the write-loop guarantee: exactly setup()'s and _flush_staged()'s opens
+    # for writing, and nothing in the module that could re-run one on its own - no timer, no sleep,
+    # no loop that waits. A new write site or retry mechanism has to come through here.
+    with _real_open(cm.__file__) as f:
+        source = f.read()
+    assert source.count('open(self.config_file, "w")') == 2
+    assert source.count('"w"') == 2
+    code = [line.split("#")[0] for line in source.split("\n")]  # comments may say anything
+    for forbidden in ("Timer", "sleep", "while "):
+        assert not any(forbidden in line for line in code), forbidden
+    assert source.count("create_task(") == 1  # write_config()'s one deferred flush per accepted change
 
 
 if __name__ == "__main__":

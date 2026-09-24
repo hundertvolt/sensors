@@ -2037,6 +2037,41 @@ def test_never_touches_any_address_but_its_own() -> None:
     assert touched == {_ADDR}, f"BMP3XX_I2C touched unexpected address(es): {touched - {_ADDR}}"
 
 
+
+def test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> None:
+    # Regression (SPECIFICATION.md C.7.3): a failed config write used to leave cfgmgr invalid, so
+    # _init_bmp() logged errno 12 and ended the task on every restart - a reboot loop that rewrote the
+    # file each boot. Now it initialises on the validated defaults and the write is not retried.
+    import config_manager
+
+    i2c = make_i2c()
+    reader = BMP3xx_Reader(i2c, address=_ADDR, cfg_path=_tmp_cfg_path("unwritable") + "missing_dir/")
+    run(reader.cfgmgr.setup())
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c)
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    writes = [0]
+    real_open = open
+
+    def counting_open(path: str, mode: str = "r") -> object:
+        if "w" in mode:
+            writes[0] += 1
+        return real_open(path, mode)
+
+    config_manager.open = counting_open  # type: ignore[attr-defined]
+    try:
+        assert run(reader._init_bmp()) is True
+        for _ in range(20):
+            assert run(reader._init_bmp()) is True  # every would-be restart succeeds as well
+    finally:
+        del config_manager.open  # type: ignore[attr-defined]
+    assert writes[0] == 0
+    assert run(reader.bmp.get_pressure_oversampling()) == 1  # the schema default reached the chip
+    assert 12 not in run(reader.get_error_counter())["BMP3XX"]["ErrNum"]
+    assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == 4
+
+
 if __name__ == "__main__":
     import microtest
 

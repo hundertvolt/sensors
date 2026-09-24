@@ -1261,7 +1261,7 @@ def test_a_uart_link_whose_polls_outlast_its_reply_timeout_is_rejected(tmp_path:
     doc["bus"]["uart1"]["poll_idle_ms"] = 976
     with pytest.raises(BuildError, match=r"bus\.uart1: .*1000ms reply timeout is below the 1001ms") as info:
         _build(tmp_path, src_dir, doc)
-    assert info.value.field == "poll_idle_ms"
+    assert (info.value.field, info.value.instance) == ("poll_idle_ms", "uart_link_resp")
 
 
 def test_a_uart_rxbuf_below_one_polls_arrivals_is_rejected(tmp_path: Path, src_dir: Path) -> None:
@@ -1272,7 +1272,7 @@ def test_a_uart_rxbuf_below_one_polls_arrivals_is_rejected(tmp_path: Path, src_d
     doc["bus"]["uart0"]["rxbuf"] = 79
     with pytest.raises(BuildError, match=r"bus\.uart0: rxbuf 79 is below the 80 bytes") as info:
         _build(tmp_path, src_dir, doc)
-    assert info.value.field == "rxbuf"
+    assert (info.value.field, info.value.instance) == ("rxbuf", "uart_link_init")
 
 
 def test_a_uart_rxbuf_below_one_frame_is_rejected_at_a_slow_baudrate(tmp_path: Path, src_dir: Path) -> None:
@@ -1682,8 +1682,9 @@ def test_an_ntp_retry_interval_below_the_check_tick_is_rejected(tmp_path: Path, 
     # AsyNtpClient would silently round it up to its 10s tick; the build says so instead.
     doc = base_doc()
     doc["device"]["ntp_retry_s"] = 9
-    with pytest.raises(BuildError, match="every 10s"):
+    with pytest.raises(BuildError, match="every 10s") as info:
         _build(tmp_path, src_dir, doc)
+    assert info.value.field == "ntp_retry_s"
     doc["device"]["ntp_retry_s"] = 10
     _build(tmp_path, src_dir, doc)
 
@@ -1692,8 +1693,9 @@ def test_an_ntp_retry_cap_below_the_interval_is_rejected_against_the_effective_p
     doc = base_doc()
     doc["device"]["ntp_retry_s"] = 60
     doc["device"]["ntp_retry_max_s"] = 30
-    with pytest.raises(BuildError, match="below the 60s first retry"):
+    with pytest.raises(BuildError, match="below the 60s first retry") as info:
         _build(tmp_path, src_dir, doc)
+    assert info.value.field == "ntp_retry_max_s"
     del doc["device"]["ntp_retry_max_s"]  # the stated interval against the src cap (600) passes
     _build(tmp_path, src_dir, doc)
     doc["device"]["ntp_retry_s"] = 900  # ...and one above that cap fails, cap unstated
@@ -1701,11 +1703,15 @@ def test_an_ntp_retry_cap_below_the_interval_is_rejected_against_the_effective_p
         _build(tmp_path, src_dir, doc)
 
 
-def test_ntp_backoff_keys_must_be_ints(tmp_path: Path, src_dir: Path) -> None:
+@pytest.mark.parametrize("field", ["ntp_retry_s", "ntp_retry_max_s"])
+@pytest.mark.parametrize("bad_value", ["30", 30.0, True])
+def test_ntp_backoff_keys_must_be_ints(tmp_path: Path, src_dir: Path, field: str, bad_value: object) -> None:
+    # Same isinstance(int) and not bool guard every other optional [device] int gets.
     doc = base_doc()
-    doc["device"]["ntp_retry_s"] = "30"
-    with pytest.raises(BuildError, match="ntp_retry_s must be an int"):
+    doc["device"][field] = bad_value
+    with pytest.raises(BuildError, match=f"{field} must be an int") as info:
         _build(tmp_path, src_dir, doc)
+    assert info.value.field == field
 
 
 def test_device_max_connections_reads_the_toml_else_the_src_default(tmp_path: Path, src_dir: Path) -> None:

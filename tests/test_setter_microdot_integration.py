@@ -678,7 +678,10 @@ def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_no
     assert body["result"] == {"BackupPeriod": "Valid", "SGPResetVOC": "Valid"}
     assert reader.reset is True  # pushed live regardless of the still-pending, doomed flash write
     run(reader.cfgmgr.flush_pending())  # now the deferred flush actually runs, and fails (EISDIR)
-    assert run(reader.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 1}  # never made it to disk
+    # Never made it to disk, but stays in effect (SPECIFICATION.md C.7.3) - and the failure is on record.
+    assert run(reader.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 5}
+    nums = run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"]
+    assert isinstance(nums, list) and nums[-1] == 14
 
 
 # ---------------------------------------------------------------------------

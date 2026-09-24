@@ -3274,6 +3274,25 @@ def test_never_touches_any_address_but_its_own() -> None:
     assert touched == {_ADDR}, f"ISL29125_I2C touched unexpected address(es): {touched - {_ADDR}}"
 
 
+
+def test_init_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> None:
+    # Regression (SPECIFICATION.md C.7.3): a failed config write no longer ends the read task (errno 12).
+    FakeTimer.all_timers.clear()
+    i2c = make_i2c()
+    seed_healthy_chip(i2c)
+    reader = ISL29125_Reader(i2c, 6, cfg_path=_tmp_cfg_path("unwritable") + "missing_dir/")
+    run(reader.cfgmgr.setup())
+    assert reader.cfgmgr.valid is True
+
+    async def scenario() -> "ErrorLog":
+        with _FastAsyncSleep():
+            assert await init_reader(reader, i2c) is True
+        return await reader.get_error_counter()
+
+    assert 12 not in errors(run(scenario()))
+    assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == 4
+
+
 if __name__ == "__main__":
     import microtest
 

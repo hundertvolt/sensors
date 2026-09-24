@@ -1922,7 +1922,7 @@ while the ring still says what else happened.
 | Module | `errno` | `wrnno` | Notes |
 |---|---|---|---|
 | `base_classes.py` | 1-9 | 1-2 | Reserved base range — every driver starts at 10+. |
-| `config_manager.py` (`CFGMGR_<name>`) | 1-15 | 1-6 | Sequential in source order. 14=the deferred flush's own write failure (`_flush_staged()`, WP5); 15=a validation-phase `MemoryError`/`AttributeError` in `write_config()` itself, split off 14 once the actual file write moved into the separate deferred method. |
+| `config_manager.py` (`CFGMGR_<name>`) | 1-15 | 1-6 | Sequential in source order. 4=`setup()`'s create/repair write failed, 14=the deferred flush's own write failure (`_flush_staged()`, WP5) - both run on unpersisted, validated values and are never retried (C.7.3); 15=a validation-phase `MemoryError`/`AttributeError` in `write_config()` itself, split off 14 once the actual file write moved into the separate deferred method. |
 | `asy_fram_manager.py`/`asy_fram_driver.py` (`FRAM`) | 10-100 | 60-84 | `AsyFramManager` 10-88 (busy/idle status-byte helper spreads a base across 2-7 values per call); `FRAM_SPI` 89-98 (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout, device-ID guard) + `wrnno` 81-83 (WRDI-stuck, WEL-didn't-set ×2). **WP8**: 99=`get_values()`'s own "access not locked" internal-contract violation, 100=`set_values()`'s (each its own number per the "grouped by the raising method" convention, matching the sibling not-initialized pair); `wrnno` 84=`_write()`'s "currently write protected" refusal — a benign, expected outcome (matches `AsyFramManager`'s own "communication paused" `wrn_s` precedent, `wrnno` 60/70/80), so `wrnno` rather than `errno` unlike the two lock violations. **Re-traced after the 2026-09-18 synchronous restructure and every number and meaning is unchanged** (manager `errno` 17-88 + `wrnno` 80, driver `errno` 89-100 + `wrnno` 81-84, checked against the source rather than assumed). What moved is the raising site, which this column's "grouped by the raising method" convention has to be read against: 90/91/99 and 92/93/84/82/81 are now raised by `report_get_values()`/`report_set_values()`, the reporters that own `get_values()`'/`set_values()`' messages, because a synchronous body holding the bus lock must not await a persisted log entry. The chunk's own 60 and 70-73 follow the repeat rule above, per distinct code per degraded episode, which a clean read or write ends — a dead cell or a held mempause warns on every single operation otherwise, and the chunk logs into its OWNER's FRAM-backed history, not the manager's. |
 | `asy_bmp3xx_driver.py` (`BMP3XX`) | 10-22 | — | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched snapshot read. |
 | `asy_scd30_driver.py` (`SCD30`) | 10-25 | — | 10=init, 11=periodic read, 12=unused (no init-time config), 13=stop-continuous-measurement, 14-25=per-field forwards. |
@@ -1971,6 +1971,26 @@ The two refusals a device TOML can actually cause — a reply timeout below 2 ×
 `poll_idle_ms` + the GC pause (errno 11), an `rxbuf` below one frame or one poll's arrivals
 (errno 15) — are build errors instead (`buildgen/validate.py`'s `_check_uart_link_buses()`, reading
 the thresholds out of `asy_uart_comm.py`); every other refusal needs code the generator never emits.
+
+### C.7.3 A failed config write costs persistence, never the config
+
+`ConfigManager` (`config_manager.py`) validates before it writes, so a write that fails loses only
+the copy on flash: the validated values stay in effect. `setup()` runs on the file's good keys and
+the defaults for the rest when its create-or-repair write fails (errno 4), and a deferred PUT flush
+that fails (errno 14) keeps the new value, which its push already delivered to the module. Before
+this, a failed setup write left the manager invalid: every reader's `_init_<sensor>()` then logged
+errno 12 and ended its task, the supervisor rebooted the device, and every boot repeated the write —
+a reboot loop that also wrote the flash on each pass (owner, 2026-09-24).
+
+**No write is ever retried, so no failure can loop writes into the flash filesystem.** The module has
+exactly two write sites and nothing that re-runs either on its own (no timer, sleep or loop — pinned
+structurally by `tests/test_config_manager.py`):
+- `setup()` writes at most once, only when the file is missing or needs repair, and runs once per boot.
+- `_flush_staged()` writes once per accepted PUT that changes a value; the same value again is
+  `"Unchanged"` and writes nothing, so a failed flush is never re-attempted by a repeat.
+
+Self-healing follows from the same two sites: the next accepted change writes the whole snapshot
+(repaired defaults included), and the next boot's `setup()` repairs a file a failed write left behind.
 
 ## C.8 Concurrency & locking model
 
@@ -3596,9 +3616,8 @@ cycles after a *sustained* outage (F.2's own measured data: essentially never in
 two are separated by many orders of magnitude, and a power cycle triggered by that backstop lands
 long after any pending flush has already resolved one way or the other. The real, intentionally-
 accepted residual risk is narrower and different in kind: a power loss landing in that same brief
-window loses the just-accepted config change silently (never corrupts anything - `_flush_staged()`
-only ever replaces `_cache`/the on-disk file after its own write actually succeeds, exactly as
-`write_config()` always did). Combined with the reboot-safe boot chain (A.4), power-cycle recovery
+window loses the just-accepted config change silently (never corrupts anything: the next boot's
+`setup()` repairs whatever the interrupted write left, C.7.3). Combined with the reboot-safe boot chain (A.4), power-cycle recovery
 is still a deliberately stable, intended feature - this residual window narrows what "inherently
 safe" means, it doesn't remove the design's own safety property.
 

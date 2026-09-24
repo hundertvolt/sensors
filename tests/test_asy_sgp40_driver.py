@@ -2279,6 +2279,30 @@ def test_touches_only_its_own_address_except_reset_which_touches_only_the_genera
     assert touched <= {0x59, 0x00}, f"SGP40_I2C touched unexpected address(es): {touched - {0x59, 0x00}}"
 
 
+
+def test_init_sgp_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> None:
+    # Regression (SPECIFICATION.md C.7.3): the failed write used to surface here as errno 12 and a task
+    # restart per boot; now init succeeds on the validated defaults and no read retries the write.
+    manager, _chip, _spi_bus = make_fram_manager()
+    run(manager.setup())
+    reader = SGP40_Reader(
+        make_i2c(),
+        temperature_source=_FakeCompSource(),
+        temperature_field="Temp",
+        humidity_source=_FakeCompSource(),
+        humidity_field="Hum",
+        fram_storage=manager,
+        fram_ntp_callback=_ntp_synced,
+        cfg_path=_SHARED_CFG_DIR + "missing_dir/",
+    )
+    run(reader.cfgmgr.setup())
+    assert reader.cfgmgr.valid is True
+    queue_successful_init(bus(reader.sgp.i2c_sgp40.i2c_device.i2c))
+    assert run(reader._init_sgp()) is True
+    assert 12 not in run(reader.get_error_counter())["SGP40"]["ErrNum"]
+    assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == 4
+
+
 if __name__ == "__main__":
     import microtest
 

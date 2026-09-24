@@ -374,14 +374,14 @@ class ConfigManager:
             try:
                 with open(self.config_file, "w") as f:
                     json.dump(staged, f)
-                self._cache = staged  # only commit once the write has actually succeeded
                 self.pr.evt(self.config_file, "- Config data was written.")
             except (MemoryError, OSError, ValueError, AttributeError) as e:  # file errors, or
-                # json.dump() exhausting the heap. _cache is left untouched - "what's on disk, as far
-                # as we know" - and this is the accepted, logged-only residual-risk outcome
-                # (SPECIFICATION.md Part F.2), never re-raised into the caller.
-                await self.pr.err_s(self.config_file, "- Error writing config data:", e, errno=14)
+                # json.dump() exhausting the heap: logged, never re-raised, and never retried here.
+                await self.pr.err_s(self.config_file, "- Error writing config data, running unpersisted:", e, errno=14)
             finally:
+                # The validated value stays in effect whether or not the write landed: its push
+                # already reached the module, and only persistence failed (SPECIFICATION.md C.7.3).
+                self._cache = staged
                 if self._staged is staged:  # nothing newer staged while this flush was running
                     self._staged = None
                 if self._pending_flush is asyncio.current_task():
@@ -475,9 +475,11 @@ class ConfigManager:
         try:
             with open(self.config_file, "w") as f:
                 json.dump(valid_cfg, f)
-            self._cache = valid_cfg
-            self.valid = True
             self.pr.one("Default data was written in", self.config_file, "- config is ready.")
         except (MemoryError, OSError, TypeError) as e:  # write failed, filename isn't a string, or
-            # json.dump() exhausts the heap serializing valid_cfg
-            await self.pr.err_s("Error writing config", self.config_file, "- config is not valid:", e, errno=4)
+            # json.dump() exhausts the heap. One attempt per setup(), never retried (C.7.3).
+            await self.pr.err_s("Error writing config", self.config_file, "- running unpersisted:", e, errno=4)
+        # valid_cfg is validated either way: a failed write costs persistence, never the config -
+        # refusing it ended every reader's task and looped the device through reboots (C.7.3).
+        self._cache = valid_cfg
+        self.valid = True
