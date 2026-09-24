@@ -23,15 +23,14 @@ removed with the others before the branch merges.
    failure. A memory error is a true failure.** The sweep tool counts them separately since §4.3.
 5. Report **number and percentage** of failures, and heap usage as a **percentage** of the GC heap.
 
-## 2. State at the end of the day
+## 2. State (updated 2026-09-24)
 
-- **Board**: image **F′** (branch tip, `max_connections = 8`), build `2026-09-23T20:55:14Z`, reset to
-  normal operation, serving at `192.168.85.57`, `DebugLevel` 5.
+- **Board**: image **F′** (branch tip, `max_connections = 8`), build `2026-09-23T20:55:14Z`, serving
+  at `192.168.85.57`, `DebugLevel` 5, after the §5.6 runs (their last level ends with the tool's own
+  hard reset).
 - **Repo**: branch `claude/tcp-connection-scaling`, everything pushed. `devices/dev.toml` and
   `toolchain/versions.toml` are at the tip (images G′ and H were local edits only, never committed;
   their recipes are in §3).
-- **Not run** (stopped by the owner before the first level finished): F′ at N = 7 and 8 under peak
-  load — §7 item 1.
 
 ## 3. The images
 
@@ -372,6 +371,170 @@ N= 6 GC_THRESHOLD=-1 | STABLE | complete 132/132 | failed 0 (0.00 %) | device al
   peak by ~20 KB (~4.6 KB of the difference is F′'s larger heap).
 - 7, 8, 9 were not measured: the owner stopped the run to prioritise the image built for 8 (§7).
 
+### 5.6 Peak load on the image built for 8 (F′), N = 7 and 8 — run 2026-09-24
+
+Owner's request: an image built for 8, N = 7 and 8, at `-1` and at `32768`, true failures (refusals
+excluded) and heap usage in %. Board on F′ (build `2026-09-23T20:55:14Z`, unchanged firmware since),
+heap base 183,360 B (`mem_info`). Four runs, one fresh boot per level, with the tool of `53ac222`
+(refusal cross-check). **Every row is one run.**
+
+**True failures** — non-collecting sampler, so the verdict is evidence:
+
+| N | threshold | requests | complete | refused (host / device) | **true failures** | what failed |
+| --- | --- | --- | --- | --- | --- | --- |
+| 7 | −1 | 170 | 123 | 47 / 47 | **0 (0.00 %)** | — |
+| 8 | −1 | 366 | 105 | 259 / 246 | **2 (0.55 %)** | 2 × `/status` 500, 252 B piece |
+| 7 | 32768 | 167 | 120 | 47 / 45 | **0 (0.00 %)** | — |
+| 8 | 32768 | 338 | 99 | 238 / 228 | **1 (0.30 %)** | 1 × `/status` 500, 255 B piece |
+
+**Heap usage at peak** — collecting sampler (`--peak --margin`, `gc.collect()` every 100 ms; exact
+live set; its verdict is instrumentation only, and the threshold is moot under it):
+
+| N | threshold | min free overall (at conns) | **% free / % used** | min free with exactly N open | largest free block at the min | failures in this run |
+| --- | --- | --- | --- | --- | --- | --- |
+| 7 | −1 | 26,112 B (6) | **14.2 % / 85.8 %** | 28,128 B (15.3 %) | 1,440 B | 0 of 188 (54 refused) |
+| 8 | −1 | 18,560 B (8) | **10.1 % / 89.9 %** | 18,560 B (10.1 %) | 512 B | 1 of 391 (0.26 %; 274 refused), `/status` 254 B |
+| 7 | 32768 | 20,976 B (8) | **11.4 % / 88.6 %** | 25,824 B (14.1 %) | 1,152 B | 0 of 173 (48 refused) |
+| 8 | 32768 | 20,624 B (8) | **11.2 % / 88.8 %** | 20,624 B (11.2 %) | 400 B | 0 of 386 (270 refused) |
+
+- **At 7 no true failure in any of 4 runs; at 8 a `/status` piece failed in 3 of 4 runs** (twice
+  0.26-0.55 %, once 0.30 %). H at 8 under the same load (§5.4): 0 at −1, 1 at 32768 — so F′'s extra
+  4,544 B of heap and its harder ceiling did **not** make 8 clean, against the expectation in §7.
+- **Peak heap in use at 7: 85.8-88.6 % of the heap; at 8: 88.8-89.9 %.** The largest free block at
+  8 falls to 400-512 B — two 256 B pieces' worth.
+- **Refusals dominate at 8 on a limit of 8**: 65-71 % of all requests refused, because connections
+  still closing count against the limit while their clients have already reconnected (§6.3); at 7,
+  25-29 %. Completed requests per minute
+  barely change (99-134): the board is the bottleneck.
+- **Refusal cross-check gap** (host > device by 0-13): the load starts as soon as `/status` answers,
+  a few seconds before the device script installs its rejection counter at `READY` (the board was
+  already at 8 open 129 ms after `READY` in the −1 N=8 run), so early rejections reach only the host
+  count. No `Connection reclaimed` or other socket-error line on the device in those runs. Tool fix
+  pending: install the counter when the webserver exists, not at `READY`.
+- **Owner's question: is the collecting instrumentation inflating heap use?** Against it: the
+  non-collecting runs, whose sampler neither collects nor meaningfully allocates, show the same
+  `/status` failures at 8; a collect can only raise free heap; the same method gave 14.2 % at N=6 on
+  H the day before. The "better" figures of 2026-09-23 (§5.3: 24.6 % at 7, 20.7 % at 8) were the
+  **rounds** load, not peak. Not excluded: the sampler's wake-ups and 100 ms collects stretch
+  requests a little (more overlap), and the device script's own compiled code sits in the heap for
+  the whole run (production's `main.py` is frozen) — a few KB, equal in every run. **A control
+  without any sampler is proposed (§7), not yet run.**
+
+Verbatim (`device: WEBSERVER …` lines omitted):
+
+```
+# m1
+N= 7 GC_THRESHOLD=-1 | STABLE | complete 123/170 | refused 47 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     at the minimum (t=20197ms conns=7 free=11008): No. of 1-blocks: 4318, 2-blocks: 500, max blk sz: 64, max free sz: 46
+     PEAK_SUMMARY heap=183360 min_free_after_gc=11008 collections=205 rejected=47
+     PEAK_AT conns=0 samples=3487 min_free_after_gc=57008
+     PEAK_AT conns=1 samples=2 min_free_after_gc=-1
+     PEAK_AT conns=2 samples=8 min_free_after_gc=-1
+     PEAK_AT conns=3 samples=2 min_free_after_gc=-1
+     PEAK_AT conns=5 samples=7 min_free_after_gc=51792
+     PEAK_AT conns=6 samples=4 min_free_after_gc=41696
+     PEAK_AT conns=7 samples=667 min_free_after_gc=11008
+     PEAK_AT conns=8 samples=257 min_free_after_gc=22416
+     refusals cross-check: host counted 47, device rejected 47 (a gap means a reset the ceiling did not cause)
+N= 8 GC_THRESHOLD=-1 | UNSTABLE | complete 105/366 | refused 259 (expected) | failed 2 (0.55 %) | device allocation-failure lines 4 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     at the minimum (t=540ms conns=8 free=12160): No. of 1-blocks: 3969, 2-blocks: 523, max blk sz: 64, max free sz: 77
+     PEAK_SUMMARY heap=183360 min_free_after_gc=12160 collections=224 rejected=246
+     PEAK_AT conns=0 samples=3487 min_free_after_gc=60224
+     PEAK_AT conns=1 samples=9 min_free_after_gc=-1
+     PEAK_AT conns=2 samples=1 min_free_after_gc=-1
+     PEAK_AT conns=3 samples=11 min_free_after_gc=64016
+     PEAK_AT conns=4 samples=9 min_free_after_gc=55872
+     PEAK_AT conns=5 samples=3 min_free_after_gc=-1
+     PEAK_AT conns=6 samples=5 min_free_after_gc=47008
+     PEAK_AT conns=7 samples=76 min_free_after_gc=19008
+     PEAK_AT conns=8 samples=744 min_free_after_gc=12160
+     refusals cross-check: host counted 259, device rejected 246 (a gap means a reset the ceiling did not cause)
+     2 x /status status500
+     device: MemoryError: memory allocation failed, allocating 252 bytes
+     device: MemoryError: memory allocation failed, allocating 252 bytes
+# t32
+N= 7 GC_THRESHOLD=32768 | STABLE | complete 120/167 | refused 47 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     at the minimum (t=34825ms conns=8 free=17344): No. of 1-blocks: 3106, 2-blocks: 522, max blk sz: 64, max free sz: 257
+     PEAK_SUMMARY heap=183360 min_free_after_gc=17344 collections=412 rejected=45
+     PEAK_AT conns=0 samples=3357 min_free_after_gc=68176
+     PEAK_AT conns=1 samples=2 min_free_after_gc=78416
+     PEAK_AT conns=2 samples=3 min_free_after_gc=-1
+     PEAK_AT conns=3 samples=11 min_free_after_gc=66640
+     PEAK_AT conns=4 samples=37 min_free_after_gc=62224
+     PEAK_AT conns=5 samples=1 min_free_after_gc=63440
+     PEAK_AT conns=6 samples=14 min_free_after_gc=45664
+     PEAK_AT conns=7 samples=621 min_free_after_gc=17920
+     PEAK_AT conns=8 samples=260 min_free_after_gc=17344
+     refusals cross-check: host counted 47, device rejected 45 (a gap means a reset the ceiling did not cause)
+N= 8 GC_THRESHOLD=32768 | UNSTABLE | complete 99/338 | refused 238 (expected) | failed 1 (0.30 %) | device allocation-failure lines 2 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     at the minimum (t=47541ms conns=8 free=11552): No. of 1-blocks: 3256, 2-blocks: 551, max blk sz: 64, max free sz: 30
+     PEAK_SUMMARY heap=183360 min_free_after_gc=11552 collections=406 rejected=228
+     PEAK_AT conns=0 samples=3364 min_free_after_gc=67744
+     PEAK_AT conns=1 samples=14 min_free_after_gc=68208
+     PEAK_AT conns=2 samples=13 min_free_after_gc=59888
+     PEAK_AT conns=3 samples=9 min_free_after_gc=59792
+     PEAK_AT conns=5 samples=7 min_free_after_gc=53040
+     PEAK_AT conns=6 samples=2 min_free_after_gc=-1
+     PEAK_AT conns=7 samples=68 min_free_after_gc=17744
+     PEAK_AT conns=8 samples=737 min_free_after_gc=11552
+     refusals cross-check: host counted 238, device rejected 228 (a gap means a reset the ceiling did not cause)
+     1 x /status status500
+     device: MemoryError: memory allocation failed, allocating 255 bytes
+# m1live
+N= 7 GC_THRESHOLD=-1 | STABLE | complete 134/188 | refused 54 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     at the minimum (t=57125ms conns=6 free=26112): No. of 1-blocks: 2949, 2-blocks: 496, max blk sz: 64, max free sz: 90
+     PEAK_SUMMARY heap=183360 min_free_after_gc=26112 collections=1036 rejected=49
+     PEAK_AT conns=0 samples=734 min_free_after_gc=69584
+     PEAK_AT conns=1 samples=1 min_free_after_gc=69440
+     PEAK_AT conns=2 samples=1 min_free_after_gc=64736
+     PEAK_AT conns=3 samples=1 min_free_after_gc=55200
+     PEAK_AT conns=4 samples=5 min_free_after_gc=43888
+     PEAK_AT conns=6 samples=3 min_free_after_gc=26112
+     PEAK_AT conns=7 samples=205 min_free_after_gc=28128
+     PEAK_AT conns=8 samples=86 min_free_after_gc=29136
+     refusals cross-check: host counted 54, device rejected 49 (a gap means a reset the ceiling did not cause)
+N= 8 GC_THRESHOLD=-1 | UNSTABLE | complete 116/391 | refused 274 (expected) | failed 1 (0.26 %) | device allocation-failure lines 2 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     at the minimum (t=40761ms conns=8 free=18560): No. of 1-blocks: 3106, 2-blocks: 531, max blk sz: 64, max free sz: 32
+     PEAK_SUMMARY heap=183360 min_free_after_gc=18560 collections=1017 rejected=267
+     PEAK_AT conns=0 samples=727 min_free_after_gc=68912
+     PEAK_AT conns=1 samples=1 min_free_after_gc=66080
+     PEAK_AT conns=2 samples=1 min_free_after_gc=52560
+     PEAK_AT conns=4 samples=2 min_free_after_gc=48720
+     PEAK_AT conns=5 samples=6 min_free_after_gc=35712
+     PEAK_AT conns=6 samples=2 min_free_after_gc=33808
+     PEAK_AT conns=7 samples=29 min_free_after_gc=23248
+     PEAK_AT conns=8 samples=249 min_free_after_gc=18560
+     refusals cross-check: host counted 274, device rejected 267 (a gap means a reset the ceiling did not cause)
+     1 x /status status500
+     device: MemoryError: memory allocation failed, allocating 254 bytes
+# t32live
+N= 7 GC_THRESHOLD=32768 | STABLE | complete 125/173 | refused 48 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     at the minimum (t=34639ms conns=8 free=20976): No. of 1-blocks: 2932, 2-blocks: 502, max blk sz: 64, max free sz: 72
+     PEAK_SUMMARY heap=183360 min_free_after_gc=20976 collections=1035 rejected=42
+     PEAK_AT conns=0 samples=744 min_free_after_gc=78608
+     PEAK_AT conns=1 samples=1 min_free_after_gc=76192
+     PEAK_AT conns=3 samples=1 min_free_after_gc=61136
+     PEAK_AT conns=4 samples=1 min_free_after_gc=59152
+     PEAK_AT conns=5 samples=4 min_free_after_gc=55872
+     PEAK_AT conns=6 samples=3 min_free_after_gc=44848
+     PEAK_AT conns=7 samples=203 min_free_after_gc=25824
+     PEAK_AT conns=8 samples=78 min_free_after_gc=20976
+     refusals cross-check: host counted 48, device rejected 42 (a gap means a reset the ceiling did not cause)
+N= 8 GC_THRESHOLD=32768 | STABLE | complete 116/386 | refused 270 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     at the minimum (t=27459ms conns=8 free=20624): No. of 1-blocks: 3053, 2-blocks: 516, max blk sz: 64, max free sz: 25
+     PEAK_SUMMARY heap=183360 min_free_after_gc=20624 collections=1014 rejected=263
+     PEAK_AT conns=0 samples=723 min_free_after_gc=77840
+     PEAK_AT conns=1 samples=2 min_free_after_gc=76048
+     PEAK_AT conns=2 samples=1 min_free_after_gc=70176
+     PEAK_AT conns=3 samples=2 min_free_after_gc=57552
+     PEAK_AT conns=4 samples=1 min_free_after_gc=46240
+     PEAK_AT conns=5 samples=2 min_free_after_gc=43984
+     PEAK_AT conns=6 samples=2 min_free_after_gc=42624
+     PEAK_AT conns=7 samples=24 min_free_after_gc=22336
+     PEAK_AT conns=8 samples=257 min_free_after_gc=20624
+     refusals cross-check: host counted 270, device rejected 263 (a gap means a reset the ceiling did not cause)
+```
+
 ## 6. Findings
 
 1. **The wall is the `/status` JSON piece, not the static files any more.** Every true failure at
@@ -412,13 +575,12 @@ N= 6 GC_THRESHOLD=-1 | STABLE | complete 132/132 | failed 0 (0.00 %) | device al
 
 ## 7. Open — next sitting
 
-1. **Image built for 8 (F′), N = 7 and 8, peak load** (owner's request, not started): four commands,
-   one boot per level, ~30 min:
-   `… combined_load_sweep.py 7 8 --peak`, `… --peak --threshold 32768`,
-   `… --peak --margin`, `… --peak --margin --threshold 32768`. Expected against H at 8: fewer
-   connections in flight (anything above 8, closing ones included, is refused before a handler runs)
-   and 4,648 B more heap — fewer memory failures, more refusals.
-2. **The exact peak live set at 7, 8 (and 9 on H)** — `--peak --margin`; only N = 6 exists (§5.5).
+1. **Instrumentation control** (owner's question, §5.6): the same peak load on F′ at N = 8, ≥ 3
+   boots at −1 with **no sampler at all** (no samples, no rejection counter), counting host failures
+   and device allocation lines only; plus the device script's own heap footprint printed once at
+   start. Same failure rate as §5.6 → the instrumentation is not the cause. Needs a `--no-sampler`
+   switch in the tool.
+2. **The exact peak live set on H at 7, 8, 9** — `--peak --margin`; only N = 6 exists (§5.5); F′ at 7/8 is in §5.6.
 3. **Repeats**: every peak row is one run. The 0-vs-1 failure differences at 8 need ≥ 3 boots per
    cell before they mean anything.
 4. **Owner decisions**: the limit itself; whether `_open_conns` should drop at response-written
