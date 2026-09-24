@@ -346,7 +346,7 @@ information):
   allocation. Full account and its measured effect: `SPECIFICATION.md` Part I.4(f.1). **Both stages are
   runnable and both are run**: `scripts/test.sh` is the (e) stage at MicroPython's own reactive
   `-1`, and `GC_THRESHOLD=32768 scripts/test.sh` is the (f) stage with the value the firmware's boot
-  entry sets — 85/85 files and zero `MemoryError`s at each, plus CI's own `unit-tests` and
+  entry sets — every file, with zero `MemoryError`s at each (87/87 on 2026-09-24), plus CI's own `unit-tests` and
   `unit-tests-gc-threshold` jobs. The (e) run is what proves the design stands on its own; the
   threshold is defence in depth on top of it, never a substitute for it. It is also not redundant:
   on silicon it is what carries the boot placement gain into the run phase (80% held against 12% at

@@ -173,8 +173,9 @@ Result: FAILED
 ```
 
 All three (`lint.sh`/`typecheck.sh`/`test.sh`) run in GitHub Actions CI
-(`.github/workflows/ci.yml`) on every push/PR, plus `test.sh --coverage` as its own non-gating
-`unit-tests-coverage` job and `GC_THRESHOLD=32768 scripts/test.sh` as a gating
+(`.github/workflows/ci.yml`) on every push/PR, plus `test.sh --coverage` as its own
+`unit-tests-coverage` job — its coverage number advisory, its test result gating (SPECIFICATION.md
+Part E.5.3) — and `GC_THRESHOLD=32768 scripts/test.sh` as a gating
 `unit-tests-gc-threshold` one (both split out from the main test job so their own wall-clock cost
 never sits on the critical path other jobs wait on). Config lives in the root `pyproject.toml`; see CLAUDE.md's
 "Code quality tooling" section
