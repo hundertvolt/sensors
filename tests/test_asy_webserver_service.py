@@ -2989,6 +2989,91 @@ def test_the_server_passes_its_own_backlog_to_start_server() -> None:
     assert recorded["backlog"] == 8, recorded
 
 
+# -- Mutation-found gaps: each test below fails against one specific plausible slip ---------------
+
+
+def test_h2_piece_writer_keeps_a_piece_that_lands_exactly_on_the_cap_whole() -> None:
+    # The cap is inclusive: two fragments summing to exactly max_bytes share one piece, and only
+    # the next one starts a new piece - ">=" would split at the cap and double the write count.
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, max_bytes=4)
+    for fragment in ("ab", "cd", "e"):
+        writer.add(fragment)
+    writer.flush()
+    assert pieces == ["abcd", "e"], pieces
+
+
+def test_h2_a_tuple_value_is_walked_like_a_list_never_dumped_as_one_string() -> None:
+    # json.dumps() renders a tuple as a list, so dumping one whole produces the same text - as a
+    # single allocation the size of the value, which is exactly what the writer exists to avoid.
+    value = tuple(range(60))
+    pieces = _written(value, max_bytes=16)
+    assert "".join(pieces) == json.dumps(value)
+    assert max(len(p) for p in pieces) <= 16, [len(p) for p in pieces]
+
+
+def test_a_streamed_bodys_content_length_counts_bytes_not_characters() -> None:
+    # A device or sensor name is free text; with any non-ASCII character in it, a character count
+    # declares a short body and the client stops reading before the closing brace.
+    res = run(_stream_dict_response({"Name": "Wohnzimmer \u00e4\u00f6\u00fc \u20ac"}, _WIRE_CHUNK_BYTES))
+    body = status_body(res)
+    assert int(res.headers["Content-Length"]) == len(body), (res.headers["Content-Length"], len(body))
+    assert len(body) > len(body.decode())
+    assert json.loads(body) == {"Name": "Wohnzimmer \u00e4\u00f6\u00fc \u20ac"}
+
+
+def test_serve_never_swallows_its_own_tasks_cancellation_and_still_frees_the_slot() -> None:
+    # A shutdown cancels every connection task; swallowed, the task would end "normally" and
+    # whoever cancelled it could never tell - while the slot must be released either way.
+    service, app = _make_service(outer_cap_s=10.0)
+
+    async def _hang(_reader: object, _writer: object) -> None:
+        await asyncio.Event().wait()
+
+    app.handle_request = _hang
+    writer = _ScriptedWriter()
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(service._serve(_ScriptedReader([]), writer))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            return True
+        return False
+
+    assert run_timed(scenario()) is True, "the cancellation was swallowed"
+    assert writer.close_called is True
+    assert run(service._open_conns.get_value()) == 0
+
+
+def test_a_body_that_never_arrives_is_logged_as_a_read_phase_timeout() -> None:
+    # The body is read with readexactly(), not readline(): microdot swallows a timeout there as it
+    # does for the headers, so the proxy's own log is the only trace this connection ever leaves.
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=2.0)
+    request = _request_bytes("PUT", "/status", b"", {"Content-Length": "10"})
+    run_timed(service._serve(_ScriptedReader([(0.0, request)]), _ScriptedWriter()), timeout_s=2.0)
+    entry = next(iter(run(service.get_error_counter()).values()))
+    assert entry["ErrCount"] == 1, entry
+    assert run(service._open_conns.get_value()) == 0
+
+
+class _ResetDuringBodyReader(_ScriptedReader):
+    async def readexactly(self, _n: int) -> bytes:
+        raise OSError(104, "ECONNRESET")
+
+
+def test_nothing_is_written_to_a_peer_that_reset_while_its_body_was_read() -> None:
+    # The same peer-gone rule as a reset during the headers, reached through the other read method.
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=1.0)
+    request = _request_bytes("PUT", "/status", b"", {"Content-Length": "10"})
+    writer = _ScriptedWriter()
+    run_timed(service._serve(_ResetDuringBodyReader([(0.0, request)]), writer), timeout_s=2.0)
+    assert writer.written == b"", writer.written
+    assert run(service._open_conns.get_value()) == 0
+
+
 if __name__ == "__main__":
     import microtest
 

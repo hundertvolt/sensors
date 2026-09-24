@@ -4,6 +4,8 @@ Every response it sees carries `Connection: close`, so no keep-alive support is 
 import asyncio
 import json
 
+from _strict_json import check_strict_json
+
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
@@ -26,9 +28,10 @@ class HttpResponse:
     # dict - hence dict rather than a bare value. The value side stays Any because callers index
     # nested levels, which no non-Any JSON alias expresses without a cast at every site.
     def json(self) -> "dict[str, Any]":
-        # json.loads()'s stub types its argument AnyStr and so rejects bytearray - a stub gap,
-        # not a runtime one: mod_json_loads() reads through mp_get_buffer_raise(), the generic
-        # buffer protocol bytearray implements (confirmed against the pinned source).
+        # Checked strictly first: the interpreter's json.loads() parses a separator slip the
+        # browser's JSON.parse() rejects. Its stub types the argument AnyStr, refusing bytearray -
+        # a stub gap only: mod_json_loads() reads any buffer (confirmed against the pinned source).
+        check_strict_json(self.body)
         decoded: dict[str, Any] = json.loads(self.body)  # type: ignore[type-var]
         return decoded
 

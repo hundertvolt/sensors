@@ -2,6 +2,7 @@
 own test, driven by a deliberately malformed fixture built from _toml_fixtures.base_doc() - never
 just incidentally exercised by the six real device TOMLs happening to be valid."""
 
+import importlib.util
 import shutil
 from pathlib import Path
 from types import ModuleType
@@ -1484,6 +1485,72 @@ def test_an_lwip_entry_that_is_not_a_table_is_refused_by_the_loader(tmp_path: Pa
     versions = write_text(tmp_path, "versions", "lwip = 5\n")
     with pytest.raises(BuildError, match=r"\[lwip\] in .* must be a table"):
         lwip_macros(versions)
+
+
+@pytest.mark.parametrize(
+    ("content", "why"),
+    [
+        (None, "No such file"),
+        ("[micropython]\nref = 'v1.29.0'\n", "'lwip'"),
+        ("[lwip\n", "Expected ']'"),
+    ],
+)
+def test_an_unreadable_lwip_table_is_a_named_build_error_never_a_traceback(tmp_path: Path, content: "str | None", why: str) -> None:
+    # Missing file, missing table, broken TOML: the three ways the loader can fail, each naming
+    # the file and the ceiling it bounds rather than escaping as OSError/KeyError/TOMLDecodeError.
+    from buildgen.model import lwip_macros
+
+    versions = tmp_path / "versions.toml" if content is None else write_text(tmp_path, "versions", content)
+    with pytest.raises(BuildError, match=r"cannot read the \[lwip\] table from .*versions\.toml") as info:
+        lwip_macros(versions)
+    assert why in str(info.value), info.value
+    assert info.value.field == "max_connections"
+
+
+def test_an_unloadable_override_module_is_a_named_build_error(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(importlib.util, "spec_from_file_location", lambda *_a, **_k: None)
+    with pytest.raises(BuildError, match=r"cannot load toolchain/micropython_overrides\.py"):
+        _build(tmp_path, src_dir, base_doc())
+
+
+def _webserver_src(tmp_path: Path, init: str) -> Path:
+    (tmp_path / "asy_webserver_service.py").write_text(f"class Other:\n    def __init__(self, max_connections=99): ...\n\nclass WebserverService:\n    {init}\n")
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    ("init", "want"),
+    [
+        ("def __init__(self, a, *, max_connections: int = 7, backlog: int = 8): ...", 7),
+        ("def __init__(self, a, max_connections=5, backlog=6): ...", 5),
+        ("def __init__(self, max_connections, *, backlog=6, other=max_connections): ...", None),
+        ("def __init__(self, *, max_connections=True): ...", None),
+        ("def __init__(self, *, max_connections=MAX): ...", None),
+        ("def setup(self, *, max_connections=4): ...", None),
+    ],
+)
+def test_webserver_init_default_reads_only_an_int_literal_of_the_real_class(tmp_path: Path, init: str, want: "int | None") -> None:
+    # Keyword-only and positional defaults both count; a same-named argument on another class, a
+    # bool, a name, or a method other than __init__ never does - each is refused by name instead.
+    from buildgen.validate import webserver_init_default
+
+    src = _webserver_src(tmp_path, init)
+    if want is not None:
+        assert webserver_init_default(src, "max_connections") == want
+        return
+    with pytest.raises(BuildError, match=r"no longer has a readable int default for 'max_connections'"):
+        webserver_init_default(src, "max_connections")
+
+
+@pytest.mark.parametrize("content", [None, "class WebserverService(:\n"])
+def test_an_unreadable_webserver_source_is_a_named_build_error(tmp_path: Path, content: "str | None") -> None:
+    from buildgen.validate import webserver_init_default
+
+    if content is not None:
+        (tmp_path / "asy_webserver_service.py").write_text(content)
+    with pytest.raises(BuildError, match=r"cannot read .*asy_webserver_service\.py to resolve WebserverService's own backlog default") as info:
+        webserver_init_default(tmp_path, "backlog")
+    assert info.value.field == "backlog"
 
 
 @pytest.mark.parametrize("field", ["max_connections", "backlog"])

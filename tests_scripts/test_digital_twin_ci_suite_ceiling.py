@@ -143,3 +143,32 @@ def test_an_unreadable_ceiling_fails_the_run_once_and_never_spawns(ci_suite: Mod
     assert "cannot read the device's ceiling" in ci_suite._FAILURES[0]
     assert "is not TOML" in ci_suite._FAILURES[0]
     assert stubbed_run == []
+
+
+def test_a_dut_that_never_serves_fails_the_run_once_and_still_shuts_it_down(ci_suite: ModuleType, stubbed_run: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # The run's own catch: a crash here is one named failure, never an escape that skips the
+    # shutdown and leaves a twin holding the port for every later run.
+    def never_serves(_proc: object) -> None:
+        raise TimeoutError("no answer on /status within 60s")
+
+    shut_down: list[str] = []
+
+    def shutdown(_proc: object, label: str) -> int:
+        shut_down.append(label)
+        return 0
+
+    monkeypatch.setattr(ci_suite, "_configured_max_connections", lambda _device: 3)
+    monkeypatch.setattr(ci_suite, "_wait_until_serving", never_serves)
+    monkeypatch.setattr(ci_suite, "_shutdown", shutdown)
+    ci_suite._run_11b_full_ceiling_concurrency(_ctx(ci_suite, tmp_path))
+    assert ci_suite._FAILURES == ["Run 11b (full-ceiling concurrency): TimeoutError('no answer on /status within 60s')"]
+    assert shut_down == ["Run 11b"]
+
+
+@pytest.mark.usefixtures("json_server")
+def test_an_unclean_shutdown_after_a_served_ceiling_is_still_a_failure(ci_suite: ModuleType, stubbed_run: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(ci_suite, "_configured_max_connections", lambda _device: 3)
+    monkeypatch.setattr(ci_suite, "_shutdown", lambda _proc, _label: 1)
+    ci_suite._run_11b_full_ceiling_concurrency(_ctx(ci_suite, tmp_path))
+    assert len(ci_suite._FAILURES) == 1, ci_suite._FAILURES
+    assert "Run 11b: clean shutdown (exit code 1)" in ci_suite._FAILURES[0]

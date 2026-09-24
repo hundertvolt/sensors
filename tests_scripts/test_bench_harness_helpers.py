@@ -123,3 +123,49 @@ def test_the_worker_rule_sees_a_worker_that_catches_only_oserror() -> None:
 @pytest.mark.parametrize("module", sorted((TESTS_HARDWARE / "bench").glob("test_*.py")), ids=lambda p: p.name)
 def test_every_bench_thread_worker_survives_a_cut_off_answer(module: Path) -> None:
     assert _unguarded_fetches(module.read_text()) == [], module.name
+
+
+def test_wait_for_script_server_stops_waiting_for_the_script_when_its_test_ends(monkeypatch: pytest.MonkeyPatch) -> None:
+    # main.py's server already gone, the script's never arriving: the stop, not the 60s timeout, ends it.
+    monkeypatch.setattr(http_client, "fetch", _fetch_answering([None]))
+    stop = threading.Event()
+    threading.Timer(0.2, stop.set).start()
+    started = time.monotonic()
+    assert harness.wait_for_script_server("dut", stop, timeout_s=60.0, handover_s=0.0) is False
+    assert time.monotonic() - started < 2.0
+
+
+def test_configured_max_connections_is_the_builds_own_ceiling_for_every_device() -> None:
+    from buildgen.validate import device_max_connections
+
+    for toml in sorted((harness.REPO_ROOT / "devices").glob("*.toml")):
+        want = device_max_connections(toml, harness.REPO_ROOT / "src")
+        assert harness.configured_max_connections(toml.stem) == want, toml.name
+
+
+class _HeldSocket:
+    def __init__(self, outcome: bytes | type[OSError]) -> None:
+        self._outcome = outcome
+
+    def settimeout(self, _timeout: float) -> None:
+        pass
+
+    def recv(self, _size: int) -> bytes:
+        if isinstance(self._outcome, bytes):
+            return self._outcome
+        raise self._outcome
+
+
+def test_a_probe_whose_connections_are_all_still_open_stands() -> None:
+    harness._assert_probe_held([_HeldSocket(TimeoutError), _HeldSocket(TimeoutError)], time.monotonic())
+
+
+@pytest.mark.parametrize(
+    ("outcome", "shown"),
+    [(b"", "b''"), (b"HTTP/1.0 408", "HTTP/1.0 408"), (ConnectionResetError, "<reset>")],
+)
+def test_a_probe_with_any_connection_closed_answered_or_reset_is_voided_by_index(outcome: bytes | type[OSError], shown: str) -> None:
+    # A FIN, an answer or an RST each mean the connection was not held when the refusal landed.
+    with pytest.raises(AssertionError, match=r"connection 1 was no longer held") as info:
+        harness._assert_probe_held([_HeldSocket(TimeoutError), _HeldSocket(outcome)], time.monotonic())
+    assert shown in str(info.value), info.value

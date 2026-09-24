@@ -3216,6 +3216,11 @@ Sensirion's own reference C and is unreachable for any input this driver produce
 **31 genuinely uncovered lines across 8 files**, all of which now have tests — the register above
 is what remains, not a backlog.
 
+Six more re-checks were added on 2026-09-24: `asy_fram_manager.py`'s four `None` returns after a
+buffer accessor (`LockableBuffer.buf` is fixed at construction, so once one accessor on it returned
+non-`None` every later one does), `crc_checks.py`'s `_crc()` `poly is None` return (each caller checks
+`poly` first), and `asy_fram_driver.py`'s `verify_present()` ID-check error (its own comment has why).
+
 A `finally:` body is **not** one of these patterns, despite looking like one: its lines fire a trace
 event only when an exception actually passes through, so a `finally` that only ever runs on the
 normal return path reads as uncovered. That is a real missing test — of cancellation — not an
@@ -3750,6 +3755,10 @@ the same strip.
 scheduler's poll wait** — a real SIGINT propagates straight out without resuming/unwinding the
 suspended coroutine, so its own `try`/`finally` never runs. `digital_twin/`'s `__main__` blocks
 re-run cleanup from plain synchronous code in an outer `except KeyboardInterrupt:` to compensate.
+
+**MicroPython's `json.loads()` is not a JSON validator**: `extmod/modjson.c`'s tokenizer skips
+`,` and `:` exactly like whitespace, so `'{,"a":1 "b":2}'` parses as `{"a": 1, "b": 2}`. The browser's
+`JSON.parse()` rejects that, so a test of emitted JSON checks it with `digital_twin/_strict_json.py`.
 
 **Always check current MicroPython/Microdot documentation before asserting how an API behaves** —
 never rely on training-data memory. **Whenever the pinned version changes (and periodically

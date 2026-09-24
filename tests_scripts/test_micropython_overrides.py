@@ -535,6 +535,79 @@ class TestLwipEnsemble:
         assert any("PBUF_POOL_BUFSIZE (4) <= MEM_ALIGNMENT (4)" in p for p in problems), problems
         assert any("PBUF_POOL_BUFSIZE (4) leaves no room" in p for p in problems), problems
 
+    @pytest.mark.parametrize(
+        ("forced", "expect"),
+        [
+            # opt.h's ceil(4 * SND_BUF / MSS) is never below 2 * floor(SND_BUF / MSS) ...
+            ({"TCP_SND_QUEUELEN": 15}, "TCP_SND_QUEUELEN (15) < 2 * (TCP_SND_BUF / TCP_MSS) (16)"),
+            # ... and its min(..., SND_BUF - 1) never reaches SND_BUF, so only a forced value gets here.
+            ({"TCP_SNDLOWAT": 6400}, "TCP_SNDLOWAT (6400) >= TCP_SND_BUF (6400)"),
+        ],
+    )
+    def test_the_send_queue_checks_are_restated_even_though_the_formula_keeps_them_clear(self, overrides: ModuleType, monkeypatch: pytest.MonkeyPatch, forced: "dict[str, int]", expect: str) -> None:
+        real = overrides.derive_lwip_dependents
+        monkeypatch.setattr(overrides, "derive_lwip_dependents", lambda m: {**real(m), **forced})
+        problems = overrides.check_lwip_ensemble(_pinned())
+        assert any(expect in p for p in problems), problems
+
+    def test_an_mss_that_underflows_lwips_own_sndlowat_is_refused_by_name(self, overrides: ModuleType) -> None:
+        # init.c's (16 * 1024) - 1 bound, one below and at: 16382 passes this check, 16383 does not.
+        below = overrides.check_lwip_ensemble({**_pinned(), "TCP_MSS": 16382})
+        at = overrides.check_lwip_ensemble({**_pinned(), "TCP_MSS": 16383})
+        assert not any("underflows" in p for p in below), below
+        assert any("TCP_MSS (16383) >= 16383, which underflows" in p for p in at), at
+
+    @pytest.mark.parametrize(
+        ("change", "derived"),
+        [
+            # Each where opt.h's rounding or its floor decides the value, not the common case.
+            ({"TCP_SND_BUF": 6401}, {"TCP_SND_QUEUELEN": 33}),  # ceil(4 * 6401 / 800), not floor
+            ({"TCP_SND_BUF": 3200}, {"TCP_SNDLOWAT": 1601}),  # 2 * MSS + 1 outweighs SND_BUF / 2
+            ({"TCP_SND_BUF": 1600}, {"TCP_SND_QUEUELEN": 8, "TCP_SNDQUEUELOWAT": 5}),  # the floor of 5
+            ({"TCP_SND_BUF": 1601}, {"TCP_SNDLOWAT": 1600}),  # capped at SND_BUF - 1
+            ({"TCP_MSS": 801}, {"PBUF_POOL_BUFSIZE": 876}),  # 801 + 74 rounded up to MEM_ALIGNMENT
+        ],
+    )
+    def test_the_derived_values_follow_opt_hs_rounding_at_its_edges(self, overrides: ModuleType, change: "dict[str, int]", derived: "dict[str, int]") -> None:
+        got = overrides.derive_lwip_dependents({**_pinned(), **change})
+        assert {key: got[key] for key in derived} == derived, got
+
+    @pytest.mark.parametrize(
+        ("at", "past", "problem"),
+        [
+            # init.c's own comparison operators, each pinned on both sides of its boundary: the value
+            # that still passes and the first one refused (lib/lwip/src/core/init.c).
+            ({"TCP_WND": 800}, {"TCP_WND": 799}, "< TCP_MSS"),
+            ({"TCP_SND_BUF": 1600, "TCP_WND": 1600}, {"TCP_SND_BUF": 1599, "TCP_WND": 1599}, "< 2 * TCP_MSS"),
+            ({"TCP_WND": 16 * 802}, {"TCP_WND": 16 * 802 + 1}, "> PBUF_POOL_SIZE * (PBUF_POOL_BUFSIZE - headers)"),
+            ({"TCP_WND": 0xFFFF, "PBUF_POOL_SIZE": 0}, {"TCP_WND": 0x10000, "PBUF_POOL_SIZE": 0}, "> 0xFFFF - it must fit"),
+        ],
+    )
+    def test_each_init_c_check_holds_exactly_at_its_own_boundary(self, overrides: ModuleType, at: "dict[str, int]", past: "dict[str, int]", problem: str) -> None:
+        assert not any(problem in p for p in overrides.check_lwip_ensemble({**_pinned(), **at})), at
+        assert any(problem in p for p in overrides.check_lwip_ensemble({**_pinned(), **past})), past
+
+    @pytest.mark.parametrize(
+        ("at", "past", "problem"),
+        [
+            ({"TCP_SND_QUEUELEN": 2}, {"TCP_SND_QUEUELEN": 1}, "< 2 - lwIP needs"),
+            ({"TCP_SND_QUEUELEN": 0xFFFF}, {"TCP_SND_QUEUELEN": 0x10000}, "> 0xFFFF - it must fit"),
+            ({"TCP_SNDQUEUELOWAT": 31}, {"TCP_SNDQUEUELOWAT": 32}, "TCP_SNDQUEUELOWAT"),
+            ({"TCP_SNDLOWAT": 0xFFFF - 4 * 800 - 1}, {"TCP_SNDLOWAT": 0xFFFF - 4 * 800}, "4 * TCP_MSS below"),
+        ],
+    )
+    def test_each_check_on_a_derived_value_holds_exactly_at_its_own_boundary(
+        self, overrides: ModuleType, monkeypatch: pytest.MonkeyPatch, at: "dict[str, int]", past: "dict[str, int]", problem: str,
+    ) -> None:
+        # opt.h's formulas never reach these edges from a sane table, so the derived value is forced.
+        real = overrides.derive_lwip_dependents
+        forced: dict[str, int] = {}
+        monkeypatch.setattr(overrides, "derive_lwip_dependents", lambda m: {**real(m), **forced})
+        forced.update(at)
+        assert not any(problem in p for p in overrides.check_lwip_ensemble(_pinned())), at
+        forced.update(past)
+        assert any(problem in p for p in overrides.check_lwip_ensemble(_pinned())), past
+
     @pytest.mark.parametrize("ceiling", [0, -1])
     def test_a_ceiling_admitting_no_connection_is_refused_by_name(self, overrides: ModuleType, ceiling: int) -> None:
         # A problem entry, like every other relationship here - never a ZeroDivisionError from the
@@ -784,3 +857,24 @@ class TestBuildFirmwareAppliesTheLwipOverride:
         versions.write_text('[micropython]\nref = "v1.29.0"\n')
         with pytest.raises(setup_toolchain.SetupError, match=r"no \[lwip\] table"):
             setup_toolchain.load_lwip_macros(versions)
+
+    def test_without_an_explicit_table_the_build_applies_versions_tomls_own(self, setup_toolchain: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The path every real `setup` run takes: no table passed, so the pinned one must be what
+        # reaches both the generated header and the readback - never lwIP's or the port's defaults.
+        import tomllib
+
+        with (repo_root / "toolchain" / "versions.toml").open("rb") as f:
+            pinned = tomllib.load(f)["lwip"]
+        assert setup_toolchain.load_lwip_macros() == pinned
+        toolchain_dir = tmp_path / "toolchain"
+        fake_mp_dir = _write_fake_lwip_tree(toolchain_dir / "micropython")
+        verified: list[dict[str, int]] = []
+        monkeypatch.setattr(setup_toolchain, "run", self._fake_runner(fake_mp_dir / "ports" / "rp2", []))
+
+        def record_verify(_build_dir: Path, macros: "dict[str, int]", _compiler: "str | None" = None) -> "dict[str, int]":
+            verified.append(macros)
+            return dict(macros)
+
+        monkeypatch.setattr(setup_toolchain.micropython_overrides, "verify_lwip_macros_in_build", record_verify)
+        setup_toolchain.build_firmware(fake_mp_dir, _REAL_BOARD, 4, toolchain_dir=toolchain_dir)
+        assert verified == [pinned]
