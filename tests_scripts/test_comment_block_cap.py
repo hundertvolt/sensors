@@ -72,8 +72,16 @@ def _docstrings(lines: list[str]) -> list[tuple[int, int]]:
             text = text[:-1]
         while len(text) > 1 and _LONE_QUOTE.match(text[0]):
             text = text[1:]
-        if len(text) > CAP:
-            over.append((first.lineno, len(text)))
+        # A blank line separates a docstring's paragraphs, the way a bare `#` does a comment's.
+        run = 0
+        for line in [*text, ""]:
+            if line.strip():
+                run += 1
+                continue
+            if run > CAP:
+                over.append((first.lineno, run))
+                break
+            run = 0
     return over
 
 
@@ -128,3 +136,9 @@ def test_a_trailing_comment_does_not_start_a_block_but_its_continuation_lines_do
 def test_a_docstrings_lone_closing_delimiter_is_not_a_fourth_line() -> None:
     assert _docstrings(['"""one', "two", "three", '"""']) == []
     assert _docstrings(['"""one', "two", "three", "four", '"""']) == [(1, 4)]
+
+
+def test_a_blank_line_inside_a_docstring_separates_two_paragraphs() -> None:
+    # CLAUDE.md's stated convention; without this the guard would be stricter than the rule it pins.
+    assert _docstrings(['"""one', "two", "three", "", "four", "five", "six", '"""']) == []
+    assert _docstrings(['"""one', "", "two", "three", "four", "five", '"""']) == [(1, 4)]

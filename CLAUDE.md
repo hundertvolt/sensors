@@ -429,18 +429,15 @@ information):
   checks them with `tsc`, so `js/definitions.js`'s ~37-line `@typedef` run is a type declaration,
   not a comment; the prose above it is not exempt. **PEP 723 inline script metadata is the same
   case** — the `# /// script` … `# ///` block four `uv run` scripts carry is read by `uv` itself.
-  **What counts as one block, since a naive line count measures this tree anywhere from 0 to 458**:
-  prose lines only, so a docstring's own lone `"""` line is punctuation; a `# ────` banner rule and a
-  bare `#` separate paragraphs rather than joining them; and a trailing comment on a code line
-  annotates that line, so it never starts a block (a column of annotated data entries is not one
-  long block). `tests_scripts/test_comment_block_cap.py` encodes exactly that and gates it at zero
-  for Python and shell across all eight scopes — JS and CSS keep their own syntax and stay
-  review-enforced. Applied across `src/` in one pass (project
-  owner's direction, 2026-09-18) and repo-wide since: **every scope measures zero over-cap blocks,
-  header and inline alike — Python, JS, CSS and, since 2026-09-22, `scripts/`'s shell**. Keep new
-  code to this bar; nothing enforces it mechanically. How a re-measurement counts: a bare `#` line,
-  or a blank line inside a docstring, separates blocks; divider rules (`# ----`), PEP 723
-  `# /// script` headers and JSDoc `@param`/`@returns` continuation lines are not commentary.
+  Applied across `src/` in one pass (project owner's direction, 2026-09-18) and repo-wide since:
+  **every scope measures zero over-cap blocks, header and inline alike — Python, JS, CSS and, since
+  2026-09-22, `scripts/`'s shell**. Keep new code to this bar. **How a block is counted**, since a
+  naive line count measures this tree anywhere from 0 to 458: prose lines only; a bare `#` line, a
+  blank line inside a docstring and a `# ----` divider rule separate paragraphs rather than joining
+  them; a docstring's own lone `"""` line is punctuation; and a trailing comment annotates its own
+  code line, so it never starts a block. `tests_scripts/test_comment_block_cap.py` gates exactly that
+  at zero for Python and shell in all eight scopes; JS (JSDoc `@param`/`@returns` continuation lines
+  not being commentary) and CSS stay review-enforced.
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
