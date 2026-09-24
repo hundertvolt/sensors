@@ -2,16 +2,17 @@
 
 **What this is.** The measurement side of this branch's connection-scaling and serving work
 (2026-09-22/24): special builds, harnesses, calibrations, hardware tools and the traps that cost
-time. It also holds the instrument reference, measurement principles and traps of
-`REAL_HARDWARE_HANDOVER_PEAK_LOAD.md` (§4, §8, §9), sorted in here; the tests they suggest are in
-`CATALOG_UNIT_TESTS.md` §7. None of it belongs in the everyday suites — too slow, too build-specific, or it needs the
+time, including the silicon instrument chain, measurement principles and bench traps of the
+2026-09-23/24 hardware sittings (whose handovers are deleted; the results are
+`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R). The tests they suggest are in `CATALOG_UNIT_TESTS.md` §7.
+None of it belongs in the everyday suites — too slow, too build-specific, or it needs the
 board. Its companion, `CATALOG_UNIT_TESTS.md`, holds the tests that do. Only methods that finally
 worked are listed; withdrawn claims and dead ends are one line each in §9.
 
 **Temporary, this session's working catalog only.** Kept current while this work continues (a
 instrument added, changed or retired on this topic gets its entry in the same commit), then processed
 into the permanent docs and **deleted before the branch merges**. The twin32 tooling itself is never committed
-(owner, 2026-09-23); what survives the merge is its documentation (MEASUREMENTS §7Q, §10). Scratch
+(owner, 2026-09-23); what survives the merge is its documentation (MEASUREMENTS §7Q, §7R, §10). Scratch
 entries here carry what is needed to rebuild them for the rest of this session.
 
 ---
@@ -181,11 +182,16 @@ Four small scripts, rebuilt from this description:
   - report absolute placement capacity (`placeable(size)`), not a percentage;
   - establish the within-setting spread before comparing settings;
   - never let the load scale with the setting;
-  - measure transients with a collect first and survivors in a fresh process per repeat.
+  - measure transients with a collect first and survivors in a fresh process per repeat;
+  - use a monotonicity check as a validity gate: a contiguity figure that rises with N is placement
+    luck, reported as inconclusive rather than explained away;
+  - never add a transient live set to a permanent (survivor, `.bss`) budget — the first asks "are
+    there enough holes of the right size at peak", the second "how much is gone for good";
+  - prefer the deterministic quantities where board time is scarce: exact admission, ELF/heap sizes,
+    and a wall, which is a step change and so robust to the noise that defeats gradients.
 - Ballast guards use the largest free run, not `gc.mem_free()`.
 
-**Principles from the peak-load sittings** (PEAK_LOAD handover §8, condensed; they hold for any
-future instrument):
+**Principles from the peak-load sittings** (condensed; they hold for any future instrument):
 - **Question and pass criterion first.** Stable means zero true failures **and** zero device
   allocation lines, caught-and-logged ones included. A refusal at a saturated ceiling is expected.
   Peak means back-to-back clients at the ceiling plus forced internal work (the hammer test's SGP40
@@ -288,45 +294,26 @@ board, and that caught bugs each time. *Scratch* stand-ins:
     phases from `_open_conns` (enter at 2 of 3 busy polls, leave after 10 quiet polls, 600 s hard
     window). That script dumps the heap before and after the load and at the instant of each failure
     (at most 3).
-- **`tests_hardware/combined_load_sweep.py`** — the hardware session's per-boot sweep (§10.9 of
-  `BENCH_SITTING_2026-09-23_HANDOVER.md`). **Temporary, to be removed once this work closes; what it
-  does is recorded here so it can be rebuilt.**
-  - `DUT_IP=<ip> uv run python tests_hardware/combined_load_sweep.py <levels…> [--threshold -1]
-    [--raw-dir d]`.
-  - **One fresh boot per listed level**, and a repeated level is a repeated run. Pre-fix failures at
-    N = 5-6 were probabilistic, 1 run in 2-3, so a single clean run proves little.
-  - It writes a copy of `device_scripts/serving_stability_under_combined_load.py` with its
-    `gc.threshold(-1)` line replaced.
-  - Host threads send 12 rounds of N concurrent GETs over
-    `/status /sensors / /measurements /status /networking /sensors /system /js/app.js`.
-  - The static bodies must match an idle reference fetch (made after the board answers `/status`);
-    the JSON bodies must parse. The reference is accepted only as a 200 whose non-empty body equals
-    its `Content-Length`, retried otherwise: every device-script boot drops and rejoins WLAN at
-    ~6 s, and a reference caught in that drop once came back 0 B (sitting §10.10.4).
-  - A torn heap-map capture (`HeapMapError`) is printed and its free run reported as -1; it no
-    longer kills the level and its host tally.
-  - **STABLE** means zero true failures, zero device lines matching `MEMORY_ERROR_MARKERS`, and the
-    driver thread finished. A connection reset before any response (`is_ceiling_close()`) is a
-    refusal, counted separately as expected (owner's rule, 2026-09-23). Between levels it runs
-    `kick_all_stations()`, a hard reset and a 45 s settle. Exit 0 only if every level is STABLE.
-  - **Modes** (`REAL_HARDWARE_HANDOVER_PEAK_LOAD.md` §4.1 and §8 hold the full account and the
-    measurement principles):
-    - default "rounds" — 12 rounds of N parallel GETs with pauses; typical load, not peak.
-    - `--margin` — rounds with a `gc.collect()` before each heap map; prints settled idle and the
-      load window's min/median. Instrumentation: its verdict is not evidence.
-    - `--peak` — N clients back to back for 60 s plus the hammer test's SGP40 reset PUT every 3 s;
-      a 20 ms device sampler that never collects (verdict is evidence; its heap figure is biased low)
-      and a device-side count of reject-when-full closes, cross-checked against the host's refusals.
-    - `--peak --margin` — the same load, a collect every 100 ms: the exact peak live set per
-      open-connection count. Its verdict is not evidence.
-    - `--peak --no-sampler` — the same load with nothing on the device but the production task
-      graph; prints the script's heap footprint once. The instrumentation control.
-  - Validated in the twin (dev's site, fixed firmware): STABLE at 4, 6 and 8, with every body
-    complete. On the pre-fix firmware at G's heap it reports **UNSTABLE at N = 8**: two `/` bodies
-    were cut off, at 0 and 1,024 B. The device printed no line for them (the twin does not print
-    `err_s` for this tool), so **the host-side body check alone catches the defect**, which is why
-    it exists.
-- **The silicon measurement chain around it** (PEAK_LOAD handover §4, instruments A-I):
+- **`tests_hardware/combined_load_sweep.py`** + **`device_scripts/serving_stability_under_combined_load.py`**
+  — the per-boot silicon sweep behind every §7R figure. **Removed from the tree 2026-09-24** once the
+  limit was settled; last present at commit `4914a25`, and HEAP_FRAGMENTATION_MEASUREMENTS.md §10
+  carries its full description. The points that made it trustworthy:
+  - **One fresh boot per listed level**, a repeated level being a repeated run; failures near the
+    wall are probabilistic, so a single clean run proves little.
+  - The idle reference is accepted only as a 200 whose non-empty body equals its `Content-Length`,
+    retried: every device-script boot drops and rejoins WLAN at ~6 s, and a reference caught in
+    that drop once came back 0 B and made every correct page look truncated.
+  - Each request is ok, refused (`is_ceiling_close()`, the hammer test's own classification) or a
+    true failure with its reason. **STABLE** = zero true failures, zero device lines matching
+    `MEMORY_ERROR_MARKERS`, and the driver thread finished.
+  - A torn heap-map capture (`HeapMapError`) is printed and does not kill the level's tally.
+  - Five modes: rounds; `--margin` (collect before each map; verdict not evidence); `--peak`
+    (back-to-back clients + the SGP40 reset PUT, non-collecting 20 ms sampler, device rejection
+    count cross-checked against host refusals); `--peak --margin` (exact live set; verdict not
+    evidence); `--peak --no-sampler` (the control).
+  - Run against the 32-bit twin first: on the pre-fix firmware it reported UNSTABLE at 8 from its
+    host-side body check alone (the device printed nothing), which is why that check exists.
+- **The silicon measurement chain around it** (instruments A-I of the peak-load sittings):
   - **A, image verification.** Configure `devices/<d>.toml` and `[lwip]`, then
     `uv run scripts/build_firmware.py dev`. Run `check_lwip_ensemble(macros, max_connections=L)`
     and `read_lwip_macros_from_build()` (every macro equals the firmware's). Read the GC heap from the
@@ -339,7 +326,7 @@ board, and that caught bugs each time. *Scratch* stand-ins:
     `networking.Connected`. Retry once: the board fell back to hotspot mode three times after a reset.
   - **C, `Board.run_isolated()`**: `mpremote … exec "import machine; machine.WDT(timeout=8000)" run
     <script>`. An 8 s hardware watchdog is armed, and the interpreter is not reset.
-  - **D, `device_scripts/serving_stability_under_combined_load.py`**: sets and prints its gc
+  - **D, `device_scripts/serving_stability_under_combined_load.py`** (removed with the tool): sets and prints its gc
     threshold, then starts `sensortask_dev.main()`. In peak mode it wraps `_open_conns.increment`
     as soon as `sensortask_dev.webserver` exists and counts increments above the limit. At 20 s it
     prints `after_boot` and `READY`, then runs a 150 s window with one probe:
@@ -369,9 +356,18 @@ board, and that caught bugs each time. *Scratch* stand-ins:
   - `error_log_helpers.assert_no_module_logged_a_new_error`, which snapshots every FRAM module's
     counter.
 - **`tests_hardware/bench/test_heap_under_connection_ceiling.py`** with
-  `device_scripts/heap_under_connection_ceiling.py`. No connection can be held past ~15 s
-  (`outer_cap_s`), so holders stagger and recycle at 10 s, and holder threads must be stoppable and
-  joined; one that was not caused a 37-failure cascade.
+  `device_scripts/heap_under_connection_ceiling.py` — the heap while a full ceiling is genuinely
+  held. Four layered defects, each visible only once the one above was fixed:
+  - no connection can be held past ~15 s (`outer_cap_s`; a silent one closes after 5 s), so a 55 s
+    hold measured an idle heap — holders now drip a header line and **recycle at 10 s**;
+  - started together they expired together (7 → 0 → 7), so each is **staggered** by
+    `i × 10 s / N`, and the sampled minimum of the live count is what makes a dump a peak reading;
+  - holder threads must be **stoppable and joined**: one that outlived its test caused a
+    37-failure cascade in every later network test;
+  - `run_isolated()` leaves `main.py` stopped, so the test **restores the board to serving**
+    (`kick_all_stations()` → `hard_reset()` → wait for HTTP) in its own `finally`.
+  - The device script emitted `<<<MEM …` while `heap_map.parse_labelled()` reads
+    `=== MAP <label> ===`: every dump was discarded until the formats were unified.
 - **`harness.py`**:
   - `configured_max_connections()`;
   - `discover_max_connections(dwell_s=0.3)` — its dwell must stay under the 5 s idle close;
@@ -390,7 +386,9 @@ board, and that caught bugs each time. *Scratch* stand-ins:
   - `MEMP_NUM_UDP_PCB` and `LWIP_STATS` are bare `#define`s, so they need the header shim.
   - `CFLAGS_EXTRA` loses to the include order on rp2; `MICROPY_BOARD_DIR` is the working redirect.
   - TIME_WAIT connections use the same PCB pool.
-  - `LWIP_STATS=1` costs 1,916 B.
+  - `LWIP_STATS=1` costs 1,916 B and gives per-pool exhaustion counters (read via `stats_display()`
+    in C, which this firmware does not call). Never needed: the serial console's `MemoryError`
+    tracebacks named the GC heap directly.
 - **Permanent cost, from real ELFs** (`arm-none-eabi-nm`, `__GcHeapEnd − __GcHeapStart`):
   - 196 B per PCB alone;
   - **2,324 B per connection for a coherent ensemble**, the same at every step from 4 to 16;
@@ -400,10 +398,10 @@ board, and that caught bugs each time. *Scratch* stand-ins:
   - ~5,170 B live per parked connection after a collect;
   - after 40-80 served requests, a flat 1.5-1.6 KB residue in total, not per connection;
   - `/status` latency at a fixed offered load of 4 is flat at 4.2-4.5 ms, for limits from 4 to 16.
-- **Dynamic cost at peak, silicon**: E6 → E7 lost ~13.8 KB of free heap at peak. 2,324 B of that is the
-  static step, so each extra in-flight connection holds ~11.5 KB. At 6 there is ~21 % free at peak
-  and the largest block is ~1.5 KB; at 7, 14.3 % and 528 B. The wall is the `/status` piece of
-  242-257 B.
+- **Live set at peak, silicon**: each open connection holds ~7.5-8 KB (idle-to-peak drop per open
+  connection under the collecting sampler: 45.2 KB / 6 on E6, 53.4 KB / 7 on E7). At 6 there is
+  ~21 % free at peak and the largest block is ~1.5 KB; at 7, 14.3 % and 528 B. The wall is the
+  `/status` piece of 242-257 B.
 - **Saturation**: `_open_conns` also counts connections that are still closing, so back-to-back
   clients see ~70 % refusals at every limit. Throughput stays flat at ~2.2 requests/s.
 
@@ -423,13 +421,13 @@ board, and that caught bugs each time. *Scratch* stand-ins:
   - `asyncio` has only `Lock` and `Event`, no `Semaphore`;
   - `os.environ` is missing, so use `os.getenv`;
   - `micropython.mem_info()` with any argument prints the full map.
-- **Silicon bench** (PEAK_LOAD handover §9, §6.6):
+- **Silicon bench**:
   - Every device-script boot drops and rejoins WLAN at ~6 s uptime. A first "is it up" probe can
     succeed on the old link, and a reference fetch in that drop once came back 0 B.
   - Leave > 45 s between a reset and the next `mpremote` attach; a watchdog reset at attach is likely otherwise.
   - After a reset the board may come up in hotspot mode: `kick_all_stations()` + hard reset.
-  - A running Python process keeps its loaded code. A new `combined_load_sweep.py` invocation
-    re-reads both the tool and the device script, so don't edit either between chained runs.
+  - A running Python process keeps its loaded code, while each new invocation of a host tool
+    re-reads it and its device script, so don't edit either between chained runs.
   - Device scripts build their own `AsyFramManager` over the same FRAM, so `errcount` afterwards is
     context, not evidence. A pair E31 (status byte not IDLE at write) + W73 (block 1 invalid,
     restored from block 0) is what an interrupted FRAM block write leaves; the two-copy scheme recovers it.
@@ -440,8 +438,8 @@ board, and that caught bugs each time. *Scratch* stand-ins:
 
 - The "3.5× contiguity cliff at 7 → 8": it was sampled after the burst, with an allocating probe.
 - "1.3 ms per connection": the load scaled with the setting.
-- The "18-connection bar", "12 KB free per connection" and "47 caught / 63 fatal": each measured with
-  a client inside the DUT's heap.
+- The "18-connection bar" and "12 KB free per connection": a client inside the DUT's heap. "47
+  caught / 63 fatal": the transport path alone, nothing else running — an upper bound, not a wall.
 - Cutting churn (joining pieces, gating response construction to 1-3 at a time) changed nothing,
   because size is the variable. A 128 B cap is no better than 256 B: the pieces list grows instead,
   and the writes double.
@@ -452,5 +450,6 @@ board, and that caught bugs each time. *Scratch* stand-ins:
 - The non-collecting peak sampler's heap figure: read late after a GC, biased low; never a peak.
 - The device rejection counter installed at `READY`: host > device by 0-21; now installed at webserver creation.
 - A reference fetch that accepted a 0 B body taken during the WLAN drop.
-- "~13-14 KB per connection plus 2,324 B static" (PEAK_LOAD handover §0 item 2, §6.1 item 2) counts
-  the static part twice; the dynamic step is ~11.5 KB (§7).
+- "~13-14 KB per connection at peak plus 2,324 B static": the 13-14 KB is the E6 → E7 drop in free
+  heap at peak, which already contains the static part and idle noise; the live set per open
+  connection is ~7.5-8 KB (§7).

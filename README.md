@@ -708,23 +708,16 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   result is migrated into the permanent docs; the file goes when the last row does. It authorizes
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
-- **[`CONNECTION_SCALING_PLAN.md`](CONNECTION_SCALING_PLAN.md)** — the plan, verified source
-  findings, measured results and recommendation for raising the simultaneous-TCP-connection ceiling:
-  every ceiling in the path from lwIP's own pools up to `WebserverService`'s admission limit, why
-  those lwIP options are an *ensemble* rather than independent knobs, and the two-sided
-  connections-gained-versus-contiguous-heap-lost bar any candidate setting has to clear. Deleted
-  once its conclusions are migrated into `SPECIFICATION.md`/CLAUDE.md/BACKLOG.md.
-- **[`REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md`](REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md)**
-  — the runnable handover for the one question the digital twin structurally cannot answer: the
-  twin runs on the Unix port, which has no lwIP at all, so the PCB/pbuf ceiling has never been
-  confirmed on silicon. Written standalone for a session with no prior knowledge — a 40-minute fast
-  path, the full ensemble sweep, what to record per row, and the traps.
-  `REAL_HARDWARE_TEST_QUEUE.md` §4A is its index row. Deleted once its results are migrated; it
-  authorizes nothing — CLAUDE.md's go-ahead gate still applies.
+- **[`CATALOG_UNIT_TESTS.md`](CATALOG_UNIT_TESTS.md)** and
+  **[`CATALOG_INSTRUMENTATION.md`](CATALOG_INSTRUMENTATION.md)** — the connection-scaling work's
+  working catalogs: every test it added or sharpened with how each was shown to bite, the test
+  candidates still to decide, and every instrument it used with how to rebuild it. Temporary —
+  distributed and deleted before that branch merges (BACKLOG.md item 45).
 
 Handover files are per-effort throwaways, each owned by the session or pull request named in its own
-first lines and deleted once its findings are migrated or confirmed not to apply — the
-connection-scaling one above is the only one still live. `REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md`
+first lines and deleted once its findings are migrated or confirmed not to apply — none is live
+now. The connection-scaling plan, its five handovers and its bench-sitting log went on 2026-09-24,
+their evidence in `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R; `REAL_HARDWARE_HANDOVER_BOOT_CONTIGUITY.md`
 went that way on 2026-09-22 once the bench sitting closed E1-E4, the two before it on 2026-09-18,
 and `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` the same day, their still-open asks consolidated
 into `REAL_HARDWARE_TEST_QUEUE.md` and their durable findings migrated into `SPECIFICATION.md`

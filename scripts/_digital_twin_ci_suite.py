@@ -1055,7 +1055,7 @@ def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
     # ---- Run 11b: the admission ceiling under real simultaneous load, driven entirely from THIS
     # process. Part E.9: a client sharing the DUT's heap measures its own bookkeeping, and an
     # in-process attempt at exactly this proved it - every "limit" it found was the test client's
-    # own contiguous response buffer, not the firmware's (CONNECTION_SCALING_PLAN.md 8.4.2). ----
+    # own contiguous response buffer, not the firmware's (HEAP_FRAGMENTATION_MEASUREMENTS.md §9). ----
     _clean_state()
     ceiling = _configured_max_connections(ctx.device)
     log11b = ctx.logs_dir / "run11b_full_ceiling_concurrency.log"

@@ -1,6 +1,6 @@
-"""Bench-tier measurement for the connection-scaling decision table
-(REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md §8.3 rows 5, 7 and 8): what the board's heap looks
-like while a full ceiling of connections is genuinely held open, and where its real wall is."""
+"""Bench-tier measurement of the connection ceiling (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.2):
+what the board's heap looks like while a full ceiling of connections is genuinely held open, and
+where its real wall is."""
 
 from __future__ import annotations
 

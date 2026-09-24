@@ -36,6 +36,7 @@ This table is an index; the row's own entry below is what to read before running
 | **The bench host itself** | H1 | **H2 is DONE** (2026-09-22): the Pi4 reports 4x, not the predicted 2x, and the suite is green there — migrated to BACKLOG item 28, which is now closed. H1 needs no board either |
 | **Long soak and the light rig** | S4, M1 | Deliberately separate sittings. M1 is interactive and records the rig geometry S3b depends on |
 | **Findings still open** | F1 | The script that stranded the bench once. Read its row in full before running it |
+| **The connection limit of 6** (§4A) | W3, W4 | The regular pre-merge bench run on the tip; the limit itself is settled |
 
 **What "finished on real hardware" means**: every row above DONE or explicitly EXCLUDED, each
 result migrated into `SPECIFICATION.md`/`CLAUDE.md`/`BACKLOG.md`, and this file deleted. Since
@@ -181,7 +182,7 @@ this file** - it is a queue, not a record.
 
 | # | Suite run | Notes | Status |
 | --- | --- | --- | --- |
-| S3 | The same two with `--allow-persistence-writes` (the bench wrapper alone suffices — it is a strict superset of the flash one) | **RUN ONCE, 2026-09-22: `1 failed, 118 passed, 4 skipped, 6 deselected`, 49:40.** The failure was real and is fixed — `write_config()` only stages, and three `device_scripts/` files never flushed, so two of them were passing tests while writing defaults (MEASUREMENTS §7O). Re-verified on the two affected tests only (`2 passed`) plus the board's own files; a guard now pins it. **Not re-run green end to end, by owner decision** — a second gated pass was stopped mid-run, because permission to spend wear covers one run and "re-run to confirm" is the loop the gate exists to prevent. The 2026-09-23 re-run (Status column) answered R8 and advanced R5; R1 and R4 still need their own investigation | **DONE 2026-09-23 — `124 passed, 4 skipped, 6 deselected`, 53:55, clean end to end** on image A (pre-fix `src/`, `max_connections = 7`), so a baseline for that image rather than a validation of the tip. Closed R8, advanced R5; R1/R4 still need their own investigation. `BENCH_SITTING_2026-09-23_HANDOVER.md` §7 |
+| S3 | The same two with `--allow-persistence-writes` (the bench wrapper alone suffices — it is a strict superset of the flash one) | **RUN ONCE, 2026-09-22: `1 failed, 118 passed, 4 skipped, 6 deselected`, 49:40.** The failure was real and is fixed — `write_config()` only stages, and three `device_scripts/` files never flushed, so two of them were passing tests while writing defaults (MEASUREMENTS §7O). Re-verified on the two affected tests only (`2 passed`) plus the board's own files; a guard now pins it. **Not re-run green end to end, by owner decision** — a second gated pass was stopped mid-run, because permission to spend wear covers one run and "re-run to confirm" is the loop the gate exists to prevent. The 2026-09-23 re-run (Status column) answered R8 and advanced R5; R1 and R4 still need their own investigation | **DONE 2026-09-23 — `124 passed, 4 skipped, 6 deselected`, 53:55, clean end to end** on image A (pre-fix `src/`, `max_connections = 7`), so a baseline for that image rather than a validation of the tip. Closed R8, advanced R5; R1/R4 still need their own investigation. `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.2 |
 | S3b | `scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep` | Only if D2 says the rig is in place. Runs the two long ISL29125 light programs (~10 min combined); they skip otherwise. | OPEN — D2 answered yes, 2026-09-22: the rig is in place |
 | M1 | `scripts/run_manual_hardware_tests.sh --only isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry` | Interactive. Repeatability on an unchanged scene, continuity across the range switch, **and** setting up and writing down the rig geometry S3b depends on. Worth doing before S3b, not after. | OPEN |
 | S4 | Long memory soak (`long_soak` tier), never bundled into S1/S2 | A real long-duration memory-soak run has still never been executed (README.md's own "Further reading" note, carried from the retired hardware-planning docs). Pick the tier deliberately: short=60 s / mid=600 s / long=6 h. | OPEN |
@@ -381,7 +382,7 @@ were put to the owner as open decisions and the answer was "record for the real-
 | R4 | **`ResetErrors` completeness under contention.** Pre-populate the FRAM error logs on several modules, then sweep under R2's reader load and confirm every counter reads back 0. All previous correctness checks were made at idle or with the logs already empty; a silently skipped chunk is invisible today because the call still answers `200`. | CLAUDE.md's FRAM `errcount` rule | OPEN — needs S3's wear-gated run |
 | R5 | **BACKLOG "Refactor targets" — the WP5 deferred-config-write re-confirmation.** The BMP3XX arm passed on 2026-09-17 on WP5 firmware; make that durable rather than one run. The ISL29125 arm is R1, not this row. | BACKLOG, first entry | OPEN — **second green run 2026-09-23** in S3 (both BMP3XX config-write arms passed); whether two runs is durable is the owner's call |
 | R6 | **The `CFGMGR_SYSTEM` setup-order fix's unexplained +0.90 s of boot latency.** Boot latency itself is measured and needs no re-run: pre-WP **7.74 s** → WP1+WP2 **9.80 s** → WP1–WP8 **9.76 s** → +`CFGMGR_SYSTEM` fix **10.66 s** (medians of 5, spread ±0.06 s; 23 reboots, no `WDT_RESET`). Those figures were taken by PR #102, which the owner closed unmerged on 2026-09-18 — they are migrated into `SPECIFICATION.md` Part A.7's boot-latency note, so nothing is lost with the PR. What remains open is only the sub-question: **+0.90 s** is far more than one extra FRAM-backed logger's `setup()` should cost, and is unexplained. Worth understanding before the same reorder is assumed free elsewhere; it does not threaten the watchdog budget, so it is not a reason to revert. | SPECIFICATION.md Part A.7; BACKLOG 33 | OPEN |
-| R8 | **Two newly adopted bench tests, never yet run on silicon** (ported from `main` 2026-09-18, see BACKLOG item 33). `test_isl29125_calibrate_command_push_over_real_rest` pins that a calibration run never moves the *applied* `GainRatio` and that `GainMeas` reaches `/measurements`; `test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value` pins that ratio across a real hard reset. The second is `@pytest.mark.persistence_write`-marked here (it owns two persisting PUTs) where `main` left it unmarked, so it needs D1. Both were written against `main`'s API shape and adapted to this branch's nested `PUT /sensors {"ISL29125": {...}}` body — expect the adaptation to be where a first run goes wrong, if anywhere. | BACKLOG 33 | **DONE 2026-09-23** — both tests passed on silicon in S3's gated run, the first time either ran. `BENCH_SITTING_2026-09-23_HANDOVER.md` §7 |
+| R8 | **Two newly adopted bench tests, never yet run on silicon** (ported from `main` 2026-09-18, see BACKLOG item 33). `test_isl29125_calibrate_command_push_over_real_rest` pins that a calibration run never moves the *applied* `GainRatio` and that `GainMeas` reaches `/measurements`; `test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value` pins that ratio across a real hard reset. The second is `@pytest.mark.persistence_write`-marked here (it owns two persisting PUTs) where `main` left it unmarked, so it needs D1. Both were written against `main`'s API shape and adapted to this branch's nested `PUT /sensors {"ISL29125": {...}}` body — expect the adaptation to be where a first run goes wrong, if anywhere. | BACKLOG 33 | **DONE 2026-09-23** — both tests passed on silicon in S3's gated run, the first time either ran. `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.2 |
 | R9 | **Half closed: the shadow-divergence fix RAN and passed on silicon (§7H.6, the first fully clean bench tier); the `Overrange` field that replaced `W12` has still never run.** `configure()`'s device-session lock was widened to span the whole validate-mutate-write(-rollback) sequence (WP-era fix, unit-tested by `test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight`), but the false `wrnno=11` it fixes only ever manifested under real concurrent bench load - so only real load re-confirms it. Same run covers the `Overrange` half: `device_scripts/isl29125_mechanism_envelope.py` now reads the live field instead of the retired `W12` log entry. | BACKLOG, "Open questions" first entry | OPEN |
 | R7 | **`SPECIFICATION.md` Part A.7's FRAM setup-cost figures are twin-only.** `digital_twin/_fram_chip.py` answers SPI opcodes in memory with zero wire time, so every number there excludes the real per-transaction cost. Re-measure on silicon. Largely the same instrumentation as R6. **Premise corrected by A6 (2026-09-18):** the omitted term is *not* mainly SPI wire time — at 1 MHz six transactions are ~300 us of the measured 2,849 us, so ~90 % is MicroPython interpreter / `machine.SPI` call overhead. Frame the re-measurement that way. | SPECIFICATION.md Part A.7 | OPEN |
 
@@ -426,59 +427,17 @@ the 2026-09-19 tier-3/tier-4 runs (§7H.6).
 
 ---
 
-## 4A. Connection scaling (the raised TCP ceiling) — never run
+## 4A. The connection limit of 6 — what silicon still owes
 
-**RUN 2026-09-23. C1, C2, C5, C5b, C5c and C6 are all closed** — see
-`BENCH_SITTING_2026-09-23_HANDOVER.md`, which is the full record of that sitting and also carries
-the one finding it opened: at `gc.threshold(-1)` the board serves at most **4** concurrent requests
-without an allocation failure, so the shipped ceiling of 7 depends on the threshold being set.
-
-Opened 2026-09-22 by the connection-scaling branch. **`REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md`
-is the runnable form of all of this** — it is written standalone, for a session with no prior
-knowledge, and carries the full method, the traps and the recording table. These rows are the index.
+The limit itself is settled and confirmed on the committed image (SPECIFICATION.md H.7, evidence
+`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R); every row that measured it is closed and deleted. No more
+real-hardware runs happen on the branch that set it (owner, 2026-09-24), so these two wait for the
+regular pre-merge bench run:
 
 | Row | What | Status |
 | --- | --- | --- |
-| C1 | Flash this tree's own `dev` image and confirm the build's own lwIP-macro verification passes on the real build | **DONE 2026-09-23** — all 11 macros read back out of the real firmware translation unit equal what `versions.toml` asks. PLAN §8.7.1 |
-| C2 | `test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures` — the board must admit exactly 7 | **DONE 2026-09-23** — exactly 7, five probes for five; refusal is a clean FIN 6 ms after connect. Needed a probe fix first (SPEC H.7.1). PLAN §8.7.1 |
-| C3 | The rest of the bench tier at the shipped setting: `test_network_resilience.py`, `test_end_to_end_timing.py`, `test_bus_concurrency_under_api_load.py`, `test_memory_stress_bench.py`. All now scale their bursts with the configured ceiling | OPEN |
-| C4 | Record §7's full table for the shipped setting — contiguity after boot and under load, `.bss`/`.data`, latency, every `MemoryError`/`memory allocation failed` spelling, any watchdog reset | OPEN |
-| C5 | The wall, in **two images not a bisection** | **DONE 2026-09-23** — image B admitted all 16, five for five: **no admission wall below 16**, so the shipped 7 has >=2.3x margin and image C was not built. But admission is not service: image B serves only 13/16 and its first 500 lands at N=7. PLAN §8.7.2 |
-| C5b | Every admitted connection actually **served** | **DONE 2026-09-23** — both rows pass on image A at the shipped 7; both fail on image B at 16 (bodies truncated to 3,072 B or empty). PLAN §8.7.2 |
-| C5d | Rows 7/8 of the handover's decision table: the board's heap AT PEAK with a full ceiling genuinely held open - `test_heap_under_connection_ceiling.py` plus its device script | **DONE 2026-09-23** — held at the ceiling 98% of samples, 15 placeable 2 KB blocks at worst against a demand of 7, after four instrument defects were fixed. `BENCH_SITTING_2026-09-23_HANDOVER.md` §3.4 (this row was left OPEN by that sitting's commit and is closed here from its own record) |
-| C5c | Whether `PBUF_POOL_SIZE` really can stay at 16 | **DONE 2026-09-23 — yes.** At an 8x advertised inbound over-commit (16 x TCP_WND against 12,832 B of pool) the pbuf pool never surfaced; the GC heap bound first in both images. PLAN §8.7.3 |
-| C6 | A `LWIP_STATS = 1` image, only if C5 fails for a reason that cannot be named | **DONE 2026-09-23 without building it** — the reason was nameable directly: `MemoryError` tracebacks captured off the serial console show MicroPython's **GC heap**, not any lwIP pool, allocating 296-862 B inside `_stream_dict_response()`. PLAN §8.7.2 |
-
-**Why none of it could be done in the session that wrote it**: no real hardware was reachable, and
-the digital twin runs on the Unix port, which has no lwIP at all. Everything above the transport is
-already measured and green (`CONNECTION_SCALING_PLAN.md` §8.3/§8.4); the PCB and pbuf ceilings are
-structurally outside what the twin can see.
-
-## 4B. Serving at `gc.threshold(-1)` — the 2026-09-23 finding, fixed, and the limit raised to 8
-
-Opened by the sitting's §4 (at most 4 concurrent requests without a `MemoryError` at MicroPython's
-own default). **Root-caused and fixed in the twin the same day** — `HEAP_FRAGMENTATION_MEASUREMENTS.md`
-§7Q is the full account, `SPECIFICATION.md` I.3 the rule it produced. In one line: a loaded heap at
-`-1` keeps ~100 KB free as small holes and no large run, and the routes assembled their JSON in
-pieces of up to ~870 B; every route now writes through a bounded writer whose largest allocation is
-one 256 B piece. The owner then set `max_connections = 8`, targeting 10 stable (SPECIFICATION.md
-H.7). **`REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md` §0 is the runnable procedure for all of it.**
-
-The instrument is `tests_hardware/bench/test_serving_heap_at_default_gc.py` — about 10 minutes, part
-of the routine bench tier, the board restored once at the end. Both device scripts it drives, and
-the test's own functions, host driver and assertions, were run against the twin before this row was
-written — the sweep passed there in 155 s, and it caught three instrument defects first (§7Q.13).
-
-| Row | What | Status |
-| --- | --- | --- |
-| W1 | **The fix on silicon, at the shipped limit**: flash this branch's tip (image F), run the file. `test_every_source_and_route_fits_a_small_free_run` — twin prediction: no route or source needs a free run above 320 B (as shipped, `/status` needed 1,024). `test_serving_sweep_at_the_reactive_default` — N = 4, 6, 8, 10 at `gc.threshold(-1)` on one boot: **zero allocation failures**, 8 served per round at N = 10 and 2 refused cleanly. It also answers the recovery question the twin could not: its `pre`/`post` dumps are the idle heap before and after the load | **RUN 2026-09-23 — FAILED on the static page** (11 × 1,025 B, bodies cut off behind a `200`); the JSON routes matched the twin. Fixed; re-run is W5 |
-| W2 | **10 served, and the board's real ceiling**: image G, `max_connections = 16` with image B's ensemble (§0 has the exact edit), the same file — levels 4..18. Twin prediction: **clean through 12 at the board's harsher calibration, through 18 at its gentler one** — the sweep's 4-18 spans exactly that bracket. Image G carries 18,592 B more `.bss` than F, so its wall is if anything a little lower than a right-sized image's | **RUN 2026-09-23 — FAILED below 10**: first failure N = 6, the static page (1,025 B); JSON failures from N = 10. `BENCH_SITTING_2026-09-23_HANDOVER.md` §10.4/10.6 |
-| W3 | `/status` wall-clock with 29 pieces instead of 11: `test_end_to_end_timing.py` on image F against the sitting's own figures. F.1's +53% was per *character*; this is per ~250 B | OPEN |
-| W4 | The whole bench tier on image F, default flags — the new file included | OPEN — held back by §0's stop rule; now §00.3 step 4 |
-| W5 | **The static-file fix on silicon** (image F′, the tip): the same file, now probing `route:/` and checking every body against its `Content-Length`. Twin, `dev`'s own site: `route:/` needs 320 B (1,536 B before), sweep 4/6/8/10 clean with every body complete. `REAL_HARDWARE_HANDOVER_STATIC_FIX.md` (H1) | **RUN 2026-09-23 — PASS** on F′: `route:/` 320 B, sweep 4/6/8 clean, 10 = 96 + 24 refused, 0 allocation lines. `BENCH_SITTING_2026-09-23_HANDOVER.md` §10.10.3 |
-| W6 | Per-boot combined load on image F′ at N = 2/4/5/6/7/8 (5 and 6 repeated), bodies checked — `REAL_HARDWARE_HANDOVER_STATIC_FIX.md` H2, `tests_hardware/combined_load_sweep.py` — the sitting's §10.6 definition. Twin: all complete, zero failures | **RUN 2026-09-23 — device-clean at every level through 8** (12 boots, 0 allocation lines); one host UNSTABLE was an instrument artefact (§10.10.4). Does **not** meet the owner's 10-stable requirement — F′ caps at 8; G′ next |
-| W7 | **Free heap under full load at 4/5/6/7**, image F′, `gc.threshold(-1)`: per-boot `combined_load_sweep.py 4 5 6 7`, then the same with `--margin` (post-collect free heap per sample, idle vs under load, % of GC heap). Owner is choosing a limit below 10. Twin estimate on F′: 6 ≈ 20 %, 7 ≈ 15 %, 8 ≈ 11 % — `REAL_HARDWARE_HANDOVER_FREE_HEAP.md` | **RUN 2026-09-23 — STABLE at 4/5/6/7**; min free under load (post-collect, of 183,360 B): 4 = 33.3 %, 5 = 27.7 %, 6 = 25.7 %, 7 = 24.6 %; settled idle 45.0 %. `BENCH_SITTING_2026-09-23_HANDOVER.md` §10.12 |
-| W8 | **Confirm the committed limit of 6** (image E6′ = the tip), ~15 min: identical to E6, then clean under peak load without instrumentation (2 boots) — `REAL_HARDWARE_HANDOVER_LIMIT_6.md` | **RUN 2026-09-24 — PASS**: E6′ identical to E6 (9/48/12,000, 192,360 B / 187,904 B); peak load, no instrumentation, 2 boots: 0 true failures in 890 requests, 0 allocation lines, 70.2 % refused. `REAL_HARDWARE_HANDOVER_PEAK_LOAD.md` §5.9 |
+| W3 | `/status` wall-clock at 256 B pieces (`dev`'s `/status` is 29 pieces, 11 at the old 1,024 B): `tests_hardware/bench/test_end_to_end_timing.py` on the tip. F.1's +53 % was per *character*; this is per ~250 B | OPEN |
+| W4 | The whole bench tier on the tip at `max_connections = 6`, default flags — `test_network_resilience.py`, `test_serving_heap_at_default_gc.py`, `test_heap_under_connection_ceiling.py`, `test_memory_stress_bench.py` and `test_bus_concurrency_under_api_load.py` all scale with the configured ceiling. The last full bench tier was image A (limit 7, pre-fix `src/`, §7R.2) | OPEN |
 
 ## 5. Excluded on purpose
 
@@ -536,10 +495,11 @@ something:
   only then curl. Note `tail_log()` replays buffered history, so several identical
   "WLAN connection established" blocks are not a reboot loop — confirm that by polling `SysUptime`
   and watching it advance, which is the cheap discriminator.
-- **A bench-tier test that opens more concurrent connections than `max_connections = 4` cannot
-  expect a definitive status from all of them.** Measured 2026-09-19 with tiny bodies, so nothing
-  to do with body size: concurrency 2 → 0% reset, 4 → 25%, 8 → 12%, 24 → 25%. Resets start **at**
-  the ceiling, not beyond it. Before calling such a reset a defect, run the all-small-bodies control
+- **A bench-tier test that opens as many concurrent connections as `max_connections` (6 today; 4
+  when this was measured) cannot expect a definitive status from all of them.** Measured 2026-09-19
+  with tiny bodies, so nothing to do with body size: concurrency 2 → 0% reset, 4 → 25%, 8 → 12%,
+  24 → 25%. Resets start **at** the ceiling, not beyond it — a slot is held until its close has
+  finished, and back-to-back clients at the limit see ~70 % refused (SPECIFICATION.md H.7). Before calling such a reset a defect, run the all-small-bodies control
   — it is two minutes and it separates "the feature under test" from "the connection ceiling"
   (SPECIFICATION.md Part I.6).
 - **The connection-slot lag cuts both ways — a check made immediately *after* a burst is as

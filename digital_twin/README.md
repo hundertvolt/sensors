@@ -78,7 +78,11 @@ Kept completely separate so nothing here can accidentally affect the determinist
   for the full account; `extmod/modselect.c` took zero commits between `v1.28.0` and the current
   `v1.29.0` pin, so the account and the workaround both still stand verbatim). Called as the first
   statement of `run_generic_integration.py`'s and `segfault_stress_repro.py`'s own `main()`, before
-  anything else in the process registers a poll object.
+  anything else in the process registers a poll object. Its listener scans upward from port 17400
+  across a 64-port window rather than binding one fixed port, and fails loudly naming the window if
+  none binds: `scripts/test.sh` runs up to 16 files at once, and a fixed port (with no
+  `getsockname()` on this port, an ephemeral bind cannot be read back) made concurrent imports die
+  with `EADDRINUSE` — 28 of 30 concurrent prewarms before, 0 of 30 after.
 - `unix_port_gc_unwedge.py` — its sibling for a second Unix-port quirk: a SIGINT landing inside
   `gc_collect()` leaves the GC heap permanently locked, so the shutdown flush dies with a
   misleading `MemoryError: ... heap is locked` on a heap that is mostly free. Measured at ~5% on
@@ -110,7 +114,11 @@ Kept completely separate so nothing here can accidentally affect the determinist
 - `_http_client.py` — minimal hand-rolled HTTP/1.1 client over `asyncio.open_connection()`, used to
   drive real requests against `WebserverService` in Unix-port integration runs (no HTTP client
   library is frozen into the pinned Unix-port build). Every response it sees is `Connection: close`
-  (`asy_webserver_service.py`'s own hook), so it never needs keep-alive support.
+  (`asy_webserver_service.py`'s own hook), so it never needs keep-alive support. A connection
+  refused at the webserver's ceiling is closed without a response, and the peer sees either an RST
+  or a clean FIN (kernel TCP state `src/` does not choose): `parse_status_line(b"")` therefore raises
+  `CeilingRefusedError`, an `OSError` subclass, so every caller's `except OSError` treats both shapes
+  as the refusal they are, while a non-empty malformed status line still raises `ValueError`.
 - `launch.py` — standalone, `src/`-free CLI demo (`micropython digital_twin/launch.py [options]`):
   brings up the same bus wiring `sensortask_wozi.build_system()` uses and periodically drives one
   real bus-level read per sensor, a `WLAN.connect()` attempt, and WDT feeding. `--fault
@@ -563,6 +571,17 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
     by `_read_exact()`/`_read_until_close()` (one right-sized buffer per `fetch()`, no
     `gc.threshold()` involved) — confirmed by the `gc_threshold=-1` pass running clean with that fix
     in place and the twin's own boot entry forced back to the real default.
+
+    **Run 11b — the full connection ceiling under real simultaneous load** (`_run_11b_full_ceiling_
+    concurrency()`). A fresh twin; the host reads the device's own `max_connections` from
+    `devices/<device>.toml` and fires exactly that many simultaneous GETs over the five heaviest
+    routes, three rounds, from CPython threads on a barrier with one real socket each — every one
+    must be served `200` with a parsed body, the twin must still serve afterwards and shut down
+    cleanly, and the suite's own no-`MemoryError` log check applies at both thresholds. A 1 s settle
+    precedes **every** round, the first included: a slot is released only after the close is awaited
+    (SPECIFICATION.md H.7.1), and the readiness probe's own connection is still counted when round 0
+    would otherwise start, which refused one of an exact-ceiling burst on every device. The in-DUT
+    attempt this replaced measured its own client's buffers (SPECIFICATION.md E.9).
 
 Each run's subprocess stdout/stderr is captured to `digital_twin_ci_logs/run<N>_*.log` (gitignored;
 uploaded as a CI build artifact via the `digital-twin-e2e` job's own `if: always()` upload step, so

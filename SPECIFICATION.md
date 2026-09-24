@@ -1136,8 +1136,8 @@ and can be retired outright once confirmed.
 **Real need, now served**: raise the number of simultaneous TCP connections the firmware can hold,
 upstream of `asy_webserver_service.py`'s own `max_connections` ceiling, and make every lwIP option
 that bounds it settable from one reviewed file instead of the fetched checkout.
-`toolchain/versions.toml`'s `[lwip]` table is that file; `CONNECTION_SCALING_PLAN.md` carries the
-sweep the shipped values come from.
+`toolchain/versions.toml`'s `[lwip]` table is that file; the cost tables below and H.7's limit are
+what the shipped values come from.
 
 **Three things an earlier revision of this Part got wrong, each of which changes the
 implementation.** Re-verified 2026-09-22 against `v1.29.0` as actually fetched, not from memory:
@@ -1225,8 +1225,11 @@ device whose `max_connections` the firmware's own pools cannot serve.
 
 **`PBUF_POOL_SIZE` is deliberately left alone.** It backs the *inbound* path, where this firmware's
 demand is one small request per connection (bodies capped at 2,048 B, Part I.6), against ~978 B of
-GC heap per pbuf — the most expensive pool to grow. Stated rather than assumed: confirming it on
-silicon is a `LWIP_STATS` row in the hardware handover.
+GC heap per pbuf — the most expensive pool to grow. **Confirmed on silicon**: at an 8x advertised
+inbound over-commit (16 connections x `TCP_WND` against the pool) it never surfaced, and no lwIP pool
+bound anywhere up to 16 connections — the GC heap always bound first
+(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.2). The checker derives `PBUF_POOL_BUFSIZE` with the
+IPv6-enabled port's 74 B of protocol headers (`LWIP_IPV6 = 1`, so `PBUF_IP_HLEN` is 40): 876 B.
 
 **Measured cost, from real builds** (`RPI_PICO_W`, v1.29.0, `.bss`/`.data` and
 `__GcHeapEnd - __GcHeapStart` read off each `firmware.elf`). Baseline is `.bss` 46,312 B, `.data`
@@ -3079,6 +3082,14 @@ inside the runner: a non-integer, or anything outside the rp2040's own 32-bit ma
 rejected before the run touches the live tree. `--coverage` has its own runner and says so out loud
 when both are given, rather than silently ignoring the threshold.
 
+**Under GitHub Actions every red outcome is also an `::error` annotation** — a failed file with the
+last 40 lines of its own log, a file that failed only the allocation-marker check, and the pytest
+tier. The checks API serves annotations, while runner logs come from a storage host some
+environments (a cloud session among them) cannot reach, and job summaries are in no API at all. It
+named the CI flake `unix_port_poll_prewarm.py`'s fixed port caused on its first red run, after
+every hypothesis formed without it had been wrong. `tests_scripts/test_test_sh.py` pins it,
+including that a missing log can never abort the summary the annotation is part of.
+
 ## E.4 Hardware-touching files: mock at the raw bus-transaction level only
 
 `tests/machine.py` is a fake `machine` module (the Unix port's real one has no `I2C`/`SPI`/real
@@ -4630,18 +4641,20 @@ literal `</script` closing the tag early) — 2 connections per page load (down 
 **`max_connections` is `6`** (owner, 2026-09-24, on the silicon evidence below; before that 8, 7, 4
 and 3), stated per device in `devices/*.toml` and checked against the firmware's own PCB count by
 `buildgen/validate.py`. **The relationship, not the number, is what this section fixes**:
-`max_connections` sits below `MEMP_NUM_TCP_PCB` with margin, currently 9 against 6. Three slots rather than one, because
-**TIME_WAIT pcbs come from that same pool** (`lib/lwip/src/core/tcp.c`'s `tcp_alloc()` reclaims the
-oldest TIME_WAIT only once `memp_malloc(MEMP_TCP_PCB)` has already failed) and keep-alive is
-unimplemented here, so every single request churns one.
+`max_connections` sits below `MEMP_NUM_TCP_PCB` with margin, currently 9 against 6. Three slots rather
+than one, because **TIME_WAIT pcbs come from that same pool** (`lib/lwip/src/core/tcp.c`'s
+`tcp_alloc()` reclaims the oldest TIME_WAIT only once `memp_malloc(MEMP_TCP_PCB)` has already failed)
+and keep-alive is unimplemented here, so every single request churns one; the third covers the one
+over-ceiling arrival `backlog` queues to be refused. `buildgen/validate.py` itself demands only one
+slot of margin — the three are the shipped pattern, not yet an enforced rule.
 
 **The PCB count is the small part.** lwIP's options are an ensemble (B.14.2), and a *servable*
 connection also needs its share of two global pools: `MEMP_NUM_TCP_SEG` (a connection that cannot
 get a segment holds data the stack has accepted but cannot push) and `MEM_SIZE` (every outbound byte
 is copied into it — `modlwip.c`'s `tcp_write()` always passes `TCP_WRITE_FLAG_COPY`). Moved together,
-a connection costs **2,324 B of GC heap**, twelve times what the PCB slot alone suggests, and
-raising `max_connections` from 4 to 8 costs 9,296 B, **~5%** of the heap. For 6 the ensemble is
-`MEMP_NUM_TCP_PCB` 9, `MEMP_NUM_TCP_SEG` 48 (6 x 8), `MEM_SIZE` 12,000 (2,000 B per connection). `check_lwip_ensemble()` refuses a ceiling the
+a connection costs **2,324 B of GC heap**, twelve times what the PCB slot alone suggests; 4 → 6 costs
+4,648 B, ~2.4 % of the heap. For 6 the ensemble is `MEMP_NUM_TCP_PCB` 9, `MEMP_NUM_TCP_SEG` 48
+(6 x 8), `MEM_SIZE` 12,000 (2,000 B per connection). `check_lwip_ensemble()` refuses a ceiling the
 pools cannot serve, per device, at build time.
 
 **`backlog` is coupled to it, and must be.** `asyncio.start_server()` defaults to a backlog of 5
@@ -4651,48 +4664,47 @@ see it. It now derives `max_connections + 1`: enough that one over-ceiling arriv
 refused by `_serve()`'s own reject-when-full branch, visibly, rather than dropped unseen.
 
 **Why 6: stability under peak load, not throughput.** Measured on silicon 2026-09-23/24 at
-`gc.threshold(-1)` under the hammer test's peak load (N back-to-back clients plus the SGP40 reset
-PUT), each image at its own limit (`REAL_HARDWARE_HANDOVER_PEAK_LOAD.md` §5.6-§5.8, §6.1):
+`gc.threshold(-1)` under the hammer test's peak load (as many back-to-back clients as the limit,
+plus the SGP40 reset PUT), each image built for and tested at its own limit
+(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R):
 
-| limit | true failures | free heap at peak | largest free block at peak |
+| limit | true failures, uninstrumented | free heap at peak | largest free block at peak |
 | --- | --- | --- | --- |
-| 6 | 0 of 1,365 | ~21 % | ~1.5 KB (five 256 B pieces) |
+| **6** | **0 of 2,255** (5 boots, the committed image among them) | **~21 %** | ~1.5 KB (five 256 B pieces) |
 | 7 | 0 of 1,334 | ~14 % | 528 B (one piece) |
-| 8 | failures in 4 of 7 boots | ~12 % | 400-512 B |
-| 10 | ~1 `/status` in 10 per round | ~11 % | 288 B |
+| 8 | 1 of 1,319, and in 3 of 4 instrumented boots | ~12 % | 400-512 B |
+| 10 | ~1 `/status` in 10, every round | ~11 % (sampled) | 288 B |
 
+- **lwIP is never the constraint.** An image provisioned for 16 admitted 16 on every probe, no pool
+  surfaced, and the GC heap bound first — while a raised ceiling turns a clean refusal into an
+  admitted request answered 500. A refusal is a clean FIN ~6 ms after connect.
 - **The board is CPU-bound at ~2.2 requests/s from 6 to 9 clients**, so a higher limit serves nothing
-  more: each request only lives longer (~N / 2.2 s) and more responses are held at once. Every
-  in-flight request holds ~7.7 KB at peak (streams, `Request`, handler, the built response).
+  more: each request only lives longer (~N / 2.2 s) and more responses are held at once. Every open
+  connection holds ~7.5-8 KB of live heap at peak (streams, `Request`, handler, the built response),
+  on top of its 2,324 B of static capacity.
 - **The failure is a hole too small for one ≤ 257 B piece** — always `/status`'s `_PieceWriter`, the
   biggest builder — and at the limit's extreme the pool empties and sensor/FRAM tasks fail too.
   Zero-failure counts over ~1,350 requests cannot separate 6/7/8; the margin can, and only 6 keeps
   the conventional 20-30 % free at peak with several pieces' worth of contiguous space.
-- **Refusals are expected, not failures**: a connection counts until it has closed, so back-to-back
-  clients see ~70 % refused at every limit; the device's own rejection count matches the host's.
+- **Refusals are expected, not failures**: a connection counts until it has closed (H.7.1), so
+  back-to-back clients see ~70 % refused at every limit; the device's own rejection count matches
+  the host's exactly. Whether the count should drop once the response is written is open (BACKLOG
+  item 44).
+- **`gc.threshold(32768)` does not move the limit**: more collections, no fewer failures.
 - A browser opens at most 6 connections per host and a page load here needs 2, so 6 costs nothing.
 
-**The earlier evidence for 7, kept as history.** The digital twin runs on the Unix port, which has **no
-lwIP at all** — its sockets are real host sockets — so it validates admission, rejection,
-simultaneous body allocation, task growth and latency, and **cannot** validate the PCB ceiling.
-The twin's own evidence for 7 is in `CONNECTION_SCALING_PLAN.md`, and it is narrower than an
-earlier version of this paragraph claimed. A "contiguity cliff between 7 and 8" was reported here
-and is **withdrawn**: the measurement sampled after the burst rather than during it, used an
-allocating probe rather than `mem_info(1)`, and normalised against the after-boot value in a way
-that turned comfortable headroom into an apparent cliff. Re-measured at true peak with the right
-instrument, the within-N spread exceeds the between-N step for every adjacent pair, so **contiguity
-cannot rank 7 against 8 at all** (§8.3.1). A second argument, "p50 latency grows ~1.3 ms per added
-connection", is withdrawn on the same grounds: that sweep's offered load scaled with the setting,
-and at fixed load latency is flat from 4 to 16 (§8.3.2). What is left is permanent memory, and it is small: a
-connection costs **2,324 B of `.bss` forever** (ELF sizes, zero variance), so 7→8 costs 2,324 B,
-about 1.2% of the GC heap. Its ~5,170 B of runtime allocation is **transient** — 70 served requests
-leave ~1.6 KB behind in total, flat rather than per connection, with placement capacity no worse
-afterwards — and must not be added to a survivor budget, which an earlier version of this paragraph
-did (§8.3.3). 7 is a small-margin budget decision under uncertainty, not a measured cliff.
-Service, not just survival, is asserted directly: every admitted connection must come back with a
-complete, correct, parseable response inside a bounded time, over repeated rounds, and concurrent
-page loads must be byte-identical to an uncontended one. The lwIP half is queued for
-the bench (`REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md`) and is not yet confirmed on silicon.
+**What the digital twin can and cannot say here.** The ordinary twin runs on the Unix port, which has
+**no lwIP at all** — its sockets are real host sockets — so it validates admission, rejection,
+simultaneous body allocation, task growth and latency, and **cannot** validate a PCB ceiling. It also
+serves 50-100x faster than the board, so its requests hardly overlap and it is optimistic about the
+serving wall by two levels or more; only a 32-bit frozen twin throttled to the board's own
+throughput reproduces the limit (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.4; an ad-hoc instrument, never a gate). Two twin
+facts that do transfer: at a fixed offered load, latency is flat across limits 4 to 16, and a
+connection's ~5,170 B of runtime allocation is **transient** — 70 served requests leave ~1.6 KB
+behind in total, flat rather than per connection — so it is never added to a survivor budget.
+Service, not just survival, is asserted at every tier: every admitted connection must come back with
+a complete, correct, parseable response inside a bounded time, over repeated rounds, and concurrent
+page loads must be byte-identical to an uncontended one.
 
 HTTP keep-alive is deliberately not implemented: vendored `ext/microdot.py` always closes after one
 request by design (no keep-alive support upstream either), and this project's hard rule never
@@ -4942,7 +4954,7 @@ at the old 1024 B); its wall-clock on silicon is `REAL_HARDWARE_TEST_QUEUE.md` r
 
 **Why 256, and why the old 1024 was wrong (2026-09-23).** A piece cap is only a bound if the heap
 can still place a piece of that size *under load*, and at `gc.threshold(-1)` it cannot place 1024.
-The bench sitting (`BENCH_SITTING_2026-09-23_HANDOVER.md` §4) served at most 4 concurrent requests
+The 2026-09-23 bench sitting (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.3) served at most 4 concurrent requests
 without a `MemoryError`; its failures were ~870 B `/status` pieces, a 296 B errcount entry and a
 509 B `/measurements` fragment, with the largest free run driven to ~800 B. A **32-bit** frozen twin
 (the RP2040's own pointer and block size) reproduces exactly those three sites, and shows why

@@ -2388,7 +2388,7 @@ def test_h2_add_value_bounds_every_piece_however_large_the_value() -> None:
 
 def test_h2_errcount_entry_is_never_one_string() -> None:
     # The allocation this bounds on silicon: a whole 10-element entry is ~290 B, above the holes a
-    # loaded heap keeps at gc.threshold(-1) (BENCH_SITTING_2026-09-23 section 4).
+    # loaded heap keeps at gc.threshold(-1) (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.3).
     entry = _shape_errcount_entry(_errcount_log("M", 10, list(range(90, 100)), ["E"] * 10), "M")
     pieces = _written(entry, max_bytes=64)
     assert "".join(pieces) == json.dumps(entry)

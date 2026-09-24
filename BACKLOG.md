@@ -225,9 +225,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    this item while those references exist.
 7. **Closed 2026-09-24: the connection limit is `6`**, owner's decision after 10 proved
    unreachable on this heap and 8 failed under peak load: 6 is clean with ~21 % heap free at peak,
-   and the board's throughput is the same at any limit. The limit, its lwIP ensemble and the
-   evidence are SPECIFICATION.md Part H.7. Confirmation on the committed image (E6′):
-   `REAL_HARDWARE_HANDOVER_LIMIT_6.md`.
+   and the board's throughput is the same at any limit. The limit, its lwIP ensemble and the reasons
+   are SPECIFICATION.md Part H.7; the silicon evidence, the committed image included, is
+   HEAP_FRAGMENTATION_MEASUREMENTS.md §7R. Kept as a stub at its number; open follow-ups are item 44.
 8. **Two bench-rig capabilities would each move one test candidate from `[MANUAL]` to `[AUTO]` —
    SETTLED 2026-09-22 (owner): no hardware will be bought for this, so the rig stays as it is and
    both candidates are permanently `[MANUAL]`.** Not "planned for later" any more, which is how
@@ -759,17 +759,31 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     from `npm run test:unit` rather than from reading 150 conflict hunks. After a resolution that
     takes one side wholesale, run every tier before trusting it.
 
-44. **Follow-ups to the serving fix (2026-09-23), none blocking.** Evidence:
-    HEAP_FRAGMENTATION_MEASUREMENTS.md §7Q.
+44. **Follow-ups to the serving fix and the connection limit (2026-09-23/24), none blocking.**
+    Evidence: HEAP_FRAGMENTATION_MEASUREMENTS.md §7Q and §7R.
+    - **Owner decision: should `_open_conns` drop when the response is written, not when the close
+      has finished?** Today a connection counts until `_close_writer()` returns, while its client
+      already holds the complete body, so back-to-back clients see ~70 % refused at every limit
+      (SPECIFICATION.md H.7). Refusals are expected behaviour; dropping earlier would admit more
+      requests while closing connections still hold lwIP PCBs, which is why the limit sits below
+      `MEMP_NUM_TCP_PCB`.
+    - **Owner decision: move the wall itself?** Every failure at 8-10 was one 242-257 B `/status`
+      piece; a smaller `chunk_bytes`, or less per `/status` piece, is what would move it. Not needed
+      at 6.
+    - **Owner decision: enforce PCB = limit + 3?** It is the shipped pattern and the H.7 reasoning,
+      but `buildgen/validate.py` demands only one spare slot and `check_lwip_ensemble()` has no PCB
+      floor per connection.
     - **The 32-bit frozen twin stays an ad-hoc instrument, never a committed tool or CI gate**
-      (owner, 2026-09-23). It is what reproduced the board's failing sites and sizes; the what-for
-      and how-to — build recipe, calibration, and the dev-site and `err_s` lessons — are
-      documented in HEAP_FRAGMENTATION_MEASUREMENTS.md §7Q.9, §7Q.14 and §10, and nothing of it
-      is merged.
-    - **The next wall is vendored.** Past 10 connections the first allocation to fail in the 64-bit
-      twin is `ext/microdot.py:383`, the `Request` object's own attribute table growing as its
-      `__init__` sets ~20 attributes (~232 B on the RP2040). Not ours to change; recorded so it is
-      not rediscovered as a new defect.
+      (owner, 2026-09-23). It reproduced the board's failing sites and sizes and, throttled to the
+      board's throughput, its peak-load failure rates; the what-for and how-to are
+      HEAP_FRAGMENTATION_MEASUREMENTS.md §7Q.9, §7Q.14, §7R.4 and §10, and nothing of it is merged.
+    - **The next wall is vendored.** Past 10 connections the first allocation to fail is
+      `ext/microdot.py:383`, the `Request` object's own attribute table (~232 B on the RP2040), seen
+      as 400s on silicon at 12. Not ours to change; recorded so it is not rediscovered.
+    - **Board anomalies, recorded not chased** (§7R.5): one silent reset in one instrumented boot
+      (1 in 9, cause lost); hotspot fallback after a reset, three times; a likely watchdog reset at
+      `mpremote` attach; an empty `200` without `Content-Length` twice during the boot-time WLAN
+      drop, from a path other than `_serve_static()`, unexplained.
     - **The UART link exerciser's 264 B receive path** (`asy_uart_comm.py:913`) failed twice at 10
       in the 64-bit twin, the only module outside the webserver to fail anywhere in the sweeps. It
       did not fail on the board-faithful 32-bit twin. Recorded, not chased.
@@ -779,18 +793,15 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     (owner, 2026-09-23). Evaluated means each finding is kept, merged or dropped on its merits, not
     copied wholesale; distributed means each surviving fact lands in exactly one canonical home —
     rules and current state in `SPECIFICATION.md`/`CLAUDE.md`/`BACKLOG.md`, measured evidence in
-    `HEAP_FRAGMENTATION_MEASUREMENTS.md` (which keeps the frozen twins' what-for and how-to,
-    §7Q.9/§7Q.14/§10), still-open hardware rows in `REAL_HARDWARE_TEST_QUEUE.md` — with every other
-    mention reduced to a pointer. Every reference to a removed file is rewritten in the same pass.
-    Removed, all of them:
-    - `CONNECTION_SCALING_PLAN.md`
-    - `REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md`, `REAL_HARDWARE_HANDOVER_STATIC_FIX.md`,
-      `REAL_HARDWARE_HANDOVER_FREE_HEAP.md`, `REAL_HARDWARE_HANDOVER_PEAK_LOAD.md`,
-      `REAL_HARDWARE_HANDOVER_LIMIT_6.md`
-    - `BENCH_SITTING_2026-09-23_HANDOVER.md`
-    - `CATALOG_UNIT_TESTS.md`, `CATALOG_INSTRUMENTATION.md`
-    - `tests_hardware/combined_load_sweep.py`,
-      `tests_hardware/device_scripts/serving_stability_under_combined_load.py`
+    `HEAP_FRAGMENTATION_MEASUREMENTS.md` (which keeps the frozen twins' and the removed silicon
+    sweep's what-for and how-to, §7Q.9/§7Q.14/§7R/§10), still-open hardware rows in
+    `REAL_HARDWARE_TEST_QUEUE.md` — with every other mention reduced to a pointer.
+    **Done 2026-09-24 for everything but the two catalogs**: the plan, the five hardware handovers,
+    the bench-sitting log and the silicon sweep tool (`tests_hardware/combined_load_sweep.py` and
+    its device script) are gone, their content in §7R, SPECIFICATION.md H.7/B.14.2/E.3,
+    `digital_twin/README.md`, the queue's §4A and item 44. **Still to go at merge**:
+    `CATALOG_UNIT_TESTS.md` and `CATALOG_INSTRUMENTATION.md`, the owner's working catalogs of test
+    candidates and instruments, distributed the same way once the owner has decided on them.
     Never committed, never to be: the 64-bit and 32-bit frozen twin builds, their manifests and every
     scratch harness. The committed unit tests and hardware bench tests this work added stay.
 

@@ -2261,9 +2261,9 @@ much contiguity this firmware actually needs.
 > 65,536 B** in four separate contiguous runs, against ~105,000 B free. It became 4 x 2,048 =
 > 8,192 B.
 >
-> **Updated 2026-09-22**: `max_connections` is now **7** (SPECIFICATION.md Part H.7, and
-> `CONNECTION_SCALING_PLAN.md` for the sweep that chose it), so the simultaneous worst case is
-> **7 x 2,048 = 14,336 B** — still in separate contiguous runs of 2,048 B each, so the *largest
+> **Updated 2026-09-24**: `max_connections` is now **6** (SPECIFICATION.md Part H.7, evidence §7R),
+> so the simultaneous worst case is
+> **6 x 2,048 = 12,288 B** — still in separate contiguous runs of 2,048 B each, so the *largest
 > single* allocation the firmware can be asked for is unchanged. The figure scales with the
 > connection ceiling by construction, which is why raising that ceiling is a contiguity question
 > and not only a socket one.
@@ -4586,11 +4586,10 @@ its rankings of *which* allocation fails first do not; §7Q.9-§7Q.13 are the 32
 the board's own object sizes and reproduces its three failing call sites exactly. "The fix" in
 §7Q.5 is the first version; the final design is §7Q.11.
 
-The 2026-09-23 bench sitting (`BENCH_SITTING_2026-09-23_HANDOVER.md` §4) found that at MicroPython's
-own reactive default the board serves at most **4** concurrent requests without a `MemoryError`,
-every failure a ~870 B allocation inside `/status`'s piece coalescing, the largest free run driven to
-~800 B. This section is the same-day twin investigation of it. Everything here is **[TWIN]** unless
-marked; the rows that need silicon are `REAL_HARDWARE_TEST_QUEUE.md` §4B (W1-W6).
+The 2026-09-23 bench sitting (§7R.3) found that at MicroPython's own reactive default the board
+serves at most **4** concurrent requests without a `MemoryError`, every failure a ~870 B allocation
+inside `/status`'s piece coalescing, the largest free run driven to ~800 B. This section is the
+same-day twin investigation of it. Everything here is **[TWIN]**; §7R is what silicon then showed.
 
 ### 7Q.1 The instrument
 
@@ -4724,10 +4723,9 @@ fix works by making the transient demand fit the dust, so neither has to change.
 
 ### 7Q.8 What is not claimed
 
-That the board is stable at 8 or 10: every figure in this section is the twin's. What is claimed is
-that the twin now reproduces the board's own failure (§7Q.9), so its predictions are the right thing
-to test on silicon — `REAL_HARDWARE_TEST_QUEUE.md` §4B, runnable as
-`REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md` §0.
+That the board is stable at 8 or 10: every figure in this section is the twin's, and silicon later
+showed neither is (§7R). What is claimed is that the twin reproduces the board's own failure sites
+(§7Q.9), which is what made the fix testable before a board was.
 
 ### 7Q.9 The 32-bit twin — the board's own object sizes
 
@@ -4822,11 +4820,11 @@ the two calibrations; image G in the handover's §0 sweeps 4-18 on silicon, whic
 Past the wall the failing allocations are the pieces (~250 B), microdot's `Request` table (~232 B)
 and the pieces list: nothing large is left, the heap simply runs out of holes of that size.
 
-**Qualified by §7Q.14 (same day):** these runs served the sub-1 KB stub page, not the real site, and
-could not see a failure in the response-write phase (it reaches only the FRAM log). Re-run with the
-real `dev` page and every body checked, the fixed code gives the same wall at 560k (clean through 12,
-failures at 14), but on silicon image G's first JSON failures came at 10, where the twin shows none
-through 12 on the same code — near the wall the twin is optimistic by two levels or more.
+**Superseded as a prediction.** These runs served the sub-1 KB stub page and could not see a
+write-phase failure (§7Q.14); re-run with the real `dev` page the wall stays at 14. But on silicon
+the first JSON failures came at 10 (§7R.3): an unthrottled twin serves 50-100× faster than the
+board, its requests hardly overlap, and near the wall it is optimistic by two levels or more. The
+throughput-matched twin of §7R.4 is the one whose predictions held.
 
 ### 7Q.13 The hardware instruments, run against the twin first
 
@@ -4844,7 +4842,7 @@ and ~235 — partial recovery. The board's answer is queue row W1.
 
 ### 7Q.14 The static page — what silicon found and the twin missed (2026-09-23 evening)
 
-**The finding** (`BENCH_SITTING_2026-09-23_HANDOVER.md` §10.5): on both images the sweep failed on
+**The finding** (§7R.3): on both images the sweep failed on
 `allocating 1025 bytes` in microdot's `send_file` body loop (`ext/microdot.py:746`), from N = 6 on
 image G. Each `read(1024)` is a fresh 1,025 B bytes object; a failed one raises *after* the `200` and
 headers are out, and with HTTP/1.0 and no `Content-Length` the client reads the cut-off gzip body as
@@ -4894,6 +4892,184 @@ missing length `-unframed`; on the fix every level is complete with zero failure
 `/` is `-unframed`. Adding `/js/app.js` to the sweep's load (every page load fetches it next) exposed
 one more instrument defect in the twin first: the device script's failure-dump wrapper dropped the
 `filename` keyword microdot passes `_get_static`, turning every script request into a 500.
+
+---
+
+## 7R. Serving on silicon: lwIP, the static page, and the connection limit under peak load [HW] (2026-09-23/24)
+
+The silicon record behind `SPECIFICATION.md` H.7's limit of 6, I.3's 256 B bound and B.14.2's
+ensemble. Dev bench, RPI_PICO_W, MicroPython 1.29.0. **Every verdict is at `gc.threshold(-1)`**, set
+by the device script itself (`mpremote` does not reset the interpreter, so the boot entry's 32768
+would otherwise still be in force), and every result line carries `GC_THRESHOLD=`. **Stable** = zero
+true failures (a short body, a 4xx/5xx, any transport error other than a ceiling refusal) **and** zero
+device lines matching `MEMORY_ERROR_MARKERS`, caught-and-logged included. A reset before any response
+at the connection ceiling is a **refusal** and expected, not a failure (owner's rule).
+
+**Two load shapes**, and only the second is peak. **Rounds**: 12 rounds of N parallel GETs over
+`/status /sensors / /measurements /status /networking /sensors /system /js/app.js` with 0.5 s
+pauses. **Peak**: N clients back to back for 60 s over the same mix, thread 0 swapping one GET for
+the hammer test's dispatch-only `PUT /sensors {"SGP40": {"SGPResetVOC": true}}` every 3 s, on the
+full production task graph. Every static body is checked against a validated idle reference and its
+`Content-Length`, every JSON body parsed. One fresh boot per data point. The instruments and how to
+rebuild them: §10.
+
+### 7R.1 The images
+
+| image | `max_connections` | PCB / SEG / `MEM_SIZE` | GC heap (linker) | `mem_info` total | what |
+| --- | --- | --- | --- | --- | --- |
+| A | 7 | 10 / 56 / 14,000 | 190,036 B | — | pre-fix `src/`, the first sitting |
+| B, G, G′ | 16 | 19 / 128 / 32,000 | 169,120 B | — | over-provisioned; G′ with both serving fixes |
+| F, F′ | 8 | 11 / 64 / 16,000 | 187,712 B | 183,360 B | F′ = static fix |
+| H | 10 | 13 / 80 / 20,000 | 183,064 B | 178,816 B | |
+| E7 | 7 | 10 / 56 / 14,000 | 190,036 B | 185,664 B | |
+| **E6, E6′** | **6** | **9 / 48 / 12,000** | **192,360 B** | **187,904 B** | E6′ = the committed tip |
+
+Every lwIP macro was read back out of each firmware's own translation unit and matched, and every
+linker heap equals 187,712 + (8 − L) × 2,324 B to the byte; `mem_info` reports 4,352 B less (the
+GC's own tables), and it is the percentage base below. `.bss` A → B grew 20,916 B for 9 connections,
+2,324 B each, from two ELFs built hours apart.
+
+### 7R.2 lwIP never bound anything (image A/B, boot entry's `gc.threshold(32768)`)
+
+- **Admission is exact**: A admitted 7 on five probes out of five. A refusal is a **clean FIN ~6 ms
+  after connect** — not an RST, a silent drop or a stall.
+- **No admission wall below 16**: B admitted 16 on five probes out of five, so the application's own
+  cap stops the probe, not lwIP. `LWIP_STATS` was never needed.
+- **The GC heap binds first**: B's failures, captured off the serial console, were caught
+  `MemoryError`s of 296-862 B inside the pre-fix JSON assembly. **A raised ceiling converts a clean
+  refusal into a served-but-broken response**: at the same load A refused above 7 with every admitted
+  body complete, while B admitted and answered 500 from N = 7, its 9 extra connections having cost
+  20,916 B of the heap that serves them.
+- **`PBUF_POOL_SIZE` 16 is enough** (inbound over-commit, `N × TCP_WND` against 12,832 B of pool:
+  3.5× on A, 8.0× on B): the pool never surfaced, because real inbound demand is one small capped
+  request per connection (`cyw43_lwip.c:281` allocates every received packet from it).
+- **Parked connections are cheap**: a full ceiling of 7 held mid-request (sustained by staggered
+  recycling, `SPECIFICATION.md` H.7.1) left room for 15 placeable 2,048 B blocks at worst, against a demand of 7.
+- **Independent ensemble audit**: all 18 relevant `#error` conditions in `lib/lwip/src/core/init.c`
+  re-derived, with the switches deciding which are live ground-truthed out of the translation unit
+  (`LWIP_DISABLE_TCP_SANITY_CHECKS` undefined, `MEMP_MEM_MALLOC = MEM_USE_POOLS = 0`,
+  `MEM_ALIGNMENT = 4`, `LWIP_WND_SCALE = 0`, `TCP_MSL = 60000`, `LWIP_NETCONN = LWIP_SOCKET = 0`):
+  zero failing conditions on every image. `LWIP_IPV6 = 1`, so `PBUF_IP_HLEN` is 40 and
+  `PBUF_POOL_BUFSIZE` 876 B (the checker's two constants were corrected; no verdict changed).
+- **Suite runs on image A**: flash tier 36 passed / 3 skipped / 12 deselected; bench tier 103 / 4 /
+  27; bench with `--allow-persistence-writes` **124 passed / 4 skipped / 6 deselected**, the first
+  clean gated run end to end (queue rows R8 closed, R5's second green run). A baseline for image A,
+  not a validation of the tip.
+
+### 7R.3 At the reactive default, before and after the two serving fixes
+
+**Before (image A, rounds, per-boot)**: 4 was the highest clean level — N = 5 / 6 / 7 gave 14 / 18 /
+28 allocation lines, each a ~870 B `/status` piece. §7Q is the root cause and the fix.
+
+**After the JSON fix, before the static fix (images F and G)**: **every failure on F up to its
+limit of 8 was the static page** — microdot's `send_file` reading 1,024 B per write, a fresh
+1,025 B allocation each, cut off **behind a `200` with no `Content-Length`**, so the client saw a
+corrupt page as complete. It was probabilistic: 5 failed 1 run in 3, 6 one in 2, 7 and 8 every run.
+On G the static page failed from 6 and the JSON pieces only from 10. §7Q.14 is the fix.
+
+**After both (F′, rounds)**: the need test matches the 32-bit twin to the byte — `route:/` and
+`route:/status` 320 B, `/sensors` and `/measurements` 256 B, `/networking` 192 B, `/system` and
+`/notification` 160 B, every data/config source ≤ 160 B, every errcount entry 96 B. The one-boot
+sweep at 4 / 6 / 8 served every body complete with zero allocation lines, 10 gave 96 + 24 refused.
+Per boot, 2 to 8 were stable in 12 boots. Idle largest free run before and after the load:
+8,944-11,424 → 6,752-10,672 B, free 82,128 → 80,720 B — a partial recovery of contiguity, a full one
+of free bytes.
+
+**10 is not reachable on this heap.** G′ (16, 169,120 B) at 10 failed every per-boot run, 3 of 3,
+~1 `/status` in 10 answering 500 in every round, each a 242-257 B `_PieceWriter` piece; its one-boot
+sweep up to 18 emptied the pool outright — 68-138 B allocations failing in SCD30 and BMP3XX config
+reads, FRAM history writes and the device script. H (10, 183,064 B) at 10: 3 × `/status` 500 per
+run, in both arms. At 12 on G′ the failures spread to microdot's 232 B `Request` (400s), cut static
+bodies (visible now, as `IncompleteRead`) and non-web tasks.
+
+**Free heap under rounds load** (post-collect every ~5.3 s; sampled, so the minimum is an upper
+bound on the true peak, and a later peak measurement showed it overstates by ~20 KB at 6):
+
+| image, N | min free under load | min largest free run |
+| --- | --- | --- |
+| F′, 4 / 5 / 6 / 7 / 8 | 33.3 / 27.7 / 25.7 / 24.6 / 20.7 % | 2,192 / 1,760 / 1,728 / 1,200 / 992 B |
+| H, 8 / 9 / 10 | 21.3 / 19.5 / **11.5 %** | 1,408 / 1,024 / **288 B** |
+
+### 7R.4 Peak load, each image at its own limit — the decision data
+
+**True failures, no instrumentation on the device** (`--peak --no-sampler`, one boot per row):
+
+| limit (image) | boots | requests | refused | **true failures** |
+| --- | --- | --- | --- | --- |
+| **6 (E6 3, E6′ 2)** | **5** | **2,255** | **70.0-70.2 %** | **0** |
+| 7 (E7) | 3 | 1,334 | 70.5 % | **0** |
+| 8 (F′) | 3 | 1,319 | 70.7 % | **1** (252 B `/status` piece) |
+
+With a sampler: F′ at 8 failed in 3 more of 4 instrumented boots (0.26-0.55 %); H at 9 failed 1.7 %
+(`-1`) and 3.2 % (32768). Every failure at 8-10 on every image was the same allocation, one
+242-257 B `/status` piece (`_get_status` → `_build_status_pieces` → `_write_errcount_entry` →
+`add_value` → `add` → `flush`); no other route failed and every served body was complete.
+
+**Free heap at peak** (`--peak --margin`: a `gc.collect()` every 100 ms, so the exact live set;
+production-equivalent adds back the device script's own 2,720 B):
+
+| limit (image) | free at peak | largest free block at the minimum | idle, 0 open |
+| --- | --- | --- | --- |
+| **6 (E6, 2 boots)** | **21.2-21.7 %** | **1,456-1,504 B** | 44.3-44.6 % |
+| 7 (E7) | 14.3 % | 528 B | 41.6 % |
+| 8 (F′, `-1` / 32768) | 11.6 / 12.7 % | 512 / 400 B | — |
+
+**The mechanism**, each point measured:
+
+- **The board is CPU-bound at ~2.2 requests/s at every limit from 6 to 9** — completed requests per
+  60 s boot are 121-149 at 6, 123-136 at 7, 122-134 at 8. A higher limit serves nothing more; each
+  request lives longer (~N / 2.2 s), so more responses are held at once.
+- **Each open connection holds ~7.5-8 KB of live heap at peak** (idle-to-peak drop per open
+  connection: 45.2 KB / 6 on E6, 53.4 KB / 7 on E7, 48.8 KB / 6 on H), on top of its 2,324 B of
+  static lwIP capacity.
+- **The wall is a hole too small for one ≤ 257 B piece**, and at the limit's extreme the pool
+  empties outright. Zero-failure counts over ~1,350 requests only bound the rate at ~0.2 %, so they
+  cannot separate 6, 7 and 8; the heap margin can. Only 6 keeps the conventional 20-30 % free at
+  peak with several pieces' worth of contiguous space.
+- **~70 % of requests are refused at every limit when as many clients as the limit run back to
+  back**, because `_open_conns`
+  counts a connection until `_close_writer()` has finished, while its client already holds the
+  complete body and has opened the next one. With 8 clients on H the count reached 10. The device's
+  own count of reject-when-full closes matches the host's refusals exactly once it is installed at
+  webserver creation (before that, host exceeded device by 0-21: the counter started seconds late).
+- **`gc.threshold(32768)` does not reduce failures**: ~1.7-2× the collections and more contiguous
+  space at 6, but H at 8 gave 1 vs 0 and at 9 gave 6 vs 3 — single runs, not separable from chance.
+- **An image built for 8 is not cleaner at 8 than one built for 10** (F′ 4 of 7 boots failing, H 0
+  and 1), against the expectation that 4,544 B more heap and a tighter cap would help. Unexplained;
+  one untested hypothesis is that refused clients retry at once and every refused accept still costs
+  its stream objects and a task.
+- **The instrumentation does not cause the wall**: the same 252 B piece fails at 8 with nothing on
+  the device but the task graph. The samplers cost ~10-20 % of throughput, so instrumented figures
+  are pessimistic; the device script's own code and globals cost 2,720 B (52,960 B for an
+  import-only script against 55,680 B), 3,008 B once it gained the rejection counter.
+- **The committed image is the measured one**: E6′ built from the tip reads back 9 / 48 / 12,000,
+  192,360 B and 187,904 B, identical to E6, and was clean in both peak boots (0 in 890).
+
+**The throughput-matched twin reproduces this.** The 32-bit twin with its serving throttled to the
+board's rate (a CPU quota of 3.5 % of one core once it serves, `MAXCONN` patched into the generated
+module so admission is real) and its heap calibrated on the peak-load failures (F′ ≈ 564,648 B; H
+between 554,000 and 560,000 B) predicted F′ at 7 clean and at 8 ≈ 0.3 %, and silicon matched both;
+host refusals equalled device rejections exactly (1,336 = 1,336). It refuses less than the board
+below the limit, so its refusal percentages are not used. Unthrottled, the twin serves 50-100×
+faster, its requests hardly overlap, and it is optimistic by two levels or more (§7Q.12).
+
+### 7R.5 Anomalies — recorded, not chased
+
+- **One silent reset** in the first E6 collecting boot: output stopped ~40 s into the load with
+  33.5 KB free and no error line; watchdog or hard fault, cause lost. 1 in 9 peak-load collecting
+  boots, none in any uninstrumented boot.
+- **Hotspot fallback after a reset, three times** (after a likely watchdog reset between two tests,
+  after flashing F′, after flashing H); `kick_all_stations()` + hard reset recovered it each time.
+- **A likely watchdog reset at `mpremote` attach** ~30 s after a test's own teardown reset, ~9 s
+  after attaching. Not confirmed.
+- **An empty `200` with no `Content-Length`**, twice, from an idle `GET /` during the boot-time WLAN
+  drop — not from `_serve_static()`, which always sets the length. Origin unexplained.
+- **Two host-side stalls at N = 4** before the static fix (a `URLError` and a 30 s timeout, nothing
+  on the device); none in the 12 boots after it.
+- **FRAM E31 + W73**, new between the two days' readings: a status byte found not IDLE at a write,
+  then block 1 invalid and restored from block 0 — the signature of a block write cut off by a
+  reset, most plausibly the silent reset above, recovered by the two-copy scheme.
+
 ## 8. What is committed
 
 **Reverted, 2026-09-18, at the owner's instruction.** Every change this investigation made to
@@ -5017,6 +5193,15 @@ transcript.
 | the handover's §2.4 "JSON-derived strings in `_cache`" hypothesis | refuted: exactly **one** str/bytes survivor in the whole batch (§2.2) |
 | the handover's §2.5 "**6** CS sessions per byte-level write" | `get_write_protected()` issues no bus traffic. It is **5**, and only 5 closes the arithmetic (§3.1) |
 | the handover's §2.10.1 proposed enforcement metric | at 400k it reads 100% on a heap fragmented to 0.10 contiguity, and its own probe perturbs the result favourably (+67% at 400k, +16% at 560k) because the binary search's collections reset the allocation scan hint |
+| "a 3.5x contiguity cliff between 7 and 8 connections" (the first argument for a limit of 7) | sampled **after** the burst with an allocating probe, normalised against the after-boot value. At true peak with `mem_info(1)`, 5 repeats, the within-N spread of placeable 2,048 B blocks (6-12) exceeds the between-N step (0-4) for every adjacent pair from 4 to 16: that metric cannot rank adjacent limits at all |
+| "p50 latency grows ~1.3 ms per added connection" | the sweep's burst was `2 x max_connections`, so the load grew with the setting. At a fixed offered load of 4, p50 is flat at 4.2-4.5 ms for limits 4 to 16 [TWIN] |
+| "an 18-connection bar" and "~12 KB of free heap needed per connection" | measured with the twin's own `_http_client` inside the DUT's process; every failure was the client's ~5.5 KB body buffer. Draining instead, the same load passed 42/42 (SPECIFICATION.md E.9) |
+| "47 connections caught / 63 fatal" as the twin's wall | the transport path in isolation, nothing else running; with every module loaded it lands ~3x lower. An upper bound, never a capacity |
+| "7 → 8 costs 7,488 B" | added the ~5,170 B transient live set per connection to the 2,324 B permanent one. The transient is returned (70 served requests leave ~1.6 KB in total, flat, [TWIN]) and belongs to a placement question, not a budget |
+| "twin: 10 stable, the ceiling 12-18" (§7Q.12) as a prediction for the board | an unthrottled twin, stub page. Silicon failed at 10 on G′ and H (§7R.3) |
+| rounds-load free heap read as the peak (e.g. 25.7 % at 6 on F′) | pauses and 5 s snapshots miss the moment all N allocate; ~20 KB too optimistic at 6 against the collecting peak sampler (§7R.4) |
+| the non-collecting peak sampler's heap figure | reads "just after a GC" late (every ~60 ms against ~250 KB/s of churn), biased low by up to 15-30 KB; rp2 has no exact end-of-GC signal. Its verdict and failure counts stand |
+| "each admitted connection costs ~13-14 KB at peak plus 2,324 B static" | the 13-14 KB is the E6 → E7 drop in free heap at peak, which already contains the static 2,324 B and idle-to-idle noise; the live set per open connection is ~7.5-8 KB (§7R.4) |
 
 ---
 
@@ -5065,6 +5250,8 @@ built per §1.4 and run from the repo root with `MICROPYPATH=.frozen`.
 | `boot_site.py`, `SITE=1` | §7Q.14: `boot.py` / `twin_wrap.py` with `frozen_html` aliased to `dev`'s own website (`scripts/build_website.sh dev`, frozen into the binary), and (`boot_site.py`) every `err_s` printed so write-phase failures reach the log; `drive.py` checks each body against its `Content-Length` |
 | `twin_wrap.py` / `validate_bench.py` | runs a device script UNCHANGED in the twin (the setup `run_generic_integration` does first, then the script's own source); `validate_bench.py` imports the bench test module and runs its own test functions with a fake `Board` whose `run_isolated()` is `twin_wrap.py` (§7Q.13) |
 | `build-nosettrace` | `make -j8 BUILD=build-nosettrace VARIANT=standard VARIANT_DIR=<toolchain>/build_overrides/unix_kbd_intr_variant "CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=0 -Wno-array-bounds" FROZEN_MANIFEST=<scratchpad>/manifest_heap.py` in `ports/unix` — the heapprobe recipe with the flag off, into its own build dir; builds clean with no warnings |
+| `combined_load_sweep.py` + `serving_stability_under_combined_load.py` [HW] | §7R's silicon tool, removed from the tree once the limit was settled; last present at commit `4914a25` (`tests_hardware/` and `tests_hardware/device_scripts/`). Host: `DUT_IP=<ip> uv run python tests_hardware/combined_load_sweep.py <levels…> [--threshold T] [--peak [--margin \| --no-sampler]] [--margin] [--raw-dir d]`, one fresh boot per listed level through `Board.run_isolated()` (which arms an 8 s `WDT`), then `kick_all_stations()`, hard reset and a 45 s settle. It substitutes switches into a copy of the device script, validates the idle reference (a 200 whose non-empty body equals its `Content-Length`, retried: every device-script boot drops and rejoins WLAN at ~6 s), classifies each request as ok / refused (`http_client.is_ceiling_close()`) / true failure, and prints one verdict line per level plus the device's allocation lines, its `PEAK_*` lines and a host-vs-device refusal cross-check. Device: sets and prints `gc.threshold`, starts `sensortask_dev.main()`, wraps `_open_conns.increment` to count increments above the limit as soon as the webserver exists (peak mode), and after 20 s runs a 150 s window with one probe — `mem_info(1)` maps every 5 s (rounds), the same after `gc.collect()` (`--margin`), a 20 ms `gc.mem_free()` + `_open_conns.value` low-water sampler (`--peak`), the same collecting every 100 ms (`--peak --margin`, exact live set, verdict not evidence) or nothing (`--no-sampler`, the control) |
+| `boot_peak.py` / `drive_peak.py` / `sweep_peak.py` | §7R.4's throughput-matched peak twin. `boot_peak.py`: dev's site aliased, every `err_s` printed, the silicon peak sampler's logic (never collects unless `COLLECT=1`; `PEAK_AT` per open-connection count) and a rejection counter wrapped on `_open_conns.increment` as soon as `sensortask_dev.webserver` exists. `drive_peak.py <port> <N> [dur]`: the silicon `--peak` load. `sweep_peak.py <heap> <thr> <Nlist> <tag>`: a fresh twin per level; env `QUOTA` (% of one core, cgroup v1 `cpu.cfs_quota_us` under `/sys/fs/cgroup/cpu/twintest`, applied only once the twin serves), `MAXCONN` (patched into the frozen generated `sensortask_dev.py` as `max_connections=int(os.getenv("MAXCONN") or "64")`), `SETTLE`, `DUR`; waits 12 s after the load so the last 10 s `PEAK_SUMMARY` holds every rejection, and counts host resets beyond the device's rejections as true failures. Calibrated: `QUOTA=3.5`, F′'s heap ≈ 564,648 B |
 
 Two runtime neutralisations are applied in every harness, and are twin artifacts with no counterpart
 on the device: `_fram_chip.FramChip.__init__` shrunk from a 262 KB backing bytearray to 8 KB (the

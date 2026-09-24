@@ -979,7 +979,7 @@ def test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures(dut
     assert discovered == configured, (
         f"the board admitted {discovered} simultaneous connections, this tree configures {configured}. "
         f"Fewer means lwIP's own MEMP_NUM_TCP_PCB (toolchain/versions.toml) is exhausted below the "
-        f"application ceiling - record it in CONNECTION_SCALING_PLAN.md as the wall. More means the "
+        f"application ceiling - that is the wall (SPECIFICATION.md Part H.7). More means the "
         f"flashed image predates this tree."
     )
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
