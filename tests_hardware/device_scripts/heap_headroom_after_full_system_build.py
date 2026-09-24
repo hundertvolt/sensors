@@ -10,7 +10,7 @@ import sensortask_dev
 
 # Explicit, never inherited: mpremote's raw-REPL soft reset keeps whatever threshold was in force,
 # 32768 or -1 depending on whether the attach interrupted main.py first - so until 2026-09-24,
-# setting none of its own, this script read one or the other by timing (MEASUREMENTS 0B.7).
+# setting none of its own, this script read one or the other by timing (MEASUREMENTS M3.8).
 gc.threshold(-1)
 # Doubling/halving search bounds for the largest contiguous block. 64 B is below anything worth
 # reporting; 192 KB is already above the RP2040's whole 264 KB SRAM, so the search always converges
@@ -23,7 +23,7 @@ _PROBE_RETRIES = 3
 
 # The largest contiguous allocation this firmware could be asked to make when these floors were
 # set, measured against the code rather than a board reading: 4,096 B as configured, 16,384 B worst
-# case through microdot's own max_body_length default (MEASUREMENTS 7A.9).
+# case through microdot's own max_body_length default (MEASUREMENTS M2.5).
 _WORST_CASE_ALLOCATION = 16_384
 # That worst case fell to 2,048 B once both caps were bound (SPECIFICATION.md Part I.6). Not
 # re-derived on purpose: these are a regression tripwire with margin, not a restatement of the
@@ -82,7 +82,7 @@ def _dump_map(label: str) -> None:
 
 def _report_checked(label: str) -> "tuple[int, int]":
     # A probe run can pin its own buffer through a stale root; every later attempt then fails and the
-    # search converges on the pinned size - always _PROBE_MAX >> k, e.g. 49,152 (MEASUREMENTS 7F.8).
+    # search converges on the pinned size - always _PROBE_MAX >> k, e.g. 49,152 (MEASUREMENTS M2.2).
     # Unretried that is a false FAIL against the contiguity check below, on a healthy image.
     free, largest, retained = _report(label)
     attempt = 0
@@ -99,7 +99,7 @@ async def _main() -> None:
     _report_checked("baseline")
     # The "before" half of the placement delta: what the BOOT adds up high is attributable only by
     # comparing against what was already there, which is what makes that check independent of the
-    # suite position (MEASUREMENTS 7D.2, 7G.5).
+    # suite position (MEASUREMENTS M3.9, M2.4).
     _dump_map("baseline")
     try:
         await sensortask_dev.build_system(cfg_path="", web_host="127.0.0.1", web_port=8080)
@@ -112,7 +112,7 @@ async def _main() -> None:
     used = gc.mem_alloc()  # read here, not after the threshold lines below, so all three checks are one position
     _dump_map("after_build_system")
     # Control first at the unchanged threshold, so the next line's difference cannot be confused
-    # with a difference between two probe runs at the same position (MEASUREMENTS 7F.8).
+    # with a difference between two probe runs at the same position (MEASUREMENTS M2.2).
     _report_checked("after_build_system_control")
     gc.threshold(32768)  # what buildgen.codegen.generate_boot_entry_source() sets in the real firmware
     print(f"GC_THRESHOLD={gc.threshold()}")

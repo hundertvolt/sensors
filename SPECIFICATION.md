@@ -724,7 +724,7 @@ firmware never gets the flag either way. **The flag is not inert when unused** (
 2026-09-18), which is why the two cannot share one build: it makes the VM allocate a frame and a
 code object on every call and every generator resume, callback or not, inflating every allocation
 figure 4-5x relative to the firmware — E.5.2 has the measurements and
-HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7 the per-node table. Since
+HEAP_FRAGMENTATION_MEASUREMENTS.md archive §1.2 item 7 the per-node table. Since
 the split, the plain suite's figures are the firmware's own scale, and the heavy files run faster
 for the same reason (`test_sensortask_wozi.py` 24.6s → 9.3s). Because a build directory's name no
 longer tells you which variant is in it, `scripts/test.sh` verifies the binary rather than the path
@@ -1321,7 +1321,7 @@ device whose `max_connections` the firmware's own pools cannot serve.
 demand is one small request per connection (bodies capped at 2,048 B, Part I.6), against ~892 B of
 GC heap per pbuf — the most expensive pool to grow. **Confirmed on silicon**: at an 8x advertised
 inbound over-commit (16 connections x `TCP_WND` against the pool) it never surfaced
-(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.2; H.7). The checker derives `PBUF_POOL_BUFSIZE` with the
+(`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7R.2; H.7). The checker derives `PBUF_POOL_BUFSIZE` with the
 IPv6-enabled port's 74 B of protocol headers (`LWIP_IPV6 = 1`, so `PBUF_IP_HLEN` is 40): 876 B.
 
 **Measured cost, from real builds** (`RPI_PICO_W`, v1.29.0, `.bss`/`.data` and
@@ -1360,7 +1360,7 @@ that matters is the **coherent ensemble** at each ceiling — `MEMP_NUM_TCP_PCB`
 | 10 | 13 | 80 | 20,000 | 60,648 | 183,192 | -14,336 | 7.26% |
 
 Absolute heaps are from the builds of that day; the deltas are what transfer. The shipped image's own
-linker heap is 192,360 B (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.1).
+linker heap is 192,360 B (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7R.1).
 
 **A connection costs 2,324 B of GC heap, not 196 B** — linear, and about twelve times what moving
 the PCB count alone suggests. "PCB slots are cheap" is true and irrelevant: the slot is the small
@@ -1956,7 +1956,7 @@ interleaves — between block operations rather than between commands — and th
 a scheduling point after every status-byte pair, after each payload command and per read slice.
 An I2C driver keeps the per-transaction scope: it has no equivalent synchronous session, and
 SPECIFICATION.md Part F.5.8 refuses the generalisation. Full measurement and the ladder of scopes
-considered: `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7C/§7C.1 and §11 item 6.
+considered: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7C/§7C.1 and §11 item 6.
 
 **Known inconsistency (`asy_wifi_service.py`)**: `network_available()` requires the *caller* to
 already hold `wifi_mode_lock`, while its sibling getters assume the caller does *not* — already
@@ -3393,7 +3393,7 @@ Two consequences worth keeping in mind:
   file dies with `ImportError` — that too reads as unusable and triggers the rebuild.
 - **`--coverage`'s own figures stay inflated**, inherently — it cannot run without the flag. Read
   coverage as line coverage only, never as an allocation measurement. The per-node conversion table
-  is in HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7 and §3A.
+  is in HEAP_FRAGMENTATION_MEASUREMENTS.md §M3.7 (archive §1.2 item 7 and §3A).
 
 ### E.5.3 `--coverage`'s three exit codes, and why its test result gates while its report does not
 
@@ -3640,7 +3640,7 @@ is a rule rather than an anecdote. E.7 is the largest of them and keeps its own 
   MicroPython asyncio, so listeners parked by earlier tests keep allocating. Isolate before
   believing a per-test number.
 - **A heap figure about serving load is only as good as the twin that produced it** (the
-  connection-limit work, 2026-09-22/24; evidence `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q/§7R/§9).
+  connection-limit work, 2026-09-22/24; evidence `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7Q/§7R/§9).
   A 64-bit twin doubles dicts, lists and frames but not strings, so it ranks the wrong allocation
   first; a non-frozen one spends ~541 KB on imports the board keeps in flash; the stub site never
   makes a 1 KB read; and a write-phase failure reaches only `err_s`, which prints nothing at the
@@ -3650,7 +3650,7 @@ is a rule rather than an anecdote. E.7 is the largest of them and keeps its own 
   by two levels or more — throttle it to the board's throughput before trusting a limit.
 - **Allocation size is the variable, not churn volume.** A loaded heap at `gc.threshold(-1)` keeps
   ~100 KB free as small holes and no large run; a fix that made 14 % *more* churn removed every
-  failure, and cutting churn never did (§7Q.11). `gc.threshold(32768)` hid it in the twin by
+  failure, and cutting churn never did (archive §7Q.11). `gc.threshold(32768)` hid it in the twin by
   re-placing the working set, and on silicon at peak did not reduce failures at all.
 - **A contiguity figure needs its sample point, instrument and spread established first.** Sample
   at a proven peak (all N held, asserted), with a non-perturbing instrument (`mem_info(1)` parsed by
@@ -4104,7 +4104,7 @@ FRAM entry has the full account.
   survivor *placement* and contiguity (>= 32,768 B, twice that worst case). Placement is asserted
   twice off `micropython.mem_info(1)`'s block map: the boot must **place** nothing in the top
   16,384 B (a delta against a map taken before `build_system()`, so it is independent of what the
-  suite already left on the heap), and nothing may sit there at all. `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7G has the derivation. The comparable 1.28 figure is the 2026-09-08 hammer-load
+  suite already left on the heap), and nothing may sit there at all. `HEAP_FRAGMENTATION_MEASUREMENTS.md` §M2.5 has the method (archive §7G the derivation). The comparable 1.28 figure is the 2026-09-08 hammer-load
   `mem_free` floor of 91,312 B (Part I.5), which is a *loaded* floor, not an at-rest one — the two
   are not directly comparable, and measuring a loaded floor at 1.29 would need `mem_free` exposed
   over REST, which is deliberately not done.
@@ -4317,7 +4317,7 @@ backstop, and no I2C-level timeout mechanism is to be proposed for it.
 **The SPI side's own measured hold, for the same reason it cannot be clamped.** After the FRAM
 path's synchronous restructure (A.4), the longest non-yielding stretch is **2,849 us** — a 1-byte
 `set_values_sync()`, ~6 CS envelopes — and a block operation holds the bus for **21,269 us**
-(measured on the dev board, HEAP_FRAGMENTATION_MEASUREMENTS.md §7D.6). The first figure is the same
+(measured on the dev board, HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7D.6). The first figure is the same
 order as the 4.4 ms UART frame above, so it is stated rather than hidden. **About 90% of it is
 MicroPython interpreter and `machine.SPI` call overhead, not wire time** (six short transactions at
 1 MHz is ~300 us), which is why a faster clock would not shorten it and why per-command yielding is
@@ -4898,7 +4898,7 @@ past that would be refused anyway); `WebserverService` itself only clamps a lowe
 
 **Why 6: stability under peak load, not throughput.** Measured on silicon at `gc.threshold(-1)`
 under the hammer test's peak load (as many back-to-back clients as the limit, plus the SGP40 reset
-PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R):
+PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7R):
 
 | limit | true failures, uninstrumented | free heap at peak | largest free block at peak |
 | --- | --- | --- | --- |
@@ -4907,7 +4907,7 @@ PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEAS
 | 8 | 1 of 1,319, and in 3 of 4 instrumented boots | ~12 % | 400-512 B |
 | 10 | ~1 `/status` in 10, every round | ≤ 11.5 % (rounds load, not peak — upper bound) | ≤ 288 B (same) |
 
-- **Mechanism** (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.4): the board is CPU-bound at ~2.2
+- **Mechanism** (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7R.4): the board is CPU-bound at ~2.2
   requests/s, so a higher limit serves nothing more and only holds more responses at once — each
   open connection ~7.5-8 KB of live heap at peak (streams, `Request`, handler, the built response).
   The failure is a hole too small for one ≤ 257 B `/status` piece; only 6 keeps the conventional
@@ -4931,7 +4931,7 @@ PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEAS
 simultaneous body allocation, task growth and latency, and **cannot** validate a PCB ceiling. Its
 heap and latency figures about serving load follow E.8's twin rules; only a 32-bit frozen twin
 throttled to the board's own throughput reproduces the limit
-(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.4; an ad-hoc instrument, never a gate).
+(`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7R.4; an ad-hoc instrument, never a gate).
 Service, not just survival, is asserted at every tier: every admitted connection must come back with
 a complete, correct, parseable response inside a bounded time, over repeated rounds, and concurrent
 page loads must be byte-identical to an uncontended one. A test that only counts `200`s passes on a
@@ -5202,6 +5202,18 @@ so it is dead on `dev` by construction, not merely untested. It stays because th
 calibration block need not be small, and the same treatment is given to the second-SPI-device
 question in F.5.8.
 
+**Settled during the heap-fragmentation work, not to be reopened** (owner decisions; the method
+behind them is `HEAP_FRAGMENTATION_MEASUREMENTS.md`):
+- **`src/crc_checks.py` keeps its per-byte `await asyncio.sleep(0)`** (2026-09-18: "pure wall
+  clock time is not such an issue, don't touch"). Its allocation is a flat 160 B per `_crc()` call
+  whatever the length, so there is no memory in it; the ~5.8x wall-time cost is accepted, and the
+  yield's original reason (a 256 B CRC must not stall other tasks) stands.
+- **Each FRAM-backed logger's `PrintLogHistoryStore.setup()` stays first in its module's own
+  `setup()`**, not deferred to one pass after the batch (2026-09-21). Deferring it would open a
+  window in which a module failing in its own `setup()` holds that error only in RAM, losing exactly
+  the evidence CLAUDE.md's read-the-FRAM-logs rule depends on; its measured layout gain predates
+  measures A and B and was never shown to add anything on top of them.
+
 ## I.3 Bounded response assembly: `_PieceWriter` and static reads
 
 Every GET route whose response grows with device configuration — `/status`, `/sensors`,
@@ -5217,7 +5229,7 @@ piece**. Its pending-fragment list is collapsed every `_MAX_PENDING_FRAGMENTS` (
 made of tiny fragments (`", "`, single digits) would otherwise need a list array as large as the
 piece. The bytes are **identical** to what the routes emitted before (the top level keeps its own
 `,`/`:`), pinned against MicroPython's own `json.dumps()` by `tests/test_asy_webserver_service.py`
-(route by route against the pre-fix firmware: `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q.11).
+(route by route against the pre-fix firmware: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7Q.11).
 `/status` flushes at each top-level section, so each section starts a piece. **Why byte-budget
 batching, not one piece per fragment**: every piece is one write through a per-write
 `asyncio.wait_for()`, measured at +53% throughput cost when pushed to one per character (F.1).
@@ -5229,12 +5241,12 @@ at the old 1024 B); its wall-clock on silicon is `REAL_HARDWARE_TEST_QUEUE.md` r
 load*, and at `gc.threshold(-1)` it cannot place 1,024: with 1,024 B pieces the board served at most
 4 concurrent requests without a `MemoryError`, failing in ~870 B `/status` pieces, a 296 B errcount
 entry and a 509 B `/measurements` fragment, the largest free run driven to ~800 B
-(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.3). A **32-bit** frozen twin (the RP2040's own pointer
+(`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7R.3). A **32-bit** frozen twin (the RP2040's own pointer
 and block size) reproduces exactly those three sites. A loaded heap keeps ~100 KB free as small
-holes and no large run, so allocation size, not churn volume, is what fails (E.8, §7Q). Measured
+holes and no large run, so allocation size, not churn volume, is what fails (E.8, archive §7Q). Measured
 need per path on that twin (`tests_hardware/device_scripts/allocation_need_per_source.py`):
 `/status` 320 B (1,024 B with the old cap), every other route and data source ≤ 256 B —
-`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q.10.
+`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7Q.10.
 
 **The one fragment the cap cannot bound, and why it is still bounded.** "Never splitting a fragment"
 means a single scalar longer than `chunk_bytes` becomes one over-cap piece; the writer's guarantee is
@@ -5264,11 +5276,11 @@ failure reaches the client as a short read. The same holds inside the header blo
 microdot writes the status line and each header apart, and a client that reads EOF mid-headers
 (Python's `http.client` among them) takes it as their end — a `200` with no `Content-Length` and no
 body, read as complete: the empty `200` silicon showed twice (`HEAP_FRAGMENTATION_MEASUREMENTS.md`
-§7R.5). `_TimeoutStreamProxy.awrite()` holds the block until its blank line and sends it as one
+archive §7R.5). `_TimeoutStreamProxy.awrite()` holds the block until its blank line and sends it as one
 write, so a cut response ends before its status line or after its `Content-Length`.
 
 The sources were never the problem; the assembly was. **256, not smaller**: at 128 the list holding
-a response's pieces grows to 64 slots, a 256 B array, and the measured ceiling does not move (§7Q),
+a response's pieces grows to 64 slots, a 256 B array, and the measured ceiling does not move (archive §7Q),
 while the write count doubles.
 
 Test coverage: direct primitive tests; a hammer test at the real 17-module scale for each fixed
@@ -5406,8 +5418,8 @@ problem"), and in this repo's own measurement. **The measured effect, stated so 
 mistakes it for (f)-stage margin**: on the twin at `gc.threshold(-1)` — the (e)-stage configuration
 — it is worth a factor of 3.2 to 6.9 on largest-contiguous-over-free, taking the post-batch figure
 from 11.9-14.2% to 44.6-45.0% and the post-task-list figure from 8.1-8.4% to 57.7-57.8%
-(HEAP_FRAGMENTATION_MEASUREMENTS.md §7A.2/§7A.8). At the shipped `gc.threshold(32768)` it changes
-nothing measurable (§7A.6), which is the honest reading: this earns its place at the (e) stage, not
+(HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7A.2/§7A.8). At the shipped `gc.threshold(32768)` it changes
+nothing measurable (archive §7A.6), which is the honest reading: this earns its place at the (e) stage, not
 as (f) margin.
 
 Confined mechanically, not by convention: `tests_scripts/test_gc_collect_sites.py` walks `src/`
@@ -5427,10 +5439,10 @@ same suite (the probe rebinds `gc`, so no second image is needed) and asserts th
 each bound, which is what keeps the bounds meaningful; it also asserts retention is arm-independent,
 since a divergence there would mean the collects had started compensating for a leak rather than
 moving placement. Bounds are derived from the measured worst case with margin and are **twin-only**. The board has
-since taken its own reading (2026-09-22, HEAP_FRAGMENTATION_MEASUREMENTS.md §7M) and does **not**
+since taken its own reading (2026-09-22, HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7M) and does **not**
 reproduce the twin's two headline ratios at its own fill, so these bounds stay a twin-scale
 statement and none of them was ever to be copied to the board; measure B's silicon confirmation is
-a different metric (§7F) and is untouched by that. **The prohibition in (e), (f) and (g) is otherwise unchanged**: no `gc.collect()` in
+a different metric (archive §7F) and is untouched by that. **The prohibition in (e), (f) and (g) is otherwise unchanged**: no `gc.collect()` in
 business logic, none in the run phase (the supervisor loop under the starter list is the run phase
 and is asserted to have none), and none as the remedy for memory pressure.
 
@@ -5450,8 +5462,8 @@ Every parameter this audit's Unix-port tests couldn't reach (a host-sized heap v
 was confirmed on real target hardware (2026-09-08): `gc.threshold(32768)` (real hammer-load
 `mem_free` floor 91312 bytes vs. 128 bytes at the reactive-only default), the real GC pause-length
 range (I.1). The piece cap's 2026-09-08 headroom figure (~48x) is withdrawn
-(`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q.7); the current bound, `chunk_bytes` = 256, rests on its
-§7Q/§7R.
+(`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7Q.7); the current bound, `chunk_bytes` = 256, rests on its
+archive §7Q/§7R.
 `tests_hardware/bench/test_memory_stress_bench.py` carries the permanent real-hardware regression
 coverage (a 120s always-run hammer test plus a `long_soak`-gated 600s variant) — nothing from this
 audit remains open pending hardware. Those assert the *outcome* (no `MemoryError`, no reboot,
@@ -5535,7 +5547,7 @@ request must produce **no body read at all**, including under concurrent mixed l
 `gc.threshold(-1)` and `gc.threshold(32768)`.
 
 **On real hardware the wire shows less than that, and the bench rows say so** [SRC].
-`tests_hardware/bench/test_network_resilience.py` mirrors F.2b over real WiFi (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7I.2, §7J.2),
+`tests_hardware/bench/test_network_resilience.py` mirrors F.2b over real WiFi (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7I.2, §7J.2),
 but a socket cannot distinguish "buffered then rejected" from "rejected unread" — both firmwares
 answer 413, only at different sizes. The mirrors therefore pin the **cap value** and the
 boundary's exactness; the 2048-4096 band rejecting is what tells this firmware from the previous
@@ -5582,7 +5594,7 @@ tolerating a ceiling close alone: any other exception, a timeout included, still
 hang cannot hide behind it, and a floor on answers plus a required 200-and-413 pair stop it passing
 vacuously. Replayed against all four recorded runs it passes each one.
 
-**Confirmed on silicon, 2026-09-19** [HW]. In the full bench run after the 2026-09-19 base merge (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7I) and in three dedicated
+**Confirmed on silicon, 2026-09-19** [HW]. In the full bench run after the 2026-09-19 base merge (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7I) and in three dedicated
 repeats afterwards, **all four of those assertions hold every time**: 20 of 24 requests answered
 against a floor of 4, both verdicts present, no non-ceiling exception, and — the claim the cap
 actually owns — **not one request answered with the wrong status**. So the body cap is now

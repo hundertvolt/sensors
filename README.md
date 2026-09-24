@@ -655,6 +655,12 @@ When a new doc is added, add it here too instead of letting the map go stale aga
 - **BACKLOG.md** — active open questions, not-yet-done refactor targets, and deferred/out-of-scope
   work; see its own opening paragraph for the full scope. Resolved items move into this file or
   CLAUDE.md instead of staying there — it's working memory, not a changelog.
+- **[`HEAP_FRAGMENTATION_MEASUREMENTS.md`](HEAP_FRAGMENTATION_MEASUREMENTS.md)** — how to measure
+  heap layout and serving memory so the number is worth believing: the allocator's behaviour, the
+  instruments and which metrics work, the traps that have silently produced wrong figures, twin
+  calibration, and how to rebuild the ad-hoc instruments. Method, not results — the investigation's
+  full measurement record is archived in git (its opening paragraph says where) and is what an
+  "archive §…" citation elsewhere names.
 
 **The central specification** (permanent, code-facing):
 
@@ -691,18 +697,6 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   across the gap until that C source (`arduino/libraries/Async_UART_Comm/`, imported 2026-09-13) is
   reconciled - outside this project's scope (owner, 2026-09-24) - then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
-- **[`HEAP_FRAGMENTATION_MEASUREMENTS.md`](HEAP_FRAGMENTATION_MEASUREMENTS.md)** — the measured
-  evidence base for the heap-fragmentation defect (the collapse of the largest contiguous block
-  across WP1+WP2; the 80,000 B floor it used to be measured against was retired by the owner on
-  2026-09-19 and replaced by the three requirement-derived checks in its §7G):
-  what the instrument is validated against and the eight ways it silently lied before that, the
-  per-module allocation census, the FRAM logging path priced per transaction, the negative results
-  that constrain any fix, and every remedy candidate's ensembled numbers. Its §0A states the
-  mechanism and §9 quarantines every figure a defective instrument produced or a later measurement
-  overturned — check there before reusing any number found in an older transcript or doc. **Cited
-  from ~30 places — five `SPECIFICATION.md` Parts, `REAL_HARDWARE_TEST_QUEUE.md` and two `src/`
-  comments among them — so it is the evidence annex now rather than a throwaway**: it goes when those citations do, and the rules and current-state facts it
-  established already live in `SPECIFICATION.md`/CLAUDE.md.
 - **[`REAL_HARDWARE_TEST_QUEUE.md`](REAL_HARDWARE_TEST_QUEUE.md)** — the single list of everything
   waiting on the dev bench (suite runs, targeted investigations, coverage gaps that need silicon,
   bench-host tasks), so one go-ahead session can work it in one pass instead of rediscovering it

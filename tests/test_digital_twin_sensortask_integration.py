@@ -574,7 +574,7 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
 
         # Eight, not one, so the transition does not depend on WHEN the seeding below lands. A
         # single scripted failure made the test hinge on a timing window that measure A's ~9x
-        # cheaper FRAM path closed, 2 of 2 runs (MEASUREMENTS 7C); a deeper queue removes it.
+        # cheaper FRAM path closed, 2 of 2 runs (MEASUREMENTS archive 7C); a deeper queue removes it.
         conn.wlan.script_connect_outcomes([network.STAT_NO_AP_FOUND] * 8)
 
         pixel_task = pixel.start_asy_neopixel_led_overl()  # the one real pixel task that turns

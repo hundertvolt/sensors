@@ -47,7 +47,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   proves - but a second, ISL29125-specific mechanism remains, and that residual is item 30, where the
   next step (the `RangeAuto=false` bisection) already lives. **What is genuinely still owed here is
   therefore only the BMP3XX arm's re-confirmation being treated as durable** rather than one bench
-  run — it passed again 2026-09-23 in S3's gated run (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.2);
+  run — it passed again 2026-09-23 in S3's gated run (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.2);
   whether two runs is durable is the owner's call; the ISL29125 arm is not "pending re-confirmation", it is a known open defect with its own item.
 
   Note the bench re-run that produced these numbers needs `--allow-persistence-writes`: the write path
@@ -454,7 +454,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     (`REAL_HARDWARE_TEST_QUEUE.md` row G11).
 
 44. **Board anomalies from the connection-limit sittings — recorded, not chased; each needs
-    silicon** (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.5; queue row F17):
+    silicon** (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.5; queue row F17):
     - One silent reset in 1 of 9 instrumented peak-load boots, cause lost. Watchdog starvation is the
       first candidate to rule out: the supervisor loop is the only feed site (`system_service.py`'s
       `feed_watchdog()`), and a board CPU-bound at ~2.2 requests/s can miss the 8,388 ms cap.
@@ -466,11 +466,11 @@ cites is deleted outright, its permanent content migrated per the policy above. 
       `tests_hardware/README.md`'s "> 45 s between a reset and the next attach" trap, not a finding.
 
 49. **Four heap-fragmentation research gaps stay open with no decision riding on them**
-    (HEAP_FRAGMENTATION_MEASUREMENTS.md §0B.7, §12): what in the old churn did the stranding at a
+    (HEAP_FRAGMENTATION_MEASUREMENTS.md §M8): what in the old churn did the stranding at a
     given dose; whether parallelism matters after boot; the per-object picture on the board's
     16-byte blocks; and a same-binary A/B of the committed settle. The remedy shipped and holds on
-    silicon (§7H, §7R), so none gates anything. **Recommendation: close all four as not pursued**,
-    leaving the section as the evidence record; re-open only if a new layout symptom appears.
+    silicon (archive §7H, §7R), so none gates anything. **Recommendation: close all four as not
+    pursued**, leaving §M8 as their record; re-open only if a new layout symptom appears.
 
 ## Deferred / explicitly out-of-scope work
 
@@ -607,7 +607,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
   fixed.** The SPI form exists because the FRAM path drives the chip through blocking register
   writes and paid a coroutine pair plus a bus-lock cycle for every CS cycle (the heap-fragmentation
-  work, HEAP_FRAGMENTATION_MEASUREMENTS.md §3A/§3B). `I2CDevice` has no CS pin, no per-session `configure()`
+  work, HEAP_FRAGMENTATION_MEASUREMENTS.md archive §3A/§3B). `I2CDevice` has no CS pin, no per-session `configure()`
   and no settle, so it has nothing equivalent to make synchronous: its `async with` is
   `Lockable`'s plain lock acquisition, and its own `async def` transfer wrappers already sit
   directly on blocking `machine.I2C` calls. Generalising the session shape to I2C is explicitly

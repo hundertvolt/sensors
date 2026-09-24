@@ -41,7 +41,7 @@ class HeapMap(NamedTuple):
     def placeable(self, size: int) -> int:
         """How many `size`-byte blocks the heap could still place. Not gaps_at_least(): one 40 KB
         run is ONE gap but holds nineteen 2 KB buffers, and it is the capacity that has to cover a
-        simultaneous demand (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.2)."""
+        simultaneous demand (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.2)."""
         return sum(run // size for run in self.free_runs)
 
     def summary(self) -> str:
@@ -137,7 +137,7 @@ def parse(text: str) -> HeapMap:
 class HeapDelta(NamedTuple):
     """What one stretch of code ADDED to the heap: blocks free in `before` and allocated in `after`.
     Position-independent by construction, and a LOWER bound - a block occupied in both maps is not
-    attributed, even if the first occupant was freed in between (MEASUREMENTS 7G.5)."""
+    attributed, even if the first occupant was freed in between (MEASUREMENTS M2.1)."""
 
     block_bytes: int
     heap_blocks: int

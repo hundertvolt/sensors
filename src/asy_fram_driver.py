@@ -52,7 +52,7 @@ _SPI_OPCODE_RDID = const(0x9F)  # Read device ID
 
 # The four fixed single-byte commands, as module-level constants rather than a `bytearray([...])`
 # built on every call - each of those lands in the 32-96 byte size class the heap-layout model
-# cares about (HEAP_FRAGMENTATION_MEASUREMENTS.md section 0A.3), several times per stored byte.
+# cares about (HEAP_FRAGMENTATION_MEASUREMENTS.md section M1), several times per stored byte.
 _CMD_WREN = b"\x06"
 _CMD_WRDI = b"\x04"
 _CMD_RDSR = b"\x05"
@@ -127,7 +127,7 @@ class FRAM_SPI(Lockable):
     async def __aenter__(self) -> "Self":
         # Driver lock then bus, both for one whole block operation, so the chunk layer's byte-level
         # commands run synchronously under a lock it already holds - a second SPI device then waits
-        # ~25 CS rather than ~5 (HEAP_FRAGMENTATION_MEASUREMENTS.md §11 item 6 settled that trade).
+        # ~25 CS rather than ~5 (SPECIFICATION.md C.8 records the owner's choice of that trade).
         await super().__aenter__()
         try:
             await self._bus_lock.acquire()

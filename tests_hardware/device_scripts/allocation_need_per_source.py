@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from asy_webserver_service import WebserverService
 
 # Explicit, never inherited: mpremote's raw-REPL soft reset keeps whatever threshold was in force -
-# the boot entry's 32768, or -1 if the attach interrupted main.py first (MEASUREMENTS 0B.7).
+# the boot entry's 32768, or -1 if the attach interrupted main.py first (MEASUREMENTS M3.8).
 gc.threshold(-1)
 # Hole sizes in GC blocks, ascending: 16-2,048 B on the RP2040, twice that on the twin. The effective
 # largest free run is printed after each sieve too, so the host never has to trust the arithmetic.

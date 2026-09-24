@@ -573,7 +573,7 @@ information):
   `scripts/test.sh` asks the binary itself (`hasattr(sys, "settrace")`) and rebuilds on a mismatch,
   so don't re-diagnose a long-lived toolchain dir rebuilding its Unix ports once as a bug; and that
   any allocation figure taken under `--coverage` is inflated, coverage being line coverage only.
-  **That was HEAP_FRAGMENTATION_MEASUREMENTS.md §11 item 0, now decided and done**, and the
+  **That was HEAP_FRAGMENTATION_MEASUREMENTS.md archive §11 item 0, now decided and done**, and the
   allocation-heavy files got faster with the flag gone (`test_sensortask_wozi.py` 24.6s → 9.3s)
   while wait-bound ones are unchanged. CI (`.github/workflows/ci.yml`) runs the instrumented rerun
   as its own job, `unit-tests-coverage` — separate from `unit-tests` because `timeout-minutes` gates

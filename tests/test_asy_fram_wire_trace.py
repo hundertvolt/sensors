@@ -1,5 +1,5 @@
 """Golden wire traces for the FRAM path: every SPI.init(), every CS edge and every transfer's bytes, recorded from the real src/ chain against tests/_fram_chip_fake.py's chip.
-A restructure of asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py must leave these byte-identical - the contract the owner's approved restructure was held to (HEAP_FRAGMENTATION_MEASUREMENTS.md 3B)."""
+A restructure of asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py must leave these byte-identical - the contract the owner's approved restructure was held to (HEAP_FRAGMENTATION_MEASUREMENTS.md archive 3B)."""
 # The recorder decomposes a trace into CS cycles. Every cycle is asserted to be framed by exactly
 # one SPI.init() at the fixed bus config and one CS low/high pair, so the goldens below need hold
 # only the transfers inside each cycle - the envelope is checked, not dropped (see _cycles()).
@@ -496,7 +496,7 @@ def test_timestamped_clear_wire_trace_matches_the_golden() -> None:
 
 # --------------------------------------------------------------------------- the shape of the traces
 def test_cs_cycle_counts_are_the_measured_figures() -> None:
-    # The headline numbers HEAP_FRAGMENTATION_MEASUREMENTS.md section 3B prices the FRAM path by.
+    # The headline numbers HEAP_FRAGMENTATION_MEASUREMENTS.md archive section 3B prices the FRAM path by.
     # Every one of these cycles is required by the chip; the restructure removes allocations, not
     # CS cycles, so a change here is a protocol change and not an optimisation.
     traces = run(_collect())

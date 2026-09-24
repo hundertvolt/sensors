@@ -54,7 +54,7 @@ async def _main() -> None:
 
     # Reset from inside the victim's own payload transfer, at the driver's synchronous seam. The
     # earlier form raced an `await asyncio.sleep(0)` task into the CS window; measure A made that
-    # window non-yielding, so the race could no longer land (HEAP_FRAGMENTATION_MEASUREMENTS §7D.5).
+    # window non-yielding, so the race could no longer land (HEAP_FRAGMENTATION_MEASUREMENTS archive §7D.5).
     spidev = fram._spidev
     original_write_sync = spidev.write_sync
 

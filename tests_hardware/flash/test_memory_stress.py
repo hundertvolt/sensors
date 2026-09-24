@@ -20,7 +20,7 @@ DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
 # The largest contiguous allocation the firmware could be asked to make when these floors were set
-# (MEASUREMENTS 7A.9): 4,096 B as configured, 16,384 B worst case through microdot's own
+# (MEASUREMENTS M2.5): 4,096 B as configured, 16,384 B worst case through microdot's own
 # max_body_length default. Every figure below is a multiple of that, never of a board reading.
 WORST_CASE_ALLOCATION = 16_384
 # That worst case fell to 2,048 B once both caps were bound (SPECIFICATION.md Part I.6). Not
@@ -34,7 +34,7 @@ def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> Non
     # and contiguity; the placement check below needs the block map, which only the host reads back.
     output = board.run_isolated(DEVICE_SCRIPTS / "heap_headroom_after_full_system_build.py", timeout_s=120.0)
     # Print on pass too, not only in the assertions below: run_isolated() captures device stdout
-    # into a string, so a PASSING run used to discard the figures and 7F.6 lost exactly that number.
+    # into a string, so a PASSING run used to discard the figures and archive 7F.6 lost exactly that number.
     # Surface them with `scripts/run_flash_hardware_suite.sh -s`.
     for line in (ln for ln in output.splitlines() if ln.startswith("HEAP ")):
         print(line)
@@ -48,7 +48,7 @@ def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> Non
     print(f"MAP after_build_system: {layout.summary()}")
     # Cross-check, free: the probe allocates and the map does not, so they fail in different ways.
     # A disagreement means one of them is wrong - the probe's own pinning artefact looks exactly
-    # like this (MEASUREMENTS 7F.8), and it always understates.
+    # like this (MEASUREMENTS M2.2), and it always understates.
     probed = _probed_largest_block(output, "after_build_system")
     assert probed is not None, f"no HEAP after_build_system line to cross-check the map against:\n{output}"
     assert abs(layout.largest_free_run - probed) <= layout.block_bytes * 2, (
@@ -57,13 +57,13 @@ def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> Non
     )
     # What the owner asked these tests to express (2026-09-19): long-lived objects must not colonise
     # the top of the heap. Asserted twice, because the two fail for different reasons and the
-    # difference is the diagnosis (MEASUREMENTS 7G.5).
+    # difference is the diagnosis (MEASUREMENTS M2.4).
     assert "baseline" in maps, f"no baseline block map in the device output - the placement delta cannot be computed:\n{output}"
     placed = heap_map.delta(maps["baseline"], layout)
     print(f"DELTA boot placement: {placed.summary()}")
     # 1. Attributable, and independent of what the suite left on the heap before this ran: the BOOT
     #    must add nothing in the long heap. Zero, not a budget - 17 twin runs across 41-58% fill,
-    #    perturbed, never placed one (7G.5).
+    #    perturbed, never placed one (MEASUREMENTS M2.1).
     assert placed.new_above(WORST_CASE_ALLOCATION) == 0, (
         f"the boot placed {placed.new_above(WORST_CASE_ALLOCATION)} long-lived object(s) inside the top "
         f"{WORST_CASE_ALLOCATION} B of the heap, where a worst-case allocation has to fit. This one is the boot's own "

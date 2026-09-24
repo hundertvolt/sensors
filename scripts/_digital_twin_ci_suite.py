@@ -1050,7 +1050,7 @@ def _run_10_watchdog_hang_backstop(ctx: RunContext) -> None:
 def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
     # ---- Run 11b: the admission ceiling under real simultaneous load, driven from THIS process: a
     # client sharing the DUT's heap measures its own buffers, not the firmware's (Part E.9; an
-    # in-process attempt proved it, HEAP_FRAGMENTATION_MEASUREMENTS.md §9). ----
+    # in-process attempt proved it, HEAP_FRAGMENTATION_MEASUREMENTS.md archive §9). ----
     _clean_state()
     try:  # a ceiling that cannot be read fails this run, never the whole suite and its later passes
         ceiling = _configured_max_connections(ctx.device)

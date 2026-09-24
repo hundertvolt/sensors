@@ -1,6 +1,6 @@
 """Pins that every staged config write in tests_hardware/device_scripts/ is flushed on the manager
 that actually holds it. write_config() only stages - an unflushed manager lets asyncio.run() discard
-the flash write, and the file keeps setup()'s defaults (MEASUREMENTS 7O)."""
+the flash write, and the file keeps setup()'s defaults (MEASUREMENTS archive 7O)."""
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ def test_every_staged_write_is_flushed_on_the_manager_that_holds_it() -> None:
                 offenders.append(f"{path.name}:{line} stages on `{target}`, never flushed")
     assert not offenders, (
         "these managers hold a staged config write that no flush_pending() call reaches, so "
-        "asyncio.run() discards the flash write and the file keeps its defaults (MEASUREMENTS 7O). "
+        "asyncio.run() discards the flash write and the file keeps its defaults (MEASUREMENTS archive 7O). "
         f"A second manager in the same file being flushed does NOT cover these: {offenders}"
     )
 

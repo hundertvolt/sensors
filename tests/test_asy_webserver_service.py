@@ -2035,7 +2035,7 @@ class _BodyFailingWriter(_ChunkRecordingWriter):
 
 def test_g3_the_header_block_is_one_write_so_a_cut_response_still_carries_its_length() -> None:
     # microdot writes each header apart, and a client reading EOF mid-headers takes it as their end:
-    # a 200 with no Content-Length and no body, read as complete (MEASUREMENTS §7R.5's empty 200).
+    # a 200 with no Content-Length and no body, read as complete (MEASUREMENTS archive §7R.5's empty 200).
     mount = _mount_static_fixture({"page.bin": _patterned(1000)})
     service, _app = _make_service(static_mount=mount)
     for path in ("/page.bin", "/status", "/measurements", "/no-such-page"):
@@ -2536,7 +2536,7 @@ def test_h2_add_value_bounds_every_piece_however_large_the_value() -> None:
 
 def test_h2_errcount_entry_is_never_one_string() -> None:
     # The allocation this bounds on silicon: a whole 10-element entry is ~290 B, above the holes a
-    # loaded heap keeps at gc.threshold(-1) (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.3).
+    # loaded heap keeps at gc.threshold(-1) (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.3).
     entry = _shape_errcount_entry(_errcount_log("M", 10, list(range(90, 100)), ["E"] * 10), "M")
     pieces = _written(entry, max_bytes=64)
     assert "".join(pieces) == json.dumps(entry)

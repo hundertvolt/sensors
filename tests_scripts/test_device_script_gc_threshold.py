@@ -1,6 +1,6 @@
 """Pins that every device script measuring the heap sets gc.threshold itself and prints GC_THRESHOLD=.
 mpremote's raw-REPL soft reset keeps the boot entry's threshold (rp2 runs gc_init() once, outside that
-loop), so an unset one is inherited silently - a result not naming its threshold is void (MEASUREMENTS §10)."""
+loop), so an unset one is inherited silently - a result not naming its threshold is void (MEASUREMENTS M3.8)."""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def _problems(source: str) -> list[str]:
         problems.append(f"measures the heap but never prints {_MARKER} - its output cannot say what it was taken at")
     if sets and reports and min(reports) < min(sets):
         # A first arm run at whatever it inherited, made to look set by a later switch - the reason
-        # the pre-2026-09-24 flash-tier readings' threshold is unknown (MEASUREMENTS 0B.7).
+        # the pre-2026-09-24 flash-tier readings' threshold is unknown (MEASUREMENTS M3.8).
         problems.append(f"reports {_MARKER} at line {min(reports)} before setting gc.threshold at line {min(sets)} - that first arm runs at whatever it inherited")
     return problems
 

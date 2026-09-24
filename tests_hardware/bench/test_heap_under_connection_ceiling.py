@@ -1,4 +1,4 @@
-"""Bench-tier measurement of the connection ceiling (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.2):
+"""Bench-tier measurement of the connection ceiling (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.2):
 what the board's heap looks like while a full ceiling of connections is genuinely held open, and
 where its real wall is."""
 

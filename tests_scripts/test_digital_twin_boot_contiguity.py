@@ -49,7 +49,7 @@ _REQUIRED_MAPS = ("baseline", "batch_00", "after_batch", "after_starter_loop_end
 #
 # Re-derived on the settrace-FREE interpreter (SPECIFICATION.md Part E.5.2), which cost the batch's
 # own reach its discrimination and left depth below the seam plus the whole sequence's reach as
-# what carries it. Full re-derivation, and what the old bounds were: MEASUREMENTS §7L.7 and §7L.3.
+# what carries it. Full re-derivation, and what the old bounds were: MEASUREMENTS archive §7L.7 and §7L.3.
 
 # The batch's median new block must sit at least this far BELOW the seam's top survivor. The two
 # margins are thin because the ARMS are only 2.07x apart here, not because the bound is sloppy -
@@ -77,7 +77,7 @@ _ARM_DEPTH_RATIO_MIN = 1.5
 _ARM_REACH_RATIO_MIN = 4.0
 
 # Retention must be arm-independent: the collects change WHERE the next survivor is born, never how
-# much survives (MEASUREMENTS 7A.1's finding, which reproduces here at 0.05%). 1% is 19x that.
+# much survives (MEASUREMENTS archive 7A.1's finding, which reproduces here at 0.05%). 1% is 19x that.
 _RETENTION_TOLERANCE = 0.01
 
 _COUNTER_LINE = re.compile(r"^(?:LISTS|COUNTS) (.*)$", re.MULTILINE)
@@ -186,9 +186,9 @@ def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str, str
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_the_whole_boot_sequence_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
-    # Both lists together - the batch plus start_and_check_tasks()'s starter loop, which 7A.3
+    # Both lists together - the batch plus start_and_check_tasks()'s starter loop, which archive 7A.3
     # measured as mattering as much as the batch. Read at the loop's own end, never after a settle:
-    # the run phase undoes most of the gain within ~2 s and the position stops discriminating (7F.9).
+    # the run phase undoes most of the gain within ~2 s and the position stops discriminating (MEASUREMENTS M3.9).
     maps = boot_probe(device, _ARM_LIVE).maps
     seam, after = maps["batch_00"], maps["after_starter_loop_end"]
     reach, depth = _reach(seam, after), -_median(seam, after)

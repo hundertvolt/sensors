@@ -1,6 +1,6 @@
 """Isolated-driver device script: heap layout after BOTH one-time boot lists, not just
 build_system() - the setup batch is the smaller half of the boot-confined placement reset's effect
-(SPECIFICATION.md Part I.4(f.1), HEAP_FRAGMENTATION_MEASUREMENTS.md 7E.3). Report only, no floors."""
+(SPECIFICATION.md Part I.4(f.1), HEAP_FRAGMENTATION_MEASUREMENTS.md archive 7E.3). Report only, no floors."""
 
 import asyncio
 import gc
@@ -12,7 +12,7 @@ import sensortask_dev
 import system_service
 
 # Explicit, never inherited - same reason as heap_headroom_after_full_system_build.py: until
-# 2026-09-24 this script's first arm ran at whatever it inherited (MEASUREMENTS 0B.7).
+# 2026-09-24 this script's first arm ran at whatever it inherited (MEASUREMENTS M3.8).
 gc.threshold(-1)
 # Same doubling/halving bounds as heap_headroom_after_full_system_build.py, deliberately: the two
 # scripts' largest_block figures are only comparable if the probe is identical.
@@ -24,14 +24,14 @@ _PROBE_RETRIES = 3
 
 # 4 s after the loop ENDS, so this reading is the run phase, not the list: the supervisor and the
 # started tasks churn with no collect, and the twin says B's gain decays there within ~2 s
-# (MEASUREMENTS 7F.9). ~1 s later than 7F.2's, which that decay makes immaterial.
+# (MEASUREMENTS M3.9). ~1 s later than archive 7F.2's, which that decay makes immaterial.
 _STARTER_SETTLE_MS = 4000
 # How long to wait for the starter loop itself to finish before giving up on it. The loop sleeps
 # 1.0 s in total whatever the starter count, plus each _start_task; 20 s is far above any plausible
 # real value and only exists so a wedged starter fails honestly instead of hanging.
 _STARTER_LOOP_TIMEOUT_MS = 20000
 # Added to one inter-starter interval once the last starter lands, to cover the loop's final sleep
-# and its final collect - ~41 ms on the RP2040 (MEASUREMENTS 7F.7), so 250 ms is ample.
+# and its final collect - ~41 ms on the RP2040 (MEASUREMENTS archive 7F.7), so 250 ms is ample.
 _STARTER_LOOP_GRACE_MS = 250
 # start_timers() waits on every timer's first fire. Guarded rather than awaited bare so a timer that
 # never fires fails this script honestly instead of hanging the suite (CLAUDE.md's known hang #2).
@@ -116,7 +116,7 @@ def _dump_map(label: str) -> None:
 def _report_checked(label: str) -> "tuple[int, int]":
     # A probe run can pin its own buffer through a stale root; every later attempt then fails and
     # the search converges on the pinned size - always _PROBE_MAX >> k, e.g. 49,152 (MEASUREMENTS
-    # 7F.8). retained > 0 is that state, and a rerun from a fresh frame clears it.
+    # M2.2). retained > 0 is that state, and a rerun from a fresh frame clears it.
     free, largest, retained = _report(label)
     attempt = 0
     while retained >= _PROBE_MIN and attempt < _PROBE_RETRIES:
@@ -197,7 +197,7 @@ async def _main() -> None:
     await asyncio.sleep_ms(1000 // len(task_starters) + _STARTER_LOOP_GRACE_MS)
     starters_ms = time.ticks_diff(time.ticks_ms(), t2)
     # The reading measure B's second site is about: taken where the last collect of the starter list
-    # just ran, before the run phase has had time to undo it (MEASUREMENTS 7F.9).
+    # just ran, before the run phase has had time to undo it (MEASUREMENTS M3.9).
     _report_checked("after_starter_loop_end")
     _dump_map("after_starter_loop_end")
 
@@ -208,7 +208,7 @@ async def _main() -> None:
 
     # Control first, at the unchanged threshold: without it a difference in the next line cannot be
     # told from a difference between two probe runs at the same position - which is exactly how
-    # 7F.2's 49,152 was misread as a layout figure (MEASUREMENTS 7F.8).
+    # archive 7F.2's 49,152 was misread as a layout figure (MEASUREMENTS M2.2).
     _report_checked("after_starter_list_control")
     gc.threshold(32768)  # what buildgen.codegen.generate_boot_entry_source() sets in the real firmware
     print(f"GC_THRESHOLD={gc.threshold()}")
@@ -218,7 +218,7 @@ async def _main() -> None:
     print(f"BOOT arm={arm} build_system_ms={build_ms} start_timers_ms={timers_ms} starter_loop_ms={starters_ms} settle_ms={_STARTER_SETTLE_MS}")
     # No floor is asserted. No reading for this position exists yet on silicon, so a threshold here
     # would be invented rather than measured; the figure is the deliverable and the comparison is
-    # between two firmware images at the same suite position (7D.2).
+    # between two firmware images at the same suite position (MEASUREMENTS M3.9).
     print(f"RESULT: PASS heap after the whole boot sequence: {free} B free, {largest} B largest single block")
 
 

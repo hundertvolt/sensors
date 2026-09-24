@@ -1,4 +1,4 @@
-"""Serving at MicroPython's own gc default (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.3, fixed per
+"""Serving at MicroPython's own gc default (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.3, fixed per
 SPECIFICATION.md Part I.3): the contiguous block each data source and route needs, and a sweep of
 concurrent requests up past the ceiling with the heap read idle, under load and after."""
 

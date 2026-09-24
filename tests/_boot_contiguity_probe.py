@@ -43,7 +43,7 @@ _ARM_SUPPRESSED = "suppressed"
 
 def _dump(label: str) -> None:
     # mem_info(1) allocates nothing, so it cannot perturb what it measures - which is why every
-    # position here is a map rather than a probe allocation (MEASUREMENTS 7F.8's pinning artefact).
+    # position here is a map rather than a probe allocation (MEASUREMENTS M2.2's pinning artefact).
     gc.collect()
     print(f"=== MAP {label} ===")
     micropython.mem_info(1)
@@ -150,7 +150,7 @@ async def _main(device: str, arm: str, cfg_path: str, settle_ms: int) -> int:
         return 1
     print(f"COUNTS batch_collects={batch_gc.calls} starter_collects={starter_gc.calls}")
 
-    if settle_ms > 0:  # reported, never asserted on: the run phase undoes most of it (7F.9)
+    if settle_ms > 0:  # reported, never asserted on: the run phase undoes most of it (MEASUREMENTS M3.9)
         await asyncio.sleep_ms(settle_ms)
         _dump("after_settle")
     print(f"BOOT device={device} arm={arm} build_system_ms={build_ms} settle_ms={settle_ms}")

@@ -1230,7 +1230,7 @@ def test_a_read_command_is_issued_under_one_bus_lock_hold() -> None:
 def test_set_values_yields_exactly_once_per_command() -> None:
     # The per-command yield policy: the scheduling points live in the coroutine that owns the
     # operation, not in the CS window. One command, one pass - enough that a burst of them cannot
-    # starve the loop (HEAP_FRAGMENTATION_MEASUREMENTS.md section 8.1), and no more than that.
+    # starve the loop (HEAP_FRAGMENTATION_MEASUREMENTS.md section M7), and no more than that.
     fram, _chip = make_fram()
     run(setup_fram(fram))
 

@@ -11,7 +11,7 @@ import sensortask_dev
 
 # Sampling only, never a collect before a dump: the ceiling question is what the allocator has to
 # work with while requests are in flight, garbage included. The threshold is the boot entry's own,
-# set rather than inherited - it is what MEASUREMENTS 7R.2 was taken at.
+# set rather than inherited - it is what MEASUREMENTS archive 7R.2 was taken at.
 gc.threshold(32768)
 _SAMPLE_INTERVAL_MS = 1000
 # Long enough for the host to see this boot serve, settle, and drive several full-ceiling rounds.

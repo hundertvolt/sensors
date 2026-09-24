@@ -253,7 +253,7 @@ found by running the test rather than reading it, and every one green first:
   Part F.2); a script that returns before the flush loses the write while `write_config()` has
   already reported success. `tests_scripts/test_device_script_config_flush.py` pins this **per
   manager**, a `_set_dict_cfg()` write tracked to the `.cfgmgr` it stages on. Evidence (three scripts
-  broken, two omissions cancelling so the test passed): `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7O.
+  broken, two omissions cancelling so the test passed): `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7O.
 
 ## Writing a new bench-tier test, and diagnosing a DUT that has gone quiet: two traps
 
@@ -284,8 +284,9 @@ same "assert a minimum engagement beside every ceiling" habit as for device scri
 
 ## Measuring heap and serving under load
 
-Rules from the sittings that set `max_connections = 6`; results and evidence:
-`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R (the removed sweep tool's recipe: its §10).
+Rules from the sittings that set `max_connections = 6`. The method behind them, the twin side and
+the removed sweep tool's recipe: `HEAP_FRAGMENTATION_MEASUREMENTS.md` §M6 and §M5.4; the evidence is
+that file's archived record ("archive §7R" below).
 
 **Fix the question and the pass criterion before measuring.**
 - **Stable** = zero true failures **and** zero device lines matching `MEMORY_ERROR_MARKERS`,
@@ -293,7 +294,7 @@ Rules from the sittings that set `max_connections = 6`; results and evidence:
   expected (`http_client.is_ceiling_close()`, owner's rule); everything else — a short body, a
   4xx/5xx, a timeout — is a failure.
 - **Peak is not rounds.** Rounds of N parallel requests with pauses are typical load and overstate
-  free heap (§7R.4). Peak is as many back-to-back clients as the limit plus forced internal work (the
+  free heap (archive §7R.4). Peak is as many back-to-back clients as the limit plus forced internal work (the
   hammer test's dispatch-only SGP40 reset PUT every 3 s), on the full task graph, over every path a
   page load really fetches (`/js/app.js` included).
 - **Check every body, not the status.** A static body against a validated idle reference and its
@@ -309,12 +310,12 @@ Rules from the sittings that set `max_connections = 6`; results and evidence:
 - **Run the control**: the same load with nothing on the device but the task graph.
 - **Price the instrument**: a device script's own code and globals cost heap production's frozen
   `main.py` does not pay (2,720 B: its `gc.mem_alloc()` after a collect against an import-only
-  script's, §7R.4); samplers cost ~10-20 % of throughput. Report heap both as measured and
+  script's, archive §7R.4); samplers cost ~10-20 % of throughput. Report heap both as measured and
   production-equivalent, as a percentage of `mem_info`'s total (the linker's
-  `0x20040000 − __GcHeapStart` minus the GC's own tables, ~4.3-4.5 KB scaling with heap, §7R.1).
+  `0x20040000 − __GcHeapStart` minus the GC's own tables, ~4.3-4.5 KB scaling with heap, §M6.2).
 - **rp2 has no exact end-of-GC signal** — `__del__` never runs on user-class instances and
-  `MICROPY_PY_WEAKREF` is off — so a sampler that never collects cannot find the live set (§7R.4,
-  §9). Read `_open_conns.value` as a plain int (no coroutine, no allocation); an `await`-less
+  `MICROPY_PY_WEAKREF` is off — so a sampler that never collects cannot find the live set (archive
+  §7R.4, §9). Read `_open_conns.value` as a plain int (no coroutine, no allocation); an `await`-less
   `get_value()` is a coroutine object, always truthy.
 
 **Re-derive a tool's printed summary from the raw output when a label looks wrong**, and remember
@@ -328,13 +329,13 @@ handler`), so lines ÷ 2 = host 500s.
 
 **Verify the image before its figures count.** Read every lwIP macro back out of the firmware
 (`micropython_overrides.read_lwip_macros_from_build()`), run `check_lwip_ensemble()` at the image's
-limit, and check the linker heap against §7R.1's per-connection formula. On the board: `/system`'s
+limit, and check the linker heap against §M6.2's per-connection formula. On the board: `/system`'s
 `build.buildDate`, static `Content-Length`, `gzip -t`. Local-only images (a
 `max_connections`/`[lwip]` edit) are built, recorded by recipe and reverted at once; keep each
 `.uf2` aside so a later level can reflash without a rebuild.
 
 **One fresh boot per data point, and enough of them.** Failures near the wall are probabilistic, so
-zero failures in one boot proves little (§7R.4); the heap margin separates neighbouring limits. The
+zero failures in one boot proves little (archive §7R.4); the heap margin separates neighbouring limits. The
 bench tests' assertion messages carry only `output[-2000:]` of device output and host tallies print
 after it, so a one-boot sweep loses which level broke: per-level answers need one boot per level.
 
@@ -378,7 +379,7 @@ the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
 - **Both instruments that wait for a device script's own server** first let main.py's go quiet
   (`harness.wait_for_script_server()`), so main.py can never answer the readiness probe.
 
-**Bench traps** (occurrences: §7R.5).
+**Bench traps** (occurrences: archive §7R.5).
 - Leave > 45 s between a reset and the next `mpremote` attach; a watchdog reset ~9 s after an early
   attach is the likely, unconfirmed cause of one dead run.
 - After a reset or a flash the board can fall back to hotspot mode; `kick_all_stations()` +
@@ -486,7 +487,7 @@ a live question:
   false conclusion once: freshly flashed, the heap probe read 95,104 B and passed; deep in a suite
   the *same* firmware read 28,864 B and failed, with `free` unchanged to 0.2 % — the defect is
   position-dependent and a cold build cannot see it. **Any heap figure must state its suite
-  position, or it is not a comparison** (HEAP_FRAGMENTATION_MEASUREMENTS.md §7D.2).
+  position, or it is not a comparison** (HEAP_FRAGMENTATION_MEASUREMENTS.md §M3.9).
 - ~~Is it safe to poll a live, already-running system with `board.exec()`/`is_reachable()`?~~ —
   **resolved: no, never.** `mpremote`'s `enter_raw_repl()` unconditionally sends Ctrl-C plus, by
   default, a real Ctrl-D `machine.soft_reset()` before running anything — polling either one against

@@ -2,7 +2,7 @@
 This is the efficiency half of SPECIFICATION.md I.4(e) - it fails if a coroutine-per-CS-cycle, or any comparable per-call allocation, regresses back into the path."""
 # The absolute byte figures are binary-dependent and NOT board figures: a MICROPY_PY_SYS_SETTRACE=1
 # build (which scripts/test.sh's interpreter is) inflates every number here 4-5x and non-uniformly
-# - HEAP_FRAGMENTATION_MEASUREMENTS.md 1.2 item 7 and 3A. Both budgets are measured, one per build.
+# - HEAP_FRAGMENTATION_MEASUREMENTS.md M3.7 and archive 3A. Both budgets are measured, one per build.
 
 import asyncio
 import gc
