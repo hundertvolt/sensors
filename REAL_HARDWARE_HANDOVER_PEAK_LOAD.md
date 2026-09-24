@@ -25,9 +25,9 @@ removed with the others before the branch merges.
 
 ## 2. State (updated 2026-09-24)
 
-- **Board**: image **F′** (branch tip, `max_connections = 8`), build `2026-09-23T20:55:14Z`, serving
-  at `192.168.85.57`, `DebugLevel` 5, after the §5.6 runs (their last level ends with the tool's own
-  hard reset).
+- **Board**: image **E6** (built for 6, local edits only — recipe in §5.8), build
+  `2026-09-24T05:20:20Z`, serving at `192.168.85.57`, `DebugLevel` 5. Reflash F′ (the tip) with a plain
+  `uv run scripts/build_firmware.py dev` before anything that assumes the shipped config.
 - **Repo**: branch `claude/tcp-connection-scaling`, everything pushed. `devices/dev.toml` and
   `toolchain/versions.toml` are at the tip (images G′ and H were local edits only, never committed;
   their recipes are in §3).
@@ -625,8 +625,8 @@ instrumented; "production-equivalent" adds back the device script's own 2,720 B,
   that fails (1 in 1,319 uninstrumented; 3 more in instrumented runs, §5.6).
 - **Headroom at peak: 6 → ~21 % free (largest block ~1.5 KB); 7 → ~14 % free (largest block
   0.5 KB); 8 → ~12 % free (largest block 0.4-0.5 KB) and failing.** Each extra admitted connection
-  costs ~13-14 KB at peak (live set) plus 2,324 B of static heap. Against the general guidance of
-  20-30 % free at peak (§5.3's source), **only 6 is inside it**; 7 is below it but stable here.
+  costs ~13-14 KB at peak (live set) plus 2,324 B of static heap. Against general embedded practice
+  of 20-30 % free at peak, **only 6 is inside it**; 7 is below it but stable here.
 - **The refusal rate is ~70 % at every limit** under this load: clients reconnect immediately and a
   connection still closing counts (§6.3). Completed requests per boot are flat, 121-149 at 6 and
   123-136 at 7 (F′ at 8: 122-134) — the board, not the limit, sets throughput.
@@ -641,7 +641,7 @@ the end, so a watchdog reset would need a ≥ 6 s block of the loop with no outp
 would look the same. `run_isolated()` arms its own `machine.WDT(timeout=8000)` around every device
 script. The reset cause was lost (the chain flashed E7 one second later). Two repeat collecting
 boots on the reflashed E6 did **not** reset; the re-run captures `machine.reset_cause()` if it ever
-does. 1 occurrence in ~12 collecting boots across two days; none in any uninstrumented boot.
+does. 1 occurrence in 9 peak-load collecting boots across two days; none in any uninstrumented boot.
 
 Verbatim (`device: WEBSERVER …` lines omitted; the first E6 collecting boot produced no result
 line, only the serial error):
