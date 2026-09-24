@@ -594,6 +594,10 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
             started = await _wait_until(lambda: conn.dns_server_task is not None, timeout_s=25.0)
             assert started, "real hotspot activation never started the real DNSServer task"
             assert not conn.dns_server_task.done()  # started == True above; `conn` types as Any
+            # The task existing is not the port being bound (AsyUDPSocket binds lazily in run()), and a
+            # datagram sent to an unbound UDP port is silently dropped - the query below sends only once.
+            bound = await _wait_until(lambda: conn.dns_server.udps.connected, timeout_s=5.0, interval_s=0.01)
+            assert bound, "the real DNSServer never bound its port 53 socket"
             # The generated sensortask_wozi.py's module-level `conn` is typed "Any | None" rather than the
             # hand-written file's precise "AsyConnTime | None" (buildgen/codegen.py's deliberate choice), so
             # this attribute access needs no type: ignore any more.

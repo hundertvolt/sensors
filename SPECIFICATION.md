@@ -4814,7 +4814,12 @@ repo did not, and each failed silently rather than loudly.
   **No connection can be held longer than ~15 s on this firmware**, whatever the client does.
 - A slot is released in `_serve()`'s `finally`, after the writer close has been awaited, so it
   outlives the client's own close — and released even when that close's own warning raises
-  `MemoryError` on an exhausted heap, since a skipped release would refuse everyone until reboot. Measured drain after a full ceiling was released: **0.71–0.84 s**.
+  `MemoryError` on an exhausted heap, since a skipped release would refuse everyone until reboot.
+  Measured drain after a full ceiling was released: **0.71–0.84 s**.
+- A client that resets mid-request is never written to. Once a read has returned its `ECONNRESET`,
+  `extmod/modlwip.c` has freed the pcb but its state (6) still passes the write path's error check,
+  so microdot's 400 would reach `tcp_write(NULL)`, log a spurious warning and could spin until the
+  per-call timeout; `_TimeoutStreamProxy` drops every write once a read of the pair raised `OSError`.
 
 The consequences, all found by running these instruments on silicon for the first time:
 
@@ -4822,29 +4827,41 @@ The consequences, all found by running these instruments on silicon for the firs
    `discover_max_connections()` used `settimeout(10.0)`, so each connection died before the next was
    opened and at most ~2 were ever held at once; against a board whose true ceiling was 4 it walked
    past 12 and raised "the ceiling is higher than this probe looks". It now dwells 0.3 s and sends
-   every held connection a request line, then a header line per step, so the per-call timeout never
-   frees a slot mid-walk and only the outer cap bounds it (40 × 0.3 s). It fails loudly if a held
+   every held connection `harness.HELD_REQUEST_LINE` (`HOLD / HTTP/1.0`), then a header line per
+   step, so the per-call timeout never frees a slot mid-walk and only the outer cap bounds it
+   (40 × 0.3 s). They are closed with a plain FIN: EOF ends microdot's headers and it answers an
+   unrouted method with a small 405, where the old `GET /status` probe cost a full `/status` each. It fails loudly if a held
    connection answers instead of staying open, and re-checks every counted socket is still open when
    the refusal lands. A connect that is refused or times out is the wall itself, counted rather than
    raised, and has its own 2 s timeout, apart from the read's, so a slow handshake is never read
    as a held connection.
 2. **A caller that measured the ceiling has just filled it**, so an immediate follow-up request is
-   refused. The probe now waits for the slots to drain inside its own `finally`, so the guarantee is
-   in one place rather than being a per-call-site obligation.
+   refused. After a successful walk the probe waits until the whole discovered ceiling can be held
+   at once again — not one slot — then allows `settle_s` for its own check connections to release
+   theirs, backing off the same interval after a partial set. After a failed walk it drains one slot
+   best-effort and keeps the walk's own error as the headline.
 3. **"Hold N open and sample" is not achievable by opening N and waiting.** A full ceiling is
    *sustained* by replacing each connection as the firmware reclaims it, and the sampled minimum of
-   the live count — not the count at open time — is what makes a heap dump a peak reading.
+   the live count — not the count at open time — is what makes a heap dump a peak reading. A
+   connection counts as held only once a 0.3 s read of it stays silent; counted at `sendall`, every
+   refusal read as held.
 
 `tests_scripts/test_request_timeout_ceiling.py` pins both instruments inside both timeouts, read
 from `src/`: the probe's dwell under `per_call_timeout_s` and its whole `probe_limit` walk under
 `outer_cap_s`, the holder's drip under the first and its recycle under the second. It also runs the
 holder against a loopback server: a parked connection is kept through every drip until its recycle
-time, and a server that answers gets a fresh one. Until 2026-09-24 the first empty read of a
+time, a server that answers gets a fresh one, a server that refuses everything never has one
+counted, and the holder starts nothing when the script's server never answers and ends as soon as
+its test sets `stop`. Until 2026-09-24 the first empty read of a
 non-blocking socket ended the drip loop, so every connection was recycled after one drip rather
 than at 10 s. `tests_scripts/test_ceiling_probe.py` runs the probe and its drain wait against a
 loopback server shaped like `_serve()`: the walk finds the ceiling, padding outlasts an idle timeout
-a plain walk cannot, a refused connect counts as the wall, and a connect timeout never reads as a
-free slot. Both instruments that wait for a device script's own server first let main.py's go quiet
+a plain walk cannot, a refused connect counts as the wall, a connect timeout never reads as a
+free slot, the walk returns only once its whole ceiling is admittable again against a server that
+keeps serving each closed probe, and an answered walk, an exhausted `probe_limit`, a connection
+closed mid-walk and an RST refusal each fail or count by name. `tests_scripts/test_bench_harness_helpers.py`
+covers the readiness wait, the board restore's call order, the error-log comparison, and pins every
+bench thread worker to catch `http_client.HTTP_ERROR` as well as `OSError`. Both instruments that wait for a device script's own server first let main.py's go quiet
 (`harness.wait_for_script_server()`), so main.py can never answer the readiness probe.
 
 

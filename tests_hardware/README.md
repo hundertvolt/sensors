@@ -276,9 +276,10 @@ Both cost real bench time more than once, and neither is discoverable by reading
   the cheap discriminator.
 - **A test that opens as many concurrent connections as `max_connections` (6 today; 4 when this was
   measured) cannot expect a definitive status from all of them**, whatever it is testing. `_serve()`'s reject-when-full branch
-  closes without writing a response, and `src/` does not choose whether the client sees FIN or RST -
-  `test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` accepts either for exactly
-  that reason. Measured 2026-09-19 with tiny bodies, so it is nothing to do with payload size:
+  closes without writing a response: the client sees a FIN, or an RST once its request bytes had
+  already arrived (modlwip drops unread pbufs without `tcp_recved()`, so lwIP's `tcp_close()` resets
+  when `rcv_wnd != TCP_WND_MAX`) - `test_connections_at_and_above_the_real_socket_limit_degrade_cleanly`
+  accepts either for exactly that reason. Measured 2026-09-19 with tiny bodies, so it is nothing to do with payload size:
   concurrency 2 -> 0% reset, 4 -> 25%, 8 -> 12%, 24 -> 25%. Resets begin **at** the ceiling, not
   beyond it. **Before calling such a reset a defect, run the all-small-bodies control** - two
   minutes, and it separates the feature under test from the connection ceiling. It is what turned a
@@ -356,12 +357,18 @@ separates neighbouring limits.
 **Holding a ceiling open** (`bench/test_heap_under_connection_ceiling.py`) needed four layered
 fixes, each visible only once the one above was in: no connection outlives `outer_cap_s` (15 s;
 a silent one closes after 5 s), so holders drip a header line and recycle at 10 s; started together
-they expire together, so each is staggered by `i × 10 s / N`; the holder threads are stoppable and
-joined (one that outlived its test failed the next 37 network tests); and since `run_isolated()`
+they expire together, so each is staggered by `i × 10 s / N`; a connection counts as held only once
+a 0.3 s read of it stays silent (a refusal is a FIN ~6 ms after connect, or an RST); the holder
+threads are stoppable by the test's own `stop` and joined (one that outlived its test failed the next
+37 network tests); and since `run_isolated()`
 leaves `main.py` stopped, the test restores the board — `harness.restore_board_to_serving()`:
 `kick_all_stations()`, `hard_reset()`, wait for HTTP — in its own `finally`. A pytest assertion message keeps only the last 2,000 characters of
 device output and host tallies print after it, so which level of a one-boot sweep broke is lost:
-per-level answers need one boot per level.
+per-level answers need one boot per level. The ceiling probe and the ceiling test hold theirs with
+`harness.HELD_REQUEST_LINE` (`HOLD / HTTP/1.0`) and close them with a plain FIN: EOF ends microdot's
+headers and it answers what was asked, so an unrouted method costs a small 405 where `GET /status`
+cost a full `/status` per held socket. Never an RST: once the server has read one, modlwip writes
+microdot's 400 through a NULL pcb (`lwip_tcp_send()` after `STATE_PEER_RST_HANDLED`).
 
 **Bench traps from the same sittings.**
 - Leave > 45 s between a reset and the next `mpremote` attach; a watchdog reset ~9 s after an early
@@ -546,8 +553,9 @@ a live question:
   check on a previous connection (this bench's own repeated automated test runs are a plausible
   source) — forgetting the saved network and rejoining fresh rules this out. No code changed as a
   result of this investigation.
-- **`max_connections=4` real client-visible rejection under a realistic multi-client burst** — see
-  BACKLOG.md open question 7 for the full finding and the still-open raise-the-cap decision.
+- **Real client-visible rejection at `max_connections` (6) under a realistic multi-client burst** is
+  expected, not a defect: a slot is held until its connection's close completes, so back-to-back
+  clients see ~70 % refused at every limit - `SPECIFICATION.md` Part H.7 has the settled limit.
 - **This whole tier's log-based synchronization depends on the DUT's live `DebugLevel` being high
   enough — confirmed directly, the hard way (2026-09-04): a full 77-test bench run produced 2 real
   failures + 48 errors, none of them a real regression.** `tests_hardware/conftest.py`'s `dut_ip`

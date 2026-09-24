@@ -183,6 +183,12 @@ def parse_labelled(text: str) -> dict[str, HeapMap]:
     return found
 
 
+def parse_churn(text: str) -> dict[str, int]:
+    """allocation_need_per_source.py's CHURN lines: each probe's net mem_alloc() change, in bytes -
+    negative when a collect ran inside it, which a digits-only pattern silently dropped."""
+    return {m.group(1): int(m.group(2)) for m in re.finditer(r"^CHURN (\S+) (-?\d+)", text, re.MULTILINE)}
+
+
 _ALLOCATION_FAILED = re.compile(r"MemoryError|memory allocation failed")
 
 
@@ -190,7 +196,10 @@ def parse_allocation_need(text: str) -> dict[str, int | None]:
     """allocation_need_per_source.py's output, reduced to the smallest effective largest-free-run (in
     bytes) at which each probe succeeded cleanly, and at every larger rung too. None if it never did.
     A caught-and-logged failure between a probe's TRY and RES lines counts as a failure (I.4(e))."""
-    block = int(re.search(r"^BLOCK=(\d+)", text, re.MULTILINE).group(1))  # type: ignore[union-attr]
+    block_line = re.search(r"^BLOCK=(\d+)", text, re.MULTILINE)
+    if block_line is None:  # without the block size no rung can be sized in bytes
+        raise ValueError("no BLOCK= line: the script's output was cut off or its header changed")
+    block = int(block_line.group(1))
     rung_bytes = 0
     clean: dict[str, list[tuple[int, bool]]] = {}
     label = ""

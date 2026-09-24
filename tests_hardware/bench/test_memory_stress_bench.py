@@ -49,7 +49,7 @@ def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> 
                         success_count += 1
                     else:
                         request_errors.append(f"GET {path} -> {res.status_code}")
-            except OSError as exc:
+            except (OSError, http_client.HTTP_ERROR) as exc:
                 # With the hammer saturating max_connections, ConnectionResetError is the
                 # server's intended reject-when-full behavior, not a fault - not asserted against
                 # below; only genuine 200s count as proof the server stayed alive (BACKLOG.md open question 7).
@@ -66,7 +66,7 @@ def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> 
                         success_count += 1
                     else:
                         request_errors.append(f"PUT /sensors SGPResetVOC -> {res.status_code}")
-            except OSError as exc:
+            except (OSError, http_client.HTTP_ERROR) as exc:
                 with lock:
                     request_errors.append(f"PUT /sensors SGPResetVOC -> {exc!r}")
 
@@ -151,7 +151,7 @@ def test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic(board: 
                 res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=5.0)
                 if res.status_code != 200:
                     request_errors.append(f"GET {path} -> {res.status_code}")
-            except OSError as exc:  # a real transient network hiccup during a long soak is expected sometimes
+            except (OSError, http_client.HTTP_ERROR) as exc:  # a real transient network hiccup during a long soak is expected sometimes
                 request_errors.append(f"GET {path} -> {exc!r}")
             stop.wait(0.2)  # a modest, sustained request rate - not a flood (that's item 17's job)
 

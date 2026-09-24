@@ -204,9 +204,9 @@ def ceiling_holder(repo_root: Path) -> ModuleType:
         return load_script_module(repo_root / "tests_hardware" / "bench" / "test_heap_under_connection_ceiling.py", "bench_ceiling_holder")
 
 
-def _connections_the_holder_opens(holder: ModuleType, *, server_answers: bool, window_s: float = 0.6) -> "tuple[int, int]":
-    # A loopback server that either parks every connection, as the firmware does mid-request, or
-    # closes it at once, as it does on answering. Returns (connections opened, live count at the end).
+def _connections_the_holder_opens(holder: ModuleType, *, server_answers: bool, window_s: float = 0.6) -> "tuple[int, int, int]":
+    # A loopback server that either parks every connection, as the firmware does mid-request, or closes
+    # it at once, as it does on refusing. Returns (connections opened, live count at the end, its peak).
     server = socket.create_server(("127.0.0.1", 0))
     server.settimeout(0.05)
     accepted: list[socket.socket] = []
@@ -226,7 +226,10 @@ def _connections_the_holder_opens(holder: ModuleType, *, server_answers: bool, w
     threads = [threading.Thread(target=serve), threading.Thread(target=holder._park_one_connection, args=("127.0.0.1", live, lock, stop, 0.0, server.getsockname()[1]))]
     for thread in threads:
         thread.start()
-    time.sleep(window_s)
+    peak, until = 0, time.monotonic() + window_s
+    while time.monotonic() < until:
+        peak = max(peak, live[0])
+        time.sleep(0.002)
     opened, at_end = len(accepted), live[0]
     stop.set()
     done.set()
@@ -235,7 +238,7 @@ def _connections_the_holder_opens(holder: ModuleType, *, server_answers: bool, w
     for conn in accepted:
         conn.close()
     server.close()
-    return opened, at_end
+    return opened, at_end, peak
 
 
 def test_the_ceiling_holder_keeps_a_parked_connection_until_its_recycle_time(ceiling_holder: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -243,11 +246,68 @@ def test_the_ceiling_holder_keeps_a_parked_connection_until_its_recycle_time(cei
     # The shape it had raised out of the drip loop on the first empty read, recycling every drip.
     monkeypatch.setattr(ceiling_holder, "_DRIP_INTERVAL_S", 0.05)
     monkeypatch.setattr(ceiling_holder, "_RECYCLE_S", 5.0)
-    assert _connections_the_holder_opens(ceiling_holder, server_answers=False) == (1, 1)
+    monkeypatch.setattr(ceiling_holder, "_ADMISSION_WAIT_S", 0.1)
+    assert _connections_the_holder_opens(ceiling_holder, server_answers=False) == (1, 1, 1)
 
 
 def test_the_ceiling_holder_takes_a_fresh_connection_once_the_server_answers(ceiling_holder: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ceiling_holder, "_DRIP_INTERVAL_S", 0.05)
     monkeypatch.setattr(ceiling_holder, "_RECYCLE_S", 5.0)
-    opened, _live = _connections_the_holder_opens(ceiling_holder, server_answers=True)
+    monkeypatch.setattr(ceiling_holder, "_ADMISSION_WAIT_S", 0.1)
+    opened, _live, _peak = _connections_the_holder_opens(ceiling_holder, server_answers=True)
     assert opened >= 2, opened
+
+
+def test_the_ceiling_holder_never_counts_a_connection_the_server_refused(ceiling_holder: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The board refuses by closing ~6 ms after connect, after the request is already sent. Counted
+    # right after sendall, every refusal read as held and the "at the ceiling" fraction was fiction.
+    monkeypatch.setattr(ceiling_holder, "_DRIP_INTERVAL_S", 0.05)
+    monkeypatch.setattr(ceiling_holder, "_ADMISSION_WAIT_S", 0.1)
+    opened, _live, peak = _connections_the_holder_opens(ceiling_holder, server_answers=True)
+    assert opened >= 2 and peak == 0, f"{opened} connections opened, all refused, yet up to {peak} counted as held"
+
+
+def test_the_ceiling_holder_starts_nothing_when_the_script_server_never_answers(ceiling_holder: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Ignoring that result parked connections on main.py's server, or on nothing, and reported them.
+    parked: list[int] = []
+    monkeypatch.setattr(ceiling_holder, "wait_for_script_server", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(ceiling_holder, "_park_one_connection", lambda *_args: parked.append(1))
+    held_out: list[int] = []
+    ceiling_holder._hold_ceiling_open("127.0.0.1", 2, 30.0, held_out, threading.Event())
+    assert (held_out, parked) == ([], []), "a holder whose script server never came up still reported a distribution"
+
+
+def test_the_ceiling_holder_ends_as_soon_as_its_test_sets_stop(ceiling_holder: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The stop Event belongs to the test, so its finally ends a 30 s hold at once instead of joining it.
+    monkeypatch.setattr(ceiling_holder, "wait_for_script_server", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(ceiling_holder, "_park_one_connection", lambda _ip, _live, _lock, stop, *_rest: stop.wait())
+    stop = threading.Event()
+    held_out: list[int] = []
+    hammer = threading.Thread(target=ceiling_holder._hold_ceiling_open, args=("127.0.0.1", 2, 30.0, held_out, stop), daemon=True)
+    hammer.start()
+    time.sleep(0.2)
+    stop.set()
+    hammer.join(timeout=2.0)
+    assert not hammer.is_alive(), "the holder outlived its test's stop"
+    assert len(held_out) == 4
+
+
+def test_the_bench_ceiling_test_keeps_its_held_set_inside_the_per_call_timeout(repo_root: Path, per_call_timeout_s: float) -> None:
+    # A held socket silent past per_call_timeout_s is answered and logs wrnno=2, failing the test's
+    # own empty-WEBSERVER-log check; one extra blocking in recv for 10 s held the set that long.
+    source = (repo_root / "tests_hardware" / "bench" / "test_network_resilience.py").read_text()
+    fn = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.FunctionDef) and n.name == "test_connections_at_and_above_the_real_socket_limit_degrade_cleanly")
+    sent: set[str] = set()
+    read_timeouts: list[float] = []
+    for call in ast.walk(fn):
+        if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) and call.args):
+            continue
+        arg = call.args[0]
+        if call.func.attr == "sendall":
+            sent.add(ast.unparse(arg))
+        elif call.func.attr == "settimeout" and ast.unparse(call.func.value) == "extra" and isinstance(arg, ast.Constant) and isinstance(arg.value, int | float):
+            read_timeouts.append(float(arg.value))
+    assert "HELD_REQUEST_LINE" in sent, "the held sockets never send a request line, so nothing can pad them"
+    loop = next(n for n in ast.walk(fn) if isinstance(n, ast.For) and "extra.connect" in ast.unparse(n))  # the attempt loop
+    assert "_pad" in {c.func.id for c in ast.walk(loop) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}, "the held sockets are not padded on every attempt"
+    assert read_timeouts and read_timeouts[-1] + 1.0 < per_call_timeout_s, f"the extra's read timeout ({read_timeouts[-1:]}s) plus the 1 s retry sleep outlasts per_call_timeout_s ({per_call_timeout_s}s) between pads"

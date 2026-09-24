@@ -1,7 +1,6 @@
-"""Bench-tier automated tests for real WiFi outage/flap, NTP/DNS servers answering with garbage
-(BACKLOG.md open question #5), the webserver's own admission ceiling and whether silicon really holds
-and serves it, malformed REST requests, and slowloris/abrupt disconnects - DHCP-client flakiness is
-deliberately out of scope (see BACKLOG.md)."""
+"""Bench-tier tests for real WiFi outage/flap, NTP/DNS servers answering garbage (BACKLOG.md question
+#5), the webserver's admission ceiling on silicon, malformed REST requests and slowloris/abrupt
+disconnects. DHCP-client flakiness is deliberately out of scope (see BACKLOG.md)."""
 
 from __future__ import annotations
 
@@ -21,7 +20,7 @@ from error_log_helpers import (
     get_errcount,
     reset_all_error_logs,
 )
-from harness import Board, HardwareTestFailureError, configured_max_connections, discover_max_connections, wait_until
+from harness import HELD_PAD_LINE, HELD_REQUEST_LINE, Board, HardwareTestFailureError, configured_max_connections, discover_max_connections, wait_until
 from rogue_udp_responder import RogueUdpResponder
 
 if TYPE_CHECKING:
@@ -604,41 +603,55 @@ def _restore_ssid_over(host: str, original_ssid: str) -> None:
 _MAX_CONNECTIONS = configured_max_connections()  # the build's own ceiling, never a restated literal
 
 
+def _pad(held: list[socket.socket]) -> None:
+    for index, sock in enumerate(held):
+        try:
+            sock.sendall(HELD_PAD_LINE)  # resets its per-call read timeout, as the ceiling probe does
+        except OSError as exc:
+            raise AssertionError(f"held connection {index} of {len(held)} was closed ({exc!r}) - the ceiling was not free when the test began") from exc
+
+
 def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
-    # The preceding PUT /status closing client-side doesn't mean the RP2040's own asyncio has run
-    # _serve()'s finally block and decremented _open_conns yet - without this settle, the 4 "held"
-    # sockets below start from a nonzero baseline, shifting every slot by one (confirmed directly).
+    # The preceding PUT /status closing client-side doesn't mean _serve()'s finally has decremented
+    # _open_conns yet - without this settle, the _MAX_CONNECTIONS held sockets below start from a
+    # nonzero baseline, shifting every slot by one (confirmed directly).
     time.sleep(1.0)
     held: list[socket.socket] = []
     extra: socket.socket | None = None
+    last_response: bytes | None = None
     try:
+        # Each held socket sends a request line and is padded before every step: silent past the 5 s
+        # per-call timeout, each would be answered and log wrnno=2, failing the log check below.
         for _ in range(_MAX_CONNECTIONS):
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(10.0)
             sock.connect((dut_ip, 80))
+            sock.sendall(HELD_REQUEST_LINE)
             held.append(sock)
         # A completed TCP connect() does not mean the accept loop has run _serve() and bumped
-        # _open_conns yet, and under load that lag can admit the 5th connection into the app
-        # layer. A real race, so the retry below uses a fresh socket rather than a longer sleep.
+        # _open_conns yet, and under load that lag can admit connection _MAX_CONNECTIONS + 1 into the
+        # app layer. A real race, so the retry below uses a fresh socket rather than a longer sleep.
         time.sleep(2.0)
 
         for attempt in range(3):
+            _pad(held)
             if extra is not None:
                 extra.close()
             extra = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             extra.settimeout(10.0)
             # A bare connect() still succeeds at the kernel's accept queue even though _serve()
-            # rejects it the moment its task runs: reject-when-full closes the writer without
-            # ever composing a response.
+            # rejects it the moment its task runs: reject-when-full closes without a response.
             extra.connect((dut_ip, 80))
-            # That close does not always surface as a clean FIN: depending on kernel TCP state
-            # it can be an RST instead. Both mean "closed without writing a response", and src/
-            # does not choose which, so this accepts either rather than only the empty read.
+            # A refusal is a FIN, or an RST once request bytes have arrived; both mean "closed without
+            # a response". Silent past 1 s means admitted - short, so the held set stays under 5 s.
+            extra.settimeout(1.0)
             try:
                 response = extra.recv(4096)
             except ConnectionResetError:
                 response = b""
+            except TimeoutError:
+                response = b"<held open: admitted>"
             if response == b"":
                 break
             last_response = response
@@ -651,9 +664,9 @@ def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: 
         if extra is not None:
             extra.close()
 
-    # Once the held connections release their slots, the server must serve normally again.
-    # Closing 5 sockets near-simultaneously can transiently reset a brand-new connection right
-    # after (ConnectionResetError) - wait_until() retries past that instead of asserting instantly.
+    # Once the held connections release their slots, the server must serve normally again. Closing
+    # _MAX_CONNECTIONS + 1 sockets at once can transiently reset a brand-new connection right after
+    # (ConnectionResetError) - wait_until() retries past that instead of asserting instantly.
     wait_until(
         lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
         timeout_s=15.0,
@@ -729,13 +742,9 @@ def test_put_oversized_body_is_rejected_with_413_over_the_normal_network(dut_ip:
 
 
 # ---------------------------------------------------------------------------
-# The request-body cap on real hardware, over real WiFi. tests/test_asy_webserver_service.py's
-# F.2b pins "an oversized body is never READ" by counting the readexactly() sizes the server asks
-# its reader for; over the wire that is not observable, so these mirror it on WHO answered.
-#
-# 413 comes from vendored microdot before any handler runs; 200 can only come from the handler,
-# which means the body was buffered and dispatched. Full account of why both caps had to move
-# together: SPECIFICATION.md Part I.6.
+# The request-body cap over real WiFi. The unit tier's F.2b counts readexactly() sizes, which the wire
+# cannot show, so these ask WHO answered: 413 is microdot's, before any handler; 200 only the handler's,
+# so the body was buffered and dispatched. Why both caps moved together: SPECIFICATION.md Part I.6.
 # ---------------------------------------------------------------------------
 
 _BODY_CAP = 2048  # asy_webserver_service.py's max_content_length, now bound to max_body_length too
@@ -744,10 +753,9 @@ _SCHEMA_MAX_BODY = 1312  # largest schema-permitted PUT body, dominated by NTP_H
 
 
 def _sized_sensors_body(total_bytes: int) -> dict[str, dict[str, str]]:
-    """A PUT /sensors body of exactly total_bytes, under a sensor key no driver registers.
-
-    Unknown keys are ignored silently, so nothing validates, persists or logs: the size is the
-    whole subject, and that is what keeps every test below outside the persistence_write gate."""
+    """A PUT /sensors body of exactly total_bytes, under a sensor key no driver registers. Unknown keys
+    are ignored silently, so nothing validates, persists or logs: the size is the whole subject, which
+    keeps every test below outside the persistence_write gate."""
     envelope = len(json.dumps({"HWTESTNoSuchSensor": {"Padding": ""}}).encode())
     body = {"HWTESTNoSuchSensor": {"Padding": "x" * (total_bytes - envelope)}}
     assert len(json.dumps(body).encode()) == total_bytes, "padding arithmetic drifted from json.dumps()"
@@ -810,10 +818,9 @@ def test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits(dut_
 
 
 def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str) -> None:
-    """The multi-buffer shape that motivated Part I.6, asserted on what the body cap actually owns.
-
-    max_connections bodies can be in flight at once, so the simultaneous contiguous demand is that
-    many buffers - bounded by connections x 2048 now, connections x 16384 while the band was open."""
+    """The multi-buffer shape that motivated Part I.6, asserted on what the body cap owns: max_connections
+    bodies can be in flight at once, so the simultaneous contiguous demand is that many buffers -
+    connections x 2048 now, connections x 16384 while the band was open."""
     reset_all_error_logs(dut_ip)
     # The same settle the connection-ceiling test above takes, and for the same reason: _serve()
     # releases its slot in a finally that runs after _close_writer(), so the PUT just made can

@@ -1,6 +1,6 @@
 """Pins that every device script measuring the heap sets gc.threshold itself and prints GC_THRESHOLD=.
-mpremote interrupts main.py without resetting the interpreter, so an unset threshold is the boot
-entry's, inherited silently - a result line that does not name its threshold is void (MEASUREMENTS §10)."""
+mpremote's raw-REPL soft reset keeps the boot entry's threshold (rp2 runs gc_init() once, outside that
+loop), so an unset one is inherited silently - a result not naming its threshold is void (MEASUREMENTS §10)."""
 
 from __future__ import annotations
 

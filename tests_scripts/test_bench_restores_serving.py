@@ -31,15 +31,21 @@ def _is_fixture(fn: ast.FunctionDef) -> bool:
     return False
 
 
+def _runs(node: ast.AST) -> list[ast.Call]:
+    return [sub for sub in ast.walk(node) if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute) and sub.func.attr == _RUNS]
+
+
 def _restores_on_every_exit(fn: ast.FunctionDef) -> bool:
-    # In a finally, or - for a fixture - anywhere after its yield, which pytest runs as teardown.
-    finally_blocks = [stmt for node in ast.walk(fn) if isinstance(node, ast.Try) for stmt in node.finalbody]
-    if any(_RESTORES in _called_names(stmt) for stmt in finally_blocks):
-        return True
+    # Every run (a fixture: its yield) inside a try whose finally restores - one before that try
+    # escapes it - or, for a fixture, a restore after its yield, which pytest runs as teardown.
+    restoring = [node for node in ast.walk(fn) if isinstance(node, ast.Try) and any(_RESTORES in _called_names(stmt) for stmt in node.finalbody)]
     if _is_fixture(fn):
         yields = [i for i, stmt in enumerate(fn.body) if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Yield)]
-        return bool(yields) and any(_RESTORES in _called_names(stmt) for stmt in fn.body[yields[0] + 1 :])
-    return False
+        after_yield = bool(yields) and any(_RESTORES in _called_names(stmt) for stmt in fn.body[yields[0] + 1 :])
+        return after_yield or any(isinstance(sub, ast.Yield) for node in restoring for stmt in node.body for sub in ast.walk(stmt))
+    covered = {id(call) for node in restoring for stmt in node.body for call in _runs(stmt)}
+    runs = _runs(fn)
+    return bool(runs) and all(id(call) in covered for call in runs)
 
 
 def _problems(source: str) -> list[str]:
@@ -89,3 +95,29 @@ def test_a_fixture_restoring_before_its_yield_does_not_count() -> None:
         "def test_x(isolated):\n    isolated.run_isolated('s.py')\n"
     )
     assert len(_problems(source)) == 1
+
+
+def test_a_run_before_the_try_is_not_covered_by_its_finally() -> None:
+    # A failure in the run itself raises before the try is entered, so its finally never restores.
+    source = (
+        "def test_x(board, bench, dut_ip):\n    output = board.run_isolated('s.py')\n    try:\n        check(output)\n"
+        "    finally:\n        restore_board_to_serving(board, bench, dut_ip)\n"
+    )
+    assert _problems(source) == ["test_x calls run_isolated() but never reaches restore_board_to_serving() in a finally or a fixture's teardown"]
+
+
+def test_a_run_inside_the_restoring_try_is_covered() -> None:
+    source = (
+        "def test_x(board, bench, dut_ip):\n    try:\n        output = board.run_isolated('s.py')\n"
+        "    finally:\n        restore_board_to_serving(board, bench, dut_ip)\n"
+    )
+    assert _problems(source) == []
+
+
+def test_a_fixture_yielding_inside_a_restoring_try_covers_its_tests() -> None:
+    source = (
+        "import pytest\n@pytest.fixture\ndef isolated(board, bench, dut_ip):\n    try:\n        yield board\n"
+        "    finally:\n        restore_board_to_serving(board, bench, dut_ip)\n"
+        "def test_x(isolated):\n    isolated.run_isolated('s.py')\n"
+    )
+    assert _problems(source) == []

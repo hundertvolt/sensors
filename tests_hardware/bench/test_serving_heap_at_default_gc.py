@@ -109,7 +109,7 @@ def test_every_source_and_route_fits_a_small_free_run(isolated_board: Board) -> 
     output = isolated_board.run_isolated(DEVICE_SCRIPTS / "allocation_need_per_source.py", timeout_s=300.0)
     assert "RESULT: PASS" in output, output[-2000:]
     need = heap_map.parse_allocation_need(output)
-    churn = {m.group(1): int(m.group(2)) for m in re.finditer(r"^CHURN (\S+) (\d+)", output, re.MULTILINE)}
+    churn = heap_map.parse_churn(output)
     assert need, "the script printed no probe results"
     for probe, size in sorted(need.items(), key=lambda kv: -(kv[1] if kv[1] is not None else 1 << 30)):
         print(f"[HW] need {probe}: largest free run {size} B, churn {churn.get(probe)} B")

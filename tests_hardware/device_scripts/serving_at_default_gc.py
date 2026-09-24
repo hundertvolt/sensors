@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 
     _Route = Callable[..., Awaitable[object]]
 
-# Explicit, never inherited: mpremote interrupts main.py but does NOT reset the interpreter, so the
-# boot entry's own threshold is otherwise still in force. -1 is MicroPython's own reactive default.
+# Explicit, never inherited: mpremote soft-resets on raw-REPL entry, but rp2's main.c runs gc_init()
+# once, outside the soft-reset loop, so the boot entry's threshold survives it. -1 is the default.
 gc.threshold(-1)
 _BOOT_S = 20
 _POLL_MS = 1000
@@ -69,7 +69,7 @@ async def _observe(webserver: "WebserverService") -> None:
     phase, recent, quiet, polls, dumps = "pre", [0, 0, 0], 0, 0, {"pre": 0, "load": 0, "post": 0}
     started = time.ticks_ms()
     while time.ticks_diff(time.ticks_ms(), started) < _WINDOW_S * 1000:
-        busy = 1 if await webserver._open_conns.get_value() else 0
+        busy = 1 if webserver._open_conns.value else 0  # plain int: no lock, no coroutine, no allocation
         recent = recent[1:] + [busy]
         quiet = 0 if busy else quiet + 1
         if phase == "pre" and sum(recent) >= _BUSY_TO_ENTER:

@@ -4901,8 +4901,8 @@ one more instrument defect in the twin first: the device script's failure-dump w
 
 The silicon record behind `SPECIFICATION.md` H.7's limit of 6, I.3's 256 B bound and B.14.2's
 ensemble. Dev bench, RPI_PICO_W, MicroPython 1.29.0. **Every verdict is at `gc.threshold(-1)`**, set
-by the device script itself (`mpremote` does not reset the interpreter, so the boot entry's 32768
-would otherwise still be in force), and every result line carries `GC_THRESHOLD=`. **Stable** = zero
+by the device script itself (`mpremote` soft-resets on raw-REPL entry, but rp2's `main.c` runs
+`gc_init()` once, outside the soft-reset loop, so the boot entry's 32768 would otherwise still be in force), and every result line carries `GC_THRESHOLD=`. **Stable** = zero
 true failures (a short body, a 4xx/5xx, any transport error other than a ceiling refusal) **and** zero
 device lines matching `MEMORY_ERROR_MARKERS`, caught-and-logged included. A reset before any response
 at the connection ceiling is a **refusal** and expected, not a failure (owner's rule).

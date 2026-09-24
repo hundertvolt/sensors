@@ -198,6 +198,8 @@ _EMITTERS = (
     "tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py",
     "tests_hardware/device_scripts/heap_headroom_after_full_system_build.py",
     "tests/_boot_contiguity_probe.py",
+    "tests_hardware/device_scripts/heap_under_connection_ceiling.py",
+    "tests_hardware/device_scripts/serving_at_default_gc.py",
 )
 
 
@@ -285,3 +287,15 @@ def test_a_rung_whose_mem_info_summary_is_missing_is_refused_rather_than_read_as
     text = _need_output((8, [("a", "", "ok")])).replace(" No. of 1-blocks", " (summary reformatted)")
     with pytest.raises(ValueError, match="no mem_info"):
         heap_map.parse_allocation_need(text)
+
+
+def test_output_without_its_block_line_is_refused_by_name() -> None:
+    # A capture cut off before the header: every rung's bytes hang on BLOCK=, so there is nothing to size.
+    text = _need_output((8, [("a", "", "ok")])).replace("BLOCK=16 PROBES=2\n", "")
+    with pytest.raises(ValueError, match="no BLOCK= line"):
+        heap_map.parse_allocation_need(text)
+
+
+def test_churn_keeps_a_negative_reading() -> None:
+    # A probe during which a collect ran frees more than it allocates; dropping it hid that probe.
+    assert heap_map.parse_churn("CHURN route:/status 1000\nCHURN source:SGP40 -48\nRESULT: PASS\n") == {"route:/status": 1000, "source:SGP40": -48}

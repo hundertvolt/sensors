@@ -235,11 +235,12 @@ class _TimeoutStreamProxy:
     # Forwards every stream method ext/microdot.py calls, each bounded by timeout_s (a plain
     # asyncio.TimeoutError, not an OSError subclass - Part F.1). Microdot's read-phase catch
     # swallows it (Part A.5), so this proxy is the only place a read timeout is observable.
-    def __init__(self, stream: "_StreamLike", timeout_s: float, pr: "PrintLogHistory") -> None:
+    def __init__(self, stream: "_StreamLike", timeout_s: float, pr: "PrintLogHistory", peer_gone: "list[bool] | None" = None) -> None:
         self._stream = stream
         self._timeout_s = timeout_s
         self._pr = pr
         self._head: list[bytes] | None = []  # the response's header block until its blank line
+        self._peer_gone = [False] if peer_gone is None else peer_gone  # shared by one connection's pair
 
     async def _bounded(self, coro: "Awaitable[_T]") -> "_T":
         return await asyncio.wait_for(coro, self._timeout_s)
@@ -252,6 +253,11 @@ class _TimeoutStreamProxy:
         except asyncio.TimeoutError as e:
             await self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=2)
             raise
+        except OSError:
+            # A read that saw a reset: modlwip has freed the pcb yet still accepts writes, which reach
+            # tcp_write(NULL) - so the 400 microdot answers a muted reset with is never sent.
+            self._peer_gone[0] = True
+            raise
 
     async def readline(self) -> bytes:
         return await self._bounded_read(self._stream.readline())
@@ -260,6 +266,8 @@ class _TimeoutStreamProxy:
         return await self._bounded_read(self._stream.readexactly(n))
 
     async def awrite(self, data: bytes) -> None:
+        if self._peer_gone[0]:
+            return
         if self._head is not None:
             # microdot writes the status line and each header apart; sent as one, a cut response
             # never ends mid-headers, which a client reads as a complete, empty 200 (Part I.3).
@@ -693,8 +701,9 @@ class WebserverService:
             await self._close_writer(writer)
             return
         try:
-            proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_s, self.pr)
-            proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_s, self.pr)
+            peer_gone = [False]
+            proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_s, self.pr, peer_gone)
+            proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_s, self.pr, peer_gone)
             try:
                 await asyncio.wait_for(self._app.handle_request(proxy_reader, proxy_writer), self._outer_cap_s)
             except asyncio.CancelledError:

@@ -71,7 +71,7 @@ def test_real_concurrent_client_burst_does_not_crash_the_webserver(dut_ip: str, 
         try:
             res = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=10.0)
             results[i] = res.status_code
-        except OSError as exc:
+        except (OSError, http_client.HTTP_ERROR) as exc:
             results[i] = repr(exc)
 
     threads = [threading.Thread(target=_client, args=(i,)) for i in range(n_clients)]

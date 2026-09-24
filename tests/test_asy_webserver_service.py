@@ -1644,6 +1644,27 @@ def test_a_write_phase_timeout_is_logged_once_not_twice() -> None:
     assert run(service._open_conns.get_value()) == 0
 
 
+class _ResetReader:
+    # A peer that reset mid-request: modlwip raises ECONNRESET on the read, then frees the pcb.
+    async def readline(self) -> bytes:
+        raise OSError(104, "ECONNRESET")
+
+    async def readexactly(self, _n: int) -> bytes:
+        raise OSError(104, "ECONNRESET")
+
+
+def test_nothing_is_written_to_a_peer_whose_read_saw_a_reset() -> None:
+    # microdot mutes the reset and answers 400 anyway; on silicon that write reaches tcp_write(NULL)
+    # (state 6 passes modlwip's error check), logs a spurious warning and can spin a slot for 5 s.
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=1.0)
+    writer = _ScriptedWriter()
+    run_timed(service._serve(_ResetReader(), writer), timeout_s=2.0)
+    assert writer.written == b"", writer.written
+    assert writer.close_called is True
+    assert service.pr.err_count == 0, service.pr.err_count
+    assert run(service._open_conns.get_value()) == 0
+
+
 def test_timeout_stream_proxy_close_and_wait_closed_forward_to_the_wrapped_stream() -> None:
     # Direct coverage of the two Stream-forwarding methods ext/microdot.py never calls in Section
     # F's scenarios (close() is sync; wait_closed() only ever reaches the raw writer, via
