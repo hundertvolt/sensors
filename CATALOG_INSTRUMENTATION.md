@@ -1,8 +1,10 @@
 # Catalog: instrumentation — what measures, and how to rebuild it
 
 **What this is.** The measurement side of this branch's connection-scaling and serving work
-(2026-09-22/23): special builds, harnesses, calibrations, hardware tools and the traps that cost
-time. None of it belongs in the everyday suites — too slow, too build-specific, or it needs the
+(2026-09-22/24): special builds, harnesses, calibrations, hardware tools and the traps that cost
+time. It also holds the instrument reference, measurement principles and traps of
+`REAL_HARDWARE_HANDOVER_PEAK_LOAD.md` (§4, §8, §9), sorted in here; the tests they suggest are in
+`CATALOG_UNIT_TESTS.md` §7. None of it belongs in the everyday suites — too slow, too build-specific, or it needs the
 board. Its companion, `CATALOG_UNIT_TESTS.md`, holds the tests that do. Only methods that finally
 worked are listed; withdrawn claims and dead ends are one line each in §9.
 
@@ -76,8 +78,34 @@ N = 4 / 5 / 7):
 - An 804 B failure: `network.WLAN` is a Python fake whose 200-slot call-log deque is (200 + 1) × 4 B.
 - Allocating fakes: the watchdog's `feed()`, `SPI.write`'s `bytes(buf)`, and the FRAM image.
 - A UART 264 B receive that failed only on the 64-bit twin.
-- **The twin is optimistic near the wall by two levels or more.** Pre-fix silicon image G failed its
-  first JSON route at N = 10, while the 32-bit twin showed none through 12.
+- **Under rounds load, the twin is optimistic near the wall by two levels or more.** Pre-fix silicon
+  image G failed its first JSON route at N = 10, while the 32-bit twin showed none through 12. The
+  throughput-matched twin below closes that gap for peak load.
+
+**The throughput-matched peak twin (2026-09-24).** The board is CPU-bound, serving ~2.2 requests/s
+at every limit, so a request lives ~N / 2.2 s and the in-flight live set grows with N. An
+unthrottled twin serves 50-100× faster, so its requests hardly overlap and it looks far too good.
+- **CPU quota**: once the twin answers `/status`, put its PID in a cgroup v1 CPU controller at
+  **3.5 % of one core** (`/sys/fs/cgroup/cpu/twintest`, `cpu.cfs_period_us` 100000,
+  `cpu.cfs_quota_us` 3500). Boot runs unthrottled; only serving is throttled. Check that completed
+  requests per 60 s land near the board's 121-149.
+- **Real admission**: patch `max_connections=int(os.getenv("MAXCONN") or "64")` into the generated
+  `sensortask_dev.py` that gets frozen, and set `MAXCONN` to the image's limit.
+- **Heap**: calibrate on silicon failures at peak load. For F′ (8 connections) that gives ≈ 564,648 B.
+  For H (10 connections) the bracket is 554,000-560,000 B. Other limits follow the 2,324 B per
+  connection rule.
+- **Scratch** (never committed): `boot_peak.py` (the silicon `_peak_sampler` logic, a rejection
+  counter on `_open_conns.increment`, loud `err_s`, dev's site, `COLLECT=1` for the exact live set);
+  `drive_peak.py <port> <N> [dur]` (the `--peak` shape: back-to-back clients over the 9-path mix and
+  the SGP40 reset PUT every 3 s); `sweep_peak.py <heap> <thr> <Nlist> <tag>` (env `QUOTA`,
+  `MAXCONN`, `SETTLE`, `DUR`; one fresh twin per level).
+  - `sweep_peak.py` waits 12 s after the load, so the last 10 s `PEAK_SUMMARY` includes every rejection.
+  - Its verdict counts host resets beyond the device's own rejections as true failures.
+- **Validated**: F′ predicted 0 true failures at 7 and ≈ 0.3 % at 8, and silicon matched both. Host
+  refusals equal device rejections exactly (1,336 = 1,336) when the counter is installed at webserver
+  creation.
+- **Known limit**: below the limit the twin refuses less than the board does (its closes are faster).
+  Use it for failure rates and heap, not for refusal percentages.
 
 ## 2. The serving sweep in the twin (*scratch*)
 
@@ -156,6 +184,38 @@ Four small scripts, rebuilt from this description:
   - measure transients with a collect first and survivors in a fresh process per repeat.
 - Ballast guards use the largest free run, not `gc.mem_free()`.
 
+**Principles from the peak-load sittings** (PEAK_LOAD handover §8, condensed; they hold for any
+future instrument):
+- **Question and pass criterion first.** Stable means zero true failures **and** zero device
+  allocation lines, caught-and-logged ones included. A refusal at a saturated ceiling is expected.
+  Peak means back-to-back clients at the ceiling plus forced internal work (the hammer test's SGP40
+  reset PUT) on the full task graph. Rounds with pauses are typical load, not peak: at 6 they
+  overstated free heap by ~20 KB.
+- **The verdict and the measurement are separate.** Classify every instrument as invasive or not.
+  A collecting sampler may measure but not judge. Take the verdict from the least-instrumented run
+  that can give it, and the heap figure from the run that measures it exactly. Two runs are better
+  than one approximate run.
+- **Controls.** When the instrument could cause the effect, run the same load without it
+  (`--peak --no-sampler`). Measure the instrument's own cost: script heap footprint, sampler
+  throughput (~10-20 %). Report heap both as measured and production-equivalent.
+- **Two views, and a gap is a finding.** Compare host refusals with device rejections, and host 500s
+  with device allocation lines (two lines per failure). Check every body, not only the status code.
+  Validate the reference too.
+- **Verify the object under test**: macros read back, ensemble check, linker heap against its
+  prediction, build date from `/system`, static `Content-Length` and `gzip -t`. State the
+  percentage base.
+- **One fresh boot per data point.** Failures near the wall are probabilistic (4 in 7 boots for F′
+  at 8), so one clean run proves little, and a 0 vs 1 difference is chance. Report counts and
+  percentages. Zero failures in ~1,350 requests only bounds the rate at ~0.2 %; heap margin is what
+  separates neighbouring limits.
+- **State the bias direction.** A 5 s snapshot bounds the peak from one side. rp2 has no exact
+  end-of-GC signal (no `__del__` on user-class instances, no `weakref`), so a non-collecting
+  sampler's heap figure is biased low. Re-derive a tool's printed summary from the raw data when a
+  label looks wrong.
+- **Evidence hygiene.** Read `errcount` before anything writes. Capture `machine.reset_cause()`
+  straight after an unexpected reset. Keep raw output verbatim. Don't edit the tool or the device
+  script while chained runs are pending. Restore bench state between runs.
+
 ## 4. Allocation need per source: the sieve
 
 **Committed:** `tests_hardware/device_scripts/allocation_need_per_source.py`, parsed by
@@ -212,7 +272,8 @@ board, and that caught bugs each time. *Scratch* stand-ins:
     "saw load" forever;
   - the failure-dump wrapper dropping the `filename` keyword on `_get_static`, which turned every
     `/js/app.js` into a 500.
-- **Known limit:** the twin build admits 64 connections, so the refusals at N > 8 are not modelled.
+- **Known limit:** the ordinary twin build admits 64 connections, so it does not model refusals.
+  The peak twin (§1) does, through `MAXCONN`.
 
 ## 6. Hardware tools (committed; need the board)
 
@@ -265,6 +326,42 @@ board, and that caught bugs each time. *Scratch* stand-ins:
     were cut off, at 0 and 1,024 B. The device printed no line for them (the twin does not print
     `err_s` for this tool), so **the host-side body check alone catches the defect**, which is why
     it exists.
+- **The silicon measurement chain around it** (PEAK_LOAD handover §4, instruments A-I):
+  - **A, image verification.** Configure `devices/<d>.toml` and `[lwip]`, then
+    `uv run scripts/build_firmware.py dev`. Run `check_lwip_ensemble(macros, max_connections=L)`
+    and `read_lwip_macros_from_build()` (every macro equals the firmware's). Read the GC heap from the
+    linker as `0x20040000 − __GcHeapStart` and predict it as 187,712 + (8 − L) × 2,324 B; this matched
+    to the byte on H, G′, E6, E7 and E6′. On the board, check `/system` `build.buildDate` and static
+    `Content-Length`. Keep each `.uf2` aside for reflashing.
+  - **B, flash and bring-up** (scratch). Flash with `Board().enter_bootloader()`, wait for
+    `picotool info` (≤ 20 s), then `picotool load -x -v`. Bring up with `kick_all_stations()`, a hard
+    reset, a 55 s `tail_log` for `WLAN connection established`, then poll `/status` until
+    `networking.Connected`. Retry once: the board fell back to hotspot mode three times after a reset.
+  - **C, `Board.run_isolated()`**: `mpremote … exec "import machine; machine.WDT(timeout=8000)" run
+    <script>`. An 8 s hardware watchdog is armed, and the interpreter is not reset.
+  - **D, `device_scripts/serving_stability_under_combined_load.py`**: sets and prints its gc
+    threshold, then starts `sensortask_dev.main()`. In peak mode it wraps `_open_conns.increment`
+    as soon as `sensortask_dev.webserver` exists and counts increments above the limit. At 20 s it
+    prints `after_boot` and `READY`, then runs a 150 s window with one probe:
+
+    | switch | probe | verdict is evidence? |
+    | --- | --- | --- |
+    | none (rounds) | `mem_info(1)` map every 5 s | yes |
+    | `_COLLECT_BEFORE_SAMPLE` (`--margin`) | the same after `gc.collect()` | no |
+    | `_PEAK_SAMPLE_MS = 20` (`--peak`) | `gc.mem_free()` + `_open_conns.value` (plain int, no allocation); a rise ≥ 2 KB counts as a GC; `PEAK_NEW_MIN`, `PEAK_SUMMARY … rejected=`, `PEAK_AT conns=k` | yes, but its heap figure is biased low by up to 15-30 KB |
+    | `_PEAK_SAMPLE_MS = 100` + collect (`--peak --margin`) | exact live set per open-connection count | no |
+    | `_NO_SAMPLER` (`--peak --no-sampler`) | nothing; `FOOTPRINT` once | yes, the control |
+  - **F, analysis.** Percentages are of `mem_info`'s total, which is the linker figure minus 4,352 B
+    of GC tables. Device allocation lines ÷ 2 = failures. `_margin_line` takes the settled idle as the
+    median of the last third, and the load window as every sample up to the last one below 95 % of it.
+  - **G, controls.** An import-only script's `FOOTPRINT` baseline is 52,960 B. The device script
+    costs 2,720 B on top, 3,008 B with the rejection counter; production doesn't pay it. Samplers cost
+    ~10-20 % of completed requests.
+  - **I, evidence.** Read `errcount` before a sitting. `mpremote exec "import machine;
+    print(machine.reset_cause())"` straight after a serial I/O error. `journalctl -k` gives USB
+    disconnect times.
+- **`test_serving_heap_at_default_gc.py`'s failing-sweep report is truncated**: the assertion
+  message keeps 2,000 characters, and the host tallies print after it. Use the per-boot tool for levels.
 - **`tests_hardware/bench/test_network_resilience.py`**:
   - `test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures`;
   - `test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body`;
@@ -282,8 +379,9 @@ board, and that caught bugs each time. *Scratch* stand-ins:
 
 ## 7. lwIP sizing and connection cost
 
-- **Source of truth** is `toolchain/versions.toml` `[lwip]`: PCB 11, SEG 64, `MEM_SIZE` 16,000,
-  MSS 800, WND and SND_BUF 6,400, among others.
+- **Source of truth** is `toolchain/versions.toml` `[lwip]`: PCB 9, SEG 48, `MEM_SIZE` 12,000
+  (sized for `max_connections = 6`), MSS 800, WND and SND_BUF 6,400, among others. The measured
+  pattern per limit L: PCB = L + 3, SEG = L × 8, `MEM_SIZE` = L × 2,000.
 - **Before the build**, `check_lwip_ensemble()` checks the set.
 - **After the build**, `verify_lwip_macros_in_build()` preprocesses a probe against the real
   translation unit and demands a sentinel plus every value. This runs in every `build_firmware()`
@@ -302,6 +400,12 @@ board, and that caught bugs each time. *Scratch* stand-ins:
   - ~5,170 B live per parked connection after a collect;
   - after 40-80 served requests, a flat 1.5-1.6 KB residue in total, not per connection;
   - `/status` latency at a fixed offered load of 4 is flat at 4.2-4.5 ms, for limits from 4 to 16.
+- **Dynamic cost at peak, silicon**: E6 → E7 lost ~13.8 KB of free heap at peak. 2,324 B of that is the
+  static step, so each extra in-flight connection holds ~11.5 KB. At 6 there is ~21 % free at peak
+  and the largest block is ~1.5 KB; at 7, 14.3 % and 528 B. The wall is the `/status` piece of
+  242-257 B.
+- **Saturation**: `_open_conns` also counts connections that are still closing, so back-to-back
+  clients see ~70 % refusals at every limit. Throughput stays flat at ~2.2 requests/s.
 
 ## 8. Traps
 
@@ -319,6 +423,16 @@ board, and that caught bugs each time. *Scratch* stand-ins:
   - `asyncio` has only `Lock` and `Event`, no `Semaphore`;
   - `os.environ` is missing, so use `os.getenv`;
   - `micropython.mem_info()` with any argument prints the full map.
+- **Silicon bench** (PEAK_LOAD handover §9, §6.6):
+  - Every device-script boot drops and rejoins WLAN at ~6 s uptime. A first "is it up" probe can
+    succeed on the old link, and a reference fetch in that drop once came back 0 B.
+  - Leave > 45 s between a reset and the next `mpremote` attach; a watchdog reset at attach is likely otherwise.
+  - After a reset the board may come up in hotspot mode: `kick_all_stations()` + hard reset.
+  - A running Python process keeps its loaded code. A new `combined_load_sweep.py` invocation
+    re-reads both the tool and the device script, so don't edit either between chained runs.
+  - Device scripts build their own `AsyFramManager` over the same FRAM, so `errcount` afterwards is
+    context, not evidence. A pair E31 (status byte not IDLE at write) + W73 (block 1 invalid,
+    restored from block 0) is what an interrupted FRAM block write leaves; the two-copy scheme recovers it.
 - **CI from a cloud session:** runner logs are blocked, but check-run annotations are readable.
   Oversubscription can be emulated with `taskset -c 0,1`.
 
@@ -333,3 +447,10 @@ board, and that caught bugs each time. *Scratch* stand-ins:
   and the writes double.
 - The first heap-recovery script, and a per-response cost script, were dropped once
   `serving_at_default_gc.py` covered both.
+- Rounds load as a "peak" figure: pauses and 5 s snapshots miss the moment all N allocate.
+- `--margin`'s printed idle and median before `53ac222`: a mid-boot sample, and a median spanning post-load idle.
+- The non-collecting peak sampler's heap figure: read late after a GC, biased low; never a peak.
+- The device rejection counter installed at `READY`: host > device by 0-21; now installed at webserver creation.
+- A reference fetch that accepted a 0 B body taken during the WLAN drop.
+- "~13-14 KB per connection plus 2,324 B static" (PEAK_LOAD handover §0 item 2, §6.1 item 2) counts
+  the static part twice; the dynamic step is ~11.5 KB (§7).

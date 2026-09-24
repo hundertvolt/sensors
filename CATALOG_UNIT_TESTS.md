@@ -60,7 +60,7 @@ response body is ever written in a piece larger than `WebserverService(chunk_byt
 
 | where | pins | guards | result |
 | --- | --- | --- | --- |
-| `scripts/_digital_twin_ci_suite.py`, Run 11b `_run_11b_full_ceiling_concurrency` | Twin as a subprocess, driver in CPython threads, one real socket per request; 3 rounds at the device's own `max_connections` (read from `devices/<d>.toml`) over the five heaviest routes — **all served**, still serving after, clean shutdown; inherits the suite's no-`MemoryError` log check at both thresholds | The owner's hardest requirement: every module running, full ceiling, no `MemoryError`, at either threshold | 7/7 every round at -1 and 32768. Not shown reverted; it replaced in-process numbers that were withdrawn |
+| `scripts/_digital_twin_ci_suite.py`, Run 11b `_run_11b_full_ceiling_concurrency` | Twin as a subprocess, driver in CPython threads, one real socket per request; 3 rounds at the device's own `max_connections` (read from `devices/<d>.toml`) over the five heaviest routes — **all served**, still serving after, clean shutdown; inherits the suite's no-`MemoryError` log check at both thresholds | The owner's hardest requirement: every module running, full ceiling, no `MemoryError`, at either threshold | 6/6 every round at -1 and 32768 (limit 6). A 1 s settle now precedes round 0 too: at an exact-ceiling burst the readiness probe's own connection, still closing, refused one of six on every device in CI (`4914a25`). Not shown reverted; it replaced in-process numbers that were withdrawn |
 
 ## 4. Test infrastructure that had real bugs
 
@@ -89,3 +89,22 @@ All `tests_scripts/` (pytest tier).
 - Tests that only count `200`s: pass on truncated bodies. Every serving test now checks the body.
 - A 16 MB Unix-port heap absorbs any single allocation: a hammer test that does not assert the piece
   size passes with the fix fully reverted. Assert the bound itself.
+
+## 7. Candidates from the silicon peak-load instrumentation (2026-09-23/24)
+
+`REAL_HARDWARE_HANDOVER_PEAK_LOAD.md`'s instruments and findings, sorted against what the ordinary
+suites already pin. Everything that only measures went to `CATALOG_INSTRUMENTATION.md`. **Nothing
+here is written yet**; "owner" marks a candidate that would first need a rule decided.
+
+| finding / behaviour | test tier and shape | status |
+| --- | --- | --- |
+| A rejection at the ceiling writes nothing and leaves the counter unchanged | `test_asy_webserver_service.py`, the F1 rejection test | **exists** |
+| A refusal (reset, abort, broken pipe, bad status line) is told apart from a real transport failure | `tests_scripts/test_http_client_ceiling_close.py`; twin: `test_digital_twin_http_client.py` | **exists** |
+| No body piece exceeds `chunk_bytes` (256); this is the `/status` wall at 242-257 B | §1's H.2/G.3 tests | **exists** |
+| A static file always carries its `Content-Length` | §1's G.3 test | **exists**. The silicon's empty `200` with no length during the boot WLAN drop (handover §6.6 item 21) is unexplained; understand it before writing a test |
+| A torn heap-map capture raises instead of reporting a healthy heap | `tests_scripts/test_heap_map_parser.py` | **exists** |
+| **A slot is held until the close completes**: `_serve()` decrements `_open_conns` only after `_close_writer()` returns, so a closing connection still counts (this is where the ~70 % refusals come from) | MicroPython tier: a writer whose `wait_closed()` blocks on an `Event`; the counter must stay 1 until it is released, then return to 0 | **proposed**. It pins today's semantics, so changing them (handover §7 item 2, owner) becomes a deliberate act that also updates this test |
+| **PCB headroom follows the measured pattern**: `[lwip] MEMP_NUM_TCP_PCB ≥ max(max_connections) + 3` (closing and TIME_WAIT connections hold PCBs) | `tests_scripts/`, next to `TestLwipEnsemble` | **owner**. `buildgen/validate.py` demands only one slot of margin, and `check_lwip_ensemble()` has no PCB-per-connection floor, so +3 is shipped but unenforced |
+| **Every heap- or serving-measuring device script sets `gc.threshold` itself and prints `GC_THRESHOLD=`** (`mpremote` does not reset the interpreter; a result line without it is void) | `tests_scripts/`, structural over `tests_hardware/device_scripts/` | **proposed**. 7 scripts call `gc.threshold`; only `serving_at_default_gc.py` and `serving_stability_under_combined_load.py` print it |
+| The sweep tool's classification (`_one`), validated reference fetch and `_margin_line` window | `tests_scripts/`, pure functions with a fake `fetch` | **instrumentation**: `combined_load_sweep.py` is temporary. Worth writing only if the tool is kept past the merge |
+| Rejection counter = host refusals; script footprint; sampler cost; linker heap = 187,712 + (8 − L) × 2,324 B | need the board or a built ELF | **instrumentation** (`CATALOG_INSTRUMENTATION.md` §6-§7) |
