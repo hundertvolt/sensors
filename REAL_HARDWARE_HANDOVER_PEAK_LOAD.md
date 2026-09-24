@@ -7,6 +7,45 @@ says what is still open. Raw result lines are reproduced verbatim where they are
 it happened; this file is the result-oriented summary. Temporary: listed in BACKLOG.md item 45 and
 removed with the others before the branch merges.
 
+## 0. Results in one page
+
+**Decision and confirmation.** The owner chose **`max_connections = 6`** (2026-09-24); the tip sets it
+in every `devices/*.toml` with lwIP sized for it (PCB 9 / SEG 48 / `MEM_SIZE` 12,000), and the
+committed image was confirmed on silicon: identical to the measured E6, and **0 true failures in
+2,255 requests** at 6 under peak load across five uninstrumented boots (§5.8, §5.9).
+
+**Every limit, measured on an image built for it, peak load, `gc.threshold(-1)`:**
+
+| limit | true failures (uninstrumented peak load) | free heap at peak (production-equivalent) | largest free block at peak | verdict |
+| --- | --- | --- | --- | --- |
+| **6** | **0 in 2,255 requests (5 boots, E6 + E6′)** | **21.2-21.7 %** | ~1.5 KB | **stable; the chosen limit** |
+| 7 | 0 in 1,334 (3 boots) | 14.3 % | 528 B | stable, thin margin |
+| 8 | 1 in 1,319 (3 boots); 4 more in 4 instrumented boots | 11.6-12.7 % | 400-512 B | fails |
+| 9 | 3 and 6 per run (1.7 %, 3.2 %) | — | — | fails |
+| 10 | fails 3/3 on G′, both arms on H | 11.5 % (sampled) | 288 B | fails — not reachable on this heap |
+
+**What the measurements established:**
+
+1. **The wall is the `/status` JSON piece** (one 242-257 B `_PieceWriter` allocation). No other route
+   failed at 8-10; every served body was complete. The 2026-09-23 static-file defect (1,025 B reads,
+   silent truncated `200`) is fixed and verified on silicon.
+2. **Each admitted connection costs ~13-14 KB of heap at peak plus 2,324 B static** (its lwIP share),
+   the static part matched to the byte on five images.
+3. **Under back-to-back clients ~70 % of requests are refused at every limit and throughput is flat**
+   (~2.2 requests/s): the board sets throughput, the limit only sets how much heap is in flight.
+   Refusals are expected behaviour (owner's rule) and are verified to come from the application's
+   own cap, not from lwIP or crashes.
+4. **`gc.threshold(32768)` does not reduce failures**; the limit decides.
+5. **The instruments were checked against themselves**: a control with no instrumentation shows
+   the same wall; the samplers cost ~10-20 % throughput and make heap figures slightly pessimistic;
+   the device script's own heap cost is measured (2,720 B, later 3,008 B) and added back.
+6. **Open anomalies, recorded not chased**: one silent reset in one instrumented boot (1 in 9), three
+   hotspot fallbacks after resets, one likely watchdog reset at `mpremote` attach, an unexplained
+   empty `200` during the boot WLAN drop, and a FRAM log entry (E31, W73) that appeared between
+   2026-09-23 and 2026-09-24.
+
+Scope of all of the above: §1a. Owner decisions still open: §7. How it was measured: §4 and §8.
+
 ## 1. The owner's requirements and rules, as stated during the day
 
 1. **The wish was 10 concurrent connections, stable on every run**, with the shipped 8 as safety
@@ -20,7 +59,7 @@ removed with the others before the branch merges.
    the hammer test (`tests_hardware/bench/test_memory_stress_bench.py`: back-to-back clients at the
    ceiling plus `PUT /sensors {"SGP40": {"SGPResetVOC": true}}` every 3 s).
 4. **Under hammering, a refused connection (connection count saturated) is expected behaviour, not a
-   failure. A memory error is a true failure.** The sweep tool counts them separately since §4.3.
+   failure. A memory error is a true failure.** The sweep tool counts them separately (§4.5).
 5. Report **number and percentage** of failures, and heap usage as a **percentage** of the GC heap.
 
 ## 1a. Scope: what exactly was tested, and what was not
@@ -107,70 +146,185 @@ load. The answer is **not entirely**; every figure in this file must be read wit
 - Build: `uv run scripts/build_firmware.py dev`; flash: `Board().enter_bootloader()` then
   `picotool load -x -v build/firmware-dev.uf2`.
 
-## 4. The instruments
+## 4. The instruments — complete reference
 
-### 4.1 `tests_hardware/combined_load_sweep.py` — one fresh boot per listed level
+Every instrument used across both days, what it does, how it was validated, and whether it proved
+functional. Committed tools are named by path; scratch helpers that were never committed are
+described so they can be rebuilt. The rules they follow are §8.
 
-`DUT_IP=<ip> uv run python tests_hardware/combined_load_sweep.py <levels…> [--threshold T] [--peak] [--margin] [--raw-dir d]`
+### 4.1 Overview
 
-It runs `device_scripts/serving_stability_under_combined_load.py` (the real production task graph)
-with `gc.threshold(T)` substituted (default −1), and drives load from the host. Path mix:
-`/status /sensors / /measurements /status /networking /sensors /system /js/app.js`. Static bodies
-(`/` 9,292 B, `/js/app.js` 16,292 B) must equal an idle reference fetch; JSON bodies must parse.
-Between levels: `kick_all_stations()`, hard reset, 45 s settle.
+| # | instrument | kind | measures | invasive? | status |
+| --- | --- | --- | --- | --- | --- |
+| A | image build and verification chain | host | that the image under test is the one intended | no | **functional**, heap predictions matched to the byte on 5 images |
+| B | flashing and bench bring-up | host + board | puts the image on the board, network up | resets the board | **functional**, with a hotspot-fallback recovery step |
+| C | `harness.Board.run_isolated()` | host + board | runs a device script on the real task graph | arms an 8 s WDT | **functional**; the script costs 2.7-3.0 KB of heap |
+| D | device script `serving_stability_under_combined_load.py` | board | the production task graph plus switchable probes | per mode (§4.4) | **functional** in every mode; one mode's heap figure is not usable (§4.8) |
+| E | host driver `combined_load_sweep.py` | host | load, body checks, verdict, per-level report | no | **functional** |
+| F | analysis: heap maps, load window, failure breakdown | host | re-derives figures from raw output | no | **functional** |
+| G | controls and calibrations | host + board | whether the instrument causes the effect; its own cost | minimal | **functional** |
+| H | `bench/test_serving_heap_at_default_gc.py` | host + board | per-route allocation need; a one-boot sweep | no | **functional**; its sweep's failure report is truncated |
+| I | evidence capture: `errcount`, reset cause, raw output | host + board | what a reboot would erase | no (read only) | **functional**; reset cause was lost once before the capture existed |
 
-| mode | load | device sampler | verdict is evidence? |
+### 4.2 A — image build and verification chain
+
+1. **Configure**: `devices/<device>.toml` `max_connections`, and `toolchain/versions.toml` `[lwip]`.
+   Measured per-connection pattern: `MEMP_NUM_TCP_PCB` = limit + 3, `MEMP_NUM_TCP_SEG` = limit × 8
+   (= limit × `TCP_SND_BUF`/`TCP_MSS`), `MEM_SIZE` = limit × 2,000. Local images (G′, H, E6, E7) were
+   built from local edits that were reverted right after the build.
+2. **Build**: `uv run scripts/build_firmware.py dev` → `build/firmware-dev.uf2`. The build's own
+   override step refuses an incoherent lwIP set.
+3. **Ensemble check at the image's limit**: `toolchain/micropython_overrides.check_lwip_ensemble(macros,
+   max_connections=L)` — returns the violated relationships, empty when coherent (lwIP's own init.c
+   rules plus the two per-connection floors it does not check: segments and `MEM_SIZE`).
+4. **Macros read back out of the firmware**: `read_lwip_macros_from_build(<rp2 build dir>, macros)`
+   preprocesses a probe against the real translation unit; every configured macro must equal what
+   the firmware was compiled with.
+5. **GC heap from the linker**: `nm firmware.elf` → `0x20040000 − __GcHeapStart`. Predicted as F′'s
+   187,712 B + (8 − L) × 2,324 B; matched to the byte on H, G′, E6, E7, E6′.
+6. **On the running board**: the build date from `GET /system` (`build.buildDate`), `Content-Length`
+   on `/` (9,292 B) and `/js/app.js` (16,292 B) with `gzip -t` passing, and `mem_info`'s total from the
+   device script (`alloc + free` in the `FOOTPRINT` line, or `heap=` in `PEAK_SUMMARY`) — the
+   percentage base.
+7. **Kept for re-flashing**: each built `.uf2` copied aside per image, so a later level can reflash
+   without rebuilding.
+
+### 4.3 B — flashing and bench bring-up (scratch helpers, not committed)
+
+- **Flash**: `harness.Board().enter_bootloader()`, wait until `picotool info` sees the BOOTSEL device
+  (≤ 20 s), then `picotool load -x -v <file.uf2>` (load, verify, execute).
+- **Bring-up** ("ensure up"): `BenchBridge().kick_all_stations()`, `Board().hard_reset()`,
+  `Board().tail_log(55 s)` checked for `WLAN connection established`, then `GET /status` polled until
+  `networking.Connected` is true. **Retried once** on failure — after a reset the board fell back to
+  hotspot mode three times, and kick + reset recovered it every time (once only on the retry).
+- **Board IP** kept in one scratch file; every tool takes it as `DUT_IP`.
+- **Timing**: leave > 45 s between a reset and the next `mpremote` attach (a likely watchdog reset at
+  attach otherwise, §6.6 item 20).
+
+### 4.4 C and D — running the real task graph, and what the device script can switch on
+
+**`Board.run_isolated(script, timeout_s)`** runs
+`mpremote connect <port> exec "import machine; machine.WDT(timeout=8000)" run <script>` — the script
+runs under an armed 8 s hardware watchdog that the production supervisor must keep feeding (every
+2 s), and `mpremote` does **not** reset the interpreter (so the script sets its own gc threshold).
+
+**`tests_hardware/device_scripts/serving_stability_under_combined_load.py`** — its sequence:
+
+1. `gc.threshold(-1)` (the tool substitutes the value), printed as `GC_THRESHOLD=…`.
+2. In control mode only: `gc.collect()` and `FOOTPRINT script_before_boot alloc=… free=…`.
+3. `sensortask_dev.main()` started as a task — the real, buildgen-generated production task graph
+   (all sensors, FRAM, NeoPixel, notifications, WiFi, NTP, UART link pair, supervisor, webserver).
+   Each boot drops and rejoins WLAN at ~6 s uptime.
+4. In peak mode: as soon as `sensortask_dev.webserver` exists, `_open_conns.increment` is wrapped to
+   count every increment above the limit — the reject-when-full closes (since `ca68672`; before, it
+   was installed at `READY`, a few seconds after the host's load had started).
+5. After 20 s: one full heap map `after_boot` (not in control mode), then `READY`.
+6. A 150 s window with one of four probes (below), then the task graph is cancelled and
+   `RESULT: PASS window complete` printed (`RESULT: FAIL …` on an exception in the script).
+
+| switch (substituted by the tool) | probe during the window | output | verdict is evidence? |
 | --- | --- | --- | --- |
-| (default) "rounds" | 12 rounds of N parallel GETs, 0.5 s pause between rounds; no forced internal work | full heap map (`mem_info(1)`) every ~5.3 s, no collect | yes |
-| `--margin` | rounds | heap map every ~5.3 s after `gc.collect()` | no (the collect cleans the heap) |
-| `--peak` | **N threads back to back for 60 s; thread 0 swaps one GET for the SGP40 reset PUT every 3 s** | 20 ms low-water sampler, never collects (§4.2) | **yes** |
-| `--peak --margin` | peak | same sampler, `gc.collect()` before every read, 100 ms apart | no |
-| `--peak --no-sampler` | peak | **none** (no maps, no sampler, no rejection counter); prints the script's heap footprint once before boot | **yes** — the instrumentation control (§5.7) |
+| none (rounds mode) | full heap map (`micropython.mem_info(1)`) every 5 s | `=== MAP tNNN_<ms>ms === … === ENDMAP …` | yes |
+| `_COLLECT_BEFORE_SAMPLE = True` (`--margin`) | the same, after `gc.collect()` | the same maps, live set only | no — the collect cleans the heap |
+| `_PEAK_SAMPLE_MS = 20` (`--peak`) | every 20 ms: `gc.mem_free()` and `_open_conns.value` (a plain int read, no coroutine, no allocation); a rise ≥ 2 KB is taken as a GC | `PEAK_NEW_MIN t=… conns=… free=…` + `mem_info()` at each new minimum; `PEAK_SUMMARY heap=… min_free_after_gc=… collections=… rejected=…`; one `PEAK_AT conns=k samples=… min_free_after_gc=…` per count | **yes** (its heap figure is not usable, §4.8) |
+| `_PEAK_SAMPLE_MS = 100` + collect (`--peak --margin`) | every 100 ms: `gc.collect()`, then the same reads; every sample counts | the same lines, exact live set | no |
+| `_NO_SAMPLER = True` (`--peak --no-sampler`) | nothing — the window just elapses | `FOOTPRINT` only | **yes** — the control |
 
-- **STABLE** = zero true failures (anything but `ok` and `refused`) and zero device lines matching
-  `harness.MEMORY_ERROR_MARKERS`. A connection closed at the ceiling before any response
-  (`http_client.is_ceiling_close()`, the hammer test's own classification) is `refused`, printed
-  separately as expected (§1 rule 4). Result lines of runs before this rule print "failed" including
-  refusals; the tables below separate them.
-- The reference fetch is accepted only as a 200 whose non-empty body equals its `Content-Length`
-  (every device-script boot drops and rejoins WLAN at ~6 s uptime and a reference once came back 0 B).
-- A torn heap-map capture is reported, not fatal.
-- **`refused` is cross-checked on the device** (added after this day's runs): in `--peak` the device
-  script counts every `_serve()` reject-when-full close and prints it as `PEAK_SUMMARY … rejected=K`;
-  the tool prints `refusals cross-check: host counted R, device rejected K`. `is_ceiling_close()`
-  books any reset without a response as a refusal, so **R > K means resets the ceiling did not
-  cause** (lwIP, a crash between accept and response) hiding among the "expected" ones. Validated
-  in the twin: limit 4, 6 clients, host 1,549 resets = device 1,549 rejections.
-- **`--margin`'s printed idle and median are fixed** (same commit): idle is now the settled idle (the
-  window's last third), and min/median span only the load window (every sample up to the last one
-  below 95 % of that idle) — the re-derivation of §5.3, done by the tool.
+### 4.5 E — the host driver, `tests_hardware/combined_load_sweep.py`
 
-### 4.2 The peak sampler, and what its heap figure is worth
+`DUT_IP=<ip> uv run python tests_hardware/combined_load_sweep.py <levels…> [--threshold T] [--peak [--margin | --no-sampler]] [--margin] [--raw-dir <dir>]`
 
-`_peak_sampler()` reads `gc.mem_free()` and the webserver's open-connection count every 20 ms and
-prints only at a new minimum (`PEAK_NEW_MIN` + `mem_info()`), then `PEAK_SUMMARY` and one `PEAK_AT
-conns=k samples=… min_free_after_gc=…` line per connection count seen.
+- **One fresh boot per listed level**; a repeated level is a repeated run. For each level it writes a
+  copy of the device script with the switches substituted, starts the host driver thread, runs the
+  script through `run_isolated()` (260 s cap), saves the full device output to `--raw-dir`, prints the
+  level's verdict, then `kick_all_stations()`, hard reset, 45 s settle.
+- **Waiting for service**: polls `GET /status` until it answers 200 (the load therefore starts a few
+  seconds before `READY`).
+- **Reference fetch**: idle `GET /` and `GET /js/app.js`, accepted only as a 200 with a non-empty body
+  equal to its `Content-Length`, retried up to 10 times (a reference taken during the WLAN drop once
+  came back 0 B and made every correct page look truncated).
+- **Per-request classification** (`_one`): `ok` (200, static body equal to its reference, JSON body
+  parses); `refused` (a reset before any response, `http_client.is_ceiling_close()` — reset, abort,
+  broken pipe or bad status line — the hammer test's own classification); otherwise a true failure,
+  labelled `status<code>`, `truncated<len>`, `badjson`, or the exception and its reason.
+- **Rounds load** (default and `--margin`): 12 rounds; each round starts N threads over the 9-path mix
+  (`/status /sensors / /measurements /status /networking /sensors /system /js/app.js`) and joins
+  them; 0.5 s pause between rounds.
+- **Peak load** (`--peak`): N threads, each looping back to back over the path mix from its own offset
+  for 60 s; thread 0 replaces one GET with `PUT /sensors {"SGP40": {"SGPResetVOC": true}}` every 3 s
+  (dispatch-only, nothing persisted — the hammer test's internal-work trigger). Exactly N requests
+  in flight from the host at all times.
+- **Verdict line**: `N=… GC_THRESHOLD=… | STABLE/UNSTABLE | complete X/T | refused R (expected) |
+  failed F (p %) | device allocation-failure lines A | …`. **STABLE** = F = 0, A = 0 (lines matching
+  `harness.MEMORY_ERROR_MARKERS`: `MemoryError` or `memory allocation failed`), and the driver
+  thread finished. Below it: each failure kind with its count, the first six device allocation lines,
+  and per mode the peak lines, the `FOOTPRINT` line, the `--margin` summary (settled idle, load-window
+  min/median — fixed in `53ac222`), and `refusals cross-check: host counted R, device rejected K`.
+- Exit status 0 only if every level is STABLE.
 
-- **Without `--margin` its failure counts and verdict are evidence, its heap figure is not.** It takes
-  a rise of ≥ 2 KB between two reads as a GC and that reading as "heap minus live set". Under load
-  the sampler ran every ~60 ms (not 20) while the heap churned ~250 KB/s at −1, so the reading lands
-  anywhere in the refill and **understates free heap by up to ~15-30 KB** — visible at 0 open
-  connections, where it read 47.8 KB against a settled idle of ~77 KB. An exact GC signal does not
-  exist on this build: user-class instances are never allocated with the finaliser bit
-  (`py/objtype.c`), so `__del__` never runs on them, and `MICROPY_PY_WEAKREF` is enabled only at the
-  EVERYTHING ROM level (rp2 builds EXTRA_FEATURES).
-- **With `--margin` the heap figure is exact** (the live set at each 100 ms collect), and the
-  per-connection-count histogram proves it was taken at the ceiling; the collects make the threshold
-  irrelevant and the verdict instrumentation only.
-- The open-connection count **includes connections still closing** (§6.3), so it can exceed N.
+### 4.6 F — analysis
 
-### 4.3 Other instruments used
+- **Heap maps**: `tests_hardware/heap_map.py` `parse_labelled()` turns every `=== MAP label ===` block
+  into a map with `free_bytes`, `largest_free_run`, `total_bytes`; `mem_info()`'s `max free sz` is in
+  16 B blocks. A torn capture raises `HeapMapError`, which the tool reports without losing the level.
+- **Load window and settled idle** (rounds-mode `--margin`): settled idle = the median of the samples
+  after the load; load window = every sample up to the last one below that idle (by hand first:
+  76,000 B; the tool now: 95 % of the settled idle from the window's last third). Min and median
+  under load are taken over the load window only.
+- **Failure breakdown**: each device-side failure prints two lines (the `MemoryError` and the
+  webserver's `Unhandled exception in route handler` line), so device lines ÷ 2 = failures; the
+  tracebacks in the raw output give the site (`_get_status` → … → `_PieceWriter.flush`) and the
+  requested size. Host `status500` counts must equal that.
+- **Percentages** are of `mem_info`'s total (not the linker figure: the GC's own tables take the
+  rest). **Production-equivalent** heap adds back the device script's own footprint (§4.7).
+- **Refusal cross-check**: host `refused` against the device's `rejected=`; a positive gap means resets
+  the ceiling did not cause, unless the device counter started late (before `ca68672`).
 
-- `tests_hardware/bench/test_serving_heap_at_default_gc.py` — per-source/route allocation need, and
-  an ascending sweep on one boot (levels 4, 6, …, ceiling + 2). Its assertion message keeps only the
-  last 2,000 characters of device output, and its host tallies print after that assertion, so a
-  failing sweep does not say which level broke.
-- Largest free block: `mem_info()`'s `max free sz` is in 16 B blocks.
+### 4.7 G — controls and calibrations
+
+- **Instrumentation control** (`--peak --no-sampler`): the same peak load with nothing on the device
+  but the production task graph; only host counts and device allocation lines. It answered "does
+  the instrument cause the effect" — no (§5.7).
+- **Script footprint**: a two-line script that only imports `sensortask_dev` and collects prints the
+  import-only baseline (**52,960 B**); the device script's `FOOTPRINT` minus that is its own cost:
+  **2,720 B** for the script up to `53ac222`, **3,008 B** since `ca68672` (the rejection counter's
+  code). Production (frozen `main.py`) does not pay it.
+- **Sampler cost**: completed requests per boot with and without the sampler (105-116 against
+  122-149) — ~10-20 % of throughput.
+
+### 4.8 What proved not usable, or usable only with a correction
+
+| instrument or figure | problem | how handled |
+| --- | --- | --- |
+| rounds load as a "peak" figure | pauses and 5 s snapshots miss the moment all N allocate; overstated free heap by ~20 KB at 6 | labelled "sampled, not peak"; peak mode added |
+| `--margin`'s printed "idle" and "median under load" (before `53ac222`) | idle was a mid-boot sample; the median spanned the post-load idle | re-derived from raw maps (§4.6); tool fixed |
+| the non-collecting peak sampler's **heap** figure | reads "after a GC" late under load; biased low by up to 15-30 KB; no exact GC signal on rp2 (no `__del__` on user-class instances, no `weakref`) | never reported as a peak; its verdict and failure counts stay valid; exact figures from `--peak --margin` |
+| the device rejection counter before `ca68672` | installed at `READY`, after the load began; host > device by 0-21 | install moved to webserver creation |
+| `test_serving_heap_at_default_gc.py`'s failing-sweep report | the assertion message keeps only 2,000 characters and the host tallies print after it | the per-boot tool used for levels instead |
+| the first reference-fetch implementation | accepted a 0 B body taken during the WLAN drop | validated reference (§4.5) |
+| a `pkill -f`/`pgrep -f` wait loop | matches its own command line | processes listed by PID |
+
+### 4.9 H — the need test and one-boot sweep
+
+`uv run pytest tests_hardware/bench/test_serving_heap_at_default_gc.py -s` (~7-9 min), driven by
+`device_scripts/serving_at_default_gc.py`:
+
+- **Need test**: each status source, route and static file probed for the largest free run and churn
+  it needs (e.g. `route:/status` 320 B, `route:/` 320 B after the static fix, 1,536 B before).
+- **One-boot sweep**: levels 4, 6, …, ceiling + 2 on a single boot, 12 rounds each; asserts zero
+  memory markers, `served == min(n, ceiling) × 12`, and that the rest were refused; dumps the heap
+  before and after the load and at the instant of each failure.
+
+### 4.10 I — evidence capture
+
+- **`errcount` before anything writes**: `GET /status` → `errcount`, every module with a non-zero
+  counter and its non-`N` history recorded before each sitting. Context, not evidence, once device
+  scripts have run (they build their own `AsyFramManager` over the same FRAM).
+- **Reset cause immediately after an unexpected reset**: if a run dies with a serial I/O error,
+  `mpremote exec "import machine; print(machine.reset_cause(), machine.PWRON_RESET,
+  machine.WDT_RESET)"` before any flash or reboot (lost once, §5.8, before this step existed).
+- **Raw output kept verbatim**: every level's full device output saved per level; every result line
+  reproduced verbatim in §5; kernel log (`journalctl -k`, USB disconnect times) used to time resets.
 
 ## 5. Results
 
@@ -200,7 +354,7 @@ History write failed!`, `SCD30 Error reading config from sensor: memory allocati
 allocating 80 bytes`, the same for BMP3XX at 68 B, a route-handler `MemoryError` at 138 B in
 `_get_sensors` → `_stream_dict_response` → `_PieceWriter.add_value` → `add`, and the device script
 itself: `RESULT: FAIL MemoryError('memory allocation failed, allocating 72 bytes')`. Which level
-broke is not recorded (§4.3).
+broke is not recorded (§4.8, §4.9).
 
 Rounds sweep, one boot per level:
 
@@ -255,7 +409,7 @@ sample) and "median under load" (spanning the post-load idle) are mislabelled an
 
 (Device lines come in pairs per failure: the `MemoryError` and the `WEBSERVER Unhandled exception in
 route handler` line.) Largest free block at the sampler's minimum: −1: 704 / 816 / 704 / 736 B;
-32768: 3,600 / 1,520 / 448 / 672 B (N = 6 / 7 / 8 / 9) — at a biased minimum, §4.2.
+32768: 3,600 / 1,520 / 448 / 672 B (N = 6 / 7 / 8 / 9) — at a biased minimum, §4.8.
 
 Verbatim (run before the refusal rule, so "failed" includes refusals; `device: WEBSERVER …` lines
 omitted):
@@ -923,7 +1077,7 @@ rules whatever its implementation.
 - **Every instrument is classified as invasive or non-invasive, and every run states which figures it
   is valid for.** An instrument that changes the system under test may measure, but may not judge:
   a `gc.collect()` before each sample cleans the heap, so a collecting run's stability verdict is
-  never evidence (§4.1's table has a "verdict is evidence?" column for exactly this).
+  never evidence (§4.4's table has a "verdict is evidence?" column for exactly this).
 - **The verdict comes from the least-instrumented run that can give it**; the heap figure comes from
   the run that can measure it exactly. Where one run cannot give both, two runs are made rather than
   one run that gives both approximately — and when the owner asked for one run, the reason it could
