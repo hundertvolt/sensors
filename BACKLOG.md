@@ -48,7 +48,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   next step (the `RangeAuto=false` bisection) already lives. **What is genuinely still owed here is
   therefore only the BMP3XX arm's re-confirmation being treated as durable** rather than one bench
   run — it passed again 2026-09-23 in S3's gated run (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.2);
-  whether two runs is durable is the owner's call; the ISL29125 arm is not "pending re-confirmation", it is a known open defect with its own item.
+  owner, 2026-09-24: one more pass in the next bench sitting (queue row R5), then it closes; the ISL29125 arm is not "pending re-confirmation", it is a known open defect with its own item.
 
   Note the bench re-run that produced these numbers needs `--allow-persistence-writes`: the write path
   is now gated behind `@pytest.mark.persistence_write`, so a default bench run deselects both arms and
