@@ -529,7 +529,7 @@ is why a 2-block change of one object's size moves the result and why nothing co
 - **Gap 9, parallelism** — the question is now narrower than "not re-run": §0B.6 shows the real
   startup phase has *none*, so §6A.10's added-parallelism arm describes a regime the boot batch
   never enters. What is still untested is whether parallelism matters *after* boot, once the task
-  graph is live (§12).
+  graph is live.
 - ~~Which configuration the [HW] symptom belongs to~~ — **answered from [SRC] the same day**
   (§1.5): the hardware test's device script runs `build_system()` itself, asserts before any
   threshold is set, and only then reports a second, unasserted line with
@@ -2373,7 +2373,7 @@ at run - and the project already uses the second.
 
 The actual defect is the boot design: it interleaves each module's permanent allocations with ~1 MB
 of same-size-class churn on that allocator with no placement discipline. Neither party alone. What is
-missing is a boot-phase contract, which is what §12's seam + contiguity guard would enforce.
+missing is a boot-phase contract, which is what the seam + contiguity guard (§7L) enforces.
 
 ### 7B.5 Recommendation
 
@@ -2389,7 +2389,7 @@ missing is a boot-phase contract, which is what §12's seam + contiguity guard w
    amendment states what it is.
 4. Keep `threshold(32768)`. Do not lower the floor. Do not take B alone: it fails the tripwire at the
    device script's measurement point and would set the precedent without the design fix.
-5. Add §12's per-module contiguity guard, which restores the sensitivity B takes from the tripwire.
+5. Add the per-module contiguity guard (built: §7L), which restores the sensitivity B takes from the tripwire.
 
 ---
 
@@ -2832,11 +2832,10 @@ dominant term is **interpreter overhead per transaction**, not wire time.
 
 ### 7D.8 What is still not answered
 
-- **Measure B is unmeasured on hardware.** It was built later the same day (`7ccbe8d`) and measured
+- **Measure B is unmeasured on hardware** (SUPERSEDED: measured on silicon in §7F/§7H). It was built later the same day (`7ccbe8d`) and measured
   in the twin (§7E), so the A+B column of §7B.3 and §7A's whole dose-response remain [TWIN] — but the
   reason is now bench time rather than unbuilt code. The runnable form is
-  `REAL_HARDWARE_HANDOVER_MEASURE_B.md` (queue §1B; **deleted 2026-09-19** once §7H migrated its
-  results), which also carried the instrument §7E.3's
+  `REAL_HARDWARE_HANDOVER_MEASURE_B.md` (**deleted 2026-09-19**; its results are §7F and §7H), which also carried the instrument §7E.3's
   fault made necessary: a device script that reaches the starter list, not just `build_system()`.
 - **The `gc.threshold(32768)` question §1.5 raises is still open at the decisive point.** The
   device script reads `after_build_system` at MicroPython's reactive default and then sets 32768;
@@ -4217,6 +4216,11 @@ byte-identical across repeats; the cumulative ones vary a few percent with task 
 | both lists | median depth below seam | 356,576 | 108,352 | 256 KiB | 1.36x / 2.42x |
 | both lists | blocks > 128 KiB up | **0** everywhere | 98 | 32 | — / 3.06x |
 
+**Heap-size independent, re-verified on the settrace-free binary**: wozi measures a batch median of
+**−481,376 B at both `-X heapsize=8M` and `16M`**, a cumulative reach of **16,352 B** at both, and 0
+blocks above the band at both — byte-identical, both arms. So `test.sh`'s fixed heap size needs no
+fill calibration, and the bounds are absolute offsets from the seam.
+
 Two things follow. **The discrimination moved to the starter list**, which is §7E.3's finding
 arriving from the other direction: the batch alone barely moves the frontier once its churn is real
 rather than inflated, while the starter list's 22 tasks still do — 16,352 B live against 141,632 B
@@ -4934,12 +4938,6 @@ linker heap equals 187,712 + (8 − L) × 2,324 B to the byte; `mem_info` report
 (~2.3 %, the GC's own tables, scaling with the heap), and it is the percentage base below. `.bss`
 A → B grew 20,916 B for 9 connections, 2,324 B each, from two ELFs built hours apart.
 
-**Full suite runs on image A** (a baseline for that image, not a validation of the tip): flash tier
-36 passed / 3 skipped / 12 deselected; bench tier 103 / 4 / 27; bench with
-`--allow-persistence-writes` **124 passed / 4 skipped / 6 deselected** — the first clean gated run
-end to end, in which the two ISL29125 calibration tests passed on their first run and the BMP3XX
-config-write arms passed a second time (§7O.4).
-
 ### 7R.2 lwIP never bound anything (image A/B, boot entry's `gc.threshold(32768)`)
 
 - **Admission is exact**: A admitted 7 on five probes out of five. A refusal is a **FIN ~6 ms after
@@ -4953,17 +4951,17 @@ config-write arms passed a second time (§7O.4).
   body complete, while B admitted and answered 500 from N = 7, its 9 extra connections having cost
   20,916 B of the heap that serves them.
 - **`PBUF_POOL_SIZE` 16 is enough** (inbound over-commit, `N × TCP_WND` against 12,832 B of pool
-  payload, 16 × (876 − 74):
-  3.5× on A, 8.0× on B): the pool never surfaced, because real inbound demand is one small capped
-  request per connection (`cyw43_lwip.c:281` allocates every received packet from it).
+  payload, 16 × (876 − 74): 3.5× on A, 8.0× on B): the pool never surfaced, because real inbound
+  demand is one small capped request per connection (`cyw43_lwip.c:281` allocates every received packet from it).
 - **Parked connections are cheap**: a full ceiling of 7 held mid-request (sustained by staggered
-  recycling, `SPECIFICATION.md` H.7.1) left room for 15 placeable 2,048 B blocks at worst, against a demand of 7
-  — a single-N capacity reading, not a comparison across limits (§9).
-  That holder recycled after every ~2 s drip rather than at 10 s (fixed 2026-09-24, H.7.1); the
-  count's at-ceiling fraction was asserted either way, so the reading stands as a peak one.
+  recycling, `SPECIFICATION.md` H.7.1) left room for 15 placeable 2,048 B
+  blocks at worst, against a demand of 7 — a single-N capacity reading, not a comparison across
+  limits (§9). That holder recycled after every ~2 s drip rather than at 10 s (fixed 2026-09-24,
+  H.7.1); the count's at-ceiling fraction was asserted either way, so the reading stands as a peak one.
 - **Independent ensemble audit**: the `#error` conditions in `lib/lwip/src/core/init.c` re-derived
   by hand — 18 by the audit's own count of relevant ones, of which `check_lwip_ensemble()` restates
-  the sixteen over the options set or derived here (SPECIFICATION.md B.14.2) — with the switches deciding which are live ground-truthed out of the translation unit
+  the sixteen over the options set or derived here (SPECIFICATION.md B.14.2) — with the switches
+  deciding which are live ground-truthed out of the translation unit
   (`LWIP_DISABLE_TCP_SANITY_CHECKS` undefined, `MEMP_MEM_MALLOC = MEM_USE_POOLS = 0`,
   `MEM_ALIGNMENT = 4`, `LWIP_WND_SCALE = 0`, `TCP_MSL = 60000`, `LWIP_NETCONN = LWIP_SOCKET = 0`):
   zero failing conditions on every image. `LWIP_IPV6 = 1`, so `PBUF_IP_HLEN` is 40 and
@@ -4972,6 +4970,12 @@ config-write arms passed a second time (§7O.4).
   1.03-1.07 s. No watchdog reset across the sitting.
 - **The earliest datum, at limit 4** (dev bench, hotspot mode, 2026-09-04 or before): an 8-way burst
   on `/` got 7 × `302`, some queued 0.5-1.5 s, and 1 refusal in ~37 ms.
+
+**Full suite runs on image A** (a baseline for that image, not a validation of the tip): flash tier
+36 passed / 3 skipped / 12 deselected; bench tier 103 / 4 / 27; bench with
+`--allow-persistence-writes` **124 passed / 4 skipped / 6 deselected** — the first clean gated run
+end to end, in which the two ISL29125 calibration tests passed on their first run and the BMP3XX
+config-write arms passed a second time (§7O.4).
 
 ### 7R.3 At the reactive default, before and after the two serving fixes
 
@@ -5114,6 +5118,11 @@ is optimistic (§7Q.12), so only the arms' order carries over, not their absolut
 No lever clears the wall at 10. A gate cuts failures about 5x but never to zero; a smaller chunk
 helps only to 128 and 64 moves the failure onto the pieces list; lazy generation turns a clean `500`
 into a truncated body. None was adopted: the limit is set by the heap margin (§7R.4), not moved.
+
+**Not a UART defect**: the UART link exerciser's 264 B receive failed twice at 10 connections in the
+64-bit twin (never in the 32-bit one) because the webserver had exhausted the heap. `uart_get()`'s
+own destination allocation is guarded (`_ERR_DEST_ALLOC`, errno 24, `src/asy_uart_comm.py`) and the
+task is supervised.
 
 ## 8. What is committed
 

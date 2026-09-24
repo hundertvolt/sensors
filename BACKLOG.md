@@ -380,12 +380,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     7.396s / 5.207s at `gc.threshold(-1)`. Useful for spotting a twin-side regression; not a
     predictor of real-hardware cost in either direction.
 
-28. **Two `TEST_PARALLELISM` facts with no permanent home yet** (the autodetection itself:
-    README.md's `TEST_PARALLELISM` entry and `scripts/test.sh`):
-    - The bench Pi4 probes at ~139 ms, i.e. as a fast host: 16 jobs (4 cores x 4), suite green there.
-    - `tests/test_digital_twin_sensortask_integration.py`'s `_wait_until()` counts poll iterations,
-      not wall clock; a wall-clock timer would make CPU starvation fail it sooner, not later.
-
 29. **A real WiFi outage logs `W4` ("WLAN wrong password") twice alongside the expected `W5`
     ("access point not found"), on a network whose password never changed.** Observed on the dev
     bench board during `test_real_wifi_outage_and_recovery_while_in_normal_sta_mode` (2026-09-17).
@@ -734,9 +728,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     - One silent reset in 1 of 9 instrumented peak-load boots, cause lost.
     - Hotspot fallback after a reset, three times.
     - A likely watchdog reset at `mpremote` attach.
-    - Not a UART defect, no home yet: the UART link exerciser's 264 B receive failed twice at 10
-      connections in the 64-bit twin (never the 32-bit one) because the webserver had exhausted
-      the heap; `uart_get()`'s own allocation is guarded (errno 24) and the task is supervised.
 
 ## Deferred / explicitly out-of-scope work
 

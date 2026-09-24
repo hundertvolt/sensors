@@ -142,7 +142,9 @@ default 240), `TEST_PARALLELISM` (how many test files run at once — by default
 flat multiple of the core count: `test.sh` times a fixed loop in the very Unix-port interpreter the
 tests run under and picks 4x usable cores at <=250ms, 2x at <=900ms, 1x beyond, honouring a cgroup
 CPU quota when one is set, because core *count* alone cannot tell a fast x86 runner from a slow
-host. The suite is sleep-bound rather than CPU-bound, so oversubscribing a fast host is close to free; set `TEST_PARALLELISM=1` for strictly sequential runs), `TESTS_SCRIPTS_TIMEOUT_S`
+host (the bench Pi4 probes at ~139 ms: 4x, 16 jobs, green). The suite is sleep-bound rather than
+CPU-bound, so oversubscribing a fast host is close to free; set `TEST_PARALLELISM=1` for strictly
+sequential runs), `TESTS_SCRIPTS_TIMEOUT_S`
 (whole-suite timeout for the backgrounded `tests_scripts/` pytest job, default 1200 — roughly 5x its
 real runtime, so it only fires on a genuine hang), and `GC_THRESHOLD` (run the MicroPython tier with
 that `gc.threshold()` set instead of the interpreter's own reactive default — `GC_THRESHOLD=32768
@@ -508,8 +510,8 @@ drives `digital_twin/run_generic_integration.py` through fourteen sequential run
 step: fresh boot, every GET/PUT endpoint, `DebugLevel=5` verbose logging, bus fault injection,
 settings/error persistence across a real reboot, soak at both `gc.threshold()` configurations and the
 full-ceiling burst (`digital_twin/README.md`'s "Automated CI suite" lists each run). Runs against
-`wozi` by default, or any of the other 5 real device variants via an optional device argument. Builds the Unix port and the real website for that device first if
-either is missing (same `$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):
+`wozi` by default, or any of the other 5 real device variants via an optional device argument.
+Builds the Unix port and the real website for that device first if either is missing (same `$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):
 
 ```sh
 scripts/run_digital_twin_ci.sh          # wozi (default)

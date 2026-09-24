@@ -162,9 +162,9 @@ async def _query_dns_and_get_answer_ip(query: bytes, timeout_s: float = 5.0) -> 
 
 
 async def _wait_until(predicate: "Callable[[], bool]", timeout_s: float, interval_s: float = 0.25) -> bool:
-    # Bounded polling helper for the sections below that drive a real background task through a
-    # real multi-second state transition (mode switches, supervisor check cycles) rather than
-    # guessing a single fixed sleep duration.
+    # Bounded polling for a real multi-second state transition (mode switches, supervisor cycles).
+    # Counts poll iterations, not wall clock: under CPU starvation a wall-clock bound would fail
+    # sooner, not later, since every sleep overruns.
     elapsed = 0.0
     while elapsed < timeout_s:
         if predicate():

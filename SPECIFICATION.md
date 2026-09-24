@@ -5348,7 +5348,7 @@ request must produce **no body read at all**, including under concurrent mixed l
 `gc.threshold(-1)` and `gc.threshold(32768)`.
 
 **On real hardware the wire shows less than that, and the bench rows say so** [SRC].
-`tests_hardware/bench/test_network_resilience.py` mirrors F.2b over real WiFi (queue §1D, W1-W5),
+`tests_hardware/bench/test_network_resilience.py` mirrors F.2b over real WiFi (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7I.2, §7J.2),
 but a socket cannot distinguish "buffered then rejected" from "rejected unread" — both firmwares
 answer 413, only at different sizes. The mirrors therefore pin the **cap value** and the
 boundary's exactness; the 2048-4096 band rejecting is what tells this firmware from the previous
