@@ -351,21 +351,14 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     7.396s / 5.207s at `gc.threshold(-1)`. Useful for spotting a twin-side regression; not a
     predictor of real-hardware cost in either direction.
 
-29. **A real WiFi outage logs `W4` ("WLAN wrong password") twice alongside the expected `W5`
-    ("access point not found"), on a network whose password never changed.** Observed on the dev
-    bench board during `test_real_wifi_outage_and_recovery_while_in_normal_sta_mode` (2026-09-17).
-    `tests_hardware/bench/test_network_resilience.py`'s own
-    `_assert_wifi_log_has_only_benign_ap_not_found_warning()` expects only `W5`. Either the CYW43
-    driver reports a misleading status during an AP-down transition and
-    `asy_wifi_service.py`'s `_poll_sta_connect_status()` faithfully records it (making the test's
-    expectation wrong), or the status mapping there is off. Not chased — one look should tell which.
-    That sighting predates the per-episode dedupe (SPECIFICATION.md Part C.7.1): back then
-    `_poll_sta_connect_status()` persisted one warning per connect *attempt*, so "W4 twice" may be
-    two attempts rather than two verdicts. That does not explain a wrong-password verdict on a
-    correct password, which the second sighting below confirms is still open.
-    **Second sighting (2026-09-23)**: the clean pre-sitting `errcount` on the dev bench (image of
-    2026-09-22) held WIFI history `N0 N0 N0 W10 W6 W5 W4 W5 W6 W6` — a `W4` on a network whose
-    password never changed, outside any outage test.
+29. **The spurious `W4` ("WLAN wrong password") on a correct password - answered from source
+    (2026-09-24).** Kept as a stub because `SPECIFICATION.md` C.7.1 and `tests/test_asy_wifi_service.py`
+    cite this number. cyw43-driver reports BADAUTH, which MicroPython surfaces as
+    `STAT_WRONG_PASSWORD`, for any failed AUTH event and any failed 4-way handshake other than three
+    timeout codes (`lib/cyw43-driver/src/cyw43_ctrl.c`), so an AP vanishing mid-association reads as a
+    wrong password; `_poll_sta_connect_status()` records it faithfully. Both sightings sat inside
+    `W5`/`W6` runs. The log text now says what the status means, and the bench outage check accepts
+    `W4` as benign beside `W5`.
 
 30. **ISL29125 HTTP connection reset under concurrent API load — root-cause not yet established.**
     Owner's direction: chase, root-cause and resolve. Needs **both** a config-persisting PUT and >=2
@@ -394,6 +387,17 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     to instrument. **Cheap bisection**: `RangeAuto` is a plain REST bool, so `PUT /sensors
     {"ISL29125": {"RangeAuto": false}}` drops the third leg without touching any code — if the reset
     rate falls, the re-arm is implicated; if it does not, it is the first two.
+    **A second candidate, found after this item was written and not yet tested against it
+    (2026-09-24, from SPECIFICATION.md H.7):** the connection ceiling itself. A connection holds its
+    slot until its close has finished, so back-to-back clients are refused below the nominal limit,
+    and a refusal is a FIN/RST within milliseconds that nothing on the DUT logs — this item's exact
+    signature. A PUT held longer by the ISL29125's three-step push, against BMP3XX's single write,
+    would explain the split; the listen backlog was also MicroPython's default 5 then, a second
+    silent reset path since sized to the ceiling. **Since 2026-09-19 the test retries a ceiling
+    refusal, so a clean run no longer answers this item** — both config-write arms now print
+    `CEILING_RETRIES` per arm, and the next gated run reads those before bisecting: ISL29125 retries
+    well above BMP3XX's and no other failure means the ceiling (close this item); failures that are
+    not ceiling closes mean an ISL29125 mechanism, and the bisection above follows.
 
 32. **The bench tier's `ResetErrors` timeout was raised 10.0s → 30.0s with no elapsed-time budget
     to replace what that bound was incidentally enforcing.** Recorded 2026-09-17: a loosening with
@@ -471,7 +475,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     hand-listed script reading a default that no longer exists, which looks like a driver fault.
     The generic form is a two-line change in each, but it can only be validated on the bench - so
     it rides the next real-hardware session rather than being pushed blind
-    (`REAL_HARDWARE_TEST_QUEUE.md`).
+    (`REAL_HARDWARE_TEST_QUEUE.md` row G11).
 
 44. **Board anomalies from the connection-limit sittings — recorded, not chased; each needs
     silicon** (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.5; queue row F17):
@@ -488,6 +492,21 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 46. **Retire `html_stub/`?** `scripts/build_frozen_html.sh` and the twin's CI default to it (SPEC
     A.9); the owner's rule (2026-09-23) is that `dev`'s real website is the most biting test. Needs
     the owner's yes/no; a change touches `scripts/`, so it needs a chroot entry.
+
+48. **`arduino/`'s licensing is unreviewed.** `THIRD_PARTY_LICENSES.md` covers `src/`, `ext/` and
+    the legacy tree, not the 2026-09-13 import. Most vendored libraries carry their own licence file
+    (Adafruit BusIO/FRAM_SPI, BME68x, `wdt_samd21`, `bsec2`'s BSD-3-Clause), `FlashStorage` carries
+    none, and the owner's own three (`Async_UART*`, `CRC_Check`) carry no header; `bsec2`'s LICENSE puts its binaries
+    under Bosch's separate BSEC terms, and `bsec2-6-1-0_generic_release/` (the website release,
+    `libalgobsec.a` per toolchain) ships no licence text at all. Whether those terms allow
+    redistribution in this repository was not checked. The owner's call; nothing here is shipped.
+
+49. **Four heap-fragmentation research gaps stay open with no decision riding on them**
+    (HEAP_FRAGMENTATION_MEASUREMENTS.md §0B.7, §12): what in the old churn did the stranding at a
+    given dose; whether parallelism matters after boot; the per-object picture on the board's
+    16-byte blocks; and a same-binary A/B of the committed settle. The remedy shipped and holds on
+    silicon (§7H, §7R), so none gates anything. **Recommendation: close all four as not pursued**,
+    leaving the section as the evidence record; re-open only if a new layout symptom appears.
 
 ## Deferred / explicitly out-of-scope work
 

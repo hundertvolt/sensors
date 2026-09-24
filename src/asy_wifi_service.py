@@ -604,7 +604,7 @@ class AsyConnTime(SensorReaderConfig):
             elif status == _STAT_OBTAINING_IP:
                 self.pr.all("WLAN obtaining IP")
             elif status == network.STAT_WRONG_PASSWORD:
-                await self._episode_wrn(4, "WLAN wrong password")
+                await self._episode_wrn(4, "WLAN authentication failed - wrong password, or the AP dropped mid-handshake")
                 return
             elif status == network.STAT_NO_AP_FOUND:
                 await self._episode_wrn(5, "WLAN access point not found")

@@ -695,7 +695,7 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   evidence base for the heap-fragmentation defect (the collapse of the largest contiguous block
   across WP1+WP2; the 80,000 B floor it used to be measured against was retired by the owner on
   2026-09-19 and replaced by the three requirement-derived checks in its §7G):
-  what the instrument is validated against and the six ways it silently lied before that, the
+  what the instrument is validated against and the eight ways it silently lied before that, the
   per-module allocation census, the FRAM logging path priced per transaction, the negative results
   that constrain any fix, and every remedy candidate's ensembled numbers. Its §0A states the
   mechanism and §9 quarantines every figure a defective instrument produced or a later measurement

@@ -26,6 +26,17 @@ VOC_MIN, VOC_MAX = 0, 500  # same bounds as device_scripts/sgp40_voc_algorithm_q
 _GET_WORKERS = max(2, configured_max_connections() - 3)
 _GET_ITERATIONS_PER_WORKER = 8
 _PUT_RESET_COUNT = 2
+# Ceiling refusals fetch() retried, by "METHOD path": BACKLOG 30's resets share their signature, so
+# the two config-write arms print these, and a gated run tells the ceiling from an ISL29125 mechanism.
+_ceiling_retries: dict[str, int] = {}
+_ceiling_retries_lock = threading.Lock()
+
+
+def _report_ceiling_retries(arm: str) -> None:
+    with _ceiling_retries_lock:
+        counts = dict(_ceiling_retries)
+        _ceiling_retries.clear()
+    print(f"CEILING_RETRIES {arm}: {counts or 'none'}")
 
 
 def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any] | None = None, timeout_s: float = 15.0) -> http_client.HttpResponse:
@@ -38,6 +49,8 @@ def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any
         except Exception as exc:
             if attempt == 2 or not http_client.is_ceiling_close(exc):
                 raise
+            with _ceiling_retries_lock:
+                _ceiling_retries[f"{method} {path}"] = _ceiling_retries.get(f"{method} {path}", 0) + 1
             time.sleep(0.25)
     raise AssertionError("unreachable")
 
@@ -382,6 +395,7 @@ _ISL29125_WRITE_CYCLES = 4  # modest relative to flash tier's 8 - each cycle her
 @pytest.mark.persistence_write
 def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load(board: Board, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
+    _report_ceiling_retries("before isl29125 arm")  # clears whatever an earlier test left
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
     original_resolution = get_before.json()["ISL29125"]["Resolution"]
@@ -441,6 +455,7 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
         # on the original value, which makes this restore a no-op. Accepting only "Valid" would fail
         # the fixture's own cleanup and mask whatever the body was actually reporting.
         assert restore_res.status_code == 200 and restore_res.json()["result"]["ISL29125"].get("Resolution") in ("Valid", "Unchanged"), f"failed to restore original ISL29125 Resolution={original_resolution!r}: {restore_res.status_code} {restore_res.body!r}"
+        _report_ceiling_retries("isl29125 config-write arm")
 
     wait_until(
         lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
@@ -470,6 +485,7 @@ _BMP3XX_OVERSAMPLING_SETTINGS = (1, 2)  # cycled - both real, valid settings (as
 @pytest.mark.persistence_write
 def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load(board: Board, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
+    _report_ceiling_retries("before bmp3xx arm")
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
     original_press_overs = get_before.json()["BMP3XX"]["PressOvers"]
@@ -526,6 +542,7 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
         restore_res = fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": original_press_overs}}, timeout_s=10.0)
         # "Unchanged" is a success here for the same reason the ISL29125 restore above accepts it.
         assert restore_res.status_code == 200 and restore_res.json()["result"]["BMP3XX"].get("PressOvers") in ("Valid", "Unchanged"), f"failed to restore original BMP3XX PressOvers={original_press_overs!r}: {restore_res.status_code} {restore_res.body!r}"
+        _report_ceiling_retries("bmp3xx config-write arm")
 
     wait_until(
         lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,

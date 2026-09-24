@@ -1506,8 +1506,8 @@ def test_a_different_verdict_in_the_same_episode_still_persists() -> None:
         _wlan(client)._status = status
         run(client._poll_sta_connect_status())
     counter = run(client.get_error_counter())
-    # Exactly item 29's shape: a W4 beside a W5 on one outage must survive the dedup, since which
-    # of the two is right is the open question - collapsing to the first would destroy the evidence.
+    # Exactly item 29's shape: a W4 beside a W5 on one outage must survive the dedup - two distinct
+    # verdicts, each evidence of what the link did; collapsing to the first would destroy one.
     assert [num for num in counter["WIFI"]["ErrNum"] if num] == [5, 4]
 
 

@@ -68,7 +68,7 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
 
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a real WiFi outage and recovery"
     if not recovered_via_hard_reset:
-        _assert_wifi_log_has_only_benign_ap_not_found_warning(dut_ip)
+        _assert_wifi_log_has_only_benign_outage_warnings(dut_ip)
 
 
 def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, bench: BenchBridge, dut_ip: str) -> None:
@@ -105,19 +105,19 @@ def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, ben
 
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after repeated real WiFi flapping"
     if not recovered_via_hard_reset:
-        _assert_wifi_log_has_only_benign_ap_not_found_warning(dut_ip)  # same reasoning as the single-outage test above
+        _assert_wifi_log_has_only_benign_outage_warnings(dut_ip)  # same reasoning as the single-outage test above
 
 
-def _assert_wifi_log_has_only_benign_ap_not_found_warning(dut_ip: str) -> None:
-    """Tolerates exactly one benign "WLAN access point not found" warning (wrnno=5) after a
-    graceful recovery - a real, correctly-logged transient condition from an active retry poll
-    landing mid-outage, not a bug (see tests_hardware/README.md). Anything else still fails."""
+def _assert_wifi_log_has_only_benign_outage_warnings(dut_ip: str) -> None:
+    """Tolerates the two warnings a real outage logs: wrnno=5 (AP not found, a retry poll landing
+    mid-outage) and wrnno=4 (cyw43's BADAUTH, also raised when the AP drops mid-handshake - BACKLOG
+    item 29). Anything else still fails; the password never changes here, so 4 cannot be real."""
     entry = get_errcount(dut_ip).get("WIFI", {})
     history = entry.get("history", [])
     # "N" entries are print_log.py's own "nothing recorded" padding (get_log()'s own encoding) -
     # always present, filling out the fixed-size ring, and not a real log line at all.
-    unexpected = [h for h in history if h.get("type") != "N" and not (h.get("type") == "W" and h.get("num") == 5)]
-    assert not unexpected, f"WIFI error log had unexpected entries beyond the known-benign wrnno=5: {unexpected!r} (full: {entry!r})"
+    unexpected = [h for h in history if h.get("type") != "N" and not (h.get("type") == "W" and h.get("num") in (4, 5))]
+    assert not unexpected, f"WIFI error log had unexpected entries beyond the known-benign wrnno=4/5: {unexpected!r} (full: {entry!r})"
 
 
 def _sta_reconnected(dut_ip: str) -> bool:

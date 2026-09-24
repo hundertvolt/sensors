@@ -7,6 +7,7 @@ import http.client
 import sys
 import urllib.error
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -74,3 +75,46 @@ def test_a_reason_that_is_not_an_exception_does_not_confuse_the_predicate() -> N
     # ("[SSL] ..."). getattr's isinstance check has to hold for that, not just for exceptions.
     assert not http_client.is_ceiling_close(urllib.error.URLError("some textual reason"))
     assert not http_client.is_ceiling_close(Exception())
+
+
+def _bench_module() -> ModuleType:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware" / "bench"))
+    import test_bus_concurrency_under_api_load as bench
+
+    return bench
+
+
+def test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    # BACKLOG 30's discriminator: a gated run prints these per arm, so the count must be exact.
+    bench = _bench_module()
+    outcomes: list[BaseException | None] = [ConnectionResetError(errno.ECONNRESET, "reset"), ConnectionResetError(errno.ECONNRESET, "reset"), None]
+
+    def fake_fetch(*_args: object, **_kwargs: object) -> http_client.HttpResponse:
+        outcome = outcomes.pop(0)
+        if outcome is not None:
+            raise outcome
+        return http_client.HttpResponse(200, {}, b"{}")
+
+    monkeypatch.setattr(http_client, "fetch", fake_fetch)
+    monkeypatch.setattr(bench.time, "sleep", lambda _s: None)
+    bench._report_ceiling_retries("clear")
+    assert bench.fetch("dut", 80, "GET", "/sensors").status_code == 200
+    bench._report_ceiling_retries("arm")
+    bench._report_ceiling_retries("again")
+    lines = capsys.readouterr().out.splitlines()
+    assert "CEILING_RETRIES arm: {'GET /sensors': 2}" in lines
+    assert "CEILING_RETRIES again: none" in lines
+
+
+def test_the_bench_retry_wrapper_never_counts_a_real_failure(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    bench = _bench_module()
+
+    def fake_fetch(*_args: object, **_kwargs: object) -> http_client.HttpResponse:
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(http_client, "fetch", fake_fetch)
+    bench._report_ceiling_retries("clear")
+    with pytest.raises(TimeoutError):
+        bench.fetch("dut", 80, "PUT", "/sensors", {"x": 1})
+    bench._report_ceiling_retries("arm")
+    assert "CEILING_RETRIES arm: none" in capsys.readouterr().out.splitlines()

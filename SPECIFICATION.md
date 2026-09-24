@@ -31,7 +31,13 @@ would recreate the scattering problem this document exists to fix).
 
 ```
 datasheets/              Real datasheet PDFs for the chips this codebase drives (CLAUDE.md)
-  bmp3xx/, fram/, pico w/, scd30/, sgp40/
+  bmp3xx/, fram/, isl29125/, pico w/, scd30/, sgp40/
+arduino/                 The Arduino peer's side, imported 2026-09-13: the UART protocol's C
+                          implementation (libraries/Async_UART_Comm/ + Async_UART/, CRC_Check/;
+                          Part J, not yet reconciled), BME688/BSEC sketches and vendored libraries.
+                          In no lint/type/test scope
+dev_legacy/              The dev bench unit's wiring/state reference, plus a 2026-08-27 snapshot of
+                          its on-device filesystem (reference only, in no lint/type/test scope)
 html_raw/               Legacy, still-deployed per-device HTML/CSS/JS - targets the pre-refactor
   arzi/, dev/, wozi/,     REST shape, superseded by html/ for devices the refactor has reached (H.1)
   general/
@@ -72,13 +78,18 @@ frozen_modules/          Gitignored build artifact (build_frozen_html.sh's gzip+
                           deliberately not under .frozen/ (a reserved import-machinery sentinel, A.9)
 SPECIFICATION.md         This file
 tests/                   Unit tests for src/, real MicroPython interpreter (Part E)
+tests_scripts/           pytest (CPython) tests for the host-side build chain and harnesses (Part E.1)
+tests_hardware/          Real-hardware tiers (flash, bench) and device scripts - owner go-ahead only
+                          (CLAUDE.md, tests_hardware/README.md)
 toolchain/               MicroPython/pico-sdk/picotool build-environment installer
   versions.toml             single source of truth for the target MicroPython version (Part B)
-  setup_toolchain.py        setup/test - builds RP2040 firmware and the Unix port
+  setup_toolchain.py        setup/test - builds RP2040 firmware and both Unix-port variants
+  micropython_overrides.py  build overrides applied without editing the checkout (B.14)
 build-{arzi,dev,neu,wozi}.sh   per-device build scripts
+update_and_install.txt   Legacy manual toolchain recipe, superseded by toolchain/ (kept for reference)
 pyproject.toml           dev-tooling config (ruff/mypy/pytest/uv)
 scripts/                 lint.sh/typecheck.sh/test.sh, build_frozen_html.sh, run_unix_port_integration.sh
-.github/workflows/       CI: lint.sh/typecheck.sh/test.sh on every push/PR
+.github/workflows/       CI: one job per tool and test tier, on every push/PR (CLAUDE.md)
 ```
 
 ## A.2 Architecture at a glance
@@ -1768,7 +1779,7 @@ spends no slot. What an episode is belongs to the module, and the three answers 
 consequences of one fault whose `errno` was already recorded); `asy_wifi_service.py` and
 `asy_fram_manager.py` allow one per **distinct** code, because each of their occurrences is an
 independent event and a changed verdict — a `W4` beside a `W5` on one outage — is exactly the
-evidence a first-wins rule would destroy (BACKLOG item 29). An episode ends when the condition
+evidence a first-wins rule would destroy (it is how BACKLOG item 29 was answered). An episode ends when the condition
 does: a successful STA connection, a clean FRAM read or write. **Counters are not deduped** — five
 failed connect attempts count five times and occupy one slot, so `/status` still says how often,
 while the ring still says what else happened.
@@ -1782,7 +1793,7 @@ while the ring still says what else happened.
 | `asy_scd30_driver.py` (`SCD30`) | 10-25 | — | 10=init, 11=periodic read, 12=unused (no init-time config), 13=stop-continuous-measurement, 14-25=per-field forwards. |
 | `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15/17/19/21=resolution/range/IR-offset/IR-adjust getters, 16/18/20/22=their setters, 24=derived-persistence reapply, 25=trigger-interval, 26=gain-ratio/filter-coefficient setters (shared), 27=autorange-threshold/dwell setters (shared), 28=`_read_sensor_dict()`, 29=auto-range threshold-register write, 30=auto-range RNG-bit write, 31=status read, 32=all-ones bus-fault confirmation, 33=brownout re-apply, 34=diverged-config re-apply, 35=paired gain-ratio calibration leg (`_read_on()`), 38=`set_range_auto()`. `wrnno` 10=brownout detected, 11=chip config diverged from shadow, 13=range decided by the periodic path only for 5 decisions running (the interrupt line may be dead, requirement 17/C.11.5). **12 is retired, not reused**: it used to mean "saturated on the high range", but that status is a harmless, transient, always-current measurement fact, not a fault — it now lives in the measurement output as the `Overrange` field (mode-aware: true whenever nothing left could mitigate the saturation — the configured range itself under Fixed range, or Automatic Range already on its highest setting) rather than as a log entry. |
 | `asy_sgp40_driver.py` (`SGP40`) | 10-18 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13-18=backup read/write/clear/deserialize/serialize/compensation. `wrnno`=backup missing/stale — a missing/not-yet-available *compensation* reading is no longer one of these (C.14.2's own note), only a genuine compensation-source read exception (`errno=18`) still logs. |
-| `asy_wifi_service.py` (`WIFI`) | 11-19 | 1-7 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout; `wrnno` 1-3=missing-config, 4-7=WLAN status — 4-7 follow the repeat rule above, one slot per distinct verdict per connect episode, which a successful connection ends. **WP8**: 19=the hotspot auto-shutoff timer's own soft-callback-drop self-heal (`_hotspot_client_absent()`, F.1) actually firing — a real, actionable event, not the routine WiFi-mode-transition noise this file's own module docstring already documents everything else here as. |
+| `asy_wifi_service.py` (`WIFI`) | 11-19 | 1-7 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout; `wrnno` 1-3=missing-config, 4-7=WLAN status (4 is cyw43-driver's catch-all for any failed auth or handshake, an AP dropping mid-association included - not proof of a wrong password, BACKLOG item 29) — 4-7 follow the repeat rule above, one slot per distinct verdict per connect episode, which a successful connection ends. **WP8**: 19=the hotspot auto-shutoff timer's own soft-callback-drop self-heal (`_hotspot_client_absent()`, F.1) actually firing — a real, actionable event, not the routine WiFi-mode-transition noise this file's own module docstring already documents everything else here as. |
 | `asy_ntp_client.py` (`NTP`) | 11-20 | 1-3 | 11=missing-config...19=time-calc, 18/20=interval-fallback/give-up; `wrnno`=callback failures. |
 | `captive_dns.py` (`DNSSRV`) | 1-3 | 1-3 | 1=invalid server_ip/netmask, 2=loop exception, 3=disconnect-cleanup; `wrnno` 1=dropped reply, 2=invalid recvfrom, 3=socket teardown incomplete. |
 | `system_service.py` (`SYSTEM`) | 1-7 | dynamic (`n+1`) | 4=task-error-budget-exceeded, 5=`_log_dead_task()` recovering a real raised exception, 6=recovering a `CancelledError`-ended task (previously invisible, now persists). **WP8**: 7=`_apply_level()`'s own caller-supplied level-setter callback failing — the one caller-supplied-callback call site in this codebase that hadn't already persisted via `err_s()`. |
@@ -4396,7 +4407,13 @@ backend-only or frontend-only validation/coercion policy change in this project.
   suspension point needs an owner and a lock instead, not this shape.
 - **Memory-bounded streaming of a dict-shaped GET response** — `_stream_dict_response()` (Part I).
   Any route whose response scales with device configuration returns `await
-  _stream_dict_response(result)` instead of `return result`.
+  _stream_dict_response(result, self._chunk_bytes)` instead of `return result`. A response that is
+  not one dict (`/status`) builds on the same parts directly: `_PieceWriter` (JSON written value by
+  value into pieces of at most `chunk_bytes`) and `_pieces_response()` (exact Content-Length), I.3.
+- **Several SPI transfers under one bus-lock hold** — `SPIDevice.session_begin()`/`session_end()`
+  with `write_sync()`/`readinto_sync()`/`write_readinto_sync()`, for a caller already holding the
+  lock (C.3.1, the FRAM path); never a new `async with` per transfer. I2C deliberately has no
+  equivalent (BACKLOG's deferred list).
 - **Frame codecs for a byte-stream link** — `framing_codecs.py`'s `Framing_Base`/`Framing_Pass`/
   `Framing_COBS`, deliberately shaped like `crc_checks.py`'s `CRC_Base`/`CRC_Pass` family so one
   dispatch table can hold either: a base parameterized by constants (`run_length`, `trailer`) that a
@@ -5121,7 +5138,8 @@ sensor mixing hundreds of tiny values with multi-kilobyte ones: every write at m
 static body whole with its `Content-Length`. Reverting either the chunk size or the length fails them,
 and serving at a `chunk_bytes` of 100 fails if either path stops following the parameter.
 One documented exception is pinned too: a single scalar longer than the cap goes out as one piece,
-since `_PieceWriter` never splits a fragment; no source comes near that (table above). And a
+since `_PieceWriter` never splits a fragment; `NTP_Host` at its 1,024-character bound is the one
+source that reaches it (above). And a
 `chunk_bytes` of 0 is clamped: microdot's body loop ends only on a short read, and `read(0)` never
 is one, so an unclamped 0 would hold the connection until its timeout.
 
