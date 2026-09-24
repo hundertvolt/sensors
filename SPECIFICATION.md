@@ -121,7 +121,7 @@ scripts/                 lint.sh/typecheck.sh/test.sh, build_frozen_html.sh, run
   `asy_ntp_client.py` (NTP + CET/CEST DST math), `asy_dns_client.py` (non-blocking DNS resolver
   replacing `socket.getaddrinfo()`). Deployed code still uses the monolithic `async_connect.py`.
 - **Task supervisor** (`main()` in every `sensortask-*.py`) — two-tier self-healing: dead tasks
-  restart silently (decaying error score); once the score exceeds a threshold, the loop stops
+  restart, each logged as a persisted SYSTEM warning (decaying error score); once the score exceeds a threshold, the loop stops
   feeding the watchdog and lets it force a hard reset. Units run years unattended.
 - **Frontend** — hand-written HTML/CSS/vanilla JS, gzipped and packed into `frozen_html.py` via
   `freezefs` at build time, served through Microdot's `send_file(..., compressed=True)`.
@@ -1655,7 +1655,7 @@ against a `_TASK_FAIL_MAX` of 300 that decays by only 1 per clean supervisor pas
 tolerates about **three** restarts from any source before it reboots itself. One bounded bus fault
 is one restart — which is why a test that needs several drivers to log a chip-healthy error gives
 each its own process instead of faulting them together (`scripts/_digital_twin_ci_suite.py`'s
-Run 5c; measured both ways).
+Run 5c; measured both ways). Which failures may end a task at all: C.7.2.
 
 ### C.4.2 Data-access contract (same 3(+1) methods, every driver)
 
@@ -1929,16 +1929,44 @@ while the ring still says what else happened.
 | `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15/17/19/21=resolution/range/IR-offset/IR-adjust getters, 16/18/20/22=their setters, 24=derived-persistence reapply, 25=trigger-interval, 26=gain-ratio/filter-coefficient setters (shared), 27=autorange-threshold/dwell setters (shared), 28=`_read_sensor_dict()`, 29=auto-range threshold-register write, 30=auto-range RNG-bit write, 31=status read, 32=all-ones bus-fault confirmation, 33=brownout re-apply, 34=diverged-config re-apply, 35=paired gain-ratio calibration leg (`_read_on()`), 38=`set_range_auto()`. `wrnno` 10=brownout detected, 11=chip config diverged from shadow, 13=range decided by the periodic path only for 5 decisions running (the interrupt line may be dead, requirement 17/M.1.1). **12 is retired, not reused**: it used to mean "saturated on the high range", but that status is a harmless, transient, always-current measurement fact, not a fault — it now lives in the measurement output as the `Overrange` field (mode-aware: true whenever nothing left could mitigate the saturation — the configured range itself under Fixed range, or Automatic Range already on its highest setting) rather than as a log entry. |
 | `asy_sgp40_driver.py` (`SGP40`) | 10-18 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13-18=backup read/write/clear/deserialize/serialize/compensation. `wrnno`=backup missing/stale — a missing/not-yet-available *compensation* reading is no longer one of these (C.14.2's own note), only a genuine compensation-source read exception (`errno=18`) still logs. |
 | `asy_wifi_service.py` (`WIFI`) | 11-19 | 1-7 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout; `wrnno` 1-3=missing-config, 4-7=WLAN status (4 is cyw43-driver's catch-all for any failed auth or handshake, an AP dropping mid-association included - not proof of a wrong password, BACKLOG item 29) — 4-7 follow the repeat rule above, one slot per distinct verdict per connect episode, which a successful connection ends. **WP8**: 19=the hotspot auto-shutoff timer's own soft-callback-drop self-heal (`_hotspot_client_absent()`, F.1) actually firing — a real, actionable event, not the routine WiFi-mode-transition noise this file's own module docstring already documents everything else here as. |
-| `asy_ntp_client.py` (`NTP`) | 11-20 | 1-3 | 11=missing-config...19=time-calc, 18/20=interval-fallback/give-up; `wrnno`=callback failures. |
+| `asy_ntp_client.py` (`NTP`) | 11-21 | 1-3 | 11=missing-config, 12=DNS resolution, 13=invalid address, 14=implausible time, 15=malformed reply, 16/17=retry-timer arm/max retries, 18=interval-fallback, 19=time-calc, 21=no reply within the fetch timeout (a silent timeout used to persist nothing). **20 is retired, not reused**: it was the give-up that let the supervisor restart the task (C.7.2). 11-15, 21 and `wrnno` 2 follow the repeat rule above per distinct code; a successful sync ends the episode. `wrnno` 1/3=callback failures, 2=unsynchronized/Kiss-o'-Death reply. |
 | `captive_dns.py` (`DNSSRV`) | 1-3 | 1-3 | 1=invalid server_ip/netmask, 2=loop exception, 3=disconnect-cleanup; `wrnno` 1=dropped reply, 2=invalid recvfrom, 3=socket teardown incomplete. |
 | `system_service.py` (`SYSTEM`) | 1-7 | dynamic (`n+1`) | 4=task-error-budget-exceeded, 5=`_log_dead_task()` recovering a real raised exception, 6=recovering a `CancelledError`-ended task (previously invisible, now persists). **WP8**: 7=`_apply_level()`'s own caller-supplied level-setter callback failing — the one caller-supplied-callback call site in this codebase that hadn't already persisted via `err_s()`. |
-| `asy_notification_service.py` (`NOTIFY`) | 10-13 | 1-5 | 10=value-callback, 11=threshold-config-read, 12=`local_time_callback`, 13=`request_signal_cb`. Renumbered off 1-4 once `_error_check()`'s active use here collided with base's reserved 1/2. |
+| `asy_notification_service.py` (`NOTIFY`) | 10-13 | 1-5 | 10=value-callback, 11=threshold-config-read, 12=`local_time_callback`, 13=`request_signal_cb`. Numbered from 10, clear of base's reserved 1/2. `wrnno` 5=own-config read failed, one slot per run of failed reads (the repeat rule), which a good read ends. |
 | `api_response.py`'s `handle_set_cmd()` | 99 | — | One defense-in-depth catch (a caller `post_fct`/`post_asy_fct` raising) — fixed at 99 since it runs against any registered module's `.pr`. |
 | `asy_webserver_service.py` (`WEBSERVER`) | 1-6 | 1-5 | 1=unexpected exception in dispatch, 2=`system_cmd` callback, 3=`notification_led` callback, 4=uncaught exception via `errorhandler(Exception)`, 5=`notification_pause` callback, 6=one `/status` streamed-fragment source failed. `wrnno` 1-5=connection-lifecycle reclaim reasons. |
 | `asy_neopixel_driver.py` | — | — | No persisted logging. |
 | `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client) | — | — | Deliberately no logging — every failure surfaces to exactly one upstream owner. Coverage audit closed, no gaps. |
 | `asy_uart_comm.py` (`UART`, `_NAME` only as the default) | 10-34 | 10-14 | 10-16=construction refusals (payload_size, timeout, role, bus handle, allocation — the module's own buffers *and* a frame codec whose one long-lived scratch failed, since a codec that reports itself not ready would otherwise fail every write instead — rxbuf, missing callback), 17=not-ready gate, 18=role refusal, 19=frame validation, 20=missing/mismatched ACK, 21=write, 22=read timeout, 23=payload too large, 24=destination allocation, 25=size mismatch, 26=callback, 27=re-entrant call, 28=wrong frame kind, 29=GET id mismatch, 30=listen loop, 31=peer initiated simultaneously, 32=bytes arriving but no frame ever valid (a CRC/baud/`payload_size` mismatch), 33=streamed chunk short-filled, 34=a caller's own argument refused (command id outside a byte, a non-integer or negative size, a non-buffer payload or destination). `wrnno` 10=resync, 11=drain bound reached, 12=fault episode cleared, 13=a *rise* in the driver's cumulative `cancel_unacknowledged` (reading it as a flag reported every later healthy cancel as wedged), 14=a callback declined a command id. **Exactly one of 10/11/14 is persisted per fault episode, and 14 at most once per command id until a `reset_error_counter()`** — deduping only the `errno` left every fault still persisting its own resync warning, which refilled the bounded history and evicted the entry naming the cause — and 14 escaped that fix until 2026-09-12, so a peer polling one unimplemented id spent two slots per refusal and erased a ten-slot history in five rounds; remembering only the *last* declined id then left an alternation between two unimplemented ids flooding it just the same, which a 32-byte one-bit-per-id map closed on 2026-09-13. **`wrnno` 11 outranks 10 for the episode's single slot** (owner decision, 2026-09-18, ) — `_resync()` drains first and then persists 11 when the drain hit its bound, 10 otherwise, so "the peer never stopped sending", the one signal separating a babbling or misconfigured peer from ordinary line noise, is what a field log actually carries. The budget is unchanged at one persisted warning per episode. The same change closed the inverse leak: `setup()`'s boot drain is deliberately not a fault and not counted, yet it used to persist 11 on every boot of a babbling link, because the bound logged itself rather than flagging the caller. Numbered from 10 to stay clear of `base_classes.py`'s reservation even though this is not a `SensorReader` subclass, and disjoint from any owner's own range where the logger is reached through. |
 | `asy_uart_driver.py` | — | — | Deliberately no logging — every failure surfaces to its one upstream owner (`asy_uart_comm.py`), the same treatment the other bus drivers get. `cancel_unacknowledged` is a plain counter that owner reads and logs under its own `wrnno` 13. |
+
+### C.7.2 Which failures may end a task
+
+A task ends — and the supervisor restarts it — **only when the restart re-initialises something
+real**: a sensor's `_init_<sensor>()` re-probes and soft-resets its chip, and the WiFi service's
+restart forces a fresh WLAN object. A failure the task can meet again unchanged after a restart is
+routine and **handled in place**: log it (under the repeat rule, C.7.1), keep counting it, retry,
+and recover on the next success. Ending instead buys nothing and spends the reboot budget (C.4.1's
+"a restart is not free"): the NTP task used to end after six failed syncs, so an unreachable server
+restarted it about once a minute and rebooted the device about every four minutes (owner,
+2026-09-24). The legacy client never gave up.
+
+- **NTP** (`asy_ntp_client.py`) keeps no failure streak (`max_module_error` is gone from its
+  constructor). While unsynced it retries on a backoff: `retry_s` (default 10 s) doubling per failed
+  attempt up to `retry_max_s` (default 600 s), both rounded up to the 10 s check tick; a successful
+  sync or a forced resync (`ntp_force_sync()`, e.g. a PUT of `NTP_Host`) resets it, and an attempt
+  skipped for "network not up" leaves it alone. Per device through the optional `[device]` keys
+  `ntp_retry_s`/`ntp_retry_max_s`, checked by buildgen as the effective pair (at least the tick;
+  cap not below the interval). A synced device's failed resync keeps its own short retry loop
+  (`_NTP_SYNC_RETRIES` × 15 s) and does not touch the backoff.
+- **Notification** (`asy_notification_service.py`) keeps no streak either: a failed read of its own
+  config is re-read every cycle anyway, and a restart re-reads nothing more.
+
+**Out of scope (owner, 2026-09-24): hardware that is inoperational from the start.** Everything
+assumes defect-free hardware and a device config that matches it. An absent or dead chip, or a
+wiring/construction config that doesn't match the board, is a massive config failure or a hardware
+defect that no software handles cleanly — so today's init-failure restart (and the reboot it leads
+to) is not a C.7.2 case, and neither is a UART link whose `setup()` refused its construction.
 
 ## C.8 Concurrency & locking model
 
@@ -2221,8 +2249,8 @@ needs its own capped exponential backoff**, distinct from any outer exception-ba
 spins at full speed — an outer `except Exception` never fires for a sentinel-returning failure.
 `captive_dns.py`'s `DNSServer.run()` now backs off 0.5s→1s→2s→4s (capped 5s, reset on success) on
 persistent `recvfrom()` failure — before this fix, a persistent failure produced ~5 log lines/sec
-continuously. Contrast `asy_ntp_client.py`'s already-bounded retry (3 tries, 15s interval, then lets
-the supervisor restart) — a new retry loop should follow one of these two shapes.
+continuously. `asy_ntp_client.py`'s unsynced retry is the same shape with a configurable step and cap
+(C.7.2). A retry loop never ends its task to "retry by restart" — that spends the reboot budget.
 
 ## C.10 Typing conventions
 
@@ -6020,8 +6048,11 @@ someday be absent per device: FRAM, Neopixel, NotificationCoordinator.
 
 **WiFi, NTP and SystemService are mandatory infrastructure and are never `[[instance]]` entries** —
 every buildable device has all three unconditionally. Their per-device-tunable knobs (WiFi's
-`conn_fail_to_hotspot`/`hotspot_time_min`; NTP and SystemService have none) live directly in
-`[device]`, **required, not defaulted**: a device TOML missing either is a build-time error. Their
+`conn_fail_to_hotspot`/`hotspot_time_min`; SystemService has none) live directly in
+`[device]`, **required, not defaulted**: a device TOML missing either is a build-time error. A few
+are **optional, defaulted by the class itself**: the webserver's `max_connections`/`backlog`
+(H.7) and NTP's unsynced retry backoff `ntp_retry_s`/`ntp_retry_max_s` (C.7.2) - absent, the
+constructor default applies, and buildgen checks the effective value either way. Their
 crosslinks to optional instances live in `[device.wiring]` (`led_target`/`fram_target`, both
 optional). The webserver is likewise unconditional and never modeled as an instance — its
 constructor takes no independent per-device facts, only references to whichever other instances the

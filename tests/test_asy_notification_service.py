@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from typing import Any, NoReturn, TypeVar
 
     from crc_checks import CRC_Base
+    from print_log import ErrorLog
 
     T = TypeVar("T")
 
@@ -1185,8 +1186,8 @@ def test_monitor_loop_restart_does_not_clobber_an_active_led_override() -> None:
         await asyncio.sleep(1.1)  # first decrement(): 2 -> 1, still > 0 -> _auto_active False
         during_before_restart = coordinator._auto_active
 
-        # Simulate the task supervisor restarting monitor_loop() (e.g. after it gave up following
-        # too many consecutive own-config-read failures) while the override above is still active.
+        # Simulate the task supervisor restarting monitor_loop() (it no longer gives up by itself,
+        # but an uncaught exception still ends it) while the override above is still active.
         monitor_task = coordinator.start_asy_notify_monitor()
         await asyncio.sleep(0.05)
         during_after_restart = coordinator._auto_active
@@ -1346,23 +1347,97 @@ def test_methods_called_before_finalize_degrade_gracefully_not_raise() -> None:
     run(scenario())  # would raise/hang if any guard above were missing
 
 
-def test_monitor_loop_gives_up_after_too_many_consecutive_config_read_failures() -> None:
+def test_monitor_loop_keeps_running_on_persistent_config_read_failures_and_persists_one_slot() -> None:
+    # A restart re-reads the same config the loop already re-reads every cycle, so giving up would
+    # only spend the supervisor's reboot budget (Part C.7.2). Every failure still counts.
     cb = FakeSignalCb()
     clock = FakeClock()
-    coordinator = NotificationCoordinator(cb, clock.get, max_module_error=2, cfg_path=_tmp_cfg_dir())
+    coordinator = NotificationCoordinator(cb, clock.get, cfg_path=_tmp_cfg_dir())
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
     coordinator.cfgmgr._cache.pop("FlashBri")  # every own-config read now fails (malformed cache)
 
-    async def scenario() -> bool:
+    async def scenario() -> "tuple[bool, ErrorLog]":
         task = coordinator.start_asy_notify_monitor()
-        await asyncio.wait_for(task, 5)
-        return task.done()
+        for _ in range(40):
+            await asyncio.sleep(0)
+        still_running = not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return still_running, await coordinator.get_error_counter()
 
     with _FastAsyncSleep():
-        # max_module_error=2 -> the 3rd consecutive failure crosses the threshold and monitor_loop()
-        # returns on its own, matching every other Reader's read_loop() give-up shape.
-        assert run(scenario()) is True
+        still_running, log = run(scenario())
+    assert still_running is True
+    entry = log["NOTIFY"]
+    assert entry["ErrCount"] > 5  # well past the old give-up streak, each failure counted
+    assert entry["ErrNum"] == [0] * 9 + [5]  # but one ring slot for the whole run of failures
+
+
+def test_monitor_loop_persists_the_config_read_warning_afresh_after_a_good_read() -> None:
+    cb = FakeSignalCb()
+    clock = FakeClock()
+    coordinator = NotificationCoordinator(cb, clock.get, cfg_path=_tmp_cfg_dir())
+    coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
+    saved = coordinator.cfgmgr._cache.pop("FlashBri")
+
+    async def scenario() -> "ErrorLog":
+        task = coordinator.start_asy_notify_monitor()
+        for _ in range(10):
+            await asyncio.sleep(0)
+        coordinator.cfgmgr._cache["FlashBri"] = saved  # a good read ends the run of failures
+        for _ in range(10):
+            await asyncio.sleep(0)
+        coordinator.cfgmgr._cache.pop("FlashBri")
+        for _ in range(10):
+            await asyncio.sleep(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return await coordinator.get_error_counter()
+
+    with _FastAsyncSleep():
+        log = run(scenario())
+    assert log["NOTIFY"]["ErrNum"][-2:] == [5, 5]
+
+
+def test_monitor_loop_self_heals_in_place_once_its_config_reads_again() -> None:
+    # The same task (no restart) goes back to its normal cycle: it stores fresh NOTIFY data again.
+    cb = FakeSignalCb()
+    clock = FakeClock()
+    coordinator = NotificationCoordinator(cb, clock.get, cfg_path=_tmp_cfg_dir())
+    coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
+    saved = coordinator.cfgmgr._cache.pop("FlashBri")
+
+    async def scenario() -> "tuple[object, object, bool]":
+        task = coordinator.start_asy_notify_monitor()
+        for _ in range(10):
+            await asyncio.sleep(0)
+        ts_while_failing = (await coordinator.get_data()).TS
+        coordinator.cfgmgr._cache["FlashBri"] = saved
+        for _ in range(10):
+            await asyncio.sleep(0)
+        ts_after = (await coordinator.get_data()).TS
+        still_running = not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return ts_while_failing, ts_after, still_running
+
+    with _FastAsyncSleep():
+        ts_while_failing, ts_after, still_running = run(scenario())
+    assert ts_while_failing is None  # a failing cycle stores nothing
+    assert ts_after is not None
+    assert still_running is True
 
 
 class _OverflowingTime:

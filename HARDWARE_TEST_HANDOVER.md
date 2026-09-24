@@ -34,6 +34,7 @@ known-broken test.
 | SCD30 rejects a non-finite measurement word as a failed read instead of caching `nan`/`inf` | `asy_scd30_driver.py` | flash + bench tiers (no silicon trigger exists; it must simply stay quiet) |
 | Trigger-event flags renamed to `base_trigger_event` / `read_event` in BMP3XX, SGP40, SCD30 | three drivers' read loops | every sensor test — behaviour-neutral, but the read loops are touched |
 | `W4` ("WLAN authentication failed") wording; the outage check accepts `W4` beside `W5` | `asy_wifi_service.py`, `test_network_resilience.py` | W4 |
+| NTP never ends its task on a failing server: unsynced retries back off 10 s → 600 s, a silent timeout logs `E21` (was nothing), `E20` is retired; notification keeps running on a config-read failure | `asy_ntp_client.py`, `asy_notification_service.py` | W4: `test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing` now expects `E21` and **no** `Task ended - attempting restart` line — the `E20` restart the owner's 2026-09-24 run saw is the bug this fixes |
 | Every heap-measuring device script sets its own `gc.threshold` and prints `GC_THRESHOLD=` | `tests_hardware/device_scripts/` | T1 and the flash tier's memory tests |
 | Bench config-write arms print `CEILING_RETRIES` | `test_bus_concurrency_under_api_load.py` | R1's first answer (step 6) |
 

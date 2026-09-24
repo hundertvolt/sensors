@@ -74,7 +74,7 @@ def make_conn() -> AsyConnTime:
 
 
 def make_ntp(
-    conn: AsyConnTime, ntp_host: str, ntp_fetch_timeout_ms: int = 5000, max_module_error: int = 5,
+    conn: AsyConnTime, ntp_host: str, ntp_fetch_timeout_ms: int = 5000,
 ) -> AsyNtpClient:
     # Exactly sensortask-wozi.py's own wiring: conn.get_wifi_mode_lock()/network_available/
     # get_dns_server_ip passed straight through as ntp's own constructor arguments - the real bound
@@ -86,7 +86,6 @@ def make_ntp(
         conn.get_wifi_mode_lock(),
         conn.network_available,
         conn.get_dns_server_ip,
-        max_module_error=max_module_error,
         cfg_path=cfg_path,
         ntp_fetch_timeout_ms=ntp_fetch_timeout_ms,
     )
@@ -404,19 +403,16 @@ def test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_indepe
 
 
 # ---------------------------------------------------------------------------
-# Task-supervision propagation: applying the NTP suite's "a real asy_ntp_time() task genuinely returning
-# after exceeding max_module_error" together with the system-service suite's "SystemService notices and
-# restarts a dead task" - neither per-module test observes the other side of this seam.
-#
-# Does a real AsyNtpClient task that genuinely dies actually get detected and restarted by a real
-# start_and_check_tasks(), the exact supervision loop every generated device relies on?
+# Task-supervision seam: an unreachable NTP server is routine, handled inside the task (Part C.7.2), so
+# the real start_and_check_tasks() must see a live task and spend none of its reboot budget on it -
+# each restart costs 100 of 300 there, which is how an outage used to reboot the device.
 # ---------------------------------------------------------------------------
 
 
-def test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up() -> None:
+def test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreachable() -> None:
     conn = make_conn()
     connect_wlan(conn)  # network_available() is genuinely True - failures come from resolution, not this
-    ntp = make_ntp(conn, "127.0.0.1", max_module_error=1)  # gives up on the 2nd consecutive real failure
+    ntp = make_ntp(conn, "127.0.0.1")
     svc = SystemService(ntp.ntp_issynced)
     starts: list[asyncio.Task[None]] = []
 
@@ -440,25 +436,21 @@ def test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up() -> No
             svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
             await asyncio.sleep(0)  # let start_and_check_tasks()'s own initial _start_task run
             assert len(starts) == 1
-            for _ in range(2):  # max_module_error=1: the 2nd consecutive real failure makes the task give up
+            for _ in range(20):  # four times the old five-failure give-up streak
                 ntp.ntp_sync_trigger_event.set()
                 await asyncio.sleep(0)
                 await asyncio.sleep(0)
-            for _ in range(200):  # bounded wait for the real, genuine task death
-                if starts[0].done():
-                    break
-                await asyncio.sleep(0)
-            assert starts[0].done()  # the real asy_ntp_time() task genuinely returned on its own
             await asyncio.sleep(2.5)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
+            assert not starts[0].done()  # the real asy_ntp_time() task is still the one running
             await _cancel(svc_task)
             return len(starts)
 
         call_count = run(scenario())
     finally:
         ntpmod.resolve_ipv4 = original_resolver
-    assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
-    counter = run(svc.get_error_counter())
-    assert counter["SYSTEM"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
+    assert call_count == 1  # the initial real start only - no restart
+    assert run(svc.get_error_counter())["SYSTEM"]["ErrCount"] == 0  # no restart warning, no budget spent
+    assert run(ntp.get_error_counter())["NTP"]["ErrCount"] == 20  # every failure still counted
 
 
 # ---------------------------------------------------------------------------
@@ -540,7 +532,7 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
 
     def spy_starter() -> "asyncio.Task[bool]":
         # Wraps the real starter (not a synthetic one), same technique as
-        # test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up above.
+        # test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreachable above.
         t = reader.start_asy_read()
         starts.append(t)
         return t

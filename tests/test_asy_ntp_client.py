@@ -70,10 +70,11 @@ def make_client(
     wifi_mode_lock: "asyncio.Lock | None" = None,
     network_available: "Callable[[], bool] | None" = None,
     get_dns_server: "Callable[[], str | None] | None" = None,
-    max_module_error: int = 5,
     dns_timeout_ms: int = 500,
     dns_tries: int = 1,
     ntp_fetch_timeout_ms: int = 5000,
+    retry_s: int = 10,
+    retry_max_s: int = 600,
     debug: "int | None" = None,
     cfg_path: "str | None" = None,
     fram: "AsyFramManager | None" = None,
@@ -90,10 +91,11 @@ def make_client(
         wifi_mode_lock,
         network_available,
         get_dns_server,
-        max_module_error=max_module_error,
         dns_timeout_ms=dns_timeout_ms,
         dns_tries=dns_tries,
         ntp_fetch_timeout_ms=ntp_fetch_timeout_ms,
+        retry_s=retry_s,
+        retry_max_s=retry_max_s,
         debug=debug,
         cfg_path=cfg_path,
         fram=fram,
@@ -904,8 +906,10 @@ def test_fetch_ntp_reply_ipv6_shaped_four_tuple_addr_returns_none() -> None:
 def test_fetch_ntp_reply_no_server_listening_times_out_to_none() -> None:
     client = make_client()
     addr = make_addr()
+    run(client.pr.setup())
     result = run(client._fetch_ntp_reply(addr))
     assert result is None
+    assert _last_err(run(client.get_error_counter()), "ErrNum") == 21  # a silent timeout used to persist nothing
 
 
 def test_fetch_ntp_reply_real_round_trip_returns_the_exact_reply_bytes() -> None:
@@ -1280,6 +1284,34 @@ def test_ntp_time_hours_counter_triggers_sync_immediately_when_not_yet_synced() 
         return fired
 
     assert run(scenario())
+
+
+def test_ntp_time_hours_counter_waits_out_the_current_backoff_step_while_unsynced() -> None:
+    # _retry_wait_s=40 at the 10s tick: the 4th tick triggers, not the 3rd; the count then restarts.
+    client = make_client()
+    client._retry_wait_s = 40
+
+    async def fired() -> bool:
+        try:
+            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.05)
+        except asyncio.TimeoutError:
+            return False
+        return True
+
+    async def scenario() -> "list[bool]":
+        task = asyncio.create_task(client.ntp_time_hours_counter())
+        results = []
+        for ticks in (3, 1, 3, 1):
+            await _tick(client.ntp_timer_trigger_event, ticks)
+            results.append(await fired())
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return results
+
+    assert run(scenario()) == [False, True, False, True]
 
 
 def test_ntp_time_hours_counter_does_not_retrigger_while_synced_and_under_interval() -> None:
@@ -1865,83 +1897,136 @@ def test_asy_ntp_time_calls_pr_setup_before_entering_its_loop() -> None:
     assert run(scenario()) is True
 
 
-def test_asy_ntp_time_resets_err_cnt_internal_at_the_start_of_every_run() -> None:
+async def _drive_attempts(client: AsyNtpClient, cycles: int) -> bool:
+    # Fires `cycles` sync triggers through the real asy_ntp_time() loop; True = task still running.
+    task = asyncio.create_task(client.asy_ntp_time())
+    for _ in range(cycles):
+        client.ntp_sync_trigger_event.set()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+    still_running = not task.done()
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    return still_running
+
+
+def test_asy_ntp_time_never_gives_up_on_a_persistently_failing_server() -> None:
+    # An unreachable server is routine for this task (Part C.7.2): a restart re-initialises nothing,
+    # and each one costs the supervisor's reboot budget. So far past any old streak, still running.
     client = make_client()
-    client._err_cnt_internal = 99
-
-    async def scenario() -> int:
-        task = asyncio.create_task(client.asy_ntp_time())
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-        streak = client._err_cnt_internal
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        return streak
-
-    assert run(scenario()) == 0
-
-
-def test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_20() -> None:
-    # Independent, coarser safety net on top of _handle_ntp_sync_failure()'s own short-term
-    # ntp_retries/_NTP_SYNC_RETRIES retry loop - see asy_ntp_time()'s own comment. A real attempt
-    # that completes (network was up) but never yields a parsed time counts toward this streak.
-    client = make_client(max_module_error=2)
 
     async def failing_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
         return None, True  # network was available, but the attempt itself still failed
 
     client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
-
-    async def scenario() -> "ErrorLog":
-        task = asyncio.create_task(client.asy_ntp_time())
-        for _ in range(3):  # one trigger per would-be failure cycle - max_module_error=2 gives up on the 3rd
-            client.ntp_sync_trigger_event.set()
-            await asyncio.sleep(0)
-            await asyncio.sleep(0)
-        await asyncio.wait_for(task, 2.0)  # must actually complete, not loop forever
-        return await client.get_error_counter()
-
-    counter = run(scenario())
-    assert _last_err(counter, "ErrNum") == 20
-    assert _last_err(counter, "ErrType") == "E"
+    assert run(_drive_attempts(client, 50)) is True
+    assert client._err_cnt_internal == 0  # no streak is kept at all
+    counter = run(client.get_error_counter())
+    assert 20 not in counter["NTP"]["ErrNum"]  # the retired give-up code
 
 
-def test_asy_ntp_time_network_unavailable_cycles_never_count_toward_giving_up() -> None:
-    # condition=network_ok excludes "network wasn't up yet" from the give-up streak, the same way
-    # SGP40 excludes a missing-compensation read via condition=compensated - proven here by running
-    # well past max_module_error trigger cycles, all reporting network unavailable, without giving up.
-    client = make_client(max_module_error=2)
+def test_asy_ntp_time_failed_unsynced_attempts_double_the_retry_interval_up_to_its_cap() -> None:
+    client = make_client(retry_s=10, retry_max_s=70)
+    seen: list[int] = []
+
+    async def failing_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
+        seen.append(client._retry_wait_s)
+        return None, True
+
+    client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
+    assert run(_drive_attempts(client, 6)) is True
+    assert seen == [10, 20, 40, 70, 70, 70]
+
+
+def test_asy_ntp_time_network_unavailable_cycles_leave_the_retry_interval_alone() -> None:
+    # A skipped attempt says nothing about the server, so the next one must come promptly.
+    client = make_client(retry_s=10, retry_max_s=600)
 
     async def unavailable_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
-        return None, False  # network not available - condition=False, must not count as a real failure
+        return None, False
 
     client._run_ntp_sync_attempt = unavailable_attempt  # type: ignore[assignment, method-assign]
-
-    async def scenario() -> bool:
-        task = asyncio.create_task(client.asy_ntp_time())
-        for _ in range(10):
-            client.ntp_sync_trigger_event.set()
-            await asyncio.sleep(0)
-            await asyncio.sleep(0)
-        still_running = not task.done()
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        return still_running
-
-    assert run(scenario()) is True
+    assert run(_drive_attempts(client, 10)) is True
+    assert client._retry_wait_s == 10
 
 
-def test_asy_ntp_time_recovers_the_streak_on_alternating_failure_and_success() -> None:
-    # A success resets tm to non-None, decrementing _err_cnt_internal (base_classes.py's own
-    # _error_check() contract) - failures that never land two-in-a-row must never trip
-    # max_module_error=2, however many trigger cycles run in total.
-    client = make_client(max_module_error=2)
+def test_asy_ntp_time_failures_while_synced_leave_the_unsynced_retry_interval_alone() -> None:
+    # A synced device's failed resync is _handle_ntp_sync_failure()'s retry loop's business; the
+    # backoff starts only once the sync has actually gone stale.
+    client = make_client(retry_s=10, retry_max_s=600)
+
+    async def failing_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
+        await client._set_synced(value=True)
+        return None, True
+
+    client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
+    assert run(_drive_attempts(client, 5)) is True
+    assert client._retry_wait_s == 10
+
+
+def test_a_successful_sync_resets_the_backoff_and_ends_the_failure_episode() -> None:
+    client = make_client(retry_s=10, retry_max_s=600)
+    client._retry_wait_s, client._unsynced_wait_s = 320, 30
+    client._episode_errs, client._episode_wrns = 1 << 12, 1 << 2
+    run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
+    assert (client._retry_wait_s, client._unsynced_wait_s) == (10, 0)
+    assert (client._episode_errs, client._episode_wrns) == (0, 0)
+
+
+def test_ntp_force_sync_resets_the_backoff() -> None:
+    # An operator's resync (a PUT of NTP_Host) must run now, not after a ten-minute backoff step.
+    client = make_client(retry_s=10, retry_max_s=600)
+    client._retry_wait_s, client._unsynced_wait_s = 600, 50
+    run(client.ntp_force_sync())
+    assert (client._retry_wait_s, client._unsynced_wait_s) == (10, 0)
+
+
+def test_constructor_clamps_the_backoff_pair_to_the_check_tick_and_to_each_other() -> None:
+    client = make_client(retry_s=3, retry_max_s=5)
+    assert (client.retry_s, client.retry_max_s, client._retry_wait_s) == (10, 10, 10)
+    client = make_client(retry_s=40, retry_max_s=20)
+    assert (client.retry_s, client.retry_max_s) == (40, 40)
+
+
+def test_asy_ntp_time_persists_each_distinct_failure_code_once_per_episode_but_counts_every_one() -> None:
+    # C.7.1's repeat rule: a dead server would otherwise fill the ten-slot ring with one code.
+    client = make_client()
+    codes = [12, 21, 12, 21, 12]
+
+    async def failing_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
+        await client._episode_log(codes.pop(0), "failed")
+        return None, True
+
+    client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
+    assert run(_drive_attempts(client, 5)) is True
+    counter = run(client.get_error_counter())["NTP"]
+    assert counter["ErrCount"] == 5
+    assert counter["ErrNum"][-2:] == [12, 21] and counter["ErrNum"][:-2] == [0] * 8
+
+
+def test_episode_log_persists_a_code_again_after_a_successful_sync() -> None:
+    client = make_client()
+
+    async def scenario() -> "list[int]":
+        await client.pr.setup()
+        await client._episode_log(21, "no reply")
+        await client._episode_log(21, "no reply")
+        await client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0))
+        await client._episode_log(21, "no reply")
+        await client._episode_log(2, "kiss of death", warn=True)
+        await client._episode_log(2, "kiss of death", warn=True)
+        log = (await client.get_error_counter())["NTP"]
+        assert log["ErrCount"] == 5
+        return log["ErrNum"][-3:]
+
+    assert run(scenario()) == [21, 21, 2]
+
+
+def test_asy_ntp_time_keeps_running_across_alternating_failure_and_success() -> None:
+    client = make_client()
     toggle = [True]
 
     async def alternating_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
@@ -1952,22 +2037,7 @@ def test_asy_ntp_time_recovers_the_streak_on_alternating_failure_and_success() -
         return (2026, 1, 1, 0, 0, 0, 0, 0), True  # success
 
     client._run_ntp_sync_attempt = alternating_attempt  # type: ignore[assignment, method-assign]
-
-    async def scenario() -> bool:
-        task = asyncio.create_task(client.asy_ntp_time())
-        for _ in range(20):
-            client.ntp_sync_trigger_event.set()
-            await asyncio.sleep(0)
-            await asyncio.sleep(0)
-        still_running = not task.done()
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        return still_running
-
-    assert run(scenario()) is True
+    assert run(_drive_attempts(client, 20)) is True
 
 
 # ===========================================================================
@@ -2239,6 +2309,219 @@ def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:
     written, data = run(scenario())
     assert written
     assert data == {"NTP_Host": "time.example.org"}
+
+
+# ---------------------------------------------------------------------------
+# Part C.7.2: never give up, back off while unsynced, one ring slot per code per failure episode -
+# every failure site, the recovery path, and the whole outage-then-recovery cycle end to end.
+# ---------------------------------------------------------------------------
+
+
+def test_backoff_defaults_are_ten_seconds_doubling_to_ten_minutes() -> None:
+    client = AsyNtpClient(asyncio.Lock(), lambda: True, lambda: None, cfg_path=_tmp_cfg_dir())
+    assert (client.retry_s, client.retry_max_s, client._retry_wait_s, client._unsynced_wait_s) == (10, 600, 10, 0)
+
+
+def _twice_one_slot(client: AsyNtpClient, make_call: "Callable[[], Coroutine[Any, Any, object]]") -> "tuple[int, list[int], list[str]]":
+    # Runs one failure site twice; returns (ErrCount, the non-empty ring slots, their types).
+    async def scenario() -> "ErrorLog":
+        await client.pr.setup()
+        await make_call()
+        await make_call()
+        return await client.get_error_counter()
+
+    entry = run(scenario())["NTP"]
+    nums, types = entry["ErrNum"], entry["ErrType"]
+    assert isinstance(nums, list) and isinstance(types, list)
+    kept = [(n, t) for n, t in zip(nums, types) if t != "N"]  # noqa: B905 - MicroPython zip() rejects strict=
+    return int(entry["ErrCount"]), [n for n, _ in kept], [t for _, t in kept]
+
+
+def test_missing_config_failure_is_counted_twice_but_persisted_once() -> None:
+    client = make_client()
+
+    async def no_cfg() -> "tuple[list[str], list[int]] | None":
+        return None
+
+    client._get_ntp_config = no_cfg  # type: ignore[method-assign]
+    assert _twice_one_slot(client, lambda: client._run_ntp_sync_attempt(None)) == (2, [11], ["E"])
+
+
+def test_dns_failure_is_counted_twice_but_persisted_once() -> None:
+    original = ntpmod.resolve_ipv4
+    ntpmod.resolve_ipv4 = _RecordingResolver(None)  # type: ignore[assignment]
+    try:
+        client = make_client()
+        assert _twice_one_slot(client, lambda: client._resolve_ntp_server("bogus.invalid", None)) == (2, [12], ["E"])
+    finally:
+        ntpmod.resolve_ipv4 = original
+
+
+def test_invalid_server_address_is_counted_twice_but_persisted_once() -> None:
+    client = make_client()
+    assert _twice_one_slot(client, lambda: client._fetch_ntp_reply((12345, 80))) == (2, [13], ["E"])  # type: ignore[arg-type]
+
+
+def test_no_reply_is_counted_twice_but_persisted_once() -> None:
+    client = make_client(ntp_fetch_timeout_ms=100)
+    addr = make_addr()
+    assert _twice_one_slot(client, lambda: client._fetch_ntp_reply(addr)) == (2, [21], ["E"])
+
+
+def test_implausible_time_is_counted_twice_but_persisted_once() -> None:
+    client = make_client()
+    msg = _reply_with_li_and_stratum(leap_indicator=0, stratum=1, unix_seconds=1000)  # past 2100 in every era
+    assert _twice_one_slot(client, lambda: client._parse_ntp_reply(msg, 0)) == (2, [14], ["E"])
+
+
+def test_malformed_reply_is_counted_twice_but_persisted_once() -> None:
+    client = make_client()
+    assert _twice_one_slot(client, lambda: client._parse_ntp_reply(b"x", 0)) == (2, [15], ["E"])
+
+
+def test_kiss_of_death_warning_is_counted_twice_but_persisted_once() -> None:
+    client = make_client()
+    msg = _reply_with_li_and_stratum(leap_indicator=0, stratum=0, unix_seconds=int(time.time()))
+    assert _twice_one_slot(client, lambda: client._parse_ntp_reply(msg, 0)) == (2, [2], ["W"])
+
+
+def test_the_same_number_as_error_and_as_warning_are_separate_episode_codes() -> None:
+    # errno 2 and wrnno 2 mean different things; one must never suppress the other's slot.
+    client = make_client()
+
+    async def scenario() -> "list[str]":
+        await client.pr.setup()
+        await client._episode_log(2, "an error numbered 2")
+        await client._episode_log(2, "a warning numbered 2", warn=True)
+        types = (await client.get_error_counter())["NTP"]["ErrType"]
+        assert isinstance(types, list)
+        return types[-2:]
+
+    assert run(scenario()) == ["E", "W"]
+
+
+def test_every_distinct_failure_code_keeps_its_own_slot_within_one_episode() -> None:
+    # Per DISTINCT code (C.7.1): a changed verdict mid-outage is evidence, so no code may shadow another.
+    client = make_client()
+    codes = [11, 12, 13, 14, 15, 21]
+
+    async def scenario() -> "list[int]":
+        await client.pr.setup()
+        for code in codes:
+            await client._episode_log(code, "failed")
+        nums = (await client.get_error_counter())["NTP"]["ErrNum"]
+        assert isinstance(nums, list)
+        return nums[-len(codes):]
+
+    assert run(scenario()) == codes
+
+
+def test_backoff_restarts_from_the_first_interval_after_a_recovery() -> None:
+    client = make_client(retry_s=10, retry_max_s=600)
+    outcomes = [None, None, (2026, 1, 1, 0, 0, 0, 0, 0), None, None]
+    seen: list[int] = []
+
+    async def scripted_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
+        seen.append(client._retry_wait_s)
+        tm = outcomes.pop(0)
+        if tm is None:
+            return None, True
+        await client._handle_ntp_sync_success(tm)
+        await client._set_synced(value=False)  # the sync goes stale again, back onto the unsynced cadence
+        return tm, True
+
+    client._run_ntp_sync_attempt = scripted_attempt  # type: ignore[assignment, method-assign]
+    assert run(_drive_attempts(client, 5)) is True
+    assert seen == [10, 20, 40, 10, 20]
+
+
+def test_ntp_time_hours_counter_does_not_bank_synced_ticks_toward_the_unsynced_wait() -> None:
+    # Ticks while synced belong to the resync interval; once the sync goes stale the first retry
+    # waits a full backoff step rather than firing on credit saved up while synced.
+    client = make_client()
+    client._retry_wait_s = 30
+
+    async def fired() -> bool:
+        try:
+            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.05)
+        except asyncio.TimeoutError:
+            return False
+        return True
+
+    async def scenario() -> "list[bool]":
+        await client._set_synced(value=True)
+        task = asyncio.create_task(client.ntp_time_hours_counter())
+        await _tick(client.ntp_timer_trigger_event, 5)
+        results = [await fired()]
+        await client._set_synced(value=False)
+        await _tick(client.ntp_timer_trigger_event, 2)
+        results.append(await fired())
+        await _tick(client.ntp_timer_trigger_event, 1)
+        results.append(await fired())
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return results
+
+    assert run(scenario()) == [False, False, True]
+
+
+def test_integration_self_heals_after_an_outage_through_the_real_task_and_socket() -> None:
+    # Three real requests go unanswered, then the server answers: the same task (never restarted)
+    # syncs, the backoff drops back to its first step, and the outage left exactly one ring slot.
+    client = make_integration_client()
+    client.ntp_fetch_timeout_ms = 100
+    reply = make_ntp_reply(int(time.time()))
+
+    async def scenario() -> "tuple[bool, bool, int, int, ErrorLog]":
+        server = FakeNtpServer()
+        try:
+            with server.redirect_resolution():
+                await client.pr.setup()
+                task = asyncio.create_task(client.asy_ntp_time())
+                for answer in (None, None, None, reply):
+                    served = asyncio.create_task(server.serve_once(answer))
+                    client.ntp_sync_trigger_event.set()
+                    await asyncio.wait_for(served, 5)
+                    await asyncio.sleep_ms(200)  # past the 100ms fetch timeout either way
+                still_running = not task.done()
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                return still_running, await client.ntp_issynced(), client._retry_wait_s, client._episode_errs, await client.get_error_counter()
+        finally:
+            server.close()
+
+    still_running, synced, wait_s, episode, log = run(scenario())
+    assert still_running is True
+    assert synced is True
+    assert wait_s == client.retry_s
+    assert episode == 0
+    assert log["NTP"]["ErrCount"] == 3
+    assert log["NTP"]["ErrNum"] == [0] * 9 + [21]
+
+
+def test_integration_a_successful_exchange_persists_nothing() -> None:
+    client = make_integration_client()
+    reply = make_ntp_reply(int(time.time()))
+
+    async def scenario() -> "ErrorLog":
+        server = FakeNtpServer()
+        try:
+            with server.redirect_resolution():
+                await client.pr.setup()
+                served = asyncio.create_task(server.serve_once(reply))
+                assert await client._fetch_ntp_reply(("127.0.0.1", ntpmod._NTP_UDP_PORT)) is not None  # the redirected port
+                await asyncio.wait_for(served, 5)
+                return await client.get_error_counter()
+        finally:
+            server.close()
+
+    assert run(scenario())["NTP"]["ErrCount"] == 0
 
 
 if __name__ == "__main__":

@@ -67,7 +67,6 @@ def make_ntp(
     ntp_host: str,
     cfg_path: "str | None" = None,
     ntp_fetch_timeout_ms: "int | None" = None,  # None = AsyNtpClient's own real default
-    max_module_error: int = 5,  # AsyNtpClient's own real default
 ) -> AsyNtpClient:
     # Exactly sensortask-wozi.py's own wiring: conn.get_wifi_mode_lock()/network_available/
     # get_dns_server_ip passed straight through as ntp's own constructor arguments - the real
@@ -78,7 +77,7 @@ def make_ntp(
         # One single f-string, not a plain-string-literal-adjacent-to-an-f-string concatenation -
         # same MicroPython gotcha test_asy_ntp_client.py's own _client_with_offsets() documents.
         f.write(f'{{"NTP_Host": "{ntp_host}", "NTP_Offset_S": 0, "NTP_Interv_H": 12, "GMTOffset": 0, "DSTOffset": 0}}')
-    kwargs: dict[str, Any] = {"cfg_path": cfg_path, "max_module_error": max_module_error}
+    kwargs: dict[str, Any] = {"cfg_path": cfg_path}
     if ntp_fetch_timeout_ms is not None:
         kwargs["ntp_fetch_timeout_ms"] = ntp_fetch_timeout_ms
     ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, **kwargs)
@@ -377,36 +376,35 @@ def test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_ser
     conn = make_conn()
     connect_wlan(conn)
     server = FakeNtpServer()
-    ntp = make_ntp(conn, "127.0.0.1", ntp_fetch_timeout_ms=100, max_module_error=2)
+    ntp = make_ntp(conn, "127.0.0.1", ntp_fetch_timeout_ms=100)
 
-    async def scenario() -> "tuple[bool, int | str | None, int | str | None]":
+    async def scenario() -> "tuple[bool, bool, int, int, ErrorLog]":
         try:
             with server.redirect_resolution():
                 task = asyncio.create_task(ntp.asy_ntp_time())
-                # One trigger per would-be failure cycle - max_module_error=2 gives up on the 3rd,
-                # each cycle bounded by the 100ms fetch timeout above, so this stays fast.
-                for _ in range(3):
+                # Far past the old five-failure give-up, each cycle bounded by the 100ms fetch timeout.
+                for _ in range(8):
                     ntp.ntp_sync_trigger_event.set()
                     await asyncio.sleep_ms(150)
-                await asyncio.wait_for(task, 2.0)  # must actually complete, not hang forever
-                synced = await ntp.ntp_issynced()
-                counter = await ntp.get_error_counter()
-                last_num = _last_err(counter, "ErrNum")
-                last_type = _last_err(counter, "ErrType")
-                return synced, last_num, last_type
+                still_running = not task.done()
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                return still_running, await ntp.ntp_issynced(), ntp._retry_wait_s, ntp.retry_max_s, await ntp.get_error_counter()
         finally:
             server.close()
 
-    synced, last_num, last_type = run(scenario())
-    # Never synced, a real send with nobody answering back cannot produce a real time, but the task itself
-    # completes cleanly - the wait_for above did not time out - and gives up through the same real errno=20
-    # path the isolated-mock version in tests/test_asy_ntp_client.py already proves.
-    #
-    # This test's own value is proving the same property through the real network_available() chain, with a
-    # WLAN fake genuinely reporting connected, rather than a directly-monkeypatched attempt.
+    still_running, synced, wait_s, max_s, counter = run(scenario())
+    # Never synced, but the task handles it itself (Part C.7.2): still running, backed off to its cap,
+    # and the silent timeout persisted as errno 21 - once for the whole run (C.7.1's repeat rule) while
+    # still counted every time. The value over the unit test is the real network_available() chain.
+    assert still_running is True
     assert synced is False
-    assert last_num == 20
-    assert last_type == "E"
+    assert wait_s == max_s
+    assert counter["NTP"]["ErrCount"] == 8
+    assert counter["NTP"]["ErrNum"] == [0] * 9 + [21]
 
 
 def test_full_chain_stays_unsynced_when_the_real_wifi_service_reports_network_unavailable() -> None:
@@ -450,13 +448,10 @@ def test_dns_resolution_totally_unreachable_through_the_real_chain_persists_errn
         asy_dns_client._FALLBACK_DNS_SERVERS = original_fallback
     assert run(ntp.ntp_issynced()) is False
     counter = run(ntp.get_error_counter())
-    # index -1, not -2, is base_classes.py's own _error_check() streak-counter log (errno=1, "Error
-    # counter increased to") - it always logs once more right after a failed attempt, on top of this
-    # file's own errno=12 "No valid NTP server" - see that method's own comment in base_classes.py.
     err_num, err_type = counter["NTP"]["ErrNum"], counter["NTP"]["ErrType"]
     assert isinstance(err_num, list) and isinstance(err_type, list)
-    assert err_num[-2] == 12
-    assert err_type[-2] == "E"
+    assert err_num[-1] == 12  # the last entry now: no streak counter logs after it any more
+    assert err_type[-1] == "E"
 
 
 if __name__ == "__main__":

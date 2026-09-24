@@ -239,6 +239,21 @@ def test_device_level_fram_target_wires_fram_into_conn_ntp_sysfunct_and_webserve
     assert fram_pos < result.module_source.index(sysfunct_line)
 
 
+def test_ntp_backoff_keys_reach_the_constructor_only_when_stated(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    def ntp_line(doc: "dict[str, object]", name: str) -> str:
+        source = generate_device(write_doc(tmp_path, name, doc), src_dir, ext_dir).module_source
+        ast.parse(source)
+        return next(line for line in source.splitlines() if line.strip().startswith("ntp = AsyNtpClient("))
+
+    doc = base_doc()
+    unstated = ntp_line(doc, "ntp_backoff_unstated")
+    assert "retry_s=" not in unstated and "retry_max_s=" not in unstated  # the class defaults apply
+    assert "max_module_error" not in unstated  # NTP keeps no give-up streak (Part C.7.2)
+    doc["device"]["ntp_retry_s"] = 30
+    doc["device"]["ntp_retry_max_s"] = 900
+    assert "retry_s=30, retry_max_s=900" in ntp_line(doc, "ntp_backoff_stated")
+
+
 def test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_only(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # Regression/fallback path: a device that never wires [device.wiring].fram_target at all (or
     # has no fram instance) must build byte-for-byte as it always has - no fram= kwarg anywhere on

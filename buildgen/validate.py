@@ -63,11 +63,12 @@ _UART_OPTIONAL_INT_FIELDS = ("rxbuf", "txbuf", "poll_wait_ms", "poll_idle_ms")
 _REQUIRED_DEVICE_FIELDS = ("name", "hostname", "hotspot_password", "conn_fail_to_hotspot", "hotspot_time_min")
 _HOSTNAME_MAX_LEN = 32  # network.hostname()'s real cap; asy_wifi_service._VAL_HOST carries the same number
 _REQUIRED_DEVICE_INT_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
-# Optional: absent, each falls back to WebserverService.__init__'s own default, and the check below
-# runs against that EFFECTIVE value - so no device can outrun its firmware by simply saying nothing.
-_OPTIONAL_DEVICE_INT_FIELDS = ("max_connections", "backlog")
+# Optional: absent, each falls back to its class's own __init__ default, and the checks below run
+# against that EFFECTIVE value - so no device can outrun its firmware by simply saying nothing.
+_OPTIONAL_DEVICE_INT_FIELDS = ("max_connections", "backlog", "ntp_retry_s", "ntp_retry_max_s")
 _ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | frozenset(_OPTIONAL_DEVICE_INT_FIELDS) | {"wiring"}
 _MAX_CONNECTIONS_FLOOR = 1  # a webserver admitting no connection serves nothing
+_NTP_CHECK_TICK_S = 10  # asy_ntp_client._NTP_CHECK_INTERV: a shorter retry interval cannot be honoured
 _WPA2_MIN_PASSWORD_LEN = 8  # WPA2-PSK's own minimum (IEEE 802.11i)
 _WPA2_MAX_PASSWORD_LEN = 63  # its maximum too; asy_wifi_service._VAL_HOTSPOT_PW carries the same pair
 
@@ -133,16 +134,16 @@ def _check_device_table(model: DeviceModel) -> None:
         raise BuildError(model.device, f"[device] declares unrecognized field(s) {sorted(unknown)} - typo, or copy-pasted from an unrelated table?", field=min(unknown))
 
 
-def webserver_init_default(src_dir: Path, name: str) -> int:
-    """One `WebserverService.__init__` keyword default, read out of the real source. buildgen never
+def init_int_default(src_dir: Path, filename: str, class_name: str, name: str) -> int:
+    """One `<class_name>.__init__` int keyword default, read out of the real source. buildgen never
     imports src/ (it may use MicroPython-only syntax), so AST is the mechanism - the same one
     tests_scripts/test_request_body_cap_headroom.py uses for max_content_length."""
-    path = src_dir / "asy_webserver_service.py"
+    path = src_dir / filename
     try:
         tree = ast.parse(path.read_text(), filename=str(path))
     except (OSError, SyntaxError) as e:
-        raise BuildError("<src>", f"cannot read {path} to resolve WebserverService's own {name} default: {e}", field=name) from e
-    for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == "WebserverService"):
+        raise BuildError("<src>", f"cannot read {path} to resolve {class_name}'s own {name} default: {e}", field=name) from e
+    for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == class_name):
         for fn in (n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "__init__"):
             # Keyword-only and positional defaults are walked as two pairings rather than one
             # concatenation: kw_defaults carries a None per argument that has no default, so the
@@ -153,7 +154,12 @@ def webserver_init_default(src_dir: Path, name: str) -> int:
             for arg, default in pairs:
                 if arg.arg == name and isinstance(default, ast.Constant) and isinstance(default.value, int) and not isinstance(default.value, bool):
                     return default.value
-    raise BuildError("<src>", f"WebserverService.__init__ no longer has a readable int default for {name!r} in {path} - the per-device key and the shipped default have to agree", field=name)
+    raise BuildError("<src>", f"{class_name}.__init__ no longer has a readable int default for {name!r} in {path} - the per-device key and the shipped default have to agree", field=name)
+
+
+def webserver_init_default(src_dir: Path, name: str) -> int:
+    """One `WebserverService.__init__` keyword default - see init_int_default()."""
+    return init_int_default(src_dir, "asy_webserver_service.py", "WebserverService", name)
 
 
 def device_max_connections(toml_path: Path, src_dir: Path) -> int:
@@ -203,6 +209,20 @@ def _check_connection_ceiling(model: DeviceModel, src_dir: Path) -> None:
         # Every queued arrival holds a pcb, and every one past a full ceiling plus one is refused by
         # _serve() anyway, so a deeper queue buys nothing but pcbs held for arrivals it turns away.
         raise BuildError(model.device, f"[device].backlog is {backlog}, above max_connections + 1 ({max_connections + 1}) - each extra queued arrival holds a pcb only to be refused", field="backlog")
+
+
+def _check_ntp_backoff(model: DeviceModel, src_dir: Path) -> None:
+    """The unsynced NTP retry backoff (Part C.7.2), checked as the effective pair: AsyNtpClient
+    would quietly clamp an interval below its check tick or a cap below the interval."""
+    dev = model.doc["device"]
+    if "ntp_retry_s" not in dev and "ntp_retry_max_s" not in dev:
+        return  # the shipped defaults, pinned coherent by tests_scripts/test_buildgen_validate.py
+    retry_s = dev["ntp_retry_s"] if "ntp_retry_s" in dev else init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_s")
+    retry_max_s = dev["ntp_retry_max_s"] if "ntp_retry_max_s" in dev else init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_max_s")
+    if retry_s < _NTP_CHECK_TICK_S:
+        raise BuildError(model.device, f"[device].ntp_retry_s is {retry_s} - NTP checks its sync state every {_NTP_CHECK_TICK_S}s, so no shorter retry interval exists", field="ntp_retry_s")
+    if retry_max_s < retry_s:
+        raise BuildError(model.device, f"[device].ntp_retry_max_s is {retry_max_s}, below the {retry_s}s first retry interval it caps", field="ntp_retry_max_s")
 
 
 def _check_bus_tables(model: DeviceModel) -> "dict[str, TomlDoc]":
@@ -677,6 +697,7 @@ def build_model(toml_path: Path, src_dir: Path) -> DeviceModel:
     # ship in rather than a property of the TOML - anything genuinely wrong with the device should
     # report before it, and it is the only stage that reads toolchain/versions.toml at all.
     _check_connection_ceiling(model, src_dir)
+    _check_ntp_backoff(model, src_dir)
     return model
 
 

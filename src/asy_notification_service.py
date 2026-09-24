@@ -137,7 +137,6 @@ class NotificationCoordinator(SensorReaderConfig):
         self,
         request_signal_cb: "Callable[[int, int, int, float], Coroutine[Any, Any, bool]]",
         local_time_callback: "Callable[[], Coroutine[Any, Any, _LocalTime | None]]",
-        max_module_error: int = 5,
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -147,7 +146,6 @@ class NotificationCoordinator(SensorReaderConfig):
         # registered - self.pr/self.cfgmgr/self.cfg_schema don't exist until then.
         self._request_signal_cb = request_signal_cb
         self._local_time_callback = local_time_callback
-        self._max_module_error = max_module_error
         self._cfg_path = cfg_path
         self._fram = fram
         self._history_length = history_length
@@ -296,7 +294,7 @@ class NotificationCoordinator(SensorReaderConfig):
             return
         super().__init__(
             NOTIFY(Triggered=False, TS=None),
-            self._max_module_error,
+            0,  # no failure streak: a restart re-reads nothing monitor_loop() doesn't (Part C.7.2)
             _NAME,
             self._combined_schema(),
             cfg_path=self._cfg_path,
@@ -335,7 +333,7 @@ class NotificationCoordinator(SensorReaderConfig):
         if not self._finalized:  # self.pr/self.cfgmgr don't exist yet - caller-ordering bug, defense-in-depth only
             return
         await self.pr.setup()  # required for all logged warnings and errors
-        self._err_cnt_internal = 0
+        cfg_failing = False  # C.7.1's repeat rule: one slot per run of failed reads, all still counted
         # No self._auto_active = True here, unlike __init__/auto_led_override() which own it - this
         # task only reads it. A supervisor-driven restart of this task used to reset it, clobbering
         # an override set mid-run: two independently-restartable tasks over one unlocked flag.
@@ -353,11 +351,11 @@ class NotificationCoordinator(SensorReaderConfig):
                 or len(cfg_float) != len(_VAL_FLOAT_FIELDS)
                 or len(cfg_bool) != 1
             ):
-                cfg_read_failed = True
                 interv = 600.0
-                await self.pr.wrn_s("Error reading own configuration!", wrnno=5)
+                await self.pr.wrn_s("Error reading own configuration!", wrnno=5, repeat=cfg_failing)
+                cfg_failing = True
             else:
-                cfg_read_failed = False
+                cfg_failing = False
                 on_h, on_m, off_h, off_m, flash_bri = cfg_int
                 interv, flash_dur = cfg_float
                 auto_on = cfg_bool[0]
@@ -375,8 +373,4 @@ class NotificationCoordinator(SensorReaderConfig):
                                     await self._trigger_signal(notif, flash_bri, flash_dur)
                                     await asyncio.sleep(2 * flash_dur)
                 await self._store_notif_data(any_triggered=any_triggered)
-            # consecutive-failure-streak give-up, matching every other Reader's own read_loop() shape -
-            # max_module_error is otherwise accepted and stored but never actually enforced.
-            if not await self._error_check((None,), condition=cfg_read_failed):
-                return  # too many consecutive own-config-read failures - let the task supervisor restart us
             await asyncio.sleep(self._next_sleep_secs(interv, t0))

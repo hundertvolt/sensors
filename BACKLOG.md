@@ -392,6 +392,27 @@ cites is deleted outright, its permanent content migrated per the policy above. 
       already measured** (item 12, 2026-09-11 — an `mpremote exec` stops `main.py`, nothing feeds the
       WDT, and the board takes a hard reset ~8 s later; the occurrence was ~9 s after attach). It is
       `tests_hardware/README.md`'s "> 45 s between a reset and the next attach" trap, not a finding.
+50. **Tasks that still end — and so spend the reboot budget — on failures a restart cannot fix**
+    (owner decision needed; found 2026-09-24 in the pass that fixed NTP and notification under
+    SPECIFICATION.md C.7.2). Each restart costs 100 of the supervisor's 300, so three in a row reboot
+    the device, and a reboot fixes none of these either:
+    - **A sensor whose own config cannot be read** (BMP3XX/SGP40/ISL29125, errno 12 at init):
+      `cfgmgr.valid` stays False after a failed setup-time write (full filesystem, a directory at the
+      path), and the restart never re-runs `cfgmgr.setup()` — a reboot loop. Options: init with the
+      schema defaults and log once, or retry `cfgmgr.setup()` with backoff inside the task. The unit
+      tests pin today's give-up (`test_asy_bmp3xx_driver.py`, `test_asy_sgp40_driver.py`,
+      `test_asy_isl29125_driver.py`).
+    - **WiFi's hardware give-up (errno 17) can be fed by config**: `network.country()`/`hostname()`
+      raising on a schema-valid value (`_VAL_HOST` caps characters, not UTF-8 bytes) sets
+      `hw_op_failed` like a chip fault. Unverified whether the hotspot fallback interrupts the streak first.
+    - **Test blind spots**: most network-fault bench tests (`test_network_resilience.py`'s loss,
+      corruption, reorder, garbage NTP/DNS, garbage `NTP_Host`, unreachable SSID; the WiFi-flap arm of
+      `test_bus_concurrency_under_api_load.py`) assert only "no Traceback", so a silent restart passes —
+      the old NTP give-up passed them all. Adding a "no `Task ended - attempting restart`" assertion is
+      the cheap fix; it will turn red on any of the above that the bench actually reaches.
+    - **Hotspot timer arms `Timer.ONE_SHOT`**, against SPECIFICATION.md C.9's "PERIODIC for anything
+      that must keep firing"; its drop is then caught by the errno-19 self-heal. Handled in place, not
+      a restart — lower priority, but the self-heal exists for a drop the timer choice invites.
 
 ## Deferred / explicitly out-of-scope work
 

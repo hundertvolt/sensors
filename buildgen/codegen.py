@@ -219,7 +219,7 @@ def _build_args_notification(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str],
     if signal_wf is None:
         raise BuildError(ctx.model.device, "internal: notification has no signal_sink wiring field by codegen time", instance=spec.label)
     pos = [ctx.wiring_expr(spec, signal_wf), "ntp.cettime"]
-    kw: list[tuple[str, str]] = [("max_module_error", "_MAX_MODULE_ERROR"), ("cfg_path", "cfg_path")]
+    kw: list[tuple[str, str]] = [("cfg_path", "cfg_path")]
     fram_kw = _fram_kw(spec, ctx)
     if fram_kw:
         kw.append(fram_kw)
@@ -408,7 +408,9 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             lines.append(f"    conn = AsyConnTime(conn_fail_to_hotspot={dev['conn_fail_to_hotspot']}, hotspot_time_min={dev['hotspot_time_min']}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, hostname={dev['hostname']!r}, hotspot_password={dev['hotspot_password']!r}{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
             continue
         if node == "ntp":
-            lines.append(f"    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, max_module_error=_MAX_MODULE_ERROR, dns_timeout_ms=_DNS_TIMEOUT_MS, dns_tries=_DNS_TRIES, ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS, cfg_path=cfg_path{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
+            # Backoff keys emitted only when stated, as max_connections is: absent, the class default applies.
+            backoff = "".join(f", {kw}={dev[key]}" for key, kw in (("ntp_retry_s", "retry_s"), ("ntp_retry_max_s", "retry_max_s")) if key in dev)
+            lines.append(f"    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, dns_timeout_ms=_DNS_TIMEOUT_MS, dns_tries=_DNS_TRIES, ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS{backoff}, cfg_path=cfg_path{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
             continue
         if node == "sysfunct":
             lines.append(f"    sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog{_device_fram_kwarg_suffix(model, ctx)}, cfg_path=cfg_path, debug=debug)")

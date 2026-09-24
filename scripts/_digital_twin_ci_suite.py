@@ -58,6 +58,8 @@ _BUS_FAULT_OPS = {  # the real bus-level call each driver's own bus access goes 
     "isl29125": "readfrom_mem",  # every periodic read is get_register_struct() -> readfrom_mem
     "fram": "write",
 }
+_NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9 - past the old NTP give-up (~60s), see that run
+_NTP_ERRNO_NO_REPLY = 21  # asy_ntp_client.py's own no-reply errno (SPECIFICATION.md C.7.1)
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver to its own REST/error-log `_NAME`, read from each driver's source. They all happen to
 # equal driver.upper() here, which is NOT a general rule - NotificationCoordinator's is "NOTIFY",
@@ -1007,18 +1009,24 @@ def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
 
 
 def _run_9_ntp_unreachable(ctx: RunContext) -> None:
-    # ---- Run 9: reboot with NTP permanently unreachable - the other "network connections" real-
-    # world case. The system must stay fully healthy (webserver reachable) despite NTP never
-    # succeeding, not just eventually. ----
+    # ---- Run 9: reboot with NTP permanently unreachable. The webserver must stay healthy, and the
+    # NTP task must handle it in place (SPECIFICATION.md Part C.7.2): a task that ends costs SYSTEM a
+    # restart, and three of those used to reboot the device about every four minutes. ----
     log9 = ctx.logs_dir / "run9_ntp_unreachable.log"
     proc = _spawn(ctx, [], log9)
     try:
         _wait_until_serving(proc)
-        time.sleep(7.0)  # past _NTP_FETCH_TIMEOUT_MS=5000 (every generated sensortask_<device>
-        # module shares this constant, mandatory infra - system_service.py) - NTP should have
-        # given up by now
+        system_before = _errcount_required("SYSTEM").get("counter", 0)
+        # 90s: the old five-failure streak ended the task after about 60s of 10s-tick attempts, so
+        # a regression shows here without waiting out the whole old reboot cycle.
+        time.sleep(_NTP_UNREACHABLE_WATCH_S)
         status, _ = _http("GET", "/system")
         _check(condition=status == _HTTP_OK, msg="Run 9: webserver stayed fully healthy with NTP permanently unreachable")
+        ntp = _errcount_required("NTP")
+        nums = [item.get("num") for item in ntp.get("history", []) if isinstance(item, dict)]
+        _check(condition=_NTP_ERRNO_NO_REPLY in nums, msg=f"Run 9: NTP logged errno {_NTP_ERRNO_NO_REPLY} (no reply) for the unreachable host (history {nums})")
+        system_after = _errcount_required("SYSTEM").get("counter", 0)
+        _check(condition=system_after == system_before, msg=f"Run 9: no task ended and was restarted while NTP failed (SYSTEM counter {system_before} -> {system_after})")
     except Exception as exc:
         _fail(f"Run 9 (NTP unreachable): {exc!r}")
     finally:

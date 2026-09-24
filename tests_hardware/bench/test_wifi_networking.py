@@ -105,10 +105,11 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: _http_ok(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry - see this test's own comment)")
-    # `_error_check()`'s consecutive-failure counter (Part C.7, not gated on ntp_issynced())
-    # fires on every failed sync, ending in errno=20 - the expected outcome for a persistently
-    # blocked port. tests_hardware/README.md has the since-fixed test-bug account.
-    assert_module_error_log_contains(dut_ip, "NTP", 20, "E")
+    # A blocked port is routine for NTP (SPECIFICATION.md Part C.7.2): errno 21 (no reply) is logged
+    # and the task backs off in place - it must never end and cost the supervisor's reboot budget.
+    assert_module_error_log_contains(dut_ip, "NTP", 21, "E")
+    restarts = [ln for ln in lines if "Task ended - attempting restart" in ln]
+    assert not restarts, "a blocked NTP server made a task end and be restarted:\n" + "\n".join(restarts)
 
 
 def _http_ok(dut_ip: str) -> bool:

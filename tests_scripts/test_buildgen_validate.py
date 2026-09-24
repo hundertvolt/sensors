@@ -1542,6 +1542,30 @@ def test_webserver_init_default_reads_only_an_int_literal_of_the_real_class(tmp_
         webserver_init_default(src, "max_connections")
 
 
+def test_init_int_default_reads_the_named_class_in_the_named_file_only(tmp_path: Path) -> None:
+    # Generalised off webserver_init_default() for AsyNtpClient's backoff pair: the class name and
+    # file both scope the lookup, and a miss names both rather than falling back to a guess.
+    from buildgen.validate import init_int_default
+
+    (tmp_path / "asy_ntp_client.py").write_text("class Other:\n    def __init__(self, retry_s=99): ...\n\nclass AsyNtpClient:\n    def __init__(self, a, retry_s: int = 10, *, retry_max_s: int = 600): ...\n")
+    assert init_int_default(tmp_path, "asy_ntp_client.py", "AsyNtpClient", "retry_s") == 10
+    assert init_int_default(tmp_path, "asy_ntp_client.py", "AsyNtpClient", "retry_max_s") == 600
+    with pytest.raises(BuildError, match=r"AsyNtpClient\.__init__ no longer has a readable int default for 'gone'"):
+        init_int_default(tmp_path, "asy_ntp_client.py", "AsyNtpClient", "gone")
+    with pytest.raises(BuildError, match=r"Missing\.__init__ no longer has"):
+        init_int_default(tmp_path, "asy_ntp_client.py", "Missing", "retry_s")
+    with pytest.raises(BuildError, match=r"cannot read .*nope\.py to resolve AsyNtpClient's own retry_s default"):
+        init_int_default(tmp_path, "nope.py", "AsyNtpClient", "retry_s")
+
+
+def test_the_shipped_ntp_backoff_defaults_are_readable_from_the_real_source(src_dir: Path) -> None:
+    # Regression guard for the validator's own input: renaming either keyword breaks this, not a device build.
+    from buildgen.validate import init_int_default
+
+    assert init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_s") == 10
+    assert init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_max_s") == 600
+
+
 @pytest.mark.parametrize("content", [None, "class WebserverService(:\n"])
 def test_an_unreadable_webserver_source_is_a_named_build_error(tmp_path: Path, content: "str | None") -> None:
     from buildgen.validate import webserver_init_default
@@ -1559,6 +1583,46 @@ def test_a_non_int_connection_field_is_rejected(tmp_path: Path, src_dir: Path, f
     doc["device"]["max_connections"] = 3
     doc["device"][field] = "4"
     with pytest.raises(BuildError, match="must be an int"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_ntp_backoff_keys_are_optional_and_their_src_defaults_pass_the_check(tmp_path: Path, src_dir: Path) -> None:
+    from buildgen.validate import init_int_default
+
+    doc = base_doc()
+    for key in ("ntp_retry_s", "ntp_retry_max_s"):
+        doc["device"].pop(key, None)
+    _build(tmp_path, src_dir, doc)
+    assert 10 <= init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_s") <= init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_max_s")
+
+
+def test_an_ntp_retry_interval_below_the_check_tick_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # AsyNtpClient would silently round it up to its 10s tick; the build says so instead.
+    doc = base_doc()
+    doc["device"]["ntp_retry_s"] = 9
+    with pytest.raises(BuildError, match="every 10s"):
+        _build(tmp_path, src_dir, doc)
+    doc["device"]["ntp_retry_s"] = 10
+    _build(tmp_path, src_dir, doc)
+
+
+def test_an_ntp_retry_cap_below_the_interval_is_rejected_against_the_effective_pair(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["device"]["ntp_retry_s"] = 60
+    doc["device"]["ntp_retry_max_s"] = 30
+    with pytest.raises(BuildError, match="below the 60s first retry"):
+        _build(tmp_path, src_dir, doc)
+    del doc["device"]["ntp_retry_max_s"]  # the stated interval against the src cap (600) passes
+    _build(tmp_path, src_dir, doc)
+    doc["device"]["ntp_retry_s"] = 900  # ...and one above that cap fails, cap unstated
+    with pytest.raises(BuildError, match="ntp_retry_max_s is 600"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_ntp_backoff_keys_must_be_ints(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["device"]["ntp_retry_s"] = "30"
+    with pytest.raises(BuildError, match="ntp_retry_s must be an int"):
         _build(tmp_path, src_dir, doc)
 
 
