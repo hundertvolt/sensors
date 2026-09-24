@@ -930,6 +930,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   14000 → 16000, every relationship unchanged and `check_lwip_ensemble()` passing. A firmware build
   runs the post-build macro verification against these, so it is the installer leg
   (`uv run toolchain/setup_toolchain.py`) that covers it; the lint/typecheck recipe does not.
+  **2026-09-24, `scripts/_digital_twin_ci_suite.py`**: Run 11b pauses 1 s before its first
+  full-ceiling burst too, not only between bursts — the readiness probe's connection is still
+  counted while it closes, which refused one of 6 at the new limit. Test orchestration only, no build
+  step, so the chroot legs neither exercise nor are threatened by it.
   **2026-09-24, `toolchain/versions.toml` — the installer leg again**: the `[lwip]` ensemble
   re-sized for `max_connections = 6` (owner, 2026-09-24, on the peak-load evidence of SPECIFICATION.md
   Part H.7) — `MEMP_NUM_TCP_PCB` 11 → 9, `MEMP_NUM_TCP_SEG` 64 → 48, `MEM_SIZE` 16000 → 12000, the

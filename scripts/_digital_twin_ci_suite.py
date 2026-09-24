@@ -1066,10 +1066,10 @@ def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
         # device's own module count and are the two that stream (Part I.3).
         endpoints = ("/sensors", "/status", "/measurements", "/networking", "/system")
         for round_index in range(_CEILING_ROUNDS):
-            if round_index:
-                # A slot is released in _serve()'s finally, AFTER the close is awaited, so it
-                # outlives the response the client already holds (Part I.6).
-                time.sleep(1.0)
+            # A slot is released in _serve()'s finally, AFTER the close is awaited, so it outlives the
+            # response the client already holds (Part I.6) - round 0's too: the readiness probe's own
+            # connection is still counted right after _wait_until_serving(), refusing one of a full burst.
+            time.sleep(1.0)
             results = _concurrent_get([endpoints[i % len(endpoints)] for i in range(ceiling)])
             served = sum(1 for r in results if r == _HTTP_OK)
             # Every one of them, not "at least one": this burst IS the ceiling, so anything short
