@@ -487,6 +487,17 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     A.9); the owner's rule (2026-09-23) is that `dev`'s real website is the most biting test. Needs
     the owner's yes/no; a change touches `scripts/`, so it needs a chroot entry.
 
+47. **Does every driver's own arithmetic need a finiteness gate before its value reaches a
+    response?** MicroPython's `json.dumps()` never raises and emits bare `nan`/`inf`
+    (SPECIFICATION.md Part F.1, pinned by `tests/test_strict_json.py`), so one non-finite
+    measurement ships a body `JSON.parse()` rejects — the whole page's data, with nothing logged
+    anywhere. Overflow reaches `inf` silently (`1e308 * 10`); `0.0/0.0` and `math.log(0)` raise
+    instead, and `math_helpers.ema_step()` already gates on `math.isfinite()` so a filter's state
+    cannot be poisoned. What is unaudited is the unsmoothed path: no driver's own conversion was
+    swept for a value that could overflow, and no test injects one. The options are a per-driver
+    audit, one gate in the response layer (`_PieceWriter.add_value()`, which would cost a check per
+    scalar on the hot path), or accepting it as unreachable on argument. Not a drive-by change.
+
 ## Deferred / explicitly out-of-scope work
 
 - **`NTP_Host` keeps its 1024-character bound — SETTLED, owner, 2026-09-21: "keep it". Do not

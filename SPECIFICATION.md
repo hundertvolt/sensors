@@ -3751,6 +3751,20 @@ re-run cleanup from plain synchronous code in an outer `except KeyboardInterrupt
 `,` and `:` exactly like whitespace, so `'{,"a":1 "b":2}'` parses as `{"a": 1, "b": 2}`. The browser's
 `JSON.parse()` rejects that, so a test of emitted JSON checks it with `tests/_strict_json.py`.
 
+**And `json.dumps()` is not a JSON serializer either — it never raises** (measured against the
+pinned interpreter, 2026-09-24): `b"x"` dumps as `"x"`, a set as `{2, 1}`, an arbitrary object as
+`<object>`, and a non-finite float as bare `nan`/`inf`. CPython raises `TypeError` for the first
+three and emits `NaN`/`Infinity` for the last; MicroPython emits text no `JSON.parse()` accepts and
+reports nothing. Two consequences. A route handler therefore cannot rely on serialization failing
+loudly — it will not fail at all — so a value's shape is the caller's obligation, which is why
+`_write_guarded()` needing `json.dumps()` inside its own `try` is moot (I.3). And a non-finite
+measurement would emit a body that breaks the whole web page with no error anywhere; MicroPython
+produces `inf` silently on overflow (`1e308 * 10`), while `0.0/0.0` and `math.log(0)` raise. The
+existing mitigation is in the shared primitive, not the response layer: `math_helpers.ema_step()`
+gates on `math.isfinite()` rather than a range, so one NaN cannot poison a filter's state. Whether
+every driver's own arithmetic needs the same gate before its value reaches a response is BACKLOG's
+open question, not something to add per driver on spec.
+
 **Always check current MicroPython/Microdot documentation before asserting how an API behaves** —
 never rely on training-data memory. **Whenever the pinned version changes (and periodically
 otherwise), re-check every MicroPython-facing construct against the current source/docs/issue
@@ -5053,6 +5067,19 @@ holes and no large run, so allocation size, not churn volume, is what fails (E.8
 need per path on that twin (`tests_hardware/device_scripts/allocation_need_per_source.py`):
 `/status` 320 B (1,024 B with the old cap), every other route and data source ≤ 256 B —
 `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q.10.
+
+**The one fragment the cap cannot bound, and why it is still bounded.** "Never splitting a fragment"
+means a single scalar longer than `chunk_bytes` becomes one over-cap piece; the writer's guarantee is
+"the largest allocation is the largest *fragment*", not "≤ `chunk_bytes`". Only a string config value
+can be that scalar — `errcount` holds ints alone (`_shape_errcount_entry()`), and `history_length`
+bounds its list — so the ceiling is the longest string any schema permits, which is `NTP_Host`'s
+1,024 characters (`asy_ntp_client.py`'s `_VAL_NH`; the bound is settled, BACKLOG's deferred list),
+giving a ~1,026 B piece on `/networking` and in `/status`'s networking section. Every silicon and
+twin figure above was taken at the 12-character default, so the long-value case is bounded by
+argument, not measured: at the limit of 6 it sits under the ~1.5 KB largest free block measured at
+peak (H.7), and at 7 it would not fit that run's 528 B. Nothing to change here — a shorter
+`NTP_Host` bound is the lever, and the owner settled it — but do not read "≤ 256 B" as covering a
+device whose user has typed a long server address.
 
 **Static files.** The static page is the one
 response the writer does not build: microdot's `send_file` streams the file, reading

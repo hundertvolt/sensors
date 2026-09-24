@@ -82,5 +82,20 @@ def test_a_bytearray_body_is_checked_like_bytes() -> None:
     assert raised
 
 
+def test_the_interpreters_own_dumps_emits_text_no_json_parser_accepts() -> None:
+    # The emit-side counterpart of everything above, pinned so a version bump surfaces a change:
+    # json.dumps() never raises here, where CPython would (SPECIFICATION.md Part F.1). A route that
+    # lets a non-finite value through therefore ships a body the browser rejects, silently.
+    for value in (float("inf"), -float("inf")):
+        text = json.dumps({"v": value})
+        raised = ""
+        try:
+            check_strict_json(text.encode())
+        except ValueError as e:
+            raised = str(e)
+        assert "not strict JSON at offset" in raised, text
+    assert json.dumps(b"x") == '"x"'  # bytes, dumped as a string rather than refused
+
+
 if __name__ == "__main__":
     run(globals())
