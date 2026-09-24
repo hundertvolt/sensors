@@ -1969,6 +1969,9 @@ class _ChunkRecordingWriter(_ScriptedWriter):
 
 
 def _get_on_the_wire(service: "WebserverService", path: str) -> "tuple[str, dict[str, str], list[bytes]]":
+    # These tests pin write bounds, not timeouts: _make_service()'s 0.5s outer cap cut a 37 KB body
+    # short on a loaded CI runner. 4s stays under run_timed()'s 5s, so a hang still fails the test.
+    service._per_call_timeout_s, service._outer_cap_s = 2.0, 4.0
     writer = _ChunkRecordingWriter()
     run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", path))], eof=True), writer), timeout_s=5.0)
     head = writer.chunks[0]  # the whole header block is one write (_TimeoutStreamProxy.awrite)
@@ -2005,8 +2008,8 @@ def test_g3_a_json_route_mixing_tiny_medium_and_huge_values_is_written_in_bounde
     stub = _NestedCfgModule("STUB", values={}, data=data)
     service, _app = _make_service(sensors=[stub])
     status, headers, body = _get_on_the_wire(service, "/measurements")
-    assert status == "200"
-    assert headers.get("content-length") == str(sum(len(chunk) for chunk in body))
+    assert status == "200", (status, headers)
+    assert headers.get("content-length") == str(sum(len(chunk) for chunk in body)), (headers, len(body))
     assert json.loads(b"".join(body)) == {"STUB": data}
     assert max(len(chunk) for chunk in body) <= _WIRE_CHUNK_BYTES, sorted(len(c) for c in body)[-5:]
     assert len(body) > 100  # the huge values really were split, not merely absent
