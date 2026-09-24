@@ -96,7 +96,7 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | C9 | Cutting the 74 chip-select sessions to ~6 will clear the contiguity floor | **withdrawn as stated; the achievable side reopened by §3B** | ~12x against a required 40-100x; 70,000 B per logger measures in_big 14 / span 97%, inside the saturated regime (§6A.8). §3B now reaches 38-90x *without* cutting a session; the required side was computed in settrace bytes and is not re-derived (§3A.6), so whether that clears the floor is untested |
 | C12 | The status-byte pair, the two copies and the per-write WREN/WRDI envelope are redundant bookkeeping | **withdrawn — owner's account, 2026-09-18** | each element is grounded (§3B.1): the status bytes are a lock against a copy caught mid-operation, the pair written separately so a torn pair is detectable; the copies restore the last valid value; the CRC catches bus errors; each CS cycle is what commits a command at the chip. The wire protocol is the integrity feature; the cost is the Python that carries it |
 | C10 | Loop yields are protective for layout | **withdrawn — a settrace artifact** | it held, confound-checked, on the settrace build (§6A.4), where each yield allocated a 28-block object that competed for no survivor's hole and forced early collections. On the real VM a yield allocates 0 B (§1.2 item 7), so it can be neither protective nor harmful to layout |
-| C13 | Every figure in this file is the `gc.threshold(-1)` picture, and the firmware ships `gc.threshold(32768)`, where the twin shows no layout defect at any churn dose | **confirmed [SRC] + [TWIN]; the qualitative half was the handover's, and the [HW] question it raised is resolved** | the threshold is set in the generated boot entry, which neither the harnesses nor the hardware test's own device script execute - though a script run after one has still inherits it (§0B.7, §2.1's 2026-09-24 amendment); at 32,768 B `base` keeps 87% against 18%, survivors span 12% of the heap against 92%, and every churn dose from zero to base's own clears the floor (§7A.5). The handover's §2.12 already recorded that a threshold set before `build_system()` makes the twin look healthy and called it masking; what is new is the quantification and the [SRC] trace. The [HW] 20,592 B was taken before the script sets a threshold but at the 32768 it had inherited ([SRC], §0B.7), so board and twin agree on the number while the board's arm is the (f) one; the corpus's baseline is the one the hardware test asserts on (§1.5) |
+| C13 | Every figure in this file is the `gc.threshold(-1)` picture, and the firmware ships `gc.threshold(32768)`, where the twin shows no layout defect at any churn dose | **confirmed [SRC] + [TWIN]; the qualitative half was the handover's, and the [HW] question it raised is resolved** | the threshold is set in the generated boot entry, which neither the harnesses nor the hardware test's own device script execute (§1.5; §0B.7 records the one premise still open); at 32,768 B `base` keeps 87% against 18%, survivors span 12% of the heap against 92%, and every churn dose from zero to base's own clears the floor (§7A.5). The handover's §2.12 already recorded that a threshold set before `build_system()` makes the twin look healthy and called it masking; what is new is the quantification and the [SRC] trace. The [HW] 20,592 B is a deliberate pre-threshold reading, so board and twin agree and the corpus's baseline is the one the hardware test asserts on (§1.5) |
 | C11 | Pre-allocating each module's permanent objects at construction is the remedy the evidence favours | **refuted** | the mechanism is real — the same objects placed pre-seam give in_big 0 and 100% kept where in-window they give 380 and 12% — but it holds only below the churn threshold. At the real 843,232 B dose pre-seam objects are unprotected (kept ~50%), and the real system's 76 survivors are already an order of magnitude below the survivor axis's own onset, so that axis is not the binding constraint (§6A.12) |
 
 ## 0A. The model
@@ -530,30 +530,29 @@ is why a 2-block change of one object's size moves the result and why nothing co
   startup phase has *none*, so §6A.10's added-parallelism arm describes a regime the boot batch
   never enters. What is still untested is whether parallelism matters *after* boot, once the task
   graph is live.
-- **Which configuration the [HW] symptom belongs to** — answered from [SRC] on 2026-09-18 and
-  **re-opened from [SRC] on 2026-09-24** (§2.1's amendment carries the chain; not struck through for
-  that reason): the hardware test's device script runs `build_system()` itself, asserts before any
+- ~~Which configuration the [HW] symptom belongs to~~ — **answered from [SRC] the same day**
+  (§1.5): the hardware test's device script runs `build_system()` itself, asserts before any
   threshold is set, and only then reports a second, unasserted line with
-  `gc.threshold(32768)` applied. The twin reproduces the board's 20,592 B and the corpus's baseline
-  is the one the hardware test asserts on — but **"before any threshold is set" is not the same as
-  "at the reactive default"**, and the item below shows the board had already inherited 32768, so
-  that second line was a no-op and this one is an (f)-stage reading. Whether the
+  `gc.threshold(32768)` applied. The board's 20,592 B is a deliberate no-threshold reading, the twin
+  reproduces it, and the corpus's baseline is the one the hardware test asserts on — resting on the
+  premise the item below leaves open (the script set no threshold of its own then). Whether the
   *boot-collect scheme* moves the board the way it moves the twin is since measured on silicon: it
   does, by more (§7H.1-§7H.3).
 - **Which threshold the pre-2026-09-24 device-script readings ran at** (§1, §7D, §7F, §7H, the
-  20,592 B) — **answered from [SRC], 2026-09-24: 32768, inherited.** `gc_alloc_threshold` is written
-  by exactly two places, `gc_init()` (`py/gc.c`) and `gc.threshold()` (`py/modgc.c`); rp2's `main.c`
-  calls `gc_init()` once, *before* its soft-reset loop; every friendly-REPL boot runs the frozen
-  `main.py`, whose module-level `gc.threshold(32768)` precedes `asyncio.run()`
-  (`buildgen.codegen.generate_boot_entry_source()`); and `mpremote run` executes in that same
-  interpreter. So no path on a board carrying this firmware leaves the reactive default in force, and
-  a script that sets no threshold of its own reads 32768. Both flash-tier scripts now set `-1`
-  themselves, and `tests_scripts/test_device_script_gc_threshold.py` fails a first arm *reported*
-  before it is *set*. **What this leaves open**: C13 and §1.5 read the board's 18.9% ratio as agreeing
-  with the twin's `-1` arm *because* both were pre-threshold; at 32768 the same number is instead
-  direct silicon evidence that the threshold does not buy the twin's 87% — consistent with §7M.4's
-  non-transfer and with why I.4(f) is defence in depth rather than the fix. One `GC_THRESHOLD=` line
-  from the next T1 run settles it in a single look.
+  20,592 B) — **still open: the source and the silicon disagree** (2026-09-24). The source says
+  32768, inherited: `gc_alloc_threshold` is written only by `gc_init()` (`py/gc.c`) and
+  `gc.threshold()` (`py/modgc.c`); rp2's `main.c` calls `gc_init()` once, *before* its soft-reset
+  loop; the frozen `main.py` has set `gc.threshold(32768)` at module level since 2026-09-09; and
+  `mpremote run` executes in that same interpreter. **§7H.3 says otherwise**: two invocations on one
+  image, differing only in an explicit `gc.threshold(32768)` before the run, read 12% against 80% at
+  the settle and 1,244 ms apart in the starter loop — which setting a value already in force cannot
+  produce. Neither side is wrong on its own evidence; one of the chain's links is not what the board
+  did (most likely which image, or `main.py` never reaching its threshold line), and nothing in the
+  repo records which. So the pre-2026-09-24 corpus keeps the labels it had. **Going forward it no
+  longer matters**: both flash-tier scripts now set `-1` themselves, like every script the
+  connection-limit work wrote, and `tests_scripts/test_device_script_gc_threshold.py` fails a
+  `GC_THRESHOLD=` reported before the script's own first set. One read after any attach, before a
+  script sets anything — `mpremote exec "import gc; print(gc.threshold())"` — answers it outright.
 - **Gap 10, hardware** — the defect and both remedies are measured on silicon since 2026-09-18
   (§7D, §7F, §7H, §7M); what stays unmeasured is the per-object question. A GC block is 16 B there
   against 32 B here, so the "1-block objects are immune" boundary in §0B.2 falls at a different byte
@@ -778,19 +777,13 @@ is the `threshold(-1)` reading by design, which is exactly what the twin reprodu
 contradiction between the two. **The corpus's baseline is the same one the hardware test asserts
 on**, which is the stronger statement than the one this section originally made.
 
-> **Re-opened from [SRC], 2026-09-24.** "Before any threshold is set" is not "at the reactive
-> default". The script never executed `main.py`, but it ran *after* one had: the generated boot entry
-> has set `gc.threshold(32768)` at module level since 2026-09-13 (`buildgen/codegen.py`), only
-> `gc_init()` and `gc.threshold()` ever write `gc_alloc_threshold`, rp2's `main.c` calls `gc_init()`
-> once *before* its soft-reset loop, and `mpremote run` executes in that same interpreter - so an
-> inherited 32768 was in force unless the board carried a pre-2026-09-13 image, which nothing
-> records. The script printed no `GC_THRESHOLD=` line until 2026-09-24, so **for this reading the
-> evidence does not exist and cannot be recovered**; both flash-tier scripts now set `-1`
-> themselves (§0B.7). What this costs and what it buys: the twin-vs-board discrepancy above is open
-> again, and the explanation it points at is the one §7M.4 reached independently - the threshold's
-> twin-side gain does not transfer at the board's fill, which is why I.4(f) is defence in depth and
-> not the fix. The corpus's internal consistency is untouched: every twin figure and the board's own
-> before/after comparisons are like-for-like within themselves.
+> **Premise questioned, 2026-09-24 — not overturned.** "Before any threshold is set" is only "at
+> the reactive default" if nothing earlier set one, and the frozen `main.py` has set 32768 at module
+> level since 2026-09-09; by source alone, a script run after it inherits that value. §7H.3's own
+> silicon disagrees — setting 32768 explicitly moved the settle reading 12% -> 80% and cut 1,244 ms
+> off the starter loop, which an already-in-force value cannot do — so the resolution above stands on
+> the evidence the board gave. The script printed no `GC_THRESHOLD=` line until 2026-09-24, so this
+> reading cannot be re-checked; §0B.7 carries both sides and the one-line read that settles it.
 
 The handover said the qualitative half of this first, and it belongs to it: its §2.12's "setting the
 threshold *before* `build_system()` makes the twin heap look healthy - that is the threshold masking

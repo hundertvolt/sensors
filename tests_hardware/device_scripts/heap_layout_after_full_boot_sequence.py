@@ -11,8 +11,8 @@ import sensortask_dev
 
 import system_service
 
-# Explicit, never inherited - same reason and same wording as heap_headroom_after_full_system_build.py:
-# this script's own first arm read the boot entry's 32768 until 2026-09-24 (MEASUREMENTS 0B.7).
+# Explicit, never inherited - same reason as heap_headroom_after_full_system_build.py: until
+# 2026-09-24 this script's first arm ran at whatever it inherited (MEASUREMENTS 0B.7).
 gc.threshold(-1)
 # Same doubling/halving bounds as heap_headroom_after_full_system_build.py, deliberately: the two
 # scripts' largest_block figures are only comparable if the probe is identical.

@@ -34,7 +34,7 @@ def _is_punctuation(line: str) -> bool:
     return stripped == "#" or bool(_DIVIDER.match(stripped)) or bool(_PEP723.match(stripped))
 
 
-def _comment_blocks(lines: "list[str]") -> "list[tuple[int, int]]":
+def _comment_blocks(lines: list[str]) -> list[tuple[int, int]]:
     """Over-cap runs of comment-ONLY lines. A trailing comment on a code line annotates that line,
     so it never starts a block - which is what keeps a column of annotated data entries from
     reading as one long block."""
@@ -59,7 +59,7 @@ def _comment_blocks(lines: "list[str]") -> "list[tuple[int, int]]":
     return [(s, n) for s, n in over if not any(tag in line for line in lines[s - 1 : s - 1 + n] for tag in _TAGS)]
 
 
-def _docstrings(lines: "list[str]") -> "list[tuple[int, int]]":
+def _docstrings(lines: list[str]) -> list[tuple[int, int]]:
     over: list[tuple[int, int]] = []
     for node in ast.walk(ast.parse("\n".join(lines))):
         if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -77,7 +77,7 @@ def _docstrings(lines: "list[str]") -> "list[tuple[int, int]]":
     return over
 
 
-def _findings(path: Path) -> "list[str]":
+def _findings(path: Path) -> list[str]:
     lines = path.read_text(encoding="utf-8").splitlines()
     found = [(start, length, "comment") for start, length in _comment_blocks(lines)]
     if path.suffix == ".py":
@@ -86,7 +86,7 @@ def _findings(path: Path) -> "list[str]":
     return [f"{rel}:{start}: {length}-line {kind} block" for start, length, kind in sorted(found)]
 
 
-def _sources() -> "list[Path]":
+def _sources() -> list[Path]:
     found: list[Path] = []
     for scope in SCOPES:
         for pattern in ("*.py", "*.sh", "**/*.py", "**/*.sh"):
