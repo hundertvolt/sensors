@@ -1633,7 +1633,7 @@ async def read_loop(self) -> bool:
     if not await self._init_<sensor>():
         return False
     while True:
-        await self.trigger_event.wait()
+        await self.read_event.wait()
         self.pr.evt(_NAME, "sensor trigger")
         results = await self._read_<sensor>()
         if not await self._error_check(results):
@@ -1896,7 +1896,13 @@ is expected; only overlap *within* one row matters. **The base range (`errno` 1-
 reserved to `base_classes.py`) and each driver's own 10+ numbering are a convention this table
 records, not one the code itself enforces** — nothing raises if a new module picks a colliding
 number or starts below 10; get it right by checking this table before assigning a new one (WP8),
-the same "check the shared catalog first" discipline Part G.1 states generally.
+the same "check the shared catalog first" discipline Part G.1 states generally. **Seven modules
+still number inside the reserved range** (`config_manager.py`, `system_service.py`,
+`asy_webserver_service.py`, `captive_dns.py`, `asy_wifi_service.py`, `asy_ntp_client.py`, and
+`asy_notification_service.py`'s `wrnno`). No clash is live, since none shares a logger with a
+`SensorReader`. **Each is renumbered to 10+ on its next substantial change, not in one pass**
+(owner decision, 2026-09-24): a code is a persisted value in FRAM histories, so a renumbering
+rides a change that already needs deploying, updating this table and its tests with it.
 
 **The repeat rule.** A history is a bounded ring (ten slots per logger), so a condition that warns
 on every attempt empties it by itself and evicts the entry naming what preceded the fault. Three
@@ -2979,6 +2985,11 @@ fallback — `typing` isn't importable at all on the Unix-port test interpreter.
 not dead-code-eliminate `if TYPE_CHECKING:` blocks** the way it does `const(0)` — the guard is still
 correct/required; stripping these from the frozen build is `build_firmware.py`'s job (B.11), not an
 individual file's own concern.
+
+**Quoting annotations** (owner decision, 2026-09-24): quote an annotation only when it names
+something imported under `TYPE_CHECKING`; leave every other annotation bare. MicroPython never
+evaluates annotations, so both forms are runtime-safe and existing files are not mass-edited to the
+rule — apply it to new code and to lines a change already touches.
 
 ## D.7 Always-defined return values
 
@@ -4071,7 +4082,7 @@ live-path tests, mirrored in the twin tier) shows `_read_chunk()`'s blanket `exc
 catching it, logging errno 47, and returning a clean failure — after which `_read()` reads block 1
 instead, so **a single transient overrun costs nothing at all**: the caller gets its data and the
 repair write restores block 0. Only an overrun hitting both copies degrades the read to `None`.
-That makes the retry question (BACKLOG.md open question 15) much less pressing than it looked.
+So no retry is added (owner decision, 2026-09-24): the dual-copy layer already covers the read path.
 
 The same run also leaves the chunk marked busy and unreadable until rewritten, which is **intended
 behavior, not a defect** — an interrupted read means an interrupted internal restore on a

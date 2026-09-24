@@ -158,7 +158,7 @@ class SGP40_Reader(SensorReaderConfig):
         # other module's real live-push field (project decision - constant at runtime, no per-call
         # plumbing needed), just never persisted.
         self._push_callbacks[name_cfg(_VAL_RESET)] = self._push_reset_voc
-        self.trigger_event = asyncio.ThreadSafeFlag()
+        self.read_event = asyncio.ThreadSafeFlag()
         self.trigger_timer = Timer()
         self.backup_counter = 0
         # real values are always set by _init_sgp() before read_loop() ever reads these
@@ -465,7 +465,7 @@ class SGP40_Reader(SensorReaderConfig):
             self.trigger_timer.init(
                 period=1000,
                 mode=Timer.PERIODIC,
-                callback=lambda _b: self.trigger_event.set(),
+                callback=lambda _b: self.read_event.set(),
             )
         except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully
             # instead of crashing the caller (this sensor just never gets triggered this cycle).
@@ -518,7 +518,7 @@ class SGP40_Reader(SensorReaderConfig):
         if not await self._init_sgp():  # init sensor at startup
             return False  # break and restart if init fails
         while True:
-            await self.trigger_event.wait()  # wait for read trigger event
+            await self.read_event.wait()  # wait for read trigger event
             self.pr.evt("sensor trigger")
             buf, serialize, deserialize, cfg_values = await self._check_storage()
             deserialize = await self._run_restore(buf, deserialize=deserialize, cfg_values=cfg_values)  # check for available backup data

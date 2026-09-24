@@ -1854,7 +1854,7 @@ def test_stop_timer_deinits_the_trigger_timer() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _base_trigger() - the 1Hz base tick divided down by trigger_period into the "real" trigger_event
+# _base_trigger() - the 1Hz base tick divided down by trigger_period into the "real" read_event
 # (SPECIFICATION.md Part C.9's "second small _base_trigger() task" pattern).
 # ---------------------------------------------------------------------------
 
@@ -1876,7 +1876,7 @@ def test_base_trigger_sets_trigger_event_only_once_the_configured_period_elapses
         await _settle(3)
         fired = True
         try:
-            await asyncio.wait_for(reader.trigger_event.wait(), 1)
+            await asyncio.wait_for(reader.read_event.wait(), 1)
         except asyncio.TimeoutError:
             fired = False
         task.cancel()
@@ -1957,7 +1957,7 @@ def test_read_loop_stores_a_result_after_one_trigger() -> None:
     async def scenario() -> BMP3XX:
         task = asyncio.create_task(reader.read_loop())
         await _settle(10)  # let _init_bmp() (real, but small: 2ms) settle-sleeps complete
-        reader.trigger_event.set()
+        reader.read_event.set()
         await _settle(10)
         task.cancel()
         try:
@@ -1986,7 +1986,7 @@ def test_read_loop_gives_up_and_returns_false_after_max_errors() -> None:
         await _settle(10)
         fake(i2c).nak_addresses.add(_ADDR)  # every read from here on fails
         for _ in range(4):  # max_module_error=2 -> the 3rd consecutive failure crosses the threshold
-            reader.trigger_event.set()
+            reader.read_event.set()
             await _settle(10)
             if task.done():
                 return await task

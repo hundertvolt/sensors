@@ -668,7 +668,7 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
                 # threshold (asy_sgp40_driver.py's own _check_storage()) - forces the very next real
                 # trigger cycle to reach it, exercising the same real _run_backup() 60 real cycles
                 # would, just without waiting through 59 of them for the same real code path.
-                sgp1.trigger_event.set()
+                sgp1.read_event.set()
                 assert await _wait_until(lambda: sgp1.last_backup is not None, timeout_s=5.0), (
                     "the real VOC backup write never completed"
                 )
@@ -692,7 +692,7 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
             task2 = sgp2.start_asy_read()
             try:
                 await asyncio.sleep(2.5)  # same real init delay as boot 1 above
-                sgp2.trigger_event.set()
+                sgp2.read_event.set()
                 assert await _wait_until(lambda: sgp2.restored_from is not None, timeout_s=5.0), (
                     "the real VOC backup restore never completed after the simulated reboot"
                 )
@@ -734,7 +734,7 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             try:
                 await asyncio.sleep(2.5)
                 sgp1.backup_counter = 59
-                sgp1.trigger_event.set()
+                sgp1.read_event.set()
                 assert await _wait_until(lambda: sgp1.last_backup is not None, timeout_s=5.0), "the first real VOC backup write never completed"
             finally:
                 await _cancel(task)
@@ -748,7 +748,7 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             task2 = sgp1.start_asy_read()
             try:
                 sgp1.backup_counter = 59
-                sgp1.trigger_event.set()
+                sgp1.read_event.set()
                 assert await _wait_until(lambda: sgp1.last_backup is not None, timeout_s=5.0), "the second real VOC backup write never completed"
             finally:
                 await _cancel(task2)
@@ -770,7 +770,7 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             task3 = sgp2.start_asy_read()
             try:
                 await asyncio.sleep(2.5)
-                sgp2.trigger_event.set()
+                sgp2.read_event.set()
                 assert await _wait_until(lambda: sgp2.restored_from is not None, timeout_s=5.0), "the real VOC backup restore never completed after the simulated crash-reboot"
             finally:
                 await _cancel(task3)

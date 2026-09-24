@@ -536,7 +536,7 @@ def test_start_timer_and_stop_timer_wire_the_trigger_event() -> None:
     reader.start_timer()
     assert reader.trigger_timer.callback is not None
     reader.trigger_timer.trigger()  # fake machine.Timer.trigger() - fires the callback synchronously
-    assert run(asyncio.wait_for(reader.trigger_event.wait(), 1)) is None
+    assert run(asyncio.wait_for(reader.read_event.wait(), 1)) is None
     reader.stop_timer()
     assert reader.trigger_timer.deinit_called is True
 
@@ -1362,7 +1362,7 @@ def test_read_loop_stores_a_result_after_one_trigger() -> None:
         task = asyncio.create_task(reader.read_loop())
         for _ in range(20):  # pump the loop until _init_sgp() (real sleeps, now fast) completes
             await asyncio.sleep(0)
-        reader.trigger_event.set()
+        reader.read_event.set()
         for _ in range(20):  # pump the loop until the result is stored
             await asyncio.sleep(0)
             data = await reader.get_data()
@@ -1395,7 +1395,7 @@ def test_read_loop_gives_up_and_returns_false_after_max_errors() -> None:
         for _ in range(4):  # each trigger with a corrupted measurement response counts as one failure
             bad = _word(30000)
             fake_bus.read_queue.append(bytes([bad[0] ^ 0xFF]) + bad[1:])
-            reader.trigger_event.set()
+            reader.read_event.set()
             for _ in range(20):
                 await asyncio.sleep(0)
                 if task.done():
@@ -1727,7 +1727,7 @@ def test_read_loop_gives_up_via_real_i2c_nak_faults_not_just_crc_mismatch() -> N
             await asyncio.sleep(0)
         fake_bus.nak_addresses.add(0x59)  # sensor goes unresponsive after a successful init
         for _ in range(4):
-            reader.trigger_event.set()
+            reader.read_event.set()
             for _ in range(20):
                 await asyncio.sleep(0)
                 if task.done():

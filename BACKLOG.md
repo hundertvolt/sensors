@@ -247,44 +247,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     `tests_hardware/flash/test_bus_electrical_timing.py` cites this number. **Do not re-investigate
     the soft-reset semantics**; what remains is designing a measurement method that leaves the board
     running, which is `REAL_HARDWARE_TEST_QUEUE.md`'s C7, not this item.
-15. **Should a transient SPI RX overrun be retried, or left to the task supervisor?** MicroPython
-    1.29 added an `OSError(EIO)` raise site to rp2's SPI transfer path for *reading* transfers of
-    32+ bytes (SPECIFICATION.md Part F.5.2), reachable here via `asy_fram_driver.py`'s 260-byte
-    SGP40 VOC-state read. **Much less pressing than it first looked.** This entry originally said
-    the overrun propagates uncaught and kills the reader task; driving it through the real stack
-    (see the live-path tests added to `tests/test_asy_fram_manager.py` and
-    `tests/test_digital_twin_bus_hazard_concurrency.py`) showed otherwise: `_read_chunk()`'s
-    blanket `except Exception` catches it, logs errno 47, and `_read()` then reads block 1, so a
-    single transient overrun is **fully absorbed** - correct data returned, block 0 repaired. Only
-    an overrun that hits both copies degrades the read to `None`, and even then nothing raises.
-    So a retry inside the chunk loop would buy little on a read path the dual-copy layer already
-    covers. Still deliberately **not** changed (CLAUDE.md: flag, don't silently fix). Note that the
-    interrupted read *does* leave the chunk marked busy and unreadable until rewritten - that is
-    intended behavior, not a second bug to weigh here: see SPECIFICATION.md Part A.4's FRAM entry.
-
-22. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
-   Part C.7 reserves `errno` 1-9 and `wrnno` 1-2 for `SensorReader`/`SensorReaderConfig`, and
-   `api_response.py`'s `handle_set_cmd()` owns the fixed cross-module slot `errno=99`; the project
-   owner's standing direction (2026-09-11) is that **every** module aligns to that reservation for
-   conformity and clash avoidance, whether or not it subclasses `SensorReader`. Audited across
-   `src/`: `config_manager.py` (`errno` 1-14, `wrnno` 1-6), `system_service.py` (`errno` 1-6, plus
-   its dynamic `wrnno = n + 1`), `asy_webserver_service.py` (`errno` 1-6, `wrnno` 1-5),
-   `captive_dns.py` (`errno` 1-3, `wrnno` 1-3), `asy_wifi_service.py` (`wrnno` 1-7),
-   `asy_ntp_client.py` (`wrnno` 1-3), `asy_notification_service.py` (`wrnno` 1-5 - its `errno` was
-   already renumbered to 10-13 for exactly this reason). Conformant today:
-   `asy_sgp40_driver.py` (`errno` 10-18, `wrnno` 10-14), `asy_bmp3xx_driver.py`,
-   `asy_scd30_driver.py`, `asy_fram_manager.py`/`asy_fram_driver.py`.
-   **No live clash exists** - none of the seven currently shares a logger with a `SensorReader`
-   instance, so the reserved codes never reach the same history stream. It becomes a real defect
-   the moment one of them gains a `logger=` reach-through, which is exactly the pattern
-   `AsyFramManager`/`FRAM_SPI` already use and `asy_uart_comm.py` adopted (it numbers from 10,
-   C.7.1). **Where to fix**: a renumbering pass is mechanical but not free - every changed code
-   is a persisted value in deployed units' FRAM histories and appears in `SPECIFICATION.md`
-   C.7.1's table, the errcount UI's raw `num`, and existing tests. Needs an owner decision on
-   whether to renumber in place (invalidating persisted history semantics for those modules on
-   the next deployment) or only on each module's next substantial touch. Flagged, deliberately
-   not fixed drive-by - see CLAUDE.md's "flag, don't silently change" rule.
-
 24. **`PUT /status {"ResetErrors": true}` costs a large, slowly-growing fraction of the product's
     own request ceiling. Now measured on real hardware; one question left.**
     `asy_webserver_service.py`'s `_put_status()` resets every registered error source sequentially
@@ -408,31 +370,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     **Close this by** taking the curve, then adding the bench analogue of the twin's own budget
     check to `tests_hardware/error_log_helpers.py`.
 
-37. **Four cross-file consistency findings, each re-verified 2026-09-18 and each still needing an
-    owner yes/no.** Raised by the ISL29125 promotion's bird's-eye `src/` scan (2026-09-12), with
-    recommendations added 2026-09-13. None is a bug; each is a place two files answer the same
-    question differently.
-    - **`FiltCoeff` means two different things** - BMP3xx's on-chip IIR register (discrete `int`
-      from `_IIR_SETTINGS`) and the ISL29125's software EMA coefficient (`float`, -1.0 = off), same
-      field name on the same `/sensors` endpoint. No wire collision (the sensor group namespaces
-      it). **Recommendation: leave it** - renaming the BMP3xx field is a config-schema migration on
-      deployed units for a cosmetic gain, and both carry their own `description` in
-      `html/definitions/<device>.json`, which is where a user meets them.
-    - **Four names for two trigger-event roles**: `trigger_event` (BMP3xx/SGP40),
-      `start_trigger_event` + `irq_trigger_event` (SCD30), `base_trigger_event` + `read_event`
-      (ISL29125). **Recommendation: the ISL29125 pair if any** - it is the only naming that says
-      which role is which. A pure rename, but it touches three drivers and their tests.
-    - **`from asyncio import ThreadSafeFlag` appears in exactly one file** (`asy_scd30_driver.py`);
-      every other file writes `asyncio.ThreadSafeFlag`. **Recommendation: change the one file** -
-      four lines, no behavioural risk, the cheapest of the five.
-    - **Return-annotation quoting is mixed project-wide**: 22 `src/` files carry quoted subscripted
-      return annotations, 11 carry unquoted ones, 9 carry both. MicroPython never evaluates
-      annotations, so both are safe and there is simply no stated convention. **Recommendation:
-      state the rule, do not mass-edit** - quote an annotation naming a `TYPE_CHECKING`-only
-      import, leave the rest bare, as a sentence in SPECIFICATION.md Part D.
-
-38. **Merged into item 22** (re-verified 2026-09-18; `asy_uart_comm.py` numbers from 10, C.7.1).
-
 40. **`SPECIFICATION.md` carries seven subsections about one sensor, and no other sensor has any**
     - the owner ruled (2026-09-14) to leave the document exactly as it stands and tidy this in a
     session of its own. Three patterns exist and only the third is the
@@ -467,6 +404,13 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
 ## Deferred / explicitly out-of-scope work
 
+- **A transient SPI RX overrun is not retried - SETTLED, owner, 2026-09-24.** MicroPython 1.29's
+  `OSError(EIO)` on 32+ byte rp2 SPI reads (SPECIFICATION.md Part F.5.2) is absorbed by the FRAM
+  layer's dual copy: `_read_chunk()` logs errno 47 and `_read()` falls back to block 1 and repairs
+  block 0, so a retry inside the chunk loop would buy little. Don't re-propose it.
+- **`FiltCoeff` keeps its two meanings - SETTLED, owner, 2026-09-24.** BMP3xx's IIR register index
+  and the ISL29125's EMA coefficient share the name, namespaced per sensor on `/sensors`; renaming
+  either is a stored-config migration on deployed units for a cosmetic gain.
 - **`arduino/` is out of this project's scope - SETTLED, owner, 2026-09-24.** That covers the UART
   protocol's C implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and
   the BME688/BSEC material with its licensing. Nothing here tracks work on it; don't re-raise.
@@ -639,10 +583,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   so one table edit per new driver is an acceptable cost — and the small half above already turns
   forgetting it into a named error rather than a confusing one. Kept only to record that the
   alternative was considered and declined; don't re-propose it.
-  **Still undecided, same class**: `buildgen/definitions.py`'s cross-cutting `status`/`errcount`
-  sections are a hand-maintained catalog, where every per-driver section is `@web`-tag-derived
-  (the errcount rows are already per logger instance, keyed by `resolved_name`). Whether it stays
-  hand-maintained like `buildspec.py` needs one deliberate owner look, not a mechanical change.
+  **Same answer for `buildgen/definitions.py`'s cross-cutting `status`/`errcount` sections** (owner,
+  2026-09-24): they stay a hand-maintained catalog beside the `@web`-derived per-driver sections.
 - **`[device].name`/`hostname`/`hotspot_password` are wired into the boot path now - done (owner
   decision, 2026-09-18).** Every device really did boot as `SensorNode` whatever its TOML said; the
   three fields were validated and then reached nothing. `AsyConnTime.__init__` takes `hostname=`/

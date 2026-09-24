@@ -148,7 +148,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         )
         self.bmp = BMP3XX_I2C(i2c, address=address)
         self.base_trigger_event = asyncio.ThreadSafeFlag()
-        self.trigger_event = asyncio.ThreadSafeFlag()
+        self.read_event = asyncio.ThreadSafeFlag()
         # Bare Timer() is valid on rp2 (id defaults to -1) despite the installed stub package
         # requiring a positional id - a stub inaccuracy, not a code bug.
         self.trigger_timer = Timer()
@@ -274,7 +274,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.base_trigger_event.wait()
             self.trigger_counter += 1
             if self.trigger_counter >= await self.trigger_period.get_value():
-                self.trigger_event.set()
+                self.read_event.set()
                 self.trigger_counter = 0
 
     def start_asy_read(self) -> asyncio.Task[bool]:
@@ -386,7 +386,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         if not await self._init_bmp():  # init sensor at startup
             return False  # break and restart if init fails
         while True:
-            await self.trigger_event.wait()  # wait for read trigger event
+            await self.read_event.wait()  # wait for read trigger event
             self.pr.evt("sensor trigger")
             results = await self._read_bmp()  # read data
             if not await self._error_check(results):  # check and count errors

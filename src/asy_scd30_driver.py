@@ -10,7 +10,6 @@ Source: Sensirion CO2 Sensors SCD30 Interface Description & Datasheet (datasheet
 import asyncio
 import math
 import time
-from asyncio import ThreadSafeFlag
 from collections import namedtuple
 from struct import unpack, unpack_from
 
@@ -139,10 +138,10 @@ class SCD30_Reader(SensorReader):
         )
         self.scd = SCD30_I2C(i2c)
         self.irq_pin = Pin(irq_pin, mode=Pin.IN)
-        self.start_trigger_event = ThreadSafeFlag()
+        self.base_trigger_event = asyncio.ThreadSafeFlag()
         self.start_trigger_timer = Timer()
         self.trigger_half_sec = 2 * int(trigger_sec)
-        self.irq_trigger_event = ThreadSafeFlag()
+        self.read_event = asyncio.ThreadSafeFlag()
         self.scd_timer_triggers = 0
 
     async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
@@ -215,14 +214,14 @@ class SCD30_Reader(SensorReader):
             self.start_trigger_timer.init(
                 period=500,
                 mode=Timer.PERIODIC,
-                callback=lambda _b: self.start_trigger_event.set(),
+                callback=lambda _b: self.base_trigger_event.set(),
             )
         except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully
             # instead of crashing the caller (this sensor just never gets triggered this cycle).
             self.pr.err("Could not start timer:", e)
         self.irq_pin.irq(
             trigger=self.irq_pin.IRQ_RISING,
-            handler=lambda _b: self.irq_trigger_event.set(),
+            handler=lambda _b: self.read_event.set(),
         )
 
     def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
@@ -401,7 +400,7 @@ class SCD30_Reader(SensorReader):
         if not await self._init_scd():
             return False
         while True:
-            await self.irq_trigger_event.wait()
+            await self.read_event.wait()
             self.pr.evt("sensor trigger")
             self.scd_timer_triggers = 0
             results = await self._read_scd()
@@ -412,13 +411,13 @@ class SCD30_Reader(SensorReader):
     # Trigger the CO2 sensor IRQ if it isn't running (pin stays HIGH if not read!)
     async def scd_init_irq(self) -> None:
         while True:
-            await self.start_trigger_event.wait()
+            await self.base_trigger_event.wait()
             if self.irq_pin.value() == 1:
                 self.scd_timer_triggers += 1
 
             if self.scd_timer_triggers >= self.trigger_half_sec:  # consecutive intervals seen (500ms rate)
                 self.pr.evt("Interrupt Start Trigger")
-                self.irq_trigger_event.set()
+                self.read_event.set()
 
     # Selected low-level driver forwards below: each failure is logged via self.pr (not swallowed
     # silently) so a transient bus fault on a REST-triggered config get/set stays visible in the

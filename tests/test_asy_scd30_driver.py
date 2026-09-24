@@ -657,8 +657,8 @@ def test_reader_start_timer_arms_periodic_timer_and_pin_irq() -> None:
     reader.irq_pin.trigger_irq()
 
     async def scenario() -> None:
-        await asyncio.wait_for(reader.start_trigger_event.wait(), 1)
-        await asyncio.wait_for(reader.irq_trigger_event.wait(), 1)
+        await asyncio.wait_for(reader.base_trigger_event.wait(), 1)
+        await asyncio.wait_for(reader.read_event.wait(), 1)
 
     run(scenario())
     FakeTimer.all_timers.clear()
@@ -673,7 +673,7 @@ def test_reader_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be
     with _RaiseOnArm():
         reader.start_timer()  # must not raise despite the timer failing to arm
     assert reader.start_trigger_timer.period == -1  # never actually armed
-    assert reader.start_trigger_timer.callback is None  # nothing wired to start_trigger_event
+    assert reader.start_trigger_timer.callback is None  # nothing wired to base_trigger_event
     # start_timer() is synchronous, so it logs via the plain, non-counting pr.err() rather than
     # awaiting pr.err_s() - this failure prints but is deliberately never recorded as a numbered
     # error in the counter, unlike every err_s() call site in this driver.
@@ -686,7 +686,7 @@ def test_reader_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be
     reader.irq_pin.trigger_irq()
 
     async def scenario() -> None:
-        await asyncio.wait_for(reader.irq_trigger_event.wait(), 1)
+        await asyncio.wait_for(reader.read_event.wait(), 1)
 
     run(scenario())
     FakeTimer.all_timers.clear()
@@ -730,19 +730,19 @@ def test_scd_init_irq_sets_irq_trigger_after_enough_consecutive_stuck_ticks() ->
     async def scenario() -> "tuple[bool, bool]":
         task = asyncio.create_task(reader.scd_init_irq())
         for _ in range(5):
-            reader.start_trigger_event.set()
+            reader.base_trigger_event.set()
             await _settle(3)
         not_yet = True
         try:
-            await asyncio.wait_for(reader.irq_trigger_event.wait(), 0)
+            await asyncio.wait_for(reader.read_event.wait(), 0)
             not_yet = False
         except asyncio.TimeoutError:
             pass
-        reader.start_trigger_event.set()
+        reader.base_trigger_event.set()
         await _settle(3)
         triggered = False
         try:
-            await asyncio.wait_for(reader.irq_trigger_event.wait(), 1)
+            await asyncio.wait_for(reader.read_event.wait(), 1)
             triggered = True
         except asyncio.TimeoutError:
             pass
@@ -765,11 +765,11 @@ def test_scd_init_irq_never_triggers_while_pin_reads_low() -> None:
     async def scenario() -> bool:
         task = asyncio.create_task(reader.scd_init_irq())
         for _ in range(10):
-            reader.start_trigger_event.set()
+            reader.base_trigger_event.set()
             await _settle(3)
         triggered = True
         try:
-            await asyncio.wait_for(reader.irq_trigger_event.wait(), 0)
+            await asyncio.wait_for(reader.read_event.wait(), 0)
         except asyncio.TimeoutError:
             triggered = False
         task.cancel()
@@ -1234,7 +1234,7 @@ def test_read_loop_full_iteration_stores_measured_data_and_derived_values() -> N
     async def scenario() -> SCD30:
         task = asyncio.create_task(reader.read_loop())
         await _settle(5)
-        reader.irq_trigger_event.set()
+        reader.read_event.set()
         await _settle(5)
         data = await reader.get_data()
         task.cancel()
@@ -1271,7 +1271,7 @@ def test_read_loop_gives_up_after_max_module_error_consecutive_failures_and_logs
         for _ in range(4):
             if task.done():
                 break
-            reader.irq_trigger_event.set()
+            reader.read_event.set()
             await _settle(5)
         return await task
 
@@ -1308,7 +1308,7 @@ def test_read_loop_recovers_error_counter_after_a_good_read_following_failures()
         task = asyncio.create_task(reader.read_loop())
         await _settle(5)
         for _ in range(3):
-            reader.irq_trigger_event.set()
+            reader.read_event.set()
             await _settle(5)
         data = await reader.get_data()
         task.cancel()
