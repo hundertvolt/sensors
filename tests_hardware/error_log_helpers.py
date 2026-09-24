@@ -41,16 +41,9 @@ def assert_module_error_log_nonempty(dut_ip: str, module_name: str) -> None:
 def assert_module_error_log_clean(
     dut_ip: str, module_name: str, allowed_warnings: tuple[int, ...] = (), allowed_errors: tuple[int, ...] = (),
 ) -> None:
-    """Nothing in the log beyond the entries explicitly named.
-
-    Stricter than assert_module_error_log_empty() where it matters - it reads the history, not a
-    counter - and looser where an empty log is not a property the module can offer: one whose
-    normal operation logs a legitimate warning would make a zero counter a race against it.
-
-    Same distinction isl29125_mechanism_envelope.py draws on-device ("logged real ERRORS, not just
-    warnings"). `allowed_errors` covers the one case where an ERROR is the documented outcome - a
-    test that provokes torn writes and then asserts the recovery worked.
-    """
+    """Nothing in the log's history beyond the entries named - unlike a zero counter, no race
+    against a module whose normal operation logs a legitimate warning. `allowed_errors` is for a
+    test whose documented outcome is an ERROR (torn writes provoked, then recovery asserted)."""
     entry = get_errcount(dut_ip).get(module_name, {})
     history = entry.get("history", [])
     unexpected = [

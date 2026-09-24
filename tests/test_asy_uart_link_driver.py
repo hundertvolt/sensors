@@ -141,10 +141,9 @@ def test_reset_error_counter_also_resets_link_counters() -> None:
 
 
 async def _one_exercise_round(pair: Pair, *, listen: bool = True) -> None:
-    """Drives the initiator's own _exercise_loop() through exactly one counted round, then stops it.
-
-    Polled rather than slept out: the loop counts before its _EXERCISE_PERIOD_MS sleep, so the
-    first counter to move is the round's end and the period itself never has to elapse."""
+    """Drives the initiator's _exercise_loop() through exactly one counted round, then stops it.
+    Polled, not slept out: the loop counts before its _EXERCISE_PERIOD_MS sleep, so the counter
+    moving marks the round's end and the period never has to elapse."""
     listener = asyncio.create_task(pair._listen_rounds(1)) if listen else None
     loop_task = asyncio.create_task(pair.initiator._exercise_loop())
     try:
