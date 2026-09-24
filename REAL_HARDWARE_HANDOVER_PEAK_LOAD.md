@@ -72,6 +72,7 @@ Between levels: `kick_all_stations()`, hard reset, 45 s settle.
 | `--margin` | rounds | heap map every ~5.3 s after `gc.collect()` | no (the collect cleans the heap) |
 | `--peak` | **N threads back to back for 60 s; thread 0 swaps one GET for the SGP40 reset PUT every 3 s** | 20 ms low-water sampler, never collects (§4.2) | **yes** |
 | `--peak --margin` | peak | same sampler, `gc.collect()` before every read, 100 ms apart | no |
+| `--peak --no-sampler` | peak | **none** (no maps, no sampler, no rejection counter); prints the script's heap footprint once before boot | **yes** — the instrumentation control (§5.7) |
 
 - **STABLE** = zero true failures (anything but `ok` and `refused`) and zero device lines matching
   `harness.MEMORY_ERROR_MARKERS`. A connection closed at the ceiling before any response
@@ -417,8 +418,8 @@ live set; its verdict is instrumentation only, and the threshold is moot under i
   H the day before. The "better" figures of 2026-09-23 (§5.3: 24.6 % at 7, 20.7 % at 8) were the
   **rounds** load, not peak. Not excluded: the sampler's wake-ups and 100 ms collects stretch
   requests a little (more overlap), and the device script's own compiled code sits in the heap for
-  the whole run (production's `main.py` is frozen) — a few KB, equal in every run. **A control
-  without any sampler is proposed (§7), not yet run.**
+  the whole run (production's `main.py` is frozen) — a few KB, equal in every run. **Settled by the
+  control in §5.7**: the wall is real without any sampler; the samplers cost some throughput.
 
 Verbatim (`device: WEBSERVER …` lines omitted):
 
@@ -535,6 +536,48 @@ N= 8 GC_THRESHOLD=32768 | STABLE | complete 116/386 | refused 270 (expected) | f
      refusals cross-check: host counted 270, device rejected 263 (a gap means a reset the ceiling did not cause)
 ```
 
+### 5.7 Instrumentation control — the same peak load with no sampler at all (run 2026-09-24)
+
+Owner's question after §5.6: does the instrumentation itself cause the heap use? Control:
+`combined_load_sweep.py 8 8 8 --peak --no-sampler` on F′ at `gc.threshold(-1)` — the same 60 s
+back-to-back load plus the SGP40 reset PUT, but on the device **no heap maps, no low-water sampler,
+no rejection-counter wrapper**; only the host's failure count and the device's allocation-failure
+lines. Three fresh boots.
+
+| boot | requests | complete | refused | **true failures** | device allocation lines |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 441 | 130 | 311 | **0 (0.00 %)** | 0 |
+| 2 | 459 | 134 | 325 | **0 (0.00 %)** | 0 |
+| 3 | 419 | 122 | 296 | **1 (0.24 %)**, `/status` 500, 252 B piece | 2 |
+
+Against the instrumented N = 8 runs at −1 in §5.6: non-collecting sampler 2 failures (0.55 %) in
+1 boot, collecting sampler 1 (0.26 %) in 1 boot.
+
+- **The wall is real without any instrumentation**: the same `/status` piece (252 B) fails at 8 with
+  nothing but the production task graph running. The instrumentation does **not** cause it.
+- **The instrumentation does add some load**: completed requests per minute 122-134 without it
+  against 105 (non-collecting sampler) and 116 (collecting) with it, i.e. the samplers cost ~10-20 %
+  of throughput; and failures were 1 in 1,319 requests (1 of 3 boots) without it against 3 in 757
+  (2 of 2 boots) with it. Few events, so a direction, not a factor.
+- **The device script's own heap cost is 2.7 KB**: `FOOTPRINT script_before_boot alloc=55,680 B`
+  (after a collect, before the task graph starts) against **52,960 B** for a two-line script that
+  only imports `sensortask_dev` and collects — 2,720 B of this script's own compiled code and
+  globals, present in every device-script run, absent in production (frozen `main.py`). All heap
+  figures in this file are therefore ~2.7 KB (1.5 % of the heap) pessimistic against production.
+
+Verbatim:
+
+```
+N= 8 GC_THRESHOLD=-1 | STABLE | complete 130/441 | refused 311 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     FOOTPRINT script_before_boot alloc=55680 free=127680
+N= 8 GC_THRESHOLD=-1 | STABLE | complete 134/459 | refused 325 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     FOOTPRINT script_before_boot alloc=55680 free=127680
+N= 8 GC_THRESHOLD=-1 | UNSTABLE | complete 122/419 | refused 296 (expected) | failed 1 (0.24 %) | device allocation-failure lines 2 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     FOOTPRINT script_before_boot alloc=55696 free=127664
+     1 x /status status500
+     device: MemoryError: memory allocation failed, allocating 252 bytes
+```
+
 ## 6. Findings
 
 1. **The wall is the `/status` JSON piece, not the static files any more.** Every true failure at
@@ -575,17 +618,12 @@ N= 8 GC_THRESHOLD=32768 | STABLE | complete 116/386 | refused 270 (expected) | f
 
 ## 7. Open — next sitting
 
-1. **Instrumentation control** (owner's question, §5.6): the same peak load on F′ at N = 8, ≥ 3
-   boots at −1 with **no sampler at all** (no samples, no rejection counter), counting host failures
-   and device allocation lines only; plus the device script's own heap footprint printed once at
-   start. Same failure rate as §5.6 → the instrumentation is not the cause. Needs a `--no-sampler`
-   switch in the tool.
-2. **The exact peak live set on H at 7, 8, 9** — `--peak --margin`; only N = 6 exists (§5.5); F′ at 7/8 is in §5.6.
-3. **Repeats**: every peak row is one run. The 0-vs-1 failure differences at 8 need ≥ 3 boots per
+1. **The exact peak live set on H at 7, 8, 9** — `--peak --margin`; only N = 6 exists (§5.5); F′ at 7/8 is in §5.6.
+2. **Repeats**: most peak rows are one run. The 0-vs-1 failure differences at 8 need ≥ 3 boots per
    cell before they mean anything.
-4. **Owner decisions**: the limit itself; whether `_open_conns` should drop at response-written
+3. **Owner decisions**: the limit itself; whether `_open_conns` should drop at response-written
    (§6.3); whether to reduce what `/status` needs (a smaller `chunk_bytes`, or less per piece).
-5. Deferred from the static-fix handover: H3 (`/status` p50/p95, `test_end_to_end_timing.py`) and
+4. Deferred from the static-fix handover: H3 (`/status` p50/p95, `test_end_to_end_timing.py`) and
    H4 (full bench tier) on F′.
 
 ## 8. Traps paid for today

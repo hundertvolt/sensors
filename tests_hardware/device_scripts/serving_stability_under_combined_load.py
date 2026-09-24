@@ -28,6 +28,8 @@ _COLLECT_BEFORE_SAMPLE = False  # combined_load_sweep.py --margin sets True: eac
 _PEAK_SAMPLE_MS = 0  # combined_load_sweep.py --peak sets 20: a low-water sampler replaces the maps. It never
 # collects and allocates only on a new minimum, so a --peak run's stability verdict IS evidence.
 _GC_RISE_BYTES = 2048
+_NO_SAMPLER = False  # combined_load_sweep.py --peak --no-sampler sets True: no maps, no sampler, no counter
+# wrapper - the control for whether the instrumentation itself costs heap. Footprint printed once.
 _WINDOW_S = 150
 
 
@@ -89,12 +91,18 @@ async def _peak_sampler(webserver: "WebserverService") -> None:
 
 async def _run() -> None:
     print(f"GC_THRESHOLD={gc.threshold()}")
+    if _NO_SAMPLER:  # heap before the task graph: this script's compiled code plus the imports production pays too
+        gc.collect()
+        print(f"FOOTPRINT script_before_boot alloc={gc.mem_alloc()} free={gc.mem_free()}")
     main_task = asyncio.get_event_loop().create_task(sensortask_dev.main())
     await asyncio.sleep(20)  # the host waits for READY, then drives the load itself (Part E.9)
-    _dump("after_boot")
+    if not _NO_SAMPLER:
+        _dump("after_boot")
     print("READY")
     try:
-        if _PEAK_SAMPLE_MS:
+        if _NO_SAMPLER:
+            await asyncio.sleep(_WINDOW_S)
+        elif _PEAK_SAMPLE_MS:
             assert sensortask_dev.webserver is not None
             await _peak_sampler(sensortask_dev.webserver)
         else:

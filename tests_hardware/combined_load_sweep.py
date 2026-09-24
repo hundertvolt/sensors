@@ -29,6 +29,7 @@ PUT_INTERVAL_S = 3.0  # the hammer test's own cadence (bench/test_memory_stress_
 _THRESHOLD_LINE = "gc.threshold(-1)\n"
 _MARGIN_LINE = "_COLLECT_BEFORE_SAMPLE = False"
 _PEAK_LINE = "_PEAK_SAMPLE_MS = 0"
+_NO_SAMPLER_LINE = "_NO_SAMPLER = False"
 
 
 def _reference_lengths(ip: str) -> dict[str, int]:
@@ -210,7 +211,10 @@ def run_level(board: Board, bench: BenchBridge, ip: str, script: Path, n: int, r
         f"N={n:2d} {threshold} | {'STABLE' if stable else 'UNSTABLE'} | complete {served}/{total} | refused {refused} (expected) | failed {failed} ({rate}) | "
         f"device allocation-failure lines {len(allocation_lines)} | worst largest free run {worst_run} B | reference {result.get('reference')}",
     )
-    if peak:
+    footprint = next((line for line in output.splitlines() if line.startswith("FOOTPRINT")), None)
+    if footprint:
+        print(f"     {footprint}")
+    if peak and not footprint:  # --no-sampler runs neither the sampler nor the rejection counter
         for line in _peak_lines(output):
             print(f"     {line}")
         device_rejected = next((part.split("=", 1)[1] for line in output.splitlines() if line.startswith("PEAK_SUMMARY") for part in line.split() if part.startswith("rejected=")), "?")
@@ -237,8 +241,11 @@ def main() -> int:
     parser.add_argument("--ip", default=os.environ.get("DUT_IP"), help="the DUT's address (default $DUT_IP)")
     parser.add_argument("--raw-dir", type=Path, default=None, help="save each level's full device output here")
     parser.add_argument("--peak", action="store_true", help="saturated load (N threads back to back for 60 s, the SGP40 reset PUT every 3 s) and the device's non-collecting post-GC low-water sampler; its verdict IS evidence")
+    parser.add_argument("--no-sampler", action="store_true", help="with --peak: no device-side sampling or counting at all, only failures and allocation lines - the instrumentation control")
     parser.add_argument("--margin", action="store_true", help="gc.collect() before each heap sample and report the post-collect free heap; instrumentation - its STABLE/UNSTABLE is not evidence")
     args = parser.parse_args()
+    if args.no_sampler and (not args.peak or args.margin):
+        parser.error("--no-sampler goes with --peak and without --margin")
     if not args.ip:
         parser.error("the DUT's IP is needed: --ip or $DUT_IP")
     source = DEVICE_SCRIPT.read_text()
@@ -253,7 +260,12 @@ def main() -> int:
     if args.peak:
         if _PEAK_LINE not in source:
             parser.error(f"{DEVICE_SCRIPT.name} no longer carries the line --peak substitutes")
-        source = source.replace(_PEAK_LINE, f"_PEAK_SAMPLE_MS = {100 if args.margin else 20}", 1)
+        if args.no_sampler:
+            if _NO_SAMPLER_LINE not in source:
+                parser.error(f"{DEVICE_SCRIPT.name} no longer carries the line --no-sampler substitutes")
+            source = source.replace(_NO_SAMPLER_LINE, "_NO_SAMPLER = True", 1)
+        else:
+            source = source.replace(_PEAK_LINE, f"_PEAK_SAMPLE_MS = {100 if args.margin else 20}", 1)
     variant.write_text(source)
     board, bench = Board(), BenchBridge()
     verdicts = [run_level(board, bench, args.ip, variant, n, args.raw_dir, margin=args.margin, peak=args.peak) for n in args.levels]
