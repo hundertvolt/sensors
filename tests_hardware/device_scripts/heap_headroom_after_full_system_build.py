@@ -8,6 +8,10 @@ import gc
 import micropython
 import sensortask_dev
 
+# Explicit, never inherited: mpremote's raw-REPL soft reset keeps the boot entry's threshold (rp2's
+# main.c runs gc_init() once, outside the soft-reset loop), so this script's own first arm read 32768
+# until 2026-09-24 despite reporting a reactive-default figure (MEASUREMENTS 0B.7).
+gc.threshold(-1)
 # Doubling/halving search bounds for the largest contiguous block. 64 B is below anything worth
 # reporting; 192 KB is already above the RP2040's whole 264 KB SRAM, so the search always converges
 # from a real failure rather than running off the top.
@@ -91,7 +95,7 @@ def _report_checked(label: str) -> "tuple[int, int]":
 
 
 async def _main() -> None:
-    print(f"GC_THRESHOLD={gc.threshold()}")  # inherited until the switch below: the build runs under it
+    print(f"GC_THRESHOLD={gc.threshold()}")  # set at module level, so the build runs at the (e) stage
     _report_checked("baseline")
     # The "before" half of the placement delta: what the BOOT adds up high is attributable only by
     # comparing against what was already there, which is what makes that check independent of the

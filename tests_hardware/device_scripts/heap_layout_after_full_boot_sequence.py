@@ -11,6 +11,9 @@ import sensortask_dev
 
 import system_service
 
+# Explicit, never inherited - same reason and same wording as heap_headroom_after_full_system_build.py:
+# this script's own first arm read the boot entry's 32768 until 2026-09-24 (MEASUREMENTS 0B.7).
+gc.threshold(-1)
 # Same doubling/halving bounds as heap_headroom_after_full_system_build.py, deliberately: the two
 # scripts' largest_block figures are only comparable if the probe is identical.
 _PROBE_MIN = 64
@@ -125,7 +128,7 @@ def _report_checked(label: str) -> "tuple[int, int]":
 
 
 async def _main() -> None:
-    print(f"GC_THRESHOLD={gc.threshold()}")  # inherited until the switch below: the build runs under it
+    print(f"GC_THRESHOLD={gc.threshold()}")  # set at module level, so the build runs at the (e) stage
     arm = _selected_arm()
     live = arm == _ARM_LIVE
     # The seam: the generated module's first emitted collect, which runs before the batch's first

@@ -473,9 +473,15 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
 44. **Board anomalies from the connection-limit sittings — recorded, not chased; each needs
     silicon** (HEAP_FRAGMENTATION_MEASUREMENTS.md §7R.5; queue row F17):
-    - One silent reset in 1 of 9 instrumented peak-load boots, cause lost.
-    - Hotspot fallback after a reset, three times.
-    - A likely watchdog reset at `mpremote` attach.
+    - One silent reset in 1 of 9 instrumented peak-load boots, cause lost. Watchdog starvation is the
+      first candidate to rule out: the supervisor loop is the only feed site (`system_service.py`'s
+      `feed_watchdog()`), and a board CPU-bound at ~2.2 requests/s can miss the 8,388 ms cap.
+    - Hotspot fallback after a reset, three times. `devices/dev.toml`'s `conn_fail_to_hotspot = 5` is
+      the mechanism that would take it there; what is unmeasured is why five connects in a row failed.
+    - ~~A likely watchdog reset at `mpremote` attach~~ — **not an open anomaly: that mechanism is
+      already measured** (item 12, 2026-09-11 — an `mpremote exec` stops `main.py`, nothing feeds the
+      WDT, and the board takes a hard reset ~8 s later; the occurrence was ~9 s after attach). It is
+      `tests_hardware/README.md`'s "> 45 s between a reset and the next attach" trap, not a finding.
 
 46. **Retire `html_stub/`?** `scripts/build_frozen_html.sh` and the twin's CI default to it (SPEC
     A.9); the owner's rule (2026-09-23) is that `dev`'s real website is the most biting test. Needs

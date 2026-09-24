@@ -96,7 +96,7 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | C9 | Cutting the 74 chip-select sessions to ~6 will clear the contiguity floor | **withdrawn as stated; the achievable side reopened by §3B** | ~12x against a required 40-100x; 70,000 B per logger measures in_big 14 / span 97%, inside the saturated regime (§6A.8). §3B now reaches 38-90x *without* cutting a session; the required side was computed in settrace bytes and is not re-derived (§3A.6), so whether that clears the floor is untested |
 | C12 | The status-byte pair, the two copies and the per-write WREN/WRDI envelope are redundant bookkeeping | **withdrawn — owner's account, 2026-09-18** | each element is grounded (§3B.1): the status bytes are a lock against a copy caught mid-operation, the pair written separately so a torn pair is detectable; the copies restore the last valid value; the CRC catches bus errors; each CS cycle is what commits a command at the chip. The wire protocol is the integrity feature; the cost is the Python that carries it |
 | C10 | Loop yields are protective for layout | **withdrawn — a settrace artifact** | it held, confound-checked, on the settrace build (§6A.4), where each yield allocated a 28-block object that competed for no survivor's hole and forced early collections. On the real VM a yield allocates 0 B (§1.2 item 7), so it can be neither protective nor harmful to layout |
-| C13 | Every figure in this file is the `gc.threshold(-1)` picture, and the firmware ships `gc.threshold(32768)`, where the twin shows no layout defect at any churn dose | **confirmed [SRC] + [TWIN]; the qualitative half was the handover's, and the [HW] question it raised is resolved** | the threshold is set in the generated boot entry, which neither the harnesses nor the hardware test's own device script execute (§1.5); at 32,768 B `base` keeps 87% against 18%, survivors span 12% of the heap against 92%, and every churn dose from zero to base's own clears the floor (§7A.5). The handover's §2.12 already recorded that a threshold set before `build_system()` makes the twin look healthy and called it masking; what is new is the quantification and the [SRC] trace. The [HW] 20,592 B is a deliberate pre-threshold reading, so board and twin agree and the corpus's baseline is the one the hardware test asserts on (§1.5) |
+| C13 | Every figure in this file is the `gc.threshold(-1)` picture, and the firmware ships `gc.threshold(32768)`, where the twin shows no layout defect at any churn dose | **confirmed [SRC] + [TWIN]; the qualitative half was the handover's, and the [HW] question it raised is resolved** | the threshold is set in the generated boot entry, which neither the harnesses nor the hardware test's own device script execute (§1.5); at 32,768 B `base` keeps 87% against 18%, survivors span 12% of the heap against 92%, and every churn dose from zero to base's own clears the floor (§7A.5). The handover's §2.12 already recorded that a threshold set before `build_system()` makes the twin look healthy and called it masking; what is new is the quantification and the [SRC] trace. The [HW] 20,592 B was taken before the script sets a threshold but at the 32768 it had inherited ([SRC], §0B.7), so board and twin agree on the number while the board's arm is the (f) one; the corpus's baseline is the one the hardware test asserts on (§1.5) |
 | C11 | Pre-allocating each module's permanent objects at construction is the remedy the evidence favours | **refuted** | the mechanism is real — the same objects placed pre-seam give in_big 0 and 100% kept where in-window they give 380 and 12% — but it holds only below the churn threshold. At the real 843,232 B dose pre-seam objects are unprotected (kept ~50%), and the real system's 76 survivors are already an order of magnitude below the survivor axis's own onset, so that axis is not the binding constraint (§6A.12) |
 
 ## 0A. The model
@@ -533,14 +533,26 @@ is why a 2-block change of one object's size moves the result and why nothing co
 - ~~Which configuration the [HW] symptom belongs to~~ — **answered from [SRC] the same day**
   (§1.5): the hardware test's device script runs `build_system()` itself, asserts before any
   threshold is set, and only then reports a second, unasserted line with
-  `gc.threshold(32768)` applied. The board's 20,592 B is a deliberate no-threshold reading, the twin
-  reproduces it, and the corpus's baseline is the one the hardware test asserts on. Whether the
+  `gc.threshold(32768)` applied. The twin reproduces the board's 20,592 B and the corpus's baseline
+  is the one the hardware test asserts on — but **"before any threshold is set" is not the same as
+  "at the reactive default"**, and the item below shows the board had already inherited 32768, so
+  that second line was a no-op and this one is an (f)-stage reading. Whether the
   *boot-collect scheme* moves the board the way it moves the twin is since measured on silicon: it
   does, by more (§7H.1-§7H.3).
 - **Which threshold the pre-2026-09-24 device-script readings ran at** (§1, §7D, §7F, §7H, the
-  20,592 B): rp2 runs `gc_init()` once, outside the soft-reset loop (§7R intro), so an `mpremote` run
-  may have inherited the boot entry's 32768. The two flash-tier scripts still only print it
-  (`GC_THRESHOLD=`); the next T1 run says which.
+  20,592 B) — **answered from [SRC], 2026-09-24: 32768, inherited.** `gc_alloc_threshold` is written
+  by exactly two places, `gc_init()` (`py/gc.c`) and `gc.threshold()` (`py/modgc.c`); rp2's `main.c`
+  calls `gc_init()` once, *before* its soft-reset loop; every friendly-REPL boot runs the frozen
+  `main.py`, whose module-level `gc.threshold(32768)` precedes `asyncio.run()`
+  (`buildgen.codegen.generate_boot_entry_source()`); and `mpremote run` executes in that same
+  interpreter. So no path on a board carrying this firmware leaves the reactive default in force, and
+  a script that sets no threshold of its own reads 32768. Both flash-tier scripts now set `-1`
+  themselves, and `tests_scripts/test_device_script_gc_threshold.py` fails a first arm *reported*
+  before it is *set*. **What this leaves open**: C13 and §1.5 read the board's 18.9% ratio as agreeing
+  with the twin's `-1` arm *because* both were pre-threshold; at 32768 the same number is instead
+  direct silicon evidence that the threshold does not buy the twin's 87% — consistent with §7M.4's
+  non-transfer and with why I.4(f) is defence in depth rather than the fix. One `GC_THRESHOLD=` line
+  from the next T1 run settles it in a single look.
 - **Gap 10, hardware** — the defect and both remedies are measured on silicon since 2026-09-18
   (§7D, §7F, §7H, §7M); what stays unmeasured is the per-object question. A GC block is 16 B there
   against 32 B here, so the "1-block objects are immune" boundary in §0B.2 falls at a different byte
@@ -5065,9 +5077,14 @@ Percentages are as measured; production-equivalent adds back the device script's
 - **`gc.threshold(32768)` does not reduce failures**: ~1.7-2× the collections and more contiguous
   space at 6, but H at 8 gave 1 vs 0 and at 9 gave 6 vs 3 — single runs, not separable from chance.
 - **An image built for 8 is not cleaner at 8 than one built for 10** (F′ 4 of 7 boots failing, H 0
-  and 1), against the expectation that 4,648 B more heap and a tighter cap would help. Unexplained;
-  one untested hypothesis is that refused clients retry at once and every refused accept still costs
-  its stream objects and a task.
+  and 1), against the expectation that 4,648 B more heap and a tighter cap would help. **The
+  expectation, not the result, is what was wrong** (2026-09-24): this file's own model predicts
+  nothing monotone in free bytes — §0B.6 closes on "the extreme sensitivity of a fixed order to any
+  shift in it, which is why a 2-block change of one object's size moves the result and why nothing
+  composes", and 4,648 B is 290 GC blocks of shift on the RP2040. Two images with different linker
+  heaps are two different seams, so which one leaves a 257 B hole at peak is not orderable from their
+  sizes. One hypothesis still untested on top of that: refused clients retry at once and every refused
+  accept still costs its stream objects and a task.
 - **The instrumentation does not cause the wall**: the same 252 B piece fails at 8 with nothing on
   the device but the task graph. The samplers cost ~10-20 % of throughput, so instrumented figures
   are pessimistic; the device script's own code and globals cost 2,720 B (52,960 B for an
@@ -5095,8 +5112,11 @@ SPECIFICATION.md E.8).
 - **A self-reset under heap exhaustion** on pre-fix image G (limit 16, one-boot sweep 4-18 at `-1`):
   at the first route failure 20,864 B were free with a largest run of 240 B, one dump later 5,888 B;
   then the USB CDC dropped (`OSError: [Errno 5]` in `mpremote`) at ~425 s uptime. Cause not captured.
-- **A likely watchdog reset at `mpremote` attach** ~30 s after a test's own teardown reset, ~9 s
-  after attaching. Not confirmed.
+- **A watchdog reset at `mpremote` attach** ~30 s after a test's own teardown reset, ~9 s after
+  attaching. **Explained 2026-09-24, off silicon**: BACKLOG item 12 measured this mechanism on real
+  hardware in 2026-09-11 — an `mpremote` attach stops `main.py`, the supervisor loop is the only
+  `feed_watchdog()` site, and the board hard-resets ~8 s later. The ~9 s matches the 8,388 ms cap;
+  `tests_hardware/README.md`'s "> 45 s between a reset and the next attach" trap is the rule for it.
 - **An empty `200` with no `Content-Length`**, twice, from an idle `GET /` during the boot-time WLAN
   drop. **Explained 2026-09-24, off silicon**: `_serve_static()` does set the length, but microdot
   writes the status line and each header apart, and `http.client` reads EOF mid-headers as their end,
