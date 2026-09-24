@@ -23,6 +23,7 @@ Section F. Not a test file; SPECIFICATION.md Parts H.7 and E.2.1 have the ration
 import asyncio
 import gc
 import json
+import socket
 import sys
 import time
 
@@ -33,6 +34,7 @@ sys.path.insert(0, "digital_twin")
 import _http_client
 import machine
 from _tmp_scratch import TmpScratch
+from microdot import Request  # type: ignore[import-not-found]
 
 try:
     from typing import TYPE_CHECKING
@@ -100,13 +102,18 @@ async def _boot(port: int, device: str) -> "Any":
     return module
 
 
+_BODY_CAP = 2048  # WebserverService's shipped max_content_length (Part I.6), stated, never read back
+
+
 def _ceiling(module: "Any") -> int:
     """The admission ceiling of the build under test, read off the real service rather than
     restated - every burst below scales with it, so raising a device's own max_connections makes
     these scenarios bite harder instead of leaving them pinned at a number that used to be right."""
     assert module.webserver is not None
     ceiling: int = module.webserver._max_connections
-    assert ceiling >= 1, ceiling
+    # The bursts below floor at 2 page loads' or OpenHAB's pair of slots: under 4 they would exceed
+    # the ceiling and assert refusals away, so such a device needs scenario shapes of its own.
+    assert ceiling >= 4, f"max_connections {ceiling} is below the 4 these scenarios are shaped for"
     return ceiling
 
 
@@ -183,7 +190,7 @@ async def _still_serving(host: str, port: int, timeout_s: float = 5.0) -> bool:
 async def _drained(module: "Any", timeout_s: float = 10.0) -> bool:
     """Waits for the service's own admission counter to return to zero, and reports whether it did.
     A slot is released in _serve()'s finally, AFTER the close is awaited, so it outlives the response
-    the client already holds (Part I.6) - a burst demanding the full ceiling has to start from zero."""
+    the client already holds (Part H.7.1) - a burst demanding the full ceiling has to start from zero."""
     assert module.webserver is not None
     start = time.ticks_ms()
     while True:
@@ -687,21 +694,22 @@ async def _scenario_all_admitted_page_loads_complete(device: str) -> None:
     try:
         tabs = max(2, ceiling // 2)  # 2 connections per page load, the real post-inlining footprint
 
-        async def _index() -> int:
+        async def _index() -> bytes:
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/")
             assert res.status_code == 200, res.status_code
-            return len(res.body)
+            return bytes(res.body)
 
-        # One uncontended load first, as the reference length - the strongest truncation check
+        # One uncontended load first, as the reference body - the strongest truncation check
         # there is, and mount-independent (the stub page and the real website differ by ~25x).
         reference = await _index()
-        assert reference > 0, reference
+        assert len(reference) > 0, len(reference)
         assert await _drained(module), "the reference load's own slot never came back"
         # The index twice per tab rather than index + a named asset: which assets exist depends on
         # whether the stub or the real (inlined) website is mounted, and the hazard under test is
         # concurrent streaming of one file, which this exercises directly either way.
-        sizes = await asyncio.gather(*(_index() for _ in range(tabs * 2)))
-        assert set(sizes) == {reference}, f"a concurrent page load was truncated - uncontended it is {reference} bytes, under load {sizes}"
+        bodies = await asyncio.gather(*(_index() for _ in range(tabs * 2)))
+        sizes = [len(body) for body in bodies]
+        assert set(bodies) == {reference}, f"a concurrent page load differs - uncontended it is {len(reference)} bytes, under load {sizes}"
         assert await _still_serving("127.0.0.1", port)
     finally:
         await _cancel(task)
@@ -709,36 +717,36 @@ async def _scenario_all_admitted_page_loads_complete(device: str) -> None:
 
 @_register("the_accept_queue_is_never_shallower_than_the_admission_ceiling", 20.0)
 async def _scenario_backlog_covers_the_ceiling(device: str) -> None:
-    # asyncio.start_server()'s own backlog default is 5 (extmod/asyncio/stream.py), so a raised
-    # max_connections inherited it and the accept queue silently dropped the rest. The coupling is
-    # asserted structurally AND behaviourally: every slot the ceiling admits must be reachable.
+    # backlog only matters while the event loop is busy: arrivals then wait in the accept queue, and
+    # past it the stack drops them. So the burst lands while the loop is stalled on purpose, and a
+    # whole ceiling of it has to reach _serve() within one SYN retry (1 s on Linux) of the stall.
     port = _next_test_port()
     module = await _boot(port, device)
     ceiling = _ceiling(module)
     assert _backlog(module) >= ceiling, (_backlog(module), ceiling)
     task = await _start_webserver(module)
+    clients = []
     try:
-        # Held open together, so every one really occupies a slot at the same time - a sequential
-        # sweep would pass with a backlog of 1. The queue must carry all of them to the app layer.
-        writers = []
-        for _ in range(ceiling):
-            _reader, writer = await asyncio.open_connection("127.0.0.1", port)
-            writers.append(writer)
-        await asyncio.sleep(0.3)
-        try:
-            beyond: int | str = await _healthy_request("127.0.0.1", port)
-        except OSError:
-            beyond = "rejected"
-        # Refused by _serve()'s own reject-when-full branch, having been accepted - not dropped
-        # unseen inside the accept queue, which is what too shallow a backlog would produce.
-        assert beyond == "rejected", beyond
-        for writer in writers:
-            writer.close()
-            await writer.wait_closed()
-        assert await _drained(module), "the held connections never released their slots"  # inside the 20 s budget
         assert await _still_serving("127.0.0.1", port)
+        assert await _drained(module), "the readiness probe's slot never came back"
+        addr = socket.getaddrinfo("127.0.0.1", port)[0][-1]
+        for _ in range(ceiling):
+            client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            clients.append(client)
+            client.setblocking(False)
+            try:
+                client.connect(addr)
+            except OSError:
+                pass  # EINPROGRESS: the kernel finishes the handshake while the loop is stalled
+        time.sleep_ms(200)  # the stall: no await, so nothing is accepted until it ends
+        await asyncio.sleep(0.5)
+        reached = await module.webserver._open_conns.get_value()
+        assert reached == ceiling, f"{reached} of a {ceiling}-arrival burst reached _serve() - the rest waited out a dropped SYN"
     finally:
+        for client in clients:
+            client.close()
         await _cancel(task)
+    assert await _drained(module), "the burst's slots never came back"
 
 
 @_register("a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response", 30.0)
@@ -792,19 +800,26 @@ async def _scenario_simultaneous_bodies(device: str) -> None:
     try:
         results = await asyncio.gather(*(_real_config_write("127.0.0.1", port, 5 + i) for i in range(ceiling)))
         assert list(results) == [200] * ceiling, results
-        # Then the same count again with bodies at the cap's own boundary: accepted at the cap,
-        # refused one byte over, with every simultaneous read still a separate live allocation.
+        # Then the same count again with bodies at the cap's own boundary: read at the cap (the
+        # schema may still refuse the value), 413 one byte over - each a separate live allocation.
+        assert Request.max_content_length == _BODY_CAP, Request.max_content_length
+        padding = _BODY_CAP - len(json.dumps({"NTP_Host": ""}))
+
         async def _sized(nbytes: int) -> "int | str":
+            body = {"NTP_Host": "x" * nbytes}
             try:
-                res = await _http_client.fetch("127.0.0.1", port, "PUT", "/networking", {"NTP_Host": "x" * nbytes}, read_body=False)
+                res = await _http_client.fetch("127.0.0.1", port, "PUT", "/networking", body, read_body=False)
             except OSError:
-                return "rejected"
+                return "rejected"  # a 413 sent over a body it never read can arrive as a reset
             else:
                 return res.status_code
 
-        sized = await asyncio.gather(*(_sized(900) for _ in range(ceiling)))
-        assert all(r in (200, "rejected") for r in sized), sized
-        assert sized.count(200) >= 1, sized
+        assert await _drained(module), "the first burst's slots never came back"
+        at_cap = await asyncio.gather(*(_sized(padding) for _ in range(ceiling)))
+        assert all(r not in (413, "rejected") for r in at_cap), at_cap
+        assert await _drained(module), "the at-cap burst's slots never came back"
+        over = await asyncio.gather(*(_sized(padding + 1) for _ in range(ceiling)))
+        assert all(r in (413, "rejected") for r in over), over
         assert await _still_serving("127.0.0.1", port)
     finally:
         await _cancel(task)

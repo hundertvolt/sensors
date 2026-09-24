@@ -1611,6 +1611,39 @@ def test_close_writer_logs_a_persisted_warning_when_wait_closed_raises() -> None
     assert service.pr.err_count == 1
 
 
+def test_a_close_whose_own_warning_runs_out_of_heap_still_frees_the_slot() -> None:
+    # At the limit's extreme the heap empties (Part H.7), so the warning a failed close() logs can
+    # itself raise MemoryError; the slot must be freed anyway, or every later connection is refused.
+    service, _app = _make_service(max_connections=1)
+
+    async def out_of_heap(*_args: "Any", **_kwargs: "Any") -> None:
+        raise MemoryError("simulated exhausted heap")
+
+    service.pr.wrn_s = out_of_heap  # type: ignore[method-assign]  # deliberate monkeypatch
+    for _ in range(3):
+        try:
+            run_timed(service._serve(_ClosedReader(), _RaisingCloseWriter()))
+        except MemoryError:
+            pass  # escaping is acceptable here; keeping the slot is not
+        assert run(service._open_conns.get_value()) == 0
+
+
+class _HangingWriter(_ScriptedWriter):
+    async def awrite(self, data: bytes) -> None:
+        await asyncio.Event().wait()
+
+
+def test_a_write_phase_timeout_is_logged_once_not_twice() -> None:
+    # A write timeout escapes microdot (it catches OSError only) and reaches _serve()'s own log;
+    # the proxy logging it as well counted one reclaimed connection as two warnings.
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=2.0)
+    request = _request_bytes("GET", "/status")
+    run_timed(service._serve(_ScriptedReader([(0.0, request)]), _HangingWriter()), timeout_s=2.0)
+    entry = next(iter(run(service.get_error_counter()).values()))
+    assert entry["ErrCount"] == 1, entry
+    assert run(service._open_conns.get_value()) == 0
+
+
 def test_timeout_stream_proxy_close_and_wait_closed_forward_to_the_wrapped_stream() -> None:
     # Direct coverage of the two Stream-forwarding methods ext/microdot.py never calls in Section
     # F's scenarios (close() is sync; wait_closed() only ever reaches the raw writer, via
@@ -2913,8 +2946,8 @@ def test_a_backlog_below_the_ceiling_is_clamped_up_never_left_short() -> None:
 
 
 def test_the_server_passes_its_own_backlog_to_start_server() -> None:
-    # The whole point of the knob: an inherited default is what made any ceiling above 5 fiction,
-    # so the value has to reach start_server() rather than merely be stored.
+    # The whole point of the knob: inherited, the default of 5 resets the sixth of a burst landing
+    # while the loop is busy, so the value has to reach start_server() rather than merely be stored.
     service, _app = _make_service(max_connections=7)
     recorded: dict[str, Any] = {}
 

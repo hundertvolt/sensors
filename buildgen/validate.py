@@ -196,13 +196,13 @@ def _check_connection_ceiling(model: DeviceModel, src_dir: Path) -> None:
         raise BuildError(model.device, f"[device].max_connections is {max_connections}, which this firmware's lwIP settings cannot serve: " + "; ".join(ensemble) + ". Raise the matching [lwip] values in toolchain/versions.toml or lower max_connections", field="max_connections")
     backlog = dev.get("backlog")
     if backlog is not None and backlog < max_connections:
-        # An accept queue shallower than the ceiling drops arrivals inside lwIP, where nothing in
-        # src/ ever sees them - so the device silently serves fewer than its own config admits.
-        raise BuildError(model.device, f"[device].backlog is {backlog}, below the {max_connections} connections [device].max_connections admits - the accept queue would drop arrivals the ceiling says it accepts", field="backlog")
+        # backlog is how many arrivals can land while the event loop is busy elsewhere; past it lwIP
+        # resets them, where nothing in src/ sees it - so a burst the ceiling admits is cut short.
+        raise BuildError(model.device, f"[device].backlog is {backlog}, below the {max_connections} connections [device].max_connections admits - the accept queue would drop arrivals of one burst the ceiling says it accepts", field="backlog")
     if backlog is not None and backlog > max_connections + 1:
-        # Every queued arrival holds a pcb, and the spare three budget one; the rest would only be
-        # refused by _serve() anyway, so a deeper queue buys nothing but pcb exhaustion.
-        raise BuildError(model.device, f"[device].backlog is {backlog}, above max_connections + 1 ({max_connections + 1}) - each queued arrival holds a pcb the MEMP_NUM_TCP_PCB budget does not cover, only to be refused", field="backlog")
+        # Every queued arrival holds a pcb, and every one past a full ceiling plus one is refused by
+        # _serve() anyway, so a deeper queue buys nothing but pcbs held for arrivals it turns away.
+        raise BuildError(model.device, f"[device].backlog is {backlog}, above max_connections + 1 ({max_connections + 1}) - each extra queued arrival holds a pcb only to be refused", field="backlog")
 
 
 def _check_bus_tables(model: DeviceModel) -> "dict[str, TomlDoc]":

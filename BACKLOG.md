@@ -768,7 +768,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
       the ~70 % refusals of back-to-back clients are the expected price (SPECIFICATION.md H.7).
     - **Settled: the wall is not moved.** Every failure at 8-10 was one 242-257 B `/status` piece;
       at 6 the largest free block at peak is ~1.5 KB, so nothing needs it. The lever, if a higher
-      limit is ever wanted, is a smaller `chunk_bytes` or less per `/status` piece (Part I.3).
+      limit is ever wanted, is less per `/status` piece (Part I.3): in the twin no lever cleared 10 -
+      a gate cut failures ~5x, `chunk_bytes` 128 helped, 64 and lazy JSON made it worse (§7R.6).
     - **Settled: `MEMP_NUM_TCP_PCB >= max_connections + 3` is a build error**, the third
       per-connection rule in `check_lwip_ensemble()` (`SPARE_TCP_PCBS`) beside the segment and arena
       ones. A FIN_WAIT pcb outlives its slot and lwIP never reclaims one at equal priority, and every
@@ -976,6 +977,15 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   All of this is host-side Python with no new dependency, and the firmware build's inputs are
   unchanged, so no chroot leg's outcome moves; the installer leg still covers the setup change.
   Kept here as the running list of what is owed, not as a merge blocker.
+  **2026-09-24, spec audit — `toolchain/`, `pyproject.toml`, `scripts/`**:
+  - `micropython_overrides.py`: `check_lwip_ensemble()` restates all sixteen `init.c` checks and
+    refuses `max_connections` below 1; the readback runs the C compiler CMake recorded (not
+    `arm-none-eabi-gcc` from `PATH`) under a 120 s timeout, and C division truncates.
+  - Recorded late from this branch: `pyproject.toml`'s `S603` per-file ignore for
+    `toolchain/micropython_overrides.py` and the `max-args` step 22 -> 23 for `backlog=`, and
+    `scripts/build_firmware.py` passing `toolchain_dir=`, so every device build applies the override.
+  The compiler choice is the one change a chroot leg can see: the installer leg's build must still
+  read back the set it asked for.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
   fixed.** The SPI form exists because the FRAM path drives the chip through blocking register

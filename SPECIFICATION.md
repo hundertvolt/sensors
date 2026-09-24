@@ -278,7 +278,9 @@ features as today's deployed units, not a feature change.
 
 `ext/microdot.py` is vendored, unmodified upstream Microdot (pinned `v2.6.2` — no edits/cleanup;
 CLAUDE.md's Hard rules are authoritative; MIT text at `ext/LICENSE-microdot`). Facts below confirmed
-against its actual source, not docs/memory.
+against its actual source, not docs/memory. Upstream v2.7.0 (checked 2026-09-23) changes only f-strings, a
+`QUERY` decorator and `Vary` merging: the same 1,024 B `send_file` reads, per-header writes and
+`Request` attribute table, so a bump would move none of Part H.7's serving walls.
 
 - **Every exception raised by our own code inside a route handler — including a before/after-request
   hook, and `MemoryError` — is already caught by Microdot itself, per request, and can never crash
@@ -1155,7 +1157,10 @@ implementation.** Re-verified 2026-09-22 against `v1.29.0` as actually fetched, 
 - **`MEM_SIZE`, `TCP_MSS`, `TCP_WND`, `TCP_SND_BUF` and `MEMP_NUM_TCP_SEG` are one atomic
   `#ifndef MEM_SIZE` block** (8000 / 800 / 6400 / 6400 / 32 as pinned). Defining `MEM_SIZE` alone
   on the command line disables the *whole* block: `TCP_MSS` silently reverts to lwIP's own 536 and
-  the segment count to 16. They move together or not at all.
+  the segment count to 16. They move together or not at all. The generated header below
+  `#include`s the real `lwipopts.h` before its own `#undef`/`#define`s, so the block always runs
+  first and cannot be cut short that way; every option is still required, so this one table pins
+  the whole set and a later move to `-D` could not fall into the trap.
 
 **The mechanism, and why it is not `CFLAGS_EXTRA`.** `-D` would serve the guarded macros and
 nothing else, so the override would be split across two mechanisms with only one of them checked.
@@ -1169,12 +1174,13 @@ So the whole option set goes through **one generated header**, reached by MicroP
 the project's own porting guide documents (`make BOARD=myboard BOARD_DIR=...`). No MicroPython
 source is edited and nothing but `make` command-line variables is passed:
 
-- `verify_lwip_connection_counts_anchor()` checks fifteen anchors before anything is written -
+- `verify_lwip_connection_counts_anchor()` checks twenty-one anchors before anything is written -
   lwIP's own guard for each guarded macro, MicroPython's atomic `MEM_SIZE` block and its plain
   `#define`s, the rp2 port's include of the common options, the three CMake lines the redirect
-  depends on, and the board directory's own shape. Each one is covered by its own parametrized
-  case in `tests_scripts/test_micropython_overrides.py`, which proves it is load-bearing by
-  removing it and requiring the failure.
+  depends on, and the board directory's three relayed files. Each one is covered by its own
+  parametrized case in `tests_scripts/test_micropython_overrides.py`, which proves it is
+  load-bearing by removing it and requiring the failure; a completeness test pins that list to the
+  code's own.
 - `apply_lwip_connection_counts_override()` generates a board directory containing a
   `lwipopts_override/lwipopts.h` that `#include`s the real `ports/rp2/lwip_inc/lwipopts.h` by
   absolute path and then `#undef`/`#define`s every option; a `mpconfigboard.cmake` that relays the
@@ -1187,15 +1193,17 @@ source is edited and nothing but `make` command-line variables is passed:
   precaution B.14.1 takes with `VARIANT`.
 - **The values are verified in the built firmware, not assumed.** `verify_lwip_macros_in_build()`
   reads the real `flags.make` CMake wrote for the `firmware` target and preprocesses lwIP's own
-  `opt.h` with exactly those `C_DEFINES`/`C_INCLUDES`/`C_FLAGS`, then compares each option's
-  resolved value against what was asked for. `build_firmware()` calls it after every build. This
-  is what closes the atomic-block trap: a `TCP_MSS` that silently reverted to 536 fails the build
-  instead of shipping.
+  `opt.h` with exactly those `C_DEFINES`/`C_INCLUDES`/`C_FLAGS` and the C compiler CMake recorded
+  for that build (`flags.make`, else `CMakeCache.txt`), bounded by a timeout, then compares each
+  option's resolved value against what was asked for. `build_firmware()` calls it after every
+  build. This proves the generated header was reached at all — a sentinel catches it even when
+  the values asked for equal the defaults — and any value that did not land fails the build.
 
 ### The options are an ensemble, not independent knobs
 
 **This is the part that decides what a raised ceiling really costs.** `lib/lwip/src/core/init.c`
-turns nine relationships between these options into compile-time `#error`s, and `opt.h` *derives*
+turns sixteen relationships over these options and the values derived from them into
+compile-time `#error`s, and `opt.h` *derives*
 four further values — `TCP_SND_QUEUELEN`, `TCP_SNDLOWAT`, `TCP_SNDQUEUELOWAT`, `PBUF_POOL_BUFSIZE` —
 from the ones set here. So a value moved alone either fails the build or silently changes something
 else. **MicroPython's own pinned block is itself a tuned set**, sitting exactly on one of those
@@ -1209,7 +1217,7 @@ runs it on every call.
 
 **Three relationships lwIP does *not* check, and they are the ones that matter here.** Its own
 checks size the shared pools for **one** connection, while this firmware admits `max_connections`
-at once:
+at once (and a `max_connections` below 1 is refused by name, since every share divides by it):
 
 - **`MEMP_NUM_TCP_PCB >= max_connections + 3`** (`SPARE_TCP_PCBS`): a closing connection holds its
   pcb after its slot is free, and lwIP never reclaims a FIN_WAIT one at equal priority (Part H.7).
@@ -1217,18 +1225,22 @@ at once:
 - **`MEMP_NUM_TCP_SEG` is a global pool; `TCP_SND_QUEUELEN` is per connection.** One connection can
   drain the pool, leaving the rest holding data the stack has accepted but cannot push. The
   override therefore requires `MEMP_NUM_TCP_SEG >= max_connections x (TCP_SND_BUF / TCP_MSS)` —
-  every admitted connection able to hold a full send window at once.
+  a full window of full-MSS segments per admitted connection, so segments are never the pool that
+  binds: the `MEM_SIZE` share below runs out long before a connection could fill that window.
 - **`MEM_SIZE` is the arena every outbound byte passes through.** `extmod/modlwip.c:802` calls
   `tcp_write()` with `TCP_WRITE_FLAG_COPY` unconditionally, so the payload is copied into a
   `PBUF_RAM` pbuf, which `pbuf_alloc()` takes from `mem_malloc()` — that heap. The override
   requires its per-connection share to stay at or above **2,000 B**, which is what the
-  4-connection design gave (8000 / 4). A relationship, not a tuning target.
+  4-connection design gave (8000 / 4). A relationship, not a tuning target. When the arena is
+  empty, `modlwip.c`'s write retries `tcp_write()` up to 200 x 50 ms, blocking the whole VM for up to
+  10 s even on a non-blocking socket, and no asyncio timeout can interrupt it. Never observed on
+  silicon, where the GC heap always bound first (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7R.2).
 
 `buildgen/validate.py` runs the N-connection half per device, where N is known, and refuses a
 device whose `max_connections` the firmware's own pools cannot serve.
 
 **`PBUF_POOL_SIZE` is deliberately left alone.** It backs the *inbound* path, where this firmware's
-demand is one small request per connection (bodies capped at 2,048 B, Part I.6), against ~978 B of
+demand is one small request per connection (bodies capped at 2,048 B, Part I.6), against ~892 B of
 GC heap per pbuf — the most expensive pool to grow. **Confirmed on silicon**: at an 8x advertised
 inbound over-commit (16 connections x `TCP_WND` against the pool) it never surfaced, and no lwIP pool
 bound anywhere up to 16 connections — the GC heap always bound first
@@ -1237,17 +1249,23 @@ IPv6-enabled port's 74 B of protocol headers (`LWIP_IPV6 = 1`, so `PBUF_IP_HLEN`
 
 **Measured cost, from real builds** (`RPI_PICO_W`, v1.29.0, `.bss`/`.data` and
 `__GcHeapEnd - __GcHeapStart` read off each `firmware.elf`). Baseline is `.bss` 46,312 B, `.data`
-18,080 B, GC heap **197,528 B**:
+18,080 B, GC heap **197,528 B**.
+Any row reproduces with `setup_toolchain.build_firmware(..., lwip_macros=...)`, then
+`arm-none-eabi-nm --print-size -t d firmware.elf` for those two symbols and each `memp_memory_*`
+pool and `ram_heap`; `verify_lwip_macros_in_build()` confirms the build took the set.
 
-Per *individual* option, which is what a first pass measures and why it misleads:
+Per *individual* option, which is what a first pass measures and why it misleads. The PCB row is
+against that baseline; every other row moves one option from a `MEMP_NUM_TCP_PCB = 12` build
+(GC heap 196,156 B), so it carries none of the PCB cost:
 
 | change | GC heap delta | per unit |
 | --- | --- | --- |
 | `MEMP_NUM_TCP_PCB` 5 -> 32 | -5,292 B | -196 B per PCB slot |
-| `MEMP_NUM_TCP_SEG` 32 -> 64 | -1,884 B | -59 B per segment |
-| `LWIP_STATS` 0 -> 1 | -1,916 B | diagnostics only |
-| `MEM_SIZE` 8000 -> 16000 | -9,372 B | |
-| `PBUF_POOL_SIZE` 16 -> 32 | -15,644 B | -978 B per pbuf |
+| `MEMP_NUM_TCP_SEG` 32 -> 64 | -512 B | -16 B per segment |
+| `MEMP_NUM_UDP_PCB` 5 -> 8 | -240 B | -80 B per UDP PCB |
+| `LWIP_STATS` 0 -> 1 | -544 B | diagnostics only |
+| `MEM_SIZE` 8000 -> 12000 / 16000 | -4,000 / -8,000 B | 1:1 |
+| `PBUF_POOL_SIZE` 16 -> 32 | -14,272 B | -892 B per pbuf |
 
 Every one of those built, up to and including `MEMP_NUM_TCP_PCB = 32`: **there is no compile-time
 wall in this range.** But moving the PCB count alone is not a supported configuration, so the figure
@@ -1274,7 +1292,7 @@ anchors hold, `verify_lwip_connection_counts_anchor()` passing is the confirmati
 `LWIP_MACROS_GUARDED_IN_OPT_H`/`LWIP_MACROS_PREDEFINED_BY_MICROPYTHON` together - that split is
 what records *why* each macro needs the generated header rather than a `-D`.
 
-**Diagnosing which pool ran out**: `LWIP_STATS = 1` keeps per-pool exhaustion counters for 1,916 B
+**Diagnosing which pool ran out**: `LWIP_STATS = 1` keeps per-pool exhaustion counters for 544 B
 of heap, but this firmware never calls lwIP's C `stats_display()`, so reading them needs a probe of
 its own. It was never needed: the serial console's `MemoryError` tracebacks named the GC heap
 directly every time.
@@ -4683,27 +4701,32 @@ and 3), stated per device in `devices/*.toml` and checked against the firmware's
 build error (`check_lwip_ensemble()`'s `SPARE_TCP_PCBS`, 2026-09-24). Closing connections hold pcbs
 from the same pool after their slot is free, and keep-alive is unimplemented here, so every request
 closes one: `lib/lwip/src/core/tcp.c`'s `tcp_alloc()` reclaims TIME_WAIT, LAST_ACK and CLOSING pcbs
-when the pool is empty, but a FIN_WAIT one only at a lower priority, which none of ours has. The
-third covers the one over-ceiling arrival `backlog` queues to be refused. Every limit measured on
-silicon ran at this pattern; nothing leaner ever has.
+when the pool is empty, but a FIN_WAIT one only at a lower priority, which none of ours has, and
+`extmod/modlwip.c` aborts a close still unfinished only after 10 s
+(`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`). Arrivals `backlog` holds until asyncio accepts them, and
+refused ones still closing, hold pcbs from the same pool. Every limit measured on silicon ran at
+this pattern; nothing leaner ever has.
 
 **The PCB count is the small part.** lwIP's options are an ensemble (B.14.2), and a *servable*
 connection also needs its share of two global pools: `MEMP_NUM_TCP_SEG` (a connection that cannot
 get a segment holds data the stack has accepted but cannot push) and `MEM_SIZE` (every outbound byte
 is copied into it — `modlwip.c`'s `tcp_write()` always passes `TCP_WRITE_FLAG_COPY`). Moved together,
-a connection costs **2,324 B of GC heap**, twelve times what the PCB slot alone suggests; 4 → 6 costs
-4,648 B, ~2.4 % of the heap. For 6 the ensemble is `MEMP_NUM_TCP_PCB` 9, `MEMP_NUM_TCP_SEG` 48
+a connection costs **2,324 B of GC heap**, twelve times what the PCB slot alone suggests; against
+the fielded 4-connection set (PCB 5, SEG 32, `MEM_SIZE` 8,000) the shipped one costs 5,040 B, 2.55 %. For 6 the ensemble is `MEMP_NUM_TCP_PCB` 9, `MEMP_NUM_TCP_SEG` 48
 (6 x 8), `MEM_SIZE` 12,000 (2,000 B per connection). `check_lwip_ensemble()` refuses a ceiling the
 pools cannot serve, per device, at build time.
 
-**`backlog` is coupled to it, and must be.** `asyncio.start_server()` defaults to a backlog of 5
-(`extmod/asyncio/stream.py`), so before this was made a constructor knob any `max_connections`
-above 5 was fiction — the accept queue dropped the rest inside lwIP, where nothing in `src/` could
-see it. It now derives `max_connections + 1`: enough that one over-ceiling arrival is queued and
-refused by `_serve()`'s own reject-when-full branch, visibly, rather than dropped unseen. It is
-bounded on both sides: under `max_connections` is a build error, and so is anything above
-`max_connections + 1`, because each queued arrival holds a pcb and the three spare budget one.
-Queuing more buys nothing, since every extra arrival is refused anyway.
+**`backlog` is coupled to it, and must be.** It sizes `extmod/modlwip.c`'s ring of connections lwIP
+has established but asyncio has not yet accepted; an arrival that finds it full is reset inside
+lwIP (`ERR_BUF`), where nothing in `src/` can see it. `extmod/asyncio/stream.py`'s server accepts
+every arrival on its next turn and hands it to `_serve()`, so `backlog` never limits how many
+connections are open at once — it limits how many can land while the event loop is busy
+elsewhere, the normal case on this CPU-bound board under load. `asyncio.start_server()`'s own
+default of 5 would reset the sixth of a burst landing within one turn; `backlog` now derives
+`max_connections + 1`, so a whole ceiling's burst survives a stalled loop and one over-ceiling
+arrival is refused visibly by `_serve()`. It is bounded on both sides: under `max_connections` is a
+build error, and so is anything above `max_connections + 1`, because every queued arrival holds a
+pcb and every one past that would be refused anyway.
 
 **Why 6: stability under peak load, not throughput.** Measured on silicon 2026-09-23/24 at
 `gc.threshold(-1)` under the hammer test's peak load (as many back-to-back clients as the limit,
@@ -4719,7 +4742,9 @@ plus the SGP40 reset PUT), each image built for and tested at its own limit
 
 - **lwIP is never the constraint.** An image provisioned for 16 admitted 16 on every probe, no pool
   surfaced, and the GC heap bound first — while a raised ceiling turns a clean refusal into an
-  admitted request answered 500. A refusal is a clean FIN ~6 ms after connect.
+  admitted request answered 500. A refusal is a FIN ~6 ms after connect, or an RST if the client's
+request bytes had already arrived (`modlwip.c` frees them unread, and lwIP's `tcp_close()` resets a
+connection with unread data).
 - **The board is CPU-bound at ~2.2 requests/s from 6 to 9 clients**, so a higher limit serves nothing
   more: each request only lives longer (~N / 2.2 s) and more responses are held at once. Every open
   connection holds ~7.5-8 KB of live heap at peak (streams, `Request`, handler, the built response),
@@ -4784,7 +4809,8 @@ repo did not, and each failed silently rather than loudly.
   (15.0) around the whole request. Measured with a header line every 2 s: **15.08 / 15.13 s**.
   **No connection can be held longer than ~15 s on this firmware**, whatever the client does.
 - A slot is released in `_serve()`'s `finally`, after the writer close has been awaited, so it
-  outlives the client's own close. Measured drain after a full ceiling was released: **0.71–0.84 s**.
+  outlives the client's own close — and released even when that close's own warning raises
+  `MemoryError` on an exhausted heap, since a skipped release would refuse everyone until reboot. Measured drain after a full ceiling was released: **0.71–0.84 s**.
 
 The consequences, all found by running these instruments on silicon for the first time:
 
@@ -5686,6 +5712,8 @@ rescheduled the reading task in time. That makes it a host-dependency wherever a
 every one of a long run of clean transactions completed, and `scripts/test.sh` deliberately
 oversubscribes the runner (4× the core count, 16 concurrent interpreters on a 4-core host, plus the
 backgrounded `tests_scripts/` tier), so the stall is self-inflicted and routine rather than exotic.
+A 2-core CI runner is reproduced locally with `taskset -c 0,1 uv run bash scripts/test.sh`, and
+`TEST_PARALLELISM=32` on top of it doubles the oversubscription to flush out scheduling flakes.
 
 Sized against J.6's own floor (`2 × poll_wait_ms + poll_idle_ms +` the worst-case GC pause), the
 margins are:

@@ -102,9 +102,9 @@ LWIP_MACROS_GUARDED_IN_OPT_H = ("MEMP_NUM_TCP_PCB", "MEMP_NUM_TCP_PCB_LISTEN", "
 LWIP_MACROS_PREDEFINED_BY_MICROPYTHON = ("MEMP_NUM_UDP_PCB", "LWIP_STATS", "MEM_SIZE", "TCP_MSS", "TCP_WND", "TCP_SND_BUF", "MEMP_NUM_TCP_SEG")
 LWIP_SETTABLE_MACROS = LWIP_MACROS_GUARDED_IN_OPT_H + LWIP_MACROS_PREDEFINED_BY_MICROPYTHON
 
-# The five MEM_SIZE-group defines are ONE atomic `#ifndef MEM_SIZE` block upstream, so a partial
-# set would silently revert TCP_MSS to lwIP's 536 and the segment count to 16. Every macro above is
-# therefore required, always - restating an unchanged value costs nothing and closes that trap.
+# The MEM_SIZE group is ONE atomic `#ifndef MEM_SIZE` block upstream, so a -D of any of it would drop
+# TCP_MSS to lwIP's 536; the generated header (#include first, then #undef) cannot. Every macro is
+# still required, so the build is fully pinned and reviewable, and a regression to -D stays safe.
 _LWIP_COMMON_ANCHORS = (
     "#ifndef MEM_SIZE",
     "#define MEM_SIZE (8000)",
@@ -168,22 +168,23 @@ def verify_lwip_connection_counts_anchor(micropython_dir: Path, board: str) -> N
             raise OverrideError(f"lwip_connection_counts: {board}'s board directory no longer contains {name} ({board_cmake.parent}), so the generated board directory cannot relay it. {_LWIP_REVERIFY}")
 
 
-# lwIP's options are NOT independent. lib/lwip/src/core/init.c turns each relationship below into a
-# compile-time #error, and opt.h DERIVES four more values from the ones set here - so a value moved
-# alone either fails the build or silently changes something else. Mirrored here to fail before the
-# build, naming the relationship, rather than in a wall of preprocessor output.
+# lwIP's options are NOT independent: lib/lwip/src/core/init.c turns each relationship below into a
+# compile-time #error, and opt.h DERIVES four more values from the ones set here. Mirrored here to
+# fail before the build, naming the relationship, rather than in a wall of preprocessor output.
 
 # 2,000 B = the pre-branch design's own MEM_SIZE 8000 over max_connections 4. A relationship, not a
 # tuning target: raising the ceiling may not quietly make each connection's share of the send arena
 # smaller than the configuration this project already ran in the field.
 MEM_SIZE_BYTES_PER_CONNECTION_FLOOR = 2000
-# PCBs past the ceiling: a closed connection's FIN_WAIT pcb outlives its slot and tcp_alloc() never
-# reclaims one at equal priority (lib/lwip/src/core/tcp.c), and backlog queues one over-ceiling
-# arrival to be refused. The pattern every limit ever measured on silicon ran at (Part H.7).
+# PCBs past the ceiling: a closed connection's FIN_WAIT pcb outlives its slot (tcp_alloc() never
+# reclaims one at equal priority; modlwip aborts it after 10 s), as do arrivals not yet accepted or
+# refused. The pattern every limit ever measured on silicon ran at (Part H.7).
 SPARE_TCP_PCBS = 3
 # PBUF_LINK_HLEN 14 + PBUF_IP_HLEN 40 + PBUF_TRANSPORT_HLEN 20 + PBUF_LINK_ENCAPSULATION_HLEN 0.
 # IP_HLEN is 40, not 20: pbuf.h picks it on LWIP_IPV6, which ports/rp2/lwip_inc/lwipopts.h enables.
 _PBUF_PROTOCOL_HEADER_BYTES = 74
+_MEM_ALIGNMENT = 4  # extmod/lwip-include/lwipopts_common.h
+_U16_MAX = 0xFFFF
 
 
 def derive_lwip_dependents(macros: dict[str, int]) -> dict[str, int]:
@@ -202,27 +203,43 @@ def derive_lwip_dependents(macros: dict[str, int]) -> dict[str, int]:
 
 
 def check_lwip_ensemble(macros: dict[str, int], max_connections: int | None = None) -> list[str]:
-    """Every relationship lwIP's own init.c enforces, plus the three it does NOT: its checks size the
-    shared pools for ONE connection, while this firmware admits max_connections at once. Returns
-    the violated relationships; empty means the set is coherent."""
+    """Every init.c relationship over the options set or derived here, plus the three it does NOT
+    check: it sizes the shared pools for ONE connection, while this firmware admits max_connections.
+    Returns the violated relationships; empty means the set is coherent."""
     d = derive_lwip_dependents(macros)
     mss, snd_buf, wnd = macros["TCP_MSS"], macros["TCP_SND_BUF"], macros["TCP_WND"]
     seg, pool, pool_buf = macros["MEMP_NUM_TCP_SEG"], macros["PBUF_POOL_SIZE"], d["PBUF_POOL_BUFSIZE"]
+    queuelen = d["TCP_SND_QUEUELEN"]
     problems: list[str] = []
-    # --- lwIP's own, from lib/lwip/src/core/init.c's TCP sanity block ---
-    if seg < d["TCP_SND_QUEUELEN"]:
-        problems.append(f"MEMP_NUM_TCP_SEG ({seg}) < TCP_SND_QUEUELEN ({d['TCP_SND_QUEUELEN']}, derived from TCP_SND_BUF/TCP_MSS)")
+    # --- lwIP's own, from lib/lwip/src/core/init.c. The port leaves MEMP_MEM_MALLOC, LWIP_WND_SCALE
+    # and LWIP_DISABLE_*_SANITY_CHECKS at 0 and LWIP_TCP/LWIP_UDP at 1, so every one is live. ---
+    if macros["MEMP_NUM_UDP_PCB"] <= 0:
+        problems.append(f"MEMP_NUM_UDP_PCB ({macros['MEMP_NUM_UDP_PCB']}) <= 0 - lwIP requires at least one UDP pcb with LWIP_UDP enabled")
+    if macros["MEMP_NUM_TCP_PCB"] <= 0:
+        problems.append(f"MEMP_NUM_TCP_PCB ({macros['MEMP_NUM_TCP_PCB']}) <= 0 - lwIP requires at least one TCP pcb with LWIP_TCP enabled")
+    if wnd > _U16_MAX:
+        problems.append(f"TCP_WND ({wnd}) > 0xFFFF - it must fit in a u16_t without LWIP_WND_SCALE, which this port does not enable")
+    if queuelen > _U16_MAX:
+        problems.append(f"TCP_SND_QUEUELEN ({queuelen}, derived from TCP_SND_BUF/TCP_MSS) > 0xFFFF - it must fit in a u16_t")
+    if queuelen < 2:  # noqa: PLR2004 - init.c's own literal
+        problems.append(f"TCP_SND_QUEUELEN ({queuelen}, derived from TCP_SND_BUF/TCP_MSS) < 2 - lwIP needs at least 2 for no-copy writes")
+    if pool_buf <= _MEM_ALIGNMENT:
+        problems.append(f"PBUF_POOL_BUFSIZE ({pool_buf}) <= MEM_ALIGNMENT ({_MEM_ALIGNMENT})")
+    if seg < queuelen:
+        problems.append(f"MEMP_NUM_TCP_SEG ({seg}) < TCP_SND_QUEUELEN ({queuelen}, derived from TCP_SND_BUF/TCP_MSS)")
     if snd_buf < 2 * mss:
         problems.append(f"TCP_SND_BUF ({snd_buf}) < 2 * TCP_MSS ({2 * mss})")
-    if d["TCP_SND_QUEUELEN"] < 2 * (snd_buf // mss):
-        problems.append(f"TCP_SND_QUEUELEN ({d['TCP_SND_QUEUELEN']}) < 2 * (TCP_SND_BUF / TCP_MSS) ({2 * (snd_buf // mss)})")
+    if queuelen < 2 * (snd_buf // mss):
+        problems.append(f"TCP_SND_QUEUELEN ({queuelen}) < 2 * (TCP_SND_BUF / TCP_MSS) ({2 * (snd_buf // mss)})")
     if d["TCP_SNDLOWAT"] >= snd_buf:
         problems.append(f"TCP_SNDLOWAT ({d['TCP_SNDLOWAT']}) >= TCP_SND_BUF ({snd_buf})")
     if mss >= (16 * 1024) - 1:
         problems.append(f"TCP_MSS ({mss}) >= 16383, which underflows lwIP's own TCP_SNDLOWAT calculation")
-    if d["TCP_SNDQUEUELOWAT"] >= d["TCP_SND_QUEUELEN"]:
-        problems.append(f"TCP_SNDQUEUELOWAT ({d['TCP_SNDQUEUELOWAT']}) >= TCP_SND_QUEUELEN ({d['TCP_SND_QUEUELEN']})")
-    if pool_buf <= _PBUF_PROTOCOL_HEADER_BYTES:
+    if d["TCP_SNDLOWAT"] >= _U16_MAX - 4 * mss:
+        problems.append(f"TCP_SNDLOWAT ({d['TCP_SNDLOWAT']}, derived from TCP_SND_BUF/TCP_MSS) >= 0xFFFF - 4 * TCP_MSS ({_U16_MAX - 4 * mss}) - it must stay 4 * TCP_MSS below u16_t overflow")
+    if d["TCP_SNDQUEUELOWAT"] >= queuelen:
+        problems.append(f"TCP_SNDQUEUELOWAT ({d['TCP_SNDQUEUELOWAT']}) >= TCP_SND_QUEUELEN ({queuelen})")
+    if pool and pool_buf <= _PBUF_PROTOCOL_HEADER_BYTES:
         problems.append(f"PBUF_POOL_BUFSIZE ({pool_buf}) leaves no room past the {_PBUF_PROTOCOL_HEADER_BYTES}-byte protocol headers")
     if pool and wnd > pool * (pool_buf - _PBUF_PROTOCOL_HEADER_BYTES):
         problems.append(f"TCP_WND ({wnd}) > PBUF_POOL_SIZE * (PBUF_POOL_BUFSIZE - headers) ({pool * (pool_buf - _PBUF_PROTOCOL_HEADER_BYTES)})")
@@ -230,7 +247,16 @@ def check_lwip_ensemble(macros: dict[str, int], max_connections: int | None = No
         problems.append(f"TCP_WND ({wnd}) < TCP_MSS ({mss})")
     if max_connections is None:
         return problems
-    # --- the three lwIP does not check, because it sizes for one connection and we admit N ---
+    if max_connections < 1:  # every share below divides by it, and admitting nothing serves nothing
+        problems.append(f"max_connections ({max_connections}) < 1 - the per-connection relationships are undefined for a ceiling admitting no connection")
+        return problems
+    return problems + _per_connection_problems(macros, max_connections)
+
+
+def _per_connection_problems(macros: dict[str, int], max_connections: int) -> list[str]:
+    """The three relationships lwIP does not check, because it sizes for one connection and we admit N."""
+    mss, snd_buf, seg = macros["TCP_MSS"], macros["TCP_SND_BUF"], macros["MEMP_NUM_TCP_SEG"]
+    problems: list[str] = []
     want_pcb = max_connections + SPARE_TCP_PCBS
     if macros["MEMP_NUM_TCP_PCB"] < want_pcb:
         problems.append(f"MEMP_NUM_TCP_PCB ({macros['MEMP_NUM_TCP_PCB']}) < max_connections + {SPARE_TCP_PCBS} ({want_pcb}) - connections still closing and the one queued over-ceiling arrival hold PCBs from the same pool")
@@ -256,8 +282,8 @@ def validate_lwip_macros(macros: dict[str, int]) -> None:
         raise OverrideError(
             f"lwip_connection_counts: [lwip] in toolchain/versions.toml must set exactly "
             f"{list(LWIP_SETTABLE_MACROS)} - missing {missing}, unrecognized {unknown}. Every macro is "
-            "required even when unchanged, because the five MEM_SIZE-group values are one atomic "
-            "upstream block and a partial set silently reverts TCP_MSS to 536.",
+            "required even when unchanged, so the firmware's lwIP options are fully pinned and "
+            "reviewable in that one table (SPECIFICATION.md Part B.14.2).",
         )
     for name, value in macros.items():
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
@@ -321,6 +347,9 @@ def apply_lwip_connection_counts_override(micropython_dir: Path, overrides_dir: 
 # include path by hand, is what makes the check below a statement about the real translation unit.
 _FLAGS_MAKE_KEYS = ("C_DEFINES", "C_INCLUDES", "C_FLAGS")
 _LWIP_PROBE_MARK = "LWIPPROBE"
+_MAX_SHIFT = 64
+_DEFAULT_COMPILER = "arm-none-eabi-gcc"
+_PREPROCESS_TIMEOUT_S = 120
 
 
 def _eval_macro_expression(text: str) -> int:
@@ -342,12 +371,15 @@ def _eval_macro_expression(text: str) -> int:
                 return left - right
             if isinstance(node.op, ast.Mult):
                 return left * right
-            if isinstance(node.op, ast.FloorDiv):
-                return left // right
-            if isinstance(node.op, ast.LShift):
-                return left << right
-            if isinstance(node.op, ast.RShift):
-                return left >> right
+            if isinstance(node.op, ast.FloorDiv):  # C's `/`, rewritten below: truncates toward zero
+                if right == 0:
+                    raise OverrideError(f"lwip_connection_counts: cannot evaluate preprocessed option value {text!r} - it divides by zero")
+                quotient = abs(left) // abs(right)
+                return -quotient if (left < 0) != (right < 0) else quotient
+            if isinstance(node.op, (ast.LShift, ast.RShift)):
+                if not 0 <= right < _MAX_SHIFT:  # C leaves these undefined; never guess a value
+                    raise OverrideError(f"lwip_connection_counts: cannot evaluate preprocessed option value {text!r} - shift count {right} is outside 0..{_MAX_SHIFT - 1}")
+                return left << right if isinstance(node.op, ast.LShift) else left >> right
         raise OverrideError(f"lwip_connection_counts: cannot evaluate preprocessed option value {text!r} - it is not an integer constant expression")
 
     try:
@@ -356,14 +388,30 @@ def _eval_macro_expression(text: str) -> int:
         raise OverrideError(f"lwip_connection_counts: cannot parse preprocessed option value {text!r}") from exc
 
 
-def read_lwip_macros_from_build(build_dir: Path, macros: dict[str, int], compiler: str = "arm-none-eabi-gcc") -> dict[str, int]:
-    """Preprocesses lwIP's own opt.h with the exact flags CMake compiled the firmware with, and
-    returns each option's resolved value. Proves the override landed instead of assuming the
-    generated header was found - the check Part B.14.2's trap A exists for."""
+def _recorded_c_compiler(build_dir: Path, flags_text: str) -> str:
+    """The C compiler CMake itself chose for this build: flags.make's own header line, else
+    CMakeCache.txt's CMAKE_C_COMPILER, else the toolchain's usual name on PATH."""
+    match = re.search(r"^# compile C with (\S.*)$", flags_text, re.MULTILINE)
+    if match is not None:
+        return match.group(1).strip()
+    cache = build_dir / "CMakeCache.txt"
+    if cache.is_file():
+        match = re.search(r"^CMAKE_C_COMPILER:[A-Z]+=(\S.*)$", cache.read_text(), re.MULTILINE)
+        if match is not None:
+            return match.group(1).strip()
+    return _DEFAULT_COMPILER
+
+
+def read_lwip_macros_from_build(build_dir: Path, macros: dict[str, int], compiler: str | None = None) -> dict[str, int]:
+    """Preprocesses lwIP's own opt.h with the exact flags (and, unless `compiler` is given, the
+    compiler) CMake built the firmware with, returning each option's resolved value - proof the
+    override landed rather than an assumption the generated header was found (Part B.14.2)."""
     flags_make = build_dir / "CMakeFiles" / "firmware.dir" / "flags.make"
     if not flags_make.is_file():
         raise OverrideError(f"lwip_connection_counts: no compile flags at {flags_make} - the firmware build did not get as far as configuring, so nothing can be verified.")
     text = flags_make.read_text()
+    if compiler is None:
+        compiler = _recorded_c_compiler(build_dir, text)
     args: list[str] = []
     for key in _FLAGS_MAKE_KEYS:
         match = re.search(rf"^{key} = (.*)$", text, re.MULTILINE)
@@ -378,7 +426,12 @@ def read_lwip_macros_from_build(build_dir: Path, macros: dict[str, int], compile
         probe.write_text(probe_body)
         # -E only: this never links or runs anything, it just asks the preprocessor what the real
         # build's own macros resolved to. -P drops the line markers that would confuse the scan.
-        result = subprocess.run([compiler, "-E", "-P", *args, str(probe)], capture_output=True, text=True, check=False)
+        try:
+            result = subprocess.run([compiler, "-E", "-P", *args, str(probe)], capture_output=True, text=True, check=False, timeout=_PREPROCESS_TIMEOUT_S)
+        except subprocess.TimeoutExpired as exc:
+            raise OverrideError(f"lwip_connection_counts: preprocessing lwIP's options with compiler {compiler!r} did not finish within {_PREPROCESS_TIMEOUT_S} s") from exc
+        except OSError as exc:
+            raise OverrideError(f"lwip_connection_counts: cannot run the C compiler {compiler!r} to read back lwIP's options ({exc}) - is the ARM toolchain installed and on PATH?") from exc
     if result.returncode != 0:
         raise OverrideError(f"lwip_connection_counts: preprocessing lwIP's options with the real build flags failed:\n{result.stderr.strip()[:2000]}")
     found: dict[str, int] = {}
@@ -392,7 +445,7 @@ def read_lwip_macros_from_build(build_dir: Path, macros: dict[str, int], compile
     return found
 
 
-def verify_lwip_macros_in_build(build_dir: Path, macros: dict[str, int], compiler: str = "arm-none-eabi-gcc") -> dict[str, int]:
+def verify_lwip_macros_in_build(build_dir: Path, macros: dict[str, int], compiler: str | None = None) -> dict[str, int]:
     """read_lwip_macros_from_build() plus the assertion. Raises OverrideError naming every option
     whose resolved value differs from what was asked for."""
     found = read_lwip_macros_from_build(build_dir, macros, compiler)

@@ -1429,8 +1429,8 @@ def test_a_max_connections_below_one_is_rejected(tmp_path: Path, src_dir: Path) 
 
 
 def test_a_backlog_under_max_connections_is_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # The failure this prevents is invisible from src/: a shallow accept queue drops arrivals
-    # inside lwIP, so the device serves fewer connections than its own config admits.
+    # The failure this prevents is invisible from src/: a queue shallower than the ceiling lets lwIP
+    # reset part of a burst that lands while the event loop is busy, before _serve() ever sees it.
     doc = base_doc()
     doc["device"]["max_connections"] = 3
     doc["device"]["backlog"] = 2
@@ -1446,8 +1446,8 @@ def test_a_backlog_at_or_above_max_connections_is_accepted(tmp_path: Path, src_d
 
 
 def test_a_backlog_above_one_over_max_connections_is_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # Every queued arrival holds a pcb and the spare three budget exactly one; the rest would only
-    # be refused by _serve() anyway, so a deeper queue buys nothing but pcb exhaustion.
+    # Every queued arrival holds a pcb, and every one past a full ceiling plus one is refused by
+    # _serve() anyway, so a deeper queue buys nothing but pcbs held for arrivals it turns away.
     doc = base_doc()
     doc["device"]["max_connections"] = 3
     doc["device"]["backlog"] = 4

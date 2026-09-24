@@ -5077,6 +5077,25 @@ faster, its requests hardly overlap, and it is optimistic by two levels or more 
   then block 1 invalid and restored from block 0 — the signature of a block write cut off by a
   reset, most plausibly the silent reset above, recovered by the two-copy scheme.
 
+### 7R.6 Levers past the limit, after the fix [TWIN] (2026-09-23)
+
+The 32-bit twin, unthrottled, heap 528,000 B (calibrated on image G's first JSON failures at 10,
+§7R.3), dev's site, `-1`, 12 rounds; failed requests per run at N=10 (120 requests). Unthrottled it
+is optimistic (§7Q.12), so only the arms' order carries over, not their absolute levels:
+
+| arm | N=10, failures per run | failing sizes / what else |
+| --- | --- | --- |
+| the committed fix (control) | 10, 9, 9 | 241-257 B pieces, 804 B; 7 at N=8 |
+| response gate, 4 in flight | 1, 2, 2 | 8 of 192 at N=16 |
+| response gate, 2 in flight | 2, 2, 3 | 13 of 192 at N=16 |
+| `chunk_bytes` 128 | 4, 5 | 124-256 B |
+| `chunk_bytes` 64 | 15, 12 | **worse**: 512 B, the pieces list itself |
+| lazy JSON (pieces built at write time), 256 / 128 / 64 | 16-19 / 7-9 / 2-7 | **harmful**: truncated `200`s and `400`s, failures after the headers went out |
+
+No lever clears the wall at 10. A gate cuts failures about 5x but never to zero; a smaller chunk
+helps only to 128 and 64 moves the failure onto the pieces list; lazy generation turns a clean `500`
+into a truncated body. None was adopted: the limit is set by the heap margin (§7R.4), not moved.
+
 ## 8. What is committed
 
 **Reverted, 2026-09-18, at the owner's instruction.** Every change this investigation made to

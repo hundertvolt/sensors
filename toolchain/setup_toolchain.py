@@ -303,13 +303,9 @@ def fetch_unix_submodules(micropython_dir: Path) -> None:
 
 
 def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest: Path | None = None, *, toolchain_dir: Path | None = None, lwip_macros: dict[str, int] | None = None) -> Path:
-    """Builds the RP2 firmware. Pass frozen_manifest (an absolute path to a manifest.py written
-    by write_freeze_manifest()) to freeze an extra module in via FROZEN_MANIFEST=, which takes
-    precedence over the board's own default manifest; omit it for the board's own manifest alone.
-
-    Always applies the lwip_connection_counts override (Part B.14.2) and verifies afterwards that
-    every option really reached the firmware's own translation unit. lwip_macros defaults to
-    versions.toml's [lwip] table; toolchain_dir defaults to micropython_dir's parent."""
+    """Builds the RP2 firmware, optionally with an extra FROZEN_MANIFEST=. Always applies and then
+    verifies the lwip_connection_counts override (lwip_macros defaults to versions.toml's [lwip],
+    toolchain_dir to micropython_dir's parent); full contract in SPECIFICATION.md Part B.14.2."""
     rp2_dir = micropython_dir / "ports" / "rp2"
     label = "with the frozen verification module (build-only check)" if frozen_manifest else "board manifest, pinned lwIP options"
     log(f"Building firmware for BOARD={board} ({label})")

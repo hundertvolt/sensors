@@ -242,17 +242,22 @@ class _TimeoutStreamProxy:
         self._head: list[bytes] | None = []  # the response's header block until its blank line
 
     async def _bounded(self, coro: "Awaitable[_T]") -> "_T":
+        return await asyncio.wait_for(coro, self._timeout_s)
+
+    async def _bounded_read(self, coro: "Awaitable[_T]") -> "_T":
+        # Logged here, and only for reads: a write-phase timeout escapes microdot and reaches
+        # _serve(), which logs it itself - logging both counted one timeout twice.
         try:
-            return await asyncio.wait_for(coro, self._timeout_s)
+            return await self._bounded(coro)
         except asyncio.TimeoutError as e:
             await self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=2)
             raise
 
     async def readline(self) -> bytes:
-        return await self._bounded(self._stream.readline())
+        return await self._bounded_read(self._stream.readline())
 
     async def readexactly(self, n: int) -> bytes:
-        return await self._bounded(self._stream.readexactly(n))
+        return await self._bounded_read(self._stream.readexactly(n))
 
     async def awrite(self, data: bytes) -> None:
         if self._head is not None:
@@ -302,9 +307,9 @@ class WebserverService:
         max_connections: int = 6,  # reject-when-full ceiling, three below the firmware's own
         # MEMP_NUM_TCP_PCB (toolchain/versions.toml) for connections still closing - Part H.7 holds
         # that as a RELATIONSHIP, not a number; buildgen passes the per-device value.
-        backlog: int | None = None,  # listen queue depth; None derives max_connections + 1 so one
-        # over-ceiling arrival is queued and refused by _serve() rather than dropped unseen by
-        # lwIP's accept queue. Never below max_connections; buildgen refuses above it + 1 (Part H.7).
+        backlog: int | None = None,  # arrivals lwIP holds until asyncio accepts them, i.e. one burst
+        # while the loop is busy; None derives max_connections + 1, so one over-ceiling arrival is
+        # refused by _serve() rather than reset unseen. buildgen bounds it to [max, max + 1] (H.7).
         per_call_timeout_s: float = 5.0,
         outer_cap_s: float = 15.0,
         host: str = "0.0.0.0",
@@ -335,8 +340,8 @@ class WebserverService:
         self._max_connections = max_connections
         self._chunk_bytes = max(chunk_bytes, 1)
         # Clamped rather than rejected, matching LockedCounter's own out-of-range convention: a
-        # backlog under the ceiling silently caps concurrency below max_connections, which reads as
-        # an application bug. buildgen rejects the same mistake in config, where it can be named.
+        # backlog under the ceiling resets part of a burst the ceiling admits, which reads as an
+        # application bug. buildgen rejects the same mistake in config, where it can be named.
         self._backlog = max_connections + 1 if backlog is None else max(backlog, max_connections)
         self._per_call_timeout_s = per_call_timeout_s
         self._outer_cap_s = outer_cap_s
@@ -682,8 +687,8 @@ class WebserverService:
         # of those stub classes satisfies the one real Stream surface _TimeoutStreamProxy forwards.
         current = await self._open_conns.increment()
         if current > self._max_connections:
-            # Reject-when-full (decision 3): silently close, no accept, no response ever written -
-            # cheapest, doesn't risk the rejection path itself becoming a resource consumer.
+            # Reject-when-full (decision 3): accepted by asyncio, then closed with no response ever
+            # written - cheapest, doesn't risk the rejection path itself becoming a resource consumer.
             await self._open_conns.decrement()
             await self._close_writer(writer)
             return
@@ -696,13 +701,13 @@ class WebserverService:
                 raise  # never swallow a genuine task cancellation
             except EOFError as e:
                 # Structurally unreachable today - Microdot's blanket catch around Request.create()
-                # absorbs any EOFError raised there, the same shape as the TimeoutError case above -
+                # absorbs any EOFError raised there, the same shape as the TimeoutError case below -
                 # but kept as defense in depth under this module's own "never raise" convention.
                 await self.pr.wrn_s("Connection reclaimed (peer closed early):", e, wrnno=1)
             except asyncio.TimeoutError as e:
                 # Either the outer wait_for() above (bounds a Slowloris-paced client no per-call
-                # timeout alone would catch) or a write-phase proxy timeout - a read-phase one
-                # already logged its own warning inside the proxy and never reaches this far.
+                # timeout alone would catch) or a write-phase proxy timeout, logged only here - a
+                # read-phase one logged inside the proxy, and microdot swallowed it.
                 await self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=2)
             except OSError as e:  # a genuine, real socket-level failure (e.g. a broken pipe) -
                 # never actually raised by any of this module's own fakes/proxy, kept for real
@@ -711,14 +716,16 @@ class WebserverService:
             except Exception as e:  # never raises out of this task - see module docstring
                 await self.pr.err_s("Unexpected error serving connection:", e, errno=1)
         finally:
-            await self._close_writer(writer)
-            await self._open_conns.decrement()
+            try:  # _close_writer()'s own logging can raise MemoryError on an exhausted heap,
+                await self._close_writer(writer)
+            finally:  # and a slot skipped here would be lost until reboot
+                await self._open_conns.decrement()
 
     async def _run(self) -> None:
         await self.pr.setup()  # required for all logged warnings and errors, matches every other
         # module's own main-loop convention (see e.g. asy_wifi_service.py's wlan_connect()).
         # backlog is explicit, never MicroPython's own default of 5 (extmod/asyncio/stream.py):
-        # inherited, it silently caps the accept queue below any raised max_connections.
+        # inherited, a burst of a raised max_connections would be reset past its fifth arrival.
         server = await asyncio.start_server(self._serve, self._host, self._port, backlog=self._backlog)
         await server.wait_closed()
 
