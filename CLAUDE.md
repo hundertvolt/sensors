@@ -430,14 +430,16 @@ information):
   not a comment; the prose above it is not exempt. **PEP 723 inline script metadata is the same
   case** — the `# /// script` … `# ///` block four `uv run` scripts carry is read by `uv` itself.
   Applied across `src/` in one pass (project owner's direction, 2026-09-18) and repo-wide since:
-  **every scope measures zero over-cap blocks, header and inline alike — Python, JS, CSS and, since
-  2026-09-22, `scripts/`'s shell**. Keep new code to this bar. **How a block is counted**, since a
+  **every scope measures zero over-cap blocks, header and inline alike — Python, JS, CSS, since
+  2026-09-22 `scripts/`'s shell, and since 2026-09-24 the config files too** (`pyproject.toml`,
+  `ci.yml` and the composite action, `zizmor.yml`, the TOMLs and INIs, `eslint.config.js`). Keep new code to this bar. **How a block is counted**, since a
   naive line count measures this tree anywhere from 0 to 458: prose lines only; a bare `#` line, a
   blank line inside a docstring and a `# ----` divider rule separate paragraphs rather than joining
   them; a docstring's own lone `"""` line is punctuation; and a trailing comment annotates its own
   code line, so it never starts a block. `tests_scripts/test_comment_block_cap.py` gates exactly that
   at zero for Python and shell in all eight scopes; JS (JSDoc `@param`/`@returns` continuation lines
-  not being commentary) and CSS stay review-enforced.
+  not being commentary), CSS and the config files stay review-enforced (a titled `# ---- X ----`
+  banner counts as a prose line; only a bare rule is punctuation).
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
@@ -525,8 +527,7 @@ information):
   `WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()` — confirmed directly, including
   one real `mypy src tests`-only finding this design caught that a from-scratch `mypy` run missed)
   are therefore excluded from the main `[tool.mypy]` pass and checked correctly by the dedicated
-  pass instead — see `pyproject.toml`'s own `[tool.mypy]` exclude comment and
-  `digital_twin/typecheck.ini`'s own docstring for the full account.
+  pass instead — SPECIFICATION.md Part B.15 has the full account of all three passes.
 - **Unit tests run under a real MicroPython Unix-port interpreter, not pytest/CPython** — "as close
   to the real environment as possible" means the actual runtime, not CPython plus MicroPython-
   flavored stubs — see SPECIFICATION.md Part E.1 ("Why not pytest"). `scripts/test.sh` builds that
@@ -853,7 +854,6 @@ information):
 - **`improved-quality/microdot.py` no longer exists** — it was a confirmed *unintentional* fork of
   vendored Microdot, removed and replaced with a fresh, unmodified sync at `ext/microdot.py`
   (pinned to tag `v2.6.2`; see "Hard rules" above and "Microdot / REST layer" below).
-  `pyproject.toml`'s own comment block records what that deletion left behind.
 
 ## Build-environment verification (clean chroot: Ubuntu 24.04 **and** Debian trixie)
 

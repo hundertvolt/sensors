@@ -7,16 +7,9 @@ import html from "eslint-plugin-html";
  * pass (see CLAUDE.md's "Code quality tooling" / SPECIFICATION.md Part H.8). Shipped JS stays plain,
  * hand-written ES modules; this is dev-tooling only, mirroring pyproject.toml's [tool.ruff] role.
  */
-// Beyond eslint:recommended. The JS-side counterpart of pyproject.toml's `select = ["ALL"]`:
-// ESLint has no "all rules" switch that is safe to use (its own docs advise against `eslint:all`,
-// which enables mutually contradictory stylistic rules), so this is the curated equivalent -
-// every core rule that catches a real defect or enforces a decision, with pure style-preference
-// bans (no-bitwise, no-plusplus, one-var, func-style, id-length, sort-keys, no-ternary,
-// no-magic-numbers, no-undefined, no-continue) deliberately left out: they fight this codebase's
-// hand-chosen style without catching anything. Verified rule-by-rule against the installed
-// eslint (10.8.1). Almost all of these already reported zero findings, so this mostly locks in
-// discipline the codebase already had; the handful that did fire were fixed in js//tests_js/
-// rather than switched off.
+// Beyond eslint:recommended: the curated counterpart of ruff's select = ["ALL"] - every core rule
+// that catches a real defect or enforces a decision, style-preference bans left out
+// (SPECIFICATION.md H.8).
 const BUG_CATCHING_RULES = {
     // --- correctness / likely bugs ---
     "array-callback-return": "error",
@@ -113,18 +106,12 @@ const BUG_CATCHING_RULES = {
     "prefer-template": "error",
 
     // --- console.log is debug residue; console.error/warn are real diagnostics ---
-    // js/poll-manager.js's "Poll failed:" is the poll loop's ONLY failure diagnostic and is
-    // directly asserted by tests_js/poll-manager.test.js; tests_js/live-backend.test.js's skip
-    // warning is the documented reason that check skipped itself. Banning those would delete
-    // real signal, so the ban is scoped to console.log and friends rather than all of console.
-    // (scripts/*.mjs is a CLI tool where console IS the output - overridden in its own block below)
+    // poll-manager's "Poll failed:" and the live-backend test's skip warning are real signal;
+    // scripts/*.mjs is exempt below (H.8).
     "no-console": ["error", { allow: ["error", "warn"] }],
 
-    // --- complexity ceilings, pinned at this codebase's CURRENT measured maximum so they gate
-    // REGRESSION rather than demand a rewrite of already-working code. Mirrors pyproject.toml's
-    // [tool.ruff.lint.mccabe]/[tool.ruff.lint.pylint] policy exactly. Ratchet DOWNWARD as the
-    // offenders (js/mock-server.js's route dispatcher at 41, js/definitions.js's
-    // validateDefinitions at 37) are genuinely simplified; never upward for new code.
+    // --- complexity ceilings at the measured maximum, so they gate regression: ratchet DOWN only
+    // (H.8) ---
     complexity: ["error", 41],
     "max-depth": ["error", 4],
     "max-nested-callbacks": ["error", 4],
@@ -171,10 +158,8 @@ export default [
         rules: BUG_CATCHING_RULES,
     },
     {
-        // This repo's own root-level tooling config. Without this block they match no `files`
-        // entry and so get only js.configs.recommended, not BUG_CATCHING_RULES - the linter would
-        // be holding its own config to a weaker standard than the code it lints. Node globals:
-        // both are loaded by the Node process, never shipped to a browser.
+        // The repo's own root-level configs, held to the same rules as the code they lint; Node
+        // globals, since both run in Node, never in a browser.
         files: ["eslint.config.js", "vitest.config.js"],
         languageOptions: {
             ecmaVersion: "latest",
@@ -201,14 +186,8 @@ export default [
         rules: { ...BUG_CATCHING_RULES, "no-console": "off" },
     },
     {
-        // html/index.html's <script type="module"> bootstrap can't be extracted into its own
-        // js/ file: scripts/build_website.sh relies on that <script> importing the literal path
-        // "../js/app.js", which stays identical between `npm run preview` (the real, separate
-        // js/app.js prototype entry point) and a real device build (where js/app.js is the staged
-        // bundle) - extracting it would either break that path identity or require a build-time
-        // text rewrite the script deliberately avoids (see build_website.sh's own header comment).
-        // eslint-plugin-html instead lints the inline script in place, exactly like any other
-        // module script, without moving it out of the HTML file.
+        // html/index.html's inline module bootstrap stays inline - build_website.sh relies on its
+        // literal "../js/app.js" import (H.8) - so eslint-plugin-html lints it in place.
         files: ["html/**/*.html"],
         plugins: { html },
         languageOptions: {

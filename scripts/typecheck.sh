@@ -5,7 +5,7 @@
 #
 # Pass explicit paths to narrow the main pass only - CI's lint-and-typecheck job does that.
 # Assumes mypy is on PATH; `uv` is used only to populate typings/, the isolated MicroPython stub
-# directory pyproject.toml's [tool.mypy] comments explain.
+# directory SPECIFICATION.md Part B.15 explains.
 #
 # The firmware version lives in exactly one place, toolchain/versions.toml's [micropython] ref; the
 # stub version below is derived from it rather than pinned again (derive_firmware_version()).

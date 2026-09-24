@@ -1,8 +1,5 @@
-# dev.toml - bench rig device config; the only unit ever bench-flashed, never wozi's own pins
-# (CLAUDE.md's "Per-variant sensortask-*.py generator" rule).
-# Wiring originally sourced from the hand-written src/sensortask_dev.py's build_system(), since
-# retired (SPECIFICATION.md Part L.4) - this file is now the source of truth buildgen reads
-# from, not the other way around.
+# dev.toml - the bench rig, the only unit ever flashed; always built from this file, never from
+# wozi's pins (CLAUDE.md's WoZi rule). The source of truth buildgen reads (SPECIFICATION.md Part L).
 
 [device]
 name = "Dev"
@@ -38,10 +35,9 @@ sck_pin = 2
 mosi_pin = 3
 miso_pin = 4
 
-# The bench's permanent UART0<->UART1 crossover jumper (GP0<->GP9, GP1<->GP8 - dev_legacy/README.md)
-# makes SPECIFICATION.md Part J.7's self-compatibility property physically testable. rxbuf/txbuf/
-# poll_wait_ms/poll_idle_ms: sized from the real frame (5 + 48 = 53 bytes) and this bench's own
-# poll rate, not left at asy_uart_driver.UART's own generic defaults - see Part J.6.
+# The bench's permanent UART0<->UART1 crossover jumper (GP0<->GP9, GP1<->GP8, dev_legacy/README.md)
+# makes Part J.7's self-compatibility physically testable. Buffers and poll rates are sized from the
+# real 53-byte frame and this bench's poll rate, not the driver defaults (J.6).
 [bus.uart0]
 tx_pin = 0
 rx_pin = 1
@@ -97,12 +93,12 @@ address = 0x77
 [instance.wiring]
 fram_target = "fram"
 
-# ISL29125: real dev-board wiring (i2c1, GPIO6 IRQ), bench-validated on main before the buildgen
-# port (PR #83). Placed last among the sensor drivers (FRAM
-# chunk-order consequence, SPECIFICATION.md Part A.7's bump-pointer allocator) - no "stay
-# byte-identical to wozi" constraint applies here since wozi never gets this instance at all.
-# irq_pull_up = false: this board carries its own external pull-up resistor on GPIO6, so the
-# internal one (the driver's own default) stays off rather than also engaging alongside it.
+# ISL29125: real dev-board wiring (i2c1, GPIO6 IRQ), bench-validated. Last among the sensor drivers
+# for FRAM chunk order (Part A.7); wozi has no such instance, so no byte-identity constraint
+# applies.
+#
+# irq_pull_up = false: the board carries its own external pull-up on GPIO6, so the driver's internal
+# one stays off.
 [[instance]]
 driver = "isl29125"
 name_ext = ""
@@ -150,13 +146,12 @@ source = "scd30"
 field = "Hum"
 
 # --- UART crossover link exerciser (bench-only) -------------------------------------------------
-# Each end takes its own fram_target - own chunk, not a shared one, so a fault on one end is
-# attributable without merging both links' histories into a single logger (matches every other
-# per-instance fram_target consumer's own "own chunk" shape; WP3 - was wrongly, deliberately
-# excluded, since the protocol itself still carries no application semantics of its own,
-# SPECIFICATION.md Part J.1 - only its own errno/wrnno history is being made durable here). wozi
-# never gets a UART instance - it is never physically flashed, so wiring it there would add an
-# untestable peripheral (CLAUDE.md).
+#
+# Each end gets its own fram_target chunk, so a fault on one end stays attributable (WP3; only the
+# link's own error history is made durable, Part J.1).
+#
+# wozi never gets a UART instance: it is never flashed, so the peripheral would be untestable
+# (CLAUDE.md).
 
 [[instance]]
 driver = "uart_link"

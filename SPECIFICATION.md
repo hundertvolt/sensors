@@ -835,31 +835,106 @@ gap is the RP2040 firmware build.
 
 ## B.10 CI perspective
 
-`.github/workflows/ci.yml` runs **thirteen jobs** (twelve of them real work plus `web-changes`, a
-path filter the four web jobs gate on), each its own stage so a failure names the tool
-rather than going red under a shared "lint" label (corrected 2026-09-13 — this paragraph had
-described a two-job workflow that stopped being true several stages ago). Python side:
-`lint-and-typecheck`, `shellcheck`, `actionlint`, `zizmor`, `unit-tests` (`scripts/test.sh`,
-building via `setup` on a cache miss), `unit-tests-coverage`, `digital-twin-e2e` and
-**`firmware-build-verify`, which does
-build a real `firmware.uf2` for wozi and verify it** — the "no RP2040 firmware-build CI stage yet"
-this paragraph used to claim is long gone. Web side: `web-lint-and-typecheck`, `web-unit-tests`, `web-put-matrix` (3 shards),
+`.github/workflows/ci.yml` runs **fifteen jobs** (fourteen of them real work plus `web-changes`, a
+path filter the web jobs gate on), each its own stage so a failure names the tool rather than
+going red under a shared "lint" label. Python side: `lint-and-typecheck`, `shellcheck`,
+`actionlint`, `zizmor`, `unit-tests` (`scripts/test.sh`, building via `setup` on a cache miss),
+`unit-tests-gc-threshold` (the (f) stage, `GC_THRESHOLD=32768`), `unit-tests-coverage`,
+`digital-twin-e2e` and **`firmware-build-verify`, which builds a real `firmware.uf2` for each of
+the six devices and verifies it**. Web side: `web-lint-and-typecheck`, `web-unit-tests`, `web-put-matrix` (3 shards),
 `web-coverage`, `web-cross-browser-smoke`. The live PUT matrix is its own sharded job because it
 is the web tier's whole wall clock - 567s of the suite's 578s, measured 2026-09-19 - and kept
 rolling a 20-minute budget while taking three other jobs' signals with it.
 
 Cache key hashes **both** `versions.toml` and `setup_toolchain.py` — keying on `versions.toml`
 alone once let a stale cached binary (built before `MICROPY_PY_SYS_SETTRACE=1`) survive across
-commits, a real bug (`--coverage` failed in CI while passing locally). `unit-tests` additionally
-runs its own retried `uv sync` before `scripts/test.sh`, so a third party's build-time download
-failing cannot read as a red test result (CLAUDE.md's "Code quality tooling").
+commits, a real bug (`--coverage` failed in CI while passing locally). Every caller of the
+composite action shares that one key, so the first job in a run builds and the rest hit.
+
+**`uv sync` is retried three times in every job that syncs** — the four lint lanes, and every job
+reaching uv through `.github/actions/setup-micropython-toolchain` — so a third party's build-time
+download failing cannot read as a red test result (CLAUDE.md's "Code quality tooling"):
+`actionlint-py` fetches its binary inside its own build backend. Observed: HTTP 500 on 2026-09-13,
+504 on 2026-09-14, and 500 on 2026-09-21 in `firmware-build-verify`, which turned a docs-only
+commit red while the retry still lived only in the lint lanes and `unit-tests`. `unit-tests` and
+`unit-tests-coverage` keep their own copy too; a second sync against a current environment is a
+no-op, and CLAUDE.md says not to simplify that one away.
 
 **The coverage rerun is its own job**, `unit-tests-coverage`, for the same reason `web-coverage` is
 separate from `web-unit-tests`: `timeout-minutes` gates a whole job, not its real step, so a slow
 instrumented rerun can kill a test step that already passed. Measured on run `34755468619`
 (2026-09-13): the plain suite reported `60/60 files passed / ALL PASSED`, the `--coverage` rerun
 then ran 13m24s longer, and the 30-minute cap cancelled the job — skipping `digital-twin-e2e` too,
-on a tree with nothing wrong with it. Coverage gates nothing (E.5), so it gets its own budget.
+on a tree with nothing wrong with it. Its coverage report gates nothing and its test result does
+(E.5.3), so it gets its own budget either way.
+
+### B.10.1 Why each job is shaped the way it is
+
+`ci.yml`'s own comments are one-line pointers here; this is the account.
+
+- **Permissions deny by default** (`permissions: {}`, then `contents: read` per job): nothing
+  pushes, comments or calls the API, and the Codecov steps use their own token. zizmor enforces it.
+- **`web-changes`** feeds the web jobs' `if:`s from one workflow file rather than a second file
+  with a trigger-level `paths:` filter, which can leave a PR on a required check that never fires
+  (H.8). It passes `base: ${{ github.ref }}`: without a base, `dorny/paths-filter` compares a push
+  against the default branch, so on a long-lived branch every push matched whatever it had touched
+  weeks ago and the web tier ran on markdown-only commits. A `pull_request` ignores `base` and
+  compares against the PR's base, so a PR still runs the full web tier before merge. Python jobs
+  never consult it.
+- **`web-unit-tests`** builds the Unix-port toolchain too, since `tests_js/live-backend.test.js`
+  drives a real twin (H.7), sharing `unit-tests`' cache key. Playwright's browser is cached keyed
+  on `package-lock.json` (which pins its version); its OS packages are reinstalled every run,
+  Playwright's own documented pattern. `npm test`'s `pretest` hook builds the website first.
+- **`web-put-matrix`** is split out and sharded because the live PUT matrix IS the web tier's wall
+  clock — 567 s of the suite's 578 s, 243 of 778 tests (2026-09-19) — and kept rolling a 20-minute
+  budget, taking the other tests, coverage and the smoke with it. Each shard is its own runner, so
+  the harness's fixed twin port never collides; `tests_js/mock-server-put-matrix.test.js` proves
+  the partition. It `needs: web-unit-tests`: no three runners on the slow matrix if the fast suite
+  already failed.
+- **`web-coverage`** is its own job because `timeout-minutes` gates a whole job: on PR #50 (run
+  `33856690559`) the instrumented rerun killed a job whose real test step had already passed. It
+  excludes the live matrix at almost no cost to the number, since the mock-server matrix drives
+  the same `js/` paths.
+- **`web-cross-browser-smoke`** runs the production site through WebKitGTK, Firefox and Edge —
+  engines Vitest's Playwright mode cannot reach — plus Chromium as a baseline, one field edit per
+  engine and viewport (H.7 "Cross-browser coverage"). It installs Playwright's Chromium itself:
+  each job is a fresh VM, and a version without that step failed with "Executable doesn't exist".
+  Firefox/geckodriver come from conda-forge via micromamba (~106 MB, no version file to key on),
+  cached under a fixed key whose suffix is bumped to force a refresh; WebKit and Edge reinstall
+  every run. `needs: web-unit-tests`, fail-fast.
+- **`lint-and-typecheck`** names every ruff scope explicitly; for mypy it names only the main
+  pass's paths, since `scripts/typecheck.sh` always runs the twin and host passes (B.15). Explicit
+  paths narrow only that CI invocation; a local run stays full-scope. **`shellcheck`**,
+  **`actionlint`** (the workflow, the composite action and, through shellcheck, every `run:` block)
+  and **`zizmor`** (`--offline`, skipping the two API audits so it behaves the same everywhere) are
+  each their own stage so each tool has its own check run. shellcheck covers `scripts/` only: the
+  legacy `build-*.sh` are out of scope forever (CLAUDE.md), 28 findings included.
+- **`unit-tests`** keeps `needs: lint-and-typecheck` purely for sequencing, the standing hang
+  backstop, with `if: !cancelled()` so a red lint never skips the tests (CLAUDE.md). The per-file
+  timeout in `scripts/test.sh` is the real hang defence; `timeout-minutes: 45` is for many files
+  hanging at once: a ~17-minute warm run plus one file's full 9-minute retry budget (180 s x 3),
+  after a tighter cap cancelled a healthy run (`34755468619`). Cold-cache runs measured 16m58s and
+  16m42s including the toolchain build. Its own retried `uv sync` is B.10's.
+- **`unit-tests-gc-threshold`** is CLAUDE.md's (f) stage — the same suite at the boot entry's
+  `gc.threshold(32768)`, on a design already passing at `-1` — in its own job so a second full run
+  never sits on the critical path.
+- **`unit-tests-coverage`** `needs: unit-tests` to reuse its toolchain cache rather than rebuild it
+  in parallel on a cold cache, and is success-gated (nothing to measure if the plain suite failed).
+  45 minutes over the measured 14m01s and 16m56s instrumented reruns. Its test step gates and its
+  report steps (`always() && hashFiles(...)`, `continue-on-error`) do not (E.5.3); the Codecov
+  upload needs the repo registered and a `CODECOV_TOKEN`, and `fail_ci_if_error` stays off.
+- **`digital-twin-e2e`** is the automated twin walkthrough (fresh boot, every endpoint, fault
+  injection, persistence across a real process restart, soak; `digital_twin/README.md`), a
+  heavier check than the unit tier. A six-device matrix, `fail-fast: false`, because each device's
+  suite spends tens of seconds waiting on real state transitions that parallelize across jobs.
+  `needs: unit-tests` and stays success-gated: fail-fast is its stated intent.
+- **`firmware-build-verify`** builds a real `firmware.uf2` per device (B.11) — the check that the
+  assembly actually links, beyond `tests_scripts/test_build_firmware.py`'s fast tests. `needs:
+  unit-tests` for the toolchain cache only, so `if: !cancelled()`: a cache dependency must not
+  gate an independent finding. It installs the ARM compiler through `setup_toolchain.py`'s
+  `ensure_apt_packages()` against `versions.toml`, since apt packages never survive between jobs;
+  a version without that failed with "Compiler 'arm-none-eabi-gcc' not found". A cache miss fails
+  on `build_firmware.py`'s own "no toolchain found" rather than skipping the build.
 
 ## B.11 Building this project's firmware
 
@@ -1342,6 +1417,68 @@ SPECIFICATION.md Part C.8's flash/NVM write-safety rules apply to *validating* a
 real hardware, not just to building it.
 
 ---
+
+## B.15 The three mypy passes: what each one resolves, and why they cannot merge
+
+**One constraint drives the split: mypy resolves a bare module name to exactly one file per run.**
+MicroPython-target code needs `time`/`machine`/`network` to mean the board's; the digital twin needs
+`machine`/`network`/`neopixel` to mean its own richer fakes; host tooling needs CPython's real
+stdlib. So `scripts/typecheck.sh` runs three passes (CLAUDE.md "Code quality tooling"), all strict.
+
+**Main pass — `pyproject.toml` `[tool.mypy]` (`src`, `tests`, `digital_twin`,
+`tests_hardware/device_scripts`).**
+- `platform = linux`, `follow_imports = silent` and `mypy_path`/`custom_typeshed_dir = typings` are
+  the micropython-stubs project's documented setup: typings/stdlib replaces mypy's typeshed so
+  MicroPython's own signatures win, and `mypy_path` adds the board modules (`machine`, `network`,
+  `rp2`). `silent` still uses an imported module's types at call sites without reporting its body;
+  `follow_imports_for_stubs` extends that to the (upstream-Beta) stub package itself.
+- `no_site_packages`: otherwise the venv's own packages are discovered and checked against a
+  typeshed holding only the MicroPython stdlib subset.
+- `files` names directories, never globs: a glob is pre-expanded into a file list that `exclude`
+  can no longer prune.
+- `build/generated_src` is on `mypy_path` for the one static `import sensortask_dev`
+  (`heap_headroom_after_full_system_build.py`); `typecheck.sh` generates it first. Nothing there
+  collides with `src/`.
+- **Excluded, and why.** `tests/network.py`: a bare `network.py` in a scanned root wins resolution
+  over the real stub project-wide, silently turning `WLAN` types in `src/` into `Any`; the exclusion
+  is mypy-only, and the interpreter still finds it through `MICROPYPATH`. `digital_twin/machine.py`,
+  `network.py`, `neopixel.py`: a hard "Duplicate module named machine" against `tests/machine.py`.
+  `digital_twin/launch.py`, `run_generic_integration.py`, `segfault_stress_repro.py`, every
+  `tests/test_digital_twin_*.py` and the two shared scenario libraries
+  (`_webserver_concurrency_scenarios.py`, `_digital_twin_construction_scenarios.py`): they use the
+  twin's own API (`WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()`,
+  `configure_fram_state_path()`, ...), which here could only resolve to the real stub - attr-defined
+  noise, never a finding. Their apparent cleanliness in this pass was accidental: a real
+  `no-any-return` in `test_digital_twin_bmp3xx.py` appeared only once `digital_twin` was in scope.
+- `strict = true`, spelled that way so a mypy bump surfaces new strict checks as findings;
+  `no_implicit_optional` and `warn_unreachable` on top. `disable_error_code = assignment` is
+  deliberately not set. The one exemption, `no_implicit_reexport = false`, and the
+  `disallow_untyped_decorators` override for `test_setter_microdot_integration`: CLAUDE.md.
+
+**Twin pass — `digital_twin/typecheck.ini`.** `mypy_path = digital_twin:src:build/generated_src:typings:tests`,
+`digital_twin` first so `machine`/`network`/`neopixel` resolve to the twin; `build/generated_src`
+for the two files that also import a `sensortask_<device>` module. Excluding the twin from the
+main pass alone did not fix its attribute resolution (confirmed), which is why this pass exists.
+Full `--strict` including `no_implicit_reexport`, since this scope mocks nothing by reassignment;
+its strictness is kept in sync with the main pass by hand (INI has no include directive).
+
+**Host pass — `host_typecheck.ini`** (`buildgen`, `scripts`, `toolchain`, `tests_scripts`,
+`tests_hardware`). Ordinary CPython 3.11 programs (`ast`, `tomllib`, `subprocess`, ...), which the
+MicroPython typeshed would report as missing, so they get mypy's real typeshed.
+- `tests_hardware/device_scripts/` is excluded here (MicroPython code: 121 errors, 99 artifacts)
+  and checked in the main pass instead.
+- `tests_scripts/conftest.py` is excluded: with `tests_hardware` and `tests_scripts` both on
+  `mypy_path`, both conftests become bare `conftest`, a duplicate module no per-file setting can
+  resolve. `tests_hardware/conftest.py` keeps the slot (every `import harness` needs its path); the
+  excluded file holds two trivial fixtures, its real logic moved to `_script_loader.py` - an accepted
+  gap against re-laying out either tier.
+- `explicit_package_bases` plus `.` on `mypy_path` give `tests_hardware/conftest.py` and
+  `tests_hardware/flash/conftest.py` distinct dotted names.
+- The other `mypy_path` entries mirror the `sys.path` pytest builds at runtime: `tests_hardware`
+  (`harness`, `http_client`, ...), `tests_hardware/bench` (`dns_probe`), `tests_hardware/manual`
+  (`runner`), `tests_scripts` (`_toml_fixtures`, `_script_loader`) and `toolchain`
+  (`setup_toolchain.py`'s `import micropython_overrides`). Without them the whole harness API types
+  as `Any`; adding them changed no finding in `scripts`/`toolchain`/`tests_scripts` (diffed).
 
 # Part C — Sensor Driver Architecture Specification
 
@@ -4908,6 +5045,22 @@ and which therefore shadowed the real `coverage` distribution `scripts/_render_c
 the JSON the site fetches at runtime threw a rolldown parse stack per run before being dropped
 anyway - `tests_scripts/test_js_coverage_excludes_json.py` keeps every JSON out of that set)
 for `--coverage`; **html-validate** for `html/`, **Stylelint** for CSS.
+
+**ESLint's rule set is curated, not `eslint:all`** (its own docs advise against that switch, which
+enables mutually contradictory style rules): `BUG_CATCHING_RULES` in `eslint.config.js` is every
+core rule that catches a real defect or enforces a decision, verified rule by rule against the
+installed ESLint, with pure style-preference bans (`no-bitwise`, `no-plusplus`, `one-var`,
+`func-style`, `id-length`, `sort-keys`, `no-ternary`, `no-magic-numbers`, `no-undefined`,
+`no-continue`) left out. `no-console` bans `console.log` and friends but allows `error`/`warn`:
+`js/poll-manager.js`'s "Poll failed:" is the poll loop's only failure diagnostic and is asserted
+by a test, as is a live-backend test's skip warning; `scripts/*.mjs` (a CLI, where console is the
+output) is exempt in its own block.
+Complexity ceilings (`complexity` 41, `max-depth` 4, `max-nested-callbacks` 4) sit at the measured
+maximum — `js/mock-server.js`'s route dispatcher at 41, `validateDefinitions` at 37 — so they gate
+regression, mirror `pyproject.toml`'s mccabe/pylint policy, and only ever ratchet down.
+`html/index.html`'s inline `<script type="module">` stays inline and is linted in place through
+`eslint-plugin-html`: `scripts/build_website.sh` relies on it importing the literal
+`../js/app.js`, which resolves both under `npm run preview` and in a device build.
 
 **CI mechanism**: `.github/workflows/ci.yml` carries a `dorny/paths-filter` gate job feeding `if:`
 conditions on `web-lint-and-typecheck`/`web-unit-tests` — deliberately not a second workflow file

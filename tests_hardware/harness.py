@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from bench_control import BenchBridge
 
 # For `import setup_toolchain` below - the same bare-sibling shape as that module's own
-# `import micropython_overrides` (host_typecheck.ini's own account of why both need a path slot).
+# `import micropython_overrides` (SPECIFICATION.md B.15 on why both need a path slot).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "toolchain"))
 import setup_toolchain
 from setup_toolchain import detect_pico_serial_devices

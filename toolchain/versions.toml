@@ -1,15 +1,11 @@
 # Pin for the build-environment installer (toolchain/setup_toolchain.py).
 #
-# Only the MicroPython ref is pinned by hand here. pico-sdk and picotool versions are
-# *derived automatically* at install/update time:
-#   - pico-sdk ref = the exact commit MicroPython's own `lib/pico-sdk` submodule points to
-#     at this ref (so it always matches what the firmware build actually compiles against).
-#   - picotool ref = the newest picotool tag sharing that pico-sdk commit's major.minor
-#     version (picotool enforces a major.minor match against the pico-sdk it's built with).
+# Only the MicroPython ref is pinned by hand. pico-sdk is derived from MicroPython's own
+# lib/pico-sdk submodule at this ref, picotool as the newest tag matching its major.minor
+# (SPECIFICATION.md Part B.3).
 #
-# To move to a newer MicroPython release: change `ref` below (or run the installer with
-# `--latest` to auto-detect and write back the newest stable tag), then re-run the
-# installer — it updates in place.
+# To move: change `ref` (or run the installer with --latest to write back the newest stable tag),
+# then re-run the installer.
 [micropython]
 ref = "v1.29.0"
 
@@ -24,44 +20,24 @@ apt_packages = [
     "gcc-arm-none-eabi",
     "libnewlib-arm-none-eabi",
     "libstdc++-arm-none-eabi-newlib",
-    # ports/unix (the host-side MicroPython build used for running tests under the real
-    # interpreter, not just CPython+stubs - see SPECIFICATION.md Part E.1) needs
-    # libffi-dev for its ffi module; the rest of its deps overlap with what's already listed above.
+    # ports/unix, the real interpreter the tests run under (Part E.1), needs libffi-dev for its ffi
+    # module.
     "libffi-dev",
-    # scripts/test.sh and scripts/run_digital_twin_ci.sh both grant CAP_NET_BIND_SERVICE to the
-    # built Unix-port binary (setcap, from libcap2-bin) so the real port-53 DNS-server test can
-    # bind - present by default on a GitHub runner and a normal Ubuntu install, but not in a
-    # minimal image, where its absence only surfaces AFTER the whole toolchain build.
+    # setcap, for the port-53 DNS-server test's CAP_NET_BIND_SERVICE grant: absent from a minimal
+    # image, where it surfaced only after the whole toolchain build.
     "libcap2-bin",
 ]
 
-# lwIP build options for the rp2 firmware, injected through an out-of-tree lwipopts.h reached by
-# MicroPython's own BOARD_DIR redirect (SPECIFICATION.md Part B.14.2). Every option is listed even
-# when unchanged from the pinned defaults, so this one table pins the whole build; MEM_SIZE/TCP_MSS/
-# TCP_WND/TCP_SND_BUF/MEMP_NUM_TCP_SEG are ONE atomic upstream block a -D would break (TCP_MSS 536).
+# lwIP options for the rp2 firmware, injected through an out-of-tree lwipopts.h (Part B.14.2). Every
+# option is listed, so this one table pins the whole build.
 #
-# THESE VALUES ARE AN ENSEMBLE, NOT INDEPENDENT KNOBS. lib/lwip/src/core/init.c turns each of its
-# relationships into a compile-time #error and opt.h derives TCP_SND_QUEUELEN/TCP_SNDLOWAT/
-# TCP_SNDQUEUELOWAT/PBUF_POOL_BUFSIZE from what is set here; micropython_overrides.py's
-# check_lwip_ensemble() re-states all of it, plus the three relationships lwIP does NOT check because
-# it sizes the shared pools for ONE connection while this firmware admits max_connections at once.
-# Change one value and run a build: an incoherent set is refused by name before it compiles.
+# AN ENSEMBLE, NOT INDEPENDENT KNOBS: lwIP's init.c #errors, opt.h's derived values and three
+# per-connection relationships lwIP does not check are all re-stated by check_lwip_ensemble(), so an
+# incoherent set is refused by name.
 #
-# Sized for max_connections = 6, the limit measured stable under peak load with ~21 % heap free
-# (SPECIFICATION.md Part H.7); each connection of capacity costs 2,324 B of GC heap:
-#   MEMP_NUM_TCP_PCB   max_connections + 3 (SPARE_TCP_PCBS). A closed connection's FIN_WAIT pcb
-#                      outlives its slot and lwIP tcp.c tcp_alloc() never reclaims one at equal
-#                      priority (modlwip aborts it after 10 s); keep-alive is unimplemented, so
-#                      every request closes one. Arrivals not yet accepted hold one each too.
-#   MEMP_NUM_TCP_SEG   max_connections x (TCP_SND_BUF / TCP_MSS) = 6 x 8. A GLOBAL pool against a
-#                      PER-connection TCP_SND_QUEUELEN, so without this one connection can drain it
-#                      and the rest stall with data the stack has accepted but cannot push.
-#   MEM_SIZE           2,000 B per admitted connection, the same share the 4-connection design had.
-#                      Every outbound byte is copied into this arena: modlwip.c's tcp_write() always
-#                      passes TCP_WRITE_FLAG_COPY, which lands in a PBUF_RAM pbuf from mem_malloc().
-#   PBUF_POOL_SIZE     unchanged. It backs the INBOUND path, and this firmware's inbound demand is
-#                      one small request per connection (bodies are capped at 2048 B, Part I.6),
-#                      against ~892 B of GC heap per pbuf - the most expensive pool to grow.
+# Sized for max_connections = 6 (Part H.7), 2,324 B of GC heap per connection: PCB = limit + 3
+# spares, SEG = limit x 8, MEM_SIZE = limit x 2,000 B, PBUF_POOL_SIZE unchanged. Each rule's reason:
+# B.14.2.
 [lwip]
 MEMP_NUM_TCP_PCB = 9
 MEMP_NUM_TCP_PCB_LISTEN = 8

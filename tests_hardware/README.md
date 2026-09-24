@@ -799,9 +799,9 @@ tests closed these (54 -> 65, `bench/test_network_resilience.py` plus two new
 - **Real socket-limit degradation** (`test_connections_at_and_above_the_real_socket_limit_degrade_cleanly`):
   grounded against `asy_webserver_service.py`'s own `_serve()` - `_open_conns` increments the instant
   a TCP connection is *accepted*, before any byte is read, which is what lets this test hold exactly
-  `max_connections=4` real slots open with bare `connect()` calls and deterministically observe the
-  5th being rejected (closed with zero bytes written, matching `_serve()`'s own "silently close, no
-  accept, no response ever written" reject-when-full comment).
+  the build's configured `max_connections` (6 on `dev`) real slots open with bare `connect()` calls
+  and deterministically observe the next one being rejected (closed with zero bytes written, matching
+  `_serve()`'s reject-when-full comment).
 - **Nonsense GET/PUT over the normal network**: a genuine 404 (shaped per `_ERROR_SHAPES`), a
   genuinely malformed raw JSON body (needs a raw socket - `http_client.fetch()` can only ever
   serialize valid JSON), a real 413 over `max_content_length=2048`, and syntactically valid but
