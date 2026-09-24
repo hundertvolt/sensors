@@ -45,7 +45,10 @@ one bench sitting, the writing work, the owner's call on R5 and the owner's own 
 §7R.1), `buildDate 2026-09-24T06:45:32Z`, `DebugLevel` 5. Check `buildDate` against the tree and
 reflash: `src/asy_webserver_service.py` has moved since E6′.
 
-1. **Run sheet Step 1** — the `errcount` reading, before anything writes.
+1. **Run sheet Step 1** — the `errcount` reading, before anything writes. Then, on the reflashed
+   image and before any device script runs, `mpremote exec "import gc; print(gc.threshold())"`:
+   the one read that settles `HEAP_FRAGMENTATION_MEASUREMENTS.md` §0B.7 (the attach stops `main.py`,
+   so the watchdog resets the board ~8 s later — BACKLOG item 12, expected).
 2. **§4A's W4** — the whole bench tier on the tree under test at the limit of 6, default flags; then W3.
 3. **M1, then S3b** — the light rig is in place (D2), and M1 is what writes the geometry down so
    the next sitting does not have to re-establish it. ~10 minutes together.

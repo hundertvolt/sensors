@@ -615,6 +615,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     with a 200 and a parsed JSON object); `scripts/test.sh` re-emits each red outcome as a GitHub
     annotation from one `GITHUB_ACTIONS` block (pytest tier first, per-file ones capped at 8 plus
     "and N more"), so a local or chroot run prints nothing extra.
+  **Partial evidence, not a leg**: a session sandbox (GCC 13.3, not a `--variant=minbase` chroot)
+  ran `env --tier generic` and then `uv run toolchain/setup_toolchain.py` from an empty toolchain
+  directory on 2026-09-24 — all eight verification checks passed and the lwIP readback was clean.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not

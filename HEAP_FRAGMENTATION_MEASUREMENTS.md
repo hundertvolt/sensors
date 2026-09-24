@@ -549,8 +549,8 @@ is why a 2-block change of one object's size moves the result and why nothing co
   produce. Neither side is wrong on its own evidence; one of the chain's links is not what the board
   did (most likely which image, or `main.py` never reaching its threshold line), and nothing in the
   repo records which. So the pre-2026-09-24 corpus keeps the labels it had. **Going forward it no
-  longer matters**: both flash-tier scripts now set `-1` themselves, like every script the
-  connection-limit work wrote, and `tests_scripts/test_device_script_gc_threshold.py` fails a
+  longer matters**: every heap-measuring device script sets its own threshold at module level,
+  the two flash-tier ones at `-1`, and `tests_scripts/test_device_script_gc_threshold.py` fails a
   `GC_THRESHOLD=` reported before the script's own first set. One read after any attach, before a
   script sets anything — `mpremote exec "import gc; print(gc.threshold())"` — answers it outright.
 - **Gap 10, hardware** — the defect and both remedies are measured on silicon since 2026-09-18

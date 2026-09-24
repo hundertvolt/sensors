@@ -59,8 +59,8 @@ def _problems(source: str) -> list[str]:
     if not reports:
         problems.append(f"measures the heap but never prints {_MARKER} - its output cannot say what it was taken at")
     if sets and reports and min(reports) < min(sets):
-        # The shape both flash-tier scripts had until 2026-09-24: a first arm run at whatever it
-        # inherited, made to look set by a later switch (MEASUREMENTS 0B.7).
+        # A first arm run at whatever it inherited, made to look set by a later switch - the reason
+        # the pre-2026-09-24 flash-tier readings' threshold is unknown (MEASUREMENTS 0B.7).
         problems.append(f"reports {_MARKER} at line {min(reports)} before setting gc.threshold at line {min(sets)} - that first arm runs at whatever it inherited")
     return problems
 
@@ -91,8 +91,8 @@ def test_a_threshold_set_but_never_reported_is_caught() -> None:
 
 
 def test_a_threshold_set_only_after_the_first_reported_arm_is_caught() -> None:
-    # A call anywhere used to satisfy the rule, so a later switch made an inherited first arm look
-    # chosen - the shape two flash-tier scripts had, whose first arm's threshold is now unknowable.
+    # A set anywhere in the file is not enough: a later switch would make an inherited first arm
+    # look chosen, so the first report must follow the first set.
     source = 'import gc\nprint(f"GC_THRESHOLD={gc.threshold()}")\nprint(gc.mem_free())\ngc.threshold(32768)\nprint(f"GC_THRESHOLD={gc.threshold()}")\n'
     assert _problems(source) == ["reports GC_THRESHOLD= at line 2 before setting gc.threshold at line 4 - that first arm runs at whatever it inherited"]
 
