@@ -578,6 +578,122 @@ N= 8 GC_THRESHOLD=-1 | UNSTABLE | complete 122/419 | refused 296 (expected) | fa
      device: MemoryError: memory allocation failed, allocating 252 bytes
 ```
 
+### 5.8 Images built for 6 (E6) and for 7 (E7), each at its own limit — run 2026-09-24
+
+Owner's request: the full figures — failures, refusals, free percentage — without instrumentation,
+for an image built for 6 and one built for 7, each tested at its maximum. `gc.threshold(-1)`, peak
+load (N = limit back-to-back clients for 60 s + the SGP40 reset PUT every 3 s).
+
+**Images** (local edits, never committed; the tip's per-connection pattern: PCB = limit + 3,
+SEG = limit × 8, `MEM_SIZE` = limit × 2,000; every macro read back from the firmware, ensemble
+check clean at the limit):
+
+| image | `max_connections` | PCB / SEG / `MEM_SIZE` | GC heap, linker | vs F′ | `mem_info` total |
+| --- | --- | --- | --- | --- | --- |
+| E6 | 6 | 9 / 48 / 12,000 | 192,360 B | +4,648 B = 2 × 2,324 | 187,904 B |
+| E7 | 7 | 10 / 56 / 14,000 | 190,036 B | +2,324 B = 1 × 2,324 | 185,664 B |
+
+**Failures and refusals — no instrumentation** (`--peak --no-sampler`, three fresh boots each):
+
+| image, N | boot | requests | complete | refused (expected) | **true failures** | device allocation lines |
+| --- | --- | --- | --- | --- | --- | --- |
+| E6, 6 | 1 | 467 | 139 | 328 (70.2 %) | **0** | 0 |
+| E6, 6 | 2 | 401 | 121 | 280 (69.8 %) | **0** | 0 |
+| E6, 6 | 3 | 497 | 149 | 348 (70.0 %) | **0** | 0 |
+| **E6, 6** | **all** | **1,365** | **409** | **956 (70.0 %)** | **0 (0.00 %)** | **0** |
+| E7, 7 | 1 | 453 | 134 | 319 (70.4 %) | **0** | 0 |
+| E7, 7 | 2 | 466 | 136 | 330 (70.8 %) | **0** | 0 |
+| E7, 7 | 3 | 415 | 123 | 292 (70.4 %) | **0** | 0 |
+| **E7, 7** | **all** | **1,334** | **393** | **941 (70.5 %)** | **0 (0.00 %)** | **0** |
+
+For comparison, F′ (built for 8) at 8, same load, no instrumentation (§5.7): 1,319 requests, 382
+complete, 932 refused (70.7 %), **1 true failure (0.08 %)**.
+
+**Free heap at peak** (`--peak --margin`, collect every 100 ms — the only exact method, so
+instrumented; "production-equivalent" adds back the device script's own 2,720 B, §5.7):
+
+| image, N | run | min free (measured) | % free | production-equivalent | % free | % used | largest free block at the min | idle (0 open) | failures |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| E6, 6 | 1 | 38,032 B | 20.2 % | 40,752 B | **21.7 %** | 78.3 % | 1,504 B | 83,248 B (44.3 %) | 0 of 376 (263 refused) |
+| E6, 6 | 2 | 37,056 B | 19.7 % | 39,776 B | **21.2 %** | 78.8 % | 1,456 B | 83,888 B (44.6 %) | 0 of 397 (278 refused) |
+| E7, 7 | 1 | 23,824 B | 12.8 % | 26,544 B | **14.3 %** | 85.7 % | 528 B | 77,232 B (41.6 %) | 0 of 356 (250 refused) |
+| F′, 7 (limit 8) | §5.6 | 26,112 / 20,976 B | 14.2 / 11.4 % | 28,832 / 23,696 B | 15.7 / 12.9 % | — | 1,440 / 1,152 B | — | 0 / 0 |
+| F′, 8 (limit 8) | §5.6 | 18,560 / 20,624 B | 10.1 / 11.2 % | 21,280 / 23,344 B | 11.6 / 12.7 % | — | 512 / 400 B | — | 1 / 0 |
+
+- **Both images are clean at their own limit**: 0 true failures in 2,699 uninstrumented requests,
+  no device allocation line, and 0 failures in their collecting runs. F′ at 8 is the first level
+  that fails (1 in 1,319 uninstrumented; 3 more in instrumented runs, §5.6).
+- **Headroom at peak: 6 → ~21 % free (largest block ~1.5 KB); 7 → ~14 % free (largest block
+  0.5 KB); 8 → ~12 % free (largest block 0.4-0.5 KB) and failing.** Each extra admitted connection
+  costs ~13-14 KB at peak (live set) plus 2,324 B of static heap. Against the general guidance of
+  20-30 % free at peak (§5.3's source), **only 6 is inside it**; 7 is below it but stable here.
+- **The refusal rate is ~70 % at every limit** under this load: clients reconnect immediately and a
+  connection still closing counts (§6.3). Completed requests per boot are flat, 121-149 at 6 and
+  123-136 at 7 (F′ at 8: 122-134) — the board, not the limit, sets throughput.
+- The refusal cross-check gap (host 15-21 above device) is the known counter-installation timing
+  (§5.6); no socket-error line on the device.
+
+**One silent reset** — the first E6 collecting boot (not the uninstrumented ones): the device
+output stops at uptime 54 s, ~40 s into the load, mid-way through a normal sensor/FRAM cycle, with
+free heap still at 33.5 KB and no `MemoryError`, traceback or error line; USB re-enumerated at
+06:40:13. The supervisor's watchdog feed ("All tasks running.", every 2 s) appears 11 lines before
+the end, so a watchdog reset would need a ≥ 6 s block of the loop with no output; a hard fault in C
+would look the same. `run_isolated()` arms its own `machine.WDT(timeout=8000)` around every device
+script. The reset cause was lost (the chain flashed E7 one second later). Two repeat collecting
+boots on the reflashed E6 did **not** reset; the re-run captures `machine.reset_cause()` if it ever
+does. 1 occurrence in ~12 collecting boots across two days; none in any uninstrumented boot.
+
+Verbatim (`device: WEBSERVER …` lines omitted; the first E6 collecting boot produced no result
+line, only the serial error):
+
+```
+# E6_ctrl
+N= 6 GC_THRESHOLD=-1 | STABLE | complete 139/467 | refused 328 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     FOOTPRINT script_before_boot alloc=55680 free=132224
+N= 6 GC_THRESHOLD=-1 | STABLE | complete 121/401 | refused 280 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     FOOTPRINT script_before_boot alloc=55680 free=132224
+N= 6 GC_THRESHOLD=-1 | STABLE | complete 149/497 | refused 348 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     FOOTPRINT script_before_boot alloc=55664 free=132240
+# E6_live1
+N= 6 GC_THRESHOLD=-1 | STABLE | complete 113/376 | refused 263 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     at the minimum (t=15314ms conns=6 free=38032): No. of 1-blocks: 2951, 2-blocks: 493, max blk sz: 64, max free sz: 94
+     PEAK_SUMMARY heap=187904 min_free_after_gc=38032 collections=1036 rejected=242
+     PEAK_AT conns=0 samples=741 min_free_after_gc=83248
+     PEAK_AT conns=1 samples=4 min_free_after_gc=68528
+     PEAK_AT conns=2 samples=4 min_free_after_gc=66480
+     PEAK_AT conns=4 samples=3 min_free_after_gc=53072
+     PEAK_AT conns=5 samples=18 min_free_after_gc=49424
+     PEAK_AT conns=6 samples=266 min_free_after_gc=38032
+     refusals cross-check: host counted 263, device rejected 242 (a gap means a reset the ceiling did not cause)
+# E6_live2
+N= 6 GC_THRESHOLD=-1 | STABLE | complete 119/397 | refused 278 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     at the minimum (t=55529ms conns=6 free=37056): No. of 1-blocks: 2990, 2-blocks: 505, max blk sz: 64, max free sz: 91
+     PEAK_SUMMARY heap=187904 min_free_after_gc=37056 collections=1050 rejected=263
+     PEAK_AT conns=0 samples=747 min_free_after_gc=83888
+     PEAK_AT conns=3 samples=5 min_free_after_gc=54048
+     PEAK_AT conns=5 samples=26 min_free_after_gc=38720
+     PEAK_AT conns=6 samples=272 min_free_after_gc=37056
+     refusals cross-check: host counted 278, device rejected 263 (a gap means a reset the ceiling did not cause)
+# E7_ctrl
+N= 7 GC_THRESHOLD=-1 | STABLE | complete 134/453 | refused 319 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     FOOTPRINT script_before_boot alloc=55680 free=129984
+N= 7 GC_THRESHOLD=-1 | STABLE | complete 136/466 | refused 330 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     FOOTPRINT script_before_boot alloc=55680 free=129984
+N= 7 GC_THRESHOLD=-1 | STABLE | complete 123/415 | refused 292 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     FOOTPRINT script_before_boot alloc=55712 free=129952
+# E7_live
+N= 7 GC_THRESHOLD=-1 | STABLE | complete 106/356 | refused 250 (expected) | failed 0 (0.00 %) | device allocation-failure lines 0 | worst largest free run -1 B | reference {'/': 9292, '/js/app.js': 16292}
+     at the minimum (t=19725ms conns=7 free=23824): No. of 1-blocks: 3071, 2-blocks: 518, max blk sz: 64, max free sz: 33
+     PEAK_SUMMARY heap=185664 min_free_after_gc=23824 collections=1023 rejected=235
+     PEAK_AT conns=0 samples=746 min_free_after_gc=77232
+     PEAK_AT conns=2 samples=2 min_free_after_gc=64256
+     PEAK_AT conns=3 samples=2 min_free_after_gc=54064
+     PEAK_AT conns=4 samples=1 min_free_after_gc=50592
+     PEAK_AT conns=6 samples=20 min_free_after_gc=36128
+     PEAK_AT conns=7 samples=252 min_free_after_gc=23824
+     refusals cross-check: host counted 250, device rejected 235 (a gap means a reset the ceiling did not cause)
+```
+
 ## 6. Findings
 
 1. **The wall is the `/status` JSON piece, not the static files any more.** Every true failure at
