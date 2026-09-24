@@ -39,7 +39,7 @@ _RECYCLE_S = 10.0
 _MIN_FRACTION_AT_CEILING = 0.55
 
 
-def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, stop: threading.Event, offset_s: float) -> None:
+def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, stop: threading.Event, offset_s: float, port: int = 80) -> None:
     """Holds one connection parked mid-request and recycles it before the firmware reclaims it, so
     the ceiling stays full. `stop` is what guarantees the worker cannot outlive its own test."""
     stop.wait(offset_s)  # stagger, so the whole set does not expire in lockstep
@@ -48,7 +48,7 @@ def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, sto
         sock.settimeout(5.0)
         parked = False
         try:
-            sock.connect((dut_ip, 80))
+            sock.connect((dut_ip, port))
             # Headers only, no terminating blank line: the server is parked waiting for the rest,
             # which is what makes this a held connection rather than a completed request.
             sock.sendall(b"GET /sensors HTTP/1.1\r\nHost: dut\r\n")
@@ -60,10 +60,11 @@ def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, sto
             while not stop.is_set() and time.monotonic() < recycle_at:
                 stop.wait(_DRIP_INTERVAL_S)
                 sock.sendall(b"X-Pad: y\r\n")  # resets the per-call read timeout
-                sock.recv(4096)  # readable at all means the server answered or closed: take a fresh one
-                break
-        except (BlockingIOError, TimeoutError):
-            pass  # nothing to read, which is what a parked connection looks like
+                try:
+                    sock.recv(4096)
+                except BlockingIOError:
+                    continue  # nothing to read, which is what a parked connection looks like
+                break  # readable at all means the server answered or closed: take a fresh one
         except OSError:
             stop.wait(0.1)  # refused or reset - back off rather than spinning on a busy board
         finally:

@@ -49,6 +49,11 @@ def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any
 CEILING_CLOSE = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, http.client.BadStatusLine)
 
 
+# A body cut short of its Content-Length - a response that failed after its headers went out. An
+# HTTPException, not an OSError, so a caller catching transport failures has to name it too.
+INCOMPLETE_BODY = http.client.IncompleteRead
+
+
 def is_ceiling_close(exc: BaseException) -> bool:
     """True if exc is a connection-ceiling refusal rather than a real transport failure.
 

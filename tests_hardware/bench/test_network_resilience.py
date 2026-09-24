@@ -596,7 +596,7 @@ def _restore_ssid_over(host: str, original_ssid: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# The real connection ceiling (max_connections, one below lwIP's own MEMP_NUM_TCP_PCB) degrading
+# The real connection ceiling (max_connections, three below lwIP's own MEMP_NUM_TCP_PCB) degrading
 # cleanly at and above the limit, which test_end_to_end_timing.py's burst never holds enough slots
 # to reach. _open_conns increments on accept, so a bare connect() already occupies a slot.
 # ---------------------------------------------------------------------------
@@ -1008,9 +1008,9 @@ def test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body(du
             res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=30.0)
             body = res.json() if res.status_code == 200 else {}
             results[i] = (path, res.status_code, time.monotonic() - started, len(body) if isinstance(body, dict) else 0)
-        except (OSError, ValueError) as exc:
-            # ValueError too: a truncated body fails in json.loads(), which IS the case under test -
-            # it has to land in results with its path rather than as a bare traceback.
+        except (OSError, ValueError, http_client.INCOMPLETE_BODY) as exc:
+            # ValueError and a short read too: a truncated body IS the case under test - it has to
+            # land in results with its path rather than as a bare traceback in a dead thread.
             results[i] = (path, repr(exc), time.monotonic() - started, 0)
 
     time.sleep(1.0)  # a slot is released after _serve() awaits the close, so it outlives the response (Part I.6)
@@ -1049,8 +1049,9 @@ def test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one(dut_ip: 
     def _index(i: int) -> None:
         try:
             res = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=30.0)
-            sizes[i] = len(res.body) if res.status_code == 200 else f"status {res.status_code}"
-        except OSError as exc:
+            same = res.status_code == 200 and res.body == reference.body
+            sizes[i] = len(res.body) if same else f"status {res.status_code}, {len(res.body)} B, differs"
+        except (OSError, http_client.INCOMPLETE_BODY) as exc:
             sizes[i] = repr(exc)
 
     threads = [threading.Thread(target=_index, args=(i,)) for i in range(tabs * 2)]

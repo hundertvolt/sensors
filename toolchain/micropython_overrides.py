@@ -177,6 +177,10 @@ def verify_lwip_connection_counts_anchor(micropython_dir: Path, board: str) -> N
 # tuning target: raising the ceiling may not quietly make each connection's share of the send arena
 # smaller than the configuration this project already ran in the field.
 MEM_SIZE_BYTES_PER_CONNECTION_FLOOR = 2000
+# PCBs past the ceiling: a closed connection's FIN_WAIT pcb outlives its slot and tcp_alloc() never
+# reclaims one at equal priority (lib/lwip/src/core/tcp.c), and backlog queues one over-ceiling
+# arrival to be refused. The pattern every limit ever measured on silicon ran at (Part H.7).
+SPARE_TCP_PCBS = 3
 # PBUF_LINK_HLEN 14 + PBUF_IP_HLEN 40 + PBUF_TRANSPORT_HLEN 20 + PBUF_LINK_ENCAPSULATION_HLEN 0.
 # IP_HLEN is 40, not 20: pbuf.h picks it on LWIP_IPV6, which ports/rp2/lwip_inc/lwipopts.h enables.
 _PBUF_PROTOCOL_HEADER_BYTES = 74
@@ -198,7 +202,7 @@ def derive_lwip_dependents(macros: dict[str, int]) -> dict[str, int]:
 
 
 def check_lwip_ensemble(macros: dict[str, int], max_connections: int | None = None) -> list[str]:
-    """Every relationship lwIP's own init.c enforces, plus the two it does NOT: its checks size the
+    """Every relationship lwIP's own init.c enforces, plus the three it does NOT: its checks size the
     shared pools for ONE connection, while this firmware admits max_connections at once. Returns
     the violated relationships; empty means the set is coherent."""
     d = derive_lwip_dependents(macros)
@@ -226,7 +230,10 @@ def check_lwip_ensemble(macros: dict[str, int], max_connections: int | None = No
         problems.append(f"TCP_WND ({wnd}) < TCP_MSS ({mss})")
     if max_connections is None:
         return problems
-    # --- the two lwIP does not check, because it sizes for one connection and we admit N ---
+    # --- the three lwIP does not check, because it sizes for one connection and we admit N ---
+    want_pcb = max_connections + SPARE_TCP_PCBS
+    if macros["MEMP_NUM_TCP_PCB"] < want_pcb:
+        problems.append(f"MEMP_NUM_TCP_PCB ({macros['MEMP_NUM_TCP_PCB']}) < max_connections + {SPARE_TCP_PCBS} ({want_pcb}) - connections still closing and the one queued over-ceiling arrival hold PCBs from the same pool")
     # Segments are a GLOBAL pool while TCP_SND_QUEUELEN is PER connection, so one connection can
     # drain the pool. Every admitted connection must be able to hold a full send window at once, or
     # the server accepts work it cannot actually push (SPECIFICATION.md Part H.7).

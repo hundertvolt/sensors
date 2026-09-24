@@ -506,6 +506,15 @@ class TestLwipEnsemble:
         assert any("cannot each hold a full send window" in p for p in problems), problems
         assert any("per admitted connection" in p for p in problems), problems
 
+    def test_every_admitted_connection_leaves_three_pcbs_spare(self, overrides: ModuleType) -> None:
+        # The shipped pattern at 6 (PCB 9, SEG 48, MEM_SIZE 12000) is clean; one PCB fewer is
+        # refused by name and alone, so the rule is the PCB one and not a pool check tripping.
+        at_six = {**_pinned(), "MEMP_NUM_TCP_PCB": 9, "MEMP_NUM_TCP_SEG": 48, "MEM_SIZE": 12000}
+        assert overrides.check_lwip_ensemble(at_six, 6) == []
+        problems = overrides.check_lwip_ensemble({**at_six, "MEMP_NUM_TCP_PCB": 8}, 6)
+        assert len(problems) == 1, problems
+        assert problems[0].startswith("MEMP_NUM_TCP_PCB (8) < max_connections + 3 (9)"), problems
+
     def test_the_mem_size_floor_is_the_fielded_designs_own_share(self, overrides: ModuleType) -> None:
         # 8000 / 4 = 2000. A relationship, not a tuning target: raising the ceiling may not quietly
         # give each connection a smaller share of the arena every outbound byte is copied into.

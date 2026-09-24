@@ -1207,8 +1207,12 @@ set is refused **by name, before the build**, rather than as a wall of preproces
 `derive_lwip_dependents()` reproduces opt.h's four formulas. `apply_lwip_connection_counts_override()`
 runs it on every call.
 
-**Two relationships lwIP does *not* check, and they are the ones that matter here.** Its own checks
-size the shared pools for **one** connection, while this firmware admits `max_connections` at once:
+**Three relationships lwIP does *not* check, and they are the ones that matter here.** Its own
+checks size the shared pools for **one** connection, while this firmware admits `max_connections`
+at once:
+
+- **`MEMP_NUM_TCP_PCB >= max_connections + 3`** (`SPARE_TCP_PCBS`): a closing connection holds its
+  pcb after its slot is free, and lwIP never reclaims a FIN_WAIT one at equal priority (Part H.7).
 
 - **`MEMP_NUM_TCP_SEG` is a global pool; `TCP_SND_QUEUELEN` is per connection.** One connection can
   drain the pool, leaving the rest holding data the stack has accepted but cannot push. The
@@ -4675,13 +4679,13 @@ literal `</script` closing the tag early) — 2 connections per page load (down 
 **`max_connections` is `6`** (owner, 2026-09-24, on the silicon evidence below; before that 8, 7, 4
 and 3), stated per device in `devices/*.toml` and checked against the firmware's own PCB count by
 `buildgen/validate.py`. **The relationship, not the number, is what this section fixes**:
-`max_connections` sits below `MEMP_NUM_TCP_PCB` with margin, currently 9 against 6. Three slots rather
-than one, because **TIME_WAIT pcbs come from that same pool** (`lib/lwip/src/core/tcp.c`'s
-`tcp_alloc()` reclaims the oldest TIME_WAIT only once `memp_malloc(MEMP_TCP_PCB)` has already failed)
-and keep-alive is unimplemented here, so every single request churns one; the third covers the one
-over-ceiling arrival `backlog` queues to be refused. `buildgen/validate.py` itself demands only one
-slot of margin — the three are the shipped pattern, pinned for every device by
-`tests_scripts/test_buildgen_validate.py`, but not a build error (BACKLOG item 44).
+`MEMP_NUM_TCP_PCB` is at least `max_connections + 3`, currently 9 against 6, and anything less is a
+build error (`check_lwip_ensemble()`'s `SPARE_TCP_PCBS`, 2026-09-24). Closing connections hold pcbs
+from the same pool after their slot is free, and keep-alive is unimplemented here, so every request
+closes one: `lib/lwip/src/core/tcp.c`'s `tcp_alloc()` reclaims TIME_WAIT, LAST_ACK and CLOSING pcbs
+when the pool is empty, but a FIN_WAIT one only at a lower priority, which none of ours has. The
+third covers the one over-ceiling arrival `backlog` queues to be refused. Every limit measured on
+silicon ran at this pattern; nothing leaner ever has.
 
 **The PCB count is the small part.** lwIP's options are an ensemble (B.14.2), and a *servable*
 connection also needs its share of two global pools: `MEMP_NUM_TCP_SEG` (a connection that cannot
@@ -4723,8 +4727,11 @@ plus the SGP40 reset PUT), each image built for and tested at its own limit
   the conventional 20-30 % free at peak with several pieces' worth of contiguous space.
 - **Refusals are expected, not failures**: a connection counts until it has closed (H.7.1), so
   back-to-back clients see ~70 % refused at every limit; the device's own rejection count matches
-  the host's exactly. Whether the count should drop once the response is written is open (BACKLOG
-  item 44).
+  the host's exactly. **It stays that way** (settled 2026-09-24, BACKLOG item 44): dropping the
+  count once the response is written would admit a new connection while the old one still holds its
+  heap and its pcb, and the board is CPU-bound, so the earlier admission serves nothing more — it
+  only pushes both pools past what the limit was measured at. The unit and per-device twin tests
+  pin it.
 - **`gc.threshold(32768)` does not move the limit**: more collections, no fewer failures.
 - A browser opens at most 6 connections per host and a page load here needs 2, so 6 costs nothing.
 
@@ -4793,7 +4800,10 @@ The consequences, all found by running these instruments on silicon for the firs
 
 `tests_scripts/test_request_timeout_ceiling.py` pins both instruments inside both timeouts, read
 from `src/`: the probe's whole walk to the largest shipped ceiling under `per_call_timeout_s`, the
-holder's drip under it and its recycle under `outer_cap_s`.
+holder's drip under it and its recycle under `outer_cap_s`. It also runs the holder against a
+loopback server: a parked connection is kept through every drip until its recycle time, and a
+server that answers gets a fresh one. Until 2026-09-24 the first empty read of a non-blocking socket
+ended the drip loop, so every connection was recycled after one drip rather than at 10 s.
 
 
 ### Cross-browser coverage
@@ -5039,7 +5049,12 @@ passes it to `send_file(stream=...)`, sets that attribute on the one response to
 is microdot's own, public, per-instance knob — nothing in `ext/microdot.py` changes — and the page
 now needs 320 B on the 32-bit twin with `dev`'s own site (1,536 B before). **A write-phase failure is never a success**:
 a response whose body can still fail after its status line goes out must carry its length, so the
-failure reaches the client as a short read.
+failure reaches the client as a short read. The same holds inside the header block (2026-09-24):
+microdot writes the status line and each header apart, and a client that reads EOF mid-headers
+(Python's `http.client` among them) takes it as their end — a `200` with no `Content-Length` and no
+body, read as complete: the empty `200` silicon showed twice (`HEAP_FRAGMENTATION_MEASUREMENTS.md`
+§7R.5). `_TimeoutStreamProxy.awrite()` holds the block until its blank line and sends it as one
+write, so a cut response ends before its status line or after its `Content-Length`.
 
 The sources were never the problem; the assembly was. **256, not smaller**: at 128 the list holding
 a response's pieces grows to 64 slots, a 256 B array, and the measured ceiling does not move (§7Q),

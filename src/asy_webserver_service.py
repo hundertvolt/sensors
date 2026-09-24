@@ -190,11 +190,17 @@ async def _stream_dict_response(result: "dict[str, Any]", chunk_bytes: int) -> "
         writer.add_value(value)
     writer.add("}")
     writer.flush()
+    return _pieces_response(pieces)
+
+
+def _pieces_response(pieces: "list[str]") -> "Response":
+    # A plain sync iterator with an exact Content-Length, never Response.complete()'s bytes-only
+    # default: without it a client reads to EOF, which real-socket soak testing timed out against.
+    # Never an `async def ... yield` generator - that syntax segfaults the interpreter (Part F.1).
     encoded = [p.encode() for p in pieces]
-    content_length = sum(len(p) for p in encoded)
     return Response(
         iter(encoded),
-        headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(content_length)},
+        headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(sum(len(p) for p in encoded))},
     )
 
 
@@ -233,6 +239,7 @@ class _TimeoutStreamProxy:
         self._stream = stream
         self._timeout_s = timeout_s
         self._pr = pr
+        self._head: list[bytes] | None = []  # the response's header block until its blank line
 
     async def _bounded(self, coro: "Awaitable[_T]") -> "_T":
         try:
@@ -248,6 +255,14 @@ class _TimeoutStreamProxy:
         return await self._bounded(self._stream.readexactly(n))
 
     async def awrite(self, data: bytes) -> None:
+        if self._head is not None:
+            # microdot writes the status line and each header apart; sent as one, a cut response
+            # never ends mid-headers, which a client reads as a complete, empty 200 (Part I.3).
+            self._head.append(data)
+            if data != b"\r\n":
+                return
+            data = b"".join(self._head)
+            self._head = None
         await self._bounded(self._stream.awrite(data))
 
     async def aclose(self) -> None:
@@ -284,9 +299,9 @@ class WebserverService:
         chunk_bytes: int = _DEFAULT_CHUNK_BYTES,  # the largest single write of any response body: each
         # streamed JSON piece and each static-file read. One parameter, so the two can never drift
         # apart (SPECIFICATION.md Part I.3). Clamped to >= 1: a read of 0 would never end microdot's loop.
-        max_connections: int = 6,  # reject-when-full ceiling, kept below the firmware's own
-        # MEMP_NUM_TCP_PCB (toolchain/versions.toml) with margin for TIME_WAIT churn - Part H.7
-        # holds that as a RELATIONSHIP, not a number; buildgen passes the per-device value.
+        max_connections: int = 6,  # reject-when-full ceiling, three below the firmware's own
+        # MEMP_NUM_TCP_PCB (toolchain/versions.toml) for connections still closing - Part H.7 holds
+        # that as a RELATIONSHIP, not a number; buildgen passes the per-device value.
         backlog: int | None = None,  # listen queue depth; None derives max_connections + 1 so one
         # over-ceiling arrival is queued and refused by _serve() rather than dropped unseen by
         # lwIP's accept queue. Never below max_connections - see SPECIFICATION.md Part H.7.
@@ -539,19 +554,8 @@ class WebserverService:
     # -- /status ---------------------------------------------------------------------------------
 
     async def _get_status(self, _request: "_RequestLike") -> "Response":
-        # Streams /status as small pre-built json.dumps() fragments through a plain sync iterator,
-        # bounding the largest allocation whatever the aggregate's size (Part I). Never an
-        # `async def ... yield` generator - that syntax segfaults the interpreter (Part F.1).
-
-        # Content-Length is set explicitly rather than left to Response.complete()'s bytes-only
-        # default: the size is known once every source is awaited, and without it a client falls
-        # back to read-until-EOF, which real-socket soak testing timed out against.
-        pieces = [p.encode() for p in await self._build_status_pieces()]
-        content_length = sum(len(p) for p in pieces)
-        return Response(
-            iter(pieces),
-            headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(content_length)},
-        )
+        # Streamed like every configuration-sized route (Part I.3), its pieces built below.
+        return _pieces_response(await self._build_status_pieces())
 
     async def _build_status_pieces(self) -> "list[str]":
         # One _PieceWriter, flushed at every top-level section: each section starts its own piece

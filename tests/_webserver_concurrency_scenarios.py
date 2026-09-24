@@ -743,9 +743,9 @@ async def _scenario_backlog_covers_the_ceiling(device: str) -> None:
 
 @_register("a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response", 30.0)
 async def _scenario_closing_connection_holds_its_slot(device: str) -> None:
-    # Today's semantics, pinned at each device's own ceiling (SPECIFICATION.md H.7): a slot is freed
-    # only once _close_writer() returns. Releasing it earlier is BACKLOG 44's owner decision and must
-    # change this scenario and test_asy_webserver_service.py's F1 twin of it together.
+    # Settled, pinned at each device's own ceiling (SPECIFICATION.md H.7): a slot is freed only once
+    # _close_writer() returns, while the closing connection still holds heap and a pcb. Changes with
+    # test_asy_webserver_service.py's F1 twin of it, never alone.
     port = _next_test_port()
     module = await _boot(port, device)
     ceiling = _ceiling(module)

@@ -4,9 +4,11 @@ just incidentally exercised by the six real device TOMLs happening to be valid."
 
 import shutil
 from pathlib import Path
+from types import ModuleType
 from typing import TYPE_CHECKING
 
 import pytest
+from _script_loader import load_script_module
 from _toml_fixtures import base_doc, write_doc, write_text
 
 from buildgen.errors import BuildError
@@ -21,6 +23,11 @@ if TYPE_CHECKING:
 @pytest.fixture
 def src_dir(repo_root: Path) -> Path:
     return repo_root / "src"
+
+
+@pytest.fixture(scope="session")
+def overrides(repo_root: Path) -> ModuleType:
+    return load_script_module(repo_root / "toolchain" / "micropython_overrides.py", "micropython_overrides")
 
 
 def _build(tmp_path: Path, src_dir: Path, doc: "TomlDoc", name: str = "dev") -> "DeviceModel":
@@ -1383,9 +1390,9 @@ def test_uart_link_invalid_role_value_rejected(tmp_path: Path, src_dir: Path) ->
 
 
 def _lwip_pcbs() -> int:
-    from buildgen.model import lwip_tcp_pcb_count
+    from buildgen.model import lwip_macros
 
-    return lwip_tcp_pcb_count()
+    return lwip_macros()["MEMP_NUM_TCP_PCB"]
 
 
 def test_max_connections_is_optional_and_falls_back_to_the_src_default(tmp_path: Path, src_dir: Path) -> None:
@@ -1396,18 +1403,21 @@ def test_max_connections_is_optional_and_falls_back_to_the_src_default(tmp_path:
     _build(tmp_path, src_dir, doc)
 
 
-def test_the_src_default_itself_fits_under_the_pinned_lwip_pcb_count(src_dir: Path) -> None:
-    # The relationship Part H.7 states, checked as a relationship: one slot of margin below the
-    # firmware's own MEMP_NUM_TCP_PCB, whatever the sweep has settled that number on.
+def test_the_src_default_itself_is_servable_by_the_pinned_lwip_table(src_dir: Path, overrides: ModuleType) -> None:
+    # A device that states no ceiling builds at this one, so it answers to the same per-connection
+    # relationships every stated ceiling does - three spare PCBs included (Part H.7).
+    from buildgen.model import lwip_macros
     from buildgen.validate import webserver_init_default
 
-    assert webserver_init_default(src_dir, "max_connections") < _lwip_pcbs()
+    assert overrides.check_lwip_ensemble(lwip_macros(), webserver_init_default(src_dir, "max_connections")) == []
 
 
-def test_a_max_connections_at_the_pcb_ceiling_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+def test_a_max_connections_leaving_fewer_than_three_spare_pcbs_is_rejected(tmp_path: Path, src_dir: Path, overrides: ModuleType) -> None:
+    # Two spare is the first value refused: a closing connection's FIN_WAIT pcb outlives its slot,
+    # and lwIP never reclaims one at equal priority (toolchain/micropython_overrides.py).
     doc = base_doc()
-    doc["device"]["max_connections"] = _lwip_pcbs()
-    with pytest.raises(BuildError, match="one slot of margin"):
+    doc["device"]["max_connections"] = _lwip_pcbs() - overrides.SPARE_TCP_PCBS + 1
+    with pytest.raises(BuildError, match=r"MEMP_NUM_TCP_PCB \(\d+\) < max_connections \+ 3"):
         _build(tmp_path, src_dir, doc)
 
 
@@ -1444,6 +1454,17 @@ def test_a_non_int_connection_field_is_rejected(tmp_path: Path, src_dir: Path, f
         _build(tmp_path, src_dir, doc)
 
 
+def test_device_max_connections_reads_the_toml_else_the_src_default(tmp_path: Path, src_dir: Path) -> None:
+    # The one reader every host-side instrument sizes its load with, so it must agree with the build.
+    from buildgen.validate import device_max_connections, webserver_init_default
+
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    assert device_max_connections(write_doc(tmp_path, "stated", doc), src_dir) == 3
+    doc["device"].pop("max_connections")
+    assert device_max_connections(write_doc(tmp_path, "unstated", doc), src_dir) == webserver_init_default(src_dir, "max_connections")
+
+
 def test_every_shipped_device_states_its_own_ceiling(repo_root: Path) -> None:
     # The owner's decision (2026-09-22) is that the recommended setting ships on every device, so
     # each one says what its ceiling is rather than inheriting a default nobody reads.
@@ -1455,24 +1476,4 @@ def test_every_shipped_device_states_its_own_ceiling(repo_root: Path) -> None:
         with toml_path.open("rb") as f:
             device = tomllib.load(f)["device"]
         assert "max_connections" in device, f"{toml_path.name} does not state [device].max_connections"
-        assert device["max_connections"] < _lwip_pcbs(), f"{toml_path.name}'s max_connections outruns the firmware's own lwIP PCB count"
 
-
-_PCBS_FOR_CLOSING_CONNECTIONS = 3
-
-
-def test_every_shipped_ceiling_leaves_three_pcbs_for_connections_still_closing(repo_root: Path, src_dir: Path) -> None:
-    # The shipped pattern, measured on silicon (SPECIFICATION.md H.7): closing and TIME_WAIT
-    # connections hold PCBs from the same pool. Pins what ships; the validator's own one-slot
-    # rule is unchanged, and making +3 a build error is BACKLOG 44's owner decision.
-    import tomllib
-
-    from buildgen.validate import webserver_init_default
-
-    ceilings = {"src default": webserver_init_default(src_dir, "max_connections")}
-    for toml_path in sorted((repo_root / "devices").glob("*.toml")):
-        if not toml_path.name.startswith("zz_test_"):
-            with toml_path.open("rb") as f:
-                ceilings[toml_path.name] = tomllib.load(f)["device"].get("max_connections", ceilings["src default"])
-    for where, ceiling in ceilings.items():
-        assert ceiling + _PCBS_FOR_CLOSING_CONNECTIONS <= _lwip_pcbs(), f"{where}: max_connections {ceiling} leaves {_lwip_pcbs() - ceiling} of {_lwip_pcbs()} lwIP PCBs, fewer than the {_PCBS_FOR_CLOSING_CONNECTIONS} closing connections hold"

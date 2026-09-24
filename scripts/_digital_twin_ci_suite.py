@@ -12,7 +12,6 @@ import argparse
 import http.client
 import json
 import os
-import re
 import signal
 import socket
 import statistics
@@ -199,20 +198,13 @@ def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
 
 
 def _configured_max_connections(device: str) -> int:
-    """The admission ceiling this tree builds for `device` - its own [device].max_connections, else
-    WebserverService's own default. Read host-side from the same TOML buildgen reads, so raising a
-    device's ceiling makes this run drive more concurrency instead of a stale literal."""
-    import tomllib  # noqa: PLC0415 - stdlib, and only this one helper needs it
+    """The admission ceiling this tree builds for `device`, read by buildgen's own helper - so raising
+    a device's ceiling makes this run drive more concurrency instead of a stale literal."""
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))  # buildgen sits beside scripts/, as for _generate_sensortask_modules.py
+    from buildgen.validate import device_max_connections  # noqa: PLC0415 - needs the path entry above
 
-    with (REPO_ROOT / "devices" / f"{device}.toml").open("rb") as f:
-        configured = tomllib.load(f).get("device", {}).get("max_connections")
-    if isinstance(configured, int):
-        return configured
-    source = (REPO_ROOT / "src" / "asy_webserver_service.py").read_text()
-    match = re.search(r"^\s*max_connections: int = (\d+)", source, re.MULTILINE)
-    if match is None:
-        raise RuntimeError("neither devices/*.toml nor WebserverService.__init__ names a max_connections default")
-    return int(match.group(1))
+    return device_max_connections(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src")
 
 
 def _concurrent_get(paths: list[str], timeout: float = 30.0) -> list[object]:

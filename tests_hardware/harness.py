@@ -35,18 +35,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
 
 def configured_max_connections(device: str = "dev") -> int:
-    """The admission ceiling this repo's config would build for `device` - its own
-    [device].max_connections, else WebserverService's own default. It describes the TREE, not
+    """The admission ceiling this repo's config would build for `device`. It describes the TREE, not
     necessarily the image on the board, so a test that cares asserts the two agree."""
-    sys.path.insert(0, str(REPO_ROOT))
-    import tomllib
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from buildgen.validate import device_max_connections
 
-    from buildgen.validate import webserver_init_default
-
-    with (REPO_ROOT / "devices" / f"{device}.toml").open("rb") as f:
-        table = tomllib.load(f)["device"]
-    ceiling = table.get("max_connections")
-    return int(ceiling) if ceiling is not None else webserver_init_default(REPO_ROOT / "src", "max_connections")
+    return device_max_connections(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src")
 
 
 def discover_max_connections(host: str, port: int = 80, probe_limit: int = 64, settle_s: float = 1.0, dwell_s: float = 0.3) -> int:
@@ -54,7 +49,6 @@ def discover_max_connections(host: str, port: int = 80, probe_limit: int = 64, s
     one is refused. The only figure that is silicon's own rather than the tree's, and the one a
     raised lwIP PCB count has to be confirmed against (SPECIFICATION.md Part B.14.2)."""
     import socket
-    import time
 
     # `dwell_s` must stay well under the server's own per-call read timeout, because an admitted
     # connection that says nothing is closed with a 400 once that fires - so a slow walk frees

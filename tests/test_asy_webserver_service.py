@@ -1231,9 +1231,9 @@ class _GatedCloseWriter(_ScriptedWriter):
 
 
 def test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_written() -> None:
-    # Today's semantics, pinned (SPECIFICATION.md H.7): the client already holds its whole response,
-    # yet the slot counts until _close_writer() returns - the source of the ~70 % refusals of back-to-back
-    # clients on silicon. Releasing it earlier is BACKLOG 44's owner decision and must change this test.
+    # Settled (SPECIFICATION.md H.7): the client already holds its whole response, yet the slot counts
+    # until _close_writer() returns - its heap and pcb are still live, and the board is CPU-bound, so
+    # an earlier admission serves nothing more. The ~70 % refusals of back-to-back clients follow.
     service, _app = _make_service(max_connections=1, per_call_timeout_s=5.0, outer_cap_s=5.0)
 
     async def scenario() -> None:
@@ -1905,10 +1905,11 @@ class _ChunkRecordingWriter(_ScriptedWriter):
 def _get_on_the_wire(service: "WebserverService", path: str) -> "tuple[str, dict[str, str], list[bytes]]":
     writer = _ChunkRecordingWriter()
     run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", path))], eof=True), writer), timeout_s=5.0)
-    end = writer.chunks.index(b"\r\n")  # microdot writes the header block's blank line on its own
-    lines = b"".join(writer.chunks[:end]).decode().split("\r\n")
+    head = writer.chunks[0]  # the whole header block is one write (_TimeoutStreamProxy.awrite)
+    assert head.endswith(b"\r\n\r\n") and head.count(b"\r\n\r\n") == 1, head
+    lines = head.decode().split("\r\n")
     headers = dict(line.split(": ", 1) for line in lines[1:] if line)
-    return lines[0].split(" ")[1], {k.lower(): v for k, v in headers.items()}, writer.chunks[end + 1 :]
+    return lines[0].split(" ")[1], {k.lower(): v for k, v in headers.items()}, writer.chunks[1:]
 
 
 def _patterned(size: int) -> bytes:
@@ -1956,6 +1957,28 @@ def test_g3_one_chunk_bytes_parameter_bounds_json_pieces_and_static_reads_alike(
         assert len(body) > 5, path  # really chunked at 100, not merely small
     _status, _headers, body = _get_on_the_wire(service, "/page.bin")
     assert [len(chunk) for chunk in body] == [100] * 10 + [0]  # microdot reads on until a short read
+
+
+class _BodyFailingWriter(_ChunkRecordingWriter):
+    # Takes the first write, then fails like a peer that vanished mid-response.
+    async def awrite(self, data: bytes) -> None:
+        if self.chunks:
+            raise OSError(104, "ECONNRESET")
+        await super().awrite(data)
+
+
+def test_g3_the_header_block_is_one_write_so_a_cut_response_still_carries_its_length() -> None:
+    # microdot writes each header apart, and a client reading EOF mid-headers takes it as their end:
+    # a 200 with no Content-Length and no body, read as complete (MEASUREMENTS §7R.5's empty 200).
+    mount = _mount_static_fixture({"page.bin": _patterned(1000)})
+    service, _app = _make_service(static_mount=mount)
+    for path in ("/page.bin", "/status", "/measurements", "/no-such-page"):
+        _status, headers, _body = _get_on_the_wire(service, path)  # asserts the one-write head itself
+        assert "content-length" in headers, (path, headers)
+    writer = _BodyFailingWriter()
+    run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", "/page.bin"))], eof=True), writer), timeout_s=5.0)
+    assert len(writer.chunks) == 1, writer.chunks
+    assert writer.chunks[0].startswith(b"HTTP/1.0 200 OK\r\n") and b"Content-Length: 1000\r\n" in writer.chunks[0], writer.chunks
 
 
 def test_g3_a_zero_chunk_bytes_is_clamped_so_a_static_read_still_ends() -> None:

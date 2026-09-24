@@ -4947,6 +4947,8 @@ GC's own tables), and it is the percentage base below. `.bss` A → B grew 20,91
   request per connection (`cyw43_lwip.c:281` allocates every received packet from it).
 - **Parked connections are cheap**: a full ceiling of 7 held mid-request (sustained by staggered
   recycling, `SPECIFICATION.md` H.7.1) left room for 15 placeable 2,048 B blocks at worst, against a demand of 7.
+  That holder recycled after every ~2 s drip rather than at 10 s (fixed 2026-09-24, H.7.1); the
+  count's at-ceiling fraction was asserted either way, so the reading stands as a peak one.
 - **Independent ensemble audit**: all 18 relevant `#error` conditions in `lib/lwip/src/core/init.c`
   re-derived, with the switches deciding which are live ground-truthed out of the translation unit
   (`LWIP_DISABLE_TCP_SANITY_CHECKS` undefined, `MEMP_MEM_MALLOC = MEM_USE_POOLS = 0`,
@@ -5065,7 +5067,10 @@ faster, its requests hardly overlap, and it is optimistic by two levels or more 
 - **A likely watchdog reset at `mpremote` attach** ~30 s after a test's own teardown reset, ~9 s
   after attaching. Not confirmed.
 - **An empty `200` with no `Content-Length`**, twice, from an idle `GET /` during the boot-time WLAN
-  drop — not from `_serve_static()`, which always sets the length. Origin unexplained.
+  drop. **Explained 2026-09-24, off silicon**: `_serve_static()` does set the length, but microdot
+  writes the status line and each header apart, and `http.client` reads EOF mid-headers as their end,
+  giving exactly `200`, no `Content-Length`, 0 B — so this was a response cut inside its header block
+  (checked against a local socket). Fixed by sending the block as one write (SPECIFICATION.md I.3).
 - **Two host-side stalls at N = 4** before the static fix (a `URLError` and a 30 s timeout, nothing
   on the device); none in the 12 boots after it.
 - **FRAM E31 + W73**, new between the two days' readings: a status byte found not IDLE at a write,

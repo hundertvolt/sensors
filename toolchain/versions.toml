@@ -43,15 +43,16 @@ apt_packages = [
 # THESE VALUES ARE AN ENSEMBLE, NOT INDEPENDENT KNOBS. lib/lwip/src/core/init.c turns each of its
 # relationships into a compile-time #error and opt.h derives TCP_SND_QUEUELEN/TCP_SNDLOWAT/
 # TCP_SNDQUEUELOWAT/PBUF_POOL_BUFSIZE from what is set here; micropython_overrides.py's
-# check_lwip_ensemble() re-states all of it, plus the two relationships lwIP does NOT check because
+# check_lwip_ensemble() re-states all of it, plus the three relationships lwIP does NOT check because
 # it sizes the shared pools for ONE connection while this firmware admits max_connections at once.
 # Change one value and run a build: an incoherent set is refused by name before it compiles.
 #
 # Sized for max_connections = 6, the limit measured stable under peak load with ~21 % heap free
 # (SPECIFICATION.md Part H.7); each connection of capacity costs 2,324 B of GC heap:
-#   MEMP_NUM_TCP_PCB   three slots above max_connections, not one - TIME_WAIT pcbs come from this
-#                      same pool (lwIP tcp.c tcp_alloc()) and keep-alive is unimplemented, so every
-#                      request churns one.
+#   MEMP_NUM_TCP_PCB   max_connections + 3 (SPARE_TCP_PCBS). A closed connection's FIN_WAIT pcb
+#                      outlives its slot and lwIP tcp.c tcp_alloc() never reclaims one at equal
+#                      priority; keep-alive is unimplemented, so every request closes one. The
+#                      third is the over-ceiling arrival backlog queues to be refused.
 #   MEMP_NUM_TCP_SEG   max_connections x (TCP_SND_BUF / TCP_MSS) = 6 x 8. A GLOBAL pool against a
 #                      PER-connection TCP_SND_QUEUELEN, so without this one connection can drain it
 #                      and the rest stall with data the stack has accepted but cannot push.

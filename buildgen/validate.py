@@ -6,12 +6,14 @@ import ast
 import importlib.util
 from pathlib import Path
 
+import tomllib
+
 from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, ALLOWED_INSTANCE_FIELDS, BUS_ATTACHED_DRIVERS, BUS_KIND_BY_DRIVER, FIXED_ADDRESS_DRIVERS, REQUIRED_TOML_FIELDS
 from buildgen.defaults import default_class_defines_attr, default_class_name, default_init_params, find_default_class
 from buildgen.driver_registry import SINGLETON_SERVICE_DRIVERS, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
 from buildgen.limits import LimitField, parse_limits
-from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, load_device, lwip_macros, lwip_tcp_pcb_count, resolve_instance_key
+from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, load_device, lwip_macros, resolve_instance_key
 from buildgen.pico_gpio import I2C_ROLE, SPI_ROLE, UART_ROLE, gpio_exists
 from buildgen.requires_tag import RequiresTag, check_requires_tags, parse_requires_tags
 from buildgen.value_wiring import ValueWiringField, parse_value_wiring
@@ -65,11 +67,7 @@ _REQUIRED_DEVICE_INT_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
 # runs against that EFFECTIVE value - so no device can outrun its firmware by simply saying nothing.
 _OPTIONAL_DEVICE_INT_FIELDS = ("max_connections", "backlog")
 _ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | frozenset(_OPTIONAL_DEVICE_INT_FIELDS) | {"wiring"}
-# The ceiling this device's own firmware can actually hold, one slot of margin below the lwIP PCB
-# count toolchain/versions.toml pins (SPECIFICATION.md Part H.7's relationship, not a fixed number).
-# Checked here rather than left to the src/ default, so a device that outruns its own build fails
-# the build instead of silently refusing connections its config says it admits.
-_MAX_CONNECTIONS_FLOOR = 1
+_MAX_CONNECTIONS_FLOOR = 1  # a webserver admitting no connection serves nothing
 _WPA2_MIN_PASSWORD_LEN = 8  # WPA2-PSK's own minimum (IEEE 802.11i)
 _WPA2_MAX_PASSWORD_LEN = 63  # its maximum too; asy_wifi_service._VAL_HOTSPOT_PW carries the same pair
 
@@ -158,7 +156,12 @@ def webserver_init_default(src_dir: Path, name: str) -> int:
     raise BuildError("<src>", f"WebserverService.__init__ no longer has a readable int default for {name!r} in {path} - the per-device key and the shipped default have to agree", field=name)
 
 
-VERSIONS_PATH_LABEL = "toolchain/versions.toml"
+def device_max_connections(toml_path: Path, src_dir: Path) -> int:
+    """The admission ceiling `toml_path` builds: its own [device].max_connections, else
+    WebserverService's default. Host-side instruments size their load with this, never a literal."""
+    with toml_path.open("rb") as f:
+        ceiling = tomllib.load(f).get("device", {}).get("max_connections")
+    return ceiling if isinstance(ceiling, int) else webserver_init_default(src_dir, "max_connections")
 
 
 def _lwip_ensemble_problems(macros: "dict[str, int]", max_connections: int) -> "list[str]":
@@ -170,27 +173,26 @@ def _lwip_ensemble_problems(macros: "dict[str, int]", max_connections: int) -> "
         raise BuildError("<toolchain>", "cannot load toolchain/micropython_overrides.py, which owns lwIP's own option relationships", field="max_connections")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    problems: list[str] = module.check_lwip_ensemble(macros, max_connections)
+    try:
+        problems: list[str] = module.check_lwip_ensemble(macros, max_connections)
+    except KeyError as e:
+        raise BuildError("<toolchain>", f"[lwip] in toolchain/versions.toml lacks {e} - it is what bounds every device's max_connections", field="max_connections") from e
     return problems
 
 
 def _check_connection_ceiling(model: DeviceModel, src_dir: Path) -> None:
-    """The device's EFFECTIVE admission ceiling against the firmware's own lwIP PCB count. Config
-    that outruns its build refuses connections it says it admits, which reads as an application
-    bug; Part H.7 keeps one slot of margin below the PCB count as a relationship, not a number."""
+    """The device's EFFECTIVE admission ceiling against the firmware it ships in. Config that
+    outruns its build refuses connections it says it admits, which reads as an application bug -
+    so the PCB, segment and send-arena shares per connection (Part H.7) are build errors."""
     dev = model.doc["device"]
     max_connections = dev.get("max_connections", webserver_init_default(src_dir, "max_connections"))
     if max_connections < _MAX_CONNECTIONS_FLOOR:
         raise BuildError(model.device, f"[device].max_connections is {max_connections} - a webserver admitting no connection at all serves nothing, so the floor is {_MAX_CONNECTIONS_FLOOR}", field="max_connections")
-    lwip_pcbs = lwip_tcp_pcb_count()
-    if max_connections >= lwip_pcbs:
-        raise BuildError(model.device, f"[device].max_connections is {max_connections}, but this firmware's lwIP holds only {lwip_pcbs} TCP PCBs ([lwip].MEMP_NUM_TCP_PCB in toolchain/versions.toml) - Part H.7 keeps one slot of margin below that, so the ceiling here is {lwip_pcbs - 1}", field="max_connections")
     # lwIP's options are an ensemble and its own checks size the shared pools for ONE connection.
-    # The N-connection half is checked here, where N is known - a device admitting more connections
-    # than the firmware's segment pool or send arena can actually serve is the failure this catches.
+    # The N-connection half is checked here, where N is known.
     ensemble = _lwip_ensemble_problems(lwip_macros(), max_connections)
     if ensemble:
-        raise BuildError(model.device, f"[device].max_connections is {max_connections}, which this firmware's lwIP settings cannot serve: " + "; ".join(ensemble) + f". Raise the matching [lwip] values in {VERSIONS_PATH_LABEL} or lower max_connections", field="max_connections")
+        raise BuildError(model.device, f"[device].max_connections is {max_connections}, which this firmware's lwIP settings cannot serve: " + "; ".join(ensemble) + ". Raise the matching [lwip] values in toolchain/versions.toml or lower max_connections", field="max_connections")
     backlog = dev.get("backlog")
     if backlog is not None and backlog < max_connections:
         # An accept queue shallower than the ceiling drops arrivals inside lwIP, where nothing in

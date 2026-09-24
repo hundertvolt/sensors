@@ -759,28 +759,35 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     from `npm run test:unit` rather than from reading 150 conflict hunks. After a resolution that
     takes one side wholesale, run every tier before trusting it.
 
-44. **Follow-ups to the serving fix and the connection limit (2026-09-23/24), none blocking.**
-    Evidence: HEAP_FRAGMENTATION_MEASUREMENTS.md §7Q and §7R.
-    - **Owner decision: should `_open_conns` drop when the response is written, not when the close
-      has finished?** Today a connection counts until `_close_writer()` returns, while its client
-      already holds the complete body, so back-to-back clients see ~70 % refused at every limit
-      (SPECIFICATION.md H.7). Refusals are expected behaviour; dropping earlier would admit more
-      requests while closing connections still hold lwIP PCBs, which is why the limit sits below
-      `MEMP_NUM_TCP_PCB`.
-    - **Owner decision: move the wall itself?** Every failure at 8-10 was one 242-257 B `/status`
-      piece; a smaller `chunk_bytes`, or less per `/status` piece, is what would move it. Not needed
-      at 6.
-    - **Owner decision: enforce PCB = limit + 3?** It is the shipped pattern and the H.7 reasoning,
-      pinned for every shipped device by a test, but `buildgen/validate.py` demands only one spare
-      slot and `check_lwip_ensemble()` has no PCB floor per connection, so a new device can still
-      ship with less.
+44. **Follow-ups to the serving fix and the connection limit (2026-09-23/24) — all settled
+    2026-09-24 except the board anomalies, which only silicon can chase.** Evidence:
+    HEAP_FRAGMENTATION_MEASUREMENTS.md §7Q and §7R.
+    - **Settled: a connection counts until its close has finished**, not once its response is
+      written. The closing connection still holds heap and a pcb and the board is CPU-bound, so an
+      earlier admission serves nothing more and only pushes both pools past what 6 was measured at;
+      the ~70 % refusals of back-to-back clients are the expected price (SPECIFICATION.md H.7).
+    - **Settled: the wall is not moved.** Every failure at 8-10 was one 242-257 B `/status` piece;
+      at 6 the largest free block at peak is ~1.5 KB, so nothing needs it. The lever, if a higher
+      limit is ever wanted, is a smaller `chunk_bytes` or less per `/status` piece (Part I.3).
+    - **Settled: `MEMP_NUM_TCP_PCB >= max_connections + 3` is a build error**, the third
+      per-connection rule in `check_lwip_ensemble()` (`SPARE_TCP_PCBS`) beside the segment and arena
+      ones. A FIN_WAIT pcb outlives its slot and lwIP never reclaims one at equal priority, and every
+      limit measured on silicon ran at +3 (SPECIFICATION.md H.7).
+    - **Settled: the empty `200` without `Content-Length`** (§7R.5) was a response cut inside its
+      header block, which `http.client` reads as complete. The block is now one write
+      (SPECIFICATION.md I.3).
+    - **Settled: the UART link exerciser's 264 B receive** that failed twice at 10 connections in the
+      64-bit twin, and never on the board-faithful 32-bit one, is not a UART defect: an allocation
+      failing in a heap the webserver had exhausted at a limit that does not ship. `uart_get()`'s
+      own destination allocation is guarded (errno 24) and the task is supervised.
     - **The sittings' lessons are tests now**, so a change to any of them is a deliberate edit to
       one: the slot held until the close (`test_asy_webserver_service.py` F1 and the per-device
-      scenario, the first bullet's decision); three spare PCBs per shipped ceiling
-      (`test_buildgen_validate.py`, the third's); the instruments inside the firmware's timeouts
-      (`test_request_timeout_ceiling.py`); every heap-measuring device script setting and printing its
-      `gc.threshold` (`test_device_script_gc_threshold.py`); the board restored after a device script,
-      through one shared `harness.restore_board_to_serving()` (`test_bench_restores_serving.py`).
+      scenario); three spare PCBs (`TestLwipEnsemble`, `test_buildgen_validate.py`); the header block
+      in one write (`test_asy_webserver_service.py` G.3); the instruments inside the firmware's
+      timeouts (`test_request_timeout_ceiling.py`); every heap-measuring device script setting and
+      printing its `gc.threshold` (`test_device_script_gc_threshold.py`); the board restored after a
+      device script, through one shared `harness.restore_board_to_serving()`
+      (`test_bench_restores_serving.py`).
     - **The 32-bit frozen twin stays an ad-hoc instrument, never a committed tool or CI gate**
       (owner, 2026-09-23). It reproduced the board's failing sites and sizes and, throttled to the
       board's throughput, its peak-load failure rates; the what-for and how-to are
@@ -788,13 +795,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     - **The next wall is vendored.** Past 10 connections the first allocation to fail is
       `ext/microdot.py:383`, the `Request` object's own attribute table (~232 B on the RP2040), seen
       as 400s on silicon at 12. Not ours to change; recorded so it is not rediscovered.
-    - **Board anomalies, recorded not chased** (§7R.5): one silent reset in one instrumented boot
-      (1 in 9, cause lost); hotspot fallback after a reset, three times; a likely watchdog reset at
-      `mpremote` attach; an empty `200` without `Content-Length` twice during the boot-time WLAN
-      drop, from a path other than `_serve_static()`, unexplained.
-    - **The UART link exerciser's 264 B receive path** (`asy_uart_comm.py:913`) failed twice at 10
-      in the 64-bit twin, the only module outside the webserver to fail anywhere in the sweeps. It
-      did not fail on the board-faithful 32-bit twin. Recorded, not chased.
+    - **Still open — board anomalies, recorded not chased** (§7R.5): one silent reset in one
+      instrumented boot (1 in 9, cause lost); hotspot fallback after a reset, three times; a likely
+      watchdog reset at `mpremote` attach. Each needs silicon.
 
 45. **Done 2026-09-24: the connection-scaling work added no file beyond its tests.** Every temporary
     file — the plan, five hardware handovers, the bench-sitting log, the two working catalogs and the
@@ -887,7 +890,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   and a build-time define, which `env --tier generic` installs through but does not compile),
   and - the class the lint/typecheck recipe never exercises at all - the two `toolchain/` files:
   `setup_toolchain.py` as described above, plus the new `micropython_overrides.py` (PR #90's
-  `MICROPY_ASYNC_KBD_INTR=0` Unix-port build override, SPECIFICATION.md Part B.14.1).
+  `MICROPY_ASYNC_KBD_INTR=0` Unix-port build override, SPECIFICATION.md Part B.14.1). That pair is
+  what a compiler-version-sensitive break would actually show up in, so it is the part worth the
+  owner's next manual run; a `scripts/test.sh` change is host tooling and low-risk.
   **2026-09-22 adds a second override to that same class, and it changes the rp2 firmware build
   rather than the Unix port**: `micropython_overrides.py`'s `lwip_connection_counts` (Part B.14.2)
   generates an out-of-tree board directory and passes `BOARD_DIR=` to `make`, and
@@ -904,10 +909,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   from them), and the generated header carries a sentinel the post-build check demands, so a shim
   that was never *found* fails even when the asked-for values match MicroPython's own defaults.
   Both are pure host-side Python with no new dependency; the chroot relevance is unchanged.
-  That pair is what a compiler-version-sensitive
-  break would actually show up in, so it is the part worth the owner's next manual run; a
-  `scripts/test.sh` change is host tooling and low-risk. 2026-09-22 added two more to it, both pure
-  shell with no build impact: the `MemoryError` gate matches `memory allocation failed` as well as
+  2026-09-22 added two more to `scripts/test.sh`, both pure shell with no build impact: the `MemoryError` gate matches `memory allocation failed` as well as
   the class name, and argument/`GC_THRESHOLD` validation moved ahead of the two live-tree sweeps so
   a rejected invocation mutates nothing (it previously wiped `tests/_tmp` while the concurrent
   MicroPython tier held scratch dirs under it). A third, text-only change the same day: the
@@ -927,23 +929,26 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   single unrelated third-party source (a PPA that 403s or whose key expired) aborted the whole
   installer before it could install a package the main archive serves. Every `apt-get install`
   stays fatal. The chroot recipe never runs this script, so it changes nothing the legs cover.
-  A fourth `scripts/` change on 2026-09-23, Python only:
-  `scripts/_digital_twin_ci_suite.py` gains Run 11b, a host-side full-ceiling concurrency run
+  **2026-09-22, `scripts/test.sh`**, shell only and inside the summary block:
+  it re-emits each red outcome (a failed file, a file that only logged an allocation
+  failure, the pytest tier) as a GitHub workflow-command annotation, guarded on `GITHUB_ACTIONS` so
+  a local or chroot run prints nothing extra and behaves exactly as before. No build step, so the
+  chroot legs neither exercise nor are threatened by it.
+  **2026-09-23, `scripts/_digital_twin_ci_suite.py`**, Python only:
+  it gains Run 11b, a host-side full-ceiling concurrency run
   (threads + real sockets from the CPython suite process, per SPECIFICATION.md Part E.9), plus two
   helpers - one reading the device's own `max_connections` from `devices/<device>.toml`, one firing
   a barrier-synchronised concurrent burst. Test orchestration only, no build step, so the chroot
   legs neither exercise nor are threatened by it.
-  A third `scripts/` change on 2026-09-22, shell only and inside the summary block:
-  `scripts/test.sh` re-emits each red outcome (a failed file, a file that only logged an allocation
-  failure, the pytest tier) as a GitHub workflow-command annotation, guarded on `GITHUB_ACTIONS` so
-  a local or chroot run prints nothing extra and behaves exactly as before. No build step, so the
-  chroot legs neither exercise nor are threatened by it.
   **2026-09-23, `toolchain/versions.toml` — the class the installer leg exercises**: the `[lwip]`
   ensemble re-sized for `max_connections = 8` (owner, 2026-09-23: "target 10 ground stable, keep the
   limit to 8 as safety margin") — `MEMP_NUM_TCP_PCB` 10 → 11, `MEMP_NUM_TCP_SEG` 56 → 64, `MEM_SIZE`
   14000 → 16000, every relationship unchanged and `check_lwip_ensemble()` passing. A firmware build
   runs the post-build macro verification against these, so it is the installer leg
   (`uv run toolchain/setup_toolchain.py`) that covers it; the lint/typecheck recipe does not.
+  **2026-09-23, `pyproject.toml`**: ruff's `max-args` 23 → 24, the documented one-parameter ratchet,
+  for `WebserverService`'s `chunk_bytes=` (owner: JSON pieces and static reads bound by one
+  parameter, SPECIFICATION.md Part I.3). Lint config only, no build impact.
   **2026-09-24, `scripts/_digital_twin_ci_suite.py`**: Run 11b pauses 1 s before its first
   full-ceiling burst too, not only between bursts — the readiness probe's connection is still
   counted while it closes, which refused one of 6 at the new limit. Test orchestration only, no build
@@ -952,9 +957,14 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   re-sized for `max_connections = 6` (owner, 2026-09-24, on the peak-load evidence of SPECIFICATION.md
   Part H.7) — `MEMP_NUM_TCP_PCB` 11 → 9, `MEMP_NUM_TCP_SEG` 64 → 48, `MEM_SIZE` 16000 → 12000, the
   same pattern (limit + 3, limit × 8, limit × 2,000), `check_lwip_ensemble()` clean at 6 and refusing 7.
-  **2026-09-23, `pyproject.toml`**: ruff's `max-args` 23 → 24, the documented one-parameter ratchet,
-  for `WebserverService`'s `chunk_bytes=` (owner: JSON pieces and static reads bound by one
-  parameter, SPECIFICATION.md Part I.3). Lint config only, no build impact.
+  **2026-09-24, `toolchain/micropython_overrides.py`**: `check_lwip_ensemble()` gains its third
+  per-connection rule, `MEMP_NUM_TCP_PCB >= max_connections + SPARE_TCP_PCBS` (3), so the pattern
+  every shipped ceiling already follows is a build error to break (SPECIFICATION.md H.7). Pure
+  host-side Python; buildgen runs it per device, while the firmware build's own ensemble check has
+  no ceiling to apply it to, so no chroot leg's outcome changes. `versions.toml`: comments only.
+  **2026-09-24, `scripts/_digital_twin_ci_suite.py`**: `_configured_max_connections()` reads the
+  `src/` default through buildgen's own `webserver_init_default()` rather than a second regex over
+  the same line. Test orchestration only, no build step.
   Kept here as the running list of what is owed, not as a merge blocker.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not

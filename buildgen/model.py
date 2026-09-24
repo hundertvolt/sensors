@@ -136,16 +136,3 @@ def lwip_macros(path: Path = VERSIONS_PATH) -> "dict[str, int]":
         raise BuildError("<toolchain>", f"cannot read the [lwip] table from {path} ({e}) - it is what bounds every device's max_connections", field="max_connections") from e
     return dict(table)
 
-
-def lwip_tcp_pcb_count(path: Path = VERSIONS_PATH) -> int:
-    """The firmware's own MEMP_NUM_TCP_PCB, read from the one file that pins it. A device's
-    max_connections is checked against this rather than a literal, so config can never outrun the
-    build it ships in (SPECIFICATION.md Parts B.14.2 and H.7)."""
-    try:
-        with path.open("rb") as f:
-            value = tomllib.load(f)["lwip"]["MEMP_NUM_TCP_PCB"]
-    except (OSError, KeyError, tomllib.TOMLDecodeError) as e:
-        raise BuildError("<toolchain>", f"cannot read [lwip].MEMP_NUM_TCP_PCB from {path} ({e}) - it is what bounds every device's max_connections", field="max_connections") from e
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        raise BuildError("<toolchain>", f"[lwip].MEMP_NUM_TCP_PCB in {path} is {value!r}, not a positive int", field="max_connections")
-    return value

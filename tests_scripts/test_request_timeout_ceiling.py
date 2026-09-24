@@ -4,10 +4,16 @@ timeouts, the bench's connection-holding instruments. Read with ast, since src/ 
 
 import ast
 import re
+import socket
+import sys
+import threading
+import time
+import warnings
 from pathlib import Path
 from types import ModuleType
 
 import pytest
+from _script_loader import load_script_module
 
 
 def _default_for_parameter(source_path: Path, param: str) -> float:
@@ -102,16 +108,10 @@ def per_call_timeout_s(repo_root: Path) -> float:
 
 
 def _largest_shipped_ceiling(repo_root: Path) -> int:
-    import tomllib
+    from buildgen.validate import device_max_connections, webserver_init_default
 
-    from buildgen.validate import webserver_init_default
-
-    ceilings = [webserver_init_default(repo_root / "src", "max_connections")]
-    for toml_path in sorted((repo_root / "devices").glob("*.toml")):
-        if not toml_path.name.startswith("zz_test_"):
-            with toml_path.open("rb") as f:
-                ceilings.append(tomllib.load(f)["device"].get("max_connections", ceilings[0]))
-    return max(ceilings)
+    shipped = [p for p in (repo_root / "devices").glob("*.toml") if not p.name.startswith("zz_test_")]
+    return max([webserver_init_default(repo_root / "src", "max_connections")] + [device_max_connections(p, repo_root / "src") for p in shipped])
 
 
 def test_the_ceiling_probe_reaches_every_devices_ceiling_before_its_first_connection_times_out(repo_root: Path, per_call_timeout_s: float) -> None:
@@ -192,3 +192,60 @@ def test_a_non_numeric_constant_does_not_satisfy_the_lookup(tmp_path: Path) -> N
     source.write_text('_RESET_ERRORS_TIMEOUT_S = "30.0"\n')
     with pytest.raises(AssertionError, match="no module-level numeric constant"):
         _module_constant(source, "_RESET_ERRORS_TIMEOUT_S")
+
+
+@pytest.fixture(scope="module")
+def ceiling_holder(repo_root: Path) -> ModuleType:
+    sys.path.insert(0, str(repo_root / "tests_hardware"))  # the bench module's own bare imports
+    with warnings.catch_warnings():  # its markers are registered by tests_hardware/conftest.py, not here
+        warnings.simplefilter("ignore", pytest.PytestUnknownMarkWarning)
+        return load_script_module(repo_root / "tests_hardware" / "bench" / "test_heap_under_connection_ceiling.py", "bench_ceiling_holder")
+
+
+def _connections_the_holder_opens(holder: ModuleType, *, server_answers: bool, window_s: float = 0.6) -> "tuple[int, int]":
+    # A loopback server that either parks every connection, as the firmware does mid-request, or
+    # closes it at once, as it does on answering. Returns (connections opened, live count at the end).
+    server = socket.create_server(("127.0.0.1", 0))
+    server.settimeout(0.05)
+    accepted: list[socket.socket] = []
+    done = threading.Event()
+
+    def serve() -> None:
+        while not done.is_set():
+            try:
+                conn, _addr = server.accept()
+            except TimeoutError:
+                continue
+            accepted.append(conn)
+            if server_answers:
+                conn.close()
+
+    live, lock, stop = [0], threading.Lock(), threading.Event()
+    threads = [threading.Thread(target=serve), threading.Thread(target=holder._park_one_connection, args=("127.0.0.1", live, lock, stop, 0.0, server.getsockname()[1]))]
+    for thread in threads:
+        thread.start()
+    time.sleep(window_s)
+    opened, at_end = len(accepted), live[0]
+    stop.set()
+    done.set()
+    for thread in threads:
+        thread.join(timeout=5.0)
+    for conn in accepted:
+        conn.close()
+    server.close()
+    return opened, at_end
+
+
+def test_the_ceiling_holder_keeps_a_parked_connection_until_its_recycle_time(ceiling_holder: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Many drips, one connection: nothing to read on a parked socket is not a reason to recycle it.
+    # The shape it had raised out of the drip loop on the first empty read, recycling every drip.
+    monkeypatch.setattr(ceiling_holder, "_DRIP_INTERVAL_S", 0.05)
+    monkeypatch.setattr(ceiling_holder, "_RECYCLE_S", 5.0)
+    assert _connections_the_holder_opens(ceiling_holder, server_answers=False) == (1, 1)
+
+
+def test_the_ceiling_holder_takes_a_fresh_connection_once_the_server_answers(ceiling_holder: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ceiling_holder, "_DRIP_INTERVAL_S", 0.05)
+    monkeypatch.setattr(ceiling_holder, "_RECYCLE_S", 5.0)
+    opened, _live = _connections_the_holder_opens(ceiling_holder, server_answers=True)
+    assert opened >= 2, opened
