@@ -172,8 +172,9 @@ Four small scripts, rebuilt from this description:
 - **Allocation size is the variable, not churn volume.** At `gc.threshold(-1)` a loaded heap keeps
   ~100 KB free as small holes and no large run. At the failure instant the twin had 0 holes ≥ 870 B,
   74-95 ≥ 300 B and ~300 ≥ 128 B.
-- **`gc.threshold(32768)` hides it.** It collects ~3× per `/status`, which re-places the working set.
-  That changes the layout, not the stability.
+- **`gc.threshold(32768)` hides it in the twin.** It collects ~3× per `/status`, which re-places the
+  working set: a layout change, not stability. On silicon at peak load it did not reduce failures at
+  all (MEASUREMENTS §7R.4).
 - **Drive from the host and drain** (Part E.9). A client inside the DUT's heap measures its own
   ~5.5 KB read buffer.
 - **Measurement design:**
@@ -250,8 +251,8 @@ Four small scripts, rebuilt from this description:
   | --- | --- | --- | --- |
   | `/status` | 1,024 B | 320 B | 320 B |
   | `/sensors` / `/measurements` | 768 / 512 B | 256 B | 256 B |
-  | every individual source | ≤ 192 B | ≤ 192 B | ≤ 144 B |
-  | `/` | 1,536 B | 320 B | not yet probed |
+  | every individual source | ≤ 192 B | ≤ 192 B | ≤ 160 B (errcount entries 96 B) |
+  | `/` | 1,536 B | 320 B | 320 B (F′) |
 
   About 9 s on the twin.
 
@@ -270,7 +271,7 @@ board, and that caught bugs each time. *Scratch* stand-ins:
   it from a directory holding the device's `config_*.cfg`, on port 80.
 - **`validate_bench.py <heap> need|sweep`** imports `test_serving_heap_at_default_gc` and runs its own
   test functions with a fake `Board` whose `run_isolated()` runs `twin_wrap.py`.
-- **`validate_sweep_tool.py <heap> <levels…>`** does the same for `combined_load_sweep.run_level()`.
+- **`validate_sweep_tool.py <heap> <levels…>`** did the same for the (since removed) silicon sweep's `run_level()`.
   It uses a fake `BenchBridge` and caps the tool's 45 s post-reset settle.
 - **Bugs caught this way, before silicon:**
   - the merged-hole sieve;
@@ -283,7 +284,7 @@ board, and that caught bugs each time. *Scratch* stand-ins:
 
 ## 6. Hardware tools (committed; need the board)
 
-- **`tests_hardware/bench/test_serving_heap_at_default_gc.py`** — about 12 minutes, one boot, at
+- **`tests_hardware/bench/test_serving_heap_at_default_gc.py`** — 7-9 minutes, one boot, at
   `gc.threshold(-1)`.
   - The need test (§4).
   - `test_serving_sweep_at_the_reactive_default`: levels 4 … ceiling + 2, 12 rounds each, over 7
@@ -348,7 +349,8 @@ board, and that caught bugs each time. *Scratch* stand-ins:
     print(machine.reset_cause())"` straight after a serial I/O error. `journalctl -k` gives USB
     disconnect times.
 - **`test_serving_heap_at_default_gc.py`'s failing-sweep report is truncated**: the assertion
-  message keeps 2,000 characters, and the host tallies print after it. Use the per-boot tool for levels.
+  message keeps 2,000 characters, and the host tallies print after it. Which level broke needs one
+  boot per level (the removed silicon sweep did that).
 - **`tests_hardware/bench/test_network_resilience.py`**:
   - `test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures`;
   - `test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body`;
@@ -440,9 +442,10 @@ board, and that caught bugs each time. *Scratch* stand-ins:
 - "1.3 ms per connection": the load scaled with the setting.
 - The "18-connection bar" and "12 KB free per connection": a client inside the DUT's heap. "47
   caught / 63 fatal": the transport path alone, nothing else running — an upper bound, not a wall.
-- Cutting churn (joining pieces, gating response construction to 1-3 at a time) changed nothing,
-  because size is the variable. A 128 B cap is no better than 256 B: the pieces list grows instead,
-  and the writes double.
+- Cutting churn never removed the failures, because size is the variable: `"".join` changed nothing,
+  and gating response construction to 1-3 at a time cut them from ~21 to 8-12 per run but left the
+  same ~290 B failures. A 128 B cap is not worth it over 256 B: the pieces list grows to a 256 B array
+  instead, failures at 14 connections fell only to 7-9, and the writes double.
 - The first heap-recovery script, and a per-response cost script, were dropped once
   `serving_at_default_gc.py` covered both.
 - Rounds load as a "peak" figure: pauses and 5 s snapshots miss the moment all N allocate.

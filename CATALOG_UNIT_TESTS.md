@@ -1,6 +1,6 @@
 # Catalog: build-independent unit, resilience and regression tests
 
-**What this is.** Every test this branch's connection-scaling and serving work (2026-09-22/23) added
+**What this is.** Every test this branch's connection-scaling and serving work (2026-09-22/24) added
 or sharpened that runs in the ordinary suites, with no board, no special build and no scratch
 tooling: `scripts/test.sh` (MicroPython tier and `tests_scripts/` pytest tier), the twin CI, and the
 web tier. For each: what it pins, the defect or decision it guards, and **how it was shown to fail on
@@ -60,7 +60,7 @@ response body is ever written in a piece larger than `WebserverService(chunk_byt
 
 | where | pins | guards | result |
 | --- | --- | --- | --- |
-| `scripts/_digital_twin_ci_suite.py`, Run 11b `_run_11b_full_ceiling_concurrency` | Twin as a subprocess, driver in CPython threads, one real socket per request; 3 rounds at the device's own `max_connections` (read from `devices/<d>.toml`) over the five heaviest routes — **all served**, still serving after, clean shutdown; inherits the suite's no-`MemoryError` log check at both thresholds | The owner's hardest requirement: every module running, full ceiling, no `MemoryError`, at either threshold | 6/6 every round at -1 and 32768 (limit 6). A 1 s settle now precedes round 0 too: at an exact-ceiling burst the readiness probe's own connection, still closing, refused one of six on every device in CI (`4914a25`). Not shown reverted; it replaced in-process numbers that were withdrawn |
+| `scripts/_digital_twin_ci_suite.py`, Run 11b `_run_11b_full_ceiling_concurrency` | Twin as a subprocess, driver in CPython threads, one real socket per request; 3 rounds at the device's own `max_connections` (read from `devices/<d>.toml`) over the five heaviest routes — **all served**, still serving after, clean shutdown; inherits the suite's no-`MemoryError` log check at both thresholds | The owner's hardest requirement: every module running, full ceiling, no `MemoryError`, at either threshold | At limit 6 round 0 got 5 of 6 on every device in CI (`48cfa4f`): the readiness probe's own connection, still closing, took a slot. A 1 s settle now precedes round 0 too (`4914a25`); 6/6 every round at -1 and 32768 **verified locally on `klkizi` only** — CI on `4914a25` not yet read. Not shown reverted otherwise; it replaced in-process numbers that were withdrawn |
 
 ## 4. Test infrastructure that had real bugs
 
@@ -98,7 +98,7 @@ here is written yet**; "owner" marks a candidate that would first need a rule de
 
 | finding / behaviour | test tier and shape | status |
 | --- | --- | --- |
-| A rejection at the ceiling writes nothing and leaves the counter unchanged | `test_asy_webserver_service.py`, the F1 rejection test | **exists** |
+| A rejection at the ceiling writes nothing and leaves the counter unchanged | `test_asy_webserver_service.py::test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_silently_closed` | **exists** |
 | A refusal (reset, abort, broken pipe, bad status line) is told apart from a real transport failure | `tests_scripts/test_http_client_ceiling_close.py`; twin: `test_digital_twin_http_client.py` | **exists** |
 | No body piece exceeds `chunk_bytes` (256); this is the `/status` wall at 242-257 B | §1's H.2/G.3 tests | **exists** |
 | A static file always carries its `Content-Length` | §1's G.3 test | **exists**. The silicon's empty `200` with no length during the boot WLAN drop (MEASUREMENTS §7R.5) is unexplained; understand it before writing a test |
@@ -110,5 +110,8 @@ here is written yet**; "owner" marks a candidate that would first need a rule de
 | **A bench test that runs a device script restores the board to serving afterwards** | `tests_scripts/`, structural over `tests_hardware/bench/`: every `run_isolated()` caller also reaches a restore in a `finally` | **proposed**. `run_isolated()` leaves `main.py` stopped; the one test that did not restore failed every later network test of the run. The restore helper exists twice, identically, in `test_heap_under_connection_ceiling.py` and `test_serving_heap_at_default_gc.py` — reported, not merged |
 | Every device script's heap-map envelope round-trips through `heap_map.parse_labelled()` | `tests_scripts/test_heap_map_parser.py::test_every_emitters_own_envelope_round_trips_through_the_parser` | **exists** — one script's `<<<MEM` envelope had discarded every dump |
 | `placeable(size)` is capacity, not a count of gaps | §4's `test_placeable_counts_capacity_not_runs` | **exists** |
-| The removed silicon sweep's classification, validated reference fetch and margin window | would be pure functions with a fake `fetch` | **instrumentation**: the tool is removed (MEASUREMENTS §10); only if it is rebuilt |
-| Rejection counter = host refusals; script footprint; sampler cost; linker heap = 187,712 + (8 − L) × 2,324 B | need the board or a built ELF | **instrumentation** (`CATALOG_INSTRUMENTATION.md` §6-§7) |
+
+Considered and left out as measurement, not test: the removed silicon sweep's own classification
+and reference logic (only if it is ever rebuilt), the device-vs-host refusal cross-check, the device
+script's heap footprint, the samplers' throughput cost and the linker-heap prediction — each needs
+the board or a built ELF (`CATALOG_INSTRUMENTATION.md` §6-§7).
