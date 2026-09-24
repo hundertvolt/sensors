@@ -28,22 +28,22 @@ _PORT_SCAN_BASE = 17400
 _PORT_SCAN_WINDOW = 64
 
 
-def _bind_free_listener(port: int, ceiling: int) -> "tuple[Any, Any]":
+def _bind_free_listener(port: int, ceiling: int, window: int = _PORT_SCAN_WINDOW) -> "tuple[Any, Any]":
     """The first free loopback port at or above `port`, already listening. A fresh socket per
     attempt, because a bind that failed leaves nothing worth reusing - and the Unix port exposes no
     getsockname(), so an ephemeral bind to port 0 could never be read back to connect to."""
-    for candidate in range(port, port + _PORT_SCAN_WINDOW):
+    for candidate in range(port, port + window):
         addr = socket.getaddrinfo("127.0.0.1", candidate)[0][-1]
         listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
+        try:  # listen() too: under SO_REUSEADDR two sockets can both bind, and the loser fails here
             listener.bind(addr)
+            listener.listen(ceiling + 4)
         except OSError:
             listener.close()
             continue
-        listener.listen(ceiling + 4)
         return listener, addr
-    raise OSError(f"no free loopback port in {port}..{port + _PORT_SCAN_WINDOW - 1} to prewarm the poll set")
+    raise OSError(f"no free loopback port in {port}..{port + window - 1} to prewarm the poll set")
 
 
 def prewarm_poll_set(ceiling: int = _DEFAULT_CEILING, port: int = _PORT_SCAN_BASE) -> None:

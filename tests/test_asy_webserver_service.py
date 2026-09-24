@@ -1241,21 +1241,22 @@ def test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_w
         closing = _GatedCloseWriter(gate)
         reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True)
         task = asyncio.get_event_loop().create_task(service._serve(reader, closing))
-        for _ in range(200):
-            if closing.wait_closed_called:
-                break
-            await asyncio.sleep(0.01)
-        assert closing.wait_closed_called, "the connection never reached its close"
-        assert closing.written.startswith(b"HTTP/1.") and b"\r\n\r\n" in closing.written, closing.written
-        held = await service._open_conns.get_value()
-        assert held == 1, f"the response is out but the close is not; the slot must still count, got {held}"
+        try:  # the gate always opens: a task left parked on it would wake inside a later test's loop
+            for _ in range(200):
+                if closing.wait_closed_called:
+                    break
+                await asyncio.sleep(0.01)
+            assert closing.wait_closed_called, "the connection never reached its close"
+            assert closing.written.startswith(b"HTTP/1.") and b"\r\n\r\n" in closing.written, closing.written
+            held = await service._open_conns.get_value()
+            assert held == 1, f"the response is out but the close is not; the slot must still count, got {held}"
 
-        refused = _ScriptedWriter()
-        await service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True), refused)
-        assert refused.written == b"" and refused.close_called  # refused like any over-ceiling client
-
-        gate.set()
-        await task
+            refused = _ScriptedWriter()
+            await service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True), refused)
+            assert refused.written == b"" and refused.close_called  # refused like any over-ceiling client
+        finally:
+            gate.set()
+            await task
         assert await service._open_conns.get_value() == 0
         admitted = _ScriptedWriter()
         await service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True), admitted)

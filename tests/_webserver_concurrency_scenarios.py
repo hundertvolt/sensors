@@ -384,10 +384,9 @@ async def _scenario_each_count_up_to_max(device: str) -> None:
             # must be admitted in full, not just the exact ceiling (already covered above).
             results = await asyncio.gather(*(_healthy_request("127.0.0.1", port) for _ in range(n)))
             assert results.count(200) == n, (n, results)
-            # A brief settle delay between rounds - the benign timing window _still_serving()'s docstring
-            # documents: without it a round's connections can still be mid-close when the next burst
-            # arrives, making the slots look fuller than they are and resetting one of the next round's.
-            await asyncio.sleep(0.2)
+            # Each round from zero: a slot outlives its response until the close completes, so a fixed
+            # settle could still leave the next round's full ceiling one slot short under load.
+            assert await _drained(module), f"round {n}'s connections never released their slots"
     finally:
         await _cancel(task)
 
@@ -736,7 +735,8 @@ async def _scenario_backlog_covers_the_ceiling(device: str) -> None:
         for writer in writers:
             writer.close()
             await writer.wait_closed()
-        assert await _still_serving("127.0.0.1", port, timeout_s=20.0)
+        assert await _drained(module), "the held connections never released their slots"  # inside the 20 s budget
+        assert await _still_serving("127.0.0.1", port)
     finally:
         await _cancel(task)
 

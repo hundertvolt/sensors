@@ -4700,7 +4700,10 @@ pools cannot serve, per device, at build time.
 (`extmod/asyncio/stream.py`), so before this was made a constructor knob any `max_connections`
 above 5 was fiction — the accept queue dropped the rest inside lwIP, where nothing in `src/` could
 see it. It now derives `max_connections + 1`: enough that one over-ceiling arrival is queued and
-refused by `_serve()`'s own reject-when-full branch, visibly, rather than dropped unseen.
+refused by `_serve()`'s own reject-when-full branch, visibly, rather than dropped unseen. It is
+bounded on both sides: under `max_connections` is a build error, and so is anything above
+`max_connections + 1`, because each queued arrival holds a pcb and the three spare budget one.
+Queuing more buys nothing, since every extra arrival is refused anyway.
 
 **Why 6: stability under peak load, not throughput.** Measured on silicon 2026-09-23/24 at
 `gc.threshold(-1)` under the hammer test's peak load (as many back-to-back clients as the limit,
@@ -4788,9 +4791,13 @@ The consequences, all found by running these instruments on silicon for the firs
 1. **A walk whose per-connection dwell exceeds 5 s can never reach a ceiling.**
    `discover_max_connections()` used `settimeout(10.0)`, so each connection died before the next was
    opened and at most ~2 were ever held at once; against a board whose true ceiling was 4 it walked
-   past 12 and raised "the ceiling is higher than this probe looks". It now dwells 0.3 s, fails loudly
-   if a held connection answers instead of staying open, and re-checks every counted socket is still
-   open when the refusal lands.
+   past 12 and raised "the ceiling is higher than this probe looks". It now dwells 0.3 s and sends
+   every held connection a request line, then a header line per step, so the per-call timeout never
+   frees a slot mid-walk and only the outer cap bounds it (40 × 0.3 s). It fails loudly if a held
+   connection answers instead of staying open, and re-checks every counted socket is still open when
+   the refusal lands. A connect that is refused or times out is the wall itself, counted rather than
+   raised, and has its own 2 s timeout, apart from the read's, so a slow handshake is never read
+   as a held connection.
 2. **A caller that measured the ceiling has just filled it**, so an immediate follow-up request is
    refused. The probe now waits for the slots to drain inside its own `finally`, so the guarantee is
    in one place rather than being a per-call-site obligation.
@@ -4799,11 +4806,16 @@ The consequences, all found by running these instruments on silicon for the firs
    the live count — not the count at open time — is what makes a heap dump a peak reading.
 
 `tests_scripts/test_request_timeout_ceiling.py` pins both instruments inside both timeouts, read
-from `src/`: the probe's whole walk to the largest shipped ceiling under `per_call_timeout_s`, the
-holder's drip under it and its recycle under `outer_cap_s`. It also runs the holder against a
-loopback server: a parked connection is kept through every drip until its recycle time, and a
-server that answers gets a fresh one. Until 2026-09-24 the first empty read of a non-blocking socket
-ended the drip loop, so every connection was recycled after one drip rather than at 10 s.
+from `src/`: the probe's dwell under `per_call_timeout_s` and its whole `probe_limit` walk under
+`outer_cap_s`, the holder's drip under the first and its recycle under the second. It also runs the
+holder against a loopback server: a parked connection is kept through every drip until its recycle
+time, and a server that answers gets a fresh one. Until 2026-09-24 the first empty read of a
+non-blocking socket ended the drip loop, so every connection was recycled after one drip rather
+than at 10 s. `tests_scripts/test_ceiling_probe.py` runs the probe and its drain wait against a
+loopback server shaped like `_serve()`: the walk finds the ceiling, padding outlasts an idle timeout
+a plain walk cannot, a refused connect counts as the wall, and a connect timeout never reads as a
+free slot. Both instruments that wait for a device script's own server first let main.py's go quiet
+(`harness.wait_for_script_server()`), so main.py can never answer the readiness probe.
 
 
 ### Cross-browser coverage

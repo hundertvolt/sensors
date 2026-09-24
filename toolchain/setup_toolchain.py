@@ -305,13 +305,13 @@ def fetch_unix_submodules(micropython_dir: Path) -> None:
 def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest: Path | None = None, *, toolchain_dir: Path | None = None, lwip_macros: dict[str, int] | None = None) -> Path:
     """Builds the RP2 firmware. Pass frozen_manifest (an absolute path to a manifest.py written
     by write_freeze_manifest()) to freeze an extra module in via FROZEN_MANIFEST=, which takes
-    precedence over the board's own default manifest; omit it for a vanilla build.
+    precedence over the board's own default manifest; omit it for the board's own manifest alone.
 
     Always applies the lwip_connection_counts override (Part B.14.2) and verifies afterwards that
     every option really reached the firmware's own translation unit. lwip_macros defaults to
     versions.toml's [lwip] table; toolchain_dir defaults to micropython_dir's parent."""
     rp2_dir = micropython_dir / "ports" / "rp2"
-    label = "with the frozen verification module (build-only check)" if frozen_manifest else "standard, unchanged"
+    label = "with the frozen verification module (build-only check)" if frozen_manifest else "board manifest, pinned lwIP options"
     log(f"Building firmware for BOARD={board} ({label})")
     build_dir = rp2_dir / f"build-{board}"
     if build_dir.exists():
@@ -1154,6 +1154,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except SetupError as exc:
+    except (SetupError, micropython_overrides.OverrideError) as exc:  # both name their own cause and fix
         print(f"\nFAILED: {exc}", file=sys.stderr)
         sys.exit(1)

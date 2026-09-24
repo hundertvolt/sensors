@@ -7,14 +7,13 @@ from __future__ import annotations
 import re
 import socket
 import threading
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import heap_map
 import http_client
 import pytest
-from harness import MEMORY_ERROR_MARKERS, configured_max_connections, restore_board_to_serving
+from harness import MEMORY_ERROR_MARKERS, configured_max_connections, restore_board_to_serving, wait_for_script_server
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -59,11 +58,12 @@ def _one_request(dut_ip: str, path: str, barrier: threading.Barrier, outcomes: l
         while chunk := sock.recv(1024):
             body_len += len(chunk)
         # A body cut off after the 200 went out is not a served request: every route sends its length.
-        lengths = [line.split(b":", 1)[1] for line in head.split(b"\r\n") if line.lower().startswith(b"content-length:")]
-        verdict = "-unframed" if not lengths else "" if int(lengths[0]) == body_len else "-truncated"
-        outcomes[index] = head.split(b" ")[1].decode() + verdict
+        lengths = [line.split(b":", 1)[1].strip() for line in head.split(b"\r\n") if line.lower().startswith(b"content-length:")]
+        verdict = "-unframed" if not lengths else "" if lengths[0] == str(body_len).encode() else "-truncated"
+        status = head.split(b" ")
+        outcomes[index] = (status[1].decode(errors="replace") if len(status) > 1 else "malformed") + verdict
     except (OSError, threading.BrokenBarrierError) as e:
-        outcomes[index] = "refused" if isinstance(e, ConnectionResetError) else f"io:{type(e).__name__}"
+        outcomes[index] = "refused" if http_client.is_ceiling_close(e) else f"io:{type(e).__name__}"
     finally:
         sock.close()
 
@@ -80,21 +80,10 @@ def _burst(dut_ip: str, n: int) -> list[str]:
     return outcomes
 
 
-def _wait_serving(dut_ip: str, stop: threading.Event, timeout_s: float = 120.0) -> bool:
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline and not stop.is_set():
-        try:
-            if http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=3.0).status_code == 200:
-                return True
-        except OSError:
-            stop.wait(1.0)
-    return False
-
-
 def sweep_levels(dut_ip: str, levels: list[int], stop: threading.Event, tallies: dict[int, dict[str, int]]) -> None:
     """Waits for the device script's own boot, idles, then _ROUNDS bursts per level in ascending
     order. `stop` guarantees it cannot outlive its test - a driver that did took 37 tests down once."""
-    if not _wait_serving(dut_ip, stop) or stop.wait(_PRE_IDLE_S):
+    if not wait_for_script_server(dut_ip, stop, "/networking") or stop.wait(_PRE_IDLE_S):
         return
     for n in levels:
         tally = tallies.setdefault(n, {})

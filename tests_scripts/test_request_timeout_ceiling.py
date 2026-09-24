@@ -114,12 +114,14 @@ def _largest_shipped_ceiling(repo_root: Path) -> int:
     return max([webserver_init_default(repo_root / "src", "max_connections")] + [device_max_connections(p, repo_root / "src") for p in shipped])
 
 
-def test_the_ceiling_probe_reaches_every_devices_ceiling_before_its_first_connection_times_out(repo_root: Path, per_call_timeout_s: float) -> None:
-    # discover_max_connections() opens one connection per dwell_s and needs the first still held when
-    # the refused one arrives - ceiling + 1 dwells, all inside the server's idle-read timeout.
-    dwell_s = _default_for_parameter(repo_root / "tests_hardware" / "harness.py", "dwell_s")
-    walk_s = (_largest_shipped_ceiling(repo_root) + 1) * dwell_s
-    assert walk_s < per_call_timeout_s, f"a {walk_s:.1f}s walk (dwell_s {dwell_s}s) outlives the server's {per_call_timeout_s}s per-call timeout - the first slots are freed before the ceiling is reached"
+def test_the_ceiling_probe_can_walk_its_whole_limit_inside_the_servers_own_timeouts(repo_root: Path, outer_cap_s: float, per_call_timeout_s: float) -> None:
+    # discover_max_connections() pads every held connection once per dwell_s, so the idle-read
+    # timeout never fires, and needs its first connection held until the last - under the outer cap.
+    harness = repo_root / "tests_hardware" / "harness.py"
+    dwell_s, probe_limit = _default_for_parameter(harness, "dwell_s"), _default_for_parameter(harness, "probe_limit")
+    assert dwell_s < per_call_timeout_s, f"dwell_s ({dwell_s}s) must sit under per_call_timeout_s ({per_call_timeout_s}s), or a padded connection is still closed as silent"
+    assert probe_limit * dwell_s < outer_cap_s, f"a {probe_limit * dwell_s:.1f}s walk (probe_limit {probe_limit}, dwell_s {dwell_s}s) outlives the server's {outer_cap_s}s outer cap"
+    assert probe_limit > _largest_shipped_ceiling(repo_root), f"probe_limit ({probe_limit}) cannot find a ceiling of {_largest_shipped_ceiling(repo_root)}"
 
 
 def test_the_ceiling_holder_recycles_and_drips_inside_the_servers_own_timeouts(repo_root: Path, outer_cap_s: float, per_call_timeout_s: float) -> None:

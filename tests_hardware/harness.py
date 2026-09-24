@@ -6,6 +6,7 @@ under the MicroPython Unix port. See tests_hardware/README.md for how to run thi
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -16,6 +17,7 @@ from typing import TYPE_CHECKING
 import serial
 
 if TYPE_CHECKING:
+    import threading
     from collections.abc import Callable
     from typing import Any
 
@@ -44,35 +46,40 @@ def configured_max_connections(device: str = "dev") -> int:
     return device_max_connections(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src")
 
 
-def discover_max_connections(host: str, port: int = 80, probe_limit: int = 64, settle_s: float = 1.0, dwell_s: float = 0.3) -> int:
+def discover_max_connections(host: str, port: int = 80, probe_limit: int = 40, settle_s: float = 1.0, dwell_s: float = 0.3) -> int:
     """The ceiling the BOARD actually holds, found by holding connections open one at a time until
     one is refused. The only figure that is silicon's own rather than the tree's, and the one a
     raised lwIP PCB count has to be confirmed against (SPECIFICATION.md Part B.14.2)."""
-    import socket
-
-    # `dwell_s` must stay well under the server's own per-call read timeout, because an admitted
-    # connection that says nothing is closed with a 400 once that fires - so a slow walk frees
-    # slots as fast as it takes them and never reaches the ceiling (SPECIFICATION.md Part H.7.1).
+    # Every held connection is sent a request line, then a header line per step, so the server's
+    # per-call read timeout never frees a slot mid-walk; only its outer cap bounds the walk, which
+    # is why probe_limit * dwell_s stays under it (SPECIFICATION.md Part H.7.1).
     time.sleep(settle_s)  # _serve()'s slot release outlives the response (Part I.6), so start clean
     held: list[socket.socket] = []
     started = time.monotonic()
     try:
         for admitted in range(probe_limit):
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(dwell_s)
-            sock.connect((host, port))
+            for index, open_sock in enumerate(held):
+                try:
+                    open_sock.sendall(b"X-Pad: y\r\n")  # resets the server's per-call read timeout
+                except OSError as exc:
+                    raise AssertionError(f"connection {index} was no longer held ({exc!r}) {time.monotonic() - started:.2f}s into the walk - the count is not a simultaneous ceiling") from exc
+            sock = _open_probe(host, port)
+            if sock is None:  # refused or unanswered at connect: the stack itself has no slot left
+                _assert_probe_held(held, started)
+                return admitted
             held.append(sock)
+            sock.settimeout(dwell_s)
             try:
+                sock.sendall(b"GET /status HTTP/1.0\r\n")
                 payload = sock.recv(4096)
-            except ConnectionResetError:
-                _assert_probe_held(held[:-1], started)
-                return admitted  # refused by reset: this one did not get a slot
             except TimeoutError:
-                continue  # held open, as an admitted connection with nothing to say should be
+                continue  # held open mid-request, as an admitted connection should be
+            except OSError:  # reset or broken pipe: closed before it was ever served
+                payload = b""
             if payload == b"":
                 _assert_probe_held(held[:-1], started)
                 return admitted  # refused without a response: this one did not get a slot
-            raise AssertionError(f"connection {admitted} against {host} answered {payload[:40]!r} instead of being held open - the walk outran the server's own idle timeout, so this reading is not a ceiling (see discover_max_connections's own note)")
+            raise AssertionError(f"connection {admitted} against {host} answered {payload[:40]!r} instead of being held open - the walk outran the server's own outer cap, so this reading is not a ceiling (see discover_max_connections's own note)")
         raise AssertionError(f"no connection was refused within {probe_limit} attempts against {host} - the ceiling is higher than this probe looks, or admission is not bounded at all")
     finally:
         for sock in held:
@@ -80,25 +87,36 @@ def discover_max_connections(host: str, port: int = 80, probe_limit: int = 64, s
         _wait_for_slots_to_drain(host, port)
 
 
+def _open_probe(host: str, port: int, connect_timeout_s: float = 2.0) -> socket.socket | None:
+    """A connected socket, or None when the connect itself fails - its own timeout, apart from the
+    probe's read timeout, so a slow handshake is never mistaken for a held-open connection."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(connect_timeout_s)
+    try:
+        sock.connect((host, port))
+    except OSError:
+        sock.close()
+        return None
+    return sock
+
+
 def _wait_for_slots_to_drain(host: str, port: int, timeout_s: float = 10.0) -> None:
     """Block until the board admits a connection again. A slot is released in _serve()'s finally,
     AFTER the writer close is awaited, so it outlives the client's own close by ~0.8s here - and a
     caller that measured the ceiling has just filled every one of them."""
-    import socket
-
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(0.3)
-        try:
-            sock.connect((host, port))
-            sock.recv(4096)  # a refusal answers immediately; an admitted connection times out
-        except (TimeoutError, BlockingIOError):
-            return  # held open, so a slot was free: the board is serveable again
-        except OSError:
-            pass  # refused or unreachable, both meaning "not yet"
-        finally:
-            sock.close()
+        sock = _open_probe(host, port)
+        if sock is not None:
+            sock.settimeout(0.3)
+            try:
+                sock.recv(4096)  # a refusal answers immediately; an admitted connection times out
+            except TimeoutError:
+                return  # held open, so a slot was free: the board is serveable again
+            except OSError:
+                pass  # reset: refused, meaning "not yet"
+            finally:
+                sock.close()
         time.sleep(0.1)
     raise AssertionError(f"{host}:{port} never admitted a connection again within {timeout_s}s of the probe releasing its own - the slots did not drain")
 
@@ -110,9 +128,9 @@ def _assert_probe_held(admitted_socks: list[Any], started: float) -> None:
         sock.settimeout(0.05)
         try:
             payload = sock.recv(4096)
-        except (TimeoutError, BlockingIOError):
+        except TimeoutError:
             continue  # still open with nothing to say, which is what an admitted connection does
-        except ConnectionResetError:
+        except OSError:
             payload = b"<reset>"
         raise AssertionError(f"connection {index} was no longer held ({payload[:40]!r}) {time.monotonic() - started:.2f}s into the walk - the count is not a simultaneous ceiling")
 
@@ -204,6 +222,31 @@ def restore_board_to_serving(board: Board, bench: BenchBridge, dut_ip: str) -> N
         poll_interval_s=3.0,
         description="DUT serving HTTP again after a device script left main.py stopped",
     )
+
+
+def wait_for_script_server(dut_ip: str, stop: threading.Event, path: str = "/status", timeout_s: float = 120.0, handover_s: float = 20.0) -> bool:
+    """True once a device script's own server answers `path` with a 200. main.py's server may still
+    be answering when this starts, so it first waits (up to `handover_s`) for that one to go quiet;
+    `stop` ends the wait early, so it never outlives its test."""
+    import http_client
+
+    def serves() -> bool:
+        try:
+            return http_client.fetch(dut_ip, 80, "GET", path, timeout_s=3.0).status_code == 200
+        except (OSError, http_client.HTTP_ERROR):
+            return False
+
+    handover_until = time.monotonic() + handover_s
+    while time.monotonic() < handover_until and serves():
+        if stop.wait(0.5):
+            return False
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if serves():
+            return True
+        if stop.wait(1.0):
+            return False
+    return False
 
 
 @dataclass

@@ -278,3 +278,10 @@ def test_a_caught_and_logged_allocation_failure_counts_as_a_failure() -> None:
 def test_a_probe_that_never_succeeds_reads_as_none() -> None:
     text = _need_output((8, [("a", "", "fail")]), (16, [("a", "", "fail")]))
     assert heap_map.parse_allocation_need(text) == {"a": None}
+
+
+def test_a_rung_whose_mem_info_summary_is_missing_is_refused_rather_than_read_as_zero() -> None:
+    # Unrefused, every probe on it would need 0 B and pass any bound without a measurement behind it.
+    text = _need_output((8, [("a", "", "ok")])).replace(" No. of 1-blocks", " (summary reformatted)")
+    with pytest.raises(ValueError, match="no mem_info"):
+        heap_map.parse_allocation_need(text)

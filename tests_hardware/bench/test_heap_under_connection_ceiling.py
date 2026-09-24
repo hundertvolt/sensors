@@ -11,9 +11,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import heap_map
-import http_client
 import pytest
-from harness import MEMORY_ERROR_MARKERS, configured_max_connections, discover_max_connections, restore_board_to_serving
+from harness import MEMORY_ERROR_MARKERS, configured_max_connections, discover_max_connections, restore_board_to_serving, wait_for_script_server
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
@@ -79,15 +78,10 @@ def _hold_ceiling_open(dut_ip: str, ceiling: int, seconds: float, held_out: list
     count's own distribution, so the heap samples are provably taken at peak (5B rule 1). Driven
     from the host so nothing here shares the DUT's heap (Part E.9)."""
     deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:  # wait for the script's own boot to start serving
-        try:
-            if http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=3.0).status_code == 200:
-                break
-        except OSError:
-            time.sleep(1.0)
+    stop = threading.Event()
+    wait_for_script_server(dut_ip, stop, timeout_s=seconds)  # the script's own boot, not main.py's server
     live = [0]
     lock = threading.Lock()
-    stop = threading.Event()
     workers = [threading.Thread(target=_park_one_connection, args=(dut_ip, live, lock, stop, i * _RECYCLE_S / ceiling), daemon=True) for i in range(ceiling)]
     observed: list[int] = []
     try:
@@ -157,7 +151,7 @@ def test_report_the_boards_own_connection_wall(dut_ip: str) -> None:
     # upward at RUNTIME, so ONE deliberately over-provisioned build reports the board's real
     # capacity - whatever binds first, the PCB pool, the pbuf supply or the GC heap.
     configured = configured_max_connections()
-    discovered = discover_max_connections(dut_ip, probe_limit=64)
+    discovered = discover_max_connections(dut_ip)
     print(f"[HW] board admitted {discovered} simultaneous connections against a configured ceiling of {configured}")
     assert discovered >= 1, "the board admitted nothing at all"
     if discovered < configured:

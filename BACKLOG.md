@@ -965,6 +965,16 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   **2026-09-24, `scripts/_digital_twin_ci_suite.py`**: `_configured_max_connections()` reads the
   `src/` default through buildgen's own `webserver_init_default()` rather than a second regex over
   the same line. Test orchestration only, no build step.
+  **2026-09-24, review pass — `toolchain/` and `scripts/` once more**:
+  - `micropython_overrides.py`: `validate_lwip_macros()` is now public, buildgen calls it first, and
+    it refuses `TCP_MSS` 0.
+  - The lwIP readback now treats an unexpanded option name as absent, so an unreached override
+    header reports its sentinel instead of failing to parse.
+  - `setup_toolchain.py`'s entry point reports an `OverrideError` like a `SetupError`, and two
+    labels are reworded.
+  - `_digital_twin_ci_suite.py`: Run 11b reads its ceiling inside its own failure guard.
+  All of this is host-side Python with no new dependency, and the firmware build's inputs are
+  unchanged, so no chroot leg's outcome moves; the installer leg still covers the setup change.
   Kept here as the running list of what is owed, not as a merge blocker.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not

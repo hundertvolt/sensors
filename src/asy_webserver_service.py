@@ -304,7 +304,7 @@ class WebserverService:
         # that as a RELATIONSHIP, not a number; buildgen passes the per-device value.
         backlog: int | None = None,  # listen queue depth; None derives max_connections + 1 so one
         # over-ceiling arrival is queued and refused by _serve() rather than dropped unseen by
-        # lwIP's accept queue. Never below max_connections - see SPECIFICATION.md Part H.7.
+        # lwIP's accept queue. Never below max_connections; buildgen refuses above it + 1 (Part H.7).
         per_call_timeout_s: float = 5.0,
         outer_cap_s: float = 15.0,
         host: str = "0.0.0.0",

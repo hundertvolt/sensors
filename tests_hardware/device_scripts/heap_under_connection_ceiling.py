@@ -14,7 +14,7 @@ import sensortask_dev
 # set rather than inherited - it is what MEASUREMENTS 7R.2 was taken at.
 gc.threshold(32768)
 _SAMPLE_INTERVAL_MS = 1000
-# Long enough for the host to see READY, settle, and drive several full-ceiling rounds.
+# Long enough for the host to see this boot serve, settle, and drive several full-ceiling rounds.
 _WINDOW_S = 90
 
 
@@ -39,8 +39,8 @@ async def _run() -> None:
     print(f"GC_THRESHOLD={gc.threshold()}")
     main_task = asyncio.get_event_loop().create_task(sensortask_dev.main())
     # No readiness probe from in here: a request driven from this process would share the heap
-    # under measurement, which is the whole thing Part E.9 forbids. The host waits for READY and
-    # then polls the real HTTP port itself.
+    # under measurement, which is the whole thing Part E.9 forbids. The host polls the real HTTP
+    # port itself, once main.py's own server has gone quiet (harness.wait_for_script_server()).
     await asyncio.sleep(20)
     _dump("after_boot")
     print("READY")

@@ -173,10 +173,11 @@ def _lwip_ensemble_problems(macros: "dict[str, int]", max_connections: int) -> "
         raise BuildError("<toolchain>", "cannot load toolchain/micropython_overrides.py, which owns lwIP's own option relationships", field="max_connections")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    try:
-        problems: list[str] = module.check_lwip_ensemble(macros, max_connections)
-    except KeyError as e:
-        raise BuildError("<toolchain>", f"[lwip] in toolchain/versions.toml lacks {e} - it is what bounds every device's max_connections", field="max_connections") from e
+    try:  # the toolchain's own shape check first, so a bad table is named rather than a traceback
+        module.validate_lwip_macros(macros)
+    except module.OverrideError as e:
+        raise BuildError("<toolchain>", f"{e} - it is what bounds every device's max_connections", field="max_connections") from e
+    problems: list[str] = module.check_lwip_ensemble(macros, max_connections)
     return problems
 
 
@@ -185,7 +186,7 @@ def _check_connection_ceiling(model: DeviceModel, src_dir: Path) -> None:
     outruns its build refuses connections it says it admits, which reads as an application bug -
     so the PCB, segment and send-arena shares per connection (Part H.7) are build errors."""
     dev = model.doc["device"]
-    max_connections = dev.get("max_connections", webserver_init_default(src_dir, "max_connections"))
+    max_connections = dev["max_connections"] if "max_connections" in dev else webserver_init_default(src_dir, "max_connections")
     if max_connections < _MAX_CONNECTIONS_FLOOR:
         raise BuildError(model.device, f"[device].max_connections is {max_connections} - a webserver admitting no connection at all serves nothing, so the floor is {_MAX_CONNECTIONS_FLOOR}", field="max_connections")
     # lwIP's options are an ensemble and its own checks size the shared pools for ONE connection.
@@ -198,6 +199,10 @@ def _check_connection_ceiling(model: DeviceModel, src_dir: Path) -> None:
         # An accept queue shallower than the ceiling drops arrivals inside lwIP, where nothing in
         # src/ ever sees them - so the device silently serves fewer than its own config admits.
         raise BuildError(model.device, f"[device].backlog is {backlog}, below the {max_connections} connections [device].max_connections admits - the accept queue would drop arrivals the ceiling says it accepts", field="backlog")
+    if backlog is not None and backlog > max_connections + 1:
+        # Every queued arrival holds a pcb, and the spare three budget one; the rest would only be
+        # refused by _serve() anyway, so a deeper queue buys nothing but pcb exhaustion.
+        raise BuildError(model.device, f"[device].backlog is {backlog}, above max_connections + 1 ({max_connections + 1}) - each queued arrival holds a pcb the MEMP_NUM_TCP_PCB budget does not cover, only to be refused", field="backlog")
 
 
 def _check_bus_tables(model: DeviceModel) -> "dict[str, TomlDoc]":

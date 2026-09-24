@@ -125,8 +125,9 @@ async function stopTwin(proc) {
 export function configuredMaxConnections(device = "wozi") {
     const toml = readFileSync(path.join(REPO_ROOT, "devices", `${device}.toml`), "utf8");
     // Deliberately a line match, not a TOML parse: this file has no TOML dependency and the key is
-    // a plain top-level int in [device]. A miss throws rather than silently falling back.
-    const match = /^max_connections\s*=\s*(?<ceiling>\d+)\s*$/mu.exec(toml);
+    // a plain int in [device], so only that table's lines are searched. A miss throws, never guesses.
+    const deviceTable = /^\[device\]\s*$(?<body>[\s\S]*?)(?=^\[|(?![\s\S]))/mu.exec(toml)?.groups?.body ?? "";
+    const match = /^max_connections\s*=\s*(?<ceiling>\d+)\s*(?:#.*)?$/mu.exec(deviceTable);
     if (!match?.groups) {
         throw new Error(`devices/${device}.toml does not state [device].max_connections - the browser tier derives its tab count from it`);
     }

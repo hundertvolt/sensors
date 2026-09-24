@@ -11,7 +11,7 @@ conn_fail_to_hotspot = 5
 hotspot_time_min = 8
 # Simultaneous-connection admission ceiling, kept below the firmware's own lwIP
 # MEMP_NUM_TCP_PCB (toolchain/versions.toml) with margin - SPECIFICATION.md Part H.7. backlog
-# is omitted, so it derives max_connections + 1; set it here only to widen the accept queue.
+# is omitted, so it derives max_connections + 1 - already the deepest queue buildgen allows.
 max_connections = 6
 
 # Mandatory-infra-to-instance links; each field optional, absence disables that feature.

@@ -2,6 +2,7 @@
 verification and the generated files, against synthetic fixture trees, never a real compile (that
 is what the real Unix-port build already proves). SPECIFICATION.md Part B.14 has the mechanism."""
 
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -411,7 +412,7 @@ class TestApplyLwipConnectionCountsOverride:
             overrides.apply_lwip_connection_counts_override(fake, overrides_dir, _REAL_BOARD, _LWIP_MACROS)
         assert not overrides_dir.exists()
 
-    @pytest.mark.parametrize("macros", [{"MEMP_NUM_TCP_PCB": 8}, {**_LWIP_MACROS, "NOT_A_REAL_OPTION": 1}, {**_LWIP_MACROS, "TCP_MSS": -1}, {**_LWIP_MACROS, "LWIP_STATS": True}])
+    @pytest.mark.parametrize("macros", [{"MEMP_NUM_TCP_PCB": 8}, {**_LWIP_MACROS, "NOT_A_REAL_OPTION": 1}, {**_LWIP_MACROS, "TCP_MSS": -1}, {**_LWIP_MACROS, "TCP_MSS": 0}, {**_LWIP_MACROS, "LWIP_STATS": True}])
     def test_rejects_a_partial_unknown_or_ill_typed_option_set(self, overrides: ModuleType, tmp_path: Path, macros: "dict[str, object]") -> None:
         # A partial set is the one that matters: MEM_SIZE alone disables the whole upstream block,
         # silently reverting TCP_MSS to lwIP's 536 and the segment count to 16 (trap A).
@@ -527,3 +528,79 @@ class TestLwipEnsemble:
         overrides.apply_lwip_connection_counts_override(fake, tmp_path / "build_overrides", _REAL_BOARD, _pinned())
         generated = (tmp_path / "build_overrides" / overrides.LWIP_OVERRIDE_BOARD_DIR_NAME / overrides.LWIP_OVERRIDE_INCLUDE_DIR_NAME / "lwipopts.h").read_text()
         assert f"#define {overrides.LWIP_OVERRIDE_SENTINEL} 1" in generated
+
+
+# ---------------------------------------------------------------------------
+# The readback: what the firmware's own translation unit resolved each option to. Driven through a
+# stub compiler, so every outcome of the real `-E` run is reachable without an ARM toolchain.
+# ---------------------------------------------------------------------------
+
+
+def _fake_build(tmp_path: Path, *, stdout: str, returncode: int = 0, drop_key: str | None = None) -> "tuple[Path, str, Path]":
+    build_dir = tmp_path / "build-RPI_PICO_W"
+    flags = build_dir / "CMakeFiles" / "firmware.dir"
+    flags.mkdir(parents=True)
+    lines = {"C_DEFINES": "-DPICO_BOARD=pico_w", "C_INCLUDES": "-I/over/ride -I/real/lwip_inc", "C_FLAGS": "-O2"}
+    (flags / "flags.make").write_text("".join(f"{key} = {value}\n" for key, value in lines.items() if key != drop_key))
+    argv_log = tmp_path / "argv.txt"
+    compiler = tmp_path / "fake-gcc"
+    compiler.write_text(f"#!{sys.executable}\nimport sys, pathlib\npathlib.Path({str(argv_log)!r}).write_text(' '.join(sys.argv[1:]))\nsys.stdout.write({stdout!r})\nsys.stderr.write('boom')\nsys.exit({returncode})\n")
+    compiler.chmod(0o755)
+    return build_dir, str(compiler), argv_log
+
+
+def _probe_lines(values: "dict[str, str]") -> str:
+    return "".join(f'LWIPPROBE "{name}" = {value}\n' for name, value in values.items())
+
+
+class TestLwipBuildReadback:
+    def test_a_build_that_resolved_every_option_as_asked_verifies_clean(self, overrides: ModuleType, tmp_path: Path) -> None:
+        asked = _pinned()
+        resolved = {name: f"({value})" for name, value in asked.items()} | {overrides.LWIP_OVERRIDE_SENTINEL: "1"}
+        build_dir, compiler, argv_log = _fake_build(tmp_path, stdout=_probe_lines(resolved))
+        found = overrides.verify_lwip_macros_in_build(build_dir, asked, compiler)
+        assert {name: found[name] for name in asked} == asked
+        assert "-I/over/ride -I/real/lwip_inc" in argv_log.read_text(), "the real build's own flags must reach the preprocessor"
+
+    def test_an_expression_value_is_evaluated_not_compared_as_text(self, overrides: ModuleType, tmp_path: Path) -> None:
+        asked = _pinned()
+        resolved = {name: f"({value})" for name, value in asked.items()} | {"TCP_WND": "(8 * (800))", overrides.LWIP_OVERRIDE_SENTINEL: "1"}
+        build_dir, compiler, _argv = _fake_build(tmp_path, stdout=_probe_lines(resolved))
+        assert overrides.verify_lwip_macros_in_build(build_dir, asked, compiler)["TCP_WND"] == 6400
+
+    def test_a_value_that_did_not_land_is_named_with_both_numbers(self, overrides: ModuleType, tmp_path: Path) -> None:
+        asked = _pinned()
+        resolved = {name: str(value) for name, value in asked.items()} | {"MEMP_NUM_TCP_PCB": "4", overrides.LWIP_OVERRIDE_SENTINEL: "1"}
+        build_dir, compiler, _argv = _fake_build(tmp_path, stdout=_probe_lines(resolved))
+        with pytest.raises(overrides.OverrideError, match="MEMP_NUM_TCP_PCB: asked 5, built 4"):
+            overrides.verify_lwip_macros_in_build(build_dir, asked, compiler)
+
+    def test_a_header_never_reached_is_named_as_such_not_as_an_unparseable_value(self, overrides: ModuleType, tmp_path: Path) -> None:
+        # Unreached, the preprocessor leaves the sentinel as its own bare name - which must read as
+        # absent, so the message says what went wrong (the redirect) rather than failing to parse.
+        asked = _pinned()
+        resolved = {name: str(value) for name, value in asked.items()} | {overrides.LWIP_OVERRIDE_SENTINEL: overrides.LWIP_OVERRIDE_SENTINEL}
+        build_dir, compiler, _argv = _fake_build(tmp_path, stdout=_probe_lines(resolved))
+        with pytest.raises(overrides.OverrideError, match=r"sentinel .* is absent"):
+            overrides.verify_lwip_macros_in_build(build_dir, asked, compiler)
+
+    def test_a_non_constant_value_fails_loudly_rather_than_guessing(self, overrides: ModuleType, tmp_path: Path) -> None:
+        asked = _pinned()
+        resolved = {name: str(value) for name, value in asked.items()} | {"MEM_SIZE": "sizeof(struct x)", overrides.LWIP_OVERRIDE_SENTINEL: "1"}
+        build_dir, compiler, _argv = _fake_build(tmp_path, stdout=_probe_lines(resolved))
+        with pytest.raises(overrides.OverrideError, match="cannot"):
+            overrides.read_lwip_macros_from_build(build_dir, asked, compiler)
+
+    def test_a_failed_preprocessor_run_reports_its_own_stderr(self, overrides: ModuleType, tmp_path: Path) -> None:
+        build_dir, compiler, _argv = _fake_build(tmp_path, stdout="", returncode=1)
+        with pytest.raises(overrides.OverrideError, match="failed:\nboom"):
+            overrides.read_lwip_macros_from_build(build_dir, _pinned(), compiler)
+
+    def test_a_build_that_never_configured_is_refused_before_preprocessing(self, overrides: ModuleType, tmp_path: Path) -> None:
+        with pytest.raises(overrides.OverrideError, match="no compile flags"):
+            overrides.read_lwip_macros_from_build(tmp_path / "build-RPI_PICO_W", _pinned(), "never-run")
+
+    def test_a_changed_flags_layout_is_refused_by_name(self, overrides: ModuleType, tmp_path: Path) -> None:
+        build_dir, compiler, _argv = _fake_build(tmp_path, stdout="", drop_key="C_INCLUDES")
+        with pytest.raises(overrides.OverrideError, match="no C_INCLUDES line"):
+            overrides.read_lwip_macros_from_build(build_dir, _pinned(), compiler)

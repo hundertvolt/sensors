@@ -1445,6 +1445,47 @@ def test_a_backlog_at_or_above_max_connections_is_accepted(tmp_path: Path, src_d
     _build(tmp_path, src_dir, doc)
 
 
+def test_a_backlog_above_one_over_max_connections_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # Every queued arrival holds a pcb and the spare three budget exactly one; the rest would only
+    # be refused by _serve() anyway, so a deeper queue buys nothing but pcb exhaustion.
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    doc["device"]["backlog"] = 4
+    _build(tmp_path, src_dir, doc)
+    doc["device"]["backlog"] = 5
+    with pytest.raises(BuildError, match=r"above max_connections \+ 1 \(4\)"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize(
+    ("table", "expect"),
+    [
+        ({"MEMP_NUM_TCP_PCB": 9}, "must set exactly"),
+        ("TCP_MSS", "must be at least 1"),
+        ("MEM_SIZE", "must be a non-negative int"),
+    ],
+)
+def test_a_malformed_lwip_table_is_a_named_build_error_never_a_traceback(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch, table: "object", expect: str) -> None:
+    # The toolchain's own shape check runs first, so a typo in versions.toml names itself here
+    # instead of surfacing as a TypeError or ZeroDivisionError inside the ensemble arithmetic.
+    from buildgen import validate
+    from buildgen.model import lwip_macros
+
+    pinned = lwip_macros()
+    bad: dict[str, object] = dict(table) if isinstance(table, dict) else {**pinned, str(table): 0 if table == "TCP_MSS" else "12000"}
+    monkeypatch.setattr(validate, "lwip_macros", lambda: bad)
+    with pytest.raises(BuildError, match=expect):
+        _build(tmp_path, src_dir, base_doc())
+
+
+def test_an_lwip_entry_that_is_not_a_table_is_refused_by_the_loader(tmp_path: Path) -> None:
+    from buildgen.model import lwip_macros
+
+    versions = write_text(tmp_path, "versions", "lwip = 5\n")
+    with pytest.raises(BuildError, match=r"\[lwip\] in .* must be a table"):
+        lwip_macros(versions)
+
+
 @pytest.mark.parametrize("field", ["max_connections", "backlog"])
 def test_a_non_int_connection_field_is_rejected(tmp_path: Path, src_dir: Path, field: str) -> None:
     doc = base_doc()

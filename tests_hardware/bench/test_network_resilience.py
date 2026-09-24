@@ -1008,8 +1008,8 @@ def test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body(du
             res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=30.0)
             body = res.json() if res.status_code == 200 else {}
             results[i] = (path, res.status_code, time.monotonic() - started, len(body) if isinstance(body, dict) else 0)
-        except (OSError, ValueError, http_client.INCOMPLETE_BODY) as exc:
-            # ValueError and a short read too: a truncated body IS the case under test - it has to
+        except (OSError, ValueError, http_client.HTTP_ERROR) as exc:
+            # ValueError and any HTTP error too: a truncated body IS the case under test - it has to
             # land in results with its path rather than as a bare traceback in a dead thread.
             results[i] = (path, repr(exc), time.monotonic() - started, 0)
 
@@ -1051,7 +1051,7 @@ def test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one(dut_ip: 
             res = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=30.0)
             same = res.status_code == 200 and res.body == reference.body
             sizes[i] = len(res.body) if same else f"status {res.status_code}, {len(res.body)} B, differs"
-        except (OSError, http_client.INCOMPLETE_BODY) as exc:
+        except (OSError, http_client.HTTP_ERROR) as exc:
             sizes[i] = repr(exc)
 
     threads = [threading.Thread(target=_index, args=(i,)) for i in range(tabs * 2)]

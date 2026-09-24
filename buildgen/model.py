@@ -134,5 +134,7 @@ def lwip_macros(path: Path = VERSIONS_PATH) -> "dict[str, int]":
             table = tomllib.load(f)["lwip"]
     except (OSError, KeyError, tomllib.TOMLDecodeError) as e:
         raise BuildError("<toolchain>", f"cannot read the [lwip] table from {path} ({e}) - it is what bounds every device's max_connections", field="max_connections") from e
+    if not isinstance(table, dict):
+        raise BuildError("<toolchain>", f"[lwip] in {path} must be a table, got {table!r}", field="max_connections")
     return dict(table)
 

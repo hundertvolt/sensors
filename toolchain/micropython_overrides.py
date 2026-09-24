@@ -249,7 +249,7 @@ def check_lwip_ensemble(macros: dict[str, int], max_connections: int | None = No
     return problems
 
 
-def _validate_lwip_macros(macros: dict[str, int]) -> None:
+def validate_lwip_macros(macros: dict[str, int]) -> None:
     missing = [name for name in LWIP_SETTABLE_MACROS if name not in macros]
     unknown = sorted(set(macros) - set(LWIP_SETTABLE_MACROS))
     if missing or unknown:
@@ -262,6 +262,8 @@ def _validate_lwip_macros(macros: dict[str, int]) -> None:
     for name, value in macros.items():
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise OverrideError(f"lwip_connection_counts: [lwip].{name} must be a non-negative int, got {value!r}")
+    if macros["TCP_MSS"] < 1:  # every segment and window derivation divides by it
+        raise OverrideError(f"lwip_connection_counts: [lwip].TCP_MSS must be at least 1, got {macros['TCP_MSS']}")
     # lwIP's own relationships, always - an incoherent set is a compile-time #error deep inside
     # lib/lwip/src/core/init.c, and this says the same thing before the build with the relationship
     # named. The N-connection ones are checked per device by buildgen, which knows N.
@@ -280,7 +282,7 @@ def apply_lwip_connection_counts_override(micropython_dir: Path, overrides_dir: 
     redefines every lwIP option, reached through MicroPython's documented BOARD_DIR redirect.
     Returns build_firmware()'s extra `make` variables; full mechanism in Part B.14.2."""
     verify_lwip_connection_counts_anchor(micropython_dir, board)
-    _validate_lwip_macros(macros)
+    validate_lwip_macros(macros)
     rp2_dir = micropython_dir / "ports" / "rp2"
     real_board_dir = rp2_dir / "boards" / board
     override_dir = overrides_dir / LWIP_OVERRIDE_BOARD_DIR_NAME
@@ -384,7 +386,9 @@ def read_lwip_macros_from_build(build_dir: Path, macros: dict[str, int], compile
         stripped = line.strip()
         if stripped.startswith(_LWIP_PROBE_MARK):
             name, _, value = stripped[len(_LWIP_PROBE_MARK):].partition("=")
-            found[name.strip().strip('"')] = _eval_macro_expression(value.strip())
+            name, value = name.strip().strip('"'), value.strip()
+            if value != name:  # an undefined macro comes back as its own name: absent, not a value
+                found[name] = _eval_macro_expression(value)
     return found
 
 

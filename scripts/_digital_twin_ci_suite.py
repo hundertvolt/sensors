@@ -209,8 +209,8 @@ def _configured_max_connections(device: str) -> int:
 
 def _concurrent_get(paths: list[str], timeout: float = 30.0) -> list[object]:
     """One real socket per request, all in flight together, driven from THIS process. Each thread
-    opens its own connection and waits on a barrier, so the burst really is simultaneous rather
-    than a fast sequence the DUT could serve one at a time."""
+    waits on a barrier and then opens its own connection, so the burst really is simultaneous
+    rather than a fast sequence the DUT could serve one at a time."""
     results: list[object] = [None] * len(paths)
     barrier = threading.Barrier(len(paths))
 
@@ -218,7 +218,7 @@ def _concurrent_get(paths: list[str], timeout: float = 30.0) -> list[object]:
         try:
             barrier.wait(timeout=timeout)
             results[index] = _http("GET", path, timeout=timeout)[0]
-        except (OSError, http.client.HTTPException, threading.BrokenBarrierError) as exc:
+        except (OSError, ValueError, http.client.HTTPException, threading.BrokenBarrierError) as exc:  # ValueError: a malformed JSON body
             results[index] = repr(exc)
 
     threads = [threading.Thread(target=one, args=(i, path)) for i, path in enumerate(paths)]
@@ -1049,7 +1049,11 @@ def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
     # in-process attempt at exactly this proved it - every "limit" it found was the test client's
     # own contiguous response buffer, not the firmware's (HEAP_FRAGMENTATION_MEASUREMENTS.md §9). ----
     _clean_state()
-    ceiling = _configured_max_connections(ctx.device)
+    try:  # a ceiling that cannot be read fails this run, never the whole suite and its later passes
+        ceiling = _configured_max_connections(ctx.device)
+    except Exception as exc:  # CI orchestration, the same as this run's own catch below
+        _fail(f"Run 11b (full-ceiling concurrency): cannot read the device's ceiling: {exc!r}")
+        return
     log11b = ctx.logs_dir / "run11b_full_ceiling_concurrency.log"
     proc = _spawn(ctx, [], log11b)
     try:

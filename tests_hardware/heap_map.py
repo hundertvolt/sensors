@@ -201,6 +201,8 @@ def parse_allocation_need(text: str) -> dict[str, int | None]:
         elif line.startswith(" No. of 1-blocks") and "max free sz" in line:
             rung_bytes = int(line.rsplit("max free sz: ", 1)[1]) * block
         elif line.startswith("TRY "):
+            if rung_bytes == 0:  # a need of 0 would pass every bound with nothing measured
+                raise ValueError(f"probe {line[4:]!r} ran with no mem_info() summary since its SIEVE line - its rung is unknown")
             label, since_try = line[4:], []
         elif line.startswith("RES ") and label:
             ok = line.endswith(" ok") and not any(_ALLOCATION_FAILED.search(seen) for seen in since_try)
