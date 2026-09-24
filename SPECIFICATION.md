@@ -5137,8 +5137,8 @@ blanket policy on every `asyncio` primitive (F.2) — only where a concrete, gen
 risk exists (an external condition outside this code's own control), never as a substitute for
 fixing an allocation pattern this code itself controls. **(b) Degrade gracefully** — a caught
 failure produces a well-defined "unavailable"/`None`/`False` result, never an unguarded re-raise
-(`_dump_status_source()` et al. substitute `{"error":"unavailable"}` for one failed source rather
-than discarding the whole response). **(c) Restart the task when it really bubbles up** —
+(`_write_guarded()`/`_write_errcount_entry()` substitute `{"error":"unavailable"}` for one failed
+source rather than discarding the whole response). **(c) Restart the task when it really bubbles up** —
 `start_and_check_tasks()` already restarts any task that ends for any reason, `MemoryError`
 included; already correct. **(d) The watchdog is the final resort, and must stop being fed once
 self-healing has genuinely failed** — the `task_errors` counter escalates past repeated restarts to

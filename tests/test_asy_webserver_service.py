@@ -2374,7 +2374,7 @@ def test_h2_stream_own_webserver_errcount_source_failure_yields_an_error_marker(
 def test_h2_stream_every_source_failing_still_produces_one_complete_valid_json_document() -> None:
     # The worst case this design has to survive: every data source misbehaves and the response must
     # still be one complete, parseable JSON document with a plain 200 - each source's own
-    # try/except in _dump_status_source() keeps its exception from escaping _build_status_pieces().
+    # try/except in _write_guarded() keeps its exception from escaping _build_status_pieces().
     _service, app = _make_service(
         status_sources={"networking": _raising_source, "system": _raising_source, "notification": _raising_source},
         maintenance_sensors=[("SGP40", _raising_source)],
@@ -2644,9 +2644,8 @@ def test_i1_sets_content_type_and_an_exact_content_length_header() -> None:
 
 
 def test_i1_many_entries_are_coalesced_into_size_bounded_batches_not_one_growing_blob() -> None:
-    # Mirrors H.2's identical proof for /status's own "errcount" section - same
-    # _coalesce_json_fragments()/_append_coalesced_object() mechanism, applied here to a flat
-    # top-level dict instead of /status's own nested section.
+    # Mirrors H.2's identical proof for /status's own "errcount" section - same _PieceWriter
+    # mechanism, applied here to a flat top-level dict instead of /status's own nested section.
     result = {f"Field{i}": "x" * 100 for i in range(30)}  # ~30*(11+100) bytes, several times over
     # chunk_bytes if joined into one piece
     res = run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))
