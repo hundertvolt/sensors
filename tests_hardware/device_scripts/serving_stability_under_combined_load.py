@@ -50,20 +50,27 @@ async def _sampler() -> None:
         await asyncio.sleep_ms(_SAMPLE_INTERVAL_MS)
 
 
-async def _peak_sampler(webserver: "WebserverService") -> None:
-    # Never collects. A rise of >= 2 KB in mem_free() between two 20 ms reads marks a GC the run's own
-    # threshold triggered (explicit C-side frees are small: every serving allocation is <= 256 B), so
-    # that reading is heap minus live set; a user-class __del__ or weakref sentinel is not on rp2.
-    rejected = [0]  # reject-when-full closes, counted on the device so the host's "refused" can be checked
+_REJECTED = [0]  # reject-when-full closes, counted on the device so the host's "refused" can be checked
+
+
+def _count_rejections(webserver: "WebserverService") -> None:
+    # Installed as soon as the webserver exists, before it accepts: the host's load starts when
+    # /status first answers, seconds before READY, and a later install missed those rejections.
     counter, limit, increment = webserver._open_conns, webserver._max_connections, webserver._open_conns.increment
 
     async def _counting_increment() -> int:
         current = await increment()
         if current > limit:
-            rejected[0] += 1
+            _REJECTED[0] += 1
         return current
 
     counter.increment = _counting_increment  # type: ignore[method-assign]  # instrumentation only, never src/
+
+
+async def _peak_sampler(webserver: "WebserverService") -> None:
+    # Never collects. A rise of >= 2 KB in mem_free() between two 20 ms reads marks a GC the run's own
+    # threshold triggered (explicit C-side frees are small: every serving allocation is <= 256 B), so
+    # that reading is heap minus live set; a user-class __del__ or weakref sentinel is not on rp2.
     started = time.ticks_ms()
     low: dict[int, int] = {}  # open connections -> lowest post-GC free heap seen at that count
     seen: dict[int, int] = {}  # open connections -> samples taken at that count
@@ -84,7 +91,7 @@ async def _peak_sampler(webserver: "WebserverService") -> None:
                 micropython.mem_info()
         previous = free
         await asyncio.sleep_ms(_PEAK_SAMPLE_MS)
-    print(f"PEAK_SUMMARY heap={gc.mem_free() + gc.mem_alloc()} min_free_after_gc={overall} collections={collections} rejected={rejected[0]}")
+    print(f"PEAK_SUMMARY heap={gc.mem_free() + gc.mem_alloc()} min_free_after_gc={overall} collections={collections} rejected={_REJECTED[0]}")
     for conns in sorted(seen):
         print(f"PEAK_AT conns={conns} samples={seen[conns]} min_free_after_gc={low.get(conns, -1)}")
 
@@ -95,6 +102,10 @@ async def _run() -> None:
         gc.collect()
         print(f"FOOTPRINT script_before_boot alloc={gc.mem_alloc()} free={gc.mem_free()}")
     main_task = asyncio.get_event_loop().create_task(sensortask_dev.main())
+    if _PEAK_SAMPLE_MS:
+        while sensortask_dev.webserver is None:  # assigned during construction, seconds before serving
+            await asyncio.sleep_ms(10)
+        _count_rejections(sensortask_dev.webserver)
     await asyncio.sleep(20)  # the host waits for READY, then drives the load itself (Part E.9)
     if not _NO_SAMPLER:
         _dump("after_boot")

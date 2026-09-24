@@ -80,8 +80,8 @@ load. The answer is **not entirely**; every figure in this file must be read wit
 ## 2. State (updated 2026-09-24)
 
 - **Board**: image **E6** (built for 6, local edits only — recipe in §5.8), build
-  `2026-09-24T05:20:20Z`, serving at `192.168.85.57`, `DebugLevel` 5. Reflash F′ (the tip) with a plain
-  `uv run scripts/build_firmware.py dev` before anything that assumes the shipped config.
+  `2026-09-24T05:20:20Z`, serving at `192.168.85.57`, `DebugLevel` 5. **The tip is now the limit-6
+  configuration (E6′, owner's decision 2026-09-24)**; its confirmation is `REAL_HARDWARE_HANDOVER_LIMIT_6.md`.
 - **Repo**: branch `claude/tcp-connection-scaling`, everything pushed. `devices/dev.toml` and
   `toolchain/versions.toml` are at the tip (images G′ and H were local edits only, never committed;
   their recipes are in §3).
@@ -854,7 +854,7 @@ N= 7 GC_THRESHOLD=-1 | STABLE | complete 106/356 | refused 250 (expected) | fail
 
 ## 7. Open
 
-1. **Owner decision: the limit.** §6.1 is the basis: 6 is the only limit inside 20-30 % free at
+1. **Decided 2026-09-24: the limit is 6** (committed; confirmation `REAL_HARDWARE_HANDOVER_LIMIT_6.md`). §6.1 was the basis: 6 is the only limit inside 20-30 % free at
    peak; 7 is clean but at 14 %; 8 fails. Whichever is chosen, `devices/*.toml` `max_connections`
    and the `[lwip]` ensemble move together (PCB = limit + 3, SEG = limit × 8, `MEM_SIZE` = limit ×
    2,000 is the measured pattern; `check_lwip_ensemble()` enforces the floors).
@@ -865,8 +865,8 @@ N= 7 GC_THRESHOLD=-1 | STABLE | complete 106/356 | refused 250 (expected) | fail
    image; ≥ 3 would give a spread.
 4. **The silent reset** (§6.6 item 18) if it recurs: the re-run script captures
    `machine.reset_cause()` right after the serial error.
-5. **Tool fixes, small**: install the device's rejection counter as soon as the webserver exists,
-   not at `READY` (§6.5 item 16).
+5. **Done 2026-09-24**: the device's rejection counter is installed as soon as the webserver exists,
+   not at `READY` (§6.5 item 16); host and device counts now match exactly (twin: 1,336 = 1,336).
 6. Deferred from the static-fix handover: H3 (`/status` p50/p95, `test_end_to_end_timing.py`) and
    H4 (full bench tier), on the image with the chosen limit.
 

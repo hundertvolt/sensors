@@ -47,11 +47,12 @@ apt_packages = [
 # it sizes the shared pools for ONE connection while this firmware admits max_connections at once.
 # Change one value and run a build: an incoherent set is refused by name before it compiles.
 #
-# The recommended setting from CONNECTION_SCALING_PLAN.md's sweep, sized for max_connections = 8:
+# Sized for max_connections = 6, the limit measured stable under peak load with ~21 % heap free
+# (SPECIFICATION.md Part H.7); each connection of capacity costs 2,324 B of GC heap:
 #   MEMP_NUM_TCP_PCB   three slots above max_connections, not one - TIME_WAIT pcbs come from this
 #                      same pool (lwIP tcp.c tcp_alloc()) and keep-alive is unimplemented, so every
 #                      request churns one.
-#   MEMP_NUM_TCP_SEG   max_connections x (TCP_SND_BUF / TCP_MSS) = 8 x 8. A GLOBAL pool against a
+#   MEMP_NUM_TCP_SEG   max_connections x (TCP_SND_BUF / TCP_MSS) = 6 x 8. A GLOBAL pool against a
 #                      PER-connection TCP_SND_QUEUELEN, so without this one connection can drain it
 #                      and the rest stall with data the stack has accepted but cannot push.
 #   MEM_SIZE           2,000 B per admitted connection, the same share the 4-connection design had.
@@ -61,14 +62,14 @@ apt_packages = [
 #                      one small request per connection (bodies are capped at 2048 B, Part I.6),
 #                      against ~978 B of GC heap per pbuf - the most expensive pool to grow.
 [lwip]
-MEMP_NUM_TCP_PCB = 11
+MEMP_NUM_TCP_PCB = 9
 MEMP_NUM_TCP_PCB_LISTEN = 8
 MEMP_NUM_PBUF = 16
 PBUF_POOL_SIZE = 16
 MEMP_NUM_UDP_PCB = 5
 LWIP_STATS = 0
-MEM_SIZE = 16000
+MEM_SIZE = 12000
 TCP_MSS = 800
 TCP_WND = 6400
 TCP_SND_BUF = 6400
-MEMP_NUM_TCP_SEG = 64
+MEMP_NUM_TCP_SEG = 48

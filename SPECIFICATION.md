@@ -1251,8 +1251,8 @@ that matters is the **coherent ensemble** at each ceiling — `MEMP_NUM_TCP_PCB`
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 4 | 7 | 32 | 8,000 | 46,704 | 197,136 | -392 | 0.20% |
 | 5 | 8 | 40 | 10,000 | 49,028 | 194,812 | -2,716 | 1.37% |
-| 6 | 9 | 48 | 12,000 | 51,352 | 192,488 | -5,040 | 2.55% |
-| **7 (shipped)** | **10** | **56** | **14,000** | **53,676** | **190,164** | **-7,364** | **3.73%** |
+| **6 (shipped)** | **9** | **48** | **12,000** | **51,352** | **192,488** | **-5,040** | **2.55%** |
+| 7 | 10 | 56 | 14,000 | 53,676 | 190,164 | -7,364 | 3.73% |
 | 8 | 11 | 64 | 16,000 | 56,000 | 187,840 | -9,688 | 4.90% |
 | 9 | 12 | 72 | 18,000 | 58,324 | 185,516 | -12,012 | 6.08% |
 | 10 | 13 | 80 | 20,000 | 60,648 | 183,192 | -14,336 | 7.26% |
@@ -4627,11 +4627,10 @@ none use default exports/dynamic imports/re-exports) and **inlining** (`style.cs
 `definitions.json` embedded directly into the staged `index.html`, with `<` escaped to avoid a
 literal `</script` closing the tag early) — 2 connections per page load (down from ~9).
 
-**`max_connections` is `8`** (owner, 2026-09-23: "target 10 parallel connections ground stable,
-keep the limit to 8 as safety margin"; before that 7, 4 and 3), stated per device in
-`devices/*.toml` and checked against the firmware's own PCB count by `buildgen/validate.py`. **The
-relationship, not the number, is what this section fixes**: `max_connections` sits below
-`MEMP_NUM_TCP_PCB` with margin, currently 11 against 8. Three slots rather than one, because
+**`max_connections` is `6`** (owner, 2026-09-24, on the silicon evidence below; before that 8, 7, 4
+and 3), stated per device in `devices/*.toml` and checked against the firmware's own PCB count by
+`buildgen/validate.py`. **The relationship, not the number, is what this section fixes**:
+`max_connections` sits below `MEMP_NUM_TCP_PCB` with margin, currently 9 against 6. Three slots rather than one, because
 **TIME_WAIT pcbs come from that same pool** (`lib/lwip/src/core/tcp.c`'s `tcp_alloc()` reclaims the
 oldest TIME_WAIT only once `memp_malloc(MEMP_TCP_PCB)` has already failed) and keep-alive is
 unimplemented here, so every single request churns one.
@@ -4641,8 +4640,8 @@ connection also needs its share of two global pools: `MEMP_NUM_TCP_SEG` (a conne
 get a segment holds data the stack has accepted but cannot push) and `MEM_SIZE` (every outbound byte
 is copied into it — `modlwip.c`'s `tcp_write()` always passes `TCP_WRITE_FLAG_COPY`). Moved together,
 a connection costs **2,324 B of GC heap**, twelve times what the PCB slot alone suggests, and
-raising `max_connections` from 4 to 8 costs 9,296 B, **~5%** of the heap. For 8 the ensemble is
-`MEMP_NUM_TCP_PCB` 11, `MEMP_NUM_TCP_SEG` 64 (8 x 8), `MEM_SIZE` 16,000 (2,000 B per connection). `check_lwip_ensemble()` refuses a ceiling the
+raising `max_connections` from 4 to 8 costs 9,296 B, **~5%** of the heap. For 6 the ensemble is
+`MEMP_NUM_TCP_PCB` 9, `MEMP_NUM_TCP_SEG` 48 (6 x 8), `MEM_SIZE` 12,000 (2,000 B per connection). `check_lwip_ensemble()` refuses a ceiling the
 pools cannot serve, per device, at build time.
 
 **`backlog` is coupled to it, and must be.** `asyncio.start_server()` defaults to a backlog of 5
@@ -4651,14 +4650,28 @@ above 5 was fiction — the accept queue dropped the rest inside lwIP, where not
 see it. It now derives `max_connections + 1`: enough that one over-ceiling arrival is queued and
 refused by `_serve()`'s own reject-when-full branch, visibly, rather than dropped unseen.
 
-**What the ceiling rests on, and what it does not.** *Serving* at MicroPython's own gc default is
-now the binding constraint, not lwIP: the 2026-09-23 sitting found the board served at most **4**
-concurrent requests at `gc.threshold(-1)`, admitting 16 on an over-provisioned image. Part I.3's
-fix is what 8 stands on. On the 32-bit twin, at heaps calibrated to either side of the board's own
-`-1` curve and reduced by each image's own lwIP cost, the fixed firmware serves **10 concurrent
-requests with zero allocation failures at both**, and its ceiling lies between **12 and 18**
-depending on which side the board is on (`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7Q.12), so 8 has the
-margin the owner asked for. Silicon confirmation: `REAL_HARDWARE_TEST_QUEUE.md` §4B.
+**Why 6: stability under peak load, not throughput.** Measured on silicon 2026-09-23/24 at
+`gc.threshold(-1)` under the hammer test's peak load (N back-to-back clients plus the SGP40 reset
+PUT), each image at its own limit (`REAL_HARDWARE_HANDOVER_PEAK_LOAD.md` §5.6-§5.8, §6.1):
+
+| limit | true failures | free heap at peak | largest free block at peak |
+| --- | --- | --- | --- |
+| 6 | 0 of 1,365 | ~21 % | ~1.5 KB (five 256 B pieces) |
+| 7 | 0 of 1,334 | ~14 % | 528 B (one piece) |
+| 8 | failures in 4 of 7 boots | ~12 % | 400-512 B |
+| 10 | ~1 `/status` in 10 per round | ~11 % | 288 B |
+
+- **The board is CPU-bound at ~2.2 requests/s from 6 to 9 clients**, so a higher limit serves nothing
+  more: each request only lives longer (~N / 2.2 s) and more responses are held at once. Every
+  in-flight request holds ~7.7 KB at peak (streams, `Request`, handler, the built response).
+- **The failure is a hole too small for one ≤ 257 B piece** — always `/status`'s `_PieceWriter`, the
+  biggest builder — and at the limit's extreme the pool empties and sensor/FRAM tasks fail too.
+  Zero-failure counts over ~1,350 requests cannot separate 6/7/8; the margin can, and only 6 keeps
+  the conventional 20-30 % free at peak with several pieces' worth of contiguous space.
+- **Refusals are expected, not failures**: a connection counts until it has closed, so back-to-back
+  clients see ~70 % refused at every limit; the device's own rejection count matches the host's.
+- A browser opens at most 6 connections per host and a page load here needs 2, so 6 costs nothing.
+
 **The earlier evidence for 7, kept as history.** The digital twin runs on the Unix port, which has **no
 lwIP at all** — its sockets are real host sockets — so it validates admission, rejection,
 simultaneous body allocation, task growth and latency, and **cannot** validate the PCB ceiling.

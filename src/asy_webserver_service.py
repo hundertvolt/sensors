@@ -284,7 +284,7 @@ class WebserverService:
         chunk_bytes: int = _DEFAULT_CHUNK_BYTES,  # the largest single write of any response body: each
         # streamed JSON piece and each static-file read. One parameter, so the two can never drift
         # apart (SPECIFICATION.md Part I.3). Clamped to >= 1: a read of 0 would never end microdot's loop.
-        max_connections: int = 8,  # reject-when-full ceiling, kept below the firmware's own
+        max_connections: int = 6,  # reject-when-full ceiling, kept below the firmware's own
         # MEMP_NUM_TCP_PCB (toolchain/versions.toml) with margin for TIME_WAIT churn - Part H.7
         # holds that as a RELATIONSHIP, not a number; buildgen passes the per-device value.
         backlog: int | None = None,  # listen queue depth; None derives max_connections + 1 so one

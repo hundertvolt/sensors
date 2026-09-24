@@ -223,12 +223,11 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    home. Kept here as a closed stub, at its original number, only because several `tests/`/
    `tests_hardware/` code comments still cite it as "BACKLOG.md open question 6" - don't renumber
    this item while those references exist.
-7. **Closed 2026-09-23: the connection limit is `8`**, owner's decision ("target 10 parallel
-   connections ground stable, keep the limit to 8 as safety margin"). It was raised 4 → 7 on the
-   connection-scaling branch; the 2026-09-23 sitting then showed 7 held only with
-   `gc.threshold(32768)` set, the board serving at most 4 at MicroPython's own default. The cause
-   and the fix are SPECIFICATION.md Part I.3; the limit, its lwIP ensemble and what it rests on are
-   Part H.7. Silicon confirmation of 8 and of 10: REAL_HARDWARE_TEST_QUEUE.md §4B.
+7. **Closed 2026-09-24: the connection limit is `6`**, owner's decision after 10 proved
+   unreachable on this heap and 8 failed under peak load: 6 is clean with ~21 % heap free at peak,
+   and the board's throughput is the same at any limit. The limit, its lwIP ensemble and the
+   evidence are SPECIFICATION.md Part H.7. Confirmation on the committed image (E6′):
+   `REAL_HARDWARE_HANDOVER_LIMIT_6.md`.
 8. **Two bench-rig capabilities would each move one test candidate from `[MANUAL]` to `[AUTO]` —
    SETTLED 2026-09-22 (owner): no hardware will be bought for this, so the rig stays as it is and
    both candidates are permanently `[MANUAL]`.** Not "planned for later" any more, which is how
@@ -786,7 +785,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     Removed, all of them:
     - `CONNECTION_SCALING_PLAN.md`
     - `REAL_HARDWARE_HANDOVER_CONNECTION_SCALING.md`, `REAL_HARDWARE_HANDOVER_STATIC_FIX.md`,
-      `REAL_HARDWARE_HANDOVER_FREE_HEAP.md`, `REAL_HARDWARE_HANDOVER_PEAK_LOAD.md`
+      `REAL_HARDWARE_HANDOVER_FREE_HEAP.md`, `REAL_HARDWARE_HANDOVER_PEAK_LOAD.md`,
+      `REAL_HARDWARE_HANDOVER_LIMIT_6.md`
     - `BENCH_SITTING_2026-09-23_HANDOVER.md`
     - `CATALOG_UNIT_TESTS.md`, `CATALOG_INSTRUMENTATION.md`
     - `tests_hardware/combined_load_sweep.py`,
@@ -930,6 +930,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   14000 → 16000, every relationship unchanged and `check_lwip_ensemble()` passing. A firmware build
   runs the post-build macro verification against these, so it is the installer leg
   (`uv run toolchain/setup_toolchain.py`) that covers it; the lint/typecheck recipe does not.
+  **2026-09-24, `toolchain/versions.toml` — the installer leg again**: the `[lwip]` ensemble
+  re-sized for `max_connections = 6` (owner, 2026-09-24, on the peak-load evidence of SPECIFICATION.md
+  Part H.7) — `MEMP_NUM_TCP_PCB` 11 → 9, `MEMP_NUM_TCP_SEG` 64 → 48, `MEM_SIZE` 16000 → 12000, the
+  same pattern (limit + 3, limit × 8, limit × 2,000), `check_lwip_ensemble()` clean at 6 and refusing 7.
   **2026-09-23, `pyproject.toml`**: ruff's `max-args` 23 → 24, the documented one-parameter ratchet,
   for `WebserverService`'s `chunk_bytes=` (owner: JSON pieces and static reads bound by one
   parameter, SPECIFICATION.md Part I.3). Lint config only, no build impact.
