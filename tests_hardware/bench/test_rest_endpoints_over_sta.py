@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import http_client
 import pytest
+import website_identity
 from harness import wait_until
 
 if TYPE_CHECKING:
@@ -30,7 +31,9 @@ RAW_MIN, RAW_MAX = 0, 65535
 def test_real_static_website_content_serves_over_the_normal_bridge_network(board: Board, dut_ip: str) -> None:
     res = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=10.0)
     assert res.status_code == 200, f"GET / over the normal bridge network failed: {res.status_code} {res.body!r}"
-    assert len(res.body) > 0, "GET / returned an empty body over the normal bridge network"
+    # 200-and-non-empty passes for another device's build too, so the body is checked against this
+    # device's own generated definitions (queue row G9).
+    website_identity.assert_page_is_this_devices_build(res, "the normal bridge network")
 
 
 # ---------------------------------------------------------------------------

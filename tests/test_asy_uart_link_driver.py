@@ -140,13 +140,47 @@ def test_reset_error_counter_also_resets_link_counters() -> None:
     assert initiator.failures == 0
 
 
-def test_exercise_loop_one_round_against_a_real_responder_banner() -> None:
+async def _one_exercise_round(pair: Pair, *, listen: bool = True) -> None:
+    """Drives the initiator's _exercise_loop() through exactly one counted round, then stops it.
+    Polled, not slept out: the loop counts before its _EXERCISE_PERIOD_MS sleep, so the counter
+    moving marks the round's end and the period never has to elapse."""
+    listener = asyncio.create_task(pair._listen_rounds(1)) if listen else None
+    loop_task = asyncio.create_task(pair.initiator._exercise_loop())
+    try:
+        while not (pair.initiator.transfers or pair.initiator.failures):
+            await asyncio.sleep(0.005)
+    finally:
+        for task in (loop_task, listener):
+            if task is None:
+                continue
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+
+def test_exercise_loop_counts_a_transfer_for_a_correct_banner_answer() -> None:
+    # Drives the real loop, rather than calling uart_get() and incrementing the counter in the
+    # test: the loop's own "answered AND with the right payload" decision is the thing under test,
+    # and nothing exercised it before - it is what the bench reads the link's health off.
     async def go() -> None:
         pair = await build_pair()
-        answer = await pair.with_listener(pair.initiator._comm.uart_get(0x01))
-        assert answer is not None and bytes(answer) == b"dev-uart-crossover"
-        pair.initiator.transfers += 1
-        assert pair.initiator.transfers == 1
+        await _one_exercise_round(pair)
+        assert (pair.initiator.transfers, pair.initiator.failures) == (1, 0)
+
+    run(go())
+
+
+def test_exercise_loop_counts_a_wrong_payload_as_a_failure_not_a_transfer() -> None:
+    # The biting half: a responder that answers, but with something else. Counting this as a
+    # transfer would report a healthy link while the jumper carried the wrong bytes.
+    async def go() -> None:
+        pair = await build_pair()
+        pair.initiator.transfers = 0
+        pair.responder._comm.get_callback = lambda _cmd_id: (True, b"not-the-banner")  # a plain attribute, read per uart_listen() call
+        await _one_exercise_round(pair)
+        assert (pair.initiator.transfers, pair.initiator.failures) == (0, 1)
 
     run(go())
 
@@ -200,11 +234,24 @@ def test_unanswerable_command_id_is_rejected_not_crashed() -> None:
 
 
 def test_exercise_loop_counts_a_failure_when_nothing_answers() -> None:
-    # No responder listening at all - a real timeout, not a synthetic failure.
+    # No responder listening at all - a real timeout, not a synthetic failure, and counted by the
+    # loop itself rather than inferred from uart_get()'s return value.
     async def go() -> None:
         pair = await build_pair()
-        answer = await pair.initiator._comm.uart_get(0x01)  # no with_listener() - nothing answers
-        assert answer is None
+        await _one_exercise_round(pair, listen=False)
+        assert (pair.initiator.transfers, pair.initiator.failures) == (0, 1)
+
+    run(go())
+
+
+def test_get_error_counter_delegates_to_the_inner_comms_own_log() -> None:
+    # The _ModuleLike surface the generated boot list registers: this wrapper holds no error state
+    # of its own, so its counter has to be the inner UART_Comm's or a /status read reports zero.
+    async def go() -> None:
+        pair = await build_pair()
+        await pair.initiator._comm.pr.err_s("bench-side fault", errno=7)
+        assert await pair.initiator.get_error_counter() == await pair.initiator._comm.get_error_counter()
+        assert 7 in (await pair.initiator.get_error_counter())[pair.initiator.name]["ErrNum"]
 
     run(go())
 

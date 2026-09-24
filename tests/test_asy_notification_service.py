@@ -619,6 +619,79 @@ def test_signal_value_failure_and_own_time_callback_failure_share_one_history() 
     assert len(log["NOTIFY"]["ErrNum"]) == len(coordinator.pr.history)
 
 
+def test_a_rejected_registration_surfaces_as_a_warning_with_its_own_wrnno() -> None:
+    # register() runs before the logger exists, so a rejection is queued and flushed by the
+    # monitor loop. Every rejection test above asserted only that _registered stayed empty - the
+    # queued warning, its number and the drain itself were never checked.
+    coordinator, _clock, _cb = make_coordinator()
+    bad, _ = make_signal("AutoOn")  # collides with the coordinator's own static field
+    coordinator.register(bad)
+    assert coordinator._pending_wrn, "a rejected registration queued no warning at all"
+    coordinator.finalize()  # cfgmgr is built here, the same order the generated boot list uses
+    run(coordinator.cfgmgr.setup())
+
+    async def scenario() -> "dict[str, Any]":
+        await coordinator.pr.setup()
+        await coordinator._flush_pending_registration_warnings()
+        return await coordinator.get_error_counter()
+
+    log = run(scenario())
+    assert coordinator._pending_wrn == [], "the queue was not drained, so every later cycle re-logs it"
+    assert log["NOTIFY"]["ErrNum"][-1] == 1, f"the field-collision rejection must report wrnno 1, got {log['NOTIFY']['ErrNum']}"
+    assert log["NOTIFY"]["ErrType"][-1] == "W"
+
+
+def test_every_rejection_reason_keeps_its_own_distinct_wrnno() -> None:
+    # Four rejection reasons, four numbers (1-4): they are what a /status read distinguishes them
+    # by, the message text being free-form. A shared number would make them indistinguishable.
+    coordinator, _clock, _cb = make_coordinator()
+    coordinator.register(make_signal("AutoOn")[0])  # 1: collides with a static field
+    coordinator.register(NotificationSignal("Empty", FakeValue(1, field="Empty"), "Empty", (), (1, 0, 0)))  # 2: zero fields
+    coordinator.finalize()
+    coordinator.register(make_signal("WarnCO2")[0])  # 3: after finalize()
+    coordinator.finalize()  # 4: finalize() again
+    run(coordinator.cfgmgr.setup())
+
+    async def scenario() -> "dict[str, Any]":
+        await coordinator.pr.setup()
+        await coordinator._flush_pending_registration_warnings()
+        return await coordinator.get_error_counter()
+
+    numbers = run(scenario())["NOTIFY"]["ErrNum"]
+    assert sorted(numbers[-4:]) == [1, 2, 3, 4], f"the four rejection reasons no longer report distinctly: {numbers}"
+
+
+def test_check_one_degrades_and_logs_when_the_threshold_config_cannot_be_read() -> None:
+    # The branch a corrupt or unreadable store reaches: without it, `thresholds[0]` would raise
+    # out of the monitor loop and the supervisor would restart the task in a loop.
+    signal, _fv = make_signal("WarnCO2")
+    coordinator, _clock, _cb = make_coordinator()
+    coordinator.register(signal)
+    coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
+
+    async def unreadable(_schema: object) -> None:
+        return None
+
+    coordinator.cfgmgr.get_float_values = unreadable  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+
+    async def scenario() -> "dict[str, Any]":
+        await coordinator.pr.setup()
+        assert await coordinator._check_one(signal) is False
+        assert signal.triggered is False
+        return await coordinator.get_error_counter()
+
+    log = run(scenario())
+    assert log["NOTIFY"]["ErrNum"][-1] == 11, f"an unreadable threshold must report errno 11, got {log['NOTIFY']['ErrNum']}"
+
+
+def test_the_defaulted_signal_sink_accepts_a_request_and_reports_no_flash() -> None:
+    # The wiring-defaults no-op LED sink (Part L.6.2), for a notification setup that blinks
+    # nothing. Its False is the contract NeopixelDriver.request_signal shares: "not signalled".
+    sink = asy_notification_service._DefaultSignalSink()
+    assert run(sink.request_signal(1, 2, 3, 0.5)) is False
+
+
 def test_two_signals_failures_share_one_errno_but_distinct_names_in_message() -> None:
     a, fv_a = make_signal("WarnCO2")
     b, fv_b = make_signal("WarnVOC")

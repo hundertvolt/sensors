@@ -31,3 +31,26 @@ describe("live digital-twin backend", () => {
 // Known harmless quirk: this file prints "close timed out after 10000ms" from Vitest's own
 // teardown, with exit code 0 and no leftover twin. Opening a second page through the Commands
 // API's raw BrowserContext appears to miss Vitest's fast path; no other file here opens one.
+
+describe("live digital-twin backend, concurrent browser sessions", () => {
+    test(
+        "several real browser tabs load the real website at once against one live twin",
+        async () => {
+            const result = await commands.runLiveBackendConcurrentTabs();
+
+            if (result.skipped) {
+                console.warn(`Skipping live-backend concurrent-tab check: ${result.reason}`);
+                return;
+            }
+
+            // Every tab must load - not "at least one". The tab count is derived from the build's
+            // own max_connections, so this bites harder the moment that ceiling is raised.
+            expect(result.loaded).toBe(result.tabs);
+            for (const name of result.deviceNames) {
+                expect(name).toContain("wozi");
+            }
+        },
+        90000, // real subprocess boot plus several real browser navigations in parallel - the
+        // single-tab check's own 45000ms, doubled for the concurrency.
+    );
+});

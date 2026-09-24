@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import http_client
 import pytest
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
-from harness import Board, wait_until
+from harness import Board, configured_max_connections, wait_until
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
@@ -60,18 +60,18 @@ def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: 
 
 
 def test_real_concurrent_client_burst_does_not_crash_the_webserver(dut_ip: str, board: Board) -> None:
-    # 8 concurrent requests against max_connections=4's reject-when-full policy, so some subset
-    # legitimately gets a silent close rather than a crash. The property under test is that the
-    # server survives and keeps serving at least the connection cap's own worth of requests.
-    n_clients = 8
-    _max_connections = 4  # matches asy_webserver_service.py's own max_connections default
+    # Twice the build's own ceiling, concurrently, against its reject-when-full policy - so some
+    # subset legitimately gets a silent close rather than a crash. The property under test is that
+    # the server survives and keeps serving at least the ceiling's own worth of requests.
+    _max_connections = configured_max_connections()  # derived from the build, never a restated literal
+    n_clients = _max_connections * 2
     results: list[int | str] = [0] * n_clients
 
     def _client(i: int) -> None:
         try:
             res = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=10.0)
             results[i] = res.status_code
-        except OSError as exc:
+        except (OSError, http_client.HTTP_ERROR) as exc:
             results[i] = repr(exc)
 
     threads = [threading.Thread(target=_client, args=(i,)) for i in range(n_clients)]

@@ -121,8 +121,8 @@ def _errcount_parity_failures(model: DeviceModel, src_dir: Path, status_body: ob
         return ["GET /status carried no usable errcount object, so no parity claim would mean anything"]
     published = set(status_body["errcount"])
     displayed = _website_errcount_keys(model, src_dir)
-    # No exemptions: _errcount_group() derives its rows per logger instance now (BACKLOG item 31,
-    # fixed 2026-09-18), so the two multi-instance fixtures agree exactly like the six real devices.
+    # No exemptions: _errcount_group() derives its rows per logger instance (fixed
+    # 2026-09-18), so the two multi-instance fixtures agree exactly like the six real devices.
     missing = published - displayed
     extra = displayed - published
     failures = []

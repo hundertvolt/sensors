@@ -16,7 +16,7 @@ class DefaultParam:
 
 
 def default_class_name(toml_field: str) -> str:
-    # "temperature_source" -> "_DefaultTemperatureSource" (§2.3's fixed naming convention).
+    # "temperature_source" -> "_DefaultTemperatureSource" (SPECIFICATION.md Part L.6.2's convention).
     return "_Default" + "".join(part.capitalize() for part in toml_field.split("_"))
 
 

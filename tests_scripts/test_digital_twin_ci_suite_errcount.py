@@ -332,3 +332,46 @@ def test_the_sgp40_asymmetry_between_the_three_driver_sets_is_deliberate(ci_suit
     assert "sgp40" not in ci_suite._NO_PERSIST_WHEN_FRAM_FAULTED, "SGP40's own history is deliberately not asserted to reset - see _PERSISTED_ERROR_MODULES' comment"
     assert ci_suite._DRIVER_ERRCOUNT_NAME["sgp40"] in ci_suite._PERSISTED_ERROR_MODULES
     assert ci_suite._NO_PERSIST_WHEN_FRAM_FAULTED < ci_suite._MEASUREMENT_DRIVERS, "the reset-to-0 set is a strict subset of the drivers that produce a reading"
+# ---------------------------------------------------------------------------
+# _check_no_memory_error_in_log() - Part I.4(e)'s twin half, which had no test of its own at all.
+# ---------------------------------------------------------------------------
+
+
+def _memory_error_verdict(ci_suite: ModuleType, tmp_path: Path, log_text: str) -> "list[str]":
+    """Runs the check over one captured run log and returns whatever failures it recorded."""
+    log = tmp_path / "run.log"
+    log.write_text(log_text)
+    saved = list(ci_suite._FAILURES)  # module-level and session-shared: never left mutated
+    ci_suite._FAILURES.clear()
+    try:
+        ci_suite._check_no_memory_error_in_log(log, "Run 1")
+        return list(ci_suite._FAILURES)
+    finally:
+        ci_suite._FAILURES[:] = saved
+
+
+def test_a_caught_and_degraded_allocation_failure_is_caught_though_it_never_says_memoryerror(ci_suite: ModuleType, tmp_path: Path) -> None:
+    # The real emitted form: src/'s handlers log str(e), and the interpreter's own message carries
+    # no class name, so matching "MemoryError" alone only ever caught an uncaught traceback - the
+    # exact opposite of "caught-and-logged counts as a failure too".
+    assert _memory_error_verdict(ci_suite, tmp_path, "NTP Could not start NTP timer: memory allocation failed, allocating 512 bytes\n")
+
+
+def test_an_uncaught_traceback_is_still_caught(ci_suite: ModuleType, tmp_path: Path) -> None:
+    assert _memory_error_verdict(ci_suite, tmp_path, "Traceback (most recent call last):\nMemoryError: memory allocation failed\n")
+
+
+def test_a_clean_run_log_records_no_failure(ci_suite: ModuleType, tmp_path: Path) -> None:
+    assert _memory_error_verdict(ci_suite, tmp_path, "OK: served\nOK: clean shutdown\n") == []
+
+
+def test_a_missing_log_is_not_reported_as_a_memory_error(ci_suite: ModuleType, tmp_path: Path) -> None:
+    # _read_log() returns "" for a log that was never written; a run that died before opening one
+    # fails on its own checks, and must not be blamed on an allocation it never made.
+    saved = list(ci_suite._FAILURES)
+    ci_suite._FAILURES.clear()
+    try:
+        ci_suite._check_no_memory_error_in_log(tmp_path / "absent.log", "Run 1")
+        assert ci_suite._FAILURES == []
+    finally:
+        ci_suite._FAILURES[:] = saved

@@ -240,7 +240,7 @@ information):
   test_digital_twin_bus_hazard_concurrency.py` (digital twin), `tests_hardware/flash/
   test_bus_concurrency.py` + `tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py`
   (real hardware, dev bench — that script is what the flash-tier sweep actually runs; the old
-  host-side `tests_hardware/bus_topology.py` mirror was deleted as dead code, BACKLOG item 20), and
+  host-side `tests_hardware/bus_topology.py` mirror was deleted as dead code), and
   `tests_hardware/bench/test_bus_concurrency_under_api_load.py` (real hardware, full HTTP stack).
   Full checklist, plus the two real-hardware write-safety constraints any new device's own on-chip
   NVM or the RP2040's own flash filesystem must respect: SPECIFICATION.md Part C.8's own standing
@@ -321,7 +321,37 @@ information):
   real default) and with zero `MemoryError`s — caught-and-logged included — and with no
   `gc.collect()` calls or other nonstandard `gc` settings anywhere in the business logic or the
   test's own setup propping the result up, *before* it's ever run again with the project's chosen
-  `gc.threshold(32768)` enabled (which the full suite must then also still pass). A threshold (or a
+  `gc.threshold(32768)` enabled (which the full suite must then also still pass). **Both halves are
+  machine-checked, not left to whoever reads the log**: the twin tier checks each run's log
+  (`scripts/_digital_twin_ci_suite.py`) and `scripts/test.sh` searches each test file's own output
+  and fails the run, a passing file included — a degrade-and-pass is the silent case the bar is
+  about. Don't relax that to "only on a failing file". **There are FOUR such gates — the unit tier,
+  the twin tier and the flash/bench real-hardware soak gates — and all four match `MemoryError` OR
+  `memory allocation failed`, the second being the half that matters** — `src/` logs `str(e)`, not
+  the class, so a real caught-and-degraded allocation failure never contains the word
+  "MemoryError" at all (SPECIFICATION.md Part I.4(e) has the full account and the `py/runtime.c`
+  citation). Matching the class name alone catches only crashes, which is the case the bar is
+  *not* about; don't narrow any gate back to it. The hardware pair reads one shared
+  `tests_hardware/harness.py` `MEMORY_ERROR_MARKERS`, and
+  `tests_scripts/test_memory_error_gate_agreement.py` keeps all four agreeing — and keeps the
+  suite's own deliberate injections worded clear of what they grep for, since a message borrowing
+  the interpreter's own wording would fail every file it runs in on a healthy tree. **One structural
+  exception, added 2026-09-18 with the owner's approval: the boot-confined placement reset** —
+  `gc.collect()` between the units of the two one-time setup lists and nowhere else, mechanically
+  confined by `scripts/lint.sh` and `tests_scripts/test_gc_collect_sites.py` on the *sites* and by
+  `tests_scripts/test_digital_twin_boot_contiguity.py` on the *effect* (it boots all six generated
+  devices and asserts the survivors still land low, with a suppressed control arm asserting the
+  bound would otherwise break); it is placement
+  discipline for the survivors those lists create, not a threshold and not a fix for a failing
+  allocation. Full account and its measured effect: `SPECIFICATION.md` Part I.4(f.1). **Both stages are
+  runnable and both are run**: `scripts/test.sh` is the (e) stage at MicroPython's own reactive
+  `-1`, and `GC_THRESHOLD=32768 scripts/test.sh` is the (f) stage with the value the firmware's boot
+  entry sets — every file, with zero `MemoryError`s at each (87/87 on 2026-09-24), plus CI's own `unit-tests` and
+  `unit-tests-gc-threshold` jobs. The (e) run is what proves the design stands on its own; the
+  threshold is defence in depth on top of it, never a substitute for it. It is also not redundant:
+  on silicon it is what carries the boot placement gain into the run phase (80% held against 12% at
+  the reactive default), so keep it — but that is a layout benefit, not what makes the system
+  stable. A threshold (or a
   `gc.collect()` call) is defense in depth on top of an already-safe design, lifting an anyhow-stable
   system further from a stability threshold — it is forbidden as the fix itself for a design that
   still needs one big contiguous allocation somewhere, or for any other memory-pressure issue; the
@@ -397,10 +427,17 @@ information):
   construction (SPECIFICATION.md Part L.6.4) — the prose introducing them is not exempt. **JSDoc
   `@typedef`/`@param`/`@returns` annotations are the same case** — `npm run typecheck` really
   checks them with `tsc`, so `js/definitions.js`'s ~37-line `@typedef` run is a type declaration,
-  not a comment; the prose above it is not exempt. Applied across `src/` in one pass (project
-  owner's direction, 2026-09-18), and the header blocks are at zero repo-wide since the
-  concentrated run the same day; the remaining inline blocks are measured per scope in BACKLOG.md.
-  Keep new code to this bar.
+  not a comment; the prose above it is not exempt. **PEP 723 inline script metadata is the same
+  case** — the `# /// script` … `# ///` block four `uv run` scripts carry is read by `uv` itself.
+  Applied across `src/` in one pass (project owner's direction, 2026-09-18) and repo-wide since:
+  **every scope measures zero over-cap blocks, header and inline alike — Python, JS, CSS and, since
+  2026-09-22, `scripts/`'s shell**. Keep new code to this bar. **How a block is counted**, since a
+  naive line count measures this tree anywhere from 0 to 458: prose lines only; a bare `#` line, a
+  blank line inside a docstring and a `# ----` divider rule separate paragraphs rather than joining
+  them; a docstring's own lone `"""` line is punctuation; and a trailing comment annotates its own
+  code line, so it never starts a block. `tests_scripts/test_comment_block_cap.py` gates exactly that
+  at zero for Python and shell in all eight scopes; JS (JSDoc `@param`/`@returns` continuation lines
+  not being commentary) and CSS stay review-enforced.
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
@@ -438,14 +475,16 @@ information):
 - **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions). **Each tool is its own job/
   stage**, so a failure names the tool directly instead of a shared "lint" job going red:
   `lint-and-typecheck` (ruff + mypy), `shellcheck`, `actionlint`, `zizmor`, plus the test/build
-  stages (`unit-tests`, `unit-tests-coverage`, `digital-twin-e2e`, `firmware-build-verify`) and the
+  stages (`unit-tests`, `unit-tests-gc-threshold`, `unit-tests-coverage`, `digital-twin-e2e`,
+  `firmware-build-verify`) and the
   web tier. Note `unit-tests` keeps `needs: lint-and-typecheck` (the standing hang backstop below);
   the other lint stages run in parallel and gate nothing, so one of them failing no longer silently
-  skips the whole test suite. `unit-tests-coverage` (Session 8's closing-consistency-pass PR) is the
-  plain pass's own report-only, `continue-on-error` sibling — split into its own job so a coverage
-  run's own wall-clock cost (roughly the same again as the plain pass) never sits on the critical
-  path `digital-twin-e2e`/`firmware-build-verify` wait on; see `ci.yml`'s own job comments for the
-  full account.
+  skips the whole test suite. `unit-tests-coverage` is the plain pass's own instrumented sibling,
+  split into its own job so a coverage run's own wall-clock cost (roughly the same again) never sits
+  on the critical path `digital-twin-e2e`/`firmware-build-verify` wait on. **Its coverage number is
+  advisory but its test result is not** — owner decision, 2026-09-22, since it is the only job that
+  runs `build-settrace` and a failure unique to that binary was invisible while the whole job was
+  `continue-on-error`. The three exit codes and what CI does with each: SPECIFICATION.md Part E.5.3.
 - **`zizmor` audits the GitHub Actions workflows themselves** — `GITHUB_TOKEN` scope, checkout
   credential persistence, action pinning: the one part of the supply chain ruff/mypy can't see.
   Policy config is `.github/zizmor.yml` (only `unpinned-uses` is configured — `actions/*` may be
@@ -521,19 +560,29 @@ information):
   `sys.settrace` inside MicroPython) and rendering (`scripts/_render_coverage.py`, a second
   self-contained `uv run` script, under CPython) are two separate stages glued together through
   `coverage.py`'s own `CoverageData` API — see SPECIFICATION.md Part E.5 ("Coverage") for the full
-  pipeline. The Unix port binary is always built with `MICROPY_PY_SYS_SETTRACE=1`
-  (`build_unix_port()` in `toolchain/setup_toolchain.py`) — an inert hook check when unused, not a
-  behavior change, confirmed directly — so plain `scripts/test.sh` and `--coverage` share one
-  binary; `ports/rp2`'s firmware build never gets this flag. CI
-  (`.github/workflows/ci.yml`) runs it as its own non-gating job, `unit-tests-coverage` — separate
-  from `unit-tests` because `timeout-minutes` gates a whole job rather than its real step, so the
-  instrumented rerun would otherwise cancel a suite that had already passed (it did, on run
-  `34755468619`). A markdown summary goes to that run's
-  GitHub Actions Job Summary (not the repo's main page), the HTML report is a downloadable build
-  artifact (GitHub doesn't render it inline), and the Cobertura XML uploads to Codecov — which
-  needs this repo registered at codecov.io plus a token/OIDC setup that hasn't happened yet, so
-  that upload currently no-ops. Locally, `--coverage` only prints the output paths; nothing opens
-  automatically. See README.md's "Test coverage" section for the full user-facing rundown.
+  pipeline, which README.md's own "Test coverage" section also points at rather than restating.
+  **Two Unix-port binaries are built, not one** (owner decision, 2026-09-21): `build-standard`,
+  built **without** `MICROPY_PY_SYS_SETTRACE`, is the test rig every plain run uses, while
+  `build-settrace` carries the flag and is `--coverage`'s alone; `ports/rp2`'s firmware build never
+  gets it either way. `scripts/test.sh` picks by mode, and `build_unix_port()` in
+  `toolchain/setup_toolchain.py` builds both. **Why the flag cannot simply stay compiled in, the
+  measured 4-5x allocation inflation it causes, and why the build directory's name no longer
+  identifies its variant: SPECIFICATION.md Part E.5.2** — the operational consequences are that
+  `scripts/test.sh` asks the binary itself (`hasattr(sys, "settrace")`) and rebuilds on a mismatch,
+  so don't re-diagnose a long-lived toolchain dir rebuilding its Unix ports once as a bug; and that
+  any allocation figure taken under `--coverage` is inflated, coverage being line coverage only.
+  **That was HEAP_FRAGMENTATION_MEASUREMENTS.md §11 item 0, now decided and done**, and the
+  allocation-heavy files got faster with the flag gone (`test_sensortask_wozi.py` 24.6s → 9.3s)
+  while wait-bound ones are unchanged. CI (`.github/workflows/ci.yml`) runs the instrumented rerun
+  as its own job, `unit-tests-coverage` — separate from `unit-tests` because `timeout-minutes` gates
+  a whole job rather than its real step, so it would otherwise cancel a suite that had already
+  passed (it did, on run `34755468619`). Its coverage *report* never gates; its *test result* does
+  (Part E.5.3). A markdown summary goes to that
+  run's GitHub Actions Job Summary (not the repo's main page), the HTML report is a downloadable
+  build artifact (GitHub doesn't render it inline), and the Cobertura XML uploads to Codecov —
+  which needs this repo registered at codecov.io plus a token/OIDC setup that hasn't happened yet,
+  so that upload currently no-ops. Locally, `--coverage` only prints the output paths; nothing
+  opens automatically.
 - **A third party's momentary outage must never read as a red test result.** `scripts/test.sh`'s
   pytest tier shells out to `uv run`, and that implicitly builds the **whole** `dev` group first —
   ruff, mypy, shellcheck, zizmor and `actionlint-py` included, none of which `tests_scripts/` needs.
@@ -650,8 +699,8 @@ information):
   — a Unix-port-only test-harness setting, unrelated to the real rp2040's own RAM budget. **The
   value is not fixed and has moved with the suite's own shape** (8M → 32M when WP1+WP2 made the
   monolithic `test_sensortask.py` build all 6 devices' graphs in one process, then back down to
-  today's 16M once that file was split per device — root-caused, not overridden); `scripts/test.sh`'s
-  own comment above the flag is the authoritative history, kept there rather than duplicated here.
+  today's 16M once that file was split per device — root-caused, not overridden);
+  SPECIFICATION.md Part E.3.1 is the authoritative history, kept there rather than duplicated here.
   Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before checking the
   flag is still in place — and don't raise it as the fix, which that history is a standing example
   against.
@@ -680,8 +729,11 @@ information):
   boot (`asy_udp_socket.py`), so the two tiers overlap safely.
 - **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
-  if `format` is ever run by accident. Lint rule selection (`E`/`F`/`W`/`I`/`UP`/`B`) is stricter
-  than ruff's default but well short of enabling everything.
+  if `format` is ever run by accident. Lint rule selection is `select = ["ALL"]` — every non-preview
+  rule ruff ships, narrowed only by an explicitly justified `ignore` list (`pyproject.toml`'s
+  `[tool.ruff.lint]`, where each exclusion carries its own reasoning). That opt-in-to-everything
+  choice is exactly why ruff is pinned: an unpinned upgrade would hard-fail CI on a rule nobody
+  chose.
 - **Bare `except:` (E722) is intentionally left enabled**, unlike the old `improved-quality/pycheck.sh`
   — the project owner wants ruff to flag existing bare excepts as a tracked to-do, not silence them
   before they're fixed (test-driven-development framing, confirmed directly).
@@ -731,6 +783,9 @@ information):
   only those files carry the `# noqa`. This is not an inconsistency to tidy up: adding the
   suppression to a `sys.path`-only file makes `RUF100` (unused-noqa, live via `select = ["ALL"]`)
   fail the lint gate, so the two groups genuinely have to differ.
+- **A merge resolved by taking one side wholesale hides test/source mismatches — run every tier
+  after it.** An auto-merged test file next to an `--ours`-resolved source file raises no conflict,
+  then fails against source that lacks the feature it pins.
 - **A merge that touches `uv.lock` can silently bypass the tool pins — always re-verify after
   one.** `uv.lock` is a plain text file, so git merges it line by line: a branch that pins the
   tools and a branch that only refreshes versions produce a lock carrying **one side's
@@ -782,13 +837,15 @@ information):
     F.5.1. `src/asy_i2c_driver.py`, `src/asy_spi_driver.py`, `tests/machine.py` and
     `digital_twin/machine.py` all state the real semantics now.
 - **`scripts/typecheck.sh` repairs two verified defects in the MicroPython stub package after
-  installing it** (added with the 1.29 bump; see the script's own comment for the full account).
+  installing it** (added with the 1.29 bump; this bullet is the full account, the script itself
+  carries only the mechanics).
   `micropython-stdlib-stubs` 1.29.0.post1/.post2 privatised `_asyncio.Future` to `_Future` and
   dropped the `asyncio/futures.pyi` that re-exported it, while `asyncio/tasks.pyi` and
   `asyncio/__init__.pyi` still import from it — leaving `Future` as `Any`, collapsing
   `_FutureLike[_T]`, and making every `asyncio.wait_for()`/`gather()` result in this repo
   un-inferable; and `builtins.pyi` has `NotImplemented` commented out, though MicroPython genuinely
-  has it and honors it from `__eq__` (verified against the pinned Unix-port interpreter). Together
+  has it and honors it from `__eq__` (verified against the pinned Unix-port interpreter —
+  SPECIFICATION.md Part F.5.5). Together
   these accounted for **all 26** findings the bump surfaced. Both repairs are conditional on the
   defect still being present, so they no-op once upstream re-ships — **don't replace them with
   `type: ignore` comments in `src/`/`digital_twin/`**: the code is correct on real hardware in both
@@ -894,8 +951,8 @@ chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-
 # from-scratch run installs it on its own - it stays listed here because a REUSED chroot whose
 # toolchain is already built skips that install step entirely and hits the same late failure.
 
-# Per-verification: copy the CURRENT working tree (uncommitted changes included - this is a
-# pre-push gate, not a post-push audit) into the chroot, then run the exact documented workflow
+# Per-verification: copy the CURRENT working tree (uncommitted changes included - this verifies
+# what is on disk, not what is on a branch) into the chroot, then run the exact documented workflow
 # from README.md's "Code quality tooling" section.
 rm -rf "$CHROOT/root/sensors"
 cp -r /path/to/this/repo/checkout "$CHROOT/root/sensors"   # adjust to wherever it's actually checked out

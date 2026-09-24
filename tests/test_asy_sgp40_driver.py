@@ -12,6 +12,7 @@ from machine import I2C as FakeI2C
 from machine import Timer
 
 import asy_fram_manager
+import asy_sgp40_driver
 import asy_spi_driver
 from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2C
@@ -60,6 +61,34 @@ def _crc8(data: bytes) -> int:
 def _word(value: int) -> bytes:
     payload = bytes([(value >> 8) & 0xFF, value & 0xFF])
     return payload + bytes([_crc8(payload)])
+
+
+def test_the_defaulted_compensation_sources_carry_the_datasheets_own_values() -> None:
+    # What buildgen wires when no live temperature/humidity source exists (Part L.6). Only the
+    # class NAMES were pinned, by AST in tests_scripts/test_buildgen_defaults.py - the 25 degC /
+    # 50 %RH themselves are a datasheet claim (Table 9) that nothing asserted at runtime.
+    temp = asy_sgp40_driver._DefaultTemperatureSource()
+    hum = asy_sgp40_driver._DefaultHumiditySource()
+    assert run(temp.get_data()).value == 25.0
+    assert run(hum.get_data()).value == 50.0
+
+
+def test_a_defaulted_compensation_source_honours_an_explicit_value_and_coerces_it() -> None:
+    # The TOML form is `{default = true, temperature = 25}`, so the value is caller-supplied and
+    # arrives as whatever TOML parsed - float() is what keeps an int from reaching measure_raw().
+    temp = asy_sgp40_driver._DefaultTemperatureSource(temperature=10)
+    hum = asy_sgp40_driver._DefaultHumiditySource(relative_humidity=80)
+    assert run(temp.get_data()).value == 10.0
+    assert run(hum.get_data()).value == 80.0
+    assert isinstance(run(temp.get_data()).value, float)
+    assert isinstance(run(hum.get_data()).value, float)
+
+
+def test_a_defaulted_source_returns_the_same_object_every_call_rather_than_allocating() -> None:
+    # Built once in __init__ and handed out, not rebuilt per read: this is on the measurement path
+    # of every VOC sample, and a fresh namedtuple per call would be a per-sample allocation.
+    temp = asy_sgp40_driver._DefaultTemperatureSource()
+    assert run(temp.get_data()) is run(temp.get_data())
 
 
 def test_crc8_helper_matches_datasheet_example() -> None:

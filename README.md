@@ -47,7 +47,7 @@ works with no subcommand named. Full `setup` flag reference:
 | `--micropython-ref REF` | Build a specific MicroPython tag/ref instead of `toolchain/versions.toml`'s pinned one |
 | `--latest` | Detect the newest stable MicroPython release, pin `versions.toml` to it, then build that |
 | `--skip-apt` | Skip installing system/apt packages (assumes they're already present) |
-| `--clean` | Wipe all build-artifact directories (`picotool/build`, `mpy-cross/build`, `ports/rp2/build-<board>`, `ports/unix/build-standard`) before building, without re-cloning git sources |
+| `--clean` | Wipe all build-artifact directories (`picotool/build`, `mpy-cross/build`, `ports/rp2/build-<board>`, and both Unix-port variants `ports/unix/build-standard` and `ports/unix/build-settrace`) before building, without re-cloning git sources |
 | `--toolchain-dir PATH` | Directory holding the micropython/pico-sdk/picotool source trees (default: `$PICO_TOOLCHAIN_DIR` or `~/pico-toolchain`) |
 | `--jobs N` | Parallel make jobs (default: `os.cpu_count()`) |
 
@@ -134,24 +134,34 @@ scripts/test.sh            # runs every test in tests/, under a real MicroPython
 scripts/test.sh --coverage # same, plus a src/-only line coverage report (HTML/XML/markdown) - see below
 ```
 
-`test.sh` takes no positional arguments (only the `--coverage` flag above); five environment
+`test.sh` takes no positional arguments (only the `--coverage` flag above); six environment
 variables tune it: `PICO_TOOLCHAIN_DIR` (where to find/build the toolchain, default
 `~/pico-toolchain`), `SKIP_APT=1` (skip apt package installs if the Unix port needs building and
 they're already present), `PER_FILE_TIMEOUT_S` (per-test-file timeout in seconds before a retry,
 default 240), `TEST_PARALLELISM` (how many test files run at once — by default autodetected, not a
 flat multiple of the core count: `test.sh` times a fixed loop in the very Unix-port interpreter the
 tests run under and picks 4x usable cores at <=250ms, 2x at <=900ms, 1x beyond, honouring a cgroup
-CPU quota when one is set, because core *count* alone cannot tell a fast x86 runner from a Pi4
-(BACKLOG.md item 28). The suite is sleep-bound rather than CPU-bound, so oversubscribing a fast host
-is close to free; set `TEST_PARALLELISM=1` for strictly sequential runs), and `TESTS_SCRIPTS_TIMEOUT_S`
+CPU quota when one is set, because core *count* alone cannot tell a fast x86 runner from a slow
+host (the bench Pi4 probes at ~139 ms: 4x, 16 jobs, green). The suite is sleep-bound rather than
+CPU-bound, so oversubscribing a fast host is close to free; set `TEST_PARALLELISM=1` for strictly
+sequential runs), `TESTS_SCRIPTS_TIMEOUT_S`
 (whole-suite timeout for the backgrounded `tests_scripts/` pytest job, default 1200 — roughly 5x its
-real runtime, so it only fires on a genuine hang). Every `tests/test_*.py` file runs as
+real runtime, so it only fires on a genuine hang), and `GC_THRESHOLD` (run the MicroPython tier with
+that `gc.threshold()` set instead of the interpreter's own reactive default — `GC_THRESHOLD=32768
+scripts/test.sh` is the value the firmware's boot entry ships, and the suite has to pass both ways;
+a value that is not an integer, or falls outside the rp2040's own 32-bit machine word, is rejected up
+front before the run touches anything, rather than failing inside the runner once per test file;
+see "Memory-safety discipline" in CLAUDE.md for why both runs are required and which one proves
+what). Every `tests/test_*.py` file runs as
 its own interpreter process and prints its own `PASS`/`FAIL` lines plus an `N/N passed` count as it
 goes, each line prefixed with that file's own name in brackets (e.g. `[test_sensortask_dev]`) since
 several files' output interleaves when they run concurrently; **the run ends with one rolled-up
 summary** (`tests_scripts/`'s own pass/fail, the
-MicroPython file count, and every failed file named by path) so a failure earlier in a long run
-doesn't require scrolling back through the log:
+MicroPython file count, every failed file named by path, and any file whose output contained a
+`MemoryError` or the interpreter's own `memory allocation failed` wording — caught-and-logged
+counts, and fails the run, even if that file's own tests passed; both spellings are matched because
+`src/` logs the exception's message and not its class, so a real degrade never says "MemoryError")
+so a failure earlier in a long run doesn't require scrolling back through the log:
 
 ```
 == Test summary ==
@@ -163,9 +173,11 @@ Result: FAILED
 ```
 
 All three (`lint.sh`/`typecheck.sh`/`test.sh`) run in GitHub Actions CI
-(`.github/workflows/ci.yml`) on every push/PR, plus `test.sh --coverage` as its own non-gating
-`unit-tests-coverage` job (split out from the main test job so its own wall-clock cost never sits
-on the critical path other jobs wait on). Config lives in the root `pyproject.toml`; see CLAUDE.md's
+(`.github/workflows/ci.yml`) on every push/PR, plus `test.sh --coverage` as its own
+`unit-tests-coverage` job — its coverage number advisory, its test result gating (SPECIFICATION.md
+Part E.5.3) — and `GC_THRESHOLD=32768 scripts/test.sh` as a gating
+`unit-tests-gc-threshold` one (both split out from the main test job so their own wall-clock cost
+never sits on the critical path other jobs wait on). Config lives in the root `pyproject.toml`; see CLAUDE.md's
 "Code quality tooling" section
 for the full rationale (why `ruff format` isn't used, why the MicroPython stubs install into a
 separate `typings/` directory instead of the main dev venv, why tests don't run under
@@ -495,13 +507,12 @@ twin in for a Unix-port run" section — that's a separate `MICROPYPATH`-based i
 launcher.
 
 **Automated CI suite** — the manual walkthrough below turned into an unattended, CI-gating check:
-drives `digital_twin/run_generic_integration.py` through fourteen real, sequential subprocess runs
-(12 top-level, two of them sub-runs of one; fresh boot, every GET/PUT endpoint, `DebugLevel=5`
-verbose logging, bus fault injection, settings/error persistence across a real reboot, soak at both
-`gc.threshold()` configurations) and
-asserts every step. Runs against `wozi` by default, or any of the other 5 real device variants via
-an optional device argument. Builds the Unix port and the real website for that device first if
-either is missing (same `$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):
+drives `digital_twin/run_generic_integration.py` through fourteen sequential runs and asserts every
+step: fresh boot, every GET/PUT endpoint, `DebugLevel=5` verbose logging, bus fault injection,
+settings/error persistence across a real reboot, soak at both `gc.threshold()` configurations and the
+full-ceiling burst (`digital_twin/README.md`'s "Automated CI suite" lists each run). Runs against
+`wozi` by default, or any of the other 5 real device variants via an optional device argument.
+Builds the Unix port and the real website for that device first if either is missing (same `$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):
 
 ```sh
 scripts/run_digital_twin_ci.sh          # wozi (default)
@@ -679,24 +690,29 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source is imported into this repo and reconciled, then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
+- **[`HEAP_FRAGMENTATION_MEASUREMENTS.md`](HEAP_FRAGMENTATION_MEASUREMENTS.md)** — the measured
+  evidence base for the heap-fragmentation defect (the collapse of the largest contiguous block
+  across WP1+WP2; the 80,000 B floor it used to be measured against was retired by the owner on
+  2026-09-19 and replaced by the three requirement-derived checks in its §7G):
+  what the instrument is validated against and the six ways it silently lied before that, the
+  per-module allocation census, the FRAM logging path priced per transaction, the negative results
+  that constrain any fix, and every remedy candidate's ensembled numbers. Its §0A states the
+  mechanism and §9 quarantines every figure a defective instrument produced or a later measurement
+  overturned — check there before reusing any number found in an older transcript or doc. **Cited
+  from ~30 places — five `SPECIFICATION.md` Parts, `REAL_HARDWARE_TEST_QUEUE.md` and two `src/`
+  comments among them — so it is the evidence annex now rather than a throwaway**: it goes when those citations do, and the rules and current-state facts it
+  established already live in `SPECIFICATION.md`/CLAUDE.md.
 - **[`REAL_HARDWARE_TEST_QUEUE.md`](REAL_HARDWARE_TEST_QUEUE.md)** — the single list of everything
   waiting on the dev bench (suite runs, targeted investigations, coverage gaps that need silicon,
   bench-host tasks), so one go-ahead session can work it in one pass instead of rediscovering it
-  across BACKLOG.md, `tests_hardware/README.md` and the handover docs. Each row is deleted once its
+  across BACKLOG.md and `tests_hardware/README.md`. Each row is deleted once its
   result is migrated into the permanent docs; the file goes when the last row does. It authorizes
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
-- **[`HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`](HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md)** —
-  the last remaining `*_HANDOVER*.md` file, owned by the session working PR #105. Only its Part 2
-  is still live — Part 1's harness changes all landed on this branch, and its one open bench ask is
-  `REAL_HARDWARE_TEST_QUEUE.md` row R14 — and that half is superseded by PR #105's own measurement/
-  plan docs, which are not on this branch yet, so the file goes when that PR merges. These are
-  per-effort throwaways, each owned by the session or pull request named in its own first lines and
-  deleted once its findings are migrated or confirmed not to apply; the two real-hardware ones that
-  preceded it went that way on 2026-09-18, their still-open asks consolidated into
-  `REAL_HARDWARE_TEST_QUEUE.md` and their answered ones migrated into `SPECIFICATION.md`. Do not
-  treat a handover file as a durable reference, and prefer the queue above for anything
-  bench-related.
+
+A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
+lines and deleted once its findings are migrated. Never treat one as a durable reference; prefer the
+queue above for anything bench-related.
 
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 
@@ -713,15 +729,14 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   source couldn't be established (`captive_dns.py`/`asy_ntp_client.py`/`asy_udp_socket.py`) and a
   disclosure that parts of this codebase were written with AI assistance.
 
-**`digital_twin/README.md`** (permanent, not yet folded into `SPECIFICATION.md`):
+**`digital_twin/README.md`** (permanent, kept current):
 
 - **`digital_twin/README.md`** — the standing reference for the hardware simulator: what's there,
   how to swap it in for a Unix-port run, FRAM/SCD30 persistence, running its own tests, and how to
   add a new chip fake when a new sensor driver lands (required per `SPECIFICATION.md` Part C.11
-  point 9). Its own lifecycle isn't yet settled (still genuinely useful, but a later session may
-  decide to fold it into `SPECIFICATION.md` the way `src/README.md`/`tests/README.md` were) —
-  listed here for now so it isn't only locatable by cross-reference in the meantime. See
-  `SPECIFICATION.md` Part A.10 for how it fits into the rest of the architecture.
+  point 9). Folding it into `SPECIFICATION.md`, the way `src/README.md`/`tests/README.md` were, is
+  an open option. See `SPECIFICATION.md` Part A.10 for how it fits into the rest of the
+  architecture.
 
 **`tests_hardware/README.md`** (permanent, kept current):
 

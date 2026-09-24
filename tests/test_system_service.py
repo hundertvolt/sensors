@@ -27,6 +27,8 @@ if TYPE_CHECKING:
     from machine import WDT
     from typing_extensions import Self
 
+    from config_manager import ConfigSchema
+
     T = TypeVar("T")
 
 
@@ -954,6 +956,74 @@ def test_start_and_check_tasks_empty_starters_never_fails() -> None:
         run(scenario())
 
 
+class _CountingGc:
+    """Stands in for the `gc` module so the boot collects can be counted - module-attribute
+    reassignment is this project's mocking mechanism (MicroPython has no unittest.mock)."""
+
+    def __init__(self) -> None:
+        self.collects = 0
+
+    def collect(self) -> None:
+        self.collects += 1
+
+
+def _long_lived_starter() -> "asyncio.Task[None]":
+    async def _c() -> None:
+        await asyncio.sleep(3600)
+
+    return asyncio.create_task(_c())
+
+
+def _count_collects_during_supervision(starters: "list[Callable[[], asyncio.Task[Any]]]", iterations: int) -> "tuple[int, int]":
+    """Returns (collects once every starter has been started, collects after `iterations` more
+    supervisor passes) - the second must equal the first: the supervisor is the run phase."""
+    counter = _CountingGc()
+    original_gc = system_service.gc
+    system_service.gc = counter  # type: ignore[assignment]
+    svc = make_service(watchdog=machine.WDT())
+    after_start = [0]
+
+    async def scenario() -> None:
+        task = asyncio.create_task(svc.start_and_check_tasks(starters))
+        for _ in range(4 * (len(starters) + 1)):  # let the whole starter loop and its sleeps drain
+            await asyncio.sleep(0)
+        after_start[0] = counter.collects
+        for _ in range(iterations):
+            await asyncio.sleep(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    try:
+        with _FastAsyncSleep():
+            run(scenario())
+    finally:
+        system_service.gc = original_gc
+    return after_start[0], counter.collects
+
+
+def test_start_and_check_tasks_collects_once_per_starter_plus_one_and_never_in_the_supervisor() -> None:
+    # Measure B (PLAN B.1.2, SPECIFICATION.md I.4(f.1)): the starter list is the second of the two
+    # one-time boot lists that get a placement-reset collect between their units. The supervisor
+    # underneath is the run phase, where I.4 forbids one - so the count must not move once spinning.
+    starters = [_long_lived_starter, _long_lived_starter, _long_lived_starter]
+    after_start, after_supervision = _count_collects_during_supervision(starters, 40)
+    assert after_start == len(starters) + 1, f"expected {len(starters) + 1} boot collects, got {after_start}"
+    assert after_supervision == after_start, (
+        f"the supervisor loop collected {after_supervision - after_start} time(s) - the run phase must collect never"
+    )
+
+
+def test_start_and_check_tasks_with_no_starters_still_does_the_start_of_list_collect() -> None:
+    # An empty starter list is a real configuration (a device wiring no tasks), and the
+    # start-of-list collect is not conditional on there being anything to iterate.
+    after_start, after_supervision = _count_collects_during_supervision([], 20)
+    assert after_start == 1, f"expected exactly the start-of-list collect, got {after_start}"
+    assert after_supervision == 1, "the supervisor loop must not collect even with no tasks to supervise"
+
+
 def test_start_and_check_tasks_feeds_the_watchdog_while_tasks_stay_alive() -> None:
     wdt = machine.WDT()
     svc = make_service(watchdog=wdt)
@@ -1215,6 +1285,26 @@ def test_setup_pushes_the_persisted_value_out_through_every_registered_setter() 
     # still gets called once, even for the unchanged default.
     assert calls == [0]
     assert svc.get_debug_level() == 0
+
+
+def test_setup_leaves_the_level_alone_when_the_persisted_value_cannot_be_read() -> None:
+    # The one branch in setup() no other test reaches: get_int_values() answering None, which is
+    # what a corrupt or unreadable store degrades to. The level must stay as constructed rather
+    # than being pushed out as a bogus value, and nothing may raise out of boot.
+    calls: list[int] = []
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc.set_level_setters([calls.append])
+    # Seeded away from the schema default, which _current_debug_level starts at: leaving it at 0
+    # would make "untouched" and "overwritten with 0" the same observation.
+    svc._current_debug_level = PrintLog.level_info()
+
+    async def unreadable(_schema: "ConfigSchema") -> "list[int] | None":
+        return None
+
+    svc.cfgmgr.get_int_values = unreadable  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    run(svc.setup())  # must not raise
+    assert svc.get_debug_level() == PrintLog.level_info(), "an unreadable store overwrote the level in place"
+    assert calls == [], "the level setters were called with a value that was never read back"
 
 
 def test_set_debug_level_persists_and_calls_every_registered_setter() -> None:

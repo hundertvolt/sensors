@@ -86,7 +86,10 @@ def _wiring_plan(device: str) -> "dict[str, Any]":
     return plan
 
 
-def _fram_fake_class(device: str) -> "type[FakeMB85RS64V]":
+def fram_fake_class(device: str) -> "type[FakeMB85RS64V]":
+    # Public because tests/_boot_contiguity_probe.py boots the same devices from its own script
+    # entry point: shared rather than copied, so the RDID table above stays the one place the
+    # tests tier maps a device to its real chip.
     plan = _wiring_plan(device)
     (spi_attachment,) = plan["spi"].values()  # every real device has exactly one FRAM/SPI instance
     return _FRAM_FAKE_BY_MAX_SIZE[spi_attachment["max_size"]]
@@ -120,7 +123,7 @@ _OPTIONAL_INSTANCE_NAMES = ("scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", 
 async def _boot(device: str, cfg_path: "str | None" = None, **kwargs: "Any") -> "Any":
     # Per-call, not module-level: different devices need different FRAM fakes (max_size/RDID), and
     # several devices' own modules get booted in this one process across this file's full run.
-    asy_spi_driver._SPI = _fram_fake_class(device)  # type: ignore[misc]
+    asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
     module = __import__(f"sensortask_{device}")
     await module.build_system(cfg_path=cfg_path if cfg_path is not None else _tmp_cfg_dir(), **kwargs)
     return module
@@ -358,7 +361,7 @@ def _scenario_main_forwards_web_host_port(device: str) -> None:
     AsyNtpClient.ntp_force_sync = _fake_force_sync  # type: ignore[method-assign]
     SystemService.start_and_check_tasks = _fake_start_and_check  # type: ignore[method-assign]
     try:
-        asy_spi_driver._SPI = _fram_fake_class(device)  # type: ignore[misc]
+        asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
         module = __import__(f"sensortask_{device}")
         run(module.main(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=8080))
     finally:
@@ -827,7 +830,7 @@ def _scenario_main_call_order(device: str) -> None:
     AsyNtpClient.ntp_force_sync = _fake_force_sync  # type: ignore[method-assign]
     SystemService.start_and_check_tasks = _fake_start_and_check  # type: ignore[method-assign]
     try:
-        asy_spi_driver._SPI = _fram_fake_class(device)  # type: ignore[misc]
+        asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
         module = __import__(f"sensortask_{device}")
         run(module.main(cfg_path=_tmp_cfg_dir()))
     finally:

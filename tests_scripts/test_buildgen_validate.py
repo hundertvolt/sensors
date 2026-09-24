@@ -2,11 +2,14 @@
 own test, driven by a deliberately malformed fixture built from _toml_fixtures.base_doc() - never
 just incidentally exercised by the six real device TOMLs happening to be valid."""
 
+import importlib.util
 import shutil
 from pathlib import Path
+from types import ModuleType
 from typing import TYPE_CHECKING
 
 import pytest
+from _script_loader import load_script_module
 from _toml_fixtures import base_doc, write_doc, write_text
 
 from buildgen.errors import BuildError
@@ -21,6 +24,11 @@ if TYPE_CHECKING:
 @pytest.fixture
 def src_dir(repo_root: Path) -> Path:
     return repo_root / "src"
+
+
+@pytest.fixture(scope="session")
+def overrides(repo_root: Path) -> ModuleType:
+    return load_script_module(repo_root / "toolchain" / "micropython_overrides.py", "micropython_overrides")
 
 
 def _build(tmp_path: Path, src_dir: Path, doc: "TomlDoc", name: str = "dev") -> "DeviceModel":
@@ -38,7 +46,7 @@ def test_malformed_toml_syntax(tmp_path: Path, src_dir: Path) -> None:
 
 
 def test_literal_duplicate_toml_key_in_one_table_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # §5.1 #1's first sub-case: tomllib itself rejects a repeated key in one table before buildgen
+    # tomllib itself rejects a repeated key in one table before buildgen
     # ever sees the parsed doc - load_device() wraps that TOMLDecodeError into the same BuildError
     # as any other malformed-syntax input. Not exercised by any existing test until now.
     path = write_text(tmp_path, "dev", '[device]\nname = "Test"\nname = "Test2"\n')
@@ -161,7 +169,7 @@ def test_hostname_longer_than_the_network_cap_is_rejected(tmp_path: Path, src_di
 
 @pytest.mark.parametrize("bad_name", [5, ""])
 def test_device_name_invalid_rejected(tmp_path: Path, src_dir: Path, bad_name: object) -> None:
-    # §7.1 #9: [device].name's own type/non-emptiness check, exercised only implicitly by every
+    # [device].name's own type/non-emptiness check, exercised only implicitly by every
     # other fixture supplying a valid name today.
     doc = base_doc()
     doc["device"]["name"] = bad_name
@@ -170,9 +178,9 @@ def test_device_name_invalid_rejected(tmp_path: Path, src_dir: Path, bad_name: o
 
 
 def test_empty_bus_table_with_bus_attached_instances_still_fails(tmp_path: Path, src_dir: Path) -> None:
-    # Phase 2 (§10.3): [bus.*] being empty/absent is no longer unconditionally rejected - but
-    # base_doc()'s scd30/sgp40/fram instances still reference "i2c0"/"spi0", so this now fails
-    # downstream via the ordinary undeclared-bus check instead of a blanket "no bus table" error.
+    # An empty/absent [bus.*] is not rejected on its own - but base_doc()'s scd30/sgp40/fram
+    # instances still reference "i2c0"/"spi0", so this fails downstream via the ordinary
+    # undeclared-bus check rather than a blanket "no bus table" error.
     doc = base_doc()
     doc["bus"] = {}
     with pytest.raises(BuildError, match="undeclared bus"):
@@ -180,7 +188,7 @@ def test_empty_bus_table_with_bus_attached_instances_still_fails(tmp_path: Path,
 
 
 def test_no_buses_and_no_instances_is_a_valid_minimal_device(tmp_path: Path, src_dir: Path) -> None:
-    # §4.3 axis 10 / §7.1 items 1-2, unblocked by Phase 2: a device with zero bus-attached
+    # A device with zero bus-attached
     # instances (no sensors, no FRAM at all) is a logically valid, simplest-possible shape.
     doc = base_doc()
     doc["bus"] = {}
@@ -190,7 +198,7 @@ def test_no_buses_and_no_instances_is_a_valid_minimal_device(tmp_path: Path, src
 
 
 def test_fram_entirely_absent_with_single_i2c_bus_is_fine(tmp_path: Path, src_dir: Path) -> None:
-    # §7.1 items 1-2, deferred from Phase 1 pending this same relaxation: FRAM absent means spi0
+    # FRAM absent means spi0
     # (its sole real consumer) is also absent, leaving a single shared I2C bus with no SPI at all.
     doc = base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "fram"]
@@ -211,7 +219,7 @@ def test_bus_id_with_unrecognized_kind_prefix_rejected(tmp_path: Path, src_dir: 
 
 
 def test_bus_id_bare_kind_with_no_port_digit_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # §5.1 #7/§7.2(A): "i2c" alone still starts with the recognized "i2c" prefix - the old
+    # "i2c" alone still starts with the recognized "i2c" prefix - the old
     # startswith()-only check let this through; the fixed real-id table closes it.
     doc = base_doc()
     doc["bus"]["i2c"] = doc["bus"].pop("i2c0")
@@ -222,7 +230,7 @@ def test_bus_id_bare_kind_with_no_port_digit_rejected(tmp_path: Path, src_dir: P
 
 
 def test_two_i2c_buses_legal_topology(tmp_path: Path, src_dir: Path) -> None:
-    # §4.3 axis 10: one pair from the I2C0 set, one from the I2C1 set - the same shape every real
+    # One pair from the I2C0 set, one from the I2C1 set - the same shape every real
     # device already uses (e.g. devices/wozi.toml), driven directly at the validate level here.
     doc = base_doc()
     doc["bus"]["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000}
@@ -252,7 +260,7 @@ def test_i2c_pin_belonging_to_the_other_i2c_index_rejected(tmp_path: Path, src_d
 
 
 def test_i2c_pin_role_transposed_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # §6.4: both pins are real, legal GP12/13 for i2c0 - just swapped (scl<->sda).
+    # SPECIFICATION.md Part L.6.5's role check: both pins are real, legal GP12/13 for i2c0 - swapped.
     doc = base_doc()
     doc["bus"]["i2c0"]["scl_pin"] = 12
     doc["bus"]["i2c0"]["sda_pin"] = 13
@@ -285,7 +293,7 @@ def test_gpio_with_no_spi_function_rejected(tmp_path: Path, src_dir: Path) -> No
 
 @pytest.mark.parametrize("field,value", [("irq_pin", 24), ("pin", 25), ("cs_pin", 23)])
 def test_wireless_reserved_gpio_rejected_on_any_pin_field(tmp_path: Path, src_dir: Path, field: str, value: int) -> None:
-    # GP23/24/25/29 - the scope note in §4.3: applies to every claimed pin device-wide, not just
+    # GP23/24/25/29 - SPECIFICATION.md Part L.6.5 applies to every claimed pin device-wide, not just
     # bus wire pins (irq_pin/pin/cs_pin here have no peripheral role to check, only existence).
     doc = base_doc()
     if field == "irq_pin":
@@ -315,7 +323,7 @@ def test_bus_missing_required_wire_pin(tmp_path: Path, src_dir: Path) -> None:
 
 @pytest.mark.parametrize("field", ["sck_pin", "mosi_pin", "miso_pin"])
 def test_spi_bus_missing_required_wire_pin(tmp_path: Path, src_dir: Path, field: str) -> None:
-    # §7.1 #8: only i2c0's scl_pin was individually tested; asy_spi_driver.SPI's three required
+    # Only i2c0's scl_pin was individually tested; asy_spi_driver.SPI's three required
     # wire pins go through the identical _BUS_WIRE_FIELDS loop but had no test of their own.
     doc = base_doc()
     del doc["bus"]["spi0"][field]
@@ -352,7 +360,7 @@ def test_unknown_driver(tmp_path: Path, src_dir: Path) -> None:
 
 
 def test_driver_resolvable_but_missing_buildspec_entry_reports_the_real_cause(tmp_path: Path) -> None:
-    # §6.3/§8.4/§10.5 item 1: a driver that resolves fine via driver_registry (a real
+    # SPECIFICATION.md Part L.6.6's onboarding check: a driver that resolves via driver_registry (a real
     # asy_<name>_driver.py with a SensorReader subclass) but has no buildspec.py entry at all -
     # must fail loud, naming the real cause, not report every one of its fields as "unrecognized".
     custom_src = tmp_path / "src"
@@ -432,7 +440,7 @@ def test_bus_timeout_wrong_type_rejected(tmp_path: Path, src_dir: Path) -> None:
 
 @pytest.mark.parametrize("bad_value", [True, 250000.0])
 def test_bus_timeout_bool_or_float_rejected(tmp_path: Path, src_dir: Path, bad_value: object) -> None:
-    # §5.3/§7.2(B): the isinstance(x, int) and not isinstance(x, bool) pattern is only exercised by
+    # The isinstance(x, int) and not isinstance(x, bool) pattern is only exercised by
     # one device-level field (hotspot_time_min) today; this locks the same guard in on bus timeout.
     doc = base_doc()
     doc["bus"]["i2c0"]["timeout"] = bad_value
@@ -475,7 +483,7 @@ def test_instance_address_field_wrong_type_rejected(tmp_path: Path, src_dir: Pat
 
 @pytest.mark.parametrize("field,bad_value", [("max_size", True), ("max_size", 8192.0), ("trigger_sec", True), ("trigger_sec", 3.0)])
 def test_instance_int_field_bool_or_float_rejected(tmp_path: Path, src_dir: Path, field: str, bad_value: object) -> None:
-    # §5.3/§7.2(B): the same isinstance guard as test_instance_int_field_wrong_type_rejected above,
+    # The same isinstance guard as test_instance_int_field_wrong_type_rejected above,
     # but for bool/float (both plausible copy-paste mistakes) rather than a quoted string.
     doc = base_doc()
     if field == "max_size":
@@ -731,7 +739,7 @@ def test_two_fixed_address_different_drivers_same_bus_do_not_collide(tmp_path: P
 
 @pytest.mark.parametrize("bad_address", [0x50, 0, 0x78])
 def test_bmp3xx_address_outside_legal_set_rejected(tmp_path: Path, src_dir: Path, bad_address: int) -> None:
-    # Phase 3 (§5.1 #11/§10.4): bmp3xx's address is well-typed and hardware-plausible but not one
+    # SPECIFICATION.md Part L.6.4's _LIMITS: bmp3xx's address is well-typed and plausible but not one
     # of the two real SDO-pin-selected values - a datasheet-reading mistake, not a TOML mistake.
     doc = base_doc()
     doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": bad_address})
@@ -762,7 +770,7 @@ def test_bmp3xx_trigger_sec_in_legal_range_is_fine(tmp_path: Path, src_dir: Path
 
 
 def test_two_bmp3xx_same_bus_different_legal_addresses_is_fine(tmp_path: Path, src_dir: Path) -> None:
-    # §7.1 #6: the actually-common real case ADDRESS_CAPABLE_DRIVERS exists for - two bmp3xx on one
+    # The actually-common real case ADDRESS_CAPABLE_DRIVERS exists for - two bmp3xx on one
     # bus, told apart by their two legal SDO-pin addresses - had no positive test until now (only
     # the same-address collision and different-bus reuse cases were covered).
     doc = base_doc()
@@ -779,7 +787,7 @@ def test_wiring_field_not_declared_by_driver(tmp_path: Path, src_dir: Path) -> N
 
 
 def test_instance_wiring_bogus_key_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # §5.1 #5/§7.2(B): an entirely fabricated [instance.wiring] key with no _WIRING match and no
+    # An entirely fabricated [instance.wiring] key with no _WIRING match and no
     # warn_ prefix - the `wf is None` branch should already catch this; no test exercised it
     # directly with a name that isn't just "the wrong driver's own real field" (the test above).
     doc = base_doc()
@@ -791,7 +799,7 @@ def test_instance_wiring_bogus_key_rejected(tmp_path: Path, src_dir: Path) -> No
 def test_wiring_value_not_a_string(tmp_path: Path, src_dir: Path) -> None:
     # Exercises _check_wiring_reference()'s own type check via notification's signal_sink - the
     # required, producer-class-constrained _WIRING field base_doc() has now that sgp40's own
-    # comp_source has been generalized away by §2.9 (see test_buildgen_value_wiring.py for that).
+    # comp_source has been generalized away by Part L.6.3 (see test_buildgen_value_wiring.py).
     doc = base_doc()
     doc["instance"][4]["wiring"]["signal_sink"] = 42
     with pytest.raises(BuildError, match="must be a string instance reference"):
@@ -820,7 +828,7 @@ def test_required_wiring_field_missing(tmp_path: Path, src_dir: Path) -> None:
 
 
 def test_signal_sink_default_opt_in_is_fine(tmp_path: Path, src_dir: Path) -> None:
-    # §1's original motivating scenario: a notification setup that shouldn't blink any LED.
+    # SPECIFICATION.md Part L.6.1's motivating scenario: a notification setup that blinks no LED.
     doc = base_doc()
     doc["instance"][4]["wiring"]["signal_sink"] = {"default": True}
     _build(tmp_path, src_dir, doc)  # no raise
@@ -854,7 +862,7 @@ def test_temperature_source_default_with_unknown_key_rejected(tmp_path: Path, sr
 
 
 def test_sgp40_without_any_scd30_using_both_defaults(tmp_path: Path, src_dir: Path) -> None:
-    # §1's original motivating scenario: an SGP40 with genuinely no SCD30 at all, defaulting both
+    # SPECIFICATION.md Part L.6.1's motivating scenario: an SGP40 with no SCD30 at all, defaulting both
     # compensation values via explicit {default = true} opt-ins.
     doc = base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "scd30"]
@@ -874,7 +882,7 @@ def test_optional_wiring_field_absent_is_fine(tmp_path: Path, src_dir: Path) -> 
 
 
 def test_notification_present_with_zero_warn_signals_is_fine(tmp_path: Path, src_dir: Path) -> None:
-    # §7.1 #3: warn_co2/warn_voc/warn_hum are each individually optional - a notification instance
+    # warn_co2/warn_voc/warn_hum are each individually optional - a notification instance
     # with signal_sink wired but no warn_* keys at all should build clean. base_doc() always wires
     # warn_co2, so this was never actually exercised.
     doc = base_doc()
@@ -971,7 +979,7 @@ def test_partial_instance_level_fram_wiring_is_fine(tmp_path: Path, src_dir: Pat
 
 
 def test_device_wiring_fram_target_left_unwired_is_fine(tmp_path: Path, src_dir: Path) -> None:
-    # §7.1 #4: the mirror image of the led_target test above - FRAM is present, but nothing wires
+    # The mirror image of the led_target test above - FRAM is present, but nothing wires
     # [device.wiring].fram_target to it. No existing test removed just this field while keeping the
     # fram instance itself.
     doc = base_doc()
@@ -1374,3 +1382,206 @@ def test_uart_link_invalid_role_value_rejected(tmp_path: Path, src_dir: Path) ->
     doc["instance"][-1]["role"] = "peer"
     with pytest.raises(BuildError, match=r"role must be one of \['initiator', 'responder'\], got 'peer'"):
         _build(tmp_path, src_dir, doc)
+
+
+# ---------------------------------------------------------------------------
+# [device].max_connections / backlog, and the firmware ceiling they must fit under
+# (SPECIFICATION.md Parts H.7 and B.14.2)
+# ---------------------------------------------------------------------------
+
+
+def _lwip_pcbs() -> int:
+    from buildgen.model import lwip_macros
+
+    return lwip_macros()["MEMP_NUM_TCP_PCB"]
+
+
+def test_max_connections_is_optional_and_falls_back_to_the_src_default(tmp_path: Path, src_dir: Path) -> None:
+    # Absent, WebserverService's own default applies - and the ceiling check below still runs
+    # against THAT, so saying nothing can never be a way past it.
+    doc = base_doc()
+    doc["device"].pop("max_connections", None)
+    _build(tmp_path, src_dir, doc)
+
+
+def test_the_src_default_itself_is_servable_by_the_pinned_lwip_table(src_dir: Path, overrides: ModuleType) -> None:
+    # A device that states no ceiling builds at this one, so it answers to the same per-connection
+    # relationships every stated ceiling does - three spare PCBs included (Part H.7).
+    from buildgen.model import lwip_macros
+    from buildgen.validate import webserver_init_default
+
+    assert overrides.check_lwip_ensemble(lwip_macros(), webserver_init_default(src_dir, "max_connections")) == []
+
+
+def test_a_max_connections_leaving_fewer_than_three_spare_pcbs_is_rejected(tmp_path: Path, src_dir: Path, overrides: ModuleType) -> None:
+    # Two spare is the first value refused: a closing connection's FIN_WAIT pcb outlives its slot,
+    # and lwIP never reclaims one at equal priority (toolchain/micropython_overrides.py).
+    doc = base_doc()
+    doc["device"]["max_connections"] = _lwip_pcbs() - overrides.SPARE_TCP_PCBS + 1
+    with pytest.raises(BuildError, match=r"MEMP_NUM_TCP_PCB \(\d+\) < max_connections \+ 3"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_a_max_connections_below_one_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["device"]["max_connections"] = 0
+    with pytest.raises(BuildError, match="serves nothing"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_a_backlog_under_max_connections_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # The failure this prevents is invisible from src/: a queue shallower than the ceiling lets lwIP
+    # reset part of a burst that lands while the event loop is busy, before _serve() ever sees it.
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    doc["device"]["backlog"] = 2
+    with pytest.raises(BuildError, match="accept queue would drop"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_a_backlog_at_or_above_max_connections_is_accepted(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    doc["device"]["backlog"] = 3
+    _build(tmp_path, src_dir, doc)
+
+
+def test_a_backlog_above_one_over_max_connections_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # Every queued arrival holds a pcb, and every one past a full ceiling plus one is refused by
+    # _serve() anyway, so a deeper queue buys nothing but pcbs held for arrivals it turns away.
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    doc["device"]["backlog"] = 4
+    _build(tmp_path, src_dir, doc)
+    doc["device"]["backlog"] = 5
+    with pytest.raises(BuildError, match=r"above max_connections \+ 1 \(4\)"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize(
+    ("table", "expect"),
+    [
+        ({"MEMP_NUM_TCP_PCB": 9}, "must set exactly"),
+        ("TCP_MSS", "must be at least 1"),
+        ("MEM_SIZE", "must be a non-negative int"),
+    ],
+)
+def test_a_malformed_lwip_table_is_a_named_build_error_never_a_traceback(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch, table: "object", expect: str) -> None:
+    # The toolchain's own shape check runs first, so a typo in versions.toml names itself here
+    # instead of surfacing as a TypeError or ZeroDivisionError inside the ensemble arithmetic.
+    from buildgen import validate
+    from buildgen.model import lwip_macros
+
+    pinned = lwip_macros()
+    bad: dict[str, object] = dict(table) if isinstance(table, dict) else {**pinned, str(table): 0 if table == "TCP_MSS" else "12000"}
+    monkeypatch.setattr(validate, "lwip_macros", lambda: bad)
+    with pytest.raises(BuildError, match=expect):
+        _build(tmp_path, src_dir, base_doc())
+
+
+def test_an_lwip_entry_that_is_not_a_table_is_refused_by_the_loader(tmp_path: Path) -> None:
+    from buildgen.model import lwip_macros
+
+    versions = write_text(tmp_path, "versions", "lwip = 5\n")
+    with pytest.raises(BuildError, match=r"\[lwip\] in .* must be a table"):
+        lwip_macros(versions)
+
+
+@pytest.mark.parametrize(
+    ("content", "why"),
+    [
+        (None, "No such file"),
+        ("[micropython]\nref = 'v1.29.0'\n", "'lwip'"),
+        ("[lwip\n", "Expected ']'"),
+    ],
+)
+def test_an_unreadable_lwip_table_is_a_named_build_error_never_a_traceback(tmp_path: Path, content: "str | None", why: str) -> None:
+    # Missing file, missing table, broken TOML: the three ways the loader can fail, each naming
+    # the file and the ceiling it bounds rather than escaping as OSError/KeyError/TOMLDecodeError.
+    from buildgen.model import lwip_macros
+
+    versions = tmp_path / "versions.toml" if content is None else write_text(tmp_path, "versions", content)
+    with pytest.raises(BuildError, match=r"cannot read the \[lwip\] table from .*versions\.toml") as info:
+        lwip_macros(versions)
+    assert why in str(info.value), info.value
+    assert info.value.field == "max_connections"
+
+
+def test_an_unloadable_override_module_is_a_named_build_error(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(importlib.util, "spec_from_file_location", lambda *_a, **_k: None)
+    with pytest.raises(BuildError, match=r"cannot load toolchain/micropython_overrides\.py"):
+        _build(tmp_path, src_dir, base_doc())
+
+
+def _webserver_src(tmp_path: Path, init: str) -> Path:
+    (tmp_path / "asy_webserver_service.py").write_text(f"class Other:\n    def __init__(self, max_connections=99): ...\n\nclass WebserverService:\n    {init}\n")
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    ("init", "want"),
+    [
+        ("def __init__(self, a, *, max_connections: int = 7, backlog: int = 8): ...", 7),
+        ("def __init__(self, a, max_connections=5, backlog=6): ...", 5),
+        ("def __init__(self, max_connections, *, backlog=6, other=max_connections): ...", None),
+        ("def __init__(self, *, max_connections=True): ...", None),
+        ("def __init__(self, *, max_connections=MAX): ...", None),
+        ("def setup(self, *, max_connections=4): ...", None),
+    ],
+)
+def test_webserver_init_default_reads_only_an_int_literal_of_the_real_class(tmp_path: Path, init: str, want: "int | None") -> None:
+    # Keyword-only and positional defaults both count; a same-named argument on another class, a
+    # bool, a name, or a method other than __init__ never does - each is refused by name instead.
+    from buildgen.validate import webserver_init_default
+
+    src = _webserver_src(tmp_path, init)
+    if want is not None:
+        assert webserver_init_default(src, "max_connections") == want
+        return
+    with pytest.raises(BuildError, match=r"no longer has a readable int default for 'max_connections'"):
+        webserver_init_default(src, "max_connections")
+
+
+@pytest.mark.parametrize("content", [None, "class WebserverService(:\n"])
+def test_an_unreadable_webserver_source_is_a_named_build_error(tmp_path: Path, content: "str | None") -> None:
+    from buildgen.validate import webserver_init_default
+
+    if content is not None:
+        (tmp_path / "asy_webserver_service.py").write_text(content)
+    with pytest.raises(BuildError, match=r"cannot read .*asy_webserver_service\.py to resolve WebserverService's own backlog default") as info:
+        webserver_init_default(tmp_path, "backlog")
+    assert info.value.field == "backlog"
+
+
+@pytest.mark.parametrize("field", ["max_connections", "backlog"])
+def test_a_non_int_connection_field_is_rejected(tmp_path: Path, src_dir: Path, field: str) -> None:
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    doc["device"][field] = "4"
+    with pytest.raises(BuildError, match="must be an int"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_device_max_connections_reads_the_toml_else_the_src_default(tmp_path: Path, src_dir: Path) -> None:
+    # The one reader every host-side instrument sizes its load with, so it must agree with the build.
+    from buildgen.validate import device_max_connections, webserver_init_default
+
+    doc = base_doc()
+    doc["device"]["max_connections"] = 3
+    assert device_max_connections(write_doc(tmp_path, "stated", doc), src_dir) == 3
+    doc["device"].pop("max_connections")
+    assert device_max_connections(write_doc(tmp_path, "unstated", doc), src_dir) == webserver_init_default(src_dir, "max_connections")
+
+
+def test_every_shipped_device_states_its_own_ceiling(repo_root: Path) -> None:
+    # The owner's decision (2026-09-22) is that the recommended setting ships on every device, so
+    # each one says what its ceiling is rather than inheriting a default nobody reads.
+    import tomllib
+
+    for toml_path in sorted((repo_root / "devices").glob("*.toml")):
+        if toml_path.name.startswith("zz_test_"):
+            continue
+        with toml_path.open("rb") as f:
+            device = tomllib.load(f)["device"]
+        assert "max_connections" in device, f"{toml_path.name} does not state [device].max_connections"
+

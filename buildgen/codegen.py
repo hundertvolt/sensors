@@ -52,7 +52,7 @@ class _Ctx:
         return _identifier(label, self.model.device, instance=label, field="driver" if not key[1] else "name_ext")
 
     def default_provider_expr(self, toml_field: str, value: "TomlDoc") -> str:
-        # §2.6's generated-code shape: construct the default provider inline, at the exact
+        # SPECIFICATION.md Part L.6.2's generated-code shape: construct the provider inline, at the exact
         # call-site the real wiring expression would occupy - never a separate named global.
         class_name = default_class_name(toml_field)
         kwargs = ", ".join(f"{k}={v!r}" for k, v in value.items() if k != "default")
@@ -294,6 +294,7 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append('Mirrors every device\'s own construction-order shape (SPECIFICATION.md Part A.7)."""')
     lines.append("")
     lines.append("import asyncio")
+    lines.append("import gc")
     lines.append("import time")
     lines.append("from asyncio import ThreadSafeFlag")
     lines.append("")
@@ -430,7 +431,7 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
         (ctx.instance_var(n) for n in construction_order if isinstance(n, tuple) and instances[n].driver == "uart_link" and instances[n].fields.get("role") == "initiator"),
         None,
     )
-    _emit_webserver(lines, have, sensor_vars, uart_initiator_var, _device_fram_arg(model, ctx))
+    _emit_webserver(lines, have, sensor_vars, uart_initiator_var, _device_fram_arg(model, ctx), dev)
 
     lines.append("    timers_running = ThreadSafeFlag()")
     lines.append("    sysfunct.set_level_setters(_collect_level_setters())")
@@ -450,12 +451,17 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             continue
         if spec.driver_info and spec.driver_info.needs_setup:
             setup_order.append(ctx.instance_var(node))
+    # Measure B (SPECIFICATION.md Part I.4(f.1)): one collect before the batch and one after each
+    # module, nowhere else. A placement reset, not hygiene and not compaction - it puts the
+    # allocator's free-scan index back to zero so the next module takes the lowest fitting holes.
+    lines.append("    gc.collect()")
     for name in setup_order:
         lines.append(f"    await {name}.setup()")
         # WP6 (SPECIFICATION.md Part D.9/G.2): fed after every one-time setup() call, never inside a
         # loop - that's what makes this safe regardless of how many modules a device wires. No-op on
         # a watchdog-less build or once _force_watchdog_starve latches, via feed_watchdog() itself.
         lines.append("    sysfunct.feed_watchdog()")
+        lines.append("    gc.collect()")  # after the feed, never before it - the collect is the slow part
     lines.append("")
 
 
@@ -588,7 +594,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
         lines.append("")
 
 
-def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", uart_initiator_var: "str | None", fram_arg: str) -> None:
+def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", uart_initiator_var: "str | None", fram_arg: str, dev: "TomlDoc") -> None:
     lines.append("    app = Microdot()")
     lines.append("    webserver = WebserverService(")
     lines.append("        app,")
@@ -633,6 +639,11 @@ def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str
     lines.append("        is_hotspot_active=conn.is_hotspot_active,")
     lines.append("        host=web_host,")
     lines.append("        port=web_port,")
+    # Emitted only when the device states one: absent, WebserverService's own default applies, and
+    # validate.py has already checked THAT value against the firmware's lwIP PCB count.
+    for key in ("max_connections", "backlog"):
+        if key in dev:
+            lines.append(f"        {key}={dev[key]},")
     if fram_arg:
         lines.append(f"        {fram_arg},")
     lines.append("    )")

@@ -20,8 +20,8 @@ _FixedValue = namedtuple("_FixedValue", ("value",))
 
 
 class _FixedSource:
-    """Local temperature_source/humidity_source stand-in (SPECIFICATION.md Part L.6
-    §2.9): a fixed, not sensor-derived, datasheet Table 10 compensation default - same get_data() ->
+    """Local temperature_source/humidity_source stand-in (SPECIFICATION.md Part L.6.3): a fixed,
+    not sensor-derived, datasheet Table 10 compensation default - same get_data() ->
     object-with-.value contract asy_sgp40_driver.py's own _Default* providers use."""
 
     def __init__(self, value: float) -> None:

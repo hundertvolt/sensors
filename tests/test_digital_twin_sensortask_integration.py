@@ -16,6 +16,11 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 
 import _http_client
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
+from unix_port_poll_prewarm import prewarm_poll_set
+
+# Before any poll object is registered: the Unix port's pollfds growth corrupts non-fd entries
+# already in it, a segfault rather than a failure (digital_twin/README.md "Known gaps").
+prewarm_poll_set()
 
 # Must run before AsyUDPSocket is constructed (DNSServer, inside AsyConnTime.__init__ below): this
 # Unix-port build rejects a plain (host, port) tuple in bind()/connect()/sendto() (SPECIFICATION.md
@@ -157,9 +162,9 @@ async def _query_dns_and_get_answer_ip(query: bytes, timeout_s: float = 5.0) -> 
 
 
 async def _wait_until(predicate: "Callable[[], bool]", timeout_s: float, interval_s: float = 0.25) -> bool:
-    # Bounded polling helper for the sections below that drive a real background task through a
-    # real multi-second state transition (mode switches, supervisor check cycles) rather than
-    # guessing a single fixed sleep duration.
+    # Bounded polling for a real multi-second state transition (mode switches, supervisor cycles).
+    # Counts poll iterations, not wall clock: under CPU starvation a wall-clock bound would fail
+    # sooner, not later, since every sleep overruns.
     elapsed = 0.0
     while elapsed < timeout_s:
         if predicate():
@@ -567,7 +572,10 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
 
         import network  # digital_twin's own fake - see this file's own sys.path setup above
 
-        conn.wlan.script_connect_outcomes([network.STAT_NO_AP_FOUND])
+        # Eight, not one, so the transition does not depend on WHEN the seeding below lands. A
+        # single scripted failure made the test hinge on a timing window that measure A's ~9x
+        # cheaper FRAM path closed, 2 of 2 runs (MEASUREMENTS 7C); a deeper queue removes it.
+        conn.wlan.script_connect_outcomes([network.STAT_NO_AP_FOUND] * 8)
 
         pixel_task = pixel.start_asy_neopixel_led_overl()  # the one real pixel task that turns
         # conn's own on()/off()/toggle() LED calls into real committed NeoPixel frames.
@@ -586,6 +594,10 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
             started = await _wait_until(lambda: conn.dns_server_task is not None, timeout_s=25.0)
             assert started, "real hotspot activation never started the real DNSServer task"
             assert not conn.dns_server_task.done()  # started == True above; `conn` types as Any
+            # The task existing is not the port being bound (AsyUDPSocket binds lazily in run()), and a
+            # datagram sent to an unbound UDP port is silently dropped - the query below sends only once.
+            bound = await _wait_until(lambda: conn.dns_server.udps.connected, timeout_s=5.0, interval_s=0.01)
+            assert bound, "the real DNSServer never bound its port 53 socket"
             # The generated sensortask_wozi.py's module-level `conn` is typed "Any | None" rather than the
             # hand-written file's precise "AsyConnTime | None" (buildgen/codegen.py's deliberate choice), so
             # this attribute access needs no type: ignore any more.

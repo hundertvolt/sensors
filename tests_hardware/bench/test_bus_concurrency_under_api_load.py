@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 import http_client
 import pytest
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
-from harness import Board, wait_until
+from harness import Board, configured_max_connections, wait_until
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
@@ -20,12 +20,26 @@ CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
 PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
 VOC_MIN, VOC_MAX = 0, 500  # same bounds as device_scripts/sgp40_voc_algorithm_quality.py
 
-# Total concurrent worker count is _GET_WORKERS + 1 (the SGP40 reset thread runs alongside the GET
-# workers) - must stay under max_connections=4 with real margin, not exactly at it, or a brief
-# overlap under real wireless timing hits a genuine (but here undesired) reject-when-full.
-_GET_WORKERS = 2
+# _GET_WORKERS + 1 concurrent clients (the SGP40 reset thread too), two slots under the build's own
+# max_connections: at it, real wireless timing overlaps into an undesired reject-when-full. Derived,
+# so a raised ceiling really means more concurrent bus-facing API load.
+_GET_WORKERS = max(2, configured_max_connections() - 3)
 _GET_ITERATIONS_PER_WORKER = 8
 _PUT_RESET_COUNT = 2
+
+
+def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any] | None = None, timeout_s: float = 15.0) -> http_client.HttpResponse:
+    """http_client.fetch(), retrying only a connection-ceiling refusal, never a transport failure. Same
+    name and positional signature on purpose: tests_scripts/test_persistence_write_marker_completeness.py
+    reads PUT bodies by AST and would silently lose a persisting write behind another shape (F15)."""
+    for attempt in range(3):
+        try:
+            return http_client.fetch(host, port, method, path, json_body, timeout_s=timeout_s)
+        except Exception as exc:
+            if attempt == 2 or not http_client.is_ceiling_close(exc):
+                raise
+            time.sleep(0.25)
+    raise AssertionError("unreachable")
 
 
 def _schema_sanity_findings(body: dict[str, Any], context: str) -> list[str]:
@@ -64,7 +78,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
     def get_sensors_worker(worker_id: int) -> None:
         for i in range(_GET_ITERATIONS_PER_WORKER):
             try:
-                res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=15.0)
+                res = fetch(dut_ip, 80, "GET", "/sensors", None, timeout_s=15.0)
             except Exception as e:
                 _record(f"worker {worker_id} iter {i}: {type(e).__name__}: {e}")
                 continue
@@ -77,7 +91,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
             try:
-                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=15.0)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=15.0)
             except Exception as e:
                 _record(f"sgp40 reset {i}: {type(e).__name__}: {e}")
                 continue
@@ -145,7 +159,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
     def get_sensors_worker(worker_id: int) -> None:
         for i in range(_GET_ITERATIONS_PER_WORKER):
             try:
-                res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=20.0)
+                res = fetch(dut_ip, 80, "GET", "/sensors", None, timeout_s=20.0)
             except Exception:
                 continue
             if res.status_code != 200:
@@ -156,7 +170,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
             try:
-                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
             except Exception:
                 continue
             if res.status_code == 200:
@@ -224,7 +238,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     def get_sensors_worker(worker_id: int) -> None:
         for i in range(_GET_ITERATIONS_PER_WORKER):
             try:
-                res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=20.0)
+                res = fetch(dut_ip, 80, "GET", "/sensors", None, timeout_s=20.0)
             except Exception:
                 continue
             if res.status_code != 200:
@@ -235,7 +249,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
             try:
-                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
             except Exception:
                 continue
             if res.status_code == 200:
@@ -292,7 +306,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
     def get_sensors_worker(worker_id: int) -> None:
         for i in range(_GET_ITERATIONS_PER_WORKER):
             try:
-                res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=20.0)
+                res = fetch(dut_ip, 80, "GET", "/sensors", None, timeout_s=20.0)
             except Exception:
                 continue
             if res.status_code != 200:
@@ -303,7 +317,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
             try:
-                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
             except Exception:
                 continue
             if res.status_code == 200:
@@ -382,7 +396,7 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
     def get_sensors_worker(worker_id: int) -> None:
         for i in range(_GET_ITERATIONS_PER_WORKER):
             try:
-                res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=15.0)
+                res = fetch(dut_ip, 80, "GET", "/sensors", None, timeout_s=15.0)
             except Exception as e:
                 _record(f"worker {worker_id} iter {i}: {type(e).__name__}: {e}")
                 continue
@@ -403,7 +417,7 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
         for i in range(_ISL29125_WRITE_CYCLES):
             value = _ISL29125_RESOLUTIONS[(first + i) % 2]
             try:
-                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Resolution": value}}, timeout_s=15.0)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Resolution": value}}, timeout_s=15.0)
             except Exception as e:
                 _record(f"isl29125 write {i}: {type(e).__name__}: {e}")
                 continue
@@ -422,7 +436,7 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
     finally:
         # Restore the board's original config regardless of outcome - same "shared bench rig" duty
         # test_sensor_config_push_over_real_hardware.py's own BMP3xx push test already owes.
-        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Resolution": original_resolution}}, timeout_s=10.0)
+        restore_res = fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Resolution": original_resolution}}, timeout_s=10.0)
         # "Unchanged" is a success here, not a rejection: the alternation above can legitimately end
         # on the original value, which makes this restore a no-op. Accepting only "Valid" would fail
         # the fixture's own cleanup and mask whatever the body was actually reporting.
@@ -470,7 +484,7 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
     def get_sensors_worker(worker_id: int) -> None:
         for i in range(_GET_ITERATIONS_PER_WORKER):
             try:
-                res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=15.0)
+                res = fetch(dut_ip, 80, "GET", "/sensors", None, timeout_s=15.0)
             except Exception as e:
                 _record(f"worker {worker_id} iter {i}: {type(e).__name__}: {e}")
                 continue
@@ -492,7 +506,7 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
         for i in range(_ISL29125_WRITE_CYCLES):
             value = _BMP3XX_OVERSAMPLING_SETTINGS[(first + i) % 2]
             try:
-                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": value}}, timeout_s=15.0)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": value}}, timeout_s=15.0)
             except Exception as e:
                 _record(f"bmp3xx write {i}: {type(e).__name__}: {e}")
                 continue
@@ -509,7 +523,7 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
             assert not t.is_alive(), "a worker thread never finished within 120s - possible real deadlock under concurrent load"
         assert not errors, f"{len(errors)} issue(s) under concurrent API load: {'; '.join(errors[:10])}"
     finally:
-        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": original_press_overs}}, timeout_s=10.0)
+        restore_res = fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": original_press_overs}}, timeout_s=10.0)
         # "Unchanged" is a success here for the same reason the ISL29125 restore above accepts it.
         assert restore_res.status_code == 200 and restore_res.json()["result"]["BMP3XX"].get("PressOvers") in ("Valid", "Unchanged"), f"failed to restore original BMP3XX PressOvers={original_press_overs!r}: {restore_res.status_code} {restore_res.body!r}"
 

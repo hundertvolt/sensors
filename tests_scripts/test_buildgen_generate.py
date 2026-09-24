@@ -67,6 +67,37 @@ def test_real_device_feeds_the_watchdog_after_every_setup_call_in_order(repo_roo
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_collects_once_before_and_after_every_setup_call_and_nowhere_else(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # Measure B (PLAN B.1.1, SPECIFICATION.md I.4(f.1)): a placement reset, not hygiene and not
+    # compaction. The "nowhere else" half is the load-bearing one - this is a boot-only exception to
+    # I.4, so the generated module must not grow a collect anywhere the run phase reaches.
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    lines = result.module_source.splitlines()
+    setup_lines = [i for i, line in enumerate(lines) if re.match(r"\s*await \w+\.setup\(\)\s*$", line)]
+    assert len(setup_lines) > 0, "no setup() calls found in the generated boot sequence"
+
+    for i in setup_lines:
+        assert lines[i + 2].strip() == "gc.collect()", (
+            f"{device}: {lines[i].strip()!r} feed is not followed by the placement-reset collect"
+        )
+    first_setup = setup_lines[0]
+    assert lines[first_setup - 1].strip() == "gc.collect()", (
+        f"{device}: the start-of-list collect is missing before the first setup() call"
+    )
+
+    # One per module plus the one before the loop, and not a single one anywhere else in the module.
+    assert result.module_source.count("gc.collect()") == len(setup_lines) + 1, (
+        f"{device}: expected {len(setup_lines) + 1} collects, found {result.module_source.count('gc.collect()')}"
+    )
+    assert re.search(r"^import gc$", result.module_source, re.MULTILINE), f"{device}: generated module never imports gc"
+
+    # main() runs the webserver forever after build_system() returns - a collect reaching it would
+    # be a run-phase collect, which I.4 forbids outright.
+    main_at = next(i for i, line in enumerate(lines) if line.startswith("async def main("))
+    assert "gc.collect()" not in "\n".join(lines[main_at:]), f"{device}: main() must carry no collect"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     assert f"from sensortask_{device} import main" in result.boot_entry_source
@@ -85,7 +116,7 @@ def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(repo
     assert f"_WEBSITE_VERSION = const({WEBSITE_VERSION!r})" in result.module_source
     assert "_BUILD_DATE = const('2026-09-12T10:00:00Z')" in result.module_source
     assert 'build_info={"firmwareVersion": _FIRMWARE_VERSION, "websiteVersion": _WEBSITE_VERSION, "buildDate": _BUILD_DATE}' in result.module_source
-    # Regression guard against this session's own earlier, corrected design: the version no longer
+    # Regression guard against an earlier, corrected design: the version no longer
     # lives on GET /status's "system" section.
     assert '"FirmwareVersion": _FIRMWARE_VERSION' not in result.module_source
 
@@ -269,7 +300,7 @@ def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Pa
 
 
 def test_wiring_defaults_generate_inline_provider_construction(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    # §2.6's generated-code shape: the default provider is constructed inline, at the exact
+    # SPECIFICATION.md Part L.6.2's generated-code shape: the provider is constructed inline, at the exact
     # call-site the real wiring expression would occupy, with no separate named global.
     doc = base_doc()
     doc["instance"][4]["wiring"]["signal_sink"] = {"default": True}
@@ -279,14 +310,14 @@ def test_wiring_defaults_generate_inline_provider_construction(tmp_path: Path, s
     assert "_DefaultSignalSink().request_signal" in result.module_source
     assert "temperature_source=_DefaultTemperatureSource(temperature=20)" in result.module_source
     # Every defaulted per-value field always resolves to (provider, "value") - the fixed contract
-    # every _Default<Field> class's get_data() follows (§10.1 item 1) - not the real field name.
+    # every _Default<Field> class's get_data() follows - not the real field name.
     assert "temperature_field='value'" in result.module_source
     # humidity_source stays a real reference - not defaulted in this fixture.
     assert "humidity_source=scd30, humidity_field='Hum'" in result.module_source
 
 
 def test_device_level_led_target_unwired_omits_set_ext_led(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    # §7.1 #5: test_device_wiring_optional_field_absent_is_fine (test_buildgen_validate.py) already
+    # test_device_wiring_optional_field_absent_is_fine (test_buildgen_validate.py) already
     # confirms validate.py accepts neopixel-present-but-led_target-unwired - but nothing confirmed
     # the generated module itself comes out right (conn.set_ext_led(...) correctly omitted).
     doc = base_doc()
@@ -518,3 +549,24 @@ def test_cli_entry_point_reports_a_build_error_and_exits_nonzero(tmp_path: Path,
     assert result.returncode == 1
     assert "buildgen:" in result.stderr  # a human-readable reason, never a raw traceback
     assert "Traceback" not in result.stderr
+
+
+def _webserver_keywords(source: str) -> dict[str, object]:
+    calls = [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "WebserverService"]
+    assert len(calls) == 1, len(calls)
+    return {kw.arg: ast.literal_eval(kw.value) for kw in calls[0].keywords if kw.arg in ("max_connections", "backlog")}
+
+
+@pytest.mark.parametrize(
+    ("stated", "expected"),
+    [({"max_connections": 3, "backlog": 4}, {"max_connections": 3, "backlog": 4}), ({"max_connections": 5}, {"max_connections": 5}), ({}, {})],
+)
+def test_the_stated_connection_ceiling_reaches_the_webserver_and_an_absent_one_is_left_to_its_default(tmp_path: Path, src_dir: Path, ext_dir: Path, stated: dict[str, int], expected: dict[str, int]) -> None:
+    # validate.py checks the stated values against the firmware's lwIP pools; that check is only
+    # worth anything if the same values are the ones the device is then built with.
+    doc = base_doc()
+    for key in ("max_connections", "backlog"):
+        doc["device"].pop(key, None)
+    doc["device"].update(stated)
+    result = generate_device(write_doc(tmp_path, "ceiling", doc), src_dir, ext_dir)
+    assert _webserver_keywords(result.module_source) == expected

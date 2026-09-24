@@ -39,7 +39,7 @@ def test_wozi_construction_order_matches_reference_ordering_constraints(repo_roo
 
 
 def test_novel_combo_sgp40_after_both_its_independently_named_sources(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
-    # §2.9: temperature_source=scd30_secondary and humidity_source=scd30_primary are two
+    # SPECIFICATION.md Part L.6.3: temperature_source=scd30_secondary and humidity_source=scd30_primary
     # independent wiring edges - sgp40 must be constructed after *both*, not just one.
     fixture = repo_root / "tests_scripts" / "buildgen_fixtures" / "novel_combo.toml"
     result = generate_device(fixture, src_dir, ext_dir)
@@ -49,7 +49,7 @@ def test_novel_combo_sgp40_after_both_its_independently_named_sources(repo_root:
 
 
 def test_multi_instance_fixture_respects_cross_driver_dependency(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
-    # Axis 9's richest corner (§10.7 item 1): sgp40_b's temperature_source is bmp3xx, not scd30 -
+    # The enumeration's richest corner: sgp40_b's temperature_source is bmp3xx, not scd30 -
     # construction order must respect *that* real dependency, not just "some scd30 before sgp40".
     fixture = repo_root / "tests_scripts" / "buildgen_fixtures" / "multi_instance.toml"
     result = generate_device(fixture, src_dir, ext_dir)

@@ -1,28 +1,23 @@
 #!/usr/bin/env bash
-# Installs the three non-Chromium browser engines scripts/cross_browser_smoke.mjs drives
-# (WebKitGTK, real Microsoft Edge, real Firefox) - idempotent, safe to re-run. Playwright's own
-# Chromium (already used by the rest of tests_js/) is installed separately via `npx playwright
-# install chromium`, unrelated to this script.
+# Installs the three non-Chromium engines scripts/cross_browser_smoke.mjs drives (WebKitGTK, real
+# Microsoft Edge, real Firefox) - idempotent, safe to re-run. Playwright's own Chromium comes from
+# `npx playwright install chromium` instead and is unrelated to this script.
 #
-# Why these three specific install paths, not the "obvious" one for each:
-# - WebKit: `webkit2gtk-driver` (ships /usr/bin/WebKitWebDriver, a real W3C WebDriver server for
-#   WebKitGTK) is a plain apt package - no alternative needed.
-# - Microsoft Edge: Microsoft's own apt repo (packages.microsoft.com) ships a real Linux Edge
-#   build. Playwright can drive it directly via `chromium.launch({executablePath: ...})` (same
-#   Blink/CDP protocol as Chromium), so no separate WebDriver server is needed for this one.
-# - Firefox: Ubuntu's own `firefox` apt package is a snap-only stub (fails outright without a
-#   working snapd, which this CI runner/most containers don't have) and every other usual source
-#   (Mozilla's own CDN, the mozillateam PPA, Playwright's own bundled build) is blocked by this
-#   project's outbound network policy where this was first verified. conda-forge (via
-#   conda.anaconda.org, a different distribution channel entirely) packages a real, current
-#   Firefox plus geckodriver (Mozilla's own official WebDriver server) and was reachable - see
-#   SPECIFICATION.md Part H.7 for the full investigation trail.
+# None of the three channels below is the obvious one for its engine; SPECIFICATION.md Part H.7's
+# "Why each engine comes from the channel it does" has the investigation trail for all three.
 set -euo pipefail
+
+# Non-fatal, like toolchain/setup_toolchain.py's own ensure_apt_packages(): an unrelated
+# third-party source (a PPA that 403s or whose key expired) must not stop an install from the main
+# archive. Every apt-get install below stays fatal, so a package we really need still fails loudly.
+apt_update() {
+    sudo apt-get update || echo "== apt-get update reported errors - continuing, the install below still gates"
+}
 
 # --- WebKit: webkit2gtk-driver + xvfb (headless WebKitGTK needs a virtual display) ---
 if ! command -v WebKitWebDriver >/dev/null 2>&1; then
     echo "== Installing webkit2gtk-driver + xvfb"
-    sudo apt-get update
+    apt_update
     sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends webkit2gtk-driver xvfb
 else
     echo "== webkit2gtk-driver already installed, skipping"
@@ -34,18 +29,15 @@ if ! command -v microsoft-edge-stable >/dev/null 2>&1; then
     curl -sS https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /usr/share/keyrings/microsoft-edge.gpg >/dev/null
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-edge.gpg] https://packages.microsoft.com/repos/edge stable main" \
         | sudo tee /etc/apt/sources.list.d/microsoft-edge.list >/dev/null
-    sudo apt-get update
+    apt_update
     sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends microsoft-edge-stable
 else
     echo "== Microsoft Edge already installed, skipping"
 fi
 
 # --- Firefox + geckodriver: conda-forge via a standalone micromamba binary ---
-# Deliberately unpinned (unlike toolchain/versions.toml's strict MicroPython pin) - this installs
-# whatever conda-forge currently publishes as "firefox"/"geckodriver". Acceptable for a browser-
-# engine-diversity smoke check (SPECIFICATION.md Part H.7's "Coverage depth" decision); bump
-# CROSS_BROWSER_DIR below (or just delete it) to force a fresh install if conda-forge's build ever
-# needs re-pulling.
+# Deliberately unpinned, unlike toolchain/versions.toml's MicroPython pin (Part H.7). Delete
+# CROSS_BROWSER_DIR below to force a fresh pull.
 CROSS_BROWSER_DIR="${CROSS_BROWSER_TOOLCHAIN_DIR:-$HOME/cross-browser-toolchain}"
 FIREFOX_BIN="$CROSS_BROWSER_DIR/mamba_root/envs/ff/bin/firefox"
 GECKODRIVER_BIN="$CROSS_BROWSER_DIR/mamba_root/envs/ff/bin/geckodriver"

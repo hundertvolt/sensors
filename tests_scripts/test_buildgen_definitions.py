@@ -114,7 +114,7 @@ def test_every_real_device_stamps_the_website_version(repo_root: Path, src_dir: 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_status_pages_system_group_does_not_declare_a_firmware_version_field(repo_root: Path, src_dir: Path, device: str) -> None:
-    # Regression guard against this session's own earlier, corrected design: the firmware version
+    # Regression guard against an earlier, corrected design: the firmware version
     # lives on GET /system's "build" sub-entry (src/asy_webserver_service.py's build_info=), not on
     # GET /status's "system" section - definitions.json's Status page never declares it.
     generated = _generate(repo_root, src_dir, device)

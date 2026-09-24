@@ -429,6 +429,21 @@ def test_ensure_bench_bridge_generates_credentials_when_none_given(setup_toolcha
     assert any(c == "sudo nmcli connection modify br0 bridge.mac-address aa:bb:cc:dd:ee:ff" for c in joined)
 
 
+def test_the_bench_suite_derives_the_connection_names_from_this_module(setup_toolchain: ModuleType, repo_root: Path) -> None:
+    # tests_hardware/harness.py re-exports these three for the bench tier, and must READ them from
+    # here rather than carry its own literals: a rename would otherwise leave the bench tier looking
+    # for a connection nobody creates, and its skip gate deselects rather than fails.
+    harness_path = repo_root / "tests_hardware" / "harness.py"
+    harness_src = harness_path.read_text()
+    harness = load_script_module(harness_path, "harness")
+    for attr in ("BENCH_BRIDGE_CONN", "BENCH_ETH_CONN", "BENCH_AP_CONN"):
+        assert f"{attr} = setup_toolchain.{attr}" in harness_src, (
+            f"tests_hardware/harness.py declares {attr} itself instead of reading it from this module - "
+            "`env --tier bench` could then build a rig the bench tests cannot find"
+        )
+        assert getattr(harness, attr) == getattr(setup_toolchain, attr)
+
+
 # --- project dependency install (uv sync / npm ci) -------------------------------------------------
 
 

@@ -3,14 +3,17 @@ global-resource-collision class, and wiring-reference resolution. `build_model()
 `BuildError` naming device/instance/field, or returns a fully-resolved, safe-to-generate model."""
 
 import ast
+import importlib.util
 from pathlib import Path
+
+import tomllib
 
 from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, ALLOWED_INSTANCE_FIELDS, BUS_ATTACHED_DRIVERS, BUS_KIND_BY_DRIVER, FIXED_ADDRESS_DRIVERS, REQUIRED_TOML_FIELDS
 from buildgen.defaults import default_class_defines_attr, default_class_name, default_init_params, find_default_class
 from buildgen.driver_registry import SINGLETON_SERVICE_DRIVERS, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
 from buildgen.limits import LimitField, parse_limits
-from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, load_device, resolve_instance_key
+from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, load_device, lwip_macros, resolve_instance_key
 from buildgen.pico_gpio import I2C_ROLE, SPI_ROLE, UART_ROLE, gpio_exists
 from buildgen.requires_tag import RequiresTag, check_requires_tags, parse_requires_tags
 from buildgen.value_wiring import ValueWiringField, parse_value_wiring
@@ -60,7 +63,11 @@ _UART_OPTIONAL_INT_FIELDS = ("rxbuf", "txbuf", "poll_wait_ms", "poll_idle_ms")
 _REQUIRED_DEVICE_FIELDS = ("name", "hostname", "hotspot_password", "conn_fail_to_hotspot", "hotspot_time_min")
 _HOSTNAME_MAX_LEN = 32  # network.hostname()'s real cap; asy_wifi_service._VAL_HOST carries the same number
 _REQUIRED_DEVICE_INT_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
-_ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | {"wiring"}
+# Optional: absent, each falls back to WebserverService.__init__'s own default, and the check below
+# runs against that EFFECTIVE value - so no device can outrun its firmware by simply saying nothing.
+_OPTIONAL_DEVICE_INT_FIELDS = ("max_connections", "backlog")
+_ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | frozenset(_OPTIONAL_DEVICE_INT_FIELDS) | {"wiring"}
+_MAX_CONNECTIONS_FLOOR = 1  # a webserver admitting no connection serves nothing
 _WPA2_MIN_PASSWORD_LEN = 8  # WPA2-PSK's own minimum (IEEE 802.11i)
 _WPA2_MAX_PASSWORD_LEN = 63  # its maximum too; asy_wifi_service._VAL_HOTSPOT_PW carries the same pair
 
@@ -118,9 +125,84 @@ def _check_device_table(model: DeviceModel) -> None:
     # the device would quietly not answer to its own name. In practice a cap on [device].name.
     if len(dev["hostname"]) > _HOSTNAME_MAX_LEN:
         raise BuildError(model.device, f"[device].hostname is {len(dev['hostname'])} characters - network.hostname() caps at {_HOSTNAME_MAX_LEN}, so [device].name may be at most {_HOSTNAME_MAX_LEN - len('SensorStation')}", field="hostname")
+    for f in _OPTIONAL_DEVICE_INT_FIELDS:
+        if f in dev and not (isinstance(dev[f], int) and not isinstance(dev[f], bool)):
+            raise BuildError(model.device, f"[device].{f} must be an int, got {dev[f]!r}", field=f)
     unknown = set(dev) - _ALLOWED_DEVICE_FIELDS
     if unknown:
         raise BuildError(model.device, f"[device] declares unrecognized field(s) {sorted(unknown)} - typo, or copy-pasted from an unrelated table?", field=min(unknown))
+
+
+def webserver_init_default(src_dir: Path, name: str) -> int:
+    """One `WebserverService.__init__` keyword default, read out of the real source. buildgen never
+    imports src/ (it may use MicroPython-only syntax), so AST is the mechanism - the same one
+    tests_scripts/test_request_body_cap_headroom.py uses for max_content_length."""
+    path = src_dir / "asy_webserver_service.py"
+    try:
+        tree = ast.parse(path.read_text(), filename=str(path))
+    except (OSError, SyntaxError) as e:
+        raise BuildError("<src>", f"cannot read {path} to resolve WebserverService's own {name} default: {e}", field=name) from e
+    for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == "WebserverService"):
+        for fn in (n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "__init__"):
+            # Keyword-only and positional defaults are walked as two pairings rather than one
+            # concatenation: kw_defaults carries a None per argument that has no default, so the
+            # two lists have different element types and only line up within their own group.
+            positional = fn.args.args[len(fn.args.args) - len(fn.args.defaults):]
+            pairs: list[tuple[ast.arg, ast.expr | None]] = list(zip(fn.args.kwonlyargs, fn.args.kw_defaults, strict=True))
+            pairs += list(zip(positional, fn.args.defaults, strict=True))
+            for arg, default in pairs:
+                if arg.arg == name and isinstance(default, ast.Constant) and isinstance(default.value, int) and not isinstance(default.value, bool):
+                    return default.value
+    raise BuildError("<src>", f"WebserverService.__init__ no longer has a readable int default for {name!r} in {path} - the per-device key and the shipped default have to agree", field=name)
+
+
+def device_max_connections(toml_path: Path, src_dir: Path) -> int:
+    """The admission ceiling `toml_path` builds: its own [device].max_connections, else
+    WebserverService's default. Host-side instruments size their load with this, never a literal."""
+    with toml_path.open("rb") as f:
+        ceiling = tomllib.load(f).get("device", {}).get("max_connections")
+    return ceiling if isinstance(ceiling, int) else webserver_init_default(src_dir, "max_connections")
+
+
+def _lwip_ensemble_problems(macros: "dict[str, int]", max_connections: int) -> "list[str]":
+    """toolchain/micropython_overrides.py owns the relationships (they are lwIP's, not buildgen's).
+    Loaded by path because buildgen is a package and toolchain/ is a flat script directory - the
+    same bare-sibling shape tests_hardware/harness.py already uses for setup_toolchain."""
+    spec = importlib.util.spec_from_file_location("micropython_overrides", Path(__file__).resolve().parent.parent / "toolchain" / "micropython_overrides.py")
+    if spec is None or spec.loader is None:
+        raise BuildError("<toolchain>", "cannot load toolchain/micropython_overrides.py, which owns lwIP's own option relationships", field="max_connections")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:  # the toolchain's own shape check first, so a bad table is named rather than a traceback
+        module.validate_lwip_macros(macros)
+    except module.OverrideError as e:
+        raise BuildError("<toolchain>", f"{e} - it is what bounds every device's max_connections", field="max_connections") from e
+    problems: list[str] = module.check_lwip_ensemble(macros, max_connections)
+    return problems
+
+
+def _check_connection_ceiling(model: DeviceModel, src_dir: Path) -> None:
+    """The device's EFFECTIVE admission ceiling against the firmware it ships in. Config that
+    outruns its build refuses connections it says it admits, which reads as an application bug -
+    so the PCB, segment and send-arena shares per connection (Part H.7) are build errors."""
+    dev = model.doc["device"]
+    max_connections = dev["max_connections"] if "max_connections" in dev else webserver_init_default(src_dir, "max_connections")
+    if max_connections < _MAX_CONNECTIONS_FLOOR:
+        raise BuildError(model.device, f"[device].max_connections is {max_connections} - a webserver admitting no connection at all serves nothing, so the floor is {_MAX_CONNECTIONS_FLOOR}", field="max_connections")
+    # lwIP's options are an ensemble and its own checks size the shared pools for ONE connection.
+    # The N-connection half is checked here, where N is known.
+    ensemble = _lwip_ensemble_problems(lwip_macros(), max_connections)
+    if ensemble:
+        raise BuildError(model.device, f"[device].max_connections is {max_connections}, which this firmware's lwIP settings cannot serve: " + "; ".join(ensemble) + ". Raise the matching [lwip] values in toolchain/versions.toml or lower max_connections", field="max_connections")
+    backlog = dev.get("backlog")
+    if backlog is not None and backlog < max_connections:
+        # backlog is how many arrivals can land while the event loop is busy elsewhere; past it lwIP
+        # resets them, where nothing in src/ sees it - so a burst the ceiling admits is cut short.
+        raise BuildError(model.device, f"[device].backlog is {backlog}, below the {max_connections} connections [device].max_connections admits - the accept queue would drop arrivals of one burst the ceiling says it accepts", field="backlog")
+    if backlog is not None and backlog > max_connections + 1:
+        # Every queued arrival holds a pcb, and every one past a full ceiling plus one is refused by
+        # _serve() anyway, so a deeper queue buys nothing but pcbs held for arrivals it turns away.
+        raise BuildError(model.device, f"[device].backlog is {backlog}, above max_connections + 1 ({max_connections + 1}) - each extra queued arrival holds a pcb only to be refused", field="backlog")
 
 
 def _check_bus_tables(model: DeviceModel) -> "dict[str, TomlDoc]":
@@ -424,7 +506,7 @@ def _check_wiring_reference(model: DeviceModel, wf: WiringField, target_key_str:
 
 
 def _check_source_field_reference(model: DeviceModel, value: object, consumer_label: str, toml_field: str) -> None:
-    # Shared by warn_*'s per-signal getters and _VALUE_WIRING's per-value measurement wiring (§2.9)
+    # Shared by warn_*'s getters and _VALUE_WIRING's per-value wiring (SPECIFICATION.md Part L.6.3)
     # - both are the same generic {source, field} shape, resolved by attribute name alone rather
     # than a fixed producer_class.
     if not isinstance(value, dict) or "source" not in value or "field" not in value:
@@ -493,13 +575,13 @@ def _check_instance_wiring(model: DeviceModel) -> None:
             if toml_field.startswith("warn_"):
                 continue  # per-signal getters (source/field pairs) - checked separately below
             if toml_field in value_wiring_fields:
-                continue  # _VALUE_WIRING field (§2.9) - checked separately by _check_value_wiring()
+                continue  # _VALUE_WIRING field (SPECIFICATION.md Part L.6.3) - checked by _check_value_wiring()
             wf = _resolve_wiring_field(spec.wiring_schema, toml_field)
             if wf is None:
                 raise BuildError(model.device, f"{spec.label} declares wiring.{toml_field}, but its driver has no matching _WIRING entry", instance=spec.label, field=toml_field)
-            # §2's wiring-defaults mechanism: a {default = true, ...} sub-table opts out of
-            # resolving a real instance reference entirely - branch at the very top, before any
-            # string-only handling runs (§10.1 item 1's resolved branch-point decision).
+            # SPECIFICATION.md Part L.6.2's wiring-defaults mechanism: a {default = true, ...} sub-table
+            # opts out of resolving a real instance reference entirely - branch at the very top,
+            # before any string-only handling runs.
             if isinstance(value, dict) and value.get("default") is True:
                 _check_default_selection(model, spec, wf, toml_field, value)
                 continue
@@ -520,9 +602,9 @@ def _check_instance_wiring(model: DeviceModel) -> None:
 
 
 def _check_value_wiring(model: DeviceModel) -> None:
-    # §2.9's per-value measurement wiring: each field independently resolves to either a real
-    # {source, field} reference (any producer, matched by attribute name) or an explicit
-    # {default = true, ...} opt-in (§2) - never silently defaulted just because it's absent.
+    # SPECIFICATION.md Part L.6.3's per-value wiring: each field independently resolves to either a
+    # real {source, field} reference (any producer, matched by attribute name) or an explicit
+    # {default = true, ...} opt-in (L.6.2) - never silently defaulted just because it's absent.
     for spec in model.instances.values():
         for vwf in spec.value_wiring_schema:
             value = spec.wiring.get(vwf.toml_field)
@@ -591,6 +673,10 @@ def build_model(toml_path: Path, src_dir: Path) -> DeviceModel:
     _check_value_wiring(model)
     _check_device_wiring(model, src_dir)
     _check_requires_tags(model, buses)
+    # Last, because it is a coherence check between this device's config and the firmware it will
+    # ship in rather than a property of the TOML - anything genuinely wrong with the device should
+    # report before it, and it is the only stage that reads toolchain/versions.toml at all.
+    _check_connection_ceiling(model, src_dir)
     return model
 
 

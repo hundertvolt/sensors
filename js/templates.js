@@ -40,9 +40,9 @@ function buildFieldDescription(field) {
 }
 
 /**
- * Builds one field's markup - label, control (or value span when not editable), description
- * hint. A toggle's own cosmetic On/Off flip is wired here (§12); every other control is left
- * inert for a controller to attach real behavior to, keyed off `data-field-key`.
+ * Builds one field's markup - label, control (or value span when not editable), description hint.
+ * A toggle's own cosmetic On/Off flip is wired here (SPECIFICATION.md Part H.3); every other
+ * control is left inert for a controller to attach real behavior to, keyed off `data-field-key`.
  * @param {FieldDef} field
  * @param {unknown} currentValue
  * @param {boolean} editable
@@ -300,7 +300,7 @@ export function buildErrcountGroup(group, errcount) {
             empty.textContent = "No history recorded.";
             list.appendChild(empty);
         } else {
-            // §8 resolution: no pagination/truncation - realistic history depth is well under
+            // No pagination or truncation - realistic history depth is well under
             // 20 entries (project owner, session 2), so the whole array just renders.
             for (const item of history) {
                 const li = document.createElement("li");

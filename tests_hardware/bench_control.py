@@ -82,12 +82,6 @@ class BenchBridge:
     def ap_up(self) -> None:
         _nmcli("connection", "up", self.ap_conn)
 
-    def rotate_ap_password(self, new_password: str) -> None:
-        """Forces a real auth failure for any already-associated client (the DUT included) on its
-        next (re)connect attempt - a genuine credential-rotation fault, not a link-down one."""
-        _nmcli("connection", "modify", self.ap_conn, "wifi-sec.psk", new_password)
-        _nmcli("connection", "up", self.ap_conn)
-
     def kick_client(self, mac_address: str) -> None:
         """Forcibly clears one associated station's table entry by MAC via `iw` (this bench's AP
         has no per-client kick command). Fixes the dominant cause of WiFi reconnection flakiness -

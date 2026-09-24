@@ -2,9 +2,9 @@
 # only - this file and the test file's own body stay untraced - then dumps the recorded lines as JSON.
 # Invoked by scripts/test.sh --coverage in place of running a test file directly.
 #
-# It uses the same Unix port binary the non-coverage run does: build_unix_port() always compiles in
-# MICROPY_PY_SYS_SETTRACE=1, an inert hook check when unused. Not a test_*.py file itself, so
-# scripts/test.sh's glob never picks it up.
+# It runs under build-settrace, its OWN binary: the flag is not inert when unused - it allocates a
+# frame and a code object per call, so the test rig is built without it (Part E.5.2). Not a
+# test_*.py file itself, so scripts/test.sh's glob never picks it up.
 #
 # coverage.py never runs here, being a CPython tool. scripts/_render_coverage.py is the CPython-side
 # counterpart turning this raw JSON into a real report - see SPECIFICATION.md Part E.5 for the pipeline.
@@ -54,7 +54,7 @@ def _run() -> int:
         # A plain dict, not a real module namespace: the MicroPython Unix port doesn't register
         # the executed script in sys.modules["__main__"] the way CPython does (see
         # tests/microtest.py), so there's nothing else to exec() against.
-        exec(code, {"__name__": "__main__", "__file__": test_file})
+        exec(code, {"__name__": "__main__", "__file__": test_file})  # noqa: S102
     except SystemExit as exc:
         # MicroPython's SystemExit has no .code attribute (unlike CPython's) -- .args is what's
         # actually populated, confirmed directly against the built interpreter.

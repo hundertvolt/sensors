@@ -572,7 +572,7 @@ def test_detects_sgp40_missing_its_wiring_table() -> None:
 
 
 def test_detects_sgp40_wiring_with_the_wrong_field_name() -> None:
-    # §2.9: any source exposing a matching attribute name is structurally valid (no fixed producer
+    # SPECIFICATION.md Part L.6.3: any source exposing a matching attribute name is structurally valid
     # class to check against) - this smoke suite instead checks the real devices' own convention
     # (temperature_source always reads "Temp"), so a field-name typo is what it can actually catch.
     doc = _base_doc()

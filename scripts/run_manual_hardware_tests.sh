@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Runs the manual real-hardware test tier (tests_hardware/manual/, SPECIFICATION.md Part E.6) -
-# structurally separate from the automated suites above, never invoked by pytest. Interactive: prints
-# instructions and waits for operator confirmation. Pass --list to see every registered test without
-# running any, or --only <name> to run just one.
+# Runs the manual real-hardware tier (tests_hardware/manual/, SPECIFICATION.md Part E.6): interactive,
+# never invoked by pytest, structurally separate from the automated suites.
+# Flags (--list, --only <name>) and prerequisites: tests_hardware/README.md.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

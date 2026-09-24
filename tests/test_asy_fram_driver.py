@@ -1158,6 +1158,237 @@ def test_same_device_concurrent_read_and_write_never_corrupt_each_other() -> Non
     assert written_back == _HAZARD_WRITE_PATTERN, f"write region shows {written_back.hex()}, expected {_HAZARD_WRITE_PATTERN.hex()} - torn/corrupted write"
 
 
+# Bus-lock granularity and the per-command yield policy: one acquire/release and exactly one
+# scheduler pass per byte-level command, whatever its CS-cycle count.
+
+
+def count_bus_lock_holds(fram: FRAM_SPI) -> "list[int]":
+    # Counts acquisitions of the SPI *bus* lock (the innermost of the three), not FRAM_SPI's own.
+    holds = [0]
+    bus_lock = fram._spidev.spi.async_lock
+    original = bus_lock.acquire
+
+    async def counting_acquire() -> bool:
+        holds[0] += 1
+        return bool(await original())
+
+    bus_lock.acquire = counting_acquire  # type: ignore[method-assign,assignment]
+    return holds
+
+
+async def passes_during(coro: "Coroutine[Any, Any, Any]") -> int:
+    # Scheduler passes a competing task gets while `coro` runs - i.e. how often this path yields.
+    passes = [0]
+
+    async def competitor() -> None:
+        while True:
+            passes[0] += 1
+            await asyncio.sleep(0)
+
+    other = asyncio.create_task(competitor())
+    await asyncio.sleep(0)  # let it start and park, so the baseline below is stable
+    before = passes[0]
+    await coro
+    during = passes[0] - before
+    other.cancel()
+    try:
+        await other
+    except asyncio.CancelledError:
+        pass
+    return during
+
+
+def test_a_write_command_is_issued_under_one_bus_lock_hold() -> None:
+    # A one-byte write is a five-CS envelope (WREN, RDSR, WRITE, WRDI, RDSR); the chip needs every
+    # cycle, the bus lock does not need taking five times. One hold per command keeps a shared bus
+    # interleavable between commands while making the envelope indivisible - PLAN A.1.4.
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+    holds = count_bus_lock_holds(fram)
+
+    async def scenario() -> bool:
+        async with fram:
+            return await fram.set_values(b"\x01", 0)
+
+    assert run(scenario()) is True
+    assert holds[0] == 1, f"{holds[0]} bus-lock holds for one write command"
+
+
+def test_a_read_command_is_issued_under_one_bus_lock_hold() -> None:
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+    holds = count_bus_lock_holds(fram)
+
+    async def scenario() -> bool:
+        async with fram:
+            return await fram.get_values(bytearray(4), 0)
+
+    assert run(scenario()) is True
+    assert holds[0] == 1, f"{holds[0]} bus-lock holds for one read command"
+
+
+def test_set_values_yields_exactly_once_per_command() -> None:
+    # The per-command yield policy: the scheduling points live in the coroutine that owns the
+    # operation, not in the CS window. One command, one pass - enough that a burst of them cannot
+    # starve the loop (HEAP_FRAGMENTATION_MEASUREMENTS.md section 8.1), and no more than that.
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+
+    async def scenario() -> int:
+        async with fram:
+            return await passes_during(fram.set_values(b"\x01", 0))
+
+    assert run(scenario()) == 1
+
+
+def test_get_values_yields_exactly_once_per_command() -> None:
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+
+    async def scenario() -> int:
+        async with fram:
+            return await passes_during(fram.get_values(bytearray(4), 0))
+
+    assert run(scenario()) == 1
+
+
+# The three write-path warnings: same number, same message, logged once, from the same public
+# entry point - whichever layer actually decides them.
+
+
+def record_warnings(fram: FRAM_SPI) -> "list[tuple[tuple[object, ...], int]]":
+    recorded: list[tuple[tuple[object, ...], int]] = []
+    original = fram.pr.wrn_s
+
+    async def capture(*args: object, wrnno: int = 0, **kwargs: "Any") -> None:  # noqa: ANN401 - must mirror wrn_s()'s own signature exactly, kwargs included
+        recorded.append((args, wrnno))
+        await original(*args, wrnno=wrnno, **kwargs)
+
+    fram.pr.wrn_s = capture  # type: ignore[method-assign]
+    return recorded
+
+
+def test_write_protected_warning_keeps_its_number_and_message() -> None:
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+    assert run(fram.set_write_protected(value=True)) is True
+    recorded = record_warnings(fram)
+
+    async def scenario() -> bool:
+        async with fram:
+            return await fram.set_values(b"x", 0)
+
+    assert run(scenario()) is False
+    assert recorded == [(("FRAM currently write protected.",), 84)]
+
+
+def test_write_enable_latch_warning_keeps_its_number_and_message() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.drop_wren = True  # simulated bus disturbance: WREN opcode never actually latches
+    recorded = record_warnings(fram)
+
+    async def scenario() -> bool:
+        async with fram:
+            return await fram.set_values(b"bad!", 0x00)
+
+    assert run(scenario()) is False
+    assert recorded == [(("FRAM write enable latch did not set, aborting write.",), 82)]
+
+
+def test_wrdi_stuck_warning_keeps_its_number_and_message() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.disturb_write_autoclear = True
+    chip.drop_next_wrdi = 2  # both the original WRDI and the one retry are disturbed
+    recorded = record_warnings(fram)
+
+    async def scenario() -> bool:
+        async with fram:
+            return await fram.set_values(b"ok!!", 0x00)
+
+    assert run(scenario()) is True  # the payload landed; only the WEL housekeeping is stuck
+    assert recorded == [(("FRAM write enable latch did not clear after WRDI retry.",), 81)]
+
+
+# ---------------------------------------------------------------------------
+# The two-lock entry/exit itself. __aenter__ takes the driver's own lock and THEN the bus lock, so
+# each half has a failure mode of its own that no operation-level test reaches.
+# ---------------------------------------------------------------------------
+
+
+def test_aenter_releases_its_own_lock_if_the_bus_lock_cannot_be_acquired() -> None:
+    # Without __aenter__'s try/except the driver's own lock would leak permanently: `async with`
+    # never calls __aexit__ when __aenter__ raises, and every later FRAM operation would hang.
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+
+    async def boom() -> None:
+        raise OSError(5)
+
+    fram._bus_lock.acquire = boom  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+
+    async def scenario() -> bool:
+        try:
+            async with fram:
+                pass
+        except OSError:
+            return True
+        else:
+            return False
+
+    assert run(scenario()) is True
+    assert not fram.asy_lock.locked(), "the driver's own lock leaked when the bus lock failed"
+
+
+def test_a_later_operation_still_works_after_a_failed_bus_lock_acquisition() -> None:
+    # The consequence of the release above, stated as behavior rather than as lock state: one
+    # failed entry must not take the chunk layer down with it for the rest of the uptime.
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+    real_acquire = fram._bus_lock.acquire
+    calls = [0]
+
+    async def fail_once() -> None:
+        calls[0] += 1
+        if calls[0] == 1:
+            raise OSError(5)
+        await real_acquire()
+
+    fram._bus_lock.acquire = fail_once  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+
+    async def first() -> None:
+        async with fram:
+            pass
+
+    async def second() -> bool:
+        async with fram:
+            return await fram.set_values(b"ok!!", 0x00)
+
+    try:
+        run(first())
+    except OSError:
+        pass
+    # Bounded, not a bare await: a leaked lock makes the second entry wait forever, and a hanging
+    # test is never an acceptable failure mode here (CLAUDE.md's standing backstop).
+    assert run(asyncio.wait_for(second(), 1.0)) is True
+
+
+def test_aexit_tolerates_a_bus_lock_that_was_already_released() -> None:
+    # Same tolerance Lockable's own __aexit__ has, applied to the inner lock. Without it the double
+    # release would raise out of __aexit__ and the driver's own lock would never be released.
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+
+    async def scenario() -> None:
+        async with fram:
+            fram._bus_lock.release()  # released early by hand
+
+    run(scenario())  # must not raise
+    assert not fram.asy_lock.locked(), "the driver's own lock leaked after the inner double release"
+    assert not fram._bus_lock.locked()
+
+
 if __name__ == "__main__":
     import microtest
 

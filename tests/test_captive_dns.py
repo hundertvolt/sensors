@@ -275,6 +275,15 @@ def test_dns_server_init_binds_the_standard_dns_port_in_server_mode() -> None:
     assert server.udps.sock is None  # lazy - no real bind attempted at construction
 
 
+def test_dns_server_error_source_and_logger_fan_in_report_itself() -> None:
+    # Part C.14/G.2's duck-typed fan-in pair, which the generated boot list registers this module
+    # through. Neither accessor was ever called: a wrong list here drops DNSSRV out of /status's
+    # errcount and out of the level registry, both silently.
+    server = DNSServer()
+    assert server.get_error_sources() == [server]
+    assert server.get_loggers() == [server.pr]
+
+
 def test_dns_server_uses_in_memory_logging_when_fram_is_none() -> None:
     server = DNSServer()
     assert isinstance(server.pr, PrintLogHistory)

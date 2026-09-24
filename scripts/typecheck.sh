@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
-# Runs mypy against src/, tests/, digital_twin/, and tests_hardware/device_scripts/ (pyproject.toml's
-# [tool.mypy] `files` - note this is NOT the same scope as scripts/lint.sh's ruff invocation, which
-# doesn't cover tests_hardware/device_scripts/ yet). Pass explicit paths (e.g.
-# `scripts/typecheck.sh src tests tests_hardware/device_scripts`) to check only those instead -
-# used by CI's lint-and-typecheck job to gate on just that set, leaving digital_twin/ to its own
-# dedicated second pass below (see .github/workflows/ci.yml).
-# Assumes mypy is already installed and on PATH; uses
-# `uv` (assumed on PATH, same as toolchain/setup_toolchain.py) only to populate typings/, an
-# isolated directory holding just the MicroPython stub package - see pyproject.toml's [tool.mypy]
-# comments for why that has to stay separate from mypy's own venv.
+# Runs mypy against pyproject.toml's [tool.mypy] `files` scope, plus two further invocations that
+# always run regardless of "$@" (digital_twin/typecheck.ini, host_typecheck.ini). Why three passes
+# rather than one: CLAUDE.md's "Code quality tooling", and each config's own header.
 #
-# The MicroPython firmware version lives in exactly one place: toolchain/versions.toml's
-# [micropython] ref. The stub package version below is derived from it, not a separate hand-kept
-# pin - see derive_firmware_version() below. Requires python3 >= 3.11 (tomllib), same requirement
-# toolchain/setup_toolchain.py already has for parsing this same file.
+# Pass explicit paths to narrow the main pass only - CI's lint-and-typecheck job does that.
+# Assumes mypy is on PATH; `uv` is used only to populate typings/, the isolated MicroPython stub
+# directory pyproject.toml's [tool.mypy] comments explain.
+#
+# The firmware version lives in exactly one place, toolchain/versions.toml's [micropython] ref; the
+# stub version below is derived from it rather than pinned again (derive_firmware_version()).
+# Requires python3 >= 3.11 for tomllib, as setup_toolchain.py already does.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -84,28 +80,13 @@ EOF
     exit 1
 fi
 
-# Two verified regressions in micropython-stdlib-stubs 1.29.0.post1/.post2 that upstream has no
-# fixed release for yet. Both are repaired here, at the stub tree, rather than papered over with
-# `type: ignore` comments in our own code - the code is correct on the real interpreter in both
-# cases, and a stub defect is not ours to encode into src/. Each repair is conditional on the
-# defect still being present, so it silently stops doing anything once upstream re-ships.
+# Two verified regressions in micropython-stdlib-stubs 1.29.0.post1/.post2, repaired at the stub
+# tree rather than papered over with `type: ignore` in our own code, which is correct on the real
+# interpreter both times. What each defect is: CLAUDE.md's "Code quality tooling".
 #
-# 1. An incomplete rename in stdlib/_asyncio.pyi: `Future` was privatised to `_Future`, and the
-#    stdlib/asyncio/futures.pyi that re-exported it under the public name was dropped from the
-#    wheel - but stdlib/asyncio/tasks.pyi still does `from .futures import Future` and
-#    stdlib/asyncio/__init__.pyi still does `from .futures import *`, and _asyncio.pyi's own
-#    docstring still describes the re-export as existing. With both importers dangling, `Future`
-#    degrades to Any, `_FutureLike[_T]` collapses, and every `asyncio.wait_for()`/`gather()`
-#    result in this repo becomes un-inferable ("Need type annotation", "Returning Any"). The
-#    one-line file below restores exactly the re-export the rest of the package still expects.
-# 2. builtins.pyi has `NotImplemented: _NotImplementedType` commented out, so `NotImplemented` is
-#    undefined for mypy. MicroPython genuinely has it, and honors it from `__eq__` correctly
-#    (verified directly against the pinned Unix-port interpreter: `A() == 5` is False, not the
-#    truthy NotImplemented object) - see SPECIFICATION.md Part F.5.5. The substitution is
-#    line-ending agnostic: this stub ships with CRLF endings.
-# Both repairs also check that the file they target is where they expect it. If a future stub
-# release restructures the tree, they skip rather than fail the whole type-check on a path that
-# no longer exists.
+# Each repair is conditional on the defect still being present AND on its target file sitting where
+# it expects, so a fixed upstream or a restructured tree makes it a silent no-op rather than a
+# failure. The NotImplemented substitution is line-ending agnostic: that stub ships CRLF.
 asyncio_futures="typings/stdlib/asyncio/futures.pyi"
 if [ -d "typings/stdlib/asyncio" ] && [ ! -e "$asyncio_futures" ]; then
     printf '%s\n' 'from _asyncio import _Future as Future' > "$asyncio_futures"
@@ -115,12 +96,9 @@ if [ -f "$builtins_stub" ] && grep -q '^# NotImplemented: _NotImplementedType' "
     sed -i 's/^# \(NotImplemented: _NotImplementedType\)/\1/' "$builtins_stub"
 fi
 
-# tests_hardware/device_scripts/heap_headroom_after_full_system_build.py (in `files` below, the
-# main pass's sole static importer - pyproject.toml's own [tool.mypy] mypy_path comment) statically
-# `import sensortask_dev` - no hand-written copy exists in src/ any more (SPECIFICATION.md
-# Part L.2), so mypy needs build/generated_src/ (this pass's own mypy_path entry,
-# pyproject.toml's [tool.mypy]) populated before it runs, same as scripts/test.sh's own real
-# MicroPython-interpreter run needs it on MICROPYPATH.
+# heap_headroom_after_full_system_build.py is the main pass's sole static `import sensortask_dev`,
+# and no hand-written copy exists in src/ any more (Part L.2) - so build/generated_src/, this pass's
+# own mypy_path entry, has to be populated first, exactly as scripts/test.sh needs it too.
 echo "== Generating buildgen device modules into build/generated_src/ (for import resolution)"
 uv run scripts/_generate_sensortask_modules.py
 
@@ -130,25 +108,21 @@ uv run scripts/_generate_sensortask_modules.py
 main_status=0
 mypy "$@" || main_status=$?
 
-# digital_twin/'s own type-check is a SEPARATE mypy invocation, always run regardless of "$@" -
-# see digital_twin/typecheck.ini's own docstring and pyproject.toml's [tool.mypy] exclude comment
-# for why: mypy resolves each bare `machine`/`network`/`neopixel` module name to exactly one file
-# per run, so digital_twin/'s own fakes and the real board stubs can never both be checked
-# correctly in the single main invocation above. digital_twin/ is a fully-reviewed,
-# freely-editable scope (CLAUDE.md), same as src/tests/ above, so any finding here is real and
-# must fail the script, in CI exactly as much as locally - no tolerance for pre-existing debt.
+# A SEPARATE invocation, always run regardless of "$@": mypy resolves each bare `machine`/`network`/
+# `neopixel` name to one file per run, so the twin's own fakes and the real board stubs can never
+# both be right in one pass (digital_twin/typecheck.ini's docstring has it).
+#
+# The twin is a fully-reviewed scope like src/ and tests/, so a finding here is real and fails the
+# script, in CI exactly as much as locally.
 twin_status=0
 mypy --config-file digital_twin/typecheck.ini digital_twin tests/test_digital_twin_*.py || twin_status=$?
 if [ "$twin_status" -ne 0 ]; then
     echo "error: digital_twin/typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
 fi
 
-# buildgen/, scripts/, toolchain/, tests_scripts/ and tests_hardware/ are host CPython, not
-# MicroPython, so they need a THIRD invocation for the same reason the twin needs its second one:
-# the main pass above replaces mypy's typeshed with the MicroPython stubs (custom_typeshed_dir),
-# which have no `ast`/`argparse`/`pathlib`/`subprocess`/`tomllib`, so every stdlib import in those
-# five scopes would report as missing. Always run, regardless of "$@" - see host_typecheck.ini's
-# own header.
+# The host-CPython scopes need a THIRD invocation for the twin's reason again: the main pass
+# replaces mypy's typeshed with the MicroPython stubs, which carry no `ast`/`pathlib`/`tomllib`, so
+# every stdlib import there would read as missing. Always run; host_typecheck.ini's header has it.
 host_status=0
 mypy --config-file host_typecheck.ini || host_status=$?
 if [ "$host_status" -ne 0 ]; then

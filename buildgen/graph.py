@@ -42,9 +42,9 @@ def build_construction_order(model: DeviceModel) -> "list[Node]":
             if value is None:
                 continue  # optional and absent - validate.py already confirmed required ones are present
             if isinstance(value, dict) and value.get("default") is True:
-                continue  # §2's wiring-defaults mechanism - no producer instance to depend on
+                continue  # SPECIFICATION.md Part L.6.2's wiring defaults - no producer to depend on
             deps[spec.key].add(resolve_instance_key(model, value))
-        # {source, field} references - warn_* (SPECIFICATION.md Part C.14.3) and §2.9's generalized
+        # {source, field} references - warn_* (SPECIFICATION.md Part C.14.3) and Part L.6.3's generalized
         # per-value measurement wiring share this exact shape, so one loop covers both; a
         # {default: true, ...} selection has no "source" key at all, naturally excluded here too.
         for value in spec.wiring.values():

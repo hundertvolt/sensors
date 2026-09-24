@@ -7,11 +7,11 @@
 # the two instances must sit on different buses - a real hardware constraint, not a buildgen
 # choice); sgp40_a sources both values from the same scd30 instance (the common real-device shape);
 # sgp40_b instead mixes a cross-driver-type reference for temperature (bmp3xx's own Temp field -
-# §2.9's "any producer exposing a matching attribute name" richness, not restricted to scd30) with
+# Part L.6.3's "any producer exposing a matching attribute name" richness, not just scd30) with
 # an explicit {default = true, ...} constant for humidity; bmp3xx keeps a name_ext despite being
 # the device's only instance of its driver (axis 11 - legal, just unusual); both
 # [device.wiring].led_target/.fram_target are left entirely unwired (novel_combo.toml wires both);
-# notification's own signal_sink is defaulted (§2's no-op LED sink) rather than a real neopixel
+# notification's own signal_sink is defaulted (Part L.6.2's no-op LED sink) rather than a neopixel
 # reference, and only sgp40_a is monitored via warn_voc - sgp40_b's VOC signal isn't wired at all
 # (partial multi-instance signal wiring). Not a real device - never flashed, never referenced
 # outside tests_scripts/test_buildgen_*.py.
