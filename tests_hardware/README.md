@@ -380,8 +380,17 @@ the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
   (`harness.wait_for_script_server()`), so main.py can never answer the readiness probe.
 
 **Bench traps** (occurrences: archive §7R.5).
+- A device script that never feeds the watchdog dies ~8 s after it attaches to a board running
+  `main.py`. `device_scripts/wifi_service_reconnect_repro.py` is one: run it under a wrapper that
+  arms `machine.WDT(timeout=8000)` and feeds it from a 2 s `machine.Timer` (bench, 2026-09-25).
+- An ad-hoc bench script caps every retry and runs under `timeout`: one that retried a refused
+  `PUT` without bound ran for 1 h 40 min (2026-09-25).
 - Leave > 45 s between a reset and the next `mpremote` attach; a watchdog reset ~9 s after an early
   attach is the likely, unconfirmed cause of one dead run.
+- An attach within ~1 s of boot (before `main.py` arms the watchdog) parks the board at the REPL
+  with no watchdog: no WiFi, no output, no self-recovery until the next reset (bench, 2026-09-25).
+  A test that polls `is_reachable()` right after a reset must end with `hard_reset()`, as
+  `flash/test_watchdog_starvation.py` does.
 - After a reset or a flash the board can fall back to hotspot mode; `kick_all_stations()` +
   `hard_reset()` recovers it, occasionally only on a second try.
 - After an unexpected reset, read `machine.reset_cause()` over `mpremote exec` before anything
@@ -1250,13 +1259,14 @@ shouldn't make unilaterally - disclosed rather than silently dropped, per BACKLO
   deliberately uses raw `machine.UART` "so it stays true independently of how `asy_uart_driver` is
   arranged internally" (its own docstring) - honest, not a wrongly-trusted test, but it means no
   real-hardware run ever calls the actual shipped clamp. F.5.9 (idle poll rate) already has a
-  real-driver-object proof (`uart_idle_poll_rate.py`); F.5.8 needs the analogous script.
+  real-driver-object proof (`uart_idle_poll_rate.py`). **Closed 2026-09-25** by
+  `uart_driver_read_never_blocks_the_loop.py` (flash tier), which times the shipped driver's own
+  UART calls rather than probing loop gaps — the latter swing with scheduler noise (F.5.8).
 - **Bench-tier UART traffic under load never issues a multi-chunk SET** - `UartLinkExerciser.
   _exercise_loop()` only ever calls `uart_get(_CMD_BANNER)`, so "bench ⊇ flash" (E.6.1) doesn't hold
   for the multi-chunk SET train the flash tier proves (`uart_crossover_exchange.py`). The exerciser
-  already has `_CMD_ECHO`/`_set_callback` wired for exactly this; wiring a periodic SET into the live
-  loop touches the real production exerciser, not just a test, so it's named here rather than done
-  blind.
+  already has `_CMD_ECHO`/`_set_callback` wired for exactly this. **Scratched (owner, 2026-09-25)**:
+  wiring a periodic SET into the live loop changes `src/` for the test alone, which `src/` never gets.
 - **The mock-tier UART hazard catalog (~20 fault-injection scenarios: corruption, drop, truncate,
   duplicate, receive-overrun, lost-final-ACK, peer-reset-mid-transaction, and more) has only two
   real-hardware equivalents (silence, baud desync).** Plausibly a genuine E.6.6 structural exception
@@ -1277,8 +1287,9 @@ shouldn't make unilaterally - disclosed rather than silently dropped, per BACKLO
 - **NOTIFY's own FRAM chunk has no hard-reset-recovery bench test**, unlike SGP40's
   (`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`). Extending that
   ~5-minute, 3-real-hard-reset test to a second FRAM-backed module needs first identifying NOTIFY's
-  own equivalent of `BackupTS` (an observable "a fresh write just completed" signal) - not confirmed
-  to exist yet, so left named rather than guessed at.
+  own equivalent of `BackupTS` (an observable "a fresh write just completed" signal), which does not
+  exist. **Scratched (owner, 2026-09-25)**: adding one would change `src/` for the test alone, and
+  the flash tier already proves a FRAM chunk's reset-raced write is all-or-nothing.
 
 **Confirmed clean, no fixes needed** (traced end-to-end, not just grep-counted): WiFi's real bench
 worker call chains (`ap_down`/`ap_up`, UDP block/redirect, `netem` fault injection, hotspot

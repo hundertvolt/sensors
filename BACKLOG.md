@@ -7,10 +7,8 @@ operating constraints/architecture reference) or README.md (human-facing orienta
 migrated there rather than duplicated here. See README.md for orientation, CLAUDE.md for operating
 constraints.
 
-**Anything in here that needs the dev bench is also listed in `REAL_HARDWARE_TEST_QUEUE.md`**, which
-is the single running queue a go-ahead session works through in one pass. Items stay tracked here as
-usual; that file exists so the real-hardware subset does not have to be reassembled from this file
-and `tests_hardware/README.md` every time.
+**Everything that needs the dev bench is gathered in "Real-hardware work still owed" below**, so a
+go-ahead session can work it in one pass; `tests_hardware/README.md` stays the reference for how.
 
 **The numbered list below has gaps, and its numbers are never reused or renumbered.** Code comments
 and `SPECIFICATION.md` cite items by number, so a resolved item whose number is cited stays as a
@@ -20,39 +18,21 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
 ## Refactor targets not yet done
 
-- **A config-persisting `PUT /sensors` reset its own HTTP connection under concurrent API load -
-  fixed (WP5, 2026-09-16), pending real-hardware re-confirmation.** Root cause: an RP2040 flash
-  write disables interrupts port-wide for its whole duration (`ports/rp2/rp2_flash.c`'s
-  `begin_critical_flash_section()`), freezing the CYW43 link and lwIP's own timers along with it -
-  and the old `ConfigManager.write_config()` performed that write synchronously, inline, inside the
-  very PUT request whose connection then got reset. Fixed at the design level exactly as this entry
-  originally called for: `write_config()` now validates and stages synchronously, then hands the
-  actual `open()`/`json.dump()` write to an independent `asyncio.create_task()`, fully decoupled
-  from the request/response (see `config_manager.py`'s own comments and SPECIFICATION.md Part F.2
-  for the full mechanism, including the accepted residual risk window and its interaction with the
-  WiFi-power-cycle backstop). Mock-tier (`tests/test_config_manager.py`) and digital-twin-tier
-  coverage all pass; **still open**: re-running the two real-hardware bench tests that originally
-  found this
-  (`tests_hardware/bench/test_bus_concurrency_under_api_load.py`'s
-  `test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load` and
-  `test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load`) against the
-  real dev board, once a real-hardware go-ahead exists for a session - this entry stays until that
-  confirmation lands.
-  **Half of that confirmation has landed, and it split the two arms — read item 30 with this
-  entry, not separately.** The bench session of 2026-09-17, on firmware carrying this WP5 fix,
-  found the **BMP3XX arm passing** and the **ISL29125 arm still failing** (four-arm isolation: PUT
-  alone 0/10, PUT + 1 reader 0/6, PUT + 2 readers **6/18**, plain GET + 2 readers 0/6). So the
-  deferral fixed what it was built to fix - the *shared* synchronous flash write is no longer the
-  discriminator, which is precisely what the two arms having opposite outcomes on the same flash path
-  proves - but a second, ISL29125-specific mechanism remains, and that residual is item 30, where the
-  next step (the `RangeAuto=false` bisection) already lives. **What is genuinely still owed here is
-  therefore only the BMP3XX arm's re-confirmation being treated as durable** rather than one bench
-  run — it passed again 2026-09-23 in S3's gated run (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.2);
-  owner, 2026-09-24: one more pass in the next bench sitting (queue row R5), then it closes; the ISL29125 arm is not "pending re-confirmation", it is a known open defect with its own item.
-
-  Note the bench re-run that produced these numbers needs `--allow-persistence-writes`: the write path
-  is now gated behind `@pytest.mark.persistence_write`, so a default bench run deselects both arms and
-  re-confirms neither.
+- **Four modules this branch changed substantially still number inside the reserved range —
+  the renumbering rule was not applied (found 2026-09-25).** SPECIFICATION.md C.7.1 records the
+  owner's decision (2026-09-24): a module still numbering in `base_classes.py`'s reserved
+  `errno` 1-9/`wrnno` 1-2 moves to 10+ on its next substantial change, with the table and tests in
+  the same change. The NTP/notification/WiFi/config-write work of 2026-09-24/25 was that change
+  for four of them, and none was renumbered: `asy_ntp_client.py` (`wrnno` 1-3; the backoff
+  rewrite, `wrnno` 2 put under the repeat rule), `asy_wifi_service.py` (`wrnno` 1-8; the radio
+  byte bounds, and the new `wrnno` 8 was even *added* inside the range), `asy_notification_service.py`
+  (`wrnno` 1-5; `wrnno` 5 put under the repeat rule) and `config_manager.py` (`errno` 1-15 and
+  `wrnno` 1-6, partly inside; the unpersisted-config handling of `errno` 4/14). No clash is live -
+  none shares a logger with a `SensorReader`. Doing it touches more than `src/`: the C.7.1 table,
+  the unit and twin tests that pin the codes, the bench tests that assert them
+  (`test_network_resilience.py` accepts WIFI `W4`/`W5`), the codes cited in this file, and a
+  reflash plus a bench tier before it counts as confirmed; FRAM histories hold a mix of old and new
+  codes until the next `ResetErrors` (no field device runs this code).
 - **Mypy shall be configured to disallow `Any` types** (owner-specified). Mostly addressed, but
   not by the flag it was originally written about: all three passes now run full `--strict`
   (`disallow_any_generics` included), so no *implicit* `Any` from a bare `dict`/`list`/`tuple`
@@ -106,22 +86,19 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   a dedicated real-hardware session or a project-owner design decision): `tests_hardware/README.md`'s
   "Tenth pass". No second instance of the SGP40-shaped bug (a real hardware trigger silently
   substituted with a software-only one) turned up, but several real tier-parity gaps did, most now
-  closed. **Named follow-ons still open, tracked in that section, not repeated here**: a real-hardware
-  test for UART's F.5.8 "never blocks" invariant against the actual shipped driver (not a hand-rolled
-  clamp); wiring a periodic SET into the bench UART exerciser's live load; deciding whether the mock
-  tier's ~20-scenario UART fault-injection catalog is a genuine real-hardware structural exception or
-  needs a raw-second-UART injection technique (**answered
-  2026-09-22: a structural exception until injection hardware exists** — Part E.6.6's fourth item); a
-  real-hardware test for `_reboot()`'s alarm-pool-exhaustion fallback; and a hard-reset-recovery bench
-  test for NOTIFY's own FRAM chunk (needs an observable-write signal analogous to SGP40's `BackupTS`
-  first). Re-running this sweep against other domains (it did not touch e.g. sensortask/system_service
+  closed. **Named follow-ons still open, tracked in that section, not repeated here**: a
+  real-hardware test for `_reboot()`'s alarm-pool-exhaustion fallback. Settled: the mock tier's
+  ~20-scenario UART fault-injection catalog is a structural exception until injection hardware
+  exists (2026-09-22, Part E.6.6's fourth item); the shipped-driver F.5.8 test exists
+  (2026-09-25); the exerciser SET and the NOTIFY FRAM-recovery test are scratched, each needing a
+  `src/` change for the test alone (owner, 2026-09-25). Re-running this sweep against other domains (it did not touch e.g. sensortask/system_service
   integration beyond what FRAM/memory covered) is future work, not assumed done everywhere.
 
 ## Open questions (need owner input or further investigation)
 
 - **ISL29125's chip configuration divergence under concurrent API load (PR #84/commit `679c2b0`'s
-  isolation work, HIGH IMPORTANCE, completely unforeseen — project owner, 2026-09-15) — fixed in
-  code and unit-tested; real-hardware re-verification still pending.** Root cause, traced through
+  isolation work, HIGH IMPORTANCE, completely unforeseen — project owner, 2026-09-15) — fixed,
+  unit-tested and confirmed on silicon; only the `Overrange` half below still owes a run.** Root cause, traced through
   the real code: `ISL29125_I2C.configure()` mutated the in-memory shadow fields
   `encode_shadow()`/`matches_shadow()` read (`self._mode`, `self._range_fs`, `self._resolution`,
   ...) *before* it ever acquired the per-sensor device-session lock that SPECIFICATION.md Part C.8
@@ -142,12 +119,12 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   self-locking, the caller now holds the lock for the whole critical section). Regression test:
   `tests/test_asy_isl29125_driver.py::test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight`
   holds the exact lock `configure()` needs (standing in for real contention) and confirms the
-  shadow cannot change while `configure()` is blocked waiting for it. **Still open**: this needs a
-  real-hardware re-run (the original finding only ever manifested under real concurrent bench load)
-  before it can be considered fully closed — needs the project owner's go-ahead per CLAUDE.md's
-  standing real-hardware gate. Queued as `REAL_HARDWARE_TEST_QUEUE.md` R9, together with the
-  `Overrange` half below (`device_scripts/isl29125_mechanism_envelope.py` was updated to read the
-  field instead of the retired `W12` log entry and has not run on silicon since).
+  shadow cannot change while `configure()` is blocked waiting for it. **Confirmed on silicon**: the
+  first fully clean bench tier after the fix (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7H.6),
+  and every bench tier of 2026-09-24/25 since, ran the concurrent load that used to produce it.
+  **Still open, R9's other half**: the `Overrange` field below has never run on silicon
+  (`device_scripts/isl29125_mechanism_envelope.py` reads it instead of the retired `W12` entry); it
+  rides S3b ("Real-hardware work still owed").
 - **The sibling `W12` ("saturated on the high range") finding from the same isolation work is
   resolved differently, by design rather than by fixing a bug (project owner, 2026-09-15):**
   saturation status was never a fault, so it no longer lives in the error/warning log at all. It's
@@ -246,7 +223,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     (`_WRAP_FLOOR_MS`), so the ambiguity fails honestly instead. Kept as a stub because
     `tests_hardware/flash/test_bus_electrical_timing.py` cites this number. **Do not re-investigate
     the soft-reset semantics**; what remains is designing a measurement method that leaves the board
-    running, which is `REAL_HARDWARE_TEST_QUEUE.md`'s C7, not this item.
+    running, which is G6 under "Real-hardware work still owed", not this item.
 24. **`PUT /status {"ResetErrors": true}` costs a large, slowly-growing fraction of the product's
     own request ceiling. Now measured on real hardware; one question left.**
     `asy_webserver_service.py`'s `_put_status()` resets every registered error source sequentially
@@ -298,7 +275,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     2026-09-17 figures, but the curve **does not flatten**: it climbs ~3.5s per reader, so three
     readers already reach 88-98% of the ceiling and four exceed it. The "~6 more chunks under load"
     headroom derived from the single 3-reader point no longer holds — under load there is none.
-    At four readers the board is saturated outright (queue F18: ceiling starvation of the `PUT`,
+    At four readers the board is saturated outright (F18, "Real-hardware work still owed": ceiling starvation of the `PUT`,
     WEBSERVER `W2` reclaims, UART link `E20`/`E22`/`W10`). Nothing asserts elapsed time anywhere: both client timeouts
     are backstops placed against the cap (the CI suite derives `_RESET_ERRORS_TIMEOUT_S` from a
     mirrored `_SERVER_OUTER_CAP_S`; `tests_hardware/error_log_helpers.py` carries a measured 30.0s),
@@ -322,45 +299,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     `W5`/`W6` runs. The log text now says what the status means, and the bench outage check accepts
     `W4` as benign beside `W5`.
 
-30. **ISL29125 HTTP connection reset under concurrent API load — root-cause not yet established.**
-    Owner's direction: chase, root-cause and resolve. Needs **both** a config-persisting PUT and >=2
-    concurrent readers (four-arm isolation on the dev bench, 2026-09-17: PUT alone 0/10, PUT + 1
-    reader 0/6, PUT + 2 readers **6/18**, plain GET + 2 readers 0/6), so it is a real residual, not a
-    test artifact, and not the `max_connections=4` reject path (that one is a clean single-worker RST
-    at 5 concurrent workers, by design). Failures land at 21-72ms against 0.5-2.2s for successful
-    writes — two cleanly separated populations, and the connection dies before reaching the handler.
-    **The DUT logs nothing**: `WEBSERVER`'s counter stays 0, so this is invisible to FRAM forensics.
-    The suspected mechanism is the deferred flash write's own interrupt-disable window
-    (SPECIFICATION.md Part F.2's accepted residual risk) — **suspected, not proven**; all that is
-    established is that the persisting write is necessary. Note the write path is now gated behind
-    `@pytest.mark.persistence_write`, so reproducing it needs `--allow-persistence-writes`.
-    **Where to look first — corrected 2026-09-17 after comparing the two arms properly.** An earlier
-    version of this item said the BMP3XX arm passing "points at load/timing rather than at this one
-    driver". That reads the evidence backwards. The two tests are the *same* shape: 2 GET workers on
-    `/sensors` plus one writer alternating between two valid values, same endpoint, same
-    `ConfigManager.write_config()` flash path. Identical setup, opposite outcome, so the flash write
-    the two share cannot be what distinguishes them — the difference is in what each driver's own
-    push does on the bus. `BMP3XX._push_pressure_oversampling()` is a single `set_*` write.
-    `ISL29125._push_resolution()` → `set_resolution()` is a **three-step reconfiguration**:
-    `isl.configure(resolution=...)`, then `_reapply_persist()` (the derived persistence counter
-    changes with the cycle length), then — because `RangeAuto` defaults to `True` and `dev` leaves it
-    there — `_switch_range()` to re-arm threshold registers that are scaled to the old resolution.
-    That is a far longer critical section against two concurrent readers, and it is the first thing
-    to instrument. **Cheap bisection**: `RangeAuto` is a plain REST bool, so `PUT /sensors
-    {"ISL29125": {"RangeAuto": false}}` drops the third leg without touching any code — if the reset
-    rate falls, the re-arm is implicated; if it does not, it is the first two.
-    **A second candidate, found after this item was written and not yet tested against it
-    (2026-09-24, from SPECIFICATION.md H.7):** the connection ceiling itself. A connection holds its
-    slot until its close has finished, so back-to-back clients are refused below the nominal limit,
-    and a refusal is a FIN/RST within milliseconds that nothing on the DUT logs — this item's exact
-    signature. A PUT held longer by the ISL29125's three-step push, against BMP3XX's single write,
-    would explain the split; the listen backlog was also MicroPython's default 5 then, a second
-    silent reset path since sized to the ceiling. **Since 2026-09-19 the test retries a ceiling
-    refusal, so a clean run no longer answers this item** — both config-write arms now print
-    `CEILING_RETRIES` per arm, and the next gated run reads those before bisecting: ISL29125 retries
-    well above BMP3XX's and no other failure means the ceiling (close this item); failures that are
-    not ceiling closes mean an ISL29125 mechanism, and the bisection above follows.
-
 32. **The bench tier's `ResetErrors` timeout was raised 10.0s → 30.0s with no elapsed-time budget
     to replace what that bound was incidentally enforcing.** Recorded 2026-09-17: a loosening with
     no compensating check.
@@ -374,7 +312,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     hardware would now pass silently where the old bound would at least have gone red — for the
     wrong reason, but red.
     **Why no bench budget was set instead of recording this.** Sizing one needs the reader-count
-    curve `REAL_HARDWARE_TEST_QUEUE.md`'s R2 asks for (0/1/2/3/4/6 readers). Two points do not
+    curve R2 measured on 2026-09-25 (0/1/2/3/4 readers, below). Two points did not
     say whether it flattens: the twin's 12.0s is already below the 11.58s-at-3-readers measurement
     plus any margin, so copying it across would flake the bench suite, and anything above ~15s
     cannot fire before the server's own abort. Both halves of the owner's standing requirement for
@@ -383,24 +321,152 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     **The curve is taken (item 24's 2026-09-25 table), and it says no budget can meet both halves
     at the current design**: three readers already land at 13.2-14.7s against a 15s server abort, so
     any budget that never false-positives sits at or above the point where the server gives up
-    first. Setting the bench budget waits on item 24's design fix (batched or concurrent reset) —
+    first (R4 on 2026-09-25 measured 12.1-14.6s at three readers again, the worst 0.4s from the
+    abort). Setting the bench budget waits on item 24's design fix (batched or concurrent reset) —
     the owner's decision. Then add the bench analogue of the twin's own budget check to
     `tests_hardware/error_log_helpers.py`.
 
 44. **Board anomalies from the connection-limit sittings — recorded, not chased; each needs
-    silicon** (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.5; queue row F17):
+    silicon** (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.5; row F17). A fourth, 2026-09-24: the
+    USB serial dropped mid-upload of `uart_idle_poll_rate.py`; later resets overwrote
+    `reset_cause()`, an isolated re-run passed, and two later full bench tiers did not reproduce it.
     - One silent reset in 1 of 9 instrumented peak-load boots, cause lost. Watchdog starvation is the
       first candidate to rule out: the supervisor loop is the only feed site (`system_service.py`'s
       `feed_watchdog()`), and a board CPU-bound at ~2.2 requests/s can miss the 8,388 ms cap.
     - Hotspot fallback after a reset, three times. `devices/dev.toml`'s `conn_fail_to_hotspot = 5` is
-      the mechanism that would take it there. **One instance is now measured (2026-09-25, queue
-      F17)**: a watchdog reset with no `kick_all_stations()` before it gave `reset_cause()` =
+      the mechanism that would take it there. **One instance is now measured (2026-09-25, F17)**: a watchdog reset with no `kick_all_stations()` before it gave `reset_cause()` =
       `WDT_RESET` and WIFI `W6` ×5 (`STAT_CONNECT_FAIL`) — the stale-AP-station mechanism, cleared
       by a kick. Whether the earlier three were the same is not recoverable.
     - ~~A likely watchdog reset at `mpremote` attach~~ — **not an open anomaly: that mechanism is
       already measured** (item 12, 2026-09-11 — an `mpremote exec` stops `main.py`, nothing feeds the
       WDT, and the board takes a hard reset ~8 s later; the occurrence was ~9 s after attach). It is
       `tests_hardware/README.md`'s "> 45 s between a reset and the next attach" trap, not a finding.
+
+## Real-hardware work still owed
+
+Folded in from the retired `REAL_HARDWARE_TEST_QUEUE.md` and `HARDWARE_TEST_HANDOVER.md` after the
+2026-09-24/25 sitting; row IDs (T4, F18, ...) are kept because commits and `PROJECT_AUDIT_PLAN.md`
+cite them. **Nothing here authorizes anything**: CLAUDE.md's go-ahead gate applies, and
+`tests_hardware/README.md` is the reference for how any of it runs (flags, wear gates, traps).
+
+- **How a sitting runs — the owner's standing answers (2026-09-22).** D1: spend flash/NVM writes,
+  but only after a clean default run, so a gated failure is the gated test's own. D2: the
+  NeoPixel-aimed-at-ISL29125 light rig is in place. D3, confirmed every sitting: always a `dev`
+  build of the tree under test, never `wozi`. Order: read and save `errcount` before anything
+  writes (CLAUDE.md), build and flash, confirm `/system`'s `build.buildDate`, flash tier, bench
+  tier, then the gated run (`scripts/run_bench_hardware_suite.sh --allow-persistence-writes -s`),
+  reading each verdict's deselected count, not only "clean". **Board state at the fold**: `dev`
+  image `buildDate 2026-09-25T12:54:13Z` (tree `851e816`), `max_connections = 6`, `DebugLevel` 5;
+  its last runs were two clean default bench tiers and one clean gated run (2026-09-25).
+- **Not yet confirmed on silicon.** (1) SGP40 `W13` spends one slot per NTP outage (`83c9920`, on
+  the board's image): no run since has kept NTP away past `SGPWaitTimeNTP`, so none logged a
+  `W13`. Zero-wear check: block UDP 123 longer than that, expect one `W13` with `ErrCount` rising
+  per backup. (2) The flash tier's watchdog-starvation test ending with `hard_reset()` (`79eb41b`,
+  test-only, no reflash needed): no full flash-tier run since. Before it, the flash tier always left
+  the board parked at the REPL with no watchdog, because the test attached within ~1 s of boot.
+- **M1 + S3b, the ISL29125 light programs** — needs the owner at the bench, ~30 min. M1 first
+  (`scripts/run_manual_hardware_tests.sh --only isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`,
+  interactive: repeatability on an unchanged scene, continuity across the range switch, and writing
+  down the rig geometry S3b depends on; the reference light meter is an optional data point, never
+  pass/fail), then `scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep` (~10 min). R9's
+  `Overrange` half rides S3b (open question "ISL29125's chip configuration divergence" above).
+- **R13 + N3, UART `wrnno` 11 against a real babbling peer** — needs hardware the bench does not
+  have (owner, 2026-09-25): the live firmware owns both UARTs, so nothing on the board can play the
+  peer. Confirm `GET /status` shows `W11` rather than `W10` for `UART_init`/`UART_resp` after the
+  drain hits its bound, and that a boot drain against the same peer persists nothing
+  (SPECIFICATION.md C.7.1). N3 also owes a check that `UART_C_PORT_CHANGELOG.md` records the
+  reclassification (receiver-side only, no emitted bytes change). Low urgency: the mock tier covers
+  the logic.
+- **F18 — owner decision: zero-think-time readers saturate the board.** Four host threads
+  re-requesting `/status` the moment each answer lands: median 4.8 s per `/status`; a
+  `PUT /status {"ResetErrors": true}` refused at the connection ceiling 20 times in a row (readers
+  retake every freed slot; admission has no fairness), then no answer within 30 s; WEBSERVER `W2`
+  ×20 (the designed reclaim) and `UART_init`/`UART_resp` `E20`/`E22`/`W10`, which start already at
+  three readers (R4). No reboot, no task ended, no `MemoryError`. Open: are such clients inside the
+  contract (the web UI polls, it does not hammer)? If yes, admission needs fairness so a writer
+  cannot starve; and is the bench-only UART exerciser degrading under that load acceptable?
+- **T4 — owner decisions on the FRAM per-command hold.** Measured 2026-09-25 (SPECIFICATION.md
+  F.5.8): a 1-byte write holds the loop 2.8-3.4 ms without yielding (~0.6-0.7 ms per CS command).
+  Open: yield between the CS commands of one write (~3 ms → under 1 ms), or keep it; and whether
+  A6's timing script, below, becomes a committed device script. **This is its only copy.** Run it
+  with `scripts/mpremote_connect.sh exec "import machine; machine.WDT(timeout=8000)"` then
+  `scripts/mpremote_connect.sh run <file>`; it writes at the top of the address space and never
+  calls `get_chunk()`, so production's error logs are safe:
+
+  ```python
+  """Times the real SPI wire cost of one command envelope and one whole block operation."""
+
+  import asyncio
+  import time
+
+  import asy_spi_driver
+  from asy_fram_manager import AsyFramManager
+
+
+  async def _main() -> None:
+      spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
+      fram = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
+      if not await fram.setup():
+          print("RESULT: FAIL fram.setup() failed - real chip not responding on spi0/cs5")
+          return
+      chip = fram.fram
+      addr = 0x3FF00  # top of the address space, clear of every production chunk
+      one = bytearray(1)
+      eight = bytearray(8)
+
+      # (a) the synchronous, non-yielding stretches, bus already held.
+      async with chip:
+          t0 = time.ticks_us()
+          w_status = chip.set_values_sync(one, addr)
+          t1 = time.ticks_us()
+          r_status = chip.get_values_sync(eight, addr)
+          t2 = time.ticks_us()
+      write_us = time.ticks_diff(t1, t0)
+      read_us = time.ticks_diff(t2, t1)
+      if not await chip.report_set_values(w_status):
+          print("RESULT: FAIL the 1-byte write reported a failure status")
+          return
+      if not await chip.report_get_values(r_status):
+          print("RESULT: FAIL the 8-byte read reported a failure status")
+          return
+
+      # (b) the bus-lock hold: entry to exit, yields inside it included.
+      t3 = time.ticks_us()
+      async with chip:
+          for _ in range(4):  # a block operation's own command count
+              chip.set_values_sync(one, addr)
+              await asyncio.sleep(0)
+              chip.get_values_sync(eight, addr)
+              await asyncio.sleep(0)
+      hold_us = time.ticks_diff(time.ticks_us(), t3)
+
+      print(f"HOLD write_5cs={write_us}us read_1cs={read_us}us block_operation={hold_us}us")
+      print(f"RESULT: PASS longest non-yielding stretch {max(write_us, read_us)}us, bus held {hold_us}us")
+
+
+  asyncio.run(_main())
+  ```
+- **W3 — owner judgement: the 256 B response cap costs +17 % on `/status`.** Like for like on one
+  tree (2026-09-25, 20 idle samples each): `/status` (6.86 KB) median 1.29 s at 256 B pieces
+  against 1.10 s at 1,024 B; single-piece routes (`/networking`, `/measurements`) unchanged at
+  ~0.28 s. Accept it as the price of SPECIFICATION.md I.3's bound, or not.
+- **T1 — owner to close: the in-suite heap placement figure.** Flash tier, `test_memory_stress.py`
+  at the script's own `gc.threshold(-1)`: `largest_block` 122,016 B at baseline → **84,112 B after
+  `build_system()`**, free 97,280 B, `retained` 0, the control and production-threshold arms
+  identical; map: highest new block at 55 %, none in the top 32 KB. The figure it was written to be
+  compared with (archive §7D.3, 20,592 → 28,864 B) is no longer in the tree and looks like a
+  different suite position. Close T1 on this figure, or name the position to compare at. Small
+  follow-up either way: the board prints `GC_THRESHOLD=`, but the test does not echo it. The
+  §M3.8 threshold race is confirmed (`-1` at 0.8 s after a reset, `32768` at 38 s).
+- **Give ad-hoc bench scripts one helper that kicks the AP's stations and then resets.** Every
+  hotspot fallback of the 2026-09-25 sitting was a reset without `kick_all_stations()` *immediately*
+  before it; kicking 50 s early does not help, since the board re-associates in between.
+- **Still owed elsewhere in this file**: R2's `ResetErrors` curve feeds item 24's design fix and
+  item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the segfault fix" below);
+  G6, a rollover method that leaves the board running (item 12, adapt now, measure later by
+  decision); H1, the owner's two-chroot run (the chroot entry below); F17, item 44's anomalies.
+  Excluded on purpose: G10, the UART protocol against its C implementation (`arduino/` is out of
+  scope), and the two unbought bench-rig capabilities (item 8).
 
 ## Deferred / explicitly out-of-scope work
 
@@ -651,30 +717,14 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   - **One `Framing_COBS` instance shared between two drivers would corrupt both**, since its
     long-lived scratch is per-instance, not per-call. Every construction site makes its own; noted
     because the failure would be silent if one ever did not.
-- **`tests_hardware/device_scripts/`'s two real-hardware bugs are fixed but NOT re-run on the
-  bench.** Moving that directory into the MicroPython mypy pass (commit 08529d1) is what surfaced
-  them; both are grounded in source, not inferred, but neither has been executed against real
-  hardware since:
-  - `fram_write_protect_roundtrip.py` called `set_write_protected(False)` positionally at four
-    sites. `ca767ba` ("wave 2 - FBT/A002 signature changes") made that parameter keyword-only in
-    `src/asy_fram_driver.py` and never updated this caller, so every run since has raised
-    `TypeError` on the script's first call. Now `set_write_protected(value=...)`.
-  - `wifi_service_reconnect_repro.py` called `task.exception()`. MicroPython's `Task` has no such
-    method - `extmod/modasyncio.c`'s `task_attr` exposes only `coro`/`data`/`state`/`done`/
-    `cancel`/`ph_key` - so the line raised `AttributeError` at exactly the moment it was trying to
-    report why a task died. Now `task.data`, which `extmod/asyncio/core.py`'s
-    `run_until_complete()` sets to the terminating exception. The 1.28 stub package did not
-    declare `data` and the line needed a `# type: ignore[attr-defined]`; the 1.29.0 stubs do
-    declare it, so the ignore is gone.
-  A flash-tier run should confirm both, whenever one is next scheduled
-  (`REAL_HARDWARE_TEST_QUEUE.md` R10).
-  **Half closed on silicon, 2026-09-18.** `fram_write_protect_roundtrip.py` **PASSED** — the
-  keyword-only fix is good, and it incidentally exercised measure A's self-acquiring-the-bus path in
-  `set_write_protected()`. `wifi_service_reconnect_repro.py`'s `task.data` fix is confirmed (it now
-  runs deep into the real CYW43 reconnect, reaching `EPERM`, where it used to die at first contact)
-  but the script still **does not complete**: the board drops the USB CDC mid-run and `mpremote` ends
-  in `OSError: [Errno 5]`, so it likely needs `run_isolated_expect_reset()`. That half, plus the
-  garbage-SSID incident the same run caused, is `REAL_HARDWARE_TEST_QUEUE.md` §2A F1.
+- **Two device-script loose ends from the 2026-09-25 sitting — owner's call.** (1)
+  `wifi_service_reconnect_repro.py` (row F1, verified that day) never feeds the watchdog, so on a
+  board running `main.py` it dies ~8 s in; it ran under a 4-line wrapper arming `WDT(8000)` and
+  feeding it from a 2 s `machine.Timer` (`tests_hardware/README.md`). Fold that into the script, or
+  keep the wrapper as the documented way. (2) Two stale scratch configs sit on the dev board's
+  flash, `config_HWTEST_DEBUGLEVEL_BACKUP.cfg` and `config_HWTEST_REBOOT.cfg`, left by earlier
+  device scripts; the DebugLevel backup could mislead a later restore. Should their scripts remove
+  them on exit, as the reconnect repro's own scratch file now is?
 
 - **`mypy tests_hardware/device_scripts` run STANDALONE reports two `Timer()` findings that no
   gate ever sees.** Both `timer_alarm_pool_exhaustion.py` and `scheduler_saturation_drop.py`
@@ -758,7 +808,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     `MemoryError`/reboot markers, zero unexpected skips. **Still open**: the real `--tier long`
     (6h) production-duration run itself - `mid` is a genuine real-hardware pass at 10 minutes, not
     a substitute for the full 6h window this item was always about
-    (`REAL_HARDWARE_TEST_QUEUE.md` S4).
+    (S4).
 - **Website definitions-file autogeneration — done (SPECIFICATION.md Part L.4).** The
   `@web`/`@web-group` comment-tag family and `buildgen/definitions.py`'s generator now exist,
   resolving every open question this entry used to track (anchoring a non-driver-schema value like

@@ -697,19 +697,6 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   across the gap until that C source (`arduino/libraries/Async_UART_Comm/`, imported 2026-09-13) is
   reconciled - outside this project's scope (owner, 2026-09-24) - then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
-- **[`REAL_HARDWARE_TEST_QUEUE.md`](REAL_HARDWARE_TEST_QUEUE.md)** — the single list of everything
-  waiting on the dev bench (suite runs, targeted investigations, coverage gaps that need silicon,
-  bench-host tasks), so one go-ahead session can work it in one pass instead of rediscovering it
-  across BACKLOG.md and `tests_hardware/README.md`. Each row is deleted once its
-  result is migrated into the permanent docs; the file goes when the last row does. It authorizes
-  nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
-  stays the technical reference for how to actually run any of it.
-
-- **[`HARDWARE_TEST_HANDOVER.md`](HARDWARE_TEST_HANDOVER.md)** — the briefing and running order
-  for the next dev-bench sitting: what changed on silicon since the board's image, the steps in
-  order with their flags and wear, and where each result goes. Names the queue's rows rather
-  than restating them; deleted once that sitting's results are migrated.
-
 - **[`PROJECT_AUDIT_PLAN.md`](PROJECT_AUDIT_PLAN.md)** — the plan and topic catalog for the
   whole-project audit (broad and deep, every tier): scope, method, open owner decisions, per-area
   topics and unverified seed observations. Planning only: its execution is blocked until the owner's
@@ -721,8 +708,8 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   lint/typecheck scopes; deleted together with the plan.
 
 A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
-lines and deleted once its findings are migrated. Never treat one as a durable reference; prefer the
-queue above for anything bench-related.
+lines and deleted once its findings are migrated. Never treat one as a durable reference; for
+anything bench-related, BACKLOG.md's "Real-hardware work still owed" is the list.
 
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 
@@ -756,7 +743,7 @@ queue above for anything bench-related.
   gates, the stage-6 permanent-WLAN-deactivation risk, the FRAM-chunk overwrite trap), the ISL29125
   bench-rig facts and the numbered audit passes that found this tier's own gaps. CLAUDE.md's
   real-hardware hard rule points here for what a session with the owner's go-ahead needs to know;
-  `REAL_HARDWARE_TEST_QUEUE.md` above says *what* is owed, this file says *how*.
+  BACKLOG.md's "Real-hardware work still owed" says *what* is owed, this file says *how*.
 
 **`dev_legacy/README.md`** (permanent, kept current):
 

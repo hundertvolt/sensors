@@ -1003,6 +1003,131 @@ def test_run_backup_writes_without_timestamp_once_wait_time_ntp_budget_is_exhaus
     assert voc_write_after == 0  # require_ntp was False, so the "resynced" branch never re-arms it
 
 
+def _w13_slots(log: "ErrorLog") -> int:
+    entry = log["SGP40"]
+    nums, kinds = entry["ErrNum"], entry["ErrType"]
+    return sum(1 for i in range(len(nums)) if kinds[i] == "W" and nums[i] == 13)  # MicroPython's zip() takes no strict=
+
+
+def _run_untimestamped_backups(plan: "list[bool | str]") -> tuple[int, int]:
+    # One SGP40_Reader with a switchable clock; each plan step runs one backup: False = NTP absent,
+    # True = synced, "defer" = synced-required write deferred, "fail" = the FRAM write itself fails.
+    # Returns (W13 slots in the history, err_count).
+    manager, _chip, _spi_bus = make_fram_manager()
+    run(manager.setup())
+    ntp = [False]
+
+    async def ntp_cb() -> bool:
+        return ntp[0]
+
+    async def scenario() -> tuple[int, int]:
+        writer = SGP40_Reader(
+            make_i2c(),
+            temperature_source=_FakeCompSource(),
+            temperature_field="Temp",
+            humidity_source=_FakeCompSource(),
+            humidity_field="Hum",
+            fram_storage=manager,
+            fram_ntp_callback=ntp_cb,
+            max_module_error=5,
+            cfg_path=_SHARED_CFG_DIR,
+        )
+        await writer.cfgmgr.setup()
+        await writer.pr.setup()
+        fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
+        queue_successful_init(fake_bus)
+        await writer._init_sgp()
+        buf, _serialize, _deserialize, cfg_values = await writer._check_storage()
+        fake_bus.read_queue.append(_word(30000))
+        data, _compensated, _serialized = await writer._read_sgp(buf, serialize=True, deserialize=False)
+        await writer._store_sgp(data)
+        assert writer.ts_storage is not None
+        real_write_into = writer.ts_storage.write_into
+        for step in plan:
+            writer.ts_storage.write_into = real_write_into  # type: ignore[method-assign]
+            if step == "defer":
+                ntp[0] = False
+                writer.voc_write = 2  # budget left -> require_ntp True -> deferred, nothing written
+            elif step == "fail":
+                ntp[0] = False
+                writer.voc_write = 0
+
+                async def failing_write_into(*_a: object, **_k: object) -> tuple[bool, int | None, bool]:
+                    return False, -1, False
+
+                writer.ts_storage.write_into = failing_write_into  # type: ignore[method-assign]
+            else:
+                ntp[0] = bool(step)
+                writer.voc_write = 0  # budget exhausted -> require_ntp False -> always writes
+            await writer._run_backup(buf, serialize=True, cfg_values=cfg_values)
+        return _w13_slots(await writer.pr.get_log()), writer.pr.err_count
+
+    return run(scenario())
+
+
+def test_w13_spends_one_slot_per_ntp_outage_not_one_per_backup() -> None:
+    # Bench finding 2026-09-25: one slot per 1-min backup filled the ring after one hotspot episode.
+    slots, count = _run_untimestamped_backups([False] * 9)
+    assert slots == 1
+    assert count == 9  # every repeat still counts (C.7.1)
+
+
+def test_w13_timestamped_backup_ends_the_episode_so_the_next_outage_logs_again() -> None:
+    slots, count = _run_untimestamped_backups([False, False, True, False, False])
+    assert slots == 2
+    assert count == 4  # the timestamped backup logs nothing
+
+
+def test_w13_timestamped_backup_on_the_require_ntp_branch_also_ends_the_episode() -> None:
+    # voc_write > 0 with NTP synced takes the "written with timestamp" branch, not "again".
+    manager, _chip, _spi_bus = make_fram_manager()
+    run(manager.setup())
+    ntp = [False]
+
+    async def ntp_cb() -> bool:
+        return ntp[0]
+
+    async def scenario() -> int:
+        writer = SGP40_Reader(
+            make_i2c(),
+            temperature_source=_FakeCompSource(),
+            temperature_field="Temp",
+            humidity_source=_FakeCompSource(),
+            humidity_field="Hum",
+            fram_storage=manager,
+            fram_ntp_callback=ntp_cb,
+            max_module_error=5,
+            cfg_path=_SHARED_CFG_DIR,
+        )
+        await writer.cfgmgr.setup()
+        await writer.pr.setup()
+        fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
+        queue_successful_init(fake_bus)
+        await writer._init_sgp()
+        buf, _serialize, _deserialize, cfg_values = await writer._check_storage()
+        fake_bus.read_queue.append(_word(30000))
+        data, _compensated, _serialized = await writer._read_sgp(buf, serialize=True, deserialize=False)
+        await writer._store_sgp(data)
+        writer.voc_write = 0
+        await writer._run_backup(buf, serialize=True, cfg_values=cfg_values)  # W13, first slot
+        ntp[0] = True
+        writer.voc_write = 3  # decremented to 2 -> require_ntp True, synced -> timestamped write
+        await writer._run_backup(buf, serialize=True, cfg_values=cfg_values)
+        assert writer.last_backup is not None and writer.last_backup > 0
+        ntp[0] = False
+        writer.voc_write = 0
+        await writer._run_backup(buf, serialize=True, cfg_values=cfg_values)  # new outage, new slot
+        return _w13_slots(await writer.pr.get_log())
+
+    assert run(scenario()) == 2
+
+
+def test_w13_episode_survives_a_deferred_backup_and_a_failed_write() -> None:
+    # Neither a deferral (nothing written) nor an E14 write failure is a timestamped backup.
+    slots, _count = _run_untimestamped_backups([False, "defer", False, "fail", False])
+    assert slots == 1
+
+
 def test_check_storage_backup_counter_wraps_before_it_could_overflow() -> None:
     # The 100000 wraparound guard only matters when BackupPeriod is disabled (0): any nonzero
     # period resets backup_counter long before 100000 for every value in the field's valid range

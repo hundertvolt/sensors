@@ -537,9 +537,13 @@ all and association plus DHCP dominate the real 7.7s floor; its *delta* predicti
 `webserver` hypothesis above did not survive the measurement**: `webserver`'s own `pr.setup()` was
 confirmed to *succeed* from a clean boot on real hardware (`initialized == True`), so the contended
 window costs it time, not correctness — and since WP2 adds no new chunk to `webserver` itself, it
-cannot account for a delta that WP1+WP2 produce jointly. One part stays open: the `CFGMGR_SYSTEM`
-fix's own **+0.90s** is far more than one extra FRAM-backed logger's `setup()` should cost, and is
-unexplained (`REAL_HARDWARE_TEST_QUEUE.md` R6).
+cannot account for a delta that WP1+WP2 produce jointly. The `CFGMGR_SYSTEM` fix's own +0.90s did
+**not** reproduce: an A/B on one tree (2026-09-25, instrumented images differing only in the setup
+order, 5 hard resets each) put boot-to-first-`/status` at **8.94s** fixed against 8.91s unfixed, and
+`sysfunct.setup()` at 79 ms against 26 ms — the fix costs ~53 ms, one logger's worth.
+**Setup costs on silicon (same run)**: `fram.setup()` 6 ms; every other unit 79-91 ms, the batch
+0.93 s in all; construction before it ~0.14 s and module import ~1.1 s before `main()` starts; the
+8-timer stagger 0.79 s. So a FRAM-backed module's setup is ~85 ms here, not the twin's figures.
 
 **This order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — derived from
 `devices/wozi.toml`.** `buildgen` derives both from each device's own TOML rather than assuming
@@ -1932,7 +1936,7 @@ while the ring still says what else happened.
 | `asy_bmp3xx_driver.py` (`BMP3XX`) | 10-22 | — | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched snapshot read. |
 | `asy_scd30_driver.py` (`SCD30`) | 10-25 | — | 10=init, 11=periodic read, 12=unused (no init-time config), 13=stop-continuous-measurement, 14-25=per-field forwards. |
 | `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15/17/19/21=resolution/range/IR-offset/IR-adjust getters, 16/18/20/22=their setters, 24=derived-persistence reapply, 25=trigger-interval, 26=gain-ratio/filter-coefficient setters (shared), 27=autorange-threshold/dwell setters (shared), 28=`_read_sensor_dict()`, 29=auto-range threshold-register write, 30=auto-range RNG-bit write, 31=status read, 32=all-ones bus-fault confirmation, 33=brownout re-apply, 34=diverged-config re-apply, 35=paired gain-ratio calibration leg (`_read_on()`), 38=`set_range_auto()`. `wrnno` 10=brownout detected, 11=chip config diverged from shadow, 13=range decided by the periodic path only for 5 decisions running (the interrupt line may be dead, requirement 17/M.1.1). **12 is retired, not reused**: it used to mean "saturated on the high range", but that status is a harmless, transient, always-current measurement fact, not a fault — it now lives in the measurement output as the `Overrange` field (mode-aware: true whenever nothing left could mitigate the saturation — the configured range itself under Fixed range, or Automatic Range already on its highest setting) rather than as a log entry. |
-| `asy_sgp40_driver.py` (`SGP40`) | 10-18 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13-18=backup read/write/clear/deserialize/serialize/compensation. `wrnno`=backup missing/stale — a missing/not-yet-available *compensation* reading is no longer one of these (C.14.2's own note), only a genuine compensation-source read exception (`errno=18`) still logs. |
+| `asy_sgp40_driver.py` (`SGP40`) | 10-18 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13-18=backup read/write/clear/deserialize/serialize/compensation. `wrnno`=backup missing/stale; 13=a backup written without a timestamp (NTP absent past `SGPWaitTimeNTP`) follows the repeat rule above, one slot per outage, which a timestamped backup ends — one slot per 1-minute backup filled the ring during a single hotspot episode (bench, 2026-09-25). A missing/not-yet-available *compensation* reading is no longer one of these (C.14.2's own note), only a genuine compensation-source read exception (`errno=18`) still logs. |
 | `asy_wifi_service.py` (`WIFI`) | 11-20 | 1-8 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout, 20=a PUT's radio value refused over its byte bound (C.7.4); `wrnno` 1-3=missing-config, 4-7=WLAN status (4 is cyw43-driver's catch-all for any failed auth or handshake, an AP dropping mid-association included - not proof of a wrong password, BACKLOG item 29), 8=a stored radio value over its byte bound, run on its default (C.7.4) — 4-8 follow the repeat rule above, one slot per distinct verdict per connect episode, which a successful connection ends. **19 is retired, not reused**: it was the hotspot timer's one-shot self-heal backstop, gone since that timer is `PERIODIC` (C.9). |
 | `asy_ntp_client.py` (`NTP`) | 11-21 | 1-3 | 11=missing-config, 12=DNS resolution, 13=invalid address, 14=implausible time, 15=malformed reply, 16/17=retry-timer arm/max retries, 18=interval-fallback, 19=time-calc, 21=no reply within the fetch timeout (a silent timeout used to persist nothing). **20 is retired, not reused**: it was the give-up that let the supervisor restart the task (C.7.2). 11-15, 21 and `wrnno` 2 follow the repeat rule above per distinct code; a successful sync ends the episode. `wrnno` 1/3=callback failures, 2=unsynchronized/Kiss-o'-Death reply. |
 | `captive_dns.py` (`DNSSRV`) | 1-3 | 1-3 | 1=invalid server_ip/netmask, 2=loop exception, 3=disconnect-cleanup; `wrnno` 1=dropped reply, 2=invalid recvfrom, 3=socket teardown incomplete. |
@@ -1963,7 +1967,9 @@ restarted it about once a minute and rebooted the device about every four minute
   skipped for "network not up" leaves it alone. Per device through the optional `[device]` keys
   `ntp_retry_s`/`ntp_retry_max_s`, checked by buildgen as the effective pair (at least the tick;
   cap not below the interval). A synced device's failed resync keeps its own short retry loop
-  (`_NTP_SYNC_RETRIES` × 15 s) and does not touch the backoff.
+  (`_NTP_SYNC_RETRIES` × 15 s) and does not touch the backoff. **Confirmed on silicon
+  (2026-09-25)**: with UDP 123 blocked, one `E21` slot (count 3), no task ended, SYSTEM clean; two
+  full bench tiers then held `assert_no_task_ended` throughout.
 - **Notification** (`asy_notification_service.py`) keeps no streak either: a failed read of its own
   config is re-read every cycle anyway, and a restart re-reads nothing more.
 
@@ -2016,7 +2022,9 @@ a config value treated as a hardware fault (C.7.2). `asy_wifi_service.py` now bo
 Country, Hostname and HotspotPW in bytes at both ends: a PUT over the bound is refused as `"Invalid"`
 (errno 20, `_set_mgr_cfg()`), and a value already stored that way runs on its default (`wrnno` 8)
 rather than reaching the radio. Only the max needs bytes — a value is never fewer bytes than
-characters — and a character-bound violation stays the schema's own refusal.
+characters — and a character-bound violation stays the schema's own refusal. **Confirmed on
+silicon (2026-09-25)**: an 18 × `ä` hostname (36 bytes) was refused `"Invalid"` with errno 20 and
+the hostname left unchanged.
 
 ## C.8 Concurrency & locking model
 
@@ -3453,7 +3461,8 @@ not just delayed** — `mp_sched_schedule()` drops it if MicroPython's fixed-dep
 (depth 8 on rp2, shared by every soft timer/IRQ) is full, with no exception and no way to detect a
 dropped vs. not-yet-run callback. A periodic timer self-heals next tick; a one-shot does not fire
 again - which is why every timer that must fire uses `PERIODIC` (C.9), the WiFi hotspot shutoff
-included (stopped by `reconnect_wifi()` on its first delivered fire). A software-timeout mitigation for this was considered and rejected (it would just race the
+included (stopped by `reconnect_wifi()` on its first delivered fire; confirmed on silicon
+2026-09-25: back in STA after the 8-minute window with no reboot). A software-timeout mitigation for this was considered and rejected (it would just race the
 real hardware watchdog every deployment already arms) — don't re-propose without a materially
 different justification.
 
@@ -3949,7 +3958,10 @@ distinguish them:
 Re-measured on the dev bench (2026-09-12) after the yield moved from the four read loops into
 `ready()` itself: unclamped 4422 us, clamped **137 us**, write 169 us — the same result from an
 independent run against the reshaped driver, which is what makes the table a property of the
-peripheral rather than of one arrangement of the code.
+peripheral rather than of one arrangement of the code. **Through the shipped driver itself**
+(2026-09-25, `device_scripts/uart_driver_read_never_blocks_the_loop.py`, which times the calls
+`readinto_until_complete()`'s own clamp makes): longest call **126-132 us** against 3,251 us for an
+unclamped read of the same frame on the same peripheral - asserted in the flash tier.
 
 For scale, this board's own scheduler noise floor — the worst gap a `sleep_ms(0)` probe sees with
 no UART activity at all — is 400-900us, so the clamped read is already below the point at which
@@ -4001,7 +4013,7 @@ obtainable — and it is what a second device *would* wait. **Per command (T.4, 
 2026-09-25)**: the 1-byte write took 2,833-3,395 us (~0.6-0.7 ms per CS envelope), one 8-byte
 read envelope 783-881 us, and the whole block operation held the bus 18,089-23,148 us. A single
 command is therefore under ~1 ms; whether to yield between the envelopes of one write is open
-(`REAL_HARDWARE_TEST_QUEUE.md` T4).
+(BACKLOG.md, T4).
 
 The write side is the same shape but bounded, and needed no change: `mp_machine_uart_write()`
 short-writes rather than waiting once `timeout` (0 here) elapses, and `_write_all()` gates on
@@ -4911,7 +4923,7 @@ batching, not one piece per fragment**: every piece is one write through a per-w
 `asyncio.wait_for()`, measured at +53% throughput cost when pushed to one per character (F.1).
 **Nor one piece per section**: that scales with module count (17 on real hardware, ~4.9 KB for one
 section, almost the original whole-aggregate failure). At 256 B `dev`'s `/status` is 29 pieces (11
-at the old 1024 B); its wall-clock on silicon is `REAL_HARDWARE_TEST_QUEUE.md` row W3.
+at the old 1024 B); on silicon it takes 1.29 s against 1.10 s at 1024 B (+17 %, 2026-09-25; BACKLOG.md W3).
 
 **Why 256.** A piece cap is only a bound if the heap can still place a piece of that size *under
 load*, and at `gc.threshold(-1)` it cannot place 1,024: with 1,024 B pieces the board served at most
@@ -4930,10 +4942,11 @@ means a single scalar longer than `chunk_bytes` becomes one over-cap piece; the 
 can be that scalar — `errcount` holds ints alone (`_shape_errcount_entry()`), and `history_length`
 bounds its list — so the ceiling is the longest string any schema permits, which is `NTP_Host`'s
 1,024 characters (`asy_ntp_client.py`'s `_VAL_NH`; the bound is settled, BACKLOG's deferred list),
-giving a ~1,026 B piece on `/networking` and in `/status`'s networking section. Every silicon and
-twin figure above was taken at the 12-character default, so the long-value case is bounded by
-argument, not measured: at the limit of 6 it sits under the ~1.5 KB largest free block measured at
-peak (H.7), and at 7 it would not fit that run's 528 B. Nothing to change here — a shorter
+giving a ~1,026 B piece on `/networking` — `/status`'s networking section carries live link state,
+not the configured host. **Measured on silicon (2026-09-25, limit of 6)**: with `NTP_Host` at 1,024
+characters `/networking` came back complete (1,182 B) and `/status` unchanged (6,871 B), and both
+the full-ceiling burst and the peak heap test passed, the worst of 72 peak samples leaving a
+36,864 B largest free run. At 7 it would not have fit that run's 528 B. Nothing to change here — a shorter
 `NTP_Host` bound is the lever, and the owner settled it — but do not read "≤ 256 B" as covering a
 device whose user has typed a long server address.
 
@@ -5285,7 +5298,7 @@ slots are still draining through `_serve()`'s `finally`, and the row took its se
 workers and none *after* them, while `tests_hardware/`'s own `http_client.fetch()` is single-shot
 by construction. Nothing in `src/` was implicated.
 
-**Fixed in the test, 2026-09-19** (owner's decision; `REAL_HARDWARE_TEST_QUEUE.md` §2A F11 has the
+**Fixed in the test, 2026-09-19** (owner's decision; F11, `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7I-§7K has the
 account). The health check now uses the same bounded `wait_until()` that
 `test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` already uses in the same file
 for the identical lag. This does not weaken it: `wait_until()` retries a check that raises but
@@ -6041,7 +6054,9 @@ can most easily break without any test naming them:
   risk, CLAUDE.md). Both reach the device as **defaults, not fixed values**: the generator passes
   them to `AsyConnTime(hostname=..., hotspot_password=...)`, which substitutes them into the two
   `ConfigManager`-persisted fields' schemas (`_with_default()`), so a rename through the web UI
-  still wins on every later boot. Until 2026-09-18 nothing passed them at all and every device
+  still wins on every later boot. Confirmed on silicon (2026-09-25): with `Hostname` removed from
+  `config_WIFI.cfg`, the next boot served `dev.toml`'s default (`CFGMGR_WIFI` `W4`) and wrote it
+  back once. Until 2026-09-18 nothing passed them at all and every device
   booted as the shared `"SensorNode"` whatever its TOML said. `[device].hostname` is capped at
   `network.hostname()`'s own 32 characters at build time, and `[device].hotspot_password` is held to
   WPA2-PSK's own 8-63, because a value outside either field's schema bounds is dropped back to that

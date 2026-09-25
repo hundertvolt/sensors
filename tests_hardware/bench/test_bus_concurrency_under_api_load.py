@@ -26,8 +26,8 @@ VOC_MIN, VOC_MAX = 0, 500  # same bounds as device_scripts/sgp40_voc_algorithm_q
 _GET_WORKERS = max(2, configured_max_connections() - 3)
 _GET_ITERATIONS_PER_WORKER = 8
 _PUT_RESET_COUNT = 2
-# Ceiling refusals fetch() retried, by "METHOD path": BACKLOG 30's resets share their signature, so
-# the two config-write arms print these, and a gated run tells the ceiling from an ISL29125 mechanism.
+# Ceiling refusals fetch() retried, by "METHOD path": a connection reset under a config write shares
+# their signature, so the two config-write arms print these and a gated run tells the two apart.
 _ceiling_retries: dict[str, int] = {}
 _ceiling_retries_lock = threading.Lock()
 

@@ -134,5 +134,5 @@ def test_ticks_ms_real_2pow30_rollover(board: Board, request: pytest.FixtureRequ
         f"the board ~8s later, zeroing the counter, so it can never climb toward 2**30 between "
         f"polls (BACKLOG.md item 12). A real method has to leave the board running - feed or "
         f"disable the watchdog from inside the polled code, or observe passively via tail_log() - "
-        f"and that redesign is tracked in REAL_HARDWARE_TEST_QUEUE.md, not worked around here."
+        f"and that redesign is tracked in BACKLOG.md (G6), not worked around here."
     )
