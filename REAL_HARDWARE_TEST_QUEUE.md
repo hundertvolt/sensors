@@ -18,7 +18,7 @@ Status values: **OPEN** (owed), **BLOCKED** (waiting on a decision or another ro
 
 ## The finalisation checklist — everything still owed, in one place
 
-Grouped by what each row *needs*, not by which effort opened it. **19 rows owed.** D1 and D2 are the
+Grouped by what each row *needs*, not by which effort opened it. **17 rows owed.** D1 and D2 are the
 owner's standing answers and no sitting re-asks them. G10 is excluded (section 5).
 This table is an index; the row's own entry below is what to read before running it.
 
@@ -29,8 +29,8 @@ This table is an index; the row's own entry below is what to read before running
 | **Heap placement readings** | T1 | The in-suite AFTER `largest_block` |
 | **Measure A's leftovers** | T4 | Measured; the owner's decisions are left |
 | **New features** | N3 | Rides on R13; not in the 2026-09-25 sitting (no babbling peer on the bench) |
-| **Targeted investigations** | R1, R2, R6, R7, R9, R13 | R1 and R2 wait on owner decisions; R6/R7 on an instrumented or A/B build |
-| **Tests still to write** | G3, G6 | Code first, bench second. G6 is adapt-now-measure-later by decision |
+| **Targeted investigations** | R2, R6, R7, R9, R13 | R2 waits on an owner decision; R6/R7 on an instrumented or A/B build |
+| **Tests still to write** | G6 | Code first, bench second. G6 is adapt-now-measure-later by decision |
 | **The bench host itself** | H1 | Owner-run; needs no board |
 | **Long soak and the light rig** | S4, M1 | Deliberately separate sittings. M1 is interactive and records the rig geometry S3b depends on |
 | **Findings still open** | F17, F18 | F17: one unexplained USB drop, not reproduced since. F18 is the owner's call first |
@@ -118,9 +118,8 @@ genuinely wanted on top.
 first (it is what records the rig geometry), then
 `scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep`. ~10 minutes combined.
 
-**Step 8 - the targeted investigations** in section 2, in this order: R1 (start with its no-code
-`RangeAuto=false` bisection, and restore `RangeAuto` afterwards), R2's reader-count curve at 0, 1,
-2, 3, 4 and 6 readers, then R6/R7 and R13.
+**Step 8 - the targeted investigations** in section 2, in this order: R2's reader-count curve at
+0, 1, 2, 3, 4 and 6 readers, then R6/R7 and R13.
 
 **Step 9 - the long soak, deliberately and separately.** `scripts/run_bench_soak_tests.sh --tier
 {short,mid,long}`, chosen on purpose (60 s / 600 s / 6 h). Never bundled into steps 4-6; the suite
@@ -229,12 +228,10 @@ No flash cycle and no reflash; T2's three `persistence_write` tests spend a conf
 
 ## 2. Targeted investigations
 
-R1, R2 and R5 are confirmed as owed by the owner (2026-09-18); they wait on bench time, not on a
-decision.
+R2 is confirmed as owed by the owner (2026-09-18); R1 and R5 are closed (2026-09-25).
 
 | # | Investigation | Source | Status |
 | --- | --- | --- | --- |
-| R1 | **BACKLOG item 30 — the ISL29125 HTTP connection reset under concurrent API load.** Owner's direction is to root-cause and resolve, not re-measure. Shape is established: needs **both** a config-persisting PUT **and** ≥2 concurrent readers (PUT alone 0/10, PUT+1 reader 0/6, PUT+2 readers **6/18**, plain GET+2 readers 0/6); failures land at 21–72 ms against 0.5–2.2 s for successes, and `WEBSERVER`'s counter stays 0 so FRAM forensics will not help. **First read the two config-write arms' `CEILING_RETRIES` lines** from Step 6's gated run (`-s`): the connection ceiling is a second candidate with the same signature (BACKLOG 30), and the test's retry now hides it. ISL29125 retries well above BMP3XX's with no other failure → the ceiling, close BACKLOG 30 with no bisection. Otherwise **do the no-code bisection**: `PUT /sensors {"ISL29125": {"RangeAuto": false}}` drops `_switch_range()` from the three-step push, leaving only `configure()` + `_reapply_persist()`. Rate falls → the threshold re-arm is implicated; unchanged → it is the first two. Restore `RangeAuto` afterwards. | BACKLOG 30 | **Gated run 2026-09-25: both arms passed, `CEILING_RETRIES` none** — no refusal and no reset, so neither branch of this row applies and there is nothing to bisect. Owner decision: a dedicated repeat of the original PUT + 2 readers shape (18 attempts, 18 flash config writes) to measure the rate on this image, or close BACKLOG 30 as not reproduced |
 | R2 | **BACKLOG item 32 — the `ResetErrors` reader-count curve.** Elapsed time at **0, 1, 2, 3, 4, 6** concurrent `GET /status` readers. Two points exist (6.32 s idle, 11.58 s at 3 readers = 77 % of the 15 s server cap); two points cannot say whether the curve flattens. | BACKLOG 32 | **MEASURED 2026-09-25** (image `05:21:43Z`, 21 FRAM chunks, three sweeps per point, readers re-requesting with zero think time): 0 → 2.31 / 2.43 / 2.43 s; 1 → 5.53 / 5.61 / 5.76 s; 2 → 8.80 / 10.57 / 11.03 s; 3 → 13.16 / 13.24 / 14.69 s; 4 → no result (refused 20× at the ceiling, then no answer within 30 s — F18); 6 not run, since 4 already exceeds the cap. **The curve does not flatten**: ~+3.5 s per reader, so 3 readers reach 88–98 % of the 15 s cap. Every completed sweep but one read all 21 counters back at 0; the exception (2 readers, run 2) showed `UART_init`/`UART_resp` entries afterwards, most likely logged under load after the sweep (F18's mechanism) rather than skipped by it — the next sweep cleared them, and R4 is what settles it. Results are in BACKLOG 24 and 32; the budget and the design fix are the owner's decision |
 | R6 | **The `CFGMGR_SYSTEM` setup-order fix's unexplained +0.90 s of boot latency.** Boot latency itself is measured and needs no re-run: pre-WP **7.74 s** → WP1+WP2 **9.80 s** → WP1–WP8 **9.76 s** → +`CFGMGR_SYSTEM` fix **10.66 s** (medians of 5, spread ±0.06 s; 23 reboots, no `WDT_RESET`). Those figures were taken by PR #102, which the owner closed unmerged on 2026-09-18 — they are migrated into `SPECIFICATION.md` Part A.7's boot-latency note, so nothing is lost with the PR. What remains open is only the sub-question: **+0.90 s** is far more than one extra FRAM-backed logger's `setup()` should cost, and is unexplained. Worth understanding before the same reorder is assumed free elsewhere; it does not threaten the watchdog budget, so it is not a reason to revert. | SPECIFICATION.md Part A.7| OPEN |
 | R9 | **Half closed: the shadow-divergence fix RAN and passed on silicon (archive §7H.6, the first fully clean bench tier); the `Overrange` field that replaced `W12` has still never run.** `configure()`'s device-session lock was widened to span the whole validate-mutate-write(-rollback) sequence (WP-era fix, unit-tested by `test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight`), but the false `wrnno=11` it fixes only ever manifested under real concurrent bench load - so only real load re-confirms it. Same run covers the `Overrange` half: `device_scripts/isl29125_mechanism_envelope.py` now reads the live field instead of the retired `W12` log entry. | BACKLOG, "Open questions" first entry | OPEN |
@@ -261,7 +258,6 @@ Each is a test to *write* or a method to settle against real hardware, not just 
 
 | # | Gap | Status |
 | --- | --- | --- |
-| G3 | **`_reboot()`'s alarm-pool-exhaustion fallback (`_force_watchdog_starve = True`) is mock-only.** | OPEN |
 | G6 | **`test_ticks_ms_real_2pow30_rollover` needs a measurement method that does not poll with `board.exec()`.** BACKLOG item 12 established on real hardware that every `exec` starves the watchdog and hard-resets the board ~8 s later, zeroing the counter — so the hour-by-hour poll can never climb toward 2**30, and a later read landing below an earlier one is the reboot, not a wrap. The vacuous-pass hole is closed (a drop now only counts as a wrap when the previous read was already within two hours of 2**30, so the ambiguity fails honestly), but that makes the test *fail* rather than measure. A real method has to leave the board running: feed or disable the watchdog from inside the polled code, or observe passively via `tail_log()`. Design decision, then a genuine ~12.4-day run behind `--allow-multi-day-rollover-wait`. | **DECIDED 2026-09-22: adapt the method, defer the measurement.** Do not drop the test — the chosen answer is a method that leaves the board running (feed or disable the watchdog from inside the polled code, or observe passively via `tail_log()`). The ~12.4-day run itself is deliberately not scheduled: we do not measure it yet, and the test is deselected by default behind `--allow-multi-day-rollover-wait`, so deferring costs nothing today |
 
 ## 4. Bench-host tasks (not the board)

@@ -286,52 +286,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     `W5`/`W6` runs. The log text now says what the status means, and the bench outage check accepts
     `W4` as benign beside `W5`.
 
-30. **ISL29125 HTTP connection reset under concurrent API load — root-cause not yet established.**
-    Owner's direction: chase, root-cause and resolve. Needs **both** a config-persisting PUT and >=2
-    concurrent readers (four-arm isolation on the dev bench, 2026-09-17: PUT alone 0/10, PUT + 1
-    reader 0/6, PUT + 2 readers **6/18**, plain GET + 2 readers 0/6), so it is a real residual, not a
-    test artifact, and not the `max_connections=4` reject path (that one is a clean single-worker RST
-    at 5 concurrent workers, by design). Failures land at 21-72ms against 0.5-2.2s for successful
-    writes — two cleanly separated populations, and the connection dies before reaching the handler.
-    **The DUT logs nothing**: `WEBSERVER`'s counter stays 0, so this is invisible to FRAM forensics.
-    The suspected mechanism is the deferred flash write's own interrupt-disable window
-    (SPECIFICATION.md Part F.2's accepted residual risk) — **suspected, not proven**; all that is
-    established is that the persisting write is necessary. Note the write path is now gated behind
-    `@pytest.mark.persistence_write`, so reproducing it needs `--allow-persistence-writes`.
-    **Where to look first — corrected 2026-09-17 after comparing the two arms properly.** An earlier
-    version of this item said the BMP3XX arm passing "points at load/timing rather than at this one
-    driver". That reads the evidence backwards. The two tests are the *same* shape: 2 GET workers on
-    `/sensors` plus one writer alternating between two valid values, same endpoint, same
-    `ConfigManager.write_config()` flash path. Identical setup, opposite outcome, so the flash write
-    the two share cannot be what distinguishes them — the difference is in what each driver's own
-    push does on the bus. `BMP3XX._push_pressure_oversampling()` is a single `set_*` write.
-    `ISL29125._push_resolution()` → `set_resolution()` is a **three-step reconfiguration**:
-    `isl.configure(resolution=...)`, then `_reapply_persist()` (the derived persistence counter
-    changes with the cycle length), then — because `RangeAuto` defaults to `True` and `dev` leaves it
-    there — `_switch_range()` to re-arm threshold registers that are scaled to the old resolution.
-    That is a far longer critical section against two concurrent readers, and it is the first thing
-    to instrument. **Cheap bisection**: `RangeAuto` is a plain REST bool, so `PUT /sensors
-    {"ISL29125": {"RangeAuto": false}}` drops the third leg without touching any code — if the reset
-    rate falls, the re-arm is implicated; if it does not, it is the first two.
-    **A second candidate, found after this item was written and not yet tested against it
-    (2026-09-24, from SPECIFICATION.md H.7):** the connection ceiling itself. A connection holds its
-    slot until its close has finished, so back-to-back clients are refused below the nominal limit,
-    and a refusal is a FIN/RST within milliseconds that nothing on the DUT logs — this item's exact
-    signature. A PUT held longer by the ISL29125's three-step push, against BMP3XX's single write,
-    would explain the split; the listen backlog was also MicroPython's default 5 then, a second
-    silent reset path since sized to the ceiling. **Since 2026-09-19 the test retries a ceiling
-    refusal, so a clean run no longer answers this item** — both config-write arms now print
-    `CEILING_RETRIES` per arm, and the next gated run reads those before bisecting: ISL29125 retries
-    well above BMP3XX's and no other failure means the ceiling (close this item); failures that are
-    not ceiling closes mean an ISL29125 mechanism, and the bisection above follows.
-    **That gated run happened (2026-09-25, image `12:54:13Z`) and fits neither branch**: both arms
-    passed with `CEILING_RETRIES` "none" — no ceiling refusal and no reset at all, so there was
-    nothing to bisect. The webserver has changed since the 6/18 measurement (header block as one
-    write, slot release on `MemoryError`, backlog sized to the ceiling), and so has the admission
-    path. One clean arm is not a rate, though: the owner decides between a dedicated repeat of the
-    original PUT + 2 readers shape (18 attempts, 18 flash config writes) to put a number on it, and
-    closing this item as not reproduced.
-
 32. **The bench tier's `ResetErrors` timeout was raised 10.0s → 30.0s with no elapsed-time budget
     to replace what that bound was incidentally enforcing.** Recorded 2026-09-17: a loosening with
     no compensating check.

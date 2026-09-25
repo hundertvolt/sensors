@@ -85,7 +85,7 @@ def _bench_module() -> ModuleType:
 
 
 def test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    # BACKLOG 30's discriminator: a gated run prints these per arm, so the count must be exact.
+    # The config-write arms' ceiling-vs-reset discriminator: a gated run prints these, so the count must be exact.
     bench = _bench_module()
     outcomes: list[BaseException | None] = [ConnectionResetError(errno.ECONNRESET, "reset"), ConnectionResetError(errno.ECONNRESET, "reset"), None]
 
