@@ -15,7 +15,7 @@ from micropython import const
 
 from base_classes import LockedCounter, SensorReaderConfig
 from captive_dns import DNSServer
-from config_manager import make_dict
+from config_manager import make_dict, schema_dict
 
 try:
     from typing import TYPE_CHECKING
@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from typing import Any, Protocol
 
     from asy_fram_manager import AsyFramManager
+    from config_manager import ConfigSchema, FieldSchema, WriteValidity
     from print_log import ErrorLog, PrintLogHistory
 
     # Structural Protocol for a caller-supplied LED (SPECIFICATION.md Part C.10's typing convention).
@@ -65,6 +66,20 @@ _NAME = const("WIFI")
 # infer field names from a literal at the call site, not through a variable indirection.
 WIFI = namedtuple("WIFI", ("Mode", "Connected", "IP", "TS"))
 _FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's own fields above
+
+
+# The radio's own bounds are UTF-8 bytes, where the schema counts characters: country()/hostname()
+# raise outside 2 / 32 bytes and connect() overflows past a 32-byte SSID (SPECIFICATION.md C.7.4).
+_RADIO_FIELDS = const(("SSID", "PW", "Country", "Hostname", "HotspotPW"))
+
+
+def _radio_bytes_ok(field: "FieldSchema", value: object) -> bool:
+    # Only the max needs bytes (a value is never fewer bytes than characters), and only once the
+    # schema's own character bounds hold - anything else stays the schema check's refusal.
+    low, high = field[3], field[4]
+    if type(value) is not str or value == field[5] or type(low) is not int or type(high) is not int or not low <= len(value) <= high:
+        return True
+    return len(value.encode()) <= high
 
 
 def _with_default(schema: "tuple[tuple[str, str, str, int, int, str | None], ...]", value: "str | None") -> "tuple[tuple[str, str, str, int, int, str | None], ...]":
@@ -160,7 +175,6 @@ class AsyConnTime(SensorReaderConfig):
         self.counter_timer = Timer()
         self.hotspot_timer = Timer()
         self.hotspot_timer_running = False
-        self.hotspot_timer_ticks_since_armed = 0  # self-heal counter, see _hotspot_client_absent()
         self.hotspot_timeout_trigger_event = asyncio.ThreadSafeFlag()
         self.ledflash: asyncio.Task[None] | None = None
         # wlan_connect()'s own state machine - reset at the top of every wlan_connect() call
@@ -293,7 +307,6 @@ class AsyConnTime(SensorReaderConfig):
             self._conn_phase = _PHASE_STA_SEEKING
         self.hotspot_timer.deinit()
         self.hotspot_timer_running = False
-        self.hotspot_timer_ticks_since_armed = 0
         try:
             self.reconn_wifi = (self._conn_phase == _PHASE_HOTSPOT) or self.wlan.isconnected() or bool(self.wlan.active())
         except Exception as e:  # rare (once per task (re)start) - safe default forces a clean reconnect
@@ -348,7 +361,8 @@ class AsyConnTime(SensorReaderConfig):
                 await self.set_wifi_led(status=False)
             else:
                 await self.set_wifi_led(status=led_cfg)
-                await self._activate_hotspot_ap(wifi_cfg[0], wifi_cfg[1], wifi_cfg[2])
+                country, hostname, password = await self._radio_values(wifi_cfg, _VAL_CTRY + _VAL_HOST + _VAL_HOTSPOT_PW)
+                await self._activate_hotspot_ap(country, hostname, password)
             self.hotspot_started_once = True
         finally:
             self._release_wifi_lock()
@@ -382,7 +396,6 @@ class AsyConnTime(SensorReaderConfig):
     def _hotspot_client_connected(self) -> None:
         self.hotspot_timer.deinit()  # if client connected, do not stop hotspot
         self.hotspot_timer_running = False
-        self.hotspot_timer_ticks_since_armed = 0
         if self.ledflash is None:
             self._led_on()
         else:
@@ -394,30 +407,19 @@ class AsyConnTime(SensorReaderConfig):
         if not self.hotspot_timer_running:
             self.pr.evt("No client connected - hotspot timer started")
             try:
+                # PERIODIC, per C.9: a dropped soft callback is simply re-fired one period later, and
+                # the first one delivered ends the repeats - reconnect_wifi() deinits this timer.
+                # The callback only sets the flag; _watch_hotspot_timeout() does the reconnect.
                 self.hotspot_timer.init(
                     period=self.hotspot_time,
-                    mode=Timer.ONE_SHOT,
-                    # Only sets a flag - no business logic inside the Timer IRQ callback itself
-                    # (C.9). The actual reconnect_wifi() call happens in _watch_hotspot_timeout(),
-                    # a normal asyncio coroutine awaiting this ThreadSafeFlag.
+                    mode=Timer.PERIODIC,
                     callback=lambda _b: self.hotspot_timeout_trigger_event.set(),
                 )
                 self.hotspot_timer_running = True  # try to reconnect once after hotspot time if no client connected (maybe router reboot after power loss)
-                self.hotspot_timer_ticks_since_armed = 0
             except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - matches
                 # asy_ntp_client.py's own Timer.init() guards; hotspot_timer_running stays False so
                 # the next wifi_refresh_sec cycle retries arming it instead of getting stuck unset.
                 self.pr.err("Could not start hotspot timer:", e)
-        else:
-            # Self-heal backstop for a silently dropped soft Timer callback (SPECIFICATION.md
-            # Part F.1's soft-Timer-callback-drop gotcha).
-            self.hotspot_timer_ticks_since_armed += 1
-            if self.hotspot_timer_ticks_since_armed * self.wifi_refresh_sec * 1000 >= 2 * self.hotspot_time:
-                # WP8: a real, actionable self-heal event (SPECIFICATION.md Part F.1's soft-Timer-
-                # callback-drop gotcha actually firing), not routine WiFi-mode-transition noise -
-                # persisted, unlike this module's other, deliberately print-only observations.
-                await self.pr.err_s("Hotspot timer callback appears dropped, forcing reconnect", errno=19)
-                self.hotspot_timeout_trigger_event.set()
         if self.ledflash is None:
             evtloop = asyncio.get_event_loop()
             self.ledflash = evtloop.create_task(self._flash_led_off())
@@ -435,7 +437,7 @@ class AsyConnTime(SensorReaderConfig):
         if wifi_cfg is None or len(wifi_cfg) != _STA_CFG_FIELDS:
             await self.pr.wrn_s("Missing WLAN configuration!", wrnno=3)
             return
-        ssid, pw, country, hostname = wifi_cfg
+        ssid, pw, country, hostname = await self._radio_values(wifi_cfg, _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST)
         if ssid == "":  # SSID - invalid or empty config
             self.connection_failures = self.conn_fail_to_hotspot  # immediate hotspot mode
             return
@@ -536,7 +538,6 @@ class AsyConnTime(SensorReaderConfig):
     async def _handle_reconnect_trigger(self) -> None:
         self.hotspot_timer.deinit()
         self.hotspot_timer_running = False
-        self.hotspot_timer_ticks_since_armed = 0
         if self.ledflash is not None:
             self.ledflash.cancel()
             self.ledflash = None
@@ -686,6 +687,34 @@ class AsyConnTime(SensorReaderConfig):
         data = await self.get_data()
         return make_dict(data, _FIELDS, name=self.name)
 
+    async def _set_mgr_cfg(
+        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema",
+    ) -> "tuple[bool, WriteValidity]":
+        # Refuses a radio value outside its byte bounds before it is stored (C.7.4); the rest of the
+        # request goes through ConfigManager as usual.
+        fields = schema_dict(cfg_vals)
+        refused = [k for k, v in data.items() if k in _RADIO_FIELDS and k in fields and not _radio_bytes_ok(fields[k], v)]
+        for key in refused:
+            await self.pr.err_s("Refusing", key, "- over the radio's byte bound", errno=20)
+        ok, results = await super()._set_mgr_cfg({k: v for k, v in data.items() if k not in refused}, cfg_vals)
+        for key in refused:
+            results[key] = "Invalid"
+        return ok, results
+
+    async def _radio_values(self, values: "list[str]", schema: "ConfigSchema") -> "list[str]":
+        # A value stored before C.7.4 (or hand-edited) that the radio would refuse runs on its default
+        # instead: a config value is never a hardware failure, so it must not feed hw_op_failed.
+        fields = schema_dict(self.cfg_schema)
+        safe = []
+        for field, value in zip(schema, values):  # noqa: B905 - MicroPython zip() rejects strict=
+            live = fields.get(field[0], field)
+            if _radio_bytes_ok(live, value):
+                safe.append(value)
+            else:
+                await self._episode_wrn(8, "Stored", field[0], "is over the radio's byte bound, using its default")
+                safe.append(str(live[2]))  # every radio field's default is a str
+        return safe
+
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
             self.name, _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED + _VAL_HOTSPOT_PW, callback=self._mask_pw,
@@ -777,7 +806,6 @@ class AsyConnTime(SensorReaderConfig):
     def reconnect_wifi(self) -> None:
         self.hotspot_timer.deinit()
         self.hotspot_timer_running = False
-        self.hotspot_timer_ticks_since_armed = 0
         if self.ledflash is not None:
             self.ledflash.cancel()
             self.ledflash = None

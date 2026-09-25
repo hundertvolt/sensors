@@ -1928,7 +1928,7 @@ while the ring still says what else happened.
 | `asy_scd30_driver.py` (`SCD30`) | 10-25 | — | 10=init, 11=periodic read, 12=unused (no init-time config), 13=stop-continuous-measurement, 14-25=per-field forwards. |
 | `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15/17/19/21=resolution/range/IR-offset/IR-adjust getters, 16/18/20/22=their setters, 24=derived-persistence reapply, 25=trigger-interval, 26=gain-ratio/filter-coefficient setters (shared), 27=autorange-threshold/dwell setters (shared), 28=`_read_sensor_dict()`, 29=auto-range threshold-register write, 30=auto-range RNG-bit write, 31=status read, 32=all-ones bus-fault confirmation, 33=brownout re-apply, 34=diverged-config re-apply, 35=paired gain-ratio calibration leg (`_read_on()`), 38=`set_range_auto()`. `wrnno` 10=brownout detected, 11=chip config diverged from shadow, 13=range decided by the periodic path only for 5 decisions running (the interrupt line may be dead, requirement 17/M.1.1). **12 is retired, not reused**: it used to mean "saturated on the high range", but that status is a harmless, transient, always-current measurement fact, not a fault — it now lives in the measurement output as the `Overrange` field (mode-aware: true whenever nothing left could mitigate the saturation — the configured range itself under Fixed range, or Automatic Range already on its highest setting) rather than as a log entry. |
 | `asy_sgp40_driver.py` (`SGP40`) | 10-18 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13-18=backup read/write/clear/deserialize/serialize/compensation. `wrnno`=backup missing/stale — a missing/not-yet-available *compensation* reading is no longer one of these (C.14.2's own note), only a genuine compensation-source read exception (`errno=18`) still logs. |
-| `asy_wifi_service.py` (`WIFI`) | 11-19 | 1-7 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout; `wrnno` 1-3=missing-config, 4-7=WLAN status (4 is cyw43-driver's catch-all for any failed auth or handshake, an AP dropping mid-association included - not proof of a wrong password, BACKLOG item 29) — 4-7 follow the repeat rule above, one slot per distinct verdict per connect episode, which a successful connection ends. **WP8**: 19=the hotspot auto-shutoff timer's own soft-callback-drop self-heal (`_hotspot_client_absent()`, F.1) actually firing — a real, actionable event, not the routine WiFi-mode-transition noise this file's own module docstring already documents everything else here as. |
+| `asy_wifi_service.py` (`WIFI`) | 11-20 | 1-8 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout, 20=a PUT's radio value refused over its byte bound (C.7.4); `wrnno` 1-3=missing-config, 4-7=WLAN status (4 is cyw43-driver's catch-all for any failed auth or handshake, an AP dropping mid-association included - not proof of a wrong password, BACKLOG item 29), 8=a stored radio value over its byte bound, run on its default (C.7.4) — 4-8 follow the repeat rule above, one slot per distinct verdict per connect episode, which a successful connection ends. **19 is retired, not reused**: it was the hotspot timer's one-shot self-heal backstop, gone since that timer is `PERIODIC` (C.9). |
 | `asy_ntp_client.py` (`NTP`) | 11-21 | 1-3 | 11=missing-config, 12=DNS resolution, 13=invalid address, 14=implausible time, 15=malformed reply, 16/17=retry-timer arm/max retries, 18=interval-fallback, 19=time-calc, 21=no reply within the fetch timeout (a silent timeout used to persist nothing). **20 is retired, not reused**: it was the give-up that let the supervisor restart the task (C.7.2). 11-15, 21 and `wrnno` 2 follow the repeat rule above per distinct code; a successful sync ends the episode. `wrnno` 1/3=callback failures, 2=unsynchronized/Kiss-o'-Death reply. |
 | `captive_dns.py` (`DNSSRV`) | 1-3 | 1-3 | 1=invalid server_ip/netmask, 2=loop exception, 3=disconnect-cleanup; `wrnno` 1=dropped reply, 2=invalid recvfrom, 3=socket teardown incomplete. |
 | `system_service.py` (`SYSTEM`) | 1-7 | dynamic (`n+1`) | 4=task-error-budget-exceeded, 5=`_log_dead_task()` recovering a real raised exception, 6=recovering a `CancelledError`-ended task (previously invisible, now persists). **WP8**: 7=`_apply_level()`'s own caller-supplied level-setter callback failing — the one caller-supplied-callback call site in this codebase that hadn't already persisted via `err_s()`. |
@@ -1991,6 +1991,20 @@ structurally by `tests/test_config_manager.py`):
 
 Self-healing follows from the same two sites: the next accepted change writes the whole snapshot
 (repaired defaults included), and the next boot's `setup()` repairs a file a failed write left behind.
+
+### C.7.4 The radio's string bounds are bytes
+
+The schema bounds every `str` field in characters (and the web UI mirrors that), but the WiFi
+radio's own limits are UTF-8 bytes, checked in the pinned `extmod/modnetwork.c` and cyw43 driver:
+`network.country()` raises unless exactly 2 bytes, `network.hostname()` above 32 bytes, and
+`WLAN.connect()` raises `EINVAL` on a key over 64 bytes and copies an SSID over 32 bytes past its
+36-byte buffer unchecked. So a schema-valid `"ÄT"` or a 32-character SSID with umlauts used to raise
+on every connect, set `hw_op_failed` and end the task after `max_module_error` cycles (errno 17) —
+a config value treated as a hardware fault (C.7.2). `asy_wifi_service.py` now bounds SSID, PW,
+Country, Hostname and HotspotPW in bytes at both ends: a PUT over the bound is refused as `"Invalid"`
+(errno 20, `_set_mgr_cfg()`), and a value already stored that way runs on its default (`wrnno` 8)
+rather than reaching the radio. Only the max needs bytes — a value is never fewer bytes than
+characters — and a character-bound violation stays the schema's own refusal.
 
 ## C.8 Concurrency & locking model
 
@@ -3426,7 +3440,8 @@ frozen into this project's own manifest today regardless, but the rule holds ind
 not just delayed** — `mp_sched_schedule()` drops it if MicroPython's fixed-depth scheduler queue
 (depth 8 on rp2, shared by every soft timer/IRQ) is full, with no exception and no way to detect a
 dropped vs. not-yet-run callback. A periodic timer self-heals next tick; a one-shot does not fire
-again. A software-timeout mitigation for this was considered and rejected (it would just race the
+again - which is why every timer that must fire uses `PERIODIC` (C.9), the WiFi hotspot shutoff
+included (stopped by `reconnect_wifi()` on its first delivered fire). A software-timeout mitigation for this was considered and rejected (it would just race the
 real hardware watchdog every deployment already arms) — don't re-propose without a materially
 different justification.
 

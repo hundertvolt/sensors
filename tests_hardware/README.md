@@ -827,6 +827,12 @@ exposed per-request delay/corruption knob - a custom rogue DHCP responder risks 
 without any valid lease at all, in a way nothing in this tier could then recover from short of
 physical intervention.
 
+**Every bench test that injects a network fault also calls `assert_no_task_ended()`** before its
+closing reset: a task ending under a routine fault (and the reboot three of those cost) lands in the
+FRAM-kept SYSTEM log even across a `hard_reset()`, where a "no Traceback" check sees nothing - which
+is how an NTP give-up restarting a task every minute passed this tier (SPECIFICATION.md C.7.2).
+`tests_scripts/test_bench_no_task_ended_completeness.py` fails a new fault test that skips it.
+
 **Standing policy from this pass on, applied everywhere it's practical**: reset the real, REST-
 exposed error/warning history (`PUT /status {"ResetErrors": true}`) before a fault-injecting test,
 confirm the *specific* expected `err_s()`/`wrn_s()` entry actually landed on the *right* module's

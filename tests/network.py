@@ -24,12 +24,16 @@ _hostname_value = ["SensorNode"]
 
 def country(code: "str | None" = None) -> str:
     if code is not None:
+        if len(code.encode()) != 2:  # extmod/modnetwork.c: exactly 2 BYTES, else ValueError
+            raise ValueError
         _country_code[0] = code
     return _country_code[0]
 
 
 def hostname(name: "str | None" = None) -> str:
     if name is not None:
+        if len(name.encode()) > 32:  # MICROPY_PY_NETWORK_HOSTNAME_MAX_LEN, in bytes
+            raise ValueError
         _hostname_value[0] = name
     return _hostname_value[0]
 
@@ -66,6 +70,10 @@ class WLAN:
 
     def connect(self, ssid: "str | None" = None, password: "str | None" = None) -> None:
         self._maybe_raise("connect")
+        if password is not None and len(password.encode()) > 64:  # cyw43_ll_wifi_join()'s -CYW43_EINVAL
+            raise OSError(22, "EINVAL")
+        if ssid is not None and len(ssid.encode()) > 32:  # real driver: unchecked copy past a 32-byte field
+            raise AssertionError("SSID over 32 bytes reached connect() - overflows cyw43's last_ssid_joined on silicon")
         self.connect_calls.append((ssid, password))
 
     def disconnect(self) -> None:

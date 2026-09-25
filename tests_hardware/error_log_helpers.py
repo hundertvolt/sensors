@@ -26,6 +26,14 @@ def get_errcount(dut_ip: str) -> dict[str, Any]:
     return result
 
 
+def assert_no_task_ended(dut_ip: str, context: str) -> None:
+    """The supervisor's own record since the test's opening ResetErrors: a task that ended (errno 5/6,
+    a restart warning) or a budget reboot (errno 4) lands in SYSTEM, which FRAM keeps across a
+    hard_reset(). A routine fault is handled in place (SPECIFICATION.md C.7.2), so this stays empty."""
+    entry = get_errcount(dut_ip).get("SYSTEM", {})
+    assert entry.get("counter", 0) == 0, f"{context}: a task ended and was restarted (or the budget rebooted the board) - SYSTEM log: {entry!r}"
+
+
 def assert_module_error_log_empty(dut_ip: str, module_name: str) -> None:
     entry = get_errcount(dut_ip).get(module_name, {})
     counter = entry.get("counter", 0)

@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import http_client
-from error_log_helpers import assert_module_error_log_contains, reset_all_error_logs
+from error_log_helpers import assert_module_error_log_contains, assert_no_task_ended, reset_all_error_logs
 from harness import Board, wait_until
 
 if TYPE_CHECKING:
@@ -110,6 +110,7 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
     assert_module_error_log_contains(dut_ip, "NTP", 21, "E")
     restarts = [ln for ln in lines if "Task ended - attempting restart" in ln]
     assert not restarts, "a blocked NTP server made a task end and be restarted:\n" + "\n".join(restarts)
+    assert_no_task_ended(dut_ip, "a blocked NTP server")  # the persisted record, beyond the tail window
 
 
 def _http_ok(dut_ip: str) -> bool:

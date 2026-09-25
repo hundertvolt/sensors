@@ -1263,7 +1263,7 @@ def test_hotspot_client_absent_arms_the_shutoff_timer_once() -> None:
     client = make_client(hotspot_time_min=1)
     run(client._hotspot_client_absent())
     assert client.hotspot_timer_running is True
-    assert client.hotspot_timer.mode == Timer.ONE_SHOT
+    assert client.hotspot_timer.mode == Timer.PERIODIC  # C.9: a dropped fire is re-fired next period
     assert client.hotspot_timer.period == 60000  # hotspot_time_min=1 -> 60000ms
 
 
@@ -1303,40 +1303,58 @@ def test_hotspot_timeout_watcher_calls_reconnect_wifi_directly_when_woken() -> N
     assert run(scenario()) is True
 
 
-def test_hotspot_client_absent_self_heals_a_dropped_timer_callback() -> None:
-    # Simulates the documented soft-callback-drop risk (SPECIFICATION.md Part F): the Timer never
-    # fires, but this method's own periodic re-invocation (every wifi_refresh_sec, matching the
-    # main loop's real cadence) must still eventually notice and force the reconnect itself.
-    client = make_client(hotspot_time_min=1, wifi_refresh_sec=5)
-    run(client._hotspot_client_absent())  # arms the timer (never triggered)
-    assert client.hotspot_timer_running is True
-    # hotspot_time = 60000ms; wifi_refresh_sec=5 -> the 2x-hotspot_time threshold is 24 ticks.
-    # One tick short - the next call below is the one that must cross it.
-    client.hotspot_timer_ticks_since_armed = 23
+def test_a_dropped_hotspot_timer_fire_is_recovered_by_the_next_period() -> None:
+    # The soft-callback drop (Part F.1): the first period's fire never reaches the flag. PERIODIC
+    # keeps the timer armed, so the next period's fire still reconnects - no backstop needed.
+    client = make_client(hotspot_time_min=1)
+    run(client._hotspot_client_absent())
+    timer = client.hotspot_timer
 
-    async def scenario() -> bool:
+    async def scenario() -> "tuple[bool, bool]":
         watcher = client.start_hotspot_timeout_watcher()
-        await client._hotspot_client_absent()  # crosses the threshold this tick
+        timer.drop()  # period 1's callback is lost
         await asyncio.sleep(0)
+        after_drop = client.reconn_wifi
+        timer.trigger()  # period 2
+        for _ in range(5):  # a watcher already parked in wait() wakes through the poller, not at once
+            await asyncio.sleep(0)
         result = client.reconn_wifi
         await _cancel(watcher)
-        return result
+        return after_drop, result
 
-    assert run(scenario()) is True
+    assert run(scenario()) == (False, True)
 
 
-def test_hotspot_client_absent_self_heal_persists_its_own_errno() -> None:
-    # WP8: a real, actionable self-heal event (Part F.1's soft-Timer-callback-drop gotcha actually
-    # firing), not routine WiFi-mode-transition noise - the one sibling of this file's
-    # "routine observations degrade silently" policy that genuinely needed upgrading to err_s().
+def test_the_first_delivered_hotspot_fire_stops_the_periodic_timer() -> None:
+    # reconnect_wifi() deinits the timer, so PERIODIC never turns into a reconnect every period.
+    client = make_client(hotspot_time_min=1)
+    run(client._hotspot_client_absent())
+    timer = client.hotspot_timer
+
+    async def scenario() -> None:
+        watcher = client.start_hotspot_timeout_watcher()
+        timer.trigger()
+        await asyncio.sleep(0)
+        await _cancel(watcher)
+
+    run(scenario())
+    assert timer.deinit_called is True
+    assert client.hotspot_timer_running is False
+    assert timer.callback is None  # nothing left to fire
+
+
+def test_repeated_absent_ticks_neither_rearm_the_timer_nor_log_anything() -> None:
+    # The old ONE_SHOT backstop counted these ticks and persisted errno 19 past 2x hotspot_time;
+    # with PERIODIC there is nothing to count and nothing to log (errno 19 is retired, C.7.1).
     client = make_client(hotspot_time_min=1, wifi_refresh_sec=5)
-    run(client._hotspot_client_absent())  # arms the timer (never triggered)
-    client.hotspot_timer_ticks_since_armed = 23  # one tick short of the threshold
-
-    run(client._hotspot_client_absent())  # crosses the threshold this tick
-    log = run(client.pr.get_log())[client.pr.name]
-    assert log["ErrNum"][-1] == 19
-    assert log["ErrType"][-1] == "E"
+    run(client.pr.setup())
+    run(client._hotspot_client_absent())
+    armed = client.hotspot_timer.callback
+    for _ in range(50):  # ~4 minutes of 5s ticks, past the old 24-tick threshold
+        run(client._hotspot_client_absent())
+    assert client.hotspot_timer.callback is armed
+    assert client.reconn_wifi is False  # only the timer ends hotspot mode, never the tick count
+    assert run(client.get_error_counter())["WIFI"]["ErrCount"] == 0
 
 
 def test_hotspot_client_absent_degrades_gracefully_when_alarm_pool_exhausted() -> None:
@@ -2854,6 +2872,162 @@ def test_a_default_is_only_substituted_into_a_bounded_string_field() -> None:
     # unchecked one - the two fields buildgen injects are both bounded strings.
     schema: Any = (("LedWifiOn", "bool", True, None, None, None),)
     assert asy_wifi_service._with_default(schema, "yes") is schema
+
+
+# ---------------------------------------------------------------------------
+# SPECIFICATION.md C.7.4: the radio bounds SSID/PW/Country/Hostname/HotspotPW in UTF-8 BYTES, where
+# the schema counts characters - refused at write, and a stored one runs on its default, never
+# reaching the radio as a "hardware" failure that feeds the give-up streak.
+# ---------------------------------------------------------------------------
+
+# (field, largest accepted, smallest refused) - each pair within the schema's character bound.
+_BYTE_BOUNDS = (
+    ("SSID", "ä" * 16, "ä" * 16 + "x"),  # 32 bytes / 33 bytes, both <= 32 characters
+    ("PW", "ä" * 31 + "x", "ä" * 32),  # 63 / 64 bytes
+    ("Country", "AT", "ÄT"),  # 2 / 3 bytes, both 2 characters
+    ("Hostname", "ä" * 16, "ä" * 17),  # 32 / 34 bytes
+    ("HotspotPW", "ä" * 31 + "x", "ä" * 32),
+)
+
+
+def test_each_radio_field_refuses_one_byte_over_its_bound_and_accepts_the_bound() -> None:
+    for field, fits, too_long in _BYTE_BOUNDS:
+        client = make_client()
+        run(client.pr.setup())
+        before = run(client.cfgmgr.get_dict([field]))
+        assert run(client._set_dict_cfg({field: too_long}, client.get_cfg_schema())) == {field: "Invalid"}, field
+        run(client.cfgmgr.flush_pending())
+        assert run(client.cfgmgr.get_dict([field])) == before, field  # nothing stored
+        assert _last_err(run(client.get_error_counter()), "ErrNum") == 20, field
+        assert run(client._set_dict_cfg({field: fits}, client.get_cfg_schema())) == {field: "Valid"}, field
+        run(client.cfgmgr.flush_pending())
+        assert run(client.cfgmgr.get_dict([field])) == {field: fits}, field
+
+
+def test_a_refused_radio_field_leaves_the_rest_of_the_request_applied() -> None:
+    client = make_client()
+    results = run(client._set_dict_cfg({"Hostname": "ä" * 17, "SSID": "HomeNet", "LedWifiOn": False}, client.get_cfg_schema()))
+    assert results == {"Hostname": "Invalid", "SSID": "Valid", "LedWifiOn": "Valid"}
+    run(client.cfgmgr.flush_pending())
+    assert run(client.cfgmgr.get_dict(["SSID", "LedWifiOn"])) == {"SSID": "HomeNet", "LedWifiOn": False}
+
+
+def test_the_open_network_password_bypass_still_passes_the_byte_check() -> None:
+    client = make_client()
+    run(client._set_dict_cfg({"PW": "x" * 8}, client.get_cfg_schema()))
+    assert run(client._set_dict_cfg({"PW": ""}, client.get_cfg_schema())) == {"PW": "Valid"}
+
+
+def test_a_character_bound_violation_is_still_the_schemas_refusal_not_a_byte_one() -> None:
+    client = make_client()
+    run(client.pr.setup())
+    assert run(client._set_dict_cfg({"Country": "D"}, client.get_cfg_schema())) == {"Country": "Invalid"}
+    assert 20 not in run(client.get_error_counter())["WIFI"]["ErrNum"]
+
+
+def _client_with_stored(values: "dict[str, str]", conn_fail_to_hotspot: int = 5) -> AsyConnTime:
+    # A value the radio refuses, already on flash - stored before C.7.4 or hand-edited.
+    import json as _json
+
+    stored = {"SSID": "HomeNet", "PW": "secret123", "Country": "DE", "Hostname": "SensorNode", "LedWifiOn": True, "HotspotPW": "12345678"}
+    stored.update(values)
+    return make_client_with_json(_json.dumps(stored), conn_fail_to_hotspot=conn_fail_to_hotspot)
+
+
+def _no_poll(client: AsyConnTime) -> None:
+    async def skip() -> None:
+        return None
+
+    client._poll_sta_connect_status = skip  # type: ignore[method-assign]  # connect's outcome is not under test
+
+
+def test_a_stored_over_long_country_connects_on_the_default_not_a_hardware_failure() -> None:
+    client = _client_with_stored({"Country": "ÄT"})
+    run(client.pr.setup())
+    _no_poll(client)
+    for _ in range(3):
+        client.hw_op_failed = False
+        run(client._attempt_sta_connect())
+        assert client.hw_op_failed is False
+    assert network.country() == "DE"
+    assert len(_wlan(client).connect_calls) == 3
+    log = run(client.get_error_counter())["WIFI"]
+    assert log["ErrNum"][-1] == 8 and log["ErrType"][-1] == "W"
+    assert log["ErrCount"] == 3  # counted every attempt, one ring slot for the episode
+    assert log["ErrNum"].count(8) == 1
+
+
+def test_a_stored_over_long_ssid_and_password_never_reach_connect() -> None:
+    client = _client_with_stored({"SSID": "ä" * 16 + "x", "PW": "ä" * 32})
+    run(client.pr.setup())
+    _no_poll(client)
+    run(client._attempt_sta_connect())  # the fake raises if either reached connect() over its bound
+    assert client.hw_op_failed is False
+    assert _wlan(client).connect_calls == []  # the SSID fell back to its "" default: straight to hotspot
+    assert client.connection_failures == client.conn_fail_to_hotspot
+
+
+def test_a_stored_over_long_hostname_falls_back_to_the_devices_own_default() -> None:
+    # The fallback is the LIVE schema's default, i.e. buildgen's per-device hostname, not "SensorNode".
+    cfg_path = _tmp_cfg_dir()
+    with open(cfg_path + "config_WIFI.cfg", "w") as f:
+        f.write('{"SSID": "HomeNet", "PW": "secret123", "Country": "DE", "Hostname": "' + "ä" * 17 + '", "LedWifiOn": true, "HotspotPW": "12345678"}')
+    client = AsyConnTime(led_pin=None, cfg_path=cfg_path, hostname="SensorStationDev")
+    run(client.cfgmgr.setup())
+    run(client.pr.setup())
+    _no_poll(client)
+    run(client._attempt_sta_connect())
+    assert network.hostname() == "SensorStationDev"
+    assert client.hw_op_failed is False
+
+
+def test_a_stored_over_long_hotspot_value_starts_the_hotspot_on_the_default() -> None:
+    client = _client_with_stored({"Country": "ÄT", "Hostname": "ä" * 17})
+    run(client.pr.setup())
+
+    async def fake_select(_mode: int) -> None:
+        return None
+
+    client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    run(client._start_hotspot())
+    assert client.hw_op_failed is False
+    assert (network.country(), network.hostname()) == ("DE", "SensorNode")
+
+
+def test_wlan_connect_never_gives_up_over_a_stored_radio_value() -> None:
+    # Regression: an over-long Country used to raise on every attempt, set hw_op_failed, and end the
+    # task after max_module_error cycles (errno 17) - a supervisor restart per few cycles, then a reboot.
+    client = _client_with_stored({"Country": "ÄT"}, conn_fail_to_hotspot=1000)  # stays on the STA path
+    _no_poll(client)
+    client.wifi_refresh_sec = 0
+    attempts = [0]
+    real_attempt = client._attempt_sta_connect
+
+    async def counted_attempt() -> None:
+        attempts[0] += 1
+        await real_attempt()
+
+    async def no_mode_switch() -> None:
+        client.reconn_wifi = False  # the real one's mode switch sleeps ~4s; not under test here
+
+    client._attempt_sta_connect = counted_attempt  # type: ignore[method-assign]
+    client._handle_reconnect_trigger = no_mode_switch  # type: ignore[method-assign]
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(client.wlan_connect())
+        for _ in range(400):
+            await asyncio.sleep(0)
+        still_running = not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return still_running
+
+    assert run(scenario()) is True
+    assert attempts[0] > 3 * client.max_module_error  # far past the old give-up streak
+    assert 17 not in run(client.get_error_counter())["WIFI"]["ErrNum"]
 
 
 if __name__ == "__main__":

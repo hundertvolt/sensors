@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 import http_client
 import pytest
-from error_log_helpers import get_errcount, reset_all_error_logs
+from error_log_helpers import assert_no_task_ended, get_errcount, reset_all_error_logs
 from harness import wait_until
 
 if TYPE_CHECKING:
@@ -105,6 +105,7 @@ def test_the_link_stays_healthy_while_the_api_is_hammered(board: Board, dut_ip: 
     for name in _UART_MODULES:
         entry = counts.get(name, {})
         assert not entry.get("counter", 0), f"{name} logged errors while the API was under load: {entry!r}"
+    assert_no_task_ended(dut_ip, "UART link under API load")
 
 
 def test_real_transfers_complete_while_the_api_is_hammered(board: Board, dut_ip: str) -> None:
@@ -193,3 +194,4 @@ def test_an_api_overload_does_not_corrupt_the_link_or_the_reverse(board: Board, 
     for name in _UART_MODULES:
         entry = counts.get(name, {})
         assert not entry.get("counter", 0), f"{name} was disturbed by an API overload: {entry!r}"
+    assert_no_task_ended(dut_ip, "UART link under an API overload")

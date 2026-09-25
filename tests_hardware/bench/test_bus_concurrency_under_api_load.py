@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 import http_client
 import pytest
-from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
+from error_log_helpers import assert_module_error_log_empty, assert_no_task_ended, reset_all_error_logs
 from harness import Board, configured_max_connections, wait_until
 
 if TYPE_CHECKING:
@@ -215,6 +215,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
     )
     for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
         assert_module_error_log_empty(dut_ip, module)
+    assert_no_task_ended(dut_ip, "bus load under a network fault")
     reset_all_error_logs(dut_ip)
 
 
@@ -296,6 +297,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     wait_until(_synced, timeout_s=20.0, poll_interval_s=1.0, description="NTP resynced via its own retry timer after a transient outage, concurrent with real bus load")
     for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
         assert_module_error_log_empty(dut_ip, module)
+    assert_no_task_ended(dut_ip, "bus load under a network fault")
     reset_all_error_logs(dut_ip)
 
 
@@ -379,6 +381,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
     if not recovered_via_hard_reset:
         for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
             assert_module_error_log_empty(dut_ip, module)
+    assert_no_task_ended(dut_ip, "bus load + real WiFi flapping")  # on both paths - FRAM keeps SYSTEM
     reset_all_error_logs(dut_ip)
 
 

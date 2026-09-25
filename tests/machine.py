@@ -646,8 +646,18 @@ class Timer:
     def trigger(self) -> None:
         # No real-hardware equivalent - lets test code fire a callback deterministically instead of
         # waiting on this fake's `period` (which is never actually scheduled against real time).
-        if self.callback is not None:
-            self.callback(self)
+        # A ONE_SHOT is spent once its period elapses, as on rp2; a PERIODIC stays armed.
+        callback = self.callback
+        if self.mode == self.ONE_SHOT:
+            self.callback = None
+        if callback is not None:
+            callback(self)
+
+    def drop(self) -> None:
+        # One period elapsing with its soft callback lost to a full scheduler queue (Part F.1): a
+        # ONE_SHOT never fires again, a PERIODIC simply fires next period.
+        if self.mode == self.ONE_SHOT:
+            self.callback = None
 
 
 class RTC:

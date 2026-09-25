@@ -17,6 +17,7 @@ from error_log_helpers import (
     assert_module_error_log_contains,
     assert_module_error_log_empty,
     assert_no_module_logged_a_new_error,
+    assert_no_task_ended,
     get_errcount,
     reset_all_error_logs,
 )
@@ -67,6 +68,7 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
         print(f"RESULT NOTE: recovered via a fallback hard_reset() - the graceful established-connection retry did not clear this real CYW43-firmware characteristic within {graceful_wait_s:.1f}s")
 
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a real WiFi outage and recovery"
+    assert_no_task_ended(dut_ip, "real WiFi outage")  # holds on the hard_reset() path too: FRAM keeps SYSTEM
     if not recovered_via_hard_reset:
         _assert_wifi_log_has_only_benign_outage_warnings(dut_ip)
 
@@ -104,6 +106,7 @@ def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, ben
         print(f"RESULT NOTE: recovered via a fallback hard_reset() - the graceful established-connection retry did not clear this real CYW43-firmware characteristic within {graceful_wait_s:.1f}s")
 
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after repeated real WiFi flapping"
+    assert_no_task_ended(dut_ip, "repeated real WiFi flapping")
     if not recovered_via_hard_reset:
         _assert_wifi_log_has_only_benign_outage_warnings(dut_ip)  # same reasoning as the single-outage test above
 
@@ -162,6 +165,7 @@ def test_real_operations_survive_and_recover_under_sustained_packet_loss_and_lat
         poll_interval_s=2.0,
         description="DUT fully recovered (fast, reliable REST) after network degradation cleared",
     )
+    assert_no_task_ended(dut_ip, "sustained packet loss/latency")
     reset_all_error_logs(dut_ip)  # never leave a deliberately-provoked fault in the live error history
 
 
@@ -179,6 +183,7 @@ def test_real_operations_unaffected_by_light_realistic_wifi_congestion(board: Bo
     finally:
         bench.clear_network_degradation()
     assert_module_error_log_empty(dut_ip, "NTP")
+    assert_no_task_ended(dut_ip, "light WiFi congestion")
 
 
 def test_real_operations_survive_real_packet_corruption(board: Board, bench: BenchBridge, dut_ip: str) -> None:
@@ -207,6 +212,7 @@ def test_real_operations_survive_real_packet_corruption(board: Board, bench: Ben
         poll_interval_s=2.0,
         description="DUT fully recovered after packet corruption cleared",
     )
+    assert_no_task_ended(dut_ip, "real packet corruption")
     reset_all_error_logs(dut_ip)
 
 
@@ -236,6 +242,7 @@ def test_real_operations_survive_duplicated_and_reordered_packets(board: Board, 
         poll_interval_s=2.0,
         description="DUT fully recovered after duplication/reordering cleared",
     )
+    assert_no_task_ended(dut_ip, "duplicated/reordered packets")
     reset_all_error_logs(dut_ip)
 
 
@@ -272,6 +279,7 @@ def test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_r
     # Cleared well before the real 15s retry interval elapses - the retry timer's own next attempt
     # must land on a genuinely clear network and succeed, with no hard_reset() anywhere in this test.
     wait_until(_synced, timeout_s=20.0, poll_interval_s=1.0, description="NTP resynced via its own retry timer after a transient (not sustained) outage, with no reboot")
+    assert_no_task_ended(dut_ip, "transient NTP outage")
     reset_all_error_logs(dut_ip)  # the one deliberately-provoked failed attempt above did legitimately log something - never leave that in the live error history
 
 
@@ -313,6 +321,7 @@ def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry)")
+    assert_no_task_ended(dut_ip, "90s of garbage NTP replies")  # past the ~60s the old NTP give-up needed
     reset_all_error_logs(dut_ip)  # never leave a deliberately-provoked fault in the live error history
 
 
@@ -344,6 +353,7 @@ def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
     # all, so resolve_ipv4() exhausts every server and lands on "NTP" module's own errno=12.
     try:
         assert_module_error_log_contains(dut_ip, "NTP", 12, "E")
+        assert_no_task_ended(dut_ip, "90s of garbage DNS replies")
     finally:
         reset_all_error_logs(dut_ip)
 
@@ -392,6 +402,7 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
         assert get_after.status_code == 200, f"GET /status failed: {get_after.status_code} {get_after.body!r}"
         year_after = get_after.json()["system"]["UtcTime"]["year"]
         assert year_after != 2050, f"the DUT's RTC was set to this test's own spoofed reply's injected date (2050-01-01) - AsyUDPSocket accepted a reply from an unexpected source on a connected socket:\n{get_after.body!r}"
+        assert_no_task_ended(dut_ip, "a spoofed NTP reply")
     finally:
         # Always runs, even on a failed assertion above - this test's own last hard_reset() must
         # never leave the DUT unreachable or its error history dirty for whatever runs next.
@@ -446,6 +457,7 @@ def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: B
         # The rest of the system must stay fully healthy throughout - a bad NTP host degrading
         # gracefully means exactly this, not just "the error got logged".
         assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive while NTP_Host was garbage"
+        assert_no_task_ended(dut_ip, "a garbage NTP_Host")
     finally:
         # Restore the real, original NTP_Host regardless of outcome - this PUT mutates the board's
         # real, persisted config on a shared bench rig.
@@ -588,6 +600,8 @@ def http_client_is_ok(host: str) -> bool:
 
 
 def _restore_ssid_over(host: str, original_ssid: str) -> None:
+    # Checked before the reset below erases it, over whichever address still reaches the DUT.
+    assert_no_task_ended(host, "a garbage SSID")
     reset_all_error_logs(host)
     restore_res = http_client.fetch(host, 80, "PUT", "/networking", {"SSID": original_ssid}, timeout_s=10.0)
     assert restore_res.status_code == 200, f"failed to restore original SSID {original_ssid!r}: {restore_res.status_code} {restore_res.body!r}"
@@ -677,6 +691,7 @@ def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: 
     # response ever written" - no pr.err_s()/wrn_s() call anywhere on that path, so a real rejection
     # at the connection ceiling is expected to leave WEBSERVER's own error/warning log untouched.
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
 # ---------------------------------------------------------------------------
@@ -695,6 +710,7 @@ def test_get_nonsense_path_is_shaped_404_over_the_normal_network(dut_ip: str) ->
     # _shaped_error_handler() (confirmed directly) only ever builds a response - no pr.err_s()/
     # wrn_s() call at all, so a routine 404 must not show up as an error/warning.
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
 def test_put_malformed_raw_request_is_rejected_cleanly_over_the_normal_network(dut_ip: str) -> None:
@@ -726,6 +742,7 @@ def test_put_malformed_raw_request_is_rejected_cleanly_over_the_normal_network(d
     # _body_as_dict() returning None (confirmed directly) just makes _put_sensors() return
     # ar.make_response(1) - no pr.err_s()/wrn_s() call anywhere on that path either.
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
 def test_put_oversized_body_is_rejected_with_413_over_the_normal_network(dut_ip: str) -> None:
@@ -739,6 +756,7 @@ def test_put_oversized_body_is_rejected_with_413_over_the_normal_network(dut_ip:
     # Rejected entirely inside vendored, unmodified ext/microdot.py before this project's own route
     # handler (or its pr) is ever reached - nothing of ours could have logged anything here.
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
 # ---------------------------------------------------------------------------
@@ -776,6 +794,7 @@ def test_put_body_cap_boundary_is_exact_over_the_normal_network(dut_ip: str) -> 
     # A 413 is raised inside vendored microdot before this project's own handler or its pr is
     # reached, so nothing of ours can have logged anything on either side of the boundary.
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
 def test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network(dut_ip: str) -> None:
@@ -787,6 +806,7 @@ def test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_n
     assert _put_sized(dut_ip, midband) == 413, f"a {midband} B body was not rejected - the old 4096 B content cap looks still in place"
     assert _put_sized(dut_ip, _OLD_CONTENT_CAP) == 413, "a body at the OLD content cap was accepted - this firmware predates Part I.6"
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
 def test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap(dut_ip: str) -> None:
@@ -815,6 +835,7 @@ def test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits(dut_
         assert status == expected, f"a {size} B body answered {status}, expected {expected}"
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a mixed-size PUT stream"
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
 def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str) -> None:
@@ -876,6 +897,7 @@ def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(du
         description="webserver serving normally again after the concurrent mixed-body load cleared",
     )
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    assert_no_task_ended(dut_ip, "client misbehaviour")
     print(f"RESULT NOTE: {len(answered)} answered, {len(refused)} refused at the connection ceiling, 0 answered wrongly")
 
 
@@ -911,6 +933,7 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(dut_ip: str) -
         cfgmgr_entry = errcount.get("CFGMGR_BMP3XX", {})
         assert cfgmgr_entry.get("counter") == 2, f"expected exactly 2 type/range validation errors on CFGMGR_BMP3XX (one per rejected field), got: {cfgmgr_entry!r}"
         assert_module_error_log_contains(dut_ip, "CFGMGR_BMP3XX", 12, "E")
+        assert_no_task_ended(dut_ip, "nonsense field values")
     finally:
         reset_all_error_logs(dut_ip)
 
@@ -947,6 +970,7 @@ def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_i
     # triggering the (also wrnno=2) per-call timeout path instead, so the wrnno is unambiguous here.
     try:
         assert_module_error_log_contains(dut_ip, "WEBSERVER", 2, "W")
+        assert_no_task_ended(dut_ip, "a slowloris-paced request")
     finally:
         reset_all_error_logs(dut_ip)
 
@@ -966,6 +990,7 @@ def test_abrupt_disconnect_mid_response_does_not_hang_the_server(dut_ip: str) ->
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a client disconnected abruptly mid-response"
     # No hard assertion on WEBSERVER's error log: whether the server is still mid-write when this
     # RST lands (wrnno=3) is a genuine timing race, not deterministic - asserting either way risks flakiness.
+    assert_no_task_ended(dut_ip, "an abrupt mid-response disconnect")  # deterministic either way
     reset_all_error_logs(dut_ip)  # hygiene regardless of which way the race went
 
 
@@ -990,6 +1015,7 @@ def test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures(dut
         f"flashed image predates this tree."
     )
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
 # ---------------------------------------------------------------------------
@@ -1036,6 +1062,7 @@ def test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body(du
         assert keys > 0, f"{path} returned a 200 with an empty or non-dict body - a truncated stream: {results}"
         assert elapsed_s < 30.0, f"{path} took {elapsed_s:.1f}s - admitted but not served in any useful time: {results}"
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    assert_no_task_ended(dut_ip, "client misbehaviour")
     # On silicon every sensor task is always running, so a full-ceiling burst IS the all-modules
     # pressure case - and a heap it starves can surface the failure in any logger, not the webserver.
     assert_no_module_logged_a_new_error(dut_ip, before, f"a {ceiling}-wide burst at the configured ceiling")
@@ -1071,3 +1098,4 @@ def test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one(dut_ip: 
         f"{len(reference.body)} bytes, under {tabs * 2} concurrent loads it was {sizes}"
     )
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    assert_no_task_ended(dut_ip, "client misbehaviour")
