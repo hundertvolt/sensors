@@ -14,8 +14,14 @@ conversation before any `mpremote`, `nmcli`, `iw`, `iptables`, `picotool` or `te
 
 ## 1. Where things stand
 
-- **Board**: `dev` bench, image E6′ (`buildDate 2026-09-24T06:45:32Z`, `max_connections = 6`,
-  `DebugLevel` 5). It is **behind the tree** and must be reflashed (section 2).
+- **Board**: `dev` bench, image of tree `dd80eef` (`buildDate 2026-09-25T05:21:43Z`,
+  `max_connections = 6`, `DebugLevel` 5). It is **behind the tree** (`b5450aa`'s WiFi changes) and
+  must be reflashed before the next suite run (section 2).
+- **Done this sitting (2026-09-24/25)**, results in the queue rows: steps 1, 2 and 5's first W4 run
+  (not clean: one test bug fixed, one unexplained USB drop — W4, F17), T4, W3 and R2 (curve up to 3
+  readers; 4 saturates the board — F18). **Not yet**: steps 3, 4, 6, 7, the rest of 8, and a W4
+  re-run on the current tree. The error logs as of the last R2 sweep carry F18's entries (WEBSERVER
+  `W2` ×20, UART `E20`/`W10`); they are recorded, so clearing them is safe.
 - **Tree**: every host tier green at `gc.threshold(-1)` and `32768` (86/86 MicroPython files, 2,100
   pytest), CI green.
 - **Settled, not to be re-measured**: the connection limit of 6 and its lwIP ensemble

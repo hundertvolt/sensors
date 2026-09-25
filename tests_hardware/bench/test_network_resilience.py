@@ -1061,6 +1061,7 @@ def test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body(du
         # a short body, and that is the shape _stream_dict_response() produces.
         assert keys > 0, f"{path} returned a 200 with an empty or non-dict body - a truncated stream: {results}"
         assert elapsed_s < 30.0, f"{path} took {elapsed_s:.1f}s - admitted but not served in any useful time: {results}"
+    time.sleep(1.0)  # the burst filled the ceiling and its slots outlive their responses (Part I.6)
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
     assert_no_task_ended(dut_ip, "client misbehaviour")
     # On silicon every sensor task is always running, so a full-ceiling burst IS the all-modules
@@ -1097,5 +1098,6 @@ def test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one(dut_ip: 
         f"a concurrent page load was truncated or refused - uncontended the index is "
         f"{len(reference.body)} bytes, under {tabs * 2} concurrent loads it was {sizes}"
     )
+    time.sleep(1.0)  # the burst filled the ceiling and its slots outlive their responses (Part I.6)
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
     assert_no_task_ended(dut_ip, "client misbehaviour")

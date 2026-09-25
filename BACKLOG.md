@@ -283,10 +283,23 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     0.56-0.76s throughout a `PUT` lasting 8.1s, so the 8388ms watchdog cap is not threatened — the
     time is yielded, not held.
 
-    **What is still open — and it is the load case, not the idle one.** At 11.58s under three
-    concurrent readers, `dev` sits at 77% of its own ceiling, and per-chunk cost roughly doubles
-    under that contention (~551ms). That leaves headroom of roughly **6 more chunks under load**, not
-    the ~10 the twin numbers suggested. Nothing asserts elapsed time anywhere: both client timeouts
+    **The reader-count curve, real hardware 2026-09-25** (image `2026-09-25T05:21:43Z`, same 21
+    chunks, three sweeps per point, readers re-requesting `/status` with zero think time — queue R2):
+
+    | concurrent `GET /status` readers | wall clock (3 sweeps) | % of the 15s ceiling |
+    | --- | --- | --- |
+    | 0 | 2.31 / 2.43 / 2.43s | 16% |
+    | 1 | 5.53 / 5.61 / 5.76s | 37% |
+    | 2 | 8.80 / 10.57 / 11.03s | 59-74% |
+    | 3 | 13.16 / 13.24 / 14.69s | 88-98% |
+    | 4 | no result: refused 20x at the connection ceiling, then no answer within 30s | over |
+
+    **What is still open — and it is the load case, not the idle one.** Idle is now far below the
+    2026-09-17 figures, but the curve **does not flatten**: it climbs ~3.5s per reader, so three
+    readers already reach 88-98% of the ceiling and four exceed it. The "~6 more chunks under load"
+    headroom derived from the single 3-reader point no longer holds — under load there is none.
+    At four readers the board is saturated outright (queue F18: ceiling starvation of the `PUT`,
+    WEBSERVER `W2` reclaims, UART link `E20`/`E22`/`W10`). Nothing asserts elapsed time anywhere: both client timeouts
     are backstops placed against the cap (the CI suite derives `_RESET_ERRORS_TIMEOUT_S` from a
     mirrored `_SERVER_OUTER_CAP_S`; `tests_hardware/error_log_helpers.py` carries a measured 30.0s),
     and `tests_scripts/test_request_timeout_ceiling.py` enforces every copy against `outer_cap_s`
@@ -367,8 +380,12 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     cannot fire before the server's own abort. Both halves of the owner's standing requirement for
     this budget — "reliably won't fail the pipeline accidentally with a false positive" **and**
     "will reliably fail if something really went wrong" — are unsatisfiable until that curve exists.
-    **Close this by** taking the curve, then adding the bench analogue of the twin's own budget
-    check to `tests_hardware/error_log_helpers.py`.
+    **The curve is taken (item 24's 2026-09-25 table), and it says no budget can meet both halves
+    at the current design**: three readers already land at 13.2-14.7s against a 15s server abort, so
+    any budget that never false-positives sits at or above the point where the server gives up
+    first. Setting the bench budget waits on item 24's design fix (batched or concurrent reset) —
+    the owner's decision. Then add the bench analogue of the twin's own budget check to
+    `tests_hardware/error_log_helpers.py`.
 
 41. **Two device scripts still hand-list their `cfgmgr._cache` keys and will silently miss a new
     schema field** - verified 2026-09-18.
@@ -387,7 +404,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
       first candidate to rule out: the supervisor loop is the only feed site (`system_service.py`'s
       `feed_watchdog()`), and a board CPU-bound at ~2.2 requests/s can miss the 8,388 ms cap.
     - Hotspot fallback after a reset, three times. `devices/dev.toml`'s `conn_fail_to_hotspot = 5` is
-      the mechanism that would take it there; what is unmeasured is why five connects in a row failed.
+      the mechanism that would take it there. **One instance is now measured (2026-09-25, queue
+      F17)**: a watchdog reset with no `kick_all_stations()` before it gave `reset_cause()` =
+      `WDT_RESET` and WIFI `W6` ×5 (`STAT_CONNECT_FAIL`) — the stale-AP-station mechanism, cleared
+      by a kick. Whether the earlier three were the same is not recoverable.
     - ~~A likely watchdog reset at `mpremote` attach~~ — **not an open anomaly: that mechanism is
       already measured** (item 12, 2026-09-11 — an `mpremote exec` stops `main.py`, nothing feeds the
       WDT, and the board takes a hard reset ~8 s later; the occurrence was ~9 s after attach). It is

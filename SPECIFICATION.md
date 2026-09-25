@@ -3992,7 +3992,11 @@ already the finest granularity the chip allows. No device TOML wires a second SP
 21 ms figure is a contract statement rather than an observed contention. **That is structurally
 untestable rather than merely untested**: with no second device on the bus in any variant, nothing
 can observe FRAM's whole-block hold from the outside, so 21,269 us is the closest evidence
-obtainable — and it is what a second device *would* wait. T.4's per-command timing is still owed.
+obtainable — and it is what a second device *would* wait. **Per command (T.4, three runs,
+2026-09-25)**: the 1-byte write took 2,833-3,395 us (~0.6-0.7 ms per CS envelope), one 8-byte
+read envelope 783-881 us, and the whole block operation held the bus 18,089-23,148 us. A single
+command is therefore under ~1 ms; whether to yield between the envelopes of one write is open
+(`REAL_HARDWARE_TEST_QUEUE.md` T4).
 
 The write side is the same shape but bounded, and needed no change: `mp_machine_uart_write()`
 short-writes rather than waiting once `timeout` (0 here) elapses, and `_write_all()` gates on
