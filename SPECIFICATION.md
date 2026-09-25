@@ -337,11 +337,12 @@ against its actual source, not docs/memory. Upstream v2.7.0 (checked 2026-09-23)
 ## A.6 Datasheets
 
 `datasheets/` (repo root) holds real datasheet PDFs for the chips this codebase drives (`bmp3xx/`,
-`fram/`, `pico w/`, `scd30/`, `sgp40/`) — read the PDF first for any hardware-interaction claim,
+`fram/`, `isl29125/`, `pico w/`, `scd30/`, `sgp40/`, `ws2812/`) — read the PDF first for any hardware-interaction claim,
 rather than reconstructing from training memory/web search. If a needed one isn't there and can't
 be fetched, say so explicitly.
 
-**RP2040**: `datasheets/pico w/` holds the Pico W *board* datasheet only — the RP2040 *silicon*
+**Pico W**: `datasheets/pico w/` holds the Pico W *board* datasheet plus its two on-board parts, the
+W25Q16JV QSPI flash and the CYW43439 wireless chip. The RP2040 *silicon*
 datasheet is not in the repo, so its GPIO function-mux table is not readable here. For a pin-mux
 question the authoritative substitute is the pinned MicroPython source itself
 (`ports/rp2/machine_uart.c`'s `IS_VALID_PERIPH`/`IS_VALID_TX`/`IS_VALID_RX`, and the equivalent
@@ -351,9 +352,11 @@ search. Those macros give UART TX on `pin % 4 == 0`, RX on `pin % 4 == 1` and th
 24/25. The board datasheet does cover what is board-specific: p.8 lists GPIO23/24/25/29 as the
 pins the wireless chip takes.
 
-**BMP390**: `datasheets/bmp3xx/` holds BMP384/BMP388 but not BMP390. The project owner has confirmed
-the whole family shares the same register map/protocol, so `asy_bmp3xx_driver.py` treating BMP390's
-`0x60` chip ID the same as the other two is correct — the PDF's absence is a documentation gap only.
+**BMP390**: `datasheets/bmp3xx/` holds BMP384, BMP388 and BMP390. The project owner has confirmed
+the whole family shares the same register map/protocol, so `asy_bmp3xx_driver.py` treats BMP390's
+`0x60` chip ID the same as the other two.
+
+**WS2812**: `datasheets/ws2812/` holds the plain WS2812 datasheet; which variant the boards carry is unconfirmed.
 
 ## A.7 wozi's construction order and dependency graph
 
