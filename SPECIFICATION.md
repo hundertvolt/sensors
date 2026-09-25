@@ -356,7 +356,8 @@ pins the wireless chip takes.
 the whole family shares the same register map/protocol, so `asy_bmp3xx_driver.py` treats BMP390's
 `0x60` chip ID the same as the other two.
 
-**WS2812**: `datasheets/ws2812/` holds the plain WS2812 datasheet; which variant the boards carry is unconfirmed.
+**WS2812**: `datasheets/ws2812/` holds the plain WS2812 datasheet. The boards carry a single-pixel Adafruit RGB NeoPixel
+breakout (not RGBW) on a round PCB (owner, 2026-09-25); the exact product, and so WS2812 vs WS2812B, is unconfirmed.
 
 ## A.7 wozi's construction order and dependency graph
 

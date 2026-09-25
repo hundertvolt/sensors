@@ -1405,7 +1405,7 @@ Topics:
       window.
 - [ ] **LED.T07** WS2812 contract: `bitstream` timing and IRQ-off window per `write()` during 20 Hz
       ramps, GRB ordering (`bpp=3`), 3.3 V data vs VIH at 5 V supply per board; datasheet
-      `datasheets/ws2812/WS2812.pdf` (plain WS2812; whether the boards carry WS2812 or WS2812B is unconfirmed).
+      `datasheets/ws2812/WS2812.pdf` (plain WS2812). Owner, 2026-09-25: the LED boards are "the single adafruit rgb (not the rgbw) variant, on a rather round pcb" — exact Adafruit product and LED chip revision (WS2812 vs WS2812B) still to pin down; adafruit.com is blocked by the session's network policy.
 
 Seeds:
 - **LED.S01** `request_signal()` and `_led_ext_signal_starter` busy-wait with `sleep(0)` for the whole
