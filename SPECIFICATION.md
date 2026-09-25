@@ -1992,6 +1992,13 @@ structurally by `tests/test_config_manager.py`):
 Self-healing follows from the same two sites: the next accepted change writes the whole snapshot
 (repaired defaults included), and the next boot's `setup()` repairs a file a failed write left behind.
 
+**Bounded by boots, and deliberately no further - settled (owner, 2026-09-25).** A write that keeps
+failing is still attempted once per boot while its file needs repair. Nothing in this path can cause
+a reboot any more, so the only way that repeats quickly is an unrelated reboot loop - and a broken
+write combined with an unbounded boot loop means the whole system is severely broken, which no
+software guard fixes. Don't add a cross-boot skip (a FRAM "repair failed last boot" flag or similar) -
+FRAM is optional hardware anyway, so it could never be the guarantee.
+
 ### C.7.4 The radio's string bounds are bytes
 
 The schema bounds every `str` field in characters (and the web UI mirrors that), but the WiFi
