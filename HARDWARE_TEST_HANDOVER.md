@@ -95,7 +95,8 @@ anticipate; do not work around it.
      build-time default substitution. *Wear: one config write to remove the key.*
 9. **Scripts still to write** (code first, bench second), if the sitting has time: **G8** (the (e)
    stage under real load: import-boot, host-side load, assert no `MEMORY_ERROR_MARKERS`), **G12**
-   (F.5.8's never-block invariant against the real `asy_uart_driver`), **G1**, **G3**, **G4**.
+   (F.5.8's never-block invariant against the real `asy_uart_driver`), **G3**. (G1 and G4 are scratched:
+   each needed a `src/` change for the test alone — owner, 2026-09-25.)
 
 **Not in this sitting**: S4, the long soak (its own deliberate `run_bench_soak_tests.sh --tier`);
 G6's ~12.4-day rollover run (deferred by decision); H1, the two-chroot check (the owner's own run,
@@ -223,9 +224,11 @@ heap test holding the ceiling open) — designed reclaims, SYSTEM clean.
 4. M1 + S3b (needs the owner at the bench, ~30 min). M1's reference light meter is an optional data
    point, never pass/fail — without one M1 still records repeatability and the rig geometry.
 5. ~~R13 + N3~~ — **scratched for this sitting** (owner, 2026-09-25): they need a babbling peer on
-   the jumper and the bench has no hardware beyond what is wired. Step 9's remaining scripts: ~~G8~~ (covered), ~~G12~~ (done), G1 (touches the production
-   exerciser in `src/`), G3 (forces the reboot fallback), G4 (needs an observable NOTIFY write first).
-6. Owner decisions from 5.2 and 5.4.
+   the jumper and the bench has no hardware beyond what is wired.
+6. Step 9's scripts: ~~G8~~ (covered), ~~G12~~ (done), ~~G1~~ and ~~G4~~ (**scratched** — each
+   needed a `src/` change for the test alone, owner 2026-09-25); **G3** left (forces the reboot
+   fallback; a device script only).
+7. Owner decisions from 5.2 and 5.4.
 
 ## 6. Traps that have actually cost time
 

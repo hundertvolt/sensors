@@ -73,15 +73,12 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   a dedicated real-hardware session or a project-owner design decision): `tests_hardware/README.md`'s
   "Tenth pass". No second instance of the SGP40-shaped bug (a real hardware trigger silently
   substituted with a software-only one) turned up, but several real tier-parity gaps did, most now
-  closed. **Named follow-ons still open, tracked in that section, not repeated here**: a real-hardware
-  test for UART's F.5.8 "never blocks" invariant against the actual shipped driver (not a hand-rolled
-  clamp); wiring a periodic SET into the bench UART exerciser's live load; deciding whether the mock
-  tier's ~20-scenario UART fault-injection catalog is a genuine real-hardware structural exception or
-  needs a raw-second-UART injection technique (**answered
-  2026-09-22: a structural exception until injection hardware exists** — Part E.6.6's fourth item); a
-  real-hardware test for `_reboot()`'s alarm-pool-exhaustion fallback; and a hard-reset-recovery bench
-  test for NOTIFY's own FRAM chunk (needs an observable-write signal analogous to SGP40's `BackupTS`
-  first). Re-running this sweep against other domains (it did not touch e.g. sensortask/system_service
+  closed. **Named follow-ons still open, tracked in that section, not repeated here**: a
+  real-hardware test for `_reboot()`'s alarm-pool-exhaustion fallback. Settled: the mock tier's
+  ~20-scenario UART fault-injection catalog is a structural exception until injection hardware
+  exists (2026-09-22, Part E.6.6's fourth item); the shipped-driver F.5.8 test exists
+  (2026-09-25); the exerciser SET and the NOTIFY FRAM-recovery test are scratched, each needing a
+  `src/` change for the test alone (owner, 2026-09-25). Re-running this sweep against other domains (it did not touch e.g. sensortask/system_service
   integration beyond what FRAM/memory covered) is future work, not assumed done everywhere.
 
 ## Open questions (need owner input or further investigation)

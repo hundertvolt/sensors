@@ -1260,9 +1260,8 @@ shouldn't make unilaterally - disclosed rather than silently dropped, per BACKLO
 - **Bench-tier UART traffic under load never issues a multi-chunk SET** - `UartLinkExerciser.
   _exercise_loop()` only ever calls `uart_get(_CMD_BANNER)`, so "bench ⊇ flash" (E.6.1) doesn't hold
   for the multi-chunk SET train the flash tier proves (`uart_crossover_exchange.py`). The exerciser
-  already has `_CMD_ECHO`/`_set_callback` wired for exactly this; wiring a periodic SET into the live
-  loop touches the real production exerciser, not just a test, so it's named here rather than done
-  blind.
+  already has `_CMD_ECHO`/`_set_callback` wired for exactly this. **Scratched (owner, 2026-09-25)**:
+  wiring a periodic SET into the live loop changes `src/` for the test alone, which `src/` never gets.
 - **The mock-tier UART hazard catalog (~20 fault-injection scenarios: corruption, drop, truncate,
   duplicate, receive-overrun, lost-final-ACK, peer-reset-mid-transaction, and more) has only two
   real-hardware equivalents (silence, baud desync).** Plausibly a genuine E.6.6 structural exception
@@ -1283,8 +1282,9 @@ shouldn't make unilaterally - disclosed rather than silently dropped, per BACKLO
 - **NOTIFY's own FRAM chunk has no hard-reset-recovery bench test**, unlike SGP40's
   (`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`). Extending that
   ~5-minute, 3-real-hard-reset test to a second FRAM-backed module needs first identifying NOTIFY's
-  own equivalent of `BackupTS` (an observable "a fresh write just completed" signal) - not confirmed
-  to exist yet, so left named rather than guessed at.
+  own equivalent of `BackupTS` (an observable "a fresh write just completed" signal), which does not
+  exist. **Scratched (owner, 2026-09-25)**: adding one would change `src/` for the test alone, and
+  the flash tier already proves a FRAM chunk's reset-raced write is all-or-nothing.
 
 **Confirmed clean, no fixes needed** (traced end-to-end, not just grep-counted): WiFi's real bench
 worker call chains (`ap_down`/`ap_up`, UDP block/redirect, `netem` fault injection, hotspot
