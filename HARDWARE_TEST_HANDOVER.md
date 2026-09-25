@@ -220,9 +220,10 @@ heap test holding the ceiling open) — designed reclaims, SYSTEM clean.
 1. ~~W4 re-run~~ — done, clean (5.2).
 2. ~~Step 6~~, ~~R4~~, ~~W5~~ — done (5.2).
 3. ~~F1~~, ~~N2~~ — done (5.2).
-4. M1 + S3b (needs the owner at the bench, ~30 min).
-5. R13 + N3 (needs a babbling peer on the jumper — the Arduino C side or a second adapter), and
-   step 9's remaining scripts: ~~G8~~ (covered), ~~G12~~ (done), G1 (touches the production
+4. M1 + S3b (needs the owner at the bench, ~30 min). M1's reference light meter is an optional data
+   point, never pass/fail — without one M1 still records repeatability and the rig geometry.
+5. ~~R13 + N3~~ — **scratched for this sitting** (owner, 2026-09-25): they need a babbling peer on
+   the jumper and the bench has no hardware beyond what is wired. Step 9's remaining scripts: ~~G8~~ (covered), ~~G12~~ (done), G1 (touches the production
    exerciser in `src/`), G3 (forces the reboot fallback), G4 (needs an observable NOTIFY write first).
 6. Owner decisions from 5.2 and 5.4.
 
