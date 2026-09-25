@@ -37,5 +37,11 @@ def test_watchdog_starvation_triggers_a_real_hardware_reset(board: Board) -> Non
 
     # Checked via is_device_present()/is_reachable() rather than tail_log() content, since log
     # output is gated behind DebugLevel (0 by default) and this must hold regardless of that config.
-    wait_until(board.is_device_present, timeout_s=15.0, poll_interval_s=0.3, description="USB device node reappears after a real watchdog-triggered reset")
-    wait_until(board.is_reachable, timeout_s=15.0, poll_interval_s=0.5, description="mpremote can talk to the board again after the reset")
+    try:
+        wait_until(board.is_device_present, timeout_s=15.0, poll_interval_s=0.3, description="USB device node reappears after a real watchdog-triggered reset")
+        wait_until(board.is_reachable, timeout_s=15.0, poll_interval_s=0.5, description="mpremote can talk to the board again after the reset")
+    finally:
+        # is_reachable() attaches within ~1 s of boot, which parks main.py at the REPL with no
+        # watchdog armed until the next reset - so never end the tier on that board (bench 2026-09-25).
+        board.hard_reset()
+        wait_until(board.is_device_present, timeout_s=15.0, poll_interval_s=0.3, description="USB device node reappears after the closing hard_reset()")

@@ -382,6 +382,10 @@ the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
 **Bench traps** (occurrences: archive §7R.5).
 - Leave > 45 s between a reset and the next `mpremote` attach; a watchdog reset ~9 s after an early
   attach is the likely, unconfirmed cause of one dead run.
+- An attach within ~1 s of boot (before `main.py` arms the watchdog) parks the board at the REPL
+  with no watchdog: no WiFi, no output, no self-recovery until the next reset (bench, 2026-09-25).
+  A test that polls `is_reachable()` right after a reset must end with `hard_reset()`, as
+  `flash/test_watchdog_starvation.py` does.
 - After a reset or a flash the board can fall back to hotspot mode; `kick_all_stations()` +
   `hard_reset()` recovers it, occasionally only on a second try.
 - After an unexpected reset, read `machine.reset_cause()` over `mpremote exec` before anything

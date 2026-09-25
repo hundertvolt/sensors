@@ -217,6 +217,8 @@ The full list is the queue's section 6 and `tests_hardware/README.md`. The ones 
   armed watchdog resets the board ~8 s later. Diagnose passively: `hard_reset()`, `tail_log()`, then
   curl; poll `SysUptime` to tell a reboot loop from replayed history.
 - **Leave > 45 s between a reset and the next `mpremote` attach.**
+- **An attach within ~1 s of boot parks the board with no watchdog** until the next reset; end any
+  poll-after-reset with `hard_reset()` (`tests_hardware/README.md`).
 - **At the connection ceiling a reset before any response is a refusal, not a failure**
   (`http_client.is_ceiling_close()`); assert the property the feature owns, plus a floor on how many
   were answered.
