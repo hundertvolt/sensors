@@ -33,7 +33,11 @@ follow PQ3 (proposed `SEV1`-`SEV4`), register findings are `AF-<AREA>-<nnn>`, ow
   the rest. A seed tagged `[x2]`/`[x3]` was reported independently by two/three survey agents (a
   convergence signal, not a verification).
 - **Cross-cutting lenses** (section 4.2) apply to every area on top of its own topics.
-- **Status markers**: `[ ]` open, `[x]` done, `[~]` partially done (used in section 6 only).
+- **Status markers**: `[ ]` open, `[x]` done, `[~]` partially done (used in 1.2, 4.6, 5 and 6). During
+  execution, progress lives only in the register (4.5); topic boxes in section 5 are not ticked.
+- **Where things live**: this file (plan, topics, seeds); `audit/` (temporary audit apparatus: planning
+  survey notes, the harvest of what the project's own comments/docs/history record, and later the sweep
+  scripts, register and wave artefacts — proposed under PQ2); section 3.1 (owner statements, verbatim).
 - **Line anchors** are as of commit `0615eba` (planning baseline). Resolve them with `git show 0615eba:<path>`;
   at HEAD they drift (docs first — other sessions keep committing here).
 
@@ -111,8 +115,7 @@ and every markdown doc (`*.md` at the root, `digital_twin/README.md`, `tests_har
 
 ### 2.3 Standing constraints and CLAUDE.md conformance
 
-Every auditor receives CLAUDE.md, sections 0-4 of this plan, its own area section, the text of every
-topic/seed that section cites, and the do-not-reopen index (`DOC.T14`), and applies the lenses *inside*
+Every auditor receives the packet defined in 4.4 ("Auditor context") and applies the lenses *inside*
 CLAUDE.md's rules. Specifically:
 
 - Flag, don't silently fix, any behaviour/formula discrepancy (Part D.1) and any cross-file consistency
@@ -152,15 +155,36 @@ per CLAUDE.md's step-session limit.
 | ID | Question | Options | Planner's recommendation |
 |---|---|---|---|
 | PQ1 | Output mode and phase rules | (a) findings register first, then owner-prioritised fix units; (b) fix-per-area once that area converges; (c) findings only. Also: SEV1 escalated immediately? May the findings phase add tests/harnesses (the REST/GEN quality measures need a test matrix and a fuzz harness)? Is audit-found doc drift fixed in place (stale-doc rule) or registered? | (a); SEV1 immediately; findings phase may add harnesses in scratch/worktrees only; arbiter fixes SEV4 factual doc drift in place (satisfying CLAUDE.md's stale-doc rule), everything else registered |
-| PQ2 | Branching, register location, merge | Fixes on this branch vs one branch + PR per fix unit; register as a sibling file vs a section here; commit cadence; merge strategy into `main` (~77 "archive §" citations point at `12640c2`, today reachable only from this branch — `DOC.S04`) | Sibling register file, committed after every arbitration batch; one branch per fix unit; merge commit (or tag `12640c2`) rather than squash + delete |
+| PQ2 | Branching, register location, merge | Owner intent (3.1): this work has its own branch and PR, stacked on `claude/automated-build-chain-nuzumw`, which merges into `main`. Open: which branch the execution phase runs on (this one, or a fresh one per session/wave); fixes here vs one branch + PR per fix unit; where the audit apparatus lives (proposed: a temporary `audit/` directory — register, sweep scripts, wave artefacts — outside the lint/typecheck scopes, deleted at close); may the arbiter commit and push audit files autonomously after each arbitration batch; merge strategy into `main` (~77 "archive §" citations point at `12640c2`, today reachable only from the feature branch — `DOC.S04`) | `audit/` directory, register `audit/REGISTER.md`; autonomous commits of audit files only; one branch per fix unit; merge commit (or tag `12640c2`) rather than squash + delete |
 | PQ3 | Severity scale and sign-off threshold | proposed: SEV1 board/host safety, bricking, data loss, evidence loss; SEV2 functional defect, SEV3 robustness/latent, SEV4 consistency/doc/style | Owner sign-off before any fix that changes observable behaviour or a wire/storage format, regardless of severity |
 | PQ4 | Real hardware inside the audit | (a) none — every silicon item becomes a queue row; (b) gated bench sittings inside the audit. Also: sequencing with the pending `HARDWARE_TEST_HANDOVER.md` sitting | (a) by default; board/host-safety seeds (`HW.S01`, `HW.S06`, `HW.S07`, `HW.S09`, `HW.S10`, `HW.S25`, `TOOL.S03`) go to the owner *before* the next sitting, not at wave 3; that sitting is part-run (`3062cc7`) |
 | PQ5 | Threat model for `SEC` | (a) trusted home LAN; (b) untrusted LAN peers (guest Wi-Fi, IoT neighbours, DNS rebinding via a browser); (c) radio-range attacker in hotspot mode | Needs an explicit answer: it decides whether e.g. unauthenticated `bootloader` is a defect or an accepted property |
 | PQ6 | Documentation scope | (a) correctness only (stale/contradictory/dangling); (b) also placement (I.6 inside Part J, CLAUDE.md size/auto-load budget, history pruning). Comment-cap extension to `tsconfig*.json`, `.gitignore` and 400-700-character one-line docstrings (`CI.S10`, `TEST.S22`) — `html/index.html`'s inline script is already under the current rule (`WEB.S19`); and whether docs should state the settled `arduino/` exclusion (`LIC.T04`) | (b), as its own late unit so it doesn't churn line refs mid-audit; cap extension is the owner's call |
 | PQ7 | Moving target | Other sessions keep committing to this branch. (a) freeze non-audit work during the audit; (b) audit a pinned baseline and run delta passes over files changed since each area's closure. Also: one arbiter across sessions? Does the audit go-ahead persist across sessions? | (b) with a single-writer lease (4.7); go-ahead re-confirmed per session |
 | PQ8 | Owner stop-points (CLAUDE.md step-session "stop and report") | After ENV; after each wave; only at the end | After ENV and after each wave |
-| PQ9 | Resources | Agents per wave, token budget, execution host/egress. **Partly answered** (owner, 2026-09-25: parallel agents allowed, "as many as useful, with care"). Open: may ENV prep (toolchain build, baseline run) happen before the go-ahead? | Waves of ≤ 8 auditors + verifiers; ENV prep allowed early since it audits nothing |
-| PQ10 | Owner inputs the plan cannot derive | Is a legacy→refactor reflash campaign planned (makes `PAR.T06`/`PAR.T07` SEV1)? External REST consumers of the legacy routes (`PAR.T05`)? The Sensirion VOC C reference; missing datasheets (BMP390, RP2040, WS2812, QSPI flash)? Permission to run legacy code as an oracle (`PAR.T12`)? UF2 distribution scope and repo visibility (`LIC.T06`/`T07`)? Browser support floor (`WEB.T09`)? Is `pico_gpio.py`'s conservatism intended (`GEN.T07`)? | Owner input |
+| PQ9 | Resources | Agents per wave, token budget, execution host/egress. **Partly answered** (owner, 2026-09-25, verbatim in 3.1: parallel agents "as many as you like", with care, converging, not interfering — given for the planning session). Open: does that permission carry over to execution sessions; may ENV prep (toolchain build, baseline run) happen before the go-ahead? | Waves of ≤ 8 auditors + verifiers; ENV prep allowed early since it audits nothing |
+| PQ10 | Owner inputs the plan cannot derive | Is a legacy→refactor reflash campaign planned (makes `PAR.T06`/`PAR.T07` SEV1)? External REST consumers of the legacy routes (`PAR.T05`)? The Sensirion VOC C reference; missing datasheets (RP2040, WS2812, QSPI flash; BMP390 is settled by the owner's family-register-map confirmation, Part A.6)? Permission to run legacy code as an oracle (`PAR.T12`)? UF2 distribution scope and repo visibility (`LIC.T06`/`T07`)? Browser support floor (`WEB.T09`)? Is `pico_gpio.py`'s conservatism intended (`GEN.T07`)? | Owner input |
+
+### 3.1 Owner record (verbatim, dated)
+
+Statements that shape this plan, quoted exactly so no session works from a paraphrase. Planning-session
+statements bind the planning session; whether they carry over is asked in PQ2/PQ7/PQ9.
+
+| Date | Statement (verbatim) | Scope |
+|---|---|---|
+| 2026-09-25 | "For the whole project, I want to do a substantial audit, broad (over the whole project) and deep (down to function internals) at a time. So this is really going to be a lot of work, it will probably run for days on its own. I am currently setting it up on a branch which is soon going to be merged into main, and it's currently the only branch off main, so there will be no difference between this branch and main in the future, and this PR will point at main - this is exactly my intention." | Audit scope; the feature branch merges into `main` |
+| 2026-09-25 | "Scan through the whole project, its documentation, its code, and get a solid overview of what it does and how it works. We will need this overview in the discussion later in many aspects, so be thorough, take good care." | Planning survey; its residue is kept (`audit/PLANNING_SURVEY.md`) |
+| 2026-09-25 | "The first step to be done is that we will record a large list of which topics to cover in the audit and how to proceed. This will take a while, the list will become huge, and you are always free to extend and check it whenever you see something missing or something which would make sense or improve it." | This file |
+| 2026-09-25 | "The actual work on the audit remains blocked until my explicit go-ahead. Do not misunderstand any of the recorded topics as an implicit start. I will tell you when we are done." | Execution gate (header) |
+| 2026-09-25 | "Throughout the whole session, both research, recording and later work, you have my explicit go to use parallel tasks and agents - as many as you like. Anyhow, do this with care and apply your best arbitration style. Always look out for the results to converge and for the agents not interfering each other." | Parallel agents, planning session (4.4; PQ9) |
+| 2026-09-25 | On the committed bench password: "that is a generated login, I wonder why it got persisted in a file. It's a pure throwaway board-bench-password, low risk, no alarm here. The only topic to note and to check here throughout the audit is consistency. Such temp credentials are usually generated, and persisting one in a file rather is a stylistic (and not safety) breach which will need harmonization. One topic to record in our list." | `HW.T11`, `HW.S08`, `SEC.T07` |
+| 2026-09-25 | "It is good that you already pre-record findings and details, this will be very useful for the discussion when I start adding my topics. You don't need to search for solutions right now, recoding all you find and all which is noted in comments and docs is sufficient, and it's more important not to miss anything there." | Planning records, never solves; the harvest (`audit/`, V10) |
+| 2026-09-25 | "For this session we need our dedicated branch and our dedicated PR. Don't just push on the claude/automated-build-chain-nuzumw branch." | Planning work lives on `claude/whole-project-audit-plan` with its own PR (PQ2) |
+
+Go-ahead record (empty until given): date · session · scope (which steps/waves) · autonomous commits of
+audit files authorised (y/n) · parallel-agents permission carried over (y/n) · real-hardware go-ahead
+(never carried over; per conversation, CLAUDE.md). PQ answers are recorded in the PQ table's last column,
+dated, replacing the recommendation.
 
 ---
 
@@ -188,15 +212,32 @@ per CLAUDE.md's step-session limit.
 
 Recommended (PQ1/PQ3): SEV1 findings go to the owner immediately, whatever the wave.
 
+**Units** (the register's header tracks each; "the lowest open unit" in 4.7 means the lowest number
+not `closed`, together with every other open unit of its wave):
+
+| Unit | Content | Unit | Content |
+|---|---|---|---|
+| U0 | ENV (4.6) | U9-U16 | wave 2: SENS, STOR, UART, NET, REST, GEN, TOOL, LED re-check |
+| U1 | PAR.T01/PAR.T02 | U17-U22 | wave 3: WEB, TEST, TWIN, HW, SCR, CI |
+| U2 | SEC.T01 (needs PQ5) | U23-U28 | wave 4: SEC, MEM, PERF, PAR (rest), DOC, LIC |
+| U3 | LED pilot | U29 | close-out: delta passes, global convergence pass, owner review |
+| U4-U8 | wave 1: XCUT, CORE, ALGO, BUS, PLAT | | |
+
+- A **pass** is auditor A + auditor B + the arbiter's merge of the two (4.4); verifiers run per pass.
+- `converged@sha`: the 4.4 convergence rule is met. `closed@sha`: converged, every register entry of the
+  unit terminal or routed to the owner, the per-area lens record filled (1.2) and the quality measure met.
+- A pass with no committed auditor report is restarted from scratch, never resumed from memory.
+- A stop-point (PQ8) sets the register header's `Awaiting owner` field; nothing runs past it.
+
 ### 4.2 Cross-cutting lenses (apply to every in-scope area; "N/A, because …" allowed)
 
 | Lens | Question every area answers |
 |---|---|
 | L-CORR | Correct against the authoritative source (datasheet, RFC, MicroPython 1.29.0 source, Microdot v2.6.2 source, browser spec) — verified, cited, not recalled |
-| L-EXC | Exception net complete: nothing raises out of a never-raise contract; every raise has a catching caller (Part D.2) — within CLAUDE.md's no-blanket-asyncio-wrap rule |
+| L-EXC | Exception net complete: nothing raises out of a never-raise contract; every raise has a catching caller (Part D.2), including import time and the pre-`WDT()` phase (`XCUT.T20`) — within CLAUDE.md's no-blanket-asyncio-wrap rule |
 | L-CONC | Every lock, shared state, await point and interleaving; lock-hold spans containing sleeps or I/O; lock order |
 | L-BLOCK | Nothing blocks the loop beyond its budget (Part D.5, F.3, F.5.8) |
-| L-TIME | Timers (soft-callback drop, ONE_SHOT vs PERIODIC, alarm pool), ticks wraparound *and* the age of stored ticks values (`ticks_diff()` is only valid under 2**29 ms, `XCUT.T25`), timeouts vs the configured 8000 ms watchdog (8388 ms is the rp2 cap) |
+| L-TIME | Timers (soft-callback drop, ONE_SHOT vs PERIODIC, alarm pool), ticks wraparound *and* the age of stored ticks values (`ticks_diff()` is only valid under 2**29 ms), deltas passed to `ticks_add()`/`sleep_ms()`/`wait_for()` and `Timer(period=)` values (`XCUT.T25`), timeouts vs the configured 8000 ms watchdog (8388 ms is the rp2 cap) |
 | L-MEM | Allocation bounded and not client-controllable; churn on hot paths; long-lived placement (Part I) |
 | L-LIFE | Every resource (socket, timer, task, file, lock, buffer, FRAM chunk) released on every path incl. cancel/restart |
 | L-STATE | State machines complete: every state × event, including task restart, reboot, power loss, and cancellation at every `await` |
@@ -233,8 +274,9 @@ Recommended (PQ1/PQ3): SEV1 findings go to the owner immediately, whatever the w
   `L-CONC`.
 - **Budget arithmetic**: worst-case watchdog-feed gap, lock-hold per bus, request ceiling, FRAM layout
   vs chip size, UDP PCB count, alarm-pool count — computed from code, cross-checked by measurement.
-- **Static sweeps** (grep/AST scripts kept in the scratchpad): error-code catalogue, timer inventory,
-  lock inventory, `create_task` inventory, `repeat=` usage, cross-reference resolver for docs.
+- **Static sweeps** (grep/AST scripts committed under `audit/sweeps/`; outputs regenerated, not
+  committed): error-code catalogue, timer inventory, lock inventory, `create_task` inventory, `repeat=`
+  usage, cross-reference resolver for docs.
 - **Representation-faithful scratch Unix port**: a third, scratch-only build with 32-bit objects and
   single-precision floats (if buildable) for ALGO/SENS arithmetic parity and allocation counts — not a
   toolchain change.
@@ -282,83 +324,142 @@ Recommended (PQ1/PQ3): SEV1 findings go to the owner immediately, whatever the w
   directly (planning example: one survey said the hotspot timeout is 5 min, another 8 min — the class
   default is 5 but every `devices/*.toml` sets `hotspot_time_min = 8`; both were right about different
   things).
-- **Auditor context**: each auditor gets sections 0-4, its own area section and the do-not-reopen index
-  — not the whole plan on top of CLAUDE.md.
+- **Auditor context** (the one definition; 2.3 points here): CLAUDE.md (auto-loaded); sections 0-4 and
+  5.0 of this plan; its own area section; the full text of every topic/seed that section cites, marked
+  "context only, owned by X"; its area's harvested notes (`audit/`, V10); the do-not-reopen index and the
+  answered section 3; the text of every SPECIFICATION Part its References line names; from wave 2 on, the
+  committed `audit/artefacts/` it depends on. A committed `audit/sweeps/packet.py <AREA>` assembles it
+  (measured at `2a88cc8`: 34-46 KB of plan text per area, XCUT largest). Each auditor also gets its lens
+  emphasis (A vs B) and reports in the register's field order minus the arbiter's fields (severity,
+  status, verdict).
+- **Blindness**: auditors work in a worktree at the audit baseline, created before the register exists
+  or with `audit/REGISTER.md` removed, so "blind to the register" is enforced rather than requested.
 - **Non-interference rules**:
   - Auditors and verifiers never write inside the checkout. They use the scratchpad or their own
     `isolation: "worktree"`. No force-push by anyone; `git pull --rebase` before every push.
   - Two agents that execute tests never share a worktree: `scripts/test.sh`, `npm test`,
     `build_website.sh` and the twin CI suite all write shared outputs (`frozen_modules/`,
     `build/generated_src/`, `digital_twin/*_state.json`, `tests/_tmp`, rp2/mpy-cross build dirs).
-  - **Ports are host-wide**; worktrees don't isolate them (CLAUDE.md: two port-binding suites never at
-    once). One port-binding run per host at a time (e.g. a `flock`), or network namespaces.
-  - Each executing agent gets an explicit `TEST_PARALLELISM` share; a timing failure seen under
-    contention stays "unconfirmed" until reproduced alone.
-  - The toolchain directory (`$PICO_TOOLCHAIN_DIR`) is shared read-only after ENV builds and verifies
-    both Unix-port variants (so `test.sh`'s variant check never triggers a rebuild); an agent that needs
-    a rebuild gets its own toolchain dir (and its own `sudo setcap` — copies lose the capability).
-  - Copy twin FRAM/SCD30 state and `digital_twin_ci_logs/` aside before any rerun (CLAUDE.md's
-    FRAM-evidence rule covers the twin).
+  - **Ports are host-wide and fixed in code** (twin CI 18080 and 53, `test.sh`'s HTTP/DNS listeners,
+    `npm test`'s 19420/19481/19482, Part E.1's 17400-19999 range); worktrees don't isolate them and no
+    per-agent allocation exists without code changes. Every port-binding command (`scripts/test.sh` in
+    any mode, `run_digital_twin_ci.sh`, `run_unix_port_integration.sh`, `npm test`,
+    `cross_browser_smoke.mjs`, any twin boot) runs only under `flock /tmp/sensors-audit-ports.lock`.
+  - The lock holder uses `test.sh`'s autodetected parallelism; a timing failure seen under contention
+    stays "unconfirmed" until reproduced alone.
+  - The toolchain directory (`$PICO_TOOLCHAIN_DIR`) is **not** read-only in use: `build_firmware.py`
+    wipes `<toolchain>/micropython/mpy-cross/build` and rebuilds `ports/rp2/build-<board>`, and `test.sh`/
+    `run_digital_twin_ci.sh` re-run `setcap` on the shared binary. Firmware builds run under
+    `flock /tmp/sensors-audit-toolchain.lock` or on a private toolchain copy (its own `sudo setcap` —
+    copies lose the capability). ENV builds and verifies both Unix-port variants first, so `test.sh`'s
+    variant check never triggers a rebuild.
+  - ENV's baseline runs in its own worktree. Twin FRAM/SCD30 state and `digital_twin_ci_logs/` are
+    copied to `<scratchpad>/twin-evidence/<utc>/` before any rerun (CLAUDE.md's FRAM-evidence rule covers
+    the twin).
   - Fix work (if PQ1 allows): one writer per file at a time, one fix unit per branch/worktree.
 
 ### 4.5 Findings register
 
-A sibling file (recommended, PQ2), listed in README "Further reading", created at execution start —
-not now. Header: per-area status (not started / pass k / converged@sha / closed@sha / re-opened),
-current wave, current arbiter session ID and time (single-writer lease, 4.7). One row per finding:
+`audit/REGISTER.md` (location pending PQ2), listed in README "Further reading", created at execution
+start — not now. Written only by the lease holder (4.7).
 
-`ID` (`AF-<AREA>-<nnn>`) · title · file:line · `observed@sha` · owning area · lens · severity (PQ3) ·
-class (defect / latent / doc-drift / test-gap / decision-needed / settled-no-action) · evidence (repro,
-source citation) · CLAUDE.md rule involved · touches-SETTLED reference · needs-silicon / wear ·
-related / duplicate IDs · verifier verdict · status (open / confirmed / rejected / decided / fixed /
-fixed-elsewhere / duplicate-of / moved-to-backlog / moved-to-queue) · fix unit · `re-verified@HEAD` ·
-link to fix commit or decision.
+**Header fields**: lease (session ID and link, since UTC) · released (UTC, or —) · audit branch ·
+go-ahead reference (3.1) · awaiting owner (stop-point name, or no) · planning baseline (`0615eba`) ·
+audit baseline SHA (ENV.T08) · delta queue (areas and files changed since baseline or closure) ·
+current wave · unit table (U0-U29 from 4.1: not started / pass k / converged@sha / closed@sha /
+re-opened) · per-area lens record (every lens of 4.2: applied, or "N/A, because …" — DoD 1.2).
 
-Terminal statuses map onto the four outcomes of 1.1 goal 4: `fixed`/`fixed-elsewhere` → fixed-and-verified;
-`decided`/`settled-no-action` → owner decision recorded; `moved-to-backlog`/`moved-to-queue` → moved;
-`rejected`/`duplicate-of` → rejected with the reason. A verifier's "plausible" is not terminal (4.4).
+**Entries**: one `### AF-<AREA>-<nnn>` block per finding, plus a one-line-per-finding summary table at
+the top (ID · title · area · severity · status). An AF ID is assigned at intake — when an auditor
+reports a finding or picks up a seed or harvested note — and is kept whether the item is confirmed or
+rejected. Fields:
 
-Seeds (`<AREA>.S<nn>`) become findings only after verification; a rejected seed stays in the register
-with its reason while the audit runs, so it is not rediscovered. When the register is deleted, only
-rejections whose rediscovery risk is real migrate — per CLAUDE.md's working agreement (target pending
-`DOC.S10`; a BACKLOG "don't re-raise" note only if the owner confirms); the rest go
-with the file (docs-current-state rule).
+`source` (seed/note ID, or auditor A/B of pass k) · title · file:line list (repo paths at
+`observed@sha`; upstream sources as `<project>@<tag>:<path>:<line>`) · `observed@sha` (the worktree
+SHA the auditor read) · `found-in-pass` and date · owning area · lenses (primary first) · severity
+(PQ3; assigned by the arbiter) · class (defect / latent / doc-drift / test-gap / decision-needed) ·
+evidence (repro, source citation) · CLAUDE.md rule involved (quoted heading) · touches-SETTLED
+(do-not-reopen index entry, or none) · needs-silicon (no / yes: which queue row) · wear (none / flash /
+NVM / FRAM / host) · related / duplicate IDs · verifier verdict · status · decision (owner text or
+pointer) · moved-to (queue row / BACKLOG number) · fix unit (branch, PR link) · `re-verified@HEAD`.
+
+**Status transitions**: `open` → verifier verdict (`confirmed` / `plausible` / `rejected`) → one
+terminal status. Terminal statuses map onto the four outcomes of 1.1 goal 4: `fixed`/`fixed-elsewhere` →
+fixed-and-verified; `decided`/`settled-no-action` → owner decision recorded;
+`moved-to-backlog`/`moved-to-queue` → moved; `rejected`/`duplicate-of` → rejected with the reason.
+`plausible` is not terminal (4.4): it ends as an owner decision or a queue row. Under PQ1(c) (findings
+only), a confirmed finding ends as `decided` or `moved-to-backlog`.
+
+A rejected seed or note stays in the register with its reason while the audit runs, so it is not
+rediscovered. When the register is deleted, only rejections whose rediscovery risk is real migrate — per
+CLAUDE.md's working agreement (target pending `DOC.S10`; a BACKLOG "don't re-raise" note only if the
+owner confirms); the rest go with the file (docs-current-state rule).
 
 ### 4.6 Execution environment (area `ENV`)
 
-- [ ] **ENV.T01** Build the toolchain (`uv run toolchain/setup_toolchain.py`), Unix port both variants;
-      note sandbox egress limits (CLAUDE.md: `astral.sh`; BACKLOG.md:575: `deb.debian.org`); build and
-      verify **both** Unix-port variants so no agent later triggers a rebuild.
-- [ ] **ENV.T02** Baseline run of every tier listed in 1.2; record counts (files, tests, pass/fail),
-      wall clock, coverage per `src/` file, lint/typecheck finding counts (expected 0), npm results.
-- [ ] **ENV.T03** Clone MicroPython `v1.29.0` source (and `extmod/asyncio`, `ports/rp2`, `lib/lwip`,
-      `lib/cyw43-driver`) plus Microdot `v2.6.2` into the scratchpad as the reference corpus.
-- [ ] **ENV.T04** Re-extract datasheet text; list missing datasheets (seed `SENS.S20`).
-- [ ] **ENV.T05** Decide the worktree/port/toolchain-dir/`TEST_PARALLELISM` allocation per parallel
-      agent (4.4).
-- [ ] **ENV.T06** Measure `disallow_any_explicit` counts per pass (BACKLOG's figures are dated
+Per-session topics (a fresh container repeats them): T01, T03, T04. Once-only topics commit their
+results to the register's header or `audit/artefacts/ENV/`: T02, T05-T10.
+
+- [ ] **ENV.T01** (per session) Build the toolchain (`uv run toolchain/setup_toolchain.py`; skip when
+      `setup_toolchain.py test` passes); note sandbox egress limits (CLAUDE.md: `astral.sh`;
+      BACKLOG.md:555 at `0615eba`: `deb.debian.org`); build and verify **both** Unix-port variants
+      (`hasattr(sys, "settrace")` False for `build-standard`, True for `build-settrace`) so no agent later
+      triggers a rebuild.
+- [ ] **ENV.T02** (once) Baseline run of every tier listed in 1.2, serialized under the port lock (4.4);
+      record counts (files, tests, pass/fail), wall clock, coverage per `src/` file, lint/typecheck
+      finding counts (expected 0), npm results. `uv run pytest tests_hardware --collect-only` only after
+      `HW.T14`'s owner confirmation.
+- [ ] **ENV.T03** (per session) Reference corpus: reuse `$PICO_TOOLCHAIN_DIR/micropython` (already at
+      `v1.29.0` with the rp2 submodules: `extmod/asyncio`, `ports/rp2`, `lib/lwip`, `lib/cyw43-driver`)
+      read-only; clone only Microdot `v2.6.2` into the scratchpad.
+- [ ] **ENV.T04** (per session) Re-extract datasheet text (`uv run --with pypdf
+      audit/sweeps/extract_datasheets.py <scratchpad>`); list missing datasheets (seed `SENS.S20`).
+- [ ] **ENV.T05** (once) Apply 4.4's non-interference rules: lock files, worktree per executing agent,
+      toolchain copy policy.
+- [ ] **ENV.T06** (once) Measure `disallow_any_explicit` counts per pass (BACKLOG's figures are dated
       2026-09-11) as a baseline only — enabling it stays a separate owner-deferred session.
-- [ ] **ENV.T07** Build the do-not-reopen index (`DOC.T14`) and the cross-reference resolver
-      (`DOC.T02`) before wave 1.
-- [ ] **ENV.T08** Snapshot the planning baseline for anchor resolution (`git show 0615eba:<path>`) and
-      record the audit baseline SHA.
+- [ ] **ENV.T07** (once) Build the do-not-reopen index (`DOC.T14`) and the cross-reference resolver
+      (`DOC.T02`) before wave 1, committed under `audit/`.
+- [ ] **ENV.T08** (once) Record the audit baseline SHA in the register header; anchors in this file
+      resolve at the planning baseline (`git show 0615eba:<path>`; `git fetch --unshallow` first if
+      `.git/shallow` exists).
+- [ ] **ENV.T09** (once) Commit `audit/sweeps/packet.py` (auditor packet, 4.4) and
+      `audit/sweeps/owner_of.py` (file → owning area from 5.0, for delta passes).
+- [ ] **ENV.T10** (once) Commit the plan validators (`audit/sweeps/validate_plan.py`: V1 ownership, V3
+      anchors in bounds, V4 ID uniqueness) and extend V3 from bounds to content where an anchor quotes
+      text (planning found an in-bounds wrong anchor, BACKLOG.md:575 → 555).
 
 ### 4.7 State and resumption
 
-- **All state lives in git on the branch.** Nothing needed to resume may live only in a session's
+- **All state lives in git on the audit branch.** Nothing needed to resume may live only in a session's
   context, the (session-specific) scratchpad or a subagent report. The arbiter commits after every
-  arbitration batch.
-- **Single-writer lease**: the register header names the current arbiter session and when it took over;
-  a new session takes over only after checking the previous one is no longer writing.
-- **Resume procedure**: read CLAUDE.md, this plan and the register header → fetch and diff the recorded
-  baseline..HEAD, queueing delta passes → rebuild ENV (the container may be fresh) → confirm the audit
-  go-ahead still stands (the hardware go-ahead never carries over) → continue with the lowest open unit.
-- **Shared docs**: while findings are gathered the audit writes only its own files (plus in-place SEV4
-  doc-drift fixes if PQ1 allows); edits to shared docs happen in migration or fix units, merging both
-  sides of any conflict; after any merge run every tier, and after one touching `uv.lock` re-verify the
-  installed tool versions against the pins (CLAUDE.md).
-- **Moving target**: other sessions push to this branch (e.g. `0b7feae`, `3062cc7` during planning).
-  Every finding is re-verified at HEAD before it is fixed or migrated (`re-verified@HEAD`).
+  arbitration batch (if PQ2 authorises autonomous commits).
+- **Resume procedure**:
+  1. `git fetch origin`; check out the audit branch named in the register header (before the register
+     exists: the branch the owner names at go-ahead). `git fetch --unshallow` if `.git/shallow` exists.
+  2. Read CLAUDE.md, this plan (3.1 included) and the register header. No register means a first start.
+  3. Confirm the go-ahead: 3.1 must record it *and* the owner confirms it in this conversation before
+     any write. Never touch the board; check `HARDWARE_TEST_HANDOVER.md`/the queue for a bench sitting
+     in progress by another session.
+  4. Take the lease: read the holder's last register commit (date, `Claude-Session` trailer) and confirm
+     that session is idle, completed, failed or archived — otherwise ask the owner. Write your session
+     and UTC time into the header, commit, push. A rejected push means re-read, never force. Write
+     `Released` when stopping.
+  5. Delta: `git diff --name-only <audit-baseline>..origin/<branch>` through `audit/sweeps/owner_of.py`;
+     queue closed areas in the header; note the changed files for areas that are mid-pass.
+  6. Per-session ENV: T01, T03, T04.
+  7. If `Awaiting owner` is set, stop. Otherwise continue with the lowest open unit (4.1).
+- **Shared docs**: while findings are gathered the audit writes only its own files (`audit/`, this file)
+  plus these exceptions: the README "Further reading" entry for the register, this file's status line
+  and 3.1, and in-place SEV4 doc-drift fixes if PQ1 allows. Wave outputs and quality artefacts live in
+  `audit/artefacts/<AREA>/` until a migration unit moves what is permanent (e.g. TWIN's measure into
+  `digital_twin/README.md`). Edits to shared docs happen in migration or fix units, merging both sides of
+  any conflict; after any merge run every tier, and after one touching `uv.lock` re-verify the installed
+  tool versions against the pins (CLAUDE.md).
+- **Moving target**: other sessions push to the feature branch this one stacks on (e.g. `0b7feae`,
+  `3062cc7`, `21560a4` during planning); they do not edit `audit/` or this file. Auditors read a worktree
+  at the audit baseline; every finding is re-verified at HEAD before it is fixed or migrated
+  (`re-verified@HEAD`).
 
 ---
 
@@ -393,7 +494,7 @@ with the file (docs-current-state rule).
 | PAR | Legacy parity and field migration | refactor vs `python/`, `modules/`, `html_raw/` |
 | DOC | Documentation set | `README.md`, `SPECIFICATION.md`, `CLAUDE.md`, `BACKLOG.md`, `DEVICE_REFERENCE.md`, `PROJECT_AUDIT_PLAN.md`, `update_and_install.txt` (reads every other doc without owning it) |
 | LIC | Licensing and attribution | `LICENSE`, `THIRD_PARTY_LICENSES.md`, `ext/LICENSE-microdot`, `ext/freezefs/LICENSE`, attribution headers (reads `src/LICENSE-captive_dns`, owned by NET) |
-| ENV | Audit execution environment | section 4.6 |
+| ENV | Audit execution environment | section 4.6; `audit/**` (temporary apparatus, PQ2) |
 
 Out of scope/reference only: see 2.2. Every tracked file has exactly one owning area above (DOC reads
 every doc, LIC reads every licence header, without owning them); checked by validation step V1.
@@ -454,8 +555,8 @@ Topics:
 - [ ] **XCUT.T15** Part G.3 re-validation: grep-for-the-shape sweep for duplicated primitives across
       `src/`, `buildgen/`-generated code and `js/`.
 - [ ] **XCUT.T16** Import graph: no cycles across `src/` + `ext/` + generated code; import-time side
-      effects per module (allocations, hardware access); frozen set = transitive import closure (with
-      `GEN.T05`).
+      effects per module (allocations, hardware access), including the pre-`WDT()` phase (`XCUT.T20`);
+      frozen set = transitive import closure (with `GEN.T05`).
 - [ ] **XCUT.T17** Data freshness contract: what `TS` means per driver; can any cycle publish old
       values with a new timestamp (seed `SENS.S08`)?
 - [ ] **XCUT.T18** Time base: RTC set by NTP, `time.time()` vs `ticks_ms()`, `mktime` epoch/TZ,
@@ -465,11 +566,16 @@ Topics:
       supervisor restarts). For each multi-step sequence cut mid-way (`_set_dict_cfg`
       persist→push→recover, SCD30 command+wait, FRAM dual-copy write and BUSY marker, `write_config`
       staging, `_flush_pending_configs` before a reboot) state what the cut leaves behind.
-- [ ] **XCUT.T20** Boot failure beyond `setup()`, including before `WDT()` exists (an import failure
-      there hangs the unit instead of reset-looping, `XCUT.S14`): a constructor in `build_system()`
-      raising, an exception or return out of `main()`, frozen `main.py` ending in the REPL with
-      `WDT(8000)` armed and no FRAM logger yet — is the resulting reset loop diagnosable at all?
-      Leftover filesystem `boot.py`/`main.py` from the legacy tree (`PLAT.T10`).
+- [ ] **XCUT.T20** Boot failure outside any exception net, by phase. (1) Before `WDT()` exists — the
+      REPL or a block, i.e. a hang, not a reset loop: upstream `_boot.py`'s mount-or-format
+      (`XCUT.S18`); a filesystem `boot.py` (`XCUT.S16`; a filesystem `main.py` never runs, `PLAT.T10`);
+      the generated module's import closure — shadowing by filesystem modules (`XCUT.S17`, `PAR.T08`),
+      frozen-set gaps (`GEN.T05`), import-time effects (`XCUT.T16`; today only `frozen_html`'s mount,
+      `XCUT.S14`). (2) From `WDT()` to the first supervisor feed (`XCUT.T01`, `XCUT.S13`, `PAR.S12`): a
+      constructor in `build_system()` raising, frozen `main.py` ending in the REPL with `WDT(8000)`
+      armed and no FRAM logger yet. (3) An exception or return out of `main()` (`XCUT.S11`). For each:
+      reset loop or hang? Does a power cycle recover it? Is it diagnosable at all? Is arming the
+      watchdog before the boot entry's import feasible (8 s budget vs import time; USB/mpremote access)?
 - [ ] **XCUT.T21** Tick counting and `ThreadSafeFlag` semantics: counters that advance once per
       `wait()` (SysUptime, WiFi/NTP counters, hotspot timeout, sensor base triggers) lose ticks when the
       flag is set twice before the waiter runs, a soft callback is dropped, or the loop stalls > 1
@@ -486,14 +592,22 @@ Topics:
       supervisor reboot, boot crash, unsupervised-task death, FRAM write failure inside the logging
       layer (`_diag()` silent at level 0, `src/print_log.py:177-178`) — what persisted evidence
       survives?
-- [ ] **XCUT.T25** Stored ticks values: every `ticks_ms()` value or deadline that is saved and later passed
-      to `ticks_diff()`. On rp2 the tick period is 2**30 (`py/mpconfig.h:1925`, `extmod/modtime.c:172`), so
-      `ticks_diff()` is only valid for gaps under ±2**29 ms (~6.2 days): on a unit running for months, a
-      saved value older than that flips sign. Sites include `src/asy_isl29125_driver.py:247, 266, 269, 1078,
-      1293, 1383` and `src/asy_uart_comm.py:203, 520-529`; also a `ticks_add()`/`asyncio.sleep_ms()` delta
-      ≥ 2**29 raises `OverflowError` on rp2 only (`extmod/modtime.c:191-192`). The Unix port's period is 2**62,
-      so no mock/twin test reaches it — verify with a `module.time = FakeTime()` whose period is 2**30, not
-      by soak. F.1 (SPECIFICATION.md:3517-3518) claims every `src/` use is a short bounded timeout (`DOC.S23`).
+- [ ] **XCUT.T25** Tick arithmetic on rp2's 2**30 period (`py/mpconfig.h:1924-1925`,
+      `extmod/modtime.c:172-173, 191-192`); `ticks_diff()` is only valid for gaps under ±2**29 ms (~6.2
+      days). (a) Every stored `ticks_ms()` value or deadline later passed to `ticks_diff()` —
+      set/compare pairs: ISL `_last_switch_ms` (`src/asy_isl29125_driver.py:247, 610` / `:586`),
+      `_cal_until_ms` (`:266, 1035` / `:633`), `_cal_meas_until_ms` (`:269, 703` / `:707`),
+      `_settle_until_ms` (`:1078, 1383` / `:1293`), UART `_holdoff_deadline` (`src/asy_uart_comm.py:203, 528`
+      / `:521`). (b) Every delta passed to `ticks_add()`, `asyncio.sleep_ms()`/`sleep()`/`wait_for()`
+      (all via `ticks_add`, `extmod/asyncio/core.py:57, 62-63`, `funcs.py:34`): `OverflowError` at ≥
+      2**29 on rp2 only, and near-2**29 keys breaking the task-queue order (`XCUT.S15`). (c)
+      `Timer(period=)`'s C-int range (`ports/rp2/machine_timer.c:79, 99-103`). (d) Every source of such
+      values without an upper bound (`UART.S08`, `GEN.S18`). The Unix port's period is 2**62, so no
+      mock/twin test reaches any of it (`TEST.S25`): verify (a) with a module-level fake `time` with a
+      2**30 period, and (b)/(c) and the queue order with a Unix build using
+      `-DMICROPY_PY_TIME_TICKS_PERIOD='(1<<30)'` (the macro is `#ifndef`-guarded; whether anything else
+      breaks is untested) — never by soak. F.1 (SPECIFICATION.md:3517-3518) claims every `src/` use is a
+      short bounded timeout (`DOC.S23`).
 
 Seeds:
 - **XCUT.S01** A watchdog feed happens only after the supervisor's full scan; several task deaths, each
@@ -531,13 +645,31 @@ Seeds:
 - **XCUT.S13** `WDT(timeout=8000)` is `build_system()`'s first statement (`buildgen/codegen.py:381`);
   the constructors after it run unguarded, so a construction-time exception becomes an 8 s WDT reset
   loop before any FRAM logger exists — nothing persisted, `reset_cause()` never read (`XCUT.S10`).
-- **XCUT.S14** The boot entry's `from sensortask_<device> import main` sits outside its `try`
-  (`buildgen/codegen.py:703`), and the generated module imports `frozen_html` at top level (`:301`), whose
-  copied-in freezefs `mount_fs()` raises `OSError(EEXIST)` if `/html` already exists
-  (`ext/freezefs/ffsmount.py:172-185`; `--on-import mount --target /html`, `scripts/build_frozen_html.sh:17,
-  36-37`). Any `/html` on the littlefs root (legacy leftovers, a manual `mpremote` copy) stops the import
-  before `WDT(timeout=8000)` exists (`codegen.py:381`): REPL, no watchdog, no network, no FRAM logger —
-  a hang until USB intervention or a power cycle, not a reset loop. No tier reaches it (with `PAR.T08`).
+- **XCUT.S14** The boot entry's `from sensortask_<device> import main` sits before `WDT()`
+  (`buildgen/codegen.py:703`; the entry's `try` has only a `finally`, `:705-708`, so moving the import
+  inside it would still end in the REPL), and the generated module imports `frozen_html` at top level
+  (`:301`), whose copied-in freezefs `mount_fs()` raises `OSError(EEXIST)` if `/html` already exists
+  (`ext/freezefs/ffsmount.py:172-185`; `--on-import mount --target /html`,
+  `scripts/build_frozen_html.sh:17, 33-34`). Any `/html` on the littlefs root (a manual `mpremote` copy
+  or an interrupted deploy; unlikely from the legacy pipeline, whose freezefs default `--on_import mount`
+  is a VFS mount that leaves no littlefs directory, `build-*.sh:15`) stops the import before
+  `WDT(timeout=8000)` exists (`codegen.py:381`): REPL, no watchdog, no network, no FRAM logger — a hang
+  until USB intervention or a filesystem erase — `/html` survives power cycles — not a reset loop. No
+  tier reaches it (with `PAR.T08`).
+- **XCUT.S15** A legal but near-limit sleep can strand other tasks. asyncio's C `TaskQueue` orders tasks by `ticks_diff()` of their keys (`extmod/modasyncio.c:73-85`), so a key pushed close to 2**29 ms ahead compares as *earlier* than a queued task already overdue by at least the remaining margin; `SENS.S27`'s `sleep_ms(remaining)` (`asy_isl29125_driver.py:619-623`) creates such a key (up to 2**29-1 ms, accepted by `ticks_add()`). The far-future task becomes the heap root and `run_until_complete` waits on it (`extmod/asyncio/core.py:57, 161-177`): tasks woken later get fresh keys and run, but runnable tasks already queued are stranded ~6.2 days — a WDT reset if the supervisor is among them, else a hung-but-alive task (`XCUT.T02`). From source reading only; verify on a 2**30-period Unix build (`XCUT.T25`).
+- **XCUT.S16** A filesystem `boot.py` runs before the frozen `main.py` and leaves no watchdog in three ways: if it raises, the frozen `main.py` never runs (rp2 has exit-code handling off, `py/mpconfig.h:1217-1218`, so an unhandled exception returns 0, `shared/runtime/pyexec.h:45-48`, and `main.py` runs only on non-zero, `ports/rp2/main.c:237, 246-247`) — REPL, no watchdog; if it blocks, it blocks before USB is initialised (`main.c:239-241`), so not even mpremote recovers the unit (unverified on hardware); `sys.exit()` in it soft-reset-loops (`main.c:243-245`). A filesystem `main.py`, by contrast, never runs — the frozen one is looked up first (`shared/runtime/pyexec.c:743-752`). `XCUT.T20` names both files together; their consequences differ.
+- **XCUT.S17** Filesystem modules shadow frozen ones: `sys.path` is `['', '.frozen', '/lib']`
+  (`py/runtime.c:147-150`, `ports/rp2/main.c:208`). The `dev` bench's 2026-08-27 filesystem snapshot
+  (`dev_legacy/README.md:667-672`; historical — that flash is empty now, but deployed legacy units may
+  hold the same) held 17 modules named like the refactor's frozen set (`asy_i2c_driver`,
+  `asy_spi_driver`, `asy_fram_driver`, `asy_fram_manager`, `asy_bmp3xx_driver`, `asy_scd30_driver`,
+  `asy_sgp40_driver`, `asy_uart_comm`, `asy_udp_socket`, `base_classes`, `config_manager`, `print_log`,
+  `system_service`, `crc_checks`, `math_helpers`, `voc_algorithm`, `microdot`) plus `typing.py`. Any
+  leftover is imported instead of the frozen module: an incompatible one
+  (`ImportError`/`AttributeError`, or a `MemoryError` compiling it from source) fails before `WDT()` —
+  REPL, hang; a compatible one runs stale behaviour silently. A module missing from the frozen set
+  (`GEN.S11`/`GEN.T05`) fails the same way. Inventory: `PAR.T08`; consequence: `XCUT.T20`.
+- **XCUT.S18** (low) Upstream `_boot.py` formats the whole littlefs if mounting raises for any reason (bare `except:`, `ports/rp2/modules/_boot.py:8-12`, v1.29.0) — before the watchdog and silently: every `config_*.cfg`, Wi-Fi credentials included, is lost, nothing is logged (no FRAM logger yet), and the unit boots into hotspot mode where `PAR.T06`'s permanent-deactivation hazard applies. A littlefs region that changed size between 1.26 and 1.29 would take this path on migration (with `PAR.T06`, `PAR.T09`, `XCUT.T24`).
 
 Quality measure: a written timer/task/lock/error-code/FRAM-layout inventory per device, derived from
 code, with every discrepancy against Parts A.7/C.7-C.9 registered; worst-case watchdog gap computed.
@@ -880,8 +1012,9 @@ Seeds:
   `src/base_classes.py:210`).
 - **SENS.S19** C.3 text is stale: BMP3xx "has no scratch buffer" (the I2C layer now has one)
   (SPECIFICATION.md ~1541-1543).
-- **SENS.S20** Missing references: BMP390 datasheet (driver accepts chip ID 0x60), RP2040 silicon
-  datasheet, WS2812 datasheet, Sensirion VOC algorithm reference, Pico W QSPI flash datasheet.
+- **SENS.S20** Missing references: BMP390 datasheet (driver accepts chip ID 0x60; a documentation gap
+  only — the owner confirmed the family shares one register map, Part A.6), RP2040 silicon datasheet,
+  WS2812 datasheet, Sensirion VOC algorithm reference, Pico W QSPI flash datasheet.
 - **SENS.S21** The SGP40 serial-number read fetches 3 of the 9 bytes the datasheet specifies
   (`readlen=1`), so only word 0 is CRC-checked and compared (`asy_sgp40_driver.py:669-678`; datasheet
   3.4, Tables 8/16).
@@ -903,9 +1036,12 @@ Seeds:
 - **SENS.S27** ISL29125 `time_to_settle_ms()` is `max(0, ticks_diff(_settle_until_ms, now))`
   (`asy_isl29125_driver.py:1292-1293`), with `_settle_until_ms` set only at start-up (`:1078`) and on a
   CONFIG1 write (`:1383`): after > 2**29 ms without a CONFIG1 write it returns up to ~6.2 days, so
-  `_settle_wait()` sleeps that long (`:380-381, 614-623`) and `_evaluate_range()` blocks every range switch
-  (`:575`) — the task stays alive but publishes nothing ~6.2 days of every 12.4 (masked by any CONFIG1
-  write; likeliest with `RangeAuto` off). Same class: `_measured_ratio()` republishes a stale `GainMeas`
+  `_settle_wait()` sleeps that long (`:380-381, 614-623`) and `_evaluate_range()`, reached only after
+  `_settle_wait()` returns, blocks no switch independently (`:575`) — the task stays alive but publishes
+  nothing ~6.2 days of every 12.4 (masked by a CONFIG1 write only if it lands before the first read
+  after the crossing — a PUT during the in-flight `sleep_ms(≈2**29)` does not wake it, and
+  `_settle_wait`'s "bounded" comment at `:615-617` assumes a short deadline; likeliest with `RangeAuto`
+  off; possible escalation `XCUT.S15`). Same class: `_measured_ratio()` republishes a stale `GainMeas`
   (`:699-709`, contradicting `:706`), and AutoRangeDwell blocks down-switches (`:586`) (`XCUT.T25`).
 
 Quality measure: a datasheet-citation per register/formula; every seed resolved; a float32 emulation
@@ -1035,6 +1171,7 @@ Seeds:
   initiator write reads it (`:516-529, 630`); only `uart_listen` clears it early (`:990`). A first write
   > 2**29 ms after a resync can wait up to ~6.2 days in `_await_write_gate()` — hidden on `dev` by the 1 Hz
   exerciser, relevant because the module is standalone for other applications (`XCUT.T25`).
+- **UART.S08** `UART_Comm.timeout`, `poll_wait_ms` and `poll_idle_ms` have lower bounds only (`asy_uart_comm.py:243-246, 252-258`; "never clamps" is the stated design), and large values fail on rp2 only: from timeout 107,374,183 the 5×timeout backoff cap (`:219`) makes `sleep_ms(backoff)` raise `OverflowError` at `:1125`, outside the loop's `try` (`:1114-1124`) — the task dies and burns the supervisor's error budget, which `:1109-1111` says must never happen; from ~89.5e6 the drain's 6×timeout "hard bound" (`:545-550`) can never fire; from ~3.58e8 `_hold_off_writes()`'s `ticks_add` (`:528`) raises; from 2**29-1 `asy_uart_driver.ready()` can never time out (`:284`); a poll value ≥ 2**29 makes `sleep_ms` raise at `asy_uart_driver.py:286`, which the `except` at `:287` does not catch (`XCUT.T25`).
 
 Quality measure: Part J ↔ code traceability table; every seed resolved; changelog complete.
 
@@ -1373,6 +1510,7 @@ Seeds:
   generated docstring; no hand-written module exists since L.2.
 - **GEN.S17** Errors in generated modules are never reported: `pyproject.toml:359, 365` (silent
   follow-imports with `build/generated_src` on `mypy_path`) plus `scripts/lint.sh:13` (ruff scope).
+- **GEN.S18** buildgen type-checks but never range-checks the TOML ints that become timing values: `hotspot_time_min` (`validate.py:65, 106-108`) and the UART `poll_wait_ms`/`poll_idle_ms` (`:62, 304-306`; only the J.6 floor applies, `:258-276`). `hotspot_time_min` becomes `Timer(period=60000*min)` (`asy_wifi_service.py:165, 413-417`): 0 is clamped to a 1 µs PERIODIC timer (`ports/rp2/machine_timer.c:99-103`), flooding the soft-callback queue; a negative value is cast to `uint64_t` and never fires; ≥ 35,792 raises `OverflowError`, which the `except (OSError, MemoryError)` at `:419` does not catch (`XCUT.T25`).
 
 Quality measure: fuzz harness result (only `BuildError`); generated output compiles for fixtures;
 every seed resolved.
@@ -1862,6 +2000,7 @@ Seeds:
 - **TEST.S24** Stale references to retired runners/hand-written modules
   (`tests/test_digital_twin_run_generic_integration.py:2, 137-138, 221`; `digital_twin/run_generic_integration.py:2, 34, 98, 312`;
   `.gitignore:75`).
+- **TEST.S25** The existing rollover tests cannot fail for the `XCUT.T25` class: `tests/test_ticks_rollover.py:98-111` detects only raw `now - t0` subtraction, and its `_KNOWN_TICKS_USERS` inventory (`:10-17`) asserts nothing about stored-value age or delta size; its docstring (`:1-2`) repeats F.1's every-use-is-short claim (`DOC.S23`); `test_time_to_settle_stays_sane_across_a_ticks_wrap` (`test_asy_isl29125_driver.py:652-661`) and `test_the_hold_off_deadline_survives_the_ticks_rollover` (`test_asy_uart_comm.py:748-757`) probe deadlines within ~±1 s on a 2**62 period; no ticks fake exists (every `FakeTime` in `tests/` fakes the wall clock only).
 
 Quality measure: every seed resolved; a mutation-sweep report per `src/` module; a list of CLAUDE.md
 rules with their enforcing test (or "review-only, accepted").
@@ -2232,14 +2371,23 @@ Topics:
 - [ ] **PLAT.T12** `MICROPY_SCHEDULER_DEPTH` on rp2 and which sources share it; whether rp2 flash
       writes still disable IRQs / lock out core 1 at 1.29.0 and for how long; `ThreadSafeFlag`
       single-waiter rule.
-- [ ] **PLAT.T13** Build-config diff: dump the effective `MICROPY_*` settings of the RPI_PICO_W build and
-      of both Unix builds (`-dM -E`) and list every construct in `src/`, `ext/microdot.py` and the generated
-      modules whose availability or behaviour differs (port-specific `select`/poll paths, error-reporting
-      level, `MICROPY_CPYTHON_COMPAT`, unicode checks, `MICROPY_PY_TIME_TICKS_PERIOD` — the root of
-      `XCUT.T25`).
+- [ ] **PLAT.T13** Build-config diff: dump the effective `MICROPY_*` settings of the RPI_PICO_W build
+      and of both Unix builds (`-dM -E`) and list every construct in `src/`, `ext/microdot.py` and the
+      generated modules whose availability or behaviour differs (port-specific `select`/poll paths,
+      error-reporting level, `MICROPY_CPYTHON_COMPAT`, unicode checks, `MICROPY_PY_TIME_TICKS_PERIOD` —
+      the root of `XCUT.T25`; a scratch Unix build with `-DMICROPY_PY_TIME_TICKS_PERIOD='(1<<30)'` is
+      the test-rig option).
 
 Seeds: `CORE.S09` (task re-await), `BUS.S03` (SPI init), `BUS.S05` (UART readinto), `NET.S13` (socket
 finaliser), `ALGO.S01` (int32 vs Python int).
+
+- **PLAT.S01** (low) Seven comments say rp2's `mktime()`/`gmtime()` raise past a ~2037 32-bit epoch
+  range (`system_service.py:144`, `asy_ntp_client.py:147, 408`, `asy_notification_service.py:184`,
+  `asy_fram_manager.py:549, 613`, `asy_wifi_service.py:194`). At 1.29 on a 32-bit port `mp_timestamp_t`
+  is `mp_uint_t` (`py/mpconfig.h:1060-1092`), so the range runs to 2106: `mktime()` never raises for
+  in-range years and `gmtime()` only for negative inputs or inputs ≥ 2**32
+  (`shared/timeutils/timeutils.h:75-92`, `py/objint_mpz.c:443-456`) — those `OverflowError` branches
+  would never run on target.
 
 Quality measure: each fact cited to a file:line in the pinned source; F.5 updated where it drifted.
 
@@ -2460,7 +2608,8 @@ Seeds:
   has `_send_command()`/`_send_and_read()`/`_send_and_write()`) and K.5's `_build_spi_chip()` (~5800; the
   twin has `_wire_spi_device()`, `digital_twin/machine.py:326`, FRAM only, no `driver` dispatch).
 - **DOC.S23** F.1 (SPECIFICATION.md:3517-3518) says every real `ticks_diff()` use in `src/` is a short
-  bounded timeout; `XCUT.T25`'s stored-ticks sites contradict it.
+  bounded timeout; `XCUT.T25`'s stored-ticks sites contradict it; `tests/test_ticks_rollover.py:1-2`
+  repeats the claim (`TEST.S25`).
 
 Quality measure: cross-reference resolver clean for every ID family; contradiction list empty or
 decided; CLAUDE.md size target agreed (PQ6) and met.
@@ -2518,17 +2667,21 @@ Each step is its own dedicated pass; none is marked done by another's side effec
 retired `AUDIT_PLAN.md`). Status as of this revision:
 
 - [x] **V1 Inventory coverage and uniqueness**: every git-tracked file maps to exactly one owning area
-      in 5.0 or to the 2.2 list (script check at `0615eba`: no file unowned, none double-owned; all 28
-      `src/*.py` assigned). Re-run after any new file lands.
-- [~] **V2 Completeness review by fresh eyes**: rounds 1 and 2 done (seven agents). Round 2 found the
-      tooling/tests/docs half saturated and added two new risk classes on the code side (stored ticks
-      values, `XCUT.T25`; a pre-watchdog import failure, `XCUT.S14`). Open: a round 3 limited to those
-      two classes; stop when a round adds nothing of substance.
+      in 5.0 or to the 2.2 list (`audit/sweeps/validate_plan.py`, whose `owner_of.py` encodes 5.0: no file
+      unowned, none double-owned). Re-run after any new file lands.
+- [x] **V2 Completeness review by fresh eyes**: three rounds. Round 2 found the tooling/tests/docs half
+      saturated and added two risk classes on the code side (stored ticks values, `XCUT.T25`; failure
+      before the watchdog exists, `XCUT.S14`). Round 3, limited to those two classes, found the
+      stored-ticks sites saturated (no new site) and added delta/upper-bound and scheduler-order seeds
+      (`XCUT.S15`, `UART.S08`, `GEN.S18`), a test blind spot (`TEST.S25`), three pre-watchdog paths
+      (`XCUT.S16`-`XCUT.S18`) and `PLAT.S01`; `XCUT.T25`/`XCUT.T20` rewritten. Closed without a round 4.
 - [x] **V3 Reference reality check**: every seed anchor was checked against the code it describes, and a
-      script confirms every `path:line` reference lies within its file at `0615eba` (bare
-      `asy_*.py`-style names resolve to `src/`). Re-run after each revision.
-- [x] **V4 Internal consistency**: every `<AREA>.[ST]nn` ID referenced in this file is defined exactly
-      once and every PQ reference is PQ1-PQ10 (script check).
+      script (`validate_plan.py`) confirms every `path:line` reference — continuation `:N` refs included,
+      ~1,080 in all — lies within its file at `0615eba` (bare `asy_*.py`-style names resolve to `src/`). The first script checked range starts only (round 3
+      caught `build_frozen_html.sh:36-37` in a 36-line file); range ends are checked since. Bounds only:
+      an in-bounds wrong anchor passes (`ENV.T10`). Re-run after each revision.
+- [x] **V4 Internal consistency**: every `<AREA>.[STN]nn` ID referenced in this file is defined exactly
+      once and every PQ reference is PQ1-PQ10 (`validate_plan.py`).
 - [x] **V5 Backward read**: done once; its contradictions (ownership, cross-references pointing at the
       wrong topic, facts stated two ways, SEV1 defined twice, pilot vs wave order, stale R2 status) are
       fixed in this revision.
@@ -2538,8 +2691,19 @@ retired `AUDIT_PLAN.md`). Status as of this revision:
       widened to every CLAUDE.md "never/don't/deliberately" rule, boot cost not a defect, no GPIO
       fault-injection hardware, mutation bounded by the wear rule, documentation checked besides source,
       settled items tagged "touches SETTLED").
-- [ ] **V8 Dry run**: fill the register template with two seeds and walk the 4.7 resume procedure once
-      from a fresh session, to prove the plan is resumable.
+- [x] **V8 Dry run**: a fresh agent walked the resume procedure from git alone and drafted a register
+      header plus entries for `REST.S01` and `CORE.S02`. Verdict: rich content, under-specified mechanics
+      (~20 gaps). Folded in: 3.1 owner record, PQ2 (branch, `audit/`, commit authority), 4.1 unit table
+      and pass/converged/closed definitions, 4.4 auditor packet and blindness, the port/toolchain facts
+      (ports are fixed in code; `build_firmware.py` writes inside the toolchain dir), 4.5 rewritten
+      (fields, intake-time IDs, status transitions), 4.6 per-session vs once topics, 4.7 numbered resume
+      procedure with the lease steps, planning residue kept under `audit/`. Re-run once the register
+      exists.
+- [~] **V10 Harvest of what the project already records**: every comment and docstring, every doc, the
+      git history and the GitHub PR/issue discussions, read in full by 17 partitioned read-only agents
+      for self-declared limitations, accepted risks, settled decisions, assumptions, workarounds,
+      unenforced invariants, mirror obligations, suppressions, open questions and drift — recorded, not
+      solved (owner, 3.1). Results go to `audit/`, deduplicated against the topics and seeds.
 - [x] **V9** At most 10 owner questions (PQ1-PQ10).
 - [ ] **V6 Owner review** (last): PQ1-PQ10 answered; the owner declares the list complete (or keeps
       extending it) and gives the execution go-ahead explicitly.

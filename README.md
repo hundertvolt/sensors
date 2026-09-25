@@ -715,6 +715,10 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   topics and unverified seed observations. Planning only: its execution is blocked until the owner's
   explicit go-ahead. Deleted once the audit closes and its outcomes are migrated. Not the retired
   `src/`-only `AUDIT_PLAN.md` listed below.
+- **[`audit/`](audit/)** — that audit's temporary apparatus: `PLANNING_SURVEY.md` (the raw, unverified
+  survey the plan was built from), the harvest of what the project's own comments, docs and history
+  already record, the plan validators under `sweeps/`, and later the findings register. Outside the
+  lint/typecheck scopes; deleted together with the plan.
 
 A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
 lines and deleted once its findings are migrated. Never treat one as a durable reference; prefer the
