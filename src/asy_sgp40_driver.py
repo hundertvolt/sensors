@@ -164,6 +164,7 @@ class SGP40_Reader(SensorReaderConfig):
         # real values are always set by _init_sgp() before read_loop() ever reads these
         self.voc_init = 0
         self.voc_write = 0
+        self._no_ts_episode = False  # W13 already persisted this run of untimestamped backups (C.7.1)
         # A direct reference to each producer's own concurrency-safe holder (its already
         # _datalock-guarded get_data(), Part C.14/G.2), never a wrapping getter. The two may be the
         # same instance - the common case, both off one SCD30 - or two different ones.
@@ -429,15 +430,18 @@ class SGP40_Reader(SensorReaderConfig):
 
         if require_ntp:  # (ntp_synced and require_ntp) and res must have been True here
             self.voc_write = cfg_values[2]  # SGPWaitTimeNTP
+            self._no_ts_episode = False
             self.last_backup = ts
             self.pr.evt("Backup written with timestamp.")
             return
 
         if ntp_synced:  # require_ntp was false from here on, but res was True
             self.voc_write = cfg_values[2]  # SGPWaitTimeNTP
+            self._no_ts_episode = False
             self.pr.evt("Backup written with timestamp again.")
-        else:
-            await self.pr.wrn_s("Backup written without timestamp.", wrnno=13)
+        else:  # one slot per NTP outage, not per backup - a timestamped backup ends the episode
+            await self.pr.wrn_s("Backup written without timestamp.", wrnno=13, repeat=self._no_ts_episode)
+            self._no_ts_episode = True
         self.last_backup = ts
         return
 

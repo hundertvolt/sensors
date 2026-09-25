@@ -41,6 +41,7 @@ known-broken test.
 | WiFi refuses a radio string (`SSID`, `PW`, `Country`, `Hostname`, `HotspotPW`) whose UTF-8 bytes break the radio's limit (`"Invalid"`, persists nothing); a stored one that does falls back to the build default with `W8` | `asy_wifi_service.py` | W4 must stay quiet; optional zero-wear check: `PUT /networking` a 17-character `ä` hostname and expect `"Invalid"` |
 | The hotspot timer is `PERIODIC`, so a dropped soft callback self-heals; `E19` is retired | `asy_wifi_service.py` | every hotspot fallback in W4/F17 and `test_hotspot_role_reversal.py` |
 | Bench tests fail when any task ended during the run (`assert_no_task_ended`, SYSTEM counter must stay 0) | `test_network_resilience.py`, `test_bus_concurrency_under_api_load.py`, `test_uart_link_under_api_load.py`, `test_wifi_networking.py` | W4 — a red here is a new finding, not a flaky test: read the SYSTEM log before anything else |
+| SGP40 `W13` (backup without timestamp) spends one slot per NTP outage, not one per backup | `asy_sgp40_driver.py` | any NTP outage longer than `SGPWaitTimeNTP`, e.g. a hotspot fallback: one `W13` in the ring, `ErrCount` still counting each backup |
 | Every heap-measuring device script sets its own `gc.threshold` and prints `GC_THRESHOLD=` | `tests_hardware/device_scripts/` | T1 and the flash tier's memory tests |
 | Bench config-write arms print `CEILING_RETRIES` | `test_bus_concurrency_under_api_load.py` | R1's first answer (step 6) |
 
@@ -162,8 +163,9 @@ figure is from the `dev` bench. Raw logs sit in the session's scratchpad only; w
   admission policy needs fairness (a writer can be starved indefinitely today).
 - **SGP40 `W13` fills its error history while NTP is absent**: one "backup written without
   timestamp" slot per backup (1 min), 9 slots after one hotspot episode, so the ring loses what
-  preceded the outage. *Suggested*: apply C.7.1's per-episode repeat rule, as NTP, WiFi and FRAM
-  now do — a candidate for BACKLOG 50's list.
+  preceded the outage. **Fixed in the tree since** (C.7.1's repeat rule: one slot per outage, the
+  count still rises, a timestamped backup ends the episode), not on the board's current image —
+  the next reflash should show `W13` once per outage, with `ErrCount` still counting every backup.
 - **Three hotspot fallbacks, all the stale-AP-station mechanism, all caused by this session's own
   procedure** (WIFI `W6` ×5, `reset_cause()` = `WDT_RESET` where read): a reset with no
   `kick_all_stations()` *immediately* before it. Kicking 50 s early does not help — the board
