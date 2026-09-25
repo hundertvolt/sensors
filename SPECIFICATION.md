@@ -1962,7 +1962,9 @@ restarted it about once a minute and rebooted the device about every four minute
   skipped for "network not up" leaves it alone. Per device through the optional `[device]` keys
   `ntp_retry_s`/`ntp_retry_max_s`, checked by buildgen as the effective pair (at least the tick;
   cap not below the interval). A synced device's failed resync keeps its own short retry loop
-  (`_NTP_SYNC_RETRIES` × 15 s) and does not touch the backoff.
+  (`_NTP_SYNC_RETRIES` × 15 s) and does not touch the backoff. **Confirmed on silicon
+  (2026-09-25)**: with UDP 123 blocked, one `E21` slot (count 3), no task ended, SYSTEM clean; two
+  full bench tiers then held `assert_no_task_ended` throughout.
 - **Notification** (`asy_notification_service.py`) keeps no streak either: a failed read of its own
   config is re-read every cycle anyway, and a restart re-reads nothing more.
 
@@ -2015,7 +2017,9 @@ a config value treated as a hardware fault (C.7.2). `asy_wifi_service.py` now bo
 Country, Hostname and HotspotPW in bytes at both ends: a PUT over the bound is refused as `"Invalid"`
 (errno 20, `_set_mgr_cfg()`), and a value already stored that way runs on its default (`wrnno` 8)
 rather than reaching the radio. Only the max needs bytes — a value is never fewer bytes than
-characters — and a character-bound violation stays the schema's own refusal.
+characters — and a character-bound violation stays the schema's own refusal. **Confirmed on
+silicon (2026-09-25)**: an 18 × `ä` hostname (36 bytes) was refused `"Invalid"` with errno 20 and
+the hostname left unchanged.
 
 ## C.8 Concurrency & locking model
 
@@ -3452,7 +3456,8 @@ not just delayed** — `mp_sched_schedule()` drops it if MicroPython's fixed-dep
 (depth 8 on rp2, shared by every soft timer/IRQ) is full, with no exception and no way to detect a
 dropped vs. not-yet-run callback. A periodic timer self-heals next tick; a one-shot does not fire
 again - which is why every timer that must fire uses `PERIODIC` (C.9), the WiFi hotspot shutoff
-included (stopped by `reconnect_wifi()` on its first delivered fire). A software-timeout mitigation for this was considered and rejected (it would just race the
+included (stopped by `reconnect_wifi()` on its first delivered fire; confirmed on silicon
+2026-09-25: back in STA after the 8-minute window with no reboot). A software-timeout mitigation for this was considered and rejected (it would just race the
 real hardware watchdog every deployment already arms) — don't re-propose without a materially
 different justification.
 
@@ -6044,7 +6049,9 @@ can most easily break without any test naming them:
   risk, CLAUDE.md). Both reach the device as **defaults, not fixed values**: the generator passes
   them to `AsyConnTime(hostname=..., hotspot_password=...)`, which substitutes them into the two
   `ConfigManager`-persisted fields' schemas (`_with_default()`), so a rename through the web UI
-  still wins on every later boot. Until 2026-09-18 nothing passed them at all and every device
+  still wins on every later boot. Confirmed on silicon (2026-09-25): with `Hostname` removed from
+  `config_WIFI.cfg`, the next boot served `dev.toml`'s default (`CFGMGR_WIFI` `W4`) and wrote it
+  back once. Until 2026-09-18 nothing passed them at all and every device
   booted as the shared `"SensorNode"` whatever its TOML said. `[device].hostname` is capped at
   `network.hostname()`'s own 32 characters at build time, and `[device].hotspot_password` is held to
   WPA2-PSK's own 8-63, because a value outside either field's schema bounds is dropped back to that

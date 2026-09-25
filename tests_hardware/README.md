@@ -380,6 +380,11 @@ the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
   (`harness.wait_for_script_server()`), so main.py can never answer the readiness probe.
 
 **Bench traps** (occurrences: archive §7R.5).
+- A device script that never feeds the watchdog dies ~8 s after it attaches to a board running
+  `main.py`. `device_scripts/wifi_service_reconnect_repro.py` is one: run it under a wrapper that
+  arms `machine.WDT(timeout=8000)` and feeds it from a 2 s `machine.Timer` (bench, 2026-09-25).
+- An ad-hoc bench script caps every retry and runs under `timeout`: one that retried a refused
+  `PUT` without bound ran for 1 h 40 min (2026-09-25).
 - Leave > 45 s between a reset and the next `mpremote` attach; a watchdog reset ~9 s after an early
   attach is the likely, unconfirmed cause of one dead run.
 - An attach within ~1 s of boot (before `main.py` arms the watchdog) parks the board at the REPL

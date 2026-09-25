@@ -577,30 +577,14 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   - **One `Framing_COBS` instance shared between two drivers would corrupt both**, since its
     long-lived scratch is per-instance, not per-call. Every construction site makes its own; noted
     because the failure would be silent if one ever did not.
-- **`tests_hardware/device_scripts/`'s two real-hardware bugs are fixed but NOT re-run on the
-  bench.** Moving that directory into the MicroPython mypy pass (commit 08529d1) is what surfaced
-  them; both are grounded in source, not inferred, but neither has been executed against real
-  hardware since:
-  - `fram_write_protect_roundtrip.py` called `set_write_protected(False)` positionally at four
-    sites. `ca767ba` ("wave 2 - FBT/A002 signature changes") made that parameter keyword-only in
-    `src/asy_fram_driver.py` and never updated this caller, so every run since has raised
-    `TypeError` on the script's first call. Now `set_write_protected(value=...)`.
-  - `wifi_service_reconnect_repro.py` called `task.exception()`. MicroPython's `Task` has no such
-    method - `extmod/modasyncio.c`'s `task_attr` exposes only `coro`/`data`/`state`/`done`/
-    `cancel`/`ph_key` - so the line raised `AttributeError` at exactly the moment it was trying to
-    report why a task died. Now `task.data`, which `extmod/asyncio/core.py`'s
-    `run_until_complete()` sets to the terminating exception. The 1.28 stub package did not
-    declare `data` and the line needed a `# type: ignore[attr-defined]`; the 1.29.0 stubs do
-    declare it, so the ignore is gone.
-  A flash-tier run should confirm both, whenever one is next scheduled
-  (`REAL_HARDWARE_TEST_QUEUE.md` R10).
-  **Half closed on silicon, 2026-09-18.** `fram_write_protect_roundtrip.py` **PASSED** — the
-  keyword-only fix is good, and it incidentally exercised measure A's self-acquiring-the-bus path in
-  `set_write_protected()`. `wifi_service_reconnect_repro.py`'s `task.data` fix is confirmed (it now
-  runs deep into the real CYW43 reconnect, reaching `EPERM`, where it used to die at first contact)
-  but the script still **does not complete**: the board drops the USB CDC mid-run and `mpremote` ends
-  in `OSError: [Errno 5]`, so it likely needs `run_isolated_expect_reset()`. That half, plus the
-  garbage-SSID incident the same run caused, is `REAL_HARDWARE_TEST_QUEUE.md` §2A F1.
+- **Two device-script loose ends from the 2026-09-25 sitting — owner's call.** (1)
+  `wifi_service_reconnect_repro.py` (queue F1, verified that day) never feeds the watchdog, so on a
+  board running `main.py` it dies ~8 s in; it ran under a 4-line wrapper arming `WDT(8000)` and
+  feeding it from a 2 s `machine.Timer` (`tests_hardware/README.md`). Fold that into the script, or
+  keep the wrapper as the documented way. (2) Two stale scratch configs sit on the dev board's
+  flash, `config_HWTEST_DEBUGLEVEL_BACKUP.cfg` and `config_HWTEST_REBOOT.cfg`, left by earlier
+  device scripts; the DebugLevel backup could mislead a later restore. Should their scripts remove
+  them on exit, as the reconnect repro's own scratch file now is?
 
 - **`mypy tests_hardware/device_scripts` run STANDALONE reports two `Timer()` findings that no
   gate ever sees.** Both `timer_alarm_pool_exhaustion.py` and `scheduler_saturation_drop.py`

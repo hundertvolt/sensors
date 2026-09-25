@@ -202,8 +202,9 @@ heap test holding the ceiling open) — designed reclaims, SYSTEM clean.
   attach) every 0.5 s right after the real watchdog reset, so it attaches within ~1 s of boot — the
   case above — and `main.py` never arms the watchdog again: no WiFi, no serial output, until the
   next reset (found at `reset_cause()` = `WDT_RESET`, `ticks_ms()` pointing at that test). The bench
-  tier survives it because its fixtures reset first. *Suggested*: end the test with a
-  `hard_reset()` and a wait for REST, so a tier never ends on a dead board.
+  tier survives it because its fixtures reset first. **Fixed in `79eb41b`**: the test now ends
+  with a `hard_reset()` in `finally` and a passive wait for USB (the flash tier has no bench
+  network to wait for REST on); not yet confirmed by a full flash-tier run.
 - **Two stale scratch configs on the board's flash**: `config_HWTEST_DEBUGLEVEL_BACKUP.cfg` and
   `config_HWTEST_REBOOT.cfg`, left by earlier device scripts (neither is F1's, which cleaned up
   after itself). Left untouched. *Suggested*: owner decides whether their scripts should remove
