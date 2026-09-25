@@ -191,6 +191,7 @@ dated, replacing the recommendation.
 | ID | Date | Requirement (verbatim) |
 |---|---|---|
 | OR1 | 2026-09-25 | General scope and principles: "The process in this repo up to now was dealing with picking up on existing code, gathering its ideas and notions, and promote it into a common, strong improvement direction. It also dealt with gathering as much detailed information as possible. A previously non-existent environment for building and testing was introduced. Finally, a working full prototype of both the sensors and the environment was the goal - complete, stable, working. Mostly correct, mostly good, but not finally perfect. This has been achieved. Therefore, the task of this session is consolidation, harmonization, and perfection as far as possible." |
+| OR1.a | 2026-09-25 | Clarification of OR1's "this session": "yes, with \"this session\" I mean \"the global audit\"." (i.e. the whole multi-session audit, not one conversation) |
 
 ---
 
