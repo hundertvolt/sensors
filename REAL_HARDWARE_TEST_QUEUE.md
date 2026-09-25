@@ -28,7 +28,7 @@ This table is an index; the row's own entry below is what to read before running
 | **The suite runs** | S3b | `--allow-neopixel-sweep`, with M1 first |
 | **Heap placement readings** | T1 | The in-suite AFTER `largest_block` |
 | **Measure A's leftovers** | T4 | Measured; the owner's decisions are left |
-| **New features** | N3 | OPEN — **not in the 2026-09-25 sitting** (owner): rides on R13, which needs hardware the bench does not have |
+| **New features** | N3 | Rides on R13; not in the 2026-09-25 sitting (no babbling peer on the bench) |
 | **Targeted investigations** | R1, R2, R6, R7, R9, R13 | R1 and R2 wait on owner decisions; R6/R7 on an instrumented or A/B build |
 | **Tests still to write** | G1, G3, G4, G6 | Code first, bench second. G6 is adapt-now-measure-later by decision |
 | **The bench host itself** | H1 | Owner-run; needs no board |
@@ -212,7 +212,7 @@ asyncio.run(_main())
 
 | # | Item | Notes | Status |
 | --- | --- | --- | --- |
-| N3 | **`asy_uart_comm.py` reclassified which warning takes the episode's single persisted slot** — `_WRN_DRAIN_BOUND` (11) now wins over `_WRN_RESYNC` (10) when the drain bound was hit, because 11 separates a babbling peer from ordinary line noise. The boot drain persists nothing. | **Receiver-side only, no emitted bytes change**, so it is the preferred class of protocol change and a mixed-version pair still works — but it still needs a `UART_C_PORT_CHANGELOG.md` entry, which should be confirmed. `dev`'s two `uart_link` instances make it observable: check `errcount`'s `UART_init`/`UART_resp` history after a run that forces a resync. | OPEN — **checked 2026-09-22 and there is nothing to read yet**: after a full clean bench tier, `errcount` carries no `UART_init`/`UART_resp` entry at all (`UARTLINK` 363 transfers, 0 failures), because nothing in the default suite forces a resync. This row needs R13's babbling-peer setup to produce the entry it wants to inspect; the two are one piece of work, not two |
+| N3 | **`asy_uart_comm.py` reclassified which warning takes the episode's single persisted slot** — `_WRN_DRAIN_BOUND` (11) now wins over `_WRN_RESYNC` (10) when the drain bound was hit, because 11 separates a babbling peer from ordinary line noise. The boot drain persists nothing. | **Receiver-side only, no emitted bytes change**, so it is the preferred class of protocol change and a mixed-version pair still works — but it still needs a `UART_C_PORT_CHANGELOG.md` entry, which should be confirmed. `dev`'s two `uart_link` instances make it observable: check `errcount`'s `UART_init`/`UART_resp` history after a run that forces a resync. | OPEN — **not in the 2026-09-25 sitting** (owner): rides on R13, which needs hardware the bench does not have. Earlier: checked 2026-09-22, nothing to read, since no default suite forces a resync |
 
 ---
 
