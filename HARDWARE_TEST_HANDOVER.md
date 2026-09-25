@@ -164,6 +164,22 @@ heap test holding the ceiling open) — designed reclaims, SYSTEM clean.
 | **R6** | A/B on one tree, two throwaway instrumented images differing only in the setup order (3 firmware flashes incl. restore, owner-authorised): boot-to-first-`/status` over 5 hard resets **8.94 s fixed** (8.91–8.95) against **8.91 s pre-fix order** (8.83–8.95); `sysfunct.setup()` 79 ms against 26 ms (its CFGMGR logger degrades instantly without FRAM, the bug the fix removed). **The fix costs ~53 ms; the +0.90 s of 2026-09-16 does not reproduce.** In SPECIFICATION A.7. **Done — row retired** | None |
 | **R7** | Same images, soft-reboot capture with a stamp per `setup()`: `fram` 6 ms, every other unit **79–91 ms** (`sysfunct`, `conn`, `ntp`, `sgp40`, `bmp3xx`, `isl29125`, `notification`, both UART links), the whole batch **0.93 s**; construction ~0.14 s and module import ~1.1 s before `main()`; the 8-timer stagger 0.79 s. In SPECIFICATION A.7. **Done — row retired** | None |
 
+### 5.2a Confirmation chain, end of sitting (2026-09-25, image `12:54:13Z`, tree `38b270d`)
+
+Owner's request: two default bench tiers, then — only if both clean — one wear-gated run.
+
+| Run | Window | Result | `errcount` after |
+| --- | --- | --- | --- |
+| Default 1 | 19:32–20:22 | **Clean**: 107 passed, 4 skipped, 27 deselected, 49:54 | NTP `E21` ×3 only |
+| Default 2 | 20:22–21:12 | **Clean**: 107 passed, 4 skipped, 27 deselected, 50:01 | NTP `E21` ×3 only |
+| Wear-gated (`--allow-persistence-writes -s`) | 21:12–22:12 | **Clean**: 128 passed, 4 skipped, 6 deselected, 59:29; `CEILING_RETRIES` none on both config-write arms | NTP `E21` ×3 only |
+
+- Board clean before the chain (uptime 8,002 s). NTP `E21` ×3 after each run is the last test's own
+  blocked UDP 123. No unexpected reset, no hotspot fallback, no task ended, no `MemoryError`.
+- The 4 skips are the expected four (both light programs, the UF2 reflash, the spoofed-source test).
+- First full-suite runs of G3 (reboot fallback) and G12 (shipped-driver UART clamp): green 3/3.
+- *Wear*: one gated round of the suite's own config writes.
+
 ### 5.3 First silicon runs of this tree's changes (section 2's table)
 
 | Change | Result |
