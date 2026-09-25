@@ -14,9 +14,9 @@ conversation before any `mpremote`, `nmcli`, `iw`, `iptables`, `picotool` or `te
 
 ## 1. Where things stand
 
-- **Board**: `dev` bench, image of tree `3062cc7` (`buildDate 2026-09-25T07:31:00Z`,
-  `max_connections = 6`, `DebugLevel` 5). **Behind the tree by `83c9920`** (SGP40 `W13` per outage);
-  reflash before the next suite run so step 6 runs on the tree under test.
+- **Board**: `dev` bench, image of tree `851e816` (`buildDate 2026-09-25T12:54:13Z`,
+  `max_connections = 6`, `DebugLevel` 5) — current with every `src/` change on the branch,
+  `83c9920`'s SGP40 fix included. **Step 6's wear-gated run is running on it** (section 5.5).
 - **This sitting (2026-09-24/25) is still in progress** — section 5 has every result so far, with
   suggested actions; it is the single place to read them.
 - **Tree**: every host tier green at `gc.threshold(-1)` and `32768` (86/86 MicroPython files, 2,100
@@ -129,11 +129,13 @@ figure is from the `dev` bench. Raw logs sit in the session's scratchpad only; w
 | --- | --- | --- |
 | `2026-09-24T19:11:45Z` | `bf62580` | W4's first run |
 | `2026-09-25T05:21:43Z` | `dd80eef` | T4, W3, R2 |
-| `2026-09-25T07:31:00Z` | `3062cc7` (functionally the tree as of this commit) | everything from 5.3 on, W4's clean re-run included; **on the board now** |
+| `2026-09-25T07:31:00Z` | `3062cc7` | everything from 5.3 on, W4's clean re-run included |
+| `2026-09-25T12:54:13Z` | `851e816` (SGP40 `W13` fix included) | step 6's wear-gated run; **on the board now** |
 
 `errcount` was saved before every flash and before every `ResetErrors`. After W4's re-run (read
 3.7 h later, no reset in between, STA, NTP synced): NTP `E21` ×3 and SGP40 `W13` ×1, both from the
-suite's last test blocking UDP 123 — nothing else, SYSTEM clean.
+suite's last test blocking UDP 123 — nothing else, SYSTEM clean. The reflash to `12:54:13Z` left
+them as they were and added nothing (no FRAM `E31`/`W73` this time).
 
 ### 5.2 Measurements
 
@@ -195,11 +197,17 @@ suite's last test blocking UDP 123 — nothing else, SYSTEM clean.
 ### 5.5 Still owed this sitting, shortest first
 
 1. ~~W4 re-run~~ — done, clean (5.2).
-2. Step 6, the wear-gated run (~55 min, *wear*: real flash config writes), then F1 and N2 (*wear*,
-   one write each). D1's condition is met; waiting for the owner's go.
-3. M1 + S3b (needs the owner at the bench, ~30 min).
-4. R13 + N3, and the step 9 scripts — code first.
-5. Owner decisions from 5.2 and 5.4.
+2. **Step 6, the wear-gated run — RUNNING** since 13:59 (owner's go, 2026-09-25):
+   `scripts/run_bench_hardware_suite.sh --allow-persistence-writes -s`, 130 tests selected (6
+   deselected by the other gates), under a 100 min hard stop. At 14:11: 36 passed, no failure yet.
+   *Wear*: real flash config writes. It answers R1 (`CEILING_RETRIES`), R5 and T2.
+3. After it, the two short manual steps it does not automate: **R4** (pre-populate several FRAM
+   logs, `ResetErrors` under 3 readers, all read back 0 — the load R2 showed stays under the 15 s cap)
+   and **W5** (`NTP_Host` at 1,024 characters, the peak arm, restore). Then F1 and N2 (*wear*, one
+   write each).
+4. M1 + S3b (needs the owner at the bench, ~30 min).
+5. R13 + N3, and the step 9 scripts — code first.
+6. Owner decisions from 5.2 and 5.4.
 
 ## 6. Traps that have actually cost time
 

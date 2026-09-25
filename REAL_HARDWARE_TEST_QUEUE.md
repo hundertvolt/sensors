@@ -43,8 +43,8 @@ one bench sitting, the writing work and the owner's own H1 run.
 
 ## If there is time for one sitting only
 
-**Board state**: `dev` image of tree `3062cc7`, `buildDate 2026-09-25T07:31:00Z`, `max_connections
-= 6`, `DebugLevel` 5 — behind the tree by `83c9920` (`asy_sgp40_driver.py`). A sitting is in progress: `HARDWARE_TEST_HANDOVER.md`
+**Board state**: `dev` image of tree `851e816`, `buildDate 2026-09-25T12:54:13Z`, `max_connections
+= 6`, `DebugLevel` 5 — current with `src/`. A sitting is in progress: `HARDWARE_TEST_HANDOVER.md`
 section 5 has its results so far. Check `buildDate` against the tree every time.
 
 1. **Run sheet Step 1** — the `errcount` reading, before anything writes.
