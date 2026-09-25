@@ -697,11 +697,6 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   across the gap until that C source (`arduino/libraries/Async_UART_Comm/`, imported 2026-09-13) is
   reconciled - outside this project's scope (owner, 2026-09-24) - then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
-- **[`PROJECT_AUDIT_PLAN.md`](PROJECT_AUDIT_PLAN.md)** — the plan and topic catalog for the
-  whole-project audit (broad and deep, every tier): scope, method, open owner decisions, per-area
-  topics and unverified seed observations. Planning only: its execution is blocked until the owner's
-  explicit go-ahead. Deleted once the audit closes and its outcomes are migrated. Not the retired
-  `src/`-only `AUDIT_PLAN.md` listed below.
 
 A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
 lines and deleted once its findings are migrated. Never treat one as a durable reference; for
