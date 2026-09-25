@@ -4008,7 +4008,7 @@ obtainable — and it is what a second device *would* wait. **Per command (T.4, 
 2026-09-25)**: the 1-byte write took 2,833-3,395 us (~0.6-0.7 ms per CS envelope), one 8-byte
 read envelope 783-881 us, and the whole block operation held the bus 18,089-23,148 us. A single
 command is therefore under ~1 ms; whether to yield between the envelopes of one write is open
-(`REAL_HARDWARE_TEST_QUEUE.md` T4).
+(BACKLOG.md, T4).
 
 The write side is the same shape but bounded, and needed no change: `mp_machine_uart_write()`
 short-writes rather than waiting once `timeout` (0 here) elapses, and `_write_all()` gates on
@@ -4918,7 +4918,7 @@ batching, not one piece per fragment**: every piece is one write through a per-w
 `asyncio.wait_for()`, measured at +53% throughput cost when pushed to one per character (F.1).
 **Nor one piece per section**: that scales with module count (17 on real hardware, ~4.9 KB for one
 section, almost the original whole-aggregate failure). At 256 B `dev`'s `/status` is 29 pieces (11
-at the old 1024 B); its wall-clock on silicon is `REAL_HARDWARE_TEST_QUEUE.md` row W3.
+at the old 1024 B); on silicon it takes 1.29 s against 1.10 s at 1024 B (+17 %, 2026-09-25; BACKLOG.md W3).
 
 **Why 256.** A piece cap is only a bound if the heap can still place a piece of that size *under
 load*, and at `gc.threshold(-1)` it cannot place 1,024: with 1,024 B pieces the board served at most
@@ -5293,7 +5293,7 @@ slots are still draining through `_serve()`'s `finally`, and the row took its se
 workers and none *after* them, while `tests_hardware/`'s own `http_client.fetch()` is single-shot
 by construction. Nothing in `src/` was implicated.
 
-**Fixed in the test, 2026-09-19** (owner's decision; `REAL_HARDWARE_TEST_QUEUE.md` §2A F11 has the
+**Fixed in the test, 2026-09-19** (owner's decision; F11, `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7I-§7K has the
 account). The health check now uses the same bounded `wait_until()` that
 `test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` already uses in the same file
 for the identical lag. This does not weaken it: `wait_until()` retries a check that raises but

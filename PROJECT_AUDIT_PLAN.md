@@ -8,11 +8,11 @@ correcting and validating the list itself (section 6).
 
 **Temporary.** Like every other plan/queue doc here, this file is deleted once the audit closes. Its
 permanent outcomes (fixed code, settled decisions, new rules) migrate into `SPECIFICATION.md`,
-`CLAUDE.md` or `BACKLOG.md` first; silicon-owed items go to `REAL_HARDWARE_TEST_QUEUE.md`. The retired
+`CLAUDE.md` or `BACKLOG.md` first; silicon-owed items go to BACKLOG.md's "Real-hardware work still owed" section. The retired
 `src/` audit's `AUDIT_PLAN.md` (closed 2026-08-10, see README "Further reading") is the precedent for
 this file's shape; this one is broader (whole project, not only `src/`) and deeper (down to function
 internals, across every tier). The ID prefixes below are chosen not to collide with `SPECIFICATION.md`
-Part IDs (`A.1`…`M.1.6`), `REAL_HARDWARE_TEST_QUEUE.md` row IDs (`R1`, `F17`, `S4`, …), BACKLOG item
+Part IDs (`A.1`…`M.1.6`), real-hardware row IDs (`R1`, `F17`, `S4`, …), BACKLOG item
 numbers or the undefined `WP1`-`WP8` labels already in the tree: areas use mnemonic codes, severities
 follow PQ3 (proposed `SEV1`-`SEV4`), register findings are `AF-<AREA>-<nnn>`, owner questions `PQ<n>`.
 
@@ -52,7 +52,7 @@ follow PQ3 (proposed `SEV1`-`SEV4`), register findings are `AF-<AREA>-<nnn>`, ow
 3. **Converged**: each area's findings stabilise under independent re-audit (section 4.4), and
    cross-area contradictions are arbitrated rather than left as two reports.
 4. **Actionable**: every finding ends as exactly one of: fixed-and-verified, owner decision recorded,
-   moved to `BACKLOG.md`/`REAL_HARDWARE_TEST_QUEUE.md` with enough context to act on, or rejected
+   moved to `BACKLOG.md` (silicon-owed ones to its real-hardware section) with enough context to act on, or rejected
    with the reason.
 5. **Feature parity preserved**: the refactor keeps the deployed units' top-level features (CLAUDE.md
    working agreement); every behaviour change found is either documented-as-deliberate or raised.
@@ -71,7 +71,7 @@ follow PQ3 (proposed `SEV1`-`SEV4`), register findings are `AF-<AREA>-<nnn>`, ow
       No test deleted or weakened without a registered finding saying why (a vacuous test may
       legitimately go).
 - [ ] Coverage recorded before and after; any drop explained.
-- [ ] Every real-hardware item the audit produced is a `REAL_HARDWARE_TEST_QUEUE.md` row (or was run,
+- [ ] Every real-hardware item the audit produced is in BACKLOG.md's "Real-hardware work still owed" (or was run,
       if the owner granted a bench go-ahead inside the audit — PQ4).
 - [ ] CLAUDE.md side-obligations met for every change the audit made: BACKLOG's chroot-owed list for
       build-environment changes, `UART_C_PORT_CHANGELOG.md` for `asy_uart_comm.py` changes, the
@@ -1928,7 +1928,7 @@ Quality measure: an infidelity table in `digital_twin/README.md`, each row eithe
 
 **Goal**: the hardware tier is safe for the board, the host and the evidence; its tests assert what
 they claim; its docs are current. Desk review needs no go-ahead; anything touching the board or bench
-network does (CLAUDE.md), and is otherwise queued in `REAL_HARDWARE_TEST_QUEUE.md`.
+network does (CLAUDE.md), and is otherwise queued in BACKLOG.md's "Real-hardware work still owed" section.
 **References**: `tests_hardware/README.md`, Parts E.6, E.8, E.9, B.12, B.13; `REAL_HARDWARE_TEST_QUEUE.md`,
 `HARDWARE_TEST_HANDOVER.md`, `HEAP_FRAGMENTATION_MEASUREMENTS.md`, `dev_legacy/README.md`.
 
