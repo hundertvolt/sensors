@@ -387,17 +387,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     the owner's decision. Then add the bench analogue of the twin's own budget check to
     `tests_hardware/error_log_helpers.py`.
 
-41. **Two device scripts still hand-list their `cfgmgr._cache` keys and will silently miss a new
-    schema field** - verified 2026-09-18.
-    `bmp3xx_plausibility_read.py` and `sgp40_fram_backup_restore.py` prime the cache from a literal
-    dict; the four ISL29125 scripts already derive it from the driver's own schema
-    (`{field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}`) and then
-    override only what the script deliberately changes. A field added to either driver leaves the
-    hand-listed script reading a default that no longer exists, which looks like a driver fault.
-    The generic form is a two-line change in each, but it can only be validated on the bench - so
-    it rides the next real-hardware session rather than being pushed blind
-    (`REAL_HARDWARE_TEST_QUEUE.md` row G11).
-
 44. **Board anomalies from the connection-limit sittings — recorded, not chased; each needs
     silicon** (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.5; queue row F17):
     - One silent reset in 1 of 9 instrumented peak-load boots, cause lost. Watchdog starvation is the

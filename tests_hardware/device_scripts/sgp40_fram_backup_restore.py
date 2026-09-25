@@ -73,11 +73,10 @@ async def _main() -> None:
     if reader1.ts_storage is None:
         print("RESULT: FAIL reader1.ts_storage allocation failed - no FRAM chunk to back up into")
         return
-    # Prime config directly rather than reader1.cfgmgr.setup() - no real flash file I/O, matching
-    # dev_legacy/README.md's documented pattern. Defaults straight from asy_sgp40_driver.py's own
-    # _VAL_BP/_VAL_BMAX/_VAL_WT (BackupPeriod=1 min is exactly what BACKUP_WAIT_S is sized around).
+    # Prime config directly rather than reader1.cfgmgr.setup() - no real flash file I/O. Derived from
+    # the driver's own schema; its BackupPeriod default of 1 min is what BACKUP_WAIT_S is sized around.
     reader1.cfgmgr.valid = True
-    reader1.cfgmgr._cache = {"BackupPeriod": 1, "BackupMaxAge": 7200, "WaitTimeNTP": 30}
+    reader1.cfgmgr._cache = {field[0]: field[2] for field in reader1.cfg_schema if field[2] is not None}
     reader1.start_timer()
     await _run_until_cancelled(reader1, BACKUP_WAIT_S, wdt)
     reader1.stop_timer()
@@ -112,7 +111,7 @@ async def _main() -> None:
     # Same priming as reader1 above - _init_sgp() (which sets voc_init, the real restore trigger)
     # reads this same config too, so without it reader2 would never even attempt a restore.
     reader2.cfgmgr.valid = True
-    reader2.cfgmgr._cache = {"BackupPeriod": 1, "BackupMaxAge": 7200, "WaitTimeNTP": 30}
+    reader2.cfgmgr._cache = {field[0]: field[2] for field in reader2.cfg_schema if field[2] is not None}
     reader2.start_timer()
     await _run_until_cancelled(reader2, RESTORE_WAIT_S, wdt)
     reader2.stop_timer()

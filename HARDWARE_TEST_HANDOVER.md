@@ -14,14 +14,10 @@ conversation before any `mpremote`, `nmcli`, `iw`, `iptables`, `picotool` or `te
 
 ## 1. Where things stand
 
-- **Board**: `dev` bench, image of tree `dd80eef` (`buildDate 2026-09-25T05:21:43Z`,
-  `max_connections = 6`, `DebugLevel` 5). It is **behind the tree** (`b5450aa`'s WiFi changes) and
-  must be reflashed before the next suite run (section 2).
-- **Done this sitting (2026-09-24/25)**, results in the queue rows: steps 1, 2 and 5's first W4 run
-  (not clean: one test bug fixed, one unexplained USB drop — W4, F17), T4, W3 and R2 (curve up to 3
-  readers; 4 saturates the board — F18). **Not yet**: steps 3, 4, 6, 7, the rest of 8, and a W4
-  re-run on the current tree. The error logs as of the last R2 sweep carry F18's entries (WEBSERVER
-  `W2` ×20, UART `E20`/`W10`); they are recorded, so clearing them is safe.
+- **Board**: `dev` bench, image of tree `3062cc7` (`buildDate 2026-09-25T07:31:00Z`,
+  `max_connections = 6`, `DebugLevel` 5) — current with every `src/` change on the branch.
+- **This sitting (2026-09-24/25) is still in progress** — section 5 has every result so far, with
+  suggested actions; it is the single place to read them.
 - **Tree**: every host tier green at `gc.threshold(-1)` and `32768` (86/86 MicroPython files, 2,100
   pytest), CI green.
 - **Settled, not to be re-measured**: the connection limit of 6 and its lwIP ensemble
@@ -58,7 +54,7 @@ anticipate; do not work around it.
    FRAM chunks, so an older entry is evidence only if the board's recent history allows it.
 2. **Build, flash, verify.** `scripts/build_firmware.py dev`, flash it, then confirm `/system`'s
    `build.buildDate` matches the build. Never a `wozi` build.
-3. **G11, code at the sitting** — switch `bmp3xx_plausibility_read.py` and
+3. **G11, code at the sitting** (done 2026-09-25, 5.3) — switch `bmp3xx_plausibility_read.py` and
    `sgp40_fram_backup_restore.py` to the schema-derived cache (the queue row has the two lines), so
    step 4 validates them.
 4. **Flash tier**: `scripts/run_flash_hardware_suite.sh`. Read the **deselected** count, not only
@@ -120,7 +116,80 @@ If only one short sitting is possible, do steps 1, 2, 4, 5 and 7, then F1 and T4
 - When the queue's last row goes, delete `REAL_HARDWARE_TEST_QUEUE.md`; delete this file once the
   sitting's results are migrated.
 
-## 5. Traps that have actually cost time
+## 5. Results of this sitting — IN PROGRESS (2026-09-24/25)
+
+**The sitting is still running**: nothing below is final, and the board is still in use. Every
+figure is from the `dev` bench. Raw logs sit in the session's scratchpad only; what matters is here.
+
+### 5.1 Images and board state
+
+| Image (`buildDate`) | Tree | Used for |
+| --- | --- | --- |
+| `2026-09-24T19:11:45Z` | `bf62580` | W4's first run |
+| `2026-09-25T05:21:43Z` | `dd80eef` | T4, W3, R2 |
+| `2026-09-25T07:31:00Z` | `3062cc7` (functionally the tree as of this commit) | everything from 5.3 on; **on the board now** |
+
+`errcount` was saved before every flash and before every `ResetErrors`. As of the last read: NTP
+`E21` (the NTP check, 5.3), WIFI `W6` ×5 and SGP40 `W13` ×9 (the second hotspot fallback, 5.4).
+
+### 5.2 Measurements
+
+| Row | Result | Suggested action |
+| --- | --- | --- |
+| **W4** (first run) | 103 passed, 2 failed, 4 skipped, 27 deselected, 49:29. Page-load failure: test bug, fixed (1 s settle, `3062cc7`). UART idle-poll failure: USB drop mid-upload, not reproduced (F17) | **Re-run the whole bench tier on the current image** — it is the gate for the wear-gated step and owes `assert_no_task_ended` its first run |
+| **T4** | 1-byte write 2,833–3,395 us non-yielding (~0.6–0.7 ms per CS command), one read command 783–881 us, block operation holds the bus 18,089–23,148 us (3 runs). In SPECIFICATION F.5.8 | Owner: yield between the CS commands of one write (~3 ms → <1 ms), or keep as is; commit the timing script or not |
+| **W3** | `/status` 6,859–6,865 B: median 1.36 s (1.30–1.43 s, 20 idle samples); `/networking` 0.34 s; `/measurements` 0.28 s | Owner: accept, or measure one 1,024 B-piece build for the comparison that does not exist yet |
+| **R2** | `ResetErrors` 2.4 s at 0 readers, 5.6 / 10.6 / 13.2 s at 1 / 2 / 3 readers (worst 14.69 s); at 4 readers no result (starved at the ceiling, then over 30 s). Linear, ~+3.5 s per reader. In BACKLOG 24/32 | Owner: BACKLOG 24's design fix (batched or concurrent reset) first; BACKLOG 32's bench budget can only follow it |
+| **T1** | In-suite (flash tier, `test_memory_stress.py`, the script's own module-level threshold): baseline `largest_block` 122,016 B → **after `build_system()` 84,112 B**, free 97,280 B, `retained` 0 — identical for the control and production-threshold arms; map: largest free run 84,112 B, highest new block at 55 %, none in the top 32 KB. The board prints `GC_THRESHOLD=` but the test does not echo it | The comparison T1 was written against (archive §7D.3, 20,592 → 28,864 B) is no longer in the tree after `HEAP_FRAGMENTATION_MEASUREMENTS.md`'s rewrite, and its magnitude suggests a different position. Owner: close T1 on this figure, or name the position it should be compared at; echo `GC_THRESHOLD=` in the test |
+| **T1 race check** | `gc.threshold()` read `-1` at 0.8 s after a reset and `32768` at 38 s uptime — §M3.8's race is confirmed | None; recorded |
+| **R7** (partial) | Soft-reset capture (no USB re-enumeration, so the whole boot is visible): imports + `build_system()` + the first setup list take 1.15 s together (that list logs nothing); each FRAM-backed config manager then costs ~95 ms (~33 ms FRAM read, ~33 ms verify, ~25 ms file); 8 timers start 112 ms apart (0.78 s); WLAN up and RTC set at 16.3 s | Per-logger figures for the first list need an instrumented build — owner's call whether they are worth it |
+| **R6** | Not measured. The +0.90 s is an A/B delta: the fix moved `fram.setup()` ahead of `sysfunct.setup()`, so only a pre-fix build answers it (2 extra flash cycles, ~30 min) | Owner: run the A/B, or close R6 as not worth the flash cycles (it does not threaten the watchdog) |
+
+### 5.3 First silicon runs of this tree's changes (section 2's table)
+
+| Change | Result |
+| --- | --- |
+| NTP never ends its task (`c20f80b`) | **PASS**: `test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing` + the test before it, 2 passed. UDP 123 blocked: NTP `E21` (one slot, counter 3), no task ended, SYSTEM clean, no traceback |
+| Radio byte bounds (`b5450aa`) | **PASS**: `PUT /networking` with 18 × `ä` (36 bytes, inside the 32-character schema) → `"Invalid"`, hostname unchanged, WIFI `E20` |
+| `PERIODIC` hotspot timer (`b5450aa`) | **PASS**: after a real fallback the board returned to STA by itself after the 8 min window, with no reboot (uptime continuous) and no SYSTEM entry |
+| G11, schema-derived cache in `bmp3xx_plausibility_read.py` / `sgp40_fram_backup_restore.py` | **PASS**: flash tier clean — 36 passed, 3 skipped (both light programs, the UF2 reflash), 12 deselected, 14:48 |
+
+### 5.4 Findings
+
+- **F18, four back-to-back `/status` readers saturate the board** (queue F18): the `ResetErrors`
+  `PUT` starved at the ceiling, WEBSERVER `W2` ×20, UART link `E20`/`E22`/`W10`. No reboot, no task
+  ended. *Suggested*: owner decides whether zero-think-time clients are in contract; if yes, the
+  admission policy needs fairness (a writer can be starved indefinitely today).
+- **SGP40 `W13` fills its error history while NTP is absent**: one "backup written without
+  timestamp" slot per backup (1 min), 9 slots after one hotspot episode, so the ring loses what
+  preceded the outage. *Suggested*: apply C.7.1's per-episode repeat rule, as NTP, WiFi and FRAM
+  now do — a candidate for BACKLOG 50's list.
+- **Three hotspot fallbacks, all the stale-AP-station mechanism, all caused by this session's own
+  procedure** (WIFI `W6` ×5, `reset_cause()` = `WDT_RESET` where read): a reset with no
+  `kick_all_stations()` *immediately* before it. Kicking 50 s early does not help — the board
+  re-associates in between. *Suggested*: record in `tests_hardware/README.md` that the kick must be
+  the step right before the reset, and give ad-hoc scripts a helper that does both.
+- **FRAM `E31` + `W73` at the first boot after flashing**: `mpremote exec machine.bootloader()` most
+  likely landed mid-write; the dual copy repaired it (block 1 rewritten from block 0). Designed
+  behaviour, but it means entering BOOTSEL this way can cost one FRAM log entry. *Suggested*: none
+  beyond noting it; the harness's `enter_bootloader()` has the same property.
+- **An `mpremote` attach within ~1 s of boot parks the board at the REPL with no watchdog armed** —
+  it never recovers on its own (no ~8 s reset), unlike a later attach. *Suggested*: add to section
+  6's traps / `tests_hardware/README.md`.
+- **F17, USB drop mid-upload during W4**: still unexplained, not reproduced.
+- **Own process error, recorded so it is not repeated**: R2's first script retried a refused `PUT`
+  without bound and ran 1 h 40 min. Ad-hoc scripts now cap retries and run under `timeout`.
+
+### 5.5 Still owed this sitting, shortest first
+
+1. **W4 re-run** on the current image (~50 min, default flags) — the gate for step 6.
+2. Step 6, the wear-gated run (~55 min, *wear*), then F1 and N2 (*wear*, one write each) — only
+   if 1 is clean (D1).
+3. M1 + S3b (needs the owner at the bench, ~30 min).
+4. R13 + N3, and the step 9 scripts — code first.
+5. Owner decisions from 5.2 and 5.4.
+
+## 6. Traps that have actually cost time
 
 The full list is the queue's section 6 and `tests_hardware/README.md`. The ones most likely to bite:
 

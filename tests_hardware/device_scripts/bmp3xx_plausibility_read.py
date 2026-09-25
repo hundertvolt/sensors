@@ -17,14 +17,10 @@ async def _main() -> None:
     wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
     i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
     reader = BMP3xx_Reader(i2c0, max_module_error=999, fram=None, debug=None)
-    # Prime config directly rather than reader.cfgmgr.setup() - no real flash file I/O. Defaults
-    # straight from asy_bmp3xx_driver.py's own _VAL_SI/_VAL_POV/_VAL_TOV/_VAL_FC/_VAL_PO/_VAL_TO/
-    # _VAL_SLO/_VAL_ATM (covers both _init_bmp()'s and _store_bmp()'s own config reads).
+    # Prime config directly rather than reader.cfgmgr.setup() - no real flash file I/O. Derived from
+    # the driver's own schema, so a new field can't leave this reading a default that no longer exists.
     reader.cfgmgr.valid = True
-    reader.cfgmgr._cache = {
-        "SampleInterv": 2, "PressOvers": 1, "TempOvers": 1, "FiltCoeff": 0,
-        "PressOffset": 0.0, "TempOffset": 0.0, "SeaLevelOffs": 0.0, "MeanAtmTemp": 15.0,
-    }
+    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}
     reader.start_timer()  # wires the real 1s hardware timer driving _base_trigger()
     trigger_task = reader.start_asy_trigger()
     read_task = reader.start_asy_read()
