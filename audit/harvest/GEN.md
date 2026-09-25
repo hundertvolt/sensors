@@ -1,6 +1,6 @@
 # Harvest — GEN: Build generator and device definitions
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 26, INVAR 63, MIRROR 51, LIMIT 54, RISK 7, ASSUME 45, PLATFORM 10, SUPPRESS 5, TODO 4, DRIFT 11, NOTE 4 — 280 items.
@@ -795,42 +795,42 @@ Kinds: SETTLED 26, INVAR 63, MIRROR 51, LIMIT 54, RISK 7, ASSUME 45, PLATFORM 10
 - **GEN.N193** ASSUME · `SPECIFICATION.md:392-394` — "a device with none keeps the pre-WP1 order:
   `conn`/`ntp` first, `fram` wherever its own instance ordering puts it" — Fallback path when no
   `fram_target`; every real TOML sets it, so this path is fixture-only. · [H12]
-- **GEN.N194** ASSUME · `SPECIFICATION.md:539-541` — "`buildgen` derives both from each device's own
+- **GEN.N194** ASSUME · `SPECIFICATION.md:543-545` — "`buildgen` derives both from each device's own
   TOML rather than assuming wozi's answer applies everywhere (confirmed against `buildgen/codegen.py`)"
   — Claim of per-device derivation. · [H12]
 
 ## SPECIFICATION.md Part A.8 (REST API endpoint reference, 571-625)
 
-- **GEN.N195** INVAR · `SPECIFICATION.md:588-591` — "generator-owned/fixed, never per-device, and
+- **GEN.N195** INVAR · `SPECIFICATION.md:592-595` — "generator-owned/fixed, never per-device, and
   reported live so a fleet operator can tell which build" — Build identity is hand-bumped versions +
   date only (no commit). · related: HW.T19 · [H12]
 
 ## SPECIFICATION.md Part B.14.2 / B.14.2.1 (`lwip_connection_counts`, 1215-1379)
 
-- **GEN.N196** INVAR · `SPECIFICATION.md:1318-1319` — "`buildgen/validate.py` runs the N-connection half
+- **GEN.N196** INVAR · `SPECIFICATION.md:1322-1323` — "`buildgen/validate.py` runs the N-connection half
   per device ... refuses a device whose `max_connections` the firmware's own pools cannot serve" —
   Enforced in buildgen. · related: GEN.T15 · [H12]
 
 ## SPECIFICATION.md Part B.15 (The three mypy passes, 1413-1473)
 
-- **GEN.N197** LIMIT · `SPECIFICATION.md:1431-1433` — "`build/generated_src` is on `mypy_path` for the
+- **GEN.N197** LIMIT · `SPECIFICATION.md:1435-1437` — "`build/generated_src` is on `mypy_path` for the
   one static `import sensortask_dev` ... `typecheck.sh` generates it first." — Generated modules
   resolved (silently) but never reported. · covered-by: GEN.S17 · [H12]
 
 ## SPECIFICATION.md Part C.7.2 (Which failures may end a task, 1943-1973)
 
-- **GEN.N198** MIRROR · `SPECIFICATION.md:1954-1961` — "`retry_s` (default 10 s) doubling ... up to
+- **GEN.N198** MIRROR · `SPECIFICATION.md:1958-1965` — "`retry_s` (default 10 s) doubling ... up to
   `retry_max_s` (default 600 s) ... `ntp_retry_s`/`ntp_retry_max_s`, checked by buildgen" — Defaults and
   the 10 s tick mirrored between NTP code and buildgen validation (`_NTP_CHECK_TICK_S`). · related:
   GEN.T06 · [H12]
-- **GEN.N199** MIRROR · `SPECIFICATION.md:1970-1973` — "`buildgen/validate.py`'s
+- **GEN.N199** MIRROR · `SPECIFICATION.md:1976-1979` — "`buildgen/validate.py`'s
   `_check_uart_link_buses()`, reading the thresholds out of `asy_uart_comm.py`); every other refusal
   needs code the generator never emits" — Build-time check reads src constants; "never emits" is an
   assumption. · related: UART.T05 · [H12]
 
 ## SPECIFICATION.md Part C.8 (Concurrency & locking model, 2016-2188)
 
-- **GEN.N200** ASSUME · `SPECIFICATION.md:2173-2183` — "`wozi` wires `sgp40`+`bmp3xx` together on
+- **GEN.N200** ASSUME · `SPECIFICATION.md:2181-2191` — "`wozi` wires `sgp40`+`bmp3xx` together on
   `i2c1`, and `dev` wires `scd30`+`sgp40`+`isl29125` together on `i2c1` ...
   `arzi`/`klkizi`/`grkizi`/`schlafzi` each wire `scd30` alone on `i2c0` and `sgp40` alone on `i2c1`" —
   Doc copy of TOML bus topology (Session 6.2 check); goes stale on TOML change. · related: HW.S12 ·
@@ -838,198 +838,198 @@ Kinds: SETTLED 26, INVAR 63, MIRROR 51, LIMIT 54, RISK 7, ASSUME 45, PLATFORM 10
 
 ## SPECIFICATION.md Part C.14 / C.14.1 (Instance naming, 2380-2428)
 
-- **GEN.N201** SETTLED · `SPECIFICATION.md:2386-2390` — "singleton services
+- **GEN.N201** SETTLED · `SPECIFICATION.md:2394-2398` — "singleton services
   (WiFi/NTP/SystemService/Neopixel/NotificationCoordinator/FRAM/the DNS server/the webserver) are
   deliberately out of scope for the *naming* part" — Singletons never multi-instanced. · related:
   GEN.T13 · [H12]
-- **GEN.N202** INVAR · `SPECIFICATION.md:2424-2428` — "Collision detection across a whole device's
+- **GEN.N202** INVAR · `SPECIFICATION.md:2432-2436` — "Collision detection across a whole device's
   instance list is built in `buildgen/validate.py`" — Enforced by
   `_check_instance_name_collisions()`/`_check_instance_label_collisions()`. · [H12]
 
 ## SPECIFICATION.md Part C.14.2 (The `_WIRING` convention, 2430-2532)
 
-- **GEN.N203** INVAR · `SPECIFICATION.md:2443-2446` — "Nothing the running firmware itself ever reads
+- **GEN.N203** INVAR · `SPECIFICATION.md:2451-2454` — "Nothing the running firmware itself ever reads
   should become a real frozen-bytecode value just to serve the generator (SPECIFICATION.md Part L.5)" —
   Tag-as-comment rule. · related: GEN.T03 · [H12]
-- **GEN.N204** ASSUME · `SPECIFICATION.md:2446-2448` — "converting it, plus `_VALUE_WIRING`, `_LIMITS`
+- **GEN.N204** ASSUME · `SPECIFICATION.md:2454-2456` — "converting it, plus `_VALUE_WIRING`, `_LIMITS`
   and the `TYPE_CHECKING` type aliases ... took 3,576 bytes out of `src/`'s frozen bytecode" — Dated
   single measurement. · [H12]
-- **GEN.N205** INVAR · `SPECIFICATION.md:2448-2449` — "dropping any one of the five makes the tag fail
+- **GEN.N205** INVAR · `SPECIFICATION.md:2456-2457` — "dropping any one of the five makes the tag fail
   the build loud rather than parse as \"no tag here\" (`tag_comments.py`)" — Enforced by buildgen
   parser. · covered-by: GEN.T03 · [H12]
 
 ## SPECIFICATION.md Part C.14.3 (Error-source and logger fan-in, 2534-2572)
 
-- **GEN.N206** ASSUME · `SPECIFICATION.md:2565-2567` — "every real `devices/*.toml` compensates both off
+- **GEN.N206** ASSUME · `SPECIFICATION.md:2573-2575` — "every real `devices/*.toml` compensates both off
   one `SCD30_Reader`" — Doc copy of TOML facts. · [H12]
 
 ## SPECIFICATION.md Part H.5.1 — Definitions-file autogeneration
 
-- **GEN.N207** LIMIT · `SPECIFICATION.md:4416-4418` — "a best-effort, never-imported AST read of each
+- **GEN.N207** LIMIT · `SPECIFICATION.md:4428-4430` — "a best-effort, never-imported AST read of each
   driver's real `ConfigSchema`/`FieldSchema` constant (`buildgen/schema_ast.py`" — Schema inference is
   best-effort static evaluation. · related: GEN.S10 · [H13]
-- **GEN.N208** INVAR · `SPECIFICATION.md:4414-4416` — "built on `buildgen/tag_comments.py`'s shared
+- **GEN.N208** INVAR · `SPECIFICATION.md:4426-4428` — "built on `buildgen/tag_comments.py`'s shared
   near-miss-enforcing scanner exactly like `@requires` — never a second, separately-tested detector" —
   One scanner for every tag family. · related: GEN.T03 · [H13]
-- **GEN.N209** INVAR · `SPECIFICATION.md:4424-4428` — "`submitGroup=self` is a reserved sentinel ...
+- **GEN.N209** INVAR · `SPECIFICATION.md:4436-4440` — "`submitGroup=self` is a reserved sentinel ...
   used by scd30/sgp40/bmp3xx, the only drivers a device can carry more than one instance of" —
   Multi-instance set named in prose; ISL29125's status not stated (low). · related: GEN.T04 · [H13]
   ⟨quote not matched at the anchor⟩
-- **GEN.N210** LIMIT · `SPECIFICATION.md:4430-4433` — "a quoted value may not contain a literal `\"` (no
+- **GEN.N210** LIMIT · `SPECIFICATION.md:4442-4445` — "a quoted value may not contain a literal `\"` (no
   escaping), and every tag is a single physical line" — Deliberately minimal tag grammar. · related:
   GEN.T03 · [H13]
-- **GEN.N211** MIRROR · `SPECIFICATION.md:4453-4457` — "`validateDefinitions()` rejects a `path` on
+- **GEN.N211** MIRROR · `SPECIFICATION.md:4465-4469` — "`validateDefinitions()` rejects a `path` on
   anything but a `kind=readonly` field ... `buildgen/web_tag.py` enforces the identical rule at
   generation time" — Python↔JS duplicate validation of `path`. · related: GEN.T15 · [H13]
-- **GEN.N212** MIRROR · `SPECIFICATION.md:4463-4466` — "bounded 0–100 ... checked at generation time in
+- **GEN.N212** MIRROR · `SPECIFICATION.md:4475-4478` — "bounded 0–100 ... checked at generation time in
   `buildgen/web_tag.py` and again in `js/definitions.js`'s `validateFieldHints()`" —
   `web_tag._MAX_DECIMALS` ↔ `validateFieldHints`. · covered-by: GEN.T15 · [H13]
-- **GEN.N213** INVAR · `SPECIFICATION.md:4469-4470` — "A schema-declared sentinel special value must
+- **GEN.N213** INVAR · `SPECIFICATION.md:4481-4482` — "A schema-declared sentinel special value must
   have a matching tag `special:<value>=\"<meaning>\"` or the build fails loud" — Enforced by the
   generator. · related: GEN.T09 · [H13]
-- **GEN.N214** MIRROR · `SPECIFICATION.md:4479-4482` — "`_WARN_SIGNAL_WEB_CATALOG`, the same precedent
+- **GEN.N214** MIRROR · `SPECIFICATION.md:4491-4494` — "`_WARN_SIGNAL_WEB_CATALOG`, the same precedent
   `buildgen.codegen._KNOWN_SIGNALS` ... kept in sync by cross-reference/comment, not import" —
   Hand-mirrored catalog pair, comment-only sync. · covered-by: GEN.T06 · [H13]
-- **GEN.N215** ASSUME · `SPECIFICATION.md:4484-4486` — "**Correctness proof**: `generate_definitions()`
+- **GEN.N215** ASSUME · `SPECIFICATION.md:4496-4498` — "**Correctness proof**: `generate_definitions()`
   ... reproduces the existing hand-written `wozi.json`/`dev.json` exactly (order-insensitive)" —
   "Exactly" is order-insensitive only; generated field order differs. · covered-by: WEB.S13 · [H13]
 
 ## SPECIFICATION.md Part J (intro)
 
-- **GEN.N216** PLATFORM · `SPECIFICATION.md:5159-5162` — "The jumper uses UART0 on GP0/GP1 and UART1 on
+- **GEN.N216** PLATFORM · `SPECIFICATION.md:5172-5175` — "The jumper uses UART0 on GP0/GP1 and UART1 on
   GP8/GP9 ... GPIO24/25 and GPIO28/29 each have a half the wireless chip takes ... GPIO16/17 is left
   free because a BME688's BSEC coprocessor wants UART0 there" — Board pin-mux facts and a reservation
   for a future peripheral. · related: GEN.T07 · [H13]
 
 ## SPECIFICATION.md Part J.6 — Deployment parameters
 
-- **GEN.N217** MIRROR · `SPECIFICATION.md:5536-5548 (sites buildgen/validate.py:246-276, src/asy_uart_comm.py:95, 260, 270)`
+- **GEN.N217** MIRROR · `SPECIFICATION.md:5549-5561 (sites buildgen/validate.py:246-276, src/asy_uart_comm.py:95, 260, 270)`
   — "`baud/10 × (poll_wait_ms + jitter)` ... `2 × poll_wait_ms + poll_idle_ms +` the measured worst-case
   GC pause" — Floor formulas duplicated in buildgen (`validate.py:247` "mirrored here rather than read")
   and the module. · covered-by: UART.T05 · [H13]
 
 ## SPECIFICATION.md Part K.3 — Wire into buildgen
 
-- **GEN.N218** INVAR · `SPECIFICATION.md:5742-5744` — "confirm by actually running
+- **GEN.N218** INVAR · `SPECIFICATION.md:5755-5757` — "confirm by actually running
   `buildgen/generate.py` against a fixture TOML ... not by inspection alone" — Review-only process step.
   · [H13]
-- **GEN.N219** SETTLED · `SPECIFICATION.md:5746-5747` — "**`buildgen/buildspec.py`** — the one
+- **GEN.N219** SETTLED · `SPECIFICATION.md:5759-5760` — "**`buildgen/buildspec.py`** — the one
   hand-maintained per-driver table (its own docstring says so; every other buildgen table is AST-derived
   from `src/`)" — Hand-maintenance settled (plan §2.3); "every other table AST-derived" conflicts with
   the plan's list of other hand catalogs (`_SENSOR_DRIVERS`, `_ERRCOUNT_CATALOG`, ...). · related:
   GEN.T06 · [H13]
-- **GEN.N220** RISK · `SPECIFICATION.md:5751-5755` — "**Check the datasheet for a real address-select
+- **GEN.N220** RISK · `SPECIFICATION.md:5764-5768` — "**Check the datasheet for a real address-select
   pin before deciding `ADDRESS_CAPABLE_DRIVERS` vs. `FIXED_ADDRESS_DRIVERS`** ... guessing this wrong
   lets a device TOML declare a meaningless `address` field that silently does nothing" — Silent
   misconfiguration risk; ISL29125 address hardwired (FN8424 p15). · related: GEN.T13 · [H13]
-- **GEN.N221** ASSUME · `SPECIFICATION.md:5756-5762` — "Only add a `_OVERRIDES` entry if the driver
+- **GEN.N221** ASSUME · `SPECIFICATION.md:5769-5775` — "Only add a `_OVERRIDES` entry if the driver
   genuinely can't follow that convention (today: `fram`, `neopixel`, `notification`, `uart_link`" —
   Dated inventory of overrides. · covered-by: GEN.T13 · [H13]
-- **GEN.N222** INVAR · `SPECIFICATION.md:5766-5769` — "Every optional TOML field gets emitted only `if \"<field>\" in f:`
+- **GEN.N222** INVAR · `SPECIFICATION.md:5779-5782` — "Every optional TOML field gets emitted only `if \"<field>\" in f:`
   ... never unconditionally" — Codegen convention, tested per field in `test_buildgen_generate.py`. ·
   related: GEN.T02 · [H13]
-- **GEN.N223** RISK · `SPECIFICATION.md:5770-5772` — "add the driver to `_SENSOR_DRIVERS` ... Skipped,
+- **GEN.N223** RISK · `SPECIFICATION.md:5783-5785` — "add the driver to `_SENSOR_DRIVERS` ... Skipped,
   the driver silently never appears on the website with no error anywhere" — Hand catalog whose omission
   fails silently. · covered-by: GEN.T06 · [H13]
-- **GEN.N224** INVAR · `SPECIFICATION.md:5773-5778` — "Add a case only if the driver needs a *real
+- **GEN.N224** INVAR · `SPECIFICATION.md:5786-5791` — "Add a case only if the driver needs a *real
   interrupt/GPIO line the twin's chip fake has to drive edges on* (today: `scd30`, `isl29125` — see
   `compute_twin_wiring()`'s own `if spec.driver in (\"scd30\", \"isl29125\")` branch)" — Hardcoded
   driver tuple in `twin_wiring.py`, another hand catalog. · related: GEN.T06, TWIN.T12 · [H13]
-- **GEN.N225** MIRROR · `SPECIFICATION.md:5779-5781` — "`uart_link`'s `UART_ROLE` table, transcribed
+- **GEN.N225** MIRROR · `SPECIFICATION.md:5792-5794` — "`uart_link`'s `UART_ROLE` table, transcribed
   from the Pico W datasheet" — `buildgen/pico_gpio.py` ↔ Pico W datasheet. · related: GEN.T07 · [H13]
 
 ## SPECIFICATION.md Part K.4 — @web tags
 
-- **GEN.N226** INVAR · `SPECIFICATION.md:5794-5798` — "Every tag family gets full accept/reject grammar
+- **GEN.N226** INVAR · `SPECIFICATION.md:5807-5811` — "Every tag family gets full accept/reject grammar
   test coverage ... extending a tag family's own grammar ... needs new tests in that same file" —
   Review-only test obligation. · related: GEN.T03 · [H13]
 
 ## SPECIFICATION.md Part K.6 — Tests, every tier
 
-- **GEN.N227** INVAR · `SPECIFICATION.md:5852-5854` — "`test_device_tomls.py` — which real devices carry
+- **GEN.N227** INVAR · `SPECIFICATION.md:5865-5867` — "`test_device_tomls.py` — which real devices carry
   this driver (an explicit allow-list assertion ... never let a new instance land on a device by
   omission of a check)" — Allow-list rule per driver. · [H13]
 
 ## SPECIFICATION.md Part K.7 — devices/*.toml
 
-- **GEN.N228** INVAR · `SPECIFICATION.md:5880-5885` — "Wiring facts ... must come from **real,
+- **GEN.N228** INVAR · `SPECIFICATION.md:5893-5898` — "Wiring facts ... must come from **real,
   bench-validated hardware**, never invented — cite where the fact came from in a TOML comment" —
   Review-only provenance rule. · related: GEN.T08 · [H13]
 
 ## SPECIFICATION.md Part K.10-K.11 — Verification and certification
 
-- **GEN.N229** INVAR · `SPECIFICATION.md:5929-5932` — "**Actually generate all six real device TOMLs**
+- **GEN.N229** INVAR · `SPECIFICATION.md:5942-5945` — "**Actually generate all six real device TOMLs**
   ... inspect the output ... don't infer correctness from tests alone" — Manual review step; generated
   modules otherwise unlinted (GEN.S17). · related: GEN.T10 · [H13]
 
 ## SPECIFICATION.md Part L.1 — Device variants and acceptance criteria
 
-- **GEN.N230** ASSUME · `SPECIFICATION.md:5996-6001` — "`klkizi`/`grkizi`/`schlafzi` (the three \"ArZi
+- **GEN.N230** ASSUME · `SPECIFICATION.md:6009-6014` — "`klkizi`/`grkizi`/`schlafzi` (the three \"ArZi
   neu\" units — currently identical hardware ...) ... `wozi`/`dev` are the only two carrying a `bmp3xx`
   instance; every SCD30-carrying `i2c0` bus gets `timeout = 200000`" — Dated per-device inventory (true
   at 2a88cc8 per `devices/*.toml`); the 200000 timeout is a per-file convention. · related: GEN.T08,
   PAR.T13 · [H13]
-- **GEN.N231** LIMIT · `SPECIFICATION.md:6003-6005` — "Two criteria define the scheme and must keep
+- **GEN.N231** LIMIT · `SPECIFICATION.md:6016-6018` — "Two criteria define the scheme and must keep
   holding — they are the thing a change to `buildgen/` can most easily break without any test naming
   them" — Self-declared: the two acceptance criteria have no named guarding test. · related: GEN.T06,
   CI.T07 · [H13]
-- **GEN.N232** DRIFT · `SPECIFICATION.md:6012-6019` — "**A new hardware combination of already-known
+- **GEN.N232** DRIFT · `SPECIFICATION.md:6025-6032` — "**A new hardware combination of already-known
   drivers needs exactly one new file**, the device's own TOML" — Hardcoded six-device CI matrices,
   `KNOWN_DEVICES`, and per-device `tests/test_sensortask_<device>.py` wrappers each need an edit too. ·
   related: CI.T07, WEB.S22 · [H13]
-- **GEN.N233** SETTLED · `SPECIFICATION.md:6021-6022` — "**Real hardware flashing is out of scope for
+- **GEN.N233** SETTLED · `SPECIFICATION.md:6034-6035` — "**Real hardware flashing is out of scope for
   this scheme**, and the watchdog stays fixed (hardcoded 8000 ms, uniform, never per-device)" — Uniform
   watchdog decision. · related: XCUT.S13 · [H13]
 
 ## SPECIFICATION.md Part L.2 — Core design decisions
 
-- **GEN.N234** SETTLED · `SPECIFICATION.md:6027-6032` — "**Generation is build-time only; nothing
+- **GEN.N234** SETTLED · `SPECIFICATION.md:6040-6045` — "**Generation is build-time only; nothing
   generated is committed.** ... No static `src/sensortask_*.py` file exists" — Build design decision. ·
   related: XCUT.T14 · [H13]
-- **GEN.N235** MIRROR · `SPECIFICATION.md:6040-6042` — "`[device].hostname` is capped at
+- **GEN.N235** MIRROR · `SPECIFICATION.md:6055-6057` — "`[device].hostname` is capped at
   `network.hostname()`'s own 32 characters at build time, and `[device].hotspot_password` is held to
   WPA2-PSK's own 8-63" — buildgen bounds ↔ `asy_wifi_service` `_VAL_*` bounds. · covered-by: GEN.T15 ·
   [H13]
-- **GEN.N236** INVAR · `SPECIFICATION.md:6049-6054` — "**Every real cross-instance link gets a
+- **GEN.N236** INVAR · `SPECIFICATION.md:6064-6069` — "**Every real cross-instance link gets a
   TOML-visible `[instance.wiring]`/`[device.wiring]` field** — none stay hardcoded in `build_system()`"
   — Plan seed: codegen hardcodes `fram=` for device-level consumers and `conn.set_ext_led`. · related:
   GEN.S09 · [H13]
-- **GEN.N237** INVAR · `SPECIFICATION.md:6059-6063` — "**No getters and no callback functions in
+- **GEN.N237** INVAR · `SPECIFICATION.md:6074-6078` — "**No getters and no callback functions in
   generated code.**" — Generated-code convention; `signal_sink` resolves to a bound method
   (`mode="attr"`, 6225-6227), arguably a callback. · related: GEN.T04 · [H13]
-- **GEN.N238** INVAR · `SPECIFICATION.md:6075-6078` — "no hardcoded pins anywhere in generated or
+- **GEN.N238** INVAR · `SPECIFICATION.md:6090-6093` — "no hardcoded pins anywhere in generated or
   hand-written driver-wiring code" — Scope excludes device scripts (plan HW.S18: ~20 scripts hardcode
   pins). · related: HW.T08 · [H13]
-- **GEN.N239** INVAR · `SPECIFICATION.md:6079-6082` — "Frozen-module selection is dependency-driven ...
+- **GEN.N239** INVAR · `SPECIFICATION.md:6094-6097` — "Frozen-module selection is dependency-driven ...
   Dynamic imports are disallowed project-wide, which is what makes the closure sound." — Soundness
   depends on F.1's rule. · covered-by: GEN.T05 · [H13]
 
 ## SPECIFICATION.md Part L.3 — Device TOML schema
 
-- **GEN.N240** INVAR · `SPECIFICATION.md:6098-6106` — "Their per-device-tunable knobs ... live directly
+- **GEN.N240** INVAR · `SPECIFICATION.md:6113-6121` — "Their per-device-tunable knobs ... live directly
   in `[device]`, **required, not defaulted** ... `max_connections`/`backlog` ...
   `ntp_retry_s`/`ntp_retry_max_s` ... buildgen checks the effective value either way" —
   Required-vs-defaulted split; "checks the effective value either way" is a claim to verify. · related:
   GEN.T01 · [H13]
-- **GEN.N241** INVAR · `SPECIFICATION.md:6231-6236` — "resolves against the TOML's own
+- **GEN.N241** INVAR · `SPECIFICATION.md:6246-6251` — "resolves against the TOML's own
   `driver`+`name_ext` identity — **never** against `instance_name()`/each driver's own `_NAME` constant
   ... `_NAME` is `\"NOTIFY\"`, not `\"NOTIFICATION\"`" — Two naming spaces that must not be mixed. ·
   related: GEN.T04 · [H13]
-- **GEN.N242** LIMIT · `SPECIFICATION.md:6238-6239` — "`tests_scripts/test_device_tomls.py` is a minimal
+- **GEN.N242** LIMIT · `SPECIFICATION.md:6253-6254` — "`tests_scripts/test_device_tomls.py` is a minimal
   shape/collision smoke-test suite run directly against the six real files" — Deliberately minimal
   independent check. · [H13]
 
 ## SPECIFICATION.md Part L.4 — Generator pipeline
 
-- **GEN.N243** INVAR · `SPECIFICATION.md:6243` — "`buildgen/` is a real top-level CPython package, never
+- **GEN.N243** INVAR · `SPECIFICATION.md:6258` — "`buildgen/` is a real top-level CPython package, never
   imported by `src/`" — Package boundary. · [H13]
-- **GEN.N244** INVAR · `SPECIFICATION.md:6258-6261` — "every failure is a `buildgen.errors.BuildError`
+- **GEN.N244** INVAR · `SPECIFICATION.md:6273-6276` — "every failure is a `buildgen.errors.BuildError`
   naming the device, instance and field responsible" — Contract; plan seeds show raw
   `KeyError`/`AttributeError`/`ValueError` escapes. · covered-by: GEN.T01, GEN.T12 · [H13]
-- **GEN.N245** LIMIT · `SPECIFICATION.md:6262-6264` — "each signal's threshold default/range and flash
+- **GEN.N245** LIMIT · `SPECIFICATION.md:6277-6279` — "each signal's threshold default/range and flash
   colour is a fixed, generator-owned catalog (`buildgen.codegen._KNOWN_SIGNALS`) ... no per-device
   override for them today" — No per-device tuning of warning signals. · related: GEN.T06 · [H13]
-- **GEN.N246** MIRROR · `SPECIFICATION.md:6276-6281` — "scd30/sgp40's fixed hardware address
+- **GEN.N246** MIRROR · `SPECIFICATION.md:6291-6296` — "scd30/sgp40's fixed hardware address
   (`FIXED_ADDRESSES`, matching `src/`'s own hardcoded defaults) and FRAM's real RDID reply bytes
   (`digital_twin/machine.py`'s `_FRAM_RDID_BY_MAX_SIZE`, keyed by size as the best available proxy)" —
   Twin-side hand tables mirroring `src/` defaults; `buildgen/twin_wiring.py:12` also lists `isl29125`,
@@ -1037,87 +1037,87 @@ Kinds: SETTLED 26, INVAR 63, MIRROR 51, LIMIT 54, RISK 7, ASSUME 45, PLATFORM 10
 
 ## SPECIFICATION.md Part L.5 — Build/generator script quality bar
 
-- **GEN.N247** INVAR · `SPECIFICATION.md:6307-6311` — "**Detect and react to every error class that
+- **GEN.N247** INVAR · `SPECIFICATION.md:6322-6326` — "**Detect and react to every error class that
   would make a real build impossible**" — Build-tool contract (abort, not degrade). · covered-by:
   GEN.T01 · [H13]
-- **GEN.N248** INVAR · `SPECIFICATION.md:6312-6333` — "**Global-resource-collision checks are their own
+- **GEN.N248** INVAR · `SPECIFICATION.md:6327-6348` — "**Global-resource-collision checks are their own
   error class and must not be skipped.** ... Every one of these must produce a specific, human-readable
   error naming the two colliding declarations" — GPIO, per-bus address, instance identity (two naming
   spaces), bus-id collisions. · related: GEN.T12 · [H13]
-- **GEN.N249** INVAR · `SPECIFICATION.md:6337-6344` — "**Driver-declared bus requirements are enforced
+- **GEN.N249** INVAR · `SPECIFICATION.md:6352-6359` — "**Driver-declared bus requirements are enforced
   via a `# @requires` comment tag, never a real Python variable**" — Tag parsed as text, never imported.
   · related: GEN.T03 · [H13]
-- **GEN.N250** SETTLED · `SPECIFICATION.md:6345-6349` — "**Every driver-declared fact the running
+- **GEN.N250** SETTLED · `SPECIFICATION.md:6360-6364` — "**Every driver-declared fact the running
   firmware never reads is a comment tag, not a Python value** (project owner's ruling, 2026-09-10) ...
   The one exception is a `_Default<Field>` class" — Owner ruling. · related: DOC.T14 · [H13]
-- **GEN.N251** INVAR · `SPECIFICATION.md:6350-6357` — "a tag that is present, or close to present with a
+- **GEN.N251** INVAR · `SPECIFICATION.md:6365-6372` — "a tag that is present, or close to present with a
   typo, must be verified correct in every dimension ... or fail the build loud, never be silently
   treated as \"no tag here.\"" — Standing near-miss rule; plan notes column-0 comments inside function
   bodies are treated as module level. · related: GEN.T03, GEN.S10 · [H13]
-- **GEN.N252** ASSUME · `SPECIFICATION.md:6398-6401` — "a driver signature change once silently broke
+- **GEN.N252** ASSUME · `SPECIFICATION.md:6413-6416` — "a driver signature change once silently broke
   two `tests_hardware/device_scripts/` call sites for a full day, undetected because nothing in that
   scope was checked at all" — Motivating incident; device_scripts are now in the main mypy pass
   (CLAUDE.md). · [H13]
-- **GEN.N253** INVAR · `SPECIFICATION.md:6402-6404` — "**Never produce a corrupted or partial build.**
+- **GEN.N253** INVAR · `SPECIFICATION.md:6417-6419` — "**Never produce a corrupted or partial build.**
   ... no partial `build/<device>/` output left behind" — Atomic-build contract; not stated to be tested.
   · related: GEN.T16 · [H13]
-- **GEN.N254** INVAR · `SPECIFICATION.md:6405-6408` — "not a raw traceback, not a silent wrong-default
+- **GEN.N254** INVAR · `SPECIFICATION.md:6420-6423` — "not a raw traceback, not a silent wrong-default
   fallback" — Plan seeds record raw `KeyError`/`AttributeError`/`ValueError`. · covered-by: GEN.T01 ·
   [H13]
 
 ## SPECIFICATION.md Part L.6.1-L.6.2 — Wiring defaults
 
-- **GEN.N255** SETTLED · `SPECIFICATION.md:6429-6431` — "Both are real, intentional device shapes rather
+- **GEN.N255** SETTLED · `SPECIFICATION.md:6444-6446` — "Both are real, intentional device shapes rather
   than configuration errors, so the fix is a TOML-authored fallback the driver constructs itself — never
   a relaxed validator." — Design decision for absent producers. · [H13]
-- **GEN.N256** INVAR · `SPECIFICATION.md:6435-6436` — "**Opt-in, never implicit**: a wiring field is
+- **GEN.N256** INVAR · `SPECIFICATION.md:6450-6451` — "**Opt-in, never implicit**: a wiring field is
   never silently defaulted just because it is absent" — Explicit `{default = true, ...}` required. ·
   related: GEN.T01 · [H13]
-- **GEN.N257** INVAR · `SPECIFICATION.md:6441-6443` — "That signature *is* the schema for the
+- **GEN.N257** INVAR · `SPECIFICATION.md:6456-6458` — "That signature *is* the schema for the
   sub-table's allowed and required keys, never hand-duplicated in `buildgen/buildspec.py`" — AST-derived
   schema; plan notes `defaults.default_init_params` ignores keyword-only args. · related: GEN.S10 ·
   [H13]
 
 ## SPECIFICATION.md Part L.6.3 — Per-value measurement wiring
 
-- **GEN.N258** INVAR · `SPECIFICATION.md:6452-6456` — "resolved at build time by checking that
+- **GEN.N258** INVAR · `SPECIFICATION.md:6467-6471` — "resolved at build time by checking that
   `source`'s `get_data()` result exposes an attribute named `field`" — Plan seed: `field` existence is
   never checked. · covered-by: GEN.S06 · [H13]
-- **GEN.N259** LIMIT · `SPECIFICATION.md:6467-6469` — "Name-matching is the whole mechanism — there is
+- **GEN.N259** LIMIT · `SPECIFICATION.md:6482-6484` — "Name-matching is the whole mechanism — there is
   no separate property or unit tag system" — No unit/semantic check: any same-named field wires
   regardless of unit. · [H13]
-- **GEN.N260** INVAR · `SPECIFICATION.md:6460-6462` — "both self-contained, with no cross-module import,
+- **GEN.N260** INVAR · `SPECIFICATION.md:6475-6477` — "both self-contained, with no cross-module import,
   so a device with `sgp40` but no `scd30` never pulls `asy_scd30_driver` into its frozen-module set" —
   Default providers must stay import-free. · related: GEN.T05 · [H13]
 
 ## SPECIFICATION.md Part L.6.5 — Pico W GPIO legality
 
-- **GEN.N261** PLATFORM · `SPECIFICATION.md:6502-6515` — "`buildgen/pico_gpio.py` hardcodes the Pico W's
+- **GEN.N261** PLATFORM · `SPECIFICATION.md:6517-6530` — "`buildgen/pico_gpio.py` hardcodes the Pico W's
   real, fixed GPIO→peripheral table ... **GP22/GP28** have no I2C or SPI function at all. **GP23–25/29**
   are reserved" — Board-specific table transcribed from datasheet Figure 2 p.4; no board
   parameterization. · covered-by: GEN.T07 · [H13]
-- **GEN.N262** MIRROR · `SPECIFICATION.md:6502-6504` — "transcribed from `datasheets/pico w/RP-008312-DS-2-pico-w-datasheet.pdf`
+- **GEN.N262** MIRROR · `SPECIFICATION.md:6517-6519` — "transcribed from `datasheets/pico w/RP-008312-DS-2-pico-w-datasheet.pdf`
   Figure 2 (p.4)" — Code table ↔ datasheet figure. · covered-by: GEN.T07 · [H13]
 
 ## SPECIFICATION.md Part L.6.6 — Validation coverage
 
-- **GEN.N263** INVAR · `SPECIFICATION.md:6526-6538` — "Every check raises `buildgen.errors.BuildError`
+- **GEN.N263** INVAR · `SPECIFICATION.md:6541-6553` — "Every check raises `buildgen.errors.BuildError`
   naming the device, instance and field responsible — never a generic failure, a raw traceback or a
   silent partial build" — Coverage claim contested by plan seeds GEN.S03/S04/S10. · covered-by: GEN.T01
   · [H13]
-- **GEN.N264** LIMIT · `SPECIFICATION.md:6540-6546` — "**Known limitation**: `buildgen/buildspec.py`'s
+- **GEN.N264** LIMIT · `SPECIFICATION.md:6555-6561` — "**Known limitation**: `buildgen/buildspec.py`'s
   per-driver TOML-field schema ... is still hand-maintained ... BACKLOG.md's \"Deferred\" section" —
   Deferred work, settled as hand-maintained for now. · related: GEN.T06 · [H13]
 
 ## SPECIFICATION.md Part L.7 — Product versioning
 
-- **GEN.N265** SETTLED · `SPECIFICATION.md:6563-6568` — "**Single source of truth:
+- **GEN.N265** SETTLED · `SPECIFICATION.md:6578-6583` — "**Single source of truth:
   `buildgen/version.py`** ... No bump mechanism exists: one clear, documented place to change the two
   constants, no automation" — Manual bumping by design. · related: GEN.T14 · [H13]
 
 ## SPECIFICATION.md Part M.1.1 — Settled requirements (owner's list)
 
-- **GEN.N266** SETTLED · `SPECIFICATION.md:6627-6628` — "18. **Scope is the `dev` variant only.**
+- **GEN.N266** SETTLED · `SPECIFICATION.md:6642-6643` — "18. **Scope is the `dev` variant only.**
   `devices/wozi.toml` declares no `isl29125` instance and must not gain one." — Enforced by
   `test_isl29125_only_present_on_dev` (K.6). · [H13]
 
@@ -1129,14 +1129,14 @@ Kinds: SETTLED 26, INVAR 63, MIRROR 51, LIMIT 54, RISK 7, ASSUME 45, PLATFORM 10
 
 ## BACKLOG.md
 
-- **GEN.N268** SETTLED · `BACKLOG.md:585-591` — "Owner decision, 2026-09-18: it stays hand-maintained
+- **GEN.N268** SETTLED · `BACKLOG.md:651-657` — "Owner decision, 2026-09-18: it stays hand-maintained
   ... don't re-propose it." — `buildspec.py` per-driver schema; same for `definitions.py`
   `status`/`errcount` sections (owner 2026-09-24). · covered-by: GEN.T06 · [H15]
-- **GEN.N269** INVAR · `BACKLOG.md:602-609` — "validate.py now refuses a hostname longer than
+- **GEN.N269** INVAR · `BACKLOG.md:668-675` — "validate.py now refuses a hostname longer than
   network.hostname()'s 32-character cap at build time" — Else ConfigManager answers `None` to every
   read; runtime `_with_default()` falls back. Silicon proof of substitution path still PARTIAL (queue
   N2). · related: GEN.T15, NET.T07 · [H15]
-- **GEN.N270** SETTLED · `BACKLOG.md:814-815` — "bench rig only, not bugs to fix" — `dev` config quirks.
+- **GEN.N270** SETTLED · `BACKLOG.md:864-865` — "bench rig only, not bugs to fix" — `dev` config quirks.
   · covered-by: plan §2.2 ("dev bench quirks" row) · [H15]
 
 ## Commit messages (chronological)

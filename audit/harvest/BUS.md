@@ -1,6 +1,6 @@
 # Harvest — BUS: Bus layer
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 15, INVAR 43, MIRROR 2, LIMIT 26, RISK 4, ASSUME 16, PLATFORM 14, SUPPRESS 11, TODO 3, OPENQ 1, DRIFT 1, NOTE 5 — 141 items.
@@ -315,140 +315,140 @@ Kinds: SETTLED 15, INVAR 43, MIRROR 2, LIMIT 26, RISK 4, ASSUME 16, PLATFORM 14,
 
 ## SPECIFICATION.md Part C.3 (Layer 2 protocol class, 1537-1566)
 
-- **BUS.N085** PLATFORM · `SPECIFICATION.md:1552-1556` — "`asy_spi_driver.py`'s `write()` cannot raise
+- **BUS.N085** PLATFORM · `SPECIFICATION.md:1556-1560` — "`asy_spi_driver.py`'s `write()` cannot raise
   at all on rp2 ... `readinto()`/`write_readinto()` can raise `OSError(EIO)` on a 32+ byte RX overrun
   since MicroPython 1.29" — rp2 1.29-specific raise surface. · related: PLAT.T03 · [H12]
-- **BUS.N086** LIMIT · `SPECIFICATION.md:1555-1556` — "`write_readinto()` additionally turns a
+- **BUS.N086** LIMIT · `SPECIFICATION.md:1559-1560` — "`write_readinto()` additionally turns a
   caller-input `ValueError` into `None`." — Success and swallowed error both return None. · covered-by:
   BUS.S04 · [H12]
-- **BUS.N087** INVAR · `SPECIFICATION.md:1560-1563` — "A multi-transaction sequence that must not be
+- **BUS.N087** INVAR · `SPECIFICATION.md:1564-1567` — "A multi-transaction sequence that must not be
   interleaved holds the session lock for the whole sequence" — Locking convention. · related: XCUT.T06 ·
   [H12]
 
 ## SPECIFICATION.md Part C.3.1 (SPI sensor variant, 1567-1596)
 
-- **BUS.N088** LIMIT · `SPECIFICATION.md:1567-1571` — "SPI sensor variant — best effort, non-proven ...
+- **BUS.N088** LIMIT · `SPECIFICATION.md:1571-1575` — "SPI sensor variant — best effort, non-proven ...
   Needs extra datasheet/hardware scrutiny the first time used." — Unproven guidance for any SPI sensor.
   · [H12]
-- **BUS.N089** PLATFORM · `SPECIFICATION.md:1575-1576` — "No bus-level presence probe exists for SPI,
+- **BUS.N089** PLATFORM · `SPECIFICATION.md:1579-1580` — "No bus-level presence probe exists for SPI,
   unlike I2C's zero-byte-write NAK check." — Identity must be content-checked. · [H12]
-- **BUS.N090** INVAR · `SPECIFICATION.md:1582-1589` — "The settle inside the CS window must block
+- **BUS.N090** INVAR · `SPECIFICATION.md:1586-1593` — "The settle inside the CS window must block
   (`time.sleep_us(2)`) — an awaited one hands the loop to another task with CS asserted and the bus
   locked" — Must-not-await rule inside CS. · related: BUS.T04 · [H12]
 
 ## SPECIFICATION.md Part C.3.2 (UART variant, 1598-1622)
 
-- **BUS.N091** PLATFORM · `SPECIFICATION.md:1613-1615` — "raise contract (re-verified against
+- **BUS.N091** PLATFORM · `SPECIFICATION.md:1617-1619` — "raise contract (re-verified against
   `ports/rp2/machine_uart.c` at v1.29.0): a hardware framing/parity/overrun error is never raised ...
   `write()` can short-write" — rp2 UART error semantics. · related: BUS.T05 · [H12]
-- **BUS.N092** ASSUME · `SPECIFICATION.md:1615-1621` — "`any()` cannot raise either (re-traced
+- **BUS.N092** ASSUME · `SPECIFICATION.md:1619-1625` — "`any()` cannot raise either (re-traced
   2026-09-13 ...) ... `_buffered()`'s `except (OSError, MemoryError)` is therefore defence in depth
   against a future port, not a reachable rp2 case" — Dated trace; catch kept as unreachable defence. ·
   [H12]
 
 ## SPECIFICATION.md Part C.7.1 (Running errno/wrnno table, 1893-1941)
 
-- **BUS.N093** ASSUME · `SPECIFICATION.md:1939` — "Deliberately no logging — every failure surfaces to
+- **BUS.N093** ASSUME · `SPECIFICATION.md:1943` — "Deliberately no logging — every failure surfaces to
   exactly one upstream owner. Coverage audit closed, no gaps." — Closed-audit claim for
   i2c/spi/udp/dns-client. · [H12]
 
 ## SPECIFICATION.md Part C.12 (Testing, 2355-2361)
 
-- **BUS.N094** PLATFORM · `SPECIFICATION.md:2359-2361` — "real hardware only raises `OSError(EIO)` or
+- **BUS.N094** PLATFORM · `SPECIFICATION.md:2367-2369` — "real hardware only raises `OSError(EIO)` or
   `OSError(ETIMEDOUT)` — never `ENODEV` (`SoftI2C`-specific)" — rp2 hardware-I2C error set tests must
   model. · related: TEST.T05 · [H12]
 
 ## SPECIFICATION.md Part D (src/ Production-Quality Checklist, 2576-2728)
 
-- **BUS.N095** PLATFORM · `SPECIFICATION.md:2612-2614` — "I2C raises broadly; SPI raises only from a 32+
+- **BUS.N095** PLATFORM · `SPECIFICATION.md:2620-2622` — "I2C raises broadly; SPI raises only from a 32+
   byte read (F.5.2), never from a write; UART never raises from a transfer at all." — Per-bus raise
   surface on rp2 1.29. · related: BUS.T01 · [H12]
 
 ## SPECIFICATION.md Part F.2 — Blocking calls / timeout-wrapping
 
-- **BUS.N096** SETTLED · `SPECIFICATION.md:3592-3594` — "For a genuinely wedged I2C bus/sensor, the
+- **BUS.N096** SETTLED · `SPECIFICATION.md:3601-3603` — "For a genuinely wedged I2C bus/sensor, the
   hardware watchdog is the accepted backstop ... Settled." — Do-not-reopen: no I2C-level timeout
   mechanism. · related: DOC.T14 · [H13]
-- **BUS.N097** LIMIT · `SPECIFICATION.md:3603-3609` — "doesn't reconstruct the underlying `machine.I2C`
+- **BUS.N097** LIMIT · `SPECIFICATION.md:3612-3618` — "doesn't reconstruct the underlying `machine.I2C`
   peripheral (only a full reboot does that)" — Task respawn recovers a sensor, not a wedged bus; bus
   faults rely on `task_errors` escalating to watchdog starvation. · related: XCUT.T02 · [H13]
 
 ## SPECIFICATION.md Part F.5.1 — I2C/SPI deinit no-ops
 
-- **BUS.N098** PLATFORM · `SPECIFICATION.md:3695-3699` — "`machine.I2C.deinit()` did not exist at all
+- **BUS.N098** PLATFORM · `SPECIFICATION.md:3704-3708` — "`machine.I2C.deinit()` did not exist at all
   before 1.29 ... a hard **1.29 floor** on its `deinit()` path" — `asy_i2c_driver.py` raises
   `AttributeError` on 1.28/1.26 via `deinit()`/re-`init()`; refactor code is not 1.26-compatible there.
   · related: PLAT.T03 · [H13]
-- **BUS.N099** ASSUME · `SPECIFICATION.md:3708` — "Nothing in `src/` observes bus identity." — The
+- **BUS.N099** ASSUME · `SPECIFICATION.md:3717` — "Nothing in `src/` observes bus identity." — The
   singleton divergence is safe only while this holds; the plan records a per-bus singleton reconfigured
   by a later construction (`HW.S18`). · related: BUS.T10 · [H13]
 
 ## SPECIFICATION.md Part F.5.2 — rp2 SPI RX-overrun EIO
 
-- **BUS.N100** INVAR · `SPECIFICATION.md:3729-3733` — "It propagates uncaught out of `get_values()`,
+- **BUS.N100** INVAR · `SPECIFICATION.md:3738-3742` — "It propagates uncaught out of `get_values()`,
   matching `asy_i2c_driver.py`'s \"a real `OSError` always propagates\" contract" — Bus-wrapper
   contract: no swallowing of real OSError at the bus layer. · related: BUS.T01 · [H13]
 
 ## SPECIFICATION.md Part F.5.6 — Smaller 1.29 facts / non-events
 
-- **BUS.N101** ASSUME · `SPECIFICATION.md:3833` — "the one `to_bytes` call in `src/` is always
+- **BUS.N101** ASSUME · `SPECIFICATION.md:3842` — "the one `to_bytes` call in `src/` is always
   non-negative" — Single-site claim (src/asy_i2c_driver.py:141). · [H13]
 
 ## SPECIFICATION.md Part F.5.8 — UART read() blocks the loop
 
-- **BUS.N102** INVAR · `SPECIFICATION.md:3905-3915` — "`asy_uart_driver.UART._buffered()` is that clamp,
+- **BUS.N102** INVAR · `SPECIFICATION.md:3914-3924` — "`asy_uart_driver.UART._buffered()` is that clamp,
   and **every** read in the module goes through it ... `readline()` has no count to clamp and gates on
   `any()` instead" — Every read must clamp to `any()`; the plan records
   `readline()`/`readline_until_complete()` calling `machine.UART.readline()` without the clamp
   (`BUS.S06`). · related: BUS.S06 · [H13]
-- **BUS.N103** INVAR · `SPECIFICATION.md:3916-3926` — "the yield belongs there and nowhere else — `await asyncio.sleep_ms(0)`
+- **BUS.N103** INVAR · `SPECIFICATION.md:3925-3935` — "the yield belongs there and nowhere else — `await asyncio.sleep_ms(0)`
   immediately before it returns `True` ... **no path through this driver reaches a read without having
   just yielded.**" — Single-point yield guarantee in `ready()`; `_read_delimited()` is the one loop that
   bypasses it, yielding every `_DELIMITED_YIELD_BYTES` (16). · related: BUS.S05 · [H13]
-- **BUS.N104** INVAR · `SPECIFICATION.md:3928-3929` — "A zero-length round additionally falls back to
+- **BUS.N104** INVAR · `SPECIFICATION.md:3937-3938` — "A zero-length round additionally falls back to
   `sleep_ms(poll_wait_ms)`, so the retry can never become an unyielding spin" — Guard against
   `any()`/`POLLIN` disagreement. · covered-by: BUS.T05 · [H13]
-- **BUS.N105** ASSUME · `SPECIFICATION.md:3967-3973` — "**All seven read paths are guarded, and that was
+- **BUS.N105** ASSUME · `SPECIFICATION.md:3979-3985` — "**All seven read paths are guarded, and that was
   established by breaking each one.** ... (2026-09-12) initially failed a named test for only four of
   the seven" — Dated mutation sweep; the plan's BUS.S06 contests two of the seven (readline paths). ·
   related: BUS.S06, TEST.T02 · [H13]
-- **BUS.N106** SETTLED · `SPECIFICATION.md:3976-3982` — "**This does not generalise to
+- **BUS.N106** SETTLED · `SPECIFICATION.md:3988-3994` — "**This does not generalise to
   `asy_i2c_driver.py`/`asy_spi_driver.py`, and must not be applied there.**" — Do-not-extend rule;
   I2C/SPI blocking stays under F.2's watchdog backstop. · related: DOC.T14 · [H13]
-- **BUS.N107** LIMIT · `SPECIFICATION.md:3991-3995` — "No device TOML wires a second SPI device, so the
+- **BUS.N107** LIMIT · `SPECIFICATION.md:4003-4007` — "No device TOML wires a second SPI device, so the
   21 ms figure is a contract statement ... **That is structurally untestable rather than merely
   untested**" — SPI contention with FRAM is unobservable in every variant. · related: PERF.T04 · [H13]
-- **BUS.N108** ASSUME · `SPECIFICATION.md:4001-4005` — "`mp_machine_uart_write()` short-writes rather
+- **BUS.N108** ASSUME · `SPECIFICATION.md:4013-4017` — "`mp_machine_uart_write()` short-writes rather
   than waiting once `timeout` (0 here) elapses ... theoretical worst case is the ~1 ms it takes
   `ticks_ms()` to advance" — Write-path bound relies on `timeout=0` wiring and the port's short-write
   behaviour. · covered-by: BUS.T05 · [H13]
 
 ## SPECIFICATION.md Part G.2 — Known reusable primitives
 
-- **BUS.N109** INVAR · `SPECIFICATION.md:4206-4209` — "`_scratch` is the one shared by more than one
+- **BUS.N109** INVAR · `SPECIFICATION.md:4218-4221` — "`_scratch` is the one shared by more than one
   caller ... sound only because each method fills and decodes it with no `await` in between" —
   Convention-only safety of the shared I2C scratch. · covered-by: BUS.T02 · [H13]
-- **BUS.N110** SETTLED · `SPECIFICATION.md:4215-4218` — "never a new `async with` per transfer. I2C
+- **BUS.N110** SETTLED · `SPECIFICATION.md:4227-4230` — "never a new `async with` per transfer. I2C
   deliberately has no equivalent (BACKLOG's deferred list)" — Deliberate I2C/SPI asymmetry, deferred in
   BACKLOG. · covered-by: BUS.T07 · [H13]
 
 ## SPECIFICATION.md Part I.2 — Hotspot catalog
 
-- **BUS.N111** RISK · `SPECIFICATION.md:4852-4853` — "`asy_uart_driver.py`'s accumulation loops (wrapped
+- **BUS.N111** RISK · `SPECIFICATION.md:4864-4865` — "`asy_uart_driver.py`'s accumulation loops (wrapped
   in `try/except MemoryError`, bounded or documented-unbounded-and-accepted)" — Accepted unbounded
   accumulation paths in the UART driver. · related: BUS.S06, MEM.T03 · [H13]
-- **BUS.N112** INVAR · `SPECIFICATION.md:4866-4869` — "safe only because each of these methods fills and
+- **BUS.N112** INVAR · `SPECIFICATION.md:4878-4881` — "safe only because each of these methods fills and
   decodes it with no `await` in between and no `Timer`/`Pin.irq` callback in this codebase touches I2C —
   both verified against the real code" — Shared-scratch safety invariant (verified 2026-09-18, not
   mechanically guarded). · covered-by: BUS.T02 · [H13]
-- **BUS.N113** LIMIT · `SPECIFICATION.md:4869-4874` — "A read larger than the scratch ... falls back to
+- **BUS.N113** LIMIT · `SPECIFICATION.md:4881-4886` — "A read larger than the scratch ... falls back to
   the allocating call ... **That fallback is structurally unexercised on this hardware**" — Dead-on-dev
   fallback kept deliberately; "BMP3XX's 21-byte calibration block is the largest" is a dated inventory
   claim. · related: BUS.T08 · [H13]
 
 ## SPECIFICATION.md Part J.5 — Timing, flow control, recovery
 
-- **BUS.N114** INVAR · `SPECIFICATION.md:5462-5469` — "`asy_uart_driver.py` keeps
+- **BUS.N114** INVAR · `SPECIFICATION.md:5475-5482` — "`asy_uart_driver.py` keeps
   `cancel_read_timeout()` and infers \"a read is in flight\" from the lock rather than a flag ...
   **latched and bounded** ... (changelog B15)" — Cancel-handshake contract. · covered-by: BUS.T05 ·
   [H13]
@@ -479,15 +479,15 @@ Kinds: SETTLED 15, INVAR 43, MIRROR 2, LIMIT 26, RISK 4, ASSUME 16, PLATFORM 14,
 
 ## BACKLOG.md
 
-- **BUS.N122** SETTLED · `BACKLOG.md:547-558` — "a known and deliberate asymmetry rather than an
+- **BUS.N122** SETTLED · `BACKLOG.md:613-624` — "a known and deliberate asymmetry rather than an
   inconsistency to tidy up" — `SPIDevice` has a sync session, `I2CDevice` none. · covered-by: BUS.T07 ·
   [H15]
-- **BUS.N123** INVAR · `BACKLOG.md:639-644` — "asy_uart_driver.UART.deinit()/init() do not respect the
+- **BUS.N123** INVAR · `BACKLOG.md:705-710` — "asy_uart_driver.UART.deinit()/init() do not respect the
   session lock" — Unguarded by design; "No caller does". · related: UART.T09 · [H15]
-- **BUS.N124** INVAR · `BACKLOG.md:846-849` — "every one of these methods fills and decodes with no
+- **BUS.N124** INVAR · `BACKLOG.md:896-899` — "every one of these methods fills and decodes with no
   await in between, and no Timer/Pin.irq callback in this codebase touches I2C" — Shared 32-byte I2C
   scratch is safe by convention only. · covered-by: BUS.T02 · [H15]
-- **BUS.N125** LIMIT · `BACKLOG.md:848-849` — "A read larger than the scratch ... falls back to
+- **BUS.N125** LIMIT · `BACKLOG.md:898-899` — "A read larger than the scratch ... falls back to
   allocating rather than refusing." — Unexercised fallback (no read > 32 B today). · [H15]
 
 ## HEAP_FRAGMENTATION_MEASUREMENTS.md (current, 393 lines; owning area HW)
@@ -526,22 +526,22 @@ Kinds: SETTLED 15, INVAR 43, MIRROR 2, LIMIT 26, RISK 4, ASSUME 16, PLATFORM 14,
   consumer) (low) — UNTRACKED | related: BUS.T* · [H17]
 - **BUS.N134** TODO · `commit 3383dee` — "Bus hot-reconnect completeness only field-tested at the
   task-restart level, never confirmed complete (open)" — Restored open item on I2C hot-reconnect
-  completeness. · tracked: SPECIFICATION.md:3603-3605 (two-tier recovery statement) | related: BUS.T* ·
+  completeness. · tracked: SPECIFICATION.md:3612-3614 (two-tier recovery statement) | related: BUS.T* ·
   [H17]
 - **BUS.N135** RISK · `commit f5c9f90` — "Document the SGP40 general-call reset broadcast as a known,
   accepted risk" — General-call broadcast not protected by either lock layer. · tracked:
-  SPECIFICATION.md:2048-2053 (Part C.8) | related: BUS.T* · [H17]
+  SPECIFICATION.md:2056-2061 (Part C.8) | related: BUS.T* · [H17]
 - **BUS.N136** OPENQ · `commit f5c9f90` — "the only structural fix (a bus-wide \"quiesce all sibling
   sessions\" mechanism) is a real architectural addition, flagged for a project-owner decision" —
   General-call hazard left as accepted risk; the quiesce mechanism decision is not recorded as taken or
-  declined. · tracked: SPECIFICATION.md:2048-2053 (accepted risk); explicit decline not found (low) |
+  declined. · tracked: SPECIFICATION.md:2056-2061 (accepted risk); explicit decline not found (low) |
   related: BUS.T* · [H17]
 - **BUS.N137** NOTE(FACT) · `commit 6d9ba2d` — legacy set_register_struct() raises OverflowError;
   src/asy_i2c_driver.py's struct.pack() silently truncates — Bus-layer divergence. · tracked: SPEC Part
   F (struct.pack truncation) | related: BUS.T* · [H17]
 - **BUS.N138** NOTE(DEFER-NOTE) · `commit 715cd73` — BACKLOG readfrom_mem_into() item "worth doing
   before the ISL29125 is migrated; that migration happened without it" — Deferred bus API. · status:
-  done (BACKLOG.md:840 "done (owner decision, 2026-09-18)") | - · [H17]
+  done (BACKLOG.md:890 "done (owner decision, 2026-09-18)") | - · [H17]
 - **BUS.N139** NOTE(NOT-A-FIX) · `commit f6a182d` — "This is a churn, latency and hazard-surface fix,
   NOT a fix for the heap fragmentation ... Recorded so the next session does not read this commit as the
   remediation" — CS settle blocking 2us. · status: done | - · [H17]
@@ -550,9 +550,9 @@ Kinds: SETTLED 15, INVAR 43, MIRROR 2, LIMIT 26, RISK 4, ASSUME 16, PLATFORM 14,
   for a decision rather than fixed here" — I2C session bursts hold the event loop (no yield between
   sessions), unlike SPI after 04ef56a. Recorded only in HEAP_FRAGMENTATION_MEASUREMENTS.md, whose
   2026-09-24 condensation (17b4354) dropped it; it survives only in the git archive
-  (12640c2:HEAP_FRAGMENTATION_MEASUREMENTS.md:5227). BACKLOG.md:547-558 records the related
+  (12640c2:HEAP_FRAGMENTATION_MEASUREMENTS.md:5227). BACKLOG.md:613-624 records the related
   SPI-sync/I2C-async API asymmetry as deliberate, but not the missing between-session yield for an I2C
-  burst. · UNTRACKED (low; partly covered by BACKLOG.md:547) | related: BUS.T*, PERF.T* · [H17]
+  burst. · UNTRACKED (low; partly covered by BACKLOG.md:613) | related: BUS.T*, PERF.T* · [H17]
 - **BUS.N141** NOTE(FLAGGED-DELIBERATE) · `commit 9415902 / 88245b2` — "SPIDevice has a synchronous
   session, I2CDevice does not and has nothing equivalent to make synchronous" — API asymmetry. ·
-  tracked: BACKLOG.md:547-558 | related: BUS.T* · [H17]
+  tracked: BACKLOG.md:613-624 | related: BUS.T* · [H17]

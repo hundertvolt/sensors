@@ -1,6 +1,6 @@
 """Plan validators V1 (file ownership), V3 (path:line anchors in bounds) and V4 (IDs) for PROJECT_AUDIT_PLAN.md.
 
-Usage: validate_plan.py [--anchor-sha SHA]  (default 0615eba, the planning baseline). Exit 1 on any failure.
+Usage: validate_plan.py [--anchor-sha SHA]  (default 4dc80ef, the planning baseline). Exit 1 on any failure.
 """
 
 import argparse
@@ -91,7 +91,7 @@ def v4():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--anchor-sha", default="0615eba")
+    ap.add_argument("--anchor-sha", default="4dc80ef")
     sha = ap.parse_args().anchor_sha
     b1 = v1()
     b3, n3, skip = v3(sha)

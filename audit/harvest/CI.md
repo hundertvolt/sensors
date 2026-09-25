@@ -1,6 +1,6 @@
 # Harvest — CI: CI, dependency pins and supply chain
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 40, INVAR 21, MIRROR 4, LIMIT 23, RISK 8, ASSUME 19, PLATFORM 8, WORKAROUND 17, SUPPRESS 36, TODO 14, DRIFT 16, NOTE 16 — 222 items.
@@ -429,7 +429,7 @@ Kinds: SETTLED 40, INVAR 21, MIRROR 4, LIMIT 23, RISK 8, ASSUME 19, PLATFORM 8, 
 ## tests_js/live-backend-put-matrix.test.js
 
 - **CI.N125** ASSUME · `tests_js/live-backend-put-matrix.test.js:55-56` — "this one file is 567s of the
-  web tier's 578s" — single dated measurement (SPECIFICATION.md:880-881, 2026-09-19) · [H11] ⟨quote not
+  web tier's 578s" — single dated measurement (SPECIFICATION.md:884-885, 2034-9-19) · [H11] ⟨quote not
   matched at the anchor⟩
 
 ## SPECIFICATION.md Part A.3 (Refactor status, 129-146)
@@ -441,107 +441,107 @@ Kinds: SETTLED 40, INVAR 21, MIRROR 4, LIMIT 23, RISK 8, ASSUME 19, PLATFORM 8, 
 
 ## SPECIFICATION.md Part B.10 / B.10.1 (CI perspective, 828-929)
 
-- **CI.N127** ASSUME · `SPECIFICATION.md:830-831` — "`.github/workflows/ci.yml` runs fifteen jobs
+- **CI.N127** ASSUME · `SPECIFICATION.md:834-835` — "`.github/workflows/ci.yml` runs fifteen jobs
   (fourteen of them real work plus `web-changes`" — Job count (matches ci.yml today: 15); goes stale on
   any job change. · covered-by: DOC.T08 · [H12]
-- **CI.N128** ASSUME · `SPECIFICATION.md:837-839` — "567s of the suite's 578s, measured 2026-09-19" —
-  Dated web-tier wall-clock figure (repeated :881 with "243 of 778 tests"). · [H12]
-- **CI.N129** INVAR · `SPECIFICATION.md:841-845` — "Cache key hashes both `versions.toml` and
+- **CI.N128** ASSUME · `SPECIFICATION.md:841-843` — "567s of the suite's 578s, measured 2026-09-19" —
+  Dated web-tier wall-clock figure (repeated :885 with "243 of 778 tests"). · [H12]
+- **CI.N129** INVAR · `SPECIFICATION.md:845-849` — "Cache key hashes both `versions.toml` and
   `setup_toolchain.py`" — Key omits `micropython_overrides.py`, whose override is compiled into the
   cached binary. · covered-by: CI.S01 · [H12]
-- **CI.N130** SETTLED · `SPECIFICATION.md:846-853` — "`uv sync` is retried three times in every job that
+- **CI.N130** SETTLED · `SPECIFICATION.md:850-857` — "`uv sync` is retried three times in every job that
   syncs ... CLAUDE.md says not to simplify that one away" — Protected retry; outages observed
   2026-09-13/14/21. · covered-by: CI.S17 · [H12]
-- **CI.N131** ASSUME · `SPECIFICATION.md:857-860` — "Measured on run `34755468619` (2026-09-13): the
+- **CI.N131** ASSUME · `SPECIFICATION.md:861-864` — "Measured on run `34755468619` (2026-09-13): the
   plain suite reported `60/60 files passed` ... ran 13m24s longer, and the 30-minute cap cancelled the
   job" — Dated run evidence; file count now ~87. · [H12]
-- **CI.N132** SETTLED · `SPECIFICATION.md:867-868` — "Permissions deny by default (`permissions: {}`,
+- **CI.N132** SETTLED · `SPECIFICATION.md:871-872` — "Permissions deny by default (`permissions: {}`,
   then `contents: read` per job) ... zizmor enforces it." — Enforced by zizmor. · covered-by: CI.T06 ·
   [H12]
-- **CI.N133** INVAR · `SPECIFICATION.md:869-875` — "It passes `base: ${{ github.ref }}` ... Python jobs
+- **CI.N133** INVAR · `SPECIFICATION.md:873-879` — "It passes `base: ${{ github.ref }}` ... Python jobs
   never consult it." — Path-filter design; cancellation interaction open. · covered-by: CI.S11 · [H12]
-- **CI.N134** ASSUME · `SPECIFICATION.md:880-885` — "567 s of the suite's 578 s, 243 of 778 tests
+- **CI.N134** ASSUME · `SPECIFICATION.md:884-889` — "567 s of the suite's 578 s, 243 of 778 tests
   (2026-09-19) ... `tests_js/mock-server-put-matrix.test.js` proves the partition" — Dated counts; shard
   partition claimed proven by a test. · [H12]
-- **CI.N135** INVAR · `SPECIFICATION.md:894-896` — "Firefox/geckodriver come from conda-forge via
+- **CI.N135** INVAR · `SPECIFICATION.md:898-900` — "Firefox/geckodriver come from conda-forge via
   micromamba (~106 MB, no version file to key on), cached under a fixed key whose suffix is bumped to
   force a refresh" — Manual cache-key bump; unpinned browser. · covered-by: CI.S06 · [H12]
-- **CI.N136** SETTLED · `SPECIFICATION.md:902-903` — "shellcheck covers `scripts/` only: the legacy
+- **CI.N136** SETTLED · `SPECIFICATION.md:906-907` — "shellcheck covers `scripts/` only: the legacy
   `build-*.sh` are out of scope forever (CLAUDE.md), 28 findings included" — Legacy lint gap by
   decision; "28" is a dated count. · [H12]
-- **CI.N137** ASSUME · `SPECIFICATION.md:908-909` — "Cold-cache runs measured 16m58s and 16m42s
+- **CI.N137** ASSUME · `SPECIFICATION.md:912-913` — "Cold-cache runs measured 16m58s and 16m42s
   including the toolchain build." — Dated timing basis for `timeout-minutes: 45`. · [H12]
-- **CI.N138** SUPPRESS · `SPECIFICATION.md:914-917` — "report steps (`always() && hashFiles(...)`,
+- **CI.N138** SUPPRESS · `SPECIFICATION.md:918-921` — "report steps (`always() && hashFiles(...)`,
   `continue-on-error`) do not (E.5.3); the Codecov upload needs the repo registered and a
   `CODECOV_TOKEN`, and `fail_ci_if_error` stays off" — Advisory coverage report; Codecov upload
   currently a no-op. · related: CI.T11 · [H12]
-- **CI.N139** TODO · `SPECIFICATION.md:916-917` — "the Codecov upload needs the repo registered and a
+- **CI.N139** TODO · `SPECIFICATION.md:920-921` — "the Codecov upload needs the repo registered and a
   `CODECOV_TOKEN`" — Registration/token not done (CLAUDE.md: "hasn't happened yet"). · [H12]
-- **CI.N140** SETTLED · `SPECIFICATION.md:920-922` — "A six-device matrix, `fail-fast: false` ...
+- **CI.N140** SETTLED · `SPECIFICATION.md:924-926` — "A six-device matrix, `fail-fast: false` ...
   `needs: unit-tests` and stays success-gated: fail-fast is its stated intent." — digital-twin-e2e is
   the deliberate gated exception. · covered-by: CI.T01 · [H12]
-- **CI.N141** INVAR · `SPECIFICATION.md:924-929` — "`needs: unit-tests` for the toolchain cache only, so
+- **CI.N141** INVAR · `SPECIFICATION.md:928-933` — "`needs: unit-tests` for the toolchain cache only, so
   `if: !cancelled()` ... A cache miss fails on `build_firmware.py`'s own \"no toolchain found\"" —
   Cold-cache failure mode accepted. · covered-by: CI.S09 · [H12]
 
 ## SPECIFICATION.md Part D (src/ Production-Quality Checklist, 2576-2728)
 
-- **CI.N142** MIRROR · `SPECIFICATION.md:2709-2710` — "Extend the lint/typecheck config's scope and CI's
+- **CI.N142** MIRROR · `SPECIFICATION.md:2717-2718` — "Extend the lint/typecheck config's scope and CI's
   explicit path arguments to the new location." — lint scope ↔ CI explicit paths hand-mirrored. ·
   related: CI.S03 · [H12]
 
 ## SPECIFICATION.md Part E.5 / E.5.1-E.5.3 (Coverage, 2951-3088)
 
-- **CI.N143** SETTLED · `SPECIFICATION.md:2957-2958` — "No threshold enforced anywhere — CI reports
+- **CI.N143** SETTLED · `SPECIFICATION.md:2965-2966` — "No threshold enforced anywhere — CI reports
   numbers, never gates." — Coverage never gates. · [H12]
-- **CI.N144** TODO · `SPECIFICATION.md:2965-2966` — "`coverage.xml` uploads to Codecov, but that
+- **CI.N144** TODO · `SPECIFICATION.md:2973-2974` — "`coverage.xml` uploads to Codecov, but that
   account-linking hasn't been done, so it currently no-ops silently" — Pending registration. · [H12]
 
 ## SPECIFICATION.md Part H.7 — Cross-browser coverage
 
-- **CI.N145** INVAR · `SPECIFICATION.md:4678-4679` — "CI always installs all three (a skip there is the
+- **CI.N145** INVAR · `SPECIFICATION.md:4690-4691` — "CI always installs all three (a skip there is the
   bug to chase)" — CI must never skip a browser engine. · related: CI.S06 · [H13]
-- **CI.N146** WORKAROUND · `SPECIFICATION.md:4687-4692` — "Ubuntu's `firefox` package is a snap-only
+- **CI.N146** WORKAROUND · `SPECIFICATION.md:4699-4704` — "Ubuntu's `firefox` package is a snap-only
   stub ... conda-forge, reached through a standalone `micromamba` binary" — Workaround for distro
   packaging and network policy; removal trigger none stated. · related: CI.S06 · [H13]
-- **CI.N147** SETTLED · `SPECIFICATION.md:4692-4694` — "That install is deliberately **unpinned** ...
+- **CI.N147** SETTLED · `SPECIFICATION.md:4704-4706` — "That install is deliberately **unpinned** ...
   whatever conda-forge publishes today is acceptable" — Deliberate unpinned supply-chain input (Firefox,
   geckodriver, micromamba). · covered-by: CI.S06 · [H13]
 
 ## SPECIFICATION.md Part H.8 — Web CI / tooling stack
 
-- **CI.N148** SETTLED · `SPECIFICATION.md:4705` — "**`@vitest/coverage-v8`** (report-only, no threshold"
+- **CI.N148** SETTLED · `SPECIFICATION.md:4717` — "**`@vitest/coverage-v8`** (report-only, no threshold"
   — JS coverage never gates. · related: CI.T11, CI.S12 · [H13]
-- **CI.N149** WORKAROUND · `SPECIFICATION.md:4705-4710` — "writing to `htmlcov_js/` rather than its
+- **CI.N149** WORKAROUND · `SPECIFICATION.md:4717-4722` — "writing to `htmlcov_js/` rather than its
   default `coverage/`, which Python imports as a namespace package ... `exclude: [\"**/*.json\"]`
   because the provider re-parses every file V8 reported as JavaScript" — Two tool-interaction
   workarounds; the JSON exclusion is pinned by `tests_scripts/test_js_coverage_excludes_json.py`;
   removal trigger none stated. · [H13]
-- **CI.N150** SETTLED · `SPECIFICATION.md:4713-4718` — "**ESLint's rule set is curated, not
+- **CI.N150** SETTLED · `SPECIFICATION.md:4725-4730` — "**ESLint's rule set is curated, not
   `eslint:all`** ... pure style-preference bans (`no-bitwise`, `no-plusplus`, ...) left out" —
   Deliberate lint-scope decision (contrast ruff `select = ["ALL"]`). · [H13]
-- **CI.N151** INVAR · `SPECIFICATION.md:4722-4724` — "Complexity ceilings (`complexity` 41, `max-depth`
+- **CI.N151** INVAR · `SPECIFICATION.md:4734-4736` — "Complexity ceilings (`complexity` 41, `max-depth`
   4, `max-nested-callbacks` 4) sit at the measured maximum ... and only ever ratchet down" —
   Ratchet-down rule is convention; values are dated measurements (mock-server dispatcher 41,
   `validateDefinitions` 37). · [H13]
-- **CI.N152** SETTLED · `SPECIFICATION.md:4729-4731` — "`dorny/paths-filter` gate job ... deliberately
+- **CI.N152** SETTLED · `SPECIFICATION.md:4741-4743` — "`dorny/paths-filter` gate job ... deliberately
   not a second workflow file with its own trigger-level filter" — CI structure decision. · related:
   CI.T02, CI.S11 · [H13]
-- **CI.N153** SETTLED · `SPECIFICATION.md:4738-4748` — "The workflow triggers on `push` to every branch
+- **CI.N153** SETTLED · `SPECIFICATION.md:4750-4760` — "The workflow triggers on `push` to every branch
   as well as on `pull_request`, and that is not redundancy." — Do-not-narrow marker, born of the
   2026-09-18 "128 commits went unverified" incident. · related: CI.T09 · [H13]
-- **CI.N154** INVAR · `SPECIFICATION.md:4748-4749` — "**When judging whether a branch is green, check
+- **CI.N154** INVAR · `SPECIFICATION.md:4760-4761` — "**When judging whether a branch is green, check
   that CI actually ran on its head commit**, not just that nothing is red." — Review-only practice rule.
   · related: CI.T09 · [H13]
 
 ## SPECIFICATION.md Part K.2 — Driver to the Part C/D bar
 
-- **CI.N155** INVAR · `SPECIFICATION.md:5724-5729` — "Ruff's `FBT001`/`FBT002` ... reject a `bool`-typed
+- **CI.N155** INVAR · `SPECIFICATION.md:5737-5742` — "Ruff's `FBT001`/`FBT002` ... reject a `bool`-typed
   parameter that isn't keyword-only" — Enforced by lint (`select = ["ALL"]`). · [H13]
 
 ## SPECIFICATION.md Part L.5 — Build/generator script quality bar
 
-- **CI.N156** INVAR · `SPECIFICATION.md:6416-6417` — "Newly-built generator/validator modules join
+- **CI.N156** INVAR · `SPECIFICATION.md:6431-6432` — "Newly-built generator/validator modules join
   `pyproject.toml`'s ruff/mypy scope ... from day one" — Scope rule. · related: CI.T05 · [H13]
 
 ## CLAUDE.md
@@ -623,32 +623,32 @@ Kinds: SETTLED 40, INVAR 21, MIRROR 4, LIMIT 23, RISK 8, ASSUME 19, PLATFORM 8, 
 
 ## BACKLOG.md
 
-- **CI.N182** TODO · `BACKLOG.md:56-71` — "Deferred to a dedicated future session (project owner,
+- **CI.N182** TODO · `BACKLOG.md:36-51` — "Deferred to a dedicated future session (project owner,
   2026-09-11) - not to be picked up as part of unrelated work." — Unnumbered "Mypy shall disallow Any"
   (owner-specified): `disallow_any_explicit` is off in all three configs; needs a typing strategy for
   test wrappers and a decision on variadic/opaque `src/` uses. Status: deferred. · related: ENV.T06 ·
   [H15]
-- **CI.N183** TODO · `BACKLOG.md:559-570` — "should still confirm it whenever one is next convenient" —
+- **CI.N183** TODO · `BACKLOG.md:625-636` — "should still confirm it whenever one is next convenient" —
   Session 7's `max-args` 21→22 got only the noble leg; trixie blocked by egress. Whether the 2026-09-12
   trixie leg already covers it is unstated; `max-args` is now 24 (`pyproject.toml:209`). (low) · [H15]
-- **CI.N184** SETTLED · `BACKLOG.md:689-726` — "Additional checker candidates, measured and mostly
+- **CI.N184** SETTLED · `BACKLOG.md:739-776` — "Additional checker candidates, measured and mostly
   declined." — zizmor adopted; import-linter (flat `src/`, false green), vulture,
   gitleaks/detect-secrets, codespell, markdownlint, yamllint, hadolint, taplo, pip-audit/npm audit
   rejected with reasons. · related: DOC.T14 · [H15]
-- **CI.N185** SUPPRESS · `BACKLOG.md:696-699` — "One audit is disabled with cause: self-repository ...
+- **CI.N185** SUPPRESS · `BACKLOG.md:746-749` — "One audit is disabled with cause: self-repository ...
   Revisit when actionlint learns it." — zizmor `self-repository` disabled (actionlint 1.7.12 rejects the
   syntax). Removal trigger stated. · related: DOC.T14 · [H15]
-- **CI.N186** DRIFT · `BACKLOG.md:719-720` — "Ruff's S105/S106 are live everywhere except the three
+- **CI.N186** DRIFT · `BACKLOG.md:769-770` — "Ruff's S105/S106 are live everywhere except the three
   known, individually-exempted sites" — More files are exempted than three. · covered-by: CI.S08 · [H15]
-- **CI.N187** TODO · `BACKLOG.md:468` — "pyproject.toml (+159)" — · [H15]
-- **CI.N188** TODO · `BACKLOG.md:468-470` — "package.json/vitest.config.js/eslint.config.js
+- **CI.N187** TODO · `BACKLOG.md:534` — "pyproject.toml (+159)" — · [H15]
+- **CI.N188** TODO · `BACKLOG.md:534-536` — "package.json/vitest.config.js/eslint.config.js
   (2026-09-19's PUT-matrix split" — · [H15]
-- **CI.N189** TODO · `BACKLOG.md:499-501` — "the tests/_coverage_runner.py = ['S102'] per-file-ignore is
+- **CI.N189** TODO · `BACKLOG.md:565-567` — "the tests/_coverage_runner.py = ['S102'] per-file-ignore is
   gone" — Suppression now inline at the one `exec()`. · [H15] ⟨quote not matched at the anchor⟩
-- **CI.N190** TODO · `BACKLOG.md:524-525` — "pyproject.toml's max-args 24 (backlog=, chunk_bytes=) and
+- **CI.N190** TODO · `BACKLOG.md:590-591` — "pyproject.toml's max-args 24 (backlog=, chunk_bytes=) and
   the S603 per-file ignore for toolchain/micropython_overrides.py" — Lint config only (an added
   suppression). · [H15]
-- **CI.N191** TODO · `BACKLOG.md:532-534` — "comments only: ... no setting, pin or step changed" —
+- **CI.N191** TODO · `BACKLOG.md:598-600` — "comments only: ... no setting, pin or step changed" —
   2026-09-24 comment-cap cut in `pyproject.toml`, `versions.toml`, `typecheck.sh`, `ci.yml`, composite
   action. · [H15]
 

@@ -1,6 +1,6 @@
 # Harvest — LED: Notification and LED
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 8, INVAR 18, MIRROR 8, LIMIT 13, ASSUME 6, PLATFORM 3, SUPPRESS 6, TODO 1, DRIFT 1 — 64 items.
@@ -185,7 +185,7 @@ Kinds: SETTLED 8, INVAR 18, MIRROR 8, LIMIT 13, ASSUME 6, PLATFORM 3, SUPPRESS 6
 - **LED.N050** LIMIT · `tests_hardware/README.md:229-231` — "driven **raw** because `NeopixelDriver`
   offers only a steady white and a 0->peak->0 triangle" — Lighting scenarios bypass the production
   driver API. · [H08]
-- **LED.N051** LIMIT · `tests_hardware/README.md:587-591` — "WS2812/Neopixel timing has no datasheet in
+- **LED.N051** LIMIT · `tests_hardware/README.md:596-600` — "WS2812/Neopixel timing has no datasheet in
   this repo's `datasheets/` folder at all" — WS2812 timing check stays manual/qualitative; datasheet
   list given omits isl29125. · related: LED.T07, HW.S17 · [H08]
 
@@ -218,7 +218,7 @@ Kinds: SETTLED 8, INVAR 18, MIRROR 8, LIMIT 13, ASSUME 6, PLATFORM 3, SUPPRESS 6
 
 ## SPECIFICATION.md Part C.4 (Layer 3 Reader, 1624-1697)
 
-- **LED.N058** INVAR · `SPECIFICATION.md:1687-1689` — "Every method reachable before `finalize()` must
+- **LED.N058** INVAR · `SPECIFICATION.md:1691-1693` — "Every method reachable before `finalize()` must
   guard against it explicitly (a private `self._finalized: bool` flag)" — Staged-construction guard
   obligation. · related: LED.T03 · [H12]
 
@@ -241,8 +241,9 @@ Kinds: SETTLED 8, INVAR 18, MIRROR 8, LIMIT 13, ASSUME 6, PLATFORM 3, SUPPRESS 6
 
 ## BACKLOG.md
 
-- **LED.N063** TODO · `BACKLOG.md:115-117` — "a hard-reset-recovery bench test for NOTIFY's own FRAM
+- **LED.N063** TODO · `BACKLOG.md:94-94` — "a hard-reset-recovery bench test for NOTIFY's own FRAM
   chunk (needs an observable-write signal analogous to SGP40's BackupTS first)" — Follow-on (d). · [H15]
+  ⟨4dc80ef: G4 scratched by the owner 2026-09-25: src/ is never changed only for a test (230a8df)⟩
 
 ## Commit messages (chronological)
 

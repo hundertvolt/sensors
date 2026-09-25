@@ -1,6 +1,6 @@
 # Harvest — SCR: Scripts and test orchestration
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 24, INVAR 41, MIRROR 12, LIMIT 48, RISK 8, ASSUME 25, PLATFORM 7, WORKAROUND 9, SUPPRESS 24, TODO 9, DRIFT 10, NOTE 3 — 220 items.
@@ -569,141 +569,141 @@ Kinds: SETTLED 24, INVAR 41, MIRROR 12, LIMIT 48, RISK 8, ASSUME 25, PLATFORM 7,
 
 ## SPECIFICATION.md Part A.9 (The frozen-HTML pipeline, 627-653)
 
-- **SCR.N147** INVAR · `SPECIFICATION.md:652-653` — "The two suites still must not run concurrently, for
+- **SCR.N147** INVAR · `SPECIFICATION.md:656-657` — "The two suites still must not run concurrently, for
   their ports (CLAUDE.md)" — Review-only rule; nothing prevents concurrent runs. · related: SCR.T06 ·
   [H12]
 
 ## SPECIFICATION.md Part B intro, B.1-B.3 (688-753)
 
-- **SCR.N148** INVAR · `SPECIFICATION.md:730-732` — "Because a build directory's name no longer tells
+- **SCR.N148** INVAR · `SPECIFICATION.md:734-736` — "Because a build directory's name no longer tells
   you which variant is in it, `scripts/test.sh` verifies the binary rather than the path" — Only test.sh
   probes the variant; twin/web runners hardcode `build-standard` and check existence only. · covered-by:
   SCR.S05 · [H12]
 
 ## SPECIFICATION.md Part B.10 / B.10.1 (CI perspective, 828-929)
 
-- **SCR.N149** DRIFT · `SPECIFICATION.md:906-908` — "a ~17-minute warm run plus one file's full 9-minute
+- **SCR.N149** DRIFT · `SPECIFICATION.md:910-912` — "a ~17-minute warm run plus one file's full 9-minute
   retry budget (180 s x 3)" — test.sh default is 240 s. · covered-by: SCR.S03 · [H12]
 
 ## SPECIFICATION.md Part B.11 (Building this project's firmware, 931-984)
 
-- **SCR.N150** ASSUME · `SPECIFICATION.md:963-965` — "`mpy-cross` doesn't dead-code-eliminate `if TYPE_CHECKING:`
+- **SCR.N150** ASSUME · `SPECIFICATION.md:967-969` — "`mpy-cross` doesn't dead-code-eliminate `if TYPE_CHECKING:`
   ... dead weight (~3.6KB measured)" — Compiler behaviour + single measurement. · related: SCR.T03 ·
   [H12]
-- **SCR.N151** LIMIT · `SPECIFICATION.md:966-970` — "Side effect: strips every comment from the file ...
+- **SCR.N151** LIMIT · `SPECIFICATION.md:970-974` — "Side effect: strips every comment from the file ...
   an on-device traceback's line numbers won't match checked-in `src/`" — Shipped bytecode differs from
   source line-for-line. · related: SCR.T10 · [H12]
-- **SCR.N152** SUPPRESS · `SPECIFICATION.md:974` — "gated behind `RUN_SLOW_FIRMWARE_BUILD=1`" — Real
+- **SCR.N152** SUPPRESS · `SPECIFICATION.md:978` — "gated behind `RUN_SLOW_FIRMWARE_BUILD=1`" — Real
   firmware build skipped locally unless opted in (`tests_scripts/test_build_firmware.py:198-199`). ·
   covered-by: SCR.T13 · [H12]
-- **SCR.N153** LIMIT · `SPECIFICATION.md:978-984` — "still build-only, not an on-device functional check
+- **SCR.N153** LIMIT · `SPECIFICATION.md:982-988` — "still build-only, not an on-device functional check
   ... This script's success is necessary, not sufficient, for a real device to boot." — Build pipeline
   proves assembly only. · related: SCR.T10 · [H12]
 
 ## SPECIFICATION.md Part B.14.1 (`unix_kbd_intr`, 1116-1213)
 
-- **SCR.N154** MIRROR · `SPECIFICATION.md:1181-1185` — "would ... rename `BUILD ?= build-$(VARIANT)`
+- **SCR.N154** MIRROR · `SPECIFICATION.md:1185-1189` — "would ... rename `BUILD ?= build-$(VARIANT)`
   away from `build-standard`, which every other script in this repo hardcodes" — `build-standard` path
   hardcoded in `scripts/run_digital_twin_ci.sh:28`, `run_unix_port_integration.sh:48`,
   `cross_browser_smoke.mjs:14`, `tests_js/_live_*_command.js`. · related: SCR.S05 · [H12]
 
 ## SPECIFICATION.md Part B.15 (The three mypy passes, 1413-1473)
 
-- **SCR.N155** RISK · `SPECIFICATION.md:1425-1426` — "`follow_imports_for_stubs` extends that to the
+- **SCR.N155** RISK · `SPECIFICATION.md:1429-1430` — "`follow_imports_for_stubs` extends that to the
   (upstream-Beta) stub package itself" — Type-check correctness rests on a Beta third-party stub package
   (two repaired defects, CLAUDE.md). · related: PLAT.T05 · [H12]
-- **SCR.N156** INVAR · `SPECIFICATION.md:1429-1430` — "`files` names directories, never globs: a glob is
+- **SCR.N156** INVAR · `SPECIFICATION.md:1433-1434` — "`files` names directories, never globs: a glob is
   pre-expanded into a file list that `exclude` can no longer prune." — Config convention. · [H12]
-- **SCR.N157** SUPPRESS · `SPECIFICATION.md:1434-1445` — "Excluded, and why. `tests/network.py` ...
+- **SCR.N157** SUPPRESS · `SPECIFICATION.md:1438-1449` — "Excluded, and why. `tests/network.py` ...
   `digital_twin/machine.py`, `network.py`, `neopixel.py` ... `launch.py`, `run_generic_integration.py`,
   `segfault_stress_repro.py`, every `tests/test_digital_twin_*.py` and the two shared scenario
   libraries" — Main-pass mypy exclusions (checked by the twin pass instead). · related: SCR.T15 · [H12]
-- **SCR.N158** LIMIT · `SPECIFICATION.md:1443-1445` — "Their apparent cleanliness in this pass was
+- **SCR.N158** LIMIT · `SPECIFICATION.md:1447-1449` — "Their apparent cleanliness in this pass was
   accidental: a real `no-any-return` in `test_digital_twin_bmp3xx.py` appeared only once `digital_twin`
   was in scope." — Exclusions can hide findings. · related: TEST.T19 · [H12]
-- **SCR.N159** SUPPRESS · `SPECIFICATION.md:1446-1449` — "The one exemption, `no_implicit_reexport = false`,
+- **SCR.N159** SUPPRESS · `SPECIFICATION.md:1450-1453` — "The one exemption, `no_implicit_reexport = false`,
   and the `disallow_untyped_decorators` override for `test_setter_microdot_integration`" — Main-pass
   strictness exemptions. · related: SCR.T15 · [H12]
-- **SCR.N160** MIRROR · `SPECIFICATION.md:1454-1455` — "its strictness is kept in sync with the main
+- **SCR.N160** MIRROR · `SPECIFICATION.md:1458-1459` — "its strictness is kept in sync with the main
   pass by hand (INI has no include directive)" — Three configs hand-synced; no check. · covered-by:
   SCR.T15 · [H12]
-- **SCR.N161** SUPPRESS · `SPECIFICATION.md:1460-1461` — "`tests_hardware/device_scripts/` is excluded
+- **SCR.N161** SUPPRESS · `SPECIFICATION.md:1464-1465` — "`tests_hardware/device_scripts/` is excluded
   here (MicroPython code: 121 errors, 99 artifacts)" — Host-pass exclusion; dated counts. · [H12]
-- **SCR.N162** SUPPRESS · `SPECIFICATION.md:1462-1466` — "`tests_scripts/conftest.py` is excluded ... an
+- **SCR.N162** SUPPRESS · `SPECIFICATION.md:1466-1470` — "`tests_scripts/conftest.py` is excluded ... an
   accepted gap against re-laying out either tier" — Accepted type-check gap. · covered-by: SCR.T15 ·
   [H12]
-- **SCR.N163** MIRROR · `SPECIFICATION.md:1469-1473` — "The other `mypy_path` entries mirror the
+- **SCR.N163** MIRROR · `SPECIFICATION.md:1473-1477` — "The other `mypy_path` entries mirror the
   `sys.path` pytest builds at runtime" — mypy_path ↔ pytest sys.path hand mirror. · [H12]
 
 ## SPECIFICATION.md Part E intro, E.1 (2732-2788)
 
-- **SCR.N164** INVAR · `SPECIFICATION.md:2753-2756` — "every step that globs `devices/*.toml` must run
+- **SCR.N164** INVAR · `SPECIFICATION.md:2761-2764` — "every step that globs `devices/*.toml` must run
   before the background launch, because one `tests_scripts/` test necessarily writes a throwaway
   `devices/zz_test_*.toml` into the live tree" — Enforced by `tests_scripts/test_test_sh.py`. · related:
   SCR.T14 · [H12]
-- **SCR.N165** RISK · `SPECIFICATION.md:2758-2764` — "removes its own file in `finally`, which a SIGKILL
+- **SCR.N165** RISK · `SPECIFICATION.md:2766-2772` — "removes its own file in `finally`, which a SIGKILL
   ... defeats ... A leaked one ... aborts that script, `scripts/typecheck.sh` and both twin runners
   outright" — Test writes into the live tree; mitigated by an up-front sweep. · covered-by: TEST.T13 ·
   [H12]
 
 ## SPECIFICATION.md Part E.3 / E.3.1 (Running; heap and timeouts, 2828-2921)
 
-- **SCR.N166** INVAR · `SPECIFICATION.md:2864-2866` — "Never write the verdict to
+- **SCR.N166** INVAR · `SPECIFICATION.md:2872-2874` — "Never write the verdict to
   `$GITHUB_STEP_SUMMARY`" — Pinned by `tests_scripts/test_test_sh.py`. · [H12]
-- **SCR.N167** SETTLED · `SPECIFICATION.md:2892-2896` — "`PER_FILE_TIMEOUT_S` (default 240) plus two
+- **SCR.N167** SETTLED · `SPECIFICATION.md:2900-2904` — "`PER_FILE_TIMEOUT_S` (default 240) plus two
   retries is a standing backstop" — Keep even after hangs are fixed. · [H12]
-- **SCR.N168** ASSUME · `SPECIFICATION.md:2900-2907` — "Per-file overrides exist but the table is empty
+- **SCR.N168** ASSUME · `SPECIFICATION.md:2908-2915` — "Per-file overrides exist but the table is empty
   ... 114.8s/59.5s ... Re-measure and re-add an entry if a future device pushes one past the default." —
   Dated timings; manual re-measure trigger. · [H12]
-- **SCR.N169** LIMIT · `SPECIFICATION.md:2920-2921` — "`--coverage` has its own runner and says so out
+- **SCR.N169** LIMIT · `SPECIFICATION.md:2928-2929` — "`--coverage` has its own runner and says so out
   loud when both are given, rather than silently ignoring the threshold" — Coverage run never applies
   `GC_THRESHOLD`. · [H12]
 
 ## SPECIFICATION.md Part E.5 / E.5.1-E.5.3 (Coverage, 2951-3088)
 
-- **SCR.N170** LIMIT · `SPECIFICATION.md:3053-3060` — "The build directory's path no longer identifies
+- **SCR.N170** LIMIT · `SPECIFICATION.md:3061-3068` — "The build directory's path no longer identifies
   its variant ... locally, `scripts/test.sh` asks the binary itself" — Only test.sh probes; other
   runners check `-x`. · covered-by: SCR.S05 · [H12]
-- **SCR.N171** SETTLED · `SPECIFICATION.md:3067-3088` — "`scripts/test.sh` now exits: 0 / 1 / 3 ... the
+- **SCR.N171** SETTLED · `SPECIFICATION.md:3075-3096` — "`scripts/test.sh` now exits: 0 / 1 / 3 ... the
   owner's decision of 2026-09-22 chose this split" — Exit-code contract; renderer `|| coverage_render_failed=1`
   guards. · covered-by: SCR.T01 · [H12]
-- **SCR.N172** SUPPRESS · `SPECIFICATION.md:3084` — "Both `_render_coverage.py` invocations are `|| coverage_render_failed=1`-guarded"
+- **SCR.N172** SUPPRESS · `SPECIFICATION.md:3092` — "Both `_render_coverage.py` invocations are `|| coverage_render_failed=1`-guarded"
   — Deliberate failure capture (exit 3 tolerated in CI). · [H12]
 
 ## SPECIFICATION.md Part E.9 (Driver/DUT process separation, 3364-3421)
 
-- **SCR.N173** WORKAROUND · `SPECIFICATION.md:3403-3417` — "`_mem_trend()` ... now derives the tolerance
+- **SCR.N173** WORKAROUND · `SPECIFICATION.md:3411-3425` — "`_mem_trend()` ... now derives the tolerance
   from each attempt's own observed noise ... `_run_11_soak()` also retries once" — CI-noise workaround
   (autocorrelated samples); retry only on the trend check. Removal trigger none stated. · [H12]
 
 ## SPECIFICATION.md Part F.1 — Core platform facts
 
-- **SCR.N174** LIMIT · `SPECIFICATION.md:3550-3553` — "`scripts/build_firmware.py`'s type-checking strip
+- **SCR.N174** LIMIT · `SPECIFICATION.md:3559-3562` — "`scripts/build_firmware.py`'s type-checking strip
   removes every comment ... an on-device traceback's line numbers won't match checked-in `src/`" —
   Shipped code differs from reviewed/tested text; tracebacks need re-derivation. · related: SCR.T10 ·
   [H13]
 
 ## SPECIFICATION.md Part F.5.5 — Stub defects repaired at install
 
-- **SCR.N175** WORKAROUND · `SPECIFICATION.md:3801-3812` — "`stdlib/_asyncio.pyi` privatised `Future` to
+- **SCR.N175** WORKAROUND · `SPECIFICATION.md:3810-3821` — "`stdlib/_asyncio.pyi` privatised `Future` to
   `_Future` and `stdlib/asyncio/futures.pyi` ... was dropped from the wheel" — Stub repair in
   `scripts/typecheck.sh`; removal trigger: guarded, no-ops "once upstream re-ships". · covered-by:
   PLAT.T05 · [H13]
-- **SCR.N176** WORKAROUND · `SPECIFICATION.md:3813-3816` — "**`NotImplemented` is commented out** of
+- **SCR.N176** WORKAROUND · `SPECIFICATION.md:3822-3825` — "**`NotImplemented` is commented out** of
   `stdlib/builtins.pyi`" — Second stub repair; same removal trigger. · covered-by: PLAT.T05 · [H13]
-- **SCR.N177** SETTLED · `SPECIFICATION.md:3818-3821` — "Repairing the stubs is deliberate, and
+- **SCR.N177** SETTLED · `SPECIFICATION.md:3827-3830` — "Repairing the stubs is deliberate, and
   preferred over `type: ignore` comments in `src/`/`digital_twin/`" — Do-not-replace-with-ignores rule
   (dup of CLAUDE.md). · related: DOC.T14 · [H13]
 
 ## SPECIFICATION.md Part I.4 — Multi-stage memory-error scheme, (a)-(e)
 
-- **SCR.N178** INVAR · `SPECIFICATION.md:5010-5014` — "`scripts/test.sh` (added 2026-09-22, having been
+- **SCR.N178** INVAR · `SPECIFICATION.md:5023-5027` — "`scripts/test.sh` (added 2026-09-22, having been
   the gap) searches each test file's own captured output and fails the run ... checked on a passing file
   too" — Enforced gate; plan lists processes outside the four gates. · related: TEST.T18 · [H13]
 
 ## SPECIFICATION.md Part K.10-K.11 — Verification and certification
 
-- **SCR.N179** ASSUME · `SPECIFICATION.md:5935-5939` — "`scripts/run_digital_twin_ci.sh <device>` ...
+- **SCR.N179** ASSUME · `SPECIFICATION.md:5948-5952` — "`scripts/run_digital_twin_ci.sh <device>` ...
   already runs the whole suite **twice**, once at `gc.threshold(-1)` and once at the shipped
   `gc.threshold(32768)`" — Claim about the twin runner's two passes. · related: TEST.T18 · [H13]
 
@@ -787,30 +787,30 @@ Kinds: SETTLED 24, INVAR 41, MIRROR 12, LIMIT 48, RISK 8, ASSUME 25, PLATFORM 7,
 
 ## BACKLOG.md
 
-- **SCR.N201** MIRROR · `BACKLOG.md:302-305` — "the CI suite derives _RESET_ERRORS_TIMEOUT_S from a
+- **SCR.N201** MIRROR · `BACKLOG.md:279-282` — "the CI suite derives _RESET_ERRORS_TIMEOUT_S from a
   mirrored _SERVER_OUTER_CAP_S" — Hand-mirrored cap (`scripts/_digital_twin_ci_suite.py:111` "keep in
   sync"); enforced by `tests_scripts/test_request_timeout_ceiling.py`. · related: GEN.T06 · [H15]
-- **SCR.N202** WORKAROUND · `BACKLOG.md:679-688` — "construct a bare machine.Timer(), which is valid
+- **SCR.N202** WORKAROUND · `BACKLOG.md:729-738` — "construct a bare machine.Timer(), which is valid
   runtime usage the third-party board stub does not model" — Standalone mypy over `device_scripts/`
   reports 2 false findings; gates pass only because `tests/machine.py` wins resolution. Removal trigger:
   none stated. · covered-by: TEST.T19 · [H15]
-- **SCR.N203** TODO · `BACKLOG.md:454-457` — "scripts/test.sh (+520 lines - parallelism autodetection,
+- **SCR.N203** TODO · `BACKLOG.md:520-523` — "scripts/test.sh (+520 lines - parallelism autodetection,
   the backgrounded tests_scripts/ job and its timeout, the heap-size and port-base moves)" — Also
   `typecheck.sh`, `lint.sh`, `build_firmware.py`, `_require_clean_hardware_run.sh`,
   `run_digital_twin_ci.sh`, `run_unix_port_integration.sh`. · [H15]
-- **SCR.N204** TODO · `BACKLOG.md:458-460` — "scripts/_digital_twin_ci_suite.py (test orchestration only
+- **SCR.N204** TODO · `BACKLOG.md:524-526` — "scripts/_digital_twin_ci_suite.py (test orchestration only
   - no build step" — 2026-09-22 widened the `MemoryError` check. · [H15]
-- **SCR.N205** TODO · `BACKLOG.md:492-498` — "the MemoryError gate matches memory allocation failed as
+- **SCR.N205** TODO · `BACKLOG.md:558-564` — "the MemoryError gate matches memory allocation failed as
   well as the class name" — Plus argument/`GC_THRESHOLD` validation moved before the sweeps;
   out-of-range message text. · related: SCR.T01 · [H15]
-- **SCR.N206** TODO · `BACKLOG.md:502-504` — "the two _render_coverage.py calls are ||-guarded and the
+- **SCR.N206** TODO · `BACKLOG.md:568-570` — "the two _render_coverage.py calls are ||-guarded and the
   verdict block maps a renderer-only failure onto exit 3" — · related: SCR.T01 · [H15]
-- **SCR.N207** TODO · `BACKLOG.md:505-511` — "go through an apt_update() helper that tolerates their own
+- **SCR.N207** TODO · `BACKLOG.md:571-577` — "go through an apt_update() helper that tolerates their own
   failure" — `setup_cross_browser_toolchain.sh`; the chroot recipe never runs it. · related: CI.S06 ·
   [H15]
-- **SCR.N208** TODO · `BACKLOG.md:526-531` — "_digital_twin_ci_suite.py's Run 11b (full-ceiling burst
+- **SCR.N208** TODO · `BACKLOG.md:592-597` — "_digital_twin_ci_suite.py's Run 11b (full-ceiling burst
   per SPECIFICATION.md Part E.9" — Plus `test.sh` GitHub annotations. · related: SCR.T01 · [H15]
-- **SCR.N209** TODO · `BACKLOG.md:535-538` — "html_stub/ is retired, so build_frozen_html.sh now
+- **SCR.N209** TODO · `BACKLOG.md:601-604` — "html_stub/ is retired, so build_frozen_html.sh now
   requires HTML_SRC_DIRS" — `test.sh` builds the real wozi site; variant probe imports `asyncio`. ·
   [H15]
 
@@ -823,7 +823,7 @@ Kinds: SETTLED 24, INVAR 41, MIRROR 12, LIMIT 48, RISK 8, ASSUME 25, PLATFORM 7,
 - **SCR.N211** TODO · `commit 577940b` — "mpy-cross does not eliminate if TYPE_CHECKING: blocks ...
   (~3.6KB ...) so it's directly actionable when the firmware build script is built" — TYPE_CHECKING
   stripping. · status: done (scripts/build_firmware.py:30-56 strip_type_checking_blocks;
-  SPECIFICATION.md:964-965) | - · [H17]
+  SPECIFICATION.md:968-969) | - · [H17]
 - **SCR.N212** ASSUME · `commit 6a91514 → 7079757` — "Widen the errcount wait to 90s and the DNS wait to
   90s (from 30s)" — Run 7 budgets were widened on a disproven timing hypothesis (real cause:
   CAP_NET_BIND_SERVICE) and remain at 90 s (scripts/_digital_twin_ci_suite.py:958,968). · status:

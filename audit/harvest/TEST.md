@@ -1,9 +1,9 @@
 # Harvest — TEST: Software test tiers
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 24, INVAR 124, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM 7, WORKAROUND 32, SUPPRESS 121, TODO 4, DRIFT 30, NOTE 19 — 766 items.
+Kinds: SETTLED 24, INVAR 125, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM 7, WORKAROUND 32, SUPPRESS 121, TODO 4, DRIFT 30, NOTE 19 — 767 items.
 
 
 ## src/asy_webserver_service.py
@@ -906,7 +906,7 @@ Kinds: SETTLED 24, INVAR 124, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM
 - **TEST.N249** ASSUME · `tests/test_asy_sgp40_driver.py:51-52` — "Independent CRC-8 reimplementation
   for building fixtures - not the driver's own crc_checks.CRC8" — test oracle for SGP40 frames is a
   second CRC implementation, anchored to the datasheet example (:92-93) · related: TEST.T17 · [H04]
-- **TEST.N250** SUPPRESS · `tests/test_asy_sgp40_driver.py:39,115,1348,1526,1690,2061,...` — "type:
+- **TEST.N250** SUPPRESS · `tests/test_asy_sgp40_driver.py:39,115,1473,1651,1815,2186,...` — "type:
   ignore[union-attr]" — 17 mypy suppressions: 5 `[assignment]` (incl. process-wide `asyncio.sleep` and
   `asy_fram_manager.time` monkeypatches), 4 `[method-assign]`, 4 `[arg-type]`, 2 `[union-attr]`, 1
   `[return-value]`, 1 `[misc]` · related: TEST.T11 · [H04]
@@ -919,25 +919,25 @@ Kinds: SETTLED 24, INVAR 124, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM
 - **TEST.N253** DRIFT · `tests/test_asy_sgp40_driver.py:800-802` — "Structurally safe inside
   _read_sgp()'s try, but untested." — comment says untested while it heads the very test covering it · -
   (low) · [H04]
-- **TEST.N254** MIRROR · `tests/test_asy_sgp40_driver.py:1152-1154,1202-1204` — "Mirrors of
+- **TEST.N254** MIRROR · `tests/test_asy_sgp40_driver.py:1277-1279,1327-1329` — "Mirrors of
   asy_sgp40_driver.py's own _VAL_BP/_VAL_BMAX/_VAL_WT const() tuples - not importable once
   const()-folded" — schema tuples and bounds (BackupPeriod 0-1440 def 1, BackupMaxAge 0-10080 def 7200,
   WaitTimeNTP 0-600 def 30) hand-copied into the test · related: GEN.T06 · [H04]
-- **TEST.N255** LIMIT · `tests/test_asy_sgp40_driver.py:1339-1341` — "_init_sgp()/initialize()/_reset()
+- **TEST.N255** LIMIT · `tests/test_asy_sgp40_driver.py:1464-1466` — "_init_sgp()/initialize()/_reset()
   make several real asyncio.sleep() calls (3ms/500ms/100ms command delays, plus _reset()'s 1s settle)" —
   read_loop tests replace process-wide asyncio.sleep with sleep(0); real command delays are not modelled
   · related: SENS.S07 · [H04]
-- **TEST.N256** DRIFT · `tests/test_asy_sgp40_driver.py:1474 vs :1509` — "past the 46-sample initial
+- **TEST.N256** DRIFT · `tests/test_asy_sgp40_driver.py:1599 vs :1634` — "past the 46-sample initial
   blackout" / "well past the 45s initial blackout" — the blackout length is stated as 46 samples and 45
   s in the same test · related: SENS.S04 (low) · [H04]
-- **TEST.N257** LIMIT · `tests/test_asy_sgp40_driver.py:1516-1522` — "poking the chip's stored timestamp
+- **TEST.N257** LIMIT · `tests/test_asy_sgp40_driver.py:1641-1647` — "poking the chip's stored timestamp
   bytes does not work either: it only corrupts one redundant copy's CRC, and _read() then self-heals" —
   an old-backup case can only be staged by monkeypatching `asy_fram_manager.time`, not via the fake chip
   · - (low) · [H04]
-- **TEST.N258** MIRROR · `tests/test_asy_sgp40_driver.py:2249-2251` — "Bus-hazard coverage moved from
+- **TEST.N258** MIRROR · `tests/test_asy_sgp40_driver.py:2374-2376` — "Bus-hazard coverage moved from
   tests/test_bus_hazard_multi_device.py" — SGP40 mock-tier address sweep lives here, not in the file
   CLAUDE.md's four-tier rule names · related: SENS.T10 · [H04]
-- **TEST.N259** LIMIT · `tests/test_asy_sgp40_driver.py:2254-2280` — "except Exception: # only the
+- **TEST.N259** LIMIT · `tests/test_asy_sgp40_driver.py:2379-2405` — "except Exception: # only the
   addresses touched matter for this sweep, not success" / "assert touched <= {0x59, 0x00}" — address
   sweep swallows every exception and asserts only a subset, so a run where every call raises before
   touching the bus passes; the name's "reset touches only the general call address" half is not
@@ -2501,234 +2501,234 @@ Kinds: SETTLED 24, INVAR 124, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM
 
 ## SPECIFICATION.md Part A.9 (The frozen-HTML pipeline, 627-653)
 
-- **TEST.N639** LIMIT · `SPECIFICATION.md:649-652` — "left one case the real site has no file for, the
+- **TEST.N639** LIMIT · `SPECIFICATION.md:653-656` — "left one case the real site has no file for, the
   binary `application/octet-stream` fallback, which Section G of `tests/test_asy_webserver_service.py`
   now pins on its synthetic fixture" — One serving path covered only synthetically. · [H12]
 
 ## SPECIFICATION.md Part B intro, B.1-B.3 (688-753)
 
-- **TEST.N640** ASSUME · `SPECIFICATION.md:724-730` — "The flag is not inert when unused (measured
+- **TEST.N640** ASSUME · `SPECIFICATION.md:728-734` — "The flag is not inert when unused (measured
   2026-09-18) ... inflating every allocation figure 4-5x ... (`test_sensortask_wozi.py` 24.6s → 9.3s)" —
   Dated single measurements; cite the git-only HEAP_FRAGMENTATION archive §1.2. · related: DOC.S04 ·
   [H12]
 
 ## SPECIFICATION.md Part C.8 (Concurrency & locking model, 2016-2188)
 
-- **TEST.N641** INVAR · `SPECIFICATION.md:2057-2060` — "every promoted I2C/SPI device gets same-device
+- **TEST.N641** INVAR · `SPECIFICATION.md:2065-2068` — "every promoted I2C/SPI device gets same-device
   read-vs-write concurrency coverage, cross-device interleaving coverage (if sharing a bus), and an
   address/command sweep, across as many of four tiers as apply" — Standing owner rule; review-enforced.
   · covered-by: SENS.T10 · [H12]
-- **TEST.N642** SETTLED · `SPECIFICATION.md:2062-2076` — "Mock/unit, two distinct collections, by design
+- **TEST.N642** SETTLED · `SPECIFICATION.md:2070-2084` — "Mock/unit, two distinct collections, by design
   (project owner's own reframing, 2026-09-15)" — Sensor-specific hazards in driver files; generic in
   `test_bus_hazard_multi_device.py`, never retired. · [H12]
-- **TEST.N643** SETTLED · `SPECIFICATION.md:2082-2088` — "The two are deliberately allowed to overlap in
+- **TEST.N643** SETTLED · `SPECIFICATION.md:2090-2096` — "The two are deliberately allowed to overlap in
   what they prove (layered coverage, not redundancy to prune)" — Overlap deliberate. · [H12]
-- **TEST.N644** INVAR · `SPECIFICATION.md:2114-2116` — "`build_bus_occupants()`/the address-sweep
+- **TEST.N644** INVAR · `SPECIFICATION.md:2122-2124` — "`build_bus_occupants()`/the address-sweep
   scenario both fail loud (`KeyError`) for a driver with none" — Enforced (adapters: scd30, sgp40,
   isl29125, bmp3xx). · [H12]
-- **TEST.N645** SETTLED · `SPECIFICATION.md:2163-2170` — "`test_bus_hazard_multi_device.py` is never
+- **TEST.N645** SETTLED · `SPECIFICATION.md:2171-2178` — "`test_bus_hazard_multi_device.py` is never
   retired (project owner's own reframing, 2026-09-15, superseding an earlier plan" — Permanent file. ·
   [H12]
-- **TEST.N646** ASSUME · `SPECIFICATION.md:2184-2188` — "FRAM sits alone on its own dedicated SPI bus on
+- **TEST.N646** ASSUME · `SPECIFICATION.md:2192-2196` — "FRAM sits alone on its own dedicated SPI bus on
   every real device ... proven once, against one real assembled object graph (wozi)" — Topology
   assumption justifying wozi-only coverage. · [H12]
 
 ## SPECIFICATION.md Part C.9.1 (Read-trigger timer stagger, 2211-2298)
 
-- **TEST.N647** LIMIT · `SPECIFICATION.md:2286-2290` — "no new test was added for this WP, since it
+- **TEST.N647** LIMIT · `SPECIFICATION.md:2294-2298` — "no new test was added for this WP, since it
   verifies and documents an existing, already-tested mechanism" — Proof has no test reading the real
   period. · covered-by: TEST.S06 · [H12]
 
 ## SPECIFICATION.md Part C.11 / C.11.1 (Design decisions; conformance probe, 2310-2353)
 
-- **TEST.N648** TODO · `SPECIFICATION.md:2346-2349` — "The ISL29125 is the first driver with one ...
+- **TEST.N648** TODO · `SPECIFICATION.md:2354-2357` — "The ISL29125 is the first driver with one ...
   Build one for every new bus-facing chip." — No probe for SCD30/SGP40/BMP3xx/FRAM. · covered-by:
   TEST.S20 · [H12]
 
 ## SPECIFICATION.md Part D (src/ Production-Quality Checklist, 2576-2728)
 
-- **TEST.N649** LIMIT · `SPECIFICATION.md:2620-2621` — "Verified via design discipline and reading — no
+- **TEST.N649** LIMIT · `SPECIFICATION.md:2628-2629` — "Verified via design discipline and reading — no
   CI gate for \"ran a simulated year.\"" — Long-uptime stability untested (cf. ticks wraparound
   XCUT.T25). · related: XCUT.T25 · [H12]
-- **TEST.N650** INVAR · `SPECIFICATION.md:2699-2701` — "a valid typical input against a sanity bound,
+- **TEST.N650** INVAR · `SPECIFICATION.md:2707-2709` — "a valid typical input against a sanity bound,
   not an exact reference value" — Test-oracle policy (weak oracles by design). · related: ALGO.T07 ·
   [H12]
-- **TEST.N651** INVAR · `SPECIFICATION.md:2703-2705` — "module-level tests mocking only the raw bus
+- **TEST.N651** INVAR · `SPECIFICATION.md:2711-2713` — "module-level tests mocking only the raw bus
   transaction aren't enough — add integration tests driving the same scenarios through the actual real
   chain" — Test obligation. · [H12]
 
 ## SPECIFICATION.md Part E intro, E.1 (2732-2788)
 
-- **TEST.N652** MIRROR · `SPECIFICATION.md:2746-2747` — "cross-file invariants that can only be checked
+- **TEST.N652** MIRROR · `SPECIFICATION.md:2754-2755` — "cross-file invariants that can only be checked
   by reading real source text (`scripts/test.sh`'s own step ordering; the `outer_cap_s` ceiling's
   mirrors, Part H.4)" — Hand mirrors guarded by source-reading pytest tests. · related: GEN.T06 · [H12]
-- **TEST.N653** INVAR · `SPECIFICATION.md:2767-2781` — "Two per-file resources must stay disjoint ... A
+- **TEST.N653** INVAR · `SPECIFICATION.md:2775-2789` — "Two per-file resources must stay disjoint ... A
   new test file that binds a socket claims an unused base below 32768 — never a neighbour's, never
   inside the ephemeral range." — Review-only; found violated before (2026-09-17) and again per seed. ·
   covered-by: TEST.S21 · [H12]
-- **TEST.N654** PLATFORM · `SPECIFICATION.md:2771-2774` — "inside the OS ephemeral range (32768-60999)
+- **TEST.N654** PLATFORM · `SPECIFICATION.md:2779-2782` — "inside the OS ephemeral range (32768-60999)
   ... For UDP both modes are silent rather than `EADDRINUSE`" — Host-Linux default range assumed. ·
   [H12]
 
 ## SPECIFICATION.md Part E.2 / E.2.1 (Test framework; per-device libraries, 2790-2826)
 
-- **TEST.N655** LIMIT · `SPECIFICATION.md:2792-2794` — "`microtest.py` is a minimal collector/runner ...
+- **TEST.N655** LIMIT · `SPECIFICATION.md:2800-2802` — "`microtest.py` is a minimal collector/runner ...
   report PASS/FAIL, exit non-zero on failure" — Runner-level vacuity classes. · covered-by: TEST.S23 ·
   [H12]
-- **TEST.N656** SETTLED · `SPECIFICATION.md:2809-2817` — "Why the split exists is memory ... a fix at
+- **TEST.N656** SETTLED · `SPECIFICATION.md:2817-2825` — "Why the split exists is memory ... a fix at
   the root, not a per-file heap override or a `gc.collect()` prop" — Measured 2026-09-17 (~29 → ~11
   builds). · [H12]
-- **TEST.N657** LIMIT · `SPECIFICATION.md:2823-2826` — "keeps its heavier tests wozi-only ... a ×6
+- **TEST.N657** LIMIT · `SPECIFICATION.md:2831-2834` — "keeps its heavier tests wozi-only ... a ×6
   parametrization would buy nothing" — Deliberate single-device coverage. · [H12]
 
 ## SPECIFICATION.md Part E.3 / E.3.1 (Running; heap and timeouts, 2828-2921)
 
-- **TEST.N658** SETTLED · `SPECIFICATION.md:2870-2873` — "`-X heapsize=16M` ... must never be raised as
+- **TEST.N658** SETTLED · `SPECIFICATION.md:2878-2881` — "`-X heapsize=16M` ... must never be raised as
   a fix" — Do-not-reopen (CLAUDE.md). · [H12]
-- **TEST.N659** ASSUME · `SPECIFICATION.md:2885-2890` — "reproducibly misses its own 9-second real-clock
+- **TEST.N659** ASSUME · `SPECIFICATION.md:2893-2898` — "reproducibly misses its own 9-second real-clock
   budget at 8M ... So 16M is a measured floor across every file" — Heap floor tied to a timing-sensitive
   test; dated measurement. · related: TEST.T04 · [H12]
 
 ## SPECIFICATION.md Part E.4 (Mock at the raw bus-transaction level, 2923-2949)
 
-- **TEST.N660** ASSUME · `SPECIFICATION.md:2932-2935` — "Two Protocol-level failure scenarios
+- **TEST.N660** ASSUME · `SPECIFICATION.md:2940-2943` — "Two Protocol-level failure scenarios
   (`get_chunk()` raising) have no real-class equivalent anymore (the real class is audited never to
   raise there)" — Tests of an unreachable contract via a local fake. · [H12]
-- **TEST.N661** INVAR · `SPECIFICATION.md:2939-2949` — "`_StarvedAlloc` ... must be armed and one-shot
+- **TEST.N661** INVAR · `SPECIFICATION.md:2947-2957` — "`_StarvedAlloc` ... must be armed and one-shot
   ... must restore the global in `__exit__` ... Reach for it only where a real `MemoryError` is
   genuinely unreachable" — Sanctioned allocator mock rules; review-only. · related: TEST.T06 · [H12]
 
 ## SPECIFICATION.md Part E.5 / E.5.1-E.5.3 (Coverage, 2951-3088)
 
-- **TEST.N662** PLATFORM · `SPECIFICATION.md:2974-2982` — "The rule is the leading underscore, verified
+- **TEST.N662** PLATFORM · `SPECIFICATION.md:2982-2990` — "The rule is the leading underscore, verified
   at source (`py/parse.c`, the `MICROPY_COMP_CONST` fold) ... A bare `while True:` header never fires
   its own trace event" — Tracer false-negative patterns; "all 58" constants a dated count. · covered-by:
   TEST.T09 · [H12]
-- **TEST.N663** SETTLED · `SPECIFICATION.md:2984-3002` — "left as documented dead code rather than
+- **TEST.N663** SETTLED · `SPECIFICATION.md:2992-3010` — "left as documented dead code rather than
   chased for a coverage number ... confirmed intentional by the project owner" — Unreachable-branch
   register (print_log `get_log()` sentinel owner-confirmed; UART six re-checks; UART driver `except MemoryError`).
   · [H12]
-- **TEST.N664** ASSUME · `SPECIFICATION.md:3004-3017` — "Four more of the same class, enumerated on
+- **TEST.N664** ASSUME · `SPECIFICATION.md:3012-3025` — "Four more of the same class, enumerated on
   2026-09-22 ... `voc_algorithm.py`'s `_FIX16_OVERFLOW` return ... unreachable ... 31 genuinely
   uncovered lines across 8 files, all of which now have tests" — Dated unreachability claims (VOC
   overflow disputed vs C int32 semantics). · related: ALGO.S01 · [H12]
-- **TEST.N665** LIMIT · `SPECIFICATION.md:3061-3063` — "`--coverage`'s own figures stay inflated,
+- **TEST.N665** LIMIT · `SPECIFICATION.md:3069-3071` — "`--coverage`'s own figures stay inflated,
   inherently ... never as an allocation measurement" — Coverage-mode allocations meaningless. · [H12]
 
 ## SPECIFICATION.md Part E.6 / E.6.1-E.6.6 (Shared behaviours, real-hardware tier, 3090-3225)
 
-- **TEST.N666** SETTLED · `SPECIFICATION.md:3092-3096` — "don't force further sharing onto genuinely
+- **TEST.N666** SETTLED · `SPECIFICATION.md:3100-3104` — "don't force further sharing onto genuinely
   backend-specific coverage" — Test-sharing scope decision. · [H12]
-- **TEST.N667** INVAR · `SPECIFICATION.md:3144-3145` — "Documentation discipline (each shared function's
+- **TEST.N667** INVAR · `SPECIFICATION.md:3152-3153` — "Documentation discipline (each shared function's
   docstring states applicable/N/A backends), not an automated check." — Review-only. · [H12]
-- **TEST.N668** ASSUME · `SPECIFICATION.md:3173-3176` — "FRAM (166 mock vs. 18 twin tests) ... one real
+- **TEST.N668** ASSUME · `SPECIFICATION.md:3181-3184` — "FRAM (166 mock vs. 18 twin tests) ... one real
   cluster (Sensortask: 4 near-identical ... pairs)" — Dated counts. · covered-by: TEST.T15 · [H12]
 
 ## SPECIFICATION.md Part E.7 (Twin soak wall clock measures GC timing, 3229-3269)
 
-- **TEST.N669** INVAR · `SPECIFICATION.md:3262-3265` — "A soak's own timing budget is a liveness
+- **TEST.N669** INVAR · `SPECIFICATION.md:3270-3273` — "A soak's own timing budget is a liveness
   backstop, not a performance assertion, so it belongs above the whole observed range" — Test-design
   rule. · related: TEST.T04 · [H12]
 
 ## SPECIFICATION.md Part E.8 (Measurement traps, 3271-3362)
 
-- **TEST.N670** INVAR · `SPECIFICATION.md:3276-3287` — "An absolute heap-delta bound is host-dependent;
+- **TEST.N670** INVAR · `SPECIFICATION.md:3284-3295` — "An absolute heap-delta bound is host-dependent;
   a leak is a rate." — Absolute heap bounds still exist per seed. · covered-by: TEST.S12 · [H12]
-- **TEST.N671** ASSUME · `SPECIFICATION.md:3280-3281` — "`< 6.0 B/transaction` and `< 16.0 B/failure`,
+- **TEST.N671** ASSUME · `SPECIFICATION.md:3288-3289` — "`< 6.0 B/transaction` and `< 16.0 B/failure`,
   against a real retained frame's 13+ B/transaction and an injected 16 B/transaction leak's measured
   636" — Measured thresholds in `tests/test_uart_comm_hazard.py`. · [H12]
-- **TEST.N672** LIMIT · `SPECIFICATION.md:3306-3308` — "Cross-test contamination is real. One process,
+- **TEST.N672** LIMIT · `SPECIFICATION.md:3314-3316` — "Cross-test contamination is real. One process,
   one task queue, and no parent/child tracking in MicroPython asyncio" — Per-test numbers unreliable
   without isolation. · covered-by: TEST.T07 · [H12]
-- **TEST.N673** LIMIT · `SPECIFICATION.md:3339-3345` — "regressing each of `asy_uart_driver.py`'s seven
+- **TEST.N673** LIMIT · `SPECIFICATION.md:3347-3353` — "regressing each of `asy_uart_driver.py`'s seven
   read paths in turn ... four failed a named test, three passed silently" — Guard-is-blind finding
   (2026-09-12). · covered-by: TEST.T02 · [H12]
-- **TEST.N674** INVAR · `SPECIFICATION.md:3347-3357` — "Run it as a scripted sweep, not by hand ...
+- **TEST.N674** INVAR · `SPECIFICATION.md:3355-3365` — "Run it as a scripted sweep, not by hand ...
   restore the file in a `finally` regardless" — Mutation-sweep method; no committed sweep script named.
   · related: TEST.T02 · [H12]
 
 ## SPECIFICATION.md Part E.9 (Driver/DUT process separation, 3364-3421)
 
-- **TEST.N675** INVAR · `SPECIFICATION.md:3396-3401` — "A fix under this rule must come out strictly
+- **TEST.N675** INVAR · `SPECIFICATION.md:3404-3409` — "A fix under this rule must come out strictly
   more capable of catching the real test case, never merely lighter on the DUT" — Rule. · [H12]
-- **TEST.N676** RISK · `SPECIFICATION.md:3415-3418` — "a real leak reproduces past tolerance on both
+- **TEST.N676** RISK · `SPECIFICATION.md:3423-3426` — "a real leak reproduces past tolerance on both
   independent boots, transient noise essentially never does" — Retry can mask an intermittent real leak;
   accepted. · [H12]
 
 ## SPECIFICATION.md Part F.1 — Core platform facts
 
-- **TEST.N677** LIMIT · `SPECIFICATION.md:3521-3523` — "Unix-port rig has a much larger period (`2**62`,
+- **TEST.N677** LIMIT · `SPECIFICATION.md:3530-3532` — "Unix-port rig has a much larger period (`2**62`,
   64-bit) and cannot empirically exercise the real `2**30` rollover — verified by shared,
   period-parametric code identity instead" — Rollover coverage is by argument, not by test. · related:
   XCUT.T25, TWIN.T09 · [H13]
-- **TEST.N678** PLATFORM · `SPECIFICATION.md:3519-3521` — "`time` module attributes cannot be
+- **TEST.N678** PLATFORM · `SPECIFICATION.md:3528-3530` — "`time` module attributes cannot be
   monkeypatched (a builtin C module's globals dict is fixed)" — Test-design constraint (synthetic ticks
   via `ticks_add()`/`ticks_diff()`). · [H13]
-- **TEST.N679** INVAR · `SPECIFICATION.md:3525-3527` — "a test starting a background task must keep an
+- **TEST.N679** INVAR · `SPECIFICATION.md:3534-3536` — "a test starting a background task must keep an
   explicit reference and cancel it in its own `finally`" — Test-discipline rule, convention only. ·
   [H13]
-- **TEST.N680** INVAR · `SPECIFICATION.md:3561-3562` — "a test of emitted JSON checks it with
+- **TEST.N680** INVAR · `SPECIFICATION.md:3570-3571` — "a test of emitted JSON checks it with
   `tests/_strict_json.py`" — Test convention; nothing named enforces every emitted-JSON test uses it. ·
   [H13]
 
 ## SPECIFICATION.md Part F.5.1 — I2C/SPI deinit no-ops
 
-- **TEST.N681** MIRROR · `SPECIFICATION.md:3705-3707` — "`tests/machine.py` and
+- **TEST.N681** MIRROR · `SPECIFICATION.md:3714-3716` — "`tests/machine.py` and
   `digital_twin/machine.py` model the no-op faithfully" — Fake↔real obligation in two fakes for I2C/SPI
   `deinit()`. · related: TEST.T19, TEST.T05 · [H13]
 
 ## SPECIFICATION.md Part F.5.8 — UART read() blocks the loop
 
-- **TEST.N682** LIMIT · `SPECIFICATION.md:3955-3959` — "UART fakes return `min(nbytes, len(rx_queue))`
+- **TEST.N682** LIMIT · `SPECIFICATION.md:3967-3971` — "UART fakes return `min(nbytes, len(rx_queue))`
   and never wait — they model a non-blocking read the real peripheral does not provide" — Fake fidelity
   gap; the defect was invisible below the bench tier. · related: TEST.T19 · [H13]
-- **TEST.N683** MIRROR · `SPECIFICATION.md:3960-3965` — "`UART.would_have_blocked_bytes` ... the two
+- **TEST.N683** MIRROR · `SPECIFICATION.md:3972-3977` — "`UART.would_have_blocked_bytes` ... the two
   models are held to identical counting by `tests/_uart_link_contract.py`" — `tests/machine.py` ↔
   `digital_twin/machine.py` stall counting, enforced by the shared contract. · related: TEST.T05 · [H13]
 
 ## SPECIFICATION.md Part H.7 — Digital twin integration / connection ceiling
 
-- **TEST.N684** LIMIT · `SPECIFICATION.md:4519-4528` — "CI/local test hooks build the real production
+- **TEST.N684** LIMIT · `SPECIFICATION.md:4531-4540` — "CI/local test hooks build the real production
   `wozi` website automatically ... `live-backend-put-matrix.test.js` extends this to every real writable
   field in `wozi.json`" — Browser/live tiers cover wozi only. · covered-by: TEST.S19, WEB.T12 · [H13]
-- **TEST.N685** INVAR · `SPECIFICATION.md:4606-4609` — "every admitted connection must come back with a
+- **TEST.N685** INVAR · `SPECIFICATION.md:4618-4621` — "every admitted connection must come back with a
   complete, correct, parseable response ... A test that only counts `200`s passes on a truncated body" —
   Test-oracle rule across tiers. · related: TEST.T01 · [H13]
 
 ## SPECIFICATION.md Part H.7 — Cross-browser coverage
 
-- **TEST.N686** LIMIT · `SPECIFICATION.md:4666` — "Vitest's browser mode only automates Chromium-family
+- **TEST.N686** LIMIT · `SPECIFICATION.md:4678` — "Vitest's browser mode only automates Chromium-family
   browsers via Playwright." — Non-Chromium engines covered only by the narrow smoke script. · related:
   WEB.T12 · [H13]
-- **TEST.N687** SETTLED · `SPECIFICATION.md:4673-4676` — "Deliberately narrow scope (not a second
+- **TEST.N687** SETTLED · `SPECIFICATION.md:4685-4688` — "Deliberately narrow scope (not a second
   exhaustive PUT matrix ...), and single-session" — Cross-browser smoke scope decision. · [H13]
 
 ## SPECIFICATION.md Part H.8.1 — JSDoc typedef imports
 
-- **TEST.N688** INVAR · `SPECIFICATION.md:4758-4760` — "poll for the exact expected rendered text, never
+- **TEST.N688** INVAR · `SPECIFICATION.md:4770-4772` — "poll for the exact expected rendered text, never
   a fixed sleep" — JS test-timing rule, review-only. · related: TEST.T14 · [H13]
 
 ## SPECIFICATION.md Part I.3 — Bounded response assembly
 
-- **TEST.N689** LIMIT · `SPECIFICATION.md:4959-4963` — "added after confirming the original hammer tests
+- **TEST.N689** LIMIT · `SPECIFICATION.md:4972-4976` — "added after confirming the original hammer tests
   would still pass even with a fix fully reverted" — Unix-port heap cannot reproduce contiguity failure;
   tests assert stream shape instead. · related: TEST.T01, TWIN.T06 · [H13]
 
 ## SPECIFICATION.md Part I.4 — Multi-stage memory-error scheme, (a)-(e)
 
-- **TEST.N690** INVAR · `SPECIFICATION.md:5000-5009` — "The whole suite — digital twin and real hardware
+- **TEST.N690** INVAR · `SPECIFICATION.md:5013-5022` — "The whole suite — digital twin and real hardware
   alike ... must run to completion with `gc.threshold(-1)` ... with no nonstandard `gc` settings or
   added `gc.collect()` calls" — Stage (e) bar; the plan records `gc.collect()` props present in tests. ·
   covered-by: TEST.S11, TEST.T03 · [H13]
-- **TEST.N691** INVAR · `SPECIFICATION.md:5025-5033` — "There are **four** such gates ... All four now
+- **TEST.N691** INVAR · `SPECIFICATION.md:5038-5046` — "There are **four** such gates ... All four now
   match `MemoryError` *or* `memory allocation failed` ... pinned by
   `tests_scripts/test_memory_error_gate_agreement.py` ... Don't narrow any of them back" — Enforced
   agreement; do-not-narrow marker. · related: TEST.T18 · [H13]
-- **TEST.N692** ASSUME · `SPECIFICATION.md:5036-5040` — "measured over a full 85-file run at
+- **TEST.N692** ASSUME · `SPECIFICATION.md:5049-5053` — "measured over a full 85-file run at
   `gc.threshold(-1)` ... all 26 of the suite's own deliberate injections ... 25 read `\"simulated allocation failure\"`
   (11 ... 14 ...) and one reads `\"starved\"`" — Dated counts (85 files is stale vs 87). · covered-by:
   DOC.S08 · [H13]
-- **TEST.N693** INVAR · `SPECIFICATION.md:5040-5043` —
+- **TEST.N693** INVAR · `SPECIFICATION.md:5053-5056` —
   "`tests_scripts/test_memory_error_gate_agreement.py` walks `tests/` and `digital_twin/` with `ast` for
   every injected exception message and fails one that borrows the interpreter's own words" — Enforced
   for tests/ and digital_twin/ only (not tests_hardware/device_scripts or tests_js). · related: TEST.T18
@@ -2736,33 +2736,33 @@ Kinds: SETTLED 24, INVAR 124, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM
 
 ## SPECIFICATION.md Part I.4 — (f), (f.1), (g)
 
-- **TEST.N694** INVAR · `SPECIFICATION.md:5068-5071` — "`GC_THRESHOLD=32768 scripts/test.sh` (E.3) runs
+- **TEST.N694** INVAR · `SPECIFICATION.md:5081-5084` — "`GC_THRESHOLD=32768 scripts/test.sh` (E.3) runs
   every file through `tests/_threshold_runner.py` ... CI's own `unit-tests-gc-threshold` job does the
   same" — Enforced second stage; the plan notes twin launches run only at 32768, never at -1. · related:
   TEST.T18 · [H13]
 
 ## SPECIFICATION.md Part J.7 — Loopback testing model
 
-- **TEST.N695** MIRROR · `SPECIFICATION.md:5561-5565` — "They are held to one shared set of assertions
+- **TEST.N695** MIRROR · `SPECIFICATION.md:5574-5578` — "They are held to one shared set of assertions
   in `tests/_uart_link_contract.py` — the two may differ in fidelity, never in semantics" — Mock↔twin
   UART link mirror, test-enforced. · related: TEST.T05 · [H13]
-- **TEST.N696** LIMIT · `SPECIFICATION.md:5567-5573` — "**The mock tier's `timeout` is a scheduling
+- **TEST.N696** LIMIT · `SPECIFICATION.md:5580-5586` — "**The mock tier's `timeout` is a scheduling
   budget, not a wire budget** ... `scripts/test.sh` deliberately oversubscribes the runner (4× the core
   count" — Mock-tier timing assertions depend on host scheduling. · related: TEST.T04 · [H13]
-- **TEST.N697** ASSUME · `SPECIFICATION.md:5580-5591` — "real `dev` link — 1000 ms | 2·2 + 50 + 21 = 75
+- **TEST.N697** ASSUME · `SPECIFICATION.md:5593-5604` — "real `dev` link — 1000 ms | 2·2 + 50 + 21 = 75
   ms | 13.3× ... same file, no CRC | 30 ms | 24 ms | **1.25×**" | Margin table built on the 21 ms GC
   constant; failure seen on CI run `35468454090`. · related: UART.T10, TEST.S14 · [H13]
-- **TEST.N698** SETTLED · `SPECIFICATION.md:5593-5599` — "The accepted trade-off is that neither test
+- **TEST.N698** SETTLED · `SPECIFICATION.md:5606-5612` — "The accepted trade-off is that neither test
   would now catch a *latency* regression below 240 ms" — Accepted test-coverage gap for
   `_hammer_clean`/`_measure_retention`. · related: TEST.T04 · [H13]
-- **TEST.N699** INVAR · `SPECIFICATION.md:5601-5607` — "**Constraint — a loopback harness must never
+- **TEST.N699** INVAR · `SPECIFICATION.md:5614-5620` — "**Constraint — a loopback harness must never
   register a fake UART with a real `select.poll()`.**" — Hang/segfault avoidance rule (CLAUDE.md known
   hang cause); `digital_twin/unix_port_poll_prewarm.py` records a `modselect.c` segfault with non-fd
   poll objects. · related: TWIN.T07 · [H13]
 
 ## SPECIFICATION.md Part K.2 — Driver to the Part C/D bar
 
-- **TEST.N700** LIMIT · `SPECIFICATION.md:5730-5737` — "this project's own
+- **TEST.N700** LIMIT · `SPECIFICATION.md:5743-5750` — "this project's own
   `tests/machine.py`/`digital_twin/machine.py` fakes both type `pull` as a plain `int` with a `-1`
   sentinel, not `int — None`, so the real MicroPython-idiomatic `pull=None` would need both fakes' own
   signatures widened" | Fake signatures diverge from the real `machine.Pin` API and constrain `src/`
@@ -2770,41 +2770,41 @@ Kinds: SETTLED 24, INVAR 124, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM
 
 ## SPECIFICATION.md Part K.5 — Digital twin
 
-- **TEST.N701** MIRROR · `SPECIFICATION.md:5810-5812` — "Add `Pin.PULL_UP`/whatever other `machine`-fake
+- **TEST.N701** MIRROR · `SPECIFICATION.md:5823-5825` — "Add `Pin.PULL_UP`/whatever other `machine`-fake
   constant the real driver now references to **both** `tests/machine.py` and `digital_twin/machine.py`"
   — Two-fake mirror obligation. · related: TEST.T19 · [H13]
 
 ## SPECIFICATION.md Part K.6 — Tests, every tier
 
-- **TEST.N702** INVAR · `SPECIFICATION.md:5816-5820` — "every parameter individually and in combination
+- **TEST.N702** INVAR · `SPECIFICATION.md:5829-5833` — "every parameter individually and in combination
   ... out-of-range on both sides of every bound, exact boundary values accepted, `NaN`/`±inf` on every
   float argument" — Per-driver unit-test bar (D.12). · related: TEST.T02 · [H13]
-- **TEST.N703** INVAR · `SPECIFICATION.md:5822-5831` — "that module needs its own direct, dedicated
+- **TEST.N703** INVAR · `SPECIFICATION.md:5835-5844` — "that module needs its own direct, dedicated
   tests too — exercising it only incidentally through the new driver's own fixture values is not enough"
   — Shared-module test rule (PR #87 gap). · related: ALGO.T01 · [H13]
-- **TEST.N704** INVAR · `SPECIFICATION.md:5858-5876` — "**Bus-hazard coverage, all four tiers, standing
+- **TEST.N704** INVAR · `SPECIFICATION.md:5871-5889` — "**Bus-hazard coverage, all four tiers, standing
   rule** ... Add the new driver to `tests/_bus_hazard_catalog.py`'s `I2C_HAZARD_CATALOG`" — Four-tier
   rule; cross-sensor now generated. · related: TEST.T06 · [H13]
 
 ## SPECIFICATION.md Part K.9 — Documentation
 
-- **TEST.N705** TODO · `SPECIFICATION.md:5921-5923` — "\"no pytest gate wired for the new
+- **TEST.N705** TODO · `SPECIFICATION.md:5934-5936` — "\"no pytest gate wired for the new
   conformance-probe script yet\" — PR #83's own disclosed, not-silently-resolved gap" — Example of an
   open gap; whether still open is not stated here (low). · related: TEST.S20 · [H13]
 
 ## SPECIFICATION.md Part L.4 — Generator pipeline
 
-- **TEST.N706** ASSUME · `SPECIFICATION.md:6288-6292` — "asserts a real `GET` against five REST
+- **TEST.N706** ASSUME · `SPECIFICATION.md:6303-6307` — "asserts a real `GET` against five REST
   endpoints returns 200 — for all six real devices plus both synthetic fixtures" — Five of the six
   routes; plan notes this test reads output only on nonzero exit. · related: TEST.T18 · [H13]
 
 ## SPECIFICATION.md Part L.5 — Build/generator script quality bar
 
-- **TEST.N707** INVAR · `SPECIFICATION.md:6357-6398` — "Each family's unit tests must cover the whole
+- **TEST.N707** INVAR · `SPECIFICATION.md:6372-6413` — "Each family's unit tests must cover the whole
   matrix: **the accept side needs full dimensionality** ... **the reject side covers each dimension once
   without recombining**" — Test-matrix bar per tag family; reference files
   `test_buildgen_tag_comments.py`, `test_buildgen_requires_tag.py`. · related: GEN.T03 · [H13]
-- **TEST.N708** INVAR · `SPECIFICATION.md:6409-6415` — "every abort condition gets its own test, driven
+- **TEST.N708** INVAR · `SPECIFICATION.md:6424-6430` — "every abort condition gets its own test, driven
   by deliberately malformed fixture definition files" — Test obligation for buildgen error paths. ·
   related: GEN.T01 · [H13]
 
@@ -2875,19 +2875,19 @@ Kinds: SETTLED 24, INVAR 124, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM
 
 ## BACKLOG.md
 
-- **TEST.N728** TODO · `BACKLOG.md:101-118` — "Named follow-ons still open, tracked in that section, not
+- **TEST.N728** TODO · `BACKLOG.md:81-95` — "Named follow-ons still open, tracked in that section, not
   repeated here" — Unnumbered "tier/layering-completeness scan" (owner 2026-09-15): open follow-ons live
   in `tests_hardware/README.md` "Tenth pass". · related: HW.T09, TEST.T15 · [H15]
-- **TEST.N729** LIMIT · `BACKLOG.md:117-118` — "Re-running this sweep against other domains ... is
+- **TEST.N729** LIMIT · `BACKLOG.md:94-95` — "Re-running this sweep against other domains ... is
   future work, not assumed done everywhere." — Sweep did not cover sensortask/system_service integration
   beyond FRAM/memory. · related: TEST.T15 · [H15]
-- **TEST.N730** LIMIT · `BACKLOG.md:136-139` — "only ever proved wire-level atomicity, never this
+- **TEST.N730** LIMIT · `BACKLOG.md:113-116` — "only ever proved wire-level atomicity, never this
   shadow-vs-chip timing race" — A named mock test covered less than it appeared to. · related: TEST.T01
   · [H15]
-- **TEST.N731** LIMIT · `BACKLOG.md:617-630` — "What remains genuinely unmodelled is the duration" —
+- **TEST.N731** LIMIT · `BACKLOG.md:683-696` — "What remains genuinely unmodelled is the duration" —
   UART fakes deliberately don't wait; count `would_have_blocked_bytes` (identical semantics held by
   `tests/_uart_link_contract.py`); only the bench measures ms. · related: BUS.T05, TEST.T05 · [H15]
-- **TEST.N732** MIRROR · `BACKLOG.md:853-855` — "Both test fakes gained readfrom_mem_into() delegating
+- **TEST.N732** MIRROR · `BACKLOG.md:903-905` — "Both test fakes gained readfrom_mem_into() delegating
   to their own readfrom_mem" — Fault injection depends on the fakes keeping this delegation. · related:
   TEST.T05 · [H15]
 
@@ -3037,3 +3037,10 @@ Kinds: SETTLED 24, INVAR 124, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM
 - **TEST.N766** NOTE(FUTURE) · `https://github.com/hundertvolt/sensors/pull/104` — "going further would
   need `tests_scripts/` itself parallelized (e.g. `pytest-xdist`), flagged as a further opportunity, not
   attempted" — tests_scripts single-process tier is the suite's wall-clock floor · UNTRACKED | - · [H17]
+
+## Delta `2a88cc8` → `4dc80ef` (main head, V11)
+
+- **TEST.N767** INVAR · `tests/test_asy_sgp40_driver.py:1068-1128` — "Bench finding 2026-09-25: one slot
+  per 1-min backup filled the ring after one hotspot episode." — Four W13 episode tests (outage,
+  timestamped end on both branches, deferral and E14 not ending it); the commit says each failed against
+  a matching mutation (`83c9920`). · related: SENS.S28 · [D1]

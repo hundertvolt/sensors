@@ -1,9 +1,9 @@
 # Harvest — SENS: Sensor drivers
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 71, WORKAROUND 2, SUPPRESS 32, TODO 5, OPENQ 2, DRIFT 8, NOTE 19 — 410 items.
+Kinds: SETTLED 58, INVAR 54, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 71, WORKAROUND 2, SUPPRESS 32, TODO 5, OPENQ 2, DRIFT 8, NOTE 19 — 412 items.
 
 
 ## src/asy_bmp3xx_driver.py
@@ -165,7 +165,7 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
 - **SENS.N048** ASSUME · `src/asy_isl29125_driver.py:100-104` — "_CAL_CONVERGE_TOL = const(0.01) # 1%:
   one bench scene measured 28.11/28.01/28.09, a 0.4% spread" — Convergence/stability tolerances and the
   120 s window ("~100 attempts at 16 bit") rest on one bench measurement. · related: SENS.T01 · [H01]
-- **SENS.N049** LIMIT · `SPECIFICATION.md:6770-6790 (M.1.6, read for :137/:158)` — "no single value is
+- **SENS.N049** LIMIT · `SPECIFICATION.md:6785-6805 (M.1.6, read for :137/:158)` — "no single value is
   right everywhere ... calibrate at the level you care about ... do not re-raise it as actionable" — One
   GainRatio cannot correct the level-dependent ratio (~28 → ~22); SETTLED as not actionable. · [H01]
   ⟨anchor out of bounds⟩
@@ -194,7 +194,7 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
   — CCT is a placeholder approximation. · related: ALGO.T01 · [H01]
 - **SENS.N056** SETTLED · `src/asy_isl29125_driver.py:182, 250-252` — "It used to be wrnno=12; a
   harmless, transient, always-current status belongs in the measurement output, not the error log
-  (C.7.1)." — wrnno 12 retired, never reused (C.7.1 row SPECIFICATION.md:1929). · related: XCUT.T07 ·
+  (C.7.1)." — wrnno 12 retired, never reused (C.7.1 row SPECIFICATION.md:1933). · related: XCUT.T07 ·
   [H01]
 - **SENS.N057** MIRROR · `src/asy_isl29125_driver.py:162-165, 172-184, 880-896` — "_FIELDS =
   const((...)) # kept in sync with ISL29125's own fields above" — `_FIELDS` is never used in this
@@ -250,7 +250,7 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
   down; the counts still differ, so the next cycle tries again" — Reconciliation read failure swallowed
   silently. · [H01]
 - **SENS.N074** DRIFT · `src/asy_isl29125_driver.py:500` — "FiltCoeff ALONE, matching spec R5" — No "R5"
-  exists in SPECIFICATION.md (BACKLOG.md:51's R5 is a bench queue row) (low). · related: DOC.T16 · [H01]
+  exists in SPECIFICATION.md (BACKLOG.md:35's R5 is a bench queue row) (low). · related: DOC.T16 · [H01]
 - **SENS.N075** LIMIT · `src/asy_isl29125_driver.py:503-506` — "cfg_values = [-1.0]" + err_s "Error
   reading config data!" errno=14 — Degraded: sample published with filter off on config read failure. ·
   covered-by: SENS.S25 · [H01]
@@ -480,19 +480,19 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
   related: SENS.S20 · [H01]
 - **SENS.N145** ASSUME · `src/asy_sgp40_driver.py:44-46` — "roughly the time how often the data written
   to the FRAM is verified. less a data safety feature here but rather a check if communication and
-  integrity is generally okay" — Verify period derivation (used at :352, :409) is approximate. ·
+  integrity is generally okay" — Verify period derivation (used at :353, :410) is approximate. ·
   covered-by: SENS.S02 · [H01]
-- **SENS.N146** PLATFORM · `src/asy_sgp40_driver.py:47, 355-358` — "_MAX_NTP_WAITTIME = const(600) #
+- **SENS.N146** PLATFORM · `src/asy_sgp40_driver.py:47, 356-359` — "_MAX_NTP_WAITTIME = const(600) #
   600s = 10min" — NTP wait clamp; restore retries each second meanwhile. · related: SENS.S05, PAR.S01 ·
   [H01]
-- **SENS.N147** ASSUME · `src/asy_sgp40_driver.py:48, 224-226` — "_BACKUP_COUNTER_MAX = const(100000) #
+- **SENS.N147** ASSUME · `src/asy_sgp40_driver.py:48, 225-227` — "_BACKUP_COUNTER_MAX = const(100000) #
   see _check_storage()'s own note on the 86400s = 1 day margin" / "counts seconds, resets at 86400 = 1
   day, give it some more space" — Counter counts read cycles (ticks), not seconds; the "1 day" note does
   not match the 100000 reset. · related: SENS.T11 · [H01]
-- **SENS.N148** PLATFORM · `src/asy_sgp40_driver.py:49, 686-689` — "_SELF_TEST_PASS = const(0xD4) #
+- **SENS.N148** PLATFORM · `src/asy_sgp40_driver.py:49, 690-693` — "_SELF_TEST_PASS = const(0xD4) #
   datasheet Table 13, high byte only (the low byte is \"ignore\")" — Self-test check on high byte only.
   · related: SENS.T13 · [H01]
-- **SENS.N149** INVAR · `src/asy_sgp40_driver.py:56-59, 495-498` — "Deliberately excluded from
+- **SENS.N149** INVAR · `src/asy_sgp40_driver.py:56-59, 499-502` — "Deliberately excluded from
   get_dict_cfg()'s own schema argument below - this key is never in ConfigManager's _cache." —
   Command-only field kept out of get_dict_cfg by hand (else the whole read breaks). · related: CORE.T03
   · [H01]
@@ -517,74 +517,74 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
 - **SENS.N156** SETTLED · `src/asy_sgp40_driver.py:157-159` — "registered the same way as every other
   module's real live-push field (project decision ...)" — SGPResetVOC via _push_callbacks, never
   persisted. · [H01]
-- **SENS.N157** SUPPRESS · `src/asy_sgp40_driver.py:177-186` — "broad on purpose, matching
+- **SENS.N157** SUPPRESS · `src/asy_sgp40_driver.py:178-187` — "broad on purpose, matching
   print_log.py's own FRAM-allocation guard" `except Exception: self.ts_storage = None` + pr.err "FRAM
   backup storage allocation failed!" — Allocation failure print-only; SGP40 silently runs without
   backup. · covered-by: STOR.S08 · [H01]
-- **SENS.N158** LIMIT · `src/asy_sgp40_driver.py:203-206` — err_s "Error reading config data!" errno=13
+- **SENS.N158** LIMIT · `src/asy_sgp40_driver.py:204-207` — err_s "Error reading config data!" errno=13
   — Persisted every 1 s cycle while config read fails. · covered-by: SENS.T15 · [H01]
-- **SENS.N159** INVAR · `src/asy_sgp40_driver.py:238-240` — "Snapshotted once at entry so a concurrent
+- **SENS.N159** INVAR · `src/asy_sgp40_driver.py:239-241` — "Snapshotted once at entry so a concurrent
   reset_voc(flag=True) ... only ever affects the *next* cycle" — Reset bookkeeping across cycles. ·
   related: SENS.T03 · [H01]
-- **SENS.N160** LIMIT · `src/asy_sgp40_driver.py:250-253` — err_s "Error clearing FRAM!" errno=15 —
+- **SENS.N160** LIMIT · `src/asy_sgp40_driver.py:251-254` — err_s "Error clearing FRAM!" errno=15 —
   Reset stays pending until clear succeeds (retried each cycle, persisted each time). · related:
   SENS.T15 · [H01]
-- **SENS.N161** ASSUME · `src/asy_sgp40_driver.py:255-261` — "get_data() never raises, but the named
+- **SENS.N161** ASSUME · `src/asy_sgp40_driver.py:256-262` — "get_data() never raises, but the named
   field can be None" — Compensation inputs rely on producers' never-raise contract; values unclamped. ·
   related: SENS.T12, SENS.S03 · [H01]
-- **SENS.N162** SUPPRESS · `src/asy_sgp40_driver.py:264-269` — err_s "Compensation data read failed:"
+- **SENS.N162** SUPPRESS · `src/asy_sgp40_driver.py:265-270` — err_s "Compensation data read failed:"
   errno=18 — Producer exception swallowed. · [H01]
-- **SENS.N163** SETTLED · `src/asy_sgp40_driver.py:274-279` — "retry init if triggered and no
+- **SENS.N163** SETTLED · `src/asy_sgp40_driver.py:275-280` — "retry init if triggered and no
   compensation data is available" — No VOC read without compensation data (A.4 confirmed-intentional,
   SPECIFICATION.md:276-279). · related: PAR.T03 · [H01]
-- **SENS.N164** INVAR · `src/asy_sgp40_driver.py:283-287, 320-323` — "vocalgorithm_reset() never raises,
+- **SENS.N164** INVAR · `src/asy_sgp40_driver.py:284-288, 321-324` — "vocalgorithm_reset() never raises,
   so this half is guaranteed applied regardless of I2C outcome below" — Reset split relies on
   voc_algorithm's never-raise. · related: ALGO.T02 · [H01]
-- **SENS.N165** SUPPRESS · `src/asy_sgp40_driver.py:294-296, 320-326` — "a non-numeric field from a
+- **SENS.N165** SUPPRESS · `src/asy_sgp40_driver.py:295-297, 321-327` — "a non-numeric field from a
   caller-supplied source raises here like a genuine I2C fault and is caught below (errno=11)" err_s
   "Read failed:" — Non-numeric compensation input counted as a read failure. · [H01]
-- **SENS.N166** LIMIT · `src/asy_sgp40_driver.py:312, 318` — err_s "Error deserializing!" errno=16 /
+- **SENS.N166** LIMIT · `src/asy_sgp40_driver.py:313, 319` — err_s "Error deserializing!" errno=16 /
   "Error serializing!" errno=17 — Backup restore/serialize failures. · [H01]
-- **SENS.N167** SUPPRESS · `src/asy_sgp40_driver.py:337-339, 347` — err_s "Error in initial setup:"
+- **SENS.N167** SUPPRESS · `src/asy_sgp40_driver.py:338-340, 348` — err_s "Error in initial setup:"
   errno=10 / "Error reading config data!" errno=12 — Init failures swallowed. · [H01]
-- **SENS.N168** LIMIT · `src/asy_sgp40_driver.py:350-353, 407-411` — "int(math.ceil((10 *
+- **SENS.N168** LIMIT · `src/asy_sgp40_driver.py:351-354, 408-412` — "int(math.ceil((10 *
   _FRAM_VERIFY_MINS) / cfg_values[0]) * 0.1)" — Verify period is 0 (disabled) for BackupPeriod 67-1440,
   off by one elsewhere. · covered-by: SENS.S02 · [H01]
-- **SENS.N169** LIMIT · `src/asy_sgp40_driver.py:372-391` — wrn_s "No backup found!" wrnno=10 / "Backup
+- **SENS.N169** LIMIT · `src/asy_sgp40_driver.py:373-392` — wrn_s "No backup found!" wrnno=10 / "Backup
   loaded without timestamp" 11 / "Backup is too old" 12 — Restore paths; re-reads the chunk each second
   while waiting for NTP; negative ages pass. · covered-by: SENS.S05, STOR.T09 · [H01]
-- **SENS.N170** LIMIT · `src/asy_sgp40_driver.py:420-442` — "set backup counter to retry serialization
+- **SENS.N170** LIMIT · `src/asy_sgp40_driver.py:421-446` — "set backup counter to retry serialization
   in self._read_sgp()" / err_s "Write error during backup!" errno=14 / wrn_s "Backup written without
   timestamp." wrnno=13 — voc_write reset to WaitTimeNTP after each stamped write (each later backup
   waits for NTP again). · covered-by: PAR.S03 · [H01]
-- **SENS.N171** SETTLED · `src/asy_sgp40_driver.py:451-457, 503-506` — "Deliberately does NOT forward
+- **SENS.N171** SETTLED · `src/asy_sgp40_driver.py:455-461, 507-510` — "Deliberately does NOT forward
   reset_voc()'s own return value ... always reports success once typed" / "flag=False deliberately does
   nothing (see test_reset_voc_false_is_a_no_op's own contract note)" — Command contract (mirrors ISL
   start_calibration). · related: XCUT.T11 · [H01]
-- **SENS.N172** LIMIT · `src/asy_sgp40_driver.py:463-472` — "# voc algorithm needs 1s period fixed" /
+- **SENS.N172** LIMIT · `src/asy_sgp40_driver.py:467-476` — "# voc algorithm needs 1s period fixed" /
   "alarm-pool exhaustion (ENOMEM) - degrades gracefully ... (this sensor just never gets triggered this
   cycle)" — 1 Hz from a soft PERIODIC timer (ticks merge in stalls); arm failure print-only and SGP40
   then never reads. · covered-by: SENS.T11 · [H01]
-- **SENS.N173** SUPPRESS · `src/asy_sgp40_driver.py:488` — "# type: ignore[return-value]" — get_data()
+- **SENS.N173** SUPPRESS · `src/asy_sgp40_driver.py:492` — "# type: ignore[return-value]" — get_data()
   narrowing. · related: SENS.T08 · [H01]
-- **SENS.N174** INVAR · `src/asy_sgp40_driver.py:532, 606-612` — "lock for consecutive i2c communication
+- **SENS.N174** INVAR · `src/asy_sgp40_driver.py:536, 610-616` — "lock for consecutive i2c communication
   and self._command_buffer" / "self._command_buffer = self._measure_command" — Buffer aliasing restored
   without try/finally; a failed read leaves the alias. · covered-by: SENS.S01 · [H01]
-- **SENS.N175** ASSUME · `src/asy_sgp40_driver.py:543-546, 564-566` — "Sized for the only readlen
+- **SENS.N175** ASSUME · `src/asy_sgp40_driver.py:547-550, 568-570` — "Sized for the only readlen
   actually used anywhere in this file (readlen=1, 3 bytes/word)" — Serial read fetches 1 of 3 words. ·
   covered-by: SENS.S21 · [H01]
-- **SENS.N176** RISK · `src/asy_sgp40_driver.py:582-589` — "True I2C general-call reset (datasheet Table
+- **SENS.N176** RISK · `src/asy_sgp40_driver.py:586-593` — "True I2C general-call reset (datasheet Table
   17): 0x06 to the reserved address 0x00, broadcast to every device on the bus. A NAK (OSError) is
   expected, not a failure." — General-call reset hits every device sharing the bus; OSError swallowed
   (`except OSError: pass`) plus a 1 s sleep. · related: SENS.T10 · [H01]
-- **SENS.N177** LIMIT · `src/asy_sgp40_driver.py:593-604` — "Temperature-to-ticks, datasheet Table 10
+- **SENS.N177** LIMIT · `src/asy_sgp40_driver.py:597-608` — "Temperature-to-ticks, datasheet Table 10
   ..." / "& 0xFFFF" — Out-of-range T/RH wrap instead of clamping. · covered-by: SENS.S03 · [H01]
-- **SENS.N178** PLATFORM · `src/asy_sgp40_driver.py:610-611` — "100ms: >3x margin over the datasheet's
+- **SENS.N178** PLATFORM · `src/asy_sgp40_driver.py:614-615` — "100ms: >3x margin over the datasheet's
   30ms typ/max measurement duration (Table 8)" — Wait cost vs datasheet. · covered-by: SENS.S07 · [H01]
-- **SENS.N179** PLATFORM · `src/asy_sgp40_driver.py:641-643` — "VOC index (1-500 ...). 100 = average of
+- **SENS.N179** PLATFORM · `src/asy_sgp40_driver.py:645-647` — "VOC index (1-500 ...). 100 = average of
   the last 24h" — Index range claim; 0 published during blackout. · covered-by: SENS.S04 · [H01] ⟨quote
   not matched at the anchor⟩
-- **SENS.N180** ASSUME · `src/asy_sgp40_driver.py:674-678` — "word[0]==0 isn't documented by Sensirion
+- **SENS.N180** ASSUME · `src/asy_sgp40_driver.py:678-682` — "word[0]==0 isn't documented by Sensirion
   ... unverified, inherited from Adafruit; kept since it's observed working on deployed hardware." —
   Undocumented serial-number assumption. · covered-by: SENS.S06 · [H01]
 
@@ -781,7 +781,7 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
 - **SENS.N233** SETTLED · `tests/test_asy_sgp40_driver.py:407-413,434-436` — "a compensation source
   whose field is legitimately still None ... is startup jitter, not a fault, and must log no E/W entry
   at all" — None compensation data at boot is silent by design (Part C.14.2); missing comp data never
-  counts as an SGP40 error (:1384-1386) · related: SENS.T12 · [H04]
+  counts as an SGP40 error (:1509-1511) · related: SENS.T12 · [H04]
 - **SENS.N234** LIMIT · `tests/test_asy_sgp40_driver.py:562-564,570,581` — "start_timer() logs via the
   non-persisting pr.err(), not err_s()" — a failed SGP40 timer arm leaves no persisted log; if it raised
   instead, the sensor would never be triggered again · related: XCUT.T04 · [H04]
@@ -799,31 +799,31 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
 - **SENS.N238** RISK · `tests/test_asy_sgp40_driver.py:971-973,1002` — "require_ntp becomes False and
   the backup is written even though NTP has not synced" — backups may be written with no timestamp (the
   "backup exists, no TS" sentinel) once the countdown expires · related: PAR.S03 · [H04]
-- **SENS.N239** LIMIT · `tests/test_asy_sgp40_driver.py:1007-1009` — "The 100000 wraparound guard only
+- **SENS.N239** LIMIT · `tests/test_asy_sgp40_driver.py:1132-1134` — "The 100000 wraparound guard only
   matters when BackupPeriod is disabled (0) ... the guard is otherwise unreachable" — backup_counter
   wrap guard is reachable only with BackupPeriod=0 · - (low) · [H04]
-- **SENS.N240** ASSUME · `tests/test_asy_sgp40_driver.py:1035-1037,1058` — "ceil((10 *
+- **SENS.N240** ASSUME · `tests/test_asy_sgp40_driver.py:1160-1162,1183` — "ceil((10 *
   _FRAM_VERIFY_MINS) / BackupPeriod) * 0.1 - roughly \"verify once per _FRAM_VERIFY_MINS (60min) worth
   of backups\"" — test pins the verify-period formula only at BackupPeriod=5 (=12); the formula's edge
   values are not checked · covered-by: SENS.S02 · [H04]
-- **SENS.N241** INVAR · `tests/test_asy_sgp40_driver.py:1063-1065` — "both share the SAME buffer: the
+- **SENS.N241** INVAR · `tests/test_asy_sgp40_driver.py:1188-1190` — "both share the SAME buffer: the
   old state is read in, unpacked, advanced by one sample, re-packed, and written back out" — serialize
   and deserialize in one cycle share one buffer; ordering must be deserialize → process → serialize ·
   [H04]
-- **SENS.N242** INVAR · `tests/test_asy_sgp40_driver.py:1086-1087` — "buf=None would instead persist a
+- **SENS.N242** INVAR · `tests/test_asy_sgp40_driver.py:1211-1212` — "buf=None would instead persist a
   freshly-allocated, all-zero buffer" — a backup path passing buf=None writes an all-zero state; callers
   must thread the buffer · - (low) · [H04]
-- **SENS.N243** SETTLED · `tests/test_asy_sgp40_driver.py:1767-1769` — "A raise here happens at
+- **SENS.N243** SETTLED · `tests/test_asy_sgp40_driver.py:1892-1894` — "A raise here happens at
   construction time, before any supervisor exists, so it must degrade to None" — constructor wraps
   `get_timestamped_chunk()` despite AsyFramManager's never-raises contract (defence in depth) · related:
   XCUT.T20 · [H04]
-- **SENS.N244** LIMIT · `tests/test_asy_sgp40_driver.py:1881-1883` — "reachable only via a stale value
+- **SENS.N244** LIMIT · `tests/test_asy_sgp40_driver.py:2006-2008` — "reachable only via a stale value
   written before this bound existed" — WaitTimeNTP cap path only reachable via a pre-existing
   out-of-schema file · - (low) · [H04]
-- **SENS.N245** LIMIT · `tests/test_asy_sgp40_driver.py:2136-2138` — "struct.unpack_from(\"32q\", ...)
+- **SENS.N245** LIMIT · `tests/test_asy_sgp40_driver.py:2261-2263` — "struct.unpack_from(\"32q\", ...)
   can never see a size mismatch through normal use - this fake is the only way" — too-small-backup
   branch (errno 16) is unreachable in production · - (low) · [H04]
-- **SENS.N246** LIMIT · `tests/test_asy_sgp40_driver.py:2178-2180` — "reachable only by
+- **SENS.N246** LIMIT · `tests/test_asy_sgp40_driver.py:2303-2305` — "reachable only by
   _read_word_from_command() returning None, which no real caller's readlen triggers" — "no sensor
   response" guards in four SGP40 methods are dead defensive code, covered only via a monkeypatch · -
   (low) · [H04]
@@ -974,10 +974,10 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
 - **SENS.N277** ASSUME · `tests_hardware/README.md:204-216` — "Measured 2026-09-13, six forced crossings
   per setting" — PRST 4/2/1 table (1212/606/303 ms windows) is the basis for deriving the window (M.1.4)
   and reading `wrnno=13` as a dead INT line. · related: SENS.T05 · [H08]
-- **SENS.N278** LIMIT · `tests_hardware/README.md:644-649` — "software alone can't fully distinguish a
+- **SENS.N278** LIMIT · `tests_hardware/README.md:653-658` — "software alone can't fully distinguish a
   genuine hardware IRQ firing from the self-healing fallback" — SCD30 RDY real-edge test cannot prove
   the IRQ path without a scope. · related: SENS.T05 · [H08]
-- **SENS.N279** SETTLED · `tests_hardware/README.md:1148-1161` — "There is currently no way to force
+- **SENS.N279** SETTLED · `tests_hardware/README.md:1157-1170` — "There is currently no way to force
   this hazard on a live, already-running system via REST at all" — SGP40 general-call hazard has zero
   bench-tier coverage; recorded as structural exception. · related: HW.T09 · [H08]
 
@@ -987,18 +987,25 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
   with the same signature (BACKLOG 30), and the test's retry now hides it" — R1 OPEN: ISL29125
   connection reset (PUT+2 readers 6/18); first answer from Step 6's `CEILING_RETRIES`; else
   `RangeAuto=false` bisection. · [H08]
+  ⟨4dc80ef: R1 closed 2026-09-25: BACKLOG 30 not reproduced (18/18 clean), item and row retired
+  (79423dd)⟩
 - **SENS.N281** TODO · `REAL_HARDWARE_TEST_QUEUE.md:247` — "the `Overrange` field that replaced `W12`
   has still never run" — R9 OPEN: ISL29125 shadow-divergence fix re-confirmation under real load +
   `Overrange` first run. · [H08]
+  ⟨4dc80ef: R9 shadow half confirmed on silicon; Overrange half rides S3b (BACKLOG.md ISL29125 open
+  question)⟩
 
 ## HARDWARE_TEST_HANDOVER.md (snapshot only; sitting IN PROGRESS in another session)
 
 - **SENS.N282** LIMIT · `HARDWARE_TEST_HANDOVER.md:36` — "(no silicon trigger exists; it must simply
   stay quiet)" — SCD30 non-finite-word rejection cannot be exercised on silicon. · related: XCUT.T23 ·
   [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **SENS.N283** RISK · `HARDWARE_TEST_HANDOVER.md:163-166` — "9 slots after one hotspot episode, so the
   ring loses what preceded the outage" — SGP40 `W13` persists once per backup minute without NTP;
   candidate for BACKLOG 50 / C.7.1 per-episode rule. · related: SENS.T15 · [H08]
+  ⟨4dc80ef: F18 owner decision open: open in BACKLOG.md "Real-hardware work still owed" (F18)⟩
 
 ## dev_legacy/README.md
 
@@ -1159,234 +1166,234 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
 
 ## SPECIFICATION.md Part C intro, C.1-C.2 (1475-1535)
 
-- **SENS.N317** INVAR · `SPECIFICATION.md:1513-1515` — "`_NAME`'s string and the namedtuple's type-name
+- **SENS.N317** INVAR · `SPECIFICATION.md:1517-1519` — "`_NAME`'s string and the namedtuple's type-name
   string must be identical, always" — Holds today for SCD30/SGP40/BMP3XX/ISL29125 by convention; no test
   named. · related: SENS.T08 · [H12]
-- **SENS.N318** MIRROR · `SPECIFICATION.md:1520-1527` — "`<Sensor>_DeviceSession(Lockable)` — pure
+- **SENS.N318** MIRROR · `SPECIFICATION.md:1524-1531` — "`<Sensor>_DeviceSession(Lockable)` — pure
   boilerplate, identical in all three drivers ... Copy verbatim" — Copied boilerplate across drivers
   (four now incl. ISL29125). · related: DOC.S08 · [H12]
-- **SENS.N319** INVAR · `SPECIFICATION.md:1528-1532` — "`*_Reader` constructor order (match exactly):
+- **SENS.N319** INVAR · `SPECIFICATION.md:1532-1536` — "`*_Reader` constructor order (match exactly):
   bus handle, ... `max_module_error: int = 5`, `name_ext: str = \"\"` ... `debug: int — None = None`" |
   Constructor-shape convention (divergences seeded). · covered-by: SENS.S18 · [H12]
 
 ## SPECIFICATION.md Part C.3 (Layer 2 protocol class, 1537-1566)
 
-- **SENS.N320** DRIFT · `SPECIFICATION.md:1541-1543` — "A class built entirely on
+- **SENS.N320** DRIFT · `SPECIFICATION.md:1545-1547` — "A class built entirely on
   `I2CDevice.get_register_struct()`/`get_bits()` (`BMP3XX_I2C`) has no scratch buffer at all" — Stale
   per seed. · covered-by: SENS.S19 · [H12]
-- **SENS.N321** INVAR · `SPECIFICATION.md:1548-1551` — "Contract: raises on any real failure — the layer
+- **SENS.N321** INVAR · `SPECIFICATION.md:1552-1555` — "Contract: raises on any real failure — the layer
   that does not return sentinels." — Layer-2 contract. · related: BUS.T01 · [H12]
-- **SENS.N322** INVAR · `SPECIFICATION.md:1557-1559` — "`setup()` verifies identity ... and raises if
+- **SENS.N322** INVAR · `SPECIFICATION.md:1561-1563` — "`setup()` verifies identity ... and raises if
   the sensor doesn't respond — fails loudly once at boot rather than degrading silently forever" —
   Identity-check obligation. · related: SENS.S06 · [H12]
-- **SENS.N323** INVAR · `SPECIFICATION.md:1564-1565` — "Compensation/calibration math and datasheet
+- **SENS.N323** INVAR · `SPECIFICATION.md:1568-1569` — "Compensation/calibration math and datasheet
   operating-range checks live here — reject and raise rather than return an implausible value silently."
   — SCD30 lacks a range gate per seed. · related: SENS.S10 · [H12]
 
 ## SPECIFICATION.md Part C.4 (Layer 3 Reader, 1624-1697)
 
-- **SENS.N324** INVAR · `SPECIFICATION.md:1626-1628` — "Contract: never raises. ... Every layer-2 call
+- **SENS.N324** INVAR · `SPECIFICATION.md:1630-1632` — "Contract: never raises. ... Every layer-2 call
   is wrapped in its own `try/except Exception` ... (never bare `except:`)" — Layer-3 never-raise
   contract. · related: BUS.T01 · [H12]
-- **SENS.N325** SUPPRESS · `SPECIFICATION.md:1669-1672` — "identity return + scoped `# type: ignore[return-value]`
+- **SENS.N325** SUPPRESS · `SPECIFICATION.md:1673-1676` — "identity return + scoped `# type: ignore[return-value]`
   ... the settled convention over a local `cast()` shim" — Settled suppression; sites
   `src/asy_bmp3xx_driver.py:310`, `asy_isl29125_driver.py:878`, `asy_notification_service.py:251`,
-  `asy_ntp_client.py:365`, `asy_scd30_driver.py:238`, `asy_sgp40_driver.py:488`,
+  `asy_ntp_client.py:365`, `asy_scd30_driver.py:238`, `asy_sgp40_driver.py:492`,
   `asy_wifi_service.py:684`. · [H12]
-- **SENS.N326** DRIFT · `SPECIFICATION.md:1672-1673, 2306` — "`typing.cast()` still applies to narrowing
+- **SENS.N326** DRIFT · `SPECIFICATION.md:1676-1677, 2314` — "`typing.cast()` still applies to narrowing
   a `struct.unpack()` result" / "`typing.cast()` has no runtime presence (C.4.2)" — SCD30 defines its
   own runtime no-op `cast()` shim (`src/asy_scd30_driver.py:27-31`), the shape C.4.2 calls the
   non-settled option. (low) · [H12]
-- **SENS.N327** ASSUME · `SPECIFICATION.md:1694-1695` — "(BMP3xx: 3 of 8 fields; SGP40: none; SCD30: all
+- **SENS.N327** ASSUME · `SPECIFICATION.md:1698-1699` — "(BMP3xx: 3 of 8 fields; SGP40: none; SCD30: all
   fields)" — Dated live-readback field counts. · [H12]
 
 ## SPECIFICATION.md Part C.5 / C.5.1-C.5.3 (Config schema system, 1699-1797)
 
-- **SENS.N328** INVAR · `SPECIFICATION.md:1763-1766` — "a setter whose own return means something else
+- **SENS.N328** INVAR · `SPECIFICATION.md:1767-1770` — "a setter whose own return means something else
   (`reset_voc()`'s `False` = no-op, not failed) needs its wrapper to report success unconditionally" —
   Wrapper convention (SGP40 reset, SCD30 ContMeas). · [H12]
 
 ## SPECIFICATION.md Part C.7 (Error handling & logging contract, 1807-1891)
 
-- **SENS.N329** INVAR · `SPECIFICATION.md:1879-1882` — "A call site with just one pass/fail flag passes
+- **SENS.N329** INVAR · `SPECIFICATION.md:1883-1886` — "A call site with just one pass/fail flag passes
   a fixed one-element sentinel and drives the flag through `condition=`" — Style convention. (low) ·
   [H12]
-- **SENS.N330** INVAR · `SPECIFICATION.md:1883-1885` — "A per-field get/set forward always logs via
+- **SENS.N330** INVAR · `SPECIFICATION.md:1887-1889` — "A per-field get/set forward always logs via
   `err_s()`/`wrn_s()` on failure, never a bare `except Exception: return None`" — Visibility convention.
   · related: SENS.T15 · [H12]
 
 ## SPECIFICATION.md Part C.7.1 (Running errno/wrnno table, 1893-1941)
 
-- **SENS.N331** DRIFT · `SPECIFICATION.md:1929` — "`asy_isl29125_driver.py` (`ISL29125`) — 10-38 | ...
+- **SENS.N331** DRIFT · `SPECIFICATION.md:1933` — "`asy_isl29125_driver.py` (`ISL29125`) — 10-38 | ...
   35=... 38=`set_range_auto()`" | Range 10-38 with 23, 36, 37 unassigned in the text. (low) · related:
   XCUT.T07 · [H12]
 
 ## SPECIFICATION.md Part C.8 (Concurrency & locking model, 2016-2188)
 
-- **SENS.N332** RISK · `SPECIFICATION.md:2047-2055` — "`writeto(0x00, b\"\\x06\")` is a true I2C
+- **SENS.N332** RISK · `SPECIFICATION.md:2055-2063` — "`writeto(0x00, b\"\\x06\")` is a true I2C
   general-call broadcast ... Low-risk, not fixed ... flagged for a project-owner decision if ever
   revisited" — Accepted risk; fires on every SGP40 restart. · related: SENS.T10 · [H12]
-- **SENS.N333** ASSUME · `SPECIFICATION.md:2050-2052` — "neither sibling's datasheet documents
+- **SENS.N333** ASSUME · `SPECIFICATION.md:2058-2060` — "neither sibling's datasheet documents
   general-call listening, and address `0x00` gets no special handling in the pinned rp2 `machine_i2c.c`"
   — "Neither sibling" fits dev (SCD30/ISL29125, per the named test); wozi's i2c1 sibling is BMP3xx.
   (low) · [H12]
-- **SENS.N334** ASSUME · `SPECIFICATION.md:2145-2146` — "BMP3xx's/ISL29125's own config registers, both
+- **SENS.N334** ASSUME · `SPECIFICATION.md:2153-2154` — "BMP3xx's/ISL29125's own config registers, both
   volatile per their datasheets" — Datasheet claim licensing unrestricted real writes. · [H12]
 
 ## SPECIFICATION.md Part C.9.1 (Read-trigger timer stagger, 2211-2298)
 
-- **SENS.N335** LIMIT · `SPECIFICATION.md:2273-2285` — "`asy_scd30_driver.py` does not use the
+- **SENS.N335** LIMIT · `SPECIFICATION.md:2281-2293` — "`asy_scd30_driver.py` does not use the
   counter-based mechanism ... the strict \"never coincide\" proof above applies rigorously to
   BMP3xx/ISL29125/SGP40" — SCD30 read moment is IRQ-modulated, outside the proof. · related: XCUT.S06 ·
   [H12]
 
 ## SPECIFICATION.md Part C.14 / C.14.1 (Instance naming, 2380-2428)
 
-- **SENS.N336** INVAR · `SPECIFICATION.md:2405-2418` — "REST dict keys must use `self.name` too, not a
+- **SENS.N336** INVAR · `SPECIFICATION.md:2413-2426` — "REST dict keys must use `self.name` too, not a
   driver's `_NAME` module constant ... applied uniformly across every promoted driver" — Multi-instance
   key rule; "three promoted drivers" count stale. · related: GEN.T04 · [H12]
 
 ## SPECIFICATION.md Part C.14.3 (Error-source and logger fan-in, 2534-2572)
 
-- **SENS.N337** LIMIT · `SPECIFICATION.md:2569-2572` — "a required field with nothing wired can still
+- **SENS.N337** LIMIT · `SPECIFICATION.md:2577-2580` — "a required field with nothing wired can still
   build clean via an explicit `{default = true, ...}` opt-in ...
   `_DefaultTemperatureSource`/`_DefaultHumiditySource` provide a constant fallback" — Constant
   compensation fallback possible by config. · related: SENS.T12 · [H12]
 
 ## SPECIFICATION.md Part E.5 / E.5.1-E.5.3 (Coverage, 2951-3088)
 
-- **SENS.N338** ASSUME · `SPECIFICATION.md:3008-3009` — "`asy_sgp40_driver.py`'s `readlen is None` early
+- **SENS.N338** ASSUME · `SPECIFICATION.md:3016-3017` — "`asy_sgp40_driver.py`'s `readlen is None` early
   return (no caller passes it — the buffer above is sized for the one `readlen=1`" — Serial read length
   seeded as a datasheet deviation. · related: SENS.S21 · [H12]
 
 ## SPECIFICATION.md Part F.1 — Core platform facts
 
-- **SENS.N339** LIMIT · `SPECIFICATION.md:3492-3494` — "`dev_legacy/asy_bsec_driver.py`'s bare
+- **SENS.N339** LIMIT · `SPECIFICATION.md:3501-3503` — "`dev_legacy/asy_bsec_driver.py`'s bare
   `struct.unpack(\"bbbbL\", res)` against a hardcoded size of 8 ... anything porting it forward has to
   fix that first" — Known defect in reference code that a future BSEC port must fix first. · [H13]
-- **SENS.N340** INVAR · `SPECIFICATION.md:3580-3581` — "A new source decoding floats or computing
+- **SENS.N340** INVAR · `SPECIFICATION.md:3589-3590` — "A new source decoding floats or computing
   without a range gate needs the same" — Convention for new drivers; no test named. · related: XCUT.T23
   · [H13]
 
 ## SPECIFICATION.md Part K (intro) and K.1 — Before writing code
 
-- **SENS.N341** INVAR · `SPECIFICATION.md:5699-5701` — "Place the real PDF under `datasheets/<name>/`
+- **SENS.N341** INVAR · `SPECIFICATION.md:5712-5714` — "Place the real PDF under `datasheets/<name>/`
   ... every hardware-interaction claim in code comments cites a page number against it" — Citation
   discipline; plan notes A.6's datasheet list omits isl29125. · related: DOC.S08 · [H13]
 
 ## SPECIFICATION.md Part L.6.4 — Comment-tag family
 
-- **SENS.N342** PLATFORM · `SPECIFICATION.md:6489-6491` — "`# @requires bus.timeout>=200000`/`bus.frequency<=100000`
+- **SENS.N342** PLATFORM · `SPECIFICATION.md:6504-6506` — "`# @requires bus.timeout>=200000`/`bus.frequency<=100000`
   and `bus.frequency<=400000` ... (`bmp3xx` is deliberately untagged — its datasheet supports every I2C
   mode)" — Datasheet-derived bus limits (`src/asy_scd30_driver.py:108, 111`,
   `src/asy_sgp40_driver.py:90`); ISL29125 status not mentioned. · related: GEN.T08 · [H13]
 
 ## SPECIFICATION.md Part M.1.1 — Settled requirements (owner's list)
 
-- **SENS.N343** SETTLED · `SPECIFICATION.md:6591-6638` — "1. **Every setting is API-settable and
+- **SENS.N343** SETTLED · `SPECIFICATION.md:6606-6653` — "1. **Every setting is API-settable and
   persisted.** ... 21. ... Saturation status is a measurement-output field (`Overrange`), never a log
   entry" — 21 owner requirements the driver is audited against (req. 14 superseded). · related: SENS.T08
   · [H13]
-- **SENS.N344** SETTLED · `SPECIFICATION.md:6605-6606` — "9. **HSB's low-light behaviour is accepted** —
+- **SENS.N344** SETTLED · `SPECIFICATION.md:6620-6621` — "9. **HSB's low-light behaviour is accepted** —
   no log scaling and no validity flag. Do not re-propose either." — Do-not-re-propose marker. · related:
   DOC.T14 · [H13]
-- **SENS.N345** PLATFORM · `SPECIFICATION.md:6600-6601` — "the datasheet's bare-sensor guidance of ~40
+- **SENS.N345** PLATFORM · `SPECIFICATION.md:6615-6616` — "the datasheet's bare-sensor guidance of ~40
   codes is the applicable default, not p10's `0xBF`" — IR-compensation default rests on the enclosure
   assumption (no IR-tinted cover). · related: SENS.T01 · [H13]
-- **SENS.N346** INVAR · `SPECIFICATION.md:6619-6622` — "16. **The driver is self-healing and never
+- **SENS.N346** INVAR · `SPECIFICATION.md:6634-6637` — "16. **The driver is self-healing and never
   reports a stale value as fresh.** ... a sample the driver cannot prove is current is reported as
   `None`, never re-stamped" — Plan seed: on config-read failure ISL29125 still publishes a freshly
   stamped sample. · related: SENS.S25, SENS.T04 · [H13]
-- **SENS.N347** INVAR · `SPECIFICATION.md:6623-6626` — "17. **Auto-range must not depend on the
+- **SENS.N347** INVAR · `SPECIFICATION.md:6638-6641` — "17. **Auto-range must not depend on the
   interrupt alone.** ... the interrupt is the *fast* path, the periodic read the *guaranteed* one" —
   Dual-path requirement. · related: SENS.T05, SENS.S15 · [H13]
-- **SENS.N348** ASSUME · `SPECIFICATION.md:6629-6630` — "19. ... No driver in `src/` rounds any output;
+- **SENS.N348** ASSUME · `SPECIFICATION.md:6644-6645` — "19. ... No driver in `src/` rounds any output;
   the renderer's `decimals` hint does (H.5)." — Whole-`src/` claim (duplicates H.5.1). · [H13]
-- **SENS.N349** INVAR · `SPECIFICATION.md:6631-6633` — "20. **Construction and `setup()` must complete
+- **SENS.N349** INVAR · `SPECIFICATION.md:6646-6648` — "20. **Construction and `setup()` must complete
   on a bus where the chip never answers** ... proven for the buildgen-generated object graph" —
   Absent-chip requirement. · related: SENS.T14 · [H13]
 
 ## SPECIFICATION.md Part M.1.2 — Measured chip behaviour
 
-- **SENS.N350** PLATFORM · `SPECIFICATION.md:6642-6653` — "Measured on real hardware (2026-09-12/13) ...
+- **SENS.N350** PLATFORM · `SPECIFICATION.md:6657-6668` — "Measured on real hardware (2026-09-12/13) ...
   `BOUTF` ... **cleared** by a status read, by the `0x46` reset command, and by writing `0x00` to
   `0x08`. p12 names only the write" — Silicon facts diverging from the datasheet (single specimen); twin
   `_isl29125_chip.py` models every row. · related: TWIN.T01, HW.T16 · [H13]
-- **SENS.N351** ASSUME · `SPECIFICATION.md:6655-6657` — "a real brownout is reported exactly once — what
+- **SENS.N351** ASSUME · `SPECIFICATION.md:6670-6672` — "a real brownout is reported exactly once — what
   `_recover_brownout()`'s `_brownout_seen` latch assumes" — Depends on exactly one destructive status
   read per cycle. · related: SENS.T03 · [H13]
-- **SENS.N352** ASSUME · `SPECIFICATION.md:6660-6666` — "At `PRST = 4`, one status read per second set
+- **SENS.N352** ASSUME · `SPECIFICATION.md:6675-6681` — "At `PRST = 4`, one status read per second set
   `RGBTHF` in exactly 4 of 8 reads ... the restart half is reproduced by the method above" —
   Measurement; only the unit is asserted on silicon by `isl29125_real_irq_edge.py`. · related: HW.T16 ·
   [H13]
 
 ## SPECIFICATION.md Part M.1.3 — Register ownership, prior art, colour chain
 
-- **SENS.N353** INVAR · `SPECIFICATION.md:6670-6680` — "The driver keeps a shadow of `CONFIG1`-`CONFIG3`
+- **SENS.N353** INVAR · `SPECIFICATION.md:6685-6695` — "The driver keeps a shadow of `CONFIG1`-`CONFIG3`
   and writes it back whole; that is sound only while exactly one function touches each register." —
   Sole-writer table (`configure()`, `set_thresholds()`, `clear_brownout()`, `reset()`), convention-only;
   plan notes `set_autorange_thresh()` does not rewrite threshold registers. · related: SENS.S16 · [H13]
-- **SENS.N354** SETTLED · `SPECIFICATION.md:6682-6686` — "Deliberately unused, so nobody adds them
+- **SENS.N354** SETTLED · `SPECIFICATION.md:6697-6701` — "Deliberately unused, so nobody adds them
   later: `SYNC` ... `CONVEN` ... `RGBCF` and `CONVENF`" — Do-not-add markers; `reset()` deliberately
   skips the status check. · [H13]
-- **SENS.N355** LIMIT · `SPECIFICATION.md:6691-6693` — "**Nobody does auto-range or CCT** — both are
+- **SENS.N355** LIMIT · `SPECIFICATION.md:6706-6708` — "**Nobody does auto-range or CCT** — both are
   this driver's own ... there is no reference to differential-test against" — No external oracle for
   auto-range/CCT. · related: TEST.T17 · [H13]
-- **SENS.N356** LIMIT · `SPECIFICATION.md:6703-6706` — "**The matrix is a placeholder by the datasheet's
+- **SENS.N356** LIMIT · `SPECIFICATION.md:6718-6721` — "**The matrix is a placeholder by the datasheet's
   own statement** ... so the reported colour is relative. There is **no gamma decode**" — Reported
   colour/CCT is relative, not calibrated. · [H13]
-- **SENS.N357** SETTLED · `SPECIFICATION.md:6711-6713` — "**The Renesas application notes are
+- **SENS.N357** SETTLED · `SPECIFICATION.md:6726-6728` — "**The Renesas application notes are
   unobtainable — do not re-attempt.**" — Do-not-re-attempt marker; 12-bit cycle time derived (~6.3 ms).
   · [H13]
 
 ## SPECIFICATION.md Part M.1.4 — Auto-range
 
-- **SENS.N358** SETTLED · `SPECIFICATION.md:6717-6719` — "(owner, 2026-09-13/14): **a value whose only
+- **SENS.N358** SETTLED · `SPECIFICATION.md:6732-6734` — "(owner, 2026-09-13/14): **a value whose only
   correct settings are a function of another field is derived, never exposed**" — Owner design rule. ·
   [H13]
-- **SENS.N359** ASSUME · `SPECIFICATION.md:6721-6727` — "At 16 bit / 1 s that is 2; at 12 bit ... it is
+- **SENS.N359** ASSUME · `SPECIFICATION.md:6736-6742` — "At 16 bit / 1 s that is 2; at 12 bit ... it is
   8 ... Measured (2026-09-13): a hand-set `PRST = 4` (1,212 ms) lost 5 of 6 crossings ... `PRST = 2`
   (606 ms) led 6 of 6" — Dated silicon measurement; `SampleInterv` writes `CONFIG3` (a config write
   triggers a chip write). · related: HW.T16 · [H13]
-- **SENS.N360** SETTLED · `SPECIFICATION.md:6728-6731` — "`_AR_DOWN_DIVISOR`, with the divisor `2 × 26.67`
+- **SENS.N360** SETTLED · `SPECIFICATION.md:6743-6746` — "`_AR_DOWN_DIVISOR`, with the divisor `2 × 26.67`
   — the part's *nominal* range ratio, deliberately not the measured `GainRatio`" — Deliberate
   decoupling. · [H13]
-- **SENS.N361** SETTLED · `SPECIFICATION.md:6732-6735` — "**The settle margin is a constant**,
+- **SENS.N361** SETTLED · `SPECIFICATION.md:6747-6750` — "**The settle margin is a constant**,
   `_SETTLE_CYCLES = 2` ... No scene, light level or resolution makes another value right." — Constant by
   design. · related: SENS.S27 · [H13]
-- **SENS.N362** INVAR · `SPECIFICATION.md:6736-6740` — "counts a decision as interrupt-led only with
+- **SENS.N362** INVAR · `SPECIFICATION.md:6751-6755` — "counts a decision as interrupt-led only with
   **both** [flag and edge]; five periodic-led decisions in a row warn that the line looks dead" —
   Dead-INT-line detector contract (C.7.1 ISL29125 row). · related: SENS.T05 · [H13]
 
 ## SPECIFICATION.md Part M.1.5 — Calibration
 
-- **SENS.N363** INVAR · `SPECIFICATION.md:6746-6749` — "`GainRatio` ... **changed only by a user PUT**:
+- **SENS.N363** INVAR · `SPECIFICATION.md:6761-6764` — "`GainRatio` ... **changed only by a user PUT**:
   the driver never writes its own config, so every flash write stays on the REST path Part F.2's
   power-cycle recovery argument depends on" — Plan seed: an ISL29125 `GET /sensors` can write the chip
   and the FRAM ring. · related: SENS.S24, CORE.T02 · [H13]
-- **SENS.N364** INVAR · `SPECIFICATION.md:6750-6751` — "`ISLCalibrate` is command-only ... nothing
+- **SENS.N364** INVAR · `SPECIFICATION.md:6765-6766` — "`ISLCalibrate` is command-only ... nothing
   schedules it, so normal operation pays nothing" — Calibration only on demand; UI resend risk noted in
   WEB.S01. · related: WEB.S01 · [H13]
-- **SENS.N365** LIMIT · `SPECIFICATION.md:6758-6760` — "**A refusal is reported by absence** (`GainMeas`
+- **SENS.N365** LIMIT · `SPECIFICATION.md:6773-6775` — "**A refusal is reported by absence** (`GainMeas`
   stays `None`) ... so it logs only at debug level" — Calibration refusal silent at default log level by
   design. · [H13]
-- **SENS.N366** LIMIT · `SPECIFICATION.md:6761-6764` — "a strongly coloured scene can be parked on the
+- **SENS.N366** LIMIT · `SPECIFICATION.md:6776-6779` — "a strongly coloured scene can be parked on the
   high range where its green is too small to calibrate from. **Operator procedure: park the scene dark
   first ...**" — Known limitation handled by an operator procedure (not in DEVICE_REFERENCE per this
   Part). · related: DOC.T11 · [H13]
-- **SENS.N367** ASSUME · `SPECIFICATION.md:6766-6768` — "Proven on silicon (2026-09-14): three runs at
+- **SENS.N367** ASSUME · `SPECIFICATION.md:6781-6783` — "Proven on silicon (2026-09-14): three runs at
   ~138 lx ... nine candidates within 23.70–24.13 ... from 11.4 % to 0.4 %" — Dated single-board
   measurement. · related: HW.T16 · [H13]
 
 ## SPECIFICATION.md Part M.1.6 — Range ratio varies with level
 
-- **SENS.N368** SETTLED · `SPECIFICATION.md:6772-6773, 6783-6785` — "not an open question and not a
+- **SENS.N368** SETTLED · `SPECIFICATION.md:6787-6788, 6798-6800` — "not an open question and not a
   defect ... do not re-raise it as actionable" — Do-not-reopen marker. · related: DOC.T14 · [H13]
-- **SENS.N369** ASSUME · `SPECIFICATION.md:6773-6778` — "six illuminants × three channels, 2026-09-12
+- **SENS.N369** ASSUME · `SPECIFICATION.md:6788-6793` — "six illuminants × three channels, 2026-09-12
   ... 28.08, 23.29, 22.49 and 21.55 ... Low-range compression and high-range under-read at small counts
   fit equally well" — Single-specimen measurement; cause undetermined (needs reference meter / second
   board). · related: HW.T16 · [H13]
-- **SENS.N370** LIMIT · `SPECIFICATION.md:6780-6783` — "no single value is right everywhere — a ratio
+- **SENS.N370** LIMIT · `SPECIFICATION.md:6795-6798` — "no single value is right everywhere — a ratio
   measured in the overlap band (~22–23) ... makes low-light cross-range comparisons slightly worse" —
   Accepted accuracy limit of one `GainRatio`. · [H13]
 
@@ -1421,17 +1428,19 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
 
 ## BACKLOG.md
 
-- **SENS.N379** TODO · `BACKLOG.md:122-150` — "fixed in code and unit-tested; real-hardware
+- **SENS.N379** TODO · `BACKLOG.md:99-127` — "fixed in code and unit-tested; real-hardware
   re-verification still pending" — Unnumbered "ISL29125 chip configuration divergence under concurrent
   API load" (HIGH IMPORTANCE): `configure()`'s device-session lock widened; real-HW re-run queued as R9
   with the `Overrange` half. · related: SENS.S24 · [H15]
-- **SENS.N380** SETTLED · `BACKLOG.md:151-163` — "resolved differently, by design rather than by fixing
+  ⟨4dc80ef: reworded: the shadow fix is confirmed on silicon, only the Overrange half owes a run
+  (03f8bcf)⟩
+- **SENS.N380** SETTLED · `BACKLOG.md:128-140` — "resolved differently, by design rather than by fixing
   a bug (project owner, 2026-09-15)" — `W12` retired; saturation is the live `Overrange` field;
   `isl29125_mechanism_envelope.py` updated but "also pending real-hardware re-run". · [H15]
-- **SENS.N381** SETTLED · `BACKLOG.md:411-413` — "FiltCoeff keeps its two meanings - SETTLED, owner,
+- **SENS.N381** SETTLED · `BACKLOG.md:477-479` — "FiltCoeff keeps its two meanings - SETTLED, owner,
   2026-09-24." — Same key on BMP3xx and ISL29125; renaming = stored-config migration. · related: WEB.S15
   · [H15]
-- **SENS.N382** RISK · `BACKLOG.md:859-862` — "safe today only because every setter is REST-triggered
+- **SENS.N382** RISK · `BACKLOG.md:909-912` — "safe today only because every setter is REST-triggered
   ... Don't add a periodic/high-frequency caller" — SCD30 NVM endurance unpublished. · covered-by:
   SENS.T07; related: PAR.S02 · [H15]
 
@@ -1454,7 +1463,7 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
   src/asy_bmp3xx_driver.py:514-515 | related: SENS.T* · [H17]
 - **SENS.N387** MIRROR · `commit 91ed578` — "a flagged-but-not-fixed cross-file consistency gap
   (unchecked add_into() return in measure_raw())" — SGP40 measure_raw CRC add_into return. · status:
-  done (src/asy_sgp40_driver.py:623,626 now check `is None`) | - · [H17]
+  done (src/asy_sgp40_driver.py:627,630 now check `is None`) | - · [H17]
 - **SENS.N388** TODO · `commit f030f56` — "its location in the config-schema block makes \"add a
   ContMeas schema entry\" the more likely original intent ... recorded the real gap in BACKLOG.md" —
   ContMeas schema gap. · status: resolved by design (src/asy_scd30_driver.py:86 "Deliberately no _VAL_*
@@ -1506,7 +1515,7 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
   decisions. · tracked: SPEC C.11.3 (:6746-6780), DEVICE_REFERENCE.md:89-92 | - · [H17]
 - **SENS.N402** LIMIT · `commit f05f82d` — "the model is still one scalar ... the level-dependence
   itself stays recorded as the limit of what one number can do" — Accepted accuracy limit. · tracked:
-  SPECIFICATION.md:6772-6780 | - · [H17]
+  SPECIFICATION.md:6787-6795 | - · [H17]
 - **SENS.N403** NOTE(OWNER) · `commit 05f4746 / 179a10c` — "BACKLOG 20 is PARKED, not deferred: there is
   one device"; "BACKLOG 29 is out of scope for the ISL29125 promotion" — Parked ISL ratio question;
   out-of-scope tool fix. · tracked: SPEC C.11.4 (ratio); frozen-asyncio probe done-in 12640c2 | - ·
@@ -1536,6 +1545,7 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
   Same warning-flood class as item 35, unfixed; BACKLOG 50 was already closed (b5450aa) when this was
   found, and the finding lives only in the throwaway HARDWARE_TEST_HANDOVER.md:163. · UNTRACKED (medium;
   temp doc only) | related: SENS.T*, STOR.T* · [H17 (also H17)]
+  ⟨4dc80ef: F18 owner decision open: open in BACKLOG.md "Real-hardware work still owed" (F18)⟩
 
 ## GitHub PRs and issues (hundertvolt/sensors)
 
@@ -1543,3 +1553,13 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
   "`BMP3XX_I2C.get_altitude()` has zero callers anywhere in `src/` — dead code, left for a future
   cluster's decision" — Still no src caller at 2a88cc8 (src/asy_bmp3xx_driver.py:570); not in
   BACKLOG/SPEC · UNTRACKED | - · [H17]
+
+## Delta `2a88cc8` → `4dc80ef` (main head, V11)
+
+- **SENS.N411** INVAR · `src/asy_sgp40_driver.py:167, 433, 440, 443-444` — "one slot per NTP outage, not
+  per backup - a timestamped backup ends the episode" — W13 now follows C.7.1's repeat rule through an
+  in-RAM episode flag; a reboot or task restart mid-outage opens a new episode. · covered-by: SENS.S28 ·
+  [D1]
+- **SENS.N412** SETTLED · `SPECIFICATION.md:1939` — "one slot per outage, which a timestamped backup
+  ends" — C.7.1's SGP40 row records W13's episode rule with the bench finding behind it (nine slots in
+  one hotspot episode). · related: XCUT.T07 · [D1]

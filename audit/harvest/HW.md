@@ -1,9 +1,9 @@
 # Harvest — HW: Real-hardware tier
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFORM 27, WORKAROUND 9, SUPPRESS 65, TODO 25, OPENQ 11, DRIFT 72, NOTE 33 — 849 items.
+Kinds: SETTLED 64, INVAR 114, MIRROR 62, LIMIT 118, RISK 67, ASSUME 190, PLATFORM 27, WORKAROUND 10, SUPPRESS 65, TODO 28, OPENQ 12, DRIFT 73, NOTE 33 — 863 items.
 
 
 ## tests_hardware/conftest.py
@@ -984,6 +984,8 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
   to be the outcome as long as this test polls with board.exec() ... that redesign is tracked in
   REAL_HARDWARE_TEST_QUEUE.md, not worked around here" — The gated ticks_ms rollover test is known to
   fail by construction (each `exec` starves the WDT and zeroes the counter). · related: HW.T13 · [H07]
+  ⟨4dc80ef: reference repointed to "BACKLOG.md (G6)" (03f8bcf); the test still fails by construction
+  until G6's method exists⟩
 - **HW.N278** ASSUME · `tests_hardware/flash/test_bus_electrical_timing.py:104-107, 122` — "Two hours of
   headroom, wider than the poll interval below" — `_WRAP_FLOOR_MS` and 3600 s polling. (low) · [H07]
 - **HW.N279** DRIFT · `tests_hardware/flash/test_bus_electrical_timing.py:30, 41, 52, 65, 76, 97` —
@@ -1121,7 +1123,7 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
   an expected skip - it only names the cause if some future build genuinely lacks the module" — A
   firmware missing asy_uart_comm becomes a skip; broad `except Exception` re-raised otherwise. ·
   related: HW.T13 · [H07]
-- **HW.N314** SETTLED · `tests_hardware/flash/test_uart_crossover.py:67-68` — "Counted, never timed: a
+- **HW.N314** SETTLED · `tests_hardware/flash/test_uart_crossover.py:74-75` — "Counted, never timed: a
   poll-round count is a property of the code, while throughput on this board moves with heap state (Part
   E.7)" — Test design choice. (low) · [H07]
 
@@ -2037,128 +2039,128 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
 - **HW.N526** INVAR · `tests_hardware/README.md:365-378` — "Pinned by the pytest tier." — Probe/holder
   timing contracts enforced by `test_request_timeout_ceiling.py`, `test_ceiling_probe.py`,
   `test_bench_harness_helpers.py`. · related: HW.T12 · [H08]
-- **HW.N527** ASSUME · `tests_hardware/README.md:383-384` — "a watchdog reset ~9 s after an early attach
-  is the likely, unconfirmed cause of one dead run" — Stated as unconfirmed; BACKLOG.md:400-403 (item
+- **HW.N527** ASSUME · `tests_hardware/README.md:388-389` — "a watchdog reset ~9 s after an early attach
+  is the likely, unconfirmed cause of one dead run" — Stated as unconfirmed; BACKLOG.md:340-343 (item
   44) says the mechanism is already measured (item 12). · covered-by: HW.S19 · [H08]
-- **HW.N528** INVAR · `tests_hardware/README.md:387-391` — "read `machine.reset_cause()` over `mpremote exec`
+- **HW.N528** INVAR · `tests_hardware/README.md:396-400` — "read `machine.reset_cause()` over `mpremote exec`
   before anything flashes or reboots the board" — Bench traps: reset_cause first; `pkill -f` self-match;
   don't edit tools/scripts between chained runs. · related: HW.T05 · [H08]
-- **HW.N529** ASSUME · `tests_hardware/README.md:443-445` — "the board may need reflashing before any of
+- **HW.N529** ASSUME · `tests_hardware/README.md:452-454` — "the board may need reflashing before any of
   this runs" — Skip guards name a firmware predating a `src/` change; no image identity check. ·
   related: HW.T19 · [H08]
-- **HW.N530** INVAR · `tests_hardware/README.md:446-456` — "A device script's every wait must stay
+- **HW.N530** INVAR · `tests_hardware/README.md:455-465` — "A device script's every wait must stay
   inside its own watchdog window" — Crossover scripts poll `task.done()` in bounded steps and use
   `UART_Comm.clear()`; else a link fault reports as a reset. · [H08]
-- **HW.N531** SETTLED · `tests_hardware/README.md:472-478` — "clears its chunk at the START, never at
+- **HW.N531** SETTLED · `tests_hardware/README.md:481-487` — "clears its chunk at the START, never at
   the end ... Residue is the accepted outcome" — Error-log device scripts wipe their chunk first;
   `fram_error_log_reset_race_verify.py` is the one exception. · related: HW.T02 · [H08]
-- **HW.N532** INVAR · `tests_hardware/README.md:491-500` — "use the genuinely passive
+- **HW.N532** INVAR · `tests_hardware/README.md:500-509` — "use the genuinely passive
   `Board.is_device_present()` ... for any liveness poll" — `exec`/`is_reachable()` self-reset the heap;
   `is_reachable()` stays mpremote-based deliberately. · related: HW.S14 · [H08]
-- **HW.N533** DRIFT · `tests_hardware/README.md:501-504` — "Does `machine.soft_reset()` reset the
+- **HW.N533** DRIFT · `tests_hardware/README.md:510-513` — "Does `machine.soft_reset()` reset the
   hardware counter `time.ticks_ms()` reads from?" — Still listed as open and "deliberately uses
-  `board.exec()`"; BACKLOG.md:237-249 (item 12) answered it 2026-09-11 (no; the WDT reset ~8 s after
+  `board.exec()`"; BACKLOG.md:214-226 (item 12) answered it 2026-09-11 (no; the WDT reset ~8 s after
   each exec zeroes the counter) and queue G6 says the exec-poll design cannot measure. · covered-by:
   HW.S17 · [H08]
-- **HW.N534** ASSUME · `tests_hardware/README.md:505-506` — "`BUSY_WAIT_MS`/`TIMER_PERIOD_MS` are a
+- **HW.N534** ASSUME · `tests_hardware/README.md:514-515` — "`BUSY_WAIT_MS`/`TIMER_PERIOD_MS` are a
   starting guess, not measured on real hardware" — Scheduler-saturation script constants unmeasured. ·
   [H08]
-- **HW.N535** SUPPRESS · `tests_hardware/README.md:507-510` — "is `@pytest.mark.skip` pending this;
+- **HW.N535** SUPPRESS · `tests_hardware/README.md:516-519` — "is `@pytest.mark.skip` pending this;
   implement once a concrete mechanism ... is confirmed" — Spoofed off-subnet DNS test skipped "pending",
   yet it is the one entry in `KNOWN_PERMANENT_SKIPS` (`scripts/_require_clean_hardware_run.sh:10`). ·
   related: HW.T13 · [H08]
-- **HW.N536** ASSUME · `tests_hardware/README.md:514-519` — "the authoring sandbox had no systemd/D-Bus
+- **HW.N536** ASSUME · `tests_hardware/README.md:523-528` — "the authoring sandbox had no systemd/D-Bus
   to actually run NetworkManager against and confirm live" — `nmcli -g IP4.ADDRESS/GATEWAY` output shape
   unverified live. · related: HW.T12 · [H08]
-- **HW.N537** ASSUME · `tests_hardware/README.md:565-586` — "that's an implicit precondition of the
+- **HW.N537** ASSUME · `tests_hardware/README.md:574-595` — "that's an implicit precondition of the
   whole tier, not stated anywhere until this entry" — Bench tier requires live `DebugLevel` ≥3 (NTP test
   5); at 0 `dut_ip` times out (2026-09-04: 2 failures + 48 errors). · covered-by: HW.S14 · [H08]
-- **HW.N538** INVAR · `tests_hardware/README.md:610-615` — "`kick_all_stations()` before the post-flash
+- **HW.N538** INVAR · `tests_hardware/README.md:619-624` — "`kick_all_stations()` before the post-flash
   reconnect attempt, every time" — Same stale-station hazard after every `picotool load` reflash. ·
   [H08] ⟨quote not matched at the anchor⟩
-- **HW.N539** INVAR · `tests_hardware/README.md:640-643` — "first re-verify the test's own check is
+- **HW.N539** INVAR · `tests_hardware/README.md:649-652` — "first re-verify the test's own check is
   asking the right question of the right endpoint/field" — Lesson from a `"Mode"` field read from the
   wrong endpoint. · related: HW.T05 · [H08]
-- **HW.N540** INVAR · `tests_hardware/README.md:650-654` — "each calling `input()` and hanging forever"
+- **HW.N540** INVAR · `tests_hardware/README.md:659-663` — "each calling `input()` and hanging forever"
   — `manual/` files named away from `test_*.py`; naming is the structural backstop. · [H08]
-- **HW.N541** DRIFT · `tests_hardware/README.md:672-680` — "The existing `RogueUdpResponder`-based
+- **HW.N541** DRIFT · `tests_hardware/README.md:681-689` — "The existing `RogueUdpResponder`-based
   garbage-response tests are unaffected" — Same bullet says DNAT-to-loopback does not deliver locally,
-  yet the rogue tests rely on that redirect (also :792-799 "not ... verified live"). · covered-by:
+  yet the rogue tests rely on that redirect (also :801-808 "not ... verified live"). · covered-by:
   HW.S13 · [H08]
-- **HW.N542** OPENQ · `tests_hardware/README.md:679-681` — "the redirect didn't intercept traffic at all
+- **HW.N542** OPENQ · `tests_hardware/README.md:688-690` — "the redirect didn't intercept traffic at all
   for one `hard_reset()` cycle, root cause not chased" — Unexplained DNAT quirk. · related: HW.S13 ·
   [H08]
-- **HW.N543** DRIFT · `tests_hardware/README.md:708-711` — "against the physical MB85RS64V chip" — dev's
+- **HW.N543** DRIFT · `tests_hardware/README.md:717-720` — "against the physical MB85RS64V chip" — dev's
   FRAM is recorded as MB85RS2MTA (dev_legacy/README.md:44, devices/dev.toml). · covered-by: HW.S17 ·
   [H08]
-- **HW.N544** DRIFT · `tests_hardware/README.md:748-750` — "**SCD30 has no live-push config fields at
-  all** ... not a gap" — Repeated at :1129-1136, :1172-1174, :1239-1240; HW.S02 says SCD30 NVM is
+- **HW.N544** DRIFT · `tests_hardware/README.md:757-759` — "**SCD30 has no live-push config fields at
+  all** ... not a gap" — Repeated at :1138-1145, :1181-1183, :1248-1249; HW.S02 says SCD30 NVM is
   reachable over REST. · covered-by: HW.S02 · [H08]
-- **HW.N545** LIMIT · `tests_hardware/README.md:752-759` — "**Still not automated even after this
+- **HW.N545** LIMIT · `tests_hardware/README.md:761-768` — "**Still not automated even after this
   pass**" — No calibrated-accuracy test, no WS2812 validation, no genuine power-loss test of FRAM chunk
   logic. · [H08]
-- **HW.N546** DRIFT · `tests_hardware/README.md:815-816` — "confirmed not overridden anywhere in
-  `sensortask_wozi.py`" — `sensortask_<device>.py` is now generated; also :949
+- **HW.N546** DRIFT · `tests_hardware/README.md:824-825` — "confirmed not overridden anywhere in
+  `sensortask_wozi.py`" — `sensortask_<device>.py` is now generated; also :958
   "`sensortask_wozi.main()`". · related: DOC.T16 (low) · [H08]
-- **HW.N547** INVAR · `tests_hardware/README.md:830-834` — "Every bench test that injects a network
+- **HW.N547** INVAR · `tests_hardware/README.md:839-843` — "Every bench test that injects a network
   fault also calls `assert_no_task_ended()`" — Enforced by
   `tests_scripts/test_bench_no_task_ended_completeness.py`. · [H08]
-- **HW.N548** RISK · `tests_hardware/README.md:836-848` — "reset the real, REST-exposed error/warning
+- **HW.N548** RISK · `tests_hardware/README.md:845-857` — "reset the real, REST-exposed error/warning
   history (`PUT /status {\"ResetErrors\": true}`) before a fault-injecting test" — Standing policy of
   clearing live error history before and after tests, with no automatic prior snapshot. · covered-by:
   HW.S06 · [H08] ⟨quote not matched at the anchor⟩
-- **HW.N549** LIMIT · `tests_hardware/README.md:857-864` — "documented as a deliberate non-assertion
+- **HW.N549** LIMIT · `tests_hardware/README.md:866-873` — "documented as a deliberate non-assertion
   rather than a flaky one" — Some faults have no groundable log entry; retrofit "not extended to the
   rest of the tier". · related: HW.T05 · [H08]
-- **HW.N550** INVAR · `tests_hardware/README.md:931-938` — "Never call `cfgmgr.setup()` in such scripts
+- **HW.N550** INVAR · `tests_hardware/README.md:940-947` — "Never call `cfgmgr.setup()` in such scripts
   - that performs a real littlefs file write/read." — Isolated-driver priming pattern (valid/_cache);
   handover 5.3 says two scripts moved to a schema-derived cache. · [H08]
-- **HW.N551** ASSUME · `tests_hardware/README.md:949-952` — "up to ~20s can pass with a connected IP but
+- **HW.N551** ASSUME · `tests_hardware/README.md:958-961` — "up to ~20s can pass with a connected IP but
   nothing on port 80" — Webserver starts only after `ntp_force_sync()` (20 s bound). · [H08]
-- **HW.N552** INVAR · `tests_hardware/README.md:987-990` — "reading the actual IP still needs one
+- **HW.N552** INVAR · `tests_hardware/README.md:996-999` — "reading the actual IP still needs one
   `board.exec()` call (unavoidable), always immediately followed by `board.hard_reset()`" — `dut_ip`
   fixture's one unavoidable raw-REPL entry. · [H08]
-- **HW.N553** INVAR · `tests_hardware/README.md:1018-1028` — "run `uv run python tests_hardware/manual/__main__.py`,
+- **HW.N553** INVAR · `tests_hardware/README.md:1027-1037` — "run `uv run python tests_hardware/manual/__main__.py`,
   never `runner.py` directly" — Running runner.py directly is a silent no-op (duplicate module
   instance). · [H08]
-- **HW.N554** ASSUME · `tests_hardware/README.md:1065-1072` — "**Honesty note - neither test has been
-  run against real hardware yet.**" — Seventh-pass tests flagged unverified; same notes at :1138-1140,
-  :1176-1177, :1295-1296 — possibly stale since later runs (queue: gated run 2026-09-23; W4 2026-09-24).
+- **HW.N554** ASSUME · `tests_hardware/README.md:1074-1081` — "**Honesty note - neither test has been
+  run against real hardware yet.**" — Seventh-pass tests flagged unverified; same notes at :1147-1149,
+  :1185-1186, :1306-1307 — possibly stale since later runs (queue: gated run 2026-09-23; W4 2026-09-24).
   · related: HW.T16 (low) · [H08]
-- **HW.N555** LIMIT · `tests_hardware/README.md:1088-1094` — "fires at exactly ONE fixed offset (0.3s
+- **HW.N555** LIMIT · `tests_hardware/README.md:1097-1103` — "fires at exactly ONE fixed offset (0.3s
   in) - the one-write budget makes a real multi-offset sweep structurally impossible" — SCD30
   write-vs-siblings has no timing sweep. · [H08]
-- **HW.N556** DRIFT · `tests_hardware/README.md:1096-1098` — "(i2c0: BMP3xx alone; i2c1:
+- **HW.N556** DRIFT · `tests_hardware/README.md:1105-1107` — "(i2c0: BMP3xx alone; i2c1:
   SCD30+SGP40+ISL29125)" — dev_legacy/README.md:48 lists an MPRLS on I2C0. · covered-by: HW.S12 · [H08]
-- **HW.N557** MIRROR · `tests_hardware/README.md:1107-1111` — "that file's module docstring stated the
+- **HW.N557** MIRROR · `tests_hardware/README.md:1116-1120` — "that file's module docstring stated the
   invariant; nothing enforced it, which is why it drifted" — On-target `KNOWN_ADDRESSES` table is a
-  hand-kept mirror of device addresses (SPECIFICATION.md:5970 checklist), unenforced. · related: HW.S12,
+  hand-kept mirror of device addresses (SPECIFICATION.md:5983 checklist), unenforced. · related: HW.S12,
   HW.T08 · [H08]
-- **HW.N558** SETTLED · `tests_hardware/README.md:1230-1240` — "Confirmed structural exceptions (no fix
+- **HW.N558** SETTLED · `tests_hardware/README.md:1239-1249` — "Confirmed structural exceptions (no fix
   possible" — `lightCmdLED`, WS2812 timing, SCD30 IRQ/same-device write have no bench equivalent. ·
   related: HW.T09 · [H08]
-- **HW.N559** LIMIT · `tests_hardware/README.md:1291-1293` — "SGP40's `SGPResetVOC` push is a thin test
+- **HW.N559** LIMIT · `tests_hardware/README.md:1302-1304` — "SGP40's `SGPResetVOC` push is a thin test
   (it never asserts the reset's own effect)" — Known thin test. · related: HW.T05 · [H08]
-- **HW.N560** SETTLED · `tests_hardware/README.md:1298-1312` — "**Standing design, project owner's own
+- **HW.N560** SETTLED · `tests_hardware/README.md:1309-1323` — "**Standing design, project owner's own
   choice** (broadened from SCD30-only to all persistence, 2026-09-17)" — Two-flag persistence gate,
   AND-gated in code. · covered-by: HW.T13 · [H08]
-- **HW.N561** SETTLED · `tests_hardware/README.md:1314-1323` — "the write a test OWNS, not one it is
+- **HW.N561** SETTLED · `tests_hardware/README.md:1325-1334` — "the write a test OWNS, not one it is
   reached through" — Prerequisite writes stay unmarked; pinned by
   `tests_scripts/test_persistence_write_marker_completeness.py`. · covered-by: HW.T01 · [H08]
-- **HW.N562** MIRROR · `tests_hardware/README.md:1328-1331` — "(`SGPResetVOC`, `ISLCalibrate` today —
+- **HW.N562** MIRROR · `tests_hardware/README.md:1339-1342` — "(`SGPResetVOC`, `ISLCalibrate` today —
   derive that set from the tags, never from this list going stale)" — Dispatch-only field list in prose
   mirrors `@web dispatch=true` tags; FRAM declared out of wear scope ("effectively unbounded"). ·
   related: HW.T01 · [H08]
-- **HW.N563** RISK · `tests_hardware/README.md:1342-1349` — "A plain
+- **HW.N563** RISK · `tests_hardware/README.md:1353-1360` — "A plain
   `scripts/run_bench_hardware_suite.sh` spends the prerequisite ones" — Default bench run spends flash
   writes (`joined_hotspot` stage-0/7, `_recover_stale_dut_credentials()`). · related: HW.T01 · [H08]
-- **HW.N564** DRIFT · `tests_hardware/README.md:1354` — "(13 of the bench tier's 73 tests, 9 of the
+- **HW.N564** DRIFT · `tests_hardware/README.md:1365` — "(13 of the bench tier's 73 tests, 9 of the
   flash tier's 51, as of this writing" — Queue :73 says 85 bench tests. · covered-by: HW.S17 · [H08]
-- **HW.N565** INVAR · `tests_hardware/README.md:1360-1378` — "`pytest_collection_modifyitems()` is the
+- **HW.N565** INVAR · `tests_hardware/README.md:1371-1389` — "`pytest_collection_modifyitems()` is the
   single deselection point ... No test checks either flag inline." — Marker placement derived from
   fixture dependents; `scd30_continuous_measurement_triggered` raises without the flag as backstop. ·
   covered-by: HW.T13 · [H08]
-- **HW.N566** DRIFT · `tests_hardware/README.md:560-562` — "the same SSID (`\"SensorNode\"`, the config
+- **HW.N566** DRIFT · `tests_hardware/README.md:569-571` — "the same SSID (`\"SensorNode\"`, the config
   default)" — Hostname/hotspot SSID default is now `SensorStation<Name>` (devices/dev.toml:6). ·
   related: PAR.S11 (low) · [H08]
 
@@ -2167,143 +2169,247 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
 - **HW.N567** TODO · `REAL_HARDWARE_TEST_QUEUE.md:3-6` — "each row is deleted once its result is
   migrated ... and the file goes when the last row does" — Temporary doc; deletion trigger = last row
   migrated. · related: HW.T10 · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N568** SETTLED · `REAL_HARDWARE_TEST_QUEUE.md:8-11` — "**Nothing here authorizes anything.**" —
   Queue is not a go-ahead; README is the technical reference. · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N569** ASSUME · `REAL_HARDWARE_TEST_QUEUE.md:21` — "**30 rows owed.**" — Dated count (matches the
   30 IDs listed at the snapshot: D3 S3b T1 T2 T4 G8 N2 N3 R1 R2 R4-R7 R9 R13 G1 G3 G4 G6 G12 H1 S4 M1 F1
   F17 F18 W3 W4 W5). · related: DOC.T08 (low) · [H08]
+  ⟨4dc80ef: D3 standing answer, kept in BACKLOG.md "Real-hardware work still owed" ("How a sitting
+  runs"); F1 verified 2026-09-25, row retired (6f7eef7); two loose ends are a BACKLOG.md deferred entry;
+  F17 open: BACKLOG.md item 44; F18 owner decision open: open in BACKLOG.md "Real-hardware work still
+  owed" (F18); G1 scratched by the owner 2026-09-25: src/ is never changed only for a test (230a8df;
+  BACKLOG.md:92-94); G12 done 2026-09-25: uart_driver_read_never_blocks_the_loop.py, 7/7 (2f48f86); G3
+  done 2026-09-25: reboot_fallback_starves_the_watchdog.py + test_watchdog_starvation.py, 3/3 (79423dd);
+  G4 scratched by the owner 2026-09-25: src/ is never changed only for a test (230a8df;
+  BACKLOG.md:92-94); G6 decided (adapt now, measure later): BACKLOG.md item 12 and "Still owed
+  elsewhere"; G8 retired 2026-09-25: covered by test_serving_sweep_at_the_reactive_default (2f48f86); H1
+  open: BACKLOG.md chroot entry ("Still owed elsewhere"); M1 open in BACKLOG.md "Real-hardware work
+  still owed" (M1 + S3b); N2 verified on silicon 2026-09-25, row retired (6f7eef7); SPECIFICATION.md L
+  records it; N3 needs a babbling peer the bench lacks: open in BACKLOG.md "Real-hardware work still
+  owed" (R13 + N3); R1 closed 2026-09-25: BACKLOG 30 not reproduced (18/18 clean), item and row retired
+  (79423dd); R13 needs a babbling peer the bench lacks: open in BACKLOG.md "Real-hardware work still
+  owed" (R13 + N3); R2 measured 2026-09-25: BACKLOG.md items 24 and 32; R4 done 2026-09-25 (zero-wear,
+  14.58 s at three readers), row retired (6e40e27); R7 measured 2026-09-25 on silicon, retired into
+  SPECIFICATION.md A.7 (38b270d); R9 shadow half confirmed on silicon; Overrange half rides S3b
+  (BACKLOG.md ISL29125 open question); S3b open in BACKLOG.md "Real-hardware work still owed" (M1 +
+  S3b); S4 open: BACKLOG.md "Real-hardware re-test of the segfault fix" (the 6 h soak); T1 measured
+  2026-09-25, owner to close: open in BACKLOG.md "Real-hardware work still owed" (T1); T2 done
+  2026-09-25, row retired (6e40e27); T4 measured 2026-09-25, owner decisions open: open in BACKLOG.md
+  "Real-hardware work still owed" (T4, holds A6's script); W3 measured like for like 2026-09-25 (+17 %),
+  owner judgement: open in BACKLOG.md "Real-hardware work still owed" (W3); W4 done clean 2026-09-24/25,
+  row retired (851e816); W5 done 2026-09-25, SPECIFICATION.md I.3 corrected to the measured case
+  (6e40e27)⟩
 - **HW.N570** ASSUME · `REAL_HARDWARE_TEST_QUEUE.md:46-48` — "`dev` image of tree `3062cc7`, `buildDate 2026-09-25T07:31:00Z`
   ... A sitting is in progress" — Board state duplicated in the handover (:17-18); "Check `buildDate`
   against the tree every time." · covered-by: DOC.S15 · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N571** TODO · `REAL_HARDWARE_TEST_QUEUE.md:54-55` — "this is the script that stranded the bench,
   and the fix is structural but still unverified on silicon" — F1 in the one-sitting shortlist. ·
   related: HW.S09 · [H08]
+  ⟨4dc80ef: F1 verified 2026-09-25, row retired (6f7eef7); two loose ends are a BACKLOG.md deferred
+  entry⟩
 - **HW.N572** SETTLED · `REAL_HARDWARE_TEST_QUEUE.md:66-74` — "**ANSWERED 2026-09-22: yes, after a clean
   default run.**" — D1 (spend flash/NVM writes only after a green default run) and D2 (rig in place) are
   standing owner answers, not re-asked. · related: HW.T13 · [H08]
+  ⟨4dc80ef: D1 standing answer, kept in BACKLOG.md "Real-hardware work still owed" ("How a sitting
+  runs"); D2 standing answer, kept in BACKLOG.md "Real-hardware work still owed" ("How a sitting runs")⟩
 - **HW.N573** DRIFT · `REAL_HARDWARE_TEST_QUEUE.md:73` — "A default run deselects 13 of the bench tier's
-  85 tests and 9 of the flash tier's 51" — tests_hardware/README.md:1354 says 73 bench tests. ·
+  85 tests and 9 of the flash tier's 51" — tests_hardware/README.md:1365 says 73 bench tests. ·
   covered-by: HW.S17 · [H08]
+  ⟨4dc80ef: D1 standing answer, kept in BACKLOG.md "Real-hardware work still owed" ("How a sitting
+  runs")⟩
 - **HW.N574** OPENQ · `REAL_HARDWARE_TEST_QUEUE.md:75` — "| D3 — **Which firmware image.**" | D3 status
   OPEN: confirmed every sitting; always a `dev` build of the tree under test. · related: HW.T19 · [H08]
+  ⟨4dc80ef: D3 standing answer, kept in BACKLOG.md "Real-hardware work still owed" ("How a sitting
+  runs")⟩
 - **HW.N575** INVAR · `REAL_HARDWARE_TEST_QUEUE.md:87-93` — "An unexplained entry is evidence only if
   the board's recent history allows it to be." — Run sheet Step 1: save `errcount` verbatim before
   anything writes; ask what last ran against the board. · covered-by: HW.T17 · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N576** ASSUME · `REAL_HARDWARE_TEST_QUEUE.md:104-106` — "Both device-script fixes and the
   watchdog-starvation banner passed here on 2026-09-19" — Dated baseline for Step 4. · - (low) · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N577** ASSUME · `REAL_HARDWARE_TEST_QUEUE.md:115-116` — "The last gated run (2026-09-23, clean,
   archive §7R.2) was image A, not the current tree." — Wear-gated run owed on the current tree. ·
   related: HW.T16 · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N578** TODO · `REAL_HARDWARE_TEST_QUEUE.md:141` — "| S3b — ... | OPEN — D2 answered yes,
   2026-09-22: the rig is in place |" | S3b OPEN: `--allow-neopixel-sweep` light programs (~10 min),
   after M1. · [H08]
+  ⟨4dc80ef: D2 standing answer, kept in BACKLOG.md "Real-hardware work still owed" ("How a sitting
+  runs"); M1 open in BACKLOG.md "Real-hardware work still owed" (M1 + S3b); S3b open in BACKLOG.md
+  "Real-hardware work still owed" (M1 + S3b)⟩
 - **HW.N579** TODO · `REAL_HARDWARE_TEST_QUEUE.md:142` — "setting up and writing down the rig geometry
   S3b depends on" — M1 OPEN: interactive manual rig/geometry run. · [H08]
+  ⟨4dc80ef: M1 open in BACKLOG.md "Real-hardware work still owed" (M1 + S3b); S3b open in BACKLOG.md
+  "Real-hardware work still owed" (M1 + S3b)⟩
 - **HW.N580** TODO · `REAL_HARDWARE_TEST_QUEUE.md:143` — "A real long-duration memory-soak run has still
-  never been executed" — S4 OPEN; cites README.md's "Further reading", which (README.md:780-783) says it
+  never been executed" — S4 OPEN; cites README.md's "Further reading", which (README.md:767-770) says it
   is tracked in BACKLOG.md. · related: HW.S14 · [H08]
+  ⟨4dc80ef: S4 open: BACKLOG.md "Real-hardware re-test of the segfault fix" (the 6 h soak)⟩
 - **HW.N581** RISK · `REAL_HARDWARE_TEST_QUEUE.md:151` — "**A6's timing script is not committed and this
   is the only copy.**" — The T4 instrument exists only in this temporary file (lost if the file is
   deleted before T4 decides). · [H08]
+  ⟨4dc80ef: A6 script kept only in BACKLOG.md "Real-hardware work still owed" (T4); T4 measured
+  2026-09-25, owner decisions open: open in BACKLOG.md "Real-hardware work still owed" (T4, holds A6's
+  script)⟩
 - **HW.N582** TODO · `REAL_HARDWARE_TEST_QUEUE.md:228` —
   "`tests_hardware/bench/test_bus_concurrency_under_api_load.py`'s six were last run on the **A-only**
   arm" — T2 PARTIAL: bus-hazard tier 4 on A+B code; three tests need `--allow-persistence-writes`. ·
   [H08]
+  ⟨4dc80ef: T2 done 2026-09-25, row retired (6e40e27)⟩
 - **HW.N583** TODO · `REAL_HARDWARE_TEST_QUEUE.md:244` — "a silently skipped chunk is invisible today
   because the call still answers `200`" — R4 OPEN: `ResetErrors` completeness under contention never
   checked; needs a gated run. · related: HW.T02 · [H08]
+  ⟨4dc80ef: R4 done 2026-09-25 (zero-wear, 14.58 s at three readers), row retired (6e40e27)⟩
 - **HW.N584** RISK · `REAL_HARDWARE_TEST_QUEUE.md:260` — "Residual, the owner's to weigh: the scratch
   write still spends one flash cycle, gated only by CLAUDE.md's go-ahead rule" — F1 FIXED 2026-09-18,
   unverified on silicon; the script once stranded the bench. · related: HW.S09 · [H08]
+  ⟨4dc80ef: F1 verified 2026-09-25, row retired (6f7eef7); two loose ends are a BACKLOG.md deferred
+  entry⟩
 - **HW.N585** OPENQ · `REAL_HARDWARE_TEST_QUEUE.md:261` — "later resets overwrote `reset_cause()`, so it
   is recorded, not explained" — F17 OPEN: USB serial drop mid-upload unexplained; hotspot fallbacks
   explained as stale-AP-station after un-kicked WDT resets; PERIODIC hotspot timer returned to STA after
   8 min. · [H08]
+  ⟨4dc80ef: F17 open: BACKLOG.md item 44⟩
 - **HW.N586** SETTLED · `REAL_HARDWARE_TEST_QUEUE.md:275` — "**DECIDED 2026-09-22: adapt the method,
   defer the measurement.**" — G6: rollover test's `board.exec()` poll cannot measure (every exec → WDT
   reset); a non-exec method is owed, the ~12.4-day run deliberately unscheduled. · related: XCUT.T25 ·
   [H08]
+  ⟨4dc80ef: G6 decided (adapt now, measure later): BACKLOG.md item 12 and "Still owed elsewhere"⟩
 - **HW.N587** DRIFT · `REAL_HARDWARE_TEST_QUEUE.md:291-293` — "these two get no dedicated sitting" —
   Says "these two" but the table lists three rows (W3, W4, W5). · - (low) · [H08]
+  ⟨4dc80ef: W3 measured like for like 2026-09-25 (+17 %), owner judgement: open in BACKLOG.md
+  "Real-hardware work still owed" (W3); W4 done clean 2026-09-24/25, row retired (851e816); W5 done
+  2026-09-25, SPECIFICATION.md I.3 corrected to the measured case (6e40e27)⟩
 - **HW.N588** TODO · `REAL_HARDWARE_TEST_QUEUE.md:296` — "**RAN 2026-09-24, not clean; re-run owed on
   the current tree.**" — W4: 103 passed/2 failed (one test bug fixed, one USB drop); `c20f80b` NTP fix
   and `assert_no_task_ended` checks unverified on silicon then. · [H08]
+  ⟨4dc80ef: W4 done clean 2026-09-24/25, row retired (851e816)⟩
 - **HW.N589** SETTLED · `REAL_HARDWARE_TEST_QUEUE.md:309-312` — "**The PR itself was closed unmerged on
   2026-09-18 by owner decision**" — PR #84's `--gc-policy`/`--memory-pressure` tooling is not coming. ·
   [H08]
+  ⟨4dc80ef: G10 excluded on purpose (arduino/ out of scope): BACKLOG.md "Still owed elsewhere"⟩
 - **HW.N590** SETTLED · `REAL_HARDWARE_TEST_QUEUE.md:313-318` — "**Owner, 2026-09-22: no hardware will
   be bought for this, so the rig stays as it is**" — GPIO fault-injection harness and second WiFi client
   permanently manual (BACKLOG 8). · related: HW.T09 · [H08]
+  ⟨4dc80ef: G10 excluded on purpose (arduino/ out of scope): BACKLOG.md "Still owed elsewhere"⟩
 - **HW.N591** SETTLED · `REAL_HARDWARE_TEST_QUEUE.md:319-321` — "Answered and migrated (SPECIFICATION.md
   Part A.7, BACKLOG 24). Do not re-measure." — Round 1's three requests. · [H08]
+  ⟨4dc80ef: G10 excluded on purpose (arduino/ out of scope): BACKLOG.md "Still owed elsewhere"⟩
 - **HW.N592** INVAR · `REAL_HARDWARE_TEST_QUEUE.md:333-334` — "a persistence check built on it passes
   vacuously `0 → 0`" — `kick_all_stations()` deauth logs nothing; use a real `ap_down()` outage. ·
   related: HW.T05 · [H08]
+  ⟨4dc80ef: trap kept: SPECIFICATION.md:1856-1857 (deauth logs nothing; use bench.ap_down())⟩
 - **HW.N593** SETTLED · `REAL_HARDWARE_TEST_QUEUE.md:335-338` — "keeps a recovery dead-man's-switch
   armed for the whole risk window" — Host network safety rule (cost the Pi4 its SSH once). · covered-by:
   HW.T04 · [H08]
+  ⟨4dc80ef: trap kept: CLAUDE.md hard rule and SPECIFICATION.md B.13 (:1025)⟩
 - **HW.N594** RISK · `REAL_HARDWARE_TEST_QUEUE.md:339-341` — "a failure between them used to leave the
   board permanently in hotspot mode ... It has happened." — Role-reversal stage 0 clears the persisted
   SSID. · covered-by: HW.S10 · [H08]
+  ⟨4dc80ef: trap kept: tests_hardware/README.md:531, 1357 (stage-0 SSID clear, stage-7 restore)⟩
 - **HW.N595** INVAR · `REAL_HARDWARE_TEST_QUEUE.md:366-375` — "a post-burst health check written as a
   bare `assert fetch(...) == 200` is the bug, not the server" — Post-burst slot drain:
   `ConnectionResetError` 2 runs in 3, same request OK 75 ms later; use `wait_until()`. · related:
   PERF.T02 · [H08]
+  ⟨4dc80ef: trap kept: SPECIFICATION.md:5295-5305 (post-burst lag, wait_until())⟩
 
 ## HARDWARE_TEST_HANDOVER.md (snapshot only; sitting IN PROGRESS in another session)
 
 - **HW.N596** TODO · `HARDWARE_TEST_HANDOVER.md:3-7` — "A per-effort throwaway: delete it once the
   sitting's results are migrated." — Temporary doc; queue stays the single owed list, yet board state
   and running order are duplicated here. · covered-by: DOC.S15 · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N597** ASSUME · `HARDWARE_TEST_HANDOVER.md:17-20` — "**This sitting (2026-09-24/25) is still in
   progress**" — Board on image of tree `3062cc7` (`buildDate 2026-09-25T07:31:00Z`), `DebugLevel` 5;
   results are not final. · related: HW.T18 · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N598** TODO · `HARDWARE_TEST_HANDOVER.md:35, 43` — "a red here is a new finding, not a flaky
   test: read the SYSTEM log before anything else" — Webserver header/reset-guard/`MemoryError`
   slot-release changes and `assert_no_task_ended` still owe their first full bench run (W4 re-run). ·
   [H08]
+  ⟨4dc80ef: W4 done clean 2026-09-24/25, row retired (851e816)⟩
 - **HW.N599** INVAR · `HARDWARE_TEST_HANDOVER.md:49-50` — "Stop and report if a step goes red in a way
   its row does not anticipate; do not work around it." — Sitting discipline. · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N600** DRIFT · `HARDWARE_TEST_HANDOVER.md:57-59` — "**G11, code at the sitting** ... (the queue
   row has the two lines)" — No G11 row exists in REAL_HARDWARE_TEST_QUEUE.md at the snapshot (dangling
   row ID). · related: HW.T10, DOC.S06 · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N601** DRIFT · `HARDWARE_TEST_HANDOVER.md:65-66` — "Then **W3**:
   `tests_hardware/bench/test_end_to_end_timing.py`." — Queue W3 (:295) says that test "times no
   `/status`" and W3 was measured directly instead. · related: HW.T10 · [H08]
+  ⟨4dc80ef: W3 measured like for like 2026-09-25 (+17 %), owner judgement: open in BACKLOG.md
+  "Real-hardware work still owed" (W3)⟩
 - **HW.N602** INVAR · `HARDWARE_TEST_HANDOVER.md:114-115` — "**Before any `ResetErrors`**, save
   `errcount` again — it is the only record of what the sitting itself logged." — FRAM-evidence
   discipline inside a sitting. · related: HW.S06 · [H08]
+  ⟨4dc80ef: W4 done clean 2026-09-24/25, row retired (851e816)⟩
 - **HW.N603** RISK · `HARDWARE_TEST_HANDOVER.md:121-122` — "Raw logs sit in the session's scratchpad
   only; what matters is here." — Raw evidence of the sitting is not preserved in the repo. · related:
   HW.T16 · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N604** ASSUME · `HARDWARE_TEST_HANDOVER.md:126-130` — "`3062cc7` (functionally the tree as of
   this commit)" — Three images used (`bf62580`, `dd80eef`, `3062cc7`); figures tied to different trees.
   · related: HW.T19 · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N605** ASSUME · `HARDWARE_TEST_HANDOVER.md:132-133` — "NTP `E21` (the NTP check, 5.3), WIFI `W6`
   ×5 and SGP40 `W13` ×9" — Board `errcount` as of last read (sitting-induced entries). · related: HW.T17
   · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N606** TODO · `HARDWARE_TEST_HANDOVER.md:139` — "**Re-run the whole bench tier on the current
   image**" — W4 re-run is the gate for the wear-gated step. · [H08]
+  ⟨4dc80ef: W4 done clean 2026-09-24/25, row retired (851e816)⟩
 - **HW.N607** TODO · `HARDWARE_TEST_HANDOVER.md:143` — "The board prints `GC_THRESHOLD=` but the test
   does not echo it" — T1: echo `GC_THRESHOLD=` in the test; owner to close T1 or name the comparison
   position. · related: HW.T16 · [H08]
+  ⟨4dc80ef: T1 measured 2026-09-25, owner to close: open in BACKLOG.md "Real-hardware work still owed"
+  (T1)⟩
 - **HW.N608** ASSUME · `HARDWARE_TEST_HANDOVER.md:152-155` — "**PASS**: after a real fallback the board
   returned to STA by itself after the 8 min window" — First silicon runs: NTP never-ends (`c20f80b`),
   radio byte bounds (`b5450aa`), PERIODIC hotspot timer, G11 flash tier 36 passed/3 skipped/12
   deselected. · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N609** TODO · `HARDWARE_TEST_HANDOVER.md:167-171` — "Kicking 50 s early does not help — the board
   re-associates in between." — Kick must immediately precede a reset; suggested README note and ad-hoc
   helper not yet done (README :385-386 lacks it). · [H08]
+  ⟨4dc80ef: F18 owner decision open: open in BACKLOG.md "Real-hardware work still owed" (F18)⟩
 - **HW.N610** RISK · `HARDWARE_TEST_HANDOVER.md:176-178` — "An `mpremote` attach within ~1 s of boot
   parks the board at the REPL with no watchdog armed" — Board never recovers on its own; suggested
   addition to traps/README not yet made. · related: HW.T06, XCUT.T20 · [H08]
+  ⟨4dc80ef: F18 owner decision open: open in BACKLOG.md "Real-hardware work still owed" (F18)⟩
 - **HW.N611** OPENQ · `HARDWARE_TEST_HANDOVER.md:179` — "**F17, USB drop mid-upload during W4**: still
   unexplained, not reproduced." — Open anomaly. · [H08]
+  ⟨4dc80ef: F17 open: BACKLOG.md item 44; W4 done clean 2026-09-24/25, row retired (851e816)⟩
 - **HW.N612** INVAR · `HARDWARE_TEST_HANDOVER.md:180-181` — "Ad-hoc scripts now cap retries and run
   under `timeout`." — After R2's unbounded retry ran 1 h 40 min. · [H08]
+  ⟨4dc80ef: F17 open: BACKLOG.md item 44; R2 measured 2026-09-25: BACKLOG.md items 24 and 32⟩
 - **HW.N613** TODO · `HARDWARE_TEST_HANDOVER.md:183-190` — "### 5.5 Still owed this sitting, shortest
   first" — W4 re-run (~50 min), gated step 6 (~55 min, wear), F1/N2 (one write each), M1+S3b (owner
   present), R13+N3, step-9 scripts, owner decisions. · related: HW.T18 · [H08]
+  ⟨4dc80ef: F1 verified 2026-09-25, row retired (6f7eef7); two loose ends are a BACKLOG.md deferred
+  entry; M1 open in BACKLOG.md "Real-hardware work still owed" (M1 + S3b); N2 verified on silicon
+  2026-09-25, row retired (6f7eef7); SPECIFICATION.md L records it; N3 needs a babbling peer the bench
+  lacks: open in BACKLOG.md "Real-hardware work still owed" (R13 + N3); R13 needs a babbling peer the
+  bench lacks: open in BACKLOG.md "Real-hardware work still owed" (R13 + N3); S3b open in BACKLOG.md
+  "Real-hardware work still owed" (M1 + S3b); W4 done clean 2026-09-24/25, row retired (851e816)⟩
 
 ## dev_legacy/README.md
 
@@ -2319,7 +2425,7 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
   **BMP384**" — Same file :629 says "BMP390 chip_id=0x50" for the same part. · related: HW.T07, SENS.S20
   · [H08]
 - **HW.N617** DRIFT · `dev_legacy/README.md:48` — "| MPRLS — I2C0 | reset_pin=GPIO10, eoc_pin=GPIO7 |" |
-  tests_hardware/README.md:1098 says i2c0 holds BMP3xx alone. · covered-by: HW.S12 · [H08]
+  tests_hardware/README.md:1107 says i2c0 holds BMP3xx alone. · covered-by: HW.S12 · [H08]
 - **HW.N618** SETTLED · `dev_legacy/README.md:49` — "**externally pulled up on this board** — confirmed
   by the project owner directly, which is why `devices/dev.toml` sets `irq_pull_up = false`" —
   Owner-confirmed rig fact mirrored in `devices/dev.toml`. · - (low) · [H08]
@@ -2723,151 +2829,151 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
 
 ## SPECIFICATION.md Part B.11 (Building this project's firmware, 931-984)
 
-- **HW.N708** LIMIT · `SPECIFICATION.md:958-959` — "Confirmed working on real hardware for `dev`; not
+- **HW.N708** LIMIT · `SPECIFICATION.md:962-963` — "Confirmed working on real hardware for `dev`; not
   yet re-confirmed for `wozi` (never physically flashed)." — wozi boot entry never proven on silicon. ·
   related: PAR.S13 · [H12]
-- **HW.N709** SUPPRESS · `SPECIFICATION.md:981` — "`tests_hardware/flash/test_toolchain_flash_boot.py`
+- **HW.N709** SUPPRESS · `SPECIFICATION.md:985` — "`tests_hardware/flash/test_toolchain_flash_boot.py`
   (`--allow-flash-cycle`-gated)" — Opt-in gate on the only on-silicon boot check. · related: HW.S01 ·
   [H12]
 
 ## SPECIFICATION.md Part B.13 (Bench network safety, 1016-1061)
 
-- **HW.N710** INVAR · `SPECIFICATION.md:1018-1021` — "must keep a recovery dead-man's-switch
+- **HW.N710** INVAR · `SPECIFICATION.md:1022-1025` — "must keep a recovery dead-man's-switch
   continuously armed for the entire risk window — never touch live network state with none armed" —
   Operator rule; `ensure_bench_bridge()` itself arms none. · covered-by: TOOL.S03 · [H12]
-- **HW.N711** ASSUME · `SPECIFICATION.md:1021-1023` — "One arm covering a whole atomic sequence is
+- **HW.N711** ASSUME · `SPECIFICATION.md:1025-1027` — "One arm covering a whole atomic sequence is
   equivalent protection to per-command re-arming, provided the sequence's real timing is measured, not
   guessed." — Conditional equivalence claim. · related: TOOL.T03 · [H12]
-- **HW.N712** MIRROR · `SPECIFICATION.md:1033-1034` — "`dev_legacy/README.md`'s manual recipe carries
+- **HW.N712** MIRROR · `SPECIFICATION.md:1037-1038` — "`dev_legacy/README.md`'s manual recipe carries
   the identical fix." — MAC-pinning in code ↔ manual recipe doc. · [H12]
-- **HW.N713** SETTLED · `SPECIFICATION.md:1036-1038` — "Recreate this script fresh in a session's own
+- **HW.N713** SETTLED · `SPECIFICATION.md:1040-1042` — "Recreate this script fresh in a session's own
   scratchpad each time (deliberately not a committed file)" — Recovery script intentionally uncommitted.
   · [H12]
-- **HW.N714** ASSUME · `SPECIFICATION.md:1045-1048` — "nmcli connection modify \"Wired connection 1\"
+- **HW.N714** ASSUME · `SPECIFICATION.md:1049-1052` — "nmcli connection modify \"Wired connection 1\"
   autoconnect yes" — Hardcoded NM profile name assumed present on the Pi. · covered-by: TOOL.S03 · [H12]
-- **HW.N715** ASSUME · `SPECIFICATION.md:1055-1059` — "a real run showed success in ~1s but no DHCP
+- **HW.N715** ASSUME · `SPECIFICATION.md:1059-1063` — "a real run showed success in ~1s but no DHCP
   lease/default route until ~30s later, STP delay" — Single observed timing informing the arm window. ·
   [H12]
 
 ## SPECIFICATION.md Part C.7 (Error handling & logging contract, 1807-1891)
 
-- **HW.N716** INVAR · `SPECIFICATION.md:1810-1813` — "Known pitfall: a FRAM-backed history survives
+- **HW.N716** INVAR · `SPECIFICATION.md:1814-1817` — "Known pitfall: a FRAM-backed history survives
   everything except an explicit reset, including a reflash — before treating a persisted
   `errcount`/history entry as evidence from *this* run, clear it first" — Tension with CLAUDE.md's
   read-FRAM-logs-BEFORE-clearing rule; order of operations is caller discipline. · related: HW.T02 ·
   [H12]
-- **HW.N717** ASSUME · `SPECIFICATION.md:1845-1849` — "WIFI's FRAM-backed log read `counter=3`, history
+- **HW.N717** ASSUME · `SPECIFICATION.md:1849-1853` — "WIFI's FRAM-backed log read `counter=3`, history
   `W5, W4, W4` before an abrupt `hard_reset()` and byte-identical values after it" — Single dated
   (2026-09-17) silicon observation. · related: HW.T16 · [H12]
 
 ## SPECIFICATION.md Part C.8 (Concurrency & locking model, 2016-2188)
 
-- **HW.N718** INVAR · `SPECIFICATION.md:2093-2098` — "ideally at most one real write per bus-hazard test
+- **HW.N718** INVAR · `SPECIFICATION.md:2101-2106` — "ideally at most one real write per bus-hazard test
   group ... must construct the real protocol-layer driver directly (the DUT), never the `*_Reader`
   layer" — Owner-mandated write-safety constraints. · related: HW.T01 · [H12]
-- **HW.N719** INVAR · `SPECIFICATION.md:2099-2101` — "Extend the worker set only with requests safe
+- **HW.N719** INVAR · `SPECIFICATION.md:2107-2109` — "Extend the worker set only with requests safe
   under both constraints above (`GET` always safe; `PUT` only if documented
   command-only/never-persisted)" — "GET always safe" vs ISL GET writing chip/FRAM (SENS.S24). · related:
   SENS.S24 · [H12]
-- **HW.N720** SUPPRESS · `SPECIFICATION.md:2128-2138` — "SCD30's own on-chip NVM write is opt-in, off by
+- **HW.N720** SUPPRESS · `SPECIFICATION.md:2136-2146` — "SCD30's own on-chip NVM write is opt-in, off by
   default ... `--allow-persistence-writes`/`@pytest.mark.persistence_write` ...
   `--allow-scd30-extra-write`/`@pytest.mark.scd30_extra_write`, that is AND-gated" — Wear gates
   (deselect, not skip). · covered-by: HW.T13 · [H12]
-- **HW.N721** LIMIT · `SPECIFICATION.md:2139-2144` — "Real hardware has no literal equivalent of the
+- **HW.N721** LIMIT · `SPECIFICATION.md:2147-2152` — "Real hardware has no literal equivalent of the
   mock tier's `asyncio.sleep(0)`-count offset sweep ... fires at one deliberately chosen representative
   offset instead" — Real-hardware timing sweep weaker than mock/twin. · [H12]
-- **HW.N722** MIRROR · `SPECIFICATION.md:2147-2152` — "whatever gets added to
+- **HW.N722** MIRROR · `SPECIFICATION.md:2155-2160` — "whatever gets added to
   `tests_hardware/flash/test_bus_concurrency.py` gets a bench-tier counterpart ... never left as a
   silent asymmetry" — flash ↔ bench tier mirror obligation. · related: HW.T09 · [H12]
-- **HW.N723** DRIFT · `SPECIFICATION.md:2153-2155` — "No REST-layer path exists to the write at all —
+- **HW.N723** DRIFT · `SPECIFICATION.md:2161-2163` — "No REST-layer path exists to the write at all —
   e.g. SCD30 registers zero `_push_callbacks`" — Seed says SCD30 NVM is reachable over REST via its own
   setter dispatch. · covered-by: HW.S02 · [H12]
-- **HW.N724** ASSUME · `SPECIFICATION.md:2156-2162` — "SGP40's real general-call broadcast only fires
+- **HW.N724** ASSUME · `SPECIFICATION.md:2164-2170` — "SGP40's real general-call broadcast only fires
   from `SGP40_I2C._reset()`, itself only called from `initialize()` at setup time ... confirmed by
   reading the real call chain" — Structural-exception claim. · related: HW.T09 · [H12]
 
 ## SPECIFICATION.md Part C.11 / C.11.1 (Design decisions; conformance probe, 2310-2353)
 
-- **HW.N725** SUPPRESS · `SPECIFICATION.md:2346-2348` — "gated by
+- **HW.N725** SUPPRESS · `SPECIFICATION.md:2354-2356` — "gated by
   `tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_register_probe_matches_the_digital_twins_fake_chip`"
   — The only conformance check runs only on the gated flash tier. · [H12]
 
 ## SPECIFICATION.md Part E.6 / E.6.1-E.6.6 (Shared behaviours, real-hardware tier, 3090-3225)
 
-- **HW.N726** ASSUME · `SPECIFICATION.md:3104-3107` — "Both tiers run clean end to end on real hardware;
+- **HW.N726** ASSUME · `SPECIFICATION.md:3112-3115` — "Both tiers run clean end to end on real hardware;
   the earlier WiFi-reconnection flakiness ... is root-caused and mitigated" — Undated status claim. ·
   related: HW.T16 · [H12]
-- **HW.N727** SETTLED · `SPECIFICATION.md:3123-3130` — "Credential rotation is deliberately not a bench
+- **HW.N727** SETTLED · `SPECIFICATION.md:3131-3138` — "Credential rotation is deliberately not a bench
   capability (owner decision, 2026-09-22)" — Removed `rotate_ap_password()`. · [H12]
-- **HW.N728** LIMIT · `SPECIFICATION.md:3154-3157` — "a trailing soft reset only restores the
+- **HW.N728** LIMIT · `SPECIFICATION.md:3162-3165` — "a trailing soft reset only restores the
   *appearance* of normal operation ... only a genuine `hard_reset()` reliably resumes the live system" —
   Isolated-driver mode caveat. · related: HW.T06 · [H12]
-- **HW.N729** RISK · `SPECIFICATION.md:3165-3169` — "a failed real-credential PUT lands in
+- **HW.N729** RISK · `SPECIFICATION.md:3173-3177` — "a failed real-credential PUT lands in
   `_PHASE_DEACTIVATED` (a terminal state, A.4) ... hence the fixture's real `hard_reset()` fallback" —
   Role-reversal can strand WLAN deactivated. · covered-by: HW.S25 · [H12]
-- **HW.N730** ASSUME · `SPECIFICATION.md:3164-3165` — "a real, source-traced ~15-20s timing budget from
+- **HW.N730** ASSUME · `SPECIFICATION.md:3172-3173` — "a real, source-traced ~15-20s timing budget from
   a credential PUT to the DUT's first STA attempt" — Timing premise. · [H12]
-- **HW.N731** INVAR · `SPECIFICATION.md:3184-3191` — "every mock/digital-twin test that exercises
+- **HW.N731** INVAR · `SPECIFICATION.md:3192-3199` — "every mock/digital-twin test that exercises
   real-hardware-facing behavior needs a real-hardware equivalent, wherever technically possible" —
   Standing owner rule; review-only. · related: TEST.T06 · [H12]
-- **HW.N732** SETTLED · `SPECIFICATION.md:3196-3201` — "Only `dev` is ever physically bench-tested ...
+- **HW.N732** SETTLED · `SPECIFICATION.md:3204-3209` — "Only `dev` is ever physically bench-tested ...
   real-hardware parity for anything specific to one of them is structurally impossible" — Exception 1. ·
   [H12]
-- **HW.N733** DRIFT · `SPECIFICATION.md:3202-3207` — "SCD30 has zero REST-pushable fields
+- **HW.N733** DRIFT · `SPECIFICATION.md:3210-3215` — "SCD30 has zero REST-pushable fields
   (`asy_scd30_driver.py` registers no `_push_callbacks`), so no bench-tier `PUT` can ever reach its own
   NVM write" — Disputed: SCD30 dispatches PUTs via its own setters. · covered-by: HW.S02 · [H12]
-- **HW.N734** TODO · `SPECIFICATION.md:3218-3219` — "Revisit when that hardware exists." — Deferred
+- **HW.N734** TODO · `SPECIFICATION.md:3226-3227` — "Revisit when that hardware exists." — Deferred
   real-hardware UART fault injection. · [H12]
 
 ## SPECIFICATION.md Part F.5 — MicroPython 1.29 delta (intro)
 
-- **HW.N735** LIMIT · `SPECIFICATION.md:3673-3676` — "inducing a genuine RX overrun is not reachable
+- **HW.N735** LIMIT · `SPECIFICATION.md:3682-3685` — "inducing a genuine RX overrun is not reachable
   from Python, so its *consequence* is pinned instead (`device_scripts/fram_busy_status_lockout.py`)" —
   F.5.2's EIO path is never exercised on silicon, only its downstream consequence. · related: PLAT.T03 ·
   [H13]
 
 ## SPECIFICATION.md Part F.5.3 — Free wins in the 1.29 build
 
-- **HW.N736** SETTLED · `SPECIFICATION.md:3768-3774` — "**That test's thresholds changed on
+- **HW.N736** SETTLED · `SPECIFICATION.md:3777-3783` — "**That test's thresholds changed on
   2026-09-19**: the owner retired its 100,000 B free / 80,000 B contiguous floors" — Owner decision; now
   survivor volume ≤ 100,000 B, contiguity ≥ 32,768 B, nothing placed/sitting in top 16,384 B
   (`tests_hardware/flash/test_memory_stress.py`). · related: HW.T16 · [H13]
 
 ## SPECIFICATION.md Part H.5.1 — Definitions-file autogeneration
 
-- **HW.N737** INVAR · `SPECIFICATION.md:4435-4444` — "`tests_hardware/website_identity.py` runs
+- **HW.N737** INVAR · `SPECIFICATION.md:4447-4456` — "`tests_hardware/website_identity.py` runs
   `build_model()` + `generate_definitions()` ... Nothing is hardcoded: a new `[[instance]]` is covered
   the day it is declared" — Hardware-tier check that the served page matches the generator. · related:
   HW.T05 · [H13]
 
 ## SPECIFICATION.md Part H.7.1 — Connection lifetime and instruments
 
-- **HW.N738** INVAR · `SPECIFICATION.md:4653-4659` — "**A walk's per-connection dwell stays under
+- **HW.N738** INVAR · `SPECIFICATION.md:4665-4671` — "**A walk's per-connection dwell stays under
   `per_call_timeout_s`, and the whole walk under `outer_cap_s`**, or no ceiling is ever reached" —
   Instrument constraint; a violating instrument "fails silently, not loudly" (4634-4635). · related:
   HW.T12 · [H13]
 
 ## SPECIFICATION.md Part I.5 — Real-hardware confirmation
 
-- **HW.N739** ASSUME · `SPECIFICATION.md:5138-5141` — "a 120s always-run hammer test plus a
+- **HW.N739** ASSUME · `SPECIFICATION.md:5151-5154` — "a 120s always-run hammer test plus a
   `long_soak`-gated 600s variant) — nothing from this audit remains open pending hardware" — Closure
   claim for the 2026-09-07 audit. · related: HW.S14 · [H13]
 
 ## SPECIFICATION.md Part I.6 — Request-body cap (sits inside Part J)
 
-- **HW.N740** LIMIT · `SPECIFICATION.md:5220-5225` — "a socket cannot distinguish \"buffered then
+- **HW.N740** LIMIT · `SPECIFICATION.md:5233-5238` — "a socket cannot distinguish \"buffered then
   rejected\" from \"rejected unread\" ... The binding itself stays a mock-tier and source-level claim,
   never a hardware-confirmed one" — Hardware tier cannot prove the no-allocation property. · [H13]
-- **HW.N741** ASSUME · `SPECIFICATION.md:5227-5234` — "**Run on silicon, 2026-09-19** [HW]. W1-W4 pass
+- **HW.N741** ASSUME · `SPECIFICATION.md:5240-5247` — "**Run on silicon, 2026-09-19** [HW]. W1-W4 pass
   ... (2047 -> 200, 2048 -> 200, 2049 -> 413 ...)" — Dated bench result; cites queue rows W1-W5. ·
   related: HW.T16, DOC.T03 · [H13]
-- **HW.N742** ASSUME · `SPECIFICATION.md:5257-5273` — "Across the 96 concurrent requests ... **not one
+- **HW.N742** ASSUME · `SPECIFICATION.md:5270-5286` — "Across the 96 concurrent requests ... **not one
   was answered with the wrong status** ... 20 of 24 requests answered against a floor of 4" — Dated
   replay and silicon results. · related: HW.T16 · [H13]
 
 ## SPECIFICATION.md Part K.7 — devices/*.toml
 
-- **HW.N743** MIRROR · `SPECIFICATION.md:5892-5895, 5970-5971` — "The on-target sweep
+- **HW.N743** MIRROR · `SPECIFICATION.md:5905-5908, 5983-5984` — "The on-target sweep
   (`device_scripts/bus_topology_autodetect_and_hazard_sweep.py`) keeps its own address table ... needs
   the new address added by hand" — `KNOWN_ADDRESSES` ↔ `devices/*.toml`, hand-kept, no cross-check. ·
   related: HW.T08 · [H13]
@@ -2956,45 +3062,52 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
 - **HW.N767** ASSUME · `README.md:410-411` — "Collection-only sanity check - works with nothing attached
   at all, every fixture skips cleanly" — Presented as safe; the plan wants board-free checks confirmed
   with the owner at go-ahead. · related: HW.T14 · [H14]
-- **HW.N768** INVAR · `README.md:700-706` — "Each row is deleted once its result is migrated into the
+- **HW.N768** INVAR · `README.md:699-699` — "Each row is deleted once its result is migrated into the
   permanent docs ... It authorizes nothing" — Rows get deleted, but permanent code still cites row IDs.
   · related: HW.T10, DOC.S06 · [H14]
+  ⟨4dc80ef: README's queue entry removed with the file (03f8bcf)⟩
 
 ## BACKLOG.md
 
-- **HW.N769** INVAR · `BACKLOG.md:53-55` — "the write path is now gated behind
+- **HW.N769** INVAR · `BACKLOG.md:35-35` — "the write path is now gated behind
   @pytest.mark.persistence_write, so a default bench run deselects both arms" — Re-confirmation silently
   does not happen without `--allow-persistence-writes` (deselect, not skip). · related: HW.T13 · [H15]
-- **HW.N770** SETTLED · `BACKLOG.md:111-114` — "answered 2026-09-22: a structural exception until
+  ⟨4dc80ef: BACKLOG entry retired with R5 (6e40e27)⟩
+- **HW.N770** SETTLED · `BACKLOG.md:91-94` — "answered 2026-09-22: a structural exception until
   injection hardware exists" — The mock tier's ~20-scenario UART fault catalog stays a structural
   exception (SPEC E.6.6 fourth item). · related: HW.T09 · [H15]
-- **HW.N771** SETTLED · `BACKLOG.md:215-226` — "no hardware will be bought for this, so the rig stays as
+  ⟨4dc80ef: reworded: "Settled: ... a structural exception until injection hardware exists (2026-09-22,
+  Part E.6.6's fourth item)" (BACKLOG.md:90-92)⟩
+- **HW.N771** SETTLED · `BACKLOG.md:192-203` — "no hardware will be bought for this, so the rig stays as
   it is and both candidates are permanently [MANUAL]" — #8 GPIO fault harness / second WiFi client never
   built; re-open only as a new entry if fault hardware arrives; no software stand-in may claim the same
   coverage. · related: DOC.S05, DOC.S08 · [H15]
-- **HW.N772** ASSUME · `BACKLOG.md:234-236` — "independently verified rock-solid (28/28 trials, ~9.1s
+- **HW.N772** ASSUME · `BACKLOG.md:211-213` — "independently verified rock-solid (28/28 trials, ~9.1s
   each, zero variance)" — #9 closed stub; single-campaign figure for `kick_all_stations()` +
   `hard_reset()`. · [H15]
-- **HW.N773** LIMIT · `BACKLOG.md:358-362` — "Since 2026-09-19 the test retries a ceiling refusal, so a
+- **HW.N773** LIMIT · `BACKLOG.md:301-301` — "Since 2026-09-19 the test retries a ceiling refusal, so a
   clean run no longer answers this item" — The test's retry masks the symptom; only per-arm
   `CEILING_RETRIES` answers it. · [H15]
-- **HW.N774** TODO · `BACKLOG.md:364-388` — "Setting the bench budget waits on item 24's design fix
+  ⟨4dc80ef: BACKLOG 30 closed as not reproduced, item removed (R1, 79423dd)⟩
+- **HW.N774** TODO · `BACKLOG.md:302-327` — "Setting the bench budget waits on item 24's design fix
   (batched or concurrent reset) — the owner's decision." — #32: bench `ResetErrors` timeout raised 10→30
   s (`tests_hardware/error_log_helpers.py:14`) with no elapsed-time budget; a 25 s sweep would pass
   silently. · covered-by: PERF.T03 · [H15]
-- **HW.N775** OPENQ · `BACKLOG.md:390-403` — "recorded, not chased; each needs silicon" — #44: one
+- **HW.N775** OPENQ · `BACKLOG.md:329-343` — "recorded, not chased; each needs silicon" — #44: one
   silent reset in 1/9 peak-load boots (watchdog starvation first candidate); hotspot fallbacks (one
   explained as stale-AP-station); queue F17. · related: XCUT.T03, XCUT.S01 · [H15]
-- **HW.N776** TODO · `BACKLOG.md:654-677` — "the script still does not complete ... so it likely needs
+- **HW.N776** TODO · `BACKLOG.md:720-727` — "the script still does not complete ... so it likely needs
   run_isolated_expect_reset()" — `wifi_service_reconnect_repro.py` half-closed; queue §2A F1 (also its
   garbage-SSID incident). · related: HW.S09 · [H15]
-- **HW.N777** TODO · `BACKLOG.md:727-761` — "Still open: the real --tier long (6h) production-duration
+  ⟨4dc80ef: F1 verified 2026-09-25 (6f7eef7); the script still needs a watchdog-feeding wrapper:
+  BACKLOG.md "Two device-script loose ends" and tests_hardware/README.md:383-385⟩
+- **HW.N777** TODO · `BACKLOG.md:777-811` — "Still open: the real --tier long (6h) production-duration
   run itself" — Long real-HW memory soak never run (queue S4); 10-min `mid` passed 2026-09-08. ·
   related: HW.S14 · [H15]
-- **HW.N778** LIMIT · `BACKLOG.md:743-749` — "a real but coarser signal than an actual trend
+- **HW.N778** LIMIT · `BACKLOG.md:793-799` — "a real but coarser signal than an actual trend
   measurement" — Real-HW soak detects only a `MemoryError` traceback or a reboot. · related: HW.S14 ·
   [H15]
-- **HW.N779** LIMIT · `BACKLOG.md:866-868` — "CYW43-firmware-level faults such as wlan.connect() itself
+- **HW.N779** LIMIT · `BACKLOG.md:916-918` — "CYW43-firmware-level faults such as wlan.connect() itself
   raising are not network-path faults tc/iptables can express" — Covered only by the twin's `--fault wlan:`.
   · [H15]
 
@@ -3054,6 +3167,8 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
 - **HW.N798** TODO · `ARCH:559` — "Optional silicon confirmation of the race is queue row T1's." —
   Threshold-inheritance race; queue T1 (REAL_HARDWARE_TEST_QUEUE.md:227) records that the script now
   sets its own threshold but has no explicit race-confirmation step. Partially carried. · [H15]
+  ⟨4dc80ef: T1 measured 2026-09-25, owner to close: open in BACKLOG.md "Real-hardware work still owed"
+  (T1)⟩
 - **HW.N799** OPENQ · `ARCH:3633-3638, :3978` — "it is a real defect in whatever wrote it. Not chased;
   queued." — Malformed `config_HWTEST_ISL29125.cfgconfig_ISL29125.cfg` on board flash: queued as F8,
   file deleted 2026-09-19 (§7J.6); the writer's concatenation defect is never recorded as found or
@@ -3096,7 +3211,7 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
 - **HW.N808** INVAR · `commit dc3ee33` — "run_isolated()'s implicit soft reset stops the live system's
   own WDT-feed loop ... does not reset the RP2040's hardware watchdog peripheral ... chunk them into
   <=2s sleeps with a wdt.feed() between each" — Every device script with a wait beyond ~8.4 s must feed
-  the re-armed WDT; enforced only by review. · tracked: tests_hardware/README.md:1069 (mentions
+  the re-armed WDT; enforced only by review. · tracked: tests_hardware/README.md:1078 (mentions
   `wdt.feed()` cadence as review item) | related: HW.T* · [H17]
 - **HW.N809** SETTLED · `commit dc3ee33` — "loosens scd30_plausibility_read.py's CO2 floor from the
   datasheet's 400ppm \"measurement range\" to 200ppm, per project owner input" — Plausibility bound
@@ -3120,7 +3235,7 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
   untracked. · status: UNTRACKED by owner decision (low) | - · [H17]
 - **HW.N814** LIMIT · `commit f862b1e` — "test_dns_flood_backoff_curve_recovers_once_flood_stops's own
   docstring claims its flood \"triggers the backoff path\" - checked directly and this doesn't hold" —
-  DNS backoff path not actually exercised by the flood test. · tracked: tests_hardware/README.md:874-882
+  DNS backoff path not actually exercised by the flood test. · tracked: tests_hardware/README.md:883-891
   (comment corrected; backoff path still not exercised by that test) | related: NET.T* · [H17]
 - **HW.N815** OPENQ · `commit e246825` — "one separate, flagged-not-chased finding (a device-side
   AttributeError traceback whose line numbers don't match the current src/ checkout, suggesting stale
@@ -3169,7 +3284,7 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
   re-verified per script) | related: HW.T* · [H17]
 - **HW.N826** NOTE(NOT-RUN) · `commit f9df9a2 / 4837ca3 / ea32767` — "Written and typechecked but not
   run against real hardware this session (no go-ahead) - flagged explicitly in tests_hardware/README.md"
-  — New flash/bench bus-hazard tests unverified on silicon. · tracked: tests_hardware/README.md:1296
+  — New flash/bench bus-hazard tests unverified on silicon. · tracked: tests_hardware/README.md:1307
   ("unverified against real silicon when written"); no record they were later run (not re-verified) |
   related: HW.T* · [H17]
 - **HW.N827** NOTE(STRUCTURAL-EXCEPTION) · `commit 4837ca3 / ea32767` — SCD30 write-vs-siblings "one
@@ -3179,17 +3294,17 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
 - **HW.N828** NOTE(NAMED-OPEN) · `commit 278cf60` — "UART's blocking-invariant real-driver gap, a bench
   UART exerciser that never issues a SET under load, the rotate_ap_password() harness capability with
   zero call sites, the alarm-pool-exhaustion reboot fallback, and NOTIFY's own FRAM hard-reset test ...
-  named rather than silently dropped" — Five tier-parity gaps. · tracked: BACKLOG.md:108-118,
-  tests_hardware/README.md:1179-1283 (UART fault catalog answered 2026-09-22 as E.6.6 exception);
+  named rather than silently dropped" — Five tier-parity gaps. · tracked: BACKLOG.md:88-95,
+  tests_hardware/README.md:1188-1294 (UART fault catalog answered 2026-09-22 as E.6.6 exception);
   rotate_ap_password resolved per SPEC:3124 | related: HW.T*, TEST.T* · [H17]
-- **HW.N829** NOTE(THIN-TEST) · `tests_hardware/README.md:1291 (from 278cf60)` — "SGP40's SGPResetVOC
+- **HW.N829** NOTE(THIN-TEST) · `tests_hardware/README.md:1302 (from 278cf60)` — "SGP40's SGPResetVOC
   push is a thin test (it never asserts the reset's own effect) but says so in its own comment" — Weak
-  assertion acknowledged. · tracked: tests_hardware/README.md:1291 only (no BACKLOG) | - · [H17]
+  assertion acknowledged. · tracked: tests_hardware/README.md:1302 only (no BACKLOG) | - · [H17]
 - **HW.N830** NOTE(OWNER) · `commit 98dc1b2 / 4f1c802` — SCD30 NVM write gating: one global flag +
   AND-gated extra flag, "intentional all along" — Settled design. · tracked: CLAUDE.md
   (persistence_write/scd30_extra_write), tests_hardware/README.md | - · [H17]
 - **HW.N831** NOTE(NOT-RUN) · `commit a3d43f4` — WP4 FRAM capacity device script "Not run this session
-  (no real-hardware go-ahead)" — HW leg pending. · tracked: tests_hardware/README.md:1383 (claims it
+  (no real-hardware go-ahead)" — HW leg pending. · tracked: tests_hardware/README.md:1394 (claims it
   closes the leg; later run status not re-verified) | - · [H17]
 - **HW.N832** NOTE(LOOSENED-BOUND) · `commit 569c6bb` — "The bench tier's ResetErrors timeout went 10.0s
   -> 30.0s ... A sweep degrading to ~25s on real hardware would now pass silently ... Recorded as
@@ -3212,13 +3327,19 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
   Orphaned work settled; PR #84 tooling deliberately unshipped. · status: settled (86fb067: five of six
   pr103 items accounted for); REAL_HARDWARE_TEST_QUEUE.md R6 keeps the unexplained +0.90s CFGMGR_SYSTEM
   boot cost | related: PERF.T* · [H17]
+  ⟨4dc80ef: R6 measured 2026-09-25: +0.90 s did not reproduce (~53 ms); retired into SPECIFICATION.md
+  A.7 (38b270d)⟩
 - **HW.N837** NOTE(QUEUED) · `commit 3ffb6a5` — item 12 "every board.exec() starves the watchdog and
   reboots the board ~8s later ... test_ticks_ms_real_2pow30_rollover would have passed vacuously ... the
   measurement redesign is queued, not faked" — Rollover test cannot measure what it claims. · tracked:
   BACKLOG #12 (closed stub) + REAL_HARDWARE_TEST_QUEUE.md C7 | - · [H17 (also H17)]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N838** NOTE(QUEUED) · `commit edf11c2` — "R9 (the ISL29125 shadow-divergence fix and the
   Overrange field have never run on silicon) and R10 (the two device_scripts bugs fixed in source but
   never re-executed)" — Hardware owed. · tracked: REAL_HARDWARE_TEST_QUEUE.md R9/R10 | - · [H17]
+  ⟨4dc80ef: R9 shadow half confirmed on silicon; Overrange half rides S3b (BACKLOG.md ISL29125 open
+  question)⟩
 - **HW.N839** NOTE(QUEUED) · `commit 60b8e4e` — "Queue gains 1C ... the I2C shared scratch buffer most
   of all, which is a second bus-facing change and so owes CLAUDE.md's tier-3 and tier-4 runs" —
   Real-hardware bus-hazard runs owed for the I2C scratch change. · status: queue reorganised (5da0783
@@ -3233,6 +3354,8 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
   boot ... a RESULT NOTE prints whenever the retry was actually needed" (F13, STA association after
   kick+reset) — Probabilistic event retried once. · tracked: REAL_HARDWARE_TEST_QUEUE.md F13 / test code
   | related: HW.T* · [H17]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **HW.N842** NOTE(RETRY-WORKAROUND) · `commit 2abebb0` — "Both now retry a ceiling close and only a
   ceiling close" (F14; slot-release lag after _close_writer()) — Test retries around a server-side
   slot-release lag. · tracked: queue F14; the lag itself (slot released after response delivered) is
@@ -3264,3 +3387,47 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
   boot, cause lost"; "errcount before the run recorded, including a FRAM entry new since 2026-09-23" —
   Unexplained resets; possible watchdog starvation under CPU-bound load (supervisor loop is the only
   feed site). · tracked: BACKLOG #44 (queue F17) | related: HW.T* · [H17]
+
+## Delta `2a88cc8` → `4dc80ef` (main head, V11)
+
+- **HW.N850** LIMIT · `tests_hardware/flash/test_watchdog_starvation.py:44-47` — "is_reachable()
+  attaches within ~1 s of boot, which parks main.py at the REPL with no" — Every flash test that polls
+  reachability after a reset must end with hard_reset(); the watchdog-starvation test now does
+  (`79eb41b`). · related: HW.T06 · [D1]
+- **HW.N851** MIRROR · `tests_hardware/flash/test_watchdog_starvation.py:51` — "_WDT_RESET = 3 #
+  machine.WDT_RESET on rp2" — Hardcoded mirror of a MicroPython constant, pinned by no test. ·
+  covered-by: HW.S26 · [D1]
+- **HW.N852** ASSUME · `tests_hardware/device_scripts/reboot_fallback_starves_the_watchdog.py:24` — "the
+  real pool is small and fixed" — Loops to 64; the measured pool size (16, `79423dd`) lives only in a
+  commit message. · covered-by: HW.S27 · [D1]
+- **HW.N853** MIRROR · `tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py:27` —
+  "mirrors sensortask_dev.py's own transaction rate" — POLL_WAIT_MS = 2 copies a generated device value.
+  · covered-by: HW.S27 · [D1]
+- **HW.N854** SETTLED · `tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py:1-3` —
+  "Asserts on the driver's own synchronous UART calls - F.5.8's honest measure" — Loop gaps are printed,
+  not asserted, because they swing with scheduler noise (1.6-2.9 ms, `2f48f86`). · related: HW.T05 ·
+  [D1]
+- **HW.N855** WORKAROUND · `tests_hardware/README.md:383-385` — "run it under a wrapper that arms
+  `machine.WDT(timeout=8000)` and feeds it from a 2 s `machine.Timer`" — The wrapper is documented, not
+  committed. · covered-by: HW.S09 · [D1]
+- **HW.N856** INVAR · `tests_hardware/README.md:386-387` — "An ad-hoc bench script caps every retry and
+  runs under `timeout`" — Convention only (one unbounded retry ran 1 h 40 min). · related: HW.T12 · [D1]
+- **HW.N857** LIMIT · `tests_hardware/README.md:390-393` — "parks the board at the REPL with no
+  watchdog" — An attach within ~1 s of boot leaves no WiFi, no output and no self-recovery until the
+  next reset. · related: HW.T06 · [D1]
+- **HW.N858** DRIFT · `tests_hardware/README.md:1280-1286` — "alarm-pool-exhaustion fallback
+  (`_force_watchdog_starve = True`) is mock-only" — Stale since G3 proved it on silicon (`79423dd`). ·
+  covered-by: DOC.S24 · [D1]
+- **HW.N859** TODO · `BACKLOG.md:361-366` — "**Not yet confirmed on silicon.**" — SGP40 W13 per outage
+  and the flash tier's closing hard_reset(). · covered-by: HW.S28 · [D1]
+- **HW.N860** TODO · `BACKLOG.md:388-392` — "**This is its only copy.**" — A6's timing script lives only
+  inside BACKLOG, pending T4's decision. · covered-by: DOC.S27 · [D1]
+- **HW.N861** TODO · `BACKLOG.md:461-463` — "Give ad-hoc bench scripts one helper that kicks the AP's
+  stations and then resets." — Every 2026-09-25 hotspot fallback was a reset without a kick immediately
+  before it. · related: DOC.S29, HW.T12 · [D1]
+- **HW.N862** OPENQ · `BACKLOG.md:720-727` — "Fold that into the script, or keep the wrapper as the
+  documented way." — Plus: should device scripts remove their stale config_HWTEST_*.cfg on exit? ·
+  covered-by: HW.S09 · [D1]
+- **HW.N863** LIMIT · `BACKLOG.md:373-379` — "needs hardware the bench does not have" — R13 + N3 cannot
+  run on today's bench (owner, 2026-09-25); low urgency, mock tier covers the logic. · related: UART.T06
+  · [D1]

@@ -1,6 +1,6 @@
 # Harvest — PAR: Legacy parity and field migration
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 32, INVAR 95, MIRROR 12, LIMIT 44, RISK 13, ASSUME 22, PLATFORM 11, WORKAROUND 1, SUPPRESS 1, TODO 2, OPENQ 1, DRIFT 14, NOTE 11 — 259 items.
@@ -40,7 +40,7 @@ Kinds: SETTLED 32, INVAR 95, MIRROR 12, LIMIT 44, RISK 13, ASSUME 22, PLATFORM 1
 
 - **PAR.N006** NOTE(PAR) · `src/asy_sgp40_driver.py:64` — "special:0=\"Never wait for NTP sync\"" — UI
   label implies legacy meaning; code disables restore instead. · covered-by: PAR.S01 · [H01]
-- **PAR.N007** NOTE(PAR) · `src/asy_sgp40_driver.py:666-667` — "the feature-set check the legacy driver
+- **PAR.N007** NOTE(PAR) · `src/asy_sgp40_driver.py:670-671` — "the feature-set check the legacy driver
   had isn't datasheet-documented" — Deliberate removal of a legacy check. · related: PAR.T01 · [H01]
 
 ## src/asy_uart_comm.py
@@ -145,8 +145,8 @@ Kinds: SETTLED 32, INVAR 95, MIRROR 12, LIMIT 44, RISK 13, ASSUME 22, PLATFORM 1
   `ext/microdot.py` (1,570). · related: PAR.T11 (low) · [H08]
 - **PAR.N029** SUPPRESS · `dev_legacy/*.py (12 sites)` — "# type: ignore[call-arg]" — 12 `type: ignore[...]`
   (asy_bmp3xx_driver.py:168, asy_fram_manager.py:449, 503, asy_scd30_driver.py:141,
-  asy_sgp40_driver.py:282, asy_spi_driver.py:44, asy_udp_socket.py:40, async_connect.py:19, 247, 648,
-  651, system_service.py:121), 2 `pylint: disable` (asy_sgp40_driver.py:504, voc_algorithm.py:43), 1
+  asy_sgp40_driver.py:283, asy_spi_driver.py:44, asy_udp_socket.py:40, async_connect.py:19, 247, 648,
+  651, system_service.py:121), 2 `pylint: disable` (asy_sgp40_driver.py:508, voc_algorithm.py:43), 1
   `noinspection` (asy_spi_driver.py:43); directory is outside every lint scope by design. · - (low) ·
   [H08]
 
@@ -223,47 +223,47 @@ Kinds: SETTLED 32, INVAR 95, MIRROR 12, LIMIT 44, RISK 13, ASSUME 22, PLATFORM 1
 
 ## SPECIFICATION.md Part B.14.3 (`littlefs_flash_storage_size`, 1381-1410)
 
-- **PAR.N043** PLATFORM · `SPECIFICATION.md:1391-1397` — "`set(MICROPY_HW_FLASH_STORAGE_BYTES 868352) endif()`
+- **PAR.N043** PLATFORM · `SPECIFICATION.md:1395-1401` — "`set(MICROPY_HW_FLASH_STORAGE_BYTES 868352) endif()`
   (848KB; `mpconfigport.h`'s own generic rp2 default ... `1408 * 1024`" — littlefs size facts relevant
   to the 1.26 → 1.29 reflash. · covered-by: PAR.S10 · [H12]
-- **PAR.N044** RISK · `SPECIFICATION.md:1405-1410` — "shrinking the reserved littlefs region changes the
+- **PAR.N044** RISK · `SPECIFICATION.md:1409-1414` — "shrinking the reserved littlefs region changes the
   on-flash layout of a board that may already have deployed units carrying real persisted state" —
   Real-hardware data risk. · related: PAR.T06 · [H12]
 
 ## SPECIFICATION.md Part C.5 / C.5.1-C.5.3 (Config schema system, 1699-1797)
 
-- **PAR.N045** SETTLED · `SPECIFICATION.md:1790-1792` — "every bool field is native JSON `true`/`false`,
+- **PAR.N045** SETTLED · `SPECIFICATION.md:1794-1796` — "every bool field is native JSON `true`/`false`,
   replacing legacy's `\"On\"`/`\"Off\"` string dtype. Only legacy `html_raw/` isn't updated (H.1)." —
   Deliberate wire change. · related: PAR.S06 · [H12]
 
 ## SPECIFICATION.md Part F.5 — MicroPython 1.29 delta (intro)
 
-- **PAR.N046** OPENQ · `SPECIFICATION.md:3672` — "Deployed units stay on 1.26 regardless (BACKLOG open
+- **PAR.N046** OPENQ · `SPECIFICATION.md:3681` — "Deployed units stay on 1.26 regardless (BACKLOG open
   question 3)" — Field migration to 1.29 is an open question held in BACKLOG. · related: PAR.T11,
   PAR.T14 · [H13]
 
 ## SPECIFICATION.md Part H.1 — Website purpose and constraints
 
-- **PAR.N047** SETTLED · `SPECIFICATION.md:4273-4276` — "`html_raw/{general,arzi,dev,wozi}` is the
+- **PAR.N047** SETTLED · `SPECIFICATION.md:4285-4288` — "`html_raw/{general,arzi,dev,wozi}` is the
   legacy, still-deployed site ... This Part's website targets the refactored REST shape from the start —
   not a reskin." — Legacy site is reference; new site speaks only the new REST shape. · related: PAR.T10
   · [H13]
 
 ## SPECIFICATION.md Part I.6 — Request-body cap (sits inside Part J)
 
-- **PAR.N048** MIRROR · `SPECIFICATION.md:5290-5292` — "mirrors the deployed pre-refactor handler
+- **PAR.N048** MIRROR · `SPECIFICATION.md:5303-5305` — "mirrors the deployed pre-refactor handler
   (`modules/sensortask-*.py`'s `update_valid_json(..., 3, 1024, ...)`)" — Legacy ↔ refactor bound
   parity. · related: PAR.T01 · [H13]
 
 ## SPECIFICATION.md Part J.8 — Memory model
 
-- **PAR.N049** LIMIT · `SPECIFICATION.md:5611-5617` — "the receiver grows `res` by `+=` across the whole
+- **PAR.N049** LIMIT · `SPECIFICATION.md:5624-5630` — "the receiver grows `res` by `+=` across the whole
   train (254 reallocations and a ~2× peak at the final copy for a maximum 12192-byte transfer" — Legacy
   behaviour the refactor replaced (parity/migration context). · [H13]
 
 ## SPECIFICATION.md Part M (intro) and M.1 — ISL29125
 
-- **PAR.N050** SETTLED · `SPECIFICATION.md:6581-6584` — "CLAUDE.md's rule to verify a driver against the
+- **PAR.N050** SETTLED · `SPECIFICATION.md:6596-6599` — "CLAUDE.md's rule to verify a driver against the
   legacy driver's field-proven behaviour **has no purchase here** ... (owner)" — Legacy ISL29125 parity
   explicitly not a reference. · [H13]
 
@@ -297,13 +297,13 @@ Kinds: SETTLED 32, INVAR 95, MIRROR 12, LIMIT 44, RISK 13, ASSUME 22, PLATFORM 1
 
 ## BACKLOG.md
 
-- **PAR.N058** SETTLED · `BACKLOG.md:165-176` — "mechanism answered; the file is never changed
+- **PAR.N058** SETTLED · `BACKLOG.md:142-153` — "mechanism answered; the file is never changed
   regardless." — #1 `modules/_boot.py`'s `import sensortask.py`: closed stub kept for CLAUDE.md and
   `test_reboot_persistence.py` citations. · related: PAR.T09 · [H15]
-- **PAR.N059** ASSUME · `BACKLOG.md:171-174` — "Why it nonetheless works on the deployed 1.26 firmware
+- **PAR.N059** ASSUME · `BACKLOG.md:148-151` — "Why it nonetheless works on the deployed 1.26 firmware
   was never verified ... and never will be" — Deployed autostart rests on an unexplained mechanism
   (1.28/1.29 trace says the dotted import should raise). · [H15]
-- **PAR.N060** RISK · `BACKLOG.md:177-182` — "Decided: not patched on the current codebase — accepted
+- **PAR.N060** RISK · `BACKLOG.md:154-159` — "Decided: not patched on the current codebase — accepted
   (reconfigure via web UI after a key-adding update)." — #2 legacy ConfigManager can wipe WiFi
   credentials on a key-adding update; refactor claimed to avoid it "structurally". · related: PAR.S08,
   DOC.S13 · [H15]
@@ -714,7 +714,7 @@ Kinds: SETTLED 32, INVAR 95, MIRROR 12, LIMIT 44, RISK 13, ASSUME 22, PLATFORM 1
 - **PAR.N163** RISK · `python/IndividualDrivers/asy_sgp40_driver/__init__.py:339,341-352` —
   "self._reset()" (no await) / "# This is a general call Reset." — The legacy "general-call reset" never
   ran: `_reset()` is an un-awaited coroutine, and even if run it writes 0x0006 to the SGP40's own
-  address 0x59, not general-call 0x00 — so the refactor's real broadcast (SPECIFICATION.md:2047,
+  address 0x59, not general-call 0x00 — so the refactor's real broadcast (SPECIFICATION.md:2055,
   accepted risk) is new field behaviour, not parity · related: BUS, SENS · [H16]
 - **PAR.N164** INVAR · `python/IndividualDrivers/asy_sgp40_driver/__init__.py:20-22,83,207` —
   "_FRAM_VERIFY_MINS = const(60)" / "int(math.ceil((10 * _FRAM_VERIFY_MINS) / backup_period) * 0.1)" —

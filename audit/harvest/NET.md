@@ -1,9 +1,9 @@
 # Harvest — NET: Networking
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 30, PLATFORM 15, WORKAROUND 2, SUPPRESS 39, TODO 6, OPENQ 3, DRIFT 6, NOTE 7 — 257 items.
+Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 31, PLATFORM 15, WORKAROUND 2, SUPPRESS 39, TODO 6, OPENQ 3, DRIFT 6, NOTE 7 — 258 items.
 
 
 ## src/asy_dns_client.py
@@ -52,7 +52,7 @@ Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 30, PLATFORM 15
 
 - **NET.N014** DRIFT · `src/asy_ntp_client.py:9-10 vs :157, :217, :250` — "errno/wrnno numbering starts
   at 11, clear of base_classes.py's own reservation" — Code uses wrnno 1, 2, 3 (inside base_classes'
-  reserved wrnno 1-2); SPECIFICATION.md:1900-1906 lists NTP as still numbering inside the reserved
+  reserved wrnno 1-2); SPECIFICATION.md:1904-1910 lists NTP as still numbering inside the reserved
   range. · related: XCUT.T07 · [H01]
 - **NET.N015** LIMIT · `src/asy_ntp_client.py:5, 384-414` — "Async NTP client + CET/CEST local-time
   helper" / "Time of March change to CEST" — DST switch dates are the EU rule regardless of the
@@ -685,35 +685,35 @@ Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 30, PLATFORM 15
 
 ## tests_hardware/README.md
 
-- **NET.N202** RISK · `tests_hardware/README.md:385-386` — "`kick_all_stations()` + `hard_reset()`
+- **NET.N202** RISK · `tests_hardware/README.md:394-395` — "`kick_all_stations()` + `hard_reset()`
   recovers it, occasionally only on a second try" — Hotspot fallback after reset/flash is a known bench
   hazard. · [H08]
-- **NET.N203** RISK · `tests_hardware/README.md:520-529` — "leads to `_PHASE_DEACTIVATED` - a terminal
+- **NET.N203** RISK · `tests_hardware/README.md:529-538` — "leads to `_PHASE_DEACTIVATED` - a terminal
   state only a real power-cycle clears" — Stage-6 permanent-WLAN-deactivation risk; `joined_hotspot`
   teardown relies on a `hard_reset()` fallback. · covered-by: HW.S25 · [H08]
-- **NET.N204** SETTLED · `tests_hardware/README.md:530-543` — "confirmed working on real hardware
+- **NET.N204** SETTLED · `tests_hardware/README.md:539-552` — "confirmed working on real hardware
   (2026-09-03)" — Captive-portal 302 fallback verified on the dev build; dev result declared valid for
   wozi. · related: NET.T09 · [H08]
-- **NET.N205** LIMIT · `tests_hardware/README.md:548-564` — "this is almost certainly phone-side" — Real
+- **NET.N205** LIMIT · `tests_hardware/README.md:557-573` — "this is almost certainly phone-side" — Real
   Android (A54, One UI 8.5) showed no sign-in prompt; blamed on Private DNS / cached verdict,
   unconfirmed; no code changed. · related: NET.T09, WEB.T14 · [H08]
-- **NET.N206** RISK · `tests_hardware/README.md:607-609` — "a device WDT-looping against a real router
+- **NET.N206** RISK · `tests_hardware/README.md:616-618` — "a device WDT-looping against a real router
   would hit the same stale-entry pattern" — Field caveat of the stale-AP-station reconnect mechanism
-  (repeated :976-979); bench fix is harness-side only. · [H08]
-- **NET.N207** DRIFT · `tests_hardware/README.md:626-632` — "Whether to add an independent reachability
+  (repeated :985-988); bench fix is harness-side only. · [H08]
+- **NET.N207** DRIFT · `tests_hardware/README.md:635-641` — "Whether to add an independent reachability
   check is a real architectural question for the project owner, not decided here." — Presented as
-  undecided; CLAUDE.md hard rule and BACKLOG.md:207-214 (item 6, closed) say it is settled (no probe,
+  undecided; CLAUDE.md hard rule and BACKLOG.md:184-191 (item 6, closed) say it is settled (no probe,
   hard reset is the backstop). · related: NET.T13 · [H08]
-- **NET.N208** SETTLED · `tests_hardware/README.md:787-791` — "\"WiFi available but no internet access\"
+- **NET.N208** SETTLED · `tests_hardware/README.md:796-800` — "\"WiFi available but no internet access\"
   is treated as equivalent to \"NTP/DNS unreachable\" for this device" — Scope decision for
   network-robustness tests. · - (low) · [H08]
-- **NET.N209** SETTLED · `tests_hardware/README.md:819-828` — "**Deliberately not covered, and why**:
+- **NET.N209** SETTLED · `tests_hardware/README.md:828-837` — "**Deliberately not covered, and why**:
   DHCP flakiness/slowness/rubbish responses." — DHCP client lives in lwIP; a rogue DHCP responder could
   strand the DUT. · related: NET.T13 · [H08]
-- **NET.N210** LIMIT · `tests_hardware/README.md:883-886` — "the backoff-growth branch itself remains
+- **NET.N210** LIMIT · `tests_hardware/README.md:892-895` — "the backoff-growth branch itself remains
   unexercised by any test in this tier" — captive_dns `recv_fail_backoff_s` growth branch: open coverage
   gap. · [H08]
-- **NET.N211** ASSUME · `tests_hardware/README.md:1004-1016` — "a plausible (not confirmed) explanation
+- **NET.N211** ASSUME · `tests_hardware/README.md:1013-1025` — "a plausible (not confirmed) explanation
   ... could plausibly cause a brief beacon gap" — Hotspot SSID visibility flicker attributed,
   unconfirmed, to `_configure_hotspot_ap()` re-running every 5 s; worked around by widening attempts. ·
   related: NET.S08 · [H08]
@@ -723,9 +723,13 @@ Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 30, PLATFORM 15
 - **NET.N212** TODO · `REAL_HARDWARE_TEST_QUEUE.md:218` — "the substitution path itself is still
   unproven on silicon" — N2 PARTIAL: `_with_default()` hostname default substitution needs a boot with
   `Hostname` absent from persisted `config_WIFI.cfg` (one write). · [H08]
+  ⟨4dc80ef: N2 verified on silicon 2026-09-25, row retired (6f7eef7); SPECIFICATION.md L records it⟩
 - **NET.N213** RISK · `REAL_HARDWARE_TEST_QUEUE.md:376-383` — "`PUT /system {\"SystemCmd\": \"reboot\"}`
   on its own leaves a stale station entry on the bench AP" — A hand REST reboot strands the DUT in
   hotspot mode indefinitely; kick first, expect a `hard_reset()` (~40 s). · [H08]
+  ⟨4dc80ef: not migrated as such: the by-hand REST-reboot recipe (kick, then hard_reset) survives only
+  in git history; nearest homes tests_hardware/README.md:394-395 and BACKLOG.md's kick-then-reset helper
+  entry (DOC.S29)⟩
 
 ## tests_scripts/test_buildgen_validate.py
 
@@ -748,71 +752,71 @@ Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 30, PLATFORM 15
 
 ## SPECIFICATION.md Part C.4 (Layer 3 Reader, 1624-1697)
 
-- **NET.N218** INVAR · `SPECIFICATION.md:1695-1697` — "`asy_wifi_service.py`'s `callback=self._mask_pw`
+- **NET.N218** INVAR · `SPECIFICATION.md:1699-1701` — "`asy_wifi_service.py`'s `callback=self._mask_pw`
   unconditionally overwrites the persisted `PW` with a fixed mask" — Masking contract (PUT-back of the
   mask seeded). · related: NET.S16 · [H12] ⟨quote not matched at the anchor⟩
 
 ## SPECIFICATION.md Part C.7.1 (Running errno/wrnno table, 1893-1941)
 
-- **NET.N219** PLATFORM · `SPECIFICATION.md:1931` — "4 is cyw43-driver's catch-all for any failed auth
+- **NET.N219** PLATFORM · `SPECIFICATION.md:1935` — "4 is cyw43-driver's catch-all for any failed auth
   or handshake ... not proof of a wrong password, BACKLOG item 29" — cyw43 status semantics. · [H12]
 
 ## SPECIFICATION.md Part C.7.2 (Which failures may end a task, 1943-1973)
 
-- **NET.N220** SETTLED · `SPECIFICATION.md:1949-1952` — "the NTP task used to end after six failed syncs
+- **NET.N220** SETTLED · `SPECIFICATION.md:1953-1956` — "the NTP task used to end after six failed syncs
   ... (owner, 2026-09-24). The legacy client never gave up." — NTP handled in place. · [H12]
 
 ## SPECIFICATION.md Part C.7.4 (Radio string bounds are bytes, 2002-2014)
 
-- **NET.N221** PLATFORM · `SPECIFICATION.md:2004-2008` — "`network.country()` raises unless exactly 2
+- **NET.N221** PLATFORM · `SPECIFICATION.md:2010-2014` — "`network.country()` raises unless exactly 2
   bytes, `network.hostname()` above 32 bytes, and `WLAN.connect()` raises `EINVAL` on a key over 64
   bytes and copies an SSID over 32 bytes past its 36-byte buffer unchecked" — Pinned modnetwork/cyw43
   limits, incl. an upstream unchecked copy. · covered-by: NET.T07 · [H12]
 
 ## SPECIFICATION.md Part C.8 (Concurrency & locking model, 2016-2188)
 
-- **NET.N222** LIMIT · `SPECIFICATION.md:2041-2044` — "`network_available()` requires the *caller* to
+- **NET.N222** LIMIT · `SPECIFICATION.md:2049-2052` — "`network_available()` requires the *caller* to
   already hold `wifi_mode_lock`, while its sibling getters assume the caller does *not* ... left as-is"
   — Known inconsistent lock contract. · related: NET.S05 · [H12]
-- **NET.N223** RISK · `SPECIFICATION.md:2044-2045` — "the 60s STA-retry branch holds `wifi_mode_lock`
+- **NET.N223** RISK · `SPECIFICATION.md:2052-2053` — "the 60s STA-retry branch holds `wifi_mode_lock`
   while NTP's sync task waits on it — an accepted priority-inversion cost, not a bug" — Accepted 60 s
   stall. · covered-by: NET.S01 · [H12]
 
 ## SPECIFICATION.md Part C.9.1 (Read-trigger timer stagger, 2211-2298)
 
-- **NET.N224** INVAR · `SPECIFICATION.md:2292-2298` — "a retry loop that fails non-raising (returns a
+- **NET.N224** INVAR · `SPECIFICATION.md:2300-2306` — "a retry loop that fails non-raising (returns a
   sentinel) needs its own capped exponential backoff ... A retry loop never ends its task to \"retry by
   restart\"" — Convention; captive DNS 0.5→4 s (cap 5 s). · [H12]
 
 ## SPECIFICATION.md Part F.2 — Blocking calls / timeout-wrapping
 
-- **NET.N225** SETTLED · `SPECIFICATION.md:3611-3617` — "**Decided: investigated, no `src/` change** ...
+- **NET.N225** SETTLED · `SPECIFICATION.md:3620-3626` — "**Decided: investigated, no `src/` change** ...
   a physical power cycle/`hard_reset()` is the accepted recovery" — CYW43 `isconnected()` false positive
   accepted; `WifiUptime` inaccuracy called cosmetic. · related: DOC.T14 · [H13]
-- **NET.N226** ASSUME · `SPECIFICATION.md:3618-3620` — "a sustained outage essentially never
+- **NET.N226** ASSUME · `SPECIFICATION.md:3627-3629` — "a sustained outage essentially never
   self-resolves within 150s (5/5 trials ...); repeated brief flapping self-heals reliably instead (3/3
   trials, ~30s)" — Small-sample bench measurements that the residual-window argument below reuses. ·
   related: HW.T16 · [H13]
-- **NET.N227** PLATFORM · `SPECIFICATION.md:3621-3622` — "`network.STAT_GOT_IP` is not STA-only (an AP
+- **NET.N227** PLATFORM · `SPECIFICATION.md:3630-3631` — "`network.STAT_GOT_IP` is not STA-only (an AP
   interface reports it too) — `_run_hotspot_mode()`'s `status != STAT_GOT_IP` branch is only true on the
   first tick" — CYW43/port fact that makes a code branch nearly dead. · related: NET.S07 · [H13]
 
 ## SPECIFICATION.md Part F.5.5 — Stub defects repaired at install
 
-- **NET.N228** SUPPRESS · `SPECIFICATION.md:3821-3824 (site src/asy_udp_socket.py:177)` — "The one place
+- **NET.N228** SUPPRESS · `SPECIFICATION.md:3830-3833 (site src/asy_udp_socket.py:177)` — "The one place
   a `type: ignore` *is* right is `asy_udp_socket.py`'s `recvfrom()`" — `# type: ignore[return-value]` at
   src/asy_udp_socket.py:177 for AF_INET-only narrowing; the same file also carries two `type: ignore[unreachable]`
   (:48, :136) the doc does not mention. · [H13]
 
 ## SPECIFICATION.md Part I.3 — Bounded response assembly
 
-- **NET.N229** SETTLED · `SPECIFICATION.md:4927, 4931-4932` — "the bound is settled, BACKLOG's deferred
+- **NET.N229** SETTLED · `SPECIFICATION.md:4939, 4943-4945` — "the bound is settled, BACKLOG's deferred
   list ... a shorter `NTP_Host` bound is the lever, and the owner settled it" — Owner decision keeping
   `NTP_Host` at 1,024. · [H13]
 
 ## SPECIFICATION.md Part I.6 — Request-body cap (sits inside Part J)
 
-- **NET.N230** SETTLED · `SPECIFICATION.md:5290-5293` — "**Related, deliberately not changed:**
+- **NET.N230** SETTLED · `SPECIFICATION.md:5303-5306` — "**Related, deliberately not changed:**
   `NTP_Host`'s 1024-character bound mirrors the deployed pre-refactor handler ... the owner's call" —
   Settled bound (plan §2.3). · [H13]
 
@@ -820,27 +824,27 @@ Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 30, PLATFORM 15
 
 - **NET.N231** SETTLED · `CLAUDE.md:197-203` — "a power cycle/`hard_reset()` is a deliberately stable,
   intended recovery feature ... don't propose an independent reachability-probe mechanism" — Applies to
-  the CYW43 `isconnected()` false positive; BACKLOG open question 6 is a closed pointer (BACKLOG.md:207,
-  213). · related: NET.T13 · [H14]
+  the CYW43 `isconnected()` false positive; BACKLOG open question 6 is a closed pointer (BACKLOG.md:184,
+  190). · related: NET.T13 · [H14]
 
 ## BACKLOG.md
 
-- **NET.N232** LIMIT · `BACKLOG.md:201-203` — "POLLERR/POLLHUP delivery (never observed -
+- **NET.N232** LIMIT · `BACKLOG.md:178-180` — "POLLERR/POLLHUP delivery (never observed -
   AsyUDPSocket.ready()'s handling is correct but effectively dead code on this platform)" — #5 closed
   stub: a code path unreachable on rp2/lwIP. · related: NET.T05 · [H15]
-- **NET.N233** SETTLED · `BACKLOG.md:207-214` — "closed (2026-09-08): investigated, no src/ change." —
+- **NET.N233** SETTLED · `BACKLOG.md:184-191` — "closed (2026-09-08): investigated, no src/ change." —
   #6 independent WiFi reachability check rejected; stub kept for citations ("don't renumber"). · [H15]
-- **NET.N234** SETTLED · `BACKLOG.md:316-323` — "an AP vanishing mid-association reads as a wrong
+- **NET.N234** SETTLED · `BACKLOG.md:293-300` — "an AP vanishing mid-association reads as a wrong
   password" — #29 spurious `W4` is cyw43 BADAUTH behaviour; the bench outage check accepts `W4` as
   benign beside `W5`. · [H15]
-- **NET.N235** SETTLED · `BACKLOG.md:417-422` — "NTP_Host keeps its 1024-character bound — SETTLED,
+- **NET.N235** SETTLED · `BACKLOG.md:483-488` — "NTP_Host keeps its 1024-character bound — SETTLED,
   owner, 2026-09-21: 'keep it'. Do not re-raise." — 4x over DNS's 253; sole reason the max PUT is 1,312
   B (margin 1.56x). · related: NET.S14 (plan §2.3 settled list) · [H15]
-- **NET.N236** MIRROR · `BACKLOG.md:439-444` — "html/definitions/{dev,wozi}.json carry the bound as
+- **NET.N236** MIRROR · `BACKLOG.md:505-510` — "html/definitions/{dev,wozi}.json carry the bound as
   'maxLength': 1024 and are generated and committed" — Bound mirrored in `_VAL_NH`
   (`src/asy_ntp_client.py`), two committed definitions, `tests/test_asy_ntp_client.py:53` (verified
   verbatim) and a webserver test; a change must touch all. · related: GEN.T15 · [H15]
-- **NET.N237** TODO · `BACKLOG.md:833-838` — "a rename to make network_available()'s already-held-lock
+- **NET.N237** TODO · `BACKLOG.md:883-888` — "a rename to make network_available()'s already-held-lock
   contract visible in its own name ... was considered but not done" — Lock contract is convention-only
   (`src/asy_wifi_service.py:780` "caller must already hold wifi_mode_lock"); `buildgen/codegen.py:413`
   passes `conn.network_available`. · related: NET.T02, XCUT.T06 · [H15]
@@ -849,6 +853,7 @@ Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 30, PLATFORM 15
 
 - **NET.N238** TODO · `ARCH:3639-3643` — "R12 (per-device hostname) cannot be checked on this board as
   it stands." — Carried as queue N2 PARTIAL (REAL_HARDWARE_TEST_QUEUE.md:218). · [H15]
+  ⟨4dc80ef: N2 verified on silicon 2026-09-25, row retired (6f7eef7); SPECIFICATION.md L records it⟩
 
 ## Commit messages (chronological)
 
@@ -892,7 +897,7 @@ Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 30, PLATFORM 15
 - **NET.N249** RISK · `commit 40a405f` — "a device WDT-looping against a real router would hit the same
   stale-entry pattern with no bench harness able to kick_client() on its behalf" — Field risk: stale AP
   station entry after an unclean reset may push a deployed unit into hotspot fallback; bench fix is
-  test-only. · tracked: tests_hardware/README.md:607-609; BACKLOG #44 (hotspot fallback after reset,
+  test-only. · tracked: tests_hardware/README.md:616-618; BACKLOG #44 (hotspot fallback after reset,
   stale-AP mechanism) | related: NET.T*, HW.T* · [H17]
 - **NET.N250** SETTLED · `commit 655e4f9 / a04b483` — "the project owner judged a new reachability-probe
   mechanism's complexity not worth it" — No independent WiFi reachability probe; power-cycle is the
@@ -923,7 +928,7 @@ Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 30, PLATFORM 15
   label's length (≤63 octets ...) but not the *total* encoded QNAME length (≤255 octets" —
   `_build_query()` builds a spec-invalid query for a >255-octet name; degrades to a timeout/`None`.
   Still true at 2a88cc8 (src/asy_dns_client.py:40-51); reachable because NTP_Host keeps its 1024 bound ·
-  UNTRACKED | related: BACKLOG NTP_Host SETTLED entry (BACKLOG.md:423-440), commit-side NTP_Host items ·
+  UNTRACKED | related: BACKLOG NTP_Host SETTLED entry (BACKLOG.md:489-506), commit-side NTP_Host items ·
   [H17]
 - **NET.N256** NOTE(DEAD-CODE) · `https://github.com/hundertvolt/sensors/pull/50` —
   "`wlan_isconnected()` still has zero production callers. Whether to remove it or keep it as
@@ -932,3 +937,9 @@ Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 30, PLATFORM 15
   without decision · UNTRACKED | - · [H17 (also H17)]
 - **NET.N257** NOTE(DONE) · `https://github.com/hundertvolt/sensors/pull/61` — hostname follow-up —
   Hostname item closed · done-in b0f755c | - · [H17]
+
+## Delta `2a88cc8` → `4dc80ef` (main head, V11)
+
+- **NET.N258** ASSUME · `SPECIFICATION.md:1970-1972` — "with UDP 123 blocked, one `E21` slot (count 3),
+  no task ended, SYSTEM clean" — NTP's never-end-the-task rule confirmed on silicon once. · related:
+  XCUT.T07 · [D1]

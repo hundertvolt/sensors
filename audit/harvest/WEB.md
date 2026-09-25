@@ -1,6 +1,6 @@
 # Harvest — WEB: Website
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8, SUPPRESS 3, TODO 8, OPENQ 1, DRIFT 20, NOTE 5 — 286 items.
@@ -52,13 +52,13 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
 
 ## mockdata/dev.json, mockdata/wozi.json (no comments — JSON; provenance stated elsewhere)
 
-- **WEB.N010** LIMIT · `SPECIFICATION.md:4286` — "mockdata/ Prototype-only mock backend fixtures - NOT
+- **WEB.N010** LIMIT · `SPECIFICATION.md:4298` — "mockdata/ Prototype-only mock backend fixtures - NOT
   shipped" — Stated provenance: hand-written prototype fixtures for `js/mock-server.js`. · related:
   WEB.T15 · [H08]
-- **WEB.N011** LIMIT · `SPECIFICATION.md:5900-5903` — "a hand-written website-prototype fixture that can
+- **WEB.N011** LIMIT · `SPECIFICATION.md:5913-5916` — "a hand-written website-prototype fixture that can
   predate the real driver, carrying placeholder field names" — Stated fidelity limit, "found-twice gap";
-  checked only by manual K.8 and K.11 checklist steps (:5972). · covered-by: WEB.T15 · [H08 (also H13)]
-- **WEB.N012** LIMIT · `BACKLOG.md:779-782` — "`mockdata/`/`html/definitions/` only carry fixtures for
+  checked only by manual K.8 and K.11 checklist steps (:5985). · covered-by: WEB.T15 · [H08 (also H13)]
+- **WEB.N012** LIMIT · `BACKLOG.md:829-832` — "`mockdata/`/`html/definitions/` only carry fixtures for
   those two devices" — Only wozi and dev have fixtures; the other four devices have none. · covered-by:
   WEB.T12 · [H08]
 - **WEB.N013** DRIFT · `mockdata/dev.json:5-6, 13-14, 65-75` — "\"SHTC3\": { \"Temp\": 23.3" — dev
@@ -609,7 +609,7 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
   [H11]
 - **WEB.N163** LIMIT · `js/templates.js:245-246` — "entry: errcount[moduleInfo.key] ?? { counter: 0 },"
   — a module missing from /status errcount (unwired, or a degraded source) renders as a healthy zero
-  row, indistinguishable from "no errors"; SPECIFICATION.md:4502-4504 (H.6) documents this "permanent,
+  row, indistinguishable from "no errors"; SPECIFICATION.md:4514-4516 (H.6) documents this "permanent,
   reassuring `0`" and makes the per-instance key list the only guard · related: WEB.S09 · [H11]
 - **WEB.N164** SETTLED · `js/templates.js:292-293` — "Always rendered, never independently hidden ...
   (project owner, session 2 follow-up)." — owner decision on history visibility · [H11]
@@ -683,8 +683,8 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
 
 - **WEB.N188** DRIFT · `html/definitions/wozi.json:1 (whole file)` — "wozi/dev keep their hand-written
   html/definitions/<device>.json" (scripts/build_website.sh:26) — provenance is stated three ways:
-  hand-written (build_website.sh:26-27, SPECIFICATION.md:4405-4406), "generated at build time ... never
-  hand-maintained" (SPECIFICATION.md:5785-5786), "generated *and committed*" (BACKLOG.md:439-440) ·
+  hand-written (build_website.sh:26-27, SPECIFICATION.md:4417-4418), "generated at build time ... never
+  hand-maintained" (SPECIFICATION.md:5798-5799), "generated *and committed*" (BACKLOG.md:505-506) ·
   covered-by: WEB.S13 · [H11] ⟨quote not matched at the anchor⟩
 - **WEB.N189** TODO · `html/definitions/wozi.json:1 (whole file)` — "retiring them is deferred work
   (SPECIFICATION.md Part L.4)" (scripts/build_website.sh:27) — retiring the hand-written wozi/dev files
@@ -692,12 +692,12 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
   ⟨quote not matched at the anchor⟩
 - **WEB.N190** MIRROR · `html/definitions/wozi.json:60-130,147-168,184-186,311-346` — "\"min\": 2,
   \"max\": 1800" etc. — every hand-written min/max/float/maxLength must match src/ FieldSchema tuples
-  (e.g. NTP_Host maxLength 1024 — BACKLOG.md:439-441; SPECIFICATION.md:2331 "Also update
+  (e.g. NTP_Host maxLength 1024 — BACKLOG.md:505-507; SPECIFICATION.md:2339 "Also update
   html/definitions/<device>.json") · related: WEB.S13 · [H11] ⟨quote not matched at the anchor⟩
 - **WEB.N191** LIMIT · `html/definitions/wozi.json:72-75` — "\"key\": \"ContMeas\" ... \"defaultValue\":
   true" — ContMeas is dispatch-only server-side (mock SENSOR_QUIRK_FIELDS) but carries no `dispatch`
   flag, and GET never reports it, so after a reload the toggle always shows On even when measurement was
-  stopped; H.6 (SPECIFICATION.md:4508-4510) lists ContMeas as dispatch-only while H.4 (:4361) does not —
+  stopped; H.6 (SPECIFICATION.md:4520-4522) lists ContMeas as dispatch-only while H.4 (:4373) does not —
   see the cross-list item under tests_js/_put_field_cases.js (low) · related: WEB.S01 · [H11]
 - **WEB.N192** MIRROR · `html/definitions/wozi.json:197` — "{ \"value\": \"mempause\", \"label\":
   \"Pause backups for 5 minutes\" }" — the label hard-codes mempause's fixed 300 s, which lives in src/
@@ -717,7 +717,7 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
 
 - **WEB.N196** DRIFT · `html/definitions/dev.json:1 (whole file)` — 2-space indent and `—` escapes
   (Python `json.dump` style) — dev.json is formatted like generator output while wozi.json is
-  hand-formatted; consistent with BACKLOG.md:439-440's "generated *and committed*" and inconsistent with
+  hand-formatted; consistent with BACKLOG.md:505-506's "generated *and committed*" and inconsistent with
   "hand-written" (build_website.sh:26) (low) · covered-by: WEB.S13 · [H11] ⟨quote not matched at the
   anchor⟩
 - **WEB.N197** MIRROR · `html/definitions/dev.json:964-970` — "UARTLINK_Transfers ... Bench-only - a
@@ -783,9 +783,9 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
 
 - **WEB.N210** MIRROR · `tests_js/_put_field_cases.js:11-14` — "export const DISPATCH_ONLY_KEYS = new
   Set([\"SystemCmd\", \"PauseTime\", \"lightCmdLED\", \"ResetErrors\"]);" — yet another hand-kept
-  "special field" list; the lists disagree: H.4 (SPECIFICATION.md:4361) =
+  "special field" list; the lists disagree: H.4 (SPECIFICATION.md:4373) =
   SystemCmd/PauseTime/lightCmdLED/ResetErrors + `dispatch=true` tags (SGPResetVOC, ISLCalibrate),
-  "derive the set from the tags, never from this list alone"; H.6 (:4508-4510) adds ContMeas, omits
+  "derive the set from the tags, never from this list alone"; H.6 (:4520-4522) adds ContMeas, omits
   ISLCalibrate; definitions `dispatch: true` = SystemCmd, SGPResetVOC, ISLCalibrate, ResetErrors;
   js/mock-server.js:22 SENSOR_QUIRK_FIELDS = ForceCalRef/ContMeas/SGPResetVOC/ISLCalibrate (+ :244's own
   list); tests_js/mock-server-put-matrix.test.js:26 adds PW; tests_js/live-backend-put-matrix.test.js:21
@@ -800,7 +800,7 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
 
 - **WEB.N212** SETTLED · `tests_js/live-backend-put-matrix.test.js:131-132` — "An empty-string current
   value has no \"resubmit\" gesture" — consequence of H.4's accepted gap "An empty string can't be set
-  via this UI for any field" (SPECIFICATION.md:4365) · [H11]
+  via this UI for any field" (SPECIFICATION.md:4377) · [H11]
 
 ## tests_js/mock-server.test.js
 
@@ -816,7 +816,7 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
   "SGPResetVOC is a special-alone schema field, deliberately excluded from get_dict_cfg()" — mock GET
   omissions pinned to src/ schema facts · related: WEB.T04 · [H11]
 - **WEB.N216** LIMIT · `tests_js/mock-server.test.js:545-546` — "the real backend's own gap: overall
-  envelope still reports OK" — asserts a gap H.6 (SPECIFICATION.md:4513-4515) says is closed ·
+  envelope still reports OK" — asserts a gap H.6 (SPECIFICATION.md:4525-4527) says is closed ·
   covered-by: WEB.S12 · [H11]
 
 ## tests_js/render.test.js
@@ -866,153 +866,153 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
 
 ## SPECIFICATION.md Part A.8 (REST API endpoint reference, 571-625)
 
-- **WEB.N228** MIRROR · `SPECIFICATION.md:615` — "`js/mock-server.js` mirrors the equivalent policy." —
+- **WEB.N228** MIRROR · `SPECIFICATION.md:619` — "`js/mock-server.js` mirrors the equivalent policy." —
   src coercion ↔ JS mock mirror. · covered-by: WEB.T04 · [H12]
 
 ## SPECIFICATION.md Part C.7.4 (Radio string bounds are bytes, 2002-2014)
 
-- **WEB.N229** MIRROR · `SPECIFICATION.md:2004, 2010-2014` — "The schema bounds every `str` field in
+- **WEB.N229** MIRROR · `SPECIFICATION.md:2010, 2016-2020` — "The schema bounds every `str` field in
   characters (and the web UI mirrors that) ... `asy_wifi_service.py` now bounds ... in bytes" — Device
   checks bytes, web UI/mock check characters. · related: WEB.S12 · [H12]
 
 ## SPECIFICATION.md Part G.0-G.1 — Shared primitive reuse rule
 
-- **WEB.N230** MIRROR · `SPECIFICATION.md:4153-4155` — "A new feature with both a `src/` and `js/` side
+- **WEB.N230** MIRROR · `SPECIFICATION.md:4165-4167` — "A new feature with both a `src/` and `js/` side
   must encode the *identical* policy in the same change" — src↔js policy mirror, one change. ·
   covered-by: WEB.T04 · [H13]
 
 ## SPECIFICATION.md Part G.2 — Known reusable primitives
 
-- **WEB.N231** MIRROR · `SPECIFICATION.md:4229-4231` — "`js/mock-server.js` must match the real `src/`
+- **WEB.N231** MIRROR · `SPECIFICATION.md:4241-4243` — "`js/mock-server.js` must match the real `src/`
   endpoint field for field, bound for bound; a `src/`-side policy change and its `js/` mirror are one
   change" — src↔js mock-server mirror. · covered-by: WEB.T04 · [H13]
 
 ## SPECIFICATION.md Part H.1 — Website purpose and constraints
 
-- **WEB.N232** INVAR · `SPECIFICATION.md:4265-4266` — "Every REST endpoint's functionality must be
+- **WEB.N232** INVAR · `SPECIFICATION.md:4277-4278` — "Every REST endpoint's functionality must be
   reachable somewhere in the GUI." — Standing product constraint; contradicted for `/system`'s `build`
   by L.7 (plan WEB.S20). · covered-by: WEB.S20 · [H13]
-- **WEB.N233** ASSUME · `SPECIFICATION.md:4266-4271` — "Standing constraints, all met: ...
+- **WEB.N233** ASSUME · `SPECIFICATION.md:4278-4283` — "Standing constraints, all met: ...
   `render.js`/`nav.js` have zero device-specific branching ... stable on major browsers" — Blanket "all
   met" claim over several constraints (full REST coverage, no deps, browsers). · related: WEB.T09,
   WEB.T12 · [H13]
 
 ## SPECIFICATION.md Part H.2 — Folder structure and module map
 
-- **WEB.N234** INVAR · `SPECIFICATION.md:4304-4306` — "`js/mock-server.js` is deliberately never staged
+- **WEB.N234** INVAR · `SPECIFICATION.md:4316-4318` — "`js/mock-server.js` is deliberately never staged
   at all — its `fetch` patching has no business near production" — Build rule; cross-checked by
   `tests_scripts/test_build_website_sh.py`. · related: WEB.T06 · [H13]
-- **WEB.N235** INVAR · `SPECIFICATION.md:4310-4312` — "the bundler strips local `import` lines but never
+- **WEB.N235** INVAR · `SPECIFICATION.md:4322-4324` — "the bundler strips local `import` lines but never
   `export` lines ... a split-out module (`field-format.js`) must never be *re-exported*" — Bundling
   constraint upheld by convention. · related: WEB.T06 · [H13]
-- **WEB.N236** DRIFT · `SPECIFICATION.md:4312-4315` — "Concatenation order is fixed so every file
+- **WEB.N236** DRIFT · `SPECIFICATION.md:4324-4327` — "Concatenation order is fixed so every file
   follows the local files it imports from ... `scripts/build_website.sh` re-checks that mechanically on
   every build" — Plan WEB.S14: no such check exists and the order is violated. · covered-by: WEB.S14 ·
   [H13]
-- **WEB.N237** LIMIT · `SPECIFICATION.md:4315-4318` — "`tsc`'s JSDoc checking doesn't cover inline
+- **WEB.N237** LIMIT · `SPECIFICATION.md:4327-4330` — "`tsc`'s JSDoc checking doesn't cover inline
   scripts (accepted — it's a thin bootstrap)" — Accepted type-check gap for `index.html`'s inline
   module. · [H13]
 
 ## SPECIFICATION.md Part H.3 — Visual vs mechanics layering
 
-- **WEB.N238** INVAR · `SPECIFICATION.md:4323-4324` — "A purely visual/layout redesign must never
+- **WEB.N238** INVAR · `SPECIFICATION.md:4335-4336` — "A purely visual/layout redesign must never
   require editing data-fetching, validation, submission, or poll-coordination code." — Standing layering
   requirement; review-only. · covered-by: WEB.T11 · [H13]
-- **WEB.N239** INVAR · `SPECIFICATION.md:4334-4340` — "controllers reach into a template only via
+- **WEB.N239** INVAR · `SPECIFICATION.md:4346-4352` — "controllers reach into a template only via
   `data-*` attributes/CSS classes ... Controllers only ever set the semantic `data-apply-status` value"
   — The `data-*` contract list is the redesign-stable interface; not mechanically checked. · covered-by:
   WEB.T11 · [H13]
-- **WEB.N240** LIMIT · `SPECIFICATION.md:4340-4342` — "**In-place refresh only ever touches a
+- **WEB.N240** LIMIT · `SPECIFICATION.md:4352-4354` — "**In-place refresh only ever touches a
   number/string field's caption** — a toggle/enum field's round-trip needs a genuine full remount" —
   Toggle/enum state is not refreshed by polling. · related: WEB.S01, WEB.S10 · [H13]
 
 ## SPECIFICATION.md Part H.4 — Architecture decisions table
 
-- **WEB.N241** ASSUME · `SPECIFICATION.md:4352` — "A realistic depth stays well under 20 entries, rides
+- **WEB.N241** ASSUME · `SPECIFICATION.md:4364` — "A realistic depth stays well under 20 entries, rides
   along in `/status`" — No pagination rests on this history-depth assumption. · [H13]
-- **WEB.N242** INVAR · `SPECIFICATION.md:4353` — "Measurements and status/settings groups are never
+- **WEB.N242** INVAR · `SPECIFICATION.md:4365` — "Measurements and status/settings groups are never
   polled concurrently by design" — Single-flight rule. · related: WEB.T03 · [H13]
-- **WEB.N243** MIRROR · `SPECIFICATION.md:4354` — "`poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberately
+- **WEB.N243** MIRROR · `SPECIFICATION.md:4366` — "`poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberately
   **equals** `asy_webserver_service.py`'s `outer_cap_s` (15.0s)" — js↔src constant mirror, enforced by
   `tests_scripts/test_request_timeout_ceiling.py`; rationale contested by WEB.S06 (client clock starts
   before connect). · related: WEB.S06, GEN.T06 · [H13]
-- **WEB.N244** SETTLED · `SPECIFICATION.md:4355` — "No dedicated API-browser page" — Deliberate UI scope
+- **WEB.N244** SETTLED · `SPECIFICATION.md:4367` — "No dedicated API-browser page" — Deliberate UI scope
   decision. · [H13]
-- **WEB.N245** ASSUME · `SPECIFICATION.md:4356` — "Strict — visible error banner on mismatch" —
+- **WEB.N245** ASSUME · `SPECIFICATION.md:4368` — "Strict — visible error banner on mismatch" —
   Strictness claim for `validateDefinitions`; plan records it as shallow (WEB.S18/WEB.S23). · related:
   WEB.T05, WEB.S23 · [H13]
-- **WEB.N246** MIRROR · `SPECIFICATION.md:4360` — "`type_or_range_error()`/`coerce_numeric()`, mirrored
+- **WEB.N246** MIRROR · `SPECIFICATION.md:4372` — "`type_or_range_error()`/`coerce_numeric()`, mirrored
   in `mock-server.js`" — src↔js validation mirror. · covered-by: WEB.T04 · [H13]
-- **WEB.N247** INVAR · `SPECIFICATION.md:4361` — "derive the set from the tags, never from this list
+- **WEB.N247** INVAR · `SPECIFICATION.md:4373` — "derive the set from the tags, never from this list
   alone" — The dispatch-only list in the doc is illustrative; tags are authoritative. · related: WEB.T01
   · [H13 (also H13)]
-- **WEB.N248** LIMIT · `SPECIFICATION.md:4361` — "An enum field with no GET-matching state renders a
+- **WEB.N248** LIMIT · `SPECIFICATION.md:4373` — "An enum field with no GET-matching state renders a
   blank placeholder by default." — UI degraded display for command-only enums. · [H13]
-- **WEB.N249** RISK · `SPECIFICATION.md:4365` — "Known accepted gap — An empty string can't be set via
+- **WEB.N249** RISK · `SPECIFICATION.md:4377` — "Known accepted gap — An empty string can't be set via
   this UI for any field ... Accepted." | Accepted UI gap (`PW` open-network sentinel unreachable). ·
   [H13]
-- **WEB.N250** MIRROR · `SPECIFICATION.md:4367-4370` — "`js/mock-server.js` mirrors every real backend
+- **WEB.N250** MIRROR · `SPECIFICATION.md:4379-4382` — "`js/mock-server.js` mirrors every real backend
   quirk, not just the happy path: `PW` masked ... `ForceCalRef` always reports `400` ...
   `ContMeas`/`SGPResetVOC` never reported" — Mock↔backend quirk parity, covered by
   `tests_js/mock-server.test.js`; plan lists divergences. · related: WEB.S12 · [H13]
 
 ## SPECIFICATION.md Part H.5 — Definitions JSON schema
 
-- **WEB.N251** INVAR · `SPECIFICATION.md:4377-4380` — "`websiteVersion` ... build provenance only, not
+- **WEB.N251** INVAR · `SPECIFICATION.md:4389-4392` — "`websiteVersion` ... build provenance only, not
   validated or rendered anywhere in the UI ... never conflate the two" — Two version fields with
   different meaning. · related: GEN.T14 · [H13]
-- **WEB.N252** LIMIT · `SPECIFICATION.md:4386-4393` — "`dispatch: true` ... is only consulted for `kind: \"toggle\"`
+- **WEB.N252** LIMIT · `SPECIFICATION.md:4398-4405` — "`dispatch: true` ... is only consulted for `kind: \"toggle\"`
   and `kind: \"enum\"`" — Flag is inert on other kinds; behaviour relies on sparse-omission rules. ·
   related: WEB.S02 · [H13]
-- **WEB.N253** TODO · `SPECIFICATION.md:4408` — "see H.5.1's own \"Not yet built\" note for what's still
+- **WEB.N253** TODO · `SPECIFICATION.md:4420` — "see H.5.1's own \"Not yet built\" note for what's still
   open" — Open retirement of hand-written definitions. · covered-by: WEB.S13 · [H13]
 
 ## SPECIFICATION.md Part H.5.1 — Definitions-file autogeneration
 
-- **WEB.N254** ASSUME · `SPECIFICATION.md:4461-4462` — "`js/field-format.js`'s `formatFieldValue()` is
+- **WEB.N254** ASSUME · `SPECIFICATION.md:4473-4474` — "`js/field-format.js`'s `formatFieldValue()` is
   the one place in the whole stack that rounds an emitted value (no driver in `src/` rounds anything)" —
   Unverified whole-stack claim. · [H13]
-- **WEB.N255** TODO · `SPECIFICATION.md:4490-4493` — "**Not yet built**: retiring the two hand-written
+- **WEB.N255** TODO · `SPECIFICATION.md:4502-4505` — "**Not yet built**: retiring the two hand-written
   `wozi.json`/`dev.json` files ... done as of Session 6" — Open item; "Session 6" is an undefined label.
   · related: WEB.S13, DOC.T09 · [H13]
 
 ## SPECIFICATION.md Part H.6 — Errcount and dispatch-only conventions
 
-- **WEB.N256** INVAR · `SPECIFICATION.md:4497-4501` — "plus each module's `CFGMGR_<name>` (except SCD30,
+- **WEB.N256** INVAR · `SPECIFICATION.md:4509-4513` — "plus each module's `CFGMGR_<name>` (except SCD30,
   NVM-backed) plus `WEBSERVER` ... **Keyed per logger instance, not per driver kind**" — Key-naming rule
   shared by firmware and website. · related: GEN.T06 · [H13]
-- **WEB.N257** RISK · `SPECIFICATION.md:4501-4504` — "Getting this wrong fails in both directions and
+- **WEB.N257** RISK · `SPECIFICATION.md:4513-4516` — "Getting this wrong fails in both directions and
   neither is visible ... a row with no published source renders a permanent, reassuring `0` from
   `templates.js`'s own `?? {counter: 0}` fallback" — Silent failure mode of errcount wiring. · related:
   WEB.S09 · [H13]
-- **WEB.N258** MIRROR · `SPECIFICATION.md:4512-4513` — "`js/mock-server.js` mirrors this via dedicated
+- **WEB.N258** MIRROR · `SPECIFICATION.md:4524-4525` — "`js/mock-server.js` mirrors this via dedicated
   dispatch functions — none ever persisted" — Mock dispatch mirror. · covered-by: WEB.T04 · [H13]
 
 ## SPECIFICATION.md Part H.7 — Digital twin integration / connection ceiling
 
-- **WEB.N259** INVAR · `SPECIFICATION.md:4535-4536` — "seven modules concatenated into one `js/app.js`,
+- **WEB.N259** INVAR · `SPECIFICATION.md:4547-4548` — "seven modules concatenated into one `js/app.js`,
   plain text concatenation, safe since none use default exports/dynamic imports/re-exports" — Bundling
   safety rests on a convention; module count "seven" is a count to re-check. · related: WEB.T06 · [H13]
 
 ## SPECIFICATION.md Part H.8 — Web CI / tooling stack
 
-- **WEB.N260** DRIFT · `SPECIFICATION.md:4718-4720` — "`js/poll-manager.js`'s \"Poll failed:\" is the
+- **WEB.N260** DRIFT · `SPECIFICATION.md:4730-4732` — "`js/poll-manager.js`'s \"Poll failed:\" is the
   poll loop's only failure diagnostic and is asserted by a test" — Plan: the `console.error("Poll failed:")`
   is dead (`fetchOnce` catches everything) and lives in `render.js`, not `poll-manager.js`. ·
   covered-by: WEB.S11 · [H13]
-- **WEB.N261** INVAR · `SPECIFICATION.md:4725-4727` — "`scripts/build_website.sh` relies on it importing
+- **WEB.N261** INVAR · `SPECIFICATION.md:4737-4739` — "`scripts/build_website.sh` relies on it importing
   the literal `../js/app.js`" — The inline bootstrap's import path must never change. · related: WEB.T06
   · [H13]
 
 ## SPECIFICATION.md Part H.8.1 — JSDoc typedef imports
 
-- **WEB.N262** INVAR · `SPECIFICATION.md:4755-4758` — "**Convention**: declare a narrow, structural
+- **WEB.N262** INVAR · `SPECIFICATION.md:4767-4770` — "**Convention**: declare a narrow, structural
   local typedef instead of importing the real one" — Convention to keep Node-context type-check programs
   DOM-free. · [H13]
 
 ## SPECIFICATION.md Part L.7 — Product versioning
 
-- **WEB.N263** MIRROR · `SPECIFICATION.md:6556-6558 (sites buildgen/version.py:7-8, html/definitions/wozi.json:3, dev.json:3)`
+- **WEB.N263** MIRROR · `SPECIFICATION.md:6571-6573 (sites buildgen/version.py:7-8, html/definitions/wozi.json:3, dev.json:3)`
   — "The website version also appears independently as a top-level `websiteVersion` key in
   `definitions.json`" — Hand-written wozi/dev JSON hard-code `"2.0b0"`, so a `WEBSITE_VERSION` bump
   leaves them behind. · covered-by: GEN.T14 · [H13]
@@ -1040,18 +1040,18 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
 
 ## BACKLOG.md
 
-- **WEB.N269** MIRROR · `BACKLOG.md:163` — "html/definitions/dev.json/mockdata/dev.json updated with the
+- **WEB.N269** MIRROR · `BACKLOG.md:140` — "html/definitions/dev.json/mockdata/dev.json updated with the
   new field" — A new driver data field must be hand-mirrored into the committed dev definitions and the
   mock fixture. · related: WEB.S13, WEB.T05 · [H15]
-- **WEB.N270** TODO · `BACKLOG.md:771-782` — "Still open: retiring wozi/dev's own hand-written
+- **WEB.N270** TODO · `BACKLOG.md:821-832` — "Still open: retiring wozi/dev's own hand-written
   html/definitions/{wozi,dev}.json ... needs a tests_js/ fixture audit nobody has done yet" — Plus
   `KNOWN_DEVICES = ["wozi","dev"]` and no mockdata for the other four devices. · covered-by: WEB.S13,
   WEB.S22, WEB.T12 · [H15]
-- **WEB.N271** TODO · `BACKLOG.md:783-787` — "Manual cross-browser/cross-device spot check not yet done
+- **WEB.N271** TODO · `BACKLOG.md:833-837` — "Manual cross-browser/cross-device spot check not yet done
   — needs the project owner directly." — No real Safari / mobile pass. · related: WEB.T09 · [H15]
-- **WEB.N272** RISK · `BACKLOG.md:816-820` — "harmless today (called exactly once per real page load),
+- **WEB.N272** RISK · `BACKLOG.md:866-870` — "harmless today (called exactly once per real page load),
   but a latent leak" — `js/nav.js` `initNav()` keydown listener never removed. · [H15]
-- **WEB.N273** TODO · `BACKLOG.md:821-824` — "selectSection() is duplicated near-verbatim between
+- **WEB.N273** TODO · `BACKLOG.md:871-874` — "selectSection() is duplicated near-verbatim between
   js/app.js and js/main.js" — Low-priority duplicate (Part G.3). · covered-by: WEB.S18 · [H15]
 
 ## Commit messages (chronological)
@@ -1065,7 +1065,7 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
   redesign PRs #42-#49) | - · [H17]
 - **WEB.N276** SETTLED · `commit cc999c1` — "the sparse-PUT convention can't submit an empty PW) per the
   project owner's explicit decision to leave both as-is" — UI cannot set an empty string (open-network
-  PW). · tracked: SPECIFICATION.md:4365 | related: NET.S17 · [H17]
+  PW). · tracked: SPECIFICATION.md:4377 | related: NET.S17 · [H17]
 - **WEB.N277** SETTLED · `commit 2b927b2 / ffc9dcd` — "not a standing relaxation of \"never touch
   src/\"" — Website-effort sessions were barred from src/ edits except two owner-confirmed exceptions. ·
   status: historic (WEBSITE_PLAN.md later retired) | - · [H17]
@@ -1089,11 +1089,11 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
   [H17]
 - **WEB.N281** DRIFT · `commit 8e121ae` — "SPECIFICATION.md H.5's \"dispatch: true... H.6 minus
   ContMeas\" claim doesn't match the real wozi.json (lightCmdLED/PauseTime carry no dispatch:true there
-  either)" — Flagged for owner. · status: resolved in wording — SPECIFICATION.md:4361,4393 now
+  either)" — Flagged for owner. · status: resolved in wording — SPECIFICATION.md:4373,4405 now
   distinguish dispatch-only webserver fields from `dispatch=true` tag fields | - · [H17]
 - **WEB.N282** NOTE(FLAG) · `commit 8ff9591` — "js/app.js's prototype-only KNOWN_DEVICES list only
   covers wozi/dev"; tests_hardware/bus_topology.py dead code — Website fixture gap; dead code. · status:
-  KNOWN_DEVICES tracked: BACKLOG.md:776-781; bus_topology.py deleted (CLAUDE.md) | related: WEB.T* ·
+  KNOWN_DEVICES tracked: BACKLOG.md:826-831; bus_topology.py deleted (CLAUDE.md) | related: WEB.T* ·
   [H17]
 - **WEB.N283** NOTE(OWNER) · `commit 12a616a` — q4 keep nested RGB/HSB; q5 "leave mockdata's SHTC3/MPRLS
   placeholders alone"; q6 rounding in the renderer via decimals hint — Decisions. · tracked: SPEC H.5

@@ -1,9 +1,9 @@
 # Harvest — CORE: Core runtime modules
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 48, INVAR 61, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2, WORKAROUND 2, SUPPRESS 30, TODO 10, OPENQ 4, DRIFT 5, NOTE 4 — 268 items.
+Kinds: SETTLED 48, INVAR 61, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2, WORKAROUND 2, SUPPRESS 30, TODO 11, OPENQ 4, DRIFT 5, NOTE 4 — 269 items.
 
 
 ## src/api_response.py
@@ -17,7 +17,7 @@ Kinds: SETTLED 48, INVAR 61, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2,
   (mypy never sees the real class). · [H01]
 - **CORE.N003** INVAR · `src/api_response.py:31-34` — "it must not collide with any driver's own
   numbering or with base_classes.py's reserved 1-9 - hence a fixed out-of-range sentinel" — errno 99 is
-  logged into the caller's `.pr`; uniqueness is by convention (C.7.1 map, SPECIFICATION.md:1936); note
+  logged into the caller's `.pr`; uniqueness is by convention (C.7.1 map, SPECIFICATION.md:1940); note
   `FRAM_SPI` also uses errno 99 (`src/asy_fram_driver.py:302`) on its own logger. · related: XCUT.T07 ·
   [H01]
 - **CORE.N004** ASSUME · `src/api_response.py:51-52` — "code == 0 is the only \"OK\" outcome (matches
@@ -182,7 +182,7 @@ Kinds: SETTLED 48, INVAR 61, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2,
   · [H02]
 - **CORE.N057** RISK · `src/config_manager.py:461-463` — "await self.pr.wrn_s(self.config_file, \"-
   Removed invalid keys from config file!\", wrnno=5)" — Keys not in the constructed schema are dropped
-  on rewrite (SPECIFICATION.md:1718-1721 "real operational hazard"; firmware that renames/removes a
+  on rewrite (SPECIFICATION.md:1722-1725 "real operational hazard"; firmware that renames/removes a
   field loses it) · related: CORE.T12 · [H02]
 - **CORE.N058** SETTLED · `src/config_manager.py:479-485` — "One attempt per setup(), never retried
   (C.7.3)... a failed write costs persistence, never the config - refusing it ended every reader's task
@@ -369,7 +369,7 @@ Kinds: SETTLED 48, INVAR 61, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2,
 - **CORE.N110** INVAR · `tests/test_asy_sgp40_driver.py:683-685` — "ConfigManager.get_dict() is
   all-or-nothing on a key never in _cache" — get_dict_cfg() must pass a schema excluding SGPResetVOC;
   including a never-cached key would fail the whole read · [H04]
-- **CORE.N111** SETTLED · `tests/test_asy_sgp40_driver.py:2284-2285` — "Regression (SPECIFICATION.md
+- **CORE.N111** SETTLED · `tests/test_asy_sgp40_driver.py:2409-2410` — "Regression (SPECIFICATION.md
   C.7.3): the failed write used to surface here as errno 12 and a task restart per boot" — an unwritable
   config file now runs on validated defaults (logged as CFGMGR errno 4) · [H04]
 
@@ -634,10 +634,10 @@ Kinds: SETTLED 48, INVAR 61, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2,
 
 ## tests_hardware/README.md
 
-- **CORE.N179** ASSUME · `tests_hardware/README.md:1215-1218` — "`_TASK_FAIL_MAX` (300) would otherwise
+- **CORE.N179** ASSUME · `tests_hardware/README.md:1224-1227` — "`_TASK_FAIL_MAX` (300) would otherwise
   trip a real reboot around the 4th cycle (~7s)" — Supervisor-restart test deliberately stops at ~3.6 s;
   constants copied from `src/system_service.py:44-46`. · related: XCUT.T02 · [H08]
-- **CORE.N180** TODO · `tests_hardware/README.md:1270-1276` — "`_reboot()`'s own alarm-pool-exhaustion
+- **CORE.N180** TODO · `tests_hardware/README.md:1280-1286` — "`_reboot()`'s own alarm-pool-exhaustion
   fallback (`_force_watchdog_starve = True`) is mock-only." — Deferred to a dedicated session (queue
   G3). · related: XCUT.T13 · [H08]
 
@@ -646,14 +646,19 @@ Kinds: SETTLED 48, INVAR 61, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2,
 - **CORE.N181** TODO · `REAL_HARDWARE_TEST_QUEUE.md:245` — "Owner, 2026-09-24: run it once more in the
   next bench sitting for extra evidence; a third pass closes it" — R5 OPEN: WP5 deferred-config-write
   re-confirmation (two green runs so far). · [H08]
+  ⟨4dc80ef: R5 closed 2026-09-25 (third BMP3XX pass), row and BACKLOG entry retired (6e40e27)⟩
 - **CORE.N182** TODO · `REAL_HARDWARE_TEST_QUEUE.md:273` — "`_reboot()`'s alarm-pool-exhaustion fallback
   (`_force_watchdog_starve = True`) is mock-only." — G3 OPEN. · related: XCUT.T13 · [H08]
+  ⟨4dc80ef: G3 done 2026-09-25: reboot_fallback_starves_the_watchdog.py + test_watchdog_starvation.py,
+  3/3 (79423dd)⟩
 
 ## HARDWARE_TEST_HANDOVER.md (snapshot only; sitting IN PROGRESS in another session)
 
 - **CORE.N183** LIMIT · `HARDWARE_TEST_HANDOVER.md:40` — "no silicon trigger for a write failure exists;
   it must simply stay quiet" — `config_manager.py`'s unpersisted-config path (`E4`/`E14`) untestable on
   silicon. · related: CORE.T02 · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 
 ## pyproject.toml
 
@@ -696,184 +701,184 @@ Kinds: SETTLED 48, INVAR 61, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2,
 
 ## SPECIFICATION.md Part A.7 (wozi's construction order and dependency graph, 358-569)
 
-- **CORE.N191** ASSUME · `SPECIFICATION.md:553-555` — "calling `set_level()` at any time is safe — no
+- **CORE.N191** ASSUME · `SPECIFICATION.md:557-559` — "calling `set_level()` at any time is safe — no
   interrupt handler touches logging, `self.level` is a single atomic-store `int`" — Safety rests on no
   IRQ/timer callback ever logging; nothing enforces it. · related: XCUT.T08 · [H12]
 
 ## SPECIFICATION.md Part A.8 (REST API endpoint reference, 571-625)
 
-- **CORE.N192** RISK · `SPECIFICATION.md:611-613` — "int→float has a known, accepted gap (every int
+- **CORE.N192** RISK · `SPECIFICATION.md:615-617` — "int→float has a known, accepted gap (every int
   representable as float only up to the mantissa precision, F.1) — accepted since no registered float
   field's bounds go near it (largest today: BMP3xx's `SeaLevelOffs` at `5000.0`)" — Accepted precision
   gap premised on current bounds. · related: CORE.T03 · [H12]
 
 ## SPECIFICATION.md Part C intro, C.1-C.2 (1475-1535)
 
-- **CORE.N193** INVAR · `SPECIFICATION.md:1500-1501` — "Name-mangled (`__`) methods are reserved for
+- **CORE.N193** INVAR · `SPECIFICATION.md:1504-1505` — "Name-mangled (`__`) methods are reserved for
   when mangling itself is load-bearing — `src/` has none." — Convention claim; no lint guard named.
   (low) · [H12]
 
 ## SPECIFICATION.md Part C.5 / C.5.1-C.5.3 (Config schema system, 1699-1797)
 
-- **CORE.N194** SETTLED · `SPECIFICATION.md:1713-1716` — "`ConfigManager` carries three defensive
+- **CORE.N194** SETTLED · `SPECIFICATION.md:1717-1720` — "`ConfigManager` carries three defensive
   type-mismatch catches ... as pure defense-in-depth ... don't remove them" — Kept catches; premise
   "REST validation already guarantees clean input". · [H12]
-- **CORE.N195** RISK · `SPECIFICATION.md:1718-1721` — "constructing a `ConfigManager` with a schema
+- **CORE.N195** RISK · `SPECIFICATION.md:1722-1725` — "constructing a `ConfigManager` with a schema
   narrower than the full production one is dangerous — `setup()` ... silently drops it on rewrite" —
   Operational hazard for scripts/tests; caller discipline only. · related: HW.T03 · [H12]
-- **CORE.N196** SETTLED · `SPECIFICATION.md:1729-1731` — "a plain sync `get_cfg_schema()` (no I/O,
+- **CORE.N196** SETTLED · `SPECIFICATION.md:1733-1735` — "a plain sync `get_cfg_schema()` (no I/O,
   deliberately not `async`) ... `NeopixelDriver` is the one class with no schema" — Deliberate API
   shape. · [H12]
-- **CORE.N197** LIMIT · `SPECIFICATION.md:1741-1745` — "Since WP5 ... `\"persisted\"` here really means
+- **CORE.N197** LIMIT · `SPECIFICATION.md:1745-1749` — "Since WP5 ... `\"persisted\"` here really means
   \"validated and staged\" - a genuine disk write failure surfaces only later, as a logged `errno` on
   `cfgmgr.pr` ... none is expected to" — Client sees success before the flash write; settled. · related:
   CORE.T02 · [H12]
-- **CORE.N198** INVAR · `SPECIFICATION.md:1745-1748` — "A push callback always receives the coerced,
+- **CORE.N198** INVAR · `SPECIFICATION.md:1749-1752` — "A push callback always receives the coerced,
   persisted value, not the caller's raw one" — Setter contract. · related: CORE.T04 · [H12]
-- **CORE.N199** INVAR · `SPECIFICATION.md:1749-1752` — "For an `int`-typed field, narrow with
+- **CORE.N199** INVAR · `SPECIFICATION.md:1753-1756` — "For an `int`-typed field, narrow with
   `type(value) is not int`, not `isinstance` ... Every setter's return contract is uniformly `bool`" —
   bool-is-int convention; no guard named. · related: CORE.S12 · [H12]
-- **CORE.N200** INVAR · `SPECIFICATION.md:1761-1763` — "`get_dict_cfg()` must keep its own narrower
+- **CORE.N200** INVAR · `SPECIFICATION.md:1765-1767` — "`get_dict_cfg()` must keep its own narrower
   explicit field list (excluding the special-alone field), since `ConfigManager.get_dict()` is
   all-or-nothing and would `KeyError`" — Command-only field constraint. · [H12]
-- **CORE.N201** LIMIT · `SPECIFICATION.md:1773-1777` — "deliberately not through `_push_callbacks` ...
+- **CORE.N201** LIMIT · `SPECIFICATION.md:1777-1781` — "deliberately not through `_push_callbacks` ...
   The caller-visible status stays `\"Failed\"` regardless of correction success — the repair is silent."
   — Recovery chain design; concurrency hazard seeded. · related: CORE.S05 · [H12]
 
 ## SPECIFICATION.md Part C.6 (Data model, 1799-1805)
 
-- **CORE.N202** ASSUME · `SPECIFICATION.md:1804-1805` — "Every current namedtuple is flat scalars only —
+- **CORE.N202** ASSUME · `SPECIFICATION.md:1808-1809` — "Every current namedtuple is flat scalars only —
   check this first if a new driver adds a list/nested-tuple field" — Guard by review only. · [H12]
 
 ## SPECIFICATION.md Part C.7 (Error handling & logging contract, 1807-1891)
 
-- **CORE.N203** SETTLED · `SPECIFICATION.md:1817-1828` — "`reset()` writes unconditionally;
+- **CORE.N203** SETTLED · `SPECIFICATION.md:1821-1832` — "`reset()` writes unconditionally;
   `_store_err()` does not. The asymmetry is deliberate." — Fix for partial ResetErrors in the boot
   window (2026-09-11). · related: CORE.S04 · [H12]
-- **CORE.N204** INVAR · `SPECIFICATION.md:1862-1865` — "`pr.err_s`/`pr.wrn_s` (async, persist to
+- **CORE.N204** INVAR · `SPECIFICATION.md:1866-1869` — "`pr.err_s`/`pr.wrn_s` (async, persist to
   history/FRAM) for anything counting against `get_error_counter()`; `pr.err`/`pr.wrn` (sync,
   non-persisting)" — Log-tier contract (UART repeats via sync `pr.err` disputed). · related: UART.S01 ·
   [H12]
-- **CORE.N205** INVAR · `SPECIFICATION.md:1888-1891` — "a teardown/cleanup method on a class with no
+- **CORE.N205** INVAR · `SPECIFICATION.md:1892-1895` — "a teardown/cleanup method on a class with no
   logger of its own must return `bool`, not `None`" — Silent-failure-masking convention
   (`AsyUDPSocket.disconnect()`, `WebserverService._close_writer()`, `UART.deinit()`). · [H12]
 
 ## SPECIFICATION.md Part C.7.1 (Running errno/wrnno table, 1893-1941)
 
-- **CORE.N206** ASSUME · `SPECIFICATION.md:1936` — "`api_response.py`'s `handle_set_cmd()` — 99 | — |
+- **CORE.N206** ASSUME · `SPECIFICATION.md:1940` — "`api_response.py`'s `handle_set_cmd()` — 99 | — |
   ... fixed at 99 since it runs against any registered module's `.pr`" | errno 99 lands in the calling
   module's history; collision with FRAM's own 99 or a future module's 99 not checked. (low) · related:
   CORE.S06 · [H12]
 
 ## SPECIFICATION.md Part C.7.3 (A failed config write costs persistence, 1975-2000)
 
-- **CORE.N207** INVAR · `SPECIFICATION.md:1985-1990` — "No write is ever retried ... exactly two write
+- **CORE.N207** INVAR · `SPECIFICATION.md:1991-1996` — "No write is ever retried ... exactly two write
   sites and nothing that re-runs either on its own (no timer, sleep or loop — pinned structurally by
   `tests/test_config_manager.py`)" — Enforced structurally by test. · related: CORE.T02 · [H12]
-- **CORE.N208** SETTLED · `SPECIFICATION.md:1995-2000` — "Bounded by boots, and deliberately no further
+- **CORE.N208** SETTLED · `SPECIFICATION.md:2001-2006` — "Bounded by boots, and deliberately no further
   - settled (owner, 2026-09-25). ... Don't add a cross-boot skip" — Do-not-reopen; one flash write
   attempt per boot while repair needed. · related: CORE.T12 · [H12]
 
 ## SPECIFICATION.md Part C.10 (Typing conventions, 2300-2308)
 
-- **CORE.N209** INVAR · `SPECIFICATION.md:2302-2303` — "`TYPE_CHECKING` guarded via `try/except ImportError: TYPE_CHECKING = False`,
+- **CORE.N209** INVAR · `SPECIFICATION.md:2310-2311` — "`TYPE_CHECKING` guarded via `try/except ImportError: TYPE_CHECKING = False`,
   never unconditional. PEP 604 `X — None` everywhere" | Typing conventions (UP007 enforces the `Union`
   half; the guard shape is also what `_strip_type_checking.py` matches). · related: GEN.S12 · [H12]
 
 ## SPECIFICATION.md Part C.13 (Readiness-gate scheme, 2363-2378)
 
-- **CORE.N210** INVAR · `SPECIFICATION.md:2368-2372` — "Gate name/polarity is standardized:
+- **CORE.N210** INVAR · `SPECIFICATION.md:2376-2380` — "Gate name/polarity is standardized:
   `self.initialized: bool = False → True` — except ... `ConfigManager.valid`" — Naming convention with
   one exception. · covered-by: XCUT.T12 · [H12]
 
 ## SPECIFICATION.md Part C.14 / C.14.1 (Instance naming, 2380-2428)
 
-- **CORE.N211** ASSUME · `SPECIFICATION.md:2420-2422` — "The default (empty extension) case reproduces
+- **CORE.N211** ASSUME · `SPECIFICATION.md:2428-2430` — "The default (empty extension) case reproduces
   every existing path/filename/dict-key byte-for-byte" — Claimed and tested by
   `tests/test_config_manager.py` + per-driver regression tests. · [H12]
 
 ## SPECIFICATION.md Part D (src/ Production-Quality Checklist, 2576-2728)
 
-- **CORE.N212** SETTLED · `SPECIFICATION.md:2645-2648` — "Quoting annotations (owner decision,
+- **CORE.N212** SETTLED · `SPECIFICATION.md:2653-2656` — "Quoting annotations (owner decision,
   2026-09-24) ... existing files are not mass-edited to the rule" — Rule applies to new/touched lines
   only; mixed style accepted. · [H12]
-- **CORE.N213** INVAR · `SPECIFICATION.md:2722-2724` — "A pure reorder ... verified via an AST-level
+- **CORE.N213** INVAR · `SPECIFICATION.md:2730-2732` — "A pure reorder ... verified via an AST-level
   comparison, not just a visual diff" — No tool named for the AST comparison. · related: CORE.T09 ·
   [H12]
 
 ## SPECIFICATION.md Part E.8 (Measurement traps, 3271-3362)
 
-- **CORE.N214** LIMIT · `SPECIFICATION.md:3335-3337` — "`ErrNum` mixes errnos and wrnnos in one ring
+- **CORE.N214** LIMIT · `SPECIFICATION.md:3343-3345` — "`ErrNum` mixes errnos and wrnnos in one ring
   sharing a number space ... Filter on `ErrType == \"E\"`." — Log-reading trap from shared number
   spaces. · related: XCUT.T07 · [H12]
 
 ## SPECIFICATION.md Part F.1 — Core platform facts
 
-- **CORE.N215** SETTLED · `SPECIFICATION.md:3476-3478` — "`config_manager.py`'s `type(x) is not int`
+- **CORE.N215** SETTLED · `SPECIFICATION.md:3485-3487` — "`config_manager.py`'s `type(x) is not int`
   stays correct either way and is the form to copy; don't add the CPython-only guard" — Do-not-add rule
   for a bool guard (one was written and removed 2026-09-13). · [H13]
-- **CORE.N216** RISK · `SPECIFICATION.md:3487-3488` — "accepted, since no real schema field's bounds go
+- **CORE.N216** RISK · `SPECIFICATION.md:3496-3497` — "accepted, since no real schema field's bounds go
   near it" — Accepted-by-assumption: holds only while no schema bound exceeds 2**24. · related: PLAT.T08
   · [H13]
 
 ## SPECIFICATION.md Part F.2 — Blocking calls / timeout-wrapping
 
-- **CORE.N217** ASSUME · `SPECIFICATION.md:3607-3609` — "`start_and_check_tasks()`'s `task_errors`
+- **CORE.N217** ASSUME · `SPECIFICATION.md:3616-3618` — "`start_and_check_tasks()`'s `task_errors`
   counter escalates repeated respawn failures to watchdog starvation" — Recovery claim for a wedged bus
   depends on this escalation path actually starving the WDT (not verified here). · related: XCUT.T02,
   XCUT.S01 · [H13]
-- **CORE.N218** RISK · `SPECIFICATION.md:3624-3644` — "one narrow, accepted residual window (WP5,
+- **CORE.N218** RISK · `SPECIFICATION.md:3633-3653` — "one narrow, accepted residual window (WP5,
   2026-09-16) ... a power loss landing in that same brief window loses the just-accepted config change
   silently" — Accepted residual risk of the deferred flush. · related: CORE.T02, XCUT.T10 · [H13]
-- **CORE.N219** ASSUME · `SPECIFICATION.md:3635-3637` — "In practice this window is a single scheduler
+- **CORE.N219** ASSUME · `SPECIFICATION.md:3644-3646` — "In practice this window is a single scheduler
   tick (microseconds to low milliseconds)" — Unmeasured estimate; the deferred flush task can queue
   behind other work. · related: CORE.T02 · [H13]
-- **CORE.N220** INVAR · `SPECIFICATION.md:3625-3626` — "Every real flash write is still *triggered* only
+- **CORE.N220** INVAR · `SPECIFICATION.md:3634-3635` — "Every real flash write is still *triggered* only
   through the REST PUT path — nothing else ever calls `ConfigManager.write_config()`" — Convention-only
   invariant the watchdog/WiFi backstop safety relies on. · related: CORE.T02 · [H13]
-- **CORE.N221** ASSUME · `SPECIFICATION.md:3641-3642` — "never corrupts anything: the next boot's
+- **CORE.N221** ASSUME · `SPECIFICATION.md:3650-3651` — "never corrupts anything: the next boot's
   `setup()` repairs whatever the interrupted write left, C.7.3" — littlefs/`setup()` repair claim under
   power loss. · related: XCUT.T10 · [H13]
 
 ## SPECIFICATION.md Part G.2 — Known reusable primitives
 
-- **CORE.N222** INVAR · `SPECIFICATION.md:4159-4161` — "`type_or_range_error()`/`coerce_numeric()` ...
+- **CORE.N222** INVAR · `SPECIFICATION.md:4171-4173` — "`type_or_range_error()`/`coerce_numeric()` ...
   Never hand-roll a cast/range comparison." — Convention-only validation primitive rule. · related:
   CORE.T03, XCUT.T15 · [H13]
-- **CORE.N223** INVAR · `SPECIFICATION.md:4162-4164` — "validate payload, `try/await` the callback,
+- **CORE.N223** INVAR · `SPECIFICATION.md:4174-4176` — "validate payload, `try/await` the callback,
   `except Exception` → `err_s(...)` → `\"Failed\"`" — Callback dispatch-guard shape; broad catch by
   design. · related: XCUT.T11 · [H13] ⟨quote not matched at the anchor⟩
-- **CORE.N224** INVAR · `SPECIFICATION.md:4167-4171` —
+- **CORE.N224** INVAR · `SPECIFICATION.md:4179-4183` —
   "`Lockable`/`LockedCounter`/`LockedFlag`/`LockedValue`, never a bare module-level variable plus an ad
   hoc lock ... `make_logger()`/`PrintLog`... never a bespoke print-based counter" — Convention-only
   rules. · related: CORE.T08 · [H13] ⟨quote not matched at the anchor⟩
-- **CORE.N225** INVAR · `SPECIFICATION.md:4172-4180` — "Anything returning a
+- **CORE.N225** INVAR · `SPECIFICATION.md:4184-4192` — "Anything returning a
   `get_log()`/`get_error_counter()` result annotates it `\"ErrorLog\"` — never a re-spelled `dict[...]`"
   — Typing convention; historical counts "12 `src/` files and 7 test files", "three" ignores removed. ·
   [H13]
-- **CORE.N226** INVAR · `SPECIFICATION.md:4232-4240` — "`instance_name()`, never a hand-rolled
+- **CORE.N226** INVAR · `SPECIFICATION.md:4244-4252` — "`instance_name()`, never a hand-rolled
   string-concatenation ... `_WIRING` ... never a getter/callback function ... every top-level module
   implements `get_error_sources()`/`get_loggers()`" — Three convention-only shape rules (C.14.1-C.14.3).
   · related: XCUT.T15 · [H13]
-- **CORE.N227** INVAR · `SPECIFICATION.md:4241-4247` — "Only ever called from a one-time or bounded-loop
+- **CORE.N227** INVAR · `SPECIFICATION.md:4253-4259` — "Only ever called from a one-time or bounded-loop
   context, never a place that could keep feeding a genuinely hung system forever - that constraint lives
   with the caller" — `feed_watchdog()` caller-discipline rule; nothing mechanical. · related: XCUT.T03 ·
   [H13]
 
 ## SPECIFICATION.md Part H.6 — Errcount and dispatch-only conventions
 
-- **CORE.N228** LIMIT · `SPECIFICATION.md:4505-4506` — "a fixed `history_length`-long list, no per-entry
+- **CORE.N228** LIMIT · `SPECIFICATION.md:4517-4518` — "a fixed `history_length`-long list, no per-entry
   timestamp — `type` only colors `num`" — Error history carries no timing. · related: XCUT.T24 · [H13]
 
 ## SPECIFICATION.md Part I.2 — Hotspot catalog
 
-- **CORE.N229** SETTLED · `SPECIFICATION.md:4882-4886` — "**Each FRAM-backed logger's
+- **CORE.N229** SETTLED · `SPECIFICATION.md:4894-4898` — "**Each FRAM-backed logger's
   `PrintLogHistoryStore.setup()` stays first in its module's own `setup()`** ... (2026-09-21)" — Owner
   decision; cites undefined "measures A and B". · related: CORE.T05, DOC.S16 · [H13]
 
 ## SPECIFICATION.md Part I.4 — Multi-stage memory-error scheme, (a)-(e)
 
-- **CORE.N230** ASSUME · `SPECIFICATION.md:4995-4998` — "the `task_errors` counter escalates past
+- **CORE.N230** ASSUME · `SPECIFICATION.md:5008-5011` — "the `task_errors` counter escalates past
   repeated restarts to `reboot_system()`, at which point the loop stops feeding the watchdog" — Stage
   (d) claim; plan seeds show the supervisor's reboot branch `return`s and reboot timer behaviour. ·
   related: XCUT.T02, XCUT.S11, XCUT.S03 · [H13]
@@ -904,28 +909,32 @@ Kinds: SETTLED 48, INVAR 61, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2,
 
 ## BACKLOG.md
 
-- **CORE.N236** TODO · `BACKLOG.md:23-51` — "fixed (WP5, 2026-09-16), pending real-hardware
+- **CORE.N236** TODO · `BACKLOG.md:21-35` — "fixed (WP5, 2026-09-16), pending real-hardware
   re-confirmation" — Unnumbered item "config-persisting PUT /sensors reset its own HTTP connection":
   fixed by deferring the flash write to a task; still owed one more BMP3XX-arm bench pass (queue R5,
   owner 2026-09-24), then closes; the ISL29125 arm is item 30. Status: open (silicon). · related:
   CORE.T02, HW.S21 · [H15]
-- **CORE.N237** RISK · `BACKLOG.md:30-33` — "including the accepted residual risk window and its
+  ⟨4dc80ef: R5 closed 2026-09-25, this BACKLOG entry retired (6e40e27); the residual window stays in
+  SPECIFICATION.md:3638-3660⟩
+- **CORE.N237** RISK · `BACKLOG.md:28-31` — "including the accepted residual risk window and its
   interaction with the WiFi-power-cycle backstop" — The deferred write still disables IRQs port-wide for
   the flash write (rp2_flash.c); an accepted residual risk window (SPEC F.2). · related: BUS.T12,
   PLAT.T12 · [H15]
-- **CORE.N238** TODO · `BACKLOG.md:88-92` — "flagged by the owner as implementable more efficiently" —
+  ⟨4dc80ef: BACKLOG entry retired with R5 (6e40e27); the residual window stays in
+  SPECIFICATION.md:3638-3660⟩
+- **CORE.N238** TODO · `BACKLOG.md:68-72` — "flagged by the owner as implementable more efficiently" —
   Unnumbered: task-supervisor error-budget counter to be re-implemented without changing observed
   behaviour. Status: open. · related: XCUT.T02, PAR.S04 · [H15]
-- **CORE.N239** TODO · `BACKLOG.md:115` — "a real-hardware test for _reboot()'s alarm-pool-exhaustion
+- **CORE.N239** TODO · `BACKLOG.md:94` — "a real-hardware test for _reboot()'s alarm-pool-exhaustion
   fallback" — Follow-on (c). · related: XCUT.T13 · [H15]
-- **CORE.N240** SETTLED · `BACKLOG.md:190-196` — "Decided by the project owner: no — a write is fast
+- **CORE.N240** SETTLED · `BACKLOG.md:167-173` — "Decided by the project owner: no — a write is fast
   enough not to matter" — #4 `write_config()` needs no long-block coordination; `get_long_block_lock()`
   stays removed. · related: DOC.S13 · [H15]
-- **CORE.N241** ASSUME · `BACKLOG.md:191-193` — "it never happens on its own/automatically anyway (only
+- **CORE.N241** ASSUME · `BACKLOG.md:168-170` — "it never happens on its own/automatically anyway (only
   ever triggered by a real user interaction via the REST layer)" — Premise of #4; plan seeds say
   `ConfigManager.setup()` rewrites/repairs files at boot on its own, so the premise may be false. ·
   related: CORE.S02, CORE.T12 · [H15]
-- **CORE.N242** OPENQ · `BACKLOG.md:444-446` — "Unchecked: whether a stored value outside a tightened
+- **CORE.N242** OPENQ · `BACKLOG.md:510-512` — "Unchecked: whether a stored value outside a tightened
   bound is rejected on the next write or silently falls back to the default" — Read-path handling of an
   out-of-bound stored value untraced. · related: CORE.T01 · [H15]
 
@@ -961,7 +970,7 @@ Kinds: SETTLED 48, INVAR 61, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2,
 - **CORE.N250** SETTLED · `commit f3924e1 (reverts af24a01's timeout)` — "start_timers() is back to its
   plain, unbounded await self.timers_running.wait()" — Owner rejected a software timeout racing the WDT
   for both start_timers() and the one-shot reboot timer ("brittle wrt. wdt timeout settings"); a dropped
-  soft-Timer callback stays a watchdog-backstop case. · tracked: SPECIFICATION.md:2201, 3446-3447 |
+  soft-Timer callback stays a watchdog-backstop case. · tracked: SPECIFICATION.md:2209, 3454-3455 |
   related: CORE.T*, PLAT.T* · [H17]
 - **CORE.N251** TODO · `commit c152d8b / 0a0727c / e360f34 / 6780011` — "The REST config-write path for
   BackupPeriod/BackupMaxAge/WaitTimeNTP remains a known, documented gap ... deliberately deferred to a
@@ -1001,14 +1010,14 @@ Kinds: SETTLED 48, INVAR 61, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2,
 - **CORE.N260** LIMIT · `commit 3986be9` — "coerce_numeric()'s int->float direction is a blanket accept
   with no exact-round-trip check, so it silently loses precision beyond a float's mantissa (2**24 on
   RP2040 ...)" — Accepted numeric-coercion precision gap; Unix port (double) cannot reproduce rp2
-  (single) behaviour. · tracked: SPECIFICATION.md:612, 3485-3486 | related: PLAT.T* · [H17]
+  (single) behaviour. · tracked: SPECIFICATION.md:616, 3494-3495 | related: PLAT.T* · [H17]
 - **CORE.N261** NOTE(REVERT) · `commit 9fe6d15 (reverts 84a40f4's TaskCheckSecs + heap snapshot)` — "the
   finding turned out to be a stale, never-cleared FRAM history entry rather than a live, reproducing
   issue" — Debug tier removed; standing rule that FRAM history survives reflash. · tracked:
   SPECIFICATION Part C.7, CLAUDE.md FRAM-evidence rule | - · [H17]
 - **CORE.N262** INVAR · `commit 6f430c7` — "constructing it with fewer fields than a config file
   actually holds silently drops the other real fields on rewrite" — ConfigManager narrow-schema hazard.
-  · tracked: SPECIFICATION.md:1720 (Part C.5) | related: CORE.T* · [H17]
+  · tracked: SPECIFICATION.md:1724 (Part C.5) | related: CORE.T* · [H17]
 - **CORE.N263** WORKAROUND · `commit 8428517` — "system_service's storage_pause moved to a TYPE_CHECKING
   _StoragePause Protocol, since Callable[[bool], None] cannot express a keyword-only parameter" — Typing
   workaround for keyword-only callback. · status: by design (low) | - · [H17]
@@ -1036,3 +1045,10 @@ Kinds: SETTLED 48, INVAR 61, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2,
   the success path; only the error path awaits `pr.err_s`. Still holds at 2a88cc8
   (src/asy_notification_service.py:343-345, src/config_manager.py:240-293); recorded only in the PR
   comment · UNTRACKED | - · [H17]
+
+## Delta `2a88cc8` → `4dc80ef` (main head, V11)
+
+- **CORE.N269** TODO · `BACKLOG.md:21-35` — "Four modules this branch changed substantially still number
+  inside the reserved range" — asy_ntp_client, asy_wifi_service, asy_notification_service and
+  config_manager were changed without C.7.1's renumbering; the reserved-range rule is recorded but
+  unapplied. · covered-by: XCUT.T07 · [D1]

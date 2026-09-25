@@ -1,6 +1,6 @@
 # Harvest — MEM: Memory safety
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 23, INVAR 32, MIRROR 2, LIMIT 20, RISK 9, ASSUME 39, PLATFORM 1, SUPPRESS 18, TODO 4, OPENQ 8, DRIFT 1, NOTE 18 — 175 items.
@@ -280,10 +280,10 @@ Kinds: SETTLED 23, INVAR 32, MIRROR 2, LIMIT 20, RISK 9, ASSUME 39, PLATFORM 1, 
 - **MEM.N060** ASSUME · `tests_hardware/README.md:326-328` — "Device allocation lines come in pairs per
   failure ... so lines ÷ 2 = host 500s" — Counting convention assumes exactly two log lines per
   allocation failure. · - (low) · [H08]
-- **MEM.N061** ASSUME · `tests_hardware/README.md:485-490` — "the heap probe read 95,104 B and passed;
+- **MEM.N061** ASSUME · `tests_hardware/README.md:494-499` — "the heap probe read 95,104 B and passed;
   deep in a suite the *same* firmware read 28,864 B" — Any heap figure must state suite position. ·
   related: HW.T16 · [H08]
-- **MEM.N062** INVAR · `tests_hardware/README.md:655-666` — "add it to the staged `main.py` a build
+- **MEM.N062** INVAR · `tests_hardware/README.md:664-675` — "add it to the staged `main.py` a build
   produces, before flashing, and never commit the edit" — Reusable GC-instrumentation technique;
   `exec()` against a live system forbidden. · [H08]
 
@@ -293,18 +293,26 @@ Kinds: SETTLED 23, INVAR 32, MIRROR 2, LIMIT 20, RISK 9, ASSUME 39, PLATFORM 1, 
   in-suite `after_build_system` `largest_block` **84,112 B**" — T1: archive comparison figures "no
   longer in the tree and look like a different position" — owner to close or name the position. ·
   related: HW.T16 · [H08]
+  ⟨4dc80ef: T1 measured 2026-09-25, owner to close: open in BACKLOG.md "Real-hardware work still owed"
+  (T1)⟩
 - **MEM.N064** ASSUME · `REAL_HARDWARE_TEST_QUEUE.md:227` — "`-1` at 0.8 s after reset, `32768` at 38 s"
   — §M3.8 gc.threshold race confirmed on silicon; pre-2026-09-24 heap corpus threshold "unrecoverable
   per run". · [H08]
+  ⟨4dc80ef: T1 measured 2026-09-25, owner to close: open in BACKLOG.md "Real-hardware work still owed"
+  (T1)⟩
 - **MEM.N065** TODO · `REAL_HARDWARE_TEST_QUEUE.md:276` — "So the (e) bar itself, zero allocation
   failures under real load, has no silicon arm." — G8 OPEN (script to write): every flash/bench run is
   an (f)-stage run at 32768. · [H08]
+  ⟨4dc80ef: G8 retired 2026-09-25: covered by test_serving_sweep_at_the_reactive_default (2f48f86)⟩
 - **MEM.N066** LIMIT · `REAL_HARDWARE_TEST_QUEUE.md:342-345` — "A `largest_block` figure that is exactly
   192 KB / 2, / 4, / 8 … is the probe, not the heap." — Probe artefact values; `retained=` equals
   `largest_block` then. · [H08]
+  ⟨4dc80ef: partly kept: HEAP_FRAGMENTATION_MEASUREMENTS.md:83 explains retained=; the 192 KB/2^n probe
+  values survive only in git history⟩
 - **MEM.N067** LIMIT · `REAL_HARDWARE_TEST_QUEUE.md:346-348` — "\"After the starter list\" and \"after
   boot\" are not the same position, and the gap is seconds." — Measure B must be judged at
   `after_starter_loop_end`. · [H08]
+  ⟨4dc80ef: trap kept: HEAP_FRAGMENTATION_MEASUREMENTS.md (after_starter_loop_end, §M3.9)⟩
 
 ## dev_legacy/README.md
 
@@ -455,117 +463,117 @@ Kinds: SETTLED 23, INVAR 32, MIRROR 2, LIMIT 20, RISK 9, ASSUME 39, PLATFORM 1, 
 
 ## SPECIFICATION.md Part B.14.2 / B.14.2.1 (`lwip_connection_counts`, 1215-1379)
 
-- **MEM.N095** SETTLED · `SPECIFICATION.md:1321-1325` — "`PBUF_POOL_SIZE` is deliberately left alone.
+- **MEM.N095** SETTLED · `SPECIFICATION.md:1325-1329` — "`PBUF_POOL_SIZE` is deliberately left alone.
   ... Confirmed on silicon: at an 8x advertised inbound over-commit ... it never surfaced" — Deliberate;
   evidence in git-only archive §7R.2. · related: DOC.S04 · [H12]
-- **MEM.N096** ASSUME · `SPECIFICATION.md:1328-1364` — "Measured cost, from real builds ... Absolute
+- **MEM.N096** ASSUME · `SPECIFICATION.md:1332-1368` — "Measured cost, from real builds ... Absolute
   heaps are from the builds of that day; the deltas are what transfer." — Undated build-size tables;
   shipped 6-connection GC heap 192,488 / linker 192,360 B. · related: DOC.T08 · [H12]
 
 ## SPECIFICATION.md Part C.8 (Concurrency & locking model, 2016-2188)
 
-- **MEM.N097** ASSUME · `SPECIFICATION.md:2032-2034` — "it took a blank FRAM-backed logger `setup()`
+- **MEM.N097** ASSUME · `SPECIFICATION.md:2040-2042` — "it took a blank FRAM-backed logger `setup()`
   from 122,880 to 13,696 board-equivalent bytes" — Measurement cited to git-only archive §7C. · related:
   DOC.S04 · [H12]
 
 ## SPECIFICATION.md Part E.5 / E.5.1-E.5.3 (Coverage, 2951-3088)
 
-- **MEM.N098** ASSUME · `SPECIFICATION.md:3030-3043` — "measured false on 2026-09-18 ...
+- **MEM.N098** ASSUME · `SPECIFICATION.md:3038-3051` — "measured false on 2026-09-18 ...
   `py/profile.c:190` ... 651,680 B — 137,120 B (4.75x)" | Dated allocation table; line-anchored upstream
   citation. · [H12]
 
 ## SPECIFICATION.md Part E.8 (Measurement traps, 3271-3362)
 
-- **MEM.N099** ASSUME · `SPECIFICATION.md:3318-3321` — "`gc.threshold(32768)` hid it in the twin by
+- **MEM.N099** ASSUME · `SPECIFICATION.md:3326-3329` — "`gc.threshold(32768)` hid it in the twin by
   re-placing the working set, and on silicon at peak did not reduce failures at all" — Silicon finding
   (git-only archive §7Q.11). · related: DOC.S04 · [H12]
-- **MEM.N100** INVAR · `SPECIFICATION.md:3322-3334` — "Collect before any heap sample, and say so ...
+- **MEM.N100** INVAR · `SPECIFICATION.md:3330-3342` — "Collect before any heap sample, and say so ...
   Never let the offered load scale with the setting under test ... Ballast guards use the largest free
   run, never `gc.mem_free()`" — Measurement rules; review-only. · related: TEST.T03 · [H12]
 
 ## SPECIFICATION.md Part E.9 (Driver/DUT process separation, 3364-3421)
 
-- **MEM.N101** SETTLED · `SPECIFICATION.md:3385-3387` — "keeps only `_mem_sampler()` ... plus the
+- **MEM.N101** SETTLED · `SPECIFICATION.md:3393-3395` — "keeps only `_mem_sampler()` ... plus the
   `gc.collect()` that settles it before each sample (I.4(e)'s own narrow, separately-litigated
   exception)" — Approved `gc.collect()` in the twin runner. · related: TEST.T03 · [H12]
 
 ## SPECIFICATION.md Part F.1 — Core platform facts
 
-- **MEM.N102** INVAR · `SPECIFICATION.md:3465-3467` — "Any code sizing an allocation from
+- **MEM.N102** INVAR · `SPECIFICATION.md:3474-3476` — "Any code sizing an allocation from
   external/caller input must clamp the size *before* allocating, not just catch `MemoryError`" —
   Convention for every caller-sized allocation (`LockableBuffer`/`PrintLogHistory` as pattern). ·
   related: MEM.T03 · [H13]
-- **MEM.N103** INVAR · `SPECIFICATION.md:3505-3507` — "Code copying a computed span into a buffer must
+- **MEM.N103** INVAR · `SPECIFICATION.md:3514-3516` — "Code copying a computed span into a buffer must
   therefore bound-check the span itself" — Convention; `asy_uart_comm.py`'s `written + size > len(dest)`
   guard named as the instance. · related: UART.T03 · [H13]
 
 ## SPECIFICATION.md Part F.2 — Blocking calls / timeout-wrapping
 
-- **MEM.N104** SETTLED · `SPECIFICATION.md:3600-3601` — "Don't wrap every `asyncio` primitive call in
+- **MEM.N104** SETTLED · `SPECIFICATION.md:3609-3610` — "Don't wrap every `asyncio` primitive call in
   `try`/`except` against a theoretical `MemoryError`" — Do-not-reopen; narrow exception "for a concrete,
   non-hypothetical threat". · related: DOC.T14 · [H13]
 
 ## SPECIFICATION.md Part F.5.3 — Free wins in the 1.29 build
 
-- **MEM.N105** ASSUME · `SPECIFICATION.md:3759-3765` — "`RAM: 66,792 B / 256 KB (25.48%)` ... leaves
+- **MEM.N105** ASSUME · `SPECIFICATION.md:3768-3774` — "`RAM: 66,792 B / 256 KB (25.48%)` ... leaves
   **130,224 B free with a 115,536 B largest obtainable single block** ... a largest known single
   allocation of ~5.7 KB ... that is ample" — Single dated measurement (2026-09-11, dev board); "largest
   known allocation" is an unverified inventory claim. · related: HW.T16, MEM.T06 · [H13]
-- **MEM.N106** SETTLED · `SPECIFICATION.md:3774-3777` — "measuring a loaded floor at 1.29 would need
+- **MEM.N106** SETTLED · `SPECIFICATION.md:3783-3786` — "measuring a loaded floor at 1.29 would need
   `mem_free` exposed over REST, which is deliberately not done" — Deliberate gap: no 1.29 loaded-heap
   floor exists; 1.28's 91,312 B is not comparable. · [H13]
 
 ## SPECIFICATION.md Part G.2 — Known reusable primitives
 
-- **MEM.N107** INVAR · `SPECIFICATION.md:4189-4192` — "**Every transfer method comes in pairs** —
+- **MEM.N107** INVAR · `SPECIFICATION.md:4201-4204` — "**Every transfer method comes in pairs** —
   `write(data)`/`write_into(buf)` and `read()`/`read_into(buf)`" — Buffer-API shape rule; `AsyFramChunk`
   is the reference. · related: XCUT.T15 · [H13]
-- **MEM.N108** INVAR · `SPECIFICATION.md:4196-4198` — "**A failed allocation degrades to a `None`
+- **MEM.N108** INVAR · `SPECIFICATION.md:4208-4210` — "**A failed allocation degrades to a `None`
   buffer, never an exception** ... every consumer's first act is `if buf is None: return False`" —
   Caller-discipline rule for every `LockableBuffer` consumer. · related: CORE.T08 · [H13]
 
 ## SPECIFICATION.md Part I (intro)
 
-- **MEM.N109** ASSUME · `SPECIFICATION.md:4766-4770` — "Written up during the 2026-09-07 systematic
+- **MEM.N109** ASSUME · `SPECIFICATION.md:4778-4782` — "Written up during the 2026-09-07 systematic
   memory-safety audit ... Everything else scanned was already correct." — Dated whole-`src/` audit
   conclusion; predates several modules. · covered-by: MEM.T01 · [H13]
 
 ## SPECIFICATION.md Part I.1 — MicroPython memory-management facts
 
-- **MEM.N110** ASSUME · `SPECIFICATION.md:4783-4785` — "every accumulation loop in `src/` either bounds
+- **MEM.N110** ASSUME · `SPECIFICATION.md:4795-4797` — "every accumulation loop in `src/` either bounds
   total size or already guards the one failure that matters, `asy_uart_driver.py`" — Whole-`src/` claim
   from the 2026-09-07 scan. · related: MEM.T01, MEM.T04 · [H13]
-- **MEM.N111** RISK · `SPECIFICATION.md:4799-4801` — "Pico W's CYW43 firmware genuinely reduces usable
+- **MEM.N111** RISK · `SPECIFICATION.md:4811-4813` — "Pico W's CYW43 firmware genuinely reduces usable
   heap versus a plain Pico (roughly half the 264KB SRAM) — an accepted, unavoidable fact of this board
   choice" — Accepted board-level constraint. · [H13]
-- **MEM.N112** SETTLED · `SPECIFICATION.md:4811-4812` — "`gc.collect()`/`gc.threshold()`/`gc.disable()`
+- **MEM.N112** SETTLED · `SPECIFICATION.md:4823-4824` — "`gc.collect()`/`gc.threshold()`/`gc.disable()`
   as the only Python-visible knobs — all of which I.4 forbids as remedies" — Restates the
   no-GC-knob-as-fix rule. · related: DOC.T14 · [H13]
-- **MEM.N113** SETTLED · `SPECIFICATION.md:4828-4833` — "The C-level technique would need a fork of
+- **MEM.N113** SETTLED · `SPECIFICATION.md:4840-4845` — "The C-level technique would need a fork of
   vendored MicroPython, which CLAUDE.md forbids; **the Python-level analogue needs no fork** — allocate
   the long-lived objects first" — Placement design principle; C.13's init/setup split is the mechanism.
   · related: MEM.T02 · [H13]
-- **MEM.N114** INVAR · `SPECIFICATION.md:4831-4833` — "why (f.1)'s two boot lists are the only places
+- **MEM.N114** INVAR · `SPECIFICATION.md:4843-4845` — "why (f.1)'s two boot lists are the only places
   left where placement has to be managed explicitly" — Assumes all other long-lived allocations land in
   `__init__`; run-phase long-lived allocations would violate it. · covered-by: MEM.T02 · [H13]
-- **MEM.N115** ASSUME · `SPECIFICATION.md:4838-4840` — "**No free-heap target is published.** ... The
+- **MEM.N115** ASSUME · `SPECIFICATION.md:4850-4852` — "**No free-heap target is published.** ... The
   20-30 % free at peak that H.7 uses is general embedded practice." — H.7's `max_connections` target
   rests on a practice figure, not a requirement. · related: PERF.T02 · [H13]
 
 ## SPECIFICATION.md Part I.2 — Hotspot catalog
 
-- **MEM.N116** ASSUME · `SPECIFICATION.md:4851-4858` — "**Reviewed, found already safe (no change
+- **MEM.N116** ASSUME · `SPECIFICATION.md:4863-4870` — "**Reviewed, found already safe (no change
   made)**: ... `captive_dns.py`'s `DNSQuery` (bounded by a single DNS datagram's structural limits) ...
   `asy_wifi_service.py` (no `network.WLAN.scan()` call anywhere)" — Dated per-file safety verdicts; plan
   seed shows `captive_dns` receiving `recvfrom(4096)` per datagram. · related: MEM.T01, NET.S10 · [H13]
 
 ## SPECIFICATION.md Part I.3 — Bounded response assembly
 
-- **MEM.N117** ASSUME · `SPECIFICATION.md:4911-4920` — "with 1,024 B pieces the board served at most 4
+- **MEM.N117** ASSUME · `SPECIFICATION.md:4923-4932` — "with 1,024 B pieces the board served at most 4
   concurrent requests without a `MemoryError` ... `/status` 320 B (1,024 B with the old cap), every
   other route and data source ≤ 256 B" — Measured need per path on the 32-bit twin (archive
   §7R.3/§7Q.10). · related: HW.T16, DOC.S04 · [H13]
-- **MEM.N118** LIMIT · `SPECIFICATION.md:4922-4933` — "the ceiling is the longest string any schema
+- **MEM.N118** LIMIT · `SPECIFICATION.md:4934-4946` — "the ceiling is the longest string any schema
   permits, which is `NTP_Host`'s 1,024 characters ... the long-value case is bounded by argument, not
   measured ... do not read \"≤ 256 B\" as covering a device whose user has typed a long server address"
   — Known over-cap piece (~1,026 B) on `/networking`/`/status`; would not fit at a limit of 7. ·
@@ -573,55 +581,55 @@ Kinds: SETTLED 23, INVAR 32, MIRROR 2, LIMIT 20, RISK 9, ASSUME 39, PLATFORM 1, 
 
 ## SPECIFICATION.md Part I.4 — Multi-stage memory-error scheme, (a)-(e)
 
-- **MEM.N119** INVAR · `SPECIFICATION.md:4977-4979` — "**Every module in `src/`, present and future,
+- **MEM.N119** INVAR · `SPECIFICATION.md:4990-4992` — "**Every module in `src/`, present and future,
   follows this ladder** for anything that can plausibly exhaust memory" — Standing design ladder;
   review-enforced (dup of CLAUDE.md). · related: MEM.T01 · [H13]
-- **MEM.N120** SETTLED · `SPECIFICATION.md:4982-4990` — "a caught `MemoryError`, even one that never
+- **MEM.N120** SETTLED · `SPECIFICATION.md:4995-5003` — "a caught `MemoryError`, even one that never
   crashes anything, is a design defect to fix at its source, not a handled case to accept" — Standing
   rule (a). · related: DOC.T14 · [H13]
-- **MEM.N121** INVAR · `SPECIFICATION.md:4990-4993` — "a caught failure produces a well-defined
+- **MEM.N121** INVAR · `SPECIFICATION.md:5003-5006` — "a caught failure produces a well-defined
   \"unavailable\"/`None`/`False` result, never an unguarded re-raise
   (`_write_guarded()`/`_write_errcount_entry()` substitute `{\"error\":\"unavailable\"}`" — Degrade
   contract (b); the UI renders it as "—" with no signal (WEB.S09). · related: WEB.S09 · [H13]
 
 ## SPECIFICATION.md Part I.4 — (f), (f.1), (g)
 
-- **MEM.N122** SETTLED · `SPECIFICATION.md:5059-5067` — "**(f) A `gc.threshold()` value (or a
+- **MEM.N122** SETTLED · `SPECIFICATION.md:5072-5080` — "**(f) A `gc.threshold()` value (or a
   `gc.collect()` call) is defense in depth applied only once (e) already holds — never the fix itself" —
   Standing rule; every generated boot entry sets `gc.threshold(32768)`. · related: DOC.T14 · [H13]
-- **MEM.N123** SETTLED · `SPECIFICATION.md:5073-5083` — "**(f.1) The one structural exception: a
+- **MEM.N123** SETTLED · `SPECIFICATION.md:5086-5096` — "**(f.1) The one structural exception: a
   boot-confined placement reset.** `gc.collect()` between the units of the two *one-time* setup lists
   ... **and nowhere else whatsoever**" — Owner-approved exception (2026-09-18 per CLAUDE.md). · related:
   DOC.T14 · [H13]
-- **MEM.N124** ASSUME · `SPECIFICATION.md:5085-5094` — "on the twin at `gc.threshold(-1)` ... a factor
+- **MEM.N124** ASSUME · `SPECIFICATION.md:5098-5107` — "on the twin at `gc.threshold(-1)` ... a factor
   of 3.2 to 6.9 on largest-contiguous-over-free ... At the shipped `gc.threshold(32768)` it changes
   nothing measurable" — Twin measurements cited to archive §7A; cites
   `docs/reference/constrained.rst:413-437` at v1.29.0. · related: DOC.S04 · [H13]
-- **MEM.N125** INVAR · `SPECIFICATION.md:5096-5103` — "`tests_scripts/test_gc_collect_sites.py` walks
+- **MEM.N125** INVAR · `SPECIFICATION.md:5109-5116` — "`tests_scripts/test_gc_collect_sites.py` walks
   `src/` with `ast` and asserts the only `gc.collect()` call site is
   `system_service.start_and_check_tasks` ... plus a textual assertion that `buildgen/` emits one only
   from `codegen.py`" — Enforced (test + `scripts/lint.sh`); generated output itself is checked only
   textually at the emitter. · related: TEST.S11 · [H13]
-- **MEM.N126** INVAR · `SPECIFICATION.md:5116-5118` — "no `gc.collect()` in business logic, none in the
+- **MEM.N126** INVAR · `SPECIFICATION.md:5129-5131` — "no `gc.collect()` in business logic, none in the
   run phase (the supervisor loop under the starter list is the run phase and is asserted to have none)"
   — Run-phase prohibition. · related: TEST.T03 · [H13]
-- **MEM.N127** INVAR · `SPECIFICATION.md:5120-5123` — "fix it with a design-level technique that
+- **MEM.N127** INVAR · `SPECIFICATION.md:5133-5136` — "fix it with a design-level technique that
   relieves the pressure directly ... never a GC-policy change or an added `gc.collect()` call" — Rule
   (g). · related: MEM.T06 · [H13]
-- **MEM.N128** INVAR · `SPECIFICATION.md:5125-5128` — "run it through (a)-(d) at design time and give it
+- **MEM.N128** INVAR · `SPECIFICATION.md:5138-5141` — "run it through (a)-(d) at design time and give it
   its own (e)/(f)-shaped test pair" — Review-only obligation for every new allocation-holding
   function/module. · related: TEST.T06 · [H13]
 
 ## SPECIFICATION.md Part I.5 — Real-hardware confirmation
 
-- **MEM.N129** ASSUME · `SPECIFICATION.md:5132-5135` — "confirmed on real target hardware (2026-09-08):
+- **MEM.N129** ASSUME · `SPECIFICATION.md:5145-5148` — "confirmed on real target hardware (2026-09-08):
   `gc.threshold(32768)` (real hammer-load `mem_free` floor 91312 bytes vs. 128 bytes at the
   reactive-only default)" — Dated 1.28-era silicon figures (a 128 B floor at -1 under hammer). ·
   related: HW.T16 · [H13]
 
 ## SPECIFICATION.md Part J.8 — Memory model
 
-- **MEM.N130** INVAR · `SPECIFICATION.md:5632-5634` — "**Preallocate from `CHUNKS`, never grow.** The
+- **MEM.N130** INVAR · `SPECIFICATION.md:5645-5647` — "**Preallocate from `CHUNKS`, never grow.** The
   total upper bound `CHUNKS × payload_size` is known the moment the first frame of a train arrives" —
   Peer-declared size drives allocation (BACKLOG accepted-with-caveat). · covered-by: UART.T03 · [H13]
 
@@ -653,7 +661,7 @@ Kinds: SETTLED 23, INVAR 32, MIRROR 2, LIMIT 20, RISK 9, ASSUME 39, PLATFORM 1, 
 
 ## BACKLOG.md
 
-- **MEM.N138** OPENQ · `BACKLOG.md:874-883` — "Part I.2's hotspot catalog has never been re-walked with
+- **MEM.N138** OPENQ · `BACKLOG.md:924-933` — "Part I.2's hotspot catalog has never been re-walked with
   a placement lens." — Run-phase long-lived allocation during churn: open question, no measurement
   points at one. · covered-by: MEM.T02 · [H15]
 
@@ -710,7 +718,7 @@ Kinds: SETTLED 23, INVAR 32, MIRROR 2, LIMIT 20, RISK 9, ASSUME 39, PLATFORM 1, 
   completeness. (low) · [H15]
 - **MEM.N156** SETTLED · `ARCH:5391` — "Nothing is open here any more." — §11 owner decisions (settrace
   split, CRC "don't touch", FRAM exception, no-defer ordering, boot collects, lock per block op, floor
-  retired); the CRC and ordering ones are carried at SPECIFICATION.md:4876-4885. · [H15]
+  retired); the CRC and ordering ones are carried at SPECIFICATION.md:4888-4897. · [H15]
 
 ## Commit messages (chronological)
 
@@ -787,6 +795,7 @@ Kinds: SETTLED 23, INVAR 32, MIRROR 2, LIMIT 20, RISK 9, ASSUME 39, PLATFORM 1, 
   flash- and bench-tier run is an (f)-stage run" — CLAUDE.md's "every test ... real hardware alike"
   (e)-stage requirement is not met on silicon. · tracked: REAL_HARDWARE_TEST_QUEUE.md:276 (G8) |
   related: MEM.T*, HW.T* · [H17 (also H17)]
+  ⟨4dc80ef: G8 retired 2026-09-25: covered by test_serving_sweep_at_the_reactive_default (2f48f86)⟩
 - **MEM.N174** NOTE(HW-NEGATIVE) · `commit 3d9e22d` — "the twin's two transferable ratios do NOT survive
   the trip to silicon: batch median depth 0.69x (inverted) against the host's 2.07x" — Twin placement
   metrics do not transfer to board fill. · tracked: HEAP annex §7M, SPEC I.4(f.1) note (4daa3cf) |

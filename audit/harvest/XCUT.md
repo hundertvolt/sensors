@@ -1,6 +1,6 @@
 # Harvest — XCUT: System-wide contracts
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 9, INVAR 34, MIRROR 3, LIMIT 5, RISK 13, ASSUME 12, PLATFORM 1, SUPPRESS 8, TODO 3, DRIFT 2, NOTE 6 — 96 items.
@@ -12,9 +12,9 @@ Kinds: SETTLED 9, INVAR 34, MIRROR 3, LIMIT 5, RISK 13, ASSUME 12, PLATFORM 1, S
   "network_available() callback failed:" wrnno=1 / "NTP reply unsynchronized or Kiss-of-Death" wrnno=2
   vs base "Sensor callback adds unknown keys" wrnno=1 / "config manager adds unknown keys" wrnno=2 —
   AsyNtpClient is a SensorReaderConfig, so both sets log onto the same NTP logger — contradicting
-  SPECIFICATION.md:1903-1904 "No clash is live, since none shares a logger with a SensorReader" (same
+  SPECIFICATION.md:1907-1908 "No clash is live, since none shares a logger with a SensorReader" (same
   for NOTIFY's wrnno 1-4). Renumbering is owner-deferred to the next substantial change
-  (SPECIFICATION.md:1904-1906). · related: XCUT.T07 · [H01]
+  (SPECIFICATION.md:1908-1910). · related: XCUT.T07 · [H01]
 
 ## Cross-file (typing fallback sites)
 
@@ -174,187 +174,187 @@ Kinds: SETTLED 9, INVAR 34, MIRROR 3, LIMIT 5, RISK 13, ASSUME 12, PLATFORM 1, S
 - **XCUT.N042** LIMIT · `SPECIFICATION.md:482-485` — "A device with no `[device.wiring].fram_target`
   keeps `conn`/`ntp`/`sysfunct`/`webserver` RAM-only" — Evidence loss for those modules on a FRAM-less
   device. · [H12]
-- **XCUT.N043** INVAR · `SPECIFICATION.md:561-567` — "`asy_sgp40_driver.py` needs no static import of
+- **XCUT.N043** INVAR · `SPECIFICATION.md:565-571` — "`asy_sgp40_driver.py` needs no static import of
   `asy_scd30_driver` ... the object graph is still a clean DAG" — No-cross-driver-import and DAG claims;
   not machine-checked. · related: XCUT.T16 · [H12]
 
 ## SPECIFICATION.md Part C.4 (Layer 3 Reader, 1624-1697)
 
-- **XCUT.N044** MIRROR · `SPECIFICATION.md:1653-1656` — "Each one costs `system_service.py`'s
+- **XCUT.N044** MIRROR · `SPECIFICATION.md:1657-1660` — "Each one costs `system_service.py`'s
   `_TASK_FAIL_INCREMENT` (100) against a `_TASK_FAIL_MAX` of 300 that decays by only 1 per clean
   supervisor pass ... about three restarts" — Doc restates `src/system_service.py:45-46` constants. ·
   related: XCUT.T02 · [H12]
 
 ## SPECIFICATION.md Part C.7 (Error handling & logging contract, 1807-1891)
 
-- **XCUT.N045** INVAR · `SPECIFICATION.md:1867-1872` — "`base_classes.py` reserves
+- **XCUT.N045** INVAR · `SPECIFICATION.md:1871-1876` — "`base_classes.py` reserves
   `errno=1`-`9`/`wrnno=1`-`2` ... a driver's own numbering starts at 10+" — Numbering convention,
   explicitly unenforced (C.7.1:1896-1899). · covered-by: XCUT.T07 · [H12]
-- **XCUT.N046** LIMIT · `SPECIFICATION.md:1872-1874` — "A driver with no fixed, enumerable error-source
+- **XCUT.N046** LIMIT · `SPECIFICATION.md:1876-1878` — "A driver with no fixed, enumerable error-source
   list may assign numbers dynamically (`system_service.py`'s task-supervisor `wrnno=n + 1`)" — Persisted
   W-codes not stable across devices/versions. · covered-by: XCUT.S07 · [H12]
 
 ## SPECIFICATION.md Part C.7.1 (Running errno/wrnno table, 1893-1941)
 
-- **XCUT.N047** INVAR · `SPECIFICATION.md:1896-1900` — "a convention this table records, not one the
+- **XCUT.N047** INVAR · `SPECIFICATION.md:1900-1904` — "a convention this table records, not one the
   code itself enforces — nothing raises if a new module picks a colliding number or starts below 10" —
   Explicitly unenforced catalogue. · covered-by: XCUT.T07 · [H12]
-- **XCUT.N048** TODO · `SPECIFICATION.md:1900-1906` — "Seven modules still number inside the reserved
+- **XCUT.N048** TODO · `SPECIFICATION.md:1904-1910` — "Seven modules still number inside the reserved
   range ... Each is renumbered to 10+ on its next substantial change, not in one pass (owner decision,
   2026-09-24)" — Deferred renumbering (config_manager, system_service, webserver, captive_dns, wifi,
   ntp, notification wrnno). · related: XCUT.T07 · [H12]
-- **XCUT.N049** ASSUME · `SPECIFICATION.md:1903-1904` — "No clash is live, since none shares a logger
+- **XCUT.N049** ASSUME · `SPECIFICATION.md:1907-1908` — "No clash is live, since none shares a logger
   with a `SensorReader`." — Clash-freedom premise. · [H12]
-- **XCUT.N050** SETTLED · `SPECIFICATION.md:1908-1921` — "A history is a bounded ring (ten slots per
+- **XCUT.N050** SETTLED · `SPECIFICATION.md:1912-1925` — "A history is a bounded ring (ten slots per
   logger) ... the three answers differ on purpose" — Per-module episode definitions for `repeat=True`
   (UART one per episode; WiFi/FRAM one per distinct code). · related: UART.T04 · [H12]
-- **XCUT.N051** INVAR · `SPECIFICATION.md:1929, 1931, 1932` — "12 is retired, not reused" / "19 is
+- **XCUT.N051** INVAR · `SPECIFICATION.md:1933, 1935, 1936` — "12 is retired, not reused" / "19 is
   retired, not reused" / "20 is retired, not reused" — Retired codes (ISL wrnno 12, WIFI errno 19, NTP
   errno 20) must never be reassigned; no guard. · related: XCUT.T07 · [H12]
 
 ## SPECIFICATION.md Part C.7.2 (Which failures may end a task, 1943-1973)
 
-- **XCUT.N052** INVAR · `SPECIFICATION.md:1945-1949` — "A task ends — and the supervisor restarts it —
+- **XCUT.N052** INVAR · `SPECIFICATION.md:1949-1953` — "A task ends — and the supervisor restarts it —
   only when the restart re-initialises something real" — Task-ending rule by convention. · related:
   XCUT.T02 · [H12]
-- **XCUT.N053** SETTLED · `SPECIFICATION.md:1965-1969` — "Out of scope (owner, 2026-09-24): hardware
+- **XCUT.N053** SETTLED · `SPECIFICATION.md:1971-1975` — "Out of scope (owner, 2026-09-24): hardware
   that is inoperational from the start. Everything assumes defect-free hardware and a device config that
   matches it." — Init-failure reboot path excluded from C.7.2. · related: SENS.T14 · [H12]
 
 ## SPECIFICATION.md Part C.8 (Concurrency & locking model, 2016-2188)
 
-- **XCUT.N054** INVAR · `SPECIFICATION.md:2024-2026` — "Lock ordering is fixed: always 2 before 1 —
+- **XCUT.N054** INVAR · `SPECIFICATION.md:2032-2034` — "Lock ordering is fixed: always 2 before 1 —
   audited across every driver with no violation" — Audit claim; no mechanical guard. · related: XCUT.T06
   · [H12]
 
 ## SPECIFICATION.md Part C.9 (Timer/task/IRQ integration contract, 2190-2209)
 
-- **XCUT.N055** LIMIT · `SPECIFICATION.md:2193-2196` — "a task tied to a runtime mode transition
+- **XCUT.N055** LIMIT · `SPECIFICATION.md:2201-2204` — "a task tied to a runtime mode transition
   (`asy_wifi_service.py`'s hotspot-mode DNS server task) is deliberately outside this generic
   supervision, a legitimate opt-out" — Unsupervised task by design. · covered-by: XCUT.T05 · [H12]
-- **XCUT.N056** INVAR · `SPECIFICATION.md:2198-2200` — "(default soft, no `hard=True` anywhere) whose
+- **XCUT.N056** INVAR · `SPECIFICATION.md:2206-2208` — "(default soft, no `hard=True` anywhere) whose
   callback only calls `.set()` on an `asyncio.ThreadSafeFlag` — never `time.sleep()` or business logic
   inside a callback" — Review-only rule; no lint guard found. · related: XCUT.T04 · [H12]
-- **XCUT.N057** INVAR · `SPECIFICATION.md:2200-2203` — "Use `Timer.PERIODIC`, not `ONE_SHOT`, for
+- **XCUT.N057** INVAR · `SPECIFICATION.md:2208-2211` — "Use `Timer.PERIODIC`, not `ONE_SHOT`, for
   anything that must keep firing — a soft callback can be silently dropped" — ONE_SHOT used on critical
   paths per seed. · covered-by: XCUT.S02 · [H12]
-- **XCUT.N058** INVAR · `SPECIFICATION.md:2206-2209` — "Every `Timer.init()` failure handler catches
+- **XCUT.N058** INVAR · `SPECIFICATION.md:2214-2217` — "Every `Timer.init()` failure handler catches
   `except (OSError, MemoryError) as e:`, not bare `OSError`" — Handler shape convention. · related:
   XCUT.T04 · [H12]
 
 ## SPECIFICATION.md Part C.9.1 (Read-trigger timer stagger, 2211-2298)
 
-- **XCUT.N059** SETTLED · `SPECIFICATION.md:2213-2224` — "Design intent (owner-established, not
+- **XCUT.N059** SETTLED · `SPECIFICATION.md:2221-2232` — "Design intent (owner-established, not
   re-derived here) ... The one-second total spread is load-bearing and must not become a fixed per-task
   gap or be rescaled" — Owner design; do not re-propose. · [H12]
-- **XCUT.N060** ASSUME · `SPECIFICATION.md:2251-2259` — "never repeated - integer division of 1000 by up
+- **XCUT.N060** ASSUME · `SPECIFICATION.md:2259-2267` — "never repeated - integer division of 1000 by up
   to a handful of distinct small divisors doesn't coincide in practice either, and even a tie would only
   delay, never invalidate, the argument" — Proof assumptions; seed disputes offsets (first at 0,
   accumulated latency, SCD30 500 ms collisions). · covered-by: XCUT.S06 · [H12]
-- **XCUT.N061** RISK · `SPECIFICATION.md:2226-2227` — "starts each `get_timer_starters()` entry via a
+- **XCUT.N061** RISK · `SPECIFICATION.md:2234-2235` — "starts each `get_timer_starters()` entry via a
   chain of `Timer.ONE_SHOT` callbacks" — The stagger itself rides soft ONE_SHOT callbacks that C.9 says
   can be dropped. · covered-by: XCUT.S05 · [H12]
 
 ## SPECIFICATION.md Part C.13 (Readiness-gate scheme, 2363-2378)
 
-- **XCUT.N062** INVAR · `SPECIFICATION.md:2373-2378` — "The response to \"called before `setup()` ran\"
+- **XCUT.N062** INVAR · `SPECIFICATION.md:2381-2386` — "The response to \"called before `setup()` ran\"
   must match the class's already-declared raise/never-raise contract — verify per class, don't assume" —
   Per-class obligation. · covered-by: XCUT.T12 · [H12]
 
 ## SPECIFICATION.md Part C.14.2 (The `_WIRING` convention, 2430-2532)
 
-- **XCUT.N063** ASSUME · `SPECIFICATION.md:2506-2510` — "a real, deliberate reordering of wozi's FRAM
+- **XCUT.N063** ASSUME · `SPECIFICATION.md:2514-2518` — "a real, deliberate reordering of wozi's FRAM
   chunk allocation order, safe only because wozi is never physically flashed (CLAUDE.md)" — Safety
   premise specific to wozi. · related: PAR.S13 · [H12]
-- **XCUT.N064** INVAR · `SPECIFICATION.md:2517-2528` — "every `*_Reader` constructs its namedtuple with
+- **XCUT.N064** INVAR · `SPECIFICATION.md:2525-2536` — "every `*_Reader` constructs its namedtuple with
   every field `None` before any real read ... Every direct-reference consumer tolerates that as a
   normal, expected input" — Producer/consumer initial-value contract. · related: XCUT.T17 · [H12]
-- **XCUT.N065** ASSUME · `SPECIFICATION.md:2530-2532` — "a full audit for the same class of bug ...
+- **XCUT.N065** ASSUME · `SPECIFICATION.md:2538-2540` — "a full audit for the same class of bug ...
   found no other occurrence in `src/`" — Dated (2026-09-12) negative audit claim. · [H12]
 
 ## SPECIFICATION.md Part C.14.3 (Error-source and logger fan-in, 2534-2572)
 
-- **XCUT.N066** INVAR · `SPECIFICATION.md:2536-2545` — "implements `get_error_sources(self) -> list[Any]`
+- **XCUT.N066** INVAR · `SPECIFICATION.md:2544-2553` — "implements `get_error_sources(self) -> list[Any]`
   and `get_loggers(self) -> list[PrintLogHistory]`, structurally (duck-typed" — Duck-typed fan-in
   contract; no Protocol check at wiring time. · related: XCUT.T08 · [H12]
 
 ## SPECIFICATION.md Part D (src/ Production-Quality Checklist, 2576-2728)
 
-- **XCUT.N067** INVAR · `SPECIFICATION.md:2593-2594` — "If verification surfaces a discrepancy, do not
+- **XCUT.N067** INVAR · `SPECIFICATION.md:2601-2602` — "If verification surfaces a discrepancy, do not
   silently change it — flag and ask before altering real output." — Owner rule for formula/behaviour
   discrepancies; review-only. · [H12]
-- **XCUT.N068** RISK · `SPECIFICATION.md:2606-2608` — "Don't defend against out-of-contract input at
+- **XCUT.N068** RISK · `SPECIFICATION.md:2614-2616` — "Don't defend against out-of-contract input at
   runtime if static typing already enforces it (mypy)" — Premise holds only where no untyped runtime
   input (JSON, TOML, restored FRAM state) can reach the function. · related: ALGO.T05 · [H12]
-- **XCUT.N069** INVAR · `SPECIFICATION.md:2653-2655` — "mypy catches most of this — still read every
+- **XCUT.N069** INVAR · `SPECIFICATION.md:2661-2663` — "mypy catches most of this — still read every
   `return` by eye" — Review-only. (low) · [H12]
-- **XCUT.N070** INVAR · `SPECIFICATION.md:2659-2661` — "observable behavior stays identical for every
+- **XCUT.N070** INVAR · `SPECIFICATION.md:2667-2669` — "observable behavior stays identical for every
   valid input — a hard constraint, the full test suite must still pass unchanged" — Improvement-pass
   constraint. · [H12]
-- **XCUT.N071** INVAR · `SPECIFICATION.md:2674-2680` — "Give every member of a related set the same
+- **XCUT.N071** INVAR · `SPECIFICATION.md:2682-2688` — "Give every member of a related set the same
   shape ... flag a questionable existing convention rather than silently diverging. An ongoing,
   project-wide check." — D.10 review obligation. · related: XCUT.T15 · [H12]
 
 ## SPECIFICATION.md Part F.1 — Core platform facts
 
-- **XCUT.N072** SETTLED · `SPECIFICATION.md:3439-3444` — "**Dynamic imports (`__import__`, `importlib`)
+- **XCUT.N072** SETTLED · `SPECIFICATION.md:3447-3452` — "**Dynamic imports (`__import__`, `importlib`)
   must never be used anywhere in this codebase** — project owner's explicit, standing rule" — Owner
   rule, justified by a future static frozen-module selector; no mechanical check is named here. ·
   related: XCUT.T16 · [H13]
-- **XCUT.N073** INVAR · `SPECIFICATION.md:3439-3444` — "Every import stays a real, static `import`/`from ... import`
+- **XCUT.N073** INVAR · `SPECIFICATION.md:3447-3452` — "Every import stays a real, static `import`/`from ... import`
   statement, AST-scannable" — Rule upheld by convention; this Part names no lint/test that enforces it.
   · related: XCUT.T16, GEN.T05 · [H13]
-- **XCUT.N074** INVAR · `SPECIFICATION.md:3449-3451` — "every timer that must fire uses `PERIODIC`
+- **XCUT.N074** INVAR · `SPECIFICATION.md:3457-3459` — "every timer that must fire uses `PERIODIC`
   (C.9), the WiFi hotspot shutoff included (stopped by `reconnect_wifi()` on its first delivered fire)"
   — Convention-only rule; the plan already records ONE_SHOT timers on critical paths contradicting it. ·
   covered-by: XCUT.S02 · [H13]
-- **XCUT.N075** SETTLED · `SPECIFICATION.md:3451-3453` — "A software-timeout mitigation for this was
+- **XCUT.N075** SETTLED · `SPECIFICATION.md:3459-3462` — "A software-timeout mitigation for this was
   considered and rejected ... don't re-propose without a materially different justification" —
   Do-not-reopen marker for dropped-soft-callback mitigation. · covered-by: XCUT.T22 · [H13]
-- **XCUT.N076** ASSUME · `SPECIFICATION.md:3575-3581` — "**Every measurement source is gated at the
+- **XCUT.N076** ASSUME · `SPECIFICATION.md:3584-3590` — "**Every measurement source is gated at the
   driver, not in the response layer** (audited 2026-09-24)" — Dated audit claim listing BMP3xx,
   ISL29125, SGP40, math_helpers, `ema_step()`, SCD30; the plan says "Only SCD30 checks `isfinite`". ·
   covered-by: XCUT.T23 · [H13]
 
 ## SPECIFICATION.md Part F.2 — Blocking calls / timeout-wrapping
 
-- **XCUT.N077** TODO · `SPECIFICATION.md:3597-3598` — "Calls that genuinely *can* be timeout-wrapped
+- **XCUT.N077** TODO · `SPECIFICATION.md:3606-3607` — "Calls that genuinely *can* be timeout-wrapped
   (FRAM SPI, `asy_udp_socket.py`'s `select.poll`-driven `ready()`) should standardize on one mechanism."
   — Standing, undated to-do; no owner or tracking item named. · [H13]
 
 ## SPECIFICATION.md Part F.3 — Long-blocking operations
 
-- **XCUT.N078** SETTLED · `SPECIFICATION.md:3650-3653` — "The `get_long_block_lock()` shared-lock
+- **XCUT.N078** SETTLED · `SPECIFICATION.md:3659-3662` — "The `get_long_block_lock()` shared-lock
   mechanism has been retired ... not a resurrection of the old lock" — Do-not-resurrect marker. · [H13]
 
 ## SPECIFICATION.md Part G.0-G.1 — Shared primitive reuse rule
 
-- **XCUT.N079** INVAR · `SPECIFICATION.md:4146-4153` — "Search G.2, then the wider codebase, for an
+- **XCUT.N079** INVAR · `SPECIFICATION.md:4158-4165` — "Search G.2, then the wider codebase, for an
   existing primitive ... never reimplement even a version that looks locally simpler ... add it to G.2
   in the same change" — Review-only discovery procedure. · covered-by: XCUT.T15 · [H13]
 
 ## SPECIFICATION.md Part G.3 — Re-validation
 
-- **XCUT.N080** INVAR · `SPECIFICATION.md:4251-4256` — "grep the whole tree for the *shape* of each G.2
+- **XCUT.N080** INVAR · `SPECIFICATION.md:4263-4268` — "grep the whole tree for the *shape* of each G.2
   primitive's problem ... A periodic, ongoing check, not a one-time pass" — Review-only recurring
   obligation; findings are flag-and-discuss. · covered-by: XCUT.T15 · [H13]
 
 ## SPECIFICATION.md Part K (intro) and K.1 — Before writing code
 
-- **XCUT.N081** INVAR · `SPECIFICATION.md:5702-5706` — "Check Part G's shared-primitive catalog before
+- **XCUT.N081** INVAR · `SPECIFICATION.md:5715-5719` — "Check Part G's shared-primitive catalog before
   writing anything new ... website-facing needs its `src/`↔`js/` mirror obligation honored too (Part
   G.3)" — Restates G.1/G.3 obligations per promotion. · covered-by: XCUT.T15 · [H13]
 
 ## SPECIFICATION.md Part L.2 — Core design decisions
 
-- **XCUT.N082** ASSUME · `SPECIFICATION.md:6068-6070` — "every producer's locked-value holder has a
+- **XCUT.N082** ASSUME · `SPECIFICATION.md:6083-6085` — "every producer's locked-value holder has a
   safe, defined initial value at construction and every consumer treats that \"not yet measured\" state
   as normal" — Convention across all producers/consumers; not mechanically checked. · related: XCUT.T17
   · [H13]
 
 ## SPECIFICATION.md Part L.4 — Generator pipeline
 
-- **XCUT.N083** DRIFT · `SPECIFICATION.md:6286-6288 vs 3439-3444` —
+- **XCUT.N083** DRIFT · `SPECIFICATION.md:6301-6303 vs 3439-3444` —
   "`digital_twin/run_generic_integration.py` boots any `sensortask_<device>` module ... resolving it via
   `__import__(--module)`" — F.1 forbids `__import__`/`importlib` "anywhere in this codebase"; sites:
   `digital_twin/run_generic_integration.py:356`, `tests/_sensortask_scenarios.py:127`,
@@ -385,7 +385,7 @@ Kinds: SETTLED 9, INVAR 34, MIRROR 3, LIMIT 5, RISK 13, ASSUME 12, PLATFORM 1, S
 
 ## BACKLOG.md
 
-- **XCUT.N089** TODO · `BACKLOG.md:78-87` — "No standardized timeout/cancellation mechanism yet ...
+- **XCUT.N089** TODO · `BACKLOG.md:58-67` — "No standardized timeout/cancellation mechanism yet ...
   PRIORITIZED (project owner, 2026-09-11): to be done soon" — Unnumbered, owner-PRIORITISED refactor:
   FRAM SPI transactions and `asy_udp_socket.py` `ready()`/`write_and_recvfrom()` each use a bespoke
   timeout approach; one consistent mechanism wanted "ahead of the other items". No plan topic names this
@@ -396,7 +396,7 @@ Kinds: SETTLED 9, INVAR 34, MIRROR 3, LIMIT 5, RISK 13, ASSUME 12, PLATFORM 1, S
 - **XCUT.N090** SETTLED · `commit b5502c8` — "don't guard against inputs violating their
   already-declared types ... every caller in this codebase is our own code, type-checked and reviewed" —
   Owner rule: guard only NaN/inf-class failures of correctly-typed values. · tracked:
-  SPECIFICATION.md:2606 ("Don't defend ...") | - · [H17]
+  SPECIFICATION.md:2614 ("Don't defend ...") | - · [H17]
 - **XCUT.N091** NOTE(OWNER-DECISION LOST) · `commit 9f4c084 -> 41762dc -> 080cde3 -> merge e5d2c43` —
   41762dc: "The reorder itself is a decided task now ... moves ... into 'Refactor targets not yet done'
   at high priority, naming all eleven non-compliant classes" and amends D.15's comment clause ("comments

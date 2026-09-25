@@ -1,6 +1,6 @@
 # Harvest — TWIN: Digital twin
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 25, INVAR 50, MIRROR 21, LIMIT 150, RISK 4, ASSUME 75, PLATFORM 3, WORKAROUND 20, SUPPRESS 11, TODO 3, OPENQ 1, DRIFT 4, NOTE 13 — 380 items.
@@ -897,7 +897,7 @@ Kinds: SETTLED 25, INVAR 50, MIRROR 21, LIMIT 150, RISK 4, ASSUME 75, PLATFORM 3
 
 ## tests_hardware/README.md
 
-- **TWIN.N257** LIMIT · `tests_hardware/README.md:397-405` — "it raises a `FileNotFoundError` naming the
+- **TWIN.N257** LIMIT · `tests_hardware/README.md:406-414` — "it raises a `FileNotFoundError` naming the
   path rather than skipping" — Conformance probe needs a built Unix port; disagreements decided "never
   from the fake". · related: TEST.S20 · [H08]
 
@@ -1077,162 +1077,162 @@ Kinds: SETTLED 25, INVAR 50, MIRROR 21, LIMIT 150, RISK 4, ASSUME 75, PLATFORM 3
 
 ## SPECIFICATION.md Part A.10 (Digital twin, 655-686)
 
-- **TWIN.N299** INVAR · `SPECIFICATION.md:663-667` — "any new module joins the digital twin, provided it
+- **TWIN.N299** INVAR · `SPECIFICATION.md:667-671` — "any new module joins the digital twin, provided it
   can form a complete chain ... A module that can't yet complete the chain stays out until the missing
   piece exists" — Review-only obligation; deferral allowed. · [H12]
-- **TWIN.N300** ASSUME · `SPECIFICATION.md:669-673` — "a `strategy.matrix` over all 6 real device
+- **TWIN.N300** ASSUME · `SPECIFICATION.md:673-677` — "a `strategy.matrix` over all 6 real device
   variants ... through its 14-run suite" — Dated counts (6 devices, 14 runs). · covered-by: DOC.T08 ·
   [H12]
-- **TWIN.N301** WORKAROUND · `SPECIFICATION.md:681-684` — "three confirmed Unix-port-only `socket`
+- **TWIN.N301** WORKAROUND · `SPECIFICATION.md:685-688` — "three confirmed Unix-port-only `socket`
   quirks ... worked around entirely from twin-side code (`digital_twin/_unix_port_udp_addr_shim.py`)" —
   Unix-port defect workaround; removal trigger none stated. · related: TWIN.T07 · [H12]
 
 ## SPECIFICATION.md Part B.14.1 (`unix_kbd_intr`, 1116-1213)
 
-- **TWIN.N302** LIMIT · `SPECIFICATION.md:1145-1150` — "`unwedge_heap_after_interrupt()` patches that
+- **TWIN.N302** LIMIT · `SPECIFICATION.md:1149-1154` — "`unwedge_heap_after_interrupt()` patches that
   one specific downstream symptom, but does nothing for an interrupt landing mid some *other*
   non-reentrant operation" — Twin helper's scope limit; kept as defence in depth. · covered-by: TWIN.T07
   · [H12]
 
 ## SPECIFICATION.md Part C.4 (Layer 3 Reader, 1624-1697)
 
-- **TWIN.N303** ASSUME · `SPECIFICATION.md:1656-1658` — "a test that needs several drivers to log a
+- **TWIN.N303** ASSUME · `SPECIFICATION.md:1660-1662` — "a test that needs several drivers to log a
   chip-healthy error gives each its own process ... (Run 5c; measured both ways)" — Test design
   constrained by the reboot budget. · [H12]
 
 ## SPECIFICATION.md Part C.11 / C.11.1 (Design decisions; conformance probe, 2310-2353)
 
-- **TWIN.N304** LIMIT · `SPECIFICATION.md:2327-2329` — "A new SPI sensor sharing an already-occupied SPI
+- **TWIN.N304** LIMIT · `SPECIFICATION.md:2335-2337` — "A new SPI sensor sharing an already-occupied SPI
   bus id with the FRAM chip is not automatically supported by the twin's single-device-per-bus-id
   wiring." — Twin fidelity gap for shared SPI buses. · related: DOC.S22 · [H12]
-- **TWIN.N305** INVAR · `SPECIFICATION.md:2325-2333` — "Digital-twin extension — required, not optional
+- **TWIN.N305** INVAR · `SPECIFICATION.md:2333-2341` — "Digital-twin extension — required, not optional
   ... Do this the same session as promotion ... Also update `html/definitions/<device>.json` ... Same
   session, not deferred." — Review-only promotion obligations; definitions hand-update contradicts
   K.4/K.8. · covered-by: DOC.S03 · [H12]
-- **TWIN.N306** LIMIT · `SPECIFICATION.md:2337-2344` — "A chip fake drifts from the part it models
+- **TWIN.N306** LIMIT · `SPECIFICATION.md:2345-2352` — "A chip fake drifts from the part it models
   silently: every test still passes, because the tests and the fake share the same wrong assumption." —
   Stated fake-fidelity risk; guard exists only for ISL29125. · covered-by: TEST.S20 · [H12]
 
 ## SPECIFICATION.md Part E.6 / E.6.1-E.6.6 (Shared behaviours, real-hardware tier, 3090-3225)
 
-- **TWIN.N307** LIMIT · `SPECIFICATION.md:3161-3162` — "The RP2040's own hotspot/AP mode is untestable
+- **TWIN.N307** LIMIT · `SPECIFICATION.md:3169-3170` — "The RP2040's own hotspot/AP mode is untestable
   in the digital twin (no AP-mode DHCP/second-radio model)." — Twin fidelity gap. · related: TWIN.S05 ·
   [H12]
 
 ## SPECIFICATION.md Part E.7 (Twin soak wall clock measures GC timing, 3229-3269)
 
-- **TWIN.N308** ASSUME · `SPECIFICATION.md:3240-3253` — "Measured on the dev variant (2026-09-11) ...
+- **TWIN.N308** ASSUME · `SPECIFICATION.md:3248-3261` — "Measured on the dev variant (2026-09-11) ...
   44.07 / 58.43 / 61.49 s" — Dated measurement against a retired runner. · [H12]
-- **TWIN.N309** SETTLED · `SPECIFICATION.md:3257-3261` — "Never bisect a twin soak's runtime to a code
+- **TWIN.N309** SETTLED · `SPECIFICATION.md:3265-3269` — "Never bisect a twin soak's runtime to a code
   change." — Do-not-re-diagnose rule. · [H12]
 
 ## SPECIFICATION.md Part E.8 (Measurement traps, 3271-3362)
 
-- **TWIN.N310** LIMIT · `SPECIFICATION.md:3288-3299` — "The twin's `UARTLink.wire_log` is unbounded ...
+- **TWIN.N310** LIMIT · `SPECIFICATION.md:3296-3307` — "The twin's `UARTLink.wire_log` is unbounded ...
   Fixed by giving `run_generic_integration.py` its own periodic clearer (`_wire_log_clearer()`, every
   5s" — Twin fake grows without bound; mitigated by clearer. · [H12]
-- **TWIN.N311** LIMIT · `SPECIFICATION.md:3309-3317` — "A 64-bit twin doubles dicts, lists and frames
+- **TWIN.N311** LIMIT · `SPECIFICATION.md:3317-3325` — "A 64-bit twin doubles dicts, lists and frames
   but not strings ... a non-frozen one spends ~541 KB on imports ... an unthrottled twin serves 50-100x
   faster than the board" — Twin heap/throughput infidelity. · covered-by: TWIN.T06 · [H12]
 
 ## SPECIFICATION.md Part E.9 (Driver/DUT process separation, 3364-3421)
 
-- **TWIN.N312** INVAR · `SPECIFICATION.md:3366-3372` — "Anything that can run outside the digital twin's
+- **TWIN.N312** INVAR · `SPECIFICATION.md:3374-3380` — "Anything that can run outside the digital twin's
   own MicroPython process without losing coverage must run outside it." — Standing rule; review-only. ·
   [H12]
-- **TWIN.N313** INVAR · `SPECIFICATION.md:3374-3378` — "Get it out through the narrowest possible
+- **TWIN.N313** INVAR · `SPECIFICATION.md:3382-3386` — "Get it out through the narrowest possible
   channel (a log line on a fixed timer ... `_mem_sampler()`)" — DUT-side exception. · [H12]
-- **TWIN.N314** ASSUME · `SPECIFICATION.md:3404-3406` — "two independent `wozi` boots in a row,
+- **TWIN.N314** ASSUME · `SPECIFICATION.md:3412-3414` — "two independent `wozi` boots in a row,
   3298/2854 and 4361/2847 bytes" — Dated measurement. · [H12]
 
 ## SPECIFICATION.md Part F.1 — Core platform facts
 
-- **TWIN.N315** LIMIT · `SPECIFICATION.md:3555-3558` — "`asyncio.run()`'s `KeyboardInterrupt` handling
+- **TWIN.N315** LIMIT · `SPECIFICATION.md:3564-3567` — "`asyncio.run()`'s `KeyboardInterrupt` handling
   has a real gap ... its own `try`/`finally` never runs" — Upstream asyncio gap; twin `__main__` blocks
   compensate with an outer synchronous cleanup. · [H13]
-- **TWIN.N316** WORKAROUND · `SPECIFICATION.md:3557-3558` — "`digital_twin/`'s `__main__` blocks re-run
+- **TWIN.N316** WORKAROUND · `SPECIFICATION.md:3566-3567` — "`digital_twin/`'s `__main__` blocks re-run
   cleanup from plain synchronous code in an outer `except KeyboardInterrupt:`" — Workaround for the
   asyncio.run SIGINT gap; removal trigger none stated. · [H13]
 
 ## SPECIFICATION.md Part F.5.1 — I2C/SPI deinit no-ops
 
-- **TWIN.N317** LIMIT · `SPECIFICATION.md:3706-3708` — "One deliberate divergence stays: both fakes hand
+- **TWIN.N317** LIMIT · `SPECIFICATION.md:3715-3717` — "One deliberate divergence stays: both fakes hand
   back a **fresh object** per construction rather than a singleton" — Deliberate fake fidelity gap. ·
   related: TEST.T05 · [H13]
 
 ## SPECIFICATION.md Part F.5.2 — rp2 SPI RX-overrun EIO
 
-- **TWIN.N318** MIRROR · `SPECIFICATION.md:3716-3719` — "modeled at the bus level in
+- **TWIN.N318** MIRROR · `SPECIFICATION.md:3725-3728` — "modeled at the bus level in
   `tests/machine.py`'s SPI fake and in `digital_twin/machine.py`'s (`rx_overrun` ...
   `rx_overrun_remaining` ... `inject_fault()`" — Two fakes must reproduce the ≥32-byte, read-only
   condition. · related: TWIN.T05 · [H13]
-- **TWIN.N319** LIMIT · `SPECIFICATION.md:3719-3722` — "The twin's chip-level `_fram_chip.py`
+- **TWIN.N319** LIMIT · `SPECIFICATION.md:3728-3731` — "The twin's chip-level `_fram_chip.py`
   `FaultInjector` ... cannot express the size threshold below, so a 1-byte status-register read would
   raise there when real hardware could not" — Twin fault injector over-approximates this fault. ·
   related: TWIN.T05 · [H13]
 
 ## SPECIFICATION.md Part F.6 — SIGINT during gc_collect() wedges the Unix-port heap
 
-- **TWIN.N320** PLATFORM · `SPECIFICATION.md:4052-4065` — "measured at the same ~5% rate on Unix ports
+- **TWIN.N320** PLATFORM · `SPECIFICATION.md:4064-4077` — "measured at the same ~5% rate on Unix ports
   built from both `v1.28.0` and `v1.29.0` ... `MemoryError: memory allocation failed, heap is locked`" —
   Unix-port-only upstream race (stuck `GC_COLLECT_FLAG`). · related: TWIN.T07 · [H13]
-- **TWIN.N321** WORKAROUND · `SPECIFICATION.md:4067-4076` — "**The recovery is `gc.collect()`, and only
+- **TWIN.N321** WORKAROUND · `SPECIFICATION.md:4079-4088` — "**The recovery is `gc.collect()`, and only
   `gc.collect()`.** ... **`micropython.heap_unlock()` is not a substitute**" —
   `digital_twin/unix_port_gc_unwedge.py`; removal trigger: none — kept as defence in depth after the
   root-cause fix (4117-4121). · related: TWIN.T07 · [H13]
-- **TWIN.N322** ASSUME · `SPECIFICATION.md:4069-4070` — "Verified 3/3 on captured failures." —
+- **TWIN.N322** ASSUME · `SPECIFICATION.md:4081-4082` — "Verified 3/3 on captured failures." —
   Small-sample verification. · [H13]
-- **TWIN.N323** ASSUME · `SPECIFICATION.md:4095-4101` — "**This was not reproduced locally** ... offered
+- **TWIN.N323** ASSUME · `SPECIFICATION.md:4107-4113` — "**This was not reproduced locally** ... offered
   as the one concrete, source-confirmed gap ... not as a confirmed root cause" — The `grkizi` `exit code -9`
   failure's cause is unconfirmed. · [H13]
-- **TWIN.N324** SETTLED · `SPECIFICATION.md:4107-4121` — "**Amendment (2026-09-15): the root cause above
+- **TWIN.N324** SETTLED · `SPECIFICATION.md:4119-4133` — "**Amendment (2026-09-15): the root cause above
   is now closed** ... `unwedge_heap_after_interrupt()`'s three call sites are kept, deliberately, as
   defense in depth" — Do-not-remove marker; call sites `digital_twin/run_generic_integration.py:395, 435`,
   `digital_twin/launch.py:432`. · related: TWIN.T07 · [H13]
-- **TWIN.N325** LIMIT · `SPECIFICATION.md:4122-4126` — "they still prove the *shutdown paths themselves*
+- **TWIN.N325** LIMIT · `SPECIFICATION.md:4134-4138` — "they still prove the *shutdown paths themselves*
   stay correct, just not this specific recovery branch within them" — The unwedge branch is no longer
   exercised by any real interrupt. · related: TWIN.T07 · [H13]
 
 ## SPECIFICATION.md Part H.7 — Digital twin integration / connection ceiling
 
-- **TWIN.N326** LIMIT · `SPECIFICATION.md:4600-4605` — "The ordinary twin runs on the Unix port, which
+- **TWIN.N326** LIMIT · `SPECIFICATION.md:4612-4617` — "The ordinary twin runs on the Unix port, which
   has **no lwIP at all** ... **cannot** validate a PCB ceiling ... an ad-hoc instrument, never a gate" —
   Twin fidelity gap for connection limits. · covered-by: TWIN.T08 · [H13]
 
 ## SPECIFICATION.md Part I.4 — Multi-stage memory-error scheme, (a)-(e)
 
-- **TWIN.N327** SETTLED · `SPECIFICATION.md:5044-5058` — "**One narrow, evidence-backed exception**:
+- **TWIN.N327** SETTLED · `SPECIFICATION.md:5057-5071` — "**One narrow, evidence-backed exception**:
   `digital_twin/run_generic_integration.py`'s `_mem_sampler()` calls `gc.collect()` ... don't re-flag it
   without new evidence" — Do-not-reflag marker for the sampler's collect. · related: TEST.T03 · [H13]
-- **TWIN.N328** ASSUME · `SPECIFICATION.md:5052-5055` — "measured on a genuinely healthy `wozi` run:
+- **TWIN.N328** ASSUME · `SPECIFICATION.md:5065-5068` — "measured on a genuinely healthy `wozi` run:
   `min=99808, max=1347104` across 20 cycles, a false-positive \"trend declined by 413990 bytes\" against
   an 18318-byte tolerance" — Single dated measurement justifying the exception. · [H13]
 
 ## SPECIFICATION.md Part I.4 — (f), (f.1), (g)
 
-- **TWIN.N329** LIMIT · `SPECIFICATION.md:5112-5116` — "Bounds are derived from the measured worst case
+- **TWIN.N329** LIMIT · `SPECIFICATION.md:5125-5129` — "Bounds are derived from the measured worst case
   with margin and are **twin-only**. The board ... does **not** reproduce the twin's two headline ratios
   at its own fill" — Boot-contiguity bounds are not a silicon property. · related: TWIN.T06, HW.T16 ·
   [H13]
 
 ## SPECIFICATION.md Part K.5 — Digital twin
 
-- **TWIN.N330** INVAR · `SPECIFICATION.md:5802` — "A chip fake is **required, not optional**, the same
+- **TWIN.N330** INVAR · `SPECIFICATION.md:5815` — "A chip fake is **required, not optional**, the same
   session as promotion (C.11 item 9)" — Process rule. · related: TWIN.T01 · [H13]
 
 ## SPECIFICATION.md Part L.4 — Generator pipeline
 
-- **TWIN.N331** ASSUME · `SPECIFICATION.md:6284-6285` — "No hand-typed wiring literal exists anywhere."
+- **TWIN.N331** ASSUME · `SPECIFICATION.md:6299-6300` — "No hand-typed wiring literal exists anywhere."
   — Absolute claim; the FIXED_ADDRESSES/RDID tables above are hand-typed wiring facts. · related:
   TWIN.T12 · [H13]
-- **TWIN.N332** LIMIT · `SPECIFICATION.md:6293-6295` — "**Known twin limitation**: `machine.py`'s
+- **TWIN.N332** LIMIT · `SPECIFICATION.md:6308-6310` — "**Known twin limitation**: `machine.py`'s
   single-chip SCD30/FRAM globals only persist the *last-wired* instance's NVM state across a simulated
   reboot on a multi-instance device" — Twin fidelity gap for multi-instance devices. · related: TWIN.T10
   · [H13]
 
 ## SPECIFICATION.md Part M.1.2 — Measured chip behaviour
 
-- **TWIN.N333** MIRROR · `SPECIFICATION.md:6643` — "`digital_twin/_isl29125_chip.py` models every row" —
+- **TWIN.N333** MIRROR · `SPECIFICATION.md:6658` — "`digital_twin/_isl29125_chip.py` models every row" —
   Chip fake ↔ measured behaviour table. · related: TWIN.T01 · [H13]
 
 ## CLAUDE.md
@@ -1283,14 +1283,14 @@ Kinds: SETTLED 25, INVAR 50, MIRROR 21, LIMIT 150, RISK 4, ASSUME 75, PLATFORM 3
 
 ## BACKLOG.md
 
-- **TWIN.N347** ASSUME · `BACKLOG.md:311-314` — "not a predictor of real-hardware cost in either
+- **TWIN.N347** ASSUME · `BACKLOG.md:288-291` — "not a predictor of real-hardware cost in either
   direction" — Twin `ResetErrors` timings are a harness baseline only. · related: TWIN.T06 · [H15]
-- **TWIN.N348** SETTLED · `BACKLOG.md:611-616` — "must never be bisected to a code change" — Twin soak
+- **TWIN.N348** SETTLED · `BACKLOG.md:677-682` — "must never be bisected to a code change" — Twin soak
   wall clock is GC-timing-driven; budget sits above the observed range. · related: TEST.T04 · [H15]
-- **TWIN.N349** ASSUME · `BACKLOG.md:750-753` — "the Unix port's allocator/heap behavior isn't
+- **TWIN.N349** ASSUME · `BACKLOG.md:800-803` — "the Unix port's allocator/heap behavior isn't
   guaranteed identical to rp2040's real one" — Twin "no leak" conclusion may not transfer. · related:
   TWIN.T06 · [H15]
-- **TWIN.N350** TODO · `BACKLOG.md:868-871` — "Still open: the NTP-outage-x-bus-load fault recombination
+- **TWIN.N350** TODO · `BACKLOG.md:918-921` — "Still open: the NTP-outage-x-bus-load fault recombination
   has no twin/mock-tier equivalent" — Adding bus load to twin Run 9 is the named extension; "not chased
   yet". · [H15]
 
@@ -1325,7 +1325,7 @@ Kinds: SETTLED 25, INVAR 50, MIRROR 21, LIMIT 150, RISK 4, ASSUME 75, PLATFORM 3
 
 - **TWIN.N359** LIMIT · `commit 51d0c21` — "a new SPI sensor sharing an already-occupied bus id with the
   FRAM chip is NOT supported by the twin's current single-device-per-bus-id wiring" — Twin fidelity gap
-  for multi-device SPI. · tracked: digital_twin/README.md:846-847, SPECIFICATION.md:2329 | related:
+  for multi-device SPI. · tracked: digital_twin/README.md:846-847, SPECIFICATION.md:2337 | related:
   TWIN.T* · [H17]
 - **TWIN.N360** LIMIT · `commit 4839c54` — "Left a few reported gaps alone deliberately: BMP3xx's
   Newton-solver divide-by-zero guards (unreachable ...), launch.py's run-forever branch" — Deliberately
@@ -1343,7 +1343,7 @@ Kinds: SETTLED 25, INVAR 50, MIRROR 21, LIMIT 150, RISK 4, ASSUME 75, PLATFORM 3
   digital_twin/unix_port_poll_prewarm.py:19,48-49 | covered-by: TWIN.T07 · [H17]
 - **TWIN.N363** ASSUME · `commit b3495d8` — "The new 8192-byte tolerance (~3.1x the largest observed
   magnitude) is sized from this real data" — Soak memory-trend tolerance from five 100-cycle runs; later
-  revised (SPECIFICATION.md:3403-3407 sqrt scaling). · tracked: SPECIFICATION.md:3403-3407 | related:
+  revised (SPECIFICATION.md:3411-3415 sqrt scaling). · tracked: SPECIFICATION.md:3411-3415 | related:
   TWIN.T*, MEM.T* · [H17]
 - **TWIN.N364** WORKAROUND · `commit dfb8975` — "digital_twin/_unix_port_udp_addr_shim.py, which works
   around three confirmed MicroPython-Unix-port-only socket quirks" — Twin-only shim for Unix-port UDP

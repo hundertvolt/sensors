@@ -1,9 +1,9 @@
 # Harvest — REST: Web server and HTTP surface
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 20, INVAR 31, MIRROR 13, LIMIT 30, RISK 16, ASSUME 35, PLATFORM 7, WORKAROUND 5, SUPPRESS 13, TODO 2, OPENQ 4, DRIFT 4, NOTE 5 — 185 items.
+Kinds: SETTLED 20, INVAR 31, MIRROR 13, LIMIT 30, RISK 16, ASSUME 36, PLATFORM 7, WORKAROUND 5, SUPPRESS 13, TODO 2, OPENQ 4, DRIFT 4, NOTE 5 — 186 items.
 
 
 ## src/asy_webserver_service.py
@@ -383,12 +383,14 @@ Kinds: SETTLED 20, INVAR 31, MIRROR 13, LIMIT 30, RISK 16, ASSUME 35, PLATFORM 7
 - **REST.N105** RISK · `REAL_HARDWARE_TEST_QUEUE.md:297` — "this fits by argument, never by measurement,
   and would not fit the 528 B measured at 7" — W5 OPEN: a ~1,026 B over-cap piece from `NTP_Host`'s
   1,024-char bound; needs one flash write. · related: REST.T05 · [H08]
+  ⟨4dc80ef: W5 done 2026-09-25, SPECIFICATION.md I.3 corrected to the measured case (6e40e27)⟩
 
 ## HARDWARE_TEST_HANDOVER.md (snapshot only; sitting IN PROGRESS in another session)
 
 - **REST.N106** RISK · `HARDWARE_TEST_HANDOVER.md:159-162` — "the admission policy needs fairness (a
   writer can be starved indefinitely today)" — F18 finding and suggested direction; owner decision. ·
   related: PERF.T03 · [H08]
+  ⟨4dc80ef: F18 owner decision open: open in BACKLOG.md "Real-hardware work still owed" (F18)⟩
 
 ## scripts/_digital_twin_ci_suite.py
 
@@ -513,92 +515,92 @@ Kinds: SETTLED 20, INVAR 31, MIRROR 13, LIMIT 30, RISK 16, ASSUME 35, PLATFORM 7
 
 ## SPECIFICATION.md Part A.8 (REST API endpoint reference, 571-625)
 
-- **REST.N131** ASSUME · `SPECIFICATION.md:578-579` — "Six endpoints: `/measurements`, `/sensors`,
+- **REST.N131** ASSUME · `SPECIFICATION.md:582-583` — "Six endpoints: `/measurements`, `/sensors`,
   `/networking`, `/system`, `/status`, `/notification`." — Count-based route claim (static `/html`
   routes excluded). · related: REST.T02 · [H12]
-- **REST.N132** INVAR · `SPECIFICATION.md:595-597` — "must build results with `.update()`, never
+- **REST.N132** INVAR · `SPECIFICATION.md:599-601` — "must build results with `.update()`, never
   `result[name] = await module.get_dict_data()`" — Past production bug; convention for GET aggregation.
   · [H12]
-- **REST.N133** INVAR · `SPECIFICATION.md:604-606` — "`PauseTime` (range-checked 0-3600, rejected not
+- **REST.N133** INVAR · `SPECIFICATION.md:608-610` — "`PauseTime` (range-checked 0-3600, rejected not
   clamped, before reaching `NotificationCoordinator.set_override_led()`)" — Validation convention
   (Invalid vs Failed semantics disputed). · related: REST.S10 · [H12]
-- **REST.N134** LIMIT · `SPECIFICATION.md:617-621` — "One open exception: `SCD30_Reader.get_dict_cfg()`
+- **REST.N134** LIMIT · `SPECIFICATION.md:621-625` — "One open exception: `SCD30_Reader.get_dict_cfg()`
   and three of `BMP3xx_Reader.get_dict_cfg()`'s fields ... can mix pre/post-write values across fields
   (BACKLOG.md)" — Non-atomic GET snapshot; open in BACKLOG. · related: SENS.T16 · [H12]
 
 ## SPECIFICATION.md Part A.9 (The frozen-HTML pipeline, 627-653)
 
-- **REST.N135** DRIFT · `SPECIFICATION.md:633` — "over a stream `_serve_static()` opens itself, in 256 B
+- **REST.N135** DRIFT · `SPECIFICATION.md:637` — "over a stream `_serve_static()` opens itself, in 256 B
   reads" — A.5:292 speaks of Microdot's "1,024 B `send_file` reads" as a serving wall; code has
   `_DEFAULT_CHUNK_BYTES = const(256)` (`src/asy_webserver_service.py:108`). Which bound governs is
   stated two ways. (low) · related: REST.T07 · [H12]
 
 ## SPECIFICATION.md Part C.5 / C.5.1-C.5.3 (Config schema system, 1699-1797)
 
-- **REST.N136** SETTLED · `SPECIFICATION.md:1787-1788` — "A per-field failure never demotes the overall
+- **REST.N136** SETTLED · `SPECIFICATION.md:1791-1792` — "A per-field failure never demotes the overall
   response below `\"OK\"`/`0` — detail lives in `\"result\"`." — Envelope convention. · related:
   CORE.S06 · [H12]
 
 ## SPECIFICATION.md Part F.1 — Core platform facts
 
-- **REST.N137** INVAR · `SPECIFICATION.md:3538-3539` — "keep piece count bounded to a small, fixed
+- **REST.N137** INVAR · `SPECIFICATION.md:3547-3548` — "keep piece count bounded to a small, fixed
   number of sections" — Convention for streamed responses, no mechanical cap named. · [H13]
-- **REST.N138** INVAR · `SPECIFICATION.md:3568-3570` — "a value's shape is the caller's obligation,
+- **REST.N138** INVAR · `SPECIFICATION.md:3577-3579` — "a value's shape is the caller's obligation,
   which is why `_write_guarded()` needing `json.dumps()` inside its own `try` is moot (I.3)" —
   Serialization safety rests on every caller, not the response layer. · related: REST.T11 · [H13]
 
 ## SPECIFICATION.md Part G.2 — Known reusable primitives
 
-- **REST.N139** INVAR · `SPECIFICATION.md:4165-4166` — "`api_response.py`'s `make_response()` only,
+- **REST.N139** INVAR · `SPECIFICATION.md:4177-4178` — "`api_response.py`'s `make_response()` only,
   never a hand-built `{\"res\", \"code\", \"descr\", \"result\"}` dict" — Envelope rule; generated code
   and `js/` included? not stated. · related: XCUT.T15 · [H13]
-- **REST.N140** INVAR · `SPECIFICATION.md:4210-4214` — "Any route whose response scales with device
+- **REST.N140** INVAR · `SPECIFICATION.md:4222-4226` — "Any route whose response scales with device
   configuration returns `await _stream_dict_response(result, self._chunk_bytes)` instead of `return result`"
   — Streaming rule (dup of CLAUDE.md); no test named that every scaling route complies. · related:
   MEM.T03 · [H13]
 
 ## SPECIFICATION.md Part H.6 — Errcount and dispatch-only conventions
 
-- **REST.N141** INVAR · `SPECIFICATION.md:4508-4512` — "`lightCmdLED` (r/g/b/t, bounds matching legacy
+- **REST.N141** INVAR · `SPECIFICATION.md:4520-4524` — "`lightCmdLED` (r/g/b/t, bounds matching legacy
   exactly, rejecting not clamping) ... a well-formed submission always reports `\"Valid\"`, including on
   an identical repeat (never `\"Unchanged\"`)" — Dispatch-only semantics; plan notes `lightCmdLED`
   yields "Failed" not "Invalid" for bad keys. · related: REST.S10 · [H13]
-- **REST.N142** RISK · `SPECIFICATION.md:4513-4515` — "if a `SettingsGroup`'s post-write hook raises,
+- **REST.N142** RISK · `SPECIFICATION.md:4525-4527` — "if a `SettingsGroup`'s post-write hook raises,
   every field that group attempted is reported `\"Failed\"` ... while the overall envelope still reports
   success" — Deliberate envelope-success-with-field-failure contract. · related: XCUT.T11 · [H13]
 
 ## SPECIFICATION.md Part H.7 — Digital twin integration / connection ceiling
 
-- **REST.N143** SETTLED · `SPECIFICATION.md:4540-4544` — "**`max_connections` is `6`** (owner decision
+- **REST.N143** SETTLED · `SPECIFICATION.md:4552-4556` — "**`max_connections` is `6`** (owner decision
   ...) ... `MEMP_NUM_TCP_PCB` is at least `max_connections + 3` ... anything less is a build error" —
   Owner decision; relation enforced by `check_lwip_ensemble()`'s `SPARE_TCP_PCBS`. · related: REST.T06,
   PERF.T02 · [H13]
-- **REST.N144** ASSUME · `SPECIFICATION.md:4550-4551` — "Every limit measured on silicon ran with these
+- **REST.N144** ASSUME · `SPECIFICATION.md:4562-4563` — "Every limit measured on silicon ran with these
   three spares; nothing leaner has been measured." — Spare count is empirical, not derived. · related:
   HW.T16 · [H13]
-- **REST.N145** INVAR · `SPECIFICATION.md:4563-4568` — "`backlog` derives `max_connections + 1` ...
+- **REST.N145** INVAR · `SPECIFICATION.md:4575-4580` — "`backlog` derives `max_connections + 1` ...
   buildgen refuses a `[device].backlog` below `max_connections` or above `max_connections + 1` ...
   `WebserverService` itself only clamps a lower value up" — Build-time enforced; runtime only clamps up.
   · related: REST.T06 · [H13]
-- **REST.N146** SETTLED · `SPECIFICATION.md:4591-4596` — "back-to-back clients see ~70 % refused ...
+- **REST.N146** SETTLED · `SPECIFICATION.md:4603-4608` — "back-to-back clients see ~70 % refused ...
   **It stays that way** (settled 2026-09-24)" — Slot held until close completes; do-not-release-earlier
   marker; pinned by unit and twin tests. · related: REST.T06 · [H13]
-- **REST.N147** SETTLED · `SPECIFICATION.md:4625-4627` — "HTTP keep-alive is deliberately not
+- **REST.N147** SETTLED · `SPECIFICATION.md:4637-4639` — "HTTP keep-alive is deliberately not
   implemented ... persistent connections proved fragile when tried in application code" — Do-not-add
   keep-alive. · related: REST.T12 · [H13]
-- **REST.N148** LIMIT · `SPECIFICATION.md:4628-4629` — "`max_connections` only ever rejects a *new*
+- **REST.N148** LIMIT · `SPECIFICATION.md:4640-4641` — "`max_connections` only ever rejects a *new*
   arrival — never touches an already-open connection, reclaimed only by its own timeout" — No eviction
   of open connections. · related: REST.T06 · [H13]
 
 ## SPECIFICATION.md Part H.7.1 — Connection lifetime and instruments
 
-- **REST.N149** ASSUME · `SPECIFICATION.md:4633-4645` — "Measured on the dev bench, 2026-09-23 ...
+- **REST.N149** ASSUME · `SPECIFICATION.md:4645-4657` — "Measured on the dev bench, 2026-09-23 ...
   **5.12 / 5.14 / 5.16 s** ... **15.08 / 15.13 s** ... drain ... **0.71–0.84 s**" — Dated bench figures;
   "No connection can be held longer than ~15 s on this firmware". · related: HW.T16, REST.T06 · [H13]
-- **REST.N150** INVAR · `SPECIFICATION.md:4642-4644` — "released even when that close's own warning
+- **REST.N150** INVAR · `SPECIFICATION.md:4654-4656` — "released even when that close's own warning
   raises `MemoryError` on an exhausted heap, since a skipped release would refuse everyone until reboot"
   — Slot-release must survive MemoryError in `_serve()`'s `finally`. · related: REST.T06 · [H13]
-- **REST.N151** WORKAROUND · `SPECIFICATION.md:4646-4649` — "`extmod/modlwip.c` has freed the pcb but
+- **REST.N151** WORKAROUND · `SPECIFICATION.md:4658-4661` — "`extmod/modlwip.c` has freed the pcb but
   its state (6) still passes the write path's error check, so microdot's 400 would reach
   `tcp_write(NULL)` ... `_TimeoutStreamProxy` drops every write once a read of the pair raised
   `OSError`" — Workaround for an upstream modlwip defect; removal trigger none stated. · related:
@@ -606,64 +608,66 @@ Kinds: SETTLED 20, INVAR 31, MIRROR 13, LIMIT 30, RISK 16, ASSUME 35, PLATFORM 7
 
 ## SPECIFICATION.md Part I.3 — Bounded response assembly
 
-- **REST.N152** INVAR · `SPECIFICATION.md:4890-4895` — "Every GET route whose response grows with device
+- **REST.N152** INVAR · `SPECIFICATION.md:4902-4907` — "Every GET route whose response grows with device
   configuration ... writes its JSON through one `_PieceWriter` ... `chunk_bytes` ... default **256**,
   that also sets the static-file read size below, so the two bounds cannot drift apart" — One parameter
   bounds both paths; piece bound is in characters per plan REST.S06. · covered-by: REST.T05 · [H13]
-- **REST.N153** INVAR · `SPECIFICATION.md:4901-4903` — "The bytes are **identical** to what the routes
+- **REST.N153** INVAR · `SPECIFICATION.md:4913-4915` — "The bytes are **identical** to what the routes
   emitted before ... pinned against MicroPython's own `json.dumps()` by
   `tests/test_asy_webserver_service.py`" — Byte-parity mirror `_PieceWriter.add_value()` ↔
   `json.dumps()` (separators, non-string keys), test-enforced. · related: REST.T05 · [H13]
-- **REST.N154** ASSUME · `SPECIFICATION.md:4904-4909` — "that scales with module count (17 on real
+- **REST.N154** ASSUME · `SPECIFICATION.md:4916-4921` — "that scales with module count (17 on real
   hardware, ~4.9 KB for one section ...). At 256 B `dev`'s `/status` is 29 pieces (11 at the old 1024
   B); its wall-clock on silicon is `REAL_HARDWARE_TEST_QUEUE.md` row W3" — Dated counts; permanent doc
   cites a temporary queue row ID. · related: DOC.T03, DOC.T08 · [H13]
-- **REST.N155** ASSUME · `SPECIFICATION.md:4925-4926` — "Only a string config value can be that scalar —
+  ⟨4dc80ef: W3 measured like for like 2026-09-25 (+17 %), owner judgement: open in BACKLOG.md
+  "Real-hardware work still owed" (W3)⟩
+- **REST.N155** ASSUME · `SPECIFICATION.md:4937-4938` — "Only a string config value can be that scalar —
   `errcount` holds ints alone (`_shape_errcount_entry()`), and `history_length` bounds its list" —
   Premise of the over-cap analysis; non-ASCII SSID/hostname bytes not considered (REST.S06). · related:
   REST.S06 · [H13]
-- **REST.N156** WORKAROUND · `SPECIFICATION.md:4935-4944` — "`_serve_static()` now opens the file
+- **REST.N156** WORKAROUND · `SPECIFICATION.md:4948-4957` — "`_serve_static()` now opens the file
   itself, passes it to `send_file(stream=...)`, sets that attribute on the one response to the same
   `chunk_bytes` (**256**) and adds `Content-Length`" — Wraps vendored microdot's 1,024 B
   `send_file_buffer_size` default without editing `ext/`; removal trigger none stated. · related:
   REST.T07 · [H13]
-- **REST.N157** INVAR · `SPECIFICATION.md:4944-4951` — "**A write-phase failure is never a success**: a
+- **REST.N157** INVAR · `SPECIFICATION.md:4957-4964` — "**A write-phase failure is never a success**: a
   response whose body can still fail after its status line goes out must carry its length ...
   `_TimeoutStreamProxy.awrite()` holds the block until its blank line and sends it as one write" —
   Framing invariant plus a workaround for microdot writing headers piecewise. · related: REST.T06,
   REST.T12 · [H13]
-- **REST.N158** INVAR · `SPECIFICATION.md:4971-4973` — "a `chunk_bytes` of 0 is clamped: microdot's body
+- **REST.N158** INVAR · `SPECIFICATION.md:4984-4986` — "a `chunk_bytes` of 0 is clamped: microdot's body
   loop ends only on a short read, and `read(0)` never is one" — Guard against a microdot behaviour. ·
   related: REST.T05 · [H13]
 
 ## SPECIFICATION.md Part I.6 — Request-body cap (sits inside Part J)
 
-- **REST.N159** PLATFORM · `SPECIFICATION.md:5176-5182` — "`handle_request()` calls `Request.create()`
-  (`:1400`), which reads the body at `:426`, and only then `dispatch_request()` (`:1410`), whose 413
-  check is at `:1443` ... not fixed by a version bump" — Vendored microdot ordering (v2.6.2 and upstream
+- **REST.N159** PLATFORM · `SPECIFICATION.md:5189-5195` — "`handle_request()` calls `Request.create()`
+  (`:1404`), which reads the body at `:426`, and only then `dispatch_request()` (`:1414`), whose 413
+  check is at `:1447` ... not fixed by a version bump" — Vendored microdot ordering (v2.6.2 and upstream
   `main`), cited by line. · related: REST.T09 · [H13]
-- **REST.N160** ASSUME · `SPECIFICATION.md:5190-5195` — "the largest legitimate body is **1,312 B** on
+- **REST.N160** ASSUME · `SPECIFICATION.md:5203-5208` — "the largest legitimate body is **1,312 B** on
   `PUT /networking` ... real traffic measures 232 B. So 2048 clears the schema maximum with **1.56x**
   margin" — Dated per-route measurements; pinned per device by
   `tests_scripts/test_request_body_cap_headroom.py`. · related: REST.T01 · [H13]
-- **REST.N161** INVAR · `SPECIFICATION.md:5197-5204` — "a cap must serve what the API accepts, not what
+- **REST.N161** INVAR · `SPECIFICATION.md:5210-5217` — "a cap must serve what the API accepts, not what
   one client happens to send" — Cap sized per route; `/sensors` grows per driver. · related: REST.T01 ·
   [H13]
-- **REST.N162** INVAR · `SPECIFICATION.md:5206-5212` —
+- **REST.N162** INVAR · `SPECIFICATION.md:5219-5225` —
   "`tests_scripts/test_request_body_cap_headroom.py` computes both sides ... asserts no route can be
   sent a legitimate body the cap would reject" — Enforced guard. · related: REST.T01 · [H13]
-- **REST.N163** INVAR · `SPECIFICATION.md:5214-5218` — "**Both are set from the one constructor
+- **REST.N163** INVAR · `SPECIFICATION.md:5227-5231` — "**Both are set from the one constructor
   parameter**, so they cannot drift apart again ... `tests/test_asy_webserver_service.py`'s F.2b section
   pins this" — Enforced; test section label "F.2b" collides visually with Part F numbering. · related:
   DOC.T03, REST.S01 · [H13]
-- **REST.N164** RISK · `SPECIFICATION.md:5248-5255, 5275-5281` — "A slot is released in `_serve()`'s
+- **REST.N164** RISK · `SPECIFICATION.md:5261-5268, 5288-5294` — "A slot is released in `_serve()`'s
   `finally`, *after* `_close_writer(writer)` has awaited the close — so it outlives the response the
   client already holds" — Slot-release lag makes an immediate follow-up request refusable; tests
   compensate with `wait_until()`/`time.sleep(1.0)`. · covered-by: PERF.T02 · [H13]
 
 ## SPECIFICATION.md Part L.7 — Product versioning
 
-- **REST.N165** INVAR · `SPECIFICATION.md:6550-6558` — "`GET /system` gains one nested, never-flattened
+- **REST.N165** INVAR · `SPECIFICATION.md:6565-6573` — "`GET /system` gains one nested, never-flattened
   `\"build\"` sub-entry ... never through `SettingsGroup` ... Never conflate the two" — Build-info shape
   contract. · related: GEN.T14 · [H13]
 
@@ -682,20 +686,22 @@ Kinds: SETTLED 20, INVAR 31, MIRROR 13, LIMIT 30, RISK 16, ASSUME 35, PLATFORM 7
 
 ## BACKLOG.md
 
-- **REST.N169** OPENQ · `BACKLOG.md:250-309` — "What is still open — and it is the load case, not the
+- **REST.N169** OPENQ · `BACKLOG.md:227-286` — "What is still open — and it is the load case, not the
   idle one." — #24 `ResetErrors` sweep: 3 readers reach 88-98 % of the 15 s cap, 4 exceed it (F18); fix
   = explicit elapsed-time budget sized for load and/or batched/concurrent reset near ~27 chunks —
   owner's decision. · covered-by: PERF.T03 · [H15]
-- **REST.N170** SETTLED · `BACKLOG.md:306-309` — "a design-level fix at the source ... rather than a
+- **REST.N170** SETTLED · `BACKLOG.md:283-286` — "a design-level fix at the source ... rather than a
   larger client timeout" — Raising client timeouts is ruled out as the fix. · related: PERF.T03 · [H15]
-- **REST.N171** OPENQ · `BACKLOG.md:325-362` — "ISL29125 HTTP connection reset under concurrent API load
+- **REST.N171** OPENQ · `BACKLOG.md:301-301` — "ISL29125 HTTP connection reset under concurrent API load
   — root-cause not yet established." — #30: PUT + 2 readers 6/18; flash-write IRQ window "suspected, not
   proven"; second candidate is the connection ceiling; next gated run reads `CEILING_RETRIES`, then
   `RangeAuto=false` bisection (queue R1). · related: REST.T06 · [H15]
-- **REST.N172** LIMIT · `BACKLOG.md:332` — "The DUT logs nothing: WEBSERVER's counter stays 0, so this
+  ⟨4dc80ef: BACKLOG 30 closed as not reproduced, item removed (R1, 79423dd)⟩
+- **REST.N172** LIMIT · `BACKLOG.md:301` — "The DUT logs nothing: WEBSERVER's counter stays 0, so this
   is invisible to FRAM forensics." — A real failure class leaves no persisted evidence. · related:
   XCUT.T24 · [H15]
-- **REST.N173** ASSUME · `BACKLOG.md:433-437` — "Real traffic measures 232 B." — Dated body-size
+  ⟨4dc80ef: BACKLOG 30 closed as not reproduced, item removed (R1, 79423dd)⟩
+- **REST.N173** ASSUME · `BACKLOG.md:499-503` — "Real traffic measures 232 B." — Dated body-size
   figures; derived by `tests_scripts/test_request_body_cap_headroom.py`. · [H15]
 
 ## Archive `12640c2:HEAP_FRAGMENTATION_MEASUREMENTS.md` (5,553 lines) — only items still open/undecided/deferred/next-step there, with carry status in current docs
@@ -713,7 +719,7 @@ Kinds: SETTLED 20, INVAR 31, MIRROR 13, LIMIT 30, RISK 16, ASSUME 35, PLATFORM 7
 - **REST.N176** RISK · `commit e72936e (PR #27)` — "Root-caused today's arzi/neu
   permanent-unreachability incident to vendored Microdot's zero-timeout stream I/O ... a standing
   upstream gap" — Field incident on deployed units; owner-decided layered hardening design. · status:
-  done in refactor (SPECIFICATION.md:623 "Connection hardening (per-call/outer-cap timeouts ...)"); the
+  done in refactor (SPECIFICATION.md:627 "Connection hardening (per-call/outer-cap timeouts ...)"); the
   deployed legacy units keep the gap by rule (legacy never gets work) | related: REST.T*, PAR.T* · [H17]
 - **REST.N177** PLATFORM · `commit a035736` — "asyncio.TimeoutError is an OSError subclass was wrong ...
   it's a plain Exception ... a per-call read-phase timeout is silently absorbed by Microdot's own
@@ -744,6 +750,7 @@ Kinds: SETTLED 20, INVAR 31, MIRROR 13, LIMIT 30, RISK 16, ASSUME 35, PLATFORM 7
   1,024-character bound makes a ~1,026 B piece reachable on /networking, which every measured figure was
   taken below"; "New row W5 ... fits by argument and not by measurement" — Unmeasured worst-case
   response piece. · tracked: REAL_HARDWARE_TEST_QUEUE.md W5 | related: MEM.T* · [H17]
+  ⟨4dc80ef: W5 done 2026-09-25, SPECIFICATION.md I.3 corrected to the measured case (6e40e27)⟩
 - **REST.N184** NOTE(ANSWERED) · `commit e1dff54` — item 29 answered from source (cyw43 BADAUTH
   catch-all); item 30 "gains a second candidate ... The bench test's fetch() has retried ceiling
   refusals since 2026-09-19, hiding exactly that" — ISL29125 connection reset may be ceiling refusal
@@ -754,3 +761,9 @@ Kinds: SETTLED 20, INVAR 31, MIRROR 13, LIMIT 30, RISK 16, ASSUME 35, PLATFORM 7
   zero-think-time readers saturate the board (F18: PUT starved at the ceiling ...)" — ResetErrors near
   cap; writer starvation under saturation (no admission fairness). · tracked: BACKLOG #24, #32; queue
   F18 | related: REST.T* · [H17]
+
+## Delta `2a88cc8` → `4dc80ef` (main head, V11)
+
+- **REST.N186** ASSUME · `SPECIFICATION.md:4946-4949` — "with `NTP_Host` at 1,024 characters
+  `/networking` came back complete (1,182 B)" — W5: the one over-cap response piece measured at the
+  limit of 6; worst largest free run 36,864 B. · related: PERF.T02 · [D1]

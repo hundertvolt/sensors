@@ -1,6 +1,6 @@
 # Harvest — PLAT: MicroPython/RP2040 platform facts
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 4, INVAR 5, LIMIT 2, RISK 2, ASSUME 7, PLATFORM 361, WORKAROUND 8, SUPPRESS 3, DRIFT 5, NOTE 3 — 400 items.
@@ -217,7 +217,7 @@ Kinds: SETTLED 4, INVAR 5, LIMIT 2, RISK 2, ASSUME 7, PLATFORM 361, WORKAROUND 8
 - **PLAT.N053** PLATFORM · `src/print_log.py:136-139` — "`[x] * n` can segfault the interpreter
   uncatchably in a size range bytearray()'s own guards don't cover - see CLAUDE.md's
   list-repeat-segfault gotcha for the measured failure-size boundaries" — Platform segfault fact; the
-  boundaries live in SPECIFICATION.md:3463, not CLAUDE.md (pointer drift, low) · related: PLAT.T02 ·
+  boundaries live in SPECIFICATION.md:3472, not CLAUDE.md (pointer drift, low) · related: PLAT.T02 ·
   [H02]
 - **PLAT.N054** PLATFORM · `src/print_log.py:227` — "_HDR_FMT = \"<H\" # explicit little-endian, no
   padding - bare format defaults to \"@\" here, not \"<\"" — struct default-format fact; `_history_fmt`
@@ -443,13 +443,13 @@ Kinds: SETTLED 4, INVAR 5, LIMIT 2, RISK 2, ASSUME 7, PLATFORM 361, WORKAROUND 8
 - **PLAT.N112** PLATFORM · `tests/test_asy_isl29125_driver.py:296-297,2170,2178` — "int() raises
   ValueError for NaN and OverflowError for inf on MicroPython" — runtime fact · [H03]
 - **PLAT.N113** DRIFT · `tests/test_asy_isl29125_driver.py:2835 vs tests/test_asy_bmp3xx_driver.py:1083-1085`
-  — "bool is an int subclass in MicroPython as in CPython" — contradicts SPECIFICATION.md:3469-3471
+  — "bool is an int subclass in MicroPython as in CPython" — contradicts SPECIFICATION.md:3478-3480
   ("`bool` is NOT a subclass of `int` on MicroPython") and the BMP3xx test's own note · [H03]
 
 ## tests/test_asy_neopixel_driver.py
 
 - **PLAT.N114** DRIFT · `tests/test_asy_neopixel_driver.py:541` — "bool is a legitimate int subtype for
-  a byte value" — contradicts SPECIFICATION.md:3469-3471 (bool is not an int subclass on MicroPython);
+  a byte value" — contradicts SPECIFICATION.md:3478-3480 (bool is not an int subclass on MicroPython);
   the assertion itself (`_clamp_byte(True) == 1`) still holds via int() coercion (low) · [H03]
 - **PLAT.N115** DRIFT · `tests/test_asy_neopixel_driver.py:542-543` — "confirmed directly against the
   real MicroPython 1.28.0 Unix-port interpreter" — version-stamped fact predates the 1.29.0 pin;
@@ -1021,18 +1021,18 @@ Kinds: SETTLED 4, INVAR 5, LIMIT 2, RISK 2, ASSUME 7, PLATFORM 361, WORKAROUND 8
 - **PLAT.N240** PLATFORM · `tests_hardware/README.md:316-319` — "`__del__` never runs on user-class
   instances and `MICROPY_PY_WEAKREF` is off" — rp2 has no exact end-of-GC signal; an `await`-less
   `get_value()` is an always-truthy coroutine. · related: PLAT.T13 · [H08]
-- **PLAT.N241** SETTLED · `tests_hardware/README.md:415-419` — "resolved (2026-09-11): it has,
+- **PLAT.N241** SETTLED · `tests_hardware/README.md:424-428` — "resolved (2026-09-11): it has,
   repeatedly." — Bench has run 1.29.0; kept as struck-through history. · related: DOC.T05 (low) · [H08]
-- **PLAT.N242** PLATFORM · `tests_hardware/README.md:463-471` — "`asy_uart_driver.UART.deinit()` does
+- **PLAT.N242** PLATFORM · `tests_hardware/README.md:472-480` — "`asy_uart_driver.UART.deinit()` does
   not release the GPIO function select" — Moving a UART's pins poisons the peripheral until a hard
   reset; soft resets don't restore pin defaults. · related: PLAT.T03 · [H08]
-- **PLAT.N243** PLATFORM · `tests_hardware/README.md:479-484` — "only a genuine `hard_reset()` resumes
+- **PLAT.N243** PLATFORM · `tests_hardware/README.md:488-493` — "only a genuine `hard_reset()` resumes
   the live system; `exec()`/`run_isolated()` never do" — mpremote soft-reset never re-runs boot/main
   (resolved). · covered-by: HW.T06 · [H08]
-- **PLAT.N244** PLATFORM · `tests_hardware/README.md:667-671` — "real rp2/lwIP does not appear to
+- **PLAT.N244** PLATFORM · `tests_hardware/README.md:676-680` — "real rp2/lwIP does not appear to
   propagate ICMP errors onto a connected UDP socket's poll state" — Zero POLLERR/POLLHUP in 6 retry
   cycles; `AsyUDPSocket.ready()` handling effectively dead on rp2. · related: PLAT.T04 · [H08]
-- **PLAT.N245** PLATFORM · `tests_hardware/README.md:953-966` — "the soft-reset boot path in
+- **PLAT.N245** PLATFORM · `tests_hardware/README.md:962-975` — "the soft-reset boot path in
   `ports/rp2/main.c` only re-runs `main.py` when that's `FRIENDLY_REPL`" — Raw-REPL entry always
   soft-resets and leaves `main.py` stopped; only a hard reset resumes. · covered-by: HW.T06 · [H08]
 
@@ -1236,338 +1236,338 @@ Kinds: SETTLED 4, INVAR 5, LIMIT 2, RISK 2, ASSUME 7, PLATFORM 361, WORKAROUND 8
 
 ## SPECIFICATION.md Part A.8 (REST API endpoint reference, 571-625)
 
-- **PLAT.N284** PLATFORM · `SPECIFICATION.md:613-615` — "NaN/±inf attempting int-coercion are caught via
+- **PLAT.N284** PLATFORM · `SPECIFICATION.md:617-619` — "NaN/±inf attempting int-coercion are caught via
   MicroPython's own `int(float)` exception shapes" — Depends on MicroPython's exception types for
   int(nan/inf). · related: CORE.T03 · [H12]
 
 ## SPECIFICATION.md Part A.9 (The frozen-HTML pipeline, 627-653)
 
-- **PLAT.N285** PLATFORM · `SPECIFICATION.md:634-637` — "`.frozen/` is a hardcoded MicroPython
+- **PLAT.N285** PLATFORM · `SPECIFICATION.md:638-641` — "`.frozen/` is a hardcoded MicroPython
   import-machinery sentinel (`MP_FROZEN_PATH_PREFIX`)" — Version-specific import fact. · [H12]
 
 ## SPECIFICATION.md Part B.4-B.9 (754-826)
 
-- **PLAT.N286** PLATFORM · `SPECIFICATION.md:807-809` — "this project's pinned MicroPython vendors an
+- **PLAT.N286** PLATFORM · `SPECIFICATION.md:811-813` — "this project's pinned MicroPython vendors an
   mbedtls commit predating that fix" — Version-specific fact to re-check on each pin move. · [H12]
 
 ## SPECIFICATION.md Part B.11 (Building this project's firmware, 931-984)
 
-- **PLAT.N287** PLATFORM · `SPECIFICATION.md:950-958` — "That entry point is frozen under the literal
+- **PLAT.N287** PLATFORM · `SPECIFICATION.md:954-962` — "That entry point is frozen under the literal
   name `\"main.py\"`, NOT imported from a custom `_boot.py` — load-bearing, re-confirmed against pinned
   v1.29.0" — Relies on `ports/rp2/main.c` boot order (USB after frozen `_boot.py`); upstream #15230. ·
   related: PLAT.T10 · [H12]
 
 ## SPECIFICATION.md Part B.14 (MicroPython build overrides framework, 1063-1114)
 
-- **PLAT.N288** INVAR · `SPECIFICATION.md:1077-1080` — "these anchors are exactly the kind of thing to
+- **PLAT.N288** INVAR · `SPECIFICATION.md:1081-1084` — "these anchors are exactly the kind of thing to
   re-verify on the next `toolchain/versions.toml` `[micropython] ref` bump" — Manual re-verification
   obligation beyond the literal anchor check. · related: PLAT.T07 · [H12]
 
 ## SPECIFICATION.md Part B.14.1 (`unix_kbd_intr`, 1116-1213)
 
-- **PLAT.N289** PLATFORM · `SPECIFICATION.md:1136-1138` — "`MICROPY_ASYNC_KBD_INTR (!MICROPY_PY_THREAD_GIL)`
+- **PLAT.N289** PLATFORM · `SPECIFICATION.md:1140-1142` — "`MICROPY_ASYNC_KBD_INTR (!MICROPY_PY_THREAD_GIL)`
   - true for this project's non-threaded \"standard\" variant build" — Pinned-source anchor. · [H12]
-- **PLAT.N290** INVAR · `SPECIFICATION.md:1202-1213` — "Re-verification checklist for a MicroPython
+- **PLAT.N290** INVAR · `SPECIFICATION.md:1206-1217` — "Re-verification checklist for a MicroPython
   version bump ... re-run this section's own hammer-loop verification ... do not assume \"it built\" is
   sufficient" — Manual version-bump obligation. · related: PLAT.T06 · [H12]
 
 ## SPECIFICATION.md Part B.14.2 / B.14.2.1 (`lwip_connection_counts`, 1215-1379)
 
-- **PLAT.N291** PLATFORM · `SPECIFICATION.md:1225-1228` — "`MEMP_NUM_NETCONN` is dead on this port." —
+- **PLAT.N291** PLATFORM · `SPECIFICATION.md:1229-1232` — "`MEMP_NUM_NETCONN` is dead on this port." —
   `LWIP_NETCONN 0`/`LWIP_SOCKET 0` in pinned lwipopts_common.h. · related: PLAT.T04 · [H12]
-- **PLAT.N292** PLATFORM · `SPECIFICATION.md:1229-1234` — "`MEMP_NUM_UDP_PCB` is a bare `#define` (`4 + LWIP_MDNS_RESPONDER`),
+- **PLAT.N292** PLATFORM · `SPECIFICATION.md:1233-1238` — "`MEMP_NUM_UDP_PCB` is a bare `#define` (`4 + LWIP_MDNS_RESPONDER`),
   and so is `LWIP_STATS 0`" — Pinned-source guard shapes. · related: NET.T05 · [H12]
-- **PLAT.N293** PLATFORM · `SPECIFICATION.md:1245-1248` — "`py/mkrules.cmake:81` folds
+- **PLAT.N293** PLATFORM · `SPECIFICATION.md:1249-1252` — "`py/mkrules.cmake:81` folds
   `$ENV{CFLAGS_EXTRA}` into `CMAKE_C_FLAGS`" — Line-anchored upstream citation; drifts with the pin. ·
   [H12]
-- **PLAT.N294** RISK · `SPECIFICATION.md:1309-1316` — "`modlwip.c`'s write retries `tcp_write()` up to
+- **PLAT.N294** RISK · `SPECIFICATION.md:1313-1320` — "`modlwip.c`'s write retries `tcp_write()` up to
   200 x 50 ms, blocking the whole VM for up to 10 s ... no asyncio timeout can interrupt it. Never
   observed on silicon" — Latent 10 s VM block when the arena is exhausted. · covered-by: PLAT.T04 ·
   [H12]
-- **PLAT.N295** PLATFORM · `SPECIFICATION.md:1309-1311` — "`extmod/modlwip.c:802` calls `tcp_write()`
+- **PLAT.N295** PLATFORM · `SPECIFICATION.md:1313-1315` — "`extmod/modlwip.c:802` calls `tcp_write()`
   with `TCP_WRITE_FLAG_COPY` unconditionally" — Line-anchored upstream fact. · [H12]
-- **PLAT.N296** LIMIT · `SPECIFICATION.md:1376-1379` — "this firmware never calls lwIP's C
+- **PLAT.N296** LIMIT · `SPECIFICATION.md:1380-1383` — "this firmware never calls lwIP's C
   `stats_display()`, so reading them needs a probe of its own" — No pool-exhaustion diagnostics in the
   field. · [H12]
 
 ## SPECIFICATION.md Part C intro, C.1-C.2 (1475-1535)
 
-- **PLAT.N297** PLATFORM · `SPECIFICATION.md:1516-1517` — "`_VAL_<ABBREV> = const(((\"<Field>\", \"<type>\", default, min, max, special),))`"
+- **PLAT.N297** PLATFORM · `SPECIFICATION.md:1520-1521` — "`_VAL_<ABBREV> = const(((\"<Field>\", \"<type>\", default, min, max, special),))`"
   — Relies on `const()` accepting tuples on the pinned MicroPython. · related: PLAT.T02 · [H12]
 
 ## SPECIFICATION.md Part C.5 / C.5.1-C.5.3 (Config schema system, 1699-1797)
 
-- **PLAT.N298** PLATFORM · `SPECIFICATION.md:1706-1708` — "A schema constant referenced inside another
+- **PLAT.N298** PLATFORM · `SPECIFICATION.md:1710-1712` — "A schema constant referenced inside another
   `const()`-wrapped tuple must itself be `const()`-wrapped — `const()` only folds references to other
   `const()`-defined names." — Compiler folding rule. · related: PLAT.T02 · [H12]
 
 ## SPECIFICATION.md Part C.6 (Data model, 1799-1805)
 
-- **PLAT.N299** PLATFORM · `SPECIFICATION.md:1802` — "not `_fields`/`_asdict()` (MicroPython's
+- **PLAT.N299** PLATFORM · `SPECIFICATION.md:1806` — "not `_fields`/`_asdict()` (MicroPython's
   namedtuple provides neither)" — Port-feature claim to re-check at 1.29
   (`MICROPY_PY_COLLECTIONS_NAMEDTUPLE__ASDICT`). · related: PLAT.T13 · [H12]
 
 ## SPECIFICATION.md Part C.9.1 (Read-trigger timer stagger, 2211-2298)
 
-- **PLAT.N300** PLATFORM · `SPECIFICATION.md:2260-2272` — "a `Timer.PERIODIC`'s underlying Pico-SDK
+- **PLAT.N300** PLATFORM · `SPECIFICATION.md:2268-2280` — "a `Timer.PERIODIC`'s underlying Pico-SDK
   repeating alarm reschedules itself by returning `-self->delta_us` from its own alarm callback" —
   Pinned `ports/rp2/machine_timer.c` drift-freedom fact. · related: PLAT.T03 · [H12]
 
 ## SPECIFICATION.md Part D (src/ Production-Quality Checklist, 2576-2728)
 
-- **PLAT.N301** PLATFORM · `SPECIFICATION.md:2625` — "Dual-core Cortex-M0+ @ up to 133MHz, 264KB SRAM
+- **PLAT.N301** PLATFORM · `SPECIFICATION.md:2633` — "Dual-core Cortex-M0+ @ up to 133MHz, 264KB SRAM
   (F.1)" — Silicon facts. · [H12]
-- **PLAT.N302** PLATFORM · `SPECIFICATION.md:2638-2643` — "`typing` isn't importable at all on the
+- **PLAT.N302** PLATFORM · `SPECIFICATION.md:2646-2651` — "`typing` isn't importable at all on the
   Unix-port test interpreter. `mpy-cross` does not dead-code-eliminate `if TYPE_CHECKING:` blocks" —
   Interpreter/compiler facts behind the guard and strip step. · [H12]
-- **PLAT.N303** PLATFORM · `SPECIFICATION.md:2665-2670` — "the build target has moved to the latest
+- **PLAT.N303** PLATFORM · `SPECIFICATION.md:2673-2678` — "the build target has moved to the latest
   stable (currently v1.29.0 — the last pass's findings are catalogued in Part F.5)" — Version-pinned
   statement to update on bump. · related: PLAT.T06 · [H12]
 
 ## SPECIFICATION.md Part E.3 / E.3.1 (Running; heap and timeouts, 2828-2921)
 
-- **PLAT.N304** PLATFORM · `SPECIFICATION.md:2841-2846` — "`.frozen` is a literal MicroPython sentinel,
+- **PLAT.N304** PLATFORM · `SPECIFICATION.md:2849-2854` — "`.frozen` is a literal MicroPython sentinel,
   not an ordinary directory" — Needed on MICROPYPATH. · [H12]
-- **PLAT.N305** PLATFORM · `SPECIFICATION.md:2897-2898` — "MicroPython block-buffers 4096 bytes whenever
+- **PLAT.N305** PLATFORM · `SPECIFICATION.md:2905-2906` — "MicroPython block-buffers 4096 bytes whenever
   stdout is not a tty" — Reason for `stdbuf`. · [H12]
 
 ## SPECIFICATION.md Part E.8 (Measurement traps, 3271-3362)
 
-- **PLAT.N306** PLATFORM · `SPECIFICATION.md:3355-3356` — "because `bool` is not an `int` subclass here
+- **PLAT.N306** PLATFORM · `SPECIFICATION.md:3363-3364` — "because `bool` is not an `int` subclass here
   at all (F.1)" — MicroPython-specific type fact. · [H12]
 
 ## SPECIFICATION.md Part F.1 — Core platform facts
 
-- **PLAT.N307** PLATFORM · `SPECIFICATION.md:3426-3430` — "Deployed units run **MicroPython 1.26** ...
+- **PLAT.N307** PLATFORM · `SPECIFICATION.md:3434-3438` — "Deployed units run **MicroPython 1.26** ...
   The refactor pins **v1.29.0** ... targets whatever's most recent stable at the time" — Two runtimes in
   play (1.26 fielded, 1.29.0 refactor); "most recent stable" is a moving target the pin must be
   re-checked against. · related: PLAT.T07 · [H13]
-- **PLAT.N308** PLATFORM · `SPECIFICATION.md:3432-3433` — "`machine.WDT` hard-caps at **8388ms**;
+- **PLAT.N308** PLATFORM · `SPECIFICATION.md:3440-3441` — "`machine.WDT` hard-caps at **8388ms**;
   current code uses `WDT(timeout=8000)` (388ms margin) — don't casually increase" — Silicon/port cap and
   the 388 ms margin every watchdog budget rests on. · related: XCUT.T01, PERF.T01 · [H13]
-- **PLAT.N309** PLATFORM · `SPECIFICATION.md:3433-3435` — "USB (`mp_usbd_init()`) initializes only
+- **PLAT.N309** PLATFORM · `SPECIFICATION.md:3441-3443` — "USB (`mp_usbd_init()`) initializes only
   *after* the frozen `_boot.py` returns" — A blocking `_boot.py` means USB never comes up on a hard
   reset; port-version-specific boot-order fact. · related: PLAT.T10 · [H13]
-- **PLAT.N310** PLATFORM · `SPECIFICATION.md:3435-3437` — "RP2040: dual-core Cortex-M0+ @ up to 133MHz,
+- **PLAT.N310** PLATFORM · `SPECIFICATION.md:3443-3445` — "RP2040: dual-core Cortex-M0+ @ up to 133MHz,
   264KB SRAM ... Pico W's littlefs partition (~848KB)" — Silicon/board sizing facts (partition size
   depends on CYW43 blob size, i.e. on the firmware build). · [H13]
-- **PLAT.N311** PLATFORM · `SPECIFICATION.md:3443-3444` — "`importlib` isn't frozen into this project's
+- **PLAT.N311** PLATFORM · `SPECIFICATION.md:3451-3452` — "`importlib` isn't frozen into this project's
   own manifest today" — Manifest-dependent fact (low). · [H13]
-- **PLAT.N312** PLATFORM · `SPECIFICATION.md:3446-3450` — "`mp_sched_schedule()` drops it if
+- **PLAT.N312** PLATFORM · `SPECIFICATION.md:3454-3458` — "`mp_sched_schedule()` drops it if
   MicroPython's fixed-depth scheduler queue (depth 8 on rp2 ...) is full, with no exception" — Soft
   Timer callbacks can be silently lost; depth-8 is a port/version constant. · covered-by: XCUT.T22 ·
   [H13]
-- **PLAT.N313** PLATFORM · `SPECIFICATION.md:3455-3461` — "Iterable unpacking inside a list/tuple/set
+- **PLAT.N313** PLATFORM · `SPECIFICATION.md:3464-3470` — "Iterable unpacking inside a list/tuple/set
   *display* (`[*a, b]`) raises `SyntaxError: *x must be assignment target`" — Parser gap on the pinned
   version; code relies on `a + [b]` concatenation instead — re-check on bump. · related: PLAT.T02 ·
   [H13]
-- **PLAT.N314** PLATFORM · `SPECIFICATION.md:3463-3467` — "`[x] * n` (list repeat) can segfault the
+- **PLAT.N314** PLATFORM · `SPECIFICATION.md:3472-3476` — "`[x] * n` (list repeat) can segfault the
   interpreter for n in roughly 2⁶¹-2⁶³" — Measured only on the 64-bit Unix port (rp2 cannot express such
   n); cause "likely" an overflow — inferred, not traced. · related: PLAT.T02 · [H13]
-- **PLAT.N315** PLATFORM · `SPECIFICATION.md:3469-3478` — "`bool` is NOT a subclass of `int` on
+- **PLAT.N315** PLATFORM · `SPECIFICATION.md:3478-3487` — "`bool` is NOT a subclass of `int` on
   MicroPython ... Verified directly against the pinned v1.29.0 build" — Validators rely on
   `isinstance(x, int)` excluding bool; a version change could alter `mp_type_bool`. · related: CORE.S12
   · [H13]
-- **PLAT.N316** PLATFORM · `SPECIFICATION.md:3480-3481` — "`machine.Timer.init()` can raise
+- **PLAT.N316** PLATFORM · `SPECIFICATION.md:3489-3490` — "`machine.Timer.init()` can raise
   `OSError(ENOMEM)` if the RP2040's alarm pool is exhausted — every call site must handle it" —
   rp2-specific failure mode; per-site handling is a convention. · covered-by: XCUT.T04 · [H13]
-- **PLAT.N317** PLATFORM · `SPECIFICATION.md:3481-3483` — "**`MemoryError` is not an `OSError`
+- **PLAT.N317** PLATFORM · `SPECIFICATION.md:3490-3492` — "**`MemoryError` is not an `OSError`
   subclass** ... catch `(OSError, MemoryError)` wherever both are plausible" — Exception-hierarchy fact
   every except clause depends on. · [H13]
-- **PLAT.N318** PLATFORM · `SPECIFICATION.md:3485-3488` — "RP2040's real firmware uses single-precision
+- **PLAT.N318** PLATFORM · `SPECIFICATION.md:3494-3497` — "RP2040's real firmware uses single-precision
   `float` ... this project's Unix-port test rig uses double precision" — Test rig and target differ
   numerically; `coerce_numeric()` int→float rounding accepted "since no real schema field's bounds go
   near it". · related: PLAT.T08, MEM.T07 · [H13]
-- **PLAT.N319** PLATFORM · `SPECIFICATION.md:3490-3494` — "`'L'` is 4 bytes on rp2 and 8 on the 64-bit
+- **PLAT.N319** PLATFORM · `SPECIFICATION.md:3499-3503` — "`'L'` is 4 bytes on rp2 and 8 on the 64-bit
   Unix-port test interpreter" — Native-size struct codes read differently on target vs rig; rule:
   explicit `"<"` prefix. · related: PLAT.T02 · [H13]
-- **PLAT.N320** PLATFORM · `SPECIFICATION.md:3496-3499` — "overflow checks added to `py/binary.c` are
+- **PLAT.N320** PLATFORM · `SPECIFICATION.md:3505-3508` — "overflow checks added to `py/binary.c` are
   gated behind `MICROPY_PREVIEW_VERSION_2` ... Expect this fact to flip when upstream ships 2.0" —
   Silent pack truncation; explicit future-flip trigger. · related: PLAT.T02 · [H13]
-- **PLAT.N321** PLATFORM · `SPECIFICATION.md:3501-3510` — "A `bytearray` destination *resizes* on a
+- **PLAT.N321** PLATFORM · `SPECIFICATION.md:3510-3519` — "A `bytearray` destination *resizes* on a
   length mismatch ... a `memoryview` destination raises `ValueError`" — Slice-assignment contracts,
   measured on the Unix port only (not on rp2); plus "no `memoryview.readonly`" and the zero-length-slice
   writability probe. · [H13]
-- **PLAT.N322** DRIFT · `SPECIFICATION.md:3512-3515` — "A `micropython.const()`-wrapped value does not
+- **PLAT.N322** DRIFT · `SPECIFICATION.md:3521-3524` — "A `micropython.const()`-wrapped value does not
   survive as an importable module attribute in a frozen build" — Upstream MicroPython docs say only
   underscore-prefixed `const()` names are hidden; non-underscore names stay module globals — claim may
   be wrong or narrower than stated (low, not investigated). · related: PLAT.T02 · [H13]
-- **PLAT.N323** PLATFORM · `SPECIFICATION.md:3517-3519` — "`time.ticks_ms()` wraps every `2**30` ms
+- **PLAT.N323** PLATFORM · `SPECIFICATION.md:3526-3528` — "`time.ticks_ms()` wraps every `2**30` ms
   (~12.4 days) on rp2**; `ticks_diff()` is correct ... under `2**29` ms" — rp2 tick period fact. ·
   covered-by: XCUT.T25 · [H13]
-- **PLAT.N324** PLATFORM · `SPECIFICATION.md:3525-3534` — "`globals()` does not preserve a module's
+- **PLAT.N324** PLATFORM · `SPECIFICATION.md:3534-3543` — "`globals()` does not preserve a module's
   top-level statement order ... Nesting `asyncio.run()` ... segfaults ... `await` inside a comprehension
   is a `SyntaxError` ... async generator ... segfaults" — Four runtime traps; the `/status` streaming
   design (collect into list, `iter()`) exists because of the async-generator one. · related: TEST.T01 ·
   [H13]
-- **PLAT.N325** PLATFORM · `SPECIFICATION.md:3540-3541` — "`asyncio.TimeoutError` is a plain
+- **PLAT.N325** PLATFORM · `SPECIFICATION.md:3549-3550` — "`asyncio.TimeoutError` is a plain
   `Exception`, not `OSError` — catch it separately" — Exception-hierarchy fact. · related: PLAT.T01 ·
   [H13]
-- **PLAT.N326** PLATFORM · `SPECIFICATION.md:3543-3548` — "`gc.threshold()`: no-arg call returns the
+- **PLAT.N326** PLATFORM · `SPECIFICATION.md:3552-3557` — "`gc.threshold()`: no-arg call returns the
   current threshold (or `-1` if disabled ...); called with an argument ... always returns `None`" — GC
   API semantics the (e)/(f) test stages depend on. · [H13]
-- **PLAT.N327** PLATFORM · `SPECIFICATION.md:3560-3562` — "MicroPython's `json.loads()` is not a JSON
+- **PLAT.N327** PLATFORM · `SPECIFICATION.md:3569-3571` — "MicroPython's `json.loads()` is not a JSON
   validator: `extmod/modjson.c`'s tokenizer skips `,` and `:`" — Accepts malformed JSON; tests of
   emitted JSON must use `tests/_strict_json.py`. · related: XCUT.T23 · [H13]
-- **PLAT.N328** PLATFORM · `SPECIFICATION.md:3564-3574` — "`json.dumps()` is not a JSON serializer
+- **PLAT.N328** PLATFORM · `SPECIFICATION.md:3573-3583` — "`json.dumps()` is not a JSON serializer
   either — it never raises (measured against the pinned interpreter, 2026-09-24)" — Emits bare
   `nan`/`inf`, `<object>`; rp2 overflows to inf at ~3.4e38; measured on the Unix port. · covered-by:
   XCUT.T23 · [H13]
 
 ## SPECIFICATION.md Part F.2 — Blocking calls / timeout-wrapping
 
-- **PLAT.N329** PLATFORM · `SPECIFICATION.md:3594-3597` — "`socket.getaddrinfo()` belongs in this same
+- **PLAT.N329** PLATFORM · `SPECIFICATION.md:3603-3606` — "`socket.getaddrinfo()` belongs in this same
   bucket ... (confirmed against real MicroPython issue-tracker reports). Moot for DNS" — Can't be
   timeout-wrapped; "moot" only for the project's own DNS — the plan notes `getaddrinfo` is still reached
   inside `asyncio.start_server`. · related: PLAT.T04 · [H13]
-- **PLAT.N330** PLATFORM · `SPECIFICATION.md:3612-3614` — "A well-documented, long-standing upstream
+- **PLAT.N330** PLATFORM · `SPECIFICATION.md:3621-3623` — "A well-documented, long-standing upstream
   MicroPython characteristic (open since v1.19.1/2022) ... no upstream fix" — Upstream status to
   re-check on a version bump. · [H13]
-- **PLAT.N331** PLATFORM · `SPECIFICATION.md:3629-3631` — "the RP2040 flash write disables interrupts
+- **PLAT.N331** PLATFORM · `SPECIFICATION.md:3638-3640` — "the RP2040 flash write disables interrupts
   port-wide for its duration, and doing it inline was resetting the very HTTP connection" — rp2
   flash-write IRQ-off fact behind the deferred flush. · related: PLAT.T12 · [H13]
 
 ## SPECIFICATION.md Part F.5 — MicroPython 1.29 delta (intro)
 
-- **PLAT.N332** ASSUME · `SPECIFICATION.md:3669-3671` — "The pin is field-proven on the dev bench
+- **PLAT.N332** ASSUME · `SPECIFICATION.md:3678-3680` — "The pin is field-proven on the dev bench
   (2026-09-11) ... flash tier (25 passed), bench tier (85 passed) and mid soak tier (4 passed)" — Dated
   suite counts backing the 1.29 pin; will drift as tiers grow. · covered-by: DOC.S17 · [H13]
 
 ## SPECIFICATION.md Part F.5.1 — I2C/SPI deinit no-ops
 
-- **PLAT.N333** PLATFORM · `SPECIFICATION.md:3680-3685` — "**Both are no-ops on this port** ... rp2's
+- **PLAT.N333** PLATFORM · `SPECIFICATION.md:3689-3694` — "**Both are no-ops on this port** ... rp2's
   `machine_i2c_p`/`machine_spi_p` ... never set that slot" — rp2 `deinit()` of I2C/SPI does nothing;
   peripheral and pin functions stay. · covered-by: PLAT.T03 · [H13]
-- **PLAT.N334** PLATFORM · `SPECIFICATION.md:3689-3694` — "`machine.I2C(id)`/`machine.SPI(id)` return a
+- **PLAT.N334** PLATFORM · `SPECIFICATION.md:3698-3703` — "`machine.I2C(id)`/`machine.SPI(id)` return a
   **static per-bus singleton** ... nothing is reclaimable on a `deinit()`" — No way to release an rp2
   bus from Python; re-construction reconfigures the shared object. · related: BUS.T10 · [H13]
-- **PLAT.N335** PLATFORM · `SPECIFICATION.md:3701-3703` — "`machine.UART.deinit()`,
+- **PLAT.N335** PLATFORM · `SPECIFICATION.md:3710-3712` — "`machine.UART.deinit()`,
   `machine.Timer.deinit()` and `network.WLAN.deinit()` are **real** on rp2" — Which deinits actually
   release hardware. · covered-by: PLAT.T03 · [H13]
 
 ## SPECIFICATION.md Part F.5.2 — rp2 SPI RX-overrun EIO
 
-- **PLAT.N336** PLATFORM · `SPECIFICATION.md:3712-3714` — "`machine_spi_transfer()` gained an RX-overrun
+- **PLAT.N336** PLATFORM · `SPECIFICATION.md:3721-3723` — "`machine_spi_transfer()` gained an RX-overrun
   check (upstream #18471) ... `mp_raise_OSError(MP_EIO)`" — New 1.29 raise site on SPI reads. ·
   covered-by: PLAT.T03 · [H13]
-- **PLAT.N337** PLATFORM · `SPECIFICATION.md:3724-3727` — "Write-only transfers can still never raise
+- **PLAT.N337** PLATFORM · `SPECIFICATION.md:3733-3736` — "Write-only transfers can still never raise
   ... Only transfers of ≥ 32 bytes are affected — `dma_min_size_threshold` is 32" — Precise bounds of
   the fault; version-specific constants. · covered-by: PLAT.T03 · [H13]
 
 ## SPECIFICATION.md Part F.5.3 — Free wins in the 1.29 build
 
-- **PLAT.N338** PLATFORM · `SPECIFICATION.md:3750-3756` — "The interpreter core now genuinely runs from
+- **PLAT.N338** PLATFORM · `SPECIFICATION.md:3759-3765` — "The interpreter core now genuinely runs from
   SRAM ... Cost ... **12,918 B** of RAM no longer available as Python GC heap" — Build-layout fact tied
   to 1.29's linker rule; affects every Part I budget. · related: MEM.T01 · [H13]
-- **PLAT.N339** DRIFT · `SPECIFICATION.md:3778-3780` — "`-fno-math-errno` is now on ... so `math.sqrt`
+- **PLAT.N339** DRIFT · `SPECIFICATION.md:3787-3789` — "`-fno-math-errno` is now on ... so `math.sqrt`
   compiles to the hardware instruction" — RP2040 is a Cortex-M0+ with no FPU/sqrt instruction; "hardware
   instruction" is doubtful (low, not investigated). · related: PLAT.T08 · [H13]
 
 ## SPECIFICATION.md Part F.5.4 — machine.mem_backup()
 
-- **PLAT.N340** PLATFORM · `SPECIFICATION.md:3784-3789` — "**28 bytes** across two regions ...
+- **PLAT.N340** PLATFORM · `SPECIFICATION.md:3793-3798` — "**28 bytes** across two regions ...
   **Survives a WDT reset, `machine.reset()` and a deepsleep wake; lost on power-off.**" — rp2
   watchdog-scratch facts, enabled by default in 1.29. · covered-by: PLAT.T03 · [H13]
-- **PLAT.N341** SETTLED · `SPECIFICATION.md:3793-3797` — "**Deliberately not adopted** (project owner,
+- **PLAT.N341** SETTLED · `SPECIFICATION.md:3802-3806` — "**Deliberately not adopted** (project owner,
   2026-09-11) ... deliberate, temporary instrumentation, never normal-path code" — Owner decision; the
   plan's PLAT.T03 lists "`mem_backup()` adoption (F.5.4)" as a topic — must be triaged as settled. ·
   related: PLAT.T03, XCUT.S10 · [H13]
 
 ## SPECIFICATION.md Part F.5.5 — Stub defects repaired at install
 
-- **PLAT.N342** ASSUME · `SPECIFICATION.md:3802-3803` — "accounted for **every one of the 26 findings**
+- **PLAT.N342** ASSUME · `SPECIFICATION.md:3811-3812` — "accounted for **every one of the 26 findings**
   the version bump surfaced" — Dated count tied to stub `1.29.0.post1/.post2`. · related: DOC.T08 ·
   [H13]
 
 ## SPECIFICATION.md Part F.5.6 — Smaller 1.29 facts / non-events
 
-- **PLAT.N343** PLATFORM · `SPECIFICATION.md:3828-3831` — "**`X: int = const(...)` now folds.** ...
+- **PLAT.N343** PLATFORM · `SPECIFICATION.md:3837-3840` — "**`X: int = const(...)` now folds.** ...
   `\"_A\" in globals()` `True` on 1.28, `False` on 1.29" — Parser behaviour change; fielded 1.26 still
   has the footgun. · related: PLAT.T02 · [H13]
-- **PLAT.N344** PLATFORM · `SPECIFICATION.md:3838-3840` — "**`extmod/asyncio/` is byte-identical between
+- **PLAT.N344** PLATFORM · `SPECIFICATION.md:3847-3849` — "**`extmod/asyncio/` is byte-identical between
   the two tags** ... no timeout/cancellation support added to `socket.getaddrinfo()`" — Ruled-out item
   for the next bump. · covered-by: PLAT.T06 · [H13]
-- **PLAT.N345** PLATFORM · `SPECIFICATION.md:3841-3843` — "**Zero commits** to `py/profile.c`,
+- **PLAT.N345** PLATFORM · `SPECIFICATION.md:3850-3852` — "**Zero commits** to `py/profile.c`,
   `py/modsys.c`, `extmod/modselect.c`, `shared/timeutils/` ... the E.3 `select.poll()` GH-Actions hang
   cause and the `TZ=UTC` Unix-port fact both stand" — Non-events that keep two test-rig facts valid. ·
   covered-by: PLAT.T06 · [H13]
-- **PLAT.N346** PLATFORM · `SPECIFICATION.md:3844-3848` — "I2C `WRITE1` transfer fix is behind
+- **PLAT.N346** PLATFORM · `SPECIFICATION.md:3853-3857` — "I2C `WRITE1` transfer fix is behind
   `MICROPY_PY_MACHINE_I2C_TRANSFER_WRITE1`, which rp2 leaves at 0 ... DHCP's new `send_router` ... the
   captive portal is unaffected ... `gc.mem_free()` ... still call the slow `gc_info()`" — Several
   ruled-out 1.29 changes; "captive portal is unaffected" is an inference. · covered-by: PLAT.T06 · [H13]
-- **PLAT.N347** PLATFORM · `SPECIFICATION.md:3847-3848` — "The RP2350 watchdog ~16 s fix is RP2350-only
+- **PLAT.N347** PLATFORM · `SPECIFICATION.md:3856-3857` — "The RP2350 watchdog ~16 s fix is RP2350-only
   — the 8388 ms cap in F.1 stands." — Silicon-specific. · covered-by: PLAT.T06 · [H13]
-- **PLAT.N348** PLATFORM · `SPECIFICATION.md:3849-3850` — "`SOCK_RAW` is now default-on and present in
+- **PLAT.N348** PLATFORM · `SPECIFICATION.md:3858-3859` — "`SOCK_RAW` is now default-on and present in
   the built firmware. Noted only" — Unused capability; F.2 settles the reachability-probe question. ·
   covered-by: PLAT.T06 · [H13]
 
 ## SPECIFICATION.md Part F.5.7 — UART.deinit() RX buffer unrooted
 
-- **PLAT.N349** PLATFORM · `SPECIFICATION.md:3858-3867` — "`mp_machine_uart_deinit()` clears
+- **PLAT.N349** PLATFORM · `SPECIFICATION.md:3867-3876` — "`mp_machine_uart_deinit()` clears
   `MP_STATE_PORT(rp2_uart_rx_buffer[id])` ... the UART IRQ handler resumes writing into memory the
   collector is free to hand out" — Upstream heap-corruption hazard on `deinit()`+same-size `init()`
   (rp2, 1.29.0 source). · related: PLAT.T03 · [H13]
 
 ## SPECIFICATION.md Part F.5.8 — UART read() blocks the loop
 
-- **PLAT.N350** PLATFORM · `SPECIFICATION.md:3882-3888` — "`mp_machine_uart_read()` loops once per
+- **PLAT.N350** PLATFORM · `SPECIFICATION.md:3891-3897` — "`mp_machine_uart_read()` loops once per
   requested byte ... `mp_event_handle_nowait()` ... **never yields to asyncio** ...
   `mp_machine_uart_ioctl()` reports `POLLIN` as soon as the FIFO holds *one* byte" — rp2 1.29.0 UART
   read semantics behind the never-block rule; `timeout_char=1` is this project's value. · covered-by:
   BUS.T05 · [H13]
-- **PLAT.N351** ASSUME · `SPECIFICATION.md:3914-3915` — "The docs' lower-bound wording (\"may return 1
+- **PLAT.N351** ASSUME · `SPECIFICATION.md:3923-3924` — "The docs' lower-bound wording (\"may return 1
   even if there is more than one character available\") costs nothing here: under-reporting only ever
   means another round" — Relies on documented `any()` semantics. · related: PLAT.T03 · [H13]
-- **PLAT.N352** PLATFORM · `SPECIFICATION.md:3979-3981` — "`machine.I2C`/`machine.SPI` expose no
+- **PLAT.N352** PLATFORM · `SPECIFICATION.md:3991-3993` — "`machine.I2C`/`machine.SPI` expose no
   equivalent ... an SCD30's 18-byte read *is* a ~1.8ms synchronous span by construction" — No
   partial-read API on rp2 I2C/SPI. · related: BUS.T10 · [H13]
 
 ## SPECIFICATION.md Part F.6 — SIGINT during gc_collect() wedges the Unix-port heap
 
-- **PLAT.N353** ASSUME · `SPECIFICATION.md:4075-4076` — "**`src/` needs nothing** — it has no
+- **PLAT.N353** ASSUME · `SPECIFICATION.md:4087-4088` — "**`src/` needs nothing** — it has no
   `KeyboardInterrupt` shutdown path, and rp2 has no SIGINT" — Claim about src/ and about rp2 (USB-REPL
   Ctrl-C raises KeyboardInterrupt on rp2 too) (low). · [H13]
 
 ## SPECIFICATION.md Part H.7 — Digital twin integration / connection ceiling
 
-- **PLAT.N354** PLATFORM · `SPECIFICATION.md:4545-4549` — "`tcp_alloc()` reclaims TIME_WAIT, LAST_ACK
+- **PLAT.N354** PLATFORM · `SPECIFICATION.md:4557-4561` — "`tcp_alloc()` reclaims TIME_WAIT, LAST_ACK
   and CLOSING pcbs ... a FIN_WAIT one only at a lower priority ... `extmod/modlwip.c` aborts a close
   still unfinished only after 10 s" — lwIP/modlwip version-specific behaviour. · related: PLAT.T04 ·
   [H13]
-- **PLAT.N355** PLATFORM · `SPECIFICATION.md:4557-4560` — "an arrival that finds it full is reset inside
+- **PLAT.N355** PLATFORM · `SPECIFICATION.md:4569-4572` — "an arrival that finds it full is reset inside
   lwIP (`ERR_BUF`), where nothing in `src/` can see it" — Invisible refusal path. · related: PLAT.T04 ·
   [H13]
-- **PLAT.N356** PLATFORM · `SPECIFICATION.md:4586-4590` — "A refusal is a FIN ~6 ms after connect, or an
+- **PLAT.N356** PLATFORM · `SPECIFICATION.md:4598-4602` — "A refusal is a FIN ~6 ms after connect, or an
   RST if the client's request bytes had already arrived (`modlwip.c` frees them unread ...)" — lwIP
   close semantics. · related: PLAT.T04 · [H13]
 
 ## SPECIFICATION.md Part I.1 — MicroPython memory-management facts
 
-- **PLAT.N357** PLATFORM · `SPECIFICATION.md:4774-4778` — "**The collector is mark-and-sweep,
+- **PLAT.N357** PLATFORM · `SPECIFICATION.md:4786-4790` — "**The collector is mark-and-sweep,
   non-compacting** ... a 16-byte block on a 32-bit target" — GC design facts behind every contiguity
   rule. · related: MEM.T06 · [H13]
-- **PLAT.N358** PLATFORM · `SPECIFICATION.md:4793-4796` — "**No async-generator-shaped alternative
+- **PLAT.N358** PLATFORM · `SPECIFICATION.md:4805-4808` — "**No async-generator-shaped alternative
   exists anywhere** ... every MicroPython PEP 525 discussion converges on the same \"not implemented\"
   status" — Upstream-status fact to re-check on a version bump. · related: PLAT.T07 · [H13]
-- **PLAT.N359** PLATFORM · `SPECIFICATION.md:4809-4816` — "`gc_alloc()` takes `(size_t n_bytes, unsigned int alloc_flags)`
+- **PLAT.N359** PLATFORM · `SPECIFICATION.md:4821-4828` — "`gc_alloc()` takes `(size_t n_bytes, unsigned int alloc_flags)`
   and nothing else (`py/gc.c:891`) ... `MICROPY_GC_SPLIT_HEAP` is unavailable on this board:
   `ports/rp2/mpconfigport.h:100-101`" — Pinned-source line citations that move with the version. ·
   related: PLAT.T13 · [H13]
 
 ## SPECIFICATION.md Part I.4 — Multi-stage memory-error scheme, (a)-(e)
 
-- **PLAT.N360** PLATFORM · `SPECIFICATION.md:5016-5021` — "the interpreter's own `MemoryError` message
+- **PLAT.N360** PLATFORM · `SPECIFICATION.md:5029-5034` — "the interpreter's own `MemoryError` message
   is `\"memory allocation failed, allocating N bytes\"` (or `\", heap is locked\"`; both raised from
   `py/runtime.c:1692/1696`, and there is no third wording in the pinned source)" — Gate patterns depend
   on pinned-source wording and line numbers. · related: TEST.T18 · [H13]
-- **PLAT.N361** PLATFORM · `SPECIFICATION.md:5033-5036` — "rp2 resolves to
+- **PLAT.N361** PLATFORM · `SPECIFICATION.md:5046-5049` — "rp2 resolves to
   `MICROPY_ERROR_REPORTING_NORMAL` (through `MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES`) — of the four
   reporting levels only `NONE` ... strips exception messages" — Hardware-gate premise tied to build
   config. · related: PLAT.T13 · [H13]
 
 ## SPECIFICATION.md Part I.4 — (f), (f.1), (g)
 
-- **PLAT.N362** PLATFORM · `SPECIFICATION.md:5079-5081` — "`gc_collect_end()` resets the allocator's
+- **PLAT.N362** PLATFORM · `SPECIFICATION.md:5092-5094` — "`gc_collect_end()` resets the allocator's
   free-scan index to zero (`py/gc.c`), so the following module's permanent objects take the lowest
   fitting holes" — The placement effect depends on this allocator detail of the pinned version. ·
   related: PLAT.T13 · [H13]
@@ -1615,14 +1615,14 @@ Kinds: SETTLED 4, INVAR 5, LIMIT 2, RISK 2, ASSUME 7, PLATFORM 361, WORKAROUND 8
 
 ## BACKLOG.md
 
-- **PLAT.N374** SETTLED · `BACKLOG.md:183-189` — "deployed code stays pinned to 1.26 until a deliberate
+- **PLAT.N374** SETTLED · `BACKLOG.md:160-166` — "deployed code stays pinned to 1.26 until a deliberate
   reflash campaign" — #3 refactor pins 1.29.0; F.1's standing re-check at every pin move. · related:
   PLAT.T07 · [H15]
-- **PLAT.N375** PLATFORM · `BACKLOG.md:237-249` — "The counter is free-running hardware time and
+- **PLAT.N375** PLATFORM · `BACKLOG.md:214-226` — "The counter is free-running hardware time and
   survives the soft reset mpremote performs on raw-REPL entry" — #12: `ticks_ms` survives soft reset;
   `mpremote exec` stops `main.py` and the WDT hard-resets ~8 s later; `_WRAP_FLOOR_MS` guard added; "Do
   not re-investigate". · [H15]
-- **PLAT.N376** PLATFORM · `BACKLOG.md:850-852` — "machine.I2C.readfrom_mem_into() was verified against
+- **PLAT.N376** PLATFORM · `BACKLOG.md:900-902` — "machine.I2C.readfrom_mem_into() was verified against
   the pinned 1.29.0 source rather than from memory" — Version-specific (`extmod/machine_i2c.c`). · [H15]
 
 ## HEAP_FRAGMENTATION_MEASUREMENTS.md (current, 393 lines; owning area HW)
@@ -1705,10 +1705,10 @@ Kinds: SETTLED 4, INVAR 5, LIMIT 2, RISK 2, ASSUME 7, PLATFORM 361, WORKAROUND 8
 - **PLAT.N397** SETTLED · `commit 2aceae6 / 154643d / edf11c2` — "The SRAM-resident-code change -
   settled 2026-09-11, project owner's call: the question is RAM, not speed ... the linker-map figure is
   never to be quoted as a measured speedup" — 1.29 SRAM win never timed by decision. · tracked:
-  SPECIFICATION.md:3750-3768 (Part F.5.3) | - · [H17]
+  SPECIFICATION.md:3759-3777 (Part F.5.3) | - · [H17]
 - **PLAT.N398** NOTE(PLAT-FACT) · `commit 441de83 / 7cf989d` — "deinit() does not release the GPIO
   function select, so a UART re-inited on other pins stays muxed ... until a hard reset" — Documented,
-  not fixed. · tracked: tests_hardware/README.md:465 | related: PLAT.T* · [H17]
+  not fixed. · tracked: tests_hardware/README.md:474 | related: PLAT.T* · [H17]
 - **PLAT.N399** NOTE(DEFER-MEASUREMENT) · `commit 00f3eac` — "The ticks_ms rollover row records 'adapt
   the method, defer the measurement'" — Rollover measurement deferred. · tracked: queue (G6) | - · [H17]
 - **PLAT.N400** NOTE(SPEC-CORRECTION) · `commit d0ba4c2 / 9751814` — "MEMP_NUM_NETCONN is a no-op on

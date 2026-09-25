@@ -25,7 +25,7 @@ AREAS = {
     "WEB": ["js/*", "html/*", "mockdata/*", "ext/freezefs/*.py"],
     "TEST": ["tests/*", "tests_scripts/*", "tests_js/*"],
     "TWIN": ["digital_twin/*"],
-    "HW": ["tests_hardware/*", "REAL_HARDWARE_TEST_QUEUE.md", "HARDWARE_TEST_HANDOVER.md", "HEAP_FRAGMENTATION_MEASUREMENTS.md", "dev_legacy/README.md"],
+    "HW": ["tests_hardware/*", "HEAP_FRAGMENTATION_MEASUREMENTS.md", "dev_legacy/README.md"],
     "DOC": ["README.md", "SPECIFICATION.md", "CLAUDE.md", "BACKLOG.md", "DEVICE_REFERENCE.md", "PROJECT_AUDIT_PLAN.md", "update_and_install.txt"],
     "LIC": ["LICENSE", "THIRD_PARTY_LICENSES.md", "ext/LICENSE-microdot", "ext/freezefs/LICENSE"],
     "ENV": ["audit/*"],

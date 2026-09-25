@@ -1,9 +1,9 @@
 # Harvest — DOC: Documentation set
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, TODO 5, OPENQ 1, DRIFT 224, NOTE 12 — 311 items.
+Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 9, PLATFORM 1, TODO 5, OPENQ 1, DRIFT 226, NOTE 12 — 314 items.
 
 
 ## src/api_response.py
@@ -55,7 +55,7 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
   last-registration-wins statement; same for "decision 7" (:387) and "decision 3" (:698) · [H02]
 - **DOC.N010** DRIFT · `src/asy_webserver_service.py:689` — "except Exception as e: # bounds a hanging
   wait_closed() (F.6) as well as any raised error" — Part F.6 is "A SIGINT during gc_collect() can wedge
-  the Unix-port heap" (SPECIFICATION.md:4050); no Part F text on a hanging `wait_closed()` · [H02]
+  the Unix-port heap" (SPECIFICATION.md:4062); no Part F text on a hanging `wait_closed()` · [H02]
 - **DOC.N011** DRIFT · `src/asy_webserver_service.py:749-752` — "found missing entirely during the Step
   7 audit, unlike those two" — Historic narrative in a code comment (CLAUDE.md: docs hold current state,
   not history) (low) · [H02]
@@ -64,7 +64,7 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
 
 - **DOC.N012** DRIFT · `src/config_manager.py:5-7` — "CLAUDE.md has the cache-vs-external-corruption
   trade-off this implies." — CLAUDE.md contains no such trade-off; the nearest text is
-  SPECIFICATION.md:1710-1721 · [H02]
+  SPECIFICATION.md:1714-1725 · [H02]
 
 ## src/system_service.py
 
@@ -116,7 +116,7 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
 
 - **DOC.N024** DRIFT · `tests/test_asy_sgp40_driver.py:179,378` — "(see BACKLOG.md)" — BACKLOG.md has no
   entry on the 0x20 0x2F check or on `err_cnt_internal` (dangling pointers) · - (low) · [H04]
-- **DOC.N025** DRIFT · `tests/test_asy_sgp40_driver.py:1153-1154` — "see this file's own module
+- **DOC.N025** DRIFT · `tests/test_asy_sgp40_driver.py:1278-1279` — "see this file's own module
   docstring on the mocking boundary and SPECIFICATION.md Part E.5.1's \"Reading the numbers\" for why" —
   neither the module docstring nor E.5.1 (a coverage false-negative section) explains const()-folded
   non-importability; pointer looks misdirected · - (low) · [H04]
@@ -125,7 +125,7 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
 
 - **DOC.N026** DRIFT · `tests/test_asy_udp_socket.py:399-401 vs PROJECT_AUDIT_PLAN.md NET.S19` — "which
   confirmed the same property holds on real hardware" — plan seed NET.S19 calls lwIP's connected-PCB
-  source filtering "unverified", while this comment and BACKLOG.md:197-206 (Q5, closed) say it was
+  source filtering "unverified", while this comment and BACKLOG.md:174-183 (Q5, closed) say it was
   confirmed on real rp2 · related: NET.S19 · [H04]
 - **DOC.N027** DRIFT · `tests/test_asy_udp_socket.py:1207,1458` — "(flagged in BACKLOG.md, out of scope
   to fix there)" / "deliberately does not guard structurally (BACKLOG.md)" — BACKLOG.md has no entry on
@@ -261,13 +261,13 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
 - **DOC.N055** DRIFT · `digital_twin/README.md:667-669` — "What is still missing is an elapsed-time
   budget well below the cap ... the suite is blind to the whole 5-15s band" — Contradicted by
   `scripts/_digital_twin_ci_suite.py:116, 273-281` (`_RESET_ERRORS_BUDGET_S = cap*0.8`, asserted) and
-  BACKLOG.md:371 · [H06]
+  BACKLOG.md:309 · [H06]
 - **DOC.N056** DRIFT · `digital_twin/README.md:675-676 vs digital_twin/launch.py:71-80` —
   "`sgp40`/`scd30` (`writeto`/`readfrom_into`), `bmp3xx` (`readfrom_mem`/`writeto_mem`), `fram`
   (`write`/`readinto`)" — README's `--hang` op list omits `isl29125` (`readfrom_mem`/`writeto_mem`),
   which `_HANG_DEVICE_OPS` accepts (low) · [H06]
 - **DOC.N057** DRIFT · `digital_twin/README.md:776-778` — "see `BACKLOG.md`'s \"Real-hardware
-  verification gap\" entry for the full account" — BACKLOG.md:197 is now a closed stub pointing to
+  verification gap\" entry for the full account" — BACKLOG.md:174 is now a closed stub pointing to
   `tests_hardware/README.md` (low) · [H06]
 - **DOC.N058** DRIFT · `digital_twin/README.md:854-856` — "same as `src/`/`tests/` - all three are
   expected to stay fully clean" / "`ruff check src tests digital_twin`" — CLAUDE.md now describes eight
@@ -345,18 +345,18 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
 
 ## tests_hardware/README.md
 
-- **DOC.N073** DRIFT · `tests_hardware/README.md:770-771` — "nothing checked the real
-  `max_connections=4` ceiling" — Historic value; :803 says 6 on dev (history narrative). · related:
+- **DOC.N073** DRIFT · `tests_hardware/README.md:779-780` — "nothing checked the real
+  `max_connections=4` ceiling" — Historic value; :812 says 6 on dev (history narrative). · related:
   DOC.T05 (low) · [H08]
-- **DOC.N074** DRIFT · `tests_hardware/README.md:1384` — "CLAUDE.md's implicit-FRAM-wiring rule's own
+- **DOC.N074** DRIFT · `tests_hardware/README.md:1395` — "CLAUDE.md's implicit-FRAM-wiring rule's own
   capacity backstop" — CLAUDE.md never states that rule as a rule. · covered-by: DOC.S12 · [H08]
 - **DOC.N075** DRIFT · `tests_hardware/README.md:256, 288-289, 297, 313, 317, 338, 382` —
   "`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7O" — "archive §7…" citations resolve only at commit
   `12640c2`. · related: DOC.S04 · [H08]
-- **DOC.N076** DRIFT · `tests_hardware/README.md:1179` — "(project owner, 2026-09-15, BACKLOG.md HIGH
+- **DOC.N076** DRIFT · `tests_hardware/README.md:1188` — "(project owner, 2026-09-15, BACKLOG.md HIGH
   PRIORITY item)" — No "HIGH PRIORITY" item exists in BACKLOG.md at the snapshot (dangling). · related:
   DOC.T02 (low) · [H08]
-- **DOC.N077** DRIFT · `tests_hardware/README.md:686-1296` — "## Third pass - closing real coverage
+- **DOC.N077** DRIFT · `tests_hardware/README.md:695-1307` — "## Third pass - closing real coverage
   gaps" — Eight "pass" sections are dated narrative with counts (44→54→65) — history vs current-state
   rule (stale dated counts). · covered-by: DOC.T05 (low) · [H08]
 
@@ -364,20 +364,30 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
 
 - **DOC.N078** DRIFT · `REAL_HARDWARE_TEST_QUEUE.md:13-14` — "the file at commit `12640c2`" — Every
   "§7…" citation in the queue resolves only against the archive commit. · related: DOC.S04 · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **DOC.N079** DRIFT · `REAL_HARDWARE_TEST_QUEUE.md:227` — "Record it as §2.1's third and fourth [HW]
   columns." — HEAP_FRAGMENTATION_MEASUREMENTS.md has no §2.1 (sections are M1-M8) — dangling target. ·
   related: DOC.T02 · [H08]
+  ⟨4dc80ef: M1 open in BACKLOG.md "Real-hardware work still owed" (M1 + S3b); T1 measured 2026-09-25,
+  owner to close: open in BACKLOG.md "Real-hardware work still owed" (T1)⟩
 
 ## HARDWARE_TEST_HANDOVER.md (snapshot only; sitting IN PROGRESS in another session)
 
 - **DOC.N080** DRIFT · `HARDWARE_TEST_HANDOVER.md:21-22` — "(86/86 MicroPython files, 2,100 pytest)" —
   Dated count; 87 test files at planning time. · covered-by: DOC.S08 · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **DOC.N081** INVAR · `HARDWARE_TEST_HANDOVER.md:107-108` — "Measured values that only support a
   decision do not need a permanent home beyond the commit that records them." — Migration rule for
   sitting results. · related: HW.T16 (low) · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 - **DOC.N082** DRIFT · `HARDWARE_TEST_HANDOVER.md:192-206` — "The full list is the queue's section 6 and
   `tests_hardware/README.md`." — Traps restated a third time (queue §6, README). · covered-by: DOC.S15
   (low) · [H08]
+  ⟨4dc80ef: section retired with the file (03f8bcf): open rows moved to BACKLOG.md "Real-hardware work
+  still owed"; the traps live in tests_hardware/README.md, CLAUDE.md and SPECIFICATION.md⟩
 
 ## dev_legacy/README.md
 
@@ -596,8 +606,8 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
 ## tests_js/live-backend-put-matrix.test.js
 
 - **DOC.N121** DRIFT · `tests_js/live-backend-put-matrix.test.js:17-21` — "Three documented backend
-  quirks ... Part H.7 has the full account." — H.7 (SPECIFICATION.md:4517-4630) has no such account; the
-  quirks note is H.4 (:4367-4370). ISLCalibrate is absent from the list (wozi-only matrix) (low) · [H11]
+  quirks ... Part H.7 has the full account." — H.7 (SPECIFICATION.md:4529-4642) has no such account; the
+  quirks note is H.4 (:4379-4382). ISLCalibrate is absent from the list (wozi-only matrix) (low) · [H11]
 
 ## tests_js/main.test.js
 
@@ -669,314 +679,316 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
 
 ## SPECIFICATION.md Part A.8 (REST API endpoint reference, 571-625)
 
-- **DOC.N137** DRIFT · `SPECIFICATION.md:585-586` — "SPECIFICATION.md Part L Session 7" — "Session N"
-  labels (also :948, :2174, :2382-2384) are undefined — Part L has no Session headings. · related:
+- **DOC.N137** DRIFT · `SPECIFICATION.md:589-590` — "SPECIFICATION.md Part L Session 7" — "Session N"
+  labels (also :952, :2182, :2390-2392) are undefined — Part L has no Session headings. · related:
   DOC.S16 · [H12]
 
 ## SPECIFICATION.md Part B intro, B.1-B.3 (688-753)
 
-- **DOC.N138** DRIFT · `SPECIFICATION.md:746-748` — "clean up, rebuild a vanilla Unix port as the
+- **DOC.N138** DRIFT · `SPECIFICATION.md:750-752` — "clean up, rebuild a vanilla Unix port as the
   standing test rig" — Two Unix ports are kept now (B.5); step list names one. (low) · [H12]
 
 ## SPECIFICATION.md Part B.4-B.9 (754-826)
 
-- **DOC.N139** DRIFT · `SPECIFICATION.md:795` — "A completed run leaves no vanilla RP2 `firmware.uf2`;
+- **DOC.N139** DRIFT · `SPECIFICATION.md:799` — "A completed run leaves no vanilla RP2 `firmware.uf2`;
   step 8's Unix port is the only kept artifact." — `build-settrace` is also built and kept (B.5:776,
   `toolchain/setup_toolchain.py:517`). (low) · [H12]
-- **DOC.N140** DRIFT · `SPECIFICATION.md:821-826` — "Does not yet wire up `build-*.sh`'s hardcoded
+- **DOC.N140** DRIFT · `SPECIFICATION.md:825-830` — "Does not yet wire up `build-*.sh`'s hardcoded
   `/home/nico/rpi_pico/...` paths ... the remaining gap is the RP2040 firmware build" — Legacy framed as
   TODO (contradicts CLAUDE.md "never gets work"); firmware build now covered by `firmware-build-verify`.
   · covered-by: DOC.S08 · [H12]
 
 ## SPECIFICATION.md Part B.11 (Building this project's firmware, 931-984)
 
-- **DOC.N141** DRIFT · `SPECIFICATION.md:939-941` — "Still assumes `python/` is checked out as
+- **DOC.N141** DRIFT · `SPECIFICATION.md:943-945` — "Still assumes `python/` is checked out as
   `py-include/python` alongside `micropython`, path not yet genericized (BACKLOG.md)" — Legacy framed as
   open work vs CLAUDE.md legacy rule. · covered-by: DOC.S21 · [H12]
-- **DOC.N142** DRIFT · `SPECIFICATION.md:946-948` — "replaces the former hand-written
+- **DOC.N142** DRIFT · `SPECIFICATION.md:950-952` — "replaces the former hand-written
   `boot_entry/<device>_boot.py` (retired, Session 6's finish criterion)" — Undefined "Session 6" label.
   (low) · related: DOC.S16 · [H12]
-- **DOC.N143** DRIFT · `SPECIFICATION.md:972-976` — "`test_real_firmware_build_produces_a_valid_uf2`
+- **DOC.N143** DRIFT · `SPECIFICATION.md:976-980` — "`test_real_firmware_build_produces_a_valid_uf2`
   does the real end-to-end build (parametrized over `wozi`/`dev`)" — Test is parametrized over
   `DEVICE_NAMES` (all six, `tests_scripts/test_build_firmware.py:196`); CI runs six. · [H12]
-- **DOC.N144** DRIFT · `SPECIFICATION.md:975-976` — "closing the \"no CI firmware-build stage\" gap for
+- **DOC.N144** DRIFT · `SPECIFICATION.md:979-980` — "closing the \"no CI firmware-build stage\" gap for
   this pipeline (legacy `build-*.sh` stays open, BACKLOG.md)" — Legacy framed as open. · covered-by:
   DOC.S21 · [H12]
 
 ## SPECIFICATION.md Part B.14.1 (`unix_kbd_intr`, 1116-1213)
 
-- **DOC.N145** DRIFT · `SPECIFICATION.md:1198-1199` — "`build_unix_port()` (both call sites - the
+- **DOC.N145** DRIFT · `SPECIFICATION.md:1202-1203` — "`build_unix_port()` (both call sites - the
   frozen-verification build and the vanilla test-rig rebuild)" — Three call sites now (settrace build,
   `toolchain/setup_toolchain.py:503, 514, 517`). (low) · [H12]
 
 ## SPECIFICATION.md Part B.15 (The three mypy passes, 1413-1473)
 
-- **DOC.N146** DRIFT · `SPECIFICATION.md:1439-1441` — "and the two shared scenario libraries
+- **DOC.N146** DRIFT · `SPECIFICATION.md:1443-1445` — "and the two shared scenario libraries
   (`_webserver_concurrency_scenarios.py`, `_digital_twin_construction_scenarios.py`)" — CLAUDE.md's
   exclusion list omits these two libraries. (low) · [H12]
 
 ## SPECIFICATION.md Part C intro, C.1-C.2 (1475-1535)
 
-- **DOC.N147** DRIFT · `SPECIFICATION.md:1486, 1493-1494` — "A new driver adds layers 2-3 only (one
+- **DOC.N147** DRIFT · `SPECIFICATION.md:1490, 1497-1498` — "A new driver adds layers 2-3 only (one
   file, `asy_<sensor>_driver.py`) plus a `_Reader` wiring block in the relevant `sensortask-*.py`." —
   Layer 4 is now buildgen-generated from `devices/*.toml`; no hand-written wiring block exists (Part
   K/L). · related: DOC.S09 · [H12]
 
 ## SPECIFICATION.md Part C.3.2 (UART variant, 1598-1622)
 
-- **DOC.N148** MIRROR · `SPECIFICATION.md:1613` — "see `UART_C_PORT_CHANGELOG.md` B15." — Spec ↔
+- **DOC.N148** MIRROR · `SPECIFICATION.md:1617` — "see `UART_C_PORT_CHANGELOG.md` B15." — Spec ↔
   temporary changelog entry ID (changelog deletion would dangle). · related: DOC.S14 · [H12]
 
 ## SPECIFICATION.md Part C.4 (Layer 3 Reader, 1624-1697)
 
-- **DOC.N149** DRIFT · `SPECIFICATION.md:1630` — "`read_loop()` skeleton (identical across all three
+- **DOC.N149** DRIFT · `SPECIFICATION.md:1634` — "`read_loop()` skeleton (identical across all three
   drivers)" — Four sensor drivers now (ISL29125). · covered-by: DOC.S08 · [H12]
 
 ## SPECIFICATION.md Part C.5 / C.5.1-C.5.3 (Config schema system, 1699-1797)
 
-- **DOC.N150** DRIFT · `SPECIFICATION.md:1794-1797` — "`AsyConnTime` owns one schema but
+- **DOC.N150** DRIFT · `SPECIFICATION.md:1798-1801` — "`AsyConnTime` owns one schema but
   `/net/cmd`/`/led/cmd` each own only their own subset (`sensortask-wozi.py`'s `_cfg_subset(schema, keys)`)"
   — Routes and helper no longer exist (A.8 lists `/networking`). · covered-by: DOC.S09 · [H12]
 
 ## SPECIFICATION.md Part C.6 (Data model, 1799-1805)
 
-- **DOC.N151** DRIFT · `SPECIFICATION.md:1801-1805` — "via `repr()`-parsing ... Known dormant landmine:
+- **DOC.N151** DRIFT · `SPECIFICATION.md:1805-1809` — "via `repr()`-parsing ... Known dormant landmine:
   parsing splits on `\"(\"`/`\",\"`" — Seed says the code no longer repr()-parses. · covered-by: DOC.S09
   · [H12]
 
 ## SPECIFICATION.md Part C.7 (Error handling & logging contract, 1807-1891)
 
-- **DOC.N152** DRIFT · `SPECIFICATION.md:1823-1826` — "every FRAM-backed logger runs its own
+- **DOC.N152** DRIFT · `SPECIFICATION.md:1827-1830` — "every FRAM-backed logger runs its own
   `pr.setup()` from *inside its task* (... SYSTEM in `start_and_check_tasks()`)" — A.7:487-497 says
   conn/ntp/sysfunct loggers set up in the pre-task boot batch; which modules set up where is stated two
   ways. (low) · related: CORE.S03 · [H12]
-- **DOC.N153** DRIFT · `SPECIFICATION.md:1841-1843` — "re-run against the real FM25xx" — Chip family
+- **DOC.N153** DRIFT · `SPECIFICATION.md:1845-1847` — "re-run against the real FM25xx" — Chip family
   name (FM25xx, Cypress) vs MB85RS64V/MB85RS2MTA (Fujitsu) used everywhere else. (low) · related: HW.T07
   · [H12]
 
 ## SPECIFICATION.md Part C.7.1 (Running errno/wrnno table, 1893-1941)
 
-- **DOC.N154** MIRROR · `SPECIFICATION.md:1904-1906` — "a renumbering rides a change that already needs
+- **DOC.N154** MIRROR · `SPECIFICATION.md:1908-1910` — "a renumbering rides a change that already needs
   deploying, updating this table and its tests with it" — Table ↔ code ↔ tests three-way mirror. · [H12]
-- **DOC.N155** DRIFT · `SPECIFICATION.md:1940` — "(owner decision, 2026-09-18, )" — Empty trailing
+- **DOC.N155** DRIFT · `SPECIFICATION.md:1944` — "(owner decision, 2026-09-18, )" — Empty trailing
   citation inside the parenthesis — a reference was dropped. (low) · [H12]
 
 ## SPECIFICATION.md Part C.9.1 (Read-trigger timer stagger, 2211-2298)
 
-- **DOC.N156** DRIFT · `SPECIFICATION.md:2226, 2230-2231, 2236` — "(this file)" / "three paragraphs up
+- **DOC.N156** DRIFT · `SPECIFICATION.md:2234, 2238-2239, 2244` — "(this file)" / "three paragraphs up
   in Part A.7's boot-latency note" / "(WP6, this Part's own text above the timer stagger)" — Relative
   references copied from elsewhere; the boot batch lives in A.7, not Part C. (low) · [H12]
 
 ## SPECIFICATION.md Part C.11 / C.11.1 (Design decisions; conformance probe, 2310-2353)
 
-- **DOC.N157** DRIFT · `SPECIFICATION.md:2321-2322, 2326` — "SGP40's VOC-algorithm backup is the only,
+- **DOC.N157** DRIFT · `SPECIFICATION.md:2329-2330, 2334` — "SGP40's VOC-algorithm backup is the only,
   and largest, current example" / "same shape as the existing three" — Stale counts (five chip fakes
   exist: scd30, sgp40, bmp3xx, isl29125, fram). · covered-by: DOC.S08 · [H12]
-- **DOC.N158** SETTLED · `SPECIFICATION.md:2351-2353` — "Chip-specific facts go to Part M, not here." —
+- **DOC.N158** SETTLED · `SPECIFICATION.md:2359-2361` — "Chip-specific facts go to Part M, not here." —
   Doc-placement rule. · [H12]
 
 ## SPECIFICATION.md Part C.14 / C.14.1 (Instance naming, 2380-2428)
 
-- **DOC.N159** DRIFT · `SPECIFICATION.md:2382-2384` — "Session 1 of the device-genericization initiative
+- **DOC.N159** DRIFT · `SPECIFICATION.md:2390-2392` — "Session 1 of the device-genericization initiative
   ... (Session 3 on) ... as of Session 6" — Undefined "Session N" labels. (low) · related: DOC.S16 ·
   [H12]
 
 ## SPECIFICATION.md Part C.14.2 (The `_WIRING` convention, 2430-2532)
 
-- **DOC.N160** DRIFT · `SPECIFICATION.md:2444-1519 vs 2443-2449 (agent cited SPECIFICATION.md:1517-1519 vs 2443-2449)`
+- **DOC.N160** DRIFT · `SPECIFICATION.md:2452-1523 vs 2443-2449 (agent cited SPECIFICATION.md:1521-1523 vs 2443-2449)`
   — "`_WIRING: \"WiringSchema\" = ((toml_field_name, required_driver_class),)`" vs "A comment, never a
   real Python value ... It was a real `_WIRING` tuple until 2026-09-10" — C.2 still documents `_WIRING`
   as a 2-element Python tuple; C.14.2 says it is a 5-field `# @wiring` comment. · [H12] ⟨re-anchored:
   quote found at line 2444⟩
-- **DOC.N161** DRIFT · `SPECIFICATION.md:2469` — "This reuses the existing comment-tag family
+- **DOC.N161** DRIFT · `SPECIFICATION.md:2477` — "This reuses the existing comment-tag family
   (`@requires`, and the planned `@web`)" — `@web` is implemented (CLAUDE.md lists it as live buildgen
   input). · related: GEN.S14 · [H12]
-- **DOC.N162** DRIFT · `SPECIFICATION.md:2493-2499` — "`asy_notification_service.py` imports
+- **DOC.N162** DRIFT · `SPECIFICATION.md:2501-2507` — "`asy_notification_service.py` imports
   `NeopixelDriver` from `asy_neopixel_driver.py` at module level ... every `fram_target`-wirable driver
   similarly imports `AsyFramManager`" — No `NeopixelDriver` import exists; `AsyFramManager` imports are
   TYPE_CHECKING-only (e.g. `src/asy_notification_service.py:29`, `src/asy_sgp40_driver.py:34`). · [H12]
-- **DOC.N163** DRIFT · `SPECIFICATION.md:2510-2514` — "plus two fixed mandatory-infra edges and one
+- **DOC.N163** DRIFT · `SPECIFICATION.md:2518-2522` — "plus two fixed mandatory-infra edges and one
   conditional one (`sysfunct` needs its own `device.wiring.fram_target` instance, if set)" — A.7:390-392
   says conn/ntp/sysfunct each get a conditional edge onto `fram`. (low) · [H12]
 
 ## SPECIFICATION.md Part D (src/ Production-Quality Checklist, 2576-2728)
 
-- **DOC.N164** DRIFT · `SPECIFICATION.md:2618` — "Units run years without a reboot" — Same
+- **DOC.N164** DRIFT · `SPECIFICATION.md:2626` — "Units run years without a reboot" — Same
   lifetime-claim tension as A.2:125 vs CLAUDE.md "months". (low) · [H12]
-- **DOC.N165** INVAR · `SPECIFICATION.md:2684-2686` — "Per-function explanations are `#` comments, never
+- **DOC.N165** INVAR · `SPECIFICATION.md:2692-2694` — "Per-function explanations are `#` comments, never
   docstrings mixed into an individual function." — Holds today (0 function docstrings in `src/`); not
   mechanically gated. · [H12]
 
 ## SPECIFICATION.md Part E.3 / E.3.1 (Running; heap and timeouts, 2828-2921)
 
-- **DOC.N166** DRIFT · `SPECIFICATION.md:2918` — "validated once in `scripts/test.sh` rather than 85
+- **DOC.N166** DRIFT · `SPECIFICATION.md:2926` — "validated once in `scripts/test.sh` rather than 85
   times" — Stale file count. · covered-by: DOC.S08 · [H12]
 
 ## SPECIFICATION.md Part E.5 / E.5.1-E.5.3 (Coverage, 2951-3088)
 
-- **DOC.N167** DRIFT · `SPECIFICATION.md:2966-2967` — "(Session 8's closing-consistency-pass PR split it
+- **DOC.N167** DRIFT · `SPECIFICATION.md:2974-2975` — "(Session 8's closing-consistency-pass PR split it
   out of `unit-tests` proper)" — Undefined "Session 8" label. (low) · related: DOC.S16 · [H12]
-- **DOC.N168** DRIFT · `SPECIFICATION.md:3062-3063` — "HEAP_FRAGMENTATION_MEASUREMENTS.md §M3.7 (archive
+- **DOC.N168** DRIFT · `SPECIFICATION.md:3070-3071` — "HEAP_FRAGMENTATION_MEASUREMENTS.md §M3.7 (archive
   §1.2 item 7 and §3A)" — Archive § citations resolve only in git history. · covered-by: DOC.S04 · [H12]
-- **DOC.N169** DRIFT · `SPECIFICATION.md:3071-3072` — "(`tests/test_uart_comm_hazard.py`, 84/85) on a
+- **DOC.N169** DRIFT · `SPECIFICATION.md:3079-3080` — "(`tests/test_uart_comm_hazard.py`, 84/85) on a
   tree whose (e) and (f) stages were both 85/85" — Stale file count. · covered-by: DOC.S08 · [H12]
 
 ## SPECIFICATION.md Part E.7 (Twin soak wall clock measures GC timing, 3229-3269)
 
-- **DOC.N170** DRIFT · `SPECIFICATION.md:3235` — "where `gc` collections land on the Unix port's 8 MB
+- **DOC.N170** DRIFT · `SPECIFICATION.md:3243` — "where `gc` collections land on the Unix port's 8 MB
   heap" — E.3.1 says the test heap is 16M now; the 8 MB figure is from the retired run_dev_integration
   measurement. (low) · [H12]
 
 ## SPECIFICATION.md Part E.8 (Measurement traps, 3271-3362)
 
-- **DOC.N171** DRIFT · `SPECIFICATION.md:3344-3345` — "the same standard I3.4's revert-and-confirm pass
+- **DOC.N171** DRIFT · `SPECIFICATION.md:3352-3353` — "the same standard I3.4's revert-and-confirm pass
   applies to fixes" — "I3.4" ID resolves to no SPEC Part (Part I uses `I.n`). (low) · related: DOC.T02 ·
   [H12]
 
 ## SPECIFICATION.md Part F.1 — Core platform facts
 
-- **DOC.N172** DRIFT · `SPECIFICATION.md:3518-3519` — "every real use in `src/` is a short bounded
+- **DOC.N172** DRIFT · `SPECIFICATION.md:3527-3528` — "every real use in `src/` is a short bounded
   timeout well inside that window" — Contradicted by stored-ticks sites the plan lists (ISL29125, UART
   hold-off). · covered-by: DOC.S23 · [H13]
-- **DOC.N173** MIRROR · `SPECIFICATION.md:3583-3588` — "Always check current MicroPython/Microdot
+- **DOC.N173** MIRROR · `SPECIFICATION.md:3592-3597` — "Always check current MicroPython/Microdot
   documentation ... Repeat every time `versions.toml`'s ref moves" — Duplicates CLAUDE.md "Platform
   target" standing practices (two homes for one rule) (low). · related: DOC.T06 · [H13]
 
 ## SPECIFICATION.md Part F.2 — Blocking calls / timeout-wrapping
 
-- **DOC.N174** DRIFT · `SPECIFICATION.md:3632-3635 vs CLAUDE.md "Hard rules" (CYW43 bullet)` — "the
+- **DOC.N174** DRIFT · `SPECIFICATION.md:3641-3644 vs CLAUDE.md "Hard rules" (CYW43 bullet)` — "the
   older, stronger claim — \"a device whose API is unreachable structurally cannot have a flash write in
   flight\" — is no longer exactly true" — CLAUDE.md still states "structurally cannot have a write in
   flight" as confirmed. · related: DOC.T10 · [H13]
 
 ## SPECIFICATION.md Part F.5 — MicroPython 1.29 delta (intro)
 
-- **DOC.N175** DRIFT · `SPECIFICATION.md:3664 vs 3852-4049` — "## F.5 MicroPython 1.29 delta (audited
+- **DOC.N175** DRIFT · `SPECIFICATION.md:3673 vs 3852-4049` — "## F.5 MicroPython 1.29 delta (audited
   2026-09-10 ...)" — F.5.7-F.5.9 are standing UART runtime facts CLAUDE.md hard rules depend on, filed
   under a version-delta heading. · covered-by: DOC.S02 · [H13]
 
 ## SPECIFICATION.md Part F.5.2 — rp2 SPI RX-overrun EIO
 
-- **DOC.N176** DRIFT · `SPECIFICATION.md:3735-3736` — "an earlier draft of this section that said it did
+- **DOC.N176** DRIFT · `SPECIFICATION.md:3744-3745` — "an earlier draft of this section that said it did
   was wrong" — Historic-path narrative in a current-state doc (low). · related: DOC.T05 · [H13]
 
 ## SPECIFICATION.md Part F.5.3 — Free wins in the 1.29 build
 
-- **DOC.N177** DRIFT · `SPECIFICATION.md:3774` — "`HEAP_FRAGMENTATION_MEASUREMENTS.md` §M2.5 has the
+- **DOC.N177** DRIFT · `SPECIFICATION.md:3783` — "`HEAP_FRAGMENTATION_MEASUREMENTS.md` §M2.5 has the
   method (archive §7G the derivation)" — "archive §" citation resolves only against the git archive
   commit. · covered-by: DOC.S04 · [H13]
 
 ## SPECIFICATION.md Part F.5.6 — Smaller 1.29 facts / non-events
 
-- **DOC.N178** DRIFT · `SPECIFICATION.md:3832` — "This project's 21 `const()`-using files are all
+- **DOC.N178** DRIFT · `SPECIFICATION.md:3841` — "This project's 21 `const()`-using files are all
   unannotated." — `grep -lE '=\s*const\(' src/*.py` finds 25 files at 2a88cc8 (count stale, low; scope
   of "project" unstated). · related: DOC.T08 · [H13]
 
 ## SPECIFICATION.md Part F.6 — SIGINT during gc_collect() wedges the Unix-port heap
 
-- **DOC.N179** DRIFT · `SPECIFICATION.md:4084-4085` — "in violation of this Part's own stated rule
+- **DOC.N179** DRIFT · `SPECIFICATION.md:4096-4097` — "in violation of this Part's own stated rule
   (\"call it first ... before `flush_fram()`/`flush_scd30()`\")" — The quoted rule text no longer
   appears anywhere in F.6 (only the paraphrase in `digital_twin/unix_port_gc_unwedge.py:2`) (low). ·
   related: DOC.T02 · [H13]
-- **DOC.N180** DRIFT · `SPECIFICATION.md:4087-4089 vs 4107-4116` — "gated on `MICROPY_ASYNC_KBD_INTR`,
+- **DOC.N180** DRIFT · `SPECIFICATION.md:4099-4101 vs 4107-4116` — "gated on `MICROPY_ASYNC_KBD_INTR`,
   which the `standard` build variant used here has enabled" — Present-tense statement superseded by the
   amendment (override forces it to 0) in the same Part (history narrative). · related: DOC.T05 · [H13]
 
 ## SPECIFICATION.md Part H.5 — Definitions JSON schema
 
-- **DOC.N181** DRIFT · `SPECIFICATION.md:4393-4396` — "An earlier version of this paragraph said ...
+- **DOC.N181** DRIFT · `SPECIFICATION.md:4405-4408` — "An earlier version of this paragraph said ...
   (resolved 2026-09-18 by reading the one consumer, `js/render.js`)" — Historic narrative in a
   current-state doc (low). · related: DOC.T05 · [H13]
-- **DOC.N182** DRIFT · `SPECIFICATION.md:4399-4401` — "nearly identical field content (same three
+- **DOC.N182** DRIFT · `SPECIFICATION.md:4411-4413` — "nearly identical field content (same three
   drivers); only `device.id`/`displayName` and I2C bus pairing differ" — `devices/dev.toml` wires
   ISL29125 too (`:103`) and `html/definitions/dev.json` carries ISL fields, so dev ≠ wozi's three
   drivers. · related: WEB.T05 · [H13]
-- **DOC.N183** DRIFT · `SPECIFICATION.md:4402-4408` — "`wozi`/`dev` keep their existing hand-written
+- **DOC.N183** DRIFT · `SPECIFICATION.md:4414-4420` — "`wozi`/`dev` keep their existing hand-written
   files unchanged (`tests_js/` reads those exact files as fixtures)" — Contradicts K.4 "never
   hand-maintained" / K.8 "regenerates automatically". · covered-by: DOC.S03 · [H13]
 
 ## SPECIFICATION.md Part H.5.1 — Definitions-file autogeneration
 
-- **DOC.N184** DRIFT · `SPECIFICATION.md:4410` — "## H.5.1 Definitions-file autogeneration" — Heading
+- **DOC.N184** DRIFT · `SPECIFICATION.md:4422` — "## H.5.1 Definitions-file autogeneration" — Heading
   level `##` for a subsection. · covered-by: DOC.S01 · [H13]
 
 ## SPECIFICATION.md Part H.7 — Digital twin integration / connection ceiling
 
-- **DOC.N185** DRIFT · `SPECIFICATION.md:4530, 4664` — "### The connection ceiling ..." / "###
+- **DOC.N185** DRIFT · `SPECIFICATION.md:4542, 4676` — "### The connection ceiling ..." / "###
   Cross-browser coverage" — Unnumbered subsections, cited elsewhere as "H.7". · covered-by: DOC.S01 ·
   [H13]
 
 ## SPECIFICATION.md Part I.3 — Bounded response assembly
 
-- **DOC.N186** DRIFT · `SPECIFICATION.md:4960-4962` — "since an 8MB Unix-port heap trivially absorbs a
+- **DOC.N186** DRIFT · `SPECIFICATION.md:4973-4975` — "since an 8MB Unix-port heap trivially absorbs a
   payload this small" — `scripts/test.sh:369` now runs `-X heapsize=16M` (CLAUDE.md: 8M → 32M → 16M)
   (low). · related: DOC.T08 · [H13]
 
 ## SPECIFICATION.md Part I.4 — (f), (f.1), (g)
 
-- **DOC.N187** DRIFT · `SPECIFICATION.md:5115-5116` — "measure B's silicon confirmation is a different
+- **DOC.N187** DRIFT · `SPECIFICATION.md:5128-5129` — "measure B's silicon confirmation is a different
   metric (archive §7F)" — Undefined label "measure B"; archive-only citation. · covered-by: DOC.S16 ·
   [H13]
 
 ## SPECIFICATION.md Part I.5 — Real-hardware confirmation
 
-- **DOC.N188** DRIFT · `SPECIFICATION.md:5135-5137` — "The piece cap's 2026-09-08 headroom figure (~48x)
+- **DOC.N188** DRIFT · `SPECIFICATION.md:5148-5150` — "The piece cap's 2026-09-08 headroom figure (~48x)
   is withdrawn" — Withdrawn-figure narrative (low). · related: DOC.T05 · [H13]
 
 ## SPECIFICATION.md Part I.6 — Request-body cap (sits inside Part J)
 
-- **DOC.N189** DRIFT · `SPECIFICATION.md:5165` — "## I.6 The request-body cap, and why both of
+- **DOC.N189** DRIFT · `SPECIFICATION.md:5178` — "## I.6 The request-body cap, and why both of
   Microdot's limits must move together" — Part I subsection placed after Part J's intro. · covered-by:
   DOC.S01 · [H13]
-- **DOC.N190** DRIFT · `SPECIFICATION.md:5184-5186, 5194-5195` — "`max_connections` is 4, so up to
+- **DOC.N190** DRIFT · `SPECIFICATION.md:5197-5199, 5207-5208` — "`max_connections` is 4, so up to
   **four** such buffers ... takes the four-connection worst case to 4 x 2,048 = 8,192 B" —
   `max_connections` is now 6 (H.7) → 12,288 B. · covered-by: REST.S11 · [H13]
-- **DOC.N191** DRIFT · `SPECIFICATION.md:5236-5255` — "**the resets are a property of concurrency
+- **DOC.N191** DRIFT · `SPECIFICATION.md:5249-5268` — "**the resets are a property of concurrency
   against `max_connections = 4`** ... 3 free slots, 4 clients, **1 refusal = the measured 25 %**" — W5
   analysis and its reset-rate curve were taken at the old ceiling of 4; not restated for 6. · related:
   REST.S11, PERF.T02 · [H13]
-- **DOC.N192** DRIFT · `SPECIFICATION.md:5283-5284` — "(owner's decision; `REAL_HARDWARE_TEST_QUEUE.md`
+- **DOC.N192** DRIFT · `SPECIFICATION.md:5296-5297` — "(owner's decision; `REAL_HARDWARE_TEST_QUEUE.md`
   §2A F11 has the account)" — Deleted queue row F11 still cited. · covered-by: DOC.S06 · [H13]
+  ⟨4dc80ef: drift resolved: the reference now reads "F11, HEAP_FRAGMENTATION_MEASUREMENTS.md archive"
+  (03f8bcf)⟩
 
 ## SPECIFICATION.md Part J.1 — Scope and two-implementation contract
 
-- **DOC.N193** TODO · `SPECIFICATION.md:5328-5329` — "a temporary file, deleted once the C side is
+- **DOC.N193** TODO · `SPECIFICATION.md:5341-5342` — "a temporary file, deleted once the C side is
   reconciled" — Deletion trigger unreachable while reconciliation is out of scope. · covered-by: DOC.S14
   · [H13]
 
 ## SPECIFICATION.md Part J.7 — Loopback testing model
 
-- **DOC.N194** DRIFT · `SPECIFICATION.md:5555-5556 vs 5561-5563` — "`digital_twin/machine.py` (twin
+- **DOC.N194** DRIFT · `SPECIFICATION.md:5568-5569 vs 5561-5563` — "`digital_twin/machine.py` (twin
   tier, which has no `UART` at all today)" — Contradicted four lines later ("Both models exist ...
   `digital_twin/machine.py`'s") and by `digital_twin/machine.py:481-488` (`UARTLink`). · related:
   DOC.T10 · [H13]
 
 ## SPECIFICATION.md Part J.9 — Module contract
 
-- **DOC.N195** DRIFT · `SPECIFICATION.md:5670-5671` — "C.6's `make_dict()` repr-parsing landmine does
+- **DOC.N195** DRIFT · `SPECIFICATION.md:5683-5684` — "C.6's `make_dict()` repr-parsing landmine does
   not apply" — The landmine C.6 describes no longer exists in code. · covered-by: DOC.S09 · [H13]
 
 ## SPECIFICATION.md Part K (intro) and K.1 — Before writing code
 
-- **DOC.N196** INVAR · `SPECIFICATION.md:5691-5695` — "Use it as a literal checklist ... Where a step
+- **DOC.N196** INVAR · `SPECIFICATION.md:5704-5708` — "Use it as a literal checklist ... Where a step
   doesn't apply ... say so explicitly rather than silently skipping it" — Process rule for every
   promotion; review-only. · related: TEST.T06 · [H13]
 
 ## SPECIFICATION.md Part K.4 — @web tags
 
-- **DOC.N197** DRIFT · `SPECIFICATION.md:5785-5786` — "`html/definitions/<device>.json` is generated at
+- **DOC.N197** DRIFT · `SPECIFICATION.md:5798-5799` — "`html/definitions/<device>.json` is generated at
   build time from every tagged `src/` file (Part H.5.1); it is never hand-maintained" — wozi/dev
   definitions are hand-written (H.5). · covered-by: DOC.S03 · [H13]
 
 ## SPECIFICATION.md Part K.5 — Digital twin
 
-- **DOC.N198** DRIFT · `SPECIFICATION.md:5803-5804` — "wired into `digital_twin/machine.py`'s
+- **DOC.N198** DRIFT · `SPECIFICATION.md:5816-5817` — "wired into `digital_twin/machine.py`'s
   `_build_i2c_chip()`/`_build_spi_chip()` dispatch (matched by `driver` string" — `_build_spi_chip()`
   does not exist (twin has `_wire_spi_device()`, FRAM only). · covered-by: DOC.S22 · [H13]
 
 ## SPECIFICATION.md Part K.6 — Tests, every tier
 
-- **DOC.N199** DRIFT · `SPECIFICATION.md:5965-5868 vs 5966-5967 (agent cited SPECIFICATION.md:5867-5868 vs 5966-5967)`
+- **DOC.N199** DRIFT · `SPECIFICATION.md:5978-5881 vs 5966-5967 (agent cited SPECIFICATION.md:5880-5881 vs 5966-5967)`
   — "**Cross-sensor hazard coverage is automatic ... no longer hand-paired per driver.**" vs
   "(auto-generated if that capability has landed by the time you read this — check; hand-paired
   otherwise)" — K.11 still hedges on a capability K.6 says has landed; CLAUDE.md's four-tier list still
@@ -985,70 +997,70 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
 
 ## SPECIFICATION.md Part K.8 — Regenerate and spot-check
 
-- **DOC.N200** DRIFT · `SPECIFICATION.md:5899` — "`html/definitions/<device>.json` regenerates from
+- **DOC.N200** DRIFT · `SPECIFICATION.md:5912` — "`html/definitions/<device>.json` regenerates from
   K.4's tags automatically" — Not true for hand-written wozi/dev. · covered-by: DOC.S03 · [H13]
 
 ## SPECIFICATION.md Part K.9 — Documentation
 
-- **DOC.N201** INVAR · `SPECIFICATION.md:5907-5923` — "a new `M.<n>` section for any real,
+- **DOC.N201** INVAR · `SPECIFICATION.md:5920-5936` — "a new `M.<n>` section for any real,
   datasheet-derived findings ... A `C.7.1` errno/wrnno table row ... `DEVICE_REFERENCE.md` —
   end-user-facing notes only ... BACKLOG.md — only for a genuinely still-open question" — Documentation
   obligations per promotion; review-only. · related: DOC.T06 · [H13]
 
 ## SPECIFICATION.md Part K.10-K.11 — Verification and certification
 
-- **DOC.N202** INVAR · `SPECIFICATION.md:5944-5981` — "Check off per promotion; note explicitly (not
+- **DOC.N202** INVAR · `SPECIFICATION.md:5957-5994` — "Check off per promotion; note explicitly (not
   silently) anywhere a step didn't apply" — Certification checklist; no record of past check-offs is
   required anywhere. · [H13]
 
 ## SPECIFICATION.md Part L.1 — Device variants and acceptance criteria
 
-- **DOC.N203** DRIFT · `SPECIFICATION.md:6006-6009 vs 5741-5772` — "**A new driver needs exactly one
+- **DOC.N203** DRIFT · `SPECIFICATION.md:6019-6022 vs 5741-5772` — "**A new driver needs exactly one
   association** ... True of every driver in `src/` today." — K.3 lists `buildspec.py` rows, a
   `_build_args_<name>()` handler and a `_SENSOR_DRIVERS` entry for every new driver. · related: GEN.T06
   · [H13]
 
 ## SPECIFICATION.md Part L.2 — Core design decisions
 
-- **DOC.N204** DRIFT · `SPECIFICATION.md:6083-6086` — "Tests are generic bodies driven by each device's
+- **DOC.N204** DRIFT · `SPECIFICATION.md:6098-6101` — "Tests are generic bodies driven by each device's
   TOML and generated module, never hand-written or generated per-variant test files." — Six hand-written
   per-device wrappers exist (`tests/test_sensortask_<device>.py`, 11 lines each) (low). · related:
   CI.T07 · [H13]
 
 ## SPECIFICATION.md Part L.3 — Device TOML schema
 
-- **DOC.N205** DRIFT · `SPECIFICATION.md:6223 vs 4234-4236` — "**`_WIRING`'s shape** (a `# @wiring`
+- **DOC.N205** DRIFT · `SPECIFICATION.md:6238 vs 4234-4236` — "**`_WIRING`'s shape** (a `# @wiring`
   comment tag, not a Python tuple — L.6)" — G.2 still describes "a `_WIRING: \"WiringSchema\"` tuple
   next to a driver's `_VAL_*` schema tuples"; `src/` has only `# @wiring` tags (e.g.
   `src/asy_bmp3xx_driver.py:114`). · related: DOC.T10 · [H13]
 
 ## SPECIFICATION.md Part L.5 — Build/generator script quality bar
 
-- **DOC.N206** DRIFT · `SPECIFICATION.md:6371` — "trailing inline on a module-level statement, last line
+- **DOC.N206** DRIFT · `SPECIFICATION.md:6386` — "trailing inline on a module-level statement, last line
   with no trailing newline, beside `_WIRING`" — `_WIRING` is no longer a Python tuple in `src/` (L.3)
   (low). · related: DOC.T16 · [H13]
 
 ## SPECIFICATION.md Part L.6.4 — Comment-tag family
 
-- **DOC.N207** DRIFT · `SPECIFICATION.md:6495-6498` — "`asy_bmp3xx_driver.py`'s `_LIMITS` ... — the only
+- **DOC.N207** DRIFT · `SPECIFICATION.md:6510-6513` — "`asy_bmp3xx_driver.py`'s `_LIMITS` ... — the only
   driver with a real, datasheet-documented `_LIMITS` constraint today" —
   `src/asy_isl29125_driver.py:194` also carries `# @limits trigger_sec 1..3600`. · covered-by: DOC.S08 ·
   [H13]
 
 ## SPECIFICATION.md Part L.7 — Product versioning
 
-- **DOC.N208** DRIFT · `SPECIFICATION.md:6560-6561 vs 4265-4266` — "Neither version nor the build date
+- **DOC.N208** DRIFT · `SPECIFICATION.md:6575-6576 vs 4265-4266` — "Neither version nor the build date
   is rendered in the UI" — Contradicts H.1's "every REST endpoint's functionality must be reachable
   somewhere in the GUI". · covered-by: WEB.S20 · [H13]
 
 ## SPECIFICATION.md Part M (intro) and M.1 — ISL29125
 
-- **DOC.N209** LIMIT · `SPECIFICATION.md:6576-6577` — "Only the ISL29125 has needed one so far." — Other
+- **DOC.N209** LIMIT · `SPECIFICATION.md:6591-6592` — "Only the ISL29125 has needed one so far." — Other
   chips (SCD30, SGP40, BMP3xx, FRAM) have no Part M entry (low). · related: TEST.S20 · [H13]
 
 ## SPECIFICATION.md Part M.1.1 — Settled requirements (owner's list)
 
-- **DOC.N210** INVAR · `SPECIFICATION.md:6588-6589` — "the numbering is load-bearing and must not be
+- **DOC.N210** INVAR · `SPECIFICATION.md:6603-6604` — "the numbering is load-bearing and must not be
   re-flowed" — Requirement numbers are cited from code/tests. · related: DOC.T02 · [H13]
 
 ## CLAUDE.md
@@ -1070,7 +1082,7 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
   [H14]
 - **DOC.N215** DRIFT · `CLAUDE.md:110-111` — "Bringing the *deployed* tree forward is a reflash-campaign
   decision, not a drive-by edit (BACKLOG.md)" — BACKLOG.md has no Microdot entry (0 hits). Only item 3
-  (BACKLOG.md:183-185) mentions a reflash campaign, for the MicroPython version (low). · related:
+  (BACKLOG.md:160-162) mentions a reflash campaign, for the MicroPython version (low). · related:
   DOC.T02 · [H14]
 - **DOC.N216** SETTLED · `CLAUDE.md:156-158` — "`dev` config is a bench rig only — its quirks ... are
   explicitly out of scope. Don't fix them as if they were bugs." — | area: PAR | related: PAR.S14 ·
@@ -1218,24 +1230,24 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
 - **DOC.N265** LIMIT · `README.md:658-663` — "the investigation's full measurement record is archived in
   git (its opening paragraph says where) and is what an \"archive §…\" citation elsewhere names" —
   Archive citations resolve only in commit 12640c2. · covered-by: DOC.S04 · [H14]
-- **DOC.N266** INVAR · `README.md:719-721` — "A handover file ... Never treat one as a durable
+- **DOC.N266** INVAR · `README.md:706-708` — "A handover file ... Never treat one as a durable
   reference" — | area: HW | related: HW.T10 · [H14]
-- **DOC.N267** DRIFT · `README.md:725-727` — "notes for configuring/operating a deployed unit (Neopixel
+- **DOC.N267** DRIFT · `README.md:712-714` — "notes for configuring/operating a deployed unit (Neopixel
   LED signal legend, SGP40 FRAM backup config semantics)" — Omits the ISL29125 section
   (DEVICE_REFERENCE.md:39-101) (low). · [H14]
-- **DOC.N268** OPENQ · `README.md:742-744` — "Folding it into `SPECIFICATION.md`, the way
+- **DOC.N268** OPENQ · `README.md:729-731` — "Folding it into `SPECIFICATION.md`, the way
   `src/README.md`/`tests/README.md` were, is an open option." — Placement of digital_twin/README.md is
   undecided. · related: DOC.T06 · [H14]
-- **DOC.N269** LIMIT · `README.md:764-767` — "a historical, frozen-in-time snapshot ... from 2026-08-27
+- **DOC.N269** LIMIT · `README.md:751-754` — "a historical, frozen-in-time snapshot ... from 2026-08-27
   (back when it still ran 1.24.1) ... not itself reviewed, promoted, or covered by lint/type/test
   config" — | area: HW | related: PAR.T08 · [H14]
-- **DOC.N270** DRIFT · `README.md:780-783` — "the two still-genuinely-open items (a real, long-duration
+- **DOC.N270** DRIFT · `README.md:767-770` — "the two still-genuinely-open items (a real, long-duration
   memory-soak run not yet executed; two bench-rig capabilities" — The BACKLOG item 8 status has moved on
   (the GPIO fault harness is SETTLED as not provisioned). · covered-by: DOC.S08 · [H14]
-- **DOC.N271** DRIFT · `README.md:769-772` — "all now deleted (2026-09-04) once real-hardware execution
+- **DOC.N271** DRIFT · `README.md:756-759` — "all now deleted (2026-09-04) once real-hardware execution
   was genuinely complete and verified" — Provenance narrative against the current-state rule (low). ·
   related: DOC.T05 · [H14]
-- **DOC.N272** DRIFT · `README.md:789-791` — "See `SPECIFICATION.md`'s own front matter for the full
+- **DOC.N272** DRIFT · `README.md:776-778` — "See `SPECIFICATION.md`'s own front matter for the full
   provenance" — The front matter has no provenance text. · covered-by: DOC.S07 · [H14]
 
 ## DEVICE_REFERENCE.md
@@ -1264,53 +1276,59 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
 
 ## BACKLOG.md
 
-- **DOC.N279** SETTLED · `BACKLOG.md:15-19` — "The numbered list below has gaps, and its numbers are
+- **DOC.N279** SETTLED · `BACKLOG.md:13-17` — "The numbered list below has gaps, and its numbers are
   never reused or renumbered." — Numbering contract: cited resolved items stay as closed stubs, uncited
   ones are deleted; a gap means "resolved and removed". · related: DOC.T02 · [H15]
-- **DOC.N280** DRIFT · `BACKLOG.md:17 vs :316-318` — "a resolved item whose number is cited stays as a
+- **DOC.N280** DRIFT · `BACKLOG.md:15 vs :293-295` — "a resolved item whose number is cited stays as a
   short closed stub ... (items 1, 5, 6, 9, 12 today)" — Stub list omits item 29, which calls itself
   "Kept as a stub"; items 2/3/4 are decided but not stubs. · covered-by: DOC.S13 · [H15]
 - **DOC.N281** DRIFT · `BACKLOG.md:3-8` — "anything from it worth keeping permanently lives in CLAUDE.md
   ... or README.md" — Stated migration target for resolved items (CLAUDE/README) differs from practice
   (items point into SPECIFICATION.md Parts). · covered-by: DOC.S10 · [H15]
-- **DOC.N282** MIRROR · `BACKLOG.md:10-13` — "Anything in here that needs the dev bench is also listed
+- **DOC.N282** MIRROR · `BACKLOG.md:10-11` — "Anything in here that needs the dev bench is also listed
   in REAL_HARDWARE_TEST_QUEUE.md" — Every bench-needing BACKLOG item must also have a queue row
   (convention, unchecked). · related: HW.T10, DOC.T06 · [H15]
-- **DOC.N283** ASSUME · `BACKLOG.md:62-66` — "Re-measured 2026-09-11: 224 in the main src+tests pass and
+  ⟨4dc80ef: drift resolved: BACKLOG.md:10-11 now points at its own "Real-hardware work still owed"
+  (03f8bcf)⟩
+- **DOC.N283** ASSUME · `BACKLOG.md:42-46` — "Re-measured 2026-09-11: 224 in the main src+tests pass and
   115 in the host pass" — Dated counts (224 / 115 / twin "previously 45" not re-measured / 54 unimported
   / explicit `Any` 107 in src, 213 in tests). · covered-by: DOC.S17, ENV.T06 · [H15]
-- **DOC.N284** DRIFT · `BACKLOG.md:21 (agent cited BACKLOG.md:72)` — "SETTLED, do not re-raise" (under
-  "## Refactor targets not yet done", :21) — A settled entry filed in the not-yet-done section. ·
+- **DOC.N284** DRIFT · `BACKLOG.md:19 (agent cited BACKLOG.md:52)` — "SETTLED, do not re-raise" (under
+  "## Refactor targets not yet done", :19) — A settled entry filed in the not-yet-done section. ·
   covered-by: DOC.S13 · [H15] ⟨re-anchored: quote found at line 21⟩
-- **DOC.N285** DRIFT · `BACKLOG.md:93-99` — "(1) dev/build environment setup (genericized
+- **DOC.N285** DRIFT · `BACKLOG.md:73-79` — "(1) dev/build environment setup (genericized
   build-*.sh/toolchain paths)" — "Rough sequencing" still lists `build-*.sh` genericisation, which
   CLAUDE.md's legacy rule forbids forever; items (2)-(3) partly stale. (low) · related: DOC.S21 · [H15]
-- **DOC.N286** DRIFT · `BACKLOG.md:145-150 vs REAL_HARDWARE_TEST_QUEUE.md:247` — "Still open: this needs
+- **DOC.N286** DRIFT · `BACKLOG.md:122-127 vs REAL_HARDWARE_TEST_QUEUE.md:247` — "Still open: this needs
   a real-hardware re-run" — Queue R9 says the shadow-divergence fix already RAN and passed on silicon
   (archive §7H.6, `ARCH:3610-3612`); only the `Overrange` half is unrun. BACKLOG not updated. · related:
   DOC.T06 · [H15]
-- **DOC.N287** DRIFT · `BACKLOG.md:248-249` — "which is REAL_HARDWARE_TEST_QUEUE.md's C7, not this item"
+  ⟨4dc80ef: drift resolved: the shadow fix is recorded as confirmed on silicon; only Overrange owes a
+  run (03f8bcf)⟩
+- **DOC.N287** DRIFT · `BACKLOG.md:225-226` — "which is REAL_HARDWARE_TEST_QUEUE.md's C7, not this item"
   — Queue row C7 no longer exists. · covered-by: DOC.S06 · [H15]
-- **DOC.N288** DRIFT · `BACKLOG.md:255` — "outer_cap_s = 15.0 (asy_webserver_service.py:275, via
+  ⟨4dc80ef: drift resolved: item 12 now names G6 (03f8bcf)⟩
+- **DOC.N288** DRIFT · `BACKLOG.md:232` — "outer_cap_s = 15.0 (asy_webserver_service.py:275, via
   asyncio.wait_for() at :667)" — Stale line refs: default is at `src/asy_webserver_service.py:322`,
   stored `:355`, `wait_for` at `:708` (`:275`/`:667` are unrelated lines). · related: DOC.T16 · [H15]
-- **DOC.N289** DRIFT · `BACKLOG.md:393-394` — "the supervisor loop is the only feed site
+- **DOC.N289** DRIFT · `BACKLOG.md:334-335` — "the supervisor loop is the only feed site
   (system_service.py's feed_watchdog())" — The generated setup batch also feeds per setup unit. ·
   covered-by: DOC.S20 · [H15]
-- **DOC.N290** DRIFT · `BACKLOG.md:669-670` — "whenever one is next scheduled
+- **DOC.N290** DRIFT · `BACKLOG.md:727-727` — "whenever one is next scheduled
   (REAL_HARDWARE_TEST_QUEUE.md R10)" — Queue row R10 deleted. · covered-by: DOC.S06 · [H15]
-- **DOC.N291** TODO · `BACKLOG.md:797-808` — "held here only until the owner's audit of the whole
+  ⟨4dc80ef: drift resolved: the R10 reference is gone (03f8bcf)⟩
+- **DOC.N291** TODO · `BACKLOG.md:847-858` — "held here only until the owner's audit of the whole
   refactor closes" — Unix-port-equivalent requirement fulfilled; this entry's removal trigger is the
   audit itself. · [H15]
-- **DOC.N292** DRIFT · `BACKLOG.md:809-813` — "not fully wired end-to-end yet (sensortask-wozi.py itself
+- **DOC.N292** DRIFT · `BACKLOG.md:859-863` — "not fully wired end-to-end yet (sensortask-wozi.py itself
   predates the per-sensor-config model — see 'Refactor targets not yet done' above)" —
   `sensortask-wozi.py` is retired (buildgen-generated); no matching entry above; current status of the
   `_DEFAULT_CONFIG`/REST/HTML-form duplication is unclear. · related: GEN.T06 · [H15]
-- **DOC.N293** DRIFT · `BACKLOG.md:825-827` — "build-*.sh's hardcoded path/py-include dependency is now
+- **DOC.N293** DRIFT · `BACKLOG.md:875-877` — "build-*.sh's hardcoded path/py-include dependency is now
   fixed too (see 'Refactor targets not yet done' above)" — No such entry above; contradicts CLAUDE.md's
-  legacy rule; README has no "Toolchain setup" section (cited :826). · covered-by: DOC.S21, DOC.S07 ·
+  legacy rule; README has no "Toolchain setup" section (cited :876). · covered-by: DOC.S21, DOC.S07 ·
   [H15]
-- **DOC.N294** TODO · `BACKLOG.md:828-832` — "missing the pico-sdk 2.0.0+ picotool major.minor
+- **DOC.N294** TODO · `BACKLOG.md:878-882` — "missing the pico-sdk 2.0.0+ picotool major.minor
   version-matching requirement ... and the full apt package list" — `update_and_install.txt` known
   incomplete; `pico-setup` suggested as a base. · related: DOC.S15 · [H15]
 
@@ -1366,7 +1384,7 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
   (CLAUDE.md: every scope measures zero; tests_scripts/test_comment_block_cap.py) | - · [H17]
 - **DOC.N306** NOTE(DOC-DRIFT) · `commit dfb85ff` — "SPECIFICATION.md's F.2 WiFi-power-cycle-backstop
   invariant now states the accepted residual risk window precisely ... instead of the old, now-inexact
-  'structurally cannot have a write in flight' claim" — SPEC F.2 (SPECIFICATION.md:3632-3640) was
+  'structurally cannot have a write in flight' claim" — SPEC F.2 (SPECIFICATION.md:3641-3649) was
   corrected, but CLAUDE.md:199-201 Hard rule still says "a device whose API is unreachable structurally
   cannot have a write in flight" — the claim SPEC calls "no longer exactly true". · UNTRACKED | related:
   NET.T*, DOC.T* · [H17 (also H17)]
@@ -1387,3 +1405,13 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
 - **DOC.N311** NOTE(PLAN) · `commit a28513f .. 2a88cc8` — PROJECT_AUDIT_PLAN.md: "Execution is blocked
   until the owner's explicit go-ahead. Every seed is recorded unverified" — Audit plan (this harvest's
   context). · tracked: PROJECT_AUDIT_PLAN.md | - · [H17]
+
+## Delta `2a88cc8` → `4dc80ef` (main head, V11)
+
+- **DOC.N312** DRIFT · `BACKLOG.md:89-90` — "real-hardware test for `_reboot()`'s alarm-pool-exhaustion
+  fallback" — Still listed as an open follow-on after G3 delivered it. · covered-by: DOC.S24 · [D1]
+- **DOC.N313** DRIFT · `SPECIFICATION.md:6058-6059` — "wrote it back once" — The measuring commit says
+  two flash writes, not one (`6f7eef7`). · covered-by: DOC.S25 · [D1]
+- **DOC.N314** ASSUME · `SPECIFICATION.md:5296-5297` — "F11, `HEAP_FRAGMENTATION_MEASUREMENTS.md`
+  archive §7I-§7K has the" — Repointed from the deleted queue; the archive is only at `12640c2`. ·
+  covered-by: DOC.S26 · [D1]

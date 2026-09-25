@@ -1,6 +1,6 @@
 # Harvest — TOOL: Toolchain installer and build overrides
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 19, INVAR 28, MIRROR 7, LIMIT 24, RISK 12, ASSUME 20, PLATFORM 18, WORKAROUND 16, SUPPRESS 5, TODO 11, DRIFT 4, NOTE 8 — 172 items.
@@ -18,6 +18,7 @@ Kinds: SETTLED 19, INVAR 28, MIRROR 7, LIMIT 24, RISK 12, ASSUME 20, PLATFORM 18
 - **TOOL.N002** TODO · `REAL_HARDWARE_TEST_QUEUE.md:283` — "**The two-chroot verification, unsatisfied
   since 2026-09-12**" — H1 OPEN (owner-run): covers setup_toolchain/micropython_overrides changes, two
   Unix ports, rewritten test.sh; the (f) stage never run in any chroot. · related: TOOL.T09 · [H08]
+  ⟨4dc80ef: H1 open: BACKLOG.md chroot entry ("Still owed elsewhere")⟩
 
 ## dev_legacy/README.md
 
@@ -297,37 +298,37 @@ Kinds: SETTLED 19, INVAR 28, MIRROR 7, LIMIT 24, RISK 12, ASSUME 20, PLATFORM 18
 
 ## SPECIFICATION.md Part B intro, B.1-B.3 (688-753)
 
-- **TOOL.N081** INVAR · `SPECIFICATION.md:696-699` — "The four pieces must agree exactly, or the build
+- **TOOL.N081** INVAR · `SPECIFICATION.md:700-703` — "The four pieces must agree exactly, or the build
   silently breaks" — MicroPython/pico-sdk/picotool/ARM GCC coherence is derived, not pinned separately.
   · related: TOOL.T02 · [H12]
-- **TOOL.N082** SETTLED · `SPECIFICATION.md:721-724` — "Both subcommands also build/verify two Unix-port
+- **TOOL.N082** SETTLED · `SPECIFICATION.md:725-728` — "Both subcommands also build/verify two Unix-port
   interpreters (owner decision, 2026-09-21)" — build-standard without settrace, build-settrace for
   --coverage only; firmware never gets the flag. · related: TOOL.T05 · [H12]
-- **TOOL.N083** PLATFORM · `SPECIFICATION.md:734-735` — "Ubuntu's `universe` component (default on real
+- **TOOL.N083** PLATFORM · `SPECIFICATION.md:738-739` — "Ubuntu's `universe` component (default on real
   Ubuntu images — `gcc-arm-none-eabi` lives there)" — Distro-packaging prerequisite. · [H12]
-- **TOOL.N084** ASSUME · `SPECIFICATION.md:742-743` — "Derive the matching `picotool` version by
+- **TOOL.N084** ASSUME · `SPECIFICATION.md:746-747` — "Derive the matching `picotool` version by
   resolving that commit to its nearest tag, taking major.minor, picking the newest `picotool` tag
   sharing it" — Heuristic version derivation; floats as picotool tags appear. · covered-by: TOOL.T02 ·
   [H12]
-- **TOOL.N085** RISK · `SPECIFICATION.md:744` — "Install the ARM cross-compiler from `apt`'s
+- **TOOL.N085** RISK · `SPECIFICATION.md:748` — "Install the ARM cross-compiler from `apt`'s
   `gcc-arm-none-eabi` (no pin needed)." — Compiler unpinned — the GCC-14 mbedtls break (B.7.1) shows a
   pin can matter. · covered-by: TOOL.T12 · [H12]
 
 ## SPECIFICATION.md Part B.4-B.9 (754-826)
 
-- **TOOL.N086** INVAR · `SPECIFICATION.md:757-761` — "Every subprocess ... gets an explicit, constructed
+- **TOOL.N086** INVAR · `SPECIFICATION.md:761-765` — "Every subprocess ... gets an explicit, constructed
   environment, never the caller's shell wholesale" — Isolation convention with one stated exception
-  (B.12 :1005-1007). · related: TOOL.T01 · [H12]
-- **TOOL.N087** RISK · `SPECIFICATION.md:766` — "`picotool`'s install location is pinned explicitly
+  (B.12 :1009-1011). · related: TOOL.T01 · [H12]
+- **TOOL.N087** RISK · `SPECIFICATION.md:770` — "`picotool`'s install location is pinned explicitly
   (`-DCMAKE_INSTALL_PREFIX=/usr/local`)" — Host-wide install via `sudo make install` (B.5:778). ·
   covered-by: TOOL.T09 · [H12]
-- **TOOL.N088** SETTLED · `SPECIFICATION.md:781` — "Full (non-shallow) clones — shallow clones make the
+- **TOOL.N088** SETTLED · `SPECIFICATION.md:785` — "Full (non-shallow) clones — shallow clones make the
   update path unreliable." — Deliberate full clones. · [H12]
-- **TOOL.N089** ASSUME · `SPECIFICATION.md:799-803` — "Verified end-to-end in a clean `debootstrap`
+- **TOOL.N089** ASSUME · `SPECIFICATION.md:803-807` — "Verified end-to-end in a clean `debootstrap`
   Ubuntu 24.04 chroot for both the deployed `v1.26.1` and latest stable ... `test` alone completes in
   ~30s offline" — Undated evidence claim from an earlier pin; CLAUDE.md dates the chroot legs
   2026-09-12. · related: HW.T16 · [H12]
-- **TOOL.N090** WORKAROUND · `SPECIFICATION.md:807-813` — "Worked around via `-Wno-array-bounds` in
+- **TOOL.N090** WORKAROUND · `SPECIFICATION.md:811-817` — "Worked around via `-Wno-array-bounds` in
   `_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND` ... recheck its status, and whether a future MicroPython ref
   vendors mbedtls ≥3.6.6, before removing this" — GCC ≥14 false positive (Debian #1085354, GCC #121044
   UNCONFIRMED); removal trigger stated; applied to every build (`toolchain/setup_toolchain.py:335, 379`).
@@ -335,126 +336,126 @@ Kinds: SETTLED 19, INVAR 28, MIRROR 7, LIMIT 24, RISK 12, ASSUME 20, PLATFORM 18
 
 ## SPECIFICATION.md Part B.11 (Building this project's firmware, 931-984)
 
-- **TOOL.N091** INVAR · `SPECIFICATION.md:933-935` — "change `versions.toml`'s `[micropython] ref` — the
+- **TOOL.N091** INVAR · `SPECIFICATION.md:937-939` — "change `versions.toml`'s `[micropython] ref` — the
   only place. Everything else derives automatically" — Single-source pin; `--micropython-ref`/`--latest`
   paths bypass or move it silently. · related: TOOL.S06 · [H12]
 
 ## SPECIFICATION.md Part B.12 (Tiered dev-environment setup, 986-1014)
 
-- **TOOL.N092** INVAR · `SPECIFICATION.md:993-996` — "Exactly one match required; zero or multiple is a
+- **TOOL.N092** INVAR · `SPECIFICATION.md:997-1000` — "Exactly one match required; zero or multiple is a
   hard error naming `--device` as the escape hatch, never a silent guess." — USB detection by
   `idVendor=2e8a`. · [H12]
-- **TOOL.N093** RISK · `SPECIFICATION.md:998-1003` — "A genuinely new bridge gets fresh random
+- **TOOL.N093** RISK · `SPECIFICATION.md:1002-1007` — "A genuinely new bridge gets fresh random
   SSID/password (`secrets`-generated) unless overridden, printed once at creation only." — Bench AP
   secret printed (and in argv per TOOL.S01). · covered-by: TOOL.S01 · [H12]
-- **TOOL.N094** SETTLED · `SPECIFICATION.md:1005-1009` — "runs with `env=None` (inherit the caller's
+- **TOOL.N094** SETTLED · `SPECIFICATION.md:1009-1013` — "runs with `env=None` (inherit the caller's
   real environment) — the one deliberate exception to this script's isolation convention" — Deliberate
   isolation exception for uv/npm. · [H12]
-- **TOOL.N095** LIMIT · `SPECIFICATION.md:1010-1014` — "Not exercised there: actually flashing a
+- **TOOL.N095** LIMIT · `SPECIFICATION.md:1014-1018` — "Not exercised there: actually flashing a
   physical board, or creating the bridge/AP ... Full flash/bench real-hardware verification is DONE ...
   (2026-09-04)" — Sandbox cannot verify flash/bench tiers; single dated bench verification. · related:
   TOOL.T13 · [H12]
 
 ## SPECIFICATION.md Part B.13 (Bench network safety, 1016-1061)
 
-- **TOOL.N096** SETTLED · `SPECIFICATION.md:1028-1034` — "`ensure_bench_bridge()` now pins
+- **TOOL.N096** SETTLED · `SPECIFICATION.md:1032-1038` — "`ensure_bench_bridge()` now pins
   `bridge.mac-address` ... and warns (never auto-repairs — cycling a live bridge's MAC risks the same
   incident)" — Deliberately warn-only. · related: TOOL.T03 · [H12]
 
 ## SPECIFICATION.md Part B.14 (MicroPython build overrides framework, 1063-1114)
 
-- **TOOL.N097** ASSUME · `SPECIFICATION.md:1065` — "so far: two implemented, one identified and planned"
+- **TOOL.N097** ASSUME · `SPECIFICATION.md:1069` — "so far: two implemented, one identified and planned"
   — Dated count. (low) · [H12]
-- **TOOL.N098** INVAR · `SPECIFICATION.md:1070-1073` — "every override there generates files or extra
+- **TOOL.N098** INVAR · `SPECIFICATION.md:1074-1077` — "every override there generates files or extra
   build flags entirely *outside* the fetched checkout (never a single byte written into it)" —
   Zero-touch rule by convention. · related: TOOL.T04 · [H12]
-- **TOOL.N099** PLATFORM · `SPECIFICATION.md:1086-1090` — "confirmed directly (2026-09-15) that a later
+- **TOOL.N099** PLATFORM · `SPECIFICATION.md:1090-1094` — "confirmed directly (2026-09-15) that a later
   plain `#define` in the same translation unit always wins over an earlier command-line `-D`" —
   Toolchain fact behind the header mechanism. · [H12]
-- **TOOL.N100** SETTLED · `SPECIFICATION.md:1100-1101` — "there is no opt-out flag, since an override
+- **TOOL.N100** SETTLED · `SPECIFICATION.md:1104-1105` — "there is no opt-out flag, since an override
   existing at all means the *unpatched* build is the one considered unsafe" — No opt-out by design. ·
   [H12]
-- **TOOL.N101** ASSUME · `SPECIFICATION.md:1104-1108` — "every one of them reaches the toolchain build
+- **TOOL.N101** ASSUME · `SPECIFICATION.md:1108-1112` — "every one of them reaches the toolchain build
   through this same entry point, with no alternate path anywhere in this project's own tooling" — But
   twin/web runners reuse a cached binary without rebuilding on override change. · related: TOOL.T07 ·
   [H12]
 
 ## SPECIFICATION.md Part B.14.1 (`unix_kbd_intr`, 1116-1213)
 
-- **TOOL.N102** WORKAROUND · `SPECIFICATION.md:1159-1165` — "`apply_unix_kbd_intr_override()` forces
+- **TOOL.N102** WORKAROUND · `SPECIFICATION.md:1163-1169` — "`apply_unix_kbd_intr_override()` forces
   this path for the Unix \"standard\" variant ... without editing anything inside the fetched checkout"
-  — Upstream Unix-port async SIGINT (`MICROPY_ASYNC_KBD_INTR`) workaround; removal trigger at :1211-1213
+  — Upstream Unix-port async SIGINT (`MICROPY_ASYNC_KBD_INTR`) workaround; removal trigger at :1215-1217
   (upstream default inverted). · related: TOOL.S07 · [H12]
-- **TOOL.N103** PLATFORM · `SPECIFICATION.md:1166-1172` — "`VARIANT_DIR ?= variants/$(VARIANT)` ... a
+- **TOOL.N103** PLATFORM · `SPECIFICATION.md:1170-1176` — "`VARIANT_DIR ?= variants/$(VARIANT)` ... a
   `CFLAGS_EXTRA`-appended `-I` was tried and empirically confirmed to lose" — Makefile-ordering facts
   the override depends on. · [H12]
-- **TOOL.N104** SETTLED · `SPECIFICATION.md:1175-1181` — "Deliberately never a symlink: MicroPython
+- **TOOL.N104** SETTLED · `SPECIFICATION.md:1179-1185` — "Deliberately never a symlink: MicroPython
   issue #12671" — Symlinked variant dir breaks; real files with absolute includes. · [H12] ⟨quote not
   matched at the anchor⟩
-- **TOOL.N105** ASSUME · `SPECIFICATION.md:1194-1198` — "ran clean for a combined 700+ iterations
+- **TOOL.N105** ASSUME · `SPECIFICATION.md:1198-1202` — "ran clean for a combined 700+ iterations
   against the patched binary with zero shutdown failures" — Single hammer-loop verification
   (2026-09-14/15). · [H12]
-- **TOOL.N106** LIMIT · `SPECIFICATION.md:1193-1194` — "preprocessing the resulting `unix_mphal.c`
+- **TOOL.N106** LIMIT · `SPECIFICATION.md:1197-1198` — "preprocessing the resulting `unix_mphal.c`
   directly confirms the safe branch" — One-off manual proof; no in-build readback. · covered-by:
   TOOL.S07 · [H12]
 
 ## SPECIFICATION.md Part B.14.2 / B.14.2.1 (`lwip_connection_counts`, 1215-1379)
 
-- **TOOL.N107** PLATFORM · `SPECIFICATION.md:1235-1242` — "one atomic `#ifndef MEM_SIZE` block (8000 /
+- **TOOL.N107** PLATFORM · `SPECIFICATION.md:1239-1246` — "one atomic `#ifndef MEM_SIZE` block (8000 /
   800 / 6400 / 6400 / 32 as pinned). Defining `MEM_SIZE` alone on the command line disables the whole
   block" — Trap the override must avoid. · [H12]
-- **TOOL.N108** ASSUME · `SPECIFICATION.md:1255-1262` — "checks twenty-one anchors ... a completeness
+- **TOOL.N108** ASSUME · `SPECIFICATION.md:1259-1266` — "checks twenty-one anchors ... a completeness
   test pins that list to the code's own" — Count; enforced by
   `tests_scripts/test_micropython_overrides.py`. · [H12]
-- **TOOL.N109** INVAR · `SPECIFICATION.md:1273-1280` — "`verify_lwip_macros_in_build()` ...
+- **TOOL.N109** INVAR · `SPECIFICATION.md:1277-1284` — "`verify_lwip_macros_in_build()` ...
   `build_firmware()` calls it after every build" — Post-build proof (asymmetry with unix_kbd_intr). ·
   covered-by: TOOL.T11 · [H12]
-- **TOOL.N110** MIRROR · `SPECIFICATION.md:1283-1294` — "`check_lwip_ensemble()` restates every one of
+- **TOOL.N110** MIRROR · `SPECIFICATION.md:1287-1298` — "`check_lwip_ensemble()` restates every one of
   them ... `derive_lwip_dependents()` reproduces opt.h's four formulas" — Python restatement of lwIP
   `init.c` `#error`s / `opt.h` derivations; drifts on lwIP bump. · covered-by: TOOL.T04 · [H12]
-- **TOOL.N111** INVAR · `SPECIFICATION.md:1297-1300` — "Its own checks size the shared pools for one
+- **TOOL.N111** INVAR · `SPECIFICATION.md:1301-1304` — "Its own checks size the shared pools for one
   connection ... (and a `max_connections` below 1 is refused by name" — Three N-connection relationships
   lwIP doesn't check, enforced by the override. · [H12]
-- **TOOL.N112** MIRROR · `SPECIFICATION.md:1370-1374` — "update the anchor list and
+- **TOOL.N112** MIRROR · `SPECIFICATION.md:1374-1378` — "update the anchor list and
   `LWIP_MACROS_GUARDED_IN_OPT_H`/`LWIP_MACROS_PREDEFINED_BY_MICROPYTHON` together" — Two lists that must
   move in step on a bump. · [H12]
 
 ## SPECIFICATION.md Part B.14.3 (`littlefs_flash_storage_size`, 1381-1410)
 
-- **TOOL.N113** TODO · `SPECIFICATION.md:1381-1390` — "(documented, not yet implemented) ... Mechanism,
+- **TOOL.N113** TODO · `SPECIFICATION.md:1385-1394` — "(documented, not yet implemented) ... Mechanism,
   verified workable against the pinned source, not yet wired in" — Planned override not implemented. ·
   covered-by: TOOL.T06 · [H12]
-- **TOOL.N114** TODO · `SPECIFICATION.md:1399-1404` — "What a real implementation still needs: a
+- **TOOL.N114** TODO · `SPECIFICATION.md:1403-1408` — "What a real implementation still needs: a
   `verify_littlefs_flash_storage_size_anchor()`" — Missing anchor check spelled out. · [H12]
 
 ## SPECIFICATION.md Part E.5 / E.5.1-E.5.3 (Coverage, 2951-3088)
 
-- **TOOL.N115** SETTLED · `SPECIFICATION.md:3046-3049` — "builds two Unix-port variants rather than one
+- **TOOL.N115** SETTLED · `SPECIFICATION.md:3054-3057` — "builds two Unix-port variants rather than one
   (owner decision, 2026-09-21)" — Duplicate of B.2's decision. · [H12]
 
 ## SPECIFICATION.md Part F.1 — Core platform facts
 
-- **TOOL.N116** PLATFORM · `SPECIFICATION.md:3430-3431` — "MicroPython 1.26 bundles pico-sdk 2.1.1;
+- **TOOL.N116** PLATFORM · `SPECIFICATION.md:3438-3439` — "MicroPython 1.26 bundles pico-sdk 2.1.1;
   since pico-sdk 2.0.0, a standalone `picotool` must match its major.minor" — The picotool/pico-sdk
   coupling is stated for 1.26 only, not for the pinned 1.29.0 build that the toolchain actually builds
   (low). · related: TOOL.T09 · [H13]
 
 ## SPECIFICATION.md Part F.5.6 — Smaller 1.29 facts / non-events
 
-- **TOOL.N117** PLATFORM · `SPECIFICATION.md:3834-3837` — "`MICROPY_C_HEAP_SIZE` is now settable ...
+- **TOOL.N117** PLATFORM · `SPECIFICATION.md:3843-3846` — "`MICROPY_C_HEAP_SIZE` is now settable ...
   mpy-cross gained `-X no-source-lines` ... Not worth it at current flash headroom" — Unused knobs; the
   second is a decision resting on current flash headroom. · [H13]
 
 ## SPECIFICATION.md Part F.6 — SIGINT during gc_collect() wedges the Unix-port heap
 
-- **TOOL.N118** INVAR · `SPECIFICATION.md:4113-4115` — "there is no other build path — every script that
+- **TOOL.N118** INVAR · `SPECIFICATION.md:4125-4127` — "there is no other build path — every script that
   needs this binary goes through `toolchain/setup_toolchain.py setup`" — The root-cause closure holds
   only while no binary is built outside this path; the plan notes nothing proves `MICROPY_ASYNC_KBD_INTR == 0`
   in the built binary. · related: TOOL.S07 · [H13]
 
 ## SPECIFICATION.md Part L.6.4 — Comment-tag family
 
-- **TOOL.N119** ASSUME · `SPECIFICATION.md:6474-6475` — "Measured saving ... ~3,576 bytes, about 2.6 %
+- **TOOL.N119** ASSUME · `SPECIFICATION.md:6489-6490` — "Measured saving ... ~3,576 bytes, about 2.6 %
   of `src/`'s frozen bytecode" — Dated measurement. · related: DOC.T08 · [H13]
 
 ## CLAUDE.md
@@ -483,7 +484,7 @@ Kinds: SETTLED 19, INVAR 28, MIRROR 7, LIMIT 24, RISK 12, ASSUME 20, PLATFORM 18
   post-build proof, and the CI cache key omits micropython_overrides.py. · covered-by: TOOL.S07 (related
   CI.S01) · [H14]
 - **TOOL.N126** INVAR · `CLAUDE.md:864-866` — "What a session owes instead is an entry in BACKLOG.md's
-  running list of build-environment changes" — Convention only (BACKLOG.md:448ff). · [H14]
+  running list of build-environment changes" — Convention only (BACKLOG.md:514ff). · [H14]
 - **TOOL.N127** INVAR · `CLAUDE.md:873-875` — "Two targets, both required: Ubuntu 24.04 \"noble\" (GCC
   13.x ...) and Debian trixie (GCC 14.x ...)" — Convention only. CI's `ubuntu-latest` never builds with
   GCC 14. · related: CI.T10 · [H14]
@@ -551,35 +552,35 @@ Kinds: SETTLED 19, INVAR 28, MIRROR 7, LIMIT 24, RISK 12, ASSUME 20, PLATFORM 18
 
 ## BACKLOG.md
 
-- **TOOL.N146** SETTLED · `BACKLOG.md:448-453` — "an owner-run periodic check, not a blocking per-push
+- **TOOL.N146** SETTLED · `BACKLOG.md:514-519` — "an owner-run periodic check, not a blocking per-push
   gate - settled (owner decision, 2026-09-18)" — Chroot legs last satisfied 2026-09-12; the running owed
   list (items [099]-[119] below). · related: plan §1.2 DoD (chroot-owed list) · [H15]
-- **TOOL.N147** TODO · `BACKLOG.md:453` — "The legs were last satisfied 2026-09-12. Changed since:" —
+- **TOOL.N147** TODO · `BACKLOG.md:519` — "The legs were last satisfied 2026-09-12. Changed since:" —
   List header. · [H15]
-- **TOOL.N148** TODO · `BACKLOG.md:461-467` — "build_unix_port() now builds TWO variants" —
+- **TOOL.N148** TODO · `BACKLOG.md:527-533` — "build_unix_port() now builds TWO variants" —
   `build-standard`/`build-settrace`; a reused chroot's old `build-standard` carries the flag — detected
   by `test.sh`'s variant probe. · related: TOOL.T05 · [H15]
-- **TOOL.N149** TODO · `BACKLOG.md:471-475` — "the new micropython_overrides.py (PR #90's
+- **TOOL.N149** TODO · `BACKLOG.md:537-541` — "the new micropython_overrides.py (PR #90's
   MICROPY_ASYNC_KBD_INTR=0 Unix-port build override" — Named "the part worth the owner's next manual
   run". · related: TOOL.T04, TOOL.S07 · [H15]
-- **TOOL.N150** TODO · `BACKLOG.md:476-491` — "lwip_connection_counts (Part B.14.2) generates an
+- **TOOL.N150** TODO · `BACKLOG.md:542-557` — "lwip_connection_counts (Part B.14.2) generates an
   out-of-tree board directory and passes BOARD_DIR= to make" — Changes the rp2 firmware build:
   post-build `-E` readback, `[lwip]` table read every build, ensemble validation vs 16 `init.c`
   `#error`s, sentinel. Installer leg only. · related: TOOL.T04, TOOL.T11 · [H15]
-- **TOOL.N151** TODO · `BACKLOG.md:513-517` — "versions.toml's [lwip] sized for max_connections = 6 (PCB
+- **TOOL.N151** TODO · `BACKLOG.md:579-583` — "versions.toml's [lwip] sized for max_connections = 6 (PCB
   9, SEG 48, MEM_SIZE 12000" — Readback via the CMake-recorded compiler with a 120 s timeout;
   `OverrideError` reported like `SetupError`. · related: TOOL.T04 · [H15]
-- **TOOL.N152** TODO · `BACKLOG.md:518-523` — "check_lwip_ensemble() restates all sixteen init.c checks,
+- **TOOL.N152** TODO · `BACKLOG.md:584-589` — "check_lwip_ensemble() restates all sixteen init.c checks,
   adds MEMP_NUM_TCP_PCB >= max_connections + SPARE_TCP_PCBS (3)" — Also public `validate_lwip_macros()`,
   `TCP_MSS` 0 refused; `build_firmware.py` passes `toolchain_dir=` so every device build applies the
   override. · related: GEN.T15 · [H15]
-- **TOOL.N153** TODO · `BACKLOG.md:539-542` — "env's uv sync is retried three times with a 10 s / 20 s
+- **TOOL.N153** TODO · `BACKLOG.md:605-608` — "env's uv sync is retried three times with a 10 s / 20 s
   pause (run_retried(), mirroring ci.yml's unit-tests)" — MIRROR `toolchain/setup_toolchain.py:124` ↔
   ci.yml retry. · related: CI.T12 · [H15]
-- **TOOL.N154** ASSUME · `BACKLOG.md:543-546` — "Partial evidence, not a leg: a session sandbox (GCC
+- **TOOL.N154** ASSUME · `BACKLOG.md:609-612` — "Partial evidence, not a leg: a session sandbox (GCC
   13.3, not a --variant=minbase chroot)" — 2026-09-24 installer run, "all eight verification checks
   passed". · [H15]
-- **TOOL.N155** DRIFT · `BACKLOG.md:453-546 vs `git log --since=2026-09-13` — (list omits files) — Build-env files changed since the legs but not itemised: `scripts/_generate_sensortask_modules.py` (2026-09-16/19), `scripts/cross_browser_smoke.mjs` (2026-09-18/19/24), `scripts/_render_coverage.py` (2026-09-19), `scripts/build_website.sh` and `run_{flash,bench,manual}_hardware*.sh`/`run_bench_soak_tests.sh` (2026-09-18, 2026-09-22 comment sweep `35ba8ac`), `.github/zizmor.yml` and the composite `action.yml` (2026-09-21/24). Many are comment-only; not investigated. (low) · [H15] ⟨quote not matched at the anchor⟩
+- **TOOL.N155** DRIFT · `BACKLOG.md:519-612 vs `git log --since=2026-09-13` — (list omits files) — Build-env files changed since the legs but not itemised: `scripts/_generate_sensortask_modules.py` (2026-09-16/19), `scripts/cross_browser_smoke.mjs` (2026-09-18/19/24), `scripts/_render_coverage.py` (2026-09-19), `scripts/build_website.sh` and `run_{flash,bench,manual}_hardware*.sh`/`run_bench_soak_tests.sh` (2026-09-18, 2026-09-22 comment sweep `35ba8ac`), `.github/zizmor.yml` and the composite `action.yml` (2026-09-21/24). Many are comment-only; not investigated. (low) · [H15] ⟨quote not matched at the anchor⟩
 
 ## HEAP_FRAGMENTATION_MEASUREMENTS.md (current, 393 lines; owning area HW)
 

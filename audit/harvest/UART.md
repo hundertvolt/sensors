@@ -1,6 +1,6 @@
 # Harvest — UART: UART protocol
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 72, INVAR 74, MIRROR 28, LIMIT 26, RISK 10, ASSUME 26, PLATFORM 8, WORKAROUND 1, SUPPRESS 9, TODO 13, OPENQ 1, DRIFT 4, NOTE 10 — 282 items.
@@ -476,19 +476,19 @@ Kinds: SETTLED 72, INVAR 74, MIRROR 28, LIMIT 26, RISK 10, ASSUME 26, PLATFORM 8
 
 ## tests_hardware/README.md
 
-- **UART.N137** ASSUME · `tests_hardware/README.md:430-439` — "96 passed, 2 known-permanent skips, 41
+- **UART.N137** ASSUME · `tests_hardware/README.md:439-448` — "96 passed, 2 known-permanent skips, 41
   min, with the four SCD30-EEPROM-write tests deselected" — Dated 2026-09-12 run; F.5.8 4394 us vs 121
   us; F.5.9 1336/1266 vs 60/60 rounds. · related: PERF.T07 · [H08]
-- **UART.N138** ASSUME · `tests_hardware/README.md:457-462` — "a responder notices the first byte of a
+- **UART.N138** ASSUME · `tests_hardware/README.md:466-471` — "a responder notices the first byte of a
   frame up to 50 ms late by design" — First-frame latency on the rig includes `POLL_IDLE_MS`; not a link
   fault. · related: PERF.T07 · [H08]
-- **UART.N139** TODO · `tests_hardware/README.md:1247-1253` — "no real-hardware run ever calls the
+- **UART.N139** TODO · `tests_hardware/README.md:1256-1262` — "no real-hardware run ever calls the
   actual shipped clamp" — F.5.8 never-block invariant tested only via raw `machine.UART` (queue G12). ·
   [H08]
-- **UART.N140** TODO · `tests_hardware/README.md:1254-1259` — "\"bench ⊇ flash\" (E.6.1) doesn't hold
+- **UART.N140** TODO · `tests_hardware/README.md:1265-1269` — "\"bench ⊇ flash\" (E.6.1) doesn't hold
   for the multi-chunk SET train" — Exerciser only calls `uart_get(_CMD_BANNER)`; needs a
   production-exerciser change (queue G1). · related: UART.T06 · [H08]
-- **UART.N141** SETTLED · `tests_hardware/README.md:1266-1269` — "**Answered 2026-09-22 (owner): it is a
+- **UART.N141** SETTLED · `tests_hardware/README.md:1276-1279` — "**Answered 2026-09-22 (owner): it is a
   structural exception, for now.**" — Mock UART hazard catalog (~20 scenarios) stays mock-only as
   E.6.6's fourth exception; "Revisit when that hardware exists". · related: HW.T09 · [H08]
 
@@ -497,16 +497,25 @@ Kinds: SETTLED 72, INVAR 74, MIRROR 28, LIMIT 26, RISK 10, ASSUME 26, PLATFORM 8
 - **UART.N142** TODO · `REAL_HARDWARE_TEST_QUEUE.md:219` — "it still needs a `UART_C_PORT_CHANGELOG.md`
   entry, which should be confirmed" — N3 OPEN: W11-over-W10 persisted-slot change unobserved on silicon
   (needs R13's babbling peer); changelog entry B32 exists (UART_C_PORT_CHANGELOG.md:103). · [H08]
+  ⟨4dc80ef: N3 needs a babbling peer the bench lacks: open in BACKLOG.md "Real-hardware work still owed"
+  (R13 + N3); R13 needs a babbling peer the bench lacks: open in BACKLOG.md "Real-hardware work still
+  owed" (R13 + N3)⟩
 - **UART.N143** TODO · `REAL_HARDWARE_TEST_QUEUE.md:249` — "confirm `GET /status` shows `W11` rather
   than `W10` ... and that a *boot* drain ... persists nothing" — R13 OPEN (low urgency): babbling-peer
   run over the crossover jumper. · [H08]
+  ⟨4dc80ef: R13 needs a babbling peer the bench lacks: open in BACKLOG.md "Real-hardware work still
+  owed" (R13 + N3)⟩
 - **UART.N144** TODO · `REAL_HARDWARE_TEST_QUEUE.md:272` — "The bench UART exerciser never issues a
   multi-chunk SET" — G1 OPEN: wire a periodic SET into `UartLinkExerciser._exercise_loop()`. · related:
   UART.T06 · [H08]
+  ⟨4dc80ef: G1 scratched by the owner 2026-09-25: src/ is never changed only for a test (230a8df;
+  BACKLOG.md:92-94)⟩
 - **UART.N145** TODO · `REAL_HARDWARE_TEST_QUEUE.md:277` — "no silicon run calls `asy_uart_driver`'s own
   `ready()`/`_buffered()` clamp" — G12 OPEN (script to write). · [H08]
+  ⟨4dc80ef: G12 done 2026-09-25: uart_driver_read_never_blocks_the_loop.py, 7/7 (2f48f86)⟩
 - **UART.N146** SETTLED · `REAL_HARDWARE_TEST_QUEUE.md:301-303` — "`arduino/` is outside this project's
   scope (owner, 2026-09-24), reconciliation included" — G10 excluded. · [H08]
+  ⟨4dc80ef: G10 excluded on purpose (arduino/ out of scope): BACKLOG.md "Still owed elsewhere"⟩
 
 ## buildgen/codegen.py
 
@@ -559,39 +568,39 @@ Kinds: SETTLED 72, INVAR 74, MIRROR 28, LIMIT 26, RISK 10, ASSUME 26, PLATFORM 8
 
 ## SPECIFICATION.md Part C.3.2 (UART variant, 1598-1622)
 
-- **UART.N156** SETTLED · `SPECIFICATION.md:1604-1606` — "Settled precedent: one merged class, not a
+- **UART.N156** SETTLED · `SPECIFICATION.md:1608-1610` — "Settled precedent: one merged class, not a
   session+protocol pair ... the accepted shape for any future point-to-point wrapper" — UART shape
   decision. · [H12]
 
 ## SPECIFICATION.md Part C.7 (Error handling & logging contract, 1807-1891)
 
-- **UART.N157** ASSUME · `SPECIFICATION.md:1855-1860` — "Across a 20.8s window carrying three
+- **UART.N157** ASSUME · `SPECIFICATION.md:1859-1864` — "Across a 20.8s window carrying three
   back-to-back `ResetErrors` calls (~6.9s each ...) ... 23 further transfers with zero failures" —
   Single silicon run supporting the UART never-block invariant. · [H12]
 
 ## SPECIFICATION.md Part C.7.1 (Running errno/wrnno table, 1893-1941)
 
-- **UART.N158** DRIFT · `SPECIFICATION.md:1910-1912` — "`repeat=True`, which still counts it and still
+- **UART.N158** DRIFT · `SPECIFICATION.md:1914-1916` — "`repeat=True`, which still counts it and still
   writes the updated count through to FRAM" — UART repeats go to sync `pr.err()` which neither persists
   nor counts. · covered-by: UART.S01 · [H12]
-- **UART.N159** SETTLED · `SPECIFICATION.md:1940` — "`wrnno` 11 outranks 10 for the episode's single
+- **UART.N159** SETTLED · `SPECIFICATION.md:1944` — "`wrnno` 11 outranks 10 for the episode's single
   slot (owner decision, 2026-09-18" — UART resync warning priority. · [H12]
 
 ## SPECIFICATION.md Part E.6 / E.6.1-E.6.6 (Shared behaviours, real-hardware tier, 3090-3225)
 
-- **UART.N160** SETTLED · `SPECIFICATION.md:3212-3219` — "The UART fault-injection catalog stays
+- **UART.N160** SETTLED · `SPECIFICATION.md:3220-3227` — "The UART fault-injection catalog stays
   mock-only until injection hardware exists (owner decision, 2026-09-22)" — Deferred; revisit trigger =
   hardware exists. · [H12]
 
 ## SPECIFICATION.md Part E.8 (Measurement traps, 3271-3362)
 
-- **UART.N161** INVAR · `SPECIFICATION.md:3359-3362` — "every hazard check runs in both CRC modes ... 48
+- **UART.N161** INVAR · `SPECIFICATION.md:3367-3370` — "every hazard check runs in both CRC modes ... 48
   checks, 96 tests ... The deployed link runs `CRC_Pass`" — Standing rule; counts dated; dev link is
   uncrc'd. · related: UART.S04 · [H12]
 
 ## SPECIFICATION.md Part F.5.7 — UART.deinit() RX buffer unrooted
 
-- **UART.N162** INVAR · `SPECIFICATION.md:3869-3875` — "`asy_uart_driver.UART.init()` therefore calls
+- **UART.N162** INVAR · `SPECIFICATION.md:3878-3884` — "`asy_uart_driver.UART.init()` therefore calls
   `machine.UART(...)` rather than `self._uart.init(...)`, and that choice is load-bearing" —
   Must-not-simplify rule; guarded only by a comment (`src/asy_uart_driver.py:199-207`) and the hardware
   injector `tests_hardware/device_scripts/uart_crossover_recovery.py`, no unit test named. · related:
@@ -599,198 +608,198 @@ Kinds: SETTLED 72, INVAR 74, MIRROR 28, LIMIT 26, RISK 10, ASSUME 26, PLATFORM 8
 
 ## SPECIFICATION.md Part F.5.8 — UART read() blocks the loop
 
-- **UART.N163** SETTLED · `SPECIFICATION.md:3898-3901` — "owner direction, 2026-09-11: they may time out
+- **UART.N163** SETTLED · `SPECIFICATION.md:3907-3910` — "owner direction, 2026-09-11: they may time out
   and handle it, but may never block synchronously, not even in a wait state" — Owner rule for
   `asy_uart_driver.py`/`asy_uart_comm.py` (dup of CLAUDE.md hard rule). · covered-by: BUS.T05 · [H13]
 
 ## SPECIFICATION.md Part F.5.9 — Idle ready() poll cost
 
-- **UART.N164** INVAR · `SPECIFICATION.md:4011-4013` — "Part J.6 requires a single-digit `poll_wait_ms`
+- **UART.N164** INVAR · `SPECIFICATION.md:4023-4025` — "Part J.6 requires a single-digit `poll_wait_ms`
   precisely because poll granularity, not baud rate, dominates" — Deployment constraint on
   `poll_wait_ms`. · related: UART.T10 · [H13]
-- **UART.N165** INVAR · `SPECIFICATION.md:4037-4042` — "a wait with no deadline is by construction an
+- **UART.N165** INVAR · `SPECIFICATION.md:4049-4054` — "a wait with no deadline is by construction an
   idle listener — `_read_frame(device, -1)` inside `uart_listen()` is the only one this protocol issues"
   — Rate selection assumes every deadline-less wait is an idle listen; the plan notes `_write_all` also
   waits on `ready(POLLOUT)` with no deadline at the idle rate (`BUS.S05`). · related: BUS.S05 · [H13]
-- **UART.N166** INVAR · `SPECIFICATION.md:4044-4048` — "`poll_idle_ms` bounds how late the first byte of
+- **UART.N166** INVAR · `SPECIFICATION.md:4056-4060` — "`poll_idle_ms` bounds how late the first byte of
   a frame is noticed, so it belongs well under the peer's own reply timeout ... opt-in per instance" —
   Partly enforced: `buildgen/validate.py:270-273` requires `timeout >= 2*poll_wait + poll_idle + gc_pause`;
   an instance without `poll_idle_ms` keeps the idle CPU cost. · related: UART.T05, PERF.T07 · [H13]
 
 ## SPECIFICATION.md Part G.2 — Known reusable primitives
 
-- **UART.N167** INVAR · `SPECIFICATION.md:4224-4228` — "write order is build → CRC → encode → delimiter
+- **UART.N167** INVAR · `SPECIFICATION.md:4236-4240` — "write order is build → CRC → encode → delimiter
   and read order the exact reverse ... A pass-through codec is the default and emits byte-for-byte what
   the driver emitted before" — Wire-order contract; a default change would alter emitted bytes (Class A
   territory). · related: ALGO.S05 · [H13]
 
 ## SPECIFICATION.md Part J (intro)
 
-- **UART.N168** SETTLED · `SPECIFICATION.md:5150-5153` — "No vendor document or prior specification
+- **UART.N168** SETTLED · `SPECIFICATION.md:5163-5166` — "No vendor document or prior specification
   exists — this Part **is** the specification, reconstructed from the field-proven legacy implementation
   ... confirmed by the project owner (2026-09-11)" — Part J is the normative contract for both
   implementations. · related: UART.T01 · [H13]
-- **UART.N169** INVAR · `SPECIFICATION.md:5155-5159` — "a never-raise contract on every entry point" —
+- **UART.N169** INVAR · `SPECIFICATION.md:5168-5172` — "a never-raise contract on every entry point" —
   `UART_Comm` never-raise contract. · related: UART.T01 · [H13]
-- **UART.N170** MIRROR · `SPECIFICATION.md:5162-5163` — "the differences are enumerated in
+- **UART.N170** MIRROR · `SPECIFICATION.md:5175-5176` — "the differences are enumerated in
   `UART_C_PORT_CHANGELOG.md`" — Part J ↔ changelog ↔ legacy `python/IndividualDrivers/asy_uart_comm.py`.
   · covered-by: UART.T07 · [H13]
 
 ## SPECIFICATION.md Part J.1 — Scope and two-implementation contract
 
-- **UART.N171** SETTLED · `SPECIFICATION.md:5298-5301` — "The module is **standalone and
+- **UART.N171** SETTLED · `SPECIFICATION.md:5311-5314` — "The module is **standalone and
   self-contained** ... Its first use case (a BME688/BSEC coprocessor) is explicitly *not* part of its
   scope" — Owner scope decision (dup of CLAUDE.md). · related: DOC.T14 · [H13]
-- **UART.N172** ASSUME · `SPECIFICATION.md:5303-5312` — "checked rather than assumed (2026-09-13).
+- **UART.N172** ASSUME · `SPECIFICATION.md:5316-5325` — "checked rather than assumed (2026-09-13).
   `dev_legacy/asy_bsec_driver.py`'s whole `BSEC_UART` control flow replays over the promoted module ...
   Two conformance tests ... demonstrate rather than constrain" — BSEC-serving claim rests on two tests
   that "any API able to express the flow passes". · [H13]
-- **UART.N173** LIMIT · `SPECIFICATION.md:5313-5315` — "**One deployed value has to change in a faithful
+- **UART.N173** LIMIT · `SPECIFICATION.md:5326-5328` — "**One deployed value has to change in a faithful
   port**: `rxbuf` 32 is refused (`errno` 15) against this module's 80-byte per-poll-interval `rxbuf`
   floor (J.6)" — Legacy deployment parameters are not drop-in compatible. · related: UART.T05 · [H13]
-- **UART.N174** ASSUME · `SPECIFICATION.md:5320-5323` — "It mirrors the Python implementation's
+- **UART.N174** ASSUME · `SPECIFICATION.md:5333-5336` — "It mirrors the Python implementation's
   *intended* behavior ... **how far that mirroring extends to the known flaws is unverified** ...
   Establishing that is future work" — C peer conformance explicitly unverified (C side out of scope,
   owner 2026-09-24). · related: UART.T07 · [H13]
-- **UART.N175** MIRROR · `SPECIFICATION.md:5320-5331` — "**A second implementation of this protocol
+- **UART.N175** MIRROR · `SPECIFICATION.md:5333-5344` — "**A second implementation of this protocol
   exists in C** ... **Every protocol-level change is logged in `UART_C_PORT_CHANGELOG.md`**" — Python↔C
   two-implementation mirror; changelog is the only bridge. · covered-by: UART.T07 · [H13]
-- **UART.N176** SETTLED · `SPECIFICATION.md:5332-5337` — "**Prefer Class A changes that only tighten
+- **UART.N176** SETTLED · `SPECIFICATION.md:5345-5350` — "**Prefer Class A changes that only tighten
   receiver validation, never ones that change emitted bytes.** ... A change to emitted bytes is a
   coordinated flag-day needing an explicit owner decision" — Change-class policy. · related: UART.S04 ·
   [H13]
-- **UART.N177** OPENQ · `SPECIFICATION.md:5335-5336 vs 5324-5326` — "conditional on the C side actually
+- **UART.N177** OPENQ · `SPECIFICATION.md:5348-5349 vs 5324-5326` — "conditional on the C side actually
   conforming, which each such change must re-verify against the C source" — Per-change re-verification
   against a C source whose reconciliation is out of scope (owner, 2026-09-24) — the obligation has no
   reachable executor (low). · related: DOC.S14, UART.T07 · [H13]
 
 ## SPECIFICATION.md Part J.2 — Role model
 
-- **UART.N178** SETTLED · `SPECIFICATION.md:5341-5344` — "This is not a symmetric peer protocol ...
+- **UART.N178** SETTLED · `SPECIFICATION.md:5354-5357` — "This is not a symmetric peer protocol ...
   simultaneous initiation is out of contract rather than a case to handle" — No collision arbitration by
   design. · related: DOC.T14 · [H13]
-- **UART.N179** INVAR · `SPECIFICATION.md:5351-5358` — "**The role is enforced structurally, not by
+- **UART.N179** INVAR · `SPECIFICATION.md:5364-5371` — "**The role is enforced structurally, not by
   convention.** ... The responder's own answer to a GET ... runs through the internal unlocked SET path,
   not through the public `uart_set()` entry point" — Role gate on public entry points; internal unlocked
   path must stay unexposed. · related: UART.T01 · [H13]
 
 ## SPECIFICATION.md Part J.3 — Frame format
 
-- **UART.N180** INVAR · `SPECIFICATION.md:5362-5364` — "Every frame is exactly `5 + payload_size` bytes
+- **UART.N180** INVAR · `SPECIFICATION.md:5375-5377` — "Every frame is exactly `5 + payload_size` bytes
   ... **the fixed size is the framing**" — Wire-format contract (Class A). · covered-by: UART.T01 ·
   [H13]
-- **UART.N181** LIMIT · `SPECIFICATION.md:5372-5373` — "Without a CRC, the only integrity checking left
+- **UART.N181** LIMIT · `SPECIFICATION.md:5385-5386` — "Without a CRC, the only integrity checking left
   is this layer's own structural validation" — `dev` runs `CRC_Pass` (codegen never passes `crc=`). ·
   covered-by: UART.S04 · [H13]
-- **UART.N182** SETTLED · `SPECIFICATION.md:5369-5371` — "Selecting a delimited codec is a wire change
+- **UART.N182** SETTLED · `SPECIFICATION.md:5382-5384` — "Selecting a delimited codec is a wire change
   and a coordinated flag day (changelog A11), not a local decision." — Owner-gated change. · [H13]
-- **UART.N183** PLATFORM · `SPECIFICATION.md:5375-5380` — "an LSB-first/right-shifting variant over poly
+- **UART.N183** PLATFORM · `SPECIFICATION.md:5388-5393` — "an LSB-first/right-shifting variant over poly
   `0x1021` with init `0xFFFF`, appended in the platform's **native** byte order ... interoperates
   between the two peers only because both happen to be little-endian" — Legacy CRC wire compatibility
   depends on both MCUs' endianness. · related: ALGO.T03 · [H13]
-- **UART.N184** MIRROR · `SPECIFICATION.md:5376-5384` — "`python/IndividualDrivers/asy_uart.py`'s own
+- **UART.N184** MIRROR · `SPECIFICATION.md:5389-5397` — "`python/IndividualDrivers/asy_uart.py`'s own
   `CRC16`, which is what the C peer mirrors ... `src/crc_checks.py`'s `CRC16` is a genuine MSB-first
   CRC-16/CCITT-FALSE appended big-endian. **The two are not wire-compatible**" — Legacy↔C mirror broken
   by the refactor's CRC; flag-day recorded as changelog A7. · related: ALGO.T03, UART.T07 · [H13]
-- **UART.N185** INVAR · `SPECIFICATION.md:5388, 5398-5410` — "**Never `0xFF`** ... Do not \"fix\" the
+- **UART.N185** INVAR · `SPECIFICATION.md:5401, 5411-5423` — "**Never `0xFF`** ... Do not \"fix\" the
   wrap to `0xFF`: it removes the barrier and the no-repeat-within-a-train property together" — Settled
   UID space (author-confirmed 2026-09-11). · related: UART.T01 · [H13]
-- **UART.N186** INVAR · `SPECIFICATION.md:5406-5407` — "Any code predicting the *next* expected UID must
+- **UART.N186** INVAR · `SPECIFICATION.md:5419-5420` — "Any code predicting the *next* expected UID must
   reuse the same controlled wrap, never a bare `+1`" — Convention for any UID-predicting code (both
   languages). · related: UART.T01 · [H13]
-- **UART.N187** ASSUME · `SPECIFICATION.md:5403-5405` — "The value space (`0 … 0xFE`, 255 values) is
+- **UART.N187** ASSUME · `SPECIFICATION.md:5416-5418` — "The value space (`0 … 0xFE`, 255 values) is
   **exactly** as large as the longest possible train ... so no UID repeats within a single train" —
   Property holds only if one UID per frame and CHUNKS ≤ 255. · related: UART.T01 · [H13]
 
 ## SPECIFICATION.md Part J.4 — Transactions
 
-- **UART.N188** INVAR · `SPECIFICATION.md:5414-5417` — "**Every frame is individually acknowledged
+- **UART.N188** INVAR · `SPECIFICATION.md:5427-5430` — "**Every frame is individually acknowledged
   before the next is sent** — stop-and-wait at frame granularity ... no windowing and no NAK" —
   Transaction contract. · covered-by: UART.T01 · [H13]
-- **UART.N189** INVAR · `SPECIFICATION.md:5419-5421` — "`CHUNKS = ceil(len(payload) / payload_size) + 1`,
+- **UART.N189** INVAR · `SPECIFICATION.md:5432-5434` — "`CHUNKS = ceil(len(payload) / payload_size) + 1`,
   floored at 2" — SET train sizing rule. · covered-by: UART.T01 · [H13]
-- **UART.N190** INVAR · `SPECIFICATION.md:5423-5427` — "the initiator sends a one-chunk GET train" — GET
+- **UART.N190** INVAR · `SPECIFICATION.md:5436-5440` — "the initiator sends a one-chunk GET train" — GET
   is one chunk; receiver does not enforce `CHUNKS=1`. · covered-by: UART.S02 · [H13]
-- **UART.N191** INVAR · `SPECIFICATION.md:5435-5437` — "Rejection is signalled by withholding an ACK ...
+- **UART.N191** INVAR · `SPECIFICATION.md:5448-5450` — "Rejection is signalled by withholding an ACK ...
   The final chunk's acknowledgement is deliberately deferred until after the total-size check passes" —
   Rejection semantics; basis of the at-least-once seam (J.9). · covered-by: UART.T08 · [H13]
 
 ## SPECIFICATION.md Part J.5 — Timing, flow control, recovery
 
-- **UART.N192** INVAR · `SPECIFICATION.md:5441-5444` — "A half-received frame must complete promptly or
+- **UART.N192** INVAR · `SPECIFICATION.md:5454-5457` — "A half-received frame must complete promptly or
   the whole frame is abandoned — the anti-desync rule." — Two-level timeout contract. · covered-by:
   UART.T02 · [H13]
-- **UART.N193** INVAR · `SPECIFICATION.md:5446-5457` — "drains its receive path until the line has been
+- **UART.N193** INVAR · `SPECIFICATION.md:5459-5470` — "drains its receive path until the line has been
   quiet for `1.5 × timeout`, then holds off initiating for a further `1.5 × timeout` ... **Both
   constants are part of the contract**" — Class A recovery timings; "found violating this on 2026-09-13
   and fixed" for local mid-train aborts. · covered-by: UART.T02 · [H13]
-- **UART.N194** INVAR · `SPECIFICATION.md:5459-5460` — "The write hold-off gates *initiating*
+- **UART.N194** INVAR · `SPECIFICATION.md:5472-5473` — "The write hold-off gates *initiating*
   transmissions only: acknowledgements are always sent" — Hold-off scope. · related: UART.S07 · [H13]
-- **UART.N195** INVAR · `SPECIFICATION.md:5471-5479` — "**Hitting the bound is reported by flagging the
+- **UART.N195** INVAR · `SPECIFICATION.md:5484-5492` — "**Hitting the bound is reported by flagging the
   caller, never by logging in place**: the boot drain is not a fault and so persists nothing, while a
   resync persists the more specific of its two warnings" — Logging contract for drains (C.7.1 `wrnno`
   10/11). · related: UART.T02, UART.T04 · [H13]
 
 ## SPECIFICATION.md Part J.6 — Deployment parameters
 
-- **UART.N196** SETTLED · `SPECIFICATION.md:5483-5487` — "`payload_size` and `timeout` are **agreed out
+- **UART.N196** SETTLED · `SPECIFICATION.md:5496-5500` — "`payload_size` and `timeout` are **agreed out
   of band** ... nothing is negotiated, now or at the C reconciliation (owner decision, 2026-09-11)" — No
   version/capability negotiation. · related: DOC.T14 · [H13]
-- **UART.N197** SETTLED · `SPECIFICATION.md:5489-5503` — "**That diagnostic has a known blind spot,
+- **UART.N197** SETTLED · `SPECIFICATION.md:5502-5516` — "**That diagnostic has a known blind spot,
   accepted rather than fixed** (owner decision, 2026-09-12) ... `errno` 32 never fires" — Accepted
   diagnostic gap for a speak-when-spoken-to peer; pinned by `tests/test_uart_comm_hazard.py`'s
   `..._a_peer_that_never_produces_a_valid_frame_is_diagnosed`. · [H13]
-- **UART.N198** LIMIT · `SPECIFICATION.md:5495-5498` — "**What it misses is a speak-when-spoken-to
+- **UART.N198** LIMIT · `SPECIFICATION.md:5508-5511` — "**What it misses is a speak-when-spoken-to
   peer** ... presents as repeated `errno` 22 (read timeout) plus `wrnno` 10 resync warnings" — Known
   misdiagnosis signature. · [H13]
-- **UART.N199** INVAR · `SPECIFICATION.md:5503-5506` — "`payload_size` must be in `1 … 255` ... an
+- **UART.N199** INVAR · `SPECIFICATION.md:5516-5519` — "`payload_size` must be in `1 … 255` ... an
   out-of-range value must never be silently clamped — C.13's readiness-gate treatment instead" —
   Construction contract. · related: UART.T05 · [H13]
-- **UART.N200** RISK · `SPECIFICATION.md:5508-5514` — "21.8 % efficiency for a single-chunk transfer,
+- **UART.N200** RISK · `SPECIFICATION.md:5521-5527` — "21.8 % efficiency for a single-chunk transfer,
   39.7 % at 480 bytes, and an asymptote of **43.6 %**. This is accepted for the intended traffic" —
   Accepted wire inefficiency; A10/A11 candidates. · [H13]
-- **UART.N201** INVAR · `SPECIFICATION.md:5516-5524` — "**A `UART` instance driving this protocol must
+- **UART.N201** INVAR · `SPECIFICATION.md:5529-5537` — "**A `UART` instance driving this protocol must
   therefore be constructed with a single-digit `poll_wait_ms`**; leaving the default in place makes
   every other efficiency property of the protocol irrelevant" — Not mechanically enforced:
   `buildgen/validate.py:270-276` checks only the timeout/rxbuf floors; driver default stays 20 ms. ·
   related: UART.T05, UART.T10 · [H13]
-- **UART.N202** INVAR · `SPECIFICATION.md:5530-5534` — "**That is a construction refusal, not just a
+- **UART.N202** INVAR · `SPECIFICATION.md:5543-5547` — "**That is a construction refusal, not just a
   rule** — `timeout`'s floor below is the enforcement, and it carries `poll_idle_ms`" — Enforced in
   `src/asy_uart_comm.py:260` and `buildgen/validate.py:271-273`. · covered-by: UART.T05 · [H13]
-- **UART.N203** INVAR · `SPECIFICATION.md:5536-5548` — "**`rxbuf` is checked at construction against two
+- **UART.N203** INVAR · `SPECIFICATION.md:5549-5561` — "**`rxbuf` is checked at construction against two
   independent floors** ... `timeout` has a floor too: `2 × poll_wait_ms + poll_idle_ms +` the measured
   worst-case GC pause" — Floors rely on the measured 21 ms GC constant. · covered-by: UART.T10 · [H13]
-- **UART.N204** LIMIT · `SPECIFICATION.md:5539-5540` — "at `payload_size = 255` that is 260 bytes
+- **UART.N204** LIMIT · `SPECIFICATION.md:5552-5553` — "at `payload_size = 255` that is 260 bytes
   against the driver's own 256-byte default, so the maximum legal `payload_size` overruns the default
   outright" — Driver default `rxbuf` cannot carry a max-size frame. · related: UART.T05 · [H13]
 
 ## SPECIFICATION.md Part J.8 — Memory model
 
-- **UART.N205** INVAR · `SPECIFICATION.md:5622-5627` — "**Two long-lived frame buffers per instance**
+- **UART.N205** INVAR · `SPECIFICATION.md:5635-5640` — "**Two long-lived frame buffers per instance**
   ... sized ... `framing.max_encoded(5 + payload_size + crc_length)` ... Steady-state frame traffic
   allocates nothing." — Zero-allocation frame path claim. · related: UART.T03 · [H13]
-- **UART.N206** INVAR · `SPECIFICATION.md:5635-5636` — "**A failed allocation degrades to the module's
+- **UART.N206** INVAR · `SPECIFICATION.md:5648-5649` — "**A failed allocation degrades to the module's
   normal failure sentinel** and the quiesce-and-resync path, never an exception" — Never-raise contract
   for allocation failures. · related: UART.T03 · [H13]
-- **UART.N207** SETTLED · `SPECIFICATION.md:5638-5642` — "a received frame is read whole into the
+- **UART.N207** SETTLED · `SPECIFICATION.md:5651-5655` — "a received frame is read whole into the
   instance's RX frame buffer and its payload region then slice-assigned ... *not* read header-first" —
   Deliberate design choice. · [H13]
-- **UART.N208** INVAR · `SPECIFICATION.md:5644-5646` — "**Padding must be zero-filled from a
+- **UART.N208** INVAR · `SPECIFICATION.md:5657-5659` — "**Padding must be zero-filled from a
   preallocated zero buffer** ... leaving them unwritten would transmit the previous frame's payload
   remnants" — Data-leak invariant. · related: UART.T01 · [H13]
 
 ## SPECIFICATION.md Part J.9 — Module contract
 
-- **UART.N209** SETTLED · `SPECIFICATION.md:5650-5658` — "**A plain class, not a `SensorReader`
+- **UART.N209** SETTLED · `SPECIFICATION.md:5663-5671` — "**A plain class, not a `SensorReader`
   subclass** (owner-delegated decision, 2026-09-11, resolved against precedent)" — Base-class decision;
   errno/wrnno still align to `base_classes.py`'s reservation. · [H13]
-- **UART.N210** INVAR · `SPECIFICATION.md:5660-5665` — "**`None` means failure; an empty result means a
+- **UART.N210** INVAR · `SPECIFICATION.md:5673-5678` — "**`None` means failure; an empty result means a
   genuinely empty payload.** The two must never collapse, at any of the four result shapes" — Sentinel
   contract; `exp_size=None` vs `0`. · related: UART.T01 · [H13]
-- **UART.N211** INVAR · `SPECIFICATION.md:5667-5670` — "**`uart_listen()` returns a `ListenResult`
+- **UART.N211** INVAR · `SPECIFICATION.md:5680-5683` — "**`uart_listen()` returns a `ListenResult`
   namedtuple** ... on every path ... Its one allocation is per logical message" — Result-shape contract.
   · related: UART.S05 · [H13]
-- **UART.N212** SETTLED · `SPECIFICATION.md:5673-5679` — "**A lost final ACK folds into failure**,
+- **UART.N212** SETTLED · `SPECIFICATION.md:5686-5692` — "**A lost final ACK folds into failure**,
   deliberately ... a caller that retries on a failed `uart_set()` must tolerate the peer seeing the
   message twice" — At-least-once seam; idempotency obligation on callers, unenforced. · covered-by:
   UART.T08 · [H13]
@@ -838,22 +847,24 @@ Kinds: SETTLED 72, INVAR 74, MIRROR 28, LIMIT 26, RISK 10, ASSUME 26, PLATFORM 8
 
 ## BACKLOG.md
 
-- **UART.N224** TODO · `BACKLOG.md:109-111` — "a real-hardware test for UART's F.5.8 'never blocks'
+- **UART.N224** TODO · `BACKLOG.md:89-91` — "a real-hardware test for UART's F.5.8 'never blocks'
   invariant against the actual shipped driver (not a hand-rolled clamp)" — Follow-on (a): no silicon
   test of the shipped driver's never-block invariant. · related: BUS.T05 · [H15] ⟨quote not matched at
   the anchor⟩
-- **UART.N225** TODO · `BACKLOG.md:111` — "wiring a periodic SET into the bench UART exerciser's live
+- **UART.N225** TODO · `BACKLOG.md:91` — "wiring a periodic SET into the bench UART exerciser's live
   load" — Follow-on (b): the bench exerciser carries no periodic SET. · related: UART.T06 · [H15]
-- **UART.N226** SETTLED · `BACKLOG.md:414-416` — "arduino/ is out of this project's scope - SETTLED,
+  ⟨4dc80ef: G1 scratched by the owner 2026-09-25 (230a8df); tests_hardware/README.md:1265-1269 now says
+  so⟩
+- **UART.N226** SETTLED · `BACKLOG.md:480-482` — "arduino/ is out of this project's scope - SETTLED,
   owner, 2026-09-24." — Covers the UART C implementation's reconciliation and BME688/BSEC licensing. ·
   covered-by: LIC.T04 · [H15]
-- **UART.N227** RISK · `BACKLOG.md:633-638` — "lets the peer size a heap allocation ... up to ~64 kB at
+- **UART.N227** RISK · `BACKLOG.md:699-704` — "lets the peer size a heap allocation ... up to ~64 kB at
   payload_size = 255" — Responder whose `set_callback` returns `None`; caught and degraded; deliberately
   left. · covered-by: UART.T03, MEM.T03 · [H15]
-- **UART.N228** INVAR · `BACKLOG.md:645-650` — "UART_Comm.setup() called a second time while its own
+- **UART.N228** INVAR · `BACKLOG.md:711-716` — "UART_Comm.setup() called a second time while its own
   listen loop is running would deadlock" — Unreachable only because the supervisor re-calls starters,
   never `setup()`. · related: XCUT.T02 · [H15]
-- **UART.N229** SETTLED · `BACKLOG.md:788-796` — "owner-confirmed this stays as-is" — No sensor behind
+- **UART.N229** SETTLED · `BACKLOG.md:838-846` — "owner-confirmed this stays as-is" — No sensor behind
   the UART link; BME688/BSEC out of scope. · [H15]
 
 ## UART_C_PORT_CHANGELOG.md (128 lines; owning area UART). Every entry is pending C-side reconciliation, which is out of scope (owner 2026-09-24).
@@ -990,7 +1001,7 @@ Kinds: SETTLED 72, INVAR 74, MIRROR 28, LIMIT 26, RISK 10, ASSUME 26, PLATFORM 8
   (uart_get_into checks buf before gating; uart_set_into gates first). · UNTRACKED (low) | related:
   UART.T* · [H17 (also H17)]
 - **UART.N275** NOTE(FACT) · `commit 430be67` — GPIO16/17 reserved for a future BME688 BSEC UART0 — Pin
-  reservation. · tracked: SPECIFICATION.md:5161 | - · [H17]
+  reservation. · tracked: SPECIFICATION.md:5174 | - · [H17]
 - **UART.N276** NOTE(RED-PUSH) · `commit 441de83` — "PUSHED DELIBERATELY WITH ONE RED TEST, on the
   project owner's direction ... tests/test_digital_twin_run_dev_integration.py is at 16/17" — Twin soak
   regression left red; UART fakes' wait "logged as deferred work"; H4 bench claim "vacuous ... Left open

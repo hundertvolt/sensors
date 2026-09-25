@@ -1,6 +1,6 @@
 # Harvest — LIC: Licensing and attribution
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 2, MIRROR 9, LIMIT 3, RISK 2, ASSUME 11, SUPPRESS 2, TODO 3, OPENQ 1, DRIFT 14, NOTE 10 — 57 items.
@@ -152,13 +152,13 @@ Kinds: SETTLED 2, MIRROR 9, LIMIT 3, RISK 2, ASSUME 11, SUPPRESS 2, TODO 3, OPEN
 
 ## SPECIFICATION.md Part F.4 — Vendor-derived code
 
-- **LIC.N027** SETTLED · `SPECIFICATION.md:3657-3658` — "Adafruit-derived driver code is fair game to
+- **LIC.N027** SETTLED · `SPECIFICATION.md:3666-3667` — "Adafruit-derived driver code is fair game to
   restructure/rewrite (keeping attribution)" — Policy (dup of CLAUDE.md hard rule). · related: LIC.T01 ·
   [H13]
 
 ## README.md
 
-- **LIC.N028** DRIFT · `README.md:732-736` — "every piece of vendored or attribution-derived third-party
+- **LIC.N028** DRIFT · `README.md:719-723` — "every piece of vendored or attribution-derived third-party
   code in one place ... the one area where a specific source couldn't be established" —
   THIRD_PARTY_LICENSES.md now names sources, and the settled `arduino/` exclusion is not stated. ·
   covered-by: LIC.S06 (related LIC.S03) · [H14]

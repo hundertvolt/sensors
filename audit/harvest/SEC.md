@@ -1,6 +1,6 @@
 # Harvest — SEC: Security
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 2, INVAR 4, MIRROR 1, LIMIT 6, RISK 22, ASSUME 1, SUPPRESS 5, DRIFT 2, NOTE 3 — 46 items.
@@ -163,7 +163,7 @@ Kinds: SETTLED 2, INVAR 4, MIRROR 1, LIMIT 6, RISK 22, ASSUME 1, SUPPRESS 5, DRI
 
 - **SEC.N030** MIRROR · `js/definitions.js:231-238` — "data = JSON.parse(inlinedEl.textContent ??
   \"\");" — the inlined path depends on scripts/build_website.sh escaping `<` inside the embedded JSON
-  so a literal `</script` cannot close the tag early (SPECIFICATION.md:4538-4539) · related: WEB.T06 ·
+  so a literal `</script` cannot close the tag early (SPECIFICATION.md:4550-4551) · related: WEB.T06 ·
   [H11]
 
 ## js/render.js
@@ -192,21 +192,21 @@ Kinds: SETTLED 2, INVAR 4, MIRROR 1, LIMIT 6, RISK 22, ASSUME 1, SUPPRESS 5, DRI
 
 ## SPECIFICATION.md Part A.8 (REST API endpoint reference, 571-625)
 
-- **SEC.N035** LIMIT · `SPECIFICATION.md:603` — "`\"SystemCmd\": \"reboot\"|\"bootloader\"|\"mempause\"`
+- **SEC.N035** LIMIT · `SPECIFICATION.md:607` — "`\"SystemCmd\": \"reboot\"|\"bootloader\"|\"mempause\"`
   (enum-validated; `mempause` duration fixed 300s)" — Unauthenticated destructive commands; fixed pause
   length. · related: SEC.T02 · [H12]
 
 ## SPECIFICATION.md Part H.4 — Architecture decisions table
 
-- **SEC.N036** INVAR · `SPECIFICATION.md:4359` — "`textContent` only, never `innerHTML` — XSS-safe by
+- **SEC.N036** INVAR · `SPECIFICATION.md:4371` — "`textContent` only, never `innerHTML` — XSS-safe by
   construction." | Security rule with no lint enforcement. · covered-by: WEB.S17 · [H13]
 
 ## SPECIFICATION.md Part L.2 — Core design decisions
 
-- **SEC.N037** RISK · `SPECIFICATION.md:6034-6036` — "the hotspot password is a per-device TOML field
+- **SEC.N037** RISK · `SPECIFICATION.md:6047-6049` — "the hotspot password is a per-device TOML field
   defaulting to the existing hardcoded `\"12345678\"` (accepted risk, CLAUDE.md)" — Accepted credential
   risk. · related: GEN.T08 · [H13]
-- **SEC.N038** RISK · `SPECIFICATION.md:6040-6043` — "a value outside either field's schema bounds is
+- **SEC.N038** RISK · `SPECIFICATION.md:6055-6058` — "a value outside either field's schema bounds is
   dropped back to that shared default at boot rather than failing - for the password, back to the one
   published in `src/`" — Silent runtime fallback to the published password; build-time caps mitigate. ·
   related: GEN.T15 · [H13]

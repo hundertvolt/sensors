@@ -1,6 +1,6 @@
 # Harvest — ALGO: Pure algorithms and codecs
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 11, INVAR 17, MIRROR 10, LIMIT 15, RISK 5, ASSUME 8, PLATFORM 3, SUPPRESS 8, TODO 1, DRIFT 2, NOTE 1 — 81 items.
@@ -133,7 +133,7 @@ Kinds: SETTLED 11, INVAR 17, MIRROR 10, LIMIT 15, RISK 5, ASSUME 8, PLATFORM 3, 
 
 ## tests/test_asy_sgp40_driver.py
 
-- **ALGO.N042** SETTLED · `tests/test_asy_sgp40_driver.py:1509-1511` — "per voc_algorithm.py's module
+- **ALGO.N042** SETTLED · `tests/test_asy_sgp40_driver.py:1634-1636` — "per voc_algorithm.py's module
   docstring on why this differs from Sensirion's own short-interruption-only API" — whole-state VOC
   restore across reboots deliberately exceeds Sensirion's documented short-interruption use · related:
   ALGO.T02 · [H04]
@@ -207,7 +207,7 @@ Kinds: SETTLED 11, INVAR 17, MIRROR 10, LIMIT 15, RISK 5, ASSUME 8, PLATFORM 3, 
 
 ## tests_hardware/README.md
 
-- **ALGO.N061** LIMIT · `tests_hardware/README.md:701-707` — "Deliberately a stability/sanity check, not
+- **ALGO.N061** LIMIT · `tests_hardware/README.md:710-716` — "Deliberately a stability/sanity check, not
   a numerical-accuracy claim" — VOC-algorithm quality on silicon is sanity only; accuracy needs a human
   stimulus. · [H08]
 
@@ -229,44 +229,44 @@ Kinds: SETTLED 11, INVAR 17, MIRROR 10, LIMIT 15, RISK 5, ASSUME 8, PLATFORM 3, 
 
 ## SPECIFICATION.md Part C intro, C.1-C.2 (1475-1535)
 
-- **ALGO.N065** SETTLED · `SPECIFICATION.md:1501-1502` — "`voc_algorithm.py`'s internals trace their
+- **ALGO.N065** SETTLED · `SPECIFICATION.md:1505-1506` — "`voc_algorithm.py`'s internals trace their
   DFRobot/Sensirion source 1:1 (F.4), casing intentionally non-compliant" — Permanent naming exception.
   · [H12]
 
 ## SPECIFICATION.md Part D (src/ Production-Quality Checklist, 2576-2728)
 
-- **ALGO.N066** ASSUME · `SPECIFICATION.md:2595-2598` — "`wet_bulb_temperature`'s humidity lower bound
+- **ALGO.N066** ASSUME · `SPECIFICATION.md:2603-2606` — "`wet_bulb_temperature`'s humidity lower bound
   was `0.5%`; Stull (2011) only validates to `5%` ... (`altitude_baro`'s range comes from the BMP388/390
   datasheet" — Literature/datasheet domain claims; the BMP390 PDF is absent (A.6). · related: SENS.S12 ·
   [H12]
 
 ## SPECIFICATION.md Part F.4 — Vendor-derived code
 
-- **ALGO.N067** SETTLED · `SPECIFICATION.md:3658-3662` — "Sensirion-derived reference-algorithm ports
+- **ALGO.N067** SETTLED · `SPECIFICATION.md:3667-3671` — "Sensirion-derived reference-algorithm ports
   stay literal ... a stylistic rewrite is not" — Opposite policy for `voc_algorithm.py`. · related:
   ALGO.T02 · [H13]
-- **ALGO.N068** MIRROR · `SPECIFICATION.md:3659-3661` — "internal naming traces the original C source
+- **ALGO.N068** MIRROR · `SPECIFICATION.md:3668-3670` — "internal naming traces the original C source
   1:1 so it stays diffable against Sensirion's own reference" — `src/voc_algorithm.py` ↔ Sensirion C
   reference. · covered-by: ALGO.T02 · [H13]
 
 ## SPECIFICATION.md Part I.2 — Hotspot catalog
 
-- **ALGO.N069** SETTLED · `SPECIFICATION.md:4878-4881` — "**`src/crc_checks.py` keeps its per-byte
+- **ALGO.N069** SETTLED · `SPECIFICATION.md:4890-4893` — "**`src/crc_checks.py` keeps its per-byte
   `await asyncio.sleep(0)`** (2026-09-18: \"pure wall clock time is not such an issue, don't touch\")" —
   Owner decision; ~5.8x wall-time cost accepted; 160 B per `_crc()` call. · related: ALGO.T03, PERF.T04
   · [H13]
 
 ## SPECIFICATION.md Part M.1.3 — Register ownership, prior art, colour chain
 
-- **ALGO.N070** SETTLED · `SPECIFICATION.md:6697-6702` — "The **sRGB/Rec.709 D65 matrix is pinned as
+- **ALGO.N070** SETTLED · `SPECIFICATION.md:6712-6717` — "The **sRGB/Rec.709 D65 matrix is pinned as
   literals** ... **The two published McCamy forms are algebraically identical** ... Do not \"correct\"
   one into the other." — Do-not-fix markers in `math_helpers.py`. · related: ALGO.T01 · [H13]
-- **ALGO.N071** INVAR · `SPECIFICATION.md:6705-6706` — "an out-of-domain input means the chain is broken
+- **ALGO.N071** INVAR · `SPECIFICATION.md:6720-6721` — "an out-of-domain input means the chain is broken
   and is rejected, not clamped" — Helper domain contract. · related: ALGO.T01 · [H13]
 
 ## BACKLOG.md
 
-- **ALGO.N072** INVAR · `BACKLOG.md:651-653` — "One Framing_COBS instance shared between two drivers
+- **ALGO.N072** INVAR · `BACKLOG.md:717-719` — "One Framing_COBS instance shared between two drivers
   would corrupt both" — Every construction site makes its own; the failure would be silent. · related:
   ALGO.T04 · [H15]
 
@@ -276,6 +276,7 @@ Kinds: SETTLED 11, INVAR 17, MIRROR 10, LIMIT 15, RISK 5, ASSUME 8, PLATFORM 3, 
   beside REAL_HARDWARE_TEST_QUEUE.md §1A's A6" — Silicon wall-time factor of `crc_checks` per-byte
   yield; not carried in the current queue (no CRC row); the owner's "don't touch" (SPEC:4876-4881) makes
   it informational. · related: ALGO.T03 · [H15]
+  ⟨4dc80ef: A6 script kept only in BACKLOG.md "Real-hardware work still owed" (T4)⟩
 
 ## UART_C_PORT_CHANGELOG.md (128 lines; owning area UART). Every entry is pending C-side reconciliation, which is out of scope (owner 2026-09-24).
 

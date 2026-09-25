@@ -1,6 +1,6 @@
 # Harvest — STOR: FRAM storage
 
-What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
+What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`, moved to `4dc80ef` by V11).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
 Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19, SUPPRESS 7, TODO 5, OPENQ 2, DRIFT 8, NOTE 10 — 210 items.
@@ -174,7 +174,7 @@ Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19
 - **STOR.N051** MIRROR · `src/asy_fram_manager.py:240-242, 256-258, 273, 285, 298, 342, 363` — "only
   check_idle=True needs the 3-wide spread (matches the gap below)" / "check_idle=False here, so
   _handle_status_bytes may only set err to err + 1" — Errno base+spread arithmetic (10-11, 19-20, 30-36,
-  39-40, 50-51) kept in step with C.7.1 row (SPECIFICATION.md:1926) by hand. · related: STOR.S04,
+  39-40, 50-51) kept in step with C.7.1 row (SPECIFICATION.md:1930) by hand. · related: STOR.S04,
   XCUT.T07 · [H01]
 - **STOR.N052** SUPPRESS · `src/asy_fram_manager.py:288-290` — err_s "General write error in
   _write_chunk:" errno=26 — Any exception in a block write swallowed to False. · [H01]
@@ -339,7 +339,7 @@ Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19
 
 ## tests/test_asy_sgp40_driver.py
 
-- **STOR.N099** INVAR · `tests/test_asy_sgp40_driver.py:1431-1436` — "its allocated_size bump pointer
+- **STOR.N099** INVAR · `tests/test_asy_sgp40_driver.py:1556-1561` — "its allocated_size bump pointer
   keeps advancing, so a second SGP40_Reader would land its chunks in a fresh, never-written region" —
   FRAM chunk placement depends on replaying the identical allocation sequence on a fresh manager
   (deterministic layout contract) · related: XCUT.T09 · [H04]
@@ -479,32 +479,34 @@ Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19
 
 ## tests_hardware/README.md
 
-- **STOR.N130** RISK · `tests_hardware/README.md:392-393` — "A FRAM pair E31 ... + W73 ... is what a
+- **STOR.N130** RISK · `tests_hardware/README.md:401-402` — "A FRAM pair E31 ... + W73 ... is what a
   block write cut off by a reset leaves" — Accepted: two-copy scheme recovers; the pair seeds the error
   log (see handover 5.4). · [H08]
-- **STOR.N131** RISK · `tests_hardware/README.md:420-429` — "a script leaving a well-formed chunk behind
+- **STOR.N131** RISK · `tests_hardware/README.md:429-438` — "a script leaving a well-formed chunk behind
   fabricates a plausible one" — Hardware runs overwrite production FRAM chunks (deterministic bump
   allocator); `fram_error_log_reset_race_seed_and_race.py` seeds `errno=5` into SYSTEM's chunk. ·
   covered-by: HW.T17 · [H08]
-- **STOR.N132** LIMIT · `tests_hardware/README.md:712-716` — "A \"fresh boot\" is simulated by
+- **STOR.N132** LIMIT · `tests_hardware/README.md:721-725` — "A \"fresh boot\" is simulated by
   constructing a brand-new `AsyFramManager`" — FRAM backup/restore "fresh boot" is object-level, not a
   real reboot. · - (low) · [H08]
-- **STOR.N133** SETTLED · `tests_hardware/README.md:737-741` — "a *read* is rejected too, because
+- **STOR.N133** SETTLED · `tests_hardware/README.md:746-750` — "a *read* is rejected too, because
   `_read_chunk()` must write a transient busy marker first (intended behavior" — Write-protect test sets
   non-volatile WPEN\|BP0\|BP1 on the real chip. · related: HW.S07 · [H08]
-- **STOR.N134** LIMIT · `tests_hardware/README.md:906-916` — "Read hijack: the buffer comes back all
+- **STOR.N134** LIMIT · `tests_hardware/README.md:915-925` — "Read hijack: the buffer comes back all
   zero bytes ... never the real seeded pattern, never an exception" — CS-hijack (5/5, 2026-09-04): a
   hijacked read silently yields zeros. · [H08]
-- **STOR.N135** LIMIT · `tests_hardware/README.md:922-929` — "this cannot prove a genuinely torn
+- **STOR.N135** LIMIT · `tests_hardware/README.md:931-938` — "this cannot prove a genuinely torn
   (partially-written) transfer" — True mid-byte power loss unreachable by any interpreter-level race. ·
   [H08]
-- **STOR.N136** SETTLED · `tests_hardware/README.md:1205-1208` — "Confirmed structural (E.6.6 exception
+- **STOR.N136** SETTLED · `tests_hardware/README.md:1214-1217` — "Confirmed structural (E.6.6 exception
   2: neither method has a REST route at all, by grep)" — FRAM write-protect gate is flash-tier only. ·
   related: HW.T09 · [H08]
-- **STOR.N137** TODO · `tests_hardware/README.md:1277-1281` — "not confirmed to exist yet, so left named
+- **STOR.N137** TODO · `tests_hardware/README.md:1287-1291` — "not confirmed to exist yet, so left named
   rather than guessed at" — NOTIFY FRAM chunk has no hard-reset-recovery test; needs a BackupTS-like
   signal (queue G4). · [H08]
-- **STOR.N138** SETTLED · `tests_hardware/README.md:1391-1403` — "**Deliberately not
+  ⟨4dc80ef: G4 scratched by the owner 2026-09-25 (230a8df); tests_hardware/README.md:1287-1292 now says
+  so⟩
+- **STOR.N138** SETTLED · `tests_hardware/README.md:1402-1414` — "**Deliberately not
   `fram.allocated_size <= fram.size`** ... **mpremote-only by design (owner's own decision)**" — FRAM
   capacity check uses a `None` chunk as signal; no `/status` field by owner decision. · related:
   XCUT.S09 · [H08]
@@ -514,23 +516,32 @@ Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19
 - **STOR.N139** ASSUME · `REAL_HARDWARE_TEST_QUEUE.md:154-156` — "it does not overwrite production's
   error logs" — A6 script writes at 0x3FF00 ("clear of every production chunk") — valid only for the 256
   KB `max_size=0x40000` chip; run under an 8 s WDT armed by a prior `exec`. · - (low) · [H08]
+  ⟨4dc80ef: A6 script kept only in BACKLOG.md "Real-hardware work still owed" (T4)⟩
 - **STOR.N140** ASSUME · `REAL_HARDWARE_TEST_QUEUE.md:248` — "`SPECIFICATION.md` Part A.7's FRAM
   setup-cost figures are twin-only." — R7 OPEN: twin FRAM has zero wire time; A6 showed ~90 % is
   interpreter/`machine.SPI` overhead. · related: PERF.T06 · [H08]
+  ⟨4dc80ef: A6 script kept only in BACKLOG.md "Real-hardware work still owed" (T4); R7 measured
+  2026-09-25 on silicon, retired into SPECIFICATION.md A.7 (38b270d)⟩
 - **STOR.N141** TODO · `REAL_HARDWARE_TEST_QUEUE.md:274` — "Needs an observable-write signal analogous
   to SGP40's `BackupTS` first." — G4 OPEN: NOTIFY FRAM hard-reset recovery test. · [H08]
+  ⟨4dc80ef: G4 scratched by the owner 2026-09-25: src/ is never changed only for a test (230a8df;
+  BACKLOG.md:92-94)⟩
 - **STOR.N142** RISK · `REAL_HARDWARE_TEST_QUEUE.md:330-332` — "Every sitting since 2026-09-22 ran
   isolated-driver device scripts, which overwrite production's first chunks." — The board's FRAM logs
   are not a clean production record. · covered-by: HW.T17 · [H08]
+  ⟨4dc80ef: trap kept: CLAUDE.md FRAM-forensics caveat and tests_hardware/README.md:431⟩
 - **STOR.N143** SETTLED · `REAL_HARDWARE_TEST_QUEUE.md:384-388` — "**Don't chase
   `asy_fram_manager.py`/`asy_fram_driver.py` internals** from anything found here" — Scoped-review rule
   (C.3.1); §1A failures belong to the PR #105 session. · [H08]
+  ⟨4dc80ef: not migrated: the don't-chase note was tied to the closed PR #105 scoped exception; nothing
+  to keep⟩
 
 ## HARDWARE_TEST_HANDOVER.md (snapshot only; sitting IN PROGRESS in another session)
 
 - **STOR.N144** RISK · `HARDWARE_TEST_HANDOVER.md:172-175` — "entering BOOTSEL this way can cost one
   FRAM log entry; the harness's `enter_bootloader()` has the same property" — `machine.bootloader()`
   mid-write → E31+W73 at first boot. · related: HW.T17 · [H08]
+  ⟨4dc80ef: F18 owner decision open: open in BACKLOG.md "Real-hardware work still owed" (F18)⟩
 
 ## dev_legacy/README.md
 
@@ -648,20 +659,20 @@ Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19
 
 ## SPECIFICATION.md Part C.3 (Layer 2 protocol class, 1537-1566)
 
-- **STOR.N173** LIMIT · `SPECIFICATION.md:1544-1546` — "`FRAM_SPI`'s
+- **STOR.N173** LIMIT · `SPECIFICATION.md:1548-1550` — "`FRAM_SPI`'s
   `_check_device_id()`/`_read_status()`/`_send_opcode()` do this (a real, low-severity D.4 violation
   left as-is" — Accepted per-call allocation; `_send_opcode()` doesn't exist. · covered-by: STOR.S04 ·
   [H12] ⟨quote not matched at the anchor⟩
 
 ## SPECIFICATION.md Part C.3.1 (SPI sensor variant, 1567-1596)
 
-- **STOR.N174** PLATFORM · `SPECIFICATION.md:1592-1596` — "Two real chips: `MB85RS64V` (8KB, `0x2000`)
+- **STOR.N174** PLATFORM · `SPECIFICATION.md:1596-1600` — "Two real chips: `MB85RS64V` (8KB, `0x2000`)
   and `MB85RS2MTA` (256KB, `0x40000`, ... p.10) ... A genuinely new size needs its own table entry." —
   Address-width table; which part dev carries is disputed. · related: HW.T07 · [H12]
 
 ## SPECIFICATION.md Part C.7 (Error handling & logging contract, 1807-1891)
 
-- **STOR.N175** RISK · `SPECIFICATION.md:1831-1840` — "A `ResetErrors` answering `OK` on a write the
+- **STOR.N175** RISK · `SPECIFICATION.md:1835-1844` — "A `ResetErrors` answering `OK` on a write the
   chip acknowledged but did not physically store is accepted behaviour, not a defect (owner decision,
   2026-09-17" — Accepted: "if the bus transfer completed without error, the chip is trusted to have
   stored the value"; detected `_write()` False not reflected in the response. · related: REST.S04 ·
@@ -669,39 +680,41 @@ Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19
 
 ## SPECIFICATION.md Part C.7.1 (Running errno/wrnno table, 1893-1941)
 
-- **STOR.N176** DRIFT · `SPECIFICATION.md:1926` — "`AsyFramManager` 10-88 ... (manager `errno` 17-88 +
+- **STOR.N176** DRIFT · `SPECIFICATION.md:1930` — "`AsyFramManager` 10-88 ... (manager `errno` 17-88 +
   `wrnno` 80 ...)" — Row states the manager range two ways; code uses 10/11/19/20. · covered-by:
   STOR.S04 · [H12 (also H12)]
-- **STOR.N177** INVAR · `SPECIFICATION.md:1926` — "because a synchronous body holding the bus lock must
+- **STOR.N177** INVAR · `SPECIFICATION.md:1930` — "because a synchronous body holding the bus lock must
   not await a persisted log entry" — Reporter split rule for FRAM. · related: STOR.S02 · [H12]
 
 ## SPECIFICATION.md Part C.8 (Concurrency & locking model, 2016-2188)
 
-- **STOR.N178** SETTLED · `SPECIFICATION.md:2028-2039` — "the FRAM path's is a whole block operation,
+- **STOR.N178** SETTLED · `SPECIFICATION.md:2036-2047` — "the FRAM path's is a whole block operation,
   not a single transaction (owner's decision, 2026-09-18)" — ~25 CS cycles per hold; I2C keeps
   per-transaction scope (F.5.8). · related: PERF.T04 · [H12]
 
 ## SPECIFICATION.md Part F.5.2 — rp2 SPI RX-overrun EIO
 
-- **STOR.N179** SETTLED · `SPECIFICATION.md:3741` — "So no retry is added (owner decision, 2026-09-24):
+- **STOR.N179** SETTLED · `SPECIFICATION.md:3750` — "So no retry is added (owner decision, 2026-09-24):
   the dual-copy layer already covers the read path." — Do-not-add-retry marker for SPI EIO on FRAM
   reads. · related: STOR.T10 · [H13]
-- **STOR.N180** ASSUME · `SPECIFICATION.md:3737-3740` — "a single transient overrun costs nothing at all
+- **STOR.N180** ASSUME · `SPECIFICATION.md:3746-3749` — "a single transient overrun costs nothing at all
   ... Only an overrun hitting both copies degrades the read to `None`" — Recovery claim shown by
   mock/twin live-path tests, not on silicon. · related: STOR.T01 · [H13]
-- **STOR.N181** SETTLED · `SPECIFICATION.md:3743-3746` — "the chunk marked busy and unreadable until
+- **STOR.N181** SETTLED · `SPECIFICATION.md:3752-3755` — "the chunk marked busy and unreadable until
   rewritten, which is **intended behavior, not a defect**" — A read-interrupted chunk is deliberately
   locked out (destructive-readout part). · related: STOR.T10 · [H13]
 
 ## SPECIFICATION.md Part F.5.8 — UART read() blocks the loop
 
-- **STOR.N182** OPENQ · `SPECIFICATION.md:3998-3999` — "whether to yield between the envelopes of one
+- **STOR.N182** OPENQ · `SPECIFICATION.md:4010-4011` — "whether to yield between the envelopes of one
   write is open (`REAL_HARDWARE_TEST_QUEUE.md` T4)" — Open question pointing to a temporary queue row ID
   (spelled "T.4" two lines above). · related: PERF.T04, DOC.T03 · [H13]
+  ⟨4dc80ef: T4 measured 2026-09-25, owner decisions open: open in BACKLOG.md "Real-hardware work still
+  owed" (T4, holds A6's script)⟩
 
 ## SPECIFICATION.md Part K.7 — devices/*.toml
 
-- **STOR.N183** RISK · `SPECIFICATION.md:5886-5888` — "Placement within the `[[instance]]` list has
+- **STOR.N183** RISK · `SPECIFICATION.md:5899-5901` — "Placement within the `[[instance]]` list has
   FRAM-chunk-order consequences (bump-pointer allocator, Part A.7) — no hard rule ... which usually just
   means \"last.\"" — Reordering instances silently remaps FRAM chunks. · covered-by: XCUT.T09 · [H13]
 
@@ -713,13 +726,13 @@ Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19
 
 ## BACKLOG.md
 
-- **STOR.N185** SETTLED · `BACKLOG.md:72-77` — "FRAM's verify_present()/set_write_protected() stay in
+- **STOR.N185** SETTLED · `BACKLOG.md:52-57` — "FRAM's verify_present()/set_write_protected() stay in
   src/ — SETTLED, do not re-raise." — Zero-caller FRAM APIs kept by repeated owner decision. ·
   covered-by: STOR.S05 · [H15]
-- **STOR.N186** SETTLED · `BACKLOG.md:407-410` — "A transient SPI RX overrun is not retried - SETTLED,
+- **STOR.N186** SETTLED · `BACKLOG.md:473-476` — "A transient SPI RX overrun is not retried - SETTLED,
   owner, 2026-09-24." — 1.29's `OSError(EIO)` on ≥32-byte rp2 SPI reads is absorbed by FRAM dual copy
   (errno 47, block-1 fallback). · related: PLAT.T03 · [H15]
-- **STOR.N187** ASSUME · `BACKLOG.md:408-410` — "is absorbed by the FRAM layer's dual copy" — Premise of
+- **STOR.N187** ASSUME · `BACKLOG.md:474-476` — "is absorbed by the FRAM layer's dual copy" — Premise of
   [052]; plan seeds say a transient read fault at logger `setup()` makes `_write()` overwrite the
   persisted ring. · related: CORE.S16, CORE.T11 · [H15]
 
@@ -734,7 +747,7 @@ Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19
   off their decision sites (C.7.1). Not carried. (low) · [H15]
 - **STOR.N190** TODO · `ARCH:5504-5506` — "Lever 3 (per chunk operation) is not taken ... A.6 reopens it
   only if the combination with the boot collects falls short." — Conditional reopen of per-chunk FRAM
-  lock scope; current SPEC states per-block-operation scope (SPECIFICATION.md:2028); the reopen
+  lock scope; current SPEC states per-block-operation scope (SPECIFICATION.md:2036); the reopen
   condition is not carried. (low) · related: STOR.T04 · [H15]
 
 ## Commit messages (chronological)
@@ -812,8 +825,9 @@ Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19
   chunk buffers. · tracked: SPEC I.2 (moved in 17b4354) | - · [H17]
 - **STOR.N209** NOTE(OWNER) · `commit 6acc9c0` — "§11 item 3 ... leave as is, do not defer the
   per-logger store setup"; "NTP_Host keeps its 1024-character bound"; "A.6's lever 3: closed" —
-  Decisions. · tracked: SPEC I.2, BACKLOG.md:417 | - · [H17]
+  Decisions. · tracked: SPEC I.2, BACKLOG.md:483 | - · [H17]
 - **STOR.N210** NOTE(ONLY-IN-TEMP-DOC) · `commit 21560a4 / HARDWARE_TEST_HANDOVER.md:172` — "FRAM E31 +
   W73 at the first boot after flashing: mpremote exec machine.bootloader() most likely landed mid-write
   ... entering BOOTSEL this way can cost one FRAM log entry" — Bootloader entry can tear a FRAM write. ·
   UNTRACKED (low; temp doc only) | - · [H17]
+  ⟨4dc80ef: F18 owner decision open: open in BACKLOG.md "Real-hardware work still owed" (F18)⟩
