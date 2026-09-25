@@ -2680,8 +2680,9 @@ retired `AUDIT_PLAN.md`). Status as of this revision:
       ~1,080 in all — lies within its file at `0615eba` (bare `asy_*.py`-style names resolve to `src/`). The first script checked range starts only (round 3
       caught `build_frozen_html.sh:36-37` in a 36-line file); range ends are checked since. Bounds only:
       an in-bounds wrong anchor passes (`ENV.T10`). Re-run after each revision.
-- [x] **V4 Internal consistency**: every `<AREA>.[STN]nn` ID referenced in this file is defined exactly
-      once and every PQ reference is PQ1-PQ10 (`validate_plan.py`).
+- [x] **V4 Internal consistency**: every `<AREA>.[ST]nn` ID referenced in this file is defined exactly
+      once and every PQ reference is PQ1-PQ10 (`validate_plan.py`). Harvest IDs (`<AREA>.Nnnn`) are
+      defined in `audit/harvest/` and numbered by its generator.
 - [x] **V5 Backward read**: done once; its contradictions (ownership, cross-references pointing at the
       wrong topic, facts stated two ways, SEV1 defined twice, pilot vs wave order, stale R2 status) are
       fixed in this revision.
@@ -2699,11 +2700,14 @@ retired `AUDIT_PLAN.md`). Status as of this revision:
       (fields, intake-time IDs, status transitions), 4.6 per-session vs once topics, 4.7 numbered resume
       procedure with the lease steps, planning residue kept under `audit/`. Re-run once the register
       exists.
-- [~] **V10 Harvest of what the project already records**: every comment and docstring, every doc, the
-      git history and the GitHub PR/issue discussions, read in full by 17 partitioned read-only agents
-      for self-declared limitations, accepted risks, settled decisions, assumptions, workarounds,
-      unenforced invariants, mirror obligations, suppressions, open questions and drift — recorded, not
-      solved (owner, 3.1). Results go to `audit/`, deduplicated against the topics and seeds.
+- [x] **V10 Harvest of what the project already records**: every comment and docstring, every doc, the
+      git history and the GitHub PR/issue discussions, read by 17 partitioned read-only agents for
+      self-declared limitations, accepted risks, settled decisions, assumptions, workarounds, unenforced
+      invariants, mirror obligations, suppressions, open questions and drift — recorded, not solved
+      (owner, 3.1). About 6,300 items in `audit/HARVEST.md` (index, method, untracked deferred work) and
+      `audit/harvest/<AREA>.md`, each cross-referenced to the plan's topics/seeds by its agent and its
+      quote checked against the snapshot by script. Not yet done: folding the items new to the plan into
+      topics/seeds (owner's call on how, after reviewing them).
 - [x] **V9** At most 10 owner questions (PQ1-PQ10).
 - [ ] **V6 Owner review** (last): PQ1-PQ10 answered; the owner declares the list complete (or keeps
       extending it) and gives the execution go-ahead explicitly.
