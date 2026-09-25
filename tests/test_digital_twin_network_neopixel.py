@@ -77,11 +77,9 @@ def test_wlan_config_records_every_call() -> None:
 
 
 def test_wlan_config_calls_stays_bounded_across_many_calls() -> None:
-    # Regression test from baseline verification's own follow-up
-    # audit: config_calls/connect_calls used to be plain, unbounded lists, the same latent-leak
-    # shape as the fixed I2C.log/SPI.log bug (see network.py's own _CALL_LOG_MAXLEN comment) - a
-    # long-running twin session's own reconnect/fault-injection retry loop calls config()/connect()
-    # repeatedly for the life of the process.
+    # Regression test from baseline verification's follow-up audit: config_calls/connect_calls used to be
+    # plain unbounded lists, the same latent-leak shape as the fixed I2C.log/SPI.log bug - a long twin
+    # session's reconnect and fault-injection retry loop calls them for the life of the process.
     import network as network_module
 
     wlan = WLAN(STA_IF)
@@ -321,6 +319,47 @@ def test_neopixel_fault_injection() -> None:
         raise AssertionError("expected RuntimeError")
     except RuntimeError:
         pass
+
+
+
+def test_country_and_hostname_enforce_the_real_byte_bounds() -> None:
+    # Mirrors extmod/modnetwork.c: country() takes exactly 2 BYTES, hostname() at most 32 - the
+    # checks that make a character-valid "ÄT" raise on silicon (SPECIFICATION.md C.7.4).
+    import network as network_module
+
+    for bad in ("D", "DEU", "ÄT"):
+        try:
+            network_module.country(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("country() accepted " + repr(bad))
+    assert network_module.hostname("ä" * 16) == "ä" * 16  # 32 bytes: the bound itself
+    try:
+        network_module.hostname("ä" * 16 + "x")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("hostname() accepted 33 bytes")
+    network_module.country("DE")
+    network_module.hostname("SensorNode")
+
+
+def test_connect_refuses_what_the_real_driver_cannot_take() -> None:
+    wlan = WLAN(STA_IF)
+    wlan.active(True)
+    try:
+        wlan.connect("net", "ä" * 32 + "x")  # 65 bytes: cyw43_ll_wifi_join()'s -CYW43_EINVAL
+    except OSError as e:
+        assert e.args[0] == 22
+    else:
+        raise AssertionError("connect() took a 65-byte key")
+    try:
+        wlan.connect("ä" * 16 + "x", "password")  # 33 bytes would overflow the driver's SSID buffer
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("connect() took a 33-byte SSID")
 
 
 if __name__ == "__main__":

@@ -18,10 +18,17 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
 import tomllib
+
+# The same explicit sys.path convention scripts/build_firmware.py uses for its toolchain/
+# siblings: needed so this resolves both when run directly (which puts its own directory on
+# sys.path) and when loaded through tests_scripts/_script_loader.py, which does not.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import micropython_overrides
 
 # Confirmed GCC >=14 false positive in mbedtls_xor(), not a real bug (SPECIFICATION.md Part B.7);
 # suppressed outright since build_unix_port()/build_firmware() treat any "warning:" as a hard
@@ -74,10 +81,9 @@ BUILD_ENV_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 # (SPECIFICATION.md Part B.7).
 BUILD_ENV_LOCALE = "C.UTF-8"
 
-# On top of the base allowlist, git/apt calls (and the rp2 "submodules" Makefile target,
-# which does both a git fetch *and* an internal cmake configure pass) also need whatever
-# proxy/CA configuration this machine's network actually requires — explicitly named
-# here rather than inherited wholesale, so it's still only ever these specific variables.
+# On top of the base allowlist, git/apt calls - and the rp2 "submodules" target, which fetches
+# and configures - need whatever proxy/CA configuration this machine requires. Named explicitly
+# rather than inherited wholesale, so it stays only ever these variables.
 NETWORK_ENV_EXTRA = (
     "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy",
     "NO_PROXY", "no_proxy", "ALL_PROXY", "all_proxy",
@@ -112,9 +118,37 @@ def run(cmd: list[str], cwd: Path | None = None, *, check: bool = True, env: dic
     return result.stdout
 
 
+UV_SYNC_ATTEMPTS = 3  # mirrors ci.yml's unit-tests job: a third party's momentary outage is not a failed install
+
+
+def run_retried(cmd: list[str], cwd: Path | None = None, *, attempts: int = UV_SYNC_ATTEMPTS, backoff_s: float = 10.0) -> str:
+    """run(), retried with a growing pause - for a step that downloads from a third party (uv sync
+    builds actionlint-py, which fetches its binary from a release URL; a 502 there once failed a clean install)."""
+    for attempt in range(1, attempts):
+        try:
+            return run(cmd, cwd=cwd)
+        except SetupError as e:
+            log(f"{e} - attempt {attempt}/{attempts}, retrying in {attempt * backoff_s:.0f}s")
+            time.sleep(attempt * backoff_s)
+    return run(cmd, cwd=cwd)
+
+
 def load_versions(path: Path) -> dict[str, Any]:
     with path.open("rb") as f:
         return tomllib.load(f)
+
+
+VERSIONS_PATH = Path(__file__).parent / "versions.toml"
+
+
+def load_lwip_macros(path: Path = VERSIONS_PATH) -> dict[str, int]:
+    """versions.toml's [lwip] table - the single source of truth for the firmware's lwIP options,
+    so one file drives a build and the connection-scaling sweep is reproducible rather than a
+    sequence of hand edits (SPECIFICATION.md Part B.14.2)."""
+    table = load_versions(path).get("lwip")
+    if not isinstance(table, dict):
+        raise SetupError(f"{path} has no [lwip] table - the rp2 firmware's lwIP options are pinned there, not in the fetched checkout (SPECIFICATION.md Part B.14.2)")
+    return dict(table)
 
 
 def write_micropython_ref(path: Path, ref: str) -> None:
@@ -284,17 +318,21 @@ def fetch_unix_submodules(micropython_dir: Path) -> None:
     run(["make", "submodules"], cwd=unix_dir, env=network_env())
 
 
-def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest: Path | None = None) -> Path:
-    """Builds the RP2 firmware. Pass frozen_manifest (an absolute path to a manifest.py written
-    by write_freeze_manifest()) to freeze an extra module in via FROZEN_MANIFEST=, which takes
-    precedence over the board's own default manifest; omit it for a vanilla build."""
+def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest: Path | None = None, *, toolchain_dir: Path | None = None, lwip_macros: dict[str, int] | None = None) -> Path:
+    """Builds the RP2 firmware, optionally with an extra FROZEN_MANIFEST=. Always applies and then
+    verifies the lwip_connection_counts override (lwip_macros defaults to versions.toml's [lwip],
+    toolchain_dir to micropython_dir's parent); full contract in SPECIFICATION.md Part B.14.2."""
     rp2_dir = micropython_dir / "ports" / "rp2"
-    label = "with the frozen verification module (build-only check)" if frozen_manifest else "standard, unchanged"
+    label = "with the frozen verification module (build-only check)" if frozen_manifest else "board manifest, pinned lwIP options"
     log(f"Building firmware for BOARD={board} ({label})")
     build_dir = rp2_dir / f"build-{board}"
     if build_dir.exists():
         shutil.rmtree(build_dir)
-    make_cmd = ["make", f"BOARD={board}", f"-j{jobs}", f"CFLAGS_EXTRA={_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND}"]
+    if lwip_macros is None:
+        lwip_macros = load_lwip_macros()
+    overrides_dir = (toolchain_dir if toolchain_dir is not None else micropython_dir.parent) / "build_overrides"
+    override_make_vars = micropython_overrides.apply_lwip_connection_counts_override(micropython_dir, overrides_dir, board, lwip_macros)
+    make_cmd = ["make", f"-j{jobs}", f"CFLAGS_EXTRA={_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND}", *(f"{key}={value}" for key, value in override_make_vars.items())]
     if frozen_manifest is not None:
         make_cmd.append(f"FROZEN_MANIFEST={frozen_manifest}")
     out = run(make_cmd, cwd=rp2_dir, env=build_env())
@@ -306,24 +344,43 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest
     uf2 = build_dir / "firmware.uf2"
     if not uf2.exists():
         raise SetupError(f"firmware build did not produce {uf2}")
+    # After the build, not before: a generated header that was written but never found would
+    # otherwise ship a firmware whose connection ceiling silently differs from what was asked for.
+    micropython_overrides.verify_lwip_macros_in_build(build_dir, lwip_macros)
     return uf2
 
 
-def build_unix_port(micropython_dir: Path, jobs: int, frozen_manifest: Path | None = None) -> Path:
-    """Builds the "standard" Unix port variant; needs mpy-cross already built, and takes
-    frozen_manifest like build_firmware(). Always MICROPY_PY_SYS_SETTRACE=1 so one binary backs both
-    plain and --coverage runs (CLAUDE.md); ports/rp2's build never gets that flag."""
-    label = "with the frozen verification module" if frozen_manifest else "standard, unchanged"
+# The two Unix-port variants and what each backs. The plain test rig is settrace-FREE: with
+# MICROPY_PY_SYS_SETTRACE compiled in, py/vm.c allocates a frame and a code object per call and per
+# generator resume, inflating every allocation figure 4-5x (SPECIFICATION.md Part E.5.2).
+UNIX_BUILD_DIR = "build-standard"
+UNIX_SETTRACE_BUILD_DIR = "build-settrace"
+
+
+def build_unix_port(micropython_dir: Path, toolchain_dir: Path, jobs: int, frozen_manifest: Path | None = None, *, settrace: bool = False) -> Path:
+    """Builds a Unix port variant; needs mpy-cross, takes frozen_manifest like build_firmware().
+    settrace=False is the test rig, True is --coverage's own binary (see the constants above).
+    Always apply_unix_kbd_intr_override() for the safe SIGINT path (Part B.14.1)."""
+    variant = "settrace, for --coverage" if settrace else "settrace-free, the test rig"
+    label = f"{variant}, with the frozen verification module" if frozen_manifest else variant
     log(f"Building the MicroPython Unix port ({label})")
     unix_dir = micropython_dir / "ports" / "unix"
-    build_dir = unix_dir / "build-standard"
+    build_dir = unix_dir / (UNIX_SETTRACE_BUILD_DIR if settrace else UNIX_BUILD_DIR)
     if build_dir.exists():
         shutil.rmtree(build_dir)
+    overrides_dir = toolchain_dir / "build_overrides"
+    override_make_vars = micropython_overrides.apply_unix_kbd_intr_override(micropython_dir, overrides_dir)
+    # BUILD= only for the non-default variant: the Makefile's own `BUILD ?= build-$(VARIANT)`
+    # already lands the settrace-free rig in build-standard, which every other script resolves.
+    settrace_flag = "-DMICROPY_PY_SYS_SETTRACE=1 " if settrace else ""
     make_cmd = [
         "make",
         f"-j{jobs}",
-        f"CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=1 {_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND}",
+        f"CFLAGS_EXTRA={settrace_flag}{_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND}",
+        *(f"{key}={value}" for key, value in override_make_vars.items()),
     ]
+    if settrace:
+        make_cmd.append(f"BUILD={UNIX_SETTRACE_BUILD_DIR}")
     if frozen_manifest is not None:
         make_cmd.append(f"FROZEN_MANIFEST={frozen_manifest}")
     out = run(make_cmd, cwd=unix_dir, env=build_env())
@@ -349,7 +406,8 @@ def clean_build_dirs(toolchain_dir: Path, board: str) -> None:
         toolchain_dir / "picotool" / "build",
         toolchain_dir / "micropython" / "mpy-cross" / "build",
         toolchain_dir / "micropython" / "ports" / "rp2" / f"build-{board}",
-        toolchain_dir / "micropython" / "ports" / "unix" / "build-standard",
+        toolchain_dir / "micropython" / "ports" / "unix" / UNIX_BUILD_DIR,
+        toolchain_dir / "micropython" / "ports" / "unix" / UNIX_SETTRACE_BUILD_DIR,
     ]
     for target in targets:
         if target.exists():
@@ -418,7 +476,9 @@ def clean_frozen_verification_build_dirs(toolchain_dir: Path, board: str) -> Non
     log("Cleaning up the frozen-bytecode verification build artifacts")
     targets = [
         toolchain_dir / "micropython" / "ports" / "rp2" / f"build-{board}",
-        toolchain_dir / "micropython" / "ports" / "unix" / "build-standard",
+        # UNIX_BUILD_DIR only: the verification chain builds the default variant, never the
+        # settrace one, so removing that here would delete a real deliverable instead of an artifact.
+        toolchain_dir / "micropython" / "ports" / "unix" / UNIX_BUILD_DIR,
     ]
     for target in targets:
         if target.exists():
@@ -440,18 +500,21 @@ def run_verification_sequence(micropython_dir: Path, toolchain_dir: Path, board:
 
         unix_manifest = test_dir / "manifest_unix.py"
         write_freeze_manifest(unix_manifest, "variants/manifest.py")
-        unix_binary = build_unix_port(micropython_dir, jobs, frozen_manifest=unix_manifest)
+        unix_binary = build_unix_port(micropython_dir, toolchain_dir, jobs, frozen_manifest=unix_manifest)
         run_frozen_verify_on_unix(unix_binary)
 
         rp2_manifest = test_dir / "manifest_rp2.py"
         write_freeze_manifest(rp2_manifest, f"boards/{board}/manifest.py")
-        build_firmware(micropython_dir, board, jobs, frozen_manifest=rp2_manifest)
+        build_firmware(micropython_dir, board, jobs, frozen_manifest=rp2_manifest, toolchain_dir=toolchain_dir)
         # test_dir (the test module + both manifests) is removed automatically once this
         # "with" block exits - nothing further to clean up for those.
 
     clean_frozen_verification_build_dirs(toolchain_dir, board)
 
-    unix_binary = build_unix_port(micropython_dir, jobs)  # vanilla rebuild: the real test rig
+    unix_binary = build_unix_port(micropython_dir, toolchain_dir, jobs)  # vanilla rebuild: the real test rig
+    # Second, separate binary, into its own build dir: --coverage needs sys.settrace, and compiling
+    # it in costs every OTHER run 4-5x on allocation figures, so the two cannot share one build.
+    build_unix_port(micropython_dir, toolchain_dir, jobs, settrace=True)
 
     return mpy_cross_binary, unix_binary
 
@@ -953,17 +1016,16 @@ def run_project_dependency_install(repo_root: Path, toolchain_dir: Path, *, skip
     env=None (inherit the caller's), unlike every other subprocess here: build_env()'s fixed PATH
     would hide the caller's own uv/npm install."""
     log("Installing Python project dependencies (uv sync)")
-    run(["uv", "sync"], cwd=repo_root)
+    run_retried(["uv", "sync"], cwd=repo_root)
     if skip_npm:
         log("Skipping npm ci (--skip-npm)")
         return
     if not (repo_root / "package.json").exists():
         log("No package.json found - skipping npm ci")
         return
-    # Installs the pinned Node when the host has none, instead of the previous soft skip that left
-    # the whole web tier silently unrunnable - which is exactly what happened on the bench Pi4.
-    # Not gated on --skip-apt: no system package and no sudo, just a tarball into the managed
-    # toolchain directory. --skip-npm above is the gate for "I do not want the JS side at all".
+    # Installs the pinned Node when the host has none, rather than the soft skip that left the
+    # web tier silently unrunnable on the bench Pi4. Not gated on --skip-apt - no system package,
+    # no sudo, just a tarball into the managed toolchain dir; --skip-npm is that gate.
     node_bin = ensure_node(toolchain_dir, repo_root)
     env = None
     if node_bin is not None:
@@ -1050,8 +1112,8 @@ def main() -> int:
         "--clean",
         action="store_true",
         help="Wipe all build-artifact directories (picotool/build, mpy-cross/build, ports/rp2/build-<board>, "
-        "ports/unix/build-standard) before building, without re-cloning the git sources -- brings the "
-        "toolchain back to a from-scratch build state",
+        "and both Unix-port variants ports/unix/build-standard and ports/unix/build-settrace) before "
+        "building, without re-cloning the git sources -- brings the toolchain back to a from-scratch build state",
     )
 
     subparsers.add_parser(
@@ -1091,7 +1153,7 @@ def main() -> int:
         argv = ["setup"]
     args = parser.parse_args(argv)
 
-    versions_path = Path(__file__).parent / "versions.toml"
+    versions_path = VERSIONS_PATH
     versions = load_versions(versions_path)
 
     if args.command == "test":
@@ -1104,6 +1166,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except SetupError as exc:
+    except (SetupError, micropython_overrides.OverrideError) as exc:  # both name their own cause and fix
         print(f"\nFAILED: {exc}", file=sys.stderr)
         sys.exit(1)

@@ -14,11 +14,9 @@ RACED_ERRNO = 6
 POST_RECOVERY_ERRNO = 7
 LOG_NAME = "ERRRACE"
 
-# The only three outcomes a reset landing mid-chunk-write may leave behind. Losing the whole history
-# is accepted behavior, not a defect (project owner's call, 2026-09-11): an interrupted chunk write
-# leaves a status byte at _STATUS_BUSY, PrintLogHistoryStore.setup()'s _read() then fails and its
-# _write() fallback stores the empty ring. What must never happen is a PARTIAL or garbled restore -
-# that would mean the dual-block + CRC + busy-flag protocol had failed at its actual job.
+# The only three outcomes a reset landing mid-chunk-write may leave behind. Losing the whole
+# history is accepted (owner, 2026-09-11) - SPECIFICATION.md Part C.3.1 has the mechanism; a
+# PARTIAL or garbled restore never is, since that is the dual-block+CRC protocol's actual job.
 _ACCEPTED: "tuple[list[int], ...]" = ([], [SEEDED_ERRNO] * 3, [SEEDED_ERRNO] * 3 + [RACED_ERRNO])
 
 
@@ -30,9 +28,8 @@ async def _main() -> None:
         return
 
     # Same two objects in the same order as the seed script, so this addresses the same chunk.
-    # Deliberately does NOT clear it first, unlike every other error-log script here (see
-    # tests_hardware/README.md's clear-at-the-start rule): what the raced reset left behind IS the
-    # thing under test, so a baseline wipe would erase it.
+    # Deliberately NOT cleared first, against tests_hardware/README.md's clear-at-the-start rule:
+    # what the raced reset left behind is the thing under test, so a wipe would erase it.
     store = make_logger(fram, history_length=HISTORY_LENGTH, debug=None, name=LOG_NAME)
     await store.setup()
     if not store.initialized:

@@ -2,8 +2,10 @@
 Fills the gap test_notification_scd30_integration.py/test_notification_sgp40_integration.py each leave (their own separate coordinator/pixel pair): proves both chains trigger correctly without cross-contaminating, and a hardware fault on one sensor stays isolated to its own error log."""
 
 import asyncio
-import os
 import struct
+from collections import namedtuple
+
+from _tmp_scratch import TmpScratch
 
 from asy_i2c_driver import I2C
 from asy_neopixel_driver import NeopixelDriver
@@ -50,64 +52,14 @@ class _FastAsyncSleep:
         asyncio.sleep = self._real_sleep
 
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("notify_dual_")
-
-
-def _remove_any(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        try:
-            os.rmdir(path)
-        except OSError:
-            pass
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. `label`
+# (e.g. "scd30"/"sgp40") keeps this file's two-sensors-in-one-coordinator directories readable.
+_scratch = TmpScratch("notify_dual")
 
 
 def _tmp_cfg_dir(label: str) -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    _next_dir += 1
-    path = _TMP_DIR + "/notify_dual_" + label + "_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass
-    _remove_any(path + "/config_NOTIFY.cfg")
-    _remove_any(path + "/config_SGP40.cfg")
-    return path + "/"
+    return _scratch.dir(label)
 
 
 class _FakeTime:
@@ -158,14 +110,6 @@ def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
     return bytes(frame)
 
 
-async def co2_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
-    # Verbatim mirror of src/sensortask_wozi.py's own co2_value_callback() body.
-    scd_data = await scd_reader.get_data()
-    if scd_data is None or scd_data.CO2 is None:
-        return None
-    return float(scd_data.CO2)
-
-
 def drive_scd_cycle(reader: SCD30_Reader) -> "SCDResults":
     # Exactly what read_loop() itself does per cycle (see asy_scd30_driver.py) - driven directly
     # instead of through the full irq/timer machinery, same convention as the sibling files.
@@ -194,25 +138,36 @@ def _word(value: int) -> bytes:
     return payload + bytes([_crc8(payload)])
 
 
-async def _comp_data() -> "list[float | None]":
-    return [25.0, 50.0]
+_CompReading = namedtuple("_CompReading", ("Temp", "Hum"))
+
+
+class _FakeCompSource:
+    # Structural stand-in for temperature_source/humidity_source (SPECIFICATION.md Parts C.14 and L.6.3) - a
+    # fixed value independent of this test's real scd_reader, matching the removed stub's own fixed [25.0,
+    # 50.0] return exactly.
+    #
+    # scd_reader's real reading is deliberately not used: _settle_and_spike() below needs 200 compensated
+    # SGP40 cycles well before this test ever drives scd_reader for its own real measurement.
+    async def get_data(self) -> "Any":
+        return _CompReading(25.0, 50.0)
 
 
 def make_sgp_reader() -> "tuple[SGP40_Reader, FakeI2C]":
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _comp_data, max_module_error=2, cfg_path=_tmp_cfg_dir("sgp"))
+    comp = _FakeCompSource()
+    reader = SGP40_Reader(
+        i2c,
+        temperature_source=comp,
+        temperature_field="Temp",
+        humidity_source=comp,
+        humidity_field="Hum",
+        max_module_error=2,
+        cfg_path=_tmp_cfg_dir("sgp"),
+    )
     run(reader.pr.setup())
     fake_bus = reader.sgp.i2c_sgp40.i2c_device.i2c._i2c
     assert fake_bus is not None  # type-narrowing only - I2C() always builds its raw bus
     return reader, fake_bus
-
-
-async def voc_value_callback(sgp_reader: SGP40_Reader) -> "int | float | None":
-    # Verbatim mirror of src/sensortask_wozi.py's own voc_value_callback() body.
-    sgp_data = await sgp_reader.get_data()
-    if sgp_data is None or sgp_data.VOC is None:
-        return None
-    return int(sgp_data.VOC)
 
 
 def _drive_sgp_cycle(reader: SGP40_Reader, fake_bus: "FakeI2C", raw: int) -> "SGP40":
@@ -240,17 +195,13 @@ def _settle_and_spike(reader: SGP40_Reader, fake_bus: "FakeI2C") -> "SGP40":
 
 
 def make_dual_stack(scd_reader: SCD30_Reader, sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, NotificationCoordinator]":
+    # Direct (source, field) references (SPECIFICATION.md Part C.14.2), mirrors
+    # src/sensortask_wozi.py's own real registration shape.
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
-    async def get_co2() -> "int | float | None":
-        return await co2_value_callback(scd_reader)
-
-    async def get_voc() -> "int | float | None":
-        return await voc_value_callback(sgp_reader)
-
     notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir("notify"))
-    co2_signal = NotificationSignal("WarnCO2", get_co2, (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
-    voc_signal = NotificationSignal("WarnVOC", get_voc, (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
+    co2_signal = NotificationSignal("WarnCO2", scd_reader, "CO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
+    voc_signal = NotificationSignal("WarnVOC", sgp_reader, "VOC", (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
     notify.register(co2_signal)
     notify.register(voc_signal)
     notify.finalize()
@@ -295,11 +246,12 @@ def test_both_sensors_crossing_threshold_together_trigger_their_own_signal_witho
 
 
 def test_one_sensor_i2c_fault_stays_isolated_and_the_healthy_sibling_still_triggers() -> None:
-    # SCD30 faults; SGP40 stays healthy and already-spiked - proves a real hardware fault on one
-    # sensor's own driver neither blocks nor corrupts the sibling sensor's independent chain, and is
-    # attributed only to the faulted sensor's own error log (matching SPECIFICATION.md Part C.7's "each driver
-    # owns its own error log" separation of concerns, now proven across two real sensors sharing one
-    # downstream coordinator rather than just one sensor in isolation).
+    # SCD30 faults while SGP40 stays healthy and already-spiked - proving a real hardware fault on one
+    # sensor's driver neither blocks nor corrupts the sibling's independent chain, and is attributed only to
+    # the faulted sensor's own error log.
+    #
+    # That matches Part C.7's "each driver owns its own error log" separation, now proven across two real
+    # sensors sharing one downstream coordinator rather than one sensor in isolation.
     scd_reader, scd_i2c = make_scd_reader()
     scd_i2c.inject_fault("writeto", OSError(5, "simulated bus fault"))
 

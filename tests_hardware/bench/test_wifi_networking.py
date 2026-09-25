@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import http_client
-from error_log_helpers import assert_module_error_log_contains, reset_all_error_logs
+from error_log_helpers import assert_module_error_log_contains, assert_no_task_ended, reset_all_error_logs
 from harness import Board, wait_until
 
 if TYPE_CHECKING:
@@ -26,12 +26,23 @@ def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, b
     # kick_all_stations() first: a stale AP-side station-table entry for the DUT's MAC is the
     # dominant cause of a hard_reset()-triggered reconnect failing here - see kick_client()'s own
     # docstring. This is the primary regression coverage for that exact scenario.
-    bench.kick_all_stations()
-    board.hard_reset()
-    lines = board.tail_log(duration_s=45.0)
-    joined = "\n".join(lines)
-    assert "Permanently no WLAN connection" not in joined, f"DUT fell back to hotspot mode instead of establishing a real STA connection after a hard reset:\n{joined}"
-    assert "WLAN connection established" in joined, f"no 'WLAN connection established' log line observed after hard reset:\n{joined}"
+    #
+    # One real association can fail for reasons outside the DUT (measured 2026-09-19: 1 miss in 3
+    # full suite runs, 12/12 clean in isolation, CYW43 reporting status -1 after the firmware's own
+    # two retries). A second cold boot separates that from a break, which fails both - queue F13.
+    attempts = []
+    for attempt in range(2):
+        bench.kick_all_stations()
+        board.hard_reset()
+        joined = "\n".join(board.tail_log(duration_s=45.0))
+        established = "WLAN connection established" in joined and "Permanently no WLAN connection" not in joined
+        attempts.append(joined)
+        if established:
+            if attempt:
+                print("RESULT NOTE: STA connect needed a second cold boot - one association was missed")
+            break
+    assert "Permanently no WLAN connection" not in attempts[-1], f"DUT fell back to hotspot mode instead of establishing a real STA connection, on {len(attempts)} consecutive cold boots:\n{attempts[-1]}"
+    assert "WLAN connection established" in attempts[-1], f"no 'WLAN connection established' log line observed after {len(attempts)} cold boots:\n{attempts[-1]}"
 
 
 # ---------------------------------------------------------------------------
@@ -66,10 +77,9 @@ def test_real_dns_resolution_succeeds_over_genuine_udp(board: Board) -> None:
 
 
 def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # Doubles as this tier's real-hardware proof for BACKLOG.md open question 6: the STA link
-    # stays fully up (only UDP 123 is blocked, not the AP) - the real-hardware shape of
-    # "isconnected()==True but a specific downstream operation is unreachable", the same property
-    # tests/test_ntp_wifi_dns_integration.py proves at the mock/unit level.
+    # This tier's real-hardware proof for BACKLOG open question 6: only UDP 123 is blocked, not
+    # the AP, so the STA link stays up - "isconnected()==True but one downstream operation is
+    # unreachable", which tests/test_ntp_wifi_dns_integration.py proves at the mock level.
     reset_all_error_logs(dut_ip)
     bench.block_udp_ports([123])
     try:
@@ -95,11 +105,12 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: _http_ok(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry - see this test's own comment)")
-    # `_error_check()`'s coarser consecutive-failure counter (SPECIFICATION.md Part C.7, not gated
-    # on ntp_issynced()) fires unconditionally on every failed sync attempt, ending in errno=20
-    # ("Giving up after repeated sync failures") - the real, expected outcome for a persistently
-    # blocked port, not a bug. See tests_hardware/README.md for the full since-fixed test-bug account.
-    assert_module_error_log_contains(dut_ip, "NTP", 20, "E")
+    # A blocked port is routine for NTP (SPECIFICATION.md Part C.7.2): errno 21 (no reply) is logged
+    # and the task backs off in place - it must never end and cost the supervisor's reboot budget.
+    assert_module_error_log_contains(dut_ip, "NTP", 21, "E")
+    restarts = [ln for ln in lines if "Task ended - attempting restart" in ln]
+    assert not restarts, "a blocked NTP server made a task end and be restarted:\n" + "\n".join(restarts)
+    assert_no_task_ended(dut_ip, "a blocked NTP server")  # the persisted record, beyond the tail window
 
 
 def _http_ok(dut_ip: str) -> bool:

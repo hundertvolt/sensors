@@ -7,10 +7,9 @@ import json
 import os
 import sys
 
-# Same sys.path convention as tests/test_setter_microdot_integration.py (see its own module
-# docstring for why: scripts/test.sh's MICROPYPATH deliberately excludes ext/, and extending
-# sys.path here reaches the real, vendored ext/microdot.py without touching MICROPYPATH/
-# pyproject.toml/scripts/test.sh - a "Pre-push verification" scope change this file must not need.
+# Same sys.path convention as tests/test_setter_microdot_integration.py: scripts/test.sh's
+# MICROPYPATH deliberately excludes ext/, so reaching the real vendored ext/microdot.py needs
+# this rather than a build-environment scope change.
 sys.path.insert(0, "ext")
 
 from _shared_rest_roundtrip import drain_json_response_body
@@ -18,7 +17,7 @@ from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
 from microdot import Microdot, Request, Response  # type: ignore[import-not-found]
 
 import config_manager as cm
-from asy_webserver_service import SettingsGroup, WebserverService, _stream_dict_response, _TimeoutStreamProxy
+from asy_webserver_service import SettingsGroup, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
 
 try:
     from typing import TYPE_CHECKING
@@ -37,10 +36,9 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":
 
 
 def status_body(res: "Response") -> bytes:
-    # GET /status streams from a plain list of already-json.dumps()-encoded fragments now (see
-    # asy_webserver_service.py's _get_status()/_build_status_pieces()) - drains it the way a real
-    # client naturally would, so every existing json.loads(...) assertion on a GET /status response
-    # keeps working unchanged.
+    # GET /status streams a list of already-json.dumps()-encoded fragments (see
+    # asy_webserver_service.py's _build_status_pieces()); draining it the way a real client would
+    # keeps every json.loads(...) assertion on a /status response working unchanged.
     return drain_json_response_body(res.body)
 
 
@@ -52,12 +50,9 @@ def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
 
 
 # ---------------------------------------------------------------------------
-# Fakes - registered-module doubles. Deliberately lightweight (not the real drivers): sections A-E
-# below test the webserver's own dispatch/aggregation/registration logic, not sensor-specific
-# behavior (already covered by each driver's own test file and
-# tests/test_setter_microdot_integration.py's real-Microdot end-to-end tests). _set_dict_cfg()
-# mirrors config_manager.write_config()'s real per-field Invalid/Valid semantics closely enough to
-# be a faithful stand-in (unknown key -> "Invalid", out-of-range -> "Invalid", else -> "Valid").
+# Fakes - registered-module doubles. Deliberately lightweight: sections A-E test the webserver's
+# own dispatch/aggregation/registration logic, not sensor behavior. _set_dict_cfg() mirrors
+# config_manager.write_config()'s per-field Invalid/Valid semantics closely enough to stand in.
 # ---------------------------------------------------------------------------
 
 
@@ -150,20 +145,16 @@ class _FakeModule:
 
 
 # ---------------------------------------------------------------------------
-# Fakes - reader/writer stream doubles standing in for asyncio.Stream, matching every method
-# ext/microdot.py's Request.create()/Response.write() actually call (readline, readexactly, awrite,
-# aclose, close, wait_closed, get_extra_info) plus what a per-call timeout-wrapping proxy needs to
-# forward. Deliberately never backed by a real select.poll()/socket - see the module docstring and
-# CLAUDE.md's CI-hang-investigation note for exactly why that's a hard requirement here.
+# Fakes - reader/writer stream doubles for asyncio.Stream, covering every method ext/microdot.py
+# actually calls plus what a per-call timeout-wrapping proxy forwards. Never backed by a real
+# select.poll()/socket - CLAUDE.md's CI-hang note says why that is a hard requirement here.
 # ---------------------------------------------------------------------------
 
 
 class _ScriptedReader:
-    # Feeds pre-scripted byte chunks to readline()/readexactly(), each preceded by an optional
-    # asyncio.sleep(delay) - lets a test simulate a paced/Slowloris client without any real I/O.
-    # After the scripted chunks are exhausted, further reads hang forever (never resolve) unless
-    # eof=True, in which case they raise EOFError/return b"" - matching real Stream behavior for a
-    # clean peer close vs. a genuinely wedged/silent one.
+    # Feeds pre-scripted byte chunks, each preceded by an optional asyncio.sleep(delay), so a test
+    # can simulate a paced/Slowloris client with no real I/O. Once exhausted, reads hang forever
+    # unless eof=True - matching real Stream behavior for a clean peer close vs. a wedged one.
     def __init__(self, chunks: "list[tuple[float, bytes]]", *, eof: bool = False) -> None:
         self._chunks = list(chunks)
         self._buf = b""
@@ -258,10 +249,10 @@ def _request_bytes(method: str, path: str, body: bytes = b"", extra_headers: "di
 
 
 def _make_service(**kwargs: "Any") -> "tuple[WebserverService, Microdot]":  # Any: forwarded
-    # verbatim into WebserverService's own 21 differently-typed keyword parameters, which no single
+    # verbatim into WebserverService's own 22 differently-typed keyword parameters, which no single
     # non-Any **kwargs element type can express before PEP 692's Unpack (3.11+).
     app = Microdot()
-    kwargs.setdefault("max_content_length", 4096)
+    kwargs.setdefault("max_content_length", 2048)  # tracks the shipped default, so these tests exercise it
     kwargs.setdefault("max_connections", 3)
     kwargs.setdefault("per_call_timeout_s", 0.2)
     kwargs.setdefault("outer_cap_s", 0.5)
@@ -281,10 +272,9 @@ def _make_request(app: "Microdot", method: str, path: str, json_body: "dict[str,
 
 
 def test_measurements_get_returns_merged_per_sensor_dict() -> None:
-    # _NestedCfgModule, not _FakeModule - real SCD30/SGP40/BMP3xx drivers' own get_dict_data()
-    # always returns the self-wrapped {name: {...}} shape (config_manager.make_dict()), never
-    # _FakeModule's flat one. See _NestedCfgModule's own docstring for why this distinction is the
-    # whole point of this test, not incidental.
+    # _NestedCfgModule, not _FakeModule - the real drivers' get_dict_data() always returns the
+    # self-wrapped {name: {...}} shape (config_manager.make_dict()), never _FakeModule's flat one,
+    # and that distinction is the whole point of this test.
     scd = _NestedCfgModule("SCD30", values={}, data={"CO2": 800})
     sgp = _NestedCfgModule("SGP40", values={}, data={"VOC": 120})
     _service, app = _make_service(sensors=[scd, sgp])
@@ -404,28 +394,13 @@ def test_networking_get_is_flat_settings_only_no_live_fields() -> None:
 
 
 class _NestedCfgModule:
-    # Reproduces config_manager.make_dict()'s real {type_name: {field: value}} shape - the actual
-    # shape AsyConnTime/AsyNtpClient/NotificationCoordinator's own get_dict_cfg() returns in
-    # production (base_classes.py's SensorReaderConfig default, via ConfigManager.make_dict()),
-    # unlike _FakeModule's own deliberately-flat get_dict_cfg() convention above (which matches
-    # SystemService's own get_dict_cfg() override instead - see system_service.py's
-    # self.cfgmgr.get_dict(...), a genuinely different, already-flat method). Found via
-    # twin-based integration testing
-    # (tests/test_digital_twin_sensortask_integration.py): _FakeModule's flat shape masked a real
-    # bug where _get_settings_flat() never unwrapped this real shape at all, so /networking and
-    # /notification always returned {} in production, and /system silently dropped every field not
-    # sourced from SystemService's own flat override (DebugLevel) - see the regression test right
-    # below.
+    # Reproduces config_manager.make_dict()'s real {type_name: {field: value}} shape - what
+    # AsyConnTime/AsyNtpClient/NotificationCoordinator and the real sensor drivers return, unlike
+    # _FakeModule's flat convention above (which matches SystemService's own flat override).
     #
-    # Also doubles as a registered-sensor fake for _get_measurements()/_get_sensors() themselves
-    # (get_dict_data() added below, same nested convention) - real SCD30/SGP40/BMP3xx drivers
-    # always return this self-wrapped shape for both, never _FakeModule's flat one, and
-    # _get_measurements()/_get_sensors() had the identical class of bug _flatten_cfg_values() above
-    # was written to fix: indexing the already-self-wrapped result by name again doubled it into
-    # {"SCD30": {"SCD30": {...}}} for every real sensor - found via a real user report against the
-    # real assembled system, not caught here (this file's own sensor tests used _FakeModule's flat
-    # shape) or by tests/test_digital_twin_sensortask_integration.py's own real-HTTP GET test either
-    # (that test only checked top-level keys, never the values - both gaps closed alongside this).
+    # Guards two real production bugs of one class: _get_settings_flat() never unwrapping this
+    # shape (so /networking and /notification returned {}), and _get_measurements()/_get_sensors()
+    # indexing an already-wrapped result again into {"SCD30": {"SCD30": {...}}}.
     def __init__(self, type_name: str, values: "dict[str, Any]", data: "dict[str, Any] | None" = None) -> None:
         self.name = type_name
         self._type_name = type_name
@@ -471,14 +446,9 @@ async def _record_async(sink: "list[int]") -> None:
 
 
 def test_networking_put_raising_post_fct_marks_every_attempted_field_in_that_group_failed() -> None:
-    # Regression test for a real, confirmed gap (SPECIFICATION.md Part H.6's "Server-side
-    # settings-group failure" rule, "silent result-swallow"): handle_set_cmd() (api_response.py)
-    # discards its already-computed
-    # per-field results when post_fct/post_asy_fct raises and returns an empty result dict -
-    # _apply_settings_groups() used to just .update() that empty dict in, silently dropping every
-    # field the group actually attempted from the overall response, with the top-level envelope
-    # still reporting success. Every field in `subset` must now come back explicitly "Failed"
-    # instead of vanishing.
+    # Regression test for SPECIFICATION.md Part H.6's "silent result-swallow": handle_set_cmd()
+    # discards its per-field results when post_fct/post_asy_fct raises, and _apply_settings_groups()
+    # used to .update() that empty dict in. Every field in `subset` must now come back "Failed".
     wifi = _FakeModule(
         "WIFI",
         schema=(("SSID", "str", "", 0, 32, None), ("PW", "str", "", 0, 63, None)),
@@ -512,6 +482,33 @@ def test_system_get_is_flat_debug_gmt_dst_only() -> None:
     _service, app = _make_service(settings={"system": groups})
     res = run(app.dispatch_request(_make_request(app, "GET", "/system", None)))
     assert json.loads(status_body(res)) == {"DebugLevel": 2, "GMTOffset": 3600, "DSTOffset": 3600}
+
+
+def test_system_get_reports_build_info_verbatim_when_supplied() -> None:
+    # SPECIFICATION.md Part L.7: buildgen supplies this dict at construction time (firmware/
+    # website version + a real build timestamp) - WebserverService never computes any of it itself,
+    # just relays it under one "build" sub-entry alongside the ordinary flat settings fields.
+    build_info = {"firmwareVersion": "2.0b0", "websiteVersion": "2.0b0", "buildDate": "2026-09-12T10:00:00Z"}
+    _service, app = _make_service(build_info=build_info)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/system", None)))
+    assert json.loads(status_body(res)) == {"build": build_info}
+
+
+def test_system_get_omits_build_key_when_build_info_not_supplied() -> None:
+    _service, app = _make_service()
+    res = run(app.dispatch_request(_make_request(app, "GET", "/system", None)))
+    assert json.loads(status_body(res)) == {}
+
+
+def test_system_get_combines_flat_settings_and_build_info_together() -> None:
+    # The realistic shape every real generated device actually produces: ordinary flat
+    # SettingsGroup-sourced fields alongside the one nested "build" sub-entry, neither one
+    # clobbering the other.
+    sysm = _FakeModule("SYSTEM", schema=(("DebugLevel", "int", 0, 0, 5, None),), values={"DebugLevel": 2})
+    build_info = {"firmwareVersion": "2.0b0", "websiteVersion": "2.0b0", "buildDate": "2026-09-12T10:00:00Z"}
+    _service, app = _make_service(settings={"system": [SettingsGroup(sysm, ("DebugLevel",))]}, build_info=build_info)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/system", None)))
+    assert json.loads(status_body(res)) == {"DebugLevel": 2, "build": build_info}
 
 
 def test_system_put_settings_only_body_no_systemcmd_takes_no_lifecycle_action() -> None:
@@ -557,10 +554,9 @@ def test_system_put_systemcmd_reboot_fires_system_cmd_callback() -> None:
 
 
 def test_system_put_mempause_never_accepts_a_client_supplied_duration() -> None:
-    # Confirms the webserver layer only ever forwards the enum string, never a caller-suppliable
-    # duration - system_cmd()'s own implementation (SystemService.pause_permanent_storage) is what
-    # actually hardcodes the fixed 300s, this test just proves nothing upstream of it leaks a
-    # duration field through even if one is present in the body.
+    # The webserver layer only ever forwards the enum string, never a caller-suppliable duration -
+    # system_cmd()'s implementation (SystemService.pause_permanent_storage) hardcodes the 300s, so
+    # nothing upstream may leak a duration field through even if one is present in the body.
     cmd_calls = []
 
     async def system_cmd(cmd: str) -> bool:
@@ -574,10 +570,9 @@ def test_system_put_mempause_never_accepts_a_client_supplied_duration() -> None:
 
 
 def test_system_put_systemcmd_raising_callback_returns_failed_not_an_exception() -> None:
-    # system_cmd is a caller-supplied callback (like every other such callback in this codebase -
-    # e.g. asy_notification_service.py's request_signal_cb) and could legitimately misbehave;
-    # previously unguarded here, so a raise would escape all the way out of the route handler
-    # instead of degrading to a clean "Failed" result with a persisted, diagnosable errno.
+    # system_cmd is a caller-supplied callback like every other in this codebase and could
+    # legitimately misbehave; unguarded, a raise would escape the route handler instead of
+    # degrading to a clean "Failed" result with a persisted, diagnosable errno.
     async def system_cmd(_cmd: str) -> bool:
         raise RuntimeError("simulated system_cmd failure")
 
@@ -722,11 +717,9 @@ def test_notification_put_pause_time_reported_invalid_when_not_an_int() -> None:
 
 
 def test_notification_put_pause_time_accepts_integral_float_coerced_to_int() -> None:
-    # Mirror of the fractional-rejected test above, in the accept direction: config_manager.py's
-    # coerce_numeric() policy (SPECIFICATION.md Part A.8) accepts an integral float for PauseTime's
-    # own synthetic int FieldSchema, and the callback must receive the coerced int, not the raw
-    # float - a real client's json.dumps(60.0)-shaped body must not reach notification_pause() as
-    # a float when its own signature (and the real coordinator behind it) expects int.
+    # Mirror of the fractional-rejected test above, in the accept direction: coerce_numeric()
+    # (SPECIFICATION.md Part A.8) accepts an integral float for PauseTime's synthetic int schema,
+    # and the callback must receive the coerced int - notification_pause() expects int.
     pause_calls = []
 
     async def notification_pause(secs: int) -> bool:
@@ -745,12 +738,9 @@ def test_notification_put_pause_time_accepts_integral_float_coerced_to_int() -> 
 
 
 def test_notification_put_pause_time_reported_invalid_when_out_of_range() -> None:
-    # Legacy's own pauseAutoLED command (modules/sensortask-wozi.py, update_valid_json(...,
-    # 0, 3600, ...)) rejects an out-of-range pauseTime as Invalid rather than silently clamping it -
-    # LockedCounter.set_value() would clamp a too-large/negative value into [0, 3600] without
-    # raising, so this dispatcher must reject it itself before ever calling the callback, the same
-    # way every other numeric field in this codebase is range-checked server-side regardless of
-    # what a client sends (config_manager.py's own type_or_range_error()).
+    # Legacy's own pauseAutoLED rejects an out-of-range pauseTime as Invalid rather than clamping
+    # (modules/sensortask-wozi.py), but LockedCounter.set_value() would clamp silently - so this
+    # dispatcher must range-check server-side itself before ever calling the callback.
     pause_calls = []
 
     async def notification_pause(secs: int) -> bool:
@@ -908,17 +898,17 @@ def test_b_duplicate_keys_in_raw_json_text_last_wins() -> None:
 
 
 def test_b_deeply_nested_json_body_degrades_to_a_clean_rejection_not_a_hard_fault() -> None:
-    # Corrected during implementation: building the nested structure as a real Python object and
-    # then calling json.dumps() on it (the original approach) recurses exactly as deeply as the
-    # json.loads() this test means to exercise - it blew the interpreter's own recursion limit in
-    # this test's own setup code, before ever reaching request.json/_body_as_dict(). Building the
-    # raw JSON text directly via string repetition sidesteps that entirely: no recursive Python call
-    # is involved in constructing the bytes, only json.loads() (inside the code under test) ever
-    # walks this structure recursively.
+    # Building the nested structure as a Python object and calling json.dumps() recurses exactly as
+    # deeply as the json.loads() under test, blowing the recursion limit in this test's own setup.
+    # Repeating raw JSON text keeps recursion to the json.loads() inside the code under test.
     _service, app, _mod = _settings_service("system")
-    depth = 2000  # deep enough to matter on an embedded stack; MicroPython's json.loads recursion
-    # bound is confirmed well under this by direct testing against the pinned interpreter (raises
-    # RecursionError/ValueError, not a hard interpreter fault).
+    # The deepest nesting that is actually REACHABLE: max_content_length caps the body at 2,048 B,
+    # so 1,000 levels (2,001 B) is the worst case a client can submit, and a deeper one is a 413
+    # before any of this runs. Previously 2,000, which stopped fitting when the cap was tightened.
+    depth = 1000
+    # An earlier comment here claimed MicroPython's json.loads() recursion bound is "well under"
+    # this - measured false against the pinned interpreter, which parses depth 3,000 fine. What the
+    # test really pins is the non-dict top level taking _body_as_dict()'s clean ERR path.
     req = _make_request(app, "PUT", "/system", {})
     req._body = b"[" * depth + b"1" + b"]" * depth
     req.content_length = len(req._body)
@@ -1001,6 +991,29 @@ def test_d_counter_always_present_history_present_for_both_populated_and_zero_ca
     assert errcount["QUIET"]["history"] == [{"num": 3, "type": "E"}]
     assert errcount["FREE"]["counter"] == 0
     assert errcount["FREE"]["history"] == []
+
+
+def test_d_a_module_whose_log_holds_no_entry_of_its_own_still_gets_the_empty_shape() -> None:
+    # Distinct from the zero-counter case above, which returns a real entry reading 0: here the
+    # module's own name is absent from the log entirely. Without the fallback the response would
+    # carry a null that every js/ consumer would have to special-case.
+    empty = _FakeModule("EMPTY")
+
+    async def no_entry_at_all() -> "dict[str, Any]":
+        return {}
+
+    empty.get_error_counter = no_entry_at_all  # type: ignore[method-assign]
+    _service, app = _make_service(error_sources=[empty])
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    errcount = json.loads(status_body(res))["errcount"]
+    assert errcount["EMPTY"] == {"counter": 0, "history": []}
+
+
+def test_d_get_error_sources_reports_the_service_itself_for_a_uniform_caller() -> None:
+    # Part C.14's fan-in accessor. The generated _collect_error_sources() does not consult it - this
+    # service's /status entry is added directly - but D.10 keeps the shape so no caller special-cases it.
+    service, _app = _make_service()
+    assert service.get_error_sources() == [service]
 
 
 def test_d_reset_errors_calls_reset_error_counter_on_every_registered_module() -> None:
@@ -1093,11 +1106,9 @@ def test_e_concurrent_put_during_get_never_produces_a_torn_response() -> None:
 
 
 def test_e_scd30_bmp3xx_live_readback_torn_read_is_a_known_characterization_not_a_regression() -> None:
-    # Deliberately demonstrates the known, already-flagged gap (see SPECIFICATION.md Part A.8 for
-    # the GET-shapes note) rather than asserting it's fixed - a runnable characterization so a future fix has a red
-    # test to turn green, instead of the gap only living in prose. Modeled here with a fake whose
-    # get_dict_cfg() awaits mid-construction (the real SCD30_Reader/BMP3xx_Reader shape), unlike
-    # every other fake in this file which builds its dict synchronously.
+    # Characterizes the known, already-flagged gap (SPECIFICATION.md Part A.8's GET-shapes note)
+    # rather than asserting it fixed, so a future fix has a red test to turn green. The fake's
+    # get_dict_cfg() awaits mid-construction, the real SCD30_Reader/BMP3xx_Reader shape.
     class _LiveReadbackModule(_FakeModule):
         async def get_dict_cfg(self) -> "dict[str, Any]":
             result: dict[str, Any] = {}
@@ -1135,10 +1146,9 @@ def test_e_mutating_a_returned_getter_dict_never_affects_the_modules_own_state()
 
 
 # ---------------------------------------------------------------------------
-# Section F - connection-lifecycle robustness. Exercises WebserverService._serve() directly against
-# the fake reader/writer doubles above - no real socket, matching decision 10 (Step 2's own tests
-# stay independent of Step 3's digital twin) and the CI-hang-fix precedent (never a real
-# select.poll()).
+# Section F - connection-lifecycle robustness. Exercises WebserverService._serve() directly
+# against the fake reader/writer doubles above - no real socket, and never a real select.poll()
+# (the CI-hang-fix precedent).
 # ---------------------------------------------------------------------------
 
 # F.1 - before/at accept
@@ -1209,21 +1219,59 @@ def test_f1_a_slot_freed_by_reclaim_accepts_the_next_connection_immediately() ->
     run_timed(scenario(), timeout_s=5.0)
 
 
+class _GatedCloseWriter(_ScriptedWriter):
+    # wait_closed() returns only once the test opens the gate - a close lwIP is still finishing.
+    def __init__(self, gate: "asyncio.Event") -> None:
+        super().__init__()
+        self._gate = gate
+
+    async def wait_closed(self) -> None:
+        self.wait_closed_called = True
+        await self._gate.wait()
+
+
+def test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_written() -> None:
+    # Settled (SPECIFICATION.md H.7): the client already holds its whole response, yet the slot counts
+    # until _close_writer() returns - its heap and pcb are still live, and the board is CPU-bound, so
+    # an earlier admission serves nothing more. The ~70 % refusals of back-to-back clients follow.
+    service, _app = _make_service(max_connections=1, per_call_timeout_s=5.0, outer_cap_s=5.0)
+
+    async def scenario() -> None:
+        gate = asyncio.Event()
+        closing = _GatedCloseWriter(gate)
+        reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True)
+        task = asyncio.get_event_loop().create_task(service._serve(reader, closing))
+        try:  # the gate always opens: a task left parked on it would wake inside a later test's loop
+            for _ in range(200):
+                if closing.wait_closed_called:
+                    break
+                await asyncio.sleep(0.01)
+            assert closing.wait_closed_called, "the connection never reached its close"
+            assert closing.written.startswith(b"HTTP/1.") and b"\r\n\r\n" in closing.written, closing.written
+            held = await service._open_conns.get_value()
+            assert held == 1, f"the response is out but the close is not; the slot must still count, got {held}"
+
+            refused = _ScriptedWriter()
+            await service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True), refused)
+            assert refused.written == b"" and refused.close_called  # refused like any over-ceiling client
+        finally:
+            gate.set()
+            await task
+        assert await service._open_conns.get_value() == 0
+        admitted = _ScriptedWriter()
+        await service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True), admitted)
+        assert admitted.written.startswith(b"HTTP/1."), admitted.written
+
+    run_timed(scenario(), timeout_s=5.0)
+
+
 # F.2 - mid-request, headers/request-line
 
 
 def test_f2_trickled_request_line_is_reclaimed_by_the_outer_cap_not_a_single_per_call_timeout() -> None:
-    # Corrected during implementation (see this file's own docstring: "refining only where writing
-    # the real code reveals a genuine problem"). Each header LINE (not byte) arrives as one atomic
-    # chunk, paced far enough apart that any single readline() call - the whole point of a *per-call*
-    # timeout wrapping one logical stream-method invocation, per BACKLOG.md's design sketch step 2 -
-    # finishes comfortably under the per-call timeout, defeating it; the outer per-connection
-    # wall-clock cap (wrapping the *whole* handle_request() call) is what actually bounds the
-    # connection regardless of how the client paces individual reads (see SPECIFICATION.md Part A.8,
-    # connection-hardening item 1 / decision 2). A byte-by-byte trickle (this test's original shape) instead made a
-    # *single* readline() call itself take far longer than the per-call timeout to assemble one
-    # line - correctly reclaimed by the per-call timeout alone, never even reaching the outer cap,
-    # which wasn't what this test was meant to isolate.
+    # Each header LINE arrives as one atomic chunk, paced so no single readline() approaches the
+    # per-call timeout - the outer per-connection wall-clock cap is what must bound the connection
+    # here (SPECIFICATION.md Part A.8, connection-hardening item 1).
     line_delay = 0.02
     per_call = 1.0  # generous - no single line's own readline() call should ever approach this
     outer_cap = 0.05  # exceeded partway through line-by-line delivery (0.02s/line) regardless
@@ -1248,11 +1296,9 @@ def test_f2_malformed_request_line_degrades_safely_via_microdots_own_blanket_cat
 
 
 def test_f2_content_length_larger_than_body_sent_then_silence_times_out() -> None:
-    # Corrected during implementation, same root cause as the clean-EOF test above: the per-call
-    # readexactly() timeout is an asyncio.TimeoutError, confirmed a plain Exception (not an OSError)
-    # directly from the pinned interpreter's extmod/asyncio/core.py - so it's absorbed by
-    # handle_request()'s own blanket except-Exception around Request.create(), which then writes its
-    # own ordinary 400 and closes normally, rather than the connection being silently dropped.
+    # The per-call readexactly() timeout is an asyncio.TimeoutError, a plain Exception and not an
+    # OSError (confirmed against the pinned interpreter's extmod/asyncio/core.py) - so it is
+    # absorbed by handle_request()'s blanket catch, which writes its own ordinary 400.
     service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=1.0)
     headers = "PUT /networking HTTP/1.1\r\nContent-Length: 1000\r\nContent-Type: application/json\r\n\r\n"
     reader = _ScriptedReader([(0, headers.encode() + b'{"Interval":')])  # body truncated, then silence
@@ -1273,17 +1319,9 @@ def test_f2_content_length_exceeding_max_content_length_returns_413() -> None:
 
 
 def test_f2_body_truncated_by_a_clean_peer_close_degrades_via_microdots_own_blanket_catch() -> None:
-    # Corrected during implementation, once the real code revealed the actual behavior. Traced
-    # directly against ext/microdot.py's handle_request(): the readexactly() call
-    # for the body sits inside Request.create(), which handle_request() wraps in an
-    # `except OSError ... else: raise` clause *then* in `except Exception as exc: print_exception(exc)`
-    # - EOFError isn't an OSError, so it hits the second clause, which does not re-raise. req stays
-    # None and
-    # handle_request() falls straight through to its own ordinary 400 response, written and closed
-    # normally - exactly like the malformed-request-line case just above, not a silent drop. EOFError
-    # structurally never reaches our own serve() wrapper here; a per-call *timeout* on the same read
-    # (see the sibling "then silence times out" test above) is what actually reaches us, since a
-    # timeout is an unmuted OSError and handle_request()'s first except clause re-raises those.
+    # EOFError isn't an OSError, so ext/microdot.py's handle_request() hits its non-re-raising
+    # `except Exception` clause, leaves req None and falls through to its own ordinary 400 - it
+    # never reaches our serve() wrapper, unlike a timeout, which is an unmuted OSError.
     headers = "PUT /networking HTTP/1.1\r\nContent-Length: 100\r\nContent-Type: application/json\r\n\r\n"
     service, _app = _make_service(per_call_timeout_s=1.0, outer_cap_s=2.0)
     reader = _ScriptedReader([(0, headers.encode() + b'{"Interval": 1}')], eof=True)  # then a clean EOF, not silence
@@ -1291,6 +1329,168 @@ def test_f2_body_truncated_by_a_clean_peer_close_degrades_via_microdots_own_blan
     run_timed(service._serve(reader, writer), timeout_s=3.0)
     assert run(service._open_conns.get_value()) == 0
     assert b" 400 " in writer.written  # Microdot's own ordinary 400 response, not a silent drop
+
+
+# F.2b - request-body buffering: an oversized body must never be read into memory at all.
+#
+# ext/microdot.py reads the body inside Request.create() (`:426`) and only answers 413 later, in
+# dispatch_request() (`:1443`), so a body between max_body_length and max_content_length is
+# allocated in full and then thrown away - the band WebserverService closes by binding the two.
+#
+# These tests pin the direct cause, not a memory heuristic the Unix-port heap could never show: the
+# server must never ASK its reader for more than the cap (same framing as H.3/I.2's hammers). Why
+# both caps had to move together, with the measured schema maxima: SPECIFICATION.md Part I.6.
+
+
+class _BodySizeReader(_ScriptedReader):
+    # Records every readexactly() size, which is exactly what Request.create() uses to pull a body
+    # into one contiguous bytes object - so max_body_read is the largest single body allocation the
+    # server attempted, observed without patching anything.
+    def __init__(self, chunks: "list[tuple[float, bytes]]", *, eof: bool = False) -> None:
+        super().__init__(chunks, eof=eof)
+        self.body_reads: list[int] = []
+
+    async def readexactly(self, n: int) -> bytes:
+        self.body_reads.append(n)
+        return await super().readexactly(n)
+
+    @property
+    def max_body_read(self) -> int:
+        return max(self.body_reads) if self.body_reads else 0
+
+
+_BODY_CAP = 2048  # what _make_service() sets, matching the shipped default
+
+
+def _sized_put(payload_bytes: int, interval: int = 7) -> bytes:
+    # A /networking PUT of exactly payload_bytes, carrying a REAL field ("Interval") next to the
+    # padding - so an accepted one has to be genuinely applied, not merely not-rejected, and the
+    # padding key is one no driver registers so it can never validate as real config.
+    envelope = len(json.dumps({"Interval": interval, "Padding": ""}).encode())
+    body = json.dumps({"Interval": interval, "Padding": "x" * (payload_bytes - envelope)}).encode()
+    return _request_bytes("PUT", "/networking", body)
+
+
+def _body_service() -> "tuple[WebserverService, Microdot, _FakeModule]":
+    mod = _FakeModule("NETWORKING", values={"Interval": 5, "Offset": 0})
+    service, app = _make_service(
+        settings={"networking": [SettingsGroup(mod, ("Interval", "Offset"))]}, per_call_timeout_s=2.0, outer_cap_s=2.0,
+    )
+    return service, app, mod
+
+
+def _serve_one(service: "WebserverService", body_bytes: int, interval: int = 7) -> "tuple[_BodySizeReader, _ScriptedWriter]":
+    reader = _BodySizeReader([(0, _sized_put(body_bytes, interval))])
+    writer = _ScriptedWriter()
+    run_timed(service._serve(reader, writer), timeout_s=3.0)
+    return reader, writer
+
+
+def test_f2b_none_above_the_cap_every_body_is_buffered_and_applied() -> None:
+    service, _app, mod = _body_service()
+    for n, size in enumerate((64, 512, _BODY_CAP - 1, _BODY_CAP)):  # the cap is inclusive: `<=` in Request.create()
+        reader, writer = _serve_one(service, size, interval=10 + n)
+        assert b" 200 " in writer.written, (size, writer.written[:80])
+        assert reader.max_body_read == size, (size, reader.body_reads)
+        # Accepted means APPLIED: the real field next to the padding reached the module.
+        assert mod.set_calls[-1]["Interval"] == 10 + n, (size, mod.set_calls[-1])
+        assert run(service._open_conns.get_value()) == 0
+
+
+def test_f2b_all_above_the_cap_are_rejected_without_the_body_ever_being_read() -> None:
+    service, _app, mod = _body_service()
+    for size in (_BODY_CAP + 1, _BODY_CAP * 2, _BODY_CAP * 8):
+        reader, writer = _serve_one(service, size)
+        assert b"413" in writer.written, (size, writer.written[:80])
+        # The whole point: not "read then discarded", but never read. body_reads stays empty
+        # because Request.create() takes its `else` branch and hands over the stream instead.
+        assert reader.body_reads == [], (size, reader.body_reads)
+        assert run(service._open_conns.get_value()) == 0
+    assert mod.set_calls == []  # nothing was applied: every one was refused before any handler ran
+
+
+def test_f2b_a_mixed_stream_handles_each_request_on_its_own_merits() -> None:
+    # "some above": interleaved, so a rejection can never leave the next acceptance mis-parsed and
+    # an acceptance can never let the next oversized one through.
+    service, _app, mod = _body_service()
+    sizes = [128, _BODY_CAP * 4, 700, _BODY_CAP + 1, _BODY_CAP, 64, _BODY_CAP * 16]
+    applied = 0
+    for n, size in enumerate(sizes):
+        reader, writer = _serve_one(service, size, interval=20 + n)
+        if size <= _BODY_CAP:
+            applied += 1
+            assert b" 200 " in writer.written, (size, writer.written[:80])
+            assert reader.max_body_read == size, (size, reader.body_reads)
+            assert mod.set_calls[-1]["Interval"] == 20 + n, (size, mod.set_calls[-1])
+        else:
+            assert b"413" in writer.written, (size, writer.written[:80])
+            assert reader.body_reads == [], (size, reader.body_reads)
+        assert len(mod.set_calls) == applied, (size, mod.set_calls)  # no rejected one slipped through
+        assert run(service._open_conns.get_value()) == 0
+
+
+def test_f2b_the_two_microdot_caps_are_bound_together_so_the_band_cannot_reopen() -> None:
+    # Structural guard: the defect is not a value, it is the GAP between the two. A future change
+    # that sets only one of them would silently reopen it, and every behavioural test above would
+    # still pass for bodies under whichever cap ended up larger.
+    _service, _app = _make_service(max_content_length=777)
+    assert Request.max_content_length == 777
+    assert Request.max_body_length == 777
+
+
+def _body_service_with_connections(max_connections: int) -> "tuple[WebserverService, Microdot, _FakeModule]":
+    mod = _FakeModule("NETWORKING", values={"Interval": 5, "Offset": 0})
+    service, app = _make_service(
+        settings={"networking": [SettingsGroup(mod, ("Interval", "Offset"))]},
+        max_connections=max_connections, per_call_timeout_s=2.0, outer_cap_s=5.0,
+    )
+    return service, app, mod
+
+
+def _hammer_mixed_bodies(service: "WebserverService", sizes: "list[int]") -> "list[_BodySizeReader]":
+    readers = [_BodySizeReader([(0, _sized_put(size))]) for size in sizes]
+    writers = [_ScriptedWriter() for _ in sizes]
+
+    async def _all() -> None:  # index-based, not zip(): MicroPython's zip() has no strict= (B905)
+        await asyncio.gather(*(service._serve(readers[i], writers[i]) for i in range(len(sizes))))
+
+    run_timed(_all(), timeout_s=10.0)
+    for i, size in enumerate(sizes):
+        expected = b" 200 " if size <= _BODY_CAP else b"413"
+        assert expected in writers[i].written, (size, writers[i].written[:80])
+    return readers
+
+
+def test_f2b_hammer_concurrent_mixed_bodies_bound_the_total_buffered_bytes() -> None:
+    # The real-hardware shape this protects: max_connections bodies can be in flight at once, so
+    # the simultaneous contiguous demand is that many buffers, not one. With the caps bound it is
+    # bounded by connections x cap; with the band open it would be connections x 16 KB.
+    orig_threshold = gc.threshold()
+    gc.threshold(-1)  # I.4(e) first: the guarantee must hold at MicroPython's own real default
+    try:
+        service, _app, mod = _body_service_with_connections(64)
+        sizes = [_BODY_CAP * 4 if i % 3 else 512 for i in range(60)]
+        readers = _hammer_mixed_bodies(service, sizes)
+        assert sum(r.max_body_read for r in readers) == sum(s for s in sizes if s <= _BODY_CAP)
+        assert all(r.max_body_read <= _BODY_CAP for r in readers)
+        assert len(mod.set_calls) == sum(1 for s in sizes if s <= _BODY_CAP)  # every under-cap one applied
+        assert run(service._open_conns.get_value()) == 0
+    finally:
+        gc.threshold(orig_threshold)
+
+
+def test_f2b_hammer_all_oversized_allocates_no_body_at_all() -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(32768)  # and again at the shipped threshold, as H.3 does for its own pair
+    try:
+        service, _app, mod = _body_service_with_connections(64)
+        readers = _hammer_mixed_bodies(service, [_BODY_CAP * 6] * 40)
+        assert all(r.body_reads == [] for r in readers)
+        assert mod.set_calls == []
+        assert run(service._open_conns.get_value()) == 0
+    finally:
+        gc.threshold(orig_threshold)
+
 
 
 # F.5 - after response / close
@@ -1411,11 +1611,64 @@ def test_close_writer_logs_a_persisted_warning_when_wait_closed_raises() -> None
     assert service.pr.err_count == 1
 
 
+def test_a_close_whose_own_warning_runs_out_of_heap_still_frees_the_slot() -> None:
+    # At the limit's extreme the heap empties (Part H.7), so the warning a failed close() logs can
+    # itself raise MemoryError; the slot must be freed anyway, or every later connection is refused.
+    service, _app = _make_service(max_connections=1)
+
+    async def out_of_heap(*_args: "Any", **_kwargs: "Any") -> None:
+        raise MemoryError("simulated exhausted heap")
+
+    service.pr.wrn_s = out_of_heap  # type: ignore[method-assign]  # deliberate monkeypatch
+    for _ in range(3):
+        try:
+            run_timed(service._serve(_ClosedReader(), _RaisingCloseWriter()))
+        except MemoryError:
+            pass  # escaping is acceptable here; keeping the slot is not
+        assert run(service._open_conns.get_value()) == 0
+
+
+class _HangingWriter(_ScriptedWriter):
+    async def awrite(self, data: bytes) -> None:
+        await asyncio.Event().wait()
+
+
+def test_a_write_phase_timeout_is_logged_once_not_twice() -> None:
+    # A write timeout escapes microdot (it catches OSError only) and reaches _serve()'s own log;
+    # the proxy logging it as well counted one reclaimed connection as two warnings.
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=2.0)
+    request = _request_bytes("GET", "/status")
+    run_timed(service._serve(_ScriptedReader([(0.0, request)]), _HangingWriter()), timeout_s=2.0)
+    entry = next(iter(run(service.get_error_counter()).values()))
+    assert entry["ErrCount"] == 1, entry
+    assert run(service._open_conns.get_value()) == 0
+
+
+class _ResetReader:
+    # A peer that reset mid-request: modlwip raises ECONNRESET on the read, then frees the pcb.
+    async def readline(self) -> bytes:
+        raise OSError(104, "ECONNRESET")
+
+    async def readexactly(self, _n: int) -> bytes:
+        raise OSError(104, "ECONNRESET")
+
+
+def test_nothing_is_written_to_a_peer_whose_read_saw_a_reset() -> None:
+    # microdot mutes the reset and answers 400 anyway; on silicon that write reaches tcp_write(NULL)
+    # (state 6 passes modlwip's error check), logs a spurious warning and can spin a slot for 5 s.
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=1.0)
+    writer = _ScriptedWriter()
+    run_timed(service._serve(_ResetReader(), writer), timeout_s=2.0)
+    assert writer.written == b"", writer.written
+    assert writer.close_called is True
+    assert service.pr.err_count == 0, service.pr.err_count
+    assert run(service._open_conns.get_value()) == 0
+
+
 def test_timeout_stream_proxy_close_and_wait_closed_forward_to_the_wrapped_stream() -> None:
-    # Direct unit coverage of the two Stream-forwarding methods ext/microdot.py's own request/
-    # response handling never actually calls in any of Section F's protocol-level scenarios (close()
-    # is sync, wait_closed() is only ever invoked by WebserverService._close_writer() on the raw
-    # writer, not the proxy) - still real, real-Stream-matching forwards that must work correctly.
+    # Direct coverage of the two Stream-forwarding methods ext/microdot.py never calls in Section
+    # F's scenarios (close() is sync; wait_closed() only ever reaches the raw writer, via
+    # WebserverService._close_writer()) - still real forwards that must work correctly.
     writer = _ScriptedWriter()
     proxy = _TimeoutStreamProxy(writer, 1.0, _FakeLogger("X"))  # type: ignore[arg-type]
     proxy.close()
@@ -1528,10 +1781,9 @@ def test_f8_task_starters_exposes_exactly_one_server_task_for_the_supervisor() -
 
 
 def test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task() -> None:
-    # Section F elsewhere only ever calls service._serve() directly (its own reader/writer fakes) -
-    # this is the one test exercising _run()/_start_serving() themselves, the real
-    # asyncio.start_server() composition (never app.start_server()/app.shutdown() - decision 1).
-    # Bound to an ephemeral loopback port, never the real host/port=0.0.0.0:80 default.
+    # The one test exercising _run()/_start_serving() themselves - the real asyncio.start_server()
+    # composition, never app.start_server()/app.shutdown(). Bound to an ephemeral loopback port,
+    # never the real host/port=0.0.0.0:80 default.
     service, _app = _make_service(host="127.0.0.1", port=0)
 
     async def scenario() -> None:
@@ -1584,26 +1836,21 @@ def test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_fla
 
 
 # ---------------------------------------------------------------------------
-# Section G - static-route serving (see SPECIFICATION.md Part A.9: gzip -> freezefs -> frozen
-# module -> Microdot send_file(compressed=True, file_extension=".gz")). Exercises the generic
-# route-wiring mechanism against a synthetic VfsFrozen fixture (see _mount_static_fixture below) -
-# the real, built frozen_html.py artifact (scripts/build_frozen_html.sh's output) gets its own,
-# separate real-pipeline integration test in tests/test_frozen_html_integration.py.
+# Section G - static-route serving (SPECIFICATION.md Part A.9). Exercises the generic route-wiring
+# mechanism against a synthetic VfsFrozen fixture; the real built frozen_html.py artifact gets its
+# own integration test in tests/test_website_build_integration.py.
 # ---------------------------------------------------------------------------
 
 _next_static_mount = 0
 
 
 def _mount_static_fixture(files: "dict[str, bytes]") -> str:
-    # A hand-built VfsFrozen (freezefs 2.4's own runtime mount driver, ext/freezefs/ffsmount.py),
-    # bypassing freezefs's own archive-generation step entirely - exercises exactly the same runtime
-    # VFS a real `import frozen_html` produces, without depending on scripts/build_frozen_html.sh's
-    # actual stub content. Entries deliberately store plain (non-gzip) bytes under a ".gz"-suffixed
-    # name: VfsFrozen's own per-entry "compressed" flag (freezefs's own --compress, never used by
-    # this project - see CLAUDE.md) is independent of our own gzip/Content-Encoding convention, and
-    # send_file() never inspects file contents - a faithful stand-in for the route-wiring mechanism.
-    # A unique mount point per call (os.mount() raises EEXIST on a repeat target) since every test in
-    # this file runs in the same interpreter process.
+    # A hand-built VfsFrozen (ext/freezefs/ffsmount.py) exercising the same runtime VFS a real
+    # `import frozen_html` produces, without depending on any real website's content.
+    # Entries store plain bytes under a ".gz" name: send_file() never inspects file contents.
+
+    # A unique mount point per call - os.mount() raises EEXIST on a repeat target, and every test
+    # in this file shares one interpreter process.
     global _next_static_mount
     _next_static_mount += 1
     mount_point = f"/test_static_{_next_static_mount}"
@@ -1641,6 +1888,17 @@ def test_g_static_wildcard_serves_a_named_file_with_the_right_content_type() -> 
     assert res.headers["Content-Encoding"] == "gzip"
 
 
+def test_g_static_binary_file_of_an_unmapped_type_falls_back_to_octet_stream() -> None:
+    # favicon.ico is not in microdot's Response.types_map, so it must still serve, as binary.
+    icon = bytes(range(256))
+    mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>", "favicon.ico": icon})
+    _, app = _make_service(static_mount=mount)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/favicon.ico", None)))
+    assert res.status_code == 200
+    assert res.body.read() == icon
+    assert res.headers["Content-Type"] == "application/octet-stream"
+
+
 def test_g_static_missing_file_returns_404_via_the_shaped_error_handler() -> None:
     mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
     _, app = _make_service(static_mount=mount)
@@ -1664,10 +1922,9 @@ def test_g_static_nested_path_not_found_since_the_stub_mount_is_flat() -> None:
 
 
 def test_g_static_routes_never_shadow_a_real_api_endpoint() -> None:
-    # Registration-order regression test: /<path:filename>'s own regex (`/(.+)`) also matches
-    # "/measurements" - Microdot's find_route() returns the *first* matching route in registration
-    # order (ext/microdot.py's find_route(), confirmed directly), so the static wildcard must be
-    # registered after every real API route or it would silently swallow them.
+    # Registration-order regression test: /<path:filename>'s regex also matches "/measurements",
+    # and Microdot's find_route() returns the first matching route in registration order - so the
+    # static wildcard must be registered after every real API route.
     scd = _NestedCfgModule("SCD30", values={}, data={"CO2": 800})
     mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>", "measurements": b"not the real one"})
     _service, app = _make_service(sensors=[scd], static_mount=mount)
@@ -1690,11 +1947,143 @@ def test_g_static_index_filename_is_configurable() -> None:
     assert res.body.read() == b"custom index"
 
 
-# G.2 - hotspot-mode captive-portal redirect fallback (see SPECIFICATION.md Part A.5).
-# `is_hotspot_active` is an optional constructor callback; it only changes the *fallback* branch of
-# _serve_static()'s `except OSError` - a real file hit or a real API route must stay unaffected
-# regardless of its value, and its constructor default (None) must reproduce today's plain-404
-# behavior byte for byte, since every existing WebserverService(...) call site doesn't pass it.
+# The per-write bound on the wire (SPECIFICATION.md Part I.3). Build-independent: a synthetic
+# mount and a stub sensor whose sizes span many far-below-chunk objects, every edge of the 256 B
+# chunk, and objects that take many chunks - read back write by write, as a socket would see them.
+
+_WIRE_CHUNK_BYTES = 256  # WebserverService's chunk_bytes default, as observed from outside
+_TINY_SIZES = tuple(range(64))
+_EDGE_SIZES = (127, 128, 129, 255, 256, 257, 511, 512, 513, 767, 768, 769)
+_LARGE_SIZES = (1023, 1024, 1025, 9292, 65553)  # 9292: the real page the bench sitting saw cut off
+
+
+class _ChunkRecordingWriter(_ScriptedWriter):
+    # Keeps every awrite() apart: the bound under test is per write, which .written erases.
+    def __init__(self) -> None:
+        super().__init__()
+        self.chunks: list[bytes] = []
+
+    async def awrite(self, data: bytes) -> None:
+        self.chunks.append(bytes(data))
+        await super().awrite(data)
+
+
+def _get_on_the_wire(service: "WebserverService", path: str) -> "tuple[str, dict[str, str], list[bytes]]":
+    # These tests pin write bounds, not timeouts: _make_service()'s 0.5s outer cap cut a 37 KB body
+    # short on a loaded CI runner. 4s stays under run_timed()'s 5s, so a hang still fails the test.
+    service._per_call_timeout_s, service._outer_cap_s = 2.0, 4.0
+    writer = _ChunkRecordingWriter()
+    run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", path))], eof=True), writer), timeout_s=5.0)
+    head = writer.chunks[0]  # the whole header block is one write (_TimeoutStreamProxy.awrite)
+    assert head.endswith(b"\r\n\r\n") and head.count(b"\r\n\r\n") == 1, head
+    lines = head.decode().split("\r\n")
+    headers = dict(line.split(": ", 1) for line in lines[1:] if line)
+    return lines[0].split(" ")[1], {k.lower(): v for k, v in headers.items()}, writer.chunks[1:]
+
+
+def _patterned(size: int) -> bytes:
+    return bytes((i * 7 + size) & 0xFF for i in range(size))  # distinct per size, so no two files match
+
+
+def test_g3_every_static_file_arrives_whole_with_its_length_in_writes_of_at_most_256_bytes() -> None:
+    sizes = _TINY_SIZES + _EDGE_SIZES + _LARGE_SIZES
+    mount = _mount_static_fixture({f"f{size}.bin": _patterned(size) for size in sizes})
+    service, _app = _make_service(static_mount=mount)
+    for size in sizes:
+        status, headers, body = _get_on_the_wire(service, f"/f{size}.bin")
+        assert status == "200", (size, status)
+        # Without Content-Length this HTTP/1.0 body ends only at FIN, so a cut-off page looked whole.
+        assert headers.get("content-length") == str(size), (size, headers)
+        assert b"".join(body) == _patterned(size), size
+        assert max(len(chunk) for chunk in body) <= _WIRE_CHUNK_BYTES, (size, [len(c) for c in body])
+        assert all(len(chunk) == _WIRE_CHUNK_BYTES for chunk in body[:-1]), (size, [len(c) for c in body])
+    assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 0
+
+
+def test_g3_a_json_route_mixing_tiny_medium_and_huge_values_is_written_in_bounded_pieces() -> None:
+    data: dict[str, Any] = {f"t{i}": i for i in range(300)}  # many fragments far below the cap
+    data.update({f"m{width}": "x" * width for width in (40, 127, 128, 200, 240, 250)})  # near the cap
+    data["huge_list"] = list(range(0, 28000, 7))  # one value worth ~80 pieces
+    data["huge_dict"] = {f"k{i}": [i, "v" * (i % 50)] for i in range(150)}
+    stub = _NestedCfgModule("STUB", values={}, data=data)
+    service, _app = _make_service(sensors=[stub])
+    status, headers, body = _get_on_the_wire(service, "/measurements")
+    assert status == "200", (status, headers)
+    assert headers.get("content-length") == str(sum(len(chunk) for chunk in body)), (headers, len(body))
+    assert json.loads(b"".join(body)) == {"STUB": data}
+    assert max(len(chunk) for chunk in body) <= _WIRE_CHUNK_BYTES, sorted(len(c) for c in body)[-5:]
+    assert len(body) > 100  # the huge values really were split, not merely absent
+
+
+def test_g3_one_chunk_bytes_parameter_bounds_json_pieces_and_static_reads_alike() -> None:
+    # The two must never drift apart: one constructor value drives both, at a size of neither default.
+    mount = _mount_static_fixture({"page.bin": _patterned(1000)})
+    stub = _NestedCfgModule("STUB", values={}, data={f"t{i}": "z" * (i % 30) for i in range(120)})
+    service, _app = _make_service(sensors=[stub], static_mount=mount, chunk_bytes=100)
+    for path in ("/page.bin", "/measurements"):
+        _status, _headers, body = _get_on_the_wire(service, path)
+        assert max(len(chunk) for chunk in body) <= 100, (path, sorted(len(c) for c in body)[-3:])
+        assert len(body) > 5, path  # really chunked at 100, not merely small
+    _status, _headers, body = _get_on_the_wire(service, "/page.bin")
+    assert [len(chunk) for chunk in body] == [100] * 10 + [0]  # microdot reads on until a short read
+
+
+class _BodyFailingWriter(_ChunkRecordingWriter):
+    # Takes the first write, then fails like a peer that vanished mid-response.
+    async def awrite(self, data: bytes) -> None:
+        if self.chunks:
+            raise OSError(104, "ECONNRESET")
+        await super().awrite(data)
+
+
+def test_g3_the_header_block_is_one_write_so_a_cut_response_still_carries_its_length() -> None:
+    # microdot writes each header apart, and a client reading EOF mid-headers takes it as their end:
+    # a 200 with no Content-Length and no body, read as complete (MEASUREMENTS archive §7R.5's empty 200).
+    mount = _mount_static_fixture({"page.bin": _patterned(1000)})
+    service, _app = _make_service(static_mount=mount)
+    for path in ("/page.bin", "/status", "/measurements", "/no-such-page"):
+        _status, headers, _body = _get_on_the_wire(service, path)  # asserts the one-write head itself
+        assert "content-length" in headers, (path, headers)
+    writer = _BodyFailingWriter()
+    run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", "/page.bin"))], eof=True), writer), timeout_s=5.0)
+    assert len(writer.chunks) == 1, writer.chunks
+    assert writer.chunks[0].startswith(b"HTTP/1.0 200 OK\r\n") and b"Content-Length: 1000\r\n" in writer.chunks[0], writer.chunks
+
+
+def test_g3_a_zero_chunk_bytes_is_clamped_so_a_static_read_still_ends() -> None:
+    mount = _mount_static_fixture({"page.bin": _patterned(5)})
+    service, _app = _make_service(static_mount=mount, chunk_bytes=0)
+    status, _headers, body = _get_on_the_wire(service, "/page.bin")  # a read(0) loop would time out here
+    assert status == "200" and b"".join(body) == _patterned(5)
+
+
+def test_g3_a_single_scalar_longer_than_the_cap_is_the_one_piece_allowed_past_it_and_stays_whole() -> None:
+    # _PieceWriter never splits a fragment, so this is the documented limit, not a bound. Part
+    # I.3's need table was measured at every field's DEFAULT value; the next test takes the worst
+    # case a schema actually permits.
+    stub = _NestedCfgModule("STUB", values={}, data={"small": 1, "scalar": "y" * 600, "after": 2})
+    service, _app = _make_service(sensors=[stub])
+    _status, _headers, body = _get_on_the_wire(service, "/measurements")
+    assert [chunk for chunk in body if len(chunk) > _WIRE_CHUNK_BYTES] == [json.dumps("y" * 600).encode()]
+    assert json.loads(b"".join(body)) == {"STUB": {"small": 1, "scalar": "y" * 600, "after": 2}}
+
+
+def test_g3_a_scalar_at_ntp_hosts_own_bound_still_makes_exactly_one_whole_piece() -> None:
+    # The longest string any schema permits: asy_ntp_client's NTP_Host, 1,024 characters. Mirrored
+    # as a literal because const() leaves no module attribute to read - test_asy_ntp_client.py
+    # pins the bound itself, and BACKLOG's NTP_Host entry lists every file a change must touch.
+    longest = 1024
+    stub = _NestedCfgModule("STUB", values={}, data={"host": "y" * longest})
+    service, _app = _make_service(sensors=[stub])
+    _status, _headers, body = _get_on_the_wire(service, "/measurements")
+    over = [chunk for chunk in body if len(chunk) > _WIRE_CHUNK_BYTES]
+    assert over == [json.dumps("y" * longest).encode()], [len(c) for c in over]
+    assert len(over[0]) == longest + 2, len(over[0])  # the two quotes; no escaping in this value
+
+
+# G.2 - hotspot-mode captive-portal redirect fallback (SPECIFICATION.md Part A.5).
+# `is_hotspot_active` only changes _serve_static()'s `except OSError` fallback branch; its default
+# (None) must reproduce today's plain-404 behavior, since no existing call site passes it.
 
 
 def test_g2_hotspot_active_redirects_an_unmatched_path_to_root() -> None:
@@ -1751,7 +2140,7 @@ def test_g2_hotspot_redirect_does_not_log_a_warning_or_error() -> None:
 
 
 def test_g2_is_hotspot_active_raising_gets_the_shaped_500_via_the_existing_catch_all() -> None:
-    # Proves plan §2.4's "no bespoke try/except needed" decision directly: Part A.5's existing
+    # Proves the "no bespoke try/except needed" decision directly: SPECIFICATION.md Part A.5's existing
     # blanket app.errorhandler(Exception) already safely contains a raise from this callback.
     mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
 
@@ -1767,9 +2156,8 @@ def test_g2_is_hotspot_active_raising_gets_the_shaped_500_via_the_existing_catch
 
 
 def test_g2_directory_traversal_still_404s_even_when_hotspot_active() -> None:
-    # Error-path/all-paths coverage: the ".." guard clause runs and aborts(404) BEFORE the
-    # try/except OSError block that consults is_hotspot_active() is ever reached (see
-    # _serve_static()'s own source order) - a traversal attempt must never be redirected, hotspot
+    # The ".." guard aborts(404) before the try/except OSError block that consults
+    # is_hotspot_active() is ever reached - a traversal attempt must never be redirected, hotspot
     # mode or not.
     mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
     _, app = _make_service(static_mount=mount, is_hotspot_active=lambda: True)
@@ -1778,11 +2166,9 @@ def test_g2_directory_traversal_still_404s_even_when_hotspot_active() -> None:
 
 
 def test_g2_put_to_unmatched_path_is_405_regardless_of_hotspot_state() -> None:
-    # All-paths coverage: the wildcard route is registered GET-only (app.get("/<path:filename>")) -
-    # ext/microdot.py's own find_route() resolves a PUT against a path-matching-but-method-mismatched
-    # route to 405 before _get_static()/_serve_static() is ever invoked, so is_hotspot_active() is
-    # never even consulted for a non-GET request. Confirms the redirect fallback can't leak into an
-    # unrelated error path.
+    # The wildcard route is registered GET-only, so find_route() resolves a PUT to 405 before
+    # _serve_static() is invoked and is_hotspot_active() is never consulted - the redirect
+    # fallback cannot leak into an unrelated error path.
     mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
     _, app = _make_service(static_mount=mount, is_hotspot_active=lambda: True)
     res = run(app.dispatch_request(_make_request(app, "PUT", "/generate_204", None)))
@@ -1819,10 +2205,9 @@ def test_g2_static_mount_none_with_is_hotspot_active_set_registers_no_routes() -
     assert res.status_code == 404  # no route matches "/" at all - same as the plain static_mount=None case
 
 
-# H.1 - app.errorhandler(Exception) catch-all (Step 8 audit finding: closes BACKLOG.md's former
-# "No @app.errorhandler registrations exist anywhere yet" item - the 400/404/405/413/500 status-code
-# handlers section G already exercises were the reply-shape half; this is the still-missing logging
-# half, since Microdot's own print_exception(exc) never reaches pr.err_s()/FRAM history on its own).
+# H.1 - app.errorhandler(Exception) catch-all. Section G's 400/404/405/413/500 status-code
+# handlers were the reply-shape half; this is the logging half, since Microdot's own
+# print_exception(exc) never reaches pr.err_s()/FRAM history on its own.
 
 
 class _RaisingSensorModule(_FakeModule):
@@ -1839,10 +2224,9 @@ def test_h1_unhandled_exception_in_a_route_handler_gets_the_shaped_500_response(
 
 
 def test_h1_unhandled_exception_is_logged_via_pr_err_s_not_just_swallowed() -> None:
-    # ErrNum/ErrType include print_log.py's own pre-filled "N" (no-error) deque padding ahead of
-    # the one real entry (see print_log.py's PrintLogHistory.__init__) - matching every other
-    # get_error_counter()-reading test in this file (e.g. test_d_webserver_own_errcount_entry_...),
-    # not a list-equality check against the raw history.
+    # ErrNum/ErrType include print_log.py's pre-filled "N" padding ahead of the one real entry
+    # (PrintLogHistory.__init__), matching every other get_error_counter()-reading test here
+    # rather than being a list-equality check against the raw history.
     sensor = _RaisingSensorModule("SCD30")
     service, app = _make_service(sensors=[sensor])
     run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
@@ -1879,17 +2263,13 @@ def test_h1_abort_driven_404_is_unaffected_by_the_catch_all() -> None:
     assert log["WEBSERVER"]["ErrCount"] == 0  # the catch-all above never fired
 
 
-# H.2 - /status JSON streaming (asy_webserver_service.py's _get_status()/_build_status_pieces() -
-# BACKLOG.md's Microdot generator-streaming mitigation for the real-hardware MemoryError root cause:
-# one small json.dumps() per already-independent source instead of one big buffer for the whole
-# aggregate). Sections above (test_status_get_*, D, most of the earlier /status coverage) already
-# exercise the resulting JSON's *shape* end to end via status_body() - these are specific to the
-# streaming mechanism itself. Deliberately a plain list of pre-fetched fragments handed to a plain
-# sync iterator, not an `async def ... yield` "async generator" - confirmed directly against the
-# pinned MicroPython interpreter that the latter produces a broken runtime object (no
-# __aiter__/__anext__ at all, and driving it past a real `await` via plain next() - exactly what
-# ext/microdot.py's body_iter() would do with it - segfaults the interpreter). See
-# SPECIFICATION.md Part F.1 for the full finding.
+# H.2 - /status JSON streaming (_get_status()/_build_status_pieces()): one small json.dumps() per
+# source instead of one buffer for the whole aggregate. Sections above already cover the resulting
+# JSON's shape end to end; these are specific to the streaming mechanism itself.
+
+# Deliberately a plain list of pre-fetched fragments handed to a sync iterator, never an
+# `async def ... yield`: that produces a broken runtime object here and segfaults the interpreter
+# when driven past an await, as body_iter() would. SPECIFICATION.md Part F.1.
 
 
 def _const_source(value: "dict[str, Any]") -> "Callable[[], Coroutine[Any, Any, dict[str, Any]]]":
@@ -1923,11 +2303,9 @@ def test_h2_stream_response_is_a_plain_iterator_with_explicit_json_content_type(
 
 
 def test_h2_stream_yields_one_piece_per_top_level_section_not_one_precomputed_buffer() -> None:
-    # Observable proof of the actual memory-efficiency property this was built for: the body is
-    # genuinely 5 separate pieces (one per top-level key), never one big string built up front for
-    # the whole aggregate - but also never one piece per punctuation character (measured to regress
-    # real throughput ~53% via this server's own per-write asyncio.wait_for() wrapping - see
-    # _build_status_pieces()'s own comment for the full finding).
+    # Proof of the memory property this was built for: the body is genuinely 5 separate pieces (one
+    # per top-level key), never one string for the whole aggregate - but also never one piece per
+    # punctuation character, measured to cost ~53% throughput via per-write asyncio.wait_for().
     _service, app = _make_service(
         status_sources={"networking": _const_source({"A": 1})},
         maintenance_sensors=[("SGP40", _const_source({"BackupTS": 1}))],
@@ -1951,13 +2329,9 @@ def test_h2_stream_yields_one_piece_per_top_level_section_not_one_precomputed_bu
 
 
 def test_h2_stream_response_has_an_explicit_correct_content_length_header() -> None:
-    # Response.complete() only auto-sets Content-Length for isinstance(self.body, bytes), never a
-    # generic iterator - _get_status() sets it explicitly instead, since the full size is already
-    # known once every source has been awaited up front (nothing here is genuinely lazy streaming -
-    # see _get_status()'s own comment). Real-hardware/real-socket regression coverage
-    # (found via tests/test_digital_twin_run_wozi_integration.py's own soak test failing without
-    # this): digital_twin/_http_client.py's fetch() falls back to a slow, effectively-untested
-    # reader.read(-1)-until-EOF path whenever Content-Length is missing.
+    # Response.complete() only auto-sets Content-Length for a bytes body, so _get_status() sets it
+    # explicitly - the full size is known once every source has been awaited. Without it,
+    # digital_twin/_http_client.py's fetch() falls back to a slow read(-1)-until-EOF path.
     service, _app = _make_service()
     reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
     writer = _ScriptedWriter()
@@ -2006,11 +2380,9 @@ def test_h2_stream_errcount_source_failure_is_isolated_to_that_one_module() -> N
     errcount = json.loads(status_body(res))["errcount"]
     assert errcount["SGP40"] == {"error": "unavailable"}
     assert errcount["BMP3XX"] == {"counter": 0, "history": []}
-    # WEBSERVER's own counter reflects the SGP40 failure just logged (errno=6) - not zero, since that
-    # failure genuinely happened and belongs in this service's own error history too (history_length=0
-    # above keeps the ring buffer itself at zero capacity, so the detail entry never lands in
-    # "history" - see test_h2_stream_status_source_failure_yields_an_error_marker_not_a_broken_stream()
-    # for that same errno=6 detail checked with a real ring buffer instead).
+    # WEBSERVER's counter reflects the SGP40 failure just logged (errno=6) - that failure genuinely
+    # happened and belongs in this service's own history too. history_length=0 above keeps the ring
+    # at zero capacity, so the detail entry never lands in "history".
     assert errcount["WEBSERVER"]["counter"] == 1
     assert errcount["WEBSERVER"]["history"] == []
 
@@ -2028,10 +2400,9 @@ def test_h2_stream_own_webserver_errcount_source_failure_yields_an_error_marker(
 
 
 def test_h2_stream_every_source_failing_still_produces_one_complete_valid_json_document() -> None:
-    # The worst case this design has to survive: every single data source misbehaves. Even then, the
-    # response must still be one complete, parseable JSON document with a plain 200 - each source's
-    # own try/except (see _dump_status_source()'s own comment) keeps its exception from ever escaping
-    # _build_status_pieces()/_get_status() itself, so Microdot's own blanket catch never even sees one.
+    # The worst case this design has to survive: every data source misbehaves and the response must
+    # still be one complete, parseable JSON document with a plain 200 - each source's own
+    # try/except in _write_guarded() keeps its exception from escaping _build_status_pieces().
     _service, app = _make_service(
         status_sources={"networking": _raising_source, "system": _raising_source, "notification": _raising_source},
         maintenance_sensors=[("SGP40", _raising_source)],
@@ -2045,10 +2416,9 @@ def test_h2_stream_every_source_failing_still_produces_one_complete_valid_json_d
     assert body["networking"] == body["system"] == body["notification"] == {"error": "unavailable"}
     assert body["sensors"]["SGP40"] == {"error": "unavailable"}
     assert body["errcount"]["BMP3XX"] == {"error": "unavailable"}
-    # WEBSERVER's own entry is never itself an "error" marker (its own get_log() never raised here) -
-    # its counter instead reflects the 5 other failures just logged (3 status sources + 1 maintenance
-    # sensor + 1 errcount module, each its own errno=6 call) - not zero, and not one of the sources
-    # under test itself blowing up this entry too.
+    # WEBSERVER's own entry is never itself an "error" marker (its get_log() never raised here);
+    # its counter instead reflects the 5 other failures just logged - 3 status sources, 1
+    # maintenance sensor, 1 errcount module, each its own errno=6 call.
     assert body["errcount"]["WEBSERVER"]["counter"] == 5
     assert body["errcount"]["WEBSERVER"]["history"] == []  # history_length=0 above, see comment above
 
@@ -2087,10 +2457,8 @@ def test_h2_stream_two_error_sources_plus_the_own_entry_produce_valid_json_with_
 
 
 def test_h2_stream_module_names_with_special_characters_are_correctly_escaped() -> None:
-    # Names go through json.dumps(name), never hand-rolled string concatenation - this is what makes
-    # an unusual name safe rather than corrupting the surrounding document (see
-    # _build_status_pieces()'s own comment on why every piece is its own list entry rather than
-    # joined by hand).
+    # Names go through json.dumps(name), never hand-rolled string concatenation - that is what
+    # keeps an unusual name from corrupting the surrounding document.
     tricky = _FakeModule('SGP"40')
     _service, app = _make_service(error_sources=[tricky])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
@@ -2098,15 +2466,14 @@ def test_h2_stream_module_names_with_special_characters_are_correctly_escaped() 
     assert set(errcount.keys()) == {'SGP"40', "WEBSERVER"}
 
 
+_HAMMER_PIECE_BUDGET = 256  # the firmware's chunk_bytes default, restated: a const() is not a
+# module attribute, so it cannot be imported. No margin - pieces are bounded by the cap itself.
+
+
 def test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_not_one_growing_blob() -> None:
-    # Real-hardware finding (BACKLOG.md, 2026-09-05): 17 real registered modules joined into one
-    # "errcount" piece (the original design) reached ~4.9KB - almost as large as the whole
-    # pre-streaming aggregate this entire design exists to avoid, and still large enough to cause a
-    # real, reproducible MemoryError under sustained load. Simulates that scale directly - enough
-    # error sources, each carrying a nontrivial error history, that the old single-join design would
-    # produce one multi-KB piece - and checks _coalesce_json_fragments()/_append_coalesced_object()
-    # actually split it into several bounded pieces instead, while still producing one complete,
-    # correctly-shaped JSON document.
+    # Real-hardware finding: 17 registered modules joined into one "errcount" piece reached ~4.9KB
+    # - nearly the whole pre-streaming aggregate, and enough to cause a reproducible MemoryError.
+    # Simulates that scale and checks the _PieceWriter splits it into bounded pieces.
     modules = []
     for i in range(20):
         m = _FakeModule(f"MODULE{i}")
@@ -2117,10 +2484,9 @@ def test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_no
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     chunks = list(res.body)
     encoded = [c.encode() if isinstance(c, str) else c for c in chunks]
-    # A generous margin over _MAX_STATUS_PIECE_BYTES for the small fixed prefix/suffix
-    # _append_coalesced_object() fuses onto the first/last batch - the point being asserted here is
-    # "nowhere near the ~4.9KB real-hardware failure size", not an exact byte count.
-    assert all(len(c) < 1200 for c in encoded), [len(c) for c in encoded]
+    # Exactly the cap, no margin: every fragment here is far smaller than it, so any piece above it
+    # means a whole module entry was built as one string again (SPECIFICATION.md Part I.3).
+    assert all(len(c) <= _HAMMER_PIECE_BUDGET for c in encoded), [len(c) for c in encoded]
     assert len(chunks) > 5  # proof the errcount section really did split into multiple pieces
     body = json.loads(b"".join(encoded))
     assert len(body["errcount"]) == 21  # 20 fake modules + this service's own WEBSERVER entry
@@ -2128,22 +2494,104 @@ def test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_no
         assert body["errcount"][f"MODULE{i}"] == {"counter": 10, "history": [{"num": 1, "type": "E"}] * 10}
 
 
+def _errcount_log(name: str, count: int, nums: "list[int]", types: "list[str]") -> "dict[str, Any]":
+    return {name: {"ErrCount": count, "ErrNum": nums, "ErrType": types}}
+
+
+def _written(value: object, max_bytes: int = 256) -> "list[str]":
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, max_bytes=max_bytes)
+    writer.add_value(value)
+    writer.flush()
+    return pieces
+
+
+def test_h2_add_value_is_byte_identical_to_json_dumps() -> None:
+    # The whole fix rests on this: MicroPython's OWN json.dumps() text - key order, ", "/": "
+    # separators, escaping, float repr - reproduced by walking the value instead of dumping it.
+    values: list[object] = [
+        None, True, False, 0, -3, 12345678, 1.5, -0.25, 1e-7, "", "plain", 'q"x\\y\n\u00e9', [], {}, (), [[]], {"a": {}},
+        [1, "two", None, 2.5, [3, [4, {"five": 5}]]],
+        (1, (2, 3)),
+        {"GainMeas": None, "CCT": None, "RGB": {"G": None, "B": 0.5, "R": 1}, "Lux": 12.25, "Flags": [True, False]},
+        {1: 2, "k": {"nested": [{"deep": [1, 2, {"deeper": "yes"}]}]}},
+        {True: 1, None: 2, 1.5: 3, -3: 4, (1, 2): 5, 'a"b': 6},  # json.dumps()'s own non-str key rule
+    ]
+    values.extend(
+        _shape_errcount_entry(_errcount_log("M", count, [(i * 37) % 991 - 3 for i in range(length)], [kinds[i % len(kinds)] for i in range(length)]), "M")
+        for count in (0, 1, 12345)
+        for length in (0, 1, 10, 17)
+        for kinds in (("N",), ("E", "W"), ('q"x', "\\", "E"))
+    )
+    for value in values:
+        assert "".join(_written(value)) == json.dumps(value), value
+
+
+def test_h2_add_value_bounds_every_piece_however_large_the_value() -> None:
+    # A value far larger than the cap - the case one json.dumps() per value turned into one large
+    # allocation per value - comes out in pieces no larger than the cap.
+    big = {f"Sensor{i}": {"Reading": i * 1.5, "History": [{"num": n, "type": "E"} for n in range(12)]} for i in range(8)}
+    pieces = _written(big, max_bytes=128)
+    assert "".join(pieces) == json.dumps(big)
+    assert max(len(p) for p in pieces) <= 128, [len(p) for p in pieces]
+    assert len(pieces) > len(json.dumps(big)) // 128
+
+
+def test_h2_errcount_entry_is_never_one_string() -> None:
+    # The allocation this bounds on silicon: a whole 10-element entry is ~290 B, above the holes a
+    # loaded heap keeps at gc.threshold(-1) (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.3).
+    entry = _shape_errcount_entry(_errcount_log("M", 10, list(range(90, 100)), ["E"] * 10), "M")
+    pieces = _written(entry, max_bytes=64)
+    assert "".join(pieces) == json.dumps(entry)
+    assert max(len(p) for p in pieces) <= 64
+
+
+def test_h2_piece_writer_bounds_every_piece_and_never_splits_a_fragment() -> None:
+    fragments = ["a" * n for n in (5, 100, 120, 30, 256, 1, 300, 7, 7)]
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, max_bytes=256)
+    for fragment in fragments:
+        writer.add(fragment)
+    writer.flush()
+    assert "".join(pieces) == "".join(fragments)
+    # A fragment larger than the cap stands alone rather than being cut; everything else fits it.
+    assert [len(p) for p in pieces] == [255, 256, 1, 300, 14]
+
+
+def test_h2_piece_writer_never_holds_more_than_sixteen_pending_fragments() -> None:
+    # Streamed values arrive as many tiny fragments (", ", ": ", single digits); left to grow, the
+    # pending list's own array would be as large as the piece - the allocation the writer bounds.
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, max_bytes=256)
+    fragments = [", ", "1", ": ", '"k"'] * 200
+    for fragment in fragments:
+        writer.add(fragment)
+        assert len(writer._group) <= 16, len(writer._group)
+    writer.flush()
+    assert "".join(pieces) == "".join(fragments)
+    assert max(len(p) for p in pieces) <= 256
+    assert min(len(p) for p in pieces[:-1]) > 200  # still full pieces, not one per 16 fragments
+
+
+def test_h2_piece_writer_flush_is_idempotent_and_an_empty_writer_adds_nothing() -> None:
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, _WIRE_CHUNK_BYTES)
+    writer.flush()
+    writer.add("x")
+    writer.flush()
+    writer.flush()
+    assert pieces == ["x"]
+
+
 # -- H.3: gc.threshold() companions to the real-hardware hammer-load investigation ---------------
 #
-# Unit-test-tier companions to BACKLOG.md's real-hardware hammer-load investigation (2026-09-05):
-# the same 5-concurrent-client pattern that produced 237 real MemoryErrors on real hardware before
-# the streaming fix, and 0 after (confirmed with no gc.threshold() change at all). This Unix-port
-# process has an 8MB heap (scripts/test.sh's own -X heapsize=8M) and can never reproduce a genuine
-# embedded-scale MemoryError - these are correctness/regression guards, not memory-pressure
-# reproductions: many concurrent /status requests against a real-hardware-scale (17 module)
-# registration must all still complete cleanly and produce one valid, correctly-shaped JSON
-# document, under both MicroPython's own real default (no proactive collection) and the project
-# owner's actually-chosen gc.threshold(32768) (BACKLOG.md, 2026-09-05 - defense in depth on top of,
-# not instead of, the streaming fix; real sub-second-resolution frequency/mem_free-floor
-# measurements at 16384/32768/65536 fed that decision). gc.threshold() is process-global state
-# (confirmed directly against the pinned interpreter's own py/modgc.c: it has no per-object/
-# per-task scoping) - every test below saves and restores the value it finds already set, so
-# neither test leaks its own setting into any other test sharing this same Unix-port process.
+# Unit-tier companions to the real-hardware hammer-load investigation: the same 5-concurrent-client
+# pattern that produced 237 real MemoryErrors on real hardware before the streaming fix and 0
+# after. A Unix-port heap can never reproduce an embedded-scale MemoryError - these are guards.
+
+# Both gc settings are exercised: MicroPython's own real default, and the project owner's chosen
+# gc.threshold(32768). That setting is process-global (py/modgc.c has no per-object/per-task
+# scoping), so every test below saves and restores the value it finds already set.
 
 
 def _make_hammer_service() -> "tuple[WebserverService, Microdot]":
@@ -2164,13 +2612,9 @@ def _make_hammer_service() -> "tuple[WebserverService, Microdot]":
 async def _hammer_status(app: "Microdot", n: int) -> None:
     async def _one() -> None:
         res = await app.dispatch_request(_make_request(app, "GET", "/status", None))
-        # _assert_body_is_bounded_stream() (defined below, alongside I.2's own hammer helper) also
-        # confirms res.body is a genuinely bounded stream, not just that the final assembled JSON is
-        # well-formed - added after a post-hoc check found this test alone (unlike H.2's own direct
-        # unit tests on _get_status()) would still pass 145/145 even with /status's own streaming
-        # reverted to one plain dict, since status_body()/drain_json_response_body() deliberately
-        # tolerates either body shape and an 8MB Unix-port heap absorbs a payload this small either
-        # way. Forward-referenced here (defined later in this same module, both run at test time only).
+        # _assert_body_is_bounded_stream() (defined below) also confirms res.body is a genuinely
+        # bounded stream: status_body()/drain_json_response_body() tolerates either body shape, so
+        # this test alone would still pass with /status's streaming reverted to one plain dict.
         body = json.loads(_assert_body_is_bounded_stream(res, "/status"))
         assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
         assert len(body["errcount"]) == 18  # 17 fake modules + this service's own WEBSERVER entry
@@ -2199,20 +2643,15 @@ def test_h3_hammer_concurrent_status_requests_stay_valid_with_the_chosen_gc_thre
 
 
 # -- I: _stream_dict_response() - the shared streaming primitive generalizing H.2's /status
-# mitigation to every other dict-shaped GET route (systematic memory-safety audit, 2026-09-07 - see
-# CLAUDE.md's memory-safety hard rule and SPECIFICATION.md's Memory-Safety Audit & Discipline Part).
-# /measurements, /sensors, /networking, /system, /notification all used to just `return result` and
-# let Microdot's own Response.__init__ run one json.dumps() over the whole dict
-# (ext/microdot.py: `if isinstance(body, (dict, list)): body = json.dumps(body)`) - the same
-# single-large-contiguous-allocation shape /status itself used to have before its own real-hardware
-# MemoryError was root-caused (BACKLOG.md). I.1 exercises the shared primitive directly; I.2/I.3
-# hammer the newly-streamed routes the same way H.3 already hammers /status - these Unix-port runs
-# (8MB heap, scripts/test.sh's own -X heapsize=8M) are correctness/regression guards, never a real
-# embedded-scale memory-pressure reproduction, exactly like H.3's own framing.
+# mitigation to every other dict-shaped GET route (CLAUDE.md's memory-safety hard rule,
+# SPECIFICATION.md Part I). Those routes used to let Microdot json.dumps() the whole dict.
+
+# I.1 exercises the shared primitive directly; I.2/I.3 hammer the newly-streamed routes the way
+# H.3 hammers /status - Unix-port correctness guards, never an embedded-scale reproduction.
 
 
 def test_i1_empty_dict_produces_the_same_valid_empty_object_as_plain_json_dumps() -> None:
-    res = run(_stream_dict_response({}))
+    res = run(_stream_dict_response({}, _WIRE_CHUNK_BYTES))
     assert json.loads(status_body(res)) == {}
 
 
@@ -2220,27 +2659,24 @@ def test_i1_output_is_byte_identical_to_microdots_own_single_json_dumps_path() -
     # The whole point of this primitive: identical JSON on the wire, just assembled without ever
     # holding one buffer sized to the full aggregate (see _stream_dict_response()'s own comment).
     result = {"A": 1, "B": {"nested": True}, "C": [1, 2, 3], "D": None}
-    streamed = run(_stream_dict_response(result))
+    streamed = run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))
     plain = Response(result)  # Microdot's own dict path - one json.dumps() over the whole thing
     assert json.loads(status_body(streamed)) == json.loads(plain.body)
 
 
 def test_i1_sets_content_type_and_an_exact_content_length_header() -> None:
-    res = run(_stream_dict_response({"A": 1}))
+    res = run(_stream_dict_response({"A": 1}, _WIRE_CHUNK_BYTES))
     assert res.headers["Content-Type"] == "application/json; charset=UTF-8"
     body = status_body(res)
     assert res.headers["Content-Length"] == str(len(body))
 
 
 def test_i1_many_entries_are_coalesced_into_size_bounded_batches_not_one_growing_blob() -> None:
-    # Mirrors H.2's identical proof for /status's own "errcount" section
-    # (test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_not_one_growing_blob
-    # above) - same _coalesce_json_fragments()/_append_coalesced_object() mechanism, applied here to
-    # a flat top-level dict (the shape /measurements, /sensors, /networking, /system, /notification
-    # all produce) instead of /status's own nested "errcount" section.
+    # Mirrors H.2's identical proof for /status's own "errcount" section - same _PieceWriter
+    # mechanism, applied here to a flat top-level dict instead of /status's own nested section.
     result = {f"Field{i}": "x" * 100 for i in range(30)}  # ~30*(11+100) bytes, several times over
-    # _MAX_STATUS_PIECE_BYTES if joined into one piece
-    res = run(_stream_dict_response(result))
+    # chunk_bytes if joined into one piece
+    res = run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))
     chunks = list(res.body)
     encoded = [c.encode() if isinstance(c, str) else c for c in chunks]
     assert all(len(c) < 1200 for c in encoded), [len(c) for c in encoded]
@@ -2263,7 +2699,7 @@ def test_i1_a_two_level_measurement_value_serialises_correctly_and_is_not_re_wra
         },
     }
     # status_body() drains res.body, which is a generator - read it once, assert on the result.
-    body = json.loads(status_body(run(_stream_dict_response(result))))
+    body = json.loads(status_body(run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))))
     assert body == result
     assert isinstance(body["ISL29125"]["RGB"], dict)  # a dict, not the string '{"R": 0.1234, ...}'
     assert body == json.loads(Response(result).body)  # byte-for-byte Microdot's own dict path
@@ -2271,24 +2707,19 @@ def test_i1_a_two_level_measurement_value_serialises_correctly_and_is_not_re_wra
 
 def test_i1_a_key_with_special_characters_is_correctly_escaped_not_hand_concatenated() -> None:
     result = {'Weird"Key': 1}
-    res = run(_stream_dict_response(result))
+    res = run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))
     assert json.loads(status_body(res)) == result
 
 
-_HAMMER_PIECE_BUDGET = 1200  # same generous margin over _MAX_STATUS_PIECE_BYTES (1024) as the H.2
-# coalescing test above - not an exact byte count, just "nowhere near" an unbounded aggregate.
 
 
 def _assert_body_is_bounded_stream(res: "Response", path: str) -> bytes:
-    # A route hammer test asserting only on the final assembled JSON (json.loads(status_body(res)))
-    # cannot tell a genuinely-streamed, bounded-piece response apart from a reverted
-    # `return result` that Microdot's own Response.__init__ turns into one plain json.dumps() string
-    # - status_body()/drain_json_response_body() deliberately accepts both shapes so pre-existing
-    # tests don't have to branch, which means it silently hides exactly the regression this whole
-    # audit exists to catch. Confirmed directly: reverting one of the five fixed routes back to
-    # `return result` still left every pre-existing hammer test passing 145/145 before this helper
-    # was added. res.body must be a real streamed iterator, never a plain str/bytes, and every piece
-    # it yields must stay under the same per-piece budget _stream_dict_response() itself enforces.
+    # status_body()/drain_json_response_body() accepts both a streamed and a single-json.dumps()
+    # body so pre-existing tests need no branching - which means a route reverted to `return
+    # result` still passes every other hammer test here. Hence this explicit check.
+
+    # res.body must be a real streamed iterator, never a plain str/bytes, and every piece it yields
+    # must stay under the same per-piece budget _stream_dict_response() itself enforces.
     body = res.body
     assert not isinstance(body, (str, bytes)), f"{path}: response body is not a streamed iterator (regressed to a single json.dumps() aggregate)"
     chunks = []
@@ -2300,9 +2731,8 @@ def _assert_body_is_bounded_stream(res: "Response", path: str) -> bytes:
 
 
 # -- I.2: hammer /measurements and /sensors specifically - the project owner's own named top
-# candidate ("the configuration of sensor modules varies from device to device, its final size is
-# not foreseeable") - at the real registered-module count found on real hardware (17, same scale
-# H.3 already uses for /status).
+# candidate, since sensor-module configuration varies per device and its final size is not
+# foreseeable - at the real registered-module count found on real hardware (17, H.3's own scale).
 
 
 def _make_sensor_hammer_service() -> "tuple[WebserverService, Microdot]":
@@ -2363,20 +2793,15 @@ def test_i2_hammer_concurrent_sensors_requests_stay_valid_with_the_chosen_gc_thr
         gc.threshold(orig_threshold)
 
 
-# -- I.2b: /networking, /system, /notification each get the same dedicated per-hotspot hammer
-# treatment as /measurements/sensors above (task's own "each identified hotspot gets its own
-# hammering test set" ask - the combined I.3 set below is additional, not a substitute for this).
-# Real device wiring registers only a handful of SettingsGroups per endpoint (sensortask_wozi.py/
-# sensortask_dev.py: 2-3 groups, a few fields each) - stressed here at the same 17-group scale as
-# the sensor endpoints above so this test set doesn't depend on today's small real field counts
-# staying small forever.
+# -- I.2b: /networking, /system, /notification each get the same dedicated per-hotspot hammer as
+# /measurements and /sensors above; the combined I.3 set below is additional, not a substitute.
+# Stressed at 17 groups so this set doesn't depend on today's small real field counts staying so.
 
 
 def _make_settings_hammer_service(endpoint: str) -> "tuple[WebserverService, Microdot, set[str]]":
-    # _get_settings_flat() merges every group's fields into one flat top-level dict (no per-group
-    # namespacing - matches real production wiring, see that method's own docstring), so each
-    # group here must contribute distinct field names or later groups would silently overwrite
-    # earlier ones and this hammer would only ever exercise 2 keys instead of 34.
+    # _get_settings_flat() merges every group's fields into one flat top-level dict with no
+    # per-group namespacing (matching real production wiring), so each group here must contribute
+    # distinct field names or later groups would overwrite earlier ones.
     groups = [
         SettingsGroup(_FakeModule(f"GROUP{i}", values={f"F{i}A": i, f"F{i}B": 0}), (f"F{i}A", f"F{i}B")) for i in range(17)
     ]
@@ -2428,12 +2853,9 @@ def test_i2b_hammer_concurrent_notification_requests_stay_valid_with_the_chosen_
     _run_settings_hammer("notification", "/notification", 32768)
 
 
-# -- I.3: the "final test set" - every memory-bounded GET route hammered concurrently for longer,
-# maxing out every situation identified by this audit at once, not just one route in isolation
-# (task section 3's own explicit ask). Registers a real-hardware-scale mix across every
-# registration group at the same time: 17 sensor modules (measurements/sensors), 17 error sources
-# plus this service's own entry (status/errcount, matching H.3's own scale), and one settings group
-# per flat endpoint (networking/system/notification).
+# -- I.3: every memory-bounded GET route hammered concurrently for longer, maxing out every
+# situation this audit identified at once: 17 sensor modules (measurements/sensors), 17 error
+# sources plus this service's own entry (status/errcount), one settings group per flat endpoint.
 
 
 def _make_combined_hammer_service() -> "tuple[WebserverService, Microdot]":
@@ -2494,15 +2916,12 @@ def test_i3_hammer_every_memory_bounded_get_route_concurrently_with_the_chosen_g
         gc.threshold(orig_threshold)
 
 
-# -- I.4: /measurements and /sensors hammered concurrently with a real config *write* (PUT
-# /sensors) in the mix, not just GETs alone - the unit-level equivalent of
-# tests_hardware/bench/test_memory_stress_bench.py's own real-hardware hammer-load test (4 GET
-# threads at max speed plus one PUT-a-command-field thread every 3s), which found nothing wrong on
-# real hardware but never had a fast, CI-run counterpart proving the same combined GET+write shape
-# stays memory-safe/bounded-stream at this tier. ConfigManager's own asyncio.Lock already rules out
-# a data race (SPECIFICATION.md Part C.7) - this is about the same concern I.2/I.3 above already
-# check for GET-only traffic (bounded-stream responses, no exception), now with a concurrent writer
-# present too, not a race-condition hunt.
+# -- I.4: /measurements and /sensors hammered concurrently with a real config write (PUT /sensors)
+# in the mix - the unit-level counterpart to tests_hardware/bench/test_memory_stress_bench.py's
+# real-hardware GET+write shape, which had no fast CI-run equivalent.
+
+# ConfigManager's own asyncio.Lock already rules out a data race (SPECIFICATION.md Part C.7): this
+# checks I.2/I.3's same bounded-stream property with a concurrent writer present, not a race hunt.
 
 
 def _make_write_hammer_service() -> "tuple[WebserverService, Microdot]":
@@ -2547,7 +2966,143 @@ def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_writ
         gc.threshold(orig_threshold)
 
 
+
+# ---------------------------------------------------------------------------
+# Section G - the backlog knob and its coupling to max_connections
+# (SPECIFICATION.md Part H.7; asyncio.start_server()'s own default is 5)
+# ---------------------------------------------------------------------------
+
+
+def test_backlog_defaults_to_one_above_max_connections() -> None:
+    # Derived, not inherited: start_server()'s own default of 5 silently capped the accept queue
+    # below any raised ceiling, dropping arrivals inside lwIP where src/ could never see them.
+    for ceiling in (1, 3, 4, 7, 12):
+        service, _app = _make_service(max_connections=ceiling)
+        assert service._backlog == ceiling + 1, ceiling
+
+
+def test_an_explicit_backlog_is_honoured_when_it_covers_the_ceiling() -> None:
+    service, _app = _make_service(max_connections=4, backlog=9)
+    assert service._backlog == 9
+
+
+def test_a_backlog_below_the_ceiling_is_clamped_up_never_left_short() -> None:
+    # Clamped rather than raised, matching LockedCounter's own out-of-range convention. buildgen
+    # rejects the same mistake in config, where it can be named against the device that made it.
+    service, _app = _make_service(max_connections=6, backlog=2)
+    assert service._backlog == 6
+
+
+def test_the_server_passes_its_own_backlog_to_start_server() -> None:
+    # The whole point of the knob: inherited, the default of 5 resets the sixth of a burst landing
+    # while the loop is busy, so the value has to reach start_server() rather than merely be stored.
+    service, _app = _make_service(max_connections=7)
+    recorded: dict[str, Any] = {}
+
+    class _FakeServer:
+        async def wait_closed(self) -> None:
+            return
+
+    async def fake_start_server(cb: "Any", host: str, port: int, backlog: int = 5) -> "_FakeServer":
+        recorded["host"], recorded["port"], recorded["backlog"] = host, port, backlog
+        return _FakeServer()
+
+    real_start_server = asyncio.start_server
+    asyncio.start_server = fake_start_server  # type: ignore[assignment]
+    try:
+        asyncio.run(service._run())
+    finally:
+        asyncio.start_server = real_start_server
+    assert recorded["backlog"] == 8, recorded
+
+
+# -- Mutation-found gaps: each test below fails against one specific plausible slip ---------------
+
+
+def test_h2_piece_writer_keeps_a_piece_that_lands_exactly_on_the_cap_whole() -> None:
+    # The cap is inclusive: two fragments summing to exactly max_bytes share one piece, and only
+    # the next one starts a new piece - ">=" would split at the cap and double the write count.
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, max_bytes=4)
+    for fragment in ("ab", "cd", "e"):
+        writer.add(fragment)
+    writer.flush()
+    assert pieces == ["abcd", "e"], pieces
+
+
+def test_h2_a_tuple_value_is_walked_like_a_list_never_dumped_as_one_string() -> None:
+    # json.dumps() renders a tuple as a list, so dumping one whole produces the same text - as a
+    # single allocation the size of the value, which is exactly what the writer exists to avoid.
+    value = tuple(range(60))
+    pieces = _written(value, max_bytes=16)
+    assert "".join(pieces) == json.dumps(value)
+    assert max(len(p) for p in pieces) <= 16, [len(p) for p in pieces]
+
+
+def test_a_streamed_bodys_content_length_counts_bytes_not_characters() -> None:
+    # A device or sensor name is free text; with any non-ASCII character in it, a character count
+    # declares a short body and the client stops reading before the closing brace.
+    res = run(_stream_dict_response({"Name": "Wohnzimmer \u00e4\u00f6\u00fc \u20ac"}, _WIRE_CHUNK_BYTES))
+    body = status_body(res)
+    assert int(res.headers["Content-Length"]) == len(body), (res.headers["Content-Length"], len(body))
+    assert len(body) > len(body.decode())
+    assert json.loads(body) == {"Name": "Wohnzimmer \u00e4\u00f6\u00fc \u20ac"}
+
+
+def test_serve_never_swallows_its_own_tasks_cancellation_and_still_frees_the_slot() -> None:
+    # A shutdown cancels every connection task; swallowed, the task would end "normally" and
+    # whoever cancelled it could never tell - while the slot must be released either way.
+    service, app = _make_service(outer_cap_s=10.0)
+
+    async def _hang(_reader: object, _writer: object) -> None:
+        await asyncio.Event().wait()
+
+    app.handle_request = _hang
+    writer = _ScriptedWriter()
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(service._serve(_ScriptedReader([]), writer))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            return True
+        return False
+
+    assert run_timed(scenario()) is True, "the cancellation was swallowed"
+    assert writer.close_called is True
+    assert run(service._open_conns.get_value()) == 0
+
+
+def test_a_body_that_never_arrives_is_logged_as_a_read_phase_timeout() -> None:
+    # The body is read with readexactly(), not readline(): microdot swallows a timeout there as it
+    # does for the headers, so the proxy's own log is the only trace this connection ever leaves.
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=2.0)
+    request = _request_bytes("PUT", "/status", b"", {"Content-Length": "10"})
+    run_timed(service._serve(_ScriptedReader([(0.0, request)]), _ScriptedWriter()), timeout_s=2.0)
+    entry = next(iter(run(service.get_error_counter()).values()))
+    assert entry["ErrCount"] == 1, entry
+    assert run(service._open_conns.get_value()) == 0
+
+
+class _ResetDuringBodyReader(_ScriptedReader):
+    async def readexactly(self, _n: int) -> bytes:
+        raise OSError(104, "ECONNRESET")
+
+
+def test_nothing_is_written_to_a_peer_that_reset_while_its_body_was_read() -> None:
+    # The same peer-gone rule as a reset during the headers, reached through the other read method.
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=1.0)
+    request = _request_bytes("PUT", "/status", b"", {"Content-Length": "10"})
+    writer = _ScriptedWriter()
+    run_timed(service._serve(_ResetDuringBodyReader([(0.0, request)]), writer), timeout_s=2.0)
+    assert writer.written == b"", writer.written
+    assert run(service._open_conns.get_value()) == 0
+
+
 if __name__ == "__main__":
     import microtest
 
     microtest.run(globals())
+

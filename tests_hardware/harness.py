@@ -6,7 +6,9 @@ under the MicroPython Unix port. See tests_hardware/README.md for how to run thi
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,23 +17,177 @@ from typing import TYPE_CHECKING
 import serial
 
 if TYPE_CHECKING:
+    import threading
     from collections.abc import Callable
+    from typing import Any
+
+    from bench_control import BenchBridge
+
+# For `import setup_toolchain` below - the same bare-sibling shape as that module's own
+# `import micropython_overrides` (SPECIFICATION.md B.15 on why both need a path slot).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "toolchain"))
+import setup_toolchain
+from setup_toolchain import detect_pico_serial_devices
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Same NetworkManager connection names toolchain/setup_toolchain.py's ensure_bench_bridge() uses -
-# kept in exact sync with that module rather than re-derived, since a bench rig set up by `env
-# --tier bench` is what every bench test assumes is already there.
-BENCH_BRIDGE_CONN = "br0"
-BENCH_ETH_CONN = "br0-eth0"
-BENCH_AP_CONN = "br0-wifi-ap"
+# SPECIFICATION.md Part I.4(e)'s bar, as the board's own log shows it. BOTH spellings: src/'s
+# degrade handlers log str(e), so a real caught allocation failure reads "memory allocation
+# failed, ..." (py/runtime.c) and the class name appears only in an UNCAUGHT traceback.
+MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
+
+def configured_max_connections(device: str = "dev") -> int:
+    """The admission ceiling this repo's config would build for `device`. It describes the TREE, not
+    necessarily the image on the board, so a test that cares asserts the two agree."""
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from buildgen.validate import device_max_connections
+
+    return device_max_connections(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src")
+
+
+# The request line every connection held open against the board sends. A FIN close ends its headers,
+# so microdot answers whatever it asked: an unrouted method is a small 405, never a route's work. Not
+# an RST - a read of it leaves modlwip writing the 400 to a NULL pcb (SPECIFICATION.md Part H.7.1).
+HELD_REQUEST_LINE = b"HOLD / HTTP/1.0\r\n"
+HELD_PAD_LINE = b"X-Pad: y\r\n"  # one header line, which resets the server's per-call read timeout
+
+
+def discover_max_connections(host: str, port: int = 80, probe_limit: int = 40, settle_s: float = 1.0, dwell_s: float = 0.3) -> int:
+    """The ceiling the BOARD actually holds, found by holding connections open one at a time until
+    one is refused. The only figure that is silicon's own rather than the tree's, and the one a
+    raised lwIP PCB count has to be confirmed against (SPECIFICATION.md Part B.14.2)."""
+    time.sleep(settle_s)  # _serve()'s slot release outlives the response (Part I.6), so start clean
+    held: list[socket.socket] = []
+    try:
+        admitted = _walk_to_the_wall(host, port, probe_limit, dwell_s, held)
+    except AssertionError as walk_error:
+        _close_all(held)
+        try:  # best effort, one slot: the next test starts cleaner, and the walk's error stays the headline
+            _wait_for_slots_to_drain(host, port, 1, release_s=settle_s)
+        except AssertionError as drain_error:
+            walk_error.args = (f"{walk_error} (and the drain wait after it failed too: {drain_error})",)
+        raise
+    finally:
+        _close_all(held)
+    _wait_for_slots_to_drain(host, port, max(admitted, 1), release_s=settle_s)
+    return admitted
+
+
+def _walk_to_the_wall(host: str, port: int, probe_limit: int, dwell_s: float, held: list[socket.socket]) -> int:
+    """discover_max_connections()'s walk. Every held connection is sent a request line, then a header
+    line per step, so the per-call read timeout never frees a slot mid-walk; only the outer cap bounds
+    it, which is why probe_limit * dwell_s stays under it (SPECIFICATION.md Part H.7.1)."""
+    started = time.monotonic()
+    for admitted in range(probe_limit):
+        for index, open_sock in enumerate(held):
+            try:
+                open_sock.sendall(HELD_PAD_LINE)
+            except OSError as exc:
+                raise AssertionError(f"connection {index} was no longer held ({exc!r}) {time.monotonic() - started:.2f}s into the walk - the count is not a simultaneous ceiling") from exc
+        sock = _open_probe(host, port)
+        if sock is None:  # refused or unanswered at connect: the stack itself has no slot left
+            _assert_probe_held(held, started)
+            return admitted
+        held.append(sock)
+        sock.settimeout(dwell_s)
+        try:
+            sock.sendall(HELD_REQUEST_LINE)
+            payload = sock.recv(4096)
+        except TimeoutError:
+            continue  # held open mid-request, as an admitted connection should be
+        except OSError:  # reset or broken pipe: closed before it was ever served
+            payload = b""
+        if payload == b"":
+            _assert_probe_held(held[:-1], started)
+            return admitted  # refused without a response: this one did not get a slot
+        raise AssertionError(f"connection {admitted} against {host} answered {payload[:40]!r} instead of being held open - the server answered a request it should still be waiting on, so this reading is not a ceiling")
+    raise AssertionError(f"no connection was refused within {probe_limit} attempts against {host} - the ceiling is higher than this probe looks, or admission is not bounded at all")
+
+
+def _close_all(socks: list[socket.socket]) -> None:
+    for sock in socks:
+        sock.close()
+
+
+def _open_probe(host: str, port: int, connect_timeout_s: float = 2.0) -> socket.socket | None:
+    """A connected socket, or None when the connect itself fails - its own timeout, apart from the
+    probe's read timeout, so a slow handshake is never mistaken for a held-open connection."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(connect_timeout_s)
+    try:
+        sock.connect((host, port))
+    except OSError:
+        sock.close()
+        return None
+    return sock
+
+
+def _still_open(sock: socket.socket) -> bool:
+    """True while the server has neither answered nor closed: a read would still block."""
+    sock.setblocking(False)
+    try:
+        sock.recv(4096)
+    except BlockingIOError:
+        return True
+    except OSError:
+        return False  # reset: refused
+    return False  # data or EOF: answered or refused
+
+
+def _wait_for_slots_to_drain(host: str, port: int, admitted: int, timeout_s: float = 10.0, release_s: float = 1.0, hold_s: float = 0.3) -> None:
+    """Block until `admitted` connections are held at once again - the whole ceiling, not one slot -
+    then give that check's own connections `release_s` to free theirs: a slot outlives its client's
+    close by 0.71-0.84 s (SPECIFICATION.md Part H.7.1), which no probe observes without taking one."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        probes: list[socket.socket] = []
+        try:
+            while len(probes) < admitted and (sock := _open_probe(host, port)) is not None:
+                probes.append(sock)
+            time.sleep(hold_s)  # a refusal closes within milliseconds; an admitted one stays silent
+            held = sum(_still_open(sock) for sock in probes)
+        finally:
+            _close_all(probes)
+        if held == admitted:
+            time.sleep(release_s)
+            return
+        # A partial set holds slots of its own until release_s after its close: retrying sooner can
+        # alternate forever between two half-drained sets, never seeing the whole ceiling at once.
+        time.sleep(release_s if held else 0.1)
+    raise AssertionError(f"{host}:{port} never held {admitted} connections at once again within {timeout_s}s of the probe releasing its own - the slots did not drain")
+
+
+def _assert_probe_held(admitted_socks: list[Any], started: float) -> None:
+    """Every connection the probe counted must still be open at the moment the refusal landed,
+    or they were never held simultaneously and the count is an artefact of the walk's own pace."""
+    for index, sock in enumerate(admitted_socks):
+        sock.settimeout(0.05)
+        try:
+            payload = sock.recv(4096)
+        except TimeoutError:
+            continue  # still open with nothing to say, which is what an admitted connection does
+        except OSError:
+            payload = b"<reset>"
+        raise AssertionError(f"connection {index} was no longer held ({payload[:40]!r}) {time.monotonic() - started:.2f}s into the walk - the count is not a simultaneous ceiling")
+
+
+# Read from the module that CREATES these NetworkManager connections rather than copied, so a
+# rename there cannot leave the bench tier looking for a rig nobody built - its skip gate
+# deselects rather than fails, which is exactly the way that goes unnoticed.
+BENCH_BRIDGE_CONN = setup_toolchain.BENCH_BRIDGE_CONN
+BENCH_ETH_CONN = setup_toolchain.BENCH_ETH_CONN
+BENCH_AP_CONN = setup_toolchain.BENCH_AP_CONN
 
 
 def _usb_reset_device(device: str) -> bool:
     """Unbind/rebind `device`'s USB device from the kernel `usb` driver - same effect as a
     physical unplug/replug, recovering a wedged raw-REPL-entry state (see tests_hardware/README.md).
     Returns True if a reset was attempted, False if the device path couldn't be resolved."""
-    name = Path(device).name  # e.g. "ttyACM0"
+    # .resolve() first: `device` is normally the /dev/serial/by-id symlink resolve_board_device()
+    # returns, and that name has no /sys/class/tty entry - without this the whole unbind/rebind
+    # recovery below silently no-ops (returns False) on the default device path.
+    name = Path(device).resolve().name  # e.g. "ttyACM0"
     sys_tty_device = Path("/sys/class/tty") / name / "device"
     if not sys_tty_device.exists():
         return False
@@ -52,8 +208,9 @@ def _usb_reset_device(device: str) -> bool:
 
 
 class HardwareNotAvailableError(RuntimeError):
-    """Raised when a real board/bench isn't reachable. conftest.py's fixtures turn this into a
-    skip, not a failure, so this tier stays collectible with nothing attached."""
+    """Raised when a real board/bench isn't reachable - conftest.py turns it into a skip, so this
+    tier stays collectible with nothing attached. resolve_board_device()'s ambiguous-hardware raise
+    is the deliberate exception: two attached boards must error naming both, never skip."""
 
 
 class HardwareTestFailureError(AssertionError):
@@ -88,11 +245,96 @@ def wait_until(
     raise TimeoutError(f"timed out after {timeout_s}s waiting for: {description}{detail}")
 
 
+def restore_board_to_serving(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    """run_isolated() leaves main.py stopped, so the webserver is gone until a real hard reset. A bench
+    test that runs a device script calls this in a finally or a fixture's teardown, or every network test
+    after it fails on a refused connection (tests_scripts/test_bench_restores_serving.py pins it)."""
+    import http_client
+
+    bench.kick_all_stations()  # stale AP-side station entries stop the DUT reassociating (README)
+    board.hard_reset()
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
+        timeout_s=90.0,
+        poll_interval_s=3.0,
+        description="DUT serving HTTP again after a device script left main.py stopped",
+    )
+
+
+def wait_for_script_server(dut_ip: str, stop: threading.Event, path: str = "/status", timeout_s: float = 120.0, handover_s: float = 20.0) -> bool:
+    """True once a device script's own server answers `path` with a 200. main.py's server may still
+    be answering when this starts, so it first waits (up to `handover_s`) for that one to go quiet;
+    `stop` ends the wait early, so it never outlives its test."""
+    import http_client
+
+    def serves() -> bool:
+        try:
+            return http_client.fetch(dut_ip, 80, "GET", path, timeout_s=3.0).status_code == 200
+        except (OSError, http_client.HTTP_ERROR):
+            return False
+
+    handover_until = time.monotonic() + handover_s
+    while time.monotonic() < handover_until and serves():
+        if stop.wait(0.5):
+            return False
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if serves():
+            return True
+        if stop.wait(1.0):
+            return False
+    return False
+
+
 @dataclass
 class MpremoteResult:
     returncode: int
     stdout: str
     stderr: str
+
+
+_BOARD_BY_ID_GLOB = "usb-MicroPython_Board_in_FS_mode_*-if00"
+# Returned when no Pico-family board is attached at all: a path that cannot exist, so the `board`
+# fixture's own is_reachable() probe fails and SKIPS (this tier stays collectible with nothing
+# attached) without mpremote ever opening some other device's port to find that out.
+_NO_BOARD_DEVICE = "/dev/no-pico-serial-device-detected"
+# Bounded for the same reason the USB unbind/rebind escalation below is: a node that keeps
+# vanishing and reappearing under an alternating name would otherwise extend the grace window
+# forever, and no single subprocess timeout breaks out of _mpremote()'s own loop.
+_MAX_DEVICE_REBINDS = 2
+
+
+def _stable_name_for(dev_path: Path, by_id_dir: Path) -> str:
+    """The `/dev/serial/by-id` symlink pointing at `dev_path`, or `dev_path` itself if none does.
+    Matching by target rather than by name drops the old hardcoded product string, so a board whose
+    USB descriptor reads differently still resolves to a stable name."""
+    if by_id_dir.is_dir():
+        for link in sorted(by_id_dir.iterdir()):
+            if link.resolve() == dev_path.resolve():
+                return str(link)
+    return str(dev_path)
+
+
+def resolve_board_device(
+    by_id_dir: Path = Path("/dev/serial/by-id"),
+    sys_tty_dir: Path = Path("/sys/class/tty"),
+    dev_dir: Path = Path("/dev"),
+) -> str:
+    """The board's current serial node, found by setup_toolchain.py's vendor-ID detection (never a
+    bare ttyACM scan, which could pick the bench's Arduino) and named by its by-id symlink, which
+    survives the re-enumeration a hard reset causes. Two matches is a hard error, not sorted()[0]."""
+    candidates = detect_pico_serial_devices(sys_tty_dir, dev_dir)
+    if not candidates and by_id_dir.is_dir():
+        candidates = [link.resolve() for link in sorted(by_id_dir.glob(_BOARD_BY_ID_GLOB))]
+    if len(candidates) > 1:
+        names = ", ".join(str(c) for c in candidates)
+        raise HardwareNotAvailableError(
+            f"multiple Raspberry Pi USB serial devices found ({names}) - pass --device or set "
+            "MPREMOTE_DEVICE to pick one explicitly, rather than have the suite guess which board to drive",
+        )
+    if not candidates:
+        return _NO_BOARD_DEVICE
+    return _stable_name_for(candidates[0], by_id_dir)
 
 
 class Board:
@@ -101,8 +343,21 @@ class Board:
     `machine.bootloader()` re-flash and hard-reset live, for tests_hardware/flash/test_toolchain_flash_boot.py."""
 
     def __init__(self, device: str | None = None, default_timeout_s: float = 60.0) -> None:
-        self.device = device or os.environ.get("MPREMOTE_DEVICE", "/dev/ttyACM0")
+        self._pinned_device = device or os.environ.get("MPREMOTE_DEVICE")
+        self.device = self._pinned_device or resolve_board_device()
         self.default_timeout_s = default_timeout_s
+
+    def _rebind_device_if_moved(self) -> bool:
+        """Re-resolves the serial node when the current one has vanished; True if it moved. A hard
+        reset re-enumerates the CDC-ACM device with no index guarantee (observed ttyACM0 -> ttyACM1
+        mid-suite). An explicitly pinned device is never second-guessed."""
+        if self._pinned_device is not None or Path(self.device).exists():
+            return False
+        rebound = resolve_board_device()
+        if rebound == self.device:
+            return False
+        self.device = rebound
+        return True
 
     def _mpremote(self, *args: str, timeout_s: float | None = None, allow_recovery: bool = True) -> MpremoteResult:
         """Runs one `uv run mpremote connect <device> ...` call, retrying past known transient
@@ -112,6 +367,7 @@ class Board:
         transient_markers = ("may be in use by another program", "could not enter raw repl", "could not open")
         grace_deadline = time.monotonic() + 10.0
         usb_reset_attempted = False
+        rebinds_left = _MAX_DEVICE_REBINDS
         while True:
             try:
                 proc = subprocess.run(
@@ -135,6 +391,13 @@ class Board:
             # The 10s settle-wait grace window above is sometimes not enough - this bench's USB
             # device can wedge into indefinite raw-REPL-entry failure until unbound/rebound (see
             # tests_hardware/README.md). Escalate once, never more than once per call.
+            if rebinds_left > 0 and self._rebind_device_if_moved():
+                rebinds_left -= 1
+                # The node moved under us (re-enumeration after a reset) - retry on the new one
+                # before escalating to a USB unbind/rebind, which would not have helped.
+                cmd = ["uv", "run", "mpremote", "connect", self.device, *args]
+                grace_deadline = time.monotonic() + 10.0
+                continue
             if not usb_reset_attempted:
                 usb_reset_attempted = True
                 if _usb_reset_device(self.device):
@@ -143,10 +406,9 @@ class Board:
             return MpremoteResult(proc.returncode, proc.stdout, proc.stderr)
 
     def is_reachable(self) -> bool:
-        # allow_recovery=False: report the honest, current state - a caller may be deliberately
-        # polling for an expected "no" (e.g. waiting to observe a real reboot). This method always
-        # Ctrl-C's/soft-resets the device on raw-REPL entry, so never poll it against a live,
-        # already-running system - use is_device_present() instead (see README for the finding).
+        # allow_recovery=False: report the honest current state, since a caller may be polling
+        # for an expected "no" while waiting out a real reboot. Raw-REPL entry always Ctrl-C's the
+        # device, so never poll this against a live system - is_device_present() is for that.
         try:
             result = self._mpremote("exec", "print('mpremote-ok')", timeout_s=10.0, allow_recovery=False)
         except (HardwareNotAvailableError, HardwareTestFailureError):
@@ -175,14 +437,14 @@ class Board:
             raise HardwareTestFailureError(f"mpremote exec {expr!r} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
         return result.stdout
 
-    def run_isolated(self, script_path: str | Path, *, soft_reset_after: bool = True, timeout_s: float | None = None) -> str:
-        """Isolated-driver mode: `mpremote run <script>` interrupts the system into raw REPL to
-        run `script_path` against real frozen `src/` drivers, re-arming the watchdog first - never
-        leaves `main.py` running afterward (see tests_hardware/README.md)."""
+    def run_isolated(self, script_path: str | Path, *, soft_reset_after: bool = True, timeout_s: float | None = None, allow_recovery: bool = True) -> str:
+        """Isolated-driver mode: `mpremote run <script>` against the real frozen src/ drivers,
+        re-arming the watchdog first, never leaving main.py running (tests_hardware/README.md).
+        allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured."""
         args = ["exec", "import machine; machine.WDT(timeout=8000)", "run", str(script_path)]
         if soft_reset_after:
             args.append("soft-reset")
-        result = self._mpremote(*args, timeout_s=timeout_s)
+        result = self._mpremote(*args, timeout_s=timeout_s, allow_recovery=allow_recovery)
         if result.returncode != 0:
             # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
             # stderr - both are included here for the same reason.

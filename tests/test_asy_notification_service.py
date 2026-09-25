@@ -1,5 +1,6 @@
 import asyncio
-import os
+
+from _tmp_scratch import TmpScratch
 
 import asy_notification_service
 from asy_notification_service import NotificationCoordinator, NotificationSignal
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
     from typing import Any, NoReturn, TypeVar
 
     from crc_checks import CRC_Base
+    from print_log import ErrorLog
 
     T = TypeVar("T")
 
@@ -29,77 +31,31 @@ class _FakeTime:
         self.minute = minute
 
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("notify_")
-
-
-def _remove_any(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        try:
-            os.rmdir(path)
-        except OSError:
-            pass
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("notify")
 
 
 def _tmp_cfg_dir() -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    _next_dir += 1
-    path = _TMP_DIR + "/notify_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass
-    _remove_any(path + "/config_NOTIFY.cfg")
-    return path + "/"
+    return _scratch.dir()
 
 
 class FakeValue:
-    # A controllable NotificationSignal.get_value() source: fixed return, or raises once armed.
-    def __init__(self, value: "int | float | None" = None) -> None:
+    # A controllable NotificationSignal producer (Part C.14.2): get_data() returns self, exposing exactly
+    # one attribute - whatever field the caller configures - at a fixed value, or raising once armed.
+    # Mirrors a real *_Reader.get_data()'s "always available, field can be None" contract.
+    def __init__(self, value: "int | float | None" = None, field: str = "Value") -> None:
         self.value = value
+        self.field = field
         self.raise_exc: Exception | None = None
         self.calls = 0
 
-    async def get(self) -> "int | float | None":
+    async def get_data(self) -> "FakeValue":
         self.calls += 1
         if self.raise_exc is not None:
             raise self.raise_exc
-        return self.value
+        setattr(self, self.field, self.value)  # refreshed every call - picks up a mutated .value
+        return self
 
 
 class FakeClock:
@@ -174,16 +130,15 @@ def make_coordinator(
 def make_signal(
     name: str = "WarnCO2", *, above: bool = True, value: "int | float | None" = 1000, color: "tuple[int, int, int]" = (1, 0, 0),
 ) -> "tuple[NotificationSignal, FakeValue]":
-    fv = FakeValue(value)
+    fv = FakeValue(value, field=name)
     field_schema = ((name, "int", 1600, 0, 3000, None),)
-    return NotificationSignal(name, fv.get, field_schema, color, above=above), fv
+    return NotificationSignal(name, fv, name, field_schema, color, above=above), fv
 
 
 async def _one_cycle(_coordinator: NotificationCoordinator, task: "asyncio.Task[None]", wait: float = 0.1) -> None:
-    # monitor_loop() is an infinite loop; let it run through exactly one full iteration (including
-    # any triggered flashes' settle sleeps) by giving it real wall-clock time, then cancel. `wait`
-    # must cover every triggered signal's own 2*FlashDur settle sleep for a test to observe the
-    # full cycle, not just its first flash.
+    # monitor_loop() is an infinite loop; this lets it run one full iteration, triggered flashes' settle
+    # sleeps included, by giving it real wall-clock time, then cancels. `wait` must cover every triggered
+    # signal's own 2*FlashDur settle sleep to observe the full cycle, not just its first flash.
     await asyncio.sleep(wait)
     task.cancel()
     try:
@@ -224,17 +179,17 @@ def test_register_collision_against_own_static_schema_is_rejected() -> None:
 
 def test_register_field_schema_with_zero_fields_is_rejected() -> None:
     coordinator, _clock, _cb = make_coordinator()
-    fv = FakeValue(1)
-    notif = NotificationSignal("Empty", fv.get, (), (1, 0, 0))
+    fv = FakeValue(1, field="Empty")
+    notif = NotificationSignal("Empty", fv, "Empty", (), (1, 0, 0))
     coordinator.register(notif)
     assert coordinator._registered == []
 
 
 def test_register_field_schema_with_two_fields_is_rejected() -> None:
     coordinator, _clock, _cb = make_coordinator()
-    fv = FakeValue(1)
+    fv = FakeValue(1, field="TwoFields")
     schema = (("A", "int", 1, 0, 10, None), ("B", "int", 1, 0, 10, None))
-    notif = NotificationSignal("TwoFields", fv.get, schema, (1, 0, 0))
+    notif = NotificationSignal("TwoFields", fv, "TwoFields", schema, (1, 0, 0))
     coordinator.register(notif)
     assert coordinator._registered == []
 
@@ -316,10 +271,9 @@ def test_invalid_write_on_one_field_does_not_affect_others() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Exhaustive config field validation (write_config()'s Valid/Invalid contract) - every field in the
-# combined schema (the coordinator's own 8 static fields plus a registered signal's own field),
-# every valid boundary, single invalid values on both sides of every bound, wrong types, and
-# multi-field invalid/valid recombinations in one write.
+# Exhaustive config field validation (write_config()'s Valid/Invalid contract) - every field in the combined
+# schema, the coordinator's own 8 static ones plus a registered signal's, every valid boundary, single
+# invalid values either side of every bound, wrong types, and multi-field recombinations.
 # ---------------------------------------------------------------------------
 
 # name -> (min, max, "int"|"float") for the coordinator's own numeric-bounded static fields.
@@ -372,10 +326,9 @@ def test_each_int_float_field_boundary_values_accepted() -> None:
 
     async def scenario() -> None:
         for field, (lo, hi, _kind) in _INT_FLOAT_FIELD_BOUNDS.items():
-            # "Unchanged" (not just "Valid") also proves acceptance: write_config() only reaches its
-            # changed-vs-same-as-cache comparison after type_or_range_error() has already passed -
-            # a couple of these fields' own schema defaults happen to sit exactly at their own lo
-            # bound (OnM/OffM both default to 0), so writing lo there is a same-value "Unchanged".
+            # "Unchanged", not just "Valid", also proves acceptance: write_config() reaches its changed-vs-
+            # cache comparison only once type_or_range_error() has passed, and a couple of these fields
+            # default exactly to their lo bound, making a write of lo a same-value "Unchanged".
             assert await write_one(field, lo) in ("Valid", "Unchanged"), field
             assert await write_one(field, hi) in ("Valid", "Unchanged"), field
 
@@ -455,11 +408,9 @@ def test_unknown_field_key_reported_invalid_and_ignored() -> None:
 
 
 def test_registered_int_field_boundaries_and_coercion_enforced() -> None:
-    # A registered NotificationSignal's own field goes through the exact same combined-schema path
-    # as the coordinator's own static fields above - proven here with its real WarnCO2 bounds
-    # (0-3000), not just the coordinator's own 8 fields. An integral float is now accepted and
-    # coerced (SPECIFICATION.md Part A.8's int<->float coercion policy); a fractional one is still
-    # rejected, same treatment as out-of-range.
+    # A registered NotificationSignal's field goes through the same combined-schema path as the
+    # coordinator's static fields above, proven with its real WarnCO2 bounds (0-3000). An integral float is
+    # accepted and coerced (Part A.8); a fractional one is still rejected, like out-of-range.
     coordinator, _clock, _cb = make_coordinator()
     signal, _fv = make_signal("WarnCO2")
     coordinator.register(signal)
@@ -489,14 +440,13 @@ def test_registered_int_field_boundaries_and_coercion_enforced() -> None:
 
 
 def test_registered_float_field_boundaries_and_coercion_enforced() -> None:
-    # A second registered signal with a float-typed field (WarnHum's real production shape) -
-    # proves the combined schema isn't accidentally int-only. An int is always accepted and
-    # coerced for a float field (SPECIFICATION.md Part A.8) - a blanket accept, since every int is
-    # exactly representable as a float.
+    # A second registered signal with a float-typed field, WarnHum's real production shape, proving the
+    # combined schema is not accidentally int-only. An int is always accepted and coerced for a float field
+    # (Part A.8) - a blanket accept, every int being exactly representable as a float.
     coordinator, _clock, _cb = make_coordinator()
-    fv = FakeValue(50.0)
+    fv = FakeValue(50.0, field="WarnHum")
     field_schema = (("WarnHum", "float", 65.0, 0.0, 100.0, None),)
-    signal = NotificationSignal("WarnHum", fv.get, field_schema, (0, 0, 1))
+    signal = NotificationSignal("WarnHum", fv, "WarnHum", field_schema, (0, 0, 1))
     coordinator.register(signal)
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
@@ -668,6 +618,79 @@ def test_signal_value_failure_and_own_time_callback_failure_share_one_history() 
     log = run(read_log())
     assert log["NOTIFY"]["ErrCount"] == 2
     assert len(log["NOTIFY"]["ErrNum"]) == len(coordinator.pr.history)
+
+
+def test_a_rejected_registration_surfaces_as_a_warning_with_its_own_wrnno() -> None:
+    # register() runs before the logger exists, so a rejection is queued and flushed by the
+    # monitor loop. Every rejection test above asserted only that _registered stayed empty - the
+    # queued warning, its number and the drain itself were never checked.
+    coordinator, _clock, _cb = make_coordinator()
+    bad, _ = make_signal("AutoOn")  # collides with the coordinator's own static field
+    coordinator.register(bad)
+    assert coordinator._pending_wrn, "a rejected registration queued no warning at all"
+    coordinator.finalize()  # cfgmgr is built here, the same order the generated boot list uses
+    run(coordinator.cfgmgr.setup())
+
+    async def scenario() -> "dict[str, Any]":
+        await coordinator.pr.setup()
+        await coordinator._flush_pending_registration_warnings()
+        return await coordinator.get_error_counter()
+
+    log = run(scenario())
+    assert coordinator._pending_wrn == [], "the queue was not drained, so every later cycle re-logs it"
+    assert log["NOTIFY"]["ErrNum"][-1] == 1, f"the field-collision rejection must report wrnno 1, got {log['NOTIFY']['ErrNum']}"
+    assert log["NOTIFY"]["ErrType"][-1] == "W"
+
+
+def test_every_rejection_reason_keeps_its_own_distinct_wrnno() -> None:
+    # Four rejection reasons, four numbers (1-4): they are what a /status read distinguishes them
+    # by, the message text being free-form. A shared number would make them indistinguishable.
+    coordinator, _clock, _cb = make_coordinator()
+    coordinator.register(make_signal("AutoOn")[0])  # 1: collides with a static field
+    coordinator.register(NotificationSignal("Empty", FakeValue(1, field="Empty"), "Empty", (), (1, 0, 0)))  # 2: zero fields
+    coordinator.finalize()
+    coordinator.register(make_signal("WarnCO2")[0])  # 3: after finalize()
+    coordinator.finalize()  # 4: finalize() again
+    run(coordinator.cfgmgr.setup())
+
+    async def scenario() -> "dict[str, Any]":
+        await coordinator.pr.setup()
+        await coordinator._flush_pending_registration_warnings()
+        return await coordinator.get_error_counter()
+
+    numbers = run(scenario())["NOTIFY"]["ErrNum"]
+    assert sorted(numbers[-4:]) == [1, 2, 3, 4], f"the four rejection reasons no longer report distinctly: {numbers}"
+
+
+def test_check_one_degrades_and_logs_when_the_threshold_config_cannot_be_read() -> None:
+    # The branch a corrupt or unreadable store reaches: without it, `thresholds[0]` would raise
+    # out of the monitor loop and the supervisor would restart the task in a loop.
+    signal, _fv = make_signal("WarnCO2")
+    coordinator, _clock, _cb = make_coordinator()
+    coordinator.register(signal)
+    coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
+
+    async def unreadable(_schema: object) -> None:
+        return None
+
+    coordinator.cfgmgr.get_float_values = unreadable  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+
+    async def scenario() -> "dict[str, Any]":
+        await coordinator.pr.setup()
+        assert await coordinator._check_one(signal) is False
+        assert signal.triggered is False
+        return await coordinator.get_error_counter()
+
+    log = run(scenario())
+    assert log["NOTIFY"]["ErrNum"][-1] == 11, f"an unreadable threshold must report errno 11, got {log['NOTIFY']['ErrNum']}"
+
+
+def test_the_defaulted_signal_sink_accepts_a_request_and_reports_no_flash() -> None:
+    # The wiring-defaults no-op LED sink (Part L.6.2), for a notification setup that blinks
+    # nothing. Its False is the contract NeopixelDriver.request_signal shares: "not signalled".
+    sink = asy_notification_service._DefaultSignalSink()
+    assert run(sink.request_signal(1, 2, 3, 0.5)) is False
 
 
 def test_two_signals_failures_share_one_errno_but_distinct_names_in_message() -> None:
@@ -1108,15 +1131,13 @@ def test_auto_on_false_blocks_all_checks_regardless_of_window() -> None:
 
 
 def test_override_active_blocks_checks_and_resumes_after_countdown() -> None:
-    # Directly inspects _auto_active - the one thing auto_led_override() actually controls - rather
-    # than routing through a full monitor_loop() cycle. auto_led_override() is _auto_active's sole
-    # owner/writer (monitor_loop() only ever reads it - see
-    # test_monitor_loop_restart_does_not_clobber_an_active_led_override below for the regression
-    # this ownership split fixes); monitor_loop()'s gate itself (`if auto_on and self._auto_active:`)
-    # is the exact same expression already proven to correctly gate on its first operand by
-    # test_auto_on_false_blocks_all_checks_regardless_of_window - both operands go through one plain
-    # `and`, so there is no asymmetric-bug scenario where one operand gates correctly and the other
-    # doesn't.
+    # Directly inspects _auto_active, the one thing auto_led_override() controls, rather than routing
+    # through a full monitor_loop() cycle. auto_led_override() is its sole writer, monitor_loop() only ever
+    # reading it - see the restart regression test below for what that ownership split fixes.
+    #
+    # monitor_loop()'s gate (`if auto_on and self._auto_active:`) is the same expression already proven to
+    # gate correctly on its first operand, and both go through one plain `and`, so there is no asymmetric-
+    # bug case where one operand gates correctly and the other does not.
     coordinator, _clock, _cb = make_coordinator()
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
@@ -1147,13 +1168,13 @@ def test_override_active_blocks_checks_and_resumes_after_countdown() -> None:
 
 
 def test_monitor_loop_restart_does_not_clobber_an_active_led_override() -> None:
-    # Regression test: monitor_loop() used to unconditionally set self._auto_active = True at its
-    # own start - harmless on a genuine first boot (already True from __init__), but wrong on a
-    # supervisor-driven restart (see test_monitor_loop_gives_up_after_too_many_consecutive_config_read_failures
-    # for how that restart happens): it would silently clobber an override auto_led_override() had
-    # legitimately set active in the meantime, since the two tasks are independently restartable by
-    # system_service.py's start_and_check_tasks() but shared this one unlocked flag. Fixed by making
-    # auto_led_override() the flag's sole writer; monitor_loop() only ever reads it now.
+    # Regression test: monitor_loop() used to unconditionally set self._auto_active = True at its start -
+    # harmless on a genuine first boot, already True from __init__, but wrong on a supervisor-driven
+    # restart.
+    #
+    # It would silently clobber an override auto_led_override() had legitimately set active meanwhile, the
+    # two tasks being independently restartable by start_and_check_tasks() while sharing one unlocked flag.
+    # Fixed by making auto_led_override() the flag's sole writer.
     coordinator, _clock, _cb = make_coordinator()
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
@@ -1165,8 +1186,8 @@ def test_monitor_loop_restart_does_not_clobber_an_active_led_override() -> None:
         await asyncio.sleep(1.1)  # first decrement(): 2 -> 1, still > 0 -> _auto_active False
         during_before_restart = coordinator._auto_active
 
-        # Simulate the task supervisor restarting monitor_loop() (e.g. after it gave up following
-        # too many consecutive own-config-read failures) while the override above is still active.
+        # Simulate the task supervisor restarting monitor_loop() (it no longer gives up by itself,
+        # but an uncaught exception still ends it) while the override above is still active.
         monitor_task = coordinator.start_asy_notify_monitor()
         await asyncio.sleep(0.05)
         during_after_restart = coordinator._auto_active
@@ -1185,11 +1206,12 @@ def test_monitor_loop_restart_does_not_clobber_an_active_led_override() -> None:
 
 
 def test_set_override_led_above_the_max_clamps_and_reads_back_clamped() -> None:
-    # get_override_led()/set_override_led() are the coordinator's own public override API (the REST
-    # layer's only route to it) - this drives the clamp through both of them, rather than through the
-    # underlying LockedCounter, whose own [0, max_val] clamping is already covered in
-    # test_base_classes.py. _MAX_OVERRIDE_TIME is const()-folded and not importable (see
-    # SPECIFICATION.md Part E.5.1), so 3600 is hardcoded here, matching this file's other const mirrors.
+    # get_override_led()/set_override_led() are the coordinator's public override API and the REST layer's
+    # only route to it - this drives the clamp through both, rather than through the underlying
+    # LockedCounter, whose clamping test_base_classes.py covers.
+    #
+    # _MAX_OVERRIDE_TIME is const()-folded and not importable (Part E.5.1), so 3600 is hardcoded, matching
+    # this file's other const mirrors.
     coordinator, _clock, _cb = make_coordinator()
 
     async def scenario() -> "tuple[int, int, int]":
@@ -1232,10 +1254,9 @@ def test_malformed_own_config_read_degrades_gracefully_and_keeps_retrying() -> N
 
 
 def test_next_sleep_secs_subtracts_elapsed_time() -> None:
-    # Direct unit test of the rem_interv arithmetic monitor_loop() uses, isolated from a full
-    # real-time cycle: Interv's own schema floor is 60.0s, which makes observing this end-to-end
-    # (waiting for elapsed time to actually consume a full Interv) impractically slow for a unit
-    # test - this exercises the exact same clamp/subtraction expression directly instead.
+    # Direct unit test of the rem_interv arithmetic monitor_loop() uses, isolated from a full real-time
+    # cycle: Interv's schema floor is 60.0s, which makes observing this end to end impractically slow for a
+    # unit test, so this exercises the same clamp and subtraction expression directly.
     import time
 
     coordinator, _clock, _cb = make_coordinator()
@@ -1326,31 +1347,103 @@ def test_methods_called_before_finalize_degrade_gracefully_not_raise() -> None:
     run(scenario())  # would raise/hang if any guard above were missing
 
 
-def test_monitor_loop_gives_up_after_too_many_consecutive_config_read_failures() -> None:
+def test_monitor_loop_keeps_running_on_persistent_config_read_failures_and_persists_one_slot() -> None:
+    # A restart re-reads the same config the loop already re-reads every cycle, so giving up would
+    # only spend the supervisor's reboot budget (Part C.7.2). Every failure still counts.
     cb = FakeSignalCb()
     clock = FakeClock()
-    coordinator = NotificationCoordinator(cb, clock.get, max_module_error=2, cfg_path=_tmp_cfg_dir())
+    coordinator = NotificationCoordinator(cb, clock.get, cfg_path=_tmp_cfg_dir())
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
     coordinator.cfgmgr._cache.pop("FlashBri")  # every own-config read now fails (malformed cache)
 
-    async def scenario() -> bool:
+    async def scenario() -> "tuple[bool, ErrorLog]":
         task = coordinator.start_asy_notify_monitor()
-        await asyncio.wait_for(task, 5)
-        return task.done()
+        for _ in range(40):
+            await asyncio.sleep(0)
+        still_running = not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return still_running, await coordinator.get_error_counter()
 
     with _FastAsyncSleep():
-        # max_module_error=2 -> the 3rd consecutive failure crosses the threshold and monitor_loop()
-        # returns on its own, matching every other Reader's read_loop() give-up shape.
-        assert run(scenario()) is True
+        still_running, log = run(scenario())
+    assert still_running is True
+    entry = log["NOTIFY"]
+    assert entry["ErrCount"] > 5  # well past the old give-up streak, each failure counted
+    assert entry["ErrNum"] == [0] * 9 + [5]  # but one ring slot for the whole run of failures
+
+
+def test_monitor_loop_persists_the_config_read_warning_afresh_after_a_good_read() -> None:
+    cb = FakeSignalCb()
+    clock = FakeClock()
+    coordinator = NotificationCoordinator(cb, clock.get, cfg_path=_tmp_cfg_dir())
+    coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
+    saved = coordinator.cfgmgr._cache.pop("FlashBri")
+
+    async def scenario() -> "ErrorLog":
+        task = coordinator.start_asy_notify_monitor()
+        for _ in range(10):
+            await asyncio.sleep(0)
+        coordinator.cfgmgr._cache["FlashBri"] = saved  # a good read ends the run of failures
+        for _ in range(10):
+            await asyncio.sleep(0)
+        coordinator.cfgmgr._cache.pop("FlashBri")
+        for _ in range(10):
+            await asyncio.sleep(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return await coordinator.get_error_counter()
+
+    with _FastAsyncSleep():
+        log = run(scenario())
+    assert log["NOTIFY"]["ErrNum"][-2:] == [5, 5]
+
+
+def test_monitor_loop_self_heals_in_place_once_its_config_reads_again() -> None:
+    # The same task (no restart) goes back to its normal cycle: it stores fresh NOTIFY data again.
+    cb = FakeSignalCb()
+    clock = FakeClock()
+    coordinator = NotificationCoordinator(cb, clock.get, cfg_path=_tmp_cfg_dir())
+    coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
+    saved = coordinator.cfgmgr._cache.pop("FlashBri")
+
+    async def scenario() -> "tuple[object, object, bool]":
+        task = coordinator.start_asy_notify_monitor()
+        for _ in range(10):
+            await asyncio.sleep(0)
+        ts_while_failing = (await coordinator.get_data()).TS
+        coordinator.cfgmgr._cache["FlashBri"] = saved
+        for _ in range(10):
+            await asyncio.sleep(0)
+        ts_after = (await coordinator.get_data()).TS
+        still_running = not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return ts_while_failing, ts_after, still_running
+
+    with _FastAsyncSleep():
+        ts_while_failing, ts_after, still_running = run(scenario())
+    assert ts_while_failing is None  # a failing cycle stores nothing
+    assert ts_after is not None
+    assert still_running is True
 
 
 class _OverflowingTime:
-    # MicroPython's real `time` module is a read-only builtin (assigning time.mktime = ... raises
-    # AttributeError - confirmed directly, see test_system_service.py's own equivalent class), so
-    # this replaces asy_notification_service's own module-level `time` name instead: a plain,
-    # mutable module global, unlike the builtin module it points to. Only _now()'s own two calls run
-    # while it's installed, so monitor_loop()'s ticks_ms()/ticks_diff() never see it.
+    # MicroPython's real `time` module is a read-only builtin, so this replaces this module's own module-
+    # level `time` name instead: a plain mutable global, unlike the builtin it points to. Only _now()'s two
+    # calls run while it is installed, so monitor_loop()'s ticks_ms()/ticks_diff() never see it.
     def gmtime(self) -> "tuple[int, ...]":
         import time as _real_time
 
@@ -1361,10 +1454,9 @@ class _OverflowingTime:
 
 
 class _RaisingGmtime:
-    # Same monkeypatch technique as _OverflowingTime above, but faulting the other call inside the
-    # same try block (time.gmtime() itself) instead of mktime() - both share one
-    # `except (OverflowError, OSError)`, so this proves the guard isn't only reachable from the
-    # mktime() half of that line.
+    # Same monkeypatch technique as _OverflowingTime above, faulting the other call inside the same try
+    # block - time.gmtime() itself rather than mktime(). Both share one `except (OverflowError, OSError)`,
+    # so this proves the guard is not only reachable from the mktime() half of that line.
     def gmtime(self) -> "NoReturn":
         raise OSError("RTC read failed")
 

@@ -3,13 +3,9 @@
  * app ever creates is built here, and only here; see SPECIFICATION.md Part H.3 for the full contract.
  */
 
-// formatFieldValue() itself now lives in ./field-format.js (pure formatting, no DOM dependency -
-// see that file's own header comment for why) - imported here for this file's own internal use,
-// not re-exported: scripts/build_website.sh's own concatenation-based bundler leaves every file's
-// `export` keywords as-is (never strips them, unlike `import` lines), so a second `export
-// {formatFieldValue}` here would collide with field-format.js's own `export function
-// formatFieldValue` once both are concatenated into one module - callers that need this function
-// import it from js/field-format.js directly instead (js/render.js, tests_js/templates.test.js).
+// formatFieldValue() lives in ./field-format.js now and is imported here for internal use only,
+// never re-exported: the bundler keeps every `export` as written, so a second one would collide
+// once concatenated (SPECIFICATION.md Part H.7's splitting rule). Callers import it directly.
 import { resolveFieldValue } from "./definitions.js";
 import { formatFieldValue } from "./field-format.js";
 
@@ -44,9 +40,9 @@ function buildFieldDescription(field) {
 }
 
 /**
- * Builds one field's markup - label, control (or value span when not editable), description
- * hint. A toggle's own cosmetic On/Off flip is wired here (§12); every other control is left
- * inert for a controller to attach real behavior to, keyed off `data-field-key`.
+ * Builds one field's markup - label, control (or value span when not editable), description hint.
+ * A toggle's own cosmetic On/Off flip is wired here (SPECIFICATION.md Part H.3); every other
+ * control is left inert for a controller to attach real behavior to, keyed off `data-field-key`.
  * @param {FieldDef} field
  * @param {unknown} currentValue
  * @param {boolean} editable
@@ -110,12 +106,12 @@ export function buildField(field, currentValue, editable) {
         select.dataset.fieldKey = field.key;
         const options = field.options ?? [];
         if (!options.some((option) => option.value === currentValue)) {
-            // No real value to preselect (e.g. SystemCmd, a write-only dispatched action never
-            // returned by GET /system) - without this, a native <select> with no <option> marked
-            // selected defaults to its first one, so clicking Apply without ever touching the
-            // dropdown would silently submit whichever command is listed first. Left unselected,
-            // collectGroupBody()'s existing control.value === "" check omits it from the PUT body,
-            // matching every other untouched field's own sparse-PUT convention.
+            // No value to preselect (SystemCmd is write-only, never returned by GET /system).
+            // A native <select> with nothing selected defaults to its first option, so Apply
+            // would submit whichever command is listed first without anyone choosing it.
+
+            // Left unselected, collectGroupBody()'s control.value === "" check omits it from the
+            // body, which is the same sparse-PUT convention every untouched field follows.
             const placeholder = document.createElement("option");
             placeholder.value = "";
             placeholder.textContent = "Select…";
@@ -304,7 +300,7 @@ export function buildErrcountGroup(group, errcount) {
             empty.textContent = "No history recorded.";
             list.appendChild(empty);
         } else {
-            // §8 resolution: no pagination/truncation - realistic history depth is well under
+            // No pagination or truncation - realistic history depth is well under
             // 20 entries (project owner, session 2), so the whole array just renders.
             for (const item of history) {
                 const li = document.createElement("li");

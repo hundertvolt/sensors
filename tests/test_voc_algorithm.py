@@ -38,10 +38,9 @@ def make_fram_manager() -> "tuple[AsyFramManager, FakeMB85RS64V, SPI]":
 
 
 def make_fram_manager_sharing(spi_bus: SPI) -> AsyFramManager:
-    # A second, independently-allocating AsyFramManager sharing the first's underlying spi_bus (and
-    # so its FakeMB85RS64V chip/memory) - simulates a real reboot's fresh manager object replaying
-    # the identical get_chunk() call against surviving on-chip data, matching
-    # tests/test_asy_sgp40_driver.py's/tests/test_fram_integration.py's own pattern.
+    # A second, independently-allocating AsyFramManager sharing the first's spi_bus and so its chip memory -
+    # simulating a reboot's fresh manager object replaying the identical get_chunk() call against surviving
+    # data, matching the SGP40 and FRAM integration suites' pattern.
     return AsyFramManager(spi_bus, 1, max_size=0x2000)
 
 # ---------------------------------------------------------------------------
@@ -125,11 +124,12 @@ def test_process_sraw_clamped_to_20001_52767_window() -> None:
 
 
 def test_process_oscillating_extreme_readings_widens_the_variance_scaling() -> None:
-    # Found via direct tracing against the real interpreter: the mean/variance estimator's own
-    # "c > 1440.0 -> additional_scaling = 4.0" branch and the adaptive lowpass filter's
-    # "abs_delta < 0 -> negate" branch are both only reached once the internal variance estimate
-    # has genuinely grown large - a smoothly-varying reading (like the other process() tests above)
-    # never drives it there; sustained min/max oscillation across many cycles does.
+    # Found via direct tracing against the real interpreter: the mean/variance estimator's "c > 1440.0 ->
+    # additional_scaling = 4.0" branch and the adaptive lowpass filter's "abs_delta < 0 -> negate" branch
+    # are only reached once the internal variance estimate has grown large.
+    #
+    # A smoothly-varying reading, like the other process() tests above, never drives it there; sustained
+    # min/max oscillation across many cycles does.
     algo = VOCAlgorithm()
     algo.vocalgorithm_init()
     last = 0
@@ -140,10 +140,9 @@ def test_process_oscillating_extreme_readings_widens_the_variance_scaling() -> N
 
 
 def test_process_sustained_extreme_low_then_high_readings_clamps_the_sigmoid() -> None:
-    # Found the same way: the mean/variance estimator's sigmoid clamp for x < -50.0 (returning its
-    # own sigmoid_l directly rather than computing a real division) is only reached after many
-    # cycles of one sustained extreme sraw value have pushed the running mean far enough from the
-    # current sample - a handful of cycles (like the tests above) never reach it.
+    # Found the same way: the mean/variance estimator's sigmoid clamp for x < -50.0, returning its own
+    # sigmoid_l directly rather than computing a real division, is only reached after many cycles of one
+    # sustained extreme sraw value have pushed the running mean far enough from the current sample.
     algo = VOCAlgorithm()
     algo.vocalgorithm_init()
     last = 0
@@ -236,12 +235,13 @@ def test_pack_into_unpack_from_round_trip_is_byte_exact() -> None:
 
 
 def test_proc_ser_des_restore_resumes_identically_to_the_original() -> None:
-    # This is the actual mechanism asy_sgp40_driver.py relies on to survive a reboot: not
-    # Sensirion's own get_states()/set_states() (mean/std only), but a full 32-field dump/restore
-    # - including the uptime_gamma/uptime_gating learning-progress counters (see module docstring).
-    # vocalgorithm_proc_ser_des() always processes the given sraw around (de)serializing, so a
-    # restore-with-deserialize=True call also advances state by one sample, same as the original
-    # would have for that same sample - proven below by feeding both the same sample and comparing.
+    # This is the actual mechanism asy_sgp40_driver.py relies on to survive a reboot: not Sensirion's own
+    # get_states()/set_states(), which carry mean and std only, but a full 32-field dump and restore, the
+    # uptime_gamma/uptime_gating learning-progress counters included.
+    #
+    # vocalgorithm_proc_ser_des() always processes the given sraw around (de)serializing, so a restore-with-
+    # deserialize call also advances state by one sample, exactly as the original would have - proven below
+    # by feeding both the same sample and comparing.
     algo = VOCAlgorithm()
     algo.vocalgorithm_init()
     for i in range(80):
@@ -312,14 +312,13 @@ def test_fix16_mul_and_div_are_approximate_inverses() -> None:
 
 
 def test_fix16_mul_with_a_negative_operand_takes_the_masking_branches() -> None:
-    # _fix16_mul()'s two `if inarg0 < 0` / `if inarg1 < 0` low-word masking branches (the
-    # C reference's own unsigned-halves trick, reproduced here on MicroPython's arbitrary-precision
-    # ints) are only ever reached with a negative operand - every direct test above passes two
-    # positive ones, leaving these branches exercised solely as a side effect of
-    # vocalgorithm_process()'s thousands of internal calls. Pinned directly here instead, the same
-    # way test_fix16_div_dividing_the_minimum_value_takes_the_shifted_quotient_branch does for
-    # _fix16_div()'s own negative-input path. Expected values are computed exactly as
-    # test_fix16_mul_and_div_are_approximate_inverses does, just with a negative operand.
+    # _fix16_mul()'s two low-word masking branches - the C reference's unsigned-halves trick, reproduced on
+    # MicroPython's arbitrary-precision ints - are only reached with a negative operand, and every direct
+    # test above passes two positive ones, leaving them exercised only via process()'s internal calls.
+    #
+    # Pinned directly here instead, the way the _fix16_div minimum-value test does for that function's own
+    # negative-input path. Expected values are computed exactly as the approximate-inverses test does, just
+    # with a negative operand.
     algo = VOCAlgorithm()
     a = algo._fix16_from_int(10)
     b = algo._fix16_from_int(4)
@@ -366,13 +365,12 @@ def test_fix16_exp_saturates_at_documented_bounds() -> None:
 
 
 def test_fix16_div_dividing_the_minimum_value_takes_the_shifted_quotient_branch() -> None:
-    # Found via direct tracing against the real interpreter: dividing FIX16_MINIMUM
-    # (0x80000000) - the one value whose absolute magnitude doesn't fit back into a signed
-    # 32-bit remainder - is what actually drives _fix16_div()'s internal divider through its
-    # `divider & 0x80000000` branch (quotient |= bit / remainder -= divider), never exercised by
-    # the two ordinary divisions above. The raw return value here isn't itself masked to 32 bits
-    # (unlike a value built through _fix16_from_int()), so compare it mod 2**32 like every other
-    # bitwise/hex fix16 sentinel check in this file already does.
+    # Found via direct tracing against the real interpreter: dividing FIX16_MINIMUM, the one value whose
+    # absolute magnitude does not fit back into a signed 32-bit remainder, is what drives _fix16_div()'s
+    # internal divider through its `divider & 0x80000000` branch, never exercised by the divisions above.
+    #
+    # The raw return value here is not itself masked to 32 bits, unlike one built through _fix16_from_int(),
+    # so compare it mod 2**32 like every other bitwise fix16 sentinel check in this file.
     algo = VOCAlgorithm()
     assert algo._fix16_div(-2147483648, 1) & 0xFFFFFFFF == 0  # FIX16_MINIMUM / 1 == 0
 
@@ -386,10 +384,9 @@ def test_fix16_div_result_equal_to_minimum_returns_overflow_sentinel() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Real-FRAM integration and fault propagation - VOCAlgorithm's own pack_into()/unpack_from()
-# through a real AsyFramManager + simulated chip, decoupled from asy_sgp40_driver.py entirely
-# (that file's own FRAM tests exercise the same mechanism, but always coupled to a full sensor
-# read cycle - see tests/test_asy_sgp40_driver.py). Matches SPECIFICATION.md Part E.4's mocking-boundary plan.
+# Real-FRAM integration and fault propagation - VOCAlgorithm's own pack_into()/unpack_from() through a real
+# AsyFramManager plus simulated chip, decoupled from asy_sgp40_driver.py entirely, whose own FRAM tests
+# exercise the same mechanism but always coupled to a full sensor read cycle. Part E.4's mocking boundary.
 # ---------------------------------------------------------------------------
 
 
@@ -442,12 +439,11 @@ def test_voc_state_round_trips_through_a_real_fram_chunk_across_a_simulated_rebo
 
 
 def test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_untouched() -> None:
-    # Both redundant on-chip copies corrupted (not just one, which would self-heal - see
-    # tests/test_asy_fram_manager.py's own test_read_fails_when_both_blocks_have_crc_invalid_payloads)
-    # -> chunk.read_into() cleanly returns False, the same shape every other FRAM hardware failure
-    # this codebase models takes. asy_sgp40_driver.py's own _run_restore() never calls unpack_from()
-    # at all once read_into()/ts_storage.read_into() has already failed - proven here directly
-    # against VOCAlgorithm/its params, not just inferred from that caller's own short-circuit logic.
+    # Both redundant on-chip copies corrupted, not just one, which would self-heal - so chunk.read_into()
+    # cleanly returns False, the shape every other modelled FRAM hardware failure takes.
+    #
+    # asy_sgp40_driver.py's _run_restore() never calls unpack_from() at all once read_into() has failed -
+    # proven here directly against VOCAlgorithm, not inferred from that caller's short-circuit logic.
     manager, chip, _spi_bus = make_fram_manager()
     run(manager.setup())
     chunk = manager.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32())
@@ -532,10 +528,9 @@ def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -
 
 
 def test_pack_into_negative_offset_returns_false_not_raise() -> None:
-    # Confirmed directly against the real interpreter: MicroPython's struct.pack_into() raises
-    # ValueError for a negative offset (unlike CPython's struct, which treats a negative offset as
-    # relative to the buffer's end) - already caught by pack_into()'s own try/except Exception, but
-    # previously untested. No real caller in this codebase ever passes a negative offset today.
+    # Confirmed against the real interpreter: MicroPython's struct.pack_into() raises ValueError for a
+    # negative offset, unlike CPython's, which treats one as relative to the buffer's end. Already caught by
+    # pack_into()'s own try/except, but previously untested; no real caller passes a negative offset.
     algo = VOCAlgorithm()
     algo.vocalgorithm_init()
     buf = bytearray(300)
@@ -549,12 +544,12 @@ def test_unpack_from_negative_offset_returns_false_not_raise() -> None:
 
 
 def test_set_tuning_parameters_smoke_test_normal_values() -> None:
-    # _vocalgorithm_set_tuning_parameters() has no caller anywhere in this codebase today -
-    # asy_sgp40_driver.py never calls it; only _vocalgorithm_get_states()/_vocalgorithm_set_states()
-    # are used (Sensirion's own short-interruption API). Kept as documented, Sensirion-mirroring API
-    # surface, but had zero test coverage at all until now. This is a smoke test confirming it
-    # threads the given values through correctly and leaves the algorithm in a usable state - not a
-    # claim that it's exercised by any real caller today (see BACKLOG.md).
+    # _vocalgorithm_set_tuning_parameters() has no caller anywhere in this codebase today - only
+    # _vocalgorithm_get_states()/_vocalgorithm_set_states() are used. Kept as documented, Sensirion-
+    # mirroring API surface, but with zero test coverage until now.
+    #
+    # A smoke test confirming it threads the given values through correctly and leaves the algorithm usable
+    # - not a claim that any real caller exercises it (see BACKLOG.md).
     algo = VOCAlgorithm()
     algo.vocalgorithm_init()
     algo._vocalgorithm_set_tuning_parameters(

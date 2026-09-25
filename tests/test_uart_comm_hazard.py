@@ -20,18 +20,16 @@ if TYPE_CHECKING:
 
     from crc_checks import CRC_Base
 
-    # None means "no CRC on the bus"; otherwise a zero-argument factory, called once per end.
-    # A factory rather than an instance: CRC_Base carries incremental state, so the two ends must
-    # never share one object. Not type[CRC_Base] - that would demand CRC_Base's own three-argument
-    # constructor, which the concrete widths (CRC16 and friends) deliberately do not take.
+    # None means "no CRC on the bus"; otherwise a zero-argument factory, called once per end. A factory, not
+    # an instance, CRC_Base carrying state the two ends must not share. Not type[CRC_Base], which would
+    # demand a three-argument constructor the concrete widths do not take.
     CrcMaker = Callable[[], CRC_Base] | None
 
     from machine import _LinkDirection as Direction  # one direction of the crossover link
 
-# A short timeout keeps each recovery cycle cheap: this tier is about which frames are accepted and
-# what is emitted, not about real-world durations, and every value still clears the module's own
-# floor of 2 x poll_wait_ms + poll_idle_ms + the worst-case GC pause (the harness leaves
-# poll_idle_ms at poll_wait_ms, so that floor is 24ms here).
+# A short timeout keeps each recovery cycle cheap: this tier is about which frames are accepted and what is
+# emitted, not about real-world durations, and every value still clears the module's own floor of 2 x
+# poll_wait_ms + poll_idle_ms plus the worst-case GC pause - 24ms here, the harness leaving them equal.
 _TIMEOUT_MS = 30
 _PAYLOAD = 8
 _FRAME = 5 + _PAYLOAD
@@ -61,18 +59,23 @@ def wire_frame(crc: "CrcMaker") -> int:
 
 
 def timeout_for(crc: "CrcMaker") -> int:
-    # A CRC yields once per byte (crc_checks.py's own loop), so the same wall-clock budget covers
-    # far fewer bytes once other tasks share the loop - measured as transactions timing out at the
-    # tier's deliberately tiny 30ms. The real link's own 1000ms has ample headroom; this keeps the
-    # mock's speed while giving the CRC path the same *relative* margin.
+    # A CRC yields once per byte, so the same wall-clock budget covers far fewer bytes once other tasks
+    # share the loop - measured as transactions timing out at this tier's deliberately tiny 30ms. The real
+    # link's 1000ms has ample headroom; this keeps the mock's speed at the same relative margin.
     return _TIMEOUT_MS if crc is None else _TIMEOUT_MS * 8
 
 
-def hazard_pair(crc: "CrcMaker" = None) -> Pair:
+# A sustained CLEAN run never consumes the timeout, so the short budget above buys it nothing and
+# costs it a false failure: at 1x the no-CRC arm sits 1.25x over the 24ms floor, well inside the
+# scheduling gap scripts/test.sh's own 16-way oversubscription produces. Derivation in Part J.7.
+_SUSTAINED_TIMEOUT_MS = _TIMEOUT_MS * 8
+
+
+def hazard_pair(crc: "CrcMaker" = None, timeout_ms: int | None = None) -> Pair:
     maker = (lambda: None) if crc is None else crc
     pair = Pair(
-        payload_size=_PAYLOAD, timeout=timeout_for(crc), get_callback=echo_get(b"v"), set_callback=accept_set(),
-        crc_a=maker(), crc_b=maker(),
+        payload_size=_PAYLOAD, timeout=timeout_for(crc) if timeout_ms is None else timeout_ms,
+        get_callback=echo_get(b"v"), set_callback=accept_set(), crc_a=maker(), crc_b=maker(),
     )
     assert run(pair.setup()) is True
     return pair
@@ -485,9 +488,8 @@ async def _measure_retention(pair: Pair) -> "tuple[int, float]":
     import gc
 
     # Three rounds per transaction, not one: a listen round is not always consumed by a completed
-    # transaction, and a budget of exactly n+1 starves the last few transactions rather than
-    # measuring them. Verified with the budget raised: 120/120 complete with zero errors logged in
-    # both CRC modes, so the shortfall was the harness's, not the protocol's.
+    # transaction, and a budget of exactly n+1 starves the last few rather than measuring them. With it
+    # raised, 120/120 complete with zero errors in both CRC modes, so the shortfall was the harness's.
     listener = asyncio.create_task(_listen_rounds(pair, (_WARMUP + _MEASURED) * 3))
     payload = bytes(_PAYLOAD * 3)
     done = 0
@@ -523,7 +525,7 @@ def _check_a_long_run_of_transactions_retains_no_memory(crc: "CrcMaker") -> None
     # CLAUDE.md's memory-safety ladder at its most direct: a link running for weeks has no backstop
     # below the watchdog, so the steady state must not grow the heap. The fakes' recorders are muted
     # so the number is src/'s alone; hazard_pair(crc) is built out here (its asyncio.run() cannot nest).
-    pair = hazard_pair(crc)
+    pair = hazard_pair(crc, timeout_ms=_SUSTAINED_TIMEOUT_MS)
     for fake in (pair.fake_a, pair.fake_b):
         fake.log.append = lambda entry: None  # type: ignore[method-assign]
     completed, per_transaction = run(_measure_retention(pair), limit=120)
@@ -549,10 +551,9 @@ _ERR_BAD_ARG = 34
 
 
 def errnos(comm: UART_Comm) -> "list[int]":
-    # Errors only. ErrNum holds errnos and wrnnos in one ring and they share the number space -
-    # wrnno 10 is a resync, errno 10 is a bad payload_size - so ErrType is what tells them apart.
-    # Every fault also resyncs, so the newest entry is almost always the resync warning.
-    # Indexed rather than zip()ed: MicroPython's zip() has no strict= parameter to satisfy B905.
+    # Errors only. ErrNum holds errnos and wrnnos in one ring sharing the number space - wrnno 10 is a
+    # resync, errno 10 a bad payload_size - so ErrType tells them apart, and every fault also resyncs, so
+    # the newest entry is usually the resync warning. Indexed, not zip()ed: MicroPython has no strict=.
     entry = run(comm.get_error_counter())[comm.name]
     nums, kinds = entry["ErrNum"], entry["ErrType"]
     return [nums[i] for i in range(len(nums)) if kinds[i] == "E"]
@@ -717,27 +718,40 @@ def _check_a_corrupted_header_byte_is_caught_by_structural_validation(crc: "CrcM
 
 
 def _answer_payload_offset(marker: int = ord("v"), crc: "CrcMaker" = None) -> int:
-    # corrupt_indices addresses a STREAM offset, not a frame offset, and the responder's stream
-    # opens with the ACK to the GET before the answer train - so the payload byte's position is
-    # found from a clean run rather than assumed.
-    probe = hazard_pair(crc)
-    assert run(probe.with_listener(probe.initiator.uart_get(0x01)), limit=20) is not None
+    # corrupt_indices addresses a STREAM offset, not a frame offset, and the answer comes back as a
+    # multi-frame train behind the ACK - so the payload byte's position is searched for rather than
+    # computed. The sustained budget: a probe that timed out would derive an offset from a short stream.
+    probe = hazard_pair(crc, timeout_ms=_SUSTAINED_TIMEOUT_MS)
+    assert run(probe.with_listener(probe.initiator.uart_get(0x01)), limit=20) is not None, "the probe GET did not complete, so no offset can be derived from it"
     wire = probe.wire_from_responder()
     offset = wire.find(bytes([marker]), wire_frame(crc))  # past the ACK frame
     assert offset > 0, f"no answer payload byte found in the responder's wire log: {wire!r}"
     return offset
 
 
-def _check_a_corrupted_payload_byte_is_delivered_undetected_without_a_crc(crc: "CrcMaker") -> None:
-    # The other half of the same boundary, and the uncomfortable one: with no CRC configured, a bit
-    # flip inside the payload passes every structural check and reaches the caller as good data.
-    # This is a documented property of the deployed configuration, not a defect to fix here - it is
-    # pinned so that enabling a CRC (the test below) is visibly the thing that changes it.
+def _check_the_probed_payload_offset_lands_on_a_frames_payload_start(crc: "CrcMaker") -> None:
+    # What the search above has to produce for the injection below to mean anything, asserted
+    # without assuming how many frames the train carries: a payload position of SOME whole frame.
+    # A shifted stream would otherwise put the corruption in a header and read as "rejected".
     offset = _answer_payload_offset(crc=crc)
-    pair = hazard_pair(crc)
+    assert (offset - _POS) % wire_frame(crc) == 0, f"probed offset {offset} is not a frame's payload start ({wire_frame(crc)}-byte frames, header {_POS})"
+
+
+def _check_a_corrupted_payload_byte_is_delivered_undetected_without_a_crc(crc: "CrcMaker") -> None:
+    # The other half of the same boundary, and the uncomfortable one: with no CRC configured, a bit flip in
+    # the payload passes every structural check and reaches the caller as good data. A documented property
+    # of the deployed configuration, pinned so enabling a CRC is visibly what changes it.
+    offset = _answer_payload_offset(crc=crc)
+    # The sustained budget, not this tier's 1x: a transaction that times out returns None here too,
+    # which would read as "the corruption was caught" and quietly retire the claim below.
+    pair = hazard_pair(crc, timeout_ms=_SUSTAINED_TIMEOUT_MS)
     pair.link.direction_from(pair.fake_b).corrupt_indices = {offset: 0xFF}
     answer = run(pair.with_listener(pair.initiator.uart_get(0x01)), limit=20)
-    assert answer is not None, "the frame was rejected - then this test no longer pins what it claims"
+    wire = pair.wire_from_responder()
+    # Proves the injection landed on the payload byte rather than somewhere a shifted stream put
+    # it, so a future divergence names itself instead of arriving as "the frame was rejected".
+    assert len(wire) > offset and wire[offset] == (ord("v") ^ 0xFF), f"the corruption did not land on the answer payload at offset {offset}: {wire!r}"
+    assert answer is not None, f"no answer for a payload corruption at stream offset {offset} - this test no longer pins what it claims. Responder wire: {wire!r}"
     assert bytes(answer) == bytes([ord("v") ^ 0xFF]), f"expected a corrupted byte, got {bytes(answer)!r}"
     assert run(pair.initiator.get_error_counter())[pair.initiator.name]["ErrCount"] == 0, (
         "a payload corruption was somehow counted - the no-CRC envelope has changed"
@@ -748,8 +762,11 @@ def _check_with_a_crc_configured_the_same_payload_corruption_is_caught(crc: "Crc
     # Same injection, CRC16 on the bus objects: now the frame fails verification and is rejected.
     # This is what makes the test above a statement about configuration rather than about the
     # protocol being unable to detect corruption at all.
+    #
+    # The sustained budget for the same reason as above, and more so: a CRC yields once per byte,
+    # so this pair is the slowest one in the file and a timeout would make this pass vacuously.
     pair = Pair(
-        payload_size=_PAYLOAD, timeout=_TIMEOUT_MS, get_callback=echo_get(b"v"), set_callback=accept_set(),
+        payload_size=_PAYLOAD, timeout=_SUSTAINED_TIMEOUT_MS, get_callback=echo_get(b"v"), set_callback=accept_set(),
         crc_a=CRC16(), crc_b=CRC16(),
     )
     assert run(pair.setup()) is True
@@ -981,7 +998,7 @@ _HAMMER_MEASURED = _HAMMER_ROUNDS - _HAMMER_SAMPLE_AT - 1  # transactions the he
 def _hammer_clean(crc: "CrcMaker") -> None:
     import gc
 
-    pair = hazard_pair(crc)
+    pair = hazard_pair(crc, timeout_ms=_SUSTAINED_TIMEOUT_MS)
     for fake in (pair.fake_a, pair.fake_b):
         fake.log.append = lambda entry: None  # type: ignore[method-assign]
     payload = bytes(_PAYLOAD * 3)
@@ -1035,10 +1052,9 @@ def _hammer_faulted(crc: "CrcMaker") -> None:
 
     async def hammer() -> int:
         listener = asyncio.create_task(_listen_rounds(pair, 240))
-        # The first fault allocates a fixed ~3.4kB - the log history's buffers and the resync
-        # scratch, built once and reused. Measured constant at 10, 30, 60 and 120 failures, so it
-        # is one-time cost rather than per-failure retention. The first burst absorbs it; only the
-        # second is measured, which is what makes this a leak test rather than a startup test.
+        # The first fault allocates a fixed ~3.4kB - the log history's buffers and the resync scratch, built
+        # once and reused. Measured constant at 10, 30, 60 and 120 failures, so it is a one-time cost, not
+        # per-failure retention. The first burst absorbs it; only the second is measured.
         await burst(30)
         gc.collect()
         before[0] = gc.mem_alloc()
@@ -1054,10 +1070,9 @@ def _hammer_faulted(crc: "CrcMaker") -> None:
 
     before = [0]
     grew = run(hammer(), limit=300)
-    # Same reasoning as the clean hammer, against the failure path's own scale. The one-time cost
-    # this test absorbs in its first burst is ~114 B/failure at this count, so a bound well below
-    # that still catches an unabsorbed or genuinely leaking failure path, while tolerating the few
-    # bytes per failure of host-dependent interpreter noise (CI measured 4.3, locally 0).
+    # Same reasoning as the clean hammer, against the failure path's scale. The one-time cost absorbed in
+    # the first burst is ~114 B/failure here, so a bound well below that still catches an unabsorbed or
+    # leaking path while tolerating host-dependent interpreter noise (CI 4.3, locally 0).
     per_failure = grew / 30
     assert per_failure < 16.0, f"{grew} bytes over 30 failures = {per_failure:.1f} B/failure"
 
@@ -1205,10 +1220,9 @@ def _check_a_disconnect_then_reconnect_mid_frame_recovers(crc: "CrcMaker") -> No
 
 
 def _check_the_crc_appears_on_the_wire_big_endian_after_the_payload(crc: "CrcMaker") -> None:
-    # Byte order is part of the wire contract, not an implementation detail: the C peer's own CRC is
-    # appended in the platform's NATIVE order and is deliberately not wire-compatible with this one
-    # (SPECIFICATION.md Part J, UART_C_PORT_CHANGELOG.md A7). If this silently changed, two
-    # implementations would disagree in a way that looks exactly like a dead link.
+    # Byte order is part of the wire contract, not an implementation detail: the C peer appends its own CRC
+    # in the platform's NATIVE order and is deliberately not wire-compatible with this one (SPECIFICATION.md
+    # Part J, UART_C_PORT_CHANGELOG.md A7). A silent change here looks exactly like a dead link.
     if crc is None:
         return  # nothing is appended without a CRC; the companion mode covers the other half
     pair = hazard_pair(crc)

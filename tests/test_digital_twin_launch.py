@@ -18,7 +18,7 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 
 import machine
 import network
-from launch import LaunchConfig, main, parse_args, parse_fault_spec
+from launch import LaunchConfig, _apply_fault, _apply_hang, main, parse_args, parse_fault_spec
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
@@ -217,12 +217,12 @@ def test_main_runs_end_to_end_and_returns_a_summary() -> None:
 
 
 def test_main_with_scripted_faults_and_wifi_outcome_still_completes() -> None:
-    # duration must clear both network.py's own _CONNECT_DELAY_S (0.7s), for the scripted outcome
-    # to actually settle, and _sensor_loop()'s own 2.0s poll interval at least once past the first
-    # iteration - both one-shot faults fire on that very first read (t=0), so a duration that only
-    # covers one iteration would leave every sensor faulted/not-yet-ready and no reading produced at
-    # all (SCD30 isn't ready that early either - see the dedicated longer-duration test below for
-    # its own timer-driven path).
+    # duration must clear both network.py's _CONNECT_DELAY_S (0.7s), for the scripted outcome to settle, and
+    # _sensor_loop()'s 2.0s poll interval at least once past the first iteration.
+    #
+    # Both one-shot faults fire on that very first read, so a duration covering only one iteration would
+    # leave every sensor faulted or not-yet-ready with no reading produced at all - SCD30 is not ready that
+    # early either, which the longer-duration test below covers.
     machine.Pin.reset_registry()
     config = LaunchConfig(
         seed=99,
@@ -239,10 +239,9 @@ def test_main_with_scripted_faults_and_wifi_outcome_still_completes() -> None:
 
 
 def test_main_a_wlan_fault_is_isolated_and_still_returns_a_summary() -> None:
-    # WLAN.active()/connect() at main()'s own startup, and WLAN.status() in its cleanup and in
-    # _wifi_watcher()'s own loop, all used to be unguarded - a --fault wlan:... crashed main()
-    # outright before it ever reached the WDT-feed/sensor-read loops. Now isolated the same way
-    # _sensor_loop() isolates each sensor's own read.
+    # WLAN.active()/connect() at main()'s startup, and WLAN.status() in its cleanup and in _wifi_watcher()'s
+    # loop, all used to be unguarded, so a --fault wlan:... crashed main() outright before it reached the
+    # WDT-feed and sensor-read loops. Now isolated the way _sensor_loop() isolates each sensor's read.
     machine.Pin.reset_registry()
     config = LaunchConfig(seed=7, no_wdt_feed=True, duration=0.5, faults=[("wlan", "connect", 1)])
     summary = run(asyncio.wait_for(main(config), 10))
@@ -250,16 +249,52 @@ def test_main_a_wlan_fault_is_isolated_and_still_returns_a_summary() -> None:
 
 
 def test_main_long_enough_duration_reaches_a_real_wdt_feed_and_scd30s_timer_driven_reading() -> None:
-    # _SENSOR_POLL_INTERVAL_S/SCD30's own default measurement_interval_s are both 2.0s - a duration
-    # shorter than that (every other main() test here uses <=1.5s) never lets SCD30's internal Timer
-    # produce a ready reading at all, so _read_scd30()'s own "ready" branch (as opposed to its
-    # not-yet-ready None early-return) never actually runs. no_wdt_feed=False here also exercises a
-    # real watchdog.feed() call, unlike every other main() test's no_wdt_feed=True.
+    # _SENSOR_POLL_INTERVAL_S and SCD30's default measurement_interval_s are both 2.0s, so a shorter
+    # duration - every other main() test here uses <=1.5s - never lets SCD30's internal Timer produce a
+    # ready reading, leaving _read_scd30()'s "ready" branch unexercised.
+    #
+    # no_wdt_feed=False here also exercises a real watchdog.feed() call, unlike every other main() test.
     machine.Pin.reset_registry()
     config = LaunchConfig(seed=55, no_wdt_feed=False, duration=4.5)
     summary = run(asyncio.wait_for(main(config), 15))
     assert summary["readings"] >= 5  # several rounds across 4.5s, well past SCD30's 2s cadence
     assert summary["would_have_triggered_count"] == 0  # fed for real, well under the 8000ms timeout
+
+
+# ---------------------------------------------------------------------------
+# _apply_fault/_apply_hang - the wiring check between "the name parses" and "the chip is here"
+# ---------------------------------------------------------------------------
+
+
+def test_a_fault_naming_a_chip_this_run_never_wired_is_refused_by_name() -> None:
+    # parse_fault_spec() only proves the NAME is in the shared op vocabulary; this launcher's own
+    # wiring is fixed and carries no ISL29125, so the spec parses and the chip still is not there.
+    # Without the guard this is a bare KeyError from inside the fault plumbing, naming nothing.
+    try:
+        _apply_fault("isl29125", "readfrom_mem", 1, {"scd30": object()}, network.WLAN(network.STA_IF))
+    except ValueError as e:
+        assert "isl29125" in str(e), e
+        assert "scd30" in str(e), "the message must name what IS wired, or it cannot be acted on"
+    else:
+        raise AssertionError("an unwired chip must be refused, not KeyError from inside the plumbing")
+
+
+def test_a_hang_naming_a_chip_this_run_never_wired_is_refused_the_same_way() -> None:
+    # Same guard, second entry point: --hang reaches inject_hang() through its own function.
+    try:
+        _apply_hang("isl29125", "readfrom_mem", 0.1, 1, {})
+    except ValueError as e:
+        assert "isl29125" in str(e), e
+    else:
+        raise AssertionError("--hang must refuse an unwired chip too, not only --fault")
+
+
+def test_a_wlan_fault_still_bypasses_the_wiring_check() -> None:
+    # wlan is not a chip in `chips` at all - it is the WLAN object itself - so the guard must sit
+    # after that branch, not in front of it. Placing it first would break every --fault wlan:* run.
+    wlan = network.WLAN(network.STA_IF)
+    _apply_fault("wlan", "connect", 1, {}, wlan)
+    assert "connect" in wlan.raise_on
 
 
 if __name__ == "__main__":

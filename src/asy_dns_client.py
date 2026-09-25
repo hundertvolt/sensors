@@ -1,8 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 Volodymyr Shymanskyy - inspired by
-# github.com/vshymanskyy/aiodns, not a port (see THIRD_PARTY_LICENSES.md for the detailed
-# comparison). Deliberately narrower: no cache, no IPv6/mDNS, single-server-at-a-time, for this
-# project's one low-frequency caller (asy_ntp_client.py's NTP-host resolution).
+# SPDX-FileCopyrightText: Copyright (c) 2024 Volodymyr Shymanskyy
 # SPDX-License-Identifier: MIT
+# Inspired by github.com/vshymanskyy/aiodns, not a port - THIRD_PARTY_LICENSES.md compares the two.
 
 """Async, non-blocking IPv4 DNS resolver (A-records only) built on asy_udp_socket.py's AsyUDPSocket."""
 # resolve_ipv4() never raises, returns the dotted-quad str or None; only bare compression-pointer
@@ -44,14 +42,9 @@ def _build_query(host: bytes, txn_id: bytes) -> bytearray:
     # RFC 1035 SS4.1.1/4.1.2 message: 12-byte header + QNAME + QTYPE + QCLASS. QNAME is exactly
     # len(host) + 2 bytes on the wire regardless of label count.
     labels = host.split(b".")
-    # RFC 1035 SS3.1/4.1.2: each label is wire-encoded as a single length-prefix byte followed by
-    # its content, so a label over 63 octets can't be a real DNS label - and one over 255 can't
-    # even be encoded at all (query[pos] = n below would raise ValueError: byte must be in
-    # range(0, 256), uncaught). host is caller-supplied (this project's only caller sources it
-    # from a REST-settable config field with no per-label length check - see asy_ntp_client.py's
-    # NTP_Host schema), so an overlong label is a real, reachable input, not just a defensive-only
-    # case - raised deliberately (matching add()/check()'s own let-it-propagate MemoryError
-    # contract in crc_checks.py) so resolve_ipv4() can catch it alongside that same MemoryError.
+    # RFC 1035 SS3.1/4.1.2: a label is length-prefixed by one byte, so over 63 octets is not a real
+    # label and over 255 cannot be encoded at all. host comes from a REST-settable config field with
+    # no per-label check, so this is reachable - raised for resolve_ipv4() to catch, not defensive.
     if any(len(label) > _LABEL_MAX_OCTETS for label in labels):
         raise ValueError(f"DNS label too long ({max(len(label) for label in labels)} > {_LABEL_MAX_OCTETS} octets)")
     qname_len = len(host) + 2

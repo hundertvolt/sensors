@@ -16,16 +16,23 @@ runs:
     - name: Install uv
       shell: bash
       run: pip install uv
+    # Retried here for every job that reaches uv through this action: `uv run` builds the whole dev
+    # group, and actionlint-py fetches its binary at build time, so one bad response fails a healthy
+    # lane (SPECIFICATION.md B.10).
+    - name: Sync dev dependencies (retried - third-party build downloads are not always up)
+      shell: bash
+      run: |
+        for attempt in 1 2 3; do
+            uv sync && exit 0
+            echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+            sleep $((attempt * 10))
+        done
+        uv sync
     - name: Cache MicroPython Unix port build
       uses: actions/cache@v6
       with:
         path: ~/pico-toolchain
-        # Must hash toolchain/setup_toolchain.py, not just versions.toml: the Unix port's build
-        # flags (e.g. MICROPY_PY_SYS_SETTRACE=1) live in that script, not in versions.toml. Keying
-        # on versions.toml alone let a stale cached binary built before that flag existed survive
-        # untouched across commits - a real bug, not hypothetical: it's exactly what caused
-        # `scripts/test.sh --coverage` to fail in CI with "module 'sys' has no attribute 'settrace'"
-        # while working locally, since a local run always starts from a genuinely fresh
-        # ~/pico-toolchain. Every caller of this action shares this exact key, so whichever job runs
-        # first in a workflow run builds it once and every later job hits a warm cache.
+        # Hashes setup_toolchain.py too, not just versions.toml: the Unix port's build flags live
+        # there, and a versions.toml-only key once kept a stale binary alive (B.10). Shared by every
+        # caller: first job builds, later ones hit.
         key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}

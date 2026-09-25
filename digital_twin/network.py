@@ -10,11 +10,9 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 _CALL_LOG_MAXLEN = 200  # ad-hoc introspection aid, same shape as digital_twin/machine.py's own
-# I2C.log/SPI.log (see that file's own _LOG_MAXLEN comment for the full reasoning) - connect()/
-# config() run on every (re)connect attempt for the life of the process (including every
-# fault-injection/hotspot-fallback retry loop), so an unbounded list here is the identical latent
-# risk, found by the same session's own audit rather than by reproducing a real failure for this
-# specific one.
+# I2C.log/SPI.log (that file's _LOG_MAXLEN comment has the reasoning) - connect()/config() run on
+# every reconnect attempt for the life of the process, retry loops included, so an unbounded list
+# is the identical latent risk, found by the same audit rather than by a real failure.
 
 if TYPE_CHECKING:
     from typing import Any
@@ -29,10 +27,9 @@ STAT_CONNECT_FAIL = -1
 STAT_NO_AP_FOUND = -2
 STAT_WRONG_PASSWORD = -3
 
-# Real WiFi association + DHCP typically takes low single-digit seconds in the field; this is
-# comfortably under asy_wifi_service.py's own 10 * 0.5s = 5s polling budget while still being long
-# enough that a poller sees at least one real STAT_CONNECTING observation first, matching "all
-# phases, reasonable timing" rather than an instant flip.
+# Real association plus DHCP takes low single-digit seconds in the field. This sits under
+# _poll_sta_connect_status()'s 5s budget while still being long enough for a poller to observe
+# one real STAT_CONNECTING first, rather than an instant flip.
 _CONNECT_DELAY_S = 0.7
 
 _country_code = ["DE"]
@@ -42,12 +39,16 @@ _CONNECTED_IFCONFIG = ("192.168.1.42", "255.255.255.0", "192.168.1.1", "192.168.
 
 def country(code: "str | None" = None) -> str:
     if code is not None:
+        if len(code.encode()) != 2:  # extmod/modnetwork.c: exactly 2 BYTES, else ValueError
+            raise ValueError
         _country_code[0] = code
     return _country_code[0]
 
 
 def hostname(name: "str | None" = None) -> str:
     if name is not None:
+        if len(name.encode()) > 32:  # MICROPY_PY_NETWORK_HOSTNAME_MAX_LEN, in bytes
+            raise ValueError
         _hostname_value[0] = name
     return _hostname_value[0]
 
@@ -83,11 +84,9 @@ class WLAN:
         return self._active
 
     def script_connect_outcomes(self, outcomes: "list[int]") -> None:
-        # A FIFO consumed one entry per *completed* _run_connect() resolution below - a disconnect()
-        # that cancels a pending attempt never reaches the assignment past its own await, so a
-        # cancelled attempt never consumes a queued outcome (nothing about it "completed"). Empty/
-        # exhausted queue falls back to today's always-succeeds behavior, so every test written
-        # before this existed keeps passing unchanged.
+        # A FIFO consumed one entry per COMPLETED _run_connect() below: a disconnect() that
+        # cancels a pending attempt never reaches the assignment past its await, so it consumes
+        # nothing. An exhausted queue falls back to always-succeeds, as before this existed.
         self._scripted_outcomes = list(outcomes)
 
     async def _run_connect(self) -> None:
@@ -98,17 +97,19 @@ class WLAN:
             self._status = STAT_GOT_IP
             self._ifconfig = _CONNECTED_IFCONFIG
         else:
-            # A failure status means no address was ever obtained - matches real driver
-            # expectations (src/asy_wifi_service.py's own _poll_sta_connect_status()): reverting to
-            # the unconfigured tuple, not just leaving _connected False, so a *second* connect()
-            # attempt that fails after an earlier successful one doesn't leave a stale, still-
-            # "connected-looking" address behind.
+            # A failure status means no address was obtained, which is what the real driver
+            # expects: revert to the unconfigured tuple rather than only clearing _connected, so
+            # a failure after an earlier success leaves no stale connected-looking address.
             self._connected = False
             self._status = outcome
             self._ifconfig = ("0.0.0.0", "0.0.0.0", "0.0.0.0", "0.0.0.0")
 
     def connect(self, ssid: "str | None" = None, password: "str | None" = None) -> None:
         self._maybe_raise("connect")
+        if password is not None and len(password.encode()) > 64:  # cyw43_ll_wifi_join()'s -CYW43_EINVAL
+            raise OSError(22, "EINVAL")
+        if ssid is not None and len(ssid.encode()) > 32:  # real driver: unchecked copy past a 32-byte field
+            raise AssertionError("SSID over 32 bytes reached connect() - overflows cyw43's last_ssid_joined on silicon")
         self.connect_calls.append((ssid, password))
         self._status = STAT_CONNECTING
         if self._connect_task is not None:

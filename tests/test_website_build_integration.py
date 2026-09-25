@@ -1,16 +1,10 @@
 """Real-pipeline integration test for the real website build (SPECIFICATION.md Part H.7): proves
 scripts/build_website.sh's staged, recursive merge - html/ + the production js/ module set, for one
-device - imports cleanly, mounts for real, and is served correctly end to end through a real
-WebserverService/Microdot() app, with the prototype-only files (js/app.js, js/mock-server.js,
-other devices' definitions) confirmed absent.
-The real chain: html/ + js/ -> scripts/build_website.sh wozi -> frozen_modules/frozen_website_wozi.py
--> `import frozen_website_wozi` (mount-on-import) -> WebserverService(static_mount=...)."""
-# Requires frozen_modules/frozen_website_wozi.py already on MICROPYPATH - scripts/test.sh
-# regenerates it via scripts/build_website.sh before running the suite. `import
-# frozen_website_wozi` mounts /html as a real, unconditional side effect - safe to do once per
-# test-process run, and distinct from test_frozen_html_integration.py's own `import frozen_html`
-# (a different frozen module, built from html_stub/, never imported by this file - see that
-# module's own docstring for why the two never conflict).
+device - imports, mounts and serves correctly through a real WebserverService/Microdot() app."""
+
+# The real chain: html/ and js/ -> scripts/build_website.sh wozi -> frozen_modules/frozen_html.py ->
+# `import frozen_html` (mount on import) -> WebserverService(static_mount=...). scripts/test.sh builds it
+# first; the import mounts /html once per process. The prototype-only files are confirmed absent.
 
 import asyncio
 import json
@@ -18,7 +12,7 @@ import sys
 
 sys.path.insert(0, "ext")
 
-import frozen_website_wozi  # type: ignore[import-not-found]  # noqa: F401  # mounts /html on import
+import frozen_html  # type: ignore[import-not-found]  # noqa: F401  # mounts /html on import
 from microdot import Microdot, Request  # type: ignore[import-not-found]
 
 from asy_webserver_service import WebserverService
@@ -45,8 +39,9 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 def _decompress(body: "_ResponseBody") -> bytes:
-    # See test_frozen_html_integration.py's own _decompress() for the full rationale - identical
-    # mechanism, applied here to the real website's gzip-Content-Encoding bytes instead.
+    # send_file() streams from a file-like object, so .read() first; DeflateIO(AUTO) detects the gzip
+    # header (confirmed on v1.29.0). No `with`: the real object supports it but the stubs don't declare
+    # __enter__/__exit__ (the same stub-gap class as Timer()/I2C.deinit()), and a BytesIO needs no close.
     import io
 
     import deflate
@@ -75,11 +70,9 @@ def test_root_serves_the_real_index_html() -> None:
 
 
 def test_style_css_and_definitions_json_are_not_served_as_separate_files() -> None:
-    # Both are inlined directly into index.html at build time now (scripts/build_website.sh's own
-    # "Inlining" comment - SPECIFICATION.md Part H.7) instead of being staged as their
-    # own files - a page load needs one fewer connection than before. html/definitions/wozi.json
-    # (the nested dev-preview path) and definitions/dev.json (a different device's file) were
-    # already never shipped this way either.
+    # Both are inlined directly into index.html at build time now (SPECIFICATION.md Part H.7) instead of
+    # being staged as their own files, so a page load needs one fewer connection. The nested dev-preview
+    # path and another device's definitions file were already never shipped this way either.
     _, app = _make_app()
     for path in ("/style.css", "/definitions.json", "/definitions/wozi.json", "/definitions/dev.json"):
         res = run(app.dispatch_request(_make_request(app, "GET", path)))
@@ -106,10 +99,8 @@ def test_inlined_definitions_and_stylesheet_replace_the_two_separately_staged_fi
 
 
 def test_production_js_is_served_as_one_bundle_under_js() -> None:
-    # The seven production modules (field-format.js, poll-manager.js, templates.js,
-    # definitions.js, render.js, nav.js, main.js) are concatenated into one js/app.js at staging
-    # time (scripts/build_website.sh's own "Bundling" comment - SPECIFICATION.md Part H.7), not
-    # shipped as seven separate files - each of their own paths must now 404, not 200.
+    # The seven production modules are concatenated into one js/app.js at staging time (Part H.7) rather
+    # than shipped as seven separate files, so each of their own paths must now 404, not 200.
     _, app = _make_app()
     res = run(app.dispatch_request(_make_request(app, "GET", "/js/app.js")))
     assert res.status_code == 200
@@ -138,13 +129,12 @@ def test_bundled_js_contains_every_production_module_with_no_leftover_local_impo
     ):
         assert marker in body, marker
 
-    # No `import { ... } from "./local-file.js";` line survived - every such line only worked
-    # because the imported name is now already in scope earlier in the same concatenated file. A
-    # leftover `export { ... } from "./local-file.js";` re-export would be just as broken (the
-    # bundle is one file; there is no "./local-file.js" left to resolve at runtime) but isn't
-    # caught by the import-line check above - checked directly after a real instance of exactly
-    # this mistake (js/templates.js briefly re-exported field-format.js's formatFieldValue this
-    # way) was caught only by manually tracing the build, not by this test.
+    # No `import { ... } from "./local-file.js";` line survived - every such line only worked because the
+    # imported name is now already in scope earlier in the same concatenated file.
+    #
+    # A leftover `export { ... } from "./local-file.js";` re-export would be just as broken, the bundle
+    # being one file with no such path left to resolve, but is not caught by the import-line check above -
+    # checked directly after a real instance of exactly that was caught only by manually tracing the build.
     for line in body.split(b"\n"):
         assert not line.startswith(b"import "), line
         assert not (line.startswith(b"export ") and b' from "./' in line), line

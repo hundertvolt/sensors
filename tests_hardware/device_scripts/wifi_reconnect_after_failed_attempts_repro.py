@@ -37,7 +37,7 @@ def status_name(status: "int | None") -> str:
 def wait_for_outcome(wlan: "network.WLAN", max_polls: int, poll_ms: int, label: str) -> "int | None":
     """Chatty poll loop, same shape as asy_wifi_service.py's own _poll_sta_connect_status() but
     logging every single poll (not just on entry) and returning the final status seen."""
-    last = None
+    last: int | None = None
     for i in range(max_polls):
         try:
             status = wlan.status()

@@ -1,32 +1,48 @@
-"""Bench-tier automated tests: real PUT /sensors config pushes against real hardware, the
-real-hardware counterpart to tests/test_setter_microdot_integration.py's mock. A "Valid" result
-plus a follow-up GET /sensors confirms the live-push callback ran a real I2C write and it stuck."""
+"""Bench-tier automated tests: real PUT /sensors and PUT /notification config pushes against real
+hardware, the real-hardware counterpart to tests/test_setter_microdot_integration.py's mock. A
+"Valid" result plus a follow-up GET confirms the live-push callback took effect and stuck."""
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any
 
 import http_client
+import pytest
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
 
 if TYPE_CHECKING:
     from harness import Board
 
-# Deliberately different from every driver default (_VAL_POV/_VAL_TOV/_VAL_FC in
-# asy_bmp3xx_driver.py: PressOvers=1, TempOvers=1, FiltCoeff=0) and all real, allowed discrete
-# settings (_OSR_SETTINGS=(1,2,4,8,16,32), _IIR_SETTINGS=(0,1,3,7,15,31,63,127)) - a real change
-# must actually take effect on the real hardware for this test to mean anything.
+# Different from every driver default (PressOvers=1, TempOvers=1, FiltCoeff=0) and all real
+# allowed discrete settings (_OSR_SETTINGS, _IIR_SETTINGS in asy_bmp3xx_driver.py): a real change
+# has to take effect on real hardware for this test to mean anything.
 _BMP3XX_TEST_VALUES = {"PressOvers": 4, "TempOvers": 2, "FiltCoeff": 3}
 
 # SCD30 has no live-push config fields at all (asy_scd30_driver.py registers no _push_callbacks) -
 # nothing to add a real-push-parity test for on that sensor.
 
+# ISL29125 is dev-only. Of its ten config fields only these four are hardware-backed with a real
+# get-back path (_get_callbacks); the rest are software knobs or command-only. Values chosen away
+# from the defaults (Resolution=16, Range=10000, IrCompOffset=0, IrCompAdjust=40).
 
+# RangeAuto goes False with them because under auto-range the chip's range bit is the state
+# machine's pick, not the user's, so _read_sensor_dict() omits Range from a live snapshot
+# entirely - reading back a pushed Range needs the auto-ranger off.
+_ISL29125_TEST_VALUES = {"Resolution": 12, "Range": 375, "RangeAuto": False, "IrCompOffset": 1, "IrCompAdjust": 20}
+
+
+@pytest.mark.persistence_write
 def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
     original: dict[str, Any] = {k: get_before.json()["BMP3XX"][k] for k in _BMP3XX_TEST_VALUES}
+    # An earlier run aborted before its own restore leaves the board already holding a test value.
+    # That field's PUT is then reported "Unchanged" and never pushed live (base_classes.py's
+    # _set_dict_cfg), so name the cause here rather than let it surface below as "push rejected".
+    already_set = {k: v for k, v in original.items() if v == _BMP3XX_TEST_VALUES[k]}
+    assert not already_set, f"the board already holds {already_set!r} - an earlier run aborted before restoring; put those fields back before rerunning"
 
     try:
         put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": _BMP3XX_TEST_VALUES}, timeout_s=10.0)
@@ -45,12 +61,84 @@ def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: 
         restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": original}, timeout_s=10.0)
         assert restore_res.status_code == 200, f"failed to restore original BMP3XX config {original!r}: {restore_res.status_code} {restore_res.body!r}"
         restore_results = restore_res.json()["result"]["BMP3XX"]
-        assert all(v == "Valid" for v in restore_results.values()), f"restoring original BMP3XX config was rejected: {restore_results!r}"
+        # "Unchanged" counts as restored: if the body failed before its own PUT landed, the board is
+        # still at `original` and this is a legitimate no-op - rejecting it would replace the real
+        # failure with a cleanup assertion.
+        assert all(v in ("Valid", "Unchanged") for v in restore_results.values()), f"restoring original BMP3XX config was rejected: {restore_results!r}"
 
     # A fully valid push-and-restore round trip is not a fault - config_manager.py's errno=12 only
     # fires on a rejected key, which none of these were.
     assert_module_error_log_empty(dut_ip, "BMP3XX")
     assert_module_error_log_empty(dut_ip, "CFGMGR_BMP3XX")
+
+
+@pytest.mark.persistence_write
+def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
+    get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
+    original: dict[str, Any] = {k: get_before.json()["ISL29125"][k] for k in _ISL29125_TEST_VALUES}
+    # An earlier run aborted before its own restore leaves the board already holding a test value.
+    # That field's PUT is then reported "Unchanged" and never pushed live (base_classes.py's
+    # _set_dict_cfg), so name the cause here rather than let it surface below as "push rejected".
+    already_set = {k: v for k, v in original.items() if v == _ISL29125_TEST_VALUES[k]}
+    assert not already_set, f"the board already holds {already_set!r} - an earlier run aborted before restoring; put those fields back before rerunning"
+
+    try:
+        put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": _ISL29125_TEST_VALUES}, timeout_s=10.0)
+        assert put_res.status_code == 200, f"PUT /sensors failed: {put_res.status_code} {put_res.body!r}"
+        results = put_res.json()["result"]["ISL29125"]
+        failed = {k: results.get(k) for k in _ISL29125_TEST_VALUES if results.get(k) != "Valid"}
+        assert not failed, f"real hardware push rejected one or more fields: {failed!r} (full result: {results!r})"
+
+        get_after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+        assert get_after.status_code == 200, f"GET /sensors after push failed: {get_after.status_code} {get_after.body!r}"
+        actual = {k: get_after.json()["ISL29125"][k] for k in _ISL29125_TEST_VALUES}
+        assert actual == _ISL29125_TEST_VALUES, f"real hardware read-back does not match what was pushed: pushed {_ISL29125_TEST_VALUES!r}, read back {actual!r}"
+    finally:
+        # Restore the board's original config regardless of outcome - this PUT mutates the real,
+        # persisted config file and live hardware registers of a shared bench rig.
+        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": original}, timeout_s=10.0)
+        assert restore_res.status_code == 200, f"failed to restore original ISL29125 config {original!r}: {restore_res.status_code} {restore_res.body!r}"
+        restore_results = restore_res.json()["result"]["ISL29125"]
+        # "Unchanged" counts as restored: if the body failed before its own PUT landed, the board is
+        # still at `original` and this is a legitimate no-op - rejecting it would replace the real
+        # failure with a cleanup assertion.
+        assert all(v in ("Valid", "Unchanged") for v in restore_results.values()), f"restoring original ISL29125 config was rejected: {restore_results!r}"
+
+    # A fully valid push-and-restore round trip is not a fault - config_manager.py's errno=12 only
+    # fires on a rejected key, which none of these were.
+    assert_module_error_log_empty(dut_ip, "ISL29125")
+    assert_module_error_log_empty(dut_ip, "CFGMGR_ISL29125")
+
+
+def test_notification_pause_time_push_counts_down_over_real_rest(board: Board, dut_ip: str) -> None:
+    # PauseTime is dispatch-only, so GET /notification has nothing to read back - but GET
+    # /status's notification section carries it live, which proves the real auto_led_override()
+    # background task decrements it on hardware rather than merely that the PUT was accepted.
+    reset_all_error_logs(dut_ip)
+    put_res = http_client.fetch(dut_ip, 80, "PUT", "/notification", {"PauseTime": 3}, timeout_s=10.0)
+    assert put_res.status_code == 200, f"PUT /notification PauseTime failed: {put_res.status_code} {put_res.body!r}"
+    assert put_res.json()["result"].get("PauseTime") == "Valid", f"real PauseTime push was rejected: {put_res.json()['result']!r}"
+
+    get_res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+    assert get_res.status_code == 200, f"GET /status failed: {get_res.status_code} {get_res.body!r}"
+    first = get_res.json()["notification"]["PauseTime"]
+    assert first > 0, f"PauseTime read back as {first!r} immediately after a real push of 3 - the push never reached real hardware state"
+
+    last = first
+    reached_zero = False
+    for _ in range(10):  # real ~1s-per-tick auto_led_override() cadence - 10s comfortably covers a 3s countdown
+        time.sleep(1.0)
+        get_res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+        current = get_res.json()["notification"]["PauseTime"]
+        assert current <= last, f"PauseTime increased ({last} -> {current}) - not a real, monotonic countdown"
+        last = current
+        if current == 0:
+            reached_zero = True
+            break
+    assert reached_zero, "PauseTime never reached 0 on real hardware - the real auto_led_override() task isn't decrementing it"
+    assert_module_error_log_empty(dut_ip, "NOTIFY")
 
 
 def test_sgp40_reset_voc_command_push_over_real_rest(board: Board, dut_ip: str) -> None:
@@ -69,68 +157,35 @@ def test_sgp40_reset_voc_command_push_over_real_rest(board: Board, dut_ip: str) 
     assert_module_error_log_empty(dut_ip, "SGP40")
 
 
-# All three are live-push fields (a real I2C write, not just a stored value) and all three differ
-# from the schema defaults: 12-bit resolution is a CONFIG1 write that also restarts the conversion,
-# and the two IR-compensation fields are a CONFIG2 write that does not.
-_ISL29125_TEST_VALUES = {"Resolution": 12, "IrCompOffset": 1, "IrCompAdjust": 20}
-
-
-def test_isl29125_resolution_and_ir_compensation_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
-    assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
-    original: dict[str, Any] = {k: get_before.json()["ISL29125"][k] for k in _ISL29125_TEST_VALUES}
-
-    try:
-        put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": _ISL29125_TEST_VALUES}, timeout_s=10.0)
-        assert put_res.status_code == 200, f"PUT /sensors failed: {put_res.status_code} {put_res.body!r}"
-        results = put_res.json()["result"]["ISL29125"]
-        failed = {k: results.get(k) for k in _ISL29125_TEST_VALUES if results.get(k) != "Valid"}
-        assert not failed, f"real hardware push rejected one or more fields: {failed!r} (full result: {results!r})"
-
-        get_after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
-        assert get_after.status_code == 200, f"GET /sensors after push failed: {get_after.status_code} {get_after.body!r}"
-        actual = {k: get_after.json()["ISL29125"][k] for k in _ISL29125_TEST_VALUES}
-        assert actual == _ISL29125_TEST_VALUES, f"real hardware read-back does not match what was pushed: pushed {_ISL29125_TEST_VALUES!r}, read back {actual!r}"
-
-        # A resolution change rescales the auto-range thresholds, so the sensor must still be
-        # producing real data at 12 bit - not merely have accepted the write.
-        measurements = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=10.0)
-        assert measurements.status_code == 200, f"GET /measurements after the resolution push failed: {measurements.status_code} {measurements.body!r}"
-        assert measurements.json()["ISL29125"].get("RangeAct") in (375, 10_000), f"ISL29125 stopped reporting a real range after a 12-bit push: {measurements.json()['ISL29125']!r}"
-    finally:
-        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": original}, timeout_s=10.0)
-        assert restore_res.status_code == 200, f"failed to restore original ISL29125 config {original!r}: {restore_res.status_code} {restore_res.body!r}"
-        restore_results = restore_res.json()["result"]["ISL29125"]
-        assert all(v == "Valid" for v in restore_results.values()), f"restoring original ISL29125 config was rejected: {restore_results!r}"
-
-    assert_module_error_log_empty(dut_ip, "ISL29125")
-    assert_module_error_log_empty(dut_ip, "CFGMGR_ISL29125")
-
-
 def test_isl29125_calibrate_command_push_over_real_rest(board: Board, dut_ip: str) -> None:
+    # The one ISL29125 field the test above excludes, for the reason that earns it its own:
+    # ISLCalibrate is command-only, so no readback can show it took effect. What can be pinned is
+    # the pair of invariants a run must respect, reachable only from the real REST stack.
     reset_all_error_logs(dut_ip)
-    # ISLCalibrate is command-only, like SGPResetVOC above - never persisted, so there is nothing
-    # to restore. It starts a bounded measuring run and must not disturb the APPLIED ratio, which
-    # is an ordinary config value only a PUT can change; that is what the readback below pins.
     before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
     assert before.status_code == 200, f"GET /sensors failed: {before.status_code} {before.body!r}"
     applied = before.json()["ISL29125"]["GainRatio"]
+    assert applied is not None, "GainRatio is a schema field with a default - it can never be absent"
 
     put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"ISLCalibrate": True}}, timeout_s=10.0)
     assert put_res.status_code == 200, f"PUT /sensors ISLCalibrate failed: {put_res.status_code} {put_res.body!r}"
     result = put_res.json()["result"]["ISL29125"]
     assert result.get("ISLCalibrate") == "Valid", f"real start_calibration() push was rejected: {result!r}"
 
+    # Invariant 1: a calibration run measures a CANDIDATE ratio and must never become the applied
+    # one - GainRatio is ordinary config, moved only by a user PUT (asy_isl29125_driver.py's own
+    # "the APPLIED factor, replaced only by a config push").
     after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
     assert after.status_code == 200, f"GET /sensors after starting a calibration failed: {after.status_code} {after.body!r}"
-    assert after.json()["ISL29125"]["GainRatio"] == applied, "a calibration run must never move the applied ratio"
+    assert after.json()["ISL29125"]["GainRatio"] == applied, f"a calibration run must never move the applied ratio: was {applied!r}, now {after.json()['ISL29125']['GainRatio']!r}"
 
-    get_res = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=10.0)
-    assert get_res.status_code == 200, f"GET /measurements after starting a calibration failed: {get_res.status_code} {get_res.body!r}"
-    # GainMeas rides the measurement tuple and is legitimately null until a run produces a stable
-    # pair, so its presence is the contract here, not its value - the bench light is not arranged.
-    assert "GainMeas" in get_res.json()["ISL29125"], f"GET /measurements lost GainMeas: {get_res.json()['ISL29125']!r}"
+    # Invariant 2: the measured candidate reaches the operator through the measurement body, which
+    # is the only place it is published. Its PRESENCE is the contract, not its value - a run that
+    # finds no usable scene legitimately leaves it null, and the bench light is not arranged.
+    meas = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=10.0)
+    assert meas.status_code == 200, f"GET /measurements after starting a calibration failed: {meas.status_code} {meas.body!r}"
+    assert "GainMeas" in meas.json()["ISL29125"], f"GET /measurements lost GainMeas: {meas.json()['ISL29125']!r}"
+
     # An empty log, not an allowlist: a run that finds no usable scene reports that by leaving
-    # GainMeas null, never by warning. The two wrnnos this used to permit no longer exist.
+    # GainMeas null, never by warning.
     assert_module_error_log_empty(dut_ip, "ISL29125")

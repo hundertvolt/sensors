@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# Runs tests_hardware/flash/ against a real board over mpremote (HARDWARE_TEST_PLAN.md §6.3) - see
-# tests_hardware/README.md for provisioning. Passes through any extra pytest args (-k, -m, --only, etc).
-# Requires a genuinely clean result (no unexpected skips, no failures) - see
-# _require_clean_hardware_run.sh's own comment for why a plain exit-code check isn't enough here.
-# Always excludes long_soak/multi_day_rollover tests, unconditionally - those need their own
-# deliberate, dedicated invocation (scripts/run_bench_soak_tests.sh, or a direct
-# --allow-multi-day-rollover-wait run), never bundled into this general suite run even if a caller
-# passes --soak-tier/--allow-multi-day-rollover-wait by mistake.
+# Runs tests_hardware/flash/ against a real board over mpremote (SPECIFICATION.md Part E.6), passing
+# through any extra pytest args. Provisioning: tests_hardware/README.md.
+#
+# Goes through _require_clean_hardware_run.sh, because a plain exit code cannot see an unexpected
+# skip (that script's own header has the reasoning), and excludes the soak markers unconditionally -
+# they need their own deliberate invocation even if a caller passes their flag by mistake.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

@@ -1,10 +1,6 @@
-# SPDX-FileCopyrightText: Copyright 2019 p-doyle (Micropython-DNSServer-Captive-Portal) - the
-# DNSQuery class's packet parsing/building is a derivative of that project's main.py (identical
-# field layout/byte values); see src/LICENSE-captive_dns and THIRD_PARTY_LICENSES.md. Changed here
-# per Apache-2.0 §4(b): ported to asyncio/AsyUDPSocket, added type hints, PrintLogHistory-backed
-# logging/errno reporting, off-subnet request filtering, recv-failure backoff, and the root-domain
-# query fix (self._parsed_ok replacing the empty-domain sentinel).
+# SPDX-FileCopyrightText: Copyright 2019 p-doyle (Micropython-DNSServer-Captive-Portal)
 # SPDX-License-Identifier: Apache-2.0
+# DNSQuery derives from its main.py - changes per Apache-2.0 SS4(b): THIRD_PARTY_LICENSES.md.
 
 """Captive-portal DNS spoofer for hotspot/AP mode. DNSServer.run() runs while the device broadcasts
 its fallback hotspot; every on-subnet query gets a canned A-record pointing back at the AP's own IP, landing any client on the config page.
@@ -24,17 +20,16 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from asy_fram_manager import AsyFramManager
     from print_log import ErrorLog
 
 _NAME = const("DNSSRV")
 
-# Backoff for a persistently-failing recvfrom() that returns (None, None) without ever raising
-# (e.g. a bind() that never actually succeeded - see SPECIFICATION.md Part C.9's
-# cascading-recovery-storm convention: this path previously looped at zero delay, measured at ~5
-# wrn_s() lines/second continuously in a real end-to-end run). Distinct from the broad
-# except-Exception backoff below, which already had its own flat 3s pause for a genuinely
-# unexpected exception.
+# Backoff for a persistently-failing recvfrom() that returns (None, None) without raising - e.g. a
+# bind() that never succeeded. This path once looped at zero delay, measured at ~5 warning lines a
+# second in a real run (Part C.9's cascading-recovery-storm convention).
 _RECV_FAIL_BACKOFF_INITIAL_S = const(0.5)
 _RECV_FAIL_BACKOFF_MAX_S = const(5.0)
 _RECV_FAIL_BACKOFF_MULTIPLIER = const(2)
@@ -71,6 +66,15 @@ class DNSServer:
         # mode="server" sockets receive from anyone - asy_udp_socket.py places source-address
         # trust on the caller. run() filters to the AP's own subnet before ever replying.
         self.udps = AsyUDPSocket(("0.0.0.0", 53), mode="server")
+
+    def get_error_sources(self) -> "list[Any]":
+        # Fan-in primitive (SPECIFICATION.md Part C.14/G.2), same shape as base_classes.py's
+        # SensorReader.get_error_sources() - duck-typed, not inherited (see this module's own
+        # docstring: it's owned by AsyConnTime, not itself a SensorReader subclass).
+        return [self]
+
+    def get_loggers(self) -> "list[PrintLogHistory]":
+        return [self.pr]
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
@@ -143,11 +147,9 @@ class DNSServer:
             await self.pr.err_s("DNS Server error during disconnect:", e, errno=3)
             disconnect_ok = True  # already logged above via the except-Exception branch
         if not disconnect_ok:
-            # SPECIFICATION.md Part C.7's silent-failure-masking convention: disconnect() itself
-            # never raises (AsyUDPSocket has no logger of its own by design), but its bool return now
-            # reports whether unregister()/close() actually succeeded - log it here so a real
-            # socket/poll-slot leak
-            # over a long uptime leaves a trail instead of silently disappearing.
+            # Part C.7's silent-failure-masking convention: disconnect() never raises (AsyUDPSocket
+            # owns no logger), but its bool says whether unregister()/close() succeeded - logged here
+            # so a real socket or poll-slot leak over a long uptime leaves a trail.
             await self.pr.wrn_s("DNS Server socket teardown did not complete cleanly.", wrnno=3)
         self.pr.evt("DNS Server disconnected.")
 
@@ -157,10 +159,9 @@ class DNSQuery:
         self.data = data
         self.domain = ""
         self._question_end = 0  # set below once a full question is actually parsed
-        # A root-domain query (a single zero-length label, ".") parses to the same empty
-        # self.domain a truncated/malformed datagram falls back to - this flag is the only thing
-        # that tells them apart, so response() can still answer a genuine root query (BACKLOG.md's
-        # "can't be told apart from a failed parse" entry).
+        # A root-domain query (one zero-length label) parses to the same empty self.domain a
+        # truncated datagram falls back to. This flag is the only thing telling them apart, so
+        # response() can answer a genuine root query instead of treating it as a failed parse.
         self._parsed_ok = False
         self.pr = pr
         # RFC 1035 section 4.1.1/4.1.2: opcode is bits 3-6 of header byte 2; the question section

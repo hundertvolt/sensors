@@ -6,12 +6,9 @@ import os
 import subprocess
 from pathlib import Path
 
-# Assertion technique used throughout this file: freezefs (ext/freezefs/archive.py) writes each
-# archived file's mount path as a plain literal string in the generated .py, e.g.
-# "/sub/inside.txt.gz" (every file gets gzipped first by this script, so every archived path ends
-# in ".gz"). Grepping the generated file's text for those literal strings is a real, direct check
-# of what got archived - no need to run the frozen module under MicroPython to prove the merge
-# worked.
+# The assertion technique throughout: freezefs writes each archived file's mount path as a plain
+# literal in the generated .py, and this script gzips first, so every path ends in ".gz". Grepping
+# the generated text for those literals checks what was archived without running it.
 
 
 def _run_build_frozen_html(repo_root: Path, output_path: Path, html_src_dirs: str | None = None, *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -28,13 +25,26 @@ def _run_build_frozen_html(repo_root: Path, output_path: Path, html_src_dirs: st
     )
 
 
-def test_default_html_stub_build_produces_the_expected_stub_files(repo_root: Path, tmp_path: Path) -> None:
+def test_without_html_src_dirs_it_refuses_rather_than_building_something(repo_root: Path, tmp_path: Path) -> None:
+    # No default source since html_stub/ was retired: a bare invocation names what is missing.
+    env = {k: v for k, v in os.environ.items() if k != "HTML_SRC_DIRS"}
     out_file = tmp_path / "frozen_html.py"
-    _run_build_frozen_html(repo_root, out_file)
+    result = subprocess.run([str(repo_root / "scripts" / "build_frozen_html.sh"), str(out_file)], cwd=repo_root, env=env, capture_output=True, text=True, check=False)
+    assert result.returncode != 0
+    assert "HTML_SRC_DIRS" in result.stderr
+    assert not out_file.exists()
 
-    assert out_file.is_file()
+
+def test_a_single_source_dir_builds_every_file_under_the_html_mount(repo_root: Path, tmp_path: Path) -> None:
+    src = tmp_path / "site"
+    src.mkdir()
+    for name in ("index.html", "style.css", "app.js", "favicon.ico"):
+        (src / name).write_text(name)
+    out_file = tmp_path / "frozen_html.py"
+    _run_build_frozen_html(repo_root, out_file, html_src_dirs=str(src))
+
     text = out_file.read_text()
-    for expected in ("/index.html.gz", "/style.css.gz", "/functions.js.gz", "/favicon.ico.gz"):
+    for expected in ("/index.html.gz", "/style.css.gz", "/app.js.gz", "/favicon.ico.gz"):
         assert expected in text, expected
     assert '"/html"' in text or "'/html'" in text  # the mount target build_frozen_html.sh passes via --target
 

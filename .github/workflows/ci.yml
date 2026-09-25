@@ -1,30 +1,27 @@
 name: CI
 
+# Two triggers on purpose, and `push` is the load-bearing one: a PR conflicted with its base has no
+# merge ref, so GitHub creates no pull_request run at all and the branch silently goes untested (128
+# commits once, SPECIFICATION.md H.8).
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: ['**']  # '**' rather than bare `push:`, so pushing a tag doesn't run the suite again
 
+# Shared by both triggers (head_ref on a PR, ref_name on a push name the same branch), so
+# cancel-in-progress keeps exactly one run per push; which survives does not matter (H.8).
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
-# Deny-by-default for the automatic GITHUB_TOKEN: without this block every job inherits whatever
-# the repo/org default is, which is frequently write-scoped. No job here pushes, comments, or
-# calls the API - the codecov steps upload over their own token and are continue-on-error - so
-# `contents: read` per job is the whole requirement. Enforced by zizmor's excessive-permissions
-# audit (scripts/lint.sh).
+# Deny-by-default GITHUB_TOKEN; each job grants itself contents: read and nothing needs more
+# (B.10.1, enforced by zizmor).
 permissions: {}
 
 jobs:
   web-changes:
-    # Gates the web-CI tier below on whether this push/PR actually touches the website's own
-    # source (html/, js/, tests_js/) or its own tooling config - kept as a single workflow file
-    # with a changes-detection job feeding `if:` conditions, deliberately not a second workflow
-    # file with its own trigger-level `paths:` filter (which can leave a PR stuck on a required
-    # status check that never fires because the whole workflow never triggered - see
-    # SPECIFICATION.md Part H.8). The existing Python jobs below are untouched and keep running on every
-    # trigger regardless of this job's result.
+    # Gates the web tier on whether THIS PUSH touched the website or its tooling, from one workflow
+    # file rather than a trigger-level paths: filter (B.10.1, H.8). Python jobs never consult it.
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -38,6 +35,10 @@ jobs:
       - uses: dorny/paths-filter@15192bc058cc28a13dbf6cde61f19e18988b7af6 # v3
         id: filter
         with:
+          # Without a base, a push is compared against the default branch; naming the pushed branch
+          # compares against the commit before the push. A pull_request ignores it and uses the PR
+          # base (B.10.1).
+          base: ${{ github.ref }}
           filters: |
             web:
               - 'html/**'
@@ -85,19 +86,9 @@ jobs:
         run: npm run lint:css
 
   web-unit-tests:
-    # Vitest in real-browser mode (Playwright + Chromium, not jsdom) - see SPECIFICATION.md Part H.8.
-    # This CI runner has no pre-installed browser (unlike a Claude Code dev sandbox - see
-    # vitest.config.js's own comment), so it installs its own matching
-    # Chromium build via `playwright install` before running tests.
-    #
-    # Also builds the MicroPython Unix-port toolchain (below) - tests_js/live-backend.test.js
-    # (SPECIFICATION.md Part H.7) drives a real digital-twin subprocess as part of the Vitest
-    # suite, the first thing in this job's history to need it. This does cost this job the same
-    # toolchain-build time the Python-side unit-tests job already pays (mitigated the same way:
-    # the toolchain-cache step below shares that job's exact cache key, so a normal PR run hits a
-    # warm cache here too) - a deliberate tradeoff, not an oversight: see SPECIFICATION.md Part H.7
-    # for why the live-backend test needed to actually drive the twin rather than stay
-    # mock-server.js-only.
+    # Vitest in real-browser mode (Playwright + Chromium, H.8); the runner has no browser, so it
+    # installs its own. Also builds the Unix-port toolchain, sharing unit-tests' cache key, since
+    # live-backend.test.js drives a real twin (B.10.1).
     needs: [web-changes, web-lint-and-typecheck]
     if: needs.web-changes.outputs.web == 'true'
     permissions:
@@ -114,11 +105,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      # Mirrors the Python side's "Cache MicroPython Unix port build" steps below - the browser
-      # binary itself is cached across runs (keyed on package-lock.json, which pins the exact
-      # playwright version); OS-level dependencies (apt packages headless Chromium needs) are
-      # cheap and reinstalled every run regardless, since they aren't part of the cached path -
-      # this is Playwright's own documented CI caching pattern.
+      # Playwright's browser cached on package-lock.json (which pins its version); OS packages
+      # reinstalled every run - Playwright's documented CI pattern.
       - name: Cache Playwright Chromium
         id: playwright-cache
         uses: actions/cache@v6
@@ -139,25 +127,63 @@ jobs:
           if [ ! -x "$bin" ]; then
             uv run toolchain/setup_toolchain.py setup
           fi
-      # The real wozi website is built automatically by npm's own `pretest`/`pretest:coverage`
-      # hooks (package.json) - single source of truth for "build before test", shared with local
-      # dev (see "Run unit tests" comment above).
+      # npm's pretest hook builds the real wozi website first. Everything but the live PUT matrix,
+      # which is its own sharded job below (B.10.1).
       - name: Run unit tests (Vitest, real-browser mode)
-        run: npm test
+        run: npm run test:unit
 
-  # Split out from web-unit-tests (was its last three steps) after this job's own coverage rerun
-  # was confirmed to intermittently blow web-unit-tests' 20-minute timeout-minutes budget even
-  # though the coverage step itself is continue-on-error: true - `needs:`/timeout-minutes gate on
-  # a whole job finishing, not on its "real" step alone, so a slow instrumented rerun (real-browser
-  # Playwright + a real digital-twin subprocess boot, same suite run a second time) could still get
-  # the entire job - including the already-passed real test step above - killed by the timeout and
-  # block the downstream web-cross-browser-smoke job that only actually needs the real test result.
-  # Confirmed on this branch's own PR #50 (run `33856690559`, BACKLOG.md's former "HIGH PRIORITY"
-  # entry): "Run unit tests (Vitest, real-browser mode)" had already succeeded when the job was
-  # killed mid-"Run unit tests with coverage". Coverage is a report, never a gate (CLAUDE.md's
-  # "Code quality tooling", SPECIFICATION.md Part E.5) - giving it a wholly separate job with its
-  # own timeout budget, gating nothing downstream, is what actually makes that true; before this
-  # split, it could still take the real signal down with it purely on wall-clock time.
+  web-put-matrix:
+    # The live PUT matrix, split out and sharded because it IS the web tier's wall clock (B.10.1);
+    # one runner per shard, so the twin's fixed port never collides.
+    #
+    # needs: web-unit-tests - no three runners on the slow matrix if the fast suite already failed.
+    needs: [web-changes, web-unit-tests]
+    if: needs.web-changes.outputs.web == 'true'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false  # one shard's failure must not hide which cases the other two would have caught
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright OS dependencies (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
+      - name: Build MicroPython Unix port (if not cached)
+        run: |
+          bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
+          if [ ! -x "$bin" ]; then
+            uv run toolchain/setup_toolchain.py setup
+          fi
+      - name: Run the live PUT matrix (shard ${{ matrix.shard }} of 3)
+        run: npm run test:put-matrix
+        env:
+          PUT_MATRIX_SHARD: ${{ matrix.shard }}/3
+
+  # Split from web-unit-tests because timeout-minutes gates a whole job: an instrumented rerun once
+  # killed a job whose real test step had passed (PR #50, run 33856690559; B.10.1).
   web-coverage:
     needs: [web-changes, web-unit-tests]
     if: needs.web-changes.outputs.web == 'true'
@@ -195,10 +221,8 @@ jobs:
           if [ ! -x "$bin" ]; then
             uv run toolchain/setup_toolchain.py setup
           fi
-      # Coverage is a report, not a gate (mirrors the Python side's own non-gating
-      # scripts/test.sh --coverage - see CLAUDE.md's "Code quality tooling", SPECIFICATION.md
-      # Part E.5). web-unit-tests' own "Run unit tests" step is the real pass/fail signal; this
-      # just re-runs the same suite once more, instrumented, to measure js/ line coverage.
+      # A report, not a gate; re-runs the suite instrumented, minus the live matrix, whose js/ paths
+      # the mock-server matrix already drives (B.10.1).
       - name: Run unit tests with coverage
         run: npm run test:coverage 2>&1 | tee coverage-output.txt
         continue-on-error: true
@@ -220,24 +244,18 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
         continue-on-error: true
       - name: Upload HTML coverage report artifact
-        if: hashFiles('coverage/index.html') != ''
+        if: hashFiles('htmlcov_js/index.html') != ''
         uses: actions/upload-artifact@v7
         with:
           name: coverage-html-js
-          path: coverage/
+          path: htmlcov_js/
         continue-on-error: true
 
   web-cross-browser-smoke:
-    # Runs the real production website through three engines Vitest's Playwright-only browser mode
-    # can't reach (WebKitGTK, real Firefox, real Microsoft Edge), plus Playwright's own Chromium for
-    # a consistent baseline - each at a desktop and a mobile-sized viewport. Deliberately narrow
-    # scope: one field edit+apply per (engine, viewport), not the full PUT matrix - see
-    # scripts/cross_browser_smoke.mjs's own header comment and SPECIFICATION.md Part H.7
-    # ("Cross-browser coverage") for the "Coverage depth"/"Test architecture" decisions behind that.
+    # WebKitGTK, Firefox and Edge - engines Vitest's Playwright mode cannot reach - plus Chromium,
+    # one field edit per engine and viewport (H.7 "Cross-browser coverage").
     #
-    # needs: web-unit-tests, not just web-lint-and-typecheck - no reason to spend several more
-    # minutes installing three more browser engines if the fast native-Chromium suite already
-    # caught a regression (same fail-fast reasoning as digital-twin-e2e's own needs: unit-tests).
+    # needs: web-unit-tests, fail-fast: no browser installs if the fast suite already failed.
     needs: [web-changes, web-unit-tests]
     if: needs.web-changes.outputs.web == 'true'
     permissions:
@@ -254,14 +272,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      # Mirrors web-unit-tests' own identical step (see its comment) - this job's Chromium leg
-      # (scripts/cross_browser_smoke.mjs's runChromiumFamily("chromium", ...)) needs Playwright's
-      # own browser binary too, and each CI job is its own fresh VM with no browser cache carried
-      # over from web-unit-tests even though that job (this one's own `needs:`) already installed
-      # it moments earlier in the same workflow run. Confirmed necessary directly: an earlier
-      # version of this job omitted this step entirely and both Chromium checks failed in real CI
-      # with "Executable doesn't exist" - WebKit/Firefox/Edge all passed correctly in that same run,
-      # proving the three new engines were never the problem.
+      # Installed here too: every job is a fresh VM, and without it the Chromium leg failed with
+      # "Executable doesn't exist" (B.10.1).
       - name: Cache Playwright Chromium
         id: playwright-cache
         uses: actions/cache@v6
@@ -283,14 +295,9 @@ jobs:
             uv run toolchain/setup_toolchain.py setup
           fi
           scripts/build_website.sh wozi
-      # Firefox+geckodriver (via conda-forge/micromamba - see scripts/setup_cross_browser_toolchain.sh's
-      # own comment for why) is the one piece of this job's toolchain worth caching across runs: it's
-      # a ~106MB download from a channel with no version-pin file to key on (deliberately unpinned,
-      # unlike the MicroPython toolchain above), so this just caches "whatever conda-forge currently
-      # publishes" under a fixed key - bump the key's trailing version number to force a fresh pull
-      # if that ever needs to happen. WebKit (a plain apt package) and Edge (Microsoft's own apt repo)
-      # are cheap enough to reinstall every run, matching Playwright Chromium's OS-deps-only-on-cache-
-      # hit precedent above.
+          uv run scripts/_generate_sensortask_modules.py
+      # Firefox+geckodriver from conda-forge (~106 MB, nothing to key on) cached under a fixed key -
+      # bump the suffix to force a refresh. WebKit and Edge reinstall every run (B.10.1).
       - name: Cache Firefox + geckodriver (conda-forge)
         uses: actions/cache@v6
         with:
@@ -302,19 +309,9 @@ jobs:
         run: node scripts/cross_browser_smoke.mjs
 
   lint-and-typecheck:
-    # Gates on src/, tests/, and digital_twin/ (pyproject.toml's [tool.mypy]/[tool.ruff] default
-    # scope - both fully-reviewed, expected to stay clean). Passing explicit paths to
-    # scripts/typecheck.sh overrides pyproject.toml's `files`/default target for that one
-    # invocation without changing what a plain `scripts/lint.sh`/`scripts/typecheck.sh` checks
-    # locally (still full-scope: see scripts/typecheck.sh's `mypy "$@"` and ruff's own
-    # CLI-args-override-config behavior).
-    # digital_twin/ is NOT in the `ruff check`/`scripts/typecheck.sh` args below the way src/tests
-    # are - see pyproject.toml's [tool.mypy] exclude comment and digital_twin/typecheck.ini's own
-    # docstring for why mypy needs a wholly separate invocation for it (bare `machine`/`network`/
-    # `neopixel` module names can only resolve one way per mypy run); scripts/typecheck.sh already
-    # runs that second pass unconditionally, regardless of "$@", so the Mypy step below gates on
-    # digital_twin/ too without needing it named here explicitly. Ruff has no such per-run
-    # resolution conflict, so it's just named directly alongside src/tests.
+    # ruff names every scope; mypy names only the main pass's, since scripts/typecheck.sh always
+    # runs the twin and host passes too (B.15). Explicit paths narrow only this CI call; a local run
+    # stays full-scope.
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -325,9 +322,9 @@ jobs:
           persist-credentials: false
       - name: Install uv
         run: pip install uv
-      # `actionlint-py` ships no wheel and fetches its binary inside its own build backend, so a
-      # bad response there fails a job on a tree where nothing is wrong (HTTP 500 2026-09-13,
-      # 504 2026-09-14 - both on lanes that touched no shell script at all). Retried in every job.
+      # Retried here too, not just in the test lanes below: `actionlint-py` ships no wheel and
+      # fetches its binary inside its own build backend, so one bad response fails a lane on a tree
+      # where nothing is wrong - HTTP 500 on 2026-09-13, 504 on 2026-09-14, on shell-free lanes.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
           for attempt in 1 2 3; do
@@ -336,17 +333,14 @@ jobs:
               sleep $((attempt * 10))
           done
           uv sync
-      - name: Ruff (src/, tests/, digital_twin/)
-        run: uv run ruff check src tests digital_twin boot_entry toolchain scripts tests_scripts tests_hardware
-      - name: Mypy (src/, tests/, digital_twin/)
-        run: uv run scripts/typecheck.sh src tests boot_entry tests_hardware/device_scripts
+      - name: Ruff (src/, tests/, digital_twin/, tests_hardware/, and the whole host build chain)
+        run: uv run ruff check src tests digital_twin tests_hardware buildgen scripts toolchain tests_scripts
+      - name: Mypy (src/, tests/, digital_twin/, tests_hardware/device_scripts/, and the whole host build chain)
+        run: uv run scripts/typecheck.sh src tests tests_hardware/device_scripts
 
   shellcheck:
-    # Own stage, not a step inside lint-and-typecheck: each tool gets its own independently
-    # red/green check run. scripts/lint.sh still runs all of them together for local use.
-    # Covers scripts/ only - the four legacy build-*.sh at the repo root are the same pre-refactor
-    # generation as python//modules/ and out of lint scope by that same standing decision (they
-    # carry 28 findings of their own, including no shebang at all - see BACKLOG.md).
+    # Its own stage so the tool has its own check run. scripts/ only: the legacy build-*.sh are out
+    # of scope forever (CLAUDE.md).
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -357,6 +351,7 @@ jobs:
           persist-credentials: false
       - name: Install uv
         run: pip install uv
+      # Retried for the same reason as lint-and-typecheck's own sync above.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
           for attempt in 1 2 3; do
@@ -382,6 +377,7 @@ jobs:
           persist-credentials: false
       - name: Install uv
         run: pip install uv
+      # Retried for the same reason as lint-and-typecheck's own sync above.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
           for attempt in 1 2 3; do
@@ -394,10 +390,8 @@ jobs:
         run: uv run actionlint
 
   zizmor:
-    # GitHub Actions security audit - token permissions, checkout credential persistence, action
-    # pinning. --offline skips the two audits needing the GitHub API (ref-confusion,
-    # impostor-commit) so this behaves identically here, on a dev box, and in CLAUDE.md's clean
-    # chroot recipe. Policy config: .github/zizmor.yml.
+    # Workflow security audit (token scope, credential persistence, pinning). --offline skips the
+    # two API audits, so it behaves the same everywhere; policy in .github/zizmor.yml.
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -408,6 +402,7 @@ jobs:
           persist-credentials: false
       - name: Install uv
         run: pip install uv
+      # Retried for the same reason as lint-and-typecheck's own sync above.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
           for attempt in 1 2 3; do
@@ -420,44 +415,13 @@ jobs:
         run: uv run zizmor --offline .github/
 
   unit-tests:
-    # Tests run under a real MicroPython Unix-port interpreter, not CPython - see
-    # BACKLOG.md's "Self-contained venv via uv" testing requirement and SPECIFICATION.md Part E.
+    # Runs under the real MicroPython Unix-port interpreter (Part E).
     #
-    # needs: lint-and-typecheck - serializes the two jobs in this workflow instead of letting them
-    # run in parallel (the previous default). This dates from an earlier phase of the CI-hang
-    # investigation, when the leading theory was that concurrent job load on GitHub's shared
-    # runners caused the hang; that theory was wrong (see CLAUDE.md's "CI hang investigation" note
-    # for the real root cause and fix). Job sequencing didn't fix the hang and isn't required for
-    # it, but it's kept anyway - cheap, harmless, and removes one more source of self-inflicted
-    # concurrency as a standing precaution, per the project owner's direction that slower is fine
-    # but hanging never is.
+    # needs: lint-and-typecheck is sequencing only, the standing hang backstop; `if: !cancelled()`
+    # drops the success gating, so a red lint never skips the tests (CLAUDE.md).
     #
-    # timeout-minutes is a job-level backstop, not the primary defense against hangs -
-    # scripts/test.sh itself wraps every individual test file in a per-file timeout (with two
-    # retries; see scripts/test.sh's own comment on that and on why it, like this job sequencing,
-    # turned out not to be what actually fixed the hang). That inner per-file timeout means any
-    # future hang would surface as a fast, attributable failure within minutes instead of silently
-    # consuming the whole job; timeout-minutes here only guards against a genuinely pathological
-    # run (many files hanging at once) rather than being the only thing standing between a stuck
-    # test and GitHub's own 360-minute hard limit (the scenario that produced the originally-
-    # observed 6-hour hang before timeout-minutes existed - see CLAUDE.md's "CI hang investigation"
-    # note). With a warm toolchain cache this job takes ~17 minutes (measured on a real runner,
-    # 2026-09-13); the coverage rerun that used to follow it here now has its own job below.
-    #
-    # 45, not 30: scripts/test.sh's per-file timeout is 180s with three attempts, so one genuinely
-    # hung file costs up to 9 minutes of retries on top of that ~17 - which a 30-minute cap does
-    # not cover once the suite grows at all. This cap is the backstop for many files hanging at
-    # once, not for one; sizing it below "normal run + one file's full retry budget" makes it fire
-    # on healthy runs instead, which is exactly how run `34755468619` was lost.
-    #
-    # `if: !cancelled()` keeps the `needs:` edge above (so the serialization the standing backstop
-    # asks for is intact) while dropping the SUCCESS gating that `needs:` otherwise implies. That
-    # gating was never a deliberate choice - it is a side effect of the sequencing - and it is
-    # actively harmful: a red lint job silently SKIPS this job, so a lint finding hides every
-    # test result behind it. That is not hypothetical; it is exactly why unit-tests,
-    # digital-twin-e2e and firmware-build-verify had never once run on the branch that introduced
-    # `select = ["ALL"]`, and it hid that fact for the entire life of that branch. Lint and tests
-    # answer different questions; a failure of one must not erase the answer to the other.
+    # 45 minutes: a ~17-minute warm run plus one hung file's full retry budget; the per-file timeout
+    # in scripts/test.sh is the real hang defence (B.10.1).
     needs: lint-and-typecheck
     if: ${{ !cancelled() }}
     permissions:
@@ -470,16 +434,9 @@ jobs:
           persist-credentials: false
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
-      # scripts/test.sh's pytest tier shells out to `uv run`, which implicitly builds the WHOLE
-      # dev group before it runs anything - ruff, mypy, shellcheck, zizmor and actionlint-py
-      # included, none of which tests_scripts/ needs. actionlint-py has no wheel and downloads its
-      # binary from a release URL inside its own build backend, so one bad response there fails the
-      # entire test lane on a tree where nothing is wrong: `error: HTTP Error 500` on 2026-09-13,
-      # with lint-and-typecheck's identical `uv sync` succeeding 27 seconds earlier in the same
-      # run. Doing the sync here, retried, keeps a third party's momentary outage from reading as a
-      # red test result - the same "lint must not erase the answer tests give" reasoning as the
-      # `if: !cancelled()` above, applied to the dependency build instead of the job graph.
-      # `scripts/test.sh`'s own `uv run` then finds the environment current and rebuilds nothing.
+      # Retried sync first: `uv run` builds the whole dev group, actionlint-py's binary download
+      # included, so a third party's outage must not read as a red test (CLAUDE.md, B.10). test.sh
+      # then rebuilds nothing.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
           for attempt in 1 2 3; do
@@ -490,18 +447,36 @@ jobs:
           uv sync
       - name: Run unit tests
         run: scripts/test.sh
-  # Split out of unit-tests, exactly as web-coverage was split out of web-unit-tests and for the
-  # same reason - which this branch then proved again on the Python side. `timeout-minutes` gates a
-  # whole job, not its "real" step, so a slow instrumented rerun kills the already-passed test step
-  # with it and skips everything downstream. Measured on run `34755468619`: the plain suite
-  # reported "60/60 files passed / ALL PASSED" at 12:07:19, the --coverage rerun then ran 13m24s
-  # more and the 30-minute job cap cancelled the lot, taking digital-twin-e2e with it. Nothing was
-  # wrong with the tree. Coverage is a report, never a gate (CLAUDE.md's "Code quality tooling",
-  # SPECIFICATION.md Part E.5) - its own job, its own budget, gating nothing, is what makes that
-  # true rather than merely stated. Keep it split even if the suite gets faster again.
+
+  # The (f) stage of CLAUDE.md's memory-safety rule: the same suite at the boot entry's
+  # gc.threshold(32768), on a design already passing at -1 above. Its own job, off the critical path
+  # (B.10.1).
+  unit-tests-gc-threshold:
+    name: Unit tests (shipped gc.threshold)
+    needs: lint-and-typecheck
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
+      - name: Run unit tests at the shipped gc.threshold
+        run: GC_THRESHOLD=32768 scripts/test.sh
+
+  # Split from unit-tests for the same reason web-coverage is; needs: unit-tests only to reuse its
+  # toolchain cache, running in parallel with the two jobs below (B.10.1).
+  #
+  # 45 minutes over the measured 14m01s/16m56s instrumented reruns; a 30-minute cap once cancelled a
+  # passed suite and digital-twin-e2e with it (run 34755468619).
   unit-tests-coverage:
     # Success-gated on purpose (no `if: !cancelled()`, unlike unit-tests' own edge above): there is
-    # nothing to measure if the suite did not pass, and this job gates nothing itself.
+    # nothing to measure if the plain suite did not pass. Note this job is no longer purely
+    # advisory - its own test step gates now, for the reason that step's comment gives.
     needs: unit-tests
     permissions:
       contents: read
@@ -524,33 +499,41 @@ jobs:
               sleep $((attempt * 10))
           done
           uv sync
-      # Re-runs the same suite under the same Unix port binary (always built with
-      # MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port()), wrapped by tests/_coverage_runner.py,
-      # to measure src/ AND digital_twin/ line coverage (two reports from one shared run - see
-      # scripts/test.sh's own comment).
-      - name: Run unit tests with coverage
-        run: scripts/test.sh --coverage
-        continue-on-error: true
+      # Report steps are `always() && hashFiles(...)` and continue-on-error, so a red test never
+      # swallows what did render. The instrumented rerun measures src/ and digital_twin/ from one
+      # run.
+      #
+      # This step is NOT advisory: build-settrace is the only interpreter no other job runs. Exit 1
+      # (a test failed) goes red; exit 3 (only the report failed) stays advisory (Part E.5.3).
+      - name: Run unit tests with coverage (the test result gates, the report does not)
+        run: |
+          status=0
+          scripts/test.sh --coverage || status=$?
+          if [ "$status" -eq 3 ]; then
+              echo "::warning::coverage rendering failed, but every test passed (exit 3) - report only"
+              exit 0
+          fi
+          exit "$status"
       - name: Add coverage summary to job summary
-        if: hashFiles('coverage_summary.md') != ''
+        if: ${{ always() && hashFiles('coverage_summary.md') != '' }}
         run: cat coverage_summary.md >> "$GITHUB_STEP_SUMMARY"
         continue-on-error: true
       - name: Add digital_twin/ coverage summary to job summary
-        if: hashFiles('coverage_summary_digital_twin.md') != ''
+        if: ${{ always() && hashFiles('coverage_summary_digital_twin.md') != '' }}
         run: cat coverage_summary_digital_twin.md >> "$GITHUB_STEP_SUMMARY"
         continue-on-error: true
       # Free for public repos; needs a CODECOV_TOKEN repo secret (or Codecov's tokenless PR-from-
       # fork support) once this repo is registered at codecov.io - not something CI itself can set
       # up. fail_ci_if_error keeps a missing/invalid token from ever failing the job either way.
       - name: Upload coverage to Codecov
-        if: hashFiles('coverage.xml') != ''
+        if: ${{ always() && hashFiles('coverage.xml') != '' }}
         uses: codecov/codecov-action@a99c28d3f0da835de33ff2feb2e15691c7b9641f # v7
         with:
           files: coverage.xml
           fail_ci_if_error: false
         continue-on-error: true
       - name: Upload digital_twin/ coverage to Codecov
-        if: hashFiles('coverage_digital_twin.xml') != ''
+        if: ${{ always() && hashFiles('coverage_digital_twin.xml') != '' }}
         uses: codecov/codecov-action@a99c28d3f0da835de33ff2feb2e15691c7b9641f # v7
         with:
           files: coverage_digital_twin.xml
@@ -558,14 +541,14 @@ jobs:
           fail_ci_if_error: false
         continue-on-error: true
       - name: Upload HTML coverage report artifact
-        if: hashFiles('htmlcov/index.html') != ''
+        if: ${{ always() && hashFiles('htmlcov/index.html') != '' }}
         uses: actions/upload-artifact@v7
         with:
           name: coverage-html
           path: htmlcov/
         continue-on-error: true
       - name: Upload digital_twin/ HTML coverage report artifact
-        if: hashFiles('htmlcov_digital_twin/index.html') != ''
+        if: ${{ always() && hashFiles('htmlcov_digital_twin/index.html') != '' }}
         uses: actions/upload-artifact@v7
         with:
           name: coverage-html-digital-twin
@@ -574,26 +557,24 @@ jobs:
 
 
   digital-twin-e2e:
-    # Automated version of the digital twin's on-demand manual walkthrough (fresh boot, every GET/
-    # PUT endpoint, DebugLevel=5 verbose logging, bus fault injection, settings/error persistence
-    # across a real process reboot, soak) - see digital_twin/README.md's "Automated CI suite"
-    # section and scripts/run_digital_twin_ci.sh's own header comment for the full reference.
-    # Deliberately a separate job from unit-tests above: this drives digital_twin/
-    # run_wozi_integration.py as a real subprocess over real HTTP through several genuine process
-    # restarts (to prove persistence survives an actual reboot, not just an in-process rebuild of
-    # the object graph the way tests/test_digital_twin_sensortask_integration.py already does) -
-    # a fundamentally different, heavier kind of check than the fast unit-test tier, not a
-    # duplicate of it.
+    # The automated twin walkthrough - fresh boot, every endpoint, fault injection, persistence
+    # across real process restarts, soak (digital_twin/README.md); heavier than the unit tier, not a
+    # duplicate.
     #
-    # needs: unit-tests - runs after the unit-test tier both for fail-fast ordering (no reason to
-    # spend several more minutes on a full boot/reboot/soak cycle if the fast unit tests already
-    # caught a regression) and so this job's own toolchain-cache restore, below, can hit the same
-    # cache unit-tests' own unix-port-build step just populated.
+    # Six-device matrix, fail-fast: false - each suite waits on real state transitions that
+    # parallelize across jobs (B.10.1).
+    #
+    # needs: unit-tests, success-gated on purpose: fail-fast is the intent, and the cache is then
+    # warm.
     needs: unit-tests
     permissions:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [wozi, dev, arzi, klkizi, grkizi, schlafzi]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -601,65 +582,44 @@ jobs:
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
       - name: Run digital-twin clean/build/test cycle
-        run: scripts/run_digital_twin_ci.sh
+        run: scripts/run_digital_twin_ci.sh "${{ matrix.device }}"
       - name: Upload digital-twin subprocess logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: digital-twin-ci-logs
+          name: digital-twin-ci-logs-${{ matrix.device }}
           path: digital_twin_ci_logs/
           if-no-files-found: ignore
         continue-on-error: true
 
   firmware-build-verify:
-    # The real end-to-end proof for SPECIFICATION.md Part B.11's src/-based build chain: assembles an actual
-    # src/-based firmware.uf2 (scripts/build_firmware.py, ext/microdot.py + the real website +
-    # every src/ module, frozen and linked against the pinned toolchain) rather than only checking
-    # the assembly logic's inputs/outputs in isolation, the way tests_scripts/test_build_firmware.py's
-    # fast tests do. This is the "wiring an actual firmware-build stage into CI" gap BACKLOG.md's
-    # "No CI firmware-build stage yet" entry describes, closed here for the new src/-based toolchain
-    # (that entry itself stays open - it's specifically about the legacy build-*.sh scripts, a
-    # separate, not-yet-done piece of work).
+    # Builds a real firmware.uf2 per device (B.11) - that the assembly links, beyond
+    # test_build_firmware.py's fast tests. Six-device matrix, fail-fast: false.
     #
-    # needs: unit-tests, not digital-twin-e2e - this only needs the toolchain cache unit-tests'
-    # own setup step already populates (mpy-cross + pico-sdk + picotool + the MicroPython/pico-sdk
-    # git checkouts), not anything digital-twin-e2e itself produces, so it runs in parallel with
-    # that job instead of serializing after it. The ARM cross-compiler itself (gcc-arm-none-eabi
-    # and friends) is a separate apt install, not part of that cached directory - see the
-    # dedicated step below for why it still has to run here even on a cache hit.
-    #
-    # `if: !cancelled()` for the same reason as unit-tests above, and it applies with extra force
-    # here: the dependency stated above is a CACHE dependency, not a correctness one, so gating the
-    # firmware compile on whether the unit tests passed masks one independent finding behind
-    # another. digital-twin-e2e deliberately keeps its own success gating - its `needs:` comment
-    # states fail-fast as the actual intent - so it is left alone.
+    # needs: unit-tests for the toolchain cache only, so `if: !cancelled()`: a cache dependency must
+    # not gate an independent finding (B.10.1).
     needs: unit-tests
     if: ${{ !cancelled() }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [wozi, dev, arzi, klkizi, grkizi, schlafzi]
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
-      # A cache miss here would mean scripts/test.sh itself hasn't run yet on this exact toolchain
-      # pin, which shouldn't happen given needs: unit-tests above, but if it does, build_firmware.py's
-      # own "no toolchain found - run setup first" error message fails this job clearly rather than
-      # silently skipping the real build.
+      # A cache miss fails on build_firmware.py's own "no toolchain found" rather than skipping the
+      # build.
       #
-      # Each CI job runs on its own fresh VM - the cache step above restores ~/pico-toolchain's
-      # git checkouts/build dirs (populated by unit-tests' own scripts/test.sh run earlier in this
-      # same workflow run), but apt-installed system packages never survive across jobs. This bit
-      # a first version of this job directly: it assumed the toolchain cache alone was enough and
-      # failed with "Compiler 'arm-none-eabi-gcc' not found" - unit-tests never needed the ARM
-      # cross-compiler itself (only the already-cached, already-built Unix port binary), so nothing
-      # upstream of this job ever installs it. Reuses setup_toolchain.py's own
-      # ensure_apt_packages() against versions.toml's apt_packages list - the same single source of
-      # truth toolchain/setup_toolchain.py setup itself uses - rather than hand-duplicating the
-      # package list here, where it could quietly drift out of sync.
+      # apt packages never survive between jobs, so the ARM compiler is installed here from
+      # versions.toml via ensure_apt_packages(); without it this job once failed with
+      # "arm-none-eabi-gcc not found".
       - name: Install ARM toolchain apt packages
         run: |
           python3 - <<'PYEOF'
@@ -670,5 +630,5 @@ jobs:
           versions = st.load_versions(Path("toolchain/versions.toml"))
           st.ensure_apt_packages(versions["toolchain"]["apt_packages"], skip=False)
           PYEOF
-      - name: Build a real firmware.uf2 for wozi and verify it
-        run: RUN_SLOW_FIRMWARE_BUILD=1 uv run pytest tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2 -v
+      - name: Build a real firmware.uf2 for ${{ matrix.device }} and verify it
+        run: RUN_SLOW_FIRMWARE_BUILD=1 uv run pytest "tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[${{ matrix.device }}]" -v

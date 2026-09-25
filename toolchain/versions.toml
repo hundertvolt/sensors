@@ -1,15 +1,11 @@
 # Pin for the build-environment installer (toolchain/setup_toolchain.py).
 #
-# Only the MicroPython ref is pinned by hand here. pico-sdk and picotool versions are
-# *derived automatically* at install/update time:
-#   - pico-sdk ref = the exact commit MicroPython's own `lib/pico-sdk` submodule points to
-#     at this ref (so it always matches what the firmware build actually compiles against).
-#   - picotool ref = the newest picotool tag sharing that pico-sdk commit's major.minor
-#     version (picotool enforces a major.minor match against the pico-sdk it's built with).
+# Only the MicroPython ref is pinned by hand. pico-sdk is derived from MicroPython's own
+# lib/pico-sdk submodule at this ref, picotool as the newest tag matching its major.minor
+# (SPECIFICATION.md Part B.3).
 #
-# To move to a newer MicroPython release: change `ref` below (or run the installer with
-# `--latest` to auto-detect and write back the newest stable tag), then re-run the
-# installer — it updates in place.
+# To move: change `ref` (or run the installer with --latest to write back the newest stable tag),
+# then re-run the installer.
 [micropython]
 ref = "v1.29.0"
 
@@ -24,13 +20,33 @@ apt_packages = [
     "gcc-arm-none-eabi",
     "libnewlib-arm-none-eabi",
     "libstdc++-arm-none-eabi-newlib",
-    # ports/unix (the host-side MicroPython build used for running tests under the real
-    # interpreter, not just CPython+stubs - see BACKLOG.md's "Self-contained venv via uv") needs
-    # libffi-dev for its ffi module; the rest of its deps overlap with what's already listed above.
+    # ports/unix, the real interpreter the tests run under (Part E.1), needs libffi-dev for its ffi
+    # module.
     "libffi-dev",
-    # scripts/test.sh and scripts/run_digital_twin_ci.sh both grant CAP_NET_BIND_SERVICE to the
-    # built Unix-port binary (setcap, from libcap2-bin) so the real port-53 DNS-server test can
-    # bind - present by default on a GitHub runner and a normal Ubuntu install, but not in a
-    # minimal image, where its absence only surfaces AFTER the whole toolchain build.
+    # setcap, for the port-53 DNS-server test's CAP_NET_BIND_SERVICE grant: absent from a minimal
+    # image, where it surfaced only after the whole toolchain build.
     "libcap2-bin",
 ]
+
+# lwIP options for the rp2 firmware, injected through an out-of-tree lwipopts.h (Part B.14.2). Every
+# option is listed, so this one table pins the whole build.
+#
+# AN ENSEMBLE, NOT INDEPENDENT KNOBS: lwIP's init.c #errors, opt.h's derived values and three
+# per-connection relationships lwIP does not check are all re-stated by check_lwip_ensemble(), so an
+# incoherent set is refused by name.
+#
+# Sized for max_connections = 6 (Part H.7), 2,324 B of GC heap per connection: PCB = limit + 3
+# spares, SEG = limit x 8, MEM_SIZE = limit x 2,000 B, PBUF_POOL_SIZE unchanged. Each rule's reason:
+# B.14.2.
+[lwip]
+MEMP_NUM_TCP_PCB = 9
+MEMP_NUM_TCP_PCB_LISTEN = 8
+MEMP_NUM_PBUF = 16
+PBUF_POOL_SIZE = 16
+MEMP_NUM_UDP_PCB = 5
+LWIP_STATS = 0
+MEM_SIZE = 12000
+TCP_MSS = 800
+TCP_WND = 6400
+TCP_SND_BUF = 6400
+MEMP_NUM_TCP_SEG = 48

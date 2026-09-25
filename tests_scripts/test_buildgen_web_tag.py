@@ -1,0 +1,538 @@
+"""Tests for buildgen.web_tag: the `# @web <Field> key=value ...` / `# @web-group key=value ...`
+comment-tag parsers (SPECIFICATION.md Part L.5's build-tooling quality bar - the same bar
+test_buildgen_requires_tag.py already covers for `@requires`, mirrored here for the newer family)."""
+
+# SPECIFICATION.md Part L.5 names this file's own matrix dimensions, from field name and
+# key=value shape through location, multiplicity, the web-group family's extra keys, near-miss
+# handling, and the real-driver pass over every tagged src/ file.
+
+from pathlib import Path
+
+import pytest
+
+from buildgen.errors import BuildError
+from buildgen.web_tag import WebFieldTag, WebGroupTag, parse_web_group_tags, parse_web_tags
+
+
+@pytest.fixture
+def src_dir(repo_root: Path) -> Path:
+    return repo_root / "src"
+
+
+def _parse(tmp_path: Path, source: str) -> "tuple[WebFieldTag, ...]":
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text(source)
+    return parse_web_tags(path, "dev", "x")
+
+
+def _parse_group(tmp_path: Path, source: str) -> "tuple[WebGroupTag, ...]":
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text(source)
+    return parse_web_group_tags(path, "dev", "x")
+
+
+def _parse_expecting(tmp_path: Path, source: str, match: str) -> None:
+    with pytest.raises(BuildError, match=match):
+        _parse(tmp_path, source)
+
+
+def _parse_group_expecting(tmp_path: Path, source: str, match: str) -> None:
+    with pytest.raises(BuildError, match=match):
+        _parse_group(tmp_path, source)
+
+
+# ---------------------------------------------------------------------------
+# D1 x D2: field name shapes, key=value shapes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("field", ["AmbPres", "r", "pin0", "_reserved", "SGPResetVOC"])
+def test_parse_web_tags_field_name_shapes(tmp_path: Path, field: str) -> None:
+    (tag,) = _parse(tmp_path, f'# @web {field} section=sensors submitGroup=self label="Label"\n')
+    assert tag.field_name == field
+
+
+def test_parse_web_tags_quoted_and_bareword_values(tmp_path: Path) -> None:
+    (tag,) = _parse(tmp_path, '# @web X section=sensors submitGroup=self label="A Label" unit=ppm description="Some text."\n')
+    assert (tag.section, tag.submit_group, tag.label, tag.unit, tag.description) == ("sensors", "self", "A Label", "ppm", "Some text.")
+
+
+def test_parse_web_tags_bareword_kind_and_flags(tmp_path: Path) -> None:
+    (tag,) = _parse(tmp_path, '# @web X section=sensors submitGroup=self label="L" kind=toggle mask=true dispatch=true onLabel="On" offLabel="Off"\n')
+    assert (tag.kind, tag.mask, tag.dispatch, tag.on_label, tag.off_label) == ("toggle", True, True, "On", "Off")
+
+
+@pytest.mark.parametrize("raw,expected", [("true", True), ("42", 42), ("-1.5", -1.5), ("hello", "hello")])
+def test_parse_web_tags_default_value_coercion(tmp_path: Path, raw: str, expected: object) -> None:
+    (tag,) = _parse(tmp_path, f'# @web X section=sensors submitGroup=self label="L" defaultValue={raw}\n')
+    assert tag.default_value == expected
+    assert type(tag.default_value) is type(expected)
+
+
+def test_parse_web_tags_repeated_special_entries(tmp_path: Path) -> None:
+    (tag,) = _parse(tmp_path, '# @web X section=sensors submitGroup=self label="L" special:1="One" special:2="Two"\n')
+    assert dict(tag.special) == {"1": "One", "2": "Two"}
+
+
+def test_parse_web_tags_unknown_key_rejected(tmp_path: Path) -> None:
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" bogus=1\n', "unknown key")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '# @web X submitGroup=self label="L"\n',  # section missing
+        '# @web X section=sensors label="L"\n',  # submitGroup missing
+        "# @web X section=sensors submitGroup=self\n",  # label missing
+    ],
+)
+def test_parse_web_tags_missing_required_key_rejected(tmp_path: Path, source: str) -> None:
+    _parse_expecting(tmp_path, source, "missing required key")
+
+
+def test_parse_web_tags_invalid_kind_rejected(tmp_path: Path) -> None:
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" kind=bogus\n', "unknown kind")
+
+
+def test_parse_web_tags_invalid_bool_rejected(tmp_path: Path) -> None:
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" mask=yes\n', "must be true or false")
+
+
+# ---------------------------------------------------------------------------
+# path/decimals: the new Section 4 tag capability (SPECIFICATION.md Part H.5.1) - same accept/
+# reject bar every other tag key gets (SPECIFICATION.md Part L.5's "every tag family gets the same bar").
+# ---------------------------------------------------------------------------
+
+
+def test_parse_web_tags_path_is_dot_split_into_a_tuple(tmp_path: Path) -> None:
+    (tag,) = _parse(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" path="RGB.R"\n')
+    assert tag.path == ("RGB", "R")
+
+
+def test_parse_web_tags_single_segment_path_is_a_one_tuple(tmp_path: Path) -> None:
+    (tag,) = _parse(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" path="Lux"\n')
+    assert tag.path == ("Lux",)
+
+
+def test_parse_web_tags_decimals_is_coerced_to_int(tmp_path: Path) -> None:
+    (tag,) = _parse(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" decimals=4\n')
+    assert tag.decimals == 4
+
+
+def test_parse_web_tags_path_with_empty_segment_rejected(tmp_path: Path) -> None:
+    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" path="RGB."\n', "malformed path")
+
+
+def test_parse_web_tags_path_on_a_non_readonly_field_rejected(tmp_path: Path) -> None:
+    # A PUT body is always flat, so a path on a writable field would render one value and submit
+    # a different one - js/definitions.js's own validateFieldHints() enforces the identical rule.
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self kind=number label="L" path="RGB.R"\n', "not kind=readonly")
+
+
+def test_parse_web_tags_non_integer_decimals_rejected(tmp_path: Path) -> None:
+    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" decimals=abc\n', "non-integer decimals")
+
+
+def test_parse_web_tags_decimals_out_of_range_rejected(tmp_path: Path) -> None:
+    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" decimals=101\n', "outside 0..100")
+
+
+def test_parse_web_tags_negative_decimals_rejected(tmp_path: Path) -> None:
+    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" decimals=-1\n', "outside 0..100")
+
+
+# ---------------------------------------------------------------------------
+# D2/D3 dropped-piece grammar failures: a malformed key=value payload must fail loud via
+# _WebGrammarError -> "malformed @web tag", the same "dropped piece" direction
+# test_buildgen_requires_tag.py already walks for @requires (trailing junk, a dropped value).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '# @web X section=sensors submitGroup=self label="L" trailingjunk\n',  # no "=" at all
+        "# @web X section=sensors submitGroup=self label=\n",  # value dropped entirely
+        '# @web X section=sensors submitGroup=self label="L" label="L2"\n',  # duplicate plain key
+        '# @web X section=sensors submitGroup=self label="L" special:1="A" special:1="B"\n',  # duplicate special key
+    ],
+)
+def test_parse_web_tags_rejects_malformed_payload_shapes(tmp_path: Path, source: str) -> None:
+    _parse_expecting(tmp_path, source, "malformed @web tag")
+
+
+# ---------------------------------------------------------------------------
+# D3 format/spacing variants
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '# @web X section=sensors submitGroup=self label="L"\n',  # canonical
+        '#@web X section=sensors submitGroup=self label="L"\n',  # no space after hash
+        '#   @web   X   section=sensors   submitGroup=self   label="L"\n',  # wide gaps
+        '## @web X section=sensors submitGroup=self label="L"\n',  # section-style double hash
+        '# @web X section=sensors submitGroup=self label="L"   \n',  # trailing whitespace
+        '#\t@web X section=sensors submitGroup=self label="L"\n',  # tab instead of space
+    ],
+)
+def test_parse_web_tags_format_variants(tmp_path: Path, source: str) -> None:
+    (tag,) = _parse(tmp_path, source)
+    assert (tag.field_name, tag.section, tag.submit_group, tag.label) == ("X", "sensors", "self", "L")
+
+
+# ---------------------------------------------------------------------------
+# D4 placement
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '# @web X section=sensors submitGroup=self label="L"\nx = 1\n',
+        '"""Driver docstring."""\n\n# @web X section=sensors submitGroup=self label="L"\nx = 1\n',
+        'import time\n\n# @web X section=sensors submitGroup=self label="L"\nimport struct\n',
+        '_VAL_X = ()  # @web X section=sensors submitGroup=self label="L"\n',
+        '_VAL_X = ()\n# @web X section=sensors submitGroup=self label="L"\n_VAL_Y = ()\n',
+        '# @web X section=sensors submitGroup=self label="L"',  # last line, no trailing newline
+    ],
+)
+def test_parse_web_tags_valid_locations(tmp_path: Path, source: str) -> None:
+    (tag,) = _parse(tmp_path, source)
+    assert tag.field_name == "X"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'class Foo:\n    def __init__(self):\n        # @web X section=sensors submitGroup=self label="L"\n        pass\n',
+        'class Foo:\n    # @web X section=sensors submitGroup=self label="L"\n    X = 1\n',
+    ],
+)
+def test_parse_web_tags_rejects_locations_inside_a_body(tmp_path: Path, source: str) -> None:
+    _parse_expecting(tmp_path, source, "module level")
+
+
+# ---------------------------------------------------------------------------
+# D5 multiplicity
+# ---------------------------------------------------------------------------
+
+
+def test_parse_web_tags_none_declared(tmp_path: Path) -> None:
+    assert _parse(tmp_path, "class Plain_Reader:\n    pass\n") == ()
+
+
+def test_parse_web_tags_several_distinct_fields_in_source_order(tmp_path: Path) -> None:
+    tags = _parse(
+        tmp_path,
+        '# @web A section=sensors submitGroup=self label="A"\n# @web B section=sensors submitGroup=self label="B"\n',
+    )
+    assert [t.field_name for t in tags] == ["A", "B"]
+
+
+def test_parse_web_tags_duplicate_field_in_same_section_group_rejected(tmp_path: Path) -> None:
+    _parse_expecting(
+        tmp_path,
+        '# @web A section=sensors submitGroup=self label="A"\n# @web A section=sensors submitGroup=self label="A again"\n',
+        "duplicate",
+    )
+
+
+def test_parse_web_tags_same_field_name_different_group_is_not_a_duplicate(tmp_path: Path) -> None:
+    tags = _parse(
+        tmp_path,
+        '# @web A section=measurements submitGroup=self label="A"\n# @web A section=sensors submitGroup=self label="A"\n',
+    )
+    assert len(tags) == 2
+
+
+def test_parse_web_tags_a_valid_tag_does_not_excuse_a_near_miss_beside_it(tmp_path: Path) -> None:
+    # Mirrors test_parse_requires_tags_a_valid_tag_does_not_excuse_a_near_miss_beside_it: the
+    # exact-match bookkeeping parse_web_tags() hands the near-miss detector is per comment
+    # position, not "this file already had a valid tag" - a half-migrated driver still fails.
+    _parse_expecting(
+        tmp_path,
+        '# @web A section=sensors submitGroup=self label="A"\n# @wb B section=sensors submitGroup=self label="B"\n',
+        "misspelled @web tag",
+    )
+
+
+# ---------------------------------------------------------------------------
+# D6 @web-group
+# ---------------------------------------------------------------------------
+
+
+def test_parse_web_group_tags_basic(tmp_path: Path) -> None:
+    (tag,) = _parse_group(tmp_path, '# @web-group section=sensors submitGroup=self label="Card" submit=true submitLabel="Save"\n')
+    assert (tag.section, tag.submit_group, tag.label, tag.submit, tag.submit_label) == ("sensors", "self", "Card", True, "Save")
+
+
+def test_parse_web_group_tags_submit_defaults_false(tmp_path: Path) -> None:
+    (tag,) = _parse_group(tmp_path, '# @web-group section=measurements submitGroup=self label="Card"\n')
+    assert tag.submit is False
+    assert tag.submit_label is None
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '# @web-group submitGroup=self label="L"\n',
+        '# @web-group section=sensors label="L"\n',
+        "# @web-group section=sensors submitGroup=self\n",
+    ],
+)
+def test_parse_web_group_tags_missing_required_key_rejected(tmp_path: Path, source: str) -> None:
+    _parse_group_expecting(tmp_path, source, "missing required key")
+
+
+def test_parse_web_group_tags_duplicate_section_group_rejected(tmp_path: Path) -> None:
+    _parse_group_expecting(
+        tmp_path,
+        '# @web-group section=sensors submitGroup=self label="A"\n# @web-group section=sensors submitGroup=self label="B"\n',
+        "duplicate",
+    )
+
+
+def test_parse_web_group_tags_different_submit_group_same_section_is_not_a_duplicate(tmp_path: Path) -> None:
+    tags = _parse_group(
+        tmp_path,
+        '# @web-group section=networking submitGroup=identity label="Identity"\n# @web-group section=networking submitGroup=wifiLed label="LED"\n',
+    )
+    assert len(tags) == 2
+
+
+def test_parse_web_group_tags_invalid_submit_bool_rejected(tmp_path: Path) -> None:
+    _parse_group_expecting(tmp_path, '# @web-group section=sensors submitGroup=self label="L" submit=yes\n', "must be true or false")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '# @web-group section=sensors submitGroup=self label="L" trailingjunk\n',  # no "=" at all
+        "# @web-group section=sensors submitGroup=self label=\n",  # value dropped entirely
+        '# @web-group section=sensors submitGroup=self label="L" label="L2"\n',  # duplicate key
+    ],
+)
+def test_parse_web_group_tags_rejects_malformed_payload_shapes(tmp_path: Path, source: str) -> None:
+    _parse_group_expecting(tmp_path, source, "malformed @web-group tag")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'class Foo:\n    def __init__(self):\n        # @web-group section=sensors submitGroup=self label="L"\n        pass\n',
+        'class Foo:\n    # @web-group section=sensors submitGroup=self label="L"\n    X = 1\n',
+    ],
+)
+def test_parse_web_group_tags_rejects_locations_inside_a_body(tmp_path: Path, source: str) -> None:
+    # The @web-group sibling of test_parse_web_tags_rejects_locations_inside_a_body above - same
+    # D4 location dimension, same "module level" rejection, but for parse_web_group_tags()'s own
+    # separate inside_block check, which had no test of its own.
+    _parse_group_expecting(tmp_path, source, "module level")
+
+
+# ---------------------------------------------------------------------------
+# D7 near-miss / "present or close to present" enforcement
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "source,match",
+    [
+        ('# web X section=sensors submitGroup=self label="L"\n', "leading '@' missing"),
+        ('# @wb X section=sensors submitGroup=self label="L"\n', "misspelled @web tag"),
+        ('# @web section=sensors submitGroup=self label="L"\n', "malformed @web tag"),  # field name dropped
+        ('# @web X section=sensors submitGroup=self labell="L"\n', "unknown key"),  # typo'd key name
+    ],
+)
+def test_parse_web_tags_rejects_near_misses(tmp_path: Path, source: str, match: str) -> None:
+    _parse_expecting(tmp_path, source, match)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# web mentions the website but isn't a tag\n",
+        '"""Docstring mentioning # @web X section=sensors submitGroup=self label="L" as an example."""\nx = 1\n',
+        'X = "# @web X section=sensors submitGroup=self label=\\"L\\""\n',
+    ],
+)
+def test_parse_web_tags_leaves_non_tags_alone(tmp_path: Path, source: str) -> None:
+    assert _parse(tmp_path, source) == ()
+
+
+def test_parse_web_tags_a_real_web_group_tag_is_not_a_near_miss_of_web(tmp_path: Path) -> None:
+    # Cross-family safety: a well-formed @web-group line must never be flagged while scanning for
+    # @web tags (and vice versa, covered by the symmetric group-side test below).
+    assert _parse(tmp_path, '# @web-group section=sensors submitGroup=self label="Card"\n') == ()
+
+
+def test_parse_web_group_tags_a_real_web_tag_is_not_a_near_miss_of_web_group(tmp_path: Path) -> None:
+    assert _parse_group(tmp_path, '# @web X section=sensors submitGroup=self label="L"\n') == ()
+
+
+@pytest.mark.parametrize(
+    "source,match",
+    [
+        ('# web-group section=sensors submitGroup=self label="L"\n', "leading '@' missing"),
+        ('# @wbe-group section=sensors submitGroup=self label="L"\n', "misspelled @web-group tag"),
+    ],
+)
+def test_parse_web_group_tags_rejects_near_misses(tmp_path: Path, source: str, match: str) -> None:
+    _parse_group_expecting(tmp_path, source, match)
+
+
+def test_parse_web_tags_edit_distance_just_outside_tolerance_stays_silent(tmp_path: Path) -> None:
+    # "web" is <=4 letters, so _max_typo_distance() tolerates one typo, and "wax" is distance 2 -
+    # payload-shaped but too far to be a typo of this family's name, so it must be left alone
+    # entirely, like the "@requi" distance-3 case in the requires-tag file.
+    assert _parse(tmp_path, '# @wax X section=sensors submitGroup=self label="L"\n') == ()
+
+
+def test_parse_web_group_tags_edit_distance_just_outside_tolerance_stays_silent(tmp_path: Path) -> None:
+    # "web-group" is >4 letters, so tolerance is 2. "xyz-group" is edit distance 3 from "web-group"
+    # (three substitutions in the "web"/"xyz" part) - just outside it, so it must stay silent too.
+    assert _parse_group(tmp_path, '# @xyz-group section=sensors submitGroup=self label="L"\n') == ()
+
+
+# ---------------------------------------------------------------------------
+# D8 real drivers - a spot check that every tagged src/ file parses as expected
+# ---------------------------------------------------------------------------
+
+
+def test_parse_web_tags_real_scd30_measurement_fields(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")
+    measurement_fields = {t.field_name for t in tags if t.section == "measurements"}
+    assert measurement_fields == {"CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"}
+    config_fields = {t.field_name for t in tags if t.section == "sensors"}
+    assert config_fields == {"TempOffs", "MeasInt", "AmbPres", "Altitude", "ForceCalRef", "SelfCal", "ContMeas"}
+
+
+def test_parse_web_tags_real_scd30_ambpres_special(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")
+    amb_pres = next(t for t in tags if t.field_name == "AmbPres")
+    assert dict(amb_pres.special) == {"0": "Compensation off / use Altitude"}
+
+
+def test_parse_web_tags_real_scd30_contmeas_is_freestanding(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")
+    cont_meas = next(t for t in tags if t.field_name == "ContMeas")
+    assert cont_meas.kind == "toggle"
+    assert cont_meas.default_value is True
+
+
+def test_parse_web_tags_real_bmp3xx_enum_specials(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_bmp3xx_driver.py", "dev", "bmp3xx")
+    filt_coeff = next(t for t in tags if t.field_name == "FiltCoeff")
+    assert dict(filt_coeff.special) == {"0": "Off", "1": "1", "3": "3", "7": "7", "15": "15", "31": "31", "63": "63", "127": "127"}
+
+
+def test_parse_web_tags_real_bmp3xx_field_names(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_bmp3xx_driver.py", "dev", "bmp3xx")
+    assert {t.field_name for t in tags if t.section == "sensors"} == {
+        "SampleInterv", "PressOvers", "TempOvers", "FiltCoeff", "PressOffset", "TempOffset", "SeaLevelOffs", "MeanAtmTemp",
+    }
+    assert {t.field_name for t in tags if t.section == "measurements"} == {"Pres", "Temp", "SLPres", "TS"}
+
+
+def test_parse_web_tags_real_isl29125_field_names(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_isl29125_driver.py", "dev", "isl29125")
+    assert {t.field_name for t in tags if t.section == "sensors"} == {
+        "SampleInterv", "Resolution", "RangeAuto", "Range", "AutoRangeThresh", "AutoRangeDwell",
+        "IrCompOffset", "IrCompAdjust", "FiltCoeff", "GainRatio", "ISLCalibrate",
+    }
+    assert {t.field_name for t in tags if t.section == "measurements"} == {
+        "Lux", "R", "G", "B", "H", "S", "Bri", "CCT", "RangeAct", "Overrange", "GainMeas", "TS",
+    }
+
+
+def test_parse_web_tags_real_isl29125_enum_specials(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_isl29125_driver.py", "dev", "isl29125")
+    resolution = next(t for t in tags if t.field_name == "Resolution")
+    assert dict(resolution.special) == {"12": "12 bit (fast)", "16": "16 bit (flicker-rejecting)"}
+    range_field = next(t for t in tags if t.field_name == "Range")
+    assert dict(range_field.special) == {"375": "375 lx", "10000": "10000 lx"}
+
+
+def test_parse_web_tags_real_isl29125_nested_measurement_fields_carry_path_and_decimals(src_dir: Path) -> None:
+    # R/G/B/H/S/Bri are the first (and, at the time of writing, only) fields in src/ whose
+    # measurement body is nested (get_dict_data()'s own hand-written {"RGB": {...}, "HSB": {...}}
+    # override) - this is the real driver this new tag capability was built for.
+    tags = parse_web_tags(src_dir / "asy_isl29125_driver.py", "dev", "isl29125")
+    red = next(t for t in tags if t.field_name == "R")
+    assert red.path == ("RGB", "R")
+    assert red.decimals == 4
+    hue = next(t for t in tags if t.field_name == "H")
+    assert hue.path == ("HSB", "H")
+    lux = next(t for t in tags if t.field_name == "Lux")
+    assert lux.path is None  # flat field, no nesting
+    assert lux.decimals == 2
+    gain_ratio = next(t for t in tags if t.field_name == "GainRatio")
+    assert gain_ratio.path is None  # a sensors (config) field can carry decimals with no path at all
+    assert gain_ratio.decimals == 3
+
+
+def test_parse_web_tags_real_sgp40_field_names_and_specials(src_dir: Path) -> None:
+    # This is the file SPECIFICATION.md Part L flags as the real generator-behavior finding: each of
+    # these three fields has a documented "0 means X" meaning despite an ordinary (special=None)
+    # schema tuple, so the tag's own special: entries - not the schema - must survive parsing.
+    tags = parse_web_tags(src_dir / "asy_sgp40_driver.py", "dev", "sgp40")
+    assert {t.field_name for t in tags if t.section == "sensors"} == {"BackupPeriod", "BackupMaxAge", "WaitTimeNTP", "SGPResetVOC"}
+    assert {t.field_name for t in tags if t.section == "measurements"} == {"VOC", "Raw", "TS"}
+    by_name = {t.field_name: t for t in tags}
+    assert dict(by_name["BackupPeriod"].special) == {"0": "Backups off"}
+    assert dict(by_name["BackupMaxAge"].special) == {"0": "Use all found backups"}
+    assert dict(by_name["WaitTimeNTP"].special) == {"0": "Never wait for NTP sync"}
+    assert by_name["SGPResetVOC"].dispatch is True
+
+
+def test_parse_web_tags_real_wifi_field_names(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_wifi_service.py", "dev", "wifi")
+    assert {t.field_name for t in tags if t.submit_group == "identity"} == {"SSID", "PW", "Country", "Hostname"}
+    assert {t.field_name for t in tags if t.submit_group == "wifiLed"} == {"LedWifiOn"}
+    assert next(t for t in tags if t.field_name == "PW").mask is True
+
+
+def test_parse_web_tags_real_ntp_field_names(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_ntp_client.py", "dev", "ntp")
+    assert {t.field_name for t in tags if t.section == "networking"} == {"NTP_Host", "NTP_Offset_S", "NTP_Interv_H"}
+    # GMTOffset/DSTOffset are real asy_ntp_client.py fields that render on the System page instead
+    # (a deliberate cross-file section/group assignment, not a mistake to "fix").
+    assert {t.field_name for t in tags if t.section == "system"} == {"GMTOffset", "DSTOffset"}
+
+
+def test_parse_web_tags_real_system_field_names(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "system_service.py", "dev", "system")
+    assert {t.field_name for t in tags} == {"DebugLevel"}
+
+
+def test_parse_web_tags_real_notification_field_names(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_notification_service.py", "dev", "notification")
+    assert {t.field_name for t in tags} == {"AutoOn", "OnH", "OnM", "OffH", "OffM", "FlashBri", "Interv", "FlashDur"}
+
+
+@pytest.mark.parametrize(
+    "driver,expected_key",
+    [
+        ("asy_scd30_driver.py", ("measurements", "self")),
+        ("asy_sgp40_driver.py", ("measurements", "self")),
+        ("asy_bmp3xx_driver.py", ("measurements", "self")),
+        ("asy_isl29125_driver.py", ("measurements", "self")),
+        ("asy_wifi_service.py", ("networking", "identity")),
+        ("asy_ntp_client.py", ("networking", "ntp")),
+        ("system_service.py", ("system", "settings")),
+        ("asy_notification_service.py", ("notification", "autoConfig")),
+    ],
+)
+def test_parse_web_group_tags_real_drivers_declare_expected_group(src_dir: Path, driver: str, expected_key: "tuple[str, str]") -> None:
+    tags = parse_web_group_tags(src_dir / driver, "dev", "x")
+    assert any((t.section, t.submit_group) == expected_key for t in tags)
+
+
+def test_no_other_src_driver_declares_an_unnoticed_web_tag(src_dir: Path) -> None:
+    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_web_tags(p, "dev", "x")}
+    assert tagged == {
+        "asy_scd30_driver.py", "asy_sgp40_driver.py", "asy_bmp3xx_driver.py", "asy_isl29125_driver.py",
+        "asy_wifi_service.py", "asy_ntp_client.py", "system_service.py", "asy_notification_service.py",
+    }

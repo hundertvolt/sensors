@@ -1,19 +1,16 @@
 /**
- * Enumerates every real writable field across a device's own definitions.json - shared by
- * tests_js/mock-server-put-matrix.test.js (exhaustive matrix against js/mock-server.js's fake
- * fetch) and tests_js/live-backend-put-matrix.test.js (the same matrix's shape, against the real
- * digital-twin backend) so both stay driven by one field-enumeration source rather than two
- * hand-kept copies of the same section/group/field-kind filtering logic.
+ * Enumerates every real writable field across a device's own definitions.json, shared by the
+ * mock-server and live-backend PUT-matrix tests so both run off one field-enumeration source
+ * rather than two hand-kept copies of the same section/group/field-kind filtering.
  */
 
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */
 /** @typedef {import("../js/definitions.js").MockDeviceData} MockDeviceData */
 /** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
 
-// Dispatch-only fields (a command/action, not a stored setting) and the one composite field shape
-// (lightCmdLED) have their own distinct Invalid/Failed/Valid semantics, covered by dedicated tests
-// elsewhere (mock-server.test.js, render.test.js) - excluded from this generic enumeration rather
-// than force-fit into categories that don't apply to them.
+// Dispatch-only fields and the one composite shape (lightCmdLED) have their own Invalid/Failed/
+// Valid semantics, covered by dedicated tests in mock-server.test.js and render.test.js. Excluded
+// here rather than force-fit into categories that do not apply to them.
 export const DISPATCH_ONLY_KEYS = new Set(["SystemCmd", "PauseTime", "lightCmdLED", "ResetErrors"]);
 
 /**
@@ -22,6 +19,26 @@ export const DISPATCH_ONLY_KEYS = new Set(["SystemCmd", "PauseTime", "lightCmdLE
  *   putPath: string, currentValue: unknown,
  * }} PutFieldCase
  */
+
+/**
+ * Deterministic round-robin partition of `cases` into `count` shards, 1-indexed. CI runs the live
+ * PUT matrix as parallel shard jobs; `spec` unset (a plain local run) returns every case.
+ * @param {PutFieldCase[]} cases
+ * @param {string | undefined} spec "<index>/<count>", e.g. "2/3"
+ * @returns {PutFieldCase[]}
+ */
+export function shardPutFieldCases(cases, spec) {
+    if (!spec) {
+        return cases;
+    }
+    const parts = spec.split("/").map(Number);
+    const index = parts[0] ?? 0;
+    const count = parts[1] ?? 0;
+    if (parts.length !== 2 || !Number.isInteger(index) || !Number.isInteger(count) || index < 1 || index > count) {
+        throw new Error(`PUT matrix shard spec must be "<index>/<count>" with 1 <= index <= count, got ${spec}`);
+    }
+    return cases.filter((_case, position) => position % count === index - 1);
+}
 
 /**
  * @param {string} device

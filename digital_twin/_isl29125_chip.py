@@ -211,7 +211,7 @@ class Isl29125Chip:
         self._release_int()
         # Measured on real silicon: 0x08 reads 0x00 straight after the 0x46 reset, with no
         # intervening write, so the reset clears BOUTF too. Table 15's 0x04 is the POWER-ON default
-        # that __init__ still models, not a value the reset restores (Part C.11.1.1).
+        # that __init__ still models, not a value the reset restores (Part M.1.2).
         self._status = 0x00
 
     def simulate_brownout(self) -> None:
@@ -310,10 +310,10 @@ class Isl29125Chip:
         if reg_addr <= _REG_STATUS < reg_addr + nbytes and reg_addr <= _LAST_REGISTER:
             # Destructive by design (p11/p12): the transfer clears RGBTHF, CONVENF and BOUTF and
             # releases INT, so nothing may read 0x08 "just to check". BOUTF being read-to-clear
-            # contradicts p12 and is measured, not assumed - Part C.11.1.1 has the evidence.
+            # contradicts p12 and is measured, not assumed - Part M.1.2 has the evidence.
             if self._status & _STATUS_RGBTHF:
                 # The counter restarts when the flag is CLEARED, not on every status read (measured;
-                # Part C.11.1.2). Resetting it unconditionally is what a read cadence faster than
+                # Part M.1.2). Resetting it unconditionally is what a read cadence faster than
                 # PRST x one cycle turns into a permanently dead interrupt.
                 self._prst_count = 0
             self._status &= ~(_STATUS_RGBTHF | _STATUS_CONVENF | _STATUS_BOUTF)

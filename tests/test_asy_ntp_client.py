@@ -6,6 +6,7 @@ import struct
 import time
 
 from _fram_chip_fake import FakeMB85RS64V
+from _tmp_scratch import TmpScratch
 from machine import RTC, Timer
 
 import asy_ntp_client as ntpmod
@@ -56,77 +57,24 @@ _VAL_GMT = (("GMTOffset", "int", 3600, -43200, 43200, None),)
 _VAL_DST = (("DSTOffset", "int", 3600, -43200, 43200, None),)
 
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("ntp_")
-
-
-def _remove_any(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        try:
-            os.rmdir(path)
-        except OSError:
-            pass  # already gone, or genuinely not removable - not this helper's problem
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("ntp")
 
 
 def _tmp_cfg_dir() -> str:
-    # A fresh, unique directory per call - AsyNtpClient now names its own config file
-    # unconditionally ("config_NTP.cfg", from base_classes.py's SensorReaderConfig), so tests can
-    # no longer isolate each other via distinct filenames the way the old externally-injected
-    # ConfigManager tests did; a fresh directory does the same job.
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    _next_dir += 1
-    path = _TMP_DIR + "/ntp_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass  # already exists from a stale previous run
-    _remove_any(path + "/config_NTP.cfg")  # clear any stale leftover (file or directory) from a previous run
-    return path + "/"
+    return _scratch.dir()
 
 
 def make_client(
     wifi_mode_lock: "asyncio.Lock | None" = None,
     network_available: "Callable[[], bool] | None" = None,
     get_dns_server: "Callable[[], str | None] | None" = None,
-    max_module_error: int = 5,
     dns_timeout_ms: int = 500,
     dns_tries: int = 1,
     ntp_fetch_timeout_ms: int = 5000,
+    retry_s: int = 10,
+    retry_max_s: int = 600,
     debug: "int | None" = None,
     cfg_path: "str | None" = None,
     fram: "AsyFramManager | None" = None,
@@ -143,10 +91,11 @@ def make_client(
         wifi_mode_lock,
         network_available,
         get_dns_server,
-        max_module_error=max_module_error,
         dns_timeout_ms=dns_timeout_ms,
         dns_tries=dns_tries,
         ntp_fetch_timeout_ms=ntp_fetch_timeout_ms,
+        retry_s=retry_s,
+        retry_max_s=retry_max_s,
         debug=debug,
         cfg_path=cfg_path,
         fram=fram,
@@ -163,23 +112,18 @@ def make_client_with_json(json_text: str) -> AsyNtpClient:
 
 
 def make_invalid_cfg_client() -> AsyNtpClient:
-    # A directory where ConfigManager expects a plain file - its own os.stat() 0x4000 (MP_S_IFDIR)
-    # check rejects this and leaves self.valid False; the same "config manager itself is invalid"
-    # state the old empty-schema make_broken_cfgmgr() reproduced a different way (this driver's own
-    # schema is fixed and non-empty now, so that route no longer applies here).
+    # A directory where ConfigManager expects a plain file - its os.stat() 0x4000 (MP_S_IFDIR)
+    # check rejects it and leaves self.valid False, the same "config manager itself is invalid"
+    # state the old empty-schema route reproduced before this driver's schema became non-empty.
     cfg_path = _tmp_cfg_dir()
     os.mkdir(cfg_path + "config_NTP.cfg")
     return make_client(cfg_path=cfg_path)
 
 
 class _RaiseOnArm:
-    # Same technique as test_system_service.py's own _RaiseOnArm - toggles tests/machine.py's
-    # Timer.raise_on_arm (a shared class attribute, not per-instance) for the duration of the
-    # `with` block, simulating real rp2 alarm-pool exhaustion (OSError(ENOMEM) from Timer.init()).
-    # `exc` picks which arm of every call site's own `except (OSError, MemoryError)` is exercised -
-    # MemoryError is not an OSError subclass (see CLAUDE.md/SPECIFICATION.md Part F), so neither arm
-    # covers the other. Timer.raise_on_arm_exc is a shared class attribute too, reset back to its
-    # OSError default on exit alongside raise_on_arm.
+    # Same technique as test_system_service.py's _RaiseOnArm - toggles tests/machine.py's shared
+    # Timer.raise_on_arm for the `with` block, simulating rp2 alarm-pool exhaustion. `exc` picks
+    # which arm of `except (OSError, MemoryError)` runs; neither covers the other (Part F).
     def __init__(self, exc: "type[BaseException]" = OSError) -> None:
         self._exc = exc
 
@@ -193,7 +137,9 @@ class _RaiseOnArm:
         Timer.raise_on_arm_exc = OSError
 
 
-_next_port = 53000
+# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
+# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
+_next_port = 23000
 
 
 def make_addr() -> "tuple[str, int]":
@@ -327,11 +273,9 @@ def test_start_asy_sync_age_counter_returns_a_real_task() -> None:
 
 
 def test_fram_given_uses_fram_backed_logging() -> None:
-    # AsyNtpClient didn't accept a fram= parameter at all before this migration - proves the
-    # constructor actually forwards it to SensorReaderConfig/SensorReader rather than silently
-    # dropping it (the same real, promoted AsyFramManager + simulated chip test_base_classes.py
-    # uses for the equivalent base-class-level check, exercised here as an integration check of
-    # this driver's own constructor wiring).
+    # AsyNtpClient took no fram= parameter before this migration - proves the constructor forwards
+    # it to SensorReaderConfig/SensorReader rather than silently dropping it, using the same real
+    # AsyFramManager plus simulated chip test_base_classes.py uses for the base-class check.
     bus = asy_spi_driver.SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
     manager = AsyFramManager(bus, 1, max_size=0x2000)
     client = make_client(fram=manager)
@@ -442,13 +386,12 @@ def test_get_error_counter_records_multiple_entries_in_order() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _now() / _set_synced() / _set_last_sync_age() / _increment_last_sync_age() - the internal
-# state-mutation helpers that replaced last_ntp_sync's/ntp_synced's old independent LockedCounter/
-# LockedFlag objects. These are exercised incidentally as test setup throughout this file, but the
-# field-preservation/None-handling/clamping contract they're actually responsible for needs its own
-# direct coverage - this is exactly the concurrency-safety claim BACKLOG.md's fifth-pass entry
-# makes (each helper does an unlocked get-then-set pair, safe only because nothing in between
-# awaits - see asy_ntp_client.py's own comment on _set_synced()).
+# The internal state-mutation helpers _now()/_set_synced()/_set_last_sync_age()/
+# _increment_last_sync_age(), which replaced last_ntp_sync's and ntp_synced's old LockedCounter/
+# LockedFlag objects. Their field-preservation/None-handling/clamping contract needs this.
+
+# Each helper does an unlocked get-then-set pair, safe only because nothing in between awaits -
+# see asy_ntp_client.py's own comment on _set_synced().
 # ---------------------------------------------------------------------------
 
 
@@ -678,10 +621,9 @@ def test_ntp_force_sync_deinits_a_pending_retry_timer() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Configuration: every valid field, and single/multiple invalid recombinations coming from a real
-# on-disk config_NTP.cfg file, exercised through the real ConfigManager AsyNtpClient now owns
-# internally (not mocked) - proving asy_ntp_client.py's own handling of ConfigManager's per-field
-# defaulting, not re-testing ConfigManager's own contract (already covered by test_config_manager.py).
+# Configuration: every valid field, plus single/multiple invalid recombinations from a real
+# on-disk config_NTP.cfg, through the real ConfigManager this client owns - proving this module's
+# handling of per-field defaulting, not re-testing ConfigManager (test_config_manager.py does).
 # ---------------------------------------------------------------------------
 
 _VALID_JSON = (
@@ -766,10 +708,8 @@ def test_get_ntp_config_returns_none_when_config_manager_itself_is_invalid() -> 
 
 # ---------------------------------------------------------------------------
 # _safe_get_dns_server - reads the get_dns_server callback (AsyConnTime.get_dns_server_ip) and
-# wraps its errors; called by asy_ntp_time() *before* acquiring wifi_mode_lock (see that method's
-# own comment and BACKLOG.md for the real bug this split fixes: calling the callback from inside the
-# locked section always saw the shared Lock as held and always got None back, regardless of the
-# real WLAN state).
+# wraps its errors; called by asy_ntp_time() BEFORE acquiring wifi_mode_lock, since from inside
+# the locked section it always saw the shared Lock as held and always got None back.
 # ---------------------------------------------------------------------------
 
 
@@ -804,12 +744,9 @@ def test_safe_get_dns_server_callback_raising_persists_a_warning() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _resolve_ntp_server - now delegates to asy_dns_client.py's resolve_ipv4() (see that file's own
-# module docstring and BACKLOG.md); this file's own long_block_lock is gone entirely since
-# resolve_ipv4() never blocks the event loop the way socket.getaddrinfo() used to. Takes dns_server
-# as a plain parameter (not a callback it invokes itself) since _safe_get_dns_server() above must be
-# called before wifi_mode_lock is acquired, one level up in asy_ntp_time() - see that method's own
-# comment.
+# _resolve_ntp_server - delegates to asy_dns_client.py's resolve_ipv4(), so this file's old
+# long_block_lock is gone: resolve_ipv4() never blocks the event loop the way getaddrinfo() did.
+# dns_server is a plain parameter, since _safe_get_dns_server() must run before the lock above.
 # ---------------------------------------------------------------------------
 
 
@@ -823,10 +760,9 @@ def test_resolve_ntp_server_literal_ip_returns_immediately() -> None:
 
 
 class _RecordingResolver:
-    # Stands in for asy_dns_client.resolve_ipv4() itself - proves _resolve_ntp_server()'s own
-    # orchestration (tuple building, error handling, timeout_ms/tries forwarding) independent of
-    # resolve_ipv4()'s own real network behavior, which tests/test_asy_dns_client.py already
-    # covers exhaustively.
+    # Stands in for asy_dns_client.resolve_ipv4() - proves _resolve_ntp_server()'s orchestration
+    # (tuple building, error handling, timeout_ms/tries forwarding) independent of resolve_ipv4()'s
+    # own network behavior, which tests/test_asy_dns_client.py covers exhaustively.
     def __init__(self, return_value: "str | None") -> None:
         self.calls: list[tuple[str, tuple[str, ...], int, int]] = []
         self.return_value = return_value
@@ -904,13 +840,12 @@ def test_resolve_ntp_server_dns_failure_persists_an_error() -> None:
 
 
 # No real-network end-to-end test through _resolve_ntp_server() itself: resolve_ipv4()'s `port`
-# parameter has no override here (real hardware always queries port 53, and _resolve_ntp_server()
-# doesn't expose a test-only knob for it) - binding a fake DNS peer to port 53 would need root and
-# would be genuinely environment-dependent (unlike every other loopback test in this suite, which
-# uses an arbitrary unprivileged port). The seam between the two files is already fully
-# characterized above (_RecordingResolver proves the exact arguments/return-value handling), and
-# resolve_ipv4()'s own real UDP behavior is exhaustively covered by tests/test_asy_dns_client.py -
-# together these prove the same thing a port-53 integration test would, without that fragility.
+# has no override here, and binding a fake DNS peer to port 53 needs root and is
+# environment-dependent, unlike every other loopback test in this suite.
+
+# The seam is already fully characterized above (_RecordingResolver pins the exact arguments and
+# return-value handling) and resolve_ipv4()'s real UDP behavior is covered by
+# tests/test_asy_dns_client.py - together proving what a port-53 test would, without the fragility.
 
 
 # ---------------------------------------------------------------------------
@@ -931,9 +866,8 @@ _recording_udp_calls: "list[int]" = []
 
 class _RecordingUDPSocket:
     # Stands in for asy_udp_socket.AsyUDPSocket - records the timeout_ms _fetch_ntp_reply() passes
-    # to write_and_recvfrom(), proving ntp_fetch_timeout_ms is this instance's own configured value
-    # (see asy_ntp_client.py's own constructor comment) reaching the real call, not a hardcoded
-    # module constant.
+    # to write_and_recvfrom(), proving ntp_fetch_timeout_ms is this instance's configured value
+    # reaching the real call, not a hardcoded module constant.
     def __init__(self, addr: "tuple[str, int]", mode: str = "client", conn_tries: int = 1) -> None:
         pass
 
@@ -961,12 +895,9 @@ def test_fetch_ntp_reply_forwards_the_constructors_own_fetch_timeout() -> None:
 
 
 def test_fetch_ntp_reply_ipv6_shaped_four_tuple_addr_returns_none() -> None:
-    # getaddrinfo() is called with no address-family hint, so a resolver that prefers/returns IPv6
-    # would hand back a 4-tuple (host, port, flowinfo, scopeid), not the (host, port) 2-tuple this
-    # file assumes throughout. AsyUDPSocket.__init__ already rejects any non-2-tuple with TypeError
-    # (see its own module docstring), which _fetch_ntp_reply already catches - proving the whole
-    # pipeline degrades to "no reply" instead of crashing on an unexpected address family, even
-    # though this file never restricts getaddrinfo() to AF_INET (see BACKLOG.md's third-pass note).
+    # getaddrinfo() is called with no address-family hint, so a resolver preferring IPv6 hands
+    # back a 4-tuple, not the 2-tuple this file assumes. AsyUDPSocket.__init__ rejects that with
+    # TypeError, which _fetch_ntp_reply catches, so the pipeline degrades to "no reply".
     client = make_client()
     result = run(client._fetch_ntp_reply(("2001:db8::1", 123, 0, 0)))  # type: ignore[arg-type]
     assert result is None
@@ -975,8 +906,10 @@ def test_fetch_ntp_reply_ipv6_shaped_four_tuple_addr_returns_none() -> None:
 def test_fetch_ntp_reply_no_server_listening_times_out_to_none() -> None:
     client = make_client()
     addr = make_addr()
+    run(client.pr.setup())
     result = run(client._fetch_ntp_reply(addr))
     assert result is None
+    assert _last_err(run(client.get_error_counter()), "ErrNum") == 21  # a silent timeout used to persist nothing
 
 
 def test_fetch_ntp_reply_real_round_trip_returns_the_exact_reply_bytes() -> None:
@@ -1021,14 +954,12 @@ def test_fetch_ntp_reply_real_round_trip_returns_the_exact_reply_bytes() -> None
 
 
 # ---------------------------------------------------------------------------
-# _parse_ntp_reply - NTP packet format verified against RFC 5905 during an earlier session: 48-byte
-# header, Transmit Timestamp at byte offset 40 (8 bytes: 4-byte integer seconds + 4-byte fraction,
-# only the integer half is read here), 2208988800s is the documented 1900->1970 epoch delta - see
-# BACKLOG.md. Also checks byte 0's Leap Indicator and byte 1's Stratum before trusting the
-# timestamp at all (rejects LI=3 "unsynchronized" and Stratum=0 "invalid"/Kiss-o'-Death) - every
-# helper below sets Stratum=1 by default so the era/plausibility-window tests aren't incidentally
-# rejected by this separate check. _parse_ntp_reply() is now async (it persists errors/warnings via
-# self.pr.err_s()/wrn_s(), which require awaiting) - every call below is wrapped in run().
+# _parse_ntp_reply - NTP packet format per RFC 5905: 48-byte header, Transmit Timestamp at byte
+# offset 40 (only the integer seconds half is read), 2208988800s being the 1900->1970 epoch delta.
+
+# Byte 0's Leap Indicator and byte 1's Stratum are checked before the timestamp is trusted at all
+# (LI=3 "unsynchronized" and Stratum=0 Kiss-o'-Death are rejected), so every helper below sets
+# Stratum=1 by default. _parse_ntp_reply() is async, hence the run() around every call.
 # ---------------------------------------------------------------------------
 
 _NTP_EPOCH_DELTA = 2208988800
@@ -1069,10 +1000,9 @@ def test_parse_ntp_reply_applies_the_ntp_offset_s_correction() -> None:
 
 
 def _truncated(length: int) -> bytes:
-    # A non-zero Stratum (index 1) whenever the length reaches it, so these truncation-length tests
-    # are rejected (if at all) for being too short to reach the Transmit Timestamp, not incidentally
-    # for looking like a Kiss-o'-Death reply (stratum 0) - keeps this isolated from the separate
-    # LI/Stratum check.
+    # A non-zero Stratum whenever the length reaches index 1, so these truncation-length tests are
+    # rejected for being too short to reach the Transmit Timestamp, not incidentally for looking
+    # like a Kiss-o'-Death reply - keeping this isolated from the separate LI/Stratum check.
     buf = bytearray(length)
     if length > 1:
         buf[1] = 1
@@ -1140,12 +1070,9 @@ def _make_raw_ntp_reply(raw_seconds: int) -> bytes:
 
 
 def test_parse_ntp_reply_era_rollover_wrapped_reply_reconstructs_the_real_future_date() -> None:
-    # NTP's 32-bit "seconds since 1900" field wraps in 2036 (era rollover) - distinct from the
-    # ~2037 Unix time_t OverflowError already covered above. A real post-2036 server sends a small
-    # raw value (wrapped back near 0, not the huge continuously-counting value it "really" means).
-    # _parse_ntp_reply() now reinterprets a below-floor reading as the next NTP era (RFC 5905 7.3)
-    # and rechecks against the same plausibility window - this proves the round trip actually lands
-    # back on the real intended date, not just "doesn't crash" (see BACKLOG.md).
+    # NTP's 32-bit "seconds since 1900" field wraps in 2036, distinct from the ~2037 Unix time_t
+    # OverflowError above, so a post-2036 server sends a small wrapped value. _parse_ntp_reply()
+    # reinterprets a below-floor reading as the next NTP era (RFC 5905 7.3) and rechecks it.
     client = make_client()
     target_unix = 2185978496  # 2039-04-09ish - past the ~2036 wrap, well within the plausible ceiling
     raw = (target_unix + _NTP_EPOCH_DELTA) & 0xFFFFFFFF
@@ -1155,11 +1082,9 @@ def test_parse_ntp_reply_era_rollover_wrapped_reply_reconstructs_the_real_future
 
 
 def test_parse_ntp_reply_rejects_a_timestamp_implausible_in_every_era() -> None:
-    # A raw value that looks implausible both read directly (era 0: ~1995, below the floor) and
-    # after the one-shot era reinterpretation (era 1: ~2131, past the ceiling) - genuinely
-    # rejectable corrupt/garbage data, not just an ordinary era-rollover reply. Fixes the real bug
-    # found while writing this test's predecessor: previously this silently produced a bogus-but-
-    # accepted "successful sync" (see BACKLOG.md's third-pass entry) instead of failing closed.
+    # A raw value implausible both read directly (era 0: ~1995, below the floor) and after the
+    # one-shot era reinterpretation (era 1: ~2131, past the ceiling) - genuinely corrupt data, not
+    # an ordinary rollover reply. This used to produce a bogus-but-accepted "successful sync".
     client = make_client()
     result = run(client._parse_ntp_reply(_make_raw_ntp_reply(3000000000), 0))
     assert result is None
@@ -1202,20 +1127,18 @@ def _reply_with_li_and_stratum(leap_indicator: int, stratum: int, unix_seconds: 
 
 
 def test_parse_ntp_reply_rejects_leap_indicator_unsynchronized() -> None:
-    # RFC 5905's Leap Indicator = 3 ("unknown (clock unsynchronized)") is an alarm condition - the
-    # server is explicitly saying it isn't a trustworthy time source yet, even though its Transmit
-    # Timestamp here is a perfectly plausible current date that would otherwise pass every other
-    # check (see BACKLOG.md).
+    # RFC 5905's Leap Indicator = 3 ("clock unsynchronized") is an alarm condition: the server is
+    # explicitly saying it is not a trustworthy time source, even though its Transmit Timestamp
+    # here is a plausible current date that would pass every other check.
     client = make_client()
     msg = _reply_with_li_and_stratum(leap_indicator=3, stratum=1, unix_seconds=int(time.time()))
     assert run(client._parse_ntp_reply(msg, 0)) is None
 
 
 def test_parse_ntp_reply_rejects_stratum_zero_kiss_of_death() -> None:
-    # RFC 5905/4330: Stratum 0 = "unspecified or invalid", used for Kiss-o'-Death (KoD) packets -
-    # never a genuine time source, regardless of its Transmit Timestamp's contents (see
-    # BACKLOG.md's worked example: a real KoD reply's all-zero Transmit Timestamp would otherwise
-    # land exactly inside the plausibility window after era-reinterpretation).
+    # RFC 5905/4330: Stratum 0 means "unspecified or invalid", used for Kiss-o'-Death packets -
+    # never a genuine time source whatever its Transmit Timestamp holds. A real KoD reply's
+    # all-zero timestamp would otherwise land inside the plausibility window after era-reinterp.
     client = make_client()
     msg = _reply_with_li_and_stratum(leap_indicator=0, stratum=0, unix_seconds=int(time.time()))
     assert run(client._parse_ntp_reply(msg, 0)) is None
@@ -1363,6 +1286,34 @@ def test_ntp_time_hours_counter_triggers_sync_immediately_when_not_yet_synced() 
     assert run(scenario())
 
 
+def test_ntp_time_hours_counter_waits_out_the_current_backoff_step_while_unsynced() -> None:
+    # _retry_wait_s=40 at the 10s tick: the 4th tick triggers, not the 3rd; the count then restarts.
+    client = make_client()
+    client._retry_wait_s = 40
+
+    async def fired() -> bool:
+        try:
+            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.05)
+        except asyncio.TimeoutError:
+            return False
+        return True
+
+    async def scenario() -> "list[bool]":
+        task = asyncio.create_task(client.ntp_time_hours_counter())
+        results = []
+        for ticks in (3, 1, 3, 1):
+            await _tick(client.ntp_timer_trigger_event, ticks)
+            results.append(await fired())
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return results
+
+    assert run(scenario()) == [False, True, False, True]
+
+
 def test_ntp_time_hours_counter_does_not_retrigger_while_synced_and_under_interval() -> None:
     json_text = '{"NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 1, "GMTOffset": 3600, "DSTOffset": 3600}'
     client = make_client_with_json(json_text)
@@ -1435,14 +1386,9 @@ def test_ntp_time_hours_counter_marks_out_of_sync_past_the_async_interval_multip
 
 
 def test_ntp_time_hours_counter_never_naturally_reaches_the_async_interval_multiple_under_constant_config() -> None:
-    # Complements test_ntp_time_hours_counter_marks_out_of_sync_past_the_async_interval_multiple
-    # above (which isolates the 3x transition by directly poking ntp_sec_count). Under natural
-    # ticking with a constant NTP_Interv_H, the loop's own reset-to-0-once-sec_count-hits-1x-
-    # interval logic fires every single cycle before sec_count can ever approach the 3x threshold -
-    # so the "distrust a stale sync after 3x the interval" safety net never actually engages here,
-    # even across several full cycles of continuous (simulated) sync silence. See BACKLOG.md's
-    # third-pass findings: inherited from python/CommonDrivers/async_connect.py byte-for-byte,
-    # flagged rather than changed.
+    # Complements the test above that isolates the 3x transition by poking ntp_sec_count. Under
+    # natural ticking the loop's own reset-to-0 at 1x fires every cycle before sec_count nears 3x,
+    # so the "distrust a stale sync" net never engages - inherited byte for byte from legacy.
     json_text = '{"NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 1, "GMTOffset": 3600, "DSTOffset": 3600}'
     client = make_client_with_json(json_text)
 
@@ -1465,20 +1411,17 @@ def test_ntp_time_hours_counter_never_naturally_reaches_the_async_interval_multi
 
 
 # ---------------------------------------------------------------------------
-# cettime() - CET/CEST DST boundary math; verified through the real time.mktime()/time.gmtime()
-# rather than hand-computing the "last Sunday of March/October" formula independently (already
-# confirmed copied verbatim from deployed production code - see BACKLOG.md) - this only needs to
-# prove branch selection + exception-safety, not re-derive the formula itself.
+# cettime() - CET/CEST DST boundary math, verified through the real time.mktime()/time.gmtime()
+# rather than hand-computing the "last Sunday of March/October" formula, which is copied verbatim
+# from deployed production code. This only proves branch selection and exception safety.
 #
-# Real finding, flagged (not silently fixed) in an earlier session's report: this project's pinned
-# MicroPython Unix-port test interpreter's time.gmtime() returns a 9-element tuple (trailing
-# isdst=0), not the 8-element shape MicroPython's own docs document for embedded ports including
-# rp2, the real deployment target (confirmed directly below) - matches the cross-port ambiguity
-# typings/_mpy_shed/time_mp.pyi's _TimeTuple union already anticipates. cettime()'s own
-# `if len(cet) == 8` check is correct for the real rp2 target, but would return None under this
-# interpreter if not accounted for - so every test below normalizes gmtime()'s result to 8
-# elements via a monkeypatched `time` shim, to test the real rp2-target contract despite running
-# on a host whose own gmtime() shape differs.
+# Real finding, flagged rather than silently fixed: this project's pinned Unix-port interpreter's
+# time.gmtime() returns a 9-element tuple (trailing isdst=0), not the 8-element shape MicroPython
+# documents for embedded ports including rp2 - the ambiguity typings' _TimeTuple anticipates.
+#
+# cettime()'s `if len(cet) == 8` check is correct for the real rp2 target but would return None
+# under this interpreter, so every test below normalizes gmtime()'s result to 8 elements through
+# a monkeypatched `time` shim.
 # ---------------------------------------------------------------------------
 
 
@@ -1488,11 +1431,8 @@ def test_this_interpreters_gmtime_returns_nine_elements_not_eight() -> None:
 
 class _FixedNowTime:
     # Same monkeypatch technique as test_system_service.py's _OverflowingTime/_RaisingGmtime -
-    # replaces AsyNtpClient's own module-level `time` name (a plain, mutable module global),
-    # not the real (read-only builtin) module. gmtime()/mktime() delegate to the real module so
-    # the DST-boundary formula is genuinely exercised; only time() is overridden (deterministic
-    # branch selection instead of depending on the real calendar date) and gmtime()'s result is
-    # truncated to 8 elements (see module comment above - the real rp2 target's actual shape).
+    # replaces this module's own `time` name, not the read-only builtin. gmtime()/mktime()
+    # delegate to the real module; only time() is overridden and gmtime() truncated to 8 elements.
     def __init__(self, fixed_now: int, raise_exc: "Exception | None" = None) -> None:
         self._fixed_now = fixed_now
         self._raise_exc = raise_exc
@@ -1517,10 +1457,9 @@ def _mid_month_now(month: int) -> int:
 
 
 def _client_with_offsets(gmt_offset: int, dst_offset: int) -> AsyNtpClient:
-    # Deliberately one single f-string, not a plain-string-literal-adjacent-to-an-f-string
-    # concatenation: confirmed directly that MicroPython mishandles the latter when the plain
-    # part contains a literal brace (this JSON's opening "{") - it raises a spurious
-    # KeyError on the plain part's own content instead of producing the intended string.
+    # Deliberately one single f-string, not a plain literal adjacent to an f-string: confirmed
+    # directly that MicroPython mishandles the latter when the plain part contains a literal brace
+    # (this JSON's opening "{"), raising a spurious KeyError on the plain part's own content.
     json_text = (
         f'{{"NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 12, '
         f'"GMTOffset": {gmt_offset}, "DSTOffset": {dst_offset}}}'
@@ -1853,9 +1792,8 @@ def test_run_sync_attempt_success_calls_handle_success_with_the_parsed_time() ->
 
 # ---------------------------------------------------------------------------
 # asy_ntp_time() - the task-supervisor entry point: proves the trigger -> lock -> attempt ->
-# lock-release cycle actually works, and that the lock is released even if the attempt itself
-# raises (shouldn't happen after an earlier session's own exception audit, but the surrounding
-# try/finally must not depend on that to stay correct).
+# lock-release cycle works, and that the lock is released even if the attempt raises. That should
+# not happen after the exception audit, but the surrounding try/finally must not depend on it.
 # ---------------------------------------------------------------------------
 
 
@@ -1913,10 +1851,9 @@ def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> Non
 
 
 def test_asy_ntp_time_swallows_an_already_released_wifi_lock() -> None:
-    # Regression-shaped defensive guard: if the lock were somehow already released by the time
-    # asy_ntp_time()'s own finally block runs, wifi_mode_lock.release() raises RuntimeError - caught
-    # and swallowed rather than crashing the task. Forced here by having the (monkeypatched)
-    # attempt itself release the lock as a side effect, simulating that "already released" state.
+    # Defensive guard: if the lock were somehow already released by the time asy_ntp_time()'s
+    # finally block runs, wifi_mode_lock.release() raises RuntimeError - caught and swallowed
+    # rather than crashing the task. Forced here by having the attempt release the lock itself.
     client = make_client()
 
     async def attempt_releases_lock_itself(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
@@ -1960,83 +1897,136 @@ def test_asy_ntp_time_calls_pr_setup_before_entering_its_loop() -> None:
     assert run(scenario()) is True
 
 
-def test_asy_ntp_time_resets_err_cnt_internal_at_the_start_of_every_run() -> None:
+async def _drive_attempts(client: AsyNtpClient, cycles: int) -> bool:
+    # Fires `cycles` sync triggers through the real asy_ntp_time() loop; True = task still running.
+    task = asyncio.create_task(client.asy_ntp_time())
+    for _ in range(cycles):
+        client.ntp_sync_trigger_event.set()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+    still_running = not task.done()
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    return still_running
+
+
+def test_asy_ntp_time_never_gives_up_on_a_persistently_failing_server() -> None:
+    # An unreachable server is routine for this task (Part C.7.2): a restart re-initialises nothing,
+    # and each one costs the supervisor's reboot budget. So far past any old streak, still running.
     client = make_client()
-    client._err_cnt_internal = 99
-
-    async def scenario() -> int:
-        task = asyncio.create_task(client.asy_ntp_time())
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-        streak = client._err_cnt_internal
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        return streak
-
-    assert run(scenario()) == 0
-
-
-def test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_20() -> None:
-    # Independent, coarser safety net on top of _handle_ntp_sync_failure()'s own short-term
-    # ntp_retries/_NTP_SYNC_RETRIES retry loop - see asy_ntp_time()'s own comment. A real attempt
-    # that completes (network was up) but never yields a parsed time counts toward this streak.
-    client = make_client(max_module_error=2)
 
     async def failing_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
         return None, True  # network was available, but the attempt itself still failed
 
     client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
-
-    async def scenario() -> "ErrorLog":
-        task = asyncio.create_task(client.asy_ntp_time())
-        for _ in range(3):  # one trigger per would-be failure cycle - max_module_error=2 gives up on the 3rd
-            client.ntp_sync_trigger_event.set()
-            await asyncio.sleep(0)
-            await asyncio.sleep(0)
-        await asyncio.wait_for(task, 2.0)  # must actually complete, not loop forever
-        return await client.get_error_counter()
-
-    counter = run(scenario())
-    assert _last_err(counter, "ErrNum") == 20
-    assert _last_err(counter, "ErrType") == "E"
+    assert run(_drive_attempts(client, 50)) is True
+    assert client._err_cnt_internal == 0  # no streak is kept at all
+    counter = run(client.get_error_counter())
+    assert 20 not in counter["NTP"]["ErrNum"]  # the retired give-up code
 
 
-def test_asy_ntp_time_network_unavailable_cycles_never_count_toward_giving_up() -> None:
-    # condition=network_ok excludes "network wasn't up yet" from the give-up streak, the same way
-    # SGP40 excludes a missing-compensation read via condition=compensated - proven here by running
-    # well past max_module_error trigger cycles, all reporting network unavailable, without giving up.
-    client = make_client(max_module_error=2)
+def test_asy_ntp_time_failed_unsynced_attempts_double_the_retry_interval_up_to_its_cap() -> None:
+    client = make_client(retry_s=10, retry_max_s=70)
+    seen: list[int] = []
+
+    async def failing_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
+        seen.append(client._retry_wait_s)
+        return None, True
+
+    client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
+    assert run(_drive_attempts(client, 6)) is True
+    assert seen == [10, 20, 40, 70, 70, 70]
+
+
+def test_asy_ntp_time_network_unavailable_cycles_leave_the_retry_interval_alone() -> None:
+    # A skipped attempt says nothing about the server, so the next one must come promptly.
+    client = make_client(retry_s=10, retry_max_s=600)
 
     async def unavailable_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
-        return None, False  # network not available - condition=False, must not count as a real failure
+        return None, False
 
     client._run_ntp_sync_attempt = unavailable_attempt  # type: ignore[assignment, method-assign]
-
-    async def scenario() -> bool:
-        task = asyncio.create_task(client.asy_ntp_time())
-        for _ in range(10):
-            client.ntp_sync_trigger_event.set()
-            await asyncio.sleep(0)
-            await asyncio.sleep(0)
-        still_running = not task.done()
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        return still_running
-
-    assert run(scenario()) is True
+    assert run(_drive_attempts(client, 10)) is True
+    assert client._retry_wait_s == 10
 
 
-def test_asy_ntp_time_recovers_the_streak_on_alternating_failure_and_success() -> None:
-    # A success resets tm to non-None, decrementing _err_cnt_internal (base_classes.py's own
-    # _error_check() contract) - failures that never land two-in-a-row must never trip
-    # max_module_error=2, however many trigger cycles run in total.
-    client = make_client(max_module_error=2)
+def test_asy_ntp_time_failures_while_synced_leave_the_unsynced_retry_interval_alone() -> None:
+    # A synced device's failed resync is _handle_ntp_sync_failure()'s retry loop's business; the
+    # backoff starts only once the sync has actually gone stale.
+    client = make_client(retry_s=10, retry_max_s=600)
+
+    async def failing_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
+        await client._set_synced(value=True)
+        return None, True
+
+    client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
+    assert run(_drive_attempts(client, 5)) is True
+    assert client._retry_wait_s == 10
+
+
+def test_a_successful_sync_resets_the_backoff_and_ends_the_failure_episode() -> None:
+    client = make_client(retry_s=10, retry_max_s=600)
+    client._retry_wait_s, client._unsynced_wait_s = 320, 30
+    client._episode_errs, client._episode_wrns = 1 << 12, 1 << 2
+    run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
+    assert (client._retry_wait_s, client._unsynced_wait_s) == (10, 0)
+    assert (client._episode_errs, client._episode_wrns) == (0, 0)
+
+
+def test_ntp_force_sync_resets_the_backoff() -> None:
+    # An operator's resync (a PUT of NTP_Host) must run now, not after a ten-minute backoff step.
+    client = make_client(retry_s=10, retry_max_s=600)
+    client._retry_wait_s, client._unsynced_wait_s = 600, 50
+    run(client.ntp_force_sync())
+    assert (client._retry_wait_s, client._unsynced_wait_s) == (10, 0)
+
+
+def test_constructor_clamps_the_backoff_pair_to_the_check_tick_and_to_each_other() -> None:
+    client = make_client(retry_s=3, retry_max_s=5)
+    assert (client.retry_s, client.retry_max_s, client._retry_wait_s) == (10, 10, 10)
+    client = make_client(retry_s=40, retry_max_s=20)
+    assert (client.retry_s, client.retry_max_s) == (40, 40)
+
+
+def test_asy_ntp_time_persists_each_distinct_failure_code_once_per_episode_but_counts_every_one() -> None:
+    # C.7.1's repeat rule: a dead server would otherwise fill the ten-slot ring with one code.
+    client = make_client()
+    codes = [12, 21, 12, 21, 12]
+
+    async def failing_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
+        await client._episode_log(codes.pop(0), "failed")
+        return None, True
+
+    client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
+    assert run(_drive_attempts(client, 5)) is True
+    counter = run(client.get_error_counter())["NTP"]
+    assert counter["ErrCount"] == 5
+    assert counter["ErrNum"][-2:] == [12, 21] and counter["ErrNum"][:-2] == [0] * 8
+
+
+def test_episode_log_persists_a_code_again_after_a_successful_sync() -> None:
+    client = make_client()
+
+    async def scenario() -> "list[int]":
+        await client.pr.setup()
+        await client._episode_log(21, "no reply")
+        await client._episode_log(21, "no reply")
+        await client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0))
+        await client._episode_log(21, "no reply")
+        await client._episode_log(2, "kiss of death", warn=True)
+        await client._episode_log(2, "kiss of death", warn=True)
+        log = (await client.get_error_counter())["NTP"]
+        assert log["ErrCount"] == 5
+        return log["ErrNum"][-3:]
+
+    assert run(scenario()) == [21, 21, 2]
+
+
+def test_asy_ntp_time_keeps_running_across_alternating_failure_and_success() -> None:
+    client = make_client()
     toggle = [True]
 
     async def alternating_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
@@ -2047,49 +2037,28 @@ def test_asy_ntp_time_recovers_the_streak_on_alternating_failure_and_success() -
         return (2026, 1, 1, 0, 0, 0, 0, 0), True  # success
 
     client._run_ntp_sync_attempt = alternating_attempt  # type: ignore[assignment, method-assign]
-
-    async def scenario() -> bool:
-        task = asyncio.create_task(client.asy_ntp_time())
-        for _ in range(20):
-            client.ntp_sync_trigger_event.set()
-            await asyncio.sleep(0)
-            await asyncio.sleep(0)
-        still_running = not task.done()
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        return still_running
-
-    assert run(scenario()) is True
+    assert run(_drive_attempts(client, 20)) is True
 
 
 # ===========================================================================
-# Integration tests: real (not mocked) network path, driving the whole asy_ntp_time() task
-# through cfgmgr -> _resolve_ntp_server -> AsyUDPSocket -> real UDP loopback -> a staged real NTP
-# server - proving how a genuine network fault (or success) propagates all the way up through
-# ntp_issynced()/get_last_ntp_sync()/cettime(), not just the unit under test in isolation.
+# Integration tests: the real network path, driving the whole asy_ntp_time() task through
+# cfgmgr -> _resolve_ntp_server -> AsyUDPSocket -> real UDP loopback -> a staged real NTP server,
+# proving how a genuine fault or success propagates up through the public getters.
 # ===========================================================================
 
 
 class _RedirectNtpNetworking:
-    # Combines two Unix-port-only test workarounds needed only when driving the FULL asy_ntp_time()
-    # task end-to-end (not when calling _fetch_ntp_reply() etc. directly with an already-resolved
-    # addr, which every other test in this file already does - this must NOT be applied there, or
-    # indexing into an already-opaque object would itself break, confirmed directly):
-    # (1) _resolve_ntp_server() always returns _NTP_UDP_PORT (123, the real NTP port) alongside
-    #     whatever IP resolve_ipv4() resolved - binding a test server on the real port 123 needs
-    #     root/CAP_NET_BIND_SERVICE, which CI runners don't have (confirmed directly: bind() raises
-    #     EACCES there, even though it worked in a root dev sandbox). Redirected here to a real,
-    #     already-bound ephemeral port instead (see _NTP_UDP_PORT's own comment on why it's
-    #     deliberately not const()-wrapped, unlike every sibling constant in that file).
-    # (2) _resolve_ntp_server() now returns a plain (str, int) tuple - the correct, typed shape real
-    #     rp2 hardware's socket.connect() accepts directly (see asy_dns_client.py's own resolve_ipv4()
-    #     contract) - but this Unix-port "standard" build's connect() rejects that same plain tuple
-    #     (test_asy_udp_socket.py's own make_addr() comment, micropython/micropython#6924). Wraps
-    #     asy_ntp_client.py's own AsyUDPSocket import to pre-resolve it transparently, exactly like
-    #     tests/test_asy_dns_client.py's own _ResolvingAsyUDPSocket wrapper.
+    # Two Unix-port-only workarounds, needed only when driving the FULL asy_ntp_time() task end to
+    # end. They must NOT be applied where a test calls _fetch_ntp_reply() with an already-resolved
+    # addr, since indexing into an already-opaque object would itself break.
+    #
+    # (1) _resolve_ntp_server() always returns the real NTP port 123, and binding a test server
+    #     there needs root/CAP_NET_BIND_SERVICE, which CI runners lack (bind() raises EACCES).
+    #     Redirected to a real, already-bound ephemeral port instead.
+    #
+    # (2) _resolve_ntp_server() returns a plain (str, int) tuple - correct for real rp2 hardware -
+    #     which this Unix-port build's connect() rejects (micropython/micropython#6924), so
+    #     AsyUDPSocket is wrapped to pre-resolve it, like test_asy_dns_client.py's own wrapper.
     def __init__(self, port: int) -> None:
         self._port = port
 
@@ -2116,10 +2085,9 @@ class _RedirectNtpNetworking:
 
 
 class FakeNtpServer:
-    # A genuine independent UDP endpoint (real socket.socket(), not an AsyUDPSocket) - staged to
-    # answer with a controlled reply or drop the request entirely, the same "real peer, not a
-    # mock" approach as test_asy_udp_socket.py's AdversarialPeer. Binds to a real, free ephemeral
-    # port (see _RedirectNtpNetworking above for why not real port 123).
+    # A genuine independent UDP endpoint (a real socket.socket(), not an AsyUDPSocket), staged to
+    # answer with a controlled reply or drop the request - the same "real peer, not a mock"
+    # approach as test_asy_udp_socket.py's AdversarialPeer, on a free ephemeral port.
     def __init__(self) -> None:
         self.port = make_port()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -2235,13 +2203,12 @@ def test_integration_full_task_stays_not_synced_on_a_malformed_reply() -> None:
 
 
 def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
-    # A real network fault propagated up and then recovered from - but only meaningful once
-    # already synced once: _handle_ntp_sync_failure()'s one-shot retry timer is only armed when
-    # ntp_synced is already True (its own comment: a fresh/never-synced client instead relies on
-    # ntp_time_hours_counter()'s own periodic retrigger, covered separately above). So this first
-    # gets one real successful sync, forces a second attempt that gets dropped (simulating a lost
-    # UDP packet / transient unreachable server), and proves the resulting retry timer genuinely
-    # reaches a real listening server on a later attempt, not just in isolation.
+    # A real network fault propagated up and recovered from, but only meaningful once already
+    # synced: _handle_ntp_sync_failure()'s one-shot retry timer is armed only when ntp_synced is
+    # already True, a fresh client relying on the periodic retrigger covered above.
+
+    # So this takes one real successful sync, forces a second attempt that gets dropped, and proves
+    # the resulting retry timer genuinely reaches a real listening server on a later attempt.
     client = make_integration_client()
     reply = make_ntp_reply(int(time.time()))
 
@@ -2296,11 +2263,9 @@ def test_get_cfg_schema_matches_the_public_attribute() -> None:
 
 
 def test_set_dict_cfg_works_out_of_the_box_with_zero_driver_changes() -> None:
-    # Every NTP field is persist-only (this file's own module docstring: "Config setters are out
-    # of scope... only the getter quartet is implemented" predates this generalization pass) - no
-    # asy_ntp_client.py source change was needed to gain setter support at all, since
-    # base_classes.py's generic _set_dict_cfg() already covers the "persist, nothing to push"
-    # case for free. This is exactly the abstraction the design was meant to prove out.
+    # Every NTP field is persist-only, and no asy_ntp_client.py source change was needed to gain
+    # setter support: base_classes.py's generic _set_dict_cfg() already covers the "persist,
+    # nothing to push" case for free. This is exactly the abstraction the design meant to prove.
     client = make_client()
     results = run(client._set_dict_cfg({"NTP_Host": "time.example.org", "NTP_Interv_H": 6}, client.get_cfg_schema()))
     assert results == {"NTP_Host": "Valid", "NTP_Interv_H": "Valid"}
@@ -2324,11 +2289,9 @@ def test_no_push_callbacks_are_registered_for_any_ntp_field() -> None:
 
 
 def test_cfg_schema_matches_what_cfgmgr_was_built_with() -> None:
-    # Regression check for the sensortask-wozi.py integration bug where a shared REST helper
-    # (api_helpers.py's cmd_post_check()) needed each module's own schema to call the promoted
-    # config_manager.ConfigManager.write_config(data, cfg_vals) correctly - cfg_schema is the public
-    # attribute that lets a caller outside this module get that schema without reaching into a
-    # private, underscore-prefixed module-level const.
+    # Regression check for the integration bug where a shared REST helper needed each module's own
+    # schema to call ConfigManager.write_config(data, cfg_vals) correctly - cfg_schema is the
+    # public attribute giving an outside caller that schema, without reaching into a private const.
     client = make_client()
     assert client.cfg_schema == (_VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST)
 
@@ -2346,6 +2309,219 @@ def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:
     written, data = run(scenario())
     assert written
     assert data == {"NTP_Host": "time.example.org"}
+
+
+# ---------------------------------------------------------------------------
+# Part C.7.2: never give up, back off while unsynced, one ring slot per code per failure episode -
+# every failure site, the recovery path, and the whole outage-then-recovery cycle end to end.
+# ---------------------------------------------------------------------------
+
+
+def test_backoff_defaults_are_ten_seconds_doubling_to_ten_minutes() -> None:
+    client = AsyNtpClient(asyncio.Lock(), lambda: True, lambda: None, cfg_path=_tmp_cfg_dir())
+    assert (client.retry_s, client.retry_max_s, client._retry_wait_s, client._unsynced_wait_s) == (10, 600, 10, 0)
+
+
+def _twice_one_slot(client: AsyNtpClient, make_call: "Callable[[], Coroutine[Any, Any, object]]") -> "tuple[int, list[int], list[str]]":
+    # Runs one failure site twice; returns (ErrCount, the non-empty ring slots, their types).
+    async def scenario() -> "ErrorLog":
+        await client.pr.setup()
+        await make_call()
+        await make_call()
+        return await client.get_error_counter()
+
+    entry = run(scenario())["NTP"]
+    nums, types = entry["ErrNum"], entry["ErrType"]
+    assert isinstance(nums, list) and isinstance(types, list)
+    kept = [(n, t) for n, t in zip(nums, types) if t != "N"]  # noqa: B905 - MicroPython zip() rejects strict=
+    return int(entry["ErrCount"]), [n for n, _ in kept], [t for _, t in kept]
+
+
+def test_missing_config_failure_is_counted_twice_but_persisted_once() -> None:
+    client = make_client()
+
+    async def no_cfg() -> "tuple[list[str], list[int]] | None":
+        return None
+
+    client._get_ntp_config = no_cfg  # type: ignore[method-assign]
+    assert _twice_one_slot(client, lambda: client._run_ntp_sync_attempt(None)) == (2, [11], ["E"])
+
+
+def test_dns_failure_is_counted_twice_but_persisted_once() -> None:
+    original = ntpmod.resolve_ipv4
+    ntpmod.resolve_ipv4 = _RecordingResolver(None)  # type: ignore[assignment]
+    try:
+        client = make_client()
+        assert _twice_one_slot(client, lambda: client._resolve_ntp_server("bogus.invalid", None)) == (2, [12], ["E"])
+    finally:
+        ntpmod.resolve_ipv4 = original
+
+
+def test_invalid_server_address_is_counted_twice_but_persisted_once() -> None:
+    client = make_client()
+    assert _twice_one_slot(client, lambda: client._fetch_ntp_reply((12345, 80))) == (2, [13], ["E"])  # type: ignore[arg-type]
+
+
+def test_no_reply_is_counted_twice_but_persisted_once() -> None:
+    client = make_client(ntp_fetch_timeout_ms=100)
+    addr = make_addr()
+    assert _twice_one_slot(client, lambda: client._fetch_ntp_reply(addr)) == (2, [21], ["E"])
+
+
+def test_implausible_time_is_counted_twice_but_persisted_once() -> None:
+    client = make_client()
+    msg = _reply_with_li_and_stratum(leap_indicator=0, stratum=1, unix_seconds=1000)  # past 2100 in every era
+    assert _twice_one_slot(client, lambda: client._parse_ntp_reply(msg, 0)) == (2, [14], ["E"])
+
+
+def test_malformed_reply_is_counted_twice_but_persisted_once() -> None:
+    client = make_client()
+    assert _twice_one_slot(client, lambda: client._parse_ntp_reply(b"x", 0)) == (2, [15], ["E"])
+
+
+def test_kiss_of_death_warning_is_counted_twice_but_persisted_once() -> None:
+    client = make_client()
+    msg = _reply_with_li_and_stratum(leap_indicator=0, stratum=0, unix_seconds=int(time.time()))
+    assert _twice_one_slot(client, lambda: client._parse_ntp_reply(msg, 0)) == (2, [2], ["W"])
+
+
+def test_the_same_number_as_error_and_as_warning_are_separate_episode_codes() -> None:
+    # errno 2 and wrnno 2 mean different things; one must never suppress the other's slot.
+    client = make_client()
+
+    async def scenario() -> "list[str]":
+        await client.pr.setup()
+        await client._episode_log(2, "an error numbered 2")
+        await client._episode_log(2, "a warning numbered 2", warn=True)
+        types = (await client.get_error_counter())["NTP"]["ErrType"]
+        assert isinstance(types, list)
+        return types[-2:]
+
+    assert run(scenario()) == ["E", "W"]
+
+
+def test_every_distinct_failure_code_keeps_its_own_slot_within_one_episode() -> None:
+    # Per DISTINCT code (C.7.1): a changed verdict mid-outage is evidence, so no code may shadow another.
+    client = make_client()
+    codes = [11, 12, 13, 14, 15, 21]
+
+    async def scenario() -> "list[int]":
+        await client.pr.setup()
+        for code in codes:
+            await client._episode_log(code, "failed")
+        nums = (await client.get_error_counter())["NTP"]["ErrNum"]
+        assert isinstance(nums, list)
+        return nums[-len(codes):]
+
+    assert run(scenario()) == codes
+
+
+def test_backoff_restarts_from_the_first_interval_after_a_recovery() -> None:
+    client = make_client(retry_s=10, retry_max_s=600)
+    outcomes = [None, None, (2026, 1, 1, 0, 0, 0, 0, 0), None, None]
+    seen: list[int] = []
+
+    async def scripted_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
+        seen.append(client._retry_wait_s)
+        tm = outcomes.pop(0)
+        if tm is None:
+            return None, True
+        await client._handle_ntp_sync_success(tm)
+        await client._set_synced(value=False)  # the sync goes stale again, back onto the unsynced cadence
+        return tm, True
+
+    client._run_ntp_sync_attempt = scripted_attempt  # type: ignore[assignment, method-assign]
+    assert run(_drive_attempts(client, 5)) is True
+    assert seen == [10, 20, 40, 10, 20]
+
+
+def test_ntp_time_hours_counter_does_not_bank_synced_ticks_toward_the_unsynced_wait() -> None:
+    # Ticks while synced belong to the resync interval; once the sync goes stale the first retry
+    # waits a full backoff step rather than firing on credit saved up while synced.
+    client = make_client()
+    client._retry_wait_s = 30
+
+    async def fired() -> bool:
+        try:
+            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.05)
+        except asyncio.TimeoutError:
+            return False
+        return True
+
+    async def scenario() -> "list[bool]":
+        await client._set_synced(value=True)
+        task = asyncio.create_task(client.ntp_time_hours_counter())
+        await _tick(client.ntp_timer_trigger_event, 5)
+        results = [await fired()]
+        await client._set_synced(value=False)
+        await _tick(client.ntp_timer_trigger_event, 2)
+        results.append(await fired())
+        await _tick(client.ntp_timer_trigger_event, 1)
+        results.append(await fired())
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return results
+
+    assert run(scenario()) == [False, False, True]
+
+
+def test_integration_self_heals_after_an_outage_through_the_real_task_and_socket() -> None:
+    # Three real requests go unanswered, then the server answers: the same task (never restarted)
+    # syncs, the backoff drops back to its first step, and the outage left exactly one ring slot.
+    client = make_integration_client()
+    client.ntp_fetch_timeout_ms = 100
+    reply = make_ntp_reply(int(time.time()))
+
+    async def scenario() -> "tuple[bool, bool, int, int, ErrorLog]":
+        server = FakeNtpServer()
+        try:
+            with server.redirect_resolution():
+                await client.pr.setup()
+                task = asyncio.create_task(client.asy_ntp_time())
+                for answer in (None, None, None, reply):
+                    served = asyncio.create_task(server.serve_once(answer))
+                    client.ntp_sync_trigger_event.set()
+                    await asyncio.wait_for(served, 5)
+                    await asyncio.sleep_ms(200)  # past the 100ms fetch timeout either way
+                still_running = not task.done()
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                return still_running, await client.ntp_issynced(), client._retry_wait_s, client._episode_errs, await client.get_error_counter()
+        finally:
+            server.close()
+
+    still_running, synced, wait_s, episode, log = run(scenario())
+    assert still_running is True
+    assert synced is True
+    assert wait_s == client.retry_s
+    assert episode == 0
+    assert log["NTP"]["ErrCount"] == 3
+    assert log["NTP"]["ErrNum"] == [0] * 9 + [21]
+
+
+def test_integration_a_successful_exchange_persists_nothing() -> None:
+    client = make_integration_client()
+    reply = make_ntp_reply(int(time.time()))
+
+    async def scenario() -> "ErrorLog":
+        server = FakeNtpServer()
+        try:
+            with server.redirect_resolution():
+                await client.pr.setup()
+                served = asyncio.create_task(server.serve_once(reply))
+                assert await client._fetch_ntp_reply(("127.0.0.1", ntpmod._NTP_UDP_PORT)) is not None  # the redirected port
+                await asyncio.wait_for(served, 5)
+                return await client.get_error_counter()
+        finally:
+            server.close()
+
+    assert run(scenario())["NTP"]["ErrCount"] == 0
 
 
 if __name__ == "__main__":

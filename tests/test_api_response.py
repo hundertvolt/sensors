@@ -2,6 +2,8 @@ import asyncio
 import os
 from collections import namedtuple
 
+from _tmp_scratch import TmpScratch
+
 import api_response as ar
 from base_classes import SensorReaderConfig
 
@@ -23,17 +25,11 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-_TMP_DIR = "tests/_tmp"
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("api_response")
 Meas = namedtuple("Meas", ["temp", "hum"])
 _VAL_SI: "cm.ConfigSchema" = (("SampleInterv", "int", 2, 1, 3600, None),)
-
-
-def _tmp_path(name: str) -> str:
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    return _TMP_DIR + "/" + name
 
 
 def _remove(path: str) -> None:
@@ -189,9 +185,8 @@ def test_parse_cmd_request_empty_keys_list_rejects_every_cmd() -> None:
 
 
 def _make_reader(name: str, cfg_vals: "cm.ConfigSchema" = _VAL_SI) -> "tuple[SensorReaderConfig, str]":
-    path_prefix = _tmp_path("") + "/"
-    path = path_prefix + "config_" + name + ".cfg"
-    _remove(path)
+    path = _scratch.path("config_" + name + ".cfg")
+    path_prefix = path.rsplit("/", 1)[0] + "/"
     reader = SensorReaderConfig(Meas(20.0, 50), 3, name, cfg_vals, cfg_path=path_prefix)
     run(reader.cfgmgr.setup())
     return reader, path
@@ -316,11 +311,9 @@ def test_handle_set_cmd_async_post_fct_raising_is_caught_and_reports_generic_err
 
 
 def test_handle_set_cmd_sync_post_fct_raising_never_schedules_the_async_hook() -> None:
-    # Both hooks supplied at once, with the synchronous one raising: post_fct() fires first and
-    # post_asy_fct() is only awaited afterwards (see handle_set_cmd's own ordering), so the async
-    # hook must never run at all - not even be scheduled. Pins that firing order down as real
-    # behaviour rather than an incidental statement order, and confirms the response still degrades
-    # into the same generic-error envelope the two single-hook-raises tests above expect.
+    # Both hooks supplied at once, with the synchronous one raising: post_fct() fires first and the async
+    # hook is only awaited afterwards, so it must never run, not even be scheduled. Pins that order as real
+    # behaviour, and confirms the response still degrades into the same generic envelope.
     reader, path = _make_reader("handlebothhooksraise")
     try:
         async_calls = []

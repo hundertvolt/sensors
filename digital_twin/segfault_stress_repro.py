@@ -1,9 +1,9 @@
 """Manual, deliberately-aggressive concurrency stress tool for the (now root-caused and fixed, see `unix_port_poll_prewarm.py`) MicroPython Unix-port segfault under heavy concurrent connection load.
 Full account, usage, and exit/crash behavior in `digital_twin/README.md`'s "Known gaps" section."""
 
-# Same MICROPYPATH as run_wozi_integration.py; flags: --clients/--requests/--rounds/--host/--port.
-# A genuine segfault kills the interpreter outright (check exit status / dmesg, no Python traceback);
-# a MemoryError at higher concurrency is a distinct, catchable outcome this tool also reports.
+# Same MICROPYPATH as run_generic_integration.py; flags --clients/--requests/--rounds/--host/
+# --port. A real segfault kills the interpreter outright with no traceback, while a MemoryError
+# at higher concurrency is a distinct outcome this also reports. Hardcoded (README.md).
 
 import asyncio
 import gc
@@ -11,9 +11,8 @@ import sys
 
 import _http_client
 import machine
-from unix_port_poll_prewarm import prewarm_poll_set
-
 import sensortask_wozi
+from unix_port_poll_prewarm import prewarm_poll_set
 
 _CONFIG_DIR = "digital_twin/config/"
 _ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
@@ -31,7 +30,10 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
     async def poll() -> None:
         while True:
             try:
-                await _http_client.fetch(host, port, "GET", "/")
+                # read_body=False: only ever checks that the request didn't raise - see
+                # _http_client.fetch()'s own comment for why materializing an unused body is an
+                # avoidable allocation this deliberately-aggressive tool has no reason to add back.
+                await _http_client.fetch(host, port, "GET", "/", read_body=False)
             except OSError:
                 await asyncio.sleep_ms(50)
             else:
@@ -44,7 +46,8 @@ async def _hammer_client(host: str, port: int, n_requests: int, client_id: int, 
     for i in range(n_requests):
         path = _ENDPOINTS[i % len(_ENDPOINTS)]
         try:
-            resp = await _http_client.fetch(host, port, "GET", path)
+            # read_body=False: results only ever record resp.status_code below.
+            resp = await _http_client.fetch(host, port, "GET", path, read_body=False)
             results.append(("ok", client_id, i, resp.status_code))
         except OSError as e:
             results.append(("err", client_id, i, str(e)))

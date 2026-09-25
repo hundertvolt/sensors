@@ -11,13 +11,14 @@ from typing import TYPE_CHECKING, Any
 
 import http_client
 import pytest
-from error_log_helpers import get_errcount, reset_all_error_logs
+from error_log_helpers import assert_no_task_ended, get_errcount, reset_all_error_logs
 from harness import wait_until
 
 if TYPE_CHECKING:
     from harness import Board
 
-_UART_MODULES = ("UART_INIT", "UART_RESP")
+_UART_MODULES = ("UART_init", "UART_resp")  # asy_uart_link_driver.UartLinkExerciser's own
+# name_ext="init"/"resp" -> instance_name() resolution (buildgen/definitions.py's errcount catalog)
 # GET only: every worker below hits a read-only endpoint, so nothing here can persist to flash in a
 # loop. A PUT belongs in this tier only where it is documented command-only and never persisted.
 _GET_WORKERS = 2
@@ -44,15 +45,15 @@ def _link_counters(dut_ip: str) -> dict[str, int]:
 
 
 def _require_uart_modules(dut_ip: str) -> None:
-    # The link only exists in a firmware that contains asy_uart_comm, which a dev build made today
-    # does (sensortask_dev imports it, and build_firmware.py freezes all of src/). Absent entries
-    # therefore mean a build to check, not a protocol failure (BACKLOG.md).
+    # The link exists only in a firmware carrying asy_uart_comm, which devices/dev.toml's two
+    # `driver = "uart_link"` instances pull in through buildgen's dependency-driven module
+    # selection. Absent entries are therefore a build to check, not a protocol failure.
     present = get_errcount(dut_ip)
     missing = [name for name in _UART_MODULES if name not in present]
     if missing:
         pytest.skip(
-            f"this firmware exposes no {', '.join(missing)} error source - a selectable "
-            "`uart_crossover` module is what makes the auto-builder include asy_uart_comm (BACKLOG.md)",
+            f"this firmware exposes no {', '.join(missing)} error source - check devices/dev.toml "
+            "still declares its uart_link instances and this build actually used it",
         )
 
 
@@ -104,13 +105,13 @@ def test_the_link_stays_healthy_while_the_api_is_hammered(board: Board, dut_ip: 
     for name in _UART_MODULES:
         entry = counts.get(name, {})
         assert not entry.get("counter", 0), f"{name} logged errors while the API was under load: {entry!r}"
+    assert_no_task_ended(dut_ip, "UART link under API load")
 
 
 def test_real_transfers_complete_while_the_api_is_hammered(board: Board, dut_ip: str) -> None:
-    # The actual function test: "a transfer completes while the API is hammered". The two tests
-    # around it assert the link logged no errors, which an idle link also satisfies - this one
-    # requires the link to have moved bytes during the load window, and to have moved them without
-    # a single failed attempt.
+    # The actual function test: a transfer completes while the API is hammered. Its two
+    # neighbours assert the link logged no errors, which an idle link satisfies too; this one
+    # requires bytes moved during the load window, with no failed attempt.
     _require_uart_modules(dut_ip)
     before = _link_counters(dut_ip)
 
@@ -193,3 +194,4 @@ def test_an_api_overload_does_not_corrupt_the_link_or_the_reverse(board: Board, 
     for name in _UART_MODULES:
         entry = counts.get(name, {})
         assert not entry.get("counter", 0), f"{name} was disturbed by an API overload: {entry!r}"
+    assert_no_task_ended(dut_ip, "UART link under an API overload")

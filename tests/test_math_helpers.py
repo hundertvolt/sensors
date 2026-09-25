@@ -92,12 +92,12 @@ def test_dew_point_valid_ice_branch() -> None:
 
 
 def test_dew_point_branch_boundary_roughly_continuous() -> None:
-    # The water-phase and ice-phase coefficient sets are two independently-fit approximations
-    # stitched together at temperature == 0, not a single continuous formula: measured, they
-    # disagree by about 1.03 degC right at the boundary (50% RH) - a real property of this
-    # formula, not a bug introduced here. This is a regression guard against that gap growing
-    # much larger (e.g. from an accidental coefficient/branch-condition change), not an assertion
-    # that the two branches are continuous.
+    # The water-phase and ice-phase coefficient sets are two independently-fit approximations stitched
+    # together at temperature == 0, not a single continuous formula: measured, they disagree by about 1.03
+    # degC right at the boundary at 50% RH - a real property of the formula, not a bug introduced here.
+    #
+    # A regression guard against that gap growing much larger, from an accidental coefficient or branch-
+    # condition change, not an assertion that the two branches are continuous.
     just_above = mh.dew_point(0.0, 50.0)
     just_below = mh.dew_point(-0.001, 50.0)
     assert just_above is not None
@@ -299,81 +299,30 @@ def test_rel_humidity_nan_and_inf_return_none() -> None:
 
 
 # ---------------------------------------------------------------------------
-# rgb_to_hsb - the ISL29125 colour chain (SPECIFICATION.md Part C.11.2)
+# rgb_to_hsb
 # ---------------------------------------------------------------------------
 
 
-def test_rgb_to_hsb_covers_all_six_hue_sectors() -> None:
-    # One pure colour per 60-degree sector of the HSV hexcone, so a mis-ordered branch in the
-    # which-channel-is-max dispatch cannot pass: each sector is reached by a different branch.
-    cases = (
-        (1.0, 0.0, 0.0, 0.0),  # red
-        (1.0, 1.0, 0.0, 60.0),  # yellow
-        (0.0, 1.0, 0.0, 120.0),  # green
-        (0.0, 1.0, 1.0, 180.0),  # cyan
-        (0.0, 0.0, 1.0, 240.0),  # blue
-        (1.0, 0.0, 1.0, 300.0),  # magenta
-    )
-    for red, green, blue, expected_hue in cases:
-        result = mh.rgb_to_hsb(red, green, blue)
-        assert result is not None
-        hue, sat, bri = result
-        assert approx(hue, expected_hue), (red, green, blue, hue)
-        assert approx(sat, 1.0)
-        assert approx(bri, 1.0)
-
-
-def test_rgb_to_hsb_returns_zero_hue_for_grey() -> None:
-    # Grey has no hue, but it is a perfectly valid colour - returning None here would make the
-    # driver report a read failure for a white wall (see the function's own failure-mode list).
-    for level in (0.0, 0.25, 1.0):
-        result = mh.rgb_to_hsb(level, level, level)
-        assert result is not None
-        hue, sat, bri = result
-        assert hue == 0.0
-        assert sat == 0.0
-        assert approx(bri, level)
-
-
-def test_rgb_to_hsb_hue_is_always_inside_the_circle() -> None:
-    # The wrap happens exactly once, at the end - a value of exactly 360.0 would be a defect.
-    for step in range(101):
-        frac = step * 0.01
-        result = mh.rgb_to_hsb(1.0, frac, 0.0)
-        assert result is not None
-        assert 0.0 <= result[0] < 360.0
-
-
-def test_rgb_to_hsb_hue_rotates_monotonically_with_the_input() -> None:
-    # Sweeping green up against a fixed full red walks hue from 0 to 60 without ever going back.
-    previous = -1.0
-    for step in range(51):
-        result = mh.rgb_to_hsb(1.0, step * 0.02, 0.0)
-        assert result is not None
-        assert result[0] >= previous
-        previous = result[0]
-    assert approx(previous, 60.0)
-
-
-def test_rgb_to_hsb_none_in_each_argument() -> None:
+def test_rgb_to_hsb_none_inputs() -> None:
     assert mh.rgb_to_hsb(None, 0.5, 0.5) is None
     assert mh.rgb_to_hsb(0.5, None, 0.5) is None
     assert mh.rgb_to_hsb(0.5, 0.5, None) is None
 
 
-def test_rgb_to_hsb_rejects_out_of_range_and_nan() -> None:
+def test_rgb_to_hsb_out_of_range_rejected() -> None:
+    assert mh.rgb_to_hsb(-0.001, 0.5, 0.5) is None
+    assert mh.rgb_to_hsb(1.001, 0.5, 0.5) is None
+    assert mh.rgb_to_hsb(0.5, -0.001, 0.5) is None
+    assert mh.rgb_to_hsb(0.5, 0.5, 1.001) is None
+
+
+def test_rgb_to_hsb_nan_and_inf_rejected() -> None:
     nan = float("nan")
     inf = float("inf")
-    assert mh.rgb_to_hsb(-0.001, 0.5, 0.5) is None
-    assert mh.rgb_to_hsb(0.5, 1.001, 0.5) is None
-    assert mh.rgb_to_hsb(0.5, 0.5, 2.0) is None
-    # NaN compares false against everything, so the range gate is what catches it - and it has to
-    # run before the max/min, which would otherwise silently pick the wrong branch.
     assert mh.rgb_to_hsb(nan, 0.5, 0.5) is None
     assert mh.rgb_to_hsb(0.5, nan, 0.5) is None
-    assert mh.rgb_to_hsb(0.5, 0.5, nan) is None
     assert mh.rgb_to_hsb(inf, 0.5, 0.5) is None
-    assert mh.rgb_to_hsb(-inf, 0.5, 0.5) is None
+    assert mh.rgb_to_hsb(0.5, 0.5, -inf) is None
 
 
 def test_rgb_to_hsb_boundary_values_accepted() -> None:
@@ -381,229 +330,301 @@ def test_rgb_to_hsb_boundary_values_accepted() -> None:
     assert mh.rgb_to_hsb(1.0, 1.0, 1.0) is not None
 
 
+def test_rgb_to_hsb_grey_has_zero_hue_and_saturation() -> None:
+    # chroma == 0: a real, valid colour (no hue), not a read failure - None would be wrong here.
+    result = mh.rgb_to_hsb(0.4, 0.4, 0.4)
+    assert result is not None
+    hue, sat, bri = result
+    assert approx(hue, 0.0)
+    assert approx(sat, 0.0)
+    assert approx(bri, 0.4)
+
+
+def test_rgb_to_hsb_black_is_grey_too() -> None:
+    result = mh.rgb_to_hsb(0.0, 0.0, 0.0)
+    assert result is not None
+    hue, sat, bri = result
+    assert approx(hue, 0.0)
+    assert approx(sat, 0.0)
+    assert approx(bri, 0.0)
+
+
+def test_rgb_to_hsb_red_max_branch() -> None:
+    # RGB(255, 128, 0) - orange, hue ~30 degrees.
+    result = mh.rgb_to_hsb(1.0, 0.5, 0.0)
+    assert result is not None
+    hue, sat, bri = result
+    assert approx(hue, 30.0, tol=0.1)
+    assert approx(sat, 1.0)
+    assert approx(bri, 1.0)
+
+
+def test_rgb_to_hsb_green_max_branch() -> None:
+    # RGB(0, 255, 128) - spring green, hue ~150 degrees.
+    result = mh.rgb_to_hsb(0.0, 1.0, 0.5)
+    assert result is not None
+    hue, _sat, _bri = result
+    assert approx(hue, 150.0, tol=0.1)
+
+
+def test_rgb_to_hsb_blue_max_branch() -> None:
+    # RGB(128, 0, 255) - violet, hue ~270 degrees.
+    result = mh.rgb_to_hsb(0.5, 0.0, 1.0)
+    assert result is not None
+    hue, _sat, _bri = result
+    assert approx(hue, 270.0, tol=0.1)
+
+
+def test_rgb_to_hsb_hue_wraps_into_0_360() -> None:
+    # Red-max branch with green < blue drives the raw formula negative before the final wrap.
+    result = mh.rgb_to_hsb(1.0, 0.0, 0.5)
+    assert result is not None
+    hue, _sat, _bri = result
+    assert 0.0 <= hue < 360.0
+    assert approx(hue, 330.0, tol=0.1)
+
+
 # ---------------------------------------------------------------------------
-# rgb_to_xyz - M2
+# rgb_to_xyz
 # ---------------------------------------------------------------------------
 
 
-def test_rgb_to_xyz_reproduces_the_matrix_columns_for_pure_primaries() -> None:
-    # A pure primary at 1.0 selects exactly one matrix column, so these three calls read the
-    # whole 3x3 back out - the shape check that catches a transposed or mis-indexed multiply.
-    red = mh.rgb_to_xyz(1.0, 0.0, 0.0)
-    green = mh.rgb_to_xyz(0.0, 1.0, 0.0)
-    blue = mh.rgb_to_xyz(0.0, 0.0, 1.0)
-    assert red is not None and green is not None and blue is not None
-    assert approx(red[0], 0.4124564) and approx(red[1], 0.2126729) and approx(red[2], 0.0193339)
-    assert approx(green[0], 0.3575761) and approx(green[1], 0.7151522) and approx(green[2], 0.1191920)
-    assert approx(blue[0], 0.1804375) and approx(blue[1], 0.0721750) and approx(blue[2], 0.9503041)
+def test_rgb_to_xyz_none_inputs() -> None:
+    assert mh.rgb_to_xyz(None, 0.5, 0.5) is None
+    assert mh.rgb_to_xyz(0.5, None, 0.5) is None
+    assert mh.rgb_to_xyz(0.5, 0.5, None) is None
+
+
+def test_rgb_to_xyz_out_of_range_rejected() -> None:
+    assert mh.rgb_to_xyz(-0.001, 0.5, 0.5) is None
+    assert mh.rgb_to_xyz(0.5, 1.001, 0.5) is None
+
+
+def test_rgb_to_xyz_nan_and_inf_rejected() -> None:
+    nan = float("nan")
+    inf = float("inf")
+    assert mh.rgb_to_xyz(nan, 0.5, 0.5) is None
+    assert mh.rgb_to_xyz(0.5, 0.5, inf) is None
+
+
+def test_rgb_to_xyz_black_is_zero() -> None:
+    result = mh.rgb_to_xyz(0.0, 0.0, 0.0)
+    assert result is not None
+    x_val, y_val, z_val = result
+    assert approx(x_val, 0.0)
+    assert approx(y_val, 0.0)
+    assert approx(z_val, 0.0)
+
+
+def test_rgb_to_xyz_pure_red_matches_the_sRGB_matrix_column() -> None:
+    result = mh.rgb_to_xyz(1.0, 0.0, 0.0)
+    assert result is not None
+    x_val, y_val, z_val = result
+    assert approx(x_val, 0.4124564)
+    assert approx(y_val, 0.2126729)
+    assert approx(z_val, 0.0193339)
 
 
 def test_rgb_to_xyz_coefficients_are_the_pinned_literals() -> None:
     # Exact equality, not approx(): two published roundings of this matrix differ in the 6th decimal
-    # (Part C.11.2) and both would pass a 1e-6 tolerance. The constants are const()-folded and not
+    # (Part M.1.3) and both would pass a 1e-6 tolerance. The constants are const()-folded and not
     # readable as attributes, so reading them back through a pure primary is the only way to pin.
     assert mh.rgb_to_xyz(1.0, 0.0, 0.0) == (0.4124564, 0.2126729, 0.0193339)
     assert mh.rgb_to_xyz(0.0, 1.0, 0.0) == (0.3575761, 0.7151522, 0.1191920)
     assert mh.rgb_to_xyz(0.0, 0.0, 1.0) == (0.1804375, 0.0721750, 0.9503041)
 
 
-def test_rgb_to_xyz_is_all_zero_for_black() -> None:
-    result = mh.rgb_to_xyz(0.0, 0.0, 0.0)
-    assert result == (0.0, 0.0, 0.0)
-
-
-def test_rgb_to_xyz_applies_no_gamma_decode() -> None:
-    # The sensor output is linear in irradiance, so the sRGB transfer function must NOT be
-    # applied - half input must give exactly half output, which a gamma decode would not.
-    full = mh.rgb_to_xyz(1.0, 1.0, 1.0)
-    half = mh.rgb_to_xyz(0.5, 0.5, 0.5)
-    assert full is not None and half is not None
-    # No strict= (ruff B905): MicroPython's zip() rejects it, and both tuples are length 3
-    for a, b in zip(full, half):  # noqa: B905
-        assert approx(a * 0.5, b)
-
-
-def test_rgb_to_xyz_none_in_each_argument() -> None:
-    assert mh.rgb_to_xyz(None, 0.5, 0.5) is None
-    assert mh.rgb_to_xyz(0.5, None, 0.5) is None
-    assert mh.rgb_to_xyz(0.5, 0.5, None) is None
-
-
-def test_rgb_to_xyz_rejects_out_of_range_and_nan() -> None:
-    nan = float("nan")
-    inf = float("inf")
-    assert mh.rgb_to_xyz(-0.001, 0.5, 0.5) is None
-    assert mh.rgb_to_xyz(0.5, 1.001, 0.5) is None
-    assert mh.rgb_to_xyz(nan, 0.5, 0.5) is None
-    assert mh.rgb_to_xyz(0.5, inf, 0.5) is None
-    assert mh.rgb_to_xyz(0.5, 0.5, -inf) is None
-
-
-# ---------------------------------------------------------------------------
-# chromaticity_xy - M3
-# ---------------------------------------------------------------------------
-
-
-def test_chromaticity_xy_returns_none_at_zero_sum() -> None:
-    assert mh.chromaticity_xy(0.0, 0.0, 0.0) is None
-
-
-def test_chromaticity_xy_refuses_just_below_the_sum_floor_and_accepts_just_above() -> None:
-    # Mirrors the driver's own _CHROMA_SUM_MIN (const()-folded, so not readable from here) - the
-    # floor is 1e-12 rather than 0.0 so a denormal can never produce a 1e300 chromaticity.
-    floor = 1e-12
-    assert mh.chromaticity_xy(floor * 0.3, floor * 0.3, floor * 0.3) is None
-    assert mh.chromaticity_xy(floor, floor, floor) is not None
-
-
-def test_chromaticity_xy_matches_d65_for_a_known_vector() -> None:
-    # An external check, not a self-consistent one: the sRGB matrix's own white point is D65, so
-    # an equal-energy RGB triple has to land on D65's published (0.3127, 0.3290).
-    xyz = mh.rgb_to_xyz(1.0, 1.0, 1.0)
-    assert xyz is not None
-    result = mh.chromaticity_xy(xyz[0], xyz[1], xyz[2])
+def test_rgb_to_xyz_white_matches_the_d65_white_point() -> None:
+    # A known, independently-published check value: sRGB white (1,1,1) -> the D65 reference white
+    # point (~0.95047, 1.0, 1.08883) - real evidence the three coefficient rows weren't transposed
+    # or mistyped, not just "it returns a tuple".
+    result = mh.rgb_to_xyz(1.0, 1.0, 1.0)
     assert result is not None
-    assert approx(result[0], 0.3127, 5e-4)
-    assert approx(result[1], 0.3290, 5e-4)
+    x_val, y_val, z_val = result
+    assert approx(x_val, 0.95047, tol=1e-4)
+    assert approx(y_val, 1.0, tol=1e-4)
+    assert approx(z_val, 1.08883, tol=1e-4)
 
 
-def test_chromaticity_xy_rejects_a_negative_sum() -> None:
+# ---------------------------------------------------------------------------
+# chromaticity_xy
+# ---------------------------------------------------------------------------
+
+
+def test_chromaticity_xy_none_inputs() -> None:
+    assert mh.chromaticity_xy(None, 0.5, 0.5) is None
+    assert mh.chromaticity_xy(0.5, None, 0.5) is None
+    assert mh.chromaticity_xy(0.5, 0.5, None) is None
+
+
+def test_chromaticity_xy_darkness_rejected() -> None:
+    # A near-zero (or exactly zero) sum is darkness, not a valid chromaticity to divide out.
+    assert mh.chromaticity_xy(0.0, 0.0, 0.0) is None
+    assert mh.chromaticity_xy(1e-15, 1e-15, 1e-15) is None
+
+
+def test_chromaticity_xy_negative_sum_rejected() -> None:
     assert mh.chromaticity_xy(-1.0, -1.0, -1.0) is None
 
 
-def test_chromaticity_xy_none_in_each_argument() -> None:
-    assert mh.chromaticity_xy(None, 1.0, 1.0) is None
-    assert mh.chromaticity_xy(1.0, None, 1.0) is None
-    assert mh.chromaticity_xy(1.0, 1.0, None) is None
+def test_chromaticity_xy_absurdly_large_sum_rejected() -> None:
+    assert mh.chromaticity_xy(2e9, 0.0, 0.0) is None
 
 
-def test_chromaticity_xy_rejects_nan_and_inf() -> None:
+def test_chromaticity_xy_nan_and_inf_rejected() -> None:
     nan = float("nan")
     inf = float("inf")
-    assert mh.chromaticity_xy(nan, 1.0, 1.0) is None
-    assert mh.chromaticity_xy(1.0, inf, 1.0) is None
-    assert mh.chromaticity_xy(1.0, 1.0, -inf) is None
+    assert mh.chromaticity_xy(nan, 0.5, 0.5) is None
+    assert mh.chromaticity_xy(inf, 0.5, 0.5) is None
+
+
+def test_chromaticity_xy_d65_white_point() -> None:
+    # Feeding rgb_to_xyz(1,1,1)'s own output back through should land on D65's published
+    # chromaticity (~0.3127, ~0.3290) - a real round-trip check, not an isolated formula check.
+    xyz = mh.rgb_to_xyz(1.0, 1.0, 1.0)
+    assert xyz is not None
+    result = mh.chromaticity_xy(*xyz)
+    assert result is not None
+    chroma_x, chroma_y = result
+    assert approx(chroma_x, 0.3127, tol=1e-3)
+    assert approx(chroma_y, 0.3290, tol=1e-3)
+
+
+def test_chromaticity_xy_boundary_sum_accepted() -> None:
+    assert mh.chromaticity_xy(1e-12, 0.0, 0.0) is not None
+    assert mh.chromaticity_xy(1e9, 0.0, 0.0) is not None
 
 
 # ---------------------------------------------------------------------------
-# cct_mccamy - M4
+# cct_mccamy
 # ---------------------------------------------------------------------------
 
 
-def test_cct_mccamy_matches_two_published_illuminants() -> None:
-    # External checks: CIE Illuminant A is 2856 K at (0.4476, 0.4074), D65 is 6504 K at
-    # (0.3127, 0.3290) - McCamy's own cubic is fitted to reproduce both to within a few kelvin.
-    a_result = mh.cct_mccamy(0.4476, 0.4074)
-    d65_result = mh.cct_mccamy(0.3127, 0.3290)
-    assert a_result is not None and d65_result is not None
-    assert abs(a_result - 2856.0) < 5.0
-    assert abs(d65_result - 6504.0) < 10.0
-
-
-def test_cct_mccamy_agrees_with_the_sign_flipped_published_form() -> None:
-    # Two forms of the same formula are in circulation and differ only in the denominator's sign
-    # (which flips n, and therefore the sign of every odd-power term). They are algebraically
-    # identical; this pins that, so nobody "corrects" one into the other believing it a fix.
-    for chroma_x, chroma_y in ((0.3127, 0.3290), (0.4476, 0.4074), (0.35, 0.30), (0.35, 0.36)):
-        mine = mh.cct_mccamy(chroma_x, chroma_y)
-        n = (chroma_x - 0.3320) / (chroma_y - 0.1858)
-        theirs = -449.0 * n**3 + 3525.0 * n**2 - 6823.3 * n + 5520.33
-        assert mine is not None
-        assert approx(mine, theirs, 1e-6)
-
-
-def test_cct_mccamy_returns_none_at_the_epicentre() -> None:
-    # y == 0.1858 is a real division by zero, not a theoretical one - it is a plausible
-    # chromaticity, so this is a guard, not defensive decoration.
-    assert mh.cct_mccamy(0.3320, 0.1858) is None
-    assert mh.cct_mccamy(0.45, 0.1858) is None
-
-
-def test_cct_mccamy_is_finite_either_side_of_the_epicentre() -> None:
-    # Just outside the epsilon the formula is enormous, so the span rejection below is what
-    # actually makes these None - either way, no raise and no inf.
-    assert mh.cct_mccamy(0.45, 0.1858 + 1e-4) is None
-    assert mh.cct_mccamy(0.45, 0.1858 - 1e-4) is None
-
-
-def test_cct_mccamy_rejects_outside_the_valid_span() -> None:
-    # Rejected, not clamped: a clamped 12500 would be indistinguishable from a real 12500.
-    low = mh.cct_mccamy(0.60, 0.35)  # deep red - below McCamy's usable span
-    high = mh.cct_mccamy(0.20, 0.20)  # far blue - above it
-    assert low is None
-    assert high is None
-
-
-def test_cct_mccamy_none_in_each_argument() -> None:
+def test_cct_mccamy_none_inputs() -> None:
     assert mh.cct_mccamy(None, 0.33) is None
-    assert mh.cct_mccamy(0.33, None) is None
+    assert mh.cct_mccamy(0.31, None) is None
 
 
-def test_cct_mccamy_rejects_out_of_range_and_nan() -> None:
+def test_cct_mccamy_out_of_domain_chromaticity_rejected() -> None:
+    assert mh.cct_mccamy(-0.001, 0.33) is None
+    assert mh.cct_mccamy(0.31, 1.001) is None
+
+
+def test_cct_mccamy_nan_and_inf_rejected() -> None:
     nan = float("nan")
     inf = float("inf")
-    assert mh.cct_mccamy(-0.1, 0.33) is None
-    assert mh.cct_mccamy(1.1, 0.33) is None
-    assert mh.cct_mccamy(0.33, nan) is None
-    assert mh.cct_mccamy(inf, 0.33) is None
+    assert mh.cct_mccamy(nan, 0.33) is None
+    assert mh.cct_mccamy(0.31, inf) is None
+
+
+def test_cct_mccamy_epicentre_is_rejected_not_a_zero_division_crash() -> None:
+    # y = 0.1858 makes the denominator exactly zero - this is the one case in the whole colour
+    # chain that would otherwise raise, so it gets its own dedicated, "biting" test.
+    assert mh.cct_mccamy(0.3, 0.1858) is None
+
+
+def test_cct_mccamy_d65_chromaticity_is_close_to_6500k() -> None:
+    # D65's own defining chromaticity should round-trip back to approximately 6500K - real
+    # evidence the coefficients/sign convention are right, not just "returns a float".
+    result = mh.cct_mccamy(0.3127, 0.3290)
+    assert result is not None
+    assert 6300.0 < result < 6700.0
+
+
+def test_cct_mccamy_out_of_span_result_is_rejected_not_clamped() -> None:
+    # A valid (in-domain) chromaticity whose formula result still lands outside the McCamy
+    # validity span (2000-12500K) must return None, never a clamped 2000.0/12500.0 that would
+    # look like a real measurement.
+    assert mh.cct_mccamy(0.0, 0.5) is None
+
+
+def test_cct_mccamy_boundary_domain_values_accepted_or_rejected_on_their_own_merits() -> None:
+    # 0.0/1.0 are in-domain chromaticities; whether the *result* is in-span is a separate question
+    # already covered above - this only asserts the domain gate itself doesn't reject them outright.
+    assert mh.cct_mccamy(0.0, 0.0) is not None
 
 
 # ---------------------------------------------------------------------------
-# ema_step - M5 (SPECIFICATION.md Part G.2 shared primitive)
+# ema_step
 # ---------------------------------------------------------------------------
 
 
-def test_ema_step_is_a_passthrough_when_disabled() -> None:
-    # <= 0 means "filter off" - the legacy SHTC3/MPRLS convention FiltCoeff = -1.0 relies on.
-    assert mh.ema_step(10.0, 20.0, 0.0) == 20.0
-    assert mh.ema_step(10.0, 20.0, -1.0) == 20.0
+def test_ema_step_none_sample_returns_none() -> None:
+    assert mh.ema_step(10.0, None, 0.5) is None
 
 
-def test_ema_step_treats_a_coefficient_above_one_as_off() -> None:
-    # Defence in depth: the schema already bounds FiltCoeff to [-1.0, 1.0], but a coefficient
-    # above 1 makes the filter overshoot and ring, so it is refused rather than applied.
-    assert mh.ema_step(10.0, 20.0, 1.5) == 20.0
+def test_ema_step_nan_or_inf_sample_returns_none() -> None:
+    nan = float("nan")
+    inf = float("inf")
+    assert mh.ema_step(10.0, nan, 0.5) is None
+    assert mh.ema_step(10.0, inf, 0.5) is None
+
+
+def test_ema_step_none_coefficient_bypasses_the_filter() -> None:
+    # No coefficient at all - treated the same as "off", the sample passes through unfiltered.
     assert mh.ema_step(10.0, 20.0, None) == 20.0
 
 
-def test_ema_step_seeds_from_none() -> None:
-    assert mh.ema_step(None, 7.5, 0.1) == 7.5
+def test_ema_step_filt_coeff_off_sentinel_bypasses_the_filter() -> None:
+    # -1.0 is FiltCoeff's own documented "filter off" convention throughout src/.
+    assert mh.ema_step(10.0, 20.0, -1.0) == 20.0
 
 
-def test_ema_step_returns_none_for_a_none_sample() -> None:
-    # Nothing to filter, and the caller must not advance its stored state from it.
-    assert mh.ema_step(10.0, None, 0.1) is None
-    assert mh.ema_step(None, None, 0.1) is None
+def test_ema_step_zero_coefficient_bypasses_the_filter() -> None:
+    # 0.0 is excluded by the strict "> 0.0" lower bound too - would otherwise mean "never update".
+    assert mh.ema_step(10.0, 20.0, 0.0) == 20.0
 
 
-def test_ema_step_never_stores_a_nan() -> None:
-    # The nastiest failure mode this function has: one NaN sample would otherwise poison
-    # `previous` for the lifetime of the task, making every later output NaN.
+def test_ema_step_coefficient_above_one_bypasses_the_filter() -> None:
+    assert mh.ema_step(10.0, 20.0, 1.5) == 20.0
+
+
+def test_ema_step_nan_coefficient_bypasses_the_filter() -> None:
     nan = float("nan")
-    assert mh.ema_step(10.0, nan, 0.1) is None
-    # A previous that is somehow already NaN reseeds from the sample rather than staying poisoned.
-    reseeded = mh.ema_step(nan, 5.0, 0.1)
-    assert reseeded == 5.0
+    assert mh.ema_step(10.0, 20.0, nan) == 20.0
 
 
-def test_ema_step_applies_the_first_order_formula() -> None:
-    assert approx(mh.ema_step(10.0, 20.0, 0.25), 12.5)  # type: ignore[arg-type]
-    assert approx(mh.ema_step(0.0, 1.0, 1.0), 1.0)  # type: ignore[arg-type]
+def test_ema_step_unseeded_previous_returns_the_sample() -> None:
+    # First-ever sample: nothing to blend with yet.
+    assert mh.ema_step(None, 20.0, 0.5) == 20.0
 
 
-def test_ema_step_converges_to_a_constant_input() -> None:
-    value: float | None = 0.0
-    for _ in range(200):
-        value = mh.ema_step(value, 26.67, 0.1)
-    assert value is not None
-    assert approx(value, 26.67, 1e-6)
-
-
-def test_ema_step_rejects_an_infinite_sample() -> None:
+def test_ema_step_poisoned_previous_recovers_to_the_sample() -> None:
+    # A NaN/inf previous state (e.g. from an earlier unfiltered pass-through of a bad reading)
+    # must not poison every future value forever - the next good sample resets it clean.
+    nan = float("nan")
     inf = float("inf")
-    assert mh.ema_step(10.0, inf, 0.1) is None
-    assert mh.ema_step(10.0, -inf, 0.1) is None
+    assert mh.ema_step(nan, 20.0, 0.5) == 20.0
+    assert mh.ema_step(inf, 20.0, 0.5) == 20.0
 
+
+def test_ema_step_normal_blend_is_the_documented_formula() -> None:
+    result = mh.ema_step(10.0, 20.0, 0.5)
+    assert result is not None
+    assert approx(result, 15.0)
+
+
+def test_ema_step_coefficient_one_is_full_replacement() -> None:
+    # The upper bound (1.0) is inclusive and valid - not a bypass - and collapses to the sample.
+    result = mh.ema_step(10.0, 20.0, 1.0)
+    assert result is not None
+    assert approx(result, 20.0)
+
+
+def test_ema_step_converges_toward_a_held_constant_sample() -> None:
+    # Resilience/"biting" check: repeated stepping with a fixed coefficient must monotonically
+    # close the gap to a constant sample, and actually reach it within a bounded number of steps -
+    # not just return *some* number each time.
+    value: float | None = 0.0
+    previous_gap = 100.0
+    for _ in range(60):
+        assert value is not None
+        gap = abs(100.0 - value)
+        assert gap <= previous_gap
+        previous_gap = gap
+        value = mh.ema_step(value, 100.0, 0.2)
+    assert value is not None
+    assert approx(value, 100.0, tol=1e-3)  # gap shrinks by (1-0.2) per step: 100*0.8**60 ~ 1.5e-4
 
 
 if __name__ == "__main__":

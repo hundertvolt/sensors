@@ -1,10 +1,9 @@
 """REST response envelope + setter-dispatch orchestration for the Microdot layer -
 replaces the old, now-deleted improved-quality/api_helpers.py's ad hoc per-endpoint pipeline.
 """
-# Wire shape: {"res": "OK"/"ERR", "code": int, "descr": str, "result": ...}. make_response() is a
-# pure envelope/catalog primitive (no I/O, can't raise); handle_set_cmd() orchestrates one
-# SensorReaderConfig's _set_dict_cfg() plus an optional post-write hook, with its own try/except as
-# defense-in-depth on top of Microdot's blanket per-request catch (see SPECIFICATION.md Part A.5).
+# Wire shape: {"res": "OK"/"ERR", "code": int, "descr": str, "result": ...}. make_response() is a pure
+# envelope primitive (no I/O, can't raise); handle_set_cmd() drives one SensorReaderConfig's
+# _set_dict_cfg() plus an optional post-write hook (SPECIFICATION.md Parts A.5 and C.7).
 
 from micropython import const
 
@@ -29,13 +28,9 @@ if TYPE_CHECKING:
         @property
         def json(self) -> object: ...
 
-# handle_set_cmd()'s own defense-in-depth errno, always logged onto whatever caller-supplied
-# SensorReaderConfig's own self.pr this is called with (see SPECIFICATION.md Part C.7) - never a
-# small number: base_classes.py already reserves errno=1-9 on every such instance (actively used by
-# _error_check(), which every real caller's own read/monitor loop calls), and every individual
-# driver's own numbering only starts at 10+ within its own, much lower range (BMP3XX up to 21, WIFI
-# up to 18, NTP up to 20, NOTIFY up to 13). A fixed, deliberately out-of-range sentinel here is the
-# only choice that can't collide with any of them regardless of which reader this ends up logging to.
+# Logged onto whatever caller's own self.pr this runs against, so it must not collide with any
+# driver's own numbering or with base_classes.py's reserved 1-9 - hence a fixed out-of-range
+# sentinel rather than a small number (SPECIFICATION.md Part C.7.1 carries the whole map).
 _ERRNO_UNHANDLED_DISPATCH = const(99)
 
 # Standard code -> default message catalog. A caller can override any standard code's text (pass

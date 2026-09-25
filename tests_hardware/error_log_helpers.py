@@ -8,9 +8,14 @@ from typing import Any
 
 import http_client
 
+# Above the server's own 15.0s outer_cap_s, not below it: a legitimate sweep can never exceed the
+# cap, and the 10.0s this used to be made a slow-but-legitimate reset read as a network fault. The
+# headroom absorbs real WiFi latency the loopback twin has none of. Measurements: BACKLOG item 24.
+_RESET_ERRORS_TIMEOUT_S = 30.0
+
 
 def reset_all_error_logs(dut_ip: str) -> None:
-    res = http_client.fetch(dut_ip, 80, "PUT", "/status", {"ResetErrors": True}, timeout_s=10.0)
+    res = http_client.fetch(dut_ip, 80, "PUT", "/status", {"ResetErrors": True}, timeout_s=_RESET_ERRORS_TIMEOUT_S)
     assert res.status_code == 200 and res.json().get("res") == "OK", f"failed to reset error logs via PUT /status: {res.status_code} {res.body!r}"
 
 
@@ -19,6 +24,14 @@ def get_errcount(dut_ip: str) -> dict[str, Any]:
     assert res.status_code == 200, f"GET /status failed: {res.status_code} {res.body!r}"
     result: dict[str, Any] = res.json()["errcount"]
     return result
+
+
+def assert_no_task_ended(dut_ip: str, context: str) -> None:
+    """The supervisor's own record since the test's opening ResetErrors: a task that ended (errno 5/6,
+    a restart warning) or a budget reboot (errno 4) lands in SYSTEM, which FRAM keeps across a
+    hard_reset(). A routine fault is handled in place (SPECIFICATION.md C.7.2), so this stays empty."""
+    entry = get_errcount(dut_ip).get("SYSTEM", {})
+    assert entry.get("counter", 0) == 0, f"{context}: a task ended and was restarted (or the budget rebooted the board) - SYSTEM log: {entry!r}"
 
 
 def assert_module_error_log_empty(dut_ip: str, module_name: str) -> None:
@@ -36,16 +49,9 @@ def assert_module_error_log_nonempty(dut_ip: str, module_name: str) -> None:
 def assert_module_error_log_clean(
     dut_ip: str, module_name: str, allowed_warnings: tuple[int, ...] = (), allowed_errors: tuple[int, ...] = (),
 ) -> None:
-    """Nothing in the log beyond the entries explicitly named.
-
-    Stricter than assert_module_error_log_empty() where it matters (it reads the history rather
-    than a counter) and deliberately looser where an empty log is not a property the module can
-    actually offer: a module whose normal operation includes a legitimate warning cannot be held to
-    a zero counter without the test becoming a race against that warning. Same distinction
-    isl29125_mechanism_envelope.py already draws on-device ("logged real ERRORS, not just warnings").
-    `allowed_errors` exists for the one case where an ERROR is the documented outcome rather than a
-    defect - a test that deliberately provokes torn writes and then asserts the recovery worked.
-    """
+    """Nothing in the log's history beyond the entries named - unlike a zero counter, no race
+    against a module whose normal operation logs a legitimate warning. `allowed_errors` is for a
+    test whose documented outcome is an ERROR (torn writes provoked, then recovery asserted)."""
     entry = get_errcount(dut_ip).get(module_name, {})
     history = entry.get("history", [])
     unexpected = [
@@ -66,3 +72,16 @@ def assert_module_error_log_contains(dut_ip: str, module_name: str, num: int, ki
     assert entry is not None, f"{module_name!r} not present in /status errcount at all: {counts!r}"
     history = entry.get("history", [])
     assert any(h.get("num") == num and h.get("type") == kind for h in history), f"{module_name!r} error log does not contain the expected {kind}{num}: history={history!r}"
+
+
+def assert_no_module_logged_a_new_error(dut_ip: str, before: dict[str, Any], context: str) -> None:
+    """Every FRAM-backed module's counter, not one named module's. A full-ceiling burst starves the
+    heap for the whole graph, so an allocation failure it provokes can surface in SGP40, SCD30,
+    SYSTEM or any other logger - checking only WEBSERVER would miss exactly the all-sides case."""
+    after = get_errcount(dut_ip)
+    grew = {
+        name: (before.get(name, {}).get("counter", 0), entry.get("counter", 0))
+        for name, entry in after.items()
+        if entry.get("counter", 0) > before.get(name, {}).get("counter", 0)
+    }
+    assert not grew, f"{context}: these modules logged new errors during the burst (before, after): {grew!r}; full log: {after!r}"

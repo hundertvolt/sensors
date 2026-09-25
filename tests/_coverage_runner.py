@@ -1,16 +1,14 @@
-# Runs one tests/test_*.py file under sys.settrace, recording every line executed in src/ or
-# digital_twin/ (only -- everything else, including this file itself and the test file's own body,
-# is left untraced), then dumps the recorded lines as JSON. Invoked by scripts/test.sh --coverage in
-# place of running a test file directly -- under the same MicroPython Unix port binary the
-# non-coverage run uses, since build_unix_port() (see toolchain/setup_toolchain.py) always compiles
-# in MICROPY_PY_SYS_SETTRACE=1 (an inert hook check when unused, not a behavior change). Not a
-# test_*.py file itself, so scripts/test.sh's glob never picks it up directly.
+# Runs one tests/test_*.py file under sys.settrace, recording every line executed in src/ or digital_twin/
+# only - this file and the test file's own body stay untraced - then dumps the recorded lines as JSON.
+# Invoked by scripts/test.sh --coverage in place of running a test file directly.
 #
-# coverage.py itself never runs here: it's a CPython tool and can't execute under MicroPython.
-# scripts/_render_coverage.py is the CPython-side counterpart that turns the raw JSON this file
-# writes into an actual coverage.py report -- see that file and SPECIFICATION.md Part E.5 for the full
-# pipeline. scripts/test.sh renders two separate reports from this same run's combined dump (one
-# scoped to src/, one to digital_twin/) by passing --src-dir twice.
+# It runs under build-settrace, its OWN binary: the flag is not inert when unused - it allocates a
+# frame and a code object per call, so the test rig is built without it (Part E.5.2). Not a
+# test_*.py file itself, so scripts/test.sh's glob never picks it up.
+#
+# coverage.py never runs here, being a CPython tool. scripts/_render_coverage.py is the CPython-side
+# counterpart turning this raw JSON into a real report - see SPECIFICATION.md Part E.5 for the pipeline.
+# scripts/test.sh renders two reports from one dump, scoped to src/ and digital_twin/.
 import json
 import sys
 
@@ -56,7 +54,7 @@ def _run() -> int:
         # A plain dict, not a real module namespace: the MicroPython Unix port doesn't register
         # the executed script in sys.modules["__main__"] the way CPython does (see
         # tests/microtest.py), so there's nothing else to exec() against.
-        exec(code, {"__name__": "__main__", "__file__": test_file})
+        exec(code, {"__name__": "__main__", "__file__": test_file})  # noqa: S102
     except SystemExit as exc:
         # MicroPython's SystemExit has no .code attribute (unlike CPython's) -- .args is what's
         # actually populated, confirmed directly against the built interpreter.

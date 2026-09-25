@@ -1,16 +1,17 @@
 """Full-stack FRAM integration for the Neopixel promotion: proves asy_neopixel_driver.py's own
 PrintLogHistoryStore chunk and asy_notification_service.py's single combined one are genuinely independent, non-overlapping allocations off one shared AsyFramManager, and both survive a simulated reboot.
 """
-# Matches src/sensortask_wozi.py's real production topology (both pass fram=fram).
-# NotificationCoordinator's combined chunk covers its own fields + every registered
-# NotificationSignal's check-failure logging together, per its staged-registration design - not a
-# separate chunk per signal. Mirrors tests/test_fram_integration.py's established pattern: real
-# chain down to the simulated chip, not mocked at AsyFramManager's own boundary.
+# Matches the generated device modules' real production topology, both passing fram=fram.
+# NotificationCoordinator's combined chunk covers its own fields plus every registered NotificationSignal's
+# check-failure logging together, per its staged-registration design.
+#
+# Mirrors tests/test_fram_integration.py's established pattern: the real chain down to the simulated chip,
+# not mocked at AsyFramManager's own boundary.
 
 import asyncio
-import os
 
 from _fram_chip_fake import FakeMB85RS64V
+from _tmp_scratch import TmpScratch
 
 import asy_spi_driver
 from asy_fram_manager import AsyFramChunk, AsyFramManager
@@ -38,66 +39,13 @@ if TYPE_CHECKING:
 
 _FIELD_WARN_CO2 = (("WarnCO2", "int", 1600, 0, 3000, None),)
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("notify_fram_")
-
-
-def _remove_any(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        try:
-            os.rmdir(path)
-        except OSError:
-            pass
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("notify_fram")
 
 
 def _tmp_cfg_dir() -> str:
-    # NotificationCoordinator is a real SensorReaderConfig - it writes a real config_NOTIFY.cfg via
-    # cfg_path even in a FRAM-focused test, same as every other test file's own _tmp_cfg_dir()
-    # isolates that write from the repo root.
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    _next_dir += 1
-    path = _TMP_DIR + "/notify_fram_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass
-    _remove_any(path + "/config_NOTIFY.cfg")
-    return path + "/"
+    return _scratch.dir()
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
@@ -112,8 +60,11 @@ def make_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85RS64V
     return manager, chip
 
 
-async def _value_stub() -> "int | None":
-    return None
+class _FakeSource:
+    # A controllable NotificationSignal producer (SPECIFICATION.md Part C.14.2) whose configured
+    # field is always None - matches the removed _value_stub()'s own always-None return.
+    async def get_data(self) -> "_FakeSource":
+        return self
 
 
 async def _local_time_stub() -> "_LocalTime | None":
@@ -133,7 +84,7 @@ def make_notify(manager: AsyFramManager, cfg_path: str) -> NotificationCoordinat
     # layout (built once in finalize()) to decode identically across a simulated reboot, matching
     # the "number and order of registered signals stays constant" invariant this design relies on.
     coordinator = NotificationCoordinator(_request_signal_stub, _local_time_stub, cfg_path=cfg_path, fram=manager)
-    coordinator.register(NotificationSignal("WarnCO2", _value_stub, _FIELD_WARN_CO2, (1, 0, 0)))
+    coordinator.register(NotificationSignal("WarnCO2", _FakeSource(), "WarnCO2", _FIELD_WARN_CO2, (1, 0, 0)))
     coordinator.finalize()
     return coordinator
 

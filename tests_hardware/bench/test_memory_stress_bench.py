@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import http_client
 import pytest
 from error_log_helpers import get_errcount, reset_all_error_logs
+from harness import MEMORY_ERROR_MARKERS, configured_max_connections
 from soak_tiers import SOAK_TIER_SECONDS
 
 if TYPE_CHECKING:
@@ -25,7 +26,8 @@ _FRAM_BACKED_MODULES = ("SYSTEM", "SGP40", "BMP3XX", "SCD30", "ISL29125", "NEOPI
 # MemoryErrors within 45s. Not soak-tier gated - 120s needs no --soak-tier flag to run.
 _HAMMER_DURATION_S = 120.0
 _HAMMER_PATHS = ("/measurements", "/sensors")
-_HAMMER_THREAD_COUNT = 4
+_HAMMER_THREAD_COUNT = configured_max_connections()  # the build's own ceiling: the hammer must
+# saturate admission, so it scales with max_connections rather than restating what it once was
 
 
 def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> tuple[list[str], int, list[str]]:
@@ -47,10 +49,10 @@ def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> 
                         success_count += 1
                     else:
                         request_errors.append(f"GET {path} -> {res.status_code}")
-            except OSError as exc:
-                # At 5 concurrent threads against max_connections=4, ConnectionResetError is the
+            except (OSError, http_client.HTTP_ERROR) as exc:
+                # With the hammer saturating max_connections, ConnectionResetError is the
                 # server's intended reject-when-full behavior, not a fault - not asserted against
-                # below; only genuine 200s count as proof the server stayed alive (BACKLOG.md open question 7).
+                # below; only genuine 200s count as proof the server stayed alive (SPECIFICATION.md H.7).
                 with lock:
                     request_errors.append(f"GET {path} -> {exc!r}")
 
@@ -64,7 +66,7 @@ def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> 
                         success_count += 1
                     else:
                         request_errors.append(f"PUT /sensors SGPResetVOC -> {res.status_code}")
-            except OSError as exc:
+            except (OSError, http_client.HTTP_ERROR) as exc:
                 with lock:
                     request_errors.append(f"PUT /sensors SGPResetVOC -> {exc!r}")
 
@@ -82,11 +84,14 @@ def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> 
 
 
 def _assert_no_crash_or_reboot(lines: list[str]) -> None:
+    # "Traceback" catches a crash; MEMORY_ERROR_MARKERS is what catches load that allocated,
+    # failed, logged it and carried on - a pass at this bar until 2026-09-22, and the case the
+    # rule is actually named for (the board never prints the class name for a caught one).
     joined = "\n".join(lines)
     # "config is ready"/"FRAM SPI FRAM Driver Setup complete" are the genuinely one-time-per-
     # setup() completion lines, confirmed real reboot signals (see tests_hardware/README.md for
     # why a naive "CFGMGR_" substring check was a false-positive-prone predecessor to this).
-    crash_markers = [ln for ln in lines if "MemoryError" in ln or "Traceback" in ln]
+    crash_markers = [ln for ln in lines if "Traceback" in ln or any(marker in ln for marker in MEMORY_ERROR_MARKERS)]
     reboot_markers = [ln for ln in lines if "config is ready" in ln or "FRAM SPI FRAM Driver Setup complete" in ln]
     assert not crash_markers, "observed a crash/MemoryError during max-speed hammer load:\n" + "\n".join(crash_markers)
     assert not reboot_markers, "observed an unexpected mid-hammer reboot (real memory exhaustion -> WDT reset?):\n" + "\n".join(reboot_markers) + f"\nfull log:\n{joined}"
@@ -96,11 +101,9 @@ def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reb
     reset_all_error_logs(dut_ip)
     lines, success_count, request_errors = _run_max_speed_hammer_load(board, dut_ip, _HAMMER_DURATION_S)
     _assert_no_crash_or_reboot(lines)
-    # A real success requires the webserver to have actually accepted, processed, and responded to
-    # the request with valid JSON while under load - proof the server stayed alive and responsive
-    # throughout, not just that no crash marker appeared in the log (which a fully-wedged-but-
-    # not-crashed server would also satisfy). max_connections=4 rejections are expected and not
-    # counted against this - see _run_max_speed_hammer_load()'s own reject-when-full comment.
+    # A success here means the server accepted, processed and answered with valid JSON under load
+    # - which a wedged-but-not-crashed server cannot fake, unlike an absent crash marker.
+    # max_connections rejections do not count against it (_run_max_speed_hammer_load()).
     assert success_count > 100, f"too few successful requests got through during the hammer load ({success_count} ok, {len(request_errors)} rejected/errored) - server may have wedged"
     reset_all_error_logs(dut_ip)
 
@@ -148,7 +151,7 @@ def test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic(board: 
                 res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=5.0)
                 if res.status_code != 200:
                     request_errors.append(f"GET {path} -> {res.status_code}")
-            except OSError as exc:  # a real transient network hiccup during a long soak is expected sometimes
+            except (OSError, http_client.HTTP_ERROR) as exc:  # a real transient network hiccup during a long soak is expected sometimes
                 request_errors.append(f"GET {path} -> {exc!r}")
             stop.wait(0.2)  # a modest, sustained request rate - not a flood (that's item 17's job)
 
@@ -161,7 +164,7 @@ def test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic(board: 
         hammer_thread.join(timeout=10.0)
 
     joined = "\n".join(lines)
-    crash_markers = [ln for ln in lines if "MemoryError" in ln or "Traceback" in ln]
+    crash_markers = [ln for ln in lines if "Traceback" in ln or any(marker in ln for marker in MEMORY_ERROR_MARKERS)]
     # "config is ready"/"FRAM SPI FRAM Driver Setup complete" are the genuinely one-time-per-setup()
     # completion lines - "CFGMGR_" alone is NOT a reboot marker, since it's stamped on every
     # routine per-cycle config read too (see tests_hardware/README.md for the false-positive history).

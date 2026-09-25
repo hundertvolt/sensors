@@ -2,11 +2,11 @@
 real network module (confirmed directly: `import network` raises ImportError). Resolved ahead of any real module because tests/ precedes .frozen on MICROPYPATH, the same convention tests/machine.py already established for `machine`.
 """
 # Status constant values mirror the real rp2/CYW43 port's documented meanings (STAT_IDLE=0,
-# STAT_CONNECTING=1, "obtaining IP"=2 - no named constant on the real port either, matching
-# asy_wifi_service.py's own `elif status == 2:` comment - STAT_GOT_IP=3, STAT_CONNECT_FAIL=-1,
-# STAT_NO_AP_FOUND=-2, STAT_WRONG_PASSWORD=-3). This fake's own internal consistency with
-# asy_wifi_service.py's comparisons is what actually matters for a test double, not bit-for-bit
-# fidelity to a real chip.
+# STAT_CONNECTING=1, "obtaining IP"=2 with no named constant on the real port either, STAT_GOT_IP=3,
+# STAT_CONNECT_FAIL=-1, STAT_NO_AP_FOUND=-2, STAT_WRONG_PASSWORD=-3).
+#
+# What actually matters for a test double is this fake's internal consistency with asy_wifi_service.py's
+# comparisons, not bit-for-bit fidelity to a real chip.
 
 STA_IF = 0
 AP_IF = 1
@@ -24,12 +24,16 @@ _hostname_value = ["SensorNode"]
 
 def country(code: "str | None" = None) -> str:
     if code is not None:
+        if len(code.encode()) != 2:  # extmod/modnetwork.c: exactly 2 BYTES, else ValueError
+            raise ValueError
         _country_code[0] = code
     return _country_code[0]
 
 
 def hostname(name: "str | None" = None) -> str:
     if name is not None:
+        if len(name.encode()) > 32:  # MICROPY_PY_NETWORK_HOSTNAME_MAX_LEN, in bytes
+            raise ValueError
         _hostname_value[0] = name
     return _hostname_value[0]
 
@@ -66,6 +70,10 @@ class WLAN:
 
     def connect(self, ssid: "str | None" = None, password: "str | None" = None) -> None:
         self._maybe_raise("connect")
+        if password is not None and len(password.encode()) > 64:  # cyw43_ll_wifi_join()'s -CYW43_EINVAL
+            raise OSError(22, "EINVAL")
+        if ssid is not None and len(ssid.encode()) > 32:  # real driver: unchecked copy past a 32-byte field
+            raise AssertionError("SSID over 32 bytes reached connect() - overflows cyw43's last_ssid_joined on silicon")
         self.connect_calls.append((ssid, password))
 
     def disconnect(self) -> None:

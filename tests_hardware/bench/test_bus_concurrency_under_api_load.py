@@ -9,21 +9,50 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import http_client
-from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
-from harness import Board, wait_until
+import pytest
+from error_log_helpers import assert_module_error_log_empty, assert_no_task_ended, reset_all_error_logs
+from harness import Board, configured_max_connections, wait_until
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
 
 CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
 PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
+VOC_MIN, VOC_MAX = 0, 500  # same bounds as device_scripts/sgp40_voc_algorithm_quality.py
 
-# Total concurrent worker count is _GET_WORKERS + 1 (the SGP40 reset thread runs alongside the GET
-# workers) - must stay under max_connections=4 with real margin, not exactly at it, or a brief
-# overlap under real wireless timing hits a genuine (but here undesired) reject-when-full.
-_GET_WORKERS = 2
+# _GET_WORKERS + 1 concurrent clients (the SGP40 reset thread too), two slots under the build's own
+# max_connections: at it, real wireless timing overlaps into an undesired reject-when-full. Derived,
+# so a raised ceiling really means more concurrent bus-facing API load.
+_GET_WORKERS = max(2, configured_max_connections() - 3)
 _GET_ITERATIONS_PER_WORKER = 8
 _PUT_RESET_COUNT = 2
+# Ceiling refusals fetch() retried, by "METHOD path": a connection reset under a config write shares
+# their signature, so the two config-write arms print these and a gated run tells the two apart.
+_ceiling_retries: dict[str, int] = {}
+_ceiling_retries_lock = threading.Lock()
+
+
+def _report_ceiling_retries(arm: str) -> None:
+    with _ceiling_retries_lock:
+        counts = dict(_ceiling_retries)
+        _ceiling_retries.clear()
+    print(f"CEILING_RETRIES {arm}: {counts or 'none'}")
+
+
+def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any] | None = None, timeout_s: float = 15.0) -> http_client.HttpResponse:
+    """http_client.fetch(), retrying only a connection-ceiling refusal, never a transport failure. Same
+    name and positional signature on purpose: tests_scripts/test_persistence_write_marker_completeness.py
+    reads PUT bodies by AST and would silently lose a persisting write behind another shape (F15)."""
+    for attempt in range(3):
+        try:
+            return http_client.fetch(host, port, method, path, json_body, timeout_s=timeout_s)
+        except Exception as exc:
+            if attempt == 2 or not http_client.is_ceiling_close(exc):
+                raise
+            with _ceiling_retries_lock:
+                _ceiling_retries[f"{method} {path}"] = _ceiling_retries.get(f"{method} {path}", 0) + 1
+            time.sleep(0.25)
+    raise AssertionError("unreachable")
 
 
 def _schema_sanity_findings(body: dict[str, Any], context: str) -> list[str]:
@@ -40,6 +69,12 @@ def _schema_sanity_findings(body: dict[str, Any], context: str) -> list[str]:
     resolution = body.get("ISL29125", {}).get("Resolution")
     if resolution is not None and resolution not in (12, 16):
         findings.append(f"ISL29125 Resolution={resolution!r} outside valid schema range{context} - possible torn/corrupted config read")
+    # SGP40's own real DATA field, not a config field like the three above - closes a real gap
+    # (SPECIFICATION.md Part C.8): every other real occupant of dev's own i2c1 was
+    # schema-checked here, but a torn/corrupted SGP40 VOC reading under bench load went undetected.
+    voc = body.get("SGP40", {}).get("VOC")
+    if voc is not None and not (VOC_MIN <= voc <= VOC_MAX):
+        findings.append(f"SGP40 VOC={voc!r} outside valid schema range{context} - possible torn/corrupted data read")
     return findings
 
 
@@ -56,7 +91,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
     def get_sensors_worker(worker_id: int) -> None:
         for i in range(_GET_ITERATIONS_PER_WORKER):
             try:
-                res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=15.0)
+                res = fetch(dut_ip, 80, "GET", "/sensors", None, timeout_s=15.0)
             except Exception as e:
                 _record(f"worker {worker_id} iter {i}: {type(e).__name__}: {e}")
                 continue
@@ -69,7 +104,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
             try:
-                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=15.0)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=15.0)
             except Exception as e:
                 _record(f"sgp40 reset {i}: {type(e).__name__}: {e}")
                 continue
@@ -118,10 +153,9 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
 
 
 # ---------------------------------------------------------------------------
-# Compound fault: the same real bus contention above, but with real, light network degradation
-# also active - a real deployed unit experiences imperfect WiFi and concurrent client traffic
-# simultaneously, not as two separate incidents. Uses the same "everyday congestion" range as
-# test_network_resilience.py's light-congestion test, not the severe range (already proven survivable alone).
+# Compound fault: the bus contention above with light network degradation also active, since a
+# deployed unit meets imperfect WiFi and client traffic together, not as separate incidents. The
+# everyday-congestion range from test_network_resilience.py, not the severe one.
 # ---------------------------------------------------------------------------
 
 
@@ -138,7 +172,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
     def get_sensors_worker(worker_id: int) -> None:
         for i in range(_GET_ITERATIONS_PER_WORKER):
             try:
-                res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=20.0)
+                res = fetch(dut_ip, 80, "GET", "/sensors", None, timeout_s=20.0)
             except Exception:
                 continue
             if res.status_code != 200:
@@ -149,7 +183,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
             try:
-                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
             except Exception:
                 continue
             if res.status_code == 200:
@@ -181,17 +215,18 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
     )
     for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
         assert_module_error_log_empty(dut_ip, module)
+    assert_no_task_ended(dut_ip, "bus load under a network fault")
     reset_all_error_logs(dut_ip)
 
 
 # ---------------------------------------------------------------------------
-# Recombination test (project owner's request): real bus contention with a real transient NTP
-# outage (a guaranteed UDP-port block, not probabilistic degradation) running concurrently - proves
-# neither NTP's retry-timer machinery nor concurrent bus load disrupts the other, even though both
-# share the same event loop/task scheduler.
+# Recombination test (owner's request): real bus contention concurrent with a real transient NTP
+# outage - a guaranteed UDP-port block, not probabilistic degradation - so neither NTP's retry
+# timers nor the bus load disrupts the other despite sharing one event loop.
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.persistence_write
 def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
@@ -217,7 +252,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     def get_sensors_worker(worker_id: int) -> None:
         for i in range(_GET_ITERATIONS_PER_WORKER):
             try:
-                res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=20.0)
+                res = fetch(dut_ip, 80, "GET", "/sensors", None, timeout_s=20.0)
             except Exception:
                 continue
             if res.status_code != 200:
@@ -228,7 +263,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
             try:
-                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
             except Exception:
                 continue
             if res.status_code == 200:
@@ -262,14 +297,14 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     wait_until(_synced, timeout_s=20.0, poll_interval_s=1.0, description="NTP resynced via its own retry timer after a transient outage, concurrent with real bus load")
     for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
         assert_module_error_log_empty(dut_ip, module)
+    assert_no_task_ended(dut_ip, "bus load under a network fault")
     reset_all_error_logs(dut_ip)
 
 
 # ---------------------------------------------------------------------------
-# Recombination test (project owner's request): real bus contention with repeated real WiFi
-# flapping (3x ap_down()/ap_up()) running concurrently - unlike the two compound tests above, this
-# actually disconnects/reconnects the real STA link, exercising wifi_mode_lock and
-# DNS/hotspot-bookkeeping teardown, not just a degraded link or a different subsystem's retry timer.
+# Recombination test (owner's request): real bus contention with repeated WiFi flapping (3x
+# ap_down()/ap_up()). Unlike the two compound tests above this really drops and re-raises the STA
+# link, so wifi_mode_lock and the DNS/hotspot teardown are exercised, not just a degraded link.
 # ---------------------------------------------------------------------------
 
 
@@ -286,7 +321,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
     def get_sensors_worker(worker_id: int) -> None:
         for i in range(_GET_ITERATIONS_PER_WORKER):
             try:
-                res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=20.0)
+                res = fetch(dut_ip, 80, "GET", "/sensors", None, timeout_s=20.0)
             except Exception:
                 continue
             if res.status_code != 200:
@@ -297,7 +332,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
             try:
-                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
             except Exception:
                 continue
             if res.status_code == 200:
@@ -346,4 +381,183 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
     if not recovered_via_hard_reset:
         for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
             assert_module_error_log_empty(dut_ip, module)
+    assert_no_task_ended(dut_ip, "bus load + real WiFi flapping")  # on both paths - FRAM keeps SYSTEM
     reset_all_error_logs(dut_ip)
+
+
+# ---------------------------------------------------------------------------
+# Flash-tier parity, per Part C.8's standing rule: every flash-tier bus hazard gets a bench-tier
+# counterpart through the real HTTP/REST stack. This one answers test_bus_concurrency.py's
+# test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads.
+# ---------------------------------------------------------------------------
+
+_ISL29125_RESOLUTIONS = (12, 16)  # the only two real, valid settings (asy_isl29125_driver.py's own _RESOLUTIONS)
+_ISL29125_WRITE_CYCLES = 4  # modest relative to flash tier's 8 - each cycle here is a real HTTP round trip, not a bare I2C write
+
+
+@pytest.mark.persistence_write
+def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load(board: Board, dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
+    _report_ceiling_retries("before isl29125 arm")  # clears whatever an earlier test left
+    get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
+    original_resolution = get_before.json()["ISL29125"]["Resolution"]
+
+    errors: list[str] = []
+    errors_lock = threading.Lock()
+
+    def _record(msg: str) -> None:
+        with errors_lock:
+            errors.append(msg)
+
+    def get_sensors_worker(worker_id: int) -> None:
+        for i in range(_GET_ITERATIONS_PER_WORKER):
+            try:
+                res = fetch(dut_ip, 80, "GET", "/sensors", None, timeout_s=15.0)
+            except Exception as e:
+                _record(f"worker {worker_id} iter {i}: {type(e).__name__}: {e}")
+                continue
+            if res.status_code != 200:
+                _record(f"worker {worker_id} iter {i}: GET /sensors returned {res.status_code}: {res.body!r}")
+                continue
+            for finding in _schema_sanity_findings(res.json(), ""):
+                _record(f"worker {worker_id} iter {i}: {finding}")
+
+    def isl29125_write_worker() -> None:
+        # Alternates between both valid settings so HTTP and scheduling jitter land each write at
+        # a different relative timing against the readers - this tier's substitute for the mock
+        # tier's explicit sleep(0)-offset sweep (tests_hardware/README.md).
+
+        # Starting away from the board's current value matters: an equal PUT reports "Unchanged"
+        # and _set_dict_cfg() pushes only "Valid" fields live, so it would reach no hardware.
+        first = 1 if original_resolution == _ISL29125_RESOLUTIONS[0] else 0
+        for i in range(_ISL29125_WRITE_CYCLES):
+            value = _ISL29125_RESOLUTIONS[(first + i) % 2]
+            try:
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Resolution": value}}, timeout_s=15.0)
+            except Exception as e:
+                _record(f"isl29125 write {i}: {type(e).__name__}: {e}")
+                continue
+            if res.status_code != 200 or res.json().get("result", {}).get("ISL29125", {}).get("Resolution") != "Valid":
+                _record(f"isl29125 write {i}: PUT /sensors Resolution={value} rejected: {res.status_code} {res.body!r}")
+
+    threads = [threading.Thread(target=get_sensors_worker, args=(w,)) for w in range(_GET_WORKERS)]
+    threads.append(threading.Thread(target=isl29125_write_worker))
+    try:
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=120.0)
+            assert not t.is_alive(), "a worker thread never finished within 120s - possible real deadlock under concurrent load"
+        assert not errors, f"{len(errors)} issue(s) under concurrent API load: {'; '.join(errors[:10])}"
+    finally:
+        # Restore the board's original config regardless of outcome - same "shared bench rig" duty
+        # test_sensor_config_push_over_real_hardware.py's own BMP3xx push test already owes.
+        restore_res = fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Resolution": original_resolution}}, timeout_s=10.0)
+        # "Unchanged" is a success here, not a rejection: the alternation above can legitimately end
+        # on the original value, which makes this restore a no-op. Accepting only "Valid" would fail
+        # the fixture's own cleanup and mask whatever the body was actually reporting.
+        assert restore_res.status_code == 200 and restore_res.json()["result"]["ISL29125"].get("Resolution") in ("Valid", "Unchanged"), f"failed to restore original ISL29125 Resolution={original_resolution!r}: {restore_res.status_code} {restore_res.body!r}"
+        _report_ceiling_retries("isl29125 config-write arm")
+
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
+        timeout_s=30.0,
+        poll_interval_s=2.0,
+        description="webserver serving normally again after the ISL29125-write-vs-siblings load test",
+    )
+    for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "CFGMGR_ISL29125", "FRAM"):
+        assert_module_error_log_empty(dut_ip, module)
+    reset_all_error_logs(dut_ip)
+
+
+# SCD30's two write hazards have no bench-tier counterpart, and that is Part C.8's structural
+# exception 1 rather than a gap, because the driver registers no push callback at all - so no PUT
+# can reach its NVM write. The flash tier's gated scripts are their only real-hardware coverage.
+
+
+# ---------------------------------------------------------------------------
+# Real-hardware counterpart to tests_hardware/flash/test_bus_concurrency.py::
+# test_bmp3xx_same_device_read_write_concurrency, driven through the real HTTP/REST stack (flash-tier
+# bus-hazard coverage is always a subset of bench-tier coverage - SPECIFICATION.md Part C.8/E.6.6).
+# ---------------------------------------------------------------------------
+
+_BMP3XX_OVERSAMPLING_SETTINGS = (1, 2)  # cycled - both real, valid settings (asy_bmp3xx_driver.py's own _OSR_SETTINGS)
+
+
+@pytest.mark.persistence_write
+def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load(board: Board, dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
+    _report_ceiling_retries("before bmp3xx arm")
+    get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
+    original_press_overs = get_before.json()["BMP3XX"]["PressOvers"]
+
+    errors: list[str] = []
+    errors_lock = threading.Lock()
+
+    def _record(msg: str) -> None:
+        with errors_lock:
+            errors.append(msg)
+
+    def get_sensors_worker(worker_id: int) -> None:
+        for i in range(_GET_ITERATIONS_PER_WORKER):
+            try:
+                res = fetch(dut_ip, 80, "GET", "/sensors", None, timeout_s=15.0)
+            except Exception as e:
+                _record(f"worker {worker_id} iter {i}: {type(e).__name__}: {e}")
+                continue
+            if res.status_code != 200:
+                _record(f"worker {worker_id} iter {i}: GET /sensors returned {res.status_code}: {res.body!r}")
+                continue
+            for finding in _schema_sanity_findings(res.json(), ""):
+                _record(f"worker {worker_id} iter {i}: {finding}")
+
+    def bmp3xx_write_worker() -> None:
+        # The ISL29125 writer's varied-offset approach, scaled to BMP3xx's two-value setting -
+        # but against this same sensor's own concurrent reads, a same-device hazard rather than a
+        # cross-occupant one.
+
+        # Starting away from the current value matters doubly here: PressOvers' driver default IS
+        # _BMP3XX_OVERSAMPLING_SETTINGS[0], so a board at defaults would spend its first write on
+        # a no-op every run.
+        first = 1 if original_press_overs == _BMP3XX_OVERSAMPLING_SETTINGS[0] else 0
+        for i in range(_ISL29125_WRITE_CYCLES):
+            value = _BMP3XX_OVERSAMPLING_SETTINGS[(first + i) % 2]
+            try:
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": value}}, timeout_s=15.0)
+            except Exception as e:
+                _record(f"bmp3xx write {i}: {type(e).__name__}: {e}")
+                continue
+            if res.status_code != 200 or res.json().get("result", {}).get("BMP3XX", {}).get("PressOvers") != "Valid":
+                _record(f"bmp3xx write {i}: PUT /sensors PressOvers={value} rejected: {res.status_code} {res.body!r}")
+
+    threads = [threading.Thread(target=get_sensors_worker, args=(w,)) for w in range(_GET_WORKERS)]
+    threads.append(threading.Thread(target=bmp3xx_write_worker))
+    try:
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=120.0)
+            assert not t.is_alive(), "a worker thread never finished within 120s - possible real deadlock under concurrent load"
+        assert not errors, f"{len(errors)} issue(s) under concurrent API load: {'; '.join(errors[:10])}"
+    finally:
+        restore_res = fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": original_press_overs}}, timeout_s=10.0)
+        # "Unchanged" is a success here for the same reason the ISL29125 restore above accepts it.
+        assert restore_res.status_code == 200 and restore_res.json()["result"]["BMP3XX"].get("PressOvers") in ("Valid", "Unchanged"), f"failed to restore original BMP3XX PressOvers={original_press_overs!r}: {restore_res.status_code} {restore_res.body!r}"
+        _report_ceiling_retries("bmp3xx config-write arm")
+
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
+        timeout_s=30.0,
+        poll_interval_s=2.0,
+        description="webserver serving normally again after the BMP3xx same-device load test",
+    )
+    for module in ("SCD30", "BMP3XX", "CFGMGR_BMP3XX", "SGP40", "ISL29125", "FRAM"):
+        assert_module_error_log_empty(dut_ip, module)
+    reset_all_error_logs(dut_ip)
+
+
+# SGP40's general-call hazard has no bench-tier counterpart either, and that is Part C.8's
+# structural exception 2: the broadcast fires only from _reset() at setup. SGPResetVOC, which the
+# workers above use and which looks like a trigger, reaches a software-only reset instead.

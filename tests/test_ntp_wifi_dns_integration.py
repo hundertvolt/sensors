@@ -1,19 +1,20 @@
 """Integration tests across the real three-file chain: AsyConnTime -> AsyNtpClient -> asy_dns_client.py's resolve_ipv4(). Every other test file replaces peers with a lambda/recorder; this file wires real instances (matching sensortask-wozi.py) to prove the *linked* behavior - calling order, error handling, value propagation - a lambda-based unit test can't observe.
 Found and fixed a real bug this way: AsyNtpClient used to call get_dns_server_ip() after acquiring the shared wifi_mode_lock, so its own locked() gate always saw True and always returned None. Fixed via _safe_get_dns_server(), called before acquiring the lock."""
-# No real port-53/port-123-privileged end-to-end test is attempted (needs root, not CI-portable).
-# Tests needing a real UDP round trip use a literal-IP NTP_Host (sidesteps DNS/port 53 entirely) or
-# malformed DNS-server entries (skipped instantly by resolve_ipv4()'s own guard, no network wait
-# needed). Real UDP behavior of resolve_ipv4()/AsyUDPSocket is already covered by
-# tests/test_asy_dns_client.py and tests/test_asy_ntp_client.py.
+# No real port-53 or port-123 end-to-end test is attempted, both needing root and neither being CI-portable.
+# Tests needing a real UDP round trip use a literal-IP NTP_Host, sidestepping DNS entirely, or malformed
+# DNS-server entries, skipped instantly by resolve_ipv4()'s own guard with no network wait.
+#
+# Real UDP behavior of resolve_ipv4() and AsyUDPSocket is already covered by tests/test_asy_dns_client.py
+# and tests/test_asy_ntp_client.py.
 
 import asyncio
-import os
 import select
 import socket
 import struct
 import time
 
 import network
+from _tmp_scratch import TmpScratch
 
 import asy_ntp_client as ntpmod
 from asy_ntp_client import AsyNtpClient
@@ -38,75 +39,19 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 def _wlan(conn: AsyConnTime) -> "Any":  # Any is the point here, not an omission - see below
-    # _wlan(conn) is typed against the real network.WLAN stub (see pyproject.toml's own
-    # tests/network.py exclude comment); at runtime MICROPYPATH ordering constructs
-    # tests/network.py's fake instead, which exposes test-only attributes (raise_on, _status,
-    # _ifconfig, _connected, ...) the real stub has no reason to declare. Narrows to Any once,
-    # here, matching test_asy_wifi_service.py's own identical helper.
+    # _wlan(conn) is typed against the real network.WLAN stub (pyproject.toml's tests/network.py exclude),
+    # but at runtime MICROPYPATH constructs tests/network.py's fake, exposing test-only attributes the real
+    # stub has no reason to declare. Narrows to Any once here, matching test_asy_wifi_service.py's helper.
     return conn.wlan
 
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("integ_")
-
-
-def _remove_any(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        try:
-            os.rmdir(path)
-        except OSError:
-            pass  # already gone, or genuinely not removable - not this helper's problem
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("integ")
 
 
 def _tmp_cfg_dir() -> str:
-    # One fresh directory per call, shared by both services below - AsyConnTime names its own
-    # file "config_WIFI.cfg" and AsyNtpClient names its own "config_NTP.cfg" (both from
-    # base_classes.py's SensorReaderConfig), so the two never collide even sharing one directory.
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    _next_dir += 1
-    path = _TMP_DIR + "/integ_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass  # already exists from a stale previous run
-    _remove_any(path + "/config_WIFI.cfg")
-    _remove_any(path + "/config_NTP.cfg")
-    return path + "/"
+    return _scratch.dir()
 
 
 def make_conn(cfg_path: "str | None" = None) -> AsyConnTime:
@@ -122,7 +67,6 @@ def make_ntp(
     ntp_host: str,
     cfg_path: "str | None" = None,
     ntp_fetch_timeout_ms: "int | None" = None,  # None = AsyNtpClient's own real default
-    max_module_error: int = 5,  # AsyNtpClient's own real default
 ) -> AsyNtpClient:
     # Exactly sensortask-wozi.py's own wiring: conn.get_wifi_mode_lock()/network_available/
     # get_dns_server_ip passed straight through as ntp's own constructor arguments - the real
@@ -133,7 +77,7 @@ def make_ntp(
         # One single f-string, not a plain-string-literal-adjacent-to-an-f-string concatenation -
         # same MicroPython gotcha test_asy_ntp_client.py's own _client_with_offsets() documents.
         f.write(f'{{"NTP_Host": "{ntp_host}", "NTP_Offset_S": 0, "NTP_Interv_H": 12, "GMTOffset": 0, "DSTOffset": 0}}')
-    kwargs: dict[str, Any] = {"cfg_path": cfg_path, "max_module_error": max_module_error}
+    kwargs: dict[str, Any] = {"cfg_path": cfg_path}
     if ntp_fetch_timeout_ms is not None:
         kwargs["ntp_fetch_timeout_ms"] = ntp_fetch_timeout_ms
     ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, **kwargs)
@@ -142,11 +86,9 @@ def make_ntp(
 
 
 def connect_wlan(conn: AsyConnTime, dns_server: str = "192.0.2.53") -> None:
-    # Puts the real fake network.WLAN into a normal, connected STA state - the same shape
-    # network_available()/get_dns_server_ip() expect in production (see asy_wifi_service.py's own
-    # _conn_phase/_wlan_status_or_none()). Bypasses the real wlan_connect() state machine (out of
-    # scope here - test_asy_wifi_service.py already covers that machine in isolation) to focus
-    # purely on the two accessor methods this file's integration actually depends on.
+    # Puts the fake network.WLAN into a normal, connected STA state - the shape
+    # network_available()/get_dns_server_ip() expect in production. Bypasses the real wlan_connect() state
+    # machine, out of scope here, to focus on the two accessor methods this file's integration depends on.
     _wlan(conn)._connected = True
     _wlan(conn)._status = network.STAT_GOT_IP
     _wlan(conn)._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", dns_server)
@@ -169,8 +111,7 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
 
 def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "int | str | None":
     # Same helper as tests/test_asy_ntp_client.py's own _last_err() - duplicated, not imported,
-    # matching this file's existing convention of small per-file test helpers (e.g.
-    # _sweep_stale_tmp_dirs above).
+    # matching this file's existing convention of small per-file test helpers.
     value = counter["NTP"][field]  # ErrNum/ErrType are list-shaped once _error_check() has run once
     assert isinstance(value, list)
     return value[-1] if value else None
@@ -215,11 +156,9 @@ def test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv
 
 
 def test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi_service() -> None:
-    # A fresh device that has never gotten a DHCP lease: WLAN.ifconfig()'s real documented default
-    # is all "0.0.0.0" fields (see asy_wifi_service.py's own fake network.WLAN default) - proves
-    # this real value (not filtered by get_dns_server_ip() itself) reaches resolve_ipv4() as-is;
-    # resolve_ipv4()'s own "0.0.0.0" skip is already covered at that file's own unit level
-    # (tests/test_asy_dns_client.py), this just proves the value actually gets there unmodified.
+    # A fresh device that has never gotten a DHCP lease: WLAN.ifconfig()'s documented default is all
+    # "0.0.0.0" fields, and this proves that value, not filtered by get_dns_server_ip() itself, reaches
+    # resolve_ipv4() as-is. resolve_ipv4()'s own "0.0.0.0" skip is covered at its own unit level.
     conn = make_conn()
     connect_wlan(conn, dns_server="0.0.0.0")
     ntp = make_ntp(conn, "pool.ntp.org")
@@ -240,13 +179,13 @@ def test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi
 
 
 def test_get_dns_server_ip_real_wlan_exception_is_treated_as_none_not_propagated() -> None:
-    # conn.get_wlan_ifconfig() degrades a real wlan.ifconfig() exception to None - an
-    # observation-tier query, so it degrades via self.pr.err() (debug-level only, never persisted
-    # to get_error_counter(); see asy_wifi_service.py's own module docstring and
-    # test_get_dns_server_ip_returns_none_on_exception in test_asy_wifi_service.py) rather than
-    # raising or logging a real error. Proves that degradation, driven through the real object,
-    # still reaches _safe_get_dns_server() as a clean None rather than an exception - resolution
-    # proceeds with no server hint instead of the WLAN fault surfacing as a crash.
+    # conn.get_wlan_ifconfig() degrades a real wlan.ifconfig() exception to None - an observation-tier
+    # query, so it degrades via self.pr.err(), debug-level only and never persisted, rather than raising or
+    # logging a real error.
+    #
+    # This proves that degradation, driven through the real object, still reaches _safe_get_dns_server() as
+    # a clean None, so resolution proceeds with no server hint instead of the WLAN fault surfacing as a
+    # crash.
     conn = make_conn()
     connect_wlan(conn)
     _wlan(conn).raise_on["ifconfig"] = OSError("simulated WLAN hardware fault")
@@ -301,7 +240,9 @@ def test_ntp_sync_holding_the_lock_blocks_a_concurrent_real_wifi_mode_switch() -
 # resolver - the closest thing to production wiring this test suite can reach without root.
 # ---------------------------------------------------------------------------
 
-_next_port = 55000
+# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
+# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
+_next_port = 25000
 
 
 def make_addr() -> "tuple[str, int]":
@@ -421,52 +362,49 @@ def test_full_chain_reaches_synced_state_via_a_real_wifi_service_and_a_literal_i
 
 
 def test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_server_never_answers() -> None:
-    # The real-hardware finding this proves at the mock/unit level (BACKLOG.md open question 6,
-    # closed 2026-09-04 "investigated, no src/ change"): the CYW43 firmware/lwIP stack can report
-    # a real link as fully connected (wlan.isconnected()==True, STAT_GOT_IP) while it's actually
-    # dead - a real arping probe got zero responses from a DUT that `iw station dump` showed
-    # continuously "associated: yes" for. `connect_wlan(conn)` below puts the *real* AsyConnTime's
-    # WLAN into exactly that "looks connected" state, so `conn.network_available()` - driven
-    # through the real object, not a lambda stand-in - genuinely reports True the whole time. The
-    # FakeNtpServer is bound and reachable (a real socket, a real port) but its own serve_once()
-    # is deliberately never called, so a real send genuinely goes unanswered - the same observable
-    # shape a truly dead-but-reported-alive link produces (nothing ever comes back), reached here
-    # via "nobody's listening" rather than "the packet vanishes on a dead radio link" - the
-    # distinction doesn't matter to this code, which only ever sees "sent, then nothing back
-    # within the timeout" either way.
+    # The real-hardware finding this proves at the mock tier (BACKLOG.md open question 6, closed
+    # 2026-09-04): the CYW43 firmware and lwIP stack can report a link as fully connected while it is dead -
+    # a real arping probe got zero responses from a DUT `iw station dump` called associated.
+    #
+    # connect_wlan(conn) below puts the real AsyConnTime's WLAN into exactly that "looks connected" state,
+    # so conn.network_available(), driven through the real object rather than a lambda stand-in, genuinely
+    # reports True throughout.
+    #
+    # The FakeNtpServer is bound and reachable, a real socket on a real port, but its serve_once() is never
+    # called, so a real send genuinely goes unanswered - the same observable shape a dead-but-reported-alive
+    # link produces. The code only ever sees "sent, then nothing back within the timeout" either way.
     conn = make_conn()
     connect_wlan(conn)
     server = FakeNtpServer()
-    ntp = make_ntp(conn, "127.0.0.1", ntp_fetch_timeout_ms=100, max_module_error=2)
+    ntp = make_ntp(conn, "127.0.0.1", ntp_fetch_timeout_ms=100)
 
-    async def scenario() -> "tuple[bool, int | str | None, int | str | None]":
+    async def scenario() -> "tuple[bool, bool, int, int, ErrorLog]":
         try:
             with server.redirect_resolution():
                 task = asyncio.create_task(ntp.asy_ntp_time())
-                # One trigger per would-be failure cycle - max_module_error=2 gives up on the 3rd,
-                # each cycle bounded by the 100ms fetch timeout above, so this stays fast.
-                for _ in range(3):
+                # Far past the old five-failure give-up, each cycle bounded by the 100ms fetch timeout.
+                for _ in range(8):
                     ntp.ntp_sync_trigger_event.set()
                     await asyncio.sleep_ms(150)
-                await asyncio.wait_for(task, 2.0)  # must actually complete, not hang forever
-                synced = await ntp.ntp_issynced()
-                counter = await ntp.get_error_counter()
-                last_num = _last_err(counter, "ErrNum")
-                last_type = _last_err(counter, "ErrType")
-                return synced, last_num, last_type
+                still_running = not task.done()
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                return still_running, await ntp.ntp_issynced(), ntp._retry_wait_s, ntp.retry_max_s, await ntp.get_error_counter()
         finally:
             server.close()
 
-    synced, last_num, last_type = run(scenario())
-    # Never synced (a real send with nobody answering back can't produce a real time), but the
-    # task itself completes cleanly (asyncio.wait_for above didn't time out) and gives up through
-    # the same real errno=20 path the isolated-mock version of this scenario already proves in
-    # tests/test_asy_ntp_client.py::test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_20
-    # - this test's own value is proving the same property through the *real* network_available()
-    # chain (a WLAN fake genuinely reporting connected), not a directly-monkeypatched attempt.
+    still_running, synced, wait_s, max_s, counter = run(scenario())
+    # Never synced, but the task handles it itself (Part C.7.2): still running, backed off to its cap,
+    # and the silent timeout persisted as errno 21 - once for the whole run (C.7.1's repeat rule) while
+    # still counted every time. The value over the unit test is the real network_available() chain.
+    assert still_running is True
     assert synced is False
-    assert last_num == 20
-    assert last_type == "E"
+    assert wait_s == max_s
+    assert counter["NTP"]["ErrCount"] == 8
+    assert counter["NTP"]["ErrNum"] == [0] * 9 + [21]
 
 
 def test_full_chain_stays_unsynced_when_the_real_wifi_service_reports_network_unavailable() -> None:
@@ -487,10 +425,9 @@ def test_full_chain_stays_unsynced_when_the_real_wifi_service_reports_network_un
 
 
 def test_dns_resolution_totally_unreachable_through_the_real_chain_persists_errno_12() -> None:
-    # Every candidate server is malformed/unset ("0.0.0.0" from conn's own real ifconfig plus a
-    # monkeypatched malformed fallback list) - resolve_ipv4()'s own _is_ipv4_literal() guard skips
-    # each one instantly (no network wait needed), reaching its own "no valid server anywhere"
-    # None return through the real three-file chain rather than a synthetic _RecordingResolver.
+    # Every candidate server is malformed or unset - "0.0.0.0" from conn's real ifconfig plus a
+    # monkeypatched fallback list - so resolve_ipv4()'s _is_ipv4_literal() guard skips each instantly,
+    # reaching its "no valid server anywhere" return through the real chain, not a synthetic resolver.
     import asy_dns_client
 
     conn = make_conn()
@@ -511,13 +448,10 @@ def test_dns_resolution_totally_unreachable_through_the_real_chain_persists_errn
         asy_dns_client._FALLBACK_DNS_SERVERS = original_fallback
     assert run(ntp.ntp_issynced()) is False
     counter = run(ntp.get_error_counter())
-    # index -1, not -2, is base_classes.py's own _error_check() streak-counter log (errno=1, "Error
-    # counter increased to") - it always logs once more right after a failed attempt, on top of this
-    # file's own errno=12 "No valid NTP server" - see that method's own comment in base_classes.py.
     err_num, err_type = counter["NTP"]["ErrNum"], counter["NTP"]["ErrType"]
     assert isinstance(err_num, list) and isinstance(err_type, list)
-    assert err_num[-2] == 12
-    assert err_type[-2] == "E"
+    assert err_num[-1] == 12  # the last entry now: no streak counter logs after it any more
+    assert err_type[-1] == "E"
 
 
 if __name__ == "__main__":

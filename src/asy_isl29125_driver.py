@@ -87,8 +87,8 @@ _FULL_SCALE_COUNTS = const(65535)  # p3: "Full Scale ADC Code, ADC 16 bits"
 _CYCLE_MS_16BIT = const(303)  # 3 x tINT, tINT = 101ms typ at 16 bits (p3)
 _CYCLE_MS_12BIT = const(19)  # 3 x ~6.3ms: p6 makes tINT an n-bit counter on one oscillator, 101 x 2**-4
 
-# Device/maths constants, deliberately NOT config fields - requirement 1 (C.11.5) governs
-# preferences, and none of these is one (C.11.2's own classification note).
+# Device/maths constants, deliberately NOT config fields - requirement 1 (SPECIFICATION.md Part
+# M.1.1) governs preferences, and none of these is one (M.1.3's own classification note).
 _DARK_COUNTS = const(1)  # DDark typ 1 / max 5 counts at range 0 (p3, Electrical Specifications)
 _CCT_FLOOR_COUNTS = const(64)  # ~13x the worst-case dark count: below it a 5-count additive error
 # moves a channel ratio by more than ~8%, and chromaticity noise grows far faster than hue noise.
@@ -96,7 +96,7 @@ _GAIN_RATIO_NOMINAL = const(26.666666666666668)  # 10000/375 - the ratio a fresh
 _GAIN_RATIO_MIN = const(20.0)  # a plausibility gate around nominal, applied where an untrusted
 _GAIN_RATIO_MAX = const(34.0)  # value enters (on load and on learn), never in the hot path
 # Calibration is a bounded, user-started run, never a background schedule: the driver only ever
-# READS GainRatio, so nothing it does can write the flash (SPECIFICATION.md Part C.11.3).
+# READS GainRatio, so nothing it does can write the flash (SPECIFICATION.md Part M.1.5).
 _CAL_WINDOW_MS = const(120000)  # hard stop on a run that never converges - ~100 attempts at 16 bit
 _CAL_HOLD_MS = const(600000)  # how long a finished run's candidate stays readable before it clears
 _CAL_CONVERGE_N = const(3)  # consecutive stable ratios that must agree before the run stops early
@@ -145,16 +145,53 @@ _N_FLOAT_CFG = const(4)  # AutoRangeThresh + AutoRangeDwell + FiltCoeff + GainRa
 _N_BOOL_CFG = const(1)  # RangeAuto ALONE - ISLCalibrate is command-only (see _VAL_CALIB above)
 _N_STORE_CFG = const(1)  # FiltCoeff ALONE - the only config value the store path reads per sample
 
+# @web-group section=sensors submitGroup=self label="ISL29125 — Light, Colour" submit=true
+# @web SampleInterv section=sensors submitGroup=self label="Measurement Interval" unit="s"
+# @web Resolution section=sensors submitGroup=self label="ADC Resolution" description="16 bit integrates for 101 ms, an exact multiple of both the 50 Hz and 60 Hz mains period, so it rejects lighting flicker. 12 bit is ~16x faster and rejects none." special:12="12 bit (fast)" special:16="16 bit (flicker-rejecting)"
+# @web RangeAuto section=sensors submitGroup=self label="Automatic Range" onLabel="Auto" offLabel="Fixed" description="Switches gain between the two ranges on its own, using the chip's threshold interrupt as the fast path and every periodic read as the guaranteed one."
+# @web Range section=sensors submitGroup=self label="Fixed Range" unit="lx" description="Used only while Automatic Range is off." special:375="375 lx" special:10000="10000 lx"
+# @web AutoRangeThresh section=sensors submitGroup=self label="Switch Threshold" unit="%" description="Percent of the low range's full scale above which the driver switches up. The switch-back-down point is derived from this - 1/53.3 of it - so both ends of the hysteresis always move together and can never be set against each other."
+# @web AutoRangeDwell section=sensors submitGroup=self label="Switch-Down Dwell" unit="s" description="Minimum time on the high range before a switch back down is honoured, so a passing shadow does not cost a range change." special:0.0="No dwell - hardware persistence alone"
+# @web IrCompOffset section=sensors submitGroup=self label="IR Compensation Offset" description="Adds 106 codes on top of IR Compensation Adjust. Changing IR compensation shifts the lux scale." special:0="Off (0-63 codes)" special:1="On (106-169 codes)"
+# @web IrCompAdjust section=sensors submitGroup=self label="IR Compensation Adjust" unit="codes" description="Fine infrared rejection. Changing it shifts the lux scale: the reported full scale is nominal at one setting only."
+# @web FiltCoeff section=sensors submitGroup=self label="Output Filter" description="First-order exponential moving average over the measured channels, stepped once per read cycle." special:-1.0="Filter off"
+# @web GainRatio section=sensors submitGroup=self label="Range Gain Ratio" decimals=3 description="The applied ratio between the 375 lx and 10000 lx full scales. Nominally 26.667; every real part differs, and the error shows as a step at each range change. Changed only here - measure a candidate with Calibrate below, read it off Measured Gain Ratio, and enter it."
+# @web ISLCalibrate section=sensors submitGroup=self label="Calibrate Gain Ratio" onLabel="On" offLabel="Off" description="Only 'On' has effect. Measures the ratio for up to two minutes while the light stays in the auto-range overlap band, and publishes the result as Measured Gain Ratio. Changes nothing on its own." dispatch=true defaultValue=false
+
 _NAME = const("ISL29125")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
 # infer field names from a literal at the call site, not through a variable indirection.
-ISL29125 = namedtuple("ISL29125", ("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "GainMeas", "TS"))
-_FIELDS = const(("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "GainMeas", "TS"))  # kept in sync with ISL29125's own fields above
+ISL29125 = namedtuple("ISL29125", ("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "Overrange", "GainMeas", "TS"))
+_FIELDS = const(("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "Overrange", "GainMeas", "TS"))  # kept in sync with ISL29125's own fields above
 if TYPE_CHECKING:
     # Narrow on purpose: _error_check() counts a failed read when ANY element is None, and CCT is
     # legitimately None in a dark room. Elements 4 and 5 travel WITH the sample - the range the lux
     # conversion divides by, the span the normalised outputs do - never read back at store time.
     ISLResults = tuple[int | None, int | None, int | None, int | None, int | None, int | None]
+
+# @web-group section=measurements submitGroup=self label="ISL29125 — Light, Colour"
+# @web Lux section=measurements submitGroup=self kind=readonly label="Illuminance" unit="lx" decimals=2
+# @web R section=measurements submitGroup=self kind=readonly label="Red" path="RGB.R" decimals=4 description="Sensor red, normalised over the whole auto-range span (10000 lx). Relative colour, not a colorimetric measurement."
+# @web G section=measurements submitGroup=self kind=readonly label="Green" path="RGB.G" decimals=4
+# @web B section=measurements submitGroup=self kind=readonly label="Blue" path="RGB.B" decimals=4
+# @web H section=measurements submitGroup=self kind=readonly label="Hue" unit="°" path="HSB.H" decimals=1
+# @web S section=measurements submitGroup=self kind=readonly label="Saturation" path="HSB.S" decimals=3
+# @web Bri section=measurements submitGroup=self kind=readonly label="Brightness" path="HSB.B" decimals=4 description="Same scale and denominator as RGB, so a dim room reads near 0.003. Read Illuminance when magnitude matters."
+# @web CCT section=measurements submitGroup=self kind=readonly label="Colour Temperature" unit="K" decimals=0 description="Relative and uncalibrated - a documented placeholder RGB->XYZ matrix, so repeatable and monotonic rather than a colorimeter reading. Blank below the low-light floor."
+# @web RangeAct section=measurements submitGroup=self kind=readonly label="Active Range" unit="lx" decimals=0 description="The full-scale range this sample was taken on, which under automatic ranging is not always the one currently programmed."
+# @web Overrange section=measurements submitGroup=self kind=readonly label="Overrange" description="True whenever the current reading is saturated with nothing left to mitigate it: on Fixed range, the configured range itself; under Automatic Range, only once already on the highest range with nowhere further to switch. Not an error - a transient, harmless, always-current status."
+# @web GainMeas section=measurements submitGroup=self kind=readonly label="Measured Gain Ratio" decimals=3 description="A candidate measured by the last calibration run, held for ten minutes and then cleared. Blank unless a run produced one. Nothing applies it - copy it into Range Gain Ratio if you want it used."
+# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s" decimals=0
+
+# This driver's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
+# FRAM backup target, resolved by buildgen/ (SPECIFICATION.md Part L.4) to an
+# already-constructed instance, passed directly as this driver's own fram= kwarg.
+# @wiring fram_target AsyFramManager fram optional kwarg
+
+# Driver-declared value domains (SPECIFICATION.md Part L.6.4), read by buildgen/limits.py from the
+# tags below - bounds kept in sync with _MIN/_MAX_TRIGGER_SECS by hand, since a comment cannot
+# reference a name. 0x44 is hard-wired (p15), so this driver has no TOML `address` field at all.
+# @limits trigger_sec 1..3600
 
 
 class ISL29125_Reader(SensorReaderConfig):
@@ -162,30 +199,34 @@ class ISL29125_Reader(SensorReaderConfig):
         self,
         i2c: "I2C",
         irq_pin: int,
+        *,
         address: int = 0x44,
         trigger_sec: int = 1,
         max_module_error: int = 5,
+        name_ext: str = "",
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
+        irq_pull_up: bool = True,
         debug: int | None = None,
     ) -> None:
         super().__init__(
-            ISL29125(None, None, None, None, None, None, None, None, None, None, None),
+            ISL29125(None, None, None, None, None, None, None, None, None, None, None, None),
             max_module_error,
             _NAME,
             _VAL_SI + _VAL_RES + _VAL_RA + _VAL_RNG + _VAL_AR_THRESH + _VAL_AR_DWELL
             + _VAL_ICO + _VAL_ICA + _VAL_FC + _VAL_GR + _VAL_CALIB,
+            name_ext=name_ext,
             cfg_path=cfg_path,
             fram=fram,
             history_length=history_length,
             debug=debug,
         )
         self.isl = ISL29125_I2C(i2c, address=address)
-        # PULL_UP, unlike SCD30's bare Pin.IN: this INT is open-drain pull-down (p6), so the high
-        # level has to come from a resistor. The dev board has an external 10k, and enabling the
-        # internal one too is harmless there and is what makes the driver work on a board without.
-        self.irq_pin = Pin(irq_pin, mode=Pin.IN, pull=Pin.PULL_UP)
+        # This INT is open-drain (p6), so the high level needs a resistor somewhere - unlike SCD30's
+        # push-pull RDY. irq_pull_up=True enables the internal one; a board with its own external
+        # resistor passes False and gets a bare Pin.IN, so the two are never stacked.
+        self.irq_pin = Pin(irq_pin, mode=Pin.IN, pull=Pin.PULL_UP) if irq_pull_up else Pin(irq_pin, mode=Pin.IN)
         # Two flags, two tasks, matching SCD30's shape. read_event has TWO setters - the divider
         # and the pin IRQ - making the interrupt the fast path and the timer the guaranteed one: a
         # set with no waiter is remembered, so an INT mid-cycle coalesces into one extra cycle.
@@ -206,12 +247,16 @@ class ISL29125_Reader(SensorReaderConfig):
         self._last_switch_ms = time.ticks_ms()
         self._brownout_seen = False
         self._periodic_only_switches = 0
+        # The Overrange output field for the most recent stored sample, set once per read cycle in
+        # _read_isl() and read back by _store_isl(). It used to be wrnno=12; a harmless, transient,
+        # always-current status belongs in the measurement output, not the error log (C.7.1).
+        self._last_overrange = False
         # The protocol layer's failed-write count as of the last reconciliation - see
         # _verify_after_failed_write(). Starts level with it, so a clean boot reconciles nothing.
         self._reconciled_write_failures = 0
-        # Set by the pin handler, consumed once per read cycle. RGBTHF alone cannot stand in for
-        # it: the flag is raised by the CHIP, so it is set just the same when the line itself is
-        # dead - which is precisely the missing pull-up / broken jumper requirement 17 names.
+        # Set by the pin handler, consumed once per read cycle. RGBTHF cannot stand in for it: the
+        # CHIP raises that flag, so it is set just the same when the line itself is dead - the
+        # missing-pull-up case requirement 17 names (SPECIFICATION.md Part M.1.1).
         self._irq_fired = False
         self._gain_ratio = _GAIN_RATIO_NOMINAL  # the APPLIED factor, replaced only by a config push
         # Calibration-run state, all RAM-only: a run is user-started, bounded, and publishes a
@@ -339,7 +384,8 @@ class ISL29125_Reader(SensorReaderConfig):
             # first await that can yield. p13: a later push cannot change what is read, only this.
             sample_range = self._active_range
             sample_resolution = self.isl.resolution()
-            sample_span = _RANGE_HIGH_LUX if self._range_auto else self._fixed_range
+            sample_range_auto = self._range_auto
+            sample_span = _RANGE_HIGH_LUX if sample_range_auto else self._fixed_range
             try:
                 status = await self.isl.read_status()
             except Exception as e:  # distinguishable from a data-read failure, and not re-raised
@@ -368,8 +414,14 @@ class ISL29125_Reader(SensorReaderConfig):
                 await self._note_decision_source(threshold_fired=threshold_fired and irq_fired)
                 self.pr.evt("range switch", sample_range, "->", target, "peak", max(counts))
                 await self._switch_range(target)
-            elif saturated and sample_range == _RANGE_HIGH_LUX:
-                await self.pr.wrn_s("Saturated on the high range - the scene exceeds the part.", wrnno=12)
+            # Overrange is true only when nothing left could mitigate the saturation: the configured
+            # range under Fixed, or Automatic already on its highest. A saturated LOW-range sample
+            # under Automatic is excluded - target is non-None above, so a switch is in progress.
+
+            # Judged against sample_range_auto, the mode captured BEFORE the switch-range await, like
+            # sample_range/sample_span: a concurrent set_range_auto() landing mid-switch must not
+            # retroactively change which mode this already-taken sample is judged against.
+            self._last_overrange = saturated and (not sample_range_auto or sample_range == _RANGE_HIGH_LUX)
             await self._measure_gain_ratio(counts[0])
             self.pr.all("read")
             green, red, blue = counts
@@ -483,6 +535,7 @@ class ISL29125_Reader(SensorReaderConfig):
                 Bri=bri,
                 CCT=self._colour_temperature(green, norm),
                 RangeAct=sample_range,
+                Overrange=self._last_overrange,
                 GainMeas=self._measured_ratio(),  # None unless a recent run produced a candidate
                 TS=timestamp,
             ),
@@ -574,7 +627,7 @@ class ISL29125_Reader(SensorReaderConfig):
     async def _measure_gain_ratio(self, green_counts: int) -> None:
         # Only runs inside a user-started window. A SANDWICH - this range, the other, then this one
         # again - because the dominant error is the scene moving between the two readings, which a
-        # pair alone cannot tell from a real ratio. Publishes a candidate, never adopts it (C.11.3).
+        # pair alone cannot tell from a real ratio. Publishes a candidate, never adopts it (M.1.5).
         if not self._calibrating:
             return
         if time.ticks_diff(time.ticks_ms(), self._cal_until_ms) >= 0:
@@ -621,7 +674,7 @@ class ISL29125_Reader(SensorReaderConfig):
             await self._settle_wait()
             raw = await self.isl.read_counts()
         except Exception as e:
-            await self.pr.err_s("Paired gain-ratio reading failed:", e, errno=11)
+            await self.pr.err_s("Paired gain-ratio reading failed:", e, errno=35)
             return None
         counts, saturated = self.isl.normalise(raw, range_fs=self._active_range)
         if saturated:
@@ -830,12 +883,13 @@ class ISL29125_Reader(SensorReaderConfig):
         # because _asdict()/_fields need a ROM level above rp2's own.
         data = await self.get_data()
         return {
-            _NAME: {
+            self.name: {
                 "Lux": data.Lux,
                 "RGB": {"R": data.Red, "G": data.Green, "B": data.Blue},
                 "HSB": {"H": data.Hue, "S": data.Sat, "B": data.Bri},
                 "CCT": data.CCT,
                 "RangeAct": data.RangeAct,
+                "Overrange": data.Overrange,
                 "GainMeas": data.GainMeas,
                 "TS": data.TS,
             },
@@ -845,7 +899,7 @@ class ISL29125_Reader(SensorReaderConfig):
         # ISLCalibrate is deliberately absent from this schema argument: ConfigManager.get_dict()
         # is all-or-nothing and would KeyError on a key it never persisted.
         return await self._get_dict_cfg(
-            _NAME,
+            self.name,
             _VAL_SI + _VAL_RES + _VAL_RA + _VAL_RNG + _VAL_AR_THRESH + _VAL_AR_DWELL
             + _VAL_ICO + _VAL_ICA + _VAL_FC + _VAL_GR,
             callback=self._read_sensor_dict,
@@ -1071,13 +1125,15 @@ class ISL29125_I2C:
             raise OSError(f"failed to read register {register:#x}")
         return value
 
-    async def _write_shadow(self, first_register: int) -> None:
+    async def _write_shadow_locked(self, i2c: I2CDevice, first_register: int) -> None:
+        # The caller already holds both the device-session and bus locks, so this takes none of its
+        # own on purpose: acquiring the session lock again here is exactly the gap that let a
+        # concurrent reader observe a mutated shadow against an unwritten chip.
         payload = self.encode_shadow()[first_register - _REGISTER_CONFIG1 :]
-        async with self.i2c_isl29125 as isl, isl.i2c_device as i2c:
-            # set_register_struct() takes one value but accepts bytes, so an "Ns" format is how a
-            # burst write goes through the promoted bus layer. The payload is already bytes of the
-            # exact length because struct.pack() truncates silently on MicroPython.
-            await i2c.set_register_struct(first_register, f"{len(payload)}s", payload)
+        # set_register_struct() takes one value but accepts bytes, so an "Ns" format is how a
+        # burst write goes through the promoted bus layer. The payload is already bytes of the
+        # exact length because struct.pack() truncates silently on MicroPython.
+        await i2c.set_register_struct(first_register, f"{len(payload)}s", payload)
 
     async def get_config_snapshot(self) -> bytes:
         # One 3-byte burst under one device-session lock, returned UNDECODED: decoding here would
@@ -1223,7 +1279,7 @@ class ISL29125_I2C:
     def persist_for_interval(self, trigger_secs: int) -> int:
         # PRST is DERIVED: the largest transient rejection whose window still closes inside one
         # sample interval, so the chip always gets to raise RGBTHF before the periodic re-check would
-        # decide. Configuring it by hand left the fast path structurally dead (Part C.11.1.3).
+        # decide. Configuring it by hand left the fast path structurally dead (Part M.1.4).
         cycle = self.cycle_ms()
         options: tuple[int, ...] = _PRST_SETTINGS  # const() is Any to mypy; same annotation decode_config() uses
         for persist in reversed(options):
@@ -1278,47 +1334,52 @@ class ISL29125_I2C:
             self._reject_outside(ir_adjust, 0, _CONFIG2_ALSCC_MASK, "IR compensation adjust")
         if persist is not None:
             self._reject_unless(persist, _PRST_SETTINGS, "threshold persistence")
-        before = self.encode_shadow()
-        # Every mutable field, captured as one tuple so a failed write can put all of them back.
-        restore = (self._mode, self._range_fs, self._resolution, self._ir_offset, self._ir_adjust, self._persist, self._int_select, self._sync, self._conven)
-        if mode is not None:
-            self._mode = mode
-        if range_fs is not None:
-            self._range_fs = range_fs
-        if resolution is not None:
-            self._resolution = resolution
-        if ir_offset is not None:
-            self._ir_offset = ir_offset
-        if ir_adjust is not None:
-            self._ir_adjust = ir_adjust
-        if persist is not None:
-            self._persist = persist
-        if threshold_interrupt is not None:
-            # INTSEL selects ONE channel (p11, Table 11) and green is the one the auto-range state
-            # machine watches, so "armed" and "green" are the same choice - the caller asks for the
-            # behaviour and this owns the encoding.
-            self._int_select = _INTSEL_GREEN if threshold_interrupt else _INTSEL_NONE
-        if sync is not None:
-            self._sync = sync
-        if conven is not None:
-            self._conven = conven
-        after = self.encode_shadow()
-        if after == before and not force:
-            return
-        wrote_config1 = force or after[0] != before[0]
-        try:
-            await self._write_shadow(_REGISTER_CONFIG1 if wrote_config1 else _REGISTER_CONFIG2)
-        except Exception:
-            # The shadow must never claim a value the part did not take: normalise() scales every
-            # reading by it, so a lost resolution write would shift every later sample 16x with the
-            # reads still succeeding. Rolled back, as _switch_range() declines to update its range.
-            (self._mode, self._range_fs, self._resolution, self._ir_offset, self._ir_adjust, self._persist, self._int_select, self._sync, self._conven) = restore
-            self._write_failures += 1
-            raise
+        # Validate-mutate-write(-rollback) runs under ONE hold of the device-session lock, not just
+        # the final write (Part C.8). Mutating the shadow before acquiring it let a concurrent
+        # matches_shadow() see a pending change the chip had not taken - a false divergence report.
+        wrote_config1 = False
+        async with self.i2c_isl29125 as isl, isl.i2c_device as i2c:
+            before = self.encode_shadow()
+            # Every mutable field, captured as one tuple so a failed write can put all of them back.
+            restore = (self._mode, self._range_fs, self._resolution, self._ir_offset, self._ir_adjust, self._persist, self._int_select, self._sync, self._conven)
+            if mode is not None:
+                self._mode = mode
+            if range_fs is not None:
+                self._range_fs = range_fs
+            if resolution is not None:
+                self._resolution = resolution
+            if ir_offset is not None:
+                self._ir_offset = ir_offset
+            if ir_adjust is not None:
+                self._ir_adjust = ir_adjust
+            if persist is not None:
+                self._persist = persist
+            if threshold_interrupt is not None:
+                # INTSEL selects ONE channel (p11, Table 11) and green is the one the auto-range
+                # state machine watches, so "armed" and "green" are the same choice - the caller
+                # asks for the behaviour and this owns the encoding.
+                self._int_select = _INTSEL_GREEN if threshold_interrupt else _INTSEL_NONE
+            if sync is not None:
+                self._sync = sync
+            if conven is not None:
+                self._conven = conven
+            after = self.encode_shadow()
+            if after == before and not force:
+                return
+            wrote_config1 = force or after[0] != before[0]
+            try:
+                await self._write_shadow_locked(i2c, _REGISTER_CONFIG1 if wrote_config1 else _REGISTER_CONFIG2)
+            except Exception:
+                # The shadow must never claim a value the part did not take: normalise() scales every
+                # reading by it, so a lost resolution write shifts every later sample 16x while the
+                # reads still succeed. Rolled back inside the lock, so it is never observable.
+                (self._mode, self._range_fs, self._resolution, self._ir_offset, self._ir_adjust, self._persist, self._int_select, self._sync, self._conven) = restore
+                self._write_failures += 1
+                raise
         if wrote_config1:
-            # Any writer of CONFIG1 restarts the conversion (p10, Table 7), and there are three.
-            # Arming the deadline in the function that does the write makes it impossible for a
-            # caller to forget, and refreshes it when a config push lands mid-settle.
+            # Any writer of CONFIG1 restarts the conversion (p10, Table 7), and there are three, so
+            # arming the deadline where the write happens makes it impossible to forget. Outside the
+            # lock on purpose: timing bookkeeping, not the shadow-vs-chip consistency it protects.
             self._settle_until_ms = time.ticks_add(time.ticks_ms(), _SETTLE_CYCLES * self.cycle_ms())
 
     async def read_counts(self) -> "tuple[int, int, int]":
@@ -1357,7 +1418,7 @@ class ISL29125_I2C:
         await self.verify_device_id()
         await self.reset()
         # BOUTF is high at power-up (p12). Kept even though the 0x46 reset and any status read both
-        # clear it on real silicon (Part C.11.1.1): it is the one clear the datasheet promises, costs
+        # clear it on real silicon (Part M.1.2): it is the one clear the datasheet promises, costs
         # one transaction per init, and makes the post-setup state mechanism-independent.
         await self.clear_brownout()
         # SYNC and CONVEN are written explicitly rather than left at their reset default, so neither
@@ -1368,7 +1429,7 @@ class ISL29125_I2C:
     async def reset(self) -> None:
         # The datasheet specifies no post-reset settle, so the verify read IS the settle. CONFIG1-3
         # only, NOT status the way SparkFun's reset() does: reading 0x08 would consume a destructive
-        # read outside the one-per-cycle invariant read_status() depends on (C.11.1.1).
+        # read outside the one-per-cycle invariant read_status() depends on (M.1.2).
         async with self.i2c_isl29125 as isl, isl.i2c_device as i2c:
             await i2c.set_register_struct(_REGISTER_DEVICE_ID, "B", _CMD_RESET)
             config = await i2c.get_register_struct(_REGISTER_CONFIG1, "3s")

@@ -82,10 +82,9 @@ const DEFS = {
                         // min: 0 deliberately, to catch a form input coerced to the number 0 by
                         // accident (e.g. non-numeric text) rather than one genuinely submitted as 0.
                         { key: "COffset", label: "Calibration Offset", kind: "number", min: 0, max: 500 },
-                        // Named unlike the real SCD30 field "ContMeas" on purpose - js/mock-server.js
-                        // now special-cases that exact key name for a real hardware quirk
-                        // (SPECIFICATION.md Part H.7), which this fixture's own generic toggle-rendering
-                        // scenario must stay clear of.
+                        // Deliberately not the real SCD30 key "ContMeas": mock-server.js
+                        // special-cases that exact name for a hardware quirk (Part H.7), which
+                        // this generic toggle-rendering fixture must stay clear of.
                         { key: "MeasEnabled", label: "Continuous Measurement", kind: "toggle", onLabel: "On", offLabel: "Off" },
                         {
                             key: "Oversampling",
@@ -287,10 +286,9 @@ describe("renderSection", () => {
         await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
 
         /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]')).value = "3000"; // out of range
-        // COffset and MeasEnabled are left untouched on purpose - a number field's sparse-PUT
-        // convention omits a blank input, and a non-dispatch toggle/enum field (unlike the real
-        // ContMeas/SystemCmd/ResetErrors/SGPResetVOC) is now sparse-omitted the same way when it
-        // still matches its current value (collectGroupBody()).
+        // COffset and MeasEnabled are left untouched on purpose: the sparse-PUT convention omits
+        // a blank number input, and collectGroupBody() omits a non-dispatch toggle or enum the
+        // same way once it matches its current value.
         mustQuery(main, ".apply-button").click();
 
         await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
@@ -343,10 +341,9 @@ describe("renderSection", () => {
     });
 
     it("submits a numeric-valued enum field as a number, not a stringified one (regression)", async () => {
-        // A <select>'s DOM .value is always a string, even for an option whose real value is a
-        // number (e.g. BMP3XX's PressOvers). render.js must coerce it back before PUTing, and
-        // mock-server.js must validate without forcing a string compare - otherwise every numeric
-        // enum PUT reads back "Invalid" no matter what the visitor picked.
+        // A <select>'s DOM .value is always a string, even where the real value is a number
+        // (BMP3XX's PressOvers). render.js must coerce it back before PUTing and mock-server.js
+        // must not force a string compare, or every numeric enum PUT reads back "Invalid".
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("sensors"), main);
@@ -383,10 +380,9 @@ describe("renderSection", () => {
     });
 
     it("preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll rebuild", async () => {
-        // Both real definitions files (wozi.json/dev.json) declare "status" as pollGroup "live" -
-        // this fixture's own DEFS deliberately doesn't (see its own comment), so this scenario
-        // needs its own local variant to actually exercise the poll-rebuild path, same pattern as
-        // the "readonly field embedded in a writable, live-polled group" test above.
+        // Both real definitions files declare "status" as pollGroup "live" and this fixture's
+        // DEFS deliberately does not, so exercising the poll-rebuild path needs a local variant -
+        // the same pattern the live-polled readonly-field test above uses.
         /** @type {import("../js/definitions.js").SiteDefinitions} */
         const defsWithLiveErrcount = {
             ...DEFS,
@@ -419,12 +415,9 @@ describe("renderSection", () => {
     });
 
     it("shows Valid (not Failed) after a successful Reset All Errors submission, even though /status's PUT never returns a per-field result", async () => {
-        // src/asy_webserver_service.py's _put_status() never builds a `result` dict at all
-        // (ar.make_response(0), no result kwarg) - unlike every other writable endpoint, /status's
-        // PUT structurally can't report a per-field outcome. reconcileResults()'s "submitted but
-        // missing from the response = Failed" heuristic exists to catch a different, real
-        // server-side gap (a settings group's post-write hook dropping fields) and must not apply
-        // here, or a successful reset would always render as Failed (regression coverage).
+        // _put_status() never builds a `result` dict, so /status's PUT structurally cannot
+        // report a per-field outcome, and reconcileResults()'s "submitted but missing = Failed"
+        // heuristic must not apply here or every successful reset would render as Failed.
         /** @type {import("../js/definitions.js").SiteDefinitions} */
         const defsWithResetErrors = {
             ...DEFS,
@@ -462,10 +455,9 @@ describe("renderSection", () => {
         expect(card.dataset.applyStatus).toBe("valid");
         expect(mustQuery(card, '[data-field-wrapper-key="ResetErrors"]').dataset.applyStatus).toBe("valid");
 
-        // ResetErrors is a dispatched action, re-run fresh every call - a second, identical
-        // submission (the toggle stays "Yes, reset") must still report Valid, never Unchanged,
-        // matching every other dispatch-only field's own "always triggers" guarantee
-        // (SystemCmd/PauseTime/lightCmdLED - already covered by their own dedicated tests).
+        // ResetErrors is a dispatched action, re-run on every call, so a second identical
+        // submission must still report Valid rather than Unchanged - the same always-triggers
+        // guarantee the other dispatch-only fields have in their own tests.
         const button = /** @type {HTMLButtonElement} */ (mustQuery(main, ".apply-button"));
         button.click();
         await waitFor(() => button.disabled); // request in flight
@@ -474,11 +466,9 @@ describe("renderSection", () => {
     });
 
     describe("a toggle field with no real GET readback but a schema-declared defaultValue", () => {
-        // Generic coverage for js/definitions.js's resolveFieldValue()/FieldDef.defaultValue -
-        // reusable in any future field shaped like the real ContMeas (see SPECIFICATION.md Part H.5):
-        // never returned by GET, but with a well-defined safe baseline other than a bare toggle's own
-        // Boolean(undefined) = false fallback. "AuxEnabled" is a made-up field, not the real ContMeas
-        // key (js/mock-server.js special-cases that exact name for its own hardware-quirk fake).
+        // Generic coverage for resolveFieldValue()/FieldDef.defaultValue: a field shaped like
+        // ContMeas (Part H.5), never returned by GET but with a safe baseline other than a bare
+        // toggle's Boolean(undefined). "AuxEnabled", since mock-server.js knows the real name.
         /** @type {import("../js/definitions.js").SiteDefinitions} */
         const defsWithDefaultValue = {
             ...DEFS,
@@ -548,12 +538,9 @@ describe("renderSection", () => {
     });
 
     it("skips the PUT and shows a neutral message when Apply is clicked with nothing to submit", async () => {
-        // A group made only of number/string fields (unlike a toggle, or an enum with a real
-        // current value, both of which always resubmit) can be genuinely empty if the visitor
-        // clicks Apply without touching anything - collectGroupBody() then returns {}. Sending that
-        // as a real PUT would round-trip
-        // to the server for nothing and, since applyResultStyling()'s empty-result fallback is
-        // "Valid", would misleadingly show green success for a request that changed nothing.
+        // A group of only number/string fields can be genuinely empty when the visitor clicks
+        // Apply without touching anything, and collectGroupBody() then returns {}. PUTing that
+        // costs a round trip and shows applyResultStyling()'s empty-result "Valid" for nothing.
         /** @type {import("../js/definitions.js").SiteDefinitions} */
         const defsNumberOnly = {
             ...DEFS,
@@ -594,11 +581,9 @@ describe("renderSection", () => {
     });
 
     it("skips the PUT for an enum-only submit group (e.g. SystemCmd) left untouched, instead of silently dispatching whichever command the browser defaults a bare <select> to (regression)", async () => {
-        // SystemCmd is never returned by GET /system (write-only dispatched action -
-        // SPECIFICATION.md Part A.8), so buildField() has no real current value to preselect. Before
-        // the templates.js fix, a native <select> with no option explicitly marked selected defaults
-        // to its first <option> - so visiting the System section and clicking Apply without ever
-        // touching the dropdown silently PUT {"SystemCmd":"reboot"}, confirmed live in Chromium.
+        // SystemCmd is write-only and never returned by GET /system (Part A.8), so buildField()
+        // has no value to preselect. Before the templates.js fix a <select> with nothing selected
+        // defaulted to its first option, so Apply silently PUT a reboot - seen live in Chromium.
         /** @type {import("../js/definitions.js").SiteDefinitions} */
         const defsSystemCmd = {
             ...DEFS,
@@ -691,11 +676,9 @@ describe("renderSection", () => {
     });
 
     it("reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression)", async () => {
-        // JSON.stringify(NaN) is "null", so a naive Number("abc") -> NaN -> PUT body used to
-        // arrive server-side as null, and a naive Number(null) === 0 there made typed garbage
-        // look like a deliberate, in-range "0" instead of failing validation. COffset's min is 0
-        // specifically so this can't pass by accident the way a min>0 field's own out-of-range
-        // rejection would.
+        // JSON.stringify(NaN) is "null", so typed garbage used to arrive as null and a
+        // server-side Number(null) === 0 made it look like a deliberate in-range value.
+        // COffset's min is 0 precisely so a min>0 rejection cannot pass this by accident.
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("sensors"), main);
@@ -713,14 +696,12 @@ describe("renderSection", () => {
     });
 
     it("reports Failed (not Invalid) for non-numeric text in a composite subfield instead of silently submitting 0 (regression)", async () => {
-        // Same NaN -> null -> 0 gap as the top-level number-field case above, but through
-        // collectGroupBody()'s separate composite-field code path - r's min is 0, so a garbage
-        // "r" that silently became 0 would otherwise pass. "Failed", not "Invalid": the real
-        // backend never range/type-checks lightCmdLED at the dispatch layer (only
-        // isinstance(payload, dict)) - a non-numeric subfield only fails inside
-        // _notification_led_callback()'s own int()/float() cast, which asy_webserver_service.py's
-        // _dispatch_notification_led() catches and reports as "Failed", the same as any other
-        // caller-supplied-callback exception.
+        // The same NaN -> null -> 0 gap as the number-field case above, through
+        // collectGroupBody()'s composite branch: r's min is 0, so garbage becoming 0 would pass.
+
+        // "Failed", not "Invalid": the dispatch layer only checks isinstance(payload, dict), so
+        // a non-numeric subfield fails inside the callback's own cast, which
+        // _dispatch_notification_led() reports like any other callback exception.
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("notification"), main);
@@ -741,13 +722,9 @@ describe("renderSection", () => {
     });
 
     it("reports Failed (not Invalid) for a composite field submitted with only some subfields filled", async () => {
-        // collectGroupBody() only sends subfields the visitor actually filled in (render.js).
-        // lightCmdLED is a dispatch-only action (SPECIFICATION.md Part A.8), not a persisted
-        // SettingsGroup field: the real _notification_led_callback() indexes payload["r"]/["g"]/
-        // ["b"]/["t"] directly, so a missing subfield raises KeyError inside the callback -
-        // _dispatch_notification_led() catches that the same as any other callback exception and
-        // reports "Failed", never "Invalid" (which is reserved for a payload that isn't even a
-        // dict at all).
+        // collectGroupBody() sends only the subfields the visitor filled in, and lightCmdLED's
+        // callback indexes them directly - so a missing one raises KeyError there and reports
+        // "Failed". "Invalid" is reserved for a payload that is not a dict at all (Part A.8).
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("notification"), main);
@@ -787,12 +764,9 @@ describe("renderSection", () => {
     });
 
     it("skips the PUT and shows a neutral message when lightCmdLED's Apply is clicked with every subfield left blank", async () => {
-        // The "flash" group's only field is the composite lightCmdLED - collectGroupBody()'s
-        // composite branch omits it entirely when anyFilled stays false (no subfield touched), the
-        // same sparse-PUT "untouched means omit" convention every other field kind already follows -
-        // so this is the composite-field instance of the same "nothing to submit" path already
-        // covered for a plain string field (SSID) and an enum with no matching current value
-        // (SystemCmd).
+        // The "flash" group holds only the composite lightCmdLED, which collectGroupBody() omits
+        // entirely when no subfield was touched - the same sparse-PUT convention every other kind
+        // follows. The composite instance of the "nothing to submit" path SSID and SystemCmd cover.
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("notification"), main);
@@ -807,10 +781,9 @@ describe("renderSection", () => {
     });
 
     it("flattens per-sensor maintenance data one level for the Status section's sensors group", async () => {
-        // groupValuesFrom() special-cases section "status" + group key "sensors": /status's
-        // per-sensor maintenance sub-objects ({"SGP40": {BackupTS, RestoreTS}}) get flattened to
-        // "SGP40_BackupTS" so field keys can address them directly, matching every other group's
-        // already-flat convention.
+        // groupValuesFrom() special-cases section "status" with group key "sensors": the
+        // per-sensor maintenance sub-objects flatten to "SGP40_BackupTS" so field keys address
+        // them directly, matching every other group's already-flat convention.
         /** @type {import("../js/definitions.js").SiteDefinitions} */
         const defsWithMaintenance = {
             ...DEFS,
@@ -907,10 +880,9 @@ describe("renderSection", () => {
     });
 
     it("refreshes a readonly field embedded in a writable, live-polled group in place on the next poll", async () => {
-        // Today's real definitions files never nest a readonly field inside a submit:true group
-        // within a "live" section, but render.js's own renderer is schema-agnostic and must handle
-        // it correctly if a future schema does - this fixture exercises that path directly.
-        // Fake timers make the two poll ticks deterministic instead of racing a real interval.
+        // No real definitions file nests a readonly field inside a submit:true group in a "live"
+        // section today, but the renderer is schema-agnostic and must handle one, so this fixture
+        // exercises that path. Fake timers make the two poll ticks deterministic.
         vi.useFakeTimers();
         /** @type {import("../js/definitions.js").SiteDefinitions} */
         const defsWithReadonlyInWritable = {
@@ -983,10 +955,9 @@ describe("renderSection", () => {
     });
 
     it("shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR)", async () => {
-        // The real backend's own make_response(1) for a malformed body is HTTP 200 with res:"ERR"
-        // (SPECIFICATION.md Part A.8/A.5) - never a shaped HTTP error status, so render.js must
-        // check envelope.res itself rather than relying on an empty `result` to fall through to
-        // applyResultStyling()'s own severity fallback.
+        // make_response(1) for a malformed body is HTTP 200 with res:"ERR" (Part A.8/A.5), never
+        // a shaped HTTP error status - so render.js has to check envelope.res itself rather than
+        // let an empty `result` fall through to applyResultStyling()'s severity fallback.
         const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ (undefined) };
         uninstall = installMockFetch(DEFS, DATA, controls);
         const main = mount();
@@ -1042,10 +1013,9 @@ describe("renderSection", () => {
     });
 
     it("shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status", async () => {
-        // Real server-side gap (SPECIFICATION.md Part H.6, "Server-side settings-group failure"): a settings group's
-        // post-write hook raising drops that group's fields from `result` entirely, while the
-        // overall envelope still reports res:"OK". reconcileResults() treats a submitted-but-
-        // unanswered field as Failed rather than letting it silently vanish from the UI.
+        // A real server-side gap (Part H.6): a settings group's post-write hook raising drops
+        // that group's fields from `result` while the envelope still says res:"OK".
+        // reconcileResults() marks a submitted-but-unanswered field Failed rather than losing it.
         const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ (undefined) };
         uninstall = installMockFetch(DEFS, DATA, controls);
         const main = mount();

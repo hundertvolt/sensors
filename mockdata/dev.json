@@ -5,33 +5,27 @@
         "SHTC3": { "Temp": 23.3, "Hum": 39.1, "WetBulb": 15.8, "DewPoint": 8.4, "TS": 1755000000 },
         "MPRLS": { "Pres": 1002.9, "TS": 1755000000 },
         "BMP3XX": { "Pres": 1005.3, "Temp": 21.6, "SLPres": 1013.8, "TS": 1755000000 },
-        "ISL29125": {
-            "Lux": 337.42,
-            "RGB": { "R": 0.0281, "G": 0.0337, "B": 0.0151 },
-            "HSB": { "H": 78.4, "S": 0.552, "B": 0.0337 },
-            "CCT": 4180,
-            "RangeAct": 10000,
-            "GainMeas": null,
-            "TS": 1755000000
-        }
+        "ISL29125": { "Lux": 245.3, "RGB": { "R": 0.184, "G": 0.221, "B": 0.099 }, "HSB": { "H": 217.4, "S": 0.552, "B": 0.221 }, "CCT": 5200, "RangeAct": 10000, "Overrange": false, "GainMeas": null, "TS": 1755000000 }
     },
     "sensorsConfig": {
         "SCD30": { "MeasInt": 10, "TempOffs": 1.5, "AmbPres": 950, "Altitude": 0, "ForceCalRef": 400, "SelfCal": false },
         "SGP40": { "BackupPeriod": 30, "BackupMaxAge": 720, "WaitTimeNTP": 15 },
         "SHTC3": { "SampleInterv": 10, "TempOffset": 0.0, "FiltCoeff": 0.2 },
         "MPRLS": { "SampleInterv": 10, "PressOffset": 0.0, "FiltCoeff": -1.0 },
-        "BMP3XX": { "SampleInterv": 5, "PressOvers": 4, "PressOffset": 0.0, "TempOvers": 4, "TempOffset": 0.0, "FiltCoeff": 3, "SeaLevelOffs": 0.0, "MeanAtmTemp": 15.0 },
         "ISL29125": {
-            "SampleInterv": 5, "Resolution": 16, "RangeAuto": true, "Range": 10000,
-            "AutoRangeThresh": 85.0, "AutoRangeDwell": 10.0,
-            "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 26.667
+            "SampleInterv": 1, "Resolution": 16, "RangeAuto": true, "Range": 10000,
+            "AutoRangeThresh": 85.0, "AutoRangeDwell": 10.0, "IrCompOffset": 0, "IrCompAdjust": 40,
+            "FiltCoeff": -1.0, "GainRatio": 26.667
         }
     },
     "networkingConfig": {
         "SSID": "bench-net", "PW": "testbench42", "Country": "DE", "Hostname": "dev",
         "LedWifiOn": false, "NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 6
     },
-    "systemConfig": { "DebugLevel": 3, "GMTOffset": 3600, "DSTOffset": 0 },
+    "systemConfig": {
+        "DebugLevel": 3, "GMTOffset": 3600, "DSTOffset": 0,
+        "build": { "firmwareVersion": "2.0b0", "websiteVersion": "2.0b0", "buildDate": "2026-09-12T10:00:00Z" }
+    },
     "notificationConfig": {
         "AutoOn": false, "OnH": 8, "OnM": 0, "OffH": 20, "OffM": 0, "FlashBri": 80,
         "Interv": 1200.0, "FlashDur": 1.5, "WarnCO2": 1500, "WarnVOC": 300, "WarnHum": 70.0
@@ -47,10 +41,7 @@
             "LocalTime": { "year": 2025, "month": 8, "mday": 12, "hour": 9, "minute": 14, "second": 3, "weekday": 1 },
             "UtcTime": { "year": 2025, "month": 8, "mday": 12, "hour": 8, "minute": 14, "second": 3, "weekday": 1 }
         },
-        "sensors": {
-            "SGP40": { "BackupTS": 1754997000, "RestoreTS": 0 },
-            "UARTLINK": { "Transfers": 214, "Failures": 0 }
-        },
+        "sensors": { "SGP40": { "BackupTS": 1754997000, "RestoreTS": 0 }, "UARTLINK": { "Transfers": 1842, "Failures": 3 } },
         "notification": { "Triggered": false, "TS": 0, "PauseTime": 0 },
         "errcount": {
             "WIFI": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },

@@ -25,9 +25,8 @@ function readInputValue(rawInputValue, field) {
         }
         const num = Number(rawInputValue);
         // Non-numeric text must not silently become 0: JSON.stringify(NaN) is "null", and a
-        // naive Number(null) === 0 server-side would make garbage input look like a deliberate,
-        // possibly in-range "0" instead of failing validation. Send the raw string through
-        // instead, so the backend's own Number(value) recreates the same NaN and rejects it.
+        // server-side Number(null) === 0 would turn garbage into a plausible in-range value.
+        // The raw string goes through instead, so the backend's own Number() rejects it.
         return Number.isFinite(num) ? num : rawInputValue;
     }
     if (field.kind === "enum") {
@@ -60,12 +59,9 @@ function describeGetFailure(response, url) {
 }
 
 /**
- * Reads whatever the visitor entered/toggled in `card`'s controls back into a plain PUT body,
- * keyed off the same `data-field-key`/`data-sub-field-key` hooks `js/templates.js` sets. A toggle
- * or enum field is sparse-omitted (like every number/string field already is) when it still
- * matches its resolveFieldValue() baseline (the real current value, or the field's own
- * `defaultValue` when GET never reports one) and isn't `dispatch`-marked - see definitions.js's own
- * comments on both flags.
+ * Reads what the visitor entered or toggled in `card` back into a plain PUT body, keyed off
+ * templates.js's `data-field-key`/`data-sub-field-key` hooks. Every field kind is sparse-omitted
+ * when it matches its resolveFieldValue() baseline and carries no `dispatch` flag.
  * @param {HTMLElement} card
  * @param {FieldGroup} group
  * @param {Record<string, unknown>} currentValues
@@ -150,10 +146,9 @@ function reconcileResults(submitted, received) {
 }
 
 /**
- * Sets the card's `data-apply-status` to the worst of `results`, each individual field's own box
- * to its own result (legacy per-field granularity, kept alongside the newer accent-stripe
- * presentation - SPECIFICATION.md Part H.3), and fills in the outcome text. Only ever writes the
- * semantic status value - `html/style.css` alone decides what each status looks like.
+ * Sets the card's `data-apply-status` to the worst of `results`, each field's own box to its
+ * own result (legacy's per-field granularity, Part H.3), and fills in the outcome text. Writes
+ * only the semantic status; `html/style.css` alone decides how each one looks.
  * @param {HTMLElement} card
  * @param {Record<string, string>} results
  * @param {string} descr
@@ -205,12 +200,9 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
         }
         const groupBody = collectGroupBody(card, group, currentValues);
         if (Object.keys(groupBody).length === 0) {
-            // Every field kind is now sparse-omitted when left untouched (matching value for a
-            // toggle/enum, blank for a number/string/composite) - only a `dispatch`-marked field
-            // (e.g. SystemCmd, ResetErrors) always resubmits regardless. Skip the round trip
-            // entirely rather than PUTing an empty body and letting applyResultStyling()'s
-            // empty-result-means-success fallback show a misleading "Valid" for a request that
-            // changed nothing.
+            // Every field kind is sparse-omitted when untouched; only a `dispatch` field always
+            // resubmits. So skip the round trip rather than PUT an empty body, which
+            // applyResultStyling()'s empty-result-means-success fallback would show as "Valid".
             if (resultEl) {
                 resultEl.textContent = "Nothing to submit - no fields were changed.";
             }
@@ -221,21 +213,18 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
         const body = section.key === "sensors" ? { [group.key]: groupBody } : groupBody;
         button.disabled = true;
         try {
-            // No decimal-point forcing needed for a field.float-marked field's whole-number value:
-            // the real backend now accepts a JSON int for a float-typed field too, coerced
-            // (config_manager.py's coerce_numeric(), SPECIFICATION.md Part A.8) - JSON.stringify()
-            // is sufficient on its own.
+            // No decimal-point forcing for a float field's whole-number value: the backend
+            // accepts a JSON int for a float-typed field and coerces it (coerce_numeric(),
+            // Part A.8), so JSON.stringify() is sufficient on its own.
             const response = await pollManager.request(putPath, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
             });
             const envelope = /** @type {{res?: string, descr?: string, result?: Record<string, unknown>} | null} */ (response.body);
-            // Real backend PUT failures (SPECIFICATION.md Part A.8/A.5): a malformed body is a
-            // clean HTTP 200 with res:"ERR" (never a shaped HTTP error), while a route-level
-            // failure (400/404/405/413/500) is a non-2xx status carrying the same shaped envelope
-            // - either one means the request as a whole was rejected, so per-field results (if
-            // any survived) can't be trusted as a real per-field breakdown.
+            // Real backend PUT failures (Part A.8/A.5): a malformed body is a clean 200 with
+            // res:"ERR", a route-level failure a non-2xx carrying the same envelope. Either way
+            // the request was rejected, so surviving per-field results cannot be trusted.
             if (!response.ok || envelope === null || envelope.res === "ERR") {
                 throw new Error(envelope?.descr ?? `HTTP ${response.status}`);
             }
@@ -243,23 +232,21 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
                 section.key === "sensors"
                     ? /** @type {Record<string, string> | undefined} */ (envelope.result?.[group.key])
                     : /** @type {Record<string, string> | undefined} */ (envelope.result);
-            // /status's PUT (SPECIFICATION.md Part A.8's _put_status()) never returns a per-field
-            // result at all, for any of its submit groups - unlike every other writable endpoint,
-            // there's no server-side gap for reconcileResults()'s "submitted but missing = Failed"
-            // heuristic to guard against here, and applying it anyway would mark every successful
-            // submission Failed. A non-2xx/res:"ERR" response already threw above, so reaching this
-            // line at all means the call fully succeeded - mark every submitted field Valid
-            // directly, the same way the whole-request-failure catch block below marks every
-            // submitted field Failed on the opposite outcome.
+            // /status's PUT returns no per-field result for any submit group, so
+            // reconcileResults()'s "submitted but missing = Failed" heuristic has no server-side
+            // gap to guard and would mark every success Failed.
+
+            // A non-2xx or res:"ERR" already threw above, so reaching here means the call fully
+            // succeeded: mark every submitted field Valid, mirroring how the catch block below
+            // marks them all Failed.
             const flatResult =
                 section.key === "status"
                     ? Object.fromEntries(Object.keys(groupBody).map((key) => [key, "Valid"]))
                     : reconcileResults(groupBody, rawResult ?? {});
             applyResultStyling(card, flatResult, envelope.descr ?? "Done");
-            // Keeps collectGroupBody()'s own unchanged-detection correct for a second Apply click
-            // later in the same page load, without waiting on onApplied()'s slower GET round trip:
-            // a field the server actually stored (Valid or Unchanged, never Failed/Invalid) becomes
-            // the new "current" baseline immediately.
+            // Keeps collectGroupBody()'s unchanged-detection right for a second Apply in the
+            // same page load, without waiting for onApplied()'s slower GET: a field the server
+            // really stored (Valid or Unchanged) becomes the new baseline immediately.
             for (const [key, value] of Object.entries(groupBody)) {
                 if (flatResult[key] === "Valid" || flatResult[key] === "Unchanged") {
                     currentValues[key] = value;
@@ -274,10 +261,9 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
             // await (this button's own `disabled` guard also rules out a concurrent re-entry).
             // eslint-disable-next-line require-atomic-updates
             card.dataset.applyStatus = "failed";
-            // The request never got far enough for a per-field breakdown, so every field that was
-            // actually submitted this round shows the same "internal or communication error"
-            // status individually too, not just the card border (legacy's own PUT failure handler
-            // never colored anything at all - console.error only; this is a deliberate improvement).
+            // The request never got far enough for a per-field breakdown, so every submitted
+            // field shows the same "internal or communication error" individually, not just the
+            // card border - legacy only console.error'd here, and this is a deliberate change.
             for (const key of Object.keys(groupBody)) {
                 const fieldEl = card.querySelector(`[data-field-wrapper-key="${key}"]`);
                 if (fieldEl instanceof HTMLElement) {
@@ -310,10 +296,9 @@ export function renderSection(defs, section, mainEl) {
                 const existing = grid.querySelector(`[data-group-key="${group.key}"]`);
                 const rendered = buildErrcountGroup(errcountGroup, errcount);
                 if (existing) {
-                    // A live poll (e.g. wozi.json/dev.json's "status" section, pollGroup "live")
-                    // rebuilds this card from scratch every tick - without restoring "Show
-                    // flagged"/"Show all" here, a visitor's expand choice would silently collapse
-                    // back to the default rollup mid-read, every few seconds.
+                    // A live poll rebuilds this card from scratch every tick, so without
+                    // restoring "Show flagged"/"Show all" here a visitor's expand choice would
+                    // collapse back to the default rollup mid-read every few seconds.
                     const prevModuleList = existing.querySelector(".errcount-module-list");
                     const wasExpanded = prevModuleList instanceof HTMLElement && !prevModuleList.classList.contains("hidden");
                     const wasShowingAll = wasExpanded && [...prevModuleList.children].every((el) => el instanceof HTMLElement && !el.classList.contains("hidden"));
@@ -370,10 +355,9 @@ export function renderSection(defs, section, mainEl) {
             }
             const data = /** @type {Record<string, unknown>} */ (response.body);
             if (section.key === "notification") {
-                // PauseTime is live data (SPECIFICATION.md Part A.8: it lives under GET /status's
-                // "notification" sub-key, not GET /notification's own settings-only response), but
-                // the "Pause Notifications" group still needs a current value to show/PUT against -
-                // so pull it from /status too rather than inventing a second copy of it here.
+                // PauseTime is live data under GET /status's "notification" sub-key, not in
+                // GET /notification's settings-only response (Part A.8) - but the group still
+                // needs a current value, so it comes from /status rather than a second copy.
                 const statusResponse = await pollManager.request("/status");
                 if (!statusResponse.ok || statusResponse.body === null) {
                     throw new Error(describeGetFailure(statusResponse, "/status"));

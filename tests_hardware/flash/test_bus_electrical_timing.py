@@ -73,11 +73,9 @@ def test_single_precision_float_boundary_at_2pow24(board: Board) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Item 1 - SCD30 real clock-stretch timing under genuine bus load. Opportunistic/long-duration:
-# SCD30 stretches up to ~150ms roughly once per day for internal calibration (datasheets/scd30/
-# ..._Interface_Description.pdf p.2, already cited in tests/test_sensortask_wozi.py's own
-# test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it) - not something a script
-# can force on demand, only watch for over an extended run.
+# Item 1 - SCD30 real clock-stretch timing under genuine bus load, opportunistic by nature: the
+# ~150ms stretch happens roughly once a day for internal calibration (Interface Description p.2,
+# cited in tests/_sensortask_scenarios.py too), so it can only be watched for, never forced.
 # ---------------------------------------------------------------------------
 
 
@@ -96,9 +94,17 @@ def test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout(board: Bo
 
 
 # ---------------------------------------------------------------------------
-# Item 6 - time.ticks_ms() real 2**30 rollover (~12.4 days). See harness docstrings for the open
-# "does soft_reset() reset the underlying counter?" question this design depends on.
+# Item 6 - time.ticks_ms() real 2**30 rollover (~12.4 days).
+#
+# BACKLOG item 12 answered the soft_reset() question this design was built around - the counter is
+# free-running - but moved the hazard rather than clearing it: every `mpremote exec` starves the
+# watchdog into a hard reset that DOES zero it, so a dropping read is a reboot, not a 2**30 wrap.
 # ---------------------------------------------------------------------------
+
+# So a wrap only counts when the PREVIOUS read was already near 2**30; a drop from anywhere else
+# is the reboot above. Two hours of headroom, wider than the poll interval below, so a real wrap
+# straddling one poll is still recognised - and the ambiguity fails honestly instead of passing.
+_WRAP_FLOOR_MS = (2**30) - 2 * 60 * 60 * 1000
 
 
 @pytest.mark.multi_day_rollover
@@ -108,8 +114,6 @@ def test_ticks_ms_real_2pow30_rollover(board: Board, request: pytest.FixtureRequ
     # whenever it happens to run), not something any duration tier could meaningfully shorten.
     if not request.config.getoption("--allow-multi-day-rollover-wait"):
         pytest.skip("real ~12.4-day wait for the actual 2**30 rollover - pass --allow-multi-day-rollover-wait to actually run this (never bundled with --soak-tier)")
-    # NEEDS VERIFICATION: whether machine.soft_reset() resets the ticks_ms() counter - see
-    # BACKLOG.md's open question on this; confirm on the first real run before trusting the result.
     before_output = board.exec("import time; print('RESULT: PASS ticks_ms=' + str(time.ticks_ms()))")
     before = int(before_output.strip().split("=")[-1])
     target_wait_s = ((2**30) - before) / 1000.0 + 60  # +60s headroom past the exact boundary
@@ -120,8 +124,15 @@ def test_ticks_ms_real_2pow30_rollover(board: Board, request: pytest.FixtureRequ
         time.sleep(min(poll_interval_s, max(deadline - time.monotonic(), 0)))
         check_output = board.exec("import time; print('RESULT: PASS ticks_ms=' + str(time.ticks_ms()))")
         now = int(check_output.strip().split("=")[-1])
-        if now < before:
+        if now < before and before >= _WRAP_FLOOR_MS:
             wrapped = True
             break
         before = now
-    assert wrapped, f"time.ticks_ms() never wrapped below its own earlier value within {target_wait_s:.0f}s"
+    assert wrapped, (
+        f"time.ticks_ms() never wrapped within {target_wait_s:.0f}s. Expect this to be the outcome "
+        f"as long as this test polls with board.exec(): each poll starves the watchdog and reboots "
+        f"the board ~8s later, zeroing the counter, so it can never climb toward 2**30 between "
+        f"polls (BACKLOG.md item 12). A real method has to leave the board running - feed or "
+        f"disable the watchdog from inside the polled code, or observe passively via tail_log() - "
+        f"and that redesign is tracked in BACKLOG.md (G6), not worked around here."
+    )

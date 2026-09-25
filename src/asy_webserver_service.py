@@ -32,11 +32,9 @@ if TYPE_CHECKING:
     _T = TypeVar("_T")
 
     class _ModuleLike(Protocol):
-        # Structural stand-in for a registered sensor/settings/error-source module (real modules:
-        # base_classes.py's SensorReaderConfig subclasses, asy_neopixel_driver.py's NeopixelDriver,
-        # captive_dns.py's DNSServer, config_manager.py's ConfigManager - see
-        # tests/test_asy_webserver_service.py's own module docstring, SPECIFICATION.md Part C.10's
-        # typing convention). Only the subset a given registration group actually calls is used.
+        # Structural stand-in for a registered sensor/settings/error-source module - every
+        # SensorReaderConfig subclass, NeopixelDriver, DNSServer and ConfigManager satisfies it
+        # (SPECIFICATION.md Part C.10). Only the subset a registration group calls is ever used.
         name: str
         pr: "Any"
 
@@ -88,6 +86,12 @@ if TYPE_CHECKING:
     HotspotActiveFct = Callable[[], bool]
 
 _NAME = const("WEBSERVER")
+
+# This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its FRAM
+# error-log target, resolved from [device.wiring].fram_target implicitly because this is mandatory
+# infra, never an [[instance]] entry - the same tag system_service/wifi/ntp carry.
+# @wiring fram_target AsyFramManager fram optional kwarg
+
 _SYSTEM_CMDS = ("reboot", "bootloader", "mempause")  # the only enum values ever forwarded to
 # system_cmd() - never a client-supplied duration (mempause's fixed 300s lives in system_cmd()'s own
 # implementation, e.g. SystemService.pause_permanent_storage() - see SPECIFICATION.md Part A.8).
@@ -100,9 +104,10 @@ _PAUSE_TIME_FIELD: "cm.FieldSchema" = ("PauseTime", "int", 0, 0, _PAUSE_TIME_MAX
 # can reuse config_manager.py's own type_or_range_error() (and its int<->float coercion policy,
 # SPECIFICATION.md Part A.8) instead of a second, hand-rolled strict check.
 
-_MAX_STATUS_PIECE_BYTES = const(1024)  # _coalesce_json_fragments()'s own per-piece cap for
-# /status's "sensors"/"errcount" sections - see that function's own comment and BACKLOG.md's
-# real-hardware finding (2026-09-05) for why a per-*section* bound isn't enough on its own.
+_MAX_PENDING_FRAGMENTS = const(16)  # _PieceWriter's list never outgrows 16 slots (64 B on the RP2040)
+_DEFAULT_CHUNK_BYTES = const(256)  # chunk_bytes' default: one bound for JSON pieces and static reads,
+# sized to the holes a fragmented heap still has at gc.threshold(-1), not to its one large run -
+# under load that run is gone and ~870 B pieces fail with ~100 KB free (SPECIFICATION.md Part I.3).
 
 _ERROR_SHAPES = (  # (status_code, descr) - registered via @app.errorhandler for shaped JSON bodies,
     # per "Criteria for this step to finish": at least 400/404/405/413/500 wired.
@@ -127,50 +132,75 @@ def _index_pairs(items: "Iterable[tuple[str, MaintenanceFct]]") -> "dict[str, Ma
     return dict(items)
 
 
-def _coalesce_json_fragments(parts: "list[str]", max_bytes: int = _MAX_STATUS_PIECE_BYTES) -> "list[str]":
-    # Batches already-independent JSON fragments into as few pieces as practical under max_bytes -
-    # see SPECIFICATION.md Part I.3 for why byte-budget batching, not per-module/per-section.
-    batches: list[str] = []
-    current = ""
-    for part in parts:
-        if not current:
-            current = part
-        elif len(current) + 1 + len(part) > max_bytes:
-            batches.append(current)
-            current = part
+class _PieceWriter:
+    # Concatenates adjacent JSON text fragments into pieces of at most max_bytes, never splitting
+    # one - so the largest allocation is bounded by the largest fragment, not by the response.
+    def __init__(self, pieces: "list[str]", max_bytes: int) -> None:
+        self._pieces = pieces
+        self._group: list[str] = []
+        self._size = 0
+        self._max_bytes = max_bytes
+
+    def add(self, fragment: str) -> None:
+        if self._group and self._size + len(fragment) > self._max_bytes:
+            self.flush()
+        self._group.append(fragment)
+        self._size += len(fragment)
+        if len(self._group) == _MAX_PENDING_FRAGMENTS:
+            # Collapsed, never left to grow: a piece of tiny fragments would otherwise need a list
+            # array as large as the piece itself - the very block this writer exists to avoid.
+            self._group = ["".join(self._group)]
+
+    def flush(self) -> None:
+        if self._group:
+            self._pieces.append("".join(self._group))
+            self._group = []
+            self._size = 0
+
+    def add_value(self, value: object) -> None:
+        # Exactly json.dumps(value)'s text, never built as one string: dicts, lists and tuples are
+        # walked and only their keys and scalars dumped, with json.dumps()'s own ", "/": ".
+        if isinstance(value, dict):
+            self.add("{")
+            for index, (key, item) in enumerate(value.items()):
+                # json.dumps() quotes a non-str key's own JSON text (True -> "true"), never str(key).
+                self.add((", " if index else "") + (json.dumps(key) if isinstance(key, str) else '"' + json.dumps(key) + '"') + ": ")
+                self.add_value(item)
+            self.add("}")
+        elif isinstance(value, (list, tuple)):
+            self.add("[")
+            for index, item in enumerate(value):
+                if index:
+                    self.add(", ")
+                self.add_value(item)
+            self.add("]")
         else:
-            current += "," + part
-    if current:
-        batches.append(current)
-    return batches
+            self.add(json.dumps(value))
 
 
-def _append_coalesced_object(pieces: "list[str]", prefix: str, parts: "list[str]", suffix: str) -> None:
-    # Appends a `{...}` object built from _coalesce_json_fragments(parts) to pieces, fusing
-    # prefix/suffix onto the first/last batch rather than adding them as separate pieces - keeps
-    # the common case (fits in one batch) down to exactly one piece per section.
-    batches = _coalesce_json_fragments(parts)
-    if not batches:
-        pieces.append(prefix + suffix)
-        return
-    pieces.append(prefix + batches[0])
-    pieces.extend("," + batch for batch in batches[1:])
-    pieces[-1] += suffix
-
-
-async def _stream_dict_response(result: "dict[str, Any]") -> "Response":
+async def _stream_dict_response(result: "dict[str, Any]", chunk_bytes: int) -> "Response":
     # Memory-bounded streaming for any GET route whose response scales with device configuration
-    # (not a fixed, small upper bound) - see SPECIFICATION.md Part I.3 for the full design and why
-    # this produces byte-identical JSON to json.dumps(result). Not used for /status itself, whose
-    # own sub-sections need their own per-fragment dumps first - see _build_status_pieces().
-    parts = [json.dumps(k) + ":" + json.dumps(v) for k, v in result.items()]
+    # (SPECIFICATION.md Part I.3): the same bytes the old per-key json.dumps() fragments produced,
+    # written value by value, so no allocation is a whole key's value, let alone the response.
     pieces: list[str] = []
-    _append_coalesced_object(pieces, "{", parts, "}")
+    writer = _PieceWriter(pieces, chunk_bytes)
+    writer.add("{")
+    for index, (key, value) in enumerate(result.items()):
+        writer.add(("," if index else "") + json.dumps(key) + ":")
+        writer.add_value(value)
+    writer.add("}")
+    writer.flush()
+    return _pieces_response(pieces)
+
+
+def _pieces_response(pieces: "list[str]") -> "Response":
+    # A plain sync iterator with an exact Content-Length, never Response.complete()'s bytes-only
+    # default: without it a client reads to EOF, which real-socket soak testing timed out against.
+    # Never an `async def ... yield` generator - that syntax segfaults the interpreter (Part F.1).
     encoded = [p.encode() for p in pieces]
-    content_length = sum(len(p) for p in encoded)
     return Response(
         iter(encoded),
-        headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(content_length)},
+        headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(sum(len(p) for p in encoded))},
     )
 
 
@@ -202,30 +232,50 @@ class SettingsGroup:
 
 
 class _TimeoutStreamProxy:
-    # Forwards every stream method ext/microdot.py calls (readline/readexactly/awrite/aclose/close/
-    # wait_closed/get_extra_info), each bounded by timeout_s (asyncio.TimeoutError, a plain
-    # Exception not an OSError subclass - SPECIFICATION.md Part F.1). Microdot's own read-phase
-    # catch silently swallows a resulting TimeoutError (see Part A.5), so this proxy is the only
-    # place a per-call read timeout is ever observable - logged here, not in _serve().
-    def __init__(self, stream: "_StreamLike", timeout_s: float, pr: "PrintLogHistory") -> None:
+    # Forwards every stream method ext/microdot.py calls, each bounded by timeout_s (a plain
+    # asyncio.TimeoutError, not an OSError subclass - Part F.1). Microdot's read-phase catch
+    # swallows it (Part A.5), so this proxy is the only place a read timeout is observable.
+    def __init__(self, stream: "_StreamLike", timeout_s: float, pr: "PrintLogHistory", peer_gone: "list[bool] | None" = None) -> None:
         self._stream = stream
         self._timeout_s = timeout_s
         self._pr = pr
+        self._head: list[bytes] | None = []  # the response's header block until its blank line
+        self._peer_gone = [False] if peer_gone is None else peer_gone  # shared by one connection's pair
 
     async def _bounded(self, coro: "Awaitable[_T]") -> "_T":
+        return await asyncio.wait_for(coro, self._timeout_s)
+
+    async def _bounded_read(self, coro: "Awaitable[_T]") -> "_T":
+        # Logged here, and only for reads: a write-phase timeout escapes microdot and reaches
+        # _serve(), which logs it itself - logging both counted one timeout twice.
         try:
-            return await asyncio.wait_for(coro, self._timeout_s)
+            return await self._bounded(coro)
         except asyncio.TimeoutError as e:
             await self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=2)
             raise
+        except OSError:
+            # A read that saw a reset: modlwip has freed the pcb yet still accepts writes, which reach
+            # tcp_write(NULL) - so the 400 microdot answers a muted reset with is never sent.
+            self._peer_gone[0] = True
+            raise
 
     async def readline(self) -> bytes:
-        return await self._bounded(self._stream.readline())
+        return await self._bounded_read(self._stream.readline())
 
     async def readexactly(self, n: int) -> bytes:
-        return await self._bounded(self._stream.readexactly(n))
+        return await self._bounded_read(self._stream.readexactly(n))
 
     async def awrite(self, data: bytes) -> None:
+        if self._peer_gone[0]:
+            return
+        if self._head is not None:
+            # microdot writes the status line and each header apart; sent as one, a cut response
+            # never ends mid-headers, which a client reads as a complete, empty 200 (Part I.3).
+            self._head.append(data)
+            if data != b"\r\n":
+                return
+            data = b"".join(self._head)
+            self._head = None
         await self._bounded(self._stream.awrite(data))
 
     async def aclose(self) -> None:
@@ -248,16 +298,26 @@ class WebserverService:
         # onto it once, here; not itself importable for typing (see the microdot import comment above).
         sensors: "Sequence[_ModuleLike]" = (),
         settings: "dict[str, Sequence[SettingsGroup]] | None" = None,
+        build_info: "dict[str, Any] | None" = None,  # verbatim "build" sub-entry on GET /system's
+        # otherwise-flat response (firmwareVersion/websiteVersion/buildDate - SPECIFICATION.md
+        # Part L.7) - a fixed, generator-supplied fact this class never computes itself; None
+        # (default) omits the key entirely, matching every other optional constructor knob here.
         system_cmd: "SystemCmdFct | None" = None,
         notification_led: "NotificationLedFct | None" = None,
         notification_pause: "NotificationPauseFct | None" = None,
         status_sources: "dict[str, StatusSourceFct] | None" = None,
         maintenance_sensors: "Sequence[tuple[str, MaintenanceFct]]" = (),
         error_sources: "Sequence[_ModuleLike]" = (),
-        max_content_length: int = 4096,
-        max_connections: int = 4,  # reject-when-full ceiling, one slot of margin below the
-        # confirmed MEMP_NUM_TCP_PCB=5 rp2-port ceiling - see SPECIFICATION.md Part H.7 for the
-        # real-browser-testing rationale behind this value (raised from an original 3).
+        max_content_length: int = 2048,  # 1.56x the largest schema-permitted body, ~9x real traffic (I.6)
+        chunk_bytes: int = _DEFAULT_CHUNK_BYTES,  # the largest single write of any response body: each
+        # streamed JSON piece and each static-file read. One parameter, so the two can never drift
+        # apart (SPECIFICATION.md Part I.3). Clamped to >= 1: a read of 0 would never end microdot's loop.
+        max_connections: int = 6,  # reject-when-full ceiling, three below the firmware's own
+        # MEMP_NUM_TCP_PCB (toolchain/versions.toml) for connections still closing - Part H.7 holds
+        # that as a RELATIONSHIP, not a number; buildgen passes the per-device value.
+        backlog: int | None = None,  # arrivals lwIP holds until asyncio accepts them, i.e. one burst
+        # while the loop is busy; None derives max_connections + 1, so one over-ceiling arrival is
+        # refused by _serve() rather than reset unseen. buildgen bounds it to [max, max + 1] (H.7).
         per_call_timeout_s: float = 5.0,
         outer_cap_s: float = 15.0,
         host: str = "0.0.0.0",
@@ -278,6 +338,7 @@ class WebserverService:
         self._app = app
         self._sensors = _index_by_name(sensors)
         self._settings: dict[str, list[SettingsGroup]] = {k: list(v) for k, v in (settings or {}).items()}
+        self._build_info = build_info
         self._system_cmd = system_cmd
         self._notification_led = notification_led
         self._notification_pause = notification_pause
@@ -285,6 +346,11 @@ class WebserverService:
         self._maintenance_sensors = _index_pairs(maintenance_sensors)
         self._error_sources = _index_by_name(error_sources)
         self._max_connections = max_connections
+        self._chunk_bytes = max(chunk_bytes, 1)
+        # Clamped rather than rejected, matching LockedCounter's own out-of-range convention: a
+        # backlog under the ceiling resets part of a burst the ceiling admits, which reads as an
+        # application bug. buildgen rejects the same mistake in config, where it can be named.
+        self._backlog = max_connections + 1 if backlog is None else max(backlog, max_connections)
         self._per_call_timeout_s = per_call_timeout_s
         self._outer_cap_s = outer_cap_s
         self._host = host
@@ -297,6 +363,11 @@ class WebserverService:
         Request.max_content_length = max_content_length  # a Request *class* attribute, not
         # per-app-instance (ext/microdot.py's own module docstring example) - see
         # tests/test_asy_webserver_service.py's own boundary-test comment on this.
+
+        # Bound to the same value, never microdot's own 16 KB default: Request.create() buffers the
+        # body before dispatch_request() answers 413, so a larger cap here has an oversized body
+        # read into one contiguous allocation and then thrown away (SPECIFICATION.md Part I.6).
+        Request.max_body_length = max_content_length
 
         app.get("/measurements")(self._get_measurements)
         app.get("/sensors")(self._get_sensors)
@@ -337,14 +408,14 @@ class WebserverService:
         result: dict[str, Any] = {}
         for module in self._sensors.values():
             result.update(await module.get_dict_data())
-        return await _stream_dict_response(result)
+        return await _stream_dict_response(result, self._chunk_bytes)
 
     async def _get_sensors(self, _request: "_RequestLike") -> "Response":
         # .update(), not result[name] = ... - see _get_measurements()'s own comment above.
         result: dict[str, Any] = {}
         for module in self._sensors.values():
             result.update(await module.get_dict_cfg())
-        return await _stream_dict_response(result)  # see _get_measurements()'s own comment above
+        return await _stream_dict_response(result, self._chunk_bytes)  # see _get_measurements()'s own comment above
 
     async def _put_sensors(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
@@ -372,10 +443,9 @@ class WebserverService:
         return result
 
     async def _apply_settings_groups(self, endpoint: str, body: "dict[str, Any]") -> "dict[str, str]":
-        # Only a group whose own field subset actually intersects the request body is dispatched at
-        # all - a group with no matching keys must never fire its post_fct/post_asy_fct (matches
-        # the "/networking PUT: partial-field update triggers only the
-        # relevant post-write hook" requirement (see SPECIFICATION.md Part A.8).
+        # Only a group whose field subset intersects the request body is dispatched: one with no
+        # matching keys must never fire its post_fct/post_asy_fct, which is what "a partial-field
+        # update triggers only the relevant post-write hook" means (SPECIFICATION.md Part A.8).
         results: dict[str, str] = {}
         for group in self._settings.get(endpoint, []):
             subset = {k: v for k, v in body.items() if k in group.fields}
@@ -391,13 +461,9 @@ class WebserverService:
                 group.post_asy_fct,
             )
             if envelope.get("res") == "ERR":
-                # handle_set_cmd()'s own post_fct/post_asy_fct exception path (api_response.py)
-                # discards its already-computed per-field results and returns an empty result dict -
-                # previously this silently dropped every field in `subset` from the overall response
-                # with no signal at any level (a "silent result-swallow" gap).
-                # The group's post-write hook failed, so nothing it attempted can be trusted as
-                # applied even if a field's own value would otherwise have validated - report every
-                # field the group actually attempted as "Failed" instead of silently omitting them.
+                # handle_set_cmd()'s post-hook exception path returns an empty result dict, which
+                # used to drop every field in `subset` from the response with no signal anywhere.
+                # Nothing the group attempted can be trusted as applied, so report it all "Failed".
                 for key in subset:
                     results[key] = "Failed"
                 continue
@@ -410,7 +476,7 @@ class WebserverService:
         # Streamed via _stream_dict_response() - see that function's own comment: this scales with
         # however many SettingsGroup entries this device variant's own build wires up (CLAUDE.md's
         # memory-safety hard rule).
-        return await _stream_dict_response(await self._get_settings_flat("networking"))
+        return await _stream_dict_response(await self._get_settings_flat("networking"), self._chunk_bytes)
 
     async def _put_networking(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
@@ -420,7 +486,10 @@ class WebserverService:
         return ar.make_response(0, result=results)
 
     async def _get_system(self, _request: "_RequestLike") -> "Response":
-        return await _stream_dict_response(await self._get_settings_flat("system"))  # see _get_networking()'s own comment
+        result = await self._get_settings_flat("system")  # see _get_networking()'s own comment
+        if self._build_info is not None:
+            result["build"] = self._build_info
+        return await _stream_dict_response(result, self._chunk_bytes)
 
     async def _put_system(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
@@ -438,10 +507,9 @@ class WebserverService:
         if self._system_cmd is None or not isinstance(cmd, str) or cmd not in _SYSTEM_CMDS:
             return "Invalid"
         try:  # caller-supplied callback, could legitimately misbehave - same defensive shape every
-            # other caller-supplied-callback call site in this codebase already uses (e.g.
-            # asy_notification_service.py's _trigger_signal()); previously unguarded here, so a
-            # raise escaped straight through the route handler instead of degrading to "Failed"
-            # with a persisted, diagnosable errno like every comparable callback failure elsewhere.
+            # other caller-supplied-callback site uses (Part G.2). Unguarded, a raise escaped
+            # through the route handler instead of degrading to "Failed" with a persisted errno,
+            # the way every comparable callback failure does.
             ok = await self._system_cmd(cmd)
         except Exception as e:
             await self.pr.err_s("system_cmd callback failed:", e, errno=2)
@@ -449,7 +517,7 @@ class WebserverService:
         return "Valid" if ok else "Failed"
 
     async def _get_notification(self, _request: "_RequestLike") -> "Response":
-        return await _stream_dict_response(await self._get_settings_flat("notification"))  # see _get_networking()'s own comment
+        return await _stream_dict_response(await self._get_settings_flat("notification"), self._chunk_bytes)  # see _get_networking()'s own comment
 
     async def _put_notification(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
@@ -475,19 +543,13 @@ class WebserverService:
         return "Valid" if ok else "Failed"
 
     async def _dispatch_notification_pause(self, payload: object) -> str:
-        # Reuses config_manager.py's own type_or_range_error() against a synthetic FieldSchema
-        # (_PAUSE_TIME_FIELD) instead of a second, hand-rolled strict check - same int<->float
-        # coercion policy every schema-backed field gets (SPECIFICATION.md Part A.8): a bool is
-        # still rejected (type() excludes it, not isinstance()), and an integral float (e.g. 30.0)
-        # is now accepted and coerced to int, same as any other int-typed field would be.
-        # LockedCounter.set_value() (called via NotificationCoordinator.set_override_led()) clamps
-        # an out-of-range value into [0, 3600] rather than raising, but legacy's own pauseAutoLED
-        # command rejects an out-of-range pauseTime as Invalid (modules/sensortask-wozi.py's
-        # update_valid_json(..., 0, 3600, ...)) - reject it here too, before the callback ever sees
-        # it, rather than silently reporting a clamped value as a successful "Valid".
-        # isinstance() guard: same object-in/narrow-then-validate shape as the two dispatchers
-        # above. Redundant at runtime - type_or_range_error() rejects every other type via its own
-        # `type(check_val) is int` check - so it changes no outcome for any payload.
+        # Reuses type_or_range_error() against a synthetic FieldSchema rather than a second
+        # hand-rolled check, so this field gets the same int<->float policy as every schema-backed
+        # one (Part A.8): bool rejected, an integral float accepted and coerced.
+
+        # LockedCounter.set_value() clamps out of range rather than raising, but legacy rejected an
+        # out-of-range pauseTime as Invalid - so reject it here too, before the callback sees it,
+        # rather than reporting a clamped value as a successful "Valid".
         if self._notification_pause is None or not isinstance(payload, (int, float)):
             return "Invalid"
         is_error, coerced_payload = type_or_range_error(payload, _PAUSE_TIME_FIELD)
@@ -505,75 +567,66 @@ class WebserverService:
     # -- /status ---------------------------------------------------------------------------------
 
     async def _get_status(self, _request: "_RequestLike") -> "Response":
-        # Streams /status as small pre-built json.dumps() fragments via a plain sync iterator,
-        # bounding the largest single allocation regardless of the whole aggregate's size (~5.7KB on
-        # real hardware, the original MemoryError root cause - SPECIFICATION.md Part I). Not an
-        # `async def ... yield` generator - that syntax segfaults the interpreter here (Part F.1) -
-        # so every source is awaited up front into a plain list first.
-        #
-        # Content-Length is set explicitly (not left to Response.complete()'s bytes-only default)
-        # since the size is already fully known once every source is awaited - load-bearing, not
-        # just tidiness: digital_twin/_http_client.py's fetch() falls back to a slow read-until-EOF
-        # path whenever it's missing, which real-socket soak testing timed out against until this
-        # was added.
-        pieces = [p.encode() for p in await self._build_status_pieces()]
-        content_length = sum(len(p) for p in pieces)
-        return Response(
-            iter(pieces),
-            headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(content_length)},
-        )
+        # Streamed like every configuration-sized route (Part I.3), its pieces built below.
+        return _pieces_response(await self._build_status_pieces())
 
     async def _build_status_pieces(self) -> "list[str]":
-        # Fixed pieces for the three small top-level keys, built with ordinary string concatenation
-        # - not one piece per punctuation character (SPECIFICATION.md Part F.1's +53% finding).
-        # "sensors"/"errcount" are variable-length, so they go through _coalesce_json_fragments()
-        # instead (see that function's own comment, and Part I.3, for why byte-budget batching).
-        pieces = ['{"networking":' + await self._dump_status_source("networking")]
-        pieces.append(',"system":' + await self._dump_status_source("system"))
-        pieces.append(',"notification":' + await self._dump_status_source("notification"))
+        # One _PieceWriter, flushed at every top-level section: each section starts its own piece
+        # and no piece exceeds the cap, whatever a section holds - one entry per registered error
+        # source, for "errcount" (Part I.3). Values are written, never json.dumps()'d whole.
+        pieces: list[str] = []
+        writer = _PieceWriter(pieces, self._chunk_bytes)
+        for prefix, key in (('{"networking":', "networking"), (',"system":', "system"), (',"notification":', "notification")):
+            writer.add(prefix)
+            await self._write_status_source(writer, key)
+            writer.flush()
 
-        sensor_parts = []
-        for name, fct in self._maintenance_sensors.items():
-            sensor_parts.append(json.dumps(name) + ":" + await self._dump_maintenance(fct, name))
-        _append_coalesced_object(pieces, ',"sensors":{', sensor_parts, "}")
+        writer.add(',"sensors":{')
+        for index, (name, fct) in enumerate(self._maintenance_sensors.items()):
+            writer.add(("," if index else "") + json.dumps(name) + ":")
+            await self._write_guarded(writer, fct, name)
+        writer.add("}")
+        writer.flush()
 
-        errcount_parts = []
+        writer.add(',"errcount":{')
         for name, module in self._error_sources.items():
-            errcount_parts.append(json.dumps(name) + ":" + await self._dump_errcount_entry(module.get_error_counter, name))
-        # "This service's own entry" (see SPECIFICATION.md Part A.8 for the registration-API contract) -
-        # this module's own get_error_counter()/pr.get_log() aren't routed through
-        # self._error_sources (WebserverService itself doesn't structurally satisfy _ModuleLike's
-        # full sensor/settings surface, just the error-counter subset), so it's added directly here
-        # instead of trying to register self into that dict.
-        errcount_parts.append(json.dumps(_NAME) + ":" + await self._dump_errcount_entry(self.pr.get_log, _NAME))
-        _append_coalesced_object(pieces, ',"errcount":{', errcount_parts, "}}")
+            writer.add(json.dumps(name) + ":")
+            await self._write_errcount_entry(writer, module.get_error_counter, name)
+            writer.add(",")
+        # This service's own entry (Part A.8's registration contract). WebserverService satisfies
+        # only the error-counter subset of _ModuleLike, not the full sensor/settings surface, so it
+        # is added here directly rather than registered into self._error_sources.
+        writer.add(json.dumps(_NAME) + ":")
+        await self._write_errcount_entry(writer, self.pr.get_log, _NAME)
+        writer.add("}}")
+        writer.flush()
         return pieces
 
-    async def _dump_status_source(self, key: str) -> str:
+    async def _write_status_source(self, writer: "_PieceWriter", key: str) -> None:
         source = self._status_sources.get(key)
         if source is None:
-            return "{}"
+            writer.add("{}")
+            return
+        await self._write_guarded(writer, source, key)
+
+    async def _write_guarded(self, writer: "_PieceWriter", fct: "Callable[[], Coroutine[Any, Any, dict[str, Any]]]", name: str) -> None:
         try:  # caller-supplied callback, could misbehave - degrades this one key instead of letting
             # one failing source discard every other section's already-fetched data.
-            return json.dumps(await source())
-        except Exception as e:
-            await self.pr.err_s("Status stream source failed:", key, e, errno=6)
-            return '{"error":"unavailable"}'
-
-    async def _dump_maintenance(self, fct: "MaintenanceFct", name: str) -> str:
-        try:  # see _dump_status_source()'s own comment - identical reasoning, different source kind.
-            return json.dumps(await fct())
+            value = await fct()
         except Exception as e:
             await self.pr.err_s("Status stream source failed:", name, e, errno=6)
-            return '{"error":"unavailable"}'
+            writer.add('{"error":"unavailable"}')
+            return
+        writer.add_value(value)
 
-    async def _dump_errcount_entry(self, get_log_fct: "Callable[[], Coroutine[Any, Any, ErrorLog]]", name: str) -> str:
-        try:  # see _dump_status_source()'s own comment - identical reasoning, different source kind.
+    async def _write_errcount_entry(self, writer: "_PieceWriter", get_log_fct: "Callable[[], Coroutine[Any, Any, ErrorLog]]", name: str) -> None:
+        try:  # see _write_guarded()'s own comment - identical reasoning, different source kind.
             raw = await get_log_fct()
         except Exception as e:
             await self.pr.err_s("Status stream source failed:", name, e, errno=6)
-            return '{"error":"unavailable"}'
-        return json.dumps(_shape_errcount_entry(raw, name))
+            writer.add('{"error":"unavailable"}')
+            return
+        writer.add_value(_shape_errcount_entry(raw, name))
 
     async def _put_status(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
@@ -599,22 +652,26 @@ class WebserverService:
             # even though freezefs's own VfsFrozen already refuses to escape its mount root.
         assert self._static_mount is not None  # only ever registered as a route when it isn't
         try:
-            return send_file(self._static_mount + "/" + filename, compressed=True, file_extension=".gz")
+            stream = open(self._static_mount + "/" + filename + ".gz", "rb")
         except OSError:  # no such file in the mounted filesystem
             if self._is_hotspot_active is not None and self._is_hotspot_active():
                 # Captive-portal redirect fallback, triggering phones' "Sign in to network" popup -
                 # see SPECIFICATION.md Part A.5 for the full mechanism and why no try/except is needed.
                 return redirect("/")
             abort(404)
+        size = stream.seek(0, 2)  # sent as Content-Length: without it this HTTP/1.0 body ends only at FIN,
+        stream.seek(0)  # so a write that fails after the 200 would reach the client as a complete page
+        response = send_file(filename, compressed=True, stream=stream)
+        response.headers["Content-Length"] = str(size)
+        response.send_file_buffer_size = self._chunk_bytes  # microdot's own per-response knob
+        return response
 
     # -- error handling ----------------------------------------------------------------------------
 
     async def _handle_unhandled_exception(self, _request: "_RequestLike", exc: Exception) -> "tuple[dict[str, Any], int]":
-        # Registered via app.errorhandler(Exception) in __init__ - see that call site's own comment
-        # for why this exists purely to persist the exception into pr.err_s()/FRAM history, not to
-        # shape the reply (the 500 status-code handler already does that on its own, since
-        # ext/microdot.py's error_response() falls through to it regardless of whether this handler
-        # is registered at all).
+        # Registered via app.errorhandler(Exception) in __init__, purely to persist the exception
+        # into FRAM history - never to shape the reply. The 500 status-code handler already does
+        # that on its own, whether or not this one is registered (Part A.5).
         await self.pr.err_s("Unhandled exception in route handler:", exc, errno=4)
         return ar.make_response(500, descr="Internal server error"), 500
 
@@ -638,28 +695,28 @@ class WebserverService:
         # of those stub classes satisfies the one real Stream surface _TimeoutStreamProxy forwards.
         current = await self._open_conns.increment()
         if current > self._max_connections:
-            # Reject-when-full (decision 3): silently close, no accept, no response ever written -
-            # cheapest, doesn't risk the rejection path itself becoming a resource consumer.
+            # Reject-when-full (decision 3): accepted by asyncio, then closed with no response ever
+            # written - cheapest, doesn't risk the rejection path itself becoming a resource consumer.
             await self._open_conns.decrement()
             await self._close_writer(writer)
             return
         try:
-            proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_s, self.pr)
-            proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_s, self.pr)
+            peer_gone = [False]
+            proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_s, self.pr, peer_gone)
+            proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_s, self.pr, peer_gone)
             try:
                 await asyncio.wait_for(self._app.handle_request(proxy_reader, proxy_writer), self._outer_cap_s)
             except asyncio.CancelledError:
                 raise  # never swallow a genuine task cancellation
             except EOFError as e:
-                # Structurally unreachable today (Microdot's own blanket catch around
-                # Request.create() already absorbs any EOFError raised there - see
-                # _TimeoutStreamProxy's own module comment on the identical TimeoutError case) but
-                # kept as defense-in-depth per the module's own "never raise" convention.
+                # Structurally unreachable today - Microdot's blanket catch around Request.create()
+                # absorbs any EOFError raised there, the same shape as the TimeoutError case below -
+                # but kept as defense in depth under this module's own "never raise" convention.
                 await self.pr.wrn_s("Connection reclaimed (peer closed early):", e, wrnno=1)
             except asyncio.TimeoutError as e:
                 # Either the outer wait_for() above (bounds a Slowloris-paced client no per-call
-                # timeout alone would catch) or a write-phase proxy timeout - a read-phase one
-                # already logged its own warning inside the proxy and never reaches this far.
+                # timeout alone would catch) or a write-phase proxy timeout, logged only here - a
+                # read-phase one logged inside the proxy, and microdot swallowed it.
                 await self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=2)
             except OSError as e:  # a genuine, real socket-level failure (e.g. a broken pipe) -
                 # never actually raised by any of this module's own fakes/proxy, kept for real
@@ -668,13 +725,17 @@ class WebserverService:
             except Exception as e:  # never raises out of this task - see module docstring
                 await self.pr.err_s("Unexpected error serving connection:", e, errno=1)
         finally:
-            await self._close_writer(writer)
-            await self._open_conns.decrement()
+            try:  # _close_writer()'s own logging can raise MemoryError on an exhausted heap,
+                await self._close_writer(writer)
+            finally:  # and a slot skipped here would be lost until reboot
+                await self._open_conns.decrement()
 
     async def _run(self) -> None:
         await self.pr.setup()  # required for all logged warnings and errors, matches every other
         # module's own main-loop convention (see e.g. asy_wifi_service.py's wlan_connect()).
-        server = await asyncio.start_server(self._serve, self._host, self._port)
+        # backlog is explicit, never MicroPython's own default of 5 (extmod/asyncio/stream.py):
+        # inherited, a burst of a raised max_connections would be reset past its fifth arrival.
+        server = await asyncio.start_server(self._serve, self._host, self._port, backlog=self._backlog)
         await server.wait_closed()
 
     def _start_serving(self) -> "asyncio.Task[None]":
@@ -689,6 +750,15 @@ class WebserverService:
         # empty rather than omitted so callers can treat every driver/service uniformly - matches
         # asy_neopixel_driver.py's/asy_notification_service.py's own identical precedent; found
         # missing entirely during the Step 7 audit, unlike those two).
+
+    def get_error_sources(self) -> "list[Any]":
+        # Fan-in primitive (Part C.14/G.2), duck-typed rather than inherited. Not consulted by the
+        # generated _collect_error_sources() - this service's /status entry is added directly in
+        # _build_status_pieces() - but kept so no caller has to special-case this one module (D.10).
+        return [self]
+
+    def get_loggers(self) -> "list[PrintLogHistory]":
+        return [self.pr]
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
@@ -723,10 +793,9 @@ def _body_as_dict(request: "_RequestLike") -> "dict[str, Any] | None":
 
 
 def _mark_connection_close(_request: "_RequestLike", response: "Response") -> "Response":
-    # ext/microdot.py speaks HTTP/1.0 (Response.write()'s literal status line) whose spec default is
-    # already non-persistent, but RFC 7230 SS6.6 recommends a server that intends to close after
-    # responding say so explicitly - added via Microdot's own supported hook, never by editing the
-    # vendored file (decision 7).
+    # ext/microdot.py speaks HTTP/1.0, whose default is already non-persistent, but RFC 7230 SS6.6
+    # recommends saying so explicitly - added through Microdot's own supported hook, never by
+    # editing the vendored file.
     response.headers["Connection"] = "close"
     return response
 

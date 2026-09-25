@@ -2,10 +2,9 @@
 
 import sys
 
-# digital_twin/ isn't on scripts/test.sh's own MICROPYPATH ("src:tests:.frozen") - deliberately
-# kept separate from the unit-test set. Extending sys.path at
-# runtime, scoped to this one file, reaches it without touching scripts/test.sh/MICROPYPATH at all
-# - same confirmed-safe pattern as test_setter_microdot_integration.py's own ext/ insertion.
+# digital_twin/ is not on scripts/test.sh's MICROPYPATH, deliberately kept separate from the unit-test set.
+# Extending sys.path at runtime, scoped to this one file, reaches it without touching scripts/test.sh at all
+# - the same confirmed-safe pattern as test_setter_microdot_integration.py's ext/.
 sys.path.insert(0, "digital_twin")
 
 from _crc8 import crc8, word

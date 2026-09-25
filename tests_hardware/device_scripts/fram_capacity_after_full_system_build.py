@@ -1,0 +1,54 @@
+"""Isolated-driver device script: WP4/Topic 6's real-hardware capacity check - after a full
+build_system(), every module that should hold a real FRAM chunk does, rather than a silently
+degraded RAM-only fallback. mpremote-only by design; tests_hardware/README.md has both reasons."""
+
+import asyncio
+
+import sensortask_dev
+
+failures: list[str] = []
+
+# Every name dev's build_system() constructs that could hold a FRAM-backed logger. Probed via
+# getattr() rather than by importing the classes, since no device wires all of them - so this
+# stays correct if dev's own TOML changes, the way the mock tier's equivalents are written.
+_CANDIDATE_MODULE_NAMES = (
+    "conn", "ntp", "sysfunct", "scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification", "webserver",
+    "uart_link_init", "uart_link_resp",
+)
+
+
+def _check_fram_backed(label: str, pr: object) -> None:
+    if not hasattr(pr, "fram"):
+        failures.append(f"{label}.pr is not a PrintLogHistoryStore at all (expected FRAM-backed - dev.toml wires fram_target everywhere)")
+        return
+    if pr.fram is None:
+        failures.append(f"{label}.pr.fram is None - FRAM allocation failed for this module's own logger")
+
+
+async def _main() -> None:
+    try:
+        await sensortask_dev.build_system(cfg_path="", web_host="127.0.0.1", web_port=8080)
+    except Exception as e:
+        print(f"RESULT: FAIL build_system() raised on real hardware: {e!r}")
+        return
+
+    assert sensortask_dev.fram is not None
+    for name in _CANDIDATE_MODULE_NAMES:
+        module = getattr(sensortask_dev, name, None)
+        if module is None:
+            continue
+        _check_fram_backed(name, module.pr)
+        cfgmgr = getattr(module, "cfgmgr", None)
+        if cfgmgr is not None:
+            _check_fram_backed(f"{name}.cfgmgr", cfgmgr.pr)
+
+    if failures:
+        print("RESULT: FAIL " + "; ".join(failures))
+        return
+    print(
+        f"RESULT: PASS every FRAM-wired module's own chunk allocated successfully "
+        f"(fram.allocated_size={sensortask_dev.fram.allocated_size}, fram.size={sensortask_dev.fram.size})",
+    )
+
+
+asyncio.run(_main())

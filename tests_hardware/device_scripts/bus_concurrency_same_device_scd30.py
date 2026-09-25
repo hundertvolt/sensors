@@ -15,6 +15,10 @@ TEMP_MIN_C, TEMP_MAX_C = -40.0, 70.0
 
 READER_ITERATIONS = 120
 SNAPSHOTTER_ITERATIONS = 40
+# setup()'s soft reset leaves the NVM-persisted measurement interval running, so data-ready is
+# raised while the registers still hold the first unsettled conversion - read back as a stuck
+# CO2 on every early iteration. scd30_same_device_rw_concurrency.py carries the same constant.
+_SETTLE_S = 12.0
 
 
 async def _main() -> None:
@@ -22,11 +26,17 @@ async def _main() -> None:
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     scd = SCD30_I2C(i2c1)
     await scd.setup()
-    # Deliberately never calls set_ambient_pressure() here - that's the one NVM-persisted write
-    # this whole test group makes, done exactly once per session by
-    # scd30_same_device_rw_concurrency.py (via tests_hardware/flash/conftest.py's session-scoped
-    # scd30_continuous_measurement_triggered fixture, which this test depends on) - see that
-    # script's own docstring for the real-hardware NVM-wear-budget reasoning.
+    # No set_ambient_pressure() here: this group's one NVM-persisted write happens once per
+    # session in flash/conftest.py's scd30_continuous_measurement_triggered fixture, which this
+    # test depends on. scd30_same_device_rw_concurrency.py's docstring has the wear reasoning.
+
+    # Deliberately discarded - see _SETTLE_S. read_measurement() is called rather than just slept
+    # through, because data-ready clears the instant it is read: consuming the stale conversion is
+    # what actually clears it, so sleeping alone would leave it waiting in the registers.
+    for _ in range(int(_SETTLE_S / 0.5)):
+        await scd.read_measurement()
+        wdt.feed()
+        await asyncio.sleep(0.5)
 
     reader_errors = []
     reader_completed = 0

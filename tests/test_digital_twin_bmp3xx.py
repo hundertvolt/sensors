@@ -166,10 +166,9 @@ def test_default_range_stays_inside_the_drivers_own_operating_range_check() -> N
 
 
 def test_a_fresh_reading_is_drawn_on_every_forced_mode_trigger() -> None:
-    # Construction draw: 20.0/1000.0. First trigger's step delta is zeroed (stays at 20.0/1000.0);
-    # the second trigger's delta (1.0, 5.0) sits at this chip's default temp_step_c/
-    # pressure_step_hpa boundary - proving each trigger draws its own fresh step, not the same value
-    # twice, while staying within the walk's own bound.
+    # Construction draw: 20.0/1000.0. The first trigger's step delta is zeroed, so it stays there; the
+    # second's sits at this chip's default temp_step_c/pressure_step_hpa boundary - proving each trigger
+    # draws its own fresh step, not the same value twice, while staying within the walk's bound.
     chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0, 1.0, 5.0]))
     cal_raw = _read(chip, 0x31, 21)
     _write(chip, 0x1B, [0x13])
@@ -217,12 +216,12 @@ def test_unknown_register_returns_zero_bytes_without_raising() -> None:
 
 
 def test_handle_writeto_accepts_the_zero_byte_bus_probe_without_raising() -> None:
-    # Regression test from baseline verification:
-    # asy_i2c_driver.py's I2CDevice.setup()/_probe_for_device() always does a plain, empty
-    # chip.writeto(address, b"") before any register access - this chip fake used to have no
-    # handle_writeto() at all (only handle_writeto_mem(), matching its real register-addressed
-    # protocol), so digital_twin/machine.py's I2C.writeto() dispatch raised AttributeError on every
-    # real boot, repeatedly failing the BMP3XX reader task.
+    # Regression test from baseline verification: I2CDevice.setup()/_probe_for_device() always does a plain,
+    # empty chip.writeto(address, b"") before any register access.
+    #
+    # This chip fake used to have no handle_writeto() at all, only handle_writeto_mem() matching its real
+    # register-addressed protocol, so the twin's I2C.writeto() dispatch raised AttributeError on every real
+    # boot, repeatedly failing the BMP3XX reader task.
     chip = Bmp3xxChip()
     chip.handle_writeto(b"")  # must not raise
 

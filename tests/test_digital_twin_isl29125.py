@@ -59,7 +59,7 @@ def make_chip(**kwargs: object) -> Isl29125Chip:
 
 
 def configure(chip: Isl29125Chip, config1: int, config2: int = 0x00, config3: int = 0x00) -> None:
-    # One 3-byte burst from 0x01, exactly the shape the driver's own _write_shadow() sends.
+    # One 3-byte burst from 0x01, exactly the shape the driver's own _write_shadow_locked() sends.
     chip.handle_writeto_mem(_ADDR_CONFIG1, bytes([config1, config2, config3]))
 
 
@@ -328,7 +328,7 @@ def test_persistence_restarts_when_the_reading_comes_back_inside_the_window() ->
 
 
 def test_a_status_read_that_finds_the_flag_clear_leaves_the_persistence_counter_running() -> None:
-    # Measured on real silicon (Part C.11.1.2): the persistence counter restarts when RGBTHF is
+    # Measured on real silicon (Part M.1.2): the persistence counter restarts when RGBTHF is
     # CLEARED, not on every status read. The driver reads 0x08 once per sample, so a read that reset
     # the count would knock it back before it ever reached PRST - a permanently dead fast path.
     pin = _RecordingPin()

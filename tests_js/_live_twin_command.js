@@ -2,7 +2,7 @@
 // and drives a real Playwright page against it directly (Vitest's own browser-mode `page` has no
 // API for navigating to an external origin - vitest-dev/vitest#7875). See SPECIFICATION.md Part H.7.
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -11,15 +11,15 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
 const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
-const MICROPYPATH = "src:digital_twin:ext:frozen_modules:.frozen";
+// build/generated_src first: no static src/sensortask_wozi.py exists any more
+// (SPECIFICATION.md Part L.2) - package.json's own "pretest"/
+// "pretest:coverage" hooks generate it fresh there, via buildgen, before this spawns.
+const MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen";
 const HOST = "127.0.0.1";
-// Distinct from every other fixed port this repo already uses for a twin/integration run (8080
-// manual walkthrough, 18080 Python's own automated CI suite, 19300+ Python's
-// test_digital_twin_sensortask_integration.py/test_digital_twin_real_website_integration.py) -
-// see digital_twin/README.md's "never together" note. This one's launched from Node, not Python,
-// so there's no real collision risk either way, but a distinct value keeps every entry point's
-// port trivially attributable from a process listing alone.
-const PORT = 19411;
+// Clear of every fixed port and band tests/, tests_scripts/, scripts/ and digital_twin/ bind (the
+// full map is in SPECIFICATION.md Part E.1): a twin tier running on the same host at the same time
+// would otherwise refuse this one's bind. 19482 is _live_matrix_command.js's, in one `npm test` run.
+const PORT = 19481;
 const READY_TIMEOUT_MS = 20000;
 const SHUTDOWN_TIMEOUT_MS = 15000;
 
@@ -53,7 +53,13 @@ function spawnTwin() {
     const proc = spawn(
         MICROPYTHON_BIN,
         [
-            "digital_twin/run_wozi_integration.py",
+            "digital_twin/run_generic_integration.py",
+            "--module",
+            "sensortask_wozi",
+            "--wiring-plan",
+            path.join(REPO_ROOT, "build", "generated_src", "sensortask_wozi_wiring_plan.json"),
+            "--device",
+            "wozi",
             "--host",
             HOST,
             "--port",
@@ -66,17 +72,15 @@ function spawnTwin() {
         {
             cwd: REPO_ROOT,
             env: { ...process.env, MICROPYPATH, TZ: "UTC" },
-            // stdout: ignored (never read) - an unconsumed piped stream keeps Node's event loop
-            // alive (and can eventually block the child if its OS pipe buffer fills), leaving the
-            // vitest process hanging on exit otherwise.
-            // stderr: piped and drained below, only for surfacing into a failure's error message.
+            // stdout ignored rather than piped: an unconsumed pipe keeps Node's event loop alive
+            // and can block the child once its buffer fills, hanging vitest at exit. stderr is
+            // piped and drained below, only to surface in a failure's error message.
             stdio: ["ignore", "ignore", "pipe"],
         },
     );
-    // An unhandled ChildProcess 'error' event (e.g. a spawn failure) crashes the whole Node/Vitest
-    // process synchronously, skipping this file's own try/finally cleanup entirely. A no-op
-    // listener is enough: the existing waitUntilServing()/goto() error paths already surface a
-    // spawn failure via their own timeouts.
+    // An unhandled ChildProcess 'error' event crashes the whole Node/Vitest process
+    // synchronously, skipping this file's try/finally entirely. A no-op listener suffices -
+    // waitUntilServing()/goto() already surface a spawn failure through their own timeouts.
     proc.on("error", () => { /* no-op by design, per the comment above */ });
     return proc;
 }
@@ -86,15 +90,13 @@ async function stopTwin(proc) {
     if (proc.exitCode !== null || proc.signalCode !== null) {
         return;
     }
-    // SIGINT, not SIGTERM/kill('SIGTERM'): run_wozi_integration.py's own graceful-shutdown path
+    // SIGINT, not SIGTERM/kill('SIGTERM'): run_generic_integration.py's own graceful-shutdown path
     // (FRAM/SCD30 flush) only runs on KeyboardInterrupt - a plain SIGTERM would skip it, same
     // reasoning as scripts/_digital_twin_ci_suite.py's own _shutdown().
     proc.kill("SIGINT");
-    // The SIGKILL fallback timer is cleared once the child is actually gone. A plain
-    // `Promise.race([exit, sleep(...)])` leaves the setTimeout pending after the race settles, and
-    // a pending timer keeps Node's event loop alive - which surfaced as Vitest's "Tests closed
-    // successfully but something prevents Vite server from exiting" (its own close timeout is
-    // 10s, shorter than this 15s one) on every run touching a live-twin file.
+    // The SIGKILL fallback timer is cleared once the child is gone. A plain Promise.race leaves
+    // the setTimeout pending, and a pending timer keeps Node's event loop alive - which showed up
+    // as Vitest's "something prevents Vite server from exiting" on every live-twin run.
     /** @type {ReturnType<typeof setTimeout> | undefined} */
     let killTimer;
     try {
@@ -114,6 +116,26 @@ async function stopTwin(proc) {
     }
 }
 
+// Delegated to buildgen rather than re-parsed here, so a key left out falls back to src/'s own
+// default exactly as the build does. package.json's "pretest" hook already needs uv on PATH.
+const CEILING_SCRIPT = "import sys; from pathlib import Path; from buildgen.validate import device_max_connections; print(device_max_connections(Path(sys.argv[1]), Path(sys.argv[2])))";
+
+/**
+ * The admission ceiling `devices/<device>.toml` builds, as buildgen itself resolves it.
+ * @param {string} [device]
+ * @param {string} [devicesDir] - the TOML directory, overridable for tests
+ * @returns {number}
+ */
+export function configuredMaxConnections(device = "wozi", devicesDir = path.join(REPO_ROOT, "devices")) {
+    const tomlPath = path.join(devicesDir, `${device}.toml`);
+    const out = execFileSync("uv", ["run", "--quiet", "python", "-c", CEILING_SCRIPT, tomlPath, path.join(REPO_ROOT, "src")], { cwd: REPO_ROOT, encoding: "utf8" });
+    const ceiling = Number(out.trim());
+    if (!Number.isInteger(ceiling) || ceiling < 1) {
+        throw new Error(`buildgen resolved no usable max_connections for ${tomlPath}: ${JSON.stringify(out)}`);
+    }
+    return ceiling;
+}
+
 /**
  * @param {{context: import("playwright").BrowserContext}} ctx
  * @returns {Promise<{skipped: true, reason: string} | {skipped: false, titleHasSensorStation: boolean, deviceName: string, debugLevelApplyStatus: string | null}>}
@@ -128,7 +150,7 @@ export async function runLiveBackendSmoke({ context }) {
 
     // Fresh state every run, mirroring scripts/_digital_twin_ci_suite.py's own "clean" step -
     // FRAM/SCD30 are already in-memory-only above; config/ is the one thing that still persists
-    // to a fixed path by default (run_wozi_integration.py exposes no --cfg-path flag).
+    // to a fixed path by default (run_generic_integration.py exposes no --cfg-path flag).
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
 
     const proc = spawnTwin();
@@ -189,6 +211,53 @@ export async function runLiveBackendSmoke({ context }) {
             livePage.removeAllListeners();
             await livePage.close().catch(() => { /* best-effort teardown - a page already gone is fine */ });
         }
+        await stopTwin(proc);
+    }
+}
+
+/**
+ * Parallel real-browser tabs against one live twin: the tier exercising the connection ceiling from
+ * a real browser rather than a socket loop. Every tab navigates at once (SPECIFICATION.md Part H.7).
+ * @param {{context: import("playwright").BrowserContext}} ctx
+ * @returns {Promise<{skipped: true, reason: string} | {skipped: false, tabs: number, loaded: number, deviceNames: string[]}>}
+ */
+export async function runLiveBackendConcurrentTabs({ context }) {
+    if (!existsSync(MICROPYTHON_BIN)) {
+        return {
+            skipped: true,
+            reason: `MicroPython Unix port not built at ${MICROPYTHON_BIN} - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)`,
+        };
+    }
+    rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
+
+    // Half the ceiling, so it is never exceeded: a tab fetches index.html then app.js and poll-manager
+    // serialises its REST calls, so a tab holds one slot, two while a finished one is still releasing.
+    const tabs = Math.max(1, Math.floor(configuredMaxConnections() / 2));
+    const proc = spawnTwin();
+    let stderr = "";
+    proc.stderr?.on("data", (/** @type {Buffer} */ chunk) => {
+        stderr += chunk.toString();
+    });
+
+    /** @type {import("playwright").Page[]} */
+    const pages = [];
+    try {
+        await waitUntilServing(READY_TIMEOUT_MS);
+        for (let i = 0; i < tabs; i += 1) {
+            // eslint-disable-next-line no-await-in-loop -- pages are CREATED sequentially and NAVIGATED together below; that is what makes the loads concurrent rather than the setup
+            pages.push(await context.newPage());
+        }
+        const results = await Promise.all(pages.map(async (page) => {
+            await page.goto(`http://${HOST}:${PORT}/`);
+            await page.waitForSelector('[data-section-key="system"]', { timeout: 20000 });
+            return (await page.locator("#device-name").textContent())?.trim() ?? "";
+        }));
+        return { skipped: false, tabs, loaded: results.length, deviceNames: results };
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`live-backend concurrent-tab check failed: ${message}\n--- twin stderr ---\n${stderr}`, { cause: err });
+    } finally {
+        await Promise.all(pages.map((page) => page.close().catch(() => { /* best-effort teardown - a page already gone is fine */ })));
         await stopTwin(proc);
     }
 }

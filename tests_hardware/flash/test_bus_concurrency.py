@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
 from harness import Board, wait_until
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
@@ -19,26 +20,32 @@ def _assert_pass(output: str, what: str) -> None:
     assert match.group(1) == "PASS", f"{what} failed: {match.group(2).strip()}\nfull output:\n{output}"
 
 
+@pytest.mark.persistence_write
 def test_scd30_same_device_read_write_concurrency_and_continuous_measurement_trigger(scd30_continuous_measurement_triggered: None) -> None:
-    # Declaring the fixture as a parameter is what actually runs it (pytest fixture semantics) -
-    # this test exists to give that one real NVM write its own clearly-named, first-to-run pass/
-    # fail surface, even though every other SCD30-dependent test below also (harmlessly, thanks to
-    # session-scoped caching) depends on the same fixture.
+    # Declaring the fixture as a parameter is what runs it. This test exists only to give that
+    # one real NVM write its own named, first-to-run pass/fail surface; the SCD30 tests below
+    # depend on the same session-scoped fixture and so pay nothing extra.
     pass
 
 
+@pytest.mark.persistence_write
 def test_same_device_concurrent_sessions_never_corrupt_each_other(board: Board, scd30_continuous_measurement_triggered: None) -> None:
     # Generous relative to the device script's own ~90s internal asyncio.wait_for budget.
     output = board.run_isolated(DEVICE_SCRIPTS / "bus_concurrency_same_device_scd30.py", timeout_s=120.0)
     _assert_pass(output, "same-device concurrency check")
 
 
+@pytest.mark.persistence_write
 def test_cross_device_concurrent_sessions_genuinely_interleave(board: Board, scd30_continuous_measurement_triggered: None) -> None:
     output = board.run_isolated(DEVICE_SCRIPTS / "bus_concurrency_cross_device_scd30_sgp40.py", timeout_s=90.0)
     _assert_pass(output, "cross-device interleaving check")
 
 
-def test_sgp40_general_call_reset_does_not_corrupt_a_concurrent_scd30_transaction(board: Board, scd30_continuous_measurement_triggered: None) -> None:
+@pytest.mark.persistence_write
+def test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions(board: Board, scd30_continuous_measurement_triggered: None) -> None:
+    # Both real i2c1 siblings, not just SCD30 - closes a gap tests/_bus_hazard_catalog.py's own
+    # generic scenario_general_call_does_not_disturb_concurrent_siblings surfaced (it runs against
+    # every non-broadcasting occupant of the bus, which real hardware used to only partially mirror).
     output = board.run_isolated(DEVICE_SCRIPTS / "sgp40_general_call_reset_hazard.py", timeout_s=120.0)
     _assert_pass(output, "SGP40 general-call hazard regression check")
 
@@ -51,18 +58,38 @@ def test_bmp3xx_same_device_read_write_concurrency(board: Board) -> None:
 
 
 def test_isl29125_same_device_read_write_concurrency(board: Board) -> None:
-    # No NVM-write-budget dependency, for a stronger reason than BMP3xx's: the ISL29125 has no
-    # on-chip non-volatile memory at all (p7 calls its config registers volatile), so rewriting it
-    # costs nothing. The sharper hazard is the DESTRUCTIVE 0x08 read a config write must not tear.
+    # No NVM-write budget at all here, unlike BMP3xx: FN8424 p7 calls the ISL29125's config
+    # registers volatile outright, so rewriting them costs nothing. The real hazard is the
+    # DESTRUCTIVE 0x08 status read, which a config write landing mid-cycle must not tear.
     output = board.run_isolated(DEVICE_SCRIPTS / "isl29125_same_device_rw_concurrency.py", timeout_s=90.0)
     _assert_pass(output, "ISL29125 same-device read/write concurrency check")
 
 
+@pytest.mark.persistence_write
 def test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours(board: Board, scd30_continuous_measurement_triggered: None) -> None:
     # The SCD30 leg reads real measurements, so it needs the same session fixture the other
     # SCD30-touching tests take; the ISL and SGP40 legs would run fine without it.
     output = board.run_isolated(DEVICE_SCRIPTS / "isl29125_cross_device_concurrency.py", timeout_s=90.0)
     _assert_pass(output, "ISL29125 cross-device interleaving check")
+
+
+@pytest.mark.persistence_write
+def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads(board: Board, scd30_continuous_measurement_triggered: None) -> None:
+    # Real-hardware counterpart to _bus_hazard_catalog.py's scenario_a (Part C.8), closing a gap
+    # that catalog surfaced: nothing here had proved one dev/i2c1 occupant's WRITE landing among
+    # its siblings' reads. ISL29125 writes because its registers are volatile; SCD30's is opt-in.
+    output = board.run_isolated(DEVICE_SCRIPTS / "bus_concurrency_isl29125_write_vs_siblings.py", timeout_s=90.0)
+    _assert_pass(output, "ISL29125 config-write-vs-concurrent-sibling-reads check")
+
+
+@pytest.mark.persistence_write
+@pytest.mark.scd30_extra_write
+def test_scd30_config_write_does_not_disturb_concurrent_sibling_reads(board: Board, scd30_continuous_measurement_triggered: None) -> None:
+    # The SCD30-as-writer half of the same gap, deliberately outside the routine group: it spends
+    # one NVM write beyond the fixture's, so conftest.py's pytest_collection_modifyitems()
+    # deselects it unless BOTH --allow-persistence-writes and --allow-scd30-extra-write are given.
+    output = board.run_isolated(DEVICE_SCRIPTS / "bus_concurrency_scd30_write_vs_siblings.py", timeout_s=90.0)
+    _assert_pass(output, "SCD30 config-write-vs-concurrent-sibling-reads check")
 
 
 def test_isl29125_real_irq_edge_beats_the_periodic_fallback(board: Board) -> None:
@@ -98,25 +125,22 @@ def test_fram_cs_pin_hijack_fault_injection_and_recovery(board: Board) -> None:
 
 
 def test_fram_hard_reset_race_during_write_and_recovery(board: Board) -> None:
-    # Real hardware-reset race against an in-flight FRAM write - a genuinely different fault than
-    # the CS-hijack race above (a real RP2040-side machine.reset(), not a controlled SPI-protocol-
-    # level CS deselect) - see fram_reset_race_during_write_seed_and_race.py's own docstring for the
-    # full mechanism and its honest, deliberately-scoped-safe design.
+    # Real hardware-reset race against an in-flight FRAM write: a different fault from the
+    # CS-hijack above, since this is a real machine.reset() rather than a protocol-level deselect.
+    # fram_reset_race_during_write_seed_and_race.py's docstring has the mechanism.
     board.run_isolated_expect_reset(DEVICE_SCRIPTS / "fram_reset_race_during_write_seed_and_race.py", timeout_s=30.0)
-    # is_reachable() (not the presence-only is_device_present()), same established pattern
-    # test_reboot_persistence.py's own test_config_value_survives_a_genuine_hard_reset uses - the
-    # real, freshly-rebooted production firmware is about to be interrupted for the verify phase
-    # below anyway, so there's no live system here to avoid disturbing.
+    # is_reachable(), not the presence-only is_device_present() - the same pattern
+    # test_config_value_survives_a_genuine_hard_reset uses. The freshly-rebooted firmware is
+    # interrupted by the verify phase below anyway, so there is no live system to protect here.
     wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after the real reset-raced write")
     output = board.run_isolated(DEVICE_SCRIPTS / "fram_reset_race_during_write_verify_recovery.py", timeout_s=60.0)
     _assert_pass(output, "FRAM hard-reset race during write recovery check")
 
 
 # ---------------------------------------------------------------------------
-# SPECIFICATION.md Part F.5.1, on a live bus. Both claims were read out of the rp2 port's protocol
-# tables and faithfully modelled in tests/machine.py and digital_twin/machine.py - but a fake
-# agreeing with a fake proves nothing about silicon, which is what BACKLOG.md flagged this file as
-# the natural home for.
+# SPECIFICATION.md Part F.5.1, on a live bus. Both claims were read out of the rp2 port's own
+# protocol tables and modelled in tests/machine.py and digital_twin/machine.py - but a fake
+# agreeing with a fake proves nothing about silicon.
 # ---------------------------------------------------------------------------
 
 

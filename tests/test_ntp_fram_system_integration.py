@@ -2,7 +2,6 @@
 Extends tests/test_ntp_wifi_dns_integration.py's real-object approach to ntp.ntp_issynced's two downstream consumers: proves the real, currently-wired chain's value/timing behavior (including the no-deadlock assumption around wifi_mode_lock) that lambda-based unit tests alone can't observe."""
 
 import asyncio
-import os
 import select
 import socket
 import struct
@@ -10,6 +9,7 @@ import time
 
 import network
 from _fram_chip_fake import FakeMB85RS64V
+from _tmp_scratch import TmpScratch
 
 import asy_ntp_client as ntpmod
 import asy_spi_driver
@@ -53,70 +53,18 @@ def _wlan(conn: AsyConnTime) -> "Any":  # Any is the point here, not an omission
 
 
 # ---------------------------------------------------------------------------
-# Shared fixtures - conn/ntp construction mirrors test_ntp_wifi_dns_integration.py's own helpers
-# (kept file-local rather than imported: no test file in this suite imports another, see
-# SPECIFICATION.md Part E's per-file self-containment convention); the FRAM side mirrors
-# tests/test_fram_integration.py's make_manager().
+# Shared fixtures - conn/ntp construction mirrors test_ntp_wifi_dns_integration.py's helpers, kept file-
+# local rather than imported (no test file in this suite imports another, SPECIFICATION.md Part E's per-file
+# self-containment convention); the FRAM side mirrors tests/test_fram_integration.py.
 # ---------------------------------------------------------------------------
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("ntpfram_")
-
-
-def _remove_any(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        try:
-            os.rmdir(path)
-        except OSError:
-            pass  # already gone, or genuinely not removable - not this helper's problem
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("ntpfram")
 
 
 def _tmp_cfg_dir() -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    _next_dir += 1
-    path = _TMP_DIR + "/ntpfram_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass  # already exists from a stale previous run
-    _remove_any(path + "/config_WIFI.cfg")
-    _remove_any(path + "/config_NTP.cfg")
-    return path + "/"
+    return _scratch.dir()
 
 
 def make_conn() -> AsyConnTime:
@@ -126,7 +74,7 @@ def make_conn() -> AsyConnTime:
 
 
 def make_ntp(
-    conn: AsyConnTime, ntp_host: str, ntp_fetch_timeout_ms: int = 5000, max_module_error: int = 5,
+    conn: AsyConnTime, ntp_host: str, ntp_fetch_timeout_ms: int = 5000,
 ) -> AsyNtpClient:
     # Exactly sensortask-wozi.py's own wiring: conn.get_wifi_mode_lock()/network_available/
     # get_dns_server_ip passed straight through as ntp's own constructor arguments - the real bound
@@ -138,7 +86,6 @@ def make_ntp(
         conn.get_wifi_mode_lock(),
         conn.network_available,
         conn.get_dns_server_ip,
-        max_module_error=max_module_error,
         cfg_path=cfg_path,
         ntp_fetch_timeout_ms=ntp_fetch_timeout_ms,
     )
@@ -180,7 +127,9 @@ def make_fram_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85
 # FakeNtpServer/_RedirectNtpNetworking, kept file-local per this suite's per-file convention.
 # ---------------------------------------------------------------------------
 
-_next_port = 56000
+# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
+# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
+_next_port = 26000
 
 
 def make_addr() -> "tuple[str, int]":
@@ -196,10 +145,9 @@ def make_port() -> int:
 
 
 class _RedirectNtpNetworking:
-    # Same Unix-port-only workaround as test_asy_ntp_client.py's/test_ntp_wifi_dns_integration.py's
-    # own class of the same name: redirects _NTP_UDP_PORT away from the real privileged port 123,
-    # and pre-resolves AsyUDPSocket's addr since this build's raw connect() rejects a plain
-    # (host, port) tuple.
+    # Same Unix-port-only workaround as the identically named class in the NTP suites: redirects
+    # _NTP_UDP_PORT away from the real privileged port 123, and pre-resolves AsyUDPSocket's addr, this
+    # build's raw connect() rejecting a plain (host, port) tuple.
     def __init__(self, port: int) -> None:
         self._port = port
 
@@ -291,10 +239,9 @@ async def sync_real_ntp_chain(conn: AsyConnTime, ntp: AsyNtpClient) -> None:
 
 
 # ---------------------------------------------------------------------------
-# FRAM timestamped-chunk propagation: ntp.ntp_issynced (real, chain-derived) flowing into
-# AsyFramChunkTimestampedBuffer's write_into()/read_into(), exactly the seam
-# asy_sgp40_driver.py's SGP40_Reader relies on (fram_ntp_callback=ntp.ntp_issynced in
-# sensortask-wozi.py) but without needing a full fake I2C sensor to prove it.
+# FRAM timestamped-chunk propagation: ntp.ntp_issynced, real and chain-derived, flowing into
+# AsyFramChunkTimestampedBuffer's write_into()/read_into() - exactly the seam SGP40_Reader relies on via
+# fram_ntp_callback, but without needing a full fake I2C sensor to prove it.
 # ---------------------------------------------------------------------------
 
 
@@ -354,12 +301,12 @@ def test_fram_read_into_age_is_computed_from_the_real_ntp_chains_synced_clock() 
 
 
 def test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_concurrent_real_sync() -> None:
-    # Proves the "no cross-lock contention" assumption asy_fram_manager.py's docstring/comments now
-    # rely on: ntp.ntp_issynced() only touches SensorReader's own private _datalock (base_classes.py),
-    # never conn's/ntp's shared wifi_mode_lock - so a FRAM backup cycle calling it while a real NTP
-    # sync attempt is genuinely in flight (and holding wifi_mode_lock, per
-    # tests/test_ntp_wifi_dns_integration.py's own test_ntp_sync_holding_the_lock_blocks_a_concurrent_real_wifi_mode_switch)
-    # must complete promptly rather than hang.
+    # Proves the "no cross-lock contention" assumption asy_fram_manager.py's comments rely on:
+    # ntp_issynced() only touches SensorReader's private _datalock, never conn's or ntp's shared
+    # wifi_mode_lock.
+    #
+    # So a FRAM backup cycle calling it while a real NTP sync attempt is genuinely in flight, and holding
+    # wifi_mode_lock, must complete promptly rather than hang.
     conn = make_conn()
     connect_wlan(conn)
     unreachable_addr = make_addr()  # nobody listens here
@@ -376,10 +323,9 @@ def test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_conc
         await asyncio.sleep(0)
         assert conn.wifi_mode_lock.locked() is True  # ntp genuinely holds conn's own shared lock right now
         try:
-            # 1.0s, not a razor-thin 0.2s: still a fraction of ntp_fetch_timeout_ms=2000 above (the
-            # real "stuck behind the lock" case this guards against), but with enough margin that
-            # ordinary scheduling jitter under load can't produce a false failure - this is checking
-            # "did it complete promptly," not pinning an exact latency.
+            # 1.0s, not a razor-thin 0.2s: still a fraction of ntp_fetch_timeout_ms=2000 above, the "stuck
+            # behind the lock" case this guards against, but with margin enough that scheduling jitter
+            # cannot produce a false failure. It checks "did it complete promptly", not an exact latency.
             _ntp_synced, _utc, write_ok = await asyncio.wait_for(chunk.write(b"12345678"), 1.0)
         except asyncio.TimeoutError:
             await _cancel(task)
@@ -431,10 +377,9 @@ def test_system_service_boot_signature_falls_back_to_random_once_the_real_chain_
 
 
 def test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_independently() -> None:
-    # Matches sensortask-wozi.py's real topology: one AsyNtpClient instance (ntp), one bound
-    # ntp.ntp_issynced method, handed to two independent real consumers at once (SystemService and a
-    # FRAM timestamped chunk, standing in for SGP40_Reader's own ts_storage) - proves neither
-    # consumer's own call to the shared callback corrupts or blocks the other's.
+    # Matches the real device topology: one AsyNtpClient instance, one bound ntp_issynced method, handed to
+    # two independent real consumers at once - SystemService and a FRAM timestamped chunk standing in for
+    # SGP40_Reader's ts_storage - proving neither consumer's call corrupts or blocks the other's.
     conn = make_conn()
     ntp = make_ntp(conn, "127.0.0.1")
     svc = SystemService(ntp.ntp_issynced)
@@ -458,21 +403,16 @@ def test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_indepe
 
 
 # ---------------------------------------------------------------------------
-# Task-supervision propagation: applying test_asy_ntp_client.py's own
-# test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_20 (a real asy_ntp_time()
-# task genuinely returning after exceeding max_module_error) together with test_system_service.py's own
-# test_start_and_check_tasks_restarts_a_dead_task_and_logs_a_warning (SystemService noticing and
-# restarting a dead task) - neither per-module test observes the other side of this seam: does a
-# real AsyNtpClient task that genuinely dies actually get detected and restarted by a real
-# SystemService.start_and_check_tasks(), the exact supervision loop sensortask-wozi.py's own
-# start_and_check_tasks(task_starters) call relies on for every promoted task?
+# Task-supervision seam: an unreachable NTP server is routine, handled inside the task (Part C.7.2), so
+# the real start_and_check_tasks() must see a live task and spend none of its reboot budget on it -
+# each restart costs 100 of 300 there, which is how an outage used to reboot the device.
 # ---------------------------------------------------------------------------
 
 
-def test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up() -> None:
+def test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreachable() -> None:
     conn = make_conn()
     connect_wlan(conn)  # network_available() is genuinely True - failures come from resolution, not this
-    ntp = make_ntp(conn, "127.0.0.1", max_module_error=1)  # gives up on the 2nd consecutive real failure
+    ntp = make_ntp(conn, "127.0.0.1")
     svc = SystemService(ntp.ntp_issynced)
     starts: list[asyncio.Task[None]] = []
 
@@ -496,33 +436,27 @@ def test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up() -> No
             svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
             await asyncio.sleep(0)  # let start_and_check_tasks()'s own initial _start_task run
             assert len(starts) == 1
-            for _ in range(2):  # max_module_error=1: the 2nd consecutive real failure makes the task give up
+            for _ in range(20):  # four times the old five-failure give-up streak
                 ntp.ntp_sync_trigger_event.set()
                 await asyncio.sleep(0)
                 await asyncio.sleep(0)
-            for _ in range(200):  # bounded wait for the real, genuine task death
-                if starts[0].done():
-                    break
-                await asyncio.sleep(0)
-            assert starts[0].done()  # the real asy_ntp_time() task genuinely returned on its own
             await asyncio.sleep(2.5)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
+            assert not starts[0].done()  # the real asy_ntp_time() task is still the one running
             await _cancel(svc_task)
             return len(starts)
 
         call_count = run(scenario())
     finally:
         ntpmod.resolve_ipv4 = original_resolver
-    assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
-    counter = run(svc.get_error_counter())
-    assert counter["SYSTEM"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
+    assert call_count == 1  # the initial real start only - no restart
+    assert run(svc.get_error_counter())["SYSTEM"]["ErrCount"] == 0  # no restart warning, no budget spent
+    assert run(ntp.get_error_counter())["NTP"]["ErrCount"] == 20  # every failure still counted
 
 
 # ---------------------------------------------------------------------------
-# Torn-write self-heal with a real, chain-derived timestamp: applying
-# tests/test_fram_integration.py's own test_torn_write_on_printloghistorystore_chunk_self_heals_...
-# fault-injection pattern (simulate power loss mid-write, then a fresh reboot) to a timestamped chunk
-# whose ntp_sync_callback is a real AsyNtpClient.ntp_issynced instead of the `_synced()`
-# always-True stub every other FRAM test in this suite uses.
+# Torn-write self-heal with a real, chain-derived timestamp: applying tests/test_fram_integration.py's
+# fault-injection pattern (simulate power loss mid-write, then a fresh reboot) to a timestamped chunk whose
+# ntp_sync_callback is a real AsyNtpClient.ntp_issynced, not the always-True stub the other FRAM tests use.
 # ---------------------------------------------------------------------------
 
 _STATUS_BUSY = 0x02
@@ -566,14 +500,13 @@ def test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_ti
 
 
 # ---------------------------------------------------------------------------
-# SystemService supervising a real *sensor* Reader task, not just the ntp one above -
-# get_task_starters()/start_asy_read() are proven individually (test_asy_bmp3xx_driver.py's own
-# test_get_task_starters_returns_read_and_trigger_starters and
-# test_start_asy_read_returns_a_real_task, added alongside a coverage audit that found neither had
-# ever been called at all before), but nothing proves the same starter still works once it's wired
-# through the real, generic start_and_check_tasks() every sensortask-*.py device actually uses -
-# the exact seam test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up above
-# already proves for AsyNtpClient's own task, generalized here to a sensor driver.
+# SystemService supervising a real sensor Reader task, not just the ntp one above.
+# get_task_starters()/start_asy_read() are proven individually in the BMP3xx suite, by tests a coverage
+# audit found had never been called at all before.
+#
+# But nothing proves the same starter still works once wired through the real, generic
+# start_and_check_tasks() every device actually uses - the seam the NTP-task test above proves for
+# AsyNtpClient, generalized here to a sensor driver.
 # ---------------------------------------------------------------------------
 
 _BMP_ADDR = 0x77
@@ -599,7 +532,7 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
 
     def spy_starter() -> "asyncio.Task[bool]":
         # Wraps the real starter (not a synthetic one), same technique as
-        # test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up above.
+        # test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreachable above.
         t = reader.start_asy_read()
         starts.append(t)
         return t
@@ -633,24 +566,32 @@ def make_scd30_reader(max_module_error: int = 1) -> SCD30_Reader:
     return SCD30_Reader(i2c, irq_pin=5, max_module_error=max_module_error)
 
 
-async def _no_comp_data() -> "list[float | None]":
-    return [None, None]
-
-
 def make_sgp40_reader(cfg_path: str, max_module_error: int = 1) -> SGP40_Reader:
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _no_comp_data, max_module_error=max_module_error, cfg_path=cfg_path)
+    # A real SCD30_Reader as temperature_source/humidity_source (SPECIFICATION.md Parts C.14 and L.6.3) -
+    # never read() or setup(), so its get_data() just returns its unmeasured-sentinel namedtuple with every
+    # field None, matching what the old _no_comp_data() returned directly.
+    scd_reader = make_scd30_reader()
+    reader = SGP40_Reader(
+        i2c,
+        temperature_source=scd_reader,
+        temperature_field="Temp",
+        humidity_source=scd_reader,
+        humidity_field="Hum",
+        max_module_error=max_module_error,
+        cfg_path=cfg_path,
+    )
     run(reader.cfgmgr.setup())
     return reader
 
 
 def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_up() -> None:
-    # Same technique as the BMP3xx case above, generalized to the other real sensor Reader shape
-    # (plain SensorReader, no config schema) - the task-completeness audit that motivated this file's
-    # BMP3xx test flagged SCD30/SGP40 as the two remaining sensor Readers never driven through a
-    # real SystemService, only ever proven at the module level (test_asy_scd30_driver.py's own
-    # test_read_loop_returns_false_when_init_fails uses the identical NAK-the-address setup, just
-    # without a real supervisor watching it).
+    # Same technique as the BMP3xx case above, generalized to the other real sensor Reader shape, a plain
+    # SensorReader with no config schema. The task-completeness audit that motivated the BMP3xx test flagged
+    # SCD30 and SGP40 as the two Readers never driven through a real SystemService.
+    #
+    # test_asy_scd30_driver.py uses the identical NAK-the-address setup at the module level, just without a
+    # real supervisor watching it.
     reader = make_scd30_reader(max_module_error=1)
     fake_i2c: FakeI2C = reader.scd.i2c_scd30.i2c_device.i2c._i2c  # type: ignore[assignment]
     fake_i2c.nak_addresses.add(_SCD30_ADDR)  # every real bus op fails - init itself never succeeds

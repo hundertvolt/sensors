@@ -1,8 +1,11 @@
-"""Tests setup_toolchain.py's `env` subcommand in isolation: the pure-Python detection/idempotency/
-parsing logic against fake /sys trees and a fake run(), never real hardware, sudo or network. The
-end-to-end behaviour is proven on the real bench unit instead (dev_legacy/README.md)."""
+"""Tests toolchain/setup_toolchain.py's `env` subcommand (tiered generic/flash/bench dev
+environment setup) in isolation: the pure-Python detection/idempotency/argument-parsing logic,
+mocked against fake /sys trees and a fake run() - never real hardware, sudo, or network."""
 
-import importlib.util
+# dev_legacy/README.md defines what "flash" and "bench" mean and holds the manual nmcli recipe
+# this automates. End-to-end behavior - USB detection, the bridge and AP working - is proven on
+# the real bench unit instead, the same real-thing-not-stubs split Part E.1 draws.
+
 import os
 import subprocess
 import sys
@@ -12,19 +15,12 @@ from types import ModuleType
 from typing import NoReturn
 
 import pytest
+from _script_loader import load_script_module
 
 
 @pytest.fixture(scope="session")
 def setup_toolchain(repo_root: Path) -> ModuleType:
-    module_path = repo_root / "toolchain" / "setup_toolchain.py"
-    spec = importlib.util.spec_from_file_location("setup_toolchain", module_path)
-    # spec_from_file_location() returns None for an unloadable path and spec.loader is
-    # Optional in the general case - narrowed here so a renamed/missing script fails with a
-    # clear assertion instead of an AttributeError three lines later.
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_script_module(repo_root / "toolchain" / "setup_toolchain.py", "setup_toolchain")
 
 
 @pytest.fixture
@@ -295,10 +291,9 @@ def _fake_run_for_existing_bridge(recorded_run: list[list[str]], channel: str = 
 
 
 def test_ensure_bench_bridge_reuses_existing_ap_without_recreating(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
-    # ensure_br_netfilter(), the channel self-heal check, and the MAC-mismatch check now all run
-    # unconditionally on every call (see ensure_bench_bridge()'s own docstring) - channel and MAC
-    # are stubbed already-correct so neither self-heal/warning branch (covered separately below)
-    # also fires here.
+    # ensure_br_netfilter(), the channel self-heal and the MAC-mismatch check all run on every
+    # call now. Channel and MAC are stubbed already-correct here, so neither of those branches -
+    # covered separately below - fires as well.
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
     monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
     monkeypatch.setattr(setup_toolchain, "run", _fake_run_for_existing_bridge(recorded_run))
@@ -337,10 +332,9 @@ def test_ensure_bench_bridge_no_channel_repair_when_already_pinned(setup_toolcha
 
 
 def test_ensure_bench_bridge_warns_without_auto_repairing_mac_mismatch(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]], capsys: pytest.CaptureFixture[str]) -> None:
-    # REAL FINDING, 2026-09-04 bench Pi4 lockout incident (see CLAUDE.md's "Hard rules"): a bridge
-    # created before the MAC-pinning fix (or whose MAC has since drifted) must be flagged, never
-    # silently auto-repaired - cycling a live bridge's MAC risks the exact same SSH-drop class of
-    # incident this check exists to prevent.
+    # From the 2026-09-04 bench Pi4 lockout (CLAUDE.md's hard rules): a bridge created before the
+    # MAC-pinning fix, or whose MAC has drifted, must be flagged and never auto-repaired -
+    # cycling a live bridge's MAC risks the same SSH-drop this check exists to prevent.
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
     monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
     monkeypatch.setattr(
@@ -435,6 +429,21 @@ def test_ensure_bench_bridge_generates_credentials_when_none_given(setup_toolcha
     assert any(c == "sudo nmcli connection modify br0 bridge.mac-address aa:bb:cc:dd:ee:ff" for c in joined)
 
 
+def test_the_bench_suite_derives_the_connection_names_from_this_module(setup_toolchain: ModuleType, repo_root: Path) -> None:
+    # tests_hardware/harness.py re-exports these three for the bench tier, and must READ them from
+    # here rather than carry its own literals: a rename would otherwise leave the bench tier looking
+    # for a connection nobody creates, and its skip gate deselects rather than fails.
+    harness_path = repo_root / "tests_hardware" / "harness.py"
+    harness_src = harness_path.read_text()
+    harness = load_script_module(harness_path, "harness")
+    for attr in ("BENCH_BRIDGE_CONN", "BENCH_ETH_CONN", "BENCH_AP_CONN"):
+        assert f"{attr} = setup_toolchain.{attr}" in harness_src, (
+            f"tests_hardware/harness.py declares {attr} itself instead of reading it from this module - "
+            "`env --tier bench` could then build a rig the bench tests cannot find"
+        )
+        assert getattr(harness, attr) == getattr(setup_toolchain, attr)
+
+
 # --- project dependency install (uv sync / npm ci) -------------------------------------------------
 
 
@@ -465,6 +474,43 @@ def test_run_project_dependency_install_runs_npm_ci_when_available(setup_toolcha
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: "/usr/bin/npm")
     setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=False, skip_apt=True)
     assert recorded_run == [["uv", "sync"], ["npm", "ci"], ["npx", "playwright", "install", "chromium"]]
+
+
+def _flaky_run(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, failures: int) -> "tuple[list[list[str]], list[float]]":
+    # run() failing its first `failures` calls the way a 502 from a release download does, then succeeding.
+    calls: list[list[str]] = []
+    pauses: list[float] = []
+
+    def fake_run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
+        calls.append(cmd)
+        if len(calls) <= failures:
+            raise setup_toolchain.SetupError(f"command failed (exit 1): {' '.join(cmd)}")
+        return ""
+
+    monkeypatch.setattr(setup_toolchain, "run", fake_run)
+    monkeypatch.setattr(setup_toolchain.time, "sleep", pauses.append)
+    return calls, pauses
+
+
+def test_uv_sync_rides_out_a_transient_download_failure(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls, pauses = _flaky_run(setup_toolchain, monkeypatch, failures=2)
+    setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=True, skip_apt=True)
+    assert calls == [["uv", "sync"]] * 3
+    assert pauses == [10.0, 20.0]
+
+
+def test_uv_sync_still_fails_loudly_once_every_attempt_failed(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls, pauses = _flaky_run(setup_toolchain, monkeypatch, failures=3)
+    with pytest.raises(setup_toolchain.SetupError, match="uv sync"):
+        setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=True, skip_apt=True)
+    assert len(calls) == setup_toolchain.UV_SYNC_ATTEMPTS == 3
+    assert pauses == [10.0, 20.0]  # no pause after the last attempt
+
+
+def test_uv_sync_that_succeeds_first_time_never_pauses(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls, pauses = _flaky_run(setup_toolchain, monkeypatch, failures=0)
+    setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=True, skip_apt=True)
+    assert (calls, pauses) == ([["uv", "sync"]], [])
 
 
 # --- the pinned Node install (.nvmrc) --------------------------------------------------------

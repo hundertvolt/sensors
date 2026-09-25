@@ -17,7 +17,7 @@ CLAUDE.md's hard rules for why wozi, not dev, is never flashed).
 | arzi | SCD30 (CO2/temp/hum), SGP40 (VOC) | yes | active (8000ms) | `html_raw/arzi` |
 | neu ×3 | same as arzi, different pin assignments | yes | active (8000ms) | `html_raw/arzi` (reused) |
 | wozi | SCD30, SGP40, BMP388 (pressure/temp) | yes | active (8000ms) | `html_raw/wozi` |
-| dev | SCD30, SGP40, BMP388, ISL29125 (RGB colour/lux) — the colour sensor is dev-only; the other three share wozi's drivers with a different I2C bus pairing (Part C.8) | yes | active (8000ms) | `html_raw/dev` (bench rig) |
+| dev | SCD30, SGP40, BMP388, ISL29125 (RGB colour/lux, dev-only) — the other three share wozi's drivers with a different I2C bus pairing (Part C.8) | yes | active (8000ms) | `html_raw/dev` (bench rig) |
 
 ## Repository layout, architecture, refactor status, and the build process
 
@@ -47,7 +47,7 @@ works with no subcommand named. Full `setup` flag reference:
 | `--micropython-ref REF` | Build a specific MicroPython tag/ref instead of `toolchain/versions.toml`'s pinned one |
 | `--latest` | Detect the newest stable MicroPython release, pin `versions.toml` to it, then build that |
 | `--skip-apt` | Skip installing system/apt packages (assumes they're already present) |
-| `--clean` | Wipe all build-artifact directories (`picotool/build`, `mpy-cross/build`, `ports/rp2/build-<board>`, `ports/unix/build-standard`) before building, without re-cloning git sources |
+| `--clean` | Wipe all build-artifact directories (`picotool/build`, `mpy-cross/build`, `ports/rp2/build-<board>`, and both Unix-port variants `ports/unix/build-standard` and `ports/unix/build-settrace`) before building, without re-cloning git sources |
 | `--toolchain-dir PATH` | Directory holding the micropython/pico-sdk/picotool source trees (default: `$PICO_TOOLCHAIN_DIR` or `~/pico-toolchain`) |
 | `--jobs N` | Parallel make jobs (default: `os.cpu_count()`) |
 
@@ -113,8 +113,8 @@ never run it over a connection that depends on the bridge staying up.
 ## Code quality tooling
 
 Ruff and mypy checks, scoped to eight directories — `src/`, `tests/`, `digital_twin/`,
-`boot_entry/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the pre-refactor
-codebase — `python/`, `modules/` — isn't covered yet) — shellcheck over `scripts/`, actionlint +
+`buildgen/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the
+pre-refactor codebase — `python/`, `modules/` — isn't covered yet) — shellcheck over `scripts/`, actionlint +
 zizmor over the GitHub Actions workflows, plus unit tests for `src/`, can be run manually. mypy
 runs three separate passes, since the MicroPython-target scopes and the host-CPython ones need
 different stdlib stubs and cannot share one invocation. Needs Python 3.11+ (`tomllib`, stdlib only since 3.11 — `uv sync` enforces this
@@ -134,14 +134,34 @@ scripts/test.sh            # runs every test in tests/, under a real MicroPython
 scripts/test.sh --coverage # same, plus a src/-only line coverage report (HTML/XML/markdown) - see below
 ```
 
-`test.sh` takes no positional arguments (only the `--coverage` flag above); two environment
+`test.sh` takes no positional arguments (only the `--coverage` flag above); six environment
 variables tune it: `PICO_TOOLCHAIN_DIR` (where to find/build the toolchain, default
 `~/pico-toolchain`), `SKIP_APT=1` (skip apt package installs if the Unix port needs building and
-they're already present), and `PER_FILE_TIMEOUT_S` (per-test-file timeout in seconds before a retry,
-default 180). Every `tests/test_*.py` file runs as its own interpreter process and prints its own
-`PASS`/`FAIL` lines plus an `N/N passed` count as it goes; **the run ends with one rolled-up
-summary** (`tests_scripts/`'s own pass/fail, the MicroPython file count, and every failed file named
-by path) so a failure earlier in a long run doesn't require scrolling back through the log:
+they're already present), `PER_FILE_TIMEOUT_S` (per-test-file timeout in seconds before a retry,
+default 240), `TEST_PARALLELISM` (how many test files run at once — by default autodetected, not a
+flat multiple of the core count: `test.sh` times a fixed loop in the very Unix-port interpreter the
+tests run under and picks 4x usable cores at <=250ms, 2x at <=900ms, 1x beyond, honouring a cgroup
+CPU quota when one is set, because core *count* alone cannot tell a fast x86 runner from a slow
+host (the bench Pi4 probes at ~139 ms: 4x, 16 jobs, green). The suite is sleep-bound rather than
+CPU-bound, so oversubscribing a fast host is close to free; set `TEST_PARALLELISM=1` for strictly
+sequential runs), `TESTS_SCRIPTS_TIMEOUT_S`
+(whole-suite timeout for the backgrounded `tests_scripts/` pytest job, default 1200 — roughly 5x its
+real runtime, so it only fires on a genuine hang), and `GC_THRESHOLD` (run the MicroPython tier with
+that `gc.threshold()` set instead of the interpreter's own reactive default — `GC_THRESHOLD=32768
+scripts/test.sh` is the value the firmware's boot entry ships, and the suite has to pass both ways;
+a value that is not an integer, or falls outside the rp2040's own 32-bit machine word, is rejected up
+front before the run touches anything, rather than failing inside the runner once per test file;
+see "Memory-safety discipline" in CLAUDE.md for why both runs are required and which one proves
+what). Every `tests/test_*.py` file runs as
+its own interpreter process and prints its own `PASS`/`FAIL` lines plus an `N/N passed` count as it
+goes, each line prefixed with that file's own name in brackets (e.g. `[test_sensortask_dev]`) since
+several files' output interleaves when they run concurrently; **the run ends with one rolled-up
+summary** (`tests_scripts/`'s own pass/fail, the
+MicroPython file count, every failed file named by path, and any file whose output contained a
+`MemoryError` or the interpreter's own `memory allocation failed` wording — caught-and-logged
+counts, and fails the run, even if that file's own tests passed; both spellings are matched because
+`src/` logs the exception's message and not its class, so a real degrade never says "MemoryError")
+so a failure earlier in a long run doesn't require scrolling back through the log:
 
 ```
 == Test summary ==
@@ -153,8 +173,12 @@ Result: FAILED
 ```
 
 All three (`lint.sh`/`typecheck.sh`/`test.sh`) run in GitHub Actions CI
-(`.github/workflows/ci.yml`) on every push/PR, plus `test.sh --coverage` as a non-gating extra
-step. Config lives in the root `pyproject.toml`; see CLAUDE.md's "Code quality tooling" section
+(`.github/workflows/ci.yml`) on every push/PR, plus `test.sh --coverage` as its own
+`unit-tests-coverage` job — its coverage number advisory, its test result gating (SPECIFICATION.md
+Part E.5.3) — and `GC_THRESHOLD=32768 scripts/test.sh` as a gating
+`unit-tests-gc-threshold` one (both split out from the main test job so their own wall-clock cost
+never sits on the critical path other jobs wait on). Config lives in the root `pyproject.toml`; see CLAUDE.md's
+"Code quality tooling" section
 for the full rationale (why `ruff format` isn't used, why the MicroPython stubs install into a
 separate `typings/` directory instead of the main dev venv, why tests don't run under
 pytest/CPython, etc.).
@@ -218,8 +242,9 @@ convenience (see `js/app.js`'s own docstring) — real firmware always serves ex
 definitions.json, never branches on a query param.
 
 All five CI-covered checks run in GitHub Actions CI (`.github/workflows/ci.yml`'s `web-lint-and-typecheck`/
-`web-unit-tests` jobs), gated by a `dorny/paths-filter` job so they only run when `html/`, `js/`,
-`tests_js/`, or their own tooling configs actually change — alongside, not replacing, the Python
+`web-unit-tests` jobs, plus `web-put-matrix` for the live PUT matrix, which is sharded three ways
+because that one file is the web tier's whole wall clock), gated by a `dorny/paths-filter` job so
+they only run when this push changed `html/`, `js/`, `tests_js/`, or their own tooling configs — alongside, not replacing, the Python
 jobs above, which keep gating on Python paths exactly as before. Config lives at the repo root
 (`eslint.config.js`, `tsconfig.json`, `vitest.config.js`, `.htmlvalidate.json`,
 `.stylelintrc.json`); see `SPECIFICATION.md` Part H.8 for the full role mapping and rationale. Vitest's
@@ -401,11 +426,11 @@ equivalent summary at the end (`All N manual test(s) passed.` or `N/M manual tes
 `digital_twin/` is a fake `machine`/`network`/`neopixel` implementation that mirrors a real device's
 bus wiring — real-time-firing `Timer`s, randomized-but-plausible sensor values, and a scripted
 `WLAN` connect sequence — so driver code can run under the real MicroPython Unix-port interpreter
-with no physical hardware attached. `wozi` is the default wiring (`scripts/run_unix_port_integration.sh`,
-`scripts/run_digital_twin_ci.sh`); `dev` is also fully supported end-to-end (`digital_twin/run_dev_integration.py`)
-— see `digital_twin/README.md`. The default run serves the real, production `wozi` website
-(`scripts/build_website.sh wozi`), not the `html_stub` placeholder — see `SPECIFICATION.md` Part H.7
-for the full account.
+with no physical hardware attached. `wozi` is the default device (`scripts/run_unix_port_integration.sh`,
+`scripts/run_digital_twin_ci.sh`); every real device is fully supported end-to-end via `--device`
+(`digital_twin/run_generic_integration.py`) — see `digital_twin/README.md`. The default run serves
+the real, production `wozi` website (`scripts/build_website.sh wozi`) — see `SPECIFICATION.md` Part
+H.7 for the full account.
 
 **Quick start: twin + real website, in one command** (builds the MicroPython Unix port and the
 website automatically if either is missing, then serves both forever):
@@ -418,22 +443,19 @@ Then open `http://127.0.0.1:8080/` in a browser — that's the real `html/`+`js/
 real REST API, backed by the twin instead of physical hardware. See "Manual baseline verification
 walkthrough" below for a longer copy-paste sequence that also exercises every endpoint and
 fault-injection flag over `curl`. Every flag forwards straight through to
-`digital_twin/run_wozi_integration.py`'s own arg parser:
+`digital_twin/run_generic_integration.py`'s own arg parser:
 
 ```sh
-scripts/run_unix_port_integration.sh                                 # just launch + serve forever, no flags
-scripts/run_unix_port_integration.sh --soak                           # bounded automated soak run, then serves forever
-scripts/run_unix_port_integration.sh --soak --duration 0              # same, but exits immediately after the soak
+scripts/run_unix_port_integration.sh                                 # wozi: just launch + serve forever, no flags
+scripts/run_unix_port_integration.sh --device dev                     # any other real device, same shape
 scripts/run_unix_port_integration.sh --fault sgp40:writeto             # manual fault-injection exploration
 scripts/run_unix_port_integration.sh --host 0.0.0.0 --port 8080        # reachable from outside this machine
 ```
 
+- `--device NAME` — which real device to boot (`wozi`/`dev`/`arzi`/`klkizi`/`grkizi`/`schlafzi`,
+  default `wozi`); this script's own flag, not forwarded to the twin process.
 - `--host HOST` / `--port PORT` — bind address (default `localhost:8080`).
-- `--soak` — run a bounded automated HTTP+memory-trend soak check before serving (see
-  `run_wozi_integration.py`'s `_soak()` for the methodology); prints a `PASS`/`FAIL` line.
-- `--soak-cycles N` — number of soak cycles (implies `--soak`); default 20.
-- `--duration SECONDS` — exit after a fixed run instead of serving forever (`0` exits immediately
-  after the soak, if any).
+- `--duration SECONDS` — exit after a fixed run instead of serving forever.
 - `--seed N` — seed every chip's random value walk for a reproducible run.
 - `--fault DEVICE:OP[:TIMES]` (repeatable) — same shape as `digital_twin/launch.py`'s `--fault`
   below.
@@ -441,8 +463,19 @@ scripts/run_unix_port_integration.sh --host 0.0.0.0 --port 8080        # reachab
   raising, for timeout-path testing.
 - `--wifi-outcome OUTCOME` (repeatable) — queue a `WLAN.connect()` outcome, same values as below.
 - `--fram-state-path PATH` / `--scd30-state-path PATH` — persist that chip's state to a JSON file
-  across runs (default `digital_twin/fram_state.json` / `digital_twin/scd30_state.json`; `""` means
-  in-memory only, never persisted).
+  across runs; default in-memory only (`""` also means in-memory only), unlike
+  `scripts/_digital_twin_ci_suite.py`'s own explicit on-disk defaults for its persistence checks.
+- `--gc-threshold N` — override the boot-time `gc.threshold()` (default `32768`, matching every
+  real firmware boot); `-1` is MicroPython's own real reactive-only default.
+- `--mem-sample-interval-ms N` — arm a background task that logs a `gc.mem_free()` reading every
+  `N` ms (see `_mem_sampler()`); the twin's own only remaining contribution to the memory-trend
+  soak check below, which otherwise runs entirely host-side.
+
+There is no standalone `--soak` flag any more - the automated HTTP+memory-trend soak check moved
+host-side (SPECIFICATION.md's "Driver/DUT process separation" Part): request-driving now runs on
+the host, the same way every other digital-twin check already does, rather than sharing the twin's
+own heap. Run it via `scripts/_digital_twin_ci_suite.py --micropython-bin <path> --device <device>`
+(its own Run 11) - see `digital_twin/README.md`'s "Automated CI suite" section.
 
 Start the twin's standalone CLI demo (no website, twin only) directly with the same Unix-port binary
 `scripts/test.sh` builds:
@@ -468,19 +501,22 @@ and repeatable where noted:
 - `--fram-state-path PATH` — persist the FRAM twin's contents to a JSON file across runs, instead of
   in-memory only.
 
-This standalone launcher is twin-only (no `src/` import). To instead run the real
-`src/sensortask_wozi.py` prototype against the twin, see `digital_twin/README.md`'s own
-"Swapping the twin in for a Unix-port run" section — that's a separate `MICROPYPATH`-based
-invocation, not this launcher.
+This standalone launcher is twin-only (no `src/` import). To instead run the real, buildgen-generated
+`sensortask_wozi.py` prototype against the twin, see `digital_twin/README.md`'s own "Swapping the
+twin in for a Unix-port run" section — that's a separate `MICROPYPATH`-based invocation, not this
+launcher.
 
 **Automated CI suite** — the manual walkthrough below turned into an unattended, CI-gating check:
-drives `digital_twin/run_wozi_integration.py` through five real subprocess runs (fresh boot, every
-GET/PUT endpoint, `DebugLevel=5` verbose logging, bus fault injection, settings/error persistence
-across a real reboot, soak) and asserts every step. Builds the Unix port and the real `wozi` website
-first if either is missing (same `$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):
+drives `digital_twin/run_generic_integration.py` through fourteen sequential runs and asserts every
+step: fresh boot, every GET/PUT endpoint, `DebugLevel=5` verbose logging, bus fault injection,
+settings/error persistence across a real reboot, soak at both `gc.threshold()` configurations and the
+full-ceiling burst (`digital_twin/README.md`'s "Automated CI suite" lists each run). Runs against
+`wozi` by default, or any of the other 5 real device variants via an optional device argument.
+Builds the Unix port and the real website for that device first if either is missing (same `$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):
 
 ```sh
-scripts/run_digital_twin_ci.sh
+scripts/run_digital_twin_ci.sh          # wozi (default)
+scripts/run_digital_twin_ci.sh dev      # or any other real device variant
 ```
 
 Ends with its own clear summary: `== digital-twin CI suite PASSED: every check succeeded` or
@@ -494,24 +530,23 @@ adding a new chip fake when a new sensor driver lands: **`digital_twin/README.md
 
 ### Manual baseline verification walkthrough
 
-A copy-paste sequence for manually checking the real assembled system (`src/sensortask_wozi.py`,
-unchanged) against the digital twin, end to end, over real HTTP — the same walkthrough used to
+A copy-paste sequence for manually checking the real assembled system (the buildgen-generated
+`sensortask_wozi.py`) against the digital twin, end to end, over real HTTP — the same walkthrough used to
 establish this project's own known-working baseline (build → boot → set log level → reboot with
 that level persisted → boot again with bus faults injected). Run each block from the repo root;
 `curl` and a browser both work against `http://127.0.0.1:8080` while a run is up.
 
-**1. Fresh build and boot** (`--soak` runs a built-in 20-cycle soak across every endpoint before it
-starts serving — watch for a `PASS` line; omit it for a plain launch straight into serving, the same
-as a real rp2040 boot):
+**1. Fresh build and boot** (straight into serving, the same as a real rp2040 boot - for the
+automated HTTP+memory-trend soak check instead, see `scripts/_digital_twin_ci_suite.py`'s Run 11):
 
 ```sh
 rm -rf digital_twin/config digital_twin/fram_state.json   # start from a clean, unconfigured device
-scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080 --soak
+scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080
 ```
 
 Leave this running in its own terminal. In a second terminal, walk every GET endpoint plus the
 real website (`scripts/run_unix_port_integration.sh` builds and serves the real `wozi` site by
-default — not the `html_stub` placeholder, see "Digital twin" above):
+default, see "Digital twin" above):
 
 ```sh
 curl -s http://127.0.0.1:8080/measurements | python3 -m json.tool
@@ -525,8 +560,10 @@ open http://127.0.0.1:8080/   # the real website - a browser (not curl) is the u
 
 **2. Set the log level to `all` (5) via the real API, then reboot to see a full startup log.**
 `DebugLevel` is a persisted `/system` setting (0-5, see `print_log.py`'s `PrintLog.level_*()`
-methods) — like every config write, it's saved to disk immediately, and takes effect immediately
-too: `system_service.py`'s `set_level_setters()`/`_apply_level()` registry pushes any accepted
+methods) — like every config write, it takes effect immediately (the accepted value is pushed live
+the moment the request is validated) and is saved to disk shortly after, off the request's own
+critical path (`config_manager.py`'s deferred-flush design, SPECIFICATION.md Part F.2):
+`system_service.py`'s `set_level_setters()`/`_apply_level()` registry pushes any accepted
 `DebugLevel` write straight out to every other already-constructed module's own
 `PrintLog.set_level()`, live, no reboot required (confirmed directly — a running twin's console
 starts emitting full per-cycle event traces the instant the PUT below lands). The reboot that
@@ -540,14 +577,14 @@ curl -s http://127.0.0.1:8080/system   # confirm it reads back as 5
 ```
 
 Now stop the running twin with **Ctrl-C in its own terminal** (a real `SIGINT` — this is what
-`run_wozi_integration.py`'s own `except KeyboardInterrupt:` catches, letting its `finally` block
+`run_generic_integration.py`'s own `except KeyboardInterrupt:` catches, letting its `finally` block
 flush the FRAM twin's state to disk before exiting; a hard `kill`/`pkill` skips that cleanup, same
 as it would skip any unsaved state on real hardware). Then boot again the same way as step 1, but
 **without** wiping `digital_twin/config/` this time (that's the whole point — the persisted
 `DebugLevel` survives):
 
 ```sh
-scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080 --soak
+scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080
 ```
 
 This boot's own console output is now the full verbose trace — every `PrintLog.evt()`/`.one()`/
@@ -618,6 +655,12 @@ When a new doc is added, add it here too instead of letting the map go stale aga
 - **BACKLOG.md** — active open questions, not-yet-done refactor targets, and deferred/out-of-scope
   work; see its own opening paragraph for the full scope. Resolved items move into this file or
   CLAUDE.md instead of staying there — it's working memory, not a changelog.
+- **[`HEAP_FRAGMENTATION_MEASUREMENTS.md`](HEAP_FRAGMENTATION_MEASUREMENTS.md)** — how to measure
+  heap layout and serving memory so the number is worth believing: the allocator's behaviour, the
+  instruments and which metrics work, the traps that have silently produced wrong figures, twin
+  calibration, and how to rebuild the ad-hoc instruments. Method, not results — the investigation's
+  full measurement record is archived in git (its opening paragraph says where) and is what an
+  "archive §…" citation elsewhere names.
 
 **The central specification** (permanent, code-facing):
 
@@ -625,8 +668,8 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   repository/architecture overview, the toolchain/build-environment installer, the sensor driver
   architecture spec, the `src/` production-quality checklist, testing & coverage,
   MicroPython/RP2040 platform-target facts, the cross-cutting shared-pattern/primitive-reuse
-  catalog, and the website's own architecture — all in one place, organized into lettered Parts
-  (A-J) for different needs. Produced by a first-pass doc-scatter cleanup that merged
+  catalog, the website's own architecture, the new-driver checklist, the device-TOML/`buildgen`
+  build chain and a per-chip reference — all in one place, organized into lettered Parts (A-M) for different needs. Produced by a first-pass doc-scatter cleanup that merged
   `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, most of this
   file's former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Build
   process" content, and the spec-shaped parts of `CLAUDE.md`/`BACKLOG.md` into one document. Start
@@ -638,15 +681,31 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   way at the UART promotion's merge: its durable contracts are Part J (J.9 in particular), its
   open items are in BACKLOG.md, and the work list and audit-pass history it also carried were
   dropped rather than migrated — documentation holds current state and rules, not the path that
-  got there.
+  got there. `BUILD_CHAIN_PLAN.md` and `BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md` were folded in
+  the same way once the device-genericization chain had fully landed: their durable content — the
+  device variants and the two standing acceptance criteria, the core design decisions, the device
+  TOML schema, the generator pipeline, the build-tooling quality bar, the wiring-defaults/per-value/
+  comment-tag/pin-legality mechanisms, and product versioning — is **Part L**, while their status
+  sections, dependency-ordered session breakdown, merge-back review checklist and merge history were
+  dropped as process narrative.
 
 **Temporary docs** (deleted once their purpose is served):
 
 - **[`UART_C_PORT_CHANGELOG.md`](UART_C_PORT_CHANGELOG.md)** — the running log of UART-protocol
   changes that must be mirrored into the Arduino peer's C implementation of the same protocol (plus
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
-  across the gap until that C source is imported into this repo and reconciled, then gets deleted.
+  across the gap until that C source (`arduino/libraries/Async_UART_Comm/`, imported 2026-09-13) is
+  reconciled - outside this project's scope (owner, 2026-09-24) - then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
+- **[`PROJECT_AUDIT_PLAN.md`](PROJECT_AUDIT_PLAN.md)** — the plan and topic catalog for the
+  whole-project audit (broad and deep, every tier): scope, method, open owner decisions, per-area
+  topics and unverified seed observations. Planning only: its execution is blocked until the owner's
+  explicit go-ahead. Deleted once the audit closes and its outcomes are migrated. Not the retired
+  `src/`-only `AUDIT_PLAN.md` listed below.
+
+A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
+lines and deleted once its findings are migrated. Never treat one as a durable reference; for
+anything bench-related, BACKLOG.md's "Real-hardware work still owed" is the list.
 
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 
@@ -663,15 +722,24 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   source couldn't be established (`captive_dns.py`/`asy_ntp_client.py`/`asy_udp_socket.py`) and a
   disclosure that parts of this codebase were written with AI assistance.
 
-**`digital_twin/README.md`** (permanent, not yet folded into `SPECIFICATION.md`):
+**`digital_twin/README.md`** (permanent, kept current):
 
 - **`digital_twin/README.md`** — the standing reference for the hardware simulator: what's there,
   how to swap it in for a Unix-port run, FRAM/SCD30 persistence, running its own tests, and how to
   add a new chip fake when a new sensor driver lands (required per `SPECIFICATION.md` Part C.11
-  point 9). Its own lifecycle isn't yet settled (still genuinely useful, but a later session may
-  decide to fold it into `SPECIFICATION.md` the way `src/README.md`/`tests/README.md` were) —
-  listed here for now so it isn't only locatable by cross-reference in the meantime. See
-  `SPECIFICATION.md` Part A.10 for how it fits into the rest of the architecture.
+  point 9). Folding it into `SPECIFICATION.md`, the way `src/README.md`/`tests/README.md` were, is
+  an open option. See `SPECIFICATION.md` Part A.10 for how it fits into the rest of the
+  architecture.
+
+**`tests_hardware/README.md`** (permanent, kept current):
+
+- **`tests_hardware/README.md`** — the durable technical reference for the real-hardware tier:
+  prerequisites, environment variables, how to run each tier, the safety facts (the
+  `--allow-flash-cycle`/`--allow-persistence-writes`/`--allow-neopixel-sweep`/long-soak opt-in
+  gates, the stage-6 permanent-WLAN-deactivation risk, the FRAM-chunk overwrite trap), the ISL29125
+  bench-rig facts and the numbered audit passes that found this tier's own gaps. CLAUDE.md's
+  real-hardware hard rule points here for what a session with the owner's go-ahead needs to know;
+  BACKLOG.md's "Real-hardware work still owed" says *what* is owed, this file says *how*.
 
 **`dev_legacy/README.md`** (permanent, kept current):
 

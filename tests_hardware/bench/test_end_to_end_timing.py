@@ -9,8 +9,9 @@ import time
 from typing import TYPE_CHECKING
 
 import http_client
-from error_log_helpers import assert_module_error_log_clean, assert_module_error_log_empty, reset_all_error_logs
-from harness import Board, wait_until
+import pytest
+from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
+from harness import Board, configured_max_connections, wait_until
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
@@ -22,10 +23,9 @@ if TYPE_CHECKING:
 
 
 def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # is_reachable() would soft-reset the board's own heap on every poll (mpremote's raw-REPL entry
-    # always Ctrl-D's first) - wiping the very Timer this test waits on before the real hardware
-    # reset fires. Uses is_device_present() instead - a passive open()/close() that touches nothing
-    # (see tests_hardware/README.md for the full repro).
+    # is_reachable() soft-resets the board's heap on every poll (raw-REPL entry Ctrl-D's first),
+    # wiping the very Timer this test waits on. is_device_present() is the passive open()/close()
+    # that touches nothing; tests_hardware/README.md has the repro.
     res = http_client.fetch(dut_ip, 80, "PUT", "/system", {"SystemCmd": "reboot"})
     assert res.status_code == 200, f"PUT /system SystemCmd=reboot failed: {res.status_code} {res.body!r}"
     assert res.json()["result"]["SystemCmd"] == "Valid", f"reboot command was rejected: {res.json()!r}"
@@ -60,19 +60,18 @@ def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: 
 
 
 def test_real_concurrent_client_burst_does_not_crash_the_webserver(dut_ip: str, board: Board) -> None:
-    # 8 concurrent requests against max_connections=4's reject-when-full policy: some subset
-    # legitimately gets a silent close (ConnectionResetError or timeout), not a crash. The real
-    # property under test is that the server survives and keeps serving - at least the connection
-    # cap's own worth of requests must still get through cleanly.
-    n_clients = 8
-    _max_connections = 4  # matches asy_webserver_service.py's own max_connections default
+    # Twice the build's own ceiling, concurrently, against its reject-when-full policy - so some
+    # subset legitimately gets a silent close rather than a crash. The property under test is that
+    # the server survives and keeps serving at least the ceiling's own worth of requests.
+    _max_connections = configured_max_connections()  # derived from the build, never a restated literal
+    n_clients = _max_connections * 2
     results: list[int | str] = [0] * n_clients
 
     def _client(i: int) -> None:
         try:
             res = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=10.0)
             results[i] = res.status_code
-        except OSError as exc:
+        except (OSError, http_client.HTTP_ERROR) as exc:
             results[i] = repr(exc)
 
     threads = [threading.Thread(target=_client, args=(i,)) for i in range(n_clients)]
@@ -83,10 +82,9 @@ def test_real_concurrent_client_burst_does_not_crash_the_webserver(dut_ip: str, 
 
     successes = [r for r in results if r == 200]
     assert len(successes) >= _max_connections, f"only {len(successes)}/{n_clients} concurrent requests succeeded (expected at least the {_max_connections}-connection admission ceiling to be served): {results}"
-    # The webserver must still be responsive afterward - a crash that only surfaces after the
-    # burst (not during it) would otherwise slip through the per-request results above.
-    # is_device_present(), not is_reachable() - see that method's own docstring for why polling
-    # (or even a single incidental call to) is_reachable() against a live system is disruptive.
+    # The webserver must still answer afterwards: a crash surfacing after the burst rather than
+    # during it slips through the per-request results above. is_device_present(), not
+    # is_reachable() - see that method's docstring on disturbing a live system.
     assert board.is_device_present() or http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after the concurrent burst"
 
 
@@ -120,15 +118,13 @@ def _try_fetch_ok(dut_ip: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Recombination test (project owner's explicit request): does a real hard_reset() landing at an
-# uncontrolled point relative to FRAM's own natural background write activity (SGP40's periodic
-# VOC-backup) leave the FRAM subsystem fully healthy afterward? Complements
-# tests_hardware/flash/test_bus_concurrency.py's deterministic reset race (which can only land
-# right as a write session begins) - timing here is genuinely uncontrolled, so several resets
-# spread across a fast backup cadence give repeated opportunities instead of one precise instant.
+# Recombination test (owner's explicit request): a real hard_reset() landing at an uncontrolled
+# point in FRAM's natural background write activity - SGP40's periodic VOC backup - must leave
+# the subsystem healthy. The flash tier's reset race can only land as a write session begins.
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.persistence_write
 def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     current = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0).json()
@@ -170,10 +166,7 @@ def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(bo
 
         # Full health check, not just "reachable" - the FRAM subsystem specifically must still work.
         assert_module_error_log_empty(dut_ip, "SGP40")
-        # FRAM is NOT held to an empty log, and that is the point (owner's ruling): three hard resets
-        # inside real SPI writes are expected to tear some - E31 the write-side status failure, W71
-        # the dual-copy recovery working, W72 a chunk that lost both. Nothing else may appear.
-        assert_module_error_log_clean(dut_ip, "FRAM", allowed_warnings=(71, 72), allowed_errors=(31,))
+        assert_module_error_log_empty(dut_ip, "FRAM")
 
         # One more real backup completing cleanly after all three resets proves the FRAM subsystem
         # itself is still genuinely functional, not merely "board reachable".
@@ -186,13 +179,6 @@ def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(bo
             description="a fresh real SGP40 VOC backup completing after the reset sequence",
         )
     finally:
-        # The torn-write entries are real persisted state, so whatever runs next would read them as
-        # evidence. Cleared here rather than by the next test, so no sibling has to know this one
-        # ran; on a failure they are already in the assertion message above.
-        try:
-            reset_all_error_logs(dut_ip)
-        except OSError:
-            pass  # unreachable board - the restore below does its own reachability recovery
         try:
             restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"BackupPeriod": original_backup_period}}, timeout_s=10.0)
         except OSError:
