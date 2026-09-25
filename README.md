@@ -710,6 +710,12 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   order with their flags and wear, and where each result goes. Names the queue's rows rather
   than restating them; deleted once that sitting's results are migrated.
 
+- **[`PROJECT_AUDIT_PLAN.md`](PROJECT_AUDIT_PLAN.md)** — the plan and topic catalog for the
+  whole-project audit (broad and deep, every tier): scope, method, open owner decisions, per-area
+  topics and unverified seed observations. Planning only: its execution is blocked until the owner's
+  explicit go-ahead. Deleted once the audit closes and its outcomes are migrated. Not the retired
+  `src/`-only `AUDIT_PLAN.md` listed below.
+
 A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
 lines and deleted once its findings are migrated. Never treat one as a durable reference; prefer the
 queue above for anything bench-related.
