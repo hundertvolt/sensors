@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFORM 27, WORKAROUND 9, SUPPRESS 65, TODO 25, OPENQ 11, DRIFT 72, NOTE 6 — 822 items.
+Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFORM 27, WORKAROUND 9, SUPPRESS 65, TODO 25, OPENQ 11, DRIFT 72, NOTE 7 — 823 items.
 
 
 ## tests_hardware/conftest.py
@@ -3156,3 +3156,6 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
   sgp40_fram_backup_restore.py ... still hand-list theirs ... left for whenever their driver's schema
   next changes" — Device script cache drift. · status: done (both now derive from cfg_schema:
   bmp3xx_plausibility_read.py:23, sgp40_fram_backup_restore.py:79,114) | - · [H17]
+- **HW.N823** NOTE(OWNER) · `commit 98dc1b2 / 4f1c802` — SCD30 NVM write gating: one global flag +
+  AND-gated extra flag, "intentional all along" — Settled design. · tracked: CLAUDE.md
+  (persistence_write/scd30_extra_write), tests_hardware/README.md | - · [H17]

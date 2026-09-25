@@ -15,7 +15,8 @@ AREA_NAMES = dict(XCUT='System-wide contracts', CORE='Core runtime modules', ALG
     PLAT='MicroPython/RP2040 platform facts', PAR='Legacy parity and field migration', DOC='Documentation set', LIC='Licensing and attribution')
 KINDS = "SETTLED INVAR MIRROR LIMIT RISK ASSUME PLATFORM WORKAROUND SUPPRESS TODO OPENQ DRIFT NOTE".split()
 DEFINED = set(re.findall(r'\*\*((?:' + '|'.join(AREAS + ['ENV']) + r')\.[ST]\d\d)\*\*', PLAN))
-REDACT = [('pta2ToWIVkFIYHm7SDne', '<redacted: bench PSK, HW.T11>')]
+_PSK = re.search(r'REAL_PW\s*=\s*"([^"]+)"', open(f'{REPO}/tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py').read())
+REDACT = [(_PSK.group(1), '<redacted: bench PSK, HW.T11>')] if _PSK else []  # read, not repeated here
 ITEM = re.compile(r'^- (?:\[\d+\] )?\**([A-Z][A-Z /]{1,30}?)\**\s*\|.*\|')
 ALIAS = {'SECURITY': 'SEC', 'PLATFORM': 'PLAT', 'DOCS': 'DOC', 'TESTS': 'TEST', 'LEGACY': 'PAR', 'ENV': 'SCR'}
 

@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 24, INVAR 124, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM 7, WORKAROUND 31, SUPPRESS 121, TODO 4, DRIFT 30, NOTE 4 — 750 items.
+Kinds: SETTLED 24, INVAR 124, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM 7, WORKAROUND 32, SUPPRESS 121, TODO 4, DRIFT 30, NOTE 5 — 752 items.
 
 
 ## src/asy_webserver_service.py
@@ -2968,3 +2968,8 @@ Kinds: SETTLED 24, INVAR 124, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM
   TimeoutError on a real 5-second UDP round-trip wait) ... confirmed transient, not a regression, not
   touched" — Flaky real-UDP test left as is. · UNTRACKED (low; no BACKLOG/SPEC mention; test still at
   tests/test_asy_ntp_client.py:2205) | related: NET.T*, TEST.T* · [H17]
+- **TEST.N751** WORKAROUND · `commit 9cf8a9c / 0dc9799` — "raised scripts/test.sh's -X heapsize to 32M";
+  8M experiment reverted "to the known-safe 32M rather than gambling" — Heap ceiling raised to pass
+  tests. · status: done — per-device split, now 16M (CLAUDE.md, SPEC E.3.1) | related: MEM.T* · [H17]
+- **TEST.N752** NOTE(REVERTED) · `commit 1e2c001 -> 874e3da` — "Revert gc.collect() additions - wrong
+  tool, and empirically didn't work anyway" — Rule enforcement. · status: done | - · [H17]

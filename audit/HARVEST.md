@@ -26,8 +26,8 @@ Per-area catalogs: `audit/harvest/<AREA>.md`; item IDs `<AREA>.Nnnn` are stable 
 
 ## Size and anchor check
 
-6320 items from 17 agents; 9 exact duplicates (same kind and anchor) folded;
-6311 catalogued. Anchor check: ok 5846, not-a-file 286, quote-not-found 100, no-quote 47, moved 29, out-of-bounds 3.
+6325 items from 17 agents; 9 exact duplicates (same kind and anchor) folded;
+6316 catalogued. Anchor check: ok 5846, not-a-file 291, quote-not-found 100, no-quote 47, moved 29, out-of-bounds 3.
 
 | Area | Items | SETTLED | INVAR | MIRROR | LIMIT | RISK | ASSUME | PLATFORM | WORKAROUND | SUPPRESS | TODO | OPENQ | DRIFT | NOTE |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -35,7 +35,7 @@ Per-area catalogs: `audit/harvest/<AREA>.md`; item IDs `<AREA>.Nnnn` are stable 
 | [CORE](harvest/CORE.md) | 265 | 48 | 60 | 3 | 36 | 30 | 33 | 2 | 2 | 30 | 10 | 4 | 5 | 2 |
 | [ALGO](harvest/ALGO.md) | 81 | 11 | 17 | 10 | 15 | 5 | 8 | 3 |  | 8 | 1 |  | 2 | 1 |
 | [BUS](harvest/BUS.md) | 137 | 15 | 43 | 2 | 26 | 4 | 16 | 14 |  | 11 | 3 | 1 | 1 | 1 |
-| [SENS](harvest/SENS.md) | 400 | 57 | 53 | 17 | 72 | 15 | 57 | 71 | 2 | 32 | 5 | 2 | 8 | 9 |
+| [SENS](harvest/SENS.md) | 401 | 57 | 53 | 17 | 72 | 15 | 57 | 71 | 2 | 32 | 5 | 2 | 8 | 10 |
 | [STOR](harvest/STOR.md) | 203 | 44 | 35 | 8 | 30 | 19 | 23 | 19 |  | 7 | 5 | 2 | 8 | 3 |
 | [UART](harvest/UART.md) | 277 | 72 | 74 | 28 | 26 | 10 | 26 | 8 | 1 | 9 | 13 | 1 | 4 | 5 |
 | [NET](harvest/NET.md) | 250 | 43 | 31 | 7 | 50 | 18 | 30 | 15 | 2 | 39 | 6 | 3 | 6 |  |
@@ -46,12 +46,12 @@ Per-area catalogs: `audit/harvest/<AREA>.md`; item IDs `<AREA>.Nnnn` are stable 
 | [SCR](harvest/SCR.md) | 217 | 24 | 41 | 12 | 48 | 8 | 25 | 7 | 9 | 24 | 9 |  | 10 |  |
 | [CI](harvest/CI.md) | 209 | 40 | 21 | 4 | 23 | 8 | 19 | 8 | 16 | 36 | 14 |  | 16 | 4 |
 | [WEB](harvest/WEB.md) | 284 | 15 | 25 | 73 | 89 | 4 | 35 | 8 |  | 3 | 8 | 1 | 20 | 3 |
-| [TEST](harvest/TEST.md) | 750 | 24 | 124 | 96 | 195 | 9 | 105 | 7 | 31 | 121 | 4 |  | 30 | 4 |
+| [TEST](harvest/TEST.md) | 752 | 24 | 124 | 96 | 195 | 9 | 105 | 7 | 32 | 121 | 4 |  | 30 | 5 |
 | [TWIN](harvest/TWIN.md) | 368 | 25 | 50 | 21 | 150 | 4 | 75 | 3 | 20 | 11 | 3 | 1 | 4 | 1 |
-| [HW](harvest/HW.md) | 822 | 63 | 113 | 60 | 115 | 67 | 189 | 27 | 9 | 65 | 25 | 11 | 72 | 6 |
+| [HW](harvest/HW.md) | 823 | 63 | 113 | 60 | 115 | 67 | 189 | 27 | 9 | 65 | 25 | 11 | 72 | 7 |
 | [SEC](harvest/SEC.md) | 44 | 2 | 4 | 1 | 6 | 22 | 1 |  |  | 5 |  |  | 2 | 1 |
 | [MEM](harvest/MEM.md) | 159 | 23 | 32 | 2 | 20 | 9 | 39 | 1 |  | 18 | 4 | 8 | 1 | 2 |
-| [PERF](harvest/PERF.md) | 53 | 4 | 4 |  | 2 | 4 | 31 |  |  |  |  | 8 |  |  |
+| [PERF](harvest/PERF.md) | 54 | 4 | 4 |  | 2 | 4 | 31 |  |  |  |  | 8 |  | 1 |
 | [PLAT](harvest/PLAT.md) | 397 | 4 | 5 |  | 2 | 2 | 7 | 361 | 8 | 3 |  |  | 5 |  |
 | [PAR](harvest/PAR.md) | 258 | 31 | 95 | 12 | 44 | 13 | 22 | 11 | 1 | 1 | 2 | 1 | 14 | 11 |
 | [DOC](harvest/DOC.md) | 302 | 22 | 19 | 5 | 13 | 1 | 8 | 1 |  |  | 5 | 1 | 224 | 3 |
@@ -75,7 +75,7 @@ Per-area catalogs: `audit/harvest/<AREA>.md`; item IDs `<AREA>.Nnnn` are stable 
 - **H14** (279 items): CLAUDE.md, README.md, DEVICE_REFERENCE.md, update_and_install.txt
 - **H15** (259 items): BACKLOG.md, HEAP_FRAGMENTATION_MEASUREMENTS.md (+ archive at 12640c2), UART_C_PORT_CHANGELOG.md, licences
 - **H16** (191 items): legacy tree: python/, modules/, html_raw/, build-*.sh (parity oracle only)
-- **H17** (238 items): all commit messages to 2a88cc8, GitHub issues and pull requests (read-only)
+- **H17** (243 items): all commit messages to 2a88cc8, GitHub issues and pull requests (read-only)
 
 Partial reads, as reported:
 

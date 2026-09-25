@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 4, INVAR 4, LIMIT 2, RISK 4, ASSUME 31, OPENQ 8 — 53 items.
+Kinds: SETTLED 4, INVAR 4, LIMIT 2, RISK 4, ASSUME 31, OPENQ 8, NOTE 1 — 54 items.
 
 
 ## src/asy_udp_socket.py
@@ -268,3 +268,10 @@ Kinds: SETTLED 4, INVAR 4, LIMIT 2, RISK 4, ASSUME 31, OPENQ 8 — 53 items.
 - **PERF.N053** ASSUME · `BACKLOG.md:278-284` — "The cost is fixed PER CHUNK (~305ms), not per history
   entry" — Single-sitting silicon figures (2026-09-17; curve 2026-09-25 image `05:21:43Z`), incl. "The
   event loop is not blocked". · related: HW.T16 · [H15]
+
+## Commit messages (chronological)
+
+- **PERF.N054** NOTE(ANNOTATION) · `commit e47d4e1` — "annotates the twin-only boot-latency note as
+  unverified against real hardware" — Boot latency only twin-measured. · status: unknown — grep finds no
+  "unverified against real hardware" note in SPEC at 2a88cc8 (either resolved or dropped; not
+  re-verified) | related: PERF.T* · [H17]

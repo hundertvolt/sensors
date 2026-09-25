@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 71, WORKAROUND 2, SUPPRESS 32, TODO 5, OPENQ 2, DRIFT 8, NOTE 9 — 400 items.
+Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 71, WORKAROUND 2, SUPPRESS 32, TODO 5, OPENQ 2, DRIFT 8, NOTE 10 — 401 items.
 
 
 ## src/asy_bmp3xx_driver.py
@@ -1501,3 +1501,6 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
 - **SENS.N400** NOTE(UNREACHABLE) · `commit 1da9650 / b937dab` — "_read_sensor_dict() and
   _snapshot_field() both guard against decode_config() returning None, which get_config_snapshot()
   cannot produce" — Dead guards kept. · tracked: SPEC E.5.1 | - · [H17]
+- **SENS.N401** NOTE(EXCEPTION) · `commit f341543` — "asy_scd30_driver.py's own read trigger is
+  IRQ-gated ... flagged rather than silently smoothed over" — Exception to timer no-coincidence design.
+  · tracked: SPEC C.9.1 | - · [H17]
