@@ -18,7 +18,7 @@ Status values: **OPEN** (owed), **BLOCKED** (waiting on a decision or another ro
 
 ## The finalisation checklist — everything still owed, in one place
 
-Grouped by what each row *needs*, not by which effort opened it. **30 rows owed.** D1 and D2 are the
+Grouped by what each row *needs*, not by which effort opened it. **29 rows owed.** D1 and D2 are the
 owner's standing answers and no sitting re-asks them. G10 is excluded (section 5).
 This table is an index; the row's own entry below is what to read before running it.
 
@@ -35,7 +35,7 @@ This table is an index; the row's own entry below is what to read before running
 | **The bench host itself** | H1 | Owner-run; needs no board |
 | **Long soak and the light rig** | S4, M1 | Deliberately separate sittings. M1 is interactive and records the rig geometry S3b depends on |
 | **Findings still open** | F1, F17, F18 | F1: the script that stranded the bench once; read its row in full before running it. F17 rides along with W4. F18 is the owner's call first |
-| **The connection limit of 6** (§4A) | W3, W4, W5 | The next regular bench run; the limit itself is settled. W5 needs `--allow-persistence-writes` |
+| **The connection limit of 6** (§4A) | W3, W5 | The next regular bench run; the limit itself is settled. W5 needs `--allow-persistence-writes` |
 
 **What "finished on real hardware" means**: every row above DONE or explicitly EXCLUDED, each
 result migrated into `SPECIFICATION.md`/`CLAUDE.md`/`BACKLOG.md`, and this file deleted. That takes
@@ -44,7 +44,7 @@ one bench sitting, the writing work and the owner's own H1 run.
 ## If there is time for one sitting only
 
 **Board state**: `dev` image of tree `3062cc7`, `buildDate 2026-09-25T07:31:00Z`, `max_connections
-= 6`, `DebugLevel` 5 — current with `src/`. A sitting is in progress: `HARDWARE_TEST_HANDOVER.md`
+= 6`, `DebugLevel` 5 — behind the tree by `83c9920` (`asy_sgp40_driver.py`). A sitting is in progress: `HARDWARE_TEST_HANDOVER.md`
 section 5 has its results so far. Check `buildDate` against the tree every time.
 
 1. **Run sheet Step 1** — the `errcount` reading, before anything writes.
@@ -293,7 +293,6 @@ decision (2026-09-24) these two get no dedicated sitting; they run with the next
 | Row | What | Status |
 | --- | --- | --- |
 | W3 | `/status` wall-clock at 256 B pieces (`dev`'s `/status` is 29 pieces, 11 at the old 1,024 B): `tests_hardware/bench/test_end_to_end_timing.py` on the tree under test. F.1's +53 % was per *character*; this is per ~250 B | **MEASURED 2026-09-25** (image `05:21:43Z`), measured directly rather than through `test_end_to_end_timing.py`, which times no `/status`: 20 sequential idle `GET`s, 1 s apart. `/status` 6,859–6,865 B in **median 1.36 s** (min 1.30, p90 1.39, max 1.43 s); `/networking` 170 B in 0.34 s; `/measurements` ~510 B in 0.28 s. No 1,024 B silicon figure exists to compare with; the only earlier `/status` time is BACKLOG 24's 0.56–0.76 s during a sweep on 2026-09-17, a different image and not like-for-like. Owner to judge whether 1.36 s is acceptable, or whether one 1,024 B-piece build is worth measuring for the comparison |
-| W4 | The whole bench tier on the tree under test at `max_connections = 6`, default flags — `test_network_resilience.py`, `test_serving_heap_at_default_gc.py`, `test_heap_under_connection_ceiling.py`, `test_memory_stress_bench.py` and `test_bus_concurrency_under_api_load.py` all scale with the configured ceiling. The last full bench tier was image A (limit 7, pre-fix `src/`, archive §7R.2). First silicon run of `src/asy_webserver_service.py`'s post-E6′ changes (one-write header block, reset guard, slot release on `MemoryError`) and of the rewritten bench instruments, including the outage check now accepting `W4` beside `W5` (BACKLOG item 29, answered from source) | **RAN 2026-09-24, not clean; re-run owed on the current tree.** Image `2026-09-24T19:11:45Z` (tree `bf62580`), default flags: **103 passed, 2 failed, 4 skipped, 27 deselected in 49:29**. Skips: the two ISL29125 light programs (no `--allow-neopixel-sweep`), the UF2 reflash (no `--allow-flash-cycle`) and the known-permanent spoofed-source test. **Failure 1**, `test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one`: `ConnectionResetError` from the closing WEBSERVER log check, which ran while the burst's slots still filled the ceiling (Part I.6) — a test bug, fixed by a 1 s settle there and in the full-ceiling test before it, both re-run green. **Failure 2**, `test_an_idle_listener_polls_at_the_idle_rate_not_the_transaction_rate`: the USB serial dropped while the script was being uploaded; re-run in isolation with the test before it, 2 passed; cause not established (F17). Post-suite `errcount`: SYSTEM `W4` = the NTP task restarted after `E20` in the last test, the give-up since removed by `c20f80b` (unverified on silicon). The re-run also owes the new `assert_no_task_ended` checks their first run |
 | W5 | **The one response piece the 256 B cap does not bound, under the load the limit was measured at.** `_PieceWriter` never splits a fragment, so a single scalar longer than `chunk_bytes` is one over-cap piece, and `NTP_Host`'s settled 1,024-character bound makes a ~1,026 B piece reachable on `/networking` and in `/status`'s networking section (SPECIFICATION.md Part I.3). Every figure behind the limit of 6 was taken at the 12-character default, and the peak measurement leaves ~1.5 KB of largest free block — so this fits by argument, never by measurement, and would not fit the 528 B measured at 7. Set `NTP_Host` to its bound through the REST path, then run `test_network_resilience.py`'s peak arm and confirm both routes still come back complete and parseable. Costs one flash cycle for the config write, so it rides a run that already has `--allow-persistence-writes`; restore the old value afterwards | OPEN |
 
 ## 5. Excluded on purpose

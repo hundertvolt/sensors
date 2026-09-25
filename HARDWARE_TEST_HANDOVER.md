@@ -15,7 +15,8 @@ conversation before any `mpremote`, `nmcli`, `iw`, `iptables`, `picotool` or `te
 ## 1. Where things stand
 
 - **Board**: `dev` bench, image of tree `3062cc7` (`buildDate 2026-09-25T07:31:00Z`,
-  `max_connections = 6`, `DebugLevel` 5) — current with every `src/` change on the branch.
+  `max_connections = 6`, `DebugLevel` 5). **Behind the tree by `83c9920`** (SGP40 `W13` per outage);
+  reflash before the next suite run so step 6 runs on the tree under test.
 - **This sitting (2026-09-24/25) is still in progress** — section 5 has every result so far, with
   suggested actions; it is the single place to read them.
 - **Tree**: every host tier green at `gc.threshold(-1)` and `32768` (86/86 MicroPython files, 2,100
@@ -128,16 +129,17 @@ figure is from the `dev` bench. Raw logs sit in the session's scratchpad only; w
 | --- | --- | --- |
 | `2026-09-24T19:11:45Z` | `bf62580` | W4's first run |
 | `2026-09-25T05:21:43Z` | `dd80eef` | T4, W3, R2 |
-| `2026-09-25T07:31:00Z` | `3062cc7` (functionally the tree as of this commit) | everything from 5.3 on; **on the board now** |
+| `2026-09-25T07:31:00Z` | `3062cc7` (functionally the tree as of this commit) | everything from 5.3 on, W4's clean re-run included; **on the board now** |
 
-`errcount` was saved before every flash and before every `ResetErrors`. As of the last read: NTP
-`E21` (the NTP check, 5.3), WIFI `W6` ×5 and SGP40 `W13` ×9 (the second hotspot fallback, 5.4).
+`errcount` was saved before every flash and before every `ResetErrors`. After W4's re-run (read
+3.7 h later, no reset in between, STA, NTP synced): NTP `E21` ×3 and SGP40 `W13` ×1, both from the
+suite's last test blocking UDP 123 — nothing else, SYSTEM clean.
 
 ### 5.2 Measurements
 
 | Row | Result | Suggested action |
 | --- | --- | --- |
-| **W4** (first run) | 103 passed, 2 failed, 4 skipped, 27 deselected, 49:29. Page-load failure: test bug, fixed (1 s settle, `3062cc7`). UART idle-poll failure: USB drop mid-upload, not reproduced (F17) | **Re-run the whole bench tier on the current image** — it is the gate for the wear-gated step and owes `assert_no_task_ended` its first run |
+| **W4** | First run (image `19:11:45Z`): 103 passed, 2 failed, 4 skipped, 27 deselected, 49:29 — the page-load test bug (fixed, 1 s settle, `3062cc7`) and a USB drop mid-upload (F17). **Re-run on image `07:31:00Z`: CLEAN — 105 passed, 4 skipped (the two light programs, the UF2 reflash, the known-permanent spoofed-source test), 27 deselected, 49:43.** First silicon run of `assert_no_task_ended` (no task ended anywhere), the post-E6′ webserver changes and the rewritten ceiling instruments; no unexpected reset, no hotspot fallback, no `MemoryError` | W4 is done and confirms SPECIFICATION H.7 and I.3 as they stand. D1's condition for step 6 is met |
 | **T4** | 1-byte write 2,833–3,395 us non-yielding (~0.6–0.7 ms per CS command), one read command 783–881 us, block operation holds the bus 18,089–23,148 us (3 runs). In SPECIFICATION F.5.8 | Owner: yield between the CS commands of one write (~3 ms → <1 ms), or keep as is; commit the timing script or not |
 | **W3** | `/status` 6,859–6,865 B: median 1.36 s (1.30–1.43 s, 20 idle samples); `/networking` 0.34 s; `/measurements` 0.28 s | Owner: accept, or measure one 1,024 B-piece build for the comparison that does not exist yet |
 | **R2** | `ResetErrors` 2.4 s at 0 readers, 5.6 / 10.6 / 13.2 s at 1 / 2 / 3 readers (worst 14.69 s); at 4 readers no result (starved at the ceiling, then over 30 s). Linear, ~+3.5 s per reader. In BACKLOG 24/32 | Owner: BACKLOG 24's design fix (batched or concurrent reset) first; BACKLOG 32's bench budget can only follow it |
@@ -178,15 +180,23 @@ figure is from the `dev` bench. Raw logs sit in the session's scratchpad only; w
 - **An `mpremote` attach within ~1 s of boot parks the board at the REPL with no watchdog armed** —
   it never recovers on its own (no ~8 s reset), unlike a later attach. *Suggested*: add to section
   6's traps / `tests_hardware/README.md`.
-- **F17, USB drop mid-upload during W4**: still unexplained, not reproduced.
+- **The flash tier always leaves the board parked at the REPL.** Its last test,
+  `test_watchdog_starvation_triggers_a_real_hardware_reset`, polls `board.is_reachable()` (a raw-REPL
+  attach) every 0.5 s right after the real watchdog reset, so it attaches within ~1 s of boot — the
+  case above — and `main.py` never arms the watchdog again: no WiFi, no serial output, until the
+  next reset (found at `reset_cause()` = `WDT_RESET`, `ticks_ms()` pointing at that test). The bench
+  tier survives it because its fixtures reset first. *Suggested*: end the test with a
+  `hard_reset()` and a wait for REST, so a tier never ends on a dead board.
+- **F17, USB drop mid-upload during W4's first run**: still unexplained; the clean re-run did not
+  reproduce it.
 - **Own process error, recorded so it is not repeated**: R2's first script retried a refused `PUT`
   without bound and ran 1 h 40 min. Ad-hoc scripts now cap retries and run under `timeout`.
 
 ### 5.5 Still owed this sitting, shortest first
 
-1. **W4 re-run** on the current image (~50 min, default flags) — the gate for step 6.
-2. Step 6, the wear-gated run (~55 min, *wear*), then F1 and N2 (*wear*, one write each) — only
-   if 1 is clean (D1).
+1. ~~W4 re-run~~ — done, clean (5.2).
+2. Step 6, the wear-gated run (~55 min, *wear*: real flash config writes), then F1 and N2 (*wear*,
+   one write each). D1's condition is met; waiting for the owner's go.
 3. M1 + S3b (needs the owner at the bench, ~30 min).
 4. R13 + N3, and the step 9 scripts — code first.
 5. Owner decisions from 5.2 and 5.4.
