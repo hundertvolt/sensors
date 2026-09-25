@@ -2904,6 +2904,26 @@ def test_each_radio_field_refuses_one_byte_over_its_bound_and_accepts_the_bound(
         assert run(client.cfgmgr.get_dict([field])) == {field: fits}, field
 
 
+def test_radio_bytes_ok_passes_through_everything_the_schema_check_owns() -> None:
+    import asy_wifi_service
+
+    field = ("Hostname", "str", "SensorNode", 1, 32, None)
+    ok = asy_wifi_service._radio_bytes_ok
+    assert ok(field, 12) is True  # not a str: the schema's type check refuses it
+    assert ok(field, "") is True  # under the character min: the schema's refusal, not a byte one
+    assert ok(field, "x" * 40) is True  # over the character max: likewise
+    assert ok(("PW", "str", "", 8, 63, ""), "") is True  # the special bypass value
+    assert ok(("X", "str", None, None, None, None), "ä" * 99) is True  # no int bounds to apply
+    assert ok(field, "ä" * 16) is True  # exactly 32 bytes
+    assert ok(field, "ä" * 17) is False  # 34 bytes inside 17 characters
+
+
+def test_an_unknown_key_beside_a_refused_radio_field_is_still_the_schemas_to_judge() -> None:
+    client = make_client()
+    results = run(client._set_dict_cfg({"Hostname": "ä" * 17, "Nope": "x"}, client.get_cfg_schema()))
+    assert results == {"Hostname": "Invalid", "Nope": "Invalid"}
+
+
 def test_a_refused_radio_field_leaves_the_rest_of_the_request_applied() -> None:
     client = make_client()
     results = run(client._set_dict_cfg({"Hostname": "ä" * 17, "SSID": "HomeNet", "LedWifiOn": False}, client.get_cfg_schema()))

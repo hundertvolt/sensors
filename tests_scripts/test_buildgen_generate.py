@@ -239,6 +239,15 @@ def test_device_level_fram_target_wires_fram_into_conn_ntp_sysfunct_and_webserve
     assert fram_pos < result.module_source.index(sysfunct_line)
 
 
+def test_neither_ntp_nor_notification_is_handed_a_give_up_streak(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # Regression (C.7.2): both constructors dropped max_module_error, so emitting it again would be a
+    # TypeError at boot on every device - caught here rather than by a bench flash.
+    source = generate_device(write_doc(tmp_path, "no_streak", base_doc()), src_dir, ext_dir).module_source
+    calls = [line for line in source.splitlines() if "AsyNtpClient(" in line or "NotificationCoordinator(" in line]
+    assert len(calls) == 2, calls
+    assert all("max_module_error" not in line for line in calls), calls
+
+
 def test_ntp_backoff_keys_reach_the_constructor_only_when_stated(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     def ntp_line(doc: "dict[str, object]", name: str) -> str:
         source = generate_device(write_doc(tmp_path, name, doc), src_dir, ext_dir).module_source
