@@ -532,9 +532,13 @@ all and association plus DHCP dominate the real 7.7s floor; its *delta* predicti
 `webserver` hypothesis above did not survive the measurement**: `webserver`'s own `pr.setup()` was
 confirmed to *succeed* from a clean boot on real hardware (`initialized == True`), so the contended
 window costs it time, not correctness — and since WP2 adds no new chunk to `webserver` itself, it
-cannot account for a delta that WP1+WP2 produce jointly. One part stays open: the `CFGMGR_SYSTEM`
-fix's own **+0.90s** is far more than one extra FRAM-backed logger's `setup()` should cost, and is
-unexplained (`REAL_HARDWARE_TEST_QUEUE.md` R6).
+cannot account for a delta that WP1+WP2 produce jointly. The `CFGMGR_SYSTEM` fix's own +0.90s did
+**not** reproduce: an A/B on one tree (2026-09-25, instrumented images differing only in the setup
+order, 5 hard resets each) put boot-to-first-`/status` at **8.94s** fixed against 8.91s unfixed, and
+`sysfunct.setup()` at 79 ms against 26 ms — the fix costs ~53 ms, one logger's worth.
+**Setup costs on silicon (same run)**: `fram.setup()` 6 ms; every other unit 79-91 ms, the batch
+0.93 s in all; construction before it ~0.14 s and module import ~1.1 s before `main()` starts; the
+8-timer stagger 0.79 s. So a FRAM-backed module's setup is ~85 ms here, not the twin's figures.
 
 **This order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — derived from
 `devices/wozi.toml`.** `buildgen` derives both from each device's own TOML rather than assuming

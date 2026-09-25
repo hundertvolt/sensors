@@ -18,7 +18,7 @@ Status values: **OPEN** (owed), **BLOCKED** (waiting on a decision or another ro
 
 ## The finalisation checklist — everything still owed, in one place
 
-Grouped by what each row *needs*, not by which effort opened it. **17 rows owed.** D1 and D2 are the
+Grouped by what each row *needs*, not by which effort opened it. **15 rows owed.** D1 and D2 are the
 owner's standing answers and no sitting re-asks them. G10 is excluded (section 5).
 This table is an index; the row's own entry below is what to read before running it.
 
@@ -29,7 +29,7 @@ This table is an index; the row's own entry below is what to read before running
 | **Heap placement readings** | T1 | The in-suite AFTER `largest_block` |
 | **Measure A's leftovers** | T4 | Measured; the owner's decisions are left |
 | **New features** | N3 | Rides on R13; not in the 2026-09-25 sitting (no babbling peer on the bench) |
-| **Targeted investigations** | R2, R6, R7, R9, R13 | R2 waits on an owner decision; R6/R7 on an instrumented or A/B build |
+| **Targeted investigations** | R2, R9, R13 | R2 waits on an owner decision; R9's rest rides S3b; R13 has no hardware |
 | **Tests still to write** | G6 | Code first, bench second. G6 is adapt-now-measure-later by decision |
 | **The bench host itself** | H1 | Owner-run; needs no board |
 | **Long soak and the light rig** | S4, M1 | Deliberately separate sittings. M1 is interactive and records the rig geometry S3b depends on |
@@ -119,7 +119,7 @@ first (it is what records the rig geometry), then
 `scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep`. ~10 minutes combined.
 
 **Step 8 - the targeted investigations** in section 2, in this order: R2's reader-count curve at
-0, 1, 2, 3, 4 and 6 readers, then R6/R7 and R13.
+0, 1, 2, 3, 4 and 6 readers, then R13.
 
 **Step 9 - the long soak, deliberately and separately.** `scripts/run_bench_soak_tests.sh --tier
 {short,mid,long}`, chosen on purpose (60 s / 600 s / 6 h). Never bundled into steps 4-6; the suite
@@ -233,9 +233,7 @@ R2 is confirmed as owed by the owner (2026-09-18); R1 and R5 are closed (2026-09
 | # | Investigation | Source | Status |
 | --- | --- | --- | --- |
 | R2 | **BACKLOG item 32 — the `ResetErrors` reader-count curve.** Elapsed time at **0, 1, 2, 3, 4, 6** concurrent `GET /status` readers. Two points exist (6.32 s idle, 11.58 s at 3 readers = 77 % of the 15 s server cap); two points cannot say whether the curve flattens. | BACKLOG 32 | **MEASURED 2026-09-25** (image `05:21:43Z`, 21 FRAM chunks, three sweeps per point, readers re-requesting with zero think time): 0 → 2.31 / 2.43 / 2.43 s; 1 → 5.53 / 5.61 / 5.76 s; 2 → 8.80 / 10.57 / 11.03 s; 3 → 13.16 / 13.24 / 14.69 s; 4 → no result (refused 20× at the ceiling, then no answer within 30 s — F18); 6 not run, since 4 already exceeds the cap. **The curve does not flatten**: ~+3.5 s per reader, so 3 readers reach 88–98 % of the 15 s cap. Every completed sweep but one read all 21 counters back at 0; the exception (2 readers, run 2) showed `UART_init`/`UART_resp` entries afterwards, most likely logged under load after the sweep (F18's mechanism) rather than skipped by it — the next sweep cleared them, and R4 is what settles it. Results are in BACKLOG 24 and 32; the budget and the design fix are the owner's decision |
-| R6 | **The `CFGMGR_SYSTEM` setup-order fix's unexplained +0.90 s of boot latency.** Boot latency itself is measured and needs no re-run: pre-WP **7.74 s** → WP1+WP2 **9.80 s** → WP1–WP8 **9.76 s** → +`CFGMGR_SYSTEM` fix **10.66 s** (medians of 5, spread ±0.06 s; 23 reboots, no `WDT_RESET`). Those figures were taken by PR #102, which the owner closed unmerged on 2026-09-18 — they are migrated into `SPECIFICATION.md` Part A.7's boot-latency note, so nothing is lost with the PR. What remains open is only the sub-question: **+0.90 s** is far more than one extra FRAM-backed logger's `setup()` should cost, and is unexplained. Worth understanding before the same reorder is assumed free elsewhere; it does not threaten the watchdog budget, so it is not a reason to revert. | SPECIFICATION.md Part A.7| OPEN |
 | R9 | **Half closed: the shadow-divergence fix RAN and passed on silicon (archive §7H.6, the first fully clean bench tier); the `Overrange` field that replaced `W12` has still never run.** `configure()`'s device-session lock was widened to span the whole validate-mutate-write(-rollback) sequence (WP-era fix, unit-tested by `test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight`), but the false `wrnno=11` it fixes only ever manifested under real concurrent bench load - so only real load re-confirms it. Same run covers the `Overrange` half: `device_scripts/isl29125_mechanism_envelope.py` now reads the live field instead of the retired `W12` log entry. | BACKLOG, "Open questions" first entry | OPEN |
-| R7 | **`SPECIFICATION.md` Part A.7's FRAM setup-cost figures are twin-only.** `digital_twin/_fram_chip.py` answers SPI opcodes in memory with zero wire time, so every number there excludes the real per-transaction cost. Re-measure on silicon. Largely the same instrumentation as R6. **Premise corrected by A6 (2026-09-18):** the omitted term is *not* mainly SPI wire time — at 1 MHz six transactions are ~300 us of the measured 2,849 us, so ~90 % is MicroPython interpreter / `machine.SPI` call overhead. Frame the re-measurement that way. | SPECIFICATION.md Part A.7 | OPEN |
 | R13 | **UART `wrnno` 11 now takes the fault episode's one persisted slot when the drain hits its bound** (SPECIFICATION.md C.7.1, 2026-09-18). The bench exerciser drives the real crossover jumper, so a deliberately babbling peer is reproducible there in a way no mock is: confirm `GET /status` shows `W11` rather than `W10` for `UART_init`/`UART_resp` after one, and that a *boot* drain against the same babbling peer persists nothing at all. Low urgency - the mock tier covers the logic; this confirms it against a real UART's own timing. | SPECIFICATION.md C.7.1 | OPEN — **not in the 2026-09-25 sitting** (owner): needs a babbling peer on the jumper, which the bench does not have; the live firmware owns both UARTs, so nothing on the board itself can play the peer |
 
 ---
@@ -276,7 +274,7 @@ decision (2026-09-24) these two get no dedicated sitting; they run with the next
 
 | Row | What | Status |
 | --- | --- | --- |
-| W3 | `/status` wall-clock at 256 B pieces (`dev`'s `/status` is 29 pieces, 11 at the old 1,024 B): `tests_hardware/bench/test_end_to_end_timing.py` on the tree under test. F.1's +53 % was per *character*; this is per ~250 B | **MEASURED 2026-09-25** (image `05:21:43Z`), measured directly rather than through `test_end_to_end_timing.py`, which times no `/status`: 20 sequential idle `GET`s, 1 s apart. `/status` 6,859–6,865 B in **median 1.36 s** (min 1.30, p90 1.39, max 1.43 s); `/networking` 170 B in 0.34 s; `/measurements` ~510 B in 0.28 s. No 1,024 B silicon figure exists to compare with; the only earlier `/status` time is BACKLOG 24's 0.56–0.76 s during a sweep on 2026-09-17, a different image and not like-for-like. Owner to judge whether 1.36 s is acceptable, or whether one 1,024 B-piece build is worth measuring for the comparison |
+| W3 | `/status` wall-clock at 256 B pieces (`dev`'s `/status` is 29 pieces, 11 at the old 1,024 B): `tests_hardware/bench/test_end_to_end_timing.py` on the tree under test. F.1's +53 % was per *character*; this is per ~250 B | **MEASURED 2026-09-25, like for like** (same tree, 20 idle samples each): `/status` (6.86 KB) median **1.29 s at 256 B** (1.11–1.46) against **1.10 s at 1,024 B** (0.92–1.25) — the 256 B cap costs **+0.19 s, +17 %**; `/networking`/`/measurements` fit one piece and are unchanged (~0.28 s). Owner: accept the +17 % as the price of the bound (SPECIFICATION I.3's reason for 256), or not |
 
 ## 5. Excluded on purpose
 
