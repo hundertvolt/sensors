@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 26, INVAR 63, MIRROR 51, LIMIT 54, RISK 7, ASSUME 45, PLATFORM 10, SUPPRESS 5, TODO 4, DRIFT 11, NOTE 1 — 277 items.
+Kinds: SETTLED 26, INVAR 63, MIRROR 51, LIMIT 54, RISK 7, ASSUME 45, PLATFORM 10, SUPPRESS 5, TODO 4, DRIFT 11, NOTE 4 — 280 items.
 
 
 ## src/asy_notification_service.py
@@ -1172,7 +1172,19 @@ Kinds: SETTLED 26, INVAR 63, MIRROR 51, LIMIT 54, RISK 7, ASSUME 45, PLATFORM 10
   invented ...) and the FRAM's 40 MHz SPI ceiling (SPI bus tables carry no frequency field at all ...)"
   — No build-time check of SPI clock vs FRAM ceiling (SPI clock fixed in driver). · status: by design
   (low) | related: GEN.T*, BUS.T* · [H17]
-- **GEN.N277** NOTE(TRACKED) · `commit bb5354c` — "every other open item (buildspec.py's hand-maintained
+- **GEN.N277** NOTE(OUT-OF-SCOPE) · `commit ffc17ae` — "No bump mechanism is built (deliberately out of
+  scope ...)" — Versions bumped by hand. · tracked: buildgen/version.py:2 ("no automation exists or is
+  planned") | - · [H17]
+- **GEN.N278** NOTE(TRACKED) · `commit bb5354c` — "every other open item (buildspec.py's hand-maintained
   schema, hostname/hotspot_password not yet wired, bus_topology.py's dead-code status) was already
   tracked in BACKLOG.md" — Buildgen open items. · tracked: BACKLOG (buildspec settled; bus_topology
   deleted) | - · [H17]
+- **GEN.N279** NOTE(NON-CLAIM) · `commit 7ef7fb8 / ec5c0b9` — "an explicit non-claim of
+  mechanically-verified 100% coverage"; "digital_twin/machine.py's analogous _build_i2c_chip() fallback"
+  gap found but not fixed — buildgen abort-path coverage is spot-checked, not proven complete. · status:
+  _build_i2c_chip gap done-in 7fe0e17; completeness claim remains a non-claim (no mechanical gate) |
+  related: GEN.T* · [H17]
+- **GEN.N280** NOTE(FLAG) · `commit 038228a` — "BACKLOG item 31 ... the website's errcount catalog is
+  keyed by driver KIND, while the API publishes one key per logger INSTANCE"; pinned in
+  _KNOWN_CATALOG_DRIFT — Multi-instance devices would render wrong errcount rows. · status: done
+  (_KNOWN_CATALOG_DRIFT removed; git -S shows b0f755c/edf11c2/86fb067) | - · [H17]

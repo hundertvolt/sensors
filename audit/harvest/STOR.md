@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19, SUPPRESS 7, TODO 5, OPENQ 2, DRIFT 8, NOTE 3 — 203 items.
+Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19, SUPPRESS 7, TODO 5, OPENQ 2, DRIFT 8, NOTE 10 — 210 items.
 
 
 ## src/asy_fram_driver.py
@@ -791,3 +791,29 @@ Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19
 - **STOR.N203** NOTE(OWNER) · `commit 699836e` — "BACKLOG 27: the FRAM hard-reset test now expects
   E31/W71/W72 instead of requiring an empty log" — Contract decision: torn writes leave a trace. ·
   tracked: tests_hardware | - · [H17]
+- **STOR.N204** NOTE(OWNER) · `commit d370413` — "Item 27 is settled with the owner's reasoning (a chip
+  that ACKs a write it did not store would need deferred read-back; if the bus transfer was clean, the
+  chip is trusted)" — PUT /status ResetErrors answers OK even when a FRAM write silently failed —
+  accepted. · tracked: BACKLOG history only (item closed); not found in SPEC by this pass (low) |
+  related: STOR.T* · [H17 (also H17)]
+- **STOR.N205** NOTE(OWNER) · `commit 6811f03` — "The status-byte pair, the two copies, the CRC and
+  every CS cycle are integrity features, not redundancy: recorded as the owner gave them" — FRAM
+  protocol rationale. · tracked: HEAP_FRAGMENTATION_MEASUREMENTS archive §3B.1 / SPEC (not re-verified
+  in SPEC) | - · [H17]
+- **STOR.N206** NOTE(OPEN-DECISION) · `commit 9415902` — "the choice itself - per command, per block
+  operation, or per chunk operation ... is put to the owner as open decision item 6 rather than taken
+  unilaterally" — FRAM bus-lock scope. · status: to check in later chunks | - · [H17 (also H17)]
+- **STOR.N207** NOTE(OWNER) · `commit 8951387` — "The owner's answer to open decision item 6": FRAM bus
+  lock held per block operation; "Lever 3, one lock per chunk operation, stays untaken"; "A second SPI
+  device now waits for a block operation (~25 CS, ~600 us)" — Bus-lock scope decision; latency trade for
+  a hypothetical second SPI device. · tracked: SPEC C.8 | related: BUS.T* · [H17 (also H17)]
+- **STOR.N208** NOTE(OWNER) · `commit 23e5443` — "A.7: ruled out ... A.8: closed - 'pure wall clock time
+  is not such an issue, don't touch'. crc_checks.py is not to be modified" — Decisions on CRC yield and
+  chunk buffers. · tracked: SPEC I.2 (moved in 17b4354) | - · [H17]
+- **STOR.N209** NOTE(OWNER) · `commit 6acc9c0` — "§11 item 3 ... leave as is, do not defer the
+  per-logger store setup"; "NTP_Host keeps its 1024-character bound"; "A.6's lever 3: closed" —
+  Decisions. · tracked: SPEC I.2, BACKLOG.md:417 | - · [H17]
+- **STOR.N210** NOTE(ONLY-IN-TEMP-DOC) · `commit 21560a4 / HARDWARE_TEST_HANDOVER.md:172` — "FRAM E31 +
+  W73 at the first boot after flashing: mpremote exec machine.bootloader() most likely landed mid-write
+  ... entering BOOTSEL this way can cost one FRAM log entry" — Bootloader entry can tear a FRAM write. ·
+  UNTRACKED (low; temp doc only) | - · [H17]

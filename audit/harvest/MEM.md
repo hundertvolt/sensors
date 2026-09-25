@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 23, INVAR 32, MIRROR 2, LIMIT 20, RISK 9, ASSUME 39, PLATFORM 1, SUPPRESS 18, TODO 4, OPENQ 8, DRIFT 1, NOTE 2 — 159 items.
+Kinds: SETTLED 23, INVAR 32, MIRROR 2, LIMIT 20, RISK 9, ASSUME 39, PLATFORM 1, SUPPRESS 18, TODO 4, OPENQ 8, DRIFT 1, NOTE 18 — 175 items.
 
 
 ## src/asy_fram_driver.py
@@ -726,3 +726,73 @@ Kinds: SETTLED 23, INVAR 32, MIRROR 2, LIMIT 20, RISK 9, ASSUME 39, PLATFORM 1, 
   memory-safety ladder explicitly forbids" — WP work rolled back. · status: WP1/WP2 later re-done;
   heapsize history tracked in SPEC E.3.1 (32M then back to 16M after per-device split) | related: MEM.T*
   · [H17]
+- **MEM.N160** NOTE(KNOWN-DEFECT) · `commit 15715d4 / f83ca14 / e723f2f` — "the remaining failure being
+  the pre-existing heap-fragmentation defect" (largest block 115,536 -> 20,592 after WP1+WP2) — Heap
+  fragmentation fails test_memory_stress.py 80,000 B floor. · tracked:
+  HEAP_FRAGMENTATION_MEASUREMENTS.md, SPEC I.4(f.1) (boot-confined gc.collect placement reset,
+  owner-approved 2026-09-18) | related: MEM.T* · [H17]
+- **MEM.N161** NOTE(NOT-COMMITTED) · `commit e723f2f` — "Every remedy candidate's ensembled numbers, and
+  the two that are measured but deliberately not committed pending the owner's decision" — Pending owner
+  decisions on heap remedies. · status: resolved by owner-approved boot placement reset (CLAUDE.md
+  2026-09-18); two owner decisions moved to SPEC I.2 in 17b4354 | - · [H17]
+- **MEM.N162** NOTE(OPEN-MODEL) · `commits 34097d7, b70a63a` — "One thing deliberately left open:
+  whether the small-object COUNT threshold ... is mediated by collection frequency"; "Ten open items, of
+  which four are mechanism-critical" — Heap model open items. · status: partly closed in a6be008;
+  remainder in archive (12640c2) — condensed doc keeps method only (not re-verified item-by-item) |
+  related: MEM.T* · [H17]
+- **MEM.N163** NOTE(INSTRUMENT-TRAP) · `commit 99080ff / 4f39c0b` — free_run_profile() MemoryErrors on
+  its own probe; lint gate misread from tail of output — Measurement/verification traps. · tracked:
+  HEAP_FRAGMENTATION_MEASUREMENTS.md §M (traps) | - · [H17]
+- **MEM.N164** NOTE(RESOLVED) · `commit 3ecf840 / 1ef697a` — "The floor is a regression tripwire, not a
+  consumer's demand"; "Reported, not changed: the 4,096 B max_content_length bounds what is answered,
+  not what is allocated. Request.max_body_length stays at microdot's 16 KB default" — 80,000 B floor
+  semantics; oversized PUT buffered whole. · status: max_body_length done
+  (src/asy_webserver_service.py:370 sets Request.max_body_length = max_content_length) | - · [H17]
+- **MEM.N165** NOTE(UNSHIPPED-BY-DECISION) · `commit 3db1382` — "PR #84 ... none of its
+  build-and-instrument tooling ... exists on any other branch, so closing leaves it unshipped by
+  decision" — GC-policy-as-build-property tooling abandoned. · tracked: commit message only (not in
+  BACKLOG) | - · [H17 (also H17)]
+- **MEM.N166** NOTE(HW-FINDING) · `commit 1519f10` — "The defect is position-dependent ... Every
+  standalone heap reading measures the wrong thing"; "A ... broke the two FRAM fault injectors"; "F1 --
+  wifi_service_reconnect_repro.py persists a garbage SSID and never restores it, which stranded the
+  bench" — Measurement validity + harness breakage. · status: injectors and F1 done-in da9bcf1;
+  position-dependence tracked in HEAP_FRAGMENTATION_MEASUREMENTS.md | - · [H17]
+- **MEM.N167** NOTE(OBSERVATION) · `commit 7ccbe8d` — "The real main() runs start_timers() and an NTP
+  sync between the two lists, so the firmware has a third boot stretch with no collect in it - B's
+  design covers the two lists deliberately and widening it would widen the I.4 exception, so it is
+  recorded as an observation, not changed" — Uncovered boot stretch for the placement reset. · UNTRACKED
+  (low; SPEC I.4(f.1) at :5073 names only the two lists, not this gap) | related: MEM.T* · [H17]
+- **MEM.N168** NOTE(FLAGGED) · `commit c500bb9` — "SPECIFICATION.md I.3's 49152 B hammer-load figure has
+  the artefact's exact signature ... flagged in place and queued as R16, not corrected" — Suspect
+  measurement in SPEC. · status: SPEC no longer contains "49152"/"49,152" (grep) — likely corrected
+  later; R16 not present in queue at 2a88cc8 (not re-verified) | - · [H17]
+- **MEM.N169** NOTE(OWNER) · `commit 3fe0fb2` — "The owner's decision, 2026-09-19: the floor was never
+  theirs ... replace it with three checks" (used <= 100,000 B; placement above top survivor; largest
+  free >= 32,768 B) — 80,000 B floor retired. · tracked: tests_hardware (heap_map.py), queue | - · [H17]
+- **MEM.N170** NOTE(UNVERIFIED-ON-SILICON) · `commit 3fe0fb2 / f5920e5` — "It has never been measured on
+  silicon, on any image"; "32,768 B is NOT verified for the board - reported, not asserted" — New heap
+  checks unproven on hardware. · status: HEAP doc condensation mentions §7R.2 bench results 2026-09-23
+  (not re-verified which checks) | related: HW.T* · [H17]
+- **MEM.N171** NOTE(HW-FINDING) · `commit e486877` — "with gc.threshold(32768) set before the run, the
+  run-phase decay does not happen ... the threshold is not defence in depth on top of B, it is what
+  carries B's gain into the run phase ... reported, not asserted" — Threshold load-bearing for run-phase
+  layout. · tracked: CLAUDE.md (memory rule: "on silicon it is what carries the boot placement gain into
+  the run phase") | related: MEM.T* · [H17]
+- **MEM.N172** NOTE(NOT-ASSERTED) · `commit 309857c` — "The settled position is measured and
+  deliberately not asserted on - dev's suppressed arm reads better there than its live arm, so the
+  run-phase decay can invert the ranking" — Boot contiguity guard stops at the list ends. · tracked:
+  HEAP annex / tests_scripts/test_digital_twin_boot_contiguity.py | - · [H17]
+- **MEM.N173** NOTE(QUEUED) · `commit 5c5a2d0` — "G8: CLAUDE.md's (e) stage has no silicon arm at all,
+  because build_firmware.py stages the boot entry as main.py and it sets gc.threshold(32768), so every
+  flash- and bench-tier run is an (f)-stage run" — CLAUDE.md's "every test ... real hardware alike"
+  (e)-stage requirement is not met on silicon. · tracked: REAL_HARDWARE_TEST_QUEUE.md:276 (G8) |
+  related: MEM.T*, HW.T* · [H17 (also H17)]
+- **MEM.N174** NOTE(HW-NEGATIVE) · `commit 3d9e22d` — "the twin's two transferable ratios do NOT survive
+  the trip to silicon: batch median depth 0.69x (inverted) against the host's 2.07x" — Twin placement
+  metrics do not transfer to board fill. · tracked: HEAP annex §7M, SPEC I.4(f.1) note (4daa3cf) |
+  related: TWIN.T* · [H17 (also H17)]
+- **MEM.N175** NOTE(OWNER-CALL) · `commit 8ef8ce9` — "the generated boot entry's gc.threshold(32768) is
+  load-bearing. At MicroPython's own reactive -1 ... the board serves at most 4 without an allocation
+  failure ... It is the owner's call what to do about it" — Contradicted the (e)-stage claim. · status:
+  done — bounded _PieceWriter (79cb3b1), static 256 B reads + Content-Length (db1866e), limit 6 clean at
+  -1 on silicon (25c6cbb) | related: MEM.T* · [H17]

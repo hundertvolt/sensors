@@ -26,36 +26,37 @@ Per-area catalogs: `audit/harvest/<AREA>.md`; item IDs `<AREA>.Nnnn` are stable 
 
 ## Size and anchor check
 
-6325 items from 17 agents; 9 exact duplicates (same kind and anchor) folded;
-6316 catalogued. Anchor check: ok 5846, not-a-file 291, quote-not-found 100, no-quote 47, moved 29, out-of-bounds 3.
+6507 items from 17 agents; 31 exact duplicates (same kind and anchor) folded;
+6476 catalogued. Anchor check: ok 5847, not-a-file 450, quote-not-found 100, no-quote 47, moved 29, out-of-bounds 3.
 
 | Area | Items | SETTLED | INVAR | MIRROR | LIMIT | RISK | ASSUME | PLATFORM | WORKAROUND | SUPPRESS | TODO | OPENQ | DRIFT | NOTE |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| [XCUT](harvest/XCUT.md) | 92 | 9 | 34 | 3 | 5 | 13 | 12 | 1 |  | 8 | 3 |  | 2 | 2 |
-| [CORE](harvest/CORE.md) | 265 | 48 | 60 | 3 | 36 | 30 | 33 | 2 | 2 | 30 | 10 | 4 | 5 | 2 |
+| [XCUT](harvest/XCUT.md) | 96 | 9 | 34 | 3 | 5 | 13 | 12 | 1 |  | 8 | 3 |  | 2 | 6 |
+| [CORE](harvest/CORE.md) | 268 | 48 | 61 | 3 | 36 | 30 | 33 | 2 | 2 | 30 | 10 | 4 | 5 | 4 |
 | [ALGO](harvest/ALGO.md) | 81 | 11 | 17 | 10 | 15 | 5 | 8 | 3 |  | 8 | 1 |  | 2 | 1 |
-| [BUS](harvest/BUS.md) | 137 | 15 | 43 | 2 | 26 | 4 | 16 | 14 |  | 11 | 3 | 1 | 1 | 1 |
-| [SENS](harvest/SENS.md) | 401 | 57 | 53 | 17 | 72 | 15 | 57 | 71 | 2 | 32 | 5 | 2 | 8 | 10 |
-| [STOR](harvest/STOR.md) | 203 | 44 | 35 | 8 | 30 | 19 | 23 | 19 |  | 7 | 5 | 2 | 8 | 3 |
-| [UART](harvest/UART.md) | 277 | 72 | 74 | 28 | 26 | 10 | 26 | 8 | 1 | 9 | 13 | 1 | 4 | 5 |
-| [NET](harvest/NET.md) | 250 | 43 | 31 | 7 | 50 | 18 | 30 | 15 | 2 | 39 | 6 | 3 | 6 |  |
-| [REST](harvest/REST.md) | 180 | 20 | 31 | 13 | 30 | 16 | 35 | 7 | 5 | 13 | 2 | 4 | 4 |  |
+| [BUS](harvest/BUS.md) | 141 | 15 | 43 | 2 | 26 | 4 | 16 | 14 |  | 11 | 3 | 1 | 1 | 5 |
+| [SENS](harvest/SENS.md) | 410 | 57 | 53 | 17 | 72 | 15 | 57 | 71 | 2 | 32 | 5 | 2 | 8 | 19 |
+| [STOR](harvest/STOR.md) | 210 | 44 | 35 | 8 | 30 | 19 | 23 | 19 |  | 7 | 5 | 2 | 8 | 10 |
+| [UART](harvest/UART.md) | 282 | 72 | 74 | 28 | 26 | 10 | 26 | 8 | 1 | 9 | 13 | 1 | 4 | 10 |
+| [NET](harvest/NET.md) | 257 | 43 | 31 | 7 | 50 | 18 | 30 | 15 | 2 | 39 | 6 | 3 | 6 | 7 |
+| [REST](harvest/REST.md) | 185 | 20 | 31 | 13 | 30 | 16 | 35 | 7 | 5 | 13 | 2 | 4 | 4 | 5 |
 | [LED](harvest/LED.md) | 64 | 8 | 18 | 8 | 13 |  | 6 | 3 |  | 6 | 1 |  | 1 |  |
-| [GEN](harvest/GEN.md) | 277 | 26 | 63 | 51 | 54 | 7 | 45 | 10 |  | 5 | 4 |  | 11 | 1 |
-| [TOOL](harvest/TOOL.md) | 165 | 19 | 28 | 7 | 24 | 12 | 20 | 18 | 16 | 5 | 11 |  | 4 | 1 |
-| [SCR](harvest/SCR.md) | 217 | 24 | 41 | 12 | 48 | 8 | 25 | 7 | 9 | 24 | 9 |  | 10 |  |
-| [CI](harvest/CI.md) | 209 | 40 | 21 | 4 | 23 | 8 | 19 | 8 | 16 | 36 | 14 |  | 16 | 4 |
-| [WEB](harvest/WEB.md) | 284 | 15 | 25 | 73 | 89 | 4 | 35 | 8 |  | 3 | 8 | 1 | 20 | 3 |
-| [TEST](harvest/TEST.md) | 752 | 24 | 124 | 96 | 195 | 9 | 105 | 7 | 32 | 121 | 4 |  | 30 | 5 |
-| [TWIN](harvest/TWIN.md) | 368 | 25 | 50 | 21 | 150 | 4 | 75 | 3 | 20 | 11 | 3 | 1 | 4 | 1 |
-| [HW](harvest/HW.md) | 823 | 63 | 113 | 60 | 115 | 67 | 189 | 27 | 9 | 65 | 25 | 11 | 72 | 7 |
-| [SEC](harvest/SEC.md) | 44 | 2 | 4 | 1 | 6 | 22 | 1 |  |  | 5 |  |  | 2 | 1 |
-| [MEM](harvest/MEM.md) | 159 | 23 | 32 | 2 | 20 | 9 | 39 | 1 |  | 18 | 4 | 8 | 1 | 2 |
+| [GEN](harvest/GEN.md) | 280 | 26 | 63 | 51 | 54 | 7 | 45 | 10 |  | 5 | 4 |  | 11 | 4 |
+| [TOOL](harvest/TOOL.md) | 172 | 19 | 28 | 7 | 24 | 12 | 20 | 18 | 16 | 5 | 11 |  | 4 | 8 |
+| [SCR](harvest/SCR.md) | 220 | 24 | 41 | 12 | 48 | 8 | 25 | 7 | 9 | 24 | 9 |  | 10 | 3 |
+| [CI](harvest/CI.md) | 222 | 40 | 21 | 4 | 23 | 8 | 19 | 8 | 17 | 36 | 14 |  | 16 | 16 |
+| [WEB](harvest/WEB.md) | 286 | 15 | 25 | 73 | 89 | 4 | 35 | 8 |  | 3 | 8 | 1 | 20 | 5 |
+| [TEST](harvest/TEST.md) | 766 | 24 | 124 | 96 | 195 | 9 | 105 | 7 | 32 | 121 | 4 |  | 30 | 19 |
+| [TWIN](harvest/TWIN.md) | 380 | 25 | 50 | 21 | 150 | 4 | 75 | 3 | 20 | 11 | 3 | 1 | 4 | 13 |
+| [HW](harvest/HW.md) | 849 | 63 | 113 | 60 | 115 | 67 | 189 | 27 | 9 | 65 | 25 | 11 | 72 | 33 |
+| [SEC](harvest/SEC.md) | 46 | 2 | 4 | 1 | 6 | 22 | 1 |  |  | 5 |  |  | 2 | 3 |
+| [MEM](harvest/MEM.md) | 175 | 23 | 32 | 2 | 20 | 9 | 39 | 1 |  | 18 | 4 | 8 | 1 | 18 |
 | [PERF](harvest/PERF.md) | 54 | 4 | 4 |  | 2 | 4 | 31 |  |  |  |  | 8 |  | 1 |
-| [PLAT](harvest/PLAT.md) | 397 | 4 | 5 |  | 2 | 2 | 7 | 361 | 8 | 3 |  |  | 5 |  |
-| [PAR](harvest/PAR.md) | 258 | 31 | 95 | 12 | 44 | 13 | 22 | 11 | 1 | 1 | 2 | 1 | 14 | 11 |
-| [DOC](harvest/DOC.md) | 302 | 22 | 19 | 5 | 13 | 1 | 8 | 1 |  |  | 5 | 1 | 224 | 3 |
+| [PLAT](harvest/PLAT.md) | 400 | 4 | 5 |  | 2 | 2 | 7 | 361 | 8 | 3 |  |  | 5 | 3 |
+| [PAR](harvest/PAR.md) | 259 | 32 | 95 | 12 | 44 | 13 | 22 | 11 | 1 | 1 | 2 | 1 | 14 | 11 |
+| [DOC](harvest/DOC.md) | 311 | 22 | 19 | 5 | 13 | 1 | 8 | 1 |  |  | 5 | 1 | 224 | 12 |
 | [LIC](harvest/LIC.md) | 57 | 2 |  | 9 | 3 | 2 | 11 |  |  | 2 | 3 | 1 | 14 | 10 |
+| [UNSORTED](harvest/UNSORTED.md) | 5 |  |  |  |  |  |  |  |  |  |  |  |  | 5 |
 
 ## Partitions (read-only agents, one each)
 
@@ -75,7 +76,7 @@ Per-area catalogs: `audit/harvest/<AREA>.md`; item IDs `<AREA>.Nnnn` are stable 
 - **H14** (279 items): CLAUDE.md, README.md, DEVICE_REFERENCE.md, update_and_install.txt
 - **H15** (259 items): BACKLOG.md, HEAP_FRAGMENTATION_MEASUREMENTS.md (+ archive at 12640c2), UART_C_PORT_CHANGELOG.md, licences
 - **H16** (191 items): legacy tree: python/, modules/, html_raw/, build-*.sh (parity oracle only)
-- **H17** (243 items): all commit messages to 2a88cc8, GitHub issues and pull requests (read-only)
+- **H17** (425 items): all commit messages to 2a88cc8, GitHub issues and pull requests (read-only)
 
 Partial reads, as reported:
 
@@ -83,6 +84,62 @@ Partial reads, as reported:
 - H15: the `12640c2` heap-measurement archive (5,553 lines) keyword-scanned end to end, ~1,300 lines read in full.
 - H16: legacy `voc_algorithm.py` lines 430-911 (uncommented) scanned only; `python/CommonDrivers/microdot.py` provenance only.
 - Every other partition: every file read in full (comments via the extractor, docs in full text); nothing reported unreadable.
+
+## Untracked deferred work from git history and GitHub (H17, verbatim)
+
+Deferred items found in commit messages or PR/issue discussions that no later commit, doc or BACKLOG
+entry picks up. Their catalog entries carry the same text in the owning area.
+
+48 items (commit-derived and GitHub-derived; includes partial-untracked statuses such as "reason UNTRACKED (low)").
+
+- SETTLED | commit b64857d | "arzi/neu pressure compensation (accepted limitation) ... the hotspot password (accepted for now)" | Owner accepted arzi/neu's missing pressure compensation as a limitation and the hardcoded hotspot password "for now"; the pressure-compensation acceptance is not restated in SPECIFICATION (grep "compensat" finds only SGP40/SCD30 compensation) (low). | area: PAR | status: hotspot pw tracked: CLAUDE.md "one known real credential"; pressure-compensation acceptance UNTRACKED (low) | related: PAR.T*
+- REVERT | commit b0a9235 (reverts 4e2d953) | "Revert \"Explicitly catch ZeroDivisionError in math_helpers.py; document exhaustiveness check\"" | Explicit ZeroDivisionError catch and the src/README.md "verify caught exception set against MicroPython source" checklist expansion were reverted without a stated reason. | area: ALGO | status: src/math_helpers.py has no ZeroDivisionError (grep); reason for revert UNTRACKED (low) | -
+- SETTLED | commit b1059bd | "Records the declined lookup-table CRC optimization (small buffer sizes in practice, not worth the RAM cost)" | Owner/session declined table-driven CRC. | area: ALGO | status: not restated in SPECIFICATION (grep finds no CRC lookup-table note) — UNTRACKED (low) | -
+- TODO | commit a5fe9fd | "future SPIDevice consumers need the same \"does every call site actually catch what this can raise\" check" | SPI raises ValueError/RuntimeError/NotImplementedError on setup/programmer-error paths; each new consumer's call sites must be audited. | area: BUS | status: no dedicated tracker found (ISL29125 is I2C; FRAM is the only SPI consumer) (low) — UNTRACKED | related: BUS.T*
+- PLATFORM | commit b087dc7 | "A value omitted before a comma/brace (e.g. {\"Count\": , \"Offset\": 1.5}) doesn't raise on this MicroPython version - it desyncs the parser into a mangled dict" | MicroPython json.load leniency relied on to degrade via per-key default fallback; json.dumps(nan) writes a token json.loads cannot read back. Version-specific (checked at 1.28). | area: PLAT | status: covered by a test per commit; not found restated in SPECIFICATION (grep "omitted"/"desync" in config_manager.py/SPEC) — UNTRACKED as a platform fact to re-check on version bumps (low) | related: PLAT.T*
+- SETTLED | commit 96031eb | "get_size() also has zero callers today (kept as legitimate API surface ...); get_values()/set_values() don't reject a zero-length buffer" | Zero-caller FRAM API and zero-length buffer acceptance deliberately left. | area: STOR | status: not restated in BACKLOG (which only settles verify_present/set_write_protected) — UNTRACKED (low) | related: STOR.T*
+- PLATFORM | commit d92da47 | "cancelling a task before its first scheduler step can raise CancelledError to the awaiter no matter what try/except exists inside the coroutine" | asyncio property relied on as irrelevant because the real caller never awaits the DNS task. | area: PLAT | status: not restated in SPECIFICATION (low) — UNTRACKED | -
+- SETTLED / RISK | commit 110f3db | "a genuine not-ready cycle now reuses the last good reading with a fresh timestamp and does NOT count as an error (matching legacy)" | SCD30 can report a previous cycle's values under a new timestamp by owner choice (legacy parity over "safer-looking" change). | area: SENS | status: not found restated in SPECIFICATION (grep) — UNTRACKED (low) | related: SENS.T*, PAR.T*
+- PAR / DRIFT | commit 2bda920 | "python/IndividualDrivers/asy_bmp3xx_driver.py (deployed production driver): same tuple correction ... modules/sensortask-wozi.py ... html_raw/wozi/sensorconfig.html" | The IIR fix edited the reference-only legacy tree, so `python/`/`modules/`/`html_raw/` no longer match the firmware actually deployed (which still uses 0,2,4,...,128); deployed units' stored BMPFiltCoeff values (2,4,8,...) are outside the refactor's accepted set {0,1,3,7,...}, and the migration consequence is stated nowhere (SPECIFICATION has no IIR/FiltCoeff migration note). | area: PAR | status: UNTRACKED | related: PAR.T*
+- SETTLED | commit 500851c | "recorded the general \"leave the catch, skip an untestable test, note why\" convention in BACKLOG.md, confirmed directly by the project owner" | Owner convention for untestable defensive catches; no longer in BACKLOG (grep) and not visible in SPECIFICATION Part D/E. | area: TEST | status: UNTRACKED (low) | related: TEST.T*
+- WORKAROUND | commit cc911be | "a confirmed Unix-port-vs-rp2 time.gmtime() tuple-length difference the test suite works around" | Unix-port gmtime shape differs from rp2 (8-tuple); tests paper over it. | area: TEST | status: not found restated in SPECIFICATION Part F (grep); removal trigger none stated — UNTRACKED (low) | related: PLAT.T*
+- SETTLED | commit 5ddbcd3 | "An earlier wifi_mode_lock_timeout_ms/bounded-acquire mechanism added to asy_wifi_service.py during this work was reverted per direction" | Bounded wifi_mode_lock acquire rejected (keep timing centralized). | area: NET | status: owner decision; not restated in docs (low) — UNTRACKED | related: NET.T*
+- OPENQ | commit 8784c66 | "a theoretical (verified unreachable in practice, matches legacy behavior) task-restart edge case in asy_wifi_service.py's permanent-WLAN-deactivation feature" | Flagged for owner input; class-naming half is done (AsyConnTime/AsyNtpClient). | area: NET | status: no closure found by grep (low) — UNTRACKED | related: NET.T*
+- DRIFT | commit b6cb852 | "build-*.sh: removed the hardcoded /home/nico/rpi_pico/... path; each script now derives its own FROZEN_MANIFEST path" | A second edit to the reference-only legacy tree (build-*.sh) after 2bda920; the build scripts differ from what produced the deployed images. | area: PAR | status: UNTRACKED as a "legacy tree ≠ deployed" fact (low; build scripts don't change runtime behaviour) | related: PAR.T*
+- ASSUME / DRIFT | commit 6a91514 → 7079757 | "Widen the errcount wait to 90s and the DNS wait to 90s (from 30s)" | Run 7 budgets were widened on a disproven timing hypothesis (real cause: CAP_NET_BIND_SERVICE) and remain at 90 s (scripts/_digital_twin_ci_suite.py:958,968). | area: SCR | status: UNTRACKED (low; budgets never narrowed back) | related: SCR.T*
+- LIMIT | commit b373034 | "The real backend's \"Unchanged\" PUT result essentially never fires in practice, matching an already-established tolerance in tests_js/live-backend.test.js" | Live tests tolerate a result code the backend defines but practically never emits (write_config compare semantics). | area: WEB | status: tolerance lives in tests_js; not found stated in SPECIFICATION (low) — UNTRACKED | related: WEB.T*, REST.T*
+- OPENQ | commit f7ceab8 | "the residual bug unix_port_poll_prewarm.py works around looks like a narrower, still-unfiled edge case rather than a duplicate" | Upstream MicroPython modselect edge case was never reported upstream; the workaround has no removal trigger. | area: TWIN | status: UNTRACKED (no issue filed / no follow-up recorded) | related: TWIN.T07
+- DRIFT / PAR | commit e05f015 | "it runs the deployed fleet's actual MicroPython 1.24.1 and holds code changes made directly on-device that were never copied to any host machine" | Contradicts CLAUDE.md/BACKLOG #3/SPECIFICATION.md:3426 ("deployed units run MicroPython 1.26"); also shows at least one unit carried on-device code not in the repo, weakening "legacy tree = deployed behaviour". dev_legacy/README.md:671 now only says the bench unit ran 1.24.1. | area: PAR | status: UNTRACKED (fleet version and on-device divergence never reconciled) | related: PAR.S10, PAR.T*
+- SETTLED | commit 1096b31 / a10c578 | "the router's own reservation re-keying is the project owner's own follow-up, not something to track here" | Out-of-repo bench follow-up deliberately untracked. | area: HW | status: UNTRACKED by owner decision (low) | -
+- OPENQ | commit e246825 | "one separate, flagged-not-chased finding (a device-side AttributeError traceback whose line numbers don't match the current src/ checkout, suggesting stale firmware rather than a current bug)" | Unexplained device-side AttributeError. | area: HW | status: no closure found; later explained generally by d967013 (build_firmware's ast.unparse drops comments so line numbers never match) — cause of the AttributeError itself UNTRACKED (low) | -
+- DRIFT | commit e624018 / d082272 | "Document why DEV_UNIQUE_GROUPS currently matches zero dev sensor groups ... Dev is expected to gain its own unique sensor(s) later" | tests_js/mock-server-put-matrix.test.js:21 still names {SHTC3, MPRLS, ISL29125} and mockdata/dev.json:5-6,13-14,65-75 still carries SHTC3/MPRLS data/errcount entries, although html/definitions/dev.json has neither (rewritten in d082272; ISL29125 later added). Owner later decided "leave the mockdata orphans" (commit 12a616a, q5) but only in the retired ISL29125 planning doc; the test comment "matches none of dev's real groups today" is now stale since ISL29125 is a real dev group. | area: WEB | status: UNTRACKED (low; owner decision not in live docs) | related: HW.T07, PAR.S14
+- TODO | commit 349ba1e | "Remaining findings (a systemic code-comment-length/narrative-block violation across ~68 new files, dangling references to deleted HARDWARE_TEST_PLAN.md/DEV_HARDWARE_BASELINE_PLAN.md section numbers ..., and one licensing-doc judgment call) are reported separately" | Comment-length done later (CLAUDE.md: every scope measures zero); the "licensing-doc judgment call" is not identified in any later commit. | area: LIC | status: comment part done; licensing judgment call UNTRACKED (low) | related: LIC.T*
+- SUPPRESS / DRIFT | commit 454f6a2 | "Per-file exemptions live centrally in [tool.ruff.lint.per-file-ignores], never as inline noqa comments." | Stated rule (still at pyproject.toml:214-215) vs reality: 2 inline `# noqa: B905` in src/ (asy_wifi_service.py:709, asy_webserver_service.py:778) and 74 inline `# noqa` across tests/digital_twin/scripts/buildgen/toolchain/tests_scripts/tests_hardware; BACKLOG 2026-09-22 also moved S102 from per-file to inline deliberately. | area: CI | status: UNTRACKED as a doc/practice contradiction (low) | related: CI.T* (plan line 2376 "E402 noqa split")
+- LIC / TODO | commit 90e8c17 | "ext/freezefs/archive.py synced to upstream main (no release tags exist)" | Vendored freezefs pinned to an untagged upstream commit; no tag-level provenance. | area: LIC | status: not found as an explicit plan topic (plan treats ext/freezefs as reliance-only) — UNTRACKED (low) | related: LIC.T*, WEB
+- OWNER-DECISION LOST | commit 9f4c084 -> 41762dc -> 080cde3 -> merge e5d2c43 | 41762dc: "The reorder itself is a decided task now ... moves ... into 'Refactor targets not yet done' at high priority, naming all eleven non-compliant classes" and amends D.15's comment clause ("comments move with the code they annotate") | The HIGH-PRIORITY BACKLOG item "Sort every class in src/ to D.15" and the D.15 amendment were added on main, then silently dropped when merge e5d2c43 took this branch's side on all 36 conflicts; neither text exists at 2a88cc8 (SPEC D.15 at :2717 still says "no change to any ... comment"). An AST check at 2a88cc8 finds 9 classes still non-compliant (SCD30_Reader, UART_Comm, UART, _ModuleLike, AsyConnTime, ConfigManager, Framing_Base, Framing_COBS, SystemService). | area: XCUT/DOC | UNTRACKED | related: XCUT.T*
+- DIVERGENCE | commit 9f4c084 | "the GET entry points validate their arguments before the readiness gate while the SET ones gate first" | Flagged, not changed; still true (uart_get_into checks buf before gating; uart_set_into gates first). | area: UART | UNTRACKED (low) | related: UART.T*
+- OWNER-PRINCIPLE | commit 8a45060 | "Project owner's direction: this is a general principle - no error/warning should ever be logged for expected startup jitter on any boot, on any module - to be addressed, and audited for elsewhere in the codebase, in a dedicated follow-up session" | 7727ad1 fixed SGP40 and audited only the narrower "None vs exception" class; the general no-startup-jitter-logging principle is not written as a standing rule in CLAUDE.md/SPEC (SPEC:2526-2532 records only the SGP40 fix), and the owner's grace-period idea was never decided or recorded. | area: XCUT/SENS | UNTRACKED (principle) | related: SENS.T*
+- FLAKY | commit 2e7e4eb | "a real but unrelated CI-timing flake (tests/test_asy_ntp_client.py::test_integration_recovers_on_retry_after_one_dropped_request, a TimeoutError on a real 5-second UDP round-trip wait) ... confirmed transient, not a regression, not touched" | Flaky real-UDP test left as is. | area: TEST/NET | UNTRACKED (low; no BACKLOG/SPEC mention; test still at tests/test_asy_ntp_client.py:2205) | related: NET.T*, TEST.T*
+- FLAG | commit 4303242 / 38a1753 / 7e0d507 | "seven classes elsewhere in src/ do not satisfy D.15" -> "eleven of 74" | See the "OWNER-DECISION LOST" D.15 item above (41762dc owner ruling later dropped in merge e5d2c43). | area: XCUT | UNTRACKED (same item as 41762dc) | -
+- SCOPE-MARKER LOST | commit 179a10c | "BACKLOG 17's five cross-file consistency findings, 25's reserved-range errno/wrnno audit, 26's unreachable UART wrnno 11, and the src/-wide D.15 reorder - each now carry the same marker ... 'Independent session - out of the ISL29125'" | Three of four later done (58abf8f, b0f755c); the D.15 reorder has no BACKLOG entry at 2a88cc8 (marker grep finds nothing). | area: XCUT | UNTRACKED (D.15 reorder; same as 41762dc item) | -
+- DOC-DRIFT | commit dfb85ff | "SPECIFICATION.md's F.2 WiFi-power-cycle-backstop invariant now states the accepted residual risk window precisely ... instead of the old, now-inexact 'structurally cannot have a write in flight' claim" | SPEC F.2 (SPECIFICATION.md:3632-3640) was corrected, but CLAUDE.md:199-201 Hard rule still says "a device whose API is unreachable structurally cannot have a write in flight" — the claim SPEC calls "no longer exactly true". | area: DOC/STOR | UNTRACKED | related: NET.T*, DOC.T*
+- REPORTED-NOT-CHANGED | commit 04ef56a | "I2CDevice inherits Lockable's __aenter__/__aexit__ unchanged, so an I2C session burst has no scheduling point either ... recorded for a decision rather than fixed here" | I2C session bursts hold the event loop (no yield between sessions), unlike SPI after 04ef56a. Recorded only in HEAP_FRAGMENTATION_MEASUREMENTS.md, whose 2026-09-24 condensation (17b4354) dropped it; it survives only in the git archive (12640c2:HEAP_FRAGMENTATION_MEASUREMENTS.md:5227). BACKLOG.md:547-558 records the related SPI-sync/I2C-async API asymmetry as deliberate, but not the missing between-session yield for an I2C burst. | area: BUS/PERF | UNTRACKED (low; partly covered by BACKLOG.md:547) | related: BUS.T*, PERF.T*
+- OBSERVATION | commit 7ccbe8d | "The real main() runs start_timers() and an NTP sync between the two lists, so the firmware has a third boot stretch with no collect in it - B's design covers the two lists deliberately and widening it would widen the I.4 exception, so it is recorded as an observation, not changed" | Uncovered boot stretch for the placement reset. | area: MEM | UNTRACKED (low; SPEC I.4(f.1) at :5073 names only the two lists, not this gap) | related: MEM.T*
+- LOST-THEN-RECOVERED | commit 323a1a7 | "Five more items main had and this branch did not, each re-verified here before recording (BACKLOG 37-41)" | Recovery after merge e5d2c43 — lists five items but NOT the D.15 reorder task, confirming that one stayed lost. | area: DOC/XCUT | status: 37-41 later closed (58abf8f etc.); D.15 reorder UNTRACKED (see 41762dc item) | -
+- DEAD-HELPER | commit ae51e4b | "Its new assert_module_error_log_clean() is defined and called from nowhere - flagged so a future session uses it or drops it rather than assuming it is load-bearing" | Unused test helper. | area: HW/TEST | UNTRACKED (low; still defined at tests_hardware/error_log_helpers.py:49 with zero callers at 2a88cc8) | related: TEST.T*
+- PROCESS-LESSON | commit c2050da (also 4f39c0b) | "Lint was red from 55e5f6f9: the gate checks before those commits read lint.sh through tail, which hid ruff's output and exit status" | Second recurrence of reading lint.sh's tail instead of its exit code. | area: TOOL/process | UNTRACKED (low; lesson in commit messages only, not in CLAUDE.md/README) | -
+- ONLY-IN-TEMP-DOC | commit 21560a4 | "SGP40 W13 fills its ring while NTP is absent" ("one 'backup written without timestamp' slot per backup (1 min), 9 slots after one hotspot episode ... Suggested: apply C.7.1's per-episode repeat rule ... a candidate for BACKLOG 50's list") | Same warning-flood class as item 35, unfixed; BACKLOG 50 was already closed (b5450aa) when this was found, and the finding lives only in the throwaway HARDWARE_TEST_HANDOVER.md:163. | area: SENS/STOR | UNTRACKED (medium; temp doc only) | related: SENS.T*, STOR.T*
+- ONLY-IN-TEMP-DOC | commit 21560a4 | "an attach within ~1 s of boot parks the board with no watchdog" ("it never recovers on its own ... Suggested: add to ... tests_hardware/README.md") | Bench trap. | area: HW | UNTRACKED (low; HARDWARE_TEST_HANDOVER.md:176 only, not in tests_hardware/README.md) | -
+- ONLY-IN-TEMP-DOC | commit 21560a4 / HARDWARE_TEST_HANDOVER.md:172 | "FRAM E31 + W73 at the first boot after flashing: mpremote exec machine.bootloader() most likely landed mid-write ... entering BOOTSEL this way can cost one FRAM log entry" | Bootloader entry can tear a FRAM write. | area: STOR/HW | UNTRACKED (low; temp doc only) | -
+- KNOWN-GAP | https://github.com/hundertvolt/sensors/pull/41 | "validates each DNS label's length (≤63 octets ...) but not the *total* encoded QNAME length (≤255 octets" | `_build_query()` builds a spec-invalid query for a >255-octet name; degrades to a timeout/`None`. Still true at 2a88cc8 (src/asy_dns_client.py:40-51); reachable because NTP_Host keeps its 1024 bound | area: NET | UNTRACKED | related: BACKLOG NTP_Host SETTLED entry (BACKLOG.md:423-440), commit-side NTP_Host items
+- DEAD-CODE | https://github.com/hundertvolt/sensors/pull/30 | "`BMP3XX_I2C.get_altitude()` has zero callers anywhere in `src/` — dead code, left for a future cluster's decision" | Still no src caller at 2a88cc8 (src/asy_bmp3xx_driver.py:570); not in BACKLOG/SPEC | area: SENS | UNTRACKED | -
+- DEAD-CODE | https://github.com/hundertvolt/sensors/pull/50 | "`wlan_isconnected()` still has zero production callers. Whether to remove it or keep it as intentional public API surface is a code decision ... left as-is" | Was cited as BACKLOG ~line 379 in Sept 8; no BACKLOG/SPEC mention at 2a88cc8, method still at src/asy_wifi_service.py:775 — pruned without decision | area: NET | UNTRACKED | -
+- DOC-DRIFT | https://github.com/hundertvolt/sensors/pull/53 | "an end-to-end HTTP redirect check once hotspot mode is genuinely reached" | PR #53 added captive-portal `redirect("/")` (src/asy_webserver_service.py:658-660) but tests_hardware/manual/manual_wifi.py:40 still says no HTTP redirect exists | area: TEST-HW | UNTRACKED | -
+- OUT-OF-SCOPE | https://github.com/hundertvolt/sensors/pull/53 | "DHCP Option 114 (RFC 8910) was researched and deliberately left out of scope (requires patching" | Captive-portal DHCP option deliberately not done; no doc records the decision | area: NET | UNTRACKED | -
+- INVAR | https://github.com/hundertvolt/sensors/pull/40#issuecomment-5344576386 | "the three top-level `await self.cfgmgr.get_*_values()` calls in `monitor_loop()` execute as one uninterrupted synchronous unit" | No-lock justification rests on `_get_values()` never suspending on the success path; only the error path awaits `pr.err_s`. Still holds at 2a88cc8 (src/asy_notification_service.py:343-345, src/config_manager.py:240-293); recorded only in the PR comment | area: CORE | UNTRACKED | -
+- CRASH-UNEXPLAINED | https://github.com/hundertvolt/sensors/pull/58#issuecomment-5659653795 | "died with **exit code -11 (SIGSEGV)** on the reboot launch ... No fix for this specific crash exists yet in any PR" | grkizi Run 5c reboot segfault, re-run as a flake; no doc records a root cause for this signature | area: TWIN | UNTRACKED (possibly the SIGINT/VM-corruption class closed in 8466f2b, not verified) | related: 8466f2b, CLAUDE.md nested-asyncio.run segfault rule
+- LEAK-IN-TOOL | https://github.com/hundertvolt/sensors/pull/95#issuecomment-5692708409 | "`tests/machine.py`'s `Timer.all_timers` is a process-lifetime registry that file never clears ... An unverified one-line fix sits in `1bfd631` on the backup branch" | Registry still unbounded at 2a88cc8 (tests/machine.py:611,630); only per-driver tests clear it; masked by the per-device test_sensortask split, not fixed | area: TEST | UNTRACKED | related: CLAUDE.md heapsize history (E.3.1)
+- FUTURE | https://github.com/hundertvolt/sensors/pull/104 | "going further would need `tests_scripts/` itself parallelized (e.g. `pytest-xdist`), flagged as a further opportunity, not attempted" | tests_scripts single-process tier is the suite's wall-clock floor | area: TEST | UNTRACKED | -
 
 ## Each agent's own top 10 (verbatim; anchors are the agent's)
 
@@ -293,3 +350,16 @@ Partial reads, as reported:
 8. RISK `modules/sensortask-wozi.py:570-573,585-608` — `all_running` never recovers: failed `fram.setup()` or a persistently failing sensor reboot-loops the unit (`PAR.S12`, `PAR.S04`).
 9. INVAR `python/CommonDrivers/api_helpers.py:160-183` + `:33,42-45` — legacy error codes 0-10 and `""` = "Unchanged" semantics vs `src/api_response.py`'s 0-5/100 (`PAR.T11`, `NET.S17`).
 10. LIMIT `python/IndividualDrivers/asy_fram_manager.py:279-329` (+ `:219-223`) — legacy reads rewrite status bytes and treat BUSY/mismatched copies as invalid; decides what a rollback does with the refactor's FRAM layout (`PAR.T14`).
+
+### H17 — all commit messages to 2a88cc8, GitHub issues and pull requests (read-only)
+
+1. commit 41762dc / merge e5d2c43 — Owner-decided D.15 docstring-reorder task lost in a merge; SPEC D.15 (SPECIFICATION.md:2717) still says "no change", 9 classes non-compliant — UNTRACKED
+2. commit dfb85ff — CLAUDE.md:199-201 ("structurally cannot have a write in flight") contradicts SPEC F.2:3632-3640 residual-risk window — UNTRACKED
+3. commit 21560a4 — SGP40 W13 ring flood without NTP, attach-within-1s parks board, FRAM E31/W73 after bootloader: only in temporary HARDWARE_TEST_HANDOVER.md — UNTRACKED
+4. commit 8a45060 — Owner principle "no error/warning for expected startup jitter" never promoted to a rule — UNTRACKED
+5. commit 2bda920 — Legacy tree edited (BMP3XX tuple fix) despite reference-only rule; FiltCoeff migration parity — UNTRACKED
+6. commit e05f015 — Deployed fleet runs MicroPython 1.24.1 with on-device edits never copied back (docs say 1.26) — UNTRACKED
+7. https://github.com/hundertvolt/sensors/pull/41 — DNS QNAME total ≤255 not checked; reachable via NTP_Host 1024 bound — UNTRACKED
+8. https://github.com/hundertvolt/sensors/pull/95#issuecomment-5692708409 — tests/machine.py Timer.all_timers unbounded registry (fragmentation MemoryError), masked not fixed — UNTRACKED
+9. https://github.com/hundertvolt/sensors/pull/53 — manual_wifi.py:40 says no HTTP redirect though captive redirect exists; DHCP Option 114 decision unrecorded — UNTRACKED
+10. commit 04ef56a — I2CDevice session burst has no scheduling point (asymmetry with UART yield) reported, not changed — UNTRACKED

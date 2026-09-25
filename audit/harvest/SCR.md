@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 24, INVAR 41, MIRROR 12, LIMIT 48, RISK 8, ASSUME 25, PLATFORM 7, WORKAROUND 9, SUPPRESS 24, TODO 9, DRIFT 10 — 217 items.
+Kinds: SETTLED 24, INVAR 41, MIRROR 12, LIMIT 48, RISK 8, ASSUME 25, PLATFORM 7, WORKAROUND 9, SUPPRESS 24, TODO 9, DRIFT 10, NOTE 3 — 220 items.
 
 
 ## ext/freezefs/archive.py
@@ -849,3 +849,15 @@ Kinds: SETTLED 24, INVAR 41, MIRROR 12, LIMIT 48, RISK 8, ASSUME 25, PLATFORM 7,
   Host-speed assumption left in Run 4. · status: later reworked (scripts/_digital_twin_ci_suite.py:703
   notes "the host-speed assumption that made the old Run 4 flaky") — likely done (low) | related: SCR.T*
   · [H17]
+- **SCR.N218** NOTE(KNOWN-GAP) · `commit c486553` — "One known remaining gap, deliberately not closed
+  here: scripts/build_website.sh's buildgen-fallback branch has no test for a devices/*.toml that exists
+  but fails buildgen.definitions" — Test gap. · status: done-in 7e446f9 | - · [H17]
+- **SCR.N219** NOTE(RACE-FIX) · `commit 5506f44 / 09c77e2 / d370413` — devices/zz_test_*.toml live-tree
+  fixture races with the devices/*.toml glob; fixed by ordering, reserved namespace, session-start
+  reclamation — Test writes into the live tree by necessity. · status: done (by construction, d370413) |
+  - · [H17]
+- **SCR.N220** NOTE(LEFT-STANDING) · `commit 9cfb3b3 / ca5275a / b4cda1a` —
+  "scripts/mpremote_connect.sh's hardcoded ttyACM0, which owes the two-chroot pre-push gate" — One entry
+  point still strandable by re-enumeration. · tracked: tests_hardware/README.md:62 (documented,
+  workaround MPREMOTE_DEVICE); no BACKLOG entry and the chroot gate is no longer blocking (owner,
+  2026-09-18) so the stated blocker is gone | related: SCR.T* · [H17]

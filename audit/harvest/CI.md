@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 40, INVAR 21, MIRROR 4, LIMIT 23, RISK 8, ASSUME 19, PLATFORM 8, WORKAROUND 16, SUPPRESS 36, TODO 14, DRIFT 16, NOTE 4 — 209 items.
+Kinds: SETTLED 40, INVAR 21, MIRROR 4, LIMIT 23, RISK 8, ASSUME 19, PLATFORM 8, WORKAROUND 17, SUPPRESS 36, TODO 14, DRIFT 16, NOTE 16 — 222 items.
 
 
 ## tests/test_setter_microdot_integration.py
@@ -725,3 +725,50 @@ Kinds: SETTLED 40, INVAR 21, MIRROR 4, LIMIT 23, RISK 8, ASSUME 19, PLATFORM 8, 
 - **CI.N209** NOTE(CALIBRATION) · `commit 846c78b` — "Also keeps a defense-in-depth retry (one
   independent fresh boot) on the trend check specifically" — Retry on a noisy check. · tracked:
   scripts/_digital_twin_ci_suite.py (by design) | - · [H17]
+- **CI.N210** NOTE(ENFORCED-NOT-DISCOVERED) · `commit 9c66cf5` — "ci.yml's two device matrices. A GitHub
+  Actions matrix is a literal; a dynamic one would mean a prep job" — Hand-kept device lists guarded by
+  a check instead of derived. · status: done (guard tests) | - · [H17]
+- **CI.N211** NOTE(CI-GAP) · `commit cd3a367` — "CI last ran on this branch on 2026-09-14 and has not
+  run since, across 128 commits ... A check that never fires reads exactly like a check that passed" —
+  pull_request-only trigger silenced CI on conflicted PR. · status: done-in cd3a367 (push on all
+  branches); lesson in SPEC H.8 | related: CI.T* · [H17]
+- **CI.N212** NOTE(BUDGET-CEILING) · `commit debff43 / fa2a908` — "item 36: CI run 35372354351 was
+  cancelled, not failed - web-unit-tests hit its 20-minute timeout-minutes at 19m33s ... Recorded with
+  the numbers rather than widening a budget that is the owner's to set" — Web tier near its ceiling. ·
+  status: done-in 5da0783 (PUT-matrix split, sharded web-put-matrix job) | - · [H17]
+- **CI.N213** NOTE(DEFERRED-THEN-DONE) · `commit 7ccbe8d -> b7dd34e` — "B.3's lint.sh guard is NOT in
+  place, deliberately ... Recorded as owed from a host that can run both chroots" — Lint guard for
+  gc.collect sites. · status: done-in b7dd34e (restored after owner made chroot owner-run) | - · [H17]
+- **CI.N214** NOTE(LESSON) · `commit 5b833fc / 89f2e8b / 5da0783` — "dorny/paths-filter with no explicit
+  base compares a push to a non-default branch against the DEFAULT branch" — Web tier always ran on
+  long-lived branch. · status: done-in 5da0783 (base: github.ref) | - · [H17]
+- **CI.N215** NOTE(SESSION-SCOPE) · `commit 27e97e1` — "One box is deliberately NOT satisfied: it says
+  subscribe_pr_activity stays on, and the owner instructed this session to stop watching the branch" —
+  PR watching stopped on owner instruction. · status: informational | - · [H17]
+- **CI.N216** NOTE(OWNER) · `commit 83c1c57 -> 00f3eac` — "unit-tests-coverage is deliberately
+  continue-on-error, so the only tier running the settrace interpreter is also the only tier whose test
+  failures are swallowed" -> "The coverage tier's test result now gates, its coverage number still does
+  not" — CI decision. · tracked: SPEC E.5.3, CLAUDE.md | - · [H17]
+- **CI.N217** NOTE(DIAGNOSTIC-LIMIT) · `commit c6d0979 -> 50d47d1 -> 8069633` — "a run's log lives on a
+  blob host the network gateway denies outright ... GitHub's job summary is NOT exposed through the REST
+  API"; fixed by ::error annotations — CI logs unreachable from the agent environment. · status: done-in
+  8069633 (annotation channel) | - · [H17]
+- **CI.N218** NOTE(UNVERIFIED) · `commit f59196a` — "the Run 11b result claimed more than was verified;
+  it passed locally on klkizi only, and CI on 4914a25 has not been read yet" — CI result unread at time
+  of writing. · status: later commits (a91c576 etc.) touched Run 11b; not re-verified CI outcome | - ·
+  [H17]
+
+## GitHub PRs and issues (hundertvolt/sensors)
+
+- **CI.N219** WORKAROUND · `https://github.com/hundertvolt/sensors/pull/53#issuecomment-5509048463` —
+  "`scripts/test.sh` now grants `CAP_NET_BIND_SERVICE` to the built interpreter binary" — Non-root CI
+  can't bind port 53; `AsyUDPSocket` bind retry swallows PermissionError silently · done-in b5a5893
+  (tracked: CLAUDE.md chroot recipe/libcap2-bin) | - · [H17]
+- **CI.N220** NOTE(TRACKED) · `https://github.com/hundertvolt/sensors/pull/9` — Codecov upload
+  "currently no-ops" — Codecov never registered · tracked: CLAUDE.md coverage bullet | - · [H17]
+- **CI.N221** NOTE(PATTERN) · `https://github.com/hundertvolt/sensors/pull/57 (also #69/#77/#83/#86/#88/#89)`
+  — "Re-running ... to confirm the flake, per the drive-to-green re-run allowance" — Repeated
+  flake-rerun comments; root causes later closed (8466f2b, 846c78b) · done-in 8466f2b / 846c78b | - ·
+  [H17]
+- **CI.N222** NOTE(DONE) · `https://github.com/hundertvolt/sensors/pull/78` — cold-cache timeout —
+  Timeout raised/root-caused · done-in 2e7e4eb / cd3a367 | - · [H17]

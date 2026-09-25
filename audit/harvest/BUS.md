@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 15, INVAR 43, MIRROR 2, LIMIT 26, RISK 4, ASSUME 16, PLATFORM 14, SUPPRESS 11, TODO 3, OPENQ 1, DRIFT 1, NOTE 1 — 137 items.
+Kinds: SETTLED 15, INVAR 43, MIRROR 2, LIMIT 26, RISK 4, ASSUME 16, PLATFORM 14, SUPPRESS 11, TODO 3, OPENQ 1, DRIFT 1, NOTE 5 — 141 items.
 
 
 ## src/asy_i2c_driver.py
@@ -539,3 +539,20 @@ Kinds: SETTLED 15, INVAR 43, MIRROR 2, LIMIT 26, RISK 4, ASSUME 16, PLATFORM 14,
 - **BUS.N137** NOTE(FACT) · `commit 6d9ba2d` — legacy set_register_struct() raises OverflowError;
   src/asy_i2c_driver.py's struct.pack() silently truncates — Bus-layer divergence. · tracked: SPEC Part
   F (struct.pack truncation) | related: BUS.T* · [H17]
+- **BUS.N138** NOTE(DEFER-NOTE) · `commit 715cd73` — BACKLOG readfrom_mem_into() item "worth doing
+  before the ISL29125 is migrated; that migration happened without it" — Deferred bus API. · status:
+  done (BACKLOG.md:840 "done (owner decision, 2026-09-18)") | - · [H17]
+- **BUS.N139** NOTE(NOT-A-FIX) · `commit f6a182d` — "This is a churn, latency and hazard-surface fix,
+  NOT a fix for the heap fragmentation ... Recorded so the next session does not read this commit as the
+  remediation" — CS settle blocking 2us. · status: done | - · [H17]
+- **BUS.N140** NOTE(REPORTED-NOT-CHANGED) · `commit 04ef56a` — "I2CDevice inherits Lockable's
+  __aenter__/__aexit__ unchanged, so an I2C session burst has no scheduling point either ... recorded
+  for a decision rather than fixed here" — I2C session bursts hold the event loop (no yield between
+  sessions), unlike SPI after 04ef56a. Recorded only in HEAP_FRAGMENTATION_MEASUREMENTS.md, whose
+  2026-09-24 condensation (17b4354) dropped it; it survives only in the git archive
+  (12640c2:HEAP_FRAGMENTATION_MEASUREMENTS.md:5227). BACKLOG.md:547-558 records the related
+  SPI-sync/I2C-async API asymmetry as deliberate, but not the missing between-session yield for an I2C
+  burst. · UNTRACKED (low; partly covered by BACKLOG.md:547) | related: BUS.T*, PERF.T* · [H17]
+- **BUS.N141** NOTE(FLAGGED-DELIBERATE) · `commit 9415902 / 88245b2` — "SPIDevice has a synchronous
+  session, I2CDevice does not and has nothing equivalent to make synchronous" — API asymmetry. ·
+  tracked: BACKLOG.md:547-558 | related: BUS.T* · [H17]

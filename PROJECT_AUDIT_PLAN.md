@@ -2704,7 +2704,7 @@ retired `AUDIT_PLAN.md`). Status as of this revision:
       git history and the GitHub PR/issue discussions, read by 17 partitioned read-only agents for
       self-declared limitations, accepted risks, settled decisions, assumptions, workarounds, unenforced
       invariants, mirror obligations, suppressions, open questions and drift — recorded, not solved
-      (owner, 3.1). About 6,300 items in `audit/HARVEST.md` (index, method, untracked deferred work) and
+      (owner, 3.1). About 6,500 items in `audit/HARVEST.md` (index, method, untracked deferred work) and
       `audit/harvest/<AREA>.md`, each cross-referenced to the plan's topics/seeds by its agent and its
       quote checked against the snapshot by script. Not yet done: folding the items new to the plan into
       topics/seeds (owner's call on how, after reviewing them).

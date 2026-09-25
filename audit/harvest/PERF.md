@@ -271,7 +271,6 @@ Kinds: SETTLED 4, INVAR 4, LIMIT 2, RISK 4, ASSUME 31, OPENQ 8, NOTE 1 — 54 it
 
 ## Commit messages (chronological)
 
-- **PERF.N054** NOTE(ANNOTATION) · `commit e47d4e1` — "annotates the twin-only boot-latency note as
-  unverified against real hardware" — Boot latency only twin-measured. · status: unknown — grep finds no
-  "unverified against real hardware" note in SPEC at 2a88cc8 (either resolved or dropped; not
-  re-verified) | related: PERF.T* · [H17]
+- **PERF.N054** NOTE(OPEN) · `commit bc98d63` — "The RP2040 time factor is unmeasured and queued as a
+  device script" (per-byte CRC yield cost on silicon) — Hardware measurement owed. · status: unknown —
+  owner closed A.8 as "don't touch" (23e5443), so likely moot; queue row not verified | - · [H17]

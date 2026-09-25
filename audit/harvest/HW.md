@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFORM 27, WORKAROUND 9, SUPPRESS 65, TODO 25, OPENQ 11, DRIFT 72, NOTE 7 — 823 items.
+Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFORM 27, WORKAROUND 9, SUPPRESS 65, TODO 25, OPENQ 11, DRIFT 72, NOTE 33 — 849 items.
 
 
 ## tests_hardware/conftest.py
@@ -3133,29 +3133,134 @@ Kinds: SETTLED 63, INVAR 113, MIRROR 60, LIMIT 115, RISK 67, ASSUME 189, PLATFOR
 - **HW.N817** NOTE(CONVENTION) · `commit f887c2d` — device scripts clear their FRAM chunk at start —
   Mitigation for FRAM residue fabricating logs. · tracked: tests_hardware/README.md | related: HW.T* ·
   [H17]
-- **HW.N818** NOTE(TRAP) · `commit 47af5bb` — device script silently overwrote production
+- **HW.N818** NOTE(NOT-RUN) · `commit ab81b79` — "Add the ISL29125's real-hardware tier - written, never
+  run" — HW tier unexecuted. · status: done (38a1753 "Record the bench-tier findings") | related: HW.T*
+  · [H17]
+- **HW.N819** NOTE(LEFT-OPEN) · `commit ed501c7` — "the board's persisted config_ISL29125.cfg predates
+  the AutoRangePersist default change and still reads 4 ... Regenerating the file is a real write ...
+  and has not been made" — Bench board config stale. · status: done-by-accident (47af5bb: read 2 after a
+  device script overwrote it; the overwrite itself fixed) | - · [H17]
+- **HW.N820** NOTE(TRAP) · `commit 47af5bb` — device script silently overwrote production
   config_ISL29125.cfg (six flash writes/run) — Fixed; caveat recorded. · tracked:
   tests_hardware/README.md | related: HW.T* · [H17]
-- **HW.N819** NOTE(PATTERN) · `commit b18618f` — "BACKLOG 23 records it as a pattern ... provide your
+- **HW.N821** NOTE(PATTERN) · `commit b18618f` — "BACKLOG 23 records it as a pattern ... provide your
   own light, restore the state you changed, and assert a minimum engagement"; "BACKLOG 24 records the
   two live-backend browser tests failing on a stub frozen website" — Rig-dependence pattern; web tier
   failure. · tracked: tests_hardware/README.md:237-283 (pattern); live-backend-on-stub item: likely
   done-in 12640c2 ("Retire html_stub/"); branch-local BACKLOG numbering differed from today's | - ·
   [H17]
-- **HW.N820** NOTE(FLAG) · `commit a379128` — "BACKLOG 26 now holds only the FRAM hard-reset test ...
+- **HW.N822** NOTE(FLAG) · `commit a379128` — "BACKLOG 26 now holds only the FRAM hard-reset test ...
   asks a contract question"; "BACKLOG 27 ... an interrupted setup_toolchain.py env --tier flash leaves a
   Unix port with no frozen asyncio ... fix is a capability check ... left undone because scripts/ is
   inside the two-chroot pre-push gate" — Two deferred items. · status: FRAM hard-reset done-in 699836e
   (owner: expect E31/W71/W72); frozen-asyncio probe done-in 12640c2 (scripts/test.sh:92) | - · [H17]
-- **HW.N821** NOTE(UNPROVEN) · `commit 62f1ab9 / f05f82d` — "what is still NOT proven: a ratio learned
+- **HW.N823** NOTE(UNPROVEN) · `commit 62f1ab9 / f05f82d` — "what is still NOT proven: a ratio learned
   from a real overlap-band measurement surviving a reboot" -> "22 restates what the redesign leaves
   unproven on hardware" — Hardware proof gap for ISL calibration. · status: partly moot (ratio now user
   config, persisted via ConfigManager); SPEC:6767 records a hardware measurement; not re-verified
   whether "calibrate then reboot" is covered | related: HW.T* · [H17]
-- **HW.N822** NOTE(DEFERRED) · `commit 5615efc` — "bmp3xx_plausibility_read.py (8 keys) and
+- **HW.N824** NOTE(DEFERRED) · `commit 5615efc` — "bmp3xx_plausibility_read.py (8 keys) and
   sgp40_fram_backup_restore.py ... still hand-list theirs ... left for whenever their driver's schema
   next changes" — Device script cache drift. · status: done (both now derive from cfg_schema:
   bmp3xx_plausibility_read.py:23, sgp40_fram_backup_restore.py:79,114) | - · [H17]
-- **HW.N823** NOTE(OWNER) · `commit 98dc1b2 / 4f1c802` — SCD30 NVM write gating: one global flag +
+- **HW.N825** NOTE(NOT-RUN) · `commit 75d222e / ddf7d2d` — "Real-hardware device scripts ported but not
+  executed (no real-hardware go-ahead this session)"; "none run against silicon this session" — ISL
+  scripts on buildgen branch wired but unrun. · status: likely done by later bench sessions (not
+  re-verified per script) | related: HW.T* · [H17]
+- **HW.N826** NOTE(NOT-RUN) · `commit f9df9a2 / 4837ca3 / ea32767` — "Written and typechecked but not
+  run against real hardware this session (no go-ahead) - flagged explicitly in tests_hardware/README.md"
+  — New flash/bench bus-hazard tests unverified on silicon. · tracked: tests_hardware/README.md:1296
+  ("unverified against real silicon when written"); no record they were later run (not re-verified) |
+  related: HW.T* · [H17]
+- **HW.N827** NOTE(STRUCTURAL-EXCEPTION) · `commit 4837ca3 / ea32767` — SCD30 write-vs-siblings "one
+  fixed offset - the one-write budget makes a real sweep structurally impossible"; SCD30 "no bench-tier
+  counterpart ... structural"; SGP40 general-call "only reachable at setup/restart time" — Documented
+  parity exceptions. · tracked: SPEC C.8, E.6.6 | - · [H17]
+- **HW.N828** NOTE(NAMED-OPEN) · `commit 278cf60` — "UART's blocking-invariant real-driver gap, a bench
+  UART exerciser that never issues a SET under load, the rotate_ap_password() harness capability with
+  zero call sites, the alarm-pool-exhaustion reboot fallback, and NOTIFY's own FRAM hard-reset test ...
+  named rather than silently dropped" — Five tier-parity gaps. · tracked: BACKLOG.md:108-118,
+  tests_hardware/README.md:1179-1283 (UART fault catalog answered 2026-09-22 as E.6.6 exception);
+  rotate_ap_password resolved per SPEC:3124 | related: HW.T*, TEST.T* · [H17]
+- **HW.N829** NOTE(THIN-TEST) · `tests_hardware/README.md:1291 (from 278cf60)` — "SGP40's SGPResetVOC
+  push is a thin test (it never asserts the reset's own effect) but says so in its own comment" — Weak
+  assertion acknowledged. · tracked: tests_hardware/README.md:1291 only (no BACKLOG) | - · [H17]
+- **HW.N830** NOTE(OWNER) · `commit 98dc1b2 / 4f1c802` — SCD30 NVM write gating: one global flag +
   AND-gated extra flag, "intentional all along" — Settled design. · tracked: CLAUDE.md
   (persistence_write/scd30_extra_write), tests_hardware/README.md | - · [H17]
+- **HW.N831** NOTE(NOT-RUN) · `commit a3d43f4` — WP4 FRAM capacity device script "Not run this session
+  (no real-hardware go-ahead)" — HW leg pending. · tracked: tests_hardware/README.md:1383 (claims it
+  closes the leg; later run status not re-verified) | - · [H17]
+- **HW.N832** NOTE(LOOSENED-BOUND) · `commit 569c6bb` — "The bench tier's ResetErrors timeout went 10.0s
+  -> 30.0s ... A sweep degrading to ~25s on real hardware would now pass silently ... Recorded as
+  BACKLOG item 32" — Bench tier lacks an elapsed-time budget. · tracked: BACKLOG #32 | related: REST.T*
+  · [H17]
+- **HW.N833** NOTE(HARNESS-FIX) · `commit 15715d4` — serial re-enumeration ttyACM0->1; hotspot fixture
+  stranding the board ("recovery needed a serial-side config repair"); watchdog test measured the retry
+  policy — Three harness defects. · status: done-in 15715d4 | - · [H17]
+- **HW.N834** NOTE(LEFT-FOR-OWNER) · `commit e4b79ef` — "six tests use the joined_hotspot fixture
+  without persistence_write ... and resolve_board_device() duplicates ... setup_toolchain.py's vendor-ID
+  device discovery" — Two harness items. · status: done-in fbd7516 (owner: prerequisite writes stay
+  unmarked) and 9cfb3b3 (discovery consolidated) | - · [H17]
+- **HW.N835** NOTE(OWNER) · `commit fbd7516` — "it covers a persisting write that IS the thing under
+  test ... not one that is a shared PREREQUISITE" — Persistence gate scope. · tracked: CLAUDE.md (hard
+  rule), tests_hardware/README.md | - · [H17]
+- **HW.N836** NOTE(CLOSED-BY-OWNER) · `commit 7603cb9 -> 3db1382 -> 86fb067` — BACKLOG item 33: PR #102,
+  PR #84 and branch claude/pr103-real-hardware-fram-validation orphaned; "PR #84 ... none of its
+  build-and-instrument tooling (buildgen/gc_policy.py, --gc-policy, --memory-pressure, ...,
+  SPECIFICATION.md Part I.6) exists on any other branch, so closing leaves it unshipped by decision" —
+  Orphaned work settled; PR #84 tooling deliberately unshipped. · status: settled (86fb067: five of six
+  pr103 items accounted for); REAL_HARDWARE_TEST_QUEUE.md R6 keeps the unexplained +0.90s CFGMGR_SYSTEM
+  boot cost | related: PERF.T* · [H17]
+- **HW.N837** NOTE(QUEUED) · `commit 3ffb6a5` — item 12 "every board.exec() starves the watchdog and
+  reboots the board ~8s later ... test_ticks_ms_real_2pow30_rollover would have passed vacuously ... the
+  measurement redesign is queued, not faked" — Rollover test cannot measure what it claims. · tracked:
+  BACKLOG #12 (closed stub) + REAL_HARDWARE_TEST_QUEUE.md C7 | - · [H17 (also H17)]
+- **HW.N838** NOTE(QUEUED) · `commit edf11c2` — "R9 (the ISL29125 shadow-divergence fix and the
+  Overrange field have never run on silicon) and R10 (the two device_scripts bugs fixed in source but
+  never re-executed)" — Hardware owed. · tracked: REAL_HARDWARE_TEST_QUEUE.md R9/R10 | - · [H17]
+- **HW.N839** NOTE(QUEUED) · `commit 60b8e4e` — "Queue gains 1C ... the I2C shared scratch buffer most
+  of all, which is a second bus-facing change and so owes CLAUDE.md's tier-3 and tier-4 runs" —
+  Real-hardware bus-hazard runs owed for the I2C scratch change. · status: queue reorganised (5da0783
+  run sheet); not re-verified that the I2C-scratch tier-3/4 run is still listed | related: HW.T*, BUS.T*
+  · [H17]
+- **HW.N840** NOTE(DEAD-HELPER) · `commit ae51e4b` — "Its new assert_module_error_log_clean() is defined
+  and called from nowhere - flagged so a future session uses it or drops it rather than assuming it is
+  load-bearing" — Unused test helper. · UNTRACKED (low; still defined at
+  tests_hardware/error_log_helpers.py:49 with zero callers at 2a88cc8) | related: TEST.T* · [H17 (also
+  H17)]
+- **HW.N841** NOTE(RETRY-WORKAROUND) · `commit 36c9210` — "the row now takes at most one second cold
+  boot ... a RESULT NOTE prints whenever the retry was actually needed" (F13, STA association after
+  kick+reset) — Probabilistic event retried once. · tracked: REAL_HARDWARE_TEST_QUEUE.md F13 / test code
+  | related: HW.T* · [H17]
+- **HW.N842** NOTE(RETRY-WORKAROUND) · `commit 2abebb0` — "Both now retry a ceiling close and only a
+  ceiling close" (F14; slot-release lag after _close_writer()) — Test retries around a server-side
+  slot-release lag. · tracked: queue F14; the lag itself (slot released after response delivered) is
+  described as "Not new behaviour", not a BACKLOG item | related: REST.T* · [H17]
+- **HW.N843** NOTE(STANDING-TRAP) · `commit 11a1aaf / 306a1bb` — "a DUT that has gone unreachable is
+  usually the session's own mpremote call"; "a bench test that opens more concurrent connections than
+  max_connections = 4 cannot expect a definitive status" — Operational traps. · tracked:
+  tests_hardware/README.md | - · [H17]
+- **HW.N844** NOTE(BENCH-STATE) · `commit 5633a0b / f98a301` — "DebugLevel must go back to 5 before any
+  bench-tier run, since several tests parse the serial log"; "picotool load does NOT wipe the littlefs
+  config" — Bench left at DebugLevel 0. · tracked: HEAP doc archive §7J.6 (standing trap); not
+  re-verified in tests_hardware/README.md | - · [H17]
+- **HW.N845** NOTE(NOT-RUN) · `commit 3a2236d` — "The two tests_hardware/ files are text-matching
+  changes this session could not execute ... Queued as C8" — Hardware soak gates' widened match untested
+  on bench. · status: likely done in the 2026-09-22 sitting (C8 no longer in queue; not re-verified) | -
+  · [H17]
+- **HW.N846** NOTE(OWNER) · `commit 00f3eac / d0bfbca` — "BenchBridge.rotate_ap_password() is deleted";
+  "The UART fault-injection catalog becomes Part E.6.6's fourth structural exception"; "no hardware will
+  be bought, so both candidates are permanently manual" (BACKLOG #8) — Decisions. · tracked: SPEC
+  E.6.1/E.6.6, BACKLOG #8 | - · [H17]
+- **HW.N847** NOTE(BUG-FOUND) · `commit 3d9e22d / 0d35d50` — "three device_scripts/ files never flushed,
+  so asyncio.run() discarded the write ... Two instances of one bug cancelling" — Deferred config flush
+  not awaited in device scripts. · status: done-in 3d9e22d + per-manager guard 0d35d50 | - · [H17]
+- **HW.N848** NOTE(NEVER-RAN) · `commit 914e798 / 8ef8ce9` — "the READY/IP handshake has never executed,
+  so they run LAST and a first-run failure is a harness bug until proven otherwise"; "Six defects came
+  out of instruments that had never once executed, and every one failed silently" — Instruments wrong on
+  first silicon run. · status: done-in 8ef8ce9 / 72a95f8 | - · [H17]
+- **HW.N849** NOTE(ANOMALY) · `commit 0f7385d / 25c6cbb` — "One silent reset in the first E6 collecting
+  boot, cause lost"; "errcount before the run recorded, including a FRAM entry new since 2026-09-23" —
+  Unexplained resets; possible watchdog starvation under CPU-bound load (supervisor loop is the only
+  feed site). · tracked: BACKLOG #44 (queue F17) | related: HW.T* · [H17]

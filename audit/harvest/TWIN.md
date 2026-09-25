@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 25, INVAR 50, MIRROR 21, LIMIT 150, RISK 4, ASSUME 75, PLATFORM 3, WORKAROUND 20, SUPPRESS 11, TODO 3, OPENQ 1, DRIFT 4, NOTE 1 — 368 items.
+Kinds: SETTLED 25, INVAR 50, MIRROR 21, LIMIT 150, RISK 4, ASSUME 75, PLATFORM 3, WORKAROUND 20, SUPPRESS 11, TODO 3, OPENQ 1, DRIFT 4, NOTE 13 — 380 items.
 
 
 ## src/asy_uart_link_driver.py
@@ -1362,3 +1362,57 @@ Kinds: SETTLED 25, INVAR 50, MIRROR 21, LIMIT 150, RISK 4, ASSUME 75, PLATFORM 3
 - **TWIN.N368** WORKAROUND · `commit b275efb` — "Two gc.collect() calls in
   digital_twin/_http_client.py's fetch()" — gc.collect() as MemoryError fix. · status: done-in
   a5fca11/a3b1a6e/5c76c37 (right-sized reads, no gc.collect()) | related: MEM.T* · [H17]
+- **TWIN.N369** NOTE(OWNER-REJECTED) · `commit dfabc76 -> e75864f` — "The project owner rejected that
+  framing: errors going away under a threshold change is not proof the underlying allocation pattern is
+  safe" — gc.threshold(32768) as root-cause fix for Run 11 MemoryError rejected; real fix = right-sized
+  reads. · status: done-in e75864f / a1bb46e (rule sharpened in CLAUDE.md) | related: MEM.T* · [H17]
+- **TWIN.N370** NOTE(WORKAROUND-KEPT) · `commit 2bd5aa5` — "this gc.collect() stabilizes what a later,
+  unrelated line measures ... Restored" (soak memory-trend baseline) — gc.collect() in the twin's trend
+  measurement. · status: superseded — soak moved host-side (dde4b31), SPEC E.9 | - · [H17]
+- **TWIN.N371** NOTE(LEAK-IN-TOOL) · `commit dde4b31` — "dev's UARTLink.wire_log ... grows unbounded ...
+  Fixed with a periodic clearer task in run_generic_integration.py" — Twin diagnostic buffer unbounded;
+  workaround is a clearer task. · status: done-in dde4b31 (workaround by design, not bounded at source)
+  | - · [H17]
+- **TWIN.N372** NOTE(UNCONFIRMED-ROOT-CAUSE) · `commit 4effd70` — "Not reproduced locally ... offered as
+  the one concrete gap found, not a confirmed root cause" (twin shutdown SIGKILL -9) — Speculative fix +
+  forensic capture. · status: done-in 8466f2b (unix_kbd_intr override; CLAUDE.md) | - · [H17]
+- **TWIN.N373** NOTE(BUDGET-RAISED) · `commit 44e39e0 / 90aece7` — "giving just these two ResetErrors
+  calls a 20.0s timeout" — ResetErrors cost grows with FRAM-backed logger count. · tracked: BACKLOG #24
+  (ResetErrors cost) and #32 (bench timeout raised) | related: REST.T* · [H17]
+- **TWIN.N374** NOTE(VACUOUS-PASS) · `commit 5506f44` — "Run 4's sweep passes only because Run 3 faults
+  fram:write dead ... the missing chip-healthy coverage for SCD30/BMP3XX is recorded rather than papered
+  over" — Twin e2e did not test SCD30/BMP3XX FRAM persistence with a healthy chip. · status: likely done
+  (SPEC:1656 "a test that needs several drivers to log a chip-healthy error gives each its own process
+  ... Run 5c"; BACKLOG item gone at 2a88cc8) | - · [H17]
+- **TWIN.N375** NOTE(TWIN-CAVEAT) · `commit 39b89ec` — "The parallelism every earlier twin run did show
+  was two digital_twin/machine.py fakes - Timer._run and WDT._countdown - which model hardware
+  peripherals as asyncio tasks and have no task counterpart on the board. Recorded as a standing caveat"
+  — Twin fakes add concurrency absent on hardware. · tracked: HEAP_FRAGMENTATION_MEASUREMENTS.md
+  (archive 12640c2; condensed doc keeps traps — not re-verified this caveat survived) | related: TWIN.T*
+  · [H17]
+- **TWIN.N376** NOTE(COVERAGE-GAP) · `commit 2a4d2d7` — "exactly two of them have any chip-healthy
+  reboot-persistence proof: SGP40 ... and WIFI ... Owner's direction: the healthy-store persistence
+  sweep is not to be started before this session's own test audit" — Item 25. · status: done — Run 5c
+  sweep device-wide since 2026-09-18 (digital_twin/README.md:491-499) | - · [H17]
+- **TWIN.N377** NOTE(HARNESS-VIOLATION) · `commit d9cdde8 / 9c6d5c9` — "Seven call sites were breaking
+  it" (fetching bodies never read, against the drain rule); "the sweep's ballast guarded on
+  gc.mem_free(), which is total free rather than the largest contiguous run - so the scaffolding raised
+  the MemoryError being attributed to the code under test" — Test-harness allocation confounds. ·
+  status: done-in d9cdde8 / d02ccc9 (Run 11b host-driven) | - · [H17]
+- **TWIN.N378** NOTE(OWNER) · `commit fef11ad` — "The 32-bit frozen twin is never committed or made a CI
+  gate" — twin32 documentation only. · tracked: HEAP annex §7Q.9 | - · [H17]
+
+## GitHub PRs and issues (hundertvolt/sensors)
+
+- **TWIN.N379** NOTE(FLAKY) · `https://github.com/hundertvolt/sensors/pull/74#issuecomment-5642531427` —
+  "`_probe_for_device()` (any `OSError` during the presence probe is treated as \"no device\", not
+  distinguished from an injected transient fault)" — Run 5c flake from probe vs fault-injection; "not
+  something I want to guess at without the project owner's input on the intended simulator semantics" ·
+  covered-by: commit 9de1b86 -> b8683a1 item (done-in 7727ad1); probe semantics itself unchanged
+  (src/asy_i2c_driver.py:261-273) | related: 9de1b86 · [H17]
+- **TWIN.N380** NOTE(CRASH-UNEXPLAINED) ·
+  `https://github.com/hundertvolt/sensors/pull/58#issuecomment-5659653795` — "died with **exit code -11
+  (SIGSEGV)** on the reboot launch ... No fix for this specific crash exists yet in any PR" — grkizi Run
+  5c reboot segfault, re-run as a flake; no doc records a root cause for this signature · UNTRACKED
+  (possibly the SIGINT/VM-corruption class closed in 8466f2b, not verified) | related: 8466f2b,
+  CLAUDE.md nested-asyncio.run segfault rule · [H17]

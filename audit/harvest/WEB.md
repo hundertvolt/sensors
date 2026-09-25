@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8, SUPPRESS 3, TODO 8, OPENQ 1, DRIFT 20, NOTE 3 — 284 items.
+Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8, SUPPRESS 3, TODO 8, OPENQ 1, DRIFT 20, NOTE 5 — 286 items.
 
 
 ## ext/freezefs/archive.py
@@ -1101,3 +1101,9 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
 - **WEB.N284** NOTE(FLAG) · `commit 1a858af` — "BACKLOG 29: html/definitions/dev.json advertises
   UARTLINK_Transfers ... mockdata/dev.json provides neither" — Mock-site gap and missing coverage check.
   · status: done-in 699836e (tests_js/definitions-mockdata-coverage.test.js) | - · [H17]
+- **WEB.N285** NOTE(WIDENED-SCOPE) · `commit c1ab149` — web-unit-tests wedged on ENAMETOOLONG
+  failure-screenshot names; "live-backend-put-matrix.test.js could NOT be run here" — Fixed; one file
+  verified only by CI. · status: done | - · [H17]
+- **WEB.N286** NOTE(DELIBERATE) · `commit 0260f60` — "cross_browser_smoke.mjs stays single-session,
+  because engine diversity is what it exists for" — No concurrency in cross-browser smoke. · tracked:
+  CONNECTION_SCALING_PLAN.md (deleted by 2a88cc8; not re-verified that this note migrated) | - · [H17]

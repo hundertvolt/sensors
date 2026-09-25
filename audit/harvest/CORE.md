@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 48, INVAR 60, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2, WORKAROUND 2, SUPPRESS 30, TODO 10, OPENQ 4, DRIFT 5, NOTE 2 — 265 items.
+Kinds: SETTLED 48, INVAR 61, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2, WORKAROUND 2, SUPPRESS 30, TODO 10, OPENQ 4, DRIFT 5, NOTE 4 — 268 items.
 
 
 ## src/api_response.py
@@ -1014,10 +1014,25 @@ Kinds: SETTLED 48, INVAR 60, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2,
   workaround for keyword-only callback. · status: by design (low) | - · [H17]
 - **CORE.N264** INVAR · `commit 8d77994` — "Records in BACKLOG.md the seven src/ modules that number
   inside the reserved range today - no live clash, a real defect the moment any of them gains a logger
-  reach-through" — errno reserved-range overlap. · status: done (closed in b0f755c / 86fb067 per git -S)
-  | - · [H17]
+  reach-through" — errno reserved-range overlap. · status: done-in 58abf8f ("close items 15 and 22";
+  still open/deferred at b0f755c) | - · [H17]
 - **CORE.N265** NOTE(OWNER) · `commit 793eb99 / 54359b9 / 9ac59cf` — WP6 boot-time watchdog feeding; WP7
   timer stagger design intent; Topic 11 err() -> err_s() upgrade, errno/wrnno realignment, "every module
   shall have optional FRAM logging ... FRAM module itself is the sole exception"; WP5 fire-and-forget
   create_task for PUT-backed routes; WP8 5 genuine print-only gaps — Decisions from the WP restart. ·
   status: to verify in later chunks (WP1-WP8 landed 2026-09-16..18) | - · [H17]
+- **CORE.N266** NOTE(DESIGN) · `commit 5da0783` — "wrn_s()/err_s() take repeat=True, which still counts
+  the occurrence ... but spends no history slot" — Item 35 closure mechanism. · tracked: SPEC C.7 (not
+  re-verified) | - · [H17]
+- **CORE.N267** NOTE(DEFERRED-RULE) · `commit 58abf8f` — "The seven modules numbering inside the
+  reserved errno/wrnno range renumber on their next substantial change (C.7.1)" — Reserved-range
+  violation left in place until next change. · tracked: SPEC C.7.1 | related: CORE.T* · [H17]
+
+## GitHub PRs and issues (hundertvolt/sensors)
+
+- **CORE.N268** INVAR · `https://github.com/hundertvolt/sensors/pull/40#issuecomment-5344576386` — "the
+  three top-level `await self.cfgmgr.get_*_values()` calls in `monitor_loop()` execute as one
+  uninterrupted synchronous unit" — No-lock justification rests on `_get_values()` never suspending on
+  the success path; only the error path awaits `pr.err_s`. Still holds at 2a88cc8
+  (src/asy_notification_service.py:343-345, src/config_manager.py:240-293); recorded only in the PR
+  comment · UNTRACKED | - · [H17]

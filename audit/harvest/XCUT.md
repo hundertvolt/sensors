@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 9, INVAR 34, MIRROR 3, LIMIT 5, RISK 13, ASSUME 12, PLATFORM 1, SUPPRESS 8, TODO 3, DRIFT 2, NOTE 2 — 92 items.
+Kinds: SETTLED 9, INVAR 34, MIRROR 3, LIMIT 5, RISK 13, ASSUME 12, PLATFORM 1, SUPPRESS 8, TODO 3, DRIFT 2, NOTE 6 — 96 items.
 
 
 ## src/asy_ntp_client.py
@@ -397,10 +397,37 @@ Kinds: SETTLED 9, INVAR 34, MIRROR 3, LIMIT 5, RISK 13, ASSUME 12, PLATFORM 1, S
   already-declared types ... every caller in this codebase is our own code, type-checked and reviewed" —
   Owner rule: guard only NaN/inf-class failures of correctly-typed values. · tracked:
   SPECIFICATION.md:2606 ("Don't defend ...") | - · [H17]
-- **XCUT.N091** NOTE(FLAG) · `commit a7f7291` — "Five surfaced; all five are in BACKLOG as open question
+- **XCUT.N091** NOTE(OWNER-DECISION LOST) · `commit 9f4c084 -> 41762dc -> 080cde3 -> merge e5d2c43` —
+  41762dc: "The reorder itself is a decided task now ... moves ... into 'Refactor targets not yet done'
+  at high priority, naming all eleven non-compliant classes" and amends D.15's comment clause ("comments
+  move with the code they annotate") — The HIGH-PRIORITY BACKLOG item "Sort every class in src/ to D.15"
+  and the D.15 amendment were added on main, then silently dropped when merge e5d2c43 took this branch's
+  side on all 36 conflicts; neither text exists at 2a88cc8 (SPEC D.15 at :2717 still says "no change to
+  any ... comment"). An AST check at 2a88cc8 finds 9 classes still non-compliant (SCD30_Reader,
+  UART_Comm, UART, _ModuleLike, AsyConnTime, ConfigManager, Framing_Base, Framing_COBS, SystemService).
+  · UNTRACKED | related: XCUT.T* · [H17]
+- **XCUT.N092** NOTE(OWNER-PRINCIPLE) · `commit 8a45060` — "Project owner's direction: this is a general
+  principle - no error/warning should ever be logged for expected startup jitter on any boot, on any
+  module - to be addressed, and audited for elsewhere in the codebase, in a dedicated follow-up session"
+  — 7727ad1 fixed SGP40 and audited only the narrower "None vs exception" class; the general
+  no-startup-jitter-logging principle is not written as a standing rule in CLAUDE.md/SPEC
+  (SPEC:2526-2532 records only the SGP40 fix), and the owner's grace-period idea was never decided or
+  recorded. · UNTRACKED (principle) | related: SENS.T* · [H17]
+- **XCUT.N093** NOTE(FLAG) · `commit a7f7291` — "Five surfaced; all five are in BACKLOG as open question
   17, unfixed" (FiltCoeff two meanings, four trigger-event names, ThreadSafeFlag import, _N_*_CFG axes,
   return-annotation quoting) — Cross-file consistency. · status: done-in 58abf8f (owner's four
   consistency decisions; FiltCoeff settled-keep) | - · [H17]
-- **XCUT.N092** NOTE(FLAG) · `commit 4303242 / 38a1753 / 7e0d507` — "seven classes elsewhere in src/ do
+- **XCUT.N094** NOTE(FLAG) · `commit 4303242 / 38a1753 / 7e0d507` — "seven classes elsewhere in src/ do
   not satisfy D.15" -> "eleven of 74" — See the "OWNER-DECISION LOST" D.15 item above (41762dc owner
   ruling later dropped in merge e5d2c43). · UNTRACKED (same item as 41762dc) | - · [H17]
+- **XCUT.N095** NOTE(SCOPE-MARKER LOST) · `commit 179a10c` — "BACKLOG 17's five cross-file consistency
+  findings, 25's reserved-range errno/wrnno audit, 26's unreachable UART wrnno 11, and the src/-wide
+  D.15 reorder - each now carry the same marker ... 'Independent session - out of the ISL29125'" — Three
+  of four later done (58abf8f, b0f755c); the D.15 reorder has no BACKLOG entry at 2a88cc8 (marker grep
+  finds nothing). · UNTRACKED (D.15 reorder; same as 41762dc item) | - · [H17]
+- **XCUT.N096** NOTE(OWNER-RULES) · `commit 9894e85` — "external sources are always fair game ... no
+  working around a failing test (adapt a test only with a solid, specific justification), and keep
+  BACKLOG.md updated with any unrelated issues or CI failures found along the way" — Standing
+  implementation rules for WP1-WP8; not in CLAUDE.md verbatim. · status: largely reflected in CLAUDE.md
+  working agreements; "keep BACKLOG updated with unrelated CI failures" not stated there (low) | - ·
+  [H17]

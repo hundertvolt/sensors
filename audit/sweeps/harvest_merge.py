@@ -17,7 +17,7 @@ KINDS = "SETTLED INVAR MIRROR LIMIT RISK ASSUME PLATFORM WORKAROUND SUPPRESS TOD
 DEFINED = set(re.findall(r'\*\*((?:' + '|'.join(AREAS + ['ENV']) + r')\.[ST]\d\d)\*\*', PLAN))
 _PSK = re.search(r'REAL_PW\s*=\s*"([^"]+)"', open(f'{REPO}/tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py').read())
 REDACT = [(_PSK.group(1), '<redacted: bench PSK, HW.T11>')] if _PSK else []  # read, not repeated here
-ITEM = re.compile(r'^- (?:\[\d+\] )?\**([A-Z][A-Z /]{1,30}?)\**\s*\|.*\|')
+ITEM = re.compile(r'^- (?:\[\d+\] )?\**([A-Z][A-Z0-9 /_-]{1,40}?)\**\s*\|.*\|')
 ALIAS = {'SECURITY': 'SEC', 'PLATFORM': 'PLAT', 'DOCS': 'DOC', 'TESTS': 'TEST', 'LEGACY': 'PAR', 'ENV': 'SCR'}
 
 
@@ -32,7 +32,7 @@ def parse(path):
             if cur: items.append(cur); cur = None
             head = line[3:].strip()
             if re.match(r'(Coverage|Totals|Top ?10|Untracked|Summary|Notes)', head, re.I):
-                stop = head.lower().startswith(('coverage', 'totals', 'top', 'summary'))
+                stop = head.lower().startswith(('coverage', 'totals', 'top', 'summary', 'untracked'))
                 src = head
                 continue
             stop = False
@@ -311,7 +311,8 @@ def index(files, items, merged, table, stats):
 
 if __name__ == '__main__' and len(sys.argv) > 1 and sys.argv[1] == 'all':
     import shutil
-    shutil.rmtree(f'{REPO}/audit/harvest', ignore_errors=True)
+    for old in glob.glob(f'{REPO}/audit/harvest/*.md'):  # raw/ agent outputs stay
+        os.remove(old)
     files, items, merged, table, stats = render()
     index(files, items, merged, table, stats)
     print(len(items), len(merged), stats)

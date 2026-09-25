@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 19, INVAR 28, MIRROR 7, LIMIT 24, RISK 12, ASSUME 20, PLATFORM 18, WORKAROUND 16, SUPPRESS 5, TODO 11, DRIFT 4, NOTE 1 — 165 items.
+Kinds: SETTLED 19, INVAR 28, MIRROR 7, LIMIT 24, RISK 12, ASSUME 20, PLATFORM 18, WORKAROUND 16, SUPPRESS 5, TODO 11, DRIFT 4, NOTE 8 — 172 items.
 
 
 ## tests_hardware/README.md
@@ -618,6 +618,35 @@ Kinds: SETTLED 19, INVAR 28, MIRROR 7, LIMIT 24, RISK 12, ASSUME 20, PLATFORM 18
 - **TOOL.N164** WORKAROUND · `commit 68b5bc3` — "`nmcli -g` escapes every ':' ... The comparison was
   unconditionally true: the MAC-drift check ... has therefore never verified anything" — Fake did not
   model nmcli escaping; fixed with `--escape no`. · status: done-in 68b5bc3 | - · [H17]
-- **TOOL.N165** NOTE(FUTURE) · `commit 8466f2b` — "two researched-but-not-yet-implemented future entries
+- **TOOL.N165** NOTE(VERIFY-GAP) · `commit 8e70914 / f8d511a` — "the trixie leg could not run in this
+  session's own sandbox because deb.debian.org is blocked ... flagged ... rather than skipped silently"
+  — Chroot leg skipped for max-args ratchet 21->22. · status: superseded — both legs satisfied
+  2026-09-12 (c82149f) and chroot made owner-run (CLAUDE.md, 2026-09-18) | - · [H17]
+- **TOOL.N166** NOTE(FUTURE) · `commit 8466f2b` — "two researched-but-not-yet-implemented future entries
   (lwIP connection counts, littlefs/flash storage size)" — Future MicroPython build overrides. ·
   tracked: SPEC Part B.14 | related: PLAT.T* · [H17]
+- **TOOL.N167** NOTE(VALIDATION-GAP) · `commit cbe07a6` — "validated best-effort in this sandbox rather
+  than CLAUDE.md's full dual-OS clean-chroot recipe (no root/debootstrap access here) - that gap is
+  called out explicitly in the PR" — Chroot legs skipped. · status: superseded by owner decision
+  2026-09-18 (chroot is owner-run; BACKLOG running list) | - · [H17]
+- **TOOL.N168** NOTE(UNCALIBRATED) · `commit 4d4a881` — "the Pi4's own reported parallelism-probe line,
+  since those thresholds were calibrated from an x86 sandbox and a simulated slow host but never from
+  the real Pi4" — Probe thresholds unvalidated on real bench host. · status: unknown — no later record
+  found in this pass whether the Pi4 line was reported (not re-verified) | - · [H17]
+- **TOOL.N169** NOTE(INSTRUMENT-DEFECT) · `commit 1e2f5b2` — "MICROPY_PY_SYS_SETTRACE=1 is not inert ...
+  Whether to build a flag-free binary for the plain test run is put to the owner (doc §11 item 0)" —
+  Unix port allocations inflated 4-5x. · status: done (two binaries, owner decision 2026-09-21;
+  CLAUDE.md, SPEC E.5.2) | - · [H17]
+- **TOOL.N170** NOTE(VERIFY-GAP) · `commit 7603cb9` — "The two-target clean-chroot pre-push gate is
+  unsatisfied for every build-environment change on this branch after 2026-09-12" — Chroot legs
+  outstanding. · tracked: BACKLOG running list of build-environment changes (owner-run check) | - ·
+  [H17]
+- **TOOL.N171** NOTE(OWNER) · `commit fb26903 / 1bbce05` — "§11 item 0, taken by the owner: the plain
+  suite no longer measures under a profiler"; "The (f) stage ... had NO runner at all ...
+  unit-tests-gc-threshold CI job makes it routine"; "Also withdrawn: 7H.3 concluded 'the threshold is
+  not defence in depth'. That overreached" — Two Unix-port binaries; (f)-stage runner. · tracked:
+  CLAUDE.md, SPEC E.5.2/I.4 | - · [H17]
+- **TOOL.N172** NOTE(PROCESS-LESSON) · `commit c2050da (also 4f39c0b)` — "Lint was red from 55e5f6f9:
+  the gate checks before those commits read lint.sh through tail, which hid ruff's output and exit
+  status" — Second recurrence of reading lint.sh's tail instead of its exit code. · UNTRACKED (low;
+  lesson in commit messages only, not in CLAUDE.md/README) | - · [H17]

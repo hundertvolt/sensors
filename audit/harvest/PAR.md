@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 31, INVAR 95, MIRROR 12, LIMIT 44, RISK 13, ASSUME 22, PLATFORM 11, WORKAROUND 1, SUPPRESS 1, TODO 2, OPENQ 1, DRIFT 14, NOTE 11 — 258 items.
+Kinds: SETTLED 32, INVAR 95, MIRROR 12, LIMIT 44, RISK 13, ASSUME 22, PLATFORM 11, WORKAROUND 1, SUPPRESS 1, TODO 2, OPENQ 1, DRIFT 14, NOTE 11 — 259 items.
 
 
 ## src/api_response.py
@@ -1135,3 +1135,9 @@ Kinds: SETTLED 31, INVAR 95, MIRROR 12, LIMIT 44, RISK 13, ASSUME 22, PLATFORM 1
   considered per-device difference" — Refactored field devices deliberately differ from legacy I2C
   timing; legacy arzi/neu build no BMP3xx. · tracked: devices/*.toml (bus.i2c0 timeout),
   SPECIFICATION.md:383 | related: PAR.T* · [H17]
+
+## GitHub PRs and issues (hundertvolt/sensors)
+
+- **PAR.N259** SETTLED · `https://github.com/hundertvolt/sensors/pull/53` — "The identical
+  404-not-redirect gap almost certainly exists in the deployed, pre-refactor" — Legacy gap; never a
+  to-do per legacy rule · tracked: CLAUDE.md legacy-tree rule | - · [H17]

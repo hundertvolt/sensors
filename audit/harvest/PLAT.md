@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 4, INVAR 5, LIMIT 2, RISK 2, ASSUME 7, PLATFORM 361, WORKAROUND 8, SUPPRESS 3, DRIFT 5 — 397 items.
+Kinds: SETTLED 4, INVAR 5, LIMIT 2, RISK 2, ASSUME 7, PLATFORM 361, WORKAROUND 8, SUPPRESS 3, DRIFT 5, NOTE 3 — 400 items.
 
 
 ## src/asy_bmp3xx_driver.py
@@ -1706,3 +1706,12 @@ Kinds: SETTLED 4, INVAR 5, LIMIT 2, RISK 2, ASSUME 7, PLATFORM 361, WORKAROUND 8
   settled 2026-09-11, project owner's call: the question is RAM, not speed ... the linker-map figure is
   never to be quoted as a measured speedup" — 1.29 SRAM win never timed by decision. · tracked:
   SPECIFICATION.md:3750-3768 (Part F.5.3) | - · [H17]
+- **PLAT.N398** NOTE(PLAT-FACT) · `commit 441de83 / 7cf989d` — "deinit() does not release the GPIO
+  function select, so a UART re-inited on other pins stays muxed ... until a hard reset" — Documented,
+  not fixed. · tracked: tests_hardware/README.md:465 | related: PLAT.T* · [H17]
+- **PLAT.N399** NOTE(DEFER-MEASUREMENT) · `commit 00f3eac` — "The ticks_ms rollover row records 'adapt
+  the method, defer the measurement'" — Rollover measurement deferred. · tracked: queue (G6) | - · [H17]
+- **PLAT.N400** NOTE(SPEC-CORRECTION) · `commit d0ba4c2 / 9751814` — "MEMP_NUM_NETCONN is a no-op on
+  this port ... MEMP_NUM_UDP_PCB is a bare #define ... defining MEM_SIZE alone silently reverts TCP_MSS
+  to 536" — B.14.2 assumptions wrong. · status: done (SPEC corrected, lwip_connection_counts override
+  with post-build readback) | related: PLAT.T* · [H17]

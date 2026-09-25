@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 71, WORKAROUND 2, SUPPRESS 32, TODO 5, OPENQ 2, DRIFT 8, NOTE 10 — 401 items.
+Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 71, WORKAROUND 2, SUPPRESS 32, TODO 5, OPENQ 2, DRIFT 8, NOTE 19 — 410 items.
 
 
 ## src/asy_bmp3xx_driver.py
@@ -1471,36 +1471,75 @@ Kinds: SETTLED 57, INVAR 53, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
 - **SENS.N391** TODO · `commit d268f4b` — "SCD30_Reader.get_dict_cfg() (entirely) and three of
   BMP3xx_Reader.get_dict_cfg()'s fields ... can return a torn read across fields" — Torn live-readback
   gap. · status: done-in b6cb852 ("torn-read fix") | - · [H17]
-- **SENS.N392** NOTE(OWNER) · `commits 0780d85, a2ea347, 5d57b02` — ISL29125 settled requirements (every
+- **SENS.N392** NOTE(UNTRACKED-THEN-TRACKED) · `commit 9de1b86 -> b8683a1` — "a separate, pre-existing
+  race ... tracked separately" — "no such tracking existed anywhere" — Race traced to SGP40/SCD30 boot
+  race. · status: done-in 7727ad1 | - · [H17]
+- **SENS.N393** NOTE(OWNER) · `commits 0780d85, a2ea347, 5d57b02` — ISL29125 settled requirements (every
   setting API-settable, OperationMode not exposed, RGB 0-1, HSB low-light accepted, nested output) —
   Owner decisions. · tracked: SPEC Part M (moved in 5b97af3) | - · [H17]
-- **SENS.N393** NOTE(PLACEHOLDER) · `src/asy_isl29125_driver.py:180 (from f099ce8 line)` — CCT uses "a
+- **SENS.N394** NOTE(DESIGN-REQ) · `commit 5d57b02` — "CONFIG1 now has two writers ... the driver needs
+  a shadow copy"; "re-apply its whole configuration when it sees [BOUTF] set" — Requirements for
+  promoted driver. · status: done (src/asy_isl29125_driver.py:70,248,397 brownout handling) | - · [H17]
+- **SENS.N395** NOTE(OPEN-DECISION) · `commit f099ce8` — CCT "Proposed, not assumed ... carries as the
+  one open decision" — Scope addition. · status: done (CCT in src/asy_isl29125_driver.py:164, "relative
+  and uncalibrated - a documented placeholder RGB->XYZ matrix") | - · [H17]
+- **SENS.N396** NOTE(PLACEHOLDER) · `src/asy_isl29125_driver.py:180 (from f099ce8 line)` — CCT uses "a
   documented placeholder RGB->XYZ matrix" — Placeholder calibration shipped. · tracked: in-code @web
   description (not in BACKLOG) | - · [H17]
-- **SENS.N394** NOTE(FLAG) · `commit 7890e2b` — "SGPResetVOC is the only one of the 30 config field
+- **SENS.N397** NOTE(FLAG) · `commit 7890e2b` — "SGPResetVOC is the only one of the 30 config field
   names in src/ that carries a device prefix ... whether SGPResetVOC is a deliberate exception is the
   project owner's call" — Naming discrepancy. · status: done-in 9b83336 (rule: command-only fields carry
   the prefix) | - · [H17]
-- **SENS.N395** NOTE(DEFENSIVE) · `commit 1809110` — "errno 35/37 guard a contract the real class does
+- **SENS.N398** NOTE(SPEC-DEFECTS) · `commit b95a0d7` — "Three specification defects found while
+  implementing ... to be reported: the gain correction's direction was inverted, the reset verify's
+  STATUS == 0x00 check contradicts Table 15 ... thresholds must be scaled" — Reported. · status: done
+  (recorded in ISL29125_FUNCTION_SPEC §9, later retired; gain ratio later removed — 080cde3) | - · [H17]
+- **SENS.N399** NOTE(OWNER-LEFT) · `commit 1ea08ad / f333def` — "the range ratio is not a constant (~28
+  at low counts falling to ~22 near full scale, BACKLOG 20)"; "making the gate range-aware ... is left
+  for the owner" — ISL gain-ratio model question. · status: moot/done — gain ratio removed from FRAM
+  later (080cde3 "the gain ratio stopped living in FRAM") | - · [H17]
+- **SENS.N400** NOTE(DEFENSIVE) · `commit 1809110` — "errno 35/37 guard a contract the real class does
   not violate today ... kept as an explicitly-labelled defense-in-depth test" — Dead-in-practice error
   paths. · status: moot (gain-ratio FRAM path later removed, 080cde3) | - · [H17 (also H17)]
-- **SENS.N396** NOTE(OWNER) · `commits f05f82d, 6023d87, 5860ad5` — ISL gain ratio user-calibrated
+- **SENS.N401** NOTE(OWNER) · `commits f05f82d, 6023d87, 5860ad5` — ISL gain ratio user-calibrated
   (sandwich measurement, GainMeas by absence); AutoRangePersist derived; wrnno=17 removed — Owner
   decisions. · tracked: SPEC C.11.3 (:6746-6780), DEVICE_REFERENCE.md:89-92 | - · [H17]
-- **SENS.N397** LIMIT · `commit f05f82d` — "the model is still one scalar ... the level-dependence
+- **SENS.N402** LIMIT · `commit f05f82d` — "the model is still one scalar ... the level-dependence
   itself stays recorded as the limit of what one number can do" — Accepted accuracy limit. · tracked:
   SPECIFICATION.md:6772-6780 | - · [H17]
-- **SENS.N398** NOTE(OWNER) · `commit 05f4746 / 179a10c` — "BACKLOG 20 is PARKED, not deferred: there is
+- **SENS.N403** NOTE(OWNER) · `commit 05f4746 / 179a10c` — "BACKLOG 20 is PARKED, not deferred: there is
   one device"; "BACKLOG 29 is out of scope for the ISL29125 promotion" — Parked ISL ratio question;
   out-of-scope tool fix. · tracked: SPEC C.11.4 (ratio); frozen-asyncio probe done-in 12640c2 | - ·
   [H17]
-- **SENS.N399** NOTE(FINDING) · `commit a11feca` — "the migration emits two W4s rather than one, and the
+- **SENS.N404** NOTE(FINDING) · `commit a11feca` — "the migration emits two W4s rather than one, and the
   calibration band gate tests green counts while the range decision tests peak counts" — ISL calibration
   can never run for colour-dominant scene on high range. · tracked: SPEC C.11.3 (operator procedure:
   park dark first) | - · [H17]
-- **SENS.N400** NOTE(UNREACHABLE) · `commit 1da9650 / b937dab` — "_read_sensor_dict() and
+- **SENS.N405** NOTE(UNREACHABLE) · `commit 1da9650 / b937dab` — "_read_sensor_dict() and
   _snapshot_field() both guard against decode_config() returning None, which get_config_snapshot()
   cannot produce" — Dead guards kept. · tracked: SPEC E.5.1 | - · [H17]
-- **SENS.N401** NOTE(EXCEPTION) · `commit f341543` — "asy_scd30_driver.py's own read trigger is
+- **SENS.N406** NOTE(OVERRIDE-RULE) · `commit 2ad5d9e` — "the owner's standing ruling that the legacy
+  driver has no proven field behaviour to preserve for this device is kept because it overrides a
+  CLAUDE.md rule" — Exception to "verify against legacy field behaviour" for ISL29125. · tracked: SPEC
+  C.11.5 (Part M after 5b97af3); not mentioned in CLAUDE.md's rule itself | - · [H17]
+- **SENS.N407** NOTE(DISCARDED-PR-FINDINGS) · `commits 1909d8b, 3f7cc25 (from PR #84)` — ISL29125
+  shadow-divergence (HIGH IMPORTANCE) and "a config-persisting PUT /sensors resets its own HTTP
+  connection under concurrent API load" — Findings rescued from a discarded branch. · status: shadow
+  divergence done-in 5872365; connection reset tracked: BACKLOG #30 ("root-cause not yet established") |
+  related: REST.T* · [H17]
+- **SENS.N408** NOTE(EXCEPTION) · `commit f341543` — "asy_scd30_driver.py's own read trigger is
   IRQ-gated ... flagged rather than silently smoothed over" — Exception to timer no-coincidence design.
   · tracked: SPEC C.9.1 | - · [H17]
+- **SENS.N409** NOTE(ONLY-IN-TEMP-DOC) · `commit 21560a4` — "SGP40 W13 fills its ring while NTP is
+  absent" ("one 'backup written without timestamp' slot per backup (1 min), 9 slots after one hotspot
+  episode ... Suggested: apply C.7.1's per-episode repeat rule ... a candidate for BACKLOG 50's list") —
+  Same warning-flood class as item 35, unfixed; BACKLOG 50 was already closed (b5450aa) when this was
+  found, and the finding lives only in the throwaway HARDWARE_TEST_HANDOVER.md:163. · UNTRACKED (medium;
+  temp doc only) | related: SENS.T*, STOR.T* · [H17 (also H17)]
+
+## GitHub PRs and issues (hundertvolt/sensors)
+
+- **SENS.N410** NOTE(DEAD-CODE) · `https://github.com/hundertvolt/sensors/pull/30` —
+  "`BMP3XX_I2C.get_altitude()` has zero callers anywhere in `src/` — dead code, left for a future
+  cluster's decision" — Still no src caller at 2a88cc8 (src/asy_bmp3xx_driver.py:570); not in
+  BACKLOG/SPEC · UNTRACKED | - · [H17]

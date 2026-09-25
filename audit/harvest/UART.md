@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 72, INVAR 74, MIRROR 28, LIMIT 26, RISK 10, ASSUME 26, PLATFORM 8, WORKAROUND 1, SUPPRESS 9, TODO 13, OPENQ 1, DRIFT 4, NOTE 5 — 277 items.
+Kinds: SETTLED 72, INVAR 74, MIRROR 28, LIMIT 26, RISK 10, ASSUME 26, PLATFORM 8, WORKAROUND 1, SUPPRESS 9, TODO 13, OPENQ 1, DRIFT 4, NOTE 10 — 282 items.
 
 
 ## src/asy_uart_comm.py
@@ -991,10 +991,35 @@ Kinds: SETTLED 72, INVAR 74, MIRROR 28, LIMIT 26, RISK 10, ASSUME 26, PLATFORM 8
   UART.T* · [H17 (also H17)]
 - **UART.N275** NOTE(FACT) · `commit 430be67` — GPIO16/17 reserved for a future BME688 BSEC UART0 — Pin
   reservation. · tracked: SPECIFICATION.md:5161 | - · [H17]
-- **UART.N276** NOTE(SEAM) · `commit dc970fb` — "a lost final ACK (the at-least-once seam ...) the
-  responder has already accepted and delivered the whole train while the initiator reports failure" —
-  Protocol is at-least-once. · tracked: SPECIFICATION.md:5676 | - · [H17]
-- **UART.N277** NOTE(FLAG) · `commit 839c31e` — "wrnno 11 ... can never reach FRAM through the path that
+- **UART.N276** NOTE(RED-PUSH) · `commit 441de83` — "PUSHED DELIBERATELY WITH ONE RED TEST, on the
+  project owner's direction ... tests/test_digital_twin_run_dev_integration.py is at 16/17" — Twin soak
+  regression left red; UART fakes' wait "logged as deferred work"; H4 bench claim "vacuous ... Left open
+  deliberately". · status: done-in 7cf989d (root cause = GC placement, fake counts would-block bytes)
+  and dc05ce8 (H4 made real) | related: TEST.T* · [H17]
+- **UART.N277** NOTE(OWNER / KNOWN-DEFECT) · `commit dc970fb` — "errno 32, the mismatched-peer
+  diagnostic, cannot fire in the scenario it exists for ... Owner decision: document it" — Diagnostic
+  dead in its target scenario; test pins current behaviour. · tracked: SPEC Part J.6,
+  UART_C_PORT_CHANGELOG B26 | related: UART.T* · [H17 (also H17)]
+- **UART.N278** NOTE(FLAG) · `commit 839c31e` — "wrnno 11 ... can never reach FRAM through the path that
   produces it ... BACKLOG open question 17 with the five-line patch" — Persisted-warning slot ordering.
-  · status: done-in b0f755c (SPEC:1940 "wrnno 11 outranks 10 ... owner decision, 2026-09-18") | - ·
-  [H17]
+  · status: done-in b0f755c (SPEC:1940 "wrnno 11 outranks 10 ... owner decision, 2026-09-18") | - · [H17
+  (also H17)]
+- **UART.N279** NOTE(PORT-NOTE) · `commit c0638bc` — "One deployed value has to change in a faithful
+  port: rxbuf 32 is refused with errno 15"; legacy BSEC "struct.unpack(\"bbbbL\") ... only holds where a
+  native long is 4 bytes" — Guidance for a future BSEC driver port. · status: recorded only in the
+  conformance test / commit; no BACKLOG entry for a BSEC port (BSEC first use case declared out of scope
+  in CLAUDE.md) | - · [H17]
+- **UART.N280** NOTE(DEAD-CODE-KEPT) · `commit dfcbbe9` — "six in asy_uart_comm.py are a buffer or bound
+  re-checked right after the check that already settled it, unreachable through any call path that
+  exists - flagged rather than removed" — Deliberately kept unreachable guards. · tracked: SPEC
+  E.5.1:2991 | - · [H17]
+- **UART.N281** NOTE(SCOPE) · `commit dd734c0 / 12640c2` — "main's 2026-09-13 arduino/ import carries
+  the UART protocol's C implementation ... The reconciliation is cloud work that gates G10" -> owner:
+  arduino/ out of scope — C peer never reconciled. · tracked: BACKLOG (arduino/ SETTLED), queue G10
+  Excluded | - · [H17]
+
+## GitHub PRs and issues (hundertvolt/sensors)
+
+- **UART.N282** NOTE(OUT-OF-SCOPE) · `https://github.com/hundertvolt/sensors/pull/81` — "**Three
+  independent reasons the promoted Python cannot talk to the existing Arduino today**" — Open draft with
+  Arduino C findings · SETTLED (arduino/ out of scope, 12640c2) | - · [H17]

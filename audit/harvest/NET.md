@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 30, PLATFORM 15, WORKAROUND 2, SUPPRESS 39, TODO 6, OPENQ 3, DRIFT 6 — 250 items.
+Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 30, PLATFORM 15, WORKAROUND 2, SUPPRESS 39, TODO 6, OPENQ 3, DRIFT 6, NOTE 7 — 257 items.
 
 
 ## src/asy_dns_client.py
@@ -898,3 +898,37 @@ Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 30, PLATFORM 15
   mechanism's complexity not worth it" — No independent WiFi reachability probe; power-cycle is the
   recovery (asymmetry measured: 15 s outage needed hard_reset 5/5, flapping recovered 3/3). · tracked:
   CLAUDE.md hard rule, SPECIFICATION Part F.2, BACKLOG #6 stub | - · [H17]
+- **NET.N251** NOTE(NEW-ITEM) · `commit b0f755c` — "New item 35: the same warning-flood class ...
+  _poll_sta_connect_status() spends a slot per connect attempt ... and _read()'s 71/72/73 log on every
+  degraded FRAM read forever" — Warning floods. · status: done (item 35 closed 2026-09-19, owner
+  decision, per 86fb067 diff) | - · [H17]
+- **NET.N252** NOTE(NOT-VALIDATABLE-IN-TWIN) · `commit 9751814 / 9c6d5c9` — "The lwIP half cannot be
+  validated on the Unix port, which has no lwIP at all, and is queued for the bench"; "Run 11b ... says
+  nothing about PCB or pbuf exhaustion. That stays the hardware bisection's job" — lwIP limits only
+  testable on silicon. · status: bench work done later (queue at 2a88cc8 records max_connections now 6
+  and W4 row); not re-verified in detail | related: NET.T*, HW.T* · [H17]
+- **NET.N253** NOTE(WITHDRAWN) · `commits dbc7524, c04f106, 0754c92, 9c6d5c9` — "the cliff is withdrawn
+  everywhere it was asserted, and 7 now rests on ... a margin decision under uncertainty, not a measured
+  cliff"; latency gradient withdrawn; "18-connection bar and the ~12 KB of free heap per connection"
+  withdrawn — Measurement claims withdrawn; max_connections choice is a judgement. · tracked:
+  CONNECTION_SCALING_PLAN.md §8 (deleted; not re-verified migrated to SPEC I.6) | related: PERF.T* ·
+  [H17]
+- **NET.N254** NOTE(OWNER-BAR-UNMET) · `commit f92f87e -> db3bf52` — "The owner's bar of 10 is met by no
+  image measured; what changes is the owner's call" -> "Owner's decision on the peak-load evidence: 6 is
+  the only limit clean" — Connection limit lowered to 6. · tracked: SPEC H.7 | - · [H17]
+
+## GitHub PRs and issues (hundertvolt/sensors)
+
+- **NET.N255** NOTE(KNOWN-GAP) · `https://github.com/hundertvolt/sensors/pull/41` — "validates each DNS
+  label's length (≤63 octets ...) but not the *total* encoded QNAME length (≤255 octets" —
+  `_build_query()` builds a spec-invalid query for a >255-octet name; degrades to a timeout/`None`.
+  Still true at 2a88cc8 (src/asy_dns_client.py:40-51); reachable because NTP_Host keeps its 1024 bound ·
+  UNTRACKED | related: BACKLOG NTP_Host SETTLED entry (BACKLOG.md:423-440), commit-side NTP_Host items ·
+  [H17]
+- **NET.N256** NOTE(DEAD-CODE) · `https://github.com/hundertvolt/sensors/pull/50` —
+  "`wlan_isconnected()` still has zero production callers. Whether to remove it or keep it as
+  intentional public API surface is a code decision ... left as-is" — Was cited as BACKLOG ~line 379 in
+  Sept 8; no BACKLOG/SPEC mention at 2a88cc8, method still at src/asy_wifi_service.py:775 — pruned
+  without decision · UNTRACKED | - · [H17 (also H17)]
+- **NET.N257** NOTE(DONE) · `https://github.com/hundertvolt/sensors/pull/61` — hostname follow-up —
+  Hostname item closed · done-in b0f755c | - · [H17]

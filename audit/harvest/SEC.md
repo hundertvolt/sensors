@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 2, INVAR 4, MIRROR 1, LIMIT 6, RISK 22, ASSUME 1, SUPPRESS 5, DRIFT 2, NOTE 1 — 44 items.
+Kinds: SETTLED 2, INVAR 4, MIRROR 1, LIMIT 6, RISK 22, ASSUME 1, SUPPRESS 5, DRIFT 2, NOTE 3 — 46 items.
 
 
 ## src/asy_dns_client.py
@@ -241,3 +241,12 @@ Kinds: SETTLED 2, INVAR 4, MIRROR 1, LIMIT 6, RISK 22, ASSUME 1, SUPPRESS 5, DRI
   copies of the DUT's own hotspot fallback password ... RUF007 for device_scripts/" — tests_hardware
   per-file exemptions incl. five copies of the hotspot password. · tracked: pyproject.toml
   per-file-ignores | related: SEC.T* · [H17]
+- **SEC.N045** NOTE(SECURITY-HYGIENE) · `commit 7aba427` — ".gitignore: root-level config_*.cfg ...
+  config_WIFI carries SSID/PW on a tree that has real ones" — Host-side runs of device scripts spill
+  credential files into repo root. · status: done-in 7aba427 (.gitignore) | related: SEC.T* · [H17]
+
+## GitHub PRs and issues (hundertvolt/sensors)
+
+- **SEC.N046** NOTE(SEC) · `https://github.com/hundertvolt/sensors/pull/107` — "The committed bench PSK
+  is redacted in it." — Post-snapshot PR notes a committed bench PSK · covered-by: PROJECT_AUDIT_PLAN
+  HW.T11 / SEC.T12 | - · [H17]

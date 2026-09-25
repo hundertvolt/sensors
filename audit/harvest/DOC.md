@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, TODO 5, OPENQ 1, DRIFT 224, NOTE 3 — 302 items.
+Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, TODO 5, OPENQ 1, DRIFT 224, NOTE 12 — 311 items.
 
 
 ## src/api_response.py
@@ -1345,10 +1345,45 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 8, PLATFORM 1, T
   check DEVICE_REFERENCE.md (low) | - · [H17]
 - **DOC.N300** NOTE(TRACKED) · `commit f12c231` — "Both were flagged in review but never fixed ...
   recording them as open questions" (items 18/19) — Doc staleness. · status: done-in f8d511a | - · [H17]
-- **DOC.N301** NOTE(OWNER) · `commit 706f9e0` — "BACKLOG 30 ... SPECIFICATION.md carries six subsections
+- **DOC.N301** NOTE(LEFT-ALONE) · `commit bcc4c3b` — "Left alone deliberately:
+  tests/test_asy_bmp3xx_driver.py, whose long blocks predate this branch" — Over-cap comments left. ·
+  status: done (repo-wide zero over-cap per CLAUDE.md, gated by tests_scripts/test_comment_block_cap.py)
+  | - · [H17]
+- **DOC.N302** NOTE(DROPPED-BY-DESIGN) · `commit 4b85426` — "The audit-pass histories (J through Q), the
+  phase-by-phase work list, the legacy violation map and the done criteria are dropped, not migrated" —
+  UART_PROMOTION_REQUIREMENTS.md retired; durable facts to SPEC J.9/E.5.1/F.1. · status: done-in 4b85426
+  | - · [H17]
+- **DOC.N303** NOTE(MERGE-RISK) · `commit bb5a43a / 3e801ef / 41762dc` — BACKLOG numbering collisions on
+  merges (16/17 -> 26/27 -> 28 -> 25-29 renumbering) — Number reuse and renumbering across branches;
+  CLAUDE.md/BACKLOG say numbers are never reused, but these merges renumbered live items. · status:
+  informational; present BACKLOG uses stable non-contiguous numbers | - · [H17]
+- **DOC.N304** NOTE(OWNER) · `commit 706f9e0` — "BACKLOG 30 ... SPECIFICATION.md carries six subsections
   about one sensor ... The owner's ruling is to leave the specification as it stands and tidy it in a
   session of its own" — SPEC structure. · status: done-in 5b97af3 (ISL sections moved to Part M) | - ·
   [H17]
-- **DOC.N302** NOTE(DEFERRED) · `commit 3a94eb2` — "BACKLOG 31 records the measured per-file counts for
+- **DOC.N305** NOTE(DEFERRED) · `commit 3a94eb2` — "BACKLOG 31 records the measured per-file counts for
   a repo-wide sweep of its own" (~200 over-cap comment blocks) — Comment-cap sweep. · status: done
   (CLAUDE.md: every scope measures zero; tests_scripts/test_comment_block_cap.py) | - · [H17]
+- **DOC.N306** NOTE(DOC-DRIFT) · `commit dfb85ff` — "SPECIFICATION.md's F.2 WiFi-power-cycle-backstop
+  invariant now states the accepted residual risk window precisely ... instead of the old, now-inexact
+  'structurally cannot have a write in flight' claim" — SPEC F.2 (SPECIFICATION.md:3632-3640) was
+  corrected, but CLAUDE.md:199-201 Hard rule still says "a device whose API is unreachable structurally
+  cannot have a write in flight" — the claim SPEC calls "no longer exactly true". · UNTRACKED | related:
+  NET.T*, DOC.T* · [H17 (also H17)]
+- **DOC.N307** NOTE(FLAGGED) · `commit 500712e` — "The other four predate these commits (RunContext,
+  _report_soak_attempt, and a 17-line module header) and are flagged rather than silently reformatted" —
+  Over-cap docstrings. · status: done (repo-wide zero over-cap, test_comment_block_cap.py) | - · [H17]
+- **DOC.N308** NOTE(FLAG) · `commit b7dd34e` — "CLAUDE.md's own 'Pre-push verification' section still
+  reads as a blocking gate, so CLAUDE.md and BACKLOG.md now disagree" — Doc contradiction. · status:
+  done-in c500bb9 (CLAUDE.md carries the owner's 2026-09-18 decision) | - · [H17]
+- **DOC.N309** NOTE(LOST-THEN-RECOVERED) · `commit 323a1a7` — "Five more items main had and this branch
+  did not, each re-verified here before recording (BACKLOG 37-41)" — Recovery after merge e5d2c43 —
+  lists five items but NOT the D.15 reorder task, confirming that one stayed lost. · status: 37-41 later
+  closed (58abf8f etc.); D.15 reorder UNTRACKED (see 41762dc item) | - · [H17]
+- **DOC.N310** NOTE(DEFERRED-THEN-DONE) · `commit 4631b82 -> 35ba8ac / 5c5a2d0` — "scripts/*.sh carries
+  88 over-cap blocks ... the scope is the owner's call"; "48 section references in buildgen/ ... cite
+  the design record that was folded into Part L and deleted" — Shell comment cap; dangling citations. ·
+  status: done-in 35ba8ac and 5c5a2d0 | - · [H17]
+- **DOC.N311** NOTE(PLAN) · `commit a28513f .. 2a88cc8` — PROJECT_AUDIT_PLAN.md: "Execution is blocked
+  until the owner's explicit go-ahead. Every seed is recorded unverified" — Audit plan (this harvest's
+  context). · tracked: PROJECT_AUDIT_PLAN.md | - · [H17]

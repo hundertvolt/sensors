@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 24, INVAR 124, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM 7, WORKAROUND 32, SUPPRESS 121, TODO 4, DRIFT 30, NOTE 5 — 752 items.
+Kinds: SETTLED 24, INVAR 124, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM 7, WORKAROUND 32, SUPPRESS 121, TODO 4, DRIFT 30, NOTE 19 — 766 items.
 
 
 ## src/asy_webserver_service.py
@@ -2963,13 +2963,77 @@ Kinds: SETTLED 24, INVAR 124, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM
   honestly-marked fixture-writer limitation on a case three sibling parametrizations already cover" —
   pytest.skip at tests_scripts/test_buildgen_validate.py:1208 ("an inline table can't be produced by
   this fixture writer"). · status: still present | related: TEST.T* · [H17]
-- **TEST.N750** NOTE(FLAKY) · `commit 2e7e4eb` — "a real but unrelated CI-timing flake
+- **TEST.N750** NOTE(BUG-FOUND) · `commit c4046a5` — two test files lacked the `run(globals())` trailer
+  and ran zero tests; MicroPython dicts do not preserve insertion order — Dead tests fixed; no
+  structural guard mentioned. · status: done-in c4046a5 (guard: see TEST.T12) | covered-by: TEST.T12 ·
+  [H17]
+- **TEST.N751** NOTE(GC-WORKAROUND) · `commit a9dd34f` — "Fixed by wrapping each generated test's body
+  in try/finally: gc.collect()" (MemoryError at gc.threshold(32768)) — gc.collect() in test body as
+  MemoryError fix; conflicts with the later CLAUDE.md rule "no gc.collect() ... in the test's own setup
+  propping the result up". · status: likely superseded when test_sensortask.py was split per device
+  (E.3.1) — not re-verified whether the try/finally gc.collect() survives in test_digital_twin_* files |
+  related: MEM.T*, TEST.T* · [H17]
+- **TEST.N752** NOTE(OPEN-ITEM) · `commit fd333ce / 2b9c997` — "the fakes still not modelling a blocking
+  read" -> "duration remains unmodelled, and only the bench tier measures it" — Mock fakes count
+  would-block bytes but not wait duration. · tracked: SPEC F.5.8 + BACKLOG | related: TWIN.T* · [H17]
+- **TEST.N753** NOTE(TEST-BOUND) · `commit fd333ce / 1e1a26a` — leak bounds recalibrated per-operation
+  (< 6.0 B/transaction) after runner-dependent noise — Calibrated tolerance, not zero. · tracked: SPEC
+  Part E.8 | - · [H17]
+- **TEST.N754** NOTE(FLAKY) · `commit 2e7e4eb` — "a real but unrelated CI-timing flake
   (tests/test_asy_ntp_client.py::test_integration_recovers_on_retry_after_one_dropped_request, a
   TimeoutError on a real 5-second UDP round-trip wait) ... confirmed transient, not a regression, not
   touched" — Flaky real-UDP test left as is. · UNTRACKED (low; no BACKLOG/SPEC mention; test still at
   tests/test_asy_ntp_client.py:2205) | related: NET.T*, TEST.T* · [H17]
-- **TEST.N751** WORKAROUND · `commit 9cf8a9c / 0dc9799` — "raised scripts/test.sh's -X heapsize to 32M";
+- **TEST.N755** WORKAROUND · `commit 9cf8a9c / 0dc9799` — "raised scripts/test.sh's -X heapsize to 32M";
   8M experiment reverted "to the known-safe 32M rather than gambling" — Heap ceiling raised to pass
   tests. · status: done — per-device split, now 16M (CLAUDE.md, SPEC E.3.1) | related: MEM.T* · [H17]
-- **TEST.N752** NOTE(REVERTED) · `commit 1e2c001 -> 874e3da` — "Revert gc.collect() additions - wrong
+- **TEST.N756** NOTE(BUDGET-RAISED) · `commit 9cf8a9c / f83cd79 / a335923` — boot duration budget
+  raised; webserver start wait 0.1s -> 0.5s; per-file timeout 180 -> 240s; "Tried a polling readiness
+  check first ... Reverted to a fixed sleep" — Fixed sleeps as readiness waits. · status: partly
+  superseded by per-device split (cbe07a6); fixed-sleep readiness remains by design (not re-verified) |
+  related: TEST.T* · [H17]
+- **TEST.N757** NOTE(CLAIM-RETRACTED) · `commit e47d4e1` — "retracts the 'tests/_tmp growth confirmed
+  unrelated to WP1/WP2' claim"; "adds an open item for the heap-footprint bump (8M->32M) being a
+  workaround"; "Also flags a CFGMGR_SYSTEM setup-ordering anomaly" — Several open items. · status:
+  CFGMGR_SYSTEM done-in 7cd8dd1; heap item resolved (16M, E.3.1); tmp growth fixed 07b1e2b | - · [H17
+  (also H17)]
+- **TEST.N758** NOTE(REVERTED) · `commit 1e2c001 -> 874e3da` — "Revert gc.collect() additions - wrong
   tool, and empirically didn't work anyway" — Rule enforcement. · status: done | - · [H17]
+- **TEST.N759** NOTE(ACCEPTED-FLOOR) · `commit 5cd7e30` —
+  "tests/test_digital_twin_bus_hazard_concurrency.py's own dev-variant scenario cleanly bisected ... to
+  a real 8M-fails/16M-passes floor - a genuine real-time-budget margin issue ... not something changed
+  here (would alter what the test proves, not this session's call to make)" — The 16M heap is
+  load-bearing for one real-time-budget test, not purely a harness margin. · tracked: SPEC E.3.1
+  (heapsize history); the "fixed 9-second real-clock window" design question not in BACKLOG (low) |
+  related: TEST.T*, MEM.T* · [H17]
+- **TEST.N760** NOTE(OPEN-DECISION) · `commit af5c733 -> d370413` — "a twin assertion with a real-time
+  budget is a third hazard ... BACKLOG 28 carries the open decision"; resolved by TEST_PARALLELISM
+  autodetect — Parallelism vs real-time budgets. · status: done-in d370413 (probe thresholds
+  250ms/900ms) | - · [H17]
+- **TEST.N761** NOTE(F15 / F16) · `commits 02cc4c5, 5633a0b -> 3a1e5f3` — "the guard has
+  _JUSTIFIED_UNREADABLE_BODIES ... but no concept of a call it cannot recognise"; "one CI-only
+  test_uart_comm_hazard failure at 149/150 ... stays undiagnosed rather than dismissed" — Guard blind
+  spot and flaky-under-load UART test. · status: both done-in 3a1e5f3 (F16 root-caused to host
+  rescheduling at 1.25x margin; clean-run tests take the CRC arm's margin) | - · [H17]
+- **TEST.N762** NOTE(DEFENSIVE-UNTESTED) · `commit 83c1c57` — "Four sites are left untested deliberately
+  and are now named in SPECIFICATION.md Part E.5.1's register" (config_manager type-name except, wifi
+  ifconfig length fallback, sgp40 readlen=None return, voc_algorithm overflow return) — Accepted
+  untested branches. · tracked: SPEC E.5.1 | - · [H17]
+- **TEST.N763** NOTE(DEAD-END-KEPT) · `commit 8a603f2 / 448bd02` — "the _drained() hardening kept from
+  the dead end fixes nothing that was ever observed, and no longer pretends to"; real cause fixed port
+  18099 collision — Kept hardening + root-cause fix. · status: done-in 448bd02 | - · [H17]
+- **TEST.N764** NOTE(TEST-GAP-CLOSED) · `commit cca4fd3` — "MicroPython's json.loads() treats ',' and
+  ':' as whitespace ... so no streamed-body test could catch a separator slip the browser rejects" —
+  Strict JSON recogniser added. · status: done (tests/_strict_json.py; SPEC F.1) | - · [H17]
+
+## GitHub PRs and issues (hundertvolt/sensors)
+
+- **TEST.N765** NOTE(LEAK-IN-TOOL) ·
+  `https://github.com/hundertvolt/sensors/pull/95#issuecomment-5692708409` — "`tests/machine.py`'s
+  `Timer.all_timers` is a process-lifetime registry that file never clears ... An unverified one-line
+  fix sits in `1bfd631` on the backup branch" — Registry still unbounded at 2a88cc8
+  (tests/machine.py:611,630); only per-driver tests clear it; masked by the per-device test_sensortask
+  split, not fixed · UNTRACKED | related: CLAUDE.md heapsize history (E.3.1) · [H17 (also H17)]
+- **TEST.N766** NOTE(FUTURE) · `https://github.com/hundertvolt/sensors/pull/104` — "going further would
+  need `tests_scripts/` itself parallelized (e.g. `pytest-xdist`), flagged as a further opportunity, not
+  attempted" — tests_scripts single-process tier is the suite's wall-clock floor · UNTRACKED | - · [H17]

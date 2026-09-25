@@ -3,7 +3,7 @@
 What the project's own comments, docs and history already record for this area (snapshot `2a88cc8`).
 Recorded, not verified or triaged; `audit/HARVEST.md` explains the kinds, tags and method.
 
-Kinds: SETTLED 20, INVAR 31, MIRROR 13, LIMIT 30, RISK 16, ASSUME 35, PLATFORM 7, WORKAROUND 5, SUPPRESS 13, TODO 2, OPENQ 4, DRIFT 4 — 180 items.
+Kinds: SETTLED 20, INVAR 31, MIRROR 13, LIMIT 30, RISK 16, ASSUME 35, PLATFORM 7, WORKAROUND 5, SUPPRESS 13, TODO 2, OPENQ 4, DRIFT 4, NOTE 5 — 185 items.
 
 
 ## src/asy_webserver_service.py
@@ -732,3 +732,25 @@ Kinds: SETTLED 20, INVAR 31, MIRROR 13, LIMIT 30, RISK 16, ASSUME 35, PLATFORM 7
   vendored Microdot ... Too fragile to keep." — Keep-alive rejected; page load reduced by
   bundling/inlining instead. · tracked: SPECIFICATION Part H (per 15ed282/bc8391c) | related: REST.T*,
   WEB.T* · [H17]
+- **REST.N181** NOTE(CLOSED) · `commit c304b70` — "Microdot exposes two independent limits and we set
+  only one ... anything between max_body_length ... and max_content_length was read into one contiguous
+  buffer and immediately thrown away"; upstream defect "filed against microdot itself (#26)" —
+  Attacker-reachable 16 KB buffers. · status: done-in c304b70 (both caps 2048;
+  src/asy_webserver_service.py:363-370) | related: SEC.T*, REST.T* · [H17 (also H17)]
+- **REST.N182** NOTE(BUG-FOUND) · `commit 642d163 -> db1866e` — "the client gets a silently truncated
+  gzip page" (HTTP/1.0, no Content-Length, 1,025 B send_file chunk MemoryError) — Silent 200 truncation.
+  · status: done-in db1866e | related: REST.T* · [H17]
+- **REST.N183** NOTE(QUEUED) · `commit 83b727e / 4f1bd7e / 9ebd20a` — "NTP_Host's settled
+  1,024-character bound makes a ~1,026 B piece reachable on /networking, which every measured figure was
+  taken below"; "New row W5 ... fits by argument and not by measurement" — Unmeasured worst-case
+  response piece. · tracked: REAL_HARDWARE_TEST_QUEUE.md W5 | related: MEM.T* · [H17]
+- **REST.N184** NOTE(ANSWERED) · `commit e1dff54` — item 29 answered from source (cyw43 BADAUTH
+  catch-all); item 30 "gains a second candidate ... The bench test's fetch() has retried ceiling
+  refusals since 2026-09-19, hiding exactly that" — ISL29125 connection reset may be ceiling refusal
+  masked by the test's own retry. · tracked: BACKLOG #29 (closed stub), #30 (open) | related: REST.T* ·
+  [H17]
+- **REST.N185** NOTE(HW-FINDING) · `commit 3062cc7` — "R2's ResetErrors curve climbs ~3.5 s per reader
+  and reaches 88-98 % of the 15 s cap at three, so BACKLOG 32's budget waits on 24's design fix"; "Four
+  zero-think-time readers saturate the board (F18: PUT starved at the ceiling ...)" — ResetErrors near
+  cap; writer starvation under saturation (no admission fairness). · tracked: BACKLOG #24, #32; queue
+  F18 | related: REST.T* · [H17]
