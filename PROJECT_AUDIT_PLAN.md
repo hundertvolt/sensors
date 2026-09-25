@@ -1404,8 +1404,10 @@ Topics:
       `>=`/`<=` at exactly the threshold, ordering and total duration with several signals in one
       window.
 - [ ] **LED.T07** WS2812 contract: `bitstream` timing and IRQ-off window per `write()` during 20 Hz
-      ramps, GRB ordering (`bpp=3`), 3.3 V data vs VIH at 5 V supply per board; datasheet
-      `datasheets/ws2812/WS2812.pdf` (plain WS2812). Owner, 2026-09-25: the LED boards are "the single adafruit rgb (not the rgbw) variant, on a rather round pcb" — exact Adafruit product and LED chip revision (WS2812 vs WS2812B) still to pin down; adafruit.com is blocked by the session's network policy.
+      ramps, GRB ordering (`bpp=3`); datasheet `datasheets/ws2812/WS2812.pdf`. Hardware (owner, 2026-09-25): a single-pixel
+      Adafruit RGB NeoPixel (not RGBW) on a round PCB, driven by MicroPython's built-in `neopixel` driver, supplied from USB 5 V,
+      behind a level shifter — "the voltage levels are all settled". The 3.3 V-vs-VIH question is closed; the exact WS2812/WS2812B
+      revision is low priority ("don't worry about the neopixel so much").
 
 Seeds:
 - **LED.S01** `request_signal()` and `_led_ext_signal_starter` busy-wait with `sleep(0)` for the whole

@@ -357,7 +357,8 @@ the whole family shares the same register map/protocol, so `asy_bmp3xx_driver.py
 `0x60` chip ID the same as the other two.
 
 **WS2812**: `datasheets/ws2812/` holds the plain WS2812 datasheet. The boards carry a single-pixel Adafruit RGB NeoPixel
-breakout (not RGBW) on a round PCB (owner, 2026-09-25); the exact product, and so WS2812 vs WS2812B, is unconfirmed.
+(not RGBW) on a round PCB, driven by MicroPython's built-in `neopixel` driver, supplied from USB 5 V behind a level
+shifter, so the data-line voltage levels are settled (owner, 2026-09-25); WS2812 vs WS2812B is unconfirmed and low priority.
 
 ## A.7 wozi's construction order and dependency graph
 
