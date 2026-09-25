@@ -4925,10 +4925,11 @@ means a single scalar longer than `chunk_bytes` becomes one over-cap piece; the 
 can be that scalar — `errcount` holds ints alone (`_shape_errcount_entry()`), and `history_length`
 bounds its list — so the ceiling is the longest string any schema permits, which is `NTP_Host`'s
 1,024 characters (`asy_ntp_client.py`'s `_VAL_NH`; the bound is settled, BACKLOG's deferred list),
-giving a ~1,026 B piece on `/networking` and in `/status`'s networking section. Every silicon and
-twin figure above was taken at the 12-character default, so the long-value case is bounded by
-argument, not measured: at the limit of 6 it sits under the ~1.5 KB largest free block measured at
-peak (H.7), and at 7 it would not fit that run's 528 B. Nothing to change here — a shorter
+giving a ~1,026 B piece on `/networking` — `/status`'s networking section carries live link state,
+not the configured host. **Measured on silicon (2026-09-25, limit of 6)**: with `NTP_Host` at 1,024
+characters `/networking` came back complete (1,182 B) and `/status` unchanged (6,871 B), and both
+the full-ceiling burst and the peak heap test passed, the worst of 72 peak samples leaving a
+36,864 B largest free run. At 7 it would not have fit that run's 528 B. Nothing to change here — a shorter
 `NTP_Host` bound is the lever, and the owner settled it — but do not read "≤ 256 B" as covering a
 device whose user has typed a long server address.
 

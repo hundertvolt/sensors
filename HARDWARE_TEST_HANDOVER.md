@@ -16,7 +16,7 @@ conversation before any `mpremote`, `nmcli`, `iw`, `iptables`, `picotool` or `te
 
 - **Board**: `dev` bench, image of tree `851e816` (`buildDate 2026-09-25T12:54:13Z`,
   `max_connections = 6`, `DebugLevel` 5) — current with every `src/` change on the branch,
-  `83c9920`'s SGP40 fix included. **Step 6's wear-gated run is running on it** (section 5.5).
+  `83c9920`'s SGP40 fix included. Step 6 is done on it, clean (section 5).
 - **This sitting (2026-09-24/25) is still in progress** — section 5 has every result so far, with
   suggested actions; it is the single place to read them.
 - **Tree**: every host tier green at `gc.threshold(-1)` and `32768` (86/86 MicroPython files, 2,100
@@ -135,7 +135,9 @@ figure is from the `dev` bench. Raw logs sit in the session's scratchpad only; w
 `errcount` was saved before every flash and before every `ResetErrors`. After W4's re-run (read
 3.7 h later, no reset in between, STA, NTP synced): NTP `E21` ×3 and SGP40 `W13` ×1, both from the
 suite's last test blocking UDP 123 — nothing else, SYSTEM clean. The reflash to `12:54:13Z` left
-them as they were and added nothing (no FRAM `E31`/`W73` this time).
+them as they were and added nothing (no FRAM `E31`/`W73` this time). After step 6 and W5 (last
+read): NTP `E12` ×2 (W5's unresolvable 1,024-character host) and WEBSERVER `W2`/`W3`/`W2` (the peak
+heap test holding the ceiling open) — designed reclaims, SYSTEM clean.
 
 ### 5.2 Measurements
 
@@ -146,6 +148,12 @@ them as they were and added nothing (no FRAM `E31`/`W73` this time).
 | **W3** | `/status` 6,859–6,865 B: median 1.36 s (1.30–1.43 s, 20 idle samples); `/networking` 0.34 s; `/measurements` 0.28 s | Owner: accept, or measure one 1,024 B-piece build for the comparison that does not exist yet |
 | **R2** | `ResetErrors` 2.4 s at 0 readers, 5.6 / 10.6 / 13.2 s at 1 / 2 / 3 readers (worst 14.69 s); at 4 readers no result (starved at the ceiling, then over 30 s). Linear, ~+3.5 s per reader. In BACKLOG 24/32 | Owner: BACKLOG 24's design fix (batched or concurrent reset) first; BACKLOG 32's bench budget can only follow it |
 | **T1** | In-suite (flash tier, `test_memory_stress.py`, the script's own module-level threshold): baseline `largest_block` 122,016 B → **after `build_system()` 84,112 B**, free 97,280 B, `retained` 0 — identical for the control and production-threshold arms; map: largest free run 84,112 B, highest new block at 55 %, none in the top 32 KB. The board prints `GC_THRESHOLD=` but the test does not echo it | The comparison T1 was written against (archive §7D.3, 20,592 → 28,864 B) is no longer in the tree after `HEAP_FRAGMENTATION_MEASUREMENTS.md`'s rewrite, and its magnitude suggests a different position. Owner: close T1 on this figure, or name the position it should be compared at; echo `GC_THRESHOLD=` in the test |
+| **Step 6, wear-gated** | **CLEAN** on image `12:54:13Z`: 126 passed, 4 skipped (the expected four), 6 deselected (the other opt-in gates), 59:15. *Wear spent*: the suite's own config writes | None; D1's round is spent |
+| **R1** | Both config-write arms passed, `CEILING_RETRIES` "none" for each — no ceiling refusal and **no reset at all**, so neither branch of the row applies and nothing is left to bisect | Owner: a dedicated repeat of the original PUT + 2 readers shape (18 attempts, 18 flash writes) to measure the rate on this image, or close BACKLOG 30 as not reproduced |
+| **R5** | Third green BMP3XX config-write pass — **closed** (row and BACKLOG entry retired) | None |
+| **T2** | All six `test_bus_concurrency_under_api_load.py` tests passed, the three `persistence_write` ones included — **done** | None |
+| **R4** | Zero-wear variant: logs filled by refused hostname PUTs (WIFI `E20`) and a 4-reader burst (UART), next to NTP/SGP40's own. Round 1: 5 modules populated, `ResetErrors` under 3 readers in 14.58 s → **all 21 read back 0**. Round 2: 12.11 s, and the only entries afterwards were UART ones **absent before the sweep** — logged by the load during it, not skipped by it. **Done: the sweep is complete under contention** | None; see F18 for the UART half |
+| **W5** | `NTP_Host` at 1,024 characters (1 write, restored with a 2nd): `/networking` complete (1,182 B), `/status` unchanged (6,871 B) — **it carries no configured host**, so SPECIFICATION I.3's "and in `/status`" was wrong (corrected). Full-ceiling burst and peak heap test both passed; worst of 72 peak samples: largest free run **36,864 B** (after boot 43,536 B). **Done** | None; I.3 now states the measured case |
 | **T1 race check** | `gc.threshold()` read `-1` at 0.8 s after a reset and `32768` at 38 s uptime — §M3.8's race is confirmed | None; recorded |
 | **R7** (partial) | Soft-reset capture (no USB re-enumeration, so the whole boot is visible): imports + `build_system()` + the first setup list take 1.15 s together (that list logs nothing); each FRAM-backed config manager then costs ~95 ms (~33 ms FRAM read, ~33 ms verify, ~25 ms file); 8 timers start 112 ms apart (0.78 s); WLAN up and RTC set at 16.3 s | Per-logger figures for the first list need an instrumented build — owner's call whether they are worth it |
 | **R6** | Not measured. The +0.90 s is an A/B delta: the fix moved `fram.setup()` ahead of `sysfunct.setup()`, so only a pre-fix build answers it (2 extra flash cycles, ~30 min) | Owner: run the A/B, or close R6 as not worth the flash cycles (it does not threaten the watchdog) |
@@ -163,7 +171,8 @@ them as they were and added nothing (no FRAM `E31`/`W73` this time).
 
 - **F18, four back-to-back `/status` readers saturate the board** (queue F18): the `ResetErrors`
   `PUT` starved at the ceiling, WEBSERVER `W2` ×20, UART link `E20`/`E22`/`W10`. No reboot, no task
-  ended. *Suggested*: owner decides whether zero-think-time clients are in contract; if yes, the
+  ended. **R4 showed the UART half starts earlier**: three readers during a sweep were enough for
+  `E20`/`E22`/`W10` on both link ends. *Suggested*: owner decides whether zero-think-time clients are in contract; if yes, the
   admission policy needs fairness (a writer can be starved indefinitely today).
 - **SGP40 `W13` fills its error history while NTP is absent**: one "backup written without
   timestamp" slot per backup (1 min), 9 slots after one hotspot episode, so the ring loses what
@@ -197,14 +206,8 @@ them as they were and added nothing (no FRAM `E31`/`W73` this time).
 ### 5.5 Still owed this sitting, shortest first
 
 1. ~~W4 re-run~~ — done, clean (5.2).
-2. **Step 6, the wear-gated run — RUNNING** since 13:59 (owner's go, 2026-09-25):
-   `scripts/run_bench_hardware_suite.sh --allow-persistence-writes -s`, 130 tests selected (6
-   deselected by the other gates), under a 100 min hard stop. At 14:11: 36 passed, no failure yet.
-   *Wear*: real flash config writes. It answers R1 (`CEILING_RETRIES`), R5 and T2.
-3. After it, the two short manual steps it does not automate: **R4** (pre-populate several FRAM
-   logs, `ResetErrors` under 3 readers, all read back 0 — the load R2 showed stays under the 15 s cap)
-   and **W5** (`NTP_Host` at 1,024 characters, the peak arm, restore). Then F1 and N2 (*wear*, one
-   write each).
+2. ~~Step 6~~, ~~R4~~, ~~W5~~ — done (5.2).
+3. **F1 and N2** (*wear*, one flash write each) — need the owner's go.
 4. M1 + S3b (needs the owner at the bench, ~30 min).
 5. R13 + N3, and the step 9 scripts — code first.
 6. Owner decisions from 5.2 and 5.4.

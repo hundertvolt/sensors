@@ -20,39 +20,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
 ## Refactor targets not yet done
 
-- **A config-persisting `PUT /sensors` reset its own HTTP connection under concurrent API load -
-  fixed (WP5, 2026-09-16), pending real-hardware re-confirmation.** Root cause: an RP2040 flash
-  write disables interrupts port-wide for its whole duration (`ports/rp2/rp2_flash.c`'s
-  `begin_critical_flash_section()`), freezing the CYW43 link and lwIP's own timers along with it -
-  and the old `ConfigManager.write_config()` performed that write synchronously, inline, inside the
-  very PUT request whose connection then got reset. Fixed at the design level exactly as this entry
-  originally called for: `write_config()` now validates and stages synchronously, then hands the
-  actual `open()`/`json.dump()` write to an independent `asyncio.create_task()`, fully decoupled
-  from the request/response (see `config_manager.py`'s own comments and SPECIFICATION.md Part F.2
-  for the full mechanism, including the accepted residual risk window and its interaction with the
-  WiFi-power-cycle backstop). Mock-tier (`tests/test_config_manager.py`) and digital-twin-tier
-  coverage all pass; **still open**: re-running the two real-hardware bench tests that originally
-  found this
-  (`tests_hardware/bench/test_bus_concurrency_under_api_load.py`'s
-  `test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load` and
-  `test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load`) against the
-  real dev board, once a real-hardware go-ahead exists for a session - this entry stays until that
-  confirmation lands.
-  **Half of that confirmation has landed, and it split the two arms — read item 30 with this
-  entry, not separately.** The bench session of 2026-09-17, on firmware carrying this WP5 fix,
-  found the **BMP3XX arm passing** and the **ISL29125 arm still failing** (four-arm isolation: PUT
-  alone 0/10, PUT + 1 reader 0/6, PUT + 2 readers **6/18**, plain GET + 2 readers 0/6). So the
-  deferral fixed what it was built to fix - the *shared* synchronous flash write is no longer the
-  discriminator, which is precisely what the two arms having opposite outcomes on the same flash path
-  proves - but a second, ISL29125-specific mechanism remains, and that residual is item 30, where the
-  next step (the `RangeAuto=false` bisection) already lives. **What is genuinely still owed here is
-  therefore only the BMP3XX arm's re-confirmation being treated as durable** rather than one bench
-  run — it passed again 2026-09-23 in S3's gated run (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.2);
-  owner, 2026-09-24: one more pass in the next bench sitting (queue row R5), then it closes; the ISL29125 arm is not "pending re-confirmation", it is a known open defect with its own item.
-
-  Note the bench re-run that produced these numbers needs `--allow-persistence-writes`: the write path
-  is now gated behind `@pytest.mark.persistence_write`, so a default bench run deselects both arms and
-  re-confirms neither.
 - **Mypy shall be configured to disallow `Any` types** (owner-specified). Mostly addressed, but
   not by the flag it was originally written about: all three passes now run full `--strict`
   (`disallow_any_generics` included), so no *implicit* `Any` from a bare `dict`/`list`/`tuple`
@@ -360,6 +327,13 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     `CEILING_RETRIES` per arm, and the next gated run reads those before bisecting: ISL29125 retries
     well above BMP3XX's and no other failure means the ceiling (close this item); failures that are
     not ceiling closes mean an ISL29125 mechanism, and the bisection above follows.
+    **That gated run happened (2026-09-25, image `12:54:13Z`) and fits neither branch**: both arms
+    passed with `CEILING_RETRIES` "none" — no ceiling refusal and no reset at all, so there was
+    nothing to bisect. The webserver has changed since the 6/18 measurement (header block as one
+    write, slot release on `MemoryError`, backlog sized to the ceiling), and so has the admission
+    path. One clean arm is not a rate, though: the owner decides between a dedicated repeat of the
+    original PUT + 2 readers shape (18 attempts, 18 flash config writes) to put a number on it, and
+    closing this item as not reproduced.
 
 32. **The bench tier's `ResetErrors` timeout was raised 10.0s → 30.0s with no elapsed-time budget
     to replace what that bound was incidentally enforcing.** Recorded 2026-09-17: a loosening with
@@ -383,7 +357,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     **The curve is taken (item 24's 2026-09-25 table), and it says no budget can meet both halves
     at the current design**: three readers already land at 13.2-14.7s against a 15s server abort, so
     any budget that never false-positives sits at or above the point where the server gives up
-    first. Setting the bench budget waits on item 24's design fix (batched or concurrent reset) —
+    first (R4 on 2026-09-25 measured 12.1-14.6s at three readers again, the worst 0.4s from the
+    abort). Setting the bench budget waits on item 24's design fix (batched or concurrent reset) —
     the owner's decision. Then add the bench analogue of the twin's own budget check to
     `tests_hardware/error_log_helpers.py`.
 
