@@ -163,7 +163,7 @@ per CLAUDE.md's step-session limit.
 | PQ7 | Moving target | Other sessions keep committing to this branch. (a) freeze non-audit work during the audit; (b) audit a pinned baseline and run delta passes over files changed since each area's closure. Also: one arbiter across sessions? Does the audit go-ahead persist across sessions? | (b) with a single-writer lease (4.7); go-ahead re-confirmed per session |
 | PQ8 | Owner stop-points (CLAUDE.md step-session "stop and report") | After ENV; after each wave; only at the end | After ENV and after each wave |
 | PQ9 | Resources | Agents per wave, token budget, execution host/egress. **Partly answered** (owner, 2026-09-25, verbatim in 3.1: parallel agents "as many as you like", with care, converging, not interfering — given for the planning session). Open: does that permission carry over to execution sessions; may ENV prep (toolchain build, baseline run) happen before the go-ahead? | Waves of ≤ 8 auditors + verifiers; ENV prep allowed early since it audits nothing |
-| PQ10 | Owner inputs the plan cannot derive | Is a legacy→refactor reflash campaign planned (makes `PAR.T06`/`PAR.T07` SEV1)? External REST consumers of the legacy routes (`PAR.T05`)? The Sensirion VOC C reference (reachable since 2026-09-25: `Sensirion/gas-index-algorithm`, OR4.a); missing datasheets (RP2040 only; WS2812, QSPI flash, CYW43439 and BMP390 added 2026-09-25)? Permission to run legacy code as an oracle (`PAR.T12`)? UF2 distribution scope and repo visibility (`LIC.T06`/`T07`)? Browser support floor (`WEB.T09`)? Is `pico_gpio.py`'s conservatism intended (`GEN.T07`)? | Owner input |
+| PQ10 | Owner inputs the plan cannot derive | Is a legacy→refactor reflash campaign planned (makes `PAR.T06`/`PAR.T07` SEV1)? External REST consumers of the legacy routes (`PAR.T05`)? The Sensirion VOC C reference (reachable since 2026-09-25: `Sensirion/gas-index-algorithm`, OR4.a); missing datasheets (none left: RP2040, WS2812, QSPI flash, CYW43439 and BMP390 added 2026-09-25)? Permission to run legacy code as an oracle (`PAR.T12`)? UF2 distribution scope and repo visibility (`LIC.T06`/`T07`)? Browser support floor (`WEB.T09`)? Is `pico_gpio.py`'s conservatism intended (`GEN.T07`)? | Owner input |
 
 ### 3.1 Owner record (verbatim, dated)
 
@@ -198,7 +198,7 @@ dated, replacing the recommendation.
 | OR2.c | 2026-09-25 | Unforeseen decisions during execution: owner answered "yes, that matches" to the proposal: never stop or ask; ground the decision in code, docs, datasheets and external sources; take the more conservative, more easily reversible option; record it in the register as a decision taken on the owner's behalf, with its reasoning, for review afterwards. Exception: anything needing real hardware or going beyond the agreed scope is not decided but parked for the owner. |
 | OR3 | 2026-09-25 | Apparent contradictions: "In case you find topics I mentioned or findings of you might potentially be contradictory, they surely are not. Such cases always mean that there is a topic to be fine tuned - a reason to ask and clarify in the recording and / or preparation and consolidation run." |
 | OR4 | 2026-09-25 | Depth of investigation and sources: "Investigate deeply and widely at a time if you find an open issue. Try to resolve as much as possible yourself. Apply general project patterns and styles, apply good coding practice and proven patterns, adhere to our rules and specifications, actively search for answers in web repos, documentations, forums, datasheets. Notify me if you cannot access a valuable source or a datasheet, I can try to download it for you." |
-| OR4.a | 2026-09-25 | Inaccessible sources during execution: owner answered "yes, that's right." to the proposal: do not wait; continue from the next-best source; mark the affected finding "open until the owner provides X"; report it in the progress and final reports; re-check those findings once the source arrives. The consolidation run tests access to every source it anticipates and hands the owner one list of what is unreachable. Known gaps at recording time: RP2040 chip datasheet, BMP390, WS2812/NeoPixel, Pico W QSPI flash chip, Sensirion VOC algorithm reference, possibly CYW43439 (the owner is uploading them). Status 2026-09-25: BMP390, W25Q16JV, CYW43439 and WS2812 uploaded and added to `datasheets/`; `Sensirion/gas-index-algorithm` is reachable via GitHub (cloned for reference, not vendored); still missing: RP2040 datasheet and the Sensirion VOC Index application note — their hosts (`pip-assets.raspberrypi.com`, `datasheets.raspberrypi.com`, `www.sensirion.com`) are blocked by the session's network policy. |
+| OR4.a | 2026-09-25 | Inaccessible sources during execution: owner answered "yes, that's right." to the proposal: do not wait; continue from the next-best source; mark the affected finding "open until the owner provides X"; report it in the progress and final reports; re-check those findings once the source arrives. The consolidation run tests access to every source it anticipates and hands the owner one list of what is unreachable. Known gaps at recording time: RP2040 chip datasheet, BMP390, WS2812/NeoPixel, Pico W QSPI flash chip, Sensirion VOC algorithm reference, possibly CYW43439 (the owner is uploading them). Status 2026-09-25: BMP390, W25Q16JV, CYW43439 and WS2812 uploaded and added to `datasheets/`; `Sensirion/gas-index-algorithm` is reachable via GitHub (cloned for reference, not vendored); the RP2040 datasheet was pushed by the owner (`datasheets/pico w/RP-008371-DS-1-rp2040-datasheet.pdf`); still missing: the Sensirion VOC Index application note — its host (`www.sensirion.com`) is blocked by the session's network policy, as are `pip-assets.raspberrypi.com`, `datasheets.raspberrypi.com` and `www.adafruit.com`. |
 
 ---
 
@@ -924,8 +924,8 @@ clamp-removal sweep over the current driver.
 **Goal**: SCD30, SGP40, BMP3xx, ISL29125 correct against their datasheets, robust in every recovery
 path, consistent with Part C, and faithful to legacy field behaviour where legacy had one.
 **References**: `datasheets/{scd30,sgp40,bmp3xx,isl29125}/`, Parts C, M; legacy
-`python/IndividualDrivers/`; `Sensirion/gas-index-algorithm` (VOC reference, external); missing: RP2040 silicon
-datasheet, Sensirion VOC application note (A.6, OR4.a).
+`python/IndividualDrivers/`; `Sensirion/gas-index-algorithm` (VOC reference, external); missing: Sensirion VOC
+Index application note (A.6, OR4.a).
 
 Topics:
 - [ ] **SENS.T01** Every register/command, CRC, delay, unit conversion and scaling vs the datasheet;
@@ -1026,9 +1026,8 @@ Seeds:
   `src/base_classes.py:210`).
 - **SENS.S19** C.3 text is stale: BMP3xx "has no scratch buffer" (the I2C layer now has one)
   (SPECIFICATION.md ~1541-1543).
-- **SENS.S20** Missing references: RP2040 silicon datasheet and Sensirion's VOC Index application note
-  (both hosts blocked by the session's egress policy, OR4.a). Added 2026-09-25: BMP390, WS2812, W25Q16JV,
-  CYW43439 datasheets; the VOC C reference is reachable at `Sensirion/gas-index-algorithm`.
+- **SENS.S20** Missing references: Sensirion's VOC Index application note (host blocked by the session's
+  egress policy, OR4.a). Added 2026-09-25: BMP390, WS2812, W25Q16JV, CYW43439 and RP2040 datasheets; the VOC C reference is reachable at `Sensirion/gas-index-algorithm`.
 - **SENS.S21** The SGP40 serial-number read fetches 3 of the 9 bytes the datasheet specifies
   (`readlen=1`), so only word 0 is CRC-checked and compared (`asy_sgp40_driver.py:669-678`; datasheet
   3.4, Tables 8/16).
@@ -1448,7 +1447,7 @@ Topics:
       CI suite's `_DRIVER_ERRCOUNT_NAME`/`_BUS_FAULT_OPS`, hand-mirrored constants (`_NTP_CHECK_TICK_S`,
       `_SERVER_OUTER_CAP_S`, `_WARN_SIGNAL_WEB_CATALOG`) — which are cross-tested, which silently drift
       (buildspec itself is SETTLED as hand-maintained).
-- [ ] **GEN.T07** `pico_gpio.py` legality table vs RP2040 silicon (e.g. GP22/GP28 functions) — is the
+- [ ] **GEN.T07** `pico_gpio.py` legality table vs RP2040 silicon (e.g. GP22/GP28 functions; RP2040 datasheet's function-select table) — is the
       conservatism intended?
 - [ ] **GEN.T08** `devices/*.toml`: values vs legacy pinning per unit, `SensorStation<Name>` rule,
       shared hotspot password (accepted-risk rule: not to be "fixed" without the owner's direction),

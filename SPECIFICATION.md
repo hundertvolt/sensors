@@ -341,10 +341,10 @@ against its actual source, not docs/memory. Upstream v2.7.0 (checked 2026-09-23)
 rather than reconstructing from training memory/web search. If a needed one isn't there and can't
 be fetched, say so explicitly.
 
-**Pico W**: `datasheets/pico w/` holds the Pico W *board* datasheet plus its two on-board parts, the
-W25Q16JV QSPI flash and the CYW43439 wireless chip. The RP2040 *silicon*
-datasheet is not in the repo, so its GPIO function-mux table is not readable here. For a pin-mux
-question the authoritative substitute is the pinned MicroPython source itself
+**Pico W**: `datasheets/pico w/` holds the Pico W *board* datasheet, the RP2040 *silicon* datasheet
+(`RP-008371-DS-1-rp2040-datasheet.pdf`, the source for the GPIO function-mux table) and the board's two
+on-board parts, the W25Q16JV QSPI flash and the CYW43439 wireless chip. For what MicroPython itself accepts
+as a pin assignment, the reference is the pinned MicroPython source
 (`ports/rp2/machine_uart.c`'s `IS_VALID_PERIPH`/`IS_VALID_TX`/`IS_VALID_RX`, and the equivalent
 macros in `machine_i2c.c`/`machine_spi.c`), which the toolchain checkout always has — not a web
 search. Those macros give UART TX on `pin % 4 == 0`, RX on `pin % 4 == 1` and the peripheral from
