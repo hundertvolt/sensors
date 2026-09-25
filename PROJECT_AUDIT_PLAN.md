@@ -154,7 +154,9 @@ These shape *how* the audit runs. None blocks further planning; all block execut
 | L-TIME | Timers (soft-callback drop, ONE_SHOT vs PERIODIC, alarm pool), ticks wraparound, timeouts vs the 8388 ms watchdog |
 | L-MEM | Allocation bounded and not client-controllable; churn on hot paths; long-lived placement (Part I) |
 | L-LIFE | Every resource (socket, timer, task, file, lock, buffer, FRAM chunk) released on every path incl. cancel/restart |
-| L-STATE | State machines complete: every state × event, including task restart, reboot, power loss |
+| L-STATE | State machines complete: every state × event, including task restart, reboot, power loss, and cancellation at every `await` |
+| L-DIAG | Every failure mode leaves persisted, attributable evidence (errcount/FRAM entry, reset cause) — or is recorded as knowingly silent |
+| L-TGT | The property holds in target semantics, not only on the 64-bit double-precision Unix port or the twin (float32, 31-bit small ints, soft-callback drop, IRQ-off windows, blocking UART reads) |
 | L-WEAR | Flash/NVM/FRAM write frequency and who can trigger it (REST, loops, tests) |
 | L-SEC | Input from the network/LAN/radio/user treated as hostile per the PQ5 threat model |
 | L-API | D.10 consistency within and across files; naming; return conventions; Part G reuse |
@@ -184,6 +186,22 @@ These shape *how* the audit runs. None blocks further planning; all block execut
   vs chip size, UDP PCB count, alarm-pool count — computed from code, cross-checked by measurement.
 - **Static sweeps** (grep/AST scripts kept in the scratchpad): error-code catalogue, timer inventory,
   lock inventory, `create_task` inventory, `repeat=` usage, cross-reference resolver for docs.
+- **Representation-faithful scratch Unix port**: a third, scratch-only build with 32-bit objects and
+  single-precision floats (if buildable) for ALGO/SENS arithmetic parity and allocation counts — not a
+  toolchain change.
+- **Cancel-at-each-await sweep**: for each multi-step coroutine, inject `CancelledError` at the k-th
+  await for every k and assert the post-state invariants (`XCUT.T19`).
+- **Loop-lag sentinel**: a task measuring how late `sleep_ms()` wakes, under combined worst-case load
+  (`PERF.T09`).
+- **Crash-point enumeration** on a twin FRAM image: power loss after every SPI transaction k
+  (`STOR.T12`).
+- **Clock-jump injection** in the twin: RTC forwards/backwards, `NTP_Offset_S` changes (`NET.T11`).
+- **Third-party HTTP client matrix**: curl with `Expect: 100-continue`, chunked bodies, browser
+  keep-alive (`REST.T12`).
+- **Rogue DNS/NTP responder at the twin tier**, not only on the bench (`SEC.T11`).
+- **Datasheet golden vectors**: e.g. SGP40 Table 10 ticks (25 °C → 0x6666, 50 % → 0x8000), SCD30's CRC
+  example, default command CRCs.
+- **IRQ-line fault simulation**: floating, stuck-low and bouncing SCD30 RDY / ISL29125 INT lines.
 - **Execution** only in isolated git worktrees or scratch directories (section 4.6).
 
 ### 4.4 Multi-agent orchestration and convergence (owner's go, 2026-09-25)
@@ -298,7 +316,8 @@ Topics:
       (flag never set, lock never released)? Decay/score arithmetic; wrnno `n+1` stability across
       devices and firmware versions; restart backoff.
 - [ ] **XCUT.T03** Watchdog budget end to end: all feed sites, worst-case scan with *k* simultaneous
-      task deaths each persisting to FRAM (~305 ms/chunk measured), commanded reset vs WDT reset
+      task deaths each persisting to FRAM (~305 ms of *yielding* time per chunk,
+      SPECIFICATION.md ~1854 — distinct from the ~21 ms *non-yielding* bus hold in `PERF.T04`), commanded reset vs WDT reset
       (FRAM paused vs not), and the absence of any recorded `machine.reset_cause()`.
 - [ ] **XCUT.T04** Timer inventory per device: every `machine.Timer`, ONE_SHOT vs PERIODIC, what a
       dropped soft callback costs (F.1), the rp2 alarm-pool limit vs simultaneous timers, every ENOMEM
@@ -331,11 +350,36 @@ Topics:
       outside `test_reset_call_site_invariant.py`'s scan.
 - [ ] **XCUT.T15** Part G.3 re-validation: grep-for-the-shape sweep for duplicated primitives across
       `src/`, `buildgen/`-generated code and `js/`.
-- [ ] **XCUT.T16** Import DAG across `src/` + `ext/` + generated code; frozen set completeness.
+- [ ] **XCUT.T16** Import graph: no cycles across `src/` + `ext/` + generated code; import-time side
+      effects per module (allocations, hardware access); frozen set = transitive import closure (with
+      `GEN.T05`).
 - [ ] **XCUT.T17** Data freshness contract: what `TS` means per driver; can any cycle publish old
       values with a new timestamp (seed `SENS.S08`)?
 - [ ] **XCUT.T18** Time base: RTC set by NTP, `time.time()` vs `ticks_ms()`, `mktime` epoch/TZ,
       timestamps stored in FRAM, boot signature semantics.
+- [ ] **XCUT.T19** Cancellation-safety map: every `await` reachable from a cancelling context (webserver
+      `wait_for`s `src/asy_webserver_service.py:246, 708`, `src/asy_fram_driver.py:408`, supervisor
+      restarts). For each multi-step sequence cut mid-way (`_set_dict_cfg` persist→push→recover, SCD30
+      command+wait, FRAM dual-copy write and BUSY marker, `write_config` staging, `_flush_pending_configs`
+      before a reboot) state what the cut leaves behind.
+- [ ] **XCUT.T20** Boot failure beyond `setup()`: a constructor in `build_system()` raising, an exception
+      or return out of `main()`, frozen `main.py` ending in the REPL with `WDT(8000)` armed and no FRAM
+      logger yet — is the resulting reset loop diagnosable at all? Leftover filesystem `boot.py`/`main.py`
+      from the legacy tree (`PLAT.T10`).
+- [ ] **XCUT.T21** Tick counting and `ThreadSafeFlag` semantics: counters that advance once per `wait()`
+      (SysUptime, WiFi/NTP counters, hotspot timeout, sensor base triggers) lose ticks when the flag is set
+      twice before the waiter runs, a soft callback is dropped, or the loop stalls > 1 period. Which must be
+      wall-clock accurate? Exactly one waiter per flag, across supervisor restarts too.
+- [ ] **XCUT.T22** Soft-callback pile-up budget: callbacks that can fall due inside the longest no-yield or
+      IRQ-off window (flash write, I2C `timeout`, GC pause, VOC step) vs the scheduler depth (8, F.1).
+      Analysis only — F.1 settles the software-timeout mitigation as rejected.
+- [ ] **XCUT.T23** Non-finite values on every output path: which floats can reach `json.dumps` (REST
+      responses, config files) as NaN/±inf (MicroPython emits bare `nan`/`inf`, invalid JSON — verify at
+      1.29.0)? Only SCD30 checks `isfinite` (`src/asy_scd30_driver.py:626`). One finiteness contract per
+      layer (see `REST.T11`).
+- [ ] **XCUT.T24** Post-mortem diagnosability (L-DIAG end to end): per failure class — WDT reset,
+      supervisor reboot, boot crash, unsupervised-task death, FRAM write failure inside the logging layer
+      (`_diag()` silent at level 0, `src/print_log.py:177-178`) — what persisted evidence survives?
 
 Seeds:
 - **XCUT.S01** A watchdog feed happens only after the supervisor's full scan; several task deaths,
@@ -347,10 +391,10 @@ Seeds:
 - **XCUT.S03** Every `_reboot()` call deinits and re-arms the 4 s reset timer, so repeated reboot
   requests can postpone the reset indefinitely while FRAM stays paused (`system_service.py:118-126`).
 - **XCUT.S04** A supervisor-triggered reboot does not flush pending configs, unlike the REST path
-  (`system_service.py:398-401`).
+  (`src/system_service.py:251-253`; REST path `buildgen/codegen.py:501-514, 524-531`).
 - **XCUT.S05** If `_timer_sequencer` cannot arm its next step, the remaining timer starters are
   skipped with only a print-level error; those drivers' tasks then wait forever and the supervisor,
-  which only checks `done()`, cannot see it (`system_service.py:209-214`).
+  which only checks `done()`, cannot see it (`system_service.py:169-175, 209-214`).
 - **XCUT.S06** C.9.1's stagger proof: the first starter fires at offset 0; offsets are relative to each
   callback's actual run time, so latency accumulates; with SCD30's 500 ms base tick,
   `int(1000/(N+1))*j == 500` for N = 3, 7, 9 (`system_service.py:158-159`). The proof's own test
@@ -363,6 +407,16 @@ Seeds:
   chunks on wozi and ~21 on dev now share the chip — never re-summed against 8 KB.
 - **XCUT.S10** No `machine.reset_cause()` is recorded anywhere in `src/`, so post-mortems cannot tell
   a WDT reset from a commanded one.
+- **XCUT.S11** The supervisor's reboot branch `return`s (`src/system_service.py:251-253`), so `main()`
+  and `asyncio.run(main())` finish ~4 s before the reset fires (`buildgen/codegen.py:478, 705-708`):
+  webserver, readers and any staged flush stop at once and `main.py` drops to the REPL. The REST reboot
+  path keeps the loop running until the reset.
+- **XCUT.S12** No `set_exception_handler()` anywhere in `src/` or codegen: an unretrieved exception
+  from an unsupervised task (`src/config_manager.py:354`; `src/asy_wifi_service.py:394, 425`) only
+  reaches MicroPython's default console print.
+- **XCUT.S13** `WDT(timeout=8000)` is `build_system()`'s first statement (`buildgen/codegen.py:381`); the
+  constructors after it run unguarded, so a construction-time exception becomes an 8 s WDT reset loop
+  before any FRAM logger exists — nothing persisted, `reset_cause()` never read (`XCUT.S10`).
 
 Quality measure: a written timer/task/lock/error-code/FRAM-layout inventory per device, derived from
 code, with every discrepancy against Parts A.7/C.7-C.9 registered; worst-case watchdog gap computed.
@@ -388,17 +442,26 @@ Topics:
       tuple `special` on special-alone fields).
 - [ ] **CORE.T04** `_set_dict_cfg` orchestration: snapshot → persist → push → recover under
       concurrent PUTs to the same module; interaction with `Unchanged`.
-- [ ] **CORE.T05** `PrintLogHistory`/`PrintLogHistoryStore`: ring semantics, count saturation, code
+- [ ] **CORE.T05** (module-level half of `XCUT.T08`) `PrintLogHistory`/`PrintLogHistoryStore`: ring semantics, count saturation, code
       encoding (0x80 split), pre-setup entries, reset-vs-setup race, `errno=0`, allocation per entry.
 - [ ] **CORE.T06** `SystemService`: uptime/boot-signature across task restart, debug-level
       application, `pause_permanent_storage` clamp and unpause, reboot timer re-arm.
 - [ ] **CORE.T07** `api_response`: envelope catalogue vs what the webserver actually emits; code 100
       after a post-hook exception; unused catalogue codes.
-- [ ] **CORE.T08** `Lockable`/`LockableBuffer`/`Locked*`: semantics, swallowed `RuntimeError`, unused
-      per-buffer locks, clamping.
+- [ ] **CORE.T08** `Lockable`/`LockableBuffer`/`Locked*`: does any `Locked*` critical section contain an
+      `await`? If none, each lock is pure cost under cooperative scheduling — justify, document or drop;
+      swallowed `RuntimeError`; unused per-buffer locks; clamping.
 - [ ] **CORE.T09** D.15 method ordering, D.6 typing, D.11 comments, D.10 shapes across the five files.
 - [ ] **CORE.T10** Dead/test-only API (seed `CORE.S14`): keep, trim or document — each is frozen
       bytecode on the device.
+- [ ] **CORE.T11** `PrintLogHistoryStore` evidence preservation: which `_read()` failures (blank chunk, CRC
+      mismatch, transient SPI EIO, paused storage) make `setup()` write the RAM ring over the persisted
+      one; does the chunk API distinguish "never written" from "unreadable"? (CLAUDE.md FRAM-forensics
+      rule; with `STOR.T01`).
+- [ ] **CORE.T12** `ConfigManager` repair fixpoint and file lifecycle: every `setup()` repair converges
+      within one boot (int↔float coercion, float32 JSON repr, special-alone fields — C.7.3's boots-bound
+      covers a failing write, not a successful one that never converges); orphaned `config_*.cfg` after
+      an instance is renamed/removed; filename length with `name_ext`.
 
 Seeds:
 - **CORE.S01** A supervisor restart of the uptime task resets uptime to 0 and leaves the boot
@@ -417,14 +480,14 @@ Seeds:
   make `_recover_failed_push` persist its pre-write snapshot over another PUT's accepted value
   (`src/base_classes.py:302-358`).
 - **CORE.S06** A post-hook that raises after fields were persisted and pushed yields code 100 with an
-  empty result, and the webserver then marks every field "Failed" (`src/api_response.py` handle_set_cmd;
+  empty result, and the webserver then marks every field "Failed" (`src/api_response.py:92-105`;
   `src/asy_webserver_service.py:463-470`).
 - **CORE.S07** Every persisted log entry allocates a fresh `AsyFramChunkBuffer` with an unused
   `asyncio.Lock`, against G.2's one-long-lived-buffer rule; `LockableBuffer`'s lock is never used
   anywhere (`print_log.py:249, 262`; `base_classes.py:54-56`).
 - **CORE.S08** Debug-level precedence: the persisted `DebugLevel` overrides the constructor `debug=`;
   CFGMGR loggers never receive `debug`; with an invalid cfgmgr `get_debug_level()` reports 0 while
-  loggers keep their constructor level (`system_service.py:317`, `config_manager.py:220`).
+  loggers keep their constructor level (`system_service.py:105, 287-296, 317, 340-341`; `config_manager.py:220`).
 - **CORE.S09** `flush_pending()` is unguarded: a flush task that died with an unexpected exception
   re-raises through `_system_cmd_callback` and the reboot is never issued; re-await semantics of a
   finished task need checking against pinned `extmod/asyncio` (`config_manager.py:390-400`; also
@@ -447,6 +510,15 @@ Seeds:
 - **CORE.S15** Comment drift: `config_manager.py:126-127` says the generated `lightCmdLED` dispatch
   calls `coerce_numeric()`; it calls `type_or_range_error()` with synthetic schemas
   (`buildgen/codegen.py:538-556`).
+- **CORE.S16** `PrintLogHistoryStore.setup()` calls `_write()` whenever `_read()` returns False, and
+  `_read()` returns False on any failure, so a transient read fault at boot — not only a blank chunk —
+  overwrites the persisted ring and count (`src/print_log.py:257-271, 276`).
+- **CORE.S17** `write_config()` sets `self._staged` before `asyncio.create_task()`; a `MemoryError` there
+  returns `(False, {})` (every field "Failed") while `_current()` keeps serving the staged value and no
+  flush is ever scheduled (`src/config_manager.py:353-360`).
+- **CORE.S18** SysUptime counts `uptime_event` wake-ups, not elapsed time: every loop stall > 1 s or
+  dropped soft callback is a permanent undercount (`src/system_service.py:204, 379-380`; same mechanism
+  as `NET.S02`).
 
 Quality measure: each file passes Part D with every finding registered; each seed confirmed or
 rejected by a verifier with a repro or a source citation.
@@ -470,6 +542,14 @@ Topics:
 - [ ] **ALGO.T04** `framing_codecs`: COBS round-trip property over all lengths/zero patterns,
       in-place decode safety, scratch-aliasing contract with the UART write path; COBS is unused in
       production (UART defaults to `Framing_Pass`) — keep, test-only, or document.
+- [ ] **ALGO.T05** Restored-state robustness: `unpack_from()` accepts any 32 int64 values; per field, does
+      an out-of-int32 / out-of-domain value give a bounded wrong result, an exception, or a hang (→ WDT
+      reset restoring the same state = boot loop)? (with `PAR.S09`, `STOR`).
+- [ ] **ALGO.T06** Runtime float32 vs compile-time double: C folds `F16(x)` in double at compile time,
+      the port evaluates `_f16(x)` at run time in rp2 float32; enumerate every `_f16` argument and every
+      frozen float literal/`const()` in `math_helpers`, prove equality — or precompute as integer `const()`s.
+- [ ] **ALGO.T07** Oracle provenance for every ALGO test: literature/datasheet vectors, an independent
+      implementation, or values the port generated itself (tautological).
 
 Seeds:
 - **ALGO.S01** `_FIX16_OVERFLOW`/`_FIX16_MINIMUM` are positive `0x80000000` in Python but `INT32_MIN`
@@ -479,11 +559,23 @@ Seeds:
   layouts pin `"<"` (`voc_algorithm.py:98, 141`).
 - **ALGO.S03** `altitude_baro` returns a pressure, not an altitude (naming); the `abs_humidity` comment
   calls 7.6/240.7 "ice-phase" constants, which in the literature are the supercooled-water pair (ice
-  is 9.5/265.5) — legacy-identical, unused in `src/`.
+  is 9.5/265.5) — legacy-identical, unused in `src/` (`src/math_helpers.py:86-98, 101-112`).
 - **ALGO.S04** Pass-mode `add_into`/`check_from` skip the bounds validation real mode does, and pass-mode
   `add()`/`check()` return the caller's object where real mode returns a copy
-  (`src/crc_checks.py:104-111, 125-126`).
-- **ALGO.S05** `CRC16`, `rel_humidity`/`abs_humidity`, `Framing_COBS` have no production caller.
+  (`src/crc_checks.py:58-59, 73-74, 111-112, 131-132`).
+- **ALGO.S05** `CRC16`, `rel_humidity`/`abs_humidity`, `Framing_COBS` have no production caller
+  (`src/crc_checks.py:155-157`; `src/math_helpers.py:101, 119`; `src/framing_codecs.py:75`).
+- **ALGO.S06** `_fix16_div()` masks a negative divisor to 32 bits; if `b` is a negative multiple of 2**32,
+  `divider` becomes 0 and `while divider < remainder` never ends while `bit` grows as a bigint — C's int32
+  can't produce such a `b`, Python's non-wrapping arithmetic or an unvalidated restore could
+  (`src/voc_algorithm.py:139-178, 242, 245-247`).
+- **ALGO.S07** `_f16()` runs in float32 on every sample and boxes floats each call; equality with C's
+  compile-time double constants is unverified (`src/voc_algorithm.py:199-202`; uses e.g. `:417, 505, 510,
+  657, 761`).
+- **ALGO.S08** rp2 small ints stop at 31 bits; the CRC32 register exceeds that on every shift, so each bit
+  step allocates a bigint (`src/crc_checks.py:41-47`) — CRC32 guards SGP40's VOC chunk
+  (`src/asy_sgp40_driver.py:181`), re-read every second during the NTP wait (`SENS.S05`). The 64-bit Unix
+  port never shows this.
 
 Quality measure: every formula has a cited source check and a float32 emulation check; VOC port has a
 differential result or a recorded owner-accepted gap.
@@ -511,6 +603,21 @@ Topics:
 - [ ] **BUS.T06** Uninitialised-bus behaviour (silent no-ops) and whether any caller can reach it.
 - [ ] **BUS.T07** The deliberate I2C/SPI asymmetry (BACKLOG: SPI sync session, I2C none) stays
       deliberate; the D.10 note is current.
+- [ ] **BUS.T08** Unused public API (frozen bytecode that must still meet its bus contract): UART beyond
+      `readinto_until_complete`/`writefrom`; I2C `scan`, `writeto_then_readfrom`, `write_then_readinto`;
+      SPI `write_readinto` and the async transfers — keep, trim or test.
+- [ ] **BUS.T09** I2C bus recovery across an MCU-only reset: a WDT/`machine.reset()` mid-read resets the
+      RP2040 but not the powered sensors; a slave holding SDA low survives into the next boot unless a bus
+      clear is issued (check `ports/rp2/machine_i2c.c` init). Tests F.2's settled premise that a reboot
+      reconstructs a wedged bus — raise, don't act (2.3).
+- [ ] **BUS.T10** Worst-case synchronous block per I2C transaction (bus `timeout` from the TOML,
+      `buildgen/codegen.py:386-387`, × transactions per locked section); per-port `machine.I2C` singleton
+      silently reconfigured by a later construction with different freq/timeout (`HW.S18`).
+- [ ] **BUS.T11** Pin states before `setup()` and across resets: FRAM CS pad default vs the FRAM
+      power-up CS rule and any board pull-up; UART TX idle level before `init()` (with `STOR.T11`, `HW.T07`).
+- [ ] **BUS.T12** IRQ-off windows vs peripheral buffering: littlefs program/erase (config flush, boot
+      repair) vs the 32-byte UART RX FIFO (~2.8 ms at 115200, overrun absorbed silently, C.3.2), SPI DMA
+      (F.5.2), CYW43. Window lengths need the Pico W QSPI flash datasheet — missing from `datasheets/`.
 
 Seeds:
 - **BUS.S01** `I2C.readfrom_into`/`writeto` are silent no-ops when `_i2c is None`; SCD30/SGP40 would
@@ -527,6 +634,14 @@ Seeds:
   yielding (bounded by `rxbuf`) (`src/asy_uart_driver.py:171-176`); `_write_all` waits on
   `ready(POLLOUT)` with no deadline at the *idle* poll rate (`:135, :267`); `readinto(buf, nbytes)` with
   `nbytes > len(buf)` relies on `machine.UART.readinto` clamping (`:353-354`).
+- **BUS.S06** `readline()`/`readline_until_complete()` call `machine.UART.readline()` without the `any()`
+  clamp, and `:415` has no length bound — a steady newline-free stream would hold the loop for its wire
+  time; neither has a production caller (`src/asy_uart_driver.py:395, 410, 415`).
+- **BUS.S07** Every I2C transaction allocates new memoryview objects around the long-lived scratch
+  (`src/asy_i2c_driver.py:63, 208, 231`).
+- **BUS.S08** `Pin(cs_pin)` is bound without a mode and first driven in `setup()`; until then the
+  active-low FRAM CS sits at the pad reset default while `machine.SPI()` muxes SCK/MOSI
+  (`src/asy_spi_driver.py:43, 117, 181-184`).
 
 Quality measure: every seed confirmed/rejected against rp2 source; never-block invariant re-proven by a
 clamp-removal sweep over the current driver.
@@ -548,7 +663,8 @@ Topics:
       `altitude_baro`, `PressOffset` vs the plausibility gate, `BackupPeriod` vs verify period).
 - [ ] **SENS.T03** Recovery paths per driver: failed read, CRC error, brownout, divergence re-apply,
       supervisor restart (is every piece of per-instance state re-initialised?).
-- [ ] **SENS.T04** Stale-as-fresh: can a cycle publish cached values with a new `TS`?
+- [ ] **SENS.T04** Stale-as-fresh, per driver (system-wide contract in `XCUT.T17`): can a cycle publish
+      cached values with a new `TS`?
 - [ ] **SENS.T05** Interrupt semantics: SCD30 RDY fallback counter, ISL29125 INT thresholds vs the
       decision rule, soft-IRQ allocation, IRQ storms.
 - [ ] **SENS.T06** Bus-time budget on `dev`'s shared i2c1 (SCD30 50 ms sleeps under the bus lock vs
@@ -557,10 +673,35 @@ Topics:
       incl. whether "Unchanged" writes are skipped as legacy did (seed `PAR.S02`).
 - [ ] **SENS.T08** Part C conformance and D.10 across the four: constructor shape, snapshot-read
       failure logging, errno allocation, operating-range gates, `@web`/`@limits`/`@requires` tags.
-- [ ] **SENS.T09** Unverified protocol assumptions: SCD30 reading back 0x0010, SGP40 serial word[0]
-      `== 0x0000`.
+- [ ] **SENS.T09** Unverified protocol assumptions: SCD30 reading back 0x0010 (`SENS.S10` area), SGP40
+      serial word[0] `== 0x0000` (`SENS.S06`, `SENS.S21`).
 - [ ] **SENS.T10** Four-tier bus-hazard coverage per driver (CLAUDE.md hard rule), checked against the
       real tier files rather than assumed.
+- [ ] **SENS.T11** VOC 1 Hz sampling: Sensirion's algorithm expects one `measure_raw` per second; SGP40 is
+      driven by a soft PERIODIC timer + `ThreadSafeFlag` that merges ticks missed during loop stalls
+      (`NET.S01`/`NET.S02`, FRAM writes, SCD30 bus holds). Measure lost samples and the effect on time
+      constants, the 45-sample blackout and `backup_counter` (counts cycles, not seconds) (`XCUT.T21`).
+- [ ] **SENS.T12** SGP40 compensation input: age of the wired T/RH (SCD30 `MeasInt` up to 1800 s, value
+      cached through its error streak), plausibility/clamping before tick conversion (`SENS.S03`), SCD30
+      `TempOffs`/self-heating interplay, `_Default*` sources, mismatched cadences.
+- [ ] **SENS.T13** Datasheet operating procedures: SCD30 FRC needs continuous mode at 2 s for ≥ 2 min
+      (Interface Description 1.4.5), ASC needs ≥ 7 days uninterrupted power with daily fresh air (1.4.6) —
+      vs user-settable `MeasInt`, REST `ForceCalRef` with no precondition/warning, and the soft reset on
+      every `setup()`; SGP40 heater-off/idle, self-test in measurement mode (3.3), serial read length
+      (3.4); BMP3xx IIR in forced mode (time constant in samples × `SampleInterv` up to 3600 s; CONFIG
+      write resets it, 3.4.3) and the recommended osr pairing (Table 5).
+- [ ] **SENS.T14** A sensor missing or permanently failed, end to end: `setup()` retry rate, persisted-log
+      volume per hour, whether the supervisor score ends in a device reboot, knock-on on SGP40
+      compensation and notifications, legacy parity.
+- [ ] **SENS.T15** Persisted logs outside the `_error_check` streak: can a steady fault persist one entry
+      per cycle forever, against C.7.1's once-per-episode rule (SGP40 errno 12-18 — 13 from
+      `_check_storage` fires every second —, BMP errno 14/22, ISL errno 14/28/31-35, SCD30 forwards)?
+      (with `XCUT.T07`).
+- [ ] **SENS.T16** Hardware I/O triggered by a REST GET: every `_read_sensor_dict` callback (SCD30
+      six-register snapshot, BMP bit-field snapshot, ISL snapshot + divergence re-apply + wrnno 11) — cost
+      under the bus lock, side effects, GET safety/idempotency (with `REST.T10`).
+- [ ] **SENS.T17** `@requires` tags vs each datasheet's bus limits: ISL29125 (400 kHz max) and BMP3xx
+      carry none (with `GEN.T03`).
 
 Seeds:
 - **SENS.S01** SGP40 `get_raw()` points `self._command_buffer` at `_measure_command` and restores it
@@ -579,7 +720,8 @@ Seeds:
   for NTP (`asy_sgp40_driver.py:212-215, 383-385`).
 - **SENS.S06** SGP40 serial-number check `word[0] == 0x0000` is an undocumented Adafruit assumption
   (`asy_sgp40_driver.py:674-678`).
-- **SENS.S07** SGP40 measure wait is 100 ms against a 30 ms datasheet maximum (inferred cost only).
+- **SENS.S07** SGP40 measure wait is 100 ms against a 30 ms datasheet maximum (inferred cost only)
+  (`asy_sgp40_driver.py:610-611`).
 - **SENS.S08** SCD30 `scd_timer_triggers` accumulates across cycles (comment says "consecutive") and
   forces a read even when RDY is low; the not-ready read leaves the cache untouched and `_read_scd`
   re-stamps cached values as fresh — legacy-identical (`src/asy_scd30_driver.py:174-187, 412-420,
@@ -602,16 +744,36 @@ Seeds:
   darkness on the low range's 0 threshold) can fire INT every PRST window and force a read cycle
   indefinitely (`src/asy_isl29125_driver.py:359-364, 577-583, 598-599`).
 - **SENS.S16** ISL29125 `set_autorange_thresh()` does not rewrite the chip's threshold registers,
-  unlike `set_resolution()` (`asy_isl29125_driver.py:941-945` vs `:981-988`).
+  unlike `set_resolution()` (`asy_isl29125_driver.py:981-988` vs `:941-945`).
 - **SENS.S17** ISL29125 small: the 1-count dark offset is subtracted after `<<4`, so at 12 bit it is
   1/16 count (`:1262-1263`); `_filtered` survives a restart (`:270`); calibration legs stall the read
   loop.
 - **SENS.S18** Part C divergences: ISL29125 constructor order/kw-only (`asy_isl29125_driver.py:197-212`);
   SGP40's `fram_storage`/`fram_ntp_callback` names (`asy_sgp40_driver.py:140-141`); snapshot-read
-  failure logging differs (BMP errno 22, ISL errno 28, SCD30 base errno 4).
-- **SENS.S19** C.3 text is stale: BMP3xx "has no scratch buffer" (the I2C layer now has one).
+  failure logging differs (BMP errno 22 `asy_bmp3xx_driver.py:177`, ISL errno 28
+  `asy_isl29125_driver.py:723`, SCD30 base errno 4 `src/base_classes.py:210`).
+- **SENS.S19** C.3 text is stale: BMP3xx "has no scratch buffer" (the I2C layer now has one)
+  (SPECIFICATION.md ~1541-1543).
 - **SENS.S20** Missing references: BMP390 datasheet (driver accepts chip ID 0x60), RP2040 silicon
   datasheet, WS2812 datasheet, Sensirion VOC algorithm reference.
+- **SENS.S21** The SGP40 serial-number read fetches 3 of the 9 bytes the datasheet specifies
+  (`readlen=1`), so only word 0 is CRC-checked and compared (`asy_sgp40_driver.py:669-678`; datasheet
+  3.4, Tables 8/16).
+- **SENS.S22** `SCD30_I2C.setup()` sends a soft reset on every read-loop (re)start
+  (`asy_scd30_driver.py:577-589`); 1.4.10 says it restores the power-up state, and 1.4.6 says ASC's first
+  7-day search aborts on power interruption — whether a soft reset aborts it is undocumented.
+- **SENS.S23** BMP3xx polls STATUS every 2 ms (~60 bus transactions per ×32/×32 conversion on a possibly
+  shared bus) although the conversion time is computable (3.9.2) (`asy_bmp3xx_driver.py:408, 541-553,
+  623`).
+- **SENS.S24** An ISL29125 `GET /sensors` can write both the chip and the FRAM ring:
+  `_read_sensor_dict()` → `_check_divergence()` → `configure(force=True)` + `wrn_s` 11
+  (`asy_isl29125_driver.py:716-728, 745-755`) — possibly intended (comment `:717-719`); record either way.
+- **SENS.S25** When a config read fails, BMP3xx and ISL29125 still publish a freshly stamped sample with
+  hard-coded fallbacks, silently dropping the user's offsets/filter (`asy_bmp3xx_driver.py:231-234`;
+  `asy_isl29125_driver.py:503-507`) (with `XCUT.T17`).
+- **SENS.S26** No driver's `stop_timer()` has a production caller (`asy_scd30_driver.py:233`,
+  `asy_sgp40_driver.py:480`, `asy_bmp3xx_driver.py:305`, `asy_isl29125_driver.py:871`; NET's
+  `asy_ntp_client.py:357, 360`, `asy_wifi_service.py:677`).
 
 Quality measure: a datasheet-citation per register/formula; every seed resolved; a float32 emulation
 run for each formula; restart-state table per driver.
@@ -632,12 +794,30 @@ Topics:
       and their CRC coverage.
 - [ ] **STOR.T03** Write-enable/WEL/WRDI handling, write verification cadence, status-register
       protection bits (volatile vs non-volatile), partial protection.
-- [ ] **STOR.T04** Locking: driver lock + bus lock held together per block; chunk `_op_lock`; logging
+- [ ] **STOR.T04** (module half of `XCUT.T06`) Locking: driver lock + bus lock held together per block; chunk `_op_lock`; logging
       while holding the driver lock (deadlock invariant).
-- [ ] **STOR.T05** Pause gating vs reboot paths; `override_pause` semantics.
+- [ ] **STOR.T05** Pause gating: who sets pause (`mempause` 300 s, reboot paths); writes during a pause
+      are dropped, not deferred (a log entry is lost); `override_pause` has no production caller
+      (`STOR.S07`); interplay with `XCUT.T13`/`CORE.T06`.
 - [ ] **STOR.T06** Timestamped chunks: NTP gating, `(ntp_synced, utc, success)` ordering.
 - [ ] **STOR.T07** Address width / product-ID mapping for both chip sizes; wraparound; out-of-range.
-- [ ] **STOR.T08** errno/wrnno ranges vs C.7.1 (drift noted).
+- [ ] **STOR.T08** errno/wrnno ranges vs C.7.1 (drift noted; catalogue owned by `XCUT.T07`); the chunk
+      layer's logger ownership (`XCUT.S08`) and the layout/8 KB budget (`XCUT.T09`, `XCUT.S09`) are this
+      module's too.
+- [ ] **STOR.T09** Timestamped chunks across clock changes: `age = now - ts` negative or jumping when the
+      RTC is set backwards, `NTP_Offset_S` changes (±12 h, shifts the RTC itself) or a pre-NTP clock runs;
+      `BackupMaxAge` accepts any negative age (`asy_fram_manager.py:609-614`; `asy_sgp40_driver.py:389`);
+      `_TS_UNINIT = 0` as sentinel (with `XCUT.T18`, `NET.T11`).
+- [ ] **STOR.T10** Reads are writes: every `_read_chunk` writes BUSY then IDLE to both status bytes
+      (`:299, :343`) — refused under write protection/pause, power loss during a *read* leaves BUSY, and the
+      status bytes are the most-written cells: compute per-byte endurance for the busiest ring vs 10^12
+      (MB85RS64V) / 10^13 (MB85RS2MTA).
+- [ ] **STOR.T11** SPI electrical contract vs both FRAM datasheets: mode 0 at the 1 MHz default
+      (`asy_spi_driver.py:55-57`; no baudrate from codegen) vs 20/40 MHz maxima, CS setup/hold, HOLD/WP
+      tie-offs per board, power-up time before the first RDID; the FRAM driver has no `@requires` tag.
+- [ ] **STOR.T12** Crash-consistency enumeration on a twin FRAM image: power loss after every SPI
+      transaction k of write/read/clear/repair; classify the next boot per owner (log ring, SGP40 backup)
+      (with `TWIN.T04`/`TWIN.S04`).
 
 Seeds:
 - **STOR.S01** `_set_check_sb` writes BUSY even when it found UNINIT and `_read_chunk` returns early
@@ -651,8 +831,17 @@ Seeds:
 - **STOR.S04** C.7.1's FRAM row: "manager errno 17-88" vs code using 10/11/19/20; C.3's "fresh buffer
   per call" for FRAM_SPI vs preallocated buffers and no `_send_opcode` (`asy_fram_driver.py:118-121`;
   SPECIFICATION.md ~1544-1545, ~1926).
-- **STOR.S05** `stop_timer()` has no production caller; `verify_present()`/`set_write_protected()` are
-  SETTLED as kept (BACKLOG) — record as settled-no-action.
+- **STOR.S05** `verify_present()`/`set_write_protected()` have no production caller and are SETTLED as
+  kept (`src/asy_fram_driver.py:357, 400`; BACKLOG.md:72) — record as settled-no-action.
+- **STOR.S06** `FRAM_SPI`'s `wp_pin` path is unreachable in production (`AsyFramManager` never forwards it,
+  `asy_fram_manager.py:628`; codegen emits only `max_size`/`debug`, `buildgen/codegen.py:203`) and treats
+  the pin as whole-array protection (`asy_fram_driver.py:217-220`), while the MB85RS64V WP pin only
+  guards the status register when WPEN=1.
+- **STOR.S07** No `src/`/`buildgen/` code passes `override_pause=True`; the parameter on every chunk
+  method is test-only API (`asy_fram_manager.py:96, 128, 389`).
+- **STOR.S08** An out-of-memory FRAM allocation is reported only through print-only `pr.err`
+  (`asy_fram_manager.py:649, 662, 691, 704`; `asy_sgp40_driver.py:186`): a layout overflowing 8 KB
+  (`XCUT.S09`) silently drops owners to RAM-only with nothing persisted.
 
 Quality measure: every state transition covered by a named test at mock and twin tier; seeds resolved.
 
@@ -672,19 +861,30 @@ Topics:
       cancel handshake, listen backoff.
 - [ ] **UART.T03** Allocation: preallocated buffers, peer-declared `CHUNKS` allocation (BACKLOG
       accepted-with-caveat), rejection bitmap.
-- [ ] **UART.T04** Logging: per-episode dedupe keyed on last errno only, `_ready()` flooding,
+- [ ] **UART.T04** (with `XCUT.T07`, `CORE.T05`) Logging: per-episode dedupe keyed on last errno only, `_ready()` flooding,
       repeat-counting vs C.7.1.
-- [ ] **UART.T05** Construction validation (timeout floor, rxbuf floor) vs buildgen's own checks.
+- [ ] **UART.T05** Construction validation (timeout floor, rxbuf floor) vs buildgen's own checks
+      (`GEN.T01`, L.6.6).
 - [ ] **UART.T06** `UartLinkExerciser` (bench-only): counters, supervision, FRAM wiring, whether its
       failure modes can pollute the persisted log at 1 Hz.
 - [ ] **UART.T07** `UART_C_PORT_CHANGELOG.md` completeness vs git history of `asy_uart_comm.py`, and
       whether a "temporary" file with no reachable deletion trigger should be reclassified (seed
       `DOC.S14`).
+- [ ] **UART.T08** End-to-end delivery semantics: a lost final ACK makes the initiator report failure
+      after the responder already delivered the SET / ran `get_callback` — at-least-once with caller
+      retries, at-most-once without. What does Part J promise; must commands be idempotent?
+- [ ] **UART.T09** Cancellation/restart mid-transaction (supervisor restart, reboot, `clear()`): `_busy`/
+      `_in_resync`/hold-off state, a half-sent frame on the wire, peer recovery, a listen-task restart
+      while the peer is mid-train (with `XCUT.T19`).
+- [ ] **UART.T10** Measured constants the contract rests on: `_GC_PAUSE_WORST_MS = 21` (under what heap,
+      threshold, firmware?) and J.6's floors re-derived from `devices/dev.toml`'s baudrate/rxbuf/poll_*;
+      what would invalidate them (with `PLAT`, `MEM`).
 
 Seeds:
 - **UART.S01** `[x2]` `UART_Comm._err` sends repeats to the sync `pr.err()`, which neither persists nor
   counts, while C.7.1 says `repeat=True` "still counts it" — UART repeats never reach `ErrCount`
-  (`src/asy_uart_comm.py:319-322`; `src/print_log.py:158-175`).
+  (`src/asy_uart_comm.py:319-322`; sync `err()` `src/print_log.py:112-114` vs persisting `_store_err()`
+  `:158-175`, which does count repeats).
 - **UART.S02** A GET frame's `CHUNKS=1` is not enforced (`asy_uart_comm.py:484-488`) though J.4 defines
   a GET as a one-chunk train.
 - **UART.S03** Dedupe keyed only on the last errno, cleared by every valid frame: a link alternating
@@ -695,6 +895,9 @@ Seeds:
   (`buildgen/codegen.py:396-397`) — a corrupted payload byte is caught only structurally.
 - **UART.S05** A declined command returns `cmd_id=None`, sending `_listen_loop` into backoff up to
   5×timeout while the initiator may already be retrying (`asy_uart_comm.py:1116-1126`).
+- **UART.S06** `UartLinkExerciser.reset_error_counter()` also zeroes `transfers`/`failures`, so
+  `ResetErrors` wipes measurement data, not only error history (D.10 vs other modules)
+  (`src/asy_uart_link_driver.py:157-160`).
 
 Quality measure: Part J ↔ code traceability table; every seed resolved; changelog complete.
 
@@ -711,15 +914,15 @@ Topics:
 - [ ] **NET.T01** WiFi state machine: every phase × event, incl. task restart in each phase, PUT during
       a mode switch, PUT while `DEACTIVATED`, a client joining as the hotspot timer fires, a router
       outage at boot longer than the fail-to-hotspot + hotspot window, mid-handshake interruption by
-      the 5 s poll.
-- [ ] **NET.T02** `wifi_mode_lock` hold spans (connect poll, 60 s sleep, NTP attempt) and what stalls
+      the 5 s poll (security/parity sides: `SEC.T04`, `PAR.S08`).
+- [ ] **NET.T02** (with `XCUT.T06`; budget in `PERF.T05`) `wifi_mode_lock` hold spans (connect poll, 60 s sleep, NTP attempt) and what stalls
       meanwhile (uptime counters, `/status` getters, reconnect, NTP).
-- [ ] **NET.T03** NTP: sync/backoff/retry schedule, stale-sync reachability, ONE_SHOT retry timer vs
+- [ ] **NET.T03** (threat side in `SEC.T05`/`SEC.T11`) NTP: sync/backoff/retry schedule, stale-sync reachability, ONE_SHOT retry timer vs
       C.9, reply validation (mode, version, origin timestamp, LI, stratum, KoD), RTC set semantics,
       EU-only DST rule vs configurable offsets, socket cleanup on cancel.
 - [ ] **NET.T04** DNS client: query building (labels, trailing dot, 255-octet limit), response parsing
       (TC bit, uncompressed names, CNAME chains), server order incl. the public fallback.
-- [ ] **NET.T05** UDP socket: poll strategy and idle cost, sentinel contract, `disconnect()` on every
+- [ ] **NET.T05** (with `PLAT.T04`, B.14.2) UDP socket: poll strategy and idle cost, sentinel contract, `disconnect()` on every
       exit path, PCB budget (`MEMP_NUM_UDP_PCB = 5`) across DHCP/DNS/mDNS/captive DNS/NTP and STA↔AP
       transitions.
 - [ ] **NET.T06** Captive DNS: QTYPE handling, QR bit, TTL after leaving hotspot, allocation per
@@ -727,6 +930,22 @@ Topics:
 - [ ] **NET.T07** Radio-string bounds (C.7.4 bytes) at write and at use; hostname cap vs legacy.
 - [ ] **NET.T08** CYW43 synchronous calls per request (`status("rssi")`, `ifconfig()`), their cost and
       behaviour in AP mode.
+- [ ] **NET.T09** Hotspot/captive portal end to end: AP security mode actually set (no explicit
+      `security=`, `asy_wifi_service.py:384`), channel/country, AP subnet and DHCP pool vs the captive
+      subnet filter, station limit, OS probe URLs (`/generate_204`, `/hotspot-detect.html`,
+      `/connecttest.txt`) → 302 → index, HTTPS/DoH/"Private DNS" bypassing the portal, the 60 s TTL after
+      leaving hotspot mode (with `REST.T07`).
+- [ ] **NET.T10** Sockets across WLAN mode switches and `wlan.deinit()`: listening HTTP socket, in-flight
+      TCP connections, captive-DNS/NTP/DNS UDP PCBs when the netif is torn down (STA↔AP, deactivation)
+      (with `NET.T05`, `PLAT.T04`).
+- [ ] **NET.T11** Clock jumps: first RTC set from the boot default, `NTP_Offset_S` shifting the RTC, DST
+      boundaries, and every wall-clock consumer (`TS`, FRAM backup age, notification window, `cettime`)
+      (with `XCUT.T18`, `STOR.T09`, `SEC.T11`).
+- [ ] **NET.T12** D.9 sweep of the network API on 1.29: magic `pm=0xA11140` vs `WLAN.PM_*` (`:386, :452`),
+      `_STAT_OBTAINING_IP = 2` (`:128`), `status("stations")` shape, explicit `security=` for STA/AP,
+      `network.hostname()` semantics (DHCP option, mDNS).
+- [ ] **NET.T13** DHCP/IP lifecycle while connected: lease renewal, address/DNS-server change, gateway loss
+      while `isconnected()` stays true (F.2 backstop — not re-opening it), hostname collisions.
 
 Seeds:
 - **NET.S01** `wifi_mode_lock` is held across `asyncio.sleep(60)` in `_on_sta_disconnected`, stalling
@@ -737,7 +956,7 @@ Seeds:
   `/status` shows `IPv4`/`Rssi` as null (`src/asy_ntp_client.py:433-440`).
 - **NET.S03** `[x2]` NTP "stale after 3× interval" can never trigger: `ntp_sec_count` resets at every due
   resync, failed ones included, so `Synced` stays True forever after the first success — legacy-
-  identical and pinned by `tests/test_asy_ntp_client.py:1389-1410` (`asy_ntp_client.py:456-471`).
+  identical and pinned by `tests/test_asy_ntp_client.py:1388-1410` (`asy_ntp_client.py:456-471`).
 - **NET.S04** `[x2]` The DNS client falls back to `8.8.8.8` and `1.1.1.1` after the DHCP server —
   undocumented in SPECIFICATION/BACKLOG, a network/privacy behaviour change vs legacy's system
   resolver (`src/asy_dns_client.py:20, 110`).
@@ -760,21 +979,27 @@ Seeds:
   `ipoll(0)` loop) — the idle-poll cost F.5.9 fixed for UART (`src/asy_udp_socket.py:126`).
 - **NET.S12** Captive DNS answers every QTYPE (AAAA, HTTPS) with an A record while echoing the QTYPE,
   doesn't check QR, and builds f-strings for `pr.evt` on every query regardless of level
-  (`captive_dns.py:109-121`).
+  (`captive_dns.py:109-121` f-strings, `:170-171` QR/opcode parsing, `:203-210` A answer).
 - **NET.S13** `_fetch_ntp_reply` has no `disconnect()` in `finally`, unlike `resolve_ipv4`; a cancel
   mid-fetch leaks a UDP PCB until GC (`asy_ntp_client.py:183-188` vs `asy_dns_client.py:117-120`).
 - **NET.S14** DNS query building: trailing dot/empty label → malformed query; no 255-octet QNAME check
   (`NTP_Host` allows 1024); TC bit unchecked; only answers starting with a compression pointer parsed
-  (`asy_dns_client.py:44-62`).
+  (`asy_dns_client.py:44-62` query building, `:71-85` response parsing).
 - **NET.S15** `get_wlan_rssi()` prints an error on every `/status` in hotspot mode; `WifiUptime`/
-  `Connected` count up in AP mode (`asy_wifi_service.py:760`).
+  `Connected` count up in AP mode (`asy_wifi_service.py:760`; AP counting `:503-512, 851-858`).
 - **NET.S16** `PW` accepts 8-63 characters (excludes a raw 64-hex PSK); the masked `"********"` from a
-  GET, if PUT back, would be stored as the password — check the JS client.
+  GET, if PUT back, would be stored as the password — check the JS client (`WEB.T02`)
+  (`asy_wifi_service.py:46, 197-201`).
 - **NET.S17** Bounds vs legacy: Hostname 1-63 → 1-32, SSID min 2 → 0, `PW` `""` = open network (legacy
   `""` meant "unchanged"), `HotspotPW` build-time only (not in any `SettingsGroup`,
   `buildgen/codegen.py:607`).
 - **NET.S18** Comment drift: `asy_udp_socket.py:176` names a nonexistent `_open()`;
   `asy_wifi_service.py:168-169` mentions a future "combined Networking endpoint".
+- **NET.S19** NTP discards the reply's source address and sends an all-zero transmit timestamp, so an
+  origin-timestamp check is impossible; whether lwIP's connected-PCB filter already enforces the source
+  is unverified (`asy_ntp_client.py:183-184`) (feeds `SEC.T05`).
+- **NET.S20** The hotspot AP is configured with `essid`/`password` only, so its auth mode is the cyw43
+  default — verify on 1.29 that it is WPA2-AES, not mixed/open (`asy_wifi_service.py:384`).
 
 Quality measure: complete phase × event table for WiFi; lock-hold table; every seed resolved.
 
@@ -789,47 +1014,65 @@ wrappers cover every gap in vendored Microdot (A.5).
 `extmod/asyncio/stream.py`, `py/stream.c` at `v1.29.0`.
 
 Topics:
-- [ ] **REST.T01** Allocation-before-check sweep: Content-Length (negative, huge, non-numeric,
+- [ ] **REST.T01** (with `MEM.T03`, `SEC.T05`) Allocation-before-check sweep: Content-Length (negative, huge, non-numeric,
       duplicate), request line and header line length, header count, query string, JSON depth/size,
       path length — each against Microdot's actual order of operations.
 - [ ] **REST.T02** Route table: every GET/PUT, validation, envelope, status codes, HEAD/OPTIONS
       behaviour, unknown keys, non-object bodies, wrong Content-Type.
-- [ ] **REST.T03** `PUT /sensors` vs settings-group routes: guarding, post hooks, result shape (D.10).
-- [ ] **REST.T04** Command fields: `SystemCmd`, `lightCmdLED`, `PauseTime`, `ResetErrors` — validation,
+- [ ] **REST.T03** `PUT /sensors` vs settings-group routes: guarding, post hooks, result shape (D.10) —
+      owned by `XCUT.T11` (with `CORE.T04`, `CORE.S06`).
+- [ ] **REST.T04** (with `SEC.T02`, `PERF.T03`, `HW.T02`) Command fields: `SystemCmd`, `lightCmdLED`, `PauseTime`, `ResetErrors` — validation,
       Invalid vs Failed semantics, blocking duration, idempotency, confirmation for irreversible ones.
 - [ ] **REST.T05** Streaming (`_PieceWriter`): piece bound in bytes (not characters), exact
       Content-Length, per-source guarding in `/status`.
-- [ ] **REST.T06** Connection lifecycle: `_TimeoutStreamProxy`, `outer_cap_s`, `max_connections`,
+- [ ] **REST.T06** (budget in `PERF.T02`) Connection lifecycle: `_TimeoutStreamProxy`, `outer_cap_s`, `max_connections`,
       backlog, slot release lag (H.7.1), stream closing on HEAD/abort/error.
 - [ ] **REST.T07** Static serving: `..` handling, `.gz` lookup, 302-in-hotspot, caching headers,
       Content-Type/charset.
-- [ ] **REST.T08** Logging from the webserver: `wrn_s` without `repeat=` on routine idle/aborted
+- [ ] **REST.T08** (with `XCUT.T07`, `CORE.S11`) Logging from the webserver: `wrn_s` without `repeat=` on routine idle/aborted
       connections vs FRAM ring churn.
-- [ ] **REST.T09** Re-check on any Microdot bump (A.5 notes v2.7.0) that fixes stay outside `ext/`.
+- [ ] **REST.T09** Verify A.5's gap list against v2.6.2 source and note what v2.7.0 changes; confirm
+      every fix stays outside `ext/`.
+- [ ] **REST.T10** GET routes with hardware side effects and latency: `/sensors` (live register
+      snapshots, ISL re-apply), `/status` (`rssi`, `ifconfig`, every logger's `get_log()`) — worst-case
+      duration vs `per_call_timeout_s`/`outer_cap_s`, bus-lock contention under 6 clients (with
+      `SENS.T16`, `PERF.T02`/`T04`).
+- [ ] **REST.T11** JSON-safety sweep: every float that can reach a body must be finite (bare `nan`/`inf`
+      from MicroPython `json`, F.1) — BMP compensation, ISL HSB/CCT, `math_helpers`, NTP/notification
+      values, stored config; non-ASCII SSID/hostname (with `XCUT.T23`).
+- [ ] **REST.T12** HTTP framing interop: `Expect: 100-continue` (curl, bodies > 1 KB), `Transfer-Encoding:
+      chunked` without Content-Length (→ `body=b''`, `ext/microdot.py:423-430`), keep-alive/pipelining vs
+      HTTP/1.0, absolute-form targets, percent-encoded paths (routes match undecoded), query strings on
+      API routes, gzip regardless of `Accept-Encoding`.
+- [ ] **REST.T13** Client-triggerable stdout: Microdot `print_exception()` for every unparsable request
+      (`ext/microdot.py:1407-1408`) plus every `pr.*` print; on rp2 1.29 `mp_usbd_cdc_tx_strn` may wait up
+      to `MICROPY_HW_USB_CDC_TX_TIMEOUT` per print when a CDC host is attached but not reading — a
+      LAN-triggerable loop stall on the bench (with `PERF.T11`, `PLAT.T03`).
 
 Seeds:
 - **REST.S01** `Content-Length: -1` appears to bypass the 2048 B body cap: `Request.create` does
   `int(value)` and reads the body when `content_length <= max_body_length`; `readexactly(-1)` becomes
   `read(-1)` = read-all (up to ~`TCP_WND` 6400 B), and a follow-up negative read hits `py/stream.c`'s
   `MemoryError` path — i.e. a client-triggered `MemoryError`, contradicting I.6 and the zero-
-  `MemoryError` bar (`ext/microdot.py:417-426`; upstream `stream.py:42-52`). Not executed. Any fix
+  `MemoryError` bar (`ext/microdot.py:417-426`; upstream `extmod/asyncio/stream.py:41-52`). Not executed. Any fix
   must live outside `ext/`.
 - **REST.S02** Header lines and header count are unbounded before Microdot's `max_readline` check,
   because asyncio `readline()` grows with O(n²) copies until `\n`; bounded only by the 5 s per-call and
   15 s outer timeouts; untested (`ext/microdot.py:412-421, 533-537`).
-- **REST.S03** `[x2]` `_put_sensors` calls `module._set_dict_cfg()` directly, bypassing
+- **REST.S03** `[x2]` (owned by `XCUT.T11`) `_put_sensors` calls `module._set_dict_cfg()` directly, bypassing
   `ar.handle_set_cmd` (no errno-99 guard, no post hooks), unlike the flat routes
-  (`src/asy_webserver_service.py:419-432`).
+  (`src/asy_webserver_service.py:420-432`).
 - **REST.S04** `[x2]` `_put_status` resets every error source sequentially with no guard: an exception
   leaves a partial reset and a 500; no confirmation for an irreversible evidence wipe (`:631-637`).
 - **REST.S05** WEBSERVER `wrn_s` calls never pass `repeat=`, so every idle/reclaimed connection (browser
-  speculative preconnects) spends a FRAM ring slot; same for DNSSRV (`:254, :715-724`).
+  speculative preconnects) spends a FRAM ring slot; same for DNSSRV (`:254, :715-724`;
+  `src/captive_dns.py:119, 123`).
 - **REST.S06** `_PieceWriter` counts characters, not bytes: non-ASCII SSID/hostname values make pieces
   larger than `chunk_bytes` (`:145-148`).
 - **REST.S07** HEAD requests and aborted static responses never `aclose()` the opened stream (relies on
-  GC).
+  GC) (`asy_webserver_service.py:655-667`; `ext/microdot.py:684-699`).
 - **REST.S08** `[x2]` No `Cache-Control`/ETag on static files: every visit re-downloads index and
-  `app.js` on a CPU-bound server with a ceiling of 6 connections.
+  `app.js` on a CPU-bound server with a ceiling of 6 connections (`asy_webserver_service.py:649-667`).
 - **REST.S09** `[x3]` REST `lightCmdLED` goes through `request_signal()`, which spins until any running
   ramp ends; with `t` up to 60 s a request can exceed `outer_cap_s` = 15 s, where legacy answered
   "LED is busy" (error 8) at once; `led_signal()`/`start_asy_ext_cmd_watcher` look dead
@@ -839,6 +1082,12 @@ Seeds:
   533-566`).
 - **REST.S11** Comment drift: `asy_webserver_service.py:725` "see module docstring" (which says
   nothing about it); I.6 still says `max_connections` is 4 and 4 × 2048 = 8192 B (now 6 → 12288 B).
+- **REST.S12** `_put_status` returns code 0 with no `result` map, silently ignoring unknown keys and any
+  `ResetErrors` value other than `True`, unlike every other PUT's per-field verdicts (D.10)
+  (`asy_webserver_service.py:631-639`).
+- **REST.S13** `_put_sensors` drops unknown sensor names and non-dict sub-objects with no result entry;
+  the comment cites the per-key "Invalid" convention but nothing is emitted, so a typo returns
+  `{"res":"OK","result":{}}` (`:425-430`).
 
 Quality measure: an adversarial-client test matrix (mock + twin) with the `MemoryError` gates active;
 every seed resolved.
@@ -852,12 +1101,19 @@ every seed resolved.
 `neopixel_signal.py`.
 
 Topics:
-- [ ] **LED.T01** Signal arbitration (internal vs external), queued vs running semantics, busy
+- [ ] **LED.T01** (owns `REST.S09`/`LED.S01`) Signal arbitration (internal vs external), queued vs running semantics, busy
       behaviour, ramp timing, overlay.
 - [ ] **LED.T02** Input sanitisation: `t`, colours, brightness, frequency — floors and ceilings.
 - [ ] **LED.T03** `NotificationCoordinator` staged construction (`register`/`finalize`), buffered
       rejections, per-signal schema injection, check order and sleeps.
 - [ ] **LED.T04** Failure isolation: can a bad source value kill `monitor_loop`?
+- [ ] **LED.T05** Signal machinery lifecycle: `neopixel_signal` cancelled mid-ramp leaves the pixel lit and
+      `start_signal_event` set, so the restarted task replays the old `rgbt`; `request_signal()` callers
+      spin with no deadline whenever that task isn't running (`asy_neopixel_driver.py:145-153, 155-187`).
+- [ ] **LED.T06** Notification inputs: freshness (old `TS` can still trigger, `XCUT.T17`), `None` vs 0,
+      `>=`/`<=` at exactly the threshold, ordering and total duration with several signals in one window.
+- [ ] **LED.T07** WS2812 contract: `bitstream` timing and IRQ-off window per `write()` during 20 Hz ramps,
+      GRB ordering (`bpp=3`), 3.3 V data vs VIH at 5 V supply per board; missing datasheet (`SENS.S20`).
 
 Seeds:
 - **LED.S01** `request_signal()` and `_led_ext_signal_starter` busy-wait with `sleep(0)` for the whole
@@ -868,7 +1124,8 @@ Seeds:
 - **LED.S03** An extra `2×FlashDur` sleep follows the *last* warning too (legacy slept only between);
   minor parity delta (`asy_notification_service.py:369-374`).
 - **LED.S04** `DEVICE_REFERENCE.md` describes the WiFi LED as a static preference, but the code still
-  toggles/flashes it with connection state, as legacy did.
+  toggles/flashes it with connection state, as legacy did (`DEVICE_REFERENCE.md:11` vs
+  `asy_wifi_service.py:344, 527-536, 594`; doc half owned by `DOC.T10`).
 
 Quality measure: every seed resolved; busy/queue semantics written down and tested.
 
@@ -1405,7 +1662,7 @@ Topics:
       radio-range attacker in hotspot mode, local user on the dev/bench host, supply chain), assets
       (availability, config, FRAM evidence, flash/NVM endurance, credentials).
 - [ ] **SEC.T02** Unauthenticated write surface: `SystemCmd` (`bootloader` = offline until physical
-      intervention), `ResetErrors` (irreversible evidence wipe), SSID/PW changes, every config write
+      intervention; `reboot`; `mempause`), `ResetErrors` (irreversible evidence wipe), SSID/PW changes, every config write
       (flash/NVM wear by alternation).
 - [ ] **SEC.T03** Browser-borne attacks: CSRF (blocked by JSON content-type + no CORS?), DNS rebinding
       (no Host check), clickjacking (no X-Frame-Options/CSP).
@@ -1414,13 +1671,27 @@ Topics:
       deactivation (A.4 intentional; a remote DoS needing a power cycle).
 - [ ] **SEC.T05** Protocol-level: HTTP body/header bounds (`REST.S01`, `REST.S02`), NTP reply spoofing
       (no origin check), DNS response validation, captive-DNS subnet filter by source address.
-- [ ] **SEC.T06** Host-side: `setcap` on the interpreter, secrets in argv/logs, `sudo` usage, downloaded
-      binaries without signatures (overlaps TOOL/CI/SCR).
+- [ ] **SEC.T06** Host-side: `setcap` on the interpreter (owned by `SCR.T07`), secrets in argv/logs and
+      `sudo` usage (owned by `TOOL.T01`), downloaded binaries without signatures (owned by `TOOL.T02`/
+      `CI.T04`) — SEC only records the disposition.
 - [ ] **SEC.T07** Credential hygiene consistency (owner, 2026-09-25: consistency, not safety) — see
       `HW.T11`; plus the known accepted hotspot fallback password in `src/asy_wifi_service.py`.
+- [ ] **SEC.T08** Attack-surface inventory per mode (STA, AP, deactivated): HTTP 80 on all interfaces,
+      captive DNS 53 (AP), cyw43 DHCP server (AP), mDNS 5353 if compiled into rp2 1.29 (unverified), ICMP;
+      physical: USB-CDC/raw REPL (plaintext `PW` in `config_WIFI.cfg`), BOOTSEL/UF2, the dev UART jumper.
+- [ ] **SEC.T09** Availability and evidence integrity vs a LAN peer: slot exhaustion (6 × 15 s, no
+      per-peer limit), ring eviction via client-provoked entries (`CORE.S11`, `REST.S05`), repeated
+      `mempause`/`reboot` (`XCUT.S03`), flash wear by alternating PUTs, stdout stalls (`REST.T13`).
+- [ ] **SEC.T10** Information exposure and outbound traffic: what unauthenticated GETs reveal (SSID,
+      hostname, versions + build date, full error histories) and every outbound destination (DHCP DNS,
+      8.8.8.8/1.1.1.1 `NET.S04`, NTP host) — disposition each under PQ5.
+- [ ] **SEC.T11** Trust in time and names: spoofed NTP → RTC, `TS`, FRAM backup age, notification
+      window; spoofed DNS → NTP at an attacker's host; DNS id entropy (`os.urandom(2)`) and source-port
+      predictability (`LWIP_RAND`) (with `NET.T03`/`T04`, `STOR.T09`).
 
-Seeds: `REST.S01`, `REST.S02`, `NET.S12`, `NET.S16`, `TOOL.S01`, `SCR.S06`, `WEB.S17`, `HW.S08`, `CI.S04`,
-`CI.S06` (cross-referenced, not repeated).
+Seeds: `REST.S01`, `REST.S02`, `REST.S04`, `REST.S05`, `NET.S04`, `NET.S12`, `NET.S16`, `NET.S17`,
+`NET.S19`, `CORE.S11`, `XCUT.S03`, `HW.S02`, `TOOL.S01`, `SCR.S06`, `WEB.S17`, `HW.S08`, `CI.S04`, `CI.S06`
+(cross-referenced, not repeated).
 
 Quality measure: a threat-model table with a disposition per exposure, signed off by the owner.
 
@@ -1441,9 +1712,18 @@ Topics:
       captive DNS datagrams) — each bounded before allocation.
 - [ ] **MEM.T04** Per-cycle churn: log entries (fresh chunk buffer + lock), `pr.all()` argument tuples
       built at level 0, `write_config` dict copies, CRC `add()`/`check()` copies, f-strings in hot paths.
-- [ ] **MEM.T05** Tests: `gc.collect()` props and absolute heap bounds (`TEST.S11`, `TEST.S12`).
+- [ ] **MEM.T05** Tests: `gc.collect()` props and absolute heap bounds — owned by `TEST.T03`
+      (`TEST.S11`, `TEST.S12`).
 - [ ] **MEM.T06** Does anything in `src/` still need one big contiguous allocation (I.4's forbidden-fix
       rule)?
+- [ ] **MEM.T07** Target representation gap: rp2 small ints stop at ±2**30 and every float is a heap
+      object (Unix port: ±2**62) — bigint/float churn in VOC, CRC32, `math_helpers` and driver formulas
+      never reaches either tier's `MemoryError` gate; quantify per cycle (`ALGO.S07`, `ALGO.S08`).
+- [ ] **MEM.T08** Per-call wrapper allocations on hot paths: `asyncio.wait_for()` (task + closure per
+      call), memoryview slices (`BUS.S07`), `schema_dict()` rebuilt per field in `_set_dict_cfg`
+      (`src/base_classes.py:346`), `*args` tuples.
+- [ ] **MEM.T09** C-stack budget: rp2 main stack vs the deepest await chain; a `MICROPY_STACK_CHECK`
+      `RuntimeError` would be swallowed by broad `except Exception` nets.
 
 Seeds: `REST.S01`, `REST.S02`, `NET.S10`, `CORE.S07`, `TEST.S11`, `TEST.S12` (cross-referenced).
 
@@ -1456,6 +1736,8 @@ controlled.
 
 **Goal**: every budget the system relies on is computed from code, checked against measurements, and
 has a test that fails before the budget is crossed.
+**References**: F.1, F.2, F.3, F.5.8/F.5.9, I.1 (GC pause), SPECIFICATION.md ~1854 (~305 ms yielding
+per FRAM chunk), ~3985-3992 (~21 ms non-yielding block hold), BACKLOG 24/32.
 
 Topics:
 - [ ] **PERF.T01** Watchdog: worst-case feed gap (XCUT.T03).
@@ -1465,9 +1747,21 @@ Topics:
       reader-count curve is queued as R2).
 - [ ] **PERF.T04** Bus budgets: SCD30 50 ms sleeps under the bus lock, probe sleeps, FRAM block hold
       (~21 ms), SPI re-init per CS, VOC processing cost, CRC per-byte yield.
-- [ ] **PERF.T05** Lock-hold stalls in networking (60 s sleep, 5 s connect poll, ~6.5 s NTP attempt).
-- [ ] **PERF.T06** Boot: not a metric to optimise (CLAUDE.md WP6) — only "does not starve the WDT".
+- [ ] **PERF.T05** Lock-hold stalls in networking (60 s sleep, 5 s connect poll, ~6.5 s NTP attempt) —
+      owned by `NET.T02`; PERF records only the budget.
+- [ ] **PERF.T06** Boot is not a metric to optimise (CLAUDE.md WP6): verify only that the setup batch
+      never starves the WDT on the device with the most setup units (`dev`, ~21 FRAM loggers × ~170 ms).
 - [ ] **PERF.T07** Idle CPU: polling loops (captive DNS 50 Hz, UART idle rate, neopixel busy-waits).
+- [ ] **PERF.T08** Inventory of no-yield stretches with durations (littlefs flush with IRQs off, I2C up to
+      its `timeout`, GC pause ~15-21 ms, `vocalgorithm_process()` on target, CRC32 with bigints, `print()`),
+      each against every timing-sensitive consumer's tolerance.
+- [ ] **PERF.T09** Measured event-loop lag under combined worst-case load, twin and bench (queue row).
+- [ ] **PERF.T10** Persisted-log rate budget: every `err_s`/`wrn_s` costs a ~305 ms yielding FRAM chunk
+      write queued on the FRAM lock (`src/print_log.py:167-178`); worst-case entries/s per module in a
+      fault storm and what that queue delays (`XCUT.S01`).
+- [ ] **PERF.T11** Console cost: at `DebugLevel` > 0 (REST-settable) every log line is a synchronous
+      `print()`; with a USB-CDC host attached but not reading, each may wait up to the CDC TX timeout
+      (`REST.T13`; verify at 1.29.0).
 
 Seeds: cross-referenced from `XCUT.S01`, `SENS.S11`, `BUS.S02`, `BUS.S03`, `NET.S01`, `NET.S02`,
 `NET.S07`, `NET.S11`, `LED.S01`, `REST.S08`, `WEB.S07`.
@@ -1496,6 +1790,17 @@ Topics:
 - [ ] **PLAT.T06** Everything Part F.5 lists as "ruled out" — still ruled out.
 - [ ] **PLAT.T07** Newer upstream (post-1.29.0) changes worth knowing before the next pin move (note
       only; the pin moves in its own session).
+- [ ] **PLAT.T08** rp2 vs Unix-port number representation: small-int width, float boxing, mpz, float32
+      libm accuracy (pico_float `pow`/`exp`/`log`/`atan`).
+- [ ] **PLAT.T09** How mpy-cross freezes float literals and float `const()`s for a float32 target; does it
+      fold float expressions in host double (`py/parse.c`, `MICROPY_COMP_CONST_FLOAT`)?
+- [ ] **PLAT.T10** Boot chain: frozen `main.py` vs filesystem `boot.py`/`main.py` precedence
+      (`shared/runtime/pyexec.c`); what runs after `main.py` returns or raises (REPL, soft timers); WDT
+      across a soft reset and across `machine.bootloader()`.
+- [ ] **PLAT.T11** `json`: `dumps()` of NaN/±inf, float32 round-trip through `dump`/`load`, how `dump()`
+      writes to a littlefs stream.
+- [ ] **PLAT.T12** `MICROPY_SCHEDULER_DEPTH` on rp2 and which sources share it; whether rp2 flash writes
+      still disable IRQs / lock out core 1 at 1.29.0 and for how long; `ThreadSafeFlag` single-waiter rule.
 
 Seeds: `CORE.S09` (task re-await), `BUS.S03` (SPI init), `BUS.S05` (UART readinto), `NET.S13` (socket
 finaliser), `ALGO.S01` (int32 vs Python int).
@@ -1526,13 +1831,13 @@ Topics:
 
 Seeds:
 - **PAR.S01** `WaitTimeNTP=0` disables the VOC restore entirely; legacy restored once, immediately; the
-  web label "Never wait for NTP sync" implies the legacy meaning (`src/asy_sgp40_driver.py:83-86,
+  web label "Never wait for NTP sync" implies the legacy meaning (`src/asy_sgp40_driver.py:53, 64,
   355-358`).
 - **PAR.S02** `[x2]` SCD30 PUT calls every setter unconditionally; legacy wrote only when the value
   differed from the readback (or forced `AmbPres`) — NVM wear and repeated `ForceCalRef` recalibration
   (`src/asy_scd30_driver.py:257-298` vs legacy `api_helpers.py:192`).
 - **PAR.S03** SGP40 resets `voc_write = WaitTimeNTP` after every stamped write, so each later backup waits
-  for NTP again; legacy set it to 0 for good (`asy_sgp40_driver.py:432-436`).
+  for NTP again; legacy set it to 0 for good (`asy_sgp40_driver.py:430-438`).
 - **PAR.S04** `[x2]` Supervisor: check period 3 s → 2 s (decay 1.5× faster), reset delay 5 s → 4 s,
   explicit `reboot_system()` instead of watchdog starvation; A.2 still says "stops feeding the
   watchdog"; BACKLOG asks for the supervisor change "without changing observed behaviour".
