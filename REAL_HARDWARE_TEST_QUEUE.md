@@ -18,7 +18,7 @@ Status values: **OPEN** (owed), **BLOCKED** (waiting on a decision or another ro
 
 ## The finalisation checklist — everything still owed, in one place
 
-Grouped by what each row *needs*, not by which effort opened it. **23 rows owed.** D1 and D2 are the
+Grouped by what each row *needs*, not by which effort opened it. **21 rows owed.** D1 and D2 are the
 owner's standing answers and no sitting re-asks them. G10 is excluded (section 5).
 This table is an index; the row's own entry below is what to read before running it.
 
@@ -28,10 +28,9 @@ This table is an index; the row's own entry below is what to read before running
 | **The suite runs** | S3b | `--allow-neopixel-sweep`, with M1 first |
 | **Heap placement readings** | T1 | The in-suite AFTER `largest_block` |
 | **Measure A's leftovers** | T4 | Measured; the owner's decisions are left |
-| **Memory gates and the (e) stage** | G8 | A script to write first |
 | **New features** | N3 | Rides on R13 |
 | **Targeted investigations** | R1, R2, R6, R7, R9, R13 | R1 and R2 wait on owner decisions; R6/R7 on an instrumented or A/B build |
-| **Tests still to write** | G1, G3, G4, G6, G12 | Code first, bench second. G6 is adapt-now-measure-later by decision |
+| **Tests still to write** | G1, G3, G4, G6 | Code first, bench second. G6 is adapt-now-measure-later by decision |
 | **The bench host itself** | H1 | Owner-run; needs no board |
 | **Long soak and the light rig** | S4, M1 | Deliberately separate sittings. M1 is interactive and records the rig geometry S3b depends on |
 | **Findings still open** | F17, F18 | F17: one unexplained USB drop, not reproduced since. F18 is the owner's call first |
@@ -266,8 +265,6 @@ Each is a test to *write* or a method to settle against real hardware, not just 
 | G3 | **`_reboot()`'s alarm-pool-exhaustion fallback (`_force_watchdog_starve = True`) is mock-only.** | OPEN |
 | G4 | **NOTIFY's own FRAM chunk has no hard-reset-recovery bench test**, unlike SGP40's. Needs an observable-write signal analogous to SGP40's `BackupTS` first. | OPEN |
 | G6 | **`test_ticks_ms_real_2pow30_rollover` needs a measurement method that does not poll with `board.exec()`.** BACKLOG item 12 established on real hardware that every `exec` starves the watchdog and hard-resets the board ~8 s later, zeroing the counter — so the hour-by-hour poll can never climb toward 2**30, and a later read landing below an earlier one is the reboot, not a wrap. The vacuous-pass hole is closed (a drop now only counts as a wrap when the previous read was already within two hours of 2**30, so the ambiguity fails honestly), but that makes the test *fail* rather than measure. A real method has to leave the board running: feed or disable the watchdog from inside the polled code, or observe passively via `tail_log()`. Design decision, then a genuine ~12.4-day run behind `--allow-multi-day-rollover-wait`. | **DECIDED 2026-09-22: adapt the method, defer the measurement.** Do not drop the test — the chosen answer is a method that leaves the board running (feed or disable the watchdog from inside the polled code, or observe passively via `tail_log()`). The ~12.4-day run itself is deliberately not scheduled: we do not measure it yet, and the test is deselected by default behind `--allow-multi-day-rollover-wait`, so deferring costs nothing today |
-| G8 | **CLAUDE.md's (e) stage has never been asserted on silicon.** I.4(e)/(f) says the suite must pass at `gc.threshold(-1)` with zero allocation failures *before* it is run at the shipped `gc.threshold(32768)`, and both halves are machine-checked — but only on the host and twin tiers. `scripts/build_firmware.py` stages the generated boot entry as `main.py`, and it sets `gc.threshold(32768)` before `asyncio.run(main())` — so **every flash- and bench-tier run, which all drive the live firmware over REST, is an (f)-stage run.** The device scripts are the other way round: importing `sensortask_dev` never executes `main.py`, and every heap-measuring one sets its own threshold (HFM §M3.8; `heap_layout_after_full_boot_sequence.py` sets 32768 explicitly when it wants the production arm) — but they only ever measure **boot placement**, never the run phase under load. So the (e) bar itself, zero allocation failures under real load, has no silicon arm. It needs no second image either: boot the full system by importing it, drive host-side API load against it for a bounded window, and assert `harness.MEMORY_ERROR_MARKERS` never appears in the log. Zero wear: no flash cycle, no persistence write, no reflash. | OPEN — script to write |
-| G12 | **UART's F.5.8 "never blocks" invariant has no real-hardware run against the shipped driver.** `device_scripts/uart_read_never_blocks_the_loop.py` deliberately uses raw `machine.UART`, so no silicon run calls `asy_uart_driver`'s own `ready()`/`_buffered()` clamp; F.5.9 already has the real-driver analogue (`uart_idle_poll_rate.py`). Write the same shape for F.5.8 over the crossover jumper (tests_hardware/README.md's "Tenth pass") | OPEN — script to write |
 
 ## 4. Bench-host tasks (not the board)
 

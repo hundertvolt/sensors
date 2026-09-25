@@ -3944,7 +3944,10 @@ distinguish them:
 Re-measured on the dev bench (2026-09-12) after the yield moved from the four read loops into
 `ready()` itself: unclamped 4422 us, clamped **137 us**, write 169 us — the same result from an
 independent run against the reshaped driver, which is what makes the table a property of the
-peripheral rather than of one arrangement of the code.
+peripheral rather than of one arrangement of the code. **Through the shipped driver itself**
+(2026-09-25, `device_scripts/uart_driver_read_never_blocks_the_loop.py`, which times the calls
+`readinto_until_complete()`'s own clamp makes): longest call **126-132 us** against 3,251 us for an
+unclamped read of the same frame on the same peripheral - asserted in the flash tier.
 
 For scale, this board's own scheduler noise floor — the worst gap a `sleep_ms(0)` probe sees with
 no UART activity at all — is 400-900us, so the clamped read is already below the point at which

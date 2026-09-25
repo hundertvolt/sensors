@@ -63,6 +63,13 @@ def test_a_clamped_read_never_holds_the_cpu_for_a_frame_still_arriving(board: Bo
     _assert_pass(output, "UART clamped-read CPU hold")
 
 
+def test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving(board: Board) -> None:
+    # The same F.5.8 invariant through asy_uart_driver itself, which the raw-UART test above never
+    # calls: the driver's own UART calls are timed, with an unclamped read of the frame as the control.
+    output = _run_or_skip(board, "uart_driver_read_never_blocks_the_loop.py", timeout_s=120.0)
+    _assert_pass(output, "UART shipped-driver loop hold")
+
+
 def test_an_idle_listener_polls_at_the_idle_rate_not_the_transaction_rate(board: Board) -> None:
     # SPECIFICATION.md Part F.5.9. Counted, never timed: a poll-round count is a property of the
     # code, while throughput on this board moves with heap state (Part E.7).

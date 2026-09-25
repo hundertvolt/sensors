@@ -1254,7 +1254,9 @@ shouldn't make unilaterally - disclosed rather than silently dropped, per BACKLO
   deliberately uses raw `machine.UART` "so it stays true independently of how `asy_uart_driver` is
   arranged internally" (its own docstring) - honest, not a wrongly-trusted test, but it means no
   real-hardware run ever calls the actual shipped clamp. F.5.9 (idle poll rate) already has a
-  real-driver-object proof (`uart_idle_poll_rate.py`); F.5.8 needs the analogous script.
+  real-driver-object proof (`uart_idle_poll_rate.py`). **Closed 2026-09-25** by
+  `uart_driver_read_never_blocks_the_loop.py` (flash tier), which times the shipped driver's own
+  UART calls rather than probing loop gaps — the latter swing with scheduler noise (F.5.8).
 - **Bench-tier UART traffic under load never issues a multi-chunk SET** - `UartLinkExerciser.
   _exercise_loop()` only ever calls `uart_get(_CMD_BANNER)`, so "bench ⊇ flash" (E.6.1) doesn't hold
   for the multi-chunk SET train the flash tier proves (`uart_crossover_exchange.py`). The exerciser
