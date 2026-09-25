@@ -186,6 +186,12 @@ audit files authorised (y/n) · parallel-agents permission carried over (y/n) ·
 (never carried over; per conversation, CLAUDE.md). PQ answers are recorded in the PQ table's last column,
 dated, replacing the recommendation.
 
+### 3.2 Owner requirements (verbatim, collected with the owner; recorded, not yet worked into the plan)
+
+| ID | Date | Requirement (verbatim) |
+|---|---|---|
+| OR1 | 2026-09-25 | General scope and principles: "The process in this repo up to now was dealing with picking up on existing code, gathering its ideas and notions, and promote it into a common, strong improvement direction. It also dealt with gathering as much detailed information as possible. A previously non-existent environment for building and testing was introduced. Finally, a working full prototype of both the sensors and the environment was the goal - complete, stable, working. Mostly correct, mostly good, but not finally perfect. This has been achieved. Therefore, the task of this session is consolidation, harmonization, and perfection as far as possible." |
+
 ---
 
 ## 4. Method
