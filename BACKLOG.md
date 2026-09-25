@@ -857,9 +857,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   `tests_hardware/bench/test_network_resilience.py`); CYW43-firmware-level faults such as
   `wlan.connect()` itself raising are not network-path faults `tc`/`iptables` can express and stay
   covered by the digital twin's own `--fault wlan:...` hook. **Still open**: the
-  NTP-outage-x-bus-load fault recombination has no twin/mock-tier equivalent (no NTP-drop-and-retry
-  scenario exists at either tier to extend) - a real opportunity if a future session has the budget,
-  not chased yet. The other two recombinations that matter (FRAM write vs. a real hardware reset;
+  NTP-outage-x-bus-load fault recombination has no twin/mock-tier equivalent - the NTP outage alone
+  now does (twin Run 9: permanently unreachable NTP for 90 s, `scripts/_digital_twin_ci_suite.py`), so
+  adding bus load to that run is the obvious extension; not chased yet. The other two recombinations that matter (FRAM write vs. a real hardware reset;
   repeated WiFi flapping x concurrent bus load) already have coverage across every tier where they
   are meaningful.
 - **Part I.2's hotspot catalog has never been re-walked with a *placement* lens.** I.2 scanned
