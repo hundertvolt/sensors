@@ -154,6 +154,8 @@ heap test holding the ceiling open) — designed reclaims, SYSTEM clean.
 | **T2** | All six `test_bus_concurrency_under_api_load.py` tests passed, the three `persistence_write` ones included — **done** | None |
 | **R4** | Zero-wear variant: logs filled by refused hostname PUTs (WIFI `E20`) and a 4-reader burst (UART), next to NTP/SGP40's own. Round 1: 5 modules populated, `ResetErrors` under 3 readers in 14.58 s → **all 21 read back 0**. Round 2: 12.11 s, and the only entries afterwards were UART ones **absent before the sweep** — logged by the load during it, not skipped by it. **Done: the sweep is complete under contention** | None; see F18 for the UART half |
 | **W5** | `NTP_Host` at 1,024 characters (1 write, restored with a 2nd): `/networking` complete (1,182 B), `/status` unchanged (6,871 B) — **it carries no configured host**, so SPECIFICATION I.3's "and in `/status`" was wrong (corrected). Full-ceiling burst and peak heap test both passed; worst of 72 peak samples: largest free run **36,864 B** (after boot 43,536 B). **Done** | None; I.3 now states the measured case |
+| **F1** | `wifi_service_reconnect_repro.py`, once, through a wrapper (below): garbage SSID → hotspot phase at 23 s → real SSID restored → **reconnected 20.9 s after `reconnect_wifi()`**, no task death. `config_WIFI.cfg`'s SHA-256 identical before and after (`0c83e9b4…`), `config_HWTEST_WIFI.cfg` removed, board back on the bench AP after a reset with SSID/hostname/NTP host as before. *Wear*: the scratch file's writes. **Verified — row retired** | The script never feeds the watchdog, so on a board running `main.py` it dies ~8 s in; it ran here under a 4-line wrapper arming `WDT(8000)` and feeding it from a 2 s `machine.Timer`. Owner: fold that into the script, or accept the wrapper as the documented way to run it |
+| **N2** | `Hostname` removed from `config_WIFI.cfg` (one write, keys confirmed), then one fresh boot: `GET /networking` → `SensorStationDev` (the `devices/dev.toml` default, not the schema's `SensorNode`); CFGMGR_WIFI `W4` ("Key Hostname … missing, using default!"); the boot wrote `Hostname = SensorStationDev` back (a second write). **The substitution path is proven — row retired** | None. Note the repair write: N2 costs two flash writes, not the one the queue stated |
 | **T1 race check** | `gc.threshold()` read `-1` at 0.8 s after a reset and `32768` at 38 s uptime — §M3.8's race is confirmed | None; recorded |
 | **R7** (partial) | Soft-reset capture (no USB re-enumeration, so the whole boot is visible): imports + `build_system()` + the first setup list take 1.15 s together (that list logs nothing); each FRAM-backed config manager then costs ~95 ms (~33 ms FRAM read, ~33 ms verify, ~25 ms file); 8 timers start 112 ms apart (0.78 s); WLAN up and RTC set at 16.3 s | Per-logger figures for the first list need an instrumented build — owner's call whether they are worth it |
 | **R6** | Not measured. The +0.90 s is an A/B delta: the fix moved `fram.setup()` ahead of `sysfunct.setup()`, so only a pre-fix build answers it (2 extra flash cycles, ~30 min) | Owner: run the A/B, or close R6 as not worth the flash cycles (it does not threaten the watchdog) |
@@ -198,6 +200,14 @@ heap test holding the ceiling open) — designed reclaims, SYSTEM clean.
   next reset (found at `reset_cause()` = `WDT_RESET`, `ticks_ms()` pointing at that test). The bench
   tier survives it because its fixtures reset first. *Suggested*: end the test with a
   `hard_reset()` and a wait for REST, so a tier never ends on a dead board.
+- **Two stale scratch configs on the board's flash**: `config_HWTEST_DEBUGLEVEL_BACKUP.cfg` and
+  `config_HWTEST_REBOOT.cfg`, left by earlier device scripts (neither is F1's, which cleaned up
+  after itself). Left untouched. *Suggested*: owner decides whether their scripts should remove
+  them, as F1's now does; the DebugLevel backup in particular could mislead a later restore.
+- **An attach at 1.0 s after reset is already too late to catch the board before its watchdog**:
+  `main.py` had set its GC threshold and the watchdog reset followed. So "attach within ~1 s parks
+  the board with no watchdog" (5.4 above) is a narrower window than 1 s, and not a usable way to
+  get a watchdog-free board; feed the watchdog from the script instead (F1's wrapper).
 - **F17, USB drop mid-upload during W4's first run**: still unexplained; the clean re-run did not
   reproduce it.
 - **Own process error, recorded so it is not repeated**: R2's first script retried a refused `PUT`
@@ -207,7 +217,7 @@ heap test holding the ceiling open) — designed reclaims, SYSTEM clean.
 
 1. ~~W4 re-run~~ — done, clean (5.2).
 2. ~~Step 6~~, ~~R4~~, ~~W5~~ — done (5.2).
-3. **F1 and N2** (*wear*, one flash write each) — need the owner's go.
+3. ~~F1~~, ~~N2~~ — done (5.2).
 4. M1 + S3b (needs the owner at the bench, ~30 min).
 5. R13 + N3, and the step 9 scripts — code first.
 6. Owner decisions from 5.2 and 5.4.

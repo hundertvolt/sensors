@@ -18,7 +18,7 @@ Status values: **OPEN** (owed), **BLOCKED** (waiting on a decision or another ro
 
 ## The finalisation checklist — everything still owed, in one place
 
-Grouped by what each row *needs*, not by which effort opened it. **25 rows owed.** D1 and D2 are the
+Grouped by what each row *needs*, not by which effort opened it. **23 rows owed.** D1 and D2 are the
 owner's standing answers and no sitting re-asks them. G10 is excluded (section 5).
 This table is an index; the row's own entry below is what to read before running it.
 
@@ -29,12 +29,12 @@ This table is an index; the row's own entry below is what to read before running
 | **Heap placement readings** | T1 | The in-suite AFTER `largest_block` |
 | **Measure A's leftovers** | T4 | Measured; the owner's decisions are left |
 | **Memory gates and the (e) stage** | G8 | A script to write first |
-| **New features** | N2, N3 | One look each; N3 rides on R13 |
+| **New features** | N3 | Rides on R13 |
 | **Targeted investigations** | R1, R2, R6, R7, R9, R13 | R1 and R2 wait on owner decisions; R6/R7 on an instrumented or A/B build |
 | **Tests still to write** | G1, G3, G4, G6, G12 | Code first, bench second. G6 is adapt-now-measure-later by decision |
 | **The bench host itself** | H1 | Owner-run; needs no board |
 | **Long soak and the light rig** | S4, M1 | Deliberately separate sittings. M1 is interactive and records the rig geometry S3b depends on |
-| **Findings still open** | F1, F17, F18 | F1: the script that stranded the bench once; read its row in full before running it. F17 rides along with W4. F18 is the owner's call first |
+| **Findings still open** | F17, F18 | F17: one unexplained USB drop, not reproduced since. F18 is the owner's call first |
 | **The connection limit of 6** (§4A) | W3 | Measured; the owner's judgement is left |
 
 **What "finished on real hardware" means**: every row above DONE or explicitly EXCLUDED, each
@@ -51,9 +51,7 @@ section 5 has its results so far. Check `buildDate` against the tree every time.
 2. **§4A's W4** — the whole bench tier on the tree under test at the limit of 6, default flags; then W3.
 3. **M1, then S3b** — the light rig is in place (D2), and M1 is what writes the geometry down so
    the next sitting does not have to re-establish it. ~10 minutes together.
-4. **F1's SSID script** — read §2A F1 in full first: this is the script that stranded the bench,
-   and the fix is structural but still unverified on silicon.
-5. **T4's per-command timing**, then T1's in-suite AFTER `largest_block`.
+4. ~~F1~~, ~~T4~~, ~~T1~~ — done 2026-09-25 (`HARDWARE_TEST_HANDOVER.md` section 5).
 
 Everything else in this file can wait for another sitting.
 
@@ -215,7 +213,6 @@ asyncio.run(_main())
 
 | # | Item | Notes | Status |
 | --- | --- | --- | --- |
-| N2 | **`asy_wifi_service._with_default()`** substitutes a build-time per-device default into the one-field hostname/SSID schema, dropping a value outside the field's own bounds rather than installing it — an unsatisfiable default makes `ConfigManager` answer `None` to every read, which would cost a device its networking config entirely. | **Looked at 2026-09-22, and the failure mode is absent**: after a clean boot `GET /networking` returns a full, sane config with `Hostname` = `SensorStationDev`, matching `devices/dev.toml` exactly. **Partial, not closed** — this board carries a persisted `config_WIFI.cfg` whose own `Hostname` is already `SensorStationDev` (written 2026-09-19, archive §7J.6), and a persisted value pre-empts the default, so the substitution path itself is still unproven on silicon. Closing it needs a boot with that key absent from the persisted config | PARTIAL |
 | N3 | **`asy_uart_comm.py` reclassified which warning takes the episode's single persisted slot** — `_WRN_DRAIN_BOUND` (11) now wins over `_WRN_RESYNC` (10) when the drain bound was hit, because 11 separates a babbling peer from ordinary line noise. The boot drain persists nothing. | **Receiver-side only, no emitted bytes change**, so it is the preferred class of protocol change and a mixed-version pair still works — but it still needs a `UART_C_PORT_CHANGELOG.md` entry, which should be confirmed. `dev`'s two `uart_link` instances make it observable: check `errcount`'s `UART_init`/`UART_resp` history after a run that forces a resync. | OPEN — **checked 2026-09-22 and there is nothing to read yet**: after a full clean bench tier, `errcount` carries no `UART_init`/`UART_resp` entry at all (`UARTLINK` 363 transfers, 0 failures), because nothing in the default suite forces a resync. This row needs R13's babbling-peer setup to produce the entry it wants to inspect; the two are one piece of work, not two |
 
 ---
@@ -250,11 +247,10 @@ decision.
 ## 2A. Findings still open from the two bench sittings
 
 F2-F16 are closed (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7I-§7K; lasting lessons in section 6 and
-`tests_hardware/README.md`). F1 needs one careful invocation, not a suite run; F17 rides along with W4.
+`tests_hardware/README.md`). F1 was verified on silicon 2026-09-25 and is retired; F17 rides along with any suite run.
 
 | # | Finding | Status |
 | --- | --- | --- |
-| F1 | **`tests_hardware/device_scripts/wifi_service_reconnect_repro.py` once stranded the bench** by persisting a garbage SSID it never restored. The script now reads the live SSID first, diverts every persist to a scratch `config_HWTEST_WIFI.cfg`, restores the cache in a `finally` and removes the scratch file after `flush_pending()` (its own comments carry the mechanism). Run it once on silicon to verify. | **FIXED 2026-09-18, unverified on silicon.** Residual, the owner's to weigh: the scratch write still spends one flash cycle, gated only by CLAUDE.md's go-ahead rule |
 | F17 | **Board anomalies of the connection-limit sittings** (BACKLOG item 44, `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7R.5): a silent reset and hotspot fallbacks. The third, the watchdog reset at `mpremote` attach, is closed off silicon (item 12's own measurement). During W4, read `machine.reset_cause()` after any unexpected reset and note every hotspot fallback; no sitting of its own | OPEN — **two observations, 2026-09-24/25.** (1) During W4 the USB serial disconnected mid-upload of `uart_idle_poll_rate.py`; later resets overwrote `reset_cause()`, so it is recorded, not explained; an isolated re-run passed. (2) **One hotspot fallback, explained**: after T4's three device-script runs (each a watchdog reset ~8 s after the script, with no `kick_all_stations()` before it) the board came up in hotspot mode. `reset_cause()` = `WDT_RESET`, `errcount` WIFI `W6` ×5 (`STAT_CONNECT_FAIL`, one slot, counter 5) = five failed connects, then `conn_fail_to_hotspot = 5`. This is the stale-AP-station mechanism `tests_hardware/README.md` records; a kick recovered it at once. SGP40 `W13` ×4 + `W11` (backup written/loaded without a timestamp) followed, since hotspot mode has no NTP. It fits BACKLOG 44's hotspot bullet: the earlier three fallbacks may well be the same mechanism. (3) Two more fallbacks the same way on 2026-09-25, both from this session's own resets without a kick *immediately* before them; the second one also proved the `PERIODIC` hotspot timer, which returned the board to STA after 8 min with no reboot |
 | F18 | **Four back-to-back `/status` readers saturate the board** (found by R2, 2026-09-25, image `05:21:43Z`). Four host threads, each re-requesting `/status` the moment the last answer arrives (zero think time): each `/status` took a median of 4.8 s. **A `PUT /status {"ResetErrors": true}` was refused at the connection ceiling 20 times in a row** (the readers retake every freed slot; admission has no fairness), and when admitted it gave no answer within 30 s. `errcount` afterwards: WEBSERVER `W2` ×20 ("Connection reclaimed (timed out)" — the designed per-call reclaim), and **UART_init/UART_resp `E20` (no ACK), `E22` (read timeout), `W10` (resync)** — the UART exerciser misses its deadlines while the loop is saturated with HTTP work. No reboot (uptime continued), no task ended, no `MemoryError`. At 3 readers R2 saw none of the UART entries, but R4 (2026-09-25) did: three readers during a `ResetErrors` sweep logged `E20`/`E22`/`W10` on both link ends, so the UART degradation starts at 3. Open for the owner: whether zero-think-time readers are inside the product's contract (the web UI polls, it does not hammer), and whether the UART link degrading under that load is acceptable for a bench-only exerciser | OPEN — owner decision |
 
