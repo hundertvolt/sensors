@@ -187,6 +187,7 @@ statements bind the planning session; whether they carry over is asked in PQ2/PQ
 | 2026-09-25 | "Our base branch was just merged into main, and therefore our PR should also point to main." | PR #107 targets `main` (PQ2) |
 | 2026-09-25 | "There was a PROJECT_AUDIT_PLAN.md found in main - it actually does not belong there, only in our branch and it's to be deleted at the very end of the audit. And the other session wrote into it. So read what it added, don't lose anything, but remove the file from main then." | The other session's edits (`03f8bcf`: queue/handover references repointed to BACKLOG) are merged here; the file is removed from `main` by PR #108 and lives only on the audit branch until the audit closes (OR11.a) |
 | 2026-09-25 | "From the scope of our branch, everything should be based on the head of main, as the actual real intended starting point of our audit." | Planning baseline `4dc80ef` (section 0; V11); the audit baseline (ENV.T08) is `main`'s head at go-ahead |
+| 2026-09-26 | "Generally, stop timed checks. Do hooks only." | PR and CI watching (OR6.a's "wait for CI") uses only the GitHub event subscription; no scheduled check-ins or self-set timers in any session |
 
 Go-ahead record (empty until given): date · session · scope (which steps/waves) · autonomous commits of
 audit files authorised (y/n) · parallel-agents permission carried over (y/n) · real-hardware go-ahead
