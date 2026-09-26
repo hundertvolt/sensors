@@ -55,7 +55,7 @@ follow PQ3 (proposed `SEV1`-`SEV4`), register findings are `AF-<AREA>-<nnn>`, ow
 
 1. **Release**: the working prototype becomes a true release version — consolidated, harmonized,
    "one material", no leftovers (OR1, OR5, OR24).
-2. **Concept**: every part serves the device concept and its pillars P1-P10 (OR44;
+2. **Concept**: every part serves the device concept and its pillars P1-P12 (OR44;
    `audit/CONSOLIDATION.md` section 1), which end as SPECIFICATION.md's "Design principles" Part.
 3. **Broad**: every tracked file outside the out-of-scope list is looked at by an auditor with a
    stated lens — code, tests, tooling, CI, website, docs, config (OR46, OR50).

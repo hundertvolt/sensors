@@ -15,7 +15,7 @@ interaction once configured, handles all issues inside, and although barely reac
 fallback layers, has premium quality code, has all its main cases all the way through rare corner
 cases tested, and runs efficiently and compact on a low end hardware device".
 
-**Pillars** — OR44.a's P1-P6 plus four found in pass 1 (P7-P10). Every requirement is a sample of at
+**Pillars** — OR44.a's P1-P6, four found in pass 1 (P7-P10) and two found in harvest pass 1 (P11-P12). Every requirement is a sample of at
 least one; none is left unexplained.
 
 | # | Pillar | Samples |
@@ -30,6 +30,8 @@ least one; none is left unexplained.
 | P8 | One source of truth, generated not copied | OR10.a, OR30, OR43.a (3), OR45.a (1), OR51.a (4) |
 | P9 | Operating and testing never wear or damage anything | OR37, OR42, OR49.a (2), CLAUDE.md wear rule |
 | P10 | Extensible without edits elsewhere | OR10, OR43.a (device set derived), OR44.a checklist, OR52.a (2) |
+| P11 | Grounded: every behaviour-bearing claim traces to a primary source at the pinned version, corrected in place when the source disagrees | OR2, OR4, OR55, CLAUDE.md standing practices |
+| P12 | Contracts at boundaries: one normative text, a named owner of change and a conformance check per interface the project cannot change in one commit | OR24.a (2), OR52.a (2), OR56 (3), OR58, Part J |
 
 Process requirements (OR2-OR9, OR11-OR14, OR33, OR34, OR51.a (3)) serve the goal itself: an audit
 that runs uninterrupted, decides conservatively, proves instead of assuming, and leaves nothing open.
@@ -94,6 +96,8 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
     key names are harmonized to one scheme before the release. Answers `PAR.T05`.
 23. **No migration** (OR52.a (1)): `PAR.T06`/`T07` become the reflash runbook; `PAR.T08` (files left
     on a legacy unit's filesystem) stays a code question — can any of them shadow the frozen modules.
+
+24-33. Continued in `audit/HARVEST_REQUIREMENTS.md` 3.2 (harvest pass 1).
 
 ## 4. Requirement → phase → permanent home
 
@@ -173,9 +177,15 @@ pillars and harmonizations above. Output: `audit/HARVEST_REQUIREMENTS.md` (worki
 6. **Harmonize** across groups (merge duplicates, resolve contradictions by provenance and evidence),
    research what stays unclear, and list the rest as owner questions in the owner's format.
 
+Result (2026-09-26): `audit/HARVEST_REQUIREMENTS.md` — 965 candidates, 6,500/6,500 items placed, pillars
+P11-P12, harmonizations 24-33, decisions taken in the pass, questions; owner answers during the pass:
+OR54-OR58.
+
 ## 8. Next: passes 3+
 
 The question-raising scans (harmonization 21), read-only, parallel agents allowed (PQ9): rule and
 decision drift over the doc history (OR13.a, OR14.a), legacy losses (OR48.a), defect candidates among
 the seeds and harvest (OR12.a), necessity verdicts (OR33.a, Appendix B), open and deferred items
-(OR5, OR51.a (2)). Output: owner questions in the owner's format; settled items feed B1-B2.
+(OR5, OR51.a (2)). Their input now includes the harvest's no-requirement buckets (drift-only 313,
+defect candidate 171, stale 108, open item 82, suppression inventory 40) and `audit/hreq/ROUTING.md`.
+Output: owner questions in the owner's format; settled items feed B1-B2.
