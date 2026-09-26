@@ -150,7 +150,27 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
   (`config_manager.py:446-462`) — the reason for OR52.a (2)'s golden stored-config test.
 - `digital_twin/unix_port_gc_unwedge.py` uses `gc.collect()` as a tool; retired per OR52.a (6).
 
-## 7. Next: passes 3+
+## 7. Harvest pass 1 — requirements inside the harvest (method)
+
+Input: the whole harvest (6,500 items, `audit/harvest/*.md`, `HARVEST.md`) against OR1-OR53, the
+pillars and harmonizations above. Output: `audit/HARVEST_REQUIREMENTS.md` (working file, OR11.a).
+
+1. **Extract** (ten read-only agents, PQ9): nine over the catalogs in groups (HW; TEST; SENS+ALGO+BUS+
+   LED; PLAT+MEM+PERF; CORE+STOR+XCUT+SEC+UNSORTED; UART+NET+REST; TWIN+WEB; GEN+TOOL+SCR+CI;
+   DOC+PAR+LIC), one over the code for de-facto conventions no catalog item states (naming, idioms,
+   structure). Each normative statement, explicit or implied, becomes one candidate requirement.
+2. **Account**: every item ID lands in a candidate or in a named no-requirement bucket (descriptive,
+   defect candidate, open item, suppression inventory, duplicate); a script checks that none is missed.
+3. **Verify** each candidate: provenance (owner words, owner-confirmed proposal, session agent, external
+   fact, code convention only — from the text's attribution, `git log -S`, commit and PR text); truth
+   at HEAD against code, datasheets, MicroPython `v1.29.0` source and upstream docs; drift between the
+   places that state it.
+4. **Phrase** each verified candidate in the OR style: one plain normative statement, its evidence.
+5. **Place**: pillar, and its relation to OR1-OR53 (restates, refines, extends, new, conflicts).
+6. **Harmonize** across groups (merge duplicates, resolve contradictions by provenance and evidence),
+   research what stays unclear, and list the rest as owner questions in the owner's format.
+
+## 8. Next: passes 3+
 
 The question-raising scans (harmonization 21), read-only, parallel agents allowed (PQ9): rule and
 decision drift over the doc history (OR13.a, OR14.a), legacy losses (OR48.a), defect candidates among
