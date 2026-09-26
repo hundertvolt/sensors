@@ -138,7 +138,7 @@ By relation to OR1-OR58: refines 350, restates 323, extends 166, new 78, conflic
 
 ## 4. Questions for the owner
 
-Asked 2026-09-26; answers are recorded as OR rows in PROJECT_AUDIT_PLAN.md 3.2. Answered during the
+Asked 2026-09-26; answered the same day as OR59 (1: c), OR60 (2: b, via `machine.mem_backup()`), OR61 (3: b, 1.24.1), OR62 (4: b) and OR63 (5: b) in PROJECT_AUDIT_PLAN.md 3.2. Answered during the
 pass without a question: OR54 (website device set; twin sampler), OR55 (`gc.collect()` complete on
 return), OR56 (one event one entry; DNS fallback as config; FRAM layout per build), OR57 (legacy
 intent), OR58 (new API is the reference; key names harmonized).
