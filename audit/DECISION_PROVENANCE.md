@@ -6,7 +6,7 @@ Branch `claude/whole-project-audit-plan`, sweeps taken at HEAD `a89a097`-`c76ae9
 
 **Legend.** Rank reached: R1 an OR row; R2 an owner quote in the introducing commit or text; R3 an owner tag or paraphrase in the introducing commit; R4 a tag added later (or dropped later, noted); R5 no owner trace. Weight: OM owner-matter, EL engineering-local (lists A-E are OM unless marked EL). Mechanisms M1-M7 as in the brief. Site abbreviations: SPEC SPECIFICATION.md, CL CLAUDE.md, BL BACKLOG.md, THR tests_hardware/README.md, DTR digital_twin/README.md, UCL UART_C_PORT_CHANGELOG.md, DR DEVICE_REFERENCE.md, HFM HEAP_FRAGMENTATION_MEASUREMENTS.md, DLR dev_legacy/README.md. Decision IDs: A/A2-/B/C/D/E (owner lists), V (covered by an OR row), L (engineering-local). The first hit listed is the decision's primary site; the others are restatements (section 7).
 
-**Status 2026-09-26: every open item is answered** — OR68 (lists A, B rule, prevention), OR69-OR72 (rounds 1-4) in PROJECT_AUDIT_PLAN.md 3.2; E02 (single-board target) is the one item still put to the owner. The corrections are execution work (B0 doc pass, per-unit fixes).
+**Status 2026-09-26: every open item is answered** — OR68 (lists A, B rule, prevention), OR69-OR72 (rounds 1-4) in PROJECT_AUDIT_PLAN.md 3.2; E02 answered by OR73 (Pico W only). The corrections are execution work (B0 doc pass, per-unit fixes).
 
 ## 1 Summary
 
