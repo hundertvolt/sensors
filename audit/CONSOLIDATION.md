@@ -90,7 +90,8 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
     instead of "tiers"/"backends"; E.6's `manual` is an execution mode of L3/L4, not a level.
 21. **Question-raising scans move forward** (OR52.a (5)): OR48.a (3)'s "along with the audit" and
     OR13.a's execution-time drift cases become consolidation work; execution fixes what they settled.
-22. **Legacy REST paths stay** (OR24.a (2)): answers `PAR.T05` without owner input.
+22. **Legacy REST paths go** (OR58.a): the new API is the only reference; no legacy path is restored,
+    key names are harmonized to one scheme before the release. Answers `PAR.T05`.
 23. **No migration** (OR52.a (1)): `PAR.T06`/`T07` become the reflash runbook; `PAR.T08` (files left
     on a legacy unit's filesystem) stays a code question — can any of them shadow the frozen modules.
 
@@ -133,6 +134,8 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
 - OR51.a (4): "Part D" → the one ordered checklist absorbing Part D (harmonization 4).
 - OR36 example "like BMP3XX's" → harmonization 10.
 - PQ1-PQ10 recommendations → answers (plan section 3).
+- OR24.a (2) "legacy REST paths that external clients may use stay" → OR58.a: none stays.
+- OR39.a (1) "don't measure in the next line" → OR55.a: `gc.collect()` is complete on return.
 - Plan 4.1's waves, stop-points and delta passes → phases (plan 4.1, pass 2).
 
 ## 6. Research results
