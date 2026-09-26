@@ -345,9 +345,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 ## Real-hardware work still owed
 
 Folded in from the retired `REAL_HARDWARE_TEST_QUEUE.md` and `HARDWARE_TEST_HANDOVER.md` after the
-2026-09-24/25 sitting; row IDs (T4, F18, ...) are kept because commits and `PROJECT_AUDIT_PLAN.md`
-cite them. **Nothing here authorizes anything**: CLAUDE.md's go-ahead gate applies, and
-`tests_hardware/README.md` is the reference for how any of it runs (flags, wear gates, traps).
+2026-09-24/25 sitting; row IDs (T4, F18, ...) are kept because commits and the whole-project audit
+plan (on its own branch) cite them. **Nothing here authorizes anything**: CLAUDE.md's go-ahead gate
+applies, and `tests_hardware/README.md` is the reference for how any of it runs (flags, wear
+gates, traps).
 
 - **How a sitting runs — the owner's standing answers (2026-09-22).** D1: spend flash/NVM writes,
   but only after a clean default run, so a gated failure is the gated test's own. D2: the
