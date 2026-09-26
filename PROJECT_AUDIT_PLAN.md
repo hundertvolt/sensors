@@ -4,7 +4,8 @@
 the conversation that starts it.** Nothing in this file authorizes any audit work: every topic, seed
 observation and question below is a *recorded item to cover later*, never an implicit start. Until
 the owner declares the planning phase finished, the only permitted work on this file is extending,
-correcting and validating the list itself (section 6).
+correcting and validating the list itself (section 6) and the consolidation passes (OR2.a,
+`audit/CONSOLIDATION.md`).
 
 **Temporary.** Like every other temporary plan doc here, this file is deleted once the audit closes. Its
 permanent outcomes (fixed code, settled decisions, new rules) migrate into `SPECIFICATION.md`,
@@ -33,11 +34,14 @@ follow PQ3 (proposed `SEV1`-`SEV4`), register findings are `AF-<AREA>-<nnn>`, ow
   the rest. A seed tagged `[x2]`/`[x3]` was reported independently by two/three survey agents (a
   convergence signal, not a verification).
 - **Cross-cutting lenses** (section 4.2) apply to every area on top of its own topics.
+- **Owner requirements** (3.2, `OR<n>`) are the owner's record, verbatim; sections 1, 2 and 4 are their
+  integrated reading, and `audit/CONSOLIDATION.md` holds the big picture (pillars, phases,
+  harmonizations, requirement → phase → permanent home).
 - **Status markers**: `[ ]` open, `[x]` done, `[~]` partially done (used in 1.2, 4.6, 5 and 6). During
   execution, progress lives only in the register (4.5); topic boxes in section 5 are not ticked.
 - **Where things live**: this file (plan, topics, seeds); `audit/` (temporary audit apparatus: planning
   survey notes, the harvest of what the project's own comments/docs/history record, and later the sweep
-  scripts, register and wave artefacts — proposed under PQ2); section 3.1 (owner statements, verbatim).
+  scripts, register and unit artefacts — PQ2); section 3.1 (owner statements, verbatim).
 - **Line anchors** are as of commit `4dc80ef` (planning baseline: `main`'s head after the automated-build-chain
   merge, PR #58, 2026-09-25 — the audit's real starting point, owner, 3.1). Resolve them with
   `git show 4dc80ef:<path>`; at HEAD they drift. They were moved from the first baseline `0615eba` (and the
@@ -49,45 +53,61 @@ follow PQ3 (proposed `SEV1`-`SEV4`), register findings are `AF-<AREA>-<nnn>`, ow
 
 ### 1.1 Goals
 
-1. **Broad**: every tracked file outside the out-of-scope list is looked at by an auditor with a
-   stated lens — code, tests, tooling, CI, website, docs, config.
-2. **Deep**: every in-scope source file — `src/`, `buildgen/`, `toolchain/`, `scripts/`, `js/`, the
-   generated modules and the test/twin/hardware-harness infrastructure — is read line by line, down to
-   function internals, not grepped; formulas and protocol facts are checked against datasheets, the
-   pinned MicroPython 1.29.0 source and current documentation, never memory (CLAUDE.md, Part D.1/D.9).
-3. **Converged**: each area's findings stabilise under independent re-audit (section 4.4), and
-   cross-area contradictions are arbitrated rather than left as two reports.
-4. **Actionable**: every finding ends as exactly one of: fixed-and-verified, owner decision recorded,
-   moved to `BACKLOG.md` (silicon-owed ones to its real-hardware section) with enough context to act on, or rejected
-   with the reason.
-5. **Feature parity preserved**: the refactor keeps the deployed units' top-level features (CLAUDE.md
-   working agreement); every behaviour change found is either documented-as-deliberate or raised.
+1. **Release**: the working prototype becomes a true release version — consolidated, harmonized,
+   "one material", no leftovers (OR1, OR5, OR24).
+2. **Concept**: every part serves the device concept and its pillars P1-P10 (OR44;
+   `audit/CONSOLIDATION.md` section 1), which end as SPECIFICATION.md's "Design principles" Part.
+3. **Broad**: every tracked file outside the out-of-scope list is looked at by an auditor with a
+   stated lens — code, tests, tooling, CI, website, docs, config (OR46, OR50).
+4. **Deep**: every in-scope file is read in full at four levels — micro, imports, seams, macro
+   (OR46.a); every hardware and runtime claim is checked against datasheets, the pinned MicroPython
+   1.29.0 source and current documentation, never memory (CLAUDE.md, Part D.1/D.9, OR51.a).
+5. **Proven**: every property the audit claims is shown by a biting test or a run, not by reading
+   (OR16.a, OR19.a, OR21.a, OR25.a).
+6. **Converged**: each area's findings stabilise under independent re-audit (4.4); contradictions are
+   arbitrated by the lead against sources (OR7.a); re-verification passes repeat until one ends all
+   green (OR9.a).
+7. **Closed**: every item ends in one of OR5.a's states (4.5). BACKLOG.md afterwards holds only owed
+   real-hardware items, C-port items and owner-deferred future goals with their reason.
+8. **Feature parity**: top-level features never change (OR12); a legacy function lost on the way is
+   restored or raised (OR48).
 
 ### 1.2 Definition of done (whole audit)
 
-- [ ] Every area in section 5 has its topics answered, its seeds triaged, and its quality measure met.
-- [ ] Every finding in the register (section 4.5) has a terminal status.
-- [ ] Every cross-cutting lens (section 4.2) has been applied to every in-scope area and recorded per
-      area — "N/A, because …" is a valid record; silence is not.
-- [ ] Green, with zero `MemoryError`/`memory allocation failed`: `scripts/lint.sh`,
-      `scripts/typecheck.sh`, `scripts/test.sh` (both `gc.threshold(-1)` and `GC_THRESHOLD=32768`),
-      `scripts/test.sh --coverage`, `scripts/run_digital_twin_ci.sh` for all 6 devices, the npm tier
-      (`npm run lint`, `npm run typecheck`, `npm run lint:html`, `npm run lint:css`, `npm test`),
-      `scripts/build_firmware.py` for all 6 devices, and `uv run pytest tests_hardware --collect-only`.
-      No test deleted or weakened without a registered finding saying why (a vacuous test may
-      legitimately go).
-- [ ] Coverage recorded before and after; any drop explained.
-- [ ] Every real-hardware item the audit produced is in BACKLOG.md's "Real-hardware work still owed" (or was run,
-      if the owner granted a bench go-ahead inside the audit — PQ4).
-- [ ] CLAUDE.md side-obligations met for every change the audit made: BACKLOG's chroot-owed list for
-      build-environment changes, `UART_C_PORT_CHANGELOG.md` for `asy_uart_comm.py` changes, the
-      bird's-eye `src/` scan for any new `src/` file, README "Further reading" for any new doc (incl. a
-      sibling register file).
-- [ ] Audit worktrees, scratch branches and scratch tags cleaned up (an archive tag chosen under PQ2 stays);
-      every fix branch had a PR with a meaningful description and a PR-activity subscription (CLAUDE.md
-      PR workflow).
-- [ ] Every permanent fact this file (and the register) holds has migrated; the owner agrees the audit
-      is finished; this file and the register are deleted.
+- [ ] Every area in section 5: topics answered, seeds triaged, quality measure met; every lens (4.2)
+      applied and recorded per area — "N/A, because …" is valid, silence is not.
+- [ ] Every register finding terminal (4.5); the owner has reviewed every decision taken on the
+      owner's behalf (OR2.c) and every change logged for review (OR12.a, OR13.a, OR24.a).
+- [ ] Every owner requirement OR1-OR53 fulfilled, traced through `audit/CONSOLIDATION.md` section 4.
+- [ ] Green with zero `MemoryError`/`memory allocation failed`, at both GC stages wherever MicroPython
+      runs (OR40.a): `scripts/lint.sh`, `scripts/typecheck.sh`, `scripts/test.sh` (`-1` and
+      `GC_THRESHOLD=32768`), `scripts/test.sh --coverage`, `scripts/run_digital_twin_ci.sh` for every
+      device in `devices/`, the npm tier (`npm run lint`, `npm run typecheck`, `npm run lint:html`,
+      `npm run lint:css`, `npm test`), `scripts/build_firmware.py` for every device, and
+      `uv run pytest tests_hardware --collect-only`; the last re-verification pass adds no finding
+      (OR9.a). No test deleted or weakened without a register entry saying why (OR33.a).
+- [ ] Coverage recorded before and after for `src/`, generated code and the host build chain (OR22.a,
+      OR23.a); every unexecuted line covered or listed with its reason (OR25.a (3)).
+- [ ] The permanent checks the requirements add exist and pass: error-number catalog (OR28.a),
+      `@tunable` register (OR30.a), README vs `--help` (OR15.a), one summary block per runner (OR15.a,
+      OR21.a), one runtime watchdog feed site (OR31.a), `gc` sites (OR40.a), tier containment
+      (OR45.a), stored-config golden file (OR52.a (2)), device set derived from `devices/*.toml`
+      (OR43.a), no current file pointing at an old legacy path (OR32.a).
+- [ ] Docs: the "Design principles" Part and the one ordered checklist in SPECIFICATION.md, the
+      `integrate-module` skill proven on the ISL29125 and BMP3xx baselines (OR10.b, OR44.a); README
+      (OR15.a); history trace resolved (OR14.a); content rules met everywhere (OR27.a, OR51).
+- [ ] Hardware work prepared (OR8.a, OR29.a) and run in the hardware rounds (OR5.a, OR17), including
+      the two-image GC proof (OR40.a (3)), the FRAM read before reflash (OR28.a (1)) and the bench boot
+      and trigger timestamps (OR47.a).
+- [ ] End-of-execution report in chat and in PR #107's description, with one entry per new load test
+      (OR49.a (3)).
+- [ ] CLAUDE.md side-obligations met for every change: BACKLOG's chroot-owed list for build-environment
+      changes, `UART_C_PORT_CHANGELOG.md` for `asy_uart_comm.py` changes, the bird's-eye `src/` scan
+      for any new `src/` file, README "Further reading" for any new doc.
+- [ ] Worktrees, scratch branches and tags cleaned up; PR #107 merged into the frozen `main` by merge
+      commit (PQ2, OR52.a (4)).
+- [ ] Every permanent fact this file and the register hold has migrated; the owner agrees the audit
+      is finished; this file and `audit/` are deleted after the last hardware round (OR11.a).
 
 ---
 
@@ -99,62 +119,87 @@ All of: `src/`, `ext/` (behaviour relied upon only — see 2.2), `buildgen/`, `d
 `scripts/`, `.github/`, root config (`pyproject.toml`, `uv.lock`, `package.json`, `package-lock.json`,
 `eslint.config.js`, `tsconfig*.json`, `vitest.config.js`, `.htmlvalidate.json`, `.stylelintrc.json`,
 `host_typecheck.ini`, `.gitignore`, `.nvmrc`), `js/`, `html/`, `mockdata/`, `tests/`, `tests_js/`,
-`tests_scripts/`, `tests_hardware/` (desk review; execution only with a go-ahead), `digital_twin/`,
+`tests_scripts/`, `tests_hardware/` (desk review; execution only in phase C), `digital_twin/`,
 and every markdown doc (`*.md` at the root, `digital_twin/README.md`, `tests_hardware/README.md`,
-`dev_legacy/README.md`), plus `update_and_install.txt`, `LICENSE`, `THIRD_PARTY_LICENSES.md`.
+`dev_legacy/README.md`), plus `update_and_install.txt`, `LICENSE`, `THIRD_PARTY_LICENSES.md`. Added by
+the requirements: `.claude/skills/` (OR10.a), `legacy/` once B1 creates it (OR32.a), everything the
+setup installs or downloads (OR50.a), and the redistribution terms of `datasheets/` (OR52.a (7)).
 
 ### 2.2 Out of scope, or in scope only as a reference
 
 | Path | Treatment | Authority |
 |---|---|---|
-| `arduino/` | Out of scope entirely: no audit, no reconciliation, no findings about its contents (licensing included); the only open item is whether docs should state the exclusion (`LIC.T04`, owner) | BACKLOG (owner, 2026-09-24, SETTLED) |
-| `python/`, `modules/`, `build-*.sh`, `html_raw/` | **Read-only reference** for the parity area (`PAR`): read to establish deployed behaviour; a finding about it is recorded only when it explains current behaviour, never as a to-do | CLAUDE.md legacy rule |
-| `ext/microdot.py`, `ext/freezefs/` | Never edited or restyled. Audited only for *what this project relies on* from it, and for whether our wrappers cover its gaps | CLAUDE.md vendoring rule |
-| `datasheets/` | Reference material. Gaps (missing datasheets) are recorded, not "fixed" by web memory | CLAUDE.md / Part A.6 |
-| `dev_legacy/` session logs and snapshot | Reference only; its `README.md` is in scope as a doc | Part A.1 |
-| `modules/_boot.py`'s `import sensortask.py` | Never changed without real-hardware testing | CLAUDE.md hard rule |
+| `arduino/` | Out of scope entirely: no audit, no reconciliation, no findings about its contents (licensing included); stays at the root; anything about it is post-audit (OR5.a (3)); the only open item is whether docs should state the exclusion (`LIC.T04`) | BACKLOG (owner, 2026-09-24, SETTLED) |
+| `python/`, `modules/`, `build-*.sh`, `html_raw/`, `dev_legacy/`'s driver copies | **Read-only reference**, moved unchanged into `legacy/` in B1 (OR32.a). Read for the legacy-loss scan (consolidation, OR48.a) and parity (`PAR`); may run in a scratch directory as a published-value reference, nothing committed (PQ10). Never edited | CLAUDE.md legacy rule |
+| `ext/microdot.py`, `ext/freezefs/` | Never edited or restyled. Audited only for *what this project relies on* from it, and for whether our wrappers cover its gaps. Stays on Microdot `v2.6.2` (`v2.7.0` checked 2026-09-26: nothing this project needs) | CLAUDE.md vendoring rule |
+| `datasheets/` | Reference material, complete (OR53). Their redistribution terms are checked (`LIC.T07`) | CLAUDE.md / Part A.6, OR52.a (7) |
+| `dev_legacy/` session logs and snapshot | Reference only; `README.md`'s current bench content moves to its canonical living docs in B1 (OR32.a (3)) | Part A.1 |
+| `modules/_boot.py`'s `import sensortask.py` | Never changed without real-hardware testing (path becomes `legacy/firmware/…`, rule unchanged) | CLAUDE.md hard rule |
 | `dev` bench quirks | Out of scope as bugs (e.g. routes to uninstantiated objects) | CLAUDE.md |
 
 ### 2.3 Standing constraints and CLAUDE.md conformance
 
-Every auditor receives the packet defined in 4.4 ("Auditor context") and applies the lenses *inside*
-CLAUDE.md's rules. Specifically:
+Every auditor receives the packet defined in 4.4 ("Auditor context") and works inside CLAUDE.md's
+rules; where an owner requirement rewords a rule, the requirement is named and wins.
 
-- Flag, don't silently fix, any behaviour/formula discrepancy (Part D.1) and any cross-file consistency
-  discrepancy found by a `src/` scan (CLAUDE.md "bird's-eye-view scan").
-- Settled decisions are not re-opened (BACKLOG "SETTLED" entries, Part A.4 "confirmed intentional", the
+- **Questions** arise only in consolidation passes (OR2.a, OR52.a (5)), in the owner's format: a
+  numbered list, at most 10 words per decision, then options and consequences (OR51.a (3)). Execution
+  never stops: an unforeseen decision takes the more conservative, more easily reversible option,
+  grounded in sources, and is logged as decided on the owner's behalf; hardware and out-of-scope
+  items are parked (OR2.c).
+- **Behaviour or formula discrepancy** (Part D.1): proven by datasheet or specification → fixed with a
+  regression test and logged; anything less → logged, not changed (OR12.a). **Consistency** (naming,
+  ordering, signatures, equivalent behaviour): changed directly and logged (OR24.a); CLAUDE.md's
+  "report, don't silently fix" is reworded accordingly.
+- **Drift**: rule or decision drift → owner question in consolidation, followed as it stands and
+  logged during execution; factual doc drift → fixed in place (OR13.a).
+- **Settled decisions** are not reopened (BACKLOG "SETTLED", Part A.4 "confirmed intentional", the
   wedged-I2C/WiFi backstop rules, `NTP_Host`'s 1024 bound, FRAM
-  `verify_present()`/`set_write_protected()`, buildspec hand-maintenance, no UART version negotiation). A seed that touches
-  one is triaged "settled — no action" unless it shows the settled *premise* is factually wrong — then
-  it is raised to the owner, never acted on.
-- L-EXC does **not** flag missing blanket `MemoryError` wraps around asyncio primitives (CLAUDE.md
-  forbids them, F.2); the boot-confined `gc.collect()` (I.4(f.1)) is approved.
-- Real hardware: owner go-ahead *in the conversation that runs it* — CLAUDE.md: a go-ahead "given to a
-  different session, or to an earlier session that already ended, does not carry over" and "covers the
-  rest of that same conversation"; subagents and child sessions don't inherit it; wear gates;
-  FRAM-forensics-first (twin included); dead-man's switch for host network changes; `br0` MAC pinning.
-  Audit agents never run `setup_toolchain.py env --tier flash|bench`.
-- Wear, host SSD included: no brute-force-scale fuzzing or mutation; per-agent toolchain rebuilds only
-  when unavoidable; find the invariant (CLAUDE.md wear rule).
-- Memory-safety discipline (design for zero `MemoryError`, no `gc.collect()` propping, both GC stages).
-- Comment cap (3 lines) and docs-hold-current-state for anything the audit writes.
+  `verify_present()`/`set_write_protected()`, buildspec hand-maintenance, no UART version
+  negotiation) unless the premise is factually wrong — then a consolidation question.
+- **Interfaces** (OR24.a (2), OR52.a (2)): internal code changes freely; REST routes and JSON keys,
+  `devices/*.toml` keys, `@web` tags and FRAM layout names change only together with every consumer;
+  legacy REST paths stay; the UART wire format is untouched; persisted config keys and file names are
+  free until the release and stable or migrated after it; `ext/` and the legacy tree are never edited.
+- **Product purity**: nothing frozen into the firmware exists for a test (OR20.a, OR36.a); API that
+  completes a driver for its hardware stays (OR36.a (3)).
+- **Exceptions**: no blanket `MemoryError` wraps around asyncio primitives (F.2), but a real
+  graceful-degradation alternative is implemented (OR26.a). A missing, defective or stalled chip, or
+  a config not matching the hardware, escalates through the supervisor to a reboot by design (OR18.a).
+- **Memory**: design for zero `MemoryError`; `gc.collect()` only at the boot sites (product) and for
+  measurement baselines in tests, never as a tool; `gc.threshold(32768)` set once; both GC stages on
+  every MicroPython level (OR39.a, OR40.a).
+- **Threat model**: trusted home LAN; unauthenticated writes and `bootloader` are documented
+  limitations; malformed or oversized input never crashes anything (OR52.a (3), OR49.a).
+- **Real hardware**: only in phase C, with the owner's go-ahead *in the conversation that runs it* —
+  CLAUDE.md: a go-ahead "given to a different session, or to an earlier session that already ended,
+  does not carry over" and "covers the rest of that same conversation"; subagents and child sessions
+  don't inherit it; wear gates; FRAM-forensics-first (twin included); dead-man's switch for host
+  network changes; `br0` MAC pinning. Audit agents never run `setup_toolchain.py env --tier
+  flash|bench`.
+- **Wear**, host SSD included: no brute-force scale, no mass files; per-agent toolchain rebuilds only
+  when unavoidable; find the invariant (CLAUDE.md, OR37.a). Load and concurrency tests write no
+  limited-endurance store; FRAM writes are not wear (OR49.a (2)).
+- **Hygiene**: every test cleans up on every path; ports are OS-assigned or taken under a lock; evidence
+  is archived, never deleted (OR38.a).
+- **Docs**: current state, one short reason plus a provenance tag per rule, no history (OR27.a);
+  comment rule — one concise header block, at most 3 lines inline — for every file (PQ6, OR51).
+- **`main` is frozen** for the audit; one merge at close (OR52.a (4)).
 - BACKLOG numbering: numbers are never reused — the next new item is ≥ 51 (check `git log` first).
   Real-hardware row IDs live on in BACKLOG.md's "Real-hardware work still owed" (the queue and handover
   files were folded in there, `03f8bcf`); retired row IDs are never reused either — C7, R10, F7, F10,
   F11, F13, G9, and since 2026-09-25 T2, G1, G3, G4, G8, G12, N2, R1, R4, R5, R6, R7, F1, W4, W5.
-- Step-session workflow for any **fix unit**: scope → ≤ 10 questions → tests first → implementation →
-  coverage → stop and report. For the audit itself, the "stop and report" points are PQ8.
-- Fix-unit obligations: UART changelog entry for any `asy_uart_comm.py` change; bird's-eye scan for a
+- **Step-session workflow**: the audit is one unit — tests first for every fix; its "stop and report"
+  is the end of execution (PQ8).
+- **Fix obligations**: UART changelog entry for any `asy_uart_comm.py` change; bird's-eye scan for a
   new `src/` file; BACKLOG chroot-owed entry for any build-environment change.
-- Stale-doc rule (update the doc in the same session): during a findings-only phase this conflicts with
-  "findings first" — resolved by PQ1.
 
 ---
 
-## 3. Open decisions for the owner (needed before or at go-ahead)
+## 3. Owner decisions
 
-These shape *how* the audit runs. None blocks further planning; all block execution. Ten questions,
-per CLAUDE.md's step-session limit.
+The ten planning questions are answered (last column, 2026-09-26). New owner questions arise only in
+consolidation passes, in the owner's format (OR51.a (3)), and are recorded in 3.2.
 
 | ID | Question | Options | Answer (planner's recommendation until answered) |
 |---|---|---|---|
@@ -189,17 +234,19 @@ statements bind the planning session; whether they carry over is asked in PQ2/PQ
 | 2026-09-25 | "From the scope of our branch, everything should be based on the head of main, as the actual real intended starting point of our audit." | Planning baseline `4dc80ef` (section 0; V11); the audit baseline (ENV.T08) is `main`'s head at go-ahead |
 | 2026-09-26 | "Generally, stop timed checks. Do hooks only." | PR and CI watching (OR6.a's "wait for CI") uses only the GitHub event subscription; no scheduled check-ins or self-set timers in any session |
 
-Go-ahead record (empty until given): date · session · scope (which steps/waves) · autonomous commits of
-audit files authorised (y/n) · parallel-agents permission carried over (y/n) · real-hardware go-ahead
-(never carried over; per conversation, CLAUDE.md). PQ answers are recorded in the PQ table's last column,
-dated, replacing the recommendation.
+Go-ahead record (empty until given): date · session · scope (which phases) · `HW.T14` board-free
+collection confirmed (y/n). Standing, from the PQ answers: autonomous commits of audit work (PQ2) and
+parallel agents (PQ9) are authorised for the whole audit; the real-hardware go-ahead is never carried
+over (per conversation, CLAUDE.md). PQ answers are recorded in the PQ table's last column.
 
-### 3.2 Owner requirements (verbatim, collected with the owner; recorded, not yet worked into the plan)
+### 3.2 Owner requirements (verbatim, collected with the owner; worked into sections 1, 2 and 4 by consolidation pass 2)
 
 Read with the 2026-09-25 fold (`03f8bcf`): `REAL_HARDWARE_TEST_QUEUE.md` and `HARDWARE_TEST_HANDOVER.md` no
 longer exist — every "queue row" or queue file named in an interpretation below means an entry in
 BACKLOG.md's "Real-hardware work still owed", and OR11.a's deletion of those two files is already done.
-The owner's words themselves are unchanged.
+The owner's words themselves are unchanged. Where a later row overtakes an earlier interpretation, the
+later row wins; `audit/CONSOLIDATION.md` section 5 lists each case, section 4 maps every row to its
+phase and permanent home.
 
 | ID | Date | Requirement (verbatim) |
 |---|---|---|
@@ -318,67 +365,72 @@ The owner's words themselves are unchanged.
 
 ## 4. Method
 
-### 4.1 Execution order (proposed, after go-ahead)
+### 4.1 Execution order (phases; details and driving requirements in `audit/CONSOLIDATION.md` section 2)
 
-- **Step 0 — ENV**: build the toolchain, run every tier once, record the baseline (counts, timings,
-  coverage, warnings), build the do-not-reopen index (`DOC.T14`) and commit the sweep scripts next to the
-  register. Nothing is audited against an unmeasured tree. Owner stop-point (PQ8).
-- **Step 1 — Prep**: the inputs every later lens needs — `PAR.T01`/`PAR.T02` (the legacy inventory for
-  L-PAR) and `SEC.T01` (the threat model for L-SEC, needs PQ5) — plus a **pilot**: one small,
-  self-contained area (`LED`, two files) run through the whole pipeline to calibrate cost, the
-  convergence rule and the register format. Owner stop-point.
-- **Wave 1 — foundations, in parallel**: `XCUT` (system contracts), `CORE`, `ALGO`, `BUS`, `PLAT`. Their
-  outputs (error-code catalogue, lock/timer maps, FRAM layout, MicroPython facts) are inputs for
-  everything else. Owner stop-point after each wave (PQ8).
-- **Wave 2 — subsystems, in parallel**: `SENS`, `STOR`, `UART`, `NET`, `REST`, `GEN`, `TOOL` (`LED`
-  re-checked against wave-1 outputs).
-- **Wave 3 — consumers and verification tiers**: `WEB`, `TEST`, `TWIN`, `HW`, `SCR`, `CI`.
-- **Wave 4 — cross-cutting synthesis**: `SEC`, `MEM`, `PERF`, the rest of `PAR`, then `DOC` and `LIC`
-  last (they absorb every other area's doc findings).
-- **Close-out**: delta passes over files changed since each area's closure (`git diff
-  <closure-sha>..HEAD`), then a global convergence pass over the register, then owner review.
+- **Phase A — Consolidation** (before the go-ahead): passes 1-2 over the owner requirements (done);
+  passes 3+ run the question-raising scans (OR52.a (5)). Exit: every foreseeable question answered
+  (OR2.b).
+- **B0 — ENV** (4.6): build the toolchain, run every level once at both GC stages, record the baseline
+  (counts, timings, peak memory, coverage, warnings), build the do-not-reopen index (`DOC.T14`), commit
+  the sweep scripts, and fix the two lens inputs — `SEC.T01` (the threat model, written from PQ5) and
+  `PAR.T01`/`PAR.T02` (the legacy inventory, from the consolidation legacy scan). Nothing is audited
+  against an unmeasured tree.
+- **B1 — Foundations**, in this order: legacy move to `legacy/`; error-number catalog; central
+  log-repeat rule; compare-before-write primitive; config objects and `max-args`; one-source website
+  definitions; tier ladder and runner summary block; `@tunable` scheme.
+- **B2 — File-by-file pass**, per area, groups in dependency order: foundations `XCUT`, `CORE`,
+  `ALGO`, `BUS`, `PLAT`; subsystems `SENS`, `STOR`, `UART`, `NET`, `REST`, `GEN`, `TOOL`, `LED`;
+  consumers `WEB`, `TEST`, `TWIN`, `HW`, `SCR`, `CI`; synthesis `SEC`, `MEM`, `PERF`, `PAR`, then
+  `DOC` and `LIC` (they absorb every other area's doc findings). `LED` (two files) runs first as the
+  calibration pilot: cost, convergence rule, register format.
+- **B3 — Test campaign**, **B4 — Docs**, **B5 — Close of execution**: `audit/CONSOLIDATION.md`
+  section 2.
+- **Phase C — Hardware rounds** and **Phase D — Close**: each round with its own go-ahead; plan and
+  `audit/` deleted after the last one; one merge into `main`.
 
-Recommended (PQ1/PQ3): SEV1 findings go to the owner immediately, whatever the wave.
+No owner stop-points in B (PQ8). After every unit: an OR6.a sync point (commit, push, full local
+suite at both GC stages, CI green via event hooks, register and PR status note), then continue.
 
 **Units** (the register's header tracks each; "the lowest open unit" in 4.7 means the lowest number
-not `closed`, together with every other open unit of its wave):
+not `closed`, together with every other open unit of its group):
 
 | Unit | Content | Unit | Content |
 |---|---|---|---|
-| U0 | ENV (4.6) | U9-U16 | wave 2: SENS, STOR, UART, NET, REST, GEN, TOOL, LED re-check |
-| U1 | PAR.T01/PAR.T02 | U17-U22 | wave 3: WEB, TEST, TWIN, HW, SCR, CI |
-| U2 | SEC.T01 (needs PQ5) | U23-U28 | wave 4: SEC, MEM, PERF, PAR (rest), DOC, LIC |
-| U3 | LED pilot | U29 | close-out: delta passes, global convergence pass, owner review |
-| U4-U8 | wave 1: XCUT, CORE, ALGO, BUS, PLAT | | |
+| U0 | B0 ENV (4.6) | U15-U22 | B2 subsystems: SENS, STOR, UART, NET, REST, GEN, TOOL, LED re-check |
+| U1-U8 | B1 foundations, in the order above | U23-U28 | B2 consumers: WEB, TEST, TWIN, HW, SCR, CI |
+| U9 | B2 pilot: LED | U29-U34 | B2 synthesis: SEC, MEM, PERF, PAR, DOC, LIC |
+| U10-U14 | B2 foundations: XCUT, CORE, ALGO, BUS, PLAT | U35-U37 | B3, B4, B5 (sub-units set at their start) |
 
 - A **pass** is auditor A + auditor B + the arbiter's merge of the two (4.4); verifiers run per pass.
 - `converged@sha`: the 4.4 convergence rule is met. `closed@sha`: converged, every register entry of the
-  unit terminal or routed to the owner, the per-area lens record filled (1.2) and the quality measure met.
+  unit terminal, the per-area lens record filled (1.2) and the quality measure met.
 - A pass with no committed auditor report is restarted from scratch, never resumed from memory.
-- A stop-point (PQ8) sets the register header's `Awaiting owner` field; nothing runs past it.
 
 ### 4.2 Cross-cutting lenses (apply to every in-scope area; "N/A, because …" allowed)
 
 | Lens | Question every area answers |
 |---|---|
 | L-CORR | Correct against the authoritative source (datasheet, RFC, MicroPython 1.29.0 source, Microdot v2.6.2 source, browser spec) — verified, cited, not recalled |
-| L-EXC | Exception net complete: nothing raises out of a never-raise contract; every raise has a catching caller (Part D.2), including import time and the pre-`WDT()` phase (`XCUT.T20`) — within CLAUDE.md's no-blanket-asyncio-wrap rule |
+| L-EXC | Exception net complete: nothing raises out of a never-raise contract; every raise has a catching caller (Part D.2), including import time and the pre-`WDT()` phase (`XCUT.T20`) — within CLAUDE.md's no-blanket-asyncio-wrap rule; a real graceful-degradation alternative is implemented (OR26.a); hardware faults escalate by design (OR18.a) |
 | L-CONC | Every lock, shared state, await point and interleaving; lock-hold spans containing sleeps or I/O; lock order |
 | L-BLOCK | Nothing blocks the loop beyond its budget (Part D.5, F.3, F.5.8) |
 | L-TIME | Timers (soft-callback drop, ONE_SHOT vs PERIODIC, alarm pool), ticks wraparound *and* the age of stored ticks values (`ticks_diff()` is only valid under 2**29 ms), deltas passed to `ticks_add()`/`sleep_ms()`/`wait_for()` and `Timer(period=)` values (`XCUT.T25`), timeouts vs the configured 8000 ms watchdog (8388 ms is the rp2 cap) |
 | L-MEM | Allocation bounded and not client-controllable; churn on hot paths; long-lived placement (Part I) |
 | L-LIFE | Every resource (socket, timer, task, file, lock, buffer, FRAM chunk) released on every path incl. cancel/restart |
 | L-STATE | State machines complete: every state × event, including task restart, reboot, power loss, and cancellation at every `await` |
-| L-DIAG | Every failure mode leaves persisted, attributable evidence (errcount/FRAM entry, reset cause) — or is recorded as knowingly silent; routine events don't churn the evidence |
+| L-DIAG | Every failure mode leaves persisted, attributable evidence (errcount/FRAM entry, reset cause) — or is recorded as knowingly silent; routine events don't churn the evidence; a repeated code spends no new slot (OR35.b) |
 | L-TGT | The property holds in target semantics, not only on the 64-bit double-precision Unix port or the twin (float32, 31-bit small ints, soft-callback drop, IRQ-off windows, blocking UART reads) |
-| L-COMPAT | Persisted and wire formats (config files, FRAM layout, REST shapes, UART frames) stay stable across firmware updates, or a migration is defined |
+| L-COMPAT | REST shapes and UART frames stay stable; persisted config keys and file names are free until the release, stable or migrated after it (OR52.a (2)); FRAM content need not survive a reflash (OR47.a (2)); no legacy migration (OR52.a (1)) |
 | L-WEAR | Flash/NVM/FRAM write frequency and who can trigger it (REST, loops, tests) — and host I/O (CLAUDE.md's SSD rule) |
-| L-SEC | Input from the network/LAN/radio/user treated as hostile per the PQ5 threat model |
-| L-API | D.10 consistency within and across files; naming; return conventions; Part G reuse |
-| L-DEAD | Dead code, unused parameters, test-only production API, unreachable branches |
-| L-TEST | Tests bite (fail when the property breaks), not vacuous, not tautological; tiered per CLAUDE.md |
+| L-SEC | Trusted home LAN (PQ5): unauthenticated writes and `bootloader` are documented limitations; malformed, partial or oversized input never crashes anything |
+| L-API | D.10 consistency within and across files; naming, ordering, signatures (OR24.a); argument grouping and `max-args` (OR46.b); return conventions; Part G reuse |
+| L-DEAD | Dead code, unused parameters, test artifacts in the product (OR36.a), unreachable branches, stale non-code entries (OR50.a) |
+| L-TEST | Tests bite — proven by planted faults (OR16.a, OR19.a, OR21.a) — at every layer and level L0-L4 (OR25.a, OR45.a) |
 | L-DOC | Code, comments and docs agree; comment cap; no dangling citations |
-| L-PAR | Behaviour equals legacy or the change is documented as deliberate |
+| L-PAR | Behaviour equals legacy or the change is documented as deliberate; a lost legacy function is restored (OR48.a) |
+
+Every file additionally passes the pre-merge gate (OR51): correctness and robustness, specification
+conformance, documentation hygiene and the design questions.
 
 ### 4.3 Techniques catalogue
 
@@ -389,10 +441,13 @@ not `closed`, together with every other open unit of its wave):
   MicroPython, rp2-port and Microdot documentation (CLAUDE.md standing practice).
 - **Datasheet verification** from `datasheets/` (text already extracted during planning to the session
   scratchpad; re-extract in a new session).
-- **Differential testing**: mock tier vs twin tier; Python VOC port vs Sensirion's C reference (if the
-  owner can supply it); float32 vs double arithmetic for every formula that runs on rp2.
-- **Mutation / clamp-removal sweeps** (the technique already used for UART, BACKLOG): remove or invert
-  a guard, shadow the mutated copy ahead of `src/` on `MICROPYPATH`, require a named test to fail.
+- **Differential testing**: mock tier vs twin tier; Python VOC port vs Sensirion's C reference
+  (`Sensirion/gas-index-algorithm`, reachable); float32 vs double arithmetic for every formula that runs
+  on rp2; legacy vs `src/` published values from the same raw bytes, legacy run in scratch (PQ10).
+- **Fault planting** (OR16.a (4), OR19.a (3), OR21.a (1), OR31.a (5); the technique already used for UART):
+  per module, a small set of planted faults (flipped comparison, dropped call, swallowed exception,
+  removed guard) in a throwaway worktree, the mutated copy shadowing `src/` on `MICROPYPATH`; each must
+  turn a named test red; one record of which test catches which fault; targeted, not full mutation.
 - **Fake-mutation sweeps**: remove one fidelity rule from a chip fake and check some test notices.
 - **Fuzzing** — bounded and structural (enumerate shapes and boundaries, not brute-force volume, per
   CLAUDE.md's wear rule): `buildgen.build_model()` with mis-shaped TOML (expect only `BuildError`); REST
@@ -431,23 +486,30 @@ not `closed`, together with every other open unit of its wave):
   diff.
 - **Workflow truth table**: per CI job, the outcome under each upstream success/failure/skip/cancel.
 - **Dependency scan**: vulnerabilities and licences for `uv.lock` and `package-lock.json`.
+- **Fake-clock and exhaustive checks**: the real timer sequencer under a fake clock for every generated
+  device, and every period combination in the allowed ranges (OR47.a (3)); the recorded boot sequence of
+  every generated device asserted in the twin (OR47.a (1)).
+- **Write counters** in the fake filesystem and fake SCD30, outside the product code (OR42.a, OR42.c).
+- **Dead-code tool** during the audit only, never added to `lint.sh`; its output plus a repo-wide
+  reference search is a candidate list confirmed by hand (OR46.a (2)).
+- **Help-vs-README diff** per tool (OR15.a (1)).
 - **Execution** only in isolated git worktrees or scratch directories (section 4.6).
 
-### 4.4 Multi-agent orchestration and convergence (parallel agents approved 2026-09-25 — not an execution go-ahead)
+### 4.4 Multi-agent orchestration and convergence (parallel agents approved for the whole audit, PQ9 — not an execution go-ahead)
 
 - **Roles**: *auditor* agents (read-only on the repo; one area or sub-unit each, one lens set);
   *verifier* agents (adversarial: try to disprove findings, by execution where possible, batched by file
   or theme); the *arbiter* (the main session: dedups, resolves contradictions between agents, assigns
-  severity/status, is the **only writer** of this file and of the findings register, and may fix SEV4
-  factual doc drift itself if PQ1 allows).
+  severity/status, is the **only writer** of this file and of the findings register; resolves conflicting agent
+  results against sources, never by majority (OR7.a)).
 - **Per-unit pipeline**: auditor A (full deep read) → independent auditor B with a different lens
   emphasis, not shown A's output → arbiter merges → verifiers → confirmed / plausible / rejected.
-  "Plausible" is not terminal: it ends as an owner decision or a BACKLOG real-hardware entry.
+  "Plausible" is not terminal: it ends in one of 4.5's terminal statuses.
 - **Git archaeology before flagging**: `git log`/`blame`/commit messages for the line in question, to
   find the owner decision behind it (many "odd" lines are settled decisions).
 - **Convergence**: an area closes when two consecutive fresh passes (new agents, blind to the register
   until their own report is written, new lens emphasis) add no SEV1/SEV2 and at most one SEV3 after the
-  arbiter's diff. Cap at 4 passes, then escalate to the owner.
+  arbiter's diff. Cap at 4 passes, then the arbiter decides under OR2.c and logs it.
 - **Contradiction handling**: when two agents disagree on a fact, the arbiter checks the source
   directly (planning example: one survey said the hotspot timeout is 5 min, another 8 min — the class
   default is 5 but every `devices/*.toml` sets `hotspot_time_min = 8`; both were right about different
@@ -455,7 +517,7 @@ not `closed`, together with every other open unit of its wave):
 - **Auditor context** (the one definition; 2.3 points here): CLAUDE.md (auto-loaded); sections 0-4 and
   5.0 of this plan; its own area section; the full text of every topic/seed that section cites, marked
   "context only, owned by X"; its area's harvested notes (`audit/`, V10); the do-not-reopen index and the
-  answered section 3; the text of every SPECIFICATION Part its References line names; from wave 2 on, the
+  answered section 3; the text of every SPECIFICATION Part its References line names; from the B2 subsystems group on, the
   committed `audit/artefacts/` it depends on. A committed `audit/sweeps/packet.py <AREA>` assembles it
   (measured at `2a88cc8`: 34-46 KB of plan text per area, XCUT largest). Each auditor also gets its lens
   emphasis (A vs B) and reports in the register's field order minus the arbiter's fields (severity,
@@ -484,17 +546,17 @@ not `closed`, together with every other open unit of its wave):
   - ENV's baseline runs in its own worktree. Twin FRAM/SCD30 state and `digital_twin_ci_logs/` are
     copied to `<scratchpad>/twin-evidence/<utc>/` before any rerun (CLAUDE.md's FRAM-evidence rule covers
     the twin).
-  - Fix work (if PQ1 allows): one writer per file at a time, one fix unit per branch/worktree.
+  - Fix work: one writer per file at a time; fixes land on the audit branch (PQ2).
 
 ### 4.5 Findings register
 
-`audit/REGISTER.md` (location pending PQ2), listed in README "Further reading", created at execution
+`audit/REGISTER.md` (PQ2), listed in README "Further reading", created at execution
 start — not now. Written only by the lease holder (4.7).
 
 **Header fields**: lease (session ID and link, since UTC) · released (UTC, or —) · audit branch ·
-go-ahead reference (3.1) · awaiting owner (stop-point name, or no) · planning baseline (`4dc80ef`) ·
-audit baseline SHA (ENV.T08) · delta queue (areas and files changed since baseline or closure) ·
-current wave · unit table (U0-U29 from 4.1: not started / pass k / converged@sha / closed@sha /
+go-ahead reference (3.1) · owner-review list (every entry decided on the owner's behalf or logged for
+review, OR2.c/OR12.a/OR13.a/OR24.a) · planning baseline (`4dc80ef`) ·
+audit baseline SHA (ENV.T08) · current phase and group · unit table (U0-U37 from 4.1: not started / pass k / converged@sha / closed@sha /
 re-opened) · per-area lens record (every lens of 4.2: applied, or "N/A, because …" — DoD 1.2).
 
 **Entries**: one `### AF-<AREA>-<nnn>` block per finding, plus a one-line-per-finding summary table at
@@ -507,16 +569,17 @@ rejected. Fields:
 SHA the auditor read) · `found-in-pass` and date · owning area · lenses (primary first) · severity
 (PQ3; assigned by the arbiter) · class (defect / latent / doc-drift / test-gap / decision-needed) ·
 evidence (repro, source citation) · CLAUDE.md rule involved (quoted heading) · touches-SETTLED
-(do-not-reopen index entry, or none) · needs-silicon (no / yes: which BACKLOG real-hardware entry) · wear (none / flash /
+(do-not-reopen index entry, or none) · on-behalf (no / yes: the decision and its reasoning, OR2.c) · needs-silicon (no / yes: which BACKLOG real-hardware entry) · wear (none / flash /
 NVM / FRAM / host) · related / duplicate IDs · verifier verdict · status · decision (owner text or
 pointer) · moved-to (BACKLOG number or real-hardware entry) · fix unit (branch, PR link) · `re-verified@HEAD`.
 
 **Status transitions**: `open` → verifier verdict (`confirmed` / `plausible` / `rejected`) → one
-terminal status. Terminal statuses map onto the four outcomes of 1.1 goal 4: `fixed`/`fixed-elsewhere` →
-fixed-and-verified; `decided`/`settled-no-action` → owner decision recorded;
-`moved-to-backlog`/`moved-to-hardware` → moved; `rejected`/`duplicate-of` → rejected with the reason.
-`plausible` is not terminal (4.4): it ends as an owner decision or a BACKLOG real-hardware entry. Under PQ1(c) (findings
-only), a confirmed finding ends as `decided` or `moved-to-backlog`.
+terminal status, matching OR5.a's closure states: `fixed` (verified); `resolved-stale` (verified already
+resolved or stale, removed); `settled` (a decision documented as a permanent fact — the owner's, or
+taken on the owner's behalf and on the owner-review list); `out-of-scope` (owner decision, documented as
+a known limitation); `moved-to-hardware` (BACKLOG real-hardware entry, closed in phase C);
+`deferred-by-owner` (a future goal, one BACKLOG item with its reason, OR27.a); `rejected` /
+`duplicate-of` (with the reason). `plausible` is not terminal: it ends in one of these.
 
 A rejected seed or note stays in the register with its reason while the audit runs, so it is not
 rediscovered. When the register is deleted, only rejections whose rediscovery risk is real migrate — per
@@ -535,8 +598,8 @@ results to the register's header or `audit/artefacts/ENV/`: T02, T05-T10.
       triggers a rebuild.
 - [ ] **ENV.T02** (once) Baseline run of every tier listed in 1.2, serialized under the port lock (4.4);
       record counts (files, tests, pass/fail), wall clock, coverage per `src/` file, lint/typecheck
-      finding counts (expected 0), npm results. `uv run pytest tests_hardware --collect-only` only after
-      `HW.T14`'s owner confirmation.
+      finding counts (expected 0), npm results. `uv run pytest tests_hardware --collect-only` is board-free in the
+      sandbox; `HW.T14`'s confirmation is part of the go-ahead record.
 - [ ] **ENV.T03** (per session) Reference corpus: reuse `$PICO_TOOLCHAIN_DIR/micropython` (already at
       `v1.29.0` with the rp2 submodules: `extmod/asyncio`, `ports/rp2`, `lib/lwip`, `lib/cyw43-driver`)
       read-only; clone only Microdot `v2.6.2` into the scratchpad.
@@ -547,13 +610,14 @@ results to the register's header or `audit/artefacts/ENV/`: T02, T05-T10.
 - [ ] **ENV.T06** (once) Measure `disallow_any_explicit` counts per pass (BACKLOG's figures are dated
       2026-09-11) as a baseline only — enabling it stays a separate owner-deferred session.
 - [ ] **ENV.T07** (once) Build the do-not-reopen index (`DOC.T14`) and the cross-reference resolver
-      (`DOC.T02`) before wave 1, committed under `audit/`.
-- [ ] **ENV.T08** (once) Record the audit baseline SHA (`main`'s head at go-ahead, owner 3.1) in the
+      (`DOC.T02`) before B1, committed under `audit/`.
+- [ ] **ENV.T08** (once) Record the audit baseline SHA (`main`'s head at go-ahead, frozen from then on,
+      OR52.a (4)) in the
       register header; anchors in this file resolve at the planning baseline (`git show 4dc80ef:<path>`;
       `git fetch --unshallow` first if `.git/shallow` exists). If `main` moved past `4dc80ef`, first repeat
       V11's move (`reanchor.py`, `harvest_check.py`, `baseline_fates.py`, a delta harvest) to the new SHA.
 - [ ] **ENV.T09** (once) Commit `audit/sweeps/packet.py` (auditor packet, 4.4) and
-      `audit/sweeps/owner_of.py` (file → owning area from 5.0, for delta passes).
+      `audit/sweeps/owner_of.py` (file → owning area from 5.0, for routing findings and re-verification).
 - [ ] **ENV.T10** (once) Commit the plan validators (`audit/sweeps/validate_plan.py`: V1 ownership, V3
       anchors in bounds, V4 ID uniqueness) and extend V3 from bounds to content where an anchor quotes
       text (planning found an in-bounds wrong anchor: BACKLOG.md:575 for :555 at `0615eba`) — the harvest
@@ -563,13 +627,13 @@ results to the register's header or `audit/artefacts/ENV/`: T02, T05-T10.
 
 - **All state lives in git on the audit branch.** Nothing needed to resume may live only in a session's
   context, the (session-specific) scratchpad or a subagent report. The arbiter commits after every
-  arbitration batch (if PQ2 authorises autonomous commits).
+  arbitration batch (autonomous commits authorised, PQ2).
 - **Resume procedure**:
   1. `git fetch origin`; check out the audit branch named in the register header (before the register
      exists: the branch the owner names at go-ahead). `git fetch --unshallow` if `.git/shallow` exists.
   2. Read CLAUDE.md, this plan (3.1 included) and the register header. No register means a first start.
-  3. Confirm the go-ahead: 3.1 must record it *and* the owner confirms it in this conversation before
-     any write. Never touch the board; check BACKLOG.md's "Real-hardware work still owed" (board
+  3. Confirm the go-ahead: 3.1 records it, and the owner's message that started or continued this
+     session is its confirmation for software work (the real-hardware go-ahead never carries over). Never touch the board; check BACKLOG.md's "Real-hardware work still owed" (board
      state) and any handover file for a bench sitting in progress by another session.
   4. Take the lease: read the holder's last register commit (date, `Claude-Session` trailer) and confirm
      that session is idle, completed, failed or archived — otherwise ask the owner. Write your session
@@ -578,19 +642,14 @@ results to the register's header or `audit/artefacts/ENV/`: T02, T05-T10.
   5. Delta: `git diff --name-only <audit-baseline>..origin/<branch>` through `audit/sweeps/owner_of.py`;
      queue closed areas in the header; note the changed files for areas that are mid-pass.
   6. Per-session ENV: T01, T03, T04.
-  7. If `Awaiting owner` is set, stop. Otherwise continue with the lowest open unit (4.1).
-- **Shared docs**: while findings are gathered the audit writes only its own files (`audit/`, this file)
-  plus these exceptions: the README "Further reading" entry for the register, this file's status line
-  and 3.1, and in-place SEV4 doc-drift fixes if PQ1 allows. Wave outputs and quality artefacts live in
-  `audit/artefacts/<AREA>/` until a migration unit moves what is permanent (e.g. TWIN's measure into
-  `digital_twin/README.md`). Edits to shared docs happen in migration or fix units, merging both sides of
-  any conflict; after any merge run every tier, and after one touching `uv.lock` re-verify the installed
-  tool versions against the pins (CLAUDE.md).
-- **Moving target**: other sessions push to `main`, this branch's base since 2026-09-25 (during planning
-  they pushed to the since-merged feature branch, e.g. `0b7feae`, `3062cc7`, `21560a4`, and the 16
-  commits V11 absorbed); they do not edit `audit/` or this file, which exists only on this branch. Auditors read a worktree
-  at the audit baseline; every finding is re-verified at HEAD before it is fixed or migrated
-  (`re-verified@HEAD`).
+  7. Continue with the lowest open unit (4.1).
+- **Shared docs**: from B1 on, the unit that makes a change also updates every doc it touches
+  (current-state rule); the structural doc work is B4. Unit outputs and quality artefacts live in
+  `audit/artefacts/<AREA>/` until the unit that migrates them. After any merge run every level, and
+  after one touching `uv.lock` re-verify the installed tool versions against the pins (CLAUDE.md).
+- **Frozen `main`** (OR52.a (4)): other sessions do not push to it during the audit. Auditors read a
+  worktree at their unit's start commit; every finding is re-verified at the audit branch's HEAD before
+  it is fixed or migrated (`re-verified@HEAD`).
 
 ---
 
@@ -2398,7 +2457,7 @@ silicon-needing check is an entry there with flags and wear stated.
 
 ### 5.19 SEC — Security threat model (cross-cutting)
 
-**Goal**: an explicit threat model (PQ5) and every exposure classified against it — defect, accepted
+**Goal**: the threat model (PQ5: trusted home LAN, OR52.a (3)) stated in SPECIFICATION.md and every exposure classified against it — defect, accepted
 property (with the owner's decision recorded), or out of model.
 
 Topics:
@@ -2938,9 +2997,13 @@ retired `AUDIT_PLAN.md`). Status as of this revision:
       absorbed the fold (queue and handover → BACKLOG, `03f8bcf`), the closed rows (Appendix B), new seeds
       (`SENS.S28`, `HW.S26`-`HW.S28`, `DOC.S24`-`DOC.S29`) and topics (`HW.T20`, `TEST.T20`). Repeat the
       same steps whenever the baseline moves again (`ENV.T08`).
-- [x] **V9** At most 10 owner questions (PQ1-PQ10).
-- [ ] **V6 Owner review** (last): PQ1-PQ10 answered; the owner declares the list complete (or keeps
-      extending it) and gives the execution go-ahead explicitly.
+- [x] **V9** Owner questions: PQ1-PQ10 (answered 2026-09-26); later rounds in the owner's format
+      (OR51.a (3)), recorded in 3.2.
+- [x] **V12 Consolidation passes 1-2** (2026-09-26): the owner requirements read against each other, the
+      plan and CLAUDE.md, then worked into sections 1, 2 and 4 (`audit/CONSOLIDATION.md`). Passes 3+
+      (question-raising scans, OR52.a (5)) follow.
+- [ ] **V6 Owner review** (last): PQ1-PQ10 answered (done); consolidation complete (OR2.b); the owner
+      declares the list complete and gives the execution go-ahead explicitly.
 
 ---
 
