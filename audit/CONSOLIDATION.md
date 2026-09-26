@@ -94,8 +94,9 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
     OR13.a's execution-time drift cases become consolidation work; execution fixes what they settled.
 22. **Legacy REST paths go** (OR58.a): the new API is the only reference; no legacy path is restored,
     key names are harmonized to one scheme before the release. Answers `PAR.T05`.
-23. **No migration** (OR52.a (1)): `PAR.T06`/`T07` become the reflash runbook; `PAR.T08` (files left
-    on a legacy unit's filesystem) stays a code question — can any of them shadow the frozen modules.
+23. **No migration** (OR52.a (1)): `PAR.T06`/`T07` become the reflash runbook; `PAR.T08` is answered by
+    source: a filesystem `.py`/`.mpy` shadows a frozen module (`py/runtime.c:147-150`, `sys.path` is
+    `['', '.frozen', '/lib']`), so the runbook erases the filesystem; a firmware guard is an owner question.
 
 24-33. Continued in `audit/HARVEST_REQUIREMENTS.md` 3.2 (harvest pass 1).
 
