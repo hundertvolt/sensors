@@ -13,7 +13,11 @@ cross-group merge: `audit/hreq/MERGE.md`; execution routing: `audit/hreq/ROUTING
   passes 3+ (section 8 of `CONSOLIDATION.md`).
 - **Candidates**: 965 (G1 HW 109, G2 TEST 74, G3 SENS/ALGO/BUS/LED 109, G4 PLAT/MEM/PERF 87, G5
   CORE/STOR/XCUT/SEC 96, G6 UART/NET/REST 88, G7 TWIN/WEB 86, G8 GEN/TOOL/SCR/CI 134, G9 DOC/PAR/LIC
-  101, G10 code conventions 81).
+  101, G10 code conventions 81). Merged (`MERGE.md`): 213 cross-candidate clusters `HR001`-`HR213`
+  covering 596 candidates, plus 369 singletons — 582 distinct requirements; every ID placed once.
+- **Owner attributions**: of the 206 lines in the repo that attribute a rule to the owner, 129 are
+  carried by candidates, 62 are agent verification notes ("confirmed directly"), 12 are no rule, 3 were
+  uncovered and 2 carried only partly — all five are added in 3.5.
 
 | Provenance | holds | partly | drifted | wrong | stale | unverifiable | not checked | total |
 |---|---|---|---|---|---|---|---|---|
@@ -105,6 +109,8 @@ By relation to OR1-OR58: refines 350, restates 323, extends 166, new 78, conflic
 | GCC 14 CI leg (`G8.070`) | not added; the owner's manual two-chroot run covers it | owner decision 2026-09-18 |
 | Test-side `gc.collect()` before a timed window (`G1.063`) | allowed; never inside it | OR55.a |
 | MemoryError wording (`G4.062`, `G9.046`) | CLAUDE.md and F.2 reworded to OR26.a | OR26.a |
+| Unreachable branches kept on purpose (`HR121`) | a branch no input can reach is removed (OR46.a (2)); a guard against a documented runtime failure that tests cannot provoke (`Timer.init()`'s `MemoryError`) stays, registered in E.5.1 with its double or reason | both owner rows hold in their scope |
+| Frozen website reproducibility (`HR153`) | byte-reproducible: `gzip -n`, build time only in `buildgen/version.py` | P11, conservative |
 
 ### 3.4 Sources not reachable
 
@@ -113,6 +119,44 @@ By relation to OR1-OR58: refines 350, restates 323, extends 166, new 78, conflic
 - `lib/lwip` and `lib/pico-sdk` submodules at `v1.29.0` (G4 marked lwIP-internal facts unverifiable;
   G1 fetched pico-sdk itself); cyw43-driver and micropython-lib are now fetched in the scratchpad.
 
+### 3.5 Owner statements no candidate carried (added)
+
+- WS2812 is supplied from USB 5 V behind a level shifter; data levels are settled, WS2812 vs WS2812B
+  stays open (SPECIFICATION.md:361, owner 2026-09-25) → Part M hardware facts.
+- Watchdog escalation is proven both by an automated assertion and by a manually observable twin run
+  (`tests/test_digital_twin_sensortask_integration.py:421`, "owner decision 7"; the label is defined
+  nowhere and is replaced by the rule itself) → Part E.
+- `asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` read through
+  `readfrom_mem_into()` (owner 2026-09-18, BACKLOG.md:891) → Part G.
+- The owner's named load case — an OpenHAB instance polling two endpoints plus open website tabs,
+  filling the connection ceiling, all answered cleanly (`tests/_webserver_concurrency_scenarios.py:569`)
+  → a named OR49.a load scenario at L2 and L4.
+- The audit-plan lifecycle (README.md:701) is transient and ends with the audit (OR11.a); no rule.
+
 ## 4. Questions for the owner
 
-Section 4 of the report in chat; answers are recorded as OR rows in PROJECT_AUDIT_PLAN.md 3.2.
+Asked 2026-09-26; answers are recorded as OR rows in PROJECT_AUDIT_PLAN.md 3.2. Answered during the
+pass without a question: OR54 (website device set; twin sampler), OR55 (`gc.collect()` complete on
+return), OR56 (one event one entry; DNS fallback as config; FRAM layout per build), OR57 (legacy
+intent), OR58 (new API is the reference; key names harmonized).
+
+1. **Frozen modules shadowed by filesystem files: add a firmware guard?**
+   (a) Runbook only: every reflash erases the filesystem — no firmware change; a later stray upload
+   still overrides silently. (b) Guard: the generated boot entry puts `.frozen` first on `sys.path` —
+   one generated line; no filesystem file can replace product code. (c) Both — recommended.
+2. **Mark intended resets so evidence tells them from starvation?**
+   (a) No: `reset_cause()` stays `WDT_RESET` for every reset — no change; an unexplained reset stays
+   ambiguous. (b) Yes: a marker written before every `machine.reset()`, reported in `/status` — a small
+   product change with tests; P7 gains a real reset cause.
+3. **Which MicroPython version do fielded units run?**
+   (a) 1.26 as CLAUDE.md says. (b) 1.24.1 as the dev snapshot showed — CLAUDE.md, BACKLOG and the
+   runbook reworded. (c) Unknown per unit — the runbook reads each unit's version before reflashing.
+4. **SGP40 resets the whole I2C bus on every task restart: keep?**
+   (a) Keep, recorded as your decision — datasheet reset, hazard tests exist; new against field units.
+   (b) Replace by an addressed re-initialisation — no broadcast on shared buses; tests change at every
+   tier.
+5. **Codecov uploads do nothing today: register, drop or keep?**
+   (a) Register the repo and a token — coverage trends online; one more external account and secret.
+   (b) Drop both steps and their docs — coverage stays in the job summary and HTML artifact.
+   (c) Keep as a documented no-op.
+
