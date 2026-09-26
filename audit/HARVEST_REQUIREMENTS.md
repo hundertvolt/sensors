@@ -114,8 +114,11 @@ By relation to OR1-OR58: refines 350, restates 323, extends 166, new 78, conflic
 
 ### 3.4 Sources not reachable
 
-- Stull (2011) and McCamy (1992) papers behind the dew-point and CCT formulas (`G3.008`): the code's
-  validity bounds stay as they are until a copy is available.
+- Stull (2011): no longer unreachable. The owner supplied it (`audit/refs/`), and `G3.008` is checked against it.
+  Decided: the gate also rejects the excluded cold-dry corner, and the sea-level pressure limit goes into the comment and Part M.
+- McCamy (1992): paywalled. Replaced by an independent oracle (Planck's law with the CIE 1931 2° observer; Ohno 2013
+  off the locus). Decided: keep 2000–12500 K; the comment states the measured error instead of citing the paper for the span; a
+  test pins points from that table (harmonization 29). Alduchov & Eskridge (1996) and Sonntag (1990): not needed.
 - `lib/lwip` and `lib/pico-sdk` submodules at `v1.29.0` (G4 marked lwIP-internal facts unverifiable;
   G1 fetched pico-sdk itself); cyw43-driver and micropython-lib are now fetched in the scratchpad.
 
