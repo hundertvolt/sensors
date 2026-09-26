@@ -5,7 +5,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ITEM = re.compile(r"^- \*\*([A-Z]+)\.N(\d+)\*\*", re.M)
-REF = re.compile(r"\b([A-Z]+)\.N(\d+)(?:\s*[-–]\s*(?:\1\.)?N?(\d+))?")
+REF = re.compile(r"\b(?:([A-Z]+)\.)?N(\d+)\b(?:\s*[-–]\s*(?:[A-Z]+\.)?N?(\d+)\b)?")
 
 
 def catalog_ids():
@@ -18,9 +18,12 @@ def catalog_ids():
 def placed_ids(files):
     ids = set()
     for p in files:
-        for area, lo, hi in REF.findall(p.read_text()):
-            top = int(hi) if hi else int(lo)
-            ids |= {(area, n) for n in range(int(lo), top + 1)}
+        for line in p.read_text().splitlines():
+            area = None  # a bare "N012" inherits the last area prefix on its line
+            for pre, lo, hi in REF.findall(line):
+                area = pre or area
+                if area:
+                    ids |= {(area, n) for n in range(int(lo), (int(hi) if hi else int(lo)) + 1)}
     return ids
 
 
