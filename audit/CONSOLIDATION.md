@@ -32,15 +32,15 @@ code, is tested from main cases to rare corner cases, and runs lean on low-end h
 
 | Phase | Content | Driven by |
 |---|---|---|
-| A. Consolidation (now) | Pass 1: requirements. Pass 2+: requirements × harvest × seeds × code. Source-access list. Owner questions, owner format. Exit: every foreseeable question answered | OR2.a/b, OR3, OR4.a, OR5, OR51.a (3) |
+| A. Consolidation (now) | Pass 1: requirements (done). Passes 2+: requirements × harvest × seeds × code, plus the question-raising scans — rule/decision drift, legacy losses, defect candidates, necessity verdicts, open items. Source-access list. Owner questions, owner format. Exit: every foreseeable question answered | OR2.a/b, OR3, OR4.a, OR5, OR51.a (3), OR52.a (5) |
 | B0. Baseline | Toolchain, every tier once, counts/timings/coverage recorded | plan 4.6, OR39.a (4) |
 | B1. Foundations | Changes other work builds on, done first to avoid churn: legacy move to `legacy/`, errno/wrnno catalog, central log-repeat rule, compare-before-write primitive (SCD30), config objects and `max-args`, one-source website definitions, one tier ladder, `@tunable` scheme | OR32, OR28, OR35, OR42.c, OR46.b, OR43.a, OR45.a, OR30 |
-| B2. File-by-file pass | Every file, four levels (micro, imports, seams, macro), all lenses, the OR51 gate, legacy-loss scan, dead code, staleness incl. non-code files | OR46.a, OR51, OR48.a, OR50, OR18, OR26, OR36 |
+| B2. File-by-file pass | Every file, four levels (micro, imports, seams, macro), all lenses, the OR51 gate, dead code, staleness incl. non-code files | OR46.a, OR51, OR48.a, OR50, OR18, OR26, OR36 |
 | B3. Test campaign | Every test reviewed (biting), fault planting, intent and interaction matrices, generated code and build chain, load limits, races, hygiene | OR16, OR19, OR21, OR22, OR23, OR25, OR37, OR38, OR41, OR49 |
 | B4. Docs | History trace, drift, content rules, principles Part + one checklist, README, OR51 persistence, module procedure proven on ISL29125/BMP3xx baselines | OR13, OR14, OR15, OR27, OR44.a (3), OR10.b, OR51.a (4) |
 | B5. Close of execution | Cleanup, re-verification passes until one pass is all green, hardware queue and knowledge base, twin fidelity, final report (load-test entries) | OR11, OR9.a, OR8.a, OR29, OR17, OR49.a (3) |
 | C. Hardware rounds | Owner go-ahead per session. FRAM logs read first, two-image GC proof, bench boot log and trigger timestamps, twin correction, bench Pi package check | OR5.a, OR17, OR28.a, OR40.a (3), OR47.a, OR50.a (3) |
-| D. Close | Plan and `audit/` deleted after the last hardware round; merge to `main` | OR11.a |
+| D. Close | Plan and `audit/` deleted after the last hardware round; one merge into the frozen `main` | OR11.a, OR52.a (4) |
 
 Sync points throughout B (OR6.a): commit, push, both GC stages locally, CI green (event hooks
 only), register and PR status note, continue.
@@ -98,6 +98,16 @@ only), register and PR status note, continue.
 - `digital_twin/unix_port_gc_unwedge.py` is `gc.collect()` used as a tool; its root cause is closed
   by the `unix_kbd_intr` override (Part B.14.1).
 
-## 5. Open questions (owner format)
+## 5. Owner answers to pass 1 (OR52, integrated in OR52.a and the PQ table)
 
-See the chat message of 2026-09-26; answers are recorded in PROJECT_AUDIT_PLAN.md 3.2.
+1. Reflashed legacy units: fresh setup and a runbook, no migration; keys free to rename in the audit.
+2. From the release on, persisted config keys and file names are a public interface (migration +
+   golden stored-config test).
+3. Threat model: trusted home LAN; malformed input still must not crash anything.
+4. `main` frozen during the audit; one final merge; no delta passes.
+5. Question-raising scans run in consolidation passes 2+; only unexpected questions during execution.
+6. The heap-unlock helper is retired once the override is proven applied; F.6 keeps how it worked.
+7. Public MIT repo: third-party notices and datasheet redistribution terms are in scope.
+8. Phase order as in section 2.
+
+Still open: the Sensirion VOC Index application note (owner upload); `GEN.T07` (pass 2).
