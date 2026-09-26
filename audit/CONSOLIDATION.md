@@ -110,4 +110,4 @@ only), register and PR status note, continue.
 7. Public MIT repo: third-party notices and datasheet redistribution terms are in scope.
 8. Phase order as in section 2.
 
-Still open: the Sensirion VOC Index application note (owner upload); `GEN.T07` (pass 2).
+Follow-up (OR53): Sensirion VOC notes added to `datasheets/sgp40/`; `GEN.T07` answered (pin check follows the chip's function table).
