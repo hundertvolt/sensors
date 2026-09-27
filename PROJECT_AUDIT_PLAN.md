@@ -5,7 +5,7 @@ the conversation that starts it.** Nothing in this file authorizes any audit wor
 observation and question below is a *recorded item to cover later*, never an implicit start. Until
 the owner declares the planning phase finished, the only permitted work on this file is extending,
 correcting and validating the list itself (section 6) and the consolidation passes (OR2.a,
-`audit/CONSOLIDATION.md`).
+`audit/CONSOLIDATION.md`; the requirement register of allover pass 2 in `audit/pass2/`).
 
 **Temporary.** Like every other temporary plan doc here, this file is deleted once the audit closes. Its
 permanent outcomes (fixed code, settled decisions, new rules) migrate into `SPECIFICATION.md`,
@@ -37,6 +37,10 @@ follow PQ3 (proposed `SEV1`-`SEV4`), register findings are `AF-<AREA>-<nnn>`, ow
 - **Owner requirements** (3.2, `OR<n>`) are the owner's record, verbatim; sections 1, 2 and 4 are their
   integrated reading, and `audit/CONSOLIDATION.md` holds the big picture (pillars, phases,
   harmonizations, requirement → phase → permanent home).
+- **Register** (`audit/pass2/`, allover pass 2): every requirement the owner rows, the harvest and the
+  decision-provenance answers yield, stated once with its state at HEAD, execution unit and permanent
+  home; `audit/pass2/INDEX.md` lists them by unit. A topic or seed whose pass-2 status is not plain work
+  carries a `⟨pass 2, <status>: … — <group>: <requirements>⟩` note (answered, overtaken, stale, dup).
 - **Status markers**: `[ ]` open, `[x]` done, `[~]` partially done (used in 1.2, 4.6, 5 and 6). During
   execution, progress lives only in the register (4.5); topic boxes in section 5 are not ticked.
 - **Where things live**: this file (plan, topics, seeds); `audit/` (temporary audit apparatus: planning
@@ -78,7 +82,8 @@ follow PQ3 (proposed `SEV1`-`SEV4`), register findings are `AF-<AREA>-<nnn>`, ow
       applied and recorded per area — "N/A, because …" is valid, silence is not.
 - [ ] Every register finding terminal (4.5); the owner has reviewed every decision taken on the
       owner's behalf (OR2.c) and every change logged for review (OR12.a, OR13.a, OR24.a).
-- [ ] Every owner requirement OR1-OR53 fulfilled, traced through `audit/CONSOLIDATION.md` section 4.
+- [ ] Every owner requirement OR1-OR73 fulfilled, traced through `audit/CONSOLIDATION.md` section 4 and
+      the register (`audit/pass2/INDEX.md`, by owner row); every live register requirement holds.
 - [ ] Green with zero `MemoryError`/`memory allocation failed`, at both GC stages wherever MicroPython
       runs (OR40.a): `scripts/lint.sh`, `scripts/typecheck.sh`, `scripts/test.sh` (`-1` and
       `GC_THRESHOLD=32768`), `scripts/test.sh --coverage`, `scripts/run_digital_twin_ci.sh` for every
@@ -92,13 +97,17 @@ follow PQ3 (proposed `SEV1`-`SEV4`), register findings are `AF-<AREA>-<nnn>`, ow
       `@tunable` register (OR30.a), README vs `--help` (OR15.a), one summary block per runner (OR15.a,
       OR21.a), one runtime watchdog feed site (OR31.a), `gc` sites (OR40.a), tier containment
       (OR45.a), stored-config golden file (OR52.a (2)), device set derived from `devices/*.toml`
-      (OR43.a), no current file pointing at an old legacy path (OR32.a).
+      (OR43.a), no current file pointing at an old legacy path (OR32.a), `.frozen` first on `sys.path`
+      (OR59.a), the `reset_reason` codes (OR60.a), one event one entry (OR56.a (1)), actorless decision
+      vocabulary and dead citations (OR68.a (4)), the REST reference and TOML schema contracts
+      (LEAD/R08, LEAD/R11).
 - [ ] Docs: the "Design principles" Part and the one ordered checklist in SPECIFICATION.md, the
       `integrate-module` skill proven on the ISL29125 and BMP3xx baselines (OR10.b, OR44.a); README
       (OR15.a); history trace resolved (OR14.a); content rules met everywhere (OR27.a, OR51).
 - [ ] Hardware work prepared (OR8.a, OR29.a) and run in the hardware rounds (OR5.a, OR17), including
       the two-image GC proof (OR40.a (3)), the FRAM read before reflash (OR28.a (1)) and the bench boot
-      and trigger timestamps (OR47.a).
+      and trigger timestamps (OR47.a), the `reset_reason` codes on silicon (OR60.a (4)) and the standard
+      board state at each round's start and end (LEAD/R02).
 - [ ] End-of-execution report in chat and in PR #107's description, with one entry per new load test
       (OR49.a (3)).
 - [ ] CLAUDE.md side-obligations met for every change: BACKLOG's chroot-owed list for build-environment
@@ -129,13 +138,12 @@ setup installs or downloads (OR50.a), and the redistribution terms of `datasheet
 
 | Path | Treatment | Authority |
 |---|---|---|
-| `arduino/` | Out of scope entirely: no audit, no reconciliation, no findings about its contents (licensing included); stays at the root; anything about it is post-audit (OR5.a (3)); the only open item is whether docs should state the exclusion (`LIC.T04`) | BACKLOG (owner, 2026-09-24, SETTLED) |
+| `arduino/` | Out of scope entirely: no audit, no reconciliation, no findings about its contents (licensing included); stays at the root; anything about it is post-audit only (OR5.a (3)); README.md and THIRD_PARTY_LICENSES.md state the exclusion (`LIC.T04`, G9/R21) | BACKLOG (owner, 2026-09-24), OR5.a (3) |
 | `python/`, `modules/`, `build-*.sh`, `html_raw/`, `dev_legacy/`'s driver copies | **Read-only reference**, moved unchanged into `legacy/` in B1 (OR32.a). Read for the legacy-loss scan (consolidation, OR48.a) and parity (`PAR`); may run in a scratch directory as a published-value reference, nothing committed (PQ10). Never edited | CLAUDE.md legacy rule |
 | `ext/microdot.py`, `ext/freezefs/` | Never edited or restyled. Audited only for *what this project relies on* from it, and for whether our wrappers cover its gaps. Stays on Microdot `v2.6.2` (`v2.7.0` checked 2026-09-26: nothing this project needs) | CLAUDE.md vendoring rule |
 | `datasheets/` | Reference material, complete (OR53). Their redistribution terms are checked (`LIC.T07`) | CLAUDE.md / Part A.6, OR52.a (7) |
 | `dev_legacy/` session logs and snapshot | Reference only; `README.md`'s current bench content moves to its canonical living docs in B1 (OR32.a (3)) | Part A.1 |
 | `modules/_boot.py`'s `import sensortask.py` | Never changed without real-hardware testing (path becomes `legacy/firmware/…`, rule unchanged) | CLAUDE.md hard rule |
-| `dev` bench quirks | Out of scope as bugs (e.g. routes to uninstantiated objects) | CLAUDE.md |
 
 ### 2.3 Standing constraints and CLAUDE.md conformance
 
@@ -154,13 +162,18 @@ rules; where an owner requirement rewords a rule, the requirement is named and w
 - **Drift**: rule or decision drift → owner question in consolidation, followed as it stands and
   logged during execution; factual doc drift → fixed in place (OR13.a).
 - **Settled decisions** are not reopened (BACKLOG "SETTLED", Part A.4 "confirmed intentional", the
-  wedged-I2C/WiFi backstop rules, `NTP_Host`'s 1024 bound, FRAM
-  `verify_present()`/`set_write_protected()`, buildspec hand-maintenance, no UART version
-  negotiation) unless the premise is factually wrong — then a consolidation question.
+  wedged-I2C/WiFi backstop rules, FRAM `verify_present()`/`set_write_protected()`, buildspec
+  hand-maintenance, no UART version negotiation (OR70.a (10)), the SGP40 general-call reset
+  (OR64.a/OR65.a), the hotspot fallback password (OR70.a (1)), every decision OR54-OR73 records)
+  unless the premise is factually wrong — then a consolidation question. `NTP_Host`'s bound is no
+  longer settled: it is re-decided with the key scheme (OR70.a (4)). The most recent owner decision
+  wins without asking (OR68.a (2)); a decision without owner words is never declared an agent's (OR64).
 - **Interfaces** (OR24.a (2), OR52.a (2)): internal code changes freely; REST routes and JSON keys,
   `devices/*.toml` keys, `@web` tags and FRAM layout names change only together with every consumer;
-  legacy REST paths stay; the UART wire format is untouched; persisted config keys and file names are
-  free until the release and stable or migrated after it; `ext/` and the legacy tree are never edited.
+  no legacy REST path stays and key names follow one scheme before the release (OR58.a); the UART wire
+  format is untouched; persisted config keys, file names and the REST surface are free until the
+  release and stable or migrated after it (OR52.a (2), LEAD/R08); `ext/` and the legacy tree are never
+  edited.
 - **Product purity**: nothing frozen into the firmware exists for a test (OR20.a, OR36.a); API that
   completes a driver for its hardware stays (OR36.a (3)).
 - **Exceptions**: no blanket `MemoryError` wraps around asyncio primitives (F.2), but a real
@@ -183,7 +196,10 @@ rules; where an owner requirement rewords a rule, the requirement is named and w
 - **Hygiene**: every test cleans up on every path; ports are OS-assigned or taken under a lock; evidence
   is archived, never deleted (OR38.a).
 - **Docs**: current state, one short reason plus a provenance tag per rule, no history (OR27.a);
-  comment rule — one concise header block, at most 3 lines inline — for every file (PQ6, OR51).
+  every decision statement names its actor and date, an owner decision quotes the owner's words,
+  compaction never changes actor, qualifier or scope, nothing permanent cites a temporary plan
+  (OR68.a (4), harmonization 35); comment rule — one concise header block, at most 3 lines inline —
+  for every file (PQ6, OR51).
 - **`main` is frozen** for the audit; one merge at close (OR52.a (4)).
 - BACKLOG numbering: numbers are never reused — the next new item is ≥ 51 (check `git log` first).
   Real-hardware row IDs live on in BACKLOG.md's "Real-hardware work still owed" (the queue and handover
@@ -212,7 +228,7 @@ consolidation passes, in the owner's format (OR51.a (3)), and are recorded in 3.
 | PQ7 | Moving target | Other sessions keep committing to `main`, the audit's base since 2026-09-25. (a) freeze non-audit work during the audit; (b) audit a pinned baseline and run delta passes over files changed since each area's closure. Also: one arbiter across sessions? Does the audit go-ahead persist across sessions? | **Answered 2026-09-26** (OR52): (a) `main` is frozen for the audit; one final merge |
 | PQ8 | Owner stop-points (CLAUDE.md step-session "stop and report") | After ENV; after each wave; only at the end | **Answered 2026-09-26** (OR2, OR6.a): no owner stop-points during execution; the owner may look in at any sync point |
 | PQ9 | Resources | Agents per wave, token budget, execution host/egress. **Partly answered** (owner, 2026-09-25, verbatim in 3.1: parallel agents "as many as you like", with care, converging, not interfering — given for the planning session). Open: does that permission carry over to execution sessions; may ENV prep (toolchain build, baseline run) happen before the go-ahead? | **Answered 2026-09-26**: the parallel-agents permission covers the whole audit (its "later work" plus OR1.a); ENV prep follows the execution go-ahead |
-| PQ10 | Owner inputs the plan cannot derive | Is a legacy→refactor reflash campaign planned (makes `PAR.T06`/`PAR.T07` SEV1)? External REST consumers of the legacy routes (`PAR.T05`)? The Sensirion VOC C reference (reachable since 2026-09-25: `Sensirion/gas-index-algorithm`, OR4.a); missing datasheets (none left: RP2040, WS2812, QSPI flash, CYW43439 and BMP390 added 2026-09-25)? Permission to run legacy code as an oracle (`PAR.T12`)? UF2 distribution scope and repo visibility (`LIC.T06`/`T07`)? Browser support floor (`WEB.T09`)? Is `pico_gpio.py`'s conservatism intended (`GEN.T07`)? | **Partly answered 2026-09-26** (OR52, OR24.a): no legacy config migration, a reflash runbook only; legacy REST paths stay; public MIT repo; browser floor current Chromium, Firefox, Safari; legacy code may run in scratch as a published-value reference. Sensirion VOC notes uploaded; `GEN.T07` answered (OR53) |
+| PQ10 | Owner inputs the plan cannot derive | Is a legacy→refactor reflash campaign planned (makes `PAR.T06`/`PAR.T07` SEV1)? External REST consumers of the legacy routes (`PAR.T05`)? The Sensirion VOC C reference (reachable since 2026-09-25: `Sensirion/gas-index-algorithm`, OR4.a); missing datasheets (none left: RP2040, WS2812, QSPI flash, CYW43439 and BMP390 added 2026-09-25)? Permission to run legacy code as an oracle (`PAR.T12`)? UF2 distribution scope and repo visibility (`LIC.T06`/`T07`)? Browser support floor (`WEB.T09`)? Is `pico_gpio.py`'s conservatism intended (`GEN.T07`)? | **Partly answered 2026-09-26** (OR52, OR24.a): no legacy config migration, a reflash runbook only; legacy REST paths stay (overtaken by OR58.a: none stays); public MIT repo; browser floor current Chromium, Firefox, Safari; legacy code may run in scratch as a published-value reference. Sensirion VOC notes uploaded; `GEN.T07` answered (OR53) |
 
 ### 3.1 Owner record (verbatim, dated)
 
@@ -407,14 +423,15 @@ phase and permanent home.
 
 ### 4.1 Execution order (phases; details and driving requirements in `audit/CONSOLIDATION.md` section 2)
 
-- **Phase A — Consolidation** (before the go-ahead): passes 1-2 over the owner requirements (done);
-  passes 3+ run the question-raising scans (OR52.a (5)). Exit: every foreseeable question answered
-  (OR2.b).
+- **Phase A — Consolidation** (before the go-ahead): requirement passes 1-2, harvest pass 1, the
+  decision-provenance sweep and allover pass 2 (the register, `audit/pass2/`) are done; passes 3+ run
+  the question-raising scans (OR52.a (5)). Exit: every foreseeable question answered (OR2.b).
 - **B0 — ENV** (4.6): build the toolchain, run every level once at both GC stages, record the baseline
   (counts, timings, peak memory, coverage, warnings), build the do-not-reopen index (`DOC.T14`), commit
   the sweep scripts, and fix the two lens inputs — `SEC.T01` (the threat model, written from PQ5) and
-  `PAR.T01`/`PAR.T02` (the legacy inventory, from the consolidation legacy scan). Nothing is audited
-  against an unmeasured tree.
+  `PAR.T01`/`PAR.T02` (the legacy inventory, from the consolidation legacy scan); write the five
+  prevention rules and the reviewed-decision tag form into CLAUDE.md with their `tests_scripts` check
+  (OR68.a (4), LEAD/R16). Nothing is audited against an unmeasured tree.
 - **B1 — Foundations**, in this order: legacy move to `legacy/`; error-number catalog; central
   log-repeat rule; compare-before-write primitive; config objects and `max-args`; one-source website
   definitions; tier ladder and runner summary block; `@tunable` scheme.
@@ -428,7 +445,8 @@ phase and permanent home.
 - **Phase C — Hardware rounds** and **Phase D — Close**: each round with its own go-ahead; plan and
   `audit/` deleted after the last one; one merge into `main`.
 
-No owner stop-points in B (PQ8). After every unit: an OR6.a sync point (commit, push, full local
+Each unit works through its register lines (`audit/pass2/INDEX.md`, by unit) together with its topics
+and seeds. No owner stop-points in B (PQ8). After every unit: an OR6.a sync point (commit, push, full local
 suite at both GC stages, CI green via event hooks, register and PR status note), then continue.
 
 **Units** (the register's header tracks each; "the lowest open unit" in 4.7 means the lowest number
@@ -458,9 +476,9 @@ not `closed`, together with every other open unit of its group):
 | L-MEM | Allocation bounded and not client-controllable; churn on hot paths; long-lived placement (Part I) |
 | L-LIFE | Every resource (socket, timer, task, file, lock, buffer, FRAM chunk) released on every path incl. cancel/restart |
 | L-STATE | State machines complete: every state × event, including task restart, reboot, power loss, and cancellation at every `await` |
-| L-DIAG | Every failure mode leaves persisted, attributable evidence (errcount/FRAM entry, reset cause) — or is recorded as knowingly silent; routine events don't churn the evidence; a repeated code spends no new slot (OR35.b) |
+| L-DIAG | Every failure mode leaves persisted, attributable evidence (errcount/FRAM entry, `reset_reason` in `mem_backup()`, OR60.a) — or is recorded as knowingly silent; routine events don't churn the evidence; one event is one entry (OR56.a (1)); a repeated code spends no new slot (OR35.b) |
 | L-TGT | The property holds in target semantics, not only on the 64-bit double-precision Unix port or the twin (float32, 31-bit small ints, soft-callback drop, IRQ-off windows, blocking UART reads) |
-| L-COMPAT | REST shapes and UART frames stay stable; persisted config keys and file names are free until the release, stable or migrated after it (OR52.a (2)); FRAM content need not survive a reflash (OR47.a (2)); no legacy migration (OR52.a (1)) |
+| L-COMPAT | UART frames stay stable; REST shapes, persisted config keys and file names are free until the release (one key scheme, OR58.a), stable or migrated after it (OR52.a (2), LEAD/R08); FRAM content need not survive a reflash (OR47.a (2)); no legacy migration (OR52.a (1)) |
 | L-WEAR | Flash/NVM/FRAM write frequency and who can trigger it (REST, loops, tests) — and host I/O (CLAUDE.md's SSD rule) |
 | L-SEC | Trusted home LAN (PQ5): unauthenticated writes and `bootloader` are documented limitations; malformed, partial or oversized input never crashes anything |
 | L-API | D.10 consistency within and across files; naming, ordering, signatures (OR24.a); argument grouping and `max-args` (OR46.b); return conventions; Part G reuse |
@@ -3040,8 +3058,14 @@ retired `AUDIT_PLAN.md`). Status as of this revision:
 - [x] **V9** Owner questions: PQ1-PQ10 (answered 2026-09-26); later rounds in the owner's format
       (OR51.a (3)), recorded in 3.2.
 - [x] **V12 Consolidation passes 1-2** (2026-09-26): the owner requirements read against each other, the
-      plan and CLAUDE.md, then worked into sections 1, 2 and 4 (`audit/CONSOLIDATION.md`). Passes 3+
-      (question-raising scans, OR52.a (5)) follow.
+      plan and CLAUDE.md, then worked into sections 1, 2 and 4 (`audit/CONSOLIDATION.md`); harvest pass 1
+      and the decision-provenance sweep followed (answers OR54-OR73).
+- [x] **V13 Allover pass 2** (2026-09-27): ten agents re-read every requirement source with everything
+      known from the start; the lead resolved cross-group points and adopted gaps. Result: the register
+      (`audit/pass2/`, 517 live requirements), `audit/CONSOLIDATION.md` rewritten, sections 0-4 and 6
+      updated, 141 topics and seeds annotated. `audit/sweeps/pass2_check.py`: every candidate, cluster,
+      topic, seed, provenance decision and owner row placed. Passes 3+ (question-raising scans,
+      OR52.a (5)) follow.
 - [ ] **V6 Owner review** (last): PQ1-PQ10 answered (done); consolidation complete (OR2.b); the owner
       declares the list complete and gives the execution go-ahead explicitly.
 

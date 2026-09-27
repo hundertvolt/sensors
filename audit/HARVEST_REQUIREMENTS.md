@@ -1,5 +1,9 @@
 # Harvest requirements — pass 1 over the harvest results
 
+**Superseded as the requirement source by allover pass 2** (2026-09-27): the register is `audit/pass2/`
+(`audit/CONSOLIDATION.md` section 7); harmonizations 24-33 moved to `audit/CONSOLIDATION.md` section 3;
+the F18 row of 3.3 is overtaken by OR72.a (1). Kept as the record of pass 1.
+
 Audit working file (temporary, deleted with `audit/`, OR11.a). Method: `audit/CONSOLIDATION.md`
 section 7. Detail per candidate: `audit/hreq/G1.md`-`G10.md` (brief: `audit/sweeps/hreq_prompt.md`);
 cross-group merge: `audit/hreq/MERGE.md`; execution routing: `audit/hreq/ROUTING.md`. Baseline: HEAD

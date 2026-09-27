@@ -1,5 +1,8 @@
 # Requirement merge — clusters and owner-attribution coverage (HEAD, 2026-09-26)
 
+**Superseded by allover pass 2** (2026-09-27): every cluster and singleton is restated in the register
+(`audit/pass2/`, owner group in `audit/pass2/ASSIGN.md`). Kept as the record of pass 1.
+
 Read with OR54-OR58 (recorded after this merge ran): a test may measure in the statement after
 `gc.collect()` (OR55.a); one event logs one entry (OR56.a (1)); FRAM layout is fixed per build only
 (OR56.a (3)); legacy parity is with intent (OR57.a); no legacy REST path stays (OR58.a).

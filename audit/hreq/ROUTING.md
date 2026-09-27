@@ -1,5 +1,8 @@
 # Harvest requirements — routing (consolidation, HEAD 06eff58)
 
+**Superseded by allover pass 2** (2026-09-27): every requirement's State names its unit; the per-unit
+list is `audit/pass2/INDEX.md`. All 28 `decide` lines are answered. Kept as the record of pass 1.
+
 Audit working file (temporary, deleted with `audit/`, OR11.a). Input: the 965 candidates of `audit/hreq/G1.md` … `G10.md`, the owner rows OR1-OR55 (PROJECT_AUDIT_PLAN.md 3.2) and the unit list (4.1). Read-only routing: nothing here changes code, tests or docs.
 
 ## Conventions
