@@ -24,7 +24,7 @@ def expand_ranges(text):
 
 
 def main():
-    files = sorted((ROOT / "pass2").glob("G*.md"))
+    files = sorted((ROOT / "pass2").glob("G*.md")) + [ROOT / "pass2" / "LEAD.md"]
     text = "\n".join(p.read_text() for p in files)
     got = ids(r"\b(G(?:10|[1-9])\.\d{3}|HR\d{3}|[A-Z]{2,5}\.[TS]\d{2}|A2-\d{2}|[ABCDEVL]\d{2}|OR\d+)\b", text) | expand_ranges(text)
     hreq = "\n".join(p.read_text() for p in (ROOT / "hreq").glob("G*.md"))
@@ -49,7 +49,7 @@ def main():
         miss = sorted(want - have)
         bad += bool(miss)
         print(f"{name}: {len(want)} expected, {len(want) - len(miss)} placed, {len(miss)} missing" + (": " + ", ".join(miss[:40]) if miss else ""))
-    reqs = re.findall(r"(?m)^### (G(?:10|[1-9])/R\d+)\b", text)
+    reqs = re.findall(r"(?m)^### ((?:G(?:10|[1-9])|LEAD)/R\d+)\b", text)
     dup = sorted({r for r in reqs if reqs.count(r) > 1})
     print(f"requirements: {len(reqs)} in {len(files)} files" + (f", duplicate IDs: {dup}" if dup else ""))
     return 1 if bad or dup else 0
