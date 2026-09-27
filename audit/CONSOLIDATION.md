@@ -104,7 +104,7 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
     claim the primary source contradicts is corrected in place whoever wrote it; an owner rule with a
     wrong stated reason keeps its rule and gets its reason corrected (OR13.a).
 25. **Agent rules** are adopted as project rules where they hold and fit the owner rows, labelled
-    "(agent, date)" (OR71.a (0)); they yield where an owner row says otherwise; a behaviour divergence
+    "(agent, date)" (OR71.a (0); list-L items with an owner trail: owner question 4); they yield where an owner row says otherwise; a behaviour divergence
     from legacy that an agent decided alone goes to the owner (OR48.a (2)), unless it is an adaptation
     with no functional loss.
 26. **Legacy parity is with intent** (OR57): a legacy bug that defeats legacy's own intent is a legacy
@@ -145,9 +145,8 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
 41. **Load tests prove degradation and recovery** (OR49.a, OR72.a (1)): starvation under a
     hypothetical client (four zero-think readers) is accepted degradation, not a failure (open to the
     owner's veto).
-42. **Boot order** (OR47, lead decision on the owner's behalf): strict sequencing, completeness and one
-    fixed generated order; the concrete order (timer starts, NTP force sync, task starts) is stated in
-    A.7 with its reason (LEAD 1 #3).
+42. **Boot order** (OR47.a (1)): strict sequencing, completeness and one fixed generated order. Which
+    comes first, tasks (as confirmed) or timers (as coded), is owner question 3.
 43. **Adopted gaps** (OR44.a (1)): pillar gaps the groups found are agent-rank requirements (LEAD/R01-
     R17), on the owner-review list.
 
@@ -193,7 +192,6 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
 - OR11.a (1): queue and handover already deleted; plan and `audit/` go after the last round (OR17).
 - OR35.a (5) → OR35.b: no distinction by origin.
 - OR47.a (3): the SCD30 tick stays 500 ms (rewritten in the row itself).
-- OR47.a (1)'s phase list → harmonization 42 (the owner's rule is the sequencing, not the listed order).
 - OR48.a (3): the scan runs in consolidation (OR52.a (5)).
 - OR51.a (4): "Part D" → the one ordered checklist absorbing Part D (harmonization 4).
 - OR36 example "like BMP3XX's" → harmonization 10.
@@ -245,6 +243,10 @@ permanent home, pillar and what pass 2 changed.
   248, owner-confirmed 56, fact 68, agent 128, convention 17.
 - **Plan**: 141 topics and seeds carry a ⟨pass 2 …⟩ note (110 answered, 17 overtaken, 12 duplicate,
   2 stale); the other 532 stay execution checklist items.
+- **Verification** (four adversarial verifiers, `audit/pass2/verify/V1.md`-`V4.md`): 68 defects in 523
+  requirements — mostly ranks and dates, some scope wording (dropped "until" and veto qualifiers, a
+  missing repair exception, a web-search ban against OR4.a), a few counts; applied per
+  `verify/RULINGS.md`; two became owner questions 3-4.
 - **Superseded pass-1 files**: `audit/hreq/MERGE.md` and `ROUTING.md` (their clusters, routing, adoption
   check and homes are in the register); `audit/hreq/G*.md` stay as the per-candidate evidence.
 
@@ -274,6 +276,7 @@ current text; the history trace over milestones and per-commit doc history remai
 171-item bucket (OR12.a), necessity verdicts (OR33.a, Appendix B), open and deferred items (OR5,
 OR51.a (2)). Output: owner questions in the owner's format; settled items become register lines.
 
-Open for the owner (asked with the pass-2 report): (1) vendor datasheet PDFs in the public repo; (2)
-`disallow_any_explicit` in this audit or deferred. Still open from before: the F18 reading (OR72.a (1))
+Open for the owner (asked with the pass-2 report, `audit/pass2/LEAD.md` section 4): (1) vendor datasheet
+PDFs in the public repo; (2) `disallow_any_explicit` in this audit or deferred; (3) boot order, tasks or
+timers first; (4) owner-tagged implementation choices, agent or owner label. Still open from before: the F18 reading (OR72.a (1))
 awaits a possible veto; C12/C13 are deferred to BACKLOG's owner-question list (OR69.a (7)).

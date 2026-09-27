@@ -3064,8 +3064,8 @@ retired `AUDIT_PLAN.md`). Status as of this revision:
       known from the start; the lead resolved cross-group points and adopted gaps. Result: the register
       (`audit/pass2/`, 517 live requirements), `audit/CONSOLIDATION.md` rewritten, sections 0-4 and 6
       updated, 141 topics and seeds annotated. `audit/sweeps/pass2_check.py`: every candidate, cluster,
-      topic, seed, provenance decision and owner row placed. Passes 3+ (question-raising scans,
-      OR52.a (5)) follow.
+      topic, seed, provenance decision and owner row placed; four adversarial verifiers found 68
+      defects, applied (`audit/pass2/verify/`). Passes 3+ (question-raising scans, OR52.a (5)) follow.
 - [ ] **V6 Owner review** (last): PQ1-PQ10 answered (done); consolidation complete (OR2.b); the owner
       declares the list complete and gives the execution go-ahead explicitly.
 

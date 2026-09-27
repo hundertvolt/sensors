@@ -14,7 +14,7 @@ need only the cross-reference they already carry. The points below needed a deci
 |---|---|---|---|
 | 1 | Contradictions flagged against HR054, HR150/HR042, HR048, HR014, HR209 and SPEC M.1.1 item 18 | Already resolved in the owning requirement (G5/R35-R36, G4/R40, G3/R19, G3/R61-R62, G1/R36, G4/R04, G3/R44): each follows the later owner row | OR69.a (3)(6)(7), OR70.a (2), OR72.a (10), OR61.a, OR71.a (4) |
 | 2 | G5/R53 lists "FRAM SPI transactions" as timeout-wrappable (G4/R22) | Scope corrected: only the awaitable parts (bus-lock acquisition, status-poll sequences, UDP waits); a `machine.SPI` transfer is synchronous and stays under the watchdog backstop; BACKLOG's wording corrected with it. The owner's priority on one mechanism stands | fact (`ports/rp2/machine_spi.c`), OR72.a (2), harmonization 24 |
-| 3 | OR47.a (1) lists "construction, setup batch, task starts, timer starts"; the generated `main()` runs timer starts, `ntp_force_sync()`, task starts (`buildgen/codegen.py:470-478`) (G1/R30) | The owner's rule is strict sequencing, completeness and a fixed generated order; the list described the phases. G5/R05 now states the generated order, its reason goes into A.7, and it stays unless B2 finds it unsafe. On the owner-review list | OR47 (owner words: "queue correctly … guaranteed fixed order"), OR2.c |
+| 3 | OR47.a (1) lists "construction, setup batch, task starts, timer starts"; the generated `main()` runs timer starts, `ntp_force_sync()`, task starts (`buildgen/codegen.py:470-478`) (G1/R30) | Not decided by the lead (withdrawn after verification, V4/V01): the owner confirmed OR47.a (1)'s order, so the conflict goes to the owner as question 3; G5/R05 states OR47.a (1)'s order and records the code's order as a finding | OR47.a (1) (owner "1. yes"), OR7.a, OR3 |
 | 4 | Twin state: G8/R35 "never a fixed repo path" vs G7/R14 persistent default (E09) | The manual twin entry point keeps its persistent default file in `digital_twin/` (owner-specified, E09); automated runs own per-run paths and archive before wiping | E09, OR38.a (2) |
 | 5 | `voc_algorithm.py:141` `"32q"` (G4/R11) vs the literal-port rule (G3/R10) | A persisted `struct` format takes `"<"` — size-neutral, no arithmetic change — as the one exception to the literal port; names and casing stay; G10/R09's scheme applies only to the facade other modules import | G4/R11 (fact: native vs standard formats), L01 (agent) |
 | 6 | ISL29125/UART per-driver device allow-lists (G8/R01, G3/R44) | Gone: a device's TOML decides its sensors; SPEC M.1.1 item 18 keeps today's scope (`dev` carries it) without "must not gain one" | OR71.a (4) is later than item 18 (2026-09-12, list A36), OR68.a (2) |
@@ -23,6 +23,7 @@ need only the cross-reference they already carry. The points below needed a deci
 | 9 | Unreadable config file (G5/R34) | Never overwritten: an I/O error or `MemoryError` while reading is not a bad file; the one-repair-per-boot exception covers a readable file with a bad, missing or unknown key | OR70.a (3), OR71.a (2), conservative (OR2.c) |
 | 10 | SENS.S11, TEST.S11 carry two statuses | The owning area's status applies (answered) | plan 0 (owning area) |
 | 11 | L51 (retired `html_stub/`, owner-tagged) placed by no group | LEAD/R18 | DECISION_PROVENANCE L51 |
+| 12 | Verification (`audit/pass2/verify/V1.md`-`V4.md`, 68 defects in 523 requirements) | Applied as `verify/RULINGS.md` says; list-L owner trails left to owner question 4 | OR7.a |
 
 ## 2 Merges (one rule, one owning requirement)
 
@@ -52,11 +53,11 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 ### LEAD/R01 Hardware instruments run in the twin first
 - **Req**: A committed host runner (a stock Unix-port twin, not a frozen 32-bit build) runs every device script and flash/bench test module once against the digital twin before it enters the hardware queue, and again after any change to the runner or to the `src/` API the script calls; a script that cannot run there is a listed exception with its reason.
 - **Sources**: G1 gap 1 · OR29.a (4), OR21.a (1), OR16 · HW.T02, HW.T13
-- **Rank**: agent — "(agent, 2026-09-27)"
+- **Rank**: owner — run once in the twin before the queue, OR29.a (4) "(owner, 2026-09-25)"; the committed runner, the re-run trigger and the exception list "(agent, 2026-09-27)"
 - **State**: work: code in U26 — commit the runner (today `twin_wrap.py`/`validate_bench.py` are scratchpad tools, `HEAP_FRAGMENTATION_MEASUREMENTS.md:310`); test in U35 — every instrument run through it after B1
 - **Home**: `tests_hardware/README.md`; SPEC E.6
 - **Pillar**: P5
-- **Pass 2**: new
+- **Pass 2**: new. Verified: V4/V19 applied.
 
 ### LEAD/R02 A hardware round starts and ends in a standard board state
 - **Req**: Every hardware round ends on the release `dev` image with `errcount` saved, `DebugLevel` 5, the SCD30 at its configured NVM values, FRAM write-protect clear and no scratch files, checked by harness fixtures at its end and at the next round's start, replacing a hand-kept board-state line.
@@ -194,26 +195,27 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Pass 2**: new
 
 ### LEAD/R17 Conventions are machine-checked where cheap
-- **Req**: A `tests_scripts` AST check over `src/` and generated code fails on the machine-checkable conventions — the `asy_` module marker, `_NAME` equal to the namedtuple name, starter names, the `errno=`/`wrnno=` keyword, no `print()`, `assert` or function-level import — and ruff's global N801/T20/S101 ignores narrow to the files that need them.
-- **Sources**: G10 gap 1 · OR24, harmonization 5 · G10.007, G10.016, `pyproject.toml:85,174`
+- **Req**: A `tests_scripts` AST check over `src/` and generated code fails on the machine-checkable conventions — the `asy_` module marker, `_NAME` equal to the namedtuple name, starter names, the `errno=`/`wrnno=` keyword, no `print()`, `assert` or function-level import — ruff's global N801/T20 ignores narrow to the files that need them, and the `src/` per-file S101 exemption (`pyproject.toml:309`) goes with G10/R21.
+- **Sources**: G10 gap 1 · OR24, harmonization 5 · G10.007, G10.016, `pyproject.toml:85,174,309`
 - **Rank**: agent — "(agent, 2026-09-27)"
 - **State**: work: test in U10; code in U28 (`pyproject.toml`)
 - **Home**: `tests_scripts/`; `pyproject.toml`
 - **Pillar**: P4
-- **Pass 2**: new
+- **Pass 2**: new. Verified: V4/V20 applied.
 
 ### LEAD/R18 Tests serve the real website
 - **Req**: Every tier that serves a website (`scripts/test.sh`, `npm test`'s `pretest`, the twin runners) builds and serves the real site; there is no placeholder site, because the real site is the most biting test. The binary fallback the real site has no file for is covered by its own test.
 - **Sources**: L51 · SPEC:655-659
-- **Rank**: owner-confirmed — "owner's rule that the real site is the most biting test" (`12640c2` owner tag, 2026-09-24)
+- **Rank**: owner — retirement of `html_stub/` "(owner, 2026-09-24)" (`12640c2`, paraphrase); the "most biting test" reason as recorded "(owner, 2026-09-23)" (`c349559`), no owner words visible (harmonization 34); rank per owner question 4 (L-list owner trails)
 - **State**: holds — `html_stub/` retired; doc: the tag gets its date form in U36
 - **Home**: SPEC E/H
 - **Pillar**: P5
-- **Pass 2**: new (placed by the lead)
+- **Pass 2**: new (placed by the lead). Verified: V4/V21 applied.
 
 ## 4 Questions for the owner (after self-resolution)
 
-Two remain; both groups checked the facts (the datasheet texts were re-read by the lead).
+Four remain. Questions 1-2 came from the groups (facts re-checked by the lead); questions 3-4 from the
+verification, where an owner answer and the repo disagree.
 
 1. **Vendor datasheet PDFs in the public repo: keep them?** Raspberry Pi's two carry CC BY-ND; Fujitsu,
    Renesas and Sensirion say "All rights reserved"; Bosch, Winbond, Worldsemi and Infineon grant nothing.
@@ -226,6 +228,18 @@ Two remain; both groups checked the facts (the datasheet texts were re-read by t
    (a) Stay deferred (your 2026-09-11 decision): counts re-measured in B0, one BACKLOG item with its
    reason.
    (b) In this audit: about 384 findings resolved in B2, with a typing scheme for test wrappers.
+3. **Boot order: timers before tasks, or tasks before timers?** You confirmed OR47.a (1)'s order
+   (setup batch, task starts, timer starts); the generated code starts the timers, then forces an NTP
+   sync, then starts the tasks (`buildgen/codegen.py:476-478`).
+   (a) Tasks first, as confirmed — the generated order changes; a timer never fires before its task
+   exists; the NTP force sync moves before or after, tested at L2.
+   (b) Timers first, as coded — OR47.a (1) is reworded; the first trigger may fire before its task runs
+   (the flag waits for it); the reason is written into A.7.
+4. **Implementation choices with an owner tag in their history: label agent or owner?** You answered
+   "keep them, labelled as agent design" for all 75; about 25 of them carry an owner tag or quote in
+   their introducing commit (e.g. L12, L17, L30, L51; list in `audit/pass2/G9.md` R38).
+   (a) All 75 "(agent, date)", as answered — the owner words stay cited as the reason where quoted.
+   (b) Those ~25 keep "(owner, date)", the other ~50 "(agent, date)" — attribution follows the trail.
 
 Still open from before: the F18 reading (OR72.a (1)) is open to the owner's veto; C12/C13 (UART chunking)
 is deferred to BACKLOG's owner-question list (OR69.a (7)).
