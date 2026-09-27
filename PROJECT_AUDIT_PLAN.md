@@ -650,7 +650,7 @@ results to the register's header or `audit/artefacts/ENV/`: T02, T05-T10.
 - [ ] **ENV.T06** (once) Measure `disallow_any_explicit` counts per pass (BACKLOG's figures are dated
       2026-09-11) as a baseline only — enabling it stays a separate owner-deferred session.
 - [ ] **ENV.T07** (once) Build the do-not-reopen index (`DOC.T14`) and the cross-reference resolver
-      (`DOC.T02`) before B1, committed under `audit/`.
+      (`DOC.T02`) before B1, committed under `audit/`. ⟨pass 2, overtaken: index built from DECISION_PROVENANCE's answers and OR54-OR73, actor-tagged; `NTP_Host` bound leaves the settled list (OR70.a (4)) — G10: R05⟩
 - [ ] **ENV.T08** (once) Record the audit baseline SHA (`main`'s head at go-ahead, frozen from then on,
       OR52.a (4)) in the
       register header; anchors in this file resolve at the planning baseline (`git show 4dc80ef:<path>`;
@@ -770,7 +770,7 @@ Topics:
 - [ ] **XCUT.T09** FRAM layout per device: deterministic chunk order, total bytes vs chip size (8 KB on
       field devices, `dev` declares `max_size = 0x40000` — part number per `HW.T07`), what a firmware
       change that adds/reorders a chunk does to existing data, first boot on a chip written by another
-      layout (legacy, other firmware).
+      layout (legacy, other firmware). ⟨pass 2, answered: layout need not survive a reflash; a foreign layout reads invalid and re-inits (OR47.a (2), OR56.a (3)); the sum vs chip stays work in R33 — G5: R05, R33, HR156⟩
 - [ ] **XCUT.T10** Config persistence end to end: per-module files, `setup()` repair, littlefs
       atomicity under power loss, flush before each reset path, concurrent writers, unsupervised flush
       task failure visibility.
@@ -790,7 +790,7 @@ Topics:
       effects per module (allocations, hardware access), including the pre-`WDT()` phase (`XCUT.T20`);
       frozen set = transitive import closure (with `GEN.T05`).
 - [ ] **XCUT.T17** Data freshness contract: what `TS` means per driver; can any cycle publish old
-      values with a new timestamp (seed `SENS.S08`)?
+      values with a new timestamp (seed `SENS.S08`)? ⟨pass 2, answered: "never stale as fresh" binds every driver; SCD30 not-ready reuse the named exception (3.3) — G5: HR036 (G3)⟩
 - [ ] **XCUT.T18** Time base: RTC set by NTP, `time.time()` vs `ticks_ms()`, `mktime` epoch/TZ,
       timestamps stored in FRAM, boot signature semantics.
 - [ ] **XCUT.T19** Cancellation-safety map: every `await` reachable from a cancelling context
@@ -807,7 +807,7 @@ Topics:
       constructor in `build_system()` raising, frozen `main.py` ending in the REPL with `WDT(8000)`
       armed and no FRAM logger yet. (3) An exception or return out of `main()` (`XCUT.S11`). For each:
       reset loop or hang? Does a power cycle recover it? Is it diagnosable at all? Is arming the
-      watchdog before the boot entry's import feasible (8 s budget vs import time; USB/mpremote access)?
+      watchdog before the boot entry's import feasible (8 s budget vs import time; USB/mpremote access)? ⟨pass 2, answered: phase (1): WDT before the import (OR31.a (1)) + `.frozen` first and runbook erase (OR59.a); phases (2)/(3) stay work (Gap 2) — G5: R01, R48, HR050⟩
 - [ ] **XCUT.T21** Tick counting and `ThreadSafeFlag` semantics: counters that advance once per
       `wait()` (SysUptime, WiFi/NTP counters, hotspot timeout, sensor base triggers) lose ticks when the
       flag is set twice before the waiter runs, a soft callback is dropped, or the loop stalls > 1
@@ -857,15 +857,15 @@ Seeds:
   checks `done()`, cannot see it (`system_service.py:169-175, 209-214`).
 - **XCUT.S06** C.9.1's stagger proof: the first starter fires at offset 0; offsets are relative to each
   callback's actual run time, so latency accumulates (`system_service.py:158-159`). The proof's own test re-implements the formula instead
-  of reading it (seed `TEST.S06`).
+  of reading it (seed `TEST.S06`). ⟨pass 2, answered: shared t0 and minimum separation (OR47.a (3)) — G5: R07⟩
 - **XCUT.S07** Dynamic `wrnno = n+1` means a persisted W-code names different tasks on different
-  devices/firmware versions and must stay ≤ 127 (`system_service.py:238-239`).
+  devices/firmware versions and must stay ≤ 127 (`system_service.py:238-239`). ⟨pass 2, answered: restart logged once (OR56.a (1)); code meaning catalogued (OR28.a) — G5: R19, R20⟩
 - **XCUT.S08** `[x2]` The FRAM chunk layer logs into the manager's RAM-only logger, not the owner's
   FRAM-backed history as C.7.1 states (`src/asy_fram_manager.py:622, 665-674, 716`).
 - **XCUT.S09** A.4's "8 KB ample headroom over SGP40's ~250 B" predates WP1-WP3; ~17 logger/cfgmgr
   chunks on wozi and ~21 on dev now share the chip — never re-summed against 8 KB.
 - **XCUT.S10** No `machine.reset_cause()` is recorded anywhere in `src/`, so post-mortems cannot tell a
-  WDT reset from a commanded one.
+  WDT reset from a commanded one. ⟨pass 2, answered: `reset_reason` via `mem_backup()` region 0 (OR60.a) — G5: R03⟩
 - **XCUT.S11** The supervisor's reboot branch `return`s (`src/system_service.py:251-253`), so `main()`
   and `asyncio.run(main())` finish ~4 s before the reset fires (`buildgen/codegen.py:478, 705-708`):
   webserver, readers and any staged flush stop at once and `main.py` drops to the REPL. The REST reboot
@@ -875,7 +875,7 @@ Seeds:
   reaches MicroPython's default console print.
 - **XCUT.S13** `WDT(timeout=8000)` is `build_system()`'s first statement (`buildgen/codegen.py:381`);
   the constructors after it run unguarded, so a construction-time exception becomes an 8 s WDT reset
-  loop before any FRAM logger exists — nothing persisted, `reset_cause()` never read (`XCUT.S10`).
+  loop before any FRAM logger exists — nothing persisted, `reset_cause()` never read (`XCUT.S10`). ⟨pass 2, answered: WDT placement settled (OR31.a (1)); evidence of a construction crash is Gap 2 — G5: R01, Gap 2⟩
 - **XCUT.S14** The boot entry's `from sensortask_<device> import main` sits before `WDT()`
   (`buildgen/codegen.py:703`; the entry's `try` has only a `finally`, `:705-708`, so moving the import
   inside it would still end in the REPL), and the generated module imports `frozen_html` at top level
@@ -886,9 +886,9 @@ Seeds:
   is a VFS mount that leaves no littlefs directory, `build-*.sh:15`) stops the import before
   `WDT(timeout=8000)` exists (`codegen.py:381`): REPL, no watchdog, no network, no FRAM logger — a hang
   until USB intervention or a filesystem erase — `/html` survives power cycles — not a reset loop. No
-  tier reaches it (with `PAR.T08`).
+  tier reaches it (with `PAR.T08`). ⟨pass 2, answered: WDT before the import (OR31.a (1)); runbook erases the filesystem, `/html` included (OR59.a (1)) — G5: R01, HR050⟩
 - **XCUT.S15** A legal but near-limit sleep can strand other tasks. asyncio's C `TaskQueue` orders tasks by `ticks_diff()` of their keys (`extmod/modasyncio.c:73-85`), so a key pushed close to 2**29 ms ahead compares as *earlier* than a queued task already overdue by at least the remaining margin; `SENS.S27`'s `sleep_ms(remaining)` (`asy_isl29125_driver.py:619-623`) creates such a key (up to 2**29-1 ms, accepted by `ticks_add()`). The far-future task becomes the heap root and `run_until_complete` waits on it (`extmod/asyncio/core.py:57, 161-177`): tasks woken later get fresh keys and run, but runnable tasks already queued are stranded ~6.2 days — a WDT reset if the supervisor is among them, else a hung-but-alive task (`XCUT.T02`). From source reading only; verify on a 2**30-period Unix build (`XCUT.T25`).
-- **XCUT.S16** A filesystem `boot.py` runs before the frozen `main.py` and leaves no watchdog in three ways: if it raises, the frozen `main.py` never runs (rp2 has exit-code handling off, `py/mpconfig.h:1217-1218`, so an unhandled exception returns 0, `shared/runtime/pyexec.h:45-48`, and `main.py` runs only on non-zero, `ports/rp2/main.c:237, 246-247`) — REPL, no watchdog; if it blocks, it blocks before USB is initialised (`main.c:239-241`), so not even mpremote recovers the unit (unverified on hardware); `sys.exit()` in it soft-reset-loops (`main.c:243-245`). A filesystem `main.py`, by contrast, never runs — the frozen one is looked up first (`shared/runtime/pyexec.c:743-752`). `XCUT.T20` names both files together; their consequences differ.
+- **XCUT.S16** A filesystem `boot.py` runs before the frozen `main.py` and leaves no watchdog in three ways: if it raises, the frozen `main.py` never runs (rp2 has exit-code handling off, `py/mpconfig.h:1217-1218`, so an unhandled exception returns 0, `shared/runtime/pyexec.h:45-48`, and `main.py` runs only on non-zero, `ports/rp2/main.c:237, 246-247`) — REPL, no watchdog; if it blocks, it blocks before USB is initialised (`main.c:239-241`), so not even mpremote recovers the unit (unverified on hardware); `sys.exit()` in it soft-reset-loops (`main.c:243-245`). A filesystem `main.py`, by contrast, never runs — the frozen one is looked up first (`shared/runtime/pyexec.c:743-752`). `XCUT.T20` names both files together; their consequences differ. ⟨pass 2, answered: runbook erases the filesystem on every reflash (OR59.a (1)); a `boot.py` runs before any guard, so no firmware guard — G5: HR050, R01⟩
 - **XCUT.S17** Filesystem modules shadow frozen ones: `sys.path` is `['', '.frozen', '/lib']`
   (`py/runtime.c:147-150`, `ports/rp2/main.c:208`). The `dev` bench's 2026-08-27 filesystem snapshot
   (`dev_legacy/README.md:667-672`; historical — that flash is empty now, but deployed legacy units may
@@ -899,8 +899,8 @@ Seeds:
   leftover is imported instead of the frozen module: an incompatible one
   (`ImportError`/`AttributeError`, or a `MemoryError` compiling it from source) fails before `WDT()` —
   REPL, hang; a compatible one runs stale behaviour silently. A module missing from the frozen set
-  (`GEN.S11`/`GEN.T05`) fails the same way. Inventory: `PAR.T08`; consequence: `XCUT.T20`.
-- **XCUT.S18** (low) Upstream `_boot.py` formats the whole littlefs if mounting raises for any reason (bare `except:`, `ports/rp2/modules/_boot.py:8-12`, v1.29.0) — before the watchdog and silently: every `config_*.cfg`, Wi-Fi credentials included, is lost, nothing is logged (no FRAM logger yet), and the unit boots into hotspot mode where `PAR.T06`'s permanent-deactivation hazard applies. A littlefs region that changed size between 1.26 and 1.29 would take this path on migration (with `PAR.T06`, `PAR.T09`, `XCUT.T24`).
+  (`GEN.S11`/`GEN.T05`) fails the same way. Inventory: `PAR.T08`; consequence: `XCUT.T20`. ⟨pass 2, answered: `.frozen` first + runbook erase (OR59.a) — G5: HR050⟩
+- **XCUT.S18** (low) Upstream `_boot.py` formats the whole littlefs if mounting raises for any reason (bare `except:`, `ports/rp2/modules/_boot.py:8-12`, v1.29.0) — before the watchdog and silently: every `config_*.cfg`, Wi-Fi credentials included, is lost, nothing is logged (no FRAM logger yet), and the unit boots into hotspot mode where `PAR.T06`'s permanent-deactivation hazard applies. A littlefs region that changed size between 1.26 and 1.29 would take this path on migration (with `PAR.T06`, `PAR.T09`, `XCUT.T24`). ⟨pass 2, answered: runbook erase (OR59.a (1)); legacy units run 1.24.1, not 1.26 (OR61.a) — G5: HR050, HR209⟩
 
 Quality measure: a written timer/task/lock/error-code/FRAM-layout inventory per device, derived from
 code, with every discrepancy against Parts A.7/C.7-C.9 registered; worst-case watchdog gap computed.
@@ -916,7 +916,7 @@ code, with every discrepancy against Parts A.7/C.7-C.9 registered; worst-case wa
 
 Topics:
 - [ ] **CORE.T01** `ConfigManager.setup()`: every read-failure class (ENOENT vs EIO vs `MemoryError` vs
-      corrupt JSON vs wrong type) and whether each may overwrite user config with defaults.
+      corrupt JSON vs wrong type) and whether each may overwrite user config with defaults. ⟨pass 2, answered: missing → print only, no write; unreadable → never overwritten; bad key → one repair (OR70.a (3), OR71.a (2)) — G5: R34, R38, R21⟩
 - [ ] **CORE.T02** `write_config()`/`_flush_staged()`/`flush_pending()`: staging identity checks,
       superseded flushes, exceptions from an unsupervised flush task, `_cache` commit in `finally` after
       a failed write (C.7.3 "costs persistence, never the config").
@@ -932,13 +932,13 @@ Topics:
 - [ ] **CORE.T06** `SystemService`: uptime/boot-signature across task restart, debug-level application,
       `pause_permanent_storage` clamp and unpause, reboot timer re-arm.
 - [ ] **CORE.T07** `api_response`: envelope catalogue vs what the webserver actually emits; code 100
-      after a post-hook exception; unused catalogue codes.
+      after a post-hook exception; unused catalogue codes. ⟨pass 2, answered: envelope contract C14 (OR69.a (4)); unused catalogue codes go (OR46.a (2)) — G5: R39⟩
 - [ ] **CORE.T08** `Lockable`/`LockableBuffer`/`Locked*`: does any `Locked*` critical section contain
       an `await`? If none, each lock is pure cost under cooperative scheduling — justify, document or
       drop; swallowed `RuntimeError`; unused per-buffer locks; clamping.
 - [ ] **CORE.T09** D.15 method ordering, D.6 typing, D.11 comments, D.10 shapes across the five files.
 - [ ] **CORE.T10** Dead/test-only API (seed `CORE.S14`): keep, trim or document — each is frozen
-      bytecode on the device.
+      bytecode on the device. ⟨pass 2, answered: test hooks go (OR36.a (1)), hardware API stays (OR36.a (3)), other confirmed leftovers go (OR46.a (2)) — G5: R54, HR073, HR084⟩
 - [ ] **CORE.T11** `PrintLogHistoryStore` evidence preservation: which `_read()` failures (blank chunk,
       CRC mismatch, transient SPI EIO, paused storage) make `setup()` write the RAM ring over the
       persisted one; does the chunk API distinguish "never written" from "unreadable"? (CLAUDE.md
@@ -954,11 +954,11 @@ Seeds:
   untested (`src/system_service.py:375-394`).
 - **CORE.S02** Any read failure in `ConfigManager.setup()` — `MemoryError` on a valid file, EIO,
   `TypeError` — is logged as wrnno 3 "not found" and the file is rewritten with defaults, destroying
-  user config on a transient boot failure (`src/config_manager.py:407-426, 459`).
+  user config on a transient boot failure (`src/config_manager.py:407-426, 459`). ⟨pass 2, answered: unreadable file never overwritten (OR70.a (3)) — G5: R34⟩
 - **CORE.S03** Errors logged before a logger's `setup()` are overwritten when `_read()` restores the
   FRAM ring (e.g. SYSTEM's `_apply_level` errno 7 during `sysfunct.setup()`, before SYSTEM's
   `pr.setup()` runs in `start_and_check_tasks`) — but survive on first boot, so behaviour is
-  inconsistent (`src/print_log.py:173-176, 273-277`).
+  inconsistent (`src/print_log.py:173-176, 273-277`). ⟨pass 2, answered: `pr.setup()` into the boot batch (OR47.a (2)) — G5: R06⟩
 - **CORE.S04** `reset()` during an in-flight `setup()` read restores the old ring into RAM while FRAM
   is cleared (`print_log.py:213-223` vs `:273-277`).
 - **CORE.S05** No per-module serialization of `_set_dict_cfg`'s sequence; a failed push in one PUT can
@@ -966,7 +966,7 @@ Seeds:
   (`src/base_classes.py:302-358`).
 - **CORE.S06** A post-hook that raises after fields were persisted and pushed yields code 100 with an
   empty result, and the webserver then marks every field "Failed" (`src/api_response.py:92-105`;
-  `src/asy_webserver_service.py:463-470`).
+  `src/asy_webserver_service.py:463-470`). ⟨pass 2, answered: OK envelope, group fields "Failed", own errno (OR69.a (4)) — G5: R39⟩
 - **CORE.S07** Every persisted log entry allocates a fresh `AsyFramChunkBuffer` with an unused
   `asyncio.Lock`, against G.2's one-long-lived-buffer rule; `LockableBuffer`'s lock is never used
   anywhere (`print_log.py:249, 262`; `base_classes.py:54-56`).
@@ -982,7 +982,7 @@ Seeds:
   `self.cfg_vals` — two sources of truth (`config_manager.py:299-347`).
 - **CORE.S11** Each invalid key in a PUT is a persisted *error* (errno 10/12) and a FRAM write under
   `config_lock`; client input can evict real fault evidence from the 10-slot ring
-  (`config_manager.py:319, 330`).
+  (`config_manager.py:319, 330`). ⟨pass 2, answered: every call keeps logging whatever the origin; newest-entry rule bounds eviction (OR35.b) — G5: R20, HR012⟩
 - **CORE.S12** `get_int_values()` uses `int()`, silently truncating a float field or converting a bool,
   unlike `get_bool_values()`'s strict check (`config_manager.py:282-289`).
 - **CORE.S13** Small: `Lockable.__aexit__` swallows `RuntimeError` on double release
@@ -992,7 +992,7 @@ Seeds:
 - **CORE.S14** Production API with no `src/` caller: `api_response.parse_cmd_request` (webserver
   re-implements it as `_body_as_dict`, a Part G duplicate), catalogue codes 2-5, `ok_descr`,
   `SystemService.get_debug_level`/`set_debug_level`/`stop_uptime_timer`, `LockedFlag`,
-  `type_or_range_error(check_special=)`, `SensorReader(logger=)`.
+  `type_or_range_error(check_special=)`, `SensorReader(logger=)`. ⟨pass 2, answered: confirmed leftovers removed (OR46.a (2)); `parse_cmd_request` vs `_body_as_dict` one primitive (OR24) — G5: R54, HR073⟩
 - **CORE.S15** Comment drift: `config_manager.py:126-127` says the generated `lightCmdLED` dispatch
   calls `coerce_numeric()`; it calls `type_or_range_error()` with synthetic schemas
   (`buildgen/codegen.py:538-556`).
@@ -1027,7 +1027,7 @@ Topics:
       incremental API contract, per-byte `sleep(0)` cost and where it runs under a bus lock.
 - [ ] **ALGO.T04** `framing_codecs`: COBS round-trip property over all lengths/zero patterns, in-place
       decode safety, scratch-aliasing contract with the UART write path; COBS is unused in production
-      (UART defaults to `Framing_Pass`) — keep, test-only, or document.
+      (UART defaults to `Framing_Pass`) — keep, test-only, or document. ⟨pass 2, answered: "keep, test-only, or document": keep as general-purpose API (OR36.a (3)); round-trip and aliasing tests stay work (U12) — G3: R05, R21⟩
 - [ ] **ALGO.T05** Restored-state robustness: `unpack_from()` accepts any 32 int64 values; per field,
       does an out-of-int32 / out-of-domain value give a bounded wrong result, an exception, or a hang (→
       WDT reset restoring the same state = boot loop)? (with `PAR.S09`, `STOR`).
@@ -1088,10 +1088,10 @@ Topics:
       yielding; write path waits; cancel handshake; `readinto(nbytes > len(buf))`.
 - [ ] **BUS.T06** Uninitialised-bus behaviour (silent no-ops) and whether any caller can reach it.
 - [ ] **BUS.T07** The deliberate I2C/SPI asymmetry (BACKLOG: SPI sync session, I2C none) stays
-      deliberate; the D.10 note is current.
+      deliberate; the D.10 note is current. ⟨pass 2, answered: stays deliberate (not equivalent methods, OR24.a); D.10/G.2 note rewritten as agent design — G3: R17⟩
 - [ ] **BUS.T08** Unused public API (frozen bytecode that must still meet its bus contract): UART
       beyond `readinto_until_complete`/`writefrom`; I2C `scan`, `writeto_then_readfrom`,
-      `write_then_readinto`; SPI `write_readinto` and the async transfers — keep, trim or test.
+      `write_then_readinto`; SPI `write_readinto` and the async transfers — keep, trim or test. ⟨pass 2, answered: keep (OR36.a (3)); each kept method gets a contract test — G3: R21⟩
 - [ ] **BUS.T09** I2C bus recovery across an MCU-only reset: a WDT/`machine.reset()` mid-read resets
       the RP2040 but not the powered sensors; a slave holding SDA low survives into the next boot unless
       a bus clear is issued (check `ports/rp2/machine_i2c.c` init). Tests F.2's settled premise that a
@@ -1152,18 +1152,18 @@ Topics:
 - [ ] **SENS.T03** Recovery paths per driver: failed read, CRC error, brownout, divergence re-apply,
       supervisor restart (is every piece of per-instance state re-initialised?).
 - [ ] **SENS.T04** Stale-as-fresh, per driver (system-wide contract in `XCUT.T17`): can a cycle publish
-      cached values with a new `TS`?
+      cached values with a new `TS`? ⟨pass 2, answered: rule binds every driver; SCD30 not-ready reuse the one named exception (3.3, `110f3db`); per-driver check of BMP/ISL fallback paths stays U15 — G3: R22⟩
 - [ ] **SENS.T05** Interrupt semantics: SCD30 RDY fallback counter, ISL29125 INT thresholds vs the
       decision rule, soft-IRQ allocation, IRQ storms.
 - [ ] **SENS.T06** Bus-time budget on `dev`'s shared i2c1 (SCD30 50 ms sleeps under the bus lock vs
       SGP40's 1 Hz cadence vs ISL29125 cycles); VOC processing time on target.
 - [ ] **SENS.T07** NVM wear: every SCD30 persistent setter and who can trigger it (REST, loops, tests),
-      incl. whether "Unchanged" writes are skipped as legacy did (seed `PAR.S02`).
+      incl. whether "Unchanged" writes are skipped as legacy did (seed `PAR.S02`). ⟨pass 2, answered: OR42.a/b/c: compare-before-write restored, AmbPres/ForceCalRef always sent — G3: R36⟩
 - [ ] **SENS.T08** Part C conformance and D.10 across the four: constructor shape, snapshot-read
       failure logging, errno allocation, operating-range gates, `@web`/`@limits`/`@requires` tags.
 - [ ] **SENS.T09** Unverified protocol assumptions: SCD30 reading back 0x0010
       (AmbPres/continuous-measurement command read-back — A.4's AmbPres note, with `PAR.S02`), SGP40
-      serial word[0] `== 0x0000` (`SENS.S06`, `SENS.S21`).
+      serial word[0] `== 0x0000` (`SENS.S06`, `SENS.S21`). ⟨pass 2, answered: 0x0010 readback stays (owner-confirmed A.4, L06); 3-word serial read completed (3.3); `word[0]==0` kept on silicon evidence, checked in C — G3: R61, HR047⟩
 - [ ] **SENS.T10** Four-tier bus-hazard coverage per driver (CLAUDE.md hard rule), checked against the
       real tier files rather than assumed.
 - [ ] **SENS.T11** VOC 1 Hz sampling: Sensirion's algorithm expects one `measure_raw` per second; SGP40
@@ -1185,7 +1185,7 @@ Topics:
 - [ ] **SENS.T15** Persisted logs outside the `_error_check` streak: can a steady fault persist one
       entry per cycle forever, against C.7.1's once-per-episode rule (SGP40 errno 12-18 — 13 from
       `_check_storage` fires every second —, BMP errno 14/22, ISL errno 14/28/31-35, SCD30 forwards)?
-      (with `XCUT.T07`).
+      (with `XCUT.T07`). ⟨pass 2, answered: OR35.b + OR56.a (1): a steady identical fault spends one slot; per-code identity checked in U3 — G3: R01, R02⟩
 - [ ] **SENS.T16** Hardware I/O triggered by a REST GET: every `_read_sensor_dict` callback (SCD30
       six-register snapshot, BMP bit-field snapshot, ISL snapshot + divergence re-apply + wrnno 11) —
       cost under the bus lock, side effects, GET safety/idempotency (with `REST.T10`).
@@ -1209,7 +1209,7 @@ Seeds:
 - **SENS.S06** SGP40 serial-number check `word[0] == 0x0000` is an undocumented Adafruit assumption
   (`asy_sgp40_driver.py:678-682`).
 - **SENS.S07** SGP40 measure wait is 100 ms against a 30 ms datasheet maximum (inferred cost only)
-  (`asy_sgp40_driver.py:614-615`).
+  (`asy_sgp40_driver.py:614-615`). ⟨pass 2, answered: 100 ms is owner-directed (`5ff8c0b`, 2026-07-21); margin stated — G3: R30⟩
 - **SENS.S08** SCD30 `scd_timer_triggers` accumulates across cycles (comment says "consecutive") and
   forces a read even when RDY is low; the not-ready read leaves the cache untouched and `_read_scd`
   re-stamps cached values as fresh — legacy-identical (`src/asy_scd30_driver.py:174-187, 412-420, 610-611`).
@@ -1219,14 +1219,14 @@ Seeds:
 - **SENS.S10** SCD30 has no CO2/RH/T plausibility gate (datasheet 0-40000 ppm), only finiteness, though
   C.3 says operating-range checks live in layer 2 (`asy_scd30_driver.py:621-630`).
 - **SENS.S11** SCD30 sleeps 50 ms inside the bus lock per command/register read; `get_config_snapshot`
-  holds i2c1 ≥ 6×50 ms (`asy_scd30_driver.py:471, 483, 514-520`).
+  holds i2c1 ≥ 6×50 ms (`asy_scd30_driver.py:471, 483, 514-520`). ⟨pass 2, answered: 50 ms owner-tested (`144873f`, 2026-07-13); snapshot hold measured under SENS.T06 — G3: R30⟩
 - **SENS.S12** BMP3xx `MeanAtmTemp` accepts −50..50 but `altitude_baro` requires −40..85, so [−50, −40)
   silently yields `SLPres = None` (`src/asy_bmp3xx_driver.py:84`; `math_helpers.py:25-26, 92`).
 - **SENS.S13** BMP3xx plausibility gate runs before `PressOffset` (±500 hPa) is applied, so a published
   `Pres` can leave the datasheet range and `SLPres` becomes `None` with no log
   (`asy_bmp3xx_driver.py:237`).
 - **SENS.S14** BMP3xx `get_altitude()`/`get_pressure()`/`get_temperature()` have no production caller
-  (`asy_bmp3xx_driver.py:555-577`).
+  (`asy_bmp3xx_driver.py:555-577`). ⟨pass 2, answered: stay (OR36.a (3)) — G3: R21⟩
 - **SENS.S15** ISL29125: in high range INT is armed on green ≤ down-threshold, but `_evaluate_range`
   decides on the peak of all three channels, so a colour-dominant scene (or `AutoRangeDwell`, or
   darkness on the low range's 0 threshold) can fire INT every PRST window and force a read cycle
@@ -1244,10 +1244,10 @@ Seeds:
 - **SENS.S19** C.3 text is stale: BMP3xx "has no scratch buffer" (the I2C layer now has one)
   (SPECIFICATION.md ~1541-1543).
 - **SENS.S20** Missing references: Sensirion's VOC Index application note (host blocked by the session's
-  egress policy, OR4.a). Added 2026-09-25: BMP390, WS2812, W25Q16JV, CYW43439 and RP2040 datasheets; the VOC C reference is reachable at `Sensirion/gas-index-algorithm`.
+  egress policy, OR4.a). Added 2026-09-25: BMP390, WS2812, W25Q16JV, CYW43439 and RP2040 datasheets; the VOC C reference is reachable at `Sensirion/gas-index-algorithm`. ⟨pass 2, stale: verified: `datasheets/sgp40/` holds the three VOC notes (OR53 (2)); `gia` reachable; nothing missing — G3: R29⟩
 - **SENS.S21** The SGP40 serial-number read fetches 3 of the 9 bytes the datasheet specifies
   (`readlen=1`), so only word 0 is CRC-checked and compared (`asy_sgp40_driver.py:673-682`; datasheet
-  3.4, Tables 8/16).
+  3.4, Tables 8/16). ⟨pass 2, answered: 3-word read completed (3.3) — G3: HR047⟩
 - **SENS.S22** `SCD30_I2C.setup()` sends a soft reset on every read-loop (re)start
   (`asy_scd30_driver.py:577-589`); 1.4.10 says it restores the power-up state, and 1.4.6 says ASC's
   first 7-day search aborts on power interruption — whether a soft reset aborts it is undocumented.
@@ -1277,7 +1277,7 @@ Seeds:
   `_no_ts_episode` (`asy_sgp40_driver.py:167, 433, 440, 443-444`), so a reboot or a supervisor restart
   mid-outage opens a new episode and a new slot, and a deferred backup or an `E14` write failure does not
   end one (`tests/test_asy_sgp40_driver.py:1125-1128`). Check that against C.7.1's per-episode rule and
-  the other episode flags (WIFI per connect episode, NTP until a sync) for one shared meaning (`XCUT.T07`).
+  the other episode flags (WIFI per connect episode, NTP until a sync) for one shared meaning (`XCUT.T07`). ⟨pass 2, answered: episode flag replaced by the central rule (OR35.a (4)); reboot/restart episode question has no object — G3: R01⟩
 
 Quality measure: a datasheet-citation per register/formula; every seed resolved; a float32 emulation
 run for each formula; restart-state table per driver.
@@ -1301,7 +1301,7 @@ Topics:
       chunk `_op_lock`; logging while holding the driver lock (deadlock invariant).
 - [ ] **STOR.T05** Pause gating: who sets pause (`mempause` 300 s, reboot paths); writes during a pause
       are dropped, not deferred (a log entry is lost); `override_pause` has no production caller
-      (`STOR.S07`); interplay with `XCUT.T13`/`CORE.T06`.
+      (`STOR.S07`); interplay with `XCUT.T13`/`CORE.T06`. ⟨pass 2, answered: `override_pause` is a test artifact and goes (OR36.a (1)); pause semantics in R02 — G5: R02, HR073⟩
 - [ ] **STOR.T06** Timestamped chunks: NTP gating, `(ntp_synced, utc, success)` ordering.
 - [ ] **STOR.T07** Address width / product-ID mapping for both chip sizes; wraparound; out-of-range.
 - [ ] **STOR.T08** errno/wrnno ranges vs C.7.1 (drift noted; catalogue owned by `XCUT.T07`); the chunk
@@ -1335,16 +1335,16 @@ Seeds:
   per call" for FRAM_SPI vs preallocated buffers and no `_send_opcode` (`asy_fram_driver.py:118-121`;
   SPECIFICATION.md ~1544-1545, ~1926).
 - **STOR.S05** `verify_present()`/`set_write_protected()` have no production caller and are SETTLED as
-  kept (`src/asy_fram_driver.py:357, 400`; BACKLOG.md:52) — record as settled-no-action.
+  kept (`src/asy_fram_driver.py:357, 400`; BACKLOG.md:52) — record as settled-no-action. ⟨pass 2, answered: stays, settled-no-action (OR36.a (3), V14) — G5: HR084⟩
 - **STOR.S06** `FRAM_SPI`'s `wp_pin` path is unreachable in production (`AsyFramManager` never forwards
   it, `asy_fram_manager.py:628`; codegen emits only `max_size`/`debug`, `buildgen/codegen.py:203`) and
   treats the pin as whole-array protection (`asy_fram_driver.py:217-220`), while the MB85RS64V WP pin
   only guards the status register when WPEN=1.
 - **STOR.S07** No `src/`/`buildgen/` code passes `override_pause=True`; the parameter on every chunk
-  method is test-only API (`asy_fram_manager.py:96, 128, 389`).
+  method is test-only API (`asy_fram_manager.py:96, 128, 389`). ⟨pass 2, answered: test artifact, removed (OR36.a (1)) — G5: HR073⟩
 - **STOR.S08** An out-of-memory FRAM allocation is reported only through print-only `pr.err`
   (`asy_fram_manager.py:649, 662, 691, 704`; `asy_sgp40_driver.py:187`): a layout overflowing 8 KB
-  (`XCUT.S09`) silently drops owners to RAM-only with nothing persisted.
+  (`XCUT.S09`) silently drops owners to RAM-only with nothing persisted. ⟨pass 2, answered: no errno/wrnno for out-of-FRAM memory, mpremote check (owner, A12) — G5: R32, R33⟩
 
 Quality measure: every state transition covered by a named test at mock and twin tier; seeds resolved.
 
@@ -1365,7 +1365,7 @@ Topics:
 - [ ] **UART.T03** Allocation: preallocated buffers, peer-declared `CHUNKS` allocation (BACKLOG
       accepted-with-caveat), rejection bitmap.
 - [ ] **UART.T04** (with `XCUT.T07`, `CORE.T05`) Logging: per-episode dedupe keyed on last errno only,
-      `_ready()` flooding, repeat-counting vs C.7.1.
+      `_ready()` flooding, repeat-counting vs C.7.1. ⟨pass 2, answered: OR35.b central rule + OR56.a (1) one entry per event — G6: R20⟩
 - [ ] **UART.T05** Construction validation (timeout floor, rxbuf floor) vs buildgen's own checks
       (`GEN.T01`, L.6.6).
 - [ ] **UART.T06** `UartLinkExerciser` (bench-only): counters, supervision, FRAM wiring, whether its
@@ -1375,7 +1375,7 @@ Topics:
       SETTLED, see `DOC.S14`) (seed `DOC.S14`).
 - [ ] **UART.T08** End-to-end delivery semantics: a lost final ACK makes the initiator report failure
       after the responder already delivered the SET / ran `get_callback` — at-least-once with caller
-      retries, at-most-once without. What does Part J promise; must commands be idempotent?
+      retries, at-most-once without. What does Part J promise; must commands be idempotent? ⟨pass 2, answered: lost final ACK folds into failure (owner, 2026-09-11); at-least-once, caller tolerates duplicates — G6: R14⟩
 - [ ] **UART.T09** Cancellation/restart mid-transaction (supervisor restart, reboot, `clear()`):
       `_busy`/`_in_resync`/hold-off state, a half-sent frame on the wire, peer recovery, a listen-task
       restart while the peer is mid-train (with `XCUT.T19`).
@@ -1387,16 +1387,16 @@ Seeds:
 - **UART.S01** `[x2]` `UART_Comm._err` sends repeats to the sync `pr.err()`, which neither persists nor
   counts, while C.7.1 says `repeat=True` "still counts it" — UART repeats never reach `ErrCount`
   (`src/asy_uart_comm.py:319-322`; sync `err()` `src/print_log.py:112-114` vs persisting `_store_err()`
-  `:158-175`, which does count repeats).
+  `:158-175`, which does count repeats). ⟨pass 2, overtaken: per-module repeat routing removed by the central rule (OR35.b) — G6: R20⟩
 - **UART.S02** A GET frame's `CHUNKS=1` is not enforced (`asy_uart_comm.py:484-488`) though J.4 defines
   a GET as a one-chunk train.
 - **UART.S03** Dedupe keyed only on the last errno, cleared by every valid frame: a link alternating
   good/bad or between two errnos persists on every fault (`:319, :658-661`); `_ready()` calls `err_s` on
   every call, so a failed `setup()` plus the exerciser's 1 Hz `uart_get` persists an entry per second
-  (`:351-355`; `src/asy_uart_link_driver.py:110-120`).
+  (`:351-355`; `src/asy_uart_link_driver.py:110-120`). ⟨pass 2, answered: identical code spends no slot (OR35.b); alternation out of scope (OR35.a (3)) — G6: R20⟩
 - **UART.S04** The `dev` link runs with `CRC_Pass`: codegen never passes `crc=`
   (`buildgen/codegen.py:396-397`) — a corrupted payload byte is caught only structurally. Enabling CRC
-  alters emitted bytes — Class A, owner decision, changelog entry.
+  alters emitted bytes — Class A, owner decision, changelog entry. ⟨pass 2, answered: `CRC_Pass` is the supported interim, Python leads a recorded flag day (A02); wire frozen for the audit — G6: R03⟩
 - **UART.S05** A declined command returns `cmd_id=None`, sending `_listen_loop` into backoff up to
   5×timeout while the initiator may already be retrying (`asy_uart_comm.py:1116-1126`).
 - **UART.S06** `UartLinkExerciser.reset_error_counter()` also zeroes `transfers`/`failures`, so
@@ -1470,7 +1470,7 @@ Seeds:
   legacy-identical and pinned by `tests/test_asy_ntp_client.py:1388-1410` (`asy_ntp_client.py:456-471`).
 - **NET.S04** `[x2]` The DNS client falls back to `8.8.8.8` and `1.1.1.1` after the DHCP server —
   undocumented in SPECIFICATION/BACKLOG, a network/privacy behaviour change vs legacy's system resolver
-  (`src/asy_dns_client.py:20, 110`).
+  (`src/asy_dns_client.py:20, 110`). ⟨pass 2, answered: OR56.a (2): config value, today's servers default, emptiable — G6: R34⟩
 - **NET.S05** `get_dns_server_ip()` returns `None` whenever the lock is held when NTP samples it, so
   NTP silently uses only the public resolvers — fails on networks that block external DNS
   (`asy_ntp_client.py:431`).
@@ -1503,7 +1503,7 @@ Seeds:
   (`asy_wifi_service.py:46, 197-201`).
 - **NET.S17** Bounds vs legacy: Hostname 1-63 → 1-32, SSID min 2 → 0, `PW` `""` = open network (legacy
   `""` meant "unchanged"), `HotspotPW` build-time only (not in any `SettingsGroup`,
-  `buildgen/codegen.py:607`).
+  `buildgen/codegen.py:607`). ⟨pass 2, answered: new API is the reference (OR58.a); `""` = open, sparse PUT expresses "unchanged", UI sets no empty string (A24); hostname 32 is the port cap — G6: R28, R38⟩
 - **NET.S18** Comment drift: `asy_udp_socket.py:176` names a nonexistent `_open()`;
   `asy_wifi_service.py:168-169` mentions a future "combined Networking endpoint".
 - **NET.S19** NTP discards the reply's source address and sends an all-zero transmit timestamp, so an
@@ -1531,7 +1531,7 @@ Topics:
 - [ ] **REST.T02** Route table: every GET/PUT, validation, envelope, status codes, HEAD/OPTIONS
       behaviour, unknown keys, non-object bodies, wrong Content-Type.
 - [ ] **REST.T03** `PUT /sensors` vs settings-group routes: guarding, post hooks, result shape (D.10) —
-      owned by `XCUT.T11` (with `CORE.T04`, `CORE.S06`).
+      owned by `XCUT.T11` (with `CORE.T04`, `CORE.S06`). ⟨pass 2, dup: of `XCUT.T11` (owner there) — G6: R41⟩
 - [ ] **REST.T04** (with `SEC.T02`, `PERF.T03`, `HW.T02`) Command fields: `SystemCmd`, `lightCmdLED`,
       `PauseTime`, `ResetErrors` — validation, Invalid vs Failed semantics, blocking duration,
       idempotency, confirmation for irreversible ones.
@@ -1542,7 +1542,7 @@ Topics:
 - [ ] **REST.T07** Static serving: `..` handling, `.gz` lookup, 302-in-hotspot, caching headers,
       Content-Type/charset.
 - [ ] **REST.T08** (with `XCUT.T07`, `CORE.S11`) Logging from the webserver: `wrn_s` without `repeat=`
-      on routine idle/aborted connections vs FRAM ring churn.
+      on routine idle/aborted connections vs FRAM ring churn. ⟨pass 2, answered: central repeat rule (OR35.b) — G6: R20⟩
 - [ ] **REST.T09** Verify A.5's gap list against v2.6.2 source and note what v2.7.0 changes; confirm
       every fix stays outside `ext/`.
 - [ ] **REST.T10** GET routes with hardware side effects and latency: `/sensors` (live register
@@ -1575,10 +1575,10 @@ Seeds:
   bypassing `ar.handle_set_cmd` (no errno-99 guard, no post hooks), unlike the flat routes
   (`src/asy_webserver_service.py:420-432`).
 - **REST.S04** `[x2]` `_put_status` resets every error source sequentially with no guard: an exception
-  leaves a partial reset and a 500; no confirmation for an irreversible evidence wipe (`:631-637`).
+  leaves a partial reset and a 500; no confirmation for an irreversible evidence wipe (`:631-637`). ⟨pass 2, answered: global only (OR70.a (7)), concurrent (OR72.a (5)), detected failure "Failed" (OR70.a (6)); no confirmation under the trusted-LAN model (OR52.a (3)) — G6: R50⟩
 - **REST.S05** WEBSERVER `wrn_s` calls never pass `repeat=`, so every idle/reclaimed connection
   (browser speculative preconnects) spends a FRAM ring slot; same for DNSSRV (`:254, :715-724`;
-  `src/captive_dns.py:119, 123`).
+  `src/captive_dns.py:119, 123`). ⟨pass 2, answered: OR35.b: no per-origin special case; identical codes spend no slot — G6: R20⟩
 - **REST.S06** `_PieceWriter` counts characters, not bytes: non-ASCII SSID/hostname values make pieces
   larger than `chunk_bytes` (`:145-148`).
 - **REST.S07** HEAD requests and aborted static responses never `aclose()` the opened stream (relies on
@@ -1590,7 +1590,7 @@ Seeds:
   is busy" (error 8) at once; `led_signal()`/`start_asy_ext_cmd_watcher` look dead
   (`buildgen/codegen.py:555`; `src/asy_neopixel_driver.py:104, 137-153`).
 - **REST.S10** `lightCmdLED` out-of-range/missing keys yield per-field `"Failed"` while `PauseTime`
-  yields `"Invalid"`; H.6 reserves Invalid for structurally wrong payloads (`asy_webserver_service.py:533-566`).
+  yields `"Invalid"`; H.6 reserves Invalid for structurally wrong payloads (`asy_webserver_service.py:533-566`). ⟨pass 2, answered: out-of-range/missing values are content: per-field `"Invalid"` (OR69.a (4)) — G6: R41⟩
 - **REST.S11** Comment drift: `asy_webserver_service.py:725` "see module docstring" (which says nothing
   about it); I.6 still says `max_connections` is 4 and 4 × 2048 = 8192 B (now 6 → 12288 B).
 - **REST.S12** `_put_status` returns code 0 with no `result` map, silently ignoring unknown keys and
@@ -1668,14 +1668,14 @@ Topics:
       `_SENSOR_DRIVERS`, `_ERRCOUNT_CATALOG`, `_CFGMGR_LABEL`, `twin_wiring.FIXED_ADDRESSES`, the twin
       CI suite's `_DRIVER_ERRCOUNT_NAME`/`_BUS_FAULT_OPS`, hand-mirrored constants (`_NTP_CHECK_TICK_S`,
       `_SERVER_OUTER_CAP_S`, `_WARN_SIGNAL_WEB_CATALOG`) — which are cross-tested, which silently drift
-      (buildspec itself is SETTLED as hand-maintained).
+      (buildspec itself is SETTLED as hand-maintained). ⟨pass 2, answered: buildspec and status/errcount catalog hand-kept (owner 2026-09-18/24, OR68.a (2)); L.1 names the one row edit; the rest derived or pinned (harmonization 31) — G8: R12⟩
 - [ ] **GEN.T07** `pico_gpio.py` legality table vs RP2040 silicon. Checked 2026-09-26 against the RP2040
       datasheet's Table 279 (p.237-238): the table follows the Pico W pinout figure and is stricter than
       silicon — it rejects legal wirings: GP22 (I2C1 SDA, SPI0 SCK), GP28 (I2C0 SDA, SPI1 RX, UART0 TX),
       GP20/21 (SPI0 RX/CSn, UART1 TX/RX), GP26/27 (SPI1 SCK/TX); its comments "GP22/GP28 have no I2C
       function" and "GP20-22/GP26-28 have no SPI function" are wrong for the chip. Never accepts an
       illegal pin; a future device on e.g. SPI1 at GP26-28 would fail the build with a misleading error.
-      Owner 2026-09-26 (OR53): (a) — the table follows the chip's function table; comments corrected.
+      Owner 2026-09-26 (OR53): (a) — the table follows the chip's function table; comments corrected. ⟨pass 2, answered: OR53 (1): the table follows RP2040 Table 279; comments corrected — G8: HR052 (G3)⟩
 - [ ] **GEN.T08** `devices/*.toml`: values vs legacy pinning per unit, `SensorStation<Name>` rule,
       shared hotspot password (accepted-risk rule: not to be "fixed" without the owner's direction),
       `timeout`/`frequency` vs `@requires`.
@@ -1685,9 +1685,9 @@ Topics:
 - [ ] **GEN.T10** Static/compile coverage of generated artefacts: `build/generated_src/*.py` is outside
       ruff scope and mypy reports nothing there (`follow_imports = "silent"`); fixture outputs are only
       `ast.parse`d, never compiled by MicroPython nor run (`GEN.S01`'s class). Decide ruff + mypy over
-      generated output and an `mpy-cross`/Unix-port compile of every fixture's output (with `TEST.T09`).
+      generated output and an `mpy-cross`/Unix-port compile of every fixture's output (with `TEST.T09`). ⟨pass 2, answered: OR22.a (2): same bar as `src/` — ruff+mypy over generated output, fixtures compiled and executed — G8: R03⟩
 - [ ] **GEN.T11** Determinism: same TOML + `src/` → byte-identical module/definitions/wiring plan
-      (except `build_date`) across `PYTHONHASHSEED`s and host CPython 3.11-3.13 (with `SCR.T11`).
+      (except `build_date`) across `PYTHONHASHSEED`s and host CPython 3.11-3.13 (with `SCR.T11`). ⟨pass 2, answered: 3.3: byte-reproducible outputs, build time only in `buildgen/version.py` (conservative, P11) — G8: R17, HR153⟩
 - [ ] **GEN.T12** Error location (L.5): every `BuildError` names the right device/instance/field and
       file:line for tag errors — the fuzz asserts location, not only class (extends `GEN.T01`).
 - [ ] **GEN.T13** `driver_registry.py`: `_OVERRIDES`, `SINGLETON_SERVICE_DRIVERS`, a module with zero
@@ -1751,7 +1751,7 @@ Seeds:
 - **GEN.S16** `codegen.py:376-377` writes "mirrors … every hand-written sensortask_*.py" into every
   generated docstring; no hand-written module exists since L.2.
 - **GEN.S17** Errors in generated modules are never reported: `pyproject.toml:359, 365` (silent
-  follow-imports with `build/generated_src` on `mypy_path`) plus `scripts/lint.sh:13` (ruff scope).
+  follow-imports with `build/generated_src` on `mypy_path`) plus `scripts/lint.sh:13` (ruff scope). ⟨pass 2, dup: same evidence as GEN.T10 — G8: R03⟩
 - **GEN.S18** buildgen type-checks but never range-checks the TOML ints that become timing values: `hotspot_time_min` (`validate.py:65, 106-108`) and the UART `poll_wait_ms`/`poll_idle_ms` (`:62, 304-306`; only the J.6 floor applies, `:258-276`). `hotspot_time_min` becomes `Timer(period=60000*min)` (`asy_wifi_service.py:165, 413-417`): 0 is clamped to a 1 µs PERIODIC timer (`ports/rp2/machine_timer.c:99-103`), flooding the soft-callback queue; a negative value is cast to `uint64_t` and never fires; ≥ 35,792 raises `OverflowError`, which the `except (OSError, MemoryError)` at `:419` does not catch (`XCUT.T25`).
 
 Quality measure: fuzz harness result (only `BuildError`); generated output compiles for fixtures;
@@ -1777,7 +1777,7 @@ Topics:
 - [ ] **TOOL.T05** Two Unix-port variants: detection, rebuild on mismatch, cache interactions (stale
       binaries: owned by `TOOL.T07`, with `CI.S01`, `SCR.S05`).
 - [ ] **TOOL.T06** B.14.3 (`littlefs_flash_storage_size`, documented not implemented) — relevance to a
-      1.26 → 1.29 reflash (seed `PAR.S10`).
+      1.26 → 1.29 reflash (seed `PAR.S10`). ⟨pass 2, answered: D04, OR72.a (7): littlefs resize dropped until flash space is short; B.14.3 goes — G8: R20⟩
 - [ ] **TOOL.T07** Toolchain provenance and staleness: nothing records which ref/overrides/flags a
       toolchain dir was built from; `--micropython-ref` silently builds a non-pinned ref; test.sh and
       the twin/web runners check only binary existence (test.sh also the variant), so a moved ref or
@@ -1869,7 +1869,7 @@ Topics:
       `GEN.T14`).
 - [ ] **SCR.T11** Reproducibility end to end (owner decides whether it is a goal): gzip mtime
       (`SCR.S04`), `build_date`, host-dependent `ast.unparse`, freezefs walk order (any fix outside
-      vendored `ext/freezefs/`), MicroPython's embedded version/date, distro GCC.
+      vendored `ext/freezefs/`), MicroPython's embedded version/date, distro GCC. ⟨pass 2, answered: 3.3 made reproducibility a goal: `gzip -n`, build time only in `version.py`; host `ast.unparse` in gap G3 — G8: R17, HR153⟩
 - [ ] **SCR.T12** Stale/partial generated outputs: `build/generated_src/` never pruned (first on every
       `MICROPYPATH`), `frozen_modules/frozen_html.py` holds whichever device was built last, non-atomic
       writes while other processes read.
@@ -1936,7 +1936,7 @@ Topics:
 - [ ] **CI.T06** Permissions, credentials persistence, SHA vs tag pinning policy, no Dependabot (manual
       SHA bumps).
 - [ ] **CI.T07** Hardcoded 6-device matrices vs L.1 criterion 2 (a new device = one new file).
-- [ ] **CI.T08** Config-file comment cap: which config files are in the swept set (PQ6).
+- [ ] **CI.T08** Config-file comment cap: which config files are in the swept set (PQ6). ⟨pass 2, answered: PQ6/OR51: the comment rule applies to every file, config files included — G8: HR077 (G10)⟩
 - [ ] **CI.T09** Trigger × concurrency × path filter: `cancel-in-progress` (`ci.yml:13-15`) with the
       per-push filter base (`:38-41`) — a cancelled run's web change never re-filtered; first push of a
       branch, force-pushes, push/PR dedupe.
@@ -1980,13 +1980,13 @@ Seeds:
   says "three known credential sites", but S105/S106 are exempted in more files.
 - **CI.S09** `actions/cache` saves only on job success: a cold-cache `unit-tests` failure makes
   `firmware-build-verify` (`!cancelled()`) fail with "no toolchain found" — documented as intended at
-  `ci.yml:617-618`; question is only whether the message is acceptable.
+  `ci.yml:617-618`; question is only whether the message is acceptable. ⟨pass 2, answered: a cold cache fails loudly ("no toolchain found") by design, adopted in R51 (OR16 fail-loud) — G8: R51⟩
 - **CI.S10** Comment blocks over 3 lines in files outside CLAUDE.md's swept config list: `.gitignore`
   (from lines 27, 33, 75, 84), `tsconfig.json` (11, 29), `tsconfig.node.json` (2, 17); `.gitignore:75`
   still names the retired `run_wozi_integration.py`.
 - **CI.S11** `ci.yml:13-15` + `:38-41` together may skip the web tier permanently for a change whose
   run was cancelled (confirm dorny/paths-filter's push semantics first).
-- **CI.S12** The web-coverage run's test result is advisory (`ci.yml:226-228`).
+- **CI.S12** The web-coverage run's test result is advisory (`ci.yml:226-228`). ⟨pass 2, dup: same as CI.T11 — G8: R55⟩
 - **CI.S13** No `--strict-markers` (`pyproject.toml:415-418`; markers registered at
   `tests_hardware/conftest.py:105-112`): a misspelled `persistence_write` would be a silent no-op and
   the write would run ungated.
@@ -2021,7 +2021,7 @@ Topics:
 - [ ] **WEB.T04** `js/mock-server.js` ↔ `src/` parity (G.2): every validation rule, envelope, unknown
       key, malformed body, Content-Type gate, failure injections that model fixed server gaps.
 - [ ] **WEB.T05** Definitions: hand-written wozi/dev vs generated (order-sensitive),
-      `validateDefinitions` strictness vs H.4's claim, degraded `/status` sources.
+      `validateDefinitions` strictness vs H.4's claim, degraded `/status` sources. ⟨pass 2, overtaken: hand-vs-generated premise gone: files retired (OR43.a (3)); validator strictness and degraded sources continue in R38 — G7: R38, HR169⟩
 - [ ] **WEB.T06** Build: bundle order, import stripping, duplicate exports, inlining/escaping, the
       staging test's bite.
 - [ ] **WEB.T07** Accessibility: ids, labels, drawer focus/inert, contrast (light and dark),
@@ -2029,9 +2029,9 @@ Topics:
 - [ ] **WEB.T08** Security: no-`innerHTML` rule enforcement, selector injection, CSRF/DNS
       rebinding/clickjacking posture (PQ5), password `autocomplete`.
 - [ ] **WEB.T09** First define the browser floor (owner input, PQ10), then check it vs features used
-      (media-range syntax, `replaceChildren`, private fields, `??=`).
+      (media-range syntax, `replaceChildren`, private fields, `??=`). ⟨pass 2, answered: floor = current Chromium, Firefox, Safari, desktop and mobile (PQ10, owner 2026-09-26) — G7: R32⟩
 - [ ] **WEB.T10** (owned by `TEST.T10`) Test coverage: live PUT matrix per device (dev/ISL29125), live
-      tests that skip-and-pass without the toolchain, runtime DOM validation.
+      tests that skip-and-pass without the toolchain, runtime DOM validation. ⟨pass 2, dup: TEST.T10 owns it — G7: —⟩
 - [ ] **WEB.T11** H.3 layering contract vs code: the `data-*`/class contract, no DOM building in
       `render.js`/`nav.js`, no I/O in `templates.js`, controllers set only `data-apply-status`.
 - [ ] **WEB.T12** Per-device end-to-end rendering: the 4 generated devices' definitions never pass the
@@ -2080,7 +2080,7 @@ Seeds:
 - **WEB.S13** `[x3]` wozi/dev `html/definitions/*.json` are hand-written; the generator's output equals
   them only order-insensitively — field order differs (e.g. wozi SCD30), so generated devices show
   fields in a different order; the golden test is order-insensitive
-  (`tests_scripts/test_buildgen_definitions.py:40-69`).
+  (`tests_scripts/test_buildgen_definitions.py:40-69`). ⟨pass 2, overtaken: hand-written wozi/dev definitions retired (OR43.a (3)); generated order is the only order — G7: R38, HR169⟩
 - **WEB.S14** H.2 claims `build_website.sh` mechanically re-checks bundle order; no such check exists,
   and the order is violated (`templates.js` before `definitions.js`, `scripts/build_website.sh:78`),
   harmless only via hoisting; single-line `grep -v` import stripping; the staging test passes on a
@@ -2099,7 +2099,7 @@ Seeds:
 - **WEB.S19** `html/index.html:40-43` has a 4-line `//` block (comment cap).
 - **WEB.S20** `/system`'s `build` entry is rendered nowhere: H.1 (SPECIFICATION.md:4277-4278, "every
   REST endpoint's functionality must be reachable in the GUI") contradicts L.7 (:6575-6576, "neither
-  version nor build date is rendered") — doc contradiction owned by `DOC.T10`.
+  version nor build date is rendered") — doc contradiction owned by `DOC.T10`. ⟨pass 2, answered: `build` is rendered on the System page (OR43.a (2), V57); L.7 corrected — G7: R29⟩
 - **WEB.S21** Stale pointers: `js/field-format.js:27`, `js/mock-server.js:179`,
   `tests_js/templates.test.js:41` cite `src/sensortask_wozi.py` (gone; helper at
   `buildgen/codegen.py:518`); `html/index.html:40-41` cites a removed "Inlining" comment;
@@ -2126,25 +2126,25 @@ Topics:
       per validation branch / clamp / early return per `src/` function (operators: invert condition,
       remove clamp, off-by-one bound, drop await); stop when a module's surviving-mutant rate is
       recorded and each survivor is triaged. Wear rule: each mutant runs only the test files covering
-      the mutated function, on tmpfs/scratch; ENV estimates and records the total run count first.
+      the mutated function, on tmpfs/scratch; ENV estimates and records the total run count first. ⟨pass 2, overtaken: OR16.a (4)/OR19.a (3): a small targeted fault set per module and per test file, one campaign (harmonization 18), not one mutant per branch; record = which test catches which fault — G2: R12⟩
 - [ ] **TEST.T03** `gc.collect()` and absolute heap bounds in tests/twin vs CLAUDE.md and E.8;
-      root-cause any `MemoryError` a manual collect is hiding.
+      root-cause any `MemoryError` a manual collect is hiding. ⟨pass 2, answered: OR39.a (1)/OR55.a: `gc.collect()` in tests only as a measurement baseline, readable in the next statement, never in a timed window; props root-caused; absolute bounds become rates — G2: HR115, HR124⟩
 - [ ] **TEST.T04** Timing sensitivity: wall-clock bounds under parallelism, fixed sleeps, unbounded
       `asyncio.run()` helpers.
 - [ ] **TEST.T05** (owns the mock↔twin divergences; `TWIN.T02`/`TWIN.T12` cite it) Mock ↔ twin semantic
       divergences (reset returns vs raises, WDT validation, `Pin.init` pull, IRQ edges, `scan()`, RTC
-      set return).
+      set return). ⟨pass 2, answered: harmonization 32: fidelity may differ, semantics never; one shared contract per shared API; divergences closed — G2: R07, R06⟩
 - [ ] **TEST.T06** Meta-tests: which CLAUDE.md rules are machine-enforced vs review-only; propose
       guards for review-only ones (four-tier bus-hazard rule, nested `asyncio.run`, port/scratch-key
       disjointness, `ALL_CHECKS` completeness, `gc.collect()` in tests/twin).
 - [ ] **TEST.T07** Shared mutable class-level state across tests in one process + dict-order execution.
 - [ ] **TEST.T08** Duplication of helpers (raise-on-arm context managers, `run()`, `_wait_until`).
 - [ ] **TEST.T09** (with `GEN.T10`) Coverage: generated modules untraced; E.5.1's false-negative
-      categories re-checked.
+      categories re-checked. ⟨pass 2, answered: OR22.a (2): generated modules traced like `src/`; report-only (OR23.a (2), E.5.3); Codecov gone (OR63.a) — G2: HR128, R13⟩
 - [ ] **TEST.T10** (owns `WEB.T10`) `tests_js/`: live tests' skip behaviour, fixture reliance on
-      hand-written definitions, mock-only coverage for dev fields.
+      hand-written definitions, mock-only coverage for dev fields. ⟨pass 2, answered: OR43.a (3)/OR54.a (1): generated definitions only, device set derived; OR21.a (3): a skip never passes — G2: R27, R19, HR169, HR019⟩
 - [ ] **TEST.T11** Private-attribute coupling in tests: count SLF001-style accesses per `src/` module
-      and decide whether the refactor-fragility cost is accepted.
+      and decide whether the refactor-fragility cost is accepted. ⟨pass 2, answered: OR36.a (1): tests reach privates from outside (SLF001 exempt); the product adds no seam — G2: HR073, R05⟩
 - [ ] **TEST.T12** Runner-level vacuity: an `async def test_*` counts as PASS without running; a file
       without the footer prints nothing and exits 0; a `BaseException` mid-file aborts the rest — a
       meta-test for all three.
@@ -2154,7 +2154,7 @@ Topics:
 - [ ] **TEST.T14** `tests_js/` determinism and isolation: `installMockFetch` leaks between tests,
       `Math.random` in the mock, fixed ports 19420/19481/19482, shared `digital_twin/config`.
 - [ ] **TEST.T15** Behaviour × tier matrix per `src/` module (mock, twin, host, web, hardware),
-      extending E.6.5: risky behaviours covered by one tier or none.
+      extending E.6.5: risky behaviours covered by one tier or none. ⟨pass 2, answered: method: OR25.a intent map per layer + OR41.a matrices + OR45.a (4) file × level matrix, all `audit/` working files — G2: R13, R14, R09⟩
 - [ ] **TEST.T16** Hang backstops for every runner, not only test.sh: `tests_scripts/` per test,
       Vitest, `cross_browser_smoke.mjs`, each twin-suite run, `tests_hardware/` (no per-test timeout).
 - [ ] **TEST.T17** Oracle correctness: `digital_twin/_http_client.py`, `tests_hardware/http_client.py`,
@@ -2166,7 +2166,7 @@ Topics:
       stdout `"ignore"` — where `src/` logs `memory allocation failed`), `scripts/cross_browser_smoke.mjs:
       92-110`, hardware tests outside the three `MEMORY_ERROR_MARKERS` importers; and these twin launches
       run only at `gc.threshold(32768)` (`run_generic_integration.py:39`), never at -1. Gate each or record
-      it as knowingly outside the rule (with `SCR.T01`, `TEST.T06`, `HW.T05`).
+      it as knowingly outside the rule (with `SCR.T01`, `TEST.T06`, `HW.T05`). ⟨pass 2, answered: OR40.a (2): every MicroPython launch is gated and runs both stages; none stays "knowingly outside" — G2: HR100, HR114⟩
 - [ ] **TEST.T19** Unit-tier fakes vs the real rp2 API: the main mypy pass resolves `machine` to
       `tests/machine.py`, so `src/` and `tests_hardware/device_scripts/` are type-checked against the fake,
       never the board stub. Scratch passes over `src` alone and `device_scripts` alone against `typings/`,
@@ -2178,7 +2178,7 @@ Topics:
       `digital_twin/segfault_stress_repro.py` (its segfault is root-caused and fixed, and the bench burst test
       covers the scenario), tests that re-demonstrate a retired implementation (the `test_tmp_scratch.py`
       pattern CLAUDE.md records), and tests pinned to closed BACKLOG items (5, 6, 9, 12, 29, 30). Never
-      retire a guard to save effort (OR12).
+      retire a guard to save effort (OR12). ⟨pass 2, answered: OR33.a verdict order (keep / make work or move / adopt intent / drop); `segfault_stress_repro.py`'s `gc.collect()` goes (OR54.a (2)) — G2: R17⟩
 
 Seeds:
 - **TEST.S01** Tautology: `test_*_bus_membership_matches_the_real_toml_group` is registered only when
@@ -2197,7 +2197,7 @@ Seeds:
   own copy of the range logic (`tests/test_bus_hazard_multi_device.py:63-66, 385`).
 - **TEST.S06** The stagger no-coincidence proof re-implements `1000 // (n+1)`; no test reads the real
   `sequencer_timer.period` (`tests_scripts/test_timer_stagger_no_coincidence.py`;
-  `src/system_service.py:159`).
+  `src/system_service.py:159`). ⟨pass 2, overtaken: OR47.a (3): sequencer moves to t0 + k·slot with a minimum separation; proof by fake-clock tests of the real sequencer per device and an exhaustive period check — G2: R15, HR040⟩
 - **TEST.S07** `_uart_comm_harness.build_pair()` discards `Pair.setup()`'s result (~60 call sites);
   negative-only tests would pass on a failed setup (`tests/_uart_comm_harness.py:116-119`;
   `tests/test_asy_uart_comm.py:687-691`).
@@ -2212,11 +2212,11 @@ Seeds:
   (`tests/test_digital_twin_sensortask_integration.py:543-546, 627, 705, 779`;
   `tests/_webserver_concurrency_scenarios.py:861`; `tests/test_fram_integration.py:157-177`) —
   MicroPython collects on allocation failure anyway, so a collect that prevents a `MemoryError` points
-  at retention or fragmentation.
+  at retention or fragmentation. ⟨pass 2, answered: OR39.a (1): a collect propping a test is a defect fixed at its root (retention or fragmentation) — G2: HR115⟩
 - **TEST.S12** Absolute heap bounds against E.8's "a leak is a rate"
   (`tests/test_asy_webserver_service.py:1833`; `tests/test_digital_twin_uart_link.py`
   `_hammer_with_the_graph_running`).
-- **TEST.S13** Coverage traces `src/` and `digital_twin/` only; generated `sensortask_*.py` gets none.
+- **TEST.S13** Coverage traces `src/` and `digital_twin/` only; generated `sensortask_*.py` gets none. ⟨pass 2, dup: TEST.T09 — G2: HR128⟩
 - **TEST.S14** Tight wall-clock bounds under 1-4× core parallelism (`test_asy_dns_client.py:332`,
   `test_captive_dns.py:482`, `test_asy_notification_service.py:1268`, `test_asy_udp_socket.py:926, 994, 1350`);
   fixed `sleep(1.0)` for bind; 43 of 47 local `run()` helpers unbounded.
@@ -2228,24 +2228,24 @@ Seeds:
   `tests/test_asy_dns_client.py:350-353`).
 - **TEST.S17** `test_reset_call_site_invariant.py` scans `src/` only; `WDT()` now lives in generated
   code; aliased imports (`from machine import reset`) escape the substring match
-  (`tests/test_reset_call_site_invariant.py:7-11, 24`).
+  (`tests/test_reset_call_site_invariant.py:7-11, 24`). ⟨pass 2, overtaken: OR31.a (1): WDT is the first statement of the generated boot entry; the invariant test scans generated code and asserts placement; aliased-import escape stays work — G2: R27, HR053⟩
 - **TEST.S18** Duplication: 7 copies of the Timer raise-on-arm context manager; 47 local `run()`s; 20
-  files with their own `run_timed`/`_wait_until`/`_cancel`.
+  files with their own `run_timed`/`_wait_until`/`_cancel`. ⟨pass 2, dup: TEST.T08 — G2: R26⟩
 - **TEST.S19** Live PUT matrix covers wozi only (`tests_js/live-backend-put-matrix.test.js:58`); live
-  tests skip-and-pass without the toolchain (`tests_js/live-backend.test.js:13-16`).
+  tests skip-and-pass without the toolchain (`tests_js/live-backend.test.js:13-16`). ⟨pass 2, answered: OR43.a (3)/OR54.a (1): live matrix per derived device; OR21.a (3): skip-and-pass goes — G2: R27, HR019⟩
 - **TEST.S20** Only ISL29125 has a C.11.1 conformance probe; SCD30, SGP40, BMP3xx and FRAM fakes have
   none and nothing requires one.
 - **TEST.S21** E.1 says TCP port bases lie in 17400-19999, but `_webserver_concurrency_scenarios.py:77`
-  allocates `19700+200*i`, reaching 20700+.
+  allocates `19700+200*i`, reaching 20700+. ⟨pass 2, overtaken: OR38.a (3): self-chosen ports OS-assigned (port 0), product-fixed ports under a lock; the band text goes (V74) — G2: HR130⟩
 - **TEST.S22** The comment-cap gate counts physical lines, and E501 is ignored, so a docstring can pack
   a paragraph onto one 400-700-character line and pass (`digital_twin/_fault_injection.py:3`,
   `digital_twin/run_generic_integration.py:1-2`,
   `tests/test_digital_twin_run_generic_integration.py:1-2`, `buildgen/twin_wiring.py:1-2, 35-36`,
   `scripts/_digital_twin_ci_suite.py:5-7`, `scripts/_render_coverage.py:6-7`) — owner decision on a
-  character bound (PQ6).
+  character bound (PQ6). ⟨pass 2, answered: PQ6/OR51: the comment rule applies to every file; a paragraph packed on one line breaks "concise" and is counted by length (HR077) — G2: HR077⟩
 - **TEST.S23** `tests/microtest.py:17-28` counts a test as PASS whenever the call raises nothing: an
   async test would pass without running; a file with no footer exits 0 and `test.sh:374-376` records
-  PASS; no instance today, nothing guards against it.
+  PASS; no instance today, nothing guards against it. ⟨pass 2, dup: TEST.T12 — G2: R02⟩
 - **TEST.S24** Stale references to retired runners/hand-written modules
   (`tests/test_digital_twin_run_generic_integration.py:2, 137-138, 221`; `digital_twin/run_generic_integration.py:2, 34, 98, 312`;
   `.gitignore:75`).
@@ -2275,7 +2275,7 @@ Topics:
 - [ ] **TWIN.T06** 64-bit, non-frozen heap caveat applied to every twin-tier allocation assertion
       (E.8).
 - [ ] **TWIN.T07** Unix-port helper modules (`unix_port_gc_unwedge.py`, `unix_port_poll_prewarm.py`,
-      `_unix_port_udp_addr_shim.py`) — still needed after the root-cause fixes?
+      `_unix_port_udp_addr_shim.py`) — still needed after the root-cause fixes? ⟨pass 2, answered: unwedge retired after the override test (OR52.a (6)); prewarm and UDP shim stay until upstream fixes, each with its trigger — G7: R12, HR091, HR096⟩
 - [ ] **TWIN.T08** Network-stack fidelity: the twin runs on the host's Linux stack — lwIP limits (TCP
       PCBs 9, pbuf pool, `MEM_SIZE`, TIME_WAIT/PCB reuse, backlog) are unmodelled; every twin claim
       about connection ceilings needs this caveat in the infidelity table.
@@ -2335,7 +2335,7 @@ Topics:
 - [ ] **HW.T05** Oracle bite: every test's assertion vs its name; engagement floors for passive tail
       tests; `reset_cause()` checks.
 - [ ] **HW.T06** Harness facts: what `hard_reset()` really does (mpremote source), out-of-band reset
-      availability, raw-REPL side effects (stops `main.py` → WDT reset ~8 s later).
+      availability, raw-REPL side effects (stops `main.py` → WDT reset ~8 s later). ⟨pass 2, answered: `hard_reset()` = `mpremote reset` = `machine.reset()` via raw-REPL exec (v1.29.0 `main.py:407-411`); raw REPL Ctrl-C's `main.py`; no out-of-band power reset on the bench (A40); doc fixes owed in HR188 — G1: R14, R07; HR188⟩
 - [ ] **HW.T07** Bench-rig facts vs docs: desk review only compares the docs with each other (MPRLS on
       i2c0? FRAM part number on dev); which version is physically true becomes a real-hardware entry (a
       bus scan), never settled from the docs.
@@ -2374,18 +2374,18 @@ Topics:
       `38b270d`).
 - [ ] **HW.T17** Board-history provenance for CLAUDE.md's FRAM-evidence caveat: is there any host-side
       record of which device scripts ran against the board since its last flash (each builds its own
-      `AsyFramManager` over production's first chunks)? If not, ask the owner whether one is wanted.
+      `AsyFramManager` over production's first chunks)? If not, ask the owner whether one is wanted. ⟨pass 2, answered: no board-history record; save-first order suffices (section 4, 4) — G1: R11, R02⟩
 - [ ] **HW.T18** Re-base HW desk findings on the 2026-09-24/25 sitting, which finished before the
       baseline: two clean default bench tiers, one clean wear-gated run (128 passed), R1/R4/R5/R6/R7/T2/
       W3/W4/W5/F1/N2/G3/G8/G12 closed or measured (`851e816`..`a9c8627`; Appendix B). Seeds written
       before it (`HW.S09`, `HW.S15`) are updated; any later sitting another session runs is folded in the
-      same way.
+      same way. ⟨pass 2, overtaken: seeds already re-based (S09, S15, S26-S28); no later sitting can occur while `main` is frozen (OR52.a (4)) except Phase C, which R02 covers — G1: R02⟩
 - [ ] **HW.T19** Image identity: can a run know which tree the board's image was built from? The image
       carries only hand-bumped versions (`buildgen/version.py:7-8`) and a build date (`buildgen/codegen.py:
       351, 603`) — no commit, no dirty flag; device scripts run against whatever frozen `src/` is on board
       (`tests_hardware/harness.py:440-447`); `configured_max_connections()` "describes the TREE, not
       necessarily the image" (`harness.py:40-41`). Propose a checkable identity (commit + dirty flag in
-      `build_info`, verified before a run) or record the gap (with `HW.T16`, `GEN.T14`, `PAR.T06`).
+      `build_info`, verified before a run) or record the gap (with `HW.T16`, `GEN.T14`, `PAR.T06`). ⟨pass 2, answered: `buildDate` compared with the round's own build (owner D3), no product field — G1: R02⟩
 - [ ] **HW.T20** (owns OR33 for this tier) Necessity of every owed real-hardware entry and every
       investigation-born test or device script: keep (standing regression or contract value, named), retire
       (investigation closed, a lower tier proves the same property, or the only purpose was a one-off
@@ -2423,7 +2423,7 @@ Seeds:
   `WDT(8000)` and feeding it from a 2 s `Timer` (`tests_hardware/README.md:383-385`); BACKLOG.md:720-727
   asks the owner to fold that in or keep the wrapper, and whether stale `config_HWTEST_*.cfg` files left
   on the board by earlier scripts should be removed on exit. See Appendix B for whether the script is
-  still needed at all.
+  still needed at all. ⟨pass 2, answered: scratch removed on every path (OR38.a (4)); keep-and-fold or retire by OR33.a; fold as chunked feeds — G1: R09; HR191⟩
 - **HW.S10** `bench/test_hotspot_role_reversal.py:58-89` persists `SSID=""` and calls `ap_down()`
   before `yield`; a stage 1-2 failure skips the teardown and strands board and bench AP.
 - **HW.S11** Four role-reversal tests assert nothing of their own (`pass`, a constant equal to itself,
@@ -2469,13 +2469,13 @@ Seeds:
 - **HW.S22** `manual/manual_sensor_accuracy.py:24, 30` asks for a `Press` field in Pa; the driver
   publishes `Pres` in hPa with `PressOffset` applied (`src/asy_bmp3xx_driver.py:102, 106`).
 - **HW.S23** `bench/test_memory_stress_bench.py:18-19` says WIFI, NTP and every `CFGMGR_*` logger are
-  RAM-only; CLAUDE.md:367-376 says they joined the FRAM-backed set.
+  RAM-only; CLAUDE.md:367-376 says they joined the FRAM-backed set. ⟨pass 2, dup: same finding as HW.S06's `_FRAM_BACKED_MODULES` half — G1: R12⟩
 - **HW.S24** `manual/manual_wifi.py:19, 30` hardcode the hotspot password `12345678`; the source of
   truth is `devices/dev.toml:7` (`HW.T11` consistency).
 - **HW.S25** `role_reversal` (and `over_provisioned_image`) are informational markers, not gates
   (`tests_hardware/conftest.py:111-113`), and `run_bench_hardware_suite.sh:11` excludes only the soak
   markers — so the role-reversal scenario, with its documented stage-6 permanent-WLAN-deactivation risk
-  (`HW.S10`), runs in every routine bench pass. Should it become a gate?
+  (`HW.S10`), runs in every routine bench pass. Should it become a gate? ⟨pass 2, stale: verified at HEAD: stage 6 (`test_hotspot_role_reversal.py:394`) is `persistence_write`, deselected by default; routine passes run only read-only stages and the prerequisite SSID clear — G1: R28, R05⟩
 
 - **HW.S26** `flash/test_watchdog_starvation.py`'s two tests differ in oracle and style: the G3 test
   (`:54-78`) asserts `reset_cause() == WDT_RESET` through a hardcoded `_WDT_RESET = 3` (`:51`, a mirror of
@@ -2488,7 +2488,7 @@ Seeds:
 - **HW.S28** Two fixes are "not yet confirmed on silicon" (BACKLOG.md:361-366): SGP40 `W13`'s one slot
   per outage needs NTP blocked past `SGPWaitTimeNTP` (default 30 backups, ~30 min, `asy_sgp40_driver.py:53`);
   the flash tier's closing `hard_reset()` needs a full flash-tier run. Both are logic already pinned by
-  unit tests (`tests/test_asy_sgp40_driver.py:1068-1128`) or by the test itself (Appendix B).
+  unit tests (`tests/test_asy_sgp40_driver.py:1068-1128`) or by the test itself (Appendix B). ⟨pass 2, overtaken: W13 half: OR35.b replaces the episode flag; hard_reset half: confirmed by Phase C's first full flash run — G1: R02⟩
 
 Quality measure: desk findings resolved or moved to BACKLOG's real-hardware section; every
 silicon-needing check is an entry there with flags and wear stated.
@@ -2503,15 +2503,15 @@ property (with the owner's decision recorded), or out of model.
 Topics:
 - [ ] **SEC.T01** Write the threat model: actors (LAN peer, browser page on the LAN via DNS rebinding,
       radio-range attacker in hotspot mode, local user on the dev/bench host, supply chain), assets
-      (availability, config, FRAM evidence, flash/NVM endurance, credentials).
+      (availability, config, FRAM evidence, flash/NVM endurance, credentials). ⟨pass 2, answered: trusted home LAN (PQ5, OR52.a (3)); the statement is U29 work — G5: R57⟩
 - [ ] **SEC.T02** Unauthenticated write surface: `SystemCmd` (`bootloader` = offline until physical
       intervention; `reboot`; `mempause`), `ResetErrors` (irreversible evidence wipe), SSID/PW changes,
-      every config write (flash/NVM wear by alternation).
+      every config write (flash/NVM wear by alternation). ⟨pass 2, answered: unauthenticated writes and `bootloader` accepted (OR52.a (3)); `ResetErrors` global (OR70.a (7)) — G5: R57, R02, R23⟩
 - [ ] **SEC.T03** Browser-borne attacks: CSRF (blocked by JSON content-type + no CORS?), DNS rebinding
-      (no Host check), clickjacking (no X-Frame-Options/CSP).
+      (no Host check), clickjacking (no X-Frame-Options/CSP). ⟨pass 2, answered: browser-borne attacks = PQ5 option (b), not chosen; XSS-safety stays (R58) — G5: R57, R58⟩
 - [ ] **SEC.T04** Radio-range: shared default hotspot password in all 6 TOMLs (accepted-risk rule in
       CLAUDE.md), captive DNS spoofing, bogus-SSID → hotspot → second streak → permanent WLAN
-      deactivation (A.4 intentional; a remote DoS needing a power cycle).
+      deactivation (A.4 intentional; a remote DoS needing a power cycle). ⟨pass 2, answered: radio range out (OR52.a (3)); hotspot password permanent (OR70.a (1)); WLAN deactivation owner-directed (A49) — G5: R60, R57⟩
 - [ ] **SEC.T05** Protocol-level: HTTP body/header bounds (`REST.S01`, `REST.S02`), NTP reply spoofing
       (no origin check), DNS response validation, captive-DNS subnet filter by source address.
 - [ ] **SEC.T06** Host-side: `setcap` on the interpreter (owned by `SCR.T07`), secrets in argv/logs and
@@ -2525,13 +2525,13 @@ Topics:
       jumper.
 - [ ] **SEC.T09** Availability and evidence integrity vs a LAN peer: slot exhaustion (6 × 15 s, no
       per-peer limit), ring eviction via client-provoked entries (`CORE.S11`, `REST.S05`), repeated
-      `mempause`/`reboot` (`XCUT.S03`), flash wear by alternating PUTs, stdout stalls (`REST.T13`).
+      `mempause`/`reboot` (`XCUT.S03`), flash wear by alternating PUTs, stdout stalls (`REST.T13`). ⟨pass 2, answered: trusted LAN; eviction bounded by OR35.b; no write-rate limit, own clients audited (OR42.a (3)) — G5: R57, R34, HR012⟩
 - [ ] **SEC.T10** Information exposure and outbound traffic: what unauthenticated GETs reveal (SSID,
       hostname, versions + build date, full error histories) and every outbound destination (DHCP DNS,
-      8.8.8.8/1.1.1.1 `NET.S04`, NTP host) — disposition each under PQ5.
+      8.8.8.8/1.1.1.1 `NET.S04`, NTP host) — disposition each under PQ5. ⟨pass 2, answered: exposure accepted (PQ5); DNS fallback becomes a config value (OR56.a (2)) — G5: R57⟩
 - [ ] **SEC.T11** Trust in time and names: spoofed NTP → RTC, `TS`, FRAM backup age, notification
       window; spoofed DNS → NTP at an attacker's host; DNS id entropy (`os.urandom(2)`) and source-port
-      predictability (`LWIP_RAND`) (with `NET.T03`/`T04`, `STOR.T09`).
+      predictability (`LWIP_RAND`) (with `NET.T03`/`T04`, `STOR.T09`). ⟨pass 2, answered: spoofing by a LAN peer out of model; parser robustness stays (NET) — G5: R57, R31⟩
 - [ ] **SEC.T12** Secret scan of the full git history (all refs, unshallowed clone): real WiFi SSID/PSK in
       once-committed `config_*.cfg`, device scripts or logs (`.gitignore:84-89` only guards future
       commits), bench PSKs, tokens; cross-check GitHub's secret-scanning status; disposition under PQ5 and
@@ -2563,7 +2563,7 @@ Topics:
       built at level 0, `write_config` dict copies, CRC `add()`/`check()` copies, f-strings in hot
       paths.
 - [ ] **MEM.T05** Tests: `gc.collect()` props and absolute heap bounds — owned by `TEST.T03`
-      (`TEST.S11`, `TEST.S12`).
+      (`TEST.S11`, `TEST.S12`). ⟨pass 2, dup: owned by `TEST.T03` (`TEST.S11`, `TEST.S12`) — G4: R50, R47⟩
 - [ ] **MEM.T06** Does anything in `src/` still need one big contiguous allocation (I.4's forbidden-fix
       rule)?
 - [ ] **MEM.T07** Target representation gap: rp2 small ints stop at ±2**30 and every float is a heap
@@ -2590,17 +2590,17 @@ has a test that fails before the budget is crossed.
 per FRAM chunk), ~3985-3992 (~21 ms non-yielding block hold), BACKLOG 24/32.
 
 Topics:
-- [ ] **PERF.T01** Watchdog: worst-case feed gap (XCUT.T03).
+- [ ] **PERF.T01** Watchdog: worst-case feed gap (XCUT.T03). ⟨pass 2, dup: owned by `XCUT.T03`; PERF keeps the budget-table row — G4: R58, R64, HR053⟩
 - [ ] **PERF.T02** HTTP capacity: ~2.2 requests/s saturation, `max_connections` 6, slot release lag, UI
       polling rates, hidden tabs, no caching of static assets.
 - [ ] **PERF.T03** `ResetErrors` sweep cost vs `outer_cap_s` and the UI timeout (BACKLOG 24/32 — R2
       measured 2026-09-25: the curve does not flatten, ~+3.5 s per reader, 88-98 % of the cap at 3
       readers; F18 at 4 — budget and design fix are the owner's; R4 the same day: every populated log
-      read back 0 at three readers in 14.58 s, and the UART exerciser's `E20`/`E22`/`W10` start at three).
+      read back 0 at three readers in 14.58 s, and the UART exerciser's `E20`/`E22`/`W10` start at three). ⟨pass 2, answered: OR72.a (5): concurrent reset, then a bench budget; four readers a degradation check (OR72.a (1)) — G4: R62⟩
 - [ ] **PERF.T04** Bus budgets: SCD30 50 ms sleeps under the bus lock, probe sleeps, FRAM block hold
       (~21 ms), SPI re-init per CS, VOC processing cost, CRC per-byte yield.
 - [ ] **PERF.T05** Lock-hold stalls in networking (60 s sleep, 5 s connect poll, ~6.5 s NTP attempt) —
-      owned by `NET.T02`; PERF records only the budget.
+      owned by `NET.T02`; PERF records only the budget. ⟨pass 2, dup: owned by `NET.T02`; PERF records only the budget — G4: R64⟩
 - [ ] **PERF.T06** Boot is not a metric to optimise (CLAUDE.md WP6): verify only that the setup batch
       never starves the WDT on the device with the most setup units (`dev`, ~21 FRAM loggers; silicon
       2026-09-25, R7: 79-91 ms per unit, the whole batch 0.93 s, import ~1.1 s, timer stagger 0.79 s —
@@ -2688,22 +2688,22 @@ A.8, H.1, L.1; CLAUDE.md "same top-level features" agreement.
 
 Topics:
 - [ ] **PAR.T01** Full parity table: every legacy REST route/field/bound/default/behaviour → refactor
-      location, "same" / "changed-documented" / "changed-undocumented" / "missing".
+      location, "same" / "changed-documented" / "changed-undocumented" / "missing". ⟨pass 2, overtaken: OR48.a (1)(3): lost functions, no table or permanent record — G9: R02⟩
 - [ ] **PAR.T02** Device mapping: legacy `arzi`/`neu`×3/`wozi`/`dev` → `devices/*.toml` pins and
       options.
 - [ ] **PAR.T03** A.4 "confirmed intentional" behaviours still hold, one by one.
 - [ ] **PAR.T04** Timing parity: supervisor period/reset delay, UI poll interval, LED sleeps, NTP
       retry.
 - [ ] **PAR.T05** External REST consumers (scrapers, home automation) of the legacy routes — owner
-      input.
+      input. ⟨pass 2, answered: none: no legacy path stays (OR58.a) — G9: R06⟩
 - [ ] **PAR.T06** Migration on reflash: stored `config.json` → per-module `.cfg` (never read), legacy
       FRAM contents under the new layout, littlefs region size across 1.26 → 1.29, hostname change and
-      DHCP reservations, SCD30 NVM survival, first-boot hotspot → permanent-deactivation hazard.
-- [ ] **PAR.T07** Whether a reflash runbook (or a first-boot migration/format step) is wanted (PQ10).
+      DHCP reservations, SCD30 NVM survival, first-boot hotspot → permanent-deactivation hazard. ⟨pass 2, answered: no migration, runbook (OR52.a (1)); FS erased (OR59.a (1)); 1.24.1 (OR61.a); FRAM need not survive (OR47.a (2)) — G9: R01 (HR209)⟩
+- [ ] **PAR.T07** Whether a reflash runbook (or a first-boot migration/format step) is wanted (PQ10). ⟨pass 2, answered: runbook yes, first-boot migration no (OR52.a (1)) — G9: R01 (HR209)⟩
 - [ ] **PAR.T08** Filesystem residue at reflash: what a legacy unit's littlefs holds (`config.json`,
       `boot.py`, `main.py`, `*.py`, `*.mpy`; dev snapshot at `dev_legacy/README.md:667`+) and whether
       any of it can run before, or shadow, the frozen refactor `main.py`/modules (`sys.path` order `''`
-      vs `.frozen`; `pyexec` lookup in `ports/rp2/main.c` at 1.29.0) (with `PLAT.T10`, `XCUT.T20`).
+      vs `.frozen`; `pyexec` lookup in `ports/rp2/main.c` at 1.29.0) (with `PLAT.T10`, `XCUT.T20`). ⟨pass 2, answered: runbook erases the FS and `.frozen` first (OR59.a) — G9: HR050⟩
 - [ ] **PAR.T09** Frozen-set and boot parity: legacy `python/Manifest/manifest.py` + frozen `_boot.py`
       vs the refactor's frozen set + `main.py`; mount/format behaviour on a filesystem the legacy build
       wrote (with `PAR.S10`, `TOOL.T06`).
@@ -2712,59 +2712,59 @@ Topics:
       (`PAR.S05`, `PAR.S07`, `WEB.S20`).
 - [ ] **PAR.T11** HTTP behaviour across the Microdot jump (untagged ~2.0.x → v2.6.2) and 1.26 → 1.29:
       status codes for unknown routes/methods, error bodies, keep-alive, HEAD; legacy `api_helpers.py`
-      codes 1-10 (e.g. 8 "LED busy", `REST.S09`) vs `api_response`'s catalogue.
+      codes 1-10 (e.g. 8 "LED busy", `REST.S09`) vs `api_response`'s catalogue. ⟨pass 2, overtaken: OR58.a: new API only reference, no compatibility; codes per R07 — G9: R06, R07⟩
 - [ ] **PAR.T12** Published-value parity per sensor: from the same raw bytes, do legacy
       `python/IndividualDrivers/*` and `src/` publish the same numbers (scaling, rounding, offsets,
       filters, compensation, `None` on failure)? Desk comparison; running legacy code as an oracle needs
-      the owner's permission (PQ10).
+      the owner's permission (PQ10). ⟨pass 2, overtaken: OR48.a (1): value differences only as hints of a lost function; scratch runs allowed (PQ10) — G9: R02⟩
 - [ ] **PAR.T13** Physical unit ↔ `devices/*.toml` mapping (L.1 names the three "ArZi neu" units);
-      legacy `dev` recorded as not a parity target.
+      legacy `dev` recorded as not a parity target. ⟨pass 2, answered: owner holds every unit (OR61.a (2)); mapping in TOML headers; legacy dev no target — G9: R02⟩
 - [ ] **PAR.T14** Rollback path: if a reflashed unit must go back to the legacy 1.26 build, what does legacy
       do with the refactor's state — leftover `config_<NAME>.cfg` and a missing/stale `config.json`, the
       refactor's FRAM layout read through legacy's chunk/timestamp/status logic
       (`python/IndividualDrivers/asy_fram_manager.py:50-110`) as SGP40 VOC state, SCD30 NVM values the
-      refactor wrote, and can 1.26 mount a littlefs last written by 1.29? Feeds `PAR.T07`.
+      refactor wrote, and can 1.26 mount a littlefs last written by 1.29? Feeds `PAR.T07`. ⟨pass 2, overtaken: no state survives either way (OR47.a (2), OR52.a (1)); rollback = owner's legacy reflash with fresh setup, in the runbook — G9: R01 (HR209)⟩
 - [ ] **PAR.T15** Is the parity baseline right? `PAR.T01` assumes `python/`, `modules/`, `html_raw/` at HEAD
       are what each field unit runs; the legacy build exposes no version/build ID and this checkout is
       shallow. Establish which source state each unit runs (owner input, PQ10) before any row is scored
-      "changed-undocumented".
+      "changed-undocumented". ⟨pass 2, answered: legacy HEAD baseline (OR48.a (4)); 1.24.1 (OR61.a); "shallow" stale — no `.git/shallow`, 1,691 commits — G9: R01⟩
 
 Seeds:
 - **PAR.S01** `WaitTimeNTP=0` disables the VOC restore entirely; legacy restored once, immediately; the
   web label "Never wait for NTP sync" implies the legacy meaning (`src/asy_sgp40_driver.py:53, 64, 356-359`).
 - **PAR.S02** `[x2]` SCD30 PUT calls every setter unconditionally; legacy wrote only when the value
   differed from the readback (or forced `AmbPres`) — NVM wear and repeated `ForceCalRef` recalibration
-  (`src/asy_scd30_driver.py:257-298` vs legacy `api_helpers.py:192`).
+  (`src/asy_scd30_driver.py:257-298` vs legacy `api_helpers.py:192`). ⟨pass 2, answered: compare-before-write (OR42.c); legacy compared only in intent (OR57.a) — G9: HR178, R36⟩
 - **PAR.S03** SGP40 resets `voc_write = WaitTimeNTP` after every stamped write, so each later backup
-  waits for NTP again; legacy set it to 0 for good (`asy_sgp40_driver.py:431-441`).
+  waits for NTP again; legacy set it to 0 for good (`asy_sgp40_driver.py:431-441`). ⟨pass 2, answered: owner's `improved-quality/` design (`8c4a73d`), kept; verified `asy_sgp40_driver.py:432, 439` — G9: R03⟩
 - **PAR.S04** `[x2]` Supervisor: check period 3 s → 2 s (decay 1.5× faster), reset delay 5 s → 4 s,
   explicit `reboot_system()` instead of watchdog starvation; A.2 (SPECIFICATION.md:124-125) and I.4(d)
   (:5009-5010) still say "stops feeding the watchdog"; BACKLOG asks for the supervisor change "without
   changing observed behaviour".
-- **PAR.S05** `/system`'s build info exists but no UI renders it (see `WEB.S20`).
+- **PAR.S05** `/system`'s build info exists but no UI renders it (see `WEB.S20`). ⟨pass 2, answered: build info on its page or a listed Part H exception (OR43.a (2), V57) — G9: R05 (HR170)⟩
 - **PAR.S06** Wire changes are documented as deliberate (six routes, sparse PUT, native bool/null,
   `BMP388` → `BMP3XX`, oversampling as values not indices, `Led` prefix dropped) — but old bookmarks
-  (`/sensorconfig.html` etc.) now 404; confirm acceptable.
+  (`/sensorconfig.html` etc.) now 404; confirm acceptable. ⟨pass 2, answered: old bookmarks 404 accepted (OR58.a) — G9: R06⟩
 - **PAR.S07** UI measurement poll 2 s → 3 s (definitions `landingSection` poll 3000 ms).
 - **PAR.S08** Config migration: nothing in `src/`/`buildgen/` reads `config.json`; after reflash every
   unit boots with SSID `""` → hotspot; if nobody joins within the hotspot window, the second streak
   permanently deactivates WLAN until a power cycle. BACKLOG #2's "avoids this structurally" covers
-  key-adding updates, not this transition.
+  key-adding updates, not this transition. ⟨pass 2, answered: runbook covers the first-boot hotspot hazard (OR52.a (1)) — G9: HR209⟩
 - **PAR.S09** Legacy FRAM chunk 0 (SGP40 VOC state, no CRC, 248 B) sits where the refactor's first
   chunk now lives; expect CRC/status errors on first boot that seed misleading errcount entries (see
-  CLAUDE.md's FRAM-evidence rule); VOC baseline lost (45-sample relearn).
+  CLAUDE.md's FRAM-evidence rule); VOC baseline lost (45-sample relearn). ⟨pass 2, answered: foreign bytes read as empty, no crash, no flood (OR47.a (2), OR35); VOC relearn accepted — G9: HR156⟩
 - **PAR.S10** The littlefs region must survive a 1.26 → 1.29 swap (`MICROPY_HW_FLASH_STORAGE_BYTES`
-  equal on both; B.14.3) — unverified.
+  equal on both; B.14.3) — unverified. ⟨pass 2, overtaken: FS erased at reflash (OR59.a (1)); source is 1.24.1 (OR61.a) — G9: HR209⟩
 - **PAR.S11** Hostname changes from `"SensorNode"`/user-set to `SensorStation<Name>` (DHCP
-  reservations, DNS names, hotspot SSID).
+  reservations, DNS names, hotspot SSID). ⟨pass 2, answered: runbook item (OR52.a (1)) — G9: HR209⟩
 - **PAR.S12** Legacy reboot-looped forever on a failed `fram.setup()` (WDT starved); the generated
   `build_system()` ignores `setup()` results — an undocumented, probably-better change (legacy
   `modules/sensortask-wozi.py:570-573, 604-606`).
 - **PAR.S13** CLAUDE.md says the refactored wozi is "never physically flashed"; if the fielded wozi
-  unit is ever reflashed, its first real flash is a production one — owner confirmation.
+  unit is ever reflashed, its first real flash is a production one — owner confirmation. ⟨pass 2, answered: wozi TOML never flashed (A05); reflashing the physical unit is the owner's operation (OR61.a (2)) — G9: R02⟩
 - **PAR.S14** Legacy `modules/sensortask-dev.py:21` carries SHTC3/MPRLS/ISL keys while
   `devices/dev.toml` wires SCD30/SGP40/BMP3xx/ISL29125 — not a parity target (CLAUDE.md: `dev` is a
-  bench rig).
+  bench rig). ⟨pass 2, answered: not a parity target; dev held to every device's bar (OR72.a (10)) — G9: R02⟩
 - **PAR.S15** Legacy served `/favicon.ico` (`modules/sensortask-wozi.py:121`,
   `html_raw/general/favicon.ico`); the refactor suppresses it in HTML (`html/index.html:7` `data:,`) —
   check no browser still requests `/favicon.ico` against the 6-connection ceiling (404, or 302 in
@@ -2784,23 +2784,23 @@ Topics:
 - [ ] **DOC.T01** Structural hygiene of `SPECIFICATION.md`: misplaced sections, heading levels,
       unnumbered subsections, a section-level table of contents.
 - [ ] **DOC.T02** Cross-reference integrity: `Part X.Y` (all resolve today), BACKLOG numbers, real-hardware
-      row IDs, archive `§`, named sections — and whether a CI lint should keep it that way.
+      row IDs, archive `§`, named sections — and whether a CI lint should keep it that way. ⟨pass 2, answered: yes: a `tests_scripts` check fails on citations to missing files, headings, numbered decisions (OR68.a (4)) — G9: R12⟩
 - [ ] **DOC.T03** Reference policy: permanent code citing temporary docs' row IDs (they dangle once
-      rows are deleted); ID namespaces that collide visually (`F1` row vs `F.1` Part).
-- [ ] **DOC.T04** Archive durability: `12640c2` reachability after merge (PQ2).
+      rows are deleted); ID namespaces that collide visually (`F1` row vs `F.1` Part). ⟨pass 2, answered: nothing permanent cites a temporary plan or row by section or number (OR68.a (4)) — G9: R12, R27⟩
+- [ ] **DOC.T04** Archive durability: `12640c2` reachability after merge (PQ2). ⟨pass 2, answered: merge commit keeps `12640c2` an ancestor (PQ2, OR52.a (4)) — G9: R12⟩
 - [ ] **DOC.T05** History/narrative vs the current-state rule (tests_hardware README pass sections,
       README provenance paragraphs, CLAUDE.md incident bullets, BACKLOG item narratives, dated stamps).
 - [ ] **DOC.T06** One home per fact: duplicated facts across CLAUDE.md/SPEC/BACKLOG/`tests_hardware/
       README.md`; open work scattered over several places (fewer since the queue and handover were folded
       into BACKLOG, `03f8bcf`).
 - [ ] **DOC.T07** CLAUDE.md budget (~92 KB auto-loaded): rules vs facts vs narrative; relocation of the
-      chroot recipe and "Known … fixed" bullets to SPEC with pointers (PQ6).
+      chroot recipe and "Known … fixed" bullets to SPEC with pointers (PQ6). ⟨pass 2, answered: PQ6 (b): rules with one short reason stay; facts, incidents, the chroot recipe move; no numeric size target — G9: R13⟩
 - [ ] **DOC.T08** Every dated count/number claim (86/86, ~157, 21 chunks, suite counts) — keep, make
-      generated, or make tested.
-- [ ] **DOC.T09** Glossary for undefined labels (WP1-WP8, measure A/B, image E6′, S3, sittings).
+      generated, or make tested. ⟨pass 2, answered: OR27.a: a number stays only as evidence of a rule or limit, dated and sourced — G9: R11⟩
+- [ ] **DOC.T09** Glossary for undefined labels (WP1-WP8, measure A/B, image E6′, S3, sittings). ⟨pass 2, overtaken: labels replaced by content plus actor tag (OR68.a (4)), no glossary — G9: R12, R27⟩
 - [ ] **DOC.T10** Contradiction sweep (seeds below) and terminology drift.
 - [ ] **DOC.T11** `DEVICE_REFERENCE.md`: which firmware does it document — the fielded legacy build or
-      the refactor after reflash? Check it against that firmware (`LED.S04`, `DOC.S19`).
+      the refactor after reflash? Check it against that firmware (`LED.S04`, `DOC.S19`). ⟨pass 2, answered: the refactor after reflash (OR58.a, OR52.a (1)); C06 "never will" out — G9: R13, R06⟩
 - [ ] **DOC.T12** Markdown mechanics: relative `[text](path)` links, in-file anchors, table integrity —
       a machine check next to `DOC.T02`'s ID resolver.
 - [ ] **DOC.T13** README's first screen describes only the legacy builds (device table, "5 units
@@ -2811,7 +2811,7 @@ Topics:
       `self-repository` disabled, E402 noqa split, inline `method-assign` ignores, stub repairs not
       `type: ignore`, `-X heapsize` never the fix, the "don't re-diagnose" hang/segfault causes) and
       every BACKLOG "deliberately left"/"confirmed intentional" entry — the input 2.3's "settled — no
-      action" triage needs; built in ENV (`ENV.T07`), kept current by DOC.
+      action" triage needs; built in ENV (`ENV.T07`), kept current by DOC. ⟨pass 2, overtaken: DECISION_PROVENANCE's 263 classified decisions are the index; texts carry actor tags, foreclosures removed per the answers — G9: R27, R35-R38⟩
 - [ ] **DOC.T15** Routing rule: contradictions between two doc statements (same or different file)
       belong to DOC; doc-vs-code or comment-vs-code drift found by an area stays with that area under
       L-DOC (e.g. `HW.S17`, `HW.S20`, `TWIN.S06`, `CI.S08`, `SCR.S03`, `REST.S11`, `NET.S18`, `GEN.S14`,
@@ -2829,9 +2829,9 @@ Seeds:
   CLAUDE.md's hard rules depend on; a future version audit replacing F.5 would orphan them.
 - **DOC.S03** Contradiction on website definitions: H.5 (:4401) and `build_website.sh` say wozi/dev are
   hand-written; K.4 (:5781) says "never hand-maintained"; K.8 (:5895) "regenerates automatically"; C.11
-  point 9 (:2331) says hand-update.
+  point 9 (:2331) says hand-update. ⟨pass 2, answered: OR43.a (3): hand-written definitions retire; `@web` tags only — G9: R18, R13⟩
 - **DOC.S04** ~77 "archive §" citations resolve only against commit `12640c2`, reachable today only
-  from this branch (PQ2).
+  from this branch (PQ2). ⟨pass 2, answered: merge commit (PQ2) — G9: R12⟩
 - **DOC.S05** Dangling named citations in code: `tests/machine.py:2`, `tests/test_captive_dns.py:230`,
   `src/asy_notification_service.py:3, 69`, `src/asy_neopixel_driver.py:3`,
   `tests/test_asy_wifi_service.py:1791`, `scripts/_strip_type_checking.py:13`,
@@ -2876,7 +2876,7 @@ Seeds:
   a SETTLED entry filed under "not yet done" (72); several items carry "earlier version said" narrative.
 - **DOC.S14** `UART_C_PORT_CHANGELOG.md` is "temporary until reconciled", but reconciliation is out of
   scope (owner) — no reachable deletion trigger; reclassify? (touches the owner's 2026-09-24 arrangement
-  — triage "settled — no action" unless the premise is wrong, 2.3)
+  — triage "settled — no action" unless the premise is wrong, 2.3) ⟨pass 2, answered: changelog stays until the post-audit C reconciliation (OR5.a (1)(3), OR11.a) — G9: R24⟩
 - **DOC.S15** `update_and_install.txt` is missing from README's "single complete map";
   `dev_legacy/README.md`'s "single source of truth" status vs BACKLOG.md's board-state entry
   (BACKLOG.md:352-360; OR32.a moves the bench content to its canonical homes). The queue/handover
@@ -2892,12 +2892,12 @@ Seeds:
   `devices/<device>.toml`, `build_website.sh:26-31` generates the other four, CI builds all six.
 - **DOC.S19** `DEVICE_REFERENCE.md:3-4` addresses "a deployed unit" but documents refactor field names
   (`FlashBri` :17-18, `BackupPeriod` :31); fielded units use `LedAutoFlashBri`, `SGPBackupPeriod`
-  (`modules/sensortask-wozi.py:21`).
+  (`modules/sensortask-wozi.py:21`). ⟨pass 2, answered: refactor field names are right (OR58.a); address a reflashed unit — G9: R13, R06⟩
 - **DOC.S20** More sites of `PAR.S04`'s watchdog claim: BACKLOG.md:334-335 ("the only feed site") vs
   the per-setup-unit feed at `buildgen/codegen.py:465`.
 - **DOC.S21** `build-*.sh` status told three ways: BACKLOG.md:876-877 "now fixed too"; B.9
   (SPECIFICATION.md:825-830) and A.3 (:133-134) "not covered"; CLAUDE.md "never gets work" — resolve
-  toward CLAUDE.md's reference-only rule, never toward "covered".
+  toward CLAUDE.md's reference-only rule, never toward "covered". ⟨pass 2, answered: reference-only wins (V04, OR32); no "covered" framing — G9: R01⟩
 - **DOC.S22** SPECIFICATION.md cites symbols that don't exist: `_send_opcode()` (~1545; `src/asy_fram_driver.py`
   has `_send_command()`/`_send_and_read()`/`_send_and_write()`) and K.5's `_build_spi_chip()` (~5800; the
   twin has `_wire_spi_device()`, `digital_twin/machine.py:326`, FRAM only, no `driver` dispatch).
@@ -2915,11 +2915,11 @@ Seeds:
   commit only repointed the reference).
 - **DOC.S27** BACKLOG.md:388-448 keeps A6's FRAM timing script as "its only copy" inside a markdown code
   block: unlinted, untyped, never collected, outside the comment cap and every CI gate. T4's owner
-  decision settles it — commit it as a device script under the normal gates, or drop it with the row.
+  decision settles it — commit it as a device script under the normal gates, or drop it with the row. ⟨pass 2, answered: T4 settled (OR72.a (2)): row leaves; A6's script kept only on an OR33.a keep verdict (as a gated device script), else dropped — G9: R31, R34⟩
 - **DOC.S28** BACKLOG's "Real-hardware work still owed" mixes three kinds: silicon work (M1 + S3b, R13 +
   N3, the two unconfirmed fixes), owner decisions that need no board (F18, T4, W3, T1, the device-script
   loose ends at :720-727) and pointers (:464-469). Under OR5.a the decisions need answers, not a sitting;
-  file each where it belongs (`HW.T10`).
+  file each where it belongs (`HW.T10`). ⟨pass 2, answered: F18/T4/W3/T1 answered (OR72.a (1)-(4)), loose ends deleted (V54); list keeps silicon work only — G9: R31, R36⟩
 - **DOC.S29** One trap of the retired queue's §6 was not carried over: "a REST reboot issued by hand
   strands the DUT in hotspot mode" — kick the AP's stations, then `hard_reset()` (~40 s)
   (`git show 2a88cc8:REAL_HARDWARE_TEST_QUEUE.md`, lines 376-383). Nearest homes: `tests_hardware/README.md:394-395`
@@ -2945,13 +2945,13 @@ Topics:
 - [ ] **LIC.T04** (touches SETTLED — route to the owner under PQ6, don't act) Scope statement only
       (BACKLOG SETTLED: `arduino/` incl. its licensing is out of scope): one sentence in
       `THIRD_PARTY_LICENSES.md` and README saying `arduino/` is excluded by owner decision — no audit of
-      its contents.
+      its contents. ⟨pass 2, answered: state it, "post-audit only" (OR5.a (3), V01) — G9: R21⟩
 - [ ] **LIC.T05** What actually ships in the firmware image (frozen set) vs what the licence doc lists.
 - [ ] **LIC.T06** What the UF2 contains beyond this repo: MicroPython (MIT), pico-sdk and lwIP (BSD-3),
       mbedTLS (Apache-2.0), cyw43-driver (its own licence), freezefs runtime if frozen — any notice
-      duty? Only relevant if a UF2 leaves the owner's hands (distribution scope, PQ10).
+      duty? Only relevant if a UF2 leaves the owner's hands (distribution scope, PQ10). ⟨pass 2, answered: in scope: public MIT repo (OR52.a (7)); none published today — G9: R23⟩
 - [ ] **LIC.T07** `datasheets/` holds vendor-copyrighted PDFs — do their redistribution terms fit the
-      repo's visibility (PQ10)?
+      repo's visibility (PQ10)? ⟨pass 2, answered: in scope (OR52.a (7), OR53 (2)); checked in pass 2 → Q1 — G9: R23⟩
 - [ ] **LIC.T08** Headers vs doc in both directions: every SPDX/attribution header in `src/` has a doc
       entry and vice versa, with matching scope (whole file vs portion).
 
@@ -2961,7 +2961,7 @@ Seeds:
 - **LIC.S02** THIRD_PARTY_LICENSES.md:52-53 credits "FRAM-persisted gain-ratio self-calibration"; M.1.5
   and the driver say calibration is RAM-only and user-applied.
 - **LIC.S03** (touches SETTLED, see `LIC.T04`) README.md:719-724 calls the doc "every piece of vendored
-  … third-party code in one place" without the `arduino/` exclusion sentence (`LIC.T04`).
+  … third-party code in one place" without the `arduino/` exclusion sentence (`LIC.T04`). ⟨pass 2, dup: LIC.T04 — G9: R21⟩
 - **LIC.S04** `src/captive_dns.py:1-2` declares a file-level `Apache-2.0` SPDX header while the doc
   (`THIRD_PARTY_LICENSES.md:5-7, 128`) scopes Apache-2.0 to `DNSQuery` (`:157`) only; the file also
   holds project-own `DNSServer` (`:56`) and `_ipv4_to_int` (`:41`).
