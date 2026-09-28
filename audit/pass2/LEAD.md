@@ -24,7 +24,7 @@ need only the cross-reference they already carry. The points below needed a deci
 | 10 | SENS.S11, TEST.S11 carry two statuses | The owning area's status applies (answered) | plan 0 (owning area) |
 | 11 | L51 (retired `html_stub/`, owner-tagged) placed by no group | LEAD/R18 | DECISION_PROVENANCE L51 |
 | 12 | Verification (`audit/pass2/verify/V1.md`-`V4.md`, 68 defects in 523 requirements) | Applied as `verify/RULINGS.md` says; list-L owner trails left to owner question 4 | OR7.a |
-| 14 | OR79 (attempt the bench spoofing test), OR80 (datasheets private submodule), OR81 (stricter typing in this audit) | Applied in G1/R29, G9/R23 and G8/R61 | OR79-OR81 |
+| 14 | OR79 (attempt the bench spoofing test), OR80 (datasheets private submodule), OR81 (stricter typing in this audit), OR82 (owner-traced L labels) | Applied in G1/R29, G9/R23, G8/R61, G9/R38 and every rank citing an L item | OR79-OR82 |
 | 13 | Owner answers after pass 2 (OR74-OR78, 2026-09-28) | Applied: OR74 in G3/R44; OR75 in G5/R05 and G1/R30 (legacy checked: timers first there too); OR76 as LEAD/R19; OR77 in G1/R29; OR78 in G8/R01 and G1/R36 (the fixed-`dev` exception withdrawn) | OR74-OR78 |
 
 ## 2 Merges (one rule, one owning requirement)
@@ -208,7 +208,7 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 ### LEAD/R18 Tests serve the real website
 - **Req**: Every tier that serves a website (`scripts/test.sh`, `npm test`'s `pretest`, the twin runners) builds and serves the real site; there is no placeholder site, because the real site is the most biting test. The binary fallback the real site has no file for is covered by its own test.
 - **Sources**: L51 · SPEC:655-659
-- **Rank**: owner — retirement of `html_stub/` "(owner, 2026-09-24)" (`12640c2`, paraphrase); the "most biting test" reason as recorded "(owner, 2026-09-23)" (`c349559`), no owner words visible (harmonization 34); rank per owner question 4 (L-list owner trails)
+- **Rank**: owner — retirement of `html_stub/` "(owner, 2026-09-24)" (`12640c2`, paraphrase); the "most biting test" reason as recorded "(owner, 2026-09-23)" (`c349559`), no owner words visible (harmonization 34); L-list labels per OR82 (`verify/L25.md`)
 - **State**: holds — `html_stub/` retired; doc: the tag gets its date form in U36
 - **Home**: SPEC E/H
 - **Pillar**: P5
@@ -225,7 +225,7 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 
 ## 4 Questions for the owner (after self-resolution)
 
-One remains (questions 1-3 are answered: OR80, OR81, OR75). Questions 1-2 came from the groups (facts re-checked by the lead); questions 3-4 from the
+All four are answered: OR80, OR81, OR75, OR82. Questions 1-2 came from the groups (facts re-checked by the lead); questions 3-4 from the
 verification, where an owner answer and the repo disagree.
 
 1. **Answered 2026-09-28 (OR80): private repo as a submodule at `datasheets/`, history kept.** Was: "Vendor datasheet PDFs in the public repo: keep them?" Raspberry Pi's two carry CC BY-ND; Fujitsu,
@@ -246,7 +246,7 @@ verification, where an owner answer and the repo disagree.
    exists; the NTP force sync moves before or after, tested at L2.
    (b) Timers first, as coded — OR47.a (1) is reworded; the first trigger may fire before its task runs
    (the flag waits for it); the reason is written into A.7.
-4. **Implementation choices with an owner tag in their history: label agent or owner?** You answered
+4. **Answered 2026-09-28 (OR82): owner label where the source is verified and nothing drifted (18), agent otherwise (7), `verify/L25.md`.** Was: "Implementation choices with an owner tag in their history: label agent or owner?" You answered
    "keep them, labelled as agent design" for all 75; about 25 of them carry an owner tag or quote in
    their introducing commit (e.g. L12, L17, L30, L51; list in `audit/pass2/G9.md` R38).
    (a) All 75 "(agent, date)", as answered — the owner words stay cited as the reason where quoted.

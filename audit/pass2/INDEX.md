@@ -144,5 +144,6 @@ Rank: owner 248, agent 131, fact 68, owner-confirmed 54, convention 17.
 - **OR79** (1): G1/R29
 - **OR80** (1): G9/R23
 - **OR81** (1): G8/R61
+- **OR82** (29): G3/R03, G3/R14, G3/R15, G3/R16, G3/R28, G3/R42, G3/R55, G3/R61, G4/R57, G4/R64, G5/R24, G5/R26, G5/R27, G5/R30, G5/R42, G5/R45, G5/R48, G5/R51, G5/R52, G6/R08, G6/R19, G8/R10, G8/R11, G8/R24, G8/R46, G8/R57, G9/R38, G10/R22, LEAD/R18
 
 OR rows without a live requirement: none (OR62.a is overtaken by OR64.a).
