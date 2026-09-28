@@ -1,7 +1,7 @@
 # Consolidation — the audit's big picture (allover pass 2)
 
 Audit working file (temporary, deleted with `audit/`, OR11.a). One picture of everything consolidation
-knows: the owner requirements OR1-OR79 (PROJECT_AUDIT_PLAN.md 3.2), the requirements inside the harvest,
+knows: the owner requirements OR1-OR80 (PROJECT_AUDIT_PLAN.md 3.2), the requirements inside the harvest,
 and the decision-provenance answers. History: requirement passes 1-2 and harvest pass 1 (2026-09-26,
 section 8); allover pass 2 (2026-09-27) re-read all of it with everything known from the start and
 produced one register (section 7). Passes 3+ run the question-raising scans (section 9).
@@ -195,6 +195,7 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
 | OR74, OR76 | B2 | SPEC M.1/M.1.1 (ISL29125 scope fact; calibration-suitability field) and its `@web` tag |
 | OR75 | B2, C | Part A.7 (boot order); generated `main()` |
 | OR77, OR79 | B3, C | Part E.6 exception list; `tests_hardware/README.md` |
+| OR80 | B2, B4 | `datasheets/` submodule; README, CLAUDE.md datasheet rule, SPEC A.6 |
 | OR78 | B1-B4 | CLAUDE.md hard rule; `tests_scripts` variant-literal check; Part L |
 
 ## 5. Interpretations overtaken by later rows (the later row wins)
@@ -234,7 +235,7 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
 - The Unix port at `v1.29.0` has no `socket.getsockname()` (`ports/unix/modsocket.c`), so
   MicroPython-side test listeners keep fixed, disjoint port bands; CPython-side tests use port 0 (G8).
 - Datasheet licences: the two Raspberry Pi PDFs carry CC BY-ND; Fujitsu, Renesas and Sensirion state
-  "All rights reserved"; Bosch, Winbond, Worldsemi and Infineon state no licence (question 1, section 9).
+  "All rights reserved"; Bosch, Winbond, Worldsemi and Infineon state no licence — hence OR80's private submodule.
 - Stull (2011) checked against the owner-supplied paper; McCamy replaced by a Planck/CIE oracle
   (HARVEST_REQUIREMENTS 3.4).
 - `ConfigManager.setup()` replaces a renamed or unknown key by its default and rewrites the file
@@ -249,7 +250,7 @@ states its final text, sources, rank with the tag its permanent text carries, st
 permanent home, pillar and what pass 2 changed.
 
 - **Inputs, all placed** (`audit/sweeps/pass2_check.py`): 965 harvest candidates, 213 clusters, 673
-  plan topics and seeds, 263 provenance decisions, OR1-OR79.
+  plan topics and seeds, 263 provenance decisions, OR1-OR80.
 - **Output**: 524 requirements, 6 merged into another, **518 live**; 77 hold at HEAD, 441 carry work
   (code 297, doc 239, test 153, rule 57, hardware 39 — one requirement may carry several). Rank: owner
   248, owner-confirmed 54, fact 68, agent 131, convention 17 (after verification and OR74-OR78).
@@ -288,8 +289,8 @@ current text; the history trace over milestones and per-commit doc history remai
 171-item bucket (OR12.a), necessity verdicts (OR33.a, Appendix B), open and deferred items (OR5,
 OR51.a (2)). Output: owner questions in the owner's format; settled items become register lines.
 
-Open for the owner (asked with the pass-2 report, `audit/pass2/LEAD.md` section 4): (1) vendor datasheet
-PDFs in the public repo; (2) `disallow_any_explicit` in this audit or deferred; (4) owner-tagged implementation
+Open for the owner (asked with the pass-2 report, `audit/pass2/LEAD.md` section 4): (1) answered by OR80
+(datasheets in a private submodule, history kept); (2) `disallow_any_explicit` in this audit or deferred; (4) owner-tagged implementation
 choices, agent or owner label. Question 3 (boot order) is answered by OR75; OR74-OR78 (2026-09-28) are
 applied to the register (`audit/pass2/LEAD.md` 1 #13). Still open from before: the F18 reading (OR72.a (1))
 awaits a possible veto; C12/C13 are deferred to BACKLOG's owner-question list (OR69.a (7)).
