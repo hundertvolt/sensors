@@ -5,7 +5,7 @@ import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OVERTAKEN = {62: "OR62.a is overtaken by OR64.a"}
-FILES = [f"G{n}" for n in range(1, 11)] + ["LEAD"]
+FILES = [f"G{n}" for n in range(1, 11)] + ["LEAD", "REF"]
 
 
 def requirements():
@@ -14,7 +14,7 @@ def requirements():
         p = ROOT / "pass2" / f"{name}.md"
         if not p.exists():
             continue
-        for m in re.finditer(r"(?ms)^### ((?:G\d+|LEAD)/R\d+) (.*?)\n(.*?)(?=^### |^## |\Z)", p.read_text()):
+        for m in re.finditer(r"(?ms)^### ((?:G\d+|LEAD|REF)/R\d+) (.*?)\n(.*?)(?=^### |^## |\Z)", p.read_text()):
             f = dict(re.findall(r"(?m)^- \*\*(\w[\w ]*)\*\*: (.*)$", m.group(3)))
             out.append((m.group(1), m.group(2), f))
     return out

@@ -24,7 +24,7 @@ def expand_ranges(text):
 
 
 def main():
-    files = sorted((ROOT / "pass2").glob("G*.md")) + [ROOT / "pass2" / "LEAD.md"]
+    files = sorted((ROOT / "pass2").glob("G*.md")) + [ROOT / "pass2" / "LEAD.md"] + ([ROOT / "pass2" / "REF.md"] if (ROOT / "pass2" / "REF.md").exists() else [])
     text = "\n".join(p.read_text() for p in files)
     got = ids(r"\b(G(?:10|[1-9])\.\d{3}|HR\d{3}|[A-Z]{2,5}\.[TS]\d{2}|A2-\d{2}|[ABCDEVL]\d{2}|OR\d+)\b", text) | expand_ranges(text)
     hreq = "\n".join(p.read_text() for p in (ROOT / "hreq").glob("G*.md"))
@@ -49,11 +49,26 @@ def main():
         miss = sorted(want - have)
         bad += bool(miss)
         print(f"{name}: {len(want)} expected, {len(want) - len(miss)} placed, {len(miss)} missing" + (": " + ", ".join(miss[:40]) if miss else ""))
-    reqs = re.findall(r"(?m)^### ((?:G(?:10|[1-9])|LEAD)/R\d+)\b", text)
+    reqs = re.findall(r"(?m)^### ((?:G(?:10|[1-9])|LEAD|REF)/R\d+)\b", text)
     dup = sorted({r for r in reqs if reqs.count(r) > 1})
     print(f"requirements: {len(reqs)} in {len(files)} files" + (f", duplicate IDs: {dup}" if dup else ""))
     return 1 if bad or dup else 0
 
 
+
+def check_refined() -> None:
+    """Every refined-harvest finding (audit/refined/FINDINGS.md) has one ledger line in audit/refined/I*.md."""
+    import re as _re
+    f = ROOT / "refined" / "FINDINGS.md"
+    if not f.exists():
+        return
+    ids = set(_re.findall(r"\*\*(RF\d{3})\*\*", f.read_text()))
+    led = "\n".join(p.read_text() for p in sorted((ROOT / "refined").glob("I*.md")))
+    got = set(_re.findall(r"(?m)^\|?\s*-?\s*\**(RF\d{3})\b", led))
+    print(f"RF ids: {len(ids)} expected, {len(ids & got)} in ledgers, missing {sorted(ids - got)[:20]}")
+
+
 if __name__ == "__main__":
+    check_refined()
     sys.exit(main())
+
