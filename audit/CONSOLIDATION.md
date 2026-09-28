@@ -1,7 +1,7 @@
 # Consolidation — the audit's big picture (allover pass 2)
 
 Audit working file (temporary, deleted with `audit/`, OR11.a). One picture of everything consolidation
-knows: the owner requirements OR1-OR80 (PROJECT_AUDIT_PLAN.md 3.2), the requirements inside the harvest,
+knows: the owner requirements OR1-OR81 (PROJECT_AUDIT_PLAN.md 3.2), the requirements inside the harvest,
 and the decision-provenance answers. History: requirement passes 1-2 and harvest pass 1 (2026-09-26,
 section 8); allover pass 2 (2026-09-27) re-read all of it with everything known from the start and
 produced one register (section 7). Passes 3+ run the question-raising scans (section 9).
@@ -196,6 +196,7 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
 | OR75 | B2, C | Part A.7 (boot order); generated `main()` |
 | OR77, OR79 | B3, C | Part E.6 exception list; `tests_hardware/README.md` |
 | OR80 | B2, B4 | `datasheets/` submodule; README, CLAUDE.md datasheet rule, SPEC A.6 |
+| OR81 | B0-B2 | `pyproject.toml` and both `.ini` files; CLAUDE.md "Code quality tooling" |
 | OR78 | B1-B4 | CLAUDE.md hard rule; `tests_scripts` variant-literal check; Part L |
 
 ## 5. Interpretations overtaken by later rows (the later row wins)
@@ -250,7 +251,7 @@ states its final text, sources, rank with the tag its permanent text carries, st
 permanent home, pillar and what pass 2 changed.
 
 - **Inputs, all placed** (`audit/sweeps/pass2_check.py`): 965 harvest candidates, 213 clusters, 673
-  plan topics and seeds, 263 provenance decisions, OR1-OR80.
+  plan topics and seeds, 263 provenance decisions, OR1-OR81.
 - **Output**: 524 requirements, 6 merged into another, **518 live**; 77 hold at HEAD, 441 carry work
   (code 297, doc 239, test 153, rule 57, hardware 39 — one requirement may carry several). Rank: owner
   248, owner-confirmed 54, fact 68, agent 131, convention 17 (after verification and OR74-OR78).
@@ -290,7 +291,7 @@ current text; the history trace over milestones and per-commit doc history remai
 OR51.a (2)). Output: owner questions in the owner's format; settled items become register lines.
 
 Open for the owner (asked with the pass-2 report, `audit/pass2/LEAD.md` section 4): (1) answered by OR80
-(datasheets in a private submodule, history kept); (2) `disallow_any_explicit` in this audit or deferred; (4) owner-tagged implementation
+(datasheets in a private submodule, history kept); (2) answered by OR81 (stricter typing in this audit); (4) owner-tagged implementation
 choices, agent or owner label. Question 3 (boot order) is answered by OR75; OR74-OR78 (2026-09-28) are
 applied to the register (`audit/pass2/LEAD.md` 1 #13). Still open from before: the F18 reading (OR72.a (1))
 awaits a possible veto; C12/C13 are deferred to BACKLOG's owner-question list (OR69.a (7)).

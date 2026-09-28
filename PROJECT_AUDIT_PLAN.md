@@ -82,7 +82,7 @@ follow PQ3 (proposed `SEV1`-`SEV4`), register findings are `AF-<AREA>-<nnn>`, ow
       applied and recorded per area — "N/A, because …" is valid, silence is not.
 - [ ] Every register finding terminal (4.5); the owner has reviewed every decision taken on the
       owner's behalf (OR2.c) and every change logged for review (OR12.a, OR13.a, OR24.a).
-- [ ] Every owner requirement OR1-OR80 fulfilled, traced through `audit/CONSOLIDATION.md` section 4 and
+- [ ] Every owner requirement OR1-OR81 fulfilled, traced through `audit/CONSOLIDATION.md` section 4 and
       the register (`audit/pass2/INDEX.md`, by owner row); every live register requirement holds.
 - [ ] Green with zero `MemoryError`/`memory allocation failed`, at both GC stages wherever MicroPython
       runs (OR40.a): `scripts/lint.sh`, `scripts/typecheck.sh`, `scripts/test.sh` (`-1` and
@@ -430,6 +430,8 @@ phase and permanent home.
 | OR79.a | 2026-09-28 | Integrated — overtakes OR71.a (6) (C09, "accept the permanent skip"): the off-subnet DNS spoofing test is attempted on the real bench. The default is to try; OR77.a's two conditions (reasonable effort, a case no L1-L3 test covers) are what the attempt must show, and only an attempt that fails them leaves the skip in place, recorded with its reason. The same applies to the other real-bench fault injections OR77 names. |
 | OR80 | 2026-09-28 | Datasheet storage (pass-2 question 1, options: 1 where they live — a private companion repo cloned beside this one, b private repo as a git submodule, c encrypted files, d whole repo private; 2 the copies in history — a leave history alone, b rewrite at close): "1 b 2 a" |
 | OR80.a | 2026-09-28 | Integrated — (1) The datasheets move to a private repository the owner creates and grants access to (the owner, the Claude GitHub App for sessions; nobody else), included in this repo as a git submodule at the same path `datasheets/`, so every citation of `datasheets/<chip>/<file>` stays valid; the public repo shows the folder and the private repo's URL, never the contents. The files leave this repo's tree in the same change. (2) History is not rewritten: earlier commits keep the PDFs; no commit hash changes. Consequences carried by execution: CI and public clones run without the submodule, so nothing in the build, lint, test or CI path may need a datasheet (checked); sessions that need one initialise the submodule (setup script or `git submodule update --init datasheets`), and a missing checkout is named, never silently skipped (CLAUDE.md datasheet rule); ENV.T04's extraction reads the submodule; README, CLAUDE.md and SPECIFICATION.md A.6 state where the datasheets live and how to get access; the Raspberry Pi PDFs (CC BY-ND 4.0) move with the rest, one place for all. |
+| OR81 | 2026-09-28 | Stricter typing (pass-2 question 2, after the lead's explanation of what `disallow_any_explicit` changes): "do it in this audit" |
+| OR81.a | 2026-09-28 | Integrated — overtakes the 2026-09-11 deferral (BACKLOG.md:39-51): mypy's `disallow_any_explicit` is switched on in all three passes (`[tool.mypy]`, `digital_twin/typecheck.ini`, `host_typecheck.ini`) within this audit. Typing only — no runtime change, the frozen image behaves identically. Scheme: task lists `Task[None]`; one named alias per repeated callback shape; one JSON type alias for REST payloads; small `Protocol` classes for "has this method" values and for the test fakes that impersonate MicroPython objects; `object` where a value is genuinely open (variadic logging arguments). Timing: B0 re-measures the counts per pass (last 224 main, 115 host, twin 45 stale); the flag is switched on right after the B1 foundations, so the signatures they rewrite (OR46.b, OR58.a, OR60.a) are typed once in final form, and each B2 unit resolves its files' findings; the flag is on and all passes clean before B5. `disallow_any_unimported` (54 at the last count) is measured in B0 and taken along where the same edits clear it; what remains goes to the owner as a consolidation question. BACKLOG's deferral item is removed. |
 
 ---
 
@@ -679,8 +681,8 @@ results to the register's header or `audit/artefacts/ENV/`: T02, T05-T10.
       audit/sweeps/extract_datasheets.py <scratchpad>`; several PDFs carry a permissions encryption that pypdf decrypts only with `cryptography`); list missing datasheets (seed `SENS.S20`).
 - [ ] **ENV.T05** (once) Apply 4.4's non-interference rules: lock files, worktree per executing agent,
       toolchain copy policy.
-- [ ] **ENV.T06** (once) Measure `disallow_any_explicit` counts per pass (BACKLOG's figures are dated
-      2026-09-11) as a baseline only — enabling it stays a separate owner-deferred session.
+- [ ] **ENV.T06** (once) Measure `disallow_any_explicit` (and `disallow_any_unimported`) counts per pass (BACKLOG's figures are dated
+      2026-09-11) as the baseline for switching it on in this audit (OR81.a).
 - [ ] **ENV.T07** (once) Build the do-not-reopen index (`DOC.T14`) and the cross-reference resolver
       (`DOC.T02`) before B1, committed under `audit/`. ⟨pass 2, overtaken: index built from DECISION_PROVENANCE's answers and OR54-OR73, actor-tagged; `NTP_Host` bound leaves the settled list (OR70.a (4)) — G10: R05⟩
 - [ ] **ENV.T08** (once) Record the audit baseline SHA (`main`'s head at go-ahead, frozen from then on,
@@ -3151,7 +3153,7 @@ take; collected for the consolidation run, OR2.a). `HW.T20`/`TEST.T20` turn each
 | Item | Plan | Proposed | Why |
 |---|---|---|---|
 | Four modules not renumbered (:21-35) | `XCUT.T07`, OR28 | do | OR28.a renumbers every module in one pass |
-| `disallow_any_explicit` (:36-51) | `ENV.T06` | owner | Owner-deferred to its own session; OR5.a allows no open item, so either in scope or a documented limitation |
+| `disallow_any_explicit` (:36-51) | `ENV.T06` | do | In this audit (OR81.a) |
 | Timeout/cancellation mechanism, PRIORITIZED (:58-67) | `PLAT.T06` | do (design first) | The owner's own "to be done soon"; the largest open refactor target |
 | Supervisor error-budget counter (:68-72) | `XCUT.T02`, OR24 | do | Same behaviour, cleaner implementation |
 | "Rough sequencing" (:73-79) | `DOC.S21` | retire | Narrative whose steps are done or superseded (OR27) |

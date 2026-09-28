@@ -24,7 +24,7 @@ need only the cross-reference they already carry. The points below needed a deci
 | 10 | SENS.S11, TEST.S11 carry two statuses | The owning area's status applies (answered) | plan 0 (owning area) |
 | 11 | L51 (retired `html_stub/`, owner-tagged) placed by no group | LEAD/R18 | DECISION_PROVENANCE L51 |
 | 12 | Verification (`audit/pass2/verify/V1.md`-`V4.md`, 68 defects in 523 requirements) | Applied as `verify/RULINGS.md` says; list-L owner trails left to owner question 4 | OR7.a |
-| 14 | OR79 (attempt the bench spoofing test), OR80 (datasheets private submodule) | Applied in G1/R29 and G9/R23 | OR79, OR80 |
+| 14 | OR79 (attempt the bench spoofing test), OR80 (datasheets private submodule), OR81 (stricter typing in this audit) | Applied in G1/R29, G9/R23 and G8/R61 | OR79-OR81 |
 | 13 | Owner answers after pass 2 (OR74-OR78, 2026-09-28) | Applied: OR74 in G3/R44; OR75 in G5/R05 and G1/R30 (legacy checked: timers first there too); OR76 as LEAD/R19; OR77 in G1/R29; OR78 in G8/R01 and G1/R36 (the fixed-`dev` exception withdrawn) | OR74-OR78 |
 
 ## 2 Merges (one rule, one owning requirement)
@@ -225,7 +225,7 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 
 ## 4 Questions for the owner (after self-resolution)
 
-Two remain (questions 1 and 3 are answered, OR80 and OR75). Questions 1-2 came from the groups (facts re-checked by the lead); questions 3-4 from the
+One remains (questions 1-3 are answered: OR80, OR81, OR75). Questions 1-2 came from the groups (facts re-checked by the lead); questions 3-4 from the
 verification, where an owner answer and the repo disagree.
 
 1. **Answered 2026-09-28 (OR80): private repo as a submodule at `datasheets/`, history kept.** Was: "Vendor datasheet PDFs in the public repo: keep them?" Raspberry Pi's two carry CC BY-ND; Fujitsu,
@@ -235,7 +235,7 @@ verification, where an owner answer and the repo disagree.
    gitignored local copies — history still holds them; sessions need a fetch step, some vendor hosts are
    blocked here.
    (c) As (b), plus a history rewrite — force-push to `main`, every cited commit hash breaks.
-2. **Stricter typing (`disallow_any_explicit`): this audit or stay deferred?**
+2. **Answered 2026-09-28 (OR81): in this audit.** Was: "Stricter typing (`disallow_any_explicit`): this audit or stay deferred?"
    (a) Stay deferred (your 2026-09-11 decision): counts re-measured in B0, one BACKLOG item with its
    reason.
    (b) In this audit: about 384 findings resolved in B2, with a typing scheme for test wrappers.

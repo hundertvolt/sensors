@@ -52,8 +52,8 @@ def main():
     lines += ["", "## By execution unit (plan 4.1; C = phase C hardware rounds)", ""]
     lines += [f"- **{u}** ({len(v)}): " + ", ".join(v) for u, v in sorted(by_unit.items(), key=lambda kv: (kv[0] == "C", int(kv[0][1:]) if kv[0][1:].isdigit() else 99))]
     lines += ["", "## By owner row (every OR1-OR78 carried by at least one requirement)", ""]
-    lines += [f"- **OR{n}** ({len(by_or[n])}): " + ", ".join(by_or[n]) for n in range(1, 81)]
-    missing = [n for n in range(1, 81) if not by_or[n] and n not in OVERTAKEN]
+    lines += [f"- **OR{n}** ({len(by_or[n])}): " + ", ".join(by_or[n]) for n in range(1, 82)]
+    missing = [n for n in range(1, 82) if not by_or[n] and n not in OVERTAKEN]
     lines += ["", f"OR rows without a live requirement: {', '.join(f'OR{n}' for n in missing) or 'none'} (" + "; ".join(OVERTAKEN.values()) + ").", ""]
     (ROOT / "pass2" / "INDEX.md").write_text("\n".join(lines))
     print(len(reqs), len(live), holds, dict(kind), dict(rank), "missing OR", missing)
