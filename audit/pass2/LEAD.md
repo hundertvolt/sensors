@@ -64,12 +64,12 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 
 ### LEAD/R02 A hardware round starts and ends in a standard board state
 - **Req**: Every hardware round ends on the release `dev` image with `errcount` saved, `DebugLevel` 5, the SCD30 at its configured NVM values, FRAM write-protect clear and no scratch files, checked by harness fixtures at its end and at the next round's start, replacing a hand-kept board-state line.
-- **Sources**: G1 gap 2 · OR38.a (4), OR17.a (5) · BACKLOG.md:359-361, Appendix B.1 D1-D3
+- **Sources**: G1 gap 2 · OR38.a (4), OR17.a (5) · BACKLOG.md:359-361, Appendix B.1 D1-D3 · RF312
 - **Rank**: agent — "(agent, 2026-09-27)"
-- **State**: work: test in U26 (fixtures); hardware in C
+- **State**: work: test in U26 (fixtures); hardware in C; code in U26 — a timed-out `mpremote` call kills only the host process (`tests_hardware/harness.py:373-384`): the device script keeps running (several feed their own watchdog) until the next test's raw-REPL entry interrupts it mid-operation, config writes included; the harness interrupts and resets the board to the standard state before the next test (RF312)
 - **Home**: `tests_hardware/README.md`
 - **Pillar**: P9
-- **Pass 2**: new
+- **Pass 2**: new Refined: RF312.
 
 ### LEAD/R03 A pass after a retry is never a plain pass
 - **Req**: A test file that passed only on its per-file retry is named and counted in the runner's summary block and entered as an item to root-cause; the retry backstop itself stays.
@@ -118,21 +118,21 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 
 ### LEAD/R08 One REST API reference, frozen at the release
 - **Req**: The REST API (routes, keys, value types, units, ranges, result words) has one normative reference generated from the schemas and `@web` tags; the mock server, website tests and the live-twin PUT matrix are checked against it; from the release on a golden fixture of it, loaded by a `tests_scripts` check, fails on any unrecorded change (as OR52.a (2)'s stored-config fixture).
-- **Sources**: G6 gap 1, G9 gap 4 · OR58.a, OR52.a (2), OR43.a (2)(3), A23 · P12
+- **Sources**: G6 gap 1, G9 gap 4 · OR58.a, OR52.a (2), OR43.a (2)(3), A23 · P12 · RF067
 - **Rank**: agent — "(agent, 2026-09-27)", on the owner's "the new API is the reference" (OR58.a)
-- **State**: work: code in U19, U23; test in U19
+- **State**: work: code in U19, U23; test in U19; work: code in U24/U26/U27/U23 — the route set (`asy_webserver_service.py:370-383`) is hand-copied in eight test/tool sites (`scripts/_digital_twin_ci_suite.py:1074`, `tests/_webserver_concurrency_scenarios.py:659`, `tests_hardware/bench/test_network_resilience.py:1034`, `tests_scripts/test_digital_twin_generated_boot.py:47`, `tests/test_digital_twin_bus_hazard_concurrency.py:107`, `tests_hardware/bench/test_memory_stress_bench.py:145`, `tests_hardware/bench/test_serving_heap_at_default_gc.py:27`, `tests_js/live-backend-put-matrix.test.js:15`), seven omit `GET /notification`; each derives its set, filtered by property, from the registration table or this reference (harmonization 31) (RF067)
 - **Home**: SPEC A.8/H; `tests_scripts/`
 - **Pillar**: P12
-- **Pass 2**: new
+- **Pass 2**: new Refined: RF067.
 
 ### LEAD/R09 The website runs unattended indefinitely
-- **Req**: A page left open for days keeps bounded resources (no growth of listeners, timers or DOM nodes; `startApp()` has a stop handle; the errcount group is updated, not rebuilt) and, after a device reboot or reflash, detects a changed build or `schemaVersion` on its next poll and reloads instead of polling with a stale bundle.
-- **Sources**: G7 gap 1 · OR44 · WEB.T13, R42 (G7) · WEB.N225, N226, N272
+- **Req**: A page left open for days keeps bounded resources (no growth of listeners, timers or DOM nodes; `startApp()` has a stop handle; every read-only field group, the errcount group included, is updated in place, not rebuilt; the poll interval is bounded above as well as below) and, after a device reboot or reflash, detects a changed build or `schemaVersion` on its next poll and reloads instead of polling with a stale bundle.
+- **Sources**: G7 gap 1 · OR44 · WEB.T13, R42 (G7) · WEB.N225, N226, N272 · RF193, RF201
 - **Rank**: agent — "(agent, 2026-09-27)"
-- **State**: work: code and test in U23
+- **State**: work: code and test in U23; `js/render.js:334-339` rebuilds every read-only field group of a live section (the whole Measurements page) on every 3 s poll — fresh subtree, listeners and closures, `replaceWith` (RF193); `js/definitions.js:124-127` rejects a non-positive poll interval but not one above 2**31-1 ms, which `setTimeout` turns into an immediate fire (latent: buildgen emits 3000, `buildgen/definitions.py:510`) (RF201)
 - **Home**: SPEC H
 - **Pillar**: P1
-- **Pass 2**: new
+- **Pass 2**: new Refined: RF193 — Req widened from the errcount group to every read-only group; RF201 — upper poll bound added (agent, 2026-09-28).
 
 ### LEAD/R10 The website meets an accessibility baseline
 - **Req**: Unique DOM ids (field ids namespaced by group), every label targeting its control, a closed drawer `inert` with focus handled, WCAG 2.1 AA contrast in both themes, a non-colour cue beside colour where A28 allows, `autocomplete` on password inputs, reduced motion honoured; proven by an automated accessibility check in `tests_js`.
@@ -162,13 +162,13 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Pass 2**: new
 
 ### LEAD/R13 The frozen image is reproducible from its inputs
-- **Req**: The same commit, the pinned toolchain and the pinned host CPython give byte-identical frozen inputs (generated modules, stripped copies, wiring plans, website; build date excepted) across hash seeds; the host Python behind `ast.unparse` is pinned or its output proven invariant.
-- **Sources**: G8 gap 3 · HARVEST_REQUIREMENTS 3.3 (HR153), P11 · GEN.T11, SCR.T09, SCR.T11
+- **Req**: The same commit, the pinned toolchain and the pinned host CPython give byte-identical frozen inputs (generated modules, stripped copies, wiring plans, website; build date excepted) across hash seeds, and the same frozen-module order inside the image (`freeze()` of a directory follows an unsorted `os.walk`); the host Python behind `ast.unparse` is pinned or its output proven invariant.
+- **Sources**: G8 gap 3 · HARVEST_REQUIREMENTS 3.3 (HR153), P11 · GEN.T11, SCR.T09, SCR.T11 · RF332 · MicroPython `v1.29.0` `tools/manifestfile.py:317`, `tools/makemanifest.py:198-254`
 - **Rank**: agent — "(agent, 2026-09-27)"
-- **State**: work: test in U27/U20
+- **State**: work: test in U27/U20; code in U27 — `scripts/build_firmware.py:42-45` freezes the staging directory, so mpy-tool receives the `.mpy` files in the host filesystem's directory order and identical inputs can give differently laid-out UF2s; the manifest lists the files sorted (RF332)
 - **Home**: SPEC B/L
 - **Pillar**: P11
-- **Pass 2**: new
+- **Pass 2**: new Refined: RF332 — Req extended from the frozen inputs to the module order in the image (agent, 2026-09-28).
 
 ### LEAD/R14 Operator actions in one place
 - **Req**: DEVICE_REFERENCE.md carries one commissioning and operating section listing every action that needs a person, with its trigger: Wi-Fi setup through the hotspot, the first `AmbPres` PUT that starts SCD30 measurement (OR71.a (2)), the manual `ForceCalRef` procedure (A14), ISL29125 calibration (A38), reading `reset_reason` (OR60.a), the reflash runbook (OR52.a (1), OR59.a); the runbook links to it.
@@ -199,12 +199,12 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 
 ### LEAD/R17 Conventions are machine-checked where cheap
 - **Req**: A `tests_scripts` AST check over `src/` and generated code fails on the machine-checkable conventions — the `asy_` module marker, `_NAME` equal to the namedtuple name, starter names, the `errno=`/`wrnno=` keyword, no `print()`, `assert` or function-level import — ruff's global N801/T20 ignores narrow to the files that need them, and the `src/` per-file S101 exemption (`pyproject.toml:309`) goes with G10/R21.
-- **Sources**: G10 gap 1 · OR24, harmonization 5 · G10.007, G10.016, `pyproject.toml:85,174,309`
+- **Sources**: G10 gap 1 · OR24, harmonization 5 · G10.007, G10.016, `pyproject.toml:85,174,309` · RF272
 - **Rank**: agent — "(agent, 2026-09-27)"
-- **State**: work: test in U10; code in U28 (`pyproject.toml`)
+- **State**: work: test in U10; code in U28 (`pyproject.toml`); the D.15 class-member order (G5/R50, owner-confirmed 2026-09-13) joins the checked list, so it does not re-drift after U10's reorder (RF272)
 - **Home**: `tests_scripts/`; `pyproject.toml`
 - **Pillar**: P4
-- **Pass 2**: new. Verified: V4/V20 applied.
+- **Pass 2**: new. Verified: V4/V20 applied. Refined: RF272.
 
 ### LEAD/R18 Tests serve the real website
 - **Req**: Every tier that serves a website (`scripts/test.sh`, `npm test`'s `pretest`, the twin runners) builds and serves a device's real website, never a placeholder, because the real website is the most biting test. The owner's rule named `dev`'s real website (2026-09-23), the richest site then; under OR54.a (1) and OR78.a the tiers serve the real site of every device the TOMLs define, `dev`'s included, never a hard-coded one. The binary fallback the real site has no file for is covered by its own test.
@@ -250,6 +250,15 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Home**: README build section; `--help`
 - **Pillar**: P3
 - **Pass 2**: new (owner request after pass 2)
+
+### LEAD/R23 SGP40 reports its VOC-algorithm state
+- **Req**: open — owner question (RF334, Q8): whether the SGP40 driver publishes the VOC algorithm's state it already holds — within the 45-sample blackout, inside the 24 h learning window (uptime), restored from a backup or started fresh — so an operator can tell a learning VOC index from a settled one after `SGPResetVOC`, a boot without a usable backup or a restore, while `WarnVOC` notifications already act on it; if yes, one field in the owner's LEAD/R19 form (numeric code, table in SPEC, plain-language label on the Measurements page).
+- **Sources**: RF334 · OR76/OR76.a (analogous field), OR43.a (1) ("what a user needs to operate and diagnose the device"), OR44 · `src/voc_algorithm.py:15, :38`; `src/asy_sgp40_driver.py:61-77` (`@web` tags) · Sensirion Info Note VOC Index (`datasheets/sgp40/Info_Note_VOC_Index.pdf`, 24 h learning time) · SENS.S04
+- **Rank**: agent — proposal "(agent, 2026-09-28)", undecided until the owner answers
+- **State**: open — owner question (RF334)
+- **Home**: SPEC Part M (SGP40); the field's `@web` tag; DEVICE_REFERENCE.md
+- **Pillar**: P3
+- **Pass 2**: new (refined harvest, RF334)
 
 ## 4 Questions for the owner (after self-resolution)
 
