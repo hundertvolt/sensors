@@ -1,7 +1,7 @@
 # Consolidation — the audit's big picture (allover pass 2)
 
 Audit working file (temporary, deleted with `audit/`, OR11.a). One picture of everything consolidation
-knows: the owner requirements OR1-OR83 (PROJECT_AUDIT_PLAN.md 3.2), the requirements inside the harvest,
+knows: the owner requirements OR1-OR86 (PROJECT_AUDIT_PLAN.md 3.2), the requirements inside the harvest,
 and the decision-provenance answers. History: requirement passes 1-2 and harvest pass 1 (2026-09-26,
 section 8); allover pass 2 (2026-09-27) re-read all of it with everything known from the start and
 produced one register (section 7). Passes 3+ run the question-raising scans (section 9).
@@ -198,6 +198,8 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
 | OR80 | B2, B4 | `datasheets/` submodule; README, CLAUDE.md datasheet rule, SPEC A.6 |
 | OR81 | B0-B2 | `pyproject.toml` and both `.ini` files; CLAUDE.md "Code quality tooling" |
 | OR78 | B1-B4 | CLAUDE.md hard rule; `tests_scripts` variant-literal check; Part L |
+| OR84 | B2 | `SystemService` setup runner; SPEC A.7, I.4(f.1); CLAUDE.md memory rule |
+| OR85, OR86 | B2 | `scripts/build_firmware.py`; README build section; `--help` |
 
 ## 5. Interpretations overtaken by later rows (the later row wins)
 
@@ -252,9 +254,9 @@ permanent home, pillar and what pass 2 changed.
 
 - **Inputs, all placed** (`audit/sweeps/pass2_check.py`): 965 harvest candidates, 213 clusters, 673
   plan topics and seeds, 263 provenance decisions, OR1-OR83.
-- **Output**: 524 requirements, 6 merged into another, **518 live**; 77 hold at HEAD, 441 carry work
-  (code 297, doc 239, test 153, rule 57, hardware 39 — one requirement may carry several). Rank: owner
-  248, owner-confirmed 54, fact 68, agent 131, convention 17 (after verification and OR74-OR78).
+- **Output**: 527 requirements, 6 merged into another, **521 live**; 77 hold at HEAD, 444 carry work
+  (code 302, doc 244, test 157, rule 57, hardware 39 — one requirement may carry several). Rank: owner
+  252, owner-confirmed 53, fact 68, agent 131, convention 17 (after verification, OR74-OR86).
 - **Plan**: 141 topics and seeds carry a ⟨pass 2 …⟩ note (110 answered, 17 overtaken, 12 duplicate,
   2 stale); the other 532 stay execution checklist items.
 - **Verification** (four adversarial verifiers, `audit/pass2/verify/V1.md`-`V4.md`): 68 defects in 523
