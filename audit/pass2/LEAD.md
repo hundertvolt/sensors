@@ -24,6 +24,7 @@ need only the cross-reference they already carry. The points below needed a deci
 | 10 | SENS.S11, TEST.S11 carry two statuses | The owning area's status applies (answered) | plan 0 (owning area) |
 | 11 | L51 (retired `html_stub/`, owner-tagged) placed by no group | LEAD/R18 | DECISION_PROVENANCE L51 |
 | 12 | Verification (`audit/pass2/verify/V1.md`-`V4.md`, 68 defects in 523 requirements) | Applied as `verify/RULINGS.md` says; list-L owner trails left to owner question 4 | OR7.a |
+| 13 | Owner answers after pass 2 (OR74-OR78, 2026-09-28) | Applied: OR74 in G3/R44; OR75 in G5/R05 and G1/R30 (legacy checked: timers first there too); OR76 as LEAD/R19; OR77 in G1/R29; OR78 in G8/R01 and G1/R36 (the fixed-`dev` exception withdrawn) | OR74-OR78 |
 
 ## 2 Merges (one rule, one owning requirement)
 
@@ -212,9 +213,18 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Pillar**: P5
 - **Pass 2**: new (placed by the lead). Verified: V4/V21 applied.
 
+### LEAD/R19 ISL29125 reports whether the light suits calibration
+- **Req**: The ISL29125 driver publishes in `/measurements`, on every read, a numeric code for whether the current light suits the gain-ratio calibration: suitable (green counts inside the auto-range overlap band — the same test the calibration run applies), too dark, too bright, and "not applicable now" (fixed range, or the range still settling). The code table is defined once (SPEC M.1 and the field's `@web` tag); the Measurements page shows a plain-language label and colour cue next to the calibration fields. Tests at L1 (each code at its band edges), L2 (the twin's light model) and the website.
+- **Sources**: OR76/OR76.a · `asy_isl29125_driver.py:638-641` · SENS.T (ISL29125), WEB
+- **Rank**: owner — "we should add a field to the measurements API, a numerical code which tells if the current brightness is suitable, too high or too low for determining the calibration factor and show this on the measurements webpage in a user friendly way" (owner, 2026-09-28, OR76); the fourth code and its name "(agent, 2026-09-28)"
+- **State**: work: code in U15 (driver, `@web` tag), U23 (website); test in U15, U25, U23; doc in U15 (SPEC M.1)
+- **Home**: SPEC M.1; the field's `@web` tag
+- **Pillar**: P3
+- **Pass 2**: new (owner request after pass 2)
+
 ## 4 Questions for the owner (after self-resolution)
 
-Four remain. Questions 1-2 came from the groups (facts re-checked by the lead); questions 3-4 from the
+Three remain (question 3 is answered, OR75). Questions 1-2 came from the groups (facts re-checked by the lead); questions 3-4 from the
 verification, where an owner answer and the repo disagree.
 
 1. **Vendor datasheet PDFs in the public repo: keep them?** Raspberry Pi's two carry CC BY-ND; Fujitsu,
@@ -228,7 +238,7 @@ verification, where an owner answer and the repo disagree.
    (a) Stay deferred (your 2026-09-11 decision): counts re-measured in B0, one BACKLOG item with its
    reason.
    (b) In this audit: about 384 findings resolved in B2, with a typing scheme for test wrappers.
-3. **Boot order: timers before tasks, or tasks before timers?** You confirmed OR47.a (1)'s order
+3. **Answered 2026-09-28 (OR75): tasks before timers.** Was: "Boot order: timers before tasks, or tasks before timers?" You confirmed OR47.a (1)'s order
    (setup batch, task starts, timer starts); the generated code starts the timers, then forces an NTP
    sync, then starts the tasks (`buildgen/codegen.py:476-478`).
    (a) Tasks first, as confirmed — the generated order changes; a timer never fires before its task

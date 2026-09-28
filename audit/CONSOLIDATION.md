@@ -145,10 +145,16 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
 41. **Load tests prove degradation and recovery** (OR49.a, OR72.a (1)): starvation under a
     hypothetical client (four zero-think readers) is accepted degradation, not a failure (open to the
     owner's veto).
-42. **Boot order** (OR47.a (1)): strict sequencing, completeness and one fixed generated order. Which
-    comes first, tasks (as confirmed) or timers (as coded), is owner question 3.
+42. **Boot order** (OR47.a (1), OR75.a): strict sequencing, completeness and one fixed generated order:
+    construction, setup batch, task starts, timer starts, then the first NTP force sync (last, as in
+    legacy). Legacy started timers first too, so this is the owner's order, not a restoration.
 43. **Adopted gaps** (OR44.a (1)): pillar gaps the groups found are agent-rank requirements (LEAD/R01-
     R17), on the owner-review list.
+44. **No variant is hard-coded anywhere** (OR78): every board variant lives solely in its
+    `devices/<name>.toml`; outside `devices/` no code, CI, test, tier, twin, website or script names a
+    variant — sets are derived, a single device comes from data or an argument; no exceptions.
+45. **Real-bench fault injection** (OR77): built only if its effort is reasonable and it covers a case no
+    L1-L3 test covers; otherwise a listed exception with its reason.
 
 ## 4. Requirement → phase → permanent home
 
@@ -185,6 +191,10 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
 | OR64, OR65, OR66, OR67 | B2 | Part C.8 (general call, owner-decided); Part A.4 (SGP40 compensation) |
 | OR68-OR72 | B0, B2, B4 | CLAUDE.md working agreements (prevention rules, workflow); each decision's own home text with "(owner, date)" |
 | OR73 | B4 | SPECIFICATION.md scope line |
+| OR74, OR76 | B2 | SPEC M.1/M.1.1 (ISL29125 scope fact; calibration-suitability field) and its `@web` tag |
+| OR75 | B2, C | Part A.7 (boot order); generated `main()` |
+| OR77 | B3, C | Part E.6 exception list; `tests_hardware/README.md` |
+| OR78 | B1-B4 | CLAUDE.md hard rule; `tests_scripts` variant-literal check; Part L |
 
 ## 5. Interpretations overtaken by later rows (the later row wins)
 
@@ -237,10 +247,10 @@ states its final text, sources, rank with the tag its permanent text carries, st
 permanent home, pillar and what pass 2 changed.
 
 - **Inputs, all placed** (`audit/sweeps/pass2_check.py`): 965 harvest candidates, 213 clusters, 673
-  plan topics and seeds, 263 provenance decisions, OR1-OR73.
-- **Output**: 523 requirements, 6 merged into another, **517 live**; 78 hold at HEAD, 439 carry work
-  (code 295, doc 238, test 152, rule 56, hardware 39 — one requirement may carry several). Rank: owner
-  248, owner-confirmed 56, fact 68, agent 128, convention 17.
+  plan topics and seeds, 263 provenance decisions, OR1-OR78.
+- **Output**: 524 requirements, 6 merged into another, **518 live**; 77 hold at HEAD, 441 carry work
+  (code 297, doc 239, test 153, rule 57, hardware 39 — one requirement may carry several). Rank: owner
+  248, owner-confirmed 54, fact 68, agent 131, convention 17 (after verification and OR74-OR78).
 - **Plan**: 141 topics and seeds carry a ⟨pass 2 …⟩ note (110 answered, 17 overtaken, 12 duplicate,
   2 stale); the other 532 stay execution checklist items.
 - **Verification** (four adversarial verifiers, `audit/pass2/verify/V1.md`-`V4.md`): 68 defects in 523
@@ -277,6 +287,7 @@ current text; the history trace over milestones and per-commit doc history remai
 OR51.a (2)). Output: owner questions in the owner's format; settled items become register lines.
 
 Open for the owner (asked with the pass-2 report, `audit/pass2/LEAD.md` section 4): (1) vendor datasheet
-PDFs in the public repo; (2) `disallow_any_explicit` in this audit or deferred; (3) boot order, tasks or
-timers first; (4) owner-tagged implementation choices, agent or owner label. Still open from before: the F18 reading (OR72.a (1))
+PDFs in the public repo; (2) `disallow_any_explicit` in this audit or deferred; (4) owner-tagged implementation
+choices, agent or owner label. Question 3 (boot order) is answered by OR75; OR74-OR78 (2026-09-28) are
+applied to the register (`audit/pass2/LEAD.md` 1 #13). Still open from before: the F18 reading (OR72.a (1))
 awaits a possible veto; C12/C13 are deferred to BACKLOG's owner-question list (OR69.a (7)).
