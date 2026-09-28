@@ -24,6 +24,7 @@ need only the cross-reference they already carry. The points below needed a deci
 | 10 | SENS.S11, TEST.S11 carry two statuses | The owning area's status applies (answered) | plan 0 (owning area) |
 | 11 | L51 (retired `html_stub/`, owner-tagged) placed by no group | LEAD/R18 | DECISION_PROVENANCE L51 |
 | 12 | Verification (`audit/pass2/verify/V1.md`-`V4.md`, 68 defects in 523 requirements) | Applied as `verify/RULINGS.md` says; list-L owner trails left to owner question 4 | OR7.a |
+| 15 | OR83: L06, L44, L51 restored to the owner's original wording (owner label); F18 reading confirmed | Applied in G3, G5, LEAD/R18, G9/R38, G1/G2/G4/G6 (veto qualifiers removed) | OR83 |
 | 14 | OR79 (attempt the bench spoofing test), OR80 (datasheets private submodule), OR81 (stricter typing in this audit), OR82 (owner-traced L labels) | Applied in G1/R29, G9/R23, G8/R61, G9/R38 and every rank citing an L item | OR79-OR82 |
 | 13 | Owner answers after pass 2 (OR74-OR78, 2026-09-28) | Applied: OR74 in G3/R44; OR75 in G5/R05 and G1/R30 (legacy checked: timers first there too); OR76 as LEAD/R19; OR77 in G1/R29; OR78 in G8/R01 and G1/R36 (the fixed-`dev` exception withdrawn) | OR74-OR78 |
 
@@ -206,9 +207,9 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Pass 2**: new. Verified: V4/V20 applied.
 
 ### LEAD/R18 Tests serve the real website
-- **Req**: Every tier that serves a website (`scripts/test.sh`, `npm test`'s `pretest`, the twin runners) builds and serves the real site; there is no placeholder site, because the real site is the most biting test. The binary fallback the real site has no file for is covered by its own test.
+- **Req**: Every tier that serves a website (`scripts/test.sh`, `npm test`'s `pretest`, the twin runners) builds and serves a device's real website, never a placeholder, because the real website is the most biting test. The owner's rule named `dev`'s real website (2026-09-23), the richest site then; under OR54.a (1) and OR78.a the tiers serve the real site of every device the TOMLs define, `dev`'s included, never a hard-coded one. The binary fallback the real site has no file for is covered by its own test.
 - **Sources**: L51 · SPEC:655-659
-- **Rank**: owner — retirement of `html_stub/` "(owner, 2026-09-24)" (`12640c2`, paraphrase); the "most biting test" reason as recorded "(owner, 2026-09-23)" (`c349559`), no owner words visible (harmonization 34); L-list labels per OR82 (`verify/L25.md`)
+- **Rank**: owner — retirement of `html_stub/` "(owner, 2026-09-24)" (`12640c2`, paraphrase); the rule restored to its first record "the owner's rule (2026-09-23) is that `dev`'s real website is the most biting test" (`c349559`, OR83), its device scope carried by OR54.a (1)/OR78.a; L-list labels per OR82 (`verify/L25.md`)
 - **State**: holds — `html_stub/` retired; doc: the tag gets its date form in U36
 - **Home**: SPEC E/H
 - **Pillar**: P5
@@ -252,5 +253,5 @@ verification, where an owner answer and the repo disagree.
    (a) All 75 "(agent, date)", as answered — the owner words stay cited as the reason where quoted.
    (b) Those ~25 keep "(owner, date)", the other ~50 "(agent, date)" — attribution follows the trail.
 
-Still open from before: the F18 reading (OR72.a (1)) is open to the owner's veto; C12/C13 (UART chunking)
+Also answered: the F18 reading is confirmed (OR83, option a). Still open from before: C12/C13 (UART chunking)
 is deferred to BACKLOG's owner-question list (OR69.a (7)).

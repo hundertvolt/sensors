@@ -1,7 +1,7 @@
 # Consolidation — the audit's big picture (allover pass 2)
 
 Audit working file (temporary, deleted with `audit/`, OR11.a). One picture of everything consolidation
-knows: the owner requirements OR1-OR82 (PROJECT_AUDIT_PLAN.md 3.2), the requirements inside the harvest,
+knows: the owner requirements OR1-OR83 (PROJECT_AUDIT_PLAN.md 3.2), the requirements inside the harvest,
 and the decision-provenance answers. History: requirement passes 1-2 and harvest pass 1 (2026-09-26,
 section 8); allover pass 2 (2026-09-27) re-read all of it with everything known from the start and
 produced one register (section 7). Passes 3+ run the question-raising scans (section 9).
@@ -143,8 +143,8 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
 40. **`dev` meets every device's bar** (OR72.a (10)) and a device's TOML decides its sensors
     (OR71.a (4)): no per-driver device allow-lists; wozi stays never-flashed (A05).
 41. **Load tests prove degradation and recovery** (OR49.a, OR72.a (1)): starvation under a
-    hypothetical client (four zero-think readers) is accepted degradation, not a failure (open to the
-    owner's veto).
+    hypothetical client (four zero-think readers) is accepted degradation, not a failure (owner,
+    2026-09-28, OR83).
 42. **Boot order** (OR47.a (1), OR75.a): strict sequencing, completeness and one fixed generated order:
     construction, setup batch, task starts, timer starts, then the first NTP force sync (last, as in
     legacy). Legacy started timers first too, so this is the owner's order, not a restoration.
@@ -251,7 +251,7 @@ states its final text, sources, rank with the tag its permanent text carries, st
 permanent home, pillar and what pass 2 changed.
 
 - **Inputs, all placed** (`audit/sweeps/pass2_check.py`): 965 harvest candidates, 213 clusters, 673
-  plan topics and seeds, 263 provenance decisions, OR1-OR82.
+  plan topics and seeds, 263 provenance decisions, OR1-OR83.
 - **Output**: 524 requirements, 6 merged into another, **518 live**; 77 hold at HEAD, 441 carry work
   (code 297, doc 239, test 153, rule 57, hardware 39 — one requirement may carry several). Rank: owner
   248, owner-confirmed 54, fact 68, agent 131, convention 17 (after verification and OR74-OR78).
@@ -291,7 +291,6 @@ current text; the history trace over milestones and per-commit doc history remai
 OR51.a (2)). Output: owner questions in the owner's format; settled items become register lines.
 
 Open for the owner (asked with the pass-2 report, `audit/pass2/LEAD.md` section 4): (1) answered by OR80
-(datasheets in a private submodule, history kept); (2) answered by OR81 (stricter typing in this audit); (4) answered by OR82 (18 owner, 7 agent,
-`audit/pass2/verify/L25.md`). Question 3 (boot order) is answered by OR75; OR74-OR78 (2026-09-28) are
-applied to the register (`audit/pass2/LEAD.md` 1 #13). Still open from before: the F18 reading (OR72.a (1))
-awaits a possible veto; C12/C13 are deferred to BACKLOG's owner-question list (OR69.a (7)).
+(datasheets in a private submodule, history kept); (2) answered by OR81 (stricter typing in this audit); (4) answered by OR82/OR83 (21 owner — three restored
+from drift — and 4 agent, `audit/pass2/verify/L25.md`). Question 3 (boot order) is answered by OR75; OR74-OR78 (2026-09-28) are
+applied to the register (`audit/pass2/LEAD.md` 1 #13). The F18 reading is confirmed (OR83). Still open from before: C12/C13 are deferred to BACKLOG's owner-question list (OR69.a (7)).
