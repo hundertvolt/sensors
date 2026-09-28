@@ -287,8 +287,8 @@ timeout-wrappable, the nested `asyncio.run()` mechanism); 17 gap requirements an
   patterns (`audit/refined/PATTERNS.md`), 13 pattern sweeps over the whole repo and its history
   (`S01.md`-`S13.md`), 354 undeclared or extended findings (`FINDINGS.md`, RF001-RF354), integrated by
   seven agents (ledgers `I1.md`-`I7.md`, lead placements `LEAD_APPLY.md`): 251 placed, 19 corrected,
-  11 lost owner decisions restored (merges `e5d2c43`, `8d89ff5`, `7a7f4b6` and rewrites), 7 new
-  requirements (G7/R45, LEAD/R23, REF/R01-R06 — REF/R01 counted with them), 23 rejected, 24 routed to
+  11 lost owner decisions restored (merges `e5d2c43`, `8d89ff5`, `7a7f4b6` and rewrites), 8 new
+  requirements (G7/R45, LEAD/R23, REF/R01-R06), 23 rejected, 24 routed to
   the owner as 20 decisions (`QUESTIONS.md`). S02 is the OR13.a/OR14.a history trace and S13 the
   OR48.a legacy scan of section 9; their coverage limits are in their coverage tables.
 
