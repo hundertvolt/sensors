@@ -1,7 +1,7 @@
 # Consolidation — the audit's big picture (allover pass 2)
 
 Audit working file (temporary, deleted with `audit/`, OR11.a). One picture of everything consolidation
-knows: the owner requirements OR1-OR78 (PROJECT_AUDIT_PLAN.md 3.2), the requirements inside the harvest,
+knows: the owner requirements OR1-OR79 (PROJECT_AUDIT_PLAN.md 3.2), the requirements inside the harvest,
 and the decision-provenance answers. History: requirement passes 1-2 and harvest pass 1 (2026-09-26,
 section 8); allover pass 2 (2026-09-27) re-read all of it with everything known from the start and
 produced one register (section 7). Passes 3+ run the question-raising scans (section 9).
@@ -153,8 +153,9 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
 44. **No variant is hard-coded anywhere** (OR78): every board variant lives solely in its
     `devices/<name>.toml`; outside `devices/` no code, CI, test, tier, twin, website or script names a
     variant — sets are derived, a single device comes from data or an argument; no exceptions.
-45. **Real-bench fault injection** (OR77): built only if its effort is reasonable and it covers a case no
-    L1-L3 test covers; otherwise a listed exception with its reason.
+45. **Real-bench fault injection is attempted** (OR77, OR79): the off-subnet DNS spoofing test and the
+    other real-bench injections are tried; one stays a listed exception only if the attempt shows
+    unreasonable effort or no case beyond L1-L3.
 
 ## 4. Requirement → phase → permanent home
 
@@ -193,7 +194,7 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
 | OR73 | B4 | SPECIFICATION.md scope line |
 | OR74, OR76 | B2 | SPEC M.1/M.1.1 (ISL29125 scope fact; calibration-suitability field) and its `@web` tag |
 | OR75 | B2, C | Part A.7 (boot order); generated `main()` |
-| OR77 | B3, C | Part E.6 exception list; `tests_hardware/README.md` |
+| OR77, OR79 | B3, C | Part E.6 exception list; `tests_hardware/README.md` |
 | OR78 | B1-B4 | CLAUDE.md hard rule; `tests_scripts` variant-literal check; Part L |
 
 ## 5. Interpretations overtaken by later rows (the later row wins)
@@ -209,6 +210,7 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
 - OR24.a (2) "legacy REST paths that external clients may use stay" → OR58.a: none stays.
 - OR39.a (1) "don't measure in the next line" → OR55.a: `gc.collect()` is complete on return.
 - OR62.a (addressed heater-off replaces the general call) → OR64.a/OR65.a: the general call stays.
+- OR71.a (6) (C09: permanent bench skip of the spoofing test accepted) → OR79.a: attempt it.
 - HARVEST_REQUIREMENTS 3.3's F18 row (admission fairness) → OR72.a (1): degradation check only.
 - `368fa83`'s accepted uncompensated SGP40 fallback → OR66.a/OR67.a.
 - Plan 2.3's settled `NTP_Host` 1,024 bound → OR70.a (4): re-decided with the key scheme.
@@ -247,7 +249,7 @@ states its final text, sources, rank with the tag its permanent text carries, st
 permanent home, pillar and what pass 2 changed.
 
 - **Inputs, all placed** (`audit/sweeps/pass2_check.py`): 965 harvest candidates, 213 clusters, 673
-  plan topics and seeds, 263 provenance decisions, OR1-OR78.
+  plan topics and seeds, 263 provenance decisions, OR1-OR79.
 - **Output**: 524 requirements, 6 merged into another, **518 live**; 77 hold at HEAD, 441 carry work
   (code 297, doc 239, test 153, rule 57, hardware 39 — one requirement may carry several). Rank: owner
   248, owner-confirmed 54, fact 68, agent 131, convention 17 (after verification and OR74-OR78).
