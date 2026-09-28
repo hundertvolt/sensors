@@ -254,9 +254,10 @@ permanent home, pillar and what pass 2 changed.
 
 - **Inputs, all placed** (`audit/sweeps/pass2_check.py`): 965 harvest candidates, 213 clusters, 673
   plan topics and seeds, 263 provenance decisions, OR1-OR83.
-- **Output**: 527 requirements, 6 merged into another, **521 live**; 77 hold at HEAD, 444 carry work
-  (code 302, doc 244, test 157, rule 57, hardware 39 — one requirement may carry several). Rank: owner
-  252, owner-confirmed 53, fact 68, agent 131, convention 17 (after verification, OR74-OR86).
+- **Output**: 535 requirements, 6 merged into another, **529 live**; 74 hold at HEAD, 455 carry work
+  (code 319, doc 260, test 182, rule 68, hardware 50 — one requirement may carry several). Rank: owner
+  254, owner-confirmed 53, fact 68, agent 137, convention 17 (after verification, OR74-OR86 and the refined
+  harvest). Files: `G1.md`-`G10.md`, `LEAD.md`, `REF.md` (the refined harvest's new requirements).
 - **Plan**: 141 topics and seeds carry a ⟨pass 2 …⟩ note (110 answered, 17 overtaken, 12 duplicate,
   2 stale); the other 532 stay execution checklist items.
 - **Verification** (four adversarial verifiers, `audit/pass2/verify/V1.md`-`V4.md`): 68 defects in 523
@@ -282,15 +283,24 @@ timeout-wrappable, the nested `asyncio.run()` mechanism); 17 gap requirements an
 - Allover pass 2 (2026-09-27): ten agents, one per group with its plan areas, brief
   `audit/sweeps/pass2_prompt.md`, assignment `audit/pass2/ASSIGN.md`; the lead resolved cross-group
   points against sources (OR7.a) and adopted gaps.
+- Refined harvest (2026-09-28, owner's request to re-harvest with the knowledge gained): 38 recurring
+  patterns (`audit/refined/PATTERNS.md`), 13 pattern sweeps over the whole repo and its history
+  (`S01.md`-`S13.md`), 354 undeclared or extended findings (`FINDINGS.md`, RF001-RF354), integrated by
+  seven agents (ledgers `I1.md`-`I7.md`, lead placements `LEAD_APPLY.md`): 251 placed, 19 corrected,
+  11 lost owner decisions restored (merges `e5d2c43`, `8d89ff5`, `7a7f4b6` and rewrites), 7 new
+  requirements (G7/R45, LEAD/R23, REF/R01-R06 — REF/R01 counted with them), 23 rejected, 24 routed to
+  the owner as 20 decisions (`QUESTIONS.md`). S02 is the OR13.a/OR14.a history trace and S13 the
+  OR48.a legacy scan of section 9; their coverage limits are in their coverage tables.
 
 ## 9. Next: passes 3+ and open owner items
 
-The question-raising scans (harmonization 21), read-only, parallel agents allowed (PQ9), each fed by the
-register: rule and decision drift over the doc history (OR13.a, OR14.a — the provenance sweep covered the
-current text; the history trace over milestones and per-commit doc history remains), legacy losses
-(OR48.a — pass 2 found some; the full scan remains), defect candidates among the seeds and the harvest's
-171-item bucket (OR12.a), necessity verdicts (OR33.a, Appendix B), open and deferred items (OR5,
-OR51.a (2)). Output: owner questions in the owner's format; settled items become register lines.
+The question-raising scans (harmonization 21), read-only, parallel agents allowed (PQ9). The refined
+harvest ran two of them: the rule and decision drift trace over the doc history (S02, with S01 for
+merges; drift spread over several commits and the "reason swapped" shape on comments remain) and the
+legacy-loss scan (S13; the dev bench and legacy UART modules excluded by G9/R02). Remaining: defect
+candidates among the seeds and the harvest's 171-item bucket (OR12.a), necessity verdicts (OR33.a,
+Appendix B), open and deferred items (OR5, OR51.a (2)), and the sweeps' own coverage gaps (sample-level
+scopes named in S03, S04, S07, S10 and S12). Output: owner questions in the owner's format; settled items become register lines.
 
 Open for the owner (asked with the pass-2 report, `audit/pass2/LEAD.md` section 4): (1) answered by OR80
 (datasheets in a private submodule, history kept); (2) answered by OR81 (stricter typing in this audit); (4) answered by OR82/OR83 (21 owner — three restored
