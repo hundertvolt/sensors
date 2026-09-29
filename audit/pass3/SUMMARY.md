@@ -28,7 +28,7 @@ Ten read-only scans (brief `audit/sweeps/pass3_prompt.md`), one file each in thi
 
 ## Owner questions (asked 2026-09-29)
 
-1. Approve twelve proven bug fixes (D4 Q1 + D4 Q6).
+1. Approve twelve proven bug fixes (D4 Q1 + D4 Q6). **Answered: fix all; (4) never from UTC (OR101).**
 2. SGP40 backup verification off for long periods (D2 Q1).
 3. NTP settings change clears `Synced`, as legacy (D3 Q1, D4 Q8, G6/R30).
 4. Echoed password mask: refuse or store (D3 Q2, G6/R29).
