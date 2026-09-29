@@ -16,14 +16,14 @@ merged into 20 top-level decisions (lead, 2026-09-28); recommendation first. Eac
 
 ## B. What your words cover
 
-2. **OpenHAB load case: 2 + 2 = 4, or full ceiling?** (RF027) (a) your case only → 4 connections, below today's 6; (b) the widened "tabs fill any ceiling" → stronger, but not yours; (c) both, each labelled with its decider (recommended).
-3. **"No twin32" — also the 64-bit frozen twin?** (RF028) (a) yes, both frozen twins are ad-hoc (recommended); (b) only 32-bit → the 64-bit twin reopens as a decision.
-4. **Restore "adopt a non-blocking alternative once one exists"?** (RF012, `cc911be`, 2026-07-24, lost in a merge) (a) yes, one BACKLOG deferred goal for every blocking call (recommended); (b) no → blocking calls stay watchdog-backstopped, no forward goal.
+2. **OpenHAB load case: 2 + 2 = 4, or full ceiling?** (RF027) (a) your case only → 4 connections, below today's 6; (b) the widened "tabs fill any ceiling" → stronger, but not yours; (c) both, each labelled with its decider (recommended). **Answered (OR89): b (any mix fills the ceiling; no typical case).**
+3. **"No twin32" — also the 64-bit frozen twin?** (RF028) (a) yes, both frozen twins are ad-hoc (recommended); (b) only 32-bit → the 64-bit twin reopens as a decision. **Answered (OR89): a.**
+4. **Restore "adopt a non-blocking alternative once one exists"?** (RF012, `cc911be`, 2026-07-24, lost in a merge) (a) yes, one BACKLOG deferred goal for every blocking call (recommended); (b) no → blocking calls stay watchdog-backstopped, no forward goal. **Answered (OR89): a.**
 
 ## C. Device behaviour
 
-5. **Dead declared FRAM chip: contain or escalate?** (RF153) (a) contain with a stated OR18.a exception, the manager stops touching the chip → runs forever without persisted logs; (b) escalate like any chip → a truly dead chip reboots the unit repeatedly; (c) escalate once per power-up, then contain (recommended).
-6. **SCD30 PUT when its read-back fails?** (RF347) (a) refuse the whole PUT, as legacy did → no NVM write without a compare (recommended); (b) write every valid field (today) → spends NVM writes blind; (c) send only the always-sent commands.
+5. **Dead declared FRAM chip: contain or escalate?** (RF153) (a) contain with a stated OR18.a exception, the manager stops touching the chip → runs forever without persisted logs; (b) escalate like any chip → a truly dead chip reboots the unit repeatedly; (c) escalate once per power-up, then contain (recommended). **Answered (OR89): escalate like every other chip.**
+6. **SCD30 PUT when its read-back fails?** (RF347) (a) refuse the whole PUT, as legacy did → no NVM write without a compare (recommended); (b) write every valid field (today) → spends NVM writes blind; (c) send only the always-sent commands. **Answered (OR89): a.**
 7. **SCD30 bus-hazard fixture write: gated or prerequisite?** (RF306) (a) stays gated → seven flash bus-hazard tests never run by default; (b) prerequisite → one NVM write per session; (c) read first, write only if the mode is off (recommended).
 8. **Unused UART protocol API: keep or remove?** (RF236) (a) keep as general-purpose API with contract tests (recommended); (b) remove → leaner image; (c) keep only what the C peer needs.
 9. **`gc.collect()` inside tests as pause injector?** (RF196) (a) forbid, rebuild the three sites without it (recommended); (b) a named test-only exception in the site check.
