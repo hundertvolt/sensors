@@ -252,10 +252,10 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Pass 2**: new (owner request after pass 2)
 
 ### LEAD/R23 SGP40 reports its VOC-algorithm state
-- **Req**: open — owner question (RF334, Q8): whether the SGP40 driver publishes the VOC algorithm's state it already holds — within the 45-sample blackout, inside the 24 h learning window (uptime), restored from a backup or started fresh — so an operator can tell a learning VOC index from a settled one after `SGPResetVOC`, a boot without a usable backup or a restore, while `WarnVOC` notifications already act on it; if yes, one field in the owner's LEAD/R19 form (numeric code, table in SPEC, plain-language label on the Measurements page).
+- **Req**: The SGP40 driver publishes the VOC algorithm's state it already holds — within the 45-sample blackout, inside the 24 h learning window (uptime), restored from a backup or started fresh — so an operator can tell a learning VOC index from a settled one after `SGPResetVOC`, a boot without a usable backup or a restore, while `WarnVOC` notifications already act on it: one field in the owner's LEAD/R19 form (numeric code, table in SPEC, label on the Measurements page via OR94.a (14)) (owner, 2026-09-29, OR97.a (17)).
 - **Sources**: RF334 · OR76/OR76.a (analogous field), OR43.a (1) ("what a user needs to operate and diagnose the device"), OR44 · `src/voc_algorithm.py:15, :38`; `src/asy_sgp40_driver.py:61-77` (`@web` tags) · Sensirion Info Note VOC Index (`datasheets/sgp40/Info_Note_VOC_Index.pdf`, 24 h learning time) · SENS.S04
-- **Rank**: agent — proposal "(agent, 2026-09-28)", undecided until the owner answers
-- **State**: open — owner question (RF334)
+- **Rank**: owner — OR97.a (17) "(owner, 2026-09-29)"; code values "(agent, 2026-09-28)"
+- **State**: work: code in U15 (driver field, `@web` tag), U23 (label); doc in U36 (SPEC M code table) (RF334)
 - **Home**: SPEC Part M (SGP40); the field's `@web` tag; DEVICE_REFERENCE.md
 - **Pillar**: P3
 - **Pass 2**: new (refined harvest, RF334)
