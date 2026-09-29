@@ -27,7 +27,7 @@ merged into 20 top-level decisions (lead, 2026-09-28); recommendation first. Eac
 7. **SCD30 bus-hazard fixture write: gated or prerequisite?** (RF306) (a) stays gated → seven flash bus-hazard tests never run by default; (b) prerequisite → one NVM write per session; (c) read first, write only if the mode is off (recommended). **Answered (OR90): c' — split prerequisite (read interval, wait ≥ 3 intervals, write only if none) from the gated read-while-write test.**
 8. **Unused UART protocol API: keep or remove?** (RF236) (a) keep as general-purpose API with contract tests (recommended); (b) remove → leaner image; (c) keep only what the C peer needs. **Answered (OR91): a.**
 9. **`gc.collect()` inside tests as pause injector?** (RF196) (a) forbid, rebuild the three sites without it (recommended); (b) a named test-only exception in the site check. **Answered (OR91): a — the three sites checked: none a baseline; pause injector rebuilt without gc, churn collects deleted.**
-10. **Ignore lines whose writer is outside the repo?** (RF321, RF322) (a) keep `config.json` and `.claude/worktrees/` with their writer named (recommended) → no credential or nested checkout can be staged; (b) remove both; (c) keep only `config.json`.
+10. **Ignore lines whose writer is outside the repo?** (RF321, RF322) (a) keep `config.json` and `.claude/worktrees/` with their writer named (recommended) → no credential or nested checkout can be staged; (b) remove both; (c) keep only `config.json`. **Answered (OR93): a — both stay ignored, writer named.**
 
 ## D. What the operator sees
 
