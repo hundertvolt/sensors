@@ -214,9 +214,7 @@ Readings made where C.0.2 is silent, applied the same way everywhere:
 
 ## Status
 
-Classified files: 141 of 156 (hits 2154 of 2265). IDs used: 573 (new and mirrored). Actions: 105. Verdicts: deferred U25 13, deferred U26 14, mirror 84, not tagged 341, test input 298, tuned 1404.
-
-**NOT-DONE** (not yet classified; to be finished file by file under the same rule): `tests_hardware/flash/conftest.py` (1), `tests_hardware/flash/test_bus_concurrency.py` (19), `tests_hardware/flash/test_bus_electrical_timing.py` (5), `tests_hardware/flash/test_fram_storage.py` (14), `tests_hardware/flash/test_memory_stress.py` (2), `tests_hardware/flash/test_reboot_persistence.py` (9), `tests_hardware/flash/test_sensor_accuracy.py` (7), `tests_hardware/flash/test_task_supervisor.py` (1), `tests_hardware/flash/test_toolchain_flash_boot.py` (8), `tests_hardware/flash/test_uart_crossover.py` (6), `tests_hardware/flash/test_watchdog_starvation.py` (29), `tests_hardware/manual/manual_bus_electrical.py` (2), `tests_hardware/manual/manual_sensor_accuracy.py` (5), `tests_hardware/manual/manual_toolchain.py` (2), `tests_hardware/manual/runner.py` (1)
+Classified files: 156 of 156 (hits 2265 of 2265). IDs used: 622 (new and mirrored). Actions: 119. Verdicts: deferred U25 13, deferred U26 14, mirror 84, not tagged 351, test input 298, tuned 1505.
 
 
 ## Actions
@@ -1021,7 +1019,95 @@ Classified files: 141 of 156 (hits 2154 of 2265). IDs used: 573 (new and mirrore
 - **Depends**: A.U8.01, A.U8.02, A.U8.03
 - **Kind**: test
 
-### A.U8C.101 Tag the tuned literals of `harness.py`
+### A.U8C.101 Tag the tuned literals of `conftest.py`
+- **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
+- **Site**: `tests_hardware/flash/conftest.py` — `l3.conftest_scd30_rw_script_timeout_s` :32 (90.0)
+- **Change**: `_SCD30_RW_SCRIPT_TIMEOUT_S = 90.0` (new, module level) tagged `# @tunable l3.conftest_scd30_rw_script_timeout_s = 90.0`; the literal at :32 becomes `_SCD30_RW_SCRIPT_TIMEOUT_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
+- **Blast**: callers — (module-private test constants) · generated — · js — · tests this file only; each literal becomes its constant, behaviour unchanged · twin — · docs SPEC Part N rows (A.U8.01) · toml — · uart —
+- **Depends**: A.U8.01, A.U8.02, A.U8.03
+- **Kind**: test
+
+### A.U8C.102 Tag the tuned literals of `test_bus_concurrency.py`
+- **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
+- **Site**: `tests_hardware/flash/test_bus_concurrency.py` — `l3.bus_concurrency_long_script_timeout_s` :34, :49 (120.0); `l3.bus_concurrency_script_timeout_s` :40, :56, :64, :72, :81, :91, :99, :107, :115 (90.0); `l3.bus_concurrency_short_script_timeout_s` :123, :136, :148 (60.0); `l3.bus_concurrency_reset_script_timeout_s` :131 (30.0); `l3.bus_concurrency_reachable_timeout_s` :135 (30.0); `l3.bus_concurrency_reachable_poll_s` :135 (1.0)
+- **Change**: `_LONG_SCRIPT_TIMEOUT_S = 120.0` (new, module level) tagged `# @tunable l3.bus_concurrency_long_script_timeout_s = 120.0`; the literal at :34, :49 becomes `_LONG_SCRIPT_TIMEOUT_S`; `_SCRIPT_TIMEOUT_S = 90.0` (new, module level) tagged `# @tunable l3.bus_concurrency_script_timeout_s = 90.0`; the literal at :40, :56, :64, :72, :81, :91, :99, :107, :115 becomes `_SCRIPT_TIMEOUT_S`; `_SHORT_SCRIPT_TIMEOUT_S = 60.0` (new, module level) tagged `# @tunable l3.bus_concurrency_short_script_timeout_s = 60.0`; the literal at :123, :136, :148 becomes `_SHORT_SCRIPT_TIMEOUT_S`; `_RESET_SCRIPT_TIMEOUT_S = 30.0` (new, module level) tagged `# @tunable l3.bus_concurrency_reset_script_timeout_s = 30.0`; the literal at :131 becomes `_RESET_SCRIPT_TIMEOUT_S`; `_REACHABLE_TIMEOUT_S = 30.0` (new, module level) tagged `# @tunable l3.bus_concurrency_reachable_timeout_s = 30.0`; the literal at :135 becomes `_REACHABLE_TIMEOUT_S`; `_REACHABLE_POLL_S = 1.0` (new, module level) tagged `# @tunable l3.bus_concurrency_reachable_poll_s = 1.0`; the literal at :135 becomes `_REACHABLE_POLL_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
+- **Blast**: callers — (module-private test constants) · generated — · js — · tests this file only; each literal becomes its constant, behaviour unchanged · twin — · docs SPEC Part N rows (A.U8.01) · toml — · uart —
+- **Depends**: A.U8.01, A.U8.02, A.U8.03
+- **Kind**: test
+
+### A.U8C.103 Tag the tuned literals of `test_bus_electrical_timing.py`
+- **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
+- **Site**: `tests_hardware/flash/test_bus_electrical_timing.py` — `l3.bus_electrical_timing_irq_script_timeout_s` :59 (30.0); `l3.bus_electrical_timing_wrap_headroom_h` :107 (2)
+- **Change**: `_IRQ_SCRIPT_TIMEOUT_S = 30.0` (new, module level) tagged `# @tunable l3.bus_electrical_timing_irq_script_timeout_s = 30.0`; the literal at :59 becomes `_IRQ_SCRIPT_TIMEOUT_S`; tag `# @tunable l3.bus_electrical_timing_wrap_headroom_h = 2` above `_WRAP_FLOOR_MS` (:107). Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
+- **Blast**: callers — (module-private test constants) · generated — · js — · tests this file only; each literal becomes its constant, behaviour unchanged · twin — · docs SPEC Part N rows (A.U8.01) · toml — · uart —
+- **Depends**: A.U8.01, A.U8.02, A.U8.03
+- **Kind**: test
+
+### A.U8C.104 Tag the tuned literals of `test_fram_storage.py`
+- **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
+- **Site**: `tests_hardware/flash/test_fram_storage.py` — `l3.fram_storage_short_script_timeout_s` :33, :53, :60, :87 (30.0); `l3.fram_storage_backup_script_timeout_s` :44 (150.0); `l3.fram_storage_reachable_timeout_s` :61 (30.0); `l3.fram_storage_reachable_poll_s` :61 (1.0); `l3.fram_storage_script_timeout_s` :62, :73, :123 (60.0); `l3.fram_storage_pause_script_timeout_s` :101 (90.0); `l3.fram_storage_lockout_script_timeout_s` :112 (45.0)
+- **Change**: `_SHORT_SCRIPT_TIMEOUT_S = 30.0` (new, module level) tagged `# @tunable l3.fram_storage_short_script_timeout_s = 30.0`; the literal at :33, :53, :60, :87 becomes `_SHORT_SCRIPT_TIMEOUT_S`; `_BACKUP_SCRIPT_TIMEOUT_S = 150.0` (new, module level) tagged `# @tunable l3.fram_storage_backup_script_timeout_s = 150.0`; the literal at :44 becomes `_BACKUP_SCRIPT_TIMEOUT_S`; `_REACHABLE_TIMEOUT_S = 30.0` (new, module level) tagged `# @tunable l3.fram_storage_reachable_timeout_s = 30.0`; the literal at :61 becomes `_REACHABLE_TIMEOUT_S`; `_REACHABLE_POLL_S = 1.0` (new, module level) tagged `# @tunable l3.fram_storage_reachable_poll_s = 1.0`; the literal at :61 becomes `_REACHABLE_POLL_S`; `_SCRIPT_TIMEOUT_S = 60.0` (new, module level) tagged `# @tunable l3.fram_storage_script_timeout_s = 60.0`; the literal at :62, :73, :123 becomes `_SCRIPT_TIMEOUT_S`; `_PAUSE_SCRIPT_TIMEOUT_S = 90.0` (new, module level) tagged `# @tunable l3.fram_storage_pause_script_timeout_s = 90.0`; the literal at :101 becomes `_PAUSE_SCRIPT_TIMEOUT_S`; `_LOCKOUT_SCRIPT_TIMEOUT_S = 45.0` (new, module level) tagged `# @tunable l3.fram_storage_lockout_script_timeout_s = 45.0`; the literal at :112 becomes `_LOCKOUT_SCRIPT_TIMEOUT_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
+- **Blast**: callers — (module-private test constants) · generated — · js — · tests this file only; each literal becomes its constant, behaviour unchanged · twin — · docs SPEC Part N rows (A.U8.01) · toml — · uart —
+- **Depends**: A.U8.01, A.U8.02, A.U8.03
+- **Kind**: test
+
+### A.U8C.105 Tag the tuned literals of `test_memory_stress.py`
+- **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
+- **Site**: `tests_hardware/flash/test_memory_stress.py` — `l3.memory_stress_headroom_script_timeout_s` :35 (120.0)
+- **Change**: `_HEADROOM_SCRIPT_TIMEOUT_S = 120.0` (new, module level) tagged `# @tunable l3.memory_stress_headroom_script_timeout_s = 120.0`; the literal at :35 becomes `_HEADROOM_SCRIPT_TIMEOUT_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
+- **Blast**: callers — (module-private test constants) · generated — · js — · tests this file only; each literal becomes its constant, behaviour unchanged · twin — · docs SPEC Part N rows (A.U8.01) · toml — · uart —
+- **Depends**: A.U8.01, A.U8.02, A.U8.03
+- **Kind**: test
+
+### A.U8C.106 Tag the tuned literals of `test_reboot_persistence.py`
+- **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
+- **Site**: `tests_hardware/flash/test_reboot_persistence.py` — `l3.reboot_persistence_reachable_timeout_s` :36, :79 (30.0); `l3.reboot_persistence_reachable_poll_s` :36, :79 (1.0); `l3.reboot_persistence_boot_log_tail_s` :64 (20.0)
+- **Change**: `_REACHABLE_TIMEOUT_S = 30.0` (new, module level) tagged `# @tunable l3.reboot_persistence_reachable_timeout_s = 30.0`; the literal at :36, :79 becomes `_REACHABLE_TIMEOUT_S`; `_REACHABLE_POLL_S = 1.0` (new, module level) tagged `# @tunable l3.reboot_persistence_reachable_poll_s = 1.0`; the literal at :36, :79 becomes `_REACHABLE_POLL_S`; `_BOOT_LOG_TAIL_S = 20.0` (new, module level) tagged `# @tunable l3.reboot_persistence_boot_log_tail_s = 20.0`; the literal at :64 becomes `_BOOT_LOG_TAIL_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
+- **Blast**: callers — (module-private test constants) · generated — · js — · tests this file only; each literal becomes its constant, behaviour unchanged · twin — · docs SPEC Part N rows (A.U8.01) · toml — · uart —
+- **Depends**: A.U8.01, A.U8.02, A.U8.03
+- **Kind**: test
+
+### A.U8C.107 Tag the tuned literals of `test_sensor_accuracy.py`
+- **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
+- **Site**: `tests_hardware/flash/test_sensor_accuracy.py` — `l3.sensor_accuracy_scd30_script_timeout_s` :24 (100.0); `l3.sensor_accuracy_bmp3xx_script_timeout_s` :31 (60.0); `l3.sensor_accuracy_sgp40_script_timeout_s` :40 (150.0); `l3.sensor_accuracy_isl29125_script_timeout_s` :48 (30.0); `l3.sensor_accuracy_envelope_script_timeout_s` :61 (420.0); `l3.sensor_accuracy_scenarios_script_timeout_s` :74 (900.0); `l3.sensor_accuracy_conformance_script_timeout_s` :84 (120.0)
+- **Change**: `_SCD30_SCRIPT_TIMEOUT_S = 100.0` (new, module level) tagged `# @tunable l3.sensor_accuracy_scd30_script_timeout_s = 100.0`; the literal at :24 becomes `_SCD30_SCRIPT_TIMEOUT_S`; `_BMP3XX_SCRIPT_TIMEOUT_S = 60.0` (new, module level) tagged `# @tunable l3.sensor_accuracy_bmp3xx_script_timeout_s = 60.0`; the literal at :31 becomes `_BMP3XX_SCRIPT_TIMEOUT_S`; `_SGP40_SCRIPT_TIMEOUT_S = 150.0` (new, module level) tagged `# @tunable l3.sensor_accuracy_sgp40_script_timeout_s = 150.0`; the literal at :40 becomes `_SGP40_SCRIPT_TIMEOUT_S`; `_ISL29125_SCRIPT_TIMEOUT_S = 30.0` (new, module level) tagged `# @tunable l3.sensor_accuracy_isl29125_script_timeout_s = 30.0`; the literal at :48 becomes `_ISL29125_SCRIPT_TIMEOUT_S`; `_ENVELOPE_SCRIPT_TIMEOUT_S = 420.0` (new, module level) tagged `# @tunable l3.sensor_accuracy_envelope_script_timeout_s = 420.0`; the literal at :61 becomes `_ENVELOPE_SCRIPT_TIMEOUT_S`; `_SCENARIOS_SCRIPT_TIMEOUT_S = 900.0` (new, module level) tagged `# @tunable l3.sensor_accuracy_scenarios_script_timeout_s = 900.0`; the literal at :74 becomes `_SCENARIOS_SCRIPT_TIMEOUT_S`; `_CONFORMANCE_SCRIPT_TIMEOUT_S = 120.0` (new, module level) tagged `# @tunable l3.sensor_accuracy_conformance_script_timeout_s = 120.0`; the literal at :84 becomes `_CONFORMANCE_SCRIPT_TIMEOUT_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
+- **Blast**: callers — (module-private test constants) · generated — · js — · tests this file only; each literal becomes its constant, behaviour unchanged · twin — · docs SPEC Part N rows (A.U8.01) · toml — · uart —
+- **Depends**: A.U8.01, A.U8.02, A.U8.03
+- **Kind**: test
+
+### A.U8C.108 Tag the tuned literals of `test_task_supervisor.py`
+- **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
+- **Site**: `tests_hardware/flash/test_task_supervisor.py` — `l3.task_supervisor_script_timeout_s` :19 (15.0)
+- **Change**: `_SCRIPT_TIMEOUT_S = 15.0` (new, module level) tagged `# @tunable l3.task_supervisor_script_timeout_s = 15.0`; the literal at :19 becomes `_SCRIPT_TIMEOUT_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
+- **Blast**: callers — (module-private test constants) · generated — · js — · tests this file only; each literal becomes its constant, behaviour unchanged · twin — · docs SPEC Part N rows (A.U8.01) · toml — · uart —
+- **Depends**: A.U8.01, A.U8.02, A.U8.03
+- **Kind**: test
+
+### A.U8C.109 Tag the tuned literals of `test_toolchain_flash_boot.py`
+- **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
+- **Site**: `tests_hardware/flash/test_toolchain_flash_boot.py` — `l3.toolchain_flash_boot_env_setup_timeout_s` :39 (1200); `l3.toolchain_flash_boot_build_timeout_s` :65 (600); `l3.toolchain_flash_boot_load_timeout_s` :82 (120); `l3.toolchain_flash_boot_load_retry_backoff_s` :87 (2.0); `l3.toolchain_flash_boot_reachable_timeout_s` :92 (30.0); `l3.toolchain_flash_boot_reachable_poll_s` :92 (1.0)
+- **Change**: `_ENV_SETUP_TIMEOUT_S = 1200` (new, module level) tagged `# @tunable l3.toolchain_flash_boot_env_setup_timeout_s = 1200`; the literal at :39 becomes `_ENV_SETUP_TIMEOUT_S`; `_BUILD_TIMEOUT_S = 600` (new, module level) tagged `# @tunable l3.toolchain_flash_boot_build_timeout_s = 600`; the literal at :65 becomes `_BUILD_TIMEOUT_S`; `_LOAD_TIMEOUT_S = 120` (new, module level) tagged `# @tunable l3.toolchain_flash_boot_load_timeout_s = 120`; the literal at :82 becomes `_LOAD_TIMEOUT_S`; `_LOAD_RETRY_BACKOFF_S = 2.0` (new, module level) tagged `# @tunable l3.toolchain_flash_boot_load_retry_backoff_s = 2.0`; the literal at :87 becomes `_LOAD_RETRY_BACKOFF_S`; `_REACHABLE_TIMEOUT_S = 30.0` (new, module level) tagged `# @tunable l3.toolchain_flash_boot_reachable_timeout_s = 30.0`; the literal at :92 becomes `_REACHABLE_TIMEOUT_S`; `_REACHABLE_POLL_S = 1.0` (new, module level) tagged `# @tunable l3.toolchain_flash_boot_reachable_poll_s = 1.0`; the literal at :92 becomes `_REACHABLE_POLL_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
+- **Blast**: callers — (module-private test constants) · generated — · js — · tests this file only; each literal becomes its constant, behaviour unchanged ; shared IDs also sited in `tests_hardware/manual/manual_toolchain.py` · twin — · docs SPEC Part N rows (A.U8.01) · toml — · uart —
+- **Depends**: A.U8.01, A.U8.02, A.U8.03
+- **Kind**: test
+
+### A.U8C.110 Tag the tuned literals of `test_uart_crossover.py`
+- **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
+- **Site**: `tests_hardware/flash/test_uart_crossover.py` — `l3.uart_crossover_script_timeout_s` :47, :62, :69 (120.0); `l3.uart_crossover_long_script_timeout_s` :54, :76, :84 (180.0)
+- **Change**: `_SCRIPT_TIMEOUT_S = 120.0` (new, module level) tagged `# @tunable l3.uart_crossover_script_timeout_s = 120.0`; the literal at :47, :62, :69 becomes `_SCRIPT_TIMEOUT_S`; `_LONG_SCRIPT_TIMEOUT_S = 180.0` (new, module level) tagged `# @tunable l3.uart_crossover_long_script_timeout_s = 180.0`; the literal at :54, :76, :84 becomes `_LONG_SCRIPT_TIMEOUT_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
+- **Blast**: callers — (module-private test constants) · generated — · js — · tests this file only; each literal becomes its constant, behaviour unchanged · twin — · docs SPEC Part N rows (A.U8.01) · toml — · uart —
+- **Depends**: A.U8.01, A.U8.02, A.U8.03
+- **Kind**: test
+
+### A.U8C.111 Tag the tuned literals of `test_watchdog_starvation.py`
+- **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
+- **Site**: `tests_hardware/flash/test_watchdog_starvation.py` — `l3.watchdog_starvation_script_timeout_s` :23 (15.0); `l3.watchdog_starvation_reset_elapsed_max_s` :29 (10.0); `l3.watchdog_starvation_device_present_timeout_s` :41, :47, :72, :77 (15.0); `l3.watchdog_starvation_device_present_poll_s` :41, :47, :72, :77 (0.3); `l3.watchdog_starvation_reachable_after_reset_timeout_s` :42 (15.0); `l3.watchdog_starvation_reachable_after_reset_poll_s` :42 (0.5); `l3.watchdog_starvation_reachable_timeout_s` :58 (30.0); `l3.watchdog_starvation_reachable_poll_s` :58 (1.0); `l3.watchdog_starvation_fallback_script_timeout_s` :62 (20.0); `l3.watchdog_starvation_fallback_elapsed_max_s` :68 (12.0)
+- **Change**: `_SCRIPT_TIMEOUT_S = 15.0` (new, module level) tagged `# @tunable l3.watchdog_starvation_script_timeout_s = 15.0`; the literal at :23 becomes `_SCRIPT_TIMEOUT_S`; `_RESET_ELAPSED_MAX_S = 10.0` (new, module level) tagged `# @tunable l3.watchdog_starvation_reset_elapsed_max_s = 10.0`; the literal at :29 becomes `_RESET_ELAPSED_MAX_S`; `_DEVICE_PRESENT_TIMEOUT_S = 15.0` (new, module level) tagged `# @tunable l3.watchdog_starvation_device_present_timeout_s = 15.0`; the literal at :41, :47, :72, :77 becomes `_DEVICE_PRESENT_TIMEOUT_S`; `_DEVICE_PRESENT_POLL_S = 0.3` (new, module level) tagged `# @tunable l3.watchdog_starvation_device_present_poll_s = 0.3`; the literal at :41, :47, :72, :77 becomes `_DEVICE_PRESENT_POLL_S`; `_REACHABLE_AFTER_RESET_TIMEOUT_S = 15.0` (new, module level) tagged `# @tunable l3.watchdog_starvation_reachable_after_reset_timeout_s = 15.0`; the literal at :42 becomes `_REACHABLE_AFTER_RESET_TIMEOUT_S`; `_REACHABLE_AFTER_RESET_POLL_S = 0.5` (new, module level) tagged `# @tunable l3.watchdog_starvation_reachable_after_reset_poll_s = 0.5`; the literal at :42 becomes `_REACHABLE_AFTER_RESET_POLL_S`; `_REACHABLE_TIMEOUT_S = 30.0` (new, module level) tagged `# @tunable l3.watchdog_starvation_reachable_timeout_s = 30.0`; the literal at :58 becomes `_REACHABLE_TIMEOUT_S`; `_REACHABLE_POLL_S = 1.0` (new, module level) tagged `# @tunable l3.watchdog_starvation_reachable_poll_s = 1.0`; the literal at :58 becomes `_REACHABLE_POLL_S`; `_FALLBACK_SCRIPT_TIMEOUT_S = 20.0` (new, module level) tagged `# @tunable l3.watchdog_starvation_fallback_script_timeout_s = 20.0`; the literal at :62 becomes `_FALLBACK_SCRIPT_TIMEOUT_S`; `_FALLBACK_ELAPSED_MAX_S = 12.0` (new, module level) tagged `# @tunable l3.watchdog_starvation_fallback_elapsed_max_s = 12.0`; the literal at :68 becomes `_FALLBACK_ELAPSED_MAX_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
+- **Blast**: callers — (module-private test constants) · generated — · js — · tests this file only; each literal becomes its constant, behaviour unchanged · twin — · docs SPEC Part N rows (A.U8.01) · toml — · uart —
+- **Depends**: A.U8.01, A.U8.02, A.U8.03
+- **Kind**: test
+
+### A.U8C.112 Tag the tuned literals of `harness.py`
 - **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
 - **Site**: `tests_hardware/harness.py` — `l4.ceiling_settle_s` :56 (1.0); `l4.ceiling_dwell_s` :56 (0.3); `l4.ceiling_probe_connect_timeout_s` :113 (2.0); `l4.ceiling_drain_timeout_s` :138 (10.0); `l4.ceiling_drain_release_s` :138 (1.0); `l4.ceiling_drain_hold_s` :138 (0.3); `l4.ceiling_hold_check_timeout_s` :165 (0.05); `l4.harness_usb_rebind_cmd_timeout_s` :201, :203 (10.0); `l4.harness_wait_until_poll_s` :224 (1.0); `l4.harness_serving_probe_timeout_s` :257 (10.0); `l4.harness_serving_restore_timeout_s` :258 (90.0); `l4.harness_serving_restore_poll_s` :259 (3.0); `l4.harness_script_server_timeout_s` :264 (120.0); `l4.harness_script_server_handover_s` :264 (20.0); `l4.harness_script_server_probe_timeout_s` :272 (3.0); `l4.harness_max_device_rebinds` :304 (2); `l4.harness_mpremote_default_timeout_s` :345 (60.0); `l4.harness_usb_grace_s` :368, :399, :404, :486 (10.0); `l4.harness_usb_grace_poll_s` :389, :499 (0.5); `l4.harness_mpremote_short_timeout_s` :413, :480 (10.0); `l4.harness_presence_probe_timeout_s` :423 (0.2); `l4.harness_mpremote_reset_timeout_s` :462, :470 (15.0); `l4.harness_log_tail_read_timeout_s` :491 (0.5); deferred U26: `:202` (2.0); deferred U26: `:204` (3.0)
 - **Change**: l4.ceiling_settle_s at :56: already created and tagged by A.U8.05; nothing further here; l4.ceiling_dwell_s at :56: already created and tagged by A.U8.05; nothing further here; l4.ceiling_probe_connect_timeout_s at :113: already created and tagged by A.U8.05; nothing further here; l4.ceiling_drain_timeout_s at :138: already created and tagged by A.U8.05; nothing further here; l4.ceiling_drain_release_s at :138: already created and tagged by A.U8.05; nothing further here; l4.ceiling_drain_hold_s at :138: already created and tagged by A.U8.05; nothing further here; `_HOLD_CHECK_TIMEOUT_S = 0.05` (new, module level) tagged `# @tunable l4.ceiling_hold_check_timeout_s = 0.05`; the literal at :165 becomes `_HOLD_CHECK_TIMEOUT_S`; `_USB_REBIND_CMD_TIMEOUT_S = 10.0` (new, module level) tagged `# @tunable l4.harness_usb_rebind_cmd_timeout_s = 10.0`; the literal at :201, :203 becomes `_USB_REBIND_CMD_TIMEOUT_S`; `_WAIT_UNTIL_POLL_S = 1.0` (new, module level) tagged `# @tunable l4.harness_wait_until_poll_s = 1.0`; the literal at :224 becomes `_WAIT_UNTIL_POLL_S`; `_SERVING_PROBE_TIMEOUT_S = 10.0` (new, module level) tagged `# @tunable l4.harness_serving_probe_timeout_s = 10.0`; the literal at :257 becomes `_SERVING_PROBE_TIMEOUT_S`; `_SERVING_RESTORE_TIMEOUT_S = 90.0` (new, module level) tagged `# @tunable l4.harness_serving_restore_timeout_s = 90.0`; the literal at :258 becomes `_SERVING_RESTORE_TIMEOUT_S`; `_SERVING_RESTORE_POLL_S = 3.0` (new, module level) tagged `# @tunable l4.harness_serving_restore_poll_s = 3.0`; the literal at :259 becomes `_SERVING_RESTORE_POLL_S`; `_SCRIPT_SERVER_TIMEOUT_S = 120.0` (new, module level) tagged `# @tunable l4.harness_script_server_timeout_s = 120.0`; the literal at :264 becomes `_SCRIPT_SERVER_TIMEOUT_S`; `_SCRIPT_SERVER_HANDOVER_S = 20.0` (new, module level) tagged `# @tunable l4.harness_script_server_handover_s = 20.0`; the literal at :264 becomes `_SCRIPT_SERVER_HANDOVER_S`; `_SCRIPT_SERVER_PROBE_TIMEOUT_S = 3.0` (new, module level) tagged `# @tunable l4.harness_script_server_probe_timeout_s = 3.0`; the literal at :272 becomes `_SCRIPT_SERVER_PROBE_TIMEOUT_S`; tag `# @tunable l4.harness_max_device_rebinds = 2` above `_MAX_DEVICE_REBINDS` (:304); `_MPREMOTE_DEFAULT_TIMEOUT_S = 60.0` (new, module level) tagged `# @tunable l4.harness_mpremote_default_timeout_s = 60.0`; the literal at :345 becomes `_MPREMOTE_DEFAULT_TIMEOUT_S`; `_USB_GRACE_S = 10.0` (new, module level) tagged `# @tunable l4.harness_usb_grace_s = 10.0`; the literal at :368, :399, :404, :486 becomes `_USB_GRACE_S`; `_USB_GRACE_POLL_S = 0.5` (new, module level) tagged `# @tunable l4.harness_usb_grace_poll_s = 0.5`; the literal at :389, :499 becomes `_USB_GRACE_POLL_S`; `_MPREMOTE_SHORT_TIMEOUT_S = 10.0` (new, module level) tagged `# @tunable l4.harness_mpremote_short_timeout_s = 10.0`; the literal at :413, :480 becomes `_MPREMOTE_SHORT_TIMEOUT_S`; `_PRESENCE_PROBE_TIMEOUT_S = 0.2` (new, module level) tagged `# @tunable l4.harness_presence_probe_timeout_s = 0.2`; the literal at :423 becomes `_PRESENCE_PROBE_TIMEOUT_S`; `_MPREMOTE_RESET_TIMEOUT_S = 15.0` (new, module level) tagged `# @tunable l4.harness_mpremote_reset_timeout_s = 15.0`; the literal at :462, :470 becomes `_MPREMOTE_RESET_TIMEOUT_S`; `_LOG_TAIL_READ_TIMEOUT_S = 0.5` (new, module level) tagged `# @tunable l4.harness_log_tail_read_timeout_s = 0.5`; the literal at :491 becomes `_LOG_TAIL_READ_TIMEOUT_S`; deferred sleeps (:202, :204): no tag now; classified once U26 decides keep-or-poll under G7/R23; if kept, each becomes the named constant with the provisional ID in the table. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
@@ -1029,7 +1115,7 @@ Classified files: 141 of 156 (hits 2154 of 2265). IDs used: 573 (new and mirrore
 - **Depends**: A.U8.01, A.U8.02, A.U8.03, U26
 - **Kind**: test
 
-### A.U8C.102 Tag the tuned literals of `http_client.py`
+### A.U8C.113 Tag the tuned literals of `http_client.py`
 - **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
 - **Site**: `tests_hardware/http_client.py` — `l4.http_client_fetch_timeout_s` :28 (10.0)
 - **Change**: `_FETCH_TIMEOUT_S = 10.0` (new, module level) tagged `# @tunable l4.http_client_fetch_timeout_s = 10.0`; the literal at :28 becomes `_FETCH_TIMEOUT_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
@@ -1037,7 +1123,7 @@ Classified files: 141 of 156 (hits 2154 of 2265). IDs used: 573 (new and mirrore
 - **Depends**: A.U8.01, A.U8.02, A.U8.03
 - **Kind**: test
 
-### A.U8C.103 Tag the tuned literals of `isl29125_conformance.py`
+### A.U8C.114 Tag the tuned literals of `isl29125_conformance.py`
 - **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
 - **Site**: `tests_hardware/isl29125_conformance.py` — `l3.isl29125_conformance_probe_timeout_s` :56 (180.0)
 - **Change**: `_PROBE_TIMEOUT_S = 180.0` (new, module level) tagged `# @tunable l3.isl29125_conformance_probe_timeout_s = 180.0`; the literal at :56 becomes `_PROBE_TIMEOUT_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
@@ -1045,7 +1131,31 @@ Classified files: 141 of 156 (hits 2154 of 2265). IDs used: 573 (new and mirrore
 - **Depends**: A.U8.01, A.U8.02, A.U8.03
 - **Kind**: test
 
-### A.U8C.104 Tag the tuned literals of `rogue_udp_responder.py`
+### A.U8C.115 Tag the tuned literals of `manual_bus_electrical.py`
+- **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
+- **Site**: `tests_hardware/manual/manual_bus_electrical.py` — `l4.manual_bus_electrical_recovery_watch_s` :27 (30.0); `l4.manual_bus_electrical_reboot_watch_s` :44 (30.0)
+- **Change**: `_RECOVERY_WATCH_S = 30.0` (new, module level) tagged `# @tunable l4.manual_bus_electrical_recovery_watch_s = 30.0`; the literal at :27 becomes `_RECOVERY_WATCH_S`; `_REBOOT_WATCH_S = 30.0` (new, module level) tagged `# @tunable l4.manual_bus_electrical_reboot_watch_s = 30.0`; the literal at :44 becomes `_REBOOT_WATCH_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
+- **Blast**: callers — (module-private test constants) · generated — · js — · tests this file only; each literal becomes its constant, behaviour unchanged · twin — · docs SPEC Part N rows (A.U8.01) · toml — · uart —
+- **Depends**: A.U8.01, A.U8.02, A.U8.03
+- **Kind**: test
+
+### A.U8C.116 Tag the tuned literals of `manual_sensor_accuracy.py`
+- **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
+- **Site**: `tests_hardware/manual/manual_sensor_accuracy.py` — `l4.manual_sensor_accuracy_isl29125_repeatability_pct` :59 (10.0)
+- **Change**: tag `# @tunable l4.manual_sensor_accuracy_isl29125_repeatability_pct = 10.0` above `_ISL29125_REPEATABILITY_TOLERANCE_PCT` (:59). Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
+- **Blast**: callers — (module-private test constants) · generated — · js — · tests this file only; each literal becomes its constant, behaviour unchanged · twin — · docs SPEC Part N rows (A.U8.01) · toml — · uart —
+- **Depends**: A.U8.01, A.U8.02, A.U8.03
+- **Kind**: test
+
+### A.U8C.117 Tag the tuned literals of `manual_toolchain.py`
+- **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
+- **Site**: `tests_hardware/manual/manual_toolchain.py` — `l3.toolchain_flash_boot_build_timeout_s` :28 (600); `l3.toolchain_flash_boot_load_timeout_s` :42 (120)
+- **Change**: `_BUILD_TIMEOUT_S = 600` (new, module level) tagged `# @tunable l3.toolchain_flash_boot_build_timeout_s = 600`; the literal at :28 becomes `_BUILD_TIMEOUT_S`; `_LOAD_TIMEOUT_S = 120` (new, module level) tagged `# @tunable l3.toolchain_flash_boot_load_timeout_s = 120`; the literal at :42 becomes `_LOAD_TIMEOUT_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
+- **Blast**: callers — (module-private test constants) · generated — · js — · tests this file only; each literal becomes its constant, behaviour unchanged ; shared IDs also sited in `tests_hardware/flash/test_toolchain_flash_boot.py` · twin — · docs SPEC Part N rows (A.U8.01) · toml — · uart —
+- **Depends**: A.U8.01, A.U8.02, A.U8.03
+- **Kind**: test
+
+### A.U8C.118 Tag the tuned literals of `rogue_udp_responder.py`
 - **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
 - **Site**: `tests_hardware/rogue_udp_responder.py` — `l4.rogue_udp_responder_recv_timeout_s` :15 (0.5); `l4.rogue_udp_responder_join_timeout_s` :38 (5.0)
 - **Change**: `_RECV_TIMEOUT_S = 0.5` (new, module level) tagged `# @tunable l4.rogue_udp_responder_recv_timeout_s = 0.5`; the literal at :15 becomes `_RECV_TIMEOUT_S`; `_JOIN_TIMEOUT_S = 5.0` (new, module level) tagged `# @tunable l4.rogue_udp_responder_join_timeout_s = 5.0`; the literal at :38 becomes `_JOIN_TIMEOUT_S`. Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
@@ -1053,7 +1163,7 @@ Classified files: 141 of 156 (hits 2154 of 2265). IDs used: 573 (new and mirrore
 - **Depends**: A.U8.01, A.U8.02, A.U8.03
 - **Kind**: test
 
-### A.U8C.105 Tag the tuned literals of `soak_tiers.py`
+### A.U8C.119 Tag the tuned literals of `soak_tiers.py`
 - **Why**: G4/R54 — "every test tier (sleeps, bounds, per-file/suite timeouts, backstops, hardware waits, retries, soak durations, tolerances, allocation and heap-rate budgets, twin durations …) has an OR30 register entry" (OR30.a (1) "(owner, 2026-09-25)"); U8 Appendix C.0.2 applied to C.0.1's hits
 - **Site**: `tests_hardware/soak_tiers.py` — `l4.soak_tiers_short_s` :7 (60.0); `l4.soak_tiers_mid_s` :7 (600.0); `l4.soak_tiers_long_h` :7 (6)
 - **Change**: tag `# @tunable l4.soak_tiers_short_s = 60.0` above `SOAK_TIER_SECONDS["short"]` (:7); tag `# @tunable l4.soak_tiers_mid_s = 600.0` above `SOAK_TIER_SECONDS["mid"]` (:7); tag `# @tunable l4.soak_tiers_long_h = 6` above `SOAK_TIER_SECONDS["long"]` (:7). Rows: every new row: Basis `estimated (agent, <commit from git log -S>) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it` (N.1 rule), Margin against that measurement, Re-check trigger "the code under test or the host class changes".
@@ -3019,7 +3129,7 @@ Every hit of C.0.1 in a classified file, keyed (file:line, kind, literal). Verdi
 | `tests_hardware/device_scripts/isl29125_real_irq_edge.py:20` | const | 303 | not tagged (fact) | 3 x tINT (datasheet p3) |
 | `tests_hardware/device_scripts/isl29125_real_irq_edge.py:58` | call | 50 | tuned | `l3.isl29125_real_irq_edge_int_poll_ms` — poll step (30 rounds) of the INT-line persistence timing; its resolution bounds the measured PRST unit |
 | `tests_hardware/device_scripts/isl29125_real_irq_edge.py:69` | kw | 8000 | mirror | → `wdt.timeout_ms` — the boot entry's watchdog (A.U8.08 names this site) |
-| `tests_hardware/device_scripts/isl29125_real_irq_edge.py:76` | call | 300 | deferred U26 | if kept: `l3.isl29125_mechanism_envelope_dark_settle_ms` — fixed sleep after the pixel goes dark, before the first reading (same purpose as isl29125_mechanism_envelope.py:209) |
+| `tests_hardware/device_scripts/isl29125_real_irq_edge.py:76` | call | 300 | deferred U26 | if kept: `l3.isl29125_real_irq_edge_dark_settle_ms` — fixed sleep after the pixel goes dark, before the first reading (300 ms here, 500 ms in isl29125_mechanism_envelope.py:209) |
 | `tests_hardware/device_scripts/isl29125_real_irq_edge.py:77` | kw | 200000 | not tagged (config) | dev.toml [bus.i2c1] frequency/timeout restated for the isolated bus |
 | `tests_hardware/device_scripts/isl29125_real_irq_edge.py:108` | call | 100 | tuned | `l3.isl29125_real_irq_edge_fast_path_poll_ms` — poll step of the fast-path wait |
 | `tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py:12` | const | 20 | tuned | `l3.isl29125_same_device_rw_concurrency_read_iterations` — reader iterations of the hazard case |
@@ -3177,6 +3287,107 @@ Every hit of C.0.1 in a classified file, keyed (file:line, kind, literal). Verdi
 | `tests_hardware/device_scripts/wifi_service_reconnect_repro.py:135` | call | 1 | tuned | `l3.wifi_service_reconnect_repro_poll_s` — observation poll step |
 | `tests_hardware/error_log_helpers.py:14` | const | 30.0 | tuned | `l4.reset_errors_timeout_s` — ResetErrors PUT bound |
 | `tests_hardware/error_log_helpers.py:23` | kw | 10.0 | tuned | `l4.error_log_helpers_errcount_timeout_s` — GET /status timeout of get_errcount() |
+| `tests_hardware/flash/conftest.py:32` | kw | 90.0 | tuned | `l3.conftest_scd30_rw_script_timeout_s` — host bound on the fixture's device-script run (the script bounds itself at 60 s internally) |
+| `tests_hardware/flash/test_bus_concurrency.py:34` | kw | 120.0 | tuned | `l3.bus_concurrency_long_script_timeout_s` — host bound on a device script whose own internal bound is 90 s ("Generous relative to the device script's own ~90s", :33) |
+| `tests_hardware/flash/test_bus_concurrency.py:40` | kw | 90.0 | tuned | `l3.bus_concurrency_script_timeout_s` — host bound on a device script whose own internal bound is 60 s or less |
+| `tests_hardware/flash/test_bus_concurrency.py:49` | kw | 120.0 | tuned | `l3.bus_concurrency_long_script_timeout_s` — host bound on a device script whose own internal bound is 90 s ("Generous relative to the device script's own ~90s", :33) |
+| `tests_hardware/flash/test_bus_concurrency.py:56` | kw | 90.0 | tuned | `l3.bus_concurrency_script_timeout_s` — host bound on a device script whose own internal bound is 60 s or less |
+| `tests_hardware/flash/test_bus_concurrency.py:64` | kw | 90.0 | tuned | `l3.bus_concurrency_script_timeout_s` — host bound on a device script whose own internal bound is 60 s or less |
+| `tests_hardware/flash/test_bus_concurrency.py:72` | kw | 90.0 | tuned | `l3.bus_concurrency_script_timeout_s` — host bound on a device script whose own internal bound is 60 s or less |
+| `tests_hardware/flash/test_bus_concurrency.py:81` | kw | 90.0 | tuned | `l3.bus_concurrency_script_timeout_s` — host bound on a device script whose own internal bound is 60 s or less |
+| `tests_hardware/flash/test_bus_concurrency.py:91` | kw | 90.0 | tuned | `l3.bus_concurrency_script_timeout_s` — host bound on a device script whose own internal bound is 60 s or less |
+| `tests_hardware/flash/test_bus_concurrency.py:99` | kw | 90.0 | tuned | `l3.bus_concurrency_script_timeout_s` — host bound on a device script whose own internal bound is 60 s or less |
+| `tests_hardware/flash/test_bus_concurrency.py:107` | kw | 90.0 | tuned | `l3.bus_concurrency_script_timeout_s` — host bound on a device script whose own internal bound is 60 s or less |
+| `tests_hardware/flash/test_bus_concurrency.py:115` | kw | 90.0 | tuned | `l3.bus_concurrency_script_timeout_s` — host bound on a device script whose own internal bound is 60 s or less |
+| `tests_hardware/flash/test_bus_concurrency.py:123` | kw | 60.0 | tuned | `l3.bus_concurrency_short_script_timeout_s` — host bound on the fault-injection / verify / deinit scripts |
+| `tests_hardware/flash/test_bus_concurrency.py:131` | kw | 30.0 | tuned | `l3.bus_concurrency_reset_script_timeout_s` — host bound on the script expected to reset the board |
+| `tests_hardware/flash/test_bus_concurrency.py:135` | call | 30.0 | tuned | `l3.bus_concurrency_reachable_timeout_s` — deadline for the board to be reachable after the reset |
+| `tests_hardware/flash/test_bus_concurrency.py:135` | call | 1.0 | tuned | `l3.bus_concurrency_reachable_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_bus_concurrency.py:135` | kw | 30.0 | tuned | `l3.bus_concurrency_reachable_timeout_s` — deadline for the board to be reachable after the reset |
+| `tests_hardware/flash/test_bus_concurrency.py:135` | kw | 1.0 | tuned | `l3.bus_concurrency_reachable_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_bus_concurrency.py:136` | kw | 60.0 | tuned | `l3.bus_concurrency_short_script_timeout_s` — host bound on the fault-injection / verify / deinit scripts |
+| `tests_hardware/flash/test_bus_concurrency.py:148` | kw | 60.0 | tuned | `l3.bus_concurrency_short_script_timeout_s` — host bound on the fault-injection / verify / deinit scripts |
+| `tests_hardware/flash/test_bus_electrical_timing.py:59` | kw | 30.0 | tuned | `l3.bus_electrical_timing_irq_script_timeout_s` — host bound on scd30_real_irq_edge.py |
+| `tests_hardware/flash/test_bus_electrical_timing.py:107` | const-c | 2 | tuned | `l3.bus_electrical_timing_wrap_headroom_h` — the two hours of headroom below 2**30 ("wider than the poll interval below"); the same key also covers the 2 of `2**30`, a fact |
+| `tests_hardware/flash/test_bus_electrical_timing.py:107` | const-c | 30 | not tagged (fact) | ticks_ms() period 2**30 ms |
+| `tests_hardware/flash/test_bus_electrical_timing.py:107` | const-c | 1000 | not tagged (fact) | ms per second |
+| `tests_hardware/flash/test_bus_electrical_timing.py:107` | const-c | 60 | not tagged (fact) | minutes per hour / seconds per minute |
+| `tests_hardware/flash/test_fram_storage.py:33` | kw | 30.0 | tuned | `l3.fram_storage_short_script_timeout_s` — host bound on the quick FRAM scripts (and the one expected to reset) |
+| `tests_hardware/flash/test_fram_storage.py:44` | kw | 150.0 | tuned | `l3.fram_storage_backup_script_timeout_s` — host bound on sgp40_fram_backup_restore.py ("~90s real runtime … generous"); Dependant of l3.sgp40_fram_backup_restore_backup_wait_s |
+| `tests_hardware/flash/test_fram_storage.py:53` | kw | 30.0 | tuned | `l3.fram_storage_short_script_timeout_s` — host bound on the quick FRAM scripts (and the one expected to reset) |
+| `tests_hardware/flash/test_fram_storage.py:60` | kw | 30.0 | tuned | `l3.fram_storage_short_script_timeout_s` — host bound on the quick FRAM scripts (and the one expected to reset) |
+| `tests_hardware/flash/test_fram_storage.py:61` | call | 30.0 | tuned | `l3.fram_storage_reachable_timeout_s` — deadline for the board to be reachable after the reset |
+| `tests_hardware/flash/test_fram_storage.py:61` | call | 1.0 | tuned | `l3.fram_storage_reachable_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_fram_storage.py:61` | kw | 30.0 | tuned | `l3.fram_storage_reachable_timeout_s` — deadline for the board to be reachable after the reset |
+| `tests_hardware/flash/test_fram_storage.py:61` | kw | 1.0 | tuned | `l3.fram_storage_reachable_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_fram_storage.py:62` | kw | 60.0 | tuned | `l3.fram_storage_script_timeout_s` — host bound on the verify / boot-window / capacity scripts |
+| `tests_hardware/flash/test_fram_storage.py:73` | kw | 60.0 | tuned | `l3.fram_storage_script_timeout_s` — host bound on the verify / boot-window / capacity scripts |
+| `tests_hardware/flash/test_fram_storage.py:87` | kw | 30.0 | tuned | `l3.fram_storage_short_script_timeout_s` — host bound on the quick FRAM scripts (and the one expected to reset) |
+| `tests_hardware/flash/test_fram_storage.py:101` | kw | 90.0 | tuned | `l3.fram_storage_pause_script_timeout_s` — host bound on fram_pause_unpause_and_gating.py (its real pause windows, :98-100) |
+| `tests_hardware/flash/test_fram_storage.py:112` | kw | 45.0 | tuned | `l3.fram_storage_lockout_script_timeout_s` — host bound on fram_busy_status_lockout.py |
+| `tests_hardware/flash/test_fram_storage.py:123` | kw | 60.0 | tuned | `l3.fram_storage_script_timeout_s` — host bound on the verify / boot-window / capacity scripts |
+| `tests_hardware/flash/test_memory_stress.py:25` | const | 16384 | not tagged (fact) | Microdot v2.6.2's max_body_length default (16384 B), the worst-case unit every figure is a multiple of (comment :22-24) |
+| `tests_hardware/flash/test_memory_stress.py:35` | kw | 120.0 | tuned | `l3.memory_stress_headroom_script_timeout_s` — host bound on heap_headroom_after_full_system_build.py |
+| `tests_hardware/flash/test_reboot_persistence.py:36` | call | 30.0 | tuned | `l3.reboot_persistence_reachable_timeout_s` — deadline for the board to be reachable after the hard reset |
+| `tests_hardware/flash/test_reboot_persistence.py:36` | call | 1.0 | tuned | `l3.reboot_persistence_reachable_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_reboot_persistence.py:36` | kw | 30.0 | tuned | `l3.reboot_persistence_reachable_timeout_s` — deadline for the board to be reachable after the hard reset |
+| `tests_hardware/flash/test_reboot_persistence.py:36` | kw | 1.0 | tuned | `l3.reboot_persistence_reachable_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_reboot_persistence.py:64` | kw | 20.0 | tuned | `l3.reboot_persistence_boot_log_tail_s` — passive log window over the undisturbed boot |
+| `tests_hardware/flash/test_reboot_persistence.py:79` | call | 30.0 | tuned | `l3.reboot_persistence_reachable_timeout_s` — deadline for the board to be reachable after the hard reset |
+| `tests_hardware/flash/test_reboot_persistence.py:79` | call | 1.0 | tuned | `l3.reboot_persistence_reachable_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_reboot_persistence.py:79` | kw | 30.0 | tuned | `l3.reboot_persistence_reachable_timeout_s` — deadline for the board to be reachable after the hard reset |
+| `tests_hardware/flash/test_reboot_persistence.py:79` | kw | 1.0 | tuned | `l3.reboot_persistence_reachable_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_sensor_accuracy.py:24` | kw | 100.0 | tuned | `l3.sensor_accuracy_scd30_script_timeout_s` — host bound on scd30_plausibility_read.py ("~60s real runtime … generous"); Dependant of l3.scd30_plausibility_read_settle_s |
+| `tests_hardware/flash/test_sensor_accuracy.py:31` | kw | 60.0 | tuned | `l3.sensor_accuracy_bmp3xx_script_timeout_s` — host bound on bmp3xx_plausibility_read.py |
+| `tests_hardware/flash/test_sensor_accuracy.py:40` | kw | 150.0 | tuned | `l3.sensor_accuracy_sgp40_script_timeout_s` — host bound on sgp40_voc_algorithm_quality.py ("~90s real runtime"); Dependant of l3.sgp40_voc_algorithm_quality_blackout_wait_s |
+| `tests_hardware/flash/test_sensor_accuracy.py:48` | kw | 30.0 | tuned | `l3.sensor_accuracy_isl29125_script_timeout_s` — host bound on isl29125_plausibility_read.py ("~15s worst-case wait window") |
+| `tests_hardware/flash/test_sensor_accuracy.py:61` | kw | 420.0 | tuned | `l3.sensor_accuracy_envelope_script_timeout_s` — host bound on isl29125_mechanism_envelope.py (22 holds x SETTLE_S + MAX_WAIT_S, :58-60); Dependant of l3.isl29125_mechanism_envelope_settle_s and _max_wait_s |
+| `tests_hardware/flash/test_sensor_accuracy.py:74` | kw | 900.0 | tuned | `l3.sensor_accuracy_scenarios_script_timeout_s` — host bound on isl29125_lighting_scenarios.py (~8.5 min of segments, :72-73) |
+| `tests_hardware/flash/test_sensor_accuracy.py:84` | kw | 120.0 | tuned | `l3.sensor_accuracy_conformance_script_timeout_s` — host bound on isl29125_mock_conformance_probe.py |
+| `tests_hardware/flash/test_task_supervisor.py:19` | kw | 15.0 | tuned | `l3.task_supervisor_script_timeout_s` — host bound on system_service_restarts_a_real_dead_task.py (~3.5 s of observation) |
+| `tests_hardware/flash/test_toolchain_flash_boot.py:39` | kw | 1200 | tuned | `l3.toolchain_flash_boot_env_setup_timeout_s` — subprocess bound of the flash-tier env run ("~481s wall clock on this bench's Pi4; 1200s leaves headroom", :30-31) |
+| `tests_hardware/flash/test_toolchain_flash_boot.py:65` | kw | 600 | tuned | `l3.toolchain_flash_boot_build_timeout_s` — subprocess bound of build_firmware.py dev |
+| `tests_hardware/flash/test_toolchain_flash_boot.py:82` | kw | 120 | tuned | `l3.toolchain_flash_boot_load_timeout_s` — subprocess bound of one picotool load attempt |
+| `tests_hardware/flash/test_toolchain_flash_boot.py:87` | call | 2.0 | tuned | `l3.toolchain_flash_boot_load_retry_backoff_s` — pause between picotool load attempts |
+| `tests_hardware/flash/test_toolchain_flash_boot.py:92` | call | 30.0 | tuned | `l3.toolchain_flash_boot_reachable_timeout_s` — deadline for the board after the reflash |
+| `tests_hardware/flash/test_toolchain_flash_boot.py:92` | call | 1.0 | tuned | `l3.toolchain_flash_boot_reachable_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_toolchain_flash_boot.py:92` | kw | 30.0 | tuned | `l3.toolchain_flash_boot_reachable_timeout_s` — deadline for the board after the reflash |
+| `tests_hardware/flash/test_toolchain_flash_boot.py:92` | kw | 1.0 | tuned | `l3.toolchain_flash_boot_reachable_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_uart_crossover.py:47` | kw | 120.0 | tuned | `l3.uart_crossover_script_timeout_s` — host bound on the exchange / blocking-read scripts |
+| `tests_hardware/flash/test_uart_crossover.py:54` | kw | 180.0 | tuned | `l3.uart_crossover_long_script_timeout_s` — host bound on the recovery / idle-rate / loaded-link scripts |
+| `tests_hardware/flash/test_uart_crossover.py:62` | kw | 120.0 | tuned | `l3.uart_crossover_script_timeout_s` — host bound on the exchange / blocking-read scripts |
+| `tests_hardware/flash/test_uart_crossover.py:69` | kw | 120.0 | tuned | `l3.uart_crossover_script_timeout_s` — host bound on the exchange / blocking-read scripts |
+| `tests_hardware/flash/test_uart_crossover.py:76` | kw | 180.0 | tuned | `l3.uart_crossover_long_script_timeout_s` — host bound on the recovery / idle-rate / loaded-link scripts |
+| `tests_hardware/flash/test_uart_crossover.py:84` | kw | 180.0 | tuned | `l3.uart_crossover_long_script_timeout_s` — host bound on the recovery / idle-rate / loaded-link scripts |
+| `tests_hardware/flash/test_watchdog_starvation.py:23` | kw | 15.0 | tuned | `l3.watchdog_starvation_script_timeout_s` — host bound on watchdog_starvation_reset.py |
+| `tests_hardware/flash/test_watchdog_starvation.py:29` | assert | 10.0 | tuned | `l3.watchdog_starvation_reset_elapsed_max_s` — bound on the observed reset (the 1.5 s watchdog plus the disconnect detection); Dependant of l3.starvation_wdt_ms |
+| `tests_hardware/flash/test_watchdog_starvation.py:41` | call | 15.0 | tuned | `l3.watchdog_starvation_device_present_timeout_s` — deadline for the USB device node to reappear |
+| `tests_hardware/flash/test_watchdog_starvation.py:41` | call | 0.3 | tuned | `l3.watchdog_starvation_device_present_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_watchdog_starvation.py:41` | kw | 15.0 | tuned | `l3.watchdog_starvation_device_present_timeout_s` — deadline for the USB device node to reappear |
+| `tests_hardware/flash/test_watchdog_starvation.py:41` | kw | 0.3 | tuned | `l3.watchdog_starvation_device_present_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_watchdog_starvation.py:42` | call | 15.0 | tuned | `l3.watchdog_starvation_reachable_after_reset_timeout_s` — deadline for mpremote to talk to the board again |
+| `tests_hardware/flash/test_watchdog_starvation.py:42` | call | 0.5 | tuned | `l3.watchdog_starvation_reachable_after_reset_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_watchdog_starvation.py:42` | kw | 15.0 | tuned | `l3.watchdog_starvation_reachable_after_reset_timeout_s` — deadline for mpremote to talk to the board again |
+| `tests_hardware/flash/test_watchdog_starvation.py:42` | kw | 0.5 | tuned | `l3.watchdog_starvation_reachable_after_reset_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_watchdog_starvation.py:47` | call | 15.0 | tuned | `l3.watchdog_starvation_device_present_timeout_s` — deadline for the USB device node to reappear |
+| `tests_hardware/flash/test_watchdog_starvation.py:47` | call | 0.3 | tuned | `l3.watchdog_starvation_device_present_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_watchdog_starvation.py:47` | kw | 15.0 | tuned | `l3.watchdog_starvation_device_present_timeout_s` — deadline for the USB device node to reappear |
+| `tests_hardware/flash/test_watchdog_starvation.py:47` | kw | 0.3 | tuned | `l3.watchdog_starvation_device_present_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_watchdog_starvation.py:51` | const | 3 | not tagged (identifier) | machine.WDT_RESET on rp2 |
+| `tests_hardware/flash/test_watchdog_starvation.py:58` | call | 30.0 | tuned | `l3.watchdog_starvation_reachable_timeout_s` — deadline for the board before the fallback run |
+| `tests_hardware/flash/test_watchdog_starvation.py:58` | call | 1.0 | tuned | `l3.watchdog_starvation_reachable_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_watchdog_starvation.py:58` | kw | 30.0 | tuned | `l3.watchdog_starvation_reachable_timeout_s` — deadline for the board before the fallback run |
+| `tests_hardware/flash/test_watchdog_starvation.py:58` | kw | 1.0 | tuned | `l3.watchdog_starvation_reachable_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_watchdog_starvation.py:62` | kw | 20.0 | tuned | `l3.watchdog_starvation_fallback_script_timeout_s` — host bound on reboot_fallback_starves_the_watchdog.py |
+| `tests_hardware/flash/test_watchdog_starvation.py:68` | assert | 12.0 | tuned | `l3.watchdog_starvation_fallback_elapsed_max_s` — "the script's watchdog is armed for 1.5s, so something else timed out"; Dependant of l3.starvation_wdt_ms |
+| `tests_hardware/flash/test_watchdog_starvation.py:72` | call | 15.0 | tuned | `l3.watchdog_starvation_device_present_timeout_s` — deadline for the USB device node to reappear |
+| `tests_hardware/flash/test_watchdog_starvation.py:72` | call | 0.3 | tuned | `l3.watchdog_starvation_device_present_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_watchdog_starvation.py:72` | kw | 15.0 | tuned | `l3.watchdog_starvation_device_present_timeout_s` — deadline for the USB device node to reappear |
+| `tests_hardware/flash/test_watchdog_starvation.py:72` | kw | 0.3 | tuned | `l3.watchdog_starvation_device_present_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_watchdog_starvation.py:77` | call | 15.0 | tuned | `l3.watchdog_starvation_device_present_timeout_s` — deadline for the USB device node to reappear |
+| `tests_hardware/flash/test_watchdog_starvation.py:77` | call | 0.3 | tuned | `l3.watchdog_starvation_device_present_poll_s` — poll step of that wait |
+| `tests_hardware/flash/test_watchdog_starvation.py:77` | kw | 15.0 | tuned | `l3.watchdog_starvation_device_present_timeout_s` — deadline for the USB device node to reappear |
+| `tests_hardware/flash/test_watchdog_starvation.py:77` | kw | 0.3 | tuned | `l3.watchdog_starvation_device_present_poll_s` — poll step of that wait |
 | `tests_hardware/harness.py:56` | param | 1.0 | tuned | `l4.ceiling_settle_s` — ceiling instrument default |
 | `tests_hardware/harness.py:56` | param | 0.3 | tuned | `l4.ceiling_dwell_s` — ceiling instrument default |
 | `tests_hardware/harness.py:113` | param | 2.0 | tuned | `l4.ceiling_probe_connect_timeout_s` — ceiling probe connect timeout |
@@ -3214,6 +3425,16 @@ Every hit of C.0.1 in a classified file, keyed (file:line, kind, literal). Verdi
 | `tests_hardware/heap_map.py:13` | const | 64 | not tagged (fact) | blocks per line of MicroPython mem_info(1) output |
 | `tests_hardware/http_client.py:28` | param | 10.0 | tuned | `l4.http_client_fetch_timeout_s` — default per-request timeout of the bench HTTP client |
 | `tests_hardware/isl29125_conformance.py:56` | param | 180.0 | tuned | `l3.isl29125_conformance_probe_timeout_s` — default bound of the twin conformance probe run |
+| `tests_hardware/manual/manual_bus_electrical.py:27` | kw | 30.0 | tuned | `l4.manual_bus_electrical_recovery_watch_s` — log window for evidence of recovery |
+| `tests_hardware/manual/manual_bus_electrical.py:44` | kw | 30.0 | tuned | `l4.manual_bus_electrical_reboot_watch_s` — log window for a reboot ("generous relative to the 8388ms WDT cap") |
+| `tests_hardware/manual/manual_sensor_accuracy.py:14` | const | 50.0 | not tagged (fact) | BMP388 datasheet accuracy figures (comment :9-13) |
+| `tests_hardware/manual/manual_sensor_accuracy.py:15` | const | 0.5 | not tagged (fact) | BMP388 datasheet accuracy figures (comment :9-13) |
+| `tests_hardware/manual/manual_sensor_accuracy.py:37` | const | 10 | not tagged (fact) | SGP40 datasheet Table 1 response times (comment :35-36) |
+| `tests_hardware/manual/manual_sensor_accuracy.py:38` | const | 30 | not tagged (fact) | SGP40 datasheet Table 1 response times (comment :35-36) |
+| `tests_hardware/manual/manual_sensor_accuracy.py:59` | const | 10.0 | tuned | `l4.manual_sensor_accuracy_isl29125_repeatability_pct` — by-hand repeatability tolerance on one scene |
+| `tests_hardware/manual/manual_toolchain.py:28` | kw | 600 | tuned | `l3.toolchain_flash_boot_build_timeout_s` — the same build_firmware.py dev subprocess bound as flash/test_toolchain_flash_boot.py:65 (shared ID) |
+| `tests_hardware/manual/manual_toolchain.py:42` | kw | 120 | tuned | `l3.toolchain_flash_boot_load_timeout_s` — the same picotool load bound as flash/test_toolchain_flash_boot.py:82 (shared ID) |
+| `tests_hardware/manual/runner.py:46` | call | 1 | not tagged (derived) | the 1 s step of the operator countdown (a unit) |
 | `tests_hardware/ntp_probe.py:9` | const | 2208988800 | not tagged (fact) | NTP-to-Unix epoch offset (RFC 5905) |
 | `tests_hardware/rogue_udp_responder.py:15` | call | 0.5 | tuned | `l4.rogue_udp_responder_recv_timeout_s` — per-recvfrom bound so stop() interrupts promptly |
 | `tests_hardware/rogue_udp_responder.py:38` | kw | 5.0 | tuned | `l4.rogue_udp_responder_join_timeout_s` — thread join bound in stop() |
@@ -3249,5 +3470,68 @@ They are recorded for A-C; not classified here beyond what is stated.
    (`tests_hardware/device_scripts/fram_pause_unpause_and_gating.py:81, :95, :97, :119`) — C.0.1's const-c
    accepts literal-only arithmetic and no other kind reads a BinOp operand. The margin is tuned: one
    constant per purpose (`_PAUSE_MARGIN_S = 1.5`, `_REARM_MARGIN_S = 0.5`).
+7. Lower-case local timing variables, e.g. `poll_interval_s = 3600.0` and the `+ 60` headroom in
+   `target_wait_s` (`tests_hardware/flash/test_bus_electrical_timing.py:114, :116`) — the const rule reads
+   upper-case targets only. Tuned: promoted to named constants with their own IDs when this file is tagged.
+
+## Deferred sites (classification working list only)
+
+C.0.2 "Deferred": fixed sleeps U25 (twin) or U26 (hardware) decide on under G7/R23. They carry no tag and
+no Part N row now; the provisional ID in the table is what each becomes if that unit keeps it. 13 hits
+deferred to U25, 14 to U26 (the table lists every site). The fixed sleeps G7/R23 itself keeps — a probe
+would occupy a slot or share the heap under measurement — are classified tuned, not deferred
+(`tests_hardware/bench/test_network_resilience.py` slot-release waits, `tests_hardware/device_scripts/heap_under_connection_ceiling.py:44`,
+`serving_at_default_gc.py:27`).
+
+## Ledger
+| register block | clause for this unit (short) | result |
+|---|---|---|
+| G4/R54 | code in U8 — `@tunable` tags and register; the U8 NOT-DONE item: per-value classification of the `tests/` and `tests_hardware/` candidates (U8 Ledger, register fix 6) | DONE in this file: all 2,265 C.0.1 hits in 156 files classified; actions A.U8C.01-A.U8C.119 (one per file holding a tuned, mirror or deferred hit). No file NOT-DONE |
+| G1/R15 | tags in U8 — every instrument value a registered tunable | two instrument values A.U8.05 does not list: `tests_hardware/harness.py:165` (`l4.ceiling_hold_check_timeout_s`), `tests_hardware/bench/test_heap_under_connection_ceiling.py:49` (`l4.ceiling_holder_socket_timeout_s`), in the actions for those files; register fix 3 |
+| G8/R31 | tunables in U8 (every test bounded; the bounds are tunables) | every `run`/`run_timed`/`wait_for`/`limit=`/`join`/`run_isolated`/subprocess hang bound among the hits is tuned, one constant per file per distinct value (C.0.2) |
+| G7/R23 | tunable in U8 (kept sleeps) | kept sleeps tuned (see "Deferred sites"); 27 fixed sleeps deferred to U25/U26 |
+
+## Register fixes
+
+- **`audit/actions/U8.md` A.U8.11 Blast** lists `tests/test_captive_dns.py:1067` (4700-5400 ms) as a mirror
+  site of `dns_server.recv_backoff_max_s`. By C.0.2's mechanical test it is not: neither literal equals 5000.
+  It is a tolerance band around the cap. Fix: "`:1067` is a Dependant of `dns_server.recv_backoff_max_s`
+  (its own tuned band edges, A.U8C)". `:952` (3000) stays a mirror of `dns_server.error_retry_wait_s`.
+- **`audit/actions/U8.md` A.U8.08 Blast** says `tests/test_digital_twin_machine.py:312-410` "uses
+  8000/8388/8389/150 as test inputs — inputs, not tagged". Under C.0.2 (written later, V.U8.29) that holds for
+  8000/8388/8389 (construction only) but not for 150 and 100 (`:357, :369, :382, :394, :410`): the twin WDT
+  counts them down on the real clock and the cases wait for (or feed against) that expiry, so they are tuned
+  (A.U8C). Fix the phrase to "8000/8388/8389 construction inputs; the short 100/150 ms timeouts are tuned
+  (A.U8C)".
+- **`audit/actions/U8.md` Ledger G4/R54 NOT-DONE row and register fix 6**: the per-value classification is
+  done in `audit/actions/U8C.md`; the row's result becomes "A.U8C.01-A.U8C.119" and register fix 6's
+  "NOT-DONE in A-L, to be split in A-C" line is dropped.
+- **G1/R15 / `audit/actions/U8.md` A.U8.05**: the instrument's value list lacks `tests_hardware/harness.py:165`
+  (`sock.settimeout(0.05)`, the per-socket read window of `_assert_probe_held()`) and
+  `tests_hardware/bench/test_heap_under_connection_ceiling.py:49` (`sock.settimeout(5.0)`, each holder's
+  socket timeout). Add both to A.U8.05's Site and Change (IDs as in this file).
+- **`audit/actions/U8.md` Appendix C.0.1** states "2,286 hits … const-c 242, … kw 946, … assert 132" for the
+  reference script. Applied as its own text says, the count is 2,265 (const-c 253, kw 915, assert 131): the
+  reference keys a kw hit by call and keyword text, drops a unary minus inside containers, and counts
+  `b"\x41" * 40` as numeric arithmetic (preamble of this file). Replace the numbers, or name the reference
+  script's keying as the counted one.
+- **`audit/actions/U8.md` Appendix C.0.1** misses seven families of tuned values ("Search gaps" above).
+  Either extend C.0.1 by those seven rules or record them as known exclusions; the sites found are listed.
+
+## Open points
+
+No owner question. Cases C.0.2 could not decide mechanically, each classified by a stated reading:
+
+- `tests_hardware/bench/test_bus_concurrency_under_api_load.py:194` — `inject_network_degradation(loss_pct=2, delay_ms=30, jitter_ms=20)`: the netem fault profile. C.0.2 item 3 defines test input as "never waited out in real time", yet netem delay is real; item 4 (tuned) needs "bounds or paces a wait the code under test runs … and pass/fail depends on it", which fits a stimulus only loosely. Classified test input (the stimulus of the case, not a budget); the same reading applies to every netem profile hit.
+- `tests_hardware/device_scripts/serving_at_default_gc.py:34` — `_MAX_FAILURE_MAPS = 3`, a cap on printed diagnostics. It bounds no wait, feeds no fake, restates nothing and decides no verdict, so none of C.0.2's four outcomes fits. Classified not tagged ("output cap"), following U8 Appendix B's reading for the twin's log caps ("tagged only where a test's outcome depends on them").
+- `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py:24-26` — `POLL_WAIT_MS = 2`, `POLL_IDLE_MS = 50`, `BUF_BYTES = 512` equal `devices/dev.toml`'s `[bus.uart*]` values and build the same initiator/responder pair, but unlike `uart_crossover_exchange.py:30-31` no comment says they mirror it, so C.0.2's mechanical mirror test (value equal **and** named) fails on the second half. Classified mirror of `dev.uart_poll_wait_ms`/`dev.uart_poll_idle_ms`/`dev.uart_rxbuf` (the sibling scripts state the intent; "equal only by coincidence" does not fit a copied configuration), with the tag supplying the missing statement.
+
+Readings applied throughout (preamble "How the classification was done"): a timeout the code under test
+waits out in full is tuned, not a test input; `tries=`/`conn_tries=` values that select an attempt path are
+test inputs; API-domain restatements are not tagged; a fixed sleep in an `l1.` file is tuned; cross-file IDs
+only for duplicated tests or instruments. The scale that follows from C.0.2 — 576 new test-tier IDs besides
+the 18 existing U8 IDs these files also carry and 28 product IDs they mirror — is OR30.a (1)'s own reach
+("every test tier … has an OR30 register entry"), so it is not raised again; almost every new row starts as
+"estimated — measurement owed", which makes Part N's test-tier rows the measurement list for the B3 campaign.
 
 
