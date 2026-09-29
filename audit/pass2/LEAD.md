@@ -28,6 +28,7 @@ need only the cross-reference they already carry. The points below needed a deci
 | 14 | OR79 (attempt the bench spoofing test), OR80 (datasheets private submodule), OR81 (stricter typing in this audit), OR82 (owner-traced L labels) | Applied in G1/R29, G9/R23, G8/R61, G9/R38 and every rank citing an L item | OR79-OR82 |
 | 13 | Owner answers after pass 2 (OR74-OR78, 2026-09-28) | Applied: OR74 in G3/R44; OR75 in G5/R05 and G1/R30 (legacy checked: timers first there too); OR76 as LEAD/R19; OR77 in G1/R29; OR78 in G8/R01 and G1/R36 (the fixed-`dev` exception withdrawn) | OR74-OR78 |
 | 16 | Owner answers to pass 3 (2026-09-29) | Applied per `audit/pass3/LEAD_MERGE.md`: OR101 in G5/R02, G5/R04, G3/R06, G3/R09, G3/R23, G3/R36, G3/R38, G3/R40, G3/R51 and REF/R03; OR102 in G5/R03, G3/R64, G6/R24, G6/R27, G6/R30, G6/R49, G2/R17 and G7/R12; OR103 and OR105 as LEAD/R24; OR104 in G6/R29, G9/R03 and REF/R03; OR106, OR107 and OR108 are process rows (CONSOLIDATION phases A-L and A-C, plan 4.4) | OR101, OR102, OR103, OR104, OR105, OR106, OR107, OR108 |
+| 17 | Owner answers to pass 4 (2026-09-29) | Applied per `audit/pass4/LEAD_MERGE.md`: OR109 (0) as LEAD/R30 and in G2/R17; (1) in G3/R10; (2) in the BMP3xx interval block; (3) in G7/R39 | OR109 |
 
 ## 2 Merges (one rule, one owning requirement)
 
@@ -262,13 +263,13 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Pass 2**: new (refined harvest, RF334)
 
 ### LEAD/R24 No counter allocates or runs unbounded
-- **Req**: Every value that grows with time or events (uptime and age seconds; event, error, retry, transfer and failure counts) saturates at a named constant cap and then stops. Hitting the cap changes nothing but the number: no exception, no allocation, no task end. Every cap is at most `MP_SMALL_INT_MAX` = 2**30 − 1 on rp2, so a counter never becomes a heap int: one shared cap constant 2**30 − 1 (34.0 years in seconds), narrower only where the field's storage or wire width demands it (e.g. a 16-bit log counter). A counter checks before it steps (`if v < CAP: v += 1`), never `min(v + 1, CAP)`, which allocates at the cap; no cap constant or intermediate exceeds the small-int range. No counter counts milliseconds. Wrap-by-design values (`ticks_ms()`, CRCs, protocol sequence or id bytes) are not counters here and follow G5/R10. In `js/` the cap bounds the number; the allocation clause does not apply there. Each cap is proven by a driven-value unit test (set near the cap, step past it, assert saturation and no side effect), never by soak.
-- **Sources**: OR103/OR103.a, OR105/OR105.a · OR44 (P1) · v1.29.0 `py/smallint.h:37-42, 62`, `py/mpconfig.h:163` (`MICROPY_OBJ_REPR_A` on rp2) · legacy precedent `python/CommonDrivers/async_manager.py:6, 24` (`_50_YEARS_SEC`, check before step) · `src/asy_ntp_client.py:209` (`min(current + 1, 0xFFFFFFFF)`, allocates past 2**30)
+- **Req**: Every value that grows with time or events (uptime and age seconds; event, error, retry, transfer and failure counts) saturates at a named constant cap and then stops. Hitting the cap changes nothing but the number: no exception, no allocation, no task end. Every cap is at most `MP_SMALL_INT_MAX` = 2**30 − 1 on rp2, so a counter never becomes a heap int: one shared cap constant 2**30 − 1 (34.0 years in seconds), narrower only where the field's storage or wire width demands it (e.g. a 16-bit log counter). A counter checks before it steps (`if v < CAP: v += 1`), never `min(v + 1, CAP)`, which allocates at the cap; a value compared only for equality or order (a change count, a request/acknowledge pair) is a wrap-by-design sequence, masked to 2**30 − 1 and compared wrap-safe, not a saturating counter, because saturation would freeze the comparison (K.18, K.25, K.26; agent, 2026-09-29); no cap constant or intermediate exceeds the small-int range. No counter counts milliseconds. Wrap-by-design values (`ticks_ms()`, CRCs, protocol sequence or id bytes) are not counters here and follow G5/R10. In `js/` the cap bounds the number; the allocation clause does not apply there. Each cap is proven by a driven-value unit test (set near the cap, step past it, assert saturation and no side effect), never by soak; that test proves saturation only, because the L1/L2 Unix port (64-bit) holds small ints to 2**62 − 1 and cannot see rp2's 2**30 boundary, so allocation-freedom is proven by a `tests_scripts/` AST check (every counter step checks before it steps; every cap and counter constant ≤ 2**30 − 1).
+- **Sources**: OR103/OR103.a, OR105/OR105.a · OR44 (P1) · v1.29.0 `py/smallint.h:37-42, 62`, `py/mpconfig.h:163` (`MICROPY_OBJ_REPR_A` on rp2) · legacy precedent `python/CommonDrivers/async_manager.py:6, 24` (`_50_YEARS_SEC`, check before step) · `src/asy_ntp_client.py:209` (`min(current + 1, 0xFFFFFFFF)`, allocates past 2**30) · `py/runtime.c:595-599`, `py/objint_mpz.c:214-215, 319-320` (v1.29.0; K.30)
 - **Rank**: owner — "No unbounded counters anywhere" (owner, 2026-09-29, OR103); "I want to exactly avoid allocations happening at some point" (owner, 2026-09-29, OR105); cap value and check-before-step form "(agent, 2026-09-29)" (OR105.a (2)(3))
-- **State**: work: inventory — the pass-4 counter scan (OR105.a (4)) over `src/`, `buildgen/codegen.py` templates, `digital_twin/` and `js/`, each candidate ending in a register line; code in U10 — the cap constant and a saturating step in `LockedCounter` (`src/base_classes.py`); code in U18 — `src/asy_ntp_client.py:209`; test in U35 — driven-value cap tests; doc in U10 — SPEC G.2
+- **State**: work: inventory — the pass-4 counter scan (OR105.a (4)) over `src/`, `buildgen/codegen.py` templates, `digital_twin/` and `js/`, each candidate ending in a register line; code in U10 — the cap constant and a saturating step in `LockedCounter` (`src/base_classes.py`); code in U18 — `src/asy_ntp_client.py:209`; test in U35 — driven-value cap tests; doc in U10 — SPEC G.2; inventory done (pass 4 K, HEAD `549445b`, `audit/pass4/K.md`): step and cap work at `base_classes.py:95` (K.01), `system_service.py:80` (K.02), `asy_webserver_service.py:358` (K.05), `asy_wifi_service.py:167` (K.06), `asy_ntp_client.py:209` (K.08; reachable only when `start_ntp_timer()` failed with ENOMEM, `:330-340`, and nothing clears `Synced`; otherwise `LastSyncAge` ≤ 3 × `NTP_Interv_H` h), `asy_scd30_driver.py:416` (K.14, cap `trigger_half_sec`), `asy_isl29125_driver.py:1377` (K.18, masked sequence), `asy_uart_comm.py:320, 342, 608, 659, 583` (K.21-K.24; K.24 cap `_DIAG_RESYNC_STREAK`, K.22 a flag), `asy_uart_driver.py:247, 253` (K.25-K.26, masked sequences compared wrap-safe), `asy_uart_link_driver.py:117, 119` (K.27), `voc_algorithm.py:417` (K.29, limit F16(16382), pinned by G3/R09's reference vectors); twin `machine.py:669, 708, 880, 894, 939, 945, 470, 535, 547, 551`, `launch.py:327-343`, `_isl29125_chip.py:194` (K.42-K.43, U25); `js/mock-server.js:297` (K.53); blast radius: `boot_signature` (`system_service.py:93`) is an identifier, not a counter, and moves from `LockedCounter` to `LockedValue` before the shared cap lands, or every NTP-set signature clamps and reboot detection breaks (K.03); tests pinning today's caps change with it: `test_base_classes.py:279-360`, `test_asy_ntp_client.py:495-497`, `test_print_log.py:201-205, 291-293`, `test_asy_isl29125_driver.py:1949` (K.48)
 - **Home**: SPEC G.2 (`LockedCounter`); principles Part (P1)
 - **Pillar**: P1
-- **Pass 2**: new (pass-3 answers, OR103, OR105)
+- **Pass 2**: new (pass-3 answers, OR103, OR105). Pass 4: Q01, Q02, Q03, Q04, Q05, Q07.
 
 ### LEAD/R25 Every config value has an explicit scope
 - **Req**: Every config value is per-device, per-feature or explicitly global, never implicitly coupled to something unrelated; the Part C config schema states each field's scope, checked together with OR52.a (2)'s key scheme.
@@ -289,13 +290,13 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Pass 2**: new (pass 3 H2.30)
 
 ### LEAD/R27 Hardware sessions never wait passively for rare events
-- **Req**: A hardware session does not re-wait for a rare event it cannot trigger ("don't wait for something to maybe happen"); it triggers the condition or records it as not reproducible. Every failure actually observed is still investigated (OR6.a).
+- **Req**: A hardware session does not re-wait for a rare event it cannot trigger ("don't wait for something to maybe happen"); it triggers the condition or records it as not reproducible. An investigation reproduces a fault with a small, bounded, dedicated script rather than repeated full-suite runs. Every failure actually observed is still investigated (OR6.a).
 - **Sources**: H2.59 (pass 3) · OR6.a · `ef80090`:BACKLOG.md
-- **Rank**: owner — "don't wait for something to maybe happen" (owner, 2026-09-08, `ef80090`)
+- **Rank**: owner — "don't wait for something to maybe happen" (owner, 2026-09-08, `ef80090`); "reproduce in a dedicated way, not full runs" (owner, 2026-09-08, `4d06553`/`d65229e`; H.08)
 - **State**: work: doc in U26 — `tests_hardware/README.md` states it; applies to every phase-C round
 - **Home**: `tests_hardware/README.md`
 - **Pillar**: P9
-- **Pass 2**: new (pass 3 H2.59)
+- **Pass 2**: new (pass 3 H2.59). Pass 4: Q20.
 
 ### LEAD/R28 UART comm-hazard coverage at all four tiers
 - **Req**: The UART link gets comm-hazard coverage at L1-L4 in its two-participant shape: same-instance concurrency (two initiations on one instance, `clear()`/`cancel_read_timeout()` racing a transaction) serialised or refused, never a corrupt frame; both participants transmitting (out of contract, J.2) detected and recovered; a frame and field sweep over every `CMD`, `SIZE`, `CHUNKS`, `CUR_CHUNK` and `UID` value, legal and illegal. The flash and bench harness stays open to real fault injection (line pull, inversion, noise, baud desync) without reshaping the tests.
@@ -314,6 +315,15 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Home**: SPEC F.2; SPEC Part E
 - **Pillar**: P3
 - **Pass 2**: new (pass 3 H1.16)
+
+### LEAD/R30 A shared command buffer is staged inside the device session
+- **Req**: No races (SPEC C.8's device-session model): every per-call input a multi-step device operation keeps in a shared buffer is written inside the device-session hold, never before it, because any await before the hold (a CRC with a per-byte yield included) lets another caller overwrite the buffer. Today `SGP40_I2C.measure_raw()` fills `_measure_command` and awaits `crc.add_into()` (per-byte yield, `crc_checks.py:48`) before taking `i2c_sgp40` (`asy_sgp40_driver.py:621-632`), against the class's own contract (:536, "lock for consecutive i2c communication and self._command_buffer"); latent (one caller, :294), fixed regardless.
+- **Sources**: R.26 (pass 4) · OR109/OR109.a (0), OR41.a · SPEC C.8 · precedent: ISL29125 state captured before the lock (owner, 2026-09-15, BACKLOG.md:98-101) · G3/R50
+- **Rank**: owner — "Latent SGP40 race: Fix this. No races allowed (see specs)." (owner, 2026-09-29, OR109)
+- **State**: work: code in U12 — stage the buffer inside the session; test in U24 — `tests/test_bus_hazard_multi_device.py:356` adapted to bite (distinct T/RH per session; each `writeto` carries its own session's words with valid CRCs, each followed by its own read); review in U12-U17 — every driver's shared buffers checked for the same staging-before-hold shape
+- **Home**: SPEC C.8 (general rule)
+- **Pillar**: P2
+- **Pass 2**: new (pass 4 R.26, OR109). Pass 4: Q45.
 
 ## 4 Questions for the owner (after self-resolution)
 
