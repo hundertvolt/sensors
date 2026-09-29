@@ -1,7 +1,7 @@
 # Consolidation — the audit's big picture (allover pass 2)
 
 Audit working file (temporary, deleted with `audit/`, OR11.a). One picture of everything consolidation
-knows: the owner requirements OR1-OR90 (PROJECT_AUDIT_PLAN.md 3.2), the requirements inside the harvest,
+knows: the owner requirements OR1-OR91 (PROJECT_AUDIT_PLAN.md 3.2), the requirements inside the harvest,
 and the decision-provenance answers. History: requirement passes 1-2 and harvest pass 1 (2026-09-26,
 section 8); allover pass 2 (2026-09-27) re-read all of it with everything known from the start and
 produced one register (section 7). Passes 3+ run the question-raising scans (section 9).
