@@ -1,0 +1,61 @@
+# A-L wave 1 — register fixes applied to `audit/pass2/`
+
+Input: the "Register fixes" sections of `audit/actions/U0.md` … `U8.md` and `U8C.md`, in their verified form
+(`audit/actions/verify/U0.md` … `U8.md`). Each applied fix carries "A-L: <unit> register fix <k>." on its block's
+Pass 2 line. Fixes are numbered in the order of their section (U0-U5 are unnumbered bullets).
+
+- U0 fix 1 → G9/R27: applied
+- U0 fix 2 → G9/R37: applied (form amended by V.U0.42: V52 keeps the owner tag and gains OR42.a (1))
+- U0 fix 3 → G9/R33: applied
+- U0 fix 4 → G10/R03: applied (form amended by V.U0.41)
+- U0 fix 5 → G9/R36: applied (C09 note and C10 routing note)
+- U0 fix 6 → G6/R49: applied (fix headed G9/R35; `:217` placed in G6/R49 beside `:569-571`, per V.U0 "OR89.a (2)'s G6/R49")
+- U0 fix 7 → G9/R38: applied
+- U1 fix 1 → G9/R01: applied
+- U1 fix 2 → G4/R04: applied
+- U1 fix 3 → G1/R40: applied
+- U1 fix 4 → G3/R47: applied (form amended by V.U1.15: `7be762f`, 2026-09-12)
+- U1 fix 5 → G8/R26: applied
+- U1 fix 5 → G4/R18: applied
+- U1 fix 6 → G8/R48: applied
+- U2 fix 1 → G5/R19: applied
+- U2 fix 2 → G5/R19: applied
+- U2 fix 3 → G5/R19: applied
+- U2 fix 4 → G5/R19: already applied (the fix confirms the register's `:373-376`/`:373-377` lines stand; no edit)
+- U3 fix 1 → G3/R01: applied
+- U4 fix 1 → G3/R36: applied
+- U4 fix 1 → G1/R17: applied
+- U4 fix 2 → G1/R17: applied
+- U4 fix 3 → G3/R36: applied
+- U5 fix 1 → G6/R40: applied (form amended by V.U5.20: `:1312, :1436` and helper `:254`)
+- U5 fix 2 → G3/R66: applied (Req replaced; block title "staged and guarded" left unchanged)
+- U5 fix 3 (as drafted) → —: skipped (rejected by V.U5.21; removed from U5.md)
+- U6 fix 1 → G8/R14: applied
+- U6 fix 2 → G5/R03: applied (`ResetReason`)
+- U6 fix 2 → G4/R47: applied (`MemFree`)
+- U6 fix 3 → G7/R28: applied
+- U6 fix 4 → G8/R01: applied
+- U6 fix 5 → G6/R28: applied
+- U6 fix 6 → G7/R39: applied (the keying parenthetical kept: rows per logger instance are owner rows, `b0f755c` item 31 and OR109.a (3))
+- U6 fix 7 → G6/R39: applied
+- U6 fix 7 → G7/R29: applied
+- U6 fix 8 → —: skipped (no register block; SPEC L.6.4 `@web`/`@web-group` rows are a doc gap for U36, lead to route)
+- U7 fix 1 → G2/R09: applied
+- U7 fix 2 → G2/R27: applied
+- U7 fix 3 → G8/R38: applied (form amended by V.U7.19)
+- U7 fix 4 → G8/R40: applied
+- U7 fix 5 → LEAD/R03: applied
+- U8 fix 1 → G8/R61: applied
+- U8 fix 2 → G4/R54: applied
+- U8 fix 3 → G5/R01: applied (form amended by V.U8.30)
+- U8 fix 4 → G7/R34: applied
+- U8 fix 5 → G4/R54: skipped (G4/R54 cites no `timeout-minutes` count; the note binds only when one is cited, no text to change)
+- U8 fix 6 → G4/R54: skipped (overtaken: the per-value classification it would record as NOT-DONE is done in `audit/actions/U8C.md`, A.U8C.01-A.U8C.119, 156/156 files; U8C fix 3 drops this line — but U8C.md has no Verified line, lead to confirm)
+- U8 fix 7 → G6/R16: applied
+- U8 fix 8 → G4/R54: applied
+- U8C fix 1 → —: skipped (targets `audit/actions/U8.md` A.U8.11, not a register file; U8C unverified)
+- U8C fix 2 → —: skipped (targets `audit/actions/U8.md` A.U8.08, not a register file; U8C unverified)
+- U8C fix 3 → G4/R54: skipped (targets `audit/actions/U8.md` Ledger and register fix 6; its register effect is U8 fix 6 not written; U8C unverified)
+- U8C fix 4 → G1/R15: skipped (targets `audit/actions/U8.md` A.U8.05 Site/Change, not the register block; U8C unverified)
+- U8C fix 5 → —: skipped (targets `audit/actions/U8.md` Appendix C.0.1 counts; U8C unverified)
+- U8C fix 6 → —: skipped (targets `audit/actions/U8.md` Appendix C.0.1 rules; U8C unverified)

@@ -21,3 +21,7 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
    `api_response.py` (`audit/actions/U11.md` Register fixes) — A-C merges them into A.U2.01's table.
 8. U12 Q1 self-resolved (lead): `abs_humidity()`/`rel_humidity()` are removed as unused product code; A.U12.09/10
    follow that in A-C.
+9. U6 register fix 8 (SPEC L.6.4 lacks the `@web`/`@web-group` rows CLAUDE.md points to; the grammar lives in H.5.1)
+   has no register block: U36 carries it (either the rows or CLAUDE.md's pointer moves to H.5.1).
+10. U8C's six register fixes edit U8.md, not the register; they are applied after U8C (and its supplement U8C2) is
+    verified. U8 register fix 6 (Appendix C NOT-DONE) is stale since U8C.

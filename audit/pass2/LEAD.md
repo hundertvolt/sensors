@@ -78,10 +78,10 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Req**: A test file that passed only on its per-file retry is named and counted in the runner's summary block and entered as an item to root-cause; the retry backstop itself stays.
 - **Sources**: G2 gap 1 · OR6.a, OR15.a (2), OR21.a (3), OR37.a (2) · `scripts/test.sh:362-387`
 - **Rank**: agent — "(agent, 2026-09-27)"
-- **State**: work: code in U7; a CI crash with no recorded cause is a root-cause item too: grkizi Run 5c SIGSEGV on the reboot relaunch (PR #58 comment, 2026-09-25, after `8466f2b`), reproduced at L2 in execution (TWIN.N380)
+- **State**: work: code in U7; a CI crash with no recorded cause is a root-cause item too: grkizi Run 5c SIGSEGV on the reboot relaunch (PR #58 comment, 2026-09-25, after `8466f2b`), reproduced at L2 in execution (TWIN.N380); code in U25
 - **Home**: SPEC E (runner summary block)
 - **Pillar**: P5
-- **Pass 2**: new. Pass 3: P057.
+- **Pass 2**: new. Pass 3: P057. A-L: U7 register fix 5.
 
 ### LEAD/R04 Months of uptime are proven under driven time
 - **Req**: Behaviour over months of uptime — tick wraps and stored-tick ages at rp2's 2**30 ms period, NTP resync cadence, supervisor counter decay, log-ring saturation — is proven at L1/L2 under a driven clock for every generated device, not by real-time soaks alone.
