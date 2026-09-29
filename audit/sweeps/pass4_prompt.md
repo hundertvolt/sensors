@@ -106,3 +106,17 @@ read the whole of every stratum in which one occurred. (2) `tests/test_bus_hazar
 test function under G2/R17 (keep, naming the property it guards; adapt; move; retire with the guard named) and
 against CLAUDE.md's four-tier bus-hazard rule (which tier covers each hazard class, gaps). The file stays (B05). No
 network.
+
+**G — growable permanent objects (OR110.a, added 2026-09-29).** The owner's rule: "objects which reside in the heap
+forever, never are eligible for gc collection, and which can grow, are the forbidden case." Counters are done (scan
+K); find every other such object in `src/`, the `buildgen/codegen.py` templates (read, do not build),
+`digital_twin/` and `js/` (the website runs indefinitely, LEAD/R09): module-level containers and attributes of
+long-lived instances (services, drivers, readers, managers, the webserver, page-level JS state) that can gain size —
+`.append/.extend/.insert/+=`, dict or `Map` item insertion with non-constant keys, `set.add`, bytearray growth,
+string concatenation onto an attribute, caches, registries, listener/callback lists, pending queues, JS arrays and
+objects on `window`/module scope, DOM nodes added without removal. S07's RP20.f (`audit/refined/S07.md` Coverage
+RP20) searched only `.append(`/`+=` on attributes in `src/`, the twin and unit fakes: re-check its "bounded" verdicts
+and extend to the rest. Per object: site, what adds to it, what removes or caps it, the bound (by construction, by
+configuration, or none) and the worst case over months. Verdicts: BOUNDED (name the bound) · UNBOUNDED · BOUNDED-BY-
+CONFIG (grows with device configuration only, fixed after boot) · TEMPORARY (collectable within its operation; say
+when). Every UNBOUNDED line names LEAD/R24 and its unit. No network.
