@@ -73,7 +73,7 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
 6. **Fix path**: OR12.a/OR2.c replace PQ3's sign-off; consistency changes are made directly (OR24.a).
 7. **No owner stop-points** in execution (OR2, PQ8); the owner may look in at sync points.
 8. **One branch, one PR** (#107), one merge commit into `main` (OR11.a, PQ2); autonomous commits.
-9. **Parallel agents** cover the whole audit ("later work" in the 2026-09-25 permission, OR1.a).
+9. **Parallel agents** cover the whole audit ("later work" in the 2026-09-25 permission, OR1.a); accuracy before speed, and each wave only as large as the arbiter can merge without shortcuts (OR107.a).
 10. **Address parameters** (OR36.a): BMP3XX's is hardware (SDO selects 0x76/0x77, set per TOML) and
     stays; ISL29125's (hard-wired 0x44) goes, with its wrong "as BMP3XX's" comment.
 11. **Concurrency on hardware vs wear** (OR41.a, OR49.a): config-write concurrency on the board uses
