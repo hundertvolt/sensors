@@ -306,6 +306,8 @@ scopes named in S03, S04, S07, S10 and S12). Output: owner questions in the owne
 covered; five proposed questions self-resolved or merged; ten owner questions asked; the scans' register
 lines are integrated after the answers.
 
+**Next scans (pass 4, before execution):** the counter inventory (OR105.a (4)); and what pass 3 left uncovered — H1: ~145 BACKLOG narrative lines and the comments in `scripts/`, `toolchain/`, `devices/`, `html/`; H2: the 76 commits cited in the provenance files; N: per-test verdicts for `tests/test_bus_hazard_multi_device.py`.
+
 Open for the owner (asked with the pass-2 report, `audit/pass2/LEAD.md` section 4): (1) answered by OR80
 (datasheets in a private submodule, history kept); (2) answered by OR81 (stricter typing in this audit); (4) answered by OR82/OR83 (21 owner — three restored
 from drift — and 4 agent, `audit/pass2/verify/L25.md`). Question 3 (boot order) is answered by OR75; OR74-OR78 (2026-09-28) are
