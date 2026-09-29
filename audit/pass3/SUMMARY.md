@@ -39,4 +39,4 @@ Ten read-only scans (brief `audit/sweeps/pass3_prompt.md`), one file each in thi
 9. BACKLOG 30 reset: closed, reopened or detected (H2 Q1). **Answered: c (OR102).**
 10. Unix-port poll bug: who reports it upstream (N Q1, O Q2). **Answered: c (OR102).**
 
-Register lines from all ten files are integrated after the answers, in one pass.
+**Merged 2026-09-29** (OR108.a (2)): the 137 scan lines (`MERGE_INPUT.md`) and the lead's 17 answer lines (`LEAD_MERGE.md`) by five agents on disjoint register files plus the lead (ledgers `merge/A.md`-`E.md`, `merge/LEAD.md`); every line accounted for; new LEAD/R24-R29; register 541 requirements, 535 live; `pass2_check.py` clean.

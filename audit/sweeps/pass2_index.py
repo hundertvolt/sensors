@@ -4,7 +4,7 @@ import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-OVERTAKEN = {62: "OR62.a is overtaken by OR64.a"}
+OVERTAKEN = {62: "OR62.a is overtaken by OR64.a", 106: "OR106-OR108 are process rows carried by CONSOLIDATION section 2 and plan 4.4", 107: "", 108: ""}
 FILES = [f"G{n}" for n in range(1, 11)] + ["LEAD", "REF"]
 
 
@@ -26,7 +26,7 @@ def main():
     by_or, by_unit, by_pillar = collections.defaultdict(list), collections.defaultdict(list), collections.defaultdict(list)
     rank, kind, holds = collections.Counter(), collections.Counter(), 0
     for rid, _title, f in live:
-        for n in sorted({int(x) for x in re.findall(r"\bOR(\d+)", f.get("Sources", "") + " " + f.get("Rank", ""))}):
+        for n in sorted({int(x) for x in re.findall(r"\bOR(\d+)", " ".join(f.get(k, "") for k in ("Req", "Sources", "Rank", "State")))}):
             by_or[n].append(rid)
         state = f.get("State", "")
         units = sorted(set(re.findall(r"\bU(\d+)\b", state)), key=int)
@@ -52,9 +52,9 @@ def main():
     lines += ["", "## By execution unit (plan 4.1; C = phase C hardware rounds)", ""]
     lines += [f"- **{u}** ({len(v)}): " + ", ".join(v) for u, v in sorted(by_unit.items(), key=lambda kv: (kv[0] == "C", int(kv[0][1:]) if kv[0][1:].isdigit() else 99))]
     lines += ["", "## By owner row (every OR1-OR78 carried by at least one requirement)", ""]
-    lines += [f"- **OR{n}** ({len(by_or[n])}): " + ", ".join(by_or[n]) for n in range(1, 101)]
-    missing = [n for n in range(1, 101) if not by_or[n] and n not in OVERTAKEN]
-    lines += ["", f"OR rows without a live requirement: {', '.join(f'OR{n}' for n in missing) or 'none'} (" + "; ".join(OVERTAKEN.values()) + ").", ""]
+    lines += [f"- **OR{n}** ({len(by_or[n])}): " + ", ".join(by_or[n]) for n in range(1, 109)]
+    missing = [n for n in range(1, 109) if not by_or[n] and n not in OVERTAKEN]
+    lines += ["", f"OR rows without a live requirement: {', '.join(f'OR{n}' for n in missing) or 'none'} (" + "; ".join(v for v in OVERTAKEN.values() if v) + ").", ""]
     (ROOT / "pass2" / "INDEX.md").write_text("\n".join(lines))
     print(len(reqs), len(live), holds, dict(kind), dict(rank), "missing OR", missing)
 

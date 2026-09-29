@@ -305,8 +305,8 @@ Appendix B), open and deferred items (OR5, OR51.a (2)), and the sweeps' own cove
 scopes named in S03, S04, S07, S10 and S12). Output: owner questions in the owner's format; settled items become register lines.
 
 **Pass 3 ran 2026-09-29** (ten scans, `audit/pass3/`, summary `audit/pass3/SUMMARY.md`): every input set
-covered; five proposed questions self-resolved or merged; ten owner questions asked; the scans' register
-lines are integrated after the answers.
+covered; five proposed questions self-resolved or merged; ten owner questions asked and answered
+(OR101-OR108); the register lines were merged the same day (`audit/pass3/SUMMARY.md`), register 535 live requirements.
 
 **Next scans (pass 4, before execution):** the counter inventory (OR105.a (4)); and what pass 3 left uncovered — H1: ~145 BACKLOG narrative lines and the comments in `scripts/`, `toolchain/`, `devices/`, `html/`; H2: the 76 commits cited in the provenance files; N: per-test verdicts for `tests/test_bus_hazard_multi_device.py`. Added by OR108.a (3): the fetched-source checks (v1.28 "unchanged" claims, upstream-tracker claims, NET.S19, CI.S11, online-only deferral triggers) and a sample check of the 675 score-judged doc references. Pass 4 starts after the pass-3 merge; items no scan can prove here stay in phase C, tool-run items go to B0.
 

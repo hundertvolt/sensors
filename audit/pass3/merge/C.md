@@ -1,0 +1,45 @@
+# Pass 3 merge — agent C ledger (G5.md, G6.md), 2026-09-29
+
+- P014 | G5/R51 | applied | two coded sites, 26 post-`2badee1` inline `noqa`, partial-scope global ignores added to State (U28, as the block's other `noqa` item); both sites and all eleven named ignores checked at HEAD; B905 clarified: nine post-direction lines, eleven live B905 `noqa` lines in all
+- P037 | G5/R10 | applied | three ISL29125 stored ticks added to State (U15); every cited site checked at HEAD; SPEC F.1 "every real use" sentence is SPEC:3532-3533, merged into the existing U14 doc clause
+- P067 | G5/R10 | applied | merged into P037's sentence (same sites, D4.76 cited); `_cal_until_ms` left out: it is compared only while `_calibrating` (`asy_isl29125_driver.py:631-633`), a window set at :1035-1036 that ends after `_CAL_WINDOW_MS` = 120 s, and D4.76's own evidence names only the other three
+- P038 | G5/R54 | applied | `encode_shadow()` and `logger=` branch verdicts added to State; `_PRST_SETTINGS` sites, `base_classes.py:167-168, 171` and the two test callers checked at HEAD
+- P039 | G5/R04 | applied | legacy trace added to Rank; legacy `system_service.py:76-92` and `sensortask-wozi.py:586-594` checked
+- P041 | G5/R25 | applied | failed-repair-write rule added to Req; legacy range corrected :203-216 → :201-216 (first `_write_chunk` at :201)
+- P046 | G5/R54 | applied | four JS self-declared unreachable branches added to State; all four ranges checked at HEAD
+- P049 | G5/R08 | applied | the sentence it replaces sits in the Req, not the State; replaced there, with the D3.56 facts (`system_service.py:118-130`) checked; the Rank gains the `af24a01` owner choice
+- P059 | G5/R19 | applied | SPEC C.7.1 FRAM-row correction added to State (U2); the row is SPEC:1935; `asy_fram_manager.py:622, 665-674, 711-716` checked
+- P060 | G5/R13 | applied | `base_classes.py:163-165` comment item added to State (U10)
+- P061 | G5/R34 | applied | stage-before-task defect added to State (U11); `config_manager.py:353-354` and the `(False, {})` return checked
+- P064 | G5/R08 | applied | as overridden (no question-2 remark); "hourly due check" corrected: the due check runs every 10 s tick and restarts sync once `NTP_Interval` hours (default 12) have passed (`asy_ntp_client.py:462-470`); `:281-285` checked; D4.02 cited
+- P073 | G5/R02 | not applied | overridden by LEAD_MERGE §1: replaced by L01
+- P073 | G5/R08 | not applied | overridden by LEAD_MERGE §1: the reset-timer half is settled by P049 (owner, 2026-07-18, `af24a01`)
+- P073 | G5/R03 | not applied | overridden by LEAD_MERGE §1: replaced by L05
+- P073 | G5/R16 | not applied | overridden by LEAD_MERGE §1: question 3 answered by the G5/R03 boot-phase record (L05), no listed-silent line
+- P073 | G6/R24 | not applied | overridden by LEAD_MERGE §1: replaced by L07
+- P073 | G6/R27 | not applied | overridden by LEAD_MERGE §1: replaced by L09
+- P073 | G6/R30 | not applied | overridden by LEAD_MERGE §1: replaced by L10
+- P081 | G5/R16 | applied | `print_log.py` guard item added to State (U11), owner field rule `2421948` (a) added to Sources; the three guard sites checked at HEAD
+- P084 | G5/R48-R50 (neighbour) | not applied | overridden by LEAD_MERGE §1: merged into L14 on G9/R19, outside these files
+- P086 | G5/R48 | applied | import rule added to Req and Rank, `digital_twin/`'s 15 sites to State (all 15 confirmed by AST walk); fact added: the same walk finds 91 more in `tests/`, 85 in `tests_scripts/`, 11 in `tests_hardware/`, 1 in `scripts/`, so the "every scope" check reaches the PLC0415 exemptions too
+- P089 | G5/R09 | applied | owner `a015e66` decision added to Rank, SPEC C.9 tag to State (no unit given, none added); SPEC:2219-2222 checked
+- P126 | G5/R30 | applied | SPEC T4 "open" sentence added to State (U16); it sits at SPEC:4015-4016
+- L01 | G5/R02 | applied | OR101.a approval of D4.04/D4.11 added to Rank
+- L02 | G5/R04 | applied | Rank now owner (OR101.a) with the rest kept; regression-test wording merged into the existing U11 fix item
+- L05 | G5/R03 | applied | boot-phase record added to Req, OR102.a (6) to Sources, doc/test items merged into State; region 1 = `scratch[5..7]` checked in v1.29.0 `ports/rp2/machine_mem_backup.c:38-41`
+- P031 | G6/R47 | applied | build-info value comparison added to State with the D1 tag; `_sensortask_scenarios.py:1131-1142` checked (shape-only asserts today)
+- P032 | G6/R49 | applied | live-tabs ceiling item added to State with the D1 tag; `_live_twin_command.js:218-235` checked (half-ceiling tabs at :235)
+- P043 | G6/R30 | applied | as overridden (owner restoration instead of "question 1"); the "no recorded decision" text sits in the Rank, not the State; rewritten there together with L10; `asy_ntp_client.py:306-308, 416-422` and legacy `async_connect.py:129-131` checked
+- P044 | G6/R29 | not applied | overridden by LEAD_MERGE §1: replaced by L08 (OR104.a (1) drops the mask rule)
+- P068 | G6/R52 | applied | CDC-starvation test/hardware item added to State; `mp_usbd_cdc.c:102-132`, `mphalport.h:36` (v1.29.0) and `ext/microdot.py:1407-1408` checked
+- P071 | G6/R28 | applied | WPA2-AES fact added to Req; `ports/rp2/main.c:196` checked, and `extmod/network_cyw43.c:514-523` (sets only the key given) cited as the "leaves it" evidence
+- P113 | G6/R22 | applied | OR77.a verdicts added to State; the babbling peer's "listed exception" joined to the Req's existing "known limitation"
+- P121 | G6/R22 | applied | with a corrected fact: "its two bench-reachable cases (silence, baud desync) already run at L3" is false, since `desync()` (`uart_crossover_recovery.py:60-61`) is never called (D1.26); written as silence at L3, desync pending G1/R17; the conclusion (exception stands) is unaffected; `:5` checked
+- P127 | G6/R33 | applied | read-path fact added to Req; ranges corrected: repair write :471-480 → :474-481, BACKLOG "Unchecked" :510-512 → :511-513
+- L07 | G6/R24 | applied | QTYPE rule replaced in Req, owner row added to Rank and Sources; `captive_dns.py:194` `response()` exists
+- L08 | G6/R29 | applied | title, Req, Rank and State replaced as given; `js/field-format.js:19-20`, `js/templates.js:160-170`, `tests_js/live-backend-put-matrix.test.js:134-137` and legacy `html_raw/general/nettimeconfig.html:45-47` checked; HEAD already stores a PUT mask (no Unchanged path in `asy_wifi_service.py`), so the old U18 code item is dropped
+- L09 | G6/R27 | applied | hotspot-counting rule replaced in Req, owner row added to Rank and Sources, doc item added to State
+- L10 | G6/R30 | applied | S06 Rank now owner (OR102.a (3)); the pass-3 question-list clause removed from State
+- L13 | G6/R49 | applied | dropped-connection trace item added to State, OR102.a (9) to Sources
+
+Cross-references only (a block in these files is named, the target is elsewhere; nothing to apply): P024 names G6/R24's U18 backoff test, already in G6/R24's State; P029 names G5/R21's tolerated-code tests (RF157, already in G5/R21); P132 names G6/R55's reason-and-trigger rule, already its Req.
