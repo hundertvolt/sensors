@@ -25,3 +25,6 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
    has no register block: U36 carries it (either the rows or CLAUDE.md's pointer moves to H.5.1).
 10. U8C's six register fixes edit U8.md, not the register; they are applied after U8C (and its supplement U8C2) is
     verified. U8 register fix 6 (Appendix C NOT-DONE) is stale since U8C.
+11. U13 Open point 1 (FRAM CS pull-up) withdrawn by the lead after the owner's challenge: the power-on hold time is
+    met by boot timing; A.U13.04/05 and U13 register fix 5 are rewritten as a documented fact (see the note at the end
+    of `U13.md`), no board change.
