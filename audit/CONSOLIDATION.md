@@ -302,6 +302,10 @@ candidates among the seeds and the harvest's 171-item bucket (OR12.a), necessity
 Appendix B), open and deferred items (OR5, OR51.a (2)), and the sweeps' own coverage gaps (sample-level
 scopes named in S03, S04, S07, S10 and S12). Output: owner questions in the owner's format; settled items become register lines.
 
+**Pass 3 ran 2026-09-29** (ten scans, `audit/pass3/`, summary `audit/pass3/SUMMARY.md`): every input set
+covered; five proposed questions self-resolved or merged; ten owner questions asked; the scans' register
+lines are integrated after the answers.
+
 Open for the owner (asked with the pass-2 report, `audit/pass2/LEAD.md` section 4): (1) answered by OR80
 (datasheets in a private submodule, history kept); (2) answered by OR81 (stricter typing in this audit); (4) answered by OR82/OR83 (21 owner — three restored
 from drift — and 4 agent, `audit/pass2/verify/L25.md`). Question 3 (boot order) is answered by OR75; OR74-OR78 (2026-09-28) are
