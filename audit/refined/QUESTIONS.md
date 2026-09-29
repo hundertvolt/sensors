@@ -12,6 +12,7 @@ merged into 20 top-level decisions (lead, 2026-09-28); recommendation first. Eac
    (d) FRAM differing copies are a hard failure — "(owner-confirmed)" in `69d85b7`, dropped later → restore owner;
    (e) `chunk_bytes` one parameter for both bounds — no owner source → agent.
    Answer per letter: yes (yours) / no (agent). Recommendation: a no, b yes, c no, d yes, e no.
+   **Answered (OR87, 2026-09-29):** a owner (importance, not ordering), b owner, d owner; c and e: owner asked for an explanation.
 
 ## B. What your words cover
 

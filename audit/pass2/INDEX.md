@@ -150,5 +150,6 @@ Rank: owner 254, agent 137, fact 68, owner-confirmed 53, convention 17.
 - **OR84** (1): LEAD/R20
 - **OR85** (1): LEAD/R21
 - **OR86** (1): LEAD/R22
+- **OR87** (2): G4/R43, G5/R25
 
 OR rows without a live requirement: none (OR62.a is overtaken by OR64.a).
