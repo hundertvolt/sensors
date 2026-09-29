@@ -31,11 +31,11 @@ merged into 20 top-level decisions (lead, 2026-09-28); recommendation first. Eac
 
 ## D. What the operator sees
 
-11. **Clear typed inputs after Apply, as legacy did?** (RF346) (a) clear all → nothing re-sent; (b) clear accepted ones, keep rejected ones for correction (recommended); (c) keep (today) → a second Apply re-sends `ForceCalRef`, `AmbPres`, `SystemCmd`.
-12. **Restore "Apply & Reconnect" / "Apply & Resync" labels?** (RF348) (a) yes (recommended); (b) warning text instead; (c) as is → Apply drops Wi-Fi unannounced.
-13. **Failed read: publish `None` or last sample?** (RF343, RF333) (a) `None` everywhere, as ISL29125 → one semantics, API change for three drivers; (b) last sample everywhere, page shows its age (recommended by I4); (c) keep both. The two ledgers recommend differently (I7: a, I4: b); lead: (b) with ages shown — no value lost, staleness visible.
-14. **Readable text for codes on the website?** (RF151, RF340) (a) numbers only (today); (b) labels for published status codes (`reset_reason`, …) and error numbers from a table generated from the catalog at build time, `/status` unchanged (recommended); (c) `/status` itself carries text → RAM and size cost.
-15. **Current Unix time back in `/status`?** (RF344) (a) add an epoch field → legacy value back (recommended); (b) render timestamps as dates only; (c) accept the loss.
+11. **Clear typed inputs after Apply, as legacy did?** (RF346) (a) clear all → nothing re-sent; (b) clear accepted ones, keep rejected ones for correction (recommended); (c) keep (today) → a second Apply re-sends `ForceCalRef`, `AmbPres`, `SystemCmd`. **Answered (OR94): b.**
+12. **Restore "Apply & Reconnect" / "Apply & Resync" labels?** (RF348) (a) yes (recommended); (b) warning text instead; (c) as is → Apply drops Wi-Fi unannounced. **Answered (OR94): a.**
+13. **Failed read: publish `None` or last sample?** (RF343, RF333) (a) `None` everywhere, as ISL29125 → one semantics, API change for three drivers; (b) last sample everywhere, page shows its age (recommended by I4); (c) keep both. The two ledgers recommend differently (I7: a, I4: b); lead: (b) with ages shown — no value lost, staleness visible. **Answered (OR94): b (ISL29125 follows; M.1.1 item 16's None clause overtaken).**
+14. **Readable text for codes on the website?** (RF151, RF340) (a) numbers only (today); (b) labels for published status codes (`reset_reason`, …) and error numbers from a table generated from the catalog at build time, `/status` unchanged (recommended); (c) `/status` itself carries text → RAM and size cost. **Answered (OR94): b — look unchanged, codes clickable, description on click.**
+15. **Current Unix time back in `/status`?** (RF344) (a) add an epoch field → legacy value back (recommended); (b) render timestamps as dates only; (c) accept the loss. **Answered (OR94): a.**
 16. **SGP40 backup/restore sentinels `-1`/`0`: how shown?** (RF345) (a) legacy meanings on the wire; (b) keep values, define them in SPEC and the `@web` tag, the page shows text (recommended); (c) as is.
 17. **Publish the SGP40 VOC learning state?** (RF334) (a) yes, a numeric code in LEAD/R19's form with a page label (recommended); (b) docs only.
 18. **SCD30 forced-calibration readiness in `/measurements`?** (RF335) (a) help text only; (b) a readiness code like ISL29125's (recommended); (c) refuse `ForceCalRef` until ready.
