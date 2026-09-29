@@ -155,5 +155,6 @@ Rank: owner 255, agent 137, fact 68, owner-confirmed 52, convention 17.
 - **OR89** (0): 
 - **OR90** (1): G1/R06
 - **OR91** (0): 
+- **OR92** (0): 
 
-OR rows without a live requirement: OR89, OR91 (OR62.a is overtaken by OR64.a).
+OR rows without a live requirement: OR89, OR91, OR92 (OR62.a is overtaken by OR64.a).
