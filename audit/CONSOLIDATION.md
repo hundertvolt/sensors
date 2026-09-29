@@ -289,7 +289,7 @@ timeout-wrappable, the nested `asyncio.run()` mechanism); 17 gap requirements an
   seven agents (ledgers `I1.md`-`I7.md`, lead placements `LEAD_APPLY.md`): 251 placed, 19 corrected,
   11 lost owner decisions restored (merges `e5d2c43`, `8d89ff5`, `7a7f4b6` and rewrites), 8 new
   requirements (G7/R45, LEAD/R23, REF/R01-R06), 23 rejected, 24 routed to
-  the owner as 20 decisions (`QUESTIONS.md`). S02 is the OR13.a/OR14.a history trace and S13 the
+  the owner as 20 decisions (`QUESTIONS.md`), all answered 2026-09-29 (OR87-OR94, OR97-OR100); OR95 (private datasheets repo) and OR96 (function order by role and name, all scopes) came alongside. S02 is the OR13.a/OR14.a history trace and S13 the
   OR48.a legacy scan of section 9; their coverage limits are in their coverage tables.
 
 ## 9. Next: passes 3+ and open owner items
