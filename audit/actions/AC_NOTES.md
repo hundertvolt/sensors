@@ -12,3 +12,8 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
    G9/R12 "permanent text never cites a temporary plan … by section or number"): an action's IDs stay in its Why /
    Depends slots or a `[src: …]` note. U0's fifteen "The commit message carries …" notes become `[src: …]` notes in
    the U8 sweep; A-C checks every file for the same pattern.
+5. A.U8.19: the `loop.sync_wait_max_us` row's checker was an audit review (the per-file lens), which ends with the
+   audit; A-C decides whether a standing check is owed (the UART no-block rule is CLAUDE.md's, and a checker already
+   enforces 1,533 µs per V.U8) — OR111.a (2) asks every rule to keep a guard.
+6. Actor tags in non-standard form (A.U8.01 `estimated (agent, <commit>)`, A.U8.06 `agent 2026-09-11 (`7cf989d`)`,
+   A.U8.07 "legacy value kept (agent)" without date): A-C normalises to "(actor, YYYY-MM-DD)".
