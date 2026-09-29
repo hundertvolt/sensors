@@ -201,7 +201,7 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Req**: A `tests_scripts` AST check over `src/` and generated code fails on the machine-checkable conventions — the `asy_` module marker, `_NAME` equal to the namedtuple name, starter names, the `errno=`/`wrnno=` keyword, no `print()`, `assert` or function-level import — ruff's global N801/T20 ignores narrow to the files that need them, and the `src/` per-file S101 exemption (`pyproject.toml:309`) goes with G10/R21.
 - **Sources**: G10 gap 1 · OR24, harmonization 5 · G10.007, G10.016, `pyproject.toml:85,174,309` · RF272
 - **Rank**: agent — "(agent, 2026-09-27)"
-- **State**: work: test in U10; code in U28 (`pyproject.toml`); the D.15 class-member order (G5/R50, owner-confirmed 2026-09-13) joins the checked list, so it does not re-drift after U10's reorder (RF272)
+- **State**: work: test in U10; code in U28 (`pyproject.toml`); the D.15 member order (G5/R50, owner-confirmed 2026-09-13; alphabetical within role and all scopes except test functions, OR96.a) joins the checked list, so it does not re-drift after U10's reorder (RF272)
 - **Home**: `tests_scripts/`; `pyproject.toml`
 - **Pillar**: P4
 - **Pass 2**: new. Verified: V4/V20 applied. Refined: RF272.
