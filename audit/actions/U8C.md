@@ -3487,7 +3487,7 @@ would occupy a slot or share the heap under measurement — are classified tuned
 | register block | clause for this unit (short) | result |
 |---|---|---|
 | G4/R54 | code in U8 — `@tunable` tags and register; the U8 NOT-DONE item: per-value classification of the `tests/` and `tests_hardware/` candidates (U8 Ledger, register fix 6) | DONE in this file: all 2,265 C.0.1 hits in 156 files classified; actions A.U8C.01-A.U8C.119 (one per file holding a tuned, mirror or deferred hit). No file NOT-DONE |
-| G1/R15 | tags in U8 — every instrument value a registered tunable | two instrument values A.U8.05 does not list: `tests_hardware/harness.py:165` (`l4.ceiling_hold_check_timeout_s`), `tests_hardware/bench/test_heap_under_connection_ceiling.py:49` (`l4.ceiling_holder_socket_timeout_s`), in the actions for those files; register fix 3 |
+| G1/R15 | tags in U8 — every instrument value a registered tunable | two instrument values A.U8.05 does not list: `tests_hardware/harness.py:165` (`l4.ceiling_hold_check_timeout_s`), `tests_hardware/bench/test_heap_under_connection_ceiling.py:49` (`l4.ceiling_holder_socket_timeout_s`), in the actions for those files; Register fixes (G1/R15 item) |
 | G8/R31 | tunables in U8 (every test bounded; the bounds are tunables) | every `run`/`run_timed`/`wait_for`/`limit=`/`join`/`run_isolated`/subprocess hang bound among the hits is tuned, one constant per file per distinct value (C.0.2) |
 | G7/R23 | tunable in U8 (kept sleeps) | kept sleeps tuned (see "Deferred sites"); 27 fixed sleeps deferred to U25/U26 |
 
