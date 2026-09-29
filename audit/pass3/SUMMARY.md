@@ -29,9 +29,9 @@ Ten read-only scans (brief `audit/sweeps/pass3_prompt.md`), one file each in thi
 ## Owner questions (asked 2026-09-29)
 
 1. Approve twelve proven bug fixes (D4 Q1 + D4 Q6). **Answered: fix all; (4) never from UTC (OR101).**
-2. SGP40 backup verification off for long periods (D2 Q1).
+2. SGP40 backup verification off for long periods (D2 Q1). **Answered: a (OR104).**
 3. NTP settings change clears `Synced`, as legacy (D3 Q1, D4 Q8, G6/R30). **Answered: a (OR102).**
-4. Echoed password mask: refuse or store (D3 Q2, G6/R29). **Answered: a (legacy page never sent the mask) (OR102).**
+4. Echoed password mask: refuse or store (D3 Q2, G6/R29). **Answered: no excluded value; dots shown, field empty, empty = unchanged (OR104, overtakes OR102).**
 5. LED command while a signal runs (D4 Q5). **Answered: a (OR102).**
 6. Boot-phase crash: record a `reset_reason` code (D4 Q3). **Answered: a, in watchdog scratch RAM only (OR102).**
 7. Captive DNS non-A queries (D4 Q7, NET.S12). **Answered: standards-correct NODATA, no added complexity (OR102).**
