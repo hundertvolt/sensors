@@ -70,7 +70,12 @@ datasheet text `dstxt/`. Never state a fact from memory: open the site and cite 
 5. Choices: where the register or an owner row settles an option, follow it. Where a detail is open and an owner
    row or the register decides it by reading, decide and say from which. Only a genuine owner-level choice becomes
    an owner question; still write the action with your recommended option, marked "pending Qn".
-6. Owner words: quote exactly; call something the owner's only with an owner source. The action's Why cites the
+6. Text an action writes into a permanent file (code, comments, tests, CLAUDE.md, SPECIFICATION.md, README,
+   BACKLOG, TOMLs, CI) never cites a temporary audit ID — OR rows, unit labels, register IDs, HR/RF/D4/list labels,
+   WP/Session/Step labels, action IDs: state the fact in place, provenance as an actor tag "(owner, <date>)" /
+   "(agent, <date>)" (G9/R12, OR68.a (4)). IDs belong only in the action file's Why and Depends slots. CI checkouts
+   are shallow (no `fetch-depth` in `ci.yml`): a check needing git history or a submodule says how it gets it.
+7. Owner words: quote exactly; call something the owner's only with an owner source. The action's Why cites the
    register ID(s) and the owner row(s) the register cites.
 
 ## Output format (`audit/actions/<UNIT>.md`)

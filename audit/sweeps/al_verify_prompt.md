@@ -23,7 +23,9 @@ Per action, check:
    mirror, existing test that pins today's behaviour, twin fake, doc passage, TOML key or UART changelog duty that
    is missing or wrong. A "—" slot that should hold something is a finding.
 4. **Implementable**: can it be done without a further question? If not, what is missing.
-5. **Dependencies and conflicts**: a missing Depends; an action that conflicts with another action in this file
+5. **Permanent text**: no replacement text cites a temporary audit ID (OR rows, unit labels, register IDs,
+   HR/RF/list labels, WP/#N labels, action IDs) — G9/R12, OR68.a (4); provenance is an actor tag.
+6. **Dependencies and conflicts**: a missing Depends; an action that conflicts with another action in this file
    or an earlier unit's file.
 
 Also check the file as a whole: every input block has a ledger row and every clause naming the unit is covered;
