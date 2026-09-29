@@ -73,7 +73,7 @@ datasheet text `dstxt/`. Never state a fact from memory: open the site and cite 
 6. Text an action writes into a permanent file (code, comments, tests, CLAUDE.md, SPECIFICATION.md, README,
    BACKLOG, TOMLs, CI) never cites a temporary audit ID — OR rows, unit labels, register IDs, HR/RF/D4/list labels,
    WP/Session/Step labels, action IDs: state the fact in place, provenance as an actor tag "(owner, <date>)" /
-   "(agent, <date>)" (G9/R12, OR68.a (4)). IDs belong only in the action file's Why and Depends slots. CI checkouts
+   "(agent, <date>)" (G9/R12, OR68.a (4)). IDs belong only in the action file's Why and Depends slots, or in a `[src: …]` note beside the planned text, which the executor never writes. CI checkouts
    are shallow (no `fetch-depth` in `ci.yml`): a check needing git history or a submodule says how it gets it.
 7. Owner words: quote exactly; call something the owner's only with an owner source. The action's Why cites the
    register ID(s) and the owner row(s) the register cites.
