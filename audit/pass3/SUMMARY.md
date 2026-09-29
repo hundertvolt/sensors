@@ -30,13 +30,13 @@ Ten read-only scans (brief `audit/sweeps/pass3_prompt.md`), one file each in thi
 
 1. Approve twelve proven bug fixes (D4 Q1 + D4 Q6). **Answered: fix all; (4) never from UTC (OR101).**
 2. SGP40 backup verification off for long periods (D2 Q1).
-3. NTP settings change clears `Synced`, as legacy (D3 Q1, D4 Q8, G6/R30).
-4. Echoed password mask: refuse or store (D3 Q2, G6/R29).
-5. LED command while a signal runs (D4 Q5).
-6. Boot-phase crash: record a `reset_reason` code (D4 Q3).
-7. Captive DNS non-A queries (D4 Q7, NET.S12).
-8. Wi-Fi uptime counted while the hotspot runs (D4 Q7, NET.S15).
-9. BACKLOG 30 reset: closed, reopened or detected (H2 Q1).
-10. Unix-port poll bug: who reports it upstream (N Q1, O Q2).
+3. NTP settings change clears `Synced`, as legacy (D3 Q1, D4 Q8, G6/R30). **Answered: a (OR102).**
+4. Echoed password mask: refuse or store (D3 Q2, G6/R29). **Answered: a (legacy page never sent the mask) (OR102).**
+5. LED command while a signal runs (D4 Q5). **Answered: a (OR102).**
+6. Boot-phase crash: record a `reset_reason` code (D4 Q3). **Answered: a, in watchdog scratch RAM only (OR102).**
+7. Captive DNS non-A queries (D4 Q7, NET.S12). **Answered: standards-correct NODATA, no added complexity (OR102).**
+8. Wi-Fi uptime counted while the hotspot runs (D4 Q7, NET.S15). **Answered: a (OR102).**
+9. BACKLOG 30 reset: closed, reopened or detected (H2 Q1). **Answered: c (OR102).**
+10. Unix-port poll bug: who reports it upstream (N Q1, O Q2). **Answered: c (OR102).**
 
 Register lines from all ten files are integrated after the answers, in one pass.
