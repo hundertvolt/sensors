@@ -310,6 +310,8 @@ covered; five proposed questions self-resolved or merged; ten owner questions as
 
 **Next scans (pass 4, before execution):** the counter inventory (OR105.a (4)); and what pass 3 left uncovered — H1: ~145 BACKLOG narrative lines and the comments in `scripts/`, `toolchain/`, `devices/`, `html/`; H2: the 76 commits cited in the provenance files; N: per-test verdicts for `tests/test_bus_hazard_multi_device.py`. Added by OR108.a (3): the fetched-source checks (v1.28 "unchanged" claims, upstream-tracker claims, NET.S19, CI.S11, online-only deferral triggers) and a sample check of the 675 score-judged doc references. Pass 4 starts after the pass-3 merge; items no scan can prove here stay in phase C, tool-run items go to B0.
 
+**Pass 4 ran 2026-09-29** (four scans, `audit/pass4/`, summary `audit/pass4/SUMMARY.md`): every input set read in full (the reference check widened from a sample to all 675 under OR107.a); three owner questions; 45 register lines merged after the answers. No further scan pass is planned; next are the merge and phase A-L.
+
 Open for the owner (asked with the pass-2 report, `audit/pass2/LEAD.md` section 4): (1) answered by OR80
 (datasheets in a private submodule, history kept); (2) answered by OR81 (stricter typing in this audit); (4) answered by OR82/OR83 (21 owner — three restored
 from drift — and 4 agent, `audit/pass2/verify/L25.md`). Question 3 (boot order) is answered by OR75; OR74-OR78 (2026-09-28) are
