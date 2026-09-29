@@ -27,6 +27,7 @@ need only the cross-reference they already carry. The points below needed a deci
 | 15 | OR83: L06, L44, L51 restored to the owner's original wording (owner label); F18 reading confirmed | Applied in G3, G5, LEAD/R18, G9/R38, G1/G2/G4/G6 (veto qualifiers removed) | OR83 |
 | 14 | OR79 (attempt the bench spoofing test), OR80 (datasheets private submodule), OR81 (stricter typing in this audit), OR82 (owner-traced L labels) | Applied in G1/R29, G9/R23, G8/R61, G9/R38 and every rank citing an L item | OR79-OR82 |
 | 13 | Owner answers after pass 2 (OR74-OR78, 2026-09-28) | Applied: OR74 in G3/R44; OR75 in G5/R05 and G1/R30 (legacy checked: timers first there too); OR76 as LEAD/R19; OR77 in G1/R29; OR78 in G8/R01 and G1/R36 (the fixed-`dev` exception withdrawn) | OR74-OR78 |
+| 16 | Owner answers to pass 3 (2026-09-29) | Applied per `audit/pass3/LEAD_MERGE.md`: OR101 in G5/R02, G5/R04, G3/R06, G3/R09, G3/R23, G3/R36, G3/R38, G3/R40, G3/R51 and REF/R03; OR102 in G5/R03, G3/R64, G6/R24, G6/R27, G6/R30, G6/R49, G2/R17 and G7/R12; OR103 and OR105 as LEAD/R24; OR104 in G6/R29, G9/R03 and REF/R03; OR106, OR107 and OR108 are process rows (CONSOLIDATION phases A-L and A-C, plan 4.4) | OR101, OR102, OR103, OR104, OR105, OR106, OR107, OR108 |
 
 ## 2 Merges (one rule, one owning requirement)
 
@@ -75,10 +76,10 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Req**: A test file that passed only on its per-file retry is named and counted in the runner's summary block and entered as an item to root-cause; the retry backstop itself stays.
 - **Sources**: G2 gap 1 · OR6.a, OR15.a (2), OR21.a (3), OR37.a (2) · `scripts/test.sh:362-387`
 - **Rank**: agent — "(agent, 2026-09-27)"
-- **State**: work: code in U7
+- **State**: work: code in U7; a CI crash with no recorded cause is a root-cause item too: grkizi Run 5c SIGSEGV on the reboot relaunch (PR #58 comment, 2026-09-25, after `8466f2b`), reproduced at L2 in execution (TWIN.N380)
 - **Home**: SPEC E (runner summary block)
 - **Pillar**: P5
-- **Pass 2**: new
+- **Pass 2**: new. Pass 3: P057.
 
 ### LEAD/R04 Months of uptime are proven under driven time
 - **Req**: Behaviour over months of uptime — tick wraps and stored-tick ages at rp2's 2**30 ms period, NTP resync cadence, supervisor counter decay, log-ring saturation — is proven at L1/L2 under a driven clock for every generated device, not by real-time soaks alone.
@@ -135,13 +136,13 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Pass 2**: new Refined: RF193 — Req widened from the errcount group to every read-only group; RF201 — upper poll bound added (agent, 2026-09-28).
 
 ### LEAD/R10 The website meets an accessibility baseline
-- **Req**: Unique DOM ids (field ids namespaced by group), every label targeting its control, a closed drawer `inert` with focus handled, WCAG 2.1 AA contrast in both themes, a non-colour cue beside colour where A28 allows, `autocomplete` on password inputs, reduced motion honoured; proven by an automated accessibility check in `tests_js`.
+- **Req**: Unique DOM ids (field ids namespaced by group), every label targeting its control, a closed drawer `inert` with focus handled, WCAG 2.1 AA contrast in both themes, a non-colour cue beside colour where A28 allows, `autocomplete` on password inputs, every input kind the templates build styled like the others (`type="password"` included; `html/style.css:261-263` omits it, WEB.N179), reduced motion honoured; proven by an automated accessibility check in `tests_js`.
 - **Sources**: G7 gap 2 · OR44.a P4, OR43.a (2) · WEB.T07, WEB.S15-S17
 - **Rank**: agent — "(agent, 2026-09-27)"
 - **State**: work: code and test in U23
 - **Home**: SPEC H
 - **Pillar**: P4
-- **Pass 2**: new
+- **Pass 2**: new. Pass 3: P053.
 
 ### LEAD/R11 The device TOML schema is one checked contract
 - **Req**: SPEC L.3's key list is generated from, or checked against, `buildspec.py` (hand-kept by the owner's decision) and `validate.py` by a `tests_scripts` test; a key change updates every consumer in one commit.
@@ -153,13 +154,13 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Pass 2**: new
 
 ### LEAD/R12 Shell scripts share one safety convention
-- **Req**: Every script under `scripts/` runs `set -euo pipefail` or states why not, quotes every expansion and removes its temporary files in one `EXIT` trap.
+- **Req**: Every script under `scripts/` runs `set -euo pipefail` or states why not, quotes every expansion and removes its temporary files in one `EXIT` trap. A runner validates its arguments before any work (a flag without its value, an unknown device) and fails naming what, where and the fix, never with a raw `set -u` or tool error (`scripts/run_unix_port_integration.sh:32-37`, `scripts/run_digital_twin_ci.sh:23`; SCR.N067, SCR.N069).
 - **Sources**: G8 gap 2 · OR24, OR38.a (1) · SCR.T08, SCR.S08, TOOL.S04, G8.077
 - **Rank**: agent — "(agent, 2026-09-27)"
 - **State**: work: code in U27
 - **Home**: SPEC B (scripts)
 - **Pillar**: P4
-- **Pass 2**: new
+- **Pass 2**: new. Pass 3: P058.
 
 ### LEAD/R13 The frozen image is reproducible from its inputs
 - **Req**: The same commit, the pinned toolchain and the pinned host CPython give byte-identical frozen inputs (generated modules, stripped copies, wiring plans, website; build date excepted) across hash seeds, and the same frozen-module order inside the image (`freeze()` of a directory follows an unsorted `os.walk`); the host Python behind `ast.unparse` is pinned or its output proven invariant.
@@ -198,13 +199,13 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Pass 2**: new
 
 ### LEAD/R17 Conventions are machine-checked where cheap
-- **Req**: A `tests_scripts` AST check over `src/` and generated code fails on the machine-checkable conventions — the `asy_` module marker, `_NAME` equal to the namedtuple name, starter names, the `errno=`/`wrnno=` keyword, no `print()`, `assert` or function-level import — ruff's global N801/T20 ignores narrow to the files that need them, and the `src/` per-file S101 exemption (`pyproject.toml:309`) goes with G10/R21.
+- **Req**: A `tests_scripts` AST check over `src/` and generated code fails on the machine-checkable conventions — the `asy_` module marker, `_NAME` equal to the namedtuple name, starter names, the `errno=`/`wrnno=` keyword, no `print()`, `assert` or function-level import — ruff's global ignores whose reason names a scope or a site (N801, T20 and the twelve of pass 3 C2.13: PTH, PT, TRY003, EM101, EM102, SIM105, RUF005, ASYNC110, PLW0603, S104, ASYNC230, N802) narrow to the files that need them, and the `src/` per-file S101 exemption (`pyproject.toml:309`) goes with G10/R21.
 - **Sources**: G10 gap 1 · OR24, harmonization 5 · G10.007, G10.016, `pyproject.toml:85,174,309` · RF272
 - **Rank**: agent — "(agent, 2026-09-27)"
 - **State**: work: test in U10; code in U28 (`pyproject.toml`); the D.15 member order (G5/R50, owner-confirmed 2026-09-13; alphabetical within role and all scopes except test functions, OR96.a) joins the checked list, so it does not re-drift after U10's reorder (RF272)
 - **Home**: `tests_scripts/`; `pyproject.toml`
 - **Pillar**: P4
-- **Pass 2**: new. Verified: V4/V20 applied. Refined: RF272.
+- **Pass 2**: new. Verified: V4/V20 applied. Refined: RF272. Pass 3: P015.
 
 ### LEAD/R18 Tests serve the real website
 - **Req**: Every tier that serves a website (`scripts/test.sh`, `npm test`'s `pretest`, the twin runners) builds and serves a device's real website, never a placeholder, because the real website is the most biting test. The owner's rule named `dev`'s real website (2026-09-23), the richest site then; under OR54.a (1) and OR78.a the tiers serve the real site of every device the TOMLs define, `dev`'s included, never a hard-coded one. The binary fallback the real site has no file for is covered by its own test.
@@ -259,6 +260,60 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Home**: SPEC Part M (SGP40); the field's `@web` tag; DEVICE_REFERENCE.md
 - **Pillar**: P3
 - **Pass 2**: new (refined harvest, RF334)
+
+### LEAD/R24 No counter allocates or runs unbounded
+- **Req**: Every value that grows with time or events (uptime and age seconds; event, error, retry, transfer and failure counts) saturates at a named constant cap and then stops. Hitting the cap changes nothing but the number: no exception, no allocation, no task end. Every cap is at most `MP_SMALL_INT_MAX` = 2**30 − 1 on rp2, so a counter never becomes a heap int: one shared cap constant 2**30 − 1 (34.0 years in seconds), narrower only where the field's storage or wire width demands it (e.g. a 16-bit log counter). A counter checks before it steps (`if v < CAP: v += 1`), never `min(v + 1, CAP)`, which allocates at the cap; no cap constant or intermediate exceeds the small-int range. No counter counts milliseconds. Wrap-by-design values (`ticks_ms()`, CRCs, protocol sequence or id bytes) are not counters here and follow G5/R10. In `js/` the cap bounds the number; the allocation clause does not apply there. Each cap is proven by a driven-value unit test (set near the cap, step past it, assert saturation and no side effect), never by soak.
+- **Sources**: OR103/OR103.a, OR105/OR105.a · OR44 (P1) · v1.29.0 `py/smallint.h:37-42, 62`, `py/mpconfig.h:163` (`MICROPY_OBJ_REPR_A` on rp2) · legacy precedent `python/CommonDrivers/async_manager.py:6, 24` (`_50_YEARS_SEC`, check before step) · `src/asy_ntp_client.py:209` (`min(current + 1, 0xFFFFFFFF)`, allocates past 2**30)
+- **Rank**: owner — "No unbounded counters anywhere" (owner, 2026-09-29, OR103); "I want to exactly avoid allocations happening at some point" (owner, 2026-09-29, OR105); cap value and check-before-step form "(agent, 2026-09-29)" (OR105.a (2)(3))
+- **State**: work: inventory — the pass-4 counter scan (OR105.a (4)) over `src/`, `buildgen/codegen.py` templates, `digital_twin/` and `js/`, each candidate ending in a register line; code in U10 — the cap constant and a saturating step in `LockedCounter` (`src/base_classes.py`); code in U18 — `src/asy_ntp_client.py:209`; test in U35 — driven-value cap tests; doc in U10 — SPEC G.2
+- **Home**: SPEC G.2 (`LockedCounter`); principles Part (P1)
+- **Pillar**: P1
+- **Pass 2**: new (pass-3 answers, OR103, OR105)
+
+### LEAD/R25 Every config value has an explicit scope
+- **Req**: Every config value is per-device, per-feature or explicitly global, never implicitly coupled to something unrelated; the Part C config schema states each field's scope, checked together with OR52.a (2)'s key scheme.
+- **Sources**: H2.05 (pass 3) · OR52.a (2), OR43.a (3) · `144873f`:BACKLOG.md
+- **Rank**: owner — "every config value should end up per-device, per-feature, or explicitly global — but never implicitly coupled to something unrelated" (owner, 2026-07-13, `144873f`)
+- **State**: work: doc in U36 — the rule in SPEC Part C; review in B2 — each field's scope named, a coupled one is a finding
+- **Home**: SPEC Part C (config schema)
+- **Pillar**: P8
+- **Pass 2**: new (pass 3 H2.05)
+
+### LEAD/R26 Logs and comments are English
+- **Req**: Logged strings and code comments are English, in every scope.
+- **Sources**: H2.30 (pass 3) · `d589d14`
+- **Rank**: owner — English standardisation extends to code comments, not only logged strings (owner, 2026-08-07, `d589d14`)
+- **State**: holds at HEAD (pass 3 H2.30); work: doc in U36 — the rule joins CLAUDE.md's comment rules
+- **Home**: CLAUDE.md (comment rules)
+- **Pillar**: P4
+- **Pass 2**: new (pass 3 H2.30)
+
+### LEAD/R27 Hardware sessions never wait passively for rare events
+- **Req**: A hardware session does not re-wait for a rare event it cannot trigger ("don't wait for something to maybe happen"); it triggers the condition or records it as not reproducible. Every failure actually observed is still investigated (OR6.a).
+- **Sources**: H2.59 (pass 3) · OR6.a · `ef80090`:BACKLOG.md
+- **Rank**: owner — "don't wait for something to maybe happen" (owner, 2026-09-08, `ef80090`)
+- **State**: work: doc in U26 — `tests_hardware/README.md` states it; applies to every phase-C round
+- **Home**: `tests_hardware/README.md`
+- **Pillar**: P9
+- **Pass 2**: new (pass 3 H2.59)
+
+### LEAD/R28 UART comm-hazard coverage at all four tiers
+- **Req**: The UART link gets comm-hazard coverage at L1-L4 in its two-participant shape: same-instance concurrency (two initiations on one instance, `clear()`/`cancel_read_timeout()` racing a transaction) serialised or refused, never a corrupt frame; both participants transmitting (out of contract, J.2) detected and recovered; a frame and field sweep over every `CMD`, `SIZE`, `CHUNKS`, `CUR_CHUNK` and `UID` value, legal and illegal. The flash and bench harness stays open to real fault injection (line pull, inversion, noise, baud desync) without reshaping the tests.
+- **Sources**: H2.74 (pass 3) · OR77/OR77.a, OR79/OR79.a, OR45.a (3) · `8d77994`:UART_PROMOTION_REQUIREMENTS.md items 15.12-15.14 · G6/R18, G6/R22
+- **Rank**: owner — comm-hazard coverage across the four tiers, two-participant shape, fault injection not precluded ("owner direction", 2026-09-11, `8d77994`)
+- **State**: work: test in U17/U24/U26 — tier map per hazard class, gaps closed; doc in U36 — CLAUDE.md's four-tier rule gains the UART clause; SPEC J.7
+- **Home**: CLAUDE.md four-tier rule (UART clause); SPEC J.7
+- **Pillar**: P5
+- **Pass 2**: new (pass 3 H2.74)
+
+### LEAD/R29 A reconnected sensor or FRAM recovers without a reboot
+- **Req**: A sensor or the FRAM physically disconnected and reconnected on a running unit recovers without a reboot (task end, supervisor restart, fresh `setup()`), proven at L2 (twin chip absent, then present) and by a manual L4 step. SPEC F.2's "does fully recover" is the claim this proves.
+- **Sources**: H1.16 (pass 3) · BUS.N134 · G4/R22 · `2421948`:BACKLOG.md
+- **Rank**: owner — "Live bus reconnect must be preserved", field-tested on a live unit; the recovery list "may be incomplete … don't assume complete" (owner, 2026-07-13, `2421948`)
+- **State**: work: test in U25 (twin chip absent/present) and U26 (manual step); doc in U14 — SPEC F.2 cites the proof
+- **Home**: SPEC F.2; SPEC Part E
+- **Pillar**: P3
+- **Pass 2**: new (pass 3 H1.16)
 
 ## 4 Questions for the owner (after self-resolution)
 
