@@ -29,6 +29,7 @@ need only the cross-reference they already carry. The points below needed a deci
 | 13 | Owner answers after pass 2 (OR74-OR78, 2026-09-28) | Applied: OR74 in G3/R44; OR75 in G5/R05 and G1/R30 (legacy checked: timers first there too); OR76 as LEAD/R19; OR77 in G1/R29; OR78 in G8/R01 and G1/R36 (the fixed-`dev` exception withdrawn) | OR74-OR78 |
 | 16 | Owner answers to pass 3 (2026-09-29) | Applied per `audit/pass3/LEAD_MERGE.md`: OR101 in G5/R02, G5/R04, G3/R06, G3/R09, G3/R23, G3/R36, G3/R38, G3/R40, G3/R51 and REF/R03; OR102 in G5/R03, G3/R64, G6/R24, G6/R27, G6/R30, G6/R49, G2/R17 and G7/R12; OR103 and OR105 as LEAD/R24; OR104 in G6/R29, G9/R03 and REF/R03; OR106, OR107 and OR108 are process rows (CONSOLIDATION phases A-L and A-C, plan 4.4) | OR101, OR102, OR103, OR104, OR105, OR106, OR107, OR108 |
 | 17 | Owner answers to pass 4 (2026-09-29) | Applied per `audit/pass4/LEAD_MERGE.md`: OR109 (0) as LEAD/R30 and in G2/R17; (1) in G3/R10; (2) in the BMP3xx interval block; (3) in G7/R39 | OR109 |
+| 18 | Owner row on the final consolidation (2026-09-29) | Process row: A-C closes with the end-state check — complete, sound, adherent (`audit/CONSOLIDATION.md` section 2, plan OR111.a); no requirement of its own | OR111 |
 
 ## 2 Merges (one rule, one owning requirement)
 

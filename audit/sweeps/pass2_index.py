@@ -4,7 +4,7 @@ import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-OVERTAKEN = {62: "OR62.a is overtaken by OR64.a", 106: "OR106-OR108 are process rows carried by CONSOLIDATION section 2 and plan 4.4", 107: "", 108: ""}
+OVERTAKEN = {62: "OR62.a is overtaken by OR64.a", 106: "OR106-OR108 and OR111 are process rows carried by CONSOLIDATION section 2 and plan 4.4", 107: "", 108: "", 111: ""}
 FILES = [f"G{n}" for n in range(1, 11)] + ["LEAD", "REF"]
 
 
@@ -52,8 +52,8 @@ def main():
     lines += ["", "## By execution unit (plan 4.1; C = phase C hardware rounds)", ""]
     lines += [f"- **{u}** ({len(v)}): " + ", ".join(v) for u, v in sorted(by_unit.items(), key=lambda kv: (kv[0] == "C", int(kv[0][1:]) if kv[0][1:].isdigit() else 99))]
     lines += ["", "## By owner row (every OR1-OR78 carried by at least one requirement)", ""]
-    lines += [f"- **OR{n}** ({len(by_or[n])}): " + ", ".join(by_or[n]) for n in range(1, 111)]
-    missing = [n for n in range(1, 111) if not by_or[n] and n not in OVERTAKEN]
+    lines += [f"- **OR{n}** ({len(by_or[n])}): " + ", ".join(by_or[n]) for n in range(1, 112)]
+    missing = [n for n in range(1, 112) if not by_or[n] and n not in OVERTAKEN]
     lines += ["", f"OR rows without a live requirement: {', '.join(f'OR{n}' for n in missing) or 'none'} (" + "; ".join(v for v in OVERTAKEN.values() if v) + ").", ""]
     (ROOT / "pass2" / "INDEX.md").write_text("\n".join(lines))
     print(len(reqs), len(live), holds, dict(kind), dict(rank), "missing OR", missing)
