@@ -230,7 +230,7 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Req**: The generated `main()` passes the ordered setup list (OR75.a's order) to one `SystemService` method that loops over it, feeds the watchdog after each setup and does the placement collects of SPEC I.4(f.1); generated code carries no unrolled setup block and no `gc.collect()`. The collect allowance moves to that method (lint, `test_gc_collect_sites.py`, SPEC I.4(f.1), CLAUDE.md); the boot-contiguity test passes unchanged.
 - **Sources**: OR84/OR84.a · `buildgen/codegen.py:455-467` · `src/system_service.py:209-216`
 - **Rank**: owner — "a sysfunct function which gets the list of the setup functions to be called, and all of the looping, collecting and feeding is done automatically" (owner, 2026-09-28, OR84)
-- **State**: work: code in U28 (codegen), U06 (system_service); test in U28, U06; doc in U06 (SPEC I.4(f.1), A.7), CLAUDE.md
+- **State**: work: code in U20 (codegen), U11 (system_service); test in U20, U11; doc in U11 (SPEC I.4(f.1), A.7), CLAUDE.md
 - **Home**: SPEC A.7, I.4(f.1); CLAUDE.md memory rule
 - **Pillar**: P4
 - **Pass 2**: new (owner request after pass 2)
@@ -239,7 +239,7 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Req**: The firmware build stages its frozen `.py` modules and `manifest.py` in a persistent per-device directory under the gitignored `build/`, wiped at the start of that device's next build and kept after it (failed builds included), its path printed. Every other intermediate of the firmware chain (`build_website.sh`, `build_frozen_html.sh`) follows the same rule: clean at the start, never at the end.
 - **Sources**: OR85/OR85.a · `scripts/build_firmware.py:139` · `scripts/build_website.sh:19-24` · `scripts/build_frozen_html.sh:19-20`
 - **Rank**: owner — "Deletion / cleaning happens at the beginning of a build process, not at its end" (owner, 2026-09-28, OR85; an earlier demand stated by the owner, no trace found, OR64); extension to the website scripts "(agent, 2026-09-28)", on the owner-review list
-- **State**: work: code in U30; test in U30 (L0: directory kept, wiped on the next build); doc in U30 (README build section)
+- **State**: work: code in U27; test in U27 (L0: directory kept, wiped on the next build); doc in U27 (README build section)
 - **Home**: README build section; SPEC B (build chain)
 - **Pillar**: P7
 - **Pass 2**: new (owner request after pass 2; lost owner decision, harmonization 27)
@@ -248,7 +248,7 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Req**: `scripts/build_firmware.py <device>` has a device-agnostic option that builds the same image whose frozen boot entry keeps its settings (`.frozen` first, `gc.threshold`), prints the manual start line and returns to the REPL instead of running `main()`; default output `build/firmware-<device>-noautostart.uf2`. Its docs name the empty-VFS precondition (a returning frozen entry lets a filesystem `main.py` run).
 - **Sources**: OR86/OR86.a · `scripts/build_firmware.py:95-99` · `buildgen/codegen.py:696-708` · `dev_legacy/README.md:602-611`
 - **Rank**: owner — "a command line option for building a firmware which builds a version without autostart" (owner, 2026-09-28, OR86); the output name and the banner "(agent, 2026-09-28)"
-- **State**: work: code in U30, U28; test in U30 (L0); doc in U30 (README, `--help`, OR15.a (1))
+- **State**: work: code in U27, U20; test in U27 (L0); doc in U27 (README, `--help`, OR15.a (1))
 - **Home**: README build section; `--help`
 - **Pillar**: P3
 - **Pass 2**: new (owner request after pass 2)
