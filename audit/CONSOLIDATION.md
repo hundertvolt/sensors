@@ -312,6 +312,8 @@ covered; five proposed questions self-resolved or merged; ten owner questions as
 
 **Pass 4 ran 2026-09-29** (four scans, `audit/pass4/`, summary `audit/pass4/SUMMARY.md`): every input set read in full (the reference check widened from a sample to all 675 under OR107.a); three owner questions; answered as OR109; scan G added for OR110; 49 register lines merged the same day (register 536 live requirements). The scan passes are complete; next is phase A-L.
 
+**Phase A-L started 2026-09-29** (brief `audit/sweeps/al_prompt.md`, input per unit from `audit/sweeps/al_input.py`, output `audit/actions/<unit>.md`): waves in plan 4.1 order, four agents each (OR107.a), each file reviewed by the lead against the register and the sites before commit. Wave 1: U0-U8. Unit numbers corrected on the way: LEAD/R20-R22 (GEN U20, CORE U11, SCR U27).
+
 Open for the owner (asked with the pass-2 report, `audit/pass2/LEAD.md` section 4): (1) answered by OR80
 (datasheets in a private submodule, history kept); (2) answered by OR81 (stricter typing in this audit); (4) answered by OR82/OR83 (21 owner — three restored
 from drift — and 4 agent, `audit/pass2/verify/L25.md`). Question 3 (boot order) is answered by OR75; OR74-OR78 (2026-09-28) are
