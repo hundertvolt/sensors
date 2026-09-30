@@ -136,3 +136,5 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
 35. `verify/U31.md` accepted: A.U31.07 (the supervisor scan can pass 8000 ms under load: four task ends × 627-700 ms
     per FRAM write with three `/status` readers, plus the 2 s sleep and the 4 s reset delay) is an owner question, U31 Q1,
     asked 2026-09-30. U32 Q1 closed by OR128.
+36. Owner answered U31 Q1 2026-09-30 (OR130): option (a), one feed before the budget reboot; A.U31.07 firm; the G5/R02
+    Req rewrite and OR31.a (3)'s two-call-site test follow (register fixes at wave end).
