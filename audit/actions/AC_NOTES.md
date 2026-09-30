@@ -86,3 +86,8 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     words for those pills are OR94 "don't change the current look of the website" and A28 "only colours its number";
     shown to the owner in the A-C list. A.U23.20/21's special-value text and colour are narrowed to the owner-backed
     fields (OR97.a (16) SGP40 timestamps; OR76.a CalLight colour).
+27. OR116-OR118 (owner, 2026-09-30): UART link in both CRC modes at every tier; `SystemCmd` gains "Reset to defaults"
+    and "Erase FRAM"; full tests at every tier, the config reset behind `persistence_write`. Register LEAD/R31-R32; the
+    actions go in `SUPP_owner_0930.md` (one supplement over the already-verified units U11/U16/U17/U19/U20/U23 and
+    the in-flight U24-U26), verified like any unit. Lead readings shown to the owner: CRC mode by TOML key, not a
+    runtime switch (OR36); "the whole config" includes Wi-Fi & Identity.

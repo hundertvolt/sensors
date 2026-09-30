@@ -326,6 +326,24 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Pillar**: P2
 - **Pass 2**: new (pass 4 R.26, OR109). Pass 4: Q45.
 
+### LEAD/R31 The UART link runs without CRC and with CRC16 at every tier
+- **Req**: The UART link is exercised in both CRC modes (none and CRC16) at L1, L2, L3 and L4. Each `uart_link` instance takes a `crc` TOML key (none or crc16); buildgen refuses a pair whose ends differ, and its bus check counts the CRC length; the driver has no runtime mode switch (OR36). `dev.toml` ships no CRC; L2 builds the twin pair in both modes; L3 runs a device script in the other mode over the crossover jumper; L4 runs the bench suite once per mode, the second on a dev image built with the key flipped (behind `flash_cycle`). UART_C_PORT_CHANGELOG gets a Class B entry.
+- **Sources**: OR116/OR116.a, OR118/OR118.a · OR36/OR36.a · LEAD/R28 · SPEC J.6 · `buildgen/validate.py:258`
+- **Rank**: owner — "Does the UART loopback module test with and without CRC? I want both." (owner, 2026-09-30, OR116); "All these options must get their full tests and tiers" (owner, 2026-09-30, OR118)
+- **State**: work: code in U20 (TOML key, buildgen pair check and bus-check CRC length), U17 (`UartLinkExerciser` passes the CRC through); test in U17/U24 (L1), U25 (L2), U26 (L3 script, L4 per-mode run); doc in U36 (SPEC J/L, DEVICE_REFERENCE, UART changelog Class B) — planned in `audit/actions/SUPP_owner_0930.md`
+- **Home**: SPEC J.6/J.7; SPEC L (TOML key)
+- **Pillar**: P5
+- **Pass 2**: new (A-L, OR116)
+
+### LEAD/R32 System commands "Reset to defaults" and "Erase FRAM"
+- **Req**: `SystemCmd` gains "Reset to defaults" (finish pending config flushes, delete every schema-backed `config_<name>.cfg`, reboot; defaults are written by each `ConfigManager.setup()` at boot; Wi-Fi & Identity included; SCD30 NVM untouched) and "Erase FRAM" (pause every FRAM writer, hold the FRAM lock, overwrite the whole chip with a pattern no valid chunk accepts, reboot). The website confirms before either. Both get full tests at L0-L4; a config-reset test carries `persistence_write` and restores the bench unit's config files inside the same test; an Erase-FRAM test reads and archives the FRAM error logs first.
+- **Sources**: OR117/OR117.a, OR118/OR118.a · G1/R04 · CLAUDE.md FRAM-log and wear rules · `asy_webserver_service.py:95`, `buildgen/definitions.py:57-61`, `buildgen/codegen.py:524-537`
+- **Rank**: owner — "I want to have added: \"Reset to defaults\" … and \"Erase FRAM\", which plainly clears the whole chip." (owner, 2026-09-30, OR117); "… with the reset config gated behind the flash write flag" (owner, 2026-09-30, OR118)
+- **State**: work: code in U19 (`_SYSTEM_CMDS`), U20 (definitions options, generated callback), U11 (`SystemService`), U16 (FRAM manager erase), U23 (confirmation); test in U19/U24 (L0/L1), U25 (L2), U26 (L3/L4, gated as stated); doc in U36 (SPEC A.8, H, tests_hardware/README) — planned in `audit/actions/SUPP_owner_0930.md`
+- **Home**: SPEC A.8; SPEC H
+- **Pillar**: P3
+- **Pass 2**: new (A-L, OR117)
+
 ## 4 Questions for the owner (after self-resolution)
 
 All four are answered: OR80, OR81, OR75, OR82. Questions 1-2 came from the groups (facts re-checked by the lead); questions 3-4 from the
