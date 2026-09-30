@@ -93,3 +93,8 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     runtime switch (OR36); "the whole config" includes Wi-Fi & Identity.
 28. U23 applied: `js/render.js:382` is a third direct `fetchOnce()` caller (the first fetch) that V.U23.01 did not
     count; A-C confirms A.U23.05's "one-shot sections run through the poll loop" covers it, else adds the site.
+29. `verify/U24.md` accepted (V.U24 proved from v1.29.0 `extmod/modselect.c:252-266, 302-306`, `py/modio.c:84-96`):
+    CLAUDE.md's "Known hang cause" bullet, SPEC J.7 and A.U14.28 row 12 state the wrong mechanism — the UART fakes
+    answer `GET_FILENO` with 0, so a real poll watches stdin. A-C merges the replacement text across those sites and
+    shows the CLAUDE.md fact change to the owner. Twin/unit fake conflicts (A.U24.16/17/20/80-82 against A.U25.02,
+    .04, .07) are merged in A-C.
