@@ -63,7 +63,7 @@ Part B2, `reboot_system()` / `reboot_bootloader()` (A.S0930.31 (1)) — run unde
    failed preflight clears again (a supervisor parked on `_shutdown` would stay parked after a refusal, and a refused
    command would end in a watchdog reset); an escalation already past its latch check re-checks `_feed_owned` right
    after its log write, which yields, and parks instead of arming (A.S0930.32 (2)); one console line; answer `True` → `"Valid"`. The reply is written by the request's own connection task; nothing the
-   sequence does cancels a connection task, and the reset fires at the earliest `_RESET_DELAY` (4 s) after S6.
+   sequence does cancels a connection task, and the reset fires at the earliest `_RESET_DELAY` (4 s) after S6's arm.
    The latch is set at acceptance, before the supervisor is proven stopped — stricter than OR120.a (1)'s "from that
    moment": the supervisor pass still running between acceptance and its park cannot feed either.
 
@@ -1333,7 +1333,7 @@ fidelity row); the sequence does not change it.
   until `_reset_when_due()` closes them. Comment at `_reset_when_due()`'s flush (≤ 3 lines): "After a system command the
   shutdown sequence already closed and flushed every store, so this pass finds nothing; after the supervisor
   escalation it is the last flush." (2) `_RESET_DELAY` stays 4 s for every reset. After a commanded reset's last own
-  feed (S6) the loop keeps running, unfed, until the reset: the command's reply and every connection already accepted
+  feed (inside S6's `_reboot()`, immediately before the arm, (3)) the loop keeps running, unfed, until the reset: the command's reply and every connection already accepted
   finish writing (connection tasks are never cancelled; a cancelled Wi-Fi task leaves the interface as it is — its
   `finally` blocks only release `wifi_mode_lock`, `asy_wifi_service.py:229, 245, 275, 367, 563, 589, 859`, and the one `CancelledError`
   handler is the LED flasher's, `:534`). A.U11.04's write window ("a write accepted inside the armed window is flushed at
