@@ -105,3 +105,7 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     reached): A-C corrects A.U15.R02. OR116-OR122 twin duties are SUPP_owner_0930's.
 32. U24 applied (V.U24.01-54, A.U24.80-82). N.33's three `tests/` citers (`test_asy_udp_socket.py:399`,
     `test_ntp_wifi_dns_integration.py:365`, `test_asy_wifi_service.py:1527`) are U36's under G9/R12's State; A-C checks.
+33. Owner answered 2026-09-30: OR123 (CRC mode by TOML key, L3 device script runs CRC16 over the jumper; the
+    lead reading of AC_NOTES 27 confirmed), OR124 (the reset includes Wi-Fi & Identity; confirmed), OR125 (U25 Q2 →
+    (a): every scenario host-side, the twin runner carries named instrumentation flags; A.U25.46 follows, pending Q2
+    lifted). U25 Q1 (the `main()` keywords) is still open.

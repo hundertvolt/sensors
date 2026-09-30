@@ -63,7 +63,7 @@ a hung unit is never fed and the watchdog resets the unit, OR120.a (2)):
 
 | step | what | feeds | logged (once) |
 |---|---|---|---|
-| S1 takeover | own feed; `await self._supervisor_parked.wait()` (the supervisor loop parks at the top of its next pass once `_shutdown` is set); `self._supervisor_task.cancel()`; `await` it (catch `CancelledError`); proven by `self._supervisor_task.done()` — if not done, the sequence returns without another feed | before and after | "Shutdown: supervisor stopped, the watchdog is fed by the shutdown alone" |
+| S1 takeover | own feed; unless the supervisor task already ended (then `done()` is the proof as it stands), `await self._supervisor_parked.wait()` (the loop parks at the top of its next pass once `_shutdown` is set; a task not yet created — the boot window — parks at its first pass); `self._supervisor_task.cancel()`; `await` it (catch `CancelledError`); proven by `self._supervisor_task.done()` — if not done, the sequence returns without another feed | before and after | "Shutdown: supervisor stopped, the watchdog is fed by the shutdown alone" |
 | S2 config stores | `close_writes()` on every store, then per store `flush_pending()` (A.S0930.16: the pending flush read under `config_lock`) through U11's `_flush_config_stores()` wrapper, whose failure entry still persists (FRAM open) | per store | "Shutdown: config writes closed and flushed" |
 | S3 FRAM | `storage_timer.deinit()` (a `mempause` auto-unpause cannot fire mid-sequence); `await self._storage.quiesce(self._own_feed)` — pause, then each chunk's `_op_lock` taken once (`wait_idle()`), so every operation already past its pause check finishes both blocks and every later one refuses at entry | per chunk | "Shutdown: FRAM writes closed" |
 | S4 tasks | cancel every entry of `self._tasks` not done; then `await` each (catch `asyncio.CancelledError` and `Exception`) | per task | "Shutdown: all tasks stopped" |
@@ -158,9 +158,12 @@ not one.
    without pass 1 a cut mid-unit could leave a data prefix zeroed under an idle status and an old CRC8, which
    validates with probability 2⁻⁸.
 
-**Power loss at each step** (OR119.a (4)): S0-S1 nothing written; S2 a littlefs write is atomic at close (old or new
-file); S3-S4 RAM only; S5 `resetconfig` — each `os.remove()` is one littlefs operation, so an interrupted reset leaves
-a subset of the files, which load (or default, A.U11.19/A.U11.20) at the next boot; S5 `erasefram` — as the torn-state
+**Power loss at each step** (OR119.a (4)): S0-S1 nothing written; S2 the existing flush path, unchanged (rp2 mounts
+littlefs, `mp/ports/rp2/modules/_boot.py:9`, whose file contents are committed at sync/close, `lib/littlefs/lfs2.h:351-356`;
+the config power-loss window is G5/R35's, A.U11.28); S3-S4 RAM only; S5 `resetconfig` — each `os.remove()` is one
+littlefs remove (`lfs2_remove()`, `lib/littlefs/lfs2.c:6054`), so an interrupted reset leaves a subset of the files,
+which load (or default, A.U11.19/A.U11.20) at the next boot — littlefs's own power-loss behaviour is not re-derived
+here, phase C cuts power in both commands (A.S0930.29 (7)); S5 `erasefram` — as the torn-state
 proof above: every chunk reads valid-old or blank, never torn-valid; S6 the record is RAM (`mem_backup()`), lost on a
 power cut, so the next boot reads power-on (1). Proven per step at L1 (fake cut), L2 (twin process killed mid-step)
 and L3 (hard reset mid-erase), A.S0930.25/27/28.
@@ -464,18 +467,18 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   self._request_shutdown(_RR_CONFIG_RESET)`; `async def erase_fram(self) -> bool: return await
   self._request_shutdown(_RR_FRAM_ERASED)`. `_request_shutdown(purpose)` under `async with self._command_lock:` runs the
   design block's S0 in order: (1) `if self._shutdown: return self._shutdown == purpose`; (2) `if self._reset_armed:`
-  print "Command refused: a reset is already armed", `return False`; (3) `self._shutdown = purpose`; (4) preflight —
+  `self.pr.evt("Command refused: a reset is already armed")`, `return False`; (3) `self._shutdown = purpose`; (4) preflight —
   config reset: `if not self._config_stores` → refuse; erase: `if self._storage is None or not await
   self._storage.erase_ready()` → refuse; a refusal prints one line naming the reason, sets `self._shutdown = 0`,
   returns `False`; (5) `try: self._shutdown_task = asyncio.create_task(self._shutdown_sequence(purpose))` / `except
   MemoryError as e:` print, `self._shutdown = 0`, `return False`; (6) `self._feed_owned = True`; `self.pr.evt("System
-  command accepted, controlled shutdown for", _PURPOSE_NAME[purpose])`; `return True`. Refusals print only: the client
+  command accepted, controlled shutdown for", "config reset" if purpose == _RR_CONFIG_RESET else "FRAM erase")`;
+  `return True`. Refusals print only: the client
   sees "Failed", and nothing failed inside the unit (the repeat rule's "expected condition", A.U3). Existing commands:
   `reboot_system()`/`reboot_bootloader()` → `-> bool`: `if self._shutdown: return False`, else the U11 path and `return
   True` (a repeat while armed stays U11's "request ignored" with `True`); `pause_permanent_storage(duration) -> bool`:
-  `if self._shutdown: return False` first, else today's body and `return True`. `_PURPOSE_NAME` is a two-entry
-  `const()`-folded tuple lookup, not a dict built at runtime (the names "config reset"/"FRAM erase" appear only in
-  console lines). The supervisor-escalation guard is A.S0930.13's.
+  `if self._shutdown: return False` first, else today's body and `return True`. Every refusal line is
+  `self.pr.evt(...)` (console, level-gated). The supervisor-escalation guard is A.S0930.13's.
 - **Blast**: callers the generated callback (A.S0930.11); device scripts calling `reboot_*`/`pause_permanent_storage`
   directly (grep `tests_hardware/device_scripts/`: `reboot_fallback_starves_the_watchdog.py:38` calls `_reboot()`, not
   these; none else) · generated — (A.S0930.11) · js — · tests existing: `tests/test_system_service.py:618-800` (reboot
@@ -525,7 +528,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   shutdown sequence's own feed, which takes ownership", A.S0930.30); CLAUDE.md boot-latency rule's "what
   `SystemService.feed_watchdog()` exists to prevent" holds · toml — · uart —.
 - **Depends**: A.U20.06 (`start_tasks()`/`supervise_tasks()`, `self._tasks`), A.U11.03 (escalation branch, starve flag),
-  A.U11.10 (`run_setups()` feeds), A.U10.07/A.U10.08 (feed-site pins name `supervise_tasks`) — A-C merges.
+  A.U11.10 (`run_setups()` feeds), A.U10.08 (the feed-site allow-list gains the sequence's feed, conflict 8; its
+  supervisor scan budget bounds S1's park wait), A.U10.07 — A-C merges.
 - **Kind**: code
 
 ### A.S0930.14 The controlled shutdown sequence
@@ -537,9 +541,11 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
 - **Site**: `src/system_service.py` new `_shutdown_sequence(purpose)`; uses `self._tasks` (A.U20.06),
   `self._config_stores` and `_flush_config_stores()` (A.U11.03), `_reboot()` (A.U11.03), `self.storage_timer`
   (`:85, 353-373`).
-- **Change**: the design block's S1-S6, as code: S1 `self._own_feed()`; `await self._supervisor_parked.wait()`; `task
-  = self._supervisor_task`; `task.cancel()`; `try: await task` / `except asyncio.CancelledError: pass`; `if not
-  task.done(): return` (no feed follows — the watchdog resets); one `evt` line; `self._own_feed()`. S2 `for store in
+- **Change**: the design block's S1-S6, as code: S1 `self._own_feed()`; `task = self._supervisor_task`; `if task is None or not
+  task.done():` `await self._supervisor_parked.wait()`, `task = self._supervisor_task`, `task.cancel()`, `try: await
+  task` / `except asyncio.CancelledError: pass`; `if not task.done(): return` (no feed follows — the watchdog resets);
+  one `evt` line; `self._own_feed()`. A supervisor task that had already ended before the command (a crash) is proven
+  stopped by `done()` as it stands. S2 `for store in
   self._config_stores: store.close_writes()`, then per store U11's guarded flush (`try: await store.flush_pending()` /
   `except Exception` → persisted CALLBACK entry, `ok = False`) followed by `self._own_feed()`; one line. S3
   `self.storage_timer.deinit()`; `if self._storage is not None: await self._storage.quiesce(self._own_feed)`; one line.
@@ -717,7 +723,7 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   after takeover" (owner, 2026-09-30).
 - **Site**: `tests_scripts/test_buildgen_definitions.py`, `tests_scripts/test_buildgen_generate.py`,
   `tests_scripts/test_js_api_mirrors.py` (A.U23.25/A.U23.27's file), `tests_js/mock-server.test.js:224-244`,
-  `tests_js/render.test.js:583-620`, `tests/test_reset_call_site_invariant.py` (A.U24.54 extends it), new
+  `tests_js/render.test.js:583-620`, `tests_scripts/test_watchdog_feed_sites.py` (A.U10.08's new file), new
   `tests_scripts/test_fram_chunk_crc_sites.py`.
 - **Change**: (1) definitions — per device from `DEVICE_NAMES`: the "command" group's `SystemCmd` options are exactly
   `_SYSTEM_CMDS` (read by `ast` from `src/asy_webserver_service.py`) in order, the two new labels exactly "Reset to
@@ -731,16 +737,17 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   `"erase_fram"`, `"fram"`, `""`, `1`, `0`, `true`, `false`, `null`, `["erasefram"]`, `{"cmd": "erasefram"}` → each
   "Invalid". (5) website — `tests_js/render.test.js`: choosing "Erase FRAM" and Apply sends one PUT to `/system` with
   body exactly `{"SystemCmd":"erasefram"}` and calls no `window.confirm` (a spy asserts zero calls); the same for
-  "Reset to defaults"; the select returns to its placeholder after Apply (A.U23.15). (6) feed-site guard —
-  `tests/test_reset_call_site_invariant.py` gains `test_the_watchdog_is_fed_only_inside_system_service`: `.feed(`
-  appears in `src/*.py` and `build/generated_src/*.py` (A.U24.54's scan set) only in `system_service.py`, exactly twice,
-  inside `feed_watchdog()` and `_own_feed()` (function spans found by line scan of `def`); a bite fixture with a third
-  `.feed(` fails it. (7) chunk CRC sites — `test_fram_chunk_crc_sites.py`: every `get_chunk(`/`get_timestamped_chunk(`
+  "Reset to defaults"; the select returns to its placeholder after Apply (A.U23.15). (6) feed-site guard — extends A.U10.08's `tests_scripts/test_watchdog_feed_sites.py` (the L0 check of every
+  `feed_watchdog(`/`.feed(` call in `src/` and in every generated module): its allowed set gains (d) the body of
+  `SystemService._own_feed()`, whose only callers are `_shutdown_sequence()` and — as the `step_done` argument —
+  `AsyFramManager.quiesce()`/`erase_chip()` (checked by `ast`: no other reference to `_own_feed` anywhere); site (b)
+  follows the loop into `_supervise()`; site (a) must contain the `_feed_owned` test (a `feed_watchdog()` body without it
+  fails — the latch cannot be dropped silently); a bite fixture adding a fifth `.feed(` site fails. (7) chunk CRC sites — `test_fram_chunk_crc_sites.py`: every `get_chunk(`/`get_timestamped_chunk(`
   call in `src/` passes `crc=` one of `CRC8()`, `CRC16()`, `CRC32()` (by `ast`) — the second erase gate (a non-zero
   CRC init) cannot be lost to a future `CRC_Pass` chunk; bite: a synthetic call without `crc=` fails.
 - **Blast**: callers — · generated read only · js `tests_js/*` as above · tests new/extended as above · twin — · docs
   SPEC E (test catalog rows, U36) · toml — · uart —.
-- **Depends**: A.S0930.09-.13, A.U23.25, A.U23.27, A.U23.15, A.U24.54, A.U6.03/A.U6.04 — A-C merges.
+- **Depends**: A.S0930.09-.13, A.U10.08 (conflict 8), A.U23.25, A.U23.27, A.U23.15, A.U6.03/A.U6.04 — A-C merges.
 - **Kind**: test
 
 ### A.S0930.21 L1: function, every refusal and every error path
@@ -1087,11 +1094,11 @@ the edits into one; **own** — this file's action is the one that makes the cha
 | U19 | A.U19.04 (same dispatch guard → .09), A.U19.09 (same `_run()`; .18 pins its cancellation) | — | A.U19.01, .02, .03, .05, .06, .07, .08, .10, .11, .12, .13, .15, .16 (result words), .17, .20 (the REST reference lists the new values from `_SYSTEM_CMDS`), .22, .23 (feeder gap test; the supervisor runs as a task), .24 |
 | U20 | A.U20.01 (one instance per UART bus → .01), A.U20.06 (`supervise_tasks()`, `self._tasks`; conflict 2 → .13), A.U20.17 (error contract for the new refusals → .01), A.U20.35 (L.3 table → .01), A.U20.41 and A.U20.42 (callback template → .11) | — | A.U20.02, .03, .04, .05, .07, .08, .10, .11, .13 (frozen set from imports), .14, .15, .16, .18, .20, .22, .25, .27, .30, .34, .38, .40 |
 | U23 | A.U23.15 (select reset after Apply → .10, .20), A.U23.20 (code labels gain 7-9 → .15), A.U23.25 and A.U23.27 (mirror module and derived mock → .09, .20), A.U23.33 (the live tier lists the two words as L1/C like `reboot` → .27) | — | A.U23.03, .04, .05, .06, .08, .11, .12, .13, .14, .16, .17 (its `window.confirm` pattern is not used: OR121.a (2), OR122.a (2), conflict 5), .18, .19, .22, .23, .24, .26, .28, .29, .30, .40, .42, .45, .48, .49 |
-| U24 | A.U24.07 (`feed_times` joins the reset hook → .24), A.U24.17 (contract suite gains `feed_times` → .24), A.U24.22 (FRAM fake size; `cut_after_bytes` → .21, .25), A.U24.27 (hazard file → .23), A.U24.43 (the supervisor scenario runs `supervise_tasks()` as a task and cancels it → .13), A.U24.54 (feed-site guard in the same file → .20), A.U24.79 (boot helpers used by .26) | — | A.U24.01, .06, .08, .15, .16, .18, .20, .21, .23, .24, .26, .31, .32, .36, .41, .45, .48, .50, .60, .63, .64, .65, .67, .69, .73, .74, .77, .78, .80 |
+| U24 | A.U24.07 (`feed_times` joins the reset hook → .24), A.U24.17 (contract suite gains `feed_times` → .24), A.U24.22 (FRAM fake size; `cut_after_bytes` → .21, .25), A.U24.27 (hazard file → .23), A.U24.43 (the supervisor scenario runs `supervise_tasks()` as a task and cancels it → .13), A.U24.79 (boot helpers used by .26) | — | A.U24.01, .06, .08, .15, .16, .18, .20, .21, .23, .24, .26, .31, .32, .36, .41, .45, .48, .50, .54 (reset/WDT construction invariant; the feed sites are A.U10.08's), .60, .63, .64, .65, .67, .69, .73, .74, .77, .78, .80 |
 | U25 | A.U25.03 and A.U25.16 (twin `SPI` class gains `wire_time_us_per_byte` → .27), A.U25.07, .08, .09 (reset exit, `mem_backup`), A.U25.15 (rollover, `silent`), A.U25.32, .35 (per-run config dir and state), A.U25.36, .55 (Run 12 codes), A.U25.37 (vocabulary; `uart_link:silent` per CRC mode → .04), A.U25.46 (no HTTP in the DUT heap), A.U25.48 (device from data), A.U25.54 (`lose_power_after()`) — all → .04/.27 | — | A.U25.02, .04, .05, .06, .10, .12, .17, .19, .20, .22, .23, .24, .25, .28, .29, .30, .34, .38, .42, .57 (the `mempause` dispatch it drives now answers "Failed" during a shutdown), .59, .63, .64, .66, .68, .69, .71 |
 | U26 | A.U26.01, .02, .03, .14 (bench board by TOML, image record, image check, reflash helper → .06), A.U26.05, .10, .18, .44, .47, .61 (twin runs of scripts, scratch config path, rendered dict, markers → .05, .28), A.U26.06, .71, .74 (wear guard → .19), A.U26.15, .22, .23, .28, .29, .49 (leftover repair, evidence, logger set, reset codes, reset helper, TOML values → .29), A.U26.33, .59, .82 (UART scripts both modes → .05, .06) | — | A.U26.54, .75, .85 |
 | SUPP_recovery | A.U16.R03 (as U16 row) | — | A.U13.R02 (bus rung in the same hazard file), A.U16.R01, A.U16.R02 |
-| others cited | A.U5.02 (`storage` parameter → .12), A.U6.03/.04 (definitions generated → .10), A.U6.23 (mock `ResetReason` sample → .15), A.U2.09 (codes named in `invalidate()` → .17), A.U3 (print-only refusals → .12), A.U10.07/.08 (feed-site pins → .13), A.U10.29 (`_SYSTEM_CMDS` const folding → .09), A.U14.R01 (F.2 text → .30) | — | — |
+| others cited | A.U5.02 (`storage` parameter → .12), A.U6.03/.04 (definitions generated → .10), A.U6.23 (mock `ResetReason` sample → .15), A.U2.09 (codes named in `invalidate()` → .17), A.U3 (print-only refusals → .12), A.U10.08 (feed-site allow-list gains (d), conflict 8 → .13, .20), A.U10.07 (unfed boot stretches; the same 8,000 ms arithmetic applied to the steps here → .13), A.U10.29 (`_SYSTEM_CMDS` const folding → .09), A.U14.R01 (F.2 text → .30) | — | — |
 
 No earlier action is **own** for any change here: OR116-OR122 postdate every unit file (AC_NOTES item 27).
 
@@ -1117,6 +1124,12 @@ No earlier action is **own** for any change here: OR116-OR122 postdate every uni
    defaults; the CRC mode is compared".
 7. A.U26.71 rewrites the wear guard's dispatch-only derivation; A.S0930.19's value-level exception for `"resetconfig"`
    must be written into that derivation, not beside the removed `_ROUTE_DISPATCH_FIELDS`.
+8. A.U10.08 pins the feed sites to `feed_watchdog()`, the supervisor loop and the boot batch, from the owner's rule
+   "at runtime only from the supervisor loop" (owner, 2026-09-25, OR31.a (3)). OR120 (owner, 2026-09-30) is the newer
+   owner decision and moves ownership to the shutdown sequence while it runs, so the allow-list gains the sequence's
+   own feed and the latch (A.S0930.20 (6)); SPEC G.2's rule sentence gains "and, while a system-command shutdown runs,
+   only that sequence's own feed (owner, 2026-09-30)" (A.S0930.30). Most recent owner decision wins (harmonization 24);
+   nothing to ask.
 
 ## Ledger
 | register block | clause for this unit (short) | result |
