@@ -138,8 +138,9 @@ Sync points after every unit in B (OR6.a): commit, push, full local suite at bot
     NVM are written only by an accepted PUT that changed a value (or a command that always writes:
     `AmbPres`, `ForceCalRef`, OR42.c) and by one repair per boot of a readable config file (OR71.a (2));
     a missing file creates nothing, an unreadable one is never overwritten; FRAM is outside the rule.
-38. **Buses are never stalled** (OR64.a): the SGP40 general-call reset is the one owner-decided reset
-    that reaches other devices; nothing stalls, holds or restarts a bus or its controller.
+38. **Buses recover with the smallest blast radius** (OR113.a, overtaking this item's earlier "buses are never
+    stalled" reading of OR64.a): retry, participant recovery, bus clear, controller re-init, task restart, reboot,
+    watchdog — boot and mid-operation; the SGP40 general-call reset stays the one owner-accepted reset reaching other devices.
 39. **Reset evidence does not need FRAM** (OR60.a): `reset_reason` lives in `mem_backup()` region 0,
     owned by SystemService; FRAM logs stay the per-module evidence where fitted.
 40. **`dev` meets every device's bar** (OR72.a (10)) and a device's TOML decides its sensors

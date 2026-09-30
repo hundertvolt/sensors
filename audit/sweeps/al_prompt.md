@@ -75,7 +75,12 @@ datasheet text `dstxt/`. Never state a fact from memory: open the site and cite 
    WP/Session/Step labels, action IDs: state the fact in place, provenance as an actor tag "(owner, <date>)" /
    "(agent, <date>)" (G9/R12, OR68.a (4)). IDs belong only in the action file's Why and Depends slots, or in a `[src: …]` note beside the planned text, which the executor never writes. CI checkouts
    are shallow (no `fetch-depth` in `ci.yml`): a check needing git history or a submodule says how it gets it.
-7. Owner words: quote exactly; call something the owner's only with an owner source. The action's Why cites the
+8. Recovery ladder (owner, 2026-09-30, OR113.a): every fault on a bus, a participant or a service recovers with the
+   smallest possible blast radius and escalates only when the milder step fails — retry; recover the participant;
+   clear the bus; re-initialise the controller; restart the task; reboot; watchdog last — at boot and mid-operation,
+   each rung bounded, logged once per event, race-free, tested at every level that can reach it. Where a unit's
+   code has a fault path, plan its rungs.
+9. Owner words: quote exactly; call something the owner's only with an owner source. The action's Why cites the
    register ID(s) and the owner row(s) the register cites.
 
 ## Output format (`audit/actions/<UNIT>.md`)

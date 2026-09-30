@@ -38,3 +38,9 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     family found by a verifier was smaller than the last (seven families, then three, then one of 18 sites). The
     search stops at family level here; residual literals of a tuned purpose are the B2 per-file pass's to catch, which
     reads every test file in full (plan 4.1). A-C records this as the stated limit of the A-L inventory, not a gap.
+15. Owner answered item 12 on 2026-09-30: OR112 (lwIP option (b), thorough hardware test in phase C) and OR113 (boot
+    bus clear (a); standing principle "recover with the smallest possible blast radius … escalating up to a full bus
+    reset … also in mid operation … Apply this idea throughout!"). A.U14.30 and A.U14.17 option (a) are no longer
+    pending; U19 writes the `TCP_NODELAY` action as firm. OR113.a (2) needs a recovery-ladder pass over every
+    bus-facing unit already written (U10, U13, U15, U16, U17; U18 for the network side) — `SUPP_recovery.md` — and
+    every later author and verifier applies it (brief rule 8). Harmonization 38 and G4/R22 are rewritten.
