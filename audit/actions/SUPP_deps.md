@@ -227,7 +227,7 @@ dependency); the scratchpad reference clones (audit files); the legacy tree and 
   status code and by class, `after_request`, `dispatch_request()`'s blanket catch, `Response.write()`'s `OSError` muting
   and `MUTED_SOCKET_ERRORS`, the stream methods `handle_request()` calls (the `_TimeoutStreamProxy` forwards exactly
   those: `readline`, `readexactly`, `awrite`, `aclose`, `close`, `wait_closed`, `get_extra_info`,
-  `src/asy_webserver_service.py:234-290`), header-per-write emission (catalog W29), `Request.create()` → body read order
+  `src/asy_webserver_service.py:234-291`), header-per-write emission (catalog W29), `Request.create()` → body read order
   and the class attributes `max_content_length`, `max_body_length`, `max_readline` (`:363-370`), `send_file(...,
   compressed=True)`, `Response.send_file_buffer_size` (`:666`), `find_route()` first-match order (`:397`), HTTP/1.0
   default, `redirect`, `abort`, `URLPattern` `<path:...>` (`:400`). Default: adopt (OR129 "just everything"); hold back
@@ -437,7 +437,7 @@ dependency); the scratchpad reference clones (audit files); the legacy tree and 
   when upstream changes the loop, and the override is removed once the pin carries a real fix" (owner, 2026-09-30,
   OR114); G4/R44. Catalog W04, W05, W06.
 - **Site**: planned `toolchain/micropython_overrides.py` `modlwip_eagain` (A.U21.09-A.U21.14); `extmod/modlwip.c` at the
-  new tag; `src/asy_webserver_service.py:255-259, :268-270` (the `peer_gone` suppression).
+  new tag; `src/asy_webserver_service.py:255-259, :269-270` (the `peer_gone` suppression).
 - **Change**: at the new tag read `extmod/modlwip.c`'s `lwip_tcp_send()` and the state of issue 19704 and PRs 19705/19708
   (and any successor). Outcomes, each recorded: (a) the pin carries a real fix (a non-blocking send returns without
   sleeping when `tcp_write()` reports `ERR_MEM` — `EAGAIN`, or a partial write/`ENOBUFS`) → A.U21.09-A.U21.11 are not
@@ -583,8 +583,8 @@ dependency); the scratchpad reference clones (audit files); the legacy tree and 
 - **Why**: OR129 "Check especially for fixes we needed to implement workarounds for" (owner, 2026-09-30); CLAUDE.md
   hard rule (Microdot's behaviour is changed only by wrapping it); SPEC A.5 ("The one gap: exceptions raised while
   writing the response itself"). Catalog W29, W30.
-- **Site**: `src/asy_webserver_service.py:234-290` (`_TimeoutStreamProxy`: `_bounded_read()` read-timeout logging
-  `:247-259`, header coalescing in `awrite()` `:268-278`), `:692-731` (`_serve()`'s write-phase catches).
+- **Site**: `src/asy_webserver_service.py:234-291` (`_TimeoutStreamProxy`: `_bounded_read()` read-timeout logging
+  `:248-260`, header coalescing in `awrite()` `:268-278`), `:692-731` (`_serve()`'s write-phase catches).
 - **Change**: at the Microdot tag A.SDEP.06 vendors: (W29) does `Response.write()` still emit the status line and each
   header as separate writes? If upstream now writes the header block in one call, the coalescing in `awrite()` is no
   longer needed: `_head` and its branch go, and `tests/test_asy_webserver_service.py:1977`'s "the whole header block is
