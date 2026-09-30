@@ -55,3 +55,9 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     `[lwip]` compiles out the oversize path (`lwip/src/core/tcp_out.c:226-278`; rp2 sets neither `TCP_OVERSIZE` nor
     `LWIP_NETIF_TX_SINGLE_PBUF`, default `TCP_MSS`), the one property OR112's `TCP_NODELAY` was chosen for
     (`verify/U14.md` V.U14.Q1). A.U19.22 and A.U14.30 follow the answer; the U19 verifier writes both variants.
+19. Item 18 answered 2026-09-30 by OR114 (owner: "Do it this way"): the modlwip `ERR_MEM` stall is fixed by a
+    zero-touch build override (patched copy of `modlwip.c`, non-blocking send returns `EAGAIN`, swapped in through a
+    generated `USER_C_MODULES` CMake file), watched upstream (issue 19704) and removed once the pin carries a fix.
+    `TCP_NODELAY` (A.U19.22) is withdrawn; A.U14.30 loses the OR112 sizing (`[lwip]` keeps HEAD values) and keeps the
+    doc/ensemble parts that still hold; the override itself is U21's (tooling). Phase C reproduces the stall on HEAD
+    firmware first. `audit/actions/SUPP_lwip.md` holds the analysis.
