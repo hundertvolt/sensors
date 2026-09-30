@@ -88,3 +88,47 @@ is OK in every verdict, ID, mirror and action slot.
   - V.U8C_tests.04 | A.U8C2.04 Site | FIX | the Change rewrites `:949` (`scenario(1300)` → `scenario(_PAST_CANCEL_ACK_HOLD_MS)`)
     but Site lists only `:952` (check 3: Site lists every literal's own line the action edits) | Site as in V.U8C_tests.03
     (adds "derived, untagged: :949 (1300)").
+- `tests/test_asy_uart_driver.py` 78+13 · A.U8C.18, A.U8C2.50 · OK.
+- `tests/test_asy_uart_link_driver.py` 7+1 · A.U8C.19 · OK (`:24-29, :58` restate the harness Pair, comment `:35-36`;
+  importing the harness names is right; `_ROOT` in `tests/test_tmp_scratch.py:8` is precedent for an underscore import).
+- `tests/test_asy_udp_socket.py` 70+3 · A.U8C.20 · OK.
+- `tests/test_asy_webserver_service.py` 94+65 · A.U8C.21, A.U8C2.05 · 2 FIX:
+  - V.U8C_tests.05 | U8C rows `tests/test_asy_webserver_service.py:1184, :1237, :1312, :1377, :1445` (the 2.0), `:1741`
+    and A.U8C.21 | FIX | these six lines are `_make_service(… per_call_timeout_s=…, outer_cap_s=…)` construction
+    arguments — service timeouts that must *not* fire during the case (e.g. `:1184` "Two long-lived (never-completing)
+    connections occupy the ceiling"; `:1312` 413 case; `:1741` 8 KiB path) — but the rows give them the run_timed
+    hang-bound IDs (`run_bound_s` "run_timed hang bound, value 5.0"; `serve_bound_s` "run_timed hang bound on one
+    _serve()"). The file already has the right IDs for exactly this purpose (`headroom_s` 2.0 at `:1158, :1209, :1326,
+    :1639, :3081`; `long_headroom_s` 5.0 at `:1445`'s `outer_cap_s`); C.0.2: one purpose → one constant, and a hang bound
+    is a different purpose | rows `:1184`, `:1237` → `tuned | \`l1.asy_webserver_service_long_headroom_s\` — service
+    timeouts (per-call and outer cap) that must not fire while the held connections occupy the ceiling`; rows `:1312`,
+    `:1377`, `:1445` (literal 2.0), `:1741` → `tuned | \`l1.asy_webserver_service_headroom_s\` — service timeout
+    (per-call and/or outer cap) that must not fire before the case's own event`. A.U8C.21 Site: `run_bound_s` becomes
+    ":45, :1205, :1219, :1265, :1538, :1976, :2048 (5.0)"; `serve_bound_s` ":1065, :1160, :1641, :1661, :3083, :3099
+    (2.0)"; `headroom_s` ":1158, :1209, :1312, :1326, :1377, :1445, :1639, :1741, :3081 (2.0)"; `long_headroom_s`
+    ":1184, :1237, :1445 (5.0)"; Change: the literals at :1184, :1237 become `_LONG_HEADROOM_S`, those at :1312, :1377,
+    :1741 and the `per_call_timeout_s` literal at :1445 become `_HEADROOM_S` (both keyword literals on each of these
+    lines).
+  - V.U8C_tests.06 | U8C2 row `:1285` and A.U8C2.05 | FIX | `audit/actions/U8.md` A.U8.17 already owns this literal: "`:1285`'s
+    factor becomes a module constant `_SERVE_BACKSTOP_CAP_MULT = 20` tagged `l1.serve_backstop_cap_mult = 20`", Basis
+    "widened without a stated cause (agent, `<commit>`)" (RF140, `a035736` 4× → 20×). A.U8C2.05 creates a second constant
+    and ID for it (`_OUTER_CAP_RUN_FACTOR`, `l1.asy_webserver_service_outer_cap_run_factor`) — two tags and rows for one
+    literal | row `:1285` → `tuned | \`l1.serve_backstop_cap_mult\` — run_timed hang bound written as 20 × the outer cap;
+    registered by A.U8.17 (widened 4× → 20× without a stated cause)`; A.U8C2.05 Site: `l1.serve_backstop_cap_mult` :1285
+    (20); Change: "the factor at :1285 is A.U8.17's `_SERVE_BACKSTOP_CAP_MULT` (`l1.serve_backstop_cap_mult`); no new
+    constant or row here" (drop `_OUTER_CAP_RUN_FACTOR`); Depends add A.U8.17; U8C2 Status "108 new test-tier IDs" → 107
+    (l1 26 → 25).
+- `tests/test_asy_wifi_service.py` 31+37 · A.U8C.22, A.U8C2.06 · OK (the file's `_FastAsyncSleep` is entered only at
+  `:679, :2603`; every yield-count loop checked to sleep `0`).
+- `tests/test_base_classes.py` 3+2, `tests/test_bus_hazard_generated.py` 1+2, `tests/test_bus_hazard_multi_device.py`
+  7+21 · — · OK (the multi-device file patches `asyncio.sleep` to `sleep(0)`, `:44-56`: its counts are yield counts).
+- `tests/test_captive_dns.py` 43+16 · A.U8C.23, A.U8C2.07 · OK.
+- `tests/test_config_manager.py` 29+7 · — · 1 FIX:
+  - V.U8C_tests.01 | U8C2 rows `tests/test_config_manager.py:473` "0" and `:680` "0" (G15) | FIX | U8C2's Families rule
+    says "(nonzero literals only …)"; a G15 hit is the number a string encodes, and `"0"` encodes zero. Own re-run of
+    G15 with the stated rule: 23 keys, U8C2 lists 25 — these two are the difference | delete both rows (their siblings
+    `:473 "10"`, `:681 "10"` stay); U8C2 counts: G15 hits 25 → 23, new sites 25 → 23, test input 22 → 20; total hits 997 →
+    995, new sites 846 → 844, test input 275 → 273; Search "Result" line and the ledger total row likewise — or, if zero
+    strings are meant to count, add "G15 keeps zero" to the Families rule and leave the rows.
+- `tests/test_crc_checks.py` 0+4 · — · OK.
+- `tests/test_digital_twin_bmp3xx.py` 0+9 · — · OK.
