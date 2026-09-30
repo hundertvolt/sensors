@@ -71,3 +71,6 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
 22. Wave-3 register fixes to apply at wave end: G6/R49 "rate-limited trace" → one trace per event (OR35.a (2),
     OR35.b; `verify/U19.md` V.U19.08/23). U14 follow-ups from OR114: A.U14.30 drops the OR112 sizing and keeps the
     B.14.2 text/ensemble parts that still hold; A.U14.28's F.7 row 15 (missing Unix-port `TCP_NODELAY`) goes.
+23. Wave 2 register fixes applied (`REGISTER_FIXES_wave2.md`); G3/R16's phase-C "scope CS / schematic pull-up" item
+    dropped by the lead (the CS state is a documented datasheet fact, item 11). Left for the wave-3 pass: U8C2's own
+    register fixes on U8.md (A.U8.04/09/13 and U8C.md items, listed at the end of `REGISTER_FIXES_wave2.md`).
