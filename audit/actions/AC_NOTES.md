@@ -133,3 +133,6 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     `/status`; U32 Q1 closed, A.U32.06 firm). OR129: dependency refresh (LEAD/R33) in U0 after the baseline and a
     second check in U37 — A-C adds the U0 step and orders it before every B1 action; every action citing a pinned
     upstream line carries "re-check against the refreshed pin".
+35. `verify/U31.md` accepted: A.U31.07 (the supervisor scan can pass 8000 ms under load: four task ends × 627-700 ms
+    per FRAM write with three `/status` readers, plus the 2 s sleep and the 4 s reset delay) is an owner question, U31 Q1,
+    asked 2026-09-30. U32 Q1 closed by OR128.
