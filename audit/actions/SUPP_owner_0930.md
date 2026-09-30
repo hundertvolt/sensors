@@ -1,4 +1,4 @@
-# A-L supplement — owner rows OR116-OR119 (HEAD 60b398b)
+# A-L supplement — owner rows OR116-OR119 (HEAD 30640b9)
 
 Supplement over the already-planned units U11, U16, U17, U19, U20, U23 and the in-flight U24-U26 (AC_NOTES item 27),
 built from the owner rows OR116/OR116.a, OR117/OR117.a, OR118/OR118.a, OR119/OR119.a (OR119 refines OR117) and the
@@ -9,8 +9,8 @@ proposed; the exact action word is the safeguard). Register blocks: LEAD/R31 and
 R32 as updated for OR120-OR122), read with LEAD/R28 (UART four-tier hazard coverage) and `SUPP_recovery.md` (the
 recovery ladder).
 
-Code sites were read at `cde3bb0`; `git diff --stat cde3bb0 60b398b -- . ':!audit' ':!PROJECT_AUDIT_PLAN.md'` is
-empty, so every line number below holds at `60b398b`. Primary sources: MicroPython v1.29.0 in the scratchpad `mp/`
+Code sites were read at `cde3bb0`; `git diff --stat cde3bb0 30640b9 -- . ':!audit' ':!PROJECT_AUDIT_PLAN.md'` is
+empty, so every line number below holds at `30640b9`. Primary sources: MicroPython v1.29.0 in the scratchpad `mp/`
 (`extmod/asyncio/task.py`, `stream.py`, `core.py`), datasheet text `dstxt/` (MB85RS2MTA, MB85RS64V, W25Q16JV).
 Earlier actions are referenced, never repeated; section C lists every earlier action at the same sites with its
 verdict. Text an action writes into a permanent file carries actor tags only; audit IDs sit in `[src: …]` notes the
@@ -514,7 +514,7 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   feeds through `feed_watchdog()` (`codegen.py:465` / A.U11.10's `run_setups()`) — latched only if a shutdown was
   accepted, which cannot happen during the batch; `tests_hardware/device_scripts/reboot_fallback_starves_the_watchdog.py:44-47`
   (feeds through `feed_watchdog()`, no shutdown) holds · generated — · js — · tests existing:
-  `tests/test_system_service.py:1027-1080` (supervisor feeds / stops feeding once starved / no watchdog) — the loop now
+  `tests/test_system_service.py:1027-1103` (supervisor feeds / stops feeding once starved / no watchdog) — the loop now
   runs in a task: each drives `supervise_tasks()` in a task, asserts on `feed_count`, and cancels at the end (A.U20.06
   already moves them onto `start_tasks()`/`supervise_tasks()`); `:1236-1253` (budget reboot) as A.U11.03 rewrites it;
   `tests/test_digital_twin_sensortask_integration.py:482-523` drives the supervisor directly (A.U20.06's blast) — it
