@@ -28,14 +28,16 @@ carries no audit ID (rule 6).
 New catalog codes requested from A.U2.01 (A-C merges): shared wrnno `DEVICE_RECOVERY` "a participant recovery (the
 chip's own reset or re-configuration) ran after repeated failures" and `BUS_RECOVERY` "the I2C bus was cleared and its
 controller re-initialised after repeated failures", written here as 14 and 15 because shared wrnno 11 is already claimed
-twice (A.U15.24 `DERIVED_DOMAIN`, A.U18.15 `SOCKET_TEARDOWN` — Register fixes 6); FRAM errno 54 `FRAM_CHIP_LOST` "the chip
+twice (A.U15.24 `DERIVED_DOMAIN`, A.U18.15 `SOCKET_TEARDOWN` — Conflicts 7); FRAM errno 54 `FRAM_CHIP_LOST` "the chip
 stopped answering its identification; FRAM access stopped until it is set up again" (FRAM band 45-54; 52, 53 taken by
 A.U13.09, A.U16.15).
 
 Rung abbreviations in the tables: R1 retry · R2 participant · R3 bus clear · R4 controller re-init · R5 task restart ·
 R6 reboot · R7 watchdog.
 
-## U10 — XCUT: the escalation contract
+## Rung tables
+
+### U10 — XCUT: the escalation contract
 
 | fault path | rungs at HEAD (evidence) | rungs by existing actions | missing → action / disposition |
 |---|---|---|---|
@@ -46,9 +48,104 @@ R6 reboot · R7 watchdog.
 | a blocking `machine.I2C`/`machine.SPI` transfer never returns | R7 only | — | disposition: no await point exists inside the call (`ports/rp2/machine_i2c.c:120-158` blocking `i2c_*_timeout_us()`; `machine_spi.c:265-342`), so no rung below R7 can run while it is in flight (G4/R22 fact kept by OR113.a); rp2's I2C transfer is itself bounded by the bus `timeout` (`machine_i2c.c:125, 147` pass `self->timeout`), so a held SDA normally returns `ETIMEDOUT` and the ladder then acts; the unbounded case left is the watchdog's |
 | the supervisor loop dies or the loop blocks | R7 | OR31.a (5) planted-fault tests (U10/U24 per register G5/R01) | DONE by design: R7 is the last rung |
 | a deferred config flush fails (`config_manager.py` `_flush_staged()`) | error logged, values stay in effect (C.7.3) | A.U10.20 (task top persists 23), A.U11.19/A.U11.20 | disposition: R1 is the next accepted `PUT`'s flush or the next boot's one repair of a readable file (OR71.a (2)); an automatic re-write would be a flash write no request asked for, which the owner's write rule forbids (CLAUDE.md wear rule; OR42.c) |
-| FRAM `verify_present()` lock wait times out (`asy_fram_driver.py:407-411`) | returns `False`, errno 97 | A.U10.26 (`wait_for_ms`) | disposition: no product caller (grep `verify_present(` in `src/`, `buildgen/`: none); A.U16.R03 gives the chip-loss path its own call site under the bus lock instead |
+| FRAM `verify_present()` lock wait times out (`asy_fram_driver.py:407-411`) | returns `False`, errno 97 (19 after A.U2.01) | A.U10.26 (`wait_for_ms`) | disposition: no product caller (grep `verify_present(` in `src/`, `buildgen/`: none); A.U16.R03 gives the chip-loss path its own call site under the bus lock instead |
 
-## U10 — Actions
+### U13 — BUS: I2C, SPI, UART bus layer
+
+| fault path | rungs at HEAD (evidence) | rungs by existing actions | missing → action / disposition |
+|---|---|---|---|
+| I2C transfer raises `OSError(EIO)` (NAK, bus error) or `OSError(ETIMEDOUT)` (held/stretched line) — `_read_into_scratch()` `src/asy_i2c_driver.py:58-68`, `_writeto_mem()` `:70-75`, `readfrom_into()` `:194-208`, `writeto()` `:210-231`; raise surface `ports/rp2/machine_i2c.c:150-155` | propagates to the driver (header `:4-6`): R1/R2/R5 are the driver's and the supervisor's (U10 table) | A.U13.07 (bool results), A.U13.09 (drivers raise on an unavailable bus) | **R3 bus clear and R4 controller re-init mid-operation missing** — the wrapper has no way to release a held SDA or rebuild the controller after construction (`init()` `:163-178` is reached only from `__init__` `:37`) → **A.U13.R01** (`I2C.recover()`), escalated by A.U10.R01, four-tier coverage **A.U13.R02** |
+| I2C bus held at power-up / after an MCU-only reset (a slave stopped mid-byte) | none: construction drives no SCL pulse (`machine_i2c.c:106-115`) | A.U14.17 option (a) (boot clear before construction; no longer pending, OR113.a (1)) | R3 at boot owned by A.U14.17; its runtime twin is A.U13.R01, sharing one clock-out function; its "never at runtime" wording conflicts (Conflicts 1); the boot result is logged through A.U10.R01's `_init_done()` |
+| a slave holds **SCL** low (stretch past the bus timeout, stuck clock) | transfers end `ETIMEDOUT` (`machine_i2c.c:151-152`) | — | disposition for R3: a clock-out needs SCL; A.U13.R01 waits for SCL release up to the bus timeout (a legitimate SCD30 stretch is ≤ 150 ms, Interface Description p.2, under the 200 ms `@requires` timeout `asy_scd30_driver.py:108`), then reports `SCL held` and still runs R4; what frees a slave holding SCL is its own reset (R2, if its interface still answers) or a power cycle — an operator action (A.U14.17's DEVICE_REFERENCE line, U36) |
+| I2C `scan()` never raises; a wedged bus shortens the list (`extmod/machine_i2c.c:341-356`) | caller's problem (`scan()` has no product caller: grep `.scan(` in `src/` → `asy_i2c_driver.py:192` only) | — | disposition: no product fault path |
+| zero-length probe NAK → `ValueError("No I2C device …")` (`_probe_for_device()` `:261-273`) | at setup only: the reader's `_init_*()` fails (errno 10) → R5 → R6 | A.U10.21 (`setup()` contract), A.U8.13 (`_PROBE_SETTLE_S`) | R3/R4 before R5 via A.U10.R01 (5) `_init_failed()`; note: the probe runs rp2's soft-I2C path on the same pins (`machine_i2c.c:127-145`), which treats a held-low SDA as an ACK, so a held bus is found by the first real transfer, not by the probe — nothing to change, the ladder acts on that transfer's error |
+| I2C/SPI construction raises (`ValueError` bad id or pin, `machine_i2c.c:82-103`, `machine_spi.c:161-191`) | at boot, uncaught in `build_system()` → boot fails → R7 | — | disposition: a configuration not matching the hardware (OR18 exclusion; OR18.a: escalation to reboot intended); buildgen's pin checks (G4/R25) make it unreachable for a generated device |
+| SPI read of 32+ bytes raises `OSError(EIO)` on an RX overrun (`asy_spi_driver.py:75-81, 83-97`; `machine_spi.c:303-316, 340-342`) | propagates to FRAM; the dual copy absorbs one (U16 table) | A.U13.08 (bool results) | disposition for R1-R4 at the bus layer: the port clears the overrun flag itself inside the failing call ("Clear the flag for future transfers", `machine_spi.c:309-310`) and aborts the RX DMA (`:313`), so no latched state is left for a retry, clear or re-init to remove; the retry is the dual copy's (owner, 2026-09-24: "So no retry is added … the dual-copy layer already covers the read path", SPECIFICATION.md:3755) |
+| SPI "held bus" | — | — | disposition for R3: an SPI slave drives no shared line while deselected — the FRAM's SO is High-Z whenever CS is high and "inputs from other pins are ignored" (MB85RS64V `dstxt/fram__MB85RS64V…:40-44`, MB85RS2MTA `…:45`); every CS cycle ends with CS inactive, in `finally` (`asy_fram_driver.py:158-162, 166-171, 175-180`) and on a raised `session_begin()` (`asy_spi_driver.py:142-144`) — the SPI "bus clear" is DONE-AT-HEAD on every transaction |
+| SPI controller state | `configure()` re-applies baud rate and format on every session (`asy_spi_driver.py:67` → `machine_spi_init()` `machine_spi.c:219-262`) | A.U13.08 | disposition for R4: the controller is re-configured at every session already; a re-construction adds only `spi_init()` (pico-sdk, not in the scratch tree) and the pin function select, which nothing in `src/` changes after construction; no fault class is left for it |
+| UART driver fault paths (`asy_uart_driver.py`: short write `:127-141`, `None` reads, `cancel_read_timeout()` `:241-256`, `resync_framing()` `:103-107`, re-init only by construction `:183-222`) | sentinels to the comm layer | V.U17.20 / A.U17.33 (UART ladder in J.5), A.U13.12-A.U13.14, A.U13.18 | cross-reference only (U17 did the pass): R1 the caller's retry, the resync drain as the line-level "clear", `cancel_read_timeout()` bounded by `_CANCEL_ACK_TIMEOUT_MS` and counted (`:251-254`), R4 dispositioned by A.U17.33 (rp2 latches no receive error, `ports/rp2/machine_uart.c:162-190`); U13 adds nothing |
+
+### U15 — SENS: the four sensor drivers
+
+Common to all four (so not repeated per row): R1 is the next triggered read (each `read_loop()` waits on its
+`read_event`), R5 the give-up past `max_module_error` (A.U10 table), R6/R7 the supervisor's; REST-triggered get/set
+failures (SCD30 errno 12-25 `asy_scd30_driver.py:303-397`, BMP3XX `asy_bmp3xx_driver.py:326-383`, ISL29125 per-field
+forwards `asy_isl29125_driver.py:911-1030`) report `None`/`"Failed"` to the caller and feed no streak — disposition: R1
+for a request is the client's (the page shows the failure; an automatic re-send of an SCD30 set would be a second NVM
+write nobody asked for, CLAUDE.md wear rule), and the bus-level rungs are driven by the periodic read of any reader on
+that bus, which fails on the same held bus within one period.
+
+| fault path | rungs at HEAD (evidence) | rungs by existing actions | missing → action / disposition |
+|---|---|---|---|
+| SCD30 periodic read fails (`_read_scd()` `asy_scd30_driver.py:174-187`: bus `OSError`, CRC `:613-619`, non-finite `:626-627`) | R1, R2 only inside R5 (`_init_scd()` `:161-172` → `setup()` `:577-583`: probe, firmware-version read, soft reset `:585-589`), R5, R6, R7 | A.U13.09 (bus-down raise), A.U15.01 (range gate), A.U3.03 (logging) | **R2 before R5 and R3/R4** → **A.U15.R01** (soft reset as `_recover_device()`, recovery bus, init hooks) + A.U10.R01 |
+| SCD30 data-ready interrupt edge missed (pin stays high) | R2-level re-trigger: `scd_init_irq()` `:412-420` counts 500 ms ticks with the pin high and sets `read_event` itself | A.U15.03 (saturating tick count), A.U15.41 (timer arm failure ends and re-arms) | DONE-AT-HEAD: bounded (fires after `trigger_half_sec` ticks, re-armed by the read), no log needed (a recovered edge is not a fault entry; `pr.evt` `:419`); L1 `tests/test_asy_scd30_driver.py` stuck-pin tests, L3 `scd30_real_irq_edge.py` |
+| SCD30 goes silent — data-ready never rises again (`read_loop()` waits on `read_event` `:402-403`, set only by the pin IRQ `:222-225` or by `scd_init_irq()` when the pin stays **high** `:412-420`) | none: no cycle runs, so no failure is counted; the last sample stays with its own `TS` | A.U15.12 (`_frc_idle_ticks` publishes "not measuring", FRC state 0, after two intervals without data) | disposition: silence is not a fault signal on this chip — it is also the designed state before the first `AmbPres` PUT starts continuous measurement and after `ContMeas=false` stops it (Interface Description 1.4.1, `SPECIFICATION.md:269-282` owner list; LEAD/R14 operator action), so a rung fired on silence would soft-reset an unprovisioned sensor and, through the streak, reboot the device; A.U15.12's published state is the visible signal; a held bus is still caught, because the data-ready line is a separate GPIO and the next edge's read fails and counts |
+| SCD30 setup fails at a task (re)start (errno 10 `:168-170`) | R5 by `False`, R6 | A.U10.21 | R3/R4 before R5 → A.U15.R01 (`_init_failed()`) |
+| SGP40 read fails (`_read_sgp()` `asy_sgp40_driver.py:282-328`: bus `OSError`, CRC `:578-580`, CRC generation `:627-631`) | R1; R2 only inside R5 (`_init_sgp()` `:330-340` → `setup()`/`initialize()` `:664-694`: serial, self-test, then the general call `_reset()` `:585-593`); R5-R7 | A.U15.13 (command buffer restored; serial read), A.U15.15 (the general call as the owner's decision), OR109.a (0) race fix | **R2 before R5 missing** → **A.U15.R02** (device-addressed heater-off, not the general call) + recovery bus + init hooks |
+| SGP40 skips a cycle for missing compensation (`condition=compensated`, `:530`) | no streak by design | — | disposition: not a chip fault — the SCD30's own ladder covers its source (SPEC A.4 "SGP40 skipping its VOC read … SCD30's own error counter covers it", owner-confirmed list `SPECIFICATION.md:269-282`) |
+| SGP40 FRAM backup write or restore fails (`_run_backup()` errno 14 `:427-429`, `_run_restore()` w10 `:373-377`) | R1 the next backup period / the next boot's restore | A.U15.17, A.U15.18, A.U16.06 (unreadable vs invalid) | disposition: the FRAM rungs are U16's (A.U16.R01-R03); the SGP40 keeps measuring (backup is optional, owner "no module insists on FRAM", 2026-08-11) |
+| BMP3XX read fails (`_read_bmp()` `asy_bmp3xx_driver.py:185-196`: bus `OSError`, STATUS timeout `_wait_status_bits()` `:541-553`, burst check `:446-447`, operating range `:486-487`) | R1; R2 only inside R5 (`_init_bmp()` `:198-225` → `setup()` `:623-632`: probe, chip ID, calibration, soft reset `:634-645`, then the stored OSR/IIR re-applied `:209-223`); R5-R7 | A.U13.09, A.U13.10, A.U15.25 (conversion wait) | **R2 before R5 missing** → **A.U15.R03** (soft reset plus the stored configuration) + recovery bus + init hooks |
+| ISL29125 read fails (`_read_isl()` `asy_isl29125_driver.py:368-431`: status read errno 31 `:389-393`, confirmed bus-fault pattern errno 32 `:406-409`, any other raise errno 11 `:428-430`) | R1; R2 mid-operation for two specific causes — brownout → whole configuration re-applied (`_recover_brownout()` `:465-479`), a failed write → chip read back and diverged configuration re-applied (`_verify_after_failed_write()` `:481-493`, `_check_divergence()` `:745-755`); a `configure()` write failure rolls the shadow back inside the lock (`:1370-1378`); R2 by reset only inside R5 (`setup()` `:1415-1427` → `reset()` 0x46 `:1429-1439`); R5-R7 | A.U15.32/A.U15.33/A.U15.34 (INT park, thresholds, restart state), A.U3.14 (brownout logging), A.U15.S01 (resolution shadow race) | **R2 for a plain read-failure streak missing** (status/data read failing with no brownout) → **A.U15.R04** (the brownout re-apply as `_recover_device()`) + recovery bus + init hooks |
+| a driver's chip identification fails at setup (SCD30 firmware read, SGP40 serial/self-test, BMP3XX chip ID `:626-628`, ISL29125 device ID `:1402-1407`) | R5, R6 (OR18.a: a missing/defective chip escalates, intended) | — | R3/R4 once before R5 via `_init_failed()` (A.U15.R01-R04); no further rung: a wrong or absent chip is a configuration fault (OR18 exclusion), which the ladder must not "contain" (OR18.a) — it still reaches the reboot |
+| the SGP40 general call reaches the other devices on its bus | fires at every SGP40 setup (`initialize()` `:694`) | A.U15.15 (records it as the owner's decision) | unchanged by this pass: OR113.a keeps it "the one owner-accepted reset that reaches other devices"; A.U15.R02 deliberately does not add a mid-operation general call (the participant rung must reach only the participant); A.U15.15's boundary wording conflicts with OR113.a (Conflicts 2) |
+
+### U16 — STOR: FRAM
+
+FRAM is the only device on its SPI bus in every shipped TOML (`devices/*.toml`: six `bus = "spi0"` attachments, all
+`driver = "fram"`), so no rung here can reach another device. The FRAM manager's own log is RAM-only (owner, 2026-09-16,
+G5/R32), so FRAM warnings cost no FRAM writes.
+
+| fault path | rungs at HEAD (evidence) | rungs by existing actions | missing → action / disposition |
+|---|---|---|---|
+| write-enable latch does not set after WREN (`_enable_write()` `src/asy_fram_driver.py:200-205`, used by `_write()` `:228-229` and `_set_write_protected()` `:236-237`) | none: the write is aborted, wrnno 82 (`:345-347`; 26 after A.U2.01) → chunk errno 61/62 → the caller's next write | A.U2.01 (w26 `FRAM_WEL_NOT_SET`), A.U13.09 (bus-down entry check first) | **R1 missing** — the symmetric WRDI already gets one retry (`_disable_write()` `:207-215`) → **A.U16.R01** |
+| latch does not clear after WRDI (`_disable_write()` `:207-215`) | R1 one WRDI retry, then advisory wrnno 81 (27 after A.U2.01; payload landed) | A.U2.01 (w27) | DONE-AT-HEAD (R1 bounded to one; logged once per operation, central repeat rule OR35.b); a latch that stays stuck on every write is also a lost-chip symptom → feeds A.U16.R03 |
+| chip identification fails at `setup()` (`:381-398`, RDID `:182-188`) | none inside setup; `AsyFramManager.setup()` contains it (`asy_fram_manager.py:730-737`) | A.U16.17 (the result escalates: one supervised task that ends, R5 → R6), A.U16.10 (both locks), A.U10.21 | **R1 missing** before the escalation → **A.U16.R02** (bounded identification retry inside `setup()`, before any logger reads, so A.U16.06's reason against a later recovery does not apply) |
+| chip stops answering mid-operation (RDID never re-checked after boot: `verify_present()` `:400-432` has no product caller, grep) | none: every write fails or warns, every consumer degrades to RAM, nothing escalates | — | **R1-R2 detection, R5, R6 missing** → **A.U16.R03** (latch anomalies trigger one identification probe under the held bus lock; a lost chip stops FRAM access and ends the manager's task; its restart re-runs `setup()`; the budget reboots) |
+| 32+ byte read raises `OSError(EIO)` (`_read_chunk()` `except` `asy_fram_manager.py:353-356`, errno 47) | the other copy (`_read()` `:136-157`) | A.U16.06 (fault vs content), G5/R27 | disposition: R1 is the dual copy by owner decision ("So no retry is added … the dual-copy layer already covers the read path", owner, 2026-09-24, SPECIFICATION.md:3755); R3/R4 have nothing to clear (U13 table: the port clears the overrun flag itself) |
+| one copy invalid or blank (`_read()` `:136-172`) | R2-level repair: the valid copy rewrites the other (`:149-157`, `:165-172`) | A.U16.06, A.U16.09 | DONE-AT-HEAD; a failed repair write fails the read (legacy field-proven reason, G5/R25) |
+| both copies valid but different (`:173-177`, errno 73; 51 after A.U2.01) | hard failure; the next write heals it | A.U16.08 (owner tag restored) | disposition: owner rule "a hard failure, not a guess" (owner, 2026-07-18, OR87.a (d)) — no rung may pick a copy |
+| write verification mismatch (`:114-123`, errno 63/64; 50 after A.U2.01) | the write reports `False`; the next write rewrites both copies | — | disposition: R1 is the caller's next write (loggers on the next entry, SGP40 on the next backup); an immediate rewrite would double wear on a chip whose readback already disagrees, and a persistent disagreement reaches A.U16.R03 through the latch/identity probe only if the chip is gone — a chip that answers its ID but stores wrong data is the torn-write/corruption case the dual copy and CRC report (G5/R25) |
+| torn write by a reset (busy markers left, `_write_chunk()` `:270-291`) | the next boot reads the block invalid and re-initialises | A.U16.06 | disposition: owner-accepted all-or-nothing loss (owner, 2026-09-13, G5/R25) |
+| storage paused (`_mempause()` `:98-100, :130-132, :391-393`) or chip write-protected (`_W_PROTECTED` `:223-227`) | refusal, w25 / w28 | A.U16.19 | disposition: commanded states, not faults — no rung may override an operator's pause or protection |
+| write-protection readback mismatch (`_set_write_protected()` `:243-248`, errno 95; 45 after A.U2.01) | returns `False` | A.U16.15 (partial protection) | disposition: an explicit command with no product caller (grep `set_write_protected(` in `src/`, `buildgen/`: definition only); the caller's retry |
+| `verify_present()` lock wait times out (`:407-411`) | returns `False`, errno 97 (19 after A.U2.01) | A.U10.26 | disposition: no product caller; A.U16.R03 probes from inside the hold instead |
+| SPI bus clear / controller re-init | — | — | disposition: U13 table (CS deasserts in `finally` on every cycle; the controller is re-configured every session) |
+
+### U17 — UART (check and cross-reference only)
+
+V.U17.20 did this pass and A.U17.33 carries it into SPEC J.5; checked against OR113.a here, nothing redone.
+
+| fault path | rungs (evidence per V.U17.20) | check against OR113.a |
+|---|---|---|
+| a frame fails (CRC, timeout, wrong kind) — `asy_uart_comm.py` `_read_frame()` `:498-505` | R1 the caller's next exchange (J.5, J.9; the exerciser retries each period, `asy_uart_link_driver.py:114-120`); line-level "clear": `_fault()` → `_resync()` drain-until-quiet ×4 bounded, then hold-off (`:536-596`); `clear()` from outside (`:612-625`); boot drain in `setup()` (`:1093-1102`) | consistent: bounded (×4 drain, hold-off window), logged once per episode (A.U3.08, the central rule), race-free (drain inside `async with self.uart`), L1 `tests/test_uart_comm_hazard.py`, L2 `tests/test_digital_twin_uart_link.py:219`, L3 `uart_crossover_recovery.py`; L4 `tests_hardware/bench/test_uart_link_under_api_load.py` runs the link under full API load (no fault injected there — A.U17.25's tier map lists the L3/L4 fault-injection gaps for U26) |
+| controller re-init | not a rung | A.U17.33 dispositions it from source (rp2 latches no receive error, `ports/rp2/machine_uart.c:162-190`), lead-resolved (AC_NOTES 16) — consistent with the ladder's "escalate only when the milder step does not work": no fault class exists for this step to fix |
+| construction refused / task ends | R5 (responder at HEAD, initiator A.U17.07), R6, R7 | consistent |
+| participant (the peer MCU) | not reachable from this side | disposition as in A.U17.33: the protocol is initiator/responder with no reset command (CLAUDE.md UART rule; no negotiation, owner 2026-09-11) |
+
+No conflict with A.U17.33 or any other U17 action; A.U14.R01's F.2 text points to J.5 for the UART ladder.
+
+### U18 — NET: WiFi, NTP, DNS, captive DNS, UDP sockets
+
+The network side has no shared bus to clear; its "participant" is the CYW43 radio (local) or a remote server (not
+recoverable from here). OR18/OR18.a split the cases: an abnormal but harmless situation (an unreachable server, an absent
+AP) is handled inside the module and must not escalate; a failing chip may escalate to a reboot.
+
+| fault path | rungs at HEAD (evidence) | rungs by existing actions | missing → action / disposition |
+|---|---|---|---|
+| a WLAN hardware call raises (`hw_op_failed` set at `src/asy_wifi_service.py:292, 347, 350, 374, 455, 500, 598`; errno 11-16/18) | R1 the next `wifi_refresh_sec` iteration; streak `_error_check()` `:836-841` → give-up errno 17 → R5 (task restart: `_reset_wlan_connect_state()` `:295-316` disconnects, never re-initialises the radio) → R6 → R7 | A.U18.32 (retry wait unlocked), A.U18.34 (lock table), A.U3.03 | **R2 missing** — the CYW43's own reset (power it off and reload its firmware) exists in the code only as the STA↔AP mode switch (`_switch_wlan_mode()` `:278-293`) → **A.U18.R01** through A.U10.R01's hook |
+| STA connect fails (`STAT_WRONG_PASSWORD`/`NO_AP_FOUND`/`CONNECT_FAIL`, `:604-619`) or a link is lost | R1 retry every refresh / 60 s after an established link (`:469-477`); after `conn_fail_to_hotspot` failures the hotspot (`:479-489`); after a second streak the permanent deactivation (`:491-501`) | A.U18.28-A.U18.30 (hotspot repeat, restart, deactivated LED), A.U18.36 | disposition: an absent AP or a wrong password is an environment/configuration condition handled inside the module (OR18, OR18.a); the terminal deactivation is owner-confirmed behaviour — "permanent WiFi deactivation after a second STA failure streak … only a physical power-cycle clears it" (SPEC A.4 owner-confirmed list, `SPECIFICATION.md:269-274`; LED pattern owner, 2026-09-29, OR97.a (19)) — so no rung past it |
+| CYW43 `isconnected()` false positive (link gone, reported up) | none by design; power cycle | — | disposition: owner rule — "a power cycle/`hard_reset()` is a deliberately stable, intended recovery feature … don't propose an independent reachability-probe mechanism" (CLAUDE.md hard rules; SPEC F.2 `:3625-3636`); without a detection signal no rung can fire |
+| hotspot timer cannot be armed (`:419-422`) | R1 the next refresh re-arms | A.U18.24 (persists) | DONE-AT-HEAD with A.U18.24 |
+| NTP: name does not resolve, no reply, reply rejected, request not sent (`asy_ntp_client.py:167-191, 213-241, 243-268`) | R1: resolver tries every server (DHCP then fallback, `asy_dns_client.py:110-118`); synced device 3 retries × 15 s (`:272-293`); unsynced device retries forever with backoff (`:434-444`, C.7.2 "never gives up"); each fetch builds a fresh socket (`:175-191`) | A.U18.10 (fallback servers as config), A.U18.14 (send failure logged), A.U18.15 (disconnect in `finally`), A.U18.20-A.U18.23 | disposition for R2-R6: a remote server is not a local participant, and OR18's own example is this case ("NTP … just stalling its task if the server was unreachable instead of handling it internally … should be fixed", owner, 2026-09-25) — the module handles it inside, never ends its task on it |
+| NTP retry/refresh timer cannot be armed (`:281-290`, `:332-350`) | cancels this retry cycle; the regular check recovers | A.U18.22, A.U18.23 (re-arm from its task) | DONE with A.U18.23 |
+| a UDP socket cannot be set up, bound or connected (`asy_udp_socket.py:73-102`) | R1+R2 in one: the socket is torn down (`_disconnect_locked()` `:104-124`) and a fresh one is built on the next call — a lazy re-create per call | A.U18.13 (one attempt per call; the next call retries), A.U18.05 (idle poll rate) | DONE-AT-HEAD: bounded by the callers' own cadence (captive DNS backoff `captive_dns.py:122-127`, NTP/DNS per attempt), no log inside the class (it owns none; callers log, A.U18.15) |
+| a send/receive on a live UDP socket fails (`sendto()`/`write()`/`recvfrom()` `:152-180` return `None`) | R1 the caller's next call; the socket is kept | A.U18.14, A.U18.17 (POLLERR verdict) | disposition for a re-create rung: on rp2 a bound UDP socket's state changes only at creation and on close or a failed use of an unconnected pcb (`extmod/modlwip.c:1008, 1276-1282, 1710`), so a failure on a live socket is a transient (e.g. `MemoryError` for the receive buffer) that the next call retries; A.U18.17 records that its `POLLERR` arm never fires on rp2 |
+| captive DNS loop error (`captive_dns.py:84-137`) | per-packet drop; `None` data → warning and backoff up to its max (`:122-127`); any other exception → errno 2, 3 s, continue (`:133-136`); ends only on cancel or an invalid `ifconfig()` pair (`:88-92`) | A.U18.02-A.U18.07 | DONE-AT-HEAD: the task never dies of a fault; its socket re-creates lazily (above); an invalid AP address is a configuration fault (OR18 exclusion) |
+| TCP send stall on a full lwIP arena (10 s `ERR_MEM` retry, `extmod/modlwip.c:800-812`) | none | A.U14.30 (lwIP sizing), U19's `TCP_NODELAY` action (OR112.a) | referenced, not repeated: OR112.a closes it by sizing; phase C tests it |
+
+## Actions
+
+**U10**
 
 ### A.U10.R01 One escalation ladder in `SensorReader._error_check()`
 - **Why**: G4/R22 — "Work (OR113.a (2), all bus units …): the ladder per bus and participant — … U10 (escalation
@@ -101,7 +198,7 @@ R6 reboot · R7 watchdog.
   plain `SensorReader`, `max_module_error` 0 or 3: base hook returns `None`, no recovery bus → unchanged);
   driver tests that drive a streak to ≥ 2 with a hooked driver re-derive their scripted transactions and error counts
   at execution: `tests/test_asy_bmp3xx_driver.py:1400-1411, 1977-1988`, `tests/test_asy_isl29125_driver.py:953, 2539`,
-  `tests/test_asy_scd30_driver.py:1283-1290`, `tests/test_asy_sgp40_driver.py:369-443, 505-510, 585-589`,
+  `tests/test_asy_scd30_driver.py:1286-1331`, `tests/test_asy_sgp40_driver.py:369-443, 505-510, 585-589`,
   `tests/test_asy_wifi_service.py` streak tests (grep `max_module_error=`), `tests/test_notification_scd30_integration.py`,
   `tests/test_notification_scd30_sgp40_integration.py` (`ErrCount` values after a streak); new L1
   `tests/test_base_classes.py` — a `SensorReader` subclass with a counting `_recover_device()` and a stub bus whose
@@ -124,22 +221,7 @@ R6 reboot · R7 watchdog.
   member order for the new methods), A.U13.R01 (`I2C.recover()`); co-lands with A.U15.R01-R04, A.U18.R01 — A-C merges.
 - **Kind**: code | test | doc
 
-## U13 — BUS: I2C, SPI, UART bus layer
-
-| fault path | rungs at HEAD (evidence) | rungs by existing actions | missing → action / disposition |
-|---|---|---|---|
-| I2C transfer raises `OSError(EIO)` (NAK, bus error) or `OSError(ETIMEDOUT)` (held/stretched line) — `_read_into_scratch()` `src/asy_i2c_driver.py:58-68`, `_writeto_mem()` `:70-75`, `readfrom_into()` `:194-208`, `writeto()` `:210-231`; raise surface `ports/rp2/machine_i2c.c:150-155` | propagates to the driver (header `:4-6`): R1/R2/R5 are the driver's and the supervisor's (U10 table) | A.U13.07 (bool results), A.U13.09 (drivers raise on an unavailable bus) | **R3 bus clear and R4 controller re-init mid-operation missing** — the wrapper has no way to release a held SDA or rebuild the controller after construction (`init()` `:163-178` is reached only from `__init__` `:37`) → **A.U13.R01** (`I2C.recover()`), escalated by A.U10.R01, four-tier coverage **A.U13.R02** |
-| I2C bus held at power-up / after an MCU-only reset (a slave stopped mid-byte) | none: construction drives no SCL pulse (`machine_i2c.c:106-115`) | A.U14.17 option (a) (boot clear before construction; no longer pending, OR113.a (1)) | R3 at boot owned by A.U14.17; its runtime twin is A.U13.R01, sharing one clock-out function; its "never at runtime" wording conflicts (Conflicts 1); the boot result is logged through A.U10.R01's `_init_done()` |
-| a slave holds **SCL** low (stretch past the bus timeout, stuck clock) | transfers end `ETIMEDOUT` (`machine_i2c.c:151-152`) | — | disposition for R3: a clock-out needs SCL; A.U13.R01 waits for SCL release up to the bus timeout (a legitimate SCD30 stretch is ≤ 150 ms, Interface Description p.2, under the 200 ms `@requires` timeout `asy_scd30_driver.py:108`), then reports `SCL held` and still runs R4; what frees a slave holding SCL is its own reset (R2, if its interface still answers) or a power cycle — an operator action (A.U14.17's DEVICE_REFERENCE line, U36) |
-| I2C `scan()` never raises; a wedged bus shortens the list (`extmod/machine_i2c.c:341-356`) | caller's problem (`scan()` has no product caller: grep `.scan(` in `src/` → `asy_i2c_driver.py:192` only) | — | disposition: no product fault path |
-| zero-length probe NAK → `ValueError("No I2C device …")` (`_probe_for_device()` `:261-273`) | at setup only: the reader's `_init_*()` fails (errno 10) → R5 → R6 | A.U10.21 (`setup()` contract), A.U8.13 (`_PROBE_SETTLE_S`) | R3/R4 before R5 via A.U10.R01 (5) `_init_failed()`; note: the probe runs rp2's soft-I2C path on the same pins (`machine_i2c.c:127-145`), which treats a held-low SDA as an ACK, so a held bus is found by the first real transfer, not by the probe — nothing to change, the ladder acts on that transfer's error |
-| I2C/SPI construction raises (`ValueError` bad id or pin, `machine_i2c.c:82-103`, `machine_spi.c:161-191`) | at boot, uncaught in `build_system()` → boot fails → R7 | — | disposition: a configuration not matching the hardware (OR18 exclusion; OR18.a: escalation to reboot intended); buildgen's pin checks (G4/R25) make it unreachable for a generated device |
-| SPI read of 32+ bytes raises `OSError(EIO)` on an RX overrun (`asy_spi_driver.py:75-81, 83-97`; `machine_spi.c:303-316, 340-342`) | propagates to FRAM; the dual copy absorbs one (U16 table) | A.U13.08 (bool results) | disposition for R1-R4 at the bus layer: the port clears the overrun flag itself inside the failing call ("Clear the flag for future transfers", `machine_spi.c:309-310`) and aborts the RX DMA (`:313`), so no latched state is left for a retry, clear or re-init to remove; the retry is the dual copy's (owner, 2026-09-24: "So no retry is added … the dual-copy layer already covers the read path", SPECIFICATION.md:3755) |
-| SPI "held bus" | — | — | disposition for R3: an SPI slave drives no shared line while deselected — the FRAM's SO is High-Z whenever CS is high and "inputs from other pins are ignored" (MB85RS64V `dstxt/fram__MB85RS64V…:40-44`, MB85RS2MTA `…:45`); every CS cycle ends with CS inactive, in `finally` (`asy_fram_driver.py:158-162, 166-171, 175-180`) and on a raised `session_begin()` (`asy_spi_driver.py:142-144`) — the SPI "bus clear" is DONE-AT-HEAD on every transaction |
-| SPI controller state | `configure()` re-applies baud rate and format on every session (`asy_spi_driver.py:67` → `machine_spi_init()` `machine_spi.c:219-262`) | A.U13.08 | disposition for R4: the controller is re-configured at every session already; a re-construction adds only `spi_init()` (pico-sdk, not in the scratch tree) and the pin function select, which nothing in `src/` changes after construction; no fault class is left for it |
-| UART driver fault paths (`asy_uart_driver.py`: short write `:127-141`, `None` reads, `cancel_read_timeout()` `:241-256`, `resync_framing()` `:103-107`, re-init only by construction `:183-222`) | sentinels to the comm layer | V.U17.20 / A.U17.33 (UART ladder in J.5), A.U13.12-A.U13.14, A.U13.18 | cross-reference only (U17 did the pass): R1 the caller's retry, the resync drain as the line-level "clear", `cancel_read_timeout()` bounded by `_CANCEL_ACK_TIMEOUT_MS` and counted (`:251-254`), R4 dispositioned by A.U17.33 (rp2 latches no receive error, `ports/rp2/machine_uart.c:162-190`); U13 adds nothing |
-
-## U13 — Actions
+**U13**
 
 ### A.U13.R01 `I2C.recover()`: clear the bus, then rebuild its controller
 - **Why**: G4/R22 — "code+test in U13 (bus layer rungs)"; OR113.a (2) "clear the bus (release a held line: SCL clock-out
@@ -154,8 +236,9 @@ R6 reboot · R7 watchdog.
   its result in `self._boot_clear_status` (0 when SDA read high). (2) `_clear_bus(scl_pin, sda_pin) -> int` (A.U14.17's
   function, one shared implementation) returns a status mask instead of nothing: `_REC_SDA_LOW = const(1)` SDA read low
   and pulses were sent, `_REC_SDA_STUCK = const(2)` SDA still low after the ninth pulse; it builds its pins with
-  `pull=Pin.PULL_UP` (a `Pin()` given no `pull` removes the pull-ups, `ports/rp2/machine_pin.c:299-306`) — SCL as
-  `Pin.OPEN_DRAIN` `value=1`, SDA `Pin.IN` — clocks at most 9 times (`time.sleep_us(_CLEAR_HALF_PERIOD_US)` per half
+  `pull=Pin.PULL_UP` (a `Pin()` given no `pull` removes the pull-ups, `ports/rp2/machine_pin.c:299-306`) — SCL and SDA both
+  `Pin.OPEN_DRAIN` `value=1` (rp2 emulates open drain by direction: 1 releases the line and reads it, 0 drives it low,
+  `ports/rp2/mphalport.h:158-168`), so SDA can be read while released and driven low for the STOP — clocks at most 9 times (`time.sleep_us(_CLEAR_HALF_PERIOD_US)` per half
   period, `_CLEAR_HALF_PERIOD_US = const(5)` tagged `# @tunable i2c.clear_half_period_us = 5`, 100 kHz, the SCD30's
   ceiling, SCD30 Interface Description p.2) and ends with a STOP (SDA low while SCL high, then released); `_CLEAR_PULSES
   = const(9)` is the I2C byte-plus-acknowledge count, a protocol constant, untagged. (3) New `def
@@ -252,30 +335,7 @@ R6 reboot · R7 watchdog.
 - **Depends**: A.U13.R01, A.U10.R01; fakes U24/U25; U26 (hardware scripts) executes (4).
 - **Kind**: test | hardware
 
-## U15 — SENS: the four sensor drivers
-
-Common to all four (so not repeated per row): R1 is the next triggered read (each `read_loop()` waits on its
-`read_event`), R5 the give-up past `max_module_error` (A.U10 table), R6/R7 the supervisor's; REST-triggered get/set
-failures (SCD30 errno 12-25 `asy_scd30_driver.py:303-397`, BMP3XX `asy_bmp3xx_driver.py:326-383`, ISL29125 per-field
-forwards `asy_isl29125_driver.py:911-1030`) report `None`/`"Failed"` to the caller and feed no streak — disposition: R1
-for a request is the client's (the page shows the failure; an automatic re-send of an SCD30 set would be a second NVM
-write nobody asked for, CLAUDE.md wear rule), and the bus-level rungs are driven by the periodic read of any reader on
-that bus, which fails on the same held bus within one period.
-
-| fault path | rungs at HEAD (evidence) | rungs by existing actions | missing → action / disposition |
-|---|---|---|---|
-| SCD30 periodic read fails (`_read_scd()` `asy_scd30_driver.py:174-187`: bus `OSError`, CRC `:613-619`, non-finite `:626-627`) | R1, R2 only inside R5 (`_init_scd()` `:161-172` → `setup()` `:577-583`: probe, firmware-version read, soft reset `:585-589`), R5, R6, R7 | A.U13.09 (bus-down raise), A.U15.01 (range gate), A.U3.03 (logging) | **R2 before R5 and R3/R4** → **A.U15.R01** (soft reset as `_recover_device()`, recovery bus, init hooks) + A.U10.R01 |
-| SCD30 data-ready interrupt edge missed (pin stays high) | R2-level re-trigger: `scd_init_irq()` `:412-420` counts 500 ms ticks with the pin high and sets `read_event` itself | A.U15.03 (saturating tick count), A.U15.41 (timer arm failure ends and re-arms) | DONE-AT-HEAD: bounded (fires after `trigger_half_sec` ticks, re-armed by the read), no log needed (a recovered edge is not a fault entry; `pr.evt` `:419`); L1 `tests/test_asy_scd30_driver.py` stuck-pin tests, L3 `scd30_real_irq_edge.py` |
-| SCD30 setup fails at a task (re)start (errno 10 `:168-170`) | R5 by `False`, R6 | A.U10.21 | R3/R4 before R5 → A.U15.R01 (`_init_failed()`) |
-| SGP40 read fails (`_read_sgp()` `asy_sgp40_driver.py:282-328`: bus `OSError`, CRC `:578-580`, CRC generation `:627-631`) | R1; R2 only inside R5 (`_init_sgp()` `:330-340` → `setup()`/`initialize()` `:664-694`: serial, self-test, then the general call `_reset()` `:585-593`); R5-R7 | A.U15.13 (command buffer restored; serial read), A.U15.15 (the general call as the owner's decision), OR109.a (0) race fix | **R2 before R5 missing** → **A.U15.R02** (device-addressed heater-off, not the general call) + recovery bus + init hooks |
-| SGP40 skips a cycle for missing compensation (`condition=compensated`, `:530`) | no streak by design | — | disposition: not a chip fault — the SCD30's own ladder covers its source (SPEC A.4 "SGP40 skipping its VOC read … SCD30's own error counter covers it", owner-confirmed list `SPECIFICATION.md:269-282`) |
-| SGP40 FRAM backup write or restore fails (`_run_backup()` errno 14 `:427-429`, `_run_restore()` w10 `:373-377`) | R1 the next backup period / the next boot's restore | A.U15.17, A.U15.18, A.U16.06 (unreadable vs invalid) | disposition: the FRAM rungs are U16's (A.U16.R01-R03); the SGP40 keeps measuring (backup is optional, owner "no module insists on FRAM", 2026-08-11) |
-| BMP3XX read fails (`_read_bmp()` `asy_bmp3xx_driver.py:185-196`: bus `OSError`, STATUS timeout `_wait_status_bits()` `:541-553`, burst check `:446-447`, operating range `:486-487`) | R1; R2 only inside R5 (`_init_bmp()` `:198-225` → `setup()` `:623-632`: probe, chip ID, calibration, soft reset `:634-645`, then the stored OSR/IIR re-applied `:209-223`); R5-R7 | A.U13.09, A.U13.10, A.U15.25 (conversion wait) | **R2 before R5 missing** → **A.U15.R03** (soft reset plus the stored configuration) + recovery bus + init hooks |
-| ISL29125 read fails (`_read_isl()` `asy_isl29125_driver.py:368-431`: status read errno 31 `:389-393`, confirmed bus-fault pattern errno 32 `:406-409`, any other raise errno 11 `:428-430`) | R1; R2 mid-operation for two specific causes — brownout → whole configuration re-applied (`_recover_brownout()` `:465-479`), a failed write → chip read back and diverged configuration re-applied (`_verify_after_failed_write()` `:481-493`, `_check_divergence()` `:745-755`); a `configure()` write failure rolls the shadow back inside the lock (`:1370-1378`); R2 by reset only inside R5 (`setup()` `:1415-1427` → `reset()` 0x46 `:1429-1439`); R5-R7 | A.U15.32/A.U15.33/A.U15.34 (INT park, thresholds, restart state), A.U3.14 (brownout logging), A.U15.S01 (resolution shadow race) | **R2 for a plain read-failure streak missing** (status/data read failing with no brownout) → **A.U15.R04** (the brownout re-apply as `_recover_device()`) + recovery bus + init hooks |
-| a driver's chip identification fails at setup (SCD30 firmware read, SGP40 serial/self-test, BMP3XX chip ID `:626-628`, ISL29125 device ID `:1402-1407`) | R5, R6 (OR18.a: a missing/defective chip escalates, intended) | — | R3/R4 once before R5 via `_init_failed()` (A.U15.R01-R04); no further rung: a wrong or absent chip is a configuration fault (OR18 exclusion), which the ladder must not "contain" (OR18.a) — it still reaches the reboot |
-| the SGP40 general call reaches the other devices on its bus | fires at every SGP40 setup (`initialize()` `:694`) | A.U15.15 (records it as the owner's decision) | unchanged by this pass: OR113.a keeps it "the one owner-accepted reset that reaches other devices"; A.U15.R02 deliberately does not add a mid-operation general call (the participant rung must reach only the participant); A.U15.15's boundary wording conflicts with OR113.a (Conflicts 2) |
-
-## U15 — Actions
+**U15**
 
 ### A.U15.R01 SCD30: soft reset as the participant rung
 - **Why**: G4/R22 — "code+test in … U15 … (participant rungs)"; OR113.a (2) "recover the one participant (its own reset
@@ -295,9 +355,11 @@ that bus, which fails on the same held bus within one period.
   restart runs outside both; a REST read landing inside that window fails like one during a task restart today (errno
   12, reported to that request) — a transient answer, not shared state; the reader's own next read waits for the next
   data-ready edge or the stuck-pin re-trigger.
-- **Blast**: callers `_error_check()` (A.U10.R01) · generated — · js — · tests existing: the SCD30 streak test
-  `tests/test_asy_scd30_driver.py:1283-1290` (`max_module_error=5`) now sees one 0xD304 write at the 2nd failure and one
-  bus recovery at the 3rd — its scripted fake transactions and asserted `ErrCount` re-derive; setup tests unchanged;
+- **Blast**: callers `_error_check()` (A.U10.R01) · generated — · js — · tests existing:
+  `tests/test_asy_scd30_driver.py:1286-1331` (`…recovers_error_counter_after_a_good_read_following_failures`,
+  `max_module_error=5`, two failures then a good read) now reaches the participant rung at the 2nd failure — it stubs
+  `reader.scd.reset` (else a real 2.5 s sleep) and asserts one call and one wrnno 14; `:1214`, `:1256-1283`
+  (`max_module_error=1`) unchanged (the give-up test runs first); setup tests unchanged;
   `tests/test_notification_scd30_integration.py:211-216, 262-264`, `tests/test_notification_scd30_sgp40_integration.py:282`
   (`ErrCount` after a streak) re-derive with A.U3.03; new L1 `tests/test_asy_scd30_driver.py` — two failing reads: one
   soft-reset command on the fake bus log, one persisted wrnno 14 "done"; a reset whose write raises: wrnno 14 "failed",
@@ -329,8 +391,10 @@ that bus, which fails on the same held bus within one period.
   `_HEATER_OFF_MAX_S = const(0.001)` the command's maximum duration (Table 8 "sgp4x_turn_heater_off 0x36 0x15 – – 0.1 1",
   typ./max. ms, `dstxt/sgp40__…Datasheet_SGP40.txt:512`) — a datasheet fact, untagged. (2) `SGP40_Reader._recover_device()`: `try: await
   self.sgp.turn_heater_off()` `except Exception as e: self.pr.err("Heater-off failed:", e); return False` `else: return
-  True`; the VOC algorithm state is untouched (the next `measure_raw()` restarts the hotplate, Table 8 command 0x260F),
-  so no restore is needed. (3) `self._recovery_bus = i2c`; `_init_sgp()`'s setup-failure branch `:338-340` gains `await
+  True`; the VOC algorithm state is untouched and the next `measure_raw()` re-enters measurement ("Calling the
+  sgp40_measure_raw_signal command launches/continues the VOC measurement mode", §3.1, `…Datasheet_SGP40.txt:359-360`),
+  so no restore is needed; the first sample after it comes from a hotplate that was briefly off — one sample of a
+  recovered episode, accepted as such. (3) `self._recovery_bus = i2c`; `_init_sgp()`'s setup-failure branch `:338-340` gains `await
   self._init_failed()`, its two success returns (`:343-344`, `:360-361`) `await self._init_done()`. The general call stays
   where it is — once per setup, i.e. once per task (re)start (A.U15.15) — so this pass does not make it more frequent.
 - **Blast**: callers `_error_check()` · generated — · js — · tests existing: `tests/test_asy_sgp40_driver.py:369-443`
@@ -370,10 +434,11 @@ that bus, which fails on the same held bus within one period.
   re-read only by `setup()` (`:629`).
   (3) `self._recovery_bus = i2c`; every `return False` of `_init_bmp()` (the setup failure `:203-205` and the one after
   `_apply_stored_config()`) is preceded by `await self._init_failed()`, the success `:224` by `await self._init_done()`. Race-free: `reset()` and each setter hold the device session
-  (`:640-645`, `:506-507`, `:620-621`); a concurrent REST `set_*` between the reset and the re-apply lands a newer value
-  that `_apply_stored_config()` then overwrites with the stored one only if the PUT had not yet persisted it — the
-  per-module PUT serialisation of A.U11.27 (the reader's `_set_lock`) is taken around `_apply_stored_config()` in the
-  recovery path, so a PUT and the re-apply never interleave.
+  (`:640-645`, `:506-507`, `:620-621`); a PUT landing between the reset and the re-apply could otherwise see its chip
+  write overwritten by the re-apply of the value stored before it, so `_recover_device()` holds the reader's per-module
+  PUT lock (A.U11.27's `_set_lock`) from before the reset until the re-apply ends — a PUT then runs wholly before (its
+  value is the stored one the re-apply writes) or wholly after (it writes the chip itself); no other lock is held on
+  entry (`_error_check()` runs lock-free), so the order is `_set_lock` → device session → bus lock, the same as a PUT's.
 - **Blast**: callers `_error_check()`, `_init_bmp()` · generated — · js — · tests existing:
   `tests/test_asy_bmp3xx_driver.py:1400-1411, 1977-1988` (`max_module_error=2`) see the reset and three config writes at
   the 2nd failure — re-derive; the reset tests `:351-364` unchanged; new L1 `tests/test_asy_bmp3xx_driver.py` — two
@@ -415,29 +480,7 @@ that bus, which fails on the same held bus within one period.
 - **Depends**: A.U10.R01, A.U13.R01, A.U3.14 (brownout logging), A.U15.32/A.U15.33/A.U15.34 (same functions) — A-C merges.
 - **Kind**: code | test | doc
 
-## U16 — STOR: FRAM
-
-FRAM is the only device on its SPI bus in every shipped TOML (`devices/*.toml`: six `bus = "spi0"` attachments, all
-`driver = "fram"`), so no rung here can reach another device. The FRAM manager's own log is RAM-only (owner, 2026-09-16,
-G5/R32), so FRAM warnings cost no FRAM writes.
-
-| fault path | rungs at HEAD (evidence) | rungs by existing actions | missing → action / disposition |
-|---|---|---|---|
-| write-enable latch does not set after WREN (`_enable_write()` `src/asy_fram_driver.py:200-205`, used by `_write()` `:228-229` and `_set_write_protected()` `:236-237`) | none: the write is aborted, wrnno 82 (`:345-347`) → chunk errno 61/62 → the caller's next write | A.U2.01 (w26 `FRAM_WEL_NOT_SET`), A.U13.09 (bus-down entry check first) | **R1 missing** — the symmetric WRDI already gets one retry (`_disable_write()` `:207-215`) → **A.U16.R01** |
-| latch does not clear after WRDI (`_disable_write()` `:207-215`) | R1 one WRDI retry, then advisory wrnno 81 (payload landed) | A.U2.01 (w27) | DONE-AT-HEAD (R1 bounded to one; logged once per operation, central repeat rule OR35.b); a latch that stays stuck on every write is also a lost-chip symptom → feeds A.U16.R03 |
-| chip identification fails at `setup()` (`:381-398`, RDID `:182-188`) | none inside setup; `AsyFramManager.setup()` contains it (`asy_fram_manager.py:730-737`) | A.U16.17 (the result escalates: one supervised task that ends, R5 → R6), A.U16.10 (both locks), A.U10.21 | **R1 missing** before the escalation → **A.U16.R02** (bounded identification retry inside `setup()`, before any logger reads, so A.U16.06's reason against a later recovery does not apply) |
-| chip stops answering mid-operation (RDID never re-checked after boot: `verify_present()` `:400-432` has no product caller, grep) | none: every write fails or warns, every consumer degrades to RAM, nothing escalates | — | **R1-R2 detection, R5, R6 missing** → **A.U16.R03** (latch anomalies trigger one identification probe under the held bus lock; a lost chip stops FRAM access and ends the manager's task; its restart re-runs `setup()`; the budget reboots) |
-| 32+ byte read raises `OSError(EIO)` (`_read_chunk()` `except` `asy_fram_manager.py:353-356`, errno 47) | the other copy (`_read()` `:136-157`) | A.U16.06 (fault vs content), G5/R27 | disposition: R1 is the dual copy by owner decision ("So no retry is added … the dual-copy layer already covers the read path", owner, 2026-09-24, SPECIFICATION.md:3755); R3/R4 have nothing to clear (U13 table: the port clears the overrun flag itself) |
-| one copy invalid or blank (`_read()` `:136-172`) | R2-level repair: the valid copy rewrites the other (`:149-157`, `:165-172`) | A.U16.06, A.U16.09 | DONE-AT-HEAD; a failed repair write fails the read (legacy field-proven reason, G5/R25) |
-| both copies valid but different (`:173-177`, errno 51) | hard failure; the next write heals it | A.U16.08 (owner tag restored) | disposition: owner rule "a hard failure, not a guess" (owner, 2026-07-18, OR87.a (d)) — no rung may pick a copy |
-| write verification mismatch (`:114-123`, errno 50) | the write reports `False`; the next write rewrites both copies | — | disposition: R1 is the caller's next write (loggers on the next entry, SGP40 on the next backup); an immediate rewrite would double wear on a chip whose readback already disagrees, and a persistent disagreement reaches A.U16.R03 through the latch/identity probe only if the chip is gone — a chip that answers its ID but stores wrong data is the torn-write/corruption case the dual copy and CRC report (G5/R25) |
-| torn write by a reset (busy markers left, `_write_chunk()` `:270-291`) | the next boot reads the block invalid and re-initialises | A.U16.06 | disposition: owner-accepted all-or-nothing loss (owner, 2026-09-13, G5/R25) |
-| storage paused (`_mempause()` `:98-100, :130-132, :391-393`) or chip write-protected (`_W_PROTECTED` `:223-227`) | refusal, w25 / w28 | A.U16.19 | disposition: commanded states, not faults — no rung may override an operator's pause or protection |
-| write-protection readback mismatch (`_set_write_protected()` `:243-248`, errno 45) | returns `False` | A.U16.15 (partial protection) | disposition: an explicit command with no product caller (grep `set_write_protected(` in `src/`, `buildgen/`: definition only); the caller's retry |
-| `verify_present()` lock wait times out (`:407-411`) | returns `False`, errno 19 | A.U10.26 | disposition: no product caller; A.U16.R03 probes from inside the hold instead |
-| SPI bus clear / controller re-init | — | — | disposition: U13 table (CS deasserts in `finally` on every cycle; the controller is re-configured every session) |
-
-## U16 — Actions
+**U16**
 
 ### A.U16.R01 Retry a WREN whose latch did not set, once
 - **Why**: G4/R22 — "code+test in … U16 … (participant rungs)"; OR113.a (2) "retry the transaction" first (owner,
@@ -504,13 +547,14 @@ G5/R32), so FRAM warnings cost no FRAM writes.
   HEAD a chip that goes silent after boot is never identified again: a silent SO reads back a constant status byte, so
   every write ends in "latch did not set" (0x00) or "latch did not clear" (0xFF — the payload is then reported as
   landed, `:348-350`), consumers fall back to RAM, and nothing escalates.
-- **Site**: `src/asy_fram_driver.py` `FRAM_SPI.__init__` `:98-125`, `report_set_values()` `:327-350`, `setup()`
-  `:381-398`; `src/asy_fram_manager.py` `AsyFramManager` `:618-740` (the task starter A.U16.17 adds).
+- **Site**: `src/asy_fram_driver.py` `FRAM_SPI.__init__` `:98-125`, `set_values_sync()` `:314-325`,
+  `report_set_values()` `:327-350`, `setup()` `:381-398`; `src/asy_fram_manager.py` `AsyFramManager` `:618-740` (the task starter A.U16.17 adds).
 - **Change**: (1) `FRAM_SPI.__init__` gains `self._anomalies = 0` (saturates at `_PROBE_AT`, never grows) and
   `self.lost = asyncio.Event()`. (2) `set_values_sync()` (`:314-325`, the synchronous body every chunk write goes
   through under the caller's block hold — `_set_check_sb()` `asy_fram_manager.py:244`, `_write_chunk()` `:280`,
   `_clear_chunk()` `:369`): after `self._write(...)`, a result carrying `_W_WEL_NOT_SET` or `_W_WEL_STUCK` does
-  `self._anomalies = min(self._anomalies + 1, _PROBE_AT)`, a `_W_OK` result sets it to 0 (the clean path never reaches
+  `self._anomalies = min(self._anomalies + 1, _PROBE_AT)`, any other completed write (`_W_OK`, or A.U16.R01's
+  `_W_WEL_RETRIED`) sets it to 0 (the clean path never reaches
   `report_set_values()`, which runs only for a non-zero status, `asy_fram_manager.py:245-247`). On reaching `_PROBE_AT =
   const(2)` (tagged `# @tunable fram.chip_probe_at = 2`): one `self._check_device_id()` (synchronous RDID, one CS cycle,
   under the held bus lock, no await); a match → `self._anomalies = 0` (a latch or content problem, not a lost chip; the
@@ -558,39 +602,7 @@ G5/R32), so FRAM warnings cost no FRAM writes.
   A.U13.09, A.U2.01 (errno 54), A.U3.06, A.U10.19 (task inventory); co-lands with U20's collector rewrite.
 - **Kind**: code | test | doc
 
-## U17 — UART (check and cross-reference only)
-
-V.U17.20 did this pass and A.U17.33 carries it into SPEC J.5; checked against OR113.a here, nothing redone.
-
-| fault path | rungs (evidence per V.U17.20) | check against OR113.a |
-|---|---|---|
-| a frame fails (CRC, timeout, wrong kind) — `asy_uart_comm.py` `_read_frame()` `:498-505` | R1 the caller's next exchange (J.5, J.9; the exerciser retries each period, `asy_uart_link_driver.py:114-120`); line-level "clear": `_fault()` → `_resync()` drain-until-quiet ×4 bounded, then hold-off (`:536-596`); `clear()` from outside (`:612-625`); boot drain in `setup()` (`:1093-1102`) | consistent: bounded (×4 drain, hold-off window), logged once per episode (A.U3.08, the central rule), race-free (drain inside `async with self.uart`), L1 `tests/test_uart_comm_hazard.py`, L2 `tests/test_digital_twin_uart_link.py:219`, L3 `uart_crossover_recovery.py`; L4 `tests_hardware/bench/test_uart_link_under_api_load.py` runs the link under full API load (no fault injected there — A.U17.25's tier map lists the L3/L4 fault-injection gaps for U26) |
-| controller re-init | not a rung | A.U17.33 dispositions it from source (rp2 latches no receive error, `ports/rp2/machine_uart.c:162-190`), lead-resolved (AC_NOTES 16) — consistent with the ladder's "escalate only when the milder step does not work": no fault class exists for this step to fix |
-| construction refused / task ends | R5 (responder at HEAD, initiator A.U17.07), R6, R7 | consistent |
-| participant (the peer MCU) | not reachable from this side | disposition as in A.U17.33: the protocol is initiator/responder with no reset command (CLAUDE.md UART rule; no negotiation, owner 2026-09-11) |
-
-No conflict with A.U17.33 or any other U17 action; A.U14.R01's F.2 text points to J.5 for the UART ladder.
-
-## U18 — NET: WiFi, NTP, DNS, captive DNS, UDP sockets
-
-The network side has no shared bus to clear; its "participant" is the CYW43 radio (local) or a remote server (not
-recoverable from here). OR18/OR18.a split the cases: an abnormal but harmless situation (an unreachable server, an absent
-AP) is handled inside the module and must not escalate; a failing chip may escalate to a reboot.
-
-| fault path | rungs at HEAD (evidence) | rungs by existing actions | missing → action / disposition |
-|---|---|---|---|
-| a WLAN hardware call raises (`hw_op_failed` set at `src/asy_wifi_service.py:292, 347, 350, 374, 455, 500, 598`; errno 11-16/18) | R1 the next `wifi_refresh_sec` iteration; streak `_error_check()` `:836-841` → give-up errno 17 → R5 (task restart: `_reset_wlan_connect_state()` `:295-316` disconnects, never re-initialises the radio) → R6 → R7 | A.U18.32 (retry wait unlocked), A.U18.34 (lock table), A.U3.03 | **R2 missing** — the CYW43's own reset (power it off and reload its firmware) exists in the code only as the STA↔AP mode switch (`_switch_wlan_mode()` `:278-293`) → **A.U18.R01** through A.U10.R01's hook |
-| STA connect fails (`STAT_WRONG_PASSWORD`/`NO_AP_FOUND`/`CONNECT_FAIL`, `:604-619`) or a link is lost | R1 retry every refresh / 60 s after an established link (`:469-477`); after `conn_fail_to_hotspot` failures the hotspot (`:479-489`); after a second streak the permanent deactivation (`:491-501`) | A.U18.28-A.U18.30 (hotspot repeat, restart, deactivated LED), A.U18.36 | disposition: an absent AP or a wrong password is an environment/configuration condition handled inside the module (OR18, OR18.a); the terminal deactivation is owner-confirmed behaviour — "permanent WiFi deactivation after a second STA failure streak … only a physical power-cycle clears it" (SPEC A.4 owner-confirmed list, `SPECIFICATION.md:269-274`; LED pattern owner, 2026-09-29, OR97.a (19)) — so no rung past it |
-| CYW43 `isconnected()` false positive (link gone, reported up) | none by design; power cycle | — | disposition: owner rule — "a power cycle/`hard_reset()` is a deliberately stable, intended recovery feature … don't propose an independent reachability-probe mechanism" (CLAUDE.md hard rules; SPEC F.2 `:3625-3636`); without a detection signal no rung can fire |
-| hotspot timer cannot be armed (`:419-422`) | R1 the next refresh re-arms | A.U18.24 (persists) | DONE-AT-HEAD with A.U18.24 |
-| NTP: name does not resolve, no reply, reply rejected, request not sent (`asy_ntp_client.py:167-191, 213-241, 243-268`) | R1: resolver tries every server (DHCP then fallback, `asy_dns_client.py:110-118`); synced device 3 retries × 15 s (`:272-293`); unsynced device retries forever with backoff (`:434-444`, C.7.2 "never gives up"); each fetch builds a fresh socket (`:175-191`) | A.U18.10 (fallback servers as config), A.U18.14 (send failure logged), A.U18.15 (disconnect in `finally`), A.U18.20-A.U18.23 | disposition for R2-R6: a remote server is not a local participant, and OR18's own example is this case ("NTP … just stalling its task if the server was unreachable instead of handling it internally … should be fixed", owner, 2026-09-25) — the module handles it inside, never ends its task on it |
-| NTP retry/refresh timer cannot be armed (`:281-290`, `:332-350`) | cancels this retry cycle; the regular check recovers | A.U18.22, A.U18.23 (re-arm from its task) | DONE with A.U18.23 |
-| a UDP socket cannot be set up, bound or connected (`asy_udp_socket.py:73-102`) | R1+R2 in one: the socket is torn down (`_disconnect_locked()` `:104-124`) and a fresh one is built on the next call — a lazy re-create per call | A.U18.13 (one attempt per call; the next call retries), A.U18.05 (idle poll rate) | DONE-AT-HEAD: bounded by the callers' own cadence (captive DNS backoff `captive_dns.py:122-127`, NTP/DNS per attempt), no log inside the class (it owns none; callers log, A.U18.15) |
-| a send/receive on a live UDP socket fails (`sendto()`/`write()`/`recvfrom()` `:152-180` return `None`) | R1 the caller's next call; the socket is kept | A.U18.14, A.U18.17 (POLLERR verdict) | disposition for a re-create rung: on rp2 a bound UDP socket's state changes only at creation and on close or a failed use of an unconnected pcb (`extmod/modlwip.c:1008, 1276-1282, 1710`), so a failure on a live socket is a transient (e.g. `MemoryError` for the receive buffer) that the next call retries; A.U18.17 records that its `POLLERR` arm never fires on rp2 |
-| captive DNS loop error (`captive_dns.py:84-137`) | per-packet drop; `None` data → warning and backoff up to its max (`:122-127`); any other exception → errno 2, 3 s, continue (`:133-136`); ends only on cancel or an invalid `ifconfig()` pair (`:88-92`) | A.U18.02-A.U18.07 | DONE-AT-HEAD: the task never dies of a fault; its socket re-creates lazily (above); an invalid AP address is a configuration fault (OR18 exclusion) |
-| TCP send stall on a full lwIP arena (10 s `ERR_MEM` retry, `extmod/modlwip.c:800-812`) | none | A.U14.30 (lwIP sizing), U19's `TCP_NODELAY` action (OR112.a) | referenced, not repeated: OR112.a closes it by sizing; phase C tests it |
-
-## U18 — Actions
+**U18**
 
 ### A.U18.R01 WiFi: re-initialise the radio as the participant rung
 - **Why**: G4/R22 / OR113.a (2) "every bus, every participant … recover the one participant (its own reset command or
@@ -634,3 +646,130 @@ AP) is handled inside the module and must not escalate; a failing chip may escal
   (hotspot and deactivated paths), A.U10.18 (`wifi_mode_lock` name) — A-C merges. U18's verifier is still running: A-C
   re-checks these line numbers against its applied changes.
 - **Kind**: code | test | doc
+
+**U14** — the ladder's home text (no action existed)
+
+G4/R22's State assigns "doc in U14/U36 (SPEC F.2, CLAUDE.md wedged-bus rule rewritten)" and OR113.a says "CLAUDE.md's
+wedged-bus rule, SPEC F.2 and G4/R22 are rewritten to this ladder"; `audit/actions/U14.md` predates OR113 and carries no
+such action (grep `OR113`/`ladder` in `U14.md` and `verify/U14.md`: none), so it is written here with a U14 ID.
+
+### A.U14.R01 F.2 and CLAUDE.md state the recovery ladder
+- **Why**: OR113.a "CLAUDE.md's wedged-bus rule, SPEC F.2 and G4/R22 are rewritten to this ladder" (owner, 2026-09-30);
+  G4/R22 State "doc in U14/U36"; harmonization 38.
+- **Site**: `SPECIFICATION.md:3604` (F.2 heading), `:3606-3608` (the wedged-bus head sentence, also edited by A.U0.37 and
+  A.U14.16), `:3617-3623` (the hot-unplug paragraph, also A.U14.17 and A.U14.38); `CLAUDE.md:193-196` (hard rule, also
+  A.U0.22).
+- **Change**: (1) Heading → "## F.2 Blocking calls and the recovery ladder". (2) `:3606-3608` → "**Recovery follows one
+  ladder, smallest blast radius first, escalating only when the milder step fails** (owner, 2026-09-30: 'always try to
+  solve / recover from issues with the smallest possible blast radius … escalating up to a full bus reset is absolutely
+  allowed if the mild measures don't work out'): retry; the participant's own reset or re-configuration; clear the bus;
+  re-initialise its controller; restart the task; reboot; the hardware watchdog last. A `machine.I2C`/`machine.SPI`
+  transfer in flight cannot be interrupted — no await point exists inside it — so the ladder acts after a transfer
+  returns an error; rp2 bounds each I2C transfer by the bus timeout, and a call that never returns is the watchdog's (a
+  stalled chip may still reach a reboot, owner, 2026-09-25)." — followed by A.U14.16's getaddrinfo/timeout-wrap text
+  unchanged. (3) `:3617-3623` → "**The I2C ladder, per sensor** (C.7): a failed cycle is retried by the next trigger; at
+  the second consecutive failure the driver recovers its chip (SCD30 and BMP3XX soft reset, BMP3XX then re-applying its
+  stored configuration; ISL29125 re-applying its whole configuration; SGP40 heater-off to idle); at the third the bus is
+  recovered — `I2C.recover()` clocks a held SDA free with up to nine SCL pulses and a STOP as plain GPIO, then
+  re-constructs the controller with the full parameter set (rp2's only controller re-init: `machine.I2C.init()` is
+  unsupported and `deinit()` a no-op, F.5.1), all under the bus lock; past `max_module_error` the task ends and the
+  supervisor restarts it with a fresh setup (probe, identification, the chip's reset); the restart budget reboots the
+  device, and every I2C bus is cleared once at boot before its controller is constructed. Each rung fires at most once
+  per failure episode and logs one warning. The SGP40 general call stays the one reset that reaches other devices, at
+  setup only (C.8). **Hot-unplug/replug is a kept feature: 'Live bus reconnect must be preserved' (owner, 2026-07-13)** —
+  a chip unplugged and replugged is recovered by these rungs without a reboot when it is back before the restart budget
+  runs out, as for every declared chip; a slave holding SCL, or one that nine pulses do not free, needs a power cycle — an
+  operator action (DEVICE_REFERENCE.md). FRAM (C.3.1, A.4): a WREN retried once, identification retried at setup, a chip
+  lost mid-operation stopped and set up again by its task's restart. WiFi (A.4): repeated radio errors re-initialise the
+  radio before the task gives up. UART: J.5." — A.U14.38's proof sentence appends to this paragraph. (4) `CLAUDE.md:193-196`
+  → "- **A wedged I2C bus or sensor recovers through the recovery ladder, smallest blast radius first — retry, the
+  participant's own reset, bus clear and controller re-init, task restart, reboot, the hardware watchdog last** (owner,
+  2026-09-30); a transfer in flight cannot be interrupted, so the ladder acts after it returns an error, and a call that
+  never returns is the watchdog's. Full ladder and which waits can be timeout-wrapped: SPECIFICATION.md Part F.2." [src:
+  OR113.a, G4/R22, harmonization 38]
+- **Blast**: callers — · generated — · js — · tests — (no test pins F.2's or CLAUDE.md's wording: grep "accepted
+  backstop" in `tests*/`: none; the old heading text appears nowhere else outside `audit/`, grep "wedged-bus backstop":
+  `SPECIFICATION.md:3604` only) · twin — · docs BACKLOG `:58-67` (A.U14.16 / A.U0.22 wording: the deferred goal of a
+  non-blocking alternative to an uninterruptible transfer stays, its "backstopped by the hardware watchdog" becomes
+  "the ladder acts once it returns; one that never returns is the watchdog's"); SPEC C.7 (A.U10.R01), C.8 (A.U15.R02,
+  Conflicts 2), C.3 (A.U13.R01), F.5.1 (A.U14.04 + A.U13.R01's sentence); DEVICE_REFERENCE.md operator actions (U36,
+  LEAD/R14) gains the power-cycle line A.U14.17 names · toml — · uart —.
+- **Depends**: A.U14.16, A.U14.17 (Conflicts 1), A.U14.38, A.U0.22, A.U0.37 (same sentences — Conflicts 3, 4); the
+  mechanisms A.U10.R01, A.U13.R01, A.U15.R01-R04, A.U16.R01-R03, A.U18.R01; U36 owns CLAUDE.md's final wording pass.
+- **Kind**: doc | rule
+
+## Conflicts with existing actions
+
+| action | conflict | correction |
+|---|---|---|
+| 1. A.U14.17 | Status "pending"; Change (a) head "never at runtime (OR64.a (2))"; "`init()` itself (the re-init path) never clears, so nothing touches a bus whose controller exists"; its F.2 text "once per bus at boot, never at runtime (owner, <answer date>)"; Blast (a) "CLAUDE.md's wedged-bus rule (runtime, watchdog backstop) unchanged"; Why cites OR64.a (2)'s boundary. OR113.a overtakes that reading and allows a mid-operation bus reset. | Status → "option (a), settled by OR113.a (1) (owner, 2026-09-30)"; Change (b) and Blast (b) go; Change (a) head → "a boot-time clear, once per bus, before the controller is constructed; the same clock-out is the runtime bus rung (A.U13.R01)"; "`init()` itself … never clears, so nothing touches a bus whose controller exists" → "`init()` itself does not clear; the runtime clear is `recover()`'s, under the bus lock"; `_clear_bus()` returns A.U13.R01's status mask and `__init__` stores it for `take_boot_clear_status()`; F.2 text "once per bus at boot, never at runtime (owner, <answer date>)" → merged into A.U14.R01's paragraph ("every I2C bus is cleared once at boot before its controller is constructed"); Blast (a) CLAUDE.md line → "rewritten by A.U14.R01"; Why: OR64.a (2)'s boundary → "OR113.a (1)/(2) (owner, 2026-09-30), overtaking the OR64.a (2) reading". |
+| 2. A.U15.15 | Planned C.8 text: "The controller and the bus are not stalled … nothing may stall, hold or restart a bus or its controller, and the mechanism is not to be replaced (owner, 2026-09-26)" — attributes to the owner a boundary OR113.a overtakes ("A full bus reset is allowed mid-operation when the milder measures fail"). | "…; nothing may stall, hold or restart a bus or its controller, and the mechanism is not to be replaced (owner, 2026-09-26)" → "…; the mechanism is not to be replaced (owner, 2026-09-26). It stays the one reset that reaches other devices; every other recovery reaches only its own chip, or the bus as a whole through the recovery ladder's bus rung under the bus lock (owner, 2026-09-30; F.2)." The sentence "The controller and the bus are not stalled: the write is bounded by the bus timeout …" stays (a fact). |
+| 3. A.U0.22 | CLAUDE.md:193 head → "For a genuinely wedged I2C bus/sensor, the hardware watchdog is the backstop" and :194-196 "— the current state, backstopped …" — names the watchdog as the recovery, with no ladder before it. | A-C takes A.U14.R01's CLAUDE.md bullet in place of A.U0.22's two CLAUDE.md edits; A.U0.22's BACKLOG deferred goal stays, its list item "a `machine.I2C` transfer on a wedged bus" → "a `machine.I2C` transfer in flight on a wedged bus (the recovery ladder acts once it returns; one that never returns is the watchdog's)". |
+| 4. A.U0.37 | SPEC:3606-3608 → "… the hardware watchdog is the backstop (owner, 2026-09-25: 'a stalled chip may recover by a reboot'; escalation up to a reboot is intended)." — same issue at F.2's head. | A-C takes A.U14.R01 (2)'s sentence, which keeps the 2026-09-25 owner clause as "a stalled chip may still reach a reboot, owner, 2026-09-25". |
+| 5. A.U16.17 | "No retry within the boot: the reboot re-runs construction and the whole batch"; `get_task_starters()` "returns `[]` when `self.fram.initialized`"; new L1 "after a good one, `[]`". | "No retry after `setup()` returns: `setup()` itself retries identification up to three times (A.U16.R02); a recovery later in the boot would leave loggers RAM-only (A.U16.06), so the reboot re-runs the batch"; `get_task_starters()` → one starter whenever a chip is declared (its task ends at once when the chip never came up, as written, and otherwise waits for a mid-operation loss, A.U16.R03); L1 "after a good one, `[]`" → "after a good one, one starter whose task waits on `fram.lost`". |
+| 6. A.U14.38 | Keeps HEAD's paragraph body, which says the respawn "doesn't reconstruct the underlying `machine.I2C` peripheral (only a full reboot does that)" and that watchdog starvation "is what actually reconstructs `machine.I2C`" — false once A.U13.R01 lands. | Its owner-rule head and proof sentence attach to A.U14.R01 (3)'s rewritten paragraph; the two HEAD sentences go. |
+| 7. A.U15.24 / A.U18.15 (A-C note, not a ladder conflict) | Both claim shared wrnno 11 (`DERIVED_DOMAIN`, `SOCKET_TEARDOWN`). | A-C assigns 11 to one and 12 to the other; this file's two codes are written as 14/15 and shift with them. |
+
+No conflict found in: A.U13.01-A.U13.19 (none forbids a clear or re-init; A.U13.06's "the UART clamp-and-yield technique
+is not applied to I2C/SPI" is about reads, not recovery), A.U10.* (A.U10.23 keeps the supervisor arithmetic; A.U10.26's
+"FRAM bus-lock acquisition … gets no timeout" is about awaitable waits), A.U15.41 (timer re-arm on restart is the R1/R5
+of its own fault), A.U16.* other than A.U16.17, A.U17.* (A.U17.33 consistent), A.U18.* (A.U18.13 keeps the per-call
+re-create; A.U18.30's terminal deactivation is owner-confirmed behaviour, not a missing rung).
+
+## Register fixes
+
+1. **G4/R22** Req: "A call MicroPython cannot interrupt … is not wrapped in an asyncio timeout: a wedged bus, sensor or
+   chip is recovered by task restart escalating to reboot and the hardware watchdog, never by an I2C-level timeout; the
+   UART clamp-and-yield technique is not generalised to I2C/SPI, and a task respawn does not rebuild the bus
+   peripheral." → "A call MicroPython cannot interrupt … is not wrapped in an asyncio timeout; a wedged bus, sensor or
+   chip is recovered by the ladder below, whose bus rung — not a task respawn — rebuilds the I2C controller
+   (re-construction with the full parameter set, the only re-init rp2 offers); the UART clamp-and-yield technique is not
+   generalised to I2C/SPI." State: the "Work (OR113.a (2) …)" clause gains its actions — "code+test U10 (A.U10.R01),
+   U13 (A.U13.R01, A.U13.R02), U15 (A.U15.R01-R04), U16 (A.U16.R01-R03), U18 (A.U18.R01; network side); U17 DONE
+   (A.U17.33); doc U14 (A.U14.R01, with A.U14.17 option (a))". Evidence: `src/asy_i2c_driver.py:163-178` (the wrapper
+   can re-construct), `extmod/machine_i2c.c:320-326` (`init()` unsupported on rp2).
+2. **G3/R38** Req "Boundary: nothing may stall, hold or restart the bus or its controller." → "Boundary: it stays the one
+   reset that reaches other devices; every other recovery reaches only its own participant, or the bus as a whole
+   through the recovery ladder's bus rung under the bus lock (OR113.a)." Rank gains "OR113.a (owner, 2026-09-30)
+   overtakes the OR64.a (2) boundary reading".
+3. **G4/R19** Req "fakes return a fresh bus object and list that in the fidelity table" → "fakes keep per-id bus state
+   across constructions (attached devices, injected faults, log), as rp2's static per-id object does
+   (`ports/rp2/machine_i2c.c:50-53, 87`), because the recovery ladder re-constructs a bus mid-operation"; State gains
+   "code in U24/U25 (per-id fakes, A.U13.R01)". Evidence: `digital_twin/machine.py:238-247` re-wires fresh chips per
+   construction.
+4. **G5/R27** Req "The FRAM layer does not retry" → "The FRAM layer does not retry a read (the dual copy is the read
+   path's retry, owner, 2026-09-24); a WREN whose latch did not set is repeated once, like WRDI (OR113.a)". State gains
+   "code in U16 (A.U16.R01)".
+5. **G5/R32** State (the RF153 clause) gains: "a chip lost after boot stops FRAM access and ends the manager's task,
+   whose restart re-runs `setup()`; `get_task_starters()` returns one starter whenever a chip is declared (A.U16.R03,
+   OR113.a); `FRAM_SPI.setup()` retries identification (A.U16.R02)".
+6. **LEAD/R29** Req "recovers without a reboot (task end, supervisor restart, fresh `setup()`)" → "recovers without a
+   reboot through the recovery ladder (participant recovery, the bus rung, task restart with a fresh `setup()`), when it
+   is back before the restart budget reboots the device — as for every declared chip (OR89.a (5)); the FRAM through
+   A.U16.R03" — the L2 twin test keeps the absence shorter than the escalation. Evidence: `src/system_service.py:229-253`
+   (an init that keeps failing reaches the reboot after four restarts).
+7. **G6/R27** State gains "code in U18 — a `hw_op_failed` streak re-initialises the radio before the task gives up
+   (A.U18.R01, OR113.a)".
+8. **G4/R22** State "any getaddrinfo residue …" unchanged; its "hardware in C — one row measures it" gains the two L3
+   rows of this file: the held-SDA recovery script (A.U13.R02) and the FRAM CS-held-inactive loss case (A.U16.R03).
+
+## Open points
+
+None left for the owner after self-resolution. Settled by reading, each with its source:
+- Participant rung for the SGP40 is the device-addressed heater-off, not the general call: OR113.a (2) "recover the one
+  participant" plus "the SGP40 general-call reset stays the one owner-accepted reset that reaches other devices" — the
+  general call stays at setup, its frequency unchanged (A.U15.R02).
+- The retry rung for I2C readers is the next triggered cycle, not an immediate in-cycle repeat: the legacy loop the
+  owner field-proved retries the same way (`python/IndividualDrivers/*`: reset at setup only, no in-cycle retry), and
+  no fault class was found that a same-cycle repeat fixes and the next cycle does not (U10/U15 tables).
+- FRAM reads get no retry beyond the dual copy (owner, 2026-09-24, SPECIFICATION.md:3755); the WREN retry and the
+  identification retry are write/identity transactions outside that decision (A.U16.R01, A.U16.R02).
+- A FRAM chip lost mid-operation escalates like a sensor (OR89.a (5) "the same as all other chips" + OR113.a (2)
+  "mid-operation … reboot"); the resulting reboot loop on a chip that stays dead is the same as for a dead declared
+  sensor (A.U16.R03).
+- The WiFi terminal deactivation and the CYW43 false-positive case get no further rung: owner-confirmed behaviour
+  (SPEC A.4 list, CLAUDE.md hard rule), and OR18/OR18.a keep environment conditions inside the module.
+- UART controller re-init stays a non-rung (lead, AC_NOTES 16; A.U17.33).
+- Thresholds (participant at the 2nd, bus at the 3rd consecutive failure; FRAM probe at the 2nd anomaly; three
+  identification attempts) are agent tunables with Part N rows, to be confirmed on the bench (phase C) — not owner
+  choices.
