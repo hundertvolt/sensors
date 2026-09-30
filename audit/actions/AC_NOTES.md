@@ -91,3 +91,5 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     actions go in `SUPP_owner_0930.md` (one supplement over the already-verified units U11/U16/U17/U19/U20/U23 and
     the in-flight U24-U26), verified like any unit. Lead readings shown to the owner: CRC mode by TOML key, not a
     runtime switch (OR36); "the whole config" includes Wi-Fi & Identity.
+28. U23 applied: `js/render.js:382` is a third direct `fetchOnce()` caller (the first fetch) that V.U23.01 did not
+    count; A-C confirms A.U23.05's "one-shot sections run through the poll loop" covers it, else adds the site.
