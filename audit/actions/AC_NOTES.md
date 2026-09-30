@@ -103,3 +103,5 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     runner instrumentation / named in-process exceptions / drop to L1) joins the A-C owner questions. V.U25 finds
     SUPP_recovery's A.U15.R02 wrong on twin Run 5 (setup probes use up the faults, the heater-off rung is never
     reached): A-C corrects A.U15.R02. OR116-OR122 twin duties are SUPP_owner_0930's.
+32. U24 applied (V.U24.01-54, A.U24.80-82). N.33's three `tests/` citers (`test_asy_udp_socket.py:399`,
+    `test_ntp_wifi_dns_integration.py:365`, `test_asy_wifi_service.py:1527`) are U36's under G9/R12's State; A-C checks.
