@@ -32,3 +32,5 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     recommended TCP_SND_BUF 1600 + TCP_NODELAY + MEM_SIZE 24,900 (A.U14.30 waits); (Q-I2C) a boot-time I2C bus clear
     before the controller exists, from the owner's 2026-07-13 rule (`2421948`) against the lead's harmonization 38
     reading of OR64 (A.U14.17 waits; G4/R22 State "no boot-time bus clear (settled by the lead …)" follows the answer).
+13. A.U15.12: `CFGMGR_SCD30` stays RAM-only (no FRAM chunk) per the owner's words in OR99 ("no extra FRAM chunk");
+    the lead's note at the end of `U15.md` supersedes the Open-points reading.

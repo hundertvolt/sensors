@@ -207,7 +207,8 @@ None of U12's, U13's, U14's or U16's own actions writes an `Any` (grep of `audit
   bench/test_bus_concurrency_under_api_load.py` (bench) — the change adds no transaction and moves none · twin — (chip
   model unchanged) · docs SPEC C.8's new sentence (A.U12.18) gains ", and a value derived from shared driver state is
   derived inside the same hold (the ISL29125's resolution shadow)" — A-C note 6 · toml — · uart —.
-- **Depends**: co-lands with A.U15.33 (same threshold path), A.U12.18 (C.8 sentence) — A-C merges.
+- **Depends**: co-lands with A.U15.33 (same threshold path; V.U15.17's reader-level lock), A.U12.18 (C.8 sentence),
+  A.U10.18 (the test's lock attribute name), A.U15.40 (session class) — A-C merges.
 - **Kind**: code | test
 
 ## U16
@@ -266,7 +267,7 @@ lock is taken (`:33-38`); `Lockable.__aexit__` only releases (`src/base_classes.
 | G8/R61 | U14 | same | no owned file: PLAT owns SPEC Part F and the `versions.toml` pin (plan 5.0); U14's actions add no `Any` (grep 0) |
 | G8/R61 | U16 | same | new: A.U16.S01 (1); `asy_fram_driver.py` DONE-AT-HEAD (grep 0) |
 | LEAD/R30 | U14 | review shared buffers for staging before the hold | reviewed, none — no driver |
-| LEAD/R30 | U15 | same | new: A.U15.S01 (1, ISL29125 `set_thresholds()`); SCD30, BMP3xx, rest of ISL29125 reviewed, none; SGP40 covered by A.U12.18 (list above) |
+| LEAD/R30 | U15 | same | new: A.U15.S01 (1, ISL29125 `set_thresholds()`); the counts `_switch_range()` derives before the call: A.U15.33 (reader-level lock); SCD30, BMP3xx, rest of ISL29125 reviewed, none; SGP40 covered by A.U12.18 (list above) |
 | LEAD/R30 | U16 | same | covered by A.U16.10 (`setup()`/`set_write_protected()` scratch under both locks); every other FRAM buffer reviewed, none (list above) |
 | G5/R19 | U3 | "never as SGP40 'no backup' (A.U3.09)"; "persisted once, by `ConfigManager` …, callers print (A.U3.05)" | covered by A.U3.09 (SGP40 w10/e14/e15 → console; `None` chunk buffers persist 20 ALLOC) with A.U3.04 (FRAM layer persists the read fault, CRC-invalid copies and pause once), and A.U3.05 (`ConfigManager` persists 34/24, the eleven callers print) — both cite G5/R19 in Why (`U3.md:136, 218`); only the ledger row was missing |
 | G4/R54 | U5 | "the sites move with U5: the constants A.U5.05, A.U5.09 and A.U5.10 introduce are tagged" (a U8 clause) | covered: A.U5.05 (`_DEFAULT_*` webserver constants), A.U5.09 (`_DEFAULT_WIFI_REFRESH_SEC` in `WifiConfig`), A.U5.10 (`NtpTiming` defaults) create them; A.U8.04, A.U8.10, A.U8.09 tag them and depend on those U5 actions (`U8.md:58-61, 101, 106-109`); no U5-own work (A-C note 5) |
