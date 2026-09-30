@@ -125,3 +125,7 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     A.U22.03 withdrawn; corrections accepted (OR90.a (1) five, CLAUDE.md hang-cause text per item 29, border cue
     dropped per item 26, U17 Q1 (a)). U27 applied (V.U27.01-21, A.U27.39): A-C drops A.U11.26/A.U19.15's U35
     dependency (met by A.U27.07); co-lands with A.U26.66, A.U28.33 and three more `ci.yml` build-if-missing steps.
+38. U28 applied (V.U28.01-22, A.U28.43 wires the built-HTML lint). A-C: A.U28.02's uv pin value is `<v>` (no recorded
+    source) — execution pins the uv version current at B0 and records it in A.U0.06's environment line; A.U28.24's bare
+    `python3` preview script meets G8/R05's version check (decide at merge); co-lands A.U27.15/A.U28.33 (`.gitignore`
+    MICROPYPATH sentence, keep one), A.U27.39/A.U28.17 (port-53 lock), A.U28.41/A.U20.14 (template constant).
