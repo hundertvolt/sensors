@@ -1,16 +1,19 @@
-# A-L supplement — owner rows OR116-OR119 (HEAD 30640b9)
+# A-L supplement — owner rows OR116-OR119 (HEAD 5f46cf1)
 
 Supplement over the already-planned units U11, U16, U17, U19, U20, U23 and the in-flight U24-U26 (AC_NOTES item 27),
 built from the owner rows OR116/OR116.a, OR117/OR117.a, OR118/OR118.a, OR119/OR119.a (OR119 refines OR117) and the
 three owner rows that arrived while this file was written and bind it: **OR120/OR120.a** (watchdog ownership passes to
 the shutdown sequence), **OR121/OR121.a** (the two commands in the existing API and website style; OR117.a (3)'s
 confirmation step overtaken) and **OR122/OR122.a** (every test type at every reachable level; no dialog and none
-proposed; the exact action word is the safeguard). Register blocks: LEAD/R31 and LEAD/R32 (`audit/pass2/LEAD.md`,
+proposed; the exact action word is the safeguard), then **OR123/OR123.a** (CRC mode by the TOML `crc` key, a CRC16 L3
+script over the same jumper, no runtime switch, the L4 reflash behind `flash_cycle`), **OR124/OR124.a** ("Reset to
+defaults" includes Wi-Fi & Identity) and **OR125/OR125.a** (twin scenarios host-side; the runner carries named,
+off-by-default instrumentation flags). The lead readings OR123/OR124 confirm are owner decisions now. Register blocks: LEAD/R31 and LEAD/R32 (`audit/pass2/LEAD.md`,
 R32 as updated for OR120-OR122), read with LEAD/R28 (UART four-tier hazard coverage) and `SUPP_recovery.md` (the
 recovery ladder).
 
-Code sites were read at `cde3bb0`; `git diff --stat cde3bb0 30640b9 -- . ':!audit' ':!PROJECT_AUDIT_PLAN.md'` is
-empty, so every line number below holds at `30640b9`. Primary sources: MicroPython v1.29.0 in the scratchpad `mp/`
+Code sites were read at `cde3bb0`; `git diff --stat cde3bb0 5f46cf1 -- . ':!audit' ':!PROJECT_AUDIT_PLAN.md'` is
+empty, so every line number below holds at `5f46cf1`. Primary sources: MicroPython v1.29.0 in the scratchpad `mp/`
 (`extmod/asyncio/task.py`, `stream.py`, `core.py`), datasheet text `dstxt/` (MB85RS2MTA, MB85RS64V, W25Q16JV).
 Earlier actions are referenced, never repeated; section C lists every earlier action at the same sites with its
 verdict. Text an action writes into a permanent file carries actor tags only; audit IDs sit in `[src: …]` notes the
@@ -165,7 +168,7 @@ littlefs remove (`lfs2_remove()`, `lib/littlefs/lfs2.c:6054`), so an interrupted
 which load (or default, A.U11.19/A.U11.20) at the next boot — littlefs's own power-loss behaviour is not re-derived
 here, phase C cuts power in both commands (A.S0930.29 (7)); S5 `erasefram` — as the torn-state
 proof above: every chunk reads valid-old or blank, never torn-valid; S6 the record is RAM (`mem_backup()`), lost on a
-power cut, so the next boot reads power-on (1). Proven per step at L1 (fake cut), L2 (twin process killed mid-step)
+power cut, so the next boot reads power-on (1). Proven per step at L1 (fake cut), L2 (the twin's power-loss knob, A.U25.54)
 and L3 (hard reset mid-erase), A.S0930.25/27/28.
 
 ## Actions
@@ -183,7 +186,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
 ### A.S0930.01 The build takes a per-link `crc` mode and checks it
 - **Why**: LEAD/R31 — "Each `uart_link` instance takes a `crc` TOML key (none or crc16); buildgen refuses a pair whose
   ends differ, and its bus check counts the CRC length"; State "code in U20 (TOML key, buildgen pair check and
-  bus-check CRC length)" ("I want both.", owner, 2026-09-30, OR116; OR116.a (2)); J.6 "agreed out of band and must
+  bus-check CRC length)" ("I want both.", owner, 2026-09-30, OR116; OR116.a (2)); OR123 "Option a." (owner, 2026-09-30:
+  a `crc` setting per loopback in the TOML, no test-only code in the firmware), OR123.a (1), (3); J.6 "agreed out of band and must
   match on both ends … nothing is negotiated" (owner, 2026-09-11).
 - **Site**: `buildgen/buildspec.py:25-37` `OPTIONAL_TOML_FIELDS` (`"uart_link": ()`), new table after `:58`
   (`BUS_KIND_BY_DRIVER`); `buildgen/validate.py:58` (`_UART_LINK_ROLES`), `:381-382` (per-instance role check),
@@ -229,7 +233,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
 
 ### A.S0930.02 Generated code builds each UART bus with its link's CRC
 - **Why**: LEAD/R31 — "Each `uart_link` instance takes a `crc` TOML key"; "the driver has no runtime mode switch
-  (OR36)" (owner, 2026-09-26, OR36.a (1); OR116.a (2)).
+  (OR36)" (owner, 2026-09-26, OR36.a (1); OR116.a (2)); OR123.a (3) "No runtime switch and no test-only code in the
+  firmware" (owner, 2026-09-30, OR123).
 - **Site**: `buildgen/codegen.py:391-397` (UART bus construction in `_emit_build_system()`),
   `_emit_header_and_imports()` `:300-310` (import block).
 - **Change**: before the bus loop, `link_crc = {spec.fields["bus"]: UART_CRC_MODES[spec.fields.get("crc", "none")][0]
@@ -303,7 +308,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
 
 ### A.S0930.05 L3: the crossover device scripts run in both CRC modes
 - **Why**: LEAD/R31 — "L3 runs a device script in the other mode over the crossover jumper"; State "U26 (L3
-  script)" (owner, 2026-09-30, OR116.a (2)).
+  script)" (owner, 2026-09-30, OR116.a (2)); OR123.a (2) "a device script builds its own CRC16 pair over the same
+  crossover jumper, the firmware stays untouched" (owner, 2026-09-30, OR123 "Option a.").
 - **Site**: `tests_hardware/device_scripts/uart_crossover_exchange.py:84-87`, `uart_crossover_recovery.py:76-79`,
   `uart_link_under_concurrent_system_load.py:131-134` (each builds `asy_uart_driver.UART(0/1, …)` with no `crc`);
   `tests_hardware/flash/test_uart_crossover.py` (their wrapper).
@@ -323,7 +329,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
 ### A.S0930.06 L4: the bench link suite runs once per mode; CRC16 behind `flash_cycle`
 - **Why**: LEAD/R31 — "L4 runs the bench suite once per mode, the second on a dev image built with the key flipped
   (behind `flash_cycle`)"; OR118.a (4) "The second CRC mode's L4 run reflashes, so it sits behind `flash_cycle`"
-  (owner, 2026-09-30).
+  (owner, 2026-09-30); OR123.a (3) "OR118.a (4)'s L4 run in the second mode (a reflash with `crc = "crc16"`) stays, behind
+  `flash_cycle`" (owner, 2026-09-30, OR123).
 - **Site**: `scripts/build_firmware.py:113-126` (arguments, `device_toml`), `:60-66` `build_stage_dir()`;
   `tests_hardware/bench/test_uart_link_under_api_load.py` (three tests `:60, :111, :159`); the reflash steps of
   `tests_hardware/flash/test_toolchain_flash_boot.py:52-90`.
@@ -588,7 +595,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
 ### A.S0930.16 `ConfigManager`: closing is race-free, and a store deletes its own file
 - **Why**: LEAD/R32 — "finish pending config flushes, delete every schema-backed `config_<name>.cfg`, reboot … lets
   in-flight storage writes finish under their locks, closes write access to flash filesystem"; OR117.a (1) (owner,
-  2026-09-30, OR117, OR119).
+  2026-09-30, OR117, OR119); OR124 "Yes, option a." — everything, Wi-Fi & Identity included (owner, 2026-09-30,
+  OR124.a): every store's file is deleted, `config_WIFI.cfg` (SSID, password, country, hostname) with the rest.
 - **Site**: `src/config_manager.py:299-308` (`write_config()` entry and lock), `:390-400` `flush_pending()`, new
   `delete_file()`; A.U11.04's `close_writes()`.
 - **Change**: (1) `write_config()`: the `_closed` check A.U11.04 places "first, before the lock" is repeated as the
@@ -908,10 +916,12 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
 - **Kind**: test
 
 ### A.S0930.27 L2: the commands on the twin — function, states, hazards, watchdog, power loss
-- **Why**: LEAD/R32 — State "test in … U25 (L2)"; OR118.a (1) "L2 twin"; OR120.a (3); OR122.a (1) (owner, 2026-09-30);
+- **Why**: LEAD/R32 — State "test in … U25 (L2)"; OR118.a (1) "L2 twin"; OR120.a (3); OR122.a (1); OR125 "every
+  scenario moves to the host, but the runner carries test-only code" (owner, 2026-09-30, OR125.a (1)-(3));
   V.U25.53 (the U25 actions this must adapt).
 - **Site**: `scripts/_digital_twin_ci_suite.py` (a new run after A.U25.55's Run 12), new
-  `tests/test_digital_twin_system_commands.py` (in-process, generated module on the twin), `tests/test_digital_twin_bus_hazard_concurrency.py`,
+  A.U25.46's host-side `scripts/_digital_twin_scenarios.py`, `digital_twin/run_generic_integration.py` (the
+  instrumentation flag), `tests/test_digital_twin_bus_hazard_concurrency.py`,
   A.U25.54's `tests/test_digital_twin_fram_crash_points.py`, `digital_twin/machine.py` `class SPI` (`:339-420`).
 - **Change**: (1) CI suite Run 13 "system commands", per device (A.U25.48), fresh per-run state (A.U25.32/A.U25.35):
   (a) `PUT /system {"SystemCmd": "resetconfig"}` → "Valid"; the process ends with `_EXIT_SIMULATED_RESET` (A.U25.09);
@@ -919,18 +929,26 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   `ResetReason` 7; (b) `erasefram` → "Valid" → reset exit → relaunch over the same `--fram-state-path`: every
   FRAM-backed errcount entry is counter 0, `ResetReason` 8; (c) the near-miss list → "Invalid" and the process keeps
   serving (uptime rises); `would_have_triggered_count == 0` on every launch. A.U25.55's Run 12 code list gains 7 and 8
-  (read by `ast` from `src/system_service.py`, A.U25.36's helper). (2) states, in-process (the generated
-  `_system_cmd_callback` called directly, as A.U25.57 does — no HTTP inside the DUT heap, A.U25.46): accepted during
-  `start_timers()`; while a twin FRAM chunk write is suspended (the twin chip's `--hang`-style op delay, A.U25.37); with
-  `mempause` active; concurrent with a reboot; both commands at once — outcomes as A.S0930.22. (3) hazards — in
+  (read by `ast` from `src/system_service.py`, A.U25.36's helper). (2) states, host-side (OR125.a
+  (1): every scenario is driven from the host, A.U25.46's harness `scripts/_digital_twin_scenarios.py`, requests over
+  real HTTP from threads): a command sent right after the first 200 (the timer-start window); while a twin FRAM chunk
+  write is delayed (the chip's hang op, `--hang fram:…`, A.U25.37); with `mempause` active; concurrent with a `reboot`;
+  both commands at once from two threads — outcomes as A.S0930.22, read from the replies, the exit code (A.U25.09) and
+  the relaunch's `/status`. (3) hazards — in
   `test_digital_twin_bus_hazard_concurrency.py`: the erase racing a logger write on the twin chip (in-flight completes,
   later refused, no torn chunk), a sensor task cancelled inside its I2C session on a shared bus (the sibling's next
   read succeeds); the twin chip's rollover (A.U25.15) never reached (every unit address below `size`). (4) watchdog on
   the twin's real-time `WDT` (`digital_twin/machine.py:841-896`): healthy — the dev erase with a new twin SPI knob
   `wire_time_us_per_byte` (default 0; set to 8 for the 1 MHz bus, a blocking `time.sleep_us(len(buf) * 8)` per transfer,
   so the 256 KB erase takes its real ≈2.2 s of clock) ends with `would_have_triggered_count == 0`; hang per step (the same
-  seven hang points as A.S0930.24 (c), injected from outside): after 8.5 s `would_have_triggered_count >= 1` and
-  `feed_count` unchanged since the hang point — the twin records rather than resets (owner, 2026-08-12; A.U25.55); a
+  seven hang points as A.S0930.24 (c)) through one named runner instrumentation flag, `--test-shutdown-hang <step>`
+  (OR125.a (2)-(3): in `digital_twin/run_generic_integration.py` only, test-only by name, off by default, kept out of the
+  production entry path by OR125.a (3)'s check; it rebinds from outside the one object that step waits on — a store's
+  `flush_pending`, a chunk's `_op_lock` held by a runner task, a task that swallows `CancelledError`, a store's
+  `config_lock` held, the FRAM driver's `report_set_values`, the reset Timer's callback — the same runner-only kind as the
+  crossover wiring's `poller` rebinding; the product gains no hook, OR36); the host sends the command, waits 8.5 s past
+  the runner's `HANG <step>` line and reads the runner's WDT line at exit (A.U25.09): `would_have_triggered_count >= 1`
+  and `feed_count` unchanged since the hang point — the twin records rather than resets (owner, 2026-08-12; A.U25.55); a
   blocking hang inside one SPI transfer (the knob set to a 9 s transfer for one unit) is caught by `WDT._arm()`'s
   late-feed backstop at the next own feed (`:865-877`). (5) power loss — A.U25.54's `SPI.lose_power_after(k)` over the
   erase on dev's layout: every k inside pass 1 and the transactions of the first and last pass-2 unit overlapping each
@@ -948,9 +966,10 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   `erasefram` against a `silent` chip is refused by the preflight: a case in (2)), A.U25.32/A.U25.35 (per-run
   `--config-dir`, so the reset deletes the run's files and never `digital_twin/config/`), A.U25.36/A.U25.55 (Run 12's
   code list gains 7 and 8; Run 5c's commanded-reboot path unchanged — reboot does not join the sequence, see Agent
-  proposals), A.U25.37 (hang/fault vocabulary), A.U25.46 (no HTTP in the DUT heap), A.U25.54 (`lose_power_after()`) —
+  proposals), A.U25.37 (hang/fault vocabulary), A.U25.46 (host-side harness), the U25 action implementing OR125.a (2)-(3) (its flag
+  list and production-path check gain `--test-shutdown-hang`), A.U25.54 (`lose_power_after()`) —
   A-C merges.
-- **Kind**: test | code (twin knob)
+- **Kind**: test | code (twin SPI knob, runner instrumentation flag)
 
 ### A.S0930.28 L3: the commands on the dev board over USB
 - **Why**: LEAD/R32 — "test in … U26 (L3/L4, gated as stated)"; OR118.a (2)-(3) (owner, 2026-09-30); CLAUDE.md FRAM-log
@@ -995,7 +1014,9 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
 
 ### A.S0930.29 L4: the commands over REST on the bench
 - **Why**: LEAD/R32 — "a config-reset test carries `persistence_write` and restores the bench unit's config files inside
-  the same test; an Erase-FRAM test reads and archives the FRAM error logs first"; OR118.a (2) "a hardware reset test
+  the same test; an Erase-FRAM test reads and archives the FRAM error logs first"; OR124.a "after the reboot the unit
+  serves only its hotspot with the default password until reconfigured … The L4 reset test saves and restores the dev
+  board's config files inside the gated test" (owner, 2026-09-30, OR124); OR118.a (2) "a hardware reset test
   saves the dev board's config files first and restores them after (inside the same gated test), since the reset drops
   the bench unit's Wi-Fi"; OR118.a (3); OR120.a (3); OR122.a (1) (owner, 2026-09-30).
 - **Site**: new `tests_hardware/bench/test_system_commands.py`; new device scripts `config_files_dump.py` (read-only)
@@ -1036,6 +1057,7 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
 
 ### A.S0930.30 The specification and the operator docs state the commands
 - **Why**: LEAD/R32 — "doc in U36 (SPEC A.8, H, tests_hardware/README)"; Home "SPEC A.8; SPEC H"; OR121.a; OR122.a (2);
+  OR124.a (Wi-Fi & Identity included, owner, 2026-09-30);
   CLAUDE.md FRAM-log rule (owner, 2026-09-08).
 - **Site**: `SPECIFICATION.md` A.8 (`:611-613` PUT shapes), A.4 (`:226-231` reset path, FRAM bullet), A.7 (supervisor),
   C.3.1 (FRAM API), C.5.2/C.7.3, C.8, F.2, F.5, G.2 (`feed_watchdog()`), H (`:4378`, `:4525-4530` dispatch-only
@@ -1130,6 +1152,10 @@ No earlier action is **own** for any change here: OR116-OR122 postdate every uni
    own feed and the latch (A.S0930.20 (6)); SPEC G.2's rule sentence gains "and, while a system-command shutdown runs,
    only that sequence's own feed (owner, 2026-09-30)" (A.S0930.30). Most recent owner decision wins (harmonization 24);
    nothing to ask.
+9. OR125.a (2)-(3) (the twin runner's named, off-by-default instrumentation flags and the check that keeps them out of
+   the production entry path) has no U25 action at HEAD (`grep OR125 audit/actions/U25.md`: none). A.S0930.27 adds one
+   flag, `--test-shutdown-hang`, under that rule; the lead routes OR125.a to U25, and that action's flag list and
+   check must include it.
 
 ## Ledger
 | register block | clause for this unit (short) | result |
@@ -1173,7 +1199,7 @@ No earlier action is **own** for any change here: OR116-OR122 postdate every uni
 
 ## Open points
 None. Every choice was settled from the owner rows and the code: the action words (OR122.a (2) leaves them to the
-agent, justified in the design block), the `crc` key optional with "none" as default (OR116.a (2): `dev.toml` keeps no
-CRC), a command refused while a reset is armed (the more conservative option, OR2.c), the SCD30 NVM outside the
+agent, justified in the design block), the `crc` key optional with "none" as default (OR116.a (2), OR123.a (1): `dev.toml`
+ships none), Wi-Fi & Identity inside the reset (owner-confirmed, OR124.a), a command refused while a reset is armed (the more conservative option, OR2.c), the SCD30 NVM outside the
 closed stores (OR119.a (2) names the flash filesystem and FRAM), the latch set at acceptance (stricter than OR120.a (1)).
 The one owner-level item is OR119.a (5)'s, listed under Agent proposals for the OR2.c review.
