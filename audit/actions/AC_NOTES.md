@@ -109,3 +109,7 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     lead reading of AC_NOTES 27 confirmed), OR124 (the reset includes Wi-Fi & Identity; confirmed), OR125 (U25 Q2 →
     (a): every scenario host-side, the twin runner carries named instrumentation flags; A.U25.46 follows, pending Q2
     lifted). U25 Q1 (the `main()` keywords) is still open.
+34. SUPP_owner_0930 written (30 actions, OR116-OR125). A-C resolves its 9 cross-unit conflicts (A.U11.03/.04,
+    A.U20.06, A.U16.19, A.U23.17, A.U17.32, A.U26.71, A.U10.08 — OR120 overrides OR31.a (3) — and OR125.a's owner
+    between U25 and this file) and its 5 LEAD/R31-R32 register fixes, after its verifier and applier. Its agent
+    proposal (reboot/bootloader on the same shutdown sequence, OR119.a (5)) goes to the owner review.
