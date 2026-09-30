@@ -116,3 +116,7 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
 35. U26 applied (V.U26.01-30, A.U26.87 new for N.27's G2/R09 half). A-C: A.U26.09/.32/.72 land together; OR90.a (1)'s
     "seven" is a stale count (five tests lose the marker) — flag to the owner, substance unchanged; co-lands with
     A.S0930.01/.05/.06, A.U13.R02, A.U17.05.
+36. SUPP_owner_0930 applied (V.01-24); A.U25.74 added to U25 (OR125.a, twin-runner flags), U25's Q2 references
+    settled by the lead. A-C: A.S0930.13's park point keys on `_feed_owned` (a refused command keeps feeding); co-lands
+    A.U11.03 (`_flush_config_stores` returns bool), A.U24.17 (twin WDT `feed_times`), Depends added to A.U24.42/.53/.55,
+    A.U26.26/.32/.68/.79/.87, A.U11.07.

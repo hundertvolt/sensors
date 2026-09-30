@@ -304,7 +304,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
 ### A.S0930.04 L2: the twin link and a generated device run in both CRC modes
 - **Why**: LEAD/R31 — "L2 builds the twin pair in both modes"; State "U25 (L2)" (owner, 2026-09-30, OR116/OR118).
 - **Site**: `tests/test_digital_twin_uart_link.py` (generated-graph link tests), A.U17.25's new
-  `tests/test_digital_twin_uart_comm_hazard.py`/`…_field_sweep.py` (already both modes), `tests_scripts/test_digital_twin_generated_boot.py`.
+  `tests/test_digital_twin_uart_comm_hazard.py`/`…_field_sweep.py` (already both modes), `tests_scripts/test_digital_twin_generated_boot.py`,
+  `scripts/_digital_twin_ci_suite.py` (argument parser), `scripts/run_digital_twin_ci.sh` (Run 3).
 - **Change**: (1) A.U17.25's two twin hazard files are both-mode by their plan (payload/field sweep in both) —
   referenced, not repeated. (2) `tests/test_digital_twin_uart_link.py` runs the generated no-CRC device only; a CRC16
   arm at the pair level: a new `_check_*` set building a `UartLinkExerciser` pair on the twin's own `machine.UART`
@@ -324,7 +325,7 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   per-device budget (`_BOOT_TIMEOUT_S`) holds (CRC adds 2 bytes per frame); `tests_scripts/test_digital_twin_ci_suite_*.py`
   (the new `--device-toml` option parses; generation from a derived path) · twin `digital_twin/run_generic_integration.py`
   crossover wiring is CRC-blind (unchanged) · docs SPEC J.7 tier map "L2 both modes" (A.S0930.08) · toml — · uart —.
-- **Depends**: A.S0930.02, A.U17.25; co-lands with A.U25.37 (Run 3's `uart_link:silent` vocabulary and matrix),
+- **Depends**: A.S0930.02, A.U17.25, A.U24.55 (same generated-boot file); co-lands with A.U25.37 (Run 3's `uart_link:silent` vocabulary and matrix),
   A.U25.36 (Run 3's escalation assertions), A.U25.32 (per-run `--config-dir`/state paths the derived run passes),
   A.U25.48 (device from data, `--device` required) — A-C merges.
 - **Kind**: test
@@ -552,8 +553,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   observed it while a preflight yielded would park on `self._never` and stay parked after the refusal cleared it, so a
   refused command would end in a watchdog reset. Latent at HEAD only because `erase_ready()` →
   `FRAM_SPI.get_write_protected()` completes without suspending on the initialized path (`src/asy_fram_driver.py:268-275`);
-  any preflight that opens an SPI session yields (`asy_spi_driver.py:178`, `await asyncio.sleep(0)` in `__aexit__`). Its `feed_watchdog()` call is
-  latched from acceptance on. (5) S1 of the sequence (A.S0930.14) cancels `self._supervisor_task` after the park and
+  any preflight that opens an SPI session yields (`asy_spi_driver.py:178`, `await asyncio.sleep(0)` in `__aexit__`). The pass's `feed_watchdog()`
+  call is latched from acceptance on. (5) S1 of the sequence (A.S0930.14) cancels `self._supervisor_task` after the park and
   awaits it to done — the proof OR120.a (1) asks for. A shutdown accepted before `supervise_tasks()` ran (during
   `start_timers()`/the first NTP sync) is covered: the supervisor task parks at its first pass.
 - **Blast**: callers generated `main()` (`await sysfunct.supervise_tasks()`, A.U20.06 — unchanged call); boot batch
@@ -597,7 +598,7 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   S4 `for t in self._tasks: if t is not None and not t.done(): t.cancel()`; then per task `try: await t` / `except
   (asyncio.CancelledError, Exception): pass`, `self._own_feed()`; one line. S5 config reset: `for store in
   self._config_stores: ok = await store.delete_file() and ok; self._own_feed()`; erase: `ok = await
-  self._storage.erase_chip(self._own_feed)`; one line ("done" / "incomplete"). S6 `self._own_feed()`; `await
+  self._storage.erase_chip(self._own_feed) and ok` (S2's result kept: a raised flush still ends in code 9); one line ("done" / "incomplete"). S6 `self._own_feed()`; `await
   self._reboot(purpose if ok else _RR_COMMAND_INCOMPLETE, <message>, system_reset)`. Comment at the method (≤ 3
   lines): "One controlled shutdown for a system command (owner, 2026-09-30): no step has a timeout that moves on — a
   hung step is not fed, so the watchdog resets the unit; the order is explained in SPECIFICATION.md Part A.8." No
@@ -712,7 +713,7 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   driver's `get_size()`), A.U16.05/A.U16.06/A.U16.09 (same chunk class; A.U16.09's blank-block read without a busy
   marker is what keeps an erased chunk blank across repeated reads), A.U16.10 (both locks), A.U16.13 (RAM-only log),
   A.U16.17/A.U16.R03 (task and loss state), A.U16.R01 (one WREN retry per unit write), A.U2.09 (codes), A.U5.13 (chunk
-  constructors) — A-C merges.
+  constructors), A.U24.42 (the allocation-budget file whose bound this re-derives) — A-C merges.
 - **Kind**: code
 
 ### A.S0930.18 Cancelling the webserver's task closes its listening socket (DONE-AT-HEAD, pinned)
@@ -1016,7 +1017,7 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   so the 256 KB erase takes its real ≈2.2 s of clock) ends with `would_have_triggered_count == 0`; hang per step (the same
   seven hang points as A.S0930.24 (c)) through one named runner instrumentation flag, `--test-shutdown-hang <step>`
   (OR125.a (2)-(3): in `digital_twin/run_generic_integration.py` only, test-only by name, off by default, kept out of the
-  production entry path by OR125.a (3)'s check; it rebinds from outside the one object that step waits on — S1: the
+  production entry path by OR125.a (3)'s check, A.U25.74; it rebinds from outside the one object that step waits on — S1: the
   supervisor's `_log_dead_task` rebound to a coroutine that never returns and one supervised task ended, so the pass
   never reaches its park point; S2 a store's `flush_pending`; S3 a chunk's `_op_lock` held by a runner task; S4 a task
   that swallows `CancelledError`; S5 reset a store's `config_lock` held; S5 erase the FRAM driver's
@@ -1038,14 +1039,15 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   (`mempause` over the twin) holds · twin `digital_twin/machine.py` `SPI` gains `wire_time_us_per_byte`; fidelity table
   row (A.U25.01) "SPI wire time: off by default, 8 µs/byte for timing proofs" · docs `digital_twin/README.md` (the knob;
   Run 13) · toml — · uart —.
-- **Depends**: A.S0930.09-.17; co-lands with A.U25.09 (reset exit), A.U25.15 (FRAM fake rollover, `silent` and the
+- **Depends**: A.S0930.09-.17; A.U24.53 (the live JS harness keeps its twin config in its own temp dir, which
+  `resetconfig` deletes); co-lands with A.U25.09 (reset exit), A.U25.15 (FRAM fake rollover, `silent` and the
   WREN-drop knob — `erasefram` against a `silent` chip: refused by the preflight once A.U16.R03 marked it lost, else
   stopped at unit 0 with code 9, both cases in (2)), A.U11.19 (the relaunch after the reset writes no file), A.U16.R03
   (the lost-chip state the preflight reads), A.U25.32/A.U25.35 (per-run
   `--config-dir`, so the reset deletes the run's files and never `digital_twin/config/`), A.U25.36/A.U25.55 (Run 12's
   code list gains 7 and 8; Run 5c's commanded-reboot path unchanged — reboot does not join the sequence, see Agent
-  proposals), A.U25.37 (hang/fault vocabulary), A.U25.46 (host-side harness), the U25 action implementing OR125.a (2)-(3) (its flag
-  list and production-path check gain `--test-shutdown-hang`), A.U25.54 (`lose_power_after()`) —
+  proposals), A.U25.37 (hang/fault vocabulary), A.U25.46 (host-side harness), A.U25.74 (the runner's instrumentation flags, OR125.a
+  (2)-(3): its flag list and production-path check carry `--test-shutdown-hang`), A.U25.54 (`lose_power_after()`) —
   A-C merges.
 - **Kind**: test | code (twin SPI knob, runner instrumentation flag)
 
@@ -1093,7 +1095,8 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   (what each test spends: scratch flash writes behind `persistence_write`; the erase destroys the FRAM logs after the raw
   save) · toml — · uart — · hardware C (flash round).
 - **Depends**: A.S0930.09-.17; A.U26.05, A.U26.10, A.U26.18, A.U26.22, A.U26.44, A.U26.47, A.U26.61 (a script that can
-  outlast the watchdog feeds it in short steps — here the product feeds it) — A-C merges.
+  outlast the watchdog feeds it in short steps — here the product feeds it), A.U26.68 (facts; the host gives the
+  verdict), A.U26.26 (the boot/reboot oracle) — A-C merges.
 - **Kind**: test | hardware
 
 ### A.S0930.29 L4: the commands over REST on the bench
@@ -1140,8 +1143,9 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   `tests_hardware/README.md` "System commands" subsection (restore mechanics, hotspot join, evidence saved first) and
   the reset-code table (A.U26.28) rows 7/8 · toml — · uart — · hardware C (bench round; (1) only with
   `--allow-persistence-writes`).
-- **Depends**: A.S0930.09-.17, A.S0930.19; A.U26.06, A.U26.15, A.U26.22, A.U26.23, A.U26.28, A.U26.29, A.U26.47,
-  A.U26.49 — A-C merges.
+- **Depends**: A.S0930.09-.17, A.S0930.19; A.U26.06, A.U26.15, A.U26.22, A.U26.23, A.U26.26 (reboot oracle), A.U26.28,
+  A.U26.29, A.U26.32 (same bench hazard file, (5)), A.U26.47, A.U26.49, A.U26.79 (the round ends on the release image)
+  — A-C merges.
 - **Kind**: test | hardware
 
 ### A.S0930.30 The specification and the operator docs state the commands
@@ -1198,8 +1202,9 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
 ## C. Earlier actions at the same sites — closing inventory
 
 Scope: every action of U11, U16, U17, U19, U20, U23, U24, U25, U26 and SUPP_recovery whose Site names a file this
-supplement changes (found by script over the action files at HEAD, `scratchpad/al/S0930/sites.py`, 217 actions), plus
-the actions this file cites that sit on other files. Verdicts: **co-land** — same lines or same mechanism, A-C merges
+supplement changes (found by script over the action files at HEAD, `scratchpad/al/S0930/sites.py`, 217 actions, plus 34
+on the files its path list omitted, found by the A-L verify's re-scan: 251), plus the actions this file cites that sit on
+other files. Verdicts: **co-land** — same lines or same mechanism, A-C merges
 the edits into one; **own** — this file's action is the one that makes the change (the earlier action names it);
 **blast-only** — same file, other lines; this file only has to keep it green.
 
@@ -1207,13 +1212,13 @@ the edits into one; **own** — this file's action is the one that makes the cha
 |---|---|---|---|
 | U11 | A.U11.03 (`_reboot()`, async reboots, `_reset_armed`, escalation, `_collect_config_stores()`, callback → .11-.14), A.U11.04 (`close_writes()`, `flush_pending()` → .16, conflict 1), A.U11.05 (codes, record → .15), A.U11.07 (decode test gains 7-9 → .21), A.U11.19 (missing file serves defaults → .16, .26, register fix 2), A.U11.22 and A.U11.28 (staging order, deferred flush in `flush_pending()` → .16), A.U11.31 (`ResetErrors` per field during the sequence → .22) | — | A.U11.01, .02, .06, .08, .10, .12, .15, .17, .20, .21, .23, .24, .25, .29, .30, .32, .34, .39 |
 | U16 | A.U16.05, .06, .09 (same chunk class; .09 keeps an erased block blank across reads → .17), A.U16.10 (both locks → .17), A.U16.17 and A.U16.R03 (the manager's task is stopped in S4; `initialized` gates `erase_ready()` → .14, .17), A.U16.19 (`override_pause` gone; `invalidate()` is the erase's own path, conflict 4), A.U16.20 (legal sizes are 256-multiples → .17), A.U16.22 (chunk `get_size()` gone; the driver's is used → .17) | — | A.U16.01, .02 (layout pin used by .28), .03, .08, .13 (RAM-only log relied on), .15 (partial WP reads protected → preflight refuses), .16, .18, .21, .23, A.U16.R01 (one WREN retry per unit), A.U16.R02 |
-| U17 | A.U17.21 (same bus-check function → .01), A.U17.32 (same roles function; its "both ends agree by construction" sentence changes, conflict 6 → .01), A.U17.30 (numbering of the Class B row → .07), A.U17.25 (tier map both modes → .04, .08) | — | A.U17.07, .08, .09, .10, .11, .15, .18, .19, .26, .29 (exerciser and changelog, other lines; .03 extends the same test file) |
+| U17 | A.U17.21 (same bus-check function → .01), A.U17.32 (same roles function; its "both ends agree by construction" sentence changes, conflict 6 → .01), A.U17.30 (numbering of the Class B row → .07), A.U17.25 (tier map both modes → .04, .08) | — | A.U17.05, A.U17.07, .08, .09, .10, .11, .15, .18, .19, .26, .29 (exerciser and changelog, other lines; .03 extends the same test file) |
 | U19 | A.U19.04 (same dispatch guard → .09), A.U19.09 (same `_run()`; .18 pins its cancellation) | — | A.U19.01, .02, .03, .05, .06, .07, .08, .10, .11, .12, .13, .15, .16 (result words), .17, .20 (the REST reference lists the new values from `_SYSTEM_CMDS`), .22, .23 (feeder gap test; the supervisor runs as a task), .24 |
-| U20 | A.U20.01 (one instance per UART bus → .01), A.U20.06 (`supervise_tasks()`, `self._tasks`; conflict 2 → .13), A.U20.17 (error contract for the new refusals → .01), A.U20.35 (L.3 table → .01), A.U20.41 and A.U20.42 (callback template → .11) | — | A.U20.02, .03, .04, .05, .07, .08, .10, .11, .13 (frozen set from imports), .14, .15, .16, .18, .20, .22, .25, .27, .30, .34, .38, .40 |
-| U23 | A.U23.15 (select reset after Apply → .10, .20), A.U23.20 (code labels gain 7-9 → .15), A.U23.25 and A.U23.27 (mirror module and derived mock → .09, .20), A.U23.33 (the live tier lists the two words as L1/C like `reboot` → .27) | — | A.U23.03, .04, .05, .06, .08, .11, .12, .13, .14, .16, .17 (its `window.confirm` pattern is not used: OR121.a (2), OR122.a (2), conflict 5), .18, .19, .22, .23, .24, .26, .28, .29, .30, .40, .42, .45, .48, .49 |
-| U24 | A.U24.07 (`feed_times` joins the reset hook → .24), A.U24.17 (contract suite gains `feed_times` → .24), A.U24.22 (FRAM fake size; `cut_after_bytes` → .21, .25), A.U24.27 (hazard file → .23), A.U24.43 (the supervisor scenario runs `supervise_tasks()` as a task and cancels it → .13), A.U24.79 (boot helpers used by .26) | — | A.U24.01, .06, .08, .15, .16, .18, .20, .21, .23, .24, .26, .31, .32, .36, .41, .45, .48, .50, .54 (reset/WDT construction invariant; the feed sites are A.U10.08's), .60, .63, .64, .65, .67, .69, .73, .74, .77, .78, .80 |
-| U25 | A.U25.03 and A.U25.16 (twin `SPI` class gains `wire_time_us_per_byte` → .27), A.U25.07, .08, .09 (reset exit, `mem_backup`), A.U25.15 (rollover, `silent`), A.U25.32, .35 (per-run config dir and state), A.U25.36, .55 (Run 12 codes), A.U25.37 (vocabulary; `uart_link:silent` per CRC mode → .04), A.U25.46 (no HTTP in the DUT heap), A.U25.48 (device from data), A.U25.54 (`lose_power_after()`) — all → .04/.27 | — | A.U25.02, .04, .05, .06, .10, .12, .17, .19, .20, .22, .23, .24, .25, .28, .29, .30, .34, .38, .42, .57 (the `mempause` dispatch it drives now answers "Failed" during a shutdown), .59, .63, .64, .66, .68, .69, .71 |
-| U26 | A.U26.01, .02, .03, .14 (bench board by TOML, image record, image check, reflash helper → .06), A.U26.05, .10, .18, .44, .47, .61 (twin runs of scripts, scratch config path, rendered dict, markers → .05, .28), A.U26.06, .71, .74 (wear guard → .19), A.U26.15, .22, .23, .28, .29, .49 (leftover repair, evidence, logger set, reset codes, reset helper, TOML values → .29), A.U26.33, .59, .82 (UART scripts both modes → .05, .06) | — | A.U26.54, .75, .85 |
+| U20 | A.U20.01 (one instance per UART bus → .01), A.U20.06 (`supervise_tasks()`, `self._tasks`; conflict 2 → .13), A.U20.17 (error contract for the new refusals → .01), A.U20.35 (L.3 table → .01), A.U20.41 and A.U20.42 (callback template → .11) | — | A.U20.02, .03, .04, .05, .07, .08, .09, .10, .11, .13 (frozen set from imports), .14, .15, .16, .18, .20, .22, .25, .27, .30, .34, .37, .38, .40 |
+| U23 | A.U23.15 (select reset after Apply → .10, .20), A.U23.20 (code labels gain 7-9 → .15), A.U23.25 and A.U23.27 (mirror module and derived mock → .09, .20), A.U23.33 (the live tier lists the two words as L1/C like `reboot` → .27) | — | A.U23.03, .04, .05, .06, .08, .11, .12, .13, .14, .16, .17 (its `window.confirm` pattern is not used: OR121.a (2), OR122.a (2), conflict 5), .18, .19, .21, .22, .23, .24, .26, .28, .29, .30, .32, .36, .37, .40, .42, .43, .45, .48, .49 |
+| U24 | A.U24.07 (`feed_times` joins the reset hook → .24), A.U24.17 (contract suite gains `feed_times` → .24), A.U24.22 (FRAM fake size; `cut_after_bytes` → .21, .25), A.U24.27 (hazard file → .23), A.U24.43 (the supervisor scenario runs `supervise_tasks()` as a task and cancels it → .13), A.U24.79 (boot helpers used by .26), A.U24.42 (allocation budget file → .17), A.U24.55 (generated-boot file → .04), A.U24.53 (live harness config dir; the new words delete config → .27) | — | A.U24.01, .06, .08, .14, .15, .16, .18, .20, .21, .23, .24, .26, .31, .32, .34, .36, .41, .45, .48, .50, .51, .52, .54 (reset/WDT construction invariant; the feed sites are A.U10.08's), .60, .63, .64, .65, .66, .67, .69, .73, .74, .77, .78, .80 |
+| U25 | A.U25.03 and A.U25.16 (twin `SPI` class gains `wire_time_us_per_byte` → .27), A.U25.07, .08, .09 (reset exit, `mem_backup`), A.U25.15 (rollover, `silent`), A.U25.32, .35 (per-run config dir and state), A.U25.36, .55 (Run 12 codes), A.U25.37 (vocabulary; `uart_link:silent` per CRC mode → .04), A.U25.46 (no HTTP in the DUT heap), A.U25.48 (device from data), A.U25.54 (`lose_power_after()`), A.U25.74 (the runner's instrumentation flags; `--test-shutdown-hang` joins its list and check, conflict 9) — all → .04/.27 | — | A.U25.02, .04, .05, .06, .10, .12, .17, .19, .20, .22, .23, .24, .25, .28, .29, .30, .31, .33, .34, .38, .39, .41, .42, .50, .51, .57 (the `mempause` dispatch it drives now answers "Failed" during a shutdown), .59, .63, .64, .66, .68, .69, .71 |
+| U26 | A.U26.01, .02, .03, .14 (bench board by TOML, image record, image check, reflash helper → .06), A.U26.05, .10, .18, .44, .47, .61 (twin runs of scripts, scratch config path, rendered dict, markers → .05, .28), A.U26.06, .71, .74 (wear guard → .19), A.U26.15, .22, .23, .28, .29, .49 (leftover repair, evidence, logger set, reset codes, reset helper, TOML values → .29), A.U26.33, .59, .82 (UART scripts both modes → .05, .06), A.U26.68 (facts, host verdict → .05, .28), A.U26.87 (same UART load script → .05), A.U26.79 (round end state → .06, .29), A.U26.26 (boot/reboot oracle → .28, .29), A.U26.32 (bench hazard file → .29 (5)) | — | A.U26.13, .37, .43, .54, .60, .75, .78, .80, .83, .85 |
 | SUPP_recovery | A.U16.R03 (as U16 row) | — | A.U13.R02 (bus rung in the same hazard file), A.U16.R01, A.U16.R02 |
 | others cited | A.U5.02 (`storage` parameter → .12), A.U6.03/.04 (definitions generated → .10), A.U6.23 (mock `ResetReason` sample → .15), A.U2.09 (codes named in `invalidate()` → .17), A.U3 (print-only refusals → .12), A.U10.08 (feed-site allow-list gains (d), conflict 8 → .13, .20), A.U10.07 (unfed boot stretches; the same 8,000 ms arithmetic applied to the steps here → .13), A.U10.29 (`_SYSTEM_CMDS` const folding → .09), A.U14.R01 (F.2 text → .30) | — | — |
 
@@ -1249,9 +1254,9 @@ No earlier action is **own** for any change here: OR116-OR122 postdate every uni
    only that sequence's own feed (owner, 2026-09-30)" (A.S0930.30). Most recent owner decision wins (harmonization 24);
    nothing to ask.
 9. OR125.a (2)-(3) (the twin runner's named, off-by-default instrumentation flags and the check that keeps them out of
-   the production entry path) has no U25 action at HEAD (`grep OR125 audit/actions/U25.md`: none). A.S0930.27 adds one
-   flag, `--test-shutdown-hang`, under that rule; the lead routes OR125.a to U25, and that action's flag list and
-   check must include it.
+   the production entry path) has no U25 action at HEAD: A.U25.46 leaves the DUT-side scenarios pending Q2 and plans no
+   flag or check. U25.md owns the new action, A.U25.74 (V.SUPP_owner_0930.18's text; Q2 answered (a) by OR125);
+   A.S0930.27's `--test-shutdown-hang` joins its flag list and its production-path check.
 
 ## Ledger
 | register block | clause for this unit (short) | result |
@@ -1271,6 +1276,7 @@ No earlier action is **own** for any change here: OR116-OR122 postdate every uni
 | LEAD/R32 | test in U25 — L2 | A.S0930.27 |
 | LEAD/R32 | test in U26 — L3/L4, gated as stated | A.S0930.28, A.S0930.29 |
 | LEAD/R32 | doc in U36 — SPEC A.8, H, tests_hardware/README | A.S0930.30 (plus A.S0930.19's README sentence) |
+| OR125/OR125.a (owner row) | (1) every webserver-concurrency scenario host-side; (2)-(3) named, off-by-default runner flags and a check keeping them out of the production path | owned by U25: A.U25.46 (pending Q2 lifted) and A.U25.74; this file adds only `--test-shutdown-hang` (A.S0930.27) to that action's flag list and check |
 | LEAD/R28 | read for the tier map (UART four-tier hazard coverage); no clause names this supplement | NO-CLAUSE — its tier map (A.U17.25, A.U26.82) gains the two CRC modes through A.S0930.03-.06 and .08 |
 
 ## Register fixes
@@ -1299,3 +1305,5 @@ agent, justified in the design block), the `crc` key optional with "none" as def
 ships none), Wi-Fi & Identity inside the reset (owner-confirmed, OR124.a), a command refused while a reset is armed (the more conservative option, OR2.c), the SCD30 NVM outside the
 closed stores (OR119.a (2) names the flash filesystem and FRAM), the latch set at acceptance (stricter than OR120.a (1)).
 The one owner-level item is OR119.a (5)'s, listed under Agent proposals for the OR2.c review.
+
+Verified 2026-09-30 (`audit/actions/verify/SUPP_owner_0930.md`): V.SUPP_owner_0930.01-24 applied.
