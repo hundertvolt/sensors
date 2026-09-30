@@ -82,3 +82,7 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     no-autostart image, or remove under OR36.a (1) with 44 call lines adapting) is collected for the A-C owner review
     after the U25 verifier tests (a) against OR36/OR86. U25's six named conflicts (A.U8.20, A.U15.R02, A.U20.02,
     A.U3.01, A.U11.03, A.U13.R01) are merged in A-C.
+26. `verify/U23.md` accepted; lead decision: the history-pill border cue (A.U23.43 (6)) is dropped, since the owner's
+    words for those pills are OR94 "don't change the current look of the website" and A28 "only colours its number";
+    shown to the owner in the A-C list. A.U23.20/21's special-value text and colour are narrowed to the owner-backed
+    fields (OR97.a (16) SGP40 timestamps; OR76.a CalLight colour).
