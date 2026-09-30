@@ -98,3 +98,5 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     answer `GET_FILENO` with 0, so a real poll watches stdin. A-C merges the replacement text across those sites and
     shows the CLAUDE.md fact change to the owner. Twin/unit fake conflicts (A.U24.16/17/20/80-82 against A.U25.02,
     .04, .07) are merged in A-C.
+30. U26 written (86 actions, verifier running): N.27 and the `:271` flash-tier move are G2/R17's (U35), which no unit
+    file claims yet — U35's author takes them; A-C checks they landed. Five agent design decisions go to the OR2.c review.
