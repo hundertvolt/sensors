@@ -214,7 +214,7 @@ Readings made where C.0.2 is silent, applied the same way everywhere:
 
 ## Status
 
-Classified files: 156 of 156 (hits 2265 of 2265; files NOT-DONE: none). Verdicts: deferred U25 13, deferred U26 14, mirror 84, not tagged 351, test input 298, tuned 1505. IDs: 576 new tuned test-tier IDs, 18 existing U8 IDs that gain sites here, 28 product IDs mirrored, 20 provisional IDs for deferred sleeps. Actions: 119 (A.U8C.01-A.U8C.119, one per file holding a tuned, mirror or deferred hit; files whose hits are all not-tagged or test input need no action and appear only in the table).
+Classified files: 156 of 156 (hits 2265 of 2265; files NOT-DONE: none). Verdicts: deferred U25 13, deferred U26 20, mirror 84, not tagged 352, test input 298, tuned 1498. IDs: 569 new tuned test-tier IDs, 18 existing U8 IDs that gain sites here, 28 product IDs mirrored, 26 provisional IDs for deferred sleeps; U8C's actions also tag 12 IDs whose sites are G16-G18 rows of `audit/actions/U8C2.md` (counted there: `l4.uart_link_under_api_load_burst_workers`, ten `l3.<stem>_wdt_feed_every`, `l3.fram_pause_unpause_and_gating_feed_step_s`). Actions: 121 (A.U8C.01-A.U8C.119, one per file holding a tuned, mirror or deferred hit; files whose hits are all not-tagged or test input need no action and appear only in the table; A.U8C.120-A.U8C.121 list the tuned `tests/` and `tests_hardware/` sites under their source rows' Part N Dependants).
 
 
 ## Actions
@@ -1170,6 +1170,22 @@ Classified files: 156 of 156 (hits 2265 of 2265; files NOT-DONE: none). Verdicts
 - **Blast**: callers `tests_hardware/conftest.py:19, :29, :33`, `tests_hardware/flash/test_memory_stress.py:91`, `tests_hardware/flash/test_bus_electrical_timing.py:90`, `tests_hardware/bench/test_memory_stress_bench.py` (import `SOAK_TIER_SECONDS`, unchanged) · generated — · js — · tests — · twin — · docs `tests_hardware/README.md:87` ("long=6h") cites the IDs · toml — · uart —
 - **Depends**: A.U8.01, A.U8.02, A.U8.03
 - **Kind**: test
+
+### A.U8C.120 List the tuned `tests/` sites under their source rows' Dependants
+- **Why**: G4/R54 (as A.U8C.01); U8 N.1 "Dependants" (A.U8.01); the U8C hit-table rows below each state "Dependant of …"
+- **Site**: SPECIFICATION.md Part N (created by A.U8.01), the rows below
+- **Change**: add to Dependants — `notify.loop_tick_s` (A.U8.12): `l1.asy_notification_service_override_tick_s` (`tests/test_asy_notification_service.py:1153, :1155, :1186`, one ~1 s decrement plus margin), `l2.sensortask_integration_override_poll_s` (`tests/test_digital_twin_sensortask_integration.py:378`); `udp.retry_backoff_s` (A.U8.11): `l1.asy_udp_socket_fix_address_after_retry_s` (`tests/test_asy_udp_socket.py:786`, after one 0.5 s backoff, before three), `l1.asy_udp_socket_retry_cycle_min_ms` (`:1350`); `dns_server.error_retry_wait_s` (A.U8.11): `l1.captive_dns_no_backoff_elapsed_max_ms` (`tests/test_captive_dns.py:482`, well under the 3 s wait), `l1.captive_dns_backoff_wait_timeout_ms` (`:941`, covers it); `dns_server.recv_backoff_initial_s` and `dns_server.recv_backoff_mult` (A.U8.11): `l1.captive_dns_gap_initial_min_ms`/`_max_ms` (`:1012, :1041, :1044`), `l1.captive_dns_gap_doubled_min_ms`/`_max_ms` (`:1013, :1042`), `l1.captive_dns_gap_quad_min_ms`/`_max_ms` (`:1014`); `dns_server.recv_backoff_max_s` (A.U8.11): `l1.captive_dns_gap_cap_min_ms`/`_max_ms` (`:1067`, the band around the cap, below the uncapped next step); `wifi.sta_retry_after_loss_s` (A.U8.10): `l2.bus_hazard_concurrency_flap_window_s` (`tests/test_digital_twin_bus_hazard_concurrency.py:392`, must outlast the 60 s retry), and the two messages that state the 60 s retry in text, `tests/test_digital_twin_bus_hazard_concurrency.py:402` ("within the real 60s retry window") and `tests/test_asy_wifi_service.py:1215` ("the real 60s retry sleep"); `l2.twin_wifi_connect_delay_s` (A.U8.20): `l2.launch_fault_duration_s` (`tests/test_digital_twin_launch.py:230`), `l2.network_neopixel_never_connects_wait_s` (`tests/test_digital_twin_network_neopixel.py:149, :251`, longer than the delay); `system.task_check_s` (A.U8.08): `l2.sensortask_integration_restart_wait_timeout_s` (`tests/test_digital_twin_sensortask_integration.py:522`), `l1.ntp_fram_system_integration_supervisor_scan_wait_s` (`tests/test_ntp_fram_system_integration.py:443, :550, :614, :644`, one scan plus margin); `wifi.sta_connect_poll_iters` and `wifi.sta_connect_poll_s` (A.U8.10): `l2.sensortask_integration_hotspot_wait_timeout_s` (`tests/test_digital_twin_sensortask_integration.py:594`); `l1.asy_ntp_client_no_reply_fetch_timeout_ms` (A.U8C.13): `l1.asy_ntp_client_past_fetch_timeout_ms` (`tests/test_asy_ntp_client.py:2488`), `l1.ntp_wifi_dns_integration_past_fetch_timeout_ms` (`tests/test_ntp_wifi_dns_integration.py:388`). Each entry states the relation in words; no audit ID in the text.
+- **Blast**: callers — · generated — · js — · tests `tests_scripts/test_tunables_register.py` (A.U8.02) does not check Dependants — unaffected · twin — · docs SPEC Part N only · toml — · uart — (`uart.*` rows untouched)
+- **Depends**: A.U8.01, A.U8.08, A.U8.10, A.U8.11, A.U8.12, A.U8.20, A.U8C.12, A.U8C.13, A.U8C.20, A.U8C.22, A.U8C.23, A.U8C.24, A.U8C.26, A.U8C.29, A.U8C.32, A.U8C.40, A.U8C.41
+- **Kind**: doc
+
+### A.U8C.121 List the tuned `tests_hardware/` sites under their source rows' Dependants
+- **Why**: G4/R54 (as A.U8C.01); U8 N.1 "Dependants" (A.U8.01); the U8C and U8C2 hit-table rows below each state the relation
+- **Site**: SPECIFICATION.md Part N (created by A.U8.01), the rows below
+- **Change**: add to Dependants — `dns_server.recv_backoff_max_s` (A.U8.11): `l4.hotspot_role_reversal_dns_recovery_timeout_s` (`tests_hardware/bench/test_hotspot_role_reversal.py:258`, the post-flood query deadline); `wifi.sta_retry_after_loss_s` (A.U8.10): `l4.network_resilience_flap_step_s` (`bench/test_network_resilience.py:80, :82`, `bench/test_bus_concurrency_under_api_load.py:348, :350`, short against the 60 s retry); `ntp.fetch_timeout_ms` (A.U8.09): `l4.network_resilience_ntp_fail_wait_s` (`:275`, longer than the 5 s fetch; deferred U26 — listed if U26 keeps it); `web.per_call_timeout_s` (A.U8.04): `l4.network_resilience_admitted_silence_s` (`:662`, plus the 1 s retry sleep, under the per-call timeout — pinned by `tests_scripts/test_request_timeout_ceiling.py:295-313`); `web.outer_cap_s` (A.U8.04): `l4.network_resilience_slowloris_socket_timeout_s` (`:950`, above the cap); `notify.loop_tick_s` (A.U8.12): `l4.sensor_config_push_over_real_hardware_override_poll_s` and `_override_poll_tries` (`bench/test_sensor_config_push_over_real_hardware.py:131, :132`, ten ~1 s ticks over a 3 s countdown); `wdt.timeout_ms` (A.U8.08): `l3.sgp40_fram_backup_restore_wdt_feed_interval_s` (`device_scripts/sgp40_fram_backup_restore.py:17`, `sgp40_voc_algorithm_quality.py:19`), the WDT feed cadences `l3.bmp3xx_same_device_rw_concurrency_wdt_feed_every`, `l3.bus_concurrency_cross_device_scd30_sgp40_wdt_feed_every`, `l3.bus_concurrency_isl29125_write_vs_siblings_wdt_feed_every`, `l3.bus_concurrency_same_device_scd30_reader_wdt_feed_every`, `l3.bus_concurrency_same_device_scd30_snapshot_wdt_feed_every`, `l3.bus_concurrency_scd30_write_vs_siblings_wdt_feed_every`, `l3.fram_same_device_rw_concurrency_wdt_feed_every`, `l3.isl29125_cross_device_concurrency_wdt_feed_every`, `l3.scd30_same_device_rw_concurrency_wdt_feed_every`, `l3.sgp40_general_call_reset_hazard_wdt_feed_every` (N iterations × the loop's real per-iteration time must stay under the timeout) and `l3.fram_pause_unpause_and_gating_feed_step_s` (`sleep_fed()`'s step, under the timeout); `l3.starvation_wdt_ms` (A.U8.08): `l3.reboot_fallback_starves_the_watchdog_feed_attempt_ms` (`:49`), `l3.watchdog_starvation_reset_elapsed_max_s` (`flash/test_watchdog_starvation.py:29`), `l3.watchdog_starvation_fallback_elapsed_max_s` (`:68`); `system.task_check_s`, `system.task_fail_increment`, `system.task_fail_max` (A.U8.08, A.U8.12): `l3.system_service_restarts_a_real_dead_task_watch_step_s` (`:38`); `l3.serving_at_default_gc_quiet_to_leave` (A.U8C.86): `l4.serving_heap_at_default_gc_level_gap_s` (`bench/test_serving_heap_at_default_gc.py:30`, must stay below 10 × 1 s); `l3.bus_electrical_timing_rollover_poll_interval_s` (A.U8C2.44): `l3.bus_electrical_timing_wrap_headroom_h` (`flash/test_bus_electrical_timing.py:107`, wider than one poll); `l3.scd30_same_device_rw_concurrency_run_bound_s` and the settle window (A.U8C.84): `l3.conftest_scd30_rw_script_timeout_s` (`flash/conftest.py:32`); `l3.sgp40_fram_backup_restore_backup_wait_s` (A.U8C.87; deferred U26 — listed if U26 keeps it): `l3.fram_storage_backup_script_timeout_s` (`flash/test_fram_storage.py:44`); `l3.scd30_plausibility_read_settle_s` (A.U8C.82): `l3.sensor_accuracy_scd30_script_timeout_s` (`flash/test_sensor_accuracy.py:24`); `l3.sgp40_voc_algorithm_quality_blackout_wait_s` (A.U8C.89): `l3.sensor_accuracy_sgp40_script_timeout_s` (`:40`); `l3.isl29125_mechanism_envelope_settle_s` (deferred U26 — listed if U26 keeps it) and `_max_wait_s` (A.U8C.76): `l3.sensor_accuracy_envelope_script_timeout_s` (`:61`). Each entry states the relation in words; no audit ID in the text.
+- **Blast**: callers — · generated — · js — · tests `tests_scripts/test_tunables_register.py` (A.U8.02) does not check Dependants — unaffected · twin — · docs SPEC Part N only · toml — · uart —
+- **Depends**: A.U8.01, A.U8.04, A.U8.08-A.U8.12, A.U8C.45, A.U8C.48, A.U8C.50, A.U8C.52, A.U8C.53, A.U8C.59-A.U8C.63, A.U8C.67, A.U8C.70, A.U8C.74, A.U8C.76, A.U8C.81, A.U8C.82, A.U8C.84, A.U8C.86, A.U8C.87, A.U8C.88, A.U8C.89, A.U8C.90, A.U8C.101, A.U8C.103, A.U8C.104, A.U8C.107, A.U8C.111, A.U8C2.22, A.U8C2.44
+- **Kind**: doc
 
 ## Hit table
 
@@ -3478,7 +3494,10 @@ They are recorded for A-C; not classified here beyond what is stated.
 
 C.0.2 "Deferred": fixed sleeps U25 (twin) or U26 (hardware) decide on under G7/R23. They carry no tag and
 no Part N row now; the provisional ID in the table is what each becomes if that unit keeps it. 13 hits
-deferred to U25, 14 to U26 (the table lists every site). The fixed sleeps G7/R23 itself keeps — a probe
+deferred to U25, 20 to U26 (the table lists every site; six of them — `tests_hardware/bench/test_network_resilience.py:275`,
+`device_scripts/isl29125_mechanism_envelope.py:24`, `sgp40_fram_backup_restore.py:15, :16`, `uart_idle_poll_rate.py:78`,
+`uart_link_under_concurrent_system_load.py:191` — moved from tuned by the verification: each waits for a state the script
+can observe without disturbing the property). The fixed sleeps G7/R23 itself keeps — a probe
 would occupy a slot or share the heap under measurement — are classified tuned, not deferred
 (`tests_hardware/bench/test_network_resilience.py` slot-release waits, `tests_hardware/device_scripts/heap_under_connection_ceiling.py:44`,
 `serving_at_default_gc.py:27`).
@@ -3486,10 +3505,10 @@ would occupy a slot or share the heap under measurement — are classified tuned
 ## Ledger
 | register block | clause for this unit (short) | result |
 |---|---|---|
-| G4/R54 | code in U8 — `@tunable` tags and register; the U8 NOT-DONE item: per-value classification of the `tests/` and `tests_hardware/` candidates (U8 Ledger, register fix 6) | DONE in this file: all 2,265 C.0.1 hits in 156 files classified; actions A.U8C.01-A.U8C.119 (one per file holding a tuned, mirror or deferred hit). No file NOT-DONE |
+| G4/R54 | code in U8 — `@tunable` tags and register; the U8 NOT-DONE item: per-value classification of the `tests/` and `tests_hardware/` candidates (U8 Ledger, register fix 6) | DONE in this file: all 2,265 C.0.1 hits in 156 files classified; actions A.U8C.01-A.U8C.119 (one per file holding a tuned, mirror or deferred hit) and A.U8C.120-A.U8C.121 (Part N Dependants). No file NOT-DONE |
 | G1/R15 | tags in U8 — every instrument value a registered tunable | two instrument values A.U8.05 does not list: `tests_hardware/harness.py:165` (`l4.ceiling_hold_check_timeout_s`), `tests_hardware/bench/test_heap_under_connection_ceiling.py:49` (`l4.ceiling_holder_socket_timeout_s`), in the actions for those files; Register fixes (G1/R15 item) |
 | G8/R31 | tunables in U8 (every test bounded; the bounds are tunables) | every `run`/`run_timed`/`wait_for`/`limit=`/`join`/`run_isolated`/subprocess hang bound among the hits is tuned, one constant per file per distinct value (C.0.2) |
-| G7/R23 | tunable in U8 (kept sleeps) | kept sleeps tuned (see "Deferred sites"); 27 fixed sleeps deferred to U25/U26 |
+| G7/R23 | tunable in U8 (kept sleeps) | kept sleeps tuned (see "Deferred sites"); 33 fixed sleeps deferred to U25/U26 (13 + 20 here, 14 more in `audit/actions/U8C2.md`) |
 
 ## Register fixes
 
@@ -3504,7 +3523,7 @@ would occupy a slot or share the heap under measurement — are classified tuned
   (A.U8C). Fix the phrase to "8000/8388/8389 construction inputs; the short 100/150 ms timeouts are tuned
   (A.U8C)".
 - **`audit/actions/U8.md` Ledger G4/R54 NOT-DONE row and register fix 6**: the per-value classification is
-  done in `audit/actions/U8C.md`; the row's result becomes "A.U8C.01-A.U8C.119" and register fix 6's
+  done in `audit/actions/U8C.md`; the row's result becomes "A.U8C.01-A.U8C.121" and register fix 6's
   "NOT-DONE in A-L, to be split in A-C" line is dropped.
 - **G1/R15 / `audit/actions/U8.md` A.U8.05**: the instrument's value list lacks `tests_hardware/harness.py:165`
   (`sock.settimeout(0.05)`, the per-socket read window of `_assert_probe_held()`) and
@@ -3529,9 +3548,9 @@ No owner question. Cases C.0.2 could not decide mechanically, each classified by
 Readings applied throughout (preamble "How the classification was done"): a timeout the code under test
 waits out in full is tuned, not a test input; `tries=`/`conn_tries=` values that select an attempt path are
 test inputs; API-domain restatements are not tagged; a fixed sleep in an `l1.` file is tuned; cross-file IDs
-only for duplicated tests or instruments. The scale that follows from C.0.2 — 576 new test-tier IDs besides
+only for duplicated tests or instruments. The scale that follows from C.0.2 — 569 new test-tier IDs besides
 the 18 existing U8 IDs these files also carry and 28 product IDs they mirror — is OR30.a (1)'s own reach
 ("every test tier … has an OR30 register entry"), so it is not raised again; almost every new row starts as
 "estimated — measurement owed", which makes Part N's test-tier rows the measurement list for the B3 campaign.
 
-
+Verified 2026-09-30 (`audit/actions/verify/U8C_tests.md`, `…/U8C_tests_hardware.md`): all findings applied.
