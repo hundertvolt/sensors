@@ -18,7 +18,7 @@ files completely rather than skim, and list the rest as NOT-DONE.
 ## Inputs
 
 - Your CLUSTER's file list (in the prompt that launched you) and the site index
-  `/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/ac/site_index.json`
+  `audit/consolidation/site_index.json`
   (`by_file`: every action ID whose Site cites the file). The index is a parser's output: also grep
   `audit/actions/*.md` for each of your paths (Site, Change and Blast slots) — an action the index missed is still
   yours, and a Blast entry that names your file without its own action is a gap you must report.
