@@ -90,9 +90,9 @@ every verdict, ID, mirror and action slot.
     deferred U26 14 → 15, new IDs 576 → 575, provisional IDs 20 → 21.
 - `bench/test_rest_endpoints_over_sta.py` 20+1 · A.U8C.51 · OK.
 - `bench/test_sensor_config_push_over_real_hardware.py` 25+1 · A.U8C.52, A.U8C2.22 · OK (`:132` "Dependant of
-  notify.loop_tick_s": see V.U8C_tests_hardware.DEP).
+  notify.loop_tick_s": see V.U8C_tests_hardware.17).
 - `bench/test_serving_heap_at_default_gc.py` 11+1 · A.U8C.53 · OK (`:29` shares `l4.network_resilience_slot_release_wait_s`
-  by C.0.2's "same purpose across files … shares one ID"; `:30` Dependant: V.U8C_tests_hardware.DEP).
+  by C.0.2's "same purpose across files … shares one ID"; `:30` Dependant: V.U8C_tests_hardware.17).
 - `bench/test_uart_link_under_api_load.py` 21+0 · A.U8C.54 · 1 ADD:
   - V.U8C_tests_hardware.07 | A.U8C.54 | ADD | `:177` `threads = [threading.Thread(target=burst_worker) for _ in range(6)]`
     — the size of the "deliberate overload" burst of `test_an_api_overload_does_not_corrupt_the_link_or_the_reverse`, a
@@ -202,3 +202,134 @@ every verdict, ID, mirror and action slot.
     rows and mirror sites are not created)"; A.U8C.99 also gains U26 (it has none today). The same holds for
     `heap_layout_after_full_boot_sequence.py` (A.U8C.72), which `PROJECT_AUDIT_PLAN.md:3244` proposes to retire under
     HW.S16/MEM: add "U26/U30 (orphan verdict, plan B.3)" to A.U8C.72's Depends.
+- `error_log_helpers.py` 2+0 · A.U8C.100 · OK (`:14` is A.U8.05's `l4.reset_errors_timeout_s`; the tag line leaves
+  `tests_scripts/test_request_timeout_ceiling.py:86-97`, which reads `_RESET_ERRORS_TIMEOUT_S`, intact).
+- `flash/conftest.py` 1+0, `flash/test_bus_concurrency.py` 19+0, `flash/test_bus_electrical_timing.py` 5+3,
+  `flash/test_fram_storage.py` 14+0, `flash/test_memory_stress.py` 2+1, `flash/test_reboot_persistence.py` 9+0,
+  `flash/test_sensor_accuracy.py` 7+0, `flash/test_task_supervisor.py` 1+0, `flash/test_uart_crossover.py` 6+0,
+  `flash/test_watchdog_starvation.py` 29+0 · A.U8C.101-108, A.U8C.110, A.U8C.111, A.U8C2.44, A.U8C2.45 · OK apart from
+  V.17 (Dependants) — every host `run_isolated(timeout_s=…)` checked against its script's own internal bound; `:51`
+  `_WDT_RESET = 3` is `machine.WDT_RESET` (identifier); U8C2's register fix to search-gap 7 (`:119`, `:122`) is right.
+- `flash/test_toolchain_flash_boot.py` 8+1 and `manual/manual_toolchain.py` 2+0 · A.U8C.109, A.U8C.117, A.U8C2.46 · OK
+  apart from V.18 (`test_toolchain_flash_boot.py` is the original of the shared IDs: `33719a4` against `f843c3d`).
+- `harness.py` 34+3 · A.U8C.112, A.U8C2.47 · OK (both deferrals, `:202`/`:204`, are readiness sleeps an
+  `is_device_present()` poll replaces; the six `l4.ceiling_*` defaults are A.U8.05's; `harness.py:444, :458`
+  `WDT(timeout=8000)` sit inside `mpremote exec` strings, so no C.0.1/G-family hit — A.U8.08 owns them).
+- `heap_map.py` 1+2, `ntp_probe.py` 1+0, `manual/runner.py` 1+1 · — · OK.
+- `http_client.py` 1+0, `isl29125_conformance.py` 1+0, `rogue_udp_responder.py` 2+0, `soak_tiers.py` 4+0,
+  `manual/manual_sensor_accuracy.py` 5+0 · A.U8C.113, A.U8C.114, A.U8C.116, A.U8C.118, A.U8C.119 · OK (the three stacked
+  tags above `soak_tiers.py:7` each find their literal as a whole token on that line — `6` in `6 * 3600.0`, not inside
+  `60.0`/`600.0` — so A.U8.02's check (2) holds).
+- `manual/manual_bus_electrical.py` 2+2, `manual/manual_persistence.py` 0+5 · A.U8C.115, A.U8C2.48, A.U8C2.49 · FIX in V.18.
+
+## Cross-file findings
+
+- V.U8C_tests_hardware.12 | U8C rows `device_scripts/isl29125_mechanism_envelope.py:24`,
+  `device_scripts/sgp40_fram_backup_restore.py:15, :16`, `device_scripts/uart_idle_poll_rate.py:78`,
+  `device_scripts/uart_link_under_concurrent_system_load.py:191`; A.U8C.76, A.U8C.87, A.U8C.94, A.U8C.95 | FIX | five
+  fixed waits for a state the script can observe without disturbing the property, classified tuned, while U8C/U8C2
+  defer the same kind (C.0.2 "Deferred"; G7/R23 Req "waits for readiness by polling for the exact expected state …; a fixed
+  sleep is used only where a probe would disturb the property"): `SETTLE_S = 4.5` (`:24`) is waited out in `_hold()`
+  (`:79-82`) before every level — the same settle-before-reading as the deferred `:209`, and `_fresh_sample()` (`:44-53`)
+  already polls for a new `TS`; `BACKUP_WAIT_S = 75.0`/`RESTORE_WAIT_S = 10.0` run the reader for a fixed time
+  (`_run_until_cancelled()`, `:38-49`) and only then read `get_mem_status()` (`:84`, `:118`), an in-memory read a poll can
+  make every feed step; `uart_idle_poll_rate.py:78` and `uart_link_under_concurrent_system_load.py:191` sleep after
+  `cancel()` for the tasks to unwind — `listener.done()` is already polled at `:71-75`, and awaiting the cancelled tasks is
+  the direct form. (`network_resilience.py:275` is the sixth, V.06.) The observation windows U8C/U8C2 kept tuned —
+  `isl29125_mock_conformance_probe.py:178, :182`, `isl29125_real_irq_edge.py:34`, `network_resilience.py:400`, the
+  slot-release and admit waits, `heap_layout_…:28`, the dead-task window — stay tuned | the five rows → `deferred U26 |
+  if kept: <same ID> — fixed wait for <state>; a poll of <observable> could replace it`; A.U8C.76, A.U8C.87, A.U8C.94,
+  A.U8C.95: move each site from the tag list to "deferred U26: :<line>" and drop its constant/tag from the Change (the
+  constants at `:24`, `:15`, `:16` stay untagged); Depends add U26 to A.U8C.87 and A.U8C.95; U8C Status and "Deferred
+  sites": deferred U26 14 → 20 with V.06, tuned 1505 → 1499, new tuned IDs 576 → 570, provisional IDs 20 → 26; the rows
+  `flash/test_sensor_accuracy.py:61`, `flash/test_fram_storage.py:44` keep their Dependant text against the provisional IDs.
+- V.U8C_tests_hardware.15 | the callers slot of A.U8C.61, .65, .66, .68, .71, .72, .73, .76, .84, .89, .91, .96, .97, .99
+  and A.U8C2.37 | FIX | "callers run on the board by …" lists files that only mention the script's name — a sibling
+  device script's comment or docstring (`bus_concurrency_scd30_write_vs_siblings.py:1`,
+  `fram_error_log_reset_race_verify.py:2`, `fram_error_log_reset_race_seed_and_race.py:62`,
+  `heap_layout_after_full_boot_sequence.py:14, :17`, `bus_concurrency_cross_device_scd30_sgp40.py:25`,
+  `bus_concurrency_same_device_scd30.py:20, :31`, `sgp40_general_call_reset_hazard.py:51`,
+  `uart_driver_read_never_blocks_the_loop.py:25`, `reboot_fallback_starves_the_watchdog.py:12`), a comment in another
+  tier (`tests/test_digital_twin_bus_hazard_concurrency.py:235`, `tests/test_asy_uart_link_driver.py:202`,
+  `bench/test_bus_concurrency_under_api_load.py:21`), or a `tests_scripts/` static reader; A.U8C.73 even lists
+  `tests_scripts/test_bench_restores_serving.py`/`test_request_timeout_ceiling.py`, which name the *bench* file
+  `test_heap_under_connection_ceiling.py` (a substring match), and omits the real runner | each slot names only the
+  real runner (the file passing the script to `run_isolated`/`run_isolated_expect_reset`, grep
+  `[\"/]<name>.py\"` in `tests_hardware/`): A.U8C.61, .65, .96 → `tests_hardware/flash/test_bus_concurrency.py`
+  (`test_uart_crossover.py` for .96), A.U8C.66, .68 → `flash/test_fram_storage.py:60` /
+  `flash/test_bus_concurrency.py:131`, A.U8C.71 → `flash/test_memory_stress.py:35`, A.U8C.72 → "no runner (orphan)",
+  A.U8C.73 → `bench/test_heap_under_connection_ceiling.py:121`, A.U8C.76, .89 → `flash/test_sensor_accuracy.py`,
+  A.U8C.84, A.U8C2.37 → `flash/conftest.py:32`, A.U8C.91 → `flash/test_uart_crossover.py`, A.U8C.97 →
+  `flash/test_watchdog_starvation.py:23`, A.U8C.99 → "no runner (orphan, run by hand)"; the static readers move to the
+  tests slot as "unaffected" (`test_device_script_gc_threshold.py`, `test_heap_map_parser.py:198-209`,
+  `test_device_script_config_flush.py`, `test_digital_twin_boot_contiguity.py:259-300` — the last reads
+  `_STARTER_LOOP_TIMEOUT_MS`/`_STARTER_LOOP_GRACE_MS`/`_TIMERS_TIMEOUT_S` by `^NAME = (-?\d+)$`, which the tag lines
+  above leave intact); sibling scripts that share an ID stay in the "shared IDs also sited in" clause only.
+- V.U8C_tests_hardware.16 | U8C/U8C2 search rules and A.U8C.59-63, .67, .70, .74, .84, .88 | ADD | the WDT feed cadence of
+  the device scripts is a real-clock budget (N iterations × the loop's real per-iteration time must stay under
+  `wdt.timeout_ms`, or the board resets mid-run) that no rule reaches: `if i % N == 0: wdt.feed()` is an `==` compare of
+  a `%` operand (G6 reads `+ - * / //` only) and `step = min(remaining, 1.0)` has no timing name in its other argument
+  (G11). Sites (`grep -rnE "% [0-9]+ == 0" tests_hardware`): `bmp3xx_same_device_rw_concurrency.py:43` (5),
+  `bus_concurrency_cross_device_scd30_sgp40.py:44` (10), `bus_concurrency_isl29125_write_vs_siblings.py:52, :68` (10),
+  `bus_concurrency_same_device_scd30.py:63` (10), `:78` (5), `bus_concurrency_scd30_write_vs_siblings.py:50, :64` (10),
+  `fram_same_device_rw_concurrency.py:49` (5), `isl29125_cross_device_concurrency.py:73, :87` (10),
+  `scd30_same_device_rw_concurrency.py:59` (10), `sgp40_general_call_reset_hazard.py:84, :99` (10); and
+  `fram_pause_unpause_and_gating.py:31` (1.0, `sleep_fed()`'s feed step) | tuned, Dependant of `wdt.timeout_ms`: per
+  file one constant per distinct value, `_WDT_FEED_EVERY = N` tagged `# @tunable l3.<stem>_wdt_feed_every = N`
+  (`bus_concurrency_same_device_scd30.py`: `_READER_WDT_FEED_EVERY = 10`, `_SNAPSHOT_WDT_FEED_EVERY = 5`;
+  `fram_pause_unpause_and_gating.py`: `_FEED_STEP_S = 1.0`, `l3.fram_pause_unpause_and_gating_feed_step_s`), each
+  `i % N` → `i % _WDT_FEED_EVERY`; added to the listed file actions; `wdt.timeout_ms`'s Dependants list them (V.17);
+  U8C2 "Known blind spots" add "a `%` operand compared with `==` (WDT feed cadence) and a `min()`/`max()` clamp whose
+  other argument carries no timing name".
+- V.U8C_tests_hardware.17 | U8C (the `tests_hardware/` part) | ADD | the counterpart of V.U8C_tests.09: 20 tuned
+  `tests_hardware/` rows state "Dependant of …" (or "must stay below/under …"), and only three reach Part N through
+  A.U8C2.51 (`network_resilience.py:957`, `l3.system_service_restarts_a_real_dead_task_wait_rounds`,
+  `l4.bench_control_udp_capture_timeout_s`) | new action:
+
+  ### A.U8C.121 List the tuned `tests_hardware/` sites under their source rows' Dependants
+  - **Why**: G4/R54 (as A.U8C.01); U8 N.1 "Dependants" (A.U8.01); the U8C hit-table rows below each state the relation
+  - **Site**: SPECIFICATION.md Part N (created by A.U8.01), the rows below
+  - **Change**: add to Dependants — `dns_server.recv_backoff_max_s` (A.U8.11): `l4.hotspot_role_reversal_dns_recovery_timeout_s`
+    (`tests_hardware/bench/test_hotspot_role_reversal.py:258`, the post-flood query deadline); `wifi.sta_retry_after_loss_s`
+    (A.U8.10): `l4.network_resilience_flap_step_s` (`bench/test_network_resilience.py:80, :82`,
+    `bench/test_bus_concurrency_under_api_load.py:348, :350`, short against the 60 s retry); `ntp.fetch_timeout_ms` (A.U8.09):
+    `l4.network_resilience_ntp_fail_wait_s` (`:275`, longer than the 5 s fetch; deferred U26 by V.06 — listed if kept);
+    `web.per_call_timeout_s` (A.U8.04): `l4.network_resilience_admitted_silence_s` (`:662`, plus the 1 s retry sleep, under
+    the per-call timeout — pinned by `tests_scripts/test_request_timeout_ceiling.py:295-313`); `web.outer_cap_s` (A.U8.04):
+    `l4.network_resilience_slowloris_socket_timeout_s` (`:950`, above the cap); `notify.loop_tick_s` (A.U8.12):
+    `l4.sensor_config_push_over_real_hardware_override_poll_s` and `_override_poll_tries`
+    (`bench/test_sensor_config_push_over_real_hardware.py:131, :132`, ten ~1 s ticks over a 3 s countdown);
+    `wdt.timeout_ms` (A.U8.08): `l3.sgp40_fram_backup_restore_wdt_feed_interval_s` (`device_scripts/sgp40_fram_backup_restore.py:17`,
+    `sgp40_voc_algorithm_quality.py:19`) and the feed cadences of V.16; `l3.starvation_wdt_ms` (A.U8.08):
+    `l3.reboot_fallback_starves_the_watchdog_feed_attempt_ms` (`:49`), `l3.watchdog_starvation_reset_elapsed_max_s`
+    (`flash/test_watchdog_starvation.py:29`), `l3.watchdog_starvation_fallback_elapsed_max_s` (`:68`);
+    `system.task_check_s`, `system.task_fail_increment`, `system.task_fail_max` (A.U8.08, A.U8.12):
+    `l3.system_service_restarts_a_real_dead_task_watch_step_s` (`:38`); `l3.serving_at_default_gc_quiet_to_leave`
+    (A.U8C.86): `l4.serving_heap_at_default_gc_level_gap_s` (`bench/test_serving_heap_at_default_gc.py:30`, must stay
+    below 10 × 1 s); `l3.bus_electrical_timing_rollover_poll_interval_s` (A.U8C2.44): `l3.bus_electrical_timing_wrap_headroom_h`
+    (`flash/test_bus_electrical_timing.py:107`, wider than one poll); `l3.scd30_same_device_rw_concurrency_run_bound_s`
+    and the settle window (A.U8C.84): `l3.conftest_scd30_rw_script_timeout_s` (`flash/conftest.py:32`);
+    `l3.sgp40_fram_backup_restore_backup_wait_s` (A.U8C.87): `l3.fram_storage_backup_script_timeout_s`
+    (`flash/test_fram_storage.py:44`); `l3.scd30_plausibility_read_settle_s` (A.U8C.82):
+    `l3.sensor_accuracy_scd30_script_timeout_s` (`flash/test_sensor_accuracy.py:24`);
+    `l3.sgp40_voc_algorithm_quality_blackout_wait_s` (A.U8C.89): `l3.sensor_accuracy_sgp40_script_timeout_s` (`:40`);
+    `l3.isl29125_mechanism_envelope_settle_s` and `_max_wait_s` (A.U8C.76): `l3.sensor_accuracy_envelope_script_timeout_s`
+    (`:61`). Each entry states the relation in words; no audit ID in the text.
+  - **Blast**: callers — · generated — · js — · tests `tests_scripts/test_tunables_register.py` (A.U8.02) does not check
+    Dependants — unaffected · twin — · docs SPEC Part N only · toml — · uart —
+  - **Depends**: A.U8.01, A.U8.04, A.U8.08-A.U8.12, A.U8C.45, A.U8C.48, A.U8C.50, A.U8C.52, A.U8C.53, A.U8C.76, A.U8C.81,
+    A.U8C.82, A.U8C.84, A.U8C.86, A.U8C.87, A.U8C.89, A.U8C.90, A.U8C.101, A.U8C.103, A.U8C.104, A.U8C.107, A.U8C.111,
+    A.U8C2.22, A.U8C2.44
+  - **Kind**: doc
+- V.U8C_tests_hardware.18 | A.U8C.45, .50, .54, .98, .99, .115, A.U8C2.35, .46, .48, .49 | FIX | a message or operator
+  instruction on the tagged literal's own statement (or next to it) restates the value in text, so a changed constant
+  leaves it wrong — for the manual scripts the operator acts on the text: `manual_bus_electrical.py:17, :22` ("You have 20
+  seconds" beside `countdown(20)`), `:26, :29` ("30s" beside `tail_log(30.0)`), `:43, :49`; `manual_persistence.py:21,
+  :41` ("20 seconds"), `:23` ("Wait 10 seconds"); `flash/test_toolchain_flash_boot.py:90` ("after 5 attempts");
+  `bench/test_bus_concurrency_under_api_load.py:120, :451, :542` ("within 120s"), `:202, :289, :359` ("within 180s");
+  `bench/test_network_resilience.py:874` ("within 60s"); `bench/test_uart_link_under_api_load.py:93, :140` ("within 120s"),
+  `:182` ("within 60s"); `device_scripts/wifi_service_reconnect_repro.py:106, :137` ("180s", "600s");
+  `wifi_reconnect_after_failed_attempts_repro.py:113` ("10s"); `isl29125_real_irq_edge.py:61` ("within 1.5s" = 30 × 50 ms)
+  | each action's Change gains "the message at :<line> interpolates the constant (f-string, `{_NAME}` or `{_NAME / 1000:.0f}`
+  for a ms constant shown in s)". This extends the `tests/` half, which did not raise message text; the same pattern
+  exists there (e.g. hang-bound messages), so the lead should apply it to both halves or to neither.
