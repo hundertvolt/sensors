@@ -78,3 +78,7 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     branch (`EAGAIN` while a zero-timeout poll still reports writable), else they pass on unpatched firmware too; the
     one-time unpatched control run covers every bound-asserting test; A.U21.14 sets a phase-C bound, a failed bound
     goes to the owner per item 21. A.U22.03 (event-driven LED pause) is an agent proposal, shown in the OR2.c review.
+25. U25 Q1 (A.U25.69, the generated `main()`'s four keywords: keep as the documented manual-start options of the
+    no-autostart image, or remove under OR36.a (1) with 44 call lines adapting) is collected for the A-C owner review
+    after the U25 verifier tests (a) against OR36/OR86. U25's six named conflicts (A.U8.20, A.U15.R02, A.U20.02,
+    A.U3.01, A.U11.03, A.U13.R01) are merged in A-C.
