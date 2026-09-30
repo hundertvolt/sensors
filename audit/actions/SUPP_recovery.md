@@ -612,10 +612,11 @@ AP) is handled inside the module and must not escalate; a failing chip may escal
   body, under the bus lock the caller holds (`_send_command()` `:154-162`), no await added. No extra write cycle to the
   array: WREN/RDSR touch only the status register's volatile latch.
 - **Blast**: callers `_write()` `:228`, `_set_write_protected()` `:236` · generated — · js — · tests existing:
-  `tests/test_asy_fram_wire_trace.py` goldens hold (the healthy path sends one WREN); tests asserting w26 after a single
-  dropped WREN (grep `wrnno=82`/`26` and the fake's WEL knobs in `tests/test_asy_fram_driver.py`,
-  `tests/_fram_chip_fake.py:23-60`) now need two dropped WRENs; new L1 `tests/test_asy_fram_driver.py` — the fake drops
-  the first WREN: the write lands, the trace shows WREN, RDSR, WREN, RDSR, WRITE…, one console line, no w26; drops both:
+  `tests/test_asy_fram_wire_trace.py` goldens hold (the healthy path sends one WREN); existing `drop_wren=True` tests
+  (`tests/test_asy_fram_driver.py:361, 486, 996, 1009, 1288`; w26 asserted at `:1003, 1296`) keep w26, since
+  `drop_wren` (`tests/_fram_chip_fake.py:29`) is a persistent bool that drops every WREN — any trace assertions there
+  gain the second WREN/RDSR; `tests/_fram_chip_fake.py` gains `drop_next_wren = 0` (a count, like `drop_next_wrdi`
+  `:30`) for the new one-shot case (U24); new L1 `tests/test_asy_fram_driver.py` — the fake drops the first WREN only: the write lands, the trace shows WREN, RDSR, WREN, RDSR, WRITE…, one console line, no w26; drops both:
   w26 and nothing written · four tiers (same-device only, FRAM being alone on its bus): L1 above; L2
   `digital_twin/_fram_chip.py` gains a `wren` fault op in its `FaultInjector` (drop the next WREN, U25) and
   `tests/test_digital_twin_fram.py` a booted write surviving one dropped WREN; L3
@@ -661,7 +662,9 @@ AP) is handled inside the module and must not escalate; a failing chip may escal
   every write ends in "latch did not set" (0x00) or "latch did not clear" (0xFF — the payload is then reported as
   landed, `:348-350`), consumers fall back to RAM, and nothing escalates.
 - **Site**: `src/asy_fram_driver.py` `FRAM_SPI.__init__` `:98-125`, `set_values_sync()` `:314-325`,
-  `report_set_values()` `:327-350`, `setup()` `:381-398`; `src/asy_fram_manager.py` `AsyFramManager` `:618-740` (the task starter A.U16.17 adds).
+  `report_get_values()` `:293-307`, `report_set_values()` `:327-350`, `setup()` `:381-398`, `verify_present()` `:400-432`;
+  `src/asy_fram_manager.py` `_AsyBaseFramChunk._write()` `:96`, `_read()` `:128`, `clear()` `:389` (shared by
+  `AsyFramChunk` and `AsyFramTimestampedChunk`), `AsyFramManager` `:618-740` (the task starter A.U16.17 adds).
 - **Change**: (1) `FRAM_SPI.__init__` gains `self._anomalies = 0` (saturates at `_PROBE_AT`, never grows) and
   `self.lost = asyncio.Event()`. (2) `set_values_sync()` (`:314-325`, the synchronous body every chunk write goes
   through under the caller's block hold — `_set_check_sb()` `asy_fram_manager.py:244`, `_write_chunk()` `:280`,
@@ -681,11 +684,19 @@ AP) is handled inside the module and must not escalate; a failing chip may escal
   behaviour unchanged (print, `return False`); was up and got lost → `await self.setup()` once (A.U16.R02's retries
   included), `False` → `return False`, `True` → `self.pr.one("FRAM chip answers again")` and continue; then `await
   self.fram.lost.wait()` and `return False`. A `_was_up` flag set by the first successful `setup()` tells the two apart.
+  (5) After a loss every logger store is still `initialized` (set up while the chip was up, `PrintLogHistoryStore.setup()` `src/print_log.py:273-279`),
+  so each persisted entry anywhere would still attempt a FRAM write and log errno 92/90 NOT_INIT
+  (`asy_fram_driver.py:331, 297`) plus the chunk layer's follow-ups (`asy_fram_manager.py:248`, `:107/:112`) — alternating
+  codes OR35.b's newest-entry rule does not collapse: `_AsyBaseFramChunk._write()`, `_read()` and `clear()` return
+  `False` at entry, logging nothing, while `self.fram.lost.is_set()` (the loss is the one errno 54 event), and
+  `report_set_values()`/`report_get_values()` pass `repeat=True` for NOT_INIT while `lost` is set. (6) `verify_present()`
+  (`:428-429`) sets `self.lost` when it sets `initialized = False`, so this second loss path does not leave the task
+  waiting.
   Result per reader of the ladder: R1 the next write / R2 the chip's command state reset by every CS rising edge / R3,R4
   not applicable on this bus (U13 table) / R5 the task ends and its restart re-runs `setup()` / R6 the supervisor budget
   reboots when it stays lost / R7. Bounded: one probe per `_PROBE_AT` anomalies, one `setup()` per task restart, the
-  restarts by the supervisor budget. Logged once per event: one errno 54 per loss (the flag stops further probes), one
-  supervisor entry per task end (A.U3.06). Race-free: the probe runs inside the block hold that already owns both
+  restarts by the supervisor budget. Logged once per event: one errno 54 per loss (the flag stops further probes, and (5) keeps the chunk layer and
+  every logger store silent while lost), one supervisor entry per task end (A.U3.06). Race-free: the probe runs inside the block hold that already owns both
   FRAM locks; `setup()` in the task takes both locks (A.U16.10); `initialized` is read by every entry guard inside the
   same holds. Consumers: loggers set up while the chip was up keep their stores; their writes are refused while lost and
   the first write after recovery re-persists the whole ring from RAM (`PrintLogHistoryStore._write()` packs the full
@@ -699,7 +710,8 @@ AP) is handled inside the module and must not escalate; a failing chip may escal
   `tests_scripts/test_buildgen_generate.py` collector expectations; new L1 `tests/test_asy_fram_driver.py` — a fake chip
   switched silent (SO stuck 0x00; and 0xFF) mid-run: the second anomalous write probes once, `initialized` False, one
   errno 54, `lost` set, later operations make no bus traffic; an anomaly with a matching RDID resets the count and keeps
-  the chip up; L1 `tests/test_asy_fram_manager.py` — the task waits while healthy, returns `False` on a loss, a restart
+  the chip up; after a loss, ten logger writes add no FRAM-log entry beyond the one errno 54; `verify_present()` failing
+  sets `lost`; L1 `tests/test_asy_fram_manager.py` — the task waits while healthy, returns `False` on a loss, a restart
   with the chip back re-runs `setup()` and waits again, and the next logger write re-persists the RAM ring
   (`tests/test_print_log.py`'s store helpers); L2 `digital_twin/_fram_chip.py` gains a `silent` switch (U25) and
   `tests/test_digital_twin_fram.py` a booted device whose chip goes silent: the FRAM task ends, a restart recovers when
@@ -747,7 +759,8 @@ AP) is handled inside the module and must not escalate; a failing chip may escal
   the 2nd failed iteration — their WLAN-fake call logs re-derive; mode-switch tests hold (the bool is additive); new L1
   `tests/test_asy_wifi_service.py` — two consecutive `hw_op_failed` iterations: one `deinit()` and one `WLAN(STA_IF)`
   construction on the fake, one wrnno 14; in hotspot phase the AP mode is re-selected; deactivated: no call; a raising
-  `deinit()` → errno 11 and "failed" · L2 `tests/test_digital_twin_sensortask_integration.py` (twin `network.WLAN`) —
+  `deinit()` → exactly one entry, errno 11 (no wrnno 14, OR56.a (1)); give-up → restart → good iteration → a later
+  2-failure streak fires the radio rung again (the episode re-arm of A.U10.R01 (4); WiFi has no `_init_done()`) · L2 `tests/test_digital_twin_sensortask_integration.py` (twin `network.WLAN`) —
   a WLAN fake raising on `status()` twice triggers one re-construction and the link comes back; the fake must count
   constructions per interface (U25) · L3 `tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py`
   gains a step calling `_recover_device()` on a connected STA and asserting the link returns within the connect budget
@@ -755,7 +768,7 @@ AP) is handled inside the module and must not escalate; a failing chip may escal
   environment faults, which stay inside the module); no bus-hazard tier applies (no I2C/SPI) · twin as above · docs SPEC
   A.4 WiFi bullet: "repeated WLAN hardware errors first re-initialise the radio (power-cycled by the driver) before the
   task gives up"; SPEC F.2 (A.U14.R01) · toml — · uart —.
-- **Depends**: A.U10.R01; co-lands with A.U18.32/A.U18.34 (lock hold table gains this holder), A.U18.28-A.U18.30
+- **Depends**: A.U10.R01 (including its episode re-arm on a good cycle at streak 0, (4)); co-lands with A.U18.32/A.U18.34 (lock hold table gains this holder), A.U18.28-A.U18.30
   (hotspot and deactivated paths), A.U10.18 (`wifi_mode_lock` name) — A-C merges. U18's verifier is still running: A-C
   re-checks these line numbers against its applied changes.
 - **Kind**: code | test | doc
@@ -783,12 +796,14 @@ such action (grep `OR113`/`ladder` in `U14.md` and `verify/U14.md`: none), so it
   unchanged. (3) `:3617-3623` → "**The I2C ladder, per sensor** (C.7): a failed cycle is retried by the next trigger; at
   the second consecutive failure the driver recovers its chip (SCD30 and BMP3XX soft reset, BMP3XX then re-applying its
   stored configuration; ISL29125 re-applying its whole configuration; SGP40 heater-off to idle); at the third the bus is
-  recovered — `I2C.recover()` clocks a held SDA free with up to nine SCL pulses and a STOP as plain GPIO, then
-  re-constructs the controller with the full parameter set (rp2's only controller re-init: `machine.I2C.init()` is
-  unsupported and `deinit()` a no-op, F.5.1), all under the bus lock; past `max_module_error` the task ends and the
-  supervisor restarts it with a fresh setup (probe, identification, the chip's reset); the restart budget reboots the
-  device, and every I2C bus is cleared once at boot before its controller is constructed. Each rung fires at most once
-  per failure episode and logs one warning. The SGP40 general call stays the one reset that reaches other devices, at
+  cleared — `I2C.clear()` clocks a held SDA free with up to nine SCL pulses and a STOP as plain GPIO, waiting out clock
+  stretching, and hands the pins back to the I2C function; at the fourth its controller is re-constructed —
+  `I2C.recover()` clears again and re-constructs with the full parameter set (rp2's only controller re-init:
+  `machine.I2C.init()` is unsupported and `deinit()` a no-op, F.5.1; the construction's `i2c_init()` resets the whole
+  I2C block), each under the bus lock; past `max_module_error` the task ends and the supervisor restarts it with a fresh
+  setup (probe, identification, the chip's reset); the restart budget reboots the device, and every I2C bus is cleared
+  once at boot before its controller is constructed. Each rung fires at most once per failure episode — a bus rung once
+  per bus, whichever reader on it reaches it first — and leaves one persisted entry. The SGP40 general call stays the one reset that reaches other devices, at
   setup only (C.8). **Hot-unplug/replug is a kept feature: 'Live bus reconnect must be preserved' (owner, 2026-07-13)** —
   a chip unplugged and replugged is recovered by these rungs without a reboot when it is back before the restart budget
   runs out, as for every declared chip; a slave holding SCL, or one that nine pulses do not free, needs a power cycle — an
@@ -798,7 +813,8 @@ such action (grep `OR113`/`ladder` in `U14.md` and `verify/U14.md`: none), so it
   → "- **A wedged I2C bus or sensor recovers through the recovery ladder, smallest blast radius first — retry, the
   participant's own reset, bus clear and controller re-init, task restart, reboot, the hardware watchdog last** (owner,
   2026-09-30); a transfer in flight cannot be interrupted, so the ladder acts after it returns an error, and a call that
-  never returns is the watchdog's. Full ladder and which waits can be timeout-wrapped: SPECIFICATION.md Part F.2." [src:
+  never returns is the watchdog's — the current state, until a genuine non-blocking alternative reliably exists (owner,
+  2026-07-24; BACKLOG deferred goal). Full ladder and which waits can be timeout-wrapped: SPECIFICATION.md Part F.2." [src:
   OR113.a, G4/R22, harmonization 38]
 - **Blast**: callers — · generated — · js — · tests — (no test pins F.2's or CLAUDE.md's wording: grep "accepted
   backstop" in `tests*/`: none; the old heading text appears nowhere else outside `audit/`, grep "wedged-bus backstop":
@@ -806,8 +822,17 @@ such action (grep `OR113`/`ladder` in `U14.md` and `verify/U14.md`: none), so it
   non-blocking alternative to an uninterruptible transfer stays, its "backstopped by the hardware watchdog" becomes
   "the ladder acts once it returns; one that never returns is the watchdog's"); SPEC C.7 (A.U10.R01), C.8 (A.U15.R02,
   Conflicts 2), C.3 (A.U13.R01), F.5.1 (A.U14.04 + A.U13.R01's sentence); DEVICE_REFERENCE.md operator actions (U36,
-  LEAD/R14) gains the power-cycle line A.U14.17 names · toml — · uart —.
-- **Depends**: A.U14.16, A.U14.17 (Conflicts 1), A.U14.38, A.U0.22, A.U0.37 (same sentences — Conflicts 3, 4); the
+  LEAD/R14) gains the power-cycle line A.U14.17 names; (a) `SPECIFICATION.md:3998-3999` (F.5.8, "That is the case Part
+  F.2 already settles — the hardware watchdog is the accepted backstop …") via A.U0.44 (Conflicts 8); (b)
+  `digital_twin/README.md:543-544` "matching CLAUDE.md's own settled 'hardware watchdog is the accepted backstop' rule
+  for a genuinely wedged bus" → "matching CLAUDE.md's recovery-ladder rule: a transfer that never returns is the
+  watchdog's"; (c) `BACKLOG.md:199` "(upgrades the 'genuinely wedged I2C bus → watchdog backstop' test)" → "(upgrades
+  the twin's watchdog hang test and the held-SDA recovery row)"; (d) `SPECIFICATION.md:3625` "**The same backstop
+  applies to a WiFi link …**" (no referent after the rewritten ladder paragraph) → "**The watchdog/power-cycle backstop
+  also covers a WiFi link …**"; `CLAUDE.md:236` "(that case stays F.2's watchdog backstop)" stays true (an in-flight
+  transfer), no change · toml — · uart —.
+- **Depends**: A.U14.16, A.U14.17 (Conflicts 1), A.U14.38, A.U0.22, A.U0.37 (same sentences — Conflicts 3, 4); A.U0.44
+  (`SPECIFICATION.md:3998-3999`, Conflicts 8) and A.U14.16's planned F.2 SPI sentence (Conflicts 9) — A-C merges; the
   mechanisms A.U10.R01, A.U13.R01, A.U15.R01-R04, A.U16.R01-R03, A.U18.R01; U36 owns CLAUDE.md's final wording pass.
 - **Kind**: doc | rule
 
@@ -815,19 +840,23 @@ such action (grep `OR113`/`ladder` in `U14.md` and `verify/U14.md`: none), so it
 
 | action | conflict | correction |
 |---|---|---|
-| 1. A.U14.17 | Status "pending"; Change (a) head "never at runtime (OR64.a (2))"; "`init()` itself (the re-init path) never clears, so nothing touches a bus whose controller exists"; its F.2 text "once per bus at boot, never at runtime (owner, <answer date>)"; Blast (a) "CLAUDE.md's wedged-bus rule (runtime, watchdog backstop) unchanged"; Why cites OR64.a (2)'s boundary. OR113.a overtakes that reading and allows a mid-operation bus reset. | Status → "option (a), settled by OR113.a (1) (owner, 2026-09-30)"; Change (b) and Blast (b) go; Change (a) head → "a boot-time clear, once per bus, before the controller is constructed; the same clock-out is the runtime bus rung (A.U13.R01)"; "`init()` itself … never clears, so nothing touches a bus whose controller exists" → "`init()` itself does not clear; the runtime clear is `recover()`'s, under the bus lock"; `_clear_bus()` returns A.U13.R01's status mask and `__init__` stores it for `take_boot_clear_status()`; F.2 text "once per bus at boot, never at runtime (owner, <answer date>)" → merged into A.U14.R01's paragraph ("every I2C bus is cleared once at boot before its controller is constructed"); Blast (a) CLAUDE.md line → "rewritten by A.U14.R01"; Why: OR64.a (2)'s boundary → "OR113.a (1)/(2) (owner, 2026-09-30), overtaking the OR64.a (2) reading". |
+| 1. A.U14.17 | Status "pending"; Change (a) head "never at runtime (OR64.a (2))"; "`init()` itself (the re-init path) never clears, so nothing touches a bus whose controller exists"; its F.2 text "once per bus at boot, never at runtime (owner, <answer date>)"; Blast (a) "CLAUDE.md's wedged-bus rule (runtime, watchdog backstop) unchanged"; Why cites OR64.a (2)'s boundary. OR113.a overtakes that reading and allows a mid-operation bus reset. | Status → "option (a), settled by OR113.a (1) (owner, 2026-09-30)"; Change (b) and Blast (b) go; Change (a) head → "a boot-time clear, once per bus, before the controller is constructed; the same clock-out is the runtime bus rung (A.U13.R01)"; "`init()` itself … never clears, so nothing touches a bus whose controller exists" → "`init()` itself does not clear; the runtime clear is `clear()`'s and `recover()`'s, under the bus lock"; `_clear_bus()` waits for SCL release after each pulse, bounded by the bus timeout (A.U13.R01 (2)); `_clear_bus()` returns A.U13.R01's status mask and `__init__` stores it for `take_boot_clear_status()`; F.2 text "once per bus at boot, never at runtime (owner, <answer date>)" → merged into A.U14.R01's paragraph ("every I2C bus is cleared once at boot before its controller is constructed"); Blast (a) CLAUDE.md line → "rewritten by A.U14.R01"; Why: OR64.a (2)'s boundary → "OR113.a (1)/(2) (owner, 2026-09-30), overtaking the OR64.a (2) reading". |
 | 2. A.U15.15 | Planned C.8 text: "The controller and the bus are not stalled … nothing may stall, hold or restart a bus or its controller, and the mechanism is not to be replaced (owner, 2026-09-26)" — attributes to the owner a boundary OR113.a overtakes ("A full bus reset is allowed mid-operation when the milder measures fail"). | "…; nothing may stall, hold or restart a bus or its controller, and the mechanism is not to be replaced (owner, 2026-09-26)" → "…; the mechanism is not to be replaced (owner, 2026-09-26). It stays the one reset that reaches other devices; every other recovery reaches only its own chip, or the bus as a whole through the recovery ladder's bus rung under the bus lock (owner, 2026-09-30; F.2)." The sentence "The controller and the bus are not stalled: the write is bounded by the bus timeout …" stays (a fact). |
-| 3. A.U0.22 | CLAUDE.md:193 head → "For a genuinely wedged I2C bus/sensor, the hardware watchdog is the backstop" and :194-196 "— the current state, backstopped …" — names the watchdog as the recovery, with no ladder before it. | A-C takes A.U14.R01's CLAUDE.md bullet in place of A.U0.22's two CLAUDE.md edits; A.U0.22's BACKLOG deferred goal stays, its list item "a `machine.I2C` transfer on a wedged bus" → "a `machine.I2C` transfer in flight on a wedged bus (the recovery ladder acts once it returns; one that never returns is the watchdog's)". |
+| 3. A.U0.22 | CLAUDE.md:193 head → "For a genuinely wedged I2C bus/sensor, the hardware watchdog is the backstop" and :194-196 "— the current state, backstopped …" — names the watchdog as the recovery, with no ladder before it. | A-C takes A.U14.R01's bullet (which keeps A.U0.22's owner-goal clause) in place of A.U0.22's two CLAUDE.md edits; A.U0.22's BACKLOG deferred goal stays, its list item "a `machine.I2C` transfer on a wedged bus" → "a `machine.I2C` transfer in flight on a wedged bus (the recovery ladder acts once it returns; one that never returns is the watchdog's)". |
 | 4. A.U0.37 | SPEC:3606-3608 → "… the hardware watchdog is the backstop (owner, 2026-09-25: 'a stalled chip may recover by a reboot'; escalation up to a reboot is intended)." — same issue at F.2's head. | A-C takes A.U14.R01 (2)'s sentence, which keeps the 2026-09-25 owner clause as "a stalled chip may still reach a reboot, owner, 2026-09-25". |
 | 5. A.U16.17 | "No retry within the boot: the reboot re-runs construction and the whole batch"; `get_task_starters()` "returns `[]` when `self.fram.initialized`"; new L1 "after a good one, `[]`". | "No retry after `setup()` returns: `setup()` itself retries identification up to three times (A.U16.R02); a recovery later in the boot would leave loggers RAM-only (A.U16.06), so the reboot re-runs the batch"; `get_task_starters()` → one starter whenever a chip is declared (its task ends at once when the chip never came up, as written, and otherwise waits for a mid-operation loss, A.U16.R03); L1 "after a good one, `[]`" → "after a good one, one starter whose task waits on `fram.lost`". |
 | 6. A.U14.38 | Keeps HEAD's paragraph body, which says the respawn "doesn't reconstruct the underlying `machine.I2C` peripheral (only a full reboot does that)" and that watchdog starvation "is what actually reconstructs `machine.I2C`" — false once A.U13.R01 lands. | Its owner-rule head and proof sentence attach to A.U14.R01 (3)'s rewritten paragraph; the two HEAD sentences go. |
 | 7. A.U15.24 / A.U18.15 (A-C note, not a ladder conflict) | Both claim shared wrnno 11 (`DERIVED_DOMAIN`, `SOCKET_TEARDOWN`). | A-C assigns 11 to one and 12 to the other; this file's two codes are written as 14/15 and shift with them. |
+| 8. A.U0.44 | `audit/actions/U0.md:1465` rewrites `SPECIFICATION.md:3998-3999` to "That is Part F.2's case: backstopped by the hardware watchdog until a genuine non-blocking alternative reliably exists (owner, 2026-07-24; BACKLOG deferred goal)." — read with F.2's new ladder, it must say that only the in-flight transfer is the watchdog's. | :3998-3999 text 'backstopped by the hardware watchdog until …' → 'That is Part F.2's case: an I2C/SPI transfer in flight cannot be interrupted, so the recovery ladder acts once it returns and one that never returns is the watchdog's, until a genuine non-blocking alternative reliably exists (owner, 2026-07-24; BACKLOG deferred goal).' |
+| 9. A.U14.16 | Its planned F.2 text "a single `machine.SPI` transfer is synchronous and stays in the watchdog's bucket, like I2C" reads as all of I2C. | 'stays in the watchdog's bucket, like I2C' → 'stays in the watchdog's bucket while in flight, like an I2C transfer'. |
 
 No conflict found in: A.U13.01-A.U13.19 (none forbids a clear or re-init; A.U13.06's "the UART clamp-and-yield technique
 is not applied to I2C/SPI" is about reads, not recovery), A.U10.* (A.U10.23 keeps the supervisor arithmetic; A.U10.26's
 "FRAM bus-lock acquisition … gets no timeout" is about awaitable waits), A.U15.41 (timer re-arm on restart is the R1/R5
 of its own fault), A.U16.* other than A.U16.17, A.U17.* (A.U17.33 consistent), A.U18.* (A.U18.13 keeps the per-call
-re-create; A.U18.30's terminal deactivation is owner-confirmed behaviour, not a missing rung).
+re-create; A.U18.30's terminal deactivation is owner-confirmed behaviour, not a missing rung), A.U20.08
+(`audit/actions/U20.md`: "`init()` itself never clears" stays true, the runtime clear being `clear()`'s and
+`recover()`'s).
 
 ## Register fixes
 
@@ -835,12 +864,18 @@ re-create; A.U18.30's terminal deactivation is owner-confirmed behaviour, not a 
    chip is recovered by task restart escalating to reboot and the hardware watchdog, never by an I2C-level timeout; the
    UART clamp-and-yield technique is not generalised to I2C/SPI, and a task respawn does not rebuild the bus
    peripheral." → "A call MicroPython cannot interrupt … is not wrapped in an asyncio timeout; a wedged bus, sensor or
-   chip is recovered by the ladder below, whose bus rung — not a task respawn — rebuilds the I2C controller
+   chip is recovered by the ladder below, whose controller rung — not a task respawn — rebuilds the I2C controller
    (re-construction with the full parameter set, the only re-init rp2 offers); the UART clamp-and-yield technique is not
    generalised to I2C/SPI." State: the "Work (OR113.a (2) …)" clause gains its actions — "code+test U10 (A.U10.R01),
    U13 (A.U13.R01, A.U13.R02), U15 (A.U15.R01-R04), U16 (A.U16.R01-R03), U18 (A.U18.R01; network side); U17 DONE
    (A.U17.33); doc U14 (A.U14.R01, with A.U14.17 option (a))". Evidence: `src/asy_i2c_driver.py:163-178` (the wrapper
-   can re-construct), `extmod/machine_i2c.c:320-326` (`init()` unsupported on rp2).
+   can re-construct), `extmod/machine_i2c.c:320-326` (`init()` unsupported on rp2), pico-sdk
+   `src/rp2_common/hardware_i2c/i2c.c:32-34` at `98a542c1` (`i2c_init()` resets the block). State "SPEC F.2 states that
+   rp2's I2C construction clocks nothing out, so a slave held mid-byte survives an MCU reset and needs a power cycle"
+   (`audit/pass2/G4.md:200`) → "SPEC F.2 states that each I2C bus is cleared at boot before construction, so a slave
+   holding SDA mid-byte is freed by any reset; one holding SCL, or not freed by nine pulses, needs a power cycle
+   (operator action, LEAD/R14)". Title "Uninterruptible calls fall to the watchdog" (`:196`) → "Uninterruptible calls;
+   the recovery ladder".
 2. **G3/R38** Req "Boundary: nothing may stall, hold or restart the bus or its controller." → "Boundary: it stays the one
    reset that reaches other devices; every other recovery reaches only its own participant, or the bus as a whole
    through the recovery ladder's bus rung under the bus lock (OR113.a)." Rank gains "OR113.a (owner, 2026-09-30)
@@ -883,6 +918,10 @@ None left for the owner after self-resolution. Settled by reading, each with its
 - The WiFi terminal deactivation and the CYW43 false-positive case get no further rung: owner-confirmed behaviour
   (SPEC A.4 list, CLAUDE.md hard rule), and OR18/OR18.a keep environment conditions inside the module.
 - UART controller re-init stays a non-rung (lead, AC_NOTES 16; A.U17.33).
-- Thresholds (participant at the 2nd, bus at the 3rd consecutive failure; FRAM probe at the 2nd anomaly; three
-  identification attempts) are agent tunables with Part N rows, to be confirmed on the bench (phase C) — not owner
-  choices.
+- Bus clear and controller re-init are separate rungs (OR113.a (2) lists them apart and escalates "only when the milder
+  step does not work"); the clear hands the pins back with `Pin.ALT_I2C` and needs no re-init (A.U13.R01).
+- Thresholds (participant at the 2nd, bus clear at the 3rd, controller at the 4th consecutive failure; FRAM probe at the
+  2nd anomaly; three identification attempts) are agent tunables with Part N rows, to be confirmed on the bench
+  (phase C) — not owner choices.
+
+Verified 2026-09-30 (`audit/actions/verify/SUPP_recovery.md`): V.SUPP_recovery.01-V.SUPP_recovery.22 applied.
