@@ -1,4 +1,4 @@
-# A-L supplement — owner rows OR116-OR119 (HEAD 5f46cf1)
+# A-L supplement — owner rows OR116-OR125 (HEAD b46b352)
 
 Supplement over the already-planned units U11, U16, U17, U19, U20, U23 and the in-flight U24-U26 (AC_NOTES item 27),
 built from the owner rows OR116/OR116.a, OR117/OR117.a, OR118/OR118.a, OR119/OR119.a (OR119 refines OR117) and the
@@ -13,7 +13,7 @@ R32 as updated for OR120-OR122), read with LEAD/R28 (UART four-tier hazard cover
 recovery ladder).
 
 Code sites were read at `cde3bb0`; `git diff --stat cde3bb0 5f46cf1 -- . ':!audit' ':!PROJECT_AUDIT_PLAN.md'` is
-empty, so every line number below holds at `5f46cf1`. Primary sources: MicroPython v1.29.0 in the scratchpad `mp/`
+empty, so every line number below holds at `5f46cf1`, unchanged at `b46b352`. Primary sources: MicroPython v1.29.0 in the scratchpad `mp/`
 (`extmod/asyncio/task.py`, `stream.py`, `core.py`), datasheet text `dstxt/` (MB85RS2MTA, MB85RS64V, W25Q16JV).
 Earlier actions are referenced, never repeated; section C lists every earlier action at the same sites with its
 verdict. Text an action writes into a permanent file carries actor tags only; audit IDs sit in `[src: …]` notes the
@@ -47,7 +47,7 @@ one `self._command_lock` (`asyncio.Lock`, fixed size), so two commands never int
 2. `self._reset_armed` (U11: a reboot or bootloader reset is armed) → `False` — the armed reset would cut the
    sequence;
 3. `self._shutdown = purpose` is set before any await, so from here `reboot_system()`, `reboot_bootloader()` and
-   `pause_permanent_storage()` answer `False` ("Failed") and the supervisor stops restarting and escalating;
+   `pause_permanent_storage()` answer `False` ("Failed");
 4. preflight — `resetconfig`: at least one config store resolved; `erasefram`: a FRAM manager exists, its chip is
    initialised and not write-protected (`await self._storage.erase_ready()`); a failed preflight clears
    `self._shutdown` and answers `False` with nothing changed;
@@ -55,7 +55,9 @@ one `self._command_lock` (`asyncio.Lock`, fixed size), so two commands never int
    `self._shutdown`, answers `False`, nothing changed;
 6. the watchdog latch `self._feed_owned = True` (one-way): from here `feed_watchdog()` is a no-op for every caller
    (the supervisor pass in progress, the boot batch's generated feeds `codegen.py:465` / A.U11.10's `run_setups()`);
-   one console line; answer `True` → `"Valid"`. The reply is written by the request's own connection task; nothing the
+   the supervisor stops restarting and escalating from here, keyed on this one-way latch, never on `_shutdown`, which a
+   failed preflight clears again (a supervisor parked on `_shutdown` would stay parked after a refusal, and a refused
+   command would end in a watchdog reset); one console line; answer `True` → `"Valid"`. The reply is written by the request's own connection task; nothing the
    sequence does cancels a connection task, and the reset fires at the earliest `_RESET_DELAY` (4 s) after S6.
    The latch is set at acceptance, before the supervisor is proven stopped — stricter than OR120.a (1)'s "from that
    moment": the supervisor pass still running between acceptance and its park cannot feed either.
@@ -66,8 +68,8 @@ a hung unit is never fed and the watchdog resets the unit, OR120.a (2)):
 
 | step | what | feeds | logged (once) |
 |---|---|---|---|
-| S1 takeover | own feed; unless the supervisor task already ended (then `done()` is the proof as it stands), `await self._supervisor_parked.wait()` (the loop parks at the top of its next pass once `_shutdown` is set; a task not yet created — the boot window — parks at its first pass); `self._supervisor_task.cancel()`; `await` it (catch `CancelledError`); proven by `self._supervisor_task.done()` — if not done, the sequence returns without another feed | before and after | "Shutdown: supervisor stopped, the watchdog is fed by the shutdown alone" |
-| S2 config stores | `close_writes()` on every store, then per store `flush_pending()` (A.S0930.16: the pending flush read under `config_lock`) through U11's `_flush_config_stores()` wrapper, whose failure entry still persists (FRAM open) | per store | "Shutdown: config writes closed and flushed" |
+| S1 takeover | own feed; unless the supervisor task already ended (then `done()` is the proof as it stands), `await self._supervisor_parked.wait()` (the loop parks at the top of its next pass once `_feed_owned` is set; a task not yet created — the boot window — parks at its first pass); `self._supervisor_task.cancel()`; `await` it (catch `CancelledError`); proven by `self._supervisor_task.done()` — if not done, the sequence returns without another feed | before and after | "Shutdown: supervisor stopped, the watchdog is fed by the shutdown alone" |
+| S2 config stores | `close_writes()` on every store, then per store `flush_pending()` (A.S0930.16: the pending flush read under `config_lock`) through U11's `_flush_config_stores(close=True, step_done=self._own_feed)` wrapper (A.S0930.14), whose failure entry still persists (FRAM open) | per store | "Shutdown: config writes closed and flushed" |
 | S3 FRAM | `storage_timer.deinit()` (a `mempause` auto-unpause cannot fire mid-sequence); `await self._storage.quiesce(self._own_feed)` — pause, then each chunk's `_op_lock` taken once (`wait_idle()`), so every operation already past its pause check finishes both blocks and every later one refuses at entry | per chunk | "Shutdown: FRAM writes closed" |
 | S4 tasks | cancel every entry of `self._tasks` not done; then `await` each (catch `asyncio.CancelledError` and `Exception`) | per task | "Shutdown: all tasks stopped" |
 | S5 purpose | `resetconfig`: per store `await store.delete_file()`; `erasefram`: `await self._storage.erase_chip(self._own_feed)` (A.S0930.17) | per file / per chunk and per 256-byte unit | "Shutdown: <purpose> done" or "… incomplete" |
@@ -88,9 +90,14 @@ chunk operation beyond its pause check. S4 before S5: nothing but the sequence r
 applied. Cancelling the webserver's `_run()` closes its listening socket (DONE-AT-HEAD, A.S0930.18), so no new request
 is accepted after S4; connection tasks already accepted run to their end and meet closed stores.
 
+**Recovery ladder inside the sequence** (OR113.a (2)): a failed erase unit is retried at the WREN rung (A.U16.R01) and
+then stops the erase (code 9); a failed `os.remove()` other than ENOENT is retried once, then left (code 9); a failed
+flush is logged and the next store proceeds (A.U11.03); every failure still ends in the one reboot, and a hung step in
+the watchdog — each logged once per event.
+
 **Why the supervisor parks before it is cancelled.** The supervisor loop persists log entries (`system_service.py:
 234, 238-240, 251`), i.e. it can be inside a chunk write at any moment; cancelled there, it would tear SYSTEM's chunk.
-Its park point is the top of a pass (`if self._shutdown: self._supervisor_parked.set(); await self._never.wait()`),
+Its park point is the top of a pass (`if self._feed_owned: self._supervisor_parked.set(); await self._never.wait()`),
 where it holds nothing, so the cancel lands on a wait. Worst case to park: one `_TASK_CHECK_TIME` sleep (2 s,
 `system_service.py:44`) plus one pass. The supervisor runs as its own task (`self._supervisor_task`, created by
 `supervise_tasks()`, which then waits on `self._never` itself): `main()` must never return (A.U11.03 point 5), and
@@ -107,7 +114,7 @@ where it holds nothing, so the cancel lands on a wait. Worst case to park: one `
 | inside a bus session | S4's cancel lands at an await; `async with` exits release the bus lock and deassert CS (`SPIDevice.__aexit__()`/`session_end()`, `asy_spi_driver.py:146-150, 167-178`; I2C the same shape); no transfer is interrupted (rp2 transfers are synchronous, G4/R22); FRAM is drained before; a sensor left mid-command is set up again by its driver at the next boot, after the boot bus clear (OR113.a (1)) |
 | storage paused (`mempause`) | S3 deinit's the auto-unpause timer and pauses again (idempotent); the erase writes beneath the pause at driver level; a flush failure in S2 reaches the console only (the operator's own pause), accepted |
 | a reboot or bootloader reset armed | refused at S0 ("Failed"), nothing changed; the armed reset proceeds |
-| reboot, bootloader or mempause during the sequence | refused ("Failed"); supervisor escalation is suppressed once `_shutdown` is set (the sequence reboots anyway) |
+| reboot, bootloader or mempause during the sequence | refused ("Failed"); supervisor escalation is suppressed once `_feed_owned` is set (the sequence reboots anyway) |
 | the other command under way | "Failed"; the same command: "Valid", nothing new started |
 | two commands at once | `_command_lock` serialises S0; the second sees the first's outcome |
 | a PUT on a connection accepted before S4 | a config write meets a closed store → "Failed"; `ResetErrors` meets paused FRAM → "Failed" (A.U11.31); an SCD30 field reaches the chip as an ordinary accepted write — OR119.a (2) closes the flash filesystem and FRAM, which the SCD30's NVM is neither of (agent reading, 2026-09-30); `lightCmdLED`/`PauseTime` touch RAM only |
@@ -125,7 +132,9 @@ RDSR (2) = 266 / 265 bytes = 2.13 / 2.12 ms of clock at 8 µs per byte. Whole ch
 11 wire bytes = 44 bytes = 0.35 ms. Each unit adds five sessions' `spi.init()` reconfigure and 2 × 2 µs CS settle
 (`asy_spi_driver.py:130-151`) plus interpreter overhead — not derivable from source; measured in phase C
 (A.S0930.29), and even at ten times the clock time a unit stays under 25 ms. Longest single step between two feeds:
-S1's park wait, ≤ 2 s + one supervisor pass. Flash-filesystem steps (one flush, one delete): one littlefs operation
+S1's park wait, ≤ 2 s + one supervisor pass. S4: per task, the cancel lands at its next await; a supervised task
+whose `CancelledError` handler awaits cleanup (`src/captive_dns.py:129-150`, `src/asy_wifi_service.py:534`) is bounded by
+that cleanup, fed after each task; the healthy-run proof is A.S0930.26/.27 on every device. Flash-filesystem steps (one flush, one delete): one littlefs operation
 each — page programs `tPP` ≤ 3 ms and 4 KB sector erases `tSE` ≤ 400 ms (W25Q16JV, `dstxt/pico_w__Winbond…:3104-3105`);
 how many erases one littlefs commit can take (metadata compaction) is not derived here, and phase C measures the
 worst. Every step is therefore at least one order of magnitude under 8000 ms; the whole-chip erase is 1,024 fed steps,
@@ -150,10 +159,12 @@ not one.
    `CRC_Pass`, `:651`, but both product callers pass a CRC.) A.S0930.20 pins "every product chunk has a non-zero-init
    CRC" so a future `CRC_Pass` chunk is caught.
 3. *Why not 0xFF.* A status byte 0xFF is neither idle nor blank: every block would log "Read status byte is not 1"
-   (`:236-238`) at the next boot — error noise at the moment the unit is meant to start clean. 0x00 is the chip's own
-   blank state and the manager's own clear pattern (`_clear_chunk()`, `:360-376`).
+   (`:236-238`) at the next boot — error noise at the moment the unit is meant to start clean. 0x00 is the manager's
+   uninitialised status value (`_STATUS_UNINIT`, `:29`) and its own clear pattern (`_clear_chunk()`, `:360-376`);
+   neither FRAM datasheet states a new part's initial contents, so no claim about a chip's blank state is made.
 4. *Torn states.* Pass 1 marks both status bytes of every allocated block 0x00 (`chunk.invalidate()`, the same
-   status-first order `_clear_chunk()` uses) before pass 2 writes any data. A cut inside pass 1 leaves each chunk
+   status-first order `_clear_chunk()` uses) before pass 2 writes any data; if any pass-1 `invalidate()` fails, the
+   erase stops before pass 2 (A.S0930.17, code 9), so pass 2 only ever runs over a fully blanked layout. A cut inside pass 1 leaves each chunk
    either untouched (old, valid, consistent), with one block blank (the other copy restores it: `:137-157`), or with
    one block's status pair mixed 0x00/0x01 ("inconsistent", `:265-267`, invalid; the other copy decides). A cut inside
    pass 2 (units ascend, each a single WRITE whose bytes land one by one, `dstxt/fram__MB85RS2MTA…:301-306`) finds
@@ -198,10 +209,11 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   `dev.toml` keeps HEAD's no-CRC mode with no key (OR116.a (2)). (2) New hand-kept table in `buildspec.py` (the
   owner-kept generator table, harmonization 31) with a one-line comment "CRC mode of a uart_link end -> (crc_checks
   class, width in bytes); held equal to src/crc_checks.py by a test": `UART_CRC_MODES: dict[str, tuple[str, int]] =
-  {"none": ("CRC_Pass", 0), "crc16": ("CRC16", 2)}`. (3) Per instance, beside the role check `:381`: `if spec.driver ==
-  "uart_link" and spec.fields.get("crc", "none") not in UART_CRC_MODES: raise BuildError(model.device,
-  f"{spec.label}.crc must be one of {sorted(UART_CRC_MODES)}, got {spec.fields.get('crc')!r}", instance=spec.label,
-  field="crc")` (a non-string reaches the same message). (4) `_check_uart_link_roles()`, after the one-pair count and
+  {"none": ("CRC_Pass", 0), "crc16": ("CRC16", 2)}`. (3) Per instance, beside the role check `:381`: `crc = spec.fields.get("crc", "none")`; `if spec.driver ==
+  "uart_link" and (not isinstance(crc, str) or crc not in UART_CRC_MODES): raise BuildError(model.device,
+  f"{spec.label}.crc must be one of {sorted(UART_CRC_MODES)}, got {crc!r}", instance=spec.label,
+  field="crc")` (every non-string, arrays and tables included, reaches this message; a bare membership test would raise
+  `TypeError: unhashable` on a TOML array or inline table); `validate.py:11`'s buildspec import gains `UART_CRC_MODES`. (4) `_check_uart_link_roles()`, after the one-pair count and
   A.U17.32's baud comparison: the two ends' effective modes differ → `BuildError(model.device, f"uart_link pair:
   {initiator} uses crc {a!r} and {responder} uses {b!r} - both ends of a link must agree (Part J.6: agreed out of
   band, never negotiated); state one crc mode on both", instance=<responder label>, field="crc")` (rule id and fix per
@@ -211,12 +223,13 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   framing (adds 0); the CRC adds the width of the link's crc mode". The timeout floor is unchanged (no CRC term,
   `asy_uart_comm.py:252-260`). (6) `dev.toml`: the link section's comment gains one line "crc (optional, per end):
   "none" (default) or "crc16"; both ends must agree (Part J.6)." — no key added.
-- **Blast**: callers `validate()`/`build_model()` (`validate.py:736, 752`) · generated — (valid TOMLs unchanged) · js —
+- **Blast**: callers `build_model()` (`validate.py:736, 752`) · generated — (valid TOMLs unchanged) · js —
   · tests existing: `tests_scripts/test_buildgen_validate.py:1240-1384` (uart_link section, `_with_uart_pair()` without
   `crc`) hold — absent is `"none"`; `:1326-1332` (`test_every_shipped_device_passes_the_uart_link_bus_check`) holds;
-  `tests_scripts/buildgen_fixtures/novel_combo.toml:142-153` holds; `tests_scripts/test_device_tomls.py` field-set
-  checks (grep `ALLOWED_INSTANCE_FIELDS`) accept the new optional key; new L0 `tests_scripts/test_buildgen_validate.py`
-  — `crc = "crc8"`, `crc = 16`, `crc = "CRC16"` each refused naming the legal set and `(field, instance) == ("crc",
+  `tests_scripts/buildgen_fixtures/novel_combo.toml:142-153` holds; the catch-all `validate.py:392` reads
+  `ALLOWED_INSTANCE_FIELDS`, so the key is accepted; `tests_scripts/test_device_tomls.py` pins no `uart_link` field set
+  (grep); new L0 `tests_scripts/test_buildgen_validate.py`
+  — `crc = "crc8"`, `crc = 16`, `crc = "CRC16"`, `crc = ["crc16"]` each refused naming the legal set and `(field, instance) == ("crc",
   label)`; a pair `none`/`crc16` refused naming both labels; `crc16`/`crc16` builds; with `baudrate` 9600 and
   `poll_wait_ms` 1 (so the per-poll floor is `(9600 // 10) * 6 // 1000 = 5` and the frame floor decides) `rxbuf` 54
   refused for a crc16 pair (needs 5 + 48 + 2 = 55) and 55 builds, while a no-CRC pair builds at 53;
@@ -241,7 +254,9 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   for spec in instances.values() if spec.driver == "uart_link"}`; in the UART branch, when `link_crc.get(bus_id,
   "CRC_Pass") != "CRC_Pass"`, `extra_kw += f", crc={link_crc[bus_id]}()"`; the comment `:393-395` gains "crc: from the
   bus's one uart_link instance, absent for no CRC". The import block emits `from crc_checks import CRC16` (the classes
-  the device's links name, sorted, de-duplicated) only when one is used. `_build_args_uart_link()` (`:230-243`) is
+  the device's links name, sorted, de-duplicated) only when one is used; `codegen.py`'s imports gain `from
+  buildgen.buildspec import UART_CRC_MODES` (it imports nothing from `buildgen.buildspec` at HEAD, `:5-13`).
+  `_build_args_uart_link()` (`:230-243`) is
   unchanged: it forwards `bus`/`role`/`name_ext`/`fram`/`debug` explicitly, so `crc` never reaches the exerciser.
 - **Blast**: callers — · generated a crc16 device's `build_system()` UART lines and imports; every shipped device
   unchanged (no `crc` key anywhere, `devices/*.toml`) · js — · tests existing `tests_scripts/test_buildgen_generate.py`
@@ -258,18 +273,25 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
 
 ### A.S0930.03 L1: the exerciser pair runs in both CRC modes
 - **Why**: LEAD/R31 — "exercised in both CRC modes (none and CRC16) at L1"; State "test in U17/U24 (L1)"; OR116.a
-  "at HEAD only L1 runs both modes … confirm and extend where the exerciser itself is involved" (owner, 2026-09-30,
-  OR116; OR118.a (1)).
-- **Site**: `tests/test_asy_uart_link_driver.py:34-47` (`Pair`), the transfer tests `:190-240`, `:308-380`, `:485-490`.
+  "at HEAD only L1 runs both modes (`tests/test_uart_comm_hazard.py`, `test_asy_uart_comm.py`: no CRC and CRC16)" and
+  (1) "at every level that can reach it" (owner, 2026-09-30, OR116; OR118.a (1)); the exerciser layer is the agent's
+  reading of (1).
+- **Site**: `tests/test_asy_uart_link_driver.py:34-47` (`Pair`), `:71-75` (`build_pair()`), the tests that move bytes
+  `:163, :175, :188, :200, :227, :236, :247, :357`.
 - **Change**: DONE-AT-HEAD for the protocol layer: `tests/test_uart_comm_hazard.py` registers every `_check_*` in
   both modes (`CRC_MODES = (("nocrc", None), ("crc16", CRC16))` `:51`, `_register_both_crc_modes()` `:1279-1296`, two
-  mode-specific checks by construction `:1273-1276`); `tests/test_asy_uart_comm.py:2163` runs its load arm on CRC16.
+  mode-specific checks by construction `:1273-1276`); `tests/test_asy_uart_comm.py:2163` (the BSEC floor check) builds
+  its bus with `crc=CRC16()`.
   The exerciser layer runs no-CRC only (`Pair` builds both `UART(...)` without `crc`, `:38-39`). Extend: `Pair(…,
-  crc: "CrcMaker | None" = None)` passes `crc=crc() if crc else None` to both buses; the exerciser tests that move
-  bytes — `test_a_get_and_a_set_both_complete_with_no_errors_counted` (`:190`), `…larger_than_one_chunk…` (`:207`),
-  `test_one_sided_silence…` (`:219`), `…maximum_length_train…` (`:308`), `…many_back_to_back…` (`:339`), the two
-  hammer tests (`:485`, `:489`) — become `_check_*` functions registered per mode by the same `_register_both_crc_modes()`
-  shape (copied, not imported: `tests/_uart_comm_harness.py` owns the protocol-layer one). New, CRC16 only: 
+  crc: "CrcMaker | None" = None)` passes `crc=crc() if crc else None` to both buses, and `build_pair(…, crc=None)`
+  passes it to `Pair`; the exerciser tests that move bytes —
+  `test_exercise_loop_counts_a_transfer_for_a_correct_banner_answer` (`:163`),
+  `…_wrong_payload_as_a_failure_not_a_transfer` (`:175`), `test_banner_get_across_a_real_responder_via_get_callback`
+  (`:188`), `test_echo_round_trip_across_a_real_responder_via_set_and_get_callbacks` (`:200`),
+  `test_unanswerable_command_id_is_rejected_not_crashed` (`:227`), `test_exercise_loop_counts_a_failure_when_nothing_answers`
+  (`:236`), `test_get_error_counter_delegates_to_the_inner_comms_own_log` (`:247`),
+  `test_a_persisted_fault_during_a_transfer_does_not_stall_other_tasks` (`:357`) — become `_check_*` functions
+  registered per mode by the same `_register_both_crc_modes()` shape (copied, not imported: `tests/_uart_comm_harness.py` owns the protocol-layer one). New, CRC16 only: 
   `test_a_corrupted_frame_counts_one_failure_and_the_next_transfer_succeeds_crc16` — one payload byte flipped on the
   link (`UARTLink` fault knob) during one exercise round: `failures` rises by one, the next round's `transfers` rises,
   the banner is intact (the exerciser's counters are the layer this file owns).
@@ -293,14 +315,15 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   device with a `uart_link` pair) copied to `tmp_path` with `crc = "crc16"` on both ends, generated and booted under
   the twin exactly like the shipped devices (the generated-module path this file already takes); after boot,
   `GET /status` → `sensors.UARTLINK.Transfers` rises across two polls ≥ 3 s apart and `Failures` stays 0.
-- **Blast**: callers — · generated a tmp crc16 module in the test only · js — · tests new as above; the boot test's
-  per-device budget (`_BOOT_TIMEOUT_S`) holds (CRC adds 2 bytes per frame) · twin `digital_twin/run_generic_integration.py`
-  crossover wiring is CRC-blind (unchanged) · docs SPEC J.7 tier map "L2 both modes" (A.S0930.08) · toml — · uart —.
   (4) The CI suite's sustained-fault cell for the link (A.U25.37: `uart_link:silent` in Run 3, per instance) runs once
   per CRC mode: `scripts/_digital_twin_ci_suite.py` gains `--device-toml PATH` (generation from a derived TOML, the
   same option A.S0930.06 gives the firmware build), and `scripts/run_digital_twin_ci.sh` runs Run 3's `uart_link` cell
   a second time on the bench device's TOML derived with `crc = "crc16"` — asserting the same outcome (every faulted
   module's E entry, then the simulated reset, A.U25.36), `would_have_triggered_count == 0`, zero `MemoryError` markers.
+- **Blast**: callers — · generated a tmp crc16 module in the test only · js — · tests new as above; the boot test's
+  per-device budget (`_BOOT_TIMEOUT_S`) holds (CRC adds 2 bytes per frame); `tests_scripts/test_digital_twin_ci_suite_*.py`
+  (the new `--device-toml` option parses; generation from a derived path) · twin `digital_twin/run_generic_integration.py`
+  crossover wiring is CRC-blind (unchanged) · docs SPEC J.7 tier map "L2 both modes" (A.S0930.08) · toml — · uart —.
 - **Depends**: A.S0930.02, A.U17.25; co-lands with A.U25.37 (Run 3's `uart_link:silent` vocabulary and matrix),
   A.U25.36 (Run 3's escalation assertions), A.U25.32 (per-run `--config-dir`/state paths the derived run passes),
   A.U25.48 (device from data, `--device` required) — A-C merges.
@@ -313,8 +336,9 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
 - **Site**: `tests_hardware/device_scripts/uart_crossover_exchange.py:84-87`, `uart_crossover_recovery.py:76-79`,
   `uart_link_under_concurrent_system_load.py:131-134` (each builds `asy_uart_driver.UART(0/1, …)` with no `crc`);
   `tests_hardware/flash/test_uart_crossover.py` (their wrapper).
-- **Change**: each script takes `CRC_MODE` from the rendered facts dict of A.U26.44 (default `"none"`) and builds both
-  buses with `crc=CRC16()` when it is `"crc16"`; its `RESULT:` line names the mode. `test_uart_crossover.py` runs each
+- **Change**: each script takes `CRC_MODE` as a render extra (`board.run_isolated(script, CRC_MODE=mode)`, A.U26.44's
+  `**extras`; default `"none"`) and builds both buses with `crc=CRC16()` when it is `"crc16"`; it prints `FACT
+  crc_mode="<mode>"` (A.U26.68) and the host assertion checks it. `test_uart_crossover.py` runs each
   script once per mode (`pytest.mark.parametrize("crc_mode", ["none", "crc16"])`), both over the same jumper — no
   reflash (scripts run from RAM, `run_isolated()`); the recovery script's injected faults (A.U26.33's baud desync)
   run in both. A.U26.82's `uart_comm_hazards.py` (H1a/H1b/H2/H3 over the jumper, and under the bench's API load) takes
@@ -322,8 +346,9 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
 - **Blast**: callers the wrapper · generated — · js — · tests the flash-tier UART file (twice the runs, each bounded
   by its existing `timeout_s`) · twin each script's twin run (A.U26.05) in both modes · docs `tests_hardware/README.md`
   UART section "each crossover script runs with no CRC and with CRC16" · toml — · uart — · hardware C (flash round).
-- **Depends**: A.U26.44 (rendered dict), A.U26.33, A.U26.59 (UART script folding), A.U26.82 (the hazard script and its
-  two wrappers), A.U17.25 — A-C merges.
+- **Depends**: A.U26.44 (rendered dict and its `**extras`), A.U26.33, A.U26.59 (UART script folding), A.U26.82 (the
+  hazard script and its two wrappers), A.U26.68 (facts; the host gives the verdict), A.U26.87 (same script
+  `uart_link_under_concurrent_system_load.py`; its multi-chunk SET runs in both modes), A.U17.25 — A-C merges.
 - **Kind**: test | hardware
 
 ### A.S0930.06 L4: the bench link suite runs once per mode; CRC16 behind `flash_cycle`
@@ -342,10 +367,13 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   harness helper `reflash(board, uf2_path)` used by the smoke test and by (3) (A.U26.14 reworks the same retry — A-C
   merges). (3) New `tests_hardware/bench/test_uart_link_crc16.py`, one test `@pytest.mark.flash_cycle`: save FRAM
   evidence first (A.U26.22's `save_errcount()` + `save_fram_raw()`, a reflash being a clearing path); derive the bench
-  board's TOML (A.U26.01) into `tmp_path` with `crc = "crc16"` on both link instances; build it with `--device-toml`;
-  `reflash()`; run the three API-load link checks of `test_uart_link_under_api_load.py` (factored into module-level
-  helpers both files call); in `finally`, rebuild and reflash the standard image and assert the board serves and
-  `UARTLINK.Failures` stays 0 over two polls. The no-CRC run is the existing file on the standard image, unchanged.
+  board's TOML (A.U26.01) into `tmp_path` with `crc = "crc16"` on both link instances; build it with `--device-toml
+  <tmp>` `--output tmp_path/firmware-dev-crc16.uf2` (its image record lands beside it, so the round's
+  `build/firmware-dev.uf2` and its record stay untouched); `reflash(board, <that path>)`; run the three API-load link
+  checks of `test_uart_link_under_api_load.py` (factored into module-level helpers both files call); in `finally`,
+  `reflash(board, <the round's standard .uf2, unchanged>)` — no rebuild (a rebuild carries a new build date and is not
+  the round's image) — and assert the board serves, A.U26.03's image check passes and `UARTLINK.Failures` stays 0 over
+  two polls. The no-CRC run is the existing file on the standard image, unchanged.
 - **Blast**: callers of `build_stage_dir()` (`tests_scripts/test_build_firmware.py` stubs) · generated a crc16 image in
   the test only · js — · tests new L0 `tests_scripts/test_build_firmware.py` — `--device-toml` builds the stage dir from
   the given file (a tmp TOML with a different hostname: the staged generated module carries it) and a missing path
@@ -354,8 +382,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   gains this test ("two reflashes: the CRC16 image and back") · toml — · uart — · hardware C (bench round, only with
   `--allow-flash-cycle`).
 - **Depends**: A.S0930.01, A.S0930.02, A.U26.01, A.U26.02 (same `build_stage_dir()` signature and the image record),
-  A.U26.03, A.U26.14, A.U26.22, A.U26.82 (its bench arm runs on both images), U21's actions on `scripts/build_firmware.py`
-  — A-C merges.
+  A.U26.03, A.U26.14, A.U26.22, A.U26.79 (end state: the round ends on the release `dev` image), A.U26.82 (its bench
+  arm runs on both images), U21's actions on `scripts/build_firmware.py` — A-C merges.
 - **Kind**: code | test | hardware
 
 ### A.S0930.07 The C-port changelog records the CRC mode key (Class B)
@@ -470,7 +498,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   `_request_shutdown()`.
 - **Change**: state in `__init__` (all fixed-size): `self._command_lock = asyncio.Lock()`, `self._shutdown = 0`
   (0, or the purpose's reset code, A.S0930.15), `self._shutdown_task: asyncio.Task[None] | None = None`, `self._feed_owned
-  = False` (A.S0930.13). `async def reset_to_defaults(self) -> bool: return await
+  = False` (A.S0930.13), `self._storage: AsyFramManager | None = storage` (the manager itself; `storage_pause` stays as
+  A.U5.02 sets it). `async def reset_to_defaults(self) -> bool: return await
   self._request_shutdown(_RR_CONFIG_RESET)`; `async def erase_fram(self) -> bool: return await
   self._request_shutdown(_RR_FRAM_ERASED)`. `_request_shutdown(purpose)` under `async with self._command_lock:` runs the
   design block's S0 in order: (1) `if self._shutdown: return self._shutdown == purpose`; (2) `if self._reset_armed:`
@@ -486,13 +515,15 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   True` (a repeat while armed stays U11's "request ignored" with `True`); `pause_permanent_storage(duration) -> bool`:
   `if self._shutdown: return False` first, else today's body and `return True`. Every refusal line is
   `self.pr.evt(...)` (console, level-gated). The supervisor-escalation guard is A.S0930.13's.
-- **Blast**: callers the generated callback (A.S0930.11); device scripts calling `reboot_*`/`pause_permanent_storage`
-  directly (grep `tests_hardware/device_scripts/`: `reboot_fallback_starves_the_watchdog.py:38` calls `_reboot()`, not
-  these; none else) · generated — (A.S0930.11) · js — · tests existing: `tests/test_system_service.py:618-800` (reboot
+- **Blast**: callers the generated callback (A.S0930.11); direct callers of `reboot_*`/`pause_permanent_storage`
+  (grep): `reboot_fallback_starves_the_watchdog.py:38` calls `_reboot()`, not these;
+  `tests_hardware/device_scripts/fram_pause_unpause_and_gating.py:79-117` and
+  `tests/test_digital_twin_sensortask_integration.py:811` call `pause_permanent_storage()` and ignore its result — they
+  hold · generated — (A.S0930.11) · js — · tests existing: `tests/test_system_service.py:618-800` (reboot
   and pause tests) assert side effects, not return values — they hold, gaining `is True` where the call's result is
   read; new L1 per A.S0930.21/.22 · twin — · docs SPEC A.8 command semantics (A.S0930.30) · toml — · uart —.
-- **Depends**: A.U11.03 (`_reset_armed`, async reboots, `_config_stores`), A.U5.02 (`storage` parameter kept as
-  `self._storage`), A.S0930.13-A.S0930.17; `max-args = 8` unaffected (no new parameter, A.U11.05's count).
+- **Depends**: A.U11.03 (`_reset_armed`, async reboots, `_config_stores`), A.U5.02 (`storage` parameter),
+  A.S0930.13-A.S0930.17; `max-args = 8` unaffected (no new parameter, A.U11.05's count).
 - **Kind**: code
 
 ### A.S0930.13 Watchdog ownership passes to the sequence; the supervisor parks and is proven stopped
@@ -512,11 +543,16 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   (3) U20's `supervise_tasks()` becomes: `self._supervisor_task = asyncio.create_task(self._supervise())`; `await
   self._never.wait()` — `main()` never returns and is never cancelled (A.U11.03 point 5); the loop body moves into
   `_supervise()`. State: `self._supervisor_task = None`, `self._supervisor_parked = asyncio.Event()`, `self._never =
-  asyncio.Event()` (never set). (4) `_supervise()`'s pass begins with `if self._shutdown:
+  asyncio.Event()` (never set). (4) `_supervise()`'s pass begins with `if self._feed_owned:
   self._supervisor_parked.set(); await self._never.wait()` — the park point, where the loop holds no lock and is inside
-  no log write, so the cancel of S1 lands on a wait; inside the pass, the dead-task restart loop breaks when
-  `self._shutdown` is set, and the escalation branch (A.U11.03 point 5) runs only `if not self._shutdown` (the sequence
-  reboots anyway, and an escalation's own reset armed mid-sequence would cut it). Its `feed_watchdog()` call is
+  no log write, so the cancel of S1 lands on a wait; inside the pass, the dead-task restart loop breaks and the
+  escalation branch (A.U11.03 point 5) runs only `if not self._feed_owned` (the sequence reboots anyway, and an
+  escalation's own reset armed mid-sequence would cut it) — keyed on the one-way acceptance latch, never on `_shutdown`,
+  which only gates the other commands and can be cleared by a failed preflight: keyed on `_shutdown`, a supervisor that
+  observed it while a preflight yielded would park on `self._never` and stay parked after the refusal cleared it, so a
+  refused command would end in a watchdog reset. Latent at HEAD only because `erase_ready()` →
+  `FRAM_SPI.get_write_protected()` completes without suspending on the initialized path (`src/asy_fram_driver.py:268-275`);
+  any preflight that opens an SPI session yields (`asy_spi_driver.py:178`, `await asyncio.sleep(0)` in `__aexit__`). Its `feed_watchdog()` call is
   latched from acceptance on. (5) S1 of the sequence (A.S0930.14) cancels `self._supervisor_task` after the park and
   awaits it to done — the proof OR120.a (1) asks for. A shutdown accepted before `supervise_tasks()` ran (during
   `start_timers()`/the first NTP sync) is covered: the supervisor task parks at its first pass.
@@ -546,15 +582,17 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   leaves a state the next boot handles"; OR119 "shut all down controlled, erase, reboot" (owner, 2026-09-30); OR119.a
   (2)-(4); OR120.a (2); OR117.a (1)-(2).
 - **Site**: `src/system_service.py` new `_shutdown_sequence(purpose)`; uses `self._tasks` (A.U20.06),
-  `self._config_stores` and `_flush_config_stores()` (A.U11.03), `_reboot()` (A.U11.03), `self.storage_timer`
+  `self._config_stores` and `_flush_config_stores()` (A.U11.03, its signature gains `step_done` and a `bool` result), `_reboot()` (A.U11.03), `self.storage_timer`
   (`:85, 353-373`).
 - **Change**: the design block's S1-S6, as code: S1 `self._own_feed()`; `task = self._supervisor_task`; `if task is None or not
   task.done():` `await self._supervisor_parked.wait()`, `task = self._supervisor_task`, `task.cancel()`, `try: await
   task` / `except asyncio.CancelledError: pass`; `if not task.done(): return` (no feed follows — the watchdog resets);
   one `evt` line; `self._own_feed()`. A supervisor task that had already ended before the command (a crash) is proven
-  stopped by `done()` as it stands. S2 `for store in
-  self._config_stores: store.close_writes()`, then per store U11's guarded flush (`try: await store.flush_pending()` /
-  `except Exception` → persisted CALLBACK entry, `ok = False`) followed by `self._own_feed()`; one line. S3
+  stopped by `done()` as it stands. S2 `ok = await
+  self._flush_config_stores(close=True, step_done=self._own_feed)` — U11's one guarded flush, no second copy: A.U11.03's
+  wrapper becomes `async def _flush_config_stores(self, *, close: bool = False, step_done: "Callable[[], None] | None" =
+  None) -> bool` (closes every store first when `close`, then per store its guarded `flush_pending()` — a raise is its
+  persisted CALLBACK entry — and `step_done()` after each store; `False` when any flush raised); one line. S3
   `self.storage_timer.deinit()`; `if self._storage is not None: await self._storage.quiesce(self._own_feed)`; one line.
   S4 `for t in self._tasks: if t is not None and not t.done(): t.cancel()`; then per task `try: await t` / `except
   (asyncio.CancelledError, Exception): pass`, `self._own_feed()`; one line. S5 config reset: `for store in
@@ -570,8 +608,10 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   twin runs the same code (A.S0930.27) · docs SPEC A.8 (the sequence and its order), A.4 (reset path: "every
   deliberate reset pauses FRAM first" holds — S3 and `_reboot()` both pause), F.2 (the commanded-reboot sentence
   gains the two commands), I.4 (a known bounded allocation, no threshold), A.S0930.30 · toml — · uart —.
-- **Depends**: A.S0930.12, .13, .15, .16, .17; A.U11.03, A.U11.04, A.U11.05, A.U20.06; A.U16.R03 (the FRAM manager's
-  supervised task is one of `self._tasks`; cancelled in S4) — A-C merges.
+- **Depends**: A.S0930.12, .13, .15, .16, .17; A.U11.03 (co-lands: its point 3 `_flush_config_stores(self, *,
+  close=False) -> None` becomes `(self, *, close: bool = False, step_done: "Callable[[], None] | None" = None) -> bool`,
+  its reboot callers ignoring the result), A.U11.04, A.U11.05, A.U20.06; A.U16.R03 (the FRAM manager's supervised task
+  is one of `self._tasks`; cancelled in S4) — A-C merges.
 - **Kind**: code
 
 ### A.S0930.15 Reset reasons 7, 8 and 9 for the two commands
@@ -607,7 +647,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   finishes staging before the pending task is read, so the flush it created is the one awaited. (3) New `async def
   delete_file(self) -> bool`: `self.close_writes()` (idempotent); `async with self.config_lock:` `try: os.remove(
   self.config_file)` / `except OSError as e:` `if e.errno == errno.ENOENT: return True` (absent is the goal; `import
-  errno` from A.U11.19), else `self.pr.err(self.config_file, "- could not be deleted:", e)` and `return False`; after
+  errno` from A.U11.19), otherwise one more `os.remove()` (the sequence's one retry rung); a second failure →
+  `self.pr.err(self.config_file, "- could not be deleted:", e)` and `return False`; after
   success `self.pr.evt(self.config_file, "- deleted, defaults at the next boot")`, `return True`. Console only: the
   sequence runs it with FRAM closed; the reset code 9 is the persisted trace. It deletes whatever file the store owns,
   readable or not (an unreadable file that A.U11.20 never overwrites is removed by this explicit command). Comment
@@ -628,7 +669,7 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
 - **Why**: LEAD/R32 — "Erase FRAM (pause every FRAM writer, hold the FRAM lock, overwrite the whole chip with a pattern
   no valid chunk accepts, reboot)"; State "U16 (FRAM manager erase)"; OR117 "Erase FRAM, which plainly clears the whole
   chip" (owner, 2026-09-30); OR117.a (2) "checked against `crc_checks.py` in A-L, since an all-zero block may pass a
-  zero-init CRC"; OR120.a (2) "the whole-chip overwrite in chunks"; OR36.a (3) (API of the hardware stays).
+  zero-init CRC"; OR120.a (2) "(the whole-chip FRAM overwrite in chunks)"; OR36.a (3) (API of the hardware stays).
 - **Site**: `src/asy_fram_manager.py:41-86` (`_AsyBaseFramChunk.__init__`), `:360-399` (`_clear_chunk()`/`clear()`,
   beside which the two new chunk methods go), `:618-628` (`AsyFramManager.__init__`), `:645-724`
   (`get_chunk()`/`get_timestamped_chunk()`), `:726-728` `set_pause()`, new manager methods; constants `:29-38`.
@@ -645,7 +686,9 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   driver's own guard; A.U16.R03's lost chip reads `initialized` False). (5) `async def erase_chip(self, step_done:
   "Callable[[], None]") -> bool`: `if not await self.erase_ready(): self.pr.err("FRAM erase refused: chip not ready or
   write-protected"); return False`; pass 1 `for chunk in self._chunks: ok = await chunk.invalidate() and ok;
-  step_done()`; `try: unit = bytearray(_ERASE_UNIT)` / `except MemoryError: self.pr.err("FRAM erase: no buffer, chunks
+  step_done()`; after pass 1 `if not ok: self.pr.err("FRAM erase: a chunk could not be blanked, chip not overwritten");
+  return False` (code 9 through S5; pass 2 never runs over a chunk whose blanking failed, which the torn-state proof
+  (4) excludes); `try: unit = bytearray(_ERASE_UNIT)` / `except MemoryError: self.pr.err("FRAM erase: no buffer, chunks
   blanked only"); return False`; pass 2 `size = await self.fram.get_size()` (the driver's hardware API, OR36.a (3));
   `for addr in range(0, size, _ERASE_UNIT): async with self.fram as fram: status = fram.set_values_sync(unit, addr)`;
   `if status and not await self.fram.report_set_values(status): self.pr.err("FRAM erase stopped at", addr); return
@@ -654,8 +697,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   webserver's chunked writes use (Part I.3)". Both chip sizes are multiples (0x2000/0x100 = 32, 0x40000/0x100 = 1,024;
   A.U16.20 limits `max_size` to these). The manager's log is RAM-only (A.U16.13), so nothing it logs here writes FRAM.
   Comment at `erase_chip()` (≤ 3 lines): "Erase FRAM (owner, 2026-09-30): every chunk's blocks are marked blank first,
-  so no interrupted later write can leave a block that validates; then every byte is zeroed — the chip's own blank
-  state (Part A.4)."
+  so no interrupted later write can leave a block that validates; then every byte is zeroed — the manager's
+  uninitialised status value and its own clear pattern (Part A.4)."
 - **Blast**: callers `SystemService` (A.S0930.12/.14); chunk owners unaffected (`print_log.py:238`,
   `asy_sgp40_driver.py:181-183`); the chunk API's `override_pause` removal (A.U16.19) makes `invalidate()` the only
   path past the pause, used only by the erase · generated — · js — · tests existing: `tests/test_asy_fram_manager.py`
@@ -681,12 +724,16 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   (`task.py:164-166`); the server task's `CancelledError` handler closes the listening socket and, since `close()` was
   not called, re-raises (`stream.py:149-159`), so `_run()` ends with `CancelledError` and the port is closed. New L1
   test pins it because a MicroPython bump could change it (CLAUDE.md standing practice): in
-  `tests/test_asy_webserver_service.py`, a `WebserverService` on `127.0.0.1` and a free port with the real
-  `asyncio.start_server()` (the Unix port binds real sockets), its `_start_serving()` task cancelled and awaited →
-  `asyncio.open_connection()` to that port raises `OSError`; an accepted connection opened before the cancel still
+  `tests/test_asy_webserver_service.py`, a `WebserverService` on `127.0.0.1` and a fixed port from a block owned by
+  this file (the `_PORT_BASE_BY_DEVICE` pattern, `tests/_webserver_concurrency_scenarios.py:71-77`, a range no other
+  `tests/` file uses — the Unix-port socket has no `getsockname()`, `mp/ports/unix/modsocket.c:516-534`, so a port-0
+  bind cannot be read back) with the real `asyncio.start_server()` (the Unix port binds real sockets), its
+  `_start_serving()` task cancelled and awaited → connecting to that port fails: `open_connection()` raises `OSError`,
+  or the first write/read on the returned stream raises `OSError` or reads EOF (an EINPROGRESS connect surfaces only
+  there, `stream.py:106-110, 121`); an accepted connection opened before the cancel still
   completes its request (connection tasks are not cancelled).
-- **Blast**: callers — · generated — · js — · tests new as above; `scripts/test.sh`'s port rule (ephemeral port, CLAUDE.md
-  "two suites that bind real ports") · twin — · docs SPEC F.5 (the forwarded-cancel fact, cited once, used by A.8's
+- **Blast**: callers — · generated — · js — · tests new as above; CLAUDE.md "two suites that bind real ports" (the tier
+  runs apart from `npm test`) · twin — · docs SPEC F.5 (the forwarded-cancel fact, cited once, used by A.8's
   sequence text) · toml — · uart —.
 - **Depends**: A.U19.09 (same function: the start retry wraps `start_server()`, the `wait_closed()` stays) — A-C merges.
 - **Kind**: test
@@ -721,7 +768,7 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
 | every refusal and error path | .20 mock near misses | .21 (d)-(g) | .27 (1c) | .28 (3) near misses in-script | .29 (3) |
 | concurrency and race (OR119.a states) | — (no runtime) | .22 | .27 (2) | .28 (4) | .29 (4) |
 | bus and storage hazards (four-tier rule) | — | .23 (mock tier) | .27 (3) (twin tier) | .28 (5) (flash tier) | .29 (5) (bench under API load) |
-| watchdog handling (OR120.a) | .20 (feed-site guard, generated code) | .24 | .27 (4) | .28 (6) | .29 (6) |
+| watchdog handling (OR120.a) | .20 (feed-site guard, generated code) | .24 | .27 (4) | .28 (6) | .29 (6) healthy run only — a hung step is not reachable at L4 without a product hook (OR36); proven at L3 and L2 |
 | power loss per step | — | .25 | .27 (5) | .28 (7) (reset mid-erase) | .29 (7) manual power cut |
 | gc −1/32768 and `MemoryError` bars | — | .26 (both stages; allocation independent of chip size) | .27 (6) | .28 (8) soak markers | .29 (8) soak markers |
 
@@ -776,17 +823,19 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   `test_an_all_zero_block_never_validates_even_with_an_idle_status` — a block crafted with status 0x01 0x01 over all-zero
   data and CRC reads invalid for a CRC8 and a CRC32 chunk (the second gate alone). (d) refusals, each answering `False`
   with nothing changed (no task, `_feed_owned` False, stores open, pause unchanged, chip bytes unchanged, no timer
-  armed): a reset armed first; no config store; no storage (erase); chip uninitialised; chip write-protected (fake status
-  0x8C); `asyncio.create_task` replaced from outside by a function raising `MemoryError`; the other command under way
+  armed, and the supervisor still feeding — `feed_count` rises over its next pass, the full proof is A.S0930.24 (e)): a
+  reset armed first; no config store; no storage (erase); chip uninitialised; chip write-protected (fake status 0x8C); `asyncio.create_task` replaced from outside by a function raising `MemoryError`; the other command under way
   (`False`) and the same one (`True`, still one task); `reboot_system()`, `reboot_bootloader()` and
   `pause_permanent_storage(300)` during a shutdown → `False`, no timer armed, pause unchanged. (e) step errors, the
   sequence continuing to the reboot with code 9 and never hanging: a store's `flush_pending()` raising (one persisted
   CALLBACK entry, the other store still flushed); `cm.os` replaced from outside with an `os` stand-in whose `remove`
-  raises `OSError(5)` for one file (that file stays, the others go, one console line, no persisted entry); the fake chip
-  with `drop_wren = True` from the first pass-2 unit (erase stops, every status byte already 0x00); the module
+  raises `OSError(5)` for one file on every call, the retry included (that file stays, the others go, one console line, no persisted entry); the fake chip
+  with `drop_wren = True` from the first pass-2 unit (erase stops, every status byte already 0x00); `invalidate()`
+  failing for one chunk (fake chip refusing that status write): no pass-2 write reaches the chip, code 9; the module
   attribute `asy_fram_manager.bytearray` shadowed from outside by a function raising `MemoryError` (chunks blanked, code
   9). (f) `tests/test_config_manager.py` — `delete_file()`: an existing file → `True`, gone; absent → `True`; `OSError(5)`
-  → `False`, one console line; `write_config()` after it → `(False, {})`. (g) `tests/test_asy_webserver_service.py` —
+  on both attempts → `False`, one console line; a remove raising `OSError(5)` once and then succeeding → `True`, the
+  file gone (and, through the sequence, code 7); `write_config()` after it → `(False, {})`. (g) `tests/test_asy_webserver_service.py` —
   `test_system_put_systemcmd_runs_only_on_the_exact_action_word`: the near-miss list of A.S0930.20 (4) as JSON bodies
   → "Invalid" and the fake callback records no call; `"resetconfig"`/`"erasefram"` → one call each with that exact
   word, "Valid" for `True`, "Failed" for `False`, "Failed" plus errno 2 for a raise.
@@ -851,13 +900,15 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   injected in any step ends in a watchdog reset, not in a fed hang" (owner, 2026-09-30, OR120: "Both of these are
   extremely important!").
 - **Site**: `tests/test_system_service.py` (system-command section); `tests/machine.py:684-691` `WDT` (gains a
-  `feed_times` list of `ticks_ms()` stamps, bounded like the other fake logs).
+  `feed_times` list of `ticks_ms()` stamps, bounded like the other fake logs); `digital_twin/machine.py:841-896` `WDT`
+  (the same `feed_times`, A.U24.17's shared contract).
 - **Change**: (a) takeover — after acceptance, `svc.feed_watchdog()` called directly, from a supervisor pass in progress
   (gated so it reaches its feed after acceptance) and through `run_setups()`'s feed leaves `feed_count` unchanged;
   after S1 `svc._supervisor_task.done()` is `True` and awaiting it raises `CancelledError` (read from outside). (b)
   healthy run — `feed_count` rises by exactly the planned steps: 2 (S1) + stores + chunks + tasks + (stores | chunks +
-  size / 256) + 1 (S6), on the 256 KB fake; the largest gap between consecutive `feed_times` entries during the
-  sequence stays under 1,000 ms (host time; the silicon figure is A.S0930.28 (6)). (c) hang in each step, never fed —
+  size / 256) + 1 (S6), on the 256 KB fake; the gap between S1's two feeds stays under `_TASK_CHECK_TIME * 1000 + 500`
+  ms (read from source: S1's own feeds bracket the park wait, up to one `_TASK_CHECK_TIME` sleep plus a pass), every
+  other gap between consecutive `feed_times` entries under 1,000 ms (host time; the silicon figure is A.S0930.28 (6)). (c) hang in each step, never fed —
   one test per step, the hang injected from outside: S1 a supervisor pass suspended on a gate that never opens (it never
   parks); S2 a store whose `flush_pending()` never returns; S3 a chunk whose `_op_lock` a test task holds forever; S4 a
   supervised task that catches `CancelledError` and keeps sleeping; S5 reset a store whose `config_lock` is held
@@ -865,9 +916,17 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   a reset Timer whose callback never fires. Each: pump the loop for 1 s of real time after the hang point; `feed_count`
   is the same as at the hang point, the sequence task is not done, no reset was armed except in S6. (d) `_reboot()`'s
   arm failing in S6 (the fake Timer's `init` raising `OSError(12)`) sets `_force_watchdog_starve` and `_own_feed()` then
-  feeds nothing.
+  feeds nothing. (e) a refused command never stops feeding —
+  `test_a_refused_erasefram_whose_preflight_yields_leaves_the_supervisor_feeding`: a write-protected chip, the
+  preflight made to await one `asyncio.sleep(0)` from outside (so the supervisor can run a pass while `_shutdown` is
+  set), `erase_fram()` → `False`; `feed_count` rises over the next two supervisor passes, `_supervisor_parked` is not
+  set and the supervisor task is not done (the park and escalation suppression are keyed on `_feed_owned`, never on
+  `_shutdown`); the same for a refused `reset_to_defaults()` (no config store) and for the `MemoryError` refusal of S0
+  (5).
 - **Blast**: callers — · generated — · js — · tests new; `tests/machine.py` `WDT` gains `feed_times` (A.U24.07 resets
-  fake state per test — the list joins its reset hook) · twin L2 proof of the reset itself is A.S0930.27 (4) · docs —
+  fake state per test — the list joins its reset hook) · twin `digital_twin/machine.py` `WDT` gains the same
+  `feed_times` (a `deque(…, _LOG_MAXLEN)` like `would_have_triggered_log`), so A.U24.17's contract holds; L2 proof of
+  the reset itself is A.S0930.27 (4) · docs —
   · toml — · uart —.
 - **Depends**: A.S0930.13, A.S0930.14; A.U24.07, A.U24.17 (the shared machine-fake contract gains `feed_times`) — A-C
   merges.
@@ -907,12 +966,17 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   directory boots on defaults (`GET /networking` Hostname = the device TOML's `hostname`, SSID ""), and its boot writes
   no file (A.U11.19). (2) `erasefram` → "Valid"; the device's fake chip (its TOML `max_size`, A.U24.22) is all zero,
   code 8; a rebuild's every FRAM-backed logger reads `ErrCount` 0. (3) the near-miss list → "Invalid", nothing changes.
-  (4) allocation independent of chip size: `gc.mem_alloc()` growth across `erase_chip()` differs by less than 256 bytes
-  between the 8 KB and the 256 KB fake (no per-byte allocation). The file runs at both stages through `scripts/test.sh`
+  (4) retained allocation independent of chip size: inside the measurement only, `gc.collect()` then `gc.mem_alloc()`
+  before and after `erase_chip()` (the `_priced()` shape, `tests/test_asy_fram_allocation_budget.py:44-54`); the two
+  retained deltas (8 KB and 256 KB fake) differ by < 256 B; and the collection-free allocation per unit is ≤ a measured
+  per-unit budget (one budget per Unix-port build, as that file keeps, `:35-37`) — collection-free growth itself scales
+  with 1,024 vs 32 units (each unit's `async with self.fram` allocates its enter/exit coroutines), so it is bounded per
+  unit, not compared across sizes. The file runs at both stages through `scripts/test.sh`
   (`-1`, then `GC_THRESHOLD=32768`), whose marker gate fails on any `MemoryError` or "memory allocation failed" line.
 - **Blast**: callers — · generated every device · js — · tests new scenarios; per-device wrappers pick them up by the
   existing registration · twin — · docs — · toml — · uart —.
-- **Depends**: A.S0930.09-.17; A.U20.06, A.U24.22, A.U11.19 — A-C merges.
+- **Depends**: A.S0930.09-.17; A.U20.06, A.U24.22, A.U11.19, A.U11.07 (the `mem_backup` fake the region-0 record with
+  code 7/8 needs) — A-C merges.
 - **Kind**: test
 
 ### A.S0930.27 L2: the commands on the twin — function, states, hazards, watchdog, power loss
@@ -923,9 +987,13 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   A.U25.46's host-side `scripts/_digital_twin_scenarios.py`, `digital_twin/run_generic_integration.py` (the
   instrumentation flag), `tests/test_digital_twin_bus_hazard_concurrency.py`,
   A.U25.54's `tests/test_digital_twin_fram_crash_points.py`, `digital_twin/machine.py` `class SPI` (`:339-420`).
-- **Change**: (1) CI suite Run 13 "system commands", per device (A.U25.48), fresh per-run state (A.U25.32/A.U25.35):
+- **Change**: (0) FRAM evidence first (CLAUDE.md FRAM-log rule, the twin case): every run below that issues
+  `erasefram` first reads and saves the FRAM-persisted error logs — over REST, `GET /status` errcount into the run's
+  archive (A.U25.35) plus a copy of the `--fram-state-path` file; in-process, a copy of the twin chip's memory in the
+  test's scratch — before the command. (1) CI suite Run 13 "system commands", per device (A.U25.48), fresh per-run state (A.U25.32/A.U25.35):
   (a) `PUT /system {"SystemCmd": "resetconfig"}` → "Valid"; the process ends with `_EXIT_SIMULATED_RESET` (A.U25.09);
-  relaunch over the same `--config-dir`: the directory holds no `config_*.cfg`, `/networking` Hostname is the TOML's,
+  relaunch over the same `--config-dir`: the directory holds no `config_*.cfg` (a boot with no file writes nothing,
+  A.U11.19), `/networking` Hostname is the TOML's,
   `ResetReason` 7; (b) `erasefram` → "Valid" → reset exit → relaunch over the same `--fram-state-path`: every
   FRAM-backed errcount entry is counter 0, `ResetReason` 8; (c) the near-miss list → "Invalid" and the process keeps
   serving (uptime rises); `would_have_triggered_count == 0` on every launch. A.U25.55's Run 12 code list gains 7 and 8
@@ -934,7 +1002,10 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   real HTTP from threads): a command sent right after the first 200 (the timer-start window); while a twin FRAM chunk
   write is delayed (the chip's hang op, `--hang fram:…`, A.U25.37); with `mempause` active; concurrent with a `reboot`;
   both commands at once from two threads — outcomes as A.S0930.22, read from the replies, the exit code (A.U25.09) and
-  the relaunch's `/status`. (3) hazards — in
+  the relaunch's `/status`; `erasefram` refused by the preflight once a failed chunk operation has marked the chip lost
+  (A.U16.R03), while a fresh `silent` chip (A.U25.15) lets the erase start and stop at unit 0 with code 9 — both cases
+  asserted; after the refusal the process keeps serving and `would_have_triggered_count == 0` for 10 s (past the
+  8,000 ms watchdog: a refused command never stops the feed, A.S0930.13). (3) hazards — in
   `test_digital_twin_bus_hazard_concurrency.py`: the erase racing a logger write on the twin chip (in-flight completes,
   later refused, no torn chunk), a sensor task cancelled inside its I2C session on a shared bus (the sibling's next
   read succeeds); the twin chip's rollover (A.U25.15) never reached (every unit address below `size`). (4) watchdog on
@@ -943,10 +1014,13 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   so the 256 KB erase takes its real ≈2.2 s of clock) ends with `would_have_triggered_count == 0`; hang per step (the same
   seven hang points as A.S0930.24 (c)) through one named runner instrumentation flag, `--test-shutdown-hang <step>`
   (OR125.a (2)-(3): in `digital_twin/run_generic_integration.py` only, test-only by name, off by default, kept out of the
-  production entry path by OR125.a (3)'s check; it rebinds from outside the one object that step waits on — a store's
-  `flush_pending`, a chunk's `_op_lock` held by a runner task, a task that swallows `CancelledError`, a store's
-  `config_lock` held, the FRAM driver's `report_set_values`, the reset Timer's callback — the same runner-only kind as the
-  crossover wiring's `poller` rebinding; the product gains no hook, OR36); the host sends the command, waits 8.5 s past
+  production entry path by OR125.a (3)'s check; it rebinds from outside the one object that step waits on — S1: the
+  supervisor's `_log_dead_task` rebound to a coroutine that never returns and one supervised task ended, so the pass
+  never reaches its park point; S2 a store's `flush_pending`; S3 a chunk's `_op_lock` held by a runner task; S4 a task
+  that swallows `CancelledError`; S5 reset a store's `config_lock` held; S5 erase the FRAM driver's
+  `report_set_values`, with the twin chip refusing the first pass-2 unit (its WREN-drop knob, A.U25.15 — on a healthy
+  chip pass 2 never calls it); S6 the reset Timer's callback — the same runner-only kind as the crossover wiring's
+  `poller` rebinding; the product gains no hook, OR36); the host sends the command, waits 8.5 s past
   the runner's `HANG <step>` line and reads the runner's WDT line at exit (A.U25.09): `would_have_triggered_count >= 1`
   and `feed_count` unchanged since the hang point — the twin records rather than resets (owner, 2026-08-12; A.U25.55); a
   blocking hang inside one SPI transfer (the knob set to a 9 s transfer for one unit) is caught by `WDT._arm()`'s
@@ -962,8 +1036,10 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   (`mempause` over the twin) holds · twin `digital_twin/machine.py` `SPI` gains `wire_time_us_per_byte`; fidelity table
   row (A.U25.01) "SPI wire time: off by default, 8 µs/byte for timing proofs" · docs `digital_twin/README.md` (the knob;
   Run 13) · toml — · uart —.
-- **Depends**: A.S0930.09-.17; co-lands with A.U25.09 (reset exit), A.U25.15 (FRAM fake rollover and `silent` —
-  `erasefram` against a `silent` chip is refused by the preflight: a case in (2)), A.U25.32/A.U25.35 (per-run
+- **Depends**: A.S0930.09-.17; co-lands with A.U25.09 (reset exit), A.U25.15 (FRAM fake rollover, `silent` and the
+  WREN-drop knob — `erasefram` against a `silent` chip: refused by the preflight once A.U16.R03 marked it lost, else
+  stopped at unit 0 with code 9, both cases in (2)), A.U11.19 (the relaunch after the reset writes no file), A.U16.R03
+  (the lost-chip state the preflight reads), A.U25.32/A.U25.35 (per-run
   `--config-dir`, so the reset deletes the run's files and never `digital_twin/config/`), A.U25.36/A.U25.55 (Run 12's
   code list gains 7 and 8; Run 5c's commanded-reboot path unchanged — reboot does not join the sequence, see Agent
   proposals), A.U25.37 (hang/fault vocabulary), A.U25.46 (host-side harness), the U25 action implementing OR125.a (2)-(3) (its flag
@@ -989,17 +1065,23 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   layout) is 0x00 and every chunk decodes as an empty ring or blank. Not wear-gated (FRAM is outside the gate,
   OR118.a (3)). (3) refusals in-script — the near-miss list through the callback's webserver dispatch → "Invalid", no
   reset; `"erasefram"` with the chip write-protected first (`set_write_protected(value=True)`, restored in `finally`)
-  → "Failed", no reset. (4) states — the erase started while the script's own logger-write loop and an I2C read loop run
-  (a FRAM write in flight, a bus session in flight); `mempause` active first. (5) bus hazard (flash tier of the
-  four-tier rule) — `test_bus_concurrency.py` gains the erase racing a chunk write on the real chip: after the reset the
+  → "Failed", and no reset for 10 s after the refusal (past the 8,000 ms watchdog: a refused command never stops the
+  feed, A.S0930.13). (4) states — first `save_fram_raw(board, <test name>)` (A.U26.22); the erase started while the
+  script's own logger-write loop and an I2C read loop run (a FRAM write in flight, a bus session in flight); `mempause`
+  active first. (5) bus hazard (flash tier of the four-tier rule) — first `save_fram_raw(board, <test name>)`
+  (A.U26.22); `test_bus_concurrency.py` gains the erase racing a chunk write on the real chip: after the reset the
   raw dump shows no torn chunk. (6) watchdog on silicon — `system_command_fram_erase.py` wraps `sysfunct.watchdog` from
   outside with a recording proxy (forwards `feed()`, records `ticks_ms()`): the script prints the largest gap between
-  feeds and the erase's duration; the test asserts the gap < 100 ms and records both figures (the per-unit cost the
+  feeds and the erase's duration; the test asserts the largest gap between feeds inside the erase (S5) < 100 ms, and every gap < 8,000 ms (the S1 park
+  gap reaches ≤ 2 s and an S2 flush can include 400 ms sector erases, W25Q16JV `:3105`), and records both figures (the per-unit cost the
   design leaves to phase C); `test_a_hung_shutdown_step_ends_in_a_watchdog_reset` `@pytest.mark.persistence_write`
   (scratch writes) — `system_command_hang.py` replaces one store's `delete_file` from outside with a never-ending
-  coroutine, issues `"resetconfig"` and prints `HANG <ticks>`; the board resets 8.0-10.0 s after that line (serial
-  loss timed by the harness), i.e. by the watchdog, never fed through the hang. (7) power loss —
-  `test_a_reset_mid_erase_leaves_every_chunk_old_or_blank`: seed a known ring into every logger chunk, start the erase,
+  coroutine, issues `"resetconfig"` and prints `HANG <ticks>`; the board resets 7.5-10.0 s after that line (serial
+  loss timed by the harness; `HANG` prints after the last own feed, so the watchdog fires ~8,000 ms minus that print's
+  delay after it — a fed hang never resets, and the 4 s reset timer is ruled out by the lower bound), i.e. by the
+  watchdog, never fed through the hang. (7) power loss —
+  `test_a_reset_mid_erase_leaves_every_chunk_old_or_blank`: first `save_fram_raw(board, <test name>)` (A.U26.22);
+  seed a known ring into every logger chunk, start the erase,
   `hard_reset()` at 0.2 s, 1.0 s and 2.0 s after the script's `ERASE START` line (inside the ≈2.2 s erase of the 256 KB
   chip), then the raw dump: each chunk holds the seeded ring or is blank, none other. (8) soak markers — each wrapper
   reads the script output through `MEMORY_ERROR_MARKERS` (A.U26.47).
@@ -1036,14 +1118,19 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   `ResetReason` 8, every FRAM-backed module's counter 0 and history empty (the set derived as A.U26.23 does). Not
   wear-gated. (3) `test_near_miss_action_words_do_nothing_over_rest`: the near-miss list over real HTTP → "Invalid"
   each, `SysUptime` keeps rising, config GETs unchanged — a bare or misspelt call does nothing (OR122.a (2)). (4)
-  concurrency — `test_erase_reboot_and_mempause_at_once`: three threads send `erasefram`, `reboot`, `mempause`
+  concurrency — `test_erase_reboot_and_mempause_at_once`: first `save_errcount(dut_ip, …)` and `save_fram_raw(board, …)`
+  (A.U26.22); three threads send `erasefram`, `reboot`, `mempause`
   together: exactly one reset follows, and `ResetReason` is 8 when `erasefram` answered "Valid", 3 when `reboot` did
   (the other shutdown-side answers "Failed"); no flash write, so ungated. (5) bus hazard (bench tier of the four-tier
-  rule) — `test_bus_concurrency_under_api_load.py` gains `erasefram` issued while its API hammer runs: reply "Valid",
+  rule) — `test_bus_concurrency_under_api_load.py` gains, after `save_errcount(dut_ip, …)` and `save_fram_raw(board, …)`
+  (A.U26.22), `erasefram` issued while its API hammer runs: reply "Valid",
   reboot with `ResetReason` 8, serving afterwards, every FRAM-backed log empty. (6) watchdog — (2) and (5) assert
   `ResetReason` 8 (the sequence's reset), not 2 (a watchdog reset); the reply-to-serving time is recorded
-  (`result_note`) for phase C. (7) power loss — manual step appended to `tests_hardware/manual/manual_persistence.py`'s
-  power-cycle tests: "issue `erasefram`, cut power within 1 s of the reply; after power returns the unit serves,
+  (`result_note`) for phase C. A hung step is not reachable at L4 without a product hook (OR36); it is proven at L3
+  (A.S0930.28 (6)) and L2 (A.S0930.27 (4)). (7) power loss — manual step appended to `tests_hardware/manual/manual_persistence.py`'s
+  power-cycle tests: "save the FRAM evidence first (`save_errcount()`, `save_fram_raw()`); issue `erasefram`, cut power
+  2.5-4.0 s after the reply (inside the ≈2.2 s erase that follows S1-S4; S1 alone may wait up to 2 s, so an earlier cut
+  can land before the erase starts); after power returns the unit serves,
   `ResetReason` 1, and each FRAM-backed history is either its old content or empty; repeat with `resetconfig` (then
   restore the config files as (1) does)". (8) soak markers through A.U26.47's shared gate.
 - **Blast**: callers — · generated — · js — · tests new; the wear guard (A.U26.06) and the marker completeness test
@@ -1061,7 +1148,7 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   CLAUDE.md FRAM-log rule (owner, 2026-09-08).
 - **Site**: `SPECIFICATION.md` A.8 (`:611-613` PUT shapes), A.4 (`:226-231` reset path, FRAM bullet), A.7 (supervisor),
   C.3.1 (FRAM API), C.5.2/C.7.3, C.8, F.2, F.5, G.2 (`feed_watchdog()`), H (`:4378`, `:4525-4530` dispatch-only
-  semantics), I.4; `tests_hardware/README.md:1336-1343`; `CLAUDE.md` FRAM-log rule.
+  semantics), I.4; `tests_hardware/README.md:1336-1343`; `CLAUDE.md` FRAM-log rule and wear rule.
 - **Change**: SPEC A.8 `:612` "`"SystemCmd": "reboot"|"bootloader"|"mempause"`" → "… `|"resetconfig"|"erasefram"`", and a
   new paragraph "**The two shutdown commands** (owner, 2026-09-30): `resetconfig` ("Reset to defaults") deletes every
   config file and reboots — the unit comes back on the schema defaults, as the hotspot with its TOML hostname and
@@ -1082,7 +1169,13 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   ownership; then only the sequence's own feed"; H: the dispatch-only row names the exact-word rule and the two options
   (no dialog); I.4: the sequence's allocation is fixed (one task, one 256-byte unit). `tests_hardware/README.md` per
   A.S0930.19/.28/.29. CLAUDE.md FRAM-log rule "BEFORE issuing any `PUT /status {"ResetErrors": true}` call or otherwise
-  clearing state" → "… call, a `SystemCmd` `"erasefram"`, or otherwise clearing state".
+  clearing state" → "… call, a `SystemCmd` `"erasefram"`, or otherwise clearing state". CLAUDE.md wear rule "a
+  *dispatch-only* PUT persists nothing and is deliberately outside the gate" → "…deliberately outside the gate, except
+  `SystemCmd` `"resetconfig"`, whose purpose deletes every config file (owner, 2026-09-30)…". SPEC H `:4378`
+  (dispatch-only row, "None persisted … a dispatch-only PUT is deliberately outside it") gains "— except `SystemCmd`
+  `"resetconfig"`, which deletes every config file and is gated like a persisting PUT"; H `:4527-4528` "a well-formed
+  submission always reports `"Valid"`" → "reports `"Valid"`, or `"Failed"` when the command is refused (a reset armed or
+  a shutdown under way)".
 - **Blast**: callers — · generated — · js — · tests `tests_scripts/test_comment_block_cap.py` n/a; doc-reference checks
   (U33's) re-run · twin — · docs as above · toml — · uart —.
 - **Depends**: U36 (doc owner), A.U11.05 (A.8 code table), A.U14.R01 (F.2 ladder text), A.U17.33 — A-C merges.
@@ -1133,7 +1226,8 @@ No earlier action is **own** for any change here: OR116-OR122 postdate every uni
    cancelled and awaited to done and `main()` must not end. A.U20.06's L0 test (`main()`'s awaited call order) holds;
    its direct-caller blast list adapts to a task (and A.U24.43's scenario).
 3. A.U11.03 point 5 keeps the supervisor escalating to a reboot; A.S0930.13 suppresses escalation while a shutdown
-   runs (the sequence reboots). Not a contradiction; A-C writes both into the one loop.
+   runs (the sequence reboots), keyed on `_feed_owned`, never on `_shutdown`. Not a contradiction; A-C writes both into
+   the one loop.
 4. A.U16.19 removes `override_pause` as a test seam; A.S0930.17's `invalidate()` writes past the pause. It is the
    erase's own product path (OR117/OR36.a (3): a function of the chip — clearing it), called only by `erase_chip()`, and
    no test reaches it except through the erase; A-C must not read it as the seam returning.
@@ -1162,7 +1256,7 @@ No earlier action is **own** for any change here: OR116-OR122 postdate every uni
 |---|---|---|
 | LEAD/R31 | code in U20 — `crc` TOML key, pair refusal, bus check counts the CRC length | A.S0930.01, A.S0930.02 |
 | LEAD/R31 | code in U17 — `UartLinkExerciser` passes the CRC through | register fix 1: premise wrong at HEAD — the CRC is the bus object's (`asy_uart_driver.py:58, 76`), passed by codegen (A.S0930.02); no exerciser change |
-| LEAD/R31 | test in U17/U24 — L1 both modes | DONE-AT-HEAD for the protocol layer (`tests/test_uart_comm_hazard.py:51, 1273-1296`; `tests/test_asy_uart_comm.py:2163`); exerciser layer A.S0930.03 |
+| LEAD/R31 | test in U17/U24 — L1 both modes | DONE-AT-HEAD for the protocol layer (`tests/test_uart_comm_hazard.py:51, 1273-1296`; `tests/test_asy_uart_comm.py:2163` (the BSEC floor check builds its bus with `crc=CRC16()`)); exerciser layer A.S0930.03 |
 | LEAD/R31 | test in U25 — L2 twin pair in both modes | A.S0930.04 |
 | LEAD/R31 | test in U26 — L3 script in the other mode; L4 per mode, second behind `flash_cycle` | A.S0930.05, A.S0930.06 |
 | LEAD/R31 | doc in U36 — SPEC J/L, DEVICE_REFERENCE, changelog Class B | A.S0930.07, A.S0930.08 (DEVICE_REFERENCE: no `uart_link` section exists, nothing to change); SPEC L via A.S0930.01's Blast |
