@@ -29,7 +29,10 @@ def main():
         for n in sorted({int(x) for x in re.findall(r"\bOR(\d+)", " ".join(f.get(k, "") for k in ("Req", "Sources", "Rank", "State")))}):
             by_or[n].append(rid)
         state = f.get("State", "")
-        units = sorted(set(re.findall(r"\bU(\d+)\b", state)), key=int)
+        units = {int(u) for u in re.findall(r"\bU(\d+)\b", state)}
+        for a, b in re.findall(r"\bU(\d+) ?[-–] ?U?(\d+)\b", state):  # a range "U10-U34" names every unit in it
+            units |= set(range(int(a), int(b) + 1))
+        units = sorted(units)
         for u in units:
             by_unit[f"U{u}"].append(rid)
         if re.search(r"\bin C\b|hardware in C|\bC —|phase C", state):
