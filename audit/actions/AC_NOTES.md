@@ -138,3 +138,6 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     asked 2026-09-30. U32 Q1 closed by OR128.
 36. Owner answered U31 Q1 2026-09-30 (OR130): option (a), one feed before the budget reboot; A.U31.07 firm; the G5/R02
     Req rewrite and OR31.a (3)'s two-call-site test follow (register fixes at wave end).
+37. `verify/U36b.md` accepted: moving `datasheets/` into the owner's private `hundertvolt/datasheets` submodule
+    (A.U36.545, A.U28.35; OR80, OR95) needs push access nobody has verified (OR95.a verified a clone only). A-C lists it
+    as an explicit owner step before the move, shown at the A-C review.
