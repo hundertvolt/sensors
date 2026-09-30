@@ -1,6 +1,26 @@
-# A-L verify U8C_tests_hardware — U8C + U8C2, files under `tests_hardware/` (HEAD 741dfb5; no code change since a4766a9 outside `audit/`)
+# A-L verify U8C_tests_hardware — U8C + U8C2, files under `tests_hardware/` (HEAD 741dfb5, finished at 3d0ba2e — no code change since a4766a9 outside `audit/`, U8/U8C/U8C2 unchanged)
 
-Counts: (filled in at the end)
+Counts: 111 actions checked (A.U8C.44-A.U8C.119, A.U8C2.16-A.U8C2.49, the `tests_hardware/` part of A.U8C2.51) · OK 66 ·
+FIX 45 (A.U8C.45, .48, .50, .54, .55, .57, .59-.63, .65-.68, .70-.74, .76, .82, .84, .87-.89, .91, .94-.99, .115;
+A.U8C2.16, .21, .24, .35-.37, .40, .43, .46, .48, .49 — most through the four systematic items V.15, V.16, V.18, V.12)
+· REJECT 0 · ADD 2 (V.07 one site, V.17 new action A.U8C.121; V.16 adds 15 sites to ten actions); 1,190 verdict rows
+checked in context (997 U8C + 193 U8C2), 34 need a correction (verdict 6, ID 25, reason 3); findings
+V.U8C_tests_hardware.01-18 (15 FIX, 3 ADD); ledger complete for `tests_hardware/`. Search: C.0.1 re-run identical (2,265;
+997 here); G1-G15 re-run identical here (235 keys, 239 appearances: 193 rows + 42 dropped).
+
+Per-file counts (rows U8C+U8C2 · non-OK items): every file OK except `bench/test_bus_concurrency_under_api_load.py`
+77+5 · 3 (V.01, V.02, V.18), `bench/test_hotspot_role_reversal.py` 47+3 and `conftest.py` 12+3 · 1 (V.03),
+`bench/test_network_resilience.py` 195+10 · 6 (V.03-V.06, V.08, V.18), `bench/test_uart_link_under_api_load.py` 21+0 · 2
+(V.07, V.18), `bench/test_wifi_networking.py` 13+1 · 1 (V.08), `bench_control.py` 10+4 · 1 (V.09),
+`device_scripts/bus_concurrency_same_device_scd30.py` 7+5 · 3 (V.10, V.11, V.16), `scd30_same_device_rw_concurrency.py`
+7+1 · 3 (V.11, V.15, V.16), `scd30_plausibility_read.py` 5+3 · 1 (V.10), `uart_idle_poll_rate.py` 11+3 · 3 (V.10, V.12,
+V.13), `isl29125_mechanism_envelope.py` 18+12 · 2 (V.12, V.15), `sgp40_fram_backup_restore.py` 4+0 · 1 (V.12),
+`uart_link_under_concurrent_system_load.py` 18+5 · 1 (V.12), the two WiFi repros 15+4, 4+2 · 3 (V.14, V.15, V.18),
+`heap_layout_after_full_boot_sequence.py` 9+2 · 2 (V.14, V.15), the device scripts named in V.15/V.16 (callers slot,
+feed cadence), `flash/test_toolchain_flash_boot.py` 8+1, `manual/manual_bus_electrical.py` 2+2,
+`manual/manual_persistence.py` 0+5, `device_scripts/isl29125_real_irq_edge.py` 8+9 · 1 each (V.18). Disagreement with
+the `tests/` half: none on its readings; V.18 (message text restating a tagged value) is raised here only and applies
+there too.
 
 Scope: every hit-table row, action and ledger/register-fix/open-point item of `audit/actions/U8C.md` and
 `audit/actions/U8C2.md` whose file is under `tests_hardware/` (93 files, 1,190 rows: 997 U8C + 193 U8C2; actions
@@ -40,8 +60,9 @@ every verdict, ID, mirror and action slot.
     :266, :324, :335 (20.0)"; Change: "each literal at :175, :186, :255, :266, :324, :335 becomes `_DEGRADED_FETCH_TIMEOUT_S`".
   - V.U8C_tests_hardware.02 | A.U8C2.16 Change | FIX | the retry count 3 at `:46` (`for attempt in range(3)`) has a
     derived partner at `:50` (`if attempt == 2 or not http_client.is_ceiling_close(exc): raise` — "last attempt"), an
-    `==` literal outside every family (U8C2 blind spot). Tagging `:46` alone leaves a hidden second copy: a changed
-    `_CEILING_RETRY_ATTEMPTS` would retry past the last attempt without raising, and end in `AssertionError("unreachable")`
+    `==` literal outside every family (U8C2 blind spot). Tagging `:46` alone leaves a hidden second copy: raised, the
+    loop still gives up at the third attempt; lowered to 2, the last failure falls through to `AssertionError("unreachable")`
+    instead of re-raising
     | append to the Change: "the literal at :50 (`attempt == 2`) becomes `attempt == _CEILING_RETRY_ATTEMPTS - 1`
     (derived, untagged)"; Site add "derived, untagged: :50 (2)".
 - `bench/test_end_to_end_timing.py` 52+2 · A.U8C.46, A.U8C2.17 · OK.
@@ -232,7 +253,7 @@ every verdict, ID, mirror and action slot.
   sleep is used only where a probe would disturb the property"): `SETTLE_S = 4.5` (`:24`) is waited out in `_hold()`
   (`:79-82`) before every level — the same settle-before-reading as the deferred `:209`, and `_fresh_sample()` (`:44-53`)
   already polls for a new `TS`; `BACKUP_WAIT_S = 75.0`/`RESTORE_WAIT_S = 10.0` run the reader for a fixed time
-  (`_run_until_cancelled()`, `:38-49`) and only then read `get_mem_status()` (`:84`, `:118`), an in-memory read a poll can
+  (`_run_until_cancelled()`, `:38-49`) and only then read `get_mem_status()` (`:84`, `:119`), an in-memory read a poll can
   make every feed step; `uart_idle_poll_rate.py:78` and `uart_link_under_concurrent_system_load.py:191` sleep after
   `cancel()` for the tasks to unwind — `listener.done()` is already polled at `:71-75`, and awaiting the cancelled tasks is
   the direct form. (`network_resilience.py:275` is the sixth, V.06.) The observation windows U8C/U8C2 kept tuned —
@@ -333,3 +354,35 @@ every verdict, ID, mirror and action slot.
   | each action's Change gains "the message at :<line> interpolates the constant (f-string, `{_NAME}` or `{_NAME / 1000:.0f}`
   for a ms constant shown in s)". This extends the `tests/` half, which did not raise message text; the same pattern
   exists there (e.g. hang-bound messages), so the lead should apply it to both halves or to neither.
+
+## Deferrals, ledger, register fixes, open points (the `tests_hardware/` parts)
+
+- **Deferrals** (U8C 14 + U8C2 14 = 28 in `tests_hardware/`; the 13 U25 ones are all in `tests/`, verified there): each
+  opened; all 28 are fixed waits for a state a poll can observe (a counter, `TS`, device presence, a status bit) or,
+  for `bench_control.py:277, :281`, the exact sleep G7/R23's State hands to U26 (RF309) — all right. Six more belong with
+  them (V.06, V.12); none of the 28 is an observation window.
+- **Mirrors in device scripts.** Read as the `tests/` half did: a mirror is the literal itself carrying the product ID's
+  tag (inline or on a named constant), checked host-side by A.U8.02's register test — never an import. Every
+  `tests_hardware/` mirror row is such a literal (A.U8.08's 31 `wdt.timeout_ms` sites, the `dev.uart_*` named constants,
+  `isl29125.periodic_only_warn_at` at `isl29125_lighting_scenarios.py:335`, the `wifi.*` mirrors of the orphan repro,
+  `web.max_content_length` at two bench sites); none imports `src/`.
+- **Ledger rows** G4/R54, G1/R15, G8/R31, G7/R23 (both files): the `tests_hardware/` share is complete — every hit has
+  a row; every hang bound (`run_isolated`, `join`, `wait_until`, `wait_for`, subprocess, socket) is tuned; G1/R15's
+  instrument values (`harness.py:165`, `test_heap_under_connection_ceiling.py:49, :62, :78, :100, :101`,
+  `harness.py:278, :284`) are all in actions. The G7/R23 row's "27 fixed sleeps deferred" becomes 33 with V.06/V.12.
+- **Register fixes**: U8C's A.U8.05 item (`harness.py:165`, `…ceiling.py:49`) — right; U8C2's items on search-gap 7
+  (`:119`, `:122`), A.U8.13 (`isl29125_lighting_scenarios.py:335`), A.U8.05 (`:62, :78, :100, :101`, `harness.py:278,
+  :284`) — right; U8C2's A.U8C.84 item (`:32`) — right, but its sentence "Its sibling rows at `bus_concurrency_same_device_scd30.py:39`
+  and `scd30_plausibility_read.py:30` already name their divisors" must go: they name them, no action replaces them (V.10).
+- **Open points**: U8C's netem-profile reading, the `serving_at_default_gc.py:34` output cap and the
+  `uart_link_under_concurrent_system_load.py:24-26` mirror-by-reading, U8C2's stimulus-length reading
+  (`bus_topology_…:125, :132`, `wifi_reconnect_…:91`) and `network_resilience.py:957` derived — applied consistently in
+  every `tests_hardware/` row; none was self-resolvable from an owner row.
+- **Status arithmetic** after this file's FIX/ADD items (on top of the `tests/` half's): U8C tuned −6 (V.06, V.12),
+  deferred U26 +6, new tuned IDs −6 +1 (V.07) +11 (V.16: nine `_wdt_feed_every` files, one file with two, one
+  `_feed_step_s`) — the renames (V.03, V.08, V.11) change no count.
+
+## Checked OK
+
+A.U8C.44, .46, .47, .49, .51-.53, .56, .58, .64, .69, .75, .77-.81, .83, .85, .86, .90, .92, .93, .100-.114, .116-.119;
+A.U8C2.17-.20, .22, .23, .25-.34, .38, .39, .41, .42, .44, .45, .47, the `tests_hardware/` entries of A.U8C2.51
