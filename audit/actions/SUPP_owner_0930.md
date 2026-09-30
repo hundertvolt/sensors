@@ -42,24 +42,27 @@ FRAM error logs and the SCD30's NVM survive, OR117.a (1)); `erasefram` names the
 of the other or of an existing value, so no near-miss of one is another command. The dispatch stays the whole-string
 membership test `cmd not in _SYSTEM_CMDS` (`asy_webserver_service.py:507`): no alias, prefix, case folding or number.
 
-**Gate (S0, inside the request, before the reply).** `SystemService.reset_to_defaults()` / `erase_fram()` run under
-one `self._command_lock` (`asyncio.Lock`, fixed size), so two commands never interleave their checks:
+**Gate (S0, inside the request, before the reply).** `SystemService.reset_to_defaults()` / `erase_fram()` — and, since
+Part B2, `reboot_system()` / `reboot_bootloader()` (A.S0930.31 (1)) — run under one `self._command_lock` (`asyncio.Lock`, fixed size), so two commands never interleave their checks:
 1. a shutdown already under way → answer `True` for the same purpose (idempotent, nothing new started), `False` for
    the other purpose;
-2. `self._reset_armed` (U11: a reboot or bootloader reset is armed) → `False` — the armed reset would cut the
-   sequence;
-3. `self._shutdown = purpose` is set before any await, so from here `reboot_system()`, `reboot_bootloader()` and
-   `pause_permanent_storage()` answer `False` ("Failed");
+2. `self._reset_armed` (U11: since Part B2 only the supervisor escalation's reset — a commanded reboot or bootloader
+   arms only in its own S6, where rule 1 already answers) → `False` — the armed reset would cut the sequence;
+3. `self._shutdown = purpose` is set before any await, so from here another purpose's command and
+   `pause_permanent_storage()` answer `False` ("Failed") and the same command `True` (rule 1);
 4. preflight — `resetconfig`: at least one config store resolved; `erasefram`: a FRAM manager exists, its chip is
-   initialised and not write-protected (`await self._storage.erase_ready()`); a failed preflight clears
-   `self._shutdown` and answers `False` with nothing changed;
+   initialised and not write-protected (`await self._storage.erase_ready()`); reboot and bootloader: none; a failed
+   preflight clears `self._shutdown` and answers `False` with nothing changed;
+4a. `_reset_armed` re-checked (A.S0930.32 (1)): an escalation that armed its reset while the preflight yielded refuses
+   the command as rule 2 does; from here to step 6 nothing awaits;
 5. `self._shutdown_task = asyncio.create_task(self._shutdown_sequence(purpose))` — a `MemoryError` clears
    `self._shutdown`, answers `False`, nothing changed;
 6. the watchdog latch `self._feed_owned = True` (one-way): from here `feed_watchdog()` is a no-op for every caller
    (the supervisor pass in progress, the boot batch's generated feeds `codegen.py:465` / A.U11.10's `run_setups()`);
    the supervisor stops restarting and escalating from here, keyed on this one-way latch, never on `_shutdown`, which a
    failed preflight clears again (a supervisor parked on `_shutdown` would stay parked after a refusal, and a refused
-   command would end in a watchdog reset); one console line; answer `True` → `"Valid"`. The reply is written by the request's own connection task; nothing the
+   command would end in a watchdog reset); an escalation already past its latch check re-checks `_feed_owned` right
+   after its log write, which yields, and parks instead of arming (A.S0930.32 (2)); one console line; answer `True` → `"Valid"`. The reply is written by the request's own connection task; nothing the
    sequence does cancels a connection task, and the reset fires at the earliest `_RESET_DELAY` (4 s) after S6.
    The latch is set at acceptance, before the supervisor is proven stopped — stricter than OR120.a (1)'s "from that
    moment": the supervisor pass still running between acceptance and its park cannot feed either.
@@ -74,15 +77,18 @@ a hung unit is never fed and the watchdog resets the unit, OR120.a (2)):
 | S2 config stores | `close_writes()` on every store, then per store `flush_pending()` (A.S0930.16: the pending flush read under `config_lock`) through U11's `_flush_config_stores(close=True, step_done=self._own_feed)` wrapper (A.S0930.14), whose failure entry still persists (FRAM open) | per store | "Shutdown: config writes closed and flushed" |
 | S3 FRAM | `storage_timer.deinit()` (a `mempause` auto-unpause cannot fire mid-sequence); `await self._storage.quiesce(self._own_feed)` — pause, then each chunk's `_op_lock` taken once (`wait_idle()`), so every operation already past its pause check finishes both blocks and every later one refuses at entry | per chunk | "Shutdown: FRAM writes closed" |
 | S4 tasks | cancel every entry of `self._tasks` not done; then `await` each (catch `asyncio.CancelledError` and `Exception`) | per task | "Shutdown: all tasks stopped" |
-| S5 purpose | `resetconfig`: per store `await store.delete_file()`; `erasefram`: `await self._storage.erase_chip(self._own_feed)` (A.S0930.17) | per file / per chunk and per 256-byte unit | "Shutdown: <purpose> done" or "… incomplete" |
-| S6 reboot | own feed; `await self._reboot(code, "Reboot after <purpose>", system_reset)` — U11's path (record → flush (no-op, stores closed) → pause (already) → arm); no feed after it | once, before `_reboot()` | `_reboot()`'s own line |
+| S5 purpose | (Reset to defaults and Erase FRAM only) `resetconfig`: per store `await store.delete_file()`; `erasefram`: `await self._storage.erase_chip(self._own_feed)` (A.S0930.17) | per file / per chunk and per 256-byte unit | "Shutdown: <purpose> done" or "… incomplete" |
+| S6 reboot | `await self._reboot(code, <message>, <action>, fed=True)` — U11's path (record → flush (no-op) → pause (already) → own feed → arm); no feed after the arm | once, immediately before the arm | `_reboot()`'s own line |
 
 `code` is `_RR_CONFIG_RESET` (7) / `_RR_FRAM_ERASED` (8), or `_RR_COMMAND_INCOMPLETE` (9) when a flush raised, a file
-could not be deleted or the erase stopped early (A.S0930.15). After S6 nothing feeds: the reset fires within
-`_RESET_DELAY` of the last own feed (4 s + `_reboot()`'s own few ms, under the 8000 ms `WDT`, `codegen.py:381`); an
-un-armable reset timer sets `_force_watchdog_starve`, and a dropped soft Timer callback (SPEC F.1) leaves the reset task
-waiting — both end in a watchdog reset, never in a fed hang. This is how OR120.a (2) reconciles with `_reboot()`'s arm
-and its starve fallback: the sequence's last feed precedes the arm, and no feed site exists after it.
+could not be deleted or the erase stopped early (A.S0930.15); `_RR_REBOOT` (3) / `_RR_BOOTLOADER` (4) for reboot and
+bootloader, whatever S2 met. The last own feed is `_reboot()`'s, immediately before the arm; after it nothing feeds:
+the reset runs `_RESET_DELAY` later plus the reset task's wake latency (≈ 4.0 s, under the 8000 ms `WDT`,
+`codegen.py:381`; at a debug level of 4 or more with a USB host holding the port open without reading, each console
+line in that tail can take ~2 s of the margin, A.S0930.33 (3)); an un-armable reset timer sets
+`_force_watchdog_starve`, and a dropped soft Timer callback (SPEC F.1) leaves the reset task waiting — both end in a
+watchdog reset, never in a fed hang. This is how OR120.a (2) reconciles with `_reboot()`'s arm and its starve fallback:
+the sequence's last feed (`_reboot(..., fed=True)`'s) immediately precedes the arm, and no feed site exists after it.
 
 **Order rationale.** S1 first: ownership must pass before anything that can hang, or the supervisor would feed through
 a hung step (OR120). S2 before S3: a failed flush's persisted entry still reaches FRAM (U11's own record → flush →
@@ -115,12 +121,12 @@ where it holds nothing, so the cancel lands on a wait. Worst case to park: one `
 | a FRAM chunk write in flight | S3: pause first, then each chunk's `_op_lock` once — the in-flight write completes both blocks; S4's cancellations come after; the erase touches the chip only after S3 |
 | inside a bus session | S4's cancel lands at an await; `async with` exits release the bus lock and deassert CS (`SPIDevice.__aexit__()`/`session_end()`, `asy_spi_driver.py:146-150, 167-178`; I2C the same shape); no transfer is interrupted (rp2 transfers are synchronous, G4/R22); FRAM is drained before; a sensor left mid-command is set up again by its driver at the next boot, after the boot bus clear (OR113.a (1)) |
 | storage paused (`mempause`) | S3 deinit's the auto-unpause timer and pauses again (idempotent); the erase writes beneath the pause at driver level; a flush failure in S2 reaches the console only (the operator's own pause), accepted |
-| a reboot or bootloader reset armed | refused at S0 ("Failed"), nothing changed; the armed reset proceeds |
-| reboot, bootloader or mempause during the sequence | refused ("Failed"); supervisor escalation is suppressed once `_feed_owned` is set (the sequence reboots anyway) |
+| the supervisor escalation's reset armed | refused at S0, before and after the preflight ("Failed"), nothing changed; the armed reset proceeds (a commanded reboot or bootloader arms only in its own S6) |
+| another purpose's command or mempause during the sequence | refused ("Failed"); the same command again: "Valid", nothing new started; the supervisor escalation is suppressed once `_feed_owned` is set and re-checked after its log write (the sequence resets anyway) |
 | the other command under way | "Failed"; the same command: "Valid", nothing new started |
 | two commands at once | `_command_lock` serialises S0; the second sees the first's outcome |
 | a PUT on a connection accepted before S4 | a config write meets a closed store → "Failed"; `ResetErrors` meets paused FRAM → "Failed" (A.U11.31); an SCD30 field reaches the chip as an ordinary accepted write — OR119.a (2) closes the flash filesystem and FRAM, which the SCD30's NVM is neither of (agent reading, 2026-09-30); `lightCmdLED`/`PauseTime` touch RAM only |
-| any step hangs | no feed; the watchdog resets the unit ≤ 8000 ms after the last own feed; the next boot reads `ResetReason` 2 (no record) and a partly applied state, which is the power-loss case below |
+| any step hangs | no feed; the watchdog resets the unit ≤ 8000 ms after the last own feed; the next boot reads `ResetReason` 2 (no record; 10 + the boot phase when the command was accepted in the boot window, A.U11.06's decode) and a partly applied state, which is the power-loss case below |
 
 **Timing per step at the worst-case chip and bus** (OR120.a (2)). The FRAM runs at the `SPIDevice` default of
 1,000,000 Hz: `FRAM_SPI` builds `SPIDevice(spi_bus, spi_cs)` with no baud (`asy_fram_driver.py:110`), default
@@ -508,25 +514,24 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   design block's S0 in order: (1) `if self._shutdown: return self._shutdown == purpose`; (2) `if self._reset_armed:`
   `self.pr.evt("Command refused: a reset is already armed")`, `return False`; (3) `self._shutdown = purpose`; (4) preflight —
   config reset: `if not self._config_stores` → refuse; erase: `if self._storage is None or not await
-  self._storage.erase_ready()` → refuse; a refusal prints one line naming the reason, sets `self._shutdown = 0`,
-  returns `False`; (5) `try: self._shutdown_task = asyncio.create_task(self._shutdown_sequence(purpose))` / `except
+  self._storage.erase_ready()` → refuse; reboot and bootloader: none (A.S0930.31 (2)); a refusal prints one line naming the reason, sets
+  `self._shutdown = 0`, returns `False`; (4a) A.S0930.32 (1)'s `_reset_armed` re-check; (5) `try: self._shutdown_task = asyncio.create_task(self._shutdown_sequence(purpose))` / `except
   MemoryError as e:` print, `self._shutdown = 0`, `return False`; (6) `self._feed_owned = True`; `self.pr.evt("System
-  command accepted, controlled shutdown for", "config reset" if purpose == _RR_CONFIG_RESET else "FRAM erase")`;
-  `return True`. Refusals print only: the client
+  command accepted, controlled shutdown for", _purpose_name(purpose))` (A.S0930.31 (2)); `return True`. Refusals print only: the client
   sees "Failed", and nothing failed inside the unit (the repeat rule's "expected condition", A.U3). Existing commands:
-  `reboot_system()`/`reboot_bootloader()` → `-> bool`: `if self._shutdown: return False`, else the U11 path and `return
-  True` (a repeat while armed stays U11's "request ignored" with `True`); `pause_permanent_storage(duration) -> bool`:
+  `reboot_system()`/`reboot_bootloader()` enter the same gate (A.S0930.31 (1)); `pause_permanent_storage(duration) -> bool`:
   `if self._shutdown: return False` first, else today's body and `return True`. Every refusal line is
-  `self.pr.evt(...)` (console, level-gated). The supervisor-escalation guard is A.S0930.13's.
+  `self.pr.evt(...)` (console, level-gated). The supervisor-escalation guard is A.S0930.13's, with its re-check after the log
+  write (A.S0930.32 (2)).
 - **Blast**: callers the generated callback (A.S0930.11); direct callers of `reboot_*`/`pause_permanent_storage`
   (grep): `reboot_fallback_starves_the_watchdog.py:38` calls `_reboot()`, not these;
   `tests_hardware/device_scripts/fram_pause_unpause_and_gating.py:79-117` and
   `tests/test_digital_twin_sensortask_integration.py:811` call `pause_permanent_storage()` and ignore its result — they
   hold · generated — (A.S0930.11) · js — · tests existing: `tests/test_system_service.py:618-800` (reboot
-  and pause tests) assert side effects, not return values — they hold, gaining `is True` where the call's result is
-  read; new L1 per A.S0930.21/.22 · twin — · docs SPEC A.8 command semantics (A.S0930.30) · toml — · uart —.
+  and pause tests) assert side effects, not return values — the pause tests hold, gaining `is True` where the call's
+  result is read; the reboot tests move onto the sequence harness (A.S0930.35 (a)); new L1 per A.S0930.21/.22 · twin — · docs SPEC A.8 command semantics (A.S0930.30) · toml — · uart —.
 - **Depends**: A.U11.03 (`_reset_armed`, async reboots, `_config_stores`), A.U5.02 (`storage` parameter),
-  A.S0930.13-A.S0930.17; `max-args = 8` unaffected (no new parameter, A.U11.05's count).
+  A.S0930.13-A.S0930.17, A.S0930.31 (the reboot words and `_purpose_name()`), A.S0930.32 (step 4a); `max-args = 8` unaffected (no new parameter, A.U11.05's count).
 - **Kind**: code
 
 ### A.S0930.13 Watchdog ownership passes to the sequence; the supervisor parks and is proven stopped
@@ -550,7 +555,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   self._supervisor_parked.set(); await self._never.wait()` — the park point, where the loop holds no lock and is inside
   no log write, so the cancel of S1 lands on a wait; inside the pass, the dead-task restart loop breaks and the
   escalation branch (A.U11.03 point 5) runs only `if not self._feed_owned` (the sequence reboots anyway, and an
-  escalation's own reset armed mid-sequence would cut it) — keyed on the one-way acceptance latch, never on `_shutdown`,
+  escalation's own reset armed mid-sequence would cut it), re-checked right after its log write, which yields, before
+  the starve flag and the arm (A.S0930.32 (2)) — keyed on the one-way acceptance latch, never on `_shutdown`,
   which only gates the other commands and can be cleared by a failed preflight: keyed on `_shutdown`, a supervisor that
   observed it while a preflight yielded would park on `self._never` and stay parked after the refusal cleared it, so a
   refused command would end in a watchdog reset. Latent at HEAD only because `erase_ready()` →
@@ -573,7 +579,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   and watchdog paragraphs, SPEC G.2's `feed_watchdog()` entry ("the one reusable feed access point" gains "except the
   shutdown sequence's own feed, which takes ownership", A.S0930.30); CLAUDE.md boot-latency rule's "what
   `SystemService.feed_watchdog()` exists to prevent" holds · toml — · uart —.
-- **Depends**: A.U20.06 (`start_tasks()`/`supervise_tasks()`, `self._tasks`), A.U11.03 (escalation branch, starve flag),
+- **Depends**: A.U20.06 (`start_tasks()`/`supervise_tasks()`, `self._tasks`), A.U11.03 (escalation branch, starve flag;
+  its re-check after the log write, A.S0930.32 (2)),
   A.U11.10 (`run_setups()` feeds), A.U10.08 (the feed-site allow-list gains the sequence's feed, conflict 8; its
   supervisor scan budget bounds S1's park wait), A.U10.07 — A-C merges.
 - **Kind**: code
@@ -598,10 +605,12 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   persisted CALLBACK entry — and `step_done()` after each store; `False` when any flush raised); one line. S3
   `self.storage_timer.deinit()`; `if self._storage is not None: await self._storage.quiesce(self._own_feed)`; one line.
   S4 `for t in self._tasks: if t is not None and not t.done(): t.cancel()`; then per task `try: await t` / `except
-  (asyncio.CancelledError, Exception): pass`, `self._own_feed()`; one line. S5 config reset: `for store in
+  (asyncio.CancelledError, Exception): pass`, `self._own_feed()`; one line. S5 (config reset and erase only) config reset: `for store in
   self._config_stores: ok = await store.delete_file() and ok; self._own_feed()`; erase: `ok = await
-  self._storage.erase_chip(self._own_feed) and ok` (S2's result kept: a raised flush still ends in code 9); one line ("done" / "incomplete"). S6 `self._own_feed()`; `await
-  self._reboot(purpose if ok else _RR_COMMAND_INCOMPLETE, <message>, system_reset)`. Comment at the method (≤ 3
+  self._storage.erase_chip(self._own_feed) and ok` (S2's result kept: a raised flush still ends in code 9); one line ("done" / "incomplete"). S6 `await
+  self._reboot(purpose if ok else _RR_COMMAND_INCOMPLETE, <message>, system_reset, fed=True)` — no feed of its own:
+  `_reboot()` feeds once as the statement immediately before `self.reset_timer.init(…)` (A.S0930.33 (3)); reboot and
+  bootloader per A.S0930.31 (3). Comment at the method (≤ 3
   lines): "One controlled shutdown for a system command (owner, 2026-09-30): no step has a timeout that moves on — a
   hung step is not fed, so the watchdog resets the unit; the order is explained in SPECIFICATION.md Part A.8." No
   `gc.collect()` (CLAUDE.md sites rule); allocation: the S0 task object, one `bytearray(256)` in the erase (A.S0930.17),
@@ -613,7 +622,8 @@ by codegen, and neither the exerciser nor the protocol module changes — no run
   gains the two commands), I.4 (a known bounded allocation, no threshold), A.S0930.30 · toml — · uart —.
 - **Depends**: A.S0930.12, .13, .15, .16, .17; A.U11.03 (co-lands: its point 3 `_flush_config_stores(self, *,
   close=False) -> None` becomes `(self, *, close: bool = False, step_done: "Callable[[], None] | None" = None) -> bool`,
-  its reboot callers ignoring the result), A.U11.04, A.U11.05, A.U20.06; A.U16.R03 (the FRAM manager's supervised task
+  its reboot callers ignoring the result; its point 2's `_reboot()` gains the keyword `fed`, A.S0930.33 (3)), A.U11.04,
+  A.U11.05, A.U20.06; A.U16.R03 (the FRAM manager's supervised task
   is one of `self._tasks`; cancelled in S4) — A-C merges.
 - **Kind**: code
 
@@ -797,7 +807,8 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   body exactly `{"SystemCmd":"erasefram"}` and calls no `window.confirm` (a spy asserts zero calls); the same for
   "Reset to defaults"; the select returns to its placeholder after Apply (A.U23.15). (6) feed-site guard — extends A.U10.08's `tests_scripts/test_watchdog_feed_sites.py` (the L0 check of every
   `feed_watchdog(`/`.feed(` call in `src/` and in every generated module): its allowed set gains (d) the body of
-  `SystemService._own_feed()`, whose only callers are `_shutdown_sequence()` and — as the `step_done` argument —
+  `SystemService._own_feed()`, whose only callers are `_shutdown_sequence()`, `_reboot()` (once, under `if fed:`, as the
+  statement immediately before `self.reset_timer.init(`, A.S0930.33 (3)) and — as the `step_done` argument —
   `AsyFramManager.quiesce()`/`erase_chip()` (checked by `ast`: no other reference to `_own_feed` anywhere); site (b)
   follows the loop into `_supervise()`; site (a) must contain the `_feed_owned` test (a `feed_watchdog()` body without it
   fails — the latch cannot be dropped silently); the never-in-a-loop rule does not apply to `_own_feed()` or to calls
@@ -807,7 +818,7 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   CRC init) cannot be lost to a future `CRC_Pass` chunk; bite: a synthetic call without `crc=` fails.
 - **Blast**: callers — · generated read only · js `tests_js/*` as above · tests new/extended as above · twin — · docs
   SPEC E (test catalog rows, U36) · toml — · uart —.
-- **Depends**: A.S0930.09-.13, A.U10.08 (conflict 8), A.U23.25, A.U23.27, A.U23.15, A.U6.03/A.U6.04 — A-C merges.
+- **Depends**: A.S0930.09-.13, A.S0930.33 (3) (`_reboot()`'s `fed` feed), A.U10.08 (conflict 8), A.U23.25, A.U23.27, A.U23.15, A.U6.03/A.U6.04 — A-C merges.
 - **Kind**: test
 
 ### A.S0930.21 L1: function, every refusal and every error path
@@ -913,13 +924,16 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   healthy run — `feed_count` rises by exactly the planned steps: 2 (S1) + stores + chunks + tasks + (stores | chunks +
   size / 256) + 1 (S6), on the 256 KB fake; the gap between S1's two feeds stays under `_TASK_CHECK_TIME * 1000 + 500`
   ms (read from source: S1's own feeds bracket the park wait, up to one `_TASK_CHECK_TIME` sleep plus a pass), every
-  other gap between consecutive `feed_times` entries under 1,000 ms (host time; the silicon figure is A.S0930.28 (6)). (c) hang in each step, never fed —
+  other gap between consecutive `feed_times` entries under 1,000 ms (host time; the silicon figure is A.S0930.28 (6));
+  the last `feed_times` entry is stamped after `_reboot()`'s last console line and flush pass and before
+  `reset_timer.init` (a recording `print` stand-in and the fake Timer's `init` stamp). (c) hang in each step, never fed —
   one test per step, the hang injected from outside: S1 a supervisor pass suspended on a gate that never opens (it never
   parks); S2 a store whose `flush_pending()` never returns; S3 a chunk whose `_op_lock` a test task holds forever; S4 a
   supervised task that catches `CancelledError` and keeps sleeping; S5 reset a store whose `config_lock` is held
   forever; S5 erase a fake FRAM driver whose `report_set_values()` never returns (the chip refusing the first unit); S6
   a reset Timer whose callback never fires. Each: pump the loop for 1 s of real time after the hang point; `feed_count`
-  is the same as at the hang point, the sequence task is not done, no reset was armed except in S6. (d) `_reboot()`'s
+  is the same as at the hang point; for S1-S5 the sequence task is not done and no reset is armed; for S6 the sequence
+  task is done, `svc._reset_task` is not, and the reset is armed. (d) `_reboot()`'s
   arm failing in S6 (the fake Timer's `init` raising `OSError(12)`) sets `_force_watchdog_starve` and `_own_feed()` then
   feeds nothing. (e) a refused command never stops feeding —
   `test_a_refused_erasefram_whose_preflight_yields_leaves_the_supervisor_feeding`: a write-protected chip, the
@@ -933,8 +947,8 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   `feed_times` (a `deque(…, _LOG_MAXLEN)` like `would_have_triggered_log`), so A.U24.17's contract holds; L2 proof of
   the reset itself is A.S0930.27 (4) · docs —
   · toml — · uart —.
-- **Depends**: A.S0930.13, A.S0930.14; A.U24.07, A.U24.17 (the shared machine-fake contract gains `feed_times`) — A-C
-  merges.
+- **Depends**: A.S0930.13, A.S0930.14, A.S0930.33 (3) (the last feed inside `_reboot()`); A.U24.07, A.U24.17 (the shared
+  machine-fake contract gains `feed_times`) — A-C merges.
 - **Kind**: test
 
 ### A.S0930.25 L1: a power loss at each step leaves a bootable state
@@ -1194,17 +1208,22 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
 "OR119.a (5) accepted: `reboot` and `bootloader` run the same controlled shutdown sequence as the two new commands (no
 apply step)"). Planned below against the design block (B) as A.S0930.12-.17 shape it: the two existing commands take
 S0 (no preflight), S1-S4, no S5, and S6 with their own action and reset code. Code sites unchanged since `b46b352`
-(`git diff --stat b46b352 4e1e5ce -- . ':!audit' ':!PROJECT_AUDIT_PLAN.md'` is empty).
+(`git diff --stat b46b352 4e1e5ce -- . ':!audit' ':!PROJECT_AUDIT_PLAN.md'` is empty; the same holds to `d11d38c`, the
+Part B2 verification's HEAD, and on to `22bd370`).
 
 **`machine.bootloader()` under the sequence (checked at v1.29.0, scratchpad `mp/`).** `machine.bootloader()` is
-`mp_machine_bootloader()` (`extmod/modmachine.c:70-73`): it runs `MICROPY_BOARD_ENTER_BOOTLOADER(n_args, args)`,
+`machine_bootloader()` (`extmod/modmachine.c:70-73`), which calls `mp_machine_bootloader()`: it runs `MICROPY_BOARD_ENTER_BOOTLOADER(n_args, args)`,
 re-enables the ROSC and calls `reset_usb_boot(0, 0)` (`ports/rp2/modmachine.c:91-97`); the board hook is the empty
 default (`ports/rp2/mpconfigport.h:238-240`; `boards/RPI_PICO_W/mpconfigboard.h` does not define it). `machine.reset()`
 is `watchdog_reboot(0, SRAM_END, 0)` (`modmachine.c:74-79`). Neither disconnects USB, syncs or unmounts the littlefs
 root (`ports/rp2/modules/_boot.py:9-13`) or touches flash first, and neither needs a task, lock or timer the sequence
 has stopped. A flash erase or program cannot be in flight when any Python code calls them: `rp2_flash.c` runs each one
 inside `begin_critical_flash_section()`/`end_critical_flash_section()` with interrupts disabled and the other core
-locked out, and returns only when it is done (`:170-200, 279-313`). The one file state that matters — a config write
+locked out, and returns only when it is done (`:170-200, 279-313`) — but
+`writeblocks()` runs pending scheduled callbacks between a block's erase and its program (`:280-282`), so a Timer
+callback that resets directly (HEAD, `system_service.py:126`) can cut a littlefs block write; A.U11.03 point 2 (f)'s
+callback only sets `_reset_due` and the action runs in `_reset_when_due()`, a task, which never runs inside
+`writeblocks()` — the premise this finding needs. The one file state that matters — a config write
 staged but not yet on flash — is exactly what S2 closes and flushes. So no step of S1-S4/S6 blocks the bootloader
 entry, and the entry needs no step the sequence lacks: `bootloader`'s S6 differs from `reboot`'s only in the action
 `_reboot()` arms (`system_bootloader` instead of `system_reset`). Not derivable here: `reset_usb_boot()` is RP2040 ROM
@@ -1231,11 +1250,12 @@ fidelity row); the sequence does not change it.
   (step 6) and S6's message. (3) `_shutdown_sequence(purpose)`: S1-S4 unchanged; S5 runs only `if purpose in
   (_RR_CONFIG_RESET, _RR_FRAM_ERASED)`, and only there does `code = purpose if ok else _RR_COMMAND_INCOMPLETE`; for reboot
   and bootloader `code = purpose` (3 / 4, A.U11.05's table) — their purpose is the reset itself, and a flush that raised
-  in S2 already persisted its own CALLBACK entry with FRAM still open (A.U11.03 point 3). S6: `self._own_feed()`; `await
-  self._reboot(code, message, system_bootloader if purpose == _RR_BOOTLOADER else system_reset)`, message "Reboot
+  in S2 already persisted its own CALLBACK entry with FRAM still open (A.U11.03 point 3). S6: `await
+  self._reboot(code, message, system_bootloader if purpose == _RR_BOOTLOADER else system_reset, fed=True)` (no feed of
+  its own; `_reboot()` feeds immediately before the arm, A.S0930.33 (3)), message "Reboot
   triggered" / "Reboot into bootloader triggered" (HEAD's texts, `:348, :351`) / "Reboot after config reset" / "Reboot
   after FRAM erase". (4) The escalation stays on the direct path: A.U11.03 point 5's `await self._reboot(_RR_TASK_BUDGET,
-  "Reboot triggered", system_reset)`, never `reboot_system()`; comment at the call (≤ 3 lines): "The escalation resets
+  "Reboot triggered", system_reset)` (no `fed`; after A.S0930.32 (2)'s re-check), never `reboot_system()`; comment at the call (≤ 3 lines): "The escalation resets
   directly: through the shutdown sequence it would run unfed (the starve flag stops the sequence's own feed too) and its
   first step would cancel the very loop that escalated." (5) `:4-6` "The real reset reboot_system()/reboot_bootloader()
   take after _RESET_DELAY is the intent, not a failure." → "The real reset a system command takes, after the controlled
@@ -1243,7 +1263,8 @@ fidelity row); the sequence does not change it.
   Behaviour that changes (stated in SPEC A.8, A.S0930.41): a reply-to-reset time of up to one `_TASK_CHECK_TIME`
   (2 s, `:44`) plus one supervisor pass plus S2-S4 on top of `_RESET_DELAY` (4 s, `:40`); `bootloader` sent during a
   reboot (or the reverse) answers "Failed" instead of an ignored "Valid"; a commanded reset whose sequence hangs before
-  S6 reads `ResetReason` 2 at the next boot (the record is written in S6's `_reboot()`), a power cut 1; an S0
+  S6 reads `ResetReason` 2 at the next boot, or 10 + the boot phase when it was accepted in the boot window before the
+  boot was marked done (A.U11.06's decode) — the record is written in S6's `_reboot()`; a power cut 1; an S0
   `create_task` `MemoryError` answers "Failed" with nothing changed (S0 rule (5)) instead of U11's starve fallback,
   which stays for `_reboot()`'s own arm failure (agent reading: a refusal changes nothing, uniformly for all four words).
 - **Blast**: callers generated `_system_cmd_callback` (`return await sysfunct.reboot_system()` / `reboot_bootloader()`,
@@ -1254,27 +1275,49 @@ fidelity row); the sequence does not change it.
   stateless "Valid"/"Invalid"; the real "Failed" is rendered like any field's, `js/render.js:130-143`) · tests
   A.S0930.34-.40; existing pinned sites listed there · twin exit codes 3/4 unchanged (A.U25.09); the reset lands after
   S1-S4 (A.S0930.38) · docs A.S0930.41 · toml — · uart —.
-- **Depends**: A.S0930.12, .13, .14, .15; A.U11.03 (points 4-5), A.U11.05 (codes 3, 4); co-lands with A.S0930.32/.33 —
-  A-C merges.
+- **Depends**: A.S0930.12, .13, .14, .15; A.U11.03 (points 4-5; point 2 (f): the reset callback only sets `_reset_due`,
+  the premise of the `machine.bootloader()` finding above), A.U11.05 (codes 3, 4), A.U11.06 (the boot-phase decode);
+  co-lands with A.S0930.32/.33 — A-C merges. Co-lands with U20's recovery-ladder paragraph (U20.md:1495, "error budget
+  exhausted → `reboot_system()`"), which reads "→ `SystemService._reboot()` directly (A.U11.03 point 5), never
+  `reboot_system()`" — audit text only, A-C merges (section C).
 - **Kind**: code
 
-### A.S0930.32 The gate re-checks an armed reset after the preflight
+### A.S0930.32 Gate and escalation each re-check before claiming the reset
 - **Why**: LEAD/R32/OR119.a (1)-(2) (a command refused while a reset is armed breaks nothing, owner, 2026-09-30) — found
-  while planning A.S0930.31: A.S0930.12's rule (2) checks `_reset_armed` before the preflight only.
-- **Site**: A.S0930.12's `_request_shutdown()`, between step (4) (preflight) and step (5) (`create_task`).
-- **Change**: after a passing preflight: `if self._reset_armed: self._shutdown = 0; self.pr.evt("Command refused: a reset
+  while planning A.S0930.31: A.S0930.12's rule (2) checks `_reset_armed` before the preflight only; and the
+  escalation's log write yields between its `_feed_owned` check and its arm (V.SUPP_owner_0930.B2.01).
+- **Site**: A.S0930.12's `_request_shutdown()`, between step (4) (preflight) and step (5) (`create_task`); A.U11.03 point
+  5's escalation branch (`_supervise()` after A.S0930.13).
+- **Change**: (1) after a passing preflight: `if self._reset_armed: self._shutdown = 0; self.pr.evt("Command refused: a reset
   is already armed"); return False`. Why: `erase_ready()` can suspend (any preflight opening an SPI session yields at
   `asy_spi_driver.py:178`, A.S0930.13's own note), and `_feed_owned` is still `False` then, so the supervisor may escalate
   and arm its reset inside that yield (A.U11.03 point 5, keyed on `_feed_owned`); without the re-check the sequence
   would start under a reset that fires `_RESET_DELAY` later, possibly mid-erase and recording 5 instead of the command's
   code. From the re-check to `self._feed_owned = True` nothing awaits, so no escalation can arm in between. Reboot and
-  bootloader have no preflight; the re-check is shared code and costs them nothing.
+  bootloader have no preflight; the re-check is shared code and costs them nothing. (2) The escalation side of the same
+  race: A.U11.03 point 5's branch re-checks right after its log write, before the starve flag: `if not
+  self._reset_armed: await self.pr.err_s(…)`; `if self._feed_owned: continue` (the next pass parks);
+  `self._force_watchdog_starve = True`; `await self._reboot(_RR_TASK_BUDGET, "Reboot triggered", system_reset)`. From
+  that re-check to `_reboot()`'s `self._reset_armed = True` (A.U11.03 point 2 (b), before its first await) nothing
+  awaits, so exactly one of the two owns the reset. Comment (≤ 3 lines): "Re-checked after the log write, which yields:
+  a system command accepted meanwhile owns the reset now, and nothing awaits from here until _reboot() marks it armed."
+  Why: the persisted `err_s` (`print_log.py:203-219` → FRAM chunk write → `await asyncio.sleep(0)`,
+  `src/asy_fram_manager.py:276, 284`) yields between the branch's `_feed_owned` check and its arm; a `reboot`/`bootloader`
+  (no preflight) or an `erasefram` whose preflight does not suspend, accepted inside it, would otherwise run unfed from
+  there under the escalation's reset (code 5), which fires 4 s later mid-sequence — the outcome (1) exists to prevent.
 - **Blast**: callers — · generated — · js — · tests new L1 `tests/test_system_service.py`
   `test_an_escalation_armed_during_the_erase_preflight_refuses_the_command`: `erase_ready` rebound from outside to await an
   `asyncio.Event` first; while it waits, the supervisor (tasks dying, `_FastAsyncSleep`) passes its budget and arms its
   reset; the event is set: `erase_fram()` → `False`, `_shutdown == 0`, `_feed_owned` False, no `_shutdown_task`, region 0
-  code 5, fake chip bytes unchanged · twin — · docs — (SPEC A.8's refusal sentence already covers it) · toml — · uart —.
-- **Depends**: A.S0930.12, A.S0930.13, A.U11.03 (point 5) — A-C merges.
+  code 5, fake chip bytes unchanged; new L1 `tests/test_system_service.py`
+  `test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset` — the SYSTEM logger's `err_s` rebound from
+  outside to await an `asyncio.Event` for the budget entry; the supervisor (always-failing starter, `_FastAsyncSleep`)
+  reaches it; `reboot_system()` → `True`; the event is set: `_force_watchdog_starve` False, one `reset_timer.init`,
+  region 0 code 3, `feed_count` rose through S1-S6; the same with `erase_fram()` → code 8 and every fake-chip byte 0 ·
+  twin — · docs — (SPEC A.8's refusal sentence already covers it) · toml — · uart —.
+- **Depends**: A.S0930.12, A.S0930.13, A.S0930.31; A.U11.03 (point 5; point 2 (b): `_reset_armed` set before
+  `_reboot()`'s first await) — co-lands with A.U11.03 point 5 (the escalation's re-check after its log write) — A-C
+  merges.
 - **Kind**: code | test
 
 ### A.S0930.33 Commanded resets keep the final flush and 4 s tail
@@ -1282,7 +1325,7 @@ fidelity row); the sequence does not change it.
   margin"; A.U11.03/A.U11.04's `_reboot()` flush, `_reset_when_due()` final flush and `_RESET_DELAY` arm (G5/R02 RF202,
   OR69.a (1)), which the supervisor escalation keeps.
 - **Site**: A.U11.04's `SystemService._reset_when_due()` (new in `src/system_service.py`); A.U11.03's `_reboot()` step
-  (d); `src/system_service.py:40` (`_RESET_DELAY` and its comment).
+  (d), its signature and the statement before its arm (point 2); `src/system_service.py:40` (`_RESET_DELAY` and its comment).
 - **Change**: no branch is added — the one reset path stays one path. (1) For a commanded reset both flush passes are
   proven no-ops: S2 closed every store and awaited its flush, and a closed store refuses `write_config()` before and
   inside its lock (A.U11.04, A.S0930.16 (1)), so no flush task exists after S2; `flush_pending()` then takes each
@@ -1292,19 +1335,28 @@ fidelity row); the sequence does not change it.
   escalation it is the last flush." (2) `_RESET_DELAY` stays 4 s for every reset. After a commanded reset's last own
   feed (S6) the loop keeps running, unfed, until the reset: the command's reply and every connection already accepted
   finish writing (connection tasks are never cancelled; a cancelled Wi-Fi task leaves the interface as it is — its
-  `finally` blocks only release `wifi_mode_lock`, `asy_wifi_service.py:563, 589, 859`, and the one `CancelledError`
+  `finally` blocks only release `wifi_mode_lock`, `asy_wifi_service.py:229, 245, 275, 367, 563, 589, 859`, and the one `CancelledError`
   handler is the LED flasher's, `:534`). A.U11.04's write window ("a write accepted inside the armed window is flushed at
   the reset") becomes the escalation's alone: for a commanded reset every write is answered "Failed" from S2 on, and one
-  accepted between S0 and S2 is on flash before the arm. (3) The unfed tail — `_RESET_DELAY * 1000` plus `_reboot()`'s own
-  few ms after the last own feed — stays under the 8000 ms `WDT` (`buildgen/codegen.py:381`); A.U8.08's relation
-  `system.reset_delay_s` < `wdt.timeout_ms` becomes load-bearing for every commanded reset (its Part N row's Dependants
-  gain "the unfed tail after a system command's last feed"). `:40` comment "seconds between reset command and execution
+  accepted between S0 and S2 is on flash before the arm. (3) The last own feed moves to the arm: `_reboot(self, code, message,
+  action, *, fed: bool = False)` calls `self._own_feed()` as the statement immediately before `self.reset_timer.init(…)`
+  when `fed`; S6 becomes `await self._reboot(code, message, action, fed=True)` with no feed of its own; the escalation
+  passes nothing (it is starved anyway). A hung prelude (record, flush pass) is still never fed and no feed follows the
+  arm. The unfed tail is then `_RESET_DELAY * 1000` plus the reset task's wake latency and its no-op flush pass —
+  ≈ 4.0 s at the shipped level, ≈ 3.9 s under the 8000 ms `WDT` (`buildgen/codegen.py:381`; rp2 caps it at 8388 ms);
+  at a debug level of 4 or more with a host that holds the port open without reading, each line another task prints in
+  the tail can take ~2 s of that margin (the accepted debug-mode limitation). A.U8.08's relation `system.reset_delay_s` <
+  `wdt.timeout_ms` becomes load-bearing for every commanded reset (its Part N row's Dependants gain "the unfed tail
+  after a system command's last feed: `_RESET_DELAY` plus the reset task's wake latency"). `:40` comment "seconds between reset command and execution
   (keep < watchdog timeout!)" → "seconds from arming the reset to running it; nothing feeds meanwhile, keep < watchdog
   timeout".
 - **Blast**: callers `_reboot()` (S6 of every command, the escalation, the starve device script) · generated — · js — ·
-  tests the no-op is pinned by A.S0930.35 (d); the escalation's window by A.U11.04's 3.9 s test, re-aimed there · twin — ·
+  tests the no-op is pinned by A.S0930.35 (d); the escalation's window by A.U11.04's 3.9 s test, re-aimed there; the
+  last feed's place (after `_reboot()`'s last console line and flush pass, before `reset_timer.init`) by A.S0930.24 (b)
+  and A.S0930.36 (b); the feed-site guard's `_own_feed()` caller list by A.S0930.20 (6) · twin — ·
   docs SPEC A.8/F.2 (A.S0930.41) · toml — · uart —.
-- **Depends**: A.S0930.31, A.S0930.16; A.U11.03 (point 2 (d)), A.U11.04, A.U8.08 (the tagged `:40` line) — A-C merges.
+- **Depends**: A.S0930.31, A.S0930.16; A.U11.03 (point 2 (d); point 2's signature gains `fed`), A.U11.04, A.U8.08 (the
+  tagged `:40` line) — co-lands with A.U11.03 point 2 (the `fed` keyword and its feed before the arm) — A-C merges.
 - **Kind**: code | doc
 
 ### A.S0930.34 L0: host checks for reboot and bootloader on the sequence
@@ -1318,13 +1370,14 @@ fidelity row); the sequence does not change it.
   224-244`, `tests_js/render.test.js:583-640` and `tests_js/templates.test.js:203-217` hold. The generated-callback check
   of A.S0930.20 (3) already covers `reboot`/`bootloader` (every branch returns its call). (2) Escalation-stays-direct pin,
   in the feed-site file: by `ast`, the supervisor loop (`_supervise()`) references none of `reboot_system`,
-  `reboot_bootloader`, `_request_shutdown`, and calls `_reboot(` exactly once; a bite fixture replacing that call by
+  `reboot_bootloader`, `_request_shutdown`, and calls `_reboot(` exactly once, without a `fed=` keyword (A.S0930.33 (3));
+  a bite fixture replacing that call by
   `self.reboot_system()` fails. (3) Wear guard: `:342`'s parameter list gains `'{"SystemCmd": "bootloader"}'` (not
   flagged: neither `reboot` nor `bootloader` writes anything of its own — S2 flushes only a write another request already
   owns). (4) Twin-suite deadline helper (A.S0930.38 (1)): an L0 case gives it a temporary copy of
   `src/system_service.py` with `_RESET_DELAY`/`_TASK_CHECK_TIME` changed and asserts the deadline follows both.
 - **Blast**: callers — · generated read only · js — · tests as above · twin — · docs — · toml — · uart —.
-- **Depends**: A.S0930.20, A.S0930.31, A.S0930.38; A.U10.08, A.U26.71 (guard derivation), A.U25.36 — A-C merges.
+- **Depends**: A.S0930.20, A.S0930.31, A.S0930.33, A.S0930.38; A.U10.08, A.U26.71 (guard derivation), A.U25.36 — A-C merges.
 - **Kind**: test
 
 ### A.S0930.35 L1: reboot and bootloader through the sequence — function, refusals, writes
@@ -1365,8 +1418,9 @@ fidelity row); the sequence does not change it.
   A.S0930.23 (a)-(b) take the purpose as a parameter and run for all four; for reboot/bootloader the check at the arm is
   "the in-flight chunk write completed both blocks, a later one was refused, no chunk torn" (A.S0930.23 (a)'s erase-only
   assertions stay erase-only).
-- **Blast**: callers — · generated — · js — · tests as above; A.U11.03's new (a)-(e) and A.U11.07's "each intended path"
-  test (reboot, bootloader → 3, 4) drive the commands through the harness · twin — · docs — · toml — · uart —.
+- **Blast**: callers — · generated — · js — · tests as above; A.U11.03's new (b) and A.U11.07's "each intended path" test
+  (reboot, bootloader → 3, 4) drive the commands through the harness; A.U11.03's (a), (d) and (e) call `_reboot()`
+  directly · twin — · docs — · toml — · uart —.
 - **Depends**: A.S0930.21-.23, .31-.33; A.U11.03, A.U11.04, A.U11.07, A.U4.06, A.U8.08 — A-C merges.
 - **Kind**: test
 
@@ -1378,15 +1432,19 @@ fidelity row); the sequence does not change it.
 - **Change**: A.S0930.24's cases, run with `reboot_system()` and `reboot_bootloader()`: (a) takeover — after acceptance
   `feed_watchdog()` direct, from a gated supervisor pass and through `run_setups()` leaves `feed_count` unchanged; after
   S1 the supervisor task is done. (b) Healthy — `feed_count` rises by exactly 2 + stores + chunks + tasks + 1, the last
-  own feed precedes `reset_timer.init`, and no feed follows until the reset (the tail); the gap bounds of A.S0930.24 (b).
+  own feed precedes `reset_timer.init`, and no feed follows until the reset (the tail); the last `feed_times` entry is
+  stamped after `_reboot()`'s last console line and flush pass and before `reset_timer.init` (a recording `print`
+  stand-in and the fake Timer's `init` stamp); the gap bounds of A.S0930.24 (b).
   (c) Hang, one test per step, injected from outside as A.S0930.24 (c): S1, S2, S3, S4 and S6 for reboot, S6 for
-  bootloader (its action never runs); 1 s of real time pumped after the hang point leaves `feed_count` frozen, the
-  sequence task not done, no reset armed except in S6. (d) S6 arm failure → `_own_feed()` feeds nothing afterwards.
+  bootloader (its action never runs); 1 s of real time pumped after the hang point leaves `feed_count` frozen; for
+  S1-S4 the sequence task is not done and no reset is armed; for S6 the sequence task is done, `svc._reset_task` is not,
+  and the reset is armed. (d) S6 arm failure → `_own_feed()` feeds nothing afterwards.
   (e) A refused command changes no feed state: `reboot_bootloader()` refused during an `erasefram` sequence leaves
   that sequence's feed count exactly the erase-only count and `_shutdown` 8; `reboot_system()` refused under the
   escalation's armed reset leaves `_feed_owned` False and `_supervisor_parked` unset (the escalation's starve is its own).
-- **Blast**: callers — · generated — · js — · tests new as above · twin L2 half A.S0930.38 (4) · docs — · toml — · uart —.
-- **Depends**: A.S0930.24, A.S0930.31 — A-C merges.
+- **Blast**: callers — · generated — · js — · tests new as above · twin L2 half A.S0930.38 (4); (d)'s L2 half is
+  A.U25.56 (3) as section C's U25 bullet restates it — co-lands with A.U25.56 — A-C merges · docs — · toml — · uart —.
+- **Depends**: A.S0930.24, A.S0930.31, A.S0930.33 (3) (the last feed inside `_reboot()`) — A-C merges.
 - **Kind**: test
 
 ### A.S0930.37 L1: per-device reboot and bootloader scenarios under both gc stages
@@ -1395,11 +1453,17 @@ fidelity row); the sequence does not change it.
 - **Site**: `tests/_sensortask_scenarios.py:246-252` (`_dispatch()`), `:953-961`
   (`webserver_system_put_reboot_cmd_arms_the_real_reset_timer`), `:964-975`
   (`…_reboot_flushes_a_still_pending_config_write_first`), `:978-984` (`…_invalid_cmd_…`); A.S0930.26's scenarios.
-- **Change**: (1) `_dispatch_async(module, method, path, json_body=None)` returns `app.dispatch_request(req)` (the
-  request built as today); `_dispatch()` becomes `run(_dispatch_async(...))`. A command scenario is one coroutine —
-  build, `run_setups()` (A.U24.79's boot helper), `start_tasks()`, `supervise_tasks()` as a task (A.U20.06), `await
-  _dispatch_async(...)`, `await module.sysfunct._shutdown_task` — driven by one `run()`, never `_dispatch()` inside it
-  (a nested `asyncio.run()` segfaults the Unix port, CLAUDE.md). Without the supervisor task S1 waits for it (boot
+- **Change**: (1) `async def _dispatch_async(module, method, path, json_body=None) -> Response`: builds the request as
+  `_dispatch()` does today and `return await app.dispatch_request(req)`; `_dispatch()` becomes `return
+  run(_dispatch_async(...))`. A command scenario is one coroutine driven by one `run()` from the synchronous scenario
+  function: inside it `module, wdt = await boot_generated(device, cfg_path=…)` (A.U24.79's awaitable helper, which runs
+  `build_system()` and `run_setups()`; never `build()`, which is itself `run(_boot(...))`,
+  `tests/_sensortask_scenarios.py:132-133`), `await module.sysfunct.start_tasks(module._collect_task_starters())`, `sup =
+  asyncio.create_task(module.sysfunct.supervise_tasks())`, `await _dispatch_async(...)`, `await
+  module.sysfunct._shutdown_task`, the fake `reset_timer.trigger()` and `await asyncio.sleep(0)` until
+  `module.sysfunct._reset_task.done()`, then `sup.cancel()` awaited (catching `CancelledError`) — never `_dispatch()` or
+  `build()` inside it (a nested `asyncio.run()` segfaults the Unix port, CLAUDE.md), and nothing left parked in the
+  shared task queue. Without the supervisor task S1 waits for it (boot
   window), so the two existing reboot scenarios cannot stay on `_dispatch()`. (2) `:953-961` → "Valid"; after the
   sequence the reset timer is armed with region 0 code 3; `trigger()` and a pump raise `reset_count` by one. `:964-975`
   → both results "Valid"; when the timer is armed, `sysfunct.cfgmgr._pending_flush` is `None` and the SYSTEM config file
@@ -1411,7 +1475,8 @@ fidelity row); the sequence does not change it.
   fails on any `MemoryError` or "memory allocation failed" line. A.S0930.26's scenarios use the same `_dispatch_async()`.
 - **Blast**: callers every `_dispatch()` user in the file (sync; unchanged) · generated every device · js — · tests the six
   per-device wrappers pick the scenarios up by registration · twin — · docs — · toml — · uart —.
-- **Depends**: A.S0930.26, A.S0930.31; A.U20.06, A.U24.79, A.U11.04, A.U11.07 — A-C merges.
+- **Depends**: A.S0930.26, A.S0930.31; A.U20.06, A.U24.79 (`boot_generated()` awaitable), A.U11.04, A.U11.07 — A-C
+  merges.
 - **Kind**: test
 
 ### A.S0930.38 L2: reboot and bootloader on the twin, Run 5c included
@@ -1443,15 +1508,17 @@ fidelity row); the sequence does not change it.
   hazards (A.S0930.27 (3)) take the purpose as a parameter; the reboot/bootloader rows assert at the armed reset
   (`_reset_armed` True, before the Timer fires, so no `SimulatedRebootError` strands the in-process graph, A.U25.07): a
   logger write in flight at the command completed both blocks, a later one was refused, the sensor task cancelled inside
-  its I2C session left the bus lock free; then `reset_timer.deinit()` from outside, so the twin's real-time Timer cannot
-  fire into a later test of the same process. (6) The suite's gc gate covers Run 13 at both stages.
+  its I2C session left the bus lock free; then from outside `reset_timer.deinit()`, `sysfunct._reset_task.cancel()` and
+  the `supervise_tasks()` task's cancel, each awaited (catching `CancelledError`), so no real-time Timer fires and no
+  parked task resumes in a later test of the process. (6) The suite's gc gate covers Run 13 at both stages.
 - **Blast**: callers `run_suite()` · generated every device under the twin · js `tests_js/_live_matrix_command.js`:
   A.U23.33's "`reboot`/`bootloader` are not driven live" holds (the twin still exits) · tests L0 A.S0930.34 (4) · twin
   runner unchanged beyond A.S0930.27's flag · docs `digital_twin/README.md:483-489` (Run 5c, A.U25.36's rewrite:
   "5c. A commanded reboot through the controlled shutdown — FRAM drained, then every task stopped, then the reset — the
   case that must never lose anything") and Run 13's rows · toml — · uart —.
 - **Depends**: A.S0930.27, A.S0930.31, A.S0930.33; A.U25.09, A.U25.32, A.U25.36, A.U25.55, A.U25.07, A.U25.74 — A-C
-  merges.
+  merges. Co-lands with A.U25.56 (3) (its in-process `reboot_system()` with the alarm pool empty now enters the
+  sequence: it starts the supervisor task and asserts the S6 arm-failure path, section C's U25 bullet) — A-C merges.
 - **Kind**: test
 
 ### A.S0930.39 L3: reboot and bootloader on the dev board over USB
@@ -1488,14 +1555,19 @@ fidelity row); the sequence does not change it.
 ### A.S0930.40 L4: reboot and bootloader over REST on the bench
 - **Why**: OR126.a (3); OR118.a (1) "L4 bench"; OR120.a (3); OR122.a (1); G1/R14 (reset attributed through
   `ResetReason`, A.U26.28) (owner, 2026-09-30).
-- **Site**: `tests_hardware/bench/test_end_to_end_timing.py:25-53` (A.U26.28 (1)); A.U26.28's `tests_hardware/bench/
+- **Site**: `tests_hardware/bench/test_end_to_end_timing.py:19-21` (header comment), `:25-53` (A.U26.28 (1)); A.U26.28's `tests_hardware/bench/
   test_reset_reasons.py` (`test_a_bootloader_reboot_is_attributed`); A.S0930.29's `tests_hardware/bench/test_system_commands.py`;
   `tests_hardware/bench/test_bus_concurrency_under_api_load.py`.
 - **Change**: (1) `test_real_reboot_sequencing_via_rest_completes_cleanly`: the time from the reply to
   `not board.is_device_present()` (A.U26.28's passive wait) is ≤ `_TASK_CHECK_TIME + _RESET_DELAY` plus a named margin
   (constants by AST) and ≥ `_RESET_DELAY` (the reset came from the armed timer, not earlier), recorded (`result_note`);
-  `ResetReason` 3 (A.U26.28), never 2. The step lines are proven where the output is captured without a second port
-  user: L3 (A.S0930.39) and L2 (A.S0930.38). (2) `test_a_bootloader_reboot_is_attributed`: the same bound, then
+  the named margin stays below `8000 − (_RESET_DELAY + _TASK_CHECK_TIME) * 1000` ms (2 s, computed from the AST-read
+  constants and the generated `WDT(timeout=…)`), so the upper bound also excludes a watchdog reset, which records the
+  same code (the record is written before the arm, and rp2 reports `WDT_RESET` for `machine.reset()` too,
+  `ports/rp2/modmachine.c:74-88`); its measured S2-S4 share is recorded in `result_note`. `ResetReason` 3 (A.U26.28),
+  never 2. Header comment `:19-21` → "A commanded reboot over REST runs the controlled shutdown and resets through the
+  armed timer, never the watchdog, on real timing." The step lines are proven where the output is captured without a second port
+  user: L3 (A.S0930.39) and L2 (A.S0930.38). (2) `test_a_bootloader_reboot_is_attributed`: the same bound (its margin under the same watchdog limit), then
   A.U26.28's `picotool reboot` and `ResetReason` 4. (3) `test_reboot_and_bootloader_at_once` (in
   A.S0930.29's file): two threads — exactly one "Valid", the other "Failed"; `ResetReason` 3 or 4 matching the winner
   (after `picotool reboot` when bootloader won). A.S0930.29 (4) (`erasefram`, `reboot`, `mempause` at once) holds. (4) Bus
@@ -1514,33 +1586,39 @@ fidelity row); the sequence does not change it.
 - **Why**: OR126.a (3); LEAD/R32 doc clause (SPEC A.8, tests_hardware/README), as A.S0930.30 plans it; CLAUDE.md
   "When a fact … turns out to be stale … update the doc in the same session".
 - **Site**: `SPECIFICATION.md` A.8 (`:612` and A.S0930.30's new paragraph), A.4 (`:195-198`, `:226-231`), F.2 (A.U11.04's
-  commanded-reboot sentence), I.4 (`:5014-5016`); `README.md:314-322`; `tests_hardware/README.md` (A.S0930.28/.29's
+  commanded-reboot sentence), I.4 (`:5014-5016`); `tests_hardware/README.md` (A.S0930.28/.29's
   "System commands" subsection); `digital_twin/README.md:483-489` (with A.U25.36).
 - **Change**: SPEC A.8: A.S0930.30's paragraph "**The two shutdown commands**" becomes "**The controlled shutdown**
   (owner, 2026-09-30): `reboot`, `bootloader`, `resetconfig` and `erasefram` run one sequence — take over the watchdog,
   close and flush the config stores, close FRAM, stop every supervised task, apply the purpose (the last two only),
   reset or enter the bootloader through the reset path. A command is refused ("Failed") while another purpose's
   shutdown runs or the supervisor's own reset is armed; the same command repeated answers "Valid". The reply comes
-  first; the reset follows up to one supervisor period plus 4 s later. Reset codes 3, 4, 7, 8, 9." — plus one sentence
-  for the escalation: "The supervisor's task-budget reboot resets directly, without the sequence." SPEC A.4 `:195-198`
+  first; the reset follows once the supervisor has stopped (up to one 2 s supervisor period), the steps have run (for
+  Erase FRAM the whole-chip overwrite) and the 4 s reset delay has passed. At a debug level of 4 or more, a USB host that
+  holds the serial port open without reading stalls each console line up to about 2 s; such stalls in the last 4 s
+  before a system command's reset can let the watchdog end it instead — a `bootloader` then restarts the firmware rather
+  than entering BOOTSEL (agent, 2026-09-30). Reset codes 3, 4, 7, 8, 9." — plus one sentence for the escalation: "The
+  supervisor's task-budget reboot resets directly, without the sequence." SPEC A.4 `:195-198`
   "`system_service.py`'s `_reboot()` pauses permanent storage before resetting, which gates every …" → "a commanded reset
   runs the controlled shutdown (A.8): FRAM is paused and every chunk operation drained before any task is stopped, and
-  the reset path pauses FRAM again before arming, which gates every …"; `:226-231` A.U11.03's text keeps "every
-  deliberate system reset pauses FRAM first". F.2 A.U11.04's sentence → "a write accepted before a system command closes
+  the reset path pauses FRAM again before arming, which gates every `_write()`/`_read()`/`clear()` so nothing can be in
+  flight (the twin's Run 5c proves it for a commanded reboot)" — the sentence's "(measured 20/20 in the twin against the
+  ~1-in-8 unpaused rate)" goes, since that figure was taken with `mempause` held over a SIGINT shutdown and is re-measured
+  by A.U25.36; `:226-231` A.U11.03's text keeps "every deliberate system reset pauses FRAM first". F.2 A.U11.04's sentence → "a write accepted before a system command closes
   the config stores is on flash when the reset fires; one arriving after is refused; after the supervisor's own reboot
   decision, a write accepted inside the 4 s window is flushed at the reset". I.4 `:5015` "escalates past repeated restarts
-  to `reboot_system()`" → "escalates past repeated restarts to the reset path (`_reboot()`)". `README.md:314-322` (reflash
-  recipe) gains one line: "On a unit reachable over the network, `PUT /system {"SystemCmd": "bootloader"}` enters
-  BOOTSEL through the controlled shutdown (config flushed, FRAM drained); the `mpremote` form interrupts the running
-  firmware first (agent, 2026-09-30)." — `tests_hardware/harness.py:473-479` `enter_bootloader()` keeps the `mpremote`
-  form (it must work with the network down; used only before a reflash). `tests_hardware/README.md` "System commands":
-  reboot and bootloader run the sequence; their tests (A.S0930.39/.40); reply-to-reset bound. `digital_twin/README.md`
+  to `reboot_system()`" → "escalates past repeated restarts to the reset path (`_reboot()`)". `README.md:314-322`
+  (reflash recipe) unchanged: it answers no clause of OR126.a (3) or LEAD/R32's doc clause and Part B2 does not make it
+  stale. `tests_hardware/README.md` "System commands": reboot and bootloader run the sequence; their tests (A.S0930.39/.40); reply-to-reset bound. `digital_twin/README.md`
   Run 5c as A.S0930.38's Docs slot. CLAUDE.md: no sentence describes the reboot path (grep) — nothing.
 - **Blast**: callers — · generated — · js — · tests doc-reference checks (U33's) re-run · twin — · docs as above · toml — ·
   uart —.
 - **Depends**: A.S0930.30, A.S0930.31, A.S0930.33; A.U11.03, A.U11.04, A.U10.09 (SPEC A.2's escalation text holds),
-  A.U25.36, U36 — A-C merges.
+  A.U25.36 — co-lands with A.U25.36 (Run 5c becomes a real commanded reboot; the SPEC A.4 figure is re-measured there) —
+  A-C merges; U36 — A-C merges.
 - **Kind**: doc
+
+Verified 2026-09-30 (`audit/actions/verify/SUPP_owner_0930.md` Part B2): V.SUPP_owner_0930.B2.01-B2.13 applied.
 
 ## Agent proposals (for the OR2.c review, not planned as firm)
 
@@ -1577,25 +1655,37 @@ No earlier action is **own** for any change here: OR116-OR122 postdate every uni
 `SystemCmd`, `_reset_when_due`, `_RESET_DELAY` and the reset codes over `audit/actions/` at `4e1e5ce`; A-C merges, no
 unit file is edited here:
 - **U11** — A.U11.03: point 4 (`reboot_*` call `_reboot()` directly) is replaced by A.S0930.31 (1); point 5 (escalation)
-  stays direct and is pinned (A.S0930.31 (4), .34 (2), .35 (e)); its new L1 tests (a) and (d) hold for the direct path
-  (escalation, `_reboot()`), while a commanded reset's order is S2 flush → S3 pause → record → arm; its blast's
+  stays direct and is pinned (A.S0930.31 (4), .34 (2), .35 (e)), and re-checks `_feed_owned` right after its log write
+  (A.S0930.32 (2)); point 2's `_reboot()` gains the keyword `fed` and, when set, feeds as the statement just before the
+  arm (A.S0930.33 (3)); its new L1 tests (a) (no re-arm), (d) (record → flush → pause order) and (e) (`create_task`
+  `MemoryError` inside `_reboot()` → starve, code 6) call `_reboot()` directly; (b) (a raising flush) runs through the
+  harness — S2's flush raises with FRAM open, one CALLBACK entry persists, the reset is still armed with code 3; (c) is
+  the escalation; a commanded reset's order is S2 flush → S3 pause → record → own feed → arm; its blast's
   `tests/test_system_service.py:618-727` rewrite follows A.S0930.35 (a). A.U11.04: its write window becomes the
   escalation's alone (A.S0930.33), its 3.9 s test runs on the escalation path and its per-device scenario becomes
   A.S0930.37 (3)'s two-arm one; its F.2 sentence is A.S0930.41's. A.U11.05/A.U11.07: codes 3/4 unchanged; A.U11.07's
   "each intended path" test drives `reboot_system()`/`reboot_bootloader()` through the harness (A.S0930.35).
 - **U20** — A.U20.06: the supervisor task S1 waits for is `supervise_tasks()`'s; a scenario or script that dispatches
   `reboot` must start it (A.S0930.37 (1), .39).
+- **U20** — A.U20 recovery-ladder paragraph (U20.md:1495): "error budget exhausted → `reboot_system()`" reads "→
+  `SystemService._reboot()` directly (A.U11.03 point 5), never `reboot_system()`" — audit text only, A-C corrects it.
 - **U25** — A.U25.36 (3): Run 5c's wait uses `_RESET_DELAY + _TASK_CHECK_TIME` plus its margin (A.S0930.38 (1)); its
   "follows OR119.a (5) if reboot moves onto the shutdown sequence" is now firm. A.U25.55 (b): Run 12's bootloader wait
   the same. A.U25.09: exit codes 3/4 unchanged. A.U25.74: the `--test-shutdown-hang` flag's step list is unchanged
-  (reboot uses S1-S4, S6). A.U25.57: holds (no reset).
+  (reboot uses S1-S4, S6). A.U25.57: holds (no reset). A.U25.56 (3): the case starts `start_tasks()` and
+  `supervise_tasks()` as a task (A.U20.06), calls `reboot_system()` → `True`, and asserts once `sysfunct._shutdown_task`
+  is done: `_force_watchdog_starve` True, region 0 code 6, no `machine.reset()`/`bootloader()` call, and
+  `would_have_triggered_count >= 1` within `timeout + 1 s` of the last `feed_times` entry — the S6 arm-failure path, L2
+  half of A.S0930.36 (d) (without the supervisor task S1 waits forever with the feed latched, and the old assertion
+  would pass for the wrong reason).
 - **U26** — A.U26.28: `test_real_reboot_sequencing_via_rest_completes_cleanly` and `test_a_bootloader_reboot_is_attributed`
   gain the reply-to-reset bound (A.S0930.40 (1)-(2)); codes 3/4 unchanged. A.U26.26 (tail helper),
   A.U26.22 (evidence), A.U26.29 (recovery), A.U26.32 (bench hazard file), A.U26.47 (markers), A.U26.10/.44 (scratch
   build, extras) used by A.S0930.39/.40.
 - **U8/U10** — A.U8.08: the `_RESET_DELAY` line it tags gains a comment change (A.S0930.33 (3)) and its Part N row a
-  dependant (the unfed tail); its mirror site `tests/test_system_service.py:623` moves with A.S0930.35 (a). A.U10.08:
-  the feed-site file gains the escalation-direct pin (A.S0930.34 (2)). A.U10.09: SPEC A.2's escalation text holds.
+  dependant ("the unfed tail after a system command's last feed: `_RESET_DELAY` plus the reset task's wake latency"); its mirror site `tests/test_system_service.py:623` moves with A.S0930.35 (a). A.U10.08:
+  the feed-site file gains the escalation-direct pin (A.S0930.34 (2)) and `_reboot()`'s `fed` feed in the `_own_feed()`
+  caller list (A.S0930.20 (6)). A.U10.09: SPEC A.2's escalation text holds.
 - **U23/U24/U29, blast-only** — A.U23.33 ("`reboot`/`bootloader` are not driven live") holds; A.U24.43 (supervisor
   scenario) holds; A.U24.54 and `tests/test_reset_call_site_invariant.py:14-27` hold (S6 passes `system_reset`/
   `system_bootloader` uncalled); A.U29's security-doc line on `bootloader` holds.
