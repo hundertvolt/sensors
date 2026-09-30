@@ -61,3 +61,10 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     `TCP_NODELAY` (A.U19.22) is withdrawn; A.U14.30 loses the OR112 sizing (`[lwip]` keeps HEAD values) and keeps the
     doc/ensemble parts that still hold; the override itself is U21's (tooling). Phase C reproduces the stall on HEAD
     firmware first. `audit/actions/SUPP_lwip.md` holds the analysis.
+20. Owner questions collected for the A-C review (not asked yet): U19 Q2 — debug-level console stall with a
+    non-reading USB host (recommended (a), accept as a documented debug-mode limit).
+21. OR114 override behaviour (lead, 2026-09-30): the U19 verifier confirmed from source that a full per-pcb queue with
+    room left is frequent (`verify/U19.md` V.U19.Q0), so with `EAGAIN` a stuck connection spins cooperatively until an
+    ACK or the 5 s per-call timeout. Kept as decided (upstream PR 19708's change, smallest patch); OR115's hammer tests
+    bound other tasks' latency and CPU share in that state. If they fail the bound, the patch adds a short POLLOUT
+    back-off after `EAGAIN` instead — that is then put to the owner as a change to OR114.
