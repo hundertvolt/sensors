@@ -1086,3 +1086,587 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   blast; SPEC M.4 rows → A.U15.05/A.U15.25/A.U31.11 (SPEC); `bmp3xx_plausibility_read.py:24` comment → A.U15.40 (HW_DEV)
 - **Kind**: code
 
+## src/asy_scd30_driver.py
+
+### M.SRC_SENS.049 Docstring and imports: plain guard, no shim, config reader
+- **From**: A.U15.02 (plain import guard; `cast`, `T`, `TypeVar` go), A.U15.43 (`Any`/`Coroutine`/`Callable` out),
+  A.U10.37, A.U15.40 (`Lockable` goes, `DeviceSession` in), A.U15.12 (`SensorReaderConfig` replaces `SensorReader`),
+  A.U4.04 (`compare_before_write`, `schema_dict`/`type_or_range_error` as the rewrite uses them), A.U30.05 (`unpack`
+  goes), A.U10.06 (`utc_now`; `time` becomes unused), A.U5.02 (the runtime `AsyFramManager` import goes), A.U30.19,
+  adherence (docstring line 6 lists the five data fields; A.U15.12 adds two)
+- **Site**: `src/asy_scd30_driver.py:5-41`
+- **Change**: docstring line 6 → "…; SCD30_Reader runs the read loop plus an IRQ-pin self-healing trigger, and publishes
+  the readings with wet bulb, dew point and the forced-recalibration readiness code (see SPECIFICATION.md Part C)." Imports:
+  `asyncio`, `math`, `namedtuple`, `from struct import unpack_from`, `from machine import Pin, Timer`, `const`,
+  `math_helpers`, `from asy_i2c_driver import I2C, I2CDevice`, `from asy_base_classes import DeviceSession,
+  SensorReaderConfig, report_if_fatal, utc_now`, `from asy_config_manager import compare_before_write, make_dict,
+  name_cfg, type_or_range_error`, `from asy_crc_checks import CRC8`, `from asy_print_log import DEFAULT_LOG, LogConfig`
+  (plus the result-word constants of A.U19.16). Guard: `try: from typing import TYPE_CHECKING` / `except ImportError:
+  TYPE_CHECKING = False`. `TYPE_CHECKING` block: `from asy_base_classes import TaskStarter, TimerStarter`; `from
+  asy_config_manager import CfgValue, ConfigSchema, FieldSchema`; `from asy_print_log import ErrorLog`.
+- **Resolved**: A.U15.02 co-lands with A.U15.43 (`:26-41`), A.U15.01 and A.U13.09 — one import block.
+- **Unit**: U15 (stages U10 module names, U19 result words, U30 `report_if_fatal`)
+- **Depends**: A.U4.01 (`compare_before_write()`), A.U15.40, A.U10.46
+- **Blast carried by**: `tests_scripts/test_strip_type_checking.py:96-98` comment → A.U15.02 (TSC); BACKLOG `:765-767`
+  clause → A.U15.02/U36 (DOCS); SPEC C.4.2/C.10 → A.U15.02 (SPEC)
+- **Kind**: code
+
+### M.SRC_SENS.050 Constants: address, ranges, waits, catalog names, apply order, module order
+- **From**: A.U15.28 (`_SCD30_DEFAULT_ADDR` → `_SCD30_ADDR`), A.U15.40 (3) (limit constants above the `_VAL_*` block),
+  A.U15.01 (range constants), A.U8.07 + A.U31.09 (wait constants and tags, ms), A.U2.11 + A.U2.04 (catalog block), A.U4.04
+  (`_APPLY_ORDER`), A.U4.05 (`_temp_offset_ticks()`), A.U15.09 (`_CONT_MEAS_FIELD`), A.U15.12 (1) (FRC schema tuples)
+- **Site**: `src/asy_scd30_driver.py:44-89`
+- **Change**: order (A.U15.40 (3)): address and command constants; the limit constants (`_MEAS_INTERVAL_MIN` …
+  `_WORD_CRC_BYTES`, `:72-85` moved here); A.U15.01's `_CO2_MIN_PPM`…`_HUM_MAX_PCT` under its comment; the waits `# @tunable
+  scd30.cmd_response_wait_ms = 50` / `_CMD_RESPONSE_WAIT_MS = const(50)`, `# @tunable scd30.asc_enable_wait_ms = 10` /
+  `_ASC_ENABLE_WAIT_MS = const(10)`, `# @tunable scd30.soft_reset_wait_ms = 2500` / `_SOFT_RESET_WAIT_MS = const(2500)`,
+  `# @tunable scd30.start_trigger_period_ms = 500` / `_START_TRIGGER_PERIOD_MS = const(500)`; the catalog block
+  `_ERR_INIT = const(10)`, `_ERR_READ = const(11)`, `_ERR_CHIP_GET = const(12)`, `_ERR_CHIP_SET = const(13)`,
+  `_ERR_BAD_ARG = const(21)`; `_SCD30_ADDR = const(0x61)  # Interface Description 1.1.1: the address is fixed` ; then the
+  `_VAL_*` block (M.SRC_SENS.051), `_CONT_MEAS_FIELD` with A.U15.09's exact three-line comment, `_APPLY_ORDER =
+  const(("TempOffset", "MeasInterval", "AmbPres", "Altitude", "ForceCalRef", "SelfCal"))` (A.U4.04's order in A.U10.40's
+  keys; a tuple of literals `const()` folds); module function `_temp_offset_ticks(offset: float) -> int: return
+  int(offset * 100 + 0.5)` with the comment "# Nearest 0.01 degC tick, not truncation: in float32 130 of the 2001
+  two-decimal inputs land one tick low when truncated (offset is validated >= 0 first)."
+- **Resolved**: A.U8.07's float-second constants → A.U31.09's integer ms (U31 conflict row 1). A.U4.04's `_APPLY_ORDER`
+  lands in U4 with the HEAD keys; A.U10.40's rename script updates the tuple in U10.
+- **Unit**: stages U2, U4, U8, U10, U15, U31
+- **Depends**: A.U2.01, A.U8.01
+- **Blast carried by**: Part N rows → A.U8.07/A.U31.09 (SPEC); twin/test address readers → A.U20.28 (GEN) and A.U35.19
+  (TEST_UNIT); release-note line D4.61 → A.U4.05 via U37 (DOCS)
+- **Kind**: code
+
+### M.SRC_SENS.051 Schema, tags and requirements
+- **From**: A.U10.39/A.U10.40 (`_VAL_TEMP_OFFSET` `TempOffset`, `_VAL_MEAS_INTERVAL` `MeasInterval`, `_VAL_AMB_PRES`,
+  `_VAL_ALTITUDE`, `_VAL_FORCE_CAL_REF`, `_VAL_SELF_CAL`), A.U15.12 (1)-(2) (`FRCNoise`/`FRCRate`/`FRCWindow` tuples and
+  tags, `FRCState`/`FRCWait` measurement tags), A.U15.11 (ForceCalRef/SelfCal descriptions and their source comment),
+  A.U15.44 (Altitude help), A.U23.23 (`ignoredWhenSet=AmbPres`), A.U6.17 (`alwaysExecuted=true` on AmbPres, ForceCalRef,
+  ContMeas), A.U23.16 (`defaultValue=true` goes from ContMeas), A.U15.09 (ContMeas comment), A.U6.19 (`TS` epoch),
+  A.U36.514 (`:106` "(Part L.5)" → "(Part L.6.4)"), A.U15.10 + A.U10.43 (`@limits trigger_s 1..1800`), A.U5.03 +
+  A.U10.38 (`@wiring fram_target FRAMManager log optional kwarg`)
+- **Site**: `src/asy_scd30_driver.py:57-112`
+- **Change**: the six chip tuples with the new names/keys (defaults `None`, bounds unchanged); the FRC tuples
+  `_VAL_FRC_NOISE = const((("FRCNoise", "float", 20.0, 1.0, 500.0, None),))`, `_VAL_FRC_RATE = const((("FRCRate",
+  "float", 10.0, 0.1, 1000.0, None),))`, `_VAL_FRC_WINDOW = const((("FRCWindow", "int", 60, 20, 3600, None),))` with the
+  comment "# FRC readiness settings: noise floor 2 x the repeatability (owner, 2026-09-29: 1-2 x); rate and window
+  provisional until measured on the bench (agent, 2026-09-29)." Tags (one line each): `AmbPres … alwaysExecuted=true`;
+  `Altitude … description="Only used while Ambient Pressure is 0; a pressure value overrides it." ignoredWhenSet=AmbPres`;
+  the source comment "# Interface Description 1.4.6 and its FRC section (p14), Low Power Mode note (6 min / 5
+  intervals), Field Calibration note (the configured interval)." above `ForceCalRef … description="A calibration run,
+  carried out on every Apply. Only valid after continuous measurement at the configured interval for 6 minutes or 5
+  intervals, whichever is longer, in stable air of known CO2 (400-2000 ppm). FRC Readiness shows when that holds."
+  alwaysExecuted=true`; `SelfCal … description="Needs 7 days of uninterrupted power with at least 1 hour of fresh air every
+  day; a power loss in the first 7 days restarts the search."`; the three FRC setting tags (A.U15.12 (2)); `ContMeas`'s
+  tag without `defaultValue`, with `alwaysExecuted=true`; measurement tags gain `FRCState` and `FRCWait` (A.U15.12's text)
+  and `TS … format=epoch` (no unit). `:105-107` comment's "(Part L.5)" → "(Part L.6.4)"; the two `@requires` lines
+  unchanged; `# @wiring fram_target FRAMManager log optional kwarg`; new `# @limits trigger_s 1..1800` under the two-line
+  comment of A.U15.10 ("# Stuck-pin fallback reads after 2 * trigger_s ticks of 500 ms: at least one full second, at
+  most the chip's longest measurement interval (agent, 2026-09-29).").
+- **Resolved**: The `Altitude` tag line carries A.U15.44's description and A.U23.23's key together (both name the other,
+  "same tag line"). `ContMeas`: A.U6.17 adds `alwaysExecuted=true` and A.U23.16 removes `defaultValue=true` on the same
+  line — both apply.
+- **Unit**: U23 (latest; stages U6, U10, U15, U36b's pointer)
+- **Depends**: A.U6.17 (key), A.U6.19 (key), A.U23.23 (key), A.U15.12
+- **Blast carried by**: generated definitions and `html/definitions/*.json` (descriptions, `alwaysExecuted`,
+  `ignoredWhenSet`, FRC fields, keys) → A.U15.11/A.U15.12/A.U15.44/A.U6.17/A.U23.16/A.U23.23/A.U6.04 (GEN); page warning,
+  unset toggle → A.U23.16/A.U23.23 (WEB); mock data rows → A.U15.12/A.U10.40 (WEB); `tests_scripts/test_buildgen_limits.py`
+  and `test_buildgen_validate.py` limit cases → A.U15.10 (TSC); `test_buildgen_web_tag.py:409` field set → A.U15.12
+- **Kind**: code
+
+### M.SRC_SENS.052 `SCD30_Reader`: a config reader with a RAM-only config log
+- **From**: A.U15.12 (1), (3), (6) (`SensorReaderConfig`, `cfg_path`, FRC state), AC_NOTES 13 + the U15 lead note
+  (`CFGMGR_SCD30` RAM-only), A.U4.03 (its "SCD30 cannot become a `SensorReaderConfig`" note: superseded for the three FRC
+  keys, U15 register fix 13), A.U5.02 (constructor tail), A.U10.43 (`trigger_s`, `trigger_half_ticks`), A.U10.35 (private
+  attributes), A.U15.R01 (1) (`_recovery_bus`), A.U10.38 (class name kept)
+- **Site**: `src/asy_scd30_driver.py:118-145`
+- **Change**: `class SCD30_Reader(SensorReaderConfig)`; `__init__(self, i2c: I2C, irq_pin: int, trigger_s: int = 3,
+  max_module_error: int = 5, name_ext: str = "", cfg_path: str = "", log: LogConfig = DEFAULT_LOG)`;
+  `super().__init__(SCD30(None, None, None, None, None, None, None, None), _NAME, _VAL_FRC_NOISE + _VAL_FRC_RATE +
+  _VAL_FRC_WINDOW, max_module_error=max_module_error, name_ext=name_ext, cfg_path=cfg_path, log=log,
+  cfg_log=LogConfig(None, log.history_length, log.debug))` with the comment "# CFGMGR_SCD30 stays RAM-only: no extra FRAM
+  chunk for the FRC settings (owner, 2026-09-29)."; `self._scd = SCD30_I2C(i2c)`; `self._recovery_bus = i2c`;
+  `self._irq_pin = Pin(irq_pin, mode=Pin.IN)`; `self._base_trigger_event`, `self._read_event`; `self._start_trigger_timer
+  = Timer()` under the bare-Timer comment of M.SRC_SENS.042; `self._trigger_half_ticks = 2 * int(trigger_s)`;
+  `self._scd_timer_triggers = 0`; the FRC state of A.U15.12 (3) (`_frc_interval_s`, `_frc_count`, `_frc_idle_ticks`,
+  `_frc_measuring`, the window sums as floats, `_frc_verdict`), all RAM-only.
+- **Resolved**: The lead note (AC_NOTES 13): the three settings are file-stored config, their logger RAM-only; A.U15.12's
+  "brings its own `CFGMGR_SCD30` FRAM chunk" is superseded. `SensorReaderConfig` has no way today to give its
+  `ConfigManager` a different logging config than the module's own: the `cfg_log` parameter is new — routed to SRC_CORE
+  (GAP-9, A.U5.02's `SensorReaderConfig` signature).
+- **Unit**: U15 (stages U5 tail, U10 names)
+- **Depends**: M.SRC_SENS.049-051; A.U5.02, GAP-9
+- **Blast carried by**: generated construction (`cfg_path=`), `buildgen/definitions.py:97` → `True` with the RAM-only
+  companion, setup batch → A.U15.12 (6) (GEN); SPEC A.7 chunk order: no `CFGMGR_SCD30` chunk (wozi's count unchanged),
+  CLAUDE.md FRAM list's named exception → GAP-10 (SPEC, DOCS: A.U15.12's blast still says "wozi 17 chunks");
+  `tests/_sensortask_scenarios.py:222-223` (one chunk, not two) → GAP-10 (TEST_HELP); `tests/test_asy_scd30_driver.py`
+  `make_reader()` with `cfg_path` → A.U15.12 (TEST_UNIT)
+- **Kind**: code
+
+### M.SRC_SENS.053 SCD30 config I/O through the chip store and the file store
+- **From**: A.U4.04 (`_get_mgr_cfg()`/`_set_mgr_cfg()`, `_snapshot_dict()`; `_set_dict_cfg()`/`_read_sensor_dict()` go),
+  A.U15.09 (ContMeas via `_CONT_MEAS_FIELD`), A.U4.05 (`resolution={"TempOffset": _temp_offset_ticks}`), A.U15.12 (1)
+  (FRC keys routed to the file store; nine-key schema; merged `get_dict_cfg()`; a chip-key snapshot failure refuses the
+  whole body), A.U19.16 (result-word constants), A.U11.S02 (the `dispatch` annotation goes with the rewrite), A.U2.11
+  (12/21)
+- **Site**: `src/asy_scd30_driver.py:147-159, 244-298`
+- **Change**: module function `_snapshot_dict(snap: tuple[float, int, int, int, int, bool]) -> dict[str, CfgValue]` (the
+  six chip keys). `_get_mgr_cfg(self, cfg)`: chip keys from one `get_config_snapshot()` (a failure logs
+  `_ERR_CHIP_GET` and yields `None` for them), FRC keys from `await super()._get_mgr_cfg(<FRC part>)`. `_set_mgr_cfg(self,
+  data, cfg_vals)`: exactly A.U4.04 (1)-(6) for the chip keys (snapshot first; failure → `(False, {})`, nothing written,
+  one `_ERR_CHIP_GET`; `ContMeas` out of `data`; `compare_before_write(rest, cfg_vals, current, always=("AmbPres",
+  "ForceCalRef"), resolution={"TempOffset": _temp_offset_ticks})`, each Invalid key logged `_ERR_BAD_ARG`; writes in
+  `_APPLY_ORDER` through the `set_*` forwarders, a failed one → `FAILED`; `ContMeas` last: `is_error, flag =
+  type_or_range_error(value, _CONT_MEAS_FIELD)`, `is_error` → `INVALID` (logged 21), `flag` True → `VALID` (no write),
+  False → `stop_continuous_measurement(value=False)` → `VALID`/`FAILED`), plus A.U15.12's routing: the FRC keys go to
+  `await super()._set_mgr_cfg(<FRC part>, <FRC schema>)` and their results are merged; a body with any chip key whose
+  snapshot fails is refused as a whole, FRC keys included (OR89.a (6)); a body of FRC keys only takes no snapshot; a
+  successful `MeasInterval` write updates `_frc_interval_s` and calls `_frc_reset()`, a successful `AmbPres` write calls
+  `_frc_reset()` and sets `_frc_measuring = True`, a successful `ContMeas=false` sets it `False`, resets and republishes
+  (A.U15.12 (4)). `get_dict_cfg()` → `await self._get_dict_cfg(self.name, <nine-key schema>)` (no callback);
+  `get_cfg_schema()` returns the nine-key schema (the comment `:252-254` → "# The nine keys a PUT may carry: six stored
+  on the chip, three in the config file.").
+- **Resolved**: A.U4.03/A.U4.04 wrote the chip store for a plain `SensorReader`; A.U15.12 makes the reader a
+  `SensorReaderConfig` — U15 register fix 13 settles the composition (chip store for six keys, file for three).
+  `always=` stays in the firmware: A.U4.04 calls it "the stopgap until U6 derives the never-Unchanged
+  class from `@web` tags", but the tags are comments the firmware never reads (L.6.4), so A.U6.17's derivation serves
+  the website and tests only and the backend keeps its own tuple; the two are pinned against each other by an L0 check
+  (the tuple equals the SCD30 fields tagged `alwaysExecuted=true`, `ContMeas` aside) — GAP-11 (TSC). Agent reading,
+  OR2.c list.
+- **Unit**: U15 (stages U4 chip store with the HEAD base class; U19 result words)
+- **Depends**: A.U4.01, A.U4.03 (write path on `SensorReader`), A.U11.27 (`_set_lock` around it), M.SRC_SENS.052
+- **Blast carried by**: `asy_webserver_service._put_sensors()` (unchanged call) → A.U4.04 (SRC_NET); tests
+  `tests/test_asy_scd30_driver.py:950-1115` and the new L1/L2 cases, `tests/test_setter_microdot_integration.py:686-760`,
+  `_sensortask_scenarios.py:898-905`, twin `:394-411`, `tests_js/live-backend-put-matrix.test.js` → A.U4.04/A.U15.09/
+  A.U15.12 (TEST_UNIT, TEST_HELP, TWIN, WEB); `tests_hardware/manual/manual_persistence.py:36-48` → A.U4.04 (HW_BENCH);
+  SPEC C.4.3/C.4.4/C.5.2/A.4/A.8 → A.U4.04/A.U15.12 (SPEC)
+- **Kind**: code
+
+### M.SRC_SENS.054 `_init_scd()`: first-start comment, interval cache, the participant rung
+- **From**: A.U15.04 (comment), A.U10.10 (`pr.setup()` leaves), A.U15.R01 (2)-(3) (`_recover_device()`,
+  `_init_failed()`/`_init_done()`), A.U15.12 (3)-(4) (interval read, `_frc_reset()`), A.U2.11, A.U30.19
+- **Site**: `src/asy_scd30_driver.py:161-172` and a new method
+- **Change**: `_init_scd()`: comment → A.U15.04's "# Continuous measurement is never started here: the first
+  ambient-pressure PUT starts it, and the chip keeps it across power cycles (SPECIFICATION.md A.4; owner, 2026-09-26).";
+  `self._err_cnt_internal = 0`; `try: await self._scd.setup(); self._frc_interval_s = await
+  self._scd.get_measurement_interval()` `except Exception as e: report_if_fatal(e); await self.pr.err_s("Error in initial
+  setup:", e, errno=_ERR_INIT); await self._init_failed(); return False`; `self._frc_reset()`; `await self._init_done()`;
+  `self.pr.one("initialized")`; `return True`. `_recover_device(self) -> bool`: A.U15.R01 (2) (under `self._set_lock`,
+  `await self._scd.reset()`, failure → `_ERR_CHIP_SET`, `False`; else `True`).
+- **Resolved**: —
+- **Unit**: U15 (stages U2, U10; U30 handler)
+- **Depends**: M.SRC_SENS.052, M.SRC_SENS.057; A.U10.R01, A.U13.R01
+- **Blast carried by**: streak/rung tests `tests/test_asy_scd30_driver.py:1286-1331` and new cases, notification
+  integration `ErrCount`s → A.U15.R01/A.U3.03 (TEST_UNIT); four tiers (L3 `bus_concurrency_cross_device_scd30_sgp40.py`
+  reset step) → A.U15.R01 (HW_DEV); twin CI Runs 3/4/5c → A.U15.R01/A.U13.R01 (SCR); SPEC A.4 → A.U15.04/A.U15.R01
+- **Kind**: code
+
+### M.SRC_SENS.055 Read, store, republish and the stuck-pin task
+- **From**: A.U10.06 (timestamp outside the `try`; guard on values), A.U15.12 (3)-(4) (new-data bool, FRC steps,
+  `_republish()`, idle ticks), A.U15.03 (saturating tick count, comment), A.U10.43 (`_trigger_half_ticks`), A.U15.41
+  (arm failure; re-arm on restart), A.U10.44 (`start_asy_irq`/`_irq_loop`, `_read_loop`), A.U10.12 (the 500 ms tick stays
+  a timer starter), A.U8.07/A.U31.09 (`_START_TRIGGER_PERIOD_MS`), A.U15.43 (`-> None`, types), A.U2.11, A.U30.19
+- **Site**: `src/asy_scd30_driver.py:174-235, 399-420`
+- **Change**: `_read_scd()`: `timestamp = utc_now()`; the FRC config values read once (A.U15.22's capture rule, A.U15.12
+  (4)); `try: new_data = await self._scd.read_measurement(); co2 = …; …` `except Exception as e: report_if_fatal(e);
+  co2 = temperature = humidity = None; new_data = False; await self.pr.err_s("Read failed:", e, errno=_ERR_READ)`;
+  returns the results tuple and `new_data` beside it. `_store_scd()`: returns when any of CO2/Temp/Hum is `None`; stores
+  `SCD30(CO2, Temp, Hum, WetBulb, DewPoint, FRCState, FRCWait, TS)` with the FRC step of A.U15.12 (4) on new data only.
+  `start_timer()`: `self._start_trigger_timer.init(period=_START_TRIGGER_PERIOD_MS, …)` in `try`, `except (MemoryError,
+  OSError) as e: self._timer_failed(e, self._base_trigger_event)` (A.U15.41's comment); the IRQ arm unchanged.
+  `get_task_starters(self) -> list[TaskStarter]: return [self.start_asy_read, self.start_asy_irq]`;
+  `get_timer_starters(self) -> list[TimerStarter]: return [self.start_timer]` (no trigger starter: SCD30 reads on its own
+  data-ready edge, A.U10.12). `_read_loop(self) -> None`: init, then per trigger `self._scd_timer_triggers = 0`, read,
+  `_error_check`, store; `return` where HEAD returns `False`. `_irq_loop(self) -> None`: first `if self._timer_error is
+  not None: self._timer_error = None; self.start_timer()` (A.U15.41 re-arm); `while True: await
+  self._base_trigger_event.wait()`; `if await self._timer_fault(): return`; `if self._irq_pin.value() == 1 and
+  self._scd_timer_triggers < self._trigger_half_ticks: self._scd_timer_triggers += 1` with A.U15.03's trailing comment
+  ("# ticks with the pin high since the last read, not necessarily consecutive; capped at the threshold"); the FRC idle
+  tick step and republish (A.U15.12 (4)); the `>=` test and `read_event.set()` as today.
+- **Resolved**: A.U15.03 (saturate at `trigger_half_sec`) and A.U10.43 (rename to `trigger_half_ticks`) co-land on the
+  same lines. A.U15.41 re-arms inside `scd_init_irq()`, which A.U10.44 renames `_irq_loop()`.
+- **Unit**: U15 (stages U8/U31 period constant, U10 names/split, U30 handler)
+- **Depends**: M.SRC_SENS.052, M.SRC_SENS.057; A.U15.12's `SensorReader._republish()` (SRC_CORE)
+- **Blast carried by**: tests `tests/test_asy_scd30_driver.py:668-702, 726-786` and the FRC/staleness/saturation L1
+  cases, L2 `tests/test_digital_twin_scd30.py` → A.U15.03/A.U15.12/A.U15.22/A.U15.41 (TEST_UNIT, TWIN); SPEC C.9.1/M.2 →
+  A.U10.14/A.U15.03/A.U15.12 (SPEC)
+- **Kind**: code
+
+### M.SRC_SENS.056 Reader forwarders: catalog numbers and handlers
+- **From**: A.U2.11 (e14/16/18/20/22/24 → 12, e13/15/17/19/21/23/25 → 13), A.U30.19, A.U15.27 (SCD30 keeps
+  `get_altitude()`/`set_altitude()`: no change), A.U15.43 (types)
+- **Site**: `src/asy_scd30_driver.py:300-397, 422-435`
+- **Change**: each forwarder logs `_ERR_CHIP_GET` or `_ERR_CHIP_SET`; each `except Exception as e:` starts with
+  `report_if_fatal(e)`; `get_data()`/`get_dict_data()`/`get_error_counter()` unchanged but for `self._scd`.
+- **Resolved**: —
+- **Unit**: U30 (stage U2 numbers)
+- **Depends**: M.SRC_SENS.050
+- **Blast carried by**: number asserts `tests/test_asy_scd30_driver.py` (8), `tests/test_setter_microdot_integration.py:734,
+  858-864`, `tests/test_notification_scd30_integration.py:211-216` → A.U2.11 (TEST_UNIT)
+- **Kind**: code
+
+### M.SRC_SENS.057 `SCD30_I2C`: fixed address, own session, range gate, copy-free decode
+- **From**: A.U15.28 (no `address`), A.U15.40 (session), A.U10.35 (`_i2c_scd30`), A.U30.05 (`_words`, decode), A.U15.01
+  (range gate, cached offset ticks), A.U15.02 (annotated locals), A.U13.09 (`:470, :480, :484, :608`), A.U31.09 (waits),
+  A.U10.45 (`"CRC generation failed!"`), A.U15.08 (`AmbPres` comment), A.U4.05 (`set_temperature_offset()`), A.U10.21
+  (`setup() -> bool`), A.U15.12 (4) (`read_measurement() -> bool`), A.U10.31 (unquote the snapshot annotation)
+- **Site**: `src/asy_scd30_driver.py:438-630`
+- **Change**: `SCD30_DeviceSession` goes. `__init__(self, i2c_bus: I2C)`: `self._i2c_scd30 =
+  DeviceSession(I2CDevice(i2c_bus, _SCD30_ADDR))`; `self._buffer = bytearray(18)`; `self._words = bytearray(12)  # the six
+  data words without their CRC bytes`; `self.crc = CRC8()`; the three cached readings; `self._temp_offset_ticks = 0`.
+  `_send_dev_command()`: `RuntimeError("CRC generation failed")`; `if not await i2c.write(self._buffer, end=end_byte):
+  raise OSError("I2C bus not initialized")`; `await asyncio.sleep_ms(_CMD_RESPONSE_WAIT_MS)`. `_read_dev_register()`:
+  bool-checked write and readinto (`OSError("I2C bus not initialized")`), `await asyncio.sleep_ms(_CMD_RESPONSE_WAIT_MS)`,
+  CRC check, `value: int = unpack_from(">H", self._buffer)[0]`, `return value`. `get_config_snapshot() -> tuple[float,
+  int, int, int, int, bool]`. `set_self_calibration_enabled()`: `await asyncio.sleep_ms(_ASC_ENABLE_WAIT_MS)`.
+  `set_ambient_pressure()`: comment → A.U15.08's "0x0010 starts continuous measurement, whose on/off status the chip keeps
+  in NVM (Interface Description 1.4.1); whether the pressure value itself persists is undocumented." plus the NaN/
+  truncation sentence (≤ 3 lines). `set_temperature_offset()`: sends `_temp_offset_ticks(offset)`, then
+  `self._temp_offset_ticks = <those ticks>` after the write succeeded; its comment names the float32 reason (A.U4.05).
+  `async def setup(self) -> bool:` probe, firmware-version read, `reset()`, `self._temp_offset_ticks = await
+  self._read_register(_CMD_SET_TEMPERATURE_OFFSET)`, `return True`. `reset()`: `await
+  asyncio.sleep_ms(_SOFT_RESET_WAIT_MS)`. `read_measurement(self) -> bool`: not-ready → `return False`; bool-checked
+  `readinto` (`:608`); CRC loop; the copy-free decode of A.U30.05 (`for i in range(6)` into `self._words`, `co2,
+  temperature, humidity = unpack_from(">fff", self._words)` as annotated locals, one comment line); the finiteness raise;
+  A.U15.01's range raise `ValueError(f"reading outside measurement range (co2={co2}, t={temperature}, rh={humidity})")`
+  with the temperature half `_TEMP_MIN_C <= temperature + self._temp_offset_ticks / 100 <= _TEMP_MAX_C`; the comment
+  `:624-625` gains "and a finite value outside the datasheet ranges is rejected the same way"; the three cache
+  assignments; `return True`.
+- **Resolved**: A.U15.02 writes `co2: float = unpack(...)[0]` for each float; A.U30.05 replaces the slice decode with one
+  `unpack_from(">fff", self._words)` into annotated locals (its Depends names A.U15.02) — A.U30.05's form. A.U15.01's
+  offset cache lives on `SCD30_I2C`, updated by `set_temperature_offset()` after a successful write (A.U4.05's ticks).
+- **Unit**: U31 (latest; stages U4 (offset rounding), U8 (waits named), U10 (names, message), U13 (bool bus results),
+  U15 (address, session, range gate, bool read, shim), U30 (decode))
+- **Depends**: M.SRC_SENS.011, M.SRC_SENS.013, M.SRC_SENS.050
+- **Blast carried by**: tests `tests/test_asy_scd30_driver.py:91-105, 166-186, 397-, 434-451, 454-457` and new L1 cases
+  (ranges, decode set, bus-down) → A.U15.01/A.U30.05/A.U13.09/A.U31.09/A.U15.22 (TEST_UNIT); every scripted `setup()`
+  queue gains one register frame → A.U15.01 (TEST_UNIT, TEST_HELP `_bus_hazard_catalog.py:174-196`); twin chip answers
+  0x5403 → A.U15.01 (TWIN); `FastAsyncSleep` `sleep_ms` → A.U31.09/A.U24.49 (TEST_HELP); four tiers → A.U15.01 blast;
+  SPEC M.2 → A.U15.05/A.U15.08/A.U31.09 (SPEC); release note D4.62 → A.U15.01 via U37
+- **Kind**: code
+
+## src/asy_sgp40_driver.py
+
+### M.SRC_SENS.058 Imports, typing block and the backup group type
+- **From**: A.U10.37, A.U15.40 (`Lockable` out, `DeviceSession` in), A.U5.11 (`ValueRef`, `SgpBackup`), A.U10.06
+  (`utc_now`; `time` becomes unused), A.U15.43 (`Any`/`Coroutine`/`Callable` out; `_ValueSource.get_data() -> object`),
+  A.U10.38 (`AsyFramChunkTimestampedBuffer` → `FRAMChunkTimestampedBuffer`), A.U15.14 (`type_or_range_error`), A.U5.01,
+  A.U30.19
+- **Site**: `src/asy_sgp40_driver.py:10-42`
+- **Change**: runtime imports `asyncio`, `math`, `namedtuple`, `from struct import unpack_from`, `from machine import
+  Timer`, `const`, `from asy_i2c_driver import I2CDevice`, `from asy_base_classes import DeviceSession,
+  SensorReaderConfig, report_if_fatal, utc_now`, `from asy_config_manager import make_dict, name_cfg,
+  type_or_range_error`, `from asy_crc_checks import CRC8, CRC32`, `from asy_print_log import DEFAULT_LOG, LogConfig`,
+  `from voc_algorithm import VOCAlgorithm`. Module-level `SgpBackup = namedtuple("SgpBackup", ("store", "ntp_synced"))`
+  (the generated `build_system()` imports it from this module; `ValueRef` is `asy_base_classes`'s). `TYPE_CHECKING`:
+  `from typing import Protocol`; `from asy_base_classes import TaskStarter, TimerStarter, ValueRef`; `from
+  asy_fram_manager import FRAMChunkTimestampedBuffer`; `from asy_i2c_driver import I2C`; `from asy_print_log import
+  ErrorLog`, `FieldSchema` from `asy_config_manager`; `_ValueSource.get_data(self) -> object`.
+- **Resolved**: A.U5.11 does not say where `SgpBackup` lives; it is SGP40-specific, so it is this module's (generated
+  code imports the SGP40 driver anyway) — agent placement.
+- **Unit**: U15 (stages U5, U10, U30)
+- **Depends**: A.U5.11, A.U15.40, A.U10.46
+- **Blast carried by**: generated `backup=SgpBackup(…)` import line → A.U5.11 (GEN); `pyproject.toml:283` ANN401 entry →
+  A.U15.43 (TOOL)
+- **Kind**: code
+
+### M.SRC_SENS.059 Constants, catalog names, command waits, module order
+- **From**: A.U8.13 (`_FRAM_VERIFY_MINS`, `_BACKUP_COUNTER_MAX` tags), A.U8.07 (`_MEASURE_WAIT_MS`,
+  `_SERIAL_READ_WAIT_MS`, `_SELF_TEST_WAIT_MS`, `_GENERAL_CALL_RESET_WAIT_S`), A.U2.13 + A.U2.04 (catalog block),
+  A.U15.17 (3) (W34 renamed `SGP_BACKUP_AGE`), A.U15.14 (tick bounds, compensation records), A.U15.18 (`_NO_TIMESTAMP`),
+  A.U15.19 (`_VOC_SETTLED_SAMPLES`), A.U15.28 (`_SGP40_ADDR`), A.U15.R02 + A.U31.10 (`_CMD_HEATER_OFF`,
+  `_HEATER_OFF_MAX_MS`), A.U15.40 (3) (`_N_*` right after `_VAL_*`)
+- **Site**: `src/asy_sgp40_driver.py:44-59`
+- **Change**: `# @tunable sgp40.fram_verify_mins = 60` / `_FRAM_VERIFY_MINS = const(60)` (its two-line comment kept);
+  `_MAX_NTP_WAITTIME = const(600)`; `# @tunable sgp40.backup_counter_max = 100000` / `_BACKUP_COUNTER_MAX =
+  const(100000)`; `_SELF_TEST_PASS = const(0xD4)`; the waits `# @tunable sgp40.measure_wait_ms = 100` /
+  `_MEASURE_WAIT_MS = const(100)  # >3x the datasheet's 30 ms maximum (Table 8)`, `# @tunable sgp40.serial_read_wait_ms =
+  3` / `_SERIAL_READ_WAIT_MS = const(3)`, `# @tunable sgp40.self_test_wait_ms = 500` / `_SELF_TEST_WAIT_MS = const(500)`,
+  `# @tunable sgp40.general_call_reset_wait_s = 1` / `_GENERAL_CALL_RESET_WAIT_S = const(1)`; `_CMD_HEATER_OFF =
+  b"\x36\x15"` (a bytes literal, not `const()`), `_HEATER_OFF_MAX_MS = const(1)  # datasheet Table 8 maximum`;
+  `_SGP40_ADDR = const(0x59)  # datasheet 4.2: the address is fixed`; `_NO_TIMESTAMP = const(0)` with A.U15.18's comment;
+  `_VOC_SETTLED_SAMPLES = const(86400)  # 24 h learning time at the fixed 1 s period (Info Note VOC Index)`;
+  `_T_TICKS_MIN_C = const(-45.0)`, `_T_TICKS_MAX_C = const(130.0)`, `_RH_TICKS_MAX = const(100.0)`; the catalog block
+  `_ERR_INIT = const(10)`, `_ERR_READ = const(11)`, `_ERR_CHIP_SET = const(13)`, `_ERR_SOURCE = const(15)`,
+  `_ERR_SGP_ALGO_STATE = const(58)`, `_WRN_SGP_RESTORED_NO_TS = const(33)`, `_WRN_SGP_BACKUP_AGE = const(34)`,
+  `_WRN_SGP_WRITTEN_NO_TS = const(35)`.
+- **Resolved**: A.U8.07's wait names are integer ms already except the general-call wait, an int of seconds, which the
+  float-sleep rule allows (A.U31.10 keeps it). The heater-off bound is untagged (a datasheet fact, A.U15.R02).
+- **Unit**: U15 (stages U2 catalog, U8 tags, U31 heater-off ms form lands with A.U15.R02 in U15 as written by A.U31.10)
+- **Depends**: A.U2.01 (row 34 rename), A.U8.01
+- **Blast carried by**: Part N rows → A.U8.07/A.U8.13 (SPEC); `tests/test_asy_sgp40_driver.py:2330-2333` mirror site →
+  A.U8.07 (TEST_UNIT); catalog row 34 → A.U15.17 into A.U2.01 (GEN)
+- **Kind**: code
+
+### M.SRC_SENS.060 Schema, tags, wiring and value-wiring
+- **From**: A.U10.39/A.U10.40 (`_VAL_BACKUP_PERIOD`, `_VAL_BACKUP_MAX_AGE`, `_VAL_WAIT_TIME_NTP`, `SGPResetVOC` →
+  `ResetVOC`/`_VAL_RESET_VOC`), A.U15.17 (5) (special slot `0`), A.U15.19 (`VOCState` field tag), A.U6.19 (`TS` epoch),
+  A.U6.20 (`BackupTS`/`RestoreTS` tags with the special values), A.U15.18 (`0` = no timestamp), A.U5.11 (tags), A.U5.03 +
+  A.U10.38, A.U15.16 (holds: both value-wiring tags stay `required`), adherence (`:79-85` comments: "for historical
+  reasons", "used to be one whole-object comp_source … generalized" — history, G9/R12)
+- **Site**: `src/asy_sgp40_driver.py:51-97`
+- **Change**: `_VAL_BACKUP_PERIOD = const((("BackupPeriod", "int", 1, 0, 1440, 0),))`, `_VAL_BACKUP_MAX_AGE =
+  const((("BackupMaxAge", "int", 7200, 0, 10080, 0),))`, `_VAL_WAIT_TIME_NTP = const((("WaitTimeNTP", "int", 30, 0, 600,
+  0),))` (0 in the special slot: an in-range value with a meaning, C.5), `_N_STORAGE_CFG`/`_N_SETUP_CFG` directly after
+  them, `_VAL_RESET_VOC = const((("ResetVOC", "bool", None, None, None, True),))` with its comment (key renamed). Tags:
+  the three `special:0=…` texts stay; `# @web ResetVOC …` (was `SGPResetVOC`); measurement tags `VOC`, `Raw`, then
+  `# @web VOCState section=measurements submitGroup=self kind=readonly label="VOC Algorithm" description="0 blackout
+  (first 46 samples, index 0), 1 learning (fresh start, first 24 h), 2 settled, 3 restored from backup (first 24 h after
+  the restore)."`, `# @web TS … kind=readonly label="Timestamp" format=epoch`; A.U6.20's two status tags `# @web BackupTS
+  section=status submitGroup=maintenance kind=readonly format=epoch label="SGP40 Last Backup" special:null="None since
+  boot" special:0="No timestamp"` and the same for `RestoreTS` (label "SGP40 Restore Timestamp"). Wiring: `:79-85` →
+  "# Live cross-instance dependencies (SPECIFICATION.md Parts C.14 and L.4): the optional FRAM store (its logger's and,
+  through backup=, the VOC backup's), and two per-value compensation references (Part L.6.3), each wireable from any
+  instance exposing a matching field." with `# @wiring fram_target FRAMManager log optional kwarg`; `# @requires
+  bus.frequency<=400000` and its comment unchanged; `:93-95` comment kept in substance ("Both are required, so an SGP40
+  with no compensation data at all opts in explicitly through a `_Default*`."), tags `# @value-wiring temperature_source
+  temperature required` and `# @value-wiring humidity_source humidity required`.
+- **Resolved**: `<NO_TS>` of A.U6.20 is A.U15.18's `0` (A.U6.20's Depends on U15).
+- **Unit**: U15 (stages U5 wiring/value-wiring, U6 tags (A.U6.20 lands after A.U15.18: U6 < U15 — A.U6.20 writes its
+  special with the recommended `0`, which A.U15.18 then confirms), U10 keys/names)
+- **Depends**: A.U5.11, A.U6.19, A.U6.20, A.U10.40
+- **Blast carried by**: generated definitions (status rows from tags, `VOCState`, keys, specials) →
+  A.U6.20/A.U15.19/A.U6.04 (GEN); `buildgen/definitions.py:208-210` comment example → A.U15.17 (GEN); value-wiring grammar
+  (`buildgen/value_wiring.py`, `codegen.py`) → A.U5.11 (GEN); mock data `VOCState`, `RestoreTS` → A.U15.18/A.U15.19
+  (WEB); SPEC C.5/H.5/L.6.3/M.3 → A.U15.17/A.U5.11/A.U36.537 (SPEC); DEVICE_REFERENCE SGP40 text → A.U15.17 (DOCS)
+- **Kind**: code
+
+### M.SRC_SENS.061 The compensation defaults as comment-explained classes
+- **From**: A.U10.34 (`_DefaultTemperatureSource`/`_DefaultHumiditySource` docstrings → comments)
+- **Site**: `src/asy_sgp40_driver.py:99-126`
+- **Change**: each docstring becomes a `#` block directly under the `class` line with the same text trimmed to three
+  lines (`_DefaultTemperatureSource`: "# Part L.6.2's wiring-defaults mechanism, opted into via [instance.wiring].
+  temperature_source = {default = true, temperature = 25}: a constant compensation fallback when no live temperature
+  source is wired."; `_DefaultHumiditySource`: "# The same mechanism for relative humidity; 50 %RH matches measure_raw()'s
+  datasheet default (Table 9)."). Bodies unchanged; `get_data() -> _ConstValue` unquoted (A.U10.31: `_ConstValue` is a
+  runtime name).
+- **Resolved**: —
+- **Unit**: U10
+- **Depends**: —
+- **Blast carried by**: `buildgen` reads class names, not docstrings (A.U10.34's check) → no GEN change
+- **Kind**: code
+
+### M.SRC_SENS.062 `SGP40_Reader` construction and its state
+- **From**: A.U5.11 (`(i2c, temperature, humidity, backup=None, max_module_error=5, name_ext="", cfg_path="",
+  log=DEFAULT_LOG)`), A.U0.40 (`:158` tag), A.U0.41 (`:191-192` tag), A.U3.02 (`_no_ts_episode` goes), A.U10.35 (private
+  attributes), A.U15.17 (4) (`_restore_waiting`, `_ntp_synced` from `backup`), A.U15.19 (`_voc_samples`,
+  `_voc_restored`), A.U15.R02 (`_recovery_bus`), A.U10.25 (registration stays in `__init__`: holds), A.U27.03 (bare
+  `Timer()` comment), A.U30.19 (the allocation guard)
+- **Site**: `src/asy_sgp40_driver.py:129-194`
+- **Change**: `super().__init__(SGP40(None, None, None, None), _NAME, <BP + BMAX + WT + RESET_VOC>,
+  max_module_error=max_module_error, name_ext=name_ext, cfg_path=cfg_path, log=log)`; `self._sgp = SGP40_I2C(i2c)`;
+  `self._recovery_bus = i2c`; the registration comment → "# ResetVOC is command-only (see _VAL_RESET_VOC above) -
+  registered like every other module's live-push field (agent, 2026-08-04: constant at runtime, no per-call plumbing),
+  just never persisted."; `self._read_event`; the bare-Timer comment then `self._trigger_timer = Timer()`;
+  `self._backup_counter = 0`; `self._voc_init = 0`, `self._voc_write = 0`; `self._restore_waiting = False`;
+  `self._voc_samples = 0`, `self._voc_restored = False`; `self._temperature: ValueRef = temperature`, `self._humidity:
+  ValueRef = humidity` (the four `*_source`/`*_field` attributes go; the `:168-170` comment → "# References to each
+  producer and the field to read off its get_data() result (Part C.14): the two may be one instance or two."); backup:
+  `if backup is None: self._ts_storage = None; self._ntp_synced = None` else `self._ntp_synced = backup.ntp_synced` and
+  `try: self._ts_storage = backup.store.get_timestamped_chunk(VOCAlgorithm.get_params_memsize(), backup.ntp_synced,
+  crc=CRC32())` `except Exception as e: report_if_fatal(e); self._ts_storage = None` (the broad-on-purpose comment kept),
+  `None` → the console line; `self._last_backup`, `self._restored_from` (`int | None`, `None`); `self._reset_pending =
+  False` (HEAD `reset`, no reader outside the class: private by default); the reset sub-part comment (A.U0.41, ≤ 3
+  lines): "# Two independent sub-parts of a pending reset, tracked separately since they can complete on different cycles
+  (see reset_voc()/_read_sgp()); both start done. Never drop a reset, never redo the whole thing, never give up retrying
+  (owner, 2026-07-22, `90ced2b`, 'verbatim in spirit')." then the two flags.
+- **Resolved**: A.U10.35 lists nine attributes of this class; `reset` has no outside reader either — G10/R07 private by
+  default (agent, OR2.c list, same reading as M.SRC_SENS.004). The `_ntp_synced` reference replaces A.U15.17's
+  `fram_ntp_callback` (A.U5.11's `backup.ntp_synced`, named in A.U15.17's own text).
+- **Unit**: U15 (stages U0 tags (text merged here), U3, U5, U10, U27, U30)
+- **Depends**: M.SRC_SENS.058-060
+- **Blast carried by**: generated construction (`temperature=ValueRef(…)`, `backup=SgpBackup(…)`) → A.U5.11 (GEN); tests
+  and device scripts constructing the reader (`sgp40_fram_backup_restore.py`, `sgp40_voc_algorithm_quality.py:47-56`) →
+  A.U5.11 (TEST_UNIT, HW_DEV); attribute readers → A.U10.35
+- **Kind**: code
+
+### M.SRC_SENS.063 Backup schedule, restore and backup write
+- **From**: A.U15.17 (1)-(4) (`_verify_every()`, WaitTimeNTP 0, age check, no per-second re-read), A.U16.18 (bool-first
+  unpack; negative age expired — the same condition as A.U15.17 (3)), A.U15.18 (`_NO_TIMESTAMP`), A.U3.02 (W35 on every
+  untimestamped backup; `_no_ts_episode`/`repeat=` go), A.U3.09 (`:251-254, :373-377, :426-429` → console), A.U3.05
+  (`:206, :348` config reads → console), A.U2.13 (numbers), adherence (`:231-232` "(see module docstring)" points to text
+  the docstring does not hold)
+- **Site**: `src/asy_sgp40_driver.py:196-234, 342-361, 363-446`
+- **Change**: module function `_verify_every(backup_period_min: int) -> int: return max(1, int(math.ceil((10 *
+  _FRAM_VERIFY_MINS) / backup_period_min) * 0.1))` with A.U15.17 (1)'s comment; `_init_sgp()` and `_run_backup()` call it.
+  `_check_storage()`: a failed config read → `self.pr.err("Error reading config data!")` (console) and the early return;
+  `:231-232` comment → "# Explicit unpack-then-repack so mypy sees a real 3-tuple without a typing.cast (C.4.2)." The
+  storage part of `_init_sgp()`: a failed read → console line, `return False`; `if cfg_values[0] > 0: await
+  self._ts_storage.set_verify(_verify_every(cfg_values[0]))`; `wait = min(cfg_values[1], _MAX_NTP_WAITTIME)`;
+  `self._voc_init = max(1, wait)` ("# 0 = never wait: one restore attempt on the first cycle, as legacy");
+  `self._voc_write = wait`; `self._restore_waiting = False`. `_run_restore()`: at the top (after the argument guard) `if
+  self._restore_waiting and self._voc_init > 0 and not await self._ntp_synced(): return False`; `res, ts, age = await
+  self._ts_storage.read_into(buf)`; no backup → `self.pr.wrn("No backup found!")` (console), `self._voc_init = 0`, return
+  `False`; `ts is None` → `wrn_s("Backup loaded without timestamp", wrnno=_WRN_SGP_RESTORED_NO_TS)`, `ts =
+  _NO_TIMESTAMP`; `age is None` with `_voc_init > 0` → `self._restore_waiting = True`, the NTP-wait event, return
+  `False`; otherwise `self._voc_init = 0`, `self._restore_waiting = False`, and `if age < 0 or (cfg_values[1] > 0 and age >
+  60 * cfg_values[1]): await self.pr.wrn_s("Backup age out of range (too old, or dated in the future)",
+  wrnno=_WRN_SGP_BACKUP_AGE); return False`; `self._restored_from = ts`; `return True`. `_run_backup()`: verify period
+  through `_verify_every()`; `res, ntp_synced, ts = await self._ts_storage.write_into(buf, require_ntp=require_ntp)`; a
+  failed write → `self.pr.err("Write error during backup!")` (console; the FRAM layer persisted the cause); the two
+  `_no_ts_episode` lines go; the untimestamped branch `await self.pr.wrn_s("Backup written without timestamp.",
+  wrnno=_WRN_SGP_WRITTEN_NO_TS)` every time.
+- **Resolved**: A.U15.17 (3) and A.U16.18 write the same negative-age condition at `:390` — one `if`. A.U3.09 and
+  A.U2.13 agree: w10/e14/e15 print, the FRAM manager persists.
+- **Unit**: U16 (latest: A.U16.18's unpack order co-lands with the FRAM manager's return-shape change; stages U2, U3,
+  U15)
+- **Depends**: M.SRC_SENS.062; A.U16.18 (FRAM side, SRC_CORE), A.U3.04 (FRAM persists the cause)
+- **Blast carried by**: L1/L2 backup cases (`_verify_every` table, WaitTimeNTP 0, −60 s age, single re-read, first-boot
+  blank chunk, blackout skip) → A.U15.17/A.U16.18/A.U3.09 (TEST_UNIT, TWIN); `tests/test_asy_sgp40_driver.py:1055-1056`
+  stub order → A.U16.18; W13 tests → A.U3.02; BACKLOG `:362-365` → A.U3.02 (DOCS); SPEC C.7.1 SGP40 row → A.U2.22 (SPEC)
+- **Kind**: code
+
+### M.SRC_SENS.064 `_read_sgp()`: timestamp, checked compensation, VOC state
+- **From**: A.U10.06 (timestamp before the `try`), A.U15.14 (finite check through the primitive, first in the `try`),
+  A.U5.11 (reference reads), A.U15.19 (`VOCState`), A.U3.09 (`:251-254` clear failure → console), A.U2.13 (18 → 15,
+  16/17 → 58), A.U30.19
+- **Site**: `src/asy_sgp40_driver.py:236-328`
+- **Change**: the reset block as today (private names), the FRAM clear failure → `self.pr.err("Error clearing FRAM!")`
+  (console). Compensation read: `t_src: _ValueSource = self._temperature.source`, `h_src: _ValueSource =
+  self._humidity.source`; `try: temp_data = await t_src.get_data(); hum_data = await h_src.get_data()` `except Exception as
+  e: report_if_fatal(e); await self.pr.err_s("Compensation data read failed:", e, errno=_ERR_SOURCE); temp_val, hum_val =
+  None, None` `else:` the two `getattr(…, <ref>.field, None)` reads (`temp_val: object`, `hum_val: object`). The `None`
+  branch as today, returning `SGP40(None, None, None, None), False, False`. `timestamp = utc_now()` (before the `try`);
+  `try:` first `is_error_t, t = type_or_range_error(temp_val, _COMP_T_FIELD)`, `is_error_h, h = type_or_range_error(hum_val,
+  _COMP_RH_FIELD)`, either → `raise ValueError(f"compensation value not a finite number (t={temp_val!r},
+  rh={hum_val!r})")`; then the reset bookkeeping, `measure_index_and_raw(temperature=t, relative_humidity=h, …)` (the
+  `float()` comment goes, its reason is the check above), the VOC-state step of A.U15.19 (resets at
+  `reset_for_measure` → 0/False and `deserialized` → 0/True, then `if self._voc_samples < _VOC_SETTLED_SAMPLES:
+  self._voc_samples += 1`, then `voc_state` = 0 if `voc_index == 0`, 2 if settled, 3 if restored, else 1); deserialize/
+  serialize failures `errno=_ERR_SGP_ALGO_STATE`; `except Exception as e: report_if_fatal(e);` … `errno=_ERR_READ`; return
+  `SGP40(voc_index, raw, voc_state, timestamp)` (`voc_state = None` on the failure path). `_COMP_T_FIELD: FieldSchema =
+  ("Temp", "float", None, -1.0e30, 1.0e30, None)` and `_COMP_RH_FIELD` (A.U15.14) sit in the constants block.
+- **Resolved**: A.U15.14 puts the finite check "as the first statement inside the existing `try` (before the reset
+  bookkeeping)"; A.U10.06 moves the timestamp before the `try` — both hold. OR109.a (1): the per-sample floats and
+  tuples here are temporaries (accepted).
+- **Unit**: U15 (stages U2, U3, U5, U10, U30)
+- **Depends**: M.SRC_SENS.062, M.SRC_SENS.068
+- **Blast carried by**: L1 NaN/inf/`True` and lost-reset regression, VOCState cases → A.U15.14/A.U15.19 (TEST_UNIT); L2
+  `tests/test_digital_twin_sgp40.py` → A.U15.19 (TWIN); every `SGP40(` tuple in tests gains the field → A.U15.19
+- **Kind**: code
+
+### M.SRC_SENS.065 `_init_sgp()`, the store guard and the participant rung
+- **From**: A.U10.10 (`pr.setup()` leaves), A.U15.R02 (3) (`_init_failed()`/`_init_done()`), A.U15.R02 (2)
+  (`_recover_device()`), A.U15.41 (re-arm at `_init_sgp()`'s start), A.U10.06 (store guard on values), A.U2.13, A.U30.19
+- **Site**: `src/asy_sgp40_driver.py:330-340, 448-452` and a new method
+- **Change**: `_init_sgp()`: `if self._timer_error is not None: self._timer_error = None; self.start_timer()` first; then
+  the counters zeroed; `try: await self._sgp.setup()` `except Exception as e: report_if_fatal(e); await
+  self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT); await self._init_failed(); return False`; no storage →
+  `await self._init_done()`, `self.pr.one("initialized without storage")`, `return True`; the storage part of
+  M.SRC_SENS.063; `await self._init_done()` before the final success return. `_store_sgp()`: returns when `data.VOC is None
+  or data.Raw is None` (the `TS` may be `None` before the first sync). `_recover_device(self) -> bool`: `try: await
+  self._sgp.turn_heater_off()` `except Exception as e: report_if_fatal(e); await self.pr.err_s("Heater-off failed:", e,
+  errno=_ERR_CHIP_SET); return False`; `return True` (the VOC algorithm state untouched).
+- **Resolved**: A.U15.R02 as corrected per AC_NOTES 31 (V.U25 on twin Run 5): the correction concerns the twin CI's
+  expected counts (SCR), not this code — the code is as written.
+- **Unit**: U15 (stages U2, U10, U30)
+- **Depends**: M.SRC_SENS.062, M.SRC_SENS.068; A.U10.R01, A.U13.R01
+- **Blast carried by**: SGP40 streak tests `:369-443, 505-510, 585-589` and new rung cases → A.U15.R02/A.U10.R01
+  (TEST_UNIT); four tiers of the heater-off (L1 hazard, L2 twin with the 0x3615 branch, L3 sweep and
+  `bus_concurrency_cross_device_scd30_sgp40.py` step) → A.U15.R02 (TEST_UNIT, TWIN A.U25, HW_DEV); twin CI expected
+  counts (`_BOUNDED_FAULT_COUNT`, Run 5) → A.U15.R02 as corrected by AC_NOTES 31 (SCR); SPEC C.8/A.4 → A.U15.R02/A.U15.15
+- **Kind**: code
+
+### M.SRC_SENS.066 Push callback, starters, getters, `reset_voc()` and the loop
+- **From**: A.U15.21 (push guard goes), A.U10.12 (trigger starter), A.U15.41 (arm failure wakes the read task; the loop
+  checks), A.U10.44 (`_read_loop`), A.U15.43 (`-> None`, types), A.U0.35 (`:508` tag), A.U10.39/A.U10.40 (names)
+- **Site**: `src/asy_sgp40_driver.py:454-533`
+- **Change**: `_push_reset_voc()`: `await self.reset_voc(flag=value is True)`; `return True` (the comment `:455-457`
+  keeps its "always reports success" reason, ≤ 3 lines). `start_asy_read(self) -> asyncio.Task[None]` over
+  `_read_loop()`; `start_timer()` with `except (MemoryError, OSError) as e: self._timer_failed(e, self._read_event)` and
+  A.U15.41's comment; `get_task_starters(self) -> list[TaskStarter]: return [self.start_asy_read]`;
+  `get_trigger_starters(self) -> list[TimerStarter]: return [self.start_timer]`; `get_timer_starters(self) ->
+  list[TimerStarter]: return []`. `get_mem_status()` returns `self._last_backup, self._restored_from`. `get_dict_cfg()`
+  names the renamed tuples (its comment names `ResetVOC`). `reset_voc()`: "(project-wide decision)" → "(owner,
+  2026-09-26)"; `self._reset_pending = True`. `_read_loop(self) -> None`: init; `while True: await
+  self._read_event.wait()`; `if await self._timer_fault(): return`; the cycle as today; `return` for HEAD's `return
+  False`.
+- **Resolved**: —
+- **Unit**: U15 (stages U0 tag, U10 names/split)
+- **Depends**: M.SRC_SENS.062-065; A.U15.41 helpers (SRC_CORE)
+- **Blast carried by**: `tests/test_asy_sgp40_driver.py:563, 616-637, 1266, 2299` → A.U15.21/A.U10.12/A.U15.43
+  (TEST_UNIT); generated collectors → A.U10.12 (GEN)
+- **Kind**: code
+
+### M.SRC_SENS.067 `SGP40_I2C` construction and the VOC algorithm at construction
+- **From**: A.U15.28 (no `address`), A.U15.40 (session; `SGP40_DeviceSession` goes), A.U10.35 (`_i2c_sgp40`), A.U15.13
+  (2) (`_reply_buffer = bytearray(9)`), A.U30.04 (algorithm built in `__init__`), A.U12.18 (the shared `_measure_command`
+  stays; staged inside the hold)
+- **Site**: `src/asy_sgp40_driver.py:536-553, 634-662`
+- **Change**: `__init__(self, i2c: I2C)`: `self._i2c_sgp40 = DeviceSession(I2CDevice(i2c, _SGP40_ADDR))`; the two command
+  buffers as today; `self._reply_buffer = bytearray(9)` with "# Sized for the longest reply, the 3-word serial number
+  (datasheet Table 8)"; `self.crc = CRC8()`; `self._measure_command` as today; `self._voc_algorithm = VOCAlgorithm()` and
+  `self._voc_algorithm.vocalgorithm_init()`. `measure_index_and_raw()`: the lazy `if … is None` block goes; `reset=True`
+  keeps `vocalgorithm_reset()`.
+- **Resolved**: —
+- **Unit**: U30 (stages U10 name, U15 session/address/buffer)
+- **Depends**: M.SRC_SENS.059
+- **Blast carried by**: `tests/test_asy_sgp40_driver.py:329, 770-776, 1244, 1601, 1629` and the new construction case →
+  A.U30.04 (TEST_UNIT); boot contiguity bounds and the flash `≤ 100,000 B` survivors figure → A.U30.04 (TSC, HW_DEV; phase C
+  re-reads); I.2 row → A.U30.02 (SPEC)
+- **Kind**: code
+
+### M.SRC_SENS.068 One exchange: staged command, restored buffer, word reads without lists
+- **From**: A.U12.18 (`_measure_in_session()`, fill inside the hold), A.U15.13 (1) (`try/finally` restore), (2) (serial
+  read of three words, no `None` paths), A.U30.06 (`_exchange()`/`_read_word()`/`_read_words()`), A.U31.10 (the `:574` half
+  is A.U30.06's `sleep_ms`), A.U8.07 (wait constants; the `delay_ms=10` default goes), A.U13.09 (`:573, :576` writes/reads
+  bool-checked), A.U15.14 (tick helpers), A.U0.41 (`:598` tag), A.U15.40 (session annotation), A.U10.45 (messages)
+- **Site**: `src/asy_sgp40_driver.py:555-632`
+- **Change**: `async def _exchange(self, sgp40: DeviceSession, delay_ms: int, words: int) -> None:` — `replylen = words *
+  3`; `if replylen > len(self._reply_buffer): raise ValueError("reply longer than the reply buffer")`; `async with
+  sgp40.i2c_device as i2c: if not await i2c.write(self._command_buffer): raise OSError("I2C bus not initialized")`; `await
+  asyncio.sleep_ms(delay_ms)`; `async with sgp40.i2c_device as i2c: if not await i2c.readinto(self._reply_buffer,
+  end=replylen): raise OSError("I2C bus not initialized")`; the CRC loop raising `RuntimeError("CRC check failed while
+  reading data")`. `# The per-sample read: one word decoded in place, no list, tuple or float.` `async def _read_word(self,
+  sgp40, delay_ms: int) -> int:` `await self._exchange(sgp40, delay_ms, 1)`; `return (self._reply_buffer[0] << 8) |
+  self._reply_buffer[1]`. `async def _read_words(self, sgp40, delay_ms: int, count: int) -> list[int]:` `_exchange()` then
+  the list from `unpack_from(">H", self._reply_buffer, 3 * i)` (serial number only, once at setup). `_celsius_to_ticks()`/
+  `_relative_humidity_to_ticks()`: A.U15.14's clamp-then-round form (no mask), the comment keeping the Table 10 points and
+  "Rounds to nearest (matching _relative_humidity_to_ticks below) rather than truncating (owner, 2026-07-22,
+  paraphrase); clamped to Table 10's range, never wrapped." (≤ 3 lines). `async def _measure_in_session(self, sgp40:
+  DeviceSession) -> int:` ("# Caller holds self._i2c_sgp40.") `self._command_buffer = self._measure_command`; `try: return
+  await self._read_word(sgp40, _MEASURE_WAIT_MS)` `finally: self._command_buffer = self._default_command_buffer`.
+  `get_raw(self) -> int`: `async with self._i2c_sgp40 as sgp40: return await self._measure_in_session(sgp40)`.
+  `measure_raw(self, temperature=25, relative_humidity=50) -> int | None`: `async with self._i2c_sgp40 as sgp40:` "#
+  Staged inside the session: an await before the hold would let another caller overwrite the shared command (owner,
+  2026-09-29: no races)." then the memoryview fill, both `crc.add_into()` (each `return None` on failure) and `return
+  await self._measure_in_session(sgp40)`.
+- **Resolved**: A.U15.13 reshapes `_read_word_from_command()`; A.U30.06 (written onto A.U15.13's shape, U30 note 7)
+  splits it into `_exchange()`/`_read_word()`/`_read_words()` — the merged end state is A.U30.06's split with A.U15.13's
+  buffer size, raise and alias fix, and A.U12.18's staging. OR109.a (0): every per-call input kept in the shared
+  `_measure_command` is written inside the device-session hold.
+- **Unit**: U30 (stages U8 constants, U10 messages, U12 staging, U13 bool checks, U15 restore/serial/clamp, U30 split)
+- **Depends**: M.SRC_SENS.011, M.SRC_SENS.013, M.SRC_SENS.059, M.SRC_SENS.067
+- **Blast carried by**: four tiers of the race fix — L1 `tests/test_bus_hazard_multi_device.py:356-377` (A.U24.74), L2
+  twin case, L3 `sgp40_same_device_concurrent_sessions.py` + flash leg, L4 unchanged → A.U12.18 (TEST_UNIT, TWIN, HW_DEV);
+  alias regression (D4.53), 9-byte serial read, word-2 CRC → A.U15.13 (TEST_UNIT, TWIN `_sgp40_chip.py` corrupt-next hook
+  A.U25); `_NoneReadWord`/`fake_read_word` tests → A.U15.13/A.U30.06; `sleep_ms` patches → A.U30.06/A.U24.49; Table 10
+  edge cases → A.U15.14; SPEC C.8/G.2 sentences → A.U12.18 (SPEC); release notes D4.53/D4.55 → U37
+- **Kind**: code
+
+### M.SRC_SENS.069 General-call reset, heater-off command and identity checks
+- **From**: A.U13.09 (`_reset()`'s `acked`), A.U8.07 (`_GENERAL_CALL_RESET_WAIT_S`), A.U15.R02 (1) + A.U31.10
+  (`turn_heater_off()`), A.U15.13 (2) (`initialize()`), A.U0.28 (`:670-671` tag; superseded by A.U15.13's text), A.U10.21
+  (`setup() -> bool`), A.U10.45 (messages), A.U15.15 (C.8 doc only)
+- **Site**: `src/asy_sgp40_driver.py:585-593, 664-694` and a new method
+- **Change**: `_reset()`: `acked: int | None = 0`; under session and bus `try: acked = i2c.i2c.writeto(0x00, b"\x06")`
+  `except OSError: pass`; `if acked is None: raise OSError("I2C bus not initialized")`; `await
+  asyncio.sleep(_GENERAL_CALL_RESET_WAIT_S)` (comment unchanged). `async def turn_heater_off(self) -> None:` under
+  `async with self._i2c_sgp40 as sgp40, sgp40.i2c_device as i2c:` `if not await i2c.write(_CMD_HEATER_OFF): raise
+  OSError("I2C bus not initialized")`; then outside the locks `await asyncio.sleep_ms(_HEATER_OFF_MAX_MS + 1)  # one tick
+  more than the datasheet bound: sleep_ms() may wake up to 1 ms early`. `async def setup(self) -> bool:` probe,
+  `initialize()`, `return True`. `initialize()`: header comment → A.U15.13's "# Identity per datasheet 3.3-3.4: three
+  CRC-checked serial words with legacy's word-0 check, and the self-test's 0xD4 high byte (Table 13). No feature-set
+  check: the datasheet documents none (owner, 2026-07-21)."; serial via `_read_words(sgp40, _SERIAL_READ_WAIT_MS, 3)`;
+  word-0 check with A.U15.13's comment and `RuntimeError("serial number does not match")`; self-test via
+  `_read_word(sgp40, _SELF_TEST_WAIT_MS)`, `(self_test >> 8) != _SELF_TEST_PASS` → `RuntimeError("self test failed")`;
+  `await self._reset()`. The two `None` raises go (A.U15.13).
+- **Resolved**: A.U0.28 (U0) and A.U15.13 (U15) both rewrite the `:670-671` comment; A.U15.13's text carries the owner
+  tag A.U0.28 adds (and the Table 8 fact), so it is the merged text. A.U13.09 applies its "a `False` write is the
+  driver's bus-fault shape" rule to every write; the new heater-off write follows it (completeness, same rule).
+- **Unit**: U15 (stages U8, U10, U13; A.U31.10's form is written directly in U15)
+- **Depends**: M.SRC_SENS.068
+- **Blast carried by**: identity/serial tests → A.U15.13 (TEST_UNIT); address sweep gains `turn_heater_off` →
+  A.U15.R02 (TEST_HELP `_bus_hazard_catalog.py:216-226`); general-call hazard tests → A.U15.15 (TEST_UNIT); SPEC M.3 →
+  A.U15.05/A.U15.13 (SPEC)
+- **Kind**: code
+

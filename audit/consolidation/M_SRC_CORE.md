@@ -86,9 +86,9 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
 - **Site**: `src/system_service.py:8-38`.
 - **Change**: runtime imports: `asyncio`, `gc`, `random`, `time`; `from machine import PWRON_RESET, WDT, Timer,
   mem_backup, reset_cause`; the two aliased `bootloader`/`reset` imports unchanged; `from micropython import const`;
-  `from asy_base_classes import LockedValue, TickSeconds, arm_tick_timer, fatal_reported, report_if_fatal, utc_now`;
+  `from asy_base_classes import LockedValue, TickSeconds, arm_tick_timer, utc_now`;
   `from asy_config_manager import FAILED, UNCHANGED, VALID, ConfigManager, config_filename, instance_name, name_cfg`;
-  `from asy_print_log import DEFAULT_LOG, LogConfig, make_logger` (`schema_names` stays imported while
+  `from asy_print_log import DEFAULT_LOG, LogConfig, fatal_reported, make_logger, report_if_fatal` (`schema_names` stays imported while
   M.SRC_CORE.017's `get_dict_cfg()` uses it). `TYPE_CHECKING` block: `from collections.abc import Awaitable, Callable`;
   `from typing import Protocol`; `from asy_base_classes import AsyncCallback, ErrorSource, NtpSyncFct, SetupFct,
   TaskStarter, TimerStarter`; `from asy_fram_manager import FRAMManager`; `from asy_config_manager import CfgValue,
@@ -675,7 +675,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
 
 End state: the session lock (`Lockable`, `DeviceSession`), `RegionBuffer`, the lock-free shared scalars
 (`LockedCounter`/`LockedFlag`/`LockedValue`) under `COUNTER_CAP`, the primitives `TickSeconds`, `arm_tick_timer()`,
-`utc_now()`/`set_utc_valid()`, `report_if_fatal()`/`fatal_reported()`, `ValueRef`, the typing aliases, and
+`utc_now()`/`set_utc_valid()`, `ValueRef`, the typing aliases, and
 `SensorReader` (logger, sample, error streak with the recovery ladder, trigger divider, timer-fault path, the whole
 config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig` adding the file store.
 
@@ -686,7 +686,7 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
 - **Site**: `src/base_classes.py:1-28`.
 - **Change**: docstring line 1 "Shared base classes and primitives: the session lock (Lockable, DeviceSession), region
   buffers (RegionBuffer), shared scalars (LockedCounter, LockedFlag, LockedValue: no method awaits, so no lock), elapsed
-  seconds (TickSeconds), the UTC timestamp and fatal-error flag, and the sensor-driver base (SensorReader,
+  seconds (TickSeconds), the UTC timestamp, and the sensor-driver base (SensorReader,
   SensorReaderConfig) with error bookkeeping, the recovery ladder and optional JSON config storage."; line 2 unchanged.
   Comment `:5-7` → "# __init__ never calls self.pr.setup() (sync vs. async): setup() does it first (SensorReader), then
   the / # store's (SensorReaderConfig) - both inside the one-time boot batch, never lazily in a task (Part A.7)."
@@ -798,24 +798,33 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   (DOCS); SPEC `:3025, 3481, 4200-4216, 4797, 4871, 5640` → A.U16.05 (SPEC).
 - **Kind**: code
 
-### M.SRC_CORE.034 Record a C-stack overflow for the supervisor; every broad handler of this file reports first
-- **From**: A.U30.19 (1)(2).
-- **Site**: `src/base_classes.py` new module flag and two functions; the file's broad handlers (`:200, :209, :311, :322,
-  :352, :382, :396` at HEAD and the new ones of M.SRC_CORE.037/.038/.039).
-- **Change**: `_STACK_EXHAUSTED = "maximum recursion depth exceeded"` (`py/runtime.c:1786`, v1.29.0 — re-checked against
-  the refreshed pin, OR129.a (5)); `_fatal = False`; `def report_if_fatal(e: BaseException) -> None:` sets `_fatal` when
-  `isinstance(e, RuntimeError) and e.args and e.args[0] == _STACK_EXHAUSTED` (allocates nothing, prints nothing); `def
-  fatal_reported() -> bool`. Comment (3 lines): "# A C-stack overflow is a design defect, never a routine failure: any
-  handler that catches it records / # it here, and the supervisor reboots at its next pass (SPECIFICATION.md F.1)." Every
-  broad `except` in this file gets `report_if_fatal(e)` as its first statement.
-- **Resolved**: —
+### M.SRC_CORE.034 Record a C-stack overflow for the supervisor, in the one module every handler can import
+- **From**: A.U30.19 (1)(2) — home moved from `base_classes.py` to `print_log.py` (see Resolved).
+- **Site**: `src/print_log.py` (→ `asy_print_log.py`) new module flag and two functions; the broad handlers of this
+  cluster's files (`base_classes.py:200, :209, :311, :322, :352, :382, :396` at HEAD and the new ones of M.SRC_CORE.037/
+  .038; `system_service.py`, `config_manager.py`, `api_response.py`, `asy_fram_manager.py`, `asy_fram_driver.py` — each
+  file's M names its handlers).
+- **Change**: in `asy_print_log.py`: `_STACK_EXHAUSTED = "maximum recursion depth exceeded"` (`py/runtime.c:1786`,
+  v1.29.0 — re-checked against the refreshed pin, OR129.a (5)); `_fatal = False`; `def report_if_fatal(e:
+  BaseException) -> None:` sets `_fatal` when `isinstance(e, RuntimeError) and e.args and e.args[0] ==
+  _STACK_EXHAUSTED` (allocates nothing, prints nothing); `def fatal_reported() -> bool`. Comment (≤ 3 lines): "# A
+  C-stack overflow is a design defect, never a routine failure: any handler that catches it records / # it here, and the
+  supervisor reboots at its next pass (SPECIFICATION.md F.1)." Every broad `except` in `src/` gets `report_if_fatal(e)`
+  as its first statement, imported `from asy_print_log import report_if_fatal`.
+- **Resolved**: A.U30.19 places the flag in `base_classes.py`, but `asy_config_manager.py` (A.U10.20's new outer
+  handler in `_flush_staged()`) must call it and `asy_base_classes` imports `asy_config_manager` at module level
+  (`base_classes.py:11`), so the import would close a cycle, which A.U10.30's import-graph check fails on (owner, standing
+  rule, `6aed3c9`) and which fails at runtime on MicroPython (a partially initialised module has no such name yet — the
+  same cycle U11's register fix names for `print_log` → `config_manager`). `print_log` is the one project module every
+  other `src/` module already imports and which imports only `crc_checks`; it hosts the flag with no new edge (agent,
+  2026-10-01; "Agent decisions" 10). A.U30.19's text for every other cluster changes only in the import line (GAP-G8).
 - **Unit**: U30.
-- **Depends**: M.SRC_CORE.030.
+- **Depends**: M.SRC_CORE.060 (the print_log header names it).
 - **Blast carried by**: supervisor use → M.SRC_CORE.016 (U30 stage); every other broad handler in `src/` and generated
-  code → A.U30.19 per cluster (SRC_NET, SRC_SENS, GEN; this cluster's files in M.SRC_CORE.010/.011/.013/.014/.016/.017,
-  .037/.038, .043/.044, .063, .073, .087-.093); `_handle_unhandled_exception()` → A.U30.19 (SRC_NET); L0
-  `test_fatal_report_sites.py` → A.U30.19 (TSC); L1 `tests/test_base_classes.py` flag cases → A.U30.19 (TEST_UNIT); UART
-  changelog Class B → A.U30.19 (DOCS); SPEC F.1/C.7/G.2 → A.U30.19 (SPEC).
+  code imports it from `asy_print_log` → A.U30.19 per cluster + GAP-G8 (SRC_NET, SRC_SENS, GEN); `_handle_unhandled_exception()`
+  → A.U30.19 (SRC_NET); L0 `test_fatal_report_sites.py` (accepts the call imported from `asy_print_log`) → A.U30.19 +
+  GAP-G8 (TSC); L1 flag cases move to `tests/test_print_log.py` → A.U30.19 + GAP-G8 (TEST_UNIT); UART changelog Class B →
+  A.U30.19 (DOCS); SPEC F.1/C.7/G.2 name `print_log.py`'s primitive → A.U30.19 + GAP-G8 (SPEC).
 - **Kind**: code
 
 ### M.SRC_CORE.035 One shared value-reference type
@@ -989,4 +998,238 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
 - **Unit**: U10.
 - **Depends**: M.SRC_CORE.001.
 - **Blast carried by**: lint/typecheck baselines → A.U10.33 (TOOL).
+- **Kind**: code
+
+## src/config_manager.py (→ `src/asy_config_manager.py`)
+
+End state: the schema helpers (unguarded, typed inputs only; malformed schemas rejected statically), the shared
+`compare_before_write()` primitive, `config_filename()`, the four result-word constants, and `ConfigManager`: a store
+that serves defaults from RAM for a missing file (no write), never overwrites an unreadable one (`writable`), validates
+against its own schema, compares in stored form, stages only once its flush task exists, can defer the flush until the
+caller's pushes finish (`commit()`), serialises before opening, closes race-free for a reset and deletes its own file
+for the config reset.
+
+### M.SRC_CORE.049 Header, comments, imports, constants and the constructor
+- **From**: A.U0.42 (`:7`), A.U36.514 (`:46-48`), A.U36.004 (1) (`:217`), A.U5.02 (constructor), A.U2.04/A.U2.07
+  (constants), A.U10.17 (lock reason), A.U10.18 (`config_lock` → `_config_lock`), A.U10.35 (`config_file` →
+  `_config_file`), A.U11.04 (`_closed`), A.U11.20 (`writable`), A.U11.28 (`_commit_ready`), A.U11.31
+  (`reset_error_counter() -> bool`), A.U11.S01 (`T` gains `bool`, `Any` goes), A.U19.16 (`Final`), A.U10.31, A.U10.37.
+- **Site**: `src/config_manager.py:1-50`, `:215-232`, `:261-265`.
+- **Change**: docstring line 1 names `asy_base_classes.py`; line 2 "Every public function/method returns a documented
+  "invalid" sentinel, never raises (for typed inputs; a malformed schema fails the static schema check)." `:7` →
+  "# directly - SPECIFICATION.md A.4 has the cache-vs-external-corruption trade-off this implies." `:46-48`'s cite →
+  "(SPECIFICATION.md Part L.6.4)". Imports: `asyncio`, `errno`, `json`, `os`, `from micropython import const`, `from
+  asy_print_log import DEFAULT_LOG, make_logger, report_if_fatal`; `TYPE_CHECKING`: `Callable`, `Final`, `Literal`,
+  `NamedTuple`, `TypeVar`; `from asy_print_log import ErrorLog, LogConfig, PrintLogHistory`; `T = TypeVar("T", int, float,
+  str, bool)`; no `Any`, no `AsyFramManager`. Constants: `_ERR_ALLOC = const(20)`, `_ERR_BAD_ARG = const(21)`,
+  `_ERR_UNEXPECTED = const(23)`, `_ERR_CONTRACT = const(24)`, `_ERR_CFG_PATH_IS_DIR = const(30)`, `_ERR_CFG_NO_DEFAULTS =
+  const(31)`, `_ERR_CFG_BAD_DEFAULT = const(32)`, `_ERR_CFG_FILE_WRITE = const(33)`, `_ERR_CFG_NOT_VALID = const(34)`,
+  `_WRN_STORED_DEFAULT = const(10)`, `_WRN_CFG_FILE_NOT_OBJECT = const(20)`, `_WRN_CFG_FILE_JSON = const(21)`,
+  `_WRN_CFG_FILE_UNREADABLE = const(22)`, `_WRN_CFG_KEYS_REMOVED = const(23)` (24 retired, A.U11.19). `__init__(self,
+  filename: str, cfg_vals: "ConfigSchema", name: str, log: "LogConfig" = DEFAULT_LOG)`: `self.name = "CFGMGR_" + name`;
+  `self.pr = make_logger(log, self.name)` with the comment "# Inherits its owning module's logging config - FRAM-backed
+  when the module is (the implicit FRAM-wiring / # rule, SPECIFICATION.md A.7) - so its failure history survives a
+  reboot like the module's own."; `self._config_lock = asyncio.Lock()` ("# serialises the config file and its staged
+  snapshot"); `self._config_file`, `self.cfg_vals`, `self.valid = False`, `self.writable = True`, `self._closed = False`,
+  `self._cache`, `self._staged` (comment `:228-230` kept), `self._pending_flush`, `self._commit_ready = asyncio.Event()`
+  (set: "# cleared while a deferred snapshot waits for its commit()"; `_commit_ready.set()` in `__init__`).
+  `reset_error_counter() -> bool: return await self.pr.reset()`.
+- **Resolved**: A.U36.004 (1)'s condition "follows A.U5.02's wording and keeps this citation" — applied.
+- **Unit**: U11 (stages: U0 tag lines of M.SRC_CORE.047; U2 constants at HEAD sites; U5 `log`; U10 names/lock reason;
+  U36's two cite edits pulled into U11 — comment-only, the file's own unit).
+- **Depends**: M.SRC_CORE.001, M.SRC_CORE.034, M.SRC_CORE.061.
+- **Blast carried by**: `ConfigManager(…, fram=…)` callers → M.SRC_CORE.008/.040 and A.U5.02 (SRC_NET: webserver/Wi-Fi if
+  any); tests reading `config_file`/`config_lock` → A.U10.35/A.U10.18 (TEST_UNIT); `tests/test_config_manager.py` numbers
+  (9 lines, `:2356`), `test_asy_bmp3xx_driver.py:2072`, `test_setter_microdot_integration.py:683`,
+  `tests_hardware/bench/test_network_resilience.py:929-935` → A.U2.07 (TEST_UNIT, HW_BENCH); mockdata `CFGMGR_*` rows →
+  A.U2.25 (GEN/WEB); SPEC C.7.3/C.7.4/L.2/C.5.2 numbers → A.U2.07 (SPEC); catalog rows 22 text, 24 retired, 32 one site →
+  A.U2.01 merge per U11 register fix "For A-C" and AC_NOTES 7 (GEN).
+- **Kind**: code
+
+### M.SRC_CORE.047 Schema helpers: typed inputs only; the shared compare-before-write primitive
+- **From**: A.U11.17, A.U11.S01 (1)(2), A.U11.30, A.U0.39 (`:131` tag), A.U4.01, A.U11.21 (`_stored_float()`), A.U10.45.
+- **Site**: `src/config_manager.py:53-208` (`_special_bypass()`, `instance_name()`, `schema_names()`, `name_cfg()`,
+  `schema_dict()`, `make_dict()`, `coerce_numeric()`, `type_or_range_error()`, `check_cfg_get_default()`); new
+  `compare_before_write()`, `_stored_float()` after `check_cfg_get_default()`.
+- **Change**: the five `try/except Exception` (`:80-83`, `:94-97`, `:111-114`, `:115-118`, `:150/:185-186`) and
+  `check_cfg_get_default()`'s `:193/:205-206` go (bodies unchanged otherwise; the `:79`/`:93` trailing comments lose
+  "malformed input -> []"/"{}"). `coerce_numeric(...) -> "tuple[bool, CfgValue]"`; comment `:124` → "bool is excluded
+  both ways by exact type (on MicroPython `bool` is not an `int` subclass)"; `:126-127` → "# Public and reused: every
+  numeric check calls it through type_or_range_error(), the generated / # lightCmdLED dispatch included (synthetic
+  FieldSchemas, buildgen/codegen.py)."; `:131` "an accepted gap" → "an accepted gap (owner, 2026-08-24)"; the tuple
+  `(OverflowError, ValueError)` stays (already ordered). `type_or_range_error(...) -> "tuple[bool, CfgValue]"`: int branch
+  `if not ok or type(check_val) is not int:` and float branch `if not ok or type(check_val) is not float:` with one line
+  "# never true after ok; narrows the type". `compare_before_write(data, cfg_vals, current, *, always=(),
+  resolution=None) -> "tuple[dict[str, CfgValue], WriteValidity] | None"` exactly as A.U4.01 (per-key outcomes in `data`
+  order; `None` for a non-dict `data`; logs nothing; never raises but `MemoryError`); `resolution` typed
+  `dict[str, Callable[[CfgValue], CfgValue]] | None` (no `Any`). `_stored_float(v: float) -> float: return
+  json.loads(json.dumps(v))` with the residual comment of A.U11.21 (idempotence on rp2 proven by the L3 script; fallback to
+  the serialised text decided with evidence).
+- **Resolved**: A.U4.01 types `resolution` with `Callable[[Any], CfgValue]`; A.U11.S01/G8/R61 (owner, OR81: no
+  hand-written `Any`) → `Callable[[CfgValue], CfgValue]`.
+- **Unit**: U11 (A.U4.01 in U4 as its stage — A.U4.02 in U4 needs it; the guard removal and typing in U11; U0's tag at
+  `:131` as a U0 stage).
+- **Depends**: A.U11.18 (static schema check lands first or together, TSC).
+- **Blast carried by**: schema callers (typed consts) and the generated `lightCmdLED` dispatch (`or type(r) is not int …`
+  narrowing) → A.U11.S01 (GEN); webserver pause dispatch narrowing → A.U11.S01 (SRC_NET); ISL29125 `_checked_cfg()` arm →
+  A.U11.S01 vs A.U15.38 (1) conflict, SRC_SENS merges (SUPP_coverage A-C note 1); SCD30 chip store uses the primitive →
+  A.U4.04 (SRC_SENS); `tests/test_config_manager.py` (`:123-162`, `:142-144`, `:216-227`, `:749-761`, `:1572-1583` go or
+  shrink; primitive outcome rows; `_stored_float` substitution test) → A.U11.17, A.U4.01, A.U11.21 (TEST_UNIT); L3
+  `config_float_round_trip.py` + `flash/test_config_float_round_trip.py` (`persistence_write`) → A.U11.21 (HW_DEV); js
+  mock compare gap → A.U4.01/A.U11.21 via U23 (WEB); SPEC G.2 compare-before-write entry, C.5.2, C.10, C.7.3/C.5 float
+  sentence → A.U4.01, A.U11.S01, A.U11.21 (SPEC); test-side comment `test_config_manager.py:355` → A.U0.39 (TEST_UNIT).
+- **Kind**: code
+
+### M.SRC_CORE.046 One builder for config file names
+- **From**: A.U11.32.
+- **Site**: `src/config_manager.py:70-76` (beside `instance_name()`).
+- **Change**: `def config_filename(cfg_path: str, name: str) -> str: return cfg_path + "config_" + name + ".cfg"`;
+  `ConfigManager` stays the one builder of `"CFGMGR_" + name`.
+- **Resolved**: G5/R47's "built only by `SensorReaderConfig`" → "built only through `config_manager`'s helper and
+  `ConfigManager`" (U11 register fix; the register applies it).
+- **Unit**: U11.
+- **Depends**: —
+- **Blast carried by**: `SensorReaderConfig` → M.SRC_CORE.040; `SystemService` → M.SRC_CORE.008; L0 grep test (no
+  `"config_"` concatenation in `src/` outside this file) → A.U11.32 (TSC); L1 case → A.U11.32 (TEST_UNIT); SPEC C.14.1 →
+  A.U11.32 (SPEC); `tests_hardware`/`digital_twin` paths built by hand (`A.U26.10`) → unchanged strings.
+- **Kind**: code
+
+### M.SRC_CORE.045 The four result words as shared constants
+- **From**: A.U19.16.
+- **Site**: `src/config_manager.py:210-212`; literal sites `:320-347`.
+- **Change**: beside `WriteValidity`, public module constants `VALID: "Final" = "Valid"`, `UNCHANGED: "Final" =
+  "Unchanged"`, `INVALID: "Final" = "Invalid"`, `FAILED: "Final" = "Failed"` (plain assignments); every literal site of
+  this file (and of `compare_before_write()`) uses them. SPEC G.2 entry "result words".
+- **Resolved**: —
+- **Unit**: U19.
+- **Depends**: —
+- **Blast carried by**: `asy_base_classes.py` (M.SRC_CORE.038), `asy_system_service.py` (M.SRC_CORE.017),
+  `asy_api_response.py` (M.SRC_CORE.072) literal sites; webserver/SCD30/Wi-Fi sites → A.U19.16 (SRC_NET, SRC_SENS); js
+  constant mirror → A.U19.16/U23 (WEB); L0 AST scan and its bite → A.U19.16 (TSC); SPEC G.2 → A.U19.16 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.048 Readers: one persisting layer, exact-type getters
+- **From**: A.U3.05, A.U11.29, A.U11.S01 (3), A.U35.43 (2) (`get_dict()`'s `TypeError`), A.U2.07.
+- **Site**: `src/config_manager.py:240-297`.
+- **Change**: `_get_values(keys) -> "list[CfgValue] | None"` (`_ERR_CFG_NOT_VALID`; `KeyError` → `_ERR_CONTRACT`).
+  `_get_converted_values()` goes; new `_get_typed_values(keys, scalar_type: "type[T]") -> "list[T] | None"`: per value,
+  `int`/`float` through `coerce_numeric(v, scalar_type)` then appended only after `isinstance(value, scalar_type)`,
+  `str`/`bool` by `type(v) is scalar_type`; any refusal → one `err_s(self._config_file, "- stored value has the wrong
+  type:", key, errno=_ERR_CONTRACT)` and `None` (all-or-nothing). `get_int_values`/`get_float_values`/`get_str_values`/
+  `get_bool_values` call it. `get_dict(keys)`: `_ERR_CFG_NOT_VALID`, `except KeyError as e` → `_ERR_CONTRACT` (the
+  `TypeError` half goes: keys are typed); its lock-free comment `:268-270` kept.
+- **Resolved**: A.U11.29 and A.U11.S01 (3) describe the same helper — merged (exact-type test is also mypy's narrowing).
+- **Unit**: U11 (U3 stage: the 24 reports; U2 names).
+- **Depends**: M.SRC_CORE.047, .049.
+- **Blast carried by**: the eleven caller sites print instead of persisting → A.U3.05 (SRC_SENS, SRC_NET); the 21
+  getter call sites unchanged → A.U11.29; tests `test_config_manager.py:1496-1552`, caller-module tests → A.U3.05,
+  A.U11.29 (TEST_UNIT); SPEC C.5 `:1731-1734`, C.5/C.7 caller rule → A.U11.29, A.U3.05 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.044 `write_config()` and the deferred flush
+- **From**: A.U4.02, A.U11.24, A.U11.25, A.U11.21, A.U11.22, A.U11.28, A.U11.23 (flush half), A.U10.20, A.U35.43 (1)(2),
+  A.U2.07, A.U11.04 + A.S0930.16 (1) (closed checks), A.U11.20 (`writable` check), A.U19.16, A.U10.45.
+- **Site**: `src/config_manager.py:299-388`.
+- **Change**: `async def write_config(self, data: "dict[str, CfgValue]", *, defer: bool = False) -> "tuple[bool,
+  WriteValidity]"` (the `cfg_vals` parameter goes; the manager's own schema is used). Before the lock: `if self._closed:
+  self.pr.evt(self._config_file, "- writes closed for reset"); return False, {}`; `if not self.valid:` persisted
+  `_ERR_CFG_NOT_VALID`, `return False, {}`; `if not self.writable: self.pr.evt(self._config_file, "- unreadable at boot,
+  writes refused until the next boot"); return False, {}`. Under `async with self._config_lock:` — first the same
+  `_closed` check (A.S0930.16 (1)); `try: outcome = compare_before_write(data, self.cfg_vals, self._current(),
+  always=<the special-alone keys of self.cfg_vals>, resolution=<every "float" field → _stored_float>)` / `except
+  MemoryError as e:` `_ERR_ALLOC`, `return False, {}`; `outcome is None` → `err_s(…, "- write data is not an object",
+  errno=_ERR_BAD_ARG)`, `return False, {}`; per outcome the logging of HEAD (`INVALID` → `_ERR_BAD_ARG`, a key missing
+  from the stored config → `_ERR_CONTRACT`, a special-alone key → `VALID` and the `:336` evt line); no bad-default branch
+  (the manager's schema passed `setup()`'s self-check; comment "# the manager's own schema passed setup()'s self-check,
+  and a malformed schema fails tests_scripts/test_config_schemas.py"); nothing to write → `:349` evt, `return True,
+  results`; else `new_cache = dict(self._current())` updated with the float fields' `_stored_float(value)`; `if defer:
+  self._commit_ready.clear()` else `self._commit_ready.set()`; `try: task = asyncio.create_task(self._flush_staged(
+  new_cache))` / `except MemoryError as e:` `_ERR_ALLOC`, restore `_commit_ready.set()` if it was cleared, `return False,
+  {}`; then `self._staged = new_cache`; `self._pending_flush = task` (no await between); `:355` evt; `return True,
+  results`. `_flush_staged(staged)`: whole body in `try:` / outer `except Exception as e: report_if_fatal(e); await
+  self.pr.err_s(self._config_file, "- flush task failed:", e, errno=_ERR_UNEXPECTED)`; inside: `await
+  self._commit_ready.wait()`; `async with self._config_lock:` superseded check (`self._staged is not staged` → return,
+  comment "# A newer snapshot was staged while this one waited for its commit or the lock: writing this one / # would
+  regress a replaced value."); `try:` `if staged != self._cache: text = json.dumps(staged)`, `with open(self._config_file,
+  "w") as f: f.write(text)`, evt "written"`; `except (MemoryError, OSError, ValueError) as e:` `_ERR_CFG_FILE_WRITE`
+  (comment kept); `finally:` the bookkeeping `:384-388` unchanged.
+- **Resolved**: A.U11.22 (create the task, then stage) and A.U11.28 (a deferred task waits on `_commit_ready`) keep
+  their order (A.U11.28 says so). A.U11.04's "checked first, before the lock" + A.S0930.16's re-check inside the lock →
+  both (SUPP conflict 1). A.U2.07's `:356` split (`MemoryError` → 20, `AttributeError` → 21) is superseded: A.U4.02 moves
+  the non-dict case into the primitive's `None` (21) and A.U35.43 removes the `AttributeError` class; the remaining
+  allocation failure keeps 20. A.U11.23 applies to both write sites (flush here, repair in M.SRC_CORE.043).
+- **Unit**: U11 (U4 stage: the primitive inside; U2 names; U19 constants swap; U30 `report_if_fatal`; A.U35.43 pulled
+  into U11 — its reachability fact needs A.U11.28's deferral, which lands here, and its removals are the same lines).
+- **Depends**: M.SRC_CORE.047, .049; M.SRC_CORE.038 (callers pass `defer=True` and commit).
+- **Blast carried by**: callers `SensorReaderConfig._set_mgr_cfg()` (M.SRC_CORE.040), `SystemService._set_dict_cfg()`
+  (M.SRC_CORE.017), `AsyConnTime._set_mgr_cfg()` → A.U11.24/A.U11.28 (SRC_NET); every test passing a second
+  `write_config()` argument (counts in A.U11.24) and device scripts (`system_debug_level_*`, `reboot_persist_*`,
+  `isl29125_mechanism_envelope.py`) → A.U11.24 (TEST_UNIT, HW_DEV); `tests_hardware/flash/test_reboot_persistence.py`,
+  `bench/test_network_resilience.py`, `tests_hardware/README.md` call shape → A.U11.24 (HW_DEV, HW_BENCH); L1 cases
+  (task-creation failure, deferred supersede, flush equal to file, serialise first, flush-task top) → A.U11.22,
+  A.U11.28, A.U35.43, A.U11.23, A.U10.20 (TEST_UNIT); `tests/test_config_manager.py:2529-2541` source pins (one
+  `create_task(`, zero `json.dump(`) → A.U11.23/A.U11.28 (TEST_UNIT); `tests_scripts/test_device_script_config_flush.py`
+  → A.U11.28 (TSC); task-inventory row (config flush) → A.U10.19 (SPEC/TSC); SPEC C.5/C.5.2/C.7.3/F.2 → A.U4.02,
+  A.U11.25, A.U11.28, A.U35.43 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.041 Closing and flushing for a reset
+- **From**: A.U11.04 (`close_writes()`, `flush_pending()` releases a deferred flush), A.U11.28 (`commit()`),
+  A.S0930.16 (2) (read `_pending_flush` under the lock).
+- **Site**: `src/config_manager.py:390-400` `flush_pending()`; new `close_writes()`, `commit()`.
+- **Change**: `def close_writes(self) -> None: self._closed = True` (one-way). `def commit(self) -> None:
+  self._commit_ready.set()`. `async def flush_pending(self) -> None`: `self._commit_ready.set()`; `async with
+  self._config_lock: pending = self._pending_flush`; `if pending is not None: await pending`; comment (≤ 3 lines) "#
+  Releases a deferred flush, then awaits the latest flush task read under the lock, so a write_config() / # that held the
+  lock has finished staging first; an earlier, superseded task no-ops by its identity check."
+- **Resolved**: SUPP conflict 1 (additive).
+- **Unit**: U11.
+- **Depends**: M.SRC_CORE.044.
+- **Blast carried by**: callers `_flush_config_stores()` (M.SRC_CORE.010), device scripts' flush guard →
+  A.U11.28 (TSC `test_device_script_config_flush.py`); L1 close tests → A.U11.04, A.S0930.21/.22 (TEST_UNIT); SPEC
+  C.5.2/C.7.3 "a closed store refuses writes" → A.S0930.16 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.042 A store deletes its own file for "Reset to defaults"
+- **From**: A.S0930.16 (3).
+- **Site**: `src/config_manager.py` new `delete_file()`.
+- **Change**: exactly A.S0930.16 (3): `async def delete_file(self) -> bool`: `self.close_writes()`; `async with
+  self._config_lock:` `os.remove(self._config_file)`, `except OSError as e:` ENOENT → `True`; otherwise one retry, a second
+  failure → `self.pr.err(self._config_file, "- could not be deleted:", e)`, `False`; success → `self.pr.evt(…, "- deleted,
+  defaults at the next boot")`, `True`. Comment (≤ 3 lines) "# Reset to defaults (owner, 2026-09-30): the next boot
+  serves the schema defaults; the SCD30 keeps its / # settings in its own NVM and has no file."
+- **Resolved**: the comment's SCD30 clause holds for the chip settings; after A.U15.12 SCD30 owns a `config_SCD30.cfg`
+  for its three FRC settings, which the reset deletes like every other store's (OR124.a "every schema-backed
+  `config_<name>.cfg`") — the comment reads "the SCD30's chip settings stay in its own NVM" (agent, 2026-10-01).
+- **Unit**: U11.
+- **Depends**: M.SRC_CORE.041, M.SRC_CORE.049 (`errno` import).
+- **Blast carried by**: caller S5 (M.SRC_CORE.011); tests → A.S0930.21/.25/.27/.28/.29 (TEST_UNIT, TWIN, HW_DEV,
+  HW_BENCH, `persistence_write` gate A.S0930.19); SPEC C.5.2/C.7.3 → A.S0930.16/.30 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.043 `setup()`: missing file writes nothing; unreadable never overwritten; repair serialises first
+- **From**: A.U11.19, A.U11.20, A.U11.23 (repair half), A.U35.43 (2) (`:423`, `:479` `TypeError`), A.U2.07, A.U10.21,
+  A.U36.004 (7), A.U10.45.
+- **Site**: `src/config_manager.py:402-485`.
+- **Change**: `async def setup(self) -> bool`; `await self.pr.setup()` with the `:403-405` comment's cite → "(the implicit
+  FRAM-wiring rule, SPECIFICATION.md A.7)". Read: directory → `_ERR_CFG_PATH_IS_DIR`, `return False`; non-object →
+  `_WRN_CFG_FILE_NOT_OBJECT`; bad JSON → `_WRN_CFG_FILE_JSON`; `except OSError as e:` `e.errno == errno.ENOENT` →
+  `missing = True`, `self.pr.one("Config file", self._config_file, "not present - defaults in RAM until the first
+  change")`; any other `OSError` and `except MemoryError` → `await self.pr.wrn_s("Config file", self._config_file, "could
+  not be read:", e, wrnno=_WRN_CFG_FILE_UNREADABLE)`, `self.writable = False`. Schema loop as HEAD with `_ERR_CFG_NO_DEFAULTS`
+  / `_ERR_CFG_BAD_DEFAULT` (`return False`) and `_WRN_STORED_DEFAULT`; `rewrite` only from a readable file (bad or missing
+  key, unknown keys → `_WRN_CFG_KEYS_REMOVED`, a readable file with corrupt JSON or a non-object). Then `self._cache =
+  valid_cfg`, `self.valid = True`; no write when `missing`, when not `writable`, when `valid_cfg` is empty (every field
+  special-alone: `self.pr.one(…, "- schema stores no values, no file")`) or when nothing needs repair; otherwise the one
+  repair write: `text = json.dumps(valid_cfg)`, then `with open(…, "w") as f: f.write(text)`, `except (MemoryError,
+  OSError) as e:` `_ERR_CFG_FILE_WRITE` (comments `:480`, `:482-483` kept). `return self.valid`.
+- **Resolved**: A.U11.19 (missing) and A.U11.20 (unreadable) split HEAD's one `except (MemoryError, OSError, TypeError)`
+  by errno; A.U35.43 drops `TypeError` (the filename is a typed `str`).
+- **Unit**: U11 (U2 names as stage).
+- **Depends**: M.SRC_CORE.049, .047.
+- **Blast carried by**: SystemService reads `writable` (M.SRC_CORE.017); tests `tests/test_config_manager.py` (A.U11.19's
+  list `:838-846`, `:1074-1126`, `:1347-1356`, `:2275-2509`; A.U11.20's `:2275-2298`), `tests/test_base_classes.py:1013-1016,
+  1449-1452` → A.U11.19, A.U11.20, A.U11.23 (TEST_UNIT); twin configs start empty → holds (TWIN, README note A.U11.19);
+  L0 "normal boot logs nothing" → A.U35.38/.39 (TSC, TWIN); mockdata W22/W24 rows → A.U2.25/A.U3.15 (WEB); SPEC C.7.3,
+  C.5.2.1, LEAD/R32 register fix 2 → A.U11.19, A.U11.20 (SPEC, register).
 - **Kind**: code

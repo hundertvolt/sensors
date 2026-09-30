@@ -37,7 +37,7 @@ change lists its stages; the end state is the last stage's.
 - **Resolved**: A.U1.23 (U1) rewrote the docstring's "see modules/_boot.py" to the legacy path; A.U20.15 (U20, later,
   the generator's owner) makes it a generator-only statement with no legacy reference — A.U20.15 wins (later unit,
   same line; CLAUDE.md "legacy tree is reference-only"). A.U25.69 is firm (AC_NOTES 25/33/37, OR126.a (1)): the four
-  keywords stay; the no-autostart line names them.
+  keywords stay; the no-autostart line names them. The wording of that comment line is agent decision D8.
 - **Unit**: U20 (U1 stage dropped: A.U1.23's text never lands).
 - **Depends**: M.GEN.002, M.GEN.006 (`main(*, watchdog, …)`), M.GEN.019 (`boot_entry_noautostart_source`);
   A.U27.06 (which variant is frozen as `main.py`, SCR).
@@ -281,21 +281,23 @@ change lists its stages; the end state is the last stage's.
 - **Kind**: code
 
 ### M.GEN.010 Emitted collectors: setups, starters, names, stores
-- **From**: A.U20.06 (2)(5), A.U20.15 (`:661` comment, dropped), A.U10.10 (webserver last), A.U10.12 (trigger starters), A.U16.17/A.U16.R03 (fram
+- **From**: A.U20.06 (2)(5), A.U20.15 (`:661` comment, dropped), A.U10.21 (setup returns `bool`), A.U10.10 (webserver
+  last), A.U10.12 (trigger starters), A.U16.17/A.U16.R03 (fram
   included), A.U32.06 (`_collect_task_names`), A.U11.03/A.U11.S04 (config stores — emitted by M.GEN.007, listed in
   the order here), A.U11.13/A.U20.41 (3) (level-setter type), A.U10.46 (no `Any`), A.U36.038 (3) (D.15 emission
   order), A.U28.27 (RUF005 at `:655`).
 - **Site**: `buildgen/codegen.py:654-693` `_module_names()`, `_emit_collectors()`.
 - **Change**: emitted `_collect_error_sources() -> "list[ErrorSource]"`, `_collect_level_setters() ->
   "list[Callable[[int], bool]]"` (local `setters: list[Callable[[int], bool]]`), `_collect_setups() ->
-  "list[Callable[[], Awaitable[None]]]"` with the comment "# fram first: sysfunct's config store logs to it; then the
+  "list[Callable[[], Awaitable[bool]]]"` (A.U10.21's `setup() -> bool` contract) with the comment "# fram first: sysfunct's config store logs to it; then the
   mandatory services; then the rest in construction order" returning `fram.setup` (if declared), `sysfunct.setup`,
   `conn.setup`, `ntp.setup`, every `needs_setup` instance in construction order (skipping fram; every `SensorReader`
   now included, M.GEN.041), `webserver.setup` last; `_collect_task_starters()` and `_collect_timer_starters()`
   including `fram`'s; `_collect_trigger_starters()` (each reader's `get_trigger_starters()`, bus-spread order per
   A.U10.12); `_collect_task_names()` (one name per starter, same order); `_collect_config_stores()`. Emission order
   follows D.15. `_module_names()` builds its list by unpacking (`["conn", "ntp", *(...)]`).
-- **Resolved**: A.U20.06 (5) "collectors exclude fram" vs A.U16.17/A.U16.R03 (fram's task/timer starters join) —
+- **Resolved**: A.U20.06 (2) types the setup list `Awaitable[None]`; A.U10.21 makes every `setup()` return `bool`
+  (read by `run_setups()` for FRAM's) — `Awaitable[bool]`. A.U20.06 (5) "collectors exclude fram" vs A.U16.17/A.U16.R03 (fram's task/timer starters join) —
   A.U16.R03 wins (OR89.a (5); later SUPP recovery ruling naming this template). A.U20.15's rewrite of the `:661`
   exclusion comment ("a synchronous store has no task or timer") is dropped: the exclusion and its comment go.
 - **Unit**: U36 (A.U36.038's order — pure move, last). Stages: U10 (A.U10.10 webserver/SensorReader setups,
@@ -482,7 +484,7 @@ change lists its stages; the end state is the last stage's.
   line `buildgen: <message>` on stderr, exit 1), writes each output to `<name>.tmp` then `os.replace()`, and ends
   `if __name__ == "__main__": raise SystemExit(main())`.
 - **Resolved**: A.U8.18 tagged two sites; one constant with one tag serves both (the tag rule wants the literal on
-  the next line — two literals would need two tags; one constant is the smaller change, same ID). Agent decision D6.
+  the next line — two literals would need two tags; one constant is the smaller change, same ID). Agent decision D5.
 - **Unit**: U27 (latest: A.U27.29). Stages: U6 (`definitions_for_toml`), U8 (tag), U19 (api reference), U20 (CLI
   errors, types).
 - **Depends**: M.GEN.033 (api_reference.py), M.GEN.022.
@@ -1069,3 +1071,675 @@ change lists its stages; the end state is the last stage's.
 - **Blast carried by**: `tests_scripts/test_buildgen_value_wiring.py`, `test_buildgen_tag_comments.py:369` → A.U5.11
   (TST).
 - **Kind**: code
+
+## devices/dev.toml
+
+### M.GEN.052 dev header and `[device]`: bench key, wiring comment
+- **From**: A.U26.01 (2) (`bench = true`), A.U20.23 (`[device.wiring]` comment), A.U13.04/A.U35.21/A.U31.01/A.U24.66/
+  A.U7.16/A.U10.R01/A.U36.529/A.U15.39/A.U26.24/A.U35.33/A.U36.022 (read: cite values, no edit), A.U0.23/A.U1.04/A.U1.08
+  (Blast pointers to `:38`/`:153-154`, carried by M.GEN.053/.054).
+- **Site**: `devices/dev.toml:4-19` (`[device]`, `[device.wiring]` comment).
+- **Change**: `[device]` gains, after `max_connections`, `# The board on the bench: flashed and tested by
+  tests_hardware/ (owner, 2026-09-03; the only one flashed).` / `bench = true`; `:16` → `# Mandatory-infra-to-instance
+  links; each optional, absence disables that link (owner, 2026-09-09).`
+- **Resolved**: —
+- **Unit**: U26 (latest: A.U26.01); A.U20.23's comment in U20.
+- **Depends**: M.GEN.025/026 (`bench` accepted).
+- **Blast carried by**: `tests_hardware/harness.py` → A.U26.01 (HW).
+- **Kind**: code
+
+### M.GEN.053 dev bus tables: crossover comment, tunable tags
+- **From**: A.U1.24 (`:38` repath), A.U13.17 (`:39-40` text), A.U8.06 (`dev.uart_*` tags on both UART tables),
+  AC_NOTES 6 (actor tag form), A.U13.13/A.U31.01/A.U35.33 (read).
+- **Site**: `devices/dev.toml:38-57`.
+- **Change**: comment (≤ 3 lines, ≤ 100 characters each): `# The bench's UART0<->UART1 crossover jumper (GP0<->GP9,
+  GP1<->GP8; tests_hardware/README.md` / `# 'The dev bench') makes Part J.7's self-compatibility testable. Buffers fit
+  the real 53-byte` / `# frame (J.6); the poll rates equal the driver defaults, stated so the build checks read them
+  here.`; in `[bus.uart0]` and `[bus.uart1]` each of `rxbuf`, `txbuf`, `poll_wait_ms`, `poll_idle_ms` is preceded by its
+  tag (`# @tunable dev.uart_rxbuf = 512`, `# @tunable dev.uart_txbuf = 512`, `# @tunable dev.uart_poll_wait_ms = 2`,
+  `# @tunable dev.uart_poll_idle_ms = 50`); values unchanged.
+- **Resolved**: A.U1.24 and A.U13.17 rewrite the same 3-line block — merged, rewrapped to stay within the cap and the
+  file's 100-character width (wording tightened, facts unchanged). Agent decision D4.
+- **Unit**: U13 (latest content constituent); tags U8 (tag lines are independent lines); A.U1.24's pointer lands in
+  U1 and is rewritten in U13.
+- **Depends**: A.U1.04 (the README section exists), A.U13.17 (driver defaults become 2/50).
+- **Blast carried by**: Part N rows `dev.uart_*` → A.U8.06 (SPEC); A.U8.02 tag check (TST).
+- **Kind**: doc
+
+### M.GEN.054 dev instances and sections: trigger_s, banners, link comment
+- **From**: A.U10.43 (`trigger_s`), A.U16.01 (`:96-98`), A.U20.29 (banners 100 chars; `:148` title `multi-instance
+  services`), A.U20.23 (`:135` per-signal comment), A.U20.15 (`:150-151` "WP3" goes), A.U0.28 (`:153-154` tag),
+  A.S0930.01 (6) (crc line), A.U20.10 (read: `:118` already names the part).
+- **Site**: `devices/dev.toml:59-172`.
+- **Change**: SCD30 `trigger_s = 3`; ISL29125 comment first line `# ISL29125: real dev-board wiring (i2c1, GPIO6 IRQ),
+  bench-validated.` (the chunk-order sentence goes); banners `# --- sensor drivers ` / `# --- singleton services ` /
+  `# --- multi-instance services ` each padded with `-` to exactly 100 characters; `:135` → `# Per-signal getters -
+  each optional; absence disables that warning signal (owner, 2026-09-09).`; the link section comment: `# Each end gets
+  its own fram_target chunk, so a fault on one end stays attributable (only the` / `# link's own error history is made
+  durable, Part J.1).` / `#` / `# crc (optional, per end): "none" (default) or "crc16"; both ends must agree (Part
+  J.6).` / `#` / `# wozi never gets a UART instance: it is never flashed, so the peripheral would be untestable` /
+  `# (agent, 2026-09-11; CLAUDE.md).` — no `crc` key added.
+- **Resolved**: A.U20.15/A.U0.28/A.S0930.01 edit separate paragraphs of one block — all kept, each paragraph ≤ 3 lines.
+- **Unit**: U20 (latest among U10/U16/U20/SUPP-U20); A.U0.28's tag lands in U0, A.U16.01's deletion in U16, `trigger_s`
+  in U10.
+- **Depends**: M.GEN.024 (`trigger_s`, `crc` keys), M.GEN.028.
+- **Blast carried by**: banner/layout guard → A.U20.29 (TST).
+- **Kind**: code
+
+## devices/wozi.toml
+
+### M.GEN.055 wozi: header, trigger_s, banners, wiring comments
+- **From**: A.U36.520 (`:1-2`), A.U10.43, A.U20.29, A.U20.23 (`:16`, `:98`), A.U20.10 (read: `:81` already names
+  the part), A.U13.04/A.U10.R01 (read).
+- **Site**: `devices/wozi.toml:1-3, 16, 38, 45, 75, 98`.
+- **Change**: header → `# wozi.toml - the exemplary/base device; never physically flashed, its correctness comes from
+  tests/ (CLAUDE.md).` / `# Wiring sourced from legacy/firmware/modules/sensortask-wozi.py (legacy, read-only
+  reference); bmp3xx's 0x77 is the legacy driver's default.` / `# The source of truth buildgen reads (SPECIFICATION.md
+  Part L).`; `trigger_s = 3` (every sensor instance); the two banners at 100 characters with titles `sensor drivers`,
+  `singleton services`; `:16` and `:98` as in M.GEN.052/.054.
+- **Resolved**: —
+- **Unit**: U36 (latest: A.U36.520); stages U10 (`trigger_s`), U20 (banners, comments).
+- **Depends**: A.U1.01 (legacy move, LEGACY/DOC cluster), M.GEN.024.
+- **Blast carried by**: —
+- **Kind**: doc
+
+## devices/arzi.toml
+
+### M.GEN.056 arzi: legacy path, FRAM part, trigger_s, banners, comments
+- **From**: A.U1.24 (`:2`), A.U20.10 (`:71-72`), A.U10.43, A.U20.29, A.U20.23 (`:16`, `:88`).
+- **Site**: `devices/arzi.toml:2, 16, 38, 45, 66, 71-72, 88`.
+- **Change**: `:2` "Wiring sourced from legacy/firmware/modules/sensortask-arzi.py (legacy, read-only reference)."; `#
+  MB85RS64V, 8KB.` directly above `max_size = 0x2000`; `trigger_s = 3`; banners at 100 characters; the two wiring
+  comments as in M.GEN.052/.054. No `hardware_family` (A.U20.19 sets it on the three "neu" units only).
+- **Resolved**: —
+- **Unit**: U20 (stages U1 path, U10 key).
+- **Depends**: A.U1.01, M.GEN.024.
+- **Blast carried by**: FRAM part-comment guard → A.U20.10 (TST).
+- **Kind**: doc
+
+## devices/grkizi.toml
+
+### M.GEN.057 grkizi: legacy path, FRAM part, family, trigger_s, banners
+- **From**: A.U1.24 (`:3`), A.U20.10 (`:72-73`), A.U20.19 (`hardware_family`), A.U10.43, A.U20.29, A.U20.23 (`:17`,
+  `:89`).
+- **Site**: `devices/grkizi.toml:3, [device], 17, 39, 46, 67, 72-73, 89`.
+- **Change**: `:3` "Wiring sourced from legacy/firmware/modules/sensortask-neu.py (legacy, read-only reference).";
+  `[device]` gains `hardware_family = "arzi-neu"`; `# MB85RS64V, 8KB.` above `max_size`; `trigger_s = 3`; banners at
+  100 characters; wiring comments as in M.GEN.052/.054.
+- **Resolved**: —
+- **Unit**: U20 (stages U1, U10).
+- **Depends**: M.GEN.025/026 (`hardware_family` accepted), M.GEN.024.
+- **Blast carried by**: family test → A.U20.19 (TST).
+- **Kind**: code
+
+## devices/klkizi.toml
+
+### M.GEN.058 klkizi: the same edits as grkizi
+- **From**: A.U1.24, A.U20.10, A.U20.19, A.U10.43, A.U20.29, A.U20.23.
+- **Site**: `devices/klkizi.toml:3, [device], 17, 39, 46, 67, 72-73, 89`.
+- **Change**: identical to M.GEN.057 (legacy path to `sensortask-neu.py`, `hardware_family = "arzi-neu"`, part
+  comment, `trigger_s`, banners, wiring comments).
+- **Resolved**: —
+- **Unit**: U20 (stages U1, U10).
+- **Depends**: as M.GEN.057.
+- **Blast carried by**: as M.GEN.057.
+- **Kind**: code
+
+## devices/schlafzi.toml
+
+### M.GEN.059 schlafzi: the same edits as grkizi
+- **From**: A.U1.24, A.U20.10, A.U20.19, A.U10.43, A.U20.29, A.U20.23.
+- **Site**: `devices/schlafzi.toml:3, [device], 17, 39, 46, 67, 72-73, 89`.
+- **Change**: identical to M.GEN.057.
+- **Resolved**: —
+- **Unit**: U20 (stages U1, U10).
+- **Depends**: as M.GEN.057.
+- **Blast carried by**: as M.GEN.057.
+- **Kind**: code
+
+## html/index.html
+
+### M.GEN.060 Page shell: header, favicon link, inert drawer, banner attribute
+- **From**: A.U27.28 (header after doctype), A.U23.39 (`:7` favicon link), A.U23.43 (2) (`:22` starts `inert`),
+  A.U23.42 (`:24` `data-shown`), A.U23.38 (`:40-43` comment), A.U23.45 (read: its index clause lands via A.U23.38),
+  A.U28.24/A.U36.516/A.U36.517/A.U6.07/A.U23.07/A.U36.501 (read: preview URL, import path, bootstrap call unchanged).
+- **Site**: `html/index.html:1-48`.
+- **Change**: after `<!DOCTYPE html>` a `<!-- … -->` header of ≤ 3 lines naming the page ("The device website's one
+  page: shell markup and the bootstrap that starts js/main.js; staged per device by scripts/_stage_website.py.");
+  `:7` `<link rel="icon" href="favicon.ico">` (inlined as a data URI at staging); the nav element `:22` carries
+  `inert`; the banner `:24` loses `hidden` and gains `data-shown="false"`; the bootstrap comment `:40-43` → "Present
+  only in a device build (scripts/_stage_website.py inlines it); null under npm run preview, where loadDefinitions()
+  fetches definitions.json." The hamburger `:13` keeps its markup (its `aria-label` is set by `js/nav.js`).
+- **Resolved**: — (the header's wording is agent decision D7)
+- **Unit**: U27 (latest: A.U27.28); stage U23 for the rest.
+- **Depends**: M.GEN.061, M.GEN.062; A.U23.38 (staging script, SCR).
+- **Blast carried by**: staged-page checks → A.U23.38/A.U23.39 (SCR/TST); `js/nav.js`, `js/render.js` → A.U23.42/.43
+  (WEB); comment-cap gate → A.U27.28 (TST).
+- **Kind**: code
+
+## html/favicon.ico (new)
+
+### M.GEN.061 Restore the legacy favicon file
+- **From**: A.U23.39.
+- **Site**: new `html/favicon.ico`.
+- **Change**: a one-image 16×16 ICO (1150 B) built from the legacy icon: ICONDIR `(0, 1, 1)`, the 16×16 ICONDIRENTRY
+  with `dwImageOffset` 22, then the 1128 image bytes from legacy offset 54 (the legacy file is only read, never
+  changed); the staging step inlines it as `data:image/x-icon;base64,…`, so a page load still opens two connections
+  (agent, 2026-09-30).
+- **Resolved**: —
+- **Unit**: U23
+- **Depends**: M.GEN.060.
+- **Blast carried by**: `tests_scripts/test_stage_website.py` → A.U23.39 (TST); A.U8.18's per-engine connection
+  count stays 2 (TST).
+- **Kind**: code
+
+## html/style.css
+
+### M.GEN.062 Stylesheet: AA tokens, data-attribute states, cues, comments
+- **From**: A.U23.44 (tokens, `color-scheme`, control border), A.U23.42 (`.nav-open` → `[data-nav-open]`, banner
+  `[data-shown]`), A.U23.43 (4)(5)(6) (password selector, reduced motion, double-border stripes; pill border cue
+  dropped), A.U23.12 (`data-has-errors` → `data-worst`), A.U23.11 (two unavailable/no-data rules), A.U23.20 (pill
+  button reset, `.code-description`, three `[data-code-tone]` rules), A.U23.23 (`.field-warning`), A.U0.28 (`:3` tag), A.U23.45 (`:314-316`), A.U36.507 (`:411-413`).
+- **Site**: `html/style.css:1-480`.
+- **Change**: header `:3` "… no manual toggle (owner, 2026-08-21)."; tokens: light `--color-success #197f45`,
+  `--color-danger #cb2d2d`, `--color-warn #8d4cc3`, new `--color-control-border` (light `#8790a0`, dark `#6b7482`) on
+  inputs, selects, toggles and action buttons, `:root { color-scheme: light dark; }`; `.app-shell[data-nav-open="true"]`
+  replaces `.app-shell.nav-open` (`:125, :145`); `.error-banner:not([data-shown="true"]) { display: none; }`; the input
+  selector `:261-263` adds `input[type="password"]`; `@media (prefers-reduced-motion: reduce) { .nav-backdrop,
+  .nav-drawer { transition: none; } }`; apply-status `invalid`/`failed` stripes use `border-left-style: double`;
+  `.errcount-row-wrapper[data-worst="E"|"W"] .errcount-row-count` colours replace `.errcount-row[data-has-errors="true"]`,
+  `[data-worst="none"]` muted; `[data-source-state="unavailable"] .field-value` muted italic; `.history-entry-num` as a
+  button with chrome reset (looks as today, `cursor: pointer`), `.code-description`, `[data-code-tone="good"|"neutral"|
+  "warn"]`; `.field-warning` in the warn token; `:314-316` one line ending "(SPECIFICATION.md Part
+  H.4)"; `:411-413` → "a module carries up to history_length (10) entries, each a small number, so a strip reads as
+  "one module's recent history at a glance" where a stack wastes height." `.hidden` stays as the templates utility.
+- **Resolved**: AC_NOTES 26/37 — A.U23.43 (6)'s per-type pill border cue dropped (OR94 "don't change the current
+  look", owner-accepted OR126.a). The token darkening (A.U23.44) against the same OR94 words is raised as Q2 (pending
+  Q2; recommended: apply).
+- **Unit**: U23 (all constituents U23; A.U0.28's tag in U0, A.U36.507's comment in U36 as stages).
+- **Depends**: M.GEN.060; the JS writers of each attribute (WEB cluster).
+- **Blast carried by**: `tests_scripts/test_website_tokens.py` → A.U23.44 (TST); `tests_js/templates.test.js`
+  `data-worst` → A.U23.12 (TST); Stylelint unaffected.
+- **Kind**: code
+
+## html/definitions/dev.json, html/definitions/wozi.json
+
+### M.GEN.063 Delete the two hand-written definitions files
+- **From**: A.U6.04; dropped constituents (edits to files that no longer exist): A.U8.18 (hand-copy sites), A.U9.01
+  (hand-copy help text), A.U15.11, A.U15.23, A.U15.36, A.U15.44 (Blast edits), A.S0930.10 (Blast: options), A.U36.515
+  (Why/Change on `wozi.json`).
+- **Site**: `html/definitions/dev.json`, `html/definitions/wozi.json` (whole files).
+- **Change**: both files are deleted; every device's definitions come from `buildgen/definitions.py` into
+  `build/generated_src/definitions/` (A.U6.02).
+- **Resolved**: each dropped constituent edits a copy A.U6.04 deletes; the generated definitions carry their content
+  (A.U9.01 names this itself: "unless A.U6.04 has landed").
+- **Unit**: U6
+- **Depends**: A.U6.02, A.U6.05 (consumers switched first, WEB/SCR).
+- **Blast carried by**: `tests_scripts/test_buildgen_definitions.py` golden test → A.U6.04 (TST); `js/app.js`/tests →
+  A.U6.05/A.U6.07 (WEB).
+- **Kind**: code
+
+## ext/microdot.py, ext/LICENSE-microdot
+
+### M.GEN.051 Re-vendor Microdot at the refreshed tag, unmodified
+- **From**: A.SDEP.06 (the one allowed change), A.U19.18 (hash pin table follows the tag), A.U34.12 (licence entry
+  follows the tag), A.U34.09/A.U36.547/A.U36.527/A.U36.544/A.SDEP.18/A.SDEP.23/A.U0.44/A.U14.03/A.U14.29/A.U18.43/
+  A.U19.06/.07/.08/.19/.23/A.U26.55/A.U30.18/.19/A.C.13 (read: Microdot semantics cited, no edit).
+- **Site**: `ext/microdot.py`, `ext/LICENSE-microdot` (whole files).
+- **Change**: if the newest upstream tag is newer than `v2.6.2` (upstream `v2.7.0` exists), both files are replaced
+  byte-for-byte by that tag's `src/microdot/microdot.py` and `LICENSE`; otherwise unchanged. No other edit, ever.
+- **Resolved**: —
+- **Unit**: U0 (dependency refresh, before every B1 action; OR129/AC_NOTES 34-second).
+- **Depends**: A.SDEP.01 (hold-back rule), A.SDEP.23 (citation re-check after a move).
+- **Blast carried by**: `tests_scripts/test_vendored_microdot.py` hashes → A.U19.18 (TST); THIRD_PARTY_LICENSES.md →
+  A.U34.12 (DOC); SPEC/CLAUDE.md version literals → A.SDEP.06 (SPEC/DOC).
+- **Kind**: code
+
+## ext/typings/microdot/*.pyi (new)
+
+### M.GEN.050 Upstream Microdot stubs under ext/ — pending Q1
+- **From**: A.U8.23 (copy three stubs unmodified), A.U34.12 (licence entry), A.U19.18 (hash pins), A.U20.14 (2)
+  (generated `microdot` import loses its ignore through the stub).
+- **Site**: new `ext/typings/microdot/__init__.pyi`, `microdot.pyi`, `multipart.pyi`.
+- **Change** (pending Q1, recommended option (a)): the three files are byte-identical copies of upstream's
+  `typings/microdot/` at the same tag M.GEN.051 vendors, added in the same U0 re-vendor commit and hash-pinned by
+  A.U19.18's table; never edited. Option (b) places them outside `ext/` instead (see Q1).
+- **Resolved**: FLAG — an action adding files under `ext/` other than the refresh's re-vendor; CLAUDE.md/OR24.a (2)
+  "vendored ext/ … never touched" vs A.U8.23 → Q1.
+- **Unit**: U0 under option (a) (joins M.GEN.051); U8 under option (b).
+- **Depends**: M.GEN.051.
+- **Blast carried by**: `pyproject.toml` `mypy_path` → A.U8.23 (CFG); the reworded comments in `src/` → A.U8.23
+  (SRC_NET); M.GEN.003 (no ignore on the emitted import).
+- **Kind**: code
+
+## Gaps for other clusters
+
+1. **Boot-entry file name** (SCR/TST): M.GEN.019 settles the generated boot entry as `sensortask_<device>_main.py`
+   (and `…_main_noautostart.py`); A.U24.54 writes/globs `build/generated_src/<device>_boot.py` — its writer in
+   `scripts/_generate_sensortask_modules.py` and `tests/test_reset_call_site_invariant.py`'s glob follow the new name.
+2. **NTP provider name in A.U24.44's test** (TST): the new L0 test asserts `conn.network_available` as the NTP
+   constructor's second argument; A.U10.18 renames it `conn.network_available_locked` (M.GEN.005) — the assertion
+   follows the rename.
+3. **A.U20.28 (3) contract test** (TST/TWIN): it asserts the generated `main()` keywords *equal* those the twin runner
+   passes (`watchdog`, `cfg_path`, `web_host`, `web_port`), but A.U25.69 keeps `debug` too (M.GEN.006) — the check
+   must be "runner's keywords ⊆ `main()`'s" (or the runner passes `debug`); its `uart` keys are `initiator_bus`/
+   `responder_bus` (M.GEN.043, A.U17.18), not `initiator_var`/`responder_var`.
+4. **Stale "generated lightCmdLED dispatch" wording** (SRC_CORE): A.U11.30's new `config_manager.py:126-127` comment
+   and A.U11.17's Blast say the generated module passes synthetic `FieldSchema`s; after A.U19.02 (M.GEN.008) they live
+   in `asy_webserver_service._LIGHT_CMD_FIELDS` — the comment names the webserver.
+5. **`SystemService` API the template calls** (SRC_CORE) must exist exactly as M.GEN.005/006/008 emit it:
+   `begin_boot()`, `BOOT_SETUP/TASKS/TIMERS/NTP/DONE`, `boot_phase()`, `run_setups(list) ` (feeds per unit, reads
+   FRAM's `bool`), `start_tasks(starters, task_names=)`, `supervise_tasks()`, `start_timers(trigger_starters,
+   timer_starters)`, `reboot_system()`/`reboot_bootloader()`/`reset_to_defaults()`/`erase_fram()` (awaitable, `bool`),
+   `pause_permanent_storage(300) -> bool`, `get_reset_reason()`, `get_last_task_end()`, constructor keywords
+   `watchdog, storage, cfg_path, log, level_setters, config_stores, reset_reason`.
+6. **Webserver/WiFi/NTP/NeoPixel APIs** (SRC_NET/SRC_SENS): `WebserverService(app, routes=, serving=, static=, log=)`,
+   `get_dropped_count()`, `_LIGHT_CMD_FIELDS`, `ROUTES`; `WifiService(WifiConfig(...), ext_led=, log=)`,
+   `get_data()` snapshot with `IP/Subnet/Gateway/DNS/Rssi/TS`, `network_available_locked`; `NTPClient(...,
+   NtpTiming(...))`; `NeopixelDriver.led_signal(r, g, b, t) -> bool`.
+7. **SCD30 chunk count** (TST): A.U15.12's Blast expects `tests/_sensortask_scenarios.py:222-223` to count a
+   `CFGMGR_SCD30` FRAM chunk; AC_NOTES 13 keeps it RAM-only — the expected chunk list gains the SCD30 reader's chunk
+   only.
+8. **`pyproject.toml`** (CFG): the `frozen_html` allowances (A.U20.14 (3)), `mypy_path += "ext/typings"` (A.U8.23,
+   after Q1) and the generated-scope lint rules (A.U28.41/A.U27.09) are that cluster's; no GEN change carries them.
+9. **`buildgen/limits.py`** is listed under no cluster in CLUSTERS.md; GEN took it (M.GEN.037) — CLUSTERS.md should
+   name it under GEN.
+10. **Mention-only tests and docs** named in each "Blast carried by" line above (SPEC Parts A.7, H, L; tests under
+    `tests_scripts/`, `tests/`, `tests_js/`; `js/`) belong to SPEC/TST/WEB/TWIN/SCR and are not repeated here.
+
+## Adherence findings
+
+- **buildgen/codegen.py** (end state M.GEN.001-013): ext never edited → pass; legacy never worked on → pass (no
+  `modules/_boot.py` reference left); no real credentials committed → pass (`_HOTSPOT_PW_DEFAULT` renders the TOML's
+  accepted fallback password into git-ignored `build/generated_src/` only, CLAUDE.md accepted site); UART changes
+  logged → pass (CRC bus wiring is Class B via A.S0930.08, SUPP); `method-assign`/any suppression in generated code →
+  pass (none emitted, A.U20.14); memory discipline/no growth (OR110.a) → pass: allocations are boot-time
+  construction; per-request `/status` adapters build fixed-key dicts, the maintenance group grows only with the
+  device's declared SGP40 count (configuration-bounded; its streaming is SRC_NET's `_stream_dict_response()` rule);
+  boot-confined `gc.collect()` → pass (none emitted; the placement reset lives in `run_setups()`); WDT first statement
+  (OR31.a (1)) → pass; `gc.threshold(32768)` once in the boot entry (OR40.a) → pass; no test-only artifacts (OR36) →
+  pass (the four `main()` keywords are owner-kept, OR126.a (1)); 3-line comment cap → pass (every emitted and template
+  comment ≤ 3 lines); permanent text cites no audit ID → pass (dates/actors only); hardware → none.
+- **buildgen/definitions.py** (M.GEN.014-018): one-source definitions → pass (hand JSON deleted, M.GEN.063); no
+  confirmation dialog (OR122) → pass; comment cap, no audit IDs → pass.
+- **buildgen/validate.py, buildspec.py, model.py, graph.py, schema_ast.py, web_tag.py, tag_comments.py, wiring.py,
+  value_wiring.py, requires_tag.py, defaults.py, driver_registry.py, pico_gpio.py, twin_wiring.py, errors.py,
+  frozen_modules.py, generate.py, limits.py, `__init__.py`, new files** (M.GEN.019-049): no `Any` added (A.U20.32) →
+  pass; every abort path named (A.U20.17) → pass; comment cap and current-state text → pass (all "Session N"/"WP"
+  labels removed).
+- **buildgen/version.py** (M.GEN.021): release number is an agent decision, marked → pass (D1, OR2.c list).
+- **devices/*.toml** (M.GEN.052-059): no new credential (the existing `hotspot_password` values unchanged) → pass;
+  comment cap per paragraph → pass; no variant name in `buildgen/` text → pass; test-read keys `bench` and
+  `hardware_family` are build metadata never emitted into the image → pass under D6 (OR36 scope reading, OR2.c).
+- **html/** (M.GEN.060-063): OR94 "don't change the current look" → pill border cue dropped (pass); status-colour
+  darkening raised as Q2; comment cap → pass; the favicon reads the legacy file only → pass.
+- **ext/** (M.GEN.050-051): M.GEN.051 is the one allowed change (unmodified re-vendor under the U0 refresh) → pass;
+  **M.GEN.050 (A.U8.23) adds files under `ext/` outside that refresh → breach as written; raised as Q1** with the
+  recommended fold into M.GEN.051's re-vendor.
+
+## Owner questions
+
+**Q1. Vendor Microdot's upstream stubs inside `ext/`?** (A.U8.23 against CLAUDE.md/OR24.a (2) "vendored `ext/` …
+never touched"; M.GEN.050)
+- (a) **Recommended**: yes, as part of U0's re-vendor of the same tag, byte-identical, hash-pinned by
+  `tests_scripts/test_vendored_microdot.py` — `ext/` still changes only by re-vendoring an unmodified tag; the
+  `microdot` import ignores go from `src/`, tests and generated code; CLAUDE.md's vendoring rule names the stub files.
+- (b) vendor them outside `ext/` (e.g. a top-level `stubs/microdot/`) — `ext/` literally untouched; a second vendored
+  location to pin and to move at each refresh; `mypy_path` names it.
+- (c) no stubs — the `microdot` ignores stay, and generated code keeps one suppression, contradicting A.U20.14's
+  "generated code carries no suppression" (needs a named exception).
+
+**Q2. Darken three light-theme status colours for AA contrast?** (A.U23.44 against OR94 "don't change the current
+look of the website"; M.GEN.062)
+- (a) **Recommended**: apply — same hues, slightly darker success/danger/warn (≥ 4.5:1), a 3:1 control border and
+  `color-scheme`; the look stays the design, text becomes readable to the WCAG AA bar.
+- (b) only the control border and `color-scheme` — the three status colours stay below 4.5:1 on their light
+  backgrounds.
+- (c) nothing — HEAD's tokens stay; the new token test is not added.
+
+## Agent decisions for the OR2.c review
+
+- **D1** `FIRMWARE_VERSION = WEBSITE_VERSION = "2.0"` (A.U37.11; no owner row sets the number, OR5 asks for a true
+  release) — M.GEN.021.
+- **D2** one boot-entry file name, `sensortask_<device>_main.py`, for the CLI and the batch writer (A.U20.15 over
+  A.U24.54) — M.GEN.019.
+- **D3** `/status` networking keeps both `IP` and `IPv4` (A.U18.33 left it to A.U10.40, which removes neither) —
+  M.GEN.008.
+- **D4** `dev.toml`'s crossover comment rewrapped and tightened to keep 3 lines within 100 characters — M.GEN.053.
+- **D5** one `_POLL_INTERVAL_MS` constant under one `web.poll_interval_ms` tag instead of two tagged literals —
+  M.GEN.018.
+- **D6** TOML keys read only by tests or the harness (`bench`, `hardware_family`) are build metadata, outside OR36's
+  "no test-only artifacts" (never emitted into the image) — M.GEN.025/052/057-059.
+- **D7** wording of `html/index.html`'s new header — M.GEN.060.
+- **D8** the no-autostart boot entry's comment line naming the other `main()` keywords — M.GEN.001.
+- Carried unchanged from constituents: A.U10.40's key scheme (agent, 2026-09-29), A.U23.39's 16×16 favicon (agent,
+  2026-09-30), A.U20.29's banner titles, A.U19.10's values not added, A.U20.06's "first NTP sync last" comment.
+
+## Ledger
+
+| action ID | merged into M-ID / dropped (reason) |
+|---|---|
+| A.C.09 | M.GEN.001 |
+| A.C.13 | M.GEN.051 |
+| A.S0930.01 | M.GEN.024, M.GEN.025, M.GEN.027, M.GEN.028, M.GEN.029, M.GEN.054 |
+| A.S0930.02 | M.GEN.002, M.GEN.003, M.GEN.005, M.GEN.012 |
+| A.S0930.10 | M.GEN.015, M.GEN.063 |
+| A.S0930.11 | M.GEN.007, M.GEN.008 |
+| A.S0930.13 | M.GEN.006 |
+| A.S0930.33 | M.GEN.007 |
+| A.S0930.34 | M.GEN.015 |
+| A.S0930.39 | no change here (hardware script reads the kept `debug` keyword; HW cluster) |
+| A.SDEP.06 | M.GEN.051 |
+| A.SDEP.14 | M.GEN.026 |
+| A.SDEP.18 | M.GEN.051 |
+| A.SDEP.23 | M.GEN.051 |
+| A.U0.07 | M.GEN.025 |
+| A.U0.21 | M.GEN.040 |
+| A.U0.23 | M.GEN.052 |
+| A.U0.28 | M.GEN.054, M.GEN.062 |
+| A.U0.33 | M.GEN.024 |
+| A.U0.35 | M.GEN.005, M.GEN.007 |
+| A.U0.40 | M.GEN.021 (dropped: A.U36.519 rules for its own text) |
+| A.U0.44 | M.GEN.051 |
+| A.U0.52 | M.GEN.027 |
+| A.U1.04 | M.GEN.052 |
+| A.U1.08 | M.GEN.052 |
+| A.U1.21 | no change here (Why names codegen's legacy path; the docstring is M.GEN.001) |
+| A.U1.23 | M.GEN.001 (text dropped: superseded by A.U20.15) |
+| A.U1.24 | M.GEN.053, M.GEN.056, M.GEN.057, M.GEN.058, M.GEN.059 |
+| A.U10.03 | no change here (Blast: `_networking_status()` keys unchanged by it) |
+| A.U10.05 | no change here (L0 test builds generated modules; TST) |
+| A.U10.07 | no change here (scenario reads the old batch lines; SRC_CORE/TST re-target `run_setups()`) |
+| A.U10.08 | M.GEN.005 |
+| A.U10.10 | M.GEN.010, M.GEN.041 |
+| A.U10.12 | M.GEN.003, M.GEN.004, M.GEN.005, M.GEN.006, M.GEN.010, M.GEN.011 |
+| A.U10.15 | no change here (Blast: `mempause` branch kept, M.GEN.008) |
+| A.U10.18 | M.GEN.005 |
+| A.U10.21 | M.GEN.010 |
+| A.U10.29 | M.GEN.015 |
+| A.U10.30 | M.GEN.025 |
+| A.U10.31 | no change here (quoting rule applied through A.U20.41 in M.GEN.003/004) |
+| A.U10.32 | no change here (D.15 order applied through A.U36.038, M.GEN.010/011) |
+| A.U10.34 | M.GEN.048 |
+| A.U10.37 | M.GEN.003 |
+| A.U10.38 | M.GEN.003, M.GEN.040 |
+| A.U10.39 | M.GEN.025 |
+| A.U10.40 | M.GEN.005, M.GEN.008, M.GEN.009, M.GEN.014, M.GEN.015 |
+| A.U10.43 | M.GEN.012, M.GEN.024, M.GEN.028, M.GEN.054, M.GEN.055, M.GEN.056, M.GEN.057, M.GEN.058, M.GEN.059 |
+| A.U10.46 | M.GEN.003, M.GEN.004, M.GEN.008, M.GEN.010 |
+| A.U10.47 | no change here (test; its assert exemption ends with M.GEN.004/008) |
+| A.U10.R01 | M.GEN.052, M.GEN.055 |
+| A.U11.01 | no change here (Blast: `get_uptime()` call unchanged) |
+| A.U11.03 | M.GEN.005, M.GEN.007, M.GEN.008, M.GEN.010 |
+| A.U11.04 | no change here (Why cites the old callback; flush is in the shutdown sequence, M.GEN.007) |
+| A.U11.05 | M.GEN.003, M.GEN.005, M.GEN.008, M.GEN.034 |
+| A.U11.06 | M.GEN.003, M.GEN.006 |
+| A.U11.08 | M.GEN.008 |
+| A.U11.10 | M.GEN.005, M.GEN.006 |
+| A.U11.13 | M.GEN.010 |
+| A.U11.17 | no change here (Blast: synthetic LED schemas move to the webserver with A.U19.02 — Gap 4) |
+| A.U11.18 | M.GEN.045 |
+| A.U11.30 | no change here (config_manager comment; its "generated lightCmdLED dispatch" wording goes stale — Gap 4) |
+| A.U11.S01 | M.GEN.008 (dropped: no site left after A.U19.02) |
+| A.U11.S04 | M.GEN.007, M.GEN.010 |
+| A.U13.04 | M.GEN.052, M.GEN.055 |
+| A.U13.13 | M.GEN.053 |
+| A.U13.17 | M.GEN.027, M.GEN.053 |
+| A.U13.R01 | no change here (no codegen change, per its Blast) |
+| A.U14.03 | M.GEN.051 |
+| A.U14.04 | no change here (Blast: generated bus construction passes TOML `timeout`, unchanged) |
+| A.U14.16 | no change here (SPEC cites the generated bind host) |
+| A.U14.17 | M.GEN.005 |
+| A.U14.29 | M.GEN.051 |
+| A.U14.33 | no change here (scan covers generated modules; TST) |
+| A.U15.10 | M.GEN.028 |
+| A.U15.11 | M.GEN.063 (dropped: hand copy deleted) |
+| A.U15.12 | M.GEN.005, M.GEN.016, M.GEN.034, M.GEN.049 |
+| A.U15.17 | M.GEN.017, M.GEN.034 |
+| A.U15.18 | no change here (Blast: `_sgp_maintenance_status` call unchanged; per-instance form is M.GEN.008) |
+| A.U15.19 | M.GEN.034 |
+| A.U15.23 | M.GEN.063 (dropped: hand copy deleted) |
+| A.U15.28 | M.GEN.012, M.GEN.024 |
+| A.U15.36 | M.GEN.063 (dropped: hand copy deleted); M.GEN.034 (CalLight table) |
+| A.U15.39 | M.GEN.052 |
+| A.U15.44 | M.GEN.063 (dropped: hand copy deleted) |
+| A.U16.01 | M.GEN.054 |
+| A.U16.16 | no change here (Blast: codegen passes no `wp_pin`) |
+| A.U16.17 | M.GEN.010 |
+| A.U16.20 | M.GEN.028, M.GEN.040 |
+| A.U16.22 | no change here (Why: generated `/status` reads the manager's `get_pause()`, unchanged) |
+| A.U16.R03 | M.GEN.010 |
+| A.U17.18 | M.GEN.029, M.GEN.043 |
+| A.U17.19 | M.GEN.014 |
+| A.U17.20 | M.GEN.034 |
+| A.U17.21 | M.GEN.027 |
+| A.U17.22 | M.GEN.034 |
+| A.U17.27 | no change here (codegen passes neither NeoPixel parameter) |
+| A.U17.29 | no change here (Blast: UARTLINK maintenance entry unchanged) |
+| A.U17.32 | M.GEN.029 |
+| A.U18.10 | M.GEN.009 |
+| A.U18.20 | no change here (Blast: consumers of `ntp_issynced()` unchanged) |
+| A.U18.21 | no change here (Blast: `post_asy_fct=ntp.ntp_force_sync` kept, M.GEN.009) |
+| A.U18.23 | M.GEN.006 |
+| A.U18.24 | M.GEN.006 |
+| A.U18.33 | M.GEN.008 |
+| A.U18.35 | M.GEN.014 |
+| A.U18.38 | M.GEN.009 |
+| A.U18.40 | M.GEN.003, M.GEN.005 |
+| A.U18.43 | M.GEN.051 |
+| A.U19.02 | M.GEN.008 |
+| A.U19.06 | M.GEN.051 |
+| A.U19.07 | M.GEN.051 |
+| A.U19.08 | M.GEN.051 |
+| A.U19.10 | M.GEN.008, M.GEN.014 |
+| A.U19.16 | no change here (templates emit no result word) |
+| A.U19.17 | no change here (Blast: generated callables match the webserver aliases; annotations are M.GEN.008) |
+| A.U19.18 | M.GEN.050, M.GEN.051 |
+| A.U19.19 | M.GEN.051 |
+| A.U19.20 | M.GEN.018, M.GEN.033 |
+| A.U19.23 | M.GEN.051 |
+| A.U2.01 | M.GEN.016, M.GEN.034 |
+| A.U2.03 | M.GEN.034 |
+| A.U2.08 | no change here (Blast: starter order unchanged) |
+| A.U2.09 | no change here (Blast: FRAM manager construction unchanged) |
+| A.U2.17 | no change here (Blast named `register()`/`finalize()`, removed by A.U5.06 in M.GEN.012) |
+| A.U2.21 | M.GEN.016, M.GEN.034 |
+| A.U2.22 | M.GEN.034 |
+| A.U2.23 | M.GEN.027 |
+| A.U2.24 | M.GEN.016, M.GEN.034 |
+| A.U20.01 | M.GEN.029, M.GEN.031 |
+| A.U20.02 | M.GEN.001, M.GEN.002, M.GEN.003, M.GEN.004, M.GEN.005, M.GEN.006, M.GEN.011 |
+| A.U20.03 | M.GEN.001 |
+| A.U20.04 | M.GEN.001 |
+| A.U20.05 | M.GEN.001, M.GEN.019 |
+| A.U20.06 | M.GEN.005, M.GEN.006, M.GEN.010 |
+| A.U20.07 | M.GEN.019 |
+| A.U20.08 | M.GEN.005, M.GEN.029 |
+| A.U20.09 | M.GEN.029, M.GEN.042 |
+| A.U20.10 | M.GEN.054, M.GEN.055, M.GEN.056, M.GEN.057, M.GEN.058, M.GEN.059 |
+| A.U20.11 | M.GEN.019 |
+| A.U20.12 | M.GEN.004, M.GEN.045 |
+| A.U20.13 | M.GEN.019, M.GEN.020 |
+| A.U20.14 | M.GEN.003, M.GEN.009, M.GEN.050 |
+| A.U20.15 | M.GEN.001, M.GEN.002, M.GEN.003, M.GEN.005, M.GEN.010, M.GEN.012, M.GEN.013, M.GEN.014, M.GEN.015, M.GEN.016, M.GEN.019, M.GEN.020, M.GEN.023, M.GEN.024, M.GEN.036, M.GEN.054 |
+| A.U20.16 | M.GEN.005, M.GEN.008, M.GEN.009, M.GEN.012, M.GEN.035 |
+| A.U20.17 | M.GEN.005, M.GEN.011, M.GEN.018, M.GEN.019, M.GEN.022, M.GEN.026, M.GEN.027, M.GEN.028, M.GEN.029, M.GEN.030, M.GEN.031, M.GEN.035, M.GEN.037, M.GEN.038, M.GEN.040, M.GEN.043, M.GEN.044, M.GEN.045, M.GEN.046, M.GEN.049 |
+| A.U20.18 | M.GEN.019, M.GEN.027, M.GEN.028 |
+| A.U20.19 | M.GEN.025, M.GEN.026, M.GEN.028, M.GEN.057, M.GEN.058, M.GEN.059 |
+| A.U20.20 | M.GEN.028, M.GEN.030, M.GEN.040 |
+| A.U20.21 | M.GEN.030, M.GEN.039 |
+| A.U20.22 | M.GEN.005, M.GEN.012, M.GEN.030, M.GEN.035 |
+| A.U20.23 | M.GEN.052, M.GEN.054, M.GEN.055, M.GEN.056, M.GEN.057, M.GEN.058, M.GEN.059 |
+| A.U20.24 | M.GEN.037, M.GEN.038, M.GEN.046, M.GEN.047, M.GEN.048, M.GEN.049 |
+| A.U20.25 | M.GEN.017, M.GEN.045, M.GEN.046 |
+| A.U20.27 | M.GEN.015, M.GEN.016, M.GEN.024, M.GEN.025, M.GEN.026, M.GEN.031, M.GEN.040, M.GEN.045 |
+| A.U20.28 | M.GEN.043 |
+| A.U20.29 | M.GEN.054, M.GEN.055, M.GEN.056, M.GEN.057, M.GEN.058, M.GEN.059 |
+| A.U20.30 | M.GEN.002, M.GEN.004, M.GEN.013, M.GEN.017, M.GEN.030, M.GEN.036, M.GEN.044 |
+| A.U20.32 | M.GEN.008, M.GEN.012, M.GEN.014, M.GEN.015, M.GEN.017, M.GEN.018, M.GEN.032, M.GEN.035, M.GEN.038, M.GEN.043, M.GEN.044 |
+| A.U20.34 | M.GEN.026, M.GEN.027 |
+| A.U20.35 | M.GEN.024 |
+| A.U20.36 | M.GEN.020 |
+| A.U20.38 | M.GEN.009, M.GEN.029, M.GEN.031 |
+| A.U20.39 | M.GEN.047 |
+| A.U20.40 | M.GEN.005, M.GEN.025, M.GEN.026, M.GEN.043 |
+| A.U20.41 | M.GEN.003, M.GEN.004, M.GEN.008, M.GEN.009, M.GEN.010, M.GEN.015, M.GEN.025, M.GEN.030, M.GEN.040 |
+| A.U20.42 | M.GEN.004, M.GEN.006, M.GEN.008 |
+| A.U22.03 | dropped (withdrawn, OR126.a (4)) |
+| A.U23.07 | M.GEN.060 |
+| A.U23.09 | M.GEN.018 |
+| A.U23.11 | M.GEN.062 |
+| A.U23.12 | M.GEN.062 |
+| A.U23.16 | M.GEN.017, M.GEN.046 |
+| A.U23.17 | M.GEN.017, M.GEN.046 |
+| A.U23.18 | M.GEN.015 |
+| A.U23.19 | M.GEN.014 |
+| A.U23.20 | M.GEN.014, M.GEN.017, M.GEN.034, M.GEN.062 |
+| A.U23.22 | M.GEN.003, M.GEN.008, M.GEN.014 |
+| A.U23.23 | M.GEN.017, M.GEN.046, M.GEN.062 |
+| A.U23.24 | M.GEN.008 |
+| A.U23.30 | M.GEN.017 |
+| A.U23.38 | M.GEN.060 |
+| A.U23.39 | M.GEN.060, M.GEN.061 |
+| A.U23.42 | M.GEN.060, M.GEN.062 |
+| A.U23.43 | M.GEN.060, M.GEN.062 |
+| A.U23.44 | M.GEN.062 (tokens pending Q2) |
+| A.U23.45 | M.GEN.060, M.GEN.062 |
+| A.U23.49 | M.GEN.017, M.GEN.046 |
+| A.U24.20 | no change here (Blast: bus constructed once per id, unchanged) |
+| A.U24.43 | M.GEN.043 |
+| A.U24.44 | M.GEN.043 |
+| A.U24.46 | M.GEN.034 |
+| A.U24.54 | M.GEN.019 |
+| A.U24.63 | no change here (test reads `_FIRMWARE_VERSION`/`_WEBSITE_VERSION`/`_BUILD_DATE`, names kept in M.GEN.003) |
+| A.U24.66 | M.GEN.052 |
+| A.U25.03 | no change here (Blast: bus constructed once per id) |
+| A.U25.36 | no change here (Why cites the old batch order) |
+| A.U25.57 | no change here (Why: `mempause` 300 s kept, M.GEN.008) |
+| A.U25.69 | M.GEN.001, M.GEN.005, M.GEN.006 |
+| A.U26.01 | M.GEN.025, M.GEN.026, M.GEN.052 |
+| A.U26.02 | no change here (Why: `_BUILD_DATE` stays emitted) |
+| A.U26.10 | no change here (Why: `cfg_path` keyword kept, M.GEN.005/006) |
+| A.U26.23 | M.GEN.019 |
+| A.U26.24 | M.GEN.052 |
+| A.U26.27 | no change here (Why: status key names follow M.GEN.008) |
+| A.U26.42 | no change here (Why cites dev.toml's FRAM part) |
+| A.U26.44 | no change here (device scripts read dev.toml; HW) |
+| A.U26.45 | no change here (Why names dev.toml in messages; HW) |
+| A.U26.49 | no change here (copies pinned to dev.toml; HW) |
+| A.U26.55 | M.GEN.051 |
+| A.U27.06 | M.GEN.021 |
+| A.U27.07 | M.GEN.009 |
+| A.U27.09 | no change here (constraint: generated findings fixed in the template — satisfied by M.GEN.003-011; scope change is SCR/CFG) |
+| A.U27.28 | M.GEN.060 |
+| A.U27.29 | M.GEN.016, M.GEN.018, M.GEN.019, M.GEN.022 |
+| A.U27.37 | M.GEN.026 |
+| A.U28.24 | M.GEN.060 |
+| A.U28.27 | M.GEN.010, M.GEN.011 |
+| A.U28.28 | no change here (emitted F401 handled by A.U20.14, M.GEN.003) |
+| A.U28.41 | M.GEN.003, M.GEN.005 |
+| A.U29.01 | no change here (SPEC A.11 cites `web_host`) |
+| A.U30.18 | M.GEN.051 |
+| A.U30.19 | M.GEN.034, M.GEN.051 |
+| A.U31.01 | M.GEN.027, M.GEN.052, M.GEN.053 |
+| A.U31.02 | M.GEN.026 |
+| A.U31.03 | no change here (scenario on `run_setups()`; SRC_CORE/TST) |
+| A.U31.06 | no change here (Depends only) |
+| A.U31.08 | M.GEN.001, M.GEN.002, M.GEN.027 |
+| A.U31.19 | no change here (codegen emits no sleep) |
+| A.U32.01 | no change here (runbook cites the hotspot default path) |
+| A.U32.03 | no change here (Blast: the two hooked groups unchanged, M.GEN.009) |
+| A.U32.04 | M.GEN.009, M.GEN.013 |
+| A.U32.05 | M.GEN.008 |
+| A.U32.06 | M.GEN.006, M.GEN.008, M.GEN.010, M.GEN.014 |
+| A.U33.01 | M.GEN.024, M.GEN.028, M.GEN.040 |
+| A.U33.02 | M.GEN.016, M.GEN.024 |
+| A.U33.03 | M.GEN.016, M.GEN.024 |
+| A.U34.09 | M.GEN.051 |
+| A.U34.12 | M.GEN.050, M.GEN.051 |
+| A.U35.04 | no change here (fault planting in a throwaway worktree; C phase) |
+| A.U35.08 | no change here (matrices read `validate.py` keys) |
+| A.U35.21 | M.GEN.052 |
+| A.U35.30 | no change here (scenario; feed sites are `SystemService`'s, M.GEN.006) |
+| A.U35.33 | M.GEN.052, M.GEN.053 |
+| A.U35.45 | no change here (codegen passes no `logger=`) |
+| A.U36.004 | no change here (no template carries the phrase) |
+| A.U36.022 | M.GEN.052 |
+| A.U36.029 | M.GEN.008 |
+| A.U36.033 | no change here (Blast: the C01 comment is M.GEN.007) |
+| A.U36.038 | M.GEN.010, M.GEN.011 |
+| A.U36.044 | M.GEN.008, M.GEN.046 |
+| A.U36.500 | M.GEN.015 |
+| A.U36.501 | M.GEN.060 |
+| A.U36.507 | M.GEN.062 |
+| A.U36.513 | M.GEN.019 |
+| A.U36.514 | M.GEN.038, M.GEN.046, M.GEN.047, M.GEN.048 |
+| A.U36.515 | M.GEN.063 (dropped: hand copy deleted) |
+| A.U36.516 | M.GEN.060 |
+| A.U36.517 | M.GEN.060 |
+| A.U36.518 | M.GEN.043 |
+| A.U36.519 | M.GEN.021 |
+| A.U36.520 | M.GEN.055 |
+| A.U36.527 | M.GEN.051 |
+| A.U36.529 | M.GEN.052 |
+| A.U36.535 | M.GEN.019 |
+| A.U36.537 | M.GEN.034 |
+| A.U36.544 | M.GEN.005, M.GEN.015, M.GEN.024, M.GEN.044, M.GEN.051 |
+| A.U36.547 | M.GEN.019, M.GEN.051 |
+| A.U36.548 | M.GEN.020 |
+| A.U36.549 | no change here (template comments regenerate; none in its allow-list) |
+| A.U37.10 | M.GEN.033 |
+| A.U37.11 | M.GEN.018, M.GEN.021 |
+| A.U4.03 | M.GEN.040 |
+| A.U5.03 | M.GEN.003, M.GEN.005, M.GEN.012 |
+| A.U5.04 | M.GEN.003, M.GEN.009, M.GEN.026 |
+| A.U5.05 | M.GEN.003, M.GEN.009 |
+| A.U5.06 | M.GEN.003, M.GEN.005, M.GEN.012 |
+| A.U5.07 | M.GEN.005, M.GEN.044, M.GEN.048 |
+| A.U5.08 | M.GEN.005 |
+| A.U5.09 | M.GEN.003, M.GEN.005 |
+| A.U5.10 | M.GEN.002, M.GEN.003, M.GEN.005, M.GEN.026 |
+| A.U5.11 | M.GEN.003, M.GEN.005, M.GEN.012, M.GEN.030, M.GEN.035, M.GEN.049 |
+| A.U5.16 | M.GEN.046 |
+| A.U6.01 | M.GEN.017, M.GEN.018, M.GEN.044 |
+| A.U6.02 | M.GEN.019 |
+| A.U6.04 | M.GEN.034, M.GEN.063 |
+| A.U6.07 | M.GEN.060 |
+| A.U6.16 | M.GEN.046 |
+| A.U6.17 | M.GEN.015, M.GEN.017, M.GEN.046 |
+| A.U6.18 | M.GEN.015 |
+| A.U6.19 | M.GEN.014, M.GEN.017, M.GEN.046 |
+| A.U6.20 | M.GEN.014, M.GEN.017, M.GEN.035, M.GEN.046 |
+| A.U6.21 | M.GEN.008, M.GEN.014 |
+| A.U6.22 | M.GEN.014 |
+| A.U6.23 | M.GEN.014 |
+| A.U6.24 | M.GEN.015 |
+| A.U6.25 | M.GEN.015, M.GEN.016 |
+| A.U6.26 | M.GEN.009, M.GEN.015 |
+| A.U6.27 | M.GEN.014, M.GEN.017, M.GEN.034, M.GEN.046 |
+| A.U6.28 | M.GEN.017, M.GEN.046 |
+| A.U6.29 | M.GEN.017, M.GEN.026, M.GEN.046 |
+| A.U6.30 | no change here (build leg: none, per its Change) |
+| A.U7.16 | M.GEN.052 |
+| A.U8.02 | M.GEN.047 |
+| A.U8.04 | M.GEN.026 |
+| A.U8.06 | M.GEN.027, M.GEN.053 |
+| A.U8.08 | M.GEN.002 |
+| A.U8.09 | M.GEN.002 (codegen tags); its `validate.py:71` tag dropped with the copy (M.GEN.025) |
+| A.U8.10 | no change here (generated module passes no `wifi_refresh_sec`) |
+| A.U8.12 | M.GEN.002 |
+| A.U8.14 | M.GEN.001, M.GEN.025 |
+| A.U8.18 | M.GEN.018 (tag); its hand-copy sites dropped in M.GEN.063 |
+| A.U8.23 | M.GEN.050 (pending Q1) |
+| A.U9.01 | M.GEN.063 (dropped: hand copy deleted by A.U6.04) |
+| A.U9.02 | no change here (Blast: callback calls `led_signal()`, M.GEN.008) |
+| A.U9.03 | M.GEN.008 (dropped: superseded by A.U19.02) |
+| A.U9.06 | no change here (the `t` ceiling moves with the LED schemas to the webserver, A.U19.02) |
+| A.U9.07 | M.GEN.012 |
+| A.U9.09 | no change here (Blast: pause callback signature unchanged) |
+| A.U9.11 | no change here (cites the warn keys, unchanged) |
+
+Counts: 319 action IDs name a GEN file (142 in the site index, 177 more found by grep of every action slot); 256
+merged into 63 merged changes (M.GEN.001-063), 62 mention-only rows with no change here, 1 withdrawn (A.U22.03).
+Resolved entries: 29 (each settled by an owner row, AC_NOTES, a verifier ruling or the owning/later action, cited in
+place). Raised to the owner: Q1, Q2. NOT-DONE: none.

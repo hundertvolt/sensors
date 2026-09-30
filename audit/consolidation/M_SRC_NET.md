@@ -1003,3 +1003,657 @@ actions only where they name a product line.
 - **Depends**: every U10 edit of the file
 - **Blast carried by**: —
 - **Kind**: code
+
+## src/asy_wifi_service.py
+
+### M.SRC_NET.070 Module docstring and header comment state current facts
+- **From**: A.U10.37 (file names in text), A.U18.36 (C.7 per-site pointer), A.U10.44 (loop name); adherence finding
+  (`:6` "errno numbering starts at 11, same convention as asy_ntp_client.py" is false after A.U2.14)
+- **Site**: `src/asy_wifi_service.py:1-6`
+- **Change**: docstring `:2` "extends base_classes.py's SensorReaderConfig" → "extends asy_base_classes.py's
+  SensorReaderConfig"; comment `:4-6` → "# "Attempt" operations persist a real errno via self.pr.err_s() and set
+  self._hw_op_failed, feeding" / "# _connect_loop()'s _error_check() streak; routine state observations stay
+  print-only via self.pr.err()" / "# (SPECIFICATION.md C.7 lists every site; error numbers come from the one catalog,
+  C.7.1)."
+- **Resolved**: the stale numbering sentence has no carrying action; CLAUDE.md "docs hold current state" settles the
+  rewrite (as M.SRC_NET.040 for NTP).
+- **Unit**: U18
+- **Depends**: M.SRC_NET.100
+- **Blast carried by**: SPEC C.7 WIFI paragraph with the per-site review → A.U18.36 (docs)
+- **Kind**: code
+
+### M.SRC_NET.071 Imports follow the renames, the primitives and the removals
+- **From**: A.U10.37, A.U10.38, A.U10.03 (`TickSeconds`, `arm_tick_timer`; `LockedCounter` goes), A.U10.06
+  (`utc_now`), A.U5.01/A.U5.02 (`LogConfig`, `DEFAULT_LOG`), A.U18.40 (`Pin` goes), A.U18.44 (`Any` goes), A.U10.46
+  (`TaskStarter`, `ErrorSource`), A.U10.39 (`name_cfg`, `schema_names`), A.U19.16 (`INVALID`), M.SRC_NET.018
+  (`host_label_ok`), A.U11.S01 (`CfgValue`)
+- **Site**: `src/asy_wifi_service.py:8-37`
+- **Change**: runtime: `asyncio`, `namedtuple`, `network`, `from machine import Timer`, `const`; `from asy_base_classes
+  import SensorReaderConfig, TickSeconds, arm_tick_timer, utc_now`; `from asy_captive_dns import CaptiveDNS`; `from
+  asy_config_manager import INVALID, make_dict, name_cfg, schema_dict, schema_names`; `from asy_dns_client import
+  host_label_ok`; `from asy_print_log import DEFAULT_LOG, LogConfig`; `import time` goes (its one user `_now()` goes).
+  `TYPE_CHECKING`: `Protocol`; `from asy_base_classes import ErrorSource, TaskStarter`; `from asy_config_manager import
+  CfgValue, ConfigSchema, FieldSchema, WriteValidity`; `from asy_print_log import ErrorLog, PrintLogHistory`; the
+  `LEDControl` Protocol unchanged; no `Any`, no `Callable` (its users are the starters, now `TaskStarter`), no
+  FRAM-manager import.
+- **Resolved**: —
+- **Unit**: U19 (A.U19.16's `INVALID` is the latest; each other import lands with its user's unit)
+- **Depends**: A.U10.02, A.U10.03, A.U10.06, A.U5.01, A.U19.16, M.SRC_NET.018
+- **Blast carried by**: —
+- **Kind**: code
+
+### M.SRC_NET.072 Schema tuples: names follow the keys, each bound states its reason
+- **From**: A.U10.39 (`_VAL_` names), A.U10.40 (`LedWifiOn` → `LEDWifiOn`), A.U10.41 (each string bound's reason at its
+  `_VAL_`), A.U0.35 + A.U29.03 (the `HotspotPW` comment), A.U6.30 (Country shape)
+- **Site**: `src/asy_wifi_service.py:40-53`
+- **Change**: `_VAL_SSID` (comment `:41-42` kept: 0-32 octets, 0 = "not configured" sentinel), `_VAL_PW` (comment
+  `:44-45` kept), `_VAL_COUNTRY = const((("Country", "str", "DE", 2, 2, None),))  # ISO 3166-1 alpha-2, checked by
+  _country_ok()`, `_VAL_HOSTNAME = const((("Hostname", "str", "SensorNode", 1, 32, None),))  # 32 =
+  MICROPY_PY_NETWORK_HOSTNAME_MAX_LEN (extmod/modnetwork.h:58-60, v1.29.0)`, `_VAL_LED_WIFI_ON =
+  const((("LEDWifiOn", "bool", True, None, None, None),))`; the `HotspotPW` comment `:50-52` → "# Hotspot AP password -
+  real WPA2-PSK length (8-63), defaulting to the hardcoded "12345678": accepted" / "# permanently as a known limitation
+  (owner, 2026-09-26; SPECIFICATION.md A.11), made per-device configurable." / "# Masked like _VAL_PW."; `_VAL_HOTSPOT_PW`
+  value unchanged (the default stays "12345678": CLAUDE.md's accepted credential, no change without the owner).
+- **Resolved**: A.U10.41 writes "`SSID` 1-32 bytes" among the bounds that "are re-checked and stay"; HEAD's `SSID`
+  minimum is 0, the "not configured" sentinel that routes to the hotspot (`:41-42`, `:441-443`). "Stay" is the operative
+  word (a 1-byte minimum would make an unconfigured unit's default invalid): the bound stays 0-32; A.U10.41's "1-32" is
+  read as a slip. Settled by A.U10.41's own "stay".
+- **Unit**: U29 (A.U29.03 is the latest; staged: U0 comment wording (A.U0.35), U10 names/keys/reasons, U29 the A.11
+  pointer)
+- **Depends**: A.U29.01 (A.11 exists)
+- **Blast carried by**: every key rename consumer (definitions, js, mockdata, tests, docs) → A.U10.40 (other clusters);
+  `tests_scripts/test_tests_hardware_conftest_constants.py:62, 79` (`_VAL_HOST` → `_VAL_HOSTNAME`) → A.U10.39 (tests);
+  `buildgen/validate.py` AST reads of `_VAL_HOST`/`_VAL_HOTSPOT_PW` bounds → A.U20.27 (GEN; names follow);
+  CLAUDE.md credential bullet → A.U29.03 (docs)
+- **Kind**: code
+
+### M.SRC_NET.073 Web tags: identity group label, byte and shape keys, HotspotPW published
+- **From**: A.U6.18 (`submitLabel`), A.U6.28 (`bytes=true`), A.U6.29 (`shape=hostLabel`), A.U6.30 (`shape=countryCode`,
+  description), A.U18.38 (`HotspotPW` tag), A.U10.40 (`LEDWifiOn`)
+- **Site**: `src/asy_wifi_service.py:55-62`
+- **Change**: `# @web-group section=networking submitGroup=identity label="Wi-Fi & Identity" submit=true
+  submitLabel="Apply & Reconnect"`; `# @web SSID … label="Wi-Fi SSID" bytes=true`; `# @web PW … label="Wi-Fi Password"
+  mask=true bytes=true`; `# @web Country … label="Country" bytes=true shape=countryCode description="Two uppercase letters
+  (ISO 3166-1 alpha-2), e.g. DE."`; `# @web Hostname … label="Hostname" bytes=true shape=hostLabel`; `# @web HotspotPW
+  section=networking submitGroup=identity label="Hotspot Password" mask=true bytes=true description="Password of the
+  fallback hotspot (8-63 characters)."`; the `wifiLed` group unchanged; `# @web LEDWifiOn section=networking
+  submitGroup=wifiLed label="Wi-Fi Status LED"`.
+- **Resolved**: —
+- **Unit**: U18 (A.U18.38; staged: U6 `submitLabel`/`bytes`/`shape`, U10 key rename)
+- **Depends**: A.U6.02, A.U6.04 (definitions from tags), A.U6.28/A.U6.29 (tag keys)
+- **Blast carried by**: `codegen.py:607` identity `SettingsGroup` gains `"HotspotPW"` → A.U18.38 (GEN); js mock masks
+  `HotspotPW`, shape and byte mirrors, hint → A.U18.38/A.U6.28/A.U6.29/A.U6.30 (WEB); `mockdata/samples.json` →
+  A.U18.38 (WEB); `tests_scripts/test_buildgen_web_tag.py:492`, A.U6.28's byte-field check (drops its `HotspotPW`
+  exception) → A.U18.38 (tests); hardware PUT matrices walking the identity group now write `HotspotPW` behind
+  `persistence_write` → A.U18.38/U26 (HW); SPEC H placement → A.U18.38 (docs)
+- **Kind**: code
+
+### M.SRC_NET.074 The snapshot tuple carries every networking field
+- **From**: A.U18.33, A.U10.40 (`Rssi` → `RSSI`)
+- **Site**: `src/asy_wifi_service.py:64-68`
+- **Change**: `WIFI = namedtuple("WIFI", ("Mode", "Connected", "IP", "Subnet", "Gateway", "DNS", "RSSI", "TS"))` and
+  `_FIELDS = const(("Mode", "Connected", "IP", "Subnet", "Gateway", "DNS", "RSSI", "TS"))`; comments unchanged.
+- **Resolved**: A.U18.33 names the new field `Rssi` and leaves `IP` vs `IPv4` to "A.U10.40's key-scheme call (A-C)";
+  A.U10.40 (U10, earlier) renames the REST key `Rssi` → `RSSI`, so U18 writes `RSSI`. `IP`/`IPv4` is a generated-block
+  key question (the site is `buildgen/codegen.py`), listed as a gap for the GEN cluster.
+- **Unit**: U18
+- **Depends**: —
+- **Blast carried by**: generated `_networking_status()` reads the snapshot once → A.U18.33 (GEN); snapshot tests →
+  A.U18.33 (tests); mockdata keys → A.U18.33/A.U10.40 (WEB)
+- **Kind**: code
+
+### M.SRC_NET.075 Radio value checks: bytes, host label, country; the per-device default
+- **From**: A.U6.29 (`_radio_value_ok()`, host label at PUT/use/`_with_default()`), A.U6.30 (`_country_ok()`),
+  A.U10.39 (keys through `name_cfg()`/`schema_names()`), A.U18.40 (`_with_default()`'s `None` branch goes), A.U10.31
+  (unquote), M.SRC_NET.018 (`host_label_ok()` imported, no local copy)
+- **Site**: `src/asy_wifi_service.py:71-97` (`_RADIO_FIELDS`, `_radio_bytes_ok()`, `_with_default()`)
+- **Change**: comment `:71-72` kept; `_RADIO_FIELDS = schema_names(_VAL_SSID + _VAL_PW + _VAL_COUNTRY + _VAL_HOSTNAME
+  + _VAL_HOTSPOT_PW)` (a runtime tuple of the five keys; no key literal). `def _country_ok(value: str) -> bool:` — exactly
+  two characters, each `A`-`Z` (comment "# ISO 3166-1 alpha-2 in the cyw43 table's uppercase (cyw43_country.h:49)").
+  `_radio_bytes_ok()` → `def _radio_value_ok(field: "FieldSchema", value: object) -> bool:` — HEAD's early `return True`
+  for a non-`str`, the special value, or a value outside the character bounds (left to the schema check); then `False`
+  if `len(value.encode()) > high`; then `host_label_ok(value)` when `field[0] == name_cfg(_VAL_HOSTNAME)`,
+  `_country_ok(value)` when `field[0] == name_cfg(_VAL_COUNTRY)`, else `True`; its comment (≤ 3 lines) states the three
+  checks. `_with_default(schema: tuple[tuple[str, str, str, int, int, str | None], ...], value: str) -> …` (unquoted):
+  the `if value is None: return schema` lines go; the bound check becomes `if kind != "str" or not (low <= len(value) <=
+  high) or not _radio_value_ok(schema[0], value): return schema`; its second comment block says "outside the field's
+  bounds or shape".
+- **Resolved**: A.U6.28's L0 check AST-reads `_RADIO_FIELDS` as a `const()` tuple of key literals; A.U10.39 (G10/R11:
+  "Code names a key only through `name_cfg(_VAL_X)`, never a repeated literal", listing `:73`) removes those literals.
+  G10/R11 governs the product; A.U6.28's check reads the `_VAL_` names inside the `schema_names()` call and resolves
+  their keys with `extract_field_schemas()` instead (gap for the tests cluster, below). A.U6.29's `field[0] ==
+  "Hostname"` is written with `name_cfg()` for the same rule.
+- **Unit**: U18 (the helper import from M.SRC_NET.018; staged: U6 writes `_radio_value_ok()`/`_country_ok()` with a
+  private host-label helper, U10 the `name_cfg()`/`schema_names()` form, U18 the import and the `_with_default()` edit)
+- **Depends**: M.SRC_NET.018, M.SRC_NET.072
+- **Blast carried by**: callers `_set_mgr_cfg()` (M.SRC_NET.096), `_radio_values()`/`_value_in_use()`
+  (M.SRC_NET.096), `__init__` (M.SRC_NET.078); corpus `tests/_radio_shape_cases.json` and the L1/L0/vitest readers →
+  A.U6.29/A.U6.30 (tests/WEB); byte-bound tests calling `_radio_bytes_ok` by name → A.U6.29 (tests); build-side
+  hostname rule → A.U6.29 (GEN)
+- **Kind**: code
+
+### M.SRC_NET.076 Wiring tags pass the LED and the log config at construction
+- **From**: A.U5.07 (`led_target` → `ext_led` kwarg; setter mode goes), A.U5.03 + A.U10.38 (`fram_target FRAMManager
+  log`), A.U10.38/A.U10.37 (names in the comments)
+- **Site**: `src/asy_wifi_service.py:100-108`
+- **Change**: `:100-102` → "# This service's one optional live cross-instance dependency (Parts C.14 and L.4): the status
+  LED it" / "# drives, resolved from [device.wiring].led_target to an already-constructed NeopixelDriver and passed" /
+  "# as ext_led at construction (the NeoPixel is built first)."; `:103` → `# @wiring led_target NeopixelDriver ext_led
+  optional kwarg`; `:105-107` → "# Its other optional dependency: the FRAM error-log target, resolved from
+  [device.wiring].fram_target" / "# implicitly because WifiService is mandatory infra, exactly as asy_system_service.py's
+  own tag is." / "# __init__ passes the log config to super().__init__() and to this service's CaptiveDNS."; `:108` → `#
+  @wiring fram_target FRAMManager log optional kwarg`.
+- **Resolved**: —
+- **Unit**: U10 (staged: U5 `ext_led`/`log` targets; U10 class names)
+- **Depends**: —
+- **Blast carried by**: `buildgen/graph.py`/`wiring.py` setter-mode removal, codegen `ext_led=` → A.U5.07 (GEN); SPEC
+  C.14.2/L.6.4 → A.U5.07/A.U5.03 (docs)
+- **Kind**: code
+
+### M.SRC_NET.077 Named timing and CYW43 constants; the code block
+- **From**: A.U8.10 (names, tags), A.U31.15 (milliseconds), A.U18.30 (LED pattern names, deactivated pair), A.U18.40
+  (`_WIFI_REFRESH_S`), A.U18.27 (`_STAT_JOINED_NO_IP`, `_PM_NO_POWERSAVE`), A.U2.04 + A.U2.14 + A.U18.24 + A.U10.20 +
+  A.U6.29 (codes), A.U10.39 (names in comments)
+- **Site**: `src/asy_wifi_service.py:110-129` and a new code block after the imports
+- **Change**: `_STA_DISCONNECT_WAIT_ITERS = const(20)` with comment "# 20 × 500 ms = 10 s max wait for isconnected() to
+  clear -" (second line unchanged); new, each with its `# @tunable wifi.<id> = <v>` tag: `_STA_DISCONNECT_POLL_MS =
+  const(500)` (`wifi.sta_disconnect_poll_ms`), `_STA_CONNECT_POLL_MS = const(500)` (`wifi.sta_connect_poll_ms`),
+  `_STA_CONNECT_POLL_ITERS = const(10)` (`wifi.sta_connect_poll_iters`), `_HOTSPOT_STATIONS_SETTLE_MS = const(100)`
+  (`wifi.hotspot_stations_settle_ms`), `_WLAN_DOWN_SETTLE_S = const(2)` (`wifi.wlan_down_settle_s`),
+  `_WLAN_DEINIT_SETTLE_S = const(1)`, `_WLAN_MODE_SETTLE_S = const(1)`, `_STA_RETRY_AFTER_LOSS_S = const(60)`,
+  `_RECONNECT_CALLER_GRACE_S = const(5)`, `_RECONNECT_SETTLE_S = const(3)`, `_LED_HOTSPOT_ON_MS = const(2900)`,
+  `_LED_HOTSPOT_OFF_MS = const(100)`, `_LED_DEACTIVATED_ON_MS = const(100)`, `_LED_DEACTIVATED_OFF_MS = const(2900)`
+  (basis "the hotspot pattern inverted (agent, 2026-09-30)"), `_WIFI_REFRESH_S = const(5)` (`wifi.refresh_s = 5`); the
+  field-count constants' comments name `_VAL_COUNTRY + _VAL_HOSTNAME + _VAL_HOTSPOT_PW` / `_VAL_SSID + _VAL_PW +
+  _VAL_COUNTRY + _VAL_HOSTNAME`; phase constants unchanged; `:128-129` → `_STAT_JOINED_NO_IP = const(2)  # cyw43
+  CYW43_LINK_NOIP (cyw43.h:100): joined, no IP yet; network exports no name for it (extmod/modnetwork.c:197-202,
+  v1.29.0)`; new `_PM_NO_POWERSAVE = const(0xA11140)` with "# CYW43_PM_VALUE(NO_POWERSAVE, 200, 1, 1, 10): power save
+  off, PM_PERFORMANCE's listen fields" / "# (network_cyw43.c:43-51); legacy's word.". Code block: `_ERR_TIMER =
+  const(17)`, `_ERR_BAD_ARG = const(21)`, `_ERR_TIMEOUT = const(22)`, `_ERR_UNEXPECTED = const(23)`,
+  `_ERR_WLAN_MODE_SWITCH = const(60)`, `_ERR_WLAN_AP_START = const(61)`, `_ERR_WLAN_STA_START = const(62)`,
+  `_ERR_WLAN_STA_POLL = const(63)`, `_ERR_WLAN_STA_DISCONNECT = const(64)`, `_ERR_WLAN_OFF = const(65)`,
+  `_WRN_STORED_DEFAULT = const(10)`, `_WRN_WLAN_AUTH_FAILED = const(36)`, `_WRN_WLAN_NO_AP = const(37)`,
+  `_WRN_WLAN_CONNECT_FAILED = const(38)`, `_WRN_WLAN_STATUS_UNKNOWN = const(39)`.
+- **Resolved**: (1) A.U8.10's `_LED_FLASH_ON_S`/`_OFF_S` (2.9/0.1) → A.U18.30's `_LED_HOTSPOT_*` → A.U31.15's `_MS`: each
+  later action names the earlier as its Depends; the last stands, Part N rows renamed once. (2) `wifi_refresh_sec`: A.U8.10
+  tags it at A.U5.09's `WifiConfig` constant, A.U5.09 groups it, A.U31.15 turns the loop sleep into
+  `sleep_ms(self._refresh_ms)` from an attribute, A.U10.43 renames it `wifi_refresh_s`; A.U18.40 (ruling V.U18.D, OR36.a
+  (1)) removes the parameter and sleeps a module constant. With a `const(5)` int, `asyncio.sleep(_WIFI_REFRESH_S)`
+  meets G10/R23 ("or an int number of seconds") and A.U31.19's check (a module name bound to `const(<int>)`), so
+  A.U31.15's `_refresh_ms` attribute has no reason left and is not added; A.U10.43's rename is superseded (the name
+  goes). (3) A.U8.10 sets `wifi.sta_disconnect_poll_s`/`wifi.sta_connect_poll_s` and `wifi.hotspot_stations_settle_s`;
+  A.U31.15 renames them `_ms` (the later action).
+- **Unit**: U31 (A.U31.15 latest; staged: U2 codes, U8 names/tags in seconds, U18 new LED pair/refresh constant/CYW43
+  names/timer and unexpected codes, U31 milliseconds)
+- **Depends**: A.U8.02 (grammar), A.U2.01 (+ U18 register fix 9: WIFI uses shared 17)
+- **Blast carried by**: Part N rows (renames and new rows) → A.U8.10/A.U18.30/A.U31.15 (docs); tests' comments quoting
+  values and the `_FastAsyncSleep` `sleep_ms` patch → A.U8.10/A.U31.15 (tests); mirrored phase/status constants in
+  `tests/test_asy_wifi_service.py`, `tests/network.py:5` → A.U18.27 (tests); `pm=0xA11140` literals in tests/twin →
+  A.U18.27 (tests/TWIN); SPEC F "CYW43 values this code names" list → A.U18.27 (docs); twin `_CONNECT_DELAY_S` Dependant
+  row → A.U8.10 (TWIN/docs); catalog rows for WIFI (17 owner note, 36 text) → A.U2.01 + U18 register fix 9 (catalog)
+- **Kind**: code
+
+### M.SRC_NET.078 WifiService constructor: one config object, construction-time LED, private state
+- **From**: A.U10.38 (`AsyConnTime` → `WifiService`), A.U5.02 (`log`), A.U5.09 + A.U18.40 ruling (`WifiConfig`
+  members), A.U5.07 (`ext_led` at construction), A.U10.35 (private attributes), A.U10.03 (`_wifi_uptime` on
+  `TickSeconds`, `_wifi_connected`), A.U18.33 (`_dhcp_dns`), A.U18.28 (`_ap_selected`), A.U18.24 (`_tick_armed`),
+  A.U3.02 (`_episode_wrns` goes), A.U0.35 (D05 comment), A.U10.17 (lock reason), A.U10.39 (push key via `name_cfg()`)
+- **Site**: `src/asy_wifi_service.py:132-189`
+- **Change**: new module-level `WifiConfig = namedtuple("WifiConfig", ("hostname", "hotspot_password",
+  "conn_fail_to_hotspot", "hotspot_time_min"))` (no default constants: all four are required `[device]` fields,
+  `buildgen/validate.py:63`). `class WifiService(SensorReaderConfig):` / `def __init__(self, wifi: WifiConfig, ext_led:
+  "LEDControl | None" = None, max_module_error: int = 5, cfg_path: str = "", log: LogConfig = DEFAULT_LOG) -> None:`
+  (the `max_module_error` comment `:140-142` kept); `super().__init__(WIFI(None, None, None, None, None, None, None,
+  None), _NAME, _VAL_SSID + _VAL_PW + _VAL_COUNTRY + _with_default(_VAL_HOSTNAME, wifi.hostname) + _VAL_LED_WIFI_ON +
+  _with_default(_VAL_HOTSPOT_PW, wifi.hotspot_password), max_module_error=max_module_error, cfg_path=cfg_path,
+  log=log)`. Attributes: `self._wlan = network.WLAN(network.STA_IF)`; `self._ext_led = ext_led`; `self._led:
+  LEDControl | None = None`; `self.hotspot_time = 60000 * wifi.hotspot_time_min  # convert to ms`;
+  `self.conn_fail_to_hotspot = wifi.conn_fail_to_hotspot`; `self._wifi_uptime = TickSeconds()`; `self._wifi_connected
+  = False`; `self._dhcp_dns: str | None = None`; `self._ap_selected = False`; the comment `:168-169` → "# CaptiveDNS gets
+  its own independent "DNSSRV"-named logger, not this class's own self.pr (owner, 2026-08-07) -" / "# its history is
+  shown with the networking data (owner, 2026-09-26)."; `self._dns_server = CaptiveDNS(log=log)`;
+  `self._dns_server_task: asyncio.Task[None] | None = None`; `self._reconn_wifi = False`;
+  `self._time_counter_trigger_event = asyncio.ThreadSafeFlag()`; `self.wifi_mode_lock = asyncio.Lock()  # serialises
+  every use of the CYW43 radio`; `self._counter_timer = Timer()`, `self._hotspot_timer = Timer()`,
+  `self._hotspot_timer_running = False`, `self._hotspot_timeout_trigger_event = asyncio.ThreadSafeFlag()`,
+  `self._ledflash: asyncio.Task[None] | None = None`; `self._conn_phase` with its comment; `self._connection_failures = 0`;
+  `self._hotspot_started_once = False`; `self._hw_op_failed = False` with its comment; `self._tick_armed: bool | None =
+  None`; `self._push_callbacks[name_cfg(_VAL_LED_WIFI_ON)] = self._push_wifi_led` with its comment (`LEDWifiOn`).
+  `led_pin`, `self.led_pin`, `wifi_refresh_sec`, `hostname`/`hotspot_password` parameters and their "every test wants"
+  comment are gone.
+- **Resolved**: A.U5.09 (`WifiConfig` with `wifi_refresh_sec`, `led_pin=None` kept) vs A.U18.40 — ruling V.U18.D (OR36.a
+  (1) decides the members): `WifiConfig(hostname, hotspot_password, conn_fail_to_hotspot, hotspot_time_min)`, no
+  `led_pin`, no refresh plumbing (A.U5.04's `_DEFAULT_WIFI_REFRESH_SEC` read goes). A.U18.42 keeps "the raw
+  `WLAN.isconnected()` reachable through `conn.wlan`", while A.U10.35 makes it `_wlan` — the end state has `_wlan` (a
+  tool reaches `conn._wlan`); no product reader changes.
+- **Unit**: U18 (staged: U5 signature/`log`/`ext_led`; U10 class name, private names, `TickSeconds`; U18 the rest)
+- **Depends**: M.SRC_NET.075, M.SRC_NET.006 (`CaptiveDNS(log)`), A.U10.02
+- **Blast carried by**: generated `conn = WifiService(WifiConfig(…), ext_led=<neopixel>, max_module_error=…, cfg_path=…,
+  log=…)` → A.U5.03/A.U5.07/A.U5.09 as ruled (GEN); tests (`make_client()` helpers, 14 `wifi_refresh_sec=0` calls, direct
+  constructions, `tests/test_neopixel_wifi_integration.py`, `tests/test_setter_microdot_integration.py:64`,
+  `tests/test_ntp_*`, `tests_hardware/device_scripts/wifi_service_reconnect_repro.py:41`, private-attribute readers) →
+  A.U18.40, A.U5.09, A.U10.35 (tests/HW); the led_pin tests of A.U24.45 (2) are void (see Ledger); `tests_hardware/README.md`
+  `wifi_refresh_sec` mention → A.U18.40 (docs); SPEC C.2/G.2 constructor text → A.U5.09 as ruled (docs)
+- **Kind**: code
+
+### M.SRC_NET.079 `setup()` sets up both loggers in the boot batch
+- **From**: A.U10.10 (new override; the lazy calls `:815-818` go), A.U36.544 (the `:818` pointer's replacement text)
+- **Site**: `src/asy_wifi_service.py` new `setup()`; `:815-818` in `wlan_connect()`
+- **Change**: `async def setup(self) -> None:` / `await super().setup()` / `await self._dns_server.pr.setup()  # the DNS
+  server's own logger is set up separately`. The two lazy `setup()` calls and their comments leave the connect loop.
+- **Resolved**: A.U36.544 rewrites the `:818` comment ("see SPECIFICATION.md Part C.7 for the real bug this fixed" →
+  "(the DNS server's logger is set up separately)"); A.U10.10 moves the call — the rewritten text goes with the call.
+- **Unit**: U10 (A.U36.544's text lands with it; U36 finds nothing left at `:818`)
+- **Depends**: A.U10.10's `SensorReaderConfig.setup()`
+- **Blast carried by**: the generated boot batch already calls `conn.setup()` (A.U10.10, GEN); tests pinning lazy setup
+  (`tests/test_asy_wifi_service.py:2060-2095`) → A.U10.10 (tests)
+- **Kind**: code
+
+### M.SRC_NET.080 `_now()` goes; the GET overlay shows the value in use
+- **From**: A.U10.06 (`_now()` → `utc_now()`), A.U14.26 (1) (dropped, register fix 10), A.U18.37 (`_value_in_use()`,
+  `_mask_pw()` → `_cfg_overlay()`), A.U10.39 (keys via `name_cfg()`), A.U11.S01 (`CfgValue`)
+- **Site**: `src/asy_wifi_service.py:191-201`
+- **Change**: `_now()` deleted (its one caller uses `utc_now()`, M.SRC_NET.091). New `def _value_in_use(self, field:
+  "FieldSchema", value: str) -> str: return value if _radio_value_ok(field, value) else str(field[2])`. `_mask_pw()` →
+  `async def _cfg_overlay(self) -> "dict[str, CfgValue]":` with the comment "# GET shows what the radio uses: passwords
+  masked, and a stored value the radio would refuse as the default it runs" / "# on (SPECIFICATION.md C.7.4)."; body:
+  `overlay = {name_cfg(_VAL_PW): "********", name_cfg(_VAL_HOTSPOT_PW): "********"}`; `schema = _VAL_SSID +
+  _VAL_COUNTRY + _VAL_HOSTNAME`; `values = await self.cfgmgr.get_str_values(schema)`; when not `None`, for each field
+  whose `_value_in_use(live_field, value)` differs from the stored value, `overlay[field[0]] = <value in use>` (live field
+  from `schema_dict(self._cfg_schema)`); no log on a GET; `return overlay`. The mask stays the display value (OR104.a
+  (1): kept for page parity, never read back).
+- **Resolved**: A.U14.26 (1)'s `except MemoryError` for `_now()` vs A.U10.06 — U18 register fix 10 settles for A.U10.06.
+- **Unit**: U18 (U10 stage: `_now()` removal)
+- **Depends**: M.SRC_NET.075, A.U10.39 (`_cfg_schema`)
+- **Blast carried by**: tests (masks hold; stored over-bound values read back as the default; the `_now()` overflow tests
+  `tests/test_asy_wifi_service.py:2545-2580` retire with the method) → A.U18.37, A.U10.06 (tests); SPEC C.7.4 sentence
+  → A.U18.37 (docs)
+- **Kind**: code
+
+### M.SRC_NET.081 Locked status read and the stations query use `async with`
+- **From**: A.U10.18 (`async with`; `_release_wifi_lock()` goes), A.U18.43 (1) (settle comment, suppression reason),
+  A.U28.30 (4) (removal trigger), A.SDEP.15 (W11, conditional), A.U18.44 (return type), A.U31.15 (`sleep_ms`), A.U8.10
+  (constant), A.U1.01 (legacy path in the comment)
+- **Site**: `src/asy_wifi_service.py:225-246` `_locked_wlan_status()`, `_get_hotspot_stations()`
+- **Change**: `_locked_wlan_status()`: `async with self.wifi_mode_lock: return self._wlan_status_or_none()`.
+  `_get_hotspot_stations(self) -> "list[tuple[bytes]]"`: `async with self.wifi_mode_lock:` then the comment "# Legacy's
+  settle before the stations query (legacy/firmware/python/CommonDrivers/async_connect.py:258); cyw43 055d642 states no
+  such need." / "# Removal: a hardware round showing the count stays right without it (BACKLOG real-hardware list)." and
+  `await asyncio.sleep_ms(_HOTSPOT_STATIONS_SETTLE_MS)`; `try: stations = self._wlan.status("stations");
+  self.pr.all(...)`; the `except Exception` observation arm unchanged; `else:` preceded by "# The 1.29 stub types
+  status(str) as int; "stations" returns a list of 1-tuples (network_cyw43.c:371-388)." / "# Remove the ignore when the
+  stub types it (warn_unused_ignores then flags it)." and `return stations  # type: ignore[return-value]`. If
+  A.SDEP.15 (U0) finds the refreshed stub already types `status("stations")`, the ignore and those two lines are not
+  written (W11). Version stamps follow the pin current at execution (A.SDEP.08).
+- **Resolved**: A.U18.43 (1) and A.U28.30 (4) both edit the `:244` suppression reason (A.U28.30: "A-C merges") — merged
+  above (reason on the line above the suppression, the form A.U28.30's check accepts).
+- **Unit**: U31 (the `sleep_ms` form; staged: U10 `async with`, U18 comments, U28 the trigger line)
+- **Depends**: M.SRC_NET.077
+- **Blast carried by**: BACKLOG real-hardware row "stations query without the 100 ms settle" → A.U18.43 (docs); tests
+  (`tests/test_asy_wifi_service.py:1833-1848` stations tests unchanged) → A.U18.43
+- **Kind**: code
+
+### M.SRC_NET.082 Mode switch: bool result, selected-interface record, named settles
+- **From**: A.U18.R01 (1) (bool), A.U18.28 (`_ap_selected`), A.U10.18 (`async with`), A.U10.03 (`restart(0)`), A.U8.10
+  (settle constants), A.U2.14 (60), A.U10.35 (`_wlan`, `_hw_op_failed`)
+- **Site**: `src/asy_wifi_service.py:271-293` `_select_wifi_mode()`, `_switch_wlan_mode()`
+- **Change**: `async def _select_wifi_mode(self, mode: int) -> bool: async with self.wifi_mode_lock: return await
+  self._switch_wlan_mode(mode)`. `async def _switch_wlan_mode(self, mode: int) -> bool:` — first statement
+  `self._ap_selected = False`; `try:` disconnect, `active(False)`, print, `await asyncio.sleep(_WLAN_DOWN_SETTLE_S)`,
+  `deinit()`, print, `await asyncio.sleep(_WLAN_DEINIT_SETTLE_S)`, `self._wifi_uptime.restart(0)`, `self._wlan =
+  network.WLAN(mode)`, `self._ap_selected = mode == network.AP_IF`, print, `await asyncio.sleep(_WLAN_MODE_SETTLE_S)`;
+  `except Exception as e:` → `self._hw_op_failed = True`, `await self.pr.err_s("Error switching WLAN mode:", e,
+  errno=_ERR_WLAN_MODE_SWITCH)`, `return False`; after the `try`, `return True`.
+- **Resolved**: —
+- **Unit**: U18
+- **Depends**: M.SRC_NET.077, M.SRC_NET.078
+- **Blast carried by**: callers `_start_hotspot()`, `_leave_hotspot_mode()` ignore the bool (M.SRC_NET.086/085);
+  `_recover_device()` returns it (M.SRC_NET.102); tests (mode-switch tests hold; `_ap_selected` cases) → A.U18.28,
+  A.U18.R01 (tests); `A.U30.03`'s run-phase allowance for `_switch_wlan_mode`/`_wlan` re-derived against the renamed
+  class → A.U30.03 (tests)
+- **Kind**: code
+
+### M.SRC_NET.083 Task-restart state reset states the hotspot behaviour
+- **From**: A.U18.29 (comment), A.U10.35 (names), A.U1.01 (legacy path)
+- **Site**: `src/asy_wifi_service.py:295-316` `_reset_wlan_connect_state()`
+- **Change**: private names throughout (`_ledflash`, `_dns_server_task`, `_connection_failures`,
+  `_hotspot_started_once`, `_hotspot_timer`, `_hotspot_timer_running`, `_reconn_wifi`, `_wlan`); the `:305-306`
+  comment → "# DEACTIVATED survives a restart (A.4); HOTSPOT is kept only so reconn_wifi below leaves it through
+  _leave_hotspot_mode()," / "# after which STA starts a fresh streak with hotspot_started_once cleared, as legacy's
+  restart did (legacy/firmware/python/CommonDrivers/async_connect.py:176-181)." Behaviour unchanged.
+- **Resolved**: —
+- **Unit**: U18
+- **Depends**: M.SRC_NET.078
+- **Blast carried by**: SPEC A.4 `:271-273` → A.U18.29 (docs); the end-to-end restart test → A.U18.29 (tests)
+- **Kind**: code
+
+### M.SRC_NET.084 Missing LED configuration deactivates with the LED on its default
+- **From**: A.U18.30 (LED default so the pattern shows), A.U3.05 (wrnno 1 → console), A.U10.39 (name)
+- **Site**: `src/asy_wifi_service.py:318-325` `_apply_initial_led_config()`; `:219-223` `_read_wifi_led_cfg()`
+- **Change**: `_read_wifi_led_cfg()` reads `_VAL_LED_WIFI_ON`; `_apply_initial_led_config()`: `led_cfg is None` →
+  `await self.set_wifi_led(status=_VAL_LED_WIFI_ON[0][2])` (the schema default, `True`), `self._conn_phase =
+  _PHASE_DEACTIVATED`, `self.pr.err("Missing WLAN configuration!")` (console, no number); else unchanged.
+- **Resolved**: —
+- **Unit**: U18
+- **Depends**: M.SRC_NET.072
+- **Blast carried by**: tests (`…missing_config_persists_wrnno_1_and_deactivates` → one `CFGMGR_WIFI` entry, none in
+  WIFI's own log, `client._led is not None`) → A.U3.05, A.U18.30 (tests); the deactivated pattern starts in the loop
+  (M.SRC_NET.100)
+- **Kind**: code
+
+### M.SRC_NET.085 Leaving the hotspot and waiting for an STA disconnect
+- **From**: A.U10.18 (`async with`), A.U2.14 (22, 64), A.U8.10 + A.U31.15 (`_STA_DISCONNECT_POLL_MS`), A.U10.35 (names)
+- **Site**: `src/asy_wifi_service.py:327-351` `_leave_hotspot_mode()`, `_disconnect_sta_and_wait()`; `:558-566`
+  `_wait_for_sta_disconnect()`
+- **Change**: `_leave_hotspot_mode()`: private names, `await self._select_wifi_mode(network.STA_IF)` (bool ignored).
+  `_disconnect_sta_and_wait()`: `await asyncio.sleep_ms(_STA_DISCONNECT_POLL_MS)`; timeout → `errno=_ERR_TIMEOUT`;
+  raise → `errno=_ERR_WLAN_STA_DISCONNECT`; `self._hw_op_failed`. `_wait_for_sta_disconnect()`: `async with
+  self.wifi_mode_lock: await self._disconnect_sta_and_wait()`, then the LED off and the event line.
+- **Resolved**: —
+- **Unit**: U31 (staged: U2, U10, U18 names; U31 `sleep_ms`)
+- **Depends**: M.SRC_NET.077, M.SRC_NET.082
+- **Blast carried by**: tests (codes 22/64; `:1564` comment naming the constants) → A.U2.14, A.U8.10 (tests)
+- **Kind**: code
+
+### M.SRC_NET.086 Hotspot bring-up split; the running AP is never reconfigured
+- **From**: A.U18.28 (split, comment), A.U10.18 (`async with`), A.U3.05 (wrnno 2 → console), A.U2.14 (61), A.U18.27
+  (`_PM_NO_POWERSAVE`), A.U10.39 (names), A.U10.38 (`CaptiveDNS.run()` in the comment), A.U10.35 (names)
+- **Site**: `src/asy_wifi_service.py:353-394` `_start_hotspot()`, `_activate_hotspot_ap()`, `_configure_hotspot_ap()`
+- **Change**: `_start_hotspot()`: `await self._select_wifi_mode(network.AP_IF)`, `await self._bring_up_hotspot_ap()`,
+  `self._hotspot_started_once = True`. New `_bring_up_hotspot_ap()`: `async with self.wifi_mode_lock:` LED config and
+  `get_str_values(_VAL_COUNTRY + _VAL_HOSTNAME + _VAL_HOTSPOT_PW)`; missing → `self.pr.err("Missing WLAN
+  configuration!")` and `await self.set_wifi_led(status=False)`; else `set_wifi_led(status=led_cfg)`, `_radio_values(…)`,
+  `await self._activate_hotspot_ap(country, hostname, password)`. `_activate_hotspot_ap()`: `errno=_ERR_WLAN_AP_START`.
+  `_configure_hotspot_ap()`: comment `:378-380` → "# Configures only an inactive AP: re-applying essid/password to a
+  running one can drop its beacon (cyw43)." / "# Reached on a hotspot phase's first tick and when the selected AP reports
+  no link (_run_hotspot_mode())."; `self._wlan.config(pm=_PM_NO_POWERSAVE)` (trailing comment goes); the DNS-task guard
+  comment names `CaptiveDNS.run()`; `self._dns_server_task = evtloop.create_task(self._dns_server.run(own_ip,
+  own_netmask))`.
+- **Resolved**: —
+- **Unit**: U18
+- **Depends**: M.SRC_NET.077, M.SRC_NET.082, M.SRC_NET.096 (`_radio_values()`)
+- **Blast carried by**: tests (the twice-leak test's header reworded; the DNS-task guard holds for
+  `_bring_up_hotspot_ap()`; `…re_activates_without_a_mode_switch…` sibling) → A.U18.28 (tests); twin AP reports
+  `STAT_GOT_IP` and `192.168.4.1`, so L2 reaches the stations path and the captive DNS subnet check sees a real AP subnet
+  → A.U25.72 (TWIN); SPEC F.2 `:3635-3636`, A.4 phase table → A.U18.28 (docs)
+- **Kind**: code
+
+### M.SRC_NET.087 Hotspot client paths persist a timer failure; the watcher loop is renamed
+- **From**: A.U18.31 (`_hotspot_client_connected()` sets the LED itself), A.U18.24 (2) (hotspot-timer failure
+  persisted, errno 17), A.U18.30 (flash call), A.U31.15 (ms constants), A.U10.44 (`_watch_hotspot_timeout()` →
+  `_hotspot_timeout_loop()`), A.U10.45 (except order), A.U10.35 (names), A.U18.40 (`wifi_refresh_sec` gone from the
+  comment)
+- **Site**: `src/asy_wifi_service.py:396-430`
+- **Change**: `_hotspot_client_connected()`: deinit and flag as today; `if self._ledflash is not None:
+  self._ledflash.cancel(); self._ledflash = None`; then `self._led_on()` unconditionally; the event line.
+  `_hotspot_client_absent()`: the timer arm as today (comment `:410-412` kept) with `except (MemoryError, OSError) as e:`
+  and the trailing comment "# alarm-pool exhaustion (ENOMEM) -" / "# _hotspot_timer_running stays False so the next
+  refresh cycle retries arming it." and `await self.pr.err_s("Could not start hotspot timer:", e, errno=_ERR_TIMER)`;
+  then `if self._ledflash is None: self._ledflash = evtloop.create_task(self._flash_led(_LED_HOTSPOT_ON_MS,
+  _LED_HOTSPOT_OFF_MS))`. `async def _hotspot_timeout_loop(self) -> None:` (was `_watch_hotspot_timeout()`), body with
+  private names.
+- **Resolved**: —
+- **Unit**: U31 (staged: U10 name, U18 behaviour, U31 constants)
+- **Depends**: M.SRC_NET.077, M.SRC_NET.092
+- **Blast carried by**: tests (`:1363-1378` gain one errno-17 entry; flash-cancel test inverted) → A.U18.24, A.U18.31
+  (tests)
+- **Kind**: code
+
+### M.SRC_NET.088 STA connect path: console config line, named codes, retry wait outside the lock
+- **From**: A.U3.05 (wrnno 3 → console), A.U2.14 (62, 65), A.U18.27 (`_PM_NO_POWERSAVE`), A.U3.02 (episode reset
+  goes), A.U18.32 (1) (retry wait unlocked), A.U10.18 (`async with`), A.U8.10 (`_STA_RETRY_AFTER_LOSS_S`,
+  `_WLAN_DOWN_SETTLE_S`), A.U10.39 (names), A.U10.35 (names)
+- **Site**: `src/asy_wifi_service.py:432-501` (`_attempt_sta_connect()` … `_deactivate_wlan_permanently()`),
+  `:583-590` `_run_sta_mode()`, `:632-636` `_handle_sta_connection_result()`
+- **Change**: `_attempt_sta_connect()`: reads `_VAL_SSID + _VAL_PW + _VAL_COUNTRY + _VAL_HOSTNAME`; missing →
+  `self.pr.err("Missing WLAN configuration!")` and return; `_connection_failures` on an empty SSID. `_trigger_sta_connect()`:
+  `pm=_PM_NO_POWERSAVE`, `errno=_ERR_WLAN_STA_START`. `_on_sta_connected()`: the `_episode_wrns = 0` line goes.
+  `_on_sta_disconnected(self) -> bool`: event line; `retry_due = self._conn_phase == _PHASE_STA_ESTABLISHED`; if due the
+  "retrying in 1 minute" event line, else `await self._register_sta_connection_failure()`; `self._led_off()`; the status
+  print; `return retry_due`. `_handle_sta_connection_result(self) -> bool`: connected → `self._on_sta_connected()`,
+  `return False`; else `return await self._on_sta_disconnected()`. `_run_sta_mode()`: `async with self.wifi_mode_lock:`
+  the attempt and `retry_due = await self._handle_sta_connection_result()`; after the block, `if retry_due: await
+  asyncio.sleep(_STA_RETRY_AFTER_LOSS_S)`. `_deactivate_wlan_permanently()`: `await asyncio.sleep(_WLAN_DOWN_SETTLE_S)`,
+  `errno=_ERR_WLAN_OFF`.
+- **Resolved**: —
+- **Unit**: U18
+- **Depends**: M.SRC_NET.077, M.SRC_NET.096
+- **Blast carried by**: tests (retry test asserts the lock is released during the wait; getters return real values
+  during it; codes) → A.U18.32, A.U2.14 (tests); SPEC C.8 priority-inversion sentence goes, lock-hold table → A.U18.32,
+  A.U18.34 (docs)
+- **Kind**: code
+
+### M.SRC_NET.089 Connect-status poll: stops at `STAT_GOT_IP`, direct warnings, BADAUTH wording
+- **From**: A.U18.32 (2) (return at `STAT_GOT_IP`), A.U18.27 (`_STAT_JOINED_NO_IP`), A.U18.36 (message and comment),
+  A.U2.14 (63, 36-39), A.U3.02 (`_episode_wrn()` goes), A.U8.10 + A.U31.15 (`_STA_CONNECT_POLL_ITERS`,
+  `_STA_CONNECT_POLL_MS`)
+- **Site**: `src/asy_wifi_service.py:592-630` `_poll_sta_connect_status()`, `_episode_wrn()`
+- **Change**: `for _i in range(_STA_CONNECT_POLL_ITERS):`; status raise → `errno=_ERR_WLAN_STA_POLL`;
+  `elif status == _STAT_JOINED_NO_IP: self.pr.all("WLAN obtaining IP")`; `STAT_WRONG_PASSWORD` → comment "# cyw43 reports
+  any failed AUTH event or key exchange as BADAUTH (cyw43_ctrl.c:383-395, 415-427): not proof of a wrong password." and
+  `await self.pr.wrn_s("WLAN authentication or handshake failed", wrnno=_WRN_WLAN_AUTH_FAILED)`; `NO_AP_FOUND` →
+  `wrnno=_WRN_WLAN_NO_AP`; `CONNECT_FAIL` → `wrnno=_WRN_WLAN_CONNECT_FAILED`; `STAT_GOT_IP` → `self.pr.all("WLAN connection
+  successful")` then `return`; else `wrnno=_WRN_WLAN_STATUS_UNKNOWN`; each warning branch returns as today; `await
+  asyncio.sleep_ms(_STA_CONNECT_POLL_MS)`. `_episode_wrn()` deleted.
+- **Resolved**: —
+- **Unit**: U31 (staged: U3 direct calls, U8 names, U18 behaviour/texts, U31 ms)
+- **Depends**: M.SRC_NET.077
+- **Blast carried by**: tests (one status call on success; renamed authentication test; episode tests rewritten to the
+  central rule; the printed state line tests) → A.U18.32, A.U18.36, A.U3.02, A.U24.32 (tests); catalog 36 text → A.U2.01
+  + U18 register fix 9 (catalog); twin/bench wrong-password assertions read the number → A.U18.36 (HW)
+- **Kind**: code
+
+### M.SRC_NET.091 One networking snapshot per second
+- **From**: A.U18.33 (snapshot fields, `_dhcp_dns`, rssi only in STA), A.U10.06 (`utc_now()`), A.U10.35 (`_wlan`)
+- **Site**: `src/asy_wifi_service.py:503-512` `_update_wifi_snapshot()`
+- **Change**: `mode = "AP" if self._conn_phase == _PHASE_HOTSPOT else "STA"`; in `_PHASE_DEACTIVATED` no radio call:
+  publish `WIFI("STA", connected, None, None, None, None, None, utc_now())` and `self._dhcp_dns = None`; otherwise
+  `ifconfig()` once (print-only on failure, as today) giving IP/Subnet/Gateway/DNS when it has four fields; `rssi = None`,
+  and only when `not self._ap_selected and connected`: `try: rssi = int(self._wlan.status("rssi"))` with the HEAD
+  comment's substance ("outside STA mode it raises ValueError") and a print-only `except`; `self._dhcp_dns = dns if
+  connected else None` with no await between the read and the publish; `await self._set_meas_data(WIFI(mode, connected,
+  ip, subnet, gateway, dns, rssi, utc_now()))`.
+- **Resolved**: A.U18.33's "in `_PHASE_DEACTIVATED` … all fields `None`, Mode 'STA'" — `Connected` keeps the value the
+  caller passes (`False`, HEAD `:849`), `TS` the timestamp primitive's value; the address fields and `RSSI` are `None`
+  (reading of "all fields", keeping HEAD's published `Connected: false`).
+- **Unit**: U18
+- **Depends**: M.SRC_NET.074, M.SRC_NET.082
+- **Blast carried by**: generated `_networking_status()` reads one `conn.get_data()` → A.U18.33 (GEN); per-device
+  `/status` tests with the lock held → A.U18.33 (tests); twin `status("rssi")` raises outside STA → A.U18.33/U25 (TWIN);
+  SPEC A.8/C.8 → A.U18.33 (docs)
+- **Kind**: code
+
+### M.SRC_NET.092 Push narrowing stated; lock helper goes; one flash task for both patterns
+- **From**: A.U18.41 (comment), A.U10.18 (`_release_wifi_lock()` goes), A.U18.30 (`_flash_led(on, off)`), A.U18.31
+  (cancel arm goes), A.U10.20 (task top; its cancel clause dropped by the V.U18.31/V.U18.D ruling), A.U31.15 (ms)
+- **Site**: `src/asy_wifi_service.py:514-536` `_push_wifi_led()`, `_release_wifi_lock()`, `_flash_led_off()`
+- **Change**: `_push_wifi_led()` comment `:515-516` → "# Narrows the config-value union to bool for set_wifi_led(); the
+  schema already guarantees a bool, so the False arm is unreachable - kept for the type."; body unchanged (value type
+  `CfgValue`, A.U11.S01). `_release_wifi_lock()` deleted. `_flash_led_off()` → `async def _flash_led(self, on_ms: int,
+  off_ms: int) -> None:` — `while True:` `self._led_on()`, `await asyncio.sleep_ms(on_ms)`, `self._led_off()`, `await
+  asyncio.sleep_ms(off_ms)`; wrapped once in `try:` … `except Exception as e: await self.pr.err_s("LED flash task
+  failed:", e, errno=_ERR_UNEXPECTED)` (the unsupervised task's top, G5/R16); no `CancelledError` arm: a cancel ends the
+  task at its sleep, touching no LED.
+- **Resolved**: A.U10.20 keeps the `CancelledError` arm and says "the LED left on, as on cancel"; A.U18.31 removes it —
+  ruling V.U18.31/V.U18.D (G6/R54, RF204) for A.U18.31; A.U10.20's `except Exception` top stays. Soundness (agent,
+  OR111.a (2)): A.U10.20's L1 WiFi test ("an LED whose `on()` raises ends the flash task with one 23 entry") cannot pass
+  as written, because `_led_on()`/`_led_off()` absorb every exception of the LED object (`:248-262`, print-only); the top
+  is still reachable (a `MemoryError` in those helpers' own logging), so it stays under G5/R16 and its test drives it
+  through a double (a replaced `_led_on` raising), as G5/R54 allows — gap for the tests cluster (below).
+- **Unit**: U31 (staged: U10 top and lock helper removal, U18 signature/cancel semantics, U31 `sleep_ms`)
+- **Depends**: M.SRC_NET.077
+- **Blast carried by**: the four cancellers (M.SRC_NET.083, .087, .093, .098); tests (flash cancel inverted, pattern
+  durations 100/2900, the flash top test via a double) → A.U18.30, A.U18.31, A.U10.20 as corrected (tests); SPEC E.5.1
+  narrowing entry → A.U18.41/A.U35.41 (docs); SPEC C.8 cancellation line → A.U18.31 (docs)
+- **Kind**: code
+
+### M.SRC_NET.093 Reconnect trigger, hotspot tick and stations management
+- **From**: A.U18.28 (`_run_hotspot_mode()`), A.U8.10 (`_RECONNECT_CALLER_GRACE_S`, `_RECONNECT_SETTLE_S`), A.U10.35
+  (names)
+- **Site**: `src/asy_wifi_service.py:538-581` `_handle_reconnect_trigger()`, `_run_hotspot_mode()`,
+  `_manage_hotspot_stations()`
+- **Change**: `_handle_reconnect_trigger()`: private names; `await asyncio.sleep(_RECONNECT_CALLER_GRACE_S)` (comment
+  kept) and `await asyncio.sleep(_RECONNECT_SETTLE_S)`. `_run_hotspot_mode()`: `status = await
+  self._locked_wlan_status()`; `if status == network.STAT_GOT_IP: await self._manage_hotspot_stations()` / `elif not
+  self._ap_selected: await self._start_hotspot()` / `else: await self._bring_up_hotspot_ap(); await
+  self._hotspot_client_absent()`. `_manage_hotspot_stations()` unchanged.
+- **Resolved**: —
+- **Unit**: U18
+- **Depends**: M.SRC_NET.086, M.SRC_NET.087
+- **Blast carried by**: tests (the new sibling case) → A.U18.28 (tests)
+- **Kind**: code
+
+### M.SRC_NET.094 Starters and starter lists follow one naming scheme
+- **From**: A.U10.44 (names), A.U10.03 (tick starter), A.U18.24 (1) (`_tick_armed`), A.U18.44 (`TaskStarter`),
+  A.U10.46
+- **Site**: `src/asy_wifi_service.py:648-678`
+- **Change**: `start_asy_connect()` over `_connect_loop()`, `start_asy_uptime()` over `_uptime_loop()`,
+  `start_asy_hotspot_timeout()` over `_hotspot_timeout_loop()`; `start_uptime_timer()` (was `start_counter_timer()`):
+  `self._tick_armed = arm_tick_timer(self._counter_timer, self._time_counter_trigger_event, self.pr, "WiFi uptime")`
+  with the one-line comment "# a failed arm is retried by _connect_loop(), which persists a second failure";
+  `stop_uptime_timer()` (was `stop_counter_timer()`); `get_task_starters(self) -> "list[TaskStarter]"` returning the
+  three renamed starters; `get_timer_starters()` returning `[self.start_uptime_timer]`.
+- **Resolved**: —
+- **Unit**: U18 (U10 names and `arm_tick_timer()`)
+- **Depends**: A.U10.03
+- **Blast carried by**: tests and device scripts calling starters/coroutines by name → A.U10.44 (tests/HW); SPEC C.9
+  tick-timer sentence → A.U10.03 (docs)
+- **Kind**: code
+
+### M.SRC_NET.096 PUT refusal and use path share one radio check
+- **From**: A.U6.29 (message, `_radio_value_ok()`), A.U2.14 (21, 10), A.U19.16 (`INVALID`), A.U3.02 (direct `wrn_s`),
+  A.U18.37 (`_value_in_use()`), A.U28.28 (B905 inline `noqa` goes), A.U10.39 (`_cfg_schema`), A.U11.S01 (`CfgValue`)
+- **Site**: `src/asy_wifi_service.py:690-716` `_set_mgr_cfg()`, `_radio_values()`
+- **Change**: `_set_mgr_cfg(self, data: "dict[str, CfgValue]", cfg_vals: "ConfigSchema") -> "tuple[bool,
+  WriteValidity]"`: comment "# Refuses a radio value outside its byte bound or shape before it is stored (C.7.4); the
+  rest of the" / "# request goes through ConfigManager as usual."; `refused` built with `_radio_value_ok()`; each `await
+  self.pr.err_s("Refusing", key, "- outside the radio's accepted form", errno=_ERR_BAD_ARG)`; `results[key] = INVALID`.
+  `_radio_values()`: `fields = schema_dict(self._cfg_schema)`; `for field, value in zip(schema, values):` (no inline
+  `noqa`: B905 is exempted centrally for MicroPython-run code, A.U28.27/A.U28.28); `live = fields.get(field[0], field)`;
+  `used = self._value_in_use(live, value)`; `if used != value: await self.pr.wrn_s("Stored", field[0], "is outside the
+  radio's accepted form, using its default", wrnno=_WRN_STORED_DEFAULT)`; `safe.append(used)`; comment `:705-706` kept.
+- **Resolved**: —
+- **Unit**: U28 (A.U28.28's noqa removal is the latest; staged: U2 codes, U3 direct call, U6 check/message, U10 name,
+  U18 helper, U19 `INVALID`)
+- **Depends**: M.SRC_NET.075, M.SRC_NET.080, A.U28.27 (the central B905 entry exists before the inline noqa goes)
+- **Blast carried by**: tests (refusal text, byte-bound tests, corpus cases, B905 removal keeps ruff clean) → A.U6.29,
+  A.U28.28 (tests/tooling); SPEC C.7.4 → A.U6.29 (docs)
+- **Kind**: code
+
+### M.SRC_NET.097 Config getter, error sources and loggers
+- **From**: A.U18.37 (`callback=self._cfg_overlay`), A.U10.39/A.U10.40 (names), A.U18.44 + A.U11.S02
+  (`list[ErrorSource]`), A.U10.35 (`_dns_server`)
+- **Site**: `src/asy_wifi_service.py:718-733`
+- **Change**: `get_dict_cfg()` → `self._get_dict_cfg(self.name, _VAL_SSID + _VAL_PW + _VAL_COUNTRY + _VAL_HOSTNAME +
+  _VAL_LED_WIFI_ON + _VAL_HOTSPOT_PW, callback=self._cfg_overlay)`; `get_error_sources(self) -> "list[ErrorSource]":`
+  comment names `self._dns_server`, `return super().get_error_sources() + [self._dns_server]`; `get_loggers()` →
+  `super().get_loggers() + [self._dns_server.pr]`; `get_error_counter()` unchanged.
+- **Resolved**: —
+- **Unit**: U18
+- **Depends**: M.SRC_NET.080
+- **Blast carried by**: generated `_collect_error_sources()` → A.U10.46 (GEN); `test_captive_dns.py:283`-style equality
+  tests hold → A.U11.S02 (tests)
+- **Kind**: code
+
+### M.SRC_NET.098 Getters read held state; the lock-requiring read says so; LED setter simplified
+- **From**: A.U18.33 (comment; `get_wlan_ifconfig()`/`get_wlan_rssi()` go; `get_dns_server_ip()` from the snapshot),
+  A.U18.42 (`wlan_isconnected()` goes), A.U10.18 (`network_available()` → `network_available_locked()`), A.U10.03
+  (`get_wifi_uptime()`), A.U5.07 (`set_ext_led()` goes), A.U18.40 (`set_wifi_led()`), A.U0.35 (`:793` tag), A.U10.35
+  (names)
+- **Site**: `src/asy_wifi_service.py:735-812`
+- **Change**: comment `:735-737` → "# Every public getter reads state this service holds (the 1 Hz snapshot, the phase);
+  none touches the radio. The one" / "# radio read callers may make, network_available_locked(), requires wifi_mode_lock
+  (SPECIFICATION.md C.8)."; `get_wlan_ifconfig()` and `get_wlan_rssi()` deleted; `get_dns_server_ip()` → `return
+  self._dhcp_dns` with the comment "# The DHCP-assigned DNS server to try first, from the last snapshot."; `get_wifi_mode_lock()`
+  unchanged; `async def get_wifi_uptime(self) -> int: return self._wifi_uptime.read() if self._wifi_connected else 0`;
+  `wlan_isconnected()` deleted; `def network_available_locked(self) -> bool:  # caller must already hold wifi_mode_lock`
+  with HEAD's body; `is_hotspot_active()` comment → "# A plain self._conn_phase compare touches no hardware, unlike
+  network_available_locked()'s radio read -" / "# no lock needed, the callable-from-anywhere getter shape.";
+  `set_ext_led()` deleted; `set_wifi_led()`: comment "# Uniform setter return contract (owner, 2026-09-26): always True
+  here - pure attribute" / "# assignment plus _led_off()'s own already-defensive degrade-on-raise, nothing to reject.";
+  `if status: if self._led is None: self._led = self._ext_led  # if None, the LED stays off` / `else: self._led_off();
+  self._led = None`; `return True`. `reconnect_wifi()` unchanged apart from private names.
+- **Resolved**: —
+- **Unit**: U18 (U5 `set_ext_led()` removal; U10 names, `get_wifi_uptime()`)
+- **Depends**: M.SRC_NET.091
+- **Blast carried by**: generated `ntp = NTPClient(…, conn.network_available_locked, conn.get_dns_server_ip, …)` →
+  A.U10.18 (GEN); generated `_networking_status()` stops calling the two removed getters → A.U18.33 (GEN); tests
+  (`get_wlan_ifconfig` tests go, `get_dns_server_ip` inverts to "last snapshot while locked", rssi tests become snapshot
+  tests, `wlan_isconnected` tests go, `…selects_the_ext_led`) → A.U18.33, A.U18.42, A.U18.40 (tests); SPEC C.8 "Known
+  inconsistency" → the one contract → A.U18.33/A.U10.18 (docs)
+- **Kind**: code
+
+### M.SRC_NET.100 `_connect_loop()`: timer re-arm, deactivated pattern, console give-up, constant refresh
+- **From**: A.U10.44 (`wlan_connect()` → `_connect_loop()`), A.U10.10 (lazy setups go), A.U18.24 (1) (tick re-arm),
+  A.U18.30 (deactivated pattern), A.U3.07 (give-up → console), A.U18.40 (`_WIFI_REFRESH_S`), A.U10.R01 (the streak it
+  zeroes; the ladder in `_error_check()`), A.U10.35 (names)
+- **Site**: `src/asy_wifi_service.py:814-841` `wlan_connect()`
+- **Change**: `async def _connect_loop(self) -> None:` — `self._err_cnt_internal = 0` (comment kept), `_reset_wlan_connect_state()`,
+  `await self._apply_initial_led_config()`; loop: `if self._conn_phase == _PHASE_DEACTIVATED:` the `all()` line, then
+  "# Deactivated: a distinct pattern (owner, 2026-09-29), a short blink every 3 s (agent, 2026-09-30)." and `if
+  self._ledflash is None: self._ledflash = asyncio.get_event_loop().create_task(self._flash_led(_LED_DEACTIVATED_ON_MS,
+  _LED_DEACTIVATED_OFF_MS))`; else `self._hw_op_failed = False`; `if self._tick_armed is False: self._tick_armed =
+  arm_tick_timer(self._counter_timer, self._time_counter_trigger_event, self.pr, "WiFi uptime")` and, still `False`,
+  `await self.pr.err_s("WiFi uptime timer not armed", errno=_ERR_TIMER)` and `self._hw_op_failed = True`; reconnect
+  trigger, hotspot/STA branch as today; the streak comment's "matching a Reader's read_loop() returning False" →
+  "_read_loop()"; give-up → `self.pr.err("Giving up after repeated WLAN hardware failures, restarting task.")` (console:
+  `_error_check()`'s errno 2 is the persisted entry) and `return`; after the branch `await
+  asyncio.sleep(_WIFI_REFRESH_S)`.
+- **Resolved**: —
+- **Unit**: U18 (staged: U3 console give-up, U10 name/setup removal)
+- **Depends**: M.SRC_NET.077, M.SRC_NET.079, M.SRC_NET.092, M.SRC_NET.102, A.U10.R01
+- **Blast carried by**: tests (tick re-arm cases, `max_module_error` failed re-arms end the loop, deactivated pattern,
+  give-up expects errno 2 once, streak tests re-derived for the recovery rung) → A.U18.24, A.U18.30, A.U3.07, A.U18.R01
+  (tests); `_RUN_PHASE_ALLOWED` gains `WifiService._connect_loop`/`_ledflash` "the deactivated-state LED pattern" →
+  A.U30.03 (tests, its "earlier units' new sites join" clause); SPEC C.9 / A.4 → A.U18.24, A.U18.30 (docs)
+- **Kind**: code
+
+### M.SRC_NET.101 `_uptime_loop()` counts measured link time under the lock
+- **From**: A.U10.44 (`time_counter()` → `_uptime_loop()`), A.U10.03 (`TickSeconds`, `_wifi_connected`), A.U10.18
+  (`async with`), A.U18.35 (comment), A.U18.33 (the snapshot it publishes)
+- **Site**: `src/asy_wifi_service.py:843-860` `time_counter()`
+- **Change**: `async def _uptime_loop(self) -> None:` — `self._wifi_uptime.restart(0)`, `self._wifi_connected = False`;
+  loop: `await self._time_counter_trigger_event.wait()`; deactivated → `restart(0)`, `self._wifi_connected = False`,
+  `await self._update_wifi_snapshot(connected=False)`, `continue`; `async with self.wifi_mode_lock:` comment "# Link up,
+  hotspot included: an active AP reports STAT_GOT_IP too (owner, 2026-09-29)." / `connected =
+  self._wlan_status_or_none() == network.STAT_GOT_IP` / `self._wifi_connected = connected` / `if not connected:
+  self._wifi_uptime.restart(0)` / `await self._update_wifi_snapshot(connected=connected)`. `get_data()`'s comment
+  `:682-683` names `_uptime_loop()`.
+- **Resolved**: —
+- **Unit**: U18 (U10 stage: name, `TickSeconds`, `async with`)
+- **Depends**: M.SRC_NET.091, A.U10.02
+- **Blast carried by**: status catalog descriptions and DEVICE_REFERENCE "link up, hotspot included" → A.U18.35
+  (GEN/docs); tests (driven ticks; `get_wifi_uptime()`) → A.U10.03 (tests); lock-hold tests → A.U18.34 (tests)
+- **Kind**: code
+
+### M.SRC_NET.102 The radio re-initialisation is WiFi's participant rung
+- **From**: A.U18.R01 (2)
+- **Site**: `src/asy_wifi_service.py`, new `_recover_device()` override
+- **Change**: `async def _recover_device(self) -> bool | None:` with the comment (≤ 3 lines) "# Participant rung
+  (SPECIFICATION.md C.7/F.2): re-select the current mode; deinit() powers the CYW43 off" / "# and the next active(True)
+  reloads its firmware (cyw43_ctrl.c:118-175, cyw43-driver 055d642). None while deactivated: no radio in use."; `if
+  self._conn_phase == _PHASE_DEACTIVATED: return None`; `return await self._select_wifi_mode(network.AP_IF if
+  self._conn_phase == _PHASE_HOTSPOT else network.STA_IF)`.
+- **Resolved**: A.U18.R01 notes that in hotspot phase "the AP's own mode select repeats the re-initialisation once";
+  with A.U18.28 merged (`_ap_selected` set by the re-select, M.SRC_NET.082/093), the next hotspot tick takes the
+  `_bring_up_hotspot_ap()` branch instead, so no second re-initialisation happens — the bound improves, nothing else
+  changes. A.U18.R01's "re-checks these line numbers against its applied changes" is done here.
+- **Unit**: U18
+- **Depends**: A.U10.R01 (the hook and ladder), M.SRC_NET.082
+- **Blast carried by**: tests (two failed iterations → one `deinit()` and one `WLAN(STA_IF)` construction, one wrnno
+  14; hotspot re-selects AP; deactivated no call; a raising `deinit()` → one errno 60 only; episode re-arm) → A.U18.R01
+  (tests); L2 twin WLAN counts constructions per interface → A.U18.R01/U25 (TWIN); L3 device-script step →
+  A.U18.R01 (HW); SPEC A.4 WiFi bullet, F.2 → A.U18.R01/A.U14.R01 (docs); lock-hold table gains this holder → A.U18.34
+  (docs)
+- **Kind**: code
+
+### M.SRC_NET.103 Member order per D.15 (WiFi service)
+- **From**: A.U10.33
+- **Site**: `src/asy_wifi_service.py` class `WifiService` and the module-level helpers
+- **Change**: pure reorder by D.15's key (A.U10.32), AST-verified; methods added after U10 (`_bring_up_hotspot_ap()`,
+  `_value_in_use()`, `_cfg_overlay()`, `_recover_device()`, `_country_ok()`) are placed by the same key when written.
+- **Resolved**: —
+- **Unit**: U10 (last U10 edit)
+- **Depends**: every U10 edit of the file
+- **Blast carried by**: —
+- **Kind**: code
