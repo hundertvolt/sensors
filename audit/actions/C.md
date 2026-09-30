@@ -622,3 +622,91 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
 - **Depends**: A.U26.11, A.U26.42, A.U26.66, A.U25.01.
 - **Kind**: test, hardware, doc
 
+## Hardware-duty inventory
+
+Every hardware duty found in `audit/actions/*.md` (U0-U36b, U8C/U8C2, SUPP_*) and in the 37 input blocks. "own": a run,
+measurement or record this file plans as a step or instrument; "co-land": a test or fixture an earlier action writes,
+executed by the named round's suite run with no further step. Rounds: R0 host (A.C.02), R1 default (A.C.03), R2
+operator (A.C.04), R3 gated (A.C.05), R4 flash cycles (A.C.06), R5 soak (A.C.07), R6 rollover (A.C.08), R7 release
+proof (A.C.09); "every" = every round (A.C.01).
+
+| # | duty | source action(s) / register | level · gate | round | own / co-land |
+|---|---|---|---|---|---|
+| H01 | owner go-ahead in the round's conversation; round plan (order, outcomes, wear, twin parameter) | CLAUDE.md :284-293; G1/R02; OR8.a, OR17.a (4) | — | every | own (A.C.01) |
+| H02 | FRAM `errcount` and raw FRAM read and saved before anything writes; the first-chunk caveat | A.U26.22, A.U36.002, CLAUDE.md :367-394; OR28.a (1) | L3/L4 | every | co-land (fixture) + own (A.C.01 (3)) |
+| H03 | lower levels L0-L2 at both GC stages first; never clean when skipped | A.U7.18, A.U7.14; OR45.a (2)(a) | L0-L2 | every | co-land |
+| H04 | image record and image-identity fixture (`buildDate`, lwIP ensemble) | A.U26.02, A.U26.03; G1/R02 | L4 | every | co-land |
+| H05 | standard board state at start and end; timed-out script interrupted | A.U26.79, A.U26.12; LEAD/R02 | L3/L4 | every | co-land |
+| H06 | timestamped boot log saved | A.U26.41 (1), A.U26.26; G1/R30, G5/R05 | L4 | every | co-land |
+| H07 | bench network: switch armed around every `br0`/slave change; `br0` MAC equals the uplink's | CLAUDE.md :295-306, SPEC B.13; A.U21.23 | host | every | own (A.C.01 (2)) |
+| H08 | pre-audit image: `/system`, `/status`, `/sensors`, `/networking`, `reset_cause()`, raw FRAM, config files | OR28.a (1); G1/R04; A.S0930.29's dump script | L3/L4 read-only | R1 | own (A.C.03 (1)) |
+| H09 | CRC32 per-call allocation before (pre-audit image) and after | A.U12.01 | L3 | R1 | own |
+| H10 | reset codes 2-6 and BOOTSEL round trip (region 0 across `reset_usb_boot()`) | A.U26.28, A.U11.05 design note, A.S0930.30; G1/R14, G5/R03, G7/R07 | L4 | R1 | co-land |
+| H11 | reset code 1 (power-on) | A.U26.28 (2), A.U26.42 (2) | manual | R2 | own step |
+| H12 | reset codes 0, 9, 10+p, 20 | G5/R03, OR60.a (4), harmonization 45 | L4 | R1 | own (A.C.12) |
+| H13 | `resetconfig` / `erasefram`: function, near-miss words, states, bus hazard, watchdog takeover and hung step, power loss per step (codes 7, 8) | A.S0930.28, A.S0930.29; OR117-OR122, OR124 | L3/L4 | R1 (ungated rows), R3 (`resetconfig`, `persistence_write`, configs saved and restored) | co-land |
+| H14 | `reboot`/`bootloader` through the controlled sequence, timing bounds, at-once race (codes 3, 4) | A.S0930.39, A.S0930.40, A.U23.33; OR126.a (3), OR120.a | L3/L4 | R1 | co-land |
+| H15 | supervisor escalation reboot attributed (code 5), fed once before it (OR130) | A.U26.28, A.U31.07; OR130.a, G1/R20 | L4 | R1 | co-land (a code 2 is an OR130 failure, A.C.01 (9)) |
+| H16 | recovery rungs on silicon (supervisor restart, participant rungs, bus clear, controller re-init, boot clear, WiFi radio re-init) | A.U26.34, A.U13.R02, A.U15.R01-R04, A.U16.R01, A.U18.R01; G1/R20, G4/R22, OR113.a | L3/L4 | R1 | co-land |
+| H17 | manual rungs: SCD30 and FRAM unplug/replug, SDA-to-GND | A.U26.34 (2); LEAD/R29 | manual | R2 | own step |
+| H18 | held SDA vs MCU reset; SCL/SDA during `recover()` and the boot clear (scope) | A.U14.17 row, SUPP_recovery A.U13.R02 row | L3 + scope | R1 (L3 case), R2 (scope, if provided) | co-land + own |
+| H19 | trigger spacing over a long run | A.U26.41 (2); G1/R30, G5/R07, G4/R64 | L4 `soak_duration` long | R5 | co-land |
+| H20 | loop lag under combined load (flash script) and idle loop share | A.U31.06 (3), A.U8.11; G4/R64 | L3 | R1 | co-land + own figure |
+| H21 | no-yield stretches; flash-write loop gap | A.U31.05; G4/R64 | L3; second script `persistence_write` | R1, R3 | co-land |
+| H22 | FRAM command hold under the UART poll floor (BACKLOG T4) | A.U16.07, A.U33.07; G4/R64 | L3 | R1 | co-land |
+| H23 | C-stack peak reading | A.U30.18; LEAD/R06 | L3 | R1 | co-land |
+| H24 | alarm-pool `constructed=N` | A.U14.13 | L3 | R1 | own record |
+| H25 | conformance probes SCD30, SGP40, BMP3xx (calibration block), FRAM, ISL29125 (12-bit cycle); SGP40 serial word 0 recorded | A.U26.66, A.U15.13; G7/R04 | L3 | R1 | co-land |
+| H26 | register volatility (BMP3xx soft-reset key; ISL probe A03-A05); bench SCD30 NVM state recorded | G1/R04, G3.076 | L3 | R1 | own (A.C.16) |
+| H27 | ISL29125 M.1.2 rows re-measured, PRST unit asserted, CONFIG1 restart reported | G3/R46 | L3; S3b gated | R1, R3 | own (A.C.19) |
+| H28 | S3b envelope with `Overrange`; M1 rig geometry first | A.U26.11, A.U26.42 (3); G3/R54, G1/R40 | L3 `neopixel_sweep` + `persistence_write`; manual | R2 (M1), R3 (S3b) | co-land |
+| H29 | lone-BMP3xx general call; non-SGP40 ACK/NAK of a broadcast | A.U35.21, A.U25.01 row | L3 | R1 | co-land |
+| H30 | SCD30 wrong argument CRC / interval 0 reaction; 0x0010 readback across a power cycle | G7/R03 RF094, A.U25.01, A.U25.12, A.U15.08 | L3 `persistence_write` + `scd30_extra_write`; manual | R3, R2 | own (A.C.15) |
+| H31 | SCD30 prerequisite start at most once; dependents by default; read-while-write gated | A.U26.07, A.U26.08, A.U26.09 | L3 | R1, R3 | co-land |
+| H32 | SCD30 config-write arm under API load | A.U26.32; G1/R17 | L4 `persistence_write` + `scd30_extra_write` | R3 | co-land |
+| H33 | Altitude with `AmbPres` 0 | A.U26.72; G7/R41, OR100.a | L4 both SCD30 flags | R3 | co-land |
+| H34 | FRC readiness defaults measured | A.U26.84; REF/R06 | L4 `soak_duration` | R5 | co-land |
+| H35 | lost SGP40 samples | A.U15.20 | L3 `soak_duration` short | R5 | co-land |
+| H36 | `TempOffs` 0.53 stored as typed | A.U15.07 | L4 both SCD30 flags, optional | R3 | own (conditional) |
+| H37 | UART hazards across the jumper and under load; multi-chunk SET; both CRC modes over the jumper | A.U26.82, A.U26.87, A.U26.33, A.S0930.05; LEAD/R28, LEAD/R31 | L3/L4 | R1 | co-land |
+| H38 | CRC16 bench run on a reflashed image | A.S0930.06; OR116.a, OR118.a (4), OR123.a | L4 `flash_cycle` | R4 | co-land |
+| H39 | lwIP stall reproduced on the unpatched image, then the override hammer | A.U21.14, A.U26.85; OR112, OR114.a (5), OR115.a (4), G4/R44 | L4 `flash_cycle`; default | R4 (pair), R1 (override half) | co-land |
+| H40 | raised PCB count at the connection ceiling | G4/R44; A.U26.85 (2), `bench/test_network_resilience.py:1004` | L4 | R1 | co-land |
+| H41 | body-cap binding (L32) | G6/R52, G4/R44 | L4 | R1 | own (A.C.13) |
+| H42 | console output with a non-reading USB host, `DebugLevel` 0 | A.U19.23; G6/R52 D4.219 | L4 `persistence_write` (2 writes) | R3 | own step |
+| H43 | caught allocation failure prints `memory allocation failed`; hardware gates turn red | A.U20.04, A.U35.05 (3) | L3/L4, throwaway worktree | R1 (end) | own (A.C.18) |
+| H44 | heap bounds and post-build free heap on a named image; survivors incl. the VOC algorithm | G4/R47, A.U26.48, A.U30.04, A.U19.13 | L3/L4 | R1 | own record |
+| H45 | two-image GC proof | G4/R49, OR40.a (3), G1/R02; A.U8.06 (UART tunables on both) | L3/L4, 2 planned flashes | R7 | own (A.C.09) |
+| H46 | `ResetErrors` bench budget (BACKLOG items 24/32, R2 curve) | G4/R62, G5/R23; A.U11.31, A.U19.14 | L4 | R1 | own record → A.C.10 |
+| H47 | config float round trip on silicon | A.U11.21; G5/R34 RF207, G5/R45 RF216 | L3 `persistence_write` | R3 | co-land |
+| H48 | float boundary 2**24 on silicon | `float_boundary_2pow24.py`; G5/R45 | L3 | R1 | co-land |
+| H49 | power cut during a config write | G5/R35, A.S0930.25 | manual, budgeted scratch writes | R2 | own (A.C.17) |
+| H50 | forced config repair at boot; littlefs erase count per commit | A.U31.03 | L3 `persistence_write` | R3 | own step |
+| H51 | malformed country code at the radio | G6/R28 RF213 | L3 | R1 | own (A.C.14) |
+| H52 | `HotspotPW` PUT rows | A.U18.38 | L4 `persistence_write` | R3 | co-land |
+| H53 | per-second `rssi` read cost | A.U18.33 | L3 | R1 | own record |
+| H54 | request-head size of real browsers | A.U19.07 (`web.max_head_bytes`) | L4 capture, manual | R2 | own step |
+| H55 | l3/l4/web tunables still "estimated": `outer_cap_s`, `per_call_timeout_s`, floors, `l4.dut_serving_after_sta_s`, `l4.lwip_spin_concurrent_request_max_s`, `l4.soak_request_failure_rate`, `boot.unfed_stretch_*` | A.U8.04, A.U8.11, A.U10.07, A.U21.14, A.U26.35, A.U26.41 (3), A.U26.54, A.U35.56 | L3/L4 | R1, R4, R5 | own record → A.C.10 |
+| H56 | speed-probe bands on the bench Pi4 | A.U8.16, A.U35.23 | host | R0 | own |
+| H57 | bench Pi: OS record, sudo/`--preserve-env`/`nmcli edit`/picotool checks, uv pin, stale packages | OR50.a (3)(b); A.U21.18, A.U21.19, A.U21.26, A.U21.27, A.U28.02 | host | R0 | own |
+| H58 | `env --tier bench` with the installer's recovery timer; Playwright `install-deps` fatal | A.U21.23; U28 installer row | host | R0 | own |
+| H59 | GCC ≥ 14 mbedtls build without the suppression (if no trixie chroot built it) | A.U21.16 step 1, A.SDEP.12 | host | R0 | own (conditional) |
+| H60 | firmware pin moved: flash, bench, mid-soak on the new pin; F.5 on-target confirmations; `sys.implementation` | A.SDEP.08 (6), A.SDEP.25; OR129.a (5) | L3/L4 | R1, R5 (on the pin the tree carries) | co-land (only if the pin moved) |
+| H61 | spoofing tests; the off-subnet attempt | A.U26.56; G8/R40, OR77/OR79 | L4 | R1 | co-land + own verdict |
+| H62 | role reversal, destructive stage last; `_PHASE_DEACTIVATED` cleared by `machine.reset()` | A.U26.39; G1/R28 | L4 `persistence_write` | R3 | co-land |
+| H63 | rollover over ~12.4 days | A.U26.36; G1/R23 | L4 `multi_day_rollover` | R6 | co-land |
+| H64 | 6 h soak (S4), liveness, failure rate | A.U26.35; G1/R22 | L4 `soak_duration` long | R5 | co-land |
+| H65 | bench facts: I2C scan per bus (MPRLS on i2c0?), FRAM RDID, rig geometry, DHCP keying, BME688, host OS and stale packages | A.U26.46, A.U26.42, A.U1.04; G1/R40 | L3, manual, host | R0, R1, R2 | own record |
+| H66 | Safari/mobile pass; captive-portal webview | G7/R32; A.U26.42 (4) | manual | R2 | own step |
+| H67 | the neu units and `arzi` against their TOMLs (physical check, no flashing) | G8/R18 | owner, physical | R2 | own step |
+| H68 | torn-write expectation on the bench reset race | A.U35.40 | L4 `persistence_write` | R3 | co-land |
+| H69 | watchdog-starvation flash test ends on a serving board (BACKLOG "Not yet confirmed" (2)) | A.U26.25, A.U26.17; HW.S28 | L3 | R1 | co-land |
+| H70 | reflash smoke test (exit-249 retry only); toolchain re-verification | A.U26.14 | L3 `flash_cycle`, `toolchain_reverify` | R4 | co-land |
+| H71 | silicon-only interaction, recombination and rung cells of B3 | A.U35.08, A.U35.09, A.U35.52, A.U35.54 (`audit/b3/queue_c.md`) | L3/L4 | R1 | co-land |
+| H72 | FRAM-only forensic scripts clear their chunk; reset-race seams | A.U26.22 (5), A.U26.43 | L3 | R1 | co-land |
+| H73 | every other new or changed L3/L4 test, device script, fixture or tag: A.U0.18, A.U0.28, A.U0.35, A.U1.25, A.U2.01-A.U2.03, A.U4.07, A.U6.17, A.U7.13-A.U7.17, A.U7.24, A.U8.04-A.U8.08, A.U8.14, A.U8.19, A.U8C.01-A.U8C.121 and A.U8C2.01-A.U8C2.51 (the `tests_hardware` ones), A.U10.34-A.U10.37, A.U10.40, A.U10.41, A.U11.33, A.U15.15, A.U17.05, A.U18.42, A.U20.33, A.U21.24, A.U25.50, A.U25.61, A.U26.04-A.U26.87 not named above, A.U27.19, A.U27.25, A.U27.29, A.U27.37, A.U28.27, A.U28.28, A.U28.35, A.U29.04, A.U30.14, A.U30.16, A.U31.01, A.U31.04, A.U35.03, A.U35.22, A.U35.49, A.U35.50 | as listed | default/gated per marker | R1 (default), R3 (gated) | co-land |
+| H74 | twin corrected until it agrees; fidelity rows; BACKLOG owed rows removed as delivered; Part N measured | OR17.a (5), G6/R56, G7/R03, G9/R31, A.U25.01 | — | after each | own (A.C.10) |
+| H75 | F17 (BACKLOG item 44): no unexplained reset across the rounds | G1/R02, G4/R63 | — | R7 | own (A.C.09) |
+| H76 | UART `wrnno` 11 against a real babbling peer (BACKLOG R13 + N3) | BACKLOG owed row | — | none | stays owed: "needs hardware the bench does not have" (owner, 2026-09-25) |
+| H77 | FRAM CS level at power-up on each board | G5/R29 State (and G3/R16 before wave 2) | — | none | withdrawn by the lead (AC_NOTES 11, 23): hold time met by boot timing, a documented datasheet fact; register fix 1 |
+
