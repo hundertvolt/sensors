@@ -797,7 +797,9 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   `SystemService._own_feed()`, whose only callers are `_shutdown_sequence()` and — as the `step_done` argument —
   `AsyFramManager.quiesce()`/`erase_chip()` (checked by `ast`: no other reference to `_own_feed` anywhere); site (b)
   follows the loop into `_supervise()`; site (a) must contain the `_feed_owned` test (a `feed_watchdog()` body without it
-  fails — the latch cannot be dropped silently); a bite fixture adding a fifth `.feed(` site fails. (7) chunk CRC sites — `test_fram_chunk_crc_sites.py`: every `get_chunk(`/`get_timestamped_chunk(`
+  fails — the latch cannot be dropped silently); the never-in-a-loop rule does not apply to `_own_feed()` or to calls
+  through a `step_done` parameter (one feed per bounded step inside the shutdown sequence, owner, 2026-09-30); a `while`
+  loop reaching `_own_feed()` still fails; a bite fixture adding a fifth `.feed(` site fails. (7) chunk CRC sites — `test_fram_chunk_crc_sites.py`: every `get_chunk(`/`get_timestamped_chunk(`
   call in `src/` passes `crc=` one of `CRC8()`, `CRC16()`, `CRC32()` (by `ast`) — the second erase gate (a non-zero
   CRC init) cannot be lost to a future `CRC_Pass` chunk; bite: a synthetic call without `crc=` fails.
 - **Blast**: callers — · generated read only · js `tests_js/*` as above · tests new/extended as above · twin — · docs
@@ -942,7 +944,7 @@ Matrix (rows: the test types OR122.a (1) lists; cells: the action that plans it;
   of a test-local `PowerCut(BaseException)` ends the run. Proof split per CLAUDE.md's "prove the invariant, not by scale"
   rule: (1) structural — after pass 1 every allocated block's two status bytes are 0x00 (read from the chip), and in
   the SPI log no pass-2 data byte precedes the last pass-1 status write; (2) enumerated — every cut point inside pass 1
-  (every byte, a few hundred on the 8 KB layout) and the first byte, a middle byte and the last byte of every pass-2 unit
+  (every status byte: four per allocated chunk) and the first byte, a middle byte and the last byte of every pass-2 unit
   that overlaps an allocated block: a fresh manager and loggers over the cut memory restore each ring exactly as it was
   or blank, never other content, and log only codes from {status bytes disagree, block uninitialised}; the next write
   lands. Config: `cm.os` replaced from outside so `remove` raises `PowerCut` after k removals, k = 0 … stores: a rebuild
