@@ -120,3 +120,8 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     settled by the lead. A-C: A.S0930.13's park point keys on `_feed_owned` (a refused command keeps feeding); co-lands
     A.U11.03 (`_flush_config_stores` returns bool), A.U24.17 (twin WDT `feed_times`), Depends added to A.U24.42/.53/.55,
     A.U26.26/.32/.68/.79/.87, A.U11.07.
+37. Owner answered 2026-09-30 (OR126/OR126.a): U25 Q1 (a) — A.U25.69 firm; U19 Q2 (a) — accepted, DTR-only stall
+    confirmed from source; OR119.a (5) accepted — reboot/bootloader run the controlled sequence (new SUPP actions);
+    A.U22.03 withdrawn; corrections accepted (OR90.a (1) five, CLAUDE.md hang-cause text per item 29, border cue
+    dropped per item 26, U17 Q1 (a)). U27 applied (V.U27.01-21, A.U27.39): A-C drops A.U11.26/A.U19.15's U35
+    dependency (met by A.U27.07); co-lands with A.U26.66, A.U28.33 and three more `ci.yml` build-if-missing steps.
