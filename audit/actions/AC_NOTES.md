@@ -44,3 +44,8 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     pending; U19 writes the `TCP_NODELAY` action as firm. OR113.a (2) needs a recovery-ladder pass over every
     bus-facing unit already written (U10, U13, U15, U16, U17; U18 for the network side) — `SUPP_recovery.md` — and
     every later author and verifier applies it (brief rule 8). Harmonization 38 and G4/R22 are rewritten.
+16. U17 Q1 (UART controller re-init as a recovery rung) self-resolved by the lead to (a), not a rung, documented in
+    SPEC J.5 (A.U17.33): rp2 flags UART errors per byte and latches none (v1.29.0 `ports/rp2/machine_uart.c:162-190`),
+    so a re-init has nothing to clear. The A-C list shows it to the owner as a lead decision under OR113.
+17. V.U17.01: `(x + 1) & CAP` steps allocate at the wrap (2**30 is a heap int on rp2); A.U15.31 takes the same
+    conditional wrap as A.U17.28/A.U17.13. A-C checks every sequence/counter action for the add-then-mask form.
