@@ -34,3 +34,7 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     reading of OR64 (A.U14.17 waits; G4/R22 State "no boot-time bus clear (settled by the lead …)" follows the answer).
 13. A.U15.12: `CFGMGR_SCD30` stays RAM-only (no FRAM chunk) per the owner's words in OR99 ("no extra FRAM chunk");
     the lead's note at the end of `U15.md` supersedes the Open-points reading.
+14. Test-tier `@tunable` classification convergence (lead, 2026-09-30): after C.0.1, G1-G18 and G19, each further
+    family found by a verifier was smaller than the last (seven families, then three, then one of 18 sites). The
+    search stops at family level here; residual literals of a tuned purpose are the B2 per-file pass's to catch, which
+    reads every test file in full (plan 4.1). A-C records this as the stated limit of the A-L inventory, not a gap.
