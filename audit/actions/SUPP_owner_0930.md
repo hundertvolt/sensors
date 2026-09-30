@@ -1699,8 +1699,8 @@ unit file is edited here:
    cancelled and awaited to done and `main()` must not end. A.U20.06's L0 test (`main()`'s awaited call order) holds;
    its direct-caller blast list adapts to a task (and A.U24.43's scenario).
 3. A.U11.03 point 5 keeps the supervisor escalating to a reboot; A.S0930.13 suppresses escalation while a shutdown
-   runs (the sequence reboots), keyed on `_feed_owned`, never on `_shutdown`. Not a contradiction; A-C writes both into
-   the one loop.
+   runs (the sequence reboots), keyed on `_feed_owned`, never on `_shutdown`, and re-checked right after the escalation's
+   log write (A.S0930.32 (2)). Not a contradiction; A-C writes both into the one loop.
 4. A.U16.19 removes `override_pause` as a test seam; A.S0930.17's `invalidate()` writes past the pause. It is the
    erase's own product path (OR117/OR36.a (3): a function of the chip — clearing it), called only by `erase_chip()`, and
    no test reaches it except through the erase; A-C must not read it as the seam returning.
@@ -1723,17 +1723,19 @@ unit file is edited here:
    the production entry path) has no U25 action at HEAD: A.U25.46 leaves the DUT-side scenarios pending Q2 and plans no
    flag or check. U25.md owns the new action, A.U25.74 (V.SUPP_owner_0930.18's text; Q2 answered (a) by OR125);
    A.S0930.27's `--test-shutdown-hang` joins its flag list and its production-path check.
-10. Part B2 amends earlier actions of this file (A-C writes the merged text): A.S0930.12 — `reboot_system()`/
-    `reboot_bootloader()` call `_request_shutdown()` (A.S0930.31 (1)) instead of "`if self._shutdown: return False`, else
-    the U11 path"; the design block's S0 item 3 ("from here `reboot_system()`, `reboot_bootloader()` … answer `False`")
-    and its States rows "a reboot or bootloader reset armed" (now only the escalation's reset) and "reboot, bootloader or
-    mempause during the sequence" (reboot/bootloader: the same purpose "Valid", another "Failed") follow the gate's rules
-    (1)-(2); A.S0930.14 — S5 runs only for the two apply purposes and S6's action, message and code follow the purpose
-    (A.S0930.31 (3)); A.S0930.21 (d) and A.S0930.22 (6) — a reboot during a reboot answers `True`, during the other two
-    purposes `False`. A.S0930.22 (1)-(5) and A.S0930.23 (a)-(b) take the purpose as a parameter (A.S0930.35 (g)), A.S0930.27
-    (3) likewise (A.S0930.38 (5)).
+10. Part B2's amendments to earlier actions of this file are applied in place: A.S0930.12 — `reboot_system()`/
+    `reboot_bootloader()` enter the same gate (A.S0930.31 (1)) and the acceptance line uses `_purpose_name(purpose)`; the
+    design block's S0 (the gate covers all four words; item 3's refusals follow rule 1; item 4 "reboot and bootloader:
+    none"; item 4a, the re-check of A.S0930.32 (1)), its code sentence (3 / 4 for reboot and bootloader, whatever S2
+    met), its S5 row (the two apply purposes only) and its States rows "the supervisor escalation's reset armed" and
+    "another purpose's command or mempause during the sequence"; A.S0930.14 — S5 runs only for the two apply purposes and
+    S6 is `_reboot(..., fed=True)` with the purpose's action, message and code (A.S0930.31 (3), A.S0930.33 (3));
+    A.S0930.21 (d) and A.S0930.22 (6) unchanged (they concern the other two purposes). A.S0930.22 (1)-(5) and A.S0930.23
+    (a)-(b) take the purpose as a parameter (A.S0930.35 (g)), A.S0930.27 (3) likewise (A.S0930.38 (5)).
 11. A.S0930.32 is a gap found in A.S0930.12 while planning Part B2: an escalation can arm its reset inside a yielding
-    preflight (`_feed_owned` is still `False` there), so the gate re-checks `_reset_armed` after the preflight.
+    preflight (`_feed_owned` is still `False` there), and a command can be accepted inside the escalation's yielding log
+    write, so the gate re-checks `_reset_armed` after the preflight, and the escalation re-checks `_feed_owned` after its
+    log write.
 12. A.U11.03 point 4 and A.U11.04's window are superseded for commanded resets (section C, Part B2 paragraph); the
     escalation keeps both unchanged. A.U11.03 point 5's escalation must stay a direct `_reboot()` call — through the
     sequence it would run unfed and cancel its own loop (A.S0930.31 (4)).
@@ -1760,7 +1762,9 @@ unit file is edited here:
 | LEAD/R32 | doc in U36 — SPEC A.8, H, tests_hardware/README | A.S0930.30 (plus A.S0930.19's README sentence) |
 | OR125/OR125.a (owner row) | (1) every webserver-concurrency scenario host-side; (2)-(3) named, off-by-default runner flags and a check keeping them out of the production path | owned by U25: A.U25.46 (pending Q2 lifted) and A.U25.74; this file adds only `--test-shutdown-hang` (A.S0930.27) to that action's flag list and check |
 | LEAD/R28 | read for the tier map (UART four-tier hazard coverage); no clause names this supplement | NO-CLAUSE — its tier map (A.U17.25, A.U26.82) gains the two CRC modes through A.S0930.03-.06 and .08 |
-| OR126/OR126.a (3) (owner row) | OR119.a (5) accepted: `reboot` and `bootloader` run the controlled shutdown sequence, no apply step | code A.S0930.31 (gate, S5 skipped, S6 action and codes 3/4, escalation stays direct), A.S0930.32 (gate re-check found on the way), A.S0930.33 (reset tail: final flush a no-op, 4 s kept, unfed); tests L0 A.S0930.34 (website: no change, stated), L1 .35/.36/.37, L2 .38 (Run 5c, Run 12, Run 13), L3 .39, L4 .40; docs .41. `machine.bootloader()` needs no step the sequence lacks and no step blocks it (Part B2 finding; `reset_usb_boot()` ROM behaviour not in the fetched sources) |
+| OR126/OR126.a (3) (owner row) | OR119.a (5) accepted: `reboot` and `bootloader` run the controlled shutdown sequence, no apply step | code A.S0930.31 (gate, S5 skipped, S6 action and codes 3/4, escalation stays direct), A.S0930.32 (gate re-check after the preflight and escalation re-check after its log write, found on the way),
+A.S0930.33 (reset tail: final flush a no-op, 4 s kept, the last own feed inside `_reboot()` immediately before the arm,
+unfed after it); tests L0 A.S0930.34 (website: no change, stated), L1 .35/.36/.37, L2 .38 (Run 5c, Run 12, Run 13), L3 .39, L4 .40; docs .41. `machine.bootloader()` needs no step the sequence lacks and no step blocks it (Part B2 finding; `reset_usb_boot()` ROM behaviour not in the fetched sources) |
 
 Counts: 5 blocks (LEAD/R31, LEAD/R32, LEAD/R28, OR125/OR125.a, OR126/OR126.a (3)); 41 actions (A.S0930.01-.41; Part B2
 adds .31-.41); DONE-AT-HEAD 2 (A.S0930.18; A.S0930.03's protocol layer); NOT-DONE 0.
@@ -1791,9 +1795,11 @@ agent, justified in the design block), the `crc` key optional with "none" as def
 ships none), Wi-Fi & Identity inside the reset (owner-confirmed, OR124.a), a command refused while a reset is armed (the more conservative option, OR2.c), the SCD30 NVM outside the
 closed stores (OR119.a (2) names the flash filesystem and FRAM), the latch set at acceptance (stricter than OR120.a (1)).
 OR119.a (5)'s item was accepted (OR126.a (3)) and is planned as A.S0930.31-.41; its details were settled by reading: the
-supervisor escalation stays direct (through the sequence it would run unfed), the reset path keeps one flush and the 4 s
-tail for every reset (a proven no-op flush for commands), reboot and bootloader record 3 and 4 whatever S2 met, and an
+supervisor escalation stays direct (through the sequence it would run unfed) and re-checks `_feed_owned` after its log
+write, the reset path keeps one flush and the 4 s tail for every reset (a proven no-op flush for commands; a commanded
+reset's last feed is `_reboot()`'s, immediately before the arm), reboot and bootloader record 3 and 4 whatever S2 met, and an
 S0 refusal changes nothing for all four words (agent, 2026-09-30).
 
 Verified 2026-09-30 (`audit/actions/verify/SUPP_owner_0930.md`): V.SUPP_owner_0930.01-24 applied. Part B2
-(A.S0930.31-.41) was written after that verification (HEAD `4e1e5ce`) and is not yet verified.
+(A.S0930.31-.41) was written after that verification (HEAD `4e1e5ce`) and verified separately (HEAD `d11d38c`; the line
+at the end of Part B2).
