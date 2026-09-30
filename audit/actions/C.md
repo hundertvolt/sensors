@@ -7,7 +7,8 @@ before phase D. It is the collection point for every hardware duty planned elsew
 a scan of every earlier action file (`scratchpad/al/C/scan.py`, `ctx.py`, `th.py`: every action whose text names phase
 C, "hardware in C", `Kind: hardware`, L3/L4, a wear marker, `mpremote`, a reflash or the bench, and every action whose
 Site or Change touches `tests_hardware/{flash,bench,device_scripts,manual}` — 499 hits, 169 strong, 226 hardware-tier
-test sites), each hit read, plus the 37 register blocks of `input_C.md`. Where a block's C clause had no instrument in
+test sites), each hit read, plus the 37 register blocks of `input_C.md` and the two its filter missed (LEAD/R27,
+G8/R40; register fix 6). Where a block's C clause had no instrument in
 any earlier unit, the instrument is planned here (A.C.12-A.C.19) and co-lands with U26's work in the A-C order.
 
 Standing rules applied to every action here: nothing runs on a board, on the bench Pi or against the bench network
@@ -32,7 +33,8 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   reported; ad-hoc retries capped, ad-hoc scripts under `timeout`. Each round's plan names order, expected outcomes, wear
   budget and the twin parameter each row confirms; results correct the twin until they agree" (owner A41 D1/D2
   2026-09-22; OR5.a (2), OR8.a, OR17.a (4)(5), OR28.a (1), OR45.a (2)(a) 2026-09-25/26); LEAD/R02 (standard board state,
-  agent 2026-09-27); CLAUDE.md go-ahead rule (:284-293), FRAM rule and its caveat (:367-394), B.13 dead-man's switch
+  agent 2026-09-27); LEAD/R27 (State "applies to every phase-C round"; owner, 2026-09-08: "don't wait for
+  something to maybe happen", "reproduce in a dedicated way, not full runs"); CLAUDE.md go-ahead rule (:284-293), FRAM rule and its caveat (:367-394), B.13 dead-man's switch
   (:295-301) and `br0` MAC pin (:302-306), WoZi rule (:159-172), wear rule (:249-283); OR2.c (hardware items parked,
   never decided in execution); OR106.a (C findings pass A-C as a delta).
 - **Site**: the rounds A.C.02-A.C.09; each round's record `audit/c/R<n>.md` (audit working file, deleted at phase D,
@@ -82,7 +84,8 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   `--repair-standard-state`, whose writes are listed prerequisites.
   (7) **Order and gates**: default flash tier, then default bench tier (`scripts/run_bench_hardware_suite.sh` runs L3
   as its own step, then L4, A.U7.18), each verdict's deselected count read and recorded, not only "clean" (A.U7.14);
-  a gated run only after a clean default run of the same image in the same round (owner D1, 2026-09-22, BACKLOG.md:
+  a gated run only after a clean default run of the same image (the same image record) under the same conversation's
+  go-ahead; a new conversation, or a changed image, runs the default tiers again first (owner D1, 2026-09-22, BACKLOG.md:
   353-358), with only the flags the round's plan names; ad-hoc scripts run under `timeout` with retries capped
   (`tests_hardware/README.md` "Bench traps"; A.U26.13/A.U26.29 report every recovery as a recovery pass).
   (8) **End**: the board is left on the round's release `dev` image in the standard state (A.U26.79's end check), the
@@ -95,13 +98,16 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   bound goes to the owner as a change to the modlwip override (a short POLLOUT back-off after `EAGAIN`, AC_NOTES 21,
   OR114.a), never a larger bound; a watchdog-coded reset (`ResetReason` 2) where an attributed code was expected, a fed
   hang, or a feed gap ≥ 8,000 ms in the controlled shutdown sequence is an OR120.a / OR130.a defect; a failure on a
-  moved firmware pin goes to the owner with the choice to hold the pin back (OR129.a (5), A.SDEP.08).
+  moved firmware pin goes to the owner with the choice to hold the pin back (OR129.a (5), A.SDEP.08). A round never
+  waits for a rare event it cannot trigger: it triggers the condition or records it as not reproducible with what was
+  tried; a fault is reproduced with a small, bounded, dedicated script under `timeout`, never by repeating full suites;
+  every failure that occurred is investigated to its cause (LEAD/R27, A.U26.81).
 - **Blast**: callers — · generated the `dev` image, built per round · js — · tests the fixtures named (A.U26.03,
   A.U26.22, A.U26.79), the runners (A.U7.18, A.U7.14) · twin every row names its twin parameter; A.C.10 applies the
   corrections · docs A.U36.001's "How a round runs" is this frame's permanent text; the round records are audit files ·
   toml — · uart —.
 - **Depends**: all of U0-U37 executed and A-C's delta list applied; A.U7.14, A.U7.18, A.U26.01-A.U26.03, A.U26.13,
-  A.U26.22, A.U26.29, A.U26.79, A.U36.001, A.S0930.06 (2).
+  A.U26.22, A.U26.29, A.U26.79, A.U26.81, A.U36.001, A.S0930.06 (2).
 - **Kind**: rule, hardware
 
 ### A.C.02 Round R0: prepare the bench host, no board
@@ -139,11 +145,15 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   probe (A.U8.16's monotonic probe) run on the Pi with no board attached, ten runs; its bands recorded against their
   Part N rows (A.U35.23: "the band values change only from those two measurements"). (7) The owner's two confirmations
   (DHCP reservation keyed to the uplink MAC; BME688 on GP16/GP17 attached or not) asked in this conversation and
-  recorded, dated, in the bench facts table (A.U26.46).
+  recorded, dated, in the bench facts table (A.U26.46). (8) The `env --tier bench` run of (3) records each step class's
+  wall time (network, build) against A.U21.17's `tool.*` rows, and the L1 lwIP host hammer (A.U21.12/A.U21.13) runs once
+  on the Pi, recording its slowest patched write against `l1.lwip_host_write_bound_ms`; both feed their Part N rows
+  through A.C.10.
 - **Blast**: callers — · generated — · js — · tests — (host checks; the installer's own tests are L0, U21) · twin — ·
   docs `tests_hardware/README.md` bench facts table rows (A.U26.46), Part N speed-probe rows, SPEC B.7.1 via A.U21.16
   · toml — · uart —. Wear: none on the board; host writes of one installer run and one firmware build.
-- **Depends**: A.C.01; A.U21.16, A.U21.18, A.U21.19, A.U21.23, A.U21.26, A.U21.27, A.U26.46, A.U28.02, A.U8.16, A.U35.23.
+- **Depends**: A.C.01; A.U21.13, A.U21.16, A.U21.17, A.U21.18, A.U21.19, A.U21.23, A.U21.26, A.U21.27, A.U26.46, A.U28.02,
+  A.U8.16, A.U35.23.
 - **Kind**: hardware (host)
 
 ### A.C.03 Round R1: first contact, then the release candidate's default run
@@ -158,17 +168,20 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   (`constructed=N`), A.U18.33 (per-second `rssi` cost "measured in phase C"), A.U19.13 (serving-demand budget
   "re-derived with G4/R47's figures in phase C"), A.U30.04 (survivors bound now counting the VOC algorithm), A.U10.07
   (unfed boot stretches), A.U8.04/A.U8.11/A.U26.41 (3)/A.U26.54/A.U35.56 (l3/l4 and web tunables "measured in phase
-  C"), BACKLOG "Not yet confirmed on silicon" (2) (the flash tier ending on `hard_reset()`, HW.S28 "confirmed by Phase
-  C's first full flash run").
+  C"), A.U10.13, A.U9.04, A.U30.09 and SUPP_recovery's thresholds ("measurement owed" on the bench), BACKLOG "Not yet
+  confirmed on silicon" (1) (SGP40 wrnno 35, today `W13`, per NTP outage, A.U2.13) and (2) (the flash tier ending on
+  `hard_reset()`, HW.S28 "confirmed by Phase C's first full flash run").
 - **Site**: the dev board and bench; `scripts/run_bench_hardware_suite.sh` (default flags only); round record
   `audit/c/R1.md`.
 - **Change**: (1) First contact, on the image the board runs today, nothing written: `GET /system`, `GET /status` (the
   whole body, verbatim), `GET /sensors` (the SCD30 NVM-backed values: the bench NVM state G1/R04 asks for), `GET
-  /networking` saved first over REST; then over the raw REPL (which stops `main.py`, CLAUDE.md), read only:
-  `machine.reset_cause()`, the raw FRAM dump (A.U26.22 (3)'s `fram_raw_dump.py`; if that image's frozen FRAM driver
+  /networking` saved first over REST; then over the raw REPL (which stops `main.py`, CLAUDE.md), in one session that
+  feeds the watchdog between reads (one script, or the dump scripts chained in one `mpremote` run with the feed kept),
+  read only and in this order: `machine.reset_cause()` first, the raw FRAM dump (A.U26.22 (3)'s `fram_raw_dump.py`; if that image's frozen FRAM driver
   lacks the call the script uses, it reads with the READ opcode over plain `machine.SPI` and CS, read-only), every
   `config_*.cfg` printed verbatim (A.S0930.29's `config_files_dump.py`), and the CRC32 allocation probe of A.U12.01 on
-  that image's frozen `crc_checks` (the "before" figure); all saved into the round record before anything else runs.
+  that image's frozen `crc_checks` (the "before" figure); all saved into the round record before anything else runs;
+  the record states whether a reset landed between reads.
   (2) A.C.01 (3)-(6): lower levels, build, the planned image flash, image proof, standard state (the SCD30 snapshot of
   A.U26.79 compared with (1)'s values: a difference means the reflash or setup wrote SCD30 NVM and is reported).
   (3) The default run: `scripts/run_bench_hardware_suite.sh` (L0-L2, then L3 as its own step, then L4). Every new or
@@ -180,7 +193,8 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   (A.C.19's default half), the UART link in both CRC modes over the jumper and under API load (A.S0930.05, A.U26.82,
   A.U26.87), the lone-BMP3xx general call with its NAK count (A.U35.21), the FRAM hold, no-yield stretches, loop lag and
   C-stack scripts (A.U16.07, A.U31.05's first script, A.U31.06 (3), A.U30.18), the lwIP override hammer on the normal
-  image (A.U26.85 (2)), the body-cap binding (A.C.13), the country reaction (A.C.14), the spoofing tests with the
+  image (A.U26.85 (2)) — recorded as provisional: it counts as OR114.a (5)'s proof only after R4's control run
+  reproduces the stall; a control run that passes every bound voids it (A.C.06) — the body-cap binding (A.C.13), the country reaction (A.C.14), the spoofing tests with the
   off-subnet attempt (A.U26.56 (3): works → an ordinary test; else the skip returns with the attempt's recorded reason),
   the watchdog-starvation test ending on a serving board (A.U26.25, A.U26.17), `float_boundary_2pow24.py` and
   `bus_deinit_is_a_noop_on_real_hardware.py` (G5/R45, G4/R19), the boot log (A.U26.41 (1)).
@@ -194,7 +208,13 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   its load off (A.U8.11); the per-route request durations under the default run's load against `outer_cap_s`/
   `per_call_timeout_s` (A.U8.04); the engagement floors and `l4.dut_serving_after_sta_s` (A.U26.54, A.U26.41 (3)); the
   gaps between consecutive setup-unit lines of the boot log, stamped on arrival (A.U10.07's `boot.unfed_stretch_*`,
-  the stamp resolution stated); every other `l3.`/`l4.` Part N row still "estimated" whose test ran (A.U35.56).
+  the stamp resolution stated); every Part N row, product or test-tier, whose Basis says 'measurement owed' on the
+  bench, L3 or L4 and whose test ran — including `stagger.min_read_separation_ms` (the longest single read per driver
+  from the default run's reads, A.U10.13), `_MAX_SIGNAL_S` (the LED ramp's wall time under the bench API load, A.U9.04)
+  and the recovery-ladder thresholds (the failure count at which each rung fired in the rung tests, SUPP_recovery)
+  (A.U35.56's rule for bounds); and the loaded free-heap floor, `MemFree` polled during the default bench tier's load
+  (A.U30.09, F.5.3); the SGP40 NTP-outage row (H78): UDP 123 blocked past `SGPWaitTimeNTP` by a bench `iptables` fault
+  inside A.C.01 (2)'s armed switch, one wrnno 35 entry per outage, `ErrCount` rising per backup (zero wear).
   (5) Last, after the clean verdict is recorded: the deliberate red of A.C.18.
 - **Blast**: callers — · generated the round's dev image · js — · tests every L3/L4 test of the inventory marked R1 ·
   twin the figures feed A.C.10 · docs via A.C.10 (SPEC F.1, F.3, F.5, I.1, C.7 budget; Part N; bench facts) · toml — ·
@@ -236,12 +256,17 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   wiring facts (buses, pins, frequencies, chip selects, IRQ pins) with each physical unit; no unit other than `dev` is
   flashed or connected over `mpremote` (CLAUDE.md :159-172); a mismatch is a TOML delta citing the unit as its origin
   (G8/R18); a match adds "(checked against the unit, owner, <date>)" to the TOML's origin comment (A.C.10).
+  (8) A.S0930.29 (7)'s two power cuts: `erasefram` (FRAM only, no wear; evidence saved first) and `resetconfig` (config
+  files saved first and restored verbatim afterwards, the bench joining the DUT's hotspot inside A.C.01 (2)'s armed
+  switch).
 - **Blast**: callers — · generated — · js — · tests the manual modules (A.U26.42, A.U26.34, A.U26.28's step, A.C.15 (2),
-  A.C.17) · twin fidelity rows: flash power loss (silicon only), SCD30 0x0010 · docs `tests_hardware/README.md` rig
+  A.C.17, A.S0930.29 (7)) · twin fidelity rows: flash power loss (silicon only), SCD30 0x0010 · docs `tests_hardware/README.md` rig
   section and bench facts, SPEC H.1 (browser floor evidence), Part N `web.max_head_bytes`, TOML origin comments (G8/R18)
   · toml `devices/*.toml` comments (A.C.10) · uart —. Wear: `manual_persistence.py`'s flash-config step 2 writes (A.U26.42
-  (2): the value and its restore); A.C.17's scratch writes (≤ 20 + 1 removal); power cycles are not wear.
-- **Depends**: A.C.03 (clean default run of the same image); A.U26.28, A.U26.34, A.U26.42, A.C.15, A.C.17.
+  (2): the value and its restore); A.C.17's scratch writes (≤ 60 and 3 removals over its three repetitions); the `resetconfig` cut: the deletions it
+  completes plus one restore write per config file; power cycles are not wear.
+- **Depends**: A.C.03 (clean default run of the same image); A.U26.28, A.U26.34, A.U26.42, A.C.15, A.C.17,
+  A.S0930.29.
 - **Kind**: hardware, doc
 
 ### A.C.05 Round R3: the gated wear run
@@ -256,17 +281,22 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   G6/R52 D4.219 hardware row (console output with a non-reading host, A.U19.23); A.U31.03 ("erase count per commit
   measurement owed, phase C"), A.U31.05 (`flash_write_loop_gap.py`), A.U35.40, A.U18.38, A.U15.07.
 - **Site**: `scripts/run_bench_hardware_suite.sh` with the flags below; round record `audit/c/R3.md`.
-- **Change**: on the R1 image, after R1's clean default run and R2's M1: (1) `--allow-persistence-write`: the flash then
+- **Change**: on the R1 image, after a clean default run of that image under the same conversation's go-ahead
+  (A.C.01 (7)) and R2's M1: (1) `--allow-persistence-write`: the flash then
   bench tier's owned-write tests — SCD30 read-while-write (A.U26.08 (1)), `resetconfig` at L3 over the scratch path
   with the hung-step watchdog test (A.S0930.28 (1), (6)), `resetconfig` at L4 with its in-test save of every
   `config_*.cfg` and verbatim restore, the bench joining the DUT's hotspot in between (A.S0930.29 (1); A.C.01 (2)'s
   switch armed across it), the config float round trip (A.U11.21), `flash_write_loop_gap.py` (A.U31.05), one boot with a
   config file forced into repair and the littlefs erase count of that commit recorded (A.U31.03), the torn-write reset
-  race (A.U35.40), the role reversal's destructive stage 6 run last with stage 8's check that the STA mode is back after
-  the recovery reset (A.U26.39 (3)-(4): `_PHASE_DEACTIVATED` cleared by `machine.reset()`), the `HotspotPW` PUT rows
+  race (A.U35.40), the role reversal's destructive stage 6 run as the round's last bench test, after every other gated
+  and read-only row, with stage 8's check that the STA mode is back after the recovery reset (A.U26.39 (3)-(4):
+  `_PHASE_DEACTIVATED` cleared by `machine.reset()`), the `HotspotPW` PUT rows
   (A.U18.38), the console row of A.U19.23 (`DebugLevel` 0 by PUT, a host process holding the CDC port open with DTR
   and never reading, the adversarial-client load of A.U19.23's L1 test replayed over HTTP for 60 s: no WDT reset,
-  `ResetReason` unchanged, then `DebugLevel` 5 restored — 2 flash writes). (2) `--allow-persistence-write
+  `ResetReason` unchanged, then `DebugLevel` 5 restored — 2 flash writes). Before stage 6 the record names its
+  recovery: the USB raw REPL does not depend on the WLAN, so a board left with its WLAN deactivated is restored over USB
+  (`config_files_restore.py` with the saved files, then `machine.reset()`, then a power cycle if that fails); a stage-8
+  failure stops the round and goes to the owner (A.C.01 (9)). (2) `--allow-persistence-write
   --allow-scd30-extra-write`: the SCD30 hazard arm (A.U26.32), Altitude with `AmbPres` 0 (A.U26.72), the argument
   reaction of A.C.15 (1), and, only if the round's plan grants the two NVM writes, A.U15.07's `TempOffs` 0.53 written and
   read back as 0.53, then restored. (3) `--allow-neopixel-sweep --allow-persistence-write`: S3b, the ISL29125 envelope
@@ -288,25 +318,38 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   WDT reset or write stall, page-load time before/after"; OR116.a/OR118.a (4)/OR123.a (3) "OR118.a (4)'s L4 run in the
   second mode (a reflash with `crc = "crc16"`) stays, behind `flash_cycle`" (owner, 2026-09-30); A.U26.14 (the reflash
   smoke test, `toolchain_reverify`).
-- **Site**: `tests_hardware/bench/test_lwip_send_stall.py` (A.U26.85's module), `bench/test_uart_link_crc16.py`
+- **Site**: `tests_hardware/bench/test_modlwip_send_stall.py` (A.U26.85's module), `bench/test_uart_link_crc16.py`
   (A.S0930.06), `flash/test_toolchain_flash_boot.py` (A.U26.14); round record `audit/c/R4.md`.
-- **Change**: after a clean default run of the same standard image in this round or R1: (1) the lwIP pair, in this
-  order: `test_send_stall_on_the_unpatched_image` — the control image built as A.U21.14 states (the round's tree in a
-  throwaway worktree with `apply_modlwip_eagain_override()` not called, never committed; record `dirty: true`), FRAM
-  evidence saved, reflashed, the hammer and bounds run, the stall recorded (freeze length, `ResetReason` 2 or not, the
-  fresh `GET /` time), the release image reflashed in `finally`; then `test_no_send_stall_with_the_override` on the
+- **Change**: after a clean default run of the same standard image under this conversation's go-ahead (A.C.01 (7)): (1) the lwIP pair, in this
+  order: `test_send_stall_on_the_unpatched_image` — the round builds the control image before the run in a throwaway
+  worktree of its commit with the override call removed (A.U21.14's form, never committed; its image record carries
+  `overrides: []` and `dirty: true`) and passes its path to A.U26.85's test through a new host option
+  `--lwip-control-image <path>`; the test refuses (fails, never skips) a missing path or a record whose `overrides` is
+  not empty; FRAM evidence saved, reflashed, the hammer and bounds run, the stall recorded (freeze length, `ResetReason`
+  2 or not, the fresh `GET /` time), and in `finally` the release image recorded at start reflashed. No build flag is
+  added; A.U26.85 (1)'s 'the test itself builds the control image' becomes 'the test takes the control image the round
+  built' (co-lands with A.U26.85 and A.U21.14 — A-C merges); then `test_no_send_stall_with_the_override` on the
   release image, with page-load time and the cooperative retry's CPU cost recorded (A.U21.14). The pair order is the
   owner's "first reproduce … then show" (OR114.a (5)), kept inside this one round; R1's earlier run of the override test
-  is the default suite's own pass (G1/R02: flash writes only after a clean default run). (2) The CRC16 run (A.S0930.06):
+  is the default suite's own pass (G1/R02: flash writes only after a clean default run). The pair drives each `ERR_MEM`
+  source to its edge and records which fired: the arena (few connections, large route), the segment pool (many
+  connections each queuing small writes, e.g. every page asset at once) and the per-pcb queue limit (one connection,
+  many small writes to a non-reading peer); each case asserts the same pass criteria. If the dependency refresh moved the
+  pin to a release carrying the upstream fix and removed the override (A.SDEP.13 (a)), the control image is the pinned
+  v1.29.0 tree and the second half runs on the new pin's unpatched build. (2) The CRC16 run (A.S0930.06):
   the derived TOML with `crc = "crc16"` built to a temporary image, reflashed, the API-load link checks, the round's
   standard `.uf2` reflashed unchanged, image proof and `UARTLINK.Failures` 0. (3) The reflash smoke test (A.U26.14:
   retries only on picotool exit 249, passive end). (4) `--allow-toolchain-reverify` once (A.U26.14 (4); network fetches
-  and builds, no board write).
+  and builds, no board write). (5) Only if the round's plan includes it: H82 — the `stations` query without the 100 ms
+  settle on a local-only image (A.U18.43, A.SDEP.17 W42), the station count checked, the round's standard image
+  reflashed at once (A.C.01 (5)).
 - **Blast**: callers — · generated the control and CRC16 images (temporary, never committed) · js — · tests as named ·
   twin — (the host lwIP hammer is U21's) · docs SPEC B.14 record of the proof (A.C.10); BACKLOG's lwIP owed row removed
   when both halves pass (A.U21.14) · toml — · uart — (CRC16 is Python-internal wiring; its Class B entry is
-  A.S0930's). Wear: 5 flash cycles (2 + 2 + 1), each owned by its `flash_cycle` test.
-- **Depends**: A.C.03; A.U21.10, A.U21.13, A.U21.14, A.U26.14, A.U26.85, A.S0930.06.
+  A.S0930's). Wear: 5 flash cycles (2 + 2 + 1), each owned by its `flash_cycle` test; plus H82's 2 flash cycles when the
+  round's plan includes it (A.U18.43's local-only image, reverted at once).
+- **Depends**: A.C.03; A.U21.10, A.U21.13, A.U21.14, A.U26.14, A.U26.85 (its new `--lwip-control-image` option — A-C
+  merges into A.U26.85), A.U18.43 and A.SDEP.17 (H82, only if planned), A.SDEP.13, A.S0930.06.
 - **Kind**: hardware
 
 ### A.C.07 Round R5: the soak durations
@@ -336,7 +379,10 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   round runs meanwhile): A.C.01 (2)'s switch armed across the session-start fixtures (the stale-credential scan may take
   the AP slave down, A.U26.38) and disarmed once the hourly REST polls begin (they change no network state); the test
   runs until `SysUptime` passes `2**30 / 1000 + 3600` s. If a later delta changes tick-handling code (grep `ticks_` in the
-  delta), the owner decides whether R6 is repeated; the record names the image it proved.
+  delta), the owner decides whether R6 is repeated; the record names the image it proved. The runner runs detached on
+  the bench Pi (under `timeout` of the window plus margin); if the conversation that started it ends, nothing further is
+  sent to the board or the bench network until a new conversation's go-ahead names R6, which then reads the runner's log
+  and verdict.
 - **Blast**: callers — · generated — · js — · tests A.U26.36 · twin the driven-time proofs are L1/L2 (LEAD/R04) · docs
   BACKLOG's G6 row removed (A.C.10) · toml — · uart —. Wear: none.
 - **Depends**: A.C.07; A.U26.29, A.U26.36, A.U26.74.
@@ -399,12 +445,12 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   (every item terminal); LEAD/R15 ("the owner's agreement that the audit is finished").
 - **Site**: the inventory below; BACKLOG "Real-hardware work still owed"; the register's `moved-to-hardware` entries.
 - **Change**: (1) Every inventory row is delivered (its round record names the verdict) or, only by the owner's decision
-  in a round conversation, re-queued as a BACKLOG owed row with its reason; H78 (the UART babbling peer) stays owed
+  in a round conversation, re-queued as a BACKLOG owed row with its reason; H76 (the UART babbling peer) stays owed
   (owner, 2026-09-25: the bench has no such peer). (2) Every register entry `moved-to-hardware` becomes terminal from
   its round result. (3) After the last delta of R1-R6: one re-verification pass by A.U37.07's rule ends all green on the
   final tree, then R7 runs (A.C.09); a finding in R7 is a delta, then the pass and R7 repeat. (4) The owner is told the
   hardware phase is complete and gives the agreement that opens phase D (A.U37.15-A.U37.16).
-- **Blast**: callers — · generated — · js — · tests — · twin — · docs BACKLOG owed section (only re-queued rows and H78
+- **Blast**: callers — · generated — · js — · tests — · twin — · docs BACKLOG owed section (only re-queued rows and H76
   remain) · toml — · uart —.
 - **Depends**: A.C.02-A.C.10.
 - **Kind**: rule, hardware
@@ -431,11 +477,11 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   `OSError(EIO)`, and calls `_system_cmd_callback("erasefram")`; expect 9 and, from the raw dump after the boot, every
   chunk either blank or holding its saved content (no torn chunk). No flash write (FRAM only). (3) `test_a_hang_in_boot_
   phase_p_is_attributed` parametrised over the five phases 1-5 (construction, setup batch, task starts, timer starts,
-  first NTP force sync, U11's numbering): the script runs the generated `main(watchdog=machine.WDT(timeout=8000))`
-  (A.U20.02) with one callee of that phase rebound from outside to `time.sleep_ms(10000)` (a driver constructor, one
+  first NTP force sync, U11's numbering): the script runs the generated `main(watchdog=machine.WDT(timeout=8000),
+  cfg_path=<scratch path>)` (A.U20.02; A.U26.10; `cfg_path` stays a `main()` option per OR126.a (1)) with one callee of that phase rebound from outside to `time.sleep_ms(10000)` (a driver constructor, one
   setup unit, one task starter, one timer starter, the force-sync call — each chosen at execution from the generated
   module), so no feed follows and the watchdog resets with the phase marker set and no record; expect 10 + p. (4)
-  `test_a_c_stack_exhaustion_is_attributed` — the script builds the system, rebinds one supervised reader's read
+  `test_a_c_stack_exhaustion_is_attributed` — the script builds the system over a scratch `cfg_path` (A.U26.10), rebinds one supervised reader's read
   coroutine from outside to recurse until the stack check raises `RuntimeError`, and lets the supervisor escalate;
   expect 20. Each script is run through the twin runner first (A.U26.05, A.U35.49): (1), (2) and (4) agree with A.U25.55's
   L2 codes; (3)'s twin record is the exception "watchdog reset needs silicon" (the twin WDT never resets, A.U25.55). A
@@ -443,10 +489,11 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   A.U26.28's boot-failure exception row is replaced by this attempt (A-C merges).
 - **Blast**: callers — · generated read through the generated `main()`/`build_system()` (A.U20.02) · js — · tests new
   L4 (four tests, bench module of A.U26.28), four device scripts (the pin guard A.U26.44 and the wear guard A.U26.06 see
-  them: no persisting write, no marker); `tests_scripts/test_bench_restores_serving.py` covers the module ·
+  them: no persisting write, no marker); A.U26.06 (2)'s persisting-call set also counts a generated `main(` call without
+  a scratch `cfg_path` (co-lands with A.U26.06 — A-C merges); `tests_scripts/test_bench_restores_serving.py` covers the module ·
   twin A.U25.55's code list, fidelity row "watchdog reset: silicon only" · docs `tests_hardware/README.md` "Reset codes
   proven on the bench" table (A.U26.28) gains 0, 9, 10+p, 20; E.6 exception list · toml — · uart —. Wear: none (FRAM only).
-- **Depends**: A.U11.05, A.U11.06, A.U20.02, A.U26.05, A.U26.10, A.U26.22, A.U26.28, A.U30.19, A.S0930.13-.17, A.S0930.28.
+- **Depends**: A.U11.05, A.U11.06, A.U20.02, A.U26.05, A.U26.06, A.U26.10, A.U26.22, A.U26.28, A.U30.19, A.S0930.13-.17, A.S0930.28.
 - **Kind**: test, hardware
 
 ### A.C.13 Prove on silicon that an oversized body is refused unread
@@ -463,9 +510,12 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
 - **Change**: `test_an_oversized_body_is_refused_before_it_is_read(dut_ip)`: the cap read from `src/` by `ast`
   (A.U26.49's pinned-value rule, not the `:768` copy); a raw socket sends `PUT /sensors HTTP/1.1`, `Host`,
   `Content-Type: application/json`, `Content-Length: <cap + 1>` and the blank line, no body byte; asserts a complete
-  `413` response within `l4.cap_binding_answer_s` (Part N row, basis "estimated (agent, <date>) — measured in phase C")
+  `413` response within `l4.cap_binding_answer_s` (Part N row, basis "estimated (agent, <date>) — measured in phase C";
+  a Part N relation row: `l4.cap_binding_answer_s` < `web.per_call_timeout_s`, checked by A.U8.02's relation checks)
   while nothing more is sent. Control arm in the same test: `Content-Length: <cap>` with no body gets no response within
-  the same window (the server is waiting in `readexactly()`), then the socket is closed by the test. The `/status`
+  that window (the server is waiting in `readexactly()`), and the test closes the socket before `web.per_call_timeout_s`
+  elapses (the reader is wrapped in `_TimeoutStreamProxy(reader, self._per_call_timeout_s, …)`,
+  `src/asy_webserver_service.py:705`, default 5.0 s at `:321`). The `/status`
   `MemFree` read before and right after the refused request differs by less than the cap (a second, independent
   oracle, recorded). Its host logic runs against the twin first (OR29.a (4)).
 - **Blast**: callers — · generated — · js — · tests new L4 test (unmarked: a refused PUT persists nothing, OR49.a (2);
@@ -473,7 +523,8 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   unread: nothing persists") · twin the same test against the twin (`TwinBoard`, A.U26.05) · docs SPEC I.6
   `:5238-5243` "never a hardware-confirmed one" → the silicon result with its date (A.C.10); Part N row · toml — · uart —.
   Wear: none.
-- **Depends**: A.U19.07 (the stream guard in front of `readexactly()`), A.U26.05, A.U26.49, A.U11.08 (`MemFree`).
+- **Depends**: A.U19.07 (the stream guard in front of `readexactly()`), A.U8.02 (relation checks), A.U26.05, A.U26.49,
+  A.U11.08 (`MemFree`).
 - **Kind**: test, hardware
 
 ### A.C.14 Record what the radio does with a malformed country code
@@ -536,7 +587,8 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   ISL29125 configuration registers are volatile (reset at power-on) … SCD30 NVM values persist across power cycles, so
   tests never assume factory defaults" (owner 2026-09-17 wear rule; datasheets: BMP388 "A power-on reset generator …
   resets the logic circuitry and the register values" and "softreset … all user configuration settings are overwritten
-  with their default state", `dstxt/bmp3xx__bst-bmp388-ds001.txt:454, 1717-1718`; ISL29125 "Write 46h to register 0x00
+  with their default state", `dstxt/bmp3xx__bst-bmp384-ds003.txt:401, 899-903` (the dev board's part), as BMP388
+  `ds001:454, 1717-1718`; ISL29125 "Write 46h to register 0x00
   … the device will reset all registers to their default states", `dstxt/isl29125__…:684`). A reset command is the
   zero-wear discriminator: an NVM-backed setting survives its chip's soft reset (SCD30's do, SUPP_recovery A.U15.R01),
   a volatile register returns to its default. The ISL29125 probe already reads the configuration before and after its
@@ -573,11 +625,14 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   `ConfigManager.setup()`'s read path and prints whether it parsed, its values and whether a repair was needed; the step
   judges with `confirm_pass()`: the file parses and holds the last reported value or the one before, never a truncated
   or mixed file; the scratch file is gone afterwards. The step repeats three times with the cut at different points.
-- **Blast**: callers — · generated — · js — · tests the manual step and two scripts (A.U26.06's wear guard sees their
-  writes: the manual runner's confirmation is the gate, and the scripts are listed in the guard's manual set) · twin
+- **Blast**: callers — · generated — · js — · tests the manual step and two scripts; A.U26.06 (2) gains a manual branch:
+  a persisting script whose only runners are in `tests_hardware/manual/*.py` passes when each running step prints its
+  write budget and takes the operator's `confirm()` before the script runs (checked by `ast`: a `confirm(` call precedes
+  the run call in the step function), listed in `_MANUAL_PERSISTING_STEPS = {<script>: <reason>}`; a tmp manual step
+  without the confirmation fails (bite) (co-lands with A.U26.06 — A-C merges) · twin
   fidelity row "flash-filesystem power loss: silicon only" (A.C.10) · docs SPEC F.2/C.7.3's power-loss sentence gains the
   silicon result, dated · toml — · uart —. Wear: ≤ 60 scratch flash writes and 3 removals over the three repetitions.
-- **Depends**: A.U11.28 (deferred flush), A.U26.06, A.U26.18, A.U26.42.
+- **Depends**: A.U11.28 (deferred flush), A.U26.06 (its manual branch), A.U26.18, A.U26.42.
 - **Kind**: test, hardware
 
 ### A.C.18 The hardware allocation gates fail on a real caught failure
@@ -598,33 +653,37 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
 - **Depends**: A.U20.04, A.U26.47, A.U35.05, A.C.03 (runs after R1's clean verdict).
 - **Kind**: test, hardware
 
-### A.C.19 Re-measure the ISL29125 behaviour rows and assert the PRST unit
+### A.C.19 Re-measure the ISL29125 behaviour rows; correct the stale comment
 - **Why**: G3/R46 "the behaviour is measured on silicon and recorded in SPEC M.1.2 with date and specimen count; the twin
   models every row; the PRST unit `persist_for_interval()` depends on is asserted, the restart question reported only; a
   second specimen or a changed rig or cover triggers re-measurement, hysteresis band and PRST windows included" (fact,
-  measured 2026-09-12/13 on one board); State "work: hardware in C". At HEAD the PRST unit is reported, not asserted:
-  `tests_hardware/flash/test_bus_concurrency.py:95-100` ("Both are reported on the RESULT line whatever the verdict;
-  neither gates the pass"), `isl29125_real_irq_edge.py:61-65` prints `persist_unit=rgb_cycles|channel_integrations`.
-- **Site**: `tests_hardware/flash/test_bus_concurrency.py:95-100`; SPEC M.1.2 (`SPECIFICATION.md:6660-`), M.1.4;
-  `digital_twin/README.md` fidelity table.
-- **Change**: (1) The test parses `persist_unit=` and asserts it equals the unit `src/asy_isl29125_driver.py`'s
-  `persist_for_interval()` computes with (read from its constants by `ast`: the RGB-cycle or single-integration period
-  its arithmetic uses); `inconclusive` fails with the message "INT never asserted — the PRST unit is unproven". The
+  measured 2026-09-12/13 on one board); State "work: hardware in C". At HEAD the PRST unit is already asserted:
+  `tests_hardware/device_scripts/isl29125_real_irq_edge.py:117-121` prints `RESULT: FAIL … persist_for_interval()
+  assumes whole RGB cycles` whenever `persist_unit=rgb_cycles` is absent — `inconclusive` included (`:61`) — and the
+  host test fails on any FAIL line. Only the host comment `tests_hardware/flash/test_bus_concurrency.py:95-97` ("Both
+  are reported … neither gates the pass") is stale.
+- **Site**: `tests_hardware/flash/test_bus_concurrency.py:95-97` (comment); SPEC M.1.2 (`SPECIFICATION.md:6660-`),
+  M.1.4; `digital_twin/README.md` fidelity table.
+- **Change**: (1) DONE-AT-HEAD: `isl29125_real_irq_edge.py:117-121` fails unless the part counts whole RGB cycles
+  (inconclusive included). Only the comment `flash/test_bus_concurrency.py:95-97` changes: 'Also measures … Both are
+  reported … neither gates the pass.' → '# The script fails unless PRST counts whole RGB cycles, the unit
+  persist_for_interval() assumes; / # whether a CONFIG1 write restarts a conversion is reported only.' The
   CONFIG1-restart facts (the probe's G01/G02 keys) stay reported only. (2) In R1 the probe (moved into
   `flash/test_chip_conformance.py` by A.U26.66) and this test run; in R3 the S3b envelope measures the hysteresis band
   and PRST windows. Each M.1.2 row is compared with the result: a row confirmed gains "confirmed <date>, one specimen
   (the dev breakout)"; a changed rig (R2's M1 geometry differs from the recorded one) or a changed cover makes the
   hysteresis band and PRST windows re-measured values, dated. (3) The twin's `_isl29125_chip.py` models every measured
   row; the CONFIG1 restart row stays "assumption, never tuned to" unless the probe's facts settle it.
-- **Blast**: callers — · generated — · js — · tests the flash test above (a reported fact becomes an assertion) · twin
+- **Blast**: callers — · generated — · js — · tests one comment (no behaviour change) · twin
   `digital_twin/_isl29125_chip.py` via A.C.10 · docs SPEC M.1.2 dates and specimen count, M.1.4, fidelity rows · toml —
   · uart —. Wear: S3b's gated writes (A.C.05); the probe and the IRQ-edge test write none.
 - **Depends**: A.U26.11, A.U26.42, A.U26.66, A.U25.01.
-- **Kind**: test, hardware, doc
+- **Kind**: hardware, doc
 
 ## Hardware-duty inventory
 
-Every hardware duty found in `audit/actions/*.md` (U0-U36b, U8C/U8C2, SUPP_*) and in the 37 input blocks. "own": a run,
+Every hardware duty found in `audit/actions/*.md` (U0-U36b, U8C/U8C2, SUPP_*) and in the 37 input blocks plus LEAD/R27
+and G8/R40. "own": a run,
 measurement or record this file plans as a step or instrument; "co-land": a test or fixture an earlier action writes,
 executed by the named round's suite run with no further step. Rounds: R0 host (A.C.02), R1 default (A.C.03), R2
 operator (A.C.04), R3 gated (A.C.05), R4 flash cycles (A.C.06), R5 soak (A.C.07), R6 rollover (A.C.08), R7 release
@@ -644,10 +703,10 @@ proof (A.C.09); "every" = every round (A.C.01).
 | H10 | reset codes 2-6 and BOOTSEL round trip (region 0 across `reset_usb_boot()`) | A.U26.28, A.U11.05 design note, A.S0930.30; G1/R14, G5/R03, G7/R07 | L4 | R1 | co-land |
 | H11 | reset code 1 (power-on) | A.U26.28 (2), A.U26.42 (2) | manual | R2 | own step |
 | H12 | reset codes 0, 9, 10+p, 20 | G5/R03, OR60.a (4), harmonization 45 | L4 | R1 | own (A.C.12) |
-| H13 | `resetconfig` / `erasefram`: function, near-miss words, states, bus hazard, watchdog takeover and hung step, power loss per step (codes 7, 8) | A.S0930.28, A.S0930.29; OR117-OR122, OR124 | L3/L4 | R1 (ungated rows), R3 (`resetconfig`, `persistence_write`, configs saved and restored) | co-land |
+| H13 | `resetconfig` / `erasefram`: function, near-miss words, states, bus hazard, watchdog takeover and hung step, power loss per step (codes 7, 8) | A.S0930.28, A.S0930.29; OR117-OR122, OR124 | L3/L4 | R1 (ungated rows), R2 (the two manual power cuts), R3 (`resetconfig`, `persistence_write`, configs saved and restored) | co-land |
 | H14 | `reboot`/`bootloader` through the controlled sequence, timing bounds, at-once race (codes 3, 4) | A.S0930.39, A.S0930.40, A.U23.33; OR126.a (3), OR120.a | L3/L4 | R1 | co-land |
 | H15 | supervisor escalation reboot attributed (code 5), fed once before it (OR130) | A.U26.28, A.U31.07; OR130.a, G1/R20 | L4 | R1 | co-land (a code 2 is an OR130 failure, A.C.01 (9)) |
-| H16 | recovery rungs on silicon (supervisor restart, participant rungs, bus clear, controller re-init, boot clear, WiFi radio re-init) | A.U26.34, A.U13.R02, A.U15.R01-R04, A.U16.R01, A.U18.R01; G1/R20, G4/R22, OR113.a | L3/L4 | R1 | co-land |
+| H16 | recovery rungs on silicon (supervisor restart, participant rungs, bus clear, controller re-init, boot clear, WiFi radio re-init) | A.U26.34, A.U13.R02, A.U15.R01-R04, A.U16.R01, A.U16.R02, A.U16.R03 (`fram_cs_hijack_fault_injection_and_recovery.py` gains 'CS held inactive across two block writes'), A.U18.R01; G1/R20, G4/R22, OR113.a | L3/L4 | R1 | co-land |
 | H17 | manual rungs: SCD30 and FRAM unplug/replug, SDA-to-GND | A.U26.34 (2); LEAD/R29 | manual | R2 | own step |
 | H18 | held SDA vs MCU reset; SCL/SDA during `recover()` and the boot clear (scope) | A.U14.17 row, SUPP_recovery A.U13.R02 row | L3 + scope | R1 (L3 case), R2 (scope, if provided) | co-land + own |
 | H19 | trigger spacing over a long run | A.U26.41 (2); G1/R30, G5/R07, G4/R64 | L4 `soak_duration` long | R5 | co-land |
@@ -658,7 +717,7 @@ proof (A.C.09); "every" = every round (A.C.01).
 | H24 | alarm-pool `constructed=N` | A.U14.13 | L3 | R1 | own record |
 | H25 | conformance probes SCD30, SGP40, BMP3xx (calibration block), FRAM, ISL29125 (12-bit cycle); SGP40 serial word 0 recorded | A.U26.66, A.U15.13; G7/R04 | L3 | R1 | co-land |
 | H26 | register volatility (BMP3xx soft-reset key; ISL probe A03-A05); bench SCD30 NVM state recorded | G1/R04, G3.076 | L3 | R1 | own (A.C.16) |
-| H27 | ISL29125 M.1.2 rows re-measured, PRST unit asserted, CONFIG1 restart reported | G3/R46 | L3; S3b gated | R1, R3 | own (A.C.19) |
+| H27 | ISL29125 M.1.2 rows re-measured, PRST unit asserted (at HEAD), CONFIG1 restart reported | G3/R46 | L3; S3b gated | R1, R3 | own (A.C.19) |
 | H28 | S3b envelope with `Overrange`; M1 rig geometry first | A.U26.11, A.U26.42 (3); G3/R54, G1/R40 | L3 `neopixel_sweep` + `persistence_write`; manual | R2 (M1), R3 (S3b) | co-land |
 | H29 | lone-BMP3xx general call; non-SGP40 ACK/NAK of a broadcast | A.U35.21, A.U25.01 row | L3 | R1 | co-land |
 | H30 | SCD30 wrong argument CRC / interval 0 reaction; 0x0010 readback across a power cycle | G7/R03 RF094, A.U25.01, A.U25.12, A.U15.08 | L3 `persistence_write` + `scd30_extra_write`; manual | R3, R2 | own (A.C.15) |
@@ -679,19 +738,19 @@ proof (A.C.09); "every" = every round (A.C.01).
 | H45 | two-image GC proof | G4/R49, OR40.a (3), G1/R02; A.U8.06 (UART tunables on both) | L3/L4, 2 planned flashes | R7 | own (A.C.09) |
 | H46 | `ResetErrors` bench budget (BACKLOG items 24/32, R2 curve) | G4/R62, G5/R23; A.U11.31, A.U19.14 | L4 | R1 | own record → A.C.10 |
 | H47 | config float round trip on silicon | A.U11.21; G5/R34 RF207, G5/R45 RF216 | L3 `persistence_write` | R3 | co-land |
-| H48 | float boundary 2**24 on silicon | `float_boundary_2pow24.py`; G5/R45 | L3 | R1 | co-land |
+| H48 | float boundary 2**24 and the bus-deinit no-op script on silicon | `float_boundary_2pow24.py`, `bus_deinit_is_a_noop_on_real_hardware.py`; G5/R45, G4/R19 | L3 | R1 | co-land |
 | H49 | power cut during a config write | G5/R35, A.S0930.25 | manual, budgeted scratch writes | R2 | own (A.C.17) |
 | H50 | forced config repair at boot; littlefs erase count per commit | A.U31.03 | L3 `persistence_write` | R3 | own step |
 | H51 | malformed country code at the radio | G6/R28 RF213 | L3 | R1 | own (A.C.14) |
 | H52 | `HotspotPW` PUT rows | A.U18.38 | L4 `persistence_write` | R3 | co-land |
 | H53 | per-second `rssi` read cost | A.U18.33 | L3 | R1 | own record |
 | H54 | request-head size of real browsers | A.U19.07 (`web.max_head_bytes`) | L4 capture, manual | R2 | own step |
-| H55 | l3/l4/web tunables still "estimated": `outer_cap_s`, `per_call_timeout_s`, floors, `l4.dut_serving_after_sta_s`, `l4.lwip_spin_concurrent_request_max_s`, `l4.soak_request_failure_rate`, `boot.unfed_stretch_*` | A.U8.04, A.U8.11, A.U10.07, A.U21.14, A.U26.35, A.U26.41 (3), A.U26.54, A.U35.56 | L3/L4 | R1, R4, R5 | own record → A.C.10 |
-| H56 | speed-probe bands on the bench Pi4 | A.U8.16, A.U35.23 | host | R0 | own |
+| H55 | l3/l4/web tunables still "estimated": `outer_cap_s`, `per_call_timeout_s`, floors, `l4.dut_serving_after_sta_s`, `l4.lwip_spin_concurrent_request_max_s`, `l4.soak_request_failure_rate`, `boot.unfed_stretch_*` | A.U8.04, A.U8.11, A.U9.04, A.U10.07, A.U10.13, A.U21.14, A.U26.35, A.U26.41 (3), A.U26.54, A.U35.56 | L3/L4 | R1, R4, R5 | own record → A.C.10 |
+| H56 | speed-probe bands; `tool.*` step timings; the lwIP host hammer's slowest write | A.U8.16, A.U35.23, A.U21.17, A.U21.13 | host | R0 | own |
 | H57 | bench Pi: OS record, sudo/`--preserve-env`/`nmcli edit`/picotool checks, uv pin, stale packages | OR50.a (3)(b); A.U21.18, A.U21.19, A.U21.26, A.U21.27, A.U28.02 | host | R0 | own |
 | H58 | `env --tier bench` with the installer's recovery timer; Playwright `install-deps` fatal | A.U21.23; U28 installer row | host | R0 | own |
 | H59 | GCC ≥ 14 mbedtls build without the suppression (if no trixie chroot built it) | A.U21.16 step 1, A.SDEP.12 | host | R0 | own (conditional) |
-| H60 | firmware pin moved: flash, bench, mid-soak on the new pin; F.5 on-target confirmations; `sys.implementation` | A.SDEP.08 (6), A.SDEP.25; OR129.a (5) | L3/L4 | R1, R5 (on the pin the tree carries) | co-land (only if the pin moved) |
+| H60 | firmware pin moved: flash, bench, mid-soak on the new pin; F.5 on-target confirmations; `sys.implementation` | A.SDEP.08 (6), A.SDEP.25, A.SDEP.07 (a re-vendored freezefs changes the frozen website on silicon: the served site checked in the same runs); OR129.a (5) | L3/L4 | R1, R5 (on the pin the tree carries) | co-land (only if the pin moved) |
 | H61 | spoofing tests; the off-subnet attempt | A.U26.56; G8/R40, OR77/OR79 | L4 | R1 | co-land + own verdict |
 | H62 | role reversal, destructive stage last; `_PHASE_DEACTIVATED` cleared by `machine.reset()` | A.U26.39; G1/R28 | L4 `persistence_write` | R3 | co-land |
 | H63 | rollover over ~12.4 days | A.U26.36; G1/R23 | L4 `multi_day_rollover` | R6 | co-land |
@@ -704,11 +763,17 @@ proof (A.C.09); "every" = every round (A.C.01).
 | H70 | reflash smoke test (exit-249 retry only); toolchain re-verification | A.U26.14 | L3 `flash_cycle`, `toolchain_reverify` | R4 | co-land |
 | H71 | silicon-only interaction, recombination and rung cells of B3 | A.U35.08, A.U35.09, A.U35.52, A.U35.54 (`audit/b3/queue_c.md`) | L3/L4 | R1 | co-land |
 | H72 | FRAM-only forensic scripts clear their chunk; reset-race seams | A.U26.22 (5), A.U26.43 | L3 | R1 | co-land |
-| H73 | every other new or changed L3/L4 test, device script, fixture or tag: A.U0.18, A.U0.28, A.U0.35, A.U1.25, A.U2.01-A.U2.03, A.U4.07, A.U6.17, A.U7.13-A.U7.17, A.U7.24, A.U8.04-A.U8.08, A.U8.14, A.U8.19, A.U8C.01-A.U8C.121 and A.U8C2.01-A.U8C2.51 (the `tests_hardware` ones), A.U10.34-A.U10.37, A.U10.40, A.U10.41, A.U11.33, A.U15.15, A.U17.05, A.U18.42, A.U20.33, A.U21.24, A.U25.50, A.U25.61, A.U26.04-A.U26.87 not named above, A.U27.19, A.U27.25, A.U27.29, A.U27.37, A.U28.27, A.U28.28, A.U28.35, A.U29.04, A.U30.14, A.U30.16, A.U31.01, A.U31.04, A.U35.03, A.U35.22, A.U35.49, A.U35.50 | as listed | default/gated per marker | R1 (default), R3 (gated) | co-land |
+| H73 | every other new or changed L3/L4 test, device script, fixture or tag: A.U0.18, A.U0.28, A.U0.35, A.U1.25, A.U2.01-A.U2.03, A.U4.07, A.U6.17, A.U7.13-A.U7.17, A.U7.24, A.U8.04-A.U8.08, A.U8.14, A.U8.19, A.U8C.01-A.U8C.121 and A.U8C2.01-A.U8C2.51 (the `tests_hardware` ones), A.U10.34-A.U10.37, A.U10.40, A.U10.41, A.U11.33, A.U15.15, A.U17.05, A.U18.42, A.U20.33, A.U21.24, A.U25.50, A.U25.61, A.U26.04-A.U26.87 not named above, A.U27.19, A.U27.25, A.U27.29, A.U27.37, A.U28.27, A.U28.28, A.U28.35, A.U29.04, A.U30.14, A.U30.16, A.U31.01, A.U31.04, A.U35.03, A.U35.22, A.U35.49, A.U35.50, A.U12.18 (`device_scripts/sgp40_same_device_concurrent_sessions.py`, its `flash/test_bus_concurrency.py` leg and L4 case), A.U18.01 (the AAAA query in `bench/test_hotspot_role_reversal.py`) | as listed | default/gated per marker | R1 (default), R3 (gated) | co-land |
 | H74 | twin corrected until it agrees; fidelity rows; BACKLOG owed rows removed as delivered; Part N measured | OR17.a (5), G6/R56, G7/R03, G9/R31, A.U25.01 | — | after each | own (A.C.10) |
 | H75 | F17 (BACKLOG item 44): no unexplained reset across the rounds | G1/R02, G4/R63 | — | R7 | own (A.C.09) |
 | H76 | UART `wrnno` 11 against a real babbling peer (BACKLOG R13 + N3) | BACKLOG owed row | — | none | stays owed: "needs hardware the bench does not have" (owner, 2026-09-25) |
 | H77 | FRAM CS level at power-up on each board | G5/R29 State (and G3/R16 before wave 2) | — | none | withdrawn by the lead (AC_NOTES 11, 23): hold time met by boot timing, a documented datasheet fact; register fix 1 |
+| H78 | SGP40 wrnno 35 (today `W13`) spends one slot per NTP outage: UDP 123 blocked past `SGPWaitTimeNTP`, one entry per outage, `ErrCount` rising per backup (zero wear) | BACKLOG `:362-364` 'Not yet confirmed on silicon' (1); A.U2.13 | L4 (bench `iptables` fault, switch armed) | R1 | own step |
+| H79 | worst-case read duration per driver for `stagger.min_read_separation_ms` | A.U10.13 | L3/L4 | R1 | own record |
+| H80 | LED ramp wall time under bench API load for `_MAX_SIGNAL_S` | A.U9.04 | L4 | R1 | own record |
+| H81 | recovery-ladder thresholds (participant 2nd, bus clear 3rd, controller 4th failure; FRAM probe 2nd; three identification attempts) confirmed from the rung tests | SUPP_recovery closing note (`:923-925`) | L3 | R1 | own record |
+| H82 | `stations` query without the 100 ms settle keeps the right count (local-only image, reverted at once) | A.U18.43, A.SDEP.17 (W42) | L4, `flash_cycle` (2 flashes) | R4 | own step |
+| H83 | loaded free-heap floor from `MemFree` under the bench load | A.U30.09 | L4 | R1 | own record |
 
 ## Ledger
 | register block | clause for this unit (short) | result |
@@ -722,7 +787,7 @@ proof (A.C.09); "every" = every round (A.C.01).
 | G1/R28 | hardware in C — confirm `machine.reset()` clears `_PHASE_DEACTIVATED` | A.C.05 (1) (A.U26.39 (3)-(4) stage 8 check, gated); H62 |
 | G1/R30 | hardware in C — bench boot log and trigger timestamps | A.C.01 (8)/A.C.03 (boot log every round, A.U26.41 (1)), A.C.07 (trigger spacing, A.U26.41 (2)); H06, H19 |
 | G1/R40 | hardware in C — rig geometry (M1), i2c0 scan; owner confirms DHCP keying and BME688 at the first round | A.C.02 (7) (owner confirmations), A.C.04 (1) (M1), A.C.03 (sweep's `ADDRESSES` lines, A.U26.46 table); H65 |
-| G3/R46 | hardware in C — undocumented ISL29125 behaviour measured, dated, specimen count; PRST unit asserted; restart reported | A.C.19 (the PRST assertion is new: reported-only at HEAD, `flash/test_bus_concurrency.py:95-100`) |
+| G3/R46 | hardware in C — undocumented ISL29125 behaviour measured, dated, specimen count; PRST unit asserted; restart reported | A.C.19 (the PRST assertion holds at HEAD, `isl29125_real_irq_edge.py:117-121`; A.C.19 re-measures the M.1.2 rows and corrects the stale host comment) |
 | G3/R54 | hardware in C (S3b) | A.C.05 (3) (A.U26.11 gated S3b, M1 first in A.C.04); H28 |
 | G4/R19 | hardware in C — `bus_deinit_is_a_noop_on_real_hardware.py` kept as a pin-move check | A.C.03 (runs in R1's default flash tier), A.SDEP.08 (6) on a pin move; H48/H60 |
 | G4/R22 | hardware in C — one row measures a held slave vs reset; boot-time bus clear; ladder rungs | A.C.03 (A.U13.R02 incl. the boot clear with SDA held, co-land), A.C.04 (5) (scope rows if a scope is provided, else they stay owed); H16, H18 |
@@ -747,7 +812,9 @@ proof (A.C.09); "every" = every round (A.C.01).
 | G7/R07 | hardware in C (each code on the dev bench) | as G1/R14; the survive/clear rules on silicon read from codes 1-6 and 0 (A.C.12 (1)) |
 | G7/R32 | hardware in C (manual Safari/mobile) | A.C.04 (6) (browser pass, captive-portal webview through A.U26.42 (4)); H66 |
 | G8/R18 | hardware in C — the three neu units and `arzi` against their TOMLs | A.C.04 (7) (owner's physical check; no unit but `dev` flashed or connected); H67 |
-| G10/R24 | — | NO-CLAUSE: State "holds; work: doc in U36" names no C work; the block entered the input through the string "C.10" (Home) — register fix 6 |
+| G10/R24 | — | NO-CLAUSE: State "holds; work: doc in U36" names no C work; the block entered the input through the string "in C.10" (State) — register fix 6 |
+| LEAD/R27 | applies to every phase-C round (rare events triggered or recorded; dedicated repro scripts) | A.C.01 (9) (A.U26.81's README paragraph is the permanent text) |
+| G8/R40 | hardware in C — the off-subnet spoof attempt; the skip reason rewritten after it | A.C.03 (3) (A.U26.56 (3)); H61 |
 | LEAD/R02 | hardware in C (start and end state every round) | A.C.01 (6), (8) (A.U26.79's fixtures run every round), A.C.09 (release image at the end); H05 |
 | LEAD/R06 | hardware in C (measurement) | A.C.03 (A.U30.18's device script, R1 default flash tier); H23 |
 
@@ -771,24 +838,31 @@ proof (A.C.09); "every" = every round (A.C.01).
    read (`ext/microdot.py:425-430, 1443-1445`); the SPEC sentence is rewritten with the silicon result (A.C.10).
 5. **G1/R04** State: "hardware in C — re-read bench NVM state and register volatility" → add "volatility checked with
    each chip's reset command (a volatile register returns to its datasheet default; an NVM-backed setting survives, as
-   SCD30's do), power-on reset per BMP388 `ds001:454` and ISL29125 `:411-415` (A.C.16)".
-6. **Input generator** (`audit/sweeps/al_input.py`, not a register line): its unit match took "C.10" in G10/R24's Home as
-   unit C; the match for unit C should require "in C", "phase C", "Phase C" or "hardware in C".
+   SCD30's do), power-on reset per BMP384 `ds003:401, 899-903` (the dev board's part), as BMP388 `ds001:454, 1717-1718`,
+   and ISL29125 `:411-415` (A.C.16)".
+6. **Input generator** (`audit/sweeps/al_input.py:10`): `C_RE` matched G10/R24's State 'stated once in C.10' (SPEC Part
+   C, not unit C) and missed 'phase-C' (LEAD/R27, G8/R40). Replace with
+   `r"(?i)\bphase[- ]C\b|hardware in C\b|\bin C\b(?!\.\d)|\bC —"`.
 
 ## Open points
 None. Every choice was settled by an owner row, the register or a CLAUDE.md rule: the network switch around every
 bench-tier run follows CLAUDE.md's "tearing down `br0`/its slaves" literally (A.C.01 (2)); the lwIP pair order is
 OR114.a (5)'s, kept inside one round, with G1/R02's gated-after-clean rule (A.C.06); local-only control and no-threshold
 images are throwaway-worktree builds, as A.U21.14 and G1/R02 ("a local-only image is reverted at once") state
-(A.C.06, A.C.09); scope rows run only if the owner provides a scope, else stay owed (A.C.04 (5)).
+(A.C.06, A.C.09), the control image's path passed to A.U26.85's test by a host option (A.C.06 (1), A-C note 1); scope rows run only if the owner provides a scope, else stay owed (A.C.04 (5)).
 
 ## A-C notes
-1. A.U26.85 (1) says the control image is built by "`scripts/build_firmware.py` with the override skipped"; no action
-   plans such a flag, and A.U21.14 builds it in a throwaway worktree with `apply_modlwip_eagain_override()` not called.
-   A-C keeps one: the worktree form (A.C.06), unless it adds a tooling flag in U21 with its own L0 test; either way the
-   image record carries `overrides: []` and `dirty` is set.
+1. The control-image conflict is settled in C (A.C.06 (1)): the round builds the control image before the run in a
+   throwaway worktree of its commit with the override call removed (A.U21.14's form, never committed; its image record
+   carries `overrides: []` and `dirty: true`) and passes its path to A.U26.85's test through a new host option
+   `--lwip-control-image <path>`; the test refuses (fails, never skips) a missing path or a record whose `overrides` is
+   not empty, and in `finally` reflashes the release image recorded at start. A.U26.85 (1)'s 'the test itself builds the
+   control image' becomes 'the test takes the control image the round built'. No build flag is added. Co-lands with
+   A.U26.85 and A.U21.14 — A-C merges.
 2. A.C.12 replaces A.U26.28's boot-failure exception row; A.C.13 adds a `_JUSTIFIED_UNMARKED` reason to A.U26.06's guard
    file; A.C.15 (1) and A.C.05's A.U15.07/A.U19.23 rows add budget rows to A.U26.09's README table; A.C.16 extends A.U26.66's
-   BMP3xx probe; A.C.19 edits `flash/test_bus_concurrency.py:95-100`, which U8C tag actions also touch — all co-land with U26 in the B2 order.
+   BMP3xx probe; A.C.19 edits the comment at `flash/test_bus_concurrency.py:95-97`, which U8C tag actions also touch — all co-land with U26 in the B2 order.
 3. A.C.14's script and A.C.12's scripts join A.U26.05's twin-runner record and A.U35.49's review (`audit/b3/queue_c.md`,
    A.U35.54, lists every C row: U37's A.U37.05 folds both lists into BACKLOG).
+
+Verified 2026-09-30 (`audit/actions/verify/C.md`): V.C.01-V.C.20 applied.
