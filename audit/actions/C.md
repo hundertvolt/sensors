@@ -104,3 +104,521 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   A.U26.22, A.U26.29, A.U26.79, A.U36.001, A.S0930.06 (2).
 - **Kind**: rule, hardware
 
+### A.C.02 Round R0: prepare the bench host, no board
+- **Why**: OR50.a (3)(b) "the bench Pi is checked for packages the current setup no longer installs in the hardware phase,
+  with the owner's go-ahead" (owner, 2026-09-26); G1/R02 Req "record … the bench Pi's stale packages"; G1/R40 State
+  "at the start of the first Phase C round the owner confirms, and `tests_hardware/README.md`'s bench facts record,
+  whether the router's DHCP reservation is keyed to `eth0`'s MAC … and whether the BME688 on GP16/GP17 … is still
+  attached (O.11, O.12)" (owner, 2026-09-25, OR32.a (3)); hand-offs to C: A.U21.18 (sudoers `--preserve-env`), A.U21.19
+  (`nmcli connection edit` reads piped commands), A.U21.26 (passwordless sudo, `-n` semantics), A.U21.27 (picotool and
+  sudo `secure_path`), A.U21.23 ("the first real run of `env --tier bench` against a fresh bridge … proves arm → create
+  → poll → disarm"), A.U21.16 step 1 (GCC ≥ 14 build "else the bench Pi4 (GCC 14.2.0) in phase C"), A.U28.02 (bench uv
+  matches the pin), the U28 installer row ("re-run `env --tier bench` on the bench Pi4 once; Playwright's `install-deps`
+  failure is now fatal there"), A.U35.23/A.U8.16 (speed-probe bands on the bench Pi4 host, no board attached).
+- **Site**: the bench Pi4 (host only; the board is not touched: no `mpremote`, no `picotool`, no device script);
+  round record `audit/c/R0.md`; permanent results into `tests_hardware/README.md` bench facts table (A.U26.46) and Part N.
+- **Change**: in order, under A.C.01 (1)-(2): (1) Host record: `/etc/os-release`, `uname -r`, `gcc --version`, `nmcli
+  --version`, `sudo -V | head -1`, `picotool version`, `uv --version`, `node --version`; `uv --version` must equal
+  `pyproject.toml`'s `[tool.uv] required-version` (A.U28.02), else the round stops for the owner. (2) Checks the
+  installer made executable, run first: the bench tier's passwordless-sudo check (A.U21.26; `man sudo` read on the Pi for
+  `-n`), `sudo -l` and `/etc/sudoers` read for `--preserve-env` acceptance (A.U21.18), `man nmcli` `edit` section read
+  on the Pi (A.U21.19), `sudo sh -c 'echo $PATH'` and `command -v picotool` under sudo (A.U21.27); each result recorded;
+  a result contradicting the installer's assumption is a delta for U21's code (A.C.10), not patched on the host.
+  (3) `uv run toolchain/setup_toolchain.py env --tier bench`: with the existing `br0`, the run checks it (MAC warning
+  path read, A.C.01 (2)); the fresh-creation proof of A.U21.23 runs only if the owner's go-ahead for this round names it,
+  because it tears the bridge down first: B.13's switch armed by hand for the teardown, then the installer's own
+  `_armed_recovery` arms, creates, polls and disarms, each state recorded (`systemctl is-active` before and after), and
+  the new bridge's MAC checked against the uplink's. Playwright's `install-deps` must succeed or the run fails
+  (A.U28 row). (4) Stale packages: `apt-mark showmanual`, `pip list --user`, `npm ls -g --depth=0`, `uv tool list` and
+  `$PICO_TOOLCHAIN_DIR`'s entries compared with what `toolchain/versions.toml` (`apt_packages`, pins) and the env tiers
+  install; the difference is listed with each package's last use found (`/var/log/apt/history.log`) and reported to the
+  owner; nothing is removed unless the owner's go-ahead in this conversation names the packages (OR50.a (3)(b)).
+  (5) If no GCC ≥ 14 trixie chroot build of A.U21.16 step 1 exists by now: both the rp2 firmware and the Unix port built
+  on the Pi with `_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND` removed in a throwaway worktree, under the toolchain lock;
+  the compiler version and the warning count recorded; the result decides A.U21.16 step 2a/2b as a delta. (6) The speed
+  probe (A.U8.16's monotonic probe) run on the Pi with no board attached, ten runs; its bands recorded against their
+  Part N rows (A.U35.23: "the band values change only from those two measurements"). (7) The owner's two confirmations
+  (DHCP reservation keyed to the uplink MAC; BME688 on GP16/GP17 attached or not) asked in this conversation and
+  recorded, dated, in the bench facts table (A.U26.46).
+- **Blast**: callers — · generated — · js — · tests — (host checks; the installer's own tests are L0, U21) · twin — ·
+  docs `tests_hardware/README.md` bench facts table rows (A.U26.46), Part N speed-probe rows, SPEC B.7.1 via A.U21.16
+  · toml — · uart —. Wear: none on the board; host writes of one installer run and one firmware build.
+- **Depends**: A.C.01; A.U21.16, A.U21.18, A.U21.19, A.U21.23, A.U21.26, A.U21.27, A.U26.46, A.U28.02, A.U8.16, A.U35.23.
+- **Kind**: hardware (host)
+
+### A.C.03 Round R1: first contact, then the release candidate's default run
+- **Why**: OR28.a (1) "the dev bench's FRAM logs are read before clearing … at the start of the hardware session, which
+  reflashes the board anyway" (owner, 2026-09-25); G1/R02 (image proof, lower levels first, default before gated);
+  G1/R04 State "re-read bench NVM state" (owner, 2026-09-17); G1/R14, G5/R03, G7/R07 "each code is proven … on the dev
+  bench" (owner, 2026-09-26, OR60 "b, but don't use FRAM … integrate it into the system service and its endpoints");
+  G1/R20 (rungs on silicon, OR18.a); G4/R19 (the deinit script kept as a pin-move check); G4/R22 (bus clear, OR113.a);
+  G4/R47 (bounds re-derived "on a named image"); G4/R62/G5/R23 (bench `ResetErrors` budget, OR72.a (5)); G4/R64
+  (timing table measurements); G5/R45 ("float device scripts"); G6/R52/G4/R44 (L32 binding, A.C.13); G7/R04 (probes);
+  LEAD/R06 (C-stack reading); owed rows handed to C: A.U12.01 (CRC32 per-call allocation "before and after"), A.U14.13
+  (`constructed=N`), A.U18.33 (per-second `rssi` cost "measured in phase C"), A.U19.13 (serving-demand budget
+  "re-derived with G4/R47's figures in phase C"), A.U30.04 (survivors bound now counting the VOC algorithm), A.U10.07
+  (unfed boot stretches), A.U8.04/A.U8.11/A.U26.41 (3)/A.U26.54/A.U35.56 (l3/l4 and web tunables "measured in phase
+  C"), BACKLOG "Not yet confirmed on silicon" (2) (the flash tier ending on `hard_reset()`, HW.S28 "confirmed by Phase
+  C's first full flash run").
+- **Site**: the dev board and bench; `scripts/run_bench_hardware_suite.sh` (default flags only); round record
+  `audit/c/R1.md`.
+- **Change**: (1) First contact, on the image the board runs today, nothing written: `GET /system`, `GET /status` (the
+  whole body, verbatim), `GET /sensors` (the SCD30 NVM-backed values: the bench NVM state G1/R04 asks for), `GET
+  /networking` saved first over REST; then over the raw REPL (which stops `main.py`, CLAUDE.md), read only:
+  `machine.reset_cause()`, the raw FRAM dump (A.U26.22 (3)'s `fram_raw_dump.py`; if that image's frozen FRAM driver
+  lacks the call the script uses, it reads with the READ opcode over plain `machine.SPI` and CS, read-only), every
+  `config_*.cfg` printed verbatim (A.S0930.29's `config_files_dump.py`), and the CRC32 allocation probe of A.U12.01 on
+  that image's frozen `crc_checks` (the "before" figure); all saved into the round record before anything else runs.
+  (2) A.C.01 (3)-(6): lower levels, build, the planned image flash, image proof, standard state (the SCD30 snapshot of
+  A.U26.79 compared with (1)'s values: a difference means the reflash or setup wrote SCD30 NVM and is reported).
+  (3) The default run: `scripts/run_bench_hardware_suite.sh` (L0-L2, then L3 as its own step, then L4). Every new or
+  changed L3/L4 test of the inventory marked "R1" runs here; the rows whose verdict the round record lists by name: the
+  reset codes 2-6 and the BOOTSEL round trip with region 0 across it (A.U26.28, A.S0930.40), `erasefram`, near-miss
+  words and the command concurrency/hang/power-loss/bus-hazard rows (A.S0930.28 (2)-(8), A.S0930.29 (2)-(5),
+  A.S0930.39, A.S0930.40), the codes of A.C.12, the rungs (A.U26.34 automated rows, A.U13.R02 incl. the boot clear with
+  SDA held at construction), the conformance probes with the BMP3xx reset key (A.U26.66, A.C.16), the ISL29125 rows
+  (A.C.19's default half), the UART link in both CRC modes over the jumper and under API load (A.S0930.05, A.U26.82,
+  A.U26.87), the lone-BMP3xx general call with its NAK count (A.U35.21), the FRAM hold, no-yield stretches, loop lag and
+  C-stack scripts (A.U16.07, A.U31.05's first script, A.U31.06 (3), A.U30.18), the lwIP override hammer on the normal
+  image (A.U26.85 (2)), the body-cap binding (A.C.13), the country reaction (A.C.14), the spoofing tests with the
+  off-subnet attempt (A.U26.56 (3): works → an ordinary test; else the skip returns with the attempt's recorded reason),
+  the watchdog-starvation test ending on a serving board (A.U26.25, A.U26.17), `float_boundary_2pow24.py` and
+  `bus_deinit_is_a_noop_on_real_hardware.py` (G5/R45, G4/R19), the boot log (A.U26.41 (1)).
+  (4) Measurements recorded with the image (build date, commit, `GC_THRESHOLD` in force): the CRC32 "after" figure
+  (A.U12.01); `timer_alarm_pool_exhaustion.py`'s `constructed=N` with the image's other default-pool users
+  (A.U14.13); the flash-tier heap figures — largest free block, survivors, the top 16 KiB — and SPEC I.1's post-build
+  free heap on this named image (G4/R47, A.U26.48, A.U30.04, A.U19.13's `web.serving_demand_budget_b` basis); the
+  `rssi` read cost: a read-only device script times 100 `network.WLAN(network.STA_IF).status("rssi")` calls on the
+  still-associated radio (A.U18.33); the `ResetErrors` duration idle and under the item-32 reader counts, each after
+  A.U26.22's save (G4/R62, G5/R23 — sets the bench budget, A.C.10); the idle loop share from A.U31.06's script with
+  its load off (A.U8.11); the per-route request durations under the default run's load against `outer_cap_s`/
+  `per_call_timeout_s` (A.U8.04); the engagement floors and `l4.dut_serving_after_sta_s` (A.U26.54, A.U26.41 (3)); the
+  gaps between consecutive setup-unit lines of the boot log, stamped on arrival (A.U10.07's `boot.unfed_stretch_*`,
+  the stamp resolution stated); every other `l3.`/`l4.` Part N row still "estimated" whose test ran (A.U35.56).
+  (5) Last, after the clean verdict is recorded: the deliberate red of A.C.18.
+- **Blast**: callers — · generated the round's dev image · js — · tests every L3/L4 test of the inventory marked R1 ·
+  twin the figures feed A.C.10 · docs via A.C.10 (SPEC F.1, F.3, F.5, I.1, C.7 budget; Part N; bench facts) · toml — ·
+  uart —. Wear: flash filesystem — the planned image flash plus the default run's pinned prerequisites (A.U26.09's
+  default row: the role-reversal fixture's SSID clear and restore, 2; the stale-credential recovery, 0 or 1; standard-state
+  repairs only if the plan names `--repair-standard-state`); SCD30 NVM 0, at most 1 (A.U26.07); FRAM: any.
+- **Depends**: A.C.01, A.C.02; A.C.12-A.C.16, A.C.18, A.C.19 (their default-run halves); every listed action executed.
+- **Kind**: hardware
+
+### A.C.04 Round R2: the operator round at the bench
+- **Why**: G1/R40 "rig geometry (M1)" (owner, 2026-09-25, OR32.a (3)) and A.U26.42 "M1 before S3b"; G1/R20/LEAD/R29
+  (SCD30 and FRAM unplug/replug, the SDA-to-GND step, A.U26.34 (2)); G1/R14/G5/R03 code 1 (power-on, a supply cut,
+  A.U26.28 (2)); G4/R22 "hardware in C — one row measures it" (a held slave vs an MCU reset) and SUPP_recovery's row
+  (what SCL/SDA do during `recover()`'s re-construction); G5/R35 "hardware in C — power-loss window and littlefs repair
+  (G5.035)" (owner, 2026-09-26, OR69.a (3)) and A.S0930.25 ("S2's flush … atomicity is littlefs's and phase C's to
+  show"); G7/R03 RF094 (SCD30 0x0010 persistence, A.C.15 (2)); G7/R32 "A real Safari/mobile pass is the owner's manual
+  check in phase C" (owner, PQ10, 2026-09-26); A.U26.42 (4) (captive-portal observation); A.U19.07 (`web.max_head_bytes`
+  "measurement owed on the bench"); G8/R18 "the three neu units and arzi against their TOMLs" (OR61.a "the owner builds
+  and holds every unit", 2026-09-26).
+- **Site**: `scripts/run_manual_hardware_tests.sh` (manual mode of L3/L4, harmonization 20); the owner's phones and
+  desktop browsers; the bench Pi (packet capture); round record `audit/c/R2.md`.
+- **Change**: on the R1 image, after R1's clean default run, the owner present: (1) M1 (A.U26.42 (3)): rig geometry and
+  ambient condition written to the evidence directory and to `tests_hardware/README.md`'s rig section, dated. (2) The
+  manual rung steps of A.U26.34 (2) — SCD30 unplug/replug, FRAM unplug/replug, SDA-to-GND — each judged with
+  `confirm_pass()` against its `/status` oracle (`ResetReason`, `SysUptime`, the named catalog entries). (3) The
+  power-cycle step of `manual_persistence.py` (A.U26.42 (2)): `ResetReason` 1 after power returns (A.U26.28), the
+  FRAM-backed value survives, and A.C.15 (2)'s `AmbPres` readback before and after. (4) A.C.17's power-loss step.
+  (5) Held-SDA observations with an oscilloscope only if the owner provides one at the bench: SCL/SDA during the boot
+  clear (A.U13.R02's boot case) and during `recover()`'s re-construction (whether pico-sdk's `i2c_init()` clocks SCL);
+  without a scope both rows stay BACKLOG owed rows with "needs a scope", never guessed. (6) The browser pass: the
+  website served by the board over the bench AP on current Safari (macOS), Safari on iOS, Chrome and Firefox on
+  Android and desktop Chromium/Firefox, desktop and phone widths: every page renders, every value shows, a no-op Apply
+  answers "Unchanged" (no write), the history pills and the live refresh work; each result dated in SPEC H.1's floor
+  sentence's evidence note (A.C.10); the captive-portal webview is observed on a phone during A.C.05's role-reversal
+  hotspot window or A.S0930.29 (1)'s hotspot phase and recorded through `manual_wifi.py`'s text prompt (A.U26.42 (4)).
+  During the browser pass `tcpdump -i br0 -s 0 -w <evidence>/heads.pcap host <DUT IP> and tcp port 80` runs on the Pi;
+  the longest request head (request line plus headers, to the blank line) per browser is taken from it and recorded
+  against `web.max_head_bytes` 2048 (A.U19.07). (7) The owner compares `devices/{klkizi,grkizi,schlafzi,arzi}.toml`'s
+  wiring facts (buses, pins, frequencies, chip selects, IRQ pins) with each physical unit; no unit other than `dev` is
+  flashed or connected over `mpremote` (CLAUDE.md :159-172); a mismatch is a TOML delta citing the unit as its origin
+  (G8/R18); a match adds "(checked against the unit, owner, <date>)" to the TOML's origin comment (A.C.10).
+- **Blast**: callers — · generated — · js — · tests the manual modules (A.U26.42, A.U26.34, A.U26.28's step, A.C.15 (2),
+  A.C.17) · twin fidelity rows: flash power loss (silicon only), SCD30 0x0010 · docs `tests_hardware/README.md` rig
+  section and bench facts, SPEC H.1 (browser floor evidence), Part N `web.max_head_bytes`, TOML origin comments (G8/R18)
+  · toml `devices/*.toml` comments (A.C.10) · uart —. Wear: `manual_persistence.py`'s flash-config step 2 writes (A.U26.42
+  (2): the value and its restore); A.C.17's scratch writes (≤ 20 + 1 removal); power cycles are not wear.
+- **Depends**: A.C.03 (clean default run of the same image); A.U26.28, A.U26.34, A.U26.42, A.C.15, A.C.17.
+- **Kind**: hardware, doc
+
+### A.C.05 Round R3: the gated wear run
+- **Why**: owner D1 "spend flash/NVM writes, but only after a clean default run, so a gated failure is the gated test's
+  own" (owner, 2026-09-22, BACKLOG.md:353-355); CLAUDE.md wear rule (:249-283, owned writes behind the marker);
+  G3/R54 "Its one silicon run (S3b) is owed" (owner, 2026-09-15); G5/R34 RF207 "hardware in C — round trip on silicon"
+  and G5/R45 RF216 "the config round trip is proven by an L3 device script" (owner, 2026-09-26, OR70.a (3)); G1/R28
+  "hardware in C — confirm `machine.reset()` clears `_PHASE_DEACTIVATED`" (owner D03, 2026-09-26, OR72.a (6)); G7/R41
+  (Altitude with `AmbPres` 0, owner OR100.a 2026-09-29); OR118.a (2) "a hardware reset test saves the dev board's config
+  files first and restores them after (inside the same gated test), since the reset drops the bench unit's Wi-Fi" and
+  OR124.a ("the reset includes Wi-Fi & Identity") (owner, 2026-09-30); G7/R03 (SCD30 argument-reaction row, A.C.15 (1));
+  G6/R52 D4.219 hardware row (console output with a non-reading host, A.U19.23); A.U31.03 ("erase count per commit
+  measurement owed, phase C"), A.U31.05 (`flash_write_loop_gap.py`), A.U35.40, A.U18.38, A.U15.07.
+- **Site**: `scripts/run_bench_hardware_suite.sh` with the flags below; round record `audit/c/R3.md`.
+- **Change**: on the R1 image, after R1's clean default run and R2's M1: (1) `--allow-persistence-write`: the flash then
+  bench tier's owned-write tests — SCD30 read-while-write (A.U26.08 (1)), `resetconfig` at L3 over the scratch path
+  with the hung-step watchdog test (A.S0930.28 (1), (6)), `resetconfig` at L4 with its in-test save of every
+  `config_*.cfg` and verbatim restore, the bench joining the DUT's hotspot in between (A.S0930.29 (1); A.C.01 (2)'s
+  switch armed across it), the config float round trip (A.U11.21), `flash_write_loop_gap.py` (A.U31.05), one boot with a
+  config file forced into repair and the littlefs erase count of that commit recorded (A.U31.03), the torn-write reset
+  race (A.U35.40), the role reversal's destructive stage 6 run last with stage 8's check that the STA mode is back after
+  the recovery reset (A.U26.39 (3)-(4): `_PHASE_DEACTIVATED` cleared by `machine.reset()`), the `HotspotPW` PUT rows
+  (A.U18.38), the console row of A.U19.23 (`DebugLevel` 0 by PUT, a host process holding the CDC port open with DTR
+  and never reading, the adversarial-client load of A.U19.23's L1 test replayed over HTTP for 60 s: no WDT reset,
+  `ResetReason` unchanged, then `DebugLevel` 5 restored — 2 flash writes). (2) `--allow-persistence-write
+  --allow-scd30-extra-write`: the SCD30 hazard arm (A.U26.32), Altitude with `AmbPres` 0 (A.U26.72), the argument
+  reaction of A.C.15 (1), and, only if the round's plan grants the two NVM writes, A.U15.07's `TempOffs` 0.53 written and
+  read back as 0.53, then restored. (3) `--allow-neopixel-sweep --allow-persistence-write`: S3b, the ISL29125 envelope
+  with `Overrange` (A.U26.11; G3/R54) and the hysteresis/PRST-window half of A.C.19.
+- **Blast**: callers — · generated — · js — · tests the gated tests named · twin fidelity rows (SCD30 argument
+  reaction, `_PHASE_DEACTIVATED` reset) via A.C.10 · docs `tests_hardware/README.md` budget table (A.U26.09) gains
+  A.C.15 (1)'s, A.U15.07's and A.U19.23's rows · toml — · uart —. Wear: the sum of A.U26.09's README budget table for
+  the flags used, stated in the round plan before the run and compared with the counts the fakes' write counters
+  predict (A.U4.06); SCD30 NVM ≤ the table's `persistence_write` + `scd30_extra_write` rows.
+- **Depends**: A.C.03, A.C.04 (M1 before S3b); A.U26.08, A.U26.09, A.U26.11, A.U26.32, A.U26.39, A.U26.72, A.U11.21,
+  A.U15.07, A.U18.38, A.U19.23, A.U31.03, A.U31.05, A.U35.40, A.S0930.28, A.S0930.29, A.C.15, A.C.19.
+- **Kind**: hardware
+
+### A.C.06 Round R4: the reflash rows behind `flash_cycle`
+- **Why**: OR112 "thoroughly test this in the hardware session" and OR114.a (5) "Phase C (OR112's 'thoroughly test'
+  stands): first reproduce the stall on HEAD firmware …, then show no WDT reset, no VM stall and recovered service with
+  the override"; OR115.a (4) (owner, 2026-09-30); G4/R44 State "hardware in C — the stall reproduced on HEAD firmware
+  first, then dead- and slow-client page loads at the connection ceiling, arena/segment/queue limits at their edge, no
+  WDT reset or write stall, page-load time before/after"; OR116.a/OR118.a (4)/OR123.a (3) "OR118.a (4)'s L4 run in the
+  second mode (a reflash with `crc = "crc16"`) stays, behind `flash_cycle`" (owner, 2026-09-30); A.U26.14 (the reflash
+  smoke test, `toolchain_reverify`).
+- **Site**: `tests_hardware/bench/test_lwip_send_stall.py` (A.U26.85's module), `bench/test_uart_link_crc16.py`
+  (A.S0930.06), `flash/test_toolchain_flash_boot.py` (A.U26.14); round record `audit/c/R4.md`.
+- **Change**: after a clean default run of the same standard image in this round or R1: (1) the lwIP pair, in this
+  order: `test_send_stall_on_the_unpatched_image` — the control image built as A.U21.14 states (the round's tree in a
+  throwaway worktree with `apply_modlwip_eagain_override()` not called, never committed; record `dirty: true`), FRAM
+  evidence saved, reflashed, the hammer and bounds run, the stall recorded (freeze length, `ResetReason` 2 or not, the
+  fresh `GET /` time), the release image reflashed in `finally`; then `test_no_send_stall_with_the_override` on the
+  release image, with page-load time and the cooperative retry's CPU cost recorded (A.U21.14). The pair order is the
+  owner's "first reproduce … then show" (OR114.a (5)), kept inside this one round; R1's earlier run of the override test
+  is the default suite's own pass (G1/R02: flash writes only after a clean default run). (2) The CRC16 run (A.S0930.06):
+  the derived TOML with `crc = "crc16"` built to a temporary image, reflashed, the API-load link checks, the round's
+  standard `.uf2` reflashed unchanged, image proof and `UARTLINK.Failures` 0. (3) The reflash smoke test (A.U26.14:
+  retries only on picotool exit 249, passive end). (4) `--allow-toolchain-reverify` once (A.U26.14 (4); network fetches
+  and builds, no board write).
+- **Blast**: callers — · generated the control and CRC16 images (temporary, never committed) · js — · tests as named ·
+  twin — (the host lwIP hammer is U21's) · docs SPEC B.14 record of the proof (A.C.10); BACKLOG's lwIP owed row removed
+  when both halves pass (A.U21.14) · toml — · uart — (CRC16 is Python-internal wiring; its Class B entry is
+  A.S0930's). Wear: 5 flash cycles (2 + 2 + 1), each owned by its `flash_cycle` test.
+- **Depends**: A.C.03; A.U21.10, A.U21.13, A.U21.14, A.U26.14, A.U26.85, A.S0930.06.
+- **Kind**: hardware
+
+### A.C.07 Round R5: the soak durations
+- **Why**: G1/R22 "The 6 h run (S4) is release evidence and runs in Phase C" (owner, 2026-09-04, OR68.a (2)); G1/R30,
+  G5/R07 "bench trigger timestamps over a long run" and G4/R64 (owner, 2026-09-26, OR47.a (3), C02); REF/R06 bench
+  values for the FRC readiness defaults (A.U26.84, OR98.a/OR99.a); A.U15.20 (lost SGP40 samples, "phase C runs it");
+  A.U26.35 (`l4.soak_request_failure_rate` "measured in phase C over the 6 h run"); A.SDEP.08 (6) ("run the flash, bench
+  and mid-soak tiers against a `dev` build of the new pin", only if the pin moved).
+- **Site**: `scripts/run_bench_soak_tests.sh --duration {short,mid,long}`; round record `audit/c/R5.md`.
+- **Change**: on top of a clean bench run of the same image (G8/R41; the soak runner runs no lower levels, A.U7.18):
+  `short` — SGP40 cadence (A.U15.20); `mid` — the liveness tests (A.U26.35); `long` (6 h, S4) — the liveness tests with
+  the request-failure rate measured, the trigger spacing over the window (A.U26.41 (2), DebugLevel 5, the stagger read
+  from the generated module), and the FRC readiness windows (A.U26.84) with the room condition the plan states (stable,
+  unoccupied); each figure recorded with its image. A moved pin adds nothing here beyond running on it.
+- **Blast**: callers — · generated — · js — · tests as named · twin the trigger distribution vs the twin's sequencer
+  (A.C.10) · docs Part N rows (`sens.scd30_frc_*`, `l4.soak_*`), SPEC C.9.1's measured separation · toml — · uart —.
+  Wear: none.
+- **Depends**: A.C.03; A.U15.20, A.U26.35, A.U26.41, A.U26.84.
+- **Kind**: hardware
+
+### A.C.08 Round R6: the 12.4-day rollover run
+- **Why**: G1/R23 "the run is scheduled in Phase C once that method exists" (owner, 2026-09-26, OR33.a (1); "(owner,
+  2026-09-22) adapt now, measure later"); A.U26.36 ("a 13-day bench window, owner go-ahead").
+- **Site**: `tests_hardware/bench/…::test_…rollover…` (A.U26.36's bench test) with `--allow-multi-day-rollover`; round
+  record `audit/c/R6.md`.
+- **Change**: on the release candidate image, after R5, the board touched by nothing else for the window (no other
+  round runs meanwhile): A.C.01 (2)'s switch armed across the session-start fixtures (the stale-credential scan may take
+  the AP slave down, A.U26.38) and disarmed once the hourly REST polls begin (they change no network state); the test
+  runs until `SysUptime` passes `2**30 / 1000 + 3600` s. If a later delta changes tick-handling code (grep `ticks_` in the
+  delta), the owner decides whether R6 is repeated; the record names the image it proved.
+- **Blast**: callers — · generated — · js — · tests A.U26.36 · twin the driven-time proofs are L1/L2 (LEAD/R04) · docs
+  BACKLOG's G6 row removed (A.C.10) · toml — · uart —. Wear: none.
+- **Depends**: A.C.07; A.U26.29, A.U26.36, A.U26.74.
+- **Kind**: hardware
+
+### A.C.09 Round R7: the release proof, last
+- **Why**: OR40.a (3) "two images once, in the final hardware phase, as release proof — a `dev` image built without the
+  threshold runs the full default flash and bench tiers first, then the normal image; the extra flash cycle is a
+  planned prerequisite write" (owner, 2026-09-26); G4/R49; G1/R02 "The last rounds run the two-image GC proof … and
+  record the timestamped boot log, trigger timestamps, every `reset_reason` code and the bench Pi's stale packages. F17's
+  anomalies (BACKLOG item 44) close when the Phase C rounds show no unexplained reset" (OR60.a (4), OR47.a, OR50.a
+  (3)(b)); LEAD/R02 (the round ends on the release image); A.U8.06 (UART tunables "re-measure owed on real hardware, with
+  the two-image GC proof").
+- **Site**: round record `audit/c/R7.md`; the no-threshold image from a throwaway worktree; the release image from the
+  final commit.
+- **Change**: only after every C delta is applied and one re-verification pass on that tree ended all green (A.C.11):
+  (1) the no-threshold image — the final commit in a throwaway worktree with the generated boot entry's
+  `gc.threshold(32768)` line removed from its template (`buildgen/codegen.py:704` at HEAD; never committed), built
+  (record `dirty: true`), flashed, then the full default flash and bench tiers with `--image-record` pointing at that
+  worktree's record: zero allocation markers in both hardware gates; (2) the release image built from the final commit,
+  flashed, the full default flash and bench tiers again; the UART tunables' figures recorded on both images (A.U8.06).
+  The record then lists: the timestamped boot log, the trigger distribution (R5's long run if the tree has not changed
+  since, else re-run with `--soak-duration long`), every `ResetReason` observed across R1-R7 with its cause, the bench
+  Pi's stale-package list re-checked (A.C.02 (4)), and the verdict on F17: every reset of phase C attributed, none
+  unexplained — F17 closes; any unexplained reset is a new finding carrying its code (G1/R02). The board ends on the
+  release image in the standard state.
+- **Blast**: callers — · generated the release image · js — · tests the whole default flash and bench tiers twice ·
+  twin — · docs SPEC I.4(f) release-proof record, BACKLOG item 44 and the S4/F17 rows removed (A.C.10) · toml — · uart —.
+  Wear: 2 image flashes (planned prerequisite writes, OR40.a (3)) plus two default runs' pinned prerequisites.
+- **Depends**: A.C.02-A.C.08, A.C.10, A.C.11 (1)-(3).
+- **Kind**: hardware
+
+### A.C.10 After each round: the findings pass A-C as a delta
+- **Why**: OR106.a "New work found during execution (B0 measurements, B3 fault planting, hardware rounds) passes the
+  same consolidation as a delta against the list before it is applied" (owner, 2026-09-29, OR108.a (1)); OR17.a (5) "the
+  hardware rounds compare the results with the twin and correct it, repeating until they agree" (owner, 2026-09-25);
+  OR29.a (3) (facts stored permanently, SPEC F / `tests_hardware/README.md`); OR30.a (3) ("no timeout is tightened
+  without a measurement"); G9/R31 ("a delivered item leaves that list and every other place that names it").
+- **Site**: the round record's findings list; the delta list A-C consolidates; after it: `digital_twin/` (fakes'
+  parameters), `digital_twin/README.md` fidelity table, `SPECIFICATION.md` (F.1, F.3 table, F.5, I.1/I.4, I.6 `:5238-5243`,
+  C.7, C.7.4, C.9.1, H.1, M.1.2, B.14), Part N rows, `tests_hardware/README.md` (bench facts, rig), `tests_hardware/
+  error_log_helpers.py` (the `ResetErrors` budget), `devices/*.toml` origin comments, BACKLOG "Real-hardware work still
+  owed".
+- **Change**: per round result: a twin parameter or fidelity row changes only where the silicon evidence is solid
+  (OR17.a (3)), the row's Status moving from assumption to measured, with the date and specimen; a Part N row whose
+  test-tier or product value was measured takes Basis "measured (dev, <date>, <image build date>)" and a bound changes
+  only as A.U35.56's rule allows; the `ResetErrors` bench budget becomes a tagged constant in `error_log_helpers.py`
+  from R1's figures plus a stated margin, and BACKLOG item 32 closes; each delivered BACKLOG owed row is removed with
+  every citation of it (G9/R31); a defect goes the OR12.a path. The lower levels touched by a delta run at both GC
+  stages before the next round (A.C.01 (4) does it anyway). Permanent text written here cites no audit ID and carries
+  "(agent, <date>)" for measured facts and their source run.
+- **Blast**: per delta, filled by A-C when it consolidates it (callers, generated, js, tests, twin, docs, toml, uart) ·
+  each delta's blast is searched as in every unit (brief step 4).
+- **Depends**: the round it follows.
+- **Kind**: rule, doc, code, test
+
+### A.C.11 Close phase C
+- **Why**: OR5.a (2) "a real-hardware phase on the dev bench that closes every item parked for real hardware" (owner,
+  2026-09-25); OR8.a "the release is final once it passes"; OR9.a (a pass after the last fixes, until all green); G9/R24
+  (every item terminal); LEAD/R15 ("the owner's agreement that the audit is finished").
+- **Site**: the inventory below; BACKLOG "Real-hardware work still owed"; the register's `moved-to-hardware` entries.
+- **Change**: (1) Every inventory row is delivered (its round record names the verdict) or, only by the owner's decision
+  in a round conversation, re-queued as a BACKLOG owed row with its reason; H78 (the UART babbling peer) stays owed
+  (owner, 2026-09-25: the bench has no such peer). (2) Every register entry `moved-to-hardware` becomes terminal from
+  its round result. (3) After the last delta of R1-R6: one re-verification pass by A.U37.07's rule ends all green on the
+  final tree, then R7 runs (A.C.09); a finding in R7 is a delta, then the pass and R7 repeat. (4) The owner is told the
+  hardware phase is complete and gives the agreement that opens phase D (A.U37.14-A.U37.15).
+- **Blast**: callers — · generated — · js — · tests — · twin — · docs BACKLOG owed section (only re-queued rows and H78
+  remain) · toml — · uart —.
+- **Depends**: A.C.02-A.C.10.
+- **Kind**: rule, hardware
+
+### A.C.12 Reach reset codes 0, 9, 10+p and 20 on silicon
+- **Why**: G5/R03 / G7/R07 "each code is proven at L2 and on the dev bench" — OR60.a (4) "each code is proven at L2 and
+  on the dev bench (with the hardware go-ahead)" (owner, 2026-09-26); harmonization 45 (OR77, OR79): a real-bench
+  injection is attempted, and an exception stays only if the attempt shows unreasonable effort or no case beyond L1-L3.
+  A.U26.28 covers codes 1-6 and leaves "boot-failure (10 + phase) … listed as a structural exception" and does not
+  reach 0, 9 or 20; codes from U11's design block (0 unknown, 10 + p boot failure), A.S0930's `_RR_COMMAND_INCOMPLETE`
+  (9), A.U30.19's `_RR_STACK_EXHAUSTED` (20). All four are reachable from a device script without a product hook: region
+  0 is writable from the raw REPL (`machine.mem_backup(0)`, a static memoryview, `extmod/machine_mem.c:134-149`,
+  v1.29.0); the phase marker is written by the generated `main()` itself (A.U11.06); a test-side rebinding from outside
+  is the technique A.S0930.28's hang test already uses.
+- **Site**: `tests_hardware/bench/test_reset_reasons.py` (created by A.U26.28), new device scripts
+  `tests_hardware/device_scripts/reset_code_invalid_record.py`, `reset_code_command_incomplete.py`,
+  `reset_code_boot_phase_hang.py`, `reset_code_stack_exhausted.py`; the E.6 exception list row A.U26.28 adds.
+- **Change**: four bench tests, each saving FRAM evidence first (A.U26.22), running its script through
+  `run_isolated_expect_reset()`, waiting passively for the production boot to serve, reading `GET /status`
+  `ResetReason`, and restoring serving in `finally` (`restore_board_to_serving()`): (1) `test_an_invalid_record_reads_as_
+  unknown` — the script writes a non-magic word into `mem_backup(0)[0]` and calls `machine.reset()`; expect 0.
+  (2) `test_an_incomplete_command_is_attributed` — the script builds the real generated system over a scratch config
+  path (A.U26.10) as A.S0930.28 does, rebinds from outside the FRAM erase's per-unit write so unit 2 raises
+  `OSError(EIO)`, and calls `_system_cmd_callback("erasefram")`; expect 9 and, from the raw dump after the boot, every
+  chunk either blank or holding its saved content (no torn chunk). No flash write (FRAM only). (3) `test_a_hang_in_boot_
+  phase_p_is_attributed` parametrised over the five phases 1-5 (construction, setup batch, task starts, timer starts,
+  first NTP force sync, U11's numbering): the script runs the generated `main(watchdog=machine.WDT(timeout=8000))`
+  (A.U20.02) with one callee of that phase rebound from outside to `time.sleep_ms(10000)` (a driver constructor, one
+  setup unit, one task starter, one timer starter, the force-sync call — each chosen at execution from the generated
+  module), so no feed follows and the watchdog resets with the phase marker set and no record; expect 10 + p. (4)
+  `test_a_c_stack_exhaustion_is_attributed` — the script builds the system, rebinds one supervised reader's read
+  coroutine from outside to recurse until the stack check raises `RuntimeError`, and lets the supervisor escalate;
+  expect 20. Each script is run through the twin runner first (A.U26.05, A.U35.49): (1), (2) and (4) agree with A.U25.55's
+  L2 codes; (3)'s twin record is the exception "watchdog reset needs silicon" (the twin WDT never resets, A.U25.55). A
+  code the attempt cannot reach returns to the E.6 exception list with the attempt's recorded result (OR77.a);
+  A.U26.28's boot-failure exception row is replaced by this attempt (A-C merges).
+- **Blast**: callers — · generated read through the generated `main()`/`build_system()` (A.U20.02) · js — · tests new
+  L4 (four tests, bench module of A.U26.28), four device scripts (the pin guard A.U26.44 and the wear guard A.U26.06 see
+  them: no persisting write, no marker); `tests_scripts/test_bench_restores_serving.py` covers the module ·
+  twin A.U25.55's code list, fidelity row "watchdog reset: silicon only" · docs `tests_hardware/README.md` "Reset codes
+  proven on the bench" table (A.U26.28) gains 0, 9, 10+p, 20; E.6 exception list · toml — · uart —. Wear: none (FRAM only).
+- **Depends**: A.U11.05, A.U11.06, A.U20.02, A.U26.05, A.U26.10, A.U26.22, A.U26.28, A.U30.19, A.S0930.13-.17, A.S0930.28.
+- **Kind**: test, hardware
+
+### A.C.13 Prove on silicon that an oversized body is refused unread
+- **Why**: G6/R52 "the 2,048 B cap's binding is confirmed at L4" (owner, 2026-09-26, OR52.a (3)); G4/R44 State
+  "hardware in C — raised PCB count and body-cap binding (L32)"; L32 "Body-cap binding never hardware-confirmed"
+  (DECISION_PROVENANCE, keep). SPEC:5238-5243 at HEAD: "a socket cannot distinguish 'buffered then rejected' from
+  'rejected unread' … The binding itself stays a mock-tier and source-level claim". A socket can, by timing: Microdot reads
+  the body only when `content_length <= Request.max_body_length` (`ext/microdot.py:425-430`) and answers 413 when
+  `content_length > max_content_length` (`:1443-1445`), and the webserver binds both to one value
+  (`src/asy_webserver_service.py:363, 370`); a 413 that arrives while the body is still unsent can only come from a body
+  never read.
+- **Site**: `tests_hardware/bench/test_network_resilience.py`, after `test_put_body_cap_boundary_is_exact_over_the_
+  normal_network` (`:787`).
+- **Change**: `test_an_oversized_body_is_refused_before_it_is_read(dut_ip)`: the cap read from `src/` by `ast`
+  (A.U26.49's pinned-value rule, not the `:768` copy); a raw socket sends `PUT /sensors HTTP/1.1`, `Host`,
+  `Content-Type: application/json`, `Content-Length: <cap + 1>` and the blank line, no body byte; asserts a complete
+  `413` response within `l4.cap_binding_answer_s` (Part N row, basis "estimated (agent, <date>) — measured in phase C")
+  while nothing more is sent. Control arm in the same test: `Content-Length: <cap>` with no body gets no response within
+  the same window (the server is waiting in `readexactly()`), then the socket is closed by the test. The `/status`
+  `MemFree` read before and right after the refused request differs by less than the cap (a second, independent
+  oracle, recorded). Its host logic runs against the twin first (OR29.a (4)).
+- **Blast**: callers — · generated — · js — · tests new L4 test (unmarked: a refused PUT persists nothing, OR49.a (2);
+  `_JUSTIFIED_UNMARKED` in `tests_scripts/test_persistence_write_marker_completeness.py` gains its reason "refused
+  unread: nothing persists") · twin the same test against the twin (`TwinBoard`, A.U26.05) · docs SPEC I.6
+  `:5238-5243` "never a hardware-confirmed one" → the silicon result with its date (A.C.10); Part N row · toml — · uart —.
+  Wear: none.
+- **Depends**: A.U19.07 (the stream guard in front of `readexactly()`), A.U26.05, A.U26.49, A.U11.08 (`MemFree`).
+- **Kind**: test, hardware
+
+### A.C.14 Record what the radio does with a malformed country code
+- **Why**: G6/R28 RF213 "hardware in C: the driver passes any two bytes to the firmware's `country` iovar and ignores
+  the reply (`cyw43/src/cyw43_ll.c:1843-1865`, `055d642`), so nothing in the driver raises; the C row measures what the
+  radio firmware does — if the radio raises, `_trigger_sta_connect()` feeds `hw_op_failed`" (agent, 2026-09-28).
+  Verified: `network.country()` refuses only a length ≠ 2 (`extmod/modnetwork.c:134-146`, v1.29.0) and the code reaches
+  the radio at radio-on (`cyw43_ll_wifi_on()`, `cyw43/src/cyw43_ll.c:1843-1866`). The only instrument that called
+  `network.country()` with a malformed value, `wifi_country_hostname_edge_values.py`, is deleted by A.U26.20 (its "XX"
+  is MicroPython's own default, N.53), so this row has no instrument at HEAD+plan.
+- **Site**: new `tests_hardware/device_scripts/wifi_country_code_reaction.py`; `tests_hardware/flash/
+  test_bus_electrical_timing.py` beside `test_single_precision_float_boundary_at_2pow24` (`:69`).
+- **Change**: the script (header ≤ 3 lines; arms the watchdog as every device script; feeds between steps): for each of
+  `"ZZ"` (ISO-shaped, not assigned), `"12"`, `"\x01\x02"`: `network.WLAN(network.STA_IF).deinit()`, `network.country(v)`,
+  a fresh `WLAN(STA_IF).active(True)`, one `scan()`; prints `FACT country=<repr> set=<ok|exc> radio_on=<ok|exc type>
+  scan_count=<n> readback=<repr>`; finally restores the bench TOML's country (from the rendered bench facts, A.U26.44)
+  and radio-on succeeds, printed as `FACT restored=<ok>`. The test judges only that every step reported and the restore
+  succeeded (the facts are the deliverable, A.U26.68's shape) and records them; `restore_board_to_serving()` after.
+  The sequence (deinit, then radio-on applying the new country) is checked against `extmod/network_cyw43.c` at the pinned
+  tag before the script lands.
+- **Blast**: callers — · generated — · js — · tests new L3 test and script (no write: `network.country()` writes no
+  flash; wear guard and pin guard see it) · twin `digital_twin/network.py` models the recorded reaction "identically"
+  (G6/R28 Req) once measured (A.C.10) · docs SPEC C.7.4 (the country bullet A.U14.37 writes) gains the silicon result,
+  dated · toml — · uart —. Wear: none.
+- **Depends**: A.U14.37, A.U26.20, A.U26.44, A.U26.68; U6/U18's ISO-shape check (RF213).
+- **Kind**: test, hardware
+
+### A.C.15 Measure the two SCD30 assumption rows
+- **Why**: G7/R03 "A reaction the datasheet leaves open … is backed by a measurement or marked an assumption with a
+  BACKLOG real-hardware row" and State "hardware in C (assumption rows)"; RF094 "the pressure value's persistence
+  becoming an assumption row with a hardware row in C" (Interface Description v1.0 p8 says only "Continuous measurement
+  status is saved in non-volatile memory"); A.U25.01's rows "SCD30 reaction to a wrong argument CRC or an out-of-range
+  interval" and "SCD30 0x0010 pressure persistence". No earlier action writes an instrument for either (A.U26.66's SCD30
+  probe reads version, interval, data-ready, measurement CRCs, NACK before command, soft-reset time only).
+- **Site**: (1) new `tests_hardware/device_scripts/scd30_argument_reaction.py` and a test in `tests_hardware/flash/
+  test_chip_conformance.py` (A.U26.66's gate file); (2) `tests_hardware/manual/manual_persistence.py`'s power-cycle step
+  (A.U26.42 (2), A.U26.28's code-1 step).
+- **Change**: (1) `@pytest.mark.persistence_write @pytest.mark.scd30_extra_write test_scd30_argument_reaction_is_
+  recorded(board, scd30_measuring)`: the script (raw `machine.I2C` at the bench facts' bus and address, A.U26.44) reads
+  the measurement interval (0x4600 read); sends 0x4600 with the current interval and a deliberately wrong argument CRC,
+  reads the interval back and times the next two data-ready periods; sends 0x4600 with 0 and a correct CRC, reads back
+  and times again; restores the original interval with a correct write if either changed it, in `finally`; prints
+  `FACT wrong_crc_accepted=<y|n> zero_interval_accepted=<y|n> restored=<ok>` and each read value. The host test asserts
+  `restored=ok` and the interval equals the start snapshot (A.U26.79), records the facts. Budget row in A.U26.09's table:
+  at most 3 SCD30 NVM writes (an accepted wrong-CRC write of the unchanged value, an accepted 0, its restore). The
+  script runs through the twin first (A.U26.05): the fake ignores both today (the assumption), so a silicon "accepted"
+  is exactly the divergence the row exists to catch. (2) In the power-cycle step: `GET /sensors` SCD30 `AmbPres` before
+  the cut and after power returns and the board serves; the step records both, and whether the product's boot sends
+  0x0010 (read from `src/asy_scd30_driver.py`'s `setup()`/`_init_scd()` at execution and written into the step's text);
+  no write by the step.
+- **Blast**: callers — · generated — · js — · tests new gated L3 test; the manual step · twin `digital_twin/
+  _scd30_chip.py` follows the measured reaction and the 0x0010 row's Status moves to measured or "not relied on: the boot
+  sends 0x0010" (A.C.10) · docs fidelity table rows, `tests_hardware/README.md` budget table (A.U26.09), SPEC M-less SCD30
+  facts in C.3 (A.U15.08's comment) · toml — · uart —. Wear: (1) ≤ 3 SCD30 NVM writes behind both flags; (2) none.
+- **Depends**: A.U25.01, A.U25.12, A.U15.08, A.U26.05, A.U26.09, A.U26.42, A.U26.44, A.U26.66, A.U26.79.
+- **Kind**: test, hardware
+
+### A.C.16 Check register volatility and record the bench SCD30 NVM state
+- **Why**: G1/R04 State "hardware in C — re-read bench NVM state and register volatility (G3.076)"; Req "BMP3xx and
+  ISL29125 configuration registers are volatile (reset at power-on) … SCD30 NVM values persist across power cycles, so
+  tests never assume factory defaults" (owner 2026-09-17 wear rule; datasheets: BMP388 "A power-on reset generator …
+  resets the logic circuitry and the register values" and "softreset … all user configuration settings are overwritten
+  with their default state", `dstxt/bmp3xx__bst-bmp388-ds001.txt:454, 1717-1718`; ISL29125 "Write 46h to register 0x00
+  … the device will reset all registers to their default states", `dstxt/isl29125__…:684`). A reset command is the
+  zero-wear discriminator: an NVM-backed setting survives its chip's soft reset (SCD30's do, SUPP_recovery A.U15.R01),
+  a volatile register returns to its default. The ISL29125 probe already reads the configuration before and after its
+  reset (`isl29125_mock_conformance_probe.py:88-91`, keys A03-A05); the BMP3xx probe of A.U26.66 does not.
+- **Site**: A.U26.66's BMP3xx probe script; `tests_hardware/README.md` bench facts table (A.U26.46).
+- **Change**: (1) The BMP3xx probe gains two keys: after its existing reads it writes distinctive values to OSR (0x1C)
+  and CONFIG (0x1F), reads them back (`C01_osr_config_written`), issues the soft reset (0xB6 to CMD 0x7E), waits the
+  datasheet's start-up time and reads both again (`C02_osr_config_after_softreset`), expecting the datasheet defaults;
+  both keys are protocol keys compared with the twin (the fake's reset models the defaults; a mismatch is a fidelity
+  finding). (2) The bench SCD30 NVM state — `MeasInt`, `TempOffs`, `Altitude`, `AmbPres`, `SelfCal` from R1's first
+  contact and from A.U26.79's snapshot — is recorded as a dated row of the bench facts table, the text saying these
+  values persist across power cycles and tests take them from the snapshot, never from factory defaults.
+- **Blast**: callers — · generated — · js — · tests A.U26.66's BMP3xx probe and its twin run · twin `digital_twin/`
+  BMP3xx chip fake reset defaults (checked, changed only on a divergence) · docs bench facts row; CLAUDE.md wear rule's
+  "FRAM writes are not wear" sentence is U36's (G1/R04) · toml — · uart —. Wear: none (RAM registers).
+- **Depends**: A.U26.46, A.U26.66, A.U26.79; A.C.03 (1).
+- **Kind**: test, hardware, doc
+
+### A.C.17 A power cut during a config write leaves a loadable file
+- **Why**: G5/R35 "hardware in C — power-loss window and littlefs repair (G5.035)"; Req "A power loss between the
+  response and the deferred write may lose that change silently; the write never corrupts (littlefs commits a file
+  atomically at close, `lib/littlefs/lfs2.h:333,356`), and the next boot repairs what an interrupted write left" (owner,
+  2026-09-26, OR69.a (3), C01); A.S0930.25 (S2's flush "atomicity is littlefs's and phase C's to show"). Only a real
+  supply cut tests it: a watchdog or `machine.reset()` restarts the RP2040, not the flash chip, and the bench has no
+  switched supply (BACKLOG item 8, owner-settled), so it is an operator step.
+- **Site**: new `tests_hardware/device_scripts/config_write_loop_scratch.py` and `config_scratch_readback.py`; a new
+  step in `tests_hardware/manual/manual_persistence.py`.
+- **Change**: the step states its budget and asks the operator to confirm before it starts ("up to 20 scratch flash
+  writes and one removal"): the first script builds a `ConfigManager` over `config_HWTEST_POWERLOSS.cfg` with a
+  two-field schema and writes alternating values through the product path (`write_config()` then `flush_pending()`),
+  printing `WROTE <n> <value>` after each, at most 20 writes, feeding the watchdog; the operator pulls the USB supply
+  while the lines are still arriving; after power returns and the production boot serves (`ResetReason` 1), the second
+  script (read-only, then its removal as the allowed scratch cleanup, OR38.a (4)) loads the file through
+  `ConfigManager.setup()`'s read path and prints whether it parsed, its values and whether a repair was needed; the step
+  judges with `confirm_pass()`: the file parses and holds the last reported value or the one before, never a truncated
+  or mixed file; the scratch file is gone afterwards. The step repeats three times with the cut at different points.
+- **Blast**: callers — · generated — · js — · tests the manual step and two scripts (A.U26.06's wear guard sees their
+  writes: the manual runner's confirmation is the gate, and the scripts are listed in the guard's manual set) · twin
+  fidelity row "flash-filesystem power loss: silicon only" (A.C.10) · docs SPEC F.2/C.7.3's power-loss sentence gains the
+  silicon result, dated · toml — · uart —. Wear: ≤ 60 scratch flash writes and 3 removals over the three repetitions.
+- **Depends**: A.U11.28 (deferred flush), A.U26.06, A.U26.18, A.U26.42.
+- **Kind**: test, hardware
+
+### A.C.18 The hardware allocation gates fail on a real caught failure
+- **Why**: A.U35.05 (3) "the real-silicon arm goes to the phase-C queue (A.U35.54) as one deliberate check"; A.U20.04
+  "phase C confirms a caught allocation failure under heap exhaustion logs 'memory allocation failed' on silicon";
+  CLAUDE.md memory rule (the four gates match `MemoryError` or `memory allocation failed`; the suite's own injections
+  stay worded clear of what the gates grep for).
+- **Site**: A.U35.05's throwaway worktree only (a planted device script, never committed); the flash and bench runners.
+- **Change**: in the throwaway worktree, a planted script allocates 4 KiB blocks into a list until `MemoryError`, then
+  prints `str(e)` (the product's logging form), releases the list and prints `DONE`; one planted flash test and one
+  planted bench test run it through `run_isolated()`. Run once through `scripts/run_flash_hardware_suite.sh -k <planted>`
+  and once through the bench runner the same way: both verdicts must be red naming the allocation marker
+  (`tests_hardware/harness.py` `MEMORY_ERROR_MARKERS`), and the printed text must contain `memory allocation failed` on
+  silicon (the emergency exception buffer of A.U20.04 in effect). Expected red, recorded as such in R1's record; a green
+  verdict is a gate defect fixed in the gate (A.U35.05). Worktree removed afterwards.
+- **Blast**: callers — · generated — · js — · tests none committed · twin the same plant's twin arm is A.U35.05 (3) ·
+  docs — · toml — · uart —. Wear: none.
+- **Depends**: A.U20.04, A.U26.47, A.U35.05, A.C.03 (runs after R1's clean verdict).
+- **Kind**: test, hardware
+
+### A.C.19 Re-measure the ISL29125 behaviour rows and assert the PRST unit
+- **Why**: G3/R46 "the behaviour is measured on silicon and recorded in SPEC M.1.2 with date and specimen count; the twin
+  models every row; the PRST unit `persist_for_interval()` depends on is asserted, the restart question reported only; a
+  second specimen or a changed rig or cover triggers re-measurement, hysteresis band and PRST windows included" (fact,
+  measured 2026-09-12/13 on one board); State "work: hardware in C". At HEAD the PRST unit is reported, not asserted:
+  `tests_hardware/flash/test_bus_concurrency.py:95-100` ("Both are reported on the RESULT line whatever the verdict;
+  neither gates the pass"), `isl29125_real_irq_edge.py:61-65` prints `persist_unit=rgb_cycles|channel_integrations`.
+- **Site**: `tests_hardware/flash/test_bus_concurrency.py:95-100`; SPEC M.1.2 (`SPECIFICATION.md:6660-`), M.1.4;
+  `digital_twin/README.md` fidelity table.
+- **Change**: (1) The test parses `persist_unit=` and asserts it equals the unit `src/asy_isl29125_driver.py`'s
+  `persist_for_interval()` computes with (read from its constants by `ast`: the RGB-cycle or single-integration period
+  its arithmetic uses); `inconclusive` fails with the message "INT never asserted — the PRST unit is unproven". The
+  CONFIG1-restart facts (the probe's G01/G02 keys) stay reported only. (2) In R1 the probe (moved into
+  `flash/test_chip_conformance.py` by A.U26.66) and this test run; in R3 the S3b envelope measures the hysteresis band
+  and PRST windows. Each M.1.2 row is compared with the result: a row confirmed gains "confirmed <date>, one specimen
+  (the dev breakout)"; a changed rig (R2's M1 geometry differs from the recorded one) or a changed cover makes the
+  hysteresis band and PRST windows re-measured values, dated. (3) The twin's `_isl29125_chip.py` models every measured
+  row; the CONFIG1 restart row stays "assumption, never tuned to" unless the probe's facts settle it.
+- **Blast**: callers — · generated — · js — · tests the flash test above (a reported fact becomes an assertion) · twin
+  `digital_twin/_isl29125_chip.py` via A.C.10 · docs SPEC M.1.2 dates and specimen count, M.1.4, fidelity rows · toml —
+  · uart —. Wear: S3b's gated writes (A.C.05); the probe and the IRQ-edge test write none.
+- **Depends**: A.U26.11, A.U26.42, A.U26.66, A.U25.01.
+- **Kind**: test, hardware, doc
+
