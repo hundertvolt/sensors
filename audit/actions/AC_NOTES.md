@@ -49,3 +49,9 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     so a re-init has nothing to clear. The A-C list shows it to the owner as a lead decision under OR113.
 17. V.U17.01: `(x + 1) & CAP` steps allocate at the wrap (2**30 is a heap int on rp2); A.U15.31 takes the same
     conditional wrap as A.U17.28/A.U17.13. A-C checks every sequence/counter action for the add-then-mask form.
+18. U19 Open point 1 put to the owner 2026-09-30 (pending): modlwip's `setsockopt(TCP_NODELAY)` writes
+    `socket->pcb.tcp->flags` with no NULL check and no lwIP lock (v1.29.0 `extmod/modlwip.c:1527-1535`), while a peer
+    reset sets `pcb.tcp = NULL` from PendSV (`:498-507`) — confirmed by the lead. Alternative: `TCP_OVERSIZE 0` in
+    `[lwip]` compiles out the oversize path (`lwip/src/core/tcp_out.c:226-278`; rp2 sets neither `TCP_OVERSIZE` nor
+    `LWIP_NETIF_TX_SINGLE_PBUF`, default `TCP_MSS`), the one property OR112's `TCP_NODELAY` was chosen for
+    (`verify/U14.md` V.U14.Q1). A.U19.22 and A.U14.30 follow the answer; the U19 verifier writes both variants.
