@@ -28,3 +28,7 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
 11. U13 Open point 1 (FRAM CS pull-up) withdrawn by the lead after the owner's challenge: the power-on hold time is
     met by boot timing; A.U13.04/05 and U13 register fix 5 are rewritten as a documented fact (see the note at the end
     of `U13.md`), no board change.
+12. Asked the owner 2026-09-30 (pending): (Q-lwIP) the 10 s modlwip write stall — options per `verify/U14.md` V.U14.Q1,
+    recommended TCP_SND_BUF 1600 + TCP_NODELAY + MEM_SIZE 24,900 (A.U14.30 waits); (Q-I2C) a boot-time I2C bus clear
+    before the controller exists, from the owner's 2026-07-13 rule (`2421948`) against the lead's harmonization 38
+    reading of OR64 (A.U14.17 waits; G4/R22 State "no boot-time bus clear (settled by the lead …)" follows the answer).
