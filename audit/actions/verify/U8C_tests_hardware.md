@@ -120,3 +120,85 @@ every verdict, ID, mirror and action slot.
     `tests_hardware/bench/test_network_resilience.py:388-391`; `wait_for_link_local_teardown()` has no caller (definition
     only; U26 removes it or makes it a poll, G7/R23)". The two deferrals (`:277`, `:281`) are right: G7/R23's State names
     this exact sleep for U26.
+- `device_scripts/allocation_need_per_source.py` 16+2 · — · OK.
+- `device_scripts/bmp3xx_plausibility_read.py` 2+1, `bmp3xx_same_device_rw_concurrency.py` 11+0,
+  `bus_concurrency_cross_device_scd30_sgp40.py` 4+1, `bus_concurrency_isl29125_write_vs_siblings.py` 10+2,
+  `bus_concurrency_scd30_write_vs_siblings.py` 7+1 (`:70` deferral right: a readiness sleep a `completed`-counter poll
+  replaces), `bus_deinit_is_a_noop_on_real_hardware.py` 1+0, `bus_topology_autodetect_and_hazard_sweep.py` 18+7 ·
+  A.U8C.58-61, A.U8C.63, A.U8C.64, A.U8C2.26-28 · OK apart from the callers slot (V.U8C_tests_hardware.15).
+- `device_scripts/bus_concurrency_same_device_scd30.py` 7+5 and `scd30_same_device_rw_concurrency.py` 7+1 · A.U8C.62,
+  A.U8C.84, A.U8C2.37 · 2 FIX (`:64` deferral right):
+  - V.U8C_tests_hardware.10 | U8C2 row `bus_concurrency_same_device_scd30.py:36` and A.U8C.62 (same defect at
+    `scd30_plausibility_read.py:28`/A.U8C.82/A.U8C2.36 and `uart_idle_poll_rate.py:66`/A.U8C.94/A.U8C2.40) | FIX | the
+    U8C2 rows say the divisor is "already covered: U8C's `:39` row makes this divisor use the constant; no new work", and
+    U8C2's register fix says the sibling rows "already name their divisors" — but naming is not changing: A.U8C.62's
+    Change rewrites only `:39`, A.U8C.82's only `:30, :41`, A.U8C.94's only `:68`. `int(_SETTLE_S / 0.5)` (`:36`),
+    `int(_SETTLE_S / 0.5)` (`scd30_plausibility_read.py:28`) and `SAMPLE_MS // 250` (`uart_idle_poll_rate.py:66`) keep
+    their literal, so a changed step would silently desynchronise the loop count from the step (U8C2 treated the
+    identical `scd30_same_device_rw_concurrency.py:32` as a new site, A.U8C2.37 — the three siblings must match it) |
+    A.U8C.62 Site `…_settle_step_s` → ":36, :39 (0.5)", Change "each literal at :36, :39 becomes `_SETTLE_STEP_S`";
+    A.U8C.82 Site `l3.scd30_plausibility_read_step_s` → ":28, :30, :41 (0.5)", Change "each literal at :28, :30, :41
+    becomes `_STEP_S`"; A.U8C.94 Site `l3.uart_idle_poll_rate_sample_step_ms` → ":66, :68 (250)", Change "each literal at
+    :66, :68 becomes `_SAMPLE_STEP_MS`"; the three U8C2 rows' reason "already covered … no new work" → "divisor of the
+    loop count; replaced by the step constant in A.U8C.62 / A.U8C.82 / A.U8C.94"; A.U8C2.36 and A.U8C2.40 drop their
+    "already covered … no new work" clause for `:28`/`:66` and the Site entries move to the U8C actions.
+  - V.U8C_tests_hardware.11 | U8C rows `bus_concurrency_same_device_scd30.py:21, :39`, `scd30_same_device_rw_concurrency.py:20,
+    :35`, U8C2 rows `:36`, `:32`; A.U8C.62, A.U8C.84, A.U8C2.37 | FIX | the shared settle IDs take the stem
+    `bus_concurrency_same_device_scd30`, but the original is `scd30_same_device_rw_concurrency.py` (`_SETTLE_S = 12.0` and
+    the `/ 0.5` loop since `8905d2b`, 2026-09-14); `bus_concurrency_same_device_scd30.py` gained the copy in `2abebb0`
+    (2026-09-19) and says so ("scd30_same_device_rw_concurrency.py carries the same constant", `:20`) — U8C's own reading
+    gives the shared ID the original's stem | rename in all rows, Sites and Change tags:
+    `l3.bus_concurrency_same_device_scd30_settle_s` → `l3.scd30_same_device_rw_concurrency_settle_s`,
+    `l3.bus_concurrency_same_device_scd30_settle_step_s` → `l3.scd30_same_device_rw_concurrency_settle_step_s`; A.U8C.62
+    Depends add A.U8C.84, A.U8C.84 Depends drop A.U8C.62.
+- `device_scripts/fram_busy_status_lockout.py` 1+0, `fram_cs_hijack_fault_injection_and_recovery.py` 5+0,
+  `fram_error_log_reset_during_boot_window.py` 2+0, `fram_error_log_reset_race_seed_and_race.py` 4+0,
+  `fram_error_log_reset_race_verify.py` 5+0, `fram_error_log_roundtrip.py` 2+0, `fram_manager_roundtrip.py` 1+0,
+  `fram_pause_unpause_and_gating.py` 5+5, `fram_reset_race_during_write_seed_and_race.py` 2+0,
+  `fram_reset_race_during_write_verify_recovery.py` 1+0, `fram_same_device_rw_concurrency.py` 6+0,
+  `fram_write_protect_roundtrip.py` 1+0 · A.U8C.65-70, A.U8C2.29 · OK apart from V.15 (`HISTORY_LENGTH = 10` "contract"
+  in the seed/verify pair is right — both scripts must address the same chunk; `:31` `min(remaining, 1.0)`: V.16).
+- `device_scripts/heap_headroom_after_full_system_build.py` 6+1, `heap_layout_after_full_boot_sequence.py` 9+2,
+  `heap_under_connection_ceiling.py` 3+1, `serving_at_default_gc.py` 8+2 · A.U8C.71-73, A.U8C.86, A.U8C2.30 · OK apart
+  from V.15 and V.14 (A.U8C.72's Depends) (`tests_scripts/test_digital_twin_boot_contiguity.py:259-300` reads the three mirrored bounds with
+  `^NAME = (-?\d+)$`: tag lines above the assignment leave it intact; `heap_headroom` is the original of the shared probe
+  IDs, `6cf82a1` 2026-09-11 against `7aba427` 2026-09-18).
+- `device_scripts/isl29125_cross_device_concurrency.py` 6+2, `isl29125_lighting_scenarios.py` 15+13,
+  `isl29125_plausibility_read.py` 6+4, `isl29125_real_irq_edge.py` 8+9, `isl29125_same_device_rw_concurrency.py` 12+1,
+  `isl29125_mock_conformance_probe.py` 4+24 · A.U8C.74, A.U8C.75, A.U8C.77-80, A.U8C2.31, A.U8C2.33-35 · OK (every
+  deferral checked: the conformance probe's `settle()` is a real `sleep_ms`, `:53-59`, and each deferred settle precedes a
+  read a status/`TS` poll could gate; the `:178`/`:182` hold windows and `real_irq_edge.py:34` are observation windows;
+  `:335` mirror of `isl29125.periodic_only_warn_at` is right, `_PERIODIC_ONLY_WARN_AT = const(5)` at
+  `src/asy_isl29125_driver.py:109`), apart from V.15.
+- `device_scripts/isl29125_mechanism_envelope.py` 18+12 · A.U8C.76, A.U8C2.32 · 1 FIX (V.U8C_tests_hardware.12, `:24`).
+- `device_scripts/reboot_fallback_starves_the_watchdog.py` 3+1, `reboot_persist_read.py` 2+0, `reboot_persist_write.py`
+  2+0, `watchdog_starvation_reset.py` 1+0 · A.U8C.81, A.U8C.97 · OK apart from V.15 (`l3.starvation_wdt_ms` is A.U8.08's row).
+- `device_scripts/scd30_plausibility_read.py` 5+3 · A.U8C.82, A.U8C2.36 · FIX in V.10 (`:28`).
+- `device_scripts/scd30_real_irq_edge.py` 4+2, `scheduler_saturation_drop.py` 3+0, `sgp40_general_call_reset_hazard.py`
+  5+2, `sgp40_voc_algorithm_quality.py` 5+1, `system_debug_level_raise_for_boot_log_check.py` 3+0,
+  `system_debug_level_restore_after_boot_log_check.py` 2+0, `system_service_restarts_a_real_dead_task.py` 2+2,
+  `timer_alarm_pool_exhaustion.py` 1+2 · A.U8C.83, A.U8C.85, A.U8C.88-90, A.U8C2.38 · OK (`N_TIMERS`/`N_QUALITY_SAMPLES`
+  are outside C.0.1 by its `_?N_[A-Z]` exclusion; the dead-task 4 × 0.9 s window is an observation window bounded above by
+  the reboot threshold, rightly tuned).
+- `device_scripts/sgp40_fram_backup_restore.py` 4+0 · A.U8C.87 · 1 FIX (V.12, `:15`, `:16`).
+- `device_scripts/uart_crossover_exchange.py` 9+0, `uart_crossover_recovery.py` 9+1, `uart_driver_read_never_blocks_the_loop.py`
+  11+3, `uart_read_never_blocks_the_loop.py` 7+3 · A.U8C.91-93, A.U8C.96, A.U8C2.39, A.U8C2.42 · OK apart from V.15
+  (`PAYLOAD_SIZE`/`TIMEOUT_MS`/`BAUDRATE` "contract" matches A.U8.06's exclusion; the `dev.uart_*` mirrors are named
+  constants; `:106` deferral right).
+- `device_scripts/uart_idle_poll_rate.py` 11+3 · A.U8C.94, A.U8C2.40 · FIX in V.10 (`:66`), V.12 (`:78`) and 1 FIX:
+  - V.U8C_tests_hardware.13 | A.U8C2.40 Change | FIX | `:100` holds the factor twice (`idle > _EXPECTED_IDLE_ROUNDS * 2
+    or idle < _EXPECTED_IDLE_ROUNDS // 2`); the row's own reason is "the ×2 / ÷2 band", but the Change says "the literal at
+    :100 becomes `_EXPECTED_ROUNDS_FACTOR`" (one key per C.0.1/U8C2 keying, two literals) | "both literals at :100 become
+    `_EXPECTED_ROUNDS_FACTOR`" (as V.U8C_tests.05 did for two keyword literals on one line).
+- `device_scripts/uart_link_under_concurrent_system_load.py` 18+5 · A.U8C.95, A.U8C2.41 · FIX in V.12 (`:191`); the
+  mirror-by-reading of `:24-26` (U8C open point 3) is right: the values build the same pair as `devices/dev.toml`.
+- `device_scripts/wifi_reconnect_after_failed_attempts_repro.py` 15+4 and `wifi_service_reconnect_repro.py` 4+2 · A.U8C.98,
+  A.U8C.99, A.U8C2.43 · 1 FIX:
+  - V.U8C_tests_hardware.14 | A.U8C.98, A.U8C.99, A.U8C2.43 Depends | FIX | both scripts are orphans (no runner:
+    `grep` finds no `run_isolated`/`DEVICE_SCRIPTS` reference) and G1/R09's State gives U26 their verdict: "orphan
+    verdicts: `wifi_service_reconnect_repro.py` and `wifi_reconnect_after_failed_attempts_repro.py` are retire
+    candidates" (`audit/pass2/G1.md:83`). Tagging them before that verdict can create Part N rows and sites for files U26
+    deletes | Depends of all three add "U26 (G1/R09 orphan verdict — if the script is retired this action lapses and its
+    rows and mirror sites are not created)"; A.U8C.99 also gains U26 (it has none today). The same holds for
+    `heap_layout_after_full_boot_sequence.py` (A.U8C.72), which `PROJECT_AUDIT_PLAN.md:3244` proposes to retire under
+    HW.S16/MEM: add "U26/U30 (orphan verdict, plan B.3)" to A.U8C.72's Depends.
