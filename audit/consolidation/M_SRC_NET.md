@@ -151,7 +151,7 @@ actions only where they name a product line.
 - **Unit**: U18 (the latest constituent; U5.02/U10.x signature/name parts of the same lines are written once here and
   land with U5 and U10 respectively per the staging note)
 - **Depends**: A.U5.01, M.SRC_NET.001, M.SRC_NET.004, M.SRC_NET.026 (UDPSocket without `conn_tries`)
-- **Blast carried by**: construction `WifiService` → M.SRC_NET.0xx (wifi constructor, below: `CaptiveDNS(log=log)`);
+- **Blast carried by**: construction `WifiService` → M.SRC_NET.078 (`CaptiveDNS(log=log)`);
   tests `tests/test_captive_dns.py` (10 constructor calls, `udps` reads, `reset_error_counter` return) → A.U5.02,
   A.U10.35, A.U11.31 (tests cluster); `_collect_error_sources()` generated → A.U10.46 (GEN cluster); `/status`
   `ResetErrors` → M.SRC_NET (webserver `_put_status`, below)
@@ -279,7 +279,7 @@ actions only where they name a product line.
 - **Unit**: U18
 - **Depends**: M.SRC_NET.001 (names), A.U8.02 (tag grammar)
 - **Blast carried by**: `asy_captive_dns` import → M.SRC_NET.004; Part N rows `dns.timeout_ms`/`dns.tries` with their
-  `asy_ntp_client`/`codegen.py` sites → A.U8.09 and M.SRC_NET (NTP constants, below); tests
+  `asy_ntp_client`/`codegen.py` sites → A.U8.09 and M.SRC_NET.042; tests
   `tests/test_asy_dns_client.py:67-77` fallback swap removal → A.U18.10 (tests cluster); SPEC I.2/I.4 buffer sentence →
   A.U18.03 (docs)
 - **Kind**: code
@@ -296,7 +296,7 @@ actions only where they name a product line.
 - **Unit**: U18
 - **Depends**: M.SRC_NET.019 (U10 reorder done first)
 - **Blast carried by**: captive DNS callers → M.SRC_NET.004/007/009; `asy_ntp_client` `DNSFallback` check uses it →
-  M.SRC_NET (NTP `_set_mgr_cfg`, below); tests moved to `tests/test_asy_dns_client.py`, comment rewrites in
+  M.SRC_NET.045; tests moved to `tests/test_asy_dns_client.py`, comment rewrites in
   `tests/test_captive_dns.py`, `tests/test_ntp_wifi_dns_integration.py:429` → A.U18.08 (tests cluster); SPEC G.1/G.2
   entry → A.U18.08 (docs)
 - **Kind**: code
@@ -314,7 +314,7 @@ actions only where they name a product line.
 - **Depends**: M.SRC_NET.020
 - **Blast carried by**: `resolve_ipv4()`'s `except (MemoryError, ValueError)` maps it (M.SRC_NET.023, unchanged arm);
   tests (`_build_query` refusals, boundary pair, zero-construction proof) → A.U18.09 (tests cluster); SPEC C.7 resolver
-  bounds → A.U18.09 (docs); the `NTPHost` PUT shape check → A.U10.41 (other cluster, in `asy_ntp_client`, merged below)
+  bounds → A.U18.09 (docs); the `NTPHost` PUT shape check → M.SRC_NET.045
 - **Kind**: code
 
 ### M.SRC_NET.023 `resolve_ipv4()`: caller's servers only, fixed port, teardown logged
@@ -341,7 +341,7 @@ actions only where they name a product line.
 - **Depends**: M.SRC_NET.020, M.SRC_NET.021, M.SRC_NET.022, M.SRC_NET.026 (constructor), M.SRC_NET.029
   (`write_and_recvfrom()` with required `tries`); A.U2.01 + U18 register fix 9 (shared wrnno 11)
 - **Blast carried by**: caller `asy_ntp_client` `_resolve_ntp_server()` passes `pr=self.pr` and the configured
-  fallback → M.SRC_NET (NTP, below); tests (`pr=make_pr()` on every call, `port=` calls through
+  fallback → M.SRC_NET.046; tests (`pr=make_pr()` on every call, `port=` calls through
   `tests/_udp_port_redirect.py`, `_ResolvingAsyUDPSocket` removal, multi-server rewrites, teardown-failure test) →
   A.U18.10/A.U18.15/A.U18.45/A.U18.12 (tests cluster); `tests_hardware/bench/test_network_resilience.py:351-355`
   comment holds (A.U18.10); SPEC C.7 → A.U18.15 (docs)
@@ -422,7 +422,7 @@ actions only where they name a product line.
 - **Unit**: U31 (the ms constant is the latest; staged: U10 — class rename, `_sock`, lock reason; U18 — tuple check,
   `conn_tries` removal, the two poll constants and tags, `udp.retry_backoff_s` row renamed by U31; U31 — `_RETRY_BACKOFF_MS`)
 - **Depends**: A.U8.02 (tag grammar)
-- **Blast carried by**: product constructions `asy_dns_client` (M.SRC_NET.023), `asy_ntp_client` (NTP fetch, below),
+- **Blast carried by**: product constructions `asy_dns_client` (M.SRC_NET.023), `asy_ntp_client` (M.SRC_NET.048),
   `asy_captive_dns` (M.SRC_NET.006) — all tuples, no `conn_tries`; tests (address shim at import, `make_addr()`
   tuples, `conn_tries` tests removed/renamed, `sock` → `_sock` readers, doubles dropping the parameter) → A.U18.12,
   A.U18.13, A.U10.35 (tests cluster); twin shim move to a hardware-fake-free directory + `mypy_path`/runner
@@ -496,7 +496,7 @@ actions only where they name a product line.
   keyword-only; keyword-only (`*, tries: int`) keeps every positional call shape and is the smaller change — agent choice.
 - **Unit**: U18
 - **Depends**: M.SRC_NET.028
-- **Blast carried by**: `asy_dns_client` passes `tries=tries` (M.SRC_NET.023); NTP stops using it (NTP fetch, below);
+- **Blast carried by**: `asy_dns_client` passes `tries=tries` (M.SRC_NET.023); NTP stops using it (M.SRC_NET.048);
   tests omitting `tries` pass `tries=1`, new failed-send test → A.U18.14 (tests cluster)
 - **Kind**: code
 
@@ -550,7 +550,7 @@ actions only where they name a product line.
 - **Change**: `def host_label_ok(label: str) -> bool:` — `False` for an empty string; otherwise every character an
   ASCII letter, digit or `-`, first and last not `-` (RFC 1123 §2.1), a plain loop over `ord()` (no `re`); comment
   "# RFC 1123 SS2.1 host label (letters, digits, '-'; not at either end); the caller bounds the length." Placed by
-  D.15's key. `asy_wifi_service` (Hostname, M.SRC_NET.083) and `asy_ntp_client` (`NTPHost` per label, M.SRC_NET.045)
+  D.15's key. `asy_wifi_service` (Hostname, M.SRC_NET.075) and `asy_ntp_client` (`NTPHost` per label, M.SRC_NET.045)
   import it; no copy remains in either.
 - **Resolved**: A.U6.29 writes the helper privately in the WiFi module; A.U10.41 needs it from the NTP module. Importing
   a `_`-private name across modules breaks G10/R07; REF/R05 forbids a second copy. The resolver module already holds the
@@ -696,7 +696,7 @@ actions only where they name a product line.
 - **Depends**: M.SRC_NET.042, M.SRC_NET.043, A.U5.01, A.U10.02
 - **Blast carried by**: generated `ntp = NTPClient(conn.get_wifi_mode_lock(), conn.network_available_locked, …,
   NtpTiming(…), log=…)` → A.U5.03, A.U5.10, A.U10.18 (GEN cluster); `WifiService.network_available_locked()` →
-  M.SRC_NET.0W4 (WiFi getters, below); tests (`make_client()` taking `NtpTiming`, 129 calls; private-attribute readers;
+  M.SRC_NET.098; tests (`make_client()` taking `NtpTiming`, 129 calls; private-attribute readers;
   `network_available` stubs) → A.U5.10, A.U10.35, A.U10.18 (tests cluster); `tests_scripts/test_counter_steps.py`
   exemption table names `_ntp_sec_count`/`_unsynced_wait_s` by their private names → A.U10.05 (tests cluster, name
   follows A.U10.35); SPEC C.7.2 (`retry_s` wording), A.7 `:406` → A.U5.10, A.U10.18 (docs)

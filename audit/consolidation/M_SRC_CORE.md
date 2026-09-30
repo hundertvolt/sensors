@@ -1233,3 +1233,162 @@ for the config reset.
   L0 "normal boot logs nothing" → A.U35.38/.39 (TSC, TWIN); mockdata W22/W24 rows → A.U2.25/A.U3.15 (WEB); SPEC C.7.3,
   C.5.2.1, LEAD/R32 register fix 2 → A.U11.19, A.U11.20 (SPEC, register).
 - **Kind**: code
+
+## src/print_log.py (→ `src/asy_print_log.py`)
+
+End state: `LogConfig`/`DEFAULT_LOG`/`make_logger(log, name)`; `PrintLog` with a refusing `set_level() -> bool` and
+explicit `sep`/`end` keywords, no test accessors; `PrintLogHistory` with the newest-entry rule, pre-setup entries kept,
+`reset() -> bool`, `setup() -> bool`; `PrintLogHistoryStore` narrowed to allocation failure, newest-state-last writes, a
+tri-state read (valid / blank-or-invalid / unreadable) whose `setup()` never overwrites an unreadable store; the C-stack
+fatal flag (M.SRC_CORE.034).
+
+### M.SRC_CORE.060 Header, imports and the FRAM Protocols
+- **From**: A.U3.01 (header names the rule), A.U11.16 (header's never-raise line), A.U11.S03 (2) (non-generic
+  `_FramChunk`), A.U16.19 (Protocol loses `override_pause`), A.U16.06 (4) (`read_into() -> bool | None`), A.U16.05
+  (`RegionBuffer`), A.U10.38/A.U10.37 (`CRCBase`, module names), A.U14.19 (`import asyncio`), A.U30.19 via
+  M.SRC_CORE.034 (header names the flag).
+- **Site**: `src/print_log.py:1-49`.
+- **Change**: docstring: line 1 "Leveled console logging (PrintLog), a bounded error/warning history (PrintLogHistory)
+  with optional FRAM-backed persistence (PrintLogHistoryStore), and the C-stack fatal flag the supervisor reads."; line
+  2 "A code equal to the history's newest entry is counted and written through but spends no new slot; the console
+  prints every call at its level."; line 3 "Never raises: a FRAM chunk operation fails only by allocation, which
+  degrades to RAM-only logging." Imports: `asyncio`, `struct`, `from collections import deque, namedtuple`, `from
+  micropython import const`, `from asy_crc_checks import CRC8`. `TYPE_CHECKING`: `from typing import Protocol,
+  TypedDict`; `ErrEntry`/`ErrorLog` unchanged; `from asy_base_classes import RegionBuffer`; `from asy_crc_checks import
+  CRCBase`; `class _FramChunk(Protocol)`: `def get_buffer(self) -> "RegionBuffer"`, `async def write_into(self, buf:
+  "RegionBuffer") -> bool`, `async def read_into(self, buf: "RegionBuffer") -> "bool | None"`; `class
+  _FramManager(Protocol)`: `get_chunk(…)` with `FRAMManager.get_chunk()`'s final parameters (M.SRC_CORE.090) `->
+  "_FramChunk | None"`; the Protocol comment `:38-40` kept (cycle reason); `_BufT`, its comment `:33-35`, `TypeVar`
+  and `Any` go.
+- **Resolved**: A.U3.01 "rewrites the header (not extends)"; A.U11.16 replaces line 3; one 3-line header carries both.
+- **Unit**: U16 (latest: the Protocol's signature changes; stages U3 header line 2, U11 line 3 and the non-generic
+  Protocol, U30 line 1's flag clause).
+- **Depends**: M.SRC_CORE.001, M.SRC_CORE.027, M.SRC_CORE.090.
+- **Blast carried by**: `asy_fram_manager.py` `write_into`/`read_into` annotations (M.SRC_CORE.090); FRAM fakes in tests
+  drop `override_pause` → A.U16.19 (TEST_UNIT, TEST_HELP); `pyproject.toml:259` ANN401 entry goes (then T20, A.U11.38)
+  → A.U11.S03/A.U11.38 (TOOL) + BACKLOG chroot line (DOCS); SPEC C.10 `:2317` holds.
+- **Kind**: code
+
+### M.SRC_CORE.061 One logging config object and one logger factory
+- **From**: A.U5.01.
+- **Site**: `src/print_log.py:282-296`.
+- **Change**: `LogConfig = namedtuple("LogConfig", ("fram", "history_length", "debug"))` with the typed shadow
+  (`fram: _FramManager | None`, `history_length: int`, `debug: int | None`); `DEFAULT_LOG = LogConfig(None, 10, None)`;
+  `def make_logger(log: LogConfig, name: str) -> PrintLogHistory` building the RAM or store logger from the three fields
+  as today (comment `:288-289` kept).
+- **Resolved**: —
+- **Unit**: U5.
+- **Depends**: —
+- **Blast carried by**: every `make_logger()` user in this cluster (M.SRC_CORE.008, .036, .049, .080 FRAM manager keeps
+  RAM-only) and elsewhere → A.U5.02-A.U5.12 (SRC_NET, SRC_SENS); generated `log_<fram>`/`log_ram` → A.U5.03 (GEN); tests
+  (`test_asy_uart_link_driver.py`, `test_system_service.py`, device scripts) → A.U5.01 (TEST_UNIT, HW_DEV); SPEC C.7
+  `:1822-1823`, G.2 → A.U5.01 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.066 `PrintLog`'s test-only level accessors go
+- **From**: A.U11.15.
+- **Site**: `src/print_log.py:74-75`, `:85-107`.
+- **Change**: `get_level()` and the six `@staticmethod` level accessors are deleted; tests read `pr.level` and use the
+  documented numbers 0-5.
+- **Resolved**: —
+- **Unit**: U11.
+- **Depends**: —
+- **Blast carried by**: tests (`test_print_log.py` 20, `test_system_service.py` 20, `_sensortask_scenarios.py` 14,
+  `test_captive_dns.py` 12, `test_base_classes.py` 3, `test_asy_wifi_service.py` 2, `test_asy_ntp_client.py` 1;
+  `test_print_log.py:107-118` goes) → A.U11.15 (TEST_UNIT, TEST_HELP); `system_service.py:59-60` comment →
+  M.SRC_CORE.007.
+- **Kind**: code
+
+### M.SRC_CORE.062 `set_level()` refuses an invalid level; the print methods take explicit keywords
+- **From**: A.U11.13, A.U11.S03 (1).
+- **Site**: `src/print_log.py:68-83`, `:109-130`.
+- **Change**: `PrintLog.__init__`: `self.level = _LOG_OFF`; `if level is not None: self.set_level(level)`.
+  `set_level(self, level: int | None) -> bool`: accepts only `type(level) is int and _LOG_OFF <= level <= _LOG_ALL`,
+  sets it, `True`; else `self.err("PrintLog: invalid level refused:", level)`, `False` (the "clamps …" comment goes).
+  `err/wrn/one/evt/all(self, *args: object, sep: str = " ", end: str = "\n") -> None` → `print(self.name, *args,
+  sep=sep, end=end)`; the comment `:109-111` goes.
+- **Resolved**: G5/R24's "validate through the shared primitive" cannot hold here (`print_log` ← `config_manager`
+  import, cycle); U11 register fix states the exact-type form — applied.
+- **Unit**: U11.
+- **Depends**: —
+- **Blast carried by**: level setters typed `Callable[[int], bool]` → M.SRC_CORE.008/.017 and generated
+  `_collect_level_setters()` → A.U20.41 (GEN); tests `test_print_log.py:90-100, 128, 131-136` → A.U11.13/A.U11.S03
+  (TEST_UNIT); SPEC C.7 "an invalid level is refused, never clamped" → A.U11.13 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.063 `PrintLogHistory`: newest-entry rule, pre-setup slots, honest sentinels, bool results
+- **From**: A.U2.05, A.U3.01, A.U10.11 (pre-setup slot count), A.U10.35 (`err_count` → `_err_count`), A.U11.16 (`_diag()`
+  comment), A.U11.31 (`reset() -> bool`), A.U11.S03 (1) (`err_s`/`wrn_s` keywords), A.U10.21 (`setup() -> bool`),
+  A.U14.10 (`:136-138` comment), A.U35.35 (K.28 test — test only).
+- **Site**: `src/print_log.py:133-223`.
+- **Change**: `__init__` comment `:136-138` → "# Clamp to [0, _MAX_CNT] (err_count's own uint16 range) before
+  allocating: `[x] * n` can segfault / # the interpreter uncatchably in a size range bytearray()'s guards don't cover - see
+  SPECIFICATION.md / # Part F.1's `[x] * n` fact for the measured size boundaries."; `self._err_count = 0`;
+  `self._pre_setup_slots = 0`. `_diag()` comment "# print-only: inside the logging layer itself; gated on any logging
+  being enabled". `_store_err(self, min_e, max_e, errno) -> None`: count (check-before-step at `_MAX_CNT`, K.28 as HEAD);
+  `if errno == _NO_ERR: return`; `code = errno + min_e`; `if errno < 0 or code > max_e: self._diag("PrintLog: Error
+  number", errno, "is invalid!")`; `elif not (len(self.history) and self.history[-1] == code):` append, and while not
+  `initialized` step `_pre_setup_slots` (check before the step, cap `len(self.history)`); then HEAD's uninitialised
+  return and write-through. `get_log()`: an `_NO_ERR`/`_NO_WRN` slot reports `num` 0, type "N". `err_s(self, *args:
+  object, errno: int = _NO_ERR, sep: str = " ", end: str = "\n")` and `wrn_s(…, wrnno: int = _NO_ERR, …)` — no
+  `repeat`. `async def setup(self) -> bool: self.initialized = True; return True`. `async def reset(self) -> bool`: clear
+  ring, `_err_count = 0`, `_pre_setup_slots = 0`, `if not await self._write(): self._diag(…); return False`;
+  `self.initialized = True`; `return True` (comment `:214-216` kept).
+- **Resolved**: —
+- **Unit**: U11 (stages U2 `get_log()`/negative code, U3 the rule and `repeat` removal, U10 `_pre_setup_slots`,
+  `_err_count`, `setup() -> bool`).
+- **Depends**: M.SRC_CORE.060.
+- **Blast carried by**: the five `repeat=` users → A.U3.02 (SRC_NET, SRC_SENS, M.SRC_CORE.08x for FRAM); dedupe tests in
+  webserver/notification/ISL29125/FRAM/UART suites → A.U3.01 (TEST_UNIT); `get_log()` 0x80 readers, js render → A.U2.05
+  (TEST_UNIT); tests reading `err_count` → A.U10.35 (TEST_UNIT); `test_print_log.py:201-205` K.28 → A.U24.39/A.U35.35
+  (TEST_UNIT); `reset()` result users → M.SRC_CORE.019/.037/.049 and A.U11.31 (SRC_NET); SPEC C.7.1 repeat text, H.6
+  `:4522` → A.U3.10, A.U2.05 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.064 `PrintLogHistoryStore` writes: allocation-only guards, little-endian format, newest state last
+- **From**: A.U11.09, A.U11.16 (`__init__` and `_write()` halves), A.U11.S03 (2) (`self.fram` type), A.U14.19, AC_NOTES 17.
+- **Site**: `src/print_log.py:226-255`.
+- **Change**: `self._history_fmt = "<" + "B" * len(self.history)`; `__init__`: `try: self.fram: _FramChunk | None =
+  fram.get_chunk(size, crc=CRC8())` / `except MemoryError: self.fram = None` (the broad-catch comments go);
+  `self._write_lock = asyncio.Lock()`, `self._write_gen = 0`. `_write()`: `if self.fram is None: return False`;
+  `self._write_gen = self._write_gen + 1 if self._write_gen < _WRITE_GEN_MAX else 0` (`_WRITE_GEN_MAX =
+  const(0x3FFFFFFF)`, "# wraps inside the small-int range; compared only for equality"); `gen = self._write_gen`; `async
+  with self._write_lock:` `if gen != self._write_gen: return True`; `buf = self.fram.get_buffer()`; `dbuf =
+  buf.get_data_buf()`; `if dbuf is None: return False`; `try:` pack header and history, `return bool(await
+  self.fram.write_into(buf))` / `except MemoryError: return False`. Comment (≤ 3 lines): "# Packed and written under one
+  lock; a call a newer one superseded skips, so the newest state lands last / # without relying on asyncio's lock
+  hand-off order (ConfigManager._flush_staged()'s rule, by count)."
+- **Resolved**: A.U14.19's step `(self._write_gen + 1) & 0x3FFFFFFF` allocates a heap int at the wrap (2**30 is not a
+  small int on rp2) — AC_NOTES 17 orders the conditional wrap for every sequence; applied. `COUNTER_CAP` cannot be
+  imported here (`asy_base_classes` imports this module), so the file carries its own constant.
+- **Unit**: U14 (stages U11: guards, format, `self.fram` type).
+- **Depends**: M.SRC_CORE.060.
+- **Blast carried by**: `ConfigManager._flush_staged()` comment gains "(PrintLogHistoryStore._write() applies the same
+  rule)" → folded into M.SRC_CORE.044's comment text (this cluster; GAP-free); tests `test_print_log.py:42-87, 539-553,
+  579-603` and the new gated-write test → A.U11.09, A.U11.16, A.U14.19 (TEST_UNIT); U30's long-lived-object table (one
+  lock per store) → A.U30.02 (SPEC); F.1 asyncio list names the guard → A.U14.15 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.065 `PrintLogHistoryStore` read and setup: merge pre-setup entries; never overwrite an unreadable store
+- **From**: A.U10.11, A.U11.16 (`_read()` half), A.U16.06 (4), A.U10.21.
+- **Site**: `src/print_log.py:257-279`.
+- **Change**: `_read(self) -> "tuple[int, tuple[int, ...]] | bool | None"` mutates nothing: `None` if `self.fram is None`,
+  `dbuf is None`, `MemoryError`, or the chunk's `read_into()` returned `None`; `False` when it returned `False` (blank or
+  invalid); else `(count, entries)` unpacked from the buffer. `async def setup(self) -> bool`: `if self.fram is None or
+  self.initialized: return self.initialized`; `stored = await self._read()`; `if self.initialized: return True` (a
+  `reset()` or another setup won during the read); `stored is None` → `self._diag("PrintLog: FRAM unreadable - stored
+  history kept, RAM-only until reboot")`, `return False`; a tuple → merge: `tail = list(self.history)[len(self.history) -
+  self._pre_setup_slots:]`, `self.history.extend(entries)`, `self.history.extend(tail)`, `self._err_count =
+  min(count + self._err_count, _MAX_CNT)`; `False` → keep the RAM ring (re-initialise); then `self._pre_setup_slots = 0`;
+  `if await self._write(): self.initialized = True` else `self._diag("PrintLog: FRAM setup failed!")`; `return
+  self.initialized`.
+- **Resolved**: A.U10.11's `(count, entries) | None` and A.U16.06's `False`/`None` split are one tri-state (A.U16.06's
+  Depends names this merge).
+- **Unit**: U16 (A.U10.11's and A.U11.16's `_read()` halves are pulled into U16's rewrite of the same lines; no earlier
+  unit's work needs them).
+- **Depends**: M.SRC_CORE.063, .064, M.SRC_CORE.088 (chunk `read_into()` tri-state).
+- **Blast carried by**: tests `test_print_log.py:401, 408, 586, 601, 629` and the new merge/race/unreadable cases →
+  A.U10.11, A.U16.06 (TEST_UNIT); `tests/_sensortask_scenarios.py:1160-1175`, twin `:300-320` → A.U10.11 (TEST_HELP,
+  TWIN); L2 write-protected chip keeps its bytes → A.U16.06 (TWIN); SPEC C.7 setup sentences, A.4 FRAM bullet →
+  A.U10.11, A.U16.06 (SPEC).
+- **Kind**: code
