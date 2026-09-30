@@ -69,7 +69,7 @@ None of U12's, U13's, U14's or U16's own actions writes an `Any` (grep of `audit
   emitted code honest rather than fixing a reported finding). `config_manager` leaves A.U8.24's baseline list.
 - **Blast**: callers of `type_or_range_error()` whose targets are already `CfgValue`: `base_classes.py:349, 389`,
   `config_manager.py:202, 328, 447` (`check_cfg_get_default() -> tuple[bool, CfgValue]` `:190-192`, `new_cfg: CfgValue`
-  `:442`), `asy_scd30_driver.py:293` (setters take the config-value union — `pyproject.toml:244-246` FBT001 comment) —
+  `:442`), `asy_scd30_driver.py:293` (setters take the config-value union — `pyproject.toml:248-251` FBT001 comment) —
   unchanged · generated every device module with a notification LED: the callback line (`tests_scripts/
   test_buildgen_generate.py` — grep `_notification_led_callback` for a text pin at execution) · js — · tests existing
   `tests/test_config_manager.py:265-327` (`coerce_numeric()` tuples) hold, values unchanged; `tests/
