@@ -78,9 +78,8 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     branch (`EAGAIN` while a zero-timeout poll still reports writable), else they pass on unpatched firmware too; the
     one-time unpatched control run covers every bound-asserting test; A.U21.14 sets a phase-C bound, a failed bound
     goes to the owner per item 21. A.U22.03 (event-driven LED pause) is an agent proposal, shown in the OR2.c review.
-25. U25 Q1 (A.U25.69, the generated `main()`'s four keywords: keep as the documented manual-start options of the
-    no-autostart image, or remove under OR36.a (1) with 44 call lines adapting) is collected for the A-C owner review
-    after the U25 verifier tests (a) against OR36/OR86. U25's six named conflicts (A.U8.20, A.U15.R02, A.U20.02,
+25. U25 Q1 (A.U25.69, the generated `main()`'s four keywords) is collected for the A-C owner review, reworded by
+    V.U25.52 as unsettled (OR36 test-origin vs OR86 REPL start; options keep / remove / keep `cfg_path` only). U25's six named conflicts (A.U8.20, A.U15.R02, A.U20.02,
     A.U3.01, A.U11.03, A.U13.R01) are merged in A-C.
 26. `verify/U23.md` accepted; lead decision: the history-pill border cue (A.U23.43 (6)) is dropped, since the owner's
     words for those pills are OR94 "don't change the current look of the website" and A28 "only colours its number";
@@ -100,3 +99,7 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     .04, .07) are merged in A-C.
 30. U26 written (86 actions, verifier running): N.27 and the `:271` flash-tier move are G2/R17's (U35), which no unit
     file claims yet — U35's author takes them; A-C checks they landed. Five agent design decisions go to the OR2.c review.
+31. `verify/U25.md` accepted: U25 Q2 (V.U25.35, how the twin scenarios needing DUT-internal control move host-side:
+    runner instrumentation / named in-process exceptions / drop to L1) joins the A-C owner questions. V.U25 finds
+    SUPP_recovery's A.U15.R02 wrong on twin Run 5 (setup probes use up the faults, the heater-off rung is never
+    reached): A-C corrects A.U15.R02. OR116-OR122 twin duties are SUPP_owner_0930's.
