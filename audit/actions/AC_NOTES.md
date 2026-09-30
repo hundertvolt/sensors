@@ -68,3 +68,6 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     ACK or the 5 s per-call timeout. Kept as decided (upstream PR 19708's change, smallest patch); OR115's hammer tests
     bound other tasks' latency and CPU share in that state. If they fail the bound, the patch adds a short POLLOUT
     back-off after `EAGAIN` instead — that is then put to the owner as a change to OR114.
+22. Wave-3 register fixes to apply at wave end: G6/R49 "rate-limited trace" → one trace per event (OR35.a (2),
+    OR35.b; `verify/U19.md` V.U19.08/23). U14 follow-ups from OR114: A.U14.30 drops the OR112 sizing and keeps the
+    B.14.2 text/ensemble parts that still hold; A.U14.28's F.7 row 15 (missing Unix-port `TCP_NODELAY`) goes.
