@@ -403,7 +403,7 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   (owner, 2026-09-25: the bench has no such peer). (2) Every register entry `moved-to-hardware` becomes terminal from
   its round result. (3) After the last delta of R1-R6: one re-verification pass by A.U37.07's rule ends all green on the
   final tree, then R7 runs (A.C.09); a finding in R7 is a delta, then the pass and R7 repeat. (4) The owner is told the
-  hardware phase is complete and gives the agreement that opens phase D (A.U37.14-A.U37.15).
+  hardware phase is complete and gives the agreement that opens phase D (A.U37.15-A.U37.16).
 - **Blast**: callers — · generated — · js — · tests — · twin — · docs BACKLOG owed section (only re-queued rows and H78
   remain) · toml — · uart —.
 - **Depends**: A.C.02-A.C.10.
@@ -710,3 +710,85 @@ proof (A.C.09); "every" = every round (A.C.01).
 | H76 | UART `wrnno` 11 against a real babbling peer (BACKLOG R13 + N3) | BACKLOG owed row | — | none | stays owed: "needs hardware the bench does not have" (owner, 2026-09-25) |
 | H77 | FRAM CS level at power-up on each board | G5/R29 State (and G3/R16 before wave 2) | — | none | withdrawn by the lead (AC_NOTES 11, 23): hold time met by boot timing, a documented datasheet fact; register fix 1 |
 
+## Ledger
+| register block | clause for this unit (short) | result |
+|---|---|---|
+| G1/R02 | hardware in C — the rounds: evidence first, image proof, lower levels first, default before gated, plan per round, twin corrected, two-image proof, boot log, trigger timestamps, `reset_reason` codes, stale packages, F17 closure | A.C.01 (frame), A.C.02-A.C.09 (rounds), A.C.10 (twin/doc deltas), A.C.11 (close); inventory H01-H07, H45, H57, H75 |
+| G1/R04 | hardware in C — re-read bench NVM state and register volatility (G3.076) | A.C.16 (soft-reset discriminator for BMP3xx; ISL probe keys A03-A05; SCD30 NVM state recorded), A.C.03 (1) (first-contact `/sensors`) |
+| G1/R14 | hardware in C — each code | A.U26.28 (codes 1-6, co-land, R1/R2), A.S0930.29/.40 (7, 8, 3, 4), A.C.12 (0, 9, 10+p, 20); register fix 3 |
+| G1/R20 | hardware in C — the runs (each rung on silicon, discriminating oracle) | A.C.03 (A.U26.34 automated, A.U13.R02, A.U26.28 code 5), A.C.04 (manual rungs); H15-H18 |
+| G1/R22 | hardware in C — S4 (the 6 h run, release evidence) | A.C.07 (`--soak-duration long`, A.U26.35's rate measured); H64 |
+| G1/R23 | hardware in C — the rollover run | A.C.08 (A.U26.36); H63 |
+| G1/R28 | hardware in C — confirm `machine.reset()` clears `_PHASE_DEACTIVATED` | A.C.05 (1) (A.U26.39 (3)-(4) stage 8 check, gated); H62 |
+| G1/R30 | hardware in C — bench boot log and trigger timestamps | A.C.01 (8)/A.C.03 (boot log every round, A.U26.41 (1)), A.C.07 (trigger spacing, A.U26.41 (2)); H06, H19 |
+| G1/R40 | hardware in C — rig geometry (M1), i2c0 scan; owner confirms DHCP keying and BME688 at the first round | A.C.02 (7) (owner confirmations), A.C.04 (1) (M1), A.C.03 (sweep's `ADDRESSES` lines, A.U26.46 table); H65 |
+| G3/R46 | hardware in C — undocumented ISL29125 behaviour measured, dated, specimen count; PRST unit asserted; restart reported | A.C.19 (the PRST assertion is new: reported-only at HEAD, `flash/test_bus_concurrency.py:95-100`) |
+| G3/R54 | hardware in C (S3b) | A.C.05 (3) (A.U26.11 gated S3b, M1 first in A.C.04); H28 |
+| G4/R19 | hardware in C — `bus_deinit_is_a_noop_on_real_hardware.py` kept as a pin-move check | A.C.03 (runs in R1's default flash tier), A.SDEP.08 (6) on a pin move; H48/H60 |
+| G4/R22 | hardware in C — one row measures a held slave vs reset; boot-time bus clear; ladder rungs | A.C.03 (A.U13.R02 incl. the boot clear with SDA held, co-land), A.C.04 (5) (scope rows if a scope is provided, else they stay owed); H16, H18 |
+| G4/R44 | hardware in C — stall reproduced on HEAD firmware, then the override; raised PCB count and body-cap binding (L32) | A.C.06 (1) (A.U21.14/A.U26.85 pair), A.C.03 (override half, ceiling tests), A.C.13 (L32 binding); H39-H41; register fix 4 |
+| G4/R47 | hardware in C — `_MAX_USED`/`_MAX_ROUTE_NEED` re-derived on a named image | A.C.03 (4) (figures recorded with the image), A.C.10 (re-derivation only as a new derivation of the need); H44 |
+| G4/R49 | hardware in C — two-image proof | A.C.09 (1)-(2); H45 |
+| G4/R62 | hardware in C — bench budget (`error_log_helpers.py`) | A.C.03 (4) (measured after the evidence save), A.C.10 (tagged budget constant; BACKLOG item 32 closes); H46 |
+| G4/R64 | hardware in C — loop-lag and trigger timestamps on the bench; FRAM hold script | A.C.03 (A.U31.06 (3), A.U31.05, A.U16.07), A.C.07 (trigger spacing); H19-H22 |
+| G5/R03 | hardware in C (each code on silicon) | as G1/R14: A.U26.28, A.S0930.29/.40, A.C.12 |
+| G5/R05 | hardware in C — bench boot log | A.C.03 (A.U26.41 (1)); every round's record (A.C.01 (8)) |
+| G5/R07 | hardware in C — trigger timestamps | A.C.07 (A.U26.41 (2), long duration); H19 |
+| G5/R23 | hardware in C — bench budget | as G4/R62: A.C.03 (4), A.C.10 |
+| G5/R29 | hardware in C — CS level at power-up on each board | NO-CLAUSE after the lead's withdrawal (AC_NOTES 11, 23; end of `U13.md`): the hold time is met by boot timing, a documented datasheet fact; H77; register fix 1 |
+| G5/R34 | hardware in C — round trip on silicon (RF207) | A.C.05 (1) (A.U11.21's gated L3 test); H47 |
+| G5/R35 | hardware in C — power-loss window and littlefs repair (G5.035) | A.C.17 (operator power cut during scratch writes through the product path), run in A.C.04 (4); H49 |
+| G5/R45 | hardware in C — float device scripts; config round trip by an L3 device script (RF216) | A.C.03 (`float_boundary_2pow24.py`), A.C.05 (A.U11.21); H47, H48 |
+| G6/R28 | hardware in C — what the radio firmware does with a malformed country code (RF213) | A.C.14 (new instrument: A.U26.20 deletes the only script that called `network.country()` directly); register fix 2 |
+| G6/R52 | C (L32 binding at L4); hardware in C — console output cannot starve the watchdog with a non-reading CDC host | A.C.13 (binding), A.C.05 (1) (A.U19.23's hardware row, `DebugLevel` 0, gated for its 2 writes); H41, H42 |
+| G6/R56 | hardware in C (G6.032 fidelity rows; RF100 CONFIG1 restart assumption row) | A.C.10 (rows updated from the rounds), A.C.19 (CONFIG1 restart facts reported, row stays an assumption unless settled), A.C.15/A.C.16 (SCD30, BMP3xx rows); H74 |
+| G7/R03 | hardware in C (assumption rows) | A.C.15 (SCD30 argument reaction; 0x0010 across a power cycle), A.U35.21 (non-SGP40 broadcast NAK, co-land), A.U26.66 (BMP3xx calibration block), A.U26.28 (BOOTSEL round trip), A.C.19 (CONFIG1 restart); H25, H29, H30 |
+| G7/R04 | hardware in C (run the probes; ISL29125 12-bit cycle measured) | A.C.03 (A.U26.66's gate, co-land), A.C.16 (BMP3xx reset key); H25 |
+| G7/R07 | hardware in C (each code on the dev bench) | as G1/R14; the survive/clear rules on silicon read from codes 1-6 and 0 (A.C.12 (1)) |
+| G7/R32 | hardware in C (manual Safari/mobile) | A.C.04 (6) (browser pass, captive-portal webview through A.U26.42 (4)); H66 |
+| G8/R18 | hardware in C — the three neu units and `arzi` against their TOMLs | A.C.04 (7) (owner's physical check; no unit but `dev` flashed or connected); H67 |
+| G10/R24 | — | NO-CLAUSE: State "holds; work: doc in U36" names no C work; the block entered the input through the string "C.10" (Home) — register fix 6 |
+| LEAD/R02 | hardware in C (start and end state every round) | A.C.01 (6), (8) (A.U26.79's fixtures run every round), A.C.09 (release image at the end); H05 |
+| LEAD/R06 | hardware in C (measurement) | A.C.03 (A.U30.18's device script, R1 default flash tier); H23 |
+
+## Register fixes
+1. **G5/R29** State: "hardware in C — CS level at power-up on each board" → delete; append "CS pad state during reset and
+   the power-on hold time (met by boot timing) are a documented datasheet fact in SPEC C.3.1 (lead, 2026-09-29, AC_NOTES
+   11, 23); no phase C row". Evidence: the lead's note at the end of `audit/actions/U13.md` and AC_NOTES item 23
+   (G3/R16's same item dropped in wave 2, `REGISTER_FIXES_wave2.md:62-66`, which left the C row to "A-C's rewrite of
+   A.U13.04").
+2. **G6/R28** State, after "the C row measures what the radio firmware does": append "— instrument: a flash-tier device
+   script calling `network.country()` with malformed values (A.C.14); A.U26.20 deletes `wifi_country_hostname_edge_values.py`,
+   whose only country case used MicroPython's own default `XX` (N.53)".
+3. **G1/R14 / G5/R03 / G7/R07** State: add "codes 0, 9, 10+p and 20 are attempted on the bench by device scripts that
+   write region 0, rebind a step or recurse from outside (A.C.12, harmonization 45); a code the attempt cannot reach is an
+   E.6 exception with the attempt's result" — A.U26.28's "boot-failure … listed as a structural exception" is no longer
+   the plan.
+4. **G4/R44** State "hardware in C — raised PCB count and body-cap binding (L32)" → name the instruments: "raised PCB
+   count: the ceiling tests and A.U26.85 (2) at L4; binding: an oversized `Content-Length` answered 413 before any body
+   byte is sent (A.C.13)"; and the premise in `SPECIFICATION.md:5238-5243` ("a socket cannot distinguish 'buffered then
+   rejected' from 'rejected unread'") is wrong: a 413 arriving before the body is sent can only come from a body never
+   read (`ext/microdot.py:425-430, 1443-1445`); the SPEC sentence is rewritten with the silicon result (A.C.10).
+5. **G1/R04** State: "hardware in C — re-read bench NVM state and register volatility" → add "volatility checked with
+   each chip's reset command (a volatile register returns to its datasheet default; an NVM-backed setting survives, as
+   SCD30's do), power-on reset per BMP388 `ds001:454` and ISL29125 `:411-415` (A.C.16)".
+6. **Input generator** (`audit/sweeps/al_input.py`, not a register line): its unit match took "C.10" in G10/R24's Home as
+   unit C; the match for unit C should require "in C", "phase C", "Phase C" or "hardware in C".
+
+## Open points
+None. Every choice was settled by an owner row, the register or a CLAUDE.md rule: the network switch around every
+bench-tier run follows CLAUDE.md's "tearing down `br0`/its slaves" literally (A.C.01 (2)); the lwIP pair order is
+OR114.a (5)'s, kept inside one round, with G1/R02's gated-after-clean rule (A.C.06); local-only control and no-threshold
+images are throwaway-worktree builds, as A.U21.14 and G1/R02 ("a local-only image is reverted at once") state
+(A.C.06, A.C.09); scope rows run only if the owner provides a scope, else stay owed (A.C.04 (5)).
+
+## A-C notes
+1. A.U26.85 (1) says the control image is built by "`scripts/build_firmware.py` with the override skipped"; no action
+   plans such a flag, and A.U21.14 builds it in a throwaway worktree with `apply_modlwip_eagain_override()` not called.
+   A-C keeps one: the worktree form (A.C.06), unless it adds a tooling flag in U21 with its own L0 test; either way the
+   image record carries `overrides: []` and `dirty` is set.
+2. A.C.12 replaces A.U26.28's boot-failure exception row; A.C.13 adds a `_JUSTIFIED_UNMARKED` reason to A.U26.06's guard
+   file; A.C.15 (1) and A.C.05's A.U15.07/A.U19.23 rows add budget rows to A.U26.09's README table; A.C.16 extends A.U26.66's
+   BMP3xx probe; A.C.19 edits `flash/test_bus_concurrency.py:95-100`, which U8C tag actions also touch — all co-land with U26 in the B2 order.
+3. A.C.14's script and A.C.12's scripts join A.U26.05's twin-runner record and A.U35.49's review (`audit/b3/queue_c.md`,
+   A.U35.54, lists every C row: U37's A.U37.05 folds both lists into BACKLOG).
