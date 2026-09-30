@@ -105,10 +105,10 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Req**: The deepest call and await chain (each nested `await` resume recurses in C) is budgeted against rp2's 8 KB C stack with a measured margin, and a `RuntimeError` from the stack check is never swallowed as a routine failure: it escalates through the supervisor.
 - **Sources**: G4 gap 1 · OR26.a, OR18.a · `ports/rp2/CMakeLists.txt:661`, `py/mpconfig.h:813`, `py/runtime.c:1785-1786` (v1.29.0) · MEM.T09
 - **Rank**: fact + agent — the stack size and check are v1.29.0 facts; the budget rule "(agent, 2026-09-27)"
-- **State**: work: code in U30 (analysis); hardware in C (measurement)
+- **State**: work: code in U30 — await-depth analysis and L0 tripwire, C-stack exhaustion escalated by the supervisor as reset reason 20; hardware in C — the device script's `c_stack_peak` reading
 - **Home**: SPEC F, I
 - **Pillar**: P2
-- **Pass 2**: new
+- **Pass 2**: new A-L: U30 register fix 7.
 
 ### LEAD/R07 Every device build reports its image size
 - **Req**: Each device build reports its firmware image size against the littlefs partition boundary and B0 records it, so OR72.a (7)'s "until flash space is actually short" has an observable trigger.
