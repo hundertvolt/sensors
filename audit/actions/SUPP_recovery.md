@@ -414,3 +414,223 @@ that bus, which fails on the same held bus within one period.
   whole configuration, as a brownout does" · toml — · uart —.
 - **Depends**: A.U10.R01, A.U13.R01, A.U3.14 (brownout logging), A.U15.32/A.U15.33/A.U15.34 (same functions) — A-C merges.
 - **Kind**: code | test | doc
+
+## U16 — STOR: FRAM
+
+FRAM is the only device on its SPI bus in every shipped TOML (`devices/*.toml`: six `bus = "spi0"` attachments, all
+`driver = "fram"`), so no rung here can reach another device. The FRAM manager's own log is RAM-only (owner, 2026-09-16,
+G5/R32), so FRAM warnings cost no FRAM writes.
+
+| fault path | rungs at HEAD (evidence) | rungs by existing actions | missing → action / disposition |
+|---|---|---|---|
+| write-enable latch does not set after WREN (`_enable_write()` `src/asy_fram_driver.py:200-205`, used by `_write()` `:228-229` and `_set_write_protected()` `:236-237`) | none: the write is aborted, wrnno 82 (`:345-347`) → chunk errno 61/62 → the caller's next write | A.U2.01 (w26 `FRAM_WEL_NOT_SET`), A.U13.09 (bus-down entry check first) | **R1 missing** — the symmetric WRDI already gets one retry (`_disable_write()` `:207-215`) → **A.U16.R01** |
+| latch does not clear after WRDI (`_disable_write()` `:207-215`) | R1 one WRDI retry, then advisory wrnno 81 (payload landed) | A.U2.01 (w27) | DONE-AT-HEAD (R1 bounded to one; logged once per operation, central repeat rule OR35.b); a latch that stays stuck on every write is also a lost-chip symptom → feeds A.U16.R03 |
+| chip identification fails at `setup()` (`:381-398`, RDID `:182-188`) | none inside setup; `AsyFramManager.setup()` contains it (`asy_fram_manager.py:730-737`) | A.U16.17 (the result escalates: one supervised task that ends, R5 → R6), A.U16.10 (both locks), A.U10.21 | **R1 missing** before the escalation → **A.U16.R02** (bounded identification retry inside `setup()`, before any logger reads, so A.U16.06's reason against a later recovery does not apply) |
+| chip stops answering mid-operation (RDID never re-checked after boot: `verify_present()` `:400-432` has no product caller, grep) | none: every write fails or warns, every consumer degrades to RAM, nothing escalates | — | **R1-R2 detection, R5, R6 missing** → **A.U16.R03** (latch anomalies trigger one identification probe under the held bus lock; a lost chip stops FRAM access and ends the manager's task; its restart re-runs `setup()`; the budget reboots) |
+| 32+ byte read raises `OSError(EIO)` (`_read_chunk()` `except` `asy_fram_manager.py:353-356`, errno 47) | the other copy (`_read()` `:136-157`) | A.U16.06 (fault vs content), G5/R27 | disposition: R1 is the dual copy by owner decision ("So no retry is added … the dual-copy layer already covers the read path", owner, 2026-09-24, SPECIFICATION.md:3755); R3/R4 have nothing to clear (U13 table: the port clears the overrun flag itself) |
+| one copy invalid or blank (`_read()` `:136-172`) | R2-level repair: the valid copy rewrites the other (`:149-157`, `:165-172`) | A.U16.06, A.U16.09 | DONE-AT-HEAD; a failed repair write fails the read (legacy field-proven reason, G5/R25) |
+| both copies valid but different (`:173-177`, errno 51) | hard failure; the next write heals it | A.U16.08 (owner tag restored) | disposition: owner rule "a hard failure, not a guess" (owner, 2026-07-18, OR87.a (d)) — no rung may pick a copy |
+| write verification mismatch (`:114-123`, errno 50) | the write reports `False`; the next write rewrites both copies | — | disposition: R1 is the caller's next write (loggers on the next entry, SGP40 on the next backup); an immediate rewrite would double wear on a chip whose readback already disagrees, and a persistent disagreement reaches A.U16.R03 through the latch/identity probe only if the chip is gone — a chip that answers its ID but stores wrong data is the torn-write/corruption case the dual copy and CRC report (G5/R25) |
+| torn write by a reset (busy markers left, `_write_chunk()` `:270-291`) | the next boot reads the block invalid and re-initialises | A.U16.06 | disposition: owner-accepted all-or-nothing loss (owner, 2026-09-13, G5/R25) |
+| storage paused (`_mempause()` `:98-100, :130-132, :391-393`) or chip write-protected (`_W_PROTECTED` `:223-227`) | refusal, w25 / w28 | A.U16.19 | disposition: commanded states, not faults — no rung may override an operator's pause or protection |
+| write-protection readback mismatch (`_set_write_protected()` `:243-248`, errno 45) | returns `False` | A.U16.15 (partial protection) | disposition: an explicit command with no product caller (grep `set_write_protected(` in `src/`, `buildgen/`: definition only); the caller's retry |
+| `verify_present()` lock wait times out (`:407-411`) | returns `False`, errno 19 | A.U10.26 | disposition: no product caller; A.U16.R03 probes from inside the hold instead |
+| SPI bus clear / controller re-init | — | — | disposition: U13 table (CS deasserts in `finally` on every cycle; the controller is re-configured every session) |
+
+## U16 — Actions
+
+### A.U16.R01 Retry a WREN whose latch did not set, once
+- **Why**: G4/R22 — "code+test in … U16 … (participant rungs)"; OR113.a (2) "retry the transaction" first (owner,
+  2026-09-30); the driver's own comment names the fault it guards: "catches a corrupted WREN transfer, which the chip
+  would otherwise silently ignore the following WRITE/WRSR for" (`src/asy_fram_driver.py:201-203`), and its WRDI twin
+  already retries once (`:207-215`).
+- **Site**: `src/asy_fram_driver.py:200-205` `_enable_write()`; `:79-86` (`_W_*` status bits); `:327-350`
+  `report_set_values()`; `:370-372` in `set_write_protected()`.
+- **Change**: `_enable_write()` → WREN, RDSR; if WEL is clear, one more WREN, RDSR; return the second result — the
+  comment gains "one retry, as _disable_write() retries WRDI" (one line, the block stays ≤ 3). A retry that succeeded is
+  reported through a new status bit `_W_WEL_RETRIED = const(256)` (above A.U13.09's `_SV_BUS_DOWN = const(128)`), which
+  `_write()`/`_set_write_protected()` OR into their status; `report_set_values()` and `set_write_protected()` print it
+  with `self.pr.evt("FRAM write enable latch set on the second WREN")` (console: a recovered transient spends no slot);
+  a second failure keeps today's w26 path. Bounded: two WREN at most per operation, each its own CS cycle (the CS rising
+  edge ends any half-received command, MB85RS64V `dstxt/fram__MB85RS64V…:40-44`). Race-free: inside the synchronous
+  body, under the bus lock the caller holds (`_send_command()` `:154-162`), no await added. No extra write cycle to the
+  array: WREN/RDSR touch only the status register's volatile latch.
+- **Blast**: callers `_write()` `:228`, `_set_write_protected()` `:236` · generated — · js — · tests existing:
+  `tests/test_asy_fram_wire_trace.py` goldens hold (the healthy path sends one WREN); tests asserting w26 after a single
+  dropped WREN (grep `wrnno=82`/`26` and the fake's WEL knobs in `tests/test_asy_fram_driver.py`,
+  `tests/_fram_chip_fake.py:23-60`) now need two dropped WRENs; new L1 `tests/test_asy_fram_driver.py` — the fake drops
+  the first WREN: the write lands, the trace shows WREN, RDSR, WREN, RDSR, WRITE…, one console line, no w26; drops both:
+  w26 and nothing written · four tiers (same-device only, FRAM being alone on its bus): L1 above; L2
+  `digital_twin/_fram_chip.py` gains a `wren` fault op in its `FaultInjector` (drop the next WREN, U25) and
+  `tests/test_digital_twin_fram.py` a booted write surviving one dropped WREN; L3
+  `tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py` gains a case deasserting CS inside the
+  first WREN of a write (its `_CsHijack` seam) — the write reads back intact; L4 not reachable (no FRAM fault injection
+  under the full stack), existing bench runs unchanged · twin as above · docs SPEC C.3.1 FRAM bullet: "a WREN whose
+  latch did not set is repeated once, like WRDI" · toml — · uart —.
+- **Depends**: A.U13.09 (`_SV_BUS_DOWN` bit and entry check), A.U2.01 (w26); co-lands with A.U16.15 (same
+  `_set_write_protected()`), A.U16.10 — A-C merges.
+- **Kind**: code | test | doc
+
+### A.U16.R02 `FRAM_SPI.setup()` retries identification before giving up
+- **Why**: G4/R22 (as A.U16.R01); OR113.a (2) "retry … at boot and mid-operation" (owner, 2026-09-30); A.U16.17's
+  escalation (owner "5. the same as all other chips", 2026-09-29, OR89.a (5)) otherwise turns a single disturbed RDID at
+  boot into a reboot.
+- **Site**: `src/asy_fram_driver.py:381-398` `setup()`; constants `:74-77`.
+- **Change**: inside the existing bus-lock hold, `present = self._check_device_id()` → up to `_ID_ATTEMPTS = const(3)`
+  (tagged `# @tunable fram.setup_id_attempts = 3`) back-to-back RDID cycles, stopping at the first match; each is its own
+  CS cycle (CS high between them resets the chip's command state). When the match came on a retry, after the lock is
+  released: `await self.pr.wrn_s("FRAM answered its identification only on attempt", n, wrnno=_WRN_FRAM_ID_RETRIED)`
+  (FRAM wrnno 29, band 25-29, A.U2.01 merge; RAM-only log). No match after the last attempt: raise as today (A.U16.17
+  then escalates). Placement keeps A.U16.17's rule: the retry is inside `setup()`, which runs first in the boot batch,
+  before any logger reads its chunk — so no logger is left RAM-only by it.
+- **Blast**: callers `AsyFramManager.setup()` `asy_fram_manager.py:733`, the generated boot batch, device scripts that
+  call `FRAM_SPI.setup()` (grep `.setup()` in `tests_hardware/device_scripts/fram_*.py`) · generated — · js — · tests
+  existing: `tests/test_asy_fram_driver.py` setup-failure tests (RDID mismatch) now see three RDID cycles in the fake's
+  log before the raise — trace assertions re-derive; `tests/test_asy_fram_wire_trace.py` `_GOLDEN_BLANK_SETUP` holds
+  (one RDID on success); `tests/_sensortask_scenarios.py:499-545` (A.U16.17's dead-chip scenario) sees three RDIDs;
+  new L1: a fake answering garbage once, then the right ID → setup succeeds with one wrnno 29 · four tiers (FRAM alone
+  on its bus): L2 `tests/test_digital_twin_generic_wiring.py:105-163`'s `rdid_response` override gains a one-shot bad
+  answer case; L3 `fram_manager_roundtrip.py` runs unchanged (healthy chip); L4 unchanged · twin `digital_twin/_fram_chip.py`
+  `rdid_response` one-shot knob (U25) · docs SPEC C.3.1 / A.4 FRAM bullet (A.U16.17's text gains "after up to three
+  identification attempts"); Part N row · toml — · uart —.
+- **Depends**: A.U16.10 (both locks in `setup()`), A.U16.15 (partial protection readback, same function), A.U10.21
+  (`setup() -> bool`), A.U10.45 (raise message), A.U16.17.
+- **Kind**: code | test | doc
+
+### A.U16.R03 A chip lost mid-operation stops FRAM access and escalates
+- **Why**: G4/R22 (as A.U16.R01); OR113.a (2) "every bus, every participant, boot and mid-operation … restart the task;
+  reboot" (owner, 2026-09-30); OR89.a (5) "a FRAM chip declared in the device TOML but dead or absent is treated like
+  every other declared chip" (owner, 2026-09-29); OR18.a "a reboot may recover a stalled chip" (owner, 2026-09-25). At
+  HEAD a chip that goes silent after boot is never identified again: a silent SO reads back a constant status byte, so
+  every write ends in "latch did not set" (0x00) or "latch did not clear" (0xFF — the payload is then reported as
+  landed, `:348-350`), consumers fall back to RAM, and nothing escalates.
+- **Site**: `src/asy_fram_driver.py` `FRAM_SPI.__init__` `:98-125`, `report_set_values()` `:327-350`, `setup()`
+  `:381-398`; `src/asy_fram_manager.py` `AsyFramManager` `:618-740` (the task starter A.U16.17 adds).
+- **Change**: (1) `FRAM_SPI.__init__` gains `self._anomalies = 0` (saturates at `_PROBE_AT`, never grows) and
+  `self.lost = asyncio.Event()`. (2) `set_values_sync()` (`:314-325`, the synchronous body every chunk write goes
+  through under the caller's block hold — `_set_check_sb()` `asy_fram_manager.py:244`, `_write_chunk()` `:280`,
+  `_clear_chunk()` `:369`): after `self._write(...)`, a result carrying `_W_WEL_NOT_SET` or `_W_WEL_STUCK` does
+  `self._anomalies = min(self._anomalies + 1, _PROBE_AT)`, a `_W_OK` result sets it to 0 (the clean path never reaches
+  `report_set_values()`, which runs only for a non-zero status, `asy_fram_manager.py:245-247`). On reaching `_PROBE_AT =
+  const(2)` (tagged `# @tunable fram.chip_probe_at = 2`): one `self._check_device_id()` (synchronous RDID, one CS cycle,
+  under the held bus lock, no await); a match → `self._anomalies = 0` (a latch or content problem, not a lost chip; the
+  w26/w27 entries already describe it); no match → `self.initialized = False` (every later operation refuses at its
+  entry guard with no bus traffic, errno 18 NOT_INIT per A.U2.01) and the result gains a new bit `_SV_CHIP_LOST =
+  const(512)`. `report_set_values()` handles that bit first: `await self.pr.err_s("FRAM chip stopped answering its
+  identification - access stopped", errno=_ERR_FRAM_CHIP_LOST)` (54), `self.lost.set()`, return `False`. (3) `setup()` on
+  success clears `self.lost` and `self._anomalies`. (4) `AsyFramManager` (extending A.U16.17): `get_task_starters()`
+  returns one starter whenever the manager exists, i.e. whenever the TOML declares a chip (no longer `[]` when
+  initialised — Conflicts 5); the task `watch_chip()`: `if not self.fram.initialized:` — never up since boot → A.U16.17's
+  behaviour unchanged (print, `return False`); was up and got lost → `await self.setup()` once (A.U16.R02's retries
+  included), `False` → `return False`, `True` → `self.pr.one("FRAM chip answers again")` and continue; then `await
+  self.fram.lost.wait()` and `return False`. A `_was_up` flag set by the first successful `setup()` tells the two apart.
+  Result per reader of the ladder: R1 the next write / R2 the chip's command state reset by every CS rising edge / R3,R4
+  not applicable on this bus (U13 table) / R5 the task ends and its restart re-runs `setup()` / R6 the supervisor budget
+  reboots when it stays lost / R7. Bounded: one probe per `_PROBE_AT` anomalies, one `setup()` per task restart, the
+  restarts by the supervisor budget. Logged once per event: one errno 54 per loss (the flag stops further probes), one
+  supervisor entry per task end (A.U3.06). Race-free: the probe runs inside the block hold that already owns both
+  FRAM locks; `setup()` in the task takes both locks (A.U16.10); `initialized` is read by every entry guard inside the
+  same holds. Consumers: loggers set up while the chip was up keep their stores; their writes are refused while lost and
+  the first write after recovery re-persists the whole ring from RAM (`PrintLogHistoryStore._write()` packs the full
+  state, `src/print_log.py:244-256`), so nothing stale is left on the chip.
+- **Blast**: callers the chunk layer (`_set_check_sb()`, `_write_chunk()`, `_clear_chunk()`), the generated task
+  collectors (A.U16.17's `codegen.py:664` change: `fram` now always contributes one starter) · generated every FRAM
+  device's task list gains the manager's task permanently (six devices; `tests/_sensortask_scenarios.py` task-count and
+  task-name expectations, A.U10.19's inventory, re-derive) · js — · tests existing: `tests/_sensortask_scenarios.py:499-545`
+  (A.U16.17's rewrite) holds for the boot case; boot-sequence tests counting supervised tasks per device (grep
+  `len(_collect_task_starters` / task counts in `tests/test_sensortask_*.py`, `tests/test_digital_twin_*`) gain one;
+  `tests_scripts/test_buildgen_generate.py` collector expectations; new L1 `tests/test_asy_fram_driver.py` — a fake chip
+  switched silent (SO stuck 0x00; and 0xFF) mid-run: the second anomalous write probes once, `initialized` False, one
+  errno 54, `lost` set, later operations make no bus traffic; an anomaly with a matching RDID resets the count and keeps
+  the chip up; L1 `tests/test_asy_fram_manager.py` — the task waits while healthy, returns `False` on a loss, a restart
+  with the chip back re-runs `setup()` and waits again, and the next logger write re-persists the RAM ring
+  (`tests/test_print_log.py`'s store helpers); L2 `digital_twin/_fram_chip.py` gains a `silent` switch (U25) and
+  `tests/test_digital_twin_fram.py` a booted device whose chip goes silent: the FRAM task ends, a restart recovers when
+  the switch is cleared, and staying silent arms the reboot within the budget (the twin's `SimulatedResetError` path, as
+  A.U16.17's scenario); L3 `fram_cs_hijack_fault_injection_and_recovery.py` gains "CS held inactive across two block
+  writes" (a deselected chip is silent) → errno 54 and `initialized` False, then CS released → `setup()` succeeds and a
+  write reads back; L4 not reachable (no chip-silencing under the full stack), bench runs unchanged; FRAM alone on its
+  bus, so no cross-device case exists · twin as above · docs SPEC A.4 FRAM bullet (A.U16.17's text) gains "A chip that
+  stops answering its identification after boot stops all FRAM access, ends the manager's task and is set up again by
+  its restart; a chip that stays lost reboots the device through the supervisor"; SPEC A.7 task list; SPEC C.7.1 row for
+  errno 54 (A.U2.22 generates); Part N rows · toml — · uart —.
+- **Depends**: A.U16.17 (the task and collector change — extended, Conflicts 5), A.U16.10, A.U16.R01, A.U16.R02,
+  A.U13.09, A.U2.01 (errno 54), A.U3.06, A.U10.19 (task inventory); co-lands with U20's collector rewrite.
+- **Kind**: code | test | doc
+
+## U17 — UART (check and cross-reference only)
+
+V.U17.20 did this pass and A.U17.33 carries it into SPEC J.5; checked against OR113.a here, nothing redone.
+
+| fault path | rungs (evidence per V.U17.20) | check against OR113.a |
+|---|---|---|
+| a frame fails (CRC, timeout, wrong kind) — `asy_uart_comm.py` `_read_frame()` `:498-505` | R1 the caller's next exchange (J.5, J.9; the exerciser retries each period, `asy_uart_link_driver.py:114-120`); line-level "clear": `_fault()` → `_resync()` drain-until-quiet ×4 bounded, then hold-off (`:536-596`); `clear()` from outside (`:612-625`); boot drain in `setup()` (`:1093-1102`) | consistent: bounded (×4 drain, hold-off window), logged once per episode (A.U3.08, the central rule), race-free (drain inside `async with self.uart`), L1 `tests/test_uart_comm_hazard.py`, L2 `tests/test_digital_twin_uart_link.py:219`, L3 `uart_crossover_recovery.py`; L4 `tests_hardware/bench/test_uart_link_under_api_load.py` runs the link under full API load (no fault injected there — A.U17.25's tier map lists the L3/L4 fault-injection gaps for U26) |
+| controller re-init | not a rung | A.U17.33 dispositions it from source (rp2 latches no receive error, `ports/rp2/machine_uart.c:162-190`), lead-resolved (AC_NOTES 16) — consistent with the ladder's "escalate only when the milder step does not work": no fault class exists for this step to fix |
+| construction refused / task ends | R5 (responder at HEAD, initiator A.U17.07), R6, R7 | consistent |
+| participant (the peer MCU) | not reachable from this side | disposition as in A.U17.33: the protocol is initiator/responder with no reset command (CLAUDE.md UART rule; no negotiation, owner 2026-09-11) |
+
+No conflict with A.U17.33 or any other U17 action; A.U14.R01's F.2 text points to J.5 for the UART ladder.
+
+## U18 — NET: WiFi, NTP, DNS, captive DNS, UDP sockets
+
+The network side has no shared bus to clear; its "participant" is the CYW43 radio (local) or a remote server (not
+recoverable from here). OR18/OR18.a split the cases: an abnormal but harmless situation (an unreachable server, an absent
+AP) is handled inside the module and must not escalate; a failing chip may escalate to a reboot.
+
+| fault path | rungs at HEAD (evidence) | rungs by existing actions | missing → action / disposition |
+|---|---|---|---|
+| a WLAN hardware call raises (`hw_op_failed` set at `src/asy_wifi_service.py:292, 347, 350, 374, 455, 500, 598`; errno 11-16/18) | R1 the next `wifi_refresh_sec` iteration; streak `_error_check()` `:836-841` → give-up errno 17 → R5 (task restart: `_reset_wlan_connect_state()` `:295-316` disconnects, never re-initialises the radio) → R6 → R7 | A.U18.32 (retry wait unlocked), A.U18.34 (lock table), A.U3.03 | **R2 missing** — the CYW43's own reset (power it off and reload its firmware) exists in the code only as the STA↔AP mode switch (`_switch_wlan_mode()` `:278-293`) → **A.U18.R01** through A.U10.R01's hook |
+| STA connect fails (`STAT_WRONG_PASSWORD`/`NO_AP_FOUND`/`CONNECT_FAIL`, `:604-619`) or a link is lost | R1 retry every refresh / 60 s after an established link (`:469-477`); after `conn_fail_to_hotspot` failures the hotspot (`:479-489`); after a second streak the permanent deactivation (`:491-501`) | A.U18.28-A.U18.30 (hotspot repeat, restart, deactivated LED), A.U18.36 | disposition: an absent AP or a wrong password is an environment/configuration condition handled inside the module (OR18, OR18.a); the terminal deactivation is owner-confirmed behaviour — "permanent WiFi deactivation after a second STA failure streak … only a physical power-cycle clears it" (SPEC A.4 owner-confirmed list, `SPECIFICATION.md:269-274`; LED pattern owner, 2026-09-29, OR97.a (19)) — so no rung past it |
+| CYW43 `isconnected()` false positive (link gone, reported up) | none by design; power cycle | — | disposition: owner rule — "a power cycle/`hard_reset()` is a deliberately stable, intended recovery feature … don't propose an independent reachability-probe mechanism" (CLAUDE.md hard rules; SPEC F.2 `:3625-3636`); without a detection signal no rung can fire |
+| hotspot timer cannot be armed (`:419-422`) | R1 the next refresh re-arms | A.U18.24 (persists) | DONE-AT-HEAD with A.U18.24 |
+| NTP: name does not resolve, no reply, reply rejected, request not sent (`asy_ntp_client.py:167-191, 213-241, 243-268`) | R1: resolver tries every server (DHCP then fallback, `asy_dns_client.py:110-118`); synced device 3 retries × 15 s (`:272-293`); unsynced device retries forever with backoff (`:434-444`, C.7.2 "never gives up"); each fetch builds a fresh socket (`:175-191`) | A.U18.10 (fallback servers as config), A.U18.14 (send failure logged), A.U18.15 (disconnect in `finally`), A.U18.20-A.U18.23 | disposition for R2-R6: a remote server is not a local participant, and OR18's own example is this case ("NTP … just stalling its task if the server was unreachable instead of handling it internally … should be fixed", owner, 2026-09-25) — the module handles it inside, never ends its task on it |
+| NTP retry/refresh timer cannot be armed (`:281-290`, `:332-350`) | cancels this retry cycle; the regular check recovers | A.U18.22, A.U18.23 (re-arm from its task) | DONE with A.U18.23 |
+| a UDP socket cannot be set up, bound or connected (`asy_udp_socket.py:73-102`) | R1+R2 in one: the socket is torn down (`_disconnect_locked()` `:104-124`) and a fresh one is built on the next call — a lazy re-create per call | A.U18.13 (one attempt per call; the next call retries), A.U18.05 (idle poll rate) | DONE-AT-HEAD: bounded by the callers' own cadence (captive DNS backoff `captive_dns.py:122-127`, NTP/DNS per attempt), no log inside the class (it owns none; callers log, A.U18.15) |
+| a send/receive on a live UDP socket fails (`sendto()`/`write()`/`recvfrom()` `:152-180` return `None`) | R1 the caller's next call; the socket is kept | A.U18.14, A.U18.17 (POLLERR verdict) | disposition for a re-create rung: on rp2 a bound UDP socket's state changes only at creation and on close or a failed use of an unconnected pcb (`extmod/modlwip.c:1008, 1276-1282, 1710`), so a failure on a live socket is a transient (e.g. `MemoryError` for the receive buffer) that the next call retries; A.U18.17 records that its `POLLERR` arm never fires on rp2 |
+| captive DNS loop error (`captive_dns.py:84-137`) | per-packet drop; `None` data → warning and backoff up to its max (`:122-127`); any other exception → errno 2, 3 s, continue (`:133-136`); ends only on cancel or an invalid `ifconfig()` pair (`:88-92`) | A.U18.02-A.U18.07 | DONE-AT-HEAD: the task never dies of a fault; its socket re-creates lazily (above); an invalid AP address is a configuration fault (OR18 exclusion) |
+| TCP send stall on a full lwIP arena (10 s `ERR_MEM` retry, `extmod/modlwip.c:800-812`) | none | A.U14.30 (lwIP sizing), U19's `TCP_NODELAY` action (OR112.a) | referenced, not repeated: OR112.a closes it by sizing; phase C tests it |
+
+## U18 — Actions
+
+### A.U18.R01 WiFi: re-initialise the radio as the participant rung
+- **Why**: G4/R22 / OR113.a (2) "every bus, every participant … recover the one participant (its own reset command or
+  re-configuration) … restart the task; reboot" (owner, 2026-09-30); OR18.a — a failing chip may escalate, and a
+  reboot "may recover a stalled chip" (owner, 2026-09-25); the WLAN hardware-exception streak today goes from retry
+  straight to a task restart that never resets the radio (`_reset_wlan_connect_state()` `src/asy_wifi_service.py:295-316`
+  only disconnects).
+- **Site**: `src/asy_wifi_service.py` `_select_wifi_mode()` `:271-276`, `_switch_wlan_mode()` `:278-293`; new
+  `_recover_device()` override in `AsyConnTime`.
+- **Change**: (1) `_switch_wlan_mode()` returns `bool` (`True` after the re-construction `:288`, `False` in its `except`
+  `:291-293`, which keeps `hw_op_failed` and errno 11); `_select_wifi_mode()` returns it. (2) `async def
+  _recover_device(self) -> bool | None`: `if self._conn_phase == _PHASE_DEACTIVATED: return None` (no radio in use, no
+  rung); else `return await self._select_wifi_mode(network.AP_IF if self._conn_phase == _PHASE_HOTSPOT else
+  network.STA_IF)` — the same disconnect, `active(False)`, `deinit()`, re-construction the mode switch performs. On the
+  pinned cyw43-driver `WLAN.deinit()` powers the chip off and resets its state ("Power off the WLAN chip and make sure all
+  state is reset", `cyw43/src/cyw43_ctrl.c:118-146`, via `network_cyw43.c:133-138`), and the next `active(True)` drives
+  `WL_REG_ON` low for 20 ms, then high, and reloads the firmware (`cyw43_ensure_up()` `cyw43_ctrl.c:148-175`) — the
+  radio's own hardware reset. The next loop iteration reconnects as after any mode switch (STA: `_run_sta_mode()`; hotspot:
+  `_run_hotspot_mode()` restarts the AP, whose own mode select repeats the re-initialisation once — bounded, 4 s of
+  sleeps). No `_recovery_bus` (the radio's bus is inside the cyw43 driver). Resulting ladder: R1 each refresh, R2 at the
+  2nd consecutive failed iteration (one wrnno 14, A.U10.R01), R5 past `max_module_error` (5, `:140`), R6, R7. Race-free:
+  the re-initialisation holds `wifi_mode_lock` (`:272-276`), the lock every radio user takes (A.U18.34's table), and runs
+  in the WiFi task itself; NTP's sync waits on the same lock (`asy_ntp_client.py:433-441`); open webserver connections
+  drop as on any mode switch (lwIP netif removed by `cyw43_cb_tcpip_deinit()`, `cyw43_ctrl.c:126-127`) and clients
+  reconnect.
+- **Blast**: callers `_error_check()` (A.U10.R01), `_start_hotspot()` `:353-368`, `_leave_hotspot_mode()` `:327-334` (the
+  new bool is ignored there, unchanged behaviour) · generated — · js — · tests existing:
+  `tests/test_asy_wifi_service.py` streak tests (grep `max_module_error=` and `errno=17` there) see one mode re-select at
+  the 2nd failed iteration — their WLAN-fake call logs re-derive; mode-switch tests hold (the bool is additive); new L1
+  `tests/test_asy_wifi_service.py` — two consecutive `hw_op_failed` iterations: one `deinit()` and one `WLAN(STA_IF)`
+  construction on the fake, one wrnno 14; in hotspot phase the AP mode is re-selected; deactivated: no call; a raising
+  `deinit()` → errno 11 and "failed" · L2 `tests/test_digital_twin_sensortask_integration.py` (twin `network.WLAN`) —
+  a WLAN fake raising on `status()` twice triggers one re-construction and the link comes back; the fake must count
+  constructions per interface (U25) · L3 `tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py`
+  gains a step calling `_recover_device()` on a connected STA and asserting the link returns within the connect budget
+  (records the time) · L4 `tests_hardware/bench/test_network_resilience.py` unchanged (its AP-down/up scenarios are
+  environment faults, which stay inside the module); no bus-hazard tier applies (no I2C/SPI) · twin as above · docs SPEC
+  A.4 WiFi bullet: "repeated WLAN hardware errors first re-initialise the radio (power-cycled by the driver) before the
+  task gives up"; SPEC F.2 (A.U14.R01) · toml — · uart —.
+- **Depends**: A.U10.R01; co-lands with A.U18.32/A.U18.34 (lock hold table gains this holder), A.U18.28-A.U18.30
+  (hotspot and deactivated paths), A.U10.18 (`wifi_mode_lock` name) — A-C merges. U18's verifier is still running: A-C
+  re-checks these line numbers against its applied changes.
+- **Kind**: code | test | doc
