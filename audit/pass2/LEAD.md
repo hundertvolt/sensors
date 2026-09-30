@@ -344,6 +344,15 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Pillar**: P3
 - **Pass 2**: new (A-L, OR117)
 
+### LEAD/R33 Every external dependency is refreshed once, early, and workarounds retire
+- **Req**: After the B0 baseline and before the first B1 change, every external dependency (MicroPython pin with lwIP/cyw43/pico-sdk/mbedtls, ARM toolchain and every `toolchain/versions.toml` pin, vendored Microdot as an unmodified upstream tag, stub packages, Python dev tools and `uv.lock`, Node and npm packages, GitHub Actions pins, any other fetched source) is checked for updates; each update's changes are read; breaking changes are fixed with no regression against the baseline at every level and both GC stages; useful upstream fixes and improvements are adopted; every standing workaround is re-checked and removed for the clean form where upstream fixed it. A short second check runs at B5. Pins, the version-bump re-check practice and every standing rule stay in force.
+- **Sources**: OR129/OR129.a · CLAUDE.md version-bump re-check practice and tool-pinning rules · SPEC F.5, B.14 · OR114/OR114.a (the modlwip override's removal condition)
+- **Rank**: owner — "Check all external dependencies for updates - both modules, repos and tooling, just everything." (owner, 2026-09-30, OR129)
+- **State**: work: code, test and doc in U0 (the dependency-refresh step after the baseline) and U37 (the second check); every unit re-checks its actions' upstream line citations against the new pin before executing them; hardware validation of a new firmware pin in C.
+- **Home**: SPEC F.5; SPEC B.14; CLAUDE.md "Platform target"; BACKLOG build-environment list
+- **Pillar**: P5
+- **Pass 2**: new (A-L, OR129)
+
 ## 4 Questions for the owner (after self-resolution)
 
 All four are answered: OR80, OR81, OR75, OR82. Questions 1-2 came from the groups (facts re-checked by the lead); questions 3-4 from the

@@ -129,3 +129,7 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     source) — execution pins the uv version current at B0 and records it in A.U0.06's environment line; A.U28.24's bare
     `python3` preview script meets G8/R05's version check (decide at merge); co-lands A.U27.15/A.U28.33 (`.gitignore`
     MICROPYPATH sentence, keep one), A.U27.39/A.U28.17 (port-53 lock), A.U28.41/A.U20.14 (template constant).
+34. Owner answered 2026-09-30: OR127 (secret scan excludes `arduino/`; U29 open point closed), OR128 (`LastTaskEnd` in
+    `/status`; U32 Q1 closed, A.U32.06 firm). OR129: dependency refresh (LEAD/R33) in U0 after the baseline and a
+    second check in U37 — A-C adds the U0 step and orders it before every B1 action; every action citing a pinned
+    upstream line carries "re-check against the refreshed pin".
