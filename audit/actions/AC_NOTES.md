@@ -74,3 +74,7 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
 23. Wave 2 register fixes applied (`REGISTER_FIXES_wave2.md`); G3/R16's phase-C "scope CS / schematic pull-up" item
     dropped by the lead (the CS state is a documented datasheet fact, item 11). Left for the wave-3 pass: U8C2's own
     register fixes on U8.md (A.U8.04/09/13 and U8C.md items, listed at the end of `REGISTER_FIXES_wave2.md`).
+24. `verify/U21.md` / `verify/U22.md` (lead accepted all): the OR115 hammer tests prove they reached the patched
+    branch (`EAGAIN` while a zero-timeout poll still reports writable), else they pass on unpatched firmware too; the
+    one-time unpatched control run covers every bound-asserting test; A.U21.14 sets a phase-C bound, a failed bound
+    goes to the owner per item 21. A.U22.03 (event-driven LED pause) is an agent proposal, shown in the OR2.c review.
