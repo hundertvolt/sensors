@@ -113,3 +113,6 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     A.U20.06, A.U16.19, A.U23.17, A.U17.32, A.U26.71, A.U10.08 — OR120 overrides OR31.a (3) — and OR125.a's owner
     between U25 and this file) and its 5 LEAD/R31-R32 register fixes, after its verifier and applier. Its agent
     proposal (reboot/bootloader on the same shutdown sequence, OR119.a (5)) goes to the owner review.
+35. U26 applied (V.U26.01-30, A.U26.87 new for N.27's G2/R09 half). A-C: A.U26.09/.32/.72 land together; OR90.a (1)'s
+    "seven" is a stale count (five tests lose the marker) — flag to the owner, substance unchanged; co-lands with
+    A.S0930.01/.05/.06, A.U13.R02, A.U17.05.
