@@ -305,3 +305,5 @@ L1. **"Typing only: no runtime change" versus three seams: read as behaviour-neu
    (b) No — the two seams keep `Any` with a named reason and stay in A.U8.24's baseline, which then cannot end empty
    as A.U8.24 requires, against G8/R61's "no hand-written `Any` remains" (owner, 2026-09-28, OR81).
    Recommended (a); A.U11.S01 and A.U11.S03 are written as (a).
+
+**Lead, 2026-09-30: L1 answered "no"** (OR51.a (3)). G8/R61's "Typing only: no runtime change" is the agent typing scheme's own rule ("(agent, 2026-09-28)" under OR81) and it stands: a narrowing check that can never fire is runtime code and dead code (OR46 "unused code"). Where mypy needs narrowing, the fix is at the type level (an honest return type, an overload, a narrower parameter) — or, if the check can really fire, a separate behaviour action with its test and reason. Actions here that add "unreachable by construction" checks or explicit `print` keywords are rewritten accordingly in verification; A.U15.38 (1) stands.
