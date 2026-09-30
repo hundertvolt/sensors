@@ -1,4 +1,19 @@
-# A-L verify U8C_tests — U8C + U8C2, files under `tests/` (HEAD 854675a)
+# A-L verify U8C_tests — U8C + U8C2, files under `tests/` (HEAD 854675a, finished at 0e00aa7 — no code change between them or since a4766a9 outside `audit/`)
+
+Counts: 60 actions checked (A.U8C.01-A.U8C.43, A.U8C2.01-A.U8C2.15, A.U8C2.50, the `tests/` part of A.U8C2.51) · OK 52 ·
+FIX 8 (A.U8C.21, A.U8C.24, A.U8C.32, A.U8C.33, A.U8C2.03, A.U8C2.04, A.U8C2.05, A.U8C2.51) · REJECT 0 · ADD 1 action;
+1,921 verdict rows checked in context, 14 need a correction (V.01 2, V.03 1, V.05 6, V.06 1, V.07 3, V.08 1); findings
+V.U8C_tests.01-10 (9 FIX, 1 ADD); ledger complete for `tests/`. Search: C.0.1 re-run identical (2,265); G1-G15 re-run
+identical except 2 G15 zero strings (V.01); 997 − 140 = 857 appearances, the 11 double-family sites listed below → 846.
+
+Per-file counts (rows U8C+U8C2 · non-OK): every file OK except `test_asy_ntp_client.py` 85+28 · 1,
+`test_asy_uart_comm.py` 148+18 · 2, `test_asy_webserver_service.py` 94+65 · 2, `test_config_manager.py` 29+7 · 1,
+`test_digital_twin_machine.py` 33+14 · 1, `test_digital_twin_uart_link.py` 20+9 · 1, `test_digital_twin_bus_hazard_concurrency.py`
+16+6 · 1, `test_digital_twin_sensortask_integration.py` 35+5 · 1 (V.10 shared), plus the cross-file ADD V.09.
+
+## Checked OK
+A.U8C.01-A.U8C.20, A.U8C.22, A.U8C.23, A.U8C.25-A.U8C.31, A.U8C.34-A.U8C.43, A.U8C2.01, A.U8C2.02, A.U8C2.06-A.U8C2.15,
+A.U8C2.50
 
 Scope: every hit-table row, action and ledger/register-fix item of `audit/actions/U8C.md` and
 `audit/actions/U8C2.md` whose file is under `tests/` (70 files, 1,921 rows: 1,268 U8C + 653 U8C2; actions
@@ -132,3 +147,98 @@ is OK in every verdict, ID, mirror and action slot.
     strings are meant to count, add "G15 keeps zero" to the Families rule and leave the rows.
 - `tests/test_crc_checks.py` 0+4 · — · OK.
 - `tests/test_digital_twin_bmp3xx.py` 0+9 · — · OK.
+- `tests/test_digital_twin_bus_hazard_concurrency.py` 16+6 · A.U8C.24, A.U8C2.08 · 1 FIX (V.U8C_tests.10, below).
+- `tests/test_digital_twin_fram.py` 1+1, `tests/test_digital_twin_http_client.py` 9+1, `tests/test_digital_twin_isl29125.py`
+  10+5, `tests/test_digital_twin_isl29125_autorange.py` 6+14 · A.U8C.25 · OK.
+- `tests/test_digital_twin_launch.py` 10+9 · A.U8C.26, A.U8C2.09 · OK (Dependant bookkeeping: V.U8C_tests.09).
+- `tests/test_digital_twin_machine.py` 33+14 · A.U8C.27, A.U8C2.10 · 1 FIX:
+  - V.U8C_tests.07 | U8C rows `tests/test_digital_twin_machine.py:332, :339, :340` | FIX | the reason cites
+    "ports/rp2/machine_wdt.c:37"; `WDT_TIMEOUT_MAX 8388` is at `:38` in the pinned v1.29.0 (`mp/ports/rp2/machine_wdt.c:38`;
+    `:33` in v1.28.0); A.U8.08 cites the range `:32-38` | in the three reasons, "machine_wdt.c:37" → "machine_wdt.c:38".
+- `tests/test_digital_twin_machine_uart.py` 2+1, `tests/test_digital_twin_network_neopixel.py` 6+0,
+  `tests/test_digital_twin_poll_prewarm.py` 2+4, `tests/test_digital_twin_real_website_integration.py` 12+1,
+  `tests/test_digital_twin_run_generic_integration.py` 3+4, `tests/test_digital_twin_scd30.py` 4+7,
+  `tests/test_digital_twin_sgp40.py` 0+4 · A.U8C.28-A.U8C.31 · OK.
+- `tests/test_digital_twin_sensortask_integration.py` 35+5 · A.U8C.32, A.U8C2.11 · 1 FIX (V.U8C_tests.10, below).
+- `tests/test_digital_twin_uart_link.py` 20+9 · A.U8C.33, A.U8C2.12 · 1 FIX:
+  - V.U8C_tests.08 | U8C row `tests/test_digital_twin_uart_link.py:169` and A.U8C.33 | FIX | `assert driver.poll_wait_ms < 10`
+    (`:158-169`) checks the configured `poll_wait_ms` of the generated dev build — a deterministic TOML value
+    (`devices/dev.toml`, `dev.uart_poll_wait_ms = 2`); nothing waits and nothing varies run to run, so C.0.2 item 4
+    ("bounds or paces a wait the code under test runs on the real clock") does not apply, and U8C2's own reading E puts
+    a bound on a deterministic quantity under not tagged | row → `not tagged (property) | design bound "single-digit, or
+    poll latency dominates throughput" on the configured dev.uart_poll_wait_ms (deterministic value); recorded in that
+    row's Dependants`; A.U8C.33: drop `l2.uart_link_poll_wait_max_ms` :169 (10) from Site and its `_POLL_WAIT_MAX_MS`
+    constant/tag from Change; Blast docs add "`dev.uart_poll_wait_ms` (A.U8.06) Dependants: `tests/test_digital_twin_uart_link.py:169`
+    (single-digit bound)"; Depends add A.U8.06; U8C Status tuned 1505 → 1504, not tagged 351 → 352, new IDs 576 → 575.
+- `tests/test_fake_timer_and_network.py` 5+0, `tests/test_framing_codecs.py` 2+0 (A.U8C.34), `tests/test_math_helpers.py`
+  0+30, `tests/test_neopixel_wifi_integration.py` 4+0 (A.U8C.35), `tests/test_notification_fram_integration.py` 2+0,
+  `tests/test_notification_neopixel_integration.py` 4+1, `tests/test_notification_scd30_integration.py` 4+2,
+  `tests/test_notification_scd30_sgp40_integration.py` 3+5, `tests/test_notification_sgp40_integration.py` 4+7
+  (A.U8C.36-A.U8C.39) · OK.
+- `tests/test_ntp_fram_system_integration.py` 18+6 · A.U8C.40, A.U8C2.13 · OK (`:313`, `:329` defer to A.U8.17 correctly).
+- `tests/test_ntp_wifi_dns_integration.py` 9+3 · A.U8C.41, A.U8C2.14 · OK.
+- `tests/test_print_log.py` 0+4, `tests/test_setter_microdot_integration.py` 6+8, `tests/test_ticks_rollover.py` 8+3,
+  `tests/test_voc_algorithm.py` 3+10 · — · OK.
+- `tests/test_system_service.py` 21+27 · A.U8C.42 · OK.
+- `tests/test_uart_comm_hazard.py` 110+15 · A.U8C.43, A.U8C2.15 · OK (Blast line refs checked: `scripts/test.sh:400, :405,
+  :413` `_heavy_files_priority`; SPEC J.7 `:5568` holds the `_TIMEOUT_MS * 8` derivation).
+
+## Cross-file findings
+
+- V.U8C_tests.09 | U8C (tests/ part) | ADD | 17 tuned test rows of U8C name a product or test row they depend on
+  ("Dependant of …" in the table), but no action writes that relation into the source row's Dependants — U8C2 did so
+  for its own cases in A.U8C2.51 and U8C's A.U8C.04 Blast only for `:543`. Without it the source rows' re-check
+  triggers cannot find the test values that must move with them (N.1 derived/Dependants rule, A.U8.01) | new action:
+
+  ### A.U8C.120 List the tuned `tests/` sites under their source rows' Dependants
+  - **Why**: G4/R54 (as A.U8C.01); U8 N.1 "Dependants" (A.U8.01); the U8C hit-table rows below each state "Dependant of …"
+  - **Site**: SPECIFICATION.md Part N (created by A.U8.01), the rows below
+  - **Change**: add to Dependants — `notify.loop_tick_s` (A.U8.12): `l1.asy_notification_service_override_tick_s`
+    (`tests/test_asy_notification_service.py:1153, :1155, :1186`, one ~1 s decrement plus margin),
+    `l2.sensortask_integration_override_poll_s` (`tests/test_digital_twin_sensortask_integration.py:378`);
+    `udp.retry_backoff_s` (A.U8.11): `l1.asy_udp_socket_fix_address_after_retry_s` (`tests/test_asy_udp_socket.py:786`,
+    after one 0.5 s backoff, before three), `l1.asy_udp_socket_retry_cycle_min_ms` (`:1350`); `dns_server.error_retry_wait_s`
+    (A.U8.11): `l1.captive_dns_no_backoff_elapsed_max_ms` (`tests/test_captive_dns.py:482`, well under the 3 s wait),
+    `l1.captive_dns_backoff_wait_timeout_ms` (`:941`, covers it); `dns_server.recv_backoff_initial_s` and
+    `dns_server.recv_backoff_mult` (A.U8.11): `l1.captive_dns_gap_initial_min_ms`/`_max_ms` (`:1012, :1041, :1044`),
+    `l1.captive_dns_gap_doubled_min_ms`/`_max_ms` (`:1013, :1042`), `l1.captive_dns_gap_quad_min_ms`/`_max_ms` (`:1014`);
+    `dns_server.recv_backoff_max_s` (A.U8.11): `l1.captive_dns_gap_cap_min_ms`/`_max_ms` (`:1067`, the band around the
+    cap, below the uncapped next step); `wifi.sta_retry_after_loss_s` (A.U8.10): `l2.bus_hazard_concurrency_flap_window_s`
+    (`tests/test_digital_twin_bus_hazard_concurrency.py:392`, must outlast the 60 s retry); `l2.twin_wifi_connect_delay_s`
+    (A.U8.20): `l2.launch_fault_duration_s` (`tests/test_digital_twin_launch.py:230`), `l2.network_neopixel_never_connects_wait_s`
+    (`tests/test_digital_twin_network_neopixel.py:149, :251`, longer than the delay); `system.task_check_s` (A.U8.08):
+    `l2.sensortask_integration_restart_wait_timeout_s` (`tests/test_digital_twin_sensortask_integration.py:522`),
+    `l1.ntp_fram_system_integration_supervisor_scan_wait_s` (`tests/test_ntp_fram_system_integration.py:443, :550, :614,
+    :644`, one scan plus margin); `wifi.sta_connect_poll_iters` and `wifi.sta_connect_poll_s` (A.U8.10):
+    `l2.sensortask_integration_hotspot_wait_timeout_s` (`tests/test_digital_twin_sensortask_integration.py:594`);
+    `l1.asy_ntp_client_no_reply_fetch_timeout_ms` (A.U8C.13): `l1.asy_ntp_client_past_fetch_timeout_ms`
+    (`tests/test_asy_ntp_client.py:2488`), `l1.ntp_wifi_dns_integration_past_fetch_timeout_ms`
+    (`tests/test_ntp_wifi_dns_integration.py:388`). Each entry states the relation in words; no audit ID in the text.
+  - **Blast**: callers — · generated — · js — · tests `tests_scripts/test_tunables_register.py` (A.U8.02) does not check
+    Dependants — unaffected · twin — · docs SPEC Part N only · toml — · uart — (`uart.*` rows untouched)
+  - **Depends**: A.U8.01, A.U8.08, A.U8.10, A.U8.11, A.U8.12, A.U8.20, A.U8C.12, A.U8C.13, A.U8C.20, A.U8C.23, A.U8C.24, A.U8C.26,
+    A.U8C.29, A.U8C.32, A.U8C.40, A.U8C.41
+  - **Kind**: doc
+
+  (The `tests_hardware/` rows of the same kind are outside this verification's scope.)
+- V.U8C_tests.10 | A.U8C.24, A.U8C.32 | FIX | both site `l2.twin_wdt_feed_interval_s` (`tests/test_digital_twin_bus_hazard_concurrency.py:76`,
+  `tests/test_digital_twin_sensortask_integration.py:446`), whose row and first tag are created by A.U8.08/A.U8.20 at
+  `digital_twin/launch.py:41` (`_WDT_FEED_INTERVAL_S = 1.0`); A.U8C.24's Depends lists only A.U8.01-A.U8.03, and both
+  Blasts name each other but not the twin site | A.U8C.24 Depends: add "A.U8.08, A.U8.20"; A.U8C.32 Depends: add
+  "A.U8.20"; both Blast twin slot: "`digital_twin/launch.py:41` carries the same ID (A.U8.20); the row's Sites list all three".
+
+## Ledger, register fixes, open points (the `tests/` parts)
+
+- A.U8C2.51, `tests/` entries (`:949`, `test_uart_comm_hazard.py:844`, `test_asy_uart_driver.py:1862`,
+  `test_system_service.py:1251`, `l2.bus_hazard_concurrency_run_seconds`, `l1.asy_ntp_client_retry_armed_poll_tries`,
+  `l1.asy_notification_service_override_secs`, `l2.launch_long_min_readings`): each relation checked in context, OK;
+  with V.U8C_tests.03 its `uart.cancel_ack_timeout_ms` entry gains "`_PROMPT_HOLD_MS` (5, `:952`, a holder that
+  acknowledges well inside the bound)".
+- U8C register fixes on `tests/` sites — A.U8.11 `:1067` not a mirror (4700/5400 ≠ 5000), A.U8.08 `:357, :369, :382, :394,
+  :410` tuned (real-clock twin WDT), C.0.1's 2,265 — all right. U8C2 register fixes — A.U8.04 `:2569` (`src/asy_webserver_service.py:107`
+  `_MAX_PENDING_FRAGMENTS = const(16)`), A.U8.09 `:402, :1198, :1375`, U8C search-gaps 1-4 closed — right; the C.0.1
+  total becomes 2,265 + 844 = 3,109 with V.U8C_tests.01. Missing: none beyond V.U8C_tests.06 (A.U8.17 `:1285`, a
+  conflict, not a stale U8 line).
+- Ledger rows G4/R54, G8/R31, G7/R23 of both files: the `tests/` share is complete (every hit classified, 13 deferred-U25
+  sites all in `tests/`, named in A.U8C.02, .04, .30, .32). Open points: the four U8C2 readings and U8C's three cases
+  are applied consistently in every `tests/` row checked; none was self-resolvable from an owner row.
