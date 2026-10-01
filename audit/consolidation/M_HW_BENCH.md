@@ -197,7 +197,7 @@ never flashed (A.C.01 (5)).
 
 ### M.HW_BENCH.006 A session starts with evidence, then checks the standard board state
 - **From**: A.U26.22 (4), A.U26.79 (1), A.U26.12 (1) (the read-only DebugLevel reader), A.U26.27 (1) (the bench
-  DebugLevel check), A.U26.13 (3) (recovery-event report), A.C.01 (3)/(6) (round frame), agent decision D1 (`--dut-ip`).
+  DebugLevel check), A.U26.13 (3) (recovery-event report), A.C.01 (3)/(6) (round frame), agent decision D1 (`--dut-ip`); gap pass: M_HW_DEV GAP-D6 (write-protect from the dump's fact).
 - **Site**: `tests_hardware/conftest.py` new session fixtures after `bench`.
 - **Change**: three autouse session fixtures, in dependency order. (1) `fram_evidence_saved(request)`: with a board
   present and not `--twin` — first, when `--dut-ip` is given and `GET /status` answers there within 5 s, the verbatim
@@ -359,7 +359,7 @@ never flashed (A.C.01 (5)).
 - **From**: A.U26.13 (1), A.U26.44 (2), A.U26.43 (1), A.U26.22 (3) (`save_fram_raw`), A.U26.68 (`parse_facts`),
   A.U26.78 (1) (render-time `# @include`), A.U26.60 (`run_isolated()` docstring), A.U31.05 (blast: `run_isolated()` arms
   the watchdog before `mpremote run`, holds), A.U8.08 (blast: the `WDT(timeout=8000)` literal is the
-  `wdt.timeout_ms` mirror).
+  `wdt.timeout_ms` mirror); gap pass: M_HW_DEV GAP-D11 (`allow_missing_done`), GAP-D6 (`save_fram_raw` returns the dump's facts).
 - **Site**: `tests_hardware/harness.py:440-459` (`run_isolated()`, `run_isolated_expect_reset()`), new functions.
 - **Change**: `render_device_script(path, **extras) -> Path`: a script holding the line `BENCH: "BenchFacts" = {}  #
   rendered by tests_hardware/harness.py` gets its right side replaced by `repr(bench_facts.build(bench_device()) |
@@ -412,7 +412,8 @@ never flashed (A.C.01 (5)).
 - **Kind**: code
 
 ### M.HW_BENCH.014 One `reflash()` helper: exit-249 retry only, passive end
-- **From**: A.S0930.06 (2), A.U26.14 (1)-(3), A.U26.85 (1) (its user), A.C.06 (1)-(3).
+- **From**: A.S0930.06 (2), A.U26.14 (1)-(3), A.U26.85 (1) (its user), A.C.06 (1)-(3); gap pass: A.U8C.109, A.U8C2.46
+  (the absorbed loop's tags, M_HW_DEV GAP-D5).
 - **Site**: `tests_hardware/harness.py` new function after `Board`.
 - **Change**: `reflash(board, uf2_path: Path) -> None`: `board.enter_bootloader()`; then `sudo picotool load -x -v
   <uf2_path>` (each call bounded by `timeout=_PICOTOOL_LOAD_TIMEOUT_S`) retried only while its exit code is 249 (BOOTSEL
@@ -767,7 +768,7 @@ never flashed (A.C.01 (5)).
 ### M.HW_BENCH.041 `bench_facts.py`: the bench board's facts as one rendered dict
 - **From**: A.U26.44 (1), A.S0930.05 (the `crc` fact, A.S0930.01's key), A.U26.49 (1) (bounds as extras), A.U26.48 (3)
   (`WORST_CASE_ALLOCATION` as an extra), A.U26.22 (3) (allocation size for `fram_raw_dump.py`), A.U26.23 (3)
-  (`fram_wired`/`fram_backed_loggers` for the capacity script), A.U26.58 (queue depth, an extra of its host test).
+  (`fram_wired`/`fram_backed_loggers` for the capacity script), A.U26.58 (queue depth, an extra of its host test); gap pass: M_HW_DEV GAP-D6 (every fact and extra the scripts read, with its source).
 - **Site**: new `tests_hardware/bench_facts.py`.
 - **Change**: `build(device: str) -> dict[str, object]` (host CPython) from `buildgen.validate.build_model()` of
   `devices/<device>.toml`: `device_module` (`sensortask_<device>`), `bus` (each `[bus.*]` table's full parameter set —
@@ -1668,11 +1669,13 @@ never flashed (A.C.01 (5)).
 ### M.HW_BENCH.083 Every reset code proven on the bench through `/status`
 - **From**: A.U26.28 (2) (codes 2, 4, 5, 6), A.C.12 (codes 0, 9, 10 + p, 20; replaces A.U26.28's boot-failure
   exception row), A.S0930.40 (2) (the bootloader test's reply-to-loss bound), A.U31.07/OR130.a (the escalation feeds
-  once before stopping: a code 2 there is a failure), A.U26.22, A.U26.29, A.U7.24/A.U26.51.
+  once before stopping: a code 2 there is a failure), A.U26.22, A.U26.29, A.U7.24/A.U26.51; gap pass: M_HW_DEV GAP-D11/GAP-D12 (pre-reset facts).
 - **Site**: new `tests_hardware/bench/test_reset_reasons.py`.
 - **Change**: every test saves FRAM evidence first (`save_errcount`, `save_fram_raw`), reads `GET /status`'s
   `ResetReason` after the production boot serves (passive waits only), and restores serving in `finally`
-  (`restore_board_to_serving()`): `test_a_harness_hard_reset_reads_as_watchdog_without_a_record` (code 2);
+  (`restore_board_to_serving()`); a test that runs a device script through `run_isolated_expect_reset()` reads its
+  pre-reset output with `harness.parse_facts(output, allow_missing_done=True)` and asserts the facts that script names
+  (the mode or phase it reached), quoting them in every failure message (gap pass, M_HW_DEV GAP-D11/GAP-D12): `test_a_harness_hard_reset_reads_as_watchdog_without_a_record` (code 2);
   `test_a_bootloader_reboot_is_attributed` — `PUT /system {"SystemCmd": "bootloader"}` → `"Valid"`, the reply-to-loss
   time bounded as M.HW_BENCH.067 (its margin under the same watchdog limit), `sudo picotool reboot` (no load, no flash
   write), serving, code 4; `test_the_supervisor_escalation_reboot_is_attributed` —
@@ -1790,15 +1793,17 @@ never flashed (A.C.01 (5)).
 ### M.HW_BENCH.088 The system commands over REST: reset with save and restore, erase with evidence first
 - **From**: A.S0930.29 (1)-(4), (6), (8), A.S0930.40 (3), A.S0930.19 (the reset test carries `persistence_write`),
   A.U26.15 (leftover-repair pattern), A.U26.22, A.U26.23 (derived logger set), A.U26.29, A.U26.49 (TOML hostname/password),
-  A.U26.47, OR118.a (2)-(3), OR124.a.
+  A.U26.47, OR118.a (2)-(3), OR124.a; gap pass: M_HW_DEV GAP-D12 (`config_files_*` facts).
 - **Site**: new `tests_hardware/bench/test_system_commands.py`.
 - **Change**: as A.S0930.29: (1) `@pytest.mark.persistence_write test_config_reset_over_rest_brings_back_the_defaults` —
   a board holding no `config_*.cfg` (an aborted earlier run) is restored from the newest saved set first (note);
-  `save_errcount()`; `config_files_dump.py` output saved verbatim (`evidence.save_text`); `PUT /system {"SystemCmd":
+  `save_errcount()`; `config_files_dump.py` output saved verbatim (`evidence.save_text`) and its `files` fact
+  (name → base64 text) read with `parse_facts()`; `PUT /system {"SystemCmd":
   "resetconfig"}` → `"Valid"`; passive wait; the bench joins the unit's hotspot (`join_dut_hotspot(<TOML hostname>,
   hotspot_password())`, AP down first); `ResetReason` 7, `Hostname` = the TOML's, `SSID` "", `DebugLevel` 0; `finally`:
   leave the hotspot and restore the bridge, `config_files_restore.py` writes the saved files back verbatim (one write
-  per file, owned), `recover_by_reset()`/`kick_then_reset()`, then serving on the bench WLAN with the saved SSID and
+  per file, owned; run with the dump's `files` as its render extra, its `written` fact asserted equal to the dumped
+  names — gap pass, GAP-D12), `recover_by_reset()`/`kick_then_reset()`, then serving on the bench WLAN with the saved SSID and
   hostname, verified by GET. (2) `test_fram_erase_over_rest_blanks_every_error_log` — `save_errcount()` and
   `save_fram_raw()` first; `"erasefram"` → `"Valid"`; `ResetReason` 8; every FRAM-backed module's counter 0 and history
   empty (`fram_backed_logger_names()`). Not wear-gated. (3) `test_near_miss_action_words_do_nothing_over_rest` — the
@@ -1845,7 +1850,7 @@ never flashed (A.C.01 (5)).
   (`:104-107`, `:193-196`), A.U26.76 (`:10, :37`), A.U26.82 (the bench hazard test), A.U26.87 (the L4 multi-chunk SET),
   A.S0930.05 (the hazard script in both CRC modes), A.S0930.06 (3) (the three checks factored into module-level helpers),
   A.U26.45 (blast: A.U7.16's sites), A.U26.22 (2), A.U26.78 (readers), A.U8C.54, A.U7.24/A.U26.51
-  (`COVERS_TWIN_SCENARIOS = ["uart_link"]`), A.U36.539 (blast: README).
+  (`COVERS_TWIN_SCENARIOS = ["uart_link"]`), A.U36.539 (blast: README); gap pass: M_HW_DEV GAP-D12 (`part="h1h2"`, the echo facts).
 - **Site**: `tests_hardware/bench/test_uart_link_under_api_load.py:1-197`.
 - **Change**: (1) `_UART_MODULES` is derived from the bench TOML's `uart_link` instances (`bench_facts`) and their
   errcount keys (the generated definitions), not a literal pair. `_link_counters()`/`_require_uart_modules()` call
@@ -1856,13 +1861,15 @@ never flashed (A.C.01 (5)).
   right after the last worker joins and `moved > 0` is asserted on that read; the 30 s post-load poll goes. (4) The
   module checks read entries through `errcount_entry()` (fail closed). (5) New `test_uart_comm_hazards_hold_under_api_load(board,
   bench, dut_ip, crc_mode)` parametrised `crc_mode ∈ {"none", "crc16"}` (scripts run from RAM, no reflash):
-  `uart_comm_hazards.py`'s H1/H2 part through `run_isolated(…, CRC_MODE=crc_mode)` while `_load.sensors_reader` threads
+  `uart_comm_hazards.py`'s H1/H2 part through `run_isolated(…, CRC_MODE=crc_mode, part="h1h2")` (the script's subset
+  selector, M.HW_DEV's `BENCH["part"]`; gap pass, GAP-D12) while `_load.sensors_reader` threads
   load the API; the same verdicts as the flash test from `parse_facts()`, plus the API floor
   (`l4.uart_link_under_api_load_hazards_min_answered`); restores serving in `finally`. (6) New
   `test_a_multi_chunk_set_echoes_intact_under_serving_load(board, bench, dut_ip)` (A.U26.87 (2)):
   `uart_link_echo_under_serving_load.py` boots the generated device module's `main()` and calls the initiator's
   `uart_set(_CMD_ECHO, <multi-chunk>)` then `uart_get(_CMD_ECHO)` N times while the host drives `sensors_reader` load;
-  judges intact == total, the exerciser's `Failures` unchanged, the API floor; restores serving. (7)
+  judges, from `parse_facts()` (M.HW_DEV.053's facts), `intact == total`, the exerciser's `Failures` unchanged between
+  its before and after facts, the API floor; restores serving. (7)
   `reset_all_error_logs(…, request.node.name)`; constants per A.U8C.54 (B4; the 30 s post-load wait's IDs
   `l4.uart_link_under_api_load_wait_*` keep only the remaining uses).
 - **Resolved**: A.U26.54 (3) removes the `:143-150` post-load poll that A.U8C.54 tagged at `:147-148` — those two tag
@@ -1922,12 +1929,13 @@ never flashed (A.C.01 (5)).
 ## tests_hardware/bench/test_wifi_radio_reinit.py (new)
 
 ### M.HW_BENCH.096 The WiFi radio re-init rung on silicon
-- **From**: A.U26.34 (3), A.U18.R01 (its rung's L3/L4 step, re-homed by A.U26.19), A.U26.17 (the serving guard covers it).
+- **From**: A.U26.34 (3), A.U18.R01 (its rung's L3/L4 step, re-homed by A.U26.19), A.U26.17 (the serving guard covers it); gap pass: M_HW_DEV GAP-D12 (the rung's facts).
 - **Site**: new `tests_hardware/bench/test_wifi_radio_reinit.py`.
 - **Change**: `test_the_radio_reinit_rung_restores_the_link(board, bench, dut_ip, result_note)`: runs
   `wifi_radio_reinit_recovery.py` (reads the production `config_WIFI.cfg` read-only, constructs the WiFi service over the
-  scratch config path primed in RAM, connects, calls `_recover_device()`, prints the elapsed time as a fact) and asserts
-  the link came back (`isconnected()` and an IP) within the connect budget; records the time; `finally`
+  scratch config path primed in RAM, connects, calls `_recover_device()`, reports `reconnected`, `ip`, `elapsed_ms` as
+  facts, M.HW_DEV.113) and asserts from `parse_facts()` that the link came back (`reconnected` true, `ip` non-empty)
+  within the connect budget, `elapsed_ms` recorded through `result_note` (gap pass, GAP-D12); `finally`
   `restore_board_to_serving()`. No config write. `COVERS_TWIN_SCENARIOS` per A.U7.24.
 - **Resolved**: A.U26.34 (3) places it in a new bench module ("it needs the bench AP up"); A.U18.R01's planned step in
   the retired repro script moves here (A.U26.19's blast, "A-C amends A.U18.R01's blast").
@@ -2444,8 +2452,11 @@ check.
   Recipes (A.U36.547); the explanations kept: "the runners first run L0-L2 (`--skip-lower-levels` for debugging only,
   never reported clean)"; "a `-m` you pass narrows the runner's selection"; "a runner syncs once, retried; nothing inside
   a run syncs"; soak: "`scripts/run_bench_soak_tests.sh --duration {short,mid,long}` (60 s, 600 s, 6 h —
-  `l4.soak_duration_*`), never bundled with the suite runners"; rollover: "`--allow-multi-day-rollover`
-  (`bench/test_ticks_ms_rollover.py`, ~12.4 days, no write)"; SCD30: "a default run writes the SCD30's NVM zero times,
+  `l4.soak_duration_*`), never bundled with the suite runners"; rollover: "`scripts/run_bench_rollover_test.sh`
+  (it sets `--allow-multi-day-rollover`; `bench/test_ticks_ms_rollover.py`, ~12.4 days, no write), on top of a clean
+  bench run of the same image, never a soak and never bundled with a suite runner; start it detached (`nohup` or a
+  `systemd-run` unit under `timeout` of the window plus margin), since the conversation that starts it may end first"
+  (gap pass: the runner of M.SCR.074, AC_NOTES 45; M_PROC gap 5); SCD30: "a default run writes the SCD30's NVM zero times,
   at most once (the start command, only when measurement is off)"; the verdict paragraph (`:127-148`) → "the verdict
   reads the run record: a skip passes only as its gate's own skip with the flag absent; a deselection is reported with
   its flag and counted; a `-m` exclusion is reported as runner selection; a recovery pass is counted apart" (A.U7.14,
@@ -2456,8 +2467,10 @@ check.
 - **Resolved**: A.U26.74 and A.U36.547 both edit the `:85-120` command block: U36's pointers replace the block, the
   flag names U26 sets living in README.md's Recipes (A.U36.547's checked CLI reference) — one end state.
 - **Unit**: U7, U21, U26, U27, U36 (stages in that order).
-- **Depends**: M.HW_BENCH.001, M.HW_BENCH.040, M.HW_BENCH.060, M.HW_BENCH.089, M.HW_BENCH.100, A.U7.14, A.U36.547.
-- **Blast carried by**: README.md Recipes → A.U36.547 (DOCS); the verdict → A.U7.14 (SCR).
+- **Depends**: M.HW_BENCH.001, M.HW_BENCH.040, M.HW_BENCH.060, M.HW_BENCH.089, M.HW_BENCH.100, A.U7.14, A.U36.547;
+  M.SCR.074 (the rollover runner).
+- **Blast carried by**: README.md Recipes → A.U36.547 (DOCS; its rollover line names the runner — hand-off, GAPS_G4); the
+  verdict → A.U7.14 (SCR).
 - **Kind**: doc
 
 ### M.HW_BENCH.127 Bench traps: current facts, one closing reset, the REST-reboot trap
@@ -2517,7 +2530,8 @@ check.
   A.S0930.30 (`:1336-1343`: `resetconfig` counts as persisting), A.U26.74 (flag names, `--allow-<marker>`), A.U7.13 /
   A.U7.14 (`:1362-1385` "Read the deselected count"), A.U26.14 (gate list gains `--allow-toolchain-reverify`), A.U0.27
   (`:1311` tag), A.U35.51 (marker table), A.U26.32 / A.U26.72 / A.C.15 (1) / A.U15.07 / A.U19.23 (D5) / A.U26.85 /
-  A.S0930.06 / A.C.05 (budget rows), A.U26.07 (prerequisite start write).
+  A.S0930.06 / A.C.05 (budget rows), A.U26.07 (prerequisite start write); gap pass: M_PROC gap 6 (the manual rows of
+  M.HW_BENCH.102 — A.U26.42, A.U4.04, A.C.17, A.S0930.29 (7)).
 - **Site**: `tests_hardware/README.md:1309-1390`.
 - **Change**: the section opens with A.U0.27's tag "**Standing design (owner, 2026-09-16, `98dc1b2`/`4f1c802`)**"; the
   marker table `marker | flag | gate kind (deselect/skip) | what it spends`; the budget table: default run — flash
@@ -2526,7 +2540,12 @@ check.
   (the start command). With `--allow-persistence-write`: one row per owned writer (read-while-write 1; each bench
   SCD30 PUT by field class; the ISL29125 envelope 7 scratch writes; the config-push arm; `resetconfig`; the console
   starvation test 2; the Altitude measurement; A.C.15 (1)'s argument-reaction writes; A.U15.07's row). With
-  `--allow-scd30-extra-write` (always with the first): its rows. Flash cycles (`--allow-flash-cycle`): the reflash test;
+  `--allow-scd30-extra-write` (always with the first): its rows. Manual mode (`scripts/run_manual_hardware_tests.sh`; each
+  step states its writes before its `confirm()`, M.HW_BENCH.102): the SCD30 `MeasInterval` step — 2 SCD30 NVM writes
+  (the change and its restore); the flash-config `WarnCO2` step — 2 flash-filesystem writes (the change and its
+  restore); the config-write power cut — up to 20 scratch writes and 1 removal per repetition, 3 repetitions; the
+  shutdown-command power cuts — `resetconfig`'s config-file removals plus one restore write per saved file
+  (`erasefram` is FRAM, outside the budget) (gap pass, M_PROC gap 6). Flash cycles (`--allow-flash-cycle`): the reflash test;
   the CRC16 link suite "two reflashes: the CRC16 image and back"; the unpatched-lwIP control image. Then: "a PUT whose
   every field is rejected, unknown, unchanged or dispatch-only needs no marker; an always-executed field always does;
   `resetconfig` is persisting"; the guard's checks in one paragraph (device scripts, class markers, raw sockets, the
@@ -2536,7 +2555,7 @@ check.
   table carries it (A.U4.08's Blast names the flash-tier text U26's).
 - **Unit**: U4 (REST half), U7 (record), U26 (table, guard), SUPP_owner_0930 (resetconfig), phase-C rows as deltas.
 - **Depends**: M.HW_BENCH.001, M.HW_BENCH.002, M.HW_BENCH.044, M.HW_BENCH.082, M.HW_BENCH.086, M.HW_BENCH.088,
-  M.HW_BENCH.094, M.HW_BENCH.075.
+  M.HW_BENCH.094, M.HW_BENCH.075, M.HW_BENCH.102 (the manual rows).
 - **Blast carried by**: the guard → A.U26.06/A.S0930.19 (TSC); measured rows → A.C.05/A.C.10 (C).
 - **Kind**: doc (Round: R1 and R3 confirm the counts [H31])
 
@@ -2585,15 +2604,22 @@ check.
 - **From**: A.U36.548 (8), A.U26.57 (`:594-601, :760-767` WS2812 cite `datasheets/ws2812/WS2812.pdf` p.4), A.U36.019 /
   A.U36.022 (holds), A.U4.07 (`:757-759, :1138-1145, :1181-1183`: a REST path reaches SCD30 NVM; "added behind
   `persistence_write`"), A.U26.32 (same lines), A.U7.25 (`:1168, :1192, :1216, :1239-1249, :1272, :1278` → E.6.6 row IDs),
-  A.U0.21 (`:1188` tag), A.U2.16 / A.U18.04 / A.U18.06 (`:879, :893` → "covered at L1"), A.U26.62 (`:838-845` scope),
+  A.U0.21 (`:1188` tag), M_DOCS gap 3 (gap pass: the tier-parity rule stated here, BACKLOG `:81-95` leaving at U37), A.U2.16 / A.U18.04 / A.U18.06 (`:879, :893` → "covered at L1"), A.U26.62 (`:838-845` scope),
   A.U9.09 (`:1236-1237`), A.U26.86 / A.U26.87 / A.U35.22 / A.U26.59 (M.HW_BENCH.115), A.U16.07 (M.HW_BENCH.116),
   A.U10.43 / A.U18.40 (`:1022` `wifi_refresh_sec`), A.U20.06 (supervisor split, where named), A.U26.77 (`:1306-1307`).
 - **Site**: `tests_hardware/README.md:695-1308`.
 - **Change**: A.U36.548 (8)'s six topic sections (Third → "Real-hardware coverage: sensors, FRAM and the API end to end";
   Fourth → "Networking robustness on the bench"; Fifth → "FRAM fault injection: CS hijack and hard-reset race"; Sixth →
   "The `dut_ip()` fixture's retry and recovery"; Seventh-Ninth → "Bus-hazard coverage at L3 and L4"; Tenth → "Tier parity
-  beyond bus hazards", heading tag A.U0.21's "(owner, 2026-09-15; important to apply, no ordering — owner, 2026-09-29:
-  '…')"), current facts only, the executor diffing facts before/after (OR51.a (2)). Inside them: the WS2812 sentences →
+  beyond bus hazards", opening with the rule itself, which leaves BACKLOG at U37 (M.DOCS.062 (g)) and lives only here
+  from then on (gap pass, M_DOCS gap 3): "**Rule (owner, 2026-09-15; important to apply, no ordering — owner, 2026-09-29:
+  'It has no priority in terms of order now, it's only highly important to be applied.'):** the whole test suite is
+  swept, domain by domain, for tier and layering completeness (SPECIFICATION.md E.6.1/E.6.6) and for wrongly trusted
+  tests — a test whose name or pattern matches a hazard while its real call chain never reaches it — by tracing the
+  real call chains end to end, never by counting grep hits. Swept: UART; WiFi, network, NTP and DNS; FRAM, memory,
+  reboot and watchdog; webserver, notification and config push. A domain not listed (e.g. the device module and system
+  service beyond what FRAM/memory covered) is not assumed covered." — the tag moves from HEAD's heading `:1188` onto the
+  rule (A.U0.21's words, unchanged); the heading carries none), current facts only, the executor diffing facts before/after (OR51.a (2)). Inside them: the WS2812 sentences →
   A.U26.57's; the SCD30-NVM sentences → A.U4.07's; E.6.6 numbered references → row IDs; `:879, :893` → "the `wrnno`
   backoff branch is covered at L1 (`tests/test_asy_captive_dns.py`)" with the catalog name; `:838-845` names the
   no-task-ended guard's scope; `:1236-1237` → "proves the pushed pause counts down to 0 on real hardware"; `:1022` — the
@@ -3066,3 +3092,6 @@ cluster's file follows or holds, carried by the change named); holds (no edit ne
 | A.U8C2.49 | yes | .102, .135 | merged |
 | A.U9.03 | no | .101 | merged |
 | A.U9.09 | no | .086, .133 | merged |
+| A.C.08 | no | .126 | merged (gap pass: README names the rollover runner, M.SCR.074) |
+| A.U8C.109 | no | .014 | merged (gap pass: the reflash loop's load-timeout and backoff tags move into `harness.reflash()`, GAP-D5) |
+| A.U8C2.46 | no | .014 | merged (gap pass: the attempts tag moves into `harness.reflash()`, GAP-D5) |

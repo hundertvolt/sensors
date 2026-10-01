@@ -1832,7 +1832,8 @@ Conventions used below (each defined once, then cited):
   M.TSC.217, GAPS_G4); README.md Recipes rollover line and the CLI reference entry → hand-off DOCS (M.DOCS.049,
   M.DOCS.052, GAPS_G4); R6's start command → hand-off PROC (M.PROC.041, GAPS_G4); `tests_hardware/README.md` Running
   → M.HW_BENCH.126 (amended); M.SCR.032's header names it (amended); shellcheck and the comment-cap gate cover it by
-  glob (`scripts/*.sh`); BACKLOG chroot list — none (a runner, no environment change, as A.U27.19).
+  glob (`scripts/*.sh`); BACKLOG chroot list (CLAUDE.md: anything touching `scripts/`) — one clause in M_SCR gap 6's U27
+  paragraph, "new hardware runner, shellcheck-linted, no environment change" → hand-off DOCS (M.DOCS.066, GAPS_G4).
 - **Kind**: code
 
 ## Gaps for other clusters

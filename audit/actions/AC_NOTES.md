@@ -171,3 +171,8 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     scoped runs first, the full gate per unit unchanged, background runs on worktree snapshots, port-binding suites
     isolated by network namespace (proven in U0) or serialised, GitHub CI as a parallel lane, hardware rounds batched.
     A-C2 writes the schedule into the work order.
+47. Lead, 2026-10-01 (gap pass G4 found `host_typecheck.ini` in no cluster): `ac_index.py`'s path pattern misses root
+    files outside its list (`host_typecheck.ini`, `vitest.config.js`, `mockdata/`, `dev_legacy/`, `.gitignore`,
+    `audit/`, `legacy/`) and bare file names that continue a Site list. The merges mention each of these, but a mention
+    is not a carry. A-C3 therefore traces every Site file of every action, with a corrected extractor, to a merged
+    change whose Site names it; `host_typecheck.ini` is now TOOL's (M.TOOL.079, CLUSTERS.md).

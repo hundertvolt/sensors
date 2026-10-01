@@ -219,9 +219,9 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   `self._storage_timer`, `self._sequencer_timer` (comment `:86-88` → "# Preallocated like the other timers:
   start_timers() re-.init()s it for each stagger wait rather than constructing a / # fresh Timer() each time, which the
   GC would disarm before it fires (SPECIFICATION.md Part F.1)."); `self._sequencer_flag = asyncio.ThreadSafeFlag()`;
-  `self._unpause_flag = asyncio.ThreadSafeFlag()`; `self.ntp_is_synced = asy_ntp_callback`; `self._start_time_set =
-  False`; `self.boot_signature = LockedValue(init_value=None)` with `:92` → "# None until status_counter() resolves it
-  (owner, 2026-07-18) - a later change to this value signals a reboot happened."; `self.watchdog = watchdog`;
+  `self._unpause_flag = asyncio.ThreadSafeFlag()`; `self._ntp_is_synced = asy_ntp_callback`; `self._start_time_set =
+  False`; `self._boot_signature = LockedValue(init_value=None)` with `:92` → "# None until status_counter() resolves it
+  (owner, 2026-07-18) - a later change to this value signals a reboot happened."; `self._watchdog = watchdog`;
   `self._force_watchdog_starve = False` with `:95-96` → "# One-way: set when a reset cannot be armed or the supervisor
   escalates; no feed site feeds after it."; `self._feed_owned = False` ("# One-way: set when a system command is
   accepted; from then only the shutdown sequence feeds (owner, 2026-09-30)."); `self._cfg_schema = _VAL_DEBUG_LEVEL`
@@ -235,7 +235,8 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   asyncio.Task[None] | None = None`, `self._supervisor_parked = asyncio.Event()`, `self._never = asyncio.Event()` ("#
   never set: supervise_tasks() and a parked supervisor wait on it for good"); `self._task_starters: list[TaskStarter] =
   []`, `self._tasks: list[asyncio.Task[None] | None] = []`, `self._task_names: list[str] = []`, `self._last_task_end:
-  dict[str, str | int] | None = None`. Gone: `self.uptime` (`LockedCounter`), `self.timers_running`, `self.cfg_schema`,
+  dict[str, str | int] | None = None`; last `self.initialized = False` (G5/R14's readiness flag, set by `setup()`,
+  M.SRC_CORE.017). Gone: `self.uptime` (`LockedCounter`), `self.timers_running`, `self.cfg_schema`,
   `self._current_debug_level` and its comment `:103-104`, the registry comment `:106-108` (→ "# Every logger's own
   set_level(), resolved once from the provider in setup() and called on every level change."). Every list is filled once
   at boot and never grows (OR110.a (1)).
@@ -246,7 +247,11 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   keep them "unless U35's G5/R54 verdict removes" them; A.U35.41's verdict table removes them (no product caller) —
   dropped. (c) `timers_running`: A.U10.12 keeps "sets `timers_running` at the end as today", but after A.U10.12
   `start_timers()` awaits inline and nothing reads the flag (grep: only the generated global A.U10.12 removes) — a
-  write-only attribute is dead state (G5/R54; OR36.a (1)), so it goes (agent, 2026-10-01; "Agent decisions" 4).
+  write-only attribute is dead state (G5/R54; OR36.a (1)), so it goes (agent, 2026-10-01; "Agent decisions" 4). (d) Gap pass G2: `watchdog`, `ntp_is_synced`, `boot_signature` have no reader outside the class in `src/` or the generated
+  code (the status reads `get_boot_signature()`), so G10/R07 "private by default" makes them `_watchdog`,
+  `_ntp_is_synced`, `_boot_signature` (M_SRC_CORE GAP-G12 applied across `src/`); every use follows (M.SRC_CORE.009,
+  .013). (e) `initialized`: G5/R14 (every class with an async `setup()` carries it; A.U10.22's L0 check, M.TSC.112),
+  in the form AC_NOTES 42/44 rule for `NotificationService`/`NeopixelDriver` — no method guards on it (M_SRC_NET gap 3).
 - **Unit**: stages — U5: `fram` → `storage`, `history_length`/`debug` → `log`, `level_setters` provider (A.U5.02,
   A.U5.08; A.U5.03's generated `log=`/`storage=` and A.U5.18's check need them); U10: `boot_signature` → `LockedValue`
   (must precede A.U10.01's cap in the same unit, K.03), the seven private names (A.U10.35), `_cfg_schema` (A.U10.39),
@@ -270,11 +275,11 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
 ### M.SRC_CORE.009 Watchdog access: the latched feed and the sequence's own feed
 - **From**: A.S0930.13 (1)(2); A.U31.07 and A.S0930.20 (6) (feed-site pin), A.U10.08 (allow-list).
 - **Site**: `src/system_service.py:111-116` `feed_watchdog()`; new `_own_feed()` beside it.
-- **Change**: `feed_watchdog()`: `if self.watchdog is not None and not self._force_watchdog_starve and not
-  self._feed_owned: self.watchdog.feed()`; comment (3 lines) "# Every feed site but the shutdown sequence's goes through
+- **Change**: `feed_watchdog()`: `if self._watchdog is not None and not self._force_watchdog_starve and not
+  self._feed_owned: self._watchdog.feed()`; comment (3 lines) "# Every feed site but the shutdown sequence's goes through
   here (SPECIFICATION.md Part G.2); once a system command / # is accepted the sequence alone feeds (owner, 2026-09-30),
-  so this is a no-op from then on; the starve flag / # stops it one-way too." `_own_feed()`: `if self.watchdog is not
-  None and not self._force_watchdog_starve: self.watchdog.feed()`, comment "# The shutdown sequence's own feed, once per
+  so this is a no-op from then on; the starve flag / # stops it one-way too." `_own_feed()`: `if self._watchdog is not
+  None and not self._force_watchdog_starve: self._watchdog.feed()`, comment "# The shutdown sequence's own feed, once per
   bounded step; a hung step is never fed."
 - **Resolved**: OR31.a (3) "one runtime feed site, the supervisor loop" vs OR120 (feeds move to the sequence while it
   runs) and OR130 (a second, escalation feed call inside the supervisor): the most recent owner decisions win (OR120
@@ -424,7 +429,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   (result unused; the one ENOMEM wording lives there). `get_uptime()` → `return self._uptime.read()`. `status_counter()`:
   no `set_value(0)`/`set_value(None)` on (re)start; loop `await self._uptime_event.wait()`; `uptime = self._uptime.read()`;
   `self.pr.all("System uptime:", uptime)`; `if self._start_time_set: continue`; `utc = await self._ntp_boot_signature()`;
-  NTP → `await self.boot_signature.set_value(utc)`, one line, `_start_time_set = True`; `elif uptime >= _NTP_WAIT_TIME:`
+  NTP → `await self._boot_signature.set_value(utc)`, one line, `_start_time_set = True`; `elif uptime >= _NTP_WAIT_TIME:`
   random (comment `:390-391` kept). `_ntp_boot_signature()`: comment `:133` → "# None if not synced yet - a failing NTP
   callback counts as not synced (owner-confirmed, 2026-07-18); / # the caller falls back to random after _NTP_WAIT_TIME.";
   the callback `try`/`except Exception as e:` keeps its guard (`report_if_fatal(e)` first from U30; `errno=_ERR_CALLBACK`);
@@ -601,14 +606,15 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   self._level_setters = self._level_setters_provider()`; `if self._config_stores_provider is not None:
   self._config_stores = self._config_stores_provider()`; `await self.cfgmgr.setup()`; `if self.cfgmgr.writable:` read
   `level = await self.cfgmgr.get_int_values(self._cfg_schema)` and `if level is not None: await
-  self._apply_level(level[0])` (an unreadable store keeps every logger at its constructed level); `return
-  self.cfgmgr.valid`; comment (≤ 3 lines) "# Resolves both boot providers once, then the persisted level: the store's
+  self._apply_level(level[0])` (an unreadable store keeps every logger at its constructed level); `self.initialized =
+  True`; `return self.cfgmgr.valid`; comment (≤ 3 lines) "# Resolves both boot providers once, then the persisted level: the store's
   value wins over the / # constructor's debug=, an unreadable store keeps the constructed level (Part C.13's
   sync-__init__/async-setup())." `get_cfg_schema()` → `self._cfg_schema`. `async def get_dict_cfg(self)`: `names =
   schema_names(self._cfg_schema)`; `values = await self.cfgmgr.get_dict(names)`; `return {_NAME: values if values is not
   None else dict.fromkeys(names)}` (the `{type_name: {field: value}}` shape every module returns; comment `:302-304` →
-  "# the nested {name: {field: value}} shape every SettingsGroup module returns (Part C.6)."). `_set_dict_cfg(data,
-  cfg_vals)` (the SettingsGroup call shape; `cfg_vals` unused, the store validates against its own schema): `persisted,
+  "# the nested {name: {field: value}} shape every SettingsGroup module returns (Part C.6)."). `_set_dict_cfg(data:
+  "JsonMapping", cfg_vals: "ConfigSchema") -> "WriteValidity"` (the SettingsGroup call shape — the route passes the raw
+  body, U19 A-C note 2; `cfg_vals` unused, the store validates against its own schema): `persisted,
   results = await self.cfgmgr.write_config(data)`; `if not persisted: return dict.fromkeys(data, FAILED)`; `if
   results.get(name_cfg(_VAL_DEBUG_LEVEL)) in (VALID, UNCHANGED):` re-read and `_apply_level()`; comment `:311-313` kept
   minus "every logger's live level stays" wording about `_current_debug_level`. `_apply_level(value)`: per setter `try:
@@ -616,7 +622,9 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   errno=_ERR_CALLBACK)`. Gone: `set_level_setters()` (A.U5.08), `get_debug_level()` and `_current_debug_level` (A.U35.41),
   `set_debug_level()` (M.SRC_CORE.018).
 - **Resolved**: A.U11.12 (1)(3) vs A.U35.41 (removal) → removal (the later G5/R54 verdict; A.U11.12 conditions itself on
-  it). A.U11.12 (2) uses `self.cfgmgr.writable` (A.U11.20's flag, M.SRC_CORE.043).
+  it). A.U11.12 (2) uses `self.cfgmgr.writable` (A.U11.20's flag, M.SRC_CORE.043). Gap pass G2: `self.initialized =
+  True` (G5/R14, M.SRC_CORE.008 (e)); `data: "JsonMapping"` per U19 A-C note 2 (M_SRC_NET gap 4: the webserver's
+  `_ModuleLike._set_dict_cfg()` Protocol, M.SRC_NET.111, types the body `JsonMapping`, so every implementer accepts it).
 - **Unit**: U11 (U5 stage: `set_level_setters()` → provider resolved in `setup()`; U10 stage: `pr.setup()` first,
   `-> bool`, nested `get_dict_cfg()` with the webserver's `_cfg_values()` (A.U10.36 is one change across both files),
   `name_cfg`, `_cfg_schema`; U11: provider for stores, precedence, `write_config(data)`, result constants from U19 —
@@ -854,11 +862,14 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   LogConfig = DEFAULT_LOG) -> None` (the default `5` tagged `module.max_error`); `resolved_name = instance_name(name,
   name_ext)`; `self.pr = make_logger(log, resolved_name)`; `self.name = resolved_name` (comment `:171-172` kept, now
   true on the one path); `self._datastruct = init_data`; `self._data_lock = asyncio.Lock()` ("# guards the last sample
-  across a reader's read and a GET"); `self.max_module_error = max_module_error`; `self._err_cnt_internal = 0`;
+  across a reader's read and a GET"); `self._max_module_error = max_module_error`; `self._err_cnt_internal = 0`;
   `self._set_lock = asyncio.Lock()` ("# serialises one module's config GET and PUT (Part C.5.2)"); `self._push_callbacks:
   dict[str, PushFct] = {}` and `self._get_callbacks: dict[str, Callable[[], Awaitable[CfgValue]]] = {}` with their
   `:283-287` comments; `self._rungs = 0`, `self._bus_mark = 0`, `self._recovery_bus: "I2C | None" = None`;
-  `self._timer_error: Exception | None = None`. Every attribute is fixed-size (OR110.a).
+  `self._timer_error: Exception | None = None`; last `self.initialized = False` (G5/R14, set by `setup()`, M.SRC_CORE.039;
+  every subclass inherits it). Every attribute is fixed-size (OR110.a). Gap pass G2: `max_module_error` has no reader outside
+  the class (G10/R07, M_SRC_CORE GAP-G12) → `_max_module_error`; the flag per M_SRC_NET gap 3 (`SensorReaderConfig`'s
+  missing `initialized`).
 - **Resolved**: A.U5.02 keeps `logger=None` at the tail; A.U35.45 removes it (its Depends names A.U5.02/A.U5.18/A.U10.19
   for A-C) — removed; the tail probe's `logger` allow-list loses `SensorReader` (A.U5.18).
 - **Unit**: U11 (stages: U5 signature and `make_logger(log, …)`; U4 the two dicts moved; U10 `_data_lock`, ladder state
@@ -882,7 +893,7 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   of A.U10.R01 (1); `_RUNG_DEVICE/_RUNG_BUS/_RUNG_CONTROLLER = const(1/2/4)`. `_error_check()`: on a failure (`any(res is
   None …) and condition`): if the streak is 0 and `_recovery_bus` is set, `self._bus_mark =
   self._recovery_bus.recoveries`; `self._err_cnt_internal += 1`; `self.pr.err("Error counter increased to", n)`
-  (console, A.U3.03); `if n > self.max_module_error: await self.pr.err_s("Maximum error count reached!",
+  (console, A.U3.03); `if n > self._max_module_error: await self.pr.err_s("Maximum error count reached!",
   errno=_ERR_GIVE_UP); return False`; else `await self._climb_ladder()`; on a non-failure pass the HEAD decrement, then
   `if self._err_cnt_internal == 0: self._rungs = 0`. The ladder methods, their logging (one warning per rung that ran,
   none for a failed participant rung beyond the hook's own error, a raising hook → one `_ERR_CALLBACK` entry after
@@ -909,11 +920,13 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   A.U11.S02, A.U30.19.
 - **Site**: `src/base_classes.py:182-212` (`_get_mgr_cfg()`, `_get_dict_cfg()`), `:251-256`, `:290-397` (moved from
   `SensorReaderConfig`).
-- **Change**: on `SensorReader`: `_get_mgr_cfg()` default `{}`; new default `_set_mgr_cfg(data, cfg_vals) -> tuple[bool,
-  WriteValidity]` returning `(False, {})`; new default `_commit_mgr_cfg(self) -> None` (no-op). `_get_dict_cfg(name,
+- **Change**: on `SensorReader`: `_get_mgr_cfg()` default `{}`; new default `_set_mgr_cfg(data: "JsonMapping", cfg_vals: "ConfigSchema") -> "tuple[bool,
+  WriteValidity]"` returning `(False, {})`; new default `_commit_mgr_cfg(self) -> None` (no-op). `_get_dict_cfg(name,
   cfg_vals, callback: "Callable[[], Awaitable[dict[str, CfgValue]]] | None" = None)`: its whole body under `async with
   self._set_lock:`; wrnno/errno by name (`_WRN_CFG_KEYS`, `_ERR_CFG_GET_RAISED`, `_WRN_CALLBACK_KEYS`,
-  `_ERR_CFG_CALLBACK_RAISED`). `_set_dict_cfg(data, cfg_vals) -> WriteValidity`: whole body under `async with
+  `_ERR_CFG_CALLBACK_RAISED`). `_set_dict_cfg(data: "JsonMapping", cfg_vals: "ConfigSchema") -> "WriteValidity"` (gap pass G2: U19 A-C note 2 — the
+  route passes the raw body; every override of `_set_mgr_cfg()` takes the same `JsonMapping`, M.SRC_CORE.040,
+  M.SRC_NET.045/.096, M.SRC_SENS.053): whole body under `async with
   self._set_lock:`; `fields = schema_dict(cfg_vals)` once; the snapshot keys are those persisted (`check_cfg_get_default
   (field)[0]`) **and** having a push callback; persist through `_set_mgr_cfg()` with `_checked_write_results()`
   (module-level, unchanged); every requested key missing from `results` → `FAILED`; a not-persisted write → every key
@@ -938,13 +951,15 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
 - **Kind**: code
 
 ### M.SRC_CORE.039 Reader lifecycle helpers: setup, trigger starters, divider, timer fault, republish
-- **From**: A.U10.10, A.U10.21, A.U10.12 (`get_trigger_starters()`), A.U15.40 (2) (`_divide_trigger()`), A.U15.41
+- **From**: A.U10.10, A.U10.21, A.U10.12 (`get_trigger_starters()`), A.U15.40 (2) (the shared divider), A.U10.44
+  (its name `_trigger_loop()`, M_SRC_SENS GAP-8), A.U10.22/G5/R14 (`initialized`, M_SRC_NET gap 3), A.U15.41
   (`_timer_failed()`, `_timer_fault()`), A.U15.12 (`_republish()`).
 - **Site**: `src/base_classes.py` `SensorReader` new methods.
-- **Change**: `async def setup(self) -> bool: await self.pr.setup(); return True` ("True = ready; a logger that could not
-  reach its store has logged it and runs in RAM"). `def get_trigger_starters(self) -> "list[TimerStarter]": return []`.
-  `async def _divide_trigger(self) -> None` — the byte-identical body of the two `_base_trigger()` copies (count
-  `base_trigger_event` ticks, set `read_event` every `await self.trigger_period.get_value()`), extended by A.U15.41: it
+- **Change**: `async def setup(self) -> bool: await self.pr.setup(); self.initialized = True; return True` ("True = ready; a
+  logger that could not reach its store has logged it and runs in RAM"). `def get_trigger_starters(self) -> "list[TimerStarter]": return []`.
+  `async def _trigger_loop(self) -> None` — the byte-identical body of the two `_base_trigger()` copies (count
+  `_base_trigger_event` ticks in `_trigger_counter`, set `_read_event` every `await self._trigger_period.get_value()`; the
+  private names the dividing subclasses set, M.SRC_SENS.042/.073), extended by A.U15.41: it
   begins with the re-arm `if self._timer_error is not None: self._timer_error = None; self.start_timer()` and checks `if
   await self._timer_fault(): return` after every wake. `def _timer_failed(self, e: Exception, waiter:
   asyncio.ThreadSafeFlag) -> None`: `self._timer_error = e`; `self.pr.err("Could not start timer:", e)`; `waiter.set()`.
@@ -956,13 +971,17 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   needs its field names, and rp2's EXTRA_FEATURES build has no `_fields`/`_replace` (`config_manager.py:103-105`, fact
   confirmed there against `ports/rp2/mpconfigport.h`) — the caller passes its own field tuple (SCD30's `_FIELDS`).
   `SensorReader.setup()` returns `True` (A.U10.21 names returns for the other classes; a plain reader has no store).
+  Gap pass G2: A.U15.40 names the divider `_divide_trigger()`, A.U10.44 (U10, earlier) names every task coroutine
+  `_<what>_loop` and maps `_base_trigger` → `_trigger_loop` — A.U10.44's name (M.SRC_SENS.045, M_SRC_SENS GAP-8); the
+  drivers' `start_asy_trigger()` creates it (M.SRC_SENS.045/.083). `initialized` set in `setup()` (G5/R14,
+  M.SRC_CORE.036).
 - **Unit**: U15 (latest: A.U15.12/.40/.41; stages U10: `setup()` and `get_trigger_starters()` — A.U10.10's boot batch
   and A.U10.12's trigger plan need them in U10).
 - **Depends**: M.SRC_CORE.036, M.SRC_CORE.037 (`_ERR_TIMER`).
-- **Blast carried by**: BMP3XX/ISL29125 drop their `_base_trigger()` copies and call `_divide_trigger()`; drivers'
+- **Blast carried by**: BMP3XX/ISL29125 drop their `_base_trigger()` copies and run `_trigger_loop()`; drivers'
   `start_timer()` arm failures call `_timer_failed()`; SCD30/SGP40 check `_timer_fault()`; SCD30 calls `_republish(
   _FIELDS, …)` → A.U15.40, A.U15.41, A.U15.12 (SRC_SENS); codegen `needs_setup` for a `SensorReader` subclass →
-  A.U10.10 (GEN); L1 `_divide_trigger()` cases, timer-fault tests → A.U15.40, A.U15.41 (TEST_UNIT); logger
+  A.U10.10 (GEN); L1 `_trigger_loop()` cases, timer-fault tests → A.U15.40, A.U15.41 (TEST_UNIT; M.TEST_UNIT already follows GAP-8); logger
   `initialized` after the batch → A.U10.10 (TEST_HELP); SPEC C.9/C.13/G.2 → A.U10.14, A.U10.21, A.U15.40 (SPEC).
 - **Kind**: code
 
@@ -977,10 +996,12 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   ConfigManager(config_filename(cfg_path, self.name), default_vals, self.name, log=log if self._CFG_LOG_FRAM else
   LogConfig(None, log.history_length, log.debug))`; class attribute `_CFG_LOG_FRAM = True` with "# False where the
   owner keeps a module's config store off FRAM (SCD30, owner, 2026-09-29: 'no extra FRAM chunk')". `_get_mgr_cfg()`
-  unchanged; `_set_mgr_cfg(data, cfg_vals)` → `return await self.cfgmgr.write_config(data, defer=True)`;
+  unchanged; `_set_mgr_cfg(data: "JsonMapping", cfg_vals: "ConfigSchema")` → `return await
+  self.cfgmgr.write_config(data, defer=True)`;
   `_commit_mgr_cfg()` → `self.cfgmgr.commit()`; `get_error_sources() -> "list[ErrorSource]"`; `get_loggers()`;
   `get_cfg_schema()` → `self._cfg_schema` (its "stays a public attribute" comment goes); `async def setup(self) -> bool:
-  await super().setup(); await self.cfgmgr.setup(); return self.cfgmgr.valid`.
+  await super().setup(); await self.cfgmgr.setup(); return self.cfgmgr.valid` (`initialized` set by the base `setup()`,
+  M.SRC_CORE.039).
 - **Resolved**: AC_NOTES 13 / the U15 lead note (OR99 "No flash writes, no extra FRAM chunk") keep `CFGMGR_SCD30`
   RAM-only while SCD30's own logger stays FRAM-wired; A.U15.12 makes `SCD30_Reader` a `SensorReaderConfig`, whose
   constructor passes one `log` to both loggers. A class attribute read at construction is the least change that keeps
@@ -1037,7 +1058,7 @@ for the config reset.
   `self.pr = make_logger(log, self.name)` with the comment "# Inherits its owning module's logging config - FRAM-backed
   when the module is (the implicit FRAM-wiring / # rule, SPECIFICATION.md A.7) - so its failure history survives a
   reboot like the module's own."; `self._config_lock = asyncio.Lock()` ("# serialises the config file and its staged
-  snapshot"); `self._config_file`, `self.cfg_vals`, `self.valid = False`, `self.writable = True`, `self._closed = False`,
+  snapshot"); `self._config_file`, `self._cfg_vals` (gap pass G2: no reader outside the class, G10/R07), `self.valid = False`, `self.writable = True`, `self._closed = False`,
   `self._cache`, `self._staged` (comment `:228-230` kept), `self._pending_flush`, `self._commit_ready = asyncio.Event()`
   (set: "# cleared while a deferred snapshot waits for its commit()"; `_commit_ready.set()` in `__init__`).
   `reset_error_counter() -> bool: return await self.pr.reset()`.
@@ -1160,13 +1181,13 @@ for the config reset.
   A.U2.07, A.U11.04 + A.S0930.16 (1) (closed checks), A.U11.20 (`writable` check), A.U19.16, A.U10.45, A.U14.19 (the
   superseded-write comment's pointer).
 - **Site**: `src/config_manager.py:299-388`.
-- **Change**: `async def write_config(self, data: "dict[str, CfgValue]", *, defer: bool = False) -> "tuple[bool,
+- **Change**: `async def write_config(self, data: "JsonMapping", *, defer: bool = False) -> "tuple[bool,
   WriteValidity]"` (the `cfg_vals` parameter goes; the manager's own schema is used). Before the lock: `if self._closed:
   self.pr.evt(self._config_file, "- writes closed for reset"); return False, {}`; `if not self.valid:` persisted
   `_ERR_CFG_NOT_VALID`, `return False, {}`; `if not self.writable: self.pr.evt(self._config_file, "- unreadable at boot,
   writes refused until the next boot"); return False, {}`. Under `async with self._config_lock:` — first the same
-  `_closed` check (A.S0930.16 (1)); `try: outcome = compare_before_write(data, self.cfg_vals, self._current(),
-  always=<the special-alone keys of self.cfg_vals>, resolution=<every "float" field → _stored_float>)` / `except
+  `_closed` check (A.S0930.16 (1)); `try: outcome = compare_before_write(data, self._cfg_vals, self._current(),
+  always=<the special-alone keys of self._cfg_vals>, resolution=<every "float" field → _stored_float>)` / `except
   MemoryError as e:` `_ERR_ALLOC`, `return False, {}`; `outcome is None` → `err_s(…, "- write data is not an object",
   errno=_ERR_BAD_ARG)`, `return False, {}`; per outcome the logging of HEAD (`INVALID` → `_ERR_BAD_ARG`, a key missing
   from the stored config → `_ERR_CONTRACT`, a special-alone key → `VALID` and the `:336` evt line); no bad-default branch

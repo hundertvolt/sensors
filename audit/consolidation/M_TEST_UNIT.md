@@ -934,7 +934,8 @@ lines through `tests/_recording_print.py` where the test's point is the message)
 ### M.TEST_UNIT.041 Dual copy, status bytes and torn writes, by catalog code
 - **From**: A.U2.09/A.U3.04 (`:235, 283, 325, 592, 614, 756, 1548, 1576, 2332`), A.U16.08 (`:329-331` comment and the
   owner tag), A.U16.09 (`:1538`, `:1686-1687` re-read against the mixed-pair rule; `:2509-2511` comment; new blank-read
-  L1), A.U16.06 (new tri-state L1), A.U3.04 (new one-entry-per-fault L1), A.U3.09 (new missing-buffer L1).
+  L1), A.U16.06 (new tri-state L1), A.U3.04 (new one-entry-per-fault L1), A.U3.09 (new missing-buffer L1), A.U26.43
+  (blast: the seam count the reset-race seed script relies on; M.HW_DEV.060/.063 → TSC, placed here, gap pass G3).
 - **Site**: `tests/test_asy_fram_manager.py:212-350`, `:984-1096`, `:1525-1580`, `:1644-1852`, `:2476-2584`; new
   tests after `:350`.
 - **Change**: every code assertion follows the map above (e.g. `:235` `31` → `code("E", "FRAM_STATUS_BYTE")`, `:614`
@@ -956,9 +957,17 @@ lines through `tests/_recording_print.py` where the test's point is the message)
   `test_after_a_failed_setup_ten_writes_leave_one_slot_and_errcount_ten` (RF171);
   `test_a_verify_pass_whose_block_read_fails_the_crc_adds_one_entry` (FRAM_DATA_CRC);
   `test_an_unallocatable_check_length_adds_one_alloc_entry_on_read_and_write` (`code("E", "ALLOC")`);
-  `test_a_missing_chunk_buffer_persists_alloc_once` (A.U3.09).
-- **Resolved**: A.U3.04 and A.U2.09 co-land (same sites); the map above is their joint end state.
-- **Unit**: U16 (stages U2 numbers, U3 persist/print split).
+  `test_a_missing_chunk_buffer_persists_alloc_once` (A.U3.09);
+  `test_one_chunk_write_is_five_driver_transfers_in_seam_order` (A.U26.43): the manager's driver `set_values_sync`
+  wrapped by a recording instance attribute; one `_write_chunk()` (one block of the dual-copy write, the first one a
+  `write_into()` makes) is exactly five calls, in the order the seed script's `SEAM` 1-5 names them — status byte 1
+  BUSY, status byte 2 BUSY, payload+CRC, status byte 1 IDLE, status byte 2 IDLE (address and first byte asserted per
+  call) — so a changed write sequence fails here before a flash round.
+- **Resolved**: A.U3.04 and A.U2.09 co-land (same sites); the map above is their joint end state. A.U26.43 asks for its
+  seam-count check "read by `ast` or pinned by an L1 test with a recording fake"; the status writes go through one
+  helper called per byte (`asy_fram_manager.py:244`), so an `ast` count of call sites is not the transfer count — the
+  L1 form is taken (M.HW_DEV.060/.063 named TSC; gap pass G3).
+- **Unit**: U16 (stages U2 numbers, U3 persist/print split; the seam-count test with A.U26.43 in U26).
 - **Depends**: M.SRC_CORE.082, .084, .085, .088, .090; A.U2.03.
 - **Blast carried by**: SPEC A.4 FRAM error flow → A.U3.04 (SPEC); L2 double read → A.U16.09 (TWIN).
 - **Kind**: test
@@ -1386,8 +1395,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   the two new cycles pin.
 - **Unit**: U15 (stages U3 console streak, U10 ladder/`_read_loop`/`TS`).
 - **Depends**: M.SRC_SENS.075, .076, .083, M.SRC_CORE.032, .037.
-- **Blast carried by**: the mid-operation re-apply case → M.TEST_UNIT in `test_bus_hazard_multi_device.py` (A.U15.R04,
-  L1) and A.U15.R04 (TWIN); twin Run 5c holds → A.U15.R04 (SCR).
+- **Blast carried by**: the mid-operation re-apply case → M.TEST_UNIT.238 (L1) and M.TWIN.102 (L2); twin Run 5c holds →
+  A.U15.R04 (SCR).
 - **Kind**: test
 
 ### M.TEST_UNIT.062 Read path and outputs: CalLight, the nested body, the bus-fault re-read
@@ -2346,7 +2355,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **From**: A.U24.49 (`make_ntp_reply()` `:968-977` → `tests/_ntp_frames.py`), A.U24.01 (`:965` `_NTP_EPOCH_DELTA` →
   `_src_const.NTP_EPOCH_DELTA`; `:1095, 1104, 1113` → `src_const`), A.U24.42 (`:1024-1027` asserts the hand-computed
   time), A.U14.26 (`:1030-1047` goes; new structural and `MemoryError` L1; `:1073-1074` comment), A.U8.09 (the window
-  mirrors, now source reads).
+  mirrors, now source reads), A.U24.24 (blast: the RTC read-back at `:987-989`; M_TEST_HELP GAP-T3, gap pass G3).
 - **Site**: `tests/test_asy_ntp_client.py:956-1155`.
 - **Change**: the local `_NTP_EPOCH_DELTA`/`make_ntp_reply()` go (imported). `test_parse_ntp_reply_arbitrary_binary_content_never_raises`
   → `…decodes_arbitrary_bytes_as_their_transmit_timestamp`: `bytes(range(48))` gives `(2057, 6, 14, 17, 21, 47, …)`
@@ -2360,10 +2369,14 @@ session lock names, and the fake's rp2 probe/scan semantics.
   unrelated to the device clock, which runs to 2106 (Part F.1); a post-2036 server sends a small wrapped value." The
   floor/ceiling tests read `_FLOOR`/`_CEILING = src_const("src/asy_ntp_client.py", "_NTP_MIN_PLAUSIBLE_UNIX_TIME"/
   "_NTP_MAX_PLAUSIBLE_UNIX_TIME")` (their "compiled away, hardcoded" comments go).
+  `test_parse_ntp_reply_valid_packet_returns_gmtime_and_sets_the_rtc` (`:980-989`): the read-back expects `(tm[0], tm[1],
+  tm[2], tm[6], tm[3], tm[4], tm[5], 0)` — the RTC fake recomputes the weekday (Monday 0, gmtime's own convention) and
+  ignores the `tm[6] + 1` the client writes, as rp2's setter does (`ports/rp2/machine_rtc.c:85-92`; M.TEST_HELP.021);
+  one comment line says so.
 - **Resolved**: A.U8.09's mirror sites `:1095, 1104, 1113` become source reads (A.U24.01), so the rows lose those test
   sites rather than gaining tags.
-- **Unit**: U14 (stages U24 shared frames and source reads).
-- **Depends**: M.SRC_NET.042, .049; TEST_HELP `_ntp_frames.py`, `_src_const.NTP_EPOCH_DELTA`.
+- **Unit**: U14 (stages U24 shared frames, source reads and the RTC read-back with M.TEST_HELP.021).
+- **Depends**: M.SRC_NET.042, .049; TEST_HELP `_ntp_frames.py`, `_src_const.NTP_EPOCH_DELTA`, M.TEST_HELP.021.
 - **Blast carried by**: catalog 69 text → M_SRC_NET gap (GEN).
 - **Kind**: test
 
@@ -3679,9 +3692,17 @@ session lock names, and the fake's rp2 probe/scan semantics.
   (`cobs_uart(max_frame=<frame + CRC>)` through `readinto_until_complete()`); `test_a_deinit_during_readys_closing_yield_hands_back_no_dead_uart`
   (a `_StepPoller` whose ready round is followed by a task calling `deinit()`: `read()`, `readinto_until_complete()`,
   `write()` return `None`/`False` and the fake logs nothing after the deinit; the same for `_read_delimited()` with a
-  COBS codec after 16 bytes); `test_an_idle_wait_beyond_the_ticks_range_returns_false` (`poll_idle_ms = 2**29`, a bounded
-  never-ready `_StepPoller`: `ready(timeout_ms=-1)` is `False` without raising).
-- **Resolved**: —
+  COBS codec after 16 bytes); `test_an_idle_wait_beyond_the_ticks_range_returns_false`: `poll_idle_ms = 2**61` (the rig's
+  half-period: `ticks_add()` refuses a delta ≥ period/2, `extmod/modtime.c:191-192`, and the 64-bit Unix port's period is
+  2**62, SPEC F.1); first assert the precondition `time.ticks_add(time.ticks_ms(), 2**61)` raises `OverflowError` on this
+  interpreter (else the test fails naming the rig, never passes vacuously); then a bounded `_StepPoller` that reports
+  not-ready on its first `ipoll(0)` and ready on every later one (so the round reaches `asyncio.sleep_ms(poll_idle_ms)`):
+  `ready(timeout_ms=-1)` returns `False` without raising — the arm answers before the second poll, which would have
+  reported ready; without the `OverflowError` arm the sleep's raise fails the test.
+- **Resolved**: A.U13.19's `2**29` is outside rp2's range (period 2**30) but inside the Unix rig's (2**62), so on the rig
+  the sleep raised nothing and the never-ready poller returned `False` without reaching the degrade path the test is
+  named for (SPEC merge hand-back, late gap 3; M_SPEC gap 3). The rig's half-period and a poller ready on its second poll
+  make the test reach that path; F.8.2's rp2 sentence (M.SPEC.108) is unchanged (gap pass G3, 2026-10-01).
 - **Unit**: U17 (stage U13).
 - **Depends**: M.SRC_NET.196, .199, .200, .201.
 - **Blast carried by**: —
@@ -4832,13 +4853,18 @@ session lock names, and the fake's rp2 probe/scan semantics.
 ### M.TEST_UNIT.238 New hazard cases: recovery split sessions, SCD30 reset, heater-off, FRAM erase
 - **From**: A.U13.R02 (2) (one split-session case per driver), A.U15.R01 (mid-operation SCD30 reset while sibling loops
   run), A.U15.R02 (heater-off concurrent with the SCD30 read loop across offsets; same-device vs the SGP40's own measure),
+  A.U15.R04 (the ISL29125 participant rung's mid-operation case, "as A.U15.R01"; M.TEST_UNIT.061's blast, gap pass G3),
   A.S0930.23 (a)-(c) (erase hazards, mock tier), A.S0930.35 (read: names this file for the erase harness), A.U35.50 (read:
   conformance matrix rows).
 - **Site**: new section in `tests/test_bus_hazard_multi_device.py`.
 - **Change**: `test_a_recovery_between_a_split_session_still_returns_a_valid_value` per driver with one (SCD30 command →
   read, SGP40 command → read, BMP3XX trigger → read): `i2c.recover()` lands between the halves, the transaction returns a
   valid value. `test_an_scd30_soft_reset_mid_read_leaves_every_sibling_read_valid` (SGP40/ISL29125/BMP3XX loops on the
-  same bus, the reset at each offset). `test_sgp40_heater_off_does_not_disturb_a_concurrent_scd30_read_loop` across offsets,
+  same bus, the reset at each offset). `test_an_isl29125_reapply_mid_read_leaves_every_sibling_read_valid` (A.U15.R04: the
+  re-apply rung — CONFIG1-3 burst from the shadow, thresholds re-armed — run at each offset while the sibling read loops
+  of its bus run, as the dev wiring places them; every sibling read valid, the shadow written whole, one
+  `code("W", "DEVICE_RECOVERY")`).
+  `test_sgp40_heater_off_does_not_disturb_a_concurrent_scd30_read_loop` across offsets,
   and `test_heater_off_and_an_sgp40_measure_serialise_through_the_device_session`. FRAM erase: (a) `erase_chip()` started
   while a chunk write and a chunk read are suspended mid-operation — in-flight ones finish with both copies equal, later
   ones refused, no chunk torn, each erase unit's five sessions contiguous in the SPI log; (b) a sensor cancelled inside its
@@ -4846,9 +4872,10 @@ session lock names, and the fake's rp2 probe/scan semantics.
   ascending, with the 3-byte header on the 256 KB fake and 2-byte on the 8 KB one, no `_SV_BAD_RANGE`; pass-1 status
   writes touch exactly each allocated block's two status bytes.
 - **Resolved**: —
-- **Unit**: U15 (A.U15.R01/R02; stage U13 recovery, S0930 erase).
-- **Depends**: M.SRC_SENS (A.U13.R01, A.U15.R01, A.U15.R02); M.SRC_CORE (`erase_chip()`, A.S0930.17).
-- **Blast carried by**: L2-L4 → A.U13.R02, A.U15.R01, A.U15.R02, A.S0930.27-.29 (TWIN, HW_DEV, HW_BENCH).
+- **Unit**: U15 (A.U15.R01/R02/R04; stage U13 recovery, S0930 erase).
+- **Depends**: M.SRC_SENS (A.U13.R01, A.U15.R01, A.U15.R02, A.U15.R04); M.SRC_CORE (`erase_chip()`, A.S0930.17).
+- **Blast carried by**: L2 → M.TWIN.102 (A.U15.R01/R02/R04, A.U13.R02); L3-L4 → A.U13.R02, A.U15.R01, A.U15.R02,
+  A.S0930.27-.29 (HW_DEV, HW_BENCH).
 - **Kind**: test
 
 ## tests/test_captive_dns.py (→ `tests/test_asy_captive_dns.py`)
@@ -6876,10 +6903,12 @@ session lock names, and the fake's rp2 probe/scan semantics.
   carries the typing — the deletion is the end state. Test files do not import one another, so A.U19.05's "through
   A.U5.04's helper" is the same three-object construction written here, not an import of `test_asy_webserver_service`'s
   `_make_service()`.
-- **Unit**: U24 (stages U0 imports, U5 objects, U8/U0 stub re-vendor, U19 `sock`, U27 trigger, U28 noqa).
+- **Unit**: U24 (stages U0 imports, U5 objects, U8/U0 stub re-vendor, U19 `sock`, U20 noqa, U27 trigger). The `:15`
+  `noqa` goes in U20, in the commit that adds `allowed-unused-imports = ["frozen_html"]` (M.TOOL.031's U20 stage): RUF100
+  fails on the stale `noqa` the same day, so it cannot wait for U28 (M_TOOL gap 5, gap pass G3).
 - **Depends**: M.TEST_HELP.008 (`_strict_json`), .043, .044, .055 (`_twin_devices`);
   M.SRC_NET (webserver construction, A.U5.04; `sock` holders, A.U19.06); M.GEN.050 (stubs).
-- **Blast carried by**: `pyproject.toml` `allowed-unused-imports` → A.U28.28 (CFG); SPEC B.15 list → A.U27.03 (SPEC).
+- **Blast carried by**: `pyproject.toml` `allowed-unused-imports` → M.TOOL.031 (U20 stage); SPEC B.15 list → A.U27.03 (SPEC).
 - **Kind**: test
 
 ### M.TEST_UNIT.333 Device and bundle facts read from the build, not hand lists
@@ -6971,6 +7000,132 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Depends**: the merged changes of each file (renames U10).
 - **Blast carried by**: the presence check and the over-cap rewraps of (3) → A.U27.28 (TSC,
   `tests_scripts/test_comment_block_cap.py`); `tests/microtest.py`'s header → M.TEST_HELP.002.
+- **Kind**: test
+
+## tests/test_machine_uart_link.py (no cluster in CLUSTERS.md; taken here, gap pass G3)
+
+### M.TEST_UNIT.335 The UART fake answers a real poll as rp2 does; the contract registry is complete
+- **From**: A.U24.15 (new L1: a real `select.poll()` over the fake UART; `ioctl(10, 0)` → `-EINVAL`; `:113-119` holds as a
+  local check), A.U24.06 (new `test_every_contract_check_is_registered`); M_TEST_HELP GAP-T4 and the Blast lines of
+  M.TEST_HELP.017/.025 (both name this file for TEST_UNIT; it sits in no cluster, gap pass G3).
+- **Site**: `tests/test_machine_uart_link.py:1-203`; new tests after `:133`.
+- **Change**: the docstring (3 lines) and the HEAD tests hold; `test_poller_is_not_a_real_select_poll` (`:113-119`) holds.
+  New `test_a_real_poll_consults_the_fake_and_is_counted`: `poller = select.poll()`, `poller.register(fake_b,
+  select.POLLIN)`; `ipoll(0)` reports no event while the fake's RX queue is empty and `POLLIN` once one byte crossed the
+  link; `UART.real_poll_queries` rose with each query; `finally`: `poller.unregister(fake_b)` and, after the count was
+  asserted, `UART.real_poll_queries = 0` (else the fake's after-each check, M.TEST_HELP.010, fails the test). Only
+  `ipoll(0)` is used — a zero-timeout query that never waits, so CLAUDE.md's hang case (a real poll awaited with
+  `timeout_ms=-1`) cannot arise; one comment line says so. New `test_an_unknown_ioctl_request_answers_einval`:
+  `fake.ioctl(10, 0) == -errno.EINVAL` (`MP_STREAM_GET_FILENO`; rp2's answer, `ports/rp2/machine_uart.c:694-697`,
+  re-checked against the refreshed pin). New `test_every_contract_check_is_registered`: the module attributes of
+  `_uart_link_contract` named `check_*` equal `{f.__name__ for f in ALL_CHECKS}`, with no duplicate in `ALL_CHECKS`.
+- **Resolved**: A.U24.15 and A.U24.06 name this file, which CLUSTERS.md lists under no cluster; M_TEST_HELP's blasts send
+  both to TEST_UNIT, which no merged change carried — this one does (gap pass G3, 2026-10-01).
+- **Unit**: U24.
+- **Depends**: M.TEST_HELP.010, .017, .025.
+- **Blast carried by**: CLUSTERS.md entry for this file → orchestrator (GAPS_G3 hand-off).
+- **Kind**: test
+
+## tests/test_notification_fram_integration.py (no cluster in CLUSTERS.md; taken here, gap pass G3)
+
+### M.TEST_UNIT.336 Two independent FRAM chunks, built and booted as the generated wiring does
+- **From**: A.U2.17 (the six `errno=1` sites `:122-123`, `:145-146`, `:164-165`), A.U5.06 (`:87-88` `register()`/
+  `finalize()` → signals at construction), A.U5.11 (`ValueRef`), A.U5.02 (`fram=` → `log=`), A.U10.10 (`pr.setup()` →
+  `setup()`), A.U10.37/A.U10.38 (`FRAMManager`, `FRAMChunk`, `NotificationService`, `asy_print_log`), A.U24.08 (`run`),
+  A.U24.49/M.TEST_HELP.057 (`make_manager` and the `:151` rebuild), A.U24.73 (`Any`), A.U8C (`:40` untagged: the
+  WarnCO2 REST entry is API domain, U8C row), AC_NOTES 42 (1) (header); M.SRC_SENS.031's Blast line names this file for
+  TEST_UNIT (gap pass G3).
+- **Site**: `tests/test_notification_fram_integration.py:1-171`.
+- **Change**: docstring → "Full-stack FRAM integration of the NeoPixel driver and the notification service: their two
+  logger chunks are independent, non-overlapping allocations off one FRAMManager, and both histories survive a simulated
+  reboot." (3 lines). `:4-9` → "# The generated wiring gives both modules a FRAM-backed log; the service's one chunk covers
+  its own fields and every / # signal's check failures. Mocked at the SPI bus, not at FRAMManager's boundary." (2 lines).
+  Imports: `from _async_harness import run`, `from _error_codes import code`, `from _fram_builders import
+  make_fram_manager`, `from _tmp_scratch import TmpScratch`, `from asy_base_classes import ValueRef`, `from
+  asy_fram_manager import FRAMChunk, FRAMManager`, `from asy_neopixel_driver import NeopixelDriver`, `from
+  asy_notification_service import NotificationService, NotificationSignal`, `from asy_print_log import LogConfig,
+  PrintLogHistoryStore`; the local `run`, `make_manager`, the `asy_spi_driver._SPI` swap (the builder owns it) and the
+  `TypeVar`/`Any` lines go. `_FakeSource` carries `WarnCO2 = None` (its comment: "# A producer whose field is always
+  None: the test pins the chunk layout, not a threshold."). `make_pixel(manager)` → `NeopixelDriver(0,
+  log=LogConfig(manager, 10, None))` (the history length M.TEST_UNIT.079's reboot test uses); `make_notify(manager,
+  cfg_path)` → `NotificationService(_request_signal_stub, _local_time_stub, (NotificationSignal("WarnCO2",
+  ValueRef(_FakeSource(), "WarnCO2"), _FIELD_WARN_CO2, (1, 0, 0)),), cfg_path=cfg_path, log=LogConfig(manager, 10, None))`
+  with the comment "# The same signals in the same order every time: the FRAM layout must decode identically across
+  the simulated reboot." Each scenario awaits `pixel.setup()` and `notify.setup()` (not `pr.setup()`); the manager is
+  `manager, chip = make_fram_manager()` then `run(manager.setup())`, and the reboot builds `manager2, _ =
+  make_fram_manager(chip=chip)` (same chip, fresh objects; `:151` goes). The six `errno=1` sites write and read back
+  `_PLANTED = code("E", "CALLBACK")` (one module constant: "# any catalog code; the tests pin separation and survival,
+  not the code"); `:119-121` → "# A planted entry: the driver reports no faults of its own (Part A.4); this exercises
+  the FRAM-backed history." `PrintLogHistoryStore` and `FRAMChunk` `isinstance` checks hold.
+- **Resolved**: the file is in no CLUSTERS.md list, so no merge carried M.SRC_SENS.031's A.U2.17 pointer or the U5/U10
+  constructor changes its sibling files take (M.TEST_UNIT.265, .276) — written here to the same end states (gap pass G3).
+- **Unit**: U24 (stages U2 codes, U5 constructors, U10 names and `setup()`).
+- **Depends**: M.SRC_SENS.023, .024, .033; M.SRC_CORE (`LogConfig`, `FRAMManager`); M.TEST_HELP.043, .045, .057.
+- **Blast carried by**: CLUSTERS.md entry → orchestrator (GAPS_G3 hand-off).
+- **Kind**: test
+
+## tests/test_sensortask_<device>.py (six, deleted) → tests/test_sensortask.py (new; no cluster in CLUSTERS.md)
+
+### M.TEST_UNIT.337 One per-device scenario file replaces the six wrappers
+- **From**: A.U24.65 (2) (the six `tests/test_sensortask_<device>.py` wrappers replaced by `tests/test_sensortask.py`,
+  `globals().update(register_for_device(os.getenv("TEST_DEVICE")))`, `PER_DEVICE = True`, raising at import without
+  `TEST_DEVICE`); M.TEST_HELP.035's Blast line ("→ A.U24.65 (TEST_UNIT)", gap pass G3); A.U24.04 (trailer).
+- **Site**: `tests/test_sensortask_{arzi,dev,grkizi,klkizi,schlafzi,wozi}.py` (deleted); new `tests/test_sensortask.py`.
+- **Change**: the new file: header (≤ 3 lines) "Generated build_system() construction and wiring scenarios for the device
+  named by TEST_DEVICE - one job per generated device, dispatched by scripts/test.sh (SPECIFICATION.md E.2.1)."; `import
+  os`; `from _sensortask_scenarios import register_for_device`; `PER_DEVICE = True`; `device = os.getenv("TEST_DEVICE")`
+  and, when unset, `raise RuntimeError("run through scripts/test.sh, or set TEST_DEVICE to one of devices/*.toml")` at
+  import; `globals().update(register_for_device(device))`; the canonical trailer. The six wrappers are `git rm`'d in the
+  same commit, as M.TWIN.108 does for the construction wrappers.
+- **Resolved**: A.U24.65 creates three `PER_DEVICE` files; M.TWIN.108 carries the construction one, A.U25.46 retires the
+  concurrency one (M.TWIN.164), and this file — sited in no cluster — had no carrier (gap pass G3).
+- **Unit**: U24.
+- **Depends**: M.TEST_HELP.035 (`register_for_device`), M.TEST_HELP.055 (derived devices).
+- **Blast carried by**: `scripts/test.sh` per-device expansion and heavy list → A.U24.65 (3) (SCR, M.SCR.040-.042); L0
+  dispatch case → M.TSC.135; SPEC E.2.1/E.3.1 → A.U24.65 (SPEC); README `:157` status-tag example `[test_sensortask_dev]`
+  → DOCS (GAPS_G3 hand-off); CLUSTERS.md entry → orchestrator.
+- **Kind**: test
+
+## tests/test_tmp_scratch.py (no cluster in CLUSTERS.md; taken here, gap pass G3)
+
+### M.TEST_UNIT.338 Scratch tests: the errno filter, one live key, the recorded calls include the new walk
+- **From**: A.U24.10 (blast: the recording `os` wrapper records `ilistdir` and `stat`; the root assertion; new L1 errno
+  cases), A.U24.11 (1) (blast: the duplicate-key refusal); M.TEST_HELP.005's Blast line (gap pass G3); AC_NOTES 42 (1).
+- **Site**: `tests/test_tmp_scratch.py:1-3` (docstring), `:138-157` (`_RecordingOs`), `:191-197` (assertions); new tests.
+- **Change**: docstring → "Regression coverage for _tmp_scratch.py's TmpScratch, the per-test-file scratch directory:
+  every operation stays inside its own key's subtree, and a cleanup failure other than absence is raised." (2 lines; the
+  "now uses instead of its own copy-pasted … trio" history goes). `_RecordingOs` gains `ilistdir(path)` and
+  `stat(path)` (record, then forward). In the shared-root test the first assertion becomes `assert not (name in
+  ("listdir", "ilistdir", "stat") and path.rstrip("/") == _ROOT)` and the second allows `_ROOT` only for `mkdir` (`assert
+  (name == "mkdir" and path.rstrip("/") == _ROOT) or path.startswith(own + "/") or path == own`), so a reintroduced
+  `ilistdir(_ROOT)` fails. New, each through a `_RecordingOs` subclass raising on one call: `rmdir` raising
+  `OSError(errno.EACCES)` propagates out of `teardown()` with its path; `mkdir` raising `OSError(errno.EEXIST)` is
+  silent; `remove` of an absent path (`ENOENT`) is silent. New: a second `TmpScratch` with a key still live raises
+  `AssertionError("TmpScratch key <key> already in use")`; after `teardown_all()` the key can be taken again. Each test's
+  keys keep the `scratchtest_` prefix.
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: M.TEST_HELP.005.
+- **Blast carried by**: the cross-file key-uniqueness L0 → A.U24.11 (2) (TSC, M.TSC.118); CLUSTERS.md entry → orchestrator.
+- **Kind**: test
+
+## tests/test_driven_time.py (new)
+
+### M.TEST_UNIT.339 The driven clock's own self-test
+- **From**: A.U35.10 (L1 self-test `tests/test_driven_time.py`); M.TEST_HELP.065's Blast line (gap pass G3).
+- **Site**: new `tests/test_driven_time.py`.
+- **Change**: header (≤ 3 lines) "Self-test of tests/_driven_time.py's DrivenTime: virtual time moves only on advance(),
+  sleepers wake in order and never early, and every replaced name is restored." Cases as A.U35.10 lists them: two
+  sleepers wake in deadline order; `advance()` never runs a sleeper before its deadline; a `ticks_diff()` across the
+  installed clock's 2**30 wrap equals the elapsed virtual time; every replaced module attribute is restored when the
+  `with` block exits through an exception; a shimmed `wait_for(sleeper, 1)` raises `TimeoutError` after `advance(1000)`
+  and not before; a busy loop hits the round cap and fails naming the virtual time reached (the cap is the bound, never a
+  wall-clock wait). Driven from synchronous test scope through `_async_harness.run()` (CLAUDE.md's nested-`run()` rule);
+  the canonical trailer.
+- **Resolved**: —
+- **Unit**: U35.
+- **Depends**: M.TEST_HELP.065, .064, .043.
+- **Blast carried by**: —
 - **Kind**: test
 
 ## Gaps for other clusters

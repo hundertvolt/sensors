@@ -1759,23 +1759,27 @@ changes cite.
   A.U25.61 (2) (device module from the harness), A.U26.78/A.U30.16 (probe and map into the include; the `_ProbeGc`
   boot-mirror row stays here), A.U36.544 (`:199` "measure B" → "The boot placement reset (SPECIFICATION.md I.4(f.1))";
   the "(MEASUREMENTS M3.9)" citation → the archive section with commit, or dropped), A.U8.14 (`:213` mirror tag),
-  A.U8C.01/A.U8C.72, A.U26.68.
+  A.U8C.01/A.U8C.72, A.U26.68; gap pass: M_TEST_HELP GAP-H1 (the grace constant goes).
 - **Site**: `tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:1-225`.
 - **Change**: order: `build_system(watchdog=arm(), cfg_path=_SCRATCH_CFG_PATH, …)` → report → `run_setups(
   _collect_setups())` under the batch `_ProbeGc` label → report/map → `start_tasks(_collect_task_starters(),
-  _collect_task_names())` awaited under `asyncio.wait_for(…, _STARTER_LOOP_TIMEOUT_MS / 1000)` (it returns once every
-  starter ran; the `_counting_start_task` rebinding, the 20 ms poll and its `_STARTER_POLL_MS` row go, and the grace
-  sleep stays only for the trailing collect) → report/map → `start_timers(triggers, timers)` (the two lists) → report
+  _collect_task_names())` awaited under `asyncio.wait_for(…, _STARTER_LOOP_TIMEOUT_MS / 1000)` (it returns after its
+  last placement collect, so the report/map follows at once; the `_counting_start_task` rebinding, the 20 ms poll and
+  its `_STARTER_POLL_MS` row go, and so do `_STARTER_LOOP_GRACE_MS` and its sleep `:197` with its row — the twin probe
+  drops the same constant, M.TEST_HELP.028, and the mirror check compares only `_STARTER_LOOP_TIMEOUT_MS` and
+  `_TIMERS_TIMEOUT_S`; gap pass, M_TEST_HELP GAP-H1) → report/map → `start_timers(triggers, timers)` (the two lists) → report
   → settle → reports; the supervisor never starts, so nothing to cancel; the boot-phase mark cleared at the end
   (M.HW_DEV.009 (4)). Every `RESULT:`/`HEAP`/`COUNTS`/`BOOT` line → facts; "Report only, no floors" stays (the wrapper
   asserts the twin's bound, M.HW_DEV.118). The comment `:146-148` explaining the seam goes.
 - **Resolved**: A.U20.06 reorders the lists (setups, tasks, then timers) — the script follows the generated order, so
   HEAD's timers-before-tasks reading is not reproduced; the `starter_poll_ms` row (A.U8C.01/.72) is withdrawn with its
-  loop.
+  loop. The grace sleep's own row (A.U8C.72) is withdrawn too: M.TEST_HELP.028 (agent decision D8 there) removes the
+  probe's grace with the loop, and this script mirrors the probe (gap pass, GAP-H1).
 - **Unit**: U26 (after U20/U11/U10).
 - **Depends**: M.SRC_CORE (`start_tasks`, `run_setups`), M.GEN (`_collect_setups`, `_collect_task_names`),
   M.HW_DEV.001-.004, .009.
-- **Blast carried by**: `tests_scripts/test_digital_twin_boot_contiguity.py` mirrored bounds → A.U11.10/A.U25.61 (TSC);
+- **Blast carried by**: `tests_scripts/test_digital_twin_boot_contiguity.py` mirrored bounds (`_MIRRORED_BOUNDS` without
+  `_STARTER_LOOP_GRACE_MS`) → A.U11.10/A.U25.61, M_TEST_HELP GAP-H1 (TSC); Part N grace row withdrawn → A.U8C.72 (SPEC);
   `test_gc_collect_sites` boot-mirror row → A.U30.16 (TSC); host wrapper → M.HW_DEV.118.
 - **Kind**: test, hardware (Round: R1 [H44])
 
