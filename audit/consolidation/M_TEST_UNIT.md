@@ -6007,8 +6007,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
   raise — never an `AttributeError`; a refused construction's `setup()` returns `False` and its log holds the refusal.
   Exempt by name, as the L0 check names them (AC_NOTES 38): the chip protocol classes (`BMP3XX_I2C`, `SCD30_I2C`,
   `SGP40_I2C`, `ISL29125_I2C`) and `I2CDevice`; `ConfigManager` is gated on `valid`; `NeopixelDriver` on its
-  `initialized` gate (its row: `on()`/`off()`/`toggle()`/`led_signal()`/`request_signal()` before `setup()` — the
-  answers M_SRC_SENS defines for the gate, GAP in "Gaps"); `NotificationService` is gated (`initialized` False until
+  `initialized` gate (its row: `on()`/`off()`/`toggle()`/`led_signal()`/`request_signal()` before `setup()` — `initialized`
+  False → True; before `setup()` the overlay calls return `None`, `led_signal()`/`request_signal()` answer by their own
+  rules, M.SRC_SENS.024 as amended, AC_NOTES 44); `NotificationService` is gated (`initialized` False until
   `setup()`, no method guarding on it): its row asserts `initialized is False` before `setup()` and `True` after, and that
   every public method before `setup()` answers the construction defaults — `get_data()` `NOTIFY(Triggered=False,
   TS=None)`, `get_dict_cfg()` the config store's not-valid answer, `get_error_counter()` an empty log — never an
@@ -6980,7 +6981,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **GAP-U2 (TSC)**: `tests_scripts/test_error_catalog.py` (A.U2.02) asserts that each of its keyword idioms (`errno=`,
   `wrnno=`) matches at least once over `src/` — A.U24.50 (3)'s non-vacuity floor moves there with the L1 test it
   hardened, which A.U2.02 removes (M.TEST_UNIT.157, D-T14).
-- **GAP-U3 (SRC_SENS)**: AC_NOTES 38 gives `NeopixelDriver` an `initialized` gate, but no merged product change adds it:
+- **GAP-U3 (SRC_SENS)** — closed by M.SRC_SENS.023/.024 as amended (AC_NOTES 44): AC_NOTES 38 gives `NeopixelDriver` an `initialized` gate, but no merged product change adds it:
   where it is set (`setup()`), and what `on()`/`off()`/`toggle()`/`led_signal()`/`request_signal()` answer before
   `setup()`. M.TEST_UNIT.079 and the readiness L1 (M.TEST_UNIT.293) assert those answers once defined.
 - **GAP-U4 (SRC_SENS, observation)**: a stored config value outside the chip's domain (a stale file) makes

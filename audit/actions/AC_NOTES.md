@@ -161,3 +161,6 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     `setup()` answers the construction defaults through its members' own gates (M.SRC_SENS.033).
 43. Owner, 2026-10-01: SCR Q1 → (a) (OR133: every runner, `test.sh` included, exits 2 on a usage or setting error;
     E.10 names no exception; `test_test_sh.py`'s rejection tests expect 2). Written firm everywhere.
+44. Lead (2026-10-01), TEST_UNIT GAP-U3 and the TSC gap: `NeopixelDriver` gets `self.initialized` (False last in
+    `__init__`, True in `setup()`, which returns the logger's result) — M.SRC_SENS.023/.024 amended. As for
+    `NotificationService` (42), no method guards on it; a call before `setup()` answers as after it.

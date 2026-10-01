@@ -504,7 +504,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `self._start_signal_event = asyncio.Event()`; `self._overlay_lock = asyncio.Lock()` with the reason "# serialises the
   pixel and its write() between the overlay and a signal ramp"; `self._overlay_start = asyncio.ThreadSafeFlag()`;
   `self._overlay_bri = _LED_OVERL_BRI`; `self._overlay_rgb: tuple[int, int, int] = (0, 0, 0)`; `self._overlay_on =
-  False`; `self._neopixel_freq = _NEOPIXEL_FREQ_HZ`; `self._frame_ms = 1000 // _NEOPIXEL_FREQ_HZ` (50 ms, exact).
+  False`; `self._neopixel_freq = _NEOPIXEL_FREQ_HZ`; `self._frame_ms = 1000 // _NEOPIXEL_FREQ_HZ` (50 ms, exact). Last: `self.initialized = False` (G5/R14's gate,
+  AC_NOTES 38/44).
 - **Resolved**: one name stem for the overlay state: A.U10.18 writes `_overlay_lock` while A.U10.35's mechanical rule
   would give `_led_overl_bri`/`_led_overl_on` beside it; D.10 in-file consistency → `_overlay_*` for all five (agent,
   2026-10-01). `rgbt`, `led_overl_start`, `led_overl_rgb` have no outside reader → private by default (G10/R07).
@@ -521,10 +522,14 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Kind**: code
 
 ### M.SRC_SENS.024 `NeopixelDriver.setup()`: the logger in the boot batch
-- **From**: A.U10.10 (new `setup()`), A.U10.21 (`-> bool`)
+- **From**: A.U10.10 (new `setup()`), A.U10.21 (`-> bool`), AC_NOTES 38/44 (`initialized`, GAP-U3, TSC gap)
 - **Site**: `src/asy_neopixel_driver.py` new method (D.15 position)
-- **Change**: `async def setup(self) -> bool: return await self.pr.setup()` (the logger's own `setup()` returns
-  `initialized` after A.U10.21).
+- **Change**: `async def setup(self) -> bool:` `ok = await self.pr.setup()` (the logger's own `setup()` returns
+  `initialized` after A.U10.21); `self.initialized = True`; `return ok`. No method guards on `initialized` (AC_NOTES
+  44): every member exists from construction and both tasks start after the boot batch, so a call before `setup()`
+  answers as after it — `on()`/`off()`/`toggle()` record the overlay state and return `None` (applied when the overlay
+  task starts, M.SRC_SENS.025), `led_signal()`/`request_signal()` answer `True`/`False` by their own rules
+  (M.SRC_SENS.026/.027), the request held until the signal task runs; the log calls go to the logger's own gate.
 - **Resolved**: —
 - **Unit**: U10
 - **Depends**: A.U10.21's `PrintLogHistory*.setup()` return (SRC_CORE)

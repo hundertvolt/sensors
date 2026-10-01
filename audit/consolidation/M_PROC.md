@@ -1238,3 +1238,94 @@ agent decisions below go to the OR2.c review.
 - **D9** (M.PROC.014, .015, .019): PROC carries the files no cluster owns (`legacy/`, `dev_legacy/`, `.gitignore`)
   rather than leaving them to the lead.
 
+## Ledger
+
+| action ID | merged into M-ID / dropped (reason) |
+|---|---|
+| A.C.07 | M.PROC.040 |
+| A.C.08 | M.PROC.041 |
+| A.C.09 | M.PROC.042 |
+| A.C.11 | M.PROC.043 (the order of (3) also in M.PROC.036, .042) |
+| A.C.18 | M.PROC.037 |
+| A.SDEP.01 | M.PROC.008 (placement in M.PROC.003) |
+| A.SDEP.02 | M.PROC.009 (command set and extra baseline rows in M.PROC.002, M.PROC.007) |
+| A.SDEP.10 | M.PROC.010 |
+| A.SDEP.17 | M.PROC.011 (conditional texts and code carried by the clusters named there; SPEC/DOCS texts, Gaps 2-3) |
+| A.SDEP.20 | M.PROC.012 |
+| A.SDEP.23 | M.PROC.013 (per-action step in M.PROC.001 (5)) |
+| A.SDEP.25 | M.PROC.031 |
+| A.S0930.32 | carried elsewhere: M.SRC_CORE.011, M.SRC_CORE.016, M.TEST_UNIT.306 (no PROC change) |
+| A.U0.03 | M.PROC.004 |
+| A.U0.04 | M.PROC.001 |
+| A.U0.05 | M.PROC.005 |
+| A.U0.15 | M.PROC.006 |
+| A.U1.01 | M.PROC.014 |
+| A.U1.03 | M.PROC.015 |
+| A.U1.08 | M.PROC.014 |
+| A.U10.18 | carried elsewhere: M.GEN.005, M.SRC_CORE/M.SRC_NET/M.SRC_SENS/M.TEST_UNIT/M.TWIN.102 (table) |
+| A.U10.21 | carried elsewhere: M.GEN.010, M.SRC_CORE/M.SRC_NET/M.SRC_SENS/M.TEST_UNIT (table) |
+| A.U10.29 | carried elsewhere: M.GEN.015, M.SRC_CORE.101/.120, M.SRC_NET, M.TEST_UNIT (table) |
+| A.U10.33 | carried elsewhere: M.SRC_CORE, M.SRC_NET, M.SRC_SENS (table) |
+| A.U10.35 | carried elsewhere: M.SRC_CORE, M.SRC_NET, M.SRC_SENS, M.TEST_HELP.028/.034, M.TEST_UNIT, M.HW_DEV.142/.143, M.SCR.026 (table) |
+| A.U10.39 | carried elsewhere: M.GEN.025, M.SRC_CORE, M.SRC_NET, M.SRC_SENS, M.TEST_UNIT, M.HW_DEV.142 (table) |
+| A.U10.44 | carried elsewhere: M.SRC_NET, M.SRC_SENS, M.TEST_HELP.034, M.TEST_UNIT, M.HW_DEV, M.HW_BENCH.135, M.TWIN.102/.144 (table) |
+| A.U10.45 | carried elsewhere: M.SRC_CORE, M.SRC_NET, M.SRC_SENS, M.TEST_UNIT.054/.126 (table) |
+| A.U14.29 | M.PROC.016 (F.7 rows: SPEC via A.U14.28, Gap 2) |
+| A.U17.12 | M.PROC.017 |
+| A.U19.19 | carried elsewhere: M.SPEC.018 |
+| A.U2.25 | carried elsewhere: M.WEB.045, M.TSC.088 |
+| A.U20.26 | carried elsewhere: M.TSC.159 |
+| A.U20.32 | carried elsewhere: M.GEN (11 changes), M.TOOL.030/.033 |
+| A.U23.46 | carried elsewhere: M.WEB.063 |
+| A.U23.47 | carried elsewhere: M.TSC.170, M.TEST_UNIT.332, M.TOOL.033, M.SCR.028, M.TWIN.136 |
+| A.U24.35 | dropped (withdrawn by its unit; content carried by A.U25.31 (1) → M.TWIN.016) |
+| A.U24.38 | carried elsewhere: M.TEST_UNIT (11), M.TWIN.100/.142, M.HW_BENCH.030 |
+| A.U24.39 | carried elsewhere: M.TEST_UNIT (10), M.TSC (`test_buildgen_generate.py` section) |
+| A.U24.56 | carried elsewhere: M.TEST_UNIT.044/.212/.265/.280, M.TWIN.140, M.WEB.058 |
+| A.U24.62 | carried elsewhere: M.TEST_UNIT (6), M.SRC_SENS.022 |
+| A.U25.38 | carried elsewhere: M.SCR.016/.050/.053/.054/.058, M.TWIN.064 |
+| A.U25.65 | carried elsewhere: M.TWIN.064/.067/.071/.075/.144 (BACKLOG pointer, Gap 3 (c)) |
+| A.U25.66 | carried elsewhere: M.SCR.047, M.SCR.055, M.TSC.165 |
+| A.U25.73 | carried elsewhere: M.TWIN.010/.012/.013/.014/.072/.142/.150 |
+| A.U26.45 | carried elsewhere: M.HW_BENCH (9), M.HW_DEV.036/.045/.111/.112 |
+| A.U26.51 | carried elsewhere: M.HW_BENCH (14), M.HW_DEV (12), M.TSC.102 (E.6 rows, Gap 2) |
+| A.U26.65 | carried elsewhere: M.HW_BENCH.011/.013/.017/.021/.064/.071/.127/.128 (CLAUDE.md line, Gap 3 (b)) |
+| A.U26.69 | carried elsewhere: M.HW_DEV (12) (L0 check, Gap 4) |
+| A.U26.76 | carried elsewhere: M.HW_BENCH (10), M.HW_DEV.011/.046/.047/.119 |
+| A.U27.06 | carried elsewhere: M.SCR.071, M.SCR.072, M.GEN.021, M.TSC (`test_build_frozen_html_sh.py` section) |
+| A.U27.33 | carried elsewhere: M.SCR (15), M.TSC.035 (new L0 file, Gap 4) |
+| A.U28.26 | carried elsewhere: M.WEB.074, M.SCR.064 |
+| A.U28.33 | M.PROC.019 |
+| A.U29.04 | M.PROC.020 (tracked-copy deletion is M.HW_DEV.112's) |
+| A.U3.15 | carried elsewhere: M.WEB.045, M.TSC.088 |
+| A.U31.12 | carried elsewhere: M.SRC_SENS.007, M.SRC_SENS.013 |
+| A.U32.04 | M.PROC.021 |
+| A.U35.01 | M.PROC.022 |
+| A.U35.07 | M.PROC.023 |
+| A.U35.32 | M.PROC.024 (F.1 sentence, Gap 2) |
+| A.U35.36 | M.PROC.025 |
+| A.U35.52 | M.PROC.026 |
+| A.U35.53 | M.PROC.027 |
+| A.U35.54 | M.PROC.029 |
+| A.U35.56 | M.PROC.028 (Part N rows and tagged literals as B3 deltas, Gap 2) |
+| A.U37.01 | M.PROC.030 |
+| A.U37.07 | M.PROC.032 |
+| A.U37.09 | M.PROC.033 |
+| A.U37.13 | M.PROC.034 |
+| A.U37.14 | M.PROC.035 |
+| A.U37.16 | M.PROC.044 |
+| A.U37.17 | M.PROC.033 |
+| A.U5.02 | carried elsewhere: M.SRC_CORE, M.SRC_NET, M.SRC_SENS, M.TEST_UNIT, M.TEST_HELP.035, M.HW_DEV, M.HW_BENCH.134, M.TWIN.064, M.GEN (table) |
+| A.U6.07 | carried elsewhere: M.WEB.031, M.WEB.059, M.GEN.060 |
+| A.U6.11 | carried elsewhere: M.SCR.023, M.SCR.063, M.TOOL.010/.019, M.WEB.073 (new L0 file, Gap 4) |
+| A.U6.14 | carried elsewhere: M.TSC.035, M.TSC.002 |
+| A.U6.17 | carried elsewhere: M.GEN.015/.017/.046, M.SRC_SENS.051, M.WEB.004/.005/.041/.060/.063, M.TSC.159 |
+| A.U8C.120 | test-site tags carried elsewhere (M.TWIN.124/.132/.144; M.TEST_UNIT holds, one row withdrawn at .090); Part N text → SPEC (Gap 1) |
+| A.U8C.121 | test-site tags carried elsewhere (M.HW_DEV, M.SCR.065); Part N text → SPEC (Gap 1) |
+| A.U8C2.51 | test-site tags carried elsewhere (M.TEST_UNIT.309); Part N text → SPEC (Gap 1) |
+| A.U1.02 (extra: indexed to README.md, no README edit) | M.PROC.014 |
+
+Read for order or context, not constituents (their own clusters merge them): A.U0.01, A.U0.02, A.U0.06 (procedure merged
+into M.PROC.007; ENV.T02 text DOCS), A.C.01-A.C.06, A.C.10, A.C.12-A.C.17, A.C.19, A.SDEP.03-A.SDEP.09, A.SDEP.11-A.SDEP.16,
+A.SDEP.18, A.SDEP.19, A.SDEP.21, A.SDEP.22, A.SDEP.24, A.U28.35, A.U36.545, A.U37.02-A.U37.06, A.U37.08, A.U37.10-A.U37.12,
+A.U37.15.
