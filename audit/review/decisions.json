@@ -46,8 +46,8 @@
    "id": "hardware-go-aheads",
    "title": "Give a go-ahead in each hardware session's own conversation",
    "what": "Nothing touches the dev board, the bench Pi or the bench network until you say so in that session's conversation. A go-ahead does not carry over to another conversation; once given it covers the rest of that conversation. Name in the go-ahead any optional item you want included (removing stale bench packages, the fresh-bridge proof, the hotspot-settle check).",
-   "why": "The standing CLAUDE.md rule for real hardware. All hardware work is collected into three sessions after the last software unit, so you give at most three go-aheads.",
-   "when": "phase C, after unit U37: sessions 1, 2 and 3",
+   "why": "The standing CLAUDE.md rule for real hardware. All hardware work is collected into two sessions after the last software unit, so you give at most two go-aheads.",
+   "when": "phase C, after unit U37: sessions 1 and 2",
    "refs": [
     "CLAUDE.md hardware go-ahead rule",
     "A.C.01",
@@ -84,18 +84,6 @@
    ]
   },
   {
-   "id": "rollover-window",
-   "title": "Keep the board free for the 12.4-day rollover run",
-   "what": "Either keep the first session's conversation open as its tail, or open a new conversation whose go-ahead names the rollover round to read the result. During the window nothing else may use the board.",
-   "why": "The run proves the device across the 2**30-millisecond tick wrap on silicon. If a later fix changes tick-handling code, you decide whether the run is repeated.",
-   "when": "phase C, session 2 (after the soak round)",
-   "refs": [
-    "A.C.08",
-    "M.PROC.041",
-    "M.SCR.074"
-   ]
-  },
-  {
    "id": "close-and-merge",
    "title": "Agree to close the hardware phase and to merge",
    "what": "Two agreements at the end: that the hardware phase is complete (this opens phase D), and that the audit is finished, which allows the one merge into main and pushing the release tag. Say also whether the audit branch should be deleted; if you do not name it, it stays.",
@@ -124,12 +112,12 @@
  "hardware_sessions": [
   {
    "id": "session-1",
-   "title": "Session 1: bench host, first contact, operator round, wear, soak, reflash",
-   "rounds": "R0, R1, R2, R3, R5, R4 (in that order, one conversation)",
-   "what_happens": "R0 prepares the bench Pi with no board attached: host record, installer checks, the bench tier install, speed probes, the host-side lwIP hammer. R1 makes first contact read-only (status, reset cause, raw FRAM dump, every config file saved), then builds and flashes the dev image and runs the default flash and bench tiers, a few hand-run measurements, and last a deliberate planted red to prove the hardware memory gates fire. R2 is the operator round with you at the bench. R3 runs the opt-in wear tests (persistence writes, a second SCD30 NVM write, the NeoPixel sweep) and ends with the hotspot role-reversal's destructive stage. R5 runs the soaks (1 min, 10 min, 6 h). R4 runs the reflash rows last, because they change the image: the lwIP send-stall pair (unpatched control image first, then the fix), the CRC16 UART run and the reflash smoke test, and restores the standard image.",
+   "title": "Session 1: bench host, first contact, operator round, wear, soak, rollover, reflash",
+   "rounds": "R0, R1, R2, R3, R5, R6, R4 (in that order, one conversation)",
+   "what_happens": "R0 prepares the bench Pi with no board attached: host record, installer checks, the bench tier install, speed probes, the host-side lwIP hammer. R1 makes first contact read-only (status, reset cause, raw FRAM dump, every config file saved), then builds and flashes the dev image and runs the default flash and bench tiers, a few hand-run measurements, and last a deliberate planted red to prove the hardware memory gates fire. R2 is the operator round with you at the bench. R3 runs the opt-in wear tests (persistence writes, a second SCD30 NVM write, the NeoPixel sweep) and ends with the hotspot role-reversal's destructive stage. R5 runs the soaks (1 min, 10 min, 6 h). R6 flashes the tick-offset test image, whose tick counters start 15 minutes before their wrap, and watches the board for about two hours across both wraps (your answer in this review). R4 runs the reflash rows last, because they change the image: the lwIP send-stall pair (unpatched control image first, then the fix), the CRC16 UART run and the reflash smoke test, and restores the standard image.",
    "owner_present": "Go-ahead in the conversation; at the bench in person for R2; two confirmations in R0.",
    "duration": "Not estimated in the plan. The 6-hour soak alone takes six hours; the full bench tier took 41 minutes in its last recorded run, before the flash tier, the lower test levels and the gated runs. Expect at least a long day.",
-   "wear_or_risk": "Flash writes only behind their markers and stated in each round's plan: R1 the image flash plus 2-3 pinned prerequisite writes and at most 1 SCD30 NVM write; R2 as in its budget; R3 the README budget table's sum for the flags used; R4 5 flash cycles (7 if the hotspot-settle row is planned); R5 none. Risks: the role reversal's stage 6 permanently deactivates the board's Wi-Fi (recovered over USB, named before it runs); every bench-network change runs under the dead-man's switch; Erase FRAM overwrites the FRAM logs, so they are saved first.",
+   "wear_or_risk": "Flash writes only behind their markers and stated in each round's plan: R1 the image flash plus 2-3 pinned prerequisite writes and at most 1 SCD30 NVM write; R2 as in its budget; R3 the README budget table's sum for the flags used; R4 5 flash cycles (7 if the hotspot-settle row is planned); R5 none; R6 one image flash. Risks: the role reversal's stage 6 permanently deactivates the board's Wi-Fi (recovered over USB, named before it runs); every bench-network change runs under the dead-man's switch; Erase FRAM overwrites the FRAM logs, so they are saved first.",
    "refs": [
     "audit/order/WORK_ORDER.md section 5",
     "A.C.01",
@@ -150,22 +138,7 @@
   },
   {
    "id": "session-2",
-   "title": "Session 2: the 12.4-day tick rollover",
-   "rounds": "R6",
-   "what_happens": "On the release-candidate image, a detached run on the bench Pi polls the board hourly over REST until its uptime passes the 2**30 ms tick wrap plus an hour, then records a verdict. Started through its own runner, so the result is a recorded clean run.",
-   "owner_present": "Go-ahead only. It can run as session 1's tail if that conversation stays open; otherwise a new go-ahead naming R6 reads the result.",
-   "duration": "About 12.4 days plus an hour of margin; the board is used by nothing else in that window.",
-   "wear_or_risk": "No wear. The bench network switch is armed only across the start-up fixtures.",
-   "refs": [
-    "A.C.08",
-    "M.PROC.041",
-    "M.SCR.074",
-    "audit/order/WORK_ORDER.md section 5"
-   ]
-  },
-  {
-   "id": "session-3",
-   "title": "Session 3: the release proof",
+   "title": "Session 2: the release proof",
    "rounds": "R7",
    "what_happens": "Only after every hardware finding is fixed and one full re-verification pass is green: a throwaway image without the boot-time gc.threshold line runs the full default flash and bench tiers with zero memory-allocation markers, then the release image from the final commit runs them again. Every reset seen across the rounds is attributed; the board ends on the release image in its standard state.",
    "owner_present": "Go-ahead; afterwards you are told the hardware phase is complete and asked for the agreement that opens phase D.",
@@ -2936,7 +2909,7 @@
    "weight": "routine",
    "topic": "build-chain-and-ci",
    "title": "The rollover run gets its own runner",
-   "decision": "The 12.4-day rollover gets its own runner rather than a soak mode or a README recipe.",
+   "decision": "The rollover round gets its own runner rather than a soak mode or a README recipe.",
    "why": "A mechanical choice inside the runner rules.",
    "refs": [
     "M_SCR AD-19",
@@ -3020,7 +2993,7 @@
    "weight": "routine",
    "topic": "execution-and-release",
    "title": "The rollover starts through its runner",
-   "decision": "The 12.4-day rollover run starts through its own runner, so its verdict is a recorded clean run.",
+   "decision": "The rollover round run starts through its own runner, so its verdict is a recorded clean run.",
    "why": "A procedural choice inside your execution rules.",
    "refs": [
     "M_PROC D8",
@@ -5048,7 +5021,7 @@
   {
    "id": "rollover-repeat",
    "title": "Repeating the rollover run after a tick fix",
-   "why_parked": "Needs real hardware: if a later fix changes tick-handling code, you decide whether the 12.4-day run repeats.",
+   "why_parked": "Needs real hardware: if a later fix changes tick-handling code, you decide whether the two-hour rollover round repeats.",
    "refs": [
     "M.PROC.041"
    ]

@@ -1,6 +1,6 @@
 {
  "overview": {
-  "one_line": "The plan turns the audit into 1,883 concrete changes, applied in 41 ordered software units without stopping for you, then proven on the dev bench in three hardware sessions you start, and merged into main as release 2.0.",
+  "one_line": "The plan turns the audit into 1,883 concrete changes, applied in 41 ordered software units without stopping for you, then proven on the dev bench in two hardware sessions you start, and merged into main as release 2.0.",
   "numbers": [
    {
     "label": "Requirements",
@@ -24,7 +24,7 @@
    },
    {
     "label": "Hardware",
-    "value": "8 rounds in 3 sessions",
+    "value": "8 rounds in 2 sessions",
     "note": "Nothing touches the board until the software work is done; each session needs your go-ahead in its own conversation."
    },
    {
@@ -37,10 +37,10 @@
    "Read the twelve areas and check the direction. Every change traces back to your requirements, a datasheet or source fact, or a project rule.",
    "Go through the decisions taken on your behalf, sorted by weight. The routine ones can be approved as one batch; a 'no' changes only that item.",
    "Confirm that the session may push to your private datasheets repository before the datasheet move (about two thirds of the way through). Without push access only the move and its two doc sections are skipped.",
-   "Plan the three hardware sessions. Each one starts only with your go-ahead in its own conversation, and for one round you need to be at the bench.",
+   "Plan the two hardware sessions. Each one starts only with your go-ahead in its own conversation, and for one round you need to be at the bench.",
    "Give the execution go-ahead on this list, or on your corrections to it."
   ],
-  "timeline": "Once you give the go-ahead, the 41 software units run one after another with no stops for you. You can look in at any sync point; each unit ends with a commit, a push, the full test gate at both GC stages and green CI, and the gate runs in the background while the next unit starts. The estimate for this part is about 5-8 working days with the planned test scheduling. It is an estimate, not a commitment. Then comes the hardware phase on the dev bench. Session 1 covers the bench-host check, first contact and the default run, the operator round with you at the bench, the gated wear run, the soaks, and the reflash rows last. Session 2 is the 12.4-day timer-rollover run with the board left alone; it can be session 1's tail if you keep that conversation open. Session 3 is the release proof on the final tree. Last, with your agreement, comes one merge into main tagged v2.0 (the version number is one of the decisions for your review), and the plan and audit files are deleted."
+  "timeline": "Once you give the go-ahead, the 41 software units run one after another with no stops for you. You can look in at any sync point; each unit ends with a commit, a push, the full test gate at both GC stages and green CI, and the gate runs in the background while the next unit starts. The estimate for this part is about 5-8 working days with the planned test scheduling. It is an estimate, not a commitment. Then comes the hardware phase on the dev bench. Session 1 covers the bench-host check, first contact and the default run, the operator round with you at the bench, the gated wear run, the soaks, and the reflash rows last. Session 1 also holds the timer-rollover round, about two hours on a test image whose tick counters start just before their wrap. Session 2 is the release proof on the final tree. Last, with your agreement, comes one merge into main tagged v2.0 (the version number is one of the decisions for your review), and the plan and audit files are deleted."
  },
  "topics": [
   {
@@ -162,7 +162,7 @@
     },
     {
      "title": "New fields in the status page",
-     "text": "/status gains free heap, the last reset reason, the last task that ended, the device clock as Unix time, a count of web connections the device dropped before answering and the Wi-Fi status time.",
+     "text": "/status gains free heap, the last reset reason, the last task that ended, the device clock as Unix time, the web connections dropped in the last 24 hours (hourly bins, cleared by ResetErrors), the modules whose config file was unreadable or damaged at boot and the Wi-Fi status time.",
      "user_visible": true,
      "refs": [
       "M.GEN.014"
@@ -1132,8 +1132,8 @@
      ]
     },
     {
-     "title": "Eight hardware rounds in three sessions",
-     "text": "Session 1 covers the bench-host check, first contact and the default run, the operator round with you at the bench, the gated wear run, the soaks, and the reflash rows last. Session 2 is the 12.4-day timer-rollover run, with the board left alone. Session 3 is the release proof: the full tiers on an image without the GC threshold, then on the release image.",
+     "title": "Eight hardware rounds in two sessions",
+     "text": "Session 1 covers the bench-host check, first contact and the default run, the operator round with you at the bench, the gated wear run, the soaks, the two-hour timer-rollover round on a tick-offset test image, and the reflash rows last. Session 2 is the release proof: the full tiers on an image without the GC threshold, then on the release image.",
      "user_visible": true,
      "refs": [
       "M.PROC.036",
