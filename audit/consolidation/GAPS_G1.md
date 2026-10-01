@@ -51,6 +51,7 @@ holds the item. "Amended" means this pass edited that change's body, and its led
 | S38 | M_WEB gap 4 (a)-(e) | H.6.1 member and row fixes; H.4 `ForceCalRef`/dispatch text; H.2/H.8.1 `_expected_display.js`; `LastTaskEnd` display | M.SPEC.120; M.SPEC.116; M.SPEC.114/.124; M.SPEC.116 | carried |
 | S39 | M_WEB gap 7 | Part N rows for the new `tests_js` tags | M.SPEC.156 (2) | carried |
 | S40 | M_PROC gap 7 / M_TWIN LEAD gap (SPEC side) | `.gitignore` is PROC's | M.SPEC.089 Blast | **amended**: the sentinel parenthesis → M.PROC.019 (6) (PROC), not "TOOL" |
+| S41 | GAPS_G4 hand-off 4 | M.SPEC.156: the three reflash-retry rows name `tests_hardware/harness.py` (`reflash()`) as their site, plus `manual/manual_toolchain.py` for the load timeout; the starter grace and poll rows are withdrawn | M.SPEC.156 (3), (4) | **amended** (matches M.HW_BENCH.014, M.TEST_HELP.028, M.HW_DEV.117) |
 
 ### Target DOCS (`M_DOCS.md`)
 
@@ -72,6 +73,9 @@ holds the item. "Amended" means this pass edited that change's body, and its led
 | D14 | M_TSC gap 2 | the README runbook cites the hostname test by name | M.DOCS.048 | carried |
 | D15 | M_TWIN DOCS item | the two-suites bullet and the UART clause should name the L2 twin UART files | — | disposed: settled by M.DOCS.085 (CLAUDE.md names no file; C.8/J.7 is the one list, A.U36.014) and M.DOCS.101 (the UART pair binds no port) |
 | D16 | M_WEB gap 8 | the two-suites bullet names the live twin, not the mock; the eslint-comments plugin goes in the U0 refresh line | M.DOCS.101, M.DOCS.066 | carried |
+| D17 | GAPS_G4 hand-off 1 (a) | the README rollover recipe is `scripts/run_bench_rollover_test.sh`, not the bare `uv run pytest … -k …` | M.DOCS.049 | **amended** (M.SCR.074; the bare call skipped the run record and verdict) |
+| D18 | GAPS_G4 hand-off 1 (b) | CLI reference entry for the rollover runner, equal to its `--help` | M.DOCS.052 | **amended** |
+| D19 | GAPS_G4 hand-off 1 (c) | BACKLOG U27 chroot paragraph names the new runner | M.DOCS.066 | **amended** |
 
 ### Target PROC (`M_PROC.md`)
 
@@ -84,6 +88,7 @@ holds the item. "Amended" means this pass edited that change's body, and its led
 | P5 | M_SCR gap 2 (f) | `.gitignore` MICROPYPATH sentence: keep one | M.PROC.019 (6), Resolved | carried (the sentence goes; `scripts/micropypath.toml` is its one home) |
 | P6 | M_DOCS gap 5 | lists what DOCS carried for PROC | — | disposed: informational, nothing for PROC to add |
 | P7 | M_SPEC gap 1 (PROC side) | the standing-workaround list is SPEC F.9 | M.PROC.008, M.PROC.031 | **amended** ("F.5.10" → F.9 in Resolved, Change and Blast) |
+| P8 | GAPS_G4 hand-off 2 (AC_NOTES 45) | R6 starts with the rollover runner; D8 now reads "through the rollover runner" | M.PROC.041 | **amended** (Site, Change, Resolved, Depends; M.SCR.074) |
 
 ### Target GEN (`M_GEN.md`)
 
@@ -131,19 +136,21 @@ not an owner question.
 
 - Late SPEC gap 3 (TEST_UNIT, the idle-wait degrade test): the SPEC side needs no change (M.SPEC.108's F.8.2 sentence
   states the rp2 behaviour, as the gap says).
-- AC_NOTES 45 / M_PROC gap 5 (SCR, HW_BENCH: no runner selects `multi_day_rollover`). M.PROC.041 already starts R6 through
-  the clean-run wrapper directly and stays valid with either fix.
+- AC_NOTES 45 / M_PROC gap 5 (SCR, HW_BENCH: no runner selects `multi_day_rollover`): G4 settled it with M.SCR.074. Its
+  DOCS, PROC and SPEC consequences are rows S41, D17-D19 and P8.
 - M_GEN gap 9, M_WEB gap 1, M_PROC gap 7 (CLUSTERS.md): these are orchestrator items.
 
 ## Counts
 
-- Items read that target G1: 77 (SPEC 40, DOCS 16, PROC 7, GEN 14).
+- Items read that target G1: 82 (SPEC 41, DOCS 19, PROC 8, GEN 14). That is 77 from the gap sections plus 5 from
+  GAPS_G4's hand-offs (S41, D17-D19, P8).
 - Carried as found: 56 (SPEC 38, DOCS 12, PROC 5, GEN 1).
-- Amended: 15 (SPEC S37, S40; DOCS D1, D2; PROC P7; GEN G1, G2, G4, G6, G7, G8, G10, G11, G12, G13). S6 is counted
-  as carried; its DOCS-side follow-up (M.DOCS.065) and D1's M.DOCS.070 Blast fix are edits made under those rows.
+- Amended: 20 (SPEC S37, S40, S41; DOCS D1, D2, D17, D18, D19; PROC P7, P8; GEN G1, G2, G4, G6, G7, G8, G10, G11, G12,
+  G13). S6 is counted as carried; its DOCS-side follow-up (M.DOCS.065) and D1's M.DOCS.070 Blast fix are edits made
+  under those rows.
 - New merged changes: 0.
 - Disposed: 6 (D5, D15, P6, G3, G5, G9).
 - Handed off: 3 (H1 SRC_NET, H2 SRC_NET, H3 TWIN).
-- Changes edited: M.SPEC.077, .089; M.DOCS.048, .065, .070, .071, .092; M.PROC.008, .031; M.GEN.003, .008, .010, .017,
-  .019, .024, .034, .046, .062. Each of the four files gained an "Incoming gaps, gap pass G1" note before its Adherence
-  section.
+- Changes edited: M.SPEC.077, .089, .156; M.DOCS.048, .049, .052, .065, .066, .070, .071, .092; M.PROC.008, .031, .041;
+  M.GEN.003, .008, .010, .017, .019, .024, .034, .046, .062. Each of the four files gained an "Incoming gaps, gap pass
+  G1" note before its Adherence section.

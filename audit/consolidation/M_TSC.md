@@ -1046,7 +1046,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **From**: A.S0930.01 (crc cases), A.U20.01 (single owner; responder without initiator), A.U17.32 (baud mismatch),
   A.U17.21 (poll ceiling, timeout ceiling, source-read variant), A.U13.17 (`:1290-1299` defaults comment, `rxbuf = 52`
   refusal; `:1301-1310` replacement), A.U2.23 (`:1257`, `:1268`, in M.TSC.055); read: A.S0930.01 (`:1240-1384` hold —
-  absent `crc` is `"none"`), A.U17.21 (`:1255-1287` hold).
+  absent `crc` is `"none"`), A.U17.21 (`:1255-1287` hold); A.S0930.01's `test_uart_crc_modes_match_crc_checks` with
+  SRC_CORE GAP-G10's names (`asy_crc_checks`, `CRCPass`; gap pass G3 — the test had no carrier).
 - **Site**: `tests_scripts/test_buildgen_validate.py:1236-1384`, new rows.
 - **Change**: `crc = "crc8"`, `16`, `"CRC16"`, `["crc16"]` each refused naming the legal set with `(field, instance) ==
   ("crc", label)`; a `none`/`crc16` pair refused naming both labels; `crc16`/`crc16` builds; a CRC pair at
@@ -1058,8 +1059,14 @@ where a test pins an SCR product, the constituent action is cited and the depend
   the ceiling, 89,478,485 built; `:1290-1299` comment "rxbuf 256, poll_wait_ms 2, poll_idle_ms 50", its refusal case
   `rxbuf = 52`; `:1301-1310` → `test_an_unstated_poll_idle_ms_is_read_from_the_driver_source`: a `tmp_path` `src/` copy
   whose `asy_uart_driver.UART` default reads `poll_idle_ms: int = 975` builds (2 × 2 + 975 + 21 = 1000) and `976` is
-  refused matching `poll_idle_ms 976`, `poll_idle_ms` unstated in the TOML.
-- **Resolved**: A.U13.17's replacement (poll 464/465) fails A.U17.21's single-digit poll check before its floor; the
+  refused matching `poll_idle_ms 976`, `poll_idle_ms` unstated in the TOML. New
+  `test_uart_crc_modes_match_crc_checks`: reads `src/asy_crc_checks.py` by `ast`; every class named in
+  `buildspec.UART_CRC_MODES` exists there and its `__init__`'s `super().__init__(<int>, …)` first argument equals the
+  table's width (`CRCPass` 0, `CRC16` 2); a table naming a class the module lacks fails naming it (bite on a `tmp_path`
+  copy).
+- **Resolved**: A.S0930.01 writes the agreement test against HEAD's `src/crc_checks.py` and `CRC_Pass`; it lands after
+  U10's rename (A.U10.37/A.U10.38, M.SRC_CORE.115), so it reads the end-state module and class (SRC_CORE GAP-G10; the
+  table's own `"CRC_Pass"` is GEN's to follow, M.GEN.024 — hand-off in GAPS_G3). A.U13.17's replacement (poll 464/465) fails A.U17.21's single-digit poll check before its floor; the
   source-copy form A.U17.21 writes is taken (its own AC note amends A.U13.17's test).
 - **Unit**: U17 (stages U13 comment/defaults; S0930 CRC rows with A.S0930.01's unit).
 - **Depends**: M.GEN.027, M.GEN.029; A.U13.17/A.U17.20 driver constants (SRC_UART).
@@ -1350,7 +1357,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
 ## tests_scripts/test_decision_vocabulary.py
 ### M.TSC.071 Decision vocabulary carries its actor
 - **From**: A.U0.09 (check), A.U36.549 (named narrowing regexes per recurring descriptive shape; empty list), A.U37.02
-  (allow-list reading goes), A.U0.10 (read: CLAUDE.md names it).
+  (allow-list reading goes), A.U0.10 (read: CLAUDE.md names it); A.U37.15 (phase D: the `audit/`/`PROJECT_AUDIT_PLAN.md` exclusion goes; M.DOCS.043's blast, gap pass G3).
 - **Site**: new `tests_scripts/test_decision_vocabulary.py`.
 - **Change**: scope: living `*.md` outside `audit/`, `legacy/`, `arduino/`, `ext/`, `PROJECT_AUDIT_PLAN.md` and
   `THIRD_PARTY_LICENSES.md`'s quoted licence text, plus comments/docstrings in `src/`, `buildgen/`, `digital_twin/`,
@@ -1361,7 +1368,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
   docstring cites CLAUDE.md's decision-records rule, not the audit's provenance document. Staged: U0 with
   `_decision_vocab_allowlist.txt` (shrink-only); U36 empties it; U37 drops the allow-list reading.
 - **Resolved**: —
-- **Unit**: U37 (stages U0, U36).
+- **Unit**: U37 (stages U0, U36); phase D drops the `audit/` and `PROJECT_AUDIT_PLAN.md` scope exclusions in its close
+  commit (A.U37.15), the paths being deleted there.
 - **Depends**: M.TSC.010.
 - **Blast carried by**: the tagged sentences → A.U36.549 (every owning cluster).
 - **Kind**: test
@@ -1923,14 +1931,16 @@ where a test pins an SCR product, the constituent action is cited and the depend
 
 ## tests_scripts/test_legacy_paths.py
 ### M.TSC.101 No current file names a pre-move legacy path
-- **From**: A.U1.09; A.U1.10 (read: CLAUDE.md names this file).
+- **From**: A.U1.09; A.U1.10 (read: CLAUDE.md names this file); M_PROC gap 4 (the legacy check also asserts
+  `legacy/README.md` tracked and `dev_legacy/` absent, M.PROC.014/.015; gap pass G3).
 - **Site**: new `tests_scripts/test_legacy_paths.py`.
 - **Change**: three tests, docstring ≤ 3 lines: (1) `test_no_current_file_names_a_pre_move_legacy_path` over `git
   ls-files` (git from `shutil.which`), skipping `legacy/`, `arduino/`, `datasheets/`, `audit/`, `PROJECT_AUDIT_PLAN.md`,
   this file and non-UTF-8 files, with A.U1.09's validated pattern; (2) the pattern's property test (each pre-move form
   hits, each new path and each real look-alike does not); (3) `test_the_legacy_tree_is_where_the_rules_say` (no tracked
-  path under the old roots; the `legacy/firmware/…` set, four `build-*.sh`, `legacy/dev_drivers/`, `legacy/README.md`
-  tracked). The `audit/`/`PROJECT_AUDIT_PLAN.md` exclusions go in phase D's close commit.
+  path under the old roots `python/`, `modules/`, `html_raw/` and `dev_legacy/` (dissolved, M.PROC.014), nor a root
+  `build-*.sh` or `update_and_install.txt`; the `legacy/firmware/…` set, its four `build-*.sh`, `legacy/dev_drivers/`
+  and `legacy/README.md` tracked). The `audit/`/`PROJECT_AUDIT_PLAN.md` exclusions go in phase D's close commit.
 - **Resolved**: —
 - **Unit**: U1
 - **Depends**: A.U1.01-A.U1.04 (the move).
@@ -2082,7 +2092,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
 
 ## tests_scripts/test_no_variant_literals.py
 ### M.TSC.110 No variant literal outside the device TOMLs
-- **From**: A.U6.15, A.U37.02 (`_NOT_YET_CLEANED` removed once empty), A.U37.10 (committed fixtures excluded).
+- **From**: A.U6.15, A.U37.02 (`_NOT_YET_CLEANED` removed once empty), A.U37.10 (committed fixtures excluded); A.U37.15 (phase D: the `audit/`/`PROJECT_AUDIT_PLAN.md` exclusion goes; M.DOCS.043's blast, gap pass G3).
 - **Site**: new `tests_scripts/test_no_variant_literals.py`.
 - **Change**: variant names = `DEVICE_NAMES`; scanned: every `git ls-files` path except `devices/`, `*.md`, `audit/`,
   `legacy/`, `ext/`, `datasheets/`, `arduino/`, lock files, and the committed fixtures `tests_scripts/golden/` and
@@ -2094,7 +2104,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `["iw", "dev", iface]`, `["qdisc", "del", "dev", iface]`, `tmp_path / "dev"` pass; `SensorStationWozi`, `woziData`,
   `SensorStationDev` fail).
 - **Resolved**: —
-- **Unit**: U37 (stage U6).
+- **Unit**: U37 (stage U6); phase D drops the `audit/` exclusion in its close commit (A.U37.15).
 - **Depends**: M.TSC.002.
 - **Blast carried by**: CLAUDE.md/SPEC L.1 name the check → A.U6.15 (DOC/SPEC).
 - **Kind**: test
@@ -2139,7 +2149,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
 
 ## tests_scripts/test_readme_reference.py
 ### M.TSC.113 README's command reference equals every tool's `--help`
-- **From**: A.U36.547 (7).
+- **From**: A.U36.547 (7); A.U37.15 (phase D: the `audit/`/`PROJECT_AUDIT_PLAN.md` exclusion goes; M.DOCS.043's blast, gap pass G3).
 - **Site**: new `tests_scripts/test_readme_reference.py`.
 - **Change**: imports the tool set from `test_tool_help.py` (the shared list, a module-level constant there); per tool runs
   `--help` and compares its option names (`--x`/`-x`) and environment-variable names with the README block's options and
@@ -2148,7 +2158,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
   outside `legacy/`, `audit/`, `arduino/`, `node_modules/` is named in "Further reading"; mutation fixtures (a README row
   removed, an extra option in a stub tool's help, an unmapped `.md`) fail.
 - **Resolved**: —
-- **Unit**: U36
+- **Unit**: U36; phase D drops the `audit/` exclusion in its close commit (A.U37.15), when README's "Further reading"
+  loses the plan and `audit/` entries (M.DOCS.043).
 - **Depends**: M.TSC.217, A.U36.547 (DOC).
 - **Blast carried by**: —
 - **Kind**: test
@@ -2267,7 +2278,10 @@ where a test pins an SCR product, the constituent action is cited and the depend
   (`'{"SystemCmd": "bootloader"}'` not flagged), HW_DEV GAP-D8 (a write-mode `open(` and a raw SCD30 configuration
   `writeto` count as persisting device calls, M.HW_DEV.101/.123/.155/.156), A.U26.15 (`_repair_leftover` joins
   `_KNOWN_PERSISTING_HELPERS`), A.U26.79 (the standard-state repair script joins `_PREREQUISITE_DEVICE_SCRIPTS`,
-  "restores the standard board state"; M.HW_DEV's script), A.U26.20 and A.C.13 and A.U26.71 (1) (`_JUSTIFIED_UNMARKED` reasons), A.U10.41 (`:29`
+  "restores the standard board state"; M.HW_DEV's script), A.U26.10 (the two `main()`-based serving scripts join
+  `_PREREQUISITE_DEVICE_SCRIPTS`; M.HW_DEV.009/.120's blast, gap pass G3), A.C.17 (the manual branch: a persisting script
+  run from a `tests_hardware/manual/` step needs the operator's confirmation; M.HW_BENCH.102's blast, gap pass G3),
+  A.U26.20 and A.C.13 and A.U26.71 (1) (`_JUSTIFIED_UNMARKED` reasons), A.U10.41 (`:29`
   reason names the new largest string field), A.U36.544 (`:230`, `:243` "F14"/"F15" → the reason in place), M.TSC.001
   (`config_manager.py` → `asy_config_manager.py` in the `:22-23` comment); read: A.U26.39 (`:38-44` fixture stays),
   A.U26.07/.08/.12/.14, A.U31.05, A.U16.07, A.S0930.06, A.S0930.28, A.U36.504, A.U35.51 (its conformance list reads this
@@ -2291,8 +2305,15 @@ where a test pins an SCR product, the constituent action is cited and the depend
   = the two config writers and the SCD30 NVM setters, each asserted still an `async def` in `src/`, plus a write-mode
   `open(` and an SCD30 `writeto` of a configuration command 0x4600/0x0010/0x5403…, plus `build_system(`/`main(` without a
   scratch `cfg_path`; runners found by the `"<script>.py"` string; each runner marked, a named persisting helper, or the
-  script in `_PREREQUISITE_DEVICE_SCRIPTS` with its reason — the SCD30 start script and the standard-state repair
-  script; a persisting script with no runner fails); new `test_no_raw_socket_request_persists` (`_JUSTIFIED_RAW_REQUESTS`,
+  script in `_PREREQUISITE_DEVICE_SCRIPTS` with its reason — the SCD30 start script, the standard-state repair
+  script, and the two `main()`-based serving scripts `serving_at_default_gc.py` and `heap_under_connection_ceiling.py`
+  ("boots `main()` over the production config, which carries the WiFi credentials; its only possible write is the repair
+  a production boot of a malformed file makes", A.U26.10); a persisting script with no runner fails); runners are also
+  searched in `tests_hardware/manual/*.py`: a manual step that runs a persisting script must hold a `confirm(` call
+  before the run call in the same step function (`ast`) and the script be listed in `_MANUAL_PERSISTING_STEPS =
+  {<script>: <reason>}` (today `config_write_loop_scratch.py`: "up to 20 scratch flash writes and one removal, stated
+  and confirmed by the operator before the run", A.C.17), with a bite (a tmp manual step without the `confirm(` fails);
+  new `test_no_raw_socket_request_persists` (`_JUSTIFIED_RAW_REQUESTS`,
   today the malformed raw-request test); every new check has a synthetic bite; `:230`, `:243` comments state the reason
   without the F-labels.
 - **Resolved**: A.U6.17 (7) (U6) and A.U26.71 (2) (U26) both replace `_ROUTE_DISPATCH_FIELDS` — U26's derivation reads
@@ -2327,9 +2348,10 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `DEVICE_NAMES`), A.U8C.50 (`:295-313` resolve a `Name` argument of `extra.settimeout` and the retry sleep through
   `_module_constant()`), A.U2.19 (`:296` comment names catalog codes 49/50 by name), A.U8.22 (`:237`, `:290` join bounds
   tagged; `:211, :232, :288` test inputs untagged); read: A.U8.02/A.U8.04 (overlap settled below), A.U8.05, A.U8C.112,
-  A.U8C.121, A.U8C2.18, A.U8C2.21, A.U8C2.47, A.U8.20 (constants read by name/AST, unaffected), A.U19.14, A.U23.02
+  A.U8C.121, A.U8C2.18, A.U8C2.21, A.U8C2.47, A.U8.20 (constants read by name/AST, unaffected), A.U23.02
   (15 s mirrors kept), A.U31.18 (parameter defaults unchanged), A.U36.503, A.U36.532 (`:101` "H.7.1" still lands), A.U6.16
-  (pattern cited).
+  (pattern cited); A.U19.14 (BACKLOG item 24 leaves at U19: its citer `:88` repoints in the same unit — M_DOCS gap 2,
+  gap pass G3).
 - **Site**: `tests_scripts/test_request_timeout_ceiling.py:40-313`.
 - **Change**: `_module_constant()` reads `NAME = const(<int|float literal>)` and plain literals; the webserver defaults are
   read from `ServingLimits`/`StaticSite` field defaults (`_DEFAULT_OUTER_CAP_S`, `_DEFAULT_MAX_CONTENT_LENGTH`, …) as
@@ -2337,12 +2359,14 @@ where a test pins an SCR product, the constituent action is cited and the depend
   parametrised over `DEVICE_NAMES` with `device_max_connections()`; `:295-313` resolves `extra.settimeout(<Name>)` and the
   retry sleep via `_module_constant(…)`; `:296`'s comment names `HTTP_WRITE_TIMEOUT`/`HTTP_OUTER_CAP` (catalog names) for
   49/50; join bounds `_JOIN_TIMEOUT_S = 5.0  # @tunable l0.request_timeout_ceiling_join_timeout_s = 5.0` and the 2.0 one
-  likewise.
+  likewise. `:86-88` keeps its two sentences and ends "… is misdiagnosed as a network fault (SPECIFICATION.md C.7)." in
+  place of "(BACKLOG item 24 has the measurements)" — the item leaves BACKLOG at U19 (A.U19.14) and SPEC C.7 holds the
+  ceiling rule.
 - **Resolved**: A.U8.02 keeps the `:62-70` JS-literal check "until A-C" beside A.U8.04's tag on `js/poll-manager.js:8`
   (`web.outer_cap_s = 15000`): both stay — the register pins each literal to its row, this test pins the cross-unit
   relation `DEFAULT_TIMEOUT_MS == outer_cap_s × 1000`, which no register row expresses (agent decision D-TSC4).
-- **Unit**: U24 (stages U2 comment, U5 readers, U8 tags, U23 regex).
-- **Depends**: M.SRC_NET (webserver config objects, A.U5.04/.05), A.U23.37 (WEB).
+- **Unit**: U24 (stages U2 comment, U5 readers, U8 tags, U19 the `:88` pointer with A.U19.14, U23 regex).
+- **Depends**: M.SRC_NET (webserver config objects, A.U5.04/.05), A.U23.37 (WEB); A.U19.14's SPEC C.7 text (SPEC).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3084,16 +3108,24 @@ where a test pins an SCR product, the constituent action is cited and the depend
   (missing-counter case per site), A.U27.01 (`:367-377` inverted: a missing log and an empty log fail), A.U35.38
   (normal-boot check cases), SCR gap 3 (Run 1's `UTCTime`/`LocalTime` null check, M.SCR.049), A.U25.35 (helpers move to
   the run context), A.U20.28 (the plan reader follows the producer), M.TSC.001 (`print_log.py`), A.U11.31 (read: status
-  codes only), A.U8.22 (read: `:223-286` test inputs untagged).
+  codes only), A.U8.22 (read: `:223-286` test inputs untagged); A.U19.14 (`:257-259` cites BACKLOG item 24, which leaves
+  at U19 — M_DOCS gap 2, gap pass G3); A.U25.33/A.U25.36 (2) and A.U35.28 (3) (the runner's shutdown-line fields this
+  file parses — M.TWIN.050's Blast "their L0 parsers (TSC)" and M_SCR gap 4, gap pass G3).
 - **Site**: `tests_scripts/test_digital_twin_ci_suite_errcount.py`.
 - **Change**: new cases: a history `[E10, W15, E10]` with counter 4 → 3 failures; fake procs with returncode −11, the
   suite's own timeout and its own SIGKILL each reported by name; each strict reader fails on a missing counter;
   `test_a_missing_log_is_not_reported_as_a_memory_error` → `test_a_missing_or_empty_log_fails_the_run`; normal-boot check:
   one W fails, NTP's tolerated code passes while not synced, synced + NTP entry fails; Run 1: `UTCTime`/`LocalTime` are
   null before the first sync and both present after; the tolerance constant comes from `scripts/_twin_process.py`.
+  The section comment `:257-259` → "# _put_reset_errors_timed() - the elapsed-time budget (SPECIFICATION.md C.7). A
+  timeout only catches a call that never finished; the budget covers the band between a normal reset and the server's
+  own cap." (history clause "the suite was blind" goes). Shutdown-line parser cases (the suite's helper for the runner's
+  `shutdown:` line, M.TWIN.050): `mem_backup: r0=<4 words>` yields four ints, `public_destinations_refused=<n>` an int
+  and a nonzero value fails the run naming the field, `fram_writes=<n>` an int; a line missing any field fails naming
+  it.
 - **Resolved**: —
-- **Unit**: U35 (stages U25, U27).
-- **Depends**: M.SCR.046-.049, M.SCR.016.
+- **Unit**: U35 (stages U19 the `:257-259` pointer, U25, U27; the `fram_writes` case with A.U35.28).
+- **Depends**: M.SCR.046-.049, M.SCR.016; M.TWIN.050 (the shutdown line's fields).
 - **Blast carried by**: —
 - **Kind**: test
 

@@ -4662,7 +4662,8 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   rows `loop.sync_wait_max_us`, `loop.uart_call_span_max_us`; `spi.cs_settle_us`), A.U10.07 (rule rows `boot.unfed_stretch_1_ms`,
   `boot.unfed_stretch_2_ms`), A.U31.03 (rule row `boot.setup_unit_stretch_ms`), A.U31.01 (5) (`fram.block_hold_budget_us = 30000`),
   A.U28.36 (CI budgets), and the cluster gaps: M_HW_BENCH GAP-B7, M_HW_DEV GAP-D2 and GAP-D4, M_SRC_SENS GAP-1 and GAP-4, M_TEST_UNIT
-  GAP-U9, M_TWIN gap (renames, withdrawals, one new row), M_TOOL gap 8, M_SCR gap 5, M_WEB gap 7.
+  GAP-U9, M_TWIN gap (renames, withdrawals, one new row), M_TOOL gap 8, M_SCR gap 5, M_WEB gap 7; GAPS_G4 hand-off 4
+  (reflash-row sites per M.HW_BENCH.014; starter grace and poll rows withdrawn per M.TEST_HELP.028/M.HW_DEV.117; gap pass G1).
 - **Site**: N.3/N.4 (M.SPEC.155).
 - **Change**: each tagging action writes its rows in the unit that lands its tags (row form C4; no audit ID in a cell), with these
   end-state amendments: (1) **Dependants** — A.U8C.120/.121/A.U8C2.51's lists as written, minus `l1.asy_notification_service_
@@ -4681,10 +4682,14 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   `led.refresh_hz_default` → `led.refresh_hz`, `led.overlay_brightness_default` → `led.overlay_brightness`, with every Dependant
   naming them (GAP-4); `l2.uart_link_collect_*` → `l2.uart_link_pause_*` (A.U17.04); `l2.uart_link_leak_budget_bytes` →
   `l2.uart_link_leak_rate_bytes_per_transfer` (M.TWIN.158); `udp.ready_poll_ms` → `udp.poll_wait_ms = 20` and `udp.poll_idle_ms =
-  100` (A.U18.05); the chip-wait rows' `…_s` → `…_ms` (A.U31.09, A.U31.11); `l3.conformance_twin_probe_timeout_s` follows the
+  100` (A.U18.05); the Sites of `l3.toolchain_flash_boot_picotool_load_attempts`, `l3.toolchain_flash_boot_load_timeout_s`
+  and `l3.toolchain_flash_boot_load_retry_backoff_s` → `tests_hardware/harness.py` (`reflash()`, the loop it absorbs,
+  M.HW_BENCH.014), the load timeout also `tests_hardware/manual/manual_toolchain.py`; the chip-wait rows' `…_s` → `…_ms` (A.U31.09, A.U31.11); `l3.conformance_twin_probe_timeout_s` follows the
   module rename (M.HW_BENCH). (4) **Withdrawn rows**: `l2.sensortask_integration_dns_query_*`/`…_override_poll_*` (M.TWIN.144),
   the per-script feed rows of (1), A.U8.15's 8M heapsize tag on the conformance launcher (M.HW_BENCH), A.U8C.96/A.U8C2.42's rows on
-  the folded raw UART script (M.HW_DEV.049), `udp.conn_tries_default` (A.U18.13 removes the parameter). (5) **Rule rows'
+  the folded raw UART script (M.HW_DEV.049), `udp.conn_tries_default` (A.U18.13 removes the parameter),
+  `l3.heap_layout_after_full_boot_sequence_starter_loop_grace_ms` and `l3.heap_layout_after_full_boot_sequence_starter_poll_ms`
+  (A.U8C.01/A.U8C.72's rows; the grace sleep and the poll loop go with M.TEST_HELP.028 and M.HW_DEV.117). (5) **Rule rows'
   checks**: `loop.uart_call_span_max_us` "Checked by" → `tests_hardware/flash/test_uart_crossover.py`'s driver test (the verdict
   moved host-side, GAP-D4); `loop.sync_wait_max_us` "Checked by" → `tests_scripts/test_src_sleep_forms.py`, Dependants gain the
   boot bus clear with its bound (≤ 9 SCL pulses of 10 µs and a STOP per bus, GAP-1). (6) **Tool rows** (M_TOOL gap 8):
@@ -4696,7 +4701,7 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
 - **Unit**: each row with its tagging action (U8, U8C, U8C2, then the unit introducing the tunable); (1) and (3)-(5) at the unit
   whose action changes the row (U17, U18, U24-U26, U31, U35); (2) with the action that creates the literal; (7) at U28's CI run.
 - **Depends**: A.U8.01-A.U8.24, A.U8C.*, A.U8C2.*, A.U10.07, A.U28.36, A.U31.01, A.U31.03, M.HW_BENCH.067/.075/.082,
-  M.HW_DEV.004/.048/.049/.068/.140, M.SCR.040/.054/.063, M.TEST_UNIT.090/.091, M.TOOL.016/.041/.046, M.TWIN.132/.144/.146/.158,
+  M.HW_BENCH.014, M.HW_DEV.004/.048/.049/.068/.117/.140, M.TEST_HELP.028, M.SCR.040/.054/.063, M.TEST_UNIT.090/.091, M.TOOL.016/.041/.046, M.TWIN.132/.144/.146/.158,
   M.WEB (gap 7), M.SRC_SENS.002/.008/.021.
 - **Blast carried by**: the tags themselves → their tagging actions (each tier's cluster); the register check → M.SPEC.155.
 - **Kind**: doc
@@ -4918,7 +4923,8 @@ section that stays.
 - Gap pass G1 (2026-10-01, `GAPS_G1.md`): every item above re-read in its carrying change's body; two amended —
   M.SPEC.077 (A.U36.016's "wrapper files" clause names the `PER_DEVICE` marker; M_TWIN gap) and M.SPEC.089's Blast
   (`.gitignore` is M.PROC.019's). M_TEST_HELP GAP-H5's H.7.1 citer list needs no edit: A.U36.532 (3) changes no H.7.1
-  citer.
+  citer. GAPS_G4 hand-off 4: M.SPEC.156 amended (the reflash rows' site is `harness.py`; the starter grace and poll rows
+  are withdrawn).
 
 | Action | Src | Merged change(s), or dropped with reason |
 |---|---|---|

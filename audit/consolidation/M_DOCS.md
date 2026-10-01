@@ -2319,6 +2319,7 @@ half dropped, M_SPEC gap 2), M.DOCS.065 (the UART findings' SPEC homes as M.SPEC
 M.DOCS.048 (the owner's pronoun). Carried as found: M_SRC_CORE GAP-G7 / M_SRC_SENS GAP-10 (M.DOCS.090), M_SRC_NET gap 6
 (M.DOCS.024), M_TOOL gap 7, M_SCR gap 6 and M_WEB gap 8 (M.DOCS.066, M.DOCS.101), M_TSC gap 2 (M.DOCS.048), M_PROC gap
 3 (M.DOCS.060/.067/.070; (c) disposed above). M_TWIN's DOCS item is settled by M.DOCS.085/.101.
+GAPS_G4 hand-off 1 (the rollover runner, M.SCR.074): M.DOCS.049, M.DOCS.052 and M.DOCS.066 amended.
 
 ## Adherence findings
 

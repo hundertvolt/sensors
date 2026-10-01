@@ -1082,23 +1082,28 @@ for the config reset.
 - **Change**: the five `try/except Exception` (`:80-83`, `:94-97`, `:111-114`, `:115-118`, `:150/:185-186`) and
   `check_cfg_get_default()`'s `:193/:205-206` go (bodies unchanged otherwise; the `:79`/`:93` trailing comments lose
   "malformed input -> []"/"{}"). The numeric validation is typed per kind, so no caller narrows a value at runtime:
-  `coerce_numeric()` splits into `_coerce_int(check_val: "CfgValue") -> int | None` (the `:128` exact-type case and the
-  `:134-141` integral-float case; `None` refuses) and `_coerce_float(check_val: "CfgValue") -> float | None` (the exact
+  `coerce_numeric()` splits into `_coerce_int(check_val: object) -> int | None` (the `:128` exact-type case and the
+  `:134-141` integral-float case; `None` refuses) and `_coerce_float(check_val: object) -> float | None` (the exact
   float and the `:130-133` int case) — same acceptance rules, the `:121-123` comment above `_coerce_int()` with "bool is
   excluded both ways by exact type (on MicroPython `bool` is not an `int` subclass)", `:131`'s "an accepted gap (owner,
   2026-08-24)" in `_coerce_float()`, the tuple `(OverflowError, ValueError)` kept. New `checked_int(check_val:
-  "CfgValue", field: "FieldSchema", *, check_special: bool = True) -> int | None` and `checked_float(...) -> float |
+  object, field: "FieldSchema", *, check_special: bool = True) -> int | None` and `checked_float(...) -> float |
   None`: HEAD's int/float branch bodies (`:153-172`) over `value = _coerce_int(check_val)` / `_coerce_float(check_val)`,
   `None` on refusal, a malformed special or out-of-range, the accepted value otherwise; `checked_numeric(check_val,
   field, *, check_special=True) -> int | float | None` dispatches on `field[1]` (`"int"`/`"float"`, any other kind →
-  `None`). One comment line above `checked_int()`: "# Per-kind validators: a caller that needs an int or a float gets
-  one from the type, never by narrowing (SPECIFICATION.md C.10)." `type_or_range_error(...) -> "tuple[bool,
+  `None`). Two comment lines above `checked_int()`: "# Per-kind validators: a caller that needs an int or a float gets
+  one from the type, never by narrowing" / "# (SPECIFICATION.md C.10); the webserver's dispatch-only fields
+  (asy_webserver_service.py) are checked here too." HEAD's `:126-127` comment ("Public and reused: the generated
+  lightCmdLED dispatch …") goes with the public `coerce_numeric()` it described. `_special_bypass(check_val: object, …)`.
+  `type_or_range_error(check_val: object, field, *, check_special=True) -> "tuple[bool,
   CfgValue]"` keeps its contract for the schema-generic callers (`base_classes.py`, this file, `asy_scd30_driver.py`):
-  int/float kinds through `checked_numeric()` (`value is None` → `(True, check_val)`, else `(False, value)`), the str and
-  bool branches as HEAD (`type(check_val) is not str` narrows for `len()`, a real check). `compare_before_write(data, cfg_vals, current, *, always=(),
+  int/float kinds through `checked_numeric()` (`value is None` → `(True, None)`, else `(False, value)`), the str and
+  bool branches as HEAD (`type(check_val) is not str` narrows for `len()`, a real check) except that every refusal
+  answers `(True, None)`. `compare_before_write(data: object, cfg_vals, current, *, always=(),
   resolution=None) -> "tuple[dict[str, CfgValue], WriteValidity] | None"` exactly as A.U4.01 (per-key outcomes in `data`
   order; `None` for a non-dict `data`; logs nothing; never raises but `MemoryError`); `resolution` typed
-  `dict[str, Callable[[CfgValue], CfgValue]] | None` (no `Any`). `_stored_float(v: float) -> float: return
+  `dict[str, Callable[[CfgValue], CfgValue]] | None` (no `Any`). `data` and every validator's `check_val` are `object`:
+  a REST value is genuinely open (G8/R61), so `type(data) is not dict` → `None` and each exact-type test are real checks. `_stored_float(v: float) -> float: return
   json.loads(json.dumps(v))` with the residual comment of A.U11.21 (idempotence on rp2 proven by the L3 script; fallback to
   the serialised text decided with evidence).
 - **Resolved**: A.U4.01 types `resolution` with `Callable[[Any], CfgValue]`; A.U11.S01/G8/R61 (owner, OR81: no
@@ -1108,14 +1113,27 @@ for the config reset.
   M_SRC_SENS GAP-14 (lead, 2026-10-01), rules them out: the validator gets honest per-kind returns instead and every
   never-firing check is dropped (A.U15.38 (1) stands). `coerce_numeric()` has no product reader outside this module
   once the consumers call the per-kind validators, so its two halves are private (G10/R07); the per-kind validators are
-  public, called by the webserver, the generated LED callback and the ISL29125 driver (GAP-G13; agent, 2026-10-01;
-  "Agent decisions" 13).
+  public, called by the webserver and the ISL29125, SGP40 and BMP3XX drivers (GAP-G13 as corrected below; agent,
+  2026-10-01; "Agent decisions" 13). Gap pass G2 (2026-10-01): (i) M_GEN gap 4 / U19 A-C note 5 — after A.U19.02 the
+  `LightCmdLED` validation lives in the webserver against `_LIGHT_CMD_FIELDS` (M.SRC_NET.122; M.GEN.008's generated
+  callback only delegates to `led_signal()`), so the generated module calls no validator and the `:126-127` comment's
+  subject is gone; the lead's L1/GAP-14 ruling reaches every typed consumer, so SGP40's compensation read
+  (`checked_float()`, M.SRC_SENS.064) and BMP3XX `set_trigger_s()` (`checked_int()`, M.SRC_SENS.045) take the
+  per-kind validators too, beside the three GAP-G13 named. (ii) U19 A-C note 2 (M_SRC_NET gap 4): the routes pass the
+  raw body (`JsonMapping`, M.SRC_CORE.017/.038/.040/.044), so a validator receives an `object`; G8/R61 ("genuinely open
+  values `object`", owner OR81) types it so. `type_or_range_error()`'s refusal answers `(True, None)`, which keeps its
+  return honestly `tuple[bool, CfgValue]`: no caller reads that slot on refusal (the `asy_base_classes` push and
+  recovery, this file's setup repair and `compare_before_write()`, SCD30's `ContMeas`), and no test pins it (grep
+  `type_or_range_error(` in `tests/`: every refusal assertion reads `[0]`) (agent, 2026-10-01; OR2.c list).
 - **Unit**: U11 (A.U4.01 in U4 as its stage — A.U4.02 in U4 needs it; the guard removal and typing in U11; U0's tag at
   `:131` as a U0 stage).
 - **Depends**: A.U11.18 (static schema check lands first or together, TSC).
-- **Blast carried by**: schema-generic callers of `type_or_range_error()` unchanged; the generated `lightCmdLED`
-  dispatch calls `checked_int()` for R/G/B and `checked_float()` for T, `None` refusing, with no `type()` tests →
-  GAP-G13 (GEN); webserver `_dispatch_notification_pause()` calls `checked_int()` → GAP-G13 (SRC_NET); ISL29125
+- **Blast carried by**: schema-generic callers of `type_or_range_error()` unchanged; the webserver's
+  `_dispatch_notification_led()` (R/G/B `checked_int()`, T `checked_float()`) and `_dispatch_notification_pause()`
+  (`checked_int()`), `None` refusing, no `type()` tests → M.SRC_NET.122 (the generated callback validates nothing,
+  M.GEN.008); SGP40 compensation → M.SRC_SENS.064; BMP3XX `set_trigger_s()` → M.SRC_SENS.045; L1 cases (a refusal's
+  `(True, None)`; a list or dict value refused by every validator and by `compare_before_write()` per key) → hand-off
+  TEST_UNIT (`GAPS_G2.md`); ISL29125
   `_checked_cfg()` calls `checked_numeric()` (`checked = checked_numeric(value, schema[0])`; `None` logs and returns) →
   GAP-G13 (SRC_SENS, A.U15.38 (1) arm removal stands); `tests/test_config_manager.py:265-327` (`coerce_numeric()` tuples
   → `_coerce_int`/`_coerce_float` returns) and `tests_hardware/device_scripts/float_boundary_2pow24.py:10-26` →
@@ -1208,7 +1226,9 @@ for the config reset.
   their order (A.U11.28 says so). A.U11.04's "checked first, before the lock" + A.S0930.16's re-check inside the lock →
   both (SUPP conflict 1). A.U2.07's `:356` split (`MemoryError` → 20, `AttributeError` → 21) is superseded: A.U4.02 moves
   the non-dict case into the primitive's `None` (21) and A.U35.43 removes the `AttributeError` class; the remaining
-  allocation failure keeps 20. A.U11.23 applies to both write sites (flush here, repair in M.SRC_CORE.043).
+  allocation failure keeps 20. A.U11.23 applies to both write sites (flush here, repair in M.SRC_CORE.043). Gap pass G2:
+  `data: "JsonMapping"` — the raw REST body reaches it through `_set_mgr_cfg()` (U19 A-C note 2, M_SRC_NET gap 4); a
+  `dict[str, CfgValue]` caller fits the covariant `Mapping`.
 - **Unit**: U11 (U4 stage: the primitive inside; U2 names; U14 the comment's pointer, with the rule it names; U19
   constants swap; U30 `report_if_fatal`; A.U35.43 pulled
   into U11 — its reachability fact needs A.U11.28's deferral, which lands here, and its removals are the same lines).
@@ -1460,8 +1480,8 @@ always answers OK with per-field results, a failing post-write hook turning its 
 - **Change**: docstring "REST response envelope and settings-group setter dispatch for the Microdot layer; every
   function returns a well-defined value, never raises." (one line; the history clause goes). Comment `:4-6` → "# Wire
   shape: {"res": "OK"/"ERR", "code": int, "descr": str, "result": ...}; make_response() is pure and total. / #
-  handle_set_cmd() drives one module's _set_dict_cfg() plus an optional post-write hook, whose failure is / # a
-  per-field outcome inside the OK envelope (SPECIFICATION.md Parts A.5 and C.5.3)."
+  handle_set_cmd() drives one module's _set_dict_cfg() plus an optional post-write hook and returns the per-field / #
+  outcome, a hook failure included, which the endpoint's OK envelope carries (SPECIFICATION.md Parts A.5 and C.5.3)."
 - **Resolved**: —
 - **Unit**: U11.
 - **Depends**: M.SRC_CORE.072.
@@ -1490,26 +1510,37 @@ always answers OK with per-field results, a failing post-write hook turning its 
   (SPEC).
 - **Kind**: code
 
-### M.SRC_CORE.072 `handle_set_cmd()` answers OK; a failing hook fails its group
+### M.SRC_CORE.072 `handle_set_cmd()` returns per-field results; a failing hook fails its group
 - **From**: A.U11.26, A.U32.03, A.U2.18, A.U2.04, A.U19.16, A.U30.19.
 - **Site**: `src/api_response.py:30-34`, `:81-105`.
 - **Change**: `_ERR_CALLBACK = const(14)` replaces `_ERRNO_UNHANDLED_DISPATCH` and its comment `:30-33` ("# Global
-  catalog numbers, valid on any logger."). `handle_set_cmd(reader, data, cfg_vals, post_fct=None, post_asy_fct: "AsyncCallback
-  | None" = None, ok_descr=None) -> "ResponseEnvelope"`: comment (3 lines, A.U32.03's text) "# Persist and push already
-  ran per field in reader._set_dict_cfg(); a per-field outcome is detail in "result". / # The post-write hook runs once
+  catalog numbers, valid on any logger."). `handle_set_cmd(reader, data: "JsonMapping", cfg_vals: "ConfigSchema", post_fct=None, post_asy_fct: "AsyncCallback
+  | None" = None) -> "WriteValidity"` (no `ok_descr`): comment (3 lines, A.U32.03's text) "# Persist and push already
+  ran per field in reader._set_dict_cfg(); a per-field outcome is detail in the endpoint's "result". / # The post-write hook runs once
   per call, only after a changed field: one hook per endpoint, not one / # per field, as legacy's post_fct/post_asy_fct
   (agent, 2026-08-03)."; `results = await reader._set_dict_cfg(data, cfg_vals)` (unwrapped: never-raise); `if
   any(status == VALID for status in results.values()):` `try:` sync hook then async hook / `except Exception as e:`
   `report_if_fatal(e)`; `await reader.pr.err_s("Post-write hook failed:", e, errno=_ERR_CALLBACK)`; `results =
-  dict.fromkeys(results, FAILED)`; `return make_response(0, descr=ok_descr, result=results)`.
+  dict.fromkeys(results, FAILED)`; `return results`.
 - **Resolved**: A.U2.18 allocates `_ERR_UNEXPECTED` "for any catch-all A.U11 keeps" — none kept, so not allocated (U11
-  register fix "For A-C"; AC_NOTES 7). A.U32.03's comment is worded for A.U11.26's body (its own text says so).
-- **Unit**: U11 (U2 stage: the constant name; U19 constants swap; U30 `report_if_fatal`).
-- **Depends**: M.SRC_CORE.038 (`_set_dict_cfg()` never raises), M.SRC_CORE.045, M.SRC_CORE.034.
+  register fix "For A-C"; AC_NOTES 7). A.U32.03's comment is worded for A.U11.26's body (its own text says so). Gap pass G2 (M_SRC_NET gap 4, U19 A-C note 1):
+  A.U11.26 returns the envelope, so the one product caller (`_apply_settings_groups()`) unwraps `result` through an
+  `isinstance()` that can never be `False` — the lead's L1 ruling (SUPP_coverage, 2026-09-30; AC_NOTES 38: "a narrowing
+  check that can never fire is runtime code and dead code … the fix is at the type level (an honest return type …)")
+  settles it: the function returns the per-field `WriteValidity` (U19 A-C note 1's own proposal), the endpoint builds
+  the one OK envelope (M.SRC_NET.120) — no wire change. `ok_descr` goes with the envelope: no product caller passes it
+  (OR36.a (1); grep `ok_descr`: one test). `data: "JsonMapping"` per U19 A-C note 2.
+- **Unit**: U19 (A.U19.01's caller rewrite lands the return change with its one caller; stages: U2 the constant name,
+  U11 A.U11.26's body, U30 `report_if_fatal`).
+- **Depends**: M.SRC_CORE.038 (`_set_dict_cfg()` never raises), M.SRC_CORE.045, M.SRC_CORE.034; co-lands with
+  M.SRC_NET.120.
 - **Blast carried by**: webserver `_apply_settings_groups()` `res == "ERR"` branch and its `:464` comment → A.U11.26 /
-  U19 (SRC_NET); `tests/test_api_response.py:282-332` and new hook tests → A.U11.26 (TEST_UNIT); webserver hook-failure
+  U19 (SRC_NET), the caller merging the returned dict → M.SRC_NET.120; `tests/test_api_response.py:195-332` assert the
+  returned dict, `test_handle_set_cmd_ok_descr_override` goes → hand-off TEST_UNIT (M.TEST_UNIT.004/.005; `GAPS_G2.md`);
+  `tests/test_api_response.py:282-332` and new hook tests → A.U11.26 (TEST_UNIT); webserver hook-failure
   tests → A.U11.26 (TEST_UNIT); js `render.js:134-160` comment → U23 (WEB); SPEC C.5.3 `:1788-1797` (one edit carrying
-  A.U11.26, A.U19.15, A.U32.03) → SPEC merges the three (SPEC).
+  A.U11.26, A.U19.15, A.U32.03) → SPEC merges the three (SPEC), its `handle_set_cmd(…, ok_descr=None)` signature and
+  "inside the OK envelope" sentence follow the return change → hand-off SPEC (M.SPEC C.5.3; `GAPS_G2.md`).
 - **Kind**: code
 
 ### M.SRC_CORE.073 One envelope code catalog; `parse_cmd_request()` goes

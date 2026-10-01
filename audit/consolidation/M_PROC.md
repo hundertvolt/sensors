@@ -1184,6 +1184,7 @@ Checked by reading every finished merge's ledger and From lines (2026-10-01). "R
 GAP-B9 by M.PROC.039; the `.gitignore` items (M_TWIN LEAD gap, M_SCR gap 2 (f), M.SPEC.089's sentinel parenthesis) by
 M.PROC.019. Amended: M.PROC.008 and M.PROC.031 name the standing-workaround list by its landed number, SPEC F.9 (M_SPEC
 gap 1). M_DOCS gap 5 names nothing PROC must add.
+GAPS_G4 hand-off 2: M.PROC.041 now starts R6 with `scripts/run_bench_rollover_test.sh` (M.SCR.074).
 
 ## Adherence findings
 
