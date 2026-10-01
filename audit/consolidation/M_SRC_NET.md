@@ -3118,3 +3118,421 @@ except A.U24.67's banner and the renames).
 - **Depends**: every U10 edit of the file
 - **Blast carried by**: —
 - **Kind**: code
+
+## Gaps for other clusters
+
+1. **Catalog (GEN, M.GEN.034)**: row 16 `CLOCK` loses its last site once `cettime()` stops catching (U18 register fix 10,
+   M.SRC_NET.053) — retire it or name a site; row 69's text becomes "the reply was malformed or could not be parsed"
+   (M.SRC_NET.049); WEBSERVER 48 renamed `HTTP_PEER_RESET` and rows 60-62 added (U19 A-C note 3, M.SRC_NET.112, checked
+   collision-free); DNSSRV 42 → `DNS_RECV_FAILED`, 43 unassigned, the shared wrnno 11 `SOCKET_TEARDOWN` used by DNSSRV,
+   the resolver and NTP (U18 register fix 9); WIFI uses shared 17 `TIMER`, NTP shared 10 and 21 (owner lists); UART
+   `UART_POLL_RATE` = 91 and `UART_CODEC_SIZE` = 92 (M.SRC_NET.153 — the catalog entry says only "after the band's last
+   used code").
+2. **GEN**: the `IP`/`IPv4` generated status key that A.U18.33 deferred to A-C must match the snapshot field M.SRC_NET.074/
+   .091 publish; `_collect_task_names()` (A.U32.06) reads `start_asy_listen`/`start_asy_exercise`; the twin wiring plan and
+   generated `UARTLinkDriver(..., log=...)` follow M.SRC_NET.213.
+3. **SCR**: A.U6.28's L0 check must resolve WiFi's `_RADIO_FIELDS = schema_names(...)` (M.SRC_NET.075); A.U10.05's counter
+   exemption table must use the post-U10 private names and list `discarded_bytes` (masked) and `_blind_resyncs` (capped);
+   A.U30.03's `_RUN_PHASE_ALLOWED` takes the renamed WiFi sites (`WifiService._connect_loop`, the LED-flash task,
+   M.SRC_NET.092); A.U10.22's readiness check meets `WifiService`'s `setup()` override and `SensorReaderConfig`'s missing
+   `initialized` (SRC_CORE) — `UARTLinkDriver` gains the flag here (M.SRC_NET.213/.215).
+4. **SRC_CORE**: `_set_dict_cfg(data: JsonMapping)` implementers (U19 A-C note 2); `asy_api_response.handle_set_cmd()`'s
+   envelope as M.SRC_NET.120 uses it; `report_if_fatal`, `COUNTER_CAP`, `RegionBuffer`, `TaskStarter`/`TimerStarter`/
+   `ErrorSource`/`JsonDict`, `LogConfig`/`DEFAULT_LOG`, `session_lock` must exist before the stages that import them.
+5. **TEST_UNIT / TEST_HELP**: A.U10.20's WiFi flash-top test premise is wrong — `_led_on()`/`_led_off()` absorb the LED's
+   exceptions, so the test needs a raising `_led_on` double (M.SRC_NET.092); A.U24.45 (2) `led_pin` tests are void
+   (A.U18.40); A.U14.34's UDP crossing tests lose their site after A.U10.26 (`wait_for_ms`, M.SRC_NET.028);
+   `tests/test_asy_uart_link_driver.py:136-242` read `transfers` → `_transfers` (agent addition, M.SRC_NET.213, beyond
+   A.U10.35's list); the banner test reads `src_const("src/asy_uart_link_driver.py", "_BANNER")` (M.SRC_NET.212);
+   readers of `UARTComm.set_callback` (none at HEAD) follow `_set_callback`.
+6. **DOCS (`UART_C_PORT_CHANGELOG.md`)**: no constituent carries a Class B line for `_note_valid_frame()` becoming
+   synchronous (M.SRC_NET.164: "no wire effect; one coroutine allocation per validated frame removed"); A.U10.35's Class
+   B entry must name `set_callback` with its two siblings (M.SRC_NET.155); A.U32.06's entry text names `start_listen`/
+   `start_exercise` — one entry with A.U10.44's `start_asy_*` names.
+
+## Adherence findings
+
+- `src/asy_captive_dns.py`: SPDX header and licence file carry both licences (M.SRC_NET.002/.005); no breach left.
+- `src/asy_dns_client.py`, `src/asy_udp_socket.py`: none beyond the merged changes (every wait yields; `getaddrinfo()`
+  only on a numeric host, F.2 unchanged).
+- `src/asy_ntp_client.py`: a stale "numbering starts at 11" comment survives the catalog (fixed in M.SRC_NET.040).
+- `src/asy_wifi_service.py`: the same stale numbering comment (M.SRC_NET.070); the hotspot fallback password default is
+  unchanged (accepted known credential, CLAUDE.md; only its comment points at A.11); the CYW43 power-cycle recovery is
+  untouched (CLAUDE.md hard rule).
+- `src/asy_webserver_service.py`: a "Step 7 audit" history comment (M.SRC_NET.129, G9/R12); every growable GET still
+  streams through `_stream_dict_response()`; Microdot is only wrapped (`ext/` read, never edited); `SystemCmd` compares the
+  whole string against the five words (OR117/OR121/OR122) and reboot/bootloader go through the callback's controlled
+  sequence (OR126.a (3)); no `TCP_NODELAY` (OR114.a (2)).
+- `src/asy_uart_comm.py`: `_drain()`'s comment still described the removed episode slot (M.SRC_NET.161);
+  `_note_valid_frame()` left `async` with no `await` would allocate a coroutine per validated frame (M.SRC_NET.164);
+  `set_callback` would stay the one public member of a private triple (M.SRC_NET.155). Contract checks: every change has
+  its changelog line (gap 6 for the two agent additions); no loop-blocking wait added; CRC mode stays a TOML/constructor
+  fact, no runtime switch and no negotiation (OR116/OR123, owner 2026-09-11); strictly initiator/responder.
+- `src/asy_uart_driver.py`: the never-raise header holds for every poll value after M.SRC_NET.199; every read stays
+  clamped to `any()` and every wait yields (readline included, M.SRC_NET.202).
+- `src/asy_uart_link_driver.py`: `transfers` public beside a private `_failures` (M.SRC_NET.213); no readiness flag on a
+  class with `async def setup` (M.SRC_NET.213/.215).
+
+## Owner questions
+
+None raised: every conflict in this cluster was settled by an owner row, the register, AC_NOTES or a verifier ruling,
+or is an agent decision listed below.
+
+## Agent decisions for the OR2.c review
+
+1. Construction guards removed as unreachable (G5/R54) in `resolve_ipv4()` and `_fetch_ntp_reply()` (M.SRC_NET.023/.048).
+2. `NtpTiming` defaults and the deleted `_NTP_CONN_TIMEOUT` (M.SRC_NET.042).
+3. `host_label_ok()` lives in `asy_dns_client` beside `ipv4_to_int()` (M.SRC_NET.018).
+4. Catalog row 69's text (M.SRC_NET.049).
+5. The webserver keeps its `isinstance` narrowing (U19 A-C note 1) and gains `self.initialized` (M.SRC_NET.119/.120).
+6. The captive-DNS backoff tag IDs are the `_ms` ones (M.SRC_NET.004).
+7. A deactivated radio's snapshot reports not connected (M.SRC_NET.091).
+8. UART codes numbered 91 `UART_POLL_RATE`, 92 `UART_CODEC_SIZE`; A.U3.08's "91" for e32 read as a slip (89) (M.SRC_NET.153).
+9. `UARTComm.set_callback` and `UARTLinkDriver.transfers` made private with their siblings (M.SRC_NET.155/.213).
+10. `_note_valid_frame()` made synchronous (M.SRC_NET.164).
+11. Starter names `start_asy_listen`/`start_asy_exercise` (A.U10.44) satisfy A.U32.06 (M.SRC_NET.170/.215).
+12. `_BANNER` stays `const()`; the test reads it with `src_const()` (M.SRC_NET.212).
+13. `UARTLinkDriver` keeps its own `initialized`, which its exercise loop reads (M.SRC_NET.213-.215).
+14. `_resync()` either persists W54 or prints the routine line, never both (M.SRC_NET.162).
+
+## Ledger
+
+| action ID | merged into M-ID / dropped (reason) |
+|---|---|
+| A.C.13 | dropped (no site here: bench test (HW_BENCH); the body cap it proves is M.SRC_NET.118's) |
+| A.S0930.01 | dropped (no site here: buildgen TOML key and checks (GEN); UARTComm stays CRC-agnostic, no runtime switch (OR116/OR123)) |
+| A.S0930.07 | dropped (no site here: changelog Class B row (DOCS)) |
+| A.S0930.08 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.S0930.09 | merged into M.SRC_NET.112, M.SRC_NET.121 |
+| A.S0930.18 | merged into M.SRC_NET.128 |
+| A.S0930.19 | dropped (no site here: wear-gate detector and README (SCR, HW_BENCH); `resetconfig` dispatch is M.SRC_NET.121) |
+| A.S0930.20 | merged into M.SRC_NET.121 |
+| A.S0930.21 | merged into M.SRC_NET.121 |
+| A.S0930.31 | merged into M.SRC_NET.121 |
+| A.S0930.33 | dropped (no site here: `SystemService` reset path (SRC_CORE)) |
+| A.SDEP.06 | dropped (no site here: `ext/microdot.py` re-vendor (ext/ untouched by this cluster); webserver cites re-checked at execution, noted in the section intro) |
+| A.SDEP.07 | dropped (no site here: `ext/freezefs` (TOOL)) |
+| A.SDEP.08 | merged into M.SRC_NET.030 |
+| A.SDEP.13 | merged into M.SRC_NET.132 |
+| A.SDEP.15 | merged into M.SRC_NET.081 |
+| A.SDEP.17 | merged into M.SRC_NET.190 |
+| A.SDEP.18 | merged into M.SRC_NET.118, M.SRC_NET.124 |
+| A.U0.12 | dropped (no site here: BACKLOG owner question 1 and SPEC:4870 (DOCS, SPEC); code comment is A.U17.31 → M.SRC_NET.202) |
+| A.U0.19 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.U0.22 | dropped (no site here: repo docs (DOCS)) |
+| A.U0.25 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.U0.28 | merged into M.SRC_NET.164, M.SRC_NET.215 |
+| A.U0.29 | merged into M.SRC_NET.112, M.SRC_NET.113, M.SRC_NET.119, M.SRC_NET.127 |
+| A.U0.30 | dropped (no site here: repo docs (DOCS)) |
+| A.U0.35 | merged into M.SRC_NET.072, M.SRC_NET.078, M.SRC_NET.098 |
+| A.U0.37 | merged into M.SRC_NET.044 |
+| A.U0.48 | merged into M.SRC_NET.210 |
+| A.U0.49 | merged into M.SRC_NET.167 |
+| A.U1.01 | merged into M.SRC_NET.081, M.SRC_NET.083 |
+| A.U1.03 | dropped (no site here: repo docs (DOCS)) |
+| A.U1.18 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.U1.20 | merged into M.SRC_NET.005 |
+| A.U10.01 | merged into M.SRC_NET.119, M.SRC_NET.127, M.SRC_NET.150, M.SRC_NET.191 |
+| A.U10.R01 | merged into M.SRC_NET.100 |
+| A.U10.03 | merged into M.SRC_NET.041, M.SRC_NET.044, M.SRC_NET.052, M.SRC_NET.054, M.SRC_NET.058, M.SRC_NET.071, M.SRC_NET.078, M.SRC_NET.082, M.SRC_NET.094, M.SRC_NET.098, M.SRC_NET.101 |
+| A.U10.04 | merged into M.SRC_NET.150, M.SRC_NET.164 |
+| A.U10.05 | dropped (no site here: L0 counter check (SCR); its exemption table must use the renamed private names (see Gaps)) |
+| A.U10.06 | merged into M.SRC_NET.041, M.SRC_NET.047, M.SRC_NET.052, M.SRC_NET.053, M.SRC_NET.056, M.SRC_NET.071, M.SRC_NET.080, M.SRC_NET.091 |
+| A.U10.10 | merged into M.SRC_NET.056, M.SRC_NET.079, M.SRC_NET.100, M.SRC_NET.119, M.SRC_NET.128 |
+| A.U10.17 | merged into M.SRC_NET.026, M.SRC_NET.078 |
+| A.U10.18 | merged into M.SRC_NET.044, M.SRC_NET.046, M.SRC_NET.050, M.SRC_NET.056, M.SRC_NET.081, M.SRC_NET.082, M.SRC_NET.085, M.SRC_NET.086, M.SRC_NET.088, M.SRC_NET.092, M.SRC_NET.098, M.SRC_NET.101, M.SRC_NET.193, M.SRC_NET.197 |
+| A.U10.19 | dropped (no site here: L0/L1 checks (SCR, TEST_HELP); the src sites they read keep the shape these merges give them) |
+| A.U10.20 | merged into M.SRC_NET.007, M.SRC_NET.077, M.SRC_NET.092 |
+| A.U10.21 | merged into M.SRC_NET.169, M.SRC_NET.215 |
+| A.U10.22 | merged into M.SRC_NET.118, M.SRC_NET.119, M.SRC_NET.169, M.SRC_NET.213, M.SRC_NET.215 |
+| A.U10.25 | dropped (no site here: L0/L1 checks (SCR, TEST_HELP); the src sites they read keep the shape these merges give them) |
+| A.U10.26 | merged into M.SRC_NET.028 |
+| A.U10.27 | merged into M.SRC_NET.110, M.SRC_NET.114 |
+| A.U10.29 | merged into M.SRC_NET.020, M.SRC_NET.042, M.SRC_NET.112, M.SRC_NET.151, M.SRC_NET.157, M.SRC_NET.159, M.SRC_NET.164, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.212 |
+| A.U10.31 | merged into M.SRC_NET.006, M.SRC_NET.050, M.SRC_NET.075, M.SRC_NET.111, M.SRC_NET.150, M.SRC_NET.155, M.SRC_NET.157, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.172, M.SRC_NET.192, M.SRC_NET.204 |
+| A.U10.33 | merged into M.SRC_NET.010, M.SRC_NET.019, M.SRC_NET.032, M.SRC_NET.059, M.SRC_NET.103, M.SRC_NET.131, M.SRC_NET.173, M.SRC_NET.205, M.SRC_NET.219 |
+| A.U10.35 | merged into M.SRC_NET.006, M.SRC_NET.007, M.SRC_NET.026, M.SRC_NET.027, M.SRC_NET.030, M.SRC_NET.044, M.SRC_NET.051, M.SRC_NET.054, M.SRC_NET.055, M.SRC_NET.056, M.SRC_NET.057, M.SRC_NET.058, M.SRC_NET.078, M.SRC_NET.082, M.SRC_NET.083, M.SRC_NET.085, M.SRC_NET.086, M.SRC_NET.087, M.SRC_NET.088, M.SRC_NET.091, M.SRC_NET.093, M.SRC_NET.097, M.SRC_NET.098, M.SRC_NET.100, M.SRC_NET.155, M.SRC_NET.157, M.SRC_NET.164, M.SRC_NET.168, M.SRC_NET.170, M.SRC_NET.213, M.SRC_NET.214 |
+| A.U10.36 | merged into M.SRC_NET.116, M.SRC_NET.120 |
+| A.U10.37 | merged into M.SRC_NET.001, M.SRC_NET.004, M.SRC_NET.005, M.SRC_NET.006, M.SRC_NET.024, M.SRC_NET.040, M.SRC_NET.041, M.SRC_NET.070, M.SRC_NET.071, M.SRC_NET.076, M.SRC_NET.110, M.SRC_NET.150, M.SRC_NET.152, M.SRC_NET.190, M.SRC_NET.191, M.SRC_NET.211 |
+| A.U10.38 | merged into M.SRC_NET.001, M.SRC_NET.003, M.SRC_NET.004, M.SRC_NET.006, M.SRC_NET.007, M.SRC_NET.020, M.SRC_NET.023, M.SRC_NET.024, M.SRC_NET.025, M.SRC_NET.026, M.SRC_NET.041, M.SRC_NET.043, M.SRC_NET.044, M.SRC_NET.048, M.SRC_NET.071, M.SRC_NET.076, M.SRC_NET.078, M.SRC_NET.086, M.SRC_NET.110, M.SRC_NET.111, M.SRC_NET.112, M.SRC_NET.155, M.SRC_NET.156, M.SRC_NET.191, M.SRC_NET.192, M.SRC_NET.210, M.SRC_NET.211, M.SRC_NET.213 |
+| A.U10.39 | merged into M.SRC_NET.043, M.SRC_NET.044, M.SRC_NET.046, M.SRC_NET.057, M.SRC_NET.071, M.SRC_NET.072, M.SRC_NET.075, M.SRC_NET.077, M.SRC_NET.078, M.SRC_NET.080, M.SRC_NET.084, M.SRC_NET.086, M.SRC_NET.088, M.SRC_NET.096, M.SRC_NET.097 |
+| A.U10.40 | merged into M.SRC_NET.043, M.SRC_NET.051, M.SRC_NET.072, M.SRC_NET.073, M.SRC_NET.074, M.SRC_NET.097, M.SRC_NET.112, M.SRC_NET.120, M.SRC_NET.122 |
+| A.U10.41 | merged into M.SRC_NET.018, M.SRC_NET.041, M.SRC_NET.043, M.SRC_NET.045, M.SRC_NET.046, M.SRC_NET.047, M.SRC_NET.072 |
+| A.U10.43 | merged into M.SRC_NET.042, M.SRC_NET.049, M.SRC_NET.077 |
+| A.U10.44 | merged into M.SRC_NET.051, M.SRC_NET.054, M.SRC_NET.056, M.SRC_NET.057, M.SRC_NET.058, M.SRC_NET.070, M.SRC_NET.087, M.SRC_NET.094, M.SRC_NET.100, M.SRC_NET.101, M.SRC_NET.128, M.SRC_NET.129, M.SRC_NET.170, M.SRC_NET.214, M.SRC_NET.215 |
+| A.U10.45 | merged into M.SRC_NET.023, M.SRC_NET.026, M.SRC_NET.027, M.SRC_NET.028, M.SRC_NET.030, M.SRC_NET.049, M.SRC_NET.051, M.SRC_NET.054, M.SRC_NET.087, M.SRC_NET.165, M.SRC_NET.194, M.SRC_NET.199 |
+| A.U10.46 | merged into M.SRC_NET.004, M.SRC_NET.041, M.SRC_NET.071, M.SRC_NET.094, M.SRC_NET.110, M.SRC_NET.150 |
+| A.U11.S01 | merged into M.SRC_NET.071, M.SRC_NET.080, M.SRC_NET.096, M.SRC_NET.120 |
+| A.U11.S02 | merged into M.SRC_NET.004, M.SRC_NET.006, M.SRC_NET.097, M.SRC_NET.110, M.SRC_NET.111, M.SRC_NET.117 |
+| A.U11.04 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U11.08 | dropped (no site here: buildgen/generated code (GEN); names it reads follow this cluster's renames) |
+| A.U11.12 | dropped (no site here: `SystemService` level handling (SRC_CORE)) |
+| A.U11.24 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U11.26 | merged into M.SRC_NET.120 |
+| A.U11.31 | merged into M.SRC_NET.006, M.SRC_NET.111, M.SRC_NET.123, M.SRC_NET.129, M.SRC_NET.171, M.SRC_NET.216 |
+| A.U11.34 | dropped (no site here: tests (TEST_UNIT, TEST_HELP); src paths named only as the code under test, unchanged by the action) |
+| A.U12.02 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U12.03 | merged into M.SRC_NET.200, M.SRC_NET.201, M.SRC_NET.203 |
+| A.U13.12 | merged into M.SRC_NET.202 |
+| A.U13.13 | merged into M.SRC_NET.192, M.SRC_NET.195 |
+| A.U13.14 | merged into M.SRC_NET.196 |
+| A.U13.17 | merged into M.SRC_NET.192 |
+| A.U13.18 | merged into M.SRC_NET.196, M.SRC_NET.199 |
+| A.U13.19 | merged into M.SRC_NET.199 |
+| A.U14.03 | merged into M.SRC_NET.118 |
+| A.U14.06 | merged into M.SRC_NET.190 |
+| A.U14.10 | merged into M.SRC_NET.054 |
+| A.U14.15 | merged into M.SRC_NET.052 |
+| A.U14.16 | dropped (no site here: SPEC F.2 / BACKLOG text (SPEC, DOCS)) |
+| A.U14.26 | merged into M.SRC_NET.049, M.SRC_NET.052, M.SRC_NET.053, M.SRC_NET.080; parts (1)/(2) on `_now()`/`cettime()` dropped per U18 register fix 10 |
+| A.U14.28 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.U14.34 | dropped (no site here: tests (TEST_UNIT, TEST_HELP); src paths named only as the code under test, unchanged by the action) |
+| A.U14.36 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.U14.37 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U15.09 | dropped (no site here: sensor drivers (SRC_SENS)) |
+| A.U16.02 | dropped (no site here: L0/L1 checks (SCR, TEST_HELP); the src sites they read keep the shape these merges give them) |
+| A.U16.05 | merged into M.SRC_NET.150, M.SRC_NET.157, M.SRC_NET.167 |
+| A.U17.01 | merged into M.SRC_NET.167 |
+| A.U17.02 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U17.03 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.U17.04 | dropped (no site here: twin test (TWIN); reads `_GC_PAUSE_WORST_MS`'s value only) |
+| A.U17.06 | merged into M.SRC_NET.155, M.SRC_NET.160 |
+| A.U17.07 | merged into M.SRC_NET.214 |
+| A.U17.08 | dropped (no site here: repo docs (DOCS)) |
+| A.U17.10 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U17.11 | dropped (no site here: L0 changelog check and the changelog table (SCR, DOCS); written from the final module (M.SRC_NET.151-.153)) |
+| A.U17.12 | dropped (no site here: audit working file `audit/trace/UART_PART_J.md`) |
+| A.U17.13 | merged into M.SRC_NET.150, M.SRC_NET.155, M.SRC_NET.162, M.SRC_NET.169, M.SRC_NET.191, M.SRC_NET.192, M.SRC_NET.196, M.SRC_NET.200, M.SRC_NET.201 |
+| A.U17.14 | merged into M.SRC_NET.152, M.SRC_NET.162 |
+| A.U17.16 | merged into M.SRC_NET.159 |
+| A.U17.17 | merged into M.SRC_NET.163, M.SRC_NET.170 |
+| A.U17.18 | merged into M.SRC_NET.213 |
+| A.U17.19 | merged into M.SRC_NET.216 |
+| A.U17.20 | merged into M.SRC_NET.152, M.SRC_NET.153, M.SRC_NET.156 |
+| A.U17.22 | merged into M.SRC_NET.153, M.SRC_NET.156, M.SRC_NET.196 |
+| A.U17.26 | merged into M.SRC_NET.150, M.SRC_NET.170, M.SRC_NET.211, M.SRC_NET.215, M.SRC_NET.216 |
+| A.U17.28 | merged into M.SRC_NET.191, M.SRC_NET.192, M.SRC_NET.197 |
+| A.U17.29 | merged into M.SRC_NET.211, M.SRC_NET.214 |
+| A.U17.31 | merged into M.SRC_NET.202 |
+| A.U18.01 | merged into M.SRC_NET.003, M.SRC_NET.004, M.SRC_NET.009, M.SRC_NET.020 |
+| A.U18.R01 | merged into M.SRC_NET.082, M.SRC_NET.102 |
+| A.U18.02 | merged into M.SRC_NET.004, M.SRC_NET.008, M.SRC_NET.020, M.SRC_NET.022 |
+| A.U18.03 | merged into M.SRC_NET.004, M.SRC_NET.007, M.SRC_NET.020 |
+| A.U18.04 | merged into M.SRC_NET.007 |
+| A.U18.05 | merged into M.SRC_NET.026, M.SRC_NET.028 |
+| A.U18.06 | merged into M.SRC_NET.004, M.SRC_NET.007, M.SRC_NET.026 |
+| A.U18.07 | merged into M.SRC_NET.007 |
+| A.U18.08 | merged into M.SRC_NET.004, M.SRC_NET.007, M.SRC_NET.009, M.SRC_NET.018, M.SRC_NET.021, M.SRC_NET.023 |
+| A.U18.09 | merged into M.SRC_NET.004, M.SRC_NET.020, M.SRC_NET.022, M.SRC_NET.024 |
+| A.U18.10 | merged into M.SRC_NET.020, M.SRC_NET.023, M.SRC_NET.024, M.SRC_NET.040, M.SRC_NET.041, M.SRC_NET.043, M.SRC_NET.044, M.SRC_NET.045, M.SRC_NET.046, M.SRC_NET.047, M.SRC_NET.050 |
+| A.U18.11 | merged into M.SRC_NET.042 |
+| A.U18.12 | merged into M.SRC_NET.023, M.SRC_NET.026, M.SRC_NET.048 |
+| A.U18.13 | merged into M.SRC_NET.006, M.SRC_NET.026, M.SRC_NET.027 |
+| A.U18.14 | merged into M.SRC_NET.026, M.SRC_NET.029, M.SRC_NET.047, M.SRC_NET.048 |
+| A.U18.15 | merged into M.SRC_NET.004, M.SRC_NET.007, M.SRC_NET.020, M.SRC_NET.023, M.SRC_NET.046, M.SRC_NET.047, M.SRC_NET.048 |
+| A.U18.16 | merged into M.SRC_NET.042, M.SRC_NET.048 |
+| A.U18.17 | merged into M.SRC_NET.028, M.SRC_NET.030 |
+| A.U18.19 | merged into M.SRC_NET.048 |
+| A.U18.20 | merged into M.SRC_NET.057 |
+| A.U18.21 | merged into M.SRC_NET.055 |
+| A.U18.22 | merged into M.SRC_NET.051 |
+| A.U18.23 | merged into M.SRC_NET.044, M.SRC_NET.054, M.SRC_NET.056 |
+| A.U18.24 | merged into M.SRC_NET.077, M.SRC_NET.078, M.SRC_NET.087, M.SRC_NET.094, M.SRC_NET.100 |
+| A.U18.25 | merged into M.SRC_NET.053 |
+| A.U18.26 | merged into M.SRC_NET.053 |
+| A.U18.27 | merged into M.SRC_NET.077, M.SRC_NET.086, M.SRC_NET.088, M.SRC_NET.089 |
+| A.U18.28 | merged into M.SRC_NET.078, M.SRC_NET.082, M.SRC_NET.086, M.SRC_NET.093, M.SRC_NET.102 |
+| A.U18.29 | merged into M.SRC_NET.083 |
+| A.U18.30 | merged into M.SRC_NET.077, M.SRC_NET.084, M.SRC_NET.087, M.SRC_NET.092, M.SRC_NET.100 |
+| A.U18.31 | merged into M.SRC_NET.087, M.SRC_NET.092 |
+| A.U18.32 | merged into M.SRC_NET.088, M.SRC_NET.089 |
+| A.U18.33 | merged into M.SRC_NET.074, M.SRC_NET.078, M.SRC_NET.091, M.SRC_NET.098, M.SRC_NET.101 |
+| A.U18.34 | merged into M.SRC_NET.028 |
+| A.U18.35 | merged into M.SRC_NET.101 |
+| A.U18.36 | merged into M.SRC_NET.070, M.SRC_NET.089 |
+| A.U18.37 | merged into M.SRC_NET.080, M.SRC_NET.096, M.SRC_NET.097 |
+| A.U18.38 | merged into M.SRC_NET.073 |
+| A.U18.40 | merged into M.SRC_NET.071, M.SRC_NET.075, M.SRC_NET.077, M.SRC_NET.078, M.SRC_NET.087, M.SRC_NET.098, M.SRC_NET.100 |
+| A.U18.41 | merged into M.SRC_NET.092, M.SRC_NET.120 |
+| A.U18.42 | merged into M.SRC_NET.078, M.SRC_NET.098 |
+| A.U18.43 | merged into M.SRC_NET.030, M.SRC_NET.081, M.SRC_NET.118, M.SRC_NET.124 |
+| A.U18.44 | merged into M.SRC_NET.004, M.SRC_NET.006, M.SRC_NET.041, M.SRC_NET.054, M.SRC_NET.071, M.SRC_NET.081, M.SRC_NET.094, M.SRC_NET.097 |
+| A.U18.45 | merged into M.SRC_NET.023, M.SRC_NET.048 |
+| A.U18.46 | merged into M.SRC_NET.025, M.SRC_NET.031 |
+| A.U19.01 | merged into M.SRC_NET.120, M.SRC_NET.123 |
+| A.U19.02 | merged into M.SRC_NET.111, M.SRC_NET.112, M.SRC_NET.122 |
+| A.U19.03 | merged into M.SRC_NET.112, M.SRC_NET.122 |
+| A.U19.04 | merged into M.SRC_NET.121 |
+| A.U19.05 | merged into M.SRC_NET.119, M.SRC_NET.124 |
+| A.U19.06 | merged into M.SRC_NET.118, M.SRC_NET.124, M.SRC_NET.127 |
+| A.U19.07 | merged into M.SRC_NET.110, M.SRC_NET.111, M.SRC_NET.112, M.SRC_NET.118, M.SRC_NET.127 |
+| A.U19.08 | merged into M.SRC_NET.112, M.SRC_NET.119, M.SRC_NET.127 |
+| A.U19.09 | merged into M.SRC_NET.112, M.SRC_NET.128 |
+| A.U19.10 | merged into M.SRC_NET.129 |
+| A.U19.11 | merged into M.SRC_NET.112, M.SRC_NET.114, M.SRC_NET.115 |
+| A.U19.12 | merged into M.SRC_NET.120 |
+| A.U19.13 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U19.15 | merged into M.SRC_NET.112, M.SRC_NET.119, M.SRC_NET.125, M.SRC_NET.130 |
+| A.U19.16 | merged into M.SRC_NET.071, M.SRC_NET.096, M.SRC_NET.110, M.SRC_NET.120, M.SRC_NET.121, M.SRC_NET.122, M.SRC_NET.123 |
+| A.U19.17 | merged into M.SRC_NET.110, M.SRC_NET.111, M.SRC_NET.113, M.SRC_NET.114, M.SRC_NET.115, M.SRC_NET.116, M.SRC_NET.117, M.SRC_NET.118, M.SRC_NET.119, M.SRC_NET.120, M.SRC_NET.123, M.SRC_NET.124, M.SRC_NET.125, M.SRC_NET.127, M.SRC_NET.128, M.SRC_NET.129, M.SRC_NET.130 |
+| A.U19.19 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.U19.20 | merged into M.SRC_NET.112, M.SRC_NET.119 |
+| A.U19.22 | dropped (withdrawn by the owner (OR114.a (2), no TCP_NODELAY); read only, in M.SRC_NET.132) |
+| A.U19.23 | dropped (no site here: tests (TEST_UNIT, TEST_HELP); src paths named only as the code under test, unchanged by the action) |
+| A.U19.24 | dropped (no site here: tests (TEST_UNIT, TEST_HELP); src paths named only as the code under test, unchanged by the action) |
+| A.U2.01 | merged into M.SRC_NET.004, M.SRC_NET.049, M.SRC_NET.112, M.SRC_NET.153 |
+| A.U2.04 | merged into M.SRC_NET.004, M.SRC_NET.023, M.SRC_NET.047, M.SRC_NET.077, M.SRC_NET.112, M.SRC_NET.153 |
+| A.U2.05 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U2.14 | merged into M.SRC_NET.070, M.SRC_NET.077, M.SRC_NET.082, M.SRC_NET.085, M.SRC_NET.086, M.SRC_NET.088, M.SRC_NET.089, M.SRC_NET.096 |
+| A.U2.15 | merged into M.SRC_NET.040, M.SRC_NET.046, M.SRC_NET.047, M.SRC_NET.048, M.SRC_NET.049, M.SRC_NET.050, M.SRC_NET.051, M.SRC_NET.053 |
+| A.U2.16 | merged into M.SRC_NET.004, M.SRC_NET.007 |
+| A.U2.18 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U2.19 | merged into M.SRC_NET.112, M.SRC_NET.118, M.SRC_NET.121, M.SRC_NET.122, M.SRC_NET.123, M.SRC_NET.125, M.SRC_NET.126, M.SRC_NET.127 |
+| A.U2.20 | merged into M.SRC_NET.153, M.SRC_NET.156, M.SRC_NET.158, M.SRC_NET.159, M.SRC_NET.162, M.SRC_NET.163, M.SRC_NET.164, M.SRC_NET.165, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.169, M.SRC_NET.170 |
+| A.U20.06 | dropped (no site here: buildgen/generated code (GEN); names it reads follow this cluster's renames) |
+| A.U20.09 | dropped (no site here: buildgen/generated code (GEN); names it reads follow this cluster's renames) |
+| A.U20.14 | merged into M.SRC_NET.110 |
+| A.U20.16 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U20.20 | dropped (no site here: buildgen/generated code (GEN); names it reads follow this cluster's renames) |
+| A.U20.25 | dropped (no site here: buildgen/generated code (GEN); names it reads follow this cluster's renames) |
+| A.U20.26 | dropped (no site here: buildgen/generated code (GEN); names it reads follow this cluster's renames) |
+| A.U20.27 | dropped (no site here: buildgen/generated code (GEN); names it reads follow this cluster's renames) |
+| A.U20.34 | dropped (no site here: buildgen/generated code (GEN); names it reads follow this cluster's renames) |
+| A.U20.38 | dropped (no site here: buildgen/generated code (GEN); names it reads follow this cluster's renames) |
+| A.U23.11 | merged into M.SRC_NET.123 |
+| A.U23.17 | merged into M.SRC_NET.043 |
+| A.U23.25 | dropped (no site here: js/ (WEB)) |
+| A.U23.27 | dropped (no site here: js/ (WEB)) |
+| A.U24.01 | merged into M.SRC_NET.212 |
+| A.U24.09 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U24.15 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U24.16 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U24.17 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U24.19 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U24.24 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U24.32 | dropped (no site here: tests (TEST_UNIT, TEST_HELP); src paths named only as the code under test, unchanged by the action) |
+| A.U24.33 | dropped (no site here: tests (TEST_UNIT, TEST_HELP); src paths named only as the code under test, unchanged by the action) |
+| A.U24.34 | dropped (no site here: tests (TEST_UNIT, TEST_HELP); src paths named only as the code under test, unchanged by the action) |
+| A.U24.36 | dropped (no site here: tests (TEST_UNIT, TEST_HELP); src paths named only as the code under test, unchanged by the action) |
+| A.U24.37 | dropped (no site here: tests (TEST_UNIT, TEST_HELP); src paths named only as the code under test, unchanged by the action) |
+| A.U24.41 | dropped (no site here: tests (TEST_UNIT, TEST_HELP); src paths named only as the code under test, unchanged by the action) |
+| A.U24.45 | dropped (no site here for (1) (UART FRAM-logging tests, TEST_UNIT); (2) dropped: the `led_pin` path it tests is removed by A.U18.40 (M.SRC_NET.098)) |
+| A.U24.67 | merged into M.SRC_NET.212; test-side `src_const()` read is TEST_UNIT's; `_BANNER` stays `const()` (A.U10.29) |
+| A.U24.81 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U25.20 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U25.26 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U25.27 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U25.31 | dropped (no site here: twin (TWIN)) |
+| A.U25.33 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U25.45 | dropped (no site here: twin (TWIN)) |
+| A.U25.46 | dropped (no site here: twin (TWIN)) |
+| A.U25.71 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U25.72 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U26.15 | dropped (no site here: hardware tiers (HW_BENCH, HW_DEV)) |
+| A.U26.20 | dropped (no site here: hardware tiers (HW_BENCH, HW_DEV)) |
+| A.U26.27 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U26.32 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U26.33 | dropped (no site here: hardware tiers (HW_BENCH, HW_DEV)) |
+| A.U26.45 | dropped (no site here: hardware tiers (HW_BENCH, HW_DEV)) |
+| A.U26.49 | dropped (no site here: hardware tiers (HW_BENCH, HW_DEV)) |
+| A.U26.55 | dropped (no site here: hardware tiers (HW_BENCH, HW_DEV)) |
+| A.U26.56 | dropped (no site here: hardware tiers (HW_BENCH, HW_DEV)) |
+| A.U26.67 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U26.80 | dropped (no site here: hardware tiers (HW_BENCH, HW_DEV)) |
+| A.U26.87 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U27.07 | dropped (no site here: tests (TEST_UNIT, TEST_HELP); src paths named only as the code under test, unchanged by the action) |
+| A.U27.32 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U27.39 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U28.27 | dropped (no site here: `pyproject.toml` (TOOL); the hotspot password stays as is (accepted credential)) |
+| A.U28.28 | merged into M.SRC_NET.096, M.SRC_NET.130 |
+| A.U28.29 | dropped (no site here: `pyproject.toml` (TOOL); the hotspot password stays as is (accepted credential)) |
+| A.U28.30 | merged into M.SRC_NET.030, M.SRC_NET.081, M.SRC_NET.165 |
+| A.U28.31 | dropped (no site here: `pyproject.toml` (TOOL); the hotspot password stays as is (accepted credential)) |
+| A.U29.01 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.U29.02 | dropped (no site here: L0/L1 checks (SCR, TEST_HELP); the src sites they read keep the shape these merges give them) |
+| A.U29.03 | merged into M.SRC_NET.072 |
+| A.U3.01 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U3.02 | merged into M.SRC_NET.044, M.SRC_NET.046, M.SRC_NET.047, M.SRC_NET.048, M.SRC_NET.049, M.SRC_NET.052, M.SRC_NET.078, M.SRC_NET.088, M.SRC_NET.089, M.SRC_NET.096, M.SRC_NET.152, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.157, M.SRC_NET.158, M.SRC_NET.161, M.SRC_NET.162, M.SRC_NET.163, M.SRC_NET.164, M.SRC_NET.168, M.SRC_NET.169, M.SRC_NET.171 |
+| A.U3.05 | merged into M.SRC_NET.047, M.SRC_NET.050, M.SRC_NET.057, M.SRC_NET.084, M.SRC_NET.086, M.SRC_NET.088 |
+| A.U3.07 | merged into M.SRC_NET.100 |
+| A.U3.08 | merged into M.SRC_NET.153, M.SRC_NET.158, M.SRC_NET.161, M.SRC_NET.162; its "32→91" read as a slip: catalog row 89 (A.U2.01) |
+| A.U3.11 | merged into M.SRC_NET.126 |
+| A.U30.02 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.U30.03 | dropped (no site here: L0/L1 checks (SCR, TEST_HELP); the src sites they read keep the shape these merges give them) |
+| A.U30.19 | merged into M.SRC_NET.011, M.SRC_NET.060, M.SRC_NET.104, M.SRC_NET.121, M.SRC_NET.122, M.SRC_NET.123, M.SRC_NET.125, M.SRC_NET.126, M.SRC_NET.127, M.SRC_NET.130, M.SRC_NET.150, M.SRC_NET.165, M.SRC_NET.170 |
+| A.U30.21 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U31.01 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.U31.15 | merged into M.SRC_NET.077, M.SRC_NET.081, M.SRC_NET.085, M.SRC_NET.087, M.SRC_NET.089, M.SRC_NET.092 |
+| A.U31.16 | merged into M.SRC_NET.004, M.SRC_NET.007, M.SRC_NET.026, M.SRC_NET.027 |
+| A.U31.18 | merged into M.SRC_NET.118, M.SRC_NET.119, M.SRC_NET.126, M.SRC_NET.127 |
+| A.U31.19 | merged into M.SRC_NET.077 |
+| A.U32.01 | dropped (no site here: repo docs (DOCS)) |
+| A.U32.04 | dropped (no site here: audit working record/inventory) |
+| A.U32.05 | dropped (no site here: audit working record/inventory) |
+| A.U32.06 | merged into M.SRC_NET.170, M.SRC_NET.215; starter names `start_listen`/`start_exercise` superseded by A.U10.44's `start_asy_*` (need met) |
+| A.U34.01 | dropped (no site here: THIRD_PARTY_LICENSES.md / L0 attribution check (LIC)) |
+| A.U34.03 | dropped (no site here: THIRD_PARTY_LICENSES.md / L0 attribution check (LIC)) |
+| A.U34.05 | merged into M.SRC_NET.002, M.SRC_NET.005 |
+| A.U34.06 | merged into M.SRC_NET.025 |
+| A.U34.07 | dropped (no site here: THIRD_PARTY_LICENSES.md / L0 attribution check (LIC)) |
+| A.U34.09 | dropped (no site here: THIRD_PARTY_LICENSES.md / L0 attribution check (LIC)) |
+| A.U34.10 | dropped (no site here: THIRD_PARTY_LICENSES.md / L0 attribution check (LIC)) |
+| A.U35.14 | dropped (no site here: tests (TEST_UNIT, TEST_HELP); src paths named only as the code under test, unchanged by the action) |
+| A.U35.27 | dropped (no site here: twin CI suite (SCR)) |
+| A.U35.35 | dropped (no site here: tests (TEST_UNIT, TEST_HELP); src paths named only as the code under test, unchanged by the action) |
+| A.U35.38 | dropped (no site here: twin CI suite (SCR)) |
+| A.U35.41 | merged into M.SRC_NET.200 |
+| A.U35.43 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U35.44 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U35.45 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U35.47 | merged into M.SRC_NET.164, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168 |
+| A.U35.48 | dropped (no site here: tests (TEST_UNIT, TEST_HELP); src paths named only as the code under test, unchanged by the action) |
+| A.U36.026 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U36.029 | dropped (no site here: repo docs (DOCS)) |
+| A.U36.044 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.U36.503 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.U36.507 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U36.512 | merged into M.SRC_NET.120 |
+| A.U36.531 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U36.532 | merged into M.SRC_NET.190 |
+| A.U36.536 | dropped (no site here: repo docs (DOCS)) |
+| A.U36.544 | merged into M.SRC_NET.079, M.SRC_NET.152, M.SRC_NET.159, M.SRC_NET.192 |
+| A.U36.547 | dropped (no site here: repo docs (DOCS)) |
+| A.U36.548 | dropped (no site here: repo docs (DOCS)) |
+| A.U37.04 | dropped (no site here: closing procedure (PROC)) |
+| A.U37.07 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U4.02 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U4.07 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U5.01 | merged into M.SRC_NET.071 |
+| A.U5.02 | merged into M.SRC_NET.004, M.SRC_NET.006, M.SRC_NET.041, M.SRC_NET.044, M.SRC_NET.071, M.SRC_NET.078, M.SRC_NET.110, M.SRC_NET.119, M.SRC_NET.150, M.SRC_NET.155, M.SRC_NET.211, M.SRC_NET.213 |
+| A.U5.03 | merged into M.SRC_NET.043, M.SRC_NET.076, M.SRC_NET.112, M.SRC_NET.211 |
+| A.U5.04 | merged into M.SRC_NET.078, M.SRC_NET.112, M.SRC_NET.119 |
+| A.U5.05 | merged into M.SRC_NET.112, M.SRC_NET.119 |
+| A.U5.07 | merged into M.SRC_NET.076, M.SRC_NET.078, M.SRC_NET.098 |
+| A.U5.09 | merged into M.SRC_NET.077, M.SRC_NET.078 |
+| A.U5.10 | merged into M.SRC_NET.041, M.SRC_NET.042, M.SRC_NET.044 |
+| A.U5.12 | merged into M.SRC_NET.150, M.SRC_NET.154, M.SRC_NET.155, M.SRC_NET.156, M.SRC_NET.211, M.SRC_NET.213 |
+| A.U5.17 | merged into M.SRC_NET.192 |
+| A.U5.18 | dropped (no site here: L0/L1 checks (SCR, TEST_HELP); the src sites they read keep the shape these merges give them) |
+| A.U6.04 | dropped (no site here: buildgen/generated code (GEN); names it reads follow this cluster's renames) |
+| A.U6.18 | merged into M.SRC_NET.043, M.SRC_NET.073 |
+| A.U6.21 | dropped (no site here: buildgen/generated code (GEN); names it reads follow this cluster's renames) |
+| A.U6.24 | dropped (no site here: buildgen/generated code (GEN); names it reads follow this cluster's renames) |
+| A.U6.25 | merged into M.SRC_NET.078 |
+| A.U6.26 | merged into M.SRC_NET.043 |
+| A.U6.28 | merged into M.SRC_NET.073, M.SRC_NET.075 |
+| A.U6.29 | merged into M.SRC_NET.018, M.SRC_NET.073, M.SRC_NET.075, M.SRC_NET.077, M.SRC_NET.096 |
+| A.U6.30 | merged into M.SRC_NET.072, M.SRC_NET.073, M.SRC_NET.075 |
+| A.U7.25 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.U8.01 | dropped (no site here: SPECIFICATION.md text (SPEC)) |
+| A.U8.04 | merged into M.SRC_NET.112 |
+| A.U8.06 | merged into M.SRC_NET.152, M.SRC_NET.191, M.SRC_NET.192, M.SRC_NET.212 |
+| A.U8.07 | dropped (no site here: sensor drivers (SRC_SENS)) |
+| A.U8.09 | merged into M.SRC_NET.020, M.SRC_NET.042 |
+| A.U8.10 | merged into M.SRC_NET.077, M.SRC_NET.081, M.SRC_NET.082, M.SRC_NET.085, M.SRC_NET.088, M.SRC_NET.089, M.SRC_NET.093 |
+| A.U8.11 | merged into M.SRC_NET.004, M.SRC_NET.007, M.SRC_NET.026, M.SRC_NET.028, M.SRC_NET.029, M.SRC_NET.048; `conn_tries`/round-trip tags dropped (V.U18.D); `_s` rows renamed `_ms` (A.U31.16) |
+| A.U8.12 | merged into M.SRC_NET.078 |
+| A.U8.23 | merged into M.SRC_NET.110, M.SRC_NET.111 |
+| A.U8C2.04 | dropped (mentioned in this cluster's files only in its Why/Blast slot; no site here — carried by its own cluster) |
+| A.U9.03 | dropped (no site here: buildgen/generated code (GEN); names it reads follow this cluster's renames) |
+| A.U9.09 | merged into M.SRC_NET.122 |
