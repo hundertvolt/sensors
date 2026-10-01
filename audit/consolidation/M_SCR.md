@@ -458,7 +458,8 @@ Conventions used below (each defined once, then cited):
   (fault storm rides Run 3; non-rebooting bounded cell here), A.U35.29 (zero-think readers), A.U31.06 (loop lag),
   A.S0930.27 (2)/(4) and A.S0930.38 (3)/(4) (command states, hang per step); gap pass (GAPS_G3 hand-off 3, Table B
   B21): A.U19.07, A.U19.08/.10, A.U19.12 (their L2 cases, whose in-DUT carrier was retired), A.U35.28 (h)'s read of the
-  total `fram_writes=` field (M.TWIN.050).
+  per-logger `fram_writes_by=` field with the `fram_writes=` total as a cross-check (lead ruling; M.TWIN.050 as G3
+  amends it).
 - **Site**: `scripts/_digital_twin_scenarios.py` (the registry).
 - **Change**: the registry holds, each with its source goal and assertions kept (OR19.a (4)): (a) the 22
   webserver-concurrency helpers/scenarios of `tests/_webserver_concurrency_scenarios.py` rewritten host-side
@@ -481,11 +482,12 @@ Conventions used below (each defined once, then cited):
   `block` (A.U35.31: `WDT_AT_FAULT <feed_count>` read; `would_have_triggered_count >= 1`; `feed_count` equality for the
   first two only). (g) A.U35.09 (a) `survives_bus_and_api_load_while_ntp_is_unreachable` (PUT `/networking {"NTPHost":
   "192.0.2.1"}` — the key A.U10.40 renames — then reboot) and (b) `…_with_concurrent_config_writes`. (h) A.U35.28's
-  bounded-count storm below the escalation threshold (no reboot; the shutdown line's one total `fram_writes=<n>`
-  (M.TWIN.050) ≤ (the device's FRAM-backed modules, `expected_facts()`'s `fram_wired`) × `rate.persisted_log` × window,
-  the message naming all three factors; the per-module rate itself is the L1 rate limiter's, and Run 3 reads the same
-  total, M.SCR.051 — gap pass, GAPS_G3 hand-off 3 (b): the harness reads the total, so the twin line stays as M.TWIN.050
-  writes it). (i) A.U35.29 `zero_think_time_readers_saturate_then_recover`. (j) A.U31.06
+  bounded-count storm below the escalation threshold (no reboot; per-module FRAM write count ≤ `rate.persisted_log` ×
+  window, read from the shutdown line's `fram_writes_by=<LOGGER>:<n>,…` field — one entry per FRAM-backed logger that
+  wrote, sorted by name — each failing entry named with its count and the bound; cross-check: the entries sum to the
+  line's `fram_writes=<total>`, a mismatch failing the scenario; a missing `fram_writes_by` field fails, never skips.
+  Lead ruling, gap pass: a check is never weakened to fit what a line carries — the twin line gains the field, G3's
+  M.TWIN.050 amendment). (i) A.U35.29 `zero_think_time_readers_saturate_then_recover`. (j) A.U31.06
   `loop_lag_under_combined_load` (`--test-loop-lag-ms 10`, `LOOP_LAG` lines; bound from the device TOML). (k) The
   command states and hangs: A.S0930.27 (2) (`erasefram`/`resetconfig` in the timer-start window, during a delayed FRAM
   write `--hang fram:…`, with `mempause`, concurrent with `reboot`, both at once; lost-chip refusal vs `silent` chip;
@@ -510,7 +512,8 @@ Conventions used below (each defined once, then cited):
 - **Unit**: U35 (stages: U25 (a)-(e) and (l) with A.U25.46/.74 — (l)'s product side lands in U19, before the harness
   exists; U31 (j); U35 (f)-(i); S0930's (k) lands with A.S0930.27/.38 after U25 — each scenario lands in the unit of its
   constituent).
-- **Depends**: M.SCR.017; M.TWIN.051/.104/.136/.144; A.U19.20 (route reference), A.U24.70 (band).
+- **Depends**: M.SCR.017; M.TWIN.051/.104/.136/.144; M.TWIN.050 (`fram_writes=` and `fram_writes_by=` on the shutdown
+  line, G3's gap-pass amendment); A.U19.20 (route reference), A.U24.70 (band).
 - **Blast carried by**: the deleted in-DUT files → M.TEST_HELP.033, M.TWIN.136, M.TWIN.144 (TEST_HELP, TWIN); Part N rows
   for the harness's tags → A.U8.02/A.U8C (SPEC); `audit/b3/load.md` entries → A.U35.28/.29 (procedure); SPEC H.7.1/C.8
   citers repoint → A.U36.532/A.U36.544 (SPEC).
