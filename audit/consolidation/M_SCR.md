@@ -363,9 +363,9 @@ Conventions used below (each defined once, then cited):
   `asy_system_service.py`); A.U27.21 removes those greps — the rename lands only as this table's module name (dropped
   as separate edits). The generated module carries no `gc.collect()` (M.SRC_CORE.015 moves it into `run_setups`), so
   A.U27.21's "codegen's emitted boot batch" row is not written.
-- **Unit**: U30 (A.U30.14/.16 extend the U27 checker). Stage U27: A.U27.21's checker with the sites then in force.
-  Stage U30: threshold rows and the test/twin/hardware rows. Stage U31: the measured-collection-pause row, with
-  `loop_stretch_timing.py` (M.HW_DEV.122; AC3_O O-27).
+- **Unit**: U31 (the measured-collection-pause row lands with `loop_stretch_timing.py`, M.HW_DEV.122; AC3_O O-27).
+  Stage U27: A.U27.21's checker with the sites then in force. Stage U30: A.U30.14/.16 extend it — threshold rows and the
+  test/twin/hardware rows.
 - **Depends**: M.SCR.010; M.SRC_CORE.015/.016.
 - **Blast carried by**: caller `lint.sh` (M.SCR.025); `tests_scripts/test_gc_collect_sites.py` rewritten to call the
   checker on fixture trees (alias forms, threshold forms) → A.U27.21/A.U30.14/A.U30.16 (TSC); CLAUDE.md memory rule and

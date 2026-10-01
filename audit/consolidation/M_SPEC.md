@@ -6128,7 +6128,7 @@ section that stays.
 | A.U37.06 | IB | M.SPEC.023 |
 | A.U37.07 | B | M.SPEC.112 |
 | A.U37.11 | IB | M.SPEC.150 |
-| AC3_R R-03 | A-C3 | M.SPEC.049 (1): A.U13.05's first sentence plus the lead's withdrawal text (no pull-up claim, no phase-C measurement); Resolved records the supersession; tag written "(agent, 2026-09-29)" (adapted from "(lead, 2026-09-30)": the note is dated 2026-09-29, permanent tags name owner or agent) |
+| AC3_R R-03 | A-C3 | M.SPEC.049 (1): A.U13.05's first sentence plus the lead's withdrawal text (no pull-up claim, no phase-C measurement); Resolved records the supersession; tag written "(agent, 2026-09-29)" (adapted from "(lead, 2026-09-30)": the lead's note at the end of `U13.md` is dated 2026-09-29, and a permanent actor tag is "(owner, …)" or "(agent, …)", G9/R11) |
 | AC3_R R-09 | A-C3 | M.SPEC.021 item 8 gains the GET's chip I/O sentence; From gains G3/R31 |
 | AC3_R R-04 | A-C3 | M.SPEC.073 and M.SPEC.140 Blast pointers name M.DOCS.109 and M.PROC.048 (R-04 cited them as .046/.142; adapted to the two changes that hold the pointers) |
 | AC3_S S-13 | A-C3 | as AC3_R R-04 (one change, M.DOCS.109) |

@@ -1,0 +1,18 @@
+{
+  "status": "draft: topic slugs fixed, content being written (Part T)",
+  "overview": {},
+  "topics": [
+    {"id": "sensors-and-drivers", "title": "Sensors, buses and the status LED", "scope": "src/ sensor drivers, I2C/SPI bus layer, VOC algorithm, NeoPixel, notification service (M_SRC_SENS)"},
+    {"id": "network-and-rest", "title": "Wi-Fi, time, DNS and the REST API", "scope": "src/ Wi-Fi, NTP, DNS client, captive DNS, UDP socket, web server/REST (M_SRC_NET minus UART files)"},
+    {"id": "uart-link", "title": "The UART link", "scope": "src/asy_uart_comm.py, asy_uart_driver.py, asy_uart_link_driver.py (M_SRC_NET UART sections)"},
+    {"id": "system-and-memory", "title": "System service, configuration, logging and FRAM", "scope": "src/ system service, base classes, config manager, print_log, api_response, FRAM driver/manager, CRC, codecs, math helpers; watchdog, memory safety, system commands (M_SRC_CORE)"},
+    {"id": "website", "title": "The website", "scope": "js/, tests_js/, mockdata/, web tooling config, html/ (M_WEB plus M_GEN html sections)"},
+    {"id": "device-config-and-buildgen", "title": "Device files and the build generator", "scope": "buildgen/, devices/*.toml, ext/ vendored code (M_GEN minus html sections)"},
+    {"id": "tests", "title": "The test suite and the standing checks", "scope": "tests/ unit tier and helpers, tests_scripts/ host checks (M_TEST_UNIT, M_TEST_HELP, M_TSC)"},
+    {"id": "digital-twin", "title": "The digital twin", "scope": "digital_twin/ and tests/test_digital_twin_* (M_TWIN)"},
+    {"id": "hardware-tests", "title": "Hardware tests and the dev bench", "scope": "tests_hardware/ bench, flash, device scripts, manual (M_HW_BENCH, M_HW_DEV)"},
+    {"id": "build-chain-and-ci", "title": "Build chain, scripts and CI", "scope": "scripts/, toolchain/, .github/, pyproject.toml, uv.lock, host_typecheck.ini (M_SCR, M_TOOL)"},
+    {"id": "documentation", "title": "Documentation", "scope": "SPECIFICATION.md, CLAUDE.md, README.md, BACKLOG.md and the other root docs (M_SPEC, M_DOCS)"},
+    {"id": "execution-and-release", "title": "How execution runs, the hardware rounds and the release", "scope": "baseline, dependency refresh, test campaign, close, phase C rounds, phase D (M_PROC)"}
+  ]
+}
