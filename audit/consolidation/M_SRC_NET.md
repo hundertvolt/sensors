@@ -1228,13 +1228,15 @@ actions only where they name a product line.
 - **From**: A.U10.38 (`AsyConnTime` → `WifiService`), A.U5.02 (`log`), A.U5.09 + A.U18.40 ruling (`WifiConfig`
   members), A.U5.07 (`ext_led` at construction), A.U10.35 (private attributes), A.U10.03 (`_wifi_uptime` on
   `TickSeconds`, `_wifi_connected`), A.U18.33 (`_dhcp_dns`), A.U18.28 (`_ap_selected`), A.U18.24 (`_tick_armed`),
-  A.U3.02 (`_episode_wrns` goes), A.U0.35 (D05 comment), A.U10.17 (lock reason), A.U10.39 (push key via `name_cfg()`)
+  A.U3.02 (`_episode_wrns` goes), A.U0.35 (D05 comment), A.U10.17 (lock reason), A.U10.39 (push key via `name_cfg()`),
+  A.U8.12 (`module.max_error` tag on the `:140` default)
 - **Site**: `src/asy_wifi_service.py:132-189`
 - **Change**: new module-level `WifiConfig = namedtuple("WifiConfig", ("hostname", "hotspot_password",
   "conn_fail_to_hotspot", "hotspot_time_min"))` (no default constants: all four are required `[device]` fields,
   `buildgen/validate.py:63`). `class WifiService(SensorReaderConfig):` / `def __init__(self, wifi: WifiConfig, ext_led:
   "LEDControl | None" = None, max_module_error: int = 5, cfg_path: str = "", log: LogConfig = DEFAULT_LOG) -> None:`
-  (the `max_module_error` comment `:140-142` kept); `super().__init__(WIFI(None, None, None, None, None, None, None,
+  (the `max_module_error` comment `:140-142` kept, and the parameter's line carries `# @tunable module.max_error = 5`,
+  A.U8.12's standalone-default site of that ID); `super().__init__(WIFI(None, None, None, None, None, None, None,
   None), _NAME, _VAL_SSID + _VAL_PW + _VAL_COUNTRY + _with_default(_VAL_HOSTNAME, wifi.hostname) + _VAL_LED_WIFI_ON +
   _with_default(_VAL_HOTSPOT_PW, wifi.hotspot_password), max_module_error=max_module_error, cfg_path=cfg_path,
   log=log)`. Attributes: `self._wlan = network.WLAN(network.STA_IF)`; `self._ext_led = ext_led`; `self._led:
@@ -2260,6 +2262,19 @@ added, unmodified upstream stubs, A.U8.23).
 - **Blast carried by**: —
 - **Kind**: code
 
+### M.SRC_NET.132 The `peer_gone` suppression's reason follows the pinned modlwip
+- **From**: A.SDEP.13 (the write-after-reset re-read), A.U19.22 (read: withdrawn, no `TCP_NODELAY` call)
+- **Site**: `src/asy_webserver_service.py:255-259, :269-270` (the `peer_gone` suppression in `_TimeoutStreamProxy`)
+- **Change**: conditional, at the MicroPython bump: if the new tag's `lwip_tcp_send()` refuses a write on a closed/freed
+  pcb with an error, the suppression's comment states that reason ("it still saves a pointless write") and its
+  retirement is recorded as a U19 delta; otherwise nothing changes. No `setsockopt(TCP_NODELAY)` is added whatever the
+  re-read finds (OR114.a (2), owner's decision).
+- **Resolved**: —
+- **Unit**: the SDEP bump (A.SDEP.13), after U19's M.SRC_NET.118
+- **Depends**: M.SRC_NET.118, A.SDEP.08 (the pin)
+- **Blast carried by**: the override decision (A.U21.09-.14) → A.SDEP.13 (TOOL); SPEC B.14.2.1 → A.U14.30 (SPEC)
+- **Kind**: code
+
 ## src/asy_uart_comm.py
 
 The protocol module of the two-implementation contract: every merged change below names the `UART_C_PORT_CHANGELOG.md`
@@ -2532,7 +2547,7 @@ annotation-only change carries none, per its constituent. No merged change here 
 - **Resolved**: A.U3.08 "prints 'Resyncing the link' and persists W54 only when `_drain_bound_hit`" with "W11's precedence
   kept" — written as one or the other (the persisted W54 text says it resynced), matching HEAD's one-slot precedence.
 - **Unit**: U17. Staged: U3 (logging), U17 (count, cap).
-- **Depends**: M.SRC_NET.153, M.SRC_NET.158, M.SRC_NET.196/.201/.202 (the driver's `discarded_bytes`), A.U10.01
+- **Depends**: M.SRC_NET.153, M.SRC_NET.158, M.SRC_NET.196/.200/.201 (the driver's `discarded_bytes`), A.U10.01
 - **Blast carried by**: tests (fault with quiet line adds one entry; bound adds errno + 54; streak saturates at 2; the
   inverted blind-spot check; CRC16 frame-corrupt diagnostic; L2 mismatched-payload pair) → A.U3.08, A.U17.13, A.U17.14
   (TEST_UNIT, TWIN); SPEC J.6 and changelog B26 → A.U17.15 (SPEC, DOCS); A.U10.05's counter check lists `_blind_resyncs`
@@ -2690,7 +2705,7 @@ annotation-only change carries none, per its constituent. No merged change here 
 - **Unit**: U30 (A.U30.19). Staged: U2, U10 (starter, names), U17 (backoff rule, types); A.U32.06 adds nothing further
   here.
 - **Depends**: M.SRC_NET.150, M.SRC_NET.155, A.U10.46 (aliases)
-- **Blast carried by**: `UARTLinkDriver.get_task_starters()` → M.SRC_NET.217; generated `_collect_task_names()` reads
+- **Blast carried by**: `UARTLinkDriver.get_task_starters()` → M.SRC_NET.215; generated `_collect_task_names()` reads
   `__name__` → A.U32.06 (GEN); tests (declined-then-answered GET without backoff; dead link still doubles; starters called
   by name) → A.U17.17, A.U10.44 (TEST_UNIT); SPEC J.5 sentence → A.U17.17 (SPEC); UART changelog **Class A** A14 (responder
   re-listens at once after a validated command) → A.U17.17, Class B (named starter; one entry for A.U10.44 and A.U32.06;
@@ -2706,7 +2721,7 @@ annotation-only change carries none, per its constituent. No merged change here 
 - **Resolved**: —
 - **Unit**: U11. Staged: U3.
 - **Depends**: A.U11.31's `PrintLogHistory.reset() -> bool` (SRC_CORE)
-- **Blast carried by**: `UARTLinkDriver.reset_error_counter()` → M.SRC_NET.218; `/status` `ResetErrors` → M.SRC_NET.123;
+- **Blast carried by**: `UARTLinkDriver.reset_error_counter()` → M.SRC_NET.216; `/status` `ResetErrors` → M.SRC_NET.123;
   UART changelog Class B (return type) → A.U11.31 (DOCS)
 - **Kind**: code
 
@@ -2731,4 +2746,375 @@ annotation-only change carries none, per its constituent. No merged change here 
 - **Unit**: U10 (last U10 edit)
 - **Depends**: every U10 edit of the file
 - **Blast carried by**: — (no changelog entry: the changelog does not record member order, A.U10.33)
+- **Kind**: code
+
+## src/asy_uart_driver.py
+
+Below the protocol module: its changes reach the wire only where a constituent says so (none here does; each carries a
+Class B line). Every new wait yields (`ready()`, `asyncio.sleep_ms()`), and every read stays clamped to `any()` (CLAUDE.md
+UART rule; F.5.8 — F.8.2 after U36).
+
+### M.SRC_NET.190 Module header and section pointers
+- **From**: A.U10.37 (module names in the docstring), A.U36.532 (4) (F.5.7/F.5.8/F.5.9 → F.8.1/F.8.2/F.8.3 at `:121, :200,
+  :266, :293` and in every comment the U13/U17 merges below write), A.SDEP.17 (W24/W25: the comments at `:198-200` and
+  the F.5.8 mechanism sentences follow the source at the new MicroPython tag), A.U14.06 (read: the never-raise surface is
+  already stated, DONE-AT-HEAD)
+- **Site**: `src/asy_uart_driver.py:1-6`; `:119-121`, `:198-200`, `:264-266`, `:291-293` and the new comments of
+  M.SRC_NET.195/.199/.203
+- **Change**: docstring "lock-scoped via base_classes.Lockable" → "lock-scoped via asy_base_classes.Lockable"; "(crc_checks.py)"
+  → "(asy_crc_checks.py)", "(framing_codecs.py)" → "(asy_framing_codecs.py)"; the pin comment `:4-5` unchanged (it agrees
+  with RP2040 Table 279, A.U20.09). At U36 every "F.5.7" → "F.8.1", "F.5.8" → "F.8.2", "F.5.9" → "F.8.3" in the file. At
+  the MicroPython bump (A.SDEP.17): if `machine.UART.deinit()` no longer leaves the ring unrooted (W24), the `init()`
+  comment `:198-200` says the fresh construction is kept but no longer load-bearing; if `read()` no longer waits per
+  missing byte (W25), the `_buffered()`/`ready()` mechanism sentences follow the source — the clamp and the yield stay
+  either way (owner's no-block rule).
+- **Resolved**: —
+- **Unit**: U36 (A.U36.532). Staged: U10 (module names), the SDEP bump (conditional comment rewrite, only if the
+  re-read source changed).
+- **Depends**: A.U14.28 (F.7 exists), the SPEC move (A.U36.532, SPEC)
+- **Blast carried by**: every other F.5.7-F.5.9 citer → A.U36.532 (SPEC, TEST_UNIT, TWIN, HW_*); changelog `:95` pointer →
+  A.U36.532 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.191 Imports and module constants
+- **From**: A.U10.37/A.U10.38 (`asy_base_classes`, `asy_crc_checks.CRCBase/CRCPass`, `asy_framing_codecs.FramingBase/
+  FramingPass`), A.U10.01 + A.U17.13 + A.U17.28 (`COUNTER_CAP` import), A.U17.28 (`_SEQ_HALF`), A.U8.06 (tags
+  `:33`, `:38`)
+- **Site**: `src/asy_uart_driver.py:8-38`
+- **Change**: `from asy_base_classes import COUNTER_CAP, Lockable` / `from asy_crc_checks import CRCBase, CRCPass` / `from
+  asy_framing_codecs import FramingBase, FramingPass`; `_CANCEL_ACK_TIMEOUT_MS = const(1000)  # @tunable
+  uart.cancel_ack_timeout_ms = 1000` and `_DELIMITED_YIELD_BYTES = const(16)  # @tunable uart.delimited_yield_bytes = 16`
+  (their comments kept); new `_SEQ_HALF = const(0x20000000)  # half the 2**30 sequence space: a distance below it is "behind"`.
+- **Resolved**: —
+- **Unit**: U17. Staged: U8 (tags), U10 (names, `COUNTER_CAP`), U17 (`_SEQ_HALF`).
+- **Depends**: A.U10.01 (SRC_CORE), A.U10.37/38
+- **Blast carried by**: Part N rows → A.U8.06 (DOCS); UART changelog Class B for the renames → A.U10.37 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.192 `UART.__init__`/`init()`: measured poll defaults, tagged buffer sizes, kept `txbuf`, a discard count
+- **From**: A.U13.17 (`poll_wait_ms = 2`, `poll_idle_ms: int = 50`), A.U8.06 (tags: rxbuf/txbuf ×2 sites, poll default;
+  `uart.poll_idle_ms_default` row per A.U13.17), A.U13.13 (`self.txbuf`), A.U17.13 (`discarded_bytes`), A.U17.28 (the
+  counter comment), A.U36.544 (3) (`:79` "changelog A11"), A.U10.38 (codec class names), A.U10.31, A.U5.17 (read: the
+  12 + 4 parameters keep a per-file PLR0913 exemption)
+- **Site**: `src/asy_uart_driver.py:41-82`, `:183-222`
+- **Change**: `poll_wait_ms: int = 2,  # @tunable uart.poll_wait_ms_default = 2`, `poll_idle_ms: int = 50,  # @tunable
+  uart.poll_idle_ms_default = 50`, `rxbuf: int = 256,  # @tunable uart.rxbuf_default = 256`, `txbuf: int = 256,  #
+  @tunable uart.txbuf_default = 256` (the two buffer tags at both `__init__` and `init()`); `crc: CRCBase | None`,
+  `framing: FramingBase | None`; `self.poll_idle_ms = poll_idle_ms`, its comment `:65-67` keeping its first two sentences
+  (the "None keeps the single rate" sentence goes); the cancel comment `:69-71` → "# A cancel request is latched and
+  acknowledged by publishing the request number it served: two sequences rather than an Event, masked to COUNTER_CAP and
+  compared by distance, so one acknowledgement stays visible to every waiting canceller."; `self.discarded_bytes = 0  #
+  Bytes a failed *_until_complete() read consumed and dropped: a wrap-by-design count (masked to COUNTER_CAP) a caller
+  compares, never a total` (comment on the line above if the line would exceed the cap); `CRCPass()`/`FramingPass()`
+  defaults; `:79` "…selecting a delimited one is a wire change (changelog A11)." → "…is a coordinated flag day with the C
+  peer (Part J)."; `init()` keeps `self.txbuf = txbuf` beside `rxbuf`/`baudrate` (comment `:202-204` names all three).
+- **Resolved**: A.U8.06 tags `poll_wait_ms_default = 20` at HEAD's literal; A.U13.17 changes the literal to 2 and adds the
+  idle row — the tag moves with the value (A.U8.06's own Depends).
+- **Unit**: U36 (the label). Staged: U8 (tags at HEAD values), U10 (names), U13 (defaults, `txbuf`), U17 (count, comment).
+- **Depends**: M.SRC_NET.191
+- **Blast carried by**: `buildgen/validate.py:246-251` `poll_idle_ms` special case goes → A.U13.17 (GEN); tests built by
+  `make_uart()` re-checked for timing, harness `poll_idle_ms=POLL_WAIT_MS`, `test_buildgen_validate.py:1290-1310` →
+  A.U13.17 (TEST_UNIT, TEST_HELP, SCR); fakes gain `txdone()` → A.U13.13 (TEST_HELP, TWIN); SPEC J.6/F.5.9/C.3.2,
+  `devices/dev.toml:39-40` comment → A.U13.17, A.U17.13 (SPEC, GEN); `pyproject.toml` PLR0913 per-file entry and the
+  ceiling probe's exempt set → A.U5.17/A.U5.18 (TOOL); UART changelog Class B (defaults; discard count) → A.U13.17,
+  A.U17.13 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.193 Session lock name
+- **From**: A.U10.18 (`Lockable.asy_lock` → `session_lock`)
+- **Site**: `src/asy_uart_driver.py:109-115` `_active_uart()`, `:245` `cancel_read_timeout()`
+- **Change**: `self.asy_lock.locked()` → `self.session_lock.locked()` at both sites; the `:111-112` comment names
+  `session_lock`.
+- **Resolved**: —
+- **Unit**: U10
+- **Depends**: A.U10.18 in `asy_base_classes` (SRC_CORE)
+- **Blast carried by**: `tests/test_asy_uart_driver.py` (9 sites) → A.U10.18 (TEST_UNIT); UART changelog Class B →
+  A.U10.18 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.194 Sorted except tuples (driver)
+- **From**: A.U10.45
+- **Site**: `src/asy_uart_driver.py:124` (`_buffered()`), `:234` (`deinit()`)
+- **Change**: `except (OSError, MemoryError):` → `except (MemoryError, OSError):` at both (the trailing comment at
+  `:124` kept); `ready()`'s tuple is written sorted by M.SRC_NET.199.
+- **Resolved**: —
+- **Unit**: U10
+- **Depends**: —
+- **Blast carried by**: UART changelog Class B → A.U10.45 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.195 `_write_all()` writes only into an empty TX ring, at most `txbuf` bytes
+- **From**: A.U13.13
+- **Site**: `src/asy_uart_driver.py:127-141`
+- **Change**: comment → "# Write only into an empty TX ring, at most txbuf bytes: POLLOUT means one free byte, and a
+  longer write waits per byte inside machine.UART.write() (F.8.2)." plus HEAD's short-write sentence; per round: `if not
+  await self.ready(select.POLLOUT): return False` / `if not uart.txdone(): await asyncio.sleep_ms(self.poll_wait_ms);
+  continue` / `chunk = min(total - sent, self.txbuf)` / `n = uart.write(view if sent == 0 and chunk == total else
+  view[sent : sent + chunk])` / `None` → `False` / `sent += n`.
+- **Resolved**: —
+- **Unit**: U13 (F.5.8 written until U36's repoint, M.SRC_NET.190)
+- **Depends**: M.SRC_NET.192 (`self.txbuf`)
+- **Blast carried by**: fakes' `txdone()`/`tx_pending_rounds` → A.U13.13 (TEST_HELP, TWIN); tests (3 × txbuf in three
+  writes, no write while not done, cancel mid-wait) → A.U13.13 (TEST_UNIT); SPEC F.5.8 write half → A.U14 (RF192, SPEC);
+  UART changelog Class B → A.U13.13 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.196 `_read_delimited()`: every consumed byte counts toward the yield and toward the discard count
+- **From**: A.U13.14 (`consumed`), A.U13.18 (poller re-check after the yield), A.U17.13 (`_count_discarded()` on every
+  `None` after consumed bytes), A.U17.22 (read: `decode_from()`'s bound is the codec's)
+- **Site**: `src/asy_uart_driver.py:143-181`; new `_count_discarded()`
+- **Change**: `consumed = 0` beside `size`; after a byte is obtained (`timeout = timeout_ms`): `consumed += 1` / `if not
+  consumed % _DELIMITED_YIELD_BYTES:` `await asyncio.sleep_ms(0)` / `if self.poller is None: self._count_discarded(consumed);
+  return None`; the data branch's own yield (`:168-169`) and its comment go. Every `None` return after bytes were consumed
+  calls `self._count_discarded(consumed)` first: the bound, the mid-frame `ready()` failure, the decode `None` and the
+  CRC `None` (the result of `check_from()` is held, counted on `None`, then returned). New `def _count_discarded(self, n:
+  int) -> None:` — `if n > 0: d = self.discarded_bytes; self.discarded_bytes = d + n if d <= COUNTER_CAP - n else d -
+  (COUNTER_CAP - n) - 1` with "# masked to COUNTER_CAP by a conditional wrap, never add-then-mask".
+- **Resolved**: A.U17.13's helper uses the conditional wrap AC_NOTES 17 requires (no add-then-mask).
+- **Unit**: U17. Staged: U13 (yield, re-check).
+- **Depends**: M.SRC_NET.191, M.SRC_NET.192
+- **Blast carried by**: tests (64 delimiters let a counter task run; deinit during the yield; discard counts on decode/CRC
+  failure) → A.U13.14, A.U13.18, A.U17.13 (TEST_UNIT); UART changelog Class B → A.U13.14, A.U13.18, A.U17.13 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.197 Cancel sequences wrap without allocating
+- **From**: A.U17.28, A.U10.18 (lock name, M.SRC_NET.193)
+- **Site**: `src/asy_uart_driver.py:241-256` `cancel_read_timeout()`
+- **Change**: `self._cancel_req = self._cancel_req + 1 if self._cancel_req < COUNTER_CAP else 0`; `while 0 < ((my_req -
+  self._cancel_ack) & COUNTER_CAP) < _SEQ_HALF:`; `self.cancel_unacknowledged = self.cancel_unacknowledged + 1 if
+  self.cancel_unacknowledged < COUNTER_CAP else 0  # a wedged holder; the request stays latched`; comment (≤ 3 lines)
+  "# Wrap-by-design sequences stepped by a conditional wrap, never `+ 1` then masked, so no intermediate leaves the
+  small-int range; compared by distance or equality only."
+- **Resolved**: —
+- **Unit**: U17
+- **Depends**: M.SRC_NET.191, M.SRC_NET.193
+- **Blast carried by**: `UARTComm.clear()`'s `!=` report holds (M.SRC_NET.153 names); tests at `COUNTER_CAP` →
+  A.U17.28 (TEST_UNIT); SPEC C.3.2 handshake wording → A.U17.28 (SPEC); A.U10.05's table → (SCR); UART changelog Class B
+  → A.U17.28 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.199 `ready()`: re-check after the closing yield; an out-of-range wait degrades to `False`
+- **From**: A.U13.18, A.U13.19, A.U10.45
+- **Site**: `src/asy_uart_driver.py:258-295`
+- **Change**: `except (MemoryError, OSError, OverflowError, TypeError):` with the comment's two HEAD lines plus "#
+  OverflowError: a wait beyond the ticks range - asyncio.sleep_ms() raises it for a delta >= 2**29 ms." (the block stays
+  ≤ 3 lines: the HEAD pair is folded to one line "# TypeError: a malformed mask/timeout_ms; callers' excepts wrap only the
+  UART call."); the closing lines → `await asyncio.sleep_ms(0)` / `return self.poller is not None` with "# A deinit()
+  during the yield must not hand the caller a dead UART (its RX ring is unrooted, F.8.1)." (the yield comment `:291-293`
+  kept above).
+- **Resolved**: —
+- **Unit**: U13 (F.5.7 written until U36, M.SRC_NET.190). Staged: U10 (order).
+- **Depends**: —
+- **Blast carried by**: tests (deinit during the yield → `None`/`False`; `poll_idle_ms = 2**29` with a bounded
+  `_StepPoller` → `False`) → A.U13.18, A.U13.19 (TEST_UNIT); SPEC C.3.2, F.5.9 → (SPEC); UART changelog Class B →
+  A.U13.18 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.200 `read_until_complete()`: nothing to read for no bytes; discarded bytes counted
+- **From**: A.U12.03, A.U17.13, A.U35.41 (read: the `msg += add` `MemoryError` arm is kept and registered untestable in
+  E.5.1; the `check()` arm stays, exercised through a double)
+- **Site**: `src/asy_uart_driver.py:306-345`
+- **Change**: after `if uart is None: return None`: `if nbytes <= 0: return bytearray()`, before `nbytes +=
+  self.crc.length()`. Delimited branch: `_read_delimited()` counts its own discards. Counted branch: every `None` return
+  after bytes arrived calls `self._count_discarded(len(msg))` first — `add is None`, the `MemoryError` arm, the mid-frame
+  `ready()` failure (`len(msg)` is 0 on a start timeout, adding nothing) and a `crc.check()` result of `None` or its
+  `MemoryError` arm (the whole frame).
+- **Resolved**: —
+- **Unit**: U17. Staged: U12 (zero-length).
+- **Depends**: M.SRC_NET.196 (`_count_discarded()`)
+- **Blast carried by**: tests (`crc=CRC16()` zero-length; discard counts) → A.U12.03, A.U17.13 (TEST_UNIT); SPEC E.5.1
+  line → A.U35.41 (SPEC); UART changelog Class B → A.U12.03, A.U17.13 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.201 `readinto_until_complete()`: same two rules
+- **From**: A.U12.03, A.U17.13
+- **Site**: `src/asy_uart_driver.py:356-387`
+- **Change**: `if nbytes <= 0: return 0` after the bus guard, before `nbytes += self.crc.length()`; counted branch: `nb is
+  None` and the mid-frame `ready()` failure call `self._count_discarded(size)` before `return None`; the final
+  `checked = await self.crc.check_from(buf, size=size)` / `if checked is None: self._count_discarded(size)` / `return
+  checked`.
+- **Resolved**: —
+- **Unit**: U17. Staged: U12.
+- **Depends**: M.SRC_NET.196
+- **Blast carried by**: as M.SRC_NET.200; `UARTComm._read_frame()` reads through it (M.SRC_NET.162 takes the count)
+- **Kind**: code
+
+### M.SRC_NET.202 Readline paths clamped to `any()`; the growth comment names the owner question
+- **From**: A.U13.12, A.U17.31
+- **Site**: `src/asy_uart_driver.py:389-424`
+- **Change**: `readline()`: comment "# Clamped like every counted read: readline() reads byte by byte, each missing byte a
+  blocking wait (F.8.2)."; `want = self._buffered(uart, self.rxbuf)` / `return uart.readline(want) if want else None`.
+  `readline_until_complete()`: `want = self._buffered(uart, self.rxbuf)` / `if not want: await
+  asyncio.sleep_ms(self.poll_wait_ms); continue` / `add = uart.readline(want)`; `except MemoryError:  # grows across rounds
+  without a bound; whether to cap or chunk it is an open owner question (BACKLOG.md)`.
+- **Resolved**: —
+- **Unit**: U17 (F.5.8 written until U36). Staged: U13.
+- **Depends**: A.U0.12 (BACKLOG owner question 1)
+- **Blast carried by**: fakes `readline(self, size=-1)` → A.U13.12 (TEST_HELP, TWIN); contract check → A.U13.12
+  (TEST_HELP); L3 readline leg → A.U13.12/U26 (HW_DEV); UART changelog Class B (corrects B25) → A.U13.12 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.203 Writes send nothing for a zero-length payload
+- **From**: A.U12.03
+- **Site**: `src/asy_uart_driver.py:426-455`
+- **Change**: `write()`: after the bus guard `if not msg: return True` with "# A zero-length payload is sent as nothing: a
+  CRC-only frame could never be verified."; `writefrom()`: `if size < 0 or …` kept, then `if size == 0: return True`
+  before `add_into()`.
+- **Resolved**: —
+- **Unit**: U12
+- **Depends**: — (A.U12.02 in `asy_crc_checks` lands with or after it)
+- **Blast carried by**: tests (`:1866-1870` flips; CRC16/CRC_Pass zero-length cases) → A.U12.03 (TEST_UNIT); SPEC C.3.2 →
+  A.U12.03; UART changelog Class B → A.U12.03 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.204 Unquoted annotations (UART driver)
+- **From**: A.U10.31
+- **Site**: `src/asy_uart_driver.py` — the four fully-quoted annotations naming no `TYPE_CHECKING` name (`"_UART | None"`
+  `:109`, `uart: "_UART"` `:118`, `:127`, `:144`)
+- **Change**: unquoted (`_UART` is a runtime import); `"Literal[False]"` stays quoted.
+- **Resolved**: —
+- **Unit**: U10
+- **Depends**: —
+- **Blast carried by**: A.U10.47 check (SCR)
+- **Kind**: code
+
+### M.SRC_NET.205 Member order per D.15 (UART driver)
+- **From**: A.U10.33
+- **Site**: `src/asy_uart_driver.py` class `UART`
+- **Change**: pure reorder by D.15's key, AST-verified; `_count_discarded()` placed by the key when written (U17).
+- **Resolved**: —
+- **Unit**: U10 (last U10 edit)
+- **Depends**: every U10 edit of the file
+- **Blast carried by**: —
+- **Kind**: code
+
+## src/asy_uart_link_driver.py
+
+Bench application logic over one role's `UARTComm`; not the protocol module (its constituents log no changelog entry
+except A.U24.67's banner and the renames).
+
+### M.SRC_NET.210 Header and module comments
+- **From**: A.U0.48 (`:4-5`), A.U10.38 (`UART_Comm` → `UARTComm` in docstring/comments)
+- **Site**: `src/asy_uart_link_driver.py:1-5`, comment mentions `:62`, `:79`, `:134-136`, `:146-148`
+- **Change**: docstring "wraps one role's `UARTComm`"; `:4-5` → "# Not a SensorReader/SensorReaderConfig subclass, like
+  UARTComm (agent, 2026-09-11; Part J.9) -\n# resolved via buildgen.driver_registry._OVERRIDES."; every other comment names
+  `UARTComm`.
+- **Resolved**: —
+- **Unit**: U10. Staged: U0 (`:4-5` with the HEAD class name).
+- **Depends**: —
+- **Blast carried by**: SPEC J.9 → A.U0.44 (SPEC)
+- **Kind**: code
+
+### M.SRC_NET.211 Imports, wiring tag and typing
+- **From**: A.U10.37/A.U10.38, A.U5.12 (`ResponderCallbacks`), A.U5.02 (`DEFAULT_LOG`, `LogConfig`; FRAM-manager import
+  goes), A.U5.03 (wiring tag), A.U17.26 (`Any`, `Callable`, `_asyncio` go; aliases), A.U17.29 (`COUNTER_CAP`)
+- **Site**: `src/asy_uart_link_driver.py:7-29`
+- **Change**: runtime: `import asyncio` / `from micropython import const` / `from asy_base_classes import COUNTER_CAP` /
+  `from asy_config_manager import instance_name` / `from asy_print_log import DEFAULT_LOG` / `from asy_uart_comm import
+  CMD_SET, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UARTComm`. `TYPE_CHECKING`: `from asy_base_classes import
+  ErrorSource, JsonDict, TaskStarter, TimerStarter`, `from asy_print_log import ErrorLog, LogConfig, PrintLogHistory`,
+  `from asy_uart_driver import UART`. `:29` → `# @wiring fram_target FRAMManager log optional kwarg`.
+- **Resolved**: —
+- **Unit**: U17. Staged: U5 (log, tag), U10 (names), U17 (aliases, `COUNTER_CAP`).
+- **Depends**: A.U10.46 (aliases), A.U5.01
+- **Blast carried by**: generated construction → A.U5.03 (GEN); A.U8.24 baseline loses the file → A.U17.26 (TOOL)
+- **Kind**: code
+
+### M.SRC_NET.212 The bench banner names its mechanism and is folded
+- **From**: A.U24.67 (1) (value), A.U10.29 (`const()`), A.U8.06 (`_EXERCISE_PERIOD_MS` tag)
+- **Site**: `src/asy_uart_link_driver.py:34-40`
+- **Change**: `_BANNER = const(b"uart-crossover")`; `_EXERCISE_PERIOD_MS = const(1000)  # @tunable uart.exercise_period_ms
+  = 1000` (comment kept).
+- **Resolved**: A.U24.67 (U24) wants the test to import `asy_uart_link_driver._BANNER` as "a plain global, not a
+  `const()`"; A.U10.29 (U10, G4/R27 "every constant `const()` can fold is `_`-prefixed and `const()`-wrapped") folds it
+  first, after which it cannot be imported (SPEC E.5.1) — the rule wins and the test reads it with `src_const(
+  "src/asy_uart_link_driver.py", "_BANNER")` (A.U24.01's helper, which V.U24.45 noted needs exactly a `const()`). Agent
+  decision, OR2.c list.
+- **Unit**: U24. Staged: U8 (tag), U10 (`const()`).
+- **Depends**: —
+- **Blast carried by**: `tests/test_asy_uart_link_driver.py:189-195` reads `src_const(...)` → A.U24.67/A.U24.01
+  (TEST_UNIT, see Gaps); twin test → U25; UART changelog Class B (banner renamed) → A.U24.67 (DOCS); Part N row →
+  A.U8.06 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.213 `UARTLinkDriver.__init__`: log object, callbacks object, no test seam, private counters, readiness flag
+- **From**: A.U10.38 (`UARTLinkDriver`), A.U5.02 (`(uart, role, payload_size, timeout, name_ext, log, logger)`), A.U5.12
+  (one `ResponderCallbacks`), A.U17.18 (1) (`self.uart` and its comment go), A.U10.35 (`failures` → `_failures`);
+  adherence additions: `transfers` → `_transfers` (G10/R07, read outside only by tests; D.10 with its pair) and
+  `self.initialized` (A.U10.22's readiness rule)
+- **Site**: `src/asy_uart_link_driver.py:43-83`
+- **Change**: `class UARTLinkDriver:` / `def __init__(self, uart: "UART | None", role: str, payload_size: int = 48, timeout:
+  int = 1000, name_ext: str = "", log: "LogConfig" = DEFAULT_LOG, logger: "PrintLogHistory | None" = None) -> None:`;
+  `self.role = role`; the `self.uart` line and `:58-60` go; `resolved_name = instance_name(_NAME, name_ext)`; comment
+  `:62-64` → "# log=/logger= forwarded into UARTComm. The protocol carries no application semantics (Part J.1), but its
+  history is real diagnostic state, so it gets the same optional-FRAM treatment as every module's logger."; `callbacks =
+  ResponderCallbacks(self._get_callback, self._set_callback, self._message_callback) if role == ROLE_RESPONDER else None`;
+  `self._comm = UARTComm(uart, role, payload_size=payload_size, timeout=timeout, callbacks=callbacks, name=resolved_name,
+  log=log, logger=logger)`; `name`/`pr` as today; `self._last_echo` as today; `self._transfers = 0`, `self._failures = 0`;
+  `self.initialized = False`.
+- **Resolved**: A.U10.35's S09 list privatises `failures` but not `transfers`, though both are read outside the module
+  only by `tests/test_asy_uart_link_driver.py` (grep at HEAD) — made private together (agent, adherence; OR2.c list). A.U10.22's
+  L0 check requires every class with `async def setup` to set `initialized`; the wrapper had none (agent; OR2.c list).
+- **Unit**: U17 (A.U17.18). Staged: U5 (signature, callbacks), U10 (class name, private names, flag).
+- **Depends**: M.SRC_NET.154, M.SRC_NET.155, M.SRC_NET.211
+- **Blast carried by**: twin `_wire_uart_crossover()` reads the generated buses, `buildgen/twin_wiring.py` plan shape →
+  A.U17.18 (TWIN, GEN); generated construction `(…, log=…)` → A.U5.03 (GEN); tests (`transfers`/`failures` readers,
+  constructor calls) → A.U5.02, A.U10.35 (TEST_UNIT, see Gaps for `_transfers`); `digital_twin/README.md:288-297`,
+  `validate.py:542-544` comment → A.U17.18 (TWIN, GEN); UART changelog Class B names → A.U10.38 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.214 The exercise loop ends with its link and caps its counts
+- **From**: A.U17.07, A.U17.29, A.U10.35 (names), A.U10.44 (read: `_exercise_loop` already fits the scheme)
+- **Site**: `src/asy_uart_link_driver.py:110-120`
+- **Change**: `while self.initialized:` (comment's second sentence gains "Ends, like the responder's listen loop, when
+  setup() failed: the supervisor's restart escalation is the path to a reboot for a link that cannot come up (C.7.2)."
+  — block ≤ 3 lines); success `if self._transfers < COUNTER_CAP: self._transfers += 1`; else `if self._failures <
+  COUNTER_CAP: self._failures += 1`; the sleep unchanged.
+- **Resolved**: A.U17.07 tests `self._comm.initialized`; with the wrapper's own flag set from its comm's `setup()`
+  (M.SRC_NET.215) the two are equal — the loop reads the wrapper's (agent; OR2.c list).
+- **Unit**: U17
+- **Depends**: M.SRC_NET.213, M.SRC_NET.215
+- **Blast carried by**: tests (refused construction ends every task within 200 ms; counts stop at the cap) → A.U17.07,
+  A.U17.29 (TEST_UNIT); SPEC C.7.2 → A.U17.07 (SPEC)
+- **Kind**: code
+
+### M.SRC_NET.215 Status, setup and starters
+- **From**: A.U17.26 (`-> JsonDict`, `list[TaskStarter]`, `list[TimerStarter]`), A.U10.44 (`start_asy_exercise()`),
+  A.U32.06 (3) (named method), A.U0.28 (`:134-135` owner tag), A.U10.21 (read: already `-> bool`), A.U10.22 (flag)
+- **Site**: `src/asy_uart_link_driver.py:122-143`
+- **Change**: `async def get_link_status(self) -> "JsonDict": return {"Transfers": self._transfers, "Failures":
+  self._failures}` (comment kept). `async def setup(self) -> bool:` / `if await self._comm.setup(): self.initialized =
+  True` / `return self.initialized`. New `def start_asy_exercise(self) -> "asyncio.Task[None]": return
+  asyncio.get_event_loop().create_task(self._exercise_loop())`; `get_task_starters(self) -> "list[TaskStarter]"`: comment
+  `:134` "… has no arbitration in this protocol (Part J.2; owner, 2026-09-11)."; `starters = self._comm.get_task_starters()`
+  / `if self.role == ROLE_INITIATOR: starters = starters + [self.start_asy_exercise]`. `get_timer_starters(self) ->
+  "list[TimerStarter]"`.
+- **Resolved**: A.U32.06's `start_exercise` vs A.U10.44's `start_asy_exercise` — as M.SRC_NET.170.
+- **Unit**: U17. Staged: U0 (tag), U10 (starter, flag).
+- **Depends**: M.SRC_NET.170, M.SRC_NET.213
+- **Blast carried by**: generated maintenance callback `UARTLINK` (`codegen.py:630-634`) unchanged; `LastTaskEnd` names
+  `UART_init.start_asy_exercise` → A.U32.06 (GEN); tests calling starters → A.U10.44 (TEST_UNIT)
+- **Kind**: code
+
+### M.SRC_NET.216 Error sources and a reset that leaves the transfer counts
+- **From**: A.U17.19, A.U11.31 (`-> bool`), A.U17.26 (`list[ErrorSource]`)
+- **Site**: `src/asy_uart_link_driver.py:145-160`
+- **Change**: `get_error_sources(self) -> "list[ErrorSource]"` (comment names `UARTComm`); `get_loggers()` and
+  `get_error_counter()` unchanged; `async def reset_error_counter(self) -> bool: return await
+  self._comm.reset_error_counter()` (the two counter resets go).
+- **Resolved**: —
+- **Unit**: U17. Staged: U11 (return).
+- **Depends**: M.SRC_NET.171
+- **Blast carried by**: `/status` `ResetErrors` → M.SRC_NET.123; test `:133-140` inverts → A.U17.19 (TEST_UNIT); js mock
+  check → A.U17.19 (WEB)
+- **Kind**: code
+
+### M.SRC_NET.219 Member order per D.15 (link driver)
+- **From**: A.U10.33
+- **Site**: `src/asy_uart_link_driver.py` class `UARTLinkDriver`
+- **Change**: pure reorder by D.15's key, AST-verified; `start_asy_exercise()` placed by the key.
+- **Resolved**: —
+- **Unit**: U10 (last U10 edit)
+- **Depends**: every U10 edit of the file
+- **Blast carried by**: —
 - **Kind**: code

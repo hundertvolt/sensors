@@ -889,7 +889,10 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   `report_if_fatal(e)`), the per-bus episode check and `_init_failed()`/`_init_done()` exactly as A.U10.R01 (3)-(5).
   `reset_error_counter() -> bool`: `self._err_cnt_internal = 0`; `self._rungs = 0`; `return await self.pr.reset()`.
 - **Resolved**: A.U3.03's console `pr.err()` for the streak and A.U10.R01's ladder climb sit in the same branch; the
-  give-up test stays first (A.U10.R01 (4)).
+  give-up test stays first (A.U10.R01 (4)). The failure test itself stays HEAD's (`any(res is None …) and condition`):
+  after A.U10.06 a reader's `TS` is `None` before the first NTP sync, and each reader passes `condition=results[0] is
+  None` instead (lead ruling, 2026-10-01, M_SRC_SENS GAP-15; M.SRC_SENS.083, .089-.091); the SPEC C.7 bullet stating it
+  is SPEC's.
 - **Unit**: U10 (A.U10.R01's U10 half; stages U2 names, U3 console streak line; U11 `-> bool`; U30 `report_if_fatal`).
 - **Depends**: M.SRC_CORE.036; A.U13.R01 (`I2C.clear()`, `recover()`, `recoveries`, `take_boot_clear_status()`,
   SRC_SENS) lands before or with it.
@@ -1054,29 +1057,48 @@ for the config reset.
 - **From**: A.U11.17, A.U11.S01 (1)(2), A.U11.30, A.U0.39 (`:131` tag), A.U4.01, A.U11.21 (`_stored_float()`), A.U10.45.
 - **Site**: `src/config_manager.py:53-208` (`_special_bypass()`, `instance_name()`, `schema_names()`, `name_cfg()`,
   `schema_dict()`, `make_dict()`, `coerce_numeric()`, `type_or_range_error()`, `check_cfg_get_default()`); new
-  `compare_before_write()`, `_stored_float()` after `check_cfg_get_default()`.
+  `checked_int()`, `checked_float()`, `checked_numeric()`, `compare_before_write()`, `_stored_float()`.
 - **Change**: the five `try/except Exception` (`:80-83`, `:94-97`, `:111-114`, `:115-118`, `:150/:185-186`) and
   `check_cfg_get_default()`'s `:193/:205-206` go (bodies unchanged otherwise; the `:79`/`:93` trailing comments lose
-  "malformed input -> []"/"{}"). `coerce_numeric(...) -> "tuple[bool, CfgValue]"`; comment `:124` → "bool is excluded
-  both ways by exact type (on MicroPython `bool` is not an `int` subclass)"; `:126-127` → "# Public and reused: every
-  numeric check calls it through type_or_range_error(), the generated / # lightCmdLED dispatch included (synthetic
-  FieldSchemas, buildgen/codegen.py)."; `:131` "an accepted gap" → "an accepted gap (owner, 2026-08-24)"; the tuple
-  `(OverflowError, ValueError)` stays (already ordered). `type_or_range_error(...) -> "tuple[bool, CfgValue]"`: int branch
-  `if not ok or type(check_val) is not int:` and float branch `if not ok or type(check_val) is not float:` with one line
-  "# never true after ok; narrows the type". `compare_before_write(data, cfg_vals, current, *, always=(),
+  "malformed input -> []"/"{}"). The numeric validation is typed per kind, so no caller narrows a value at runtime:
+  `coerce_numeric()` splits into `_coerce_int(check_val: "CfgValue") -> int | None` (the `:128` exact-type case and the
+  `:134-141` integral-float case; `None` refuses) and `_coerce_float(check_val: "CfgValue") -> float | None` (the exact
+  float and the `:130-133` int case) — same acceptance rules, the `:121-123` comment above `_coerce_int()` with "bool is
+  excluded both ways by exact type (on MicroPython `bool` is not an `int` subclass)", `:131`'s "an accepted gap (owner,
+  2026-08-24)" in `_coerce_float()`, the tuple `(OverflowError, ValueError)` kept. New `checked_int(check_val:
+  "CfgValue", field: "FieldSchema", *, check_special: bool = True) -> int | None` and `checked_float(...) -> float |
+  None`: HEAD's int/float branch bodies (`:153-172`) over `value = _coerce_int(check_val)` / `_coerce_float(check_val)`,
+  `None` on refusal, a malformed special or out-of-range, the accepted value otherwise; `checked_numeric(check_val,
+  field, *, check_special=True) -> int | float | None` dispatches on `field[1]` (`"int"`/`"float"`, any other kind →
+  `None`). One comment line above `checked_int()`: "# Per-kind validators: a caller that needs an int or a float gets
+  one from the type, never by narrowing (SPECIFICATION.md C.10)." `type_or_range_error(...) -> "tuple[bool,
+  CfgValue]"` keeps its contract for the schema-generic callers (`base_classes.py`, this file, `asy_scd30_driver.py`):
+  int/float kinds through `checked_numeric()` (`value is None` → `(True, check_val)`, else `(False, value)`), the str and
+  bool branches as HEAD (`type(check_val) is not str` narrows for `len()`, a real check). `compare_before_write(data, cfg_vals, current, *, always=(),
   resolution=None) -> "tuple[dict[str, CfgValue], WriteValidity] | None"` exactly as A.U4.01 (per-key outcomes in `data`
   order; `None` for a non-dict `data`; logs nothing; never raises but `MemoryError`); `resolution` typed
   `dict[str, Callable[[CfgValue], CfgValue]] | None` (no `Any`). `_stored_float(v: float) -> float: return
   json.loads(json.dumps(v))` with the residual comment of A.U11.21 (idempotence on rp2 proven by the L3 script; fallback to
   the serialised text decided with evidence).
 - **Resolved**: A.U4.01 types `resolution` with `Callable[[Any], CfgValue]`; A.U11.S01/G8/R61 (owner, OR81: no
-  hand-written `Any`) → `Callable[[CfgValue], CfgValue]`.
+  hand-written `Any`) → `Callable[[CfgValue], CfgValue]`. A.U11.S01 (1)(2)(5) add `type(...) is not int/float` tests
+  that never fire, here and in three consumers; the lead's L1 answer (SUPP_coverage open points, 2026-09-30: "a
+  narrowing check that can never fire is runtime code and dead code … the fix is at the type level"), restated as
+  M_SRC_SENS GAP-14 (lead, 2026-10-01), rules them out: the validator gets honest per-kind returns instead and every
+  never-firing check is dropped (A.U15.38 (1) stands). `coerce_numeric()` has no product reader outside this module
+  once the consumers call the per-kind validators, so its two halves are private (G10/R07); the per-kind validators are
+  public, called by the webserver, the generated LED callback and the ISL29125 driver (GAP-G13; agent, 2026-10-01;
+  "Agent decisions" 13).
 - **Unit**: U11 (A.U4.01 in U4 as its stage — A.U4.02 in U4 needs it; the guard removal and typing in U11; U0's tag at
   `:131` as a U0 stage).
 - **Depends**: A.U11.18 (static schema check lands first or together, TSC).
-- **Blast carried by**: schema callers (typed consts) and the generated `lightCmdLED` dispatch (`or type(r) is not int …`
-  narrowing) → A.U11.S01 (GEN); webserver pause dispatch narrowing → A.U11.S01 (SRC_NET); ISL29125 `_checked_cfg()` arm →
-  A.U11.S01 vs A.U15.38 (1) conflict, SRC_SENS merges (SUPP_coverage A-C note 1); SCD30 chip store uses the primitive →
+- **Blast carried by**: schema-generic callers of `type_or_range_error()` unchanged; the generated `lightCmdLED`
+  dispatch calls `checked_int()` for R/G/B and `checked_float()` for T, `None` refusing, with no `type()` tests →
+  GAP-G13 (GEN); webserver `_dispatch_notification_pause()` calls `checked_int()` → GAP-G13 (SRC_NET); ISL29125
+  `_checked_cfg()` calls `checked_numeric()` (`checked = checked_numeric(value, schema[0])`; `None` logs and returns) →
+  GAP-G13 (SRC_SENS, A.U15.38 (1) arm removal stands); `tests/test_config_manager.py:265-327` (`coerce_numeric()` tuples
+  → `_coerce_int`/`_coerce_float` returns) and `tests_hardware/device_scripts/float_boundary_2pow24.py:10-26` →
+  GAP-G13 (TEST_UNIT, HW_DEV); SPEC C.10 sentence → GAP-G13 (SPEC); SCD30 chip store uses the primitive →
   A.U4.04 (SRC_SENS); `tests/test_config_manager.py` (`:123-162`, `:142-144`, `:216-227`, `:749-761`, `:1572-1583` go or
   shrink; primitive outcome rows; `_stored_float` substitution test) → A.U11.17, A.U4.01, A.U11.21 (TEST_UNIT); L3
   `config_float_round_trip.py` + `flash/test_config_float_round_trip.py` (`persistence_write`) → A.U11.21 (HW_DEV); js
@@ -1116,13 +1138,16 @@ for the config reset.
 - **From**: A.U3.05, A.U11.29, A.U11.S01 (3), A.U35.43 (2) (`get_dict()`'s `TypeError`), A.U2.07.
 - **Site**: `src/config_manager.py:240-297`.
 - **Change**: `_get_values(keys) -> "list[CfgValue] | None"` (`_ERR_CFG_NOT_VALID`; `KeyError` → `_ERR_CONTRACT`).
-  `_get_converted_values()` goes; new `_get_typed_values(keys, scalar_type: "type[T]") -> "list[T] | None"`: per value,
-  `int`/`float` through `coerce_numeric(v, scalar_type)` then appended only after `isinstance(value, scalar_type)`,
-  `str`/`bool` by `type(v) is scalar_type`; any refusal → one `err_s(self._config_file, "- stored value has the wrong
+  `_get_converted_values()` goes; new `_get_typed_values(keys, coerce: "Callable[[CfgValue], T | None]") -> "list[T] |
+  None"`: each value through `coerce`, appended unless it returns `None` — the getters pass `_coerce_int`,
+  `_coerce_float`, `_as_str` and `_as_bool` (new one-line private helpers `return v if type(v) is str else None` and
+  the `bool` twin: the exact-type test is the stored value's real check, and mypy narrows on it); any refusal → one `err_s(self._config_file, "- stored value has the wrong
   type:", key, errno=_ERR_CONTRACT)` and `None` (all-or-nothing). `get_int_values`/`get_float_values`/`get_str_values`/
   `get_bool_values` call it. `get_dict(keys)`: `_ERR_CFG_NOT_VALID`, `except KeyError as e` → `_ERR_CONTRACT` (the
   `TypeError` half goes: keys are typed); its lock-free comment `:268-270` kept.
-- **Resolved**: A.U11.29 and A.U11.S01 (3) describe the same helper — merged (exact-type test is also mypy's narrowing).
+- **Resolved**: A.U11.29 and A.U11.S01 (3) describe the same helper — merged. A.U11.S01 (3)'s `isinstance(value,
+  scalar_type)` after `coerce_numeric()` never fires for a numeric field (lead L1 ruling, M.SRC_CORE.047): the
+  coercer-per-type parameter gives the narrowing at the type level instead.
 - **Unit**: U11 (U3 stage: the 24 reports; U2 names).
 - **Depends**: M.SRC_CORE.047, .049.
 - **Blast carried by**: the eleven caller sites print instead of persisting → A.U3.05 (SRC_SENS, SRC_NET); the 21
@@ -2277,3 +2302,306 @@ kept, written `(ArithmeticError, ValueError)`, and exercised by tests through a 
 - **Blast carried by**: `tests/test_math_helpers.py` stand-in tests → A.U35.42 (TEST_UNIT); SPEC E.5.1 row → A.U35.41
   (SPEC).
 - **Kind**: code, test
+
+## Gaps for other clusters
+
+- **GAP-G1** (GEN): the generated `_collect_setups()` is annotated `list[SetupFct]` (imported from `asy_base_classes`),
+  not `list[AsyncCallback]`, to match `run_setups()` (M.SRC_CORE.003/.015); A.U20.06's template text names the old alias.
+- **GAP-G2** (GEN): `buildgen/error_catalog.json` (A.U2.01's table) gains shared errno **25 STACK_EXHAUSTED** "a C-stack
+  overflow was recorded; rebooting" (M.SRC_CORE.005), and the JS/definitions mirror with it.
+- **GAP-G3** (TEST_UNIT, TEST_HELP): tests using `get_debug_level()`, `set_debug_level()`, `stop_uptime_timer()` or
+  `_current_debug_level` (`tests/test_system_service.py`, `tests/_sensortask_scenarios.py:692-747, 937-940`) are rebuilt
+  through the `/system` settings PUT / `_set_dict_cfg()` (M.SRC_CORE.008/.017/.018).
+- **GAP-G4** (TEST_UNIT): new L1 — an unpause request after `_reboot()` or after shutdown acceptance leaves storage
+  paused (M.SRC_CORE.012).
+- **GAP-G5** (TEST_UNIT, TEST_HELP, TWIN, HW_DEV): every direct `start_tasks()` caller passes `task_names` (required, no
+  default; M.SRC_CORE.016).
+- **GAP-G6** (TSC): A.U10.05's counter-step check must not flag `SensorReader._err_cnt_internal` (bounded by the
+  give-up; M.SRC_CORE.037).
+- **GAP-G7** (SRC_SENS, SPEC, DOCS): `SCD30_Reader` sets `_CFG_LOG_FRAM = False`; SPEC A.7's FRAM list and CLAUDE.md's
+  FRAM-log bullet name `CFGMGR_SCD30` as the RAM-only exception (M.SRC_CORE.040).
+- **GAP-G8** (SRC_NET, SRC_SENS, GEN, TSC, TEST_UNIT, SPEC): `report_if_fatal()`/`fatal_reported` live in
+  `asy_print_log`, not `asy_base_classes`; every A.U30.19 import line and its L1 tests follow (M.SRC_CORE.034).
+- **GAP-G9** (TSC, SPEC): the long-lived-object catalog (A.U30.02/.03) gains `FRAMManager._chunks` ("grows once per
+  allocation at construction"; M.SRC_CORE.091).
+- **GAP-G10** (GEN, TSC): after U10 the CRC module is `asy_crc_checks` and the pass class `CRCPass`. M.GEN.024's
+  `UART_CRC_MODES = {"none": ("CRC_Pass", 0), …}` and its comment ("crc_checks class … src/crc_checks.py"), A.S0930.02's
+  generated `from crc_checks import CRC16`, and A.S0930.01's `test_uart_crc_modes_match_crc_checks` (an `ast` read of
+  `src/crc_checks.py`) still use the HEAD names; all land in U20 or later, so they must read `CRCPass` /
+  `asy_crc_checks` / `src/asy_crc_checks.py` (M.SRC_CORE.115).
+- **GAP-G11** (TEST_UNIT): `CRCBase._crc()` takes the polynomial as a third argument (M.SRC_CORE.116). Direct callers
+  `tests/test_crc_checks.py:36, :42` and A.U12.01's two new vector tests pass it (`0x31`, `0x1021`, `0x04C11DB7`).
+- **GAP-G13** (SRC_NET, GEN, SRC_SENS, TEST_UNIT, HW_DEV, SPEC): per the lead's ruling on M_SRC_SENS GAP-14,
+  `asy_config_manager` gives typed callers per-kind validators — `checked_int()`, `checked_float()`, `checked_numeric()`
+  (`None` = refused) — and `coerce_numeric()` becomes the private `_coerce_int()`/`_coerce_float()` (M.SRC_CORE.047).
+  A.U11.S01 (5)'s runtime `type()` checks are not written anywhere: `_dispatch_notification_pause()` calls
+  `checked_int(payload, _PAUSE_TIME_FIELD)` (SRC_NET); the emitted `_notification_led_callback()` calls `checked_int()`
+  for R/G/B and `checked_float()` for T (GEN); `ISL29125_Reader._checked_cfg()` calls `checked_numeric()` and returns its
+  value (SRC_SENS, replacing M.SRC_SENS.082's `type_or_range_error()` + annotated local); tests of `coerce_numeric()` and
+  `tests_hardware/device_scripts/float_boundary_2pow24.py` call the private halves (TEST_UNIT, HW_DEV); A.U11.S01's SPEC
+  C.10 sentence becomes "A consumer that needs an `int` or a `float` calls the per-kind validator, which returns that
+  type or `None`; it never narrows a validated value at runtime." (SPEC).
+- **GAP-G12** (SRC_NET; orchestrator check): this cluster and M_SRC_SENS make an attribute with no reader outside its
+  class private ("private by default", G10/R07, beyond S09's test-reader list). SRC_NET's classes should get the same
+  treatment so the rule holds across `src/` (M.SRC_CORE.115/.120; "Agent decisions" 12).
+
+## Adherence findings
+
+Rules read for every file: CLAUDE.md hard rules (watchdog backstop, memory ladder, FRAM error-log rule, no
+`gc.collect()` outside the boot sites, `method-assign` never suppressed in `src/`, PEP 604 unions), the owner rows naming
+each function (OR31/OR113/OR117/OR119/OR120/OR126/OR128/OR130 for the watchdog and erase design, OR36 test artifacts,
+OR46 unreachable branches, OR105/AC_NOTES 17 counters, OR110 bounded permanent objects), the 3-line comment cap, actor
+tags only (no audit IDs in permanent text), D.15 order, private by default.
+
+- `system_service.py`: breaches found and fixed in the merge — the unpause waiter could unpause FRAM after `_reboot()`
+  or during the erase (M.SRC_CORE.012); `timers_running` is write-only dead state (M.SRC_CORE.008); `stop_uptime_timer()`
+  and `set_debug_level()` exist only for tests (OR36; M.SRC_CORE.018); `task_names=None` would be a test-only default
+  (M.SRC_CORE.016). Watchdog design: exactly two `feed_watchdog()` calls in `_supervise()`, the escalation fed once then
+  starved, no feed after `_reboot()`, `_own_feed()` the sequence's only feed — consistent with OR119/OR120/OR126.a(3)/
+  OR130.a after the C-stack path joins the shared block (M.SRC_CORE.016, "Agent decisions" 6).
+- `base_classes.py`: fatal-flag home would make an import cycle (M.SRC_CORE.034, "Agent decisions" 10); counters
+  check-before-step (M.SRC_CORE.031/.037). No other breach.
+- `config_manager.py`: A.U11.S01's never-firing `type()` tests (validator, `_get_typed_values()`, three consumers) are
+  dead runtime code (lead L1 ruling) → per-kind validators and coercers (M.SRC_CORE.047/.048, GAP-G13); otherwise no
+  breach beyond what the constituents fix; the superseded-write rule is shared with the log
+  store (M.SRC_CORE.044 pointer).
+- `print_log.py`: A.U14.19's `(x + 1) & CAP` step allocates a heap int at the wrap on rp2 → conditional wrap (AC_NOTES 17;
+  M.SRC_CORE.064).
+- `api_response.py`: the docstring's second line is history, not current state → removed (M.SRC_CORE.070).
+- `asy_fram_manager.py`: no breach beyond the constituents; Erase FRAM (OR117) is fed in units and closes the chunk layer
+  first (M.SRC_CORE.083); FRAM keeps its own log RAM-only (M.SRC_CORE.091).
+- `asy_fram_driver.py`: the docstring says "detects" where the part is checked (M.SRC_CORE.100); A.U16.R03's
+  `min(x + 1, cap)` step → check-before-step (M.SRC_CORE.103); "(PLAN A.1.2)" is an undefined plan label (M.SRC_CORE.109).
+- `crc_checks.py`: removing `_crc()`'s guard (A.U35.44) and A.U12.01's `_crc_wide()` both leave `self.poly` typed
+  `int | None` where it is used, which fails `mypy --strict` → the polynomial becomes a parameter (M.SRC_CORE.116,
+  "Agent decisions" 11); four attributes public with no outside reader → private (M.SRC_CORE.115). **Flagged, not
+  merged**: an out-of-range polynomial (e.g. `CRC8(poly=0x1FF)`) leaves `_num_bytes` at the width while `_poly` is
+  `None`, so `length()` reports 1 in pass mode and `add_into()` bounds include a CRC byte it never writes. No action
+  covers it, no product path builds such a CRC (every construction uses the class default), and a fix changes a
+  constructor contract → for the OR2.c review.
+- `framing_codecs.py`: `run_length`/`trailer` public with no outside reader → private (M.SRC_CORE.120); the header cited a
+  changelog label and the wrong Part (M.SRC_CORE.123, A.U36.544). The comments naming `CRC_Base`/`CRC_Pass`/
+  `crc_checks.py` follow the U10 renames (M.SRC_CORE.120).
+- `math_helpers.py`: A.U12.07's "2°" breaks the file's ASCII spelling that A.U12.06 keeps for RUF003 → "2-degree"
+  (M.SRC_CORE.125); A.U12.08's rename moves the function out of U10's alphabetical order → it moves to its slot
+  (M.SRC_CORE.127). No other breach; every catch is the documented residual-error sentinel path (A.U35.41 keep).
+
+## Owner questions
+
+None. Every conflict between constituents was settled from an owner row, the register, AC_NOTES or SUPP's conflict
+list; the agent choices are listed below for the OR2.c review.
+
+## Agent decisions for the OR2.c review
+
+1. `SetupFct = Callable[[], Awaitable[bool]]` in `asy_base_classes` for `run_setups()` and the generated
+   `_collect_setups()`, since A.U11.S04's `AsyncCallback` cannot type A.U10.21's `bool`-returning `setup()`
+   (M.SRC_CORE.003/.015).
+2. `start_tasks(..., task_names)` is required, not A.U32.06's `None` default, under OR36.a (1) (M.SRC_CORE.016).
+3. The C-stack log line takes shared errno 25 STACK_EXHAUSTED (SYSTEM's band 40-44 is full) (M.SRC_CORE.005).
+4. `timers_running` goes (write-only after A.U10.12) (M.SRC_CORE.008).
+5. The unpause waiter does nothing once `_reset_armed` or `_feed_owned` is set (M.SRC_CORE.012).
+6. The C-stack escalation shares the task-budget block: re-check `_feed_owned`, one feed, starve, `_reboot()`, no
+   return (M.SRC_CORE.016).
+7. `stop_uptime_timer()` and `set_debug_level()` removed as test-only (OR36) (M.SRC_CORE.018).
+8. `set_utc_valid()` takes no argument (M.SRC_CORE.032).
+9. `SensorReaderConfig._CFG_LOG_FRAM` class attribute keeps `CFGMGR_SCD30` RAM-only without a ninth constructor
+   parameter (M.SRC_CORE.040).
+10. `report_if_fatal()`/`fatal_reported` live in `asy_print_log` (an import cycle rules out `asy_base_classes`)
+    (M.SRC_CORE.034).
+11. `CRCBase._crc()`/`_crc_wide()` take the already-checked polynomial as a parameter, so A.U35.44's guard removal and
+    A.U12.01's wide path type-check without an `assert` or ignore (M.SRC_CORE.116).
+12. Attributes with no reader outside their class go private with S09's list (`CRCBase` `_msb_set`, `_crc_shift`, `_fmt`,
+    `_inc_count`; `FramingBase` `_run_length`, `_trailer`) (M.SRC_CORE.115/.120).
+
+13. The type-level form the lead's L1/GAP-14 ruling asks for: per-kind `checked_int()`/`checked_float()`/
+    `checked_numeric()` returning the kind or `None`, `type_or_range_error()` kept for schema-generic callers, private
+    `_coerce_int()`/`_coerce_float()`, and `_get_typed_values()` taking a coercer (M.SRC_CORE.047/.048; GAP-G13).
+
+Smaller agent choices recorded in place (actor-tagged in the entries): the `delete_file()` comment for the SCD30's NVM
+(M.SRC_CORE.042), "checks" for "detects" in the FRAM driver docstring (M.SRC_CORE.100), the api_response header without
+history (M.SRC_CORE.070), A.U36.535 (5)'s header rewrite pulled into U11 (M.SRC_CORE.002), "2-degree" in the CCT comment
+(M.SRC_CORE.125).
+
+## Ledger
+
+Every action with a site in this cluster's files (`site_index.json` `by_file`, 146) plus the actions a grep found
+editing them through a class or function name (site-miss), 171 in all.
+
+| action ID | merged into M-ID / dropped (reason) |
+|---|---|
+| A.1.2 | M.SRC_CORE.109 |
+| A.S0930.12 | M.SRC_CORE.008, M.SRC_CORE.011, M.SRC_CORE.012 |
+| A.S0930.13 | M.SRC_CORE.009, M.SRC_CORE.013, M.SRC_CORE.016 |
+| A.S0930.14 | M.SRC_CORE.010, M.SRC_CORE.011 |
+| A.S0930.15 | M.SRC_CORE.006 |
+| A.S0930.16 | M.SRC_CORE.041, M.SRC_CORE.042, M.SRC_CORE.044 |
+| A.S0930.17 | M.SRC_CORE.080, M.SRC_CORE.083, M.SRC_CORE.091 |
+| A.S0930.20 | M.SRC_CORE.009 |
+| A.S0930.31 | M.SRC_CORE.002, M.SRC_CORE.010, M.SRC_CORE.011, M.SRC_CORE.016 |
+| A.S0930.32 | M.SRC_CORE.011, M.SRC_CORE.016 |
+| A.S0930.33 | M.SRC_CORE.004, M.SRC_CORE.010 |
+| A.U0.14 | dropped (its site is BACKLOG; the `system_service.py` mention is a "no code change" Blast; DOCS) |
+| A.U0.20 | M.SRC_CORE.002 |
+| A.U0.39 | M.SRC_CORE.047, M.SRC_CORE.102 |
+| A.U0.41 | M.SRC_CORE.008, M.SRC_CORE.013, M.SRC_CORE.091 |
+| A.U0.42 | M.SRC_CORE.049 |
+| A.U0.50 | M.SRC_CORE.116 |
+| A.U0.51 | M.SRC_CORE.129 |
+| A.U10.01 | M.SRC_CORE.003, M.SRC_CORE.008, M.SRC_CORE.013, M.SRC_CORE.031 |
+| A.U10.02 | M.SRC_CORE.032 |
+| A.U10.03 | M.SRC_CORE.003, M.SRC_CORE.013, M.SRC_CORE.032 |
+| A.U10.05 | M.SRC_CORE.103 |
+| A.U10.06 | M.SRC_CORE.003, M.SRC_CORE.005, M.SRC_CORE.013, M.SRC_CORE.032, M.SRC_CORE.080, M.SRC_CORE.087; A.U14.26 (1) ruling applied |
+| A.U10.08 | M.SRC_CORE.009 |
+| A.U10.10 | M.SRC_CORE.016, M.SRC_CORE.017, M.SRC_CORE.030, M.SRC_CORE.039, M.SRC_CORE.040 |
+| A.U10.11 | M.SRC_CORE.063, M.SRC_CORE.065 |
+| A.U10.12 | M.SRC_CORE.005, M.SRC_CORE.008, M.SRC_CORE.014, M.SRC_CORE.039 |
+| A.U10.15 | M.SRC_CORE.008, M.SRC_CORE.010, M.SRC_CORE.012 |
+| A.U10.17 | M.SRC_CORE.030, M.SRC_CORE.031, M.SRC_CORE.049, M.SRC_CORE.081 |
+| A.U10.18 | M.SRC_CORE.031, M.SRC_CORE.033, M.SRC_CORE.036, M.SRC_CORE.049, M.SRC_CORE.102, M.SRC_CORE.107 |
+| A.U10.19 | M.SRC_CORE.036; `:163-165` comment dropped (branch removed) |
+| A.U10.20 | M.SRC_CORE.044 |
+| A.U10.21 | M.SRC_CORE.015, M.SRC_CORE.017, M.SRC_CORE.039, M.SRC_CORE.040, M.SRC_CORE.043, M.SRC_CORE.063, M.SRC_CORE.065, M.SRC_CORE.092, M.SRC_CORE.106 |
+| A.U10.23 | M.SRC_CORE.016 |
+| A.U10.26 | M.SRC_CORE.101, M.SRC_CORE.107 |
+| A.U10.29 | M.SRC_CORE.101, M.SRC_CORE.120 |
+| A.U10.31 | M.SRC_CORE.003, M.SRC_CORE.020, M.SRC_CORE.029, M.SRC_CORE.030, M.SRC_CORE.049, M.SRC_CORE.071, M.SRC_CORE.093, M.SRC_CORE.129 |
+| A.U10.33 | M.SRC_CORE.020, M.SRC_CORE.029, M.SRC_CORE.093, M.SRC_CORE.115, M.SRC_CORE.120, M.SRC_CORE.130 |
+| A.U10.35 | M.SRC_CORE.008, M.SRC_CORE.010, M.SRC_CORE.012, M.SRC_CORE.013, M.SRC_CORE.014, M.SRC_CORE.027, M.SRC_CORE.031, M.SRC_CORE.049, M.SRC_CORE.063, M.SRC_CORE.087, M.SRC_CORE.089, M.SRC_CORE.091, M.SRC_CORE.115 |
+| A.U10.36 | M.SRC_CORE.017 |
+| A.U10.37 | M.SRC_CORE.001, M.SRC_CORE.003, M.SRC_CORE.030, M.SRC_CORE.049, M.SRC_CORE.060, M.SRC_CORE.070, M.SRC_CORE.080, M.SRC_CORE.115, M.SRC_CORE.120 |
+| A.U10.38 | M.SRC_CORE.003, M.SRC_CORE.007, M.SRC_CORE.060, M.SRC_CORE.080, M.SRC_CORE.081, M.SRC_CORE.087, M.SRC_CORE.089, M.SRC_CORE.090, M.SRC_CORE.091, M.SRC_CORE.115, M.SRC_CORE.120 |
+| A.U10.39 | M.SRC_CORE.003, M.SRC_CORE.007, M.SRC_CORE.008, M.SRC_CORE.017, M.SRC_CORE.040 |
+| A.U10.45 | M.SRC_CORE.010, M.SRC_CORE.012, M.SRC_CORE.014, M.SRC_CORE.029, M.SRC_CORE.032, M.SRC_CORE.043, M.SRC_CORE.044, M.SRC_CORE.047, M.SRC_CORE.081, M.SRC_CORE.085, M.SRC_CORE.106, M.SRC_CORE.130 |
+| A.U10.46 | M.SRC_CORE.003, M.SRC_CORE.008, M.SRC_CORE.011, M.SRC_CORE.014, M.SRC_CORE.016, M.SRC_CORE.019, M.SRC_CORE.030, M.SRC_CORE.092 |
+| A.U10.R01 | M.SRC_CORE.036, M.SRC_CORE.037 |
+| A.U11.01 | M.SRC_CORE.003, M.SRC_CORE.008, M.SRC_CORE.013 |
+| A.U11.02 | M.SRC_CORE.013 |
+| A.U11.03 | M.SRC_CORE.008, M.SRC_CORE.010, M.SRC_CORE.011, M.SRC_CORE.016, M.SRC_CORE.017; (4) dropped (superseded by A.S0930.31 (1)) |
+| A.U11.04 | M.SRC_CORE.010, M.SRC_CORE.041, M.SRC_CORE.044, M.SRC_CORE.049 |
+| A.U11.05 | M.SRC_CORE.002, M.SRC_CORE.003, M.SRC_CORE.006, M.SRC_CORE.008 |
+| A.U11.06 | M.SRC_CORE.006 |
+| A.U11.09 | M.SRC_CORE.064 |
+| A.U11.10 | M.SRC_CORE.015 |
+| A.U11.12 | M.SRC_CORE.008, M.SRC_CORE.017; (1)(3) dropped (A.U35.41 removes the accessors) |
+| A.U11.13 | M.SRC_CORE.017, M.SRC_CORE.062 |
+| A.U11.15 | M.SRC_CORE.007, M.SRC_CORE.066 |
+| A.U11.16 | M.SRC_CORE.060, M.SRC_CORE.063, M.SRC_CORE.064, M.SRC_CORE.065 |
+| A.U11.17 | M.SRC_CORE.047 |
+| A.U11.19 | M.SRC_CORE.043 |
+| A.U11.20 | M.SRC_CORE.043, M.SRC_CORE.044, M.SRC_CORE.049 |
+| A.U11.21 | M.SRC_CORE.044, M.SRC_CORE.047 |
+| A.U11.22 | M.SRC_CORE.044 |
+| A.U11.23 | M.SRC_CORE.043, M.SRC_CORE.044 |
+| A.U11.24 | M.SRC_CORE.017, M.SRC_CORE.040, M.SRC_CORE.044 |
+| A.U11.25 | M.SRC_CORE.044 |
+| A.U11.26 | M.SRC_CORE.070, M.SRC_CORE.072, M.SRC_CORE.073 |
+| A.U11.27 | M.SRC_CORE.036, M.SRC_CORE.038 |
+| A.U11.28 | M.SRC_CORE.038, M.SRC_CORE.040, M.SRC_CORE.041, M.SRC_CORE.044, M.SRC_CORE.049 |
+| A.U11.29 | M.SRC_CORE.048 |
+| A.U11.30 | M.SRC_CORE.047 |
+| A.U11.31 | M.SRC_CORE.019, M.SRC_CORE.037, M.SRC_CORE.049, M.SRC_CORE.063, M.SRC_CORE.091 |
+| A.U11.32 | M.SRC_CORE.003, M.SRC_CORE.008, M.SRC_CORE.040, M.SRC_CORE.046 |
+| A.U11.S01 | M.SRC_CORE.047, M.SRC_CORE.048, M.SRC_CORE.049; (2)(3)(5) never-firing checks not written (lead L1 ruling, GAP-14 of M_SRC_SENS → per-kind validators, GAP-G13) |
+| A.U11.S02 | M.SRC_CORE.003, M.SRC_CORE.030, M.SRC_CORE.036, M.SRC_CORE.038, M.SRC_CORE.040, M.SRC_CORE.071 |
+| A.U11.S03 | M.SRC_CORE.060, M.SRC_CORE.062, M.SRC_CORE.063, M.SRC_CORE.064, M.SRC_CORE.090 |
+| A.U11.S04 | M.SRC_CORE.003, M.SRC_CORE.015 |
+| A.U12.01 | M.SRC_CORE.116; "keeps its first two lines" superseded (A.U35.44) |
+| A.U12.02 | M.SRC_CORE.117 |
+| A.U12.06 | M.SRC_CORE.125, M.SRC_CORE.126 |
+| A.U12.07 | M.SRC_CORE.125 |
+| A.U12.08 | M.SRC_CORE.127 |
+| A.U12.09 | M.SRC_CORE.125, M.SRC_CORE.128 |
+| A.U12.16 | M.SRC_CORE.121 |
+| A.U13.04 | M.SRC_CORE.108 |
+| A.U13.09 | M.SRC_CORE.101, M.SRC_CORE.103, M.SRC_CORE.104, M.SRC_CORE.105, M.SRC_CORE.106, M.SRC_CORE.107 |
+| A.U14.10 | M.SRC_CORE.063, M.SRC_CORE.085 |
+| A.U14.15 | M.SRC_CORE.016 |
+| A.U14.19 | M.SRC_CORE.044, M.SRC_CORE.060, M.SRC_CORE.064; `(x+1)&CAP` step replaced by the conditional wrap (AC_NOTES 17) |
+| A.U14.26 | M.SRC_CORE.013, M.SRC_CORE.087; (1) dropped (V.U18.R10: no catch around the timestamp) |
+| A.U15.12 | M.SRC_CORE.039 |
+| A.U15.40 | M.SRC_CORE.033, M.SRC_CORE.039 |
+| A.U15.41 | M.SRC_CORE.036, M.SRC_CORE.039 |
+| A.U16.01 | M.SRC_CORE.080 |
+| A.U16.05 | M.SRC_CORE.027, M.SRC_CORE.030, M.SRC_CORE.060, M.SRC_CORE.080, M.SRC_CORE.089 |
+| A.U16.06 | M.SRC_CORE.060, M.SRC_CORE.065, M.SRC_CORE.081, M.SRC_CORE.084, M.SRC_CORE.085, M.SRC_CORE.088, M.SRC_CORE.090 |
+| A.U16.08 | M.SRC_CORE.088 |
+| A.U16.09 | M.SRC_CORE.084 |
+| A.U16.10 | M.SRC_CORE.102, M.SRC_CORE.105, M.SRC_CORE.106 |
+| A.U16.15 | M.SRC_CORE.101, M.SRC_CORE.106 |
+| A.U16.16 | M.SRC_CORE.102, M.SRC_CORE.106 |
+| A.U16.17 | M.SRC_CORE.092 |
+| A.U16.18 | M.SRC_CORE.087 |
+| A.U16.19 | M.SRC_CORE.060, M.SRC_CORE.082, M.SRC_CORE.085, M.SRC_CORE.087, M.SRC_CORE.088, M.SRC_CORE.090 |
+| A.U16.20 | M.SRC_CORE.080, M.SRC_CORE.101 |
+| A.U16.21 | M.SRC_CORE.101 |
+| A.U16.22 | M.SRC_CORE.086 |
+| A.U16.23 | M.SRC_CORE.089 |
+| A.U16.R01 | M.SRC_CORE.101, M.SRC_CORE.103, M.SRC_CORE.105 |
+| A.U16.R02 | M.SRC_CORE.101, M.SRC_CORE.106 |
+| A.U16.R03 | M.SRC_CORE.080, M.SRC_CORE.082, M.SRC_CORE.083, M.SRC_CORE.085, M.SRC_CORE.088, M.SRC_CORE.091, M.SRC_CORE.092, M.SRC_CORE.101, M.SRC_CORE.102, M.SRC_CORE.103, M.SRC_CORE.106, M.SRC_CORE.107 |
+| A.U16.S01 | M.SRC_CORE.080, M.SRC_CORE.087, M.SRC_CORE.091 |
+| A.U17.22 | M.SRC_CORE.122 |
+| A.U19.06 | M.SRC_CORE.071 |
+| A.U19.12 | M.SRC_CORE.038 |
+| A.U19.15 | M.SRC_CORE.073 |
+| A.U19.16 | M.SRC_CORE.003, M.SRC_CORE.017, M.SRC_CORE.038, M.SRC_CORE.044, M.SRC_CORE.045, M.SRC_CORE.049, M.SRC_CORE.072 |
+| A.U2.04 | M.SRC_CORE.005, M.SRC_CORE.049, M.SRC_CORE.072, M.SRC_CORE.080, M.SRC_CORE.101 |
+| A.U2.05 | M.SRC_CORE.063 |
+| A.U2.06 | M.SRC_CORE.037, M.SRC_CORE.038 |
+| A.U2.07 | M.SRC_CORE.043, M.SRC_CORE.044, M.SRC_CORE.048, M.SRC_CORE.049; `:356` split superseded (A.U4.02, A.U35.43) |
+| A.U2.08 | M.SRC_CORE.005, M.SRC_CORE.013, M.SRC_CORE.016, M.SRC_CORE.017 |
+| A.U2.09 | M.SRC_CORE.080, M.SRC_CORE.082, M.SRC_CORE.084, M.SRC_CORE.085, M.SRC_CORE.087, M.SRC_CORE.088, M.SRC_CORE.090, M.SRC_CORE.092, M.SRC_CORE.101, M.SRC_CORE.103, M.SRC_CORE.104, M.SRC_CORE.105, M.SRC_CORE.107, M.SRC_CORE.109 |
+| A.U2.18 | M.SRC_CORE.072 |
+| A.U20.06 | M.SRC_CORE.008, M.SRC_CORE.015, M.SRC_CORE.016 |
+| A.U20.10 | M.SRC_CORE.100, M.SRC_CORE.101 |
+| A.U27.07 | M.SRC_CORE.071, M.SRC_CORE.073 |
+| A.U28.30 | M.SRC_CORE.016 |
+| A.U3.01 | M.SRC_CORE.060, M.SRC_CORE.063 |
+| A.U3.02 | M.SRC_CORE.080, M.SRC_CORE.081, M.SRC_CORE.082, M.SRC_CORE.088 |
+| A.U3.03 | M.SRC_CORE.037 |
+| A.U3.04 | M.SRC_CORE.080, M.SRC_CORE.082, M.SRC_CORE.084, M.SRC_CORE.085, M.SRC_CORE.088 |
+| A.U3.05 | M.SRC_CORE.048 |
+| A.U3.06 | M.SRC_CORE.005, M.SRC_CORE.016 |
+| A.U3.09 | M.SRC_CORE.080, M.SRC_CORE.087, M.SRC_CORE.090 |
+| A.U30.08 | M.SRC_CORE.038 |
+| A.U30.19 | M.SRC_CORE.003, M.SRC_CORE.005, M.SRC_CORE.006, M.SRC_CORE.010, M.SRC_CORE.013, M.SRC_CORE.014, M.SRC_CORE.016, M.SRC_CORE.017, M.SRC_CORE.034, M.SRC_CORE.037, M.SRC_CORE.038, M.SRC_CORE.060, M.SRC_CORE.072, M.SRC_CORE.085, M.SRC_CORE.087, M.SRC_CORE.092 |
+| A.U31.07 | M.SRC_CORE.009, M.SRC_CORE.016 |
+| A.U31.17 | M.SRC_CORE.016 |
+| A.U32.03 | M.SRC_CORE.072 |
+| A.U32.06 | M.SRC_CORE.008, M.SRC_CORE.016 |
+| A.U34.07 | M.SRC_CORE.100 |
+| A.U35.20 | no product change (test-only; `asy_fram_driver.py` lines read-only, carried as M.SRC_CORE.102 blast; TEST_UNIT) |
+| A.U35.30 | no product change (test-only planted-fault scenarios; carried as M.SRC_CORE.009/.016 blast; TEST_HELP) |
+| A.U35.35 | M.SRC_CORE.063; test only |
+| A.U35.36 | M.SRC_CORE.130 |
+| A.U35.41 | M.SRC_CORE.017, M.SRC_CORE.130 |
+| A.U35.42 | M.SRC_CORE.101, M.SRC_CORE.107, M.SRC_CORE.130 |
+| A.U35.43 | M.SRC_CORE.043, M.SRC_CORE.044, M.SRC_CORE.048 |
+| A.U35.44 | M.SRC_CORE.116, M.SRC_CORE.117 |
+| A.U35.45 | M.SRC_CORE.036 |
+| A.U35.47 | M.SRC_CORE.087, M.SRC_CORE.090 |
+| A.U35.55 | M.SRC_CORE.087 |
+| A.U36.004 | M.SRC_CORE.043, M.SRC_CORE.049 |
+| A.U36.514 | M.SRC_CORE.049 |
+| A.U36.535 | M.SRC_CORE.002 |
+| A.U36.544 | M.SRC_CORE.007, M.SRC_CORE.016, M.SRC_CORE.109, M.SRC_CORE.123 |
+| A.U36.548 | M.SRC_CORE.016, M.SRC_CORE.070 |
+| A.U4.01 | M.SRC_CORE.047 |
+| A.U4.02 | M.SRC_CORE.044 |
+| A.U4.03 | M.SRC_CORE.036, M.SRC_CORE.038 |
+| A.U5.01 | M.SRC_CORE.003, M.SRC_CORE.030, M.SRC_CORE.061 |
+| A.U5.02 | M.SRC_CORE.003, M.SRC_CORE.008, M.SRC_CORE.030, M.SRC_CORE.036, M.SRC_CORE.040, M.SRC_CORE.049, M.SRC_CORE.091, M.SRC_CORE.102 |
+| A.U5.03 | M.SRC_CORE.007 |
+| A.U5.08 | M.SRC_CORE.002, M.SRC_CORE.008, M.SRC_CORE.017 |
+| A.U5.11 | M.SRC_CORE.035 |
+| A.U5.13 | M.SRC_CORE.081, M.SRC_CORE.087, M.SRC_CORE.091 |
+| A.U8.08 | M.SRC_CORE.004 |
+| A.U8.12 | M.SRC_CORE.004, M.SRC_CORE.016, M.SRC_CORE.036 |
+| A.U8.13 | M.SRC_CORE.101 |
+| A.U8.23 | M.SRC_CORE.071 |
+
+Read for blast or context, no site in this cluster (carried by the named cluster): A.U12.03, A.U10.27 (SRC_NET); A.U12.18,
+A.U15.23 (SRC_SENS); A.S0930.01, A.S0930.02, A.U20.13 (GEN, see GAP-G10); A.U12.04, A.U12.17, A.U4.06, A.U16.13,
+A.S0930.21 (TEST_UNIT); A.U11.07, A.U24.32 (TEST_HELP); A.U10.47 (TSC); A.U12.05, A.U12.10, A.U14.06, A.U14.35, A.U15.42,
+A.U2.01, A.U5.18, A.U10.30, A.U15.43 (SPEC/GEN rule sources); A.S0930.07, A.U0.30 (DOCS); A.C.03 (HW_DEV).

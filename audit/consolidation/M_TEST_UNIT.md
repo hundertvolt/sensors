@@ -446,7 +446,8 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
     (`get_pressure_and_temperature()` wrapped to await a `PresOffset` PUT mid-conversion; the stored `Pres` uses the
     offset captured before); `test_a_failed_read_keeps_the_last_good_sample_and_its_timestamp` (`set_utc_valid(True)`,
     restored in `finally`; a good cycle then a NAKed one: `get_data()` equals the first sample, its `TS` unchanged);
-    `test_a_read_before_the_first_sync_publishes_with_ts_none`.
+    `test_a_read_before_the_first_sync_publishes_with_ts_none` (and steps no error streak: `_error_check()` sees the
+    reader's `condition` exclude the trailing `TS`, M_SRC_SENS GAP-15).
   - New L1 (A.U15.24): `PresOffset` 450 on the planted 713.77 hPa reading → `Pres` 263.77, `SLPres` `None`, one
     `code("W", "DERIVED_DOMAIN")`; a second such cycle leaves one slot and `ErrCount` 2 (newest-entry rule); `PresOffset`
     10 → no entry.
@@ -860,5 +861,279 @@ retried, the chip-loss probe, bus-down statuses, both locks for every hold, `ver
 - **Unit**: U24 (stages U8C tag, U10 names).
 - **Depends**: M.SRC_CORE.102.
 - **Blast carried by**: Part N row → A.U8.01 (SPEC).
+- **Kind**: test
+
+## tests/test_asy_fram_manager.py
+
+End state: the chunk layer's tests against M.SRC_CORE.080-093 — `FRAMManager`/`FRAMChunk`/`FRAMTimestampedChunk`, one
+persisted entry per failure at the detecting layer (the rest console lines), the catalog's FRAM band, a tri-state
+read, blank blocks never marked busy, no `override_pause`, no episodes (the central newest-entry rule), bool-first
+timestamped writes on `utc_now()`, the erase trio, the chip-watch task. **Code map for every assertion of this file**
+(A.U2.09 + A.U3.04): 31/34 → `code("E", "FRAM_STATUS_BYTE")` (46), 36 → FRAM_STATUS_DISAGREE (47), 17/38 →
+FRAM_CRC_FAILED (48), 46 → FRAM_DATA_CRC (49), 63/64 → FRAM_VERIFY (50), 73 → FRAM_COPIES_DIFFER (51), 83 → INIT
+(10), 85/87 → CALLBACK (14), 26/47/58 → UNEXPECTED (23), 48/60/70/81/84 → BAD_ARG (21), w60/w70/w80 → `code("W",
+"FRAM_PAUSED")` (25); 10/11/18/19/20/30/32/33/35/37/39/50/51(HEAD)/57/61/62/71/72/80 become console lines — an
+assertion on one of them becomes "the operation's result and no persisted entry from this layer" (recorded console
+lines through `tests/_recording_print.py` where the test's point is the message); 82/86/88 retire with their handlers.
+
+### M.TEST_UNIT.039 Harness, builders, folded constants, names
+- **From**: A.U24.08 (`run()`), A.U24.49 (`make_manager` → `tests/_fram_builders.make_fram_manager()`), A.U24.76
+  (`make_bus`, `setup_manager`, `make_written_chunk`, `status_byte_addrs`, `fail_*_at`, `errnums` → `_`-names),
+  A.U24.01 (`:26-31` `_STATUS_*` → `src_const`), A.U5.02 (the manager's `log=`), A.U10.37 + A.U10.38 (`FRAMManager`,
+  `FRAMChunk`, `FRAMChunkBuffer`, `FRAMChunkTimestampedBuffer`, `asy_crc_checks`, `CRCPass`, `asy_print_log`), A.U10.18
+  and A.U10.35 (`allocated_size` `:1309` → `_allocated_size`, `chunk.ntp_sync_callback` `:1929` →
+  `_ntp_sync_callback`), A.U16.05 (`:1445`, `:2051` comments `LockableBuffer` → `RegionBuffer`).
+- **Site**: `tests/test_asy_fram_manager.py:1-70`; the named lines.
+- **Change**: imports `from asy_fram_manager import FRAMChunk, FRAMChunkBuffer, FRAMChunkTimestampedBuffer,
+  FRAMManager`, `from asy_crc_checks import CRC8, CRC16, CRC32, CRCPass`, `from _async_harness import run`, `from
+  _fram_builders import make_fram_manager`, `from _src_const import src_const`, `from _error_codes import code`. The
+  `:26-28` comment → "# The chunk's status-byte values, read from source (tests/_src_const.py)."; `_STATUS_UNINIT/_IDLE/
+  _BUSY = src_const("src/asy_fram_manager.py", "_STATUS_…")`. `_make_manager(max_size, history_length)` returns
+  `make_fram_manager(max_size=…, history_length=…)`'s manager and chip (the builder passes `log=LogConfig(None,
+  history_length, None)`). `_INJECTED_FAILURE` stays (a test sentinel, its comment correct).
+- **Resolved**: —
+- **Unit**: U24 (stages U5 constructor, U10 names).
+- **Depends**: M.SRC_CORE.080, .091; TEST_HELP builders.
+- **Blast carried by**: `tests_scripts/test_const_mirrors.py` → A.U24.02 (TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.040 Allocator: layout within one build; the chunk layer logs into RAM
+- **From**: A.U0.38 (V12) + A.U16.01 (`:90`), A.U16.13 (new L1), A.S0930.17 (read: allocator tests hold; one list slot
+  per allocation).
+- **Site**: `tests/test_asy_fram_manager.py:71-116`; new test after `:100`.
+- **Change**: `:88-90` comment → "# Whichever get_chunk()/get_timestamped_chunk() call happens first claims the lower
+  offset regardless of / # size, which is why call order must be fixed within one build." New
+  `test_every_chunk_and_the_driver_log_into_the_managers_ram_history`: `type(manager.pr) is PrintLogHistory`,
+  `manager.fram.pr is manager.pr`, and `chunk.pr is manager.pr` for a plain and a timestamped chunk.
+- **Resolved**: A.U0.38 and A.U16.01 name the same sentence; one text (A.U16.01's Depends: "one wording").
+- **Unit**: U16 (stage U0 for the comment).
+- **Depends**: M.SRC_CORE.081, .091.
+- **Blast carried by**: SPEC C.8 sentence → A.U16.13 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.041 Dual copy, status bytes and torn writes, by catalog code
+- **From**: A.U2.09/A.U3.04 (`:235, 283, 325, 592, 614, 756, 1548, 1576, 2332`), A.U16.08 (`:329-331` comment and the
+  owner tag), A.U16.09 (`:1538`, `:1686-1687` re-read against the mixed-pair rule; `:2509-2511` comment; new blank-read
+  L1), A.U16.06 (new tri-state L1), A.U3.04 (new one-entry-per-fault L1), A.U3.09 (new missing-buffer L1).
+- **Site**: `tests/test_asy_fram_manager.py:212-350`, `:984-1096`, `:1525-1580`, `:1644-1852`, `:2476-2584`; new
+  tests after `:350`.
+- **Change**: every code assertion follows the map above (e.g. `:235` `31` → `code("E", "FRAM_STATUS_BYTE")`, `:614`
+  `73` → FRAM_COPIES_DIFFER); console-only codes (`:816-817` 10/61, `:838-839` 32/72, `:1054` 71, `:1082` 72, `:1673`
+  62, `:1717` 11, `:1761` 18, `:1783` 37, `:1830` 39, `:1850` 57) become "the operation's result, and the log holds only
+  the detecting layer's entry" (for a planted driver failure, the driver's own code; for an injected sentinel failure,
+  no entry). `:329-331` → "# A write torn between block 0 and block 1: both blocks valid (CRC_Pass, both status bytes
+  IDLE) but / # different, and no generation counter says which is right, so the read fails rather than guesses /
+  # (owner, 2026-07-18)." and the test asserts exactly one FRAM_COPIES_DIFFER entry. `:1538` and `:1686-1687` (UNINIT
+  planted into one byte): a mixed pair still fails the consistency check (one FRAM_STATUS_DISAGREE) and the idle byte
+  keeps its busy marker; a fully blank block is not marked. `:2509-2511` comment → "# A blank chip's whole read is two
+  status-byte reads per block that find UNINIT and return, so the / # yield after that pair must come before those early
+  returns." New: `test_a_never_written_chunk_read_twice_reports_uninitialised_both_times` (both `read_into()` `False`,
+  both status bytes still 0x00, no FRAM-log entry; the same after `clear()`);
+  `test_read_into_is_tri_state` (driver not initialised → `None`; both blocks with a bad status byte → `False`; a blank
+  chunk → `False`; a failed repair write → `None`); `test_each_planted_fault_adds_exactly_one_entry` (driver not
+  initialised, WEL not set, status byte BUSY, CRC mismatch in block 0 with a good block 1, both blocks invalid,
+  verification mismatch — one operation each, one persisted entry each with the mapped code);
+  `test_after_a_failed_setup_ten_writes_leave_one_slot_and_errcount_ten` (RF171);
+  `test_a_verify_pass_whose_block_read_fails_the_crc_adds_one_entry` (FRAM_DATA_CRC);
+  `test_an_unallocatable_check_length_adds_one_alloc_entry_on_read_and_write` (`code("E", "ALLOC")`);
+  `test_a_missing_chunk_buffer_persists_alloc_once` (A.U3.09).
+- **Resolved**: A.U3.04 and A.U2.09 co-land (same sites); the map above is their joint end state.
+- **Unit**: U16 (stages U2 numbers, U3 persist/print split).
+- **Depends**: M.SRC_CORE.082, .084, .085, .088, .090; A.U2.03.
+- **Blast carried by**: SPEC A.4 FRAM error flow → A.U3.04 (SPEC); L2 double read → A.U16.09 (TWIN).
+- **Kind**: test
+
+### M.TEST_UNIT.042 Pause: no override seam; the queued read fault proves the gate
+- **From**: A.U16.19 (`:428-440`, `:1117-1130` deleted; `:387` → "pause"; `:1109`, `:1253-1254` unpause first),
+  A.U24.78 (`:457` `inject_fault` shape; the chunk grows over the 32-byte DMA threshold; `pending("readinto") == 1`),
+  A.U2.09 (`:470` 70 → FRAM_PAUSED), A.U3.12 (new L1: a commanded mempause's W25 spends one slot across chunks),
+  A.U16.22 (read: `manager.get_pause()` stays).
+- **Site**: `tests/test_asy_fram_manager.py:387-506`, `:1099-1135`, `:1234-1260`; new test after `:506`.
+- **Change**: banner `:387` → "# pause"; the two override tests are deleted (the seam is gone: `invalidate()` is the
+  one path past the pause and only the erase calls it, M.SRC_CORE.083); `:1099-1115` and `:1234-1260` unpause, then
+  read/write. `:445-484`: `get_chunk(40, crc=CRC8())` (a 41-byte read, over the 32-byte DMA threshold),
+  `chip.inject_fault("readinto", OSError, 5, "SPI RX overrun", times=1)`, after the paused read
+  `chip.pending("readinto") == 1` (the discriminator its comment names), then unpaused the fault fires; `70` →
+  `code("W", "FRAM_PAUSED")`. New `test_a_commanded_mempause_spends_one_slot_across_chunks` (two chunks, writes, reads
+  and `clear()` while paused: one FRAM_PAUSED slot, `ErrCount` counting every refusal).
+- **Resolved**: —
+- **Unit**: U16 (stage U24 fault shape).
+- **Depends**: M.SRC_CORE.082, .085, .088; TEST_HELP fake `pending()` (A.U24.78).
+- **Blast carried by**: twin hazard file override lines → A.U16.19 (TWIN); device scripts → A.U16.19 (HW_DEV).
+- **Kind**: test
+
+### M.TEST_UNIT.043 Timestamped chunk: bool-first writes, `utc_now()`, signed age
+- **From**: A.U16.18 (unpacks `:541-565, 645-650, 668-672, 702-709, 1242, 1253, 1269, 1358, 1874, 1886, 1905, 2093`;
+  annotations), A.U10.06 (`:677-718` and `:1940-1974` removed with their handlers; tests expecting a valid timestamp set
+  `set_utc_valid(True)`), A.U14.26 (its rename of those two tests — dropped with them, M.SRC_CORE.087 Resolved),
+  A.U35.55 (`:2120-2195` removed), A.U2.09 (`:674` 85, `:1893` 81, `:1938` 87), A.U10.28 (b) (new L1, the manager
+  half), A.U10.35 (`_ntp_sync_callback`).
+- **Site**: `tests/test_asy_fram_manager.py:530-653`, `:655-718`, `:1209-1275`, `:1333-1372`, `:1853-1995`,
+  `:2085-2200`.
+- **Change**: every `ntp_synced, utc, write_ok = await chunk.write(…)` → `write_ok, ntp_synced, utc = …` and the
+  tuple asserts reorder (`:650` → `(False, False, None)`); return annotations `tuple[bool, bool, int | None]`. Tests whose
+  `_synced` write must store a real timestamp call `asy_base_classes.set_utc_valid(True)` first and restore it in
+  `finally`. `:659-675` keeps its goal; the assertion → one `code("E", "CALLBACK")` entry, and its message (the "told
+  apart from the read-path one (87)" claim goes — both paths are CALLBACK by class; the log message tells them apart).
+  `:677-718` (`test_mktime_overflow…`) and `:1941-1974` (`…age_computation_overflow…`) are removed: `utc_now()` has no
+  handler to pin — `mktime()`/`gmtime()` cannot raise for in-range years on target (G4/R15, M.SRC_CORE.032), the guard
+  replacing them is that source fact plus `tests/test_base_classes.py`'s `utc_now()` cases. `:2120-2195` (`_RaisingPackInto`,
+  `_RaisingUnpackFrom` and their two tests) are removed with the guards (A.U35.55: no failing input on target); the
+  uninitialised-timestamp read path stays covered by the blank-chip reads here. `:1880-1893` → `code("E", "BAD_ARG")`;
+  `:1923-1938` → `chunk._ntp_sync_callback`, `code("E", "CALLBACK")`. New
+  `test_a_read_after_the_rtc_stepped_back_returns_a_negative_age` (synced write at T, the RTC set back 60 s through
+  `DrivenTime`'s wall clock, read: `age == -60`; the expiry decision is SGP40's, M.TEST_UNIT in
+  `test_asy_sgp40_driver.py`).
+- **Resolved**: A.U10.06 vs A.U14.26 at the two handler tests → A.U10.06 (V.U18.R10, U18 register fix 10).
+- **Unit**: U16 (stages U10 `utc_now()`/removals; U35's removal pulled into U16 with M.SRC_CORE.087).
+- **Depends**: M.SRC_CORE.087, M.SRC_CORE.032.
+- **Blast carried by**: SGP40 half of the negative age → A.U16.18/A.U10.28 (TEST_UNIT sgp40 file).
+- **Kind**: test
+
+### M.TEST_UNIT.044 Fault-injection, regression and edge tests by catalog code
+- **From**: A.U2.09/A.U3.04 (`:774-790`, `:798-980`, `:1393-1436`, `:1444-1520`), A.U13.08 (`:1409-1436`), A.U24.56
+  (`:886` tag), A.U8C.08 (`:751`).
+- **Site**: `tests/test_asy_fram_manager.py:720-980`, `:1376-1520`.
+- **Change**: `:751` `wait_for(…, 5)` → `_READ_WAIT_S` (`# @tunable l1.asy_fram_manager_read_wait_s = 5`). `:774-790`
+  → `test_oversized_write_persists_one_bad_arg_entry` (`code("E", "BAD_ARG")` once; the "84 not colliding with clear's
+  80" claim goes: `clear()`'s failure is a console line now). `:886` → "# Intended, accepted behaviour, not a defect
+  (owner, 2026-09-11; SPEC A.4):"; `:909-910` → the read refused (`None`), the driver's write-protected warning the one
+  persisted entry, data intact after unprotect. `:952-975`: write/read/clear each fail, the log holds `code("E",
+  "NOT_INIT")` (driver guard), identical repeats in one slot with `ErrCount` 3. `:1393-1407` → `code("E", "INIT")`.
+  `:1410-1436` → `test_chunk_operations_fail_cleanly_when_the_bus_is_deinitialized_mid_run`: each operation fails, the
+  log holds `code("E", "FRAM_BUS_DOWN")` (the driver's status, M.SRC_CORE.104) and no UNEXPECTED entry; its comment →
+  "# A deinitialised bus is reported by the driver as bus-down; the chunk layer fails the operation and prints."
+- **Resolved**: —
+- **Unit**: U16 (stages U2, U8C tag, U13 bus-down, U24 tag text).
+- **Depends**: M.SRC_CORE.082-.085, .104.
+- **Blast carried by**: Part N row → A.U8.01 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.045 Accessor and slice tests of removed methods go; RX overrun restamped
+- **From**: A.U16.22 (`:1995-2024`), A.U16.23 (`:2027-2048`; `:2072`, `:2081` lines), A.U16.06 (overrun assertions), A.SDEP.08 (`:2204` "MicroPython
+  1.29's" restamped at the new pin), A.U2.09 (`:2228, 2248, 2268` 47 → UNEXPECTED, `:2332` 31).
+- **Site**: `tests/test_asy_fram_manager.py:1995-2120`, `:2204-2335`.
+- **Change**: the three accessor tests and the two `get_crc_buf()` slice tests are deleted with their methods (no
+  product caller; OR46.a (2)); section comment `:1995-1996` → "# The buffers' remaining accessors."; `:2072`, `:2081`
+  `get_crc_buf()` lines go. `:2204` → "# The rp2 SPI RX-overrun raise site (<pin version>; SPECIFICATION.md F.5.2),
+  driven through the live path …" with the version the pin re-check confirms. Overrun assertions → `code("E",
+  "UNEXPECTED")` where the caught raise is the subject. The two overrun tests over the 40-byte chunk gain (A.U16.06):
+  one overrun → `read_into()` `True`, block 0 rewritten, no "Invalid data in block 0" console line; a sticky overrun →
+  `read_into()` `None` and the chip's memory unchanged by the read path except the status bytes.
+- **Resolved**: —
+- **Unit**: U16 (stage: A.SDEP.08's re-stamp lands with the pin move, U0/U37).
+- **Depends**: M.SRC_CORE.086, .089.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.046 The status-byte errno spread becomes one entry per event
+- **From**: A.U2.09 (the `err=` arithmetic goes), A.U3.04 (status-byte read/write failures print).
+- **Site**: `tests/test_asy_fram_manager.py:2336-2470`.
+- **Change**: banner → "# Status-byte failures, branch by branch: the detecting layer persists one entry (Part
+  C.7.1); a propagated failure prints." The six tests keep their injection points and become: idle-mark write failure on
+  byte 1 / byte 2 → `write()` `False`, no persisted entry (the injected report persisted nothing; the chunk layer
+  prints); busy-mark byte-2 read failure → read `None`, no entry; byte 2 neither idle nor uninit (`0x7F`) → exactly one
+  `code("E", "FRAM_STATUS_BYTE")`; busy-mark byte-2 write failure → no entry; clear's byte-2 failure → `clear()`
+  `False`, no entry. Names drop the HEAD numbers (`…reports_errno_19` → `…fails_the_write_without_a_second_entry`, …).
+- **Resolved**: the per-byte numbers they pinned are retired by A.U2.09 (one code per condition); one-entry-per-event
+  (OR56.a (1)) is the replacement guard.
+- **Unit**: U16.
+- **Depends**: M.SRC_CORE.084, .085.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.047 Episode tests become central-rule tests
+- **From**: A.U3.02 (`:2585-2658`), A.U3.01.
+- **Site**: `tests/test_asy_fram_manager.py:2585-2658`.
+- **Change**: banner → "# The central newest-entry rule (asy_print_log.py, SPECIFICATION.md C.7.1): a repeated identical
+  code spends no / # new slot; ErrCount counts every event." `_warnings()` → `_entries()` (number, type pairs).
+  `…keeps_failing_persists_one_warning_per_episode…` → `…keeps_failing_spends_one_slot`: five corrupted reads leave one
+  `code("E", "FRAM_DATA_CRC")` slot and `ErrCount` 5. `…a_clean_read_ends_the_episode…` → `…a_recurrence_after_recovery_stays_one_slot`
+  (OR35.b: one slot, `ErrCount` 2). `…a_held_mempause_persists_one_refusal…` → paused writes and reads are one code
+  (FRAM_PAUSED): one slot, `ErrCount` 8.
+- **Resolved**: —
+- **Unit**: U3.
+- **Depends**: M.SRC_CORE (print_log newest-entry rule), M.SRC_CORE.082/.088.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.048 Erase, watch task and power-cut proofs at the chunk layer
+- **From**: A.S0930.21 (b)-(c) (erase result, erased chip boots like a new one, all-zero block never validates),
+  A.S0930.25 (1)-(2) (structural and enumerated power cuts), A.S0930.23 (read: its mock-tier half is
+  `test_bus_hazard_multi_device.py`), A.U16.17 + A.U16.R03 (watch-task L1), A.U24.22 (`size=` fakes).
+- **Site**: new section at the end of `tests/test_asy_fram_manager.py`.
+- **Change**: `test_erase_chip_zeroes_every_byte_in_ascending_units` (8 KB and 256 KB fakes seeded with valid logger
+  chunks and 0xA5: `erase_chip(step)` `True`, `chip.memory == bytearray(size)`, `size // 256` unit writes at ascending
+  addresses, each after every chunk's pass-1 status writes, `step` called once per chunk and unit);
+  `test_an_erased_chip_boots_like_a_new_one` (fresh manager and loggers: every logger `initialized`, `ErrCount` 0, no
+  error entry); `test_an_all_zero_block_never_validates_even_with_an_idle_status` (status 0x01 0x01 over zero data and
+  CRC, CRC8 and CRC32 chunks: read not `True`); `test_erase_refuses_a_write_protected_or_uninitialised_chip`;
+  `test_a_failed_invalidate_stops_before_pass_2`. Power cuts with the fake's `cut_after_bytes` knob and a test-local
+  `PowerCut(BaseException)`: structural (after pass 1 every allocated block's status bytes read 0x00, and no pass-2
+  data byte precedes the last pass-1 status write in the SPI log) and enumerated (every pass-1 status byte; the first,
+  a middle and the last byte of every pass-2 unit overlapping an allocated block: a fresh manager restores each ring
+  exactly or blank, logs only FRAM_STATUS_DISAGREE or nothing, and the next write lands). Watch task:
+  `test_the_watch_task_waits_while_healthy_and_ends_on_a_loss` (`get_task_starters() == [manager.start_watch_chip]`
+  always; healthy → still running after `fram.lost` stays clear; a loss → the task ends; a restart with the chip back
+  re-runs `setup()` and waits; a restart after a never-set-up chip prints the escalation line and ends).
+- **Resolved**: A.U16.17's "returns `[]` when initialised" is superseded by A.U16.R03 (4) (always one starter,
+  M.SRC_CORE.092); the task returns `None` (M.SRC_CORE.092 Resolved), so the test asserts it ended, not `False`.
+- **Unit**: U16 (A.S0930's erase tests land with M.SRC_CORE.083's U16 stage; the watch task with A.U16.R03).
+- **Depends**: M.SRC_CORE.083, .092; TEST_HELP fake `cut_after_bytes`, `size=` (A.S0930.25, A.U24.22).
+- **Blast carried by**: SystemService-level erase sequence, refusals and races → M.TEST_UNIT in `test_system_service.py`
+  (A.S0930.21/.22/.24/.25); L2 → A.S0930.27 (TWIN); next-write re-persists the RAM ring → `tests/test_print_log.py`
+  (A.U16.R03).
+- **Kind**: test
+
+## tests/test_asy_fram_wire_trace.py
+
+### M.TEST_UNIT.049 Header: the contract, its owner account, the one deliberate change
+- **From**: A.U0.40 (L74, `:2` relabelled agent), A.U16.12 (`:2` archive pointer → SPEC A.4), A.U16.09 (header names
+  the blank-read change).
+- **Site**: `tests/test_asy_fram_wire_trace.py:1-2` (module docstring).
+- **Change**: line 2 → "A restructure of asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py must leave these
+  byte-identical - the contract the 2026-09-18 heap restructure was held to (agent, 2026-09-18); what each protocol
+  element is for is SPECIFICATION.md A.4 (owner, 2026-09-18)."; a third line "One deliberate change since: a blank
+  block is read without a busy marker (agent, 2026-09-29)." (docstring 3 lines).
+- **Resolved**: A.U0.40 and A.U16.12 rewrite different halves of the same line and A.U16.09 appends; one text.
+- **Unit**: U16 (stage U0 relabel).
+- **Depends**: M.TEST_UNIT.050.
+- **Blast carried by**: `tests_scripts/test_comment_block_cap.py` (holds).
+- **Kind**: doc
+
+### M.TEST_UNIT.050 Goldens: rp2's MSB number, the blank read without busy markers, bool-first write
+- **From**: A.U24.23 (`:33-34` `_INIT_EVENT`), A.U16.21 (`:35` comment), A.U16.09 (`_GOLDEN_BLANK_SETUP` `:163-238`; the
+  count `74 → 54`; `:65-66`-style comment in the count test), A.U16.12 (`:499` comment), A.U16.18 (`:451`),
+  A.U24.08 (`run()`), A.U5.02 + A.U10.37/A.U10.38 (`FRAMManager`, `FRAMTimestampedChunk`, `asy_crc_checks`,
+  `asy_print_log`; `_rig()`'s construction), A.U16.R01/A.U16.R02/A.U16.06/A.U13.08/A.U25.16 (read: goldens hold — one
+  WREN, one RDID, no wire change).
+- **Site**: `tests/test_asy_fram_wire_trace.py:7-40`, `:148-157`, `:163-238`, `:428-462`, `:498-507`.
+- **Change**: `_INIT_EVENT = "init 1000000/0/0/8/1"` with the comment "# The one bus config SPIDevice.__aenter__
+  applies (firstbit MSB = 1 on rp2), as one recorded event."; `_WRDI` comment → "# asy_fram_driver.py's _CMD_WRDI is
+  module-private". `_rig()` builds `FRAMManager(bus, 1, max_size=0x2000)` (default `log`). `_GOLDEN_BLANK_SETUP`
+  loses the four `w:06 / w:05 r:02 / w:0200xx w:02 / w:04 / w:05 r:00` groups that follow each blank status read
+  `r:00`; `test_cs_cycle_counts_are_the_measured_figures` asserts blank 54 (the other four counts unchanged) and its
+  comment `:499-501` → "# Every one of these cycles stays by design (SPECIFICATION.md A.4). / # The restructure removed
+  allocations, not CS cycles, so a change here is a protocol change and not an / # optimisation." `_collect()`:
+  `assert written[0]  # (wrote_ok, ntp_synced, utc) - the clock is deliberately unsynced`.
+- **Resolved**: —
+- **Unit**: U16 (stages U10 names, U24 `_INIT_EVENT` with A.U24.23's fake change).
+- **Depends**: M.SRC_CORE.084, .087; TEST_HELP `tests/machine.py` SPI `MSB = 1` (A.U24.23).
+- **Blast carried by**: SPEC A.4 sentences → A.U16.09/A.U16.11/A.U16.12 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.051 The status bytes' endurance computed from the recorded trace
+- **From**: A.U16.11.
+- **Site**: new test after `tests/test_asy_fram_wire_trace.py:507`.
+- **Change**: `test_status_bytes_outlast_the_parts_endurance_at_the_bus_ceiling` as A.U16.11 writes it: from
+  `_collect()`'s traces, the cell operations on one status-byte address per chunk `_write()` (2) and valid `_read()` (3)
+  are counted and asserted; the lifetime at one block operation per (write commands × 2,833 µs + read commands × 783 µs,
+  the recorded valid-read mix, SPEC F.5.8's minima) — ≈ 13.7 ms, 3 cell operations each — against 10^12 (MB85RS64V p.17)
+  exceeds 100 years (the computed figure ≈ 144 years is stated in the ≤ 3-line comment; the 100-year floor is a stated
+  bound, not a tuned value).
+- **Resolved**: —
+- **Unit**: U16.
+- **Depends**: M.TEST_UNIT.050 (the valid trace is unchanged by the blank-read change).
+- **Blast carried by**: SPEC A.4 endurance sentence → A.U16.11 (SPEC).
 - **Kind**: test
 
