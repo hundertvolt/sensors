@@ -2303,6 +2303,22 @@ kept, written `(ArithmeticError, ValueError)`, and exercised by tests through a 
   (SPEC).
 - **Kind**: code, test
 
+### M.SRC_CORE.131 Out-of-range polynomial degrades fully to pass-through
+- **From**: — (lead, 2026-10-01: the adherence finding "flagged, not merged" below; no constituent action)
+- **Site**: `src/crc_checks.py:17-26` `CRC_Base.__init__`
+- **Change**: the constructor's own documented contract ("an invalid config … silently degrades to pass-through mode")
+  holds for an out-of-range polynomial too: when the validated polynomial is `None` (absent, `num_bytes == 0`, or out
+  of range for the width), `num_bytes`, `all_set`, `msb_set` and `crc_shift` are all 0, so `length()` reports 0 and
+  `add_into()`'s bounds reserve no CRC byte. Compute the polynomial check against the width's mask first, then set the
+  width fields from the result. No contract change: the constructor still never raises. Applies on top of
+  M.SRC_CORE.115/.116's attribute renames and the polynomial-as-parameter shape.
+- **Resolved**: lead ruling (AC_NOTES item 39) — the documented contract settles it; the agent's "constructor
+  contract change" concern does not arise.
+- **Unit**: the unit of M.SRC_CORE.116
+- **Depends**: M.SRC_CORE.115, M.SRC_CORE.116
+- **Blast carried by**: L1 `tests/test_crc_checks.py` gains one case per width (`poly` above the width's mask → `length() == 0`, `add()` returns the buffer unchanged, `add_into()` writes nothing) → TEST_UNIT gap; SPEC J/G CRC text unchanged (it states the contract already).
+- **Kind**: code, test
+
 ## Gaps for other clusters
 
 - **GAP-G1** (GEN): the generated `_collect_setups()` is annotated `list[SetupFct]` (imported from `asy_base_classes`),
@@ -2378,7 +2394,7 @@ tags only (no audit IDs in permanent text), D.15 order, private by default.
   merged**: an out-of-range polynomial (e.g. `CRC8(poly=0x1FF)`) leaves `_num_bytes` at the width while `_poly` is
   `None`, so `length()` reports 1 in pass mode and `add_into()` bounds include a CRC byte it never writes. No action
   covers it, no product path builds such a CRC (every construction uses the class default), and a fix changes a
-  constructor contract → for the OR2.c review.
+  constructor contract → settled by the lead as M.SRC_CORE.131 (the documented contract already says it degrades to pass-through).
 - `framing_codecs.py`: `run_length`/`trailer` public with no outside reader → private (M.SRC_CORE.120); the header cited a
   changelog label and the wrong Part (M.SRC_CORE.123, A.U36.544). The comments naming `CRC_Base`/`CRC_Pass`/
   `crc_checks.py` follow the U10 renames (M.SRC_CORE.120).

@@ -146,3 +146,5 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     reader passes `condition=results[0] is None`; GAP-17 (G5/R14, agent rank) — protocol classes and `I2CDevice` are
     named exempt in A.U10.22's check, `NotificationService`'s `_finalized` guard counts as its gate, `NeopixelDriver`
     gets an `initialized` gate. Every later A-C cluster applies these.
+39. Lead ruling (2026-10-01): `CRC_Base` with an out-of-range polynomial degrades fully to pass-through (length 0), as
+    its documented contract already states — M.SRC_CORE.131; TEST_UNIT carries the L1 cases.

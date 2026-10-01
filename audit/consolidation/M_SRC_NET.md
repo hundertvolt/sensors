@@ -1229,7 +1229,7 @@ actions only where they name a product line.
   members), A.U5.07 (`ext_led` at construction), A.U10.35 (private attributes), A.U10.03 (`_wifi_uptime` on
   `TickSeconds`, `_wifi_connected`), A.U18.33 (`_dhcp_dns`), A.U18.28 (`_ap_selected`), A.U18.24 (`_tick_armed`),
   A.U3.02 (`_episode_wrns` goes), A.U0.35 (D05 comment), A.U10.17 (lock reason), A.U10.39 (push key via `name_cfg()`),
-  A.U8.12 (`module.max_error` tag on the `:140` default)
+  A.U8.12 (`module.max_error` tag on the `:140` default), A.U6.25 (G6/R39 doc clause: the `:168-169` comment)
 - **Site**: `src/asy_wifi_service.py:132-189`
 - **Change**: new module-level `WifiConfig = namedtuple("WifiConfig", ("hostname", "hotspot_password",
   "conn_fail_to_hotspot", "hotspot_time_min"))` (no default constants: all four are required `[device]` fields,
