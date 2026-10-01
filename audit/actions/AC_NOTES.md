@@ -182,3 +182,5 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
 49. Lead, 2026-10-01: gap pass G3 also swept the "Blast carried by" pointers naming its clusters and found 21 carried
     nowhere, plus four test files and `host_typecheck.ini` in no cluster (AC_NOTES 47). G1, G2 and G4 now run the same
     pointer sweep on their clusters, and A-C3 repeats it repo-wide with the Site trace.
+50. Owner, 2026-10-01 (OR135 → LEAD/R35): the owner reviews alone. The review package is self-contained and layered: an
+    overview, then one plain-language section per topic, with decisions grouped and sorted by weight and details one link away.
