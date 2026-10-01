@@ -5700,7 +5700,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `err_count >= 1` and the later spike hold).
 - **Site**: `tests/test_notification_sgp40_integration.py:1-266`.
 - **Change**: `:113-114` "(SPECIFICATION.md Part C.14.3), the registration shape the generated build_system() emits.";
-  `:3-9` calibration note names `asy_voc_algorithm.py` (A.U10.37) and stays 3 lines per paragraph. Builders as
+  `:3-9` calibration note keeps naming `voc_algorithm.py` (not among A.U10.37's eight renamed modules) and stays 3 lines per paragraph. Builders as
   M.TEST_UNIT.280's SGP40 half; `_drive_one_cycle()` runs with the UTC flag set and the `_read_loop()` condition;
   `FastAsyncSleep()` shared; waits under `DrivenTime`, no tags; `:196` `nak_addresses` unchanged. The `:202-204` comment
   → "# Awaited directly: this coroutine already runs under run(), which now refuses a nested call
@@ -6490,3 +6490,1084 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Depends**: M.TEST_HELP.064 (`_ticks30.py`); the end-state tick sites (M.SRC_CORE.032, M.SRC_SENS, M.SRC_NET UART).
 - **Blast carried by**: SPEC F.1 names the fake → A.U14.32 (SPEC).
 - **Kind**: test
+
+## tests/test_uart_comm_hazard.py
+
+### M.TEST_UNIT.315 Imports, shared runner, sync-scope pair, wire copies, header comments
+- **From**: GAP-T1 (M.TEST_HELP.023/.024: the harness `run()` is deleted, `RUN_LIMIT_S` public), A.U8C.03 (blast:
+  `POLL_WAIT_MS`/`RUN_LIMIT_S` imported, not restated), A.U24.08 (via M.TEST_HELP.023's blast: `hazard_pair()` builds
+  its fixture at synchronous scope), A.U10.37/A.U10.38 (`crc_checks` → `asy_crc_checks`, `CRC_Base` → `CRCBase`,
+  `UART_Comm` → `UARTComm`), A.U24.73 (the five `Any` lines), A.U0.07 (the function-level imports at `:488`, `:786-787`,
+  `:999`, `:1040`, `:1251`), A.U24.02 (rule (b) for the J.3 copies), A.U13.17 (`:32` comment), A.U0.40 (`:48` comment),
+  A.S0930.03 (read: the both-modes rule is owner-confirmed).
+- **Site**: `tests/test_uart_comm_hazard.py:1-112`; every `run(` in the file.
+- **Change**: imports `import asyncio`, `import gc`; `from _async_harness import run`; `from _error_codes import code`;
+  `from _uart_comm_harness import POLL_WAIT_MS, RUN_LIMIT_S, Pair, accept_set, echo_get, frames`; `from asy_crc_checks
+  import CRC16`; `from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UARTComm`; `from
+  asy_uart_driver import UART as Driver`; under `TYPE_CHECKING`: `from asy_crc_checks import CRCBase`, `from
+  asy_uart_comm import ListenResult` (`typing.Any` goes). `CrcMaker = Callable[[], CRCBase] | None`, its comment's
+  `CRC_Base` → `CRCBase`. `listen_once()` → `-> "tuple[ListenResult, bytes]"`; the two `scenario()` returns at `:145`,
+  `:213` → `"tuple[bytearray | None, bytearray | None]"` / `"tuple[bool, bytearray | None]"`. `:30-32` comment's last
+  clause → "… - 24ms here, the harness setting poll_idle_ms equal to poll_wait_ms." `:48-49` → "# Every check runs
+  both with and without a CRC (agent, 2026-09-12; owner, 2026-09-30) - the dev wiring selects CRCPass, but a CRC
+  changes / # which corruptions are detectable at all (SPECIFICATION.md Part E.8). `crc()` builds a fresh instance per
+  pair: CRCBase carries state." The `_CMD_ACK` … `_POS` block gains one comment line "# The wire layout of
+  SPECIFICATION.md Part J.3 - the protocol's own copy, pinned to the module by tests_scripts/test_const_mirrors.py."
+  (as M.TEST_UNIT.153). `hazard_pair()` stays synchronous: `assert run(pair.setup(), RUN_LIMIT_S) is True`; `raw_frame()`
+  `run(crc().add(frame), RUN_LIMIT_S)` (both called only from a check's synchronous scope — the shared `run()` now
+  raises if not). Every bare `run(x)` → `run(x, RUN_LIMIT_S)`; every `run(x, limit=N)` → the M.TEST_UNIT.316 constant.
+- **Resolved**: A.U0.40 rewrites the `:48` tag to "(agent, 2026-09-12)"; A.S0930.03 records the owner confirming the
+  both-modes rule at every level (2026-09-30, OR116/OR118.a (1)) — the later owner row adds its tag beside the agent's.
+- **Unit**: U24 (stages U10 names, U13 comment, U0 tag).
+- **Depends**: M.TEST_HELP.023, .024, .043, .045; M.SRC_CORE.115; M.SRC_NET.153, .154.
+- **Blast carried by**: the J.3 copies' check → A.U24.02 (TSC); `tests_scripts/test_import_placement.py` `_PENDING` entry
+  → A.U0.07 (TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.316 Tuned literals become tagged module constants
+- **From**: A.U8C.43, A.U8C2.15, A.U8.14 (read: the `:1247` threshold site goes with M.TEST_UNIT.323).
+- **Site**: `tests/test_uart_comm_hazard.py` — every line A.U8C.43 and A.U8C2.15 list.
+- **Change**: exactly as the two actions write them: `# @tunable l1.uart_comm_hazard_timeout_ms = 30` above
+  `_TIMEOUT_MS`; new tagged `_LIMIT_S = 10`, `_TASK_BOUND_S = 8`, `_LISTENER_SETTLE_MS = 5`, `_CONCURRENCY_LIMIT_S = 25`,
+  `_LOCK_TAKE_MS = 1`, `_IN_FLIGHT_MS = 2`, `_LISTENER_PARK_MS = 5`, `_EXCHANGE_LIMIT_S = 20`, `_RECOVERY_LIMIT_S = 30`,
+  `_RETENTION_LIMIT_S = 120`, `_STEP_BOUND_S = 5`, `_FRAGMENT_GAP_MS = 3`, `_MISMATCH_LIMIT_S = 60`, `_HAMMER_LIMIT_S =
+  300`, tags above `_WARMUP` (20), `_MEASURED` (100), `_HAMMER_ROUNDS` (150); `_CRC_TIMEOUT_FACTOR = 8` (`timeout_for()`
+  returns `_TIMEOUT_MS * _CRC_TIMEOUT_FACTOR`), `_SUSTAINED_TIMEOUT_FACTOR = 8` (`_SUSTAINED_TIMEOUT_MS = _TIMEOUT_MS *
+  _SUSTAINED_TIMEOUT_FACTOR`), `_RECOVERY_ATTEMPTS = 4`, `_RETENTION_PER_TRANSACTION_MAX_BYTES = 6.0`,
+  `_RETENTION_PER_FAILURE_MAX_BYTES = 16.0`, each tagged with its `l1.uart_comm_hazard_*` ID, each listed literal
+  replaced. The `4` exchanges of the mismatch check stay a derived count (M.TEST_UNIT.319). The `gc.threshold_bytes`
+  mirror A.U8C.43 tags at `:1247` takes no tag: the line goes (A.U30.13).
+- **Resolved**: A.U8C.43 tags `:1247`; A.U30.13 deletes it and withdraws its `gc.threshold_bytes` site (conventions
+  bullet "`@tunable` tags").
+- **Unit**: U8C.
+- **Depends**: A.U8.01-A.U8.03 (grammar, register).
+- **Blast carried by**: Part N rows and SPEC J.7's citation of the two factor IDs → A.U8C.43, A.U8C2.15 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.317 Direct constructions take one callbacks object; the rxbuf refusal names its code
+- **From**: A.U5.12 (`:789`, `:808`, `:1115`, `:1171`), A.U13.17 (the driver's idle default is now 50 ms), A.U2.20
+  (rxbuf code), A.U13.13 (read: frames fit the driver buffers — holds), A.U24.73 (`:1182`); adherence (`:783` changelog
+  label; a vacuous refusal assertion).
+- **Site**: `tests/test_uart_comm_hazard.py:781-791`, `:805-811`, `:1113-1118`, `:1170-1192`.
+- **Change**: `_mismatched_responder()`, the lost-ACK responder and `reborn` → `UARTComm(pair.driver_b, ROLE_RESPONDER,
+  payload_size=…, timeout=pair.responder.timeout, callbacks=ResponderCallbacks(echo_get(b"v"), accept_set(), None),
+  name=…)`; `_mismatched_responder() -> UARTComm`. The construction-refusal check builds `Driver(0, tx_pin=0, rx_pin=1,
+  rxbuf=32, txbuf=256, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)` — with the new 50 ms idle default the
+  timeout floor (2 × 1 + 50 + 21) would refuse it first and the bare `_init_errno != 0` would pass for the wrong reason
+  — and asserts `comm._init_errno == code("E", "UART_RXBUF")`; its comment's "(B17)" → "(SPECIFICATION.md Part J.6)".
+  The reset-peer check creates each attempt's listener inside `one()` (no task created at synchronous scope, no
+  default-argument binding), `one() -> "bytearray | None"`.
+- **Resolved**: —
+- **Unit**: U5 (stages U13 idle rate, U2 code, U36 label).
+- **Depends**: M.SRC_NET.154, .155, .156; M.SRC_NET (driver `poll_idle_ms = 50`, A.U13.17).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.318 Expected codes by catalog name; the errno helper's premise restated
+- **From**: A.U2.20 + A.U24.02 (rule (c): the RF135 copies `:544-550` go), A.U3.08 (a resync persists only W54 on the
+  drain bound, M.SRC_NET.162 — the helper comment's premise), A.U24.73.
+- **Site**: `tests/test_uart_comm_hazard.py:538-640`.
+- **Change**: the seven `_ERR_*` copies go; assertions read `code("E", "UART_NO_ACK")`, `code("E", "TIMEOUT")` (was
+  `_ERR_READ_TIMEOUT`, the shared 22), `code("E", "UART_PAYLOAD_TOO_LARGE")`, `code("E", "UART_SIZE_MISMATCH")`,
+  `code("E", "UART_REENTRANT")`, `code("E", "UART_PEER_INITIATED")`, `code("E", "BAD_ARG")`. Section comment `:539-541`'s
+  "(SPECIFICATION.md Part J, errno 10-34)" → "(the global catalog's UART band, SPECIFICATION.md Part C.7.1)".
+  `errnos()`/`last_errno()` take `UARTComm`; the `errnos()` comment → "# Errors only: ErrNum holds both kinds and
+  ErrType tells them apart. Indexed, not zip()ed: MicroPython has no strict=." `_check_a_bad_argument_reports_errno_34_
+  before_anything_reaches_the_wire` → `_check_a_bad_argument_reports_bad_arg_before_anything_reaches_the_wire` (the
+  number is no longer 34). `:633-634` `assert run(pair.setup(), RUN_LIMIT_S) is True`. The two "Read outside the
+  coroutine" comments stay (the shared `run()` raises on nesting; reading in sync scope is still required).
+- **Resolved**: —
+- **Unit**: U2 (stage U3 comment).
+- **Depends**: M.SRC_NET.153, .162; M.TEST_HELP.045.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.319 The mismatch diagnostic fires: blind spot inverted, CRC16 case added
+- **From**: A.U17.13 (`:836-862` inverts; new CRC16-only L1 and its `_MODE_SPECIFIC` entry), A.U2.20 (`:801` copy goes),
+  A.U8C2.51 (read: the exchange count is the `uart.diag_resync_streak` row's Dependant), A.U17.15 (read: SPEC J.6 names
+  this check), A.U26.33 (read: the L1 resync tests stay the recovery bound's source — hold).
+- **Site**: `tests/test_uart_comm_hazard.py:795-862`; new check after `:862`; `_MODE_SPECIFIC` `:1273-1276`.
+- **Change**: section comment `:796-799` "diagnosed (errno 32)" → "diagnosed (E89, link unintelligible)"; `_ERR_LINK_
+  UNINTELLIGIBLE = 32` goes, uses read `code("E", "UART_LINK_UNINTELLIGIBLE")`. `_check_a_peer_that_never_produces_a_
+  valid_frame_is_diagnosed`: one exchange in its own `run(…, _RETENTION_LIMIT_S)`, then `code("E",
+  "UART_LINK_UNINTELLIGIBLE") not in errnos(responder)`; three more exchanges in a second `run()`, then it is in; the
+  "Pins the known blind spot" comment → "# A speak-when-spoken-to peer with a mismatched payload_size: its frames die
+  inside the failing read, which now counts them, so the diagnostic fires once the streak is reached (J.6)."; the
+  `_ERR_READ_TIMEOUT in codes` assertion and the "invert this test" message go. New
+  `_check_a_peer_whose_frames_all_fail_their_crc_is_diagnosed` (`_MODE_SPECIFIC` "crc16"): `hazard_pair(crc)`, the
+  initiator→responder direction's `corrupt_indices = {k * wire_frame(crc) - 1: 0x01 for k in 1..16}` (each frame's last
+  CRC byte flipped, every frame completing), four `uart_set(0x02, b"x")` exchanges with a listener each → `code("E",
+  "UART_LINK_UNINTELLIGIBLE") in errnos(pair.responder)`. The checks whose instances see at most one blind resync before
+  their assertion (`:567-589`) or assert only convergence or `ErrCount` (`:648-711`, `:930-996`, `:1036-1095`) hold; the
+  executor re-runs both modes to confirm (A.U17.13's own step).
+- **Resolved**: —
+- **Unit**: U17 (stage U2 code).
+- **Depends**: M.SRC_NET.162, .169; M.SRC_NET driver `discarded_bytes` (.196/.200/.201).
+- **Blast carried by**: the driver's `discarded_bytes` L1 cases → M.TEST_UNIT.176 (this cluster); L2 mismatched
+  pair → A.U17.13 (TWIN); SPEC J.6 and changelog B26 → A.U17.15 (SPEC, DOCS); Part N Dependants → A.U8C2.51 (SPEC);
+  SPEC E.8 single-mode count → GAP (SPEC, "Gaps").
+- **Kind**: test
+
+### M.TEST_UNIT.320 A GET must declare one chunk: sweep and wire representatives
+- **From**: A.U17.16 (new sweep; no-ACK list entry), A.U17.24 (the "GET with SIZE 2" representative), A.U17.12 (read:
+  the existing sweeps `:237-339` and the no-ACK list hold).
+- **Site**: `tests/test_uart_comm_hazard.py:237-301`.
+- **Change**: new `_check_the_chunks_field_sweep_accepts_only_one_for_a_get`: for `chunks` 0…255,
+  `pair.responder._validate(bytearray(raw_frame(cmd=_CMD_GET, size=1, chunks=chunks, cur=1, crc=crc)), _CMD_GET, 1,
+  None, None) == 0` iff `chunks == 1`. `_check_no_ack_is_emitted_for_any_rejected_frame`'s list gains `("GET with CHUNKS
+  2", raw_frame(cmd=_CMD_GET, chunks=2, crc=crc))` and `("GET with SIZE 2", raw_frame(cmd=_CMD_GET, size=2, chunks=1,
+  crc=crc))`. `:211` (GET, one chunk) and `:627` (GET with two chunks where an ACK is due — rejected as the wrong kind
+  first) hold.
+- **Resolved**: A.U17.24 (3) sweeps a GET's CHUNKS too and cites A.U17.16 for it — the one CHUNKS sweep is this check;
+  M.TEST_UNIT.321's GET-field sweep covers the other four fields.
+- **Unit**: U17.
+- **Depends**: M.SRC_NET.159.
+- **Blast carried by**: L2 sweep → A.U17.25 (TWIN); SPEC J.4 sentence → A.U17.16 (SPEC); changelog Class A A13 →
+  A.U17.16 (DOCS).
+- **Kind**: test
+
+### M.TEST_UNIT.321 Field sweeps at every position, and a train ending in an empty chunk
+- **From**: A.U17.24, A.U2.20 (codes in the ACK case).
+- **Site**: new checks after `:339`.
+- **Change**: at `_validate()` level, all 256 values each, J.3/J.4 as the independent oracle:
+  `_check_the_last_chunk_size_sweep_follows_the_train_shape` (`chunks=3, cur=3` accepted iff 1 ≤ size ≤ `_PAYLOAD`;
+  `chunks=2, cur=2` iff 0 ≤ size ≤ `_PAYLOAD`); `_check_every_ack_field_sweep_accepts_only_the_ack_shape` (expecting
+  an ACK for UID `u`: CMD iff 0x01, SIZE iff 0, CHUNKS iff 1, CUR_CHUNK iff 1, UID iff `u` — 0xFF returns `code("E",
+  "UART_FRAME_INVALID")`, any other mismatched UID `code("E", "UART_NO_ACK")`, asserted apart);
+  `_check_every_get_field_sweep_accepts_only_a_one_byte_first_chunk` (CMD iff 0x02, first-chunk SIZE iff 1, CUR_CHUNK
+  iff 1, UID iff ≤ 0xFE); `_check_the_data_chunk_uid_sweep_accepts_only_the_successor` (`chunks=3, cur=2` against the
+  expected next UID of 0x00, 0x7F and 0xFE — the 0xFE → 0 wrap); `_check_the_chunks_constancy_sweep_accepts_only_the_
+  latched_total` (chunk 2 of a train latched at 4, accepted iff CHUNKS == 4); `_check_the_command_sweep_against_an_
+  expected_ack_and_get` (the SET sweep's twin for the other two kinds). `_check_a_three_chunk_train_ending_in_an_empty_
+  chunk_is_rejected`: chunks 1-3 fed (UIDs 1-3, SIZE 1, `_PAYLOAD`, 0, `chunks=3`), `result.cmd_id is None` and exactly
+  two ACK frames (`2 * wire_frame(crc)` bytes) on the responder's wire.
+- **Resolved**: —
+- **Unit**: U17.
+- **Depends**: M.SRC_NET.159; M.TEST_HELP.045.
+- **Blast carried by**: tier map row → A.U17.25 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.322 Cancel or clear a transaction at every await, then recover
+- **From**: A.U17.23, A.U10.18 (`session_lock`), A.U10.44/A.U32.06 (the restart path is `start_asy_listen()`), A.U17.25
+  and A.U36.539 (read: the tier map lists this file as H1/H2/H3 L1 — holds).
+- **Site**: new section "Cancellation and restart at every await" before the registration block (`:1270`).
+- **Change**: section comment (≤ 3 lines) "# A transaction cancelled or cleared at any await leaves the instance free and
+  the peer recovering through J.5; the reboot case is the reset-peer check above." Helper `_sweep(crc, make_work,
+  cancel: bool)`: for k = 1, 2, … it builds `pair = hazard_pair(crc)` at synchronous scope and drives one `run(…,
+  _EXCHANGE_LIMIT_S)` holding a listener (`_listen_rounds`), the work task and a watcher that cancels the work (or awaits
+  `pair.responder.clear()` when `cancel` is false) at its k-th step and records whether the work had already finished; a
+  step is one `await asyncio.sleep_ms(0)` of the watcher without a CRC and one new driver I/O entry in `fake.log` with
+  CRC16. After each k: `_busy is False`, `_in_resync is False`, `driver.session_lock.locked() is False`, and `not
+  _holdoff_active or 0 < time.ticks_diff(_holdoff_deadline, time.ticks_ms()) <= _resync_window_ms()`; then at most two
+  further transactions (each in its own `run()` with its own listener), the second at the latest delivering exactly
+  the payload, a failed first one having logged a code. The sweep ends at the first k the work finished first. Checks:
+  `_check_cancelling_a_set_at_every_await_leaves_both_ends_consistent` (`uart_set(1, bytes(_PAYLOAD * 2))`);
+  `_check_cancelling_a_get_at_every_await_leaves_both_ends_consistent` (`uart_get(1)` against `echo_get(bytes(_PAYLOAD *
+  2))`); `_check_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent` (`uart_set_stream()` with a pull
+  callback); `_check_cancelling_a_listener_at_every_await_leaves_it_restartable` (the responder's `uart_listen()`
+  cancelled mid-SET, then `pair.responder.start_asy_listen()` answers within two attempts, its task cancelled in the same
+  `run()`); `_check_clear_at_every_await_leaves_the_transaction_whole_or_failed` (the watcher calls `clear()`). If the
+  file then exceeds `scripts/test.sh`'s per-file timeout, the section moves to `tests/test_uart_comm_cancel_sweep.py`
+  (A.U17.23), never a per-file override.
+- **Resolved**: A.U17.23 calls the restart through `get_task_starters()[0]()`; the starter is named (M.SRC_NET.170) and
+  called by name, as in M.TEST_UNIT.159. `_sweep` stays file-local rather than built on `tests/_cancel_sweep.py`: its
+  step is an I/O call in CRC16 mode and it has a `clear()` variant, neither of which that helper offers; the per-path
+  invariant sweeps of M.TEST_UNIT.166 stay (agent decision D-T31).
+- **Unit**: U17 (stage U10 lock name).
+- **Depends**: M.SRC_NET.160, .167, .168, .170; M.TEST_HELP.043.
+- **Blast carried by**: SPEC J.5 "Unsticking from outside" sentence → A.U17.23 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.323 Stress checks run at the process's GC stage; baselines stay
+- **From**: A.U30.13 (`:1244-1268`), A.U8.14 (`:1247` goes), A.U17.05 and A.U30.16 (the collects in
+  `_measure_retention`, `_hammer_clean.hammer`, `_hammer_faulted.hammer` are measurement baselines on the allow-list),
+  A.U8C2.15 (the two retention bounds).
+- **Site**: `tests/test_uart_comm_hazard.py:455-536`, `:987-1089`, `:1244-1268`.
+- **Change**: `_GC_THRESHOLDS` and `_under_threshold()` go; `_check_sustained_hammering_never_degrades_or_grows_the_heap
+  (crc)` calls `_hammer_clean(crc)` once and `_check_hammering_a_faulted_link_never_raises_and_still_recovers(crc)` calls
+  `_hammer_faulted(crc)` once; the comment `:1244-1246` → "# Stress checks run at their process's GC stage:
+  scripts/test.sh runs this file at gc.threshold(-1) and again at 32768 (SPECIFICATION.md I.4(e)/(f))." The `gc.collect()`
+  calls at `:502, :506, :509, :514, :1014, :1016, :1059, :1062` stay (heap baselines, not props); the in-function `import
+  gc` lines go to the module import. `:1033` → `per_transaction < _RETENTION_PER_TRANSACTION_MAX_BYTES`, `:1077` →
+  `per_failure < _RETENTION_PER_FAILURE_MAX_BYTES`.
+- **Resolved**: —
+- **Unit**: U30 (stage U8C bounds).
+- **Depends**: M.TEST_UNIT.316.
+- **Blast carried by**: the allow-list rows `(tests/test_uart_comm_hazard.py, _measure_retention | _hammer_clean.hammer
+  | _hammer_faulted.hammer)` → A.U30.16 (SCR/TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.324 A latency regression below the sustained budget is caught
+- **From**: A.U35.06.
+- **Site**: `tests/test_uart_comm_hazard.py` (one new check at most).
+- **Change**: at execution, plant `await asyncio.sleep_ms(20)` (then 100 ms) in `UARTComm`'s frame write path in the
+  worktree and run the file. If a check turns red, SPEC J.7's sentence names it and this file is unchanged. If none
+  does, add `_check_a_clean_transaction_completes_within_its_virtual_time_bound`: on `hazard_pair(crc)` with
+  `DrivenTime` installed on `asy_uart_driver` and `asy_uart_comm` (restored on exit), one clean `uart_set(1, b"x")` with
+  its listener completes within the healthy virtual duration plus a stated margin, the bound a tagged constant per
+  A.U8.02 (`# @tunable l1.uart_comm_hazard_clean_transaction_virtual_ms = <measured + margin>`); the plant is re-run to
+  show it red. Either way J.7's "accepted trade-off" goes.
+- **Resolved**: —
+- **Unit**: U35.
+- **Depends**: M.TEST_HELP.065.
+- **Blast carried by**: SPEC J.7 `:5613-5617` and the bound's Part N row → A.U35.06 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.325 Integrity-envelope comments; the byte-order check is CRC16-only
+- **From**: A.U0.40 (`:705`, `:743`), A.U36.544 (`:1225` changelog label), A.S0930.03 (read: the both-modes
+  registration `:1279-1296` holds); adherence (a check that returns early in one mode passes vacuously).
+- **Site**: `tests/test_uart_comm_hazard.py:704-707`, `:740-745`, `:1221-1241`, `:1273-1276`.
+- **Change**: `:705` "The deployed link runs CRC_Pass" → "The dev wiring selects CRCPass"; `:743` "the deployed
+  configuration" → "the dev configuration"; `:1224-1225` "(SPECIFICATION.md Part J, UART_C_PORT_CHANGELOG.md A7)" →
+  "(SPECIFICATION.md Part J)". `_check_the_crc_appears_on_the_wire_big_endian_after_the_payload` loses its `if crc is
+  None: return` and its comment; `_MODE_SPECIFIC` gains `"the_crc_appears_on_the_wire_big_endian_after_the_payload":
+  "crc16"` (with M.TEST_UNIT.319's entry, four single-mode checks); the `_MODE_SPECIFIC` comment → "… Some checks are
+  about one configuration by construction, not omission: a corruption detectable only with a CRC, or a CRC's own wire
+  form, would assert the opposite or nothing in the other mode."
+- **Resolved**: the early return passed the no-CRC instance vacuously; registering the check for CRC16 only states
+  its subject instead (agent decision D-T32).
+- **Unit**: U36 (stage U0 comments).
+- **Depends**: —
+- **Blast carried by**: SPEC E.8 count → GAP (SPEC, "Gaps").
+- **Kind**: test
+
+## tests/test_voc_algorithm.py
+
+### M.TEST_UNIT.326 Harness, shared FRAM builder, names, comments that state facts
+- **From**: A.U24.08 (`:28-29` `run`), A.U24.49 + M.TEST_HELP.057 (`make_fram_manager()`/`make_fram_manager_sharing()`
+  `:32-44` → the shared builder; the reboot rebuild `make_fram_manager(chip=chip)`), A.U10.37/A.U10.38 (`asy_crc_checks`,
+  `FRAMManager`), A.U24.73 (`Any`), A.U14.18 (sync-scope rule, held); adherence (`:12-13` comment points at other files'
+  comments instead of stating the fact; `:440`, `:445`, `:530-534` history wording and a `BACKLOG.md` pointer to an
+  entry that does not exist).
+- **Site**: `tests/test_voc_algorithm.py:1-45`, `:393-499` (the three FRAM tests), `:440-534`.
+- **Change**: imports `from _async_harness import run`; `from _fram_builders import make_fram_manager`; `from
+  asy_crc_checks import CRC32`; the local `run`, both builders, `AsyFramManager`/`SPI` imports and the `TYPE_CHECKING`
+  block go. `:12-13` → "# One FRAM chip type per test process: every SPI bus built here talks to a fake MB85RS64V." The
+  reboot test builds `manager, chip = make_fram_manager()` then `manager2, _ = make_fram_manager(chip=chip)`; each
+  manager's `setup()`, write and read run inside one coroutine per phase as today (no deferred work crosses a `run()`).
+  `write_into()` → `bool` and `read_into()` → `bool | None` (M.SRC_CORE plain-chunk shape): the `is True`/`is False`
+  assertions hold. Section header `:440` "Untested-but-safe conditions found during a deeper review pass" → "Negative
+  offsets and the uncalled tuning API"; `:445` "but previously untested; no real caller passes a negative offset" →
+  "no real caller passes a negative offset"; `:530-534` → "# No caller in this codebase uses it; kept as Sensirion-
+  mirroring API surface. A smoke test that it threads the values through and leaves the algorithm usable."
+- **Resolved**: —
+- **Unit**: U24 (stage U10 names).
+- **Depends**: M.TEST_HELP.043, .057; M.SRC_CORE.091 (plain chunk returns).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.327 Fix16 sentinels are INT32_MIN; the unbounded divide terminates
+- **From**: A.U12.11 (`:338-383` expectations; new overflow and termination cases).
+- **Site**: `tests/test_voc_algorithm.py:336-383`; new tests after `:383`.
+- **Change**: `:340`, `:348` and `:383` expect `-0x80000000` (C's `fix16_t` INT32_MIN), their `# _FIX16_*` notes kept.
+  `test_fix16_div_dividing_the_minimum_value_takes_the_shifted_quotient_branch`: `algo._fix16_div(-2147483648, 0x20000)
+  == -0x40000000`, comment → "# Dividing FIX16_MINIMUM by 2 drives divider to bit 31, the branch the divisions above
+  never reach." (the mod-2**32 paragraph goes). New `test_fix16_div_overflow_returns_the_overflow_sentinel`
+  (`_fix16_div(-2147483648, 1)` and `_fix16_div(0x7FFFFFFF, 1)` return `-0x80000000` — C's `if (!bit)` path);
+  `test_fix16_div_by_a_multiple_of_two_to_the_32_returns_at_once` (`_fix16_div(F16(1), -(1 << 32))` returns
+  `-0x80000000` — the wrapped divisor is 0 — instead of looping). The mul-overflow test (`:343-348`) is the "product
+  overflows" case.
+- **Resolved**: — (OR101.a approved the fix with a regression test; these are the pinned-defect tests OR12.a names,
+  adapted.)
+- **Unit**: U12.
+- **Depends**: M.SRC_SENS.015, .016.
+- **Blast carried by**: release-note line → A.U12.11 via U37 (DOCS); SPEC F.4 sentence → A.U12.15 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.328 Helper and whole-algorithm reference vectors
+- **From**: A.U12.12.
+- **Site**: new tests in `tests/test_voc_algorithm.py`; data in `tests/voc_reference_vectors.py` (M.TEST_UNIT.331).
+- **Change**: `test_fix16_helpers_match_the_c_reference_vectors` — for every tuple of the data module's `MUL`, `DIV`,
+  `SQRT`, `EXP` tables the port helper returns the recorded C value. `test_the_index_sequence_matches_the_c_reference`
+  — a fresh `VOCAlgorithm()` (`vocalgorithm_init()`) is fed the data module's `sraw_sequence()` (its documented LCG walk
+  inside 20001..52767 plus the out-of-range samples 0 and 65000); every 500th index equals the recorded value and the
+  CRC32 of the whole index list (computed with `asy_crc_checks.CRC32`) equals the recorded checksum. Length 20 000; if
+  the file then exceeds `scripts/test.sh`'s per-file budget at execution, 5 000 and the docstring says so (A.U12.12). If
+  the archived `Sensirion/embedded-sgp` source is unreachable at execution, the second test is not written and the gap
+  is reported "open until the source is available" (OR4.a) — never a skip.
+- **Resolved**: —
+- **Unit**: U12.
+- **Depends**: M.TEST_UNIT.327 (helpers match C first), M.TEST_UNIT.331.
+- **Blast carried by**: SPEC F.4 names the vector source → A.U12.15 (SPEC); licence entry → A.U34.04 (DOCS).
+- **Kind**: test
+
+### M.TEST_UNIT.329 The persisted state: little-endian, range-checked, clamped, never refusing its own
+- **From**: A.U12.14 (`:52` format; four new L1s), A.U12.13 (blast: the uptime-limit L1, placed here).
+- **Site**: `tests/test_voc_algorithm.py:51-52`; new tests after `:356`.
+- **Change**: `:52` → `struct.calcsize("<32q")` (still 256). New: `test_unpack_from_refuses_a_field_outside_int32`
+  (a valid packed buffer with one field set to `2**31` → `unpack_from()` is `False` and `params.__dict__` is unchanged);
+  `test_a_restored_uptime_above_the_small_int_limit_is_clamped` (`m_mean_variance_estimator_uptime_gamma` packed as
+  `F16(32766)` restores as `F16(16382)`, `…_uptime_gating` likewise); `test_pack_into_writes_little_endian` (a state with
+  known fields packed equals the bytes built by hand with `int.to_bytes(8, "little")` per field in the 32-field order);
+  `test_the_ports_own_state_always_restores` (the data module's `sraw_sequence()`, after every 500th sample `pack_into()`
+  → all 32 fields in −0x80000000..0x7FFFFFFF and `unpack_from()` of that buffer `True`);
+  `test_the_lowered_uptime_limit_leaves_the_output_unchanged` (two instances identical except both uptime fields at
+  `F16(32766)` in one and `F16(16382)` in the other, fed the same 2 000 post-blackout samples: identical indices and
+  identical `pack_into()` bytes apart from the two uptime fields).
+- **Resolved**: A.U12.13 writes its L1 without a file; `tests/test_voc_algorithm.py` is `voc_algorithm.py`'s L1 file
+  (agent decision D-T33).
+- **Unit**: U12.
+- **Depends**: M.SRC_SENS.015, .017; M.TEST_UNIT.331 (`sraw_sequence()`).
+- **Blast carried by**: A.U10.05's counter exemptions and uptime assertion → A.U12.13 (TSC); SPEC F.4 deviation sentence
+  → A.U12.15 (SPEC); `tests/test_asy_sgp40_driver.py:2262-2265` comment → M.TEST_UNIT.144 (this cluster).
+- **Kind**: test
+
+### M.TEST_UNIT.330 Out-of-window samples checked against a reference, not only their type
+- **From**: A.U24.39 (RF279, `:102`).
+- **Site**: `tests/test_voc_algorithm.py:96-107`.
+- **Change**: after 50 × 30000, `process(0)` and then `process(65535)` each return an index in 1-500 (comment cites the
+  SGP40 datasheet's VOC Index range 1-500) equal to what a second `VOCAlgorithm()` (initialised, same 50 × 30000) returns
+  for 30000 once and then once more — an out-of-window sample leaves the raw state as a repeat of the last valid one
+  would. The `isinstance` assertions go.
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: —
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/voc_reference_vectors.py (new)
+
+### M.TEST_UNIT.331 The C reference values as a data module
+- **From**: A.U12.12 (data module, generation, header), A.U34.04 (blast: the header cites the BSD-3-Clause source).
+- **Site**: new `tests/voc_reference_vectors.py`.
+- **Change**: generated once at execution by a throwaway host harness kept in the scratchpad, never committed: it
+  `#include`s `Sensirion/gas-index-algorithm`'s fixpoint `sensirion_gas_index_algorithm.c` (`fix16_mul`/`fix16_div`/
+  `fix16_sqrt`/`fix16_exp`, `:64-281`) built `-O0 -fwrapv`, and the archived `Sensirion/embedded-sgp`
+  `sgp40_voc_index/sensirion_voc_algorithm.c`. Contents: a 3-line docstring "Generated from Sensirion/gas-index-algorithm
+  <commit> fixpoint helpers and Sensirion/embedded-sgp <commit> (BSD-3-Clause), <date>; expected values, not the port's
+  output. Contains no Sensirion code."; tuple tables `MUL`, `DIV`, `SQRT`, `EXP` over zero, ±1, ±F16(1), INT32_MAX,
+  INT32_MIN, values around each overflow edge and 200 LCG pairs (seed and generator stated); `sraw_sequence()` building
+  the 20 000-sample walk from its stated LCG (no stored list); `INDEX_EVERY_500` and `INDEX_CRC32`. No `test_` names, so
+  `scripts/test.sh` imports it only through the test file; in `tests/` lint and type scope. If the embedded-sgp archive is
+  unreachable, `INDEX_EVERY_500`/`INDEX_CRC32` are absent and reported open (OR4.a).
+- **Resolved**: —
+- **Unit**: U12.
+- **Depends**: —
+- **Blast carried by**: `THIRD_PARTY_LICENSES.md` entry naming the file → A.U34.04 (DOCS); SPEC F.4 → A.U12.15 (SPEC).
+- **Kind**: test
+
+## tests/test_website_build_integration.py
+
+### M.TEST_UNIT.332 Imports, shared runner, typed Microdot, the service built from its three objects
+- **From**: A.U24.08 (`:37-38` `run`), A.U23.47 (`:27`, `:37` `Any`), A.U8.23 (`:16` ignore; the vendored stubs, OR131 —
+  firm), A.U28.28 (`:15` F401 `noqa` → `allowed-unused-imports`), A.U0.07 (`:45`, `:47` function-level imports), A.U27.03
+  (`:42-44` DeflateIO removal trigger), A.SDEP.08 (`:43` version-stamped claim), A.U5.04 + A.U19.05 (construction with
+  a static site), A.U19.06 (`:54` request carries `sock=`), A.SDEP.06/A.SDEP.07 (read: re-vendored Microdot and freezefs —
+  the dispatch and mount assertions hold), A.U36.517 (read: SPEC's description of this file holds).
+- **Site**: `tests/test_website_build_integration.py:1-60`.
+- **Change**: imports `import deflate`, `import io`, `import sys`; `sys.path.insert(0, "ext")` as today; `import
+  frozen_html  # type: ignore[import-not-found]  # mounts /html on import` (no `noqa`); `from microdot import Microdot,
+  Request` (no ignore); `from _async_harness import run`; `from _src_const import src_const`; `from _strict_json import
+  strict_loads`; `from _twin_devices import generated_devices`; `from asy_webserver_service import RouteSources,
+  ServingLimits, StaticSite, WebserverService`. The local `run`, `Coroutine`/`Any`/`TypeVar` go; `_ResponseBody` stays
+  under `TYPE_CHECKING`. `_decompress()` comment → "# send_file() streams from a file-like object; DeflateIO(AUTO) detects
+  the gzip header (<pin>). No `with` and an ignore: the stub declares neither __enter__/__exit__ nor a typed read() -
+  removal trigger: SPECIFICATION.md B.15." with `<pin>` the version the A.SDEP.08 re-check confirms. `_make_request()`
+  passes `sock=(_NoopHolder(), _NoopHolder())` (a file-local one-method `hold()` fake, as M.TEST_UNIT.196).
+  `_make_app()` builds `WebserverService(app, RouteSources([], [], None, None, None, None, [], [], []),
+  ServingLimits(<each field from its src/ default via src_const>), StaticSite("/html", "index.html", None))` and runs
+  `run(service.setup())`, unbounded like the file's dispatch calls.
+- **Resolved**: A.U23.47 retypes the local `run()`; A.U24.08 deletes it for the shared harness, whose `Coroutine` alias
+  carries the typing — the deletion is the end state. Test files do not import one another, so A.U19.05's "through
+  A.U5.04's helper" is the same three-object construction written here, not an import of `test_asy_webserver_service`'s
+  `_make_service()`.
+- **Unit**: U24 (stages U0 imports, U5 objects, U8/U0 stub re-vendor, U19 `sock`, U27 trigger, U28 noqa).
+- **Depends**: M.TEST_HELP.008 (`_strict_json`), .043, .044, .055 (`_twin_devices`);
+  M.SRC_NET (webserver construction, A.U5.04; `sock` holders, A.U19.06); M.GEN.050 (stubs).
+- **Blast carried by**: `pyproject.toml` `allowed-unused-imports` → A.U28.28 (CFG); SPEC B.15 list → A.U27.03 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.333 Device and bundle facts read from the build, not hand lists
+- **From**: A.U24.67 (three variant sites `:5`, `:77`, `:98`), A.U6.04 (blast: `:77` still true — generated definitions
+  are never served), A.U23.38 (`:109`, `:120-129` hand lists → derived from the bundle), A.U23.01/A.U23.02 (`:123`
+  marker rename), A.U23.07 (`:127` marker holds), A.U24.60 (`:97` → `strict_loads`); adherence (`:5-7`, `:135-137`,
+  `:144` describe the pre-A.U23.38 build and a debugging history).
+- **Site**: `tests/test_website_build_integration.py:5-7`, `:72-158`.
+- **Change**: `:5-7` → "# The real chain: html/ and js/ -> scripts/build_website.sh <first derived device> (staged by
+  scripts/_stage_website.py) -> / # frozen_modules/frozen_html.py -> `import frozen_html` (mount on import) ->
+  WebserverService. scripts/test.sh builds it / # first; the import mounts /html once per process." `:77`'s path list →
+  `("/style.css", "/definitions.json", *(f"/definitions/{d}.json" for d in generated_devices()))`; `:97` →
+  `strict_loads(body[start:end])`; `:98` → `== generated_devices()[0]` (the site `scripts/test.sh` builds is the first
+  derived device, M.SCR.039; both lists are the sorted TOML stems, the `zz_test_` fixtures sorting last). A helper
+  `_bundle_modules(body) -> list[str]` reads the module list from the bundle's banner line. `:101-111`: `/js/app.js` is
+  200 and every banner module other than `main.js` is 404 at `/js/<name>`. `:114-130` →
+  `test_bundled_js_carries_every_banner_module_and_no_local_imports`: each banner module has a non-empty `// ---- js/<name>
+  ----` section, the import/re-export line loop stays, and its comment → "# Nor an `export … from "./x.js"` re-export: the
+  bundle has no such path to resolve (scripts/_stage_website.py refuses one; this checks the served result)." `:144`
+  "(see scripts/build_website.sh)" → "(scripts/_stage_website.py)". `:154-158` holds.
+- **Resolved**: A.U23.02 renames the `fetchWithTimeout` marker "or derived from the bundle banner once A.U23.38 lands";
+  A.U23.38 lands the derivation, so the marker list goes and neither rename nor A.U23.07's hold has a site left. The
+  per-module check relies on the bundle keeping its `// ---- js/<file> ----` separators (today's format; A.U23.38 (3)
+  rewrites the banner, not the separators) — agent decision D-T34, carried as a gap to the staging script's owner.
+- **Unit**: U23 (stages U24 variant names and strict parsing, U6 hold).
+- **Depends**: M.TEST_UNIT.332; A.U23.38's `scripts/_stage_website.py` (WEB/SCR); M.SCR.039.
+- **Blast carried by**: the separator format → GAP (WEB/SCR, "Gaps").
+- **Kind**: test
+
+## Gaps for other clusters
+
+- **GAP-U1 (SRC_SENS)**: M.SRC_SENS.063's backup-age condition follows the register reading of A.U16.18 (G5/R31):
+  `cfg_values[1] > 0 and (age < 0 or age > 60 * cfg_values[1])` — a limit of 0 accepts any age, a negative age
+  expires. M.TEST_UNIT.138 pins it (agent decision D-T13).
+- **GAP-U2 (TSC)**: `tests_scripts/test_error_catalog.py` (A.U2.02) asserts that each of its keyword idioms (`errno=`,
+  `wrnno=`) matches at least once over `src/` — A.U24.50 (3)'s non-vacuity floor moves there with the L1 test it
+  hardened, which A.U2.02 removes (M.TEST_UNIT.157, D-T14).
+- **GAP-U3 (SRC_SENS)**: AC_NOTES 38 gives `NeopixelDriver` an `initialized` gate, but no merged product change adds it:
+  where it is set (`setup()`), and what `on()`/`off()`/`toggle()`/`led_signal()`/`request_signal()` answer before
+  `setup()`. M.TEST_UNIT.079 and the readiness L1 (M.TEST_UNIT.293) assert those answers once defined.
+- **GAP-U4 (SRC_SENS, observation)**: a stored config value outside the chip's domain (a stale file) makes
+  `_apply_stored_config()` return code 2 on its `ValueError`, which climbs to the controller rung and re-initialises the
+  bus; OR113's smallest-blast-radius rule suggests code 1 for that case. Tests assert whichever code the product keeps.
+- **GAP-U5 (SRC_NET)**: the captive DNS server's `_WRN_SOCKET_TEARDOWN = const(11)` collides with M.SRC_SENS.043's
+  catalog numbering (`DERIVED_DOMAIN` 11, `SOCKET_TEARDOWN` 12); the merged tests read `code("W", "SOCKET_TEARDOWN")`, so
+  the product constant follows the catalog.
+- **GAP-U6 (SRC_NET)**: per GAP-G8, `report_if_fatal()` is imported from `asy_print_log` in the networking modules; the
+  L1 tests reach it there (M.TEST_UNIT.292).
+- **GAP-U7 (TEST_HELP)**: `microtest`'s after-each hook resets `asy_base_classes._utc_valid = False` and the fatal-report
+  flag, so no test inherits another's sync or fatal state (conventions bullet "Timestamps before the first sync").
+- **GAP-U8 (TEST_HELP)**: `_ntp_frames.FakeNtpServer.serve_once()` returns `bool` (A.U35.15) and takes its port from
+  `PortAllocator` (M.TEST_HELP.056).
+- **GAP-U9 (SPEC)**: the Part N row for the notification loop's minimum sleep is `l1.asy_notification_service_next_sleep_min_ms
+  = 59000` (A.U8C2.02 writes `_s` = 59.0; A.U31.14 moves the unit to ms) — M.TEST_UNIT.091, D-T7.
+- **GAP-U10 (SPEC)**: SPEC E.8's "48 checks, 96 tests … Two are single-mode" for `tests/test_uart_comm_hazard.py`
+  follows the end-state registration (four single-mode checks after M.TEST_UNIT.319/.325, plus the new checks of
+  M.TEST_UNIT.319-.322); the sentence "The deployed link runs `CRC_Pass`" takes A.U0.40's "the dev wiring selects".
+- **GAP-U11 (WEB/SCR)**: `scripts/_stage_website.py` (A.U23.38) keeps writing one `// ---- js/<file> ----` separator per
+  bundled module after its derived banner; M.TEST_UNIT.333 reads both (D-T34).
+- Carried in, settled in this file (no further action elsewhere): GAP-T1-T6 (TEST_HELP), GAP-G3/G4/G5/G8/G11/G13
+  (SRC_CORE), GAP-2/5/6/15 (SRC_SENS), M_SRC_NET gap 5, M_GEN gaps 1 and 2, AC_NOTES 38/39/41 — each cited at its
+  merged change.
+
+## Adherence findings
+
+- Comments stating history, labels or dead pointers, fixed at their merged change: changelog labels in test comments
+  (`test_uart_comm_hazard.py:783` "(B17)" → M.TEST_UNIT.317; `:1225` A7 → .325); "until now"/"previously untested"/a
+  `BACKLOG.md` pointer to no entry (`test_voc_algorithm.py:440-534` → .326); a pointer to other files' comments instead
+  of the fact (`test_voc_algorithm.py:12-13` → .326); a debugging history (`test_website_build_integration.py:135-137`
+  → .333); `test_print_log.py:306-313` claimed `set_level()` clamps (→ .289); `test_asy_isl29125_driver.py:1018` named
+  index 4 wrongly (→ .062, D-T6); the errno helper's resync-warning premise (`test_uart_comm_hazard.py:553-555` → .318).
+- Vacuous or wrong-reason passes, fixed: the rxbuf refusal asserted only `_init_errno != 0`, which the new idle default
+  would satisfy through the timeout floor (→ .317); the byte-order check returned early without a CRC (→ .325, D-T32);
+  an ISL29125 fault injected at a point that no longer exists (→ .063, D-T5); notification `FlashDur 0.01` writes that
+  were refused as `Invalid` and never exercised the path (→ .089, D-T8).
+- Restated product values in tests, replaced by source reads: `_MAX_OVERRIDE_TIME` (→ .090, D-T9), the UART blind-resync
+  streak (→ .161, D-T15), ISL29125 register mirrors (→ .058, D-T4), the hazard file's seven errno copies (→ .318).
+- Allocation and heap-rate budgets in L1 files carry no Part N row where no U8C action tags them (G4/R54) — left to the B2
+  per-file pass (AC_NOTES 14); the UART hazard budgets are tagged (.316).
+- 23 L1 files carry no header docstring at all; CLAUDE.md's "exactly one header comment block" is read as a cap, not a
+  requirement — owner question 1, no change made.
+- Every merged change re-read against CLAUDE.md's test rules: real Unix port only; no `gc.collect()` outside measurement
+  baselines on A.U30.16's allow-list and no in-body `gc.threshold` (A.U30.12/.13); bounded fake pollers only; every
+  `asyncio.run()` driver at synchronous scope (the shared `run()` refuses nesting); no brute-force host I/O; inline
+  `method-assign` ignores only in tests; the four-tier bus-hazard rule for every bus-facing change (L1 here, L2-L4 carried
+  to TWIN/HW_DEV/HW_BENCH); pinned behaviour retired with its guard named (.157, .250, .294, .313); no test skipped or
+  disabled (the VOC whole-algorithm vectors are reported open, never skipped, if their source is unreachable — .328).
+
+## Owner questions
+
+1. **Header block on L1 test files without one.** 23 files in this cluster have no header docstring. CLAUDE.md says
+   "Every module gets exactly one header comment block … capped at 3 lines". (a) Read as a cap only — files without one
+   stay as they are (today's merged state). (b) Read as a requirement — each gets a ≤ 3-line docstring in U24, and
+   `tests_scripts/test_comment_block_cap.py` (or a sibling) checks presence. Consequence: (b) adds 23 small edits and a
+   gate; (a) leaves the rule's wording ambiguous.
+2. **Lead: `NotificationService`'s readiness gate.** AC_NOTES 38 says its `_finalized` guard counts as its gate, but
+   M.SRC_SENS.033 removes `_finalized` with `register()`/`finalize()` (A.U5.06: signals at construction). (a) Exempt it
+   by name like the protocol classes (it is fully built in `__init__`). (b) Give it an `initialized` gate set by
+   `setup()`. The readiness L1 row (M.TEST_UNIT.293) is written for whichever is chosen.
+
+## Agent decisions for the OR2.c review
+
+1. D-T1 — the lwIP host test (7) runs at the process's GC stage, no in-body threshold (M.TEST_UNIT.001).
+2. D-T2 — BMP3XX bound tables derived from the source schema (M.TEST_UNIT.015).
+3. D-T3 — no stored chip id: the observable effects (calibration, log, neighbour) are asserted (M.TEST_UNIT.008, .126).
+4. D-T4 — ISL29125 register mirrors read with `src_const`, so A.U8C.10's mirror tags have no literal (M.TEST_UNIT.058).
+5. D-T5 — the ISL29125 stored-state fault re-injected between read and store (M.TEST_UNIT.063).
+6. D-T6 — the ISL29125 `:1018` comment names index 4 as the span (M.TEST_UNIT.062).
+7. D-T7 — the notification minimum-sleep row in ms (M.TEST_UNIT.091; GAP-U9).
+8. D-T8 — `FlashDur 0.01` writes dropped as refused input (M.TEST_UNIT.089).
+9. D-T9 — `_MAX_OVERRIDE_TIME` read from source (M.TEST_UNIT.090).
+10. D-T10 — the NTP builder empties `DNSFallback` by default; recorder tests pass `None` (M.TEST_UNIT.095).
+11. D-T11 — the NTP lock-swallow test retires with `async with` (M.TEST_UNIT.110).
+12. D-T12 — SGP40 self-test status is not stored: the reset that follows is asserted (M.TEST_UNIT.126).
+13. D-T13 — SGP40 negative backup age per the A.U16.18 register reading (M.TEST_UNIT.138; GAP-U1).
+14. D-T14 — UART range-sweep tests retire for the L0 catalog check; the floor moves to L0 (M.TEST_UNIT.157; GAP-U2).
+15. D-T15 — the blind-resync streak read from source, not a tagged literal (M.TEST_UNIT.161).
+16. D-T16 — `make_uart()` pins poll 1/1 rather than per-test re-checks after A.U13.17 (M.TEST_UNIT.170).
+17. D-T17 — the UDP first-attempt row kept for its three surviving sites; the retry-cycle minimum derived (M.TEST_UNIT.187).
+18. D-T18 — the base-class lock-serialise rewrite superseded by the attribute's deletion (M.TEST_UNIT.223).
+19. D-T19 — per-topology recovery L1 in the generated bus-hazard file, split-session cases in the multi-device file
+    (M.TEST_UNIT.232).
+20. D-T20 — `_bad_ipv4_values()` stays in the captive-DNS test (four users) (M.TEST_UNIT.026, .241).
+21. D-T21 — deferred work never outlives a `run()` call: write and flush in one coroutine (Conventions; config, FRAM,
+    system tests).
+22. D-T22 — three config-manager tests retire with A.U11.17's class; guard `tests_scripts/test_config_schemas.py`
+    (M.TEST_UNIT.250).
+23. D-T23 — L1s for the new `checked_int/float/numeric` API (M.TEST_UNIT.251).
+24. D-T24 — the non-dict data test holds: the product keeps its `None` branch (M.TEST_UNIT.256).
+25. D-T25 — A.S0930.22 (2) gates at the lock and logger, `open()` being synchronous (M.TEST_UNIT.259).
+26. D-T26 — the no-autostart boot entry is executed too (M.TEST_UNIT.269).
+27. D-T27 — print-log both-busy read answers `None` (M.TEST_UNIT.291).
+28. D-T28 — the no-autostart entry is checked by `ast` for no `WDT` construction (M.TEST_UNIT.294).
+29. D-T29 — a failing starter is persisted and printed (M.TEST_UNIT.304).
+30. D-T30 — no UDP crossing tests: the UDP module keeps no tick site (M.TEST_UNIT.313).
+31. D-T31 — the hazard cancel/clear sweep stays file-local; M.TEST_UNIT.166's per-path sweeps stay (M.TEST_UNIT.322).
+32. D-T32 — the CRC byte-order check registered for CRC16 only (M.TEST_UNIT.325).
+33. D-T33 — A.U12.13's uptime-limit L1 placed in `tests/test_voc_algorithm.py` (M.TEST_UNIT.329).
+34. D-T34 — the bundle check reads the per-module separators (M.TEST_UNIT.333; GAP-U11).
+
+## Ledger
+
+Every action whose Site, Change or Blast names one of this cluster's 51 files (`site_index.json` plus the brief's grep),
+and every action merged here from another cluster's blast, one row each. "blast-only, holds (read)" marks an action whose
+text names the file only to state that it is unchanged; the M-ID is where that was re-checked.
+
+| action ID | merged into M-ID / dropped (reason) |
+|---|---|
+| A.U0.07 | M.TEST_UNIT.064, M.TEST_UNIT.065, M.TEST_UNIT.071, M.TEST_UNIT.153, M.TEST_UNIT.231, M.TEST_UNIT.239, M.TEST_UNIT.249, M.TEST_UNIT.288, M.TEST_UNIT.315, M.TEST_UNIT.332 |
+| A.U0.28 | M.TEST_UNIT.116, M.TEST_UNIT.126, M.TEST_UNIT.160, M.TEST_UNIT.207, M.TEST_UNIT.308 |
+| A.U0.29 | M.TEST_UNIT.200 |
+| A.U0.33 | blast-only, holds (read) at M.TEST_UNIT.233 |
+| A.U0.35 | M.TEST_UNIT.004, M.TEST_UNIT.167, M.TEST_UNIT.200, M.TEST_UNIT.211, M.TEST_UNIT.219, M.TEST_UNIT.230, M.TEST_UNIT.296 |
+| A.U0.38 | M.TEST_UNIT.040 |
+| A.U0.39 | M.TEST_UNIT.251 |
+| A.U0.40 | M.TEST_UNIT.049, M.TEST_UNIT.097, M.TEST_UNIT.315, M.TEST_UNIT.325 |
+| A.U1.25 | M.TEST_UNIT.014, M.TEST_UNIT.167, M.TEST_UNIT.199 |
+| A.U1.26 | M.TEST_UNIT.211 |
+| A.U2.02 | M.TEST_UNIT.157 |
+| A.U2.03 | M.TEST_UNIT.058, M.TEST_UNIT.153, M.TEST_UNIT.194 |
+| A.U2.05 | M.TEST_UNIT.290 |
+| A.U2.06 | M.TEST_UNIT.017, M.TEST_UNIT.061, M.TEST_UNIT.122, M.TEST_UNIT.125, M.TEST_UNIT.132, M.TEST_UNIT.147, M.TEST_UNIT.227, M.TEST_UNIT.279 |
+| A.U2.07 | M.TEST_UNIT.024, M.TEST_UNIT.077, M.TEST_UNIT.249, M.TEST_UNIT.253, M.TEST_UNIT.256, M.TEST_UNIT.258, M.TEST_UNIT.298 |
+| A.U2.08 | M.TEST_UNIT.284, M.TEST_UNIT.303, M.TEST_UNIT.308, M.TEST_UNIT.311 |
+| A.U2.09 | M.TEST_UNIT.031, M.TEST_UNIT.032, M.TEST_UNIT.033, M.TEST_UNIT.034, M.TEST_UNIT.036, M.TEST_UNIT.037, M.TEST_UNIT.041, M.TEST_UNIT.042, M.TEST_UNIT.043, M.TEST_UNIT.044, M.TEST_UNIT.045, M.TEST_UNIT.046, M.TEST_UNIT.265 |
+| A.U2.10 | M.TEST_UNIT.010, M.TEST_UNIT.014, M.TEST_UNIT.017, M.TEST_UNIT.021, M.TEST_UNIT.024 |
+| A.U2.11 | M.TEST_UNIT.116, M.TEST_UNIT.119, M.TEST_UNIT.279, M.TEST_UNIT.298 |
+| A.U2.12 | M.TEST_UNIT.060, M.TEST_UNIT.062, M.TEST_UNIT.065, M.TEST_UNIT.066, M.TEST_UNIT.067, M.TEST_UNIT.068, M.TEST_UNIT.069, M.TEST_UNIT.070, M.TEST_UNIT.071, M.TEST_UNIT.073, M.TEST_UNIT.077 |
+| A.U2.13 | M.TEST_UNIT.130, M.TEST_UNIT.136, M.TEST_UNIT.138, M.TEST_UNIT.142, M.TEST_UNIT.144 |
+| A.U2.14 | M.TEST_UNIT.217; holds (read) at M.TEST_UNIT.287 |
+| A.U2.15 | M.TEST_UNIT.102, M.TEST_UNIT.103, M.TEST_UNIT.105, M.TEST_UNIT.109, M.TEST_UNIT.110, M.TEST_UNIT.111, M.TEST_UNIT.113, M.TEST_UNIT.287; holds (read) at M.TEST_UNIT.284 |
+| A.U2.16 | M.TEST_UNIT.244, M.TEST_UNIT.246 |
+| A.U2.17 | M.TEST_UNIT.083, M.TEST_UNIT.086, M.TEST_UNIT.087, M.TEST_UNIT.089, M.TEST_UNIT.092 |
+| A.U2.18 | M.TEST_UNIT.005 |
+| A.U2.19 | M.TEST_UNIT.194, M.TEST_UNIT.202 |
+| A.U2.20 | M.TEST_UNIT.153, M.TEST_UNIT.155, M.TEST_UNIT.156, M.TEST_UNIT.158, M.TEST_UNIT.161, M.TEST_UNIT.162, M.TEST_UNIT.163, M.TEST_UNIT.164, M.TEST_UNIT.167, M.TEST_UNIT.172, M.TEST_UNIT.317, M.TEST_UNIT.318, M.TEST_UNIT.319, M.TEST_UNIT.321; holds (read) at M.TEST_UNIT.183 |
+| A.U3.01 | M.TEST_UNIT.036, M.TEST_UNIT.047, M.TEST_UNIT.066, M.TEST_UNIT.068, M.TEST_UNIT.070, M.TEST_UNIT.086, M.TEST_UNIT.092, M.TEST_UNIT.119, M.TEST_UNIT.156, M.TEST_UNIT.202, M.TEST_UNIT.290 |
+| A.U3.02 | M.TEST_UNIT.047, M.TEST_UNIT.091, M.TEST_UNIT.110, M.TEST_UNIT.111, M.TEST_UNIT.113, M.TEST_UNIT.136, M.TEST_UNIT.156, M.TEST_UNIT.158, M.TEST_UNIT.164, M.TEST_UNIT.217 |
+| A.U3.03 | M.TEST_UNIT.017, M.TEST_UNIT.061, M.TEST_UNIT.122, M.TEST_UNIT.132, M.TEST_UNIT.227, M.TEST_UNIT.279 |
+| A.U3.04 | M.TEST_UNIT.041, M.TEST_UNIT.044, M.TEST_UNIT.046, M.TEST_UNIT.265 |
+| A.U3.05 | M.TEST_UNIT.017, M.TEST_UNIT.024, M.TEST_UNIT.060, M.TEST_UNIT.063, M.TEST_UNIT.077, M.TEST_UNIT.086, M.TEST_UNIT.091, M.TEST_UNIT.113, M.TEST_UNIT.143, M.TEST_UNIT.218, M.TEST_UNIT.255 |
+| A.U3.06 | M.TEST_UNIT.284, M.TEST_UNIT.308 |
+| A.U3.07 | M.TEST_UNIT.218 |
+| A.U3.08 | M.TEST_UNIT.159, M.TEST_UNIT.161, M.TEST_UNIT.164, M.TEST_UNIT.318 |
+| A.U3.09 | M.TEST_UNIT.041, M.TEST_UNIT.135, M.TEST_UNIT.136, M.TEST_UNIT.138, M.TEST_UNIT.142 |
+| A.U3.11 | M.TEST_UNIT.202 |
+| A.U3.12 | M.TEST_UNIT.042, M.TEST_UNIT.087, M.TEST_UNIT.105, M.TEST_UNIT.202, M.TEST_UNIT.217, M.TEST_UNIT.244, M.TEST_UNIT.284, M.TEST_UNIT.287, M.TEST_UNIT.303 |
+| A.U3.14 | M.TEST_UNIT.066 |
+| A.U4.01 | M.TEST_UNIT.256, M.TEST_UNIT.258 |
+| A.U4.02 | M.TEST_UNIT.005, M.TEST_UNIT.019, M.TEST_UNIT.070, M.TEST_UNIT.084, M.TEST_UNIT.258; holds (read) at M.TEST_UNIT.212, M.TEST_UNIT.230, M.TEST_UNIT.296 |
+| A.U4.03 | M.TEST_UNIT.230 |
+| A.U4.04 | M.TEST_UNIT.120, M.TEST_UNIT.121, M.TEST_UNIT.298 |
+| A.U4.05 | M.TEST_UNIT.115 |
+| A.U4.06 | M.TEST_UNIT.024, M.TEST_UNIT.120, M.TEST_UNIT.249 |
+| A.U5.01 | M.TEST_UNIT.179, M.TEST_UNIT.292, M.TEST_UNIT.301 |
+| A.U5.02 | M.TEST_UNIT.005, M.TEST_UNIT.014, M.TEST_UNIT.017, M.TEST_UNIT.029, M.TEST_UNIT.039, M.TEST_UNIT.050, M.TEST_UNIT.078, M.TEST_UNIT.079, M.TEST_UNIT.082, M.TEST_UNIT.085, M.TEST_UNIT.095, M.TEST_UNIT.096, M.TEST_UNIT.099, M.TEST_UNIT.114, M.TEST_UNIT.179, M.TEST_UNIT.196, M.TEST_UNIT.210, M.TEST_UNIT.226, M.TEST_UNIT.243, M.TEST_UNIT.265, M.TEST_UNIT.284, M.TEST_UNIT.301, M.TEST_UNIT.302 |
+| A.U5.04 | M.TEST_UNIT.196, M.TEST_UNIT.295, M.TEST_UNIT.332 |
+| A.U5.05 | M.TEST_UNIT.196 |
+| A.U5.06 | M.TEST_UNIT.082, M.TEST_UNIT.083, M.TEST_UNIT.084, M.TEST_UNIT.085, M.TEST_UNIT.088, M.TEST_UNIT.092, M.TEST_UNIT.094, M.TEST_UNIT.276, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281 |
+| A.U5.07 | M.TEST_UNIT.210, M.TEST_UNIT.213, M.TEST_UNIT.274 |
+| A.U5.08 | M.TEST_UNIT.301, M.TEST_UNIT.311 |
+| A.U5.09 | M.TEST_UNIT.210, M.TEST_UNIT.274, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.295 |
+| A.U5.10 | M.TEST_UNIT.095, M.TEST_UNIT.110, M.TEST_UNIT.113, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.287, M.TEST_UNIT.295 |
+| A.U5.11 | M.TEST_UNIT.082, M.TEST_UNIT.125, M.TEST_UNIT.130, M.TEST_UNIT.135, M.TEST_UNIT.147, M.TEST_UNIT.225, M.TEST_UNIT.276, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281, M.TEST_UNIT.284 |
+| A.U5.12 | M.TEST_UNIT.154, M.TEST_UNIT.165, M.TEST_UNIT.179, M.TEST_UNIT.317; holds (read) at M.TEST_UNIT.226 |
+| A.U5.13 | blast-only, holds (`test_asy_fram_manager.py:2350-2389` reads `chunk.fram`, unchanged by the binding) |
+| A.U5.14 | M.TEST_UNIT.057 |
+| A.U5.15 | M.TEST_UNIT.095 |
+| A.U6.04 | M.TEST_UNIT.333 |
+| A.U6.29 | M.TEST_UNIT.212 |
+| A.U6.30 | M.TEST_UNIT.212 |
+| A.U8.02 | M.TEST_UNIT.236 |
+| A.U8.04 | M.TEST_UNIT.196 |
+| A.U8.06 | blast-only, holds (UART tunables: behaviour unchanged; the derived test sites are A.U8C2.51's Dependants) |
+| A.U8.07 | M.TEST_UNIT.007, M.TEST_UNIT.022, M.TEST_UNIT.114, M.TEST_UNIT.145 |
+| A.U8.08 | M.TEST_UNIT.305; holds (read) at M.TEST_UNIT.294 |
+| A.U8.09 | M.TEST_UNIT.104 |
+| A.U8.10 | M.TEST_UNIT.210, M.TEST_UNIT.214, M.TEST_UNIT.217 |
+| A.U8.11 | M.TEST_UNIT.240; holds (read) at M.TEST_UNIT.187, M.TEST_UNIT.247 |
+| A.U8.12 | blast-only, holds (read) at M.TEST_UNIT.309 |
+| A.U8.13 | M.TEST_UNIT.137 |
+| A.U8.14 | M.TEST_UNIT.323; holds (read) at M.TEST_UNIT.316; withdrawn at M.TEST_UNIT.207 |
+| A.U8.17 | M.TEST_UNIT.194, M.TEST_UNIT.205, M.TEST_UNIT.282 |
+| A.U8.23 | M.TEST_UNIT.194, M.TEST_UNIT.295, M.TEST_UNIT.332 |
+| A.U8C.03 | M.TEST_UNIT.153, M.TEST_UNIT.178, M.TEST_UNIT.315 |
+| A.U8C.05 | M.TEST_UNIT.019, M.TEST_UNIT.020 |
+| A.U8C.06 | M.TEST_UNIT.028 |
+| A.U8C.07 | M.TEST_UNIT.038 |
+| A.U8C.08 | M.TEST_UNIT.044 |
+| A.U8C.09 | M.TEST_UNIT.052, M.TEST_UNIT.168; holds (read) at M.TEST_UNIT.148 |
+| A.U8C.10 | M.TEST_UNIT.058 |
+| A.U8C.11 | M.TEST_UNIT.078 |
+| A.U8C.12 | M.TEST_UNIT.082, M.TEST_UNIT.088, M.TEST_UNIT.091, M.TEST_UNIT.092, M.TEST_UNIT.276, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281; withdrawn at M.TEST_UNIT.090 |
+| A.U8C.13 | M.TEST_UNIT.095, M.TEST_UNIT.099, M.TEST_UNIT.100, M.TEST_UNIT.103, M.TEST_UNIT.105, M.TEST_UNIT.106, M.TEST_UNIT.110, M.TEST_UNIT.113; withdrawn at M.TEST_UNIT.111 |
+| A.U8C.14 | M.TEST_UNIT.118 |
+| A.U8C.15 | M.TEST_UNIT.133 |
+| A.U8C.16 | M.TEST_UNIT.148, M.TEST_UNIT.168 |
+| A.U8C.17 | M.TEST_UNIT.153, M.TEST_UNIT.162 |
+| A.U8C.18 | M.TEST_UNIT.168; holds (read) at M.TEST_UNIT.148; withdrawn at M.TEST_UNIT.171 |
+| A.U8C.19 | M.TEST_UNIT.178; holds (read) at M.TEST_UNIT.153 |
+| A.U8C.20 | M.TEST_UNIT.187, M.TEST_UNIT.190 |
+| A.U8C.21 | M.TEST_UNIT.194 |
+| A.U8C.22 | M.TEST_UNIT.220 |
+| A.U8C.23 | M.TEST_UNIT.240 |
+| A.U8C.34 | M.TEST_UNIT.267 |
+| A.U8C.35 | M.TEST_UNIT.274 |
+| A.U8C.36 | M.TEST_UNIT.276 |
+| A.U8C.37 | M.TEST_UNIT.278 |
+| A.U8C.38 | M.TEST_UNIT.280 |
+| A.U8C.39 | M.TEST_UNIT.281 |
+| A.U8C.40 | M.TEST_UNIT.282 |
+| A.U8C.41 | M.TEST_UNIT.285 |
+| A.U8C.42 | M.TEST_UNIT.305, M.TEST_UNIT.309 |
+| A.U8C.43 | M.TEST_UNIT.316 |
+| A.U8C.120 | blast-only, holds (read) at M.TEST_UNIT.187, M.TEST_UNIT.214, M.TEST_UNIT.240, M.TEST_UNIT.284; withdrawn at M.TEST_UNIT.090 |
+| A.U8C2.02 | M.TEST_UNIT.090, M.TEST_UNIT.091 |
+| A.U8C2.03 | M.TEST_UNIT.098, M.TEST_UNIT.103, M.TEST_UNIT.105, M.TEST_UNIT.106; withdrawn at M.TEST_UNIT.111 |
+| A.U8C2.04 | M.TEST_UNIT.153, M.TEST_UNIT.162 |
+| A.U8C2.05 | M.TEST_UNIT.194 |
+| A.U8C2.06 | M.TEST_UNIT.220 |
+| A.U8C2.07 | M.TEST_UNIT.240 |
+| A.U8C2.13 | M.TEST_UNIT.282 |
+| A.U8C2.14 | M.TEST_UNIT.285 |
+| A.U8C2.15 | M.TEST_UNIT.316, M.TEST_UNIT.323 |
+| A.U8C2.50 | M.TEST_UNIT.168, M.TEST_UNIT.170 |
+| A.U8C2.51 | M.TEST_UNIT.309; holds (read) at M.TEST_UNIT.153, M.TEST_UNIT.168, M.TEST_UNIT.319 |
+| A.U9.01 | M.TEST_UNIT.089 |
+| A.U9.02 | M.TEST_UNIT.080, M.TEST_UNIT.277 |
+| A.U9.04 | M.TEST_UNIT.080 |
+| A.U9.05 | M.TEST_UNIT.080 |
+| A.U9.06 | M.TEST_UNIT.081 |
+| A.U9.07 | dropped (superseded by A.U17.27, M.SRC_SENS.021 Resolved) |
+| A.U9.08 | M.TEST_UNIT.082, M.TEST_UNIT.087 |
+| A.U9.09 | M.TEST_UNIT.090; holds (read) at M.TEST_UNIT.199 |
+| A.U9.10 | M.TEST_UNIT.086, M.TEST_UNIT.274, M.TEST_UNIT.275, M.TEST_UNIT.277 |
+| A.U10.01 | M.TEST_UNIT.224, M.TEST_UNIT.303 |
+| A.U10.02 | M.TEST_UNIT.225 |
+| A.U10.03 | M.TEST_UNIT.098, M.TEST_UNIT.099, M.TEST_UNIT.108, M.TEST_UNIT.211, M.TEST_UNIT.225, M.TEST_UNIT.308 |
+| A.U10.04 | M.TEST_UNIT.156, M.TEST_UNIT.161 |
+| A.U10.06 | M.TEST_UNIT.010, M.TEST_UNIT.017, M.TEST_UNIT.019, M.TEST_UNIT.022, M.TEST_UNIT.043, M.TEST_UNIT.061, M.TEST_UNIT.062, M.TEST_UNIT.091, M.TEST_UNIT.093, M.TEST_UNIT.097, M.TEST_UNIT.098, M.TEST_UNIT.105, M.TEST_UNIT.116, M.TEST_UNIT.122, M.TEST_UNIT.130, M.TEST_UNIT.131, M.TEST_UNIT.138, M.TEST_UNIT.215, M.TEST_UNIT.225, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281, M.TEST_UNIT.303; holds (read) at M.TEST_UNIT.283 |
+| A.U10.08 | blast-only, holds (read) at M.TEST_UNIT.294 |
+| A.U10.10 | M.TEST_UNIT.014, M.TEST_UNIT.017, M.TEST_UNIT.058, M.TEST_UNIT.060, M.TEST_UNIT.070, M.TEST_UNIT.077, M.TEST_UNIT.078, M.TEST_UNIT.079, M.TEST_UNIT.082, M.TEST_UNIT.085, M.TEST_UNIT.086, M.TEST_UNIT.095, M.TEST_UNIT.097, M.TEST_UNIT.102, M.TEST_UNIT.110, M.TEST_UNIT.113, M.TEST_UNIT.125, M.TEST_UNIT.147, M.TEST_UNIT.183, M.TEST_UNIT.211, M.TEST_UNIT.226, M.TEST_UNIT.229, M.TEST_UNIT.265, M.TEST_UNIT.276, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.295 |
+| A.U10.11 | M.TEST_UNIT.290 |
+| A.U10.12 | M.TEST_UNIT.019, M.TEST_UNIT.072, M.TEST_UNIT.118, M.TEST_UNIT.133, M.TEST_UNIT.304 |
+| A.U10.15 | M.TEST_UNIT.305, M.TEST_UNIT.307, M.TEST_UNIT.308 |
+| A.U10.17 | M.TEST_UNIT.224 |
+| A.U10.18 | M.TEST_UNIT.012, M.TEST_UNIT.016, M.TEST_UNIT.037, M.TEST_UNIT.038, M.TEST_UNIT.039, M.TEST_UNIT.052, M.TEST_UNIT.076, M.TEST_UNIT.079, M.TEST_UNIT.095, M.TEST_UNIT.109, M.TEST_UNIT.110, M.TEST_UNIT.148, M.TEST_UNIT.153, M.TEST_UNIT.166, M.TEST_UNIT.168, M.TEST_UNIT.214, M.TEST_UNIT.222, M.TEST_UNIT.233, M.TEST_UNIT.237, M.TEST_UNIT.249, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.286, M.TEST_UNIT.295, M.TEST_UNIT.322; holds (read) at M.TEST_UNIT.218 |
+| A.U10.20 | M.TEST_UNIT.213, M.TEST_UNIT.257 |
+| A.U10.21 | M.TEST_UNIT.008, M.TEST_UNIT.030, M.TEST_UNIT.054, M.TEST_UNIT.293; holds (read) at M.TEST_UNIT.290 |
+| A.U10.22 | M.TEST_UNIT.293 |
+| A.U10.23 | M.TEST_UNIT.309 |
+| A.U10.25 | M.TEST_UNIT.134, M.TEST_UNIT.212 |
+| A.U10.26 | M.TEST_UNIT.034, M.TEST_UNIT.189 |
+| A.U10.27 | M.TEST_UNIT.206; holds (read) at M.TEST_UNIT.300 |
+| A.U10.28 | M.TEST_UNIT.043, M.TEST_UNIT.089, M.TEST_UNIT.138, M.TEST_UNIT.225 |
+| A.U10.29 | M.TEST_UNIT.168, M.TEST_UNIT.282, M.TEST_UNIT.285; holds (read) at M.TEST_UNIT.025, M.TEST_UNIT.267 |
+| A.U10.30 | M.TEST_UNIT.064 |
+| A.U10.35 | M.TEST_UNIT.011, M.TEST_UNIT.012, M.TEST_UNIT.014, M.TEST_UNIT.016, M.TEST_UNIT.019, M.TEST_UNIT.020, M.TEST_UNIT.039, M.TEST_UNIT.043, M.TEST_UNIT.058, M.TEST_UNIT.059, M.TEST_UNIT.061, M.TEST_UNIT.065, M.TEST_UNIT.067, M.TEST_UNIT.068, M.TEST_UNIT.069, M.TEST_UNIT.071, M.TEST_UNIT.072, M.TEST_UNIT.073, M.TEST_UNIT.074, M.TEST_UNIT.076, M.TEST_UNIT.078, M.TEST_UNIT.079, M.TEST_UNIT.099, M.TEST_UNIT.100, M.TEST_UNIT.105, M.TEST_UNIT.106, M.TEST_UNIT.108, M.TEST_UNIT.110, M.TEST_UNIT.111, M.TEST_UNIT.114, M.TEST_UNIT.118, M.TEST_UNIT.121, M.TEST_UNIT.122, M.TEST_UNIT.125, M.TEST_UNIT.131, M.TEST_UNIT.135, M.TEST_UNIT.148, M.TEST_UNIT.154, M.TEST_UNIT.164, M.TEST_UNIT.179, M.TEST_UNIT.186, M.TEST_UNIT.210, M.TEST_UNIT.239, M.TEST_UNIT.249, M.TEST_UNIT.258, M.TEST_UNIT.260, M.TEST_UNIT.274, M.TEST_UNIT.276, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.288, M.TEST_UNIT.296, M.TEST_UNIT.298, M.TEST_UNIT.299, M.TEST_UNIT.301, M.TEST_UNIT.302, M.TEST_UNIT.307 |
+| A.U10.36 | M.TEST_UNIT.195, M.TEST_UNIT.311 |
+| A.U10.37 | M.TEST_UNIT.002, M.TEST_UNIT.007, M.TEST_UNIT.029, M.TEST_UNIT.030, M.TEST_UNIT.039, M.TEST_UNIT.050, M.TEST_UNIT.058, M.TEST_UNIT.078, M.TEST_UNIT.082, M.TEST_UNIT.085, M.TEST_UNIT.095, M.TEST_UNIT.114, M.TEST_UNIT.121, M.TEST_UNIT.153, M.TEST_UNIT.168, M.TEST_UNIT.178, M.TEST_UNIT.194, M.TEST_UNIT.210, M.TEST_UNIT.222, M.TEST_UNIT.239, M.TEST_UNIT.249, M.TEST_UNIT.260, M.TEST_UNIT.265, M.TEST_UNIT.267, M.TEST_UNIT.276, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.288, M.TEST_UNIT.294, M.TEST_UNIT.295, M.TEST_UNIT.301, M.TEST_UNIT.315, M.TEST_UNIT.326 |
+| A.U10.38 | M.TEST_UNIT.007, M.TEST_UNIT.025, M.TEST_UNIT.029, M.TEST_UNIT.039, M.TEST_UNIT.050, M.TEST_UNIT.078, M.TEST_UNIT.082, M.TEST_UNIT.095, M.TEST_UNIT.096, M.TEST_UNIT.102, M.TEST_UNIT.103, M.TEST_UNIT.153, M.TEST_UNIT.168, M.TEST_UNIT.178, M.TEST_UNIT.179, M.TEST_UNIT.186, M.TEST_UNIT.194, M.TEST_UNIT.210, M.TEST_UNIT.220, M.TEST_UNIT.222, M.TEST_UNIT.239, M.TEST_UNIT.260, M.TEST_UNIT.265, M.TEST_UNIT.267, M.TEST_UNIT.274, M.TEST_UNIT.276, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.288, M.TEST_UNIT.295, M.TEST_UNIT.301, M.TEST_UNIT.315, M.TEST_UNIT.326 |
+| A.U10.39 | M.TEST_UNIT.015, M.TEST_UNIT.112, M.TEST_UNIT.210, M.TEST_UNIT.212, M.TEST_UNIT.229 |
+| A.U10.40 | M.TEST_UNIT.014, M.TEST_UNIT.015, M.TEST_UNIT.016, M.TEST_UNIT.019, M.TEST_UNIT.067, M.TEST_UNIT.068, M.TEST_UNIT.070, M.TEST_UNIT.083, M.TEST_UNIT.084, M.TEST_UNIT.088, M.TEST_UNIT.089, M.TEST_UNIT.096, M.TEST_UNIT.097, M.TEST_UNIT.101, M.TEST_UNIT.106, M.TEST_UNIT.107, M.TEST_UNIT.112, M.TEST_UNIT.120, M.TEST_UNIT.121, M.TEST_UNIT.125, M.TEST_UNIT.134, M.TEST_UNIT.140, M.TEST_UNIT.195, M.TEST_UNIT.197, M.TEST_UNIT.199, M.TEST_UNIT.210, M.TEST_UNIT.276, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.296, M.TEST_UNIT.298, M.TEST_UNIT.299 |
+| A.U10.41 | M.TEST_UNIT.027, M.TEST_UNIT.028, M.TEST_UNIT.095, M.TEST_UNIT.101, M.TEST_UNIT.112, M.TEST_UNIT.206 |
+| A.U10.43 | M.TEST_UNIT.014, M.TEST_UNIT.068, M.TEST_UNIT.070, M.TEST_UNIT.072, M.TEST_UNIT.114, M.TEST_UNIT.118, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.284, M.TEST_UNIT.298 |
+| A.U10.44 | M.TEST_UNIT.019, M.TEST_UNIT.020, M.TEST_UNIT.022, M.TEST_UNIT.061, M.TEST_UNIT.072, M.TEST_UNIT.088, M.TEST_UNIT.090, M.TEST_UNIT.092, M.TEST_UNIT.094, M.TEST_UNIT.096, M.TEST_UNIT.099, M.TEST_UNIT.102, M.TEST_UNIT.105, M.TEST_UNIT.106, M.TEST_UNIT.108, M.TEST_UNIT.109, M.TEST_UNIT.110, M.TEST_UNIT.111, M.TEST_UNIT.118, M.TEST_UNIT.122, M.TEST_UNIT.141, M.TEST_UNIT.159, M.TEST_UNIT.179, M.TEST_UNIT.204, M.TEST_UNIT.211, M.TEST_UNIT.274, M.TEST_UNIT.276, M.TEST_UNIT.284, M.TEST_UNIT.285, M.TEST_UNIT.322 |
+| A.U10.45 | M.TEST_UNIT.054, M.TEST_UNIT.126; holds (read) at M.TEST_UNIT.123 |
+| A.U10.R01 | M.TEST_UNIT.015, M.TEST_UNIT.017, M.TEST_UNIT.022, M.TEST_UNIT.060, M.TEST_UNIT.061, M.TEST_UNIT.122, M.TEST_UNIT.132, M.TEST_UNIT.143, M.TEST_UNIT.218, M.TEST_UNIT.227; holds (read) at M.TEST_UNIT.279, M.TEST_UNIT.281 |
+| A.U11.01 | M.TEST_UNIT.284, M.TEST_UNIT.301, M.TEST_UNIT.303 |
+| A.U11.02 | M.TEST_UNIT.303 |
+| A.U11.03 | M.TEST_UNIT.301, M.TEST_UNIT.305, M.TEST_UNIT.309 |
+| A.U11.04 | M.TEST_UNIT.259 |
+| A.U11.05 | blast-only, holds (read) at M.TEST_UNIT.200, M.TEST_UNIT.301 |
+| A.U11.07 | M.TEST_UNIT.305, M.TEST_UNIT.310 |
+| A.U11.09 | M.TEST_UNIT.291 |
+| A.U11.10 | M.TEST_UNIT.309 |
+| A.U11.12 | M.TEST_UNIT.311 |
+| A.U11.13 | M.TEST_UNIT.226, M.TEST_UNIT.243, M.TEST_UNIT.289, M.TEST_UNIT.312 |
+| A.U11.15 | M.TEST_UNIT.096, M.TEST_UNIT.099, M.TEST_UNIT.211, M.TEST_UNIT.226, M.TEST_UNIT.243, M.TEST_UNIT.289, M.TEST_UNIT.302, M.TEST_UNIT.312 |
+| A.U11.16 | M.TEST_UNIT.288, M.TEST_UNIT.291 |
+| A.U11.17 | M.TEST_UNIT.250, M.TEST_UNIT.255; holds (read) at M.TEST_UNIT.229 |
+| A.U11.18 | M.TEST_UNIT.250 |
+| A.U11.19 | M.TEST_UNIT.229, M.TEST_UNIT.230, M.TEST_UNIT.249, M.TEST_UNIT.253, M.TEST_UNIT.257, M.TEST_UNIT.258 |
+| A.U11.20 | M.TEST_UNIT.254 |
+| A.U11.21 | M.TEST_UNIT.256 |
+| A.U11.22 | M.TEST_UNIT.257 |
+| A.U11.23 | M.TEST_UNIT.257, M.TEST_UNIT.258 |
+| A.U11.24 | M.TEST_UNIT.014, M.TEST_UNIT.015, M.TEST_UNIT.063, M.TEST_UNIT.084, M.TEST_UNIT.112, M.TEST_UNIT.138, M.TEST_UNIT.140, M.TEST_UNIT.212, M.TEST_UNIT.229, M.TEST_UNIT.256; holds (read) at M.TEST_UNIT.296, M.TEST_UNIT.311 |
+| A.U11.25 | M.TEST_UNIT.256 |
+| A.U11.26 | M.TEST_UNIT.003, M.TEST_UNIT.004, M.TEST_UNIT.005, M.TEST_UNIT.197 |
+| A.U11.27 | M.TEST_UNIT.230 |
+| A.U11.28 | M.TEST_UNIT.230, M.TEST_UNIT.257; holds (read) at M.TEST_UNIT.258 |
+| A.U11.29 | M.TEST_UNIT.255 |
+| A.U11.31 | M.TEST_UNIT.195, M.TEST_UNIT.200, M.TEST_UNIT.227, M.TEST_UNIT.243, M.TEST_UNIT.290, M.TEST_UNIT.291, M.TEST_UNIT.308 |
+| A.U11.32 | M.TEST_UNIT.250; holds (read) at M.TEST_UNIT.311 |
+| A.U11.39 | blast-only, holds (read) at M.TEST_UNIT.304 |
+| A.U11.S01 | blast-only, holds (read) at M.TEST_UNIT.251, M.TEST_UNIT.252, M.TEST_UNIT.298 |
+| A.U11.S02 | blast-only, holds (read) at M.TEST_UNIT.005, M.TEST_UNIT.179, M.TEST_UNIT.200, M.TEST_UNIT.226, M.TEST_UNIT.243 |
+| A.U11.S03 | M.TEST_UNIT.079, M.TEST_UNIT.085, M.TEST_UNIT.288, M.TEST_UNIT.289; holds (read) at M.TEST_UNIT.179, M.TEST_UNIT.195, M.TEST_UNIT.222 |
+| A.U12.01 | M.TEST_UNIT.261 |
+| A.U12.02 | M.TEST_UNIT.174, M.TEST_UNIT.262 |
+| A.U12.03 | M.TEST_UNIT.174 |
+| A.U12.04 | M.TEST_UNIT.261, M.TEST_UNIT.263 |
+| A.U12.05 | blast-only, holds (read) at M.TEST_UNIT.267 |
+| A.U12.06 | M.TEST_UNIT.270 |
+| A.U12.07 | M.TEST_UNIT.272 |
+| A.U12.08 | M.TEST_UNIT.017, M.TEST_UNIT.271 |
+| A.U12.09 | M.TEST_UNIT.271 |
+| A.U12.11 | M.TEST_UNIT.327 |
+| A.U12.12 | M.TEST_UNIT.328, M.TEST_UNIT.331 |
+| A.U12.13 | M.TEST_UNIT.329 |
+| A.U12.14 | M.TEST_UNIT.144, M.TEST_UNIT.329 |
+| A.U12.16 | M.TEST_UNIT.267 |
+| A.U12.17 | M.TEST_UNIT.268 |
+| A.U12.18 | M.TEST_UNIT.129, M.TEST_UNIT.142; holds (read) at M.TEST_UNIT.234 |
+| A.U13.01 | blast-only, holds (read) at M.TEST_UNIT.055 |
+| A.U13.03 | M.TEST_UNIT.033, M.TEST_UNIT.151 |
+| A.U13.05 | blast-only, holds (`test_asy_fram_wire_trace.py:3-5, 107-109` one `init` per CS cycle, unchanged) |
+| A.U13.07 | M.TEST_UNIT.013, M.TEST_UNIT.053; holds (read) at M.TEST_UNIT.234 |
+| A.U13.08 | M.TEST_UNIT.035, M.TEST_UNIT.044, M.TEST_UNIT.149, M.TEST_UNIT.151; holds (read) at M.TEST_UNIT.050 |
+| A.U13.09 | M.TEST_UNIT.009, M.TEST_UNIT.010, M.TEST_UNIT.035, M.TEST_UNIT.059, M.TEST_UNIT.116, M.TEST_UNIT.127, M.TEST_UNIT.129; holds (read) at M.TEST_UNIT.018, M.TEST_UNIT.234 |
+| A.U13.10 | M.TEST_UNIT.010, M.TEST_UNIT.055, M.TEST_UNIT.059, M.TEST_UNIT.074; holds (read) at M.TEST_UNIT.018, M.TEST_UNIT.234 |
+| A.U13.12 | M.TEST_UNIT.175 |
+| A.U13.13 | M.TEST_UNIT.173; holds (read) at M.TEST_UNIT.317 |
+| A.U13.14 | M.TEST_UNIT.176 |
+| A.U13.16 | M.TEST_UNIT.053, M.TEST_UNIT.149 |
+| A.U13.17 | M.TEST_UNIT.154, M.TEST_UNIT.170, M.TEST_UNIT.178, M.TEST_UNIT.315, M.TEST_UNIT.317 |
+| A.U13.18 | M.TEST_UNIT.176 |
+| A.U13.19 | M.TEST_UNIT.176 |
+| A.U13.R01 | M.TEST_UNIT.056 |
+| A.U13.R02 | M.TEST_UNIT.232, M.TEST_UNIT.238 |
+| A.U14.03 | M.TEST_UNIT.202 |
+| A.U14.10 | M.TEST_UNIT.081 |
+| A.U14.11 | M.TEST_UNIT.253 |
+| A.U14.17 | M.TEST_UNIT.056 |
+| A.U14.18 | M.TEST_UNIT.326 |
+| A.U14.19 | M.TEST_UNIT.291 |
+| A.U14.26 | M.TEST_UNIT.043, M.TEST_UNIT.093, M.TEST_UNIT.098, M.TEST_UNIT.104, M.TEST_UNIT.107, M.TEST_UNIT.215; holds (read) at M.TEST_UNIT.303 |
+| A.U14.28 | M.TEST_UNIT.072, M.TEST_UNIT.103, M.TEST_UNIT.107; holds (read) at M.TEST_UNIT.313 |
+| A.U14.31 | blast-only, holds (read) at M.TEST_UNIT.173 |
+| A.U14.32 | M.TEST_UNIT.313 |
+| A.U14.33 | M.TEST_UNIT.313 |
+| A.U14.34 | M.TEST_UNIT.059, M.TEST_UNIT.160, M.TEST_UNIT.314; holds (read) at M.TEST_UNIT.093 |
+| A.U15.01 | M.TEST_UNIT.116, M.TEST_UNIT.117, M.TEST_UNIT.124; holds (read) at M.TEST_UNIT.115, M.TEST_UNIT.234, M.TEST_UNIT.278, M.TEST_UNIT.280 |
+| A.U15.03 | M.TEST_UNIT.118 |
+| A.U15.07 | M.TEST_UNIT.115 |
+| A.U15.09 | M.TEST_UNIT.120 |
+| A.U15.12 | M.TEST_UNIT.114, M.TEST_UNIT.120, M.TEST_UNIT.121, M.TEST_UNIT.122, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.284, M.TEST_UNIT.298; holds (read) at M.TEST_UNIT.234 |
+| A.U15.13 | M.TEST_UNIT.126, M.TEST_UNIT.129, M.TEST_UNIT.145; holds (read) at M.TEST_UNIT.234 |
+| A.U15.14 | M.TEST_UNIT.128, M.TEST_UNIT.130, M.TEST_UNIT.135 |
+| A.U15.15 | M.TEST_UNIT.127, M.TEST_UNIT.233, M.TEST_UNIT.235 |
+| A.U15.16 | blast-only, holds (the SGP40 skip tests hold; value-wiring stays required) |
+| A.U15.17 | M.TEST_UNIT.131, M.TEST_UNIT.136, M.TEST_UNIT.137, M.TEST_UNIT.138, M.TEST_UNIT.140, M.TEST_UNIT.143 |
+| A.U15.18 | M.TEST_UNIT.136 |
+| A.U15.19 | M.TEST_UNIT.125, M.TEST_UNIT.130, M.TEST_UNIT.139; holds (read) at M.TEST_UNIT.280, M.TEST_UNIT.281 |
+| A.U15.20 | M.TEST_UNIT.133 |
+| A.U15.21 | M.TEST_UNIT.134 |
+| A.U15.22 | M.TEST_UNIT.017, M.TEST_UNIT.062, M.TEST_UNIT.063, M.TEST_UNIT.064, M.TEST_UNIT.116, M.TEST_UNIT.122 |
+| A.U15.23 | M.TEST_UNIT.015 |
+| A.U15.24 | M.TEST_UNIT.017 |
+| A.U15.25 | M.TEST_UNIT.008, M.TEST_UNIT.010, M.TEST_UNIT.234; holds (read) at M.TEST_UNIT.231 |
+| A.U15.26 | M.TEST_UNIT.014 |
+| A.U15.27 | M.TEST_UNIT.011, M.TEST_UNIT.023 |
+| A.U15.28 | M.TEST_UNIT.058, M.TEST_UNIT.114, M.TEST_UNIT.233 |
+| A.U15.29 | M.TEST_UNIT.062, M.TEST_UNIT.069 |
+| A.U15.30 | M.TEST_UNIT.059 |
+| A.U15.31 | M.TEST_UNIT.069 |
+| A.U15.32 | M.TEST_UNIT.065; holds (read) at M.TEST_UNIT.234 |
+| A.U15.33 | M.TEST_UNIT.068, M.TEST_UNIT.076; holds (read) at M.TEST_UNIT.234 |
+| A.U15.34 | M.TEST_UNIT.060 |
+| A.U15.35 | M.TEST_UNIT.059, M.TEST_UNIT.065, M.TEST_UNIT.071 |
+| A.U15.36 | M.TEST_UNIT.062, M.TEST_UNIT.072 |
+| A.U15.38 | M.TEST_UNIT.070, M.TEST_UNIT.075 |
+| A.U15.40 | M.TEST_UNIT.012, M.TEST_UNIT.020, M.TEST_UNIT.072, M.TEST_UNIT.125, M.TEST_UNIT.228 |
+| A.U15.41 | M.TEST_UNIT.019, M.TEST_UNIT.072, M.TEST_UNIT.118, M.TEST_UNIT.133, M.TEST_UNIT.143, M.TEST_UNIT.228 |
+| A.U15.43 | M.TEST_UNIT.022, M.TEST_UNIT.061, M.TEST_UNIT.122, M.TEST_UNIT.141 |
+| A.U15.R01 | M.TEST_UNIT.122, M.TEST_UNIT.238; holds (read) at M.TEST_UNIT.279 |
+| A.U15.R02 | M.TEST_UNIT.132, M.TEST_UNIT.143, M.TEST_UNIT.146, M.TEST_UNIT.238 |
+| A.U15.R03 | M.TEST_UNIT.015, M.TEST_UNIT.017; holds (read) at M.TEST_UNIT.009 |
+| A.U15.R04 | M.TEST_UNIT.060, M.TEST_UNIT.061, M.TEST_UNIT.066 |
+| A.U15.R05 | M.TEST_UNIT.065 |
+| A.U15.S01 | M.TEST_UNIT.059, M.TEST_UNIT.076; holds (read) at M.TEST_UNIT.234 |
+| A.U16.01 | M.TEST_UNIT.040 |
+| A.U16.04 | M.TEST_UNIT.035 |
+| A.U16.05 | M.TEST_UNIT.039, M.TEST_UNIT.153, M.TEST_UNIT.158, M.TEST_UNIT.222, M.TEST_UNIT.223, M.TEST_UNIT.260, M.TEST_UNIT.267, M.TEST_UNIT.288; holds (read) at M.TEST_UNIT.029 |
+| A.U16.06 | M.TEST_UNIT.041, M.TEST_UNIT.045, M.TEST_UNIT.291; holds (read) at M.TEST_UNIT.050 |
+| A.U16.08 | M.TEST_UNIT.041 |
+| A.U16.09 | M.TEST_UNIT.029, M.TEST_UNIT.041, M.TEST_UNIT.049, M.TEST_UNIT.050 |
+| A.U16.10 | M.TEST_UNIT.033 |
+| A.U16.11 | M.TEST_UNIT.051 |
+| A.U16.12 | M.TEST_UNIT.049, M.TEST_UNIT.050 |
+| A.U16.13 | M.TEST_UNIT.040 |
+| A.U16.14 | M.TEST_UNIT.266 |
+| A.U16.15 | M.TEST_UNIT.031 |
+| A.U16.16 | blast-only, holds (read) at M.TEST_UNIT.033 |
+| A.U16.17 | M.TEST_UNIT.048 |
+| A.U16.18 | M.TEST_UNIT.043, M.TEST_UNIT.050, M.TEST_UNIT.136, M.TEST_UNIT.138, M.TEST_UNIT.265, M.TEST_UNIT.283 |
+| A.U16.19 | M.TEST_UNIT.042, M.TEST_UNIT.079, M.TEST_UNIT.085, M.TEST_UNIT.183, M.TEST_UNIT.222, M.TEST_UNIT.288 |
+| A.U16.21 | M.TEST_UNIT.050 |
+| A.U16.22 | M.TEST_UNIT.045; holds (read) at M.TEST_UNIT.030, M.TEST_UNIT.042 |
+| A.U16.23 | M.TEST_UNIT.045 |
+| A.U16.R01 | M.TEST_UNIT.032; holds (read) at M.TEST_UNIT.050 |
+| A.U16.R02 | M.TEST_UNIT.031; holds (read) at M.TEST_UNIT.050 |
+| A.U16.R03 | M.TEST_UNIT.032, M.TEST_UNIT.034, M.TEST_UNIT.048; holds (read) at M.TEST_UNIT.291 |
+| A.U16.S01 | blast-only, holds (typing of the FRAM manager tests unchanged) |
+| A.U17.01 | M.TEST_UNIT.163 |
+| A.U17.02 | M.TEST_UNIT.163 |
+| A.U17.05 | M.TEST_UNIT.323 |
+| A.U17.06 | M.TEST_UNIT.160 |
+| A.U17.07 | M.TEST_UNIT.182 |
+| A.U17.12 | blast-only, holds (read) at M.TEST_UNIT.160, M.TEST_UNIT.320 |
+| A.U17.13 | M.TEST_UNIT.156, M.TEST_UNIT.176, M.TEST_UNIT.319 |
+| A.U17.14 | M.TEST_UNIT.156, M.TEST_UNIT.161 |
+| A.U17.15 | blast-only, holds (read) at M.TEST_UNIT.319 |
+| A.U17.16 | M.TEST_UNIT.320; holds (read) at M.TEST_UNIT.160 |
+| A.U17.17 | M.TEST_UNIT.159 |
+| A.U17.18 | blast-only, holds (`.uart` attribute reads stay) |
+| A.U17.19 | M.TEST_UNIT.180 |
+| A.U17.20 | M.TEST_UNIT.155, M.TEST_UNIT.159; holds (read) at M.TEST_UNIT.178 |
+| A.U17.22 | M.TEST_UNIT.155, M.TEST_UNIT.176, M.TEST_UNIT.268 |
+| A.U17.23 | M.TEST_UNIT.322 |
+| A.U17.24 | M.TEST_UNIT.320, M.TEST_UNIT.321 |
+| A.U17.25 | M.TEST_UNIT.322 |
+| A.U17.27 | M.TEST_UNIT.078, M.TEST_UNIT.274, M.TEST_UNIT.276, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281 |
+| A.U17.28 | M.TEST_UNIT.172 |
+| A.U17.29 | M.TEST_UNIT.180 |
+| A.U18.01 | M.TEST_UNIT.219, M.TEST_UNIT.242 |
+| A.U18.02 | M.TEST_UNIT.242 |
+| A.U18.03 | M.TEST_UNIT.244 |
+| A.U18.04 | blast-only, holds (read) at M.TEST_UNIT.244 |
+| A.U18.05 | M.TEST_UNIT.187, M.TEST_UNIT.189, M.TEST_UNIT.220 |
+| A.U18.06 | M.TEST_UNIT.244, M.TEST_UNIT.245, M.TEST_UNIT.247 |
+| A.U18.07 | M.TEST_UNIT.246 |
+| A.U18.08 | M.TEST_UNIT.026, M.TEST_UNIT.241, M.TEST_UNIT.285 |
+| A.U18.09 | M.TEST_UNIT.027, M.TEST_UNIT.028 |
+| A.U18.10 | M.TEST_UNIT.025, M.TEST_UNIT.028, M.TEST_UNIT.095, M.TEST_UNIT.096, M.TEST_UNIT.097, M.TEST_UNIT.101, M.TEST_UNIT.102, M.TEST_UNIT.109, M.TEST_UNIT.112, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.286, M.TEST_UNIT.287, M.TEST_UNIT.295 |
+| A.U18.11 | M.TEST_UNIT.025, M.TEST_UNIT.095, M.TEST_UNIT.111, M.TEST_UNIT.282, M.TEST_UNIT.285 |
+| A.U18.12 | M.TEST_UNIT.025, M.TEST_UNIT.095, M.TEST_UNIT.111, M.TEST_UNIT.186, M.TEST_UNIT.220, M.TEST_UNIT.239, M.TEST_UNIT.282, M.TEST_UNIT.285 |
+| A.U18.13 | M.TEST_UNIT.025, M.TEST_UNIT.103, M.TEST_UNIT.111, M.TEST_UNIT.187, M.TEST_UNIT.188, M.TEST_UNIT.190, M.TEST_UNIT.282, M.TEST_UNIT.285 |
+| A.U18.14 | M.TEST_UNIT.103, M.TEST_UNIT.191 |
+| A.U18.15 | M.TEST_UNIT.025, M.TEST_UNIT.028, M.TEST_UNIT.102, M.TEST_UNIT.103, M.TEST_UNIT.246, M.TEST_UNIT.286; holds (read) at M.TEST_UNIT.239 |
+| A.U18.16 | M.TEST_UNIT.103; holds (read) at M.TEST_UNIT.191 |
+| A.U18.17 | M.TEST_UNIT.189 |
+| A.U18.20 | M.TEST_UNIT.106 |
+| A.U18.21 | M.TEST_UNIT.097, M.TEST_UNIT.100, M.TEST_UNIT.111 |
+| A.U18.23 | M.TEST_UNIT.099 |
+| A.U18.24 | M.TEST_UNIT.211, M.TEST_UNIT.216 |
+| A.U18.25 | M.TEST_UNIT.107 |
+| A.U18.26 | M.TEST_UNIT.107 |
+| A.U18.27 | M.TEST_UNIT.215, M.TEST_UNIT.217 |
+| A.U18.28 | M.TEST_UNIT.216 |
+| A.U18.29 | M.TEST_UNIT.216 |
+| A.U18.30 | M.TEST_UNIT.213 |
+| A.U18.31 | M.TEST_UNIT.213 |
+| A.U18.32 | M.TEST_UNIT.214, M.TEST_UNIT.219 |
+| A.U18.33 | M.TEST_UNIT.215, M.TEST_UNIT.282, M.TEST_UNIT.286; holds (read) at M.TEST_UNIT.102 |
+| A.U18.34 | M.TEST_UNIT.286 |
+| A.U18.36 | M.TEST_UNIT.217, M.TEST_UNIT.219 |
+| A.U18.37 | M.TEST_UNIT.212 |
+| A.U18.38 | M.TEST_UNIT.295 |
+| A.U18.39 | M.TEST_UNIT.212 |
+| A.U18.40 | M.TEST_UNIT.210, M.TEST_UNIT.213, M.TEST_UNIT.274, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.295 |
+| A.U18.41 | M.TEST_UNIT.212 |
+| A.U18.42 | M.TEST_UNIT.215 |
+| A.U18.43 | blast-only, holds (read) at M.TEST_UNIT.216 |
+| A.U18.45 | M.TEST_UNIT.025, M.TEST_UNIT.028 |
+| A.U18.46 | M.TEST_UNIT.192 |
+| A.U18.R01 | M.TEST_UNIT.218 |
+| A.U19.01 | M.TEST_UNIT.197, M.TEST_UNIT.296 |
+| A.U19.02 | M.TEST_UNIT.199, M.TEST_UNIT.251 |
+| A.U19.03 | M.TEST_UNIT.199 |
+| A.U19.04 | M.TEST_UNIT.198 |
+| A.U19.05 | M.TEST_UNIT.195, M.TEST_UNIT.206, M.TEST_UNIT.332 |
+| A.U19.06 | M.TEST_UNIT.196, M.TEST_UNIT.202, M.TEST_UNIT.332; holds (read) at M.TEST_UNIT.297 |
+| A.U19.07 | M.TEST_UNIT.203; holds (read) at M.TEST_UNIT.195 |
+| A.U19.08 | M.TEST_UNIT.202 |
+| A.U19.09 | M.TEST_UNIT.204 |
+| A.U19.11 | M.TEST_UNIT.206 |
+| A.U19.12 | M.TEST_UNIT.201; holds (read) at M.TEST_UNIT.230 |
+| A.U19.15 | M.TEST_UNIT.003, M.TEST_UNIT.206, M.TEST_UNIT.296; holds (read) at M.TEST_UNIT.230 |
+| A.U19.16 | M.TEST_UNIT.070, M.TEST_UNIT.084 |
+| A.U19.17 | blast-only, holds (read) at M.TEST_UNIT.194 |
+| A.U19.20 | M.TEST_UNIT.207 |
+| A.U19.23 | M.TEST_UNIT.208 |
+| A.U19.24 | M.TEST_UNIT.208 |
+| A.U20.02 | blast-only, holds (read) at M.TEST_UNIT.294 |
+| A.U20.06 | M.TEST_UNIT.090, M.TEST_UNIT.284, M.TEST_UNIT.309; holds (read) at M.TEST_UNIT.216 |
+| A.U20.08 | blast-only, holds (names `test_asy_i2c_driver.py` as an unchanged reader) |
+| A.U20.10 | blast-only, holds (grep "tell which" in `test_asy_fram_driver.py`: none) |
+| A.U20.38 | M.TEST_UNIT.243 |
+| A.U21.13 | M.TEST_UNIT.001 |
+| A.U22.01 | M.TEST_UNIT.079, M.TEST_UNIT.080; holds (read) at M.TEST_UNIT.306, M.TEST_UNIT.308 |
+| A.U22.02 | M.TEST_UNIT.086, M.TEST_UNIT.087 |
+| A.U22.03 | dropped (withdrawn: nothing to merge, M.TEST_UNIT.090) |
+| A.U22.04 | M.TEST_UNIT.078, M.TEST_UNIT.082, M.TEST_UNIT.084, M.TEST_UNIT.274, M.TEST_UNIT.276 |
+| A.U23.01 | M.TEST_UNIT.333 |
+| A.U23.02 | M.TEST_UNIT.333 |
+| A.U23.07 | M.TEST_UNIT.333 |
+| A.U23.37 | M.TEST_UNIT.086, M.TEST_UNIT.087 |
+| A.U23.38 | M.TEST_UNIT.333 |
+| A.U23.47 | M.TEST_UNIT.332 |
+| A.U24.01 | M.TEST_UNIT.002, M.TEST_UNIT.007, M.TEST_UNIT.015, M.TEST_UNIT.039, M.TEST_UNIT.052, M.TEST_UNIT.058, M.TEST_UNIT.095, M.TEST_UNIT.104, M.TEST_UNIT.112, M.TEST_UNIT.124, M.TEST_UNIT.140, M.TEST_UNIT.153, M.TEST_UNIT.210, M.TEST_UNIT.222, M.TEST_UNIT.233, M.TEST_UNIT.265, M.TEST_UNIT.282, M.TEST_UNIT.285 |
+| A.U24.02 | M.TEST_UNIT.315, M.TEST_UNIT.318 |
+| A.U24.04 | M.TEST_UNIT.001, M.TEST_UNIT.300 |
+| A.U24.07 | M.TEST_UNIT.019, M.TEST_UNIT.058, M.TEST_UNIT.072, M.TEST_UNIT.077, M.TEST_UNIT.118, M.TEST_UNIT.304; holds (read) at M.TEST_UNIT.207, M.TEST_UNIT.301 |
+| A.U24.08 | M.TEST_UNIT.001, M.TEST_UNIT.002, M.TEST_UNIT.007, M.TEST_UNIT.020, M.TEST_UNIT.022, M.TEST_UNIT.025, M.TEST_UNIT.029, M.TEST_UNIT.030, M.TEST_UNIT.039, M.TEST_UNIT.050, M.TEST_UNIT.052, M.TEST_UNIT.058, M.TEST_UNIT.061, M.TEST_UNIT.072, M.TEST_UNIT.078, M.TEST_UNIT.082, M.TEST_UNIT.095, M.TEST_UNIT.096, M.TEST_UNIT.114, M.TEST_UNIT.168, M.TEST_UNIT.178, M.TEST_UNIT.194, M.TEST_UNIT.210, M.TEST_UNIT.222, M.TEST_UNIT.231, M.TEST_UNIT.233, M.TEST_UNIT.239, M.TEST_UNIT.249, M.TEST_UNIT.260, M.TEST_UNIT.265, M.TEST_UNIT.267, M.TEST_UNIT.274, M.TEST_UNIT.276, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.288, M.TEST_UNIT.295, M.TEST_UNIT.301, M.TEST_UNIT.315, M.TEST_UNIT.326, M.TEST_UNIT.332 |
+| A.U24.09 | M.TEST_UNIT.212 |
+| A.U24.15 | M.TEST_UNIT.168, M.TEST_UNIT.169, M.TEST_UNIT.178 |
+| A.U24.16 | M.TEST_UNIT.264 |
+| A.U24.17 | M.TEST_UNIT.264 |
+| A.U24.18 | M.TEST_UNIT.195 |
+| A.U24.19 | M.TEST_UNIT.215 |
+| A.U24.20 | M.TEST_UNIT.007, M.TEST_UNIT.052, M.TEST_UNIT.058, M.TEST_UNIT.114, M.TEST_UNIT.125, M.TEST_UNIT.231, M.TEST_UNIT.264 |
+| A.U24.21 | M.TEST_UNIT.053, M.TEST_UNIT.054 |
+| A.U24.22 | M.TEST_UNIT.030, M.TEST_UNIT.048 |
+| A.U24.23 | M.TEST_UNIT.050, M.TEST_UNIT.150 |
+| A.U24.24 | M.TEST_UNIT.264 |
+| A.U24.25 | M.TEST_UNIT.081 |
+| A.U24.26 | M.TEST_UNIT.264 |
+| A.U24.27 | M.TEST_UNIT.231; holds (read) at M.TEST_UNIT.037 |
+| A.U24.28 | M.TEST_UNIT.231 |
+| A.U24.29 | M.TEST_UNIT.146 |
+| A.U24.31 | M.TEST_UNIT.153, M.TEST_UNIT.178 |
+| A.U24.32 | M.TEST_UNIT.015, M.TEST_UNIT.217, M.TEST_UNIT.304; holds (read) at M.TEST_UNIT.213 |
+| A.U24.33 | M.TEST_UNIT.028, M.TEST_UNIT.192 |
+| A.U24.36 | M.TEST_UNIT.207 |
+| A.U24.38 | M.TEST_UNIT.008, M.TEST_UNIT.009, M.TEST_UNIT.054, M.TEST_UNIT.075, M.TEST_UNIT.126, M.TEST_UNIT.127, M.TEST_UNIT.149, M.TEST_UNIT.152, M.TEST_UNIT.213, M.TEST_UNIT.230, M.TEST_UNIT.289 |
+| A.U24.39 | M.TEST_UNIT.038, M.TEST_UNIT.079, M.TEST_UNIT.096, M.TEST_UNIT.183, M.TEST_UNIT.223, M.TEST_UNIT.243, M.TEST_UNIT.261, M.TEST_UNIT.270, M.TEST_UNIT.290, M.TEST_UNIT.330 |
+| A.U24.40 | M.TEST_UNIT.300 |
+| A.U24.41 | M.TEST_UNIT.202, M.TEST_UNIT.244 |
+| A.U24.42 | M.TEST_UNIT.029, M.TEST_UNIT.104, M.TEST_UNIT.298 |
+| A.U24.44 | M.TEST_UNIT.282, M.TEST_UNIT.285 |
+| A.U24.45 | M.TEST_UNIT.165, M.TEST_UNIT.183, M.TEST_UNIT.210 |
+| A.U24.46 | M.TEST_UNIT.231 |
+| A.U24.49 | M.TEST_UNIT.007, M.TEST_UNIT.017, M.TEST_UNIT.029, M.TEST_UNIT.039, M.TEST_UNIT.058, M.TEST_UNIT.072, M.TEST_UNIT.082, M.TEST_UNIT.091, M.TEST_UNIT.093, M.TEST_UNIT.095, M.TEST_UNIT.099, M.TEST_UNIT.104, M.TEST_UNIT.106, M.TEST_UNIT.111, M.TEST_UNIT.114, M.TEST_UNIT.118, M.TEST_UNIT.121, M.TEST_UNIT.124, M.TEST_UNIT.125, M.TEST_UNIT.133, M.TEST_UNIT.141, M.TEST_UNIT.210, M.TEST_UNIT.222, M.TEST_UNIT.233, M.TEST_UNIT.265, M.TEST_UNIT.276, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.288, M.TEST_UNIT.295, M.TEST_UNIT.301, M.TEST_UNIT.326 |
+| A.U24.50 | M.TEST_UNIT.157 |
+| A.U24.54 | M.TEST_UNIT.294 |
+| A.U24.55 | M.TEST_UNIT.269 |
+| A.U24.56 | M.TEST_UNIT.044, M.TEST_UNIT.212, M.TEST_UNIT.265, M.TEST_UNIT.280 |
+| A.U24.57 | M.TEST_UNIT.062 |
+| A.U24.58 | M.TEST_UNIT.027 |
+| A.U24.59 | M.TEST_UNIT.189 |
+| A.U24.60 | M.TEST_UNIT.194, M.TEST_UNIT.295, M.TEST_UNIT.300, M.TEST_UNIT.333 |
+| A.U24.61 | M.TEST_UNIT.019, M.TEST_UNIT.063, M.TEST_UNIT.068, M.TEST_UNIT.070, M.TEST_UNIT.112, M.TEST_UNIT.140, M.TEST_UNIT.212, M.TEST_UNIT.229 |
+| A.U24.62 | M.TEST_UNIT.068, M.TEST_UNIT.070, M.TEST_UNIT.081, M.TEST_UNIT.123, M.TEST_UNIT.251, M.TEST_UNIT.252 |
+| A.U24.64 | M.TEST_UNIT.205 |
+| A.U24.67 | M.TEST_UNIT.014, M.TEST_UNIT.060, M.TEST_UNIT.181, M.TEST_UNIT.210, M.TEST_UNIT.233, M.TEST_UNIT.280, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.333; holds (read) at M.TEST_UNIT.301 |
+| A.U24.70 | M.TEST_UNIT.025, M.TEST_UNIT.095, M.TEST_UNIT.186, M.TEST_UNIT.220, M.TEST_UNIT.239, M.TEST_UNIT.282, M.TEST_UNIT.285 |
+| A.U24.73 | M.TEST_UNIT.037, M.TEST_UNIT.058, M.TEST_UNIT.070, M.TEST_UNIT.076, M.TEST_UNIT.082, M.TEST_UNIT.095, M.TEST_UNIT.109, M.TEST_UNIT.114, M.TEST_UNIT.119, M.TEST_UNIT.121, M.TEST_UNIT.124, M.TEST_UNIT.153, M.TEST_UNIT.168, M.TEST_UNIT.178, M.TEST_UNIT.186, M.TEST_UNIT.194, M.TEST_UNIT.210, M.TEST_UNIT.231, M.TEST_UNIT.233, M.TEST_UNIT.239, M.TEST_UNIT.249, M.TEST_UNIT.260, M.TEST_UNIT.265, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.295, M.TEST_UNIT.301, M.TEST_UNIT.315, M.TEST_UNIT.317, M.TEST_UNIT.318, M.TEST_UNIT.326 |
+| A.U24.74 | M.TEST_UNIT.236 |
+| A.U24.76 | M.TEST_UNIT.028, M.TEST_UNIT.030, M.TEST_UNIT.039, M.TEST_UNIT.052, M.TEST_UNIT.058, M.TEST_UNIT.071, M.TEST_UNIT.082, M.TEST_UNIT.095, M.TEST_UNIT.111, M.TEST_UNIT.114, M.TEST_UNIT.186, M.TEST_UNIT.210, M.TEST_UNIT.282, M.TEST_UNIT.285; holds (read) at M.TEST_UNIT.002 |
+| A.U24.78 | M.TEST_UNIT.019, M.TEST_UNIT.042, M.TEST_UNIT.052, M.TEST_UNIT.059, M.TEST_UNIT.065, M.TEST_UNIT.066, M.TEST_UNIT.069, M.TEST_UNIT.070, M.TEST_UNIT.071, M.TEST_UNIT.117, M.TEST_UNIT.148, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.298 |
+| A.U24.81 | M.TEST_UNIT.219, M.TEST_UNIT.264 |
+| A.U25.16 | blast-only, holds (read) at M.TEST_UNIT.050 |
+| A.U25.18 | blast-only, holds (read) at M.TEST_UNIT.266 |
+| A.U25.22 | blast-only, holds (`direction_from()` unaffected) |
+| A.U25.30 | blast-only, holds (read) at M.TEST_UNIT.160 |
+| A.U25.37 | blast-only, holds (read) at M.TEST_UNIT.220 |
+| A.U26.28 | blast-only, holds (read) at M.TEST_UNIT.310 |
+| A.U26.33 | blast-only, holds (read) at M.TEST_UNIT.319 |
+| A.U27.03 | M.TEST_UNIT.332 |
+| A.U27.07 | M.TEST_UNIT.003, M.TEST_UNIT.006, M.TEST_UNIT.197, M.TEST_UNIT.295, M.TEST_UNIT.296, M.TEST_UNIT.297, M.TEST_UNIT.298, M.TEST_UNIT.299 |
+| A.U27.15 | M.TEST_UNIT.295 |
+| A.U27.30 | M.TEST_UNIT.111, M.TEST_UNIT.118, M.TEST_UNIT.153, M.TEST_UNIT.220 |
+| A.U28.27 | M.TEST_UNIT.272; holds (read) at M.TEST_UNIT.057 |
+| A.U28.28 | M.TEST_UNIT.037, M.TEST_UNIT.058, M.TEST_UNIT.095, M.TEST_UNIT.113, M.TEST_UNIT.249, M.TEST_UNIT.332; holds (read) at M.TEST_UNIT.210 |
+| A.U28.29 | blast-only (a `pyproject.toml` comment; no test edit) |
+| A.U28.35 | blast-only, holds (read) at M.TEST_UNIT.115 |
+| A.U29.03 | blast-only, holds (read) at M.TEST_UNIT.210, M.TEST_UNIT.266, M.TEST_UNIT.282 |
+| A.U30.04 | M.TEST_UNIT.129, M.TEST_UNIT.138 |
+| A.U30.05 | M.TEST_UNIT.116 |
+| A.U30.06 | M.TEST_UNIT.125, M.TEST_UNIT.129, M.TEST_UNIT.145; holds (read) at M.TEST_UNIT.234 |
+| A.U30.07 | M.TEST_UNIT.010, M.TEST_UNIT.055, M.TEST_UNIT.059, M.TEST_UNIT.074; holds (read) at M.TEST_UNIT.234 |
+| A.U30.08 | blast-only, holds (read) at M.TEST_UNIT.230 |
+| A.U30.12 | M.TEST_UNIT.207 |
+| A.U30.13 | M.TEST_UNIT.323 |
+| A.U30.15 | M.TEST_UNIT.266 |
+| A.U30.16 | M.TEST_UNIT.323; holds (read) at M.TEST_UNIT.029, M.TEST_UNIT.205 |
+| A.U30.19 | M.TEST_UNIT.292, M.TEST_UNIT.309; holds (read) at M.TEST_UNIT.247 |
+| A.U30.21 | M.TEST_UNIT.055 |
+| A.U31.01 | blast-only, holds (read) at M.TEST_UNIT.261, M.TEST_UNIT.309 |
+| A.U31.07 | M.TEST_UNIT.309 |
+| A.U31.09 | M.TEST_UNIT.058, M.TEST_UNIT.114, M.TEST_UNIT.233, M.TEST_UNIT.280, M.TEST_UNIT.281 |
+| A.U31.11 | M.TEST_UNIT.007, M.TEST_UNIT.008, M.TEST_UNIT.010, M.TEST_UNIT.022, M.TEST_UNIT.233 |
+| A.U31.12 | blast-only, holds (read) at M.TEST_UNIT.052 |
+| A.U31.13 | M.TEST_UNIT.078 |
+| A.U31.14 | M.TEST_UNIT.082, M.TEST_UNIT.091 |
+| A.U31.15 | M.TEST_UNIT.210, M.TEST_UNIT.213 |
+| A.U31.16 | M.TEST_UNIT.240; holds (read) at M.TEST_UNIT.188, M.TEST_UNIT.247 |
+| A.U31.17 | M.TEST_UNIT.301 |
+| A.U31.18 | M.TEST_UNIT.196 |
+| A.U32.01 | M.TEST_UNIT.211; holds (read) at M.TEST_UNIT.212 |
+| A.U32.03 | M.TEST_UNIT.005 |
+| A.U32.06 | M.TEST_UNIT.159, M.TEST_UNIT.179, M.TEST_UNIT.284, M.TEST_UNIT.309, M.TEST_UNIT.322 |
+| A.U34.04 | M.TEST_UNIT.331 |
+| A.U35.04 | blast-only (the planted-fault/allocation proofs run at B3; cited in M.TEST_UNIT.016 and M.TEST_UNIT.029 Blast) |
+| A.U35.06 | M.TEST_UNIT.324 |
+| A.U35.11 | M.TEST_UNIT.016 |
+| A.U35.12 | M.TEST_UNIT.037, M.TEST_UNIT.076, M.TEST_UNIT.078, M.TEST_UNIT.103, M.TEST_UNIT.106, M.TEST_UNIT.124, M.TEST_UNIT.214, M.TEST_UNIT.219, M.TEST_UNIT.283, M.TEST_UNIT.284, M.TEST_UNIT.304, M.TEST_UNIT.309 |
+| A.U35.13 | M.TEST_UNIT.078, M.TEST_UNIT.079, M.TEST_UNIT.080, M.TEST_UNIT.082, M.TEST_UNIT.088, M.TEST_UNIT.089, M.TEST_UNIT.090, M.TEST_UNIT.091, M.TEST_UNIT.092, M.TEST_UNIT.276, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281 |
+| A.U35.14 | M.TEST_UNIT.171, M.TEST_UNIT.187, M.TEST_UNIT.190, M.TEST_UNIT.220; holds (read) at M.TEST_UNIT.280 |
+| A.U35.15 | M.TEST_UNIT.111 |
+| A.U35.16 | M.TEST_UNIT.234; holds (read) at M.TEST_UNIT.231 |
+| A.U35.17 | M.TEST_UNIT.127, M.TEST_UNIT.235 |
+| A.U35.18 | M.TEST_UNIT.236 |
+| A.U35.19 | M.TEST_UNIT.236 |
+| A.U35.20 | M.TEST_UNIT.152, M.TEST_UNIT.237 |
+| A.U35.21 | M.TEST_UNIT.235 |
+| A.U35.22 | blast-only, holds (read) at M.TEST_UNIT.167 |
+| A.U35.28 | blast-only, holds (read) at M.TEST_UNIT.208 |
+| A.U35.35 | M.TEST_UNIT.290 |
+| A.U35.37 | M.TEST_UNIT.229, M.TEST_UNIT.230; holds (read) at M.TEST_UNIT.253 |
+| A.U35.41 | blast-only, holds (read) at M.TEST_UNIT.230 |
+| A.U35.42 | M.TEST_UNIT.273 |
+| A.U35.43 | M.TEST_UNIT.254, M.TEST_UNIT.255, M.TEST_UNIT.256, M.TEST_UNIT.257, M.TEST_UNIT.258 |
+| A.U35.44 | M.TEST_UNIT.260 |
+| A.U35.45 | M.TEST_UNIT.226 |
+| A.U35.48 | M.TEST_UNIT.028, M.TEST_UNIT.110, M.TEST_UNIT.166, M.TEST_UNIT.177, M.TEST_UNIT.184, M.TEST_UNIT.193, M.TEST_UNIT.209, M.TEST_UNIT.221, M.TEST_UNIT.248 |
+| A.U35.50 | blast-only, holds (read) at M.TEST_UNIT.232, M.TEST_UNIT.238 |
+| A.U35.55 | M.TEST_UNIT.043 |
+| A.U36.004 | M.TEST_UNIT.229 |
+| A.U36.014 | blast-only, holds (read) at M.TEST_UNIT.232, M.TEST_UNIT.233 |
+| A.U36.027 | blast-only, holds (read) at M.TEST_UNIT.167 |
+| A.U36.506 | blast-only, holds (read) at M.TEST_UNIT.063 |
+| A.U36.513 | M.TEST_UNIT.212, M.TEST_UNIT.251, M.TEST_UNIT.276, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281, M.TEST_UNIT.312 |
+| A.U36.517 | blast-only, holds (read) at M.TEST_UNIT.332 |
+| A.U36.527 | blast-only, holds (read) at M.TEST_UNIT.295 |
+| A.U36.532 | M.TEST_UNIT.168 |
+| A.U36.539 | blast-only, holds (read) at M.TEST_UNIT.322 |
+| A.U36.544 | M.TEST_UNIT.036, M.TEST_UNIT.109, M.TEST_UNIT.167, M.TEST_UNIT.183, M.TEST_UNIT.192, M.TEST_UNIT.194, M.TEST_UNIT.217, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.281, M.TEST_UNIT.285, M.TEST_UNIT.295, M.TEST_UNIT.309, M.TEST_UNIT.311, M.TEST_UNIT.325; holds (read) at M.TEST_UNIT.220, M.TEST_UNIT.233 |
+| A.U36.546 | blast-only (CLAUDE.md text; no test edit) |
+| A.U37.11 | blast-only, holds (`test_asy_webserver_service.py:491, :508` unchanged) |
+| A.S0930.03 | M.TEST_UNIT.167, M.TEST_UNIT.178, M.TEST_UNIT.185; holds (read) at M.TEST_UNIT.315, M.TEST_UNIT.325 |
+| A.S0930.09 | M.TEST_UNIT.198; holds (read) at M.TEST_UNIT.252 |
+| A.S0930.12 | M.TEST_UNIT.305, M.TEST_UNIT.307 |
+| A.S0930.13 | M.TEST_UNIT.302, M.TEST_UNIT.309 |
+| A.S0930.16 | blast-only, holds (read) at M.TEST_UNIT.259 |
+| A.S0930.17 | M.TEST_UNIT.029; holds (read) at M.TEST_UNIT.040 |
+| A.S0930.18 | M.TEST_UNIT.204 |
+| A.S0930.21 | M.TEST_UNIT.048, M.TEST_UNIT.198, M.TEST_UNIT.259, M.TEST_UNIT.306 |
+| A.S0930.22 | M.TEST_UNIT.259, M.TEST_UNIT.306 |
+| A.S0930.23 | M.TEST_UNIT.238; holds (read) at M.TEST_UNIT.048 |
+| A.S0930.24 | M.TEST_UNIT.309 |
+| A.S0930.25 | M.TEST_UNIT.048, M.TEST_UNIT.306 |
+| A.S0930.26 | blast-only, holds (names the `_priced` shape for the L2 reference; no change in this file) |
+| A.S0930.32 | M.TEST_UNIT.306 |
+| A.S0930.35 | M.TEST_UNIT.305; holds (read) at M.TEST_UNIT.238 |
+| A.S0930.36 | M.TEST_UNIT.309 |
+| A.SDEP.06 | M.TEST_UNIT.295; holds (read) at M.TEST_UNIT.194, M.TEST_UNIT.332 |
+| A.SDEP.07 | blast-only, holds (read) at M.TEST_UNIT.194, M.TEST_UNIT.332 |
+| A.SDEP.08 | M.TEST_UNIT.045, M.TEST_UNIT.081, M.TEST_UNIT.148, M.TEST_UNIT.211, M.TEST_UNIT.253, M.TEST_UNIT.332 |
+| A.SDEP.13 | blast-only, holds (read) at M.TEST_UNIT.202 |
+| A.SDEP.15 | M.TEST_UNIT.313 |
+| A.SDEP.16 | M.TEST_UNIT.072, M.TEST_UNIT.107, M.TEST_UNIT.168 |
+| A.SDEP.17 | blast-only, holds (read) at M.TEST_UNIT.216, M.TEST_UNIT.300 |
+| A.SDEP.18 | M.TEST_UNIT.206 |
