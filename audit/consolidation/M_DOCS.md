@@ -143,7 +143,7 @@ Standing conventions for every merged change below:
 - **Kind**: doc
 
 ### M.DOCS.008 The VOC entry records the chain, the successor, the labelled reading
-- **From**: A.U34.04
+- **From**: A.U34.04; AC3_O O-23 (actor-tag form)
 - **Site**: `THIRD_PARTY_LICENSES.md:93-105`
 - **Change**: → A.U34.04's text verbatim ("- `src/voc_algorithm.py` — a literal port of the Python translation in
   [`DFRobot/DFRobot_SGP40`](…)'s `Python/raspberrypi/DFRobot_SGP40_VOCAlgorithm.py`, © 2010 DFRobot Co.Ltd
@@ -152,7 +152,7 @@ Standing conventions for every merged change below:
   [`Sensirion/embedded-sgp`](…) (`sgp40_voc_index/sensirion_voc_algorithm.c/.h`; archived April 2024, BSD-3-Clause); the
   maintained successor is [`Sensirion/gas-index-algorithm`](…) (BSD-3-Clause, © 2021 Sensirion AG). Because this file
   ports DFRobot's Python rather than Sensirion's C, DFRobot's MIT terms are treated as the ones governing what was copied
-  (agent reading, 2026-08-20; not a verified legal conclusion); Sensirion's BSD-3-Clause is recorded for the full chain,
+  (agent, 2026-08-20; not a verified legal conclusion); Sensirion's BSD-3-Clause is recorded for the full chain,
   and a published image carries its notice too (below). `tests/voc_reference_vectors.py` holds output values computed by
   Sensirion's C (the gas-index-algorithm fixed-point helpers and the archived embedded-sgp algorithm) and contains no
   Sensirion code."). `:90-91`'s section intro unchanged.
@@ -870,7 +870,7 @@ place unchanged.
 - **From**: A.U36.547 (2), A.U0.24, A.U1.13 (`:17-20` HTML-source paths)
 - **Site**: `README.md:10-20`
 - **Change**: end state → "## Devices\n\nThe firmware is generated per device from `devices/<device>.toml` (SPECIFICATION.md
-  Part L); today six:" then `| Device | Unit |` rows — `wozi`: the exemplary device, verified through the tests and the
+  Part L); today six:" then `| Device | Unit |` rows — `wozi`: verified through the tests and the
   twin, never flashed by a session; `arzi`: a room unit; `klkizi`, `grkizi`, `schlafzi`: the three units the legacy
   firmware calls `neu`, each its own file; `dev`: the bench rig, the only unit a session flashes — then "Which sensors,
   buses and options a device has is its `devices/<device>.toml`'s alone (SPECIFICATION.md L.1)." then "**Five legacy
@@ -1362,7 +1362,8 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
 - **From**: A.U37.05; A.U33.09; A.U33.07; A.U0.01; A.U0.34 (F18, T4, W3, T1); A.U0.38 (`:469-470`); A.U2.23 (`:362-364`,
   `:374-376`, `:384-385`); A.U3.06; A.U16.07 (the T4 script block); A.U26.79 (board-state line); A.U36.001 (procedure
   moves to `tests_hardware/README.md`); A.U36.548 (5); A.U36.532; A.U36.544 (row labels in permanent text); A.SDEP.21 (4),
-  A.SDEP.08 (6), A.SDEP.07 (the pin-move row); rows added by A.U10.07, A.U13.04, A.U13.R02, A.U14.12, A.U14.17,
+  A.SDEP.08 (6), A.SDEP.07 (the pin-move row); A.C.10 (phase-C removal of delivered rows; AC3_S section 4); rows added
+  by A.U10.07, A.U13.R02, A.U14.12, A.U14.17,
   A.U15.08, A.U15.20, A.U18.43, A.U21.14, A.U21.23, A.U25.01, A.U25.08, A.U25.10, A.U25.12, A.U25.14, A.U26.28, A.U26.35,
   A.U26.36, A.U26.72, A.U26.85, A.U28.02, A.U28.20, A.U31.03, A.U31.05, A.U31.06, A.U35.54; A.C.04 (6) (the manual
   cross-browser check)
@@ -1375,7 +1376,8 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
   automatically are one line per round ("the default flash and bench tiers", "the `--allow-persistence-write` run").
   HEAD's labels T4, S4, G6, F17, M1, S3b, R13 + N3 stay; new rows get none. The "UART `wrnno` 11 against a real babbling
   peer" row keeps its owner reason (2026-09-25), with the code renumbered (`wrnno` 54, A.U2.23). The manual
-  cross-browser/cross-device spot check (`:834-838` at HEAD) is a row needing the owner (A.C.04 (6)). The pin-move row is
+  cross-browser/cross-device spot check (`:834-838` at HEAD) is a row needing the owner (A.C.04 (6)). There is no row
+  for the FRAM CS power-on state (a datasheet fact, AC_NOTES 11; A.U13.04 dropped as a measurement). The pin-move row is
   A.SDEP.08 (6)'s text with A.SDEP.07's frozen-website check when freezefs's format moved, written with "(agent,
   <date>)" and no audit ID. Earlier stages, each overwritten by the next: U0 — A.U0.01 relabels "How a sitting runs"
   (D1/D2 owner, the run sheet agent); A.U0.34 deletes F18, W3 and T1 and re-words T4's decision; A.U0.38 rewrites
@@ -1725,8 +1727,8 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
   out of scope, anything there is post-audit only')), classified as protocol-level ("must be mirrored in C") or
   Python-internal ("no C impact"); the protocol module and the layers below it where a change could reach the wire are
   in scope, and a changed `const()` wire constant or recovery timing is Class A by definition"; `:128-129` per A.U0.23
-  ("… a coordinated flag-day, which the Python side may lead (owner, 2026-09-11, `6a2d43e`, paraphrase); during this
-  audit the wire format is not touched (owner, 2026-09-25: 'the UART wire format is not touched')"); `:131-137` per
+  ("… a coordinated flag-day, which the Python side may lead (owner, 2026-09-11, `6a2d43e`, paraphrase); until the C
+  reconciliation the wire format is not touched (owner, 2026-09-25: 'the UART wire format is not touched')"); `:131-137` per
   A.U36.025 ("**It is, however, prototypical — exactly like this repo's legacy Python — and the owner holds every
   unit** (owner, 2026-09-11; 2026-09-26: 'I build all sensors and still own all of them') … so until then the hardware
   tests prove Python-to-Python interoperation over the bench crossover jumper only."); `:138-140` per A.U0.32 ("— no
@@ -1740,6 +1742,8 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
   — the duplicate in `:147-149` is cut to the location clause).
 - **Resolved**: A.U0.38's V01 sentence and A.U17.08's lifecycle wording both land in the parenthesis — combined (the
   file's header carries the same words, M.DOCS.015). The duplicated Class-A clause appears once (agent, consistency).
+  A.U0.23's "during this audit" → "until the C reconciliation": after phase D deletes `audit/`, "this audit" names
+  nothing (G9/R12; AC3_O O-22).
 - **Unit**: U36. Stages: U0 (A.U0.23, A.U0.32, A.U0.38), U10 (names), U17 (lifecycle and scope clause), U36 (A.U36.025).
 - **Depends**: M.DOCS.015, M.DOCS.016, M.DOCS.017, M.DOCS.018
 - **Blast carried by**: changelog header/intro/deployment status (M.DOCS.015-.017); SPEC J.1 (A.U17.08, A.U0.38, SPEC)
@@ -1756,14 +1760,16 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 - **Blast carried by**: BACKLOG dev-quirks bullet deleted the same unit (M.DOCS.065)
 - **Kind**: rule
 
-### M.DOCS.078 The WoZi rule: tags, the invalid-test sentence, "device"
-- **From**: A.U0.23 (`:159-160`); A.U0.32 (`:166-169`); A.U36.512 (4) (`:159`)
+### M.DOCS.078 The WoZi rule: never flashed, tags, the invalid-test sentence
+- **From**: A.U0.23 (`:159-160`); A.U0.32 (`:166-169`); A.U36.512 (4) (`:159`); OR78.a (2)-(3) (AC3_O O-28)
 - **Site**: `CLAUDE.md:159-169`
-- **Change**: `:159` "**WoZi is the exemplary/base variant" → "**WoZi is the exemplary/base device"; `:159-160` gains
-  "(owner, 2026-09-03, `a19691c`)"; `:166-169` → "That mismatch (…) is an invalid test by construction (owner,
+- **Change**: `:159-162` (through "unaffected by any real-hardware work.") → "**`wozi` is never physically flashed or
+  bench-tested; its correctness rests on L1/L2, and only `dev` is flashed** (owner, 2026-09-03, `a19691c`)"; `:166-169` → "That mismatch (…) is an invalid test by construction (owner,
   2026-09-03, `5730e72`, paraphrase) — it tests nothing, and must not be repeated; dev's own firmware covers the shared
   SCD30/SGP40 bus (owner, 2026-09-26: 'dev is different hardware, wozi cannot run on it and never will')".
-- **Resolved**: —
+- **Resolved**: OR78.a (2)-(3) (2026-09-28, later than the 2026-09-03 rule) withdraws wozi's default and golden-reference
+  role; docs name a device as a current fact, never as a rule — "exemplary/base" goes; the fact stays (G1/R36). The
+  replaced span runs to `:162`'s sentence end so no fragment of the old sentence dangles (AC3_O O-28 named `:159-161`).
 - **Unit**: U36. Stage U0 (tags, `:166-169`).
 - **Depends**: —
 - **Blast carried by**: SPEC term table (A.U36.512 (1), SPEC)
@@ -1891,7 +1897,7 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
   settled by the one-list rule. `:239` "in either variant" → "on any device" (A.U36.512) survives in the kinds clause.
 - **Unit**: U36. Stage U0 (head).
 - **Depends**: SPEC C.8 and J.7 tier map (A.U36.539 (2), SPEC)
-- **Blast carried by**: J.7's L2 cells name the two twin files (M.TWIN.153/.154 → SPEC)
+- **Blast carried by**: J.7's L2 cells name the two twin files (M.TWIN.154/.156 → SPEC)
 - **Kind**: rule
 
 ### M.DOCS.086 The wear rule: FRAM is not wear, the flag names, `resetconfig`, the invariant sentence
@@ -2315,6 +2321,25 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 - **Blast carried by**: —
 - **Kind**: doc
 
+## .claude/skills/integrate-module/SKILL.md (new)
+
+### M.DOCS.109 The integrate-module skill points into Part K
+- **From**: A.U36.543 (9), (11) (AC3_R R-04 and AC3_S S-13: no change created the file; M.DOCS.060 only maps it).
+- **Site**: new `.claude/skills/integrate-module/SKILL.md`.
+- **Change**: front matter `name: integrate-module`, `description: Add a module, service or sensor driver to this repo by
+  walking SPECIFICATION.md Part K in order.`; body ≤ 10 lines, as A.U36.543 (9) writes it: read Part 0 and Part K in
+  full; the inputs are the datasheet and the owner brief (K.1 item 0); walk K.1-K.11 in order, reporting per step what
+  was done or why it does not apply; never merge a baseline run's worktree. No audit ID in the file. Before landing,
+  every file, function, table and test name Part K names is grepped and fixed if it does not exist under that name
+  (A.U36.543 (11)).
+- **Resolved**: AC3_S S-13 summarises the body as "read Part 0 and Part K in order, then apply Part D"; A.U36.543 (9)'s
+  own text (AC3_R R-04's wording) is written — Part K's steps already apply Part D (A.U36.543's K rewrite), so the skill
+  adds no separate Part D step.
+- **Unit**: U36 (after M.SPEC.142).
+- **Depends**: M.SPEC.142, M.SPEC.046.
+- **Blast carried by**: README map entry → M.DOCS.060; the two baseline runs → M.PROC.048.
+- **Kind**: doc
+
 ## Gaps for other clusters
 
 1. **SPEC** — (a) F.2 states the built timeout mechanism (`asyncio.wait_for_ms` around the one awaitable that can wait,
@@ -2500,7 +2525,7 @@ disposition. The merged-in column lists the blocks whose From line names the act
 | A.U12.03 | extra | M.DOCS.024 | merged |
 | A.U12.16 | extra | M.DOCS.024 | merged |
 | A.U13.01 | BL | M.DOCS.065 | merged |
-| A.U13.04 | extra | M.DOCS.064 | merged |
+| A.U13.04 | extra | — | dropped from M.DOCS.064 (withdrawn as a measurement, AC_NOTES 11; AC3 R-03): no BACKLOG row |
 | A.U13.06 | BL | M.DOCS.065 | merged |
 | A.U13.12 | extra | M.DOCS.024 | merged |
 | A.U13.13 | extra | M.DOCS.024 | merged |
@@ -2732,7 +2757,7 @@ disposition. The merged-in column lists the blocks whose From line names the act
 | A.U36.540 | CL | M.DOCS.072, M.DOCS.073, M.DOCS.091 | merged |
 | A.U36.541 | CL, RM | M.DOCS.060, M.DOCS.084, M.DOCS.108 | merged |
 | A.U36.542 | CL | M.DOCS.073 | merged |
-| A.U36.543 | RM | M.DOCS.060 | merged |
+| A.U36.543 | RM | M.DOCS.060, M.DOCS.109 | merged; (9), (11) → M.DOCS.109 (AC3 R-04, S-13); (10) → M.PROC.048 |
 | A.U36.544 | extra | M.DOCS.023, M.DOCS.061, M.DOCS.063, M.DOCS.064, M.DOCS.065, M.DOCS.066, M.DOCS.067, M.DOCS.074, M.DOCS.075, M.DOCS.082, M.DOCS.096 | `BACKLOG.md:793` repoint void (entry deleted at U33, A.U33.09); rest merged |
 | A.U36.545 | CL, RM | M.DOCS.047, M.DOCS.060, M.DOCS.068 | merged |
 | A.U36.546 | BL, CL, DR, RM | M.DOCS.027, M.DOCS.030, M.DOCS.033, M.DOCS.060, M.DOCS.061, M.DOCS.086, M.DOCS.088, M.DOCS.089, M.DOCS.097, M.DOCS.099, M.DOCS.100, M.DOCS.101, M.DOCS.105 | merged |
@@ -2777,6 +2802,12 @@ disposition. The merged-in column lists the blocks whose From line names the act
 | A.C.01 | CL (extra) | — | cites CLAUDE.md rules (round frame); no edit |
 | A.U26.01 | CL (extra) | — | "may cite" the bench-device key in the WoZi rule: not applied (optional), M.DOCS.078 unchanged |
 | A.U27.14 | CL (extra) | — | "names no number (holds)"; no edit |
+| AC3 O-22 | CL | M.DOCS.076 | "during this audit" → "until the C reconciliation" |
+| AC3 O-23 | TPL | M.DOCS.008 | actor tag "(agent, 2026-08-20; …)" |
+| AC3 O-28 | CL, RM | M.DOCS.078, M.DOCS.045 | "exemplary/base" role dropped (OR78.a); M.GEN.055 header carries the TOML half |
+| AC3 R-03 | BL | M.DOCS.064 | A.U13.04 out of From; no FRAM-CS row |
+| AC3 S section 4 | BL | M.DOCS.064 | From gains A.C.10 |
+| AC3 S section 5 | CL | M.DOCS.085 | Blast pointer M.TWIN.153/.154 → M.TWIN.154/.156 |
 
 ## A-C2 order notes (2026-10-01)
 

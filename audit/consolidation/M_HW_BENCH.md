@@ -901,7 +901,8 @@ never flashed (A.C.01 (5)).
   A.U8C.100 (`:14` repeat; `:23`), A.U19.14
   (blast gap: its removal of BACKLOG item 24 leaves `:13`'s "Measurements: BACKLOG item 24" dangling), A.U35.40 (2)
   (its two calls go through the save), A.S0930.29 (2)/(4)/(5) and A.S0930.28 (callers saving before `erasefram`),
-  A.C.10 / A.U33.09 (the phase-C bench budget: a later delta).
+  A.C.10 / A.U33.09 (the phase-C bench budget: a later delta), A.U2.03 (the U2 `from _error_codes import code` import,
+  stated in Unit; A-C3 Part S §4).
 - **Site**: `tests_hardware/error_log_helpers.py:1-19`.
 - **Change**: module docstring (≤ 3 lines): "Shared /status errcount helpers: save the logs, then clear them; confirm a
   provoked fault left its catalog entry. Shape: GET /status -> {"errcount": {"<Logger>": {"counter": int, "history":
@@ -1437,9 +1438,10 @@ never flashed (A.C.01 (5)).
   <control record>)`; runs exactly (2)'s hammer and bound checks and records each verdict, the fresh `GET /` time,
   whether the board stopped answering ≥ 5 s, and `ResetReason`/`SysUptime` after (a watchdog reset reads 2 with a boot
   line); in `finally` reflashes the release image recorded at start and waits for serving and `check_image()` — both
-  flash cycles owned by this test. The verdicts are recorded; the test passes when the steps ran (the round plan expects
-  the stall bound to fail there — a control run passing every bound means the hammer never reached the `ERR_MEM` loop,
-  which the round reports, A.C.06). (2) `test_no_send_stall_with_the_override(board, dut_ip, result_note)` (default-on,
+  flash cycles owned by this test. The test passes only when the unpatched image shows the stall (a bound fails, or the
+  board stops answering ≥ 5 s or resets); every bound holding fails it with "the hammer did not reach the ERR_MEM loop
+  on the unpatched image, or the pin carries an upstream fix: re-check the modlwip_eagain override (SPECIFICATION.md
+  B.14)" (OR19.a (1), OR114.a (4)). The verdicts are recorded either way. (2) `test_no_send_stall_with_the_override(board, dut_ip, result_note)` (default-on,
   no wear): `configured_max_connections() - 1` raw sockets each sending `GET /js/app.js` and never reading
   (`SO_RCVBUF` minimal), `_STALL_SETTLE_S = 2.0` (`l4.lwip_stall_settle_s`), then a timed `GET /` on a fresh
   connection; plus, per JSON route (`get_routes()`) and page asset (from the served `index.html`), a dead client and a
@@ -1453,7 +1455,9 @@ never flashed (A.C.01 (5)).
   reported for the owner as an override change (a short POLLOUT back-off), never a larger bound.
 - **Resolved**: A.U26.85 (1) "the test itself builds the control image" → "takes the control image the round built"
   (A.C.06 (1), settled in C). The image record's `overrides` key is A.U26.85's Site on `scripts/build_firmware.py`
-  (SCR).
+  (SCR). (1)'s pass condition: a control test that passes whatever it measured is a check that cannot fail (OR19.a (1);
+  OR21.a (3) wants it reported, not counted), so it bites on the stall, and its failure is also OR114.a (4)'s removal
+  signal — settled by OR19.a/OR21.a/OR114.a, not an owner question (A-C3 O-26).
 - **Unit**: U26 (A.U21.14's override and host hammer land in U21).
 - **Depends**: M.HW_BENCH.001 (`--lwip-control-image`), M.HW_BENCH.014, M.HW_BENCH.060 (`check_image`),
   M.HW_BENCH.016, M.HW_BENCH.017, M.HW_BENCH.050, A.U21.10/A.U21.13/A.U21.14, A.U26.02 + A.U26.85's `overrides` key (SCR).
@@ -1472,7 +1476,7 @@ never flashed (A.C.01 (5)).
   A.U7.24 (`COVERS_TWIN_SCENARIOS`), A.U8C.50 (`:44, :57, :58, :67, :70, :80, :82, :95, :96, :105, :108, :128`),
   A.U8C2.21 (`:78`), A.U18.R01 (blast: "unchanged"), A.U26.76/B8.
 - **Site**: `tests_hardware/bench/test_network_resilience.py:1-131`.
-- **Change**: docstring (≤ 3 lines): "Bench-tier tests for real WiFi outage and flap (owner's audit question,
+- **Change**: docstring (≤ 3 lines): "Bench-tier tests for real WiFi outage and flap (owner,
   2026-09-01), NTP/DNS servers answering garbage (SPECIFICATION.md F.1, UDP on rp2/lwIP), the admission ceiling on
   silicon, malformed requests and slowloris. DHCP is not fault-injected: a documented known limitation (owner,
   2026-09-26; tests_hardware/README.md)." Outage and flap tests take `request, result_note`; the graceful-recovery
@@ -1572,7 +1576,7 @@ never flashed (A.C.01 (5)).
   needs no change), A.U10.40, A.U8C.50 (`:431, :441, :453, :454, :459, :465, :476, :483, :487, :510, :520, :530, :554,
   :555, :563, :568, :569, :571, :581, :584, :591, :597, :606`), A.U8C2.21 (`:561`, derived `:566`).
 - **Site**: `tests_hardware/bench/test_network_resilience.py:418-608`.
-- **Change**: section comment `:418-419` gains "(owner's suggestion, 2026-09-02)". Garbage `NTPHost`: a board already
+- **Change**: section comment `:418-419` gains "(owner, 2026-09-02)" (tag form AC_NOTES 6, A-C3 O-23). Garbage `NTPHost`: a board already
   on `_GARBAGE_NTP_HOST` is repaired (restore target: `_VAL_NH`'s default read from `src/asy_ntp_client.py` by `ast`)
   with a `result_note` "repaired a leftover garbage NTPHost from an aborted run", through the shared
   `_repair_leftover(host, route, body)` (pinned in `_KNOWN_PERSISTING_HELPERS`); the post-restore fallback goes through
@@ -2266,6 +2270,8 @@ check.
   the proof in the reset-code table — U26's end state, A.U10.09's sentence becoming M.HW_BENCH.119's row text (the fact
   is the same). A.U11.03's citer of `:1280` follows.
 - **Unit**: U10 (names, A.U10.09 stage), U26, U36 (F.8 numbering), SUPP_owner_0930 (B2 batch).
+  A-C3 (AC3_R R-08 (h)): "SUPP_owner_0930" is not a unit; its parts land as the work order places them: A.S0930.05 and
+  A.S0930.06 in U26.
 - **Depends**: M.HW_BENCH.093, M.HW_BENCH.094, M.HW_BENCH.119, A.U26.59, A.U26.82, A.U26.87.
 - **Blast carried by**: SPEC J.7 tier map → A.U36.539 (SPEC).
 - **Kind**: doc
@@ -2333,6 +2339,8 @@ check.
   its L3 and L4 test, what it spends, and the hotspot join a restore needs.
 - **Resolved**: —
 - **Unit**: U26 (table), SUPP_owner_0930 B2 rows, A.C.12 rows (C delta).
+  A-C3 (AC3_R R-08 (h)): "SUPP_owner_0930" is not a unit; its parts land as the work order places them: A.S0930.15,
+  .28, .29, .39 and .40 in U26, A.S0930.30 and .41 in U36.
 - **Depends**: M.HW_BENCH.083, M.HW_BENCH.088, M.HW_BENCH.067.
 - **Blast carried by**: SPEC A.8 code table → A.U11.05/A.S0930.15 (SPEC).
 - **Kind**: doc (Round: rows filled as R1 [H10, H14], R3 and A.C.12's round prove them)
@@ -2562,6 +2570,8 @@ check.
   `scd30_extra_write` row (M.HW_BENCH.001's settlement). A.U4.08 (U4) writes the REST half into `:1310-1325`; U26's
   table carries it (A.U4.08's Blast names the flash-tier text U26's).
 - **Unit**: U4 (REST half), U7 (record), U26 (table, guard), SUPP_owner_0930 (resetconfig), phase-C rows as deltas.
+  A-C3 (AC3_R R-08 (h)): "SUPP_owner_0930" is not a unit; its parts land as the work order places them: A.S0930.06 and
+  A.S0930.19 in U26, A.S0930.30 in U36.
 - **Depends**: M.HW_BENCH.001, M.HW_BENCH.002, M.HW_BENCH.044, M.HW_BENCH.082, M.HW_BENCH.086, M.HW_BENCH.088,
   M.HW_BENCH.094, M.HW_BENCH.075, M.HW_BENCH.102 (the manual rows).
 - **Blast carried by**: the guard → A.U26.06/A.S0930.19 (TSC); measured rows → A.C.05/A.C.10 (C).
@@ -2670,6 +2680,42 @@ check.
 - **Depends**: B1.
 - **Blast carried by**: —
 - **Kind**: doc
+
+## Cross-cluster: A-C3 sweep changes (new)
+
+### M.HW_BENCH.136 Docstrings become comments in this cluster's scope
+- **From**: A.U10.34 (A-C3 Part S S-05: carried only by the B3 convention).
+- **Site**: every function, method and class docstring under `tests_hardware/` outside `device_scripts/` and `flash/`
+  (AST query; 83 at HEAD in 17 files, `bench_control.py` 16, `harness.py` 25, `heap_map.py` 11 the largest;
+  `manual/runner.py`'s two are M.HW_BENCH.100's). M.HW_DEV.158 carries `device_scripts/` and `flash/`.
+- **Change**: each function, method and class docstring becomes a `#` comment block directly under the `def`/`class`
+  line, same text, ≤ 3 prose lines (overflow to the owning doc per CLAUDE.md's comment rule); module docstrings stay
+  (the five argparse readers included). A file a later change rewrites carries the form forward.
+- **Resolved**: the B3 convention is this change (its "91 in 11 files" was A.U10.34's count; the AST at this HEAD finds
+  83 in 17 here and 19 in 11 in HW_DEV's part).
+- **Unit**: U10.
+- **Depends**: —
+- **Blast carried by**: `tests_scripts/test_comment_block_cap.py` stays green → M.TSC.065.
+- **Kind**: code
+
+### M.HW_BENCH.137 B2 host annotations across the cluster
+- **From**: A.U20.33 (A-C3 Part S S-06: 28 files carried only by the B2 convention).
+- **Site**: `tests_hardware/bench_control.py`, `soak_tiers.py`, `harness.py`, `isl29125_conformance.py`, `heap_map.py`,
+  `error_log_helpers.py`, `http_client.py`, `website_identity.py`, `conftest.py`, `rogue_udp_responder.py`;
+  `tests_hardware/manual/manual_sensor_accuracy.py`, `manual_wifi.py`, `runner.py`, `manual_persistence.py`,
+  `manual_bus_electrical.py`, `manual_toolchain.py`; `tests_hardware/bench/test_rest_endpoints_over_sta.py`,
+  `test_hotspot_role_reversal.py`, `test_wifi_networking.py`, `test_end_to_end_timing.py`,
+  `test_uart_link_under_api_load.py`, `test_network_resilience.py`, `test_bus_concurrency_under_api_load.py`,
+  `test_heap_under_connection_ceiling.py`, `dns_probe.py`, `test_sensor_config_push_over_real_hardware.py`,
+  `test_memory_stress_bench.py`, `test_serving_heap_at_default_gc.py`.
+- **Change**: each file drops `from __future__ import annotations`; `TYPE_CHECKING`-only names (`Board`, `BenchBridge`,
+  `Iterator`, `Callable`, `HttpResponse`, …) and forward references (`RogueUdpResponder`, `harness.py`'s own classes)
+  are quoted, nothing else. A file a later change rewrites (U26) carries the form forward.
+- **Resolved**: the B2 convention is this change.
+- **Unit**: U20.
+- **Depends**: —
+- **Blast carried by**: `host_typecheck.ini` pass stays green → M.TOOL.079.
+- **Kind**: code
 
 ## Gaps for other clusters
 
@@ -2808,7 +2854,7 @@ cluster's file follows or holds, carried by the change named); holds (no edit ne
 | A.U1.27 | yes | .131 | merged |
 | A.U10.09 | yes | .119 | merged |
 | A.U10.30 | yes | .038 | merged |
-| A.U10.34 | no | .100 | merged |
+| A.U10.34 | no | .100, .136 | merged (.136: AC3 S-05, new change) |
 | A.U10.37 | no | .135 | merged |
 | A.U10.38 | no | .115, .134, .135 | merged |
 | A.U10.40 | no | .078, .080, .086, .101, .103, .135 | merged |
@@ -2851,7 +2897,7 @@ cluster's file follows or holds, carried by the change named); holds (no edit ne
 | A.U19.17 | no | .030 | merged |
 | A.U19.20 | no | .072, .074, .081, .087 | merged |
 | A.U19.23 | no | .081, .082, .130, .132 | merged |
-| A.U2.03 | yes | .076, .078, .080, .081, .086, .095 | merged |
+| A.U2.03 | yes | .050, .076, .078, .080, .081, .086, .095 | merged (.050: AC3 S §4 From completion) |
 | A.U2.07 | no | .081, .086 | merged |
 | A.U2.08 | no | .051, .116 | merged |
 | A.U2.09 | no | .116 | merged |
@@ -2864,7 +2910,7 @@ cluster's file follows or holds, carried by the change named); holds (no edit ne
 | A.U2.23 | yes | .114, .116, .135 | merged |
 | A.U20.06 | no | .133 | merged |
 | A.U20.11 | no | .134 | merged |
-| A.U20.33 | no | .039 | merged |
+| A.U20.33 | no | .039, .137 | merged (.137: AC3 S-06, new change) |
 | A.U21.14 | no | .075 | merged |
 | A.U21.19 | no | .112, .126 | merged |
 | A.U21.20 | no | .021 | blast-only (carried) |
@@ -3104,6 +3150,9 @@ cluster's file follows or holds, carried by the change named); holds (no edit ne
 | A.C.08 | no | .126 | merged (gap pass: README names the rollover runner, M.SCR.074) |
 | A.U8C.109 | no | .014 | merged (gap pass: the reflash loop's load-timeout and backoff tags move into `harness.reflash()`, GAP-D5) |
 | A.U8C2.46 | no | .014 | merged (gap pass: the attempts tag moves into `harness.reflash()`, GAP-D5) |
+| AC3 O-26 | — | .075 | amended: the unpatched-image test fails unless the stall reproduces (OR19.a (1), OR114.a (4)) |
+| AC3 O-23 | — | .076, .080 | amended: owner tags read "(owner, YYYY-MM-DD)" |
+| AC3 R-08 (h) | — | .115, .119, .130 | amended: Unit slots place the SUPP_owner_0930 parts in the units the work order gives |
 
 ## A-C2 order notes (2026-10-01)
 

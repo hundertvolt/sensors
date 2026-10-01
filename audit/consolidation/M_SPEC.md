@@ -822,7 +822,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
   snapshot), A.U30.19 (code 20), A.S0930.09 (exact-word rationale), A.S0930.15 (codes 7-9), A.S0930.30 + A.S0930.41
   (controlled shutdown), A.S0930.31 (behaviour that changes), A.S0930.32/.33/.11/.12/.18 Blasts, A.U6.23/A.U6.27/
   A.U36.537 (code tables' one source: the catalog), A.U20.38 (build refuses a collision), A.U5.04 (constructor),
-  A.U18.10/A.U18.38 (`DNSFallback`, `HotspotPW`), A.U0.36 Blast (coercion policy holds), A.U36.544 (2) (`section B`).
+  A.U18.10/A.U18.38 (`DNSFallback`, `HotspotPW`), A.U0.36 Blast (coercion policy holds), A.U36.544 (2) (`section B`),
+  G3/R31 (merged into G6/R51: the GET's chip I/O, item 8; AC3_R R-09).
 - **Site**: `SPECIFICATION.md:580-634` (A.8).
 - **Change**: A.8 becomes, in order:
   1. Opening: "The normative REST reference is generated per device: `buildgen/api_reference.py` writes
@@ -907,7 +908,10 @@ Conventions every merged change below applies (stated once, not repeated per cha
      `PrintLogHistory.get_log()` build a fresh dict or list per call with no `await` mid-construction; a config GET
      and a PUT on one module are serialised by the module's write lock, and `SCD30_Reader`/`BMP3XX_Reader` read their
      live hardware fields through one locked `get_config_snapshot()` call, so a GET never mixes pre- and post-write
-     values (owner, 2026-09-26)."
+     values (owner, 2026-09-26). A config GET on a chip-backed module costs one chip snapshot per request (SCD30: the
+     six-register read; BMP3XX: the configuration bit fields; ISL29125: the register snapshot, plus one re-apply write
+     and wrnno 11 when the chip diverged from its shadow), taken under the device session like any read." The executor
+     checks each figure against the landed drivers.
   9. `:632-634` → A.U0.29's "Connection hardening" paragraph verbatim (owner tags 2026-08-12, `ed48887`, `ee5310c`).
 - **Resolved**: (a) A.U19.12 and A.U36.544 RF063 rewrite the same "One open exception" sentence; both mechanisms exist
   in the merged product (M.SRC_CORE.038 lock; `get_config_snapshot()` at HEAD) — one sentence states both. (b)
@@ -1636,9 +1640,14 @@ Conventions every merged change below applies (stated once, not repeated per cha
   A.U16.R02 (three identification attempts), A.S0930.17/.30 (`quiesce()`, `erase_ready()`, `erase_chip()`), A.U36.546 (2)
   (`:1603-1604` chip facts move to M.6), A.U1.04 (dev bench facts live in `tests_hardware/README.md`; no SPEC edit).
 - **Site**: `SPECIFICATION.md:1576-1605` (C.3.1).
-- **Change**: (1) The synchronous-session bullet (`:1591-1598`) gains A.U13.05's two sentences, the bracketed measurement
-  replaced by phase C's result when it exists (A.C.10), else the sentence ends "… only a board-level CS pull-up can meet
-  it; `setup()` sets the level before it drives the pad". (2) The `_setup_addr_buffer()` bullet (`:1599-1605`):
+- **Change**: (1) The synchronous-session bullet (`:1591-1598`) gains A.U13.05's first sentence (the per-CS `SPI.init()`
+  cost) and, as its second, the lead's rewrite (AC_NOTES 11): "During reset and until `setup()` configures the pin, the
+  FRAM CS pad sits at an intermediate level (0.22-0.74 × VDD on the MB85RS64V) between the RP2040 pad's default pull-down
+  (50-80 kΩ, RP2040 datasheet 2.19) and the chip's internal CS pull-up (MB85RS64V 28-180 kΩ, MB85RS2MTA 18-80 kΩ); SCK
+  and SI are pulled down with it, so no op-code can be clocked in. The datasheets' power-on hold time (CS high for tpu
+  after VDD reaches its minimum: 0.6 ms MB85RS64V p.17, 250 µs MB85RS2MTA p.18) is met by construction: the first CS low
+  comes after the crystal start and the whole MicroPython boot (agent, 2026-09-29)." The executor re-reads the cited
+  datasheet pages before writing the figures. (2) The `_setup_addr_buffer()` bullet (`:1599-1605`):
   "Two real chips: `MB85RS64V` (8KB, `0x2000`) and `MB85RS2MTA` (256KB, `0x40000`, `datasheets/fram/…` p.10)." → "The
   supported parts and their sizes: M.6."; "`setup()` raises `OSError` on a size/chip mismatch, `ValueError` on an
   unrecognized `max_size`. A genuinely new size needs its own table entry." → "`setup()` makes up to three identification
@@ -1650,7 +1659,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
   `quiesce()`, `erase_ready()` and `erase_chip()` serve the two shutdown commands (A.8): the erase holds both FRAM locks
   per 256-byte unit and never across an await of another lock (C.8)."
 - **Resolved**: A.U16.20 and A.U20.10 rewrite the same sentence (A.U20.10: "joins the same sentence") — one sentence.
-  A.U36.546 moves the chip facts to M.6 in U36; until then the text stays in C.3.1.
+  A.U36.546 moves the chip facts to M.6 in U36; until then the text stays in C.3.1. A.U13.05's second sentence as first
+  written (pull-up needed, phase-C measurement) is superseded by the lead's withdrawal (AC_NOTES 11, 23; the lead's note
+  at the end of `U13.md`, 2026-09-29).
 - **Unit**: Stage 1 U13 ((1)); Stage 2 U16 ((2) attempts/legal set, (3)); Stage 3 U20 ((2) "names its part"); Stage 4
   S0930 per its unit ((3) erase API); Stage 5 U36 ((2) M.6 pointer).
   A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.17 in U16, A.S0930.30 in U36.
@@ -1770,7 +1781,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   Blast (C.5 const pointer is U14's: the `const()`-wrapped-tuple sentence stays).
 - **Site**: `SPECIFICATION.md:1708-1740` (C.5, C.5.1).
 - **Change**: (1) `:1710-1711` → "`special` is a single sentinel value (an "unset" value outside the normal range, e.g.
-  SCD30's `AmbPres=0` — deliberately outside it; the validation, not the schema, is what yields (owner-confirmed,
+  SCD30's `AmbPres=0` — deliberately outside it; the validation, not the schema, is what yields (owner,
   2026-07-15, `1ed1c9a`: 'Confirmed with the project owner which side was wrong (the validation, not the schema …)'))
   or an in-range value with a documented meaning (SGP40's `BackupPeriod`/`BackupMaxAge`/`WaitTimeNTP` 0); a field with
   `default=None` and a single-value `special` is "special-alone" …" (rest of the sentence as at HEAD). (2) After the
@@ -2130,7 +2141,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   `self._spi_<chip>` to the session level. Below it: "`LockedCounter`/`LockedFlag`/`LockedValue` hold no lock: no method
   awaits. `NotificationService.monitor_loop()` reads its three config groups without a lock: `ConfigManager`'s value read
   never suspends on its success path, so the three reads run as one uninterrupted unit (agent, 2026-08-19)." (3) The FRAM
-  scope paragraph (`:2041-2050`, "(owner's decision, 2026-09-18)") gains: "`setup()` and `set_write_protected()` take both
+  scope paragraph (`:2041-2050`; its tag "(owner's decision, 2026-09-18)" → "(owner, 2026-09-18)") gains: "`setup()` and `set_write_protected()` take both
   too, and the whole-chip erase holds both per 256-byte unit, never across an await of another lock. Nothing logged under
   the FRAM driver lock reaches FRAM: the chunk layer and `FRAM_SPI` log only into the manager's RAM history (a FRAM-backed
   one would re-enter the lock), pinned in `tests/test_asy_fram_manager.py`." (4) `:2052-2058` ("**Known inconsistency
@@ -2332,7 +2343,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   every `SensorReaderConfig` subclass, whose `setup()` awaits the base's), `FRAMManager` (its one readiness flag; no
   second "was up" attribute), `NeopixelDriver`, `NotificationService` and `UARTLinkDriver` among them; `WifiService` and
   `WebserverService` override `setup()` and return `bool` like the rest. The protocol classes and `I2CDevice` build
-  everything in `__init__` and are named exempt in the check (A.U10.22)."; closing: "Every class's gate (a call before `setup()` or after a failed one answers as
+  everything in `__init__` and are named exempt in `tests_scripts/test_readiness_gates.py`."; closing: "Every class's gate (a call before `setup()` or after a failed one answers as
   its contract says) and every teardown result is checked by a test (`tests/`)."
 - **Resolved**: Gap pass G2 (GAPS_G2 H-5 (d); M.SRC_CORE.008/.039/.092, M.SRC_NET.079/.119): `SystemService`,
   `SensorReader` and `FRAMManager` gain the flag (`FRAMManager`'s replaces `_was_up`, D.10: one flag, one meaning), and
@@ -2422,7 +2433,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   (3)'s D.0 sentence" — the rewritten sentence lands in K.1 only (A.U36.540 itself says so).
 - **Unit**: U36.
 - **Depends**: A.U36.540, A.U36.543, M.SPEC.140-.143, M.SPEC.003.
-- **Blast carried by**: the `.claude/skills/integrate-module/SKILL.md` → A.U36.543 (9) (DOCS); TOC → M.SPEC.001.
+- **Blast carried by**: the `.claude/skills/integrate-module/SKILL.md` → M.DOCS.109 (A.U36.543 (9)); TOC → M.SPEC.001.
 - **Kind**: doc
 
 ### M.SPEC.074 D.1-D.5: correctness, raises, stability, resources, blocking
@@ -2459,7 +2470,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Site**: `SPECIFICATION.md:2647-2737`.
 - **Change**: (1) D.6 → A.U36.534 (2)'s text ("Type-hint every parameter and return, not over- or under-typed; the idiom
   and its reasons are C.10. **`mpy-cross` does not dead-code-eliminate …** (B.11).") followed by the quoting paragraph:
-  "**Quoting annotations** (owner decision, 2026-09-24): quote an annotation only when it names something imported under
+  "**Quoting annotations** (owner, 2026-09-24): quote an annotation only when it names something imported under
   `TYPE_CHECKING`, or a class defined later in the module that ruff (F821) or mypy would otherwise reject; leave every
   other annotation bare. MicroPython never evaluates annotations, so both forms are runtime-safe; every file follows it
   (owner, 2026-09-25)." and "Every `# type: ignore` and `# noqa` names its codes in ascending order; in `src/` a `type:
@@ -2739,7 +2750,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
   run end to end on the bench (`tests_hardware/README.md`'s 'Known assumptions and open findings')"; new sentence: "Every
   L3/L4 module is collectible with nothing attached under every option, checked at L0." (2) E.6.1 → A.U7.01's level
   table and its containment paragraph verbatim, followed by A.U36.007's slot text; the "**Credential rotation is
-  deliberately not a bench capability** (owner decision, 2026-09-22)" paragraph keeps its decision and reason without
+  deliberately not a bench capability** (owner decision, 2026-09-22)" paragraph keeps its decision and reason, its tag
+  as "(owner, 2026-09-22)", without
   "The harness carried … zero call sites, so the table above claimed a fault nothing ever injected" (G9/R11). (3) E.6.2:
   "flash/bench" → "L3/L4"; "What stays out: mock's raw byte/frame assertions, twin's persistence/IRQ/random-walk
   behavior, real-hardware-only electrical/timing checks." → "What stays out: L1's raw byte/frame assertions and
@@ -3614,7 +3626,7 @@ it; an unflipped fact keeps the text given here.
       task-supervisor loop, and buildgen's own one-time boot setup batch, WP6)" → "(the supervisor and the generated
       one-time setup batch)"; gains "the one reusable feed access point until a shutdown command takes ownership; then
       only the sequence's own feed (A.8)" (A.S0930.30), "the feed sites and the supervisor scan budget are pinned by
-      `<A.U10.08's check>`; the timeout is Part N `wdt.timeout_ms`" and A.U35.30's sentence naming the planted-failure
+      `tests_scripts/test_watchdog_feed_sites.py`; the timeout is Part N `wdt.timeout_ms`" and A.U35.30's sentence naming the planted-failure
       tests as the failure-class proof.
   17. New: A.U19.16's "**Result words** — `asy_config_manager.py`'s `VALID`/`UNCHANGED`/`INVALID`/`FAILED`: every
       per-field result"; A.U4.01's "**Compare-before-write** — `asy_config_manager.py`'s `compare_before_write()`: every
@@ -3736,7 +3748,8 @@ U36 change that owns its paragraph below.
   (validation, rendering safety, stale bundle, mock paragraph), A.U23.06/.10/.26/.28/.29/.40/.49, A.U11.21 (float32 mock
   gap), A.U25.12 + M_WEB gap 4 (c) (`ForceCalRef` read-back; dispatch fields never reported by GET), A.U18.38 (`HotspotPW`
   masked), A.U19.01 (unknown key "Invalid"), A.U23.45 + A.U6.18 (the legacy-divergence row), A.U36.500 (3)-(4) (nav and
-  reachability rows), M_WEB gap 4 (e) (`LastTaskEnd`'s display), A.U23.01-A.U23.05.
+  reachability rows), M_WEB gap 4 (e) (`LastTaskEnd`'s display), A.U32.06 (the `LastTaskEnd` row's field),
+  A.U23.01-A.U23.05.
 - **Site**: `SPECIFICATION.md:4361-4387`.
 - **Change**: rows in HEAD's order with: "Nav grouping" and "API reachability" → A.U36.500 (3)-(4); "History depth" →
   A.U36.507 (3); "Poll coordination", "Per-request timeout value" → A.U36.503 (1)-(2) (the latter's "(15 s, Part N
@@ -3748,7 +3761,7 @@ U36 change that owns its paragraph below.
   handling" → A.U36.503 (3)'s sentence; "Known accepted gap" → A.U36.505 (2); new rows A.U36.510 (4) ("Stale bundle") and
   A.U23.45's "Divergences from the legacy site" (its list, plus A.U6.18's "the identity and NTP submit buttons keep
   legacy's labels (owner, 2026-09-29)"); new row "Last task end | `LastTaskEnd` shows "<Task> at uptime <n> s" on the
-  Status page | the `/status` row A.8 states (A.U32.06)". The mock paragraph `:4384-4387` → A.U36.510 (5) verbatim except
+  Status page | the `/status` row A.8 states". The mock paragraph `:4384-4387` → A.U36.510 (5) verbatim except
   its SCD30 clause → "SCD30's `ForceCalRef` reads back the last reference applied since power-up, 400 after power-up
   (Interface Description 1.4.6), and the mock answers the same — the last value applied, 400 on a fresh mock" and its
   GET clause → "the dispatch fields and `ContMeas` are never reported by GET (command-only triggers, C.5.2.1)".
@@ -4089,7 +4102,7 @@ U36 change that owns its paragraph below.
   `gc.threshold(32768)`" → "The generated boot entry sets `gc.threshold(32768)` (its Part N row, by the ID A.U8.14 lands) — the one
   `gc.threshold()` call outside the test runners, checked by `tests_scripts/test_gc_collect_sites.py`"; "the twin CI was the
   only place the shipped value was exercised at all until 2026-09-21" goes (history). After phase C: "Release proof:
-  <image>, both stages, <date> (A.C.09)."
+  <image>, both stages, <date>."
 - **Resolved**: A.U7.21 removes the count ("FOUR") so it cannot drift; the SPEC list names the gates the landed tree has.
 - **Unit**: Stage 1 U0 ((1)); Stage 2 U7 ((2) unit, (3) gate list); Stage 3 U8 (Part N); Stage 4 U14/U20 ((3) A.U14.05
   with A.U20.04 in the same commit); Stage 5 U27 ((2) twin); Stage 6 U30 ((4), (5)); Stage 7 U35 ((4) outcome); Stage 8
@@ -4243,7 +4256,7 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   2026-09-26)" paragraph verbatim, codes as landed; the "`payload_size` must be in `1 … 255`" sentence starts a new
   paragraph. (3) Wire cost: "At the defaults (`payload_size=48`, CRC16)" → A.S0930.08's "(`payload_size=48` with CRC16;
   `dev` runs without, 53 bytes)"; `:5530-5532` "This is accepted for the intended traffic … and is not on its own a reason
-  to change the wire format" → "The wire format is not touched in this audit (owner, 2026-09-25); the ratio fits the
+  to change the wire format" → "The wire format stays as it is until the C side is reconciled (owner, 2026-09-25); the ratio fits the
   intended traffic (short bursts between two participants) — `UART_C_PORT_CHANGELOG.md` A10/A11 hold the two candidates
   that would change it". (4) `:5534-5542` per A.U13.17: "defaulting to **20 ms**" → "defaulting to 2 ms with a 50 ms idle
   rate, the dev bench's measured pair"; "Measured against the defaults" → "Measured at the former 20 ms default"; "must
@@ -4348,8 +4361,8 @@ protocol: each is spec text (the Class A/B entries are their code actions').
 - **Resolved**: D.0's text moves here with A.U36.540's rewrite (M.SPEC.073's resolution) — not written twice.
 - **Unit**: Stage 1 U24 (pull sentence on HEAD text); Stage 2 U36 (the rest).
 - **Depends**: A.U24.16, A.U36.540, A.U36.541, A.U36.542, A.U36.543, M.SPEC.073.
-- **Blast carried by**: `.claude/skills/integrate-module/SKILL.md` and the baseline runs → A.U36.543 (9)-(10) (DOCS,
-  process); README map → A.U36.547 (DOCS); TOC → M.SPEC.001.
+- **Blast carried by**: `.claude/skills/integrate-module/SKILL.md` → M.DOCS.109 (A.U36.543 (9)); the baseline runs →
+  M.PROC.048 (A.U36.543 (10)); README map → A.U36.547 (DOCS); TOC → M.SPEC.001.
 - **Kind**: rule, doc
 
 ### M.SPEC.141 K.3: the two owner-kept tables
@@ -4416,7 +4429,7 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   (3) Criterion 1 → A.U33.02's heading "**A new driver needs exactly one association plus one row in each owner-kept
   table**" with A.U0.33's tags "(the criterion: owner, 2026-09-09, `0755e37`; the table stays hand-maintained: owner,
   2026-09-18, `b0f755c`)" and A.U33.02's body; the named exception stays. (4) Criterion 2 gains "No device name appears
-  outside `devices/` — `tests_scripts/<A.U6.15's check>` enforces it." (5) `:6039-6040` → A.U0.33 C07's text.
+  outside `devices/` — `tests_scripts/test_no_variant_literals.py` enforces it." (5) `:6039-6040` → A.U0.33 C07's text.
 - **Resolved**: A.U0.33 A2-02 (U0) names "one `buildgen/buildspec.py` table entry"; A.U33.02 (U33) widens it to both owner-kept
   tables after A.U20.27 — A.U33.02's heading carries A.U0.33's tags.
 - **Unit**: Stage 1 U0 ((3) tags, (5)); Stage 2 U6 ((4)); Stage 3 U33 ((3) body); Stage 4 U36 ((1), (2)).
@@ -4645,7 +4658,7 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   the same fact with the owner's 2026-09-26 tag.
 - **Unit**: Stage 1 U0 ((2)-(4), (7), V62); Stage 2 U15 ((1), (6)); Stage 3 U36 ((5)).
 - **Depends**: A.U0.25, A.U0.33, A.U0.38, A.U15.39, A.U36.506.
-- **Blast carried by**: DEVICE_REFERENCE calibration paragraph → A.U15.39 (DOCS); twin test comments → A.U36.020 (TEST_UNIT).
+- **Blast carried by**: DEVICE_REFERENCE calibration paragraph → A.U15.39 (DOCS); twin test comments → A.U36.020 (TWIN, M.TWIN.122/.126).
 - **Kind**: doc
 
 ### M.SPEC.154 M.1.2-M.1.6: measured behaviour, register ownership, auto-range, calibration, range ratio

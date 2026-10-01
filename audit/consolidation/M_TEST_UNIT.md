@@ -2936,7 +2936,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **From**: A.U15.15 (`:215`), A.U35.17 (`:219` unchanged), A.U24.38 (`:228`), A.U13.09 (`_reset()` raises on an
   uninitialised bus).
 - **Site**: `tests/test_asy_sgp40_driver.py:215-232`.
-- **Change**: `:215` → "# _reset() - one I2C general call, datasheet Table 17 (owner decision, SPECIFICATION.md C.8)".
+- **Change**: `:215` → "# _reset() - one I2C general call, datasheet Table 17 (owner, 2026-09-26; SPECIFICATION.md C.8)" (dated per OR64.a (3), tag form AC_NOTES 6; A-C3 O-23).
   `:228` (general call NAKed) → the fake bus log holds exactly one write, `0x06` to `0x00`, and nothing else. New
   `test_reset_raises_when_the_bus_is_not_initialised` (the fake's `writeto` returning `None` → `OSError("I2C bus not
   initialized")`). The test at `:219` stays as written.
@@ -5770,7 +5770,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Site**: `tests/test_notification_scd30_integration.py:189-264`.
 - **Change**: `:209-216`: `still_running is True`; `ErrCount == 1`; the newest entry `code("E", "READ")` (the
   `_last_two_err_nums()` helper → `_newest_code(log, "SCD30")`); the comment → "# One faulted cycle persists exactly the
-  driver's read error; the streak step prints only (A.U3.03)." `:220` comment names `_signal_loop()`'s startup off
+  driver's read error; the streak step prints only (SPECIFICATION.md C.7)." (no audit ID, A-C3 O-16) `:220` comment names `_signal_loop()`'s startup off
   frame. `:259-264`: `ErrCount == 1`, newest `code("E", "READ")`, comment "# history keeps the fault; the later success
   only resets the streak (a print, no entry)." NOTIFY counts stay 0.
 - **Resolved**: —
@@ -6452,7 +6452,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `test_an_escalation_armed_during_the_erase_preflight_refuses_the_command` and
   `test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset`.
 - **Resolved**: A.S0930.22 lists `tests/test_config_manager.py` beside this file; the store-level mechanics land in
-  M.TEST_UNIT.259, the command-level cases here.
+  M.TEST_UNIT.259, the command-level cases here. It also lists `tests/test_asy_fram_manager.py`: case (3) runs here
+  through the command sequence with the gated fake chip, so that file gains nothing (A-C3 S-18).
 - **Unit**: U11 (config reset), U16 (erase).
   A-C2 step order: A.S0930.32's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20).
 - **Depends**: M.SRC_CORE.011, .041, .042, .083; TEST_HELP fake `cut_after_bytes`, `size=` (A.S0930.25, A.U24.22).
@@ -7195,8 +7196,10 @@ session lock names, and the fake's rp2 probe/scan semantics.
 
 ### M.TEST_UNIT.338 Scratch tests: the errno filter, one live key, the recorded calls include the new walk
 - **From**: A.U24.10 (blast: the recording `os` wrapper records `ilistdir` and `stat`; the root assertion; new L1 errno
-  cases), A.U24.11 (1) (blast: the duplicate-key refusal); M.TEST_HELP.005's Blast line (gap pass G3); AC_NOTES 42 (1).
-- **Site**: `tests/test_tmp_scratch.py:1-3` (docstring), `:138-157` (`_RecordingOs`), `:191-197` (assertions); new tests.
+  cases), A.U24.11 (1) (blast: the duplicate-key refusal); M.TEST_HELP.005's Blast line (gap pass G3); AC_NOTES 42 (1);
+  A.U24.38 (`:116-123`; A-C3 S-08).
+- **Site**: `tests/test_tmp_scratch.py:1-3` (docstring), `:116-123`, `:138-157` (`_RecordingOs`), `:191-197` (assertions);
+  new tests.
 - **Change**: docstring → "Regression coverage for _tmp_scratch.py's TmpScratch, the per-test-file scratch directory:
   every operation stays inside its own key's subtree, and a cleanup failure other than absence is raised." (2 lines; the
   "now uses instead of its own copy-pasted … trio" history goes). `_RecordingOs` gains `ilistdir(path)` and
@@ -7207,7 +7210,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `OSError(errno.EACCES)` propagates out of `teardown()` with its path; `mkdir` raising `OSError(errno.EEXIST)` is
   silent; `remove` of an absent path (`ENOENT`) is silent. New: a second `TmpScratch` with a key still live raises
   `AssertionError("TmpScratch key <key> already in use")`; after `teardown_all()` the key can be taken again. Each test's
-  keys keep the `scratchtest_` prefix.
+  keys keep the `scratchtest_` prefix. `test_construction_and_teardown_tolerate_a_missing_key_directory_entirely`
+  runs under `_RecordingOs`: the recorded calls touch only the key path (never the shared root), and the key directory
+  does not exist afterwards.
 - **Resolved**: —
 - **Unit**: U24.
 - **Depends**: M.TEST_HELP.005.
@@ -7231,6 +7236,40 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Unit**: U35.
 - **Depends**: M.TEST_HELP.065, .064, .043.
 - **Blast carried by**: —
+- **Kind**: test
+
+## Cross-file: A-C3 sweep changes (new)
+
+### M.TEST_UNIT.340 Docstrings become comments in this cluster's scope
+- **From**: A.U10.34 (A-C3 Part S S-05: no carrier in this cluster).
+- **Site**: function/class docstrings at HEAD (AST): `tests/test_asy_uart_link_driver.py:143`;
+  `tests/test_bus_hazard_generated.py:47`; `tests/test_system_service.py:959`, `:977` (renamed
+  `tests/test_asy_system_service.py` in the same unit, A.U10.37).
+- **Change**: each function, method and class docstring becomes a `#` comment block directly under the `def`/`class`
+  line, same text, ≤ 3 prose lines (overflow to the owning doc per CLAUDE.md's comment rule); module docstrings stay
+  (the five argparse readers included). A file a later change rewrites carries the form forward.
+- **Resolved**: —
+- **Unit**: U10.
+- **Depends**: —
+- **Blast carried by**: `tests_scripts/test_comment_block_cap.py` stays green → M.TSC.065.
+- **Kind**: code
+
+### M.TEST_UNIT.341 File-local builders take the private form
+- **From**: A.U24.76 (A-C3 Part S S-07: these files' changes did not name it).
+- **Site**: public module-level `def make_` builders at HEAD (count): `tests/test_asy_bmp3xx_driver.py` (4),
+  `test_asy_neopixel_driver.py` (1), `test_asy_sgp40_driver.py` (5), `test_asy_spi_driver.py` (2),
+  `test_asy_uart_comm.py` (1), `test_asy_uart_driver.py` (1), `test_base_classes.py` (1), `test_captive_dns.py` (3),
+  `test_fram_integration.py` (1), `test_machine_uart_link.py` (1), `test_notification_fram_integration.py` (3),
+  `test_notification_neopixel_integration.py` (1), `test_notification_scd30_integration.py` (3),
+  `test_notification_scd30_sgp40_integration.py` (3), `test_notification_sgp40_integration.py` (2), `test_print_log.py`
+  (1), `test_setter_microdot_integration.py` (4), `test_system_service.py` (3), `test_voc_algorithm.py` (2) — all under
+  `tests/`, HEAD paths (the U10 file renames apply, conventions above).
+- **Change**: every module-level `def make_<x>` → `_make_<x>` with its uses in the file (a builder another change
+  replaces by a shared helper is skipped there, e.g. `make_fram_manager` → `tests/_fram_builders.py`, A.U24.49).
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: A.U24.49.
+- **Blast carried by**: the L0 check (`tests_scripts/test_microtest.py`) → A.U24.76 (TSC).
 - **Kind**: test
 
 ## Gaps for other clusters
@@ -7766,7 +7805,7 @@ text names the file only to state that it is unchanged; the M-ID is where that w
 | A.U24.32 | M.TEST_UNIT.015, M.TEST_UNIT.217, M.TEST_UNIT.304; holds (read) at M.TEST_UNIT.213 |
 | A.U24.33 | M.TEST_UNIT.028, M.TEST_UNIT.192 |
 | A.U24.36 | M.TEST_UNIT.207 |
-| A.U24.38 | M.TEST_UNIT.008, M.TEST_UNIT.009, M.TEST_UNIT.054, M.TEST_UNIT.075, M.TEST_UNIT.126, M.TEST_UNIT.127, M.TEST_UNIT.149, M.TEST_UNIT.152, M.TEST_UNIT.213, M.TEST_UNIT.230, M.TEST_UNIT.289 |
+| A.U24.38 | M.TEST_UNIT.008, M.TEST_UNIT.009, M.TEST_UNIT.054, M.TEST_UNIT.075, M.TEST_UNIT.126, M.TEST_UNIT.127, M.TEST_UNIT.149, M.TEST_UNIT.152, M.TEST_UNIT.213, M.TEST_UNIT.230, M.TEST_UNIT.289, M.TEST_UNIT.338 (AC3 S-08) |
 | A.U24.39 | M.TEST_UNIT.038, M.TEST_UNIT.079, M.TEST_UNIT.096, M.TEST_UNIT.183, M.TEST_UNIT.223, M.TEST_UNIT.243, M.TEST_UNIT.261, M.TEST_UNIT.270, M.TEST_UNIT.290, M.TEST_UNIT.330 |
 | A.U24.40 | M.TEST_UNIT.300 |
 | A.U24.41 | M.TEST_UNIT.202, M.TEST_UNIT.244 |
@@ -7790,7 +7829,7 @@ text names the file only to state that it is unchanged; the M-ID is where that w
 | A.U24.70 | M.TEST_UNIT.025, M.TEST_UNIT.095, M.TEST_UNIT.186, M.TEST_UNIT.220, M.TEST_UNIT.239, M.TEST_UNIT.282, M.TEST_UNIT.285 |
 | A.U24.73 | M.TEST_UNIT.037, M.TEST_UNIT.058, M.TEST_UNIT.070, M.TEST_UNIT.076, M.TEST_UNIT.082, M.TEST_UNIT.095, M.TEST_UNIT.109, M.TEST_UNIT.114, M.TEST_UNIT.119, M.TEST_UNIT.121, M.TEST_UNIT.124, M.TEST_UNIT.153, M.TEST_UNIT.168, M.TEST_UNIT.178, M.TEST_UNIT.186, M.TEST_UNIT.194, M.TEST_UNIT.210, M.TEST_UNIT.231, M.TEST_UNIT.233, M.TEST_UNIT.239, M.TEST_UNIT.249, M.TEST_UNIT.260, M.TEST_UNIT.265, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.295, M.TEST_UNIT.301, M.TEST_UNIT.315, M.TEST_UNIT.317, M.TEST_UNIT.318, M.TEST_UNIT.326, M.TEST_UNIT.336 |
 | A.U24.74 | M.TEST_UNIT.236 |
-| A.U24.76 | M.TEST_UNIT.028, M.TEST_UNIT.030, M.TEST_UNIT.039, M.TEST_UNIT.052, M.TEST_UNIT.058, M.TEST_UNIT.071, M.TEST_UNIT.082, M.TEST_UNIT.095, M.TEST_UNIT.111, M.TEST_UNIT.114, M.TEST_UNIT.186, M.TEST_UNIT.210, M.TEST_UNIT.282, M.TEST_UNIT.285; holds (read) at M.TEST_UNIT.002 |
+| A.U24.76 | M.TEST_UNIT.028, M.TEST_UNIT.030, M.TEST_UNIT.039, M.TEST_UNIT.052, M.TEST_UNIT.058, M.TEST_UNIT.071, M.TEST_UNIT.082, M.TEST_UNIT.095, M.TEST_UNIT.111, M.TEST_UNIT.114, M.TEST_UNIT.186, M.TEST_UNIT.210, M.TEST_UNIT.282, M.TEST_UNIT.285, M.TEST_UNIT.341 (AC3 S-07); holds (read) at M.TEST_UNIT.002 |
 | A.U24.78 | M.TEST_UNIT.019, M.TEST_UNIT.042, M.TEST_UNIT.052, M.TEST_UNIT.059, M.TEST_UNIT.065, M.TEST_UNIT.066, M.TEST_UNIT.069, M.TEST_UNIT.070, M.TEST_UNIT.071, M.TEST_UNIT.117, M.TEST_UNIT.148, M.TEST_UNIT.278, M.TEST_UNIT.280, M.TEST_UNIT.298 |
 | A.U24.81 | M.TEST_UNIT.219, M.TEST_UNIT.264 |
 | A.U25.16 | blast-only, holds (read) at M.TEST_UNIT.050 |
@@ -7903,6 +7942,11 @@ text names the file only to state that it is unchanged; the M-ID is where that w
 | A.U24.10 | M.TEST_UNIT.338 (gap pass G3) |
 | A.U24.11 | M.TEST_UNIT.338 (gap pass G3) |
 | A.U35.10 | M.TEST_UNIT.339 (gap pass G3) |
+| A.U10.34 | M.TEST_UNIT.340 (AC3 S-05: new change) |
+| AC3 S-08 | M.TEST_UNIT.338 amended: From/Site gain A.U24.38 `:116-123`; the missing-key test runs under `_RecordingOs` |
+| AC3 S-18 | M.TEST_UNIT.306 amended: Resolved names `tests/test_asy_fram_manager.py` (case (3) runs here) |
+| AC3 O-16 | M.TEST_UNIT.279 amended: the comment cites SPECIFICATION.md C.7, not an action ID |
+| AC3 O-23 | M.TEST_UNIT.127 amended: the `:215` tag reads "(owner, 2026-09-26; SPECIFICATION.md C.8)" |
 
 ## A-C2 order notes (2026-10-01)
 

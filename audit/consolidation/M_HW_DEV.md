@@ -585,7 +585,8 @@ changes cite.
   device's TOML"), A.U26.45 (docstring "the dev bench's" → "the bench board's"), A.U26.59 (the raw-read test and script
   go), A.U26.33 (4) (message names the resync bound), A.U26.82 (new hazard test), A.U26.87 (1) (the load test asserts
   SET/GET echo counts), A.U13.13 (blast: must pass unchanged), A.U26.68, A.U26.51 (`uart_link`, `machine_uart`),
-  A.U20.33 (B2), A.U8C.110, OR123 (both CRC modes over the same jumper, owner).
+  A.U20.33 (B2), A.U8C.110, OR123 (both CRC modes over the same jumper, owner), A.U26.47 (3) (a churn `MemoryError`
+  fails the run; A-C3 S-10).
 - **Site**: `tests_hardware/flash/test_uart_crossover.py:1-85`.
 - **Change**: (1) Docstring `:1` → "…across the bench board's permanent UART crossover jumper…"; the comment `:18-21`
   names "the bench device's TOML `uart_link` instances" and states a missing module fails. (2) `_run_or_fail(board,
@@ -601,8 +602,8 @@ changes cite.
   crc_mode)` runs `uart_comm_hazards.py`: H1a one completion and one re-entrant refusal with whole frames, H1b each
   point completes or fails cleanly and the next succeeds, H2 peer-initiated code then recovery within two attempts,
   H3 each boundary value accepted iff legal. (7) The load test asserts transfers ≥ floor, zero link failures, worst
-  RTT ≤ bound, zero error counts, every load counter > 0, heap growth ≤ bound, and echo `intact == total` for the
-  multi-chunk SETs. (8) Timeouts `_SCRIPT_TIMEOUT_S = 120.0`, `_LONG_SCRIPT_TIMEOUT_S = 180.0` (A.U8C.110's IDs); the
+  RTT ≤ bound, zero error counts, every load counter but `alloc_failures` > 0, heap growth ≤ bound, and echo `intact ==
+  total` for the multi-chunk SETs; the load test asserts `alloc_failures == 0` (A.U26.47 (3)). (8) Timeouts `_SCRIPT_TIMEOUT_S = 120.0`, `_LONG_SCRIPT_TIMEOUT_S = 180.0` (A.U8C.110's IDs); the
   hazard test's timeout is a new row `l3.uart_crossover_hazards_timeout_s` sized at execution from the twin run.
 - **Resolved**: A.S0930.05 runs each script once per mode with no reflash (scripts run from RAM); A.U26.82's hazard
   script takes the same parameter. OR123's "L3 CRC16 device script over the same jumper" is this parametrisation, not
@@ -728,13 +729,15 @@ changes cite.
 - **From**: A.U26.87 (1), A.S0930.05, A.U17.05 (the churn loop's `gc.collect()` goes), A.U30.16 (`_heap_floor`,
   `_main` baseline rows), A.U1.25 (`:141` comment), A.U26.44 (pins), A.U26.24 (no raw FRAM write: no region needed),
   A.U5.12, A.U10.38 (`FRAMManager`, `UARTComm`), A.U10.44 (`_listen_loop` already the end name), A.U8C.95, A.U8C2.41,
-  A.U26.68.
+  A.U26.68, A.U26.47 (3) (a churn `MemoryError` is a failure and the run ends FAIL; A-C3 S-10).
 - **Site**: `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py:1-232`.
 - **Change**: (1) The responder keeps the last `_CMD_ECHO` SET payload (a script-local message callback in its
   callbacks object) and answers an `_CMD_ECHO` GET with it; the initiator loop alternates the banner GET with a
   multi-chunk `uart_set(_CMD_ECHO, <PAYLOAD_SIZE * 2 + 7 bytes, per-round pattern>)` and the echo GET, compared byte for
-  byte; mismatches counted with the first five kept. (2) `_memory_churn_loop`'s `except MemoryError` keeps `held = []`
-  and `load.alloc_failures += 1`, loses `gc.collect()`. (3) Pins, buses and FRAM from `BENCH` (i2c1 with its TOML
+  byte; mismatches counted with the first five kept. (2) `_memory_churn_loop`'s `except MemoryError` keeps `held = []`,
+  records one bounded failure ('churn allocation of 512 B failed while <= 25 blocks were held') and loses
+  `gc.collect()`; the facts carry `alloc_failures`, and the host load test (M.HW_DEV.045) asserts it is 0, so the run
+  fails on any churn allocation failure (CLAUDE.md's memory rule: a caught-and-degraded allocation failure is a defect). (3) Pins, buses and FRAM from `BENCH` (i2c1 with its TOML
   frequency/timeout, SPI0, the FRAM CS and `fram_max_size`); the `:141` comment goes with the literals; `CRC_MODE` as
   in M.HW_DEV.046. (4) `print(f"GC_THRESHOLD=…")` → `fact("gc_threshold", …)`. (5) Constants per A.U8C.95/A.U8C2.41
   (`_RUN_MS`, `_MIN_TRANSFERS`, `_CHURN_BLOCK`, the step constants, `_MAX_RTT_FRACTION`, `_HEAP_FLOOR_SAMPLES`,
@@ -846,7 +849,8 @@ changes cite.
   form (M.HW_DEV.002). No marker on any test: FRAM is outside every wear gate (CLAUDE.md).
 - **Unit**: U26 (A.U16.07's test lands in U16 in the HEAD helper form, rewritten here).
 - **Depends**: M.HW_DEV.061-.071, M.HW_BENCH.012 (`run_isolated_expect_reset` returns output).
-- **Blast carried by**: seam-count L0 (five `set_values_sync` per chunk write) → A.U26.43 (TSC); README FRAM reset-race
+- **Blast carried by**: seam count (five `set_values_sync` per chunk write) → M.TEST_UNIT.041 (an L1 recording fake, gap
+  pass G3 B6; A-C3 Part S §5); README FRAM reset-race
   section and the hold bullet → A.U26.43/A.U16.07 (HW_BENCH); twin record → M.HW_DEV.010.
 - **Kind**: test, hardware (Round: R1 [H22, H72])
 
@@ -908,7 +912,8 @@ changes cite.
   phase's `finally` clear (M.HW_DEV.064) and the `SEEDED`/`LANDED` banners, a stale seed still cannot pass.
 - **Unit**: U26.
 - **Depends**: M.HW_BENCH.012 (`run_isolated_expect_reset()` returns output), M.HW_DEV.004/.012.
-- **Blast carried by**: seam-count L0 → A.U26.43 (TSC); host nonce `secrets.randbelow(27)` → M.HW_DEV.060.
+- **Blast carried by**: seam count → M.TEST_UNIT.041 (an L1 recording fake, gap pass G3 B6; A-C3 Part S §5); host nonce
+  `secrets.randbelow(27)` → M.HW_DEV.060.
 - **Kind**: test, hardware (Round: R1 [H72])
 
 ## tests_hardware/device_scripts/fram_error_log_reset_race_verify.py
@@ -1880,7 +1885,8 @@ changes cite.
 - **Resolved**: —
 - **Unit**: U31 (written in U26's form).
 - **Depends**: M.HW_DEV.001-.004, .009.
-- **Blast carried by**: host → M.HW_DEV.115; F.3 measured cells → A.U31.01 (SPEC).
+- **Blast carried by**: host → M.HW_DEV.115; F.3 measured cells → A.U31.01 (SPEC); its `gc.collect()` allowance row
+  (category "measured collection pause", OR91.a (9)) → M.SCR.015 (U31 stage; A-C3 O-27).
 - **Kind**: test, hardware (Round: R1 [H20, H21])
 
 ## tests_hardware/device_scripts/flash_write_loop_gap.py (new)
@@ -2318,6 +2324,26 @@ changes cite.
   A.U26.06 (TSC).
 - **Kind**: test, hardware (Round: R1 [H31])
 
+## Cross-cluster: A-C3 sweep changes (new)
+
+### M.HW_DEV.158 Docstrings become comments in this cluster's scope
+- **From**: A.U10.34 (A-C3 Part S S-05: carried only by the B3 convention).
+- **Site**: every function, method and class docstring under `tests_hardware/device_scripts/` and
+  `tests_hardware/flash/` (AST query; 19 at HEAD in 11 files: `isl29125_lighting_scenarios.py` 7,
+  `isl29125_mechanism_envelope.py` 3, one each in `bus_topology_autodetect_and_hazard_sweep.py`,
+  `fram_busy_status_lockout.py`, `fram_cs_hijack_fault_injection_and_recovery.py`, `fram_pause_unpause_and_gating.py`,
+  `heap_layout_after_full_boot_sequence.py`, `sgp40_fram_backup_restore.py`, `sgp40_voc_algorithm_quality.py`,
+  `wifi_reconnect_after_failed_attempts_repro.py`, `flash/conftest.py`). M.HW_BENCH.136 carries the rest of
+  `tests_hardware/`.
+- **Change**: each function, method and class docstring becomes a `#` comment block directly under the `def`/`class`
+  line, same text, ≤ 3 prose lines (overflow to the owning doc per CLAUDE.md's comment rule); module docstrings stay
+  (the five argparse readers included). A file a later change rewrites carries the form forward.
+- **Resolved**: the B3 convention is this change.
+- **Unit**: U10.
+- **Depends**: —
+- **Blast carried by**: `tests_scripts/test_comment_block_cap.py` stays green → M.TSC.065.
+- **Kind**: code
+
 ## Gaps for other clusters
 
 - **GAP-D1** (TSC): a check that `tests_hardware/device_scripts/bench_facts.pyi`'s keys equal `bench_facts.build()`'s keys
@@ -2573,7 +2599,7 @@ None. Every conflict met was settled by an owner row, the register, a verified f
 | A.U26.44 | merged into M.HW_DEV.001, M.HW_DEV.046, M.HW_DEV.047, M.HW_DEV.048, M.HW_DEV.050, M.HW_DEV.051, M.HW_DEV.052, M.HW_DEV.053, M.HW_DEV.061, M.HW_DEV.062, M.HW_DEV.063, M.HW_DEV.064, M.HW_DEV.065, M.HW_DEV.066, M.HW_DEV.067, M.HW_DEV.068, M.HW_DEV.069, M.HW_DEV.070, M.HW_DEV.071, M.HW_DEV.072, M.HW_DEV.073, M.HW_DEV.074, M.HW_DEV.081, M.HW_DEV.082, M.HW_DEV.083, M.HW_DEV.084, M.HW_DEV.085, M.HW_DEV.086, M.HW_DEV.087, M.HW_DEV.088, M.HW_DEV.089, M.HW_DEV.090, M.HW_DEV.091, M.HW_DEV.092, M.HW_DEV.093, M.HW_DEV.096, M.HW_DEV.097, M.HW_DEV.098, M.HW_DEV.099, M.HW_DEV.108, M.HW_DEV.110, M.HW_DEV.113, M.HW_DEV.116, M.HW_DEV.117, M.HW_DEV.119, M.HW_DEV.120, M.HW_DEV.121, M.HW_DEV.122, M.HW_DEV.124, M.HW_DEV.125, M.HW_DEV.132, M.HW_DEV.136, M.HW_DEV.137, M.HW_DEV.138, M.HW_DEV.139, M.HW_DEV.140, M.HW_DEV.141, M.HW_DEV.142, M.HW_DEV.143, M.HW_DEV.144, M.HW_DEV.145, M.HW_DEV.150, M.HW_DEV.151, M.HW_DEV.153, M.HW_DEV.154, M.HW_DEV.156, M.HW_DEV.157 |
 | A.U26.45 | merged into M.HW_DEV.036, M.HW_DEV.045, M.HW_DEV.111, M.HW_DEV.112 |
 | A.U26.46 | merged into M.HW_DEV.061, M.HW_DEV.090 |
-| A.U26.47 | merged into M.HW_DEV.095 |
+| A.U26.47 | merged into M.HW_DEV.045, M.HW_DEV.051; M.HW_DEV.095 (soak markers) (AC3 S-10) |
 | A.U26.48 | merged into M.HW_DEV.001, M.HW_DEV.002, M.HW_DEV.115, M.HW_DEV.116 |
 | A.U26.49 | merged into M.HW_DEV.001, M.HW_DEV.081, M.HW_DEV.082, M.HW_DEV.086, M.HW_DEV.130, M.HW_DEV.137, M.HW_DEV.138, M.HW_DEV.139, M.HW_DEV.140, M.HW_DEV.153 |
 | A.U26.50 | dropped (no site here: the worker guard excludes `device_scripts/`, TSC) |
@@ -2732,6 +2758,10 @@ None. Every conflict met was settled by an owner row, the register, a verified f
 | A.U8C2.45 | merged into M.HW_DEV.115 |
 | A.U8C2.46 | merged into M.HW_DEV.055 |
 | A.U9.07 | merged into M.HW_DEV.142 |
+| A.U10.34 | merged into M.HW_DEV.158 (AC3 S-05: new change) |
+| AC3 S-10 | M.HW_DEV.051 (2) fails the run on a churn `MemoryError`; M.HW_DEV.045 (7) asserts `alloc_failures == 0` (adapted: S-10 names (3), the load test is (7), and its "every load counter > 0" now excepts `alloc_failures`) |
+| AC3 S §5 | M.HW_DEV.060, M.HW_DEV.063 Blast: seam count → M.TEST_UNIT.041 (no TSC change carries A.U26.43) |
+| AC3 O-27 | M.HW_DEV.122 Blast: `gc.collect()` allowance row → M.SCR.015 (U31 stage); M.SCR.015's own text is applier 2's |
 
 ## A-C2 order notes (2026-10-01)
 

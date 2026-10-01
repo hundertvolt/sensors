@@ -745,7 +745,9 @@ every B1 action (AC_NOTES 34-second).
 ### M.WEB.031 The prototype entry: manifest, generated definitions, composed mock, shared shell
 - **From**: A.U6.07 (manifest, generated definitions, `samples.json`, no variant literal), A.U6.06 (3)
   (`composeMockData()`), A.U23.01 (startup loads through the queue), A.U23.07 (shell, stop handle), A.U23.42 (banner),
-  A.U35.46 (2) (duplicate `selectSection()` goes), A.U28.24 (read: the preview serves `build/generated_src/definitions/`).
+  A.U35.46 (2) (duplicate `selectSection()` goes), A.U28.24 (read: the preview serves `build/generated_src/definitions/`),
+  A.U23.04 (the entry passes the document-derived visibility through the shared shell, as M.WEB.030 does for `main.js`;
+  AC3_S section 4).
 - **Site**: `js/app.js:1-87`.
 - **Change**: header (3 lines) "Prototype entry point: picks a device from the build's definitions manifest
   (`?device=` overrides it), installs the / mock backend and starts the shared shell. Never staged (SPECIFICATION.md Part
@@ -1038,14 +1040,17 @@ every B1 action (AC_NOTES 34-second).
   (7) (`ForceCalRef` readback), A.S0930.20 (4) (two words, near misses), A.U24.14 (restores), A.U27.28 (header).
 - **Site**: `tests_js/mock-server.test.js:1-549`.
 - **Change**: header (≤ 3 lines) "Tests js/mock-server.js against the real server's answers: envelopes, every PUT
-  outcome, GET masks and time values, and the composed data." Fixture definitions `:40-150` carry the options, bounds,
+  outcome, GET masks and time values, and the composed data." Fixture definitions `:5-135` (data `:137-153`) carry the options, bounds,
   `dispatch` and `alwaysExecuted` flags the tests rely on, keys per A.U10.40 (`LightCmdLED` `R/G/B/T`); `Hostname`
   `"fixture-host"`. `:178-195` hold; new resolution cases (stored 12.35, PUT 12.345 → "Unchanged", 12.36 → "Valid");
   `:196-212` `ResetErrors` assert the result, plus `ResetErrors: false` → "Invalid"; `:224-244` (`SystemCmd`): both new
   words → "Valid", never persisted, a repeat "Valid", and the near-miss list of A.S0930.20 (4) each "Invalid"; a fixture
   with a fourth option is accepted (derived); `SystemCmd` sent to `/networking` → "Invalid"; `:272-314` (`LightCmdLED`):
   malformed/out-of-range/missing/extra member → "Invalid", back-to-back accepted commands → "Valid" then "Failed", and
-  "Valid" again after `vi.setSystemTime` passes `T`; SCD30 cases: `AmbPres` never "Unchanged", `ForceCalRef` reads back
+  "Valid" again after `vi.setSystemTime` passes `T`; every other accepted `LightCmdLED` case in `:272-314` (`:293`,
+  `:302`, `:304`, `:312`) advances the mock clock past the previous accepted command's `T` (`vi.setSystemTime`) before
+  it is sent, so each still reads "Valid" (A.U9.03's Blast); the never-"Unchanged" repeat at `:312` keeps its point
+  that an identical later command is dispatched again; SCD30 cases: `AmbPres` never "Unchanged", `ForceCalRef` reads back
   900 after a 900 PUT and 400 on a fresh install, `ContMeas` never appears on GET; `:316-340` per A.U25.12; `:372-383`
   masks gain `HotspotPW`; `:385-445`: `TS` equals the mock clock, `SysUptime` seeded at `COUNTER_CAP - 1` gives
   `COUNTER_CAP` on two GETs, `LocalTime` unchanged over ten GETs, nested measurement jitter holds; two GETs with
@@ -1054,11 +1059,21 @@ every B1 action (AC_NOTES 34-second).
   `"nope"` → HTTP 200 code 1; `group-failure` → every attempted key "Failed"; `:539-549` (`partial-result`) goes;
   float field `50` → Valid and stored 50, int field `5.5` → Invalid, `5` → Valid, `true` → Invalid; one
   corpus-driven `it.each` per shape over `tests/_radio_shape_cases.json` (accept → "Valid", reject → "Invalid"); a
-  32-character SSID of 2-byte characters → "Invalid", 16 → "Valid". Trailing restores (`:400-403`) go. Fixture and case
+  32-character SSID of 2-byte characters → "Invalid", 16 → "Valid". The trailing restore `:403` goes (`restoreMocks`, A.U24.14); `:419-444`'s `finally`
+  restore may stay. Fixture and case
   keys follow A.U10.40's map, synthetic ones included (`SGPResetVOC`/`ISLCalibrate` → `ResetVOC`/`Calibrate`, the
   `:354-369`, `:447-465` names following); the
-  `:249`, `:275` comments' `coerce_numeric()` → "the server's per-kind validation" (the function is private after
-  M_SRC_CORE GAP-G13 / M.SRC_CORE.047).
+  `:249` comment's `coerce_numeric()` → "the server's per-kind validation" (the function is private after M_SRC_CORE
+  GAP-G13 / M.SRC_CORE.047); `:273-275` → "// Mirrors _dispatch_notification_led(): a malformed payload, a missing or
+  extra member or a value outside // its schema answers "Invalid"; a well-formed command while a signal still runs
+  answers "Failed"."; `:287-288` → "// A fractional R/G/B is rejected, never truncated."; `:296` → "// Out-of-range
+  members are rejected (legacy led_cmd()'s bounds)." Titles and comments follow the end state (AC3_O O-03): `:316` →
+  "dispatches PUT /sensors' ForceCalRef: range-validated, never Unchanged, and GET reads back the last reference
+  applied (400 on a fresh mock)", `:325-327` → "// The chip reports the most recently used reference within one
+  power-up and 400 after power-up (Interface Description 1.4.6)."; `:336` → "dispatches PUT /sensors' ContMeas as a
+  command: bool-only, never persisted or reported by GET"; `:372` → "masks PW (and HotspotPW) on every GET /networking,
+  whatever was applied"; every other title naming a `src/` function names one that exists at the end state (grep at
+  landing).
 - **Resolved**: A.U9.03's "Failed for out-of-range" expectations at `:272-314` are A.U19.02's "Invalid" (A.U19.02 keeps
   only the busy refusal "Failed", M.SRC_NET.122).
 - **Unit**: U25 (A.U25.12). Stages: U6 (A.U6.13/.17/.28/.29/.30), U9 (busy), U10 (keys), U18 (`HotspotPW`, shapes), U19
@@ -1076,11 +1091,14 @@ every B1 action (AC_NOTES 34-second).
 - **Site**: `tests_js/definitions.test.js:1-300`.
 - **Change**: header (≤ 3 lines) "Tests js/definitions.js: the validator's rejections, the value resolver and the
   loader, against fixtures and every device's generated definitions." The two JSON imports go; `it.each([...GENERATED_
-  DEFINITIONS])("accepts the generated %s definitions", …)` replaces `:209-210`; `MINIMAL_VALID`'s id and the stub paths
+  DEFINITIONS])("accepts the generated %s definitions", …)` replaces `:205-213` (comment and `it.each`); the `:2-3`
+  comment → "// Every device's generated definitions come from tests_js/_generated_definitions.js (a real browser run:
+  no node:fs)."; `MINIMAL_VALID`'s id and the stub paths
   use `"fixture-device"`; `SUPPORTED_SCHEMA_MAJOR` and the `:295` timeout come from `_source_constants.js` (`readConst
   ("../js/definitions.js?raw", "SUPPORTED_SCHEMA_MAJOR")`, likewise `DEFAULT_TIMEOUT_MS` from `poll-manager.js`); `:81-95`
-  gain the upper bound (2**31 rejected, 2**31 − 1 accepted, for both intervals); `:242-253` and the `defaultValue` half of
-  `:254-258` go (the null pass-through case stays, without `defaultValue`); new: while a `pollManager.request()` is
+  gain the upper bound (2**31 rejected, 2**31 − 1 accepted, for both intervals); `:242-246` (the `defaultValue` fallback
+  case) goes; `:248-252` (null pass-through) stays with `defaultValue: 5000` removed from its field and its comment →
+  "// CCT is legitimately null in a dark room; the renderer shows an em dash for it."; new: while a `pollManager.request()` is
   pending, `loadDefinitions()` issues no fetch until it settles (a stub counting concurrent fetches never sees 2). The
   hang test's stub and assertion hold. Trailing `vi.useRealTimers()` go.
 - **Resolved**: —
@@ -1107,8 +1125,8 @@ every B1 action (AC_NOTES 34-second).
   `legacy/`/`audit/`) — `MeasInt` → `MeasInterval` throughout, `lightCmdLED` → `LightCmdLED` with `R/G/B/T`; `:84-86`
   comment → "// A plain toggle: no dispatch or alwaysExecuted flag, so the mock stores and echoes it (SPECIFICATION.md
   Part H.4)."; the status fixture's sections carry what each test needs. Changed expectations: `:323` → "Command executed
-  — MeasInt: Valid"; `:382-415` comment "rebuild" → "update"; the latency comment `:399-401` → the fake-timer switch's
-  plain reason; `:417-466` → the mock answers `{"ResetErrors": "Valid"}` and it is read; a local stub answering
+  — MeasInterval: Valid"; `:382-415` comment "rebuild" → "update"; the latency comment at `:403-405` → "// Fake timers from
+  here on: the live poll tick is driven deterministically."; `:417-466` → the mock answers `{"ResetErrors": "Valid"}` and it is read; a local stub answering
   `{"ResetErrors": "Failed"}` shows Failed; the second click of `:458-466` → the toggle is Off after the first Apply,
   so "Nothing to submit"; `:468-535` (describe "… defaultValue") → an always-executed toggle with no GET value renders
   "—", is not submitted until set, is submitted `false` once set Off, returns to "—" after Apply; `:540-600` hold plus a
@@ -1141,6 +1159,14 @@ every B1 action (AC_NOTES 34-second).
   sends no `PW`, a typed password is sent exactly); the hostile-key fixture of A.U23.40 (group `g"]`, fields `a"] [x="`,
   `b\\c`, `d e`) renders, collects, PUTs all three keys and colours each wrapper; three consecutive failing ticks log
   `console.error` once, and a success then a failure logs again. Trailing restores (`:406-414`, `:886-929`) go.
+  Comments and titles follow the end state (AC3_O O-08): `:702-704` → "// A non-numeric member is refused by the
+  dispatcher's per-member validation (SPECIFICATION.md A.8)."; `:417` → "shows Valid after a successful Reset All Errors
+  submission, read from /status's per-field result" and `:418-420` deleted; `:458-460` → "// The toggle is Off after
+  the first Apply, so a second click has nothing to submit."; `:409-410` → "// The poll update keeps the chosen
+  filter."; `:584-586` → "// SystemCmd is never returned by GET /system (A.8), so the select starts on its placeholder
+  and an untouched Apply sends nothing."; `:679-680` → "// JSON.stringify(NaN) is "null"; the raw text is sent instead
+  so the server can refuse it."; `:864` names the section's status sub-request as M.WEB.020 names it (no `fetchOnce()`
+  if that function is gone).
 - **Resolved**: A.U23.14 says `:458-466` (second ResetErrors) holds and A.U23.15 (later in the same unit, and the
   behaviour it adds) turns it into "Nothing to submit" — A.U23.15's expectation stands. A.U23.05's "console.error once"
   case lands here (M.WEB.051's note). A.U36.544 (4) ":86 H.7 → H.4" applies to the comment A.U6.17 makes false (the mock
@@ -1150,7 +1176,8 @@ every B1 action (AC_NOTES 34-second).
   catalog text, so it expects "Internal server error". The one-shot settings banner test at `:668-676` asserts the
   banner after the failure, but the one-shot section now retries on its failing-episode interval and hides the banner
   on recovery; it runs under fake timers (`vi.useFakeTimers()`, advanced only past the first attempt) so the assertion
-  sees the failure state, not a later retry.
+  sees the failure state, not a later retry. The same holds for `:995` (the PUT 500 case): it expects "Internal server
+  error" (AC3_O O-07).
 - **Unit**: U24 (A.U24.14/.48). Stages: U8 (tags), U10 (keys), U19 (`:851`), U23 (behaviour cases and A.S0930.20 (5)),
   U27 (header), U36 (pointers — folded into the U23 rewrite of the same lines where those lines change; `:958` alone
   lands in U36).
@@ -1207,9 +1234,10 @@ every B1 action (AC_NOTES 34-second).
   device's composed mock data, through the site's own resolver." The four JSON imports go;
   `GENERATED_DEFINITIONS`/`DEVICE_IDS` and `samples.json` are imported; the local `groupValuesFrom()` mirrors
   M.WEB.020's rules (no flattening; maintenance by `path`; `statusPath` from the status data) with its comment
-  unchanged in substance; `:223-224` comment → "// Only readonly fields: a command-only trigger is never echoed in a
+  unchanged in substance; `:73-74` comment → "// Only readonly fields: a command-only trigger is never echoed in a
   GET."; the two per-variant `it`s become one `it.each(DEVICE_IDS)("every readonly field %s's definitions name
-  resolves in its composed mock data", …)`; the two self-checks `:257-275` stay.
+  resolves in its composed mock data", …)`; the two self-checks `:107-125` stay; `:96-98` → "// A blank row is not a
+  defect the renderer reports, so an unresolvable readonly field fails here."
 - **Resolved**: —
 - **Unit**: U23. Stage U6 (per-device rewrite).
 - **Depends**: M.WEB.043, M.WEB.050.
@@ -1246,7 +1274,10 @@ every B1 action (AC_NOTES 34-second).
   `data-code-tone="warn"`; `updateErrcountGroup()` keeps the "Show all" button node and focus; `updateFieldGroupValues()`
   keeps the same `.field-value` node; `resetControl()` clears an input, a composite and selects the placeholder.
   `buildSectionShell` (`:438-462`) expects `data-shown="false"`. `:478`, `:489` → `"fixture-device"`/"Fixture Device".
-  XSS (`:502-570`) hold, plus a hostile code description rendered as text.
+  XSS (`:502-570`) hold, `:512-523` building its hostile field through a one-field `buildFieldGroupCard()` like the
+  field-markup cases, plus a hostile code description rendered as text. `:399` → `src/asy_print_log.py's get_log()`
+  (A.U10.37); `:328`'s title → "tags the card with data-group-key itself, like buildFieldGroupCard() (SPECIFICATION.md
+  Part H.3: js/templates.js owns the hook)" (AC3_O O-10).
 - **Resolved**: A.U0.28 (U0) writes `:399-400` "(owner, 2026-08-21, `9fd2a28`)"; A.U24.56 (U24) lists the same A28 site
   as "residue other units leave" with the text "(owner, 2026-08-21)" — A.U0.28 already carries it, so A.U24.56's A28
   bullet is void (its own scope is what other units leave) and A.U0.28's text stands.
@@ -1271,7 +1302,8 @@ every B1 action (AC_NOTES 34-second).
   the stub serves `../build/generated_src/definitions/index.json` `{"devices": ["fixture-a", "fixture-b"]}`, the two
   definitions files and `../mockdata/samples.json`; cases: the first manifest id is the default, an unknown `?device=`
   falls back to it, a known one is used, a manifest 404 shows "Could not load the device list", a definitions failure and
-  a torn `samples.json` show their banners and render no section; stop handles called; the `:11-12` "no stop handle"
+  a torn `samples.json` show their banners and render no section; the landing section is marked `aria-current` in the
+  drawer; a `samples.json` answered with HTTP 500 shows its banner and renders no section (AC3_O O-12); stop handles called; the `:11-12` "no stop handle"
   comment goes (sections may be live now). `nav.test.js`: `initNav` gets `keyTarget` (a counting `EventTarget`) and
   returns `{setCurrent, dispose}`; `:38-92` assert `appShellEl.dataset.navOpen`; new: closed drawer `inert`, open not,
   opening focuses the first link and sets `aria-label` "Close navigation", closing with focus inside returns it to the
@@ -1279,7 +1311,8 @@ every B1 action (AC_NOTES 34-second).
   `scripts/_stage_website.py` in place of "build_website.sh's "Inlining" note"; `nav.test.js`'s `afterEach` calls the returned
   `dispose()`. `main.test.js:127-128` comment → "// The point of inlining
   (SPECIFICATION.md H.2: the stager inlines definitions.json): a device build never fetches it." (the build script
-  that inlines moves to `scripts/_stage_website.py`, A.U23.38; "H.7's follow-up round" is a process label, G9/R12).
+  that inlines moves to `scripts/_stage_website.py`, A.U23.38; "H.7's follow-up round" is a process label, G9/R12);
+  `main.test.js:144` "scripts/build_website.sh" → "scripts/_stage_website.py" (AC3_O O-11).
 - **Resolved**: —
 - **Unit**: U23. Stages: U6 (A.U6.07/.13), U27 (headers).
 - **Depends**: M.WEB.025, M.WEB.026, M.WEB.030, M.WEB.031.
@@ -1297,7 +1330,7 @@ every B1 action (AC_NOTES 34-second).
   `tests_js/_put_field_cases.js:1-83`.
 - **Change**: matrix header `:1-5` → "PUT-behaviour matrix over every real writable field of every device's generated
   definitions (deduplicated by derivation), against js/mock-server.js's fetch interception - six categories per field
-  (owner's request, 2026-08-24) (valid, special, omitted, resubmit-unchanged, out-of-range, wrong-type), matching
+  (owner, 2026-08-24) (valid, special, omitted, resubmit-unchanged, out-of-range, wrong-type), matching
   SPECIFICATION.md Part A.8." (≤ 3 lines when wrapped); the four JSON imports and `DEV_UNIQUE_GROUPS` with its comment go;
   `CASES = dedupePutFieldCases(DEVICE_IDS.flatMap((d) => collectMockPutFieldCases(d, GENERATED_DEFINITIONS.get(d),
   composeMockData(...))))`; the resubmit-unchanged expectations `:118-121`, `:183-185` apply to non-`neverUnchanged()`
@@ -1744,7 +1777,7 @@ every B1 action (AC_NOTES 34-second).
 - **From**: A.U28.42 (header first), A.U28.26 (Chromium preference), A.U24.14 (`restoreMocks`, `setupFiles`), A.U7.10
   (`reporters`), A.U6.10 (`getLiveMatrixConfig`), A.U23.33 (`archiveErrcount`), A.U23.35 (`runLiveBackendRestartRecovery`),
   A.U6.04 (`:37-39` comment), A.SDEP.19 (W34/W36, conditional), A.U8.02 (read: the file is scanned for tags), A.U24.52
-  (read: command names unchanged).
+  (read: command names unchanged), A.U8.15 (`:31` tag; AC3_S S-12).
 - **Site**: `vitest.config.js:1-61`.
 - **Change**: the `:21-25` JSDoc moves above the imports as the first block (text unchanged). Imports add `chromium` from
   `"playwright"`. `launchOptions = !existsSync(chromium.executablePath()) && existsSync(sandboxChromium) ? {executablePath:
@@ -1756,7 +1789,8 @@ every B1 action (AC_NOTES 34-second).
   the re-parse fixed); `commands` registers `runLiveBackendSmoke`, `runLiveBackendConcurrentTabs`,
   `runLiveBackendRestartRecovery`, `getLiveMatrixConfig`, `startLiveMatrix`, `stopLiveMatrix`, `getRealCurrentValues`,
   `applyField`, `applyUnchangedFieldExpectNothingToSubmit`, `remountAndReadField`, `archiveErrcount`, `probeLintRule`,
-  `lintFixture` (M.WEB.081).
+  `lintFixture` (M.WEB.081). `// @tunable l0.vitest_test_timeout_ms = 20000` on its own line directly above
+  `testTimeout: 20000` (A.U8.02's grammar); the backstop comment above it stays within the 3-line cap.
 - **Resolved**: —
 - **Unit**: U28 (A.U28.26/.42). Stages: U6 (A.U6.04 comment, A.U6.10 command), U7 (reporter), U23 (two commands), U24
   (setup); U0 conditional (A.SDEP.19).
@@ -2131,7 +2165,7 @@ points" lists them):
 | A.U23.01 | M.WEB.002, .007, .031, .053 |
 | A.U23.02 | M.WEB.002, .051 |
 | A.U23.03 | M.WEB.002, .020, .051, .054 |
-| A.U23.04 | M.WEB.003, .020, .025, .030, .051 |
+| A.U23.04 | M.WEB.003, .020, .025, .030, .031 (the shared shell in `app.js`; AC3 S section 4), .051 |
 | A.U23.05 | M.WEB.003, .020, .021, .051, .054, .070 |
 | A.U23.06 | M.WEB.020, .025, .059, .064 |
 | A.U23.07 | M.WEB.022, .025, .026, .030, .031, .059, .064 (`fetchImpl?` dropped, D7) |
@@ -2163,7 +2197,7 @@ points" lists them):
 | A.U23.33 | M.WEB.060, .062, .063, .074, .076 |
 | A.U23.34 | M.WEB.061, .063, .076 |
 | A.U23.35 | M.WEB.061, .063, .074, .076 |
-| A.U23.36 | M.WEB.054, .063 |
+| A.U23.36 | M.WEB.054 (already in its From as `.36`; AC3 S section 4 needs no edit), .063 |
 | A.U23.37 | M.WEB.002, .005, .014, .051, .053, .058, .068; the notification half SRC_SENS; regexes TSC |
 | A.U23.38 | SCR (stager); `package.json` script M.WEB.071; read M.WEB.013 |
 | A.U23.39 | GEN/SCR (favicon, staging); M.WEB.066 note |
@@ -2292,3 +2326,18 @@ Gap pass G2 rows (2026-10-01; `GAPS_G2.md` lists each item and its source):
 | M_WEB gap 1 (CLUSTERS.md naming `mockdata/` etc.) | carried as found: M.WEB.045, .073, .074; the CLUSTERS.md line is the lead's |
 | AC_NOTES 40 (six `tests_js` files read in full against M.WEB.052-.059) | see `GAPS_G2.md` (end-state check result) |
 | AC_NOTES 41 (GEN Q1/Q2 firm) | Owner-questions text amended (OR132) |
+| A.U8.15 | M.WEB.074 (`:31` `@tunable l0.vitest_test_timeout_ms` tag; AC3 S-12; lands with M.WEB.074's U28, its Part N row with it per M.SPEC.156) |
+| AC3 O-01 | M.WEB.052 (accepted `LightCmdLED` cases advance the mock clock past `T`) |
+| AC3 O-02 | M.WEB.052 (`:273-275`, `:287-288`, `:296` comments) |
+| AC3 O-03 | M.WEB.052 (`:316`, `:325-327`, `:336`, `:372` titles and comments) |
+| AC3 O-04 | M.WEB.052 (fixture `:5-135`/`:137-153`; restore `:403`) |
+| AC3 O-05 | M.WEB.053 (`:242-246` goes, `:248-252` stays; `:205-213`; `:2-3` comment) |
+| AC3 O-06 | M.WEB.054 (`:323` → `MeasInterval`) |
+| AC3 O-07 | M.WEB.054 ("Found while merging": `:995` expects "Internal server error") |
+| AC3 O-08 | M.WEB.054 (comments/titles `:702-704`, `:417-420`, `:458-460`, `:403-405`, `:409-410`, `:584-586`, `:679-680`, `:864`) |
+| AC3 O-09 | M.WEB.058 (`:512-523` through `buildFieldGroupCard()`) |
+| AC3 O-10 | M.WEB.058 (`:399` module path, `:328` title) |
+| AC3 O-11 | M.WEB.059 (`main.test.js:144`) |
+| AC3 O-12 | M.WEB.059 (`app.test.js` keeps the `aria-current` and HTTP-500 cases) |
+| AC3 O-13 | M.WEB.057 (`:73-74`, `:107-125`, `:96-98`) |
+| AC3 O-23 | M.WEB.060 (actor tag "(owner, 2026-08-24)") |

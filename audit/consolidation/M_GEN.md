@@ -269,7 +269,8 @@ change lists its stages; the end state is the last stage's.
 - **From**: A.U5.04, A.U5.05, A.U18.10 (DNS fallback group), A.U18.38 (`HotspotPW` in identity), A.U10.40 (key
   renames), A.U20.16 (1) (maintenance entry per SGP40), A.U20.38 (settings table lifted to module level), A.U20.14
   (1) (arg-type ignores go), A.U20.41 (constructor name), A.U27.07 (read: its fixture mirrors this shape), A.U6.26
-  (read: the SettingsGroup entry is U18/U19's), A.U32.04 (read: resync after a settings change held).
+  (read: the SettingsGroup entry is U18/U19's), A.U32.04 (read: resync after a settings change held); A.U6.20 (2)
+  (`:629`, `:634` read `MAINTENANCE_NAMES`; AC3_S S-11).
 - **Site**: `buildgen/codegen.py:599-651` `_emit_webserver()`.
 - **Change**: emitted `webserver = WebserverService(app, routes=RouteSources(...), serving=ServingLimits(<max_connections>,
   <backlog>, …literals), static=StaticSite(...), log=…)` with the build info keys `FirmwareVersion`, `WebsiteVersion`,
@@ -277,13 +278,14 @@ change lists its stages; the end state is the last stage's.
   `SettingsGroup(conn, ("SSID", "PW", "Country", "Hostname", "HotspotPW"), post_fct=conn.reconnect_wifi)`,
   `SettingsGroup(conn, ("LEDWifiOn",))`, `SettingsGroup(ntp, ("NTPHost", "NTPOffset", "NTPInterval"),
   post_asy_fct=…)`, `SettingsGroup(ntp, ("DNSFallback",))`; system `DebugLevel`, `GMTOffset`/`DSTOffset` (unchanged
-  keys); maintenance one entry per SGP40 keyed by its `resolved_name` (`"SGP40"`, `"SGP40_<ext>"`) plus
-  `("UARTLINK", <initiator var>.get_link_status)` where declared; no `# type: ignore[arg-type]`.
+  keys); maintenance one entry per SGP40 keyed by its `resolved_name` (`MAINTENANCE_NAMES["sgp40"]`,
+  `MAINTENANCE_NAMES["sgp40"] + "_<ext>"`) plus `(MAINTENANCE_NAMES["uart_link"], <initiator var>.get_link_status)`
+  where declared; `codegen.py` spells neither name; no `# type: ignore[arg-type]`.
 - **Resolved**: A.U5.04's config-object rewrite and A.U10.40's `build` key rename touch the same dict — both apply
   (the object carries the renamed keys). A.U6.26 defers the group to U18 — A.U18.10's form is taken.
 - **Unit**: U20 (latest: A.U20.16/.38). Stages: U5 (config objects with A.U5.04/.05), U10 (keys A.U10.40), U18
   (`HotspotPW`, DNS fallback group with A.U18.10/.38).
-- **Depends**: A.U5.04, A.U5.05, A.U18.10, A.U18.38 (SRC_NET).
+- **Depends**: A.U5.04, A.U5.05, A.U18.10, A.U18.38 (SRC_NET); M.GEN.035.
 - **Blast carried by**: definitions networking groups → M.GEN.014 (A.U6.25/A.U6.26/A.U18.38 fields);
   `tests/test_setter_microdot_integration.py` fixture → A.U27.07 (TST).
 - **Kind**: code
@@ -1189,15 +1191,16 @@ change lists its stages; the end state is the last stage's.
 ## devices/wozi.toml
 
 ### M.GEN.055 wozi: header, trigger_s, banners, wiring comments
-- **From**: A.U36.520 (`:1-2`), A.U10.43, A.U20.29, A.U20.23 (`:16`, `:98`), A.U20.10 (read: `:81` already names
-  the part), A.U13.04/A.U10.R01 (read).
+- **From**: A.U36.520 (`:1-2`), OR78.a (2)-(3) (header wording; AC3_O O-28), A.U10.43, A.U20.29, A.U20.23 (`:16`,
+  `:98`), A.U20.10 (read: `:81` already names the part), A.U13.04/A.U10.R01 (read).
 - **Site**: `devices/wozi.toml:1-3, 16, 38, 45, 75, 98`.
-- **Change**: header → `# wozi.toml - the exemplary/base device; never physically flashed, its correctness comes from
-  tests/ (CLAUDE.md).` / `# Wiring sourced from legacy/firmware/modules/sensortask-wozi.py (legacy, read-only
-  reference); bmp3xx's 0x77 is the legacy driver's default.` / `# The source of truth buildgen reads (SPECIFICATION.md
+- **Change**: header → `# wozi.toml - never physically flashed; its correctness rests on L1/L2 (CLAUDE.md).` /
+  `# Wiring sourced from legacy/firmware/modules/sensortask-wozi.py (legacy, read-only reference); bmp3xx's 0x77 is the legacy driver's default.` / `# The source of truth buildgen reads (SPECIFICATION.md
   Part L).`; `trigger_s = 3` (every sensor instance); the two banners at 100 characters with titles `sensor drivers`,
   `singleton services`; `:16` and `:98` as in M.GEN.052/.054.
-- **Resolved**: —
+- **Resolved**: OR78.a (2)-(3) withdraws wozi's golden-reference role: "the exemplary/base device" goes; AC3_O O-28's
+  "never physically flashed; its correctness rests on L1/L2" replaces the header's whole first clause, which already
+  said "never physically flashed" (no repetition).
 - **Unit**: U36 (latest: A.U36.520); stages U10 (`trigger_s`), U20 (banners, comments).
 - **Depends**: A.U1.01 (legacy move, LEGACY/DOC cluster), M.GEN.024.
 - **Blast carried by**: —
@@ -1374,6 +1377,38 @@ change lists its stages; the end state is the last stage's.
   (SRC_NET); M.GEN.003 (no ignore on the emitted import).
 - **Kind**: code
 
+## ext/freezefs/* (vendored)
+
+### M.GEN.064 Re-vendor freezefs at upstream main, unmodified
+- **From**: A.SDEP.07 (the re-vendor; AC3_S S-01: no change carried the files); A.U34.08 (read: the commit record and
+  hashes).
+- **Site**: `ext/freezefs/LICENSE`, `__main__.py`, `archive.py`, `ffsextract.py`, `ffsmount.py` (whole files).
+- **Change**: if upstream `main` (or its newest tag, should upstream start tagging) differs from the vendored state byte
+  for byte, the five files are replaced by that commit's files, unmodified, and the commit SHA and each sha256 are
+  recorded in the refresh record; otherwise unchanged. No other edit, ever.
+- **Resolved**: —
+- **Unit**: U0 (dependency refresh, family (d), with M.GEN.051); the work order's U0R step.
+- **Depends**: A.SDEP.01, A.SDEP.02.
+- **Blast carried by**: `scripts/build_frozen_html.sh` → M.SCR.072; `tests_scripts/test_vendored_freezefs.py` hashes →
+  M.TSC.153; THIRD_PARTY entry → M.DOCS.003; SPEC `:63` → M.SPEC.005; the silicon check of a format change → M.DOCS.064.
+- **Kind**: code
+
+## buildgen/*.py (function and class docstrings)
+
+### M.GEN.065 Function and class docstrings become comments in buildgen
+- **From**: A.U10.34 (AC3_S S-05: no carrier in this cluster).
+- **Site**: `buildgen/definitions.py` (:122, :486); `model.py` (:129); `pico_gpio.py` (:80); `schema_ast.py` (:43);
+  `tag_comments.py` (:28, :183, :211, :225, :234); `twin_wiring.py` (:34); `validate.py` (:137, :160, :177, :182, :190,
+  :207, :231, :255); `version.py` (:11); `web_tag.py` (:38) — HEAD lines of the 21 function/class docstrings.
+- **Change**: each function, method and class docstring becomes a `#` comment block directly under the `def`/`class`
+  line, same text, ≤ 3 prose lines (overflow to the owning doc per CLAUDE.md's comment rule); module docstrings stay
+  (the five argparse readers included). A file a later change rewrites carries the form forward.
+- **Resolved**: —
+- **Unit**: U10.
+- **Depends**: —
+- **Blast carried by**: `tests_scripts/test_comment_block_cap.py` stays green → M.TSC.065.
+- **Kind**: code
+
 ## Gaps for other clusters
 
 1. **Boot-entry file name** (SCR/TST): M.GEN.019 settles the generated boot entry as `sensortask_<device>_main.py`
@@ -1533,7 +1568,7 @@ look of the website"; M.GEN.062)
 | A.U10.30 | M.GEN.025 |
 | A.U10.31 | no change here (quoting rule applied through A.U20.41 in M.GEN.003/004) |
 | A.U10.32 | no change here (D.15 order applied through A.U36.038, M.GEN.010/011) |
-| A.U10.34 | M.GEN.048 |
+| A.U10.34 | M.GEN.048 (read); M.GEN.065 (buildgen function/class docstrings → comments; AC3 S-05) |
 | A.U10.37 | M.GEN.003 |
 | A.U10.38 | M.GEN.003, M.GEN.040 |
 | A.U10.39 | M.GEN.025 |
@@ -1752,7 +1787,7 @@ look of the website"; M.GEN.062)
 | A.U36.517 | M.GEN.060 |
 | A.U36.518 | M.GEN.043 |
 | A.U36.519 | M.GEN.021 |
-| A.U36.520 | M.GEN.055 |
+| A.U36.520 | M.GEN.055 (header wording per OR78.a; AC3 O-28) |
 | A.U36.527 | M.GEN.051 |
 | A.U36.529 | M.GEN.052 |
 | A.U36.535 | M.GEN.019 |
@@ -1782,7 +1817,7 @@ look of the website"; M.GEN.062)
 | A.U6.17 | M.GEN.015, M.GEN.017, M.GEN.046 |
 | A.U6.18 | M.GEN.015 |
 | A.U6.19 | M.GEN.014, M.GEN.017, M.GEN.046 |
-| A.U6.20 | M.GEN.014, M.GEN.017, M.GEN.035, M.GEN.046 |
+| A.U6.20 | M.GEN.014, M.GEN.017, M.GEN.035, M.GEN.046; M.GEN.009 ((2): codegen reads `MAINTENANCE_NAMES`; AC3 S-11) |
 | A.U6.21 | M.GEN.008, M.GEN.014 |
 | A.U6.22 | M.GEN.014 |
 | A.U6.23 | M.GEN.014 |
@@ -1831,6 +1866,8 @@ change (the catalog rows and tag values their merges number):
 | A.U18.14 | M.GEN.034 (errno 72 `NTP_NOT_SENT`) |
 | A.U18.15 | M.GEN.034 (W12 `SOCKET_TEARDOWN`) |
 | A.U9.08 | M.GEN.034 (errno 15 `SOURCE` text) |
+| A.SDEP.07 | M.GEN.064 (the freezefs re-vendor; AC3 S-01) |
+| A.U34.08 | M.GEN.064 (read: commit record and hashes; AC3 S-01) |
 
 ## A-C2 order notes (2026-10-01)
 

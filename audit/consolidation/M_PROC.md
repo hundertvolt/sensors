@@ -109,15 +109,21 @@ child sessions inherit none.
 ### M.PROC.003 U0 runs in one fixed order
 - **From**: A.SDEP.01 (Site: "after A.U0.06 … before A.U0.07-A.U0.60 are executed"), A.U0.03, A.U0.04, A.U0.05,
   A.U0.15, AC_NOTES 34-second ("A-C adds the U0 step and orders it before every B1 action"), OR129.a (1), OR131.a
-  (Microdot stubs in U0's re-vendor), M_TOOL gap 11 (W32 outcome and dorny in U0).
-- **Site**: the register header's U0 row; `audit/artefacts/ENV/` (audit files).
+  (Microdot stubs in U0's re-vendor), M_TOOL gap 11 (W32 outcome and dorny in U0); OR134 (LEAD/R34) (the namespace
+  proof, AC3_R R-06); A.U0.38 (the D1.22 audit-file edit, AC3_S S-02).
+- **Site**: the register header's U0 row; `audit/artefacts/ENV/` (audit files); `audit/dprov/D1.md` (D1.22).
 - **Change**: U0 executes in this order, each step's record in `audit/artefacts/ENV/`: (1) A.U0.02 — baseline SHA and
   anchor move (DOCS-indexed; procedure as written); (2) M.PROC.001 — the frame; (3) M.PROC.004 — toolchain, reference
   corpus, extractor; (4) M.PROC.005 — audit apparatus; (5) M.PROC.007 — the baseline measured (A.U0.06 plus the extra
-  rows); (6) the dependency refresh, P3 (M.PROC.008-M.PROC.013), family by family, ending with the post-refresh baseline
-  (M.PROC.012); (7) M.PROC.006 — the history trace (read-only, any time after (1)); (8) A.U0.01 and A.U0.07-A.U0.60 —
+  rows); (5a) the port-binding isolation proof (OR134, LEAD/R34): the two suites that bind fixed ports
+  (`scripts/test.sh`'s MicroPython tier and `npm test`) run at the same time, each in its own network namespace, and pass
+  exactly as they pass one after the other; the result goes into the U0 record, and until it is proven the work order
+  runs them one after the other (CLAUDE.md 'Two suites that both bind real ports'); (6) the dependency refresh, P3
+  (M.PROC.008-M.PROC.013), family by family, ending with the post-refresh baseline (M.PROC.012); (7) M.PROC.006 — the history trace (read-only, any time after (1)); (8) A.U0.01 and A.U0.07-A.U0.60 —
   the U0 code and doc actions, whose allow-lists (A.U0.08/A.U0.09) are built after (6) so the texts the refresh wrote are
-  already in the tree. Nothing of B1 (U1 onward) starts before (6) is closed in its record and CI is green on it.
+  already in the tree. A.U0.38's audit-file part runs here with the U0 doc actions: `audit/dprov/D1.md` D1.22's class
+  'agent-as-settled' → 'owner-quoted (OR87.a (b))' (audit file). Nothing of B1 (U1 onward) starts before (6) is closed
+  in its record and CI is green on it.
 - **Resolved**: A.SDEP.01 puts the refresh "right after the baseline is recorded" (OR129.a (1)) — before A.U0.07-.60;
   AC_NOTES 34-second asks A-C to order it before every B1 action; both hold in this order.
 - **Unit**: U0.
@@ -473,8 +479,9 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
 - **Kind**: doc (audit file)
 
 ### M.PROC.018 Owner step before U28: push access to the private datasheets repository
-- **From**: AC_NOTES 37; A.U36.545's "Owner step (before A.U28.35)"; OR80.a, OR95.a.
-- **Site**: the owner's GitHub repository `hundertvolt/datasheets`; the A-C review list (M.PROC.035) and U28's start.
+- **From**: AC_NOTES 37; A.U36.545's "Owner step (before A.U28.35)"; OR80.a, OR95.a; A.U28.35 (the move; AC3_S S-16).
+- **Site**: the owner's GitHub repository `hundertvolt/datasheets`; the A-C review list (M.PROC.035) and U28's start;
+  `datasheets/` (the tracked PDFs, moved out); `.gitmodules` (new).
 - **Change**: (1) Shown to the owner at the A-C review, and asked again at U28's start if not yet confirmed: confirm the
   Claude GitHub App's grant on `hundertvolt/datasheets` includes write (push), so the executing session can create the
   default branch `main` and push the 21 PDFs (OR95.a verified read only, 2026-09-29). (2) Executor order in U28: populate
@@ -568,8 +575,8 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
   review list (M.PROC.035). Network: needs the execution sandbox's egress (fetch, GitHub API) — not hardware.
 - **Kind**: code (one-time, audit scratch), doc
 
-### M.PROC.021 U32: re-run the legacy-function check at the sync point
-- **From**: A.U32.04.
+### M.PROC.021 U32: re-run the legacy-function and legacy-value checks at the sync point
+- **From**: A.U32.04, A.U32.05.
 - **Site**: the audit working record (`audit/`; nothing permanent); read: the three modules at the U32 tip and the
   legacy files at their `legacy/firmware/` paths (M.PROC.014).
 - **Change**: A.U32.04's desk check repeated against the then-current code after U9/U15/U18 land, each function marked
@@ -580,9 +587,14 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
   A.U9.02/A.U9.03; ramp floor, overlay restore, Wi-Fi LED, colour mapping, interval from loop start — held). Sites are
   read by symbol (U10/U18/U20 renames and moves shift every cited line: e.g. the colour mapping now lives in
   validate per M.GEN.013). Only owner questions and fixes are written (OR48.a (3) "no list or permanent record").
+  Then A.U32.05's legacy-value trace is re-confirmed the same way against the then-current generated module (`/status`,
+  `/measurements`, `/sensors`, `/networking`, `/system`): every legacy key of `modules/sensortask-wozi.py:146-530`
+  (arzi/neu the same minus BMP388) and of `8ec6fc1^:improved-quality/sensortask-wozi.py:395-415, 630-670` maps to its
+  refactor place as A.U32.05 lists it, `UnixTime` (A.U23.22) and `LastTaskEnd` (A.U32.06, OR128) included; a key with no
+  place is an owner question (OR43.a (1)).
 - **Resolved**: line drift — read by symbol (D5).
 - **Unit**: U32 (sync point).
-- **Depends**: A.U9.02, A.U9.03, A.U15.26, A.U18.21; M.PROC.014.
+- **Depends**: A.U9.02, A.U9.03, A.U15.26, A.U18.21; M.PROC.014; A.U23.22, A.U32.06.
 - **Blast carried by**: the fixes' own tests (A.U9.02/A.U9.03, A.U15.26, A.U18.21 — their clusters); M.GEN.009/.013
   (read, colour mapping held).
 - **Kind**: test (audit check)
@@ -606,10 +618,29 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
   M.WEB.066 (WEB).
 - **Kind**: test (audit check)
 
+### M.PROC.048 U36: two baseline runs of the Part K skill
+- **From**: A.U36.543 (10); OR10.b (AC3_R R-04: no change scheduled the runs; written `M.PROC.R04` in the work order).
+- **Site**: throwaway worktrees (nothing merged); the result in the unit's report.
+- **Change**: as A.U36.543 (10): a fresh agent in a throwaway worktree, given only the datasheet and a brief, walks the
+  skill (`.claude/skills/integrate-module/SKILL.md`, M.DOCS.109) for ISL29125 and for BMP3xx through every level and the
+  build; its driver, config, `@web` tags, twin model and tests are compared with the real ones; each divergence the list
+  caused (not by design freedom) is fixed in Part K or the skill; the runs repeat until one full run against both shows no gap. Nothing from the
+  worktrees is merged; the result is reported at the unit's end.
+- **Resolved**: —
+- **Unit**: U36 (after M.DOCS.109).
+- **Depends**: M.DOCS.109; M.SPEC.142, M.SPEC.046.
+- **Blast carried by**: a divergence → a Part K delta (SPEC, M.SPEC.140-.143) or a skill delta (M.DOCS.109); nothing else
+  in the tree.
+- **Kind**: rule
+
 ## P5 — B3: the test-integrity campaign (U35)
 
 ### M.PROC.022 Open the B3 working files; the campaign ends when every row is terminal
-- **From**: A.U35.01.
+- **From**: A.U35.01; the campaign procedures A.U35.03, A.U35.04, A.U35.05, A.U35.08, A.U35.09 (1), A.U35.15
+  (confirmation runs), A.U35.22 (1), A.U35.23, A.U35.28 (1), A.U35.35, A.U35.37, A.U35.41 (the verdict table), A.U35.50,
+  A.U35.51 (their file edits stay with the changes that carry them) (AC3_R R-01; the file rows of AC3_S S-17: A.U35.03
+  `review.md`, A.U35.04 `faults.md`, A.U35.08 `matrices.md`, A.U35.22 `levels.md` with M.PROC.023, A.U35.23 `timing.md`,
+  A.U35.28 `load.md`, A.U35.41 `e51.md`, A.U35.50 `conformance.md`).
 - **Site**: new `audit/b3/` (audit working files, deleted with `audit/` at phase D).
 - **Change**: each file with a one-paragraph header naming its requirement and its completion criterion: `review.md`
   (one row per test: file:line, name, level, verdict biting/weak/blank, red flag, fix or "biting as is"), `faults.md`
@@ -620,15 +651,26 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
   any file records goes the OR12.a path (fix with a regression test first, or an owner question), never a note alone,
   and passes A-C as a delta before it is applied (OR106.a). Complete when every row of every file is terminal (biting,
   fixed, or justified with its reason).
+  (2) The campaign fills the files as its actions state, each finding a delta that passes A-C (OR106.a): `review.md` —
+  every test in `tests/`, `tests_scripts/`, `tests_js/` and `tests_hardware/` and every registered scenario, classified
+  by OR19.a's red flags, weak and blank tests strengthened with their goal kept (A.U35.03); in it the normal-situation
+  scan (A.U35.37) and the K-row checklist, each row's test named and its planted proof recorded (A.U35.35); `faults.md` —
+  one fault-planting pass per module in a throwaway worktree through `audit/sweeps/plant.py`, nothing kept (A.U35.04),
+  the two plants per memory gate and every check-style test triggered (A.U35.05); `matrices.md` — the assembly and actor
+  × resource matrices, each gap tested at the lowest level that proves it (A.U35.08), and the recombination row
+  (A.U35.09 (1)); `timing.md` — B0, post-refresh and post-B3 columns per level and GC stage (A.U35.23) and the NTP
+  loopback confirmation runs (A.U35.15); `load.md` — the resource × level cells (A.U35.28 (1)); `e51.md` — the E.5.1
+  verdict table (A.U35.41); `levels.md` — the multi-chunk SET ladder (A.U35.22 (1)); `conformance.md` — one four-tier
+  bus-hazard row per bus-facing change of B2 and B3 (A.U35.50) and the wear-gate and host-churn table (A.U35.51).
 - **Resolved**: —
 - **Unit**: U35 (start of B3).
 - **Depends**: B2 complete (U10-U34); M.PROC.012 (the post-refresh column).
 - **Blast carried by**: the OR49.a (3) entries → M.PROC.034 (report, PR description); the campaign's runs → M.SCR.006/
   .024/.060 (A.U35.02).
-- **Kind**: rule
+- **Kind**: rule, test
 
 ### M.PROC.023 Map intent per layer and every file to the levels that test it
-- **From**: A.U35.07.
+- **From**: A.U35.07; A.U35.22 (its `levels.md` rows; AC3_S section 4).
 - **Site**: `audit/b3/intent.md`, `audit/b3/levels.md`.
 - **Change**: as A.U35.07 (1)-(2): the intent map per layer (function, module, functional integration, system
   integration), one row per intent item with its cited source, mechanically derived where possible (an `ast` walk of
@@ -828,13 +870,13 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
   open, each naming its `C.md` row, closing in phase C (M.PROC.043 (2)); a `plausible` entry is a finding of the pass;
   every pass-2 State reads "holds" with its action or commit, or names its phase-C row; every unit `closed@<sha>`; every
   area lists all 18 lenses "applied" or "N/A, because …"; every rejected seed with real rediscovery risk has its permanent
-  note. (2) Every owner row OR1-OR133 (with each .a/.b/.c; the DoD's "OR1-OR83" read as the current last row) maps to its
+  note. (2) Every owner row OR1-OR135 (with each .a/.b/.c; the DoD's "OR1-OR83" read as the current last row) maps to its
   register entries or is marked audit-process-only, and is met at the tip or names its phase-C row; unmet rows are pass
   findings. (3) `git diff --stat <audit baseline>..HEAD -- tests tests_scripts tests_hardware tests_js digital_twin` and
   `git log -p` over the same paths read for deleted test functions and removed or loosened assertions: each has a
   register entry saying why (OR33.a), else a finding. (4) The last pass's unexecuted lines in `src/`, generated code and
   the build chain each covered or on U35's reason list; a new one is a finding.
-- **Resolved**: A.U37.17's DoD range predates OR84-OR133; read as OR1-OR133 (its own text).
+- **Resolved**: A.U37.17's DoD range predates OR84-OR135; read as OR1-OR135, the current last row.
 - **Unit**: U37 (step (5)).
 - **Depends**: M.PROC.032 (its last pass and coverage run).
 - **Blast carried by**: audit files only; findings → M.PROC.032.
@@ -858,12 +900,14 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
 
 ### M.PROC.035 The owner reviews every decision taken on the owner's behalf
 - **From**: A.U37.14; AC_NOTES 16, 21, 24, 34-second, 37; A.U29.04 (3) (secret scanning setting); A.U34.11 (TOOL's PROC
-  routing: the `disallow_any_unimported` count parked for the owner); OR2.c.
+  routing: the `disallow_any_unimported` count parked for the owner); OR2.c; OR135 (LEAD/R35; AC3_O O-25).
 - **Site**: the register header's owner-review list; `audit/actions/AC_NOTES.md`; every permanent text carrying a reviewed
   decision (found by its own text, grep).
 - **Change**: (1) Two reviews: at the A-C review (before execution, OR106.a: the go-ahead is given on the merged list),
   every "Agent decisions for the OR2.c review" section of the A-C merges and every AC_NOTES lead decision marked for the
-  owner is shown; at B5's end, the list is assembled from the register header, every `on-behalf: yes` entry, every OR12.a/
+  owner is shown, as one self-contained, layered package (OR135.a, LEAD/R35): a short overview, then one plain-language
+  page per topic with the decision, why, what changes for the owner and the consequence of saying no; detail one link
+  away; decisions grouped and sorted by weight so routine ones can be approved as a batch; at B5's end, the list is assembled from the register header, every `on-behalf: yes` entry, every OR12.a/
   OR13.a/OR24.a logged change, the refresh's hold-backs and parked items (M.PROC.008 (4)-(5)), the GitHub secret-scanning
   repository setting (M.PROC.020 — a setting, never changed by the executor), A.U34.11's parked count, and this unit's own
   decision, the release version `2.0` (A.U37.11, agent, 2026-09-30) — each in the owner's format (a decision in ≤ 10
@@ -1161,6 +1205,35 @@ Checked by reading every finished merge's ledger and From lines (2026-10-01). "R
 | A.U28.26 | lock-pinned Chromium default | M.WEB.074, M.SCR.064 | — |
 | A.U31.12 | I2C probe settle in whole ms | M.SRC_SENS.007/.013 | — |
 
+### M.PROC.046 U10 rename and key sweeps run once over the whole tree
+- **From**: A.U10.18, A.U10.35, A.U10.37, A.U10.38, A.U10.40, A.U10.43, A.U10.44 (the whole-tree halves; AC3_S S-15).
+- **Site**: every tracked file outside `legacy/`, `ext/`, `arduino/`, `audit/` and the UART changelog that a renamed
+  name or key reaches (each action's own query); the per-file merged changes carry their files' context edits.
+- **Change**: per action, in U10 after its per-file changes: the action's script/rename map is applied once over the
+  scope, then its completion check runs — `grep -rn` of every old name/key empty (A.U10.37/.38/.40/.43/.44), the
+  three mypy passes clean with no `attr-defined` (A.U10.35/.18). The files AC3_S S-15 lists (A.U10.40: 16 files;
+  A.U10.37: 14; A.U10.38: 33; A.U10.18: `src/asy_sgp40_driver.py:169`'s `_datalock` comment → `_data_lock`) are named
+  in the step's record as covered by this sweep.
+- **Resolved**: the cluster conventions (TEST_UNIT "U10 rename sweep", HW_BENCH/HW_DEV B1, SRC_SENS "Names") describe
+  this step; they are its per-cluster wording, not separate steps.
+- **Unit**: U10 (each sweep after its action's per-file changes, before U11).
+- **Depends**: the U10 per-file changes.
+- **Blast carried by**: each action's own Blast (unchanged).
+- **Kind**: code, test, doc
+
+### M.PROC.047 U36 host-scope reorder runs once over every Python scope
+- **From**: A.U36.038 (2) (AC3_S S-15: carriers only M.GEN.010/.011, M.SCR.063, M.TEST_HELP.034).
+- **Site**: every Python file of the eight lint scopes (`src/`, `tests/`, `digital_twin/`, `buildgen/`, `toolchain/`,
+  `scripts/`, `tests_scripts/`, `tests_hardware/`).
+- **Change**: A.U36.038 (2)'s script-driven D.15 member reorder, a pure move per class, applied once after M.TSC.044/.064's
+  widened check lands; each file AST-verified (same (name, body) set, comment multiset unchanged).
+- **Resolved**: GEN/SCR/TEST_HELP/WEB carry their files' context; this step covers the rest (`digital_twin/`,
+  `toolchain/`, the `tests/` and `tests_scripts/` files, `tests_hardware/`).
+- **Unit**: U36 (after M.TSC.044/.064).
+- **Depends**: M.TSC.044, M.TSC.064; M.GEN.010, M.GEN.011, M.SCR.063, M.TEST_HELP.034.
+- **Blast carried by**: the widened D.15 check stays green → M.TSC.044/.064; lint/typecheck gates → M.PROC.002.
+- **Kind**: code, test
+
 ## Gaps for other clusters
 
 1. **SPEC — Part N Dependants (A.U8C.120, A.U8C.121, A.U8C2.51)**: the three actions' Dependants text has no SPEC merged
@@ -1291,13 +1364,13 @@ agent decisions below go to the OR2.c review.
 | A.U1.01 | M.PROC.014 |
 | A.U1.03 | M.PROC.015 |
 | A.U1.08 | M.PROC.014 |
-| A.U10.18 | carried elsewhere: M.GEN.005, M.SRC_CORE/M.SRC_NET/M.SRC_SENS/M.TEST_UNIT/M.TWIN.102 (table) |
+| A.U10.18 | carried elsewhere: M.GEN.005, M.SRC_CORE/M.SRC_NET/M.SRC_SENS/M.TEST_UNIT/M.TWIN.102 (table); the whole-tree sweep M.PROC.046 (AC3 S-15) |
 | A.U10.21 | carried elsewhere: M.GEN.010, M.SRC_CORE/M.SRC_NET/M.SRC_SENS/M.TEST_UNIT (table) |
 | A.U10.29 | carried elsewhere: M.GEN.015, M.SRC_CORE.101/.120, M.SRC_NET, M.TEST_UNIT (table) |
 | A.U10.33 | carried elsewhere: M.SRC_CORE, M.SRC_NET, M.SRC_SENS (table) |
-| A.U10.35 | carried elsewhere: M.SRC_CORE, M.SRC_NET, M.SRC_SENS, M.TEST_HELP.028/.034, M.TEST_UNIT, M.HW_DEV.142/.143, M.SCR.026 (table) |
+| A.U10.35 | carried elsewhere: M.SRC_CORE, M.SRC_NET, M.SRC_SENS, M.TEST_HELP.028/.034, M.TEST_UNIT, M.HW_DEV.142/.143, M.SCR.026 (table); the whole-tree sweep M.PROC.046 (AC3 S-15) |
 | A.U10.39 | carried elsewhere: M.GEN.025, M.SRC_CORE, M.SRC_NET, M.SRC_SENS, M.TEST_UNIT, M.HW_DEV.142 (table) |
-| A.U10.44 | carried elsewhere: M.SRC_NET, M.SRC_SENS, M.TEST_HELP.034, M.TEST_UNIT, M.HW_DEV, M.HW_BENCH.135, M.TWIN.102/.144 (table) |
+| A.U10.44 | carried elsewhere: M.SRC_NET, M.SRC_SENS, M.TEST_HELP.034, M.TEST_UNIT, M.HW_DEV, M.HW_BENCH.135, M.TWIN.102/.144 (table); the whole-tree sweep M.PROC.046 (AC3 S-15) |
 | A.U10.45 | carried elsewhere: M.SRC_CORE, M.SRC_NET, M.SRC_SENS, M.TEST_UNIT.054/.126 (table) |
 | A.U14.29 | M.PROC.016 (F.7 rows: SPEC via A.U14.28, Gap 2) |
 | A.U17.12 | M.PROC.017 |
@@ -1353,10 +1426,36 @@ agent decisions below go to the OR2.c review.
 | A.U8C.121 | test-site tags carried elsewhere (M.HW_DEV, M.SCR.065); Part N text → SPEC (Gap 1) |
 | A.U8C2.51 | test-site tags carried elsewhere (M.TEST_UNIT.309); Part N text → SPEC (Gap 1) |
 | A.U1.02 (extra: indexed to README.md, no README edit) | M.PROC.014 |
+| A.U0.38 | M.PROC.003 (D1.22 audit-file edit only; AC3 S-02) |
+| A.U28.35 | M.PROC.018 (the move; AC3 S-16) |
+| A.U32.05 | M.PROC.021 (the U32 legacy-value re-confirmation; AC3 R-02) |
+| A.U35.03 | M.PROC.022 (`review.md`; AC3 R-01, S-17) |
+| A.U35.04 | M.PROC.022 (`faults.md`; AC3 R-01, S-17) |
+| A.U35.05 | M.PROC.022 (two plants per memory gate; AC3 R-01) |
+| A.U35.08 | M.PROC.022 (`matrices.md`; AC3 R-01, S-17) |
+| A.U35.09 (1) | M.PROC.022 (the recombination row; AC3 R-01) |
+| A.U35.15 | M.PROC.022 (confirmation runs in `timing.md`; AC3 R-01) |
+| A.U35.22 | M.PROC.022 ((1) the SET ladder in `levels.md`; AC3 R-01, S-17), M.PROC.023 (its `levels.md` rows; AC3 S section 4) |
+| A.U35.23 | M.PROC.022 (`timing.md`; AC3 R-01, S-17) |
+| A.U35.28 (1) | M.PROC.022 (`load.md`; AC3 R-01, S-17) |
+| A.U35.35 | M.PROC.022 (the K-row checklist in `review.md`; AC3 R-01) |
+| A.U35.37 | M.PROC.022 (the normal-situation scan in `review.md`; AC3 R-01) |
+| A.U35.41 | M.PROC.022 (`e51.md`, the verdict table; AC3 R-01, S-17) |
+| A.U35.50 | M.PROC.022 (`conformance.md` four-tier rows; AC3 R-01, S-17) |
+| A.U35.51 | M.PROC.022 (wear-gate and host-churn table; AC3 R-01) |
+| A.U36.543 (10) | M.PROC.048 (the two baseline runs; AC3 R-04) |
+| A.U10.37 | the whole-tree sweep M.PROC.046 (AC3 S-15; per-file carriers in the owning clusters) |
+| A.U10.38 | the whole-tree sweep M.PROC.046 (AC3 S-15; per-file carriers in the owning clusters) |
+| A.U10.40 | the whole-tree sweep M.PROC.046 (AC3 S-15; per-file carriers in the owning clusters) |
+| A.U10.43 | the whole-tree sweep M.PROC.046 (AC3 S-15; per-file carriers in the owning clusters) |
+| A.U36.038 (2) | M.PROC.047 (the host-scope reorder over every Python scope; AC3 S-15) |
+| AC3 R-06 (OR134, LEAD/R34) | M.PROC.003 (5a) |
+| AC3 O-24 | M.PROC.033 (range OR1-OR135) |
+| AC3 O-25 (OR135) | M.PROC.035 (1) (the layered review package) |
 
 Read for order or context, not constituents (their own clusters merge them): A.U0.01, A.U0.02, A.U0.06 (procedure merged
 into M.PROC.007; ENV.T02 text DOCS), A.C.01-A.C.06, A.C.10, A.C.12-A.C.17, A.C.19, A.SDEP.03-A.SDEP.09, A.SDEP.11-A.SDEP.16,
-A.SDEP.18, A.SDEP.19, A.SDEP.21, A.SDEP.22, A.SDEP.24, A.U28.35, A.U36.545, A.U37.02-A.U37.06, A.U37.08, A.U37.10-A.U37.12,
+A.SDEP.18, A.SDEP.19, A.SDEP.21, A.SDEP.22, A.SDEP.24, A.U36.545, A.U37.02-A.U37.06, A.U37.08, A.U37.10-A.U37.12,
 A.U37.15.
 
 ## A-C2 order notes (2026-10-01)

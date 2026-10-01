@@ -589,8 +589,8 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
   `__getattr__` on a class instance); `set_wall(epoch_s)` sets `offset_s = epoch_s - _time.time()`; `step(seconds)` —
   "twin-only test knob" — adds to `offset_s`; `TEST_API = ("step",)`. Module state: `_clock: WallClock | None = None`;
   `install(modules) -> WallClock` creates the one clock on first call and rebinds the `time` global of each given module
-  object whose `time` is the built-in module (a module already rebound is skipped; idempotent), comment "# From outside,
-  as the tests adapt every product seam: no src/ change (OR36)"; `installed() -> WallClock | None`. Every value is an
+  object whose `time` is the built-in module (a module already rebound is skipped; idempotent), comment "# Bound
+  from outside, as every test adapts a product seam: src/ stays unchanged." (OR36, A-C3 O-15); `installed() -> WallClock | None`. Every value is an
   `int` epoch second (the rp2 port's `time.time()` is integral).
 - **Resolved**: —
 - **Unit**: U25
@@ -1201,7 +1201,8 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   A.C.14 Blast (the measured unknown-country reaction modelled once recorded — phase-C delta via A.C.10), A.U8.10 /
   A.U8.20 / A.U31.15 (`_CONNECT_DELAY_S` tagged `l2.twin_wifi_connect_delay_s`, a Dependant of the 5 s poll total),
   A.U36.544 (`:137` "A.4" → F.1), A.U28.27 (ruff S104's per-file reason names "the fake's unset `ifconfig()` address" —
-  TOOL), A.U6.30 Blast (`country()` unchanged — holds), A.U6.29 Blast (no twin entry), A.U27.28 (header over the cap)
+  TOOL), A.U6.30 Blast (`country()` unchanged — holds), A.U6.29 Blast (no twin entry), A.U27.28 (header over the cap),
+  A.U25.63 (the file's five explicit `Any`: `:18` import, `:63`, `:65`, `:66`, `:136`; A-C3 S-09)
 - **Site**: `digital_twin/network.py:1-151` (whole file)
 - **Change**: header → "Twin fake of the rp2 network module (the Unix port has none): WLAN fakes connection state only
   - real NTP/DNS/HTTP traffic uses the host's sockets. Per-interface singletons with cyw43's status rules and a 0.7 s
@@ -1237,7 +1238,9 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   `reset_test_state()` restoring `reset_interfaces()`, the two seeds and `_dns` (registered by the twin tests, C4).
   `WLAN.TEST_API = ("if_id", "config_calls", "connect_calls", "deinit_called", "disconnect_called", "raise_on",
   "script_connect_outcomes")` (comment: the L0 surface check covers `machine` fakes; this list documents the twin-only
-  names).
+  names). No explicit `Any` (A.U25.63, G8/R61): `_stations: list[tuple[bytes]]` (rp2's one-element MAC tuples),
+  `config_calls` and `connect_calls` annotated `BoundedLog` (M.TWIN.001's class; their entries are `dict[str, object]`
+  and `tuple[str | None, str | None]`), `status() -> int | list[tuple[bytes]]`; the `typing.Any` import goes.
 - **Resolved**: A.U25.27 writes `raise_on[method] = (exc, times)` with one exception instance; G7/R16 ("faults …
   raise a fresh exception each time", OR21.a (1)) and A.U25.70's reason (a re-raised MicroPython instance grows its
   traceback — with `times=None` without bound, against OR110.a's no-growth rule) settle the stored form as a type and
@@ -1313,8 +1316,8 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
 - **Site**: `digital_twin/launch.py:1-188`
 - **Change**: header → "Standalone CLI launcher for the twin (micropython digital_twin/launch.py --wiring-plan PATH
   [options]), src/-free: it builds the buses of the device whose plan it is given and periodically reads each wired
-  sensor, attempts one WLAN connect and feeds a WDT. --fault/--hang expose each chip fake's FaultInjector (owner's choice
-  over a probabilistic flaky mode, 2026-08-12)." (3 lines); the argparse sentence moves to `parse_args()`'s comment:
+  sensor, attempts one WLAN connect and feeds a WDT. --fault/--hang expose each chip fake's FaultInjector (owner,
+  2026-08-12: chosen over a probabilistic flaky mode)." (3 lines; tag form per AC_NOTES 6, A-C3 O-23); the argparse sentence moves to `parse_args()`'s comment:
   "# Hand-rolled: micropython-lib's argparse supports only store/store_const
   (python-stdlib/argparse/argparse.py:91-124)." Imports: `asyncio`, `errno`, `random`, `struct`, `sys`; `machine`,
   `network`, `from machine import I2C, SPI, WDT, Pin`; `from _bmp3xx_chip import _decode_calibration`; `from
@@ -1655,10 +1658,11 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   reads it in the runner — see Resolved)
 - **Site**: `digital_twin/run_generic_integration.py:288-308`
 - **Change**: `_mem_sampler(interval_ms)`: prints `MEM_SAMPLE {time.ticks_ms()} {gc.mem_free()}`; its `gc.collect()`
-  stays with the 3-line comment "Optional (--mem-sample-interval-ms): gc.mem_free() lives in this heap with no REST
-  route; the collection is the one allow-listed instrumentation site (tests_scripts/test_gc_collect_sites.py), kept
-  while B3 shows the sparser interval gives Run 11 the same verdict." — if B3's measurement (A.U35.25) differs, the
-  `gc.collect()` line goes and the comment's last clause with it (decided at execution, recorded in `timing.md`).
+  stays with the comment "Optional (--mem-sample-interval-ms): gc.mem_free() lives in this heap with no REST
+  route; the collection is the one allow-listed instrumentation site (tests_scripts/test_gc_collect_sites.py)." at
+  landing (no unit label in the text, A-C3 O-17); when B3's measurement (A.U35.25) keeps the collect, the clause "; a
+  sparser interval gives Run 11 the same verdict" is appended before the closing full stop (≤ 3 lines); if it differs,
+  the `gc.collect()` line goes and the comment's last clause with it (decided at execution, recorded in `timing.md`).
   `_WIRE_LOG_CLEAR_INTERVAL_MS = 5000` with `# @tunable l2.twin_wire_log_clear_interval_ms = 5000`. `_wire_log_clearer`
   comment → "# UARTLink.wire_log is unbounded (agent, 2026-09-14) and nothing in this process reads it, so it grows with
   link traffic unless cleared - the growth Run 11's trend check caught for dev (README "Run 11's two calibrated
@@ -2049,8 +2053,8 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   offset, ASC enable and the continuous-measurement status in NVM (Interface Description 1.4.1-1.4.8); the twin persists
   those six on explicit flush. Whether the ambient-pressure value itself persists is an assumption (the datasheet names
   only the status) — fidelity table, BACKLOG row."; `:348-352` per A.U25.32. New short paragraph "mem_backup: the runner
-  writes `digital_twin/mem_backup_state.json` only on a simulated reset and the next launch consumes and deletes it
-  (M.TWIN.032)". `:354-358` → "Only the last-wired SCD30 and FRAM instance persist — the fidelity table's Persistence row
+  writes `digital_twin/mem_backup_state.json` only on a simulated reset and the next launch consumes and deletes it"
+  (the behaviour M.TWIN.032 writes; the text cites no change ID, A-C3 O-18). `:354-358` → "Only the last-wired SCD30 and FRAM instance persist — the fidelity table's Persistence row
   states the limit and the change that lifts it."
 - **Resolved**: A.U15.08 says the five-settings text is "U25's with the fidelity row"; A.U25.12 makes it six — the U25
   text wins (later, and it names the measuring status). A.U0.59's tag on `:354` is void (M.TWIN.059 Resolved).
@@ -3410,6 +3414,35 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   bullet → A.U36.546 (DOCS)
 - **Kind**: test
 
+## Cross-file: A-C3 sweep changes (new)
+
+### M.TWIN.165 Docstrings become comments in this cluster's scope
+- **From**: A.U10.34 (A-C3 Part S S-05: no carrier in this cluster).
+- **Site**: function/class docstrings at HEAD (AST): `digital_twin/_http_client.py:48`;
+  `digital_twin/unix_port_gc_unwedge.py:7`; `digital_twin/unix_port_poll_prewarm.py:30`, `:48`;
+  `tests/test_digital_twin_bus_hazard_concurrency.py:90`.
+- **Change**: each function, method and class docstring becomes a `#` comment block directly under the `def`/`class`
+  line, same text, ≤ 3 prose lines (overflow to the owning doc per CLAUDE.md's comment rule); module docstrings stay
+  (the five argparse readers included). A file a later change rewrites carries the form forward (`_http_client.py:48`
+  → M.TWIN.016, `unix_port_poll_prewarm.py` → M.TWIN.057; `unix_port_gc_unwedge.py` is deleted at U25 by M.TWIN.056).
+- **Resolved**: —
+- **Unit**: U10.
+- **Depends**: —
+- **Blast carried by**: `tests_scripts/test_comment_block_cap.py` stays green → M.TSC.065.
+- **Kind**: code
+
+### M.TWIN.166 File-local builders take the private form
+- **From**: A.U24.76 (A-C3 Part S S-07: these files' changes did not name it).
+- **Site**: `tests/test_digital_twin_isl29125.py` (`make_chip`), `tests/test_digital_twin_isl29125_autorange.py`
+  (`make_dev_reader`), `tests/test_digital_twin_machine_uart.py` (`make_link`) — one public `def make_` each at HEAD.
+- **Change**: every module-level `def make_<x>` → `_make_<x>` with its uses in the file (a builder another change
+  replaces by a shared helper is skipped there).
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: A.U24.49.
+- **Blast carried by**: the L0 check (`tests_scripts/test_microtest.py`) → A.U24.76 (TSC).
+- **Kind**: test
+
 ## Gaps for other clusters
 
 - **SCR — `scripts/_digital_twin_scenarios.py` (A.U25.46 harness; also M_TEST_HELP GAP-H2)**: receives the 8 HTTP tests of
@@ -3737,7 +3770,7 @@ None — every conflict was settled by a later action, an owner row, AC_NOTES or
 | A.U25.60 | M.TWIN.122 |
 | A.U25.61 | not a TWIN site (`tests_hardware/device_scripts/`, HW_DEV) |
 | A.U25.62 | M.TWIN.010, M.TWIN.011, M.TWIN.012, M.TWIN.013, M.TWIN.014, M.TWIN.020, M.TWIN.023, M.TWIN.025, M.TWIN.058, M.TWIN.062, M.TWIN.068, M.TWIN.072, M.TWIN.100, M.TWIN.110, M.TWIN.120, M.TWIN.142, M.TWIN.150 |
-| A.U25.63 | M.TWIN.016, M.TWIN.020, M.TWIN.022, M.TWIN.023, M.TWIN.024, M.TWIN.045, M.TWIN.047, M.TWIN.057, M.TWIN.075, M.TWIN.134 |
+| A.U25.63 | M.TWIN.016, M.TWIN.020, M.TWIN.022, M.TWIN.023, M.TWIN.024, M.TWIN.040 (AC3 S-09), M.TWIN.045, M.TWIN.047, M.TWIN.057, M.TWIN.075, M.TWIN.134 |
 | A.U25.64 | M.TWIN.064 |
 | A.U25.65 | M.TWIN.064, M.TWIN.067, M.TWIN.071, M.TWIN.075, M.TWIN.144 |
 | A.U25.66 | not a TWIN site (`scripts/_digital_twin_ci_suite.py`, SCR) |
@@ -3869,6 +3902,13 @@ None — every conflict was settled by a later action, an owner row, AC_NOTES or
 | A.U26.58 | M.TWIN.059 (gap pass G3) |
 | A.U15.R04 | M.TWIN.102 (gap pass G3) |
 | A.U22.01 | M.TWIN.132 (gap pass G3) |
+| A.U10.34 | M.TWIN.165 (AC3 S-05: new change) |
+| A.U24.76 | M.TWIN.166 (AC3 S-07: new change) |
+| AC3 S-09 | M.TWIN.040 amended: From gains A.U25.63; no explicit `Any` (adapted: the two logs are `BoundedLog`, not `deque`, at the end state) |
+| AC3 O-15 | M.TWIN.019 amended: the `install()` comment cites no owner row |
+| AC3 O-17 | M.TWIN.052 amended: the sampler comment names the check, the verdict clause only if B3 keeps the collect |
+| AC3 O-18 | M.TWIN.062 amended: the mem_backup paragraph cites no change ID |
+| AC3 O-23 | M.TWIN.044 amended: the header tag reads "(owner, 2026-08-12: …)" |
 
 ## A-C2 order notes (2026-10-01)
 
