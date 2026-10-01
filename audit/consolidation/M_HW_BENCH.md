@@ -780,7 +780,8 @@ never flashed (A.C.01 (5)).
   schema, `buildgen.schema_ast` over `src/asy_system_service.py`, AD-4 there), `scd30_schema` (the `MeasInterval`/
   `ForceCalRef` ranges, same reader over `src/asy_scd30_driver.py`), `float_fields` (name → (min, max) of every float
   `_VAL_*` field of the modules the device wires, same reader), `resync_bound_ms` (from `src/asy_uart_comm.py`'s
-  `const()` timings by `ast`, the formula M.HW_DEV.045 names), `depth` (the rp2 scheduler queue depth,
+  `const()` timings by `ast`, the formula M.HW_DEV.047 states: `_DRAIN_BOUND_MULT` and `_RESYNC_NUM/_RESYNC_DEN` × the
+  link timeout, plus one timeout), `depth` (the rp2 scheduler queue depth,
   `MICROPY_SCHEDULER_DEPTH` as the pinned checkout under `$PICO_TOOLCHAIN_DIR` defines it — `ports/rp2/mpconfigport.h`,
   else `py/mpconfig.h` — a missing checkout raising with "run `uv run toolchain/setup_toolchain.py setup` first").
   Per-run values are `extras` of `render_device_script()`, never facts, each passed by its caller from one named
