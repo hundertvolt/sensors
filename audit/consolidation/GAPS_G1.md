@@ -52,6 +52,10 @@ holds the item. "Amended" means this pass edited that change's body, and its led
 | S39 | M_WEB gap 7 | Part N rows for the new `tests_js` tags | M.SPEC.156 (2) | carried |
 | S40 | M_PROC gap 7 / M_TWIN LEAD gap (SPEC side) | `.gitignore` is PROC's | M.SPEC.089 Blast | **amended**: the sentinel parenthesis → M.PROC.019 (6) (PROC), not "TOOL" |
 | S41 | GAPS_G4 hand-off 4 | M.SPEC.156: the three reflash-retry rows name `tests_hardware/harness.py` (`reflash()`) as their site, plus `manual/manual_toolchain.py` for the load timeout; the starter grace and poll rows are withdrawn | M.SPEC.156 (3), (4) | **amended** (matches M.HW_BENCH.014, M.TEST_HELP.028, M.HW_DEV.117) |
+| S42 | GAPS_G2 H-5 (a) | C.5.3: `handle_set_cmd()` has no `ok_descr`, returns the per-field `WriteValidity`; a failing hook fails its group; the endpoint's OK envelope carries the result | M.SPEC.056 | **amended** (M.SRC_CORE.070/.072) |
+| S43 | GAPS_G2 H-5 (b) | C.10: validators take `object`; `type_or_range_error()` refuses with `(True, None)`; per-kind validators and their consumers | M.SPEC.068 | **amended** (M.SRC_CORE.047) |
+| S44 | GAPS_G2 H-5 (c) | E.5.1 gets no `_apply_settings_groups()` narrowing entry | M.SPEC.081 (2) | **amended** (M.SRC_NET.120, M.SRC_CORE.072) |
+| S45 | GAPS_G2 H-5 (d) | C.13 names the classes with `initialized`: `SystemService`, `SensorReader` (inherited by `SensorReaderConfig`), `FRAMManager` (replaces `_was_up`); `WifiService`/`WebserverService` `setup()` return `bool` | M.SPEC.070 | **amended**, adding the classes AC_NOTES 38/42/44 settle and the exempt protocol classes |
 
 ### Target DOCS (`M_DOCS.md`)
 
@@ -76,6 +80,7 @@ holds the item. "Amended" means this pass edited that change's body, and its led
 | D17 | GAPS_G4 hand-off 1 (a) | the README rollover recipe is `scripts/run_bench_rollover_test.sh`, not the bare `uv run pytest … -k …` | M.DOCS.049 | **amended** (M.SCR.074; the bare call skipped the run record and verdict) |
 | D18 | GAPS_G4 hand-off 1 (b) | CLI reference entry for the rollover runner, equal to its `--help` | M.DOCS.052 | **amended** |
 | D19 | GAPS_G4 hand-off 1 (c) | BACKLOG U27 chroot paragraph names the new runner | M.DOCS.066 | **amended** |
+| D20 | GAPS_G2 H-6 | `UART_C_PORT_CHANGELOG.md`: one Class B ("no C impact") line for the UART attributes G2 made private | M.DOCS.024 (B39) | **amended**: B39, the U10 privatisation row, now also lists `UARTComm`'s `uart`, `role`, `payload_size`, `timeout`, `uid`, `UART`'s `cancel`/`txbuf` and `UARTLinkDriver.role`. Kept as one row per change kind, so B40-B64 keep their numbers |
 
 ### Target PROC (`M_PROC.md`)
 
@@ -108,6 +113,7 @@ holds the item. "Amended" means this pass edited that change's body, and its led
 | G12 | M_WEB gap 3 | a string field's schema special (`PW` `""`) is emitted as `specialValues` | M.GEN.017, M.GEN.046 | **amended**. The `PW` tag edit is SRC_NET's (H2) |
 | G13 | M_WEB gap 5 | CSS: `.field-value.code-value` button reset, muted `.code-number` | M.GEN.062 | **amended** |
 | G14 | AC_NOTES 41 | OR131/OR132 written firm in GEN | M.GEN.050, M.GEN.062, GEN Q1/Q2 | carried (answered, no "pending") |
+| G15 | GAPS_G2 H-1 | M.GEN.008 reads `wifi.RSSI` | M.GEN.008 | carried (already amended in this pass, G7) |
 
 ## Hand-offs (items another group must carry)
 
@@ -142,15 +148,15 @@ not an owner question.
 
 ## Counts
 
-- Items read that target G1: 82 (SPEC 41, DOCS 19, PROC 8, GEN 14). That is 77 from the gap sections plus 5 from
-  GAPS_G4's hand-offs (S41, D17-D19, P8).
-- Carried as found: 56 (SPEC 38, DOCS 12, PROC 5, GEN 1).
-- Amended: 20 (SPEC S37, S40, S41; DOCS D1, D2, D17, D18, D19; PROC P7, P8; GEN G1, G2, G4, G6, G7, G8, G10, G11, G12,
-  G13). S6 is counted as carried; its DOCS-side follow-up (M.DOCS.065) and D1's M.DOCS.070 Blast fix are edits made
-  under those rows.
+- Items read that target G1: 88 (SPEC 45, DOCS 20, PROC 8, GEN 15). That is 77 from the gap sections, 5 from
+  GAPS_G4's hand-offs (S41, D17-D19, P8) and 6 from GAPS_G2's (S42-S45, D20, G15).
+- Carried as found: 57 (SPEC 38, DOCS 12, PROC 5, GEN 2).
+- Amended: 25 (SPEC S37, S40, S41, S42, S43, S44, S45; DOCS D1, D2, D17, D18, D19, D20; PROC P7, P8; GEN G1, G2, G4,
+  G6, G7, G8, G10, G11, G12, G13). S6 is counted as carried; its DOCS-side follow-up (M.DOCS.065) and D1's M.DOCS.070
+  Blast fix are edits made under those rows.
 - New merged changes: 0.
 - Disposed: 6 (D5, D15, P6, G3, G5, G9).
-- Handed off: 3 (H1 SRC_NET, H2 SRC_NET, H3 TWIN).
-- Changes edited: M.SPEC.077, .089, .156; M.DOCS.048, .049, .052, .065, .066, .070, .071, .092; M.PROC.008, .031, .041;
-  M.GEN.003, .008, .010, .017, .019, .024, .034, .046, .062. Each of the four files gained an "Incoming gaps, gap pass
-  G1" note before its Adherence section.
+- Handed off: 3 (H1 SRC_NET, H2 SRC_NET, H3 TWIN). G2 has carried H1 and H2 (GAPS_G2 items 35-36).
+- Changes edited: M.SPEC.056, .068, .070, .077, .081, .089, .156; M.DOCS.024, .048, .049, .052, .065, .066, .070, .071,
+  .092; M.PROC.008, .031, .041; M.GEN.003, .008, .010, .017, .019, .024, .034, .046, .062. Each of the four files gained
+  an "Incoming gaps, gap pass G1" note before its Adherence section.

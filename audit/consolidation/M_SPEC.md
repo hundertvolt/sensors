@@ -4942,7 +4942,8 @@ section that stays.
   M.SPEC.077 (A.U36.016's "wrapper files" clause names the `PER_DEVICE` marker; M_TWIN gap) and M.SPEC.089's Blast
   (`.gitignore` is M.PROC.019's). M_TEST_HELP GAP-H5's H.7.1 citer list needs no edit: A.U36.532 (3) changes no H.7.1
   citer. GAPS_G4 hand-off 4: M.SPEC.156 amended (the reflash rows' site is `harness.py`; the starter grace and poll rows
-  are withdrawn).
+  are withdrawn). GAPS_G2 H-5: M.SPEC.056 (C.5.3), M.SPEC.068 (C.10), M.SPEC.081 (E.5.1) and M.SPEC.070 (C.13)
+  amended.
 
 | Action | Src | Merged change(s), or dropped with reason |
 |---|---|---|
