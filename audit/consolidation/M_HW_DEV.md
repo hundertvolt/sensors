@@ -518,7 +518,7 @@ changes cite.
 - **Blast carried by**: M.HW_DEV.035 asserts the facts.
 - **Kind**: test
 
-## tests_hardware/device_scripts/system_debug_level_raise_for_boot_log_check.py (deleted)
+## tests_hardware/device_scripts/system_debug_level_raise_for_boot_log_check.py, system_debug_level_restore_after_boot_log_check.py (deleted)
 
 ### M.HW_DEV.039 Both DebugLevel scripts are deleted
 - **From**: A.U26.12 (3), A.U26.18 (their backup scratch goes with them), A.U5.02/A.U11.24/A.U11.33/A.U1.06 (blasts on
@@ -1632,7 +1632,7 @@ changes cite.
 - **Blast carried by**: `_JUSTIFIED_UNMARKED` reason → A.U26.20 (TSC); twin record entry removed → A.U26.05 (TSC).
 - **Kind**: test
 
-## tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py (deleted)
+## tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py, wifi_service_reconnect_repro.py (deleted)
 
 ### M.HW_DEV.112 Both WiFi reconnect repro scripts are deleted
 - **From**: A.U26.19 (deletes both; the committed PSK leaves the tree, its history is G5/R59's U29 scan), A.U29.04 (the
@@ -2131,3 +2131,136 @@ changes cite.
 - **Depends**: M.HW_DEV.001-.004, .008.
 - **Blast carried by**: host → M.HW_DEV.080; SPEC M.1.2 rows → A.C.19 (SPEC).
 - **Kind**: test, hardware (Round: R1 [H25, H27])
+
+## tests_hardware/device_scripts/fram_raw_dump.py (new)
+
+### M.HW_DEV.150 Read-only raw FRAM dump, the evidence primitive's board half
+- **From**: A.U26.22 (3), A.U26.79 (the write-protect state for the standard-state check, AD-5), A.S0930.28 (2)(7) (the
+  post-erase and post-reset dumps), A.U26.43/A.S0930.39 (no-torn-chunk reads), A.U26.44 (`dump_size` extra).
+- **Site**: new `tests_hardware/device_scripts/fram_raw_dump.py`.
+- **Change**: reads FRAM bytes `[0, BENCH["dump_size"])` through the driver's raw `get_values()` in 256 B pieces (no
+  `get_chunk()`, no write), printing hex lines (the raw block the host saves verbatim); then the status register
+  (WPEN/BP bits) and RDID as facts `status_register`, `write_protected`, `rdid`; feeds the watchdog every piece; `done()`.
+- **Resolved**: AD-5 (the read-only WP read lives here, not in the chunk-writing round-trip script).
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001/.002/.004.
+- **Blast carried by**: `harness.save_fram_raw()` → M.HW_BENCH.012; `standard_state` reads `write_protected` from this
+  dump → GAP-D6 (HW_BENCH); L0 "no `set_values`/`get_chunk`/`write` call" → A.U26.22 (TSC).
+- **Kind**: test, hardware (Round: every round's start [H02])
+
+## tests_hardware/device_scripts/fram_command_hold_timing.py (new)
+
+### M.HW_DEV.151 The FRAM command and block holds against the UART poll floor
+- **From**: A.U16.07, A.U33.07 (the owed-run text names it), A.U31.01 (`hold.fram_block` row cited by name), A.U26.24
+  (`_SCRATCH_REGIONS = ((0x3FF00, 0x100),)`), A.U26.44 (pins from `BENCH`, not `SPI(0, 2, 3, 4)`/CS 5), A.U26.68.
+- **Site**: new `tests_hardware/device_scripts/fram_command_hold_timing.py`.
+- **Change**: BACKLOG A6's body, header as A.U16.07 writes it (≤ 3 lines); `_UART_FLOOR_US = 80 * 10 * 1_000_000 // 115_200`
+  (derived, no tag); `_BLOCK_HOLD_BUDGET_US` with its trailing comment citing F.3's `hold.fram_block` row; writes only
+  inside its declared region; facts `write_us`, `read_us`, `hold_us`, `uart_floor_us`, `block_hold_budget_us`;
+  verdicts host-side; `done()`.
+- **Resolved**: A.U16.07 keeps the literal SPI pins "(their derivation from the TOML is U26's)" — U26's form applies.
+- **Unit**: U16 (U26 form).
+- **Depends**: M.HW_DEV.001/.002/.007.
+- **Blast carried by**: BACKLOG `:389-449` script block deleted → A.U16.07 (DOCS); README FRAM bullet → A.U16.07
+  (HW_BENCH); host → M.HW_DEV.060.
+- **Kind**: test, hardware (Round: R1 [H22])
+
+## tests_hardware/flash/test_config_float_round_trip.py (new)
+
+### M.HW_DEV.152 The config float round trip on the board's single-precision floats
+- **From**: A.U11.21 (L3), A.C.05 (R3 wear run), M_SRC_CORE GAP-G13 blast (the L3 pair is HW_DEV's).
+- **Site**: new `tests_hardware/flash/test_config_float_round_trip.py`.
+- **Change**: `@pytest.mark.persistence_write def test_config_floats_round_trip_unchanged(board)`: runs
+  `config_float_round_trip.py`, asserts every probed value idempotent and the repeat PUT after the reload "Unchanged";
+  header ≤ 3 lines; `COVERS_TWIN_SCENARIOS` names the config-manager twin scenario or its E.6.6 row.
+- **Resolved**: —
+- **Unit**: U11 (U26 form).
+- **Depends**: M.HW_DEV.153.
+- **Blast carried by**: marker guard → A.U26.06 (TSC).
+- **Kind**: test, hardware (Round: R3 [H47])
+
+## tests_hardware/device_scripts/config_float_round_trip.py (new)
+
+### M.HW_DEV.153 Float idempotence and a reload through a scratch manager
+- **From**: A.U11.21, A.U26.18 (scratch removed on every path, leftover first), A.U26.44/A.U26.49 (the float fields' ranges
+  rendered from the `_VAL_*` tuples instead of embedded), A.U26.68.
+- **Site**: new `tests_hardware/device_scripts/config_float_round_trip.py`.
+- **Change**: for each float field's min/max and 200 evenly spaced values (ranges from `BENCH["float_fields"]`), checks
+  idempotence of the stored form; writes one value through a `config_HWTEST_FLOAT.cfg` manager, rebuilds the manager
+  from the file, a repeat write answers "Unchanged"; the scratch file removed first and in `finally`; facts
+  `non_idempotent` (bounded), `repeat_validity`; `done()`.
+- **Resolved**: A.U11.21 embeds the values "(device scripts cannot read host files)"; the rendering (A.U26.44) delivers
+  them from the source tuples, which is the G1/R41 form (agent decision AD-10).
+- **Unit**: U11 (U26 form).
+- **Depends**: M.SRC_CORE (`_stored_float`), M.HW_DEV.001/.002.
+- **Blast carried by**: `config_HWTEST_*` removal check → A.U26.18 (TSC).
+- **Kind**: test, hardware (Round: R3 [H47])
+
+## tests_hardware/device_scripts/reset_code_invalid_record.py, reset_code_command_incomplete.py, reset_code_boot_phase_hang.py, reset_code_stack_exhausted.py (new)
+
+### M.HW_DEV.154 Four scripts that end in an attributed reset
+- **From**: A.C.12 (1)-(4), A.U11.06 (boot phases 1-5), A.U20.02 (`main(watchdog=…, cfg_path=<scratch>)`), A.U26.10, A.U26.44,
+  A.U26.68.
+- **Site**: four new device scripts.
+- **Change**: (1) `reset_code_invalid_record.py`: writes a non-magic word into `mem_backup(0)[0]`, then `machine.reset()`.
+  (2) `reset_code_command_incomplete.py`: builds the generated system over the scratch path, rebinds from outside the FRAM
+  erase's per-unit write so unit 2 raises `OSError(EIO)`, calls `_system_cmd_callback("erasefram")`. (3)
+  `reset_code_boot_phase_hang.py`: `PHASE` (1-5) extra; runs the generated `main(watchdog=arm(), cfg_path=_SCRATCH_CFG_PATH)`
+  with one callee of that phase rebound to `time.sleep_ms(10000)` (no feed follows). (4) `reset_code_stack_exhausted.py`:
+  builds the system, rebinds one supervised reader's read coroutine to recurse until the stack check raises, lets the
+  supervisor escalate. Each prints a banner before the reset (AD-3); no flash write (FRAM only, scratch config).
+- **Resolved**: —
+- **Unit**: phase C (written before R1, U26 form).
+- **Depends**: M.HW_DEV.009; M.SRC_CORE (A.U11.05-.07).
+- **Blast carried by**: `bench/test_reset_reasons.py` four tests → A.C.12 (HW_BENCH); E.6 row → A.U26.28 (SPEC).
+- **Kind**: test, hardware (Round: R1 bench [H12])
+
+## tests_hardware/device_scripts/config_write_loop_scratch.py, config_scratch_readback.py (new)
+
+### M.HW_DEV.155 Power cut during a scratch config write: the writer and the read-back
+- **From**: A.C.17, A.U26.18, A.U26.68.
+- **Site**: two new device scripts (run by the manual step in `manual/manual_persistence.py`, HW_BENCH).
+- **Change**: the writer builds a `ConfigManager` over `config_HWTEST_POWERLOSS.cfg` (two-field schema), writes
+  alternating values through `write_config()` + `flush_pending()`, printing `WROTE <n> <value>` after each (a banner
+  the operator watches), at most 20 writes, fed; the read-back loads the file through `setup()`'s read path, reports
+  `parsed`, `values`, `repaired`, then removes the file (the allowed scratch cleanup); `done()`.
+- **Resolved**: —
+- **Unit**: phase C (U26 form).
+- **Depends**: M.HW_DEV.002/.004.
+- **Blast carried by**: the manual step → A.C.17 (HW_BENCH); persistence guard (scratch writes owned by a manual,
+  operator-confirmed step) → A.U26.06 (TSC).
+- **Kind**: test, hardware (Round: R2 [H49])
+
+## tests_hardware/device_scripts/scd30_argument_reaction.py (new)
+
+### M.HW_DEV.156 Record how the SCD30 treats a bad-CRC and a zero interval write
+- **From**: A.C.15 (1), A.U26.44, A.U26.68.
+- **Site**: new `tests_hardware/device_scripts/scd30_argument_reaction.py`.
+- **Change**: raw `machine.I2C` at `BENCH`'s bus/address: reads the interval (0x4600); sends it with a wrong argument CRC,
+  reads back, times two data-ready periods; sends 0 with a correct CRC, reads back, times again; restores the original
+  interval in `finally` if either changed it; facts `wrong_crc_accepted`, `zero_interval_accepted`, `restored`, each read
+  value; fed throughout; `done()`. At most 3 SCD30 NVM writes.
+- **Resolved**: —
+- **Unit**: phase C (U26 form).
+- **Depends**: M.HW_DEV.001/.002/.004.
+- **Blast carried by**: M.HW_DEV.131 test; `_PERSISTING_DEVICE_CALLS` needs a raw 0x4600 write detected → GAP-D8 (TSC).
+- **Kind**: test, hardware (Round: R3 [H30])
+
+## tests_hardware/device_scripts/scd30_measurement_interval_read.py, scd30_data_ready_wait.py, scd30_start_continuous_measurement.py (new)
+
+### M.HW_DEV.157 The SCD30 prerequisite's three scripts
+- **From**: A.U26.07 (1)-(3), A.U26.06 (the start script pinned in `_PREREQUISITE_DEVICE_SCRIPTS`), A.U26.44, A.U26.68.
+- **Site**: three new device scripts.
+- **Change**: (1) interval read: driver on `BENCH`'s SCD30 bus, `setup()` (soft reset, no NVM), fact `interval`; writes
+  nothing. (2) data-ready wait: polls `read_measurement()`/`get_CO2()` every 1 s for `3 * interval + 2` s, fed ≤ 2 s,
+  facts `measuring`, `co2` or `waited_s`; writes nothing. (3) start: reads `get_ambient_pressure()` and re-sends it once
+  when it is 0 or within 700..1400 (Interface Description §1.4.1), else reports `invalid_readback` and sends nothing;
+  header names the altitude side effect; facts `sent`, `ambient`. All three end with `done()`; failures are facts, never
+  `RESULT:` lines.
+- **Resolved**: A.U26.07 writes `INTERVAL=`, `MEASURING`, `SENT`, `RESULT: FAIL` lines; facts per M.HW_DEV.002 (the
+  helper `ensure_scd30_measuring()` parses them, M.HW_BENCH.044).
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001/.002/.004.
+- **Blast carried by**: `scd30_prerequisite.py` → M.HW_BENCH.044; L0 failure modes → A.U26.07 (TSC); prerequisite pin →
+  A.U26.06 (TSC).
+- **Kind**: test, hardware (Round: R1 [H31])
