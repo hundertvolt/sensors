@@ -875,8 +875,7 @@ Conventions used below (each defined once, then cited):
   `:25-27` comment → "…tests_scripts/ runs a nested test.sh to prove the rejection, concurrently with every test file
   holding tests/_tmp scratch." The two sweeps (`tests/_tmp`, `devices/zz_test_*.toml`) follow unchanged.
 - **Resolved**: A.U7.02 sets "a usage error exits 2 in every runner" and flags `test.sh:34, :47, :53` (exit 1) to the
-  lead; A.U7.06 writes its new checks with exit 1. No owner row, register item or AC_NOTES settles it → Q1, written
-  with the recommended (a).
+  lead; A.U7.06 writes its new checks with exit 1. Settled by the owner: Q1 answered (a), OR133.
 - **Unit**: U27 (stages: U7 help, timeouts, block; U8 tags; U27 texts).
 - **Depends**: — (Q1 answered, OR133).
 - **Blast carried by**: `tests_scripts/test_test_sh.py:512-527` (rejected invocation leaves the tree untouched; exit code
