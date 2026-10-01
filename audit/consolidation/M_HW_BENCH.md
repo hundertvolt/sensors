@@ -2047,8 +2047,10 @@ never flashed (A.C.01 (5)).
   `power_loss_during_the_shutdown_commands` (A.S0930.29 (7)): FRAM evidence first (`save_errcount()`,
   `save_fram_raw()`); `erasefram`, cut power 2.5-4.0 s after the reply; after power returns `ResetReason` 1 and each
   FRAM-backed history old or empty; then `resetconfig` the same way with the config files saved first
-  (`config_files_dump.py`) and restored verbatim after (`config_files_restore.py`), the bench joining the DUT's hotspot
-  inside the round's armed network switch. Constants `_POWER_CUT_WINDOW_S = 20`, `_POWER_OFF_S = 10` (B4).
+  (`config_files_dump.py`) and restored verbatim after (`config_files_restore.py`, run only after the step states
+  "rewrites the saved config files once, one flash write per file" and takes `confirm()` — the manual branch of the
+  wear guard requires a `confirm(` before every persisting script a manual step runs, A.C.17's rule, M.TSC.119; gap
+  pass, GAPS_G3 hand-off 2), the bench joining the DUT's hotspot inside the round's armed network switch. Constants `_POWER_CUT_WINDOW_S = 20`, `_POWER_OFF_S = 10` (B4).
 - **Resolved**: A.U4.04's instruction (U4) and A.U26.42's rewrite (U26) touch the same step: one text, U26's, carrying
   U4's "GET first … Valid" wording. A.C.17 replaces the HEAD mid-write step (same purpose, a measured instrument).
 - **Unit**: stage 1 U4 (`:36-48` instruction); stage 2 U26.

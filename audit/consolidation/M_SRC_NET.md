@@ -2935,8 +2935,10 @@ UART rule; F.5.8 — F.8.2 after U36).
 - **Resolved**: —
 - **Unit**: U13 (F.5.7 written until U36, M.SRC_NET.190). Staged: U10 (order).
 - **Depends**: —
-- **Blast carried by**: tests (deinit during the yield → `None`/`False`; `poll_idle_ms = 2**29` with a bounded
-  `_StepPoller` → `False`) → A.U13.18, A.U13.19 (TEST_UNIT); SPEC C.3.2, F.5.9 → (SPEC); UART changelog Class B →
+- **Blast carried by**: tests (deinit during the yield → `None`/`False`; `poll_idle_ms = 2**61` — beyond the 64-bit Unix
+  rig's ticks half-period, so the test first asserts the rig raises for it — with a `_StepPoller` ready on its second
+  poll → `False`; the change's comment states the rp2 bound 2**29) → M.TEST_UNIT.176 (A.U13.18, A.U13.19; gap pass G2,
+  GAPS_G3 hand-off 4); SPEC C.3.2, F.5.9 → (SPEC); UART changelog Class B →
   A.U13.18 (DOCS)
 - **Kind**: code
 

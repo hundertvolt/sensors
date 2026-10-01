@@ -778,7 +778,8 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   (`:363-364` comment), A.U26.44 (`:363`/`:370` comment — superseded), A.U8.24 (`disallow_any_explicit = true`), A.U27.22
   (`enable_error_code`), A.U27.23 (`:377` exclude comment), A.U25.40 (`:383` exclude goes), A.U25.46/M.TEST_HELP.031
   (`tests/_webserver_concurrency_scenarios.py` deleted: its exclude and comment go), M.TWIN.108 (the six construction
-  wrappers become one file: the `:388-389` comment follows), A.U0.21 (owned by A.U8.23).
+  wrappers become one file: the `:388-389` comment follows), A.U0.21 (owned by A.U8.23), GAPS_G3 hand-off 1 / A.U26.05
+  (`digital_twin/run_device_script.py` excluded, M_TOOL gap 9's rule, gap pass).
 - **Site**: `pyproject.toml:353-406` (`[tool.mypy]`).
 - **Change**: `platform`, `python_version` and comment, `follow_imports = "silent"`, `follow_imports_for_stubs` and their
   comments unchanged. `:363-365` → "# typings/ is the board stub tree, ext/typings/ the vendored upstream Microdot stub,
@@ -792,7 +793,9 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   seven entries `tests/network\\.py$`, `digital_twin/machine\\.py$`, `digital_twin/network\\.py$`,
   `digital_twin/neopixel\\.py$`, `digital_twin/launch\\.py$`, `digital_twin/run_generic_integration\\.py$`,
   `tests/test_digital_twin_.*\\.py$`, then "# The shared construction scenario library (leading underscore, so the glob
-  above misses it), same reason." / `tests/_digital_twin_construction_scenarios\\.py$`. A new `digital_twin/` module
+  above misses it), same reason." / `tests/_digital_twin_construction_scenarios\\.py$`, then (U26, gap pass G3 hand-off 1)
+  `digital_twin/run_device_script\\.py$` under the block's reason — it calls the twin-only `machine.configure_wiring()`,
+  which `tests/machine.py` lacks (M.TWIN.054; confirmed at landing by running the main pass). A new `digital_twin/` module
   that needs the twin's own `machine`/`network` API joins this list in the unit creating it, with the block's reason
   (agent decision D9; the twin pass's `digital_twin` glob checks it, G8/R47). Strictness: `strict = true` and its
   comment, then "# a bare `# type: ignore` is itself an error, so no suppression hides its code" / `enable_error_code =
@@ -807,7 +810,7 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   `warn_unused_ignores` a resolved import makes those ignores errors) and `disallow_any_explicit` (A.U8.24, U8's end);
   U18 — `"digital_twin/unixport"` with the shim's move (A.U18.12, M.TWIN); U24 — the construction-library comment
   (M.TWIN.108); U25 — `segfault_stress_repro` and `_webserver_concurrency_scenarios` excludes go (A.U25.40, A.U25.46);
-  U26 — A.U26.44's interim comment; U27 — `files`, the final comments, `enable_error_code` (A.U27.09, A.U27.22-.25).
+  U26 — A.U26.44's interim comment and the `run_device_script` exclude (with M.TWIN.054's file); U27 — `files`, the final comments, `enable_error_code` (A.U27.09, A.U27.22-.25).
 - **Depends**: M.GEN.050/M.GEN.051 (the stub files vendored in U0's re-vendor); M.TWIN.053/.075 (unixport directory);
   M.TOOL.033.
 - **Blast carried by**: `tests_scripts/test_lint_type_scopes.py` (strictness flags in all three configs; CI paths ==
