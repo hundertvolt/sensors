@@ -381,7 +381,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   A.U12.14's by its own text), A.U0.41 (`pack_into` owner-tag comment), A.U30.19 (the two `except Exception:` handlers)
 - **Site**: `src/voc_algorithm.py:95-176` (`DFRobot_vocalgorithmParams.pack_into()`, `unpack_from()`)
 - **Change**: `pack_into()`: first line a comment "# Every field is frozen, the uptime_gamma/uptime_gating learning
-  counters included (owner-confirmed, 2026-07-21)"; format `"<32q"`; handler `except (OverflowError, TypeError,
+  counters included (owner, 2026-07-21)"; format `"<32q"`; handler `except (OverflowError, TypeError,
   ValueError): return False` (see Resolved). `unpack_from()`: format `"<32q"`; handler `except (MemoryError, TypeError,
   ValueError): return False`; then A.U12.14's `for value in values: if not -0x80000000 <= value <= 0x7FFFFFFF: return
   False` before the assignment, the unchanged 32-name assignment, then the two uptime fields `= min(field, limit)` with
@@ -638,7 +638,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 ### M.SRC_SENS.030 Imports, typing names and the stub-workaround trigger
 - **From**: A.U10.37 (module names), A.U10.38 (`AsyFramManager` → `FRAMManager`, gone here), A.U5.01/A.U5.02
   (`LogConfig`), A.U5.11 (`ValueRef`), A.U9.09 (`TickSeconds` replaces `LockedCounter`), A.U10.06 (`utc_now`),
-  A.U22.04 (`Coroutine`/`Any` out, `Awaitable` in, `TaskStarter`), A.U27.03 + A.SDEP.15 (`_TicksMs` comment trigger)
+  A.U22.04 (`Coroutine`/`Any` out, `Awaitable` in, `TaskStarter`), A.U27.03 + A.SDEP.15 (`_TicksMs` comment trigger),
+  A.U10.31 (the file's 3 quoted annotations; AC3_S S-03)
 - **Site**: `src/asy_notification_service.py:7-46`
 - **Change**: runtime imports: `asyncio`, `time`, `namedtuple`, `const`, `from asy_base_classes import
   SensorReaderConfig, TickSeconds, utc_now`, `from asy_config_manager import make_dict, name_cfg, schema_names`,
@@ -649,6 +650,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `from asy_print_log import ErrorLog`; `_LocalTime` unchanged; `_ValueSource.get_data(self) -> object` (A.U22.04). The
   `AsyFramManager` import goes (no parameter names it after A.U5.02/A.U5.06). A.SDEP.15's U0 re-check decides whether
   the private-name workaround still exists at the new stubs (a stub release that drops it fails the main pass).
+  Every annotation in the file that names no `TYPE_CHECKING` symbol is bare (A.U10.31; 3 at HEAD); one a forward
+  reference would break stays quoted (D.6).
 - **Resolved**: —
 - **Unit**: U27 (latest; stages: U5 `LogConfig`/`ValueRef`, U9 `TickSeconds`, U10 module names and `utc_now`, U22
   typing, U27 the trigger comment)
@@ -715,7 +718,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **From**: A.U5.11 (`value: ValueRef`), A.U22.02 + A.U23.37 (`last_value`, `triggered` go), A.U10.35 (`triggered`:
   superseded by the removal), A.U5.06 (signals at construction; `register()`/`finalize()`/`_finalized` go), A.U5.02
   (`log`), A.U10.38 (`NotificationCoordinator` → `NotificationService`), A.U9.09 (`_pause`), A.U2.17 (W44/W45 names),
-  A.U22.04 (callback types), A.U10.39 (`cfg_schema` → `_cfg_schema`)
+  A.U22.04 (callback types), A.U10.39 (`cfg_schema` → `_cfg_schema`), A.U10.21 (`setup() -> bool`), A.U11.31
+  (`reset_error_counter()` returns the reset's bool)
 - **Site**: `src/asy_notification_service.py:110-173, 247-316`
 - **Change**: `NotificationSignal(name, value: ValueRef, field_schema, color, *, above=True)` stores `name`, `value`,
   `field_schema`, `color`, `above` (the HEAD comment `:122-124` → "# A reference to the producer plus the field to read
@@ -1298,7 +1302,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 
 ### M.SRC_SENS.054 `_init_scd()`: first-start comment, interval cache, the participant rung
 - **From**: A.U15.04 (comment), A.U10.10 (`pr.setup()` leaves), A.U15.R01 (2)-(3) (`_recover_device()`,
-  `_init_failed()`/`_init_done()`), A.U15.12 (3)-(4) (interval read, `_frc_reset()`), A.U2.11, A.U30.19
+  `_init_failed()`/`_init_done()`), A.U15.12 (3)-(4) (interval read, `_frc_reset()`), A.U2.11, A.U30.19, A.U0.35 (B03,
+  `:162-163`: superseded by A.U15.04's comment, which fixes the dangling CLAUDE.md pointer)
 - **Site**: `src/asy_scd30_driver.py:161-172` and a new method
 - **Change**: `_init_scd()`: comment → A.U15.04's "# Continuous measurement is never started here: the first
   ambient-pressure PUT starts it, and the chip keeps it across power cycles (SPECIFICATION.md A.4; owner, 2026-09-26).";
@@ -1499,7 +1504,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Kind**: code
 
 ### M.SRC_SENS.061 The compensation defaults as comment-explained classes
-- **From**: A.U10.34 (`_DefaultTemperatureSource`/`_DefaultHumiditySource` docstrings → comments)
+- **From**: A.U10.34 (`_DefaultTemperatureSource`/`_DefaultHumiditySource` docstrings → comments), A.U10.31
+  (`get_data() -> _ConstValue` unquoted)
 - **Site**: `src/asy_sgp40_driver.py:99-126`
 - **Change**: each docstring becomes a `#` block directly under the `class` line with the same text trimmed to three
   lines (`_DefaultTemperatureSource`: "# Part L.6.2's wiring-defaults mechanism, opted into via [instance.wiring].
@@ -1791,7 +1797,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   Table 7 reading)
 - **Site**: `src/asy_isl29125_driver.py:37-117`
 - **Change**: `_REGISTER_CONFIG3` and its comment go. `:58` → `_CONFIG3_CONVEN = const(0x10)  # p11, Table 13 - kept 0,
-  see SPECIFICATION.md M.1.3`. `:90-91` → "# Device/maths constants, not config fields (agent classification,
+  see SPECIFICATION.md M.1.3`. `:90-91` → "# Device/maths constants, not config fields (agent,
   2026-09-14) - requirement 1 (SPECIFICATION.md / # Part M.1.1) governs preferences, and none of these is one." (two
   lines). `:98` → "# Calibration is a bounded, user-started run, never a background schedule (owner, 2026-09-13): the
   driver only ever / # READS GainRatio, so nothing it does can write the flash (SPECIFICATION.md Part M.1.5)." (two
@@ -1809,7 +1815,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `_ERR_ISL_BUS_FAULT = const(56)`, `_WRN_ISL_BROWNOUT = const(30)`, `_WRN_ISL_DIVERGED = const(31)`,
   `_WRN_ISL_PERIODIC_ONLY = const(32)`.
 - **Resolved**: A.U0.35's text "Device/maths constants, not config fields (agent classification, 2026-09-14)" and the
-  existing M.1.1 pointer fit two lines together (3-line cap). Datasheet facts rechecked: p15 "internally hard-wired as
+  existing M.1.1 pointer fit two lines together (3-line cap); its tag is written in the "(actor, YYYY-MM-DD)" form,
+  "(agent, 2026-09-14)" (AC_NOTES 6; AC3_O O-23). Datasheet facts rechecked: p15 "internally hard-wired as
   1000100" (`dstxt/isl29125…:1139`; p7 `:477` says the same), Table 7 (`:786-789`).
 - **Unit**: U15 (stages U0 tags in comments, U2 catalog block, U8 tunable tags, U10 `_S` names, U36 citation — each lands
   in its own unit on the same lines)
@@ -2321,6 +2328,23 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Blast carried by**: `tests_scripts/test_comment_block_cap.py` (src scope) stays green — no carrier needed
 - **Kind**: doc
 
+## src/asy_bmp3xx_driver.py, src/asy_neopixel_driver.py, src/asy_notification_service.py, src/asy_scd30_driver.py, src/asy_sgp40_driver.py, src/asy_spi_driver.py (A-C3 Part S S-04)
+
+### M.SRC_SENS.093 D.15 member order in the remaining classes
+- **From**: A.U10.33 (A-C3 Part S: the classes below had no carrier; the preamble's member-order convention is this
+  change).
+- **Site**: `src/asy_bmp3xx_driver.py:125` `BMP3xx_Reader`, `:403` `BMP3XX_I2C`; `src/asy_neopixel_driver.py:43`
+  `NeopixelDriver`; `src/asy_notification_service.py:135` `NotificationCoordinator`; `src/asy_scd30_driver.py:118`
+  `SCD30_Reader`, `:444` `SCD30_I2C`; `src/asy_sgp40_driver.py:129` `SGP40_Reader`, `:542` `SGP40_I2C`;
+  `src/asy_spi_driver.py:33` `SPI` (HEAD names and lines; the U10 class renames of A.U10.38 apply).
+- **Change**: A.U10.33's script-driven pure move per class, after every other U10 edit to the same file; AST
+  comparison (same (name, body) set, comment multiset unchanged); later stages insert at the D.15 position (A.U10.47).
+- **Resolved**: —
+- **Unit**: U10 (last U10 change per file).
+- **Depends**: the file's other U10 changes.
+- **Blast carried by**: lint/typecheck baselines → A.U10.33 (TOOL).
+- **Kind**: code
+
 ## Gaps for other clusters
 
 - **GAP-1 (TSC, SPEC)**: `tests_scripts/test_src_sleep_forms.py` (A.U31.19) gains the case M.SRC_SENS.002 defines — an AST
@@ -2461,7 +2485,7 @@ Added by gap pass G2 (2026-10-01):
 | A.SDEP.15 | M.SRC_SENS.030, M.SRC_SENS.042, M.SRC_SENS.070, M.SRC_SENS.073 |
 | A.U0.16 | M.SRC_SENS.075, M.SRC_SENS.079 |
 | A.U0.28 | M.SRC_SENS.069, M.SRC_SENS.071 (its `asy_sgp40_driver.py:670-671` part superseded by A.U15.13's text, M.SRC_SENS.069) |
-| A.U0.35 | M.SRC_SENS.066, M.SRC_SENS.071 |
+| A.U0.35 | M.SRC_SENS.066, M.SRC_SENS.071, M.SRC_SENS.054 (AC3_S §4) |
 | A.U0.38 | M.SRC_SENS.032 |
 | A.U0.39 | M.SRC_SENS.019 |
 | A.U0.40 | M.SRC_SENS.062 |
@@ -2471,7 +2495,7 @@ Added by gap pass G2 (2026-10-01):
 | A.U10.12 | M.SRC_SENS.046, M.SRC_SENS.055, M.SRC_SENS.066, M.SRC_SENS.083 |
 | A.U10.17 | M.SRC_SENS.003, M.SRC_SENS.009, M.SRC_SENS.023 |
 | A.U10.34 | M.SRC_SENS.032, M.SRC_SENS.061 |
-| A.U11.31 | M.SRC_SENS.025 |
+| A.U11.31 | M.SRC_SENS.025, M.SRC_SENS.033 (AC3_S §4) |
 | A.U11.S01 | M.SRC_SENS.082 (its ISL29125 arm-keeping half not taken: lead L1 ruling; GAP-14) |
 | A.U12.11 | M.SRC_SENS.015, M.SRC_SENS.016 |
 | A.U12.13 | M.SRC_SENS.015 |
@@ -2592,10 +2616,10 @@ Actions outside `site_index.json` whose text edits a site here (found by the ide
 |---|---|
 | A.SDEP.17 | M.SRC_SENS.001, M.SRC_SENS.009 |
 | A.U10.18 | M.SRC_SENS.003, M.SRC_SENS.004, M.SRC_SENS.009, M.SRC_SENS.013, M.SRC_SENS.023 |
-| A.U10.21 | M.SRC_SENS.004, M.SRC_SENS.013, M.SRC_SENS.024, M.SRC_SENS.040, M.SRC_SENS.044, M.SRC_SENS.048, M.SRC_SENS.057, M.SRC_SENS.069, M.SRC_SENS.074, M.SRC_SENS.086 |
+| A.U10.21 | M.SRC_SENS.004, M.SRC_SENS.013, M.SRC_SENS.024, M.SRC_SENS.040, M.SRC_SENS.044, M.SRC_SENS.048, M.SRC_SENS.057, M.SRC_SENS.069, M.SRC_SENS.074, M.SRC_SENS.086, M.SRC_SENS.033 (AC3_S §4) |
 | A.U10.25 | M.SRC_SENS.042, M.SRC_SENS.062, M.SRC_SENS.073 |
-| A.U10.31 | M.SRC_SENS.004, M.SRC_SENS.011, M.SRC_SENS.022, M.SRC_SENS.025, M.SRC_SENS.048, M.SRC_SENS.057, M.SRC_SENS.070 |
-| A.U10.33 | M.SRC_SENS.004, M.SRC_SENS.009, M.SRC_SENS.013, M.SRC_SENS.018, M.SRC_SENS.088 |
+| A.U10.31 | M.SRC_SENS.004, M.SRC_SENS.011, M.SRC_SENS.022, M.SRC_SENS.025, M.SRC_SENS.048, M.SRC_SENS.057, M.SRC_SENS.070, M.SRC_SENS.030, M.SRC_SENS.061 (AC3_S S-03, §4) |
+| A.U10.33 | M.SRC_SENS.004, M.SRC_SENS.009, M.SRC_SENS.013, M.SRC_SENS.018, M.SRC_SENS.088, M.SRC_SENS.093 (AC3_S S-04) |
 | A.U10.35 | M.SRC_SENS.004, M.SRC_SENS.023, M.SRC_SENS.033, M.SRC_SENS.042, M.SRC_SENS.048, M.SRC_SENS.052, M.SRC_SENS.057, M.SRC_SENS.062, M.SRC_SENS.067, M.SRC_SENS.073, M.SRC_SENS.085, M.SRC_SENS.086 |
 | A.U10.37 | M.SRC_SENS.005, M.SRC_SENS.007, M.SRC_SENS.020, M.SRC_SENS.030, M.SRC_SENS.039, M.SRC_SENS.049, M.SRC_SENS.058, M.SRC_SENS.070 |
 | A.U10.38 | M.SRC_SENS.020, M.SRC_SENS.021, M.SRC_SENS.030, M.SRC_SENS.031, M.SRC_SENS.033, M.SRC_SENS.038, M.SRC_SENS.041, M.SRC_SENS.042, M.SRC_SENS.048, M.SRC_SENS.051, M.SRC_SENS.052, M.SRC_SENS.058, M.SRC_SENS.060, M.SRC_SENS.070, M.SRC_SENS.072, M.SRC_SENS.085 |
@@ -2653,6 +2677,10 @@ Gap pass G2 rows (2026-10-01; `GAPS_G2.md` lists each item and its source):
 | AC_NOTES 42 (`NotificationService.initialized`) | carried as found: M.SRC_SENS.033 |
 | M_TEST_UNIT GAP-U4 (`_apply_stored_config()` code 2 on a stale value) | dropped: unreachable — the stored value passed `ConfigManager.setup()`'s schema check, whose special set is the chip's domain (`_OSR_SETTINGS`/`_IIR_SETTINGS`), so code 2 means a chip I/O failure only (M.SRC_SENS.044) |
 | M_SRC_SENS GAP-15 (reader conditions) | carried as found: M.SRC_SENS.046 (BMP3XX), .089 (SCD30), .090 (SGP40), .083 (ISL29125) |
+| AC3_S S-03 | M.SRC_SENS.030: From gains A.U10.31; Change appends the bare-annotation rule (3 at HEAD: `:117` `color`, `:233`/`:237` starter returns; its Unit already holds a U10 stage) |
+| AC3_S S-04 | new M.SRC_SENS.093 (U10), after the file's highest number under its own heading, Site naming the six files |
+| AC3_S §4 (From completions) | M.SRC_SENS.054 gains A.U0.35; M.SRC_SENS.033 gains A.U10.21, A.U11.31; M.SRC_SENS.061 gains A.U10.31 |
+| AC3_O O-23 | M.SRC_SENS.017 "(owner-confirmed, 2026-07-21)" → "(owner, 2026-07-21)"; M.SRC_SENS.071 "(agent classification, 2026-09-14)" → "(agent, 2026-09-14)" in the Change's after-text (its Resolved quotes the action's wording and states the normalised form) |
 
 ## A-C2 order notes (2026-10-01)
 

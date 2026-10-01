@@ -437,7 +437,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   `self.pr.all("System uptime:", uptime)`; `if self._start_time_set: continue`; `utc = await self._ntp_boot_signature()`;
   NTP → `await self._boot_signature.set_value(utc)`, one line, `_start_time_set = True`; `elif uptime >= _NTP_WAIT_TIME:`
   random (comment `:390-391` kept). `_ntp_boot_signature()`: comment `:133` → "# None if not synced yet - a failing NTP
-  callback counts as not synced (owner-confirmed, 2026-07-18); / # the caller falls back to random after _NTP_WAIT_TIME.";
+  callback counts as not synced (owner, 2026-07-18); / # the caller falls back to random after _NTP_WAIT_TIME.";
   the callback `try`/`except Exception as e:` keeps its guard (`report_if_fatal(e)` first from U30; `errno=_ERR_CALLBACK`);
   `if not synced: return None`; `return utc_now()` — no `try`, the errno-2 handler goes.
 - **Resolved**: A.U10.06 (no `try` around the timestamp) vs A.U14.26 (1) (`except MemoryError` with a heap-int comment):
@@ -1328,7 +1328,7 @@ fatal flag (M.SRC_CORE.034).
 - **From**: A.U3.01 (header names the rule), A.U11.16 (header's never-raise line), A.U11.S03 (2) (non-generic
   `_FramChunk`), A.U16.19 (Protocol loses `override_pause`), A.U16.06 (4) (`read_into() -> bool | None`), A.U16.05
   (`RegionBuffer`), A.U10.38/A.U10.37 (`CRCBase`, module names), A.U14.19 (`import asyncio`), A.U30.19 via
-  M.SRC_CORE.034 (header names the flag).
+  M.SRC_CORE.034 (header names the flag); A.U10.31 (the file's one quoted annotation; AC3_S S-03).
 - **Site**: `src/print_log.py:1-49`.
 - **Change**: docstring: line 1 "Leveled console logging (PrintLog), a bounded error/warning history (PrintLogHistory)
   with optional FRAM-backed persistence (PrintLogHistoryStore), and the C-stack fatal flag the supervisor reads."; line
@@ -1341,10 +1341,11 @@ fatal flag (M.SRC_CORE.034).
   "RegionBuffer") -> bool`, `async def read_into(self, buf: "RegionBuffer") -> "bool | None"`; `class
   _FramManager(Protocol)`: `get_chunk(…)` with `FRAMManager.get_chunk()`'s final parameters (M.SRC_CORE.090) `->
   "_FramChunk | None"`; the Protocol comment `:38-40` kept (cycle reason); `_BufT`, its comment `:33-35`, `TypeVar`
-  and `Any` go.
+  and `Any` go. Every annotation in the file that names no `TYPE_CHECKING` symbol is bare (A.U10.31; 1 at HEAD); a
+  forward reference stays quoted (D.6).
 - **Resolved**: A.U3.01 "rewrites the header (not extends)"; A.U11.16 replaces line 3; one 3-line header carries both.
-- **Unit**: U16 (latest: the Protocol's signature changes; stages U3 header line 2, U11 line 3 and the non-generic
-  Protocol, U30 line 1's flag clause).
+- **Unit**: U16 (latest: the Protocol's signature changes; stages U3 header line 2, U10 the bare-annotation rule
+  (A.U10.31), U11 line 3 and the non-generic Protocol, U30 line 1's flag clause).
 - **Depends**: M.SRC_CORE.001, M.SRC_CORE.027, M.SRC_CORE.090.
 - **Blast carried by**: `asy_fram_manager.py` `write_into`/`read_into` annotations (M.SRC_CORE.090); FRAM fakes in tests
   drop `override_pause` → A.U16.19 (TEST_UNIT, TEST_HELP); `pyproject.toml:259` ANN401 entry goes (then T20, A.U11.38)
@@ -1816,9 +1817,9 @@ built from their manager, the timestamped one on `utc_now()`, bool first.
   allocation, all made during construction"), `self.initialized = False`, `self.fram = FRAM_SPI(spi_bus, spi_cs,
   max_size=self.size, logger=self.pr)`. `get_error_sources() -> "list[ErrorSource]"`. `get_chunk(size, crc: CRCBase | None
   = None, verify=0, check_length=8) -> FRAMChunk | None` and `get_timestamped_chunk(size, ntp_sync_callback: "NtpSyncFct",
-  …)`: the size-0 comment gains "(owner-confirmed, 2026-07-18: reject generally at the top)"; `CRCPass()` default;
+  …)`: the size-0 comment gains "(owner, 2026-07-18: reject generally at the top)"; `CRCPass()` default;
   construct with `self` as manager; append the chunk to `self._chunks`; `_allocated_size` bookkeeping as HEAD.
-  `set_pause()` gains "# Finish all ongoing ops, reject new ones (owner-confirmed, 2026-07-18)". `reset_error_counter()
+  `set_pause()` gains "# Finish all ongoing ops, reject new ones (owner, 2026-07-18)". `reset_error_counter()
   -> bool: return await self.pr.reset()`.
 - **Resolved**: —
 - **Unit**: U16 (stages U5 constructor, U10 names, U11 `-> bool` and the `_chunks` list with its append — the U11
@@ -2084,16 +2085,17 @@ chip lost mid-run, takes both FRAM locks for every hold (`setup()` and `set_writ
   A.U10.26 (SPEC, DOCS); SPEC E.5.1 row → A.U35.41 (SPEC).
 - **Kind**: code
 
-### M.SRC_CORE.108 FRAM CS from power-on is a hardware measurement, no code
+### M.SRC_CORE.108 FRAM CS at power-on is a documented fact: no code, no hardware row
 - **From**: A.U13.04 (AC_NOTES 11: documented fact, no board change).
-- **Site**: hardware — dev GP5 (MB85RS2MTA) and a MB85RS64V breakout wired as wozi; `src/asy_fram_driver.py:110` stays.
-- **Change**: none in the file; phase C scopes CS from power-on to `setup()` on both parts and reads the breakouts' CS
-  pull-ups; the result is recorded where A.U13.05 states the fact.
+- **Site**: none (`src/asy_fram_driver.py:110` stays).
+- **Change**: none: the datasheets' power-on hold time is met by boot timing and the CS pad state during reset is a
+  datasheet fact stated in SPEC C.3.1 by M.SPEC.049 (AC_NOTES 11, 23; the lead's note at the end of `U13.md`); no
+  phase-C measurement, no BACKLOG row.
 - **Resolved**: AC_NOTES 11 (U13 Open point 1 withdrawn; the power-on hold time is met by boot timing).
-- **Unit**: phase C (hardware round; owner go-ahead).
+- **Unit**: — (no step)
 - **Depends**: —
-- **Blast carried by**: BACKLOG "Real-hardware work still owed" line → A.U13.04 (DOCS); A.U13.05 text → SPEC.
-- **Kind**: hardware
+- **Blast carried by**: SPEC C.3.1 → M.SPEC.049 (1).
+- **Kind**: rule
 
 ### M.SRC_CORE.109 Comment labels in the driver: no undefined plan labels, current numbers
 - **From**: A.U36.544 (2) (the four "WP8:" prefixes); adherence: `:153` "(PLAN A.1.2)" is an undefined temporary-plan
@@ -2389,6 +2391,21 @@ kept, written `(ArithmeticError, ValueError)`, and exercised by tests through a 
 - **Blast carried by**: L1 `tests/test_crc_checks.py` gains one case per width (`poly` above the width's mask → `length() == 0`, `add()` returns the buffer unchanged, `add_into()` writes nothing) → TEST_UNIT gap; SPEC J/G CRC text unchanged (it states the contract already).
 - **Kind**: code, test
 
+## src/config_manager.py, src/print_log.py, src/asy_fram_driver.py (A-C3 Part S S-04)
+
+### M.SRC_CORE.132 D.15 member order in the remaining classes
+- **From**: A.U10.33 (A-C3 Part S: the classes below had no carrier).
+- **Site**: `src/config_manager.py:215` `ConfigManager`; `src/print_log.py:68` `PrintLog`, `:133` `PrintLogHistory`,
+  `:226` `PrintLogHistoryStore`; `src/asy_fram_driver.py:97` `FRAM_SPI` (HEAD names and lines; the U10 module and class
+  renames of A.U10.37/A.U10.38 apply).
+- **Change**: A.U10.33's script-driven pure move per class, after every other U10 edit to the same file; AST
+  comparison (same (name, body) set, comment multiset unchanged); later stages insert at the D.15 position (A.U10.47).
+- **Resolved**: —
+- **Unit**: U10 (last U10 change per file).
+- **Depends**: the file's other U10 changes.
+- **Blast carried by**: lint/typecheck baselines → A.U10.33 (TOOL).
+- **Kind**: code
+
 ## Gaps for other clusters
 
 - **GAP-G1** (GEN): the generated `_collect_setups()` is annotated `list[SetupFct]` (imported from `asy_base_classes`),
@@ -2562,8 +2579,8 @@ editing them through a class or function name (site-miss), 171 in all.
 | A.U10.23 | M.SRC_CORE.016 |
 | A.U10.26 | M.SRC_CORE.101, M.SRC_CORE.107 |
 | A.U10.29 | M.SRC_CORE.101, M.SRC_CORE.120 |
-| A.U10.31 | M.SRC_CORE.003, M.SRC_CORE.020, M.SRC_CORE.029, M.SRC_CORE.030, M.SRC_CORE.049, M.SRC_CORE.071, M.SRC_CORE.093, M.SRC_CORE.129 |
-| A.U10.33 | M.SRC_CORE.020, M.SRC_CORE.029, M.SRC_CORE.093, M.SRC_CORE.115, M.SRC_CORE.120, M.SRC_CORE.130 |
+| A.U10.31 | M.SRC_CORE.003, M.SRC_CORE.020, M.SRC_CORE.029, M.SRC_CORE.030, M.SRC_CORE.049, M.SRC_CORE.071, M.SRC_CORE.093, M.SRC_CORE.129, M.SRC_CORE.060 (AC3_S S-03) |
+| A.U10.33 | M.SRC_CORE.020, M.SRC_CORE.029, M.SRC_CORE.093, M.SRC_CORE.115, M.SRC_CORE.120, M.SRC_CORE.130, M.SRC_CORE.132 (AC3_S S-04) |
 | A.U10.35 | M.SRC_CORE.008, M.SRC_CORE.010, M.SRC_CORE.012, M.SRC_CORE.013, M.SRC_CORE.014, M.SRC_CORE.027, M.SRC_CORE.031, M.SRC_CORE.049, M.SRC_CORE.063, M.SRC_CORE.087, M.SRC_CORE.089, M.SRC_CORE.091, M.SRC_CORE.115 |
 | A.U10.36 | M.SRC_CORE.017 |
 | A.U10.37 | M.SRC_CORE.001, M.SRC_CORE.003, M.SRC_CORE.030, M.SRC_CORE.049, M.SRC_CORE.060, M.SRC_CORE.070, M.SRC_CORE.080, M.SRC_CORE.115, M.SRC_CORE.120 |
@@ -2610,7 +2627,7 @@ editing them through a class or function name (site-miss), 171 in all.
 | A.U12.08 | M.SRC_CORE.127 |
 | A.U12.09 | M.SRC_CORE.125, M.SRC_CORE.128 |
 | A.U12.16 | M.SRC_CORE.121 |
-| A.U13.04 | M.SRC_CORE.108 |
+| A.U13.04 | dropped as a measurement (withdrawn, AC_NOTES 11); its fact carried by M.SPEC.049 (M.SRC_CORE.108 records it, no step) |
 | A.U13.09 | M.SRC_CORE.101, M.SRC_CORE.103, M.SRC_CORE.104, M.SRC_CORE.105, M.SRC_CORE.106, M.SRC_CORE.107 |
 | A.U14.10 | M.SRC_CORE.063, M.SRC_CORE.085 |
 | A.U14.15 | M.SRC_CORE.016 |
@@ -2723,6 +2740,10 @@ Gap pass G2 rows (2026-10-01; `GAPS_G2.md` lists each item and its source):
 | M_HW_DEV GAP-D9 | carried as found: no SRC_CORE change lists the two WiFi repro scripts |
 | AC_NOTES 39 | carried as found: M.SRC_CORE.131 |
 | A.U10.22 | M.SRC_CORE.008, .017, .036, .039, .092 (readiness flag; this pass) |
+| AC3_R R-03 | M.SRC_CORE.108 amended: title, Site "none", Change "none" (documented datasheet fact, M.SPEC.049), Unit "— (no step)", Kind rule, Blast → M.SPEC.049 (1); A.U13.04's row rewritten |
+| AC3_S S-03 | M.SRC_CORE.060: From gains A.U10.31; Change appends the bare-annotation rule; Unit gains stage U10 (the one HEAD instance, `make_logger() -> "PrintLogHistory"` `:287`, is already bare from U5 by M.SRC_CORE.061, so the U10 stage confirms it) |
+| AC3_S S-04 | new M.SRC_CORE.132 (U10), placed after the file's highest number under its own heading, Site naming all three files |
+| AC3_O O-23 | M.SRC_CORE.013 (`:133` comment tag) and M.SRC_CORE.091 (both comment tags): "(owner-confirmed, 2026-07-18 …)" → "(owner, 2026-07-18 …)" |
 
 ## A-C2 order notes (2026-10-01)
 

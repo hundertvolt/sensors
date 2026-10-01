@@ -3150,7 +3150,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
   the run context), A.U20.28 (the plan reader follows the producer), M.TSC.001 (`print_log.py`), A.U11.31 (read: status
   codes only), A.U8.22 (read: `:223-286` test inputs untagged); A.U19.14 (`:257-259` cites BACKLOG item 24, which leaves
   at U19 — M_DOCS gap 2, gap pass G3); A.U25.33/A.U25.36 (2) and A.U35.28 (3) (the runner's shutdown-line fields this
-  file parses — M.TWIN.050's Blast "their L0 parsers (TSC)" and M_SCR gap 4, gap pass G3).
+  file parses — M.TWIN.050's Blast "their L0 parsers (TSC)" and M_SCR gap 4, gap pass G3); A.S0930.34 (4)
+  (deadline-helper case; AC3_S S-14).
 - **Site**: `tests_scripts/test_digital_twin_ci_suite_errcount.py`.
 - **Change**: new cases: a history `[E10, W15, E10]` with counter 4 → 3 failures; fake procs with returncode −11, the
   suite's own timeout and its own SIGKILL each reported by name; each strict reader fails on a missing counter;
@@ -3164,6 +3165,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
   and a nonzero value fails the run naming the field, `fram_writes=<n>` an int, `fram_writes_by=SCD30:4,CFGMGR_SCD30:2`
   a name → int dict (`-` → empty; a name out of order, a duplicate or a non-int count fails naming it),
   `fram_writes_unattributed=<n>` when present an int; a line missing any required field fails naming it.
+  `_commanded_reset_deadline_s()` over a `tmp_path` copy of `src/asy_system_service.py` with `_RESET_DELAY` and
+  `_TASK_CHECK_TIME` changed equals their sum plus the named margin, following both.
 - **Resolved**: —
 - **Unit**: U35 (stages U19 the `:257-259` pointer, U25, U27; the `fram_writes`/`fram_writes_by` cases with A.U35.28).
   A-C2 step order: A.S0930.34 (4)'s part (the deadline-helper case AC3_S S-14 adds) lands in U26, not U25 (A.S0930.34 needs A.U26.71's guard derivation, which lands in U26).
@@ -4033,6 +4036,32 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Blast carried by**: the JS mirror's L0 check → M.TSC.100 (A.U23.25).
 - **Kind**: test
 
+## tests_scripts/ (docstrings to comments; A-C3 Part S S-05)
+
+### M.TSC.228 Function and class docstrings become comment blocks
+- **From**: A.U10.34 (A-C3 Part S: no carrier in this cluster).
+- **Site**: under `tests_scripts/` (HEAD lines of each function, method or class docstring): `_script_loader.py` (:11);
+  `conftest.py` (:22, :37); `test_bench_harness_helpers.py` (:98); `test_build_firmware.py` (:20);
+  `test_buildgen_definitions.py` (:38); `test_buildgen_validate.py` (:1023, :1102); `test_ceiling_probe.py` (:21);
+  `test_device_tomls.py` (:247, :271); `test_digital_twin_boot_contiguity.py` (:86, :114, :151);
+  `test_digital_twin_ci_suite_ceiling.py` (:86); `test_digital_twin_ci_suite_errcount.py` (:17, :265, :340);
+  `test_digital_twin_generated_boot.py` (:109, :116, :136); `test_gc_collect_sites.py` (:25); `test_heap_map_parser.py`
+  (:206); `test_js_coverage_report_dir.py` (:19); `test_lint_sh.py` (:16, :36); `test_measurement_field_tuple_agreement.py`
+  (:33); `test_micropython_overrides.py` (:135, :171, :274, :453, :804); `test_persistence_write_marker_completeness.py`
+  (:56, :65, :77, :99, :109, :116, :124, :136, :147, :210, :356); `test_request_body_cap_headroom.py` (:44, :81);
+  `test_request_timeout_ceiling.py` (:19, :48); `test_require_clean_hardware_run_sh.py` (:24, :36, :53);
+  `test_resolve_board_device.py` (:18); `test_setup_cross_browser_toolchain_sh.py` (:14); `test_setup_toolchain_env.py`
+  (:27, :43, :268, :380); `test_test_sh.py` (:91, :105, :159, :201, :275, :287, :390, :478, :564, :634, :684, :716,
+  :764); `test_tests_hardware_conftest_constants.py` (:16, :41). (`test_comment_block_cap.py:37` is M.TSC.065's.)
+- **Change**: each function, method and class docstring becomes a `#` comment block directly under the `def`/`class`
+  line, same text, ≤ 3 prose lines (overflow to the owning doc per CLAUDE.md's comment rule); module docstrings stay
+  (the five argparse readers included). A file a later change rewrites carries the form forward.
+- **Resolved**: —
+- **Unit**: U10.
+- **Depends**: —
+- **Blast carried by**: `tests_scripts/test_comment_block_cap.py` stays green → M.TSC.065.
+- **Kind**: code
+
 ## Gaps for other clusters
 
 1. **SRC_SENS** — `NeopixelDriver` carries no `initialized` gate in any merged change (M.SRC_SENS.023/.024; TEST_UNIT
@@ -4145,7 +4174,7 @@ None. Every conflict was settled from the actions, the registers or an owner ans
 | A.S0930.20 | merged into M.TSC.040, M.TSC.048, M.TSC.091, M.TSC.100, M.TSC.155 |
 | A.S0930.28 | merged into M.TSC.028, M.TSC.119 |
 | A.S0930.30 | merged into M.TSC.065 |
-| A.S0930.34 | merged into M.TSC.119, M.TSC.155 |
+| A.S0930.34 | merged into M.TSC.119, M.TSC.155, M.TSC.165 ((4), AC3_S S-14) |
 | A.S0930.39 | merged into M.TSC.028 |
 | A.SDEP.02 | merged into M.TSC.033, M.TSC.108 |
 | A.SDEP.03 | merged into M.TSC.032, M.TSC.114 |
@@ -4196,7 +4225,7 @@ None. Every conflict was settled from the actions, the registers or an owner ans
 | A.U10.22 | merged into M.TSC.112 |
 | A.U10.25 | merged into M.TSC.124 |
 | A.U10.30 | merged into M.TSC.011, M.TSC.055, M.TSC.098 |
-| A.U10.34 | merged into M.TSC.037, M.TSC.065 |
+| A.U10.34 | merged into M.TSC.037, M.TSC.065, M.TSC.228 (AC3_S S-05) |
 | A.U10.37 | merged into M.TSC.001 (carried from another file's action or a gap) |
 | A.U10.38 | merged into M.TSC.037, M.TSC.160, M.TSC.164 |
 | A.U10.39 | merged into M.TSC.173 |
@@ -4716,6 +4745,9 @@ None. Every conflict was settled from the actions, the registers or an owner ans
 | A.U24.68 | merged into M.TSC.213 (gap pass G3) |
 | A.U26.80 | merged into M.TSC.226 (gap pass G3) |
 | A.U19.16 | merged into M.TSC.227 (gap pass G3) |
+| AC3_S S-14 | M.TSC.165: From gains A.S0930.34 (4); Change appends the `_commanded_reset_deadline_s()` case. Adapted: S-14's Unit "with M.SCR.054 (S0930, after U25)" is not written — A-C2 already placed this part in U26 in the Unit slot (A.S0930.34 needs A.U26.71's guard derivation; WORK_ORDER 3.6) |
+| AC3_S S-05 (TSC list) | new M.TSC.228 (U10), after the file's highest number under its own heading; Site re-checked by AST at this HEAD (the 71 docstrings of the 27 listed files, exactly S-05's list; `test_comment_block_cap.py:37` stays M.TSC.065's) |
+| AC3_O O-05 (b) / M.TSC.110 interplay | no TSC amendment: `tests_js/definitions.test.js:205-207`'s `wozi` comment is removed by M.WEB.053 (O-05 (b), WEB's applier), whose U6 stage holds that site; until it lands the file sits in M.TSC.110's `_NOT_YET_CLEANED` like any file carrying a literal at landing, so the check's own mechanism covers it. O-28's wording changes are in `devices/` and `*.md`, both outside M.TSC.110's scan |
 
 ## A-C2 order notes (2026-10-01)
 

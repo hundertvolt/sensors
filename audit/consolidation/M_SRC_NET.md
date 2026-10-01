@@ -2637,8 +2637,8 @@ annotation-only change carries none, per its constituent. No merged change here 
 - **Resolved**: —
 - **Unit**: U30. Staged: U2, U10 (except order), U28 (reasons).
 - **Depends**: M.SRC_NET.150, A.U30.19 (SRC_CORE)
-- **Blast carried by**: `tests_scripts/test_suppression_form.py` → A.U28.30 (SCR); `test_fatal_report_sites.py` → A.U30.19
-  (SCR); UART changelog Class B "every broad handler records a C-stack overflow" → A.U30.19, "except-tuple order" →
+- **Blast carried by**: `tests_scripts/test_suppression_form.py` → A.U28.30 (TSC); `test_fatal_report_sites.py` → A.U30.19
+  (TSC); UART changelog Class B "every broad handler records a C-stack overflow" → A.U30.19, "except-tuple order" →
   A.U10.45 (DOCS)
 - **Kind**: code
 
@@ -2768,7 +2768,7 @@ annotation-only change carries none, per its constituent. No merged change here 
 - **Resolved**: —
 - **Unit**: U10
 - **Depends**: M.SRC_NET.150
-- **Blast carried by**: A.U10.47's check (SCR)
+- **Blast carried by**: A.U10.47's check (TSC)
 - **Kind**: code
 
 ### M.SRC_NET.173 Member order per D.15 (UART comm)
@@ -3014,7 +3014,7 @@ UART rule; F.5.8 — F.8.2 after U36).
 - **Resolved**: —
 - **Unit**: U10
 - **Depends**: —
-- **Blast carried by**: A.U10.47 check (SCR)
+- **Blast carried by**: A.U10.47 check (TSC)
 - **Kind**: code
 
 ### M.SRC_NET.205 Member order per D.15 (UART driver)
@@ -3046,13 +3046,16 @@ except A.U24.67's banner and the renames).
 
 ### M.SRC_NET.211 Imports, wiring tag and typing
 - **From**: A.U10.37/A.U10.38, A.U5.12 (`ResponderCallbacks`), A.U5.02 (`DEFAULT_LOG`, `LogConfig`; FRAM-manager import
-  goes), A.U5.03 (wiring tag), A.U17.26 (`Any`, `Callable`, `_asyncio` go; aliases), A.U17.29 (`COUNTER_CAP`)
+  goes), A.U5.03 (wiring tag), A.U17.26 (`Any`, `Callable`, `_asyncio` go; aliases), A.U17.29 (`COUNTER_CAP`),
+  A.U10.31 (`:87`, `:96`, `:101`; AC3_S S-03)
 - **Site**: `src/asy_uart_link_driver.py:7-29`
 - **Change**: runtime: `import asyncio` / `from micropython import const` / `from asy_base_classes import COUNTER_CAP` /
   `from asy_config_manager import instance_name` / `from asy_print_log import DEFAULT_LOG` / `from asy_uart_comm import
   CMD_SET, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UARTComm`. `TYPE_CHECKING`: `from asy_base_classes import
   ErrorSource, JsonDict, TaskStarter, TimerStarter`, `from asy_print_log import ErrorLog, LogConfig, PrintLogHistory`,
   `from asy_uart_driver import UART`. `:29` → `# @wiring fram_target FRAMManager log optional kwarg`.
+  `_get_callback() -> tuple[bool, bytes | None]`, `_set_callback() -> tuple[bool, int | None]`, `_message_callback(...,
+  payload: bytearray | None)`: unquoted (A.U10.31).
 - **Resolved**: —
 - **Unit**: U17. Staged: U5 (log, tag), U10 (names), U17 (aliases, `COUNTER_CAP`).
 - **Depends**: A.U10.46 (aliases), A.U5.01
@@ -3300,7 +3303,7 @@ Added by gap pass G2 (2026-10-01):
 | A.U10.26 | merged into M.SRC_NET.028 |
 | A.U10.27 | merged into M.SRC_NET.110, M.SRC_NET.114 |
 | A.U10.29 | merged into M.SRC_NET.020, M.SRC_NET.042, M.SRC_NET.112, M.SRC_NET.151, M.SRC_NET.157, M.SRC_NET.159, M.SRC_NET.164, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.212 |
-| A.U10.31 | merged into M.SRC_NET.006, M.SRC_NET.050, M.SRC_NET.075, M.SRC_NET.111, M.SRC_NET.150, M.SRC_NET.155, M.SRC_NET.157, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.172, M.SRC_NET.192, M.SRC_NET.204 |
+| A.U10.31 | merged into M.SRC_NET.006, M.SRC_NET.050, M.SRC_NET.075, M.SRC_NET.111, M.SRC_NET.150, M.SRC_NET.155, M.SRC_NET.157, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.172, M.SRC_NET.192, M.SRC_NET.204, M.SRC_NET.211 (AC3_S S-03) |
 | A.U10.33 | merged into M.SRC_NET.010, M.SRC_NET.019, M.SRC_NET.032, M.SRC_NET.059, M.SRC_NET.103, M.SRC_NET.131, M.SRC_NET.173, M.SRC_NET.205, M.SRC_NET.219 |
 | A.U10.35 | merged into M.SRC_NET.006, M.SRC_NET.007, M.SRC_NET.026, M.SRC_NET.027, M.SRC_NET.030, M.SRC_NET.044, M.SRC_NET.051, M.SRC_NET.054, M.SRC_NET.055, M.SRC_NET.056, M.SRC_NET.057, M.SRC_NET.058, M.SRC_NET.078, M.SRC_NET.082, M.SRC_NET.083, M.SRC_NET.085, M.SRC_NET.086, M.SRC_NET.087, M.SRC_NET.088, M.SRC_NET.091, M.SRC_NET.093, M.SRC_NET.097, M.SRC_NET.098, M.SRC_NET.100, M.SRC_NET.155, M.SRC_NET.157, M.SRC_NET.164, M.SRC_NET.168, M.SRC_NET.170, M.SRC_NET.213, M.SRC_NET.214 |
 | A.U10.36 | merged into M.SRC_NET.116, M.SRC_NET.120 |
@@ -3603,6 +3606,8 @@ Gap pass G2 rows (2026-10-01; `GAPS_G2.md` lists each item and its source):
 | M_GEN gap 6 (webserver/WiFi/NTP APIs the template calls) | carried as found: M.SRC_NET.044, .074, .078, .098, .112, .119, .129 (the snapshot field is `RSSI`, hand-off H-G1 to GEN) |
 | M_HW_DEV GAP-D9 (WiFi repro scripts) | M.SRC_NET.078 (amended: the repro edit is skipped, the file goes in U26) |
 | A.U10.21 | also M.SRC_NET.079, .119 (this pass) |
+| AC3_S S-03 | M.SRC_NET.211: From gains A.U10.31 (`:87`, `:96`, `:101`); Change appends the three unquoted signatures (its U10 stage already exists) |
+| AC3_S §5 (Blast labels) | M.SRC_NET.165 `tests_scripts/test_suppression_form.py` → A.U28.30 label SCR → TSC; M.SRC_NET.172 and M.SRC_NET.204 "A.U10.47's check" label SCR → TSC. Adapted: M.SRC_NET.165's second item in the same slot, `test_fatal_report_sites.py` → A.U30.19, is also a `tests_scripts/` file (M_TSC carries it) and takes TSC too |
 
 ## A-C2 order notes (2026-10-01)
 
