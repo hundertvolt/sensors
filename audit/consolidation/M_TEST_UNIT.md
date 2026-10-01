@@ -46,6 +46,17 @@ test change (the product clusters carry those items as "→ A-ID (TEST_UNIT)").
   fake state that `microtest.after_each(reset_test_state)` now performs (`Timer.all_timers.clear()`, `raise_on_arm`
   restores, `reset_count = 0`) go unless a test resets mid-body on purpose (A.U24.07 (4)); a reader built on FRAM passes
   `log=LogConfig(<manager>, 10, None)` (A.U5.02, M.SRC_CORE's `LogConfig(fram, history_length, debug)`).
+- **Function-level imports** (A.U0.07: `tests/` holds 91 in 29 files in its `_PENDING` set, which U24 empties, plus the
+  dynamic sites A.U10.30 names): every `import`/`from … import` inside a test function or helper moves to the file's
+  module-level imports (an alias such as `import time as _time` becomes the module's `time`), so the L0
+  `tests_scripts/test_import_placement.py` entry for that file can leave `_PENDING`; the `if __name__ == "__main__":`
+  `import microtest` is module level and stays. A file's section names this only where it changes more than an import
+  line.
+- **Timestamps before the first sync** (A.U10.06, M.SRC_CORE.032, GAP-15 ruling): `utc_now()` is `None` until
+  `set_utc_valid()` (no argument) runs. A test that needs a real `TS` calls `asy_base_classes.set_utc_valid()` and resets
+  `asy_base_classes._utc_valid = False` in `finally`; a test that calls a reader's `_error_check(results)` directly (not
+  through `_read_loop()`) on a successful cycle does the same, since only the reader's own `condition` keeps a pre-sync
+  `TS` from counting (M.SRC_SENS.083, .089-.091).
 - **`@tunable` tags** (A.U8C/A.U8C2, test-tier grammar A.U8.02): a literal a later constituent deletes (driven time
   A.U35.13/.14, the removed 5 s caps A.U35.15, the removed in-body `gc.threshold` A.U30.12/.13) takes no tag — its
   row is withdrawn (A.U35.13/.14/.15 and A.U30.12/.13 say so); every other tagged literal becomes its module constant
@@ -444,8 +455,8 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
     reset and the re-apply waits on `_set_lock` and ends with 8 in the chip and the store).
   - New L1 (A.U15.22 (2), A.U10.06): `test_a_pres_offset_put_during_a_conversion_does_not_change_the_stored_sample`
     (`get_pressure_and_temperature()` wrapped to await a `PresOffset` PUT mid-conversion; the stored `Pres` uses the
-    offset captured before); `test_a_failed_read_keeps_the_last_good_sample_and_its_timestamp` (`set_utc_valid(True)`,
-    restored in `finally`; a good cycle then a NAKed one: `get_data()` equals the first sample, its `TS` unchanged);
+    offset captured before); `test_a_failed_read_keeps_the_last_good_sample_and_its_timestamp` (`set_utc_valid()`,
+    `asy_base_classes._utc_valid = False` in `finally`, M.SRC_CORE.032's no-argument form; a good cycle then a NAKed one: `get_data()` equals the first sample, its `TS` unchanged);
     `test_a_read_before_the_first_sync_publishes_with_ts_none` (and steps no error streak: `_error_check()` sees the
     reader's `condition` exclude the trailing `TS`, M_SRC_SENS GAP-15).
   - New L1 (A.U15.24): `PresOffset` 450 on the planted 713.77 hPa reading → `Pres` 263.77, `SLPres` `None`, one
@@ -478,8 +489,8 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
   A.U10.40 (`:1622` keys and the `_set_dict_cfg` bodies), A.U24.78 (`:1666`), A.U15.41 (`:1797-1842` hold; new L1),
   A.U24.07 (`all_timers.clear()` lines), A.U10.35/A.U10.44 names, A.U8C.05 (`:1808`), A.U4.02 (hold).
 - **Site**: `tests/test_asy_bmp3xx_driver.py:1567-1842`.
-- **Change**: `test_get_data_and_get_dict_data_reflect_a_stored_reading` calls `set_utc_valid(True)` first (restored in
-  `finally`). `test_get_cfg_schema_matches_the_full_schema`: `reader.get_cfg_schema() == _FULL_SCHEMA` (the
+- **Change**: `test_get_data_and_get_dict_data_reflect_a_stored_reading` calls `set_utc_valid()` first (`asy_base_classes._utc_valid =
+  False` in `finally`, M.SRC_CORE.032). `test_get_cfg_schema_matches_the_full_schema`: `reader.get_cfg_schema() == _FULL_SCHEMA` (the
   source-read schema, M.TEST_UNIT.015); the `== reader.cfg_schema` line and the `:1612-1614` comment go.
   `test_push_callbacks_registered…` expects `{"SampleInterval", "PresOvers", "TempOvers", "FiltCoeff"}`. The
   `_set_dict_cfg` tests use the new keys; `:1666` → `inject_fault("writeto_mem", OSError, errno_mod.EIO, "no ACK on
@@ -530,7 +541,7 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
 - **From**: A.U10.44 (`_read_loop`), A.U15.43 (`None`), A.U8.07 + A.U31.11 (`:1983` comment), A.U10.06 (`TS` needs a
   sync), A.U10.R01 (the rung inside the give-up run), A.U24.08.
 - **Site**: `tests/test_asy_bmp3xx_driver.py:1931-2021`.
-- **Change**: both tests start `reader._read_loop()`; the happy test sets `set_utc_valid(True)` (restored) before
+- **Change**: both tests start `reader._read_loop()`; the happy test calls `set_utc_valid()` (flag reset in `finally`) before
   asserting `data.TS is not None`, its `:1983` comment → "# let _init_bmp()'s reset settle (_RESET_SETTLE_MS) pass";
   `test_read_loop_gives_up_and_returns_false_after_max_errors` → `…_gives_up_and_ends_after_max_errors`, asserting the
   task is done and returned `None`, and that the log ends with `code("E", "GIVE_UP")`.
@@ -964,16 +975,16 @@ lines through `tests/_recording_print.py` where the test's point is the message)
 
 ### M.TEST_UNIT.043 Timestamped chunk: bool-first writes, `utc_now()`, signed age
 - **From**: A.U16.18 (unpacks `:541-565, 645-650, 668-672, 702-709, 1242, 1253, 1269, 1358, 1874, 1886, 1905, 2093`;
-  annotations), A.U10.06 (`:677-718` and `:1940-1974` removed with their handlers; tests expecting a valid timestamp set
-  `set_utc_valid(True)`), A.U14.26 (its rename of those two tests — dropped with them, M.SRC_CORE.087 Resolved),
+  annotations), A.U10.06 (`:677-718` and `:1940-1974` removed with their handlers; tests expecting a valid timestamp call
+  `set_utc_valid()`), A.U14.26 (its rename of those two tests — dropped with them, M.SRC_CORE.087 Resolved),
   A.U35.55 (`:2120-2195` removed), A.U2.09 (`:674` 85, `:1893` 81, `:1938` 87), A.U10.28 (b) (new L1, the manager
   half), A.U10.35 (`_ntp_sync_callback`).
 - **Site**: `tests/test_asy_fram_manager.py:530-653`, `:655-718`, `:1209-1275`, `:1333-1372`, `:1853-1995`,
   `:2085-2200`.
 - **Change**: every `ntp_synced, utc, write_ok = await chunk.write(…)` → `write_ok, ntp_synced, utc = …` and the
   tuple asserts reorder (`:650` → `(False, False, None)`); return annotations `tuple[bool, bool, int | None]`. Tests whose
-  `_synced` write must store a real timestamp call `asy_base_classes.set_utc_valid(True)` first and restore it in
-  `finally`. `:659-675` keeps its goal; the assertion → one `code("E", "CALLBACK")` entry, and its message (the "told
+  `_synced` write must store a real timestamp call `asy_base_classes.set_utc_valid()` first and reset
+  `asy_base_classes._utc_valid = False` in `finally` (M.SRC_CORE.032's no-argument form). `:659-675` keeps its goal; the assertion → one `code("E", "CALLBACK")` entry, and its message (the "told
   apart from the read-path one (87)" claim goes — both paths are CALLBACK by class; the log message tells them apart).
   `:677-718` (`test_mktime_overflow…`) and `:1941-1974` (`…age_computation_overflow…`) are removed: `utc_now()` has no
   handler to pin — `mktime()`/`gmtime()` cannot raise for in-range years on target (G4/R15, M.SRC_CORE.032), the guard
@@ -1222,7 +1233,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   status 4; a fake holding SCL k ms mid-pulse still sees nine effective pulses. `recover()`: the same cases followed by
   one re-construction with the stored `freq`/`timeout` (also after status 4); construction raising
   (`I2C.raise_on_construct`) → status 8 and `_i2c is None`. Each `clear()`/`recover()` steps `recoveries` once;
-  `recoveries` at `COUNTER_CAP` (via `src_const("src/asy_base_classes.py", "COUNTER_CAP")`) steps to 0. A session holding
+  `recoveries` at `COUNTER_CAP` (imported from `asy_base_classes`: a public `const()` name stays a module attribute) steps to 0. A session holding
   `bus_lock` delays `clear()`/`recover()` until it exits (gated), and a session started during either waits for it.
 - **Resolved**: A.U13.R01's "each call increments once" with M.SRC_SENS.010's single step per public call.
 - **Unit**: U13.
@@ -1244,3 +1255,874 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Blast carried by**: `pyproject.toml` PLR0124 entry → A.U28.27 (TOOL).
 - **Kind**: test
 
+
+## tests/test_asy_isl29125_driver.py
+
+### M.TEST_UNIT.058 Header, product-value reads, shared doubles and builders
+- **From**: A.U24.01 (`:38-42` → `src_const`), A.U8C.10 (mirror tags `:39, :40, :42`), A.U15.28 (`:138-140`
+  `make_protocol()` without `address=`), A.U24.49 + A.U31.09 (`_FastAsyncSleep` `:66-86`, `_RaiseOnArm` `:89-101` →
+  shared), A.U24.08 (`run()` `:62-63`), A.U24.20 (`make_i2c()` `:113`), A.U24.07 (`FakeTimer.all_timers.clear()` `:778,
+  828, 837, 846, 3280`), A.U24.73 (`Any` typing), A.U28.28 (1) (`:176` B905 noqa), A.U10.37 (TYPE_CHECKING imports
+  `config_manager`/`print_log`), A.U10.10 (builders call `setup()`), A.U10.35 (`reader.isl` → `_isl`), A.U24.76 (role
+  names), A.U2.03 (`code()`).
+- **Site**: `tests/test_asy_isl29125_driver.py:1-185`, `:771-822`.
+- **Change**: imports gain `from _async_harness import run, cancel`, `from _fast_sleep import FastAsyncSleep`, `from
+  _fake_timer_arm import RaiseOnArm`, `from _src_const import src_const`, `from _error_codes import code`; the
+  TYPE_CHECKING block imports `asy_config_manager`/`asy_print_log` and drops `Any`/`TypeVar`/`T` (the coroutine alias
+  is `_async_harness`'s, A.U24.73). `:18-20` banner → "# FN8424 register/command copies, each citing its page: hardware
+  facts kept as an independent source (tests/_src_const.py reads the project's own values)."; `:21-37` stay. `:38-42`
+  → `_GAIN_RATIO_NOMINAL`, `_GAIN_RATIO_MIN`, `_GAIN_RATIO_MAX`, `_AR_DOWN_DIVISOR`, `_CAL_CONVERGE_N =
+  src_const("src/asy_isl29125_driver.py", "<same name>")`, their trailing "mirrors" comments gone. The local
+  `run()`, `_FastAsyncSleep`, `_RaiseOnArm` go; every use reads `run`, `FastAsyncSleep()`, `RaiseOnArm(exc)`.
+  `make_i2c()` → `_make_i2c()` calling `machine.I2C.reset_id(0)` first. `make_protocol()`/`ready_protocol()` →
+  `_make_protocol()`/`_ready_protocol()` building `ISL29125_I2C(i2c)`; `seed()`/`seed_healthy_chip()` keep their
+  `address=_ADDR` parameter (the fake's register keys). `:174-175` comment and `# noqa: B905` go (`pyproject.toml`'s
+  B905 entry carries the reason). `make_reader()` → `_make_reader()`: no `all_timers.clear()`, `run(reader.setup())`
+  in place of `run(reader.cfgmgr.setup())`; `ready_reader()` → `_ready_reader()` writes `reader._isl._settle_until_ms
+  = time.ticks_ms()` (module `time`), its `import time as _time` gone; `init_reader()`/`seed_cycle()`/`counts_burst()`/
+  `fake()`/`mem_writes()`/`mem_reads()` keep their shape under `_`-names. `logged()`/`errors()`/`warnings()` stay (they
+  filter by kind); every expected number they are compared with is written `code("E"|"W", <NAME>)`.
+- **Resolved**: A.U8C.10's mirror tags vs A.U24.01's source reads — the source read wins: after A.U24.01 no literal is
+  left to tag, and each value reads the product constant M.SRC_SENS.071 already tags (`isl29125.gain_ratio_min/max`,
+  `isl29125.cal_converge_n`); the three tags are not written (the rows lose no product site).
+- **Unit**: U24 (stages U10 names/setup, U15 address).
+- **Depends**: M.SRC_SENS.071, .073, .085; TEST_HELP `tests/_src_const.py`, `_async_harness.py`, `_fast_sleep.py` (both
+  `sleep` and `sleep_ms`), `_fake_timer_arm.py`, `machine.I2C.reset_id`.
+- **Blast carried by**: `pyproject.toml` B905 entry → A.U28.28 (TOOL); `tests_scripts/test_const_mirrors.py` →
+  A.U24.02 (TSC); ANN401 exemption → A.U24.73 (TOOL).
+- **Kind**: test
+
+### M.TEST_UNIT.059 Protocol-layer tests: comments, the settle wrap, bus down
+- **From**: A.U30.07 (`:192-210`, `:705-712` hold), A.U13.10 (`:706-708` comment), A.U15.30 (`:634-636` comment),
+  A.U14.34 + A.U15.35 (`:652-662` rewrite; new crossing case (a)), A.U24.78 (`:717`, `:730`), A.U13.09 (new: ISL writes
+  raise on a bus that is down), A.U15.S01 (`:670-701` hold), A.U10.35 (`isl.i2c_isl29125` → `_i2c_isl29125`).
+- **Site**: `tests/test_asy_isl29125_driver.py:187-765`.
+- **Change**: `:634-636` → "# Two cycles: Table 7 starts the ADC at an I2C write to 0x01 and leaves open whether a
+  conversion in flight restarts, so the second cycle is the margin; it costs one sample." `:706-708` → "# Named for the
+  trap: one 6-byte burst, never three 2-byte reads, so the three channels come from one conversion."; its assertions
+  hold (`readfrom_mem_into` is what the fake records as `readfrom_mem`). `inject_fault(op, OSError, errno_mod.EIO, "no
+  ACK")`. `test_time_to_settle_stays_sane_across_a_ticks_wrap` → `test_time_to_settle_crosses_the_ticks_wrap`:
+  installs `Ticks30Time` (`tests/_ticks30.py`) as `asy_isl29125_driver.time` with `now = 2**30 - 5`, arms a deadline
+  10 ms ahead (it lands past the wrap); `time_to_settle_ms()` is positive at `now + 9`, `0` at `now + 11`; restored in
+  `finally`; its `import time as _time` goes. New `test_a_passed_settle_deadline_never_ages_past_the_tick_horizon`
+  (A.U15.35 (a)): same fake, a deadline armed, then `advance(3_600_000)` repeated until 2**29 + 1000 ms have passed,
+  `time_to_settle_ms()` read once per step: 0 at every step, and `_settle_wait()` sleeps on none (a recording
+  `sleep_ms`). New `test_every_protocol_write_raises_on_a_bus_that_is_down` (A.U13.09): `i2c.deinit()` on the asy
+  wrapper, then `configure(resolution=12)`, `set_thresholds(0, 1000)` and `clear_brownout()` each raise `OSError` and
+  the shadow still encodes 16 bit.
+- **Resolved**: —
+- **Unit**: U15 (stages U13 bus contract, U14 helper, U24 inject form).
+- **Depends**: M.SRC_SENS.086; TEST_HELP `tests/_ticks30.py` (A.U14.34).
+- **Blast carried by**: four tiers wire-identical (A.U30.07/A.U13.10 blasts: bus-hazard files run unchanged).
+- **Kind**: test
+
+### M.TEST_UNIT.060 Reader construction and init: catalog numbers, the init rungs, restart state
+- **From**: A.U24.67 (`:826-827` comment), A.U2.12 (`:862`, `:897`), A.U3.05 (`:875`), A.U10.R01 + A.U15.R04
+  (`_init_failed()`/`_init_done()`; config-read failure runs no rung), A.U15.34 (new restart L1), A.U10.10.
+- **Site**: `tests/test_asy_isl29125_driver.py:825-923`.
+- **Change**: `:826-827` → "# Requirement 20, satisfied here or nowhere: every generated device's object graph is built
+  against a fake holding no ISL registers." The three construction tests drop `all_timers.clear()`.
+  `test_init_returns_false_and_logs_errno_10…` → `…logs_an_init_error_and_reinitialises_the_controller`: `errors()[-1]
+  == code("E", "INIT")` and one `code("W", "BUS_RECOVERY")` (`_init_failed()`'s controller rung on `_recovery_bus`).
+  `…errno_12_when_the_config_is_unreadable` → `…_config_is_unreadable_logs_in_the_config_store_only`: the ISL29125 log
+  is empty, `CFGMGR_ISL29125` holds exactly one `code("E", "CFG_NOT_VALID")`, `reader._recovery_bus.recoveries` is
+  unchanged (no rung). `…errno_13_when_applying_the_config_raises` → `…logs_chip_set…`: `code("E", "CHIP_SET")` then
+  `code("W", "BUS_RECOVERY")`. `test_init_leaves_no_state_behind_after_a_failed_attempt` holds. New (A.U15.34):
+  `test_a_restart_resets_the_output_filter` (filter 0.5 on, two samples stored, `_init_isl()` again: the next stored
+  `Lux` equals that cycle's raw lux) and `test_an_edge_seen_before_a_restart_is_not_credited_after_it` (`_irq_fired =
+  True`, `_init_isl()`, then a periodic-led switching cycle counts one periodic-only decision).
+- **Resolved**: —
+- **Unit**: U15 (stages U2 numbers, U3 console, U10 ladder).
+- **Depends**: M.SRC_SENS.074, M.SRC_CORE.037.
+- **Blast carried by**: SPEC M.1.2 restart table → A.U15.34 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.061 The read loop and the streak: ladder, give-up, pre-sync cycles
+- **From**: A.U10.R01 + A.U15.R04 (`:953`, `:2539` re-derived; new participant-rung L1), A.U10.44 (`_read_loop`),
+  A.U15.43 (the loop returns `None`), A.U2.06 + A.U3.03 (`:1056` comment; RF175 brownout entry), A.U10.35
+  (`read_event` → `_read_event`), A.U24.08 (`_cancel_and_join` → `cancel`), A.U10.06 + GAP-15 lead ruling (pre-sync
+  L1; direct `_error_check()` callers sync first).
+- **Site**: `tests/test_asy_isl29125_driver.py:926-991`, `:1039-1057`, `:1597-1612`, `:2535-2592`.
+- **Change**:
+  - `test_read_loop_calls_error_check_exactly_once_per_cycle`: starts `reader._read_loop()` (the builder's `setup()`
+    ran), sets `reader._read_event`, ends with `await cancel(task)`; the spy keeps its inline `method-assign` ignore.
+  - `test_read_loop_exits_after_max_module_error_consecutive_failures` (`max_module_error=3`) →
+    `…climbs_the_ladder_then_gives_up`: three failed cycles return `True`, the fourth `False`; the 2nd failure ran the
+    participant rung once (`_reapply_configuration()` on the NAKed bus: one `code("E", "CHIP_SET")`, no
+    `DEVICE_RECOVERY`), the 3rd the bus rung once (`reader._recovery_bus.recoveries` stepped by one, one
+    `code("W", "BUS_RECOVERY")`), and the log ends `code("E", "GIVE_UP")`; no streak entry per cycle.
+  - `test_a_dark_room_never_increments_the_error_counter` and `test_brownout_does_not_feed_the_leaky_bucket…` call
+    `set_utc_valid()` first (flag reset in `finally`): both call `_error_check(results)` directly, where a pre-sync
+    `TS` would count. `:1056` → `assert errors(counters) == []  # a dark cycle is no failure; the streak itself only
+    prints`. The brownout-bucket test adds: after the brownout cycle the log holds exactly one entry,
+    `code("W", "ISL_BROWNOUT")` (A.U3.03 RF175).
+  - `test_the_read_loop_stores_healthy_samples_and_gives_up…` (`max_module_error=2`): drives `reader._read_loop()`
+    (its `_read_event.wait` patched with the inline ignore), asserts the coroutine returned `None`; the two healthy
+    cycles reach the store and publish; the 2nd failed cycle ran the participant rung (the healthy fake takes the
+    re-apply: one CONFIG1-3 burst, one `code("W", "DEVICE_RECOVERY")`) and the log ends `code("E", "GIVE_UP")`; its
+    `:2536-2538` comment names `_read_loop()`.
+  - `test_the_read_loop_gives_up_immediately_when_the_chip_is_not_there_at_all`: `_read_loop()` returns `None` without
+    entering the wait; the log holds `code("E", "INIT")` and one `code("W", "BUS_RECOVERY")`.
+  - New (A.U15.R04): `test_two_failed_status_reads_reapply_the_shadow_and_rearm_the_thresholds` (two cycles with the
+    status read failing, no BOUTF: after the 2nd `_error_check()` one CONFIG1-3 burst from the shadow and one threshold
+    burst, one `code("W", "DEVICE_RECOVERY")`); `test_a_raising_reapply_burst_logs_one_chip_set_and_no_recovery_warning`
+    (the burst write faulted: exactly one `code("E", "CHIP_SET")`, no `DEVICE_RECOVERY`).
+  - New (GAP-15): `test_a_read_before_the_first_sync_steps_no_streak_and_publishes_ts_none` (no sync; a healthy cycle
+    through `_read_loop()`: `_err_cnt_internal == 0`, `get_data()` carries the values and `TS is None`); and
+    `test_an_unsettled_cycle_is_no_failure` (A.U15.22 (4): a CONFIG1 write stream keeping `time_to_settle_ms() > 0`
+    past the bound — `_read_isl()` returns all `None` with `_unsettled_cycle` set, `_read_loop()` steps no streak and
+    stores nothing; the next settled cycle publishes).
+- **Resolved**: A.U15.R04's "see the re-apply at the 2nd failure" and A.U10.R01's rung order give the expected logs
+  above; GAP-15's per-reader condition (M.SRC_SENS.083: `results[0] is None and not self._unsettled_cycle`) is what
+  the two new cycles pin.
+- **Unit**: U15 (stages U3 console streak, U10 ladder/`_read_loop`/`TS`).
+- **Depends**: M.SRC_SENS.075, .076, .083, M.SRC_CORE.032, .037.
+- **Blast carried by**: the mid-operation re-apply case → M.TEST_UNIT in `test_bus_hazard_multi_device.py` (A.U15.R04,
+  L1) and A.U15.R04 (TWIN); twin Run 5c holds → A.U15.R04 (SCR).
+- **Kind**: test
+
+### M.TEST_UNIT.062 Read path and outputs: CalLight, the nested body, the bus-fault re-read
+- **From**: A.U15.36 (`:1068` key set; new band-edge L1), A.U24.57 (new nested-body L1), A.U10.06 (`:1018`; last-sample
+  `TS`), A.U15.22 (new L1: a failed read keeps the last sample), A.U2.12 (`:1209`), A.U15.29 (new ID re-read L1),
+  GAP-15 (`:999-1001` comment).
+- **Site**: `tests/test_asy_isl29125_driver.py:994-1125`, `:1175-1267`.
+- **Change**:
+  - `:1000-1001` → "# The narrow tuple keeps CCT out: it is legitimately None in a dark room, and the read loop's
+    condition counts only a cycle whose measured values are gone."
+  - `test_the_results_tuple_carries_the_range…`: `:1018` → `assert results[4] == _RANGE_HIGH_LUX  # the span` and
+    `assert results[5] is None  # TS: no NTP sync in this test` (the HEAD comment named index 4 the timestamp).
+  - `test_store_produces_the_documented_nested_body`: the group's key set gains `"CalLight"`.
+  - New `test_the_nested_body_carries_every_tuple_field_exactly_once` (A.U24.57): `reader._set_meas_data()` stores an
+    `ISL29125` with a distinct value per field; a table maps `Red`/`Green`/`Blue` → `RGB.R/G/B`, `Hue`/`Sat`/`Bri` →
+    `HSB.H/S/B`, every other field flat; `get_dict_data()["ISL29125"]` holds each value once at its path and no other
+    leaf, and the table's field set equals `ISL29125._fields`.
+  - New (A.U15.36): `test_cal_light_marks_the_calibration_band_at_its_edges` — high range, `AutoRangeThresh` 85, `lo =
+    fraction_to_counts(_down_thresh())`, `hi = fraction_to_counts(85.0)`: green `lo` → 2, `lo + 1` → 1, `hi - 1` → 1,
+    `hi` → 3 (through `_read_isl()` + `_store_isl()`, read from `get_data().CalLight`); `RangeAuto` off → 0; a cycle that
+    switches range → 0; and `_band_code(g) == 1` exactly where the calibration run accepts the scene at the same four
+    edges (`_measure_gain_ratio()` with `queue_legs`).
+  - `test_a_bus_fault_pattern_is_confirmed…`: `code("E", "ISL_BUS_FAULT") in errors(counters)`. New
+    `test_a_raising_device_id_re_read_prints_and_adds_no_second_entry` (A.U15.29): the same all-ones cycle with the ID
+    read faulted (`inject_fault("readfrom_mem", OSError, errno_mod.EIO, "no ACK", times=1, match=_REG_ID)`): exactly one
+    persisted entry, `code("E", "ISL_BUS_FAULT")`, and one console line from `reader.pr.err` (spied with the inline
+    `method-assign` ignore).
+  - New `test_a_failed_read_keeps_the_last_good_sample_and_its_timestamp` (A.U15.22, OR94.a (13)): `set_utc_valid()`
+    (reset in `finally`); a good cycle stored, then a cycle with the data burst faulted: `get_data()` equals the first
+    sample, `TS` included.
+- **Resolved**: —
+- **Unit**: U15 (stages U2 number, U10 `TS`, U24 nested-body test).
+- **Depends**: M.SRC_SENS.072, .075, .077, .078, .081, .084.
+- **Blast carried by**: `tests_scripts/test_measurement_field_tuple_agreement.py` → A.U24.57 (TSC); L2 dark/mid/bright
+  `CalLight` → A.U15.36 (TWIN); `mockdata/dev.json` → A.U15.36 (WEB).
+- **Kind**: test
+
+### M.TEST_UNIT.063 Filter and store: the cached coefficient, the captured span
+- **From**: A.U15.22 (3) (`:1127-1146` holds; `:1149-1175` goes; the store reads no config), A.U3.05 (`:1168`, gone
+  with its test), A.U11.24 (`:1141` `write_config`), A.U24.61 (`:1141` `cfg_schema`), A.U36.506 (read: the `None`
+  cases are A.U15.22's), adherence (`:1847-1872`'s injection point no longer exists).
+- **Site**: `tests/test_asy_isl29125_driver.py:1127-1172`, `:1847-1872`.
+- **Change**: `test_output_filter_applies_only_when_filtcoeff_is_positive` holds; its `:1141` line →
+  `run(reader.cfgmgr.write_config({"FiltCoeff": 0.1}))[0] is True` (kept: it persists the value the cache holds).
+  `test_the_store_path_survives_a_config_read_that_fails_or_answers_the_wrong_shape` is removed — the store makes no
+  config read, so its goal (a sample is never lost to a config read) holds by construction (M.SRC_SENS.078); the guard
+  that replaces it is `test_a_restart_resets_the_output_filter` plus the filter test above, which read the coefficient
+  the cycle captured. `test_a_rangeauto_push_landing_between_the_read_and_the_store_cannot_renormalise_the_sample`:
+  the `get_float_values` patch goes (`_store_isl()` awaits nothing before it scales, so the patched read would never
+  run and the test would pass without a push); the push lands between the two calls instead —
+  `results = run(reader._read_isl())`, `assert run(reader.set_range_auto(flag=False)) is True`,
+  `run(reader._store_isl(results))` — and the `0.30 < Green < 0.31` assertion holds (the span travels in `results`).
+  Its comment → "# The span travels with the sample, so a RangeAuto push between read and store cannot renormalise
+  it: 20000 counts on the 10000 lx range stay 0.305 of the span, not a clamped 1.0."
+- **Resolved**: —
+- **Unit**: U15 (stages U11 `write_config`, U24 schema accessor).
+- **Depends**: M.SRC_SENS.078, .084, M.SRC_CORE.044.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.064 The settle window: the bound's reason, a module `time`
+- **From**: A.U15.22 (`:1291-1310` comment), A.U10.30 (`:1301, 1306` `__import__("time")`), A.U0.07.
+- **Site**: `tests/test_asy_isl29125_driver.py:1269-1310`.
+- **Change**: `:1292-1293` → "# The bound keeps the loop from starving; past it the cycle is discarded (see
+  test_an_unsettled_cycle_is_no_failure)."; the four `__import__("time")` calls read the module-level `time`
+  (`reader._isl._settle_until_ms = time.ticks_add(time.ticks_ms(), 500)`). `test_no_sample_is_reported_during_the_settle_window`
+  holds (its `asyncio.sleep_ms` swap stays local and restored in `finally`; the shared `FastAsyncSleep` patches
+  `sleep_ms` as HEAD's did).
+- **Resolved**: —
+- **Unit**: U10 (the dynamic import, A.U10.30) and U15 (the comment).
+- **Depends**: M.SRC_SENS.079.
+- **Blast carried by**: `tests_scripts/test_import_placement.py` `_PENDING` loses the two entries → A.U0.07 (TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.065 Auto-range: catalog numbers, the parked INT, the dead-line re-arm, the dwell horizon
+- **From**: A.U2.12 (`:1426-1445` 29/30, `:1479, 1504, 1546` w13), A.U24.78 (`:1419, 1431`), A.U10.35 (`reader.isl`),
+  A.U15.32 (`wrnno`/`periodic_only`/`threshold_fired` tests hold; four new L1), A.U15.R05 (new re-arm L1), A.U15.35 (c)
+  (dwell crossing), A.U0.07 (`:1365`, `:1377` local imports).
+- **Site**: `tests/test_asy_isl29125_driver.py:1313-1547`; new tests after `:1547`.
+- **Change**:
+  - `:1365`/`:1377` use the module `time`; `reader.isl` → `reader._isl` throughout.
+  - `test_a_failed_threshold_write_logs_errno_29_and_the_range_write_logs_errno_30` →
+    `test_a_failed_threshold_write_and_a_failed_range_write_each_log_chip_set`: after both failures the ISL29125 log
+    has `ErrCount == 2` and its newest entry `code("E", "CHIP_SET")` (one slot, A.U3.01); `_active_range` still
+    `_RANGE_HIGH_LUX` after each.
+  - `:1479`, `:1546` → `code("W", "ISL_PERIODIC_ONLY") in warnings(counters)`; `:1504` → `not in`.
+  - `test_five_periodic_led_decisions_in_a_row_report_a_possibly_dead_interrupt` (A.U15.R05) also asserts one
+    CONFIG1-3 burst (`configure(force=True)`) and one threshold burst after the fifth decision; then
+    `_note_decision_source(threshold_fired=True)` clears `_int_rearmed`. New
+    `test_the_interrupt_is_rearmed_once_per_dead_line_episode`: ten periodic-only decisions give two
+    `ISL_PERIODIC_ONLY` warnings and one re-arm; an interrupt-led decision, then five more periodic-only ones, re-arm
+    again.
+  - New (A.U15.32): `test_an_int_the_peak_rule_overrules_is_parked_until_green_is_back_in_its_window` (high range,
+    green 10, red 60000, status `RGBTHF` with `_irq_fired`: the cycle writes the CONFIG2-3 burst from 0x02 with INTSEL
+    00 and sets `_int_held`; five periodic cycles write no CONFIG2-3 burst and raise no `ISL_PERIODIC_ONLY`; green above
+    the down threshold re-arms with one CONFIG2-3 burst, INTSEL 01); `test_darkness_on_the_low_range_parks_the_zero_threshold`
+    (all channels 0 with the flag: disarmed, stays disarmed while dark, re-armed at the first green ≥ 1 below the up
+    threshold); `test_a_parked_int_stays_parked_across_a_periodic_down_switch` (INTSEL 00 and `_int_held` until green is
+    inside the new range's window, then one re-arm burst; no `ISL_PERIODIC_ONLY` across five periodic switches while
+    held); `test_set_range_auto_racing_a_parking_cycle_leaves_intsel_and_the_flag_agreeing` (`_switch_range` patched to
+    yield once, with the inline `method-assign` ignore; `set_range_auto(True)` run as a task during it; afterwards
+    `encode_shadow()[2] & 0x03 == _INTSEL_GREEN` exactly when `_int_held` is `False`).
+  - New (A.U15.35 (c)): `test_a_switch_down_is_never_suppressed_by_a_week_old_switch_tick` — `Ticks30Time` installed,
+    high range, dwell 10 s, a bright scene (green above the down threshold) evaluated once per simulated hour for 7
+    days, then a dark scene: `_evaluate_range()` returns `_RANGE_LOW_LUX` at the first dark evaluation.
+- **Resolved**: —
+- **Unit**: U15 (stages U2 numbers, U14 helper, U24 inject form).
+- **Depends**: M.SRC_SENS.075, .077, .079, .080; TEST_HELP `tests/_ticks30.py`.
+- **Blast carried by**: four tiers of the CONFIG2-3 burst: L1 → M.TEST_UNIT in `test_bus_hazard_multi_device.py`
+  (A.U15.32, run unchanged), L2 → A.U15.32 (TWIN: `test_digital_twin_bus_hazard_concurrency.py` unchanged, red-dominant
+  scene), L3/L4 → A.U15.32 (HW_DEV, HW_BENCH unchanged); L2 INT-muted re-arm → A.U15.R05 (TWIN); catalog W32 → A.U2.01
+  (GEN).
+- **Kind**: test
+
+### M.TEST_UNIT.066 Brownout: every event warns into one slot; re-apply failures log CHIP_SET
+- **From**: A.U3.14 (`:1566-1577` keep one slot, add `ErrCount == 5`; `:1580-1595` one slot, OR35.b), A.U3.01 (the
+  newest-entry rule), A.U2.12 (w10 → 30, e33 → 13), A.U15.R04 (brownout through the shared re-apply body),
+  A.U24.78 (`:1621`), M.SRC_SENS.075 (the brownout return carries the cycle's `TS`).
+- **Site**: `tests/test_asy_isl29125_driver.py:1549-1626`.
+- **Change**: `test_brownout_reapplies_the_whole_configuration_and_discards_one_cycle`: `assert results[:5] == (None,)
+  * 5` (the trailing element is the cycle's `utc_now()`), writes as HEAD. `test_repeated_brownout_warns_once_per_event_not_once_per_cycle`
+  → `test_repeated_brownouts_each_warn_into_one_slot`: the log holds one entry, `code("W", "ISL_BROWNOUT")`, with
+  `ErrCount == 5`. `test_a_recovered_brownout_warns_again_on_the_next_real_event` → one slot, `ErrCount == 2`.
+  `test_a_brownout_recovery_write_failure_logs_errno_33` → `…_logs_chip_set`: `inject_fault("writeto_mem", OSError,
+  errno_mod.EIO, "no ACK", times=5)`; the log holds `code("W", "ISL_BROWNOUT")` then `code("E", "CHIP_SET")`.
+- **Resolved**: A.U3.14 retires the per-episode latch (`_brownout_seen` goes, M.SRC_SENS.073): "once per event" is now
+  one warning per detected brownout, folded into one slot by the newest-entry rule (OR35.b); the HEAD claim "not once
+  per cycle" is retired by that owner rule, guarded by the `ErrCount` assertions.
+- **Unit**: U3 (stages U2 numbers, U15 shared body).
+- **Depends**: M.SRC_SENS.076; M.SRC_CORE (newest-entry rule, A.U3.01).
+- **Blast carried by**: SPEC `:6675-6678` → A.U3.14/A.U3.10 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.067 Config read-back and divergence: catalog numbers, keys, the two-argument snapshot
+- **From**: A.U2.12 (`:1657` `_snapshot_field(0, 29, …)`; `:1671` w1; `:1700` 28; `:1719-1720, 1737` w11/w10), A.U10.40
+  (`IrCompOffset`/`IrCompAdjust` → `IRCompOffset`/`IRCompAdjust`, `SampleInterv` → `SampleInterval`, `ISLCalibrate` →
+  `Calibrate`), A.U10.35 (`reader.isl`).
+- **Site**: `tests/test_asy_isl29125_driver.py:1629-1750`.
+- **Change**: the `_read_sensor_dict()` key sets → `{"Resolution", "Range", "IRCompOffset", "IRCompAdjust"}`;
+  `run(reader._snapshot_field(0, "resolution"))`; `:1661` comment → "wrnno CALLBACK_KEYS" and `:1671` →
+  `code("W", "CALLBACK_KEYS") not in warnings(counters)`; `:1700` → `code("E", "CHIP_GET") in errors(counters)`;
+  `:1717-1720` → comment "# ISL_DIVERGED, not ISL_BROWNOUT: a chip that disagrees with the shadow for any other reason
+  is a different event." and `warnings(counters).count(code("W", "ISL_DIVERGED")) == 1`, `code("W", "ISL_BROWNOUT") not
+  in …`; `:1737` → `ISL_DIVERGED` not in. `test_get_dict_cfg_excludes_the_command_only_field`: `"Calibrate" not in`,
+  `"SampleInterval" in`, the key set with `SampleInterval`, `IRCompOffset`, `IRCompAdjust`.
+  `reader.isl.decode_config = …` → `reader._isl.decode_config` (inline ignore kept).
+- **Resolved**: —
+- **Unit**: U2 (numbers, `_snapshot_field` signature), stage U10 keys.
+- **Depends**: M.SRC_SENS.082, .084.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.068 Schema coverage and the pushes; threshold inputs reach the chip
+- **From**: A.U24.61 (`:1760`, `:2680-2682`), A.U10.40 (keys `:1770`, `:1779-1782`, `:1801-1802`, `:2067`), A.U10.43
+  (`trigger_secs` → `trigger_s`, `_MIN_TRIGGER_S`), A.U10.35 (`trigger_period`), A.U24.62 (`:1775-1776`), A.U15.33
+  (`:2047-2057` gains the burst; new L1), A.U2.12 + A.U3.01 (`:2642`, `:2664`).
+- **Site**: `tests/test_asy_isl29125_driver.py:1753-1845`, `:2047-2072`, `:2621-2687`.
+- **Change**:
+  - `names = [field[0] for field in reader.get_cfg_schema()]`; getter keys `["IRCompAdjust", "IRCompOffset", "Range",
+    "Resolution"]`; the wrong-type dict and the pushes use `SampleInterval`, `IRCompOffset`, `IRCompAdjust`,
+    `Calibrate`; `:1775-1776` → "# type(value) is not int, deliberately: on MicroPython bool is not an int subclass
+    (py/objbool.c), while CPython's is - `type(x) is int` states the rule the same way on both."
+  - `:1826-1828` loop variable `trigger_s`, `persist_for_interval(trigger_s)`; `:1838` comment names `_MIN_TRIGGER_S`;
+    `:2068` reads `reader._trigger_period`.
+  - `test_pushing_the_software_knobs_changes_only_driver_state` → `…_write_only_the_thresholds_they_derive`: after the
+    three pushes `_ar_thresh == 90.0`, `_ar_dwell_s == 30.0`, `_filt_coeff == 0.25`, and `mem_writes(i2c) ==
+    [(_REG_THRESHOLDS, struct.pack("<HH", ISL29125_I2C.fraction_to_counts(90.0 / _AR_DOWN_DIVISOR), 65535))]` (the
+    high range's down crossing, the up crossing parked); comment → "# AutoRangeThresh moves the chip's down crossing at
+    once; AutoRangeDwell and FiltCoeff are driver state only."
+  - New (A.U15.33): `test_set_autorange_thresh_on_the_low_range_writes_the_up_crossing` (`(0,
+    fraction_to_counts(90.0))` to 0x04-0x07); `test_a_failed_threshold_write_leaves_the_cached_threshold` (bus faulted:
+    `False`, `_ar_thresh` unchanged, one `code("E", "CHIP_SET")`); `test_set_resolution_rescales_the_thresholds_with_auto_range_off`
+    (`RangeAuto` off, `set_resolution(12)`: one threshold burst at the 12-bit scale, `>> 4`).
+  - `test_pinning_a_range_while_autorange_is_off…`: `ErrCount == 2`, newest `code("E", "CHIP_SET")`.
+    `test_the_two_remaining_auto_range_knobs_reject…_with_errno_27` → `…_with_bad_arg`: `ErrCount == 5`, newest
+    `code("E", "BAD_ARG")`; value assertions hold. `test_an_out_of_band_knob_is_rejected_by_the_schema_rung…` passes
+    `reader.get_cfg_schema()`.
+- **Resolved**: —
+- **Unit**: U15 (stages U2/U3 numbers, U10 names, U24 accessor and comment).
+- **Depends**: M.SRC_SENS.072, .080, .084, .086.
+- **Blast carried by**: four tiers of the threshold write (one 4-byte write per setter call): L1 → M.TEST_UNIT in
+  `test_bus_hazard_multi_device.py` (A.U15.33, unchanged), L2/L3/L4 → A.U15.33 (TWIN, HW_DEV, HW_BENCH, unchanged).
+- **Kind**: test
+
+### M.TEST_UNIT.069 Failed writes and reconciliation: the wrapping sequence, a silent re-read
+- **From**: A.U15.31 (`:1920-1957` hold; new wrap L1), A.U15.29 (new reconciliation L1), A.U2.12 (`:1893` w12,
+  `:1935`, `:1985` w11, `:2016` 24), A.U24.78 (`:1902, 1926, 1996, 2012`), A.U10.35 (`reader.isl`).
+- **Site**: `tests/test_asy_isl29125_driver.py:1875-2044`.
+- **Change**: `:1893` → `assert reader._last_overrange is False, "no saturation happened"` (the retired W12 had moved
+  to the `Overrange` field; a number assertion on it proved nothing). `:1935`, `:1985` → `code("W", "ISL_DIVERGED")`.
+  `test_re_deriving_the_transient_rejection_logs_errno_24…` → `…logs_chip_set…`: `code("E", "CHIP_SET") in
+  errors(…)`; its `:2005-2007` comment → "# CONFIG3 is a real chip write and fails like any other; the console line
+  names the derived window, so a reader does not look for a bad SampleInterval or Resolution." The reconciliation
+  tests hold on `reader._isl`. `test_a_reconciling_re_read_that_itself_fails…` adds: the failed re-read leaves
+  `ErrCount` unchanged and prints one line through `reader.pr.err` (spy, inline ignore) (A.U15.29). New
+  `test_the_write_failure_sequence_wraps_and_still_reconciles` (A.U15.31): `reader._isl._write_failures =
+  reader._reconciled_write_failures = COUNTER_CAP` (imported from `asy_base_classes`), one injected failed configure
+  write → `write_failures() == 0`; the next `_read_isl()` reads the snapshot once (`mem_reads` holds one
+  `(_REG_CONFIG1, 3)`) and leaves the two counts equal.
+- **Resolved**: A.U15.31's "`_SEQ_MASK`" is M.SRC_SENS.085's `COUNTER_CAP` wrap (AC_NOTES 17).
+- **Unit**: U15 (stages U2 numbers, U24 inject form).
+- **Depends**: M.SRC_SENS.077, .082, .085.
+- **Blast carried by**: U35's L0 counter check lists the site as a sequence → A.U15.31 (TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.070 Reader setters and getters: catalog classes, one slot per kind, the removed arm
+- **From**: A.U2.12 (`:2128` 38, `:2162` 18, `:2180` 25, `:2186-2188` 16/20/22, `:2206` 15/17/19/21, `:2532` 26,
+  `:2790-2792`, `:2808` 18, `:2827-2828` 25/27), A.U3.01 (`:2180`, `:2532` one slot, `ErrCount` by k), A.U10.43
+  (`set_trigger_secs` → `set_trigger_s`), A.U10.10 (`:2174` `pr.setup()`), A.U10.40 (`ISLCalibrate`), A.U24.61
+  (`:2246, 2269, 2284, 2285`), A.U24.62 (`:2834-2835`), A.U24.73 (`dict[str, Any]`, `list[Any]`), A.U24.78 (`:2123,
+  2139`), A.U15.38 (`:2878-2890` goes), A.U4.02 + A.U19.16 (hold: the result words stay literals in tests).
+- **Site**: `tests/test_asy_isl29125_driver.py:2074-2290`, `:2517-2532`, `:2778-2890`.
+- **Change**:
+  - `test_turning_autorange_off_logs_errno_38…` → `…logs_chip_set…`; `:2162`, `:2808` → `code("E", "CHIP_SET")`.
+  - `test_set_trigger_secs_logs_errno_25…` → `test_set_trigger_s_refuses_bad_values_with_bad_arg_and_never_raises`:
+    `set_trigger_s(...)` throughout, `:2174` goes, `ErrCount == 4` with the newest entry `code("E", "BAD_ARG")`
+    (comment "# One event per rejected value, one slot: a non-number, +inf, and both out-of-range ends."),
+    `reader._trigger_period` reads 30.
+  - `test_every_hardware_setter_logs_its_own_errno…` → `…logs_chip_set_on_a_bus_fault`: the table loses its numbers;
+    each newest entry `code("E", "CHIP_SET")`. `test_every_getter_logs_its_own_errno…` → `…logs_chip_get…`, each
+    newest `code("E", "CHIP_GET")`. Comments name the class ("numbers name the failure class; the console line names
+    the field").
+  - The recovery-chain and calibration tests pass `reader.get_cfg_schema()`, the key `Calibrate`, `dict[str, object]`/
+    `list[object]` annotations; `"Failed"`/`"Valid"`/`"Invalid"` stay literal (the wire contract).
+  - `test_the_filter_coefficient_rejects…_errno_26` → `…_with_bad_arg`: `ErrCount == 4`, newest `code("E",
+    "BAD_ARG")`, comment "one event per rejected value; the two boundaries add none". 
+  - `test_every_hardware_backed_setter_reports_a_rejected_field_without_writing`: `ErrCount == 3`, newest
+    `code("E", "CHIP_SET")`, `mem_writes(i2c) == []` (the per-setter numbers are retired by the class catalog; the
+    claim "each setter surfaces the refusal" holds through the three `False` returns).
+  - `test_a_fractional_setting_is_rejected…`: `set_trigger_s(12.5)` / `(30.0)`; `ErrCount == 1` with newest `code("E",
+    "BAD_ARG")` replaces the 25/27 pair (the accepted values prove which one was refused); `_trigger_period` 30.
+  - `test_a_bool_is_never_accepted…`: `set_trigger_s(True)`; `:2835-2836` → "# A True reaching a numeric field must be
+    refused on both interpreters; inside these fields' bounds it would otherwise store 1."
+  - `test_a_malformed_schema_record_is_refused_rather_than_returned_as_a_setting` is removed with the unreachable
+    arm (M.SRC_SENS.082; G5/R54); its guard is the schema self-check every reader's schema passes at `setup()` and
+    `tests_scripts/test_config_schemas.py`.
+- **Resolved**: A.U2.12 gives the getters one CHIP_GET and the setters one CHIP_SET; tests that told setters apart by
+  number keep their per-setter `False` assertions instead (OR111.a (2): the distinct-number pin is retired by the
+  catalog rows A.U2.01).
+- **Unit**: U2 (numbers), stages U3 slot rule, U10 names, U15 removal, U24 accessor/typing.
+- **Depends**: M.SRC_SENS.080, .082, .084; A.U2.03 (`code()`).
+- **Blast carried by**: SPEC E.5.1 rows → A.U35.41 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.071 Calibration: the candidate's hold across the tick horizon, catalog numbers
+- **From**: A.U15.35 (`:3022, 3041, 3057` hold; `:3083` holds; new crossing case (b)), A.U2.12 (`:3137-3138` 35/11,
+  `:3163` 29), A.U24.78 (`:3161`), A.U24.76 (`queue_legs`, `calibrating_reader`), A.U10.35, A.U0.07 (`:3014, 3030,
+  3049, 3064, 3076` local imports).
+- **Site**: `tests/test_asy_isl29125_driver.py:2291-2306`, `:2920-3167`.
+- **Change**: `_queue_legs()` patches `reader._isl.read_counts` (inline ignore); `_calibrating_reader()`; the local
+  `import time as _time` lines go (module `time`). `test_a_failed_partner_read_logs_errno_35…` →
+  `…logs_a_read_error_and_puts_the_range_back`: the newest entry is `code("E", "READ")`, `ErrCount >= 1`, the range is
+  back on `_RANGE_HIGH_LUX`; the `:3122-3123` comment and the "11 not in" assertion go. `:3163` → `code("E",
+  "CHIP_SET")`. New `test_a_published_candidate_expires_and_stays_expired_across_a_week` (A.U15.35 (b)): `Ticks30Time`
+  installed, a candidate published (`_publish_candidate(25.9)`), then `advance(3_600_000)` for 7 days with
+  `_measured_ratio()` read each step: `None` from the first step past the 10-minute hold onwards, and `_cal_meas is
+  None` once it expired.
+- **Resolved**: the distinct-number claim (35 vs the periodic 11) is retired by the catalog's class numbering (A.U2.01:
+  both are READ); the console line "Paired gain-ratio reading failed" tells the two apart (OR111.a (2)).
+- **Unit**: U15 (stages U2 numbers, U14 helper, U24 names/inject).
+- **Depends**: M.SRC_SENS.081; TEST_HELP `tests/_ticks30.py`.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.072 Trigger divider, timer arm, starters and the empty sample
+- **From**: A.U15.40 + A.U10.44 (`:2314-2330`, `:2353-2371` → the shared `_trigger_loop()`), A.U10.43 (`set_trigger_s`),
+  A.U10.35 (`base_trigger_event`, `read_event`, `trigger_timer`), A.U10.12 (`:2412`), A.U15.41 (`:2396` holds; new arm
+  L1), A.U24.49 (`_RaiseOnArm`), A.U24.08 + A.SDEP.16 + A.U14.28 (`_cancel_and_join` `:2333-2341`, `_drain_flag`
+  `:2344-2350`), A.U15.36 (`:2419` gains a field), A.U24.07.
+- **Site**: `tests/test_asy_isl29125_driver.py:2309-2420`.
+- **Change**: section comment → "# _trigger_loop() - the shared 1 Hz base tick divided down by the sample interval
+  (SPECIFICATION.md C.9)". The two divider tests start `reader._trigger_loop()` (via `asyncio.create_task`), call
+  `set_trigger_s()`, set `reader._base_trigger_event`, read `reader._read_event`, and end with `await cancel(task)`;
+  assertions hold (3 events in 9 ticks; `[1, 2, 3]`). `_cancel_and_join()` goes (its use is `_async_harness.cancel`,
+  whose own header carries the reason); `_drain_flag()` stays with a two-line comment: "# Reads ThreadSafeFlag's own
+  state and clears it: a wait_for_ms() probe registers a poll object per call (SPECIFICATION.md F.7 row 12)." — if the
+  pin re-check (A.SDEP.16 W12) retires that row, the comment keeps only "Reads the flag's own state and clears it: the
+  question is 'was it set'". Timer tests read `reader._trigger_timer`; `test_task_and_timer_starters_are_registered` →
+  `test_task_and_trigger_starters_are_registered`: task starters `["start_asy_read", "start_asy_trigger"]`,
+  `[fn.__name__ for fn in reader.get_trigger_starters()] == ["start_timer"]`, `reader.get_timer_starters() == []`.
+  `test_start_timer_degrades…` uses `RaiseOnArm(exc)`, asserts the IRQ handler is wired and
+  `reader._base_trigger_event` is set (the waiter woken). New `test_a_failed_trigger_arm_ends_the_trigger_task_with_one_timer_entry_and_a_restart_rearms`
+  (`OSError(ENOMEM)` and `MemoryError`): `start_timer()` under the raise, `_trigger_loop()` as a task ends at once with
+  exactly one `code("E", "TIMER")`; `start_timer()` again without it performs one `Timer.init`, and one tick on the
+  fake timer sets `_read_event` at `SampleInterval` 1. `:2419` → `ISL29125(*(None,) * 13)` compared field-for-field.
+- **Resolved**: A.U15.40 (`_divide_trigger()`) vs A.U10.44 (`_trigger_loop()`): M.SRC_SENS.045's GAP-8 settlement, the
+  shared `SensorReader._trigger_loop()`. A.U14.28 (keep the comment, add the F.7 row) vs A.SDEP.16 (the reason changes
+  once W12 is fixed): both, staged — the row pointer while the row stands, the reduced reason after the re-check.
+- **Unit**: U15 (stages U10 names/split, U14 row pointer, U24 harness, U0 pin re-check).
+- **Depends**: M.SRC_SENS.083, M.SRC_SENS.045, M.SRC_CORE.037 (`_timer_failed`).
+- **Blast carried by**: shared divider L1 (n = 1, 3) → M.TEST_UNIT in `test_base_classes.py` (A.U15.40).
+- **Kind**: test
+
+### M.TEST_UNIT.073 Divergence re-arm and the status-read failure
+- **From**: A.U2.12 (`:2467` 34, `:2512` 31), M.SRC_SENS.075 (the failure return carries `TS`), A.U10.35.
+- **Site**: `tests/test_asy_isl29125_driver.py:2422-2514`.
+- **Change**: `test_a_failed_re_apply_after_divergence_logs_errno_34…` → `…logs_chip_set…`: `code("E", "CHIP_SET") in
+  errors(counters)`; the threshold assertion holds. `test_a_failed_status_read_drops_the_whole_sample…`: `assert
+  results[:5] == (None,) * 5`, `code("E", "ISL_STATUS_READ") in errors(counters)`. `reader.isl` → `reader._isl`.
+- **Resolved**: —
+- **Unit**: U2.
+- **Depends**: M.SRC_SENS.075, .082.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.074 Layer-one `None` answers: the bool and bytes contracts
+- **From**: A.U13.10 (`:2599-2611`: `silent_none` patches `get_register_bytes`), A.U30.07 (also `get_register_into`,
+  returning `False`), A.U10.35 (`i2c_isl29125`).
+- **Site**: `tests/test_asy_isl29125_driver.py:2595-2618`.
+- **Change**: per call, `device = isl._i2c_isl29125.i2c_device`; `device.get_register_bytes` → an async stub returning
+  `None` and `device.get_register_into` → one returning `False` (both with the inline `method-assign` ignore); every one
+  of `get_device_id`, `read_status`, `get_config_snapshot`, `read_counts`, `reset` raises `OSError`. Comment `:2596-2598`
+  → "# Layer 1 answers None (bytes) or False (into a buffer) for a bus it cannot use; each protocol read raises instead,
+  so a caller's error path sees one shape. reset() is listed because its verify read IS the settle."
+- **Resolved**: —
+- **Unit**: U30 (stage U13).
+- **Depends**: M.SRC_SENS.086.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.075 The hardware driver's field guard: datasheet bytes, the removed fallback
+- **From**: A.U24.38 (`:2727` asserts the encoding), A.U15.38 (2) (`:2896-2906` goes).
+- **Site**: `tests/test_asy_isl29125_driver.py:2689-2906`.
+- **Change**: `test_configure_accepts_every_value_the_datasheet_does_allow`: after each call the fake's CONFIG1-3
+  bytes equal the FN8424 encoding of that value (a table in the test, citing p10-p11: resolution 12 → BITS `0x10`, 16 →
+  0; range 375 → RNG 0, 10000 → `0x08`; IR offset 1 → CONFIG2 bit 7; IR adjust 63 → CONFIG2 `0x3F`; persist 1/2/4/8 →
+  PRST 00/01/10/11 in CONFIG3 bits 3:2). `test_encode_shadow_falls_back_to_the_shortest_persistence_for_an_impossible_shadow`
+  is removed with the fallback (M.SRC_SENS.086: `encode_shadow()` without the `try`); its guard is `configure()`'s
+  refusal of `persist=3` and `persist=2.0` in `test_configure_rejects_a_field_the_chip_cannot_take…`, which holds.
+- **Resolved**: —
+- **Unit**: U24 (assertion strength), U15 (removal).
+- **Depends**: M.SRC_SENS.086.
+- **Blast carried by**: SPEC E.5.1 rows → A.U35.41 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.076 Same-device hazards: a gated interleaving, the scaled threshold write
+- **From**: A.U35.12 (`:3199` gate, `:3236` stated limit), A.U10.18 + A.U10.35 (`isl.i2c_isl29125.asy_lock` →
+  `isl._i2c_isl29125.session_lock`), A.U15.S01 (new L1 modelled on `:3213-3246`), A.U15.33 (new race L1), A.U24.73
+  (`_gather` typing), A.U15.S01 (`:3263` sweep holds).
+- **Site**: `tests/test_asy_isl29125_driver.py:3170-3275`; new tests after `:3246`.
+- **Change**: `test_concurrent_read_and_write_never_interleave_on_the_wire`: the reader sets an `asyncio.Event` after its
+  first `read_status()`; the writer awaits it in place of the `:3199` yield (the "partway" claim becomes a gate);
+  assertions hold. `test_configure_never_exposes_the_shadow…`: `lock = isl._i2c_isl29125.session_lock`; the `:3236`
+  comment → "# one yield lets configure() park on the held lock (a limit, not an interleaving claim)"; the `:3215-3224`
+  comment block is cut to three lines ("# configure() mutates the shadow only under the device-session lock (C.8):
+  holding that lock stands in for an operation in flight, and the shadow must not move meanwhile."). `_gather(a, b)`
+  typed `Coroutine[object, object, object]`. New `test_set_thresholds_scales_to_the_resolution_live_when_it_gets_the_session`
+  (A.U15.S01): `_make_protocol()`, the test acquires `session_lock`, creates `isl.set_thresholds(0, 32768)` as a task,
+  yields once, sets `isl._resolution = 12` (standing in for a `configure()` holding the session), releases in
+  `finally`, awaits the task: `mem_writes(i2c) == [(_REG_THRESHOLDS, struct.pack("<HH", 0, 32768 >> 4))]`. New
+  (A.U15.33) `test_a_threshold_push_racing_a_range_switch_leaves_chip_and_cache_agreeing` (`set_autorange_thresh(90)`
+  against `_switch_range()` with `_isl.set_thresholds` patched to yield once: afterwards the 0x04-0x07 bytes equal the
+  counts derived from `_ar_thresh` and `_active_range`) and `test_two_concurrent_threshold_pushes_end_on_the_later_one`.
+- **Resolved**: —
+- **Unit**: U15 (stages U10 names, U24 typing, U35 gate).
+- **Depends**: M.SRC_SENS.080, .086.
+- **Blast carried by**: four tiers of the threshold write → A.U15.S01/A.U15.33 blasts (L1 hazard file M.TEST_UNIT,
+  TWIN, HW_DEV, HW_BENCH, unchanged); C.8 table `_threshold_lock` → GAP-13 (SPEC, TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.077 The unwritable config file
+- **From**: A.U10.10 (`:3284`), A.U2.07 (`:3293` 4 → CFG_FILE_WRITE), A.U3.05 + A.U2.12 (`:3292` "12 not in"), A.U24.07
+  (`:3280`).
+- **Site**: `tests/test_asy_isl29125_driver.py:3278-3293`.
+- **Change**: built through `_make_i2c()`, `run(reader.setup())` (no `all_timers.clear()`); `:3292` → the ISL29125 log
+  has `ErrCount == 0`; `:3293` → `CFGMGR_ISL29125`'s newest entry is `code("E", "CFG_FILE_WRITE")`. Comment `:3279` →
+  "# A failed config write does not end the read task: the reader runs on the defaults (SPECIFICATION.md C.7.3)."
+- **Resolved**: —
+- **Unit**: U2 (stage U10 setup).
+- **Depends**: M.SRC_SENS.074, M.SRC_CORE.044.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_asy_neopixel_driver.py
+
+### M.TEST_UNIT.078 Builders under driven time: fixed product values set from outside, the boot `setup()`
+- **From**: A.U17.27 (`:31-35` `make_driver()` sets the values after construction), A.U31.13 (`neopixel_dt` →
+  `_frame_ms`), GAP-5 (M_SRC_SENS: the `_overlay_*` stem), A.U10.35 (`driver.pixel` ×35 via `_pixel()`), A.U35.13
+  (`DrivenTime` replaces the 36 real sleeps), A.U8C.11 (tags on those sleeps), A.U35.12 (`:41`), A.U24.08 (`run`,
+  `_cancel_all` `:45-51`), A.U22.04 (`:12`, `:21` typing), A.U10.37/A.U10.38 (`crc_checks.CRC_Base`), A.U10.10 +
+  GAP-17 lead ruling (AC_NOTES 38: `NeopixelDriver` gets an `initialized` gate), A.U5.02.
+- **Site**: `tests/test_asy_neopixel_driver.py:1-52`.
+- **Change**: imports `from _async_harness import run, cancel`, `from _driven_time
+  import DrivenTime`, `from _error_codes import code`, `from asy_print_log import LogConfig`; TYPE_CHECKING drops
+  `Coroutine`/`Any`/`TypeVar`/`T` and imports `asy_crc_checks.CRCBase`. `_pixel()` returns `driver._pixel`.
+  `make_driver(neopixel_freq=100, led_overl_bri=50, debug=None)` → `_make_driver(freq: int = 100, overlay_bri: int =
+  50)`: `driver = NeopixelDriver(0)`, then `driver._neopixel_freq = freq`, `driver._frame_ms = 1000 // freq`,
+  `driver._overlay_bri = overlay_bri` (the inline attribute writes are the product's own state, A.U17.27), then
+  `run(driver.setup())`; the `debug` parameter goes (no caller passes it); comment → "# 100 Hz keeps five frames per
+  ramp direction at the 0.1 s floor, so mid-ramp state is observable; time is driven, not waited." Every scenario runs
+  inside `with DrivenTime() as clock: clock.install(asy_neopixel_driver)`, and each real `asyncio.sleep(x)` becomes
+  `await clock.advance(<ms>)` (a ramp: `2 * max(int(t * 0.5 * freq), 1) * _frame_ms` plus one frame) or `await
+  clock.run_until(<the expected frame recorded>, <that bound>)` (an overlay write), with no margin. `_start_all_tasks()`
+  keeps its one `sleep(0)` with the comment "# one yield lets each task park on its first wait (a limit, not an
+  interleaving claim)"; `_cancel_all()` becomes `cancel(*tasks)` from the harness.
+- **Resolved**: A.U8C.11's `l1.asy_neopixel_driver_*` tags vs A.U35.13: the literals they tag are deleted by driven
+  time, so the tags are not written and their rows are withdrawn (A.U35.13's Blast says so; Conventions "`@tunable`
+  tags"). A.U10.35's mechanical `led_overl_*` names vs M.SRC_SENS.023's `_overlay_*`: the product's (GAP-5).
+- **Unit**: U35 (driven time; stages U9 arbitration, U10 names/`setup()`, U17 fixed values, U22 typing, U24 harness,
+  U31 `_frame_ms`).
+- **Depends**: M.SRC_SENS.021, .023, .024; TEST_HELP `tests/_driven_time.py` (A.U35.10), `tests/neopixel.py` (A.U24.25);
+  the `initialized` gate on `NeopixelDriver` (GAP, see "Gaps for other clusters").
+- **Blast carried by**: Part N `l1.asy_neopixel_driver_*` rows withdrawn → A.U35.13 (SPEC); the same IDs' other site
+  `tests/test_neopixel_wifi_integration.py` → M.TEST_UNIT in that file (A.U8C.35 vs A.U35.13).
+- **Kind**: test
+
+### M.TEST_UNIT.079 Overlay and logger tests: private state, the gate, the FRAM-backed reboot
+- **From**: A.U10.18 (`led_overl_lock` → `_overlay_lock`), A.U10.35/GAP-5 (`led_overl_on` → `_overlay_on`), A.U22.01
+  (existing counts hold: one more frame per task start), A.U10.10 (`:453-464`), GAP-17 lead ruling, A.U5.02 (`:495`,
+  `:504` `fram=` → `log=`), A.U16.19 (`:475`, `:479` `override_pause` goes), A.U11.S03 (hold: the `arg-type` ignore),
+  A.U24.39 (`:667`), A.U35.13.
+- **Site**: `tests/test_asy_neopixel_driver.py:54-177`, `:448-524`, `:648-674`.
+- **Change**:
+  - Overlay tests read `driver._overlay_on`, `driver._overlay_lock.locked()`; `:163-165` comment → "# request_signal()
+    returns once the request is queued, not when the ramp ends; the task keeps the scenario reading top to bottom."
+    (it pointed at a module docstring this file does not have). `test_repeated_on_is_idempotent…` holds (its count is
+    relative to a snapshot taken after the tasks started).
+  - `test_pr_setup_runs_before_any_ramp_is_committed` → `test_setup_initialises_the_logger_and_the_driver_before_any_task`:
+    a driver built with `NeopixelDriver(0)` (no builder) has `pr.initialized is False` and `initialized is False`;
+    `run(driver.setup()) is True`; both are `True` before any task starts (no task calls `pr.setup()` any more).
+  - `_FakeFramChunk.write_into(buf)`/`read_into(buf)` lose `override_pause`; the reboot test builds
+    `NeopixelDriver(0, log=LogConfig(fram, 10, None))` (the `arg-type` ignore and its reason stay) and calls
+    `await driverN.setup()` in place of `pr.setup()` (the `:498-499` comment goes).
+  - `test_get_task_starters_returns_three_callables` → `…returns_the_overlay_and_signal_starters`:
+    `[s.__name__ for s in starters] == ["start_asy_overlay", "start_asy_signal"]`. `test_get_timer_starters…`'s
+    vacuous `get_task_starters is not None` line goes.
+  - `test_on_off_toggle_satisfy_led_control_protocol_signatures` → `test_on_off_toggle_drive_the_pixel_through_the_overlay_task`
+    (A.U24.39): with the tasks started under driven time, `on()` records the overlay colour, `off()` `(0, 0, 0)`,
+    `toggle()` the overlay colour again.
+- **Resolved**: A.U10.10's "`pr.initialized` after task start → after `setup()`" and the GAP-17 gate land in one test.
+- **Unit**: U10 (stages U5 `log=`, U16 fake keyword, U24 assertion).
+- **Depends**: M.SRC_SENS.023, .024, .025; M.SRC_CORE.090 (`get_chunk()`'s parameters, which the fake manager mirrors).
+- **Blast carried by**: per-class readiness L1 → M.TEST_UNIT in `tests/test_readiness_gates.py` (A.U10.22).
+- **Kind**: test
+
+### M.TEST_UNIT.080 Signal arbitration: refused at once while busy, a bounded internal wait
+- **From**: A.U9.02 (`:333-346` holds, comment; `:348-372` flips; `:319-331`, `:374-402`, `:409-423` hold; new L1), A.U9.04
+  (`:229-264` hold; new deadline L1), A.U9.05 (`:185-312`, `:425-446` hold; new cancel L1), A.U22.01 (new restart L1
+  (1)-(3)), A.U35.13 (`:290` "needs real time", `:305`, `:395`).
+- **Site**: `tests/test_asy_neopixel_driver.py:180-446`; new tests after `:446`.
+- **Change**:
+  - `:337-338` comment → "# No task started: led_signal() decides on _start_signal_event alone, with no await."
+  - `test_led_signal_returns_true_while_a_previous_request_is_already_animating` →
+    `test_led_signal_is_refused_at_once_while_a_ramp_runs_and_nothing_is_queued`: mid-ramp
+    `driver._start_signal_event.is_set()`, `led_signal(0, 10, 0, 0.1) is False`, and after the ramp no frame with a
+    green component exists; its `:349-355` comment block → "# The busy signal is _start_signal_event, set for the
+    whole ramp; an external request while it is set is refused, never queued." The `start_signal_lock`/
+    `ext_start_signal` asserts go.
+  - `test_request_signal_low_freq_boundary_never_divides_by_zero` (`freq=1`, `_frame_ms` 1000) and the fractional-`t`
+    and large-`t` tests advance the virtual clock by the ramp's own length; their "needs real time" comments go; the
+    `>= 30` count becomes `== 31` (15 frames per direction at 20 Hz plus the final black, hand-computed from
+    `int(1.5 * 0.5 * 20)`).
+  - New (A.U9.02): `test_led_signal_is_refused_while_an_internal_request_is_queued_and_no_task_runs`; after the queued
+    ramp ends (tasks started, clock advanced), `led_signal()` is `True` again.
+  - New (A.U9.04): `test_request_signal_gives_up_at_its_deadline_when_the_signal_task_never_runs` (event set, no
+    task: `False` after `advance(src_const("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS"))`, still pending one frame
+    before); `test_request_signal_behind_a_running_ramp_returns_true_only_after_it_ends` (no frame of the second colour
+    precedes the first ramp's final black).
+  - New (A.U9.05): `test_cancelling_the_signal_task_mid_ramp_leaves_the_pixel_dark_and_the_slot_free` (cancel once a
+    non-black frame is recorded: last frame black, `_start_signal_event` clear, a restarted task writes no frame of the
+    cancelled colour).
+  - New (A.U22.01): `test_a_restarted_overlay_task_reapplies_the_overlay` (overlay on, its task cancelled and a new one
+    started: the overlay colour is written again with no `on()`); `test_a_signal_task_ended_mid_ramp_restarts_dark_and_restores_the_overlay`
+    (`_pixel(driver).raise_on_write` set mid-ramp, cleared before the restart: black, then the overlay colour, no frame
+    of the old ramp colour after the restart); `test_the_supervisor_restarts_a_failed_signal_task_with_one_system_entry`
+    (the same failure under a real `SystemService` supervisor loop over the driver's starters, built as
+    `tests/test_system_service.py`'s supervisor tests build it: one restart, SYSTEM's newest entry `code("E",
+    "TASK_RAISED")` once).
+- **Resolved**: —
+- **Unit**: U9 (stages U22 restart cases, U35 driven time).
+- **Depends**: M.SRC_SENS.026, .027, .028, .025; M.SRC_CORE (supervisor task-ended code, A.U3.06).
+- **Blast carried by**: `tests/test_notification_neopixel_integration.py:133-154` flip → M.TEST_UNIT in that file
+  (A.U9.02); L2 restart case → A.U22.01 (TWIN).
+- **Kind**: test
+
+### M.TEST_UNIT.081 The sanitiser: wrap-aware clamp tests, refused non-numbers, the duration bounds
+- **From**: A.U9.06 (`:534-548` add two cases; `:550-646` hold; `:567-570` comment; new L1), A.U24.25 (`:527-531`, `:612`,
+  `:644` comments; assert the wrap is absent), A.U24.62 (`:541`), A.U14.10 + A.SDEP.08 (`:542-544`).
+- **Site**: `tests/test_asy_neopixel_driver.py:527-646`.
+- **Change**: section comment `:528-530` → "# _clamp_byte(): a real NeoPixel stores into a bytearray, so an out-of-range
+  int wraps silently (0x12C stores as 0x2C) and a float raises TypeError; every value is clamped where the request
+  enters." `test_clamp_byte_direct` gains `_clamp_byte("12") == 0` and `_clamp_byte(None) == 0`; `:541` → "# a bool
+  counts as 0/1 for a byte value (the clamp's own rule)"; `:542-544` → "# int(inf) raises OverflowError, int(nan)
+  ValueError (Part F.1, v1.29.0). Regression test for the gap / # _clamp_byte()'s original except (TypeError,
+  ValueError) clause missed entirely." (the version stamp re-checked at the refreshed pin, A.SDEP.08). The out-of-range
+  tests keep their clamped assertions and add the wrapped values' absence: 300 → no 44, 999 → no 231, -5 → no 251
+  (`:603-617`); -10 → no 246, 500 → no 244 (`:620-633`); brightness 999 → no `(231, 231, 231)` (`:635-645`); their
+  "would raise ValueError" comments → "an unclamped value would wrap (or raise TypeError for a float)". `:567-570` →
+  "# A non-finite t is mapped to the 0.1 s floor by _signal_values() before any ramp runs." New
+  `test_a_non_numeric_signal_value_is_refused_without_a_frame` (`request_signal(None, 0, 0, 0.5)`, `("10", 0, 0, 0.5)`,
+  `(10, 0, 0, "1")`, and `led_signal()` with the same: `False`, no frame, no exception);
+  `test_a_long_signal_is_capped_at_sixty_seconds` (`t = 600.0` at 20 Hz: `int(60 * 0.5 * 20) = 600` frames per direction
+  recorded, then black); `test_a_negative_duration_takes_the_floor` (`t = -1.0`: one step each way at 20 Hz).
+- **Resolved**: —
+- **Unit**: U9 (stages U14 comment, U24 fake fidelity).
+- **Depends**: M.SRC_SENS.022; TEST_HELP `tests/neopixel.py` (A.U24.25).
+- **Blast carried by**: twin fake fidelity → A.U25.21 (TWIN).
+- **Kind**: test
+
+## tests/test_asy_notification_service.py
+
+### M.TEST_UNIT.082 Doubles and builders: construction-time signals, value references, driven cycles
+- **From**: A.U10.37/A.U10.38 (`NotificationCoordinator` → `NotificationService`), A.U5.06 (signals at construction),
+  A.U5.11 (`make_signal()` with `ValueRef`), A.U5.02 (`debug=` → `log=`), A.U10.10 (the builder calls `setup()`),
+  A.U24.76 (`FakeValue`/`FakeClock`/`FakeSignalCb` → `_Fake…`, `make_*` → `_make_*`), A.U9.08 (`FakeValue.value: object`),
+  A.U24.08 (`run`), A.U24.49 + A.U31.14 (`_FastAsyncSleep` `:100-114` → the shared one, `sleep_ms` included), A.U35.13
+  (`_one_cycle()` `:138-146` under `DrivenTime`), A.U8C.12 (`_CYCLE_WAIT_S` tag), A.U22.04 + A.U24.73 (`:15`, `:23`
+  typing), A.U10.37 (`crc_checks`/`print_log` TYPE_CHECKING imports).
+- **Site**: `tests/test_asy_notification_service.py:1-148`.
+- **Change**: imports `from asy_notification_service import NotificationService, NotificationSignal`, `from
+  asy_base_classes import ValueRef, set_utc_valid`, `from asy_print_log import LogConfig`, `from _async_harness import
+  run, cancel`, `from _driven_time import DrivenTime`, `from _fast_sleep import FastAsyncSleep`, `from _error_codes import
+  code`, `from _src_const import src_const`; TYPE_CHECKING imports `asy_crc_checks.CRCBase`, `asy_print_log.ErrorLog`,
+  `asy_base_classes.JsonDict` and drops `Coroutine`/`Any`/`TypeVar`/`T`/`NoReturn`. `_FakeTime` stays; `_FakeValue(value:
+  object = None, field="Value")`; `_FakeClock`, `_FakeSignalCb` unchanged in behaviour. `make_coordinator(...)` →
+  `_make_service(signals: tuple[NotificationSignal, ...] = (), cfg_path=None, local_time=None, signal_cb=None)`
+  constructing `NotificationService(cb, clock.get, signals, cfg_path=path)` and `run(service.setup())`, returning
+  `(service, clock, cb)`. `make_signal()` → `_make_signal()` building `NotificationSignal(name, ValueRef(fv, name),
+  field_schema, color, above=above)`. `_one_cycle(clock, task, wait_ms)` → `await clock.advance(wait_ms)` then `await
+  cancel(task)`; its comment → "# One monitor cycle in virtual time: wait_ms covers every triggered flash's own 2 x
+  FlashDur settle." Every scenario that starts a loop runs under `with DrivenTime() as clock:
+  clock.install(asy_notification_service)`; the `_CYCLE_WAIT_S`-style constants are not written.
+- **Resolved**: A.U8C.12's tags on the wait literals vs A.U35.13: the literals become the product's own durations under
+  driven time, the tags are not written and their rows withdrawn (A.U35.13 Blast).
+- **Unit**: U35 (stages U5 construction/`ValueRef`/`log`, U9 typing of `_FakeValue`, U10 names/`setup()`, U22/U24
+  typing and names, U31 `sleep_ms`).
+- **Depends**: M.SRC_SENS.030, .033; TEST_HELP `_driven_time.py`, `_fast_sleep.py`, `_async_harness.py`.
+- **Blast carried by**: Part N `l1.asy_notification_service_*` wait rows withdrawn → A.U35.13 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.083 Signal refusal happens at construction and persists once at `setup()`
+- **From**: A.U5.06 (`:150-231`, `:623-662`; new L1), A.U2.17 (w1/w2 → W44/W45; w3/w4 retired), A.U10.40 (`Interv` →
+  `FlashInterval` in `:217`).
+- **Site**: `tests/test_asy_notification_service.py:150-231`, `:623-662`.
+- **Change**: the section → "# Signals at construction: validated in order, a refusal printed at once and persisted
+  by setup()". `test_register_before_finalize_is_accepted_in_call_order` → `test_signals_are_accepted_in_tuple_order`
+  (`_make_service((a, b))`: `service._registered == (a, b)`). The two collision tests and the zero-/two-field tests
+  pass the signals to the constructor and assert the accepted tuple; each also asserts, after `setup()`, the newest
+  entry `code("W", "NOTIFY_NAME_COLLISION")` (collisions) or `code("W", "NOTIFY_SCHEMA_SHAPE")` (schema shape).
+  `test_finalize_builds_the_exact_combined_schema` → `test_construction_builds_the_exact_combined_schema` with
+  `FlashInterval` in the expected list. `test_register_after_finalize_is_rejected` and
+  `test_finalize_called_twice_is_a_no_op_second_time` are removed with the two methods (no call order exists to get
+  wrong). `test_a_rejected_registration_surfaces_as_a_warning_with_its_own_wrnno` →
+  `test_a_refused_signal_is_printed_at_once_and_persisted_once_by_setup`: before `setup()` the pending buffer holds one
+  entry and the log is empty; after `setup()` the buffer is empty and the log holds exactly one `code("W",
+  "NOTIFY_NAME_COLLISION")`; a second `setup()` adds none; and the service answers `get_dict_cfg()` immediately.
+  `test_every_rejection_reason_keeps_its_own_distinct_wrnno` → `…the_two_refusal_reasons_keep_distinct_codes`: a
+  collision and a zero-field schema give the two distinct codes.
+- **Resolved**: A.U2.17 retires the after-finalize and finalize-again codes (46/47) with the methods; the HEAD claim
+  "four reasons, four numbers" is retired by A.U5.06 (two reasons remain) — guard: the two distinct codes above.
+- **Unit**: U5 (stages U2 codes, U10 key).
+- **Depends**: M.SRC_SENS.031, .033.
+- **Blast carried by**: generated `signals=` argument → A.U5.06 (GEN); SPEC C.4.3 → A.U5.06 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.084 Combined config: the renamed interval key, typed results
+- **From**: A.U5.06 (every `register()`/`finalize()`/`cfgmgr.setup()` triple → the builder), A.U10.40 (`Interv` →
+  `FlashInterval`), A.U22.04 (`:261`, `:309`, `:403`, `:481`, `:520` result and body types), A.U4.02 + A.U11.24 +
+  A.U19.16 (hold: the write path's results unchanged, the result words stay literal, the `write_config()` comments
+  `:274`, `:329` still name the method).
+- **Site**: `tests/test_asy_notification_service.py:233-531`.
+- **Change**: each test builds `_make_service((signal,))` (or `()`), dropping its `register`/`finalize`/`cfgmgr.setup()`
+  lines; `_INT_FLOAT_FIELD_BOUNDS` and every body use `"FlashInterval"`; the scenario return types read `JsonDict`
+  (bodies) and `WriteValidity` (per-field results) instead of `dict[str, Any]`; the `:410-413`, `:443-445` comments
+  say "a signal's field" for "a registered NotificationSignal's field". Assertions hold.
+- **Resolved**: A.U22.04 offers `JsonDict` "only once the unit that retypes those methods has landed" — M.SRC_SENS.033
+  and M.SRC_CORE type `get_dict_cfg()` with `JsonDict`, so the end state uses it.
+- **Unit**: U5 (stages U10 key, U22 typing).
+- **Depends**: M.SRC_SENS.032, .033, M.SRC_CORE.044.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.085 The FRAM-backed reboot: `log=` and the boot `setup()`
+- **From**: A.U5.06, A.U5.02 (`:565`, `:579` `fram=` → `log=LogConfig(fram, 10, None)`), A.U16.19 (`:545`, `:549`
+  `override_pause` goes), A.U11.S03 (hold: the `arg-type` ignores), A.U10.10 (`pr.setup()` → `setup()`), A.U10.37.
+- **Site**: `tests/test_asy_notification_service.py:534-589`.
+- **Change**: the fake chunk's `write_into(buf)`/`read_into(buf)` lose the keyword; `get_chunk(…, crc: "CRCBase | None"
+  = None, …)`; both services are `NotificationService(cbN, clockN.get, (aN,), cfg_path=path, log=LogConfig(fram, 10,
+  None))` with the `arg-type` ignore kept, and `run(serviceN.setup())` replaces the `cfgmgr.setup()` + `pr.setup()`
+  pair; assertion holds.
+- **Resolved**: —
+- **Unit**: U5 (stages U10 setup, U16 fake keyword).
+- **Depends**: M.SRC_SENS.033, M.SRC_CORE.090.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.086 Shared history: catalog numbers, one slot per repeat, config reads fail in the store
+- **From**: A.U2.17 (`:619`, `:686`, `:720`), A.U3.01 (`:696-720` `[10, 10]` → one slot, `ErrCount == 2`), A.U3.05
+  (`:665-686` breaks the real config store), A.U22.02/A.U23.37 (`:682` goes), A.U9.10 (`:689-693` stays), A.U10.10.
+- **Site**: `tests/test_asy_notification_service.py:592-720`.
+- **Change**: the in-scenario `pr.setup()` lines go (the builder ran `setup()`).
+  `test_signal_value_failure_and_own_time_callback_failure_share_one_history`: `ErrCount == 2`, the ring holds
+  `code("E", "SOURCE")` then `code("E", "CALLBACK")`. `test_check_one_degrades_and_logs_when_the_threshold_config_cannot_be_read`
+  → `…threshold_config_cannot_be_read_logs_in_the_config_store`: the patched `get_float_values` goes; the test pops
+  `"WarnCO2"` from `service.cfgmgr._cache` (a missing key in the real store); `_check_one()` is `False`; the NOTIFY log
+  is empty; `CFGMGR_NOTIFY` holds one `code("E", "CONTRACT")`; `:682` goes. `test_two_signals_failures_share_one_errno…`
+  → `…share_one_code_and_one_slot`: `ErrCount == 2`, the newest entry `code("E", "SOURCE")` and one slot for both
+  (the names are in the console lines). `test_the_defaulted_signal_sink…` holds.
+- **Resolved**: —
+- **Unit**: U3 (stages U2 codes, U22 attribute removal).
+- **Depends**: M.SRC_SENS.034, .035; M.SRC_CORE (`_get_values()` → CONTRACT on a `KeyError`).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.087 `_check_one()`: the return is the state, non-numeric values are refused
+- **From**: A.U22.02 + A.U23.37 (`:815-816`, `:833-834` go; `:856-870` renamed), A.U3.12 (`:838-853`), A.U9.08
+  (`:768-801` hold; `:873-893` gains rows; new SOURCE L1), A.U2.17.
+- **Site**: `tests/test_asy_notification_service.py:723-888`.
+- **Change**: each test passes its signals to `_make_service()`. The `last_value`/`triggered` asserts go (the
+  `result is False` asserts stay). `test_check_one_get_value_raises…`: `pr.err_count == 1` and the newest entry
+  `code("E", "SOURCE")`. `test_check_one_indefinite_logging_no_cap`: comment → "# Confirmed by the project owner: no
+  failure-escalation cap - every failing cycle logs to console and count; a repeat spends no slot."; asserts
+  `err_count == 5` and exactly one `code("E", "SOURCE")` entry in the ring. `test_check_one_last_value_and_triggered_reflect_most_recent_call_only`
+  → `test_check_one_returns_the_most_recent_trigger_state` (`True` for 2000, then `False` for 0). `test_check_one_never_raises`
+  adds the values `"abc"`, `[1]`, `"1800"`. New `test_a_non_numeric_value_logs_one_source_entry_and_never_triggers`
+  (`"1800"`: `False`, one `code("E", "SOURCE")`; a `_monitor_loop()` task under driven time keeps cycling and a second
+  cycle with a numeric value flashes).
+- **Resolved**: —
+- **Unit**: U9 (stages U2 codes, U3 slot rule, U22 removal).
+- **Depends**: M.SRC_SENS.035.
+- **Blast carried by**: catalog row 15 wording → A.U9.08 (GEN).
+- **Kind**: test
+
+### M.TEST_UNIT.088 Flash ordering under driven time
+- **From**: A.U35.13 (`:912`, `:933`, `:958`, `:982`, `:1005`, `:1008`), A.U8C.12 (their tags), A.U10.44
+  (`start_asy_notify_monitor` → `start_asy_monitor`), A.U10.40 (`Interv`), A.U5.06.
+- **Site**: `tests/test_asy_notification_service.py:890-1016`.
+- **Change**: signals passed in the constructor's tuple; `{"FlashInterval": 3600.0, "FlashDur": 0.5}`; tasks start with
+  `service.start_asy_monitor()`; `_one_cycle(clock, task, <n_triggered × 2 × 500 + one tick>)` replaces the 3.5/1.2 s
+  waits (the `:908-909` comment → "# FlashDur's schema minimum 0.5 s: each triggered signal settles 2 × 0.5 s of virtual
+  time."). `test_registration_order_drives_poll_order_not_construction_order` → `test_tuple_order_drives_poll_order_not_construction_order`
+  (the signals built A, B, C and passed as `(c, a, b)`). `test_flashes_run_strictly_sequentially_not_interleaved`: the
+  0.05 s settle → one `sleep(0)` round (comment "one yield lets the monitor park on the stalled callback (a limit)"),
+  the 1.3 s → `clock.advance(1000)` (the first flash's own settle). Assertions hold.
+- **Resolved**: as M.TEST_UNIT.082 (the wait tags are withdrawn).
+- **Unit**: U35 (stages U5, U10).
+- **Depends**: M.SRC_SENS.036, .037.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.089 The sleep window: across midnight, across a clock step
+- **From**: A.U9.01 (`:1024-1073` hold; new `_in_window()` table and a 23:30 cycle), A.U10.28 (c) (new window-step
+  L1), A.U35.13, A.U2.17 (`:1112`), A.U10.40.
+- **Site**: `tests/test_asy_notification_service.py:1019-1131`; new tests after `:1073`.
+- **Change**: the five gating tests take the constructor tuple, `FlashInterval`, driven cycles; their `"FlashDur":
+  0.01` writes go (0.01 is below the field's 0.5 minimum, so the write was refused as `Invalid` and never shortened
+  anything; the virtual clock covers the default). `test_local_time_callback_raises_treated_as_none`: newest entry
+  `code("E", "CALLBACK")`. New `test_in_window_handles_same_day_overnight_and_whole_day_windows`: the A.U9.01 table
+  through `asy_notification_service._in_window(on_min, off_min, cur_min)` — 22:00-06:00 at 21:59 False, 22:00, 23:59,
+  00:00, 06:00 True, 06:01, 12:00 False; 10:00-10:00 at 10:00 True, 10:01 False; 00:00-23:59 True at every hour. New
+  `test_an_overnight_window_flashes_at_23_30` (window 22-6, `_FakeClock(23, 30)`, one cycle: one flash). New
+  `test_a_clock_step_across_on_time_flashes_at_most_once_per_cycle` (A.U10.28 (c)): window from 10:00, the fake clock
+  stepped from 09:59 to 10:01 and back between and within cycles: never two flashes in one cycle.
+- **Resolved**: —
+- **Unit**: U9 (stages U2 code, U10 key, U35 driven time).
+- **Depends**: M.SRC_SENS.037.
+- **Blast carried by**: L2 window scene → A.U9.01 (TWIN); the twin RTC step hook (L2 half of A.U10.28) → A.U10.28
+  (TWIN, pending U25).
+- **Kind**: test
+
+### M.TEST_UNIT.090 The LED override: a measured pause in virtual time
+- **From**: A.U9.09 (`:1133-1168` adapted; `:1170-1206` holds), A.U10.44 (`start_asy_auto_override` →
+  `start_asy_pause`, `auto_led_override()` → `_pause_loop()`, `monitor_loop()` → `_monitor_loop()`), A.U20.06
+  (`:1176` `start_and_check_tasks()`), A.U35.13 (`:1147`, `:1153`, `:1155`, `:1184`, `:1186`, `:1192`), A.U8C.12 +
+  A.U8C.120 (withdrawn), A.U8C2.02 (`:1152`, `:1185` `_OVERRIDE_SECS`), A.U22.03 (withdrawn: nothing to merge).
+- **Site**: `tests/test_asy_notification_service.py:1133-1229`.
+- **Change**: `test_override_active_blocks_checks_and_resumes_after_countdown`: `_OVERRIDE_SECS = 2` (module level,
+  `# @tunable l1.asy_notification_service_override_secs = 2`); the pause task `service.start_asy_pause()`; `before`
+  after one `sleep(0)` round; `set_override_led(_OVERRIDE_SECS)`; `clock.advance(1000)` → `during is False`;
+  `clock.run_until(lambda: service._auto_active, 2000 + 1000)` → `after is True` at the pause's measured end; its
+  `:1134-1140` comment → "# _pause_loop() is _auto_active's only writer; the monitor only reads it. The override ends
+  at the first one-second round after its measured end." (three lines at most), `:1149-1151` goes. `test_monitor_loop_restart_does_not_clobber…`:
+  the same names, `clock.advance(1000)` steps, `_monitor_loop()` restarted through `start_asy_monitor()`; `:1176`
+  names `start_tasks()`/`supervise_tasks()`. `test_set_override_led_above_the_max_clamps…`: `:1209-1214` comment →
+  "# The public override API clamps to _MAX_OVERRIDE_TIME (read from source)."; `3600` →
+  `src_const("src/asy_notification_service.py", "_MAX_OVERRIDE_TIME")`.
+- **Resolved**: A.U9.09's 3.2 s wall-clock bound becomes a virtual-time bound (A.U35.13); the override tick tags of
+  A.U8C.12/A.U8C.120 are withdrawn with their literals, `_OVERRIDE_SECS` (a stimulus, not a wait) keeps its tag.
+- **Unit**: U35 (stages U9 measured pause, U10 names, U8 tag).
+- **Depends**: M.SRC_SENS.036; M.SRC_CORE `TickSeconds` (A.U10.02).
+- **Blast carried by**: twin `:349-390` and bench `:115-141` → A.U9.09 (TWIN, HW_BENCH).
+- **Kind**: test
+
+### M.TEST_UNIT.091 Own-config read failures print; the next sleep in milliseconds
+- **From**: A.U3.05 + A.U3.02 (`:1350-1407` rewritten: the store logs, NOTIFY prints), A.U31.14 (`:1256-1279`
+  `_next_sleep_ms`), A.U8C.12 (`:1266` `_ELAPSED_STIMULUS_MS`), A.U8C2.02 (`:1268` `_NEXT_SLEEP_MIN_S`), A.U35.13
+  (`:1245`), A.U10.06 (`:1439` needs a sync), A.U24.49 (`_FastAsyncSleep`).
+- **Site**: `tests/test_asy_notification_service.py:1232-1279`, `:1350-1440`.
+- **Change**: `test_malformed_own_config_read_degrades_gracefully…` runs one driven cycle (`advance(100)`) and also
+  asserts the task is still running. `test_next_sleep_secs_subtracts_elapsed_time` → `test_next_sleep_ms_subtracts_elapsed_time`:
+  module-level `_ELAPSED_STIMULUS_MS = 50` (`# @tunable l1.asy_notification_service_elapsed_stimulus_ms = 50`) for the
+  real `time.sleep_ms()`, `_NEXT_SLEEP_MIN_MS = 59000` (`# @tunable l1.asy_notification_service_next_sleep_min_ms =
+  59000`), `_NEXT_SLEEP_MIN_MS < service._next_sleep_ms(60.0, t0) < 60000`; the local `import time` goes (module level).
+  `…floors_at_point_one…` → `test_next_sleep_ms_floors_at_the_minimum_when_elapsed_exceeds_the_interval`: `== 100`.
+  The three config-failure tests keep popping `"FlashBri"` from the real store's cache and run under `FastAsyncSleep()`
+  (shared, both sleeps): `…persists_one_slot` asserts the task still runs, the NOTIFY log is empty, and
+  `CFGMGR_NOTIFY` has `ErrCount > 5` with exactly one `code("E", "CONTRACT")` in its ring; `…persists_the_config_read_warning_afresh_after_a_good_read`
+  → `test_monitor_loop_config_failures_before_and_after_a_good_read_share_one_slot` (the store's ring holds one
+  CONTRACT entry, `ErrCount` counts both runs; the HEAD "afresh" claim is retired by the newest-entry rule, OR35.b);
+  `…self_heals_in_place…` calls `set_utc_valid()` first (flag reset in `finally`) so `ts_after is not None` still
+  proves a stored cycle.
+- **Resolved**: A.U8C2.02's `next_sleep_min_s = 59.0` follows A.U31.14's millisecond return: the constant and its row ID
+  take the ms unit (A.U10.43's suffix rule) — agent decision, OR2.c list.
+- **Unit**: U31 (stages U3 log path, U8 tags, U10 sync).
+- **Depends**: M.SRC_SENS.034, .037; M.SRC_CORE.032.
+- **Blast carried by**: Part N row ID `l1.asy_notification_service_next_sleep_min_ms` → GAP (SPEC, see "Gaps").
+- **Kind**: test
+
+### M.TEST_UNIT.092 Edge cases: callback failures in one slot, the retired pre-finalize guards
+- **From**: A.U2.17 + A.U3.01 (`:1327`), A.U5.06 (`:1330-1347` goes with the guards), A.U10.44 (`:1344-1345`),
+  A.U35.13 (`:1296`, `:1322`), A.U8C.12 (`:1322` tag), GAP-17 lead ruling (AC_NOTES 38).
+- **Site**: `tests/test_asy_notification_service.py:1282-1347`.
+- **Change**: `test_zero_registered_signals_just_sleeps_no_crash` → `test_no_signals_just_sleeps_no_crash`, one driven
+  cycle. `test_request_signal_cb_raising_is_caught_and_the_loop_continues`: one driven cycle of `2 × 1000` ms; `len(cb.calls)
+  == 2`, `err_count == 2`, one `code("E", "CALLBACK")` slot. `test_methods_called_before_finalize_degrade_gracefully_not_raise`
+  is removed with `finalize()` and its guards (M.SRC_SENS.033: the service is complete at construction); the
+  behaviour before `setup()` is the readiness L1's (M.TEST_UNIT in `tests/test_readiness_gates.py`), whose expected
+  answers for this class wait on the lead question below.
+- **Resolved**: —
+- **Unit**: U5 (stages U2/U3 codes, U35 driven time).
+- **Depends**: M.SRC_SENS.033, .034.
+- **Blast carried by**: the readiness L1 → A.U10.22 (TEST_UNIT).
+- **Kind**: test
+
+### M.TEST_UNIT.093 The `_now()` overflow tests go with `_now()`
+- **From**: A.U10.06 (`:1443-1498` removed), A.U14.26 (`_RaisingGmtime` → `MemoryError`: dropped), A.U24.49
+  (`_OverflowingTime` shared: moot here), A.U14.34 (read: `:1440-1450` cited as the module-time mocking example).
+- **Site**: `tests/test_asy_notification_service.py:1443-1498`.
+- **Change**: `_OverflowingTime`, `_RaisingGmtime` and the two `test_now_*` tests are removed: `_now()` is gone and
+  `utc_now()` has no handler (M.SRC_SENS.034). The guard that replaces them is the `utc_now()` L1 in
+  `tests/test_base_classes.py` (`None` before sync, a number after).
+- **Resolved**: A.U10.06 vs A.U14.26 at the timestamp — ruled for A.U10.06 (V.U18.R10; M.SRC_SENS.034, M.SRC_CORE.032).
+- **Unit**: U10.
+- **Depends**: M.SRC_SENS.034.
+- **Blast carried by**: `utc_now()` L1 → A.U10.06 (TEST_UNIT, `test_base_classes.py`).
+- **Kind**: test
+
+### M.TEST_UNIT.094 Starter names
+- **From**: A.U10.44, A.U5.06.
+- **Site**: `tests/test_asy_notification_service.py:1500-1508`.
+- **Change**: built with `_make_service()`; `[s.__name__ for s in service.get_task_starters()] == ["start_asy_monitor",
+  "start_asy_pause"]`; `get_timer_starters() == []`.
+- **Resolved**: —
+- **Unit**: U10.
+- **Depends**: M.SRC_SENS.036.
+- **Blast carried by**: —
+- **Kind**: test
