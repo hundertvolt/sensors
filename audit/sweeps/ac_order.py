@@ -384,7 +384,7 @@ def build():
     return acts, canon, S, D, ch, act_files, unknown
 
 
-def landings(ch, D):
+def landings(ch, D, ov=None):
     """L[(M, a)] = unit the part of live constituent a lands in, per the rules in WORK_ORDER.md section 2."""
     L, why = {}, {}
     for k, c in ch.items():
@@ -403,6 +403,8 @@ def landings(ch, D):
                                              "deferred to the next Unit-slot unit (site born there)")
             else:
                 L[(k, a)], why[(k, a)] = u, "own unit (implicit step: code/test site, blast closed in its unit)"
+            if a in PULLS:
+                L[(k, a)], why[(k, a)] = PULLS[a][0], "pulled: " + PULLS[a][1]
     # in-change dependencies: a part never lands before the in-change constituent it needs
     changed = True
     while changed:
@@ -411,11 +413,12 @@ def landings(ch, D):
             live = set(c["live"])
             for a in c["live"]:
                 for b, cls in D.get(a, ()):
-                    if b not in live or cls == "ign":
+                    cls = (ov or {}).get((a, b), cls)
+                    if b not in live or cls not in ("order", "rev", "inchange", "doconly"):
                         continue
-                    if cls not in ("order", "rev"):
+                    if cls == "doconly" and not c["doc"]:
                         continue
-                    x, y = (a, b) if cls == "order" else (b, a)  # x needs y
+                    x, y = (a, b) if cls != "rev" else (b, a)  # x needs y
                     if ukey(L[(k, y)]) > ukey(L[(k, x)]):
                         L[(k, x)] = L[(k, y)]
                         why[(k, x)] = f"deferred to land with {y} in this change"
@@ -459,13 +462,16 @@ def edges(ch, D, L, act_files, canon, overrides=None):
             continue
         for b, cls in deps:
             cls = overrides.get((a, b), cls)
-            if cls == "ign" or b not in H:
+            if cls not in ("order", "rev", "doconly") or b not in H:
                 continue
             x, y = (a, b) if cls != "rev" else (b, a)  # x needs y
             for kx, ux in own_holders(x, H, ch, act_files):
-                for ky, uy in own_holders(y, H, ch, act_files):
-                    if kx == ky or (ch[ky]["doc"] and not ch[kx]["doc"]):
-                        continue  # code never waits on a doc edit; doc checks are the unit gate's
+                if cls == "doconly" and not ch[kx]["doc"]:
+                    continue
+                cand = [(ky, uy) for ky, uy in own_holders(y, H, ch, act_files)
+                        if ky != kx and not (ch[ky]["doc"] and not ch[kx]["doc"])]  # code never waits on a doc edit
+                if cand:
+                    ky, uy = min(cand, key=lambda t: ukey(t[1]))  # y's own change: its first landing
                     E.append(((ky, uy), (kx, ux), "action", f"{x} needs {y} ({cls})"))
     for a in H:  # a blast edit follows its cause
         own = own_holders(a, H, ch, act_files)
@@ -473,9 +479,9 @@ def edges(ch, D, L, act_files, canon, overrides=None):
         for k, u in H[a]:
             if k in ownk:
                 continue
-            for ko, uo in own:
-                if ch[ko]["doc"] and not ch[k]["doc"]:
-                    continue
+            cand = [(ko, uo) for ko, uo in own if not (ch[ko]["doc"] and not ch[k]["doc"])]
+            if cand:
+                ko, uo = min(cand, key=lambda t: ukey(t[1]))
                 E.append(((ko, uo), (k, u), "blast", f"{k} carries {a}'s blast"))
     for k, c in ch.items():
         mine = ST[k]
@@ -518,14 +524,16 @@ def settle(ch, D, L, why, act_files, overrides=None):
                 continue
             for b, cls in deps:
                 cls = overrides.get((a, b), cls)
-                if cls not in ("order", "rev") or b not in H:
+                if cls not in ("order", "rev", "doconly") or b not in H:
                     continue
-                x, y = (a, b) if cls == "order" else (b, a)
+                x, y = (a, b) if cls != "rev" else (b, a)
                 ys = [(k, u) for k, u in own_holders(y, H, ch, act_files)]
                 for kx, ux in own_holders(x, H, ch, act_files):
+                    if cls == "doconly" and not ch[kx]["doc"]:
+                        continue
                     need = [u for k, u in ys if k != kx and not (ch[k]["doc"] and not ch[kx]["doc"])]
                     if need:
-                        top = max(need, key=ukey)
+                        top = min(need, key=ukey)  # x needs y's own change, i.e. its first landing
                         if ukey(top) > ukey(L[(kx, x)]):
                             old = moves.get((kx, x), (L[(kx, x)],))[0]
                             L[(kx, x)] = top
@@ -551,3 +559,50 @@ def settle(ch, D, L, why, act_files, overrides=None):
         if not changed:
             break
     return moves
+
+
+# ---- A-C2 rulings on action-level dependencies (each read in its action's Depends text) -------------
+# "ign": no ordering (a co-landing / same-site note the merges carry, a split of ownership, or a duplicate);
+# "order": the first action needs the second; "inchange": order inside a change that carries both only.
+DEP_RULINGS = {
+    ("A.U11.S03", "A.U16.16"): ("ign", "A.U16.16 edits nearby FRAM driver comments only"),
+    ("A.U0.38", "A.U4.07"): ("ign", "the V31 parts are carried by A.U4.07, not written by A.U0.38"),
+    ("A.U0.38", "A.U7.25"): ("ign", "the V03/V33 parts are carried by A.U7.25, not written by A.U0.38"),
+    ("A.U0.58", "A.U5.17"): ("ign", "same BACKLOG item, merged (M.DOCS)"),
+    ("A.U11.09", "A.U12.14"): ("ign", "the VOC half is A.U12.14's own file"),
+    ("A.U36.546", "A.U37.06"): ("ign", "same BACKLOG paragraphs; A.U37.06 edits after it"),
+    ("A.U36.548", "A.U37.06"): ("ign", "same BACKLOG paragraphs; A.U37.06 edits after it"),
+    ("A.U36.548", "A.U37.15"): ("ign", "A.U37.15 deletes the plan pointers in phase D, after it"),
+    ("A.U10.13", "A.U11.39"): ("ign", "A.U11.39 is this action (A-C keeps A.U10.13)"),
+    ("A.S0930.34", "A.U26.71"): ("order", "the guard derivation it checks is A.U26.71's"),
+    ("A.S0930.34", "A.U25.36"): ("order", "the twin-run check it extends is A.U25.36's"),
+    ("A.U10.09", "A.U11.03"): ("order", "the A.2 text follows A.U11.03's escalation"),
+    ("A.U10.15", "A.U11.03"): ("ign", "A.U10.15 keeps the unpause half only; the reset half is A.U11.03's own"),
+    ("A.U10.15", "A.U11.04"): ("ign", "A.U10.15 keeps the unpause half only; the reset half is A.U11.04's own"),
+    ("A.S0930.14", "A.U16.R03"): ("order", "S4 cancels the FRAM manager's supervised task"),
+    ("A.S0930.19", "A.U26.06"): ("order", "the guard sees device scripts from A.U26.06"),
+    ("A.S0930.19", "A.U26.74"): ("order", "flag names from A.U26.74"),
+    ("A.S0930.17", "A.U24.42"): ("inchange", "only its allocation-budget test part needs A.U24.42's file"),
+    ("A.U18.03", "A.U14.30"): ("ign", "a settled-by reference (OR112.a), not an ordering"),
+    ("A.U18.18", "A.U14.30"): ("ign", "a settled-by reference (OR112.a); A.U14.30's text cites these bounds"),
+    ("A.U14.30", "A.U19.24"): ("doconly", "only the SPEC text points at the webserver's EAGAIN side"),
+}
+for _m in ("A.U10.R01", "A.U13.R01", "A.U15.R01", "A.U15.R02", "A.U15.R03", "A.U15.R04", "A.U16.R01", "A.U16.R02",
+           "A.U16.R03", "A.U18.R01"):
+    DEP_RULINGS[("A.U14.R01", _m)] = ("doconly", "F.2 and CLAUDE.md describe the mechanism once it exists")
+# Parts that land outside their ID's unit by an action's own text.
+PULLS = {
+    "A.U28.13": ("U0", "A.SDEP.05: \"A.U28.13 (pulled forward)\" into the GitHub Actions pin refresh"),
+    "A.U37.15": ("D", "its own title: \"Phase D: delete the plan and audit/\"; needs A.C.11"),
+}
+
+
+def rulings(D):
+    ov = {}
+    for a, l in D.items():
+        for b, cls in l:
+            if cls == "co":
+                ov[(a, b)] = "ign"
+    for k, (cls, _) in DEP_RULINGS.items():
+        ov[k] = cls
+    return ov

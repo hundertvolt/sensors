@@ -158,7 +158,7 @@ def extract(text, context=None):
                     out.append((cands[0], "bare-unique")); continue
                 if len(cands) > 1:
                     out.append(("|".join(sorted(cands)), "bare-ambiguous")); continue
-                if ctx:
+                if ctx and ctx_dir(ctx) not in (".", ""):
                     out.append((f"{ctx_dir(ctx)}/{t}", "bare-new")); continue
                 out.append((t, "bare-orphan")); continue
     for m in SPEC_RE.finditer(text):

@@ -1,4 +1,7 @@
-"""A-C3 Part R: trace every register requirement to the merged changes (or phase-C steps) that deliver it."""
+"""A-C3 Part R: trace every register requirement to the merged changes (or phase-C steps) that deliver it.
+
+Usage: python3 audit/sweeps/ac3_req_trace.py <out.json> [--appendix <out.md> --findings <rid-to-finding-ids.json>]
+"""
 import collections
 import json
 import pathlib
@@ -204,6 +207,31 @@ def from_carries(from_text, known):
     return carried, dropped
 
 
+def appendix(out, findings, dest):
+    """Write the per-requirement trace table: class, State units, ledger files, carrying merged changes, findings."""
+    rows = ["| Req | class | State units | ledger rows (unit files) | carrying merged changes (from the ledger-row actions; why-citing actions where no row) | findings |",
+            "|---|---|---|---|---|---|"]
+    for rid, r in out.items():
+        if "merged into" in r["lead"]:
+            cls = "merged → " + (RID.search(r["lead"]).group(0) if RID.search(r["lead"]) else "?")
+        elif r["state"].lower().startswith("holds") and not r["state_units"]:
+            cls = "holds"
+        elif "process" in r["state"][:30]:
+            cls = "process"
+        else:
+            cls = "work"
+        aids = {a for lr in r["ledger_rows"] for a in lr["aids"]} or set(r["why_aids"])
+        ms = sorted({m for a in aids for m in r["trace"].get(a, {}).get("m", [])})
+        grp = collections.defaultdict(list)
+        for m in ms:
+            _, cl, n = m.split(".")
+            grp[cl].append("." + n)
+        carriers = "; ".join(f"{cl} " + " ".join(v) for cl, v in sorted(grp.items())) or "—"
+        files = ", ".join(sorted({lr["file"] for lr in r["ledger_rows"]})) or "—"
+        rows.append(f"| {rid} | {cls} | {' '.join(r['state_units']) or '—'} | {files} | {carriers} | {', '.join(findings.get(rid, [])) or '—'} |")
+    pathlib.Path(dest).write_text("\n".join(rows) + "\n")
+
+
 def main():
     reg = register()
     acts = parse_actions()
@@ -268,6 +296,9 @@ def main():
     mdest.write_text(json.dumps({k: {"title": c["title"], "file": c["file"], "line": c["line"], "unit": c["slots"]["Unit"], "site": c["slots"]["Site"][:400],
                                      "from": c["slots"]["From"], "kind": c["slots"]["Kind"]} for k, c in ch.items()}, indent=1))
     print("requirements", len(reg), "actions", len(acts), "ledger rows", len(rows), "M changes", len(ch))
+    if "--appendix" in sys.argv:
+        fmap = json.loads(pathlib.Path(sys.argv[sys.argv.index("--findings") + 1]).read_text()) if "--findings" in sys.argv else {}
+        appendix(out, fmap, sys.argv[sys.argv.index("--appendix") + 1])
 
 
 if __name__ == "__main__":
