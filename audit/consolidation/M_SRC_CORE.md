@@ -1530,10 +1530,11 @@ always answers OK with per-field results, a failing post-write hook turning its 
   settles it: the function returns the per-field `WriteValidity` (U19 A-C note 1's own proposal), the endpoint builds
   the one OK envelope (M.SRC_NET.120) — no wire change. `ok_descr` goes with the envelope: no product caller passes it
   (OR36.a (1); grep `ok_descr`: one test). `data: "JsonMapping"` per U19 A-C note 2.
-- **Unit**: U19 (A.U19.01's caller rewrite lands the return change with its one caller; stages: U2 the constant name,
-  U11 A.U11.26's body, U30 `report_if_fatal`).
+- **Unit**: U11 (U2 stage: the constant name; U19 constants swap; U30 `report_if_fatal`). The return change lands with
+  A.U11.26's body in U11, in one commit with the caller's U11 stage (A.U11.26 already edits `_apply_settings_groups()`'s
+  `res == "ERR"` branch there; M.SRC_NET.120).
 - **Depends**: M.SRC_CORE.038 (`_set_dict_cfg()` never raises), M.SRC_CORE.045, M.SRC_CORE.034; co-lands with
-  M.SRC_NET.120.
+  M.SRC_NET.120's U11 stage.
 - **Blast carried by**: webserver `_apply_settings_groups()` `res == "ERR"` branch and its `:464` comment → A.U11.26 /
   U19 (SRC_NET), the caller merging the returned dict → M.SRC_NET.120; `tests/test_api_response.py:195-332` assert the
   returned dict, `test_handle_set_cmd_ok_descr_override` goes → hand-off TEST_UNIT (M.TEST_UNIT.004/.005; `GAPS_G2.md`);
