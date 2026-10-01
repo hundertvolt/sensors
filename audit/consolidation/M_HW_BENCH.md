@@ -51,7 +51,7 @@ never flashed (A.C.01 (5)).
   is written to the bar in the same edit). README text states current facts, rules and reasons, not history (G9/R11).
 - **B6 Imports** (A.U0.07, owner unit U26 for `tests_hardware/`): the function-level imports
   (`bench/test_hotspot_role_reversal.py:248, 296, 335`, `harness.py:44, 252, 268`, `manual/runner.py:72-76`) move to
-  module level, and `isl29125_conformance.py:35`'s by-path `exec()` goes with that file (M.HW_BENCH.071); their
+  module level, and `isl29125_conformance.py:35`'s by-path `exec()` goes with that file (M.HW_BENCH.038); their
   `_PENDING` entries leave `tests_scripts/test_import_placement.py` in the same commit and, the scope reaching zero,
   `tests_hardware/`'s `PLC0415` entry leaves `pyproject.toml` (TSC carries the two non-cluster files).
 - **B7 Ordering last** (A.U36.038, U36): each Python file here is re-sorted to D.15 by the script-driven pure move after
@@ -230,8 +230,8 @@ never flashed (A.C.01 (5)).
   in-RAM `ResetReason` G1/R11 asks to save; D1 orders REST first when an address is known and records the gap
   otherwise (shown in the OR2.c review).
 - **Unit**: U26.
-- **Depends**: M.HW_BENCH.001, M.HW_BENCH.004, M.HW_BENCH.007 (`dut_ip`), M.HW_BENCH.011 (`save_fram_raw`,
-  `recovery_events`), M.HW_BENCH.050 (`save_errcount`), A.U11.05 (`ResetReason`), A.U26.07 (interval script, HW_DEV),
+- **Depends**: M.HW_BENCH.001, M.HW_BENCH.004, M.HW_BENCH.007 (`dut_ip`), M.HW_BENCH.011 (`recovery_events`),
+  M.HW_BENCH.012 (`save_fram_raw`), M.HW_BENCH.050 (`save_errcount`), A.U11.05 (`ResetReason`), A.U26.07 (interval script, HW_DEV),
   A.U26.79's two device scripts (HW_DEV).
 - **Blast carried by**: `fram_raw_dump.py`, `system_debug_level_set_standard.py`, the write-protect read script →
   A.U26.22/A.U26.79 (HW_DEV); `_PREREQUISITE_DEVICE_SCRIPTS`/`_KNOWN_PERSISTING_HELPERS` gain the repairs with reason
@@ -254,7 +254,7 @@ never flashed (A.C.01 (5)).
   (`l4.conftest_ip_and_http_timeout_s`, the three uses `:257, :262, :269`), and `_DUT_SERVING_AFTER_STA_S = 30.0`
   tagged `l4.dut_serving_after_sta_s` (the `:248` bound). (2) `_DUT_HOSTNAME_CANDIDATES` and `_DUT_HOTSPOT_PASSWORD` go:
   the candidates are computed at call time as `(<bench TOML [device].hostname>, <_VAL_HOST default read from
-  src/asy_wifi_service.py by ast>)` (one helper in `harness.py`, M.HW_BENCH.013), the password is
+  src/asy_wifi_service.py by ast>)` (one helper in `harness.py`, M.HW_BENCH.010), the password is
   `harness.hotspot_password()`; the comment `:161-163` becomes one line "The hotspot SSID is the Hostname value: the
   bench TOML's, or the schema default on a board whose config predates it." (3) `_recover_stale_dut_credentials(bench,
   note)`: `bench.ap_down()` first; then inside one `try` whose `finally` is `bench.leave_dut_hotspot_and_restore_bridge()`:
@@ -275,7 +275,7 @@ never flashed (A.C.01 (5)).
   one, so `l4.conftest_http_ready_timeout_s` is withdrawn (its Part N row is not written). A.U26.21 (2) and A.U26.38
   both move the join into the `try`: one restructured function, A.U26.38's AP-down-first order.
 - **Unit**: U26 (A.U8C/A.U8C2 tags are U8, written here with the U26 edit since every tagged line moves).
-- **Depends**: M.HW_BENCH.012 (`recover_by_reset`), M.HW_BENCH.013 (`hotspot_password()`, hostname candidates),
+- **Depends**: M.HW_BENCH.015 (`recover_by_reset`), M.HW_BENCH.010 (`hotspot_password()`, hostname candidates),
   M.HW_BENCH.023 (`is_ssid_visible()` AP check), M.HW_BENCH.004, M.HW_BENCH.006, A.U20.06 (boot order), A.U8.01-03.
 - **Blast carried by**: `tests_scripts/test_tests_hardware_conftest_constants.py` (pins `_DUT_HOTSPOT_PASSWORD`) →
   A.U26.49 (TSC); `pyproject.toml` S105 entry for `tests_hardware/conftest.py` goes → A.U26.49 (TSC; A.U28.29's
@@ -2083,3 +2083,960 @@ never flashed (A.C.01 (5)).
 - **Blast carried by**: the observation's record in the round → A.C.04 (6) (C).
 - **Kind**: test, hardware (Round: R2 [H66])
 
+
+## tests_hardware/README.md
+
+One file, rewritten across U1, U4, U7, U14, U26, U36 by many actions. Each merged change below owns one section (or one
+new section) and lists every constituent that writes or names text in it; the line ranges are HEAD's. Text is written
+to B5 (no audit ID, owner/agent tags, current facts only, no history). Every flag, marker and key in the text uses the
+end-state spelling: `--allow-persistence-write`, `--allow-multi-day-rollover`, `--soak-duration`, `soak_duration`,
+`BuildDate`, `MeasInterval`, the B1 module and class names (M.HW_BENCH.135). Section order at the end of U36: header,
+Prerequisites, The dev bench (with Bench facts), Environment variables, Running, How a round runs, rig sections,
+device-script habits, bench traps, Workarounds, Measuring heap and serving under load, Chip conformance probes, Reset
+codes proven on the bench, System commands, Recovery rungs on silicon, What the network-fault injections reach, Known
+assumptions and open findings, the topic sections that replace the passes, Persistence-write gating, FRAM capacity
+check.
+
+### M.HW_BENCH.110 Header: the levels by SPEC E.6.1's names, the bench board by data
+- **From**: A.U7.01 (blast: `tests_hardware/README.md:80-160` points to E.6.1), A.U36.008 (OR45.a (1): point, do not
+  restate), A.U26.01 (the bench board is the TOML's `bench = true`), A.U26.35 (soak durations), A.U26.74 (flag names).
+- **Site**: `tests_hardware/README.md:1-16`.
+- **Change**: `:3` "flash/bench/manual backends" → "levels L3 (flash) and L4 (bench) and the manual mode
+  (SPECIFICATION.md E.6.1)"; `:6-9` "**Real-hardware execution is standing practice on the bench Pi4** - the flash and
+  bench tiers have run clean end to end on real hardware, with additional coverage added since;" → "Real-hardware runs
+  happen on the bench Pi4 against the board whose device TOML sets `[device] bench = true` (today `dev`);"; `:13-16` the
+  pointer list names `--allow-flash-cycle`/`--soak-duration` ("Running"), the role-reversal stage-6 risk ("The hotspot
+  role reversal") and `BENCH_AP_PASSWORD` ("Environment variables"). The go-ahead sentence `:11-12` stays word for word.
+- **Resolved**: —
+- **Unit**: U36 (the pointer work), carrying U26's names.
+- **Depends**: M.HW_BENCH.001 (flag names), M.HW_BENCH.010 (`bench_device()`), A.U7.01.
+- **Blast carried by**: README.md's hardware section → A.U36.008 (DOCS).
+- **Kind**: doc
+
+### M.HW_BENCH.111 New "The dev bench": wiring and chips, bench state, read from the board
+- **From**: A.U1.04, A.U1.24/A.U1.25/A.U36.539 (blast: `devices/dev.toml:38`, `digital_twin/machine.py:482`, SPEC J.7
+  point to "The dev bench"), A.U1.14 (SPEC A.1 points here), A.U26.45 (pins from the TOML), A.U26.46 (the facts table,
+  M.HW_BENCH.120), G5/R59 (no real MAC), A.U0.08 (citation check).
+- **Site**: new `## The dev bench` between `## Prerequisites` (ends `:50`) and `## Environment variables` (`:52`), with
+  `### Wiring and chips`, `### Bench state (dated)`, `### Host network: the br0 bridge and its AP` (M.HW_BENCH.112),
+  `### What each tool writes to the board` and `### Testing a driver by hand over mpremote` (M.HW_BENCH.113), `### Bench
+  facts` (M.HW_BENCH.120); source `dev_legacy/README.md:30-62, 64-108, 595-665`.
+- **Change**: A.U1.04's text, with three corrections. (1) Every bus pin, bus parameter, UART pair and peripheral GPIO is
+  a pointer to `devices/dev.toml` (the physical-pin numbers GP5 = pin 7, GP6 = pin 9, GP18 = pin 24 and the jumper's
+  pin pairs stay: the TOML holds GPIO numbers, not package pins). (2) The `eth0` MAC is not written: the bench-state
+  line reads "the router's DHCP reservation was keyed to a MAC the bridge no longer presents (recorded 2026-09-04); the
+  owner confirms the re-keying at the first round" — the address itself stays on the bench Pi (G5/R59; it identifies
+  the owner's hardware and is no fact a test needs). (3) The VFS rule cites `ports/rp2/main.c` at the pinned tag, re-read
+  at execution (B0). Every bench-state line is dated; the MPRLS EOC pin and the BME688 attachment stay open questions
+  answered by the bench facts table (M.HW_BENCH.120), not by either document. Not carried: as A.U1.04 lists (each
+  checked there).
+- **Resolved**: A.U1.04 writes `eth0`'s MAC verbatim; the brief's G5/R59 rule (no real hardware identifier of the
+  owner's in the repo) wins — the fact the docs need is "the reservation is keyed to a stale MAC", which the sentence
+  keeps. Shown in the OR2.c review (agent decision D7).
+- **Unit**: U1 (A.U1.04 lands the section; U26 adds the facts table to it).
+- **Depends**: A.U1.02 (legacy move), A.U1.08 (`dev_legacy/` deleted after).
+- **Blast carried by**: `devices/dev.toml:38`, `digital_twin/machine.py:482`, SPEC A.1/J.7 pointers → A.U1.24/A.U1.25/
+  A.U1.14/A.U36.539 (GEN, TWIN, SPEC); README.md "Further reading" entry → A.U1.13 (DOCS).
+- **Kind**: doc
+
+### M.HW_BENCH.112 Host network: the manual br0 recipe as the installer runs it, switch armed
+- **From**: A.U1.05, A.U21.23 (the installer's own `_armed_recovery()`), A.U36.522 (existing bridge reported, channel
+  re-pinned under the switch), A.U36.523 (B.13's recovery script with `RESTORE`), A.U21.19 (the PSK never in argv;
+  `nmcli connection edit` fallback), A.U26.21 (injections undone and verified, leftovers cleared at start), A.U26.38
+  (single radio: scan only with the AP down), A.U1.22/A.U1.16/A.U36.546 (blast: code, SPEC B.12/B.13 and CLAUDE.md
+  point here).
+- **Site**: new `### Host network: the br0 bridge and its AP` (M.HW_BENCH.111's section); sources
+  `dev_legacy/README.md:545-593`, `README.md:104-111`.
+- **Change**: A.U1.05's recipe, plus: the AP's PSK is set through `nmcli connection edit` reading piped commands, never
+  on a command line (A.U21.19; if R0 finds `edit` does not read piped commands, the line states the argv exposure of the
+  one `modify` as a known limitation, dated); the B.13 recovery script's restore lines use `RESTORE`, the uplink's
+  profile read with `nmcli -g GENERAL.CONNECTION device show eth0` when the script is created (A.U36.523); an existing
+  bridge is reported, its channel re-pinned only under an armed switch, its MAC never cycled live (A.U36.522); "`env
+  --tier bench` arms its own recovery timer around every bridge change it makes" (A.U21.23); two bench-control facts:
+  "every injected rule is undone and verified absent, and a run starts by clearing and reporting a killed run's
+  leftovers" (A.U26.21) and "the adapter has one radio: the SSID scan runs only while the AP is down, and a scan with the
+  AP up raises" (A.U26.38). Credentials: "a new bridge gets random ones; real ones are never committed (CLAUDE.md)" — no
+  password, SSID or MAC value appears.
+- **Resolved**: A.U1.05 places the restore lines with B.13's literal profile name; A.U36.523 (U36) replaces that form by
+  `RESTORE` — the U36 form is written once, in U1's section (the recipe "uses the same `RESTORE` form").
+- **Unit**: U1 (section), U21 (installer and PSK lines), U26 (bench-control lines), U36 (B.13 form). Stages in that order.
+- **Depends**: M.HW_BENCH.111, M.HW_BENCH.021, M.HW_BENCH.023, A.U21.19, A.U21.23.
+- **Blast carried by**: the first real `env --tier bench` against a fresh bridge proves arm → create → poll → disarm →
+  A.C.02 (C, R0 [H01]); the `nmcli edit` reading → A.C.02 (C).
+- **Kind**: doc (Round: R0 confirms the PSK path and the installer's switch [H01])
+
+### M.HW_BENCH.113 What each tool writes to the board; testing a driver by hand
+- **From**: A.U1.06, A.U26.10 (full-build scripts: no write), A.U36.036 (the mid-import `MemoryError` fact stays
+  here, SPEC F.1 points to it), A.U26.60 (raw-REPL facts), A.U26.75 (`--no-sync` in the examples), A.U1.13 (README.md
+  points to the table), B1 (`FRAMManager`).
+- **Site**: new `### What each tool writes to the board`, `### Testing a driver by hand over mpremote` (M.HW_BENCH.111's
+  section); sources `README.md:329-335`, `dev_legacy/README.md:110-141, 176-179`.
+- **Change**: A.U1.06's table and workflow, with the rows: "full-build device scripts (`*_after_full_system_build.py`,
+  `heap_layout_after_full_boot_sequence.py`): no write — they build over an absent scratch config path" (A.U26.10); the
+  `exec`/`run` row adds "the soft reset that follows keeps the armed watchdog, the GC threshold, `ticks_ms()` and the pin
+  muxing, and never re-runs `main.py`; so every raw-REPL session ends in a hard reset" (A.U26.60, SPEC F.1); the
+  by-hand workflow keeps "compiling a heavy closure on the device can raise `MemoryError` mid-import: precompile it with
+  the pinned `mpy-cross`" (A.U36.036's citer). Class names per B1 (`FRAMManager`). The four-habits pointer
+  (`:242-244`) names habit 3 of M.HW_BENCH.121 by heading, not line.
+- **Resolved**: —
+- **Unit**: U1, names updated in U10 (B1) and the two U26 rows added in U26.
+- **Depends**: M.HW_BENCH.111.
+- **Blast carried by**: README.md `:329-335` pointer → A.U1.13 (DOCS); SPEC F.1 `.frozen` paragraph → A.U36.036 (SPEC).
+- **Kind**: doc
+
+### M.HW_BENCH.114 Rig sections: the NeoPixel sweep rig, the ISL29125 rig facts, the gated light tests
+- **From**: A.U26.11 (`:111-116`, `:218-234`: "seven scratch flash writes, gated"), A.U2.12 / A.U2.23 (`:215, :227,
+  :247` `wrnno=13`/`W13` → catalog name), A.U26.42 (3) / A.C.04 (1) (rig geometry recorded, dated), A.U26.45 (GP18 from
+  the TOML), A.U26.74 (`--allow-neopixel-sweep` text), A.U8C.116 (tolerance ID cited).
+- **Site**: `tests_hardware/README.md:39-50` (Prerequisite 4), `:150-234` ("The NeoPixel sweep rig" through "What the two
+  gated light tests prove").
+- **Change**: "spends no write of any kind" (`:111-116`, `:218-234`) → "its config pushes spend seven scratch flash
+  writes, so it needs `--allow-persistence-write` as well as `--allow-neopixel-sweep`, and cleans up on every path";
+  `wrnno=13`/`W13` → the catalog name A.U2.12 gives the code (the number only beside it, read from the catalog at
+  execution); "GP18 on this bench" → "the NeoPixel pin (`devices/dev.toml`)"; the rig section gains the row
+  "distance | <value> | ambient | <value> | recorded <date> (M1)" — empty until R2, filled from `rig-geometry.json`.
+  Prerequisite 4 shrinks to one sentence pointing here.
+- **Resolved**: —
+- **Unit**: U2 (codes), U26 (writes, pin, rig row).
+- **Depends**: M.HW_BENCH.103 (M1 records the geometry), A.U2.12.
+- **Blast carried by**: the measured row → A.C.04 (1) (C, R2).
+- **Kind**: doc (Round: R2 fills the rig row [H28, H65])
+
+### M.HW_BENCH.115 The UART bullets state the link's current coverage
+- **From**: A.U26.59 (`:443-444`: the driver script and its own figures), A.U36.532 (F.5.7-F.5.9 → F.8.1-F.8.3 at
+  `:443, :445, :468, :1257, :1261, :1264`), A.S0930.05 ("each crossover script runs with no CRC and with CRC16"),
+  A.S0930.06 (bench link suite once per mode, CRC16 behind `flash_cycle`), A.U26.82 (`uart_comm_hazards.py`), A.U7.16
+  (a build lacking the UART modules fails), A.U26.86 (the mock-only fault catalog wording), A.U26.87 / A.U35.22 (the
+  multi-chunk SET under load, `:1265-1269`), A.U10.38 (`UARTLinkDriver`, `UARTComm`), A.U2.20 (catalog names).
+- **Site**: `tests_hardware/README.md:439-480` (the crossover bullets in "Known assumptions"), `:1256-1286` (Tenth pass
+  UART bullets).
+- **Change**: one UART block, in the topic section "Tier parity beyond bus hazards" (M.HW_BENCH.133) for `:1256-1286`
+  and kept in place for `:439-480`: the coverage count `:439` is recounted at execution (A.U26.82, A.U26.87, A.S0930.06
+  add tests) and states "each crossover script runs with no CRC and with CRC16; the bench link suite runs once per
+  mode, the CRC16 run behind `--allow-flash-cycle` (two reflashes)"; `:443-444` names
+  `uart_driver_read_never_blocks_the_loop.py` and its own measured figures (the raw script's 4394/121 µs go with it);
+  every "F.5.8"/"F.5.9" → "F.8.2"/"F.8.3"; "a build without the UART modules fails, never skips"; `:1256-1264` → one
+  line naming the driver script as the silicon proof of F.8.2; `:1265-1269` → "The bench tier carries a multi-chunk SET
+  under serving load (`uart_link_echo_under_serving_load.py` driving the initiator's public `uart_set()`), with no `src/`
+  change"; `:1270-1279` → A.U26.86's text; `:1280-1286` removed (M.HW_BENCH.119 names the fallback's silicon proof).
+  `UartLinkExerciser`/`UART_Comm` → `UARTLinkDriver`/`UARTComm`; `E16`/`W14`-style codes → catalog names.
+- **Resolved**: A.U10.09 (U10) rewrites `:1280-1286` to "runs on silicon"; A.U26.86 (U26) removes the bullet and names
+  the proof in the reset-code table — U26's end state, A.U10.09's sentence becoming M.HW_BENCH.119's row text (the fact
+  is the same). A.U11.03's citer of `:1280` follows.
+- **Unit**: U10 (names, A.U10.09 stage), U26, U36 (F.8 numbering), SUPP_owner_0930 (B2 batch).
+- **Depends**: M.HW_BENCH.093, M.HW_BENCH.094, M.HW_BENCH.119, A.U26.59, A.U26.82, A.U26.87.
+- **Blast carried by**: SPEC J.7 tier map → A.U36.539 (SPEC).
+- **Kind**: doc
+
+### M.HW_BENCH.116 FRAM bullets: the chunk rule, the reset race, the codes, the flash-tier entries
+- **From**: A.U36.005 (`:481-487` chunk rule), A.U26.22 (`:481-485` "Residue is the accepted outcome" goes), A.U26.43
+  (reset-race section: five named seams, stale seed cannot pass), A.U2.08 / A.U2.23 (`:434-436`: "a seeded entry read
+  back as a plausible SYSTEM task end (test data, not firmware evidence)", no number), A.U2.09 / A.U3.04 (`:401` "E31 …
+  + W73" → one entry, catalog name), A.U2.23 (`:464`), A.U16.07 / A.U33.07 (`:717-750` flash-tier FRAM entries gain
+  `fram_command_hold_timing.py` and its bound), A.U16.01 (`:430-432` holds), A.U36.002 ("full mechanism" pointer stays).
+- **Site**: `tests_hardware/README.md:401`, `:430-436`, `:464`, `:481-487`, `:717-750`.
+- **Change**: `:481-487` → A.U36.005's bullet; `:434-436` → A.U2.08's wording; `:401` → "a failed chunk operation
+  logs exactly one entry (its catalog name)"; `:717-750` gains "`fram_command_hold_timing.py` (flash tier): the command
+  hold time stays under its bound"; the reset-race paragraph states the five seams and that the verify script fails a
+  seed it did not plant this run. `:430-432` unchanged.
+- **Resolved**: A.U26.22 and A.U36.005 rewrite the same `:481-485` sentence: A.U36.005 (U36) is the full bullet and
+  carries A.U26.22's "nothing behind" (its Depends names A.U26.22) — one text.
+- **Unit**: U2/U3 (codes), U16 (entry), U26 (race), U36 (chunk bullet).
+- **Depends**: M.HW_BENCH.012 (the save fixture), A.U26.43.
+- **Blast carried by**: CLAUDE.md FRAM caveat wording → A.U2.08/A.U36.002 (DOCS).
+- **Kind**: doc
+
+### M.HW_BENCH.117 The flash-tier script list gains the new instruments
+- **From**: A.U15.20 (`sgp40_sample_cadence.py`, short soak), A.U30.18 (`c_stack_budget.py`), A.U31.05
+  (`loop_stretch_timing.py`, `flash_write_loop_gap.py`), A.U31.01 (one line naming the three hardware rows owed to the
+  timing table), A.U35.21 (`bmp3xx_alone_survives_a_general_call.py`), A.U13.R02 (`i2c_held_sda_recovery.py`, the
+  held-SDA technique), A.S0930.28/.39 (system-command scripts, M.HW_BENCH.119).
+- **Site**: the device-script list in "Real-hardware coverage: sensors, FRAM and the API end to end" (M.HW_BENCH.133,
+  HEAD `:695-769`).
+- **Change**: one bullet per script: what it proves, its level, its wear ("no write, no flash cycle" for each above),
+  and its gate (`soak_duration` short for the SGP40 cadence). One line: "SPECIFICATION.md F.3's timing table owes three
+  silicon rows: the flash-write stretch, the on-target no-yield stretches and the loop lag (`loop_stretch_timing.py`,
+  `flash_write_loop_gap.py`)". The held-SDA bullet states the technique (a slave holds SDA low, the boot clear releases
+  it).
+- **Resolved**: —
+- **Unit**: U13, U15, U30, U31, U35 (each adds its line with its script).
+- **Depends**: the scripts (HW_DEV).
+- **Blast carried by**: the scripts and their flash-tier tests → HW_DEV.
+- **Kind**: doc
+
+### M.HW_BENCH.118 "Chip conformance probes" replaces the ISL29125 probe section
+- **From**: A.U26.66, A.U36.543 (C.11.1 → K.5.1), M.HW_BENCH.038.
+- **Site**: `tests_hardware/README.md:404-415`.
+- **Change**: heading "## Chip conformance probes"; body: every bus chip (ISL29125, SCD30, SGP40, BMP3xx, FRAM) has a
+  probe script answered by the twin's fake and by silicon (`flash/test_chip_conformance.py`); `conformance.py` runs the
+  twin half through `TwinBoard`; a divergence is a fidelity finding recorded in `digital_twin/README.md`, never a fake
+  edit made to pass; "SPECIFICATION.md K.5.1" for the rule.
+- **Resolved**: —
+- **Unit**: U26 (text), U36 (K.5.1 citation).
+- **Depends**: M.HW_BENCH.038, A.U26.66.
+- **Blast carried by**: —
+- **Kind**: doc (Round: R1 runs the probes [H25])
+
+### M.HW_BENCH.119 New "Reset codes proven on the bench" and "System commands"
+- **From**: A.U26.28 (the table), A.C.12 (codes 0, 9, 10+p, 20), A.S0930.15 (7, 8, 9), A.S0930.29 / A.S0930.40 (rows 3,
+  4, 7, 8), A.S0930.28 / .29 / .30 / .39 / .41 ("System commands"), A.U26.86 / A.U10.09 (alarm-pool fallback row),
+  A.U14.02 (the field over `reset_cause()`).
+- **Site**: new `## Reset codes proven on the bench` and `## System commands` after "Chip conformance probes".
+- **Change**: a table `code | meaning (SPECIFICATION.md A.8) | test that proves it | level`, one row per code, the
+  code's name from SPEC A.8 (never restated in prose); rows for the alarm-pool fallback ("`reboot_fallback_starves_the_
+  watchdog.py`, `flash/test_watchdog_starvation.py`") and for 0, 9, 10+p, 20 (A.C.12's scripts). "System commands":
+  one paragraph per command — `resetconfig` (owned scratch flash writes behind `persistence_write`, the configs saved
+  and restored), `erasefram` (destroys the FRAM logs: the raw save runs first), `reboot` and `bootloader` (run the
+  reboot sequence: record, flush, pause, reset; the reply precedes the reset within its bound), `mempause` — each naming
+  its L3 and L4 test, what it spends, and the hotspot join a restore needs.
+- **Resolved**: —
+- **Unit**: U26 (table), SUPP_owner_0930 B2 rows, A.C.12 rows (C delta).
+- **Depends**: M.HW_BENCH.083, M.HW_BENCH.088, M.HW_BENCH.067.
+- **Blast carried by**: SPEC A.8 code table → A.U11.05/A.S0930.15 (SPEC).
+- **Kind**: doc (Round: rows filled as R1 [H10, H14], R3 and A.C.12's round prove them)
+
+### M.HW_BENCH.120 New "Bench facts": a dated table read from the bench
+- **From**: A.U26.46, A.C.02 (R0: DHCP keying, BME688, bench host OS and stale packages), A.C.16 (register volatility,
+  SCD30 NVM state), A.U26.38 (single-radio row), A.U26.42 (3) (rig row), A.U26.27 (DebugLevel 5 as the standard state),
+  A.C.10 (deltas).
+- **Site**: new `### Bench facts` in "The dev bench" (M.HW_BENCH.111).
+- **Change**: table `fact | value | source | date`, rows: each I2C bus's scanned address set (`ADDRESSES bus=<id> …` from
+  the sweep script), FRAM part (RDID), SCD30 NVM state (offset, altitude, ambient pressure, ASC), rig geometry, DHCP
+  reservation keying (owner, yes/no, no address), BME688 attachment (owner), bench host OS and stale packages, the
+  single radio, the standard board state (`DebugLevel` 5). Rows without a value read "to be read in R<n>"; the
+  `tests_scripts` check (A.U26.46) refuses a filled row without date and source.
+- **Resolved**: —
+- **Unit**: U26 (table, check), filled in phase C (A.C.10 deltas).
+- **Depends**: M.HW_BENCH.111, A.U26.46's sweep line (HW_DEV).
+- **Blast carried by**: the table check → A.U26.46 (TSC).
+- **Kind**: doc (Round: R0 [H01-H03], R1 scan, R2 rig [H28])
+
+### M.HW_BENCH.121 Device-script habits: from four to the full set
+- **From**: A.U26.05 (habit: twin first, then commit the record), A.U26.16 (park the rig in `finally`), A.U26.18
+  (scratch removed on every path, leftovers first, an allowed prerequisite write — owner, 2026-09-26), A.U26.24 (raw FRAM
+  writes only inside `_SCRATCH_REGIONS`), A.U26.44 (every board fact from `BENCH`), A.U26.49 (board values from the
+  TOML/`src/`, never literals), A.U26.61 (feed the watchdog every ≤ 2 s; the check named), A.U26.78 (shared code in
+  `_shared/`, included at render), A.U11.24 (`:252-256` the `write_config()` call shape), A.U26.19 (`:383-385` Timer-fed
+  wrapper recipe removed), A.U2.12 (`:247` code name), A.U35.49 (habit 5 covers every instrument).
+- **Site**: `tests_hardware/README.md:235-257` ("Writing a new device script: four habits"), `:383-385`.
+- **Change**: heading "## Writing a new device script"; one bullet per habit, each naming the `tests_scripts` check that
+  enforces it: (1) every board fact from the rendered `BENCH` dict, product values from the TOML or `src/`; (2) a config
+  write goes to a scratch path, primed in RAM, removed on every path and a leftover removed first; (3) the persist of a
+  later `_set_dict_cfg()` is diverted (A.U11.24's `write_config()` signature); (4) a script that reads error-log content
+  clears its chunk (M.HW_BENCH.116); raw FRAM writes only inside its declared scratch regions above the build's
+  allocation; (5) run it in the twin first (`scripts/record_twin_instrument_runs.py`) and commit the record; (6) park the
+  shared rig in `finally`; (7) feed the watchdog every ≤ 2 s in short steps; (8) shared code lives in `_shared/`. `:383-385`
+  removed.
+- **Resolved**: A.U26.19 and A.U26.61 both remove the `:383-385` recipe — one removal.
+- **Unit**: U11 (call shape), U26.
+- **Depends**: M.HW_BENCH.041, M.HW_BENCH.091, M.HW_BENCH.092, A.U26.16/.18/.24/.61/.78 checks (TSC).
+- **Blast carried by**: the checks → TSC.
+- **Kind**: doc
+
+### M.HW_BENCH.122 New "Recovery rungs on silicon"
+- **From**: A.U26.34 (4), A.U13.R02, A.U18.R01 (radio re-init rung), A.U16.R01/.R03 (FRAM rungs), M.HW_BENCH.096,
+  M.HW_BENCH.101.
+- **Site**: new `## Recovery rungs on silicon` after "System commands".
+- **Change**: A.U26.34 (4)'s table `rung | trigger | level(s) | test | oracle`, rows as listed there (retry, participant,
+  bus clear and controller re-init, boot bus clear, WiFi radio, task restart, FRAM, supervisor reboot), the L4 cells
+  "not reachable: raw-REPL access stops `main.py`" where so; manual rows name `manual_bus_electrical.py` steps.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_BENCH.096, M.HW_BENCH.101.
+- **Blast carried by**: SUPP_recovery's threshold confirmation (H81) → A.C.03 (C).
+- **Kind**: doc (Round: R1 [H81], R2 manual rows)
+
+### M.HW_BENCH.123 New "How a round runs"
+- **From**: A.U36.001, A.U0.01 (labels), A.C.01 (the frame), A.U26.81 (rare events), A.U26.79 (standard state checked
+  at start and end), A.U26.41 (the boot log as a round artefact), A.U26.03 (image check), A.U7.18 (lower levels first,
+  `--skip-lower-levels`), A.U7.14 (deselected count), A.U26.22 (evidence first), A.U37.05 (BACKLOG's rows follow this
+  procedure).
+- **Site**: new `## How a round runs` after "## Running" (ends `:148`), before `## The NeoPixel sweep rig` (`:150`).
+- **Change**: A.U36.001 (1)'s text with three end-state corrections: step 4 "`/system`'s `BuildDate`" (B1, A.U10.40);
+  step 6 "(`--allow-persistence-write`)" (A.U26.74); step 1 "the session's `fram_evidence_saved` fixture saves the
+  FRAM chunks and `/status` (with `--dut-ip`, before anything resets the board)" (M.HW_BENCH.006). Then A.U26.81's
+  paragraph, and one line each: "The session fixtures check the standard board state at the start and end of a round
+  and repair it only with `--repair-standard-state`"; "The round keeps the timestamped boot log
+  (`bench/test_boot_order_and_triggers.py`) as an artefact". The procedure lives here; BACKLOG's owed rows only point.
+- **Resolved**: A.U36.001 writes "`--allow-persistence-writes`" and "`build.buildDate`" (HEAD spellings); A.U26.74 and
+  A.U10.40 rename both before U36 — the text uses the renamed ones.
+- **Unit**: U36.
+- **Depends**: M.HW_BENCH.006, M.HW_BENCH.007, M.HW_BENCH.060, M.HW_BENCH.063, A.U7.18.
+- **Blast carried by**: `BACKLOG.md:347-361` → A.U36.001 (2)(3) (DOCS); BACKLOG owed list → A.U37.05 (DOCS).
+- **Kind**: doc
+
+### M.HW_BENCH.124 The hotspot role reversal: ordered restore, stage-6 risk, serial repair
+- **From**: A.U26.39 (role-reversal section), A.U26.04 / A.U26.63 ("MicroPython's DHCP server"), A.U33.08 (REST-reboot
+  trap points here), M.HW_BENCH.071-073 (the serial-side repair recipe).
+- **Site**: the role-reversal text (HEAD in "Known assumptions" and the fourth pass, gathered under one heading
+  `## The hotspot role reversal`).
+- **Change**: states: stage 6 hands real credentials to the DUT; a failure after stage 6 can leave the WLAN interface
+  deactivated until a serial-side repair (`kick_then_reset.py`, then the documented `mpremote` repair); `destructive_last`
+  tests run last in their module; every stage restores on every path in order; the lease test asserts the range
+  MicroPython's DHCP server hands out.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_BENCH.071, M.HW_BENCH.072, M.HW_BENCH.073, M.HW_BENCH.042.
+- **Blast carried by**: —
+- **Kind**: doc
+
+### M.HW_BENCH.125 Prerequisites: commands per tier, sudo rules, picotool, uv
+- **From**: A.U21.24 (command list with packages, pointing to the table), A.U21.26 (passwordless sudo line with each
+  command's reason), A.U26.37 (the rebind's sudo entries), A.U21.27 (`:31-40` → "the installer refuses a USB-less
+  picotool in the flash and bench tiers"), A.U1.07 (picotool version mismatch), A.U28.02 (bench uv matches the pin),
+  A.U26.01 (the bench board by `bench = true`), A.U26.27 (DebugLevel 5, checked), G9/R11 ("this sandbox" narrative
+  goes).
+- **Site**: `tests_hardware/README.md:18-50`.
+- **Change**: item 1 names `env --tier flash|bench` and points to `toolchain/versions.toml`'s command table for the
+  commands each tier needs (no list restated); new item "passwordless sudo for every command the bench tier runs
+  unattended": a sample `/etc/sudoers.d/` line with placeholder user and paths as `which` prints them, each command's
+  reason in one clause (nmcli, iw, iptables/tc, tee USB unbind/rebind, picotool, timeout tcpdump, systemd-run/systemctl);
+  item 2 "the board named by `bench = true` runs its own image (`scripts/build_firmware.py <bench device>`); never
+  `wozi`"; item 3 → A.U21.27's sentence plus A.U1.07's; new "the bench host's `uv` matches `pyproject.toml`'s pin"; new
+  "the board's standard state holds `DebugLevel` 5 (checked by the session fixtures)"; item 4 → M.HW_BENCH.114.
+- **Resolved**: —
+- **Unit**: U1 (picotool hint), U21, U26, U28.
+- **Depends**: A.U21.24, A.U21.26, A.U21.27, M.HW_BENCH.010.
+- **Blast carried by**: R0 reads the bench's sudo rules and uv → A.C.02 (C).
+- **Kind**: doc (Round: R0 [H01])
+
+### M.HW_BENCH.126 Environment variables, Running, the soak durations and "Verify the image"
+- **From**: A.U26.01 (`BENCH_DEVICE`/`--bench-device`), D1 (`--dut-ip`), A.U21.19 (`env --tier bench` reads
+  `BENCH_AP_PASSWORD`), A.U36.544 item 9 (`:65` BACKLOG citer), A.U21.28 / A.U27.13 (`:57-63` "still defaults to
+  `/dev/ttyACM0`" goes), A.U26.74 / A.U26.35 / A.U26.14 / A.U26.11 / A.U26.09 (flags and recipes, `:76-160`), A.U26.36
+  (`:92-96` the rollover recipe names the bench module), A.U26.07 (`:101-107` SCD30 sentence), A.U7.13 / A.U7.14
+  (`:127-160` run record and verdict replace the grep and `KNOWN_PERMANENT_SKIPS`), A.U7.18 (lower levels first),
+  A.U27.19 (a `-m` narrows), A.U26.75 (a runner syncs once), A.U36.547 (command blocks → "(README.md, Recipes: <name>)"),
+  A.U36.008 (`:93` "soak duration"), A.U36.007, A.U8C.119 (`:87` cites the IDs), A.U26.03 (`:329-335` "Verify the
+  image" states the fixture), A.U27.39 (manual twin recipe fails while port 53 is held), A.U26.42 (manual section).
+- **Site**: `tests_hardware/README.md:52-148`, `:329-335`.
+- **Change**: Environment variables: `MPREMOTE_DEVICE`/`--device` (resolver text kept, `:57-63`'s last sentence
+  removed); `BENCH_DEVICE`/`--bench-device` (default the one TOML with `bench = true`); `--dut-ip` ("the DUT's last
+  address; lets the session save `/status` before the first reset"); `BENCH_AP_PASSWORD` ("optional: defaults to
+  `bench.ap_password()`, which reads the real PSK; `env --tier bench` reads the same variable when it creates a
+  bridge" — the BACKLOG citer and "fixed 2026-09-08" go). Running: the command blocks become pointers to README.md's
+  Recipes (A.U36.547); the explanations kept: "the runners first run L0-L2 (`--skip-lower-levels` for debugging only,
+  never reported clean)"; "a `-m` you pass narrows the runner's selection"; "a runner syncs once, retried; nothing inside
+  a run syncs"; soak: "`scripts/run_bench_soak_tests.sh --duration {short,mid,long}` (60 s, 600 s, 6 h —
+  `l4.soak_duration_*`), never bundled with the suite runners"; rollover: "`--allow-multi-day-rollover`
+  (`bench/test_ticks_ms_rollover.py`, ~12.4 days, no write)"; SCD30: "a default run writes the SCD30's NVM zero times,
+  at most once (the start command, only when measurement is off)"; the verdict paragraph (`:127-148`) → "the verdict
+  reads the run record: a skip passes only as its gate's own skip with the flag absent; a deselection is reported with
+  its flag and counted; a `-m` exclusion is reported as runner selection; a recovery pass is counted apart" (A.U7.14,
+  replacing the grep and whitelist text). Manual: "every manual step ends on a judgment; Enter alone never passes".
+  "Verify the image" (`:329-335`): "the bench conftest's `board_image` fixture compares `/system`'s `BuildDate`, device
+  and lwIP ensemble with the image record before any bench test runs". Manual twin: "fails at once while another suite
+  holds port 53".
+- **Resolved**: A.U26.74 and A.U36.547 both edit the `:85-120` command block: U36's pointers replace the block, the
+  flag names U26 sets living in README.md's Recipes (A.U36.547's checked CLI reference) — one end state.
+- **Unit**: U7, U21, U26, U27, U36 (stages in that order).
+- **Depends**: M.HW_BENCH.001, M.HW_BENCH.040, M.HW_BENCH.060, M.HW_BENCH.089, M.HW_BENCH.100, A.U7.14, A.U36.547.
+- **Blast carried by**: README.md Recipes → A.U36.547 (DOCS); the verdict → A.U7.14 (SCR).
+- **Kind**: doc
+
+### M.HW_BENCH.127 Bench traps: current facts, one closing reset, the REST-reboot trap
+- **From**: A.U26.13 (a transient retry never re-runs a script), A.U26.17 (every flash run ends with one hard reset),
+  A.U26.29 (`recover_by_reset()`, `kick_then_reset.py` CLI), A.U14.02 (`:396-397` reset diagnosis by `ResetReason`),
+  A.U11.06 (boot phases: an interrupted boot reads as a boot failure in that phase), A.U26.25 (watchdog tests stop
+  reading `reset_cause()`), A.U33.08 (`:394-395` REST-reboot hotspot trap), A.U26.60 (raw REPL stops `main.py`), A.C.01
+  (7) (retries capped, `timeout`), A.U26.65 (the rebind observation recorded here), A.U36.548 (sections hold current
+  facts).
+- **Site**: `tests_hardware/README.md:258-284` ("two traps"), `:381-400` (bench traps).
+- **Change**: heading "## Bench traps"; bullets: A.U14.02's text (with A.U11.06's boot-phase sentence); A.U33.08's text;
+  "a transient `mpremote` failure is retried once only when the script produced no output; a script never runs twice";
+  "every flash run ends with one hard reset to a serving board"; "every hard-reset fallback goes through
+  `recover_by_reset()`, reported as a recovery pass; `kick_then_reset.py` is the CLI for a hand recovery"; "an
+  `mpremote exec`/`run` stops `main.py`; nothing feeds the watchdog after it, so the board resets about 8 s later unless
+  the session resets it"; "the USB CDC can stop entering raw REPL until the port is rebound (bench, <date of the
+  observation>); one rebind per call" (the Workarounds row, M.HW_BENCH.128); "ad-hoc scripts run under `timeout` with
+  capped retries"; the two HEAD traps of `:258-284` kept as current facts.
+- **Resolved**: A.U14.02 (U14) and A.U26.25 (U26) touch the same trap; U14's text stands, U26 adds nothing to it
+  (A.U26.25's blast names it U14's).
+- **Unit**: U11/U14 (reset text), U26, U33.
+- **Depends**: M.HW_BENCH.013, M.HW_BENCH.015, M.HW_BENCH.042, A.U11.05/.06.
+- **Blast carried by**: BACKLOG kick-then-reset bullet → A.U33.07 (DOCS).
+- **Kind**: doc
+
+### M.HW_BENCH.128 New "Workarounds" table
+- **From**: A.U26.65, A.U8C.112 (timing statements cite the Part N IDs), M.HW_BENCH.013-.017, M.HW_BENCH.022,
+  M.HW_BENCH.024.
+- **Site**: new `## Workarounds` after "Bench traps".
+- **Change**: table `defect | where | bound | removal trigger | last checked`, one row per harness workaround named by
+  A.U26.65's ten sites (USB rebind, settle polls, mpremote retry, kick before reset, hotspot fallback retry, …), the
+  bound cited by its Part N ID, the "last checked" a date and the pin it was checked at. CLAUDE.md's version-bump
+  practice names this table (A.U26.65's U36 line).
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_BENCH.013-.017.
+- **Blast carried by**: CLAUDE.md practice line → A.U26.65 with U36 (DOCS).
+- **Kind**: doc
+
+### M.HW_BENCH.129 New "What the network-fault injections reach" and the DHCP limitation
+- **From**: A.U26.40, A.U26.63, A.U0.36 (C08 tag), A.U26.55 / A.U26.56 (the tests named), A.U29.01 (row 10's source,
+  holds), A.U36.544 item 5 (`:678, :782, :804` → SPEC F.1 "UDP on rp2/lwIP").
+- **Site**: `tests_hardware/README.md:681-693` (becomes the section), `:828-837` (DHCP), `:676-680`, `:782`, `:804`.
+- **Change**: A.U26.40's bullets; A.U26.63's DHCP paragraph, which carries A.U0.36's tag "(owner, 2026-09-26)" once;
+  the open-question citers → "(SPECIFICATION.md F.1, UDP on rp2/lwIP)"; `:676-680` cites SPEC F for the source trace
+  (A.U18.17).
+- **Resolved**: A.U0.36 (U0) relabels `:828` "**A documented known limitation (owner, 2026-09-26)**"; A.U26.63 (U26)
+  rewrites the paragraph with the same tag — U26's text, tag once.
+- **Unit**: U0 (tag), U26 (section), U36 (citers).
+- **Depends**: M.HW_BENCH.045, M.HW_BENCH.080, M.HW_BENCH.081.
+- **Blast carried by**: SPEC F.1 UDP paragraph → A.U36.544 (SPEC); SPEC A.11 row 10 → A.U29.01 (SPEC).
+- **Kind**: doc
+
+### M.HW_BENCH.130 Persistence-write gating: one budget table, the checks, the flash-cycle list
+- **From**: A.U26.09 (one budget table), A.U4.08 (`:1310-1325` REST half), A.U26.06 (the guard's checks in one
+  paragraph), A.U26.08 (seven SCD30 dependents), A.U26.71 (a PUT that writes nothing needs no marker), A.S0930.19 /
+  A.S0930.30 (`:1336-1343`: `resetconfig` counts as persisting), A.U26.74 (flag names, `--allow-<marker>`), A.U7.13 /
+  A.U7.14 (`:1362-1385` "Read the deselected count"), A.U26.14 (gate list gains `--allow-toolchain-reverify`), A.U0.27
+  (`:1311` tag), A.U35.51 (marker table), A.U26.32 / A.U26.72 / A.C.15 (1) / A.U15.07 / A.U19.23 (D5) / A.U26.85 /
+  A.S0930.06 / A.C.05 (budget rows), A.U26.07 (prerequisite start write).
+- **Site**: `tests_hardware/README.md:1309-1390`.
+- **Change**: the section opens with A.U0.27's tag "**Standing design (owner, 2026-09-16, `98dc1b2`/`4f1c802`)**"; the
+  marker table `marker | flag | gate kind (deselect/skip) | what it spends`; the budget table: default run — flash
+  filesystem: the pinned prerequisites only (`joined_hotspot` SSID clear + restore 2, stale-credential recovery 0-1,
+  standard-state repairs 0+ with `--repair-standard-state`, scratch removal of a leftover 0-1); SCD30 NVM 0, at most 1
+  (the start command). With `--allow-persistence-write`: one row per owned writer (read-while-write 1; each bench
+  SCD30 PUT by field class; the ISL29125 envelope 7 scratch writes; the config-push arm; `resetconfig`; the console
+  starvation test 2; the Altitude measurement; A.C.15 (1)'s argument-reaction writes; A.U15.07's row). With
+  `--allow-scd30-extra-write` (always with the first): its rows. Flash cycles (`--allow-flash-cycle`): the reflash test;
+  the CRC16 link suite "two reflashes: the CRC16 image and back"; the unpatched-lwIP control image. Then: "a PUT whose
+  every field is rejected, unknown, unchanged or dispatch-only needs no marker; an always-executed field always does;
+  `resetconfig` is persisting"; the guard's checks in one paragraph (device scripts, class markers, raw sockets, the
+  prerequisite set pinned by name); "Read the deselected count" → the run record's report.
+- **Resolved**: A.U26.09's "+2" for `--allow-scd30-extra-write` counts only A.U26.08 (3); the table lists every
+  `scd30_extra_write` row (M.HW_BENCH.001's settlement). A.U4.08 (U4) writes the REST half into `:1310-1325`; U26's
+  table carries it (A.U4.08's Blast names the flash-tier text U26's).
+- **Unit**: U4 (REST half), U7 (record), U26 (table, guard), SUPP_owner_0930 (resetconfig), phase-C rows as deltas.
+- **Depends**: M.HW_BENCH.001, M.HW_BENCH.002, M.HW_BENCH.044, M.HW_BENCH.082, M.HW_BENCH.086, M.HW_BENCH.088,
+  M.HW_BENCH.094, M.HW_BENCH.075.
+- **Blast carried by**: the guard → A.U26.06/A.S0930.19 (TSC); measured rows → A.C.05/A.C.10 (C).
+- **Kind**: doc (Round: R1 and R3 confirm the counts [H31])
+
+### M.HW_BENCH.131 Known assumptions and open findings: current facts only
+- **From**: A.U26.30 (`:625-641`), A.U0.36 (B02 tag, the "not decided here" sentence deleted), A.U14.08 (`:633-634`
+  field account link), A.U14.16 (`:633` #18797), A.U7.15 (`:625-641` result-note wording), A.U26.77 (`:510-529`), A.U1.27
+  (`:488` frozen `_boot.py`), A.U18.17 (`:676-680`), A.U19.05 (`:549` → `_StaticRoutes.serve()`), A.U36.544 (`:542`
+  deleted-doc citation dropped; item 9 bullet added), A.U35.40 (torn-write bullet returns), A.U36.008 (`:425` levels),
+  A.SDEP.08 (version-stamped claims re-read at the new tag), A.SDEP.17 (`:625-640`, W28 kept), A.U0.27 (`:533-534` tag),
+  A.U26.12 / A.U26.26 (`:574-594` "≥ 3" vs "5"), A.U26.41 (`:244-251` waits), A.U16.01 (holds), A.U36.548 (`:427`, `:620`
+  BACKLOG session citer).
+- **Site**: `tests_hardware/README.md:416-694`.
+- **Change**: `:625-641` → A.U26.30's paragraph (which already states A.U0.36's tag and A.U14.16's citation change);
+  `:633-634` "independent field reports" → A.U14.08's single link, opened before writing; `:510-529` → A.U26.77's lines;
+  `:488` → A.U1.27's; `:549` → `_StaticRoutes.serve()`; `:542` parenthesis dropped; new bullet "A `hard_reset()` can land
+  the DUT in hotspot fallback (about one attempt in three, bench, 2026-09-09); every test that reaches the DUT after one
+  retries within a bound"; A.U35.40's torn-write bullet: "`test_real_hard_resets_during_natural_fram_backup_activity_
+  recover_cleanly` expects the torn-write FRAM entries (their catalog names), saves them, then clears them (owner,
+  2026-09-13)"; `:425` "the flash and bench levels and the mid soak duration"; `:533-534` A.U0.27's tag; `:574-594`
+  "the standard state holds `DebugLevel` 5; boot oracles need ≥ 3; the session fixtures check it"; `:620` "(BACKLOG.md's
+  2026-09-05/07 … sessions)" → the fact with its date, no BACKLOG citation; `:427` "(both in BACKLOG.md's "Deferred" list)" stays only while those rows exist (A.U0.08's check at landing); every upstream citation and version stamp
+  re-read at the pinned tag at execution (A.SDEP.08).
+- **Resolved**: A.U26.30, A.U0.36, A.U14.08, A.U14.16 and A.U7.15 all rewrite `:625-641`: A.U26.30 (U26) is the whole
+  paragraph and already carries A.U0.36's tag and A.U14.16's removal; A.U14.08 (U14) supplies the link inside it; A.U7.15's
+  wording note is satisfied by "reported as recovery passes" — one text.
+- **Unit**: U0, U1, U14, U19, U26, U35, U36 (stages in that order).
+- **Depends**: M.HW_BENCH.015, M.HW_BENCH.067, M.HW_BENCH.089.
+- **Blast carried by**: the A.U0.08 citation check's allow-list entry for `:542` leaves → A.U36.544 (TSC).
+- **Kind**: doc
+
+### M.HW_BENCH.132 Measuring heap and serving under load: every figure names its threshold
+- **From**: A.U26.48, A.U0.27 (`:293-294` tag), A.U26.64 (the OpenHAB scenario named), A.U19.23 / D5 (console
+  starvation note), A.U36.532 (`:344, :353` "H.7.1" still lands), A.U26.03 (`:329-335`, M.HW_BENCH.126), A.U36.548.
+- **Site**: `tests_hardware/README.md:285-403`.
+- **Change**: every heap figure states the GC threshold it was measured at; `:293-294` "(`http_client.is_ceiling_close()`;
+  owner, 2026-09-23, `84f3d57`/`399e2f0`)"; one paragraph naming the OpenHAB scenario
+  (`test_network_resilience.py`) and what it asserts; one line: "client-triggered console output cannot starve the
+  watchdog: a gated bench test drives the adversarial load with `DebugLevel` 0 and a serial reader that never reads".
+- **Resolved**: —
+- **Unit**: U0 (tag), U26.
+- **Depends**: M.HW_BENCH.069, M.HW_BENCH.074, M.HW_BENCH.082, M.HW_BENCH.087.
+- **Blast carried by**: —
+- **Kind**: doc
+
+### M.HW_BENCH.133 The ten "passes" become topic sections
+- **From**: A.U36.548 (8), A.U26.57 (`:594-601, :760-767` WS2812 cite `datasheets/ws2812/WS2812.pdf` p.4), A.U36.019 /
+  A.U36.022 (holds), A.U4.07 (`:757-759, :1138-1145, :1181-1183`: a REST path reaches SCD30 NVM; "added behind
+  `persistence_write`"), A.U26.32 (same lines), A.U7.25 (`:1168, :1192, :1216, :1239-1249, :1272, :1278` → E.6.6 row IDs),
+  A.U0.21 (`:1188` tag), A.U2.16 / A.U18.04 / A.U18.06 (`:879, :893` → "covered at L1"), A.U26.62 (`:838-845` scope),
+  A.U9.09 (`:1236-1237`), A.U26.86 / A.U26.87 / A.U35.22 / A.U26.59 (M.HW_BENCH.115), A.U16.07 (M.HW_BENCH.116),
+  A.U10.43 / A.U18.40 (`:1022` `wifi_refresh_sec`), A.U20.06 (supervisor split, where named), A.U26.77 (`:1306-1307`).
+- **Site**: `tests_hardware/README.md:695-1308`.
+- **Change**: A.U36.548 (8)'s six topic sections (Third → "Real-hardware coverage: sensors, FRAM and the API end to end";
+  Fourth → "Networking robustness on the bench"; Fifth → "FRAM fault injection: CS hijack and hard-reset race"; Sixth →
+  "The `dut_ip()` fixture's retry and recovery"; Seventh-Ninth → "Bus-hazard coverage at L3 and L4"; Tenth → "Tier parity
+  beyond bus hazards", heading tag A.U0.21's "(owner, 2026-09-15; important to apply, no ordering — owner, 2026-09-29:
+  '…')"), current facts only, the executor diffing facts before/after (OR51.a (2)). Inside them: the WS2812 sentences →
+  A.U26.57's; the SCD30-NVM sentences → A.U4.07's; E.6.6 numbered references → row IDs; `:879, :893` → "the `wrnno`
+  backoff branch is covered at L1 (`tests/test_asy_captive_dns.py`)" with the catalog name; `:838-845` names the
+  no-task-ended guard's scope; `:1236-1237` → "proves the pushed pause counts down to 0 on real hardware"; `:1022` — the
+  `wifi_refresh_sec` mention goes (A.U18.40 removes the parameter); `:1306-1307` removed; `:716` "`manual_sensor_accuracy.py` item 10" → the step's function name; `:1253`'s BACKLOG pointer stays only if A.U0.08's citation check finds the row at landing.
+- **Resolved**: A.U2.16 (U2) renumbers `:879`'s `wrnno=2`, A.U18.04 (U18) holds it, A.U18.06 (U18 blast, U26 text)
+  rewords the sentence — U26's wording with the catalog name. A.U10.43 renames `wifi_refresh_sec`, A.U18.40 removes it:
+  the mention goes. A.U4.07 (U4) and A.U26.32 (U26) on `:1138-1145, :1181-1183`: A.U26.32's blast says A.U4.07 already
+  rewrites them — U4's text holds.
+- **Unit**: U2, U4, U7, U9, U18, U26 (stages), U36 (the restructure, last).
+- **Depends**: M.HW_BENCH.115, M.HW_BENCH.116, M.HW_BENCH.117.
+- **Blast carried by**: —
+- **Kind**: doc
+
+### M.HW_BENCH.134 FRAM capacity check: derived lists, no WP label
+- **From**: A.U26.23 (the lists are derived), A.U20.11 (the L1 half named), A.U36.002 / A.U36.004 (8) (`:1395` →
+  "the capacity backstop of the implicit FRAM-wiring rule (SPECIFICATION.md A.7)"), A.U0.27 (`:1411` tag), A.U5.02
+  (`:1419-1421` constructor `fram=`/`logger=` → `log=`), A.U36.544 (`:1391` heading, `:1416` "Extended by WP3"),
+  A.U10.38 (class names).
+- **Site**: `tests_hardware/README.md:1391-1425`.
+- **Change**: heading "## FRAM capacity check, real-hardware tier"; "the FRAM-backed logger set and the candidate module
+  names are derived from the build's facts, never listed by hand"; the L1 half (`tests/_sensortask_scenarios.py`'s
+  every-chunk-fits scenario) named beside the device script; `:1411` "**mpremote-only by design (owner, 2026-09-16: 'we
+  do not even add errno/wrnno for the out of FRAM memory … Handle via mpremote.')**"; `:1416` "`_CANDIDATE_MODULE_NAMES`
+  checks …" (derived); `:1419-1421` the `UARTLinkDriver`'s constructor in its A.U5.02 form.
+- **Resolved**: —
+- **Unit**: U0, U5, U10, U20, U26, U36.
+- **Depends**: A.U26.23 (HW_DEV script), M.HW_BENCH.074.
+- **Blast carried by**: —
+- **Kind**: doc
+
+### M.HW_BENCH.135 Renames and tag IDs across the README (mechanical)
+- **From**: B1 (A.U10.37, A.U10.38, A.U10.40, A.U10.43, A.U10.44), A.U8C.112 / A.U8C.119 (timing statements cite Part N
+  IDs), A.U2.23 (every old code number), A.U8C2.48 / A.U8C2.49 (manual section unchanged: blast-only).
+- **Site**: whole file (grep at landing).
+- **Change**: module, class, key, unit-suffix and starter names per B1, in each renaming unit; every literal timing the
+  README states cites its Part N ID; every `E<n>`/`W<n>`/`errno=`/`wrnno=` number becomes the catalog name.
+- **Resolved**: —
+- **Unit**: U2, U8C, U10.
+- **Depends**: B1.
+- **Blast carried by**: —
+- **Kind**: doc
+
+## Gaps for other clusters
+
+- **GAP-B1 (TSC)**: A.U26.31's board-free `--collect-only` matrix must pass the two valued options this cluster adds,
+  `--dut-ip <addr>` and `--lwip-control-image <tmp path>`, beside the boolean gates (M.HW_BENCH.001).
+- **GAP-B2 (TSC)**: `tests_scripts/test_evidence_snapshot.py` (A.U26.22/A.U26.79) gains the order case: with `--dut-ip`
+  answering, the REST save of `/status` runs before any raw-REPL call (M.HW_BENCH.006, D1).
+- **GAP-B3 (TSC)**: `tests_scripts/test_harness_mpremote_retry.py` gains the bounded settle-poll cases that replace the
+  two fixed settle sleeps (M.HW_BENCH.011, D2).
+- **GAP-B4 (SPEC, TWIN, TSC)**: SPEC F.1's named `exec()` exception, the import-graph and import-placement checks move
+  from `isl29125_conformance.py:35` to `digital_twin/run_device_script.py` (M.HW_BENCH.038/.091).
+- **GAP-B5 (TWIN, TSC)**: A.U25.44's twin launch-site guard reads `MICROPYPATH` in `tests_hardware/twin_board.py`, its
+  new home (M.HW_BENCH.038/.091).
+- **GAP-B6 (SCR)**: `scripts/_require_clean_hardware_run.sh` exports `$EVIDENCE_DIR` (the `build/archive/hardware/<ts>/`
+  A.U7.20 creates), which `tests_hardware/evidence.py` reads (M.HW_BENCH.055).
+- **GAP-B7 (SPEC)**: Part N rows no tagging action writes: `l4.end_to_end_timing_reboot_loss_margin_s` (M.HW_BENCH.067),
+  the two lwIP send-stall bounds (M.HW_BENCH.075), `l4.console_starvation_load_s` (M.HW_BENCH.082) — each "estimated
+  (agent) — measurement owed L4".
+- **GAP-B8 (C)**: inventory rows H78-H82 are "own step"/"own record" in R1/R4 with no instrument in any action (SGP40
+  one-slot-per-NTP-outage under a bench `iptables` block, worst-case read duration per driver, LED ramp wall time under
+  API load, recovery-ladder thresholds, the `stations` query without its settle). The round runs them by hand under the
+  armed switch; if a result should be repeatable it comes back as an A.C.10 delta (a gated bench test), not here.
+- **GAP-B9 (C)**: the manual power-cut steps (M.HW_BENCH.102) spend budgeted scratch writes and FRAM erases; R2's plan
+  states that wear budget before the operator starts (A.C.04).
+
+## Adherence findings
+
+- `bench/test_hotspot_role_reversal.py:151, :160, :191, :264, :330` carry audit-era item labels ("(items 5-7)", …);
+  `http_client.py:48`, `bench/test_network_resilience.py:877` and `bench/test_wifi_networking.py:32` carry "queue
+  F10/F11/F13" labels; README `:716` "item 10", `:1188` "BACKLOG.md HIGH PRIORITY item", `:1391`/`:1416`/`:1424`
+  "WP3/WP4/Topic 6" (CLAUDE.md "current state, not the historic path"; G9/R12) — removed by M.HW_BENCH.023/.030/.071/
+  .079/.095/.133/.134.
+- Closed-BACKLOG citers in permanent text (open questions 5, 6, 9, item 24, item 29): `bench_control.py:118`,
+  `error_log_helpers.py:13`, `bench/test_network_resilience.py:1-3, :116-117, :287, :362, :382`,
+  `bench/test_end_to_end_timing.py:149`, `bench/test_bus_concurrency_under_api_load.py:124`,
+  `bench/test_wifi_networking.py:80`, README `:65, :620, :678, :782, :804` — each repointed to its permanent home
+  (A.U36.544) in the merged changes.
+- The hotspot default `12345678` is copied as a literal in four files (`conftest.py:165`,
+  `bench/test_hotspot_role_reversal.py:43, :147`, `bench/test_network_resilience.py:505`, `manual/manual_wifi.py:19, :30`)
+  — the accepted-risk credential itself is CLAUDE.md's; the copies go through `harness.hotspot_password()` (TOML/`src/`
+  read, M.HW_BENCH.010), so the repo states it in the owner-named places only.
+- `manual/manual_wifi.py` states "no HTTP redirect exists" — false at HEAD (the hotspot redirects an unknown path to
+  `/`); corrected in M.HW_BENCH.105.
+- README Prerequisite 3 narrates "this session"/"this sandbox" (history, G9/R11) — rewritten as the installer's
+  refusal (M.HW_BENCH.125); README `:6-9` "standing practice … have run clean" is a status claim, replaced by the
+  bench-board fact (M.HW_BENCH.110).
+- A.U1.04's planned text would write the bench Pi's real `eth0` MAC into the repo — not written (D7, M.HW_BENCH.111).
+- Comment cap: 13 `tests_hardware/` files over the 3-line block cap at HEAD (A.U27.28's count); every block a merged
+  change rewrites is written to the cap (B5).
+- The FRAM-evidence rule had no code behind it on the bench (`ResetErrors` and `erasefram` paths cleared without a
+  save; README `:481-485` accepted residue): every clearing path now saves first (B9, M.HW_BENCH.012/.050/.065/.088).
+- README "Verify the image … `build.buildDate`" (`:329-335`) had no code behind it (A.U26.03's finding) — the
+  `board_image` fixture (M.HW_BENCH.060).
+
+## Owner questions
+
+None. Every conflict was settled by an owner row, an AC_NOTES entry or the brief's rules; the agent decisions below
+are listed for the OR2.c review.
+
+## Agent decisions for the OR2.c review
+
+- **D1** `--dut-ip` option: A.U26.22 asks for the `/status` save "before its first reset", which the session can only
+  do from a known address (M.HW_BENCH.001/.006).
+- **D2** The two settle sleeps A.U8C.112 left untagged (`harness.py:202, :204`) become bounded polls on the state they
+  wait for (G7/R23 removes fixed sleeps; no U26 action took them) (M.HW_BENCH.011).
+- **D3** `spoof_udp.py` refuses any source outside the documentation range A.U26.56 names (M.HW_BENCH.045).
+- **D4** The shared SGP40 VOC plausibility floor is 0, not A.U26.49's 1: the algorithm reports 0 for its first 45
+  samples, inside a bench session's first tests (M.HW_BENCH.043).
+- **D5** A.U19.23's console-starvation hardware row gets a gated bench test (two owned `DebugLevel` writes) instead of a
+  hand step (M.HW_BENCH.082).
+- **D6** The manual registration imports move to `manual/__main__.py` (import-at-top rule; M.HW_BENCH.100/.106).
+- **D7** The bench Pi's real MAC is not written; the bench-state line keeps the fact the docs need (M.HW_BENCH.111).
+- Also shown: the Part N ID rename `l3.conformance_twin_probe_timeout_s` (B4's renamed-ID rule, M.HW_BENCH.038); the
+  derived `_UART_MODULES` (M.HW_BENCH.093); gaps another unit handed to "U26 site" without a U26 action, carried here as
+  changes: the AAAA query (A.U18.01, M.HW_BENCH.062/.072), the `:269` route set (A.U19.20, M.HW_BENCH.071), the
+  `UtcTime`-before-sync reads (A.U6.21, M.HW_BENCH.079), the WEBSERVER drop codes the bench clean checks must allow
+  (A.U19.08, M.HW_BENCH.081).
+
+## Ledger
+
+Every action naming a file of this cluster (the 166 indexed IDs, "Idx" yes, and every further action merged); "Into"
+lists the merged changes (M.HW_BENCH.nnn). Dispositions: merged; blast-only (the action changes another file and this
+cluster's file follows or holds, carried by the change named); holds (no edit needed, verified); withdrawn.
+
+| Action | Idx | Into | Disposition |
+|---|---|---|---|
+| A.C.01 | yes | .006, .123, .127 | merged |
+| A.C.02 | yes | .120 | merged |
+| A.C.04 | no | .114 | merged |
+| A.C.05 | no | .082, .130 | merged |
+| A.C.06 | yes | .001, .014, .075 | merged |
+| A.C.09 | no | .060 | merged |
+| A.C.10 | yes | .050, .120 | merged |
+| A.C.12 | yes | .092, .083, .119 | merged |
+| A.C.13 | yes | .081, .082 | merged |
+| A.C.14 | no | .092 | merged |
+| A.C.15 | yes | .102, .130 | merged |
+| A.C.16 | yes | .120 | merged |
+| A.C.17 | yes | .100, .102 | merged |
+| A.C.18 | no | .016 | merged |
+| A.S0930.01 | no | .041 | merged |
+| A.S0930.05 | no | .041, .092, .093, .115 | merged |
+| A.S0930.06 | yes | .014, .060, .093, .094, .115, .130 | merged |
+| A.S0930.15 | no | .119 | merged |
+| A.S0930.19 | yes | .088, .130 | merged |
+| A.S0930.28 | no | .050, .092, .117, .119 | merged |
+| A.S0930.29 | yes | .050, .061, .065, .088, .102, .119 | merged |
+| A.S0930.30 | yes | .119, .130 | merged |
+| A.S0930.39 | no | .092, .117, .119 | merged |
+| A.S0930.40 | yes | .061, .065, .067, .083, .088, .119 | merged |
+| A.S0930.41 | yes | .119 | merged |
+| A.SDEP.03 | no | .001 | merged |
+| A.SDEP.08 | yes | .131 | merged |
+| A.SDEP.15 | no | .030 | merged |
+| A.SDEP.17 | no | .030, .131 | merged |
+| A.U0.01 | no | .123 | merged |
+| A.U0.07 | no | .010, .015, .038, .071, .100 | merged |
+| A.U0.08 | no | .111 | merged |
+| A.U0.18 | yes | .007, .021, .064, .076, .080 | merged |
+| A.U0.21 | yes | .133 | merged |
+| A.U0.27 | yes | .130, .131, .132, .134 | merged |
+| A.U0.28 | yes | .068 | merged |
+| A.U0.31 | no | .030 | merged |
+| A.U0.35 | yes | .072, .073, .076 | merged |
+| A.U0.36 | yes | .129, .131 | merged |
+| A.U1.04 | yes | .111 | merged |
+| A.U1.05 | yes | .112 | merged |
+| A.U1.06 | yes | .113 | merged |
+| A.U1.07 | yes | .125 | merged |
+| A.U1.13 | no | .113 | merged |
+| A.U1.14 | no | .111 | merged |
+| A.U1.16 | no | .112 | merged |
+| A.U1.22 | no | .112 | merged |
+| A.U1.24 | no | .111 | merged |
+| A.U1.25 | no | .111 | merged |
+| A.U1.27 | yes | .131 | merged |
+| A.U10.09 | yes | .119 | merged |
+| A.U10.30 | yes | .038 | merged |
+| A.U10.34 | no | .100 | merged |
+| A.U10.37 | no | .135 | merged |
+| A.U10.38 | no | .115, .134, .135 | merged |
+| A.U10.40 | no | .078, .080, .086, .101, .103, .135 | merged |
+| A.U10.41 | no | .081 | merged |
+| A.U10.43 | no | .133, .135 | merged |
+| A.U10.44 | no | .135 | merged |
+| A.U11.06 | no | .127 | merged |
+| A.U11.24 | no | .121 | merged |
+| A.U12.18 | no | .064 | merged |
+| A.U13.R02 | yes | .064, .117, .122 | merged |
+| A.U14.01 | no | .013 | blast-only (carried) |
+| A.U14.02 | yes | .119, .127 | merged |
+| A.U14.03 | yes | .017 | holds (no edit) |
+| A.U14.08 | yes | .131 | merged |
+| A.U14.16 | yes | .131 | merged |
+| A.U15.07 | no | .130 | merged |
+| A.U15.12 | no | .064 | merged |
+| A.U15.13 | no | .064 | merged |
+| A.U15.20 | no | .117 | merged |
+| A.U15.25 | no | .064 | merged |
+| A.U16.01 | no | .116, .131 | holds (no edit) |
+| A.U16.R01 | no | .122 | merged |
+| A.U16.07 | no | .116, .133 | merged |
+| A.U18.01 | no | .062, .072 | merged (gap carried as change) |
+| A.U18.R01 | no | .076, .096, .122 | merged |
+| A.U18.02 | no | .062 | blast-only (carried) |
+| A.U18.04 | no | .133 | merged |
+| A.U18.06 | no | .133 | merged |
+| A.U18.10 | no | .078 | holds (no edit) |
+| A.U18.14 | no | .080 | blast-only (carried) |
+| A.U18.16 | no | .078 | merged |
+| A.U18.17 | no | .131 | merged |
+| A.U18.19 | no | .079 | blast-only (carried) |
+| A.U18.36 | no | .076, .095 | merged |
+| A.U18.38 | no | .073 | holds (no edit) |
+| A.U18.40 | no | .133 | merged |
+| A.U19.05 | no | .131 | merged |
+| A.U19.08 | no | .081 | merged (gap carried as change) |
+| A.U19.14 | no | .050 | blast-only (carried) |
+| A.U19.17 | no | .030 | merged |
+| A.U19.20 | no | .072, .074, .081, .087 | merged |
+| A.U19.23 | no | .081, .082, .130, .132 | merged |
+| A.U2.03 | yes | .076, .078, .080, .081, .086, .095 | merged |
+| A.U2.07 | no | .081, .086 | merged |
+| A.U2.08 | no | .051, .116 | merged |
+| A.U2.09 | no | .116 | merged |
+| A.U2.12 | no | .114, .121 | merged |
+| A.U2.14 | no | .076 | merged |
+| A.U2.15 | no | .078, .080, .095 | merged |
+| A.U2.16 | no | .133 | merged |
+| A.U2.19 | no | .081 | merged |
+| A.U2.20 | no | .115 | merged |
+| A.U2.23 | yes | .114, .116, .135 | merged |
+| A.U20.06 | no | .133 | merged |
+| A.U20.11 | no | .134 | merged |
+| A.U20.33 | no | .039 | merged |
+| A.U21.14 | no | .075 | merged |
+| A.U21.19 | no | .112, .126 | merged |
+| A.U21.20 | no | .021 | blast-only (carried) |
+| A.U21.22 | no | .104 | blast-only (carried) |
+| A.U21.23 | no | .112 | merged |
+| A.U21.24 | no | .125 | merged |
+| A.U21.26 | no | .125 | merged |
+| A.U21.27 | no | .125 | merged |
+| A.U21.28 | no | .018, .126 | merged |
+| A.U22.03 | no | .086 | withdrawn (OR126.a (4)) |
+| A.U24.13 | no | .035 | merged |
+| A.U24.34 | no | .030 | merged |
+| A.U24.35 | no | .030 | merged |
+| A.U24.38 | no | .030 | merged |
+| A.U24.40 | no | .030 | merged |
+| A.U24.60 | no | .030 | merged |
+| A.U25.25 | no | .038 | merged |
+| A.U25.31 | no | .030 | merged |
+| A.U25.42 | no | .030 | merged |
+| A.U25.44 | no | .038, .091 | merged |
+| A.U25.51 | no | .030 | merged |
+| A.U25.61 | no | .035 | merged |
+| A.U25.62 | no | .038 | merged |
+| A.U25.63 | no | .030 | merged |
+| A.U26.01 | yes | .001, .005, .010, .037, .068, .069, .071, .081, .084, .087, .110, .125, .126 | merged |
+| A.U26.02 | no | .010, .104 | holds (no edit) |
+| A.U26.03 | yes | .001, .060, .094, .123, .126, .132 | merged |
+| A.U26.04 | yes | .072, .124 | merged |
+| A.U26.05 | yes | .001, .005, .091, .092, .121 | merged |
+| A.U26.06 | no | .073, .081, .130 | merged |
+| A.U26.07 | yes | .044, .126, .130 | merged |
+| A.U26.08 | no | .130 | merged |
+| A.U26.09 | yes | .001, .002, .065, .086, .126, .130 | merged |
+| A.U26.10 | no | .069, .087, .113 | merged |
+| A.U26.11 | no | .001, .114, .126 | merged |
+| A.U26.12 | yes | .006, .131 | merged |
+| A.U26.13 | yes | .006, .011, .012, .127 | merged |
+| A.U26.14 | yes | .001, .002, .014, .104, .126, .130 | merged |
+| A.U26.15 | yes | .072, .080, .086, .088 | merged |
+| A.U26.16 | no | .121 | merged |
+| A.U26.17 | no | .096, .127 | merged |
+| A.U26.18 | no | .121 | merged |
+| A.U26.19 | yes | .096, .121 | merged |
+| A.U26.20 | yes | .081 | merged |
+| A.U26.21 | yes | .005, .007, .020, .022, .112 | merged |
+| A.U26.22 | yes | .006, .007, .012, .041, .055, .050, .063, .064, .068, .071, .074, .076, .077, .079, .081, .083, .086, .088, .093, .094, .095, .116, .123 | merged |
+| A.U26.23 | yes | .010, .041, .065, .074, .088, .134 | merged |
+| A.U26.24 | no | .121 | merged |
+| A.U26.25 | no | .127 | merged |
+| A.U26.26 | yes | .016, .074, .095, .101, .131 | merged |
+| A.U26.27 | yes | .006, .060, .095, .120, .125 | merged |
+| A.U26.28 | yes | .067, .083, .102, .119 | merged |
+| A.U26.29 | yes | .007, .015, .042, .064, .067, .068, .076, .078, .079, .080, .083, .084, .088, .089, .095, .127 | merged |
+| A.U26.30 | yes | .131 | merged |
+| A.U26.31 | no | .003, .005 | merged |
+| A.U26.32 | yes | .065, .130, .133 | merged |
+| A.U26.34 | yes | .096, .101, .122 | merged |
+| A.U26.35 | no | .001, .002, .040, .074, .110, .126 | merged |
+| A.U26.36 | yes | .002, .089, .126 | merged |
+| A.U26.37 | yes | .011, .125 | merged |
+| A.U26.38 | yes | .007, .023, .112, .120 | merged |
+| A.U26.39 | yes | .002, .003, .071, .073, .124 | merged |
+| A.U26.40 | yes | .072, .078, .129 | merged |
+| A.U26.41 | yes | .007, .063, .067, .123, .131 | merged |
+| A.U26.42 | yes | .100, .101, .102, .103, .105, .114, .120, .126 | merged |
+| A.U26.43 | yes | .012, .116 | merged |
+| A.U26.44 | yes | .012, .041, .091, .121 | merged |
+| A.U26.45 | no | .007, .010, .037, .038, .080, .093, .103, .111, .114 | merged |
+| A.U26.46 | yes | .111, .120 | merged |
+| A.U26.47 | yes | .016, .035, .065, .077, .088 | merged |
+| A.U26.48 | no | .041, .046, .069, .087, .132 | merged |
+| A.U26.49 | yes | .007, .010, .021, .041, .043, .064, .071, .080, .081, .084, .088, .105, .121 | merged |
+| A.U26.50 | no | .061, .064 | merged |
+| A.U26.51 | no | .063, .064, .068, .069, .071, .074, .076, .083, .084, .086, .087, .093, .095, .101 | merged |
+| A.U26.52 | yes | .068, .074, .081 | merged |
+| A.U26.53 | yes | .084 | merged |
+| A.U26.54 | yes | .061, .064, .074, .093 | merged |
+| A.U26.55 | yes | .036, .072, .077, .078, .129 | merged |
+| A.U26.56 | yes | .024, .045, .072, .079, .129 | merged |
+| A.U26.57 | yes | .101, .103, .133 | merged |
+| A.U26.58 | no | .041 | merged |
+| A.U26.59 | no | .115, .133 | merged |
+| A.U26.60 | yes | .012, .013, .113, .127 | merged |
+| A.U26.61 | no | .121 | merged |
+| A.U26.62 | no | .133 | merged |
+| A.U26.63 | yes | .072, .076, .124, .129 | merged |
+| A.U26.64 | yes | .082, .132 | merged |
+| A.U26.65 | no | .011, .013, .017, .021, .064, .071, .127, .128 | merged |
+| A.U26.66 | yes | .038, .091, .118 | merged |
+| A.U26.67 | yes | .051, .074, .076, .093 | merged |
+| A.U26.68 | yes | .012, .069, .087 | merged |
+| A.U26.70 | yes | .030, .064, .081, .087 | merged |
+| A.U26.71 | yes | .065, .072, .073, .078, .130 | merged |
+| A.U26.72 | yes | .086, .130 | merged |
+| A.U26.73 | yes | .036, .078 | merged |
+| A.U26.74 | yes | .001, .002, .003, .089, .110, .114, .126, .130 | merged |
+| A.U26.75 | yes | .011, .104, .113, .126 | merged |
+| A.U26.76 | no | .017, .030, .051, .052, .064, .068, .071, .076, .086, .093 | merged |
+| A.U26.77 | yes | .131, .133 | merged |
+| A.U26.78 | yes | .012, .061, .064, .093, .121 | merged |
+| A.U26.79 | yes | .001, .006, .011, .085, .094, .123 | merged |
+| A.U26.80 | yes | .010, .072, .074, .081, .087 | merged |
+| A.U26.81 | yes | .123 | merged |
+| A.U26.82 | yes | .061, .093, .115 | merged |
+| A.U26.83 | yes | .013, .025, .052, .080 | merged |
+| A.U26.84 | yes | .085 | merged |
+| A.U26.85 | yes | .001, .014, .060, .075, .130 | merged |
+| A.U26.86 | yes | .115, .119, .133 | merged |
+| A.U26.87 | yes | .092, .061, .093, .115, .133 | merged |
+| A.U27.12 | yes | .038, .091 | merged |
+| A.U27.13 | no | .126 | merged |
+| A.U27.15 | yes | .038, .091 | merged |
+| A.U27.19 | no | .126 | merged |
+| A.U27.29 | yes | .106 | merged |
+| A.U27.37 | yes | .010, .106 | merged |
+| A.U27.39 | no | .126 | merged |
+| A.U28.02 | no | .125 | merged |
+| A.U28.27 | no | .036 | blast-only (carried) |
+| A.U28.28 | no | .038, .100 | merged |
+| A.U28.29 | no | .071 | blast-only (carried) |
+| A.U28.35 | no | .103 | blast-only (carried) |
+| A.U29.01 | no | .076, .129 | holds (no edit) |
+| A.U3.04 | no | .116 | merged |
+| A.U3.06 | no | .051, .095 | merged |
+| A.U30.07 | no | .064 | merged |
+| A.U30.18 | no | .117 | merged |
+| A.U30.20 | no | .069 | holds (no edit) |
+| A.U31.01 | no | .117 | merged |
+| A.U31.04 | yes | .068 | merged |
+| A.U31.05 | no | .012, .117 | merged |
+| A.U31.07 | no | .083 | merged |
+| A.U32.01 | yes | — | blast-only: the runbook lands in README.md, not here |
+| A.U33.07 | no | .042, .116 | merged |
+| A.U33.08 | yes | .124, .127 | merged |
+| A.U33.09 | no | .050, .074 | merged |
+| A.U35.05 | yes | .016, .091, .060, .074, .075 | merged |
+| A.U35.09 | yes | .064 | merged |
+| A.U35.21 | no | .092, .117 | merged |
+| A.U35.22 | no | .115, .133 | merged |
+| A.U35.40 | yes | .050, .052, .068, .131 | merged |
+| A.U35.49 | yes | .092, .121 | merged |
+| A.U35.50 | yes | .064 | merged |
+| A.U35.51 | yes | .002, .130 | merged |
+| A.U36.001 | yes | .123 | merged |
+| A.U36.002 | no | .116, .134 | merged |
+| A.U36.004 | yes | .134 | merged |
+| A.U36.005 | yes | .116 | merged |
+| A.U36.007 | no | .126 | merged |
+| A.U36.008 | yes | .110, .126, .131 | merged |
+| A.U36.010 | no | .104 | blast-only (carried) |
+| A.U36.019 | no | .133 | merged |
+| A.U36.022 | no | .133 | holds (no edit) |
+| A.U36.023 | no | .035 | merged |
+| A.U36.036 | no | .113 | merged |
+| A.U36.512 | yes | .037, .074 | merged |
+| A.U36.522 | no | .112 | merged |
+| A.U36.523 | no | .112 | merged |
+| A.U36.532 | no | .017, .069, .115, .132 | merged |
+| A.U36.539 | no | .093, .111 | blast-only (carried) |
+| A.U36.543 | no | .118 | merged |
+| A.U36.544 | yes | .020, .030, .037, .050, .064, .068, .072, .076, .078, .079, .081, .084, .095, .126, .129, .131, .134 | merged |
+| A.U36.546 | no | .112 | blast-only (carried) |
+| A.U36.547 | yes | .126 | merged |
+| A.U36.548 | yes | .127, .131, .132, .133 | merged |
+| A.U37.04 | yes | — | blast-only: U37 checks this file as the bench-fact home |
+| A.U37.05 | no | .123 | merged |
+| A.U4.04 | no | .102 | merged |
+| A.U4.07 | yes | .065, .086, .133 | merged |
+| A.U4.08 | yes | .002, .130 | merged |
+| A.U5.02 | no | .134 | merged |
+| A.U6.01 | no | .037 | blast-only (carried) |
+| A.U6.21 | no | .079 | merged (gap carried as change) |
+| A.U6.25 | no | .037 | blast-only (carried) |
+| A.U7.01 | no | .110 | merged (pointer) |
+| A.U7.13 | yes | .003, .004, .126, .130 | merged |
+| A.U7.14 | no | .123, .126, .130 | merged |
+| A.U7.15 | yes | .064, .071, .076, .081, .095, .131 | merged |
+| A.U7.16 | yes | .093, .115 | merged |
+| A.U7.17 | yes | .100 | merged |
+| A.U7.18 | no | .123, .126 | merged |
+| A.U7.19 | no | .100 | holds (no edit) |
+| A.U7.20 | no | .055 | merged |
+| A.U7.22 | no | .016 | merged |
+| A.U7.23 | no | .016, .035 | merged |
+| A.U7.24 | no | .063, .064, .068, .069, .071, .074, .076, .083, .084, .086, .087, .093, .095 | merged |
+| A.U7.25 | yes | .133 | merged |
+| A.U8.05 | yes | .015, .017, .050, .069 | merged |
+| A.U8.08 | no | .012 | blast-only (carried) |
+| A.U8.15 | yes | .038 | withdrawn (tag only; the file is rewritten) |
+| A.U8C.01 | no | .035 | merged |
+| A.U8C.25 | no | .030 | merged |
+| A.U8C.44 | yes | .062 | merged |
+| A.U8C.45 | yes | .064 | merged |
+| A.U8C.46 | yes | .067, .068 | merged |
+| A.U8C.47 | yes | .069 | merged |
+| A.U8C.48 | yes | .071, .072, .073 | merged |
+| A.U8C.49 | yes | .074 | merged |
+| A.U8C.50 | yes | .076, .077, .078, .079, .080, .081 | merged |
+| A.U8C.51 | yes | .084 | merged |
+| A.U8C.52 | yes | .086 | merged |
+| A.U8C.53 | yes | .087 | merged |
+| A.U8C.54 | yes | .093 | merged |
+| A.U8C.55 | yes | .095 | merged |
+| A.U8C.56 | yes | .020, .021, .025 | merged |
+| A.U8C.57 | yes | .007 | merged |
+| A.U8C.71 | no | .035 | merged |
+| A.U8C.72 | no | .035 | merged |
+| A.U8C.73 | no | .035, .069 | merged |
+| A.U8C.77 | no | .038 | merged |
+| A.U8C.86 | no | .035 | merged |
+| A.U8C.100 | yes | .050 | merged |
+| A.U8C.112 | yes | .011, .013, .015, .017, .128, .135 | merged |
+| A.U8C.113 | yes | .030 | merged |
+| A.U8C.114 | yes | .038 | merged |
+| A.U8C.115 | yes | .101 | merged |
+| A.U8C.116 | yes | .103, .114 | merged |
+| A.U8C.117 | yes | .104 | merged |
+| A.U8C.118 | yes | .036 | merged |
+| A.U8C.119 | yes | .040, .126, .135 | merged |
+| A.U8C2.16 | yes | .064 | merged |
+| A.U8C2.17 | yes | .068 | merged |
+| A.U8C2.18 | yes | .069 | merged |
+| A.U8C2.19 | yes | .072 | merged |
+| A.U8C2.20 | yes | .074 | merged |
+| A.U8C2.21 | yes | .076, .077, .079, .080, .081 | merged |
+| A.U8C2.22 | yes | .086 | merged |
+| A.U8C2.23 | yes | .095 | merged |
+| A.U8C2.24 | yes | .021, .025 | merged |
+| A.U8C2.25 | yes | .007 | merged |
+| A.U8C2.30 | no | .035 | merged |
+| A.U8C2.33 | no | .038 | merged |
+| A.U8C2.47 | yes | .015 | merged |
+| A.U8C2.48 | yes | .101, .135 | merged |
+| A.U8C2.49 | yes | .102, .135 | merged |
+| A.U9.03 | no | .101 | merged |
+| A.U9.09 | no | .086, .133 | merged |

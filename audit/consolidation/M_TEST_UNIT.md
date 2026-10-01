@@ -59,6 +59,11 @@ test change (the product clusters carry those items as "→ A-ID (TEST_UNIT)").
   `TS` from counting (M.SRC_SENS.083, .089-.091).
   The NTP client's sync success sets the one-way flag; the after-each hook resets it (TEST_HELP gap, "Gaps"), so no
   test inherits another's sync.
+- **Deferred work never outlives a `run()` call** (M.TEST_HELP.043 (b): the shared `run()` cancels every task the call
+  created and left unfinished): a test that inspects a file, `_cache` or a flush outcome after `write_config()` (or a
+  reader/system setter that stages one) drives the write and `await <manager>.flush_pending()` inside the same
+  coroutine — the HEAD pattern of `run(write)` followed by a separate `run(flush_pending())` would await a task the
+  first call already cancelled (D-T21).
 - **`@tunable` tags** (A.U8C/A.U8C2, test-tier grammar A.U8.02): a literal a later constituent deletes (driven time
   A.U35.13/.14, the removed 5 s caps A.U35.15, the removed in-body `gc.threshold` A.U30.12/.13) takes no tag — its
   row is withdrawn (A.U35.13/.14/.15 and A.U30.12/.13 say so); every other tagged literal becomes its module constant
@@ -5032,4 +5037,331 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Unit**: U35.
 - **Depends**: M.TEST_HELP.067; M.SRC_NET.007.
 - **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_config_manager.py (→ `tests/test_asy_config_manager.py`)
+
+### M.TEST_UNIT.249 File harness: module name, shared run, write counter, code helpers
+- **From**: A.U10.37 (`import config_manager as cm` → `import asy_config_manager as cm`), A.U24.08 (`:21-22` `run`),
+  A.U4.06 (`:2324-2352` `_WriteCountingOpen` → shared), A.U0.07 (nine `from collections import namedtuple` in tests →
+  module level), A.U24.73 (`Any` sites), A.U2.07 (`:74-78` `_last_errno` reads codes by name), A.U28.28 (`:2360` inline
+  `noqa: B905` goes), A.U11.19 (`:2356` comment), A.U10.35/A.U10.18 (`:2118` comment `_config_lock`).
+- **Site**: `tests/test_config_manager.py:1-89`, `:2118`, `:2321-2362`.
+- **Change**: imports `import asy_config_manager as cm`, `from collections import namedtuple`, `from _async_harness
+  import run`, `from _error_codes import code`, `from _write_counters import WriteCountingOpen`; the local `run`, the
+  `TYPE_CHECKING` `TypeVar` and `_real_open`/`_WriteCountingOpen` go; every `_WriteCountingOpen(...)` (14 uses) →
+  `WriteCountingOpen(cm, ...)` with the same arguments. New `async def _write_flushed(mgr, data)` (`await
+  mgr.write_config(data)`, then `await mgr.flush_pending()`, returns the write's result — the convention "Deferred work
+  never outlives a `run()` call"). `_last_errno()` → `_newest_code(mgr) -> int` (same body); `_log_entry()` keeps its
+  shape, comment → "# (count, codes) of the persisted errors; warnings are asserted by the tests that expect them.",
+  the `zip()` line without its noqa (B905 joins the MicroPython-run per-file entries, A.U28.28). `bad_values: list[Any]`
+  → `list[object]`. The `:2118` comment names `_config_lock`.
+- **Resolved**: —
+- **Unit**: U11 (stages U4 counter, U10 names, U24 harness/typing, U28 noqa).
+- **Depends**: M.TEST_HELP.043, .045, .062.
+- **Blast carried by**: `pyproject.toml` B905 entry → A.U28.28 (TOOL).
+- **Kind**: test
+
+### M.TEST_UNIT.250 Schema helpers take typed input only; one file-name builder
+- **From**: A.U11.17 (`:123-127`, `:159-162` lose their `None`/`(1, 2, 3)` lines; `:142-144`, `:216-227`, `:749-751`,
+  `:759-761` go; `:129-133`, `:147-153` hold), A.U11.32 (`:93-104` hold; new `config_filename()` L1), A.U11.18 (guard
+  named: the static schema check).
+- **Site**: `tests/test_config_manager.py:93-261`, `:715-822`, `:881-893`, `:1188-1197`.
+- **Change**: as A.U11.17 lists, plus the same class at three sites the list does not name, each of which raises once
+  the guards are gone: `:719-721` (`type_or_range_error(1, ())`, wrong-length field), `:881-893` (`cfg_vals=None`/`5`
+  into `setup()`), `:1188-1197` (a five-element field record into `setup()`) go. `:815-830` (non-string name, stray
+  element) hold — no exception path. New: `test_config_filename_builds_the_one_file_name_shape` —
+  `cm.config_filename("p/", "SGP40_2") == "p/config_SGP40_2.cfg"` and `cm.config_filename("", "SYSTEM") ==
+  "config_SYSTEM.cfg"`.
+- **Resolved**: the three unnamed sites are A.U11.17's class (type-violating input that now raises); retired with the
+  guard named — `tests_scripts/test_config_schemas.py` rejects a malformed schema statically (A.U11.18, OR111.a (2)).
+- **Unit**: U11.
+- **Depends**: M.SRC_CORE.046, .047.
+- **Blast carried by**: L0 `"config_"` concatenation grep → A.U11.32 (TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.251 Numeric coercion: the private halves and the per-kind validators
+- **From**: GAP-G13 (M.SRC_CORE.047: `coerce_numeric()` → `_coerce_int()`/`_coerce_float()`; per-kind validators),
+  A.U11.S01 (read: `:265-327` tuples hold in value), A.U19.02 + A.U36.513 (`:268`, `:340` comments), A.U24.62
+  (`:322-323`), A.U0.39 (`:355`).
+- **Site**: `tests/test_config_manager.py:263-363`; new tests after it.
+- **Change**: each `cm.coerce_numeric(v, int) == (True, x)` → `cm._coerce_int(v) == x` (same for `float` →
+  `_coerce_float`), each `(False, v)` → `is None`; the identity, int↔float, `-0.0`, fractional, NaN/inf, bool and
+  wrong-type tests keep their value lists; the `type(coerced) is …` asserts stay. `:338-344` →
+  `test_checked_numeric_refuses_a_non_numeric_kind`: `cm.checked_numeric(5, ("X", "str", None, 1, 5, None)) is None`.
+  `:346-363` → `_coerce_float(2**53) == float(2**53)` and `_coerce_float(2**53 + 1) == float(2**53)`, its comment's
+  third paragraph → "Accepted risk (owner, 2026-08-24): no registered float field's bounds go near this range; this
+  build cannot reproduce the single-precision threshold." Banner `:263-270` → "# Numeric coercion (SPECIFICATION.md
+  C.10): the private halves behind checked_int()/checked_float(), / # which the webserver's pause dispatch, the
+  generated LED callback and the ISL29125 driver call." `:322-323` → "# on MicroPython bool is not an int subclass
+  (py/objbool.c), while CPython's is - type(x) is int states the rule the same way on both". New:
+  `test_checked_int_and_checked_float_return_the_typed_value_or_none` — in range → the value with its type (`5.0` for an
+  int field → `5`, `5` for a float field → `5.0`), out of range / fractional for int / wrong type → `None`, the special
+  with `check_special=True` → the value, with `False` → `None`; `checked_numeric()` dispatches the same.
+- **Resolved**: A.U19.02 renames the `:268`/`:340` callers to the webserver's dispatcher; GAP-G13's end state has three
+  callers of the per-kind validators and none of the halves outside the module — the banner names all three.
+- **Unit**: U11 (stages U0 tag line, U24 comment).
+- **Depends**: M.SRC_CORE.047.
+- **Blast carried by**: `float_boundary_2pow24.py` → GAP-G13 (HW_DEV).
+- **Kind**: test
+
+### M.TEST_UNIT.252 Range checks hold; bool comments state the platform fact
+- **From**: A.U24.62 (`:547-549`, `:692-694`; the mypy remark at `:548` stays), A.S0930.09 (read: `:556-565` hold),
+  A.U11.S01 (read).
+- **Site**: `tests/test_config_manager.py:366-830`.
+- **Change**: comments only: `:547` and `:692-694` say "on MicroPython bool is not an int subclass (py/objbool.c), while
+  CPython's is — `type(x) is int` states the rule the same way on both"; `:548`'s trailing mypy remark stays. Every
+  `type_or_range_error()`/`check_cfg_get_default()` assertion holds (the contract is unchanged, M.SRC_CORE.047), except
+  the removals of M.TEST_UNIT.250.
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: —
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.253 `setup()`: a missing file writes nothing; error history by code
+- **From**: A.U11.19 (`:838-846`, `:1074-1126`, `:1347-1356`, `:2395-2406`; new L1s), A.U2.07 (`:2141-2205` counts →
+  codes), A.U14.11 + A.SDEP.08 (`:929-935` comment), A.U35.37 (read: first-boot W24 retired, checked landed).
+- **Site**: `tests/test_config_manager.py:833-1360`, `:2135-2205`, `:2395-2406`.
+- **Change**: `:838` → `test_configmanager_serves_defaults_without_a_file_when_missing`: valid, `get_dict()` the four
+  defaults, `os.stat(path)` raises `ENOENT`, no persisted entry. The four special-only tests `:1074-1116` assert after
+  `run(_write_flushed(mgr, {<one stored field>: <changed value>}))` on a schema adding one ordinary field (the file
+  then exists and lacks the special key), `get_dict([special])` still `None`. `:1118` → `…entirely_special_only_
+  creates_no_file`: no file after setup and after `write_config({"Special": 3})`, no persisted entry. `:1347` → no
+  write attempted, no persisted entry, defaults served. `:2395` writes the valid file by hand instead of "creates it".
+  `:1200` (non-string field name): the file appears only after `run(_write_flushed(mgr, {123: 6}))` and reads `{"123":
+  6}`; `get_dict([123]) == {123: 6}`, `get_dict(["123"])` is `None`. `:1449` (cache after delete): the file is created
+  by a flushed change first, then removed out of band; reads serve the cache. `:929-935` → "# MicroPython's json.load()
+  pairs tokens in order (Part F.1), re-confirmed on the pinned <pin version> interpreter; distinct from the
+  "unterminated" case / # (fixed upstream in 2025, commit 9ef16b466, which only covers a missing closing brace or
+  bracket)." (second block stays). `:2157` asserts one `code("E", "CFG_PATH_IS_DIR")`; `:2173` adds `code("E",
+  "CFG_NOT_VALID")` (ErrCount 2); `:2189` one `code("W", "CFG_FILE_JSON")`. New: `test_a_missing_file_costs_no_write_
+  until_the_first_change` (`WriteCountingOpen(cm)`: zero writes through setup and an unchanged PUT, one write of the
+  defaults plus the change on the first changing PUT, file content checked).
+- **Resolved**: —
+- **Unit**: U11 (stages U2 codes, U14 comment; the version stamp with the pin move, U0/U37).
+- **Depends**: M.SRC_CORE.043.
+- **Blast carried by**: `tests/test_base_classes.py:1013-1016, 1449-1452` → M.TEST_UNIT.229, .230 (this file's base
+  counterpart, merged there); SPEC F.1 paragraph → A.U14.11 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.254 `setup()`: an unreadable file is never overwritten
+- **From**: A.U11.20 (`:2275-2298`; new L1s), A.U35.43 (2) (`:869-878` goes: a non-string filename).
+- **Site**: `tests/test_config_manager.py:869-878`, `:2275-2298`; new tests.
+- **Change**: `:869-878` goes (typed `str` filename; guard: mypy on every constructor call, G5/R18). `:2275` →
+  `…memoryerror_from_json_load_serves_defaults_and_keeps_the_file`: valid, defaults served, the file still holds
+  `{"Count": 7}`, one `code("W", "CFG_FILE_UNREADABLE")`, `mgr.writable is False`, `write_config({"Count": 8}) == (False,
+  {})`. New: `test_an_eio_on_stat_or_open_leaves_the_file_untouched` — `cm.os` replaced by a module whose `stat` raises
+  `OSError(5)`, then (second case) `cm.open` raising `OSError(5)` for reads (both restored in `finally`): zero write-mode
+  opens, file bytes unchanged, one W22, defaults served, `write_config()` → `(False, {})`.
+- **Resolved**: —
+- **Unit**: U11.
+- **Depends**: M.SRC_CORE.043.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.255 Readers: exact-type getters, one CONTRACT entry per refusal
+- **From**: A.U11.29 (`:1534-1540` inverts; new L1s; `:1496-1532`, `:1542-1552` hold), A.U3.05 (refusals persist one
+  24), A.U11.17 (`:1572-1583` goes), A.U35.43 (2) (`:1462-1470` goes).
+- **Site**: `tests/test_config_manager.py:1359-1584`.
+- **Change**: `:1496`, `:1504`, `:1523` keep `None` and assert one `code("E", "CONTRACT")` entry (comments → "# a str value
+  is not an int/float"); `:1534` → `test_get_str_values_refuses_a_non_str_value`: `get_str_values(_VAL_INT) is None` plus
+  one CONTRACT; `:1542` comment → "# the stored value's exact type is checked (a bool field holding a str is refused)"
+  plus one CONTRACT; `:1554` (unknown key) asserts one CONTRACT. `:1462` and `:1572` go (typed keys; guard: mypy). New:
+  `test_get_int_values_never_truncates_a_float` — a float field holding `2.5` read by `get_int_values` → `None`, holding
+  `2.0` → `[2]`; a bool field → `None`.
+- **Resolved**: —
+- **Unit**: U11 (stage U3 entries).
+- **Depends**: M.SRC_CORE.048.
+- **Blast carried by**: caller-module L1 (one entry in `CFGMGR_<name>`, none in the module) → A.U3.05 (base/driver
+  files' sections).
+- **Kind**: test
+
+### M.TEST_UNIT.256 `write_config()`: own schema, compare-before-write, stored-form floats
+- **From**: A.U11.24 (62 second-argument sites; `:1826-1836` goes), A.U11.25 (`:1900-1911` goes), A.U4.01 (`:1813-1823`
+  holds; outcome-row L1s), A.U11.21 (`_stored_float` L1), A.U2.07 (`:1988` 14 → CFG_FILE_WRITE), A.U35.43 (2) (read).
+- **Site**: `tests/test_config_manager.py:1586-2133`.
+- **Change**: every `write_config(data, <schema>)` loses its second argument (no test's outcome depends on a narrower
+  schema: each passes a sub-schema of the manager's own records, grep). `:1813` asserts `(False, {})` and one
+  `code("E", "BAD_ARG")`. `:1784` simulates the drift on `_cache` (`del mgr._cache["Count"]`), the file no longer read.
+  `:1914` writes the corrupted file by hand after setup, then `_write_flushed` → "Valid", file holds 7. `:1949` drops
+  `os.remove(path)` (no file after a missing-file setup), its write/read/flush run as one coroutine and it asserts
+  `code("E", "CFG_FILE_WRITE")`. Tests reading the file or `_cache` after a write (`:1638`, `:1655`, `:1703`, `:1736`,
+  `:1762`, `:1860`, `:1931`, `:2117`) do so through `_write_flushed` or one coroutine ending in `flush_pending()`.
+  New: `test_compare_before_write_outcome_rows` (unknown key, type error, range error, `always` key, missing current key,
+  equal at resolution, different at resolution, int-for-float coercion — each row's outcome and returned value) and
+  `test_compare_before_write_refuses_a_non_object` (`None`, `5`, `"abc"`, `[…]` → `None`);
+  `test_a_float_equal_in_stored_form_is_unchanged` (`cm._stored_float` replaced by a 3-decimal round, restored in
+  `finally`: `write_config({"Offset": 1.23456})` stages `1.235`, the repeat answers "Unchanged" with zero writes).
+- **Resolved**: A.U35.43 (2) removes "the tests passing … a non-dict `data`" while A.U4.01 keeps `:1813` "through the
+  `None` sentinel": the product keeps the branch (`compare_before_write()` returns `None` and `write_config()` logs
+  BAD_ARG, M.SRC_CORE.044), so the test holds as A.U4.01 says.
+- **Unit**: U11 (stages U2 codes, U4 primitive rows).
+- **Depends**: M.SRC_CORE.044, .047.
+- **Blast carried by**: L3 float round trip → A.U11.21 (HW_DEV).
+- **Kind**: test
+
+### M.TEST_UNIT.257 Deferred flush: create then stage, commit, supersede, serialise first
+- **From**: A.U11.22 (task-creation failure L1), A.U11.28 (equal snapshot opens nothing; deferred `create_task` failure;
+  `:1736-1782` hold), A.U35.43 (1) (supersede L1), A.U11.23 (`_MemoryErrorJson.dumps`; `:2239-2272`, `:2301-2320`; serialise-
+  first L1), A.U10.20 (unserialisable snapshot L1), A.U11.19 (`:2301` starts from a readable file).
+- **Site**: `tests/test_config_manager.py:1729-1782`, `:2206-2320`; new tests.
+- **Change**: `_MemoryErrorJson` gains `dumps(obj)` raising on `raise_on_dump` (`dump` stays for symmetry of the
+  fake; comment names both). `:2239`: write and flush in one coroutine under the fault; no file exists afterwards
+  (serialisation fails before the open: `os.stat` → ENOENT), `_cache == {"Count": 8}`, one `code("E",
+  "CFG_FILE_WRITE")`; then "Unchanged" for 8 and a flushed 9 writes `{"Count": 9}` (the truncation comment goes).
+  `:2301` starts from a readable file holding an out-of-range `Count`: the repair's `dumps` fails, valid, defaults
+  served, newest code CFG_FILE_WRITE, file bytes unchanged. New: `test_a_failed_task_creation_stages_nothing` —
+  `cm.asyncio.create_task` replaced by a raiser of `MemoryError` (restored in `finally`), for `defer=False` and
+  `defer=True`: `(False, {})`, `get_dict()` the old value, `_staged is None`, one `code("E", "ALLOC")`;
+  `test_a_flush_equal_to_the_cache_opens_nothing`; `test_two_deferred_writes_then_one_commit_write_the_second_once`
+  (`WriteCountingOpen`: one write holding the second value, the first task returns without writing);
+  `test_flush_pending_releases_an_uncommitted_deferred_write`; `test_a_failed_serialisation_leaves_the_file_byte_identical`
+  (pre-existing file, `dumps` raising: bytes equal, zero write-mode opens); `test_an_unserialisable_snapshot_ends_the_
+  flush_task_with_one_unexpected_entry` (`mgr._cache["Name"] = object()` poked, then a valid flushed change: one
+  `code("E", "UNEXPECTED")`, `_pending_flush is None`).
+- **Resolved**: —
+- **Unit**: U11.
+- **Depends**: M.SRC_CORE.041, .044.
+- **Blast carried by**: `tests/test_base_classes.py` push/write-count L1s → M.TEST_UNIT.230;
+  `tests_scripts/test_device_script_config_flush.py` → A.U11.28 (TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.258 Write-count guarantees and the source pin
+- **From**: A.U11.19 (`:2364-2376`, `:2409-2416`, `:2419-2433`, `:2472-2493`, `:2496-2509` start from a readable file
+  with a bad key), A.U4.02 (unchanged PUT opens nothing; `:2472` extended past the reboot), A.U2.07 (`[4]`, `[14, 12, 14,
+  10]`), A.U35.43 (2) (`:2409`'s `TypeError` class), A.U11.23 (`json.dump(` count 0), A.U4.01 (source pin covers the new
+  function), A.U10.35 (`self._config_file`), A.U11.28 (read: `create_task(` count 1 holds).
+- **Site**: `tests/test_config_manager.py:2321-2541`.
+- **Change**: the five setup-write-failure tests write `{"Count": 99, "Offset": 1.5, "Name": "abc", "Enabled": true}`
+  by hand first (Count out of range → one repair write); each `(1, [4])` → `(1, [code("E", "CFG_FILE_WRITE")])`;
+  `:2409` iterates `OSError(28)`, `OSError(5)`, `MemoryError` (the `TypeError` case goes: the path is a typed `str`);
+  `:2453` → `[CFG_FILE_WRITE, BAD_ARG, CFG_FILE_WRITE, BAD_ARG]` by `code()` (alternating codes: four slots under the
+  newest-entry rule). Each write/flush pair runs as one coroutine. `:2472` continues after the fresh boot: the same
+  `{"Count": 3}` again answers "Unchanged" with zero writes (A.U4.02, no second copy of the test). `:2529`:
+  `source.count('open(self._config_file, "w")') == 2`, `source.count('"w"') == 2`, `source.count("json.dump(") == 0`,
+  `create_task(` count 1, and the forbidden-token scan also covers `compare_before_write()`'s body. New:
+  `test_an_unchanged_put_schedules_no_flush` (`_pending_flush is None`, zero writes).
+- **Resolved**: —
+- **Unit**: U11 (stages U2 codes, U4 counter).
+- **Depends**: M.SRC_CORE.043, .044; M.TEST_HELP.062.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.259 Closing for a reset, `delete_file()`, the store-level interleavings
+- **From**: A.U11.04 (closed-store L1s), A.S0930.21 (f) (`delete_file()`), A.S0930.22 (2) (config flush in flight at
+  close), A.S0930.16 (read: `:1736-1782`, `create_task(` count hold).
+- **Site**: new section after `:2135`.
+- **Change**: `test_a_closed_store_refuses_writes_and_opens_nothing` (`close_writes()`, then `write_config()` → `(False,
+  {})`, zero write-mode opens); `test_delete_file_*` — an existing file → `True`, gone; absent → `True`; `cm.os.remove`
+  raising `OSError(5)` twice → `False`, one console line, file present; raising once then succeeding → `True`, gone;
+  `write_config()` afterwards → `(False, {})`. Interleavings, each forced by a gate, never a sleep: (a) a flush held at
+  the lock (the test holds `mgr._config_lock`) when `close_writes()` + `flush_pending()` arrive — after release the
+  file holds the accepted value; (b) a `write_config()` suspended inside the lock (its logger's `err_s` gated on an
+  `asyncio.Event`, one invalid key in the request) finishes staging and its flush is the one `flush_pending()` awaits;
+  (c) a `write_config()` queued behind the held lock at close time answers `(False, {})`.
+- **Resolved**: A.S0930.22 lists `tests/test_config_manager.py` beside the system-service sequence; its (2) store
+  mechanics land here, the command-level interleavings in `tests/test_system_service.py` (as M.TEST_UNIT.048 placed
+  the FRAM half). A "gated `open` stand-in" cannot suspend (`open()` is synchronous); the lock and the logger are the
+  store's two await points inside the write path, so the gates sit there.
+- **Unit**: U11 (A.S0930 cases land with A.S0930.16, the reset unit).
+- **Depends**: M.SRC_CORE.041, .042.
+- **Blast carried by**: twin/L3/L4 reset legs → A.S0930.27-.29 (TWIN, HW_DEV, HW_BENCH).
+- **Kind**: test
+
+## tests/test_crc_checks.py (→ `tests/test_asy_crc_checks.py`)
+
+### M.TEST_UNIT.260 Names, private state, shared run, the polynomial argument
+- **From**: A.U10.37/A.U10.38 (`from asy_crc_checks import CRC8, CRC16, CRC32, CRCBase, CRCPass`), A.U10.35 + M.SRC_CORE.115
+  (attribute reads `:36, :42, :126, :132, :258, :282, :346-395, :576, :702, :725` → `_all_set`, `_poly`, `_num_bytes`,
+  `_inc_crc`), GAP-G11 + A.U35.44 (`:36`, `:42` call `_crc()` with its real polynomial — hold, gaining the argument),
+  A.U24.08 (`:17-18` `run`), A.U16.05 (`:719` comment), A.U24.73 (`Any`).
+- **Site**: `tests/test_crc_checks.py:1-42`, the attribute sites above, `:711-720`.
+- **Change**: imports as above plus `from _async_harness import run`; the local `run` and its `TypeVar` go. `:36`
+  `run(crc8._crc(data, crc8._all_set, 0x31))`, `:42` likewise. Section banners and test names read `CRCPass`/`CRCBase`
+  (`test_crc_pass_*` names unchanged). `:716` `crc8._num_bytes = 2**62`; `:719` comment names "the RegionBuffer tests"
+  (A.U16.05's rename). `:28-31` keep their vectors.
+- **Resolved**: —
+- **Unit**: U10 (stages U12 `_crc` argument with A.U12.01, U24 harness).
+- **Depends**: M.SRC_CORE.115, .116; M.TEST_HELP.043.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.261 Vectors cited to their datasheets; CRC16/CRC32 check values
+- **From**: A.U12.04 (`:27`, `:40` comments), A.U12.01 (two vector tests, the non-default-init round trip; yield tests
+  `:773-831` and `:69, :452-494, :501-525, :607-620` hold), A.U24.39 (`:360` reference values), A.U31.01 (read: the
+  stall-budget row cites this file; no change).
+- **Site**: `tests/test_crc_checks.py:26-42`, `:360-363`; new tests after `:620`.
+- **Change**: `:27` → "# SGP40 datasheet v1.2 Table 10: the CRC byte printed beside the default, minimum and maximum
+  RH/T tick words."; `:40` → "# SGP40 datasheet v1.2 Table 7's example, CRC(0xBE 0xEF) = 0x92; the SCD30 Interface
+  Description §1.1.3 gives the same.". `:360` `test_init_boundary_values_accepted` compares `add(b"x", init=0) ==
+  b"x\x41"` and `add(b"x", init=0xFF) == b"x\xed"` under the comment "# CRC-8 poly 0x31 over 0x78, MSB first: from
+  init 0x00 the register ends at 0x41, from 0xFF at 0xED." New: `test_crc16_matches_the_ccitt_false_check_value`
+  (`run(CRC16()._crc(bytearray(b"123456789"), 0xFFFF, 0x1021)) == 0x29B1`), `test_crc32_matches_the_mpeg2_check_value`
+  (`0x0376E6E7` for `b"123456789"`, `0xE55E964F` for `bytearray(256)`, `0x494A116A` for `bytearray(range(256))`, poly
+  `0x04C11DB7`, init `0xFFFFFFFF`) with A.U12.01's oracle comment, and `test_crc32_round_trips_at_a_non_default_init`
+  (`init=0x12345678`).
+- **Resolved**: —
+- **Unit**: U12 (stage U24 reference values).
+- **Depends**: M.SRC_CORE.116.
+- **Blast carried by**: phase C allocation measurement → A.U12.01 (HW_DEV).
+- **Kind**: test
+
+### M.TEST_UNIT.262 Pass mode validates bounds; an out-of-range polynomial is pure pass-through
+- **From**: A.U12.02 (pass-mode bound L1s; `:200-205` hold), M.SRC_CORE.131 (lead ruling, AC_NOTES 39: one case per
+  width).
+- **Site**: `tests/test_crc_checks.py:118-205`, `:342-363`; new tests.
+- **Change**: `:346` `test_poly_above_all_set_degrades_to_pass_mode` also asserts `base.length() == 0`. New:
+  `test_pass_mode_add_into_and_check_from_refuse_bad_bounds` — for `CRCPass()` and `CRC8(poly=None)`: `add_into(buf, 0)`,
+  `add_into(buf, -1)`, `add_into(buf, 1, start=-1)`, `add_into(bytearray(2), 3)` and the same four through
+  `check_from()` → `None`. `test_a_polynomial_above_the_width_mask_is_pure_pass_through` — per width, `CRCBase(1, 0x1FF,
+  ">B")`, `CRCBase(2, 0x1FFFF, ">H")`, `CRCBase(4, 0x1FFFFFFFF, ">L")`: `length() == 0`, `add(data)` returns `data`
+  unchanged, and `add_into(buf, 2)` on a buffer one CRC wider than the payload returns `2` with `buf` byte-identical.
+- **Resolved**: —
+- **Unit**: U12 (A.U12.02); the M.SRC_CORE.131 cases land with M.SRC_CORE.116's unit (U35).
+- **Depends**: M.SRC_CORE.117, .131.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.263 Trailing zero padding passes every check
+- **From**: A.U12.04 (new test).
+- **Site**: new test after `:620`.
+- **Change**: `test_trailing_zero_padding_passes_every_check_so_callers_pass_the_true_length` — for `CRC8`, `CRC16`,
+  `CRC32`, a payload with its CRC plus k = 1..3 zero bytes: `check(padded)` returns `padded` minus its last
+  `_num_bytes`, `check_from(padded, len(padded))` returns `len(padded) - _num_bytes`, and a `run_inc()`/`check_inc()`
+  sequence over `padded` returns the same — the documented limitation (`asy_crc_checks.py:8-10`) pinned.
+- **Resolved**: —
+- **Unit**: U12.
+- **Depends**: —
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_fakes.py (new: `tests/test_fake_timer_and_network.py` renamed)
+
+### M.TEST_UNIT.264 One fake-fidelity file: rename, the machine contract, per-fake cases
+- **From**: A.U24.16 (the rename, G2/R26 "no second fakes file"; the `Pin` cases), A.U24.17 (the file runs
+  `tests/_machine_contract.py` against `tests/machine.py`), A.U24.20 (`I2C` per bus id), A.U24.24 (RTC), A.U24.26 (UART
+  `rxbuf`), A.U24.81 (one `WLAN` object per interface), GAP-T2/T3/T5 (the fake end states the cases pin).
+- **Site**: `tests/test_fake_timer_and_network.py:1-96` (`git mv` → `tests/test_fakes.py`); new tests.
+- **Change**: docstring → "Fidelity tests for the tests/ hardware fakes other suites lean on: each case states what
+  rp2 does (the machine contract, Timer one-shots, network bounds and seeds, Pin/I2C/RTC/UART per-peripheral state);
+  a fake that drifts from silicon lets a test pass for code that fails on the board." (3 lines). The seven HEAD tests
+  hold; the restoring tails `network.country("DE")` (`:73`) and `network.hostname("SensorNode")` (`:80`) go (the
+  network fake's `reset_test_state()` restores the seeds after each test, M.TEST_HELP.007 (4)); `wlan: Any` →
+  `wlan = network.WLAN(network.STA_IF)` read through the fake's `TEST_API` (no `Any`). New:
+  `test_the_unit_machine_fake_meets_the_shared_contract` — every `_machine_contract.ALL_CHECKS` entry against `machine`
+  (the completeness test is the contract module's); `Pin` cases exactly as A.U24.16 lists (`Pin(5, Pin.IN)` clears an
+  earlier pull, `Pin(5)` changes nothing, `"GP5"`/`"GPIO5"` alias `Pin(5)`, `Pin(30)`/`Pin(1.5)` → `ValueError("invalid
+  pin")`, `Pin("GP23")` → `ValueError('unknown named pin "GP23"')`, `Pin("LED", Pin.IN, Pin.PULL_UP)` raises, open-drain
+  release reads the external level, `ALT` with `alt=Pin.ALT_I2C` recorded); `I2C` (a second `I2C(0, …)` sees the first's
+  registers and faults, a new `timeout` updates it, `reset_id(0)` empties it, `raise_on_construct` raises once); RTC
+  (`(2026, 9, 30, 0, 12, 0, 0, 99)` reads back weekday 2 and subseconds 0, a 7-tuple raises `ValueError`, `(2026, 2, 29,
+  …)` reads back 2026-03-01); `UART(0, …, rxbuf=8).rxbuf == 32`; `WLAN(STA_IF) is WLAN(STA_IF)`, `deinit()` drops both
+  links, counters reset between tests; `machine.reset()` raises `SimulatedResetError` after counting and `WDT(timeout=
+  8389)` raises `ValueError` (through the contract checks).
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: M.TEST_HELP.007, .010-.013, .021, .048.
+- **Blast carried by**: the twin runner `tests/test_digital_twin_machine.py` → A.U24.17 (TWIN); `tests_scripts/
+  test_import_placement.py` / file lists naming the old path → A.U24.16 (TSC, if any by grep).
 - **Kind**: test

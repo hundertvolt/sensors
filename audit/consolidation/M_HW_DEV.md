@@ -1065,13 +1065,16 @@ changes cite.
 ## tests_hardware/device_scripts/fram_capacity_after_full_system_build.py
 
 ### M.HW_DEV.073 Capacity check: derived logger set, scratch config, required watchdog, rig parked
-- **From**: A.U26.23 (3) (`fram_wired`/`fram_backed_loggers` rendered; hand tuple goes), A.U20.11 (blast: the L1 half
+- **From**: A.U26.23 (3) (`fram_wired`/`fram_backed_loggers` rendered; hand tuple goes), A.U20.06 (blast: setups run
+  after construction), A.U20.11 (blast: the L1 half
   reads the same key), A.U26.10 (scratch `cfg_path`), A.U20.02 (`watchdog=`), A.U26.44 (device module from `BENCH`),
   A.U26.16 (the build constructs the NeoPixel: parked in `finally`), A.U36.544 (`:1` "WP4/Topic 6's real-hardware
   capacity check" → "the real-hardware FRAM capacity check"), A.U26.68.
 - **Site**: `tests_hardware/device_scripts/fram_capacity_after_full_system_build.py:1-54`.
 - **Change**: `device = __import__(BENCH["device_module"])`; `await device.build_system(watchdog=arm(),
-  cfg_path=_SCRATCH_CFG_PATH, web_host="127.0.0.1", web_port=8080)` (M.HW_DEV.009); `_CANDIDATE_MODULE_NAMES` and its
+  cfg_path=_SCRATCH_CFG_PATH, web_host="127.0.0.1", web_port=8080)` then `await device.sysfunct.run_setups(
+  device._collect_setups())` (construction alone allocates no chunk once A.U20.06 moves the setup batch out of
+  `build_system()`; A.U20.06's blast) (M.HW_DEV.009); `_CANDIDATE_MODULE_NAMES` and its
   comment go: for each label in `BENCH["fram_wired"]`, every logger of `getattr(device, label).get_loggers()` must
   have `fram is not None`; facts `found_fram_loggers` (sorted names), `ram_only` (labels/loggers without FRAM),
   `allocated_size`, `size`; the host asserts `found == BENCH["fram_backed_loggers"]` exactly (missing/extra named) and
@@ -1496,3 +1499,635 @@ changes cite.
 - **Blast carried by**: the persistence guard (a raw `open(...,"w")` in a device script is persisting: add `write`-mode
   `open` to `_PERSISTING_DEVICE_CALLS`'s detection) → GAP-D8 (TSC).
 - **Kind**: test, hardware (Round: R3 bench [H73])
+
+## tests_hardware/flash/test_bus_electrical_timing.py
+
+### M.HW_DEV.105 Electrical/timing module: rollover moves to the bench, soak by duration, country probe added
+- **From**: A.U26.36 (`:95-138` removed: the rollover test moves to `bench/test_ticks_ms_rollover.py`), A.U26.35/A.U26.74
+  (`soak_tiers`/`SOAK_TIER_SECONDS`/`--soak-tier`/`long_soak` → `soak_durations`/`SOAK_DURATION_SECONDS`/
+  `--soak-duration`/`soak_duration`; docstring `:2-3`), A.U26.81 (the clock-stretch soak claims only the absence of
+  failure over its window), A.U26.07 (`test_scd30_real_irq_edge_drives_a_real_read` takes `scd30_measuring`), A.U26.58
+  (blast: asserts the forced drop's facts), A.C.14 (new `test_a_malformed_country_code_reaction_is_recorded` beside the
+  float test), A.U36.544/A.U33.09 (the BACKLOG item 12 citations `:99, :135` go with the moved test), A.U26.68,
+  A.U26.51 (`scd30`), A.U20.33 (B2), A.U8C.103 (`:59`; the `:107` row moves), A.U8C2.44 (moves), A.U8C.119 (blast:
+  import renamed).
+- **Site**: `tests_hardware/flash/test_bus_electrical_timing.py:1-138`.
+- **Change**: (1) Docstring → "Flash-tier tests of real bus/electrical timing no simulation reproduces, through
+  isolated-driver scripts. The clock-stretch soak needs --soak-duration." (2) `_parse_result` goes; facts asserted:
+  scheduler (`dropped >= n_timers - depth`, `all_self_healed`, `arming_span_us <= 1500`), alarm pool (`errno ==
+  ENOMEM`, `constructed` recorded through `result_note`), IRQ edge (`co2_within_deadline`), float boundary (`below_exact`,
+  `above_rounded_to == 2**24`). (3) The soak test: `@pytest.mark.soak_duration`, `duration_s =
+  SOAK_DURATION_SECONDS[request.config.getoption("--soak-duration")]`; boot/crash lines through `harness.crash_lines()`
+  plus the SCD30/`ETIMEDOUT` filter; the skip text names `--duration`; its comment states it proves absence of failure
+  over the window only. (4) `:95-138` (`_WRAP_FLOOR_MS`, the rollover test, its comments) deleted; their tags move with
+  the test (HW_BENCH). (5) `test_a_malformed_country_code_reaction_is_recorded(board)`: runs
+  `wifi_country_code_reaction.py`, asserts every step reported and `restored == "ok"`, records the facts, then
+  `restore_board_to_serving()`. (6) Dividers "Item N - …" → one `#` line each naming the subject; `_IRQ_SCRIPT_TIMEOUT_S
+  = 30.0`.
+- **Resolved**: A.U8C.103's `:107` and A.U8C2.44's rows tag lines A.U26.36 moves: the tags go with them to the bench
+  module (B4).
+- **Unit**: U26 (A.C.14's test is a phase-C instrument written before R1, U26 form).
+- **Depends**: M.HW_BENCH (soak durations, `bench/test_ticks_ms_rollover.py`), M.HW_DEV.020, .106-.110.
+- **Blast carried by**: the rollover test and its two tag rows → A.U26.36 (HW_BENCH); twin record: IRQ edge, scheduler
+  and pool `exception` ("needs the rp2 scheduler/alarm pool/GPIO") → M.HW_DEV.010.
+- **Kind**: test, hardware (Round: R1 [H48, H51]; soak R5)
+
+## tests_hardware/device_scripts/scheduler_saturation_drop.py
+
+### M.HW_DEV.106 The scheduler probe forces the drop and counts it
+- **From**: A.U26.58, A.U26.77 (README "a starting guess" goes with it), A.U35.28 (blast: the load cell names it),
+  A.U8C.85, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/scheduler_saturation_drop.py:1-57`.
+- **Change**: as A.U26.58: `_N_TIMERS = 12` periodic 1 ms timers armed back to back; three straight-line
+  `time.sleep_us(900)` right after arming (no branch between them, so the VM drains nothing); `arming_span_us`
+  reported; counts read once: `dropped = sum(1 for c in counts if c == 0)` with `depth` from `BENCH` (rendered from the
+  pinned `ports/rp2/mpconfigport.h`); then the 500 ms heal window and every timer firing again; facts `dropped`,
+  `depth`, `n_timers`, `arming_span_us`, `counts_busy`, `counts_heal`, `all_self_healed`; header states what it forces
+  and why (≤ 3 lines; "Widen BUSY_WAIT_MS if …" goes). `_TIMER_PERIOD_MS` row reads 1; `_HEAL_WINDOW_MS = 500`;
+  `l3.scheduler_saturation_drop_busy_wait_ms` withdrawn (the busy-wait is now three 900 µs calls,
+  `l3.scheduler_saturation_drop_busy_step_us = 900`).
+- **Resolved**: A.U8C.85 tags the HEAD constants A.U26.58 replaces; the rows follow the new form.
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001/.002.
+- **Blast carried by**: twin fidelity row "scheduler queue not modelled" → A.U26.58 (TWIN); README `:514-515` → A.U26.77
+  (HW_BENCH).
+- **Kind**: test, hardware (Round: R1 [H48])
+
+## tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py
+
+### M.HW_DEV.107 Alarm-pool exhaustion: header cites F.1, the count is `len(timers)`
+- **From**: A.U28.28 (6) (`for _ in range(64):`, reports read `len(timers)`, the `B007` noqa goes), A.U14.12 (header
+  "confirming … Part F.2's claim" → F.1; `constructed` recorded with the image's other pool users), A.U26.58/A.C.03 (KEEP
+  as a pin-move check), A.U25.01/A.U35.28 (blasts: hold), A.U26.68.
+- **Site**: `tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py:1-28`.
+- **Change**: header → "…confirming SPECIFICATION.md Part F.1 against real silicon; `constructed` is the free alarms at
+  that moment, not the pool size."; loop `for _ in range(64):` with a one-line comment naming 64 as the upper bound;
+  facts `constructed` (`len(timers)`), `errno`, `raised`; `finally` deinit kept; `done()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.002.
+- **Blast carried by**: BACKLOG owed row "record `constructed=N`" → A.U14.12 (DOCS); host → M.HW_DEV.105.
+- **Kind**: test, hardware (Round: R1 [H48])
+
+## tests_hardware/device_scripts/scd30_real_irq_edge.py
+
+### M.HW_DEV.108 SCD30 RDY edge on the TOML's pin, new constructor shape
+- **From**: A.U5.02 (`SCD30_Reader(i2c1, 11, trigger_sec=…, max_module_error=999, fram=None, debug=None)` → the
+  `log`-tail shape), A.U10.43 (`trigger_sec` unit suffix), A.U10.44 (`read_loop`/`scd_init_irq` → `_<what>_loop` names,
+  found by mypy), A.U26.44 (bus and `irq_pin` from `BENCH`), A.U26.07 (runs under `scd30_measuring`), A.U8C.83,
+  A.U26.68.
+- **Site**: `tests_hardware/device_scripts/scd30_real_irq_edge.py:1-48`.
+- **Change**: `reader = SCD30_Reader(i2c, BENCH["instances"]["scd30"]["irq_pin"], trigger_s=_TRIGGER_S,
+  max_module_error=999)`; task coroutines by their end names; `_FAST_PATH_DEADLINE_S = 5.0`, `_POLL_MS = 100`; facts
+  `co2`, `elapsed_ms`, `deadline_ms`; `done()`. Header keeps "a scope on the pin is the only certain check" (E.6.6 row
+  `scd30-rdy-irq-vs-fallback`).
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.SRC_SENS (constructor and loop names), M.HW_DEV.001/.002.
+- **Blast carried by**: host → M.HW_DEV.105.
+- **Kind**: test, hardware (Round: R1 [H48])
+
+## tests_hardware/device_scripts/float_boundary_2pow24.py
+
+### M.HW_DEV.109 The 2**24 boundary through the private float coercion
+- **From**: GAP-G13 (M.SRC_CORE: `coerce_numeric()` becomes `_coerce_int()`/`_coerce_float()`; this script calls the
+  private half), A.U10.37 (`asy_config_manager`), A.U26.58/A.C.03 (KEEP, R1), A.U14.28 (blast: an F.7 divergence row cites
+  this style of check), A.U26.68.
+- **Site**: `tests_hardware/device_scripts/float_boundary_2pow24.py:1-40`.
+- **Change**: `from asy_config_manager import _coerce_float`; below and above the boundary through it; facts
+  `below_exact`, `above_value`, `above_rounded_to_2pow24`; the comment at `:7-8` ("kept only for parity") and the
+  `sys.path.insert` go (frozen modules import without it, as the comment itself says); `done()`.
+- **Resolved**: the `sys.path` line is dead by its own comment; removed with the rewrite (agent decision AD-7).
+- **Unit**: U26 (after U11's rename).
+- **Depends**: M.SRC_CORE.047.
+- **Blast carried by**: host → M.HW_DEV.105.
+- **Kind**: test, hardware (Round: R1 [H48])
+
+## tests_hardware/device_scripts/wifi_country_code_reaction.py (new)
+
+### M.HW_DEV.110 Record the radio's reaction to malformed country codes
+- **From**: A.C.14, A.U26.20 (its predecessor script is deleted), A.U26.44 (the TOML's country for the restore),
+  A.U26.68, M.HW_DEV.004.
+- **Site**: new `tests_hardware/device_scripts/wifi_country_code_reaction.py`.
+- **Change**: as A.C.14: for `"ZZ"`, `"12"`, `"\x01\x02"`: `WLAN(STA_IF).deinit()`, `network.country(v)`, a fresh
+  `WLAN(STA_IF).active(True)`, one `scan()`; one fact per value (`set`, `radio_on`, `scan_count`, `readback`); `finally`
+  restores `BENCH`'s country and radio-on (`restored`); fed between steps; the sequence checked against
+  `extmod/network_cyw43.c` at the pinned tag before it lands; `done()`.
+- **Resolved**: —
+- **Unit**: phase C (written before R1, U26 form).
+- **Depends**: M.HW_DEV.001/.002/.004.
+- **Blast carried by**: SPEC row for the reaction → A.C.14 (SPEC); host → M.HW_DEV.105.
+- **Kind**: test, hardware (Round: R1 [H51])
+
+## tests_hardware/device_scripts/wifi_country_hostname_edge_values.py (deleted)
+
+### M.HW_DEV.111 The country/hostname edge script is deleted
+- **From**: A.U26.20, A.C.14 (its "XX" was MicroPython's own default), A.U26.45/A.U26.61 (blasts on the deleted file).
+- **Site**: `tests_hardware/device_scripts/wifi_country_hostname_edge_values.py`.
+- **Change**: deleted; the byte-bound cases move to `bench/test_network_resilience.py` (A.U26.20, HW_BENCH), the country
+  reaction to M.HW_DEV.110.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: —
+- **Blast carried by**: `_JUSTIFIED_UNMARKED` reason → A.U26.20 (TSC); twin record entry removed → A.U26.05 (TSC).
+- **Kind**: test
+
+## tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py (deleted)
+
+### M.HW_DEV.112 Both WiFi reconnect repro scripts are deleted
+- **From**: A.U26.19 (deletes both; the committed PSK leaves the tree, its history is G5/R59's U29 scan), A.U29.04 (the
+  history disposition), A.U26.61 (two of its three named feeders go with the files), A.U18.R01 (its planned L3 step
+  moves to `wifi_radio_reinit_recovery.py`, A.U26.34 (3)), A.U26.45 (`sensornode-dev`, `wozi-diag…` identifiers go with
+  the files), A.U1.06 (blast: `:41-52` broke the tool-write rules — moot), A.U5.02/A.U5.09/A.U10.43/A.U18.27/A.U18.40/
+  A.U18.42/A.U28.29/A.U8C.98/A.U8C.99/A.U8C2.43 (edits of these files: moot).
+- **Site**: `tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py`,
+  `wifi_service_reconnect_repro.py`.
+- **Change**: both files deleted (neither has a runner: "NOT part of the routine test suite", `:1`); `pyproject.toml:343`
+  (their `S106` per-file ignore) goes and `:338` reads "# S105: tests that join …"; the comment at
+  `tests_scripts/test_device_script_config_flush.py:70` names no deleted file; `tests_hardware/README.md:383-385` (the
+  Timer-fed wrapper recipe) goes.
+- **Resolved**: every other action editing these files (renames, tags, constructor shapes) is dropped: the file it
+  edits is deleted in U26, and the edits in earlier units (U5, U10, U18) are skipped rather than made and deleted, since
+  no runner exercises them (the U8C/U8C2 rows on them are withdrawn).
+- **Unit**: U26 (earlier units skip these two files: a moot edit is not made; GAP-D9 tells U5/U10/U18 executors).
+- **Depends**: M.HW_DEV.113.
+- **Blast carried by**: `pyproject.toml` lines → A.U26.19 (TOOL); README recipe → A.U26.19 (HW_BENCH); flush-test
+  comment → A.U26.19 (TSC); history scan of the PSK → A.U29.04 (SEC/TOOL); twin record entries removed → A.U26.05 (TSC).
+- **Kind**: test
+
+## tests_hardware/device_scripts/wifi_radio_reinit_recovery.py (new)
+
+### M.HW_DEV.113 The WiFi radio re-init rung on silicon, no config write
+- **From**: A.U26.34 (3), A.U18.R01 (`_recover_device()`), A.U26.10 (scratch config path), A.U26.44, A.U26.68,
+  M.HW_DEV.004.
+- **Site**: new `tests_hardware/device_scripts/wifi_radio_reinit_recovery.py`.
+- **Change**: reads the production `config_WIFI.cfg` read-only (`json.load(open(...))`), constructs `WifiService` over
+  `_SCRATCH_CFG_PATH` with its manager primed in RAM from those values (the priming pattern of
+  `isl29125_plausibility_read.py`), connects, calls `_recover_device()` and reports `reconnected`, `ip`, `elapsed_ms`
+  within the connect budget; fed throughout; no config write; `done()`. The credentials stay on the board (never
+  printed).
+- **Resolved**: A.U26.34 (3) names "its flash-tier caller" in Site and `bench/test_wifi_radio_reinit.py` (L4, the AP
+  must be up) in Change; the Change governs: the runner is the bench module (HW_BENCH).
+- **Unit**: U26 (after U18's rung).
+- **Depends**: M.SRC_NET (A.U18.R01), M.HW_DEV.001/.004/.009.
+- **Blast carried by**: `bench/test_wifi_radio_reinit.py` → A.U26.34 (HW_BENCH); README rungs table → A.U26.34
+  (HW_BENCH).
+- **Kind**: test, hardware (Round: R1 bench [H16])
+
+## tests_hardware/flash/test_memory_stress.py
+
+### M.HW_DEV.115 Heap headroom with named thresholds; soak by duration; the timing scripts' tests
+- **From**: A.U26.48 (1)(3) (every `GC_THRESHOLD` fact extracted and named in each message; `WORST_CASE_ALLOCATION`
+  imported from `heap_bounds.py`), A.U26.26 (the soak uses `boot_lines()`/`crash_lines()`; the inline marker comment
+  goes), A.U26.35/A.U26.74 (`soak_duration`), A.U31.05 (two new tests), A.U31.06 (3) (the loop-lag test), A.U30.18 (the
+  C-stack test, "U26's runner convention"), A.U30.04 (blast: the ≤ 100,000 B bound now counts the VOC algorithm — phase C
+  re-reads), A.SDEP.08 (blast: a pin move re-runs the headroom test), A.U0.34 (blast: the `GC_THRESHOLD` echo is U26's
+  code), A.U26.10 (blast: the headroom script builds over scratch), A.U26.68, A.U26.51 (`construction`), A.U20.33 (B2),
+  A.U8C.105, A.U8C2.45.
+- **Site**: `tests_hardware/flash/test_memory_stress.py:1-105`.
+- **Change**: (1) `WORST_CASE_ALLOCATION` and its two comment blocks (`:22-28`) → `from heap_bounds import
+  WORST_CASE_ALLOCATION`. (2) The headroom test: `facts = parse_facts(out)`; `thresholds = facts["gc_threshold"]` (each
+  stage) printed through `result_note` beside the `HEAP` facts; assertions `facts["used"] <= facts["max_used"]` and
+  `facts["largest_block"] >= facts["min_largest_block"]`, each message naming the threshold in force; the map checks keep
+  `heap_map.parse_labelled(out)` (the `mem_info(1)` map is a raw block the script prints between facts) with
+  `_PROBE_MAP_TOLERANCE_BLOCKS = 2`; the "archive 7F.6"/"MEASUREMENTS M2.x" history in comments `:36-38, :49-51,
+  :58-66` → the current reason in ≤ 3 lines each (the owner tag "(owner, 2026-09-19)" kept). (3) The soak test:
+  `@pytest.mark.soak_duration`, `SOAK_DURATION_SECONDS[...]`, `harness.boot_lines(lines)`/`crash_lines(lines)`.
+  (4) New tests: `test_routine_no_yield_stretches_stay_under_the_gc_term(board)` (`loop_stretch_timing.py`: every max ≤
+  `routine_stall_us`), `test_flash_write_loop_gap_is_recorded(board)` `@pytest.mark.persistence_write`
+  (`flash_write_loop_gap.py`, recorded, never failed on the figure), `test_loop_lag_under_combined_load_stays_under_
+  the_uart_reply_budget(board)` (bench round only, after the round's evidence save), `test_c_stack_peak_is_within_half_
+  the_limit(board)` (`c_stack_budget.py`: `peak <= limit // 2`). (5) `_HEADROOM_SCRIPT_TIMEOUT_S = 120.0`.
+- **Resolved**: A.U31.05/A.U31.06/A.U30.18 write "RESULT: PASS/FAIL" verdicts on the board; facts per M.HW_DEV.002.
+- **Unit**: U26 (the U30/U31 tests written in U26 form when those units land).
+- **Depends**: M.HW_BENCH.046, M.HW_BENCH.016, M.HW_DEV.116, .122-.125.
+- **Blast carried by**: `tests_scripts/test_device_script_gc_threshold.py` alias resolution and `FACT gc_threshold=` marker
+  → A.U26.48 (2) (TSC); `_PREREQUISITE`/marker guard for the flash-write gap test → A.U26.06 (TSC); F.3 budget rows →
+  A.U31.01 (SPEC).
+- **Kind**: test, hardware (Round: R1 [H23, H44]; soak R5; loop lag R1 bench [H20])
+
+## tests_hardware/device_scripts/heap_headroom_after_full_system_build.py
+
+### M.HW_DEV.116 Headroom after the full boot batch, scratch config, facts, shared probe
+- **From**: A.U26.10 (`:105` scratch `cfg_path`), A.U20.02 (`watchdog=`), A.U20.06 (blast: setups run after
+  construction), A.U26.44 (device module), A.U26.48 (3) (`WORST_CASE_ALLOCATION` rendered; actor comments), A.U26.78
+  (`_largest_block`/`_report_checked`/`_dump_map` → `_shared/heap_probe.py`), A.U25.61 (probe constants equal across both
+  scripts — structural once shared), A.U30.16 (baseline rows: in the include now), A.U0.28 (`:34` "(agent,
+  2026-09-19)"), A.U8.14 (`:117` `gc.threshold(32768)` mirror tag), A.U27.09 (blast: the `typecheck.sh` comment naming
+  this script's static import), A.U8C.71, A.U8C.72 (shared IDs), A.U8C2.30, A.U31.05 (blast: the stretch script builds
+  as this one does), A.U26.68.
+- **Site**: `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:1-131`.
+- **Change**: `device = __import__(BENCH["device_module"])`; `await device.build_system(watchdog=arm(),
+  cfg_path=_SCRATCH_CFG_PATH, web_host="127.0.0.1", web_port=8080)` then `await device.sysfunct.run_setups(
+  device._collect_setups())` (the HEAD measurement point included the batch); `# @include _shared/heap_probe.py`
+  (probe constants and their three tags live there once); `_WORST_CASE_ALLOCATION` → `BENCH["worst_case_allocation"]`
+  (its tag withdrawn here: `heap_bounds.py` holds it); `_MIN_LARGEST_BLOCK = 2 * worst` with
+  `l3.heap_headroom_after_full_system_build_worst_case_factor = 2` (A.U8C2.30's row, basis "a requirement"); `_MAX_USED
+  = 100_000` tagged; the `:34` sentence gains "(agent, 2026-09-19)"; `gc.threshold(32768)` at `:117` gets
+  `# @tunable` mirror tag `build.gc_threshold`; facts `gc_threshold` (both stages), `heap` per label (free, alloc,
+  largest_block, retained), `used`, `max_used`, `largest_block`, `min_largest_block`; the `mem_info(1)` maps printed as
+  labelled raw blocks (the host parser's input); `done()`.
+- **Resolved**: A.U26.10 and A.U20.06 both touch the build call; the scratch path and the setup batch both apply.
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001-.004, .009; M.HW_BENCH.046.
+- **Blast carried by**: A.U25.61 (1)'s L0 equality check reads `_shared/heap_probe.py` once → GAP-D10 (TSC); the
+  `typecheck.sh` comment → A.U27.09 (TOOL); host → M.HW_DEV.115.
+- **Kind**: test, hardware (Round: R1 [H44])
+
+## tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py
+
+### M.HW_DEV.117 Heap layout over the generated boot order, without entering the supervisor
+- **From**: A.U20.06 (blast: `start_and_check_tasks()` → `start_tasks()`, never the supervisor), A.U10.12 (`start_timers()`
+  two-list form), A.U11.10 (`run_setups()`; the `_ProbeGc` rebinding wraps `system_service.gc`, labelled by method),
+  A.U32.06 (`task_names`, GAP-G5), A.S0930.13 (blast: holds), A.U20.02, A.U26.10 (`:145` scratch), A.U26.44 (`:10`),
+  A.U25.61 (2) (device module from the harness), A.U26.78/A.U30.16 (probe and map into the include; the `_ProbeGc`
+  boot-mirror row stays here), A.U36.544 (`:199` "measure B" → "The boot placement reset (SPECIFICATION.md I.4(f.1))";
+  the "(MEASUREMENTS M3.9)" citation → the archive section with commit, or dropped), A.U8.14 (`:213` mirror tag),
+  A.U8C.01/A.U8C.72, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:1-225`.
+- **Change**: order: `build_system(watchdog=arm(), cfg_path=_SCRATCH_CFG_PATH, …)` → report → `run_setups(
+  _collect_setups())` under the batch `_ProbeGc` label → report/map → `start_tasks(_collect_task_starters(),
+  _collect_task_names())` awaited under `asyncio.wait_for(…, _STARTER_LOOP_TIMEOUT_MS / 1000)` (it returns once every
+  starter ran; the `_counting_start_task` rebinding, the 20 ms poll and its `_STARTER_POLL_MS` row go, and the grace
+  sleep stays only for the trailing collect) → report/map → `start_timers(triggers, timers)` (the two lists) → report
+  → settle → reports; the supervisor never starts, so nothing to cancel; the boot-phase mark cleared at the end
+  (M.HW_DEV.009 (4)). Every `RESULT:`/`HEAP`/`COUNTS`/`BOOT` line → facts; "Report only, no floors" stays (the wrapper
+  asserts the twin's bound, M.HW_DEV.118). The comment `:146-148` explaining the seam goes.
+- **Resolved**: A.U20.06 reorders the lists (setups, tasks, then timers) — the script follows the generated order, so
+  HEAD's timers-before-tasks reading is not reproduced; the `starter_poll_ms` row (A.U8C.01/.72) is withdrawn with its
+  loop.
+- **Unit**: U26 (after U20/U11/U10).
+- **Depends**: M.SRC_CORE (`start_tasks`, `run_setups`), M.GEN (`_collect_setups`, `_collect_task_names`),
+  M.HW_DEV.001-.004, .009.
+- **Blast carried by**: `tests_scripts/test_digital_twin_boot_contiguity.py` mirrored bounds → A.U11.10/A.U25.61 (TSC);
+  `test_gc_collect_sites` boot-mirror row → A.U30.16 (TSC); host wrapper → M.HW_DEV.118.
+- **Kind**: test, hardware (Round: R1 [H44])
+
+## tests_hardware/flash/test_heap_layout.py (new)
+
+### M.HW_DEV.118 The flash wrapper asserts the twin's high-band bound on both arms
+- **From**: A.U25.61 (3), A.U26.68, A.U7.24 (`COVERS_TWIN_SCENARIOS`: `boot_contiguity`).
+- **Site**: new `tests_hardware/flash/test_heap_layout.py`.
+- **Change**: one test per arm (`ARM` render extra): parses the per-arm maps with `heap_map.parse_labelled()` and
+  asserts the twin's `_HIGH_BAND_BLOCKS_MAX` (read from `tests_scripts/test_digital_twin_boot_contiguity.py` by `ast`)
+  holds on the live arm and is violated on the suppressed arm; every quoted figure names its image (`result_note`).
+  Header ≤ 3 lines; no marker.
+- **Resolved**: A.U25.61 writes the wrapper in U25 "because the register gives the clause to U25"; written in U26's
+  fact form (U25 < U26: the wrapper lands with the script's conversion).
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.117.
+- **Blast carried by**: twin record → M.HW_DEV.010; level containment → A.U7.24 (TSC).
+- **Kind**: test, hardware (Round: R1 [H44])
+
+## tests_hardware/device_scripts/allocation_need_per_source.py
+
+### M.HW_DEV.119 Allocation need per source: rendered device, scratch config, routes from `ROUTES`, no `Any`
+- **From**: A.U26.10 (`:112` scratch), A.U20.02 (`watchdog=`; `sensortask_dev.watchdog` global gone — the script feeds its
+  own `arm()`), A.U26.44 (`:10`), A.U19.20 (blast: `:85` reads `ROUTES` by name — derived from the one table), A.U26.76
+  (`:19, 46, 47, 68-69, 97`: `holes`/`keepers` typed `bytearray | None`, the probe list `list[tuple[str, Callable[[],
+  Awaitable[object]]]]`, `_NO_REQUEST: object`), A.U30.16 (`_build_sieve`, `_release_sieve`, `_run` baseline rows),
+  A.U26.68.
+- **Site**: `tests_hardware/device_scripts/allocation_need_per_source.py:1-153`.
+- **Change**: device from `BENCH`; `build_system(watchdog=wdt, cfg_path=_SCRATCH_CFG_PATH, …)` plus `run_setups(…)`;
+  `_feed()` feeds `wdt`; route probes from the webserver module's `ROUTES`; the `CHURN`/rung lines become facts
+  (`churn` per label, `block`, `probes`, `rungs`), `done()`; the comment `:30` keeps its fact about `feed()` allocating
+  nothing.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.SRC_NET (A.U19.20 `ROUTES`), M.HW_DEV.001-.004, .009.
+- **Blast carried by**: runner (bench memory tests) → HW_BENCH; host check `disallow_any_explicit` clean → A.U26.76 (TOOL).
+- **Kind**: test, hardware (Round: R1 bench [H44])
+
+## tests_hardware/device_scripts/serving_at_default_gc.py
+
+### M.HW_DEV.120 Serving at the default GC stage: rendered device, `main(watchdog=…)`, shared dump
+- **From**: A.U26.10 (`:93` keeps `cfg_path=""`, with the one-line comment), A.U20.02 (`main(watchdog=…)`), A.U26.44,
+  A.U26.78 (`_dump` → `_shared/map_dump.py`), A.U30.16 (`_observe` row), A.U26.87 (blast: pattern reused by the echo
+  script), A.U8C.86 (constants; `boot_wait_s` shared ID), A.U26.68.
+- **Site**: `tests_hardware/device_scripts/serving_at_default_gc.py:1-140`.
+- **Change**: `device = __import__(BENCH["device_module"])`; `asyncio.create_task(device.main(watchdog=arm()))`
+  with the comment "production config path: the only write it can cause is the repair a production boot of a malformed
+  file makes anyway"; boot wait polled on the webserver instead of a fixed `sleep(20)` where the module exposes
+  readiness, else `_BOOT_WAIT_S` kept (AD-1); constants per A.U8C.86; the `HEAP`/state lines → facts (bounded per
+  sample count), `done()` at the window end.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001-.004, .009.
+- **Blast carried by**: `_PREREQUISITE_DEVICE_SCRIPTS` (serving boot) → A.U26.10/A.U26.06 (TSC); bench
+  `test_serving_heap_at_default_gc.py` reads the facts → HW_BENCH.
+- **Kind**: test, hardware (Round: R1 bench [H44])
+
+## tests_hardware/device_scripts/heap_under_connection_ceiling.py
+
+### M.HW_DEV.121 Heap under the connection ceiling: rendered device, `main(watchdog=…)`, facts
+- **From**: A.U26.10 (`:40` comment), A.U20.02, A.U26.44, A.U26.78 (`_dump` shared), A.U8.14 (`:15` mirror tag),
+  A.U8C.73 (`sample_interval_ms`, `window_s`, `boot_wait_s`), A.U26.68 (HW_BENCH blast: its `FACT` lines).
+- **Site**: `tests_hardware/device_scripts/heap_under_connection_ceiling.py:1-60`.
+- **Change**: as M.HW_DEV.120 (device, `main(watchdog=arm())`, the comment on the production path, the shared dump);
+  samples become one fact per sample (`heap` with t, free, largest), `done()` after the window; `RESULT PASS` goes.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.120.
+- **Blast carried by**: `bench/test_heap_under_connection_ceiling.py` → HW_BENCH (M.HW_BENCH's change quoting its facts).
+- **Kind**: test, hardware (Round: R1 bench [H44])
+
+## tests_hardware/device_scripts/loop_stretch_timing.py (new)
+
+### M.HW_DEV.122 The routine no-yield stretches timed on the chip
+- **From**: A.U31.05, A.U31.01 (F.3 rows it measures), A.U26.44 (OR78.a: not "import frozen `sensortask_dev`"), A.U26.10,
+  A.U26.68.
+- **Site**: new `tests_hardware/device_scripts/loop_stretch_timing.py`.
+- **Change**: as A.U31.05: builds the graph (device from `BENCH`, scratch path, `watchdog=arm()`), `gc.threshold(-1)`;
+  times five `gc.collect()`, sixty `vocalgorithm_process()` steps (max over the last twenty), `CRC32().check_from()` over
+  256 B (total and the largest gap between its yields via a `sleep_ms(0)` probe task); `_ROUTINE_STALL_US = 21_000`
+  (derived, trailing comment naming F.3's `con.routine_stall`); facts `gc_max_us`, `voc_max_us`, `crc_total_us`,
+  `crc_gap_max_us`, `routine_stall_us`; `done()`.
+- **Resolved**: —
+- **Unit**: U31 (written in U26's form).
+- **Depends**: M.HW_DEV.001-.004, .009.
+- **Blast carried by**: host → M.HW_DEV.115; F.3 measured cells → A.U31.01 (SPEC).
+- **Kind**: test, hardware (Round: R1 [H20, H21])
+
+## tests_hardware/device_scripts/flash_write_loop_gap.py (new)
+
+### M.HW_DEV.123 One scratch flash write's synchronous span, measured
+- **From**: A.U31.05, A.U26.18 (scratch removed on every path), A.U26.68.
+- **Site**: new `tests_hardware/device_scripts/flash_write_loop_gap.py`.
+- **Change**: times each call of one `open()`/`write()`/`close()` of a 1 KiB `/_stretch.bin` and its `os.remove()`
+  (`ticks_us()`, which counts with interrupts off); a leftover is removed first; facts `flash_call_max_us`,
+  `flash_total_us`; never fails on the figure; no file left behind; `done()`.
+- **Resolved**: —
+- **Unit**: U31.
+- **Depends**: M.HW_DEV.002.
+- **Blast carried by**: the write is owned by its marked test → A.U26.06 (TSC: a raw `open(...,"w")` is persisting, GAP-D8).
+- **Kind**: test, hardware (Round: R3 [H21])
+
+## tests_hardware/device_scripts/loop_lag_under_combined_load.py (new)
+
+### M.HW_DEV.124 Loop lag of the shipped `main()` under in-process load, in its own FRAM region
+- **From**: A.U31.06 (3), A.U26.24 (scratch regions disjoint), A.U26.44, A.U26.22 (production chunks written: runs after
+  the evidence save), A.U26.68.
+- **Site**: new `tests_hardware/device_scripts/loop_lag_under_combined_load.py`.
+- **Change**: runs `device.main(watchdog=arm())` in a task beside a lag probe; adds an allocation-churn task and FRAM
+  block writes through the FRAM driver at `_SCRATCH_REGIONS = ((0x3FE00, 0x100),)` (above every chunk, disjoint from the
+  hold-timing script's `0x3FF00`); reports `lag_max_us`, `lag_p99_us`, `samples`, `bound_us` (the device's smallest hard
+  consumer from F.3, rendered); `done()`.
+- **Resolved**: A.U31.06 writes "at the scratch address the FRAM hold script uses (`0x3FF00`)"; A.U26.24's check allows a
+  shared region only between phases of one host test, and these are two tests: this script takes its own region
+  (agent decision AD-8).
+- **Unit**: U31 (U26 form).
+- **Depends**: M.HW_DEV.004/.007/.009.
+- **Blast carried by**: region check → A.U26.24 (TSC); host → M.HW_DEV.115; BACKLOG owed row → A.U31.06 (DOCS).
+- **Kind**: test, hardware (Round: R1 bench [H20])
+
+## tests_hardware/device_scripts/c_stack_budget.py (new)
+
+### M.HW_DEV.125 The deepest await chain's C-stack peak on silicon
+- **From**: A.U30.18 (3), A.U26.44 (OR78.a: the device module from `BENCH`), A.U26.68.
+- **Site**: new `tests_hardware/device_scripts/c_stack_budget.py`.
+- **Change**: builds the bench system (scratch path, `watchdog=arm()`), wraps the leaf of the deepest chain the analysis
+  names from outside to record `micropython.stack_use()`, drives that path through the real product call, fed ≤ 2 s;
+  facts `c_stack_peak`, `c_stack_limit` (7,936), `chain`; the half-limit verdict host-side; `done()`.
+- **Resolved**: A.U30.18 routes the build "through U26's `run_device_script.py`"; on silicon that is the rendered
+  device module (the twin uses the runner).
+- **Unit**: U30 (U26 form).
+- **Depends**: M.HW_DEV.001-.004, .009.
+- **Blast carried by**: SPEC F.1 C-stack paragraph → A.U30.18 (SPEC); host → M.HW_DEV.115; the 2× margin on the OR2.c
+  list → A.U30.18.
+- **Kind**: test, hardware (Round: R1 [H23])
+
+## tests_hardware/flash/test_sensor_accuracy.py
+
+### M.HW_DEV.130 Plausibility from the shared bounds; envelope gated as a write; conformance moves out
+- **From**: A.U26.68, A.U26.49 (bounds from `plausibility_bounds.py`), A.U26.07 (the SCD30 plausibility test takes
+  `scd30_measuring`), A.U26.11 (1) (the envelope gains `persistence_write` beside `neopixel_sweep`, comment names the
+  spend), A.U26.66 (3) (`:80-89` moves to `flash/test_chip_conformance.py`), A.U15.20 (new `test_sgp40_sample_cadence`),
+  A.U26.35/A.U26.74 (`long_soak` → `soak_duration`, short duration), A.U26.51 (`scd30`, `sgp40`, `bmp3xx`, `isl29125`,
+  `isl29125_autorange`), A.U20.33 (B2), A.U8C.107.
+- **Site**: `tests_hardware/flash/test_sensor_accuracy.py:1-89`.
+- **Change**: (1) `RESULT_RE` and the four inline matchers go; each test asserts its script's facts against
+  `plausibility_bounds.BOUNDS[...]` (the bound and its source in the message); `isl29125_conformance` import goes.
+  (2) `test_scd30_real_reading_is_within_datasheet_plausible_bounds(board, scd30_measuring)`. (3) The envelope test:
+  `@pytest.mark.neopixel_sweep @pytest.mark.persistence_write`, comment "seven flash writes to a scratch config file (the
+  range/resolution pushes)"; the in-test skip keeps `--allow-neopixel-sweep`. (4) `test_isl29125_register_probe_…`
+  (`:80-89`) deleted here (moved, M.HW_DEV.131). (5) `@pytest.mark.soak_duration def test_sgp40_sample_cadence(board,
+  request)`: runs `sgp40_sample_cadence.py` with `timeout_s=_CADENCE_TIMEOUT_S = 660.0`, asserts `cycles > 0` and
+  records `cycles`, `elapsed_ms`, `lost`, `max_gap_ms`, `gaps_over_1500` (no pass threshold, owner). (6) Timeouts per
+  A.U8C.107 (the conformance row moves with its test).
+- **Resolved**: A.U15.20 marks the cadence test `long_soak` (short tier); A.U26.35 renames the marker — written once as
+  `soak_duration`.
+- **Unit**: U26 (A.U15.20's test lands in U15 on the HEAD helper form and is converted here).
+- **Depends**: M.HW_BENCH.002/.043, M.HW_DEV.020, .136-.144.
+- **Blast carried by**: `_KNOWN_PERSISTING_HELPERS`/marker guard → A.U26.06/A.U26.11 (TSC); flush-test exemption reason
+  → A.U26.11 (3) (TSC); README device-script table row → A.U15.20 (HW_BENCH).
+- **Kind**: test, hardware (Round: R1 [H25, H29]; envelope R3 [H28]; cadence R5 [H35])
+
+## tests_hardware/flash/test_chip_conformance.py (new)
+
+### M.HW_DEV.131 One conformance gate per bus chip, real vs twin
+- **From**: A.U26.66 (3), A.C.15 (1) (the SCD30 argument-reaction test), A.C.16 (1) (BMP3xx probe keys C01/C02), A.C.19 (2)
+  (the ISL29125 probe runs here in R1), A.U36.543 (blast: Part K names this file), A.U7.24.
+- **Site**: new `tests_hardware/flash/test_chip_conformance.py`.
+- **Change**: one test per probe (`isl29125_mock_conformance_probe.py`, `scd30_conformance_probe.py`,
+  `sgp40_conformance_probe.py`, `bmp3xx_conformance_probe.py`, `fram_conformance_probe.py`): `real =
+  conformance.parse(board.run_isolated(probe))`, `DONE` present, `twin = conformance.run_probe_on_twin(probe,
+  gc_threshold)` at −1 and 32768, `compare(real, twin, PHYSICAL_KEYS, independent_checks)` → no divergences (each listed);
+  the ISL29125 conversion-cycle figure recorded. `@pytest.mark.persistence_write @pytest.mark.scd30_extra_write
+  test_scd30_argument_reaction_is_recorded(board, scd30_measuring)`: runs `scd30_argument_reaction.py`, asserts
+  `restored == "ok"` and the interval equals the `standard_state` snapshot, records the facts. `COVERS_TWIN_SCENARIOS`
+  names the chip-model scenarios.
+- **Resolved**: the conformance comparison keeps its `KEY=VALUE` protocol (the probe output is the comparison's input on
+  both sides, a documented exception to the `FACT` form: `conformance.parse` reads both).
+- **Unit**: U26 (the A.C.15 test is phase-C instrumentation in U26 form).
+- **Depends**: M.HW_BENCH.038 (`conformance.py`), M.HW_DEV.132-.135, .137, .145.
+- **Blast carried by**: SPEC Part K paragraph → A.U36.543 (SPEC); budget row "at most 3 SCD30 NVM writes" → A.C.15
+  (HW_BENCH); fidelity table rows → A.U25.01 (TWIN).
+- **Kind**: test, hardware (Round: R1 [H25]; argument reaction R3 [H30])
+
+## tests_hardware/device_scripts/scd30_conformance_probe.py, sgp40_conformance_probe.py, bmp3xx_conformance_probe.py, fram_conformance_probe.py (new)
+
+### M.HW_DEV.132 Four raw-bus conformance probes
+- **From**: A.U26.66 (2), A.C.16 (1) (BMP3xx `C01_osr_config_written`, `C02_osr_config_after_softreset`), A.U26.24 (the FRAM
+  probe's round trip inside a declared scratch region), A.U26.44.
+- **Site**: four new device scripts.
+- **Change**: raw `machine.I2C`/`SPI` only, addresses and pins from `BENCH`; each prints its `KEY=VALUE` lines and
+  `DONE=1` and declares `PHYSICAL_KEYS` with the independent check per key (a range, a CRC validity, a monotonic
+  relation): SCD30 — firmware-version word and CRC, interval read and CRC, data-ready word, an 18-byte measurement's six
+  CRCs, the NACK of a read before a command, the soft-reset recovery bound; SGP40 — serial words and CRCs, self-test word
+  (0xD400 on a good part), a compensated raw read's CRC, heater-off acknowledgement; BMP3xx — chip ID, the 21-byte
+  calibration block (raw), status and power-mode behaviour, plus C01/C02 (OSR 0x1C and CONFIG 0x1F written, then after
+  soft reset 0xB6 → CMD 0x7E and the datasheet start-up time, back to defaults); FRAM — RDID (MB85RS2MTA p.10), WEL
+  set/clear, a write/read round trip in `_SCRATCH_REGIONS = ((0x3FD00, 0x100),)`. Every wait fed; volatile registers
+  only (no NVM).
+- **Resolved**: the FRAM probe's region is chosen disjoint from M.HW_DEV.124 and the hold script (AD-8's rule).
+- **Unit**: U26 (BMP3xx keys added in phase-C prep, A.C.16).
+- **Depends**: M.HW_DEV.001/.004/.007.
+- **Blast carried by**: chip fakes answering the probes → A.U26.66/A.U25 (TWIN); M.HW_DEV.131.
+- **Kind**: test, hardware (Round: R1 [H25, H26])
+
+## tests_hardware/device_scripts/sgp40_sample_cadence.py (new)
+
+### M.HW_DEV.136 SGP40 cycles counted over ten minutes of the real task graph
+- **From**: A.U15.20, A.U26.44 (device module), A.U26.10 (cfg path), A.U20.02, A.U26.68.
+- **Site**: new `tests_hardware/device_scripts/sgp40_sample_cadence.py`.
+- **Change**: boots the generated bench system the way M.HW_DEV.117 does (scratch path, `watchdog=arm()`, setups, tasks,
+  timers), wraps `sgp40._read_sgp` from outside to record `ticks_ms()` per cycle into a preallocated `array("I", …)` of
+  1,200 slots, runs 600 s with the device's own tasks, feeding; facts `cycles`, `elapsed_ms`, `lost`, `max_gap_ms`,
+  `gaps_over_1500`; boot-phase mark cleared; `done()`.
+- **Resolved**: A.U15.20 lets the run use "FRAM backup at `BackupPeriod` 1" — on a scratch config path the backup period
+  is the schema default; the script sets it on the reader in RAM (no config write), so the claim holds without a
+  persisting write (agent decision AD-9).
+- **Unit**: U15 (U26 form).
+- **Depends**: M.HW_DEV.009, .117.
+- **Blast carried by**: host → M.HW_DEV.130; L1 structural pin → A.U15.20 (TEST_UNIT).
+- **Kind**: test, hardware (Round: R5 short [H35])
+
+## tests_hardware/device_scripts/scd30_plausibility_read.py
+
+### M.HW_DEV.137 SCD30 plausibility read: values out, bounds host-side
+- **From**: A.U26.49 (bounds moved to `plausibility_bounds.py`; the script reports values), A.U26.07 (runs under
+  `scd30_measuring`), A.U5.02 (reader constructor tail), A.U10.43 (`trigger_s`), A.U26.44, A.U8C.82, A.U8C2.36, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/scd30_plausibility_read.py:1-60`.
+- **Change**: bus and pins from `BENCH`; reader constructed in the end-state shape; `_SETTLE_S = 45.0`, `_STEP_S = 0.5`,
+  `_POLL_TRIES = 30` tagged; settle and poll waits through `fed_sleep_ms`; facts `co2`, `humidity`, `temperature`,
+  `polls`; the in-script bound checks go; `done()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001-.004.
+- **Blast carried by**: host → M.HW_DEV.130.
+- **Kind**: test, hardware (Round: R1 [H31])
+
+## tests_hardware/device_scripts/bmp3xx_plausibility_read.py
+
+### M.HW_DEV.138 BMP3xx plausibility read: values out, comment names the divider
+- **From**: A.U26.49, A.U15.40 (`:24` comment → `_divide_trigger()`), A.U15.25 (blast: unchanged), A.U1.06 (blast),
+  A.U5.02, A.U26.44, A.U8C.58, A.U8C2.26, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/bmp3xx_plausibility_read.py:1-45`.
+- **Change**: i2c0 and the address from `BENCH`; `:24` comment names `_divide_trigger()`; `_POLL_S = 0.5`, `_POLL_TRIES =
+  30`; facts `pressure`, `temperature`, `polls`; bound checks host-side; `done()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001-.004.
+- **Blast carried by**: host → M.HW_DEV.130.
+- **Kind**: test, hardware (Round: R1 [H29])
+
+## tests_hardware/device_scripts/isl29125_plausibility_read.py
+
+### M.HW_DEV.139 ISL29125 plausibility read: rig parked, lux out, priming kept read-only
+- **From**: A.U26.16 (NeoPixel parked in `finally`), A.U26.49 (lux bound FN8424 p.1 host-side; the room-light floor stays
+  a tagged script fact), A.U26.34 (blast: its RAM-priming pattern `:32-37` is reused), A.U5.02, A.U26.44, A.U8C.78,
+  A.U8C2.34, AD-1 (`:29`), A.U26.68.
+- **Site**: `tests_hardware/device_scripts/isl29125_plausibility_read.py:1-60`.
+- **Change**: NeoPixel constructed as the first statement in the `try` whose `finally` sets it dark; bus, pins and mode
+  from `BENCH`; `_ROOM_LIGHT_MIN_LUX = 5.0`, `_POLL_S`, `_POLL_TRIES` tagged; the `:29` wait kept as
+  `_FIRST_SAMPLE_MS = 300` (`l3.isl29125_plausibility_read_first_sample_ms`, AD-1); facts `lux`, `rgb`, `room_light_min`;
+  `done()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001-.004, .008.
+- **Blast carried by**: host → M.HW_DEV.130.
+- **Kind**: test, hardware (Round: R1 [H25])
+
+## tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py
+
+### M.HW_DEV.140 VOC algorithm quality on the TOML's bus with its timeout; shared fixed source
+- **From**: A.U14.04/A.U26.44 (`:46` i2c1 built with the TOML's `timeout`), A.U5.11 (`:47-56` constructor: value
+  references and one backup group), A.U26.78 (`_FixedSource` → `_shared/fixed_source.py`), A.U28.28 (`:91` `B905`
+  noqa), A.U26.49 (VOC index bound 0..500 host-side, M.HW_BENCH.043's D4), A.U8C.89 (the feed-interval ID shared with
+  the backup script → the shared feed step), A.U26.68.
+- **Site**: `tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py:1-110`.
+- **Change**: bus from `BENCH` (timeout passed); reader constructed in A.U5.11's shape; the fixed source included;
+  `_BLACKOUT_WAIT_S`, `_SAMPLE_INTERVAL_S`, `_MAX_SINGLE_STEP_JUMP` tagged; the `_WDT_FEED_INTERVAL_S` row withdrawn
+  into `_shared/watchdog.py`'s step; facts `samples` (bounded list), `max_step_jump`, `blackout_s`; `done()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.SRC_SENS (A.U5.11), M.HW_DEV.001-.004.
+- **Blast carried by**: host → M.HW_DEV.130.
+- **Kind**: test, hardware (Round: R1 [H35])
+
+## tests_hardware/device_scripts/sgp40_fram_backup_restore.py
+
+### M.HW_DEV.141 SGP40 FRAM backup/restore with the TOML's bus timeout and a cleared chunk
+- **From**: A.U14.04/A.U26.44 (`:54` timeout), A.U5.11, A.U5.02, A.U26.78 (`_FixedSource`), A.U26.22 (5) (chunk cleared
+  after), A.U15.17/A.U15.18 (blasts: defaults and the `restored_from is None` check hold), A.U8C.87, AD-1 (`:15`, `:16`
+  kept), A.U26.68.
+- **Site**: `tests_hardware/device_scripts/sgp40_fram_backup_restore.py:1-125`.
+- **Change**: bus from `BENCH`; reader in A.U5.11's shape; fixed source included; `_BACKUP_WAIT_S = 75.0`
+  (`l3.sgp40_fram_backup_restore_backup_wait_s`) and `_RESTORE_WAIT_S = 10.0` (`…_restore_wait_s`) tagged (AD-1), waited
+  through `fed_sleep_ms`; facts `backup_written`, `restored_from`, `restored_state_matches`; the backup chunk cleared in
+  `finally`; `done()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.SRC_SENS (A.U5.11), M.HW_DEV.001-.004, .006.
+- **Blast carried by**: host → M.HW_DEV.060.
+- **Kind**: test, hardware (Round: R1 [H22])
+
+## tests_hardware/device_scripts/isl29125_mechanism_envelope.py
+
+### M.HW_DEV.142 The envelope: scratch config flushed and removed, rig parked, private names, catalog codes
+- **From**: A.U26.11 (2) (leftover `config_HWTEST_ISL29125.cfg` removed first; `finally` flushes then removes it; setup
+  `:205-213` moves inside the `try`), A.U26.16 (rig parking), A.U10.35 + M_SRC_SENS GAP-5 (`:74-77` `pixel.led_overl_bri`/
+  `led_overl_on` → the `_overlay_*` names), A.U10.39/A.U24.61 (`:109` `reader.cfg_schema` → `reader.get_cfg_schema()`),
+  A.U10.44 (`:205-206` starters by end-state names), A.U11.24 (its `write_config(…, schema)` loses the schema), A.U17.27
+  (blast: `:74` writes the attribute; holds), A.U9.07 (blast: superseded by A.U17.27 — no `neopixel_freq` refusal),
+  A.U2.12/A.U2.03 (`:217, :221` `W13` → the catalog binding `W_ISL_PERIODIC_ONLY = 32`), A.U5.02, A.U26.44, A.U8C.76,
+  A.U8C2.32, A.U1.06 (blast), A.U26.68.
+- **Site**: `tests_hardware/device_scripts/isl29125_mechanism_envelope.py:1-240`.
+- **Change**: start: `os.remove("config_HWTEST_ISL29125.cfg")` with ENOENT passing and any other errno a fact; NeoPixel
+  and reader construction as the first statements of the `try`; `finally`: `pixel.off()` first, then `await
+  reader.cfgmgr.flush_pending()`, then the scratch file removed; attributes through their end-state names and
+  `get_cfg_schema()`; codes from the catalog bindings; constants per A.U8C.76/A.U8C2.32; facts per check (steps, ratios,
+  bit-depth margins, `warnings` with codes), `done()`; verdicts host-side.
+- **Resolved**: A.U9.07 is superseded by A.U17.27 (A.U17.27's Depends says so; the later unit's constant governs).
+- **Unit**: U26.
+- **Depends**: M.SRC_SENS (GAP-5 names, `get_cfg_schema()`), M.HW_DEV.001-.004, .008, .012.
+- **Blast carried by**: flush-test exemption reason → A.U26.11 (3) (TSC); the `config_HWTEST_*` removal check → A.U26.18
+  (TSC); host → M.HW_DEV.130.
+- **Kind**: test, hardware (Round: R3 [H28])
+
+## tests_hardware/device_scripts/isl29125_lighting_scenarios.py
+
+### M.HW_DEV.143 Lighting scenarios: dead constant gone, private pixel, catalog codes, rig parked
+- **From**: A.U26.83 (`:33` `_STEP_MS` removed), A.U10.35 (`:82` `self.pixel` → `_pixel`), A.U2.12/A.U2.03 (`:204, :336`
+  `W13` → `W_ISL_PERIODIC_ONLY = 32`), A.U15.32 (blast: unchanged), A.U26.16, A.U5.02, A.U26.44, A.U8C.75 (its
+  `step_ms` row withdrawn with `:33`), A.U8C2.31 (`isl29125.periodic_only_warn_at` mirror at `:335`), A.U26.68.
+- **Site**: `tests_hardware/device_scripts/isl29125_lighting_scenarios.py:1-340`.
+- **Change**: `_STEP_MS` deleted; the rig class reads `_pixel`; codes from the bindings; NeoPixel parked in `finally`;
+  constants per A.U8C.75/A.U8C2.31 (minus `step_ms`); facts per scenario, `done()`.
+- **Resolved**: A.U8C.75 tags `:33` (100), which A.U26.83 deletes as dead: the row is withdrawn (B4).
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001-.004, .008, .012.
+- **Blast carried by**: host → M.HW_DEV.130.
+- **Kind**: test, hardware (Round: R3 [H28])
+
+## tests_hardware/device_scripts/isl29125_mock_conformance_probe.py
+
+### M.HW_DEV.144 The ISL29125 probe: constants from `BENCH`, settles named, run from the conformance gate
+- **From**: A.U26.66 (3) (its test moves to `flash/test_chip_conformance.py`), A.U26.44 (`:20` `_MODE_RGB` copy), A.C.16
+  (blast: already reads the configuration before/after reset, keys A03-A05), A.C.19 (2) (runs in R1), A.U8C.77 (`:12`
+  wdt → `arm()`), A.U8C2.33 (deferred settles `:87`, `:104, :134, …` kept as named constants, AD-1).
+- **Site**: `tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:1-160`.
+- **Change**: bus, address and `_MODE_RGB` from `BENCH`; `_WDT = arm()`; `_WRITE_SETTLE_MS = 50`
+  (`l3.isl29125_mock_conformance_probe_write_settle_ms`) and `_CONVERSION_SETTLE_MS`
+  (`l3.isl29125_mock_conformance_probe_conversion_settle_ms`) named; output stays `KEY=VALUE` plus `DONE=1` (the
+  comparison protocol, M.HW_DEV.131); the conversion-cycle series added as keys.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_BENCH.038.
+- **Blast carried by**: M.HW_DEV.131.
+- **Kind**: test, hardware (Round: R1 [H25])
+
+## tests_hardware/device_scripts/isl29125_real_irq_edge.py
+
+### M.HW_DEV.145 ISL29125 INT edge: PRST verdict kept, rig parked, unit suffixes
+- **From**: A.C.19 (1) (DONE-AT-HEAD: fails unless PRST counts whole RGB cycles), A.U15.30 (blast: header held), A.U15.32/
+  A.U15.R05 (blasts: unchanged), A.U10.43 (unit suffixes), A.U26.16, A.U5.02, A.U26.44, A.U8C.79, A.U8C2.35, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/isl29125_real_irq_edge.py:1-125`.
+- **Change**: pins (INT) and bus from `BENCH`; NeoPixel parked in `finally`; identifiers with the end-state unit suffixes;
+  constants per A.U8C.79/A.U8C2.35 (the deferred `first_conversion_cycles` kept, AD-1); facts `fast_path_ms`,
+  `persist_unit`, `config1_restart` (reported only), `done()`; the PRST verdict host-side.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001-.004, .008.
+- **Blast carried by**: host → M.HW_DEV.080; SPEC M.1.2 rows → A.C.19 (SPEC).
+- **Kind**: test, hardware (Round: R1 [H25, H27])
