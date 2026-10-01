@@ -974,3 +974,27 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Depends**: M.SPEC[F.7], M.SPEC[K], A.U25.01 (the fidelity table exists).
 - **Blast carried by**: BACKLOG `:848-859` deletion → A.U37.06 (DOCS).
 - **Kind**: doc
+
+### M.SPEC.024 New A.11: threat model for a trusted home LAN
+- **From**: A.U29.01 (the section), A.U29.03 (every place of the hotspot default; A.11 as the decision's home),
+  A.U29.04 (row 15's history-scan sentence), A.U29.02 (the L0 check reads A.11), A.S0930.09/.30/.41 (command words and
+  the controlled shutdown, row 2), A.U10.40 (key names), A.U18.37 (`_cfg_overlay()`, C7), A.U10.37 (`asy_captive_dns.py`).
+- **Site**: new `## A.11 Threat model: trusted home LAN` after A.10 (`:664-694`), before the `---` at `:695`.
+- **Change**: A.U29.01's text as planned (opening paragraph; the 16-row "Exposures" table; closing paragraph), with:
+  row 3's source → "A.8; `src/asy_wifi_service.py` `_cfg_overlay()`"; row 6's source → "`src/asy_captive_dns.py`
+  (`run()`'s subnet filter, `DNSQuery`)"; row 2's keys in the scheme (`ResetVOC`, `Calibrate`, `LightCmdLED`,
+  `PauseTime`) and its shutdown sentence pointing at A.8's "controlled shutdown" paragraph; row 8 listing every place of
+  the default as A.U29.03 (a) enumerates them (`src/asy_wifi_service.py`'s `HotspotPW` default, each
+  `devices/*.toml` `hotspot_password`, L.3's example TOML, the legacy tree, the tests pinned to that default), "accepted
+  permanently as a known limitation (owner, 2026-09-26; first accepted 'for now', owner, 2026-07-13, `b64857d`)"; row 15
+  completed by A.U29.04's sentence written to the scan's actual result (or ending after "row 8's default" if the scan
+  has not run); every upstream citation re-checked against the refreshed pin (C3). The closing paragraph names the
+  check `tests_scripts/test_threat_model_statement.py`.
+- **Resolved**: A.U29.01's row 3 names `_mask_pw()`; A.U18.37 (U18, earlier) renames it `_cfg_overlay()` and A.U29.01's
+  Depends asks for the landed name (C7). A.U29.03 (2) moves the pointer of A.U0.33's L.2/L.3 replacements from
+  "CLAUDE.md" to "A.11" — carried in M.SPEC[L.2]/M.SPEC[L.3].
+- **Unit**: U29.
+- **Depends**: A.S0930.09, A.U11.05, A.U18.10, A.U18.19, A.U18.37, A.U18.38, A.U10.40, M.SPEC[A.8] (Stage 1 table).
+- **Blast carried by**: README intro sentence → A.U29.01 Blast (DOCS); CLAUDE.md credentials bullet → A.U29.03 (1)
+  (DOCS); `pyproject.toml` S104/S105 comments → A.U28.27/A.U28.29/A.U29.03 (TOOL); the L0 check → A.U29.02 (TSC).
+- **Kind**: doc
