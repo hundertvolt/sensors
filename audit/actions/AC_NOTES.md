@@ -159,3 +159,5 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     `_finalized`. G5/R14 settles it: the class has an async `setup()`, so it carries `self.initialized` (False in
     `__init__`, True in `setup()`) and stays in A.U10.22's check, not exempt. No method guards on it; a call before
     `setup()` answers the construction defaults through its members' own gates (M.SRC_SENS.033).
+43. Owner, 2026-10-01: SCR Q1 → (a) (OR133: every runner, `test.sh` included, exits 2 on a usage or setting error;
+    E.10 names no exception; `test_test_sh.py`'s rejection tests expect 2). Written firm everywhere.

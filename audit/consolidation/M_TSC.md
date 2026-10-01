@@ -2301,3 +2301,233 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Depends**: M.HW_BENCH.001, M.HW_BENCH.002, `pyproject.toml` `addopts` → A.U26.74 (1) (TOOL: Gaps).
 - **Blast carried by**: —
 - **Kind**: test
+
+## tests_scripts/test_request_timeout_ceiling.py
+### M.TSC.121 Ceiling and timeout mirrors read their sources through config objects
+- **From**: A.U23.37 (`:67` regex `export const DEFAULT_TIMEOUT_MS` → `const DEFAULT_TIMEOUT_MS`), A.U5.05 (`:48-59`,
+  `:105-107` a `const()`-aware reader of the `_DEFAULT_*` constants that now default `ServingLimits`/`StaticSite`),
+  A.U5.04 (`:106-114` webserver construction through the three config objects), A.U24.51 (`:110-113` per-device loop →
+  `DEVICE_NAMES`), A.U8C.50 (`:295-313` resolve a `Name` argument of `extra.settimeout` and the retry sleep through
+  `_module_constant()`), A.U2.19 (`:296` comment names catalog codes 49/50 by name), A.U8.22 (`:237`, `:290` join bounds
+  tagged; `:211, :232, :288` test inputs untagged); read: A.U8.02/A.U8.04 (overlap settled below), A.U8.05, A.U8C.112,
+  A.U8C.121, A.U8C2.18, A.U8C2.21, A.U8C2.47, A.U8.20 (constants read by name/AST, unaffected), A.U19.14, A.U23.02
+  (15 s mirrors kept), A.U31.18 (parameter defaults unchanged), A.U36.503, A.U36.532 (`:101` "H.7.1" still lands), A.U6.16
+  (pattern cited).
+- **Site**: `tests_scripts/test_request_timeout_ceiling.py:40-313`.
+- **Change**: `_module_constant()` reads `NAME = const(<int|float literal>)` and plain literals; the webserver defaults are
+  read from `ServingLimits`/`StaticSite` field defaults (`_DEFAULT_OUTER_CAP_S`, `_DEFAULT_MAX_CONTENT_LENGTH`, …) as
+  A.U5.05 names them; the JS regex matches `(?:export )?const DEFAULT_TIMEOUT_MS = (\d+);`; the per-device loop is
+  parametrised over `DEVICE_NAMES` with `device_max_connections()`; `:295-313` resolves `extra.settimeout(<Name>)` and the
+  retry sleep via `_module_constant(…)`; `:296`'s comment names `HTTP_WRITE_TIMEOUT`/`HTTP_OUTER_CAP` (catalog names) for
+  49/50; join bounds `_JOIN_TIMEOUT_S = 5.0  # @tunable l0.request_timeout_ceiling_join_timeout_s = 5.0` and the 2.0 one
+  likewise.
+- **Resolved**: A.U8.02 keeps the `:62-70` JS-literal check "until A-C" beside A.U8.04's tag on `js/poll-manager.js:8`
+  (`web.outer_cap_s = 15000`): both stay — the register pins each literal to its row, this test pins the cross-unit
+  relation `DEFAULT_TIMEOUT_MS == outer_cap_s × 1000`, which no register row expresses (agent decision D-TSC4).
+- **Unit**: U24 (stages U2 comment, U5 readers, U8 tags, U23 regex).
+- **Depends**: M.SRC_NET (webserver config objects, A.U5.04/.05), A.U23.37 (WEB).
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests_scripts/test_require_clean_hardware_run_sh.py
+### M.TSC.122 The hardware wrapper: pytest's exit kept, the verdict delegated, `-m` narrowed
+- **From**: A.U7.14 (whole file rewritten against canned run records; the whitelist tests become marker-map tests),
+  A.U27.19 (`--marker-floor`), A.U26.74 (`:18-19` flag strings), A.U26.35 (`long_soak` → `soak_duration`), A.U26.08 and
+  A.U26.36 (names in canned text, read), A.U26.56 (the permanent-skip nodeid follows its outcome).
+- **Site**: `tests_scripts/test_require_clean_hardware_run_sh.py:1-190`.
+- **Change**: with a stub `uv`/pytest writing a canned run record: the wrapper runs pytest once, keeps its exit code, calls
+  `scripts/_hardware_verdict.py --run-record … --pytest-exit … --runner … --levels …` and exits with its code; a nonzero
+  pytest exit propagates unchanged (`:183`'s pin); `--marker-floor EXPR` is consumed: no caller `-m` → pytest gets `-m
+  "<floor>"`; one or more caller `-m`/`-mEXPR` → exactly one `-m "(<floor>) and (<last caller expr>)"`, printed and in
+  the record; flash and bench runners pass `not soak_duration and not multi_day_rollover`, the soak runner
+  `soak_duration` with `--soak-duration`; the verdict cases themselves live in `test_hardware_verdict.py` ({{verdict}}).
+- **Resolved**: A.U26.35/A.U26.74's edits of `:18-19` fall inside A.U7.14's rewrite — one rewrite with the new names.
+- **Unit**: U27 (stage U7 rewrite; names U26).
+- **Depends**: A.U7.14, A.U27.19 (SCR), M.HW_BENCH.001/.002.
+- **Blast carried by**: verdict rules → {{verdict}}.
+- **Kind**: test
+
+## tests_scripts/test_ruff_exemptions_live.py
+### M.TSC.123 Every ruff exemption still fires <!--@ruff_live-->
+- **From**: A.U28.31 (check), A.U28.34 (read: CLAUDE.md names it), A.U34.11 (read: confirms no ANN401 entry is left).
+- **Site**: new `tests_scripts/test_ruff_exemptions_live.py`.
+- **Change**: one ruff run over the eight scopes with every exemption lifted (`--output-format json --config 'lint.ignore
+  = []' --config 'lint.per-file-ignores = {}' --config 'lint.allowed-confusables = []'`): fails for each global code
+  with no finding, each per-file code with no finding in a file its glob matches, and `allowed-confusables` with no
+  RUF001-RUF003 finding naming `×` — the message names the entry and "remove it"; policy-only rules are listed with their
+  reason; the `build/generated_src/**` entry is tested on a tree generated into `tmp_path` for every `DEVICE_NAMES`
+  device with `--select <codes>` and lifted exemptions.
+- **Resolved**: —
+- **Unit**: U28
+- **Depends**: A.U28.27-.29, A.U28.41 (TOOL).
+- **Blast carried by**: first-run removals in `pyproject.toml` → A.U28.31 (2) (TOOL: Gaps).
+- **Kind**: test
+
+## tests_scripts/test_setter_contract.py
+### M.TSC.124 Setters answer `bool`; push callbacks registered once
+- **From**: A.U10.25 (L0 half).
+- **Site**: new `tests_scripts/test_setter_contract.py`.
+- **Change**: AST over `src/`: every `self._push_callbacks[<key>] = <method>` sits in `__init__`; every method registered
+  in `_push_callbacks` and every `set_*` reached by a `SettingsGroup`, a push callback or a REST dispatcher is annotated
+  `-> bool` (or `WriteValidity` where C.5.2 documents it); chip-protocol classes (`*_I2C`, `FRAM_SPI`), `Locked*`,
+  logging and wiring setters are named out of the rule; `_push_callbacks` is never assigned outside `__init__`.
+- **Resolved**: —
+- **Unit**: U10
+- **Depends**: A.U10.25 (SRC).
+- **Blast carried by**: L1 half → M.TEST_UNIT (A.U10.25); SPEC C.5.2 → A.U10.25 (SPEC).
+- **Kind**: test
+
+## tests_scripts/test_setup_toolchain_env.py
+### M.TSC.125 Toolchain record, ref writer, pin notice, build diagnostics, cleanup
+- **From**: A.U21.01 (ref writer refusals), A.U21.02 (pin-moving notice), A.U21.03 (record round trip), A.U21.15 (build
+  output `error:`/`warning:` helper), A.U21.17 (fakes take `run()`'s keyword-only shape at `:32, 210, 224, 242, 253, 273,
+  385, 484`; `run_retried` cases `:495-515` hold), A.U21.30 (leftover removal), A.U27.29 (read: `SetupError` holds),
+  A.U8.14 (read: `:498-507` holds), A.U28.01 (read: `run_retried` holds).
+- **Site**: `tests_scripts/test_setup_toolchain_env.py` (fakes; new tests).
+- **Change**: new: `write_micropython_ref()` on a `tmp_path` TOML — no `ref` → `SetupError` and the file byte-identical,
+  two `ref` lines → `SetupError`, a `ref` under `[toolchain]` only → `SetupError` naming `[micropython]`, one line →
+  rewritten with the rest byte-identical; `run_setup()` (monkeypatched) — `--latest` resolving to the pinned tag writes
+  nothing and prints no notice, to a newer tag writes it and prints the notice naming both refs, `--micropython-ref
+  v1.28.0` prints the notice and leaves the file byte-identical, both flags → `SetupError`; `write_toolchain_record()`
+  then `read_toolchain_record()` round-trips every key, a raise inside `run_verification_sequence()` leaves no record,
+  the hashes equal an independent `hashlib.sha256` of the three files; `build_mpy_cross()` with a fake `make` printing
+  `foo.c:1: error: x` (exit 0) → `SetupError` "…reported an error", a `warning:` line → the warnings message, clean →
+  the binary path; leftover removal on a fabricated toolchain dir (`build-coverage`, `build_overrides/old_override`,
+  `node/node-v22.1.0-linux-x64` removed; the rest, a symlink pointing outside, `ports/rp2/build-OTHER` kept; the tuple
+  equals the names the `apply_*()` functions write in a `tmp_path` run); fake `run`s accept the keyword-only shape.
+- **Resolved**: —
+- **Unit**: U21
+- **Depends**: A.U21.01-.03, .15, .17, .30 (TOOLCHAIN).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TSC.126 Bench host: password off argv, documentation MAC, armed switch, netfilter, commands
+- **From**: A.U21.19 (password never in argv), A.U21.20 (`:239-249` → MAC `00:00:5e:00:53:01`), A.U21.23 (dead-man's
+  switch around bridge changes; `:394-429` fakes answer the new queries), A.U21.25 (`:370-382`: `tee` not a temp `cp`),
+  A.U21.24 (`:154-198` → table-driven command checks; `ensure_node()` asks for `curl` first), A.U21.21 (`:519-571`
+  `ensure_node`: `_node_release` pair; SHASUMS errors named), A.U21.28 (`:60-112` resolver by `2e8a` plus the MicroPython
+  by-id link), A.U28.20 (Playwright install failure named), A.U1.05/A.U1.08 (read), A.U1.22 (`:5-7` comment), A.U24.66
+  (3 literals).
+- **Site**: `tests_scripts/test_setup_toolchain_env.py:1-10`, `:60-112`, `:154-198`, `:239-249`, `:370-571`, new tests.
+- **Change**: header comment `:5` → "README.md's tier table defines 'flash' and 'bench'; tests_hardware/README.md holds
+  the manual nmcli recipe"; the parsed MAC fixture is `00:00:5e:00:53:01` (a documentation-reserved address);
+  credential tests: no recorded argv contains the password, the `edit` call's `stdin_text` sets it, `main(["--password",
+  "x"])` is an argparse error, `run_env()` reads `BENCH_AP_PASSWORD`; bridge creation fakes answer `nmcli -g
+  GENERAL.CONNECTION device show eth0`, `systemctl is-active` (active → inactive), `ip -o -4 addr show br0`, `ip -o route
+  get`; new: a poll that never sees an address raises `SetupError` with no `systemctl stop` recorded, `is-active` not
+  active after arming → `SetupError` and no `nmcli connection add`, a profile name with a space is shell-quoted in the
+  `bash -c` argument, no uplink profile → no `connection up`; netfilter: no recorded argv references a `/tmp` path;
+  command checks table-driven (present → no install; missing → one `apt-get install` for several; still missing → named
+  error; `--skip-apt` and missing → the new message); `ensure_node()` with no matching Node and no `curl` asks for `curl`
+  before downloading, a SHASUMS text without this arch's line → `SetupError`; resolver: a `2e8a` node without a
+  MicroPython by-id link is not selected, `MPREMOTE_DEVICE` wins, `board` prints the path (`main()` with
+  `resolve_board_serial` monkeypatched); Playwright install failure → `SetupError` naming `--skip-npm`, `install-deps`
+  failure with `skip_apt=False` named; device literals → fixture names.
+- **Resolved**: —
+- **Unit**: U21 (U1 comment; U24 literals; U28 Playwright).
+- **Depends**: A.U21.19-.28, A.U28.20 (TOOLCHAIN).
+- **Blast carried by**: harness resolver cases → {{resolve_board}}.
+- **Kind**: test
+
+## tests_scripts/test_spec_structure.py
+### M.TSC.127 SPEC headings numbered, in their Part, listed under it
+- **From**: A.U36.532 (6), A.U36.541 (Part 0 joins the letters).
+- **Site**: new `tests_scripts/test_spec_structure.py`.
+- **Change**: every `##`/`###`/`####` heading outside fenced code starts with its Part's letter and a number one level
+  deeper than its parent and sits after its `# Part X` heading; front matter before the first `# Part` is exempt; Part
+  letters `0`, `A` … `M`; numbers ascend within their parent but may skip; each Part's "Sections:" line equals its `##`
+  headings; mutation fixtures (a `##`-level `X.n.m`, a stray section, a stale Sections line) fail.
+- **Resolved**: —
+- **Unit**: U36
+- **Depends**: A.U36.532, A.U36.541 (SPEC).
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests_scripts/test_src_sleep_forms.py
+### M.TSC.128 No float reaches an asyncio sleep; synchronous sleeps only where named
+- **From**: A.U31.19 (1); SRC_SENS GAP-1 (`time.sleep`/`sleep_ms`/`sleep_us` in `src/` only at the two named exceptions,
+  M.SRC_SENS.002/.008).
+- **Site**: new `tests_scripts/test_src_sleep_forms.py`.
+- **Change**: AST over `src/*.py`: `asyncio.sleep(` takes an int literal or a module-level `const(<int literal>)` name;
+  no `asyncio.wait_for(` remains; `sleep_ms(`/`wait_for_ms(` arguments contain no float literal and no `/`; any
+  `time.sleep`/`time.sleep_ms`/`time.sleep_us` (any alias) outside the two named exceptions (SPI CS settle, the boot bus
+  clear in `asy_i2c_driver.py`) fails; bite fixtures `await asyncio.sleep(0.05)` and a stray `time.sleep_ms(1)`.
+- **Resolved**: —
+- **Unit**: U31 (the GAP-1 case with M.SRC_SENS.002's unit if earlier).
+- **Depends**: A.U31.09-A.U31.18 (SRC), M.SRC_SENS.002/.008.
+- **Blast carried by**: SPEC D.4/F.1, Part N `loop.sync_wait_max_us` "Checked by" → A.U31.19/GAP-1 (SPEC).
+- **Kind**: test
+
+## tests_scripts/test_stored_config_golden.py
+### M.TSC.129 Stored config keys pinned at the release <!--@golden-->
+- **From**: A.U11.33 (2), A.U37.10.
+- **Site**: new `tests_scripts/test_stored_config_golden.py`.
+- **Change**: per `DEVICE_NAMES` device, each config file name and its stored key → type map (special-alone fields
+  excluded) derived from the generated construction and the schemas; staged: U11 asserts two derivations are identical;
+  U37 compares with `golden/stored_config.json` and fails with "a change to a persisted key or file name needs a
+  migration in the same commit".
+- **Resolved**: —
+- **Unit**: U37 (stage U11).
+- **Depends**: M.TSC.018.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests_scripts/test_strip_type_checking.py
+### M.TSC.130 The stripper handles every `TYPE_CHECKING` form, line-preserving
+- **From**: A.U27.04 (`:50-62` rewritten; new cases), A.U15.02 (`:96-98` SCD30 guard is the plain form), A.U24.73
+  (`Any`); read: A.U20.14 (the stripper's own tests unchanged by it).
+- **Site**: `tests_scripts/test_strip_type_checking.py` (whole file).
+- **Change**: `test_leaves_compound_condition_untouched`/`test_leaves_if_else_untouched` → the compound body stays with
+  `False` in place of the name, the else body stays live, the import guard goes, and the output executes under CPython
+  with `TYPE_CHECKING` undefined; `:22-47`, `:72-104` assert "no load of the name" instead of a substring test; new: for
+  every real `src/*.py` the line count and every untouched line equal the input's; a single-statement suite gets `pass`;
+  `x = TYPE_CHECKING or y` becomes `x = False or y`; a load left after stripping raises `StripError` naming path and
+  line; `:96-98` asserts every `src/` guard is the plain D.6 two-line form and is removed; no `Any`.
+- **Resolved**: —
+- **Unit**: U27 (stages U15, U24).
+- **Depends**: A.U27.04 (`scripts/_strip_type_checking.py`, SCR), A.U15.02.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests_scripts/test_stripped_image_boots.py
+### M.TSC.131 The stripped, compiled image set boots under the twin <!--@stripped-->
+- **From**: A.U27.05 (2).
+- **Site**: new `tests_scripts/test_stripped_image_boots.py`.
+- **Change**: per `DEVICE_NAMES` device: `stage_python_modules()` into `tmp_path/stage`; the toolchain's `mpy-cross`
+  (copied into `tmp_path` first) compiles every staged `.py` except `main.py` to `.mpy` (a compile error fails naming the
+  module); the `.py` files are removed; the boot `_boot_generated_device()` performs runs with `MICROPYPATH=<stage>:
+  digital_twin:digital_twin/unixport:.frozen` and the same stub `frozen_html.py`, asserting what the source boot asserts
+  (M.TSC.086). A missing `mpy-cross` or Unix port fails.
+- **Resolved**: —
+- **Unit**: U27
+- **Depends**: M.TSC.085 (helper takes a root), A.U27.05 (SCR), M.TWIN.017.
+- **Blast carried by**: SPEC B.11 production-readiness paragraph → A.U27.05 (SPEC).
+- **Kind**: test
+
+## tests_scripts/test_suppression_form.py
+### M.TSC.132 Every suppression coded, ordered and reasoned
+- **From**: A.U28.30 (1).
+- **Site**: new `tests_scripts/test_suppression_form.py`.
+- **Change**: over the eight scopes' `.py` files (tokenised comments): fails, naming file:line and the expected form, on a
+  bare `# type: ignore` or `# noqa`; a code list not ascending or not ", "-separated; an inline `# noqa` without ` -
+  <reason>`; in `src/`, a `# type: ignore[…]` without a trailing `  # <reason>` or a reason line directly above; in
+  `src/`, any `# noqa`.
+- **Resolved**: —
+- **Unit**: U28
+- **Depends**: A.U28.30 (2)-(5) (the rewrites, TOOL and each file's owner).
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests_scripts/test_task_inventory.py
+### M.TSC.133 Every task site is a starter or a tabled row
+- **From**: A.U10.19 (L0 half).
+- **Site**: new `tests_scripts/test_task_inventory.py`.
+- **Change**: every `create_task(`/`start_server(` in `src/` sits in a starter returned by `get_task_starters()`/
+  `get_timer_starters()` or is a row of SPEC C.9's table between `<!-- tasks:begin -->`/`<!-- tasks:end -->` (config
+  flush, captive DNS, hotspot LED flash, per-connection HTTP), matched by file and enclosing function; an untabled site
+  fails; a tabled row with no site fails (stale).
+- **Resolved**: —
+- **Unit**: U10
+- **Depends**: A.U10.19 (SPEC C.9 table).
+- **Blast carried by**: L1 fan-in scenario → A.U10.19 (TEST_HELP/TEST_UNIT).
+- **Kind**: test

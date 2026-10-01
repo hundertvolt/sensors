@@ -852,7 +852,7 @@ Conventions used below (each defined once, then cited):
 ## scripts/test.sh
 
 ### M.SCR.035 `test.sh` header, help, argument and environment validation
-- **From**: A.U7.19 (`--help` and its env list), A.U7.02 (usage error exits 2 — pending Q1), A.U7.06 (two timeout
+- **From**: A.U7.19 (`--help` and its env list), A.U7.02 (usage error exits 2, OR133), A.U7.06 (two timeout
   variables validated up front), A.U27.14 (`:25-27`, `:43` texts), A.U27.08/A.U27.12/A.U24.72 (header facts: derived
   site device, build flavour, four coverage reports), A.U8.15 (tags on the two defaults), A.U27.33 (convention), A.SDEP.16
   (W15 `TZ=UTC` — kept unless the U37 refresh finds `ports/unix/modtime.c` TZ-agnostic, then it goes with its CLAUDE.md
@@ -871,14 +871,14 @@ Conventions used below (each defined once, then cited):
   times" → "once per test file"), then `# @tunable runner.per_file_timeout_s = 240`
   `per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"` and `# @tunable runner.tests_scripts_timeout_s = 1200`
   `tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"`, each `[[ "$v" =~ ^[1-9][0-9]{0,5}$ ]]` else "error:
-  <NAME> must be a positive integer number of seconds, not '<v>'"; every validation failure exits 2 (pending Q1). The
+  <NAME> must be a positive integer number of seconds, not '<v>'"; every validation failure exits 2 (OR133). The
   `:25-27` comment → "…tests_scripts/ runs a nested test.sh to prove the rejection, concurrently with every test file
   holding tests/_tmp scratch." The two sweeps (`tests/_tmp`, `devices/zz_test_*.toml`) follow unchanged.
 - **Resolved**: A.U7.02 sets "a usage error exits 2 in every runner" and flags `test.sh:34, :47, :53` (exit 1) to the
   lead; A.U7.06 writes its new checks with exit 1. No owner row, register item or AC_NOTES settles it → Q1, written
   with the recommended (a).
 - **Unit**: U27 (stages: U7 help, timeouts, block; U8 tags; U27 texts).
-- **Depends**: Q1.
+- **Depends**: — (Q1 answered, OR133).
 - **Blast carried by**: `tests_scripts/test_test_sh.py:512-527` (rejected invocation leaves the tree untouched; exit code
   per Q1) and new timeout cases → A.U7.06 (TSC); `test_tool_help.py` → A.U7.19 (TSC); README env list (`:139-152`
   "positive integer") → A.U7.06 docs (DOCS); Part N rows → A.U8.15 (SPEC); E.10's exit-code list → A.U7.02 (SPEC).
@@ -1802,7 +1802,7 @@ Conventions used below (each defined once, then cited):
    mode (M.SCR.068); `test_archive_evidence.py` gains `new_run_dir()`/`--new-dir` and the per-runner keep (M.SCR.003);
    `test_require_clean_hardware_run_sh.py` asserts `EVIDENCE_DIR` exported and pointing at the archive dir (M.SCR.034,
    GAP-B6); `test_build_firmware.py` the `-noautostart` work dir (M.SCR.065); `test_test_sh.py` the harness jobs, their
-   timeout key, `--coverage` skipping lwIP and harness jobs, exit 2 per Q1 (M.SCR.035/.040/.041/.045); `test_digital_twin_ci_suite_*`
+   timeout key, `--coverage` skipping lwIP and harness jobs, exit 2 per OR133 (M.SCR.035/.040/.041/.045); `test_digital_twin_ci_suite_*`
    Run 1's `UTCTime`/`LocalTime` null check (M.SCR.049). M_SRC_NET gap 3 (labelled SCR: A.U6.28, A.U10.05, A.U30.03,
    A.U10.22 checks) concerns `tests_scripts/` checks, not `scripts/` files — passed to TSC.
 4. **TWIN** — the runner's shutdown line must carry the twin FRAM chip's write count (e.g. `fram_writes=<n>`, or per
@@ -1810,7 +1810,7 @@ Conventions used below (each defined once, then cited):
    M_TWIN names no carrier for A.U35.28.
 5. **SPEC** — Part N rows no tagging action writes: `runner.scenarios_timeout_s` (M.SCR.040), `l2.commanded_reset_margin_s`
    (M.SCR.054), `l0.cross_browser_smoke_poll_ms` (M.SCR.063); E.10/E.3 exit code 2 for `test.sh`'s usage and validation
-   errors (pending Q1); E.1 "Fixed ports" paragraph states the lock directory and its inheritance by child runners
+   errors (OR133); E.1 "Fixed ports" paragraph states the lock directory and its inheritance by child runners
    (M.SCR.012); E.6.1/E.9 state that `test.sh` runs the scenario harness with the exclusive-port-53 scenarios deselected
    and `run_digital_twin_ci.sh` runs them (M.SCR.017); H.7 states the smoke launches through `tests_js/_twin_process.js`.
 6. **DOCS** — BACKLOG's build-environment list (CLAUDE.md PR workflow) needs one U27 paragraph naming every new sourced
@@ -1846,13 +1846,13 @@ Per file, end state read against CLAUDE.md's hard rules and working agreements, 
 - **No new permanent CI control arm (OR21.a (2))** — the CRC16 rerun is OR116's second mode, not a control arm; no
   planted-fault arm added to CI. Pass.
 - **Docs hold current state** — "14-run", "85 files", stale clean comment, "default wozi" removed (M.SCR.061/.035/.046).
-- **Usage errors exit 2 (E.10)** — `test.sh` exits 1 at HEAD → raised as Q1.
+- **Usage errors exit 2 (E.10)** — `test.sh` exits 1 at HEAD → raised as Q1, answered (a) (OR133).
 - **One material (OR24)** — twin-process helpers shared by suite and harness (M.SCR.016), the smoke on the JS twin module
   (M.SCR.064), one Unix-port probe, one MICROPYPATH source, one device list, one retry script. Pass.
 
 ## Owner questions
 
-**Q1. `test.sh` usage and setting errors: exit 2 like every runner?** (A.U7.02's E.10 rule "a usage error exits 2 in
+**Q1. `test.sh` usage and setting errors: exit 2 like every runner?** — answered (a), owner, 2026-10-01 (OR133). (A.U7.02's E.10 rule "a usage error exits 2 in
 every runner" against HEAD's `test.sh:34, :47, :53` and A.U7.06's new checks, which exit 1; A.U7.02 flagged it to the lead,
 no owner row settles it; M.SCR.035/.045 written with (a), pending Q1.)
 - (a) **Recommended**: exit 2 for an unknown argument, a bad `GC_THRESHOLD`, a bad timeout variable and a bad heavy-file
@@ -2168,11 +2168,11 @@ of `audit/actions/*.md`. A second table lists actions read into a merged change 
 | A.U6.27 | M.SCR.071 |
 | A.U6.30 | M.SCR.063, M.SCR.071 |
 | A.U7.01 | M.SCR.006, M.SCR.061 |
-| A.U7.02 | M.SCR.001, M.SCR.002, M.SCR.035; exit-2 rule for `test.sh` pending Q1 |
+| A.U7.02 | M.SCR.001, M.SCR.002, M.SCR.035; exit-2 rule for `test.sh` per OR133 |
 | A.U7.03 | M.SCR.001, M.SCR.045, M.SCR.061 |
 | A.U7.04 | M.SCR.040, M.SCR.045 |
 | A.U7.05 | M.SCR.040 |
-| A.U7.06 | M.SCR.035; its exit 1 pending Q1 |
+| A.U7.06 | M.SCR.035; its checks exit 2 per OR133 |
 | A.U7.08 | M.SCR.002, M.SCR.004, M.SCR.038, M.SCR.045 |
 | A.U7.09 | M.SCR.002, M.SCR.048, M.SCR.057, M.SCR.061; the attempt-2 `retried` filing dropped (A.U27.17, OR37.a (2)) |
 | A.U7.11 | M.SCR.001, M.SCR.024 |
