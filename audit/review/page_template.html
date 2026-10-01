@@ -1,0 +1,493 @@
+<title>Sensors Audit Plan Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a review sheet — sticky section rail on wide screens, one reading column, decisions as sign-off rows. */
+:root {
+  --bg: #f4f7f8;
+  --surface: #ffffff;
+  --ink: #16232b;
+  --muted: #56666f;
+  --line: #d6e0e4;
+  --accent: #0b6e69;
+  --accent-soft: #dcefed;
+  --ok: #1d7a3e;
+  --ok-soft: #e1f3e6;
+  --change: #a2570a;
+  --change-soft: #fbecd9;
+  --ask: #2f5db0;
+  --ask-soft: #e2eafa;
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --step--1: 0.86rem;
+  --step-0: 1rem;
+  --step-1: 1.2rem;
+  --step-2: 1.5rem;
+  --step-3: 2.1rem;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f171c; --surface: #16222a; --ink: #e3ecef; --muted: #9db0b8; --line: #2a3a43;
+    --accent: #5cc4bc; --accent-soft: #163a3a; --ok: #6fd08f; --ok-soft: #173525;
+    --change: #f0b061; --change-soft: #3a2a14; --ask: #8fb0f2; --ask-soft: #1c2944;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f171c; --surface: #16222a; --ink: #e3ecef; --muted: #9db0b8; --line: #2a3a43;
+  --accent: #5cc4bc; --accent-soft: #163a3a; --ok: #6fd08f; --ok-soft: #173525;
+  --change: #f0b061; --change-soft: #3a2a14; --ask: #8fb0f2; --ask-soft: #1c2944;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: var(--step-0); line-height: 1.55; }
+.page { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 64px; display: grid; grid-template-columns: 1fr; gap: 32px; }
+@media (min-width: 900px) { .page { grid-template-columns: 220px minmax(0, 1fr); padding-inline: 24px; } }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: var(--step-3); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: var(--step-2); font-weight: 700; }
+h3 { font-size: var(--step-1); font-weight: 500; }
+p { margin: 0; max-width: 68ch; }
+a { color: var(--accent); }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.eyebrow { font-family: var(--font-mono); font-size: var(--step--1); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+
+/* Rail */
+.rail { display: none; }
+@media (min-width: 900px) {
+  .rail { display: flex; flex-direction: column; gap: 18px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; }
+}
+.rail nav { display: flex; flex-direction: column; gap: 2px; }
+.rail a { text-decoration: none; color: var(--muted); padding: 6px 10px; border-radius: 6px; display: flex; justify-content: space-between; gap: 8px; }
+.rail a:hover { background: var(--accent-soft); color: var(--ink); }
+.rail .count { font-family: var(--font-mono); font-size: var(--step--1); font-variant-numeric: tabular-nums; }
+.meter { display: flex; flex-direction: column; gap: 6px; }
+.meter-bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; display: flex; }
+.meter-bar span { display: block; height: 100%; }
+.meter-label { font-size: var(--step--1); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+main { display: flex; flex-direction: column; gap: 48px; min-width: 0; }
+section { display: flex; flex-direction: column; gap: 16px; scroll-margin-top: 24px; }
+.lede { font-size: var(--step-1); color: var(--ink); max-width: 60ch; }
+.muted { color: var(--muted); }
+
+/* Hero */
+.hero { display: flex; flex-direction: column; gap: 14px; }
+.how { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.how div { border-top: 2px solid var(--accent); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.how strong { font-family: var(--font-display); font-weight: 500; font-size: var(--step-1); }
+
+/* Numbers */
+.numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.num { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
+.num b { font-family: var(--font-display); font-size: var(--step-2); font-variant-numeric: tabular-nums; }
+.num small { color: var(--muted); font-size: var(--step--1); }
+
+/* Lists of plain items */
+.items { display: flex; flex-direction: column; gap: 12px; }
+.item { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.kv { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: 4px 12px; font-size: var(--step-0); }
+.kv dt { color: var(--muted); font-size: var(--step--1); padding-top: 3px; }
+.kv dd { margin: 0; }
+@media (max-width: 520px) { .kv { grid-template-columns: 1fr; } .kv dd { margin-bottom: 6px; } }
+
+/* Topics */
+.topic { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.topic > summary { list-style: none; cursor: pointer; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; }
+.topic > summary::-webkit-details-marker { display: none; }
+.topic > summary .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.topic > summary .size { font-family: var(--font-mono); font-size: var(--step--1); color: var(--muted); }
+.topic[open] > summary { border-bottom: 1px solid var(--line); }
+.topic .body { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.hl { display: flex; flex-direction: column; gap: 4px; padding-left: 14px; border-left: 2px solid var(--line); }
+.hl.visible { border-left-color: var(--accent); }
+.hl h4 { margin: 0; font-size: var(--step-0); font-weight: 700; }
+.tag { display: inline-block; font-size: 0.75rem; font-family: var(--font-mono); padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); vertical-align: middle; margin-left: 6px; }
+.expand-hint { font-size: var(--step--1); color: var(--accent); }
+
+/* Refs */
+.refs { font-size: var(--step--1); color: var(--muted); }
+.refs summary { cursor: pointer; width: fit-content; }
+.refs ul { margin: 6px 0 0; padding-left: 18px; font-family: var(--font-mono); font-size: 0.8rem; overflow-wrap: anywhere; }
+
+/* Decisions */
+.group-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.decision { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; display: grid; gap: 10px; border-left-width: 4px; }
+.decision[data-status="ok"] { border-left-color: var(--ok); }
+.decision[data-status="change"] { border-left-color: var(--change); }
+.decision[data-status="ask"] { border-left-color: var(--ask); }
+.decision .topline { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.decision .topic-label { font-family: var(--font-mono); font-size: var(--step--1); color: var(--muted); }
+.choices { display: flex; gap: 8px; flex-wrap: wrap; }
+.choice { font: inherit; font-size: var(--step--1); border: 1px solid var(--line); background: var(--bg); color: var(--ink); padding: 6px 14px; border-radius: 999px; cursor: pointer; }
+.choice:hover { border-color: var(--accent); }
+.choice[aria-pressed="true"][data-v="ok"] { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); font-weight: 700; }
+.choice[aria-pressed="true"][data-v="change"] { background: var(--change-soft); border-color: var(--change); color: var(--change); font-weight: 700; }
+.choice[aria-pressed="true"][data-v="ask"] { background: var(--ask-soft); border-color: var(--ask); color: var(--ask); font-weight: 700; }
+.choice:disabled { opacity: 0.55; cursor: default; }
+textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); resize: vertical; }
+.saved { font-size: var(--step--1); color: var(--muted); min-height: 1.2em; }
+.btn { font: inherit; font-weight: 700; border: 0; background: var(--accent); color: var(--surface); padding: 10px 18px; border-radius: 8px; cursor: pointer; }
+.btn.secondary { background: var(--accent-soft); color: var(--accent); }
+.btn:disabled { opacity: 0.55; cursor: default; }
+.routine-list { display: flex; flex-direction: column; gap: 10px; }
+.notice { background: var(--change-soft); color: var(--ink); border-radius: 8px; padding: 10px 14px; font-size: var(--step--1); }
+.goahead { background: var(--surface); border: 2px solid var(--accent); border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.mobile-nav { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.mobile-nav a { white-space: nowrap; font-size: var(--step--1); text-decoration: none; border: 1px solid var(--line); padding: 4px 10px; border-radius: 999px; color: var(--ink); background: var(--surface); }
+@media (min-width: 900px) { .mobile-nav { display: none; } }
+@media (prefers-reduced-motion: no-preference) { .decision { transition: border-color 0.2s ease; } }
+</style>
+
+<div class="page">
+  <aside class="rail" aria-label="Sections">
+    <div class="meter" aria-live="polite">
+      <span class="eyebrow">Your progress</span>
+      <div class="meter-bar" id="meterBar"></div>
+      <span class="meter-label" id="meterLabel">Loading answers…</span>
+    </div>
+    <nav id="railNav"></nav>
+  </aside>
+
+  <main>
+    <section class="hero" id="start">
+      <span class="eyebrow">Sensors firmware · audit plan · before execution starts</span>
+      <h1>The plan is ready for your review</h1>
+      <p class="lede" id="oneLine"></p>
+      <div class="how">
+        <div><strong>Read at your pace</strong><span class="muted">Start with the overview. Each area opens with a short summary; details sit one click further.</span></div>
+        <div><strong>Answer what you want</strong><span class="muted">Every decision has three answers: fine, change it, or I have a question. A note is optional.</span></div>
+        <div><strong>Nothing starts without you</strong><span class="muted">Execution begins only after you give the go-ahead at the end of this page.</span></div>
+      </div>
+      <div class="mobile-nav" id="mobileNav"></div>
+      <div class="notice" id="storeNotice" hidden></div>
+    </section>
+
+    <section id="glance">
+      <span class="eyebrow">Overview</span>
+      <h2>The plan at a glance</h2>
+      <div class="numbers" id="numbers"></div>
+      <p id="timeline"></p>
+      <h3>What you are asked to do</h3>
+      <ul id="asked"></ul>
+    </section>
+
+    <section id="steps">
+      <span class="eyebrow">Only you can do these</span>
+      <h2>Your to-dos</h2>
+      <div class="items" id="ownerSteps"></div>
+    </section>
+
+    <section id="hardware">
+      <span class="eyebrow">Real hardware · each needs your go-ahead on the day</span>
+      <h2>Hardware sessions</h2>
+      <p class="muted">No hardware runs while the code changes are made. These sessions come afterwards.</p>
+      <div class="items" id="hwSessions"></div>
+    </section>
+
+    <section id="topics">
+      <span class="eyebrow">What changes, area by area</span>
+      <h2>The areas of the project</h2>
+      <p class="muted">Open an area for its highlights. A marked highlight is something you or a user would notice.</p>
+      <div class="items" id="topicList"></div>
+    </section>
+
+    <section id="decisions">
+      <span class="eyebrow">Decisions taken on your behalf</span>
+      <h2>Decisions to look at</h2>
+      <p class="muted">Where no rule or earlier decision of yours settled a question, I chose the more conservative, easily reversible option. These are those choices, heaviest first.</p>
+      <div id="decisionGroups" class="items"></div>
+    </section>
+
+    <section id="parked">
+      <span class="eyebrow">Left for you, not decided</span>
+      <h2>Parked items</h2>
+      <div class="items" id="parkedList"></div>
+    </section>
+
+    <section id="go">
+      <span class="eyebrow">The last step</span>
+      <h2>Go-ahead for execution</h2>
+      <div class="goahead">
+        <p id="goSummary"></p>
+        <label for="goNote" class="muted">Anything you want to add (optional)</label>
+        <textarea id="goNote" placeholder="For example: start, but do the website topic last."></textarea>
+        <div class="choices">
+          <button class="btn" id="goGive" type="button">Give the go-ahead</button>
+          <button class="btn secondary" id="goHold" type="button">Not yet</button>
+        </div>
+        <span class="saved" id="goSaved"></span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script type="application/json" id="reviewData">__REVIEW_DATA__</script>
+<script>
+(function () {
+  "use strict";
+  var DATA = JSON.parse(document.getElementById("reviewData").textContent);
+  var REPO = "https://github.com/hundertvolt/sensors/blob/claude/whole-project-audit-plan/";
+  var answers = {};
+  var store = null;
+  var LOCAL_KEY = "sensors-review-answers";
+  var WEIGHTS = [
+    { key: "significant", title: "Significant", text: "Something you or a user would notice: behaviour, the API, the website, the release, wear or scope." },
+    { key: "moderate", title: "Moderate", text: "A design choice inside the code, with a plausible alternative." },
+    { key: "routine", title: "Routine", text: "Mechanical or conventional choices. You can approve them all at once and still answer any single one." }
+  ];
+  var CHOICES = [["ok", "Fine"], ["change", "Change it"], ["ask", "I have a question"]];
+
+  function el(tag, attrs, kids) {
+    var n = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === "text") n.textContent = attrs[k];
+      else if (k === "cls") n.className = attrs[k];
+      else n.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function (c) { if (c) n.appendChild(c); });
+    return n;
+  }
+  function refList(refs) {
+    if (!refs || !refs.length) return null;
+    var ul = el("ul");
+    refs.forEach(function (r) {
+      var li = el("li");
+      var m = /^(audit\/[^\s:#]+\.(md|json)|[A-Za-z_./-]+\.(md|py|js|toml|sh|yml|html|css))/.exec(r);
+      if (m) { li.appendChild(el("a", { href: REPO + m[1], target: "_blank", rel: "noopener", text: r })); }
+      else li.textContent = r;
+      ul.appendChild(li);
+    });
+    return el("details", { cls: "refs" }, [el("summary", { text: "Where this lives in the plan" }), ul]);
+  }
+
+  function loadLocal() { try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}"); } catch (e) { return {}; } }
+  function saveLocal() { try { localStorage.setItem(LOCAL_KEY, JSON.stringify(answers)); } catch (e) { /* storage unavailable */ } }
+
+  function decisionIds() { return (DATA.decisions || []).map(function (d) { return d.id; }); }
+  function updateMeter() {
+    var ids = decisionIds();
+    var c = { ok: 0, change: 0, ask: 0 };
+    ids.forEach(function (id) { var a = answers[id]; if (a && c[a.status] !== undefined) c[a.status]++; });
+    var done = c.ok + c.change + c.ask;
+    var bar = document.getElementById("meterBar");
+    bar.textContent = "";
+    [["ok", "var(--ok)"], ["change", "var(--change)"], ["ask", "var(--ask)"]].forEach(function (p) {
+      if (!ids.length) return;
+      var s = el("span"); s.style.width = (100 * c[p[0]] / ids.length) + "%"; s.style.background = p[1]; bar.appendChild(s);
+    });
+    document.getElementById("meterLabel").textContent = done + " of " + ids.length + " decisions answered" +
+      (c.change ? " · " + c.change + " to change" : "") + (c.ask ? " · " + c.ask + " questions" : "");
+    var go = answers["go-ahead"];
+    document.getElementById("goSaved").textContent = go ? (go.status === "given" ? "Go-ahead given. Thank you." : "Marked as not yet.") : "";
+  }
+
+  async function writeAnswer(id, body) {
+    answers[id] = body;
+    updateMeter();
+    saveLocal();
+    if (!store) return "local";
+    try { await store.doc("answers/" + id).set(body); return "saved"; }
+    catch (e) {
+      if (e && e.code === "unavailable") {
+        await new Promise(function (r) { setTimeout(r, 400 + Math.random() * 600); });
+        try { await store.doc("answers/" + id).set(body); return "saved"; } catch (e2) { return "failed"; }
+      }
+      return "failed";
+    }
+  }
+  function savedText(r) {
+    return r === "saved" ? "Saved." : r === "local" ? "Saved on this device only." : "Could not save. Your answer is kept on this device; try again later.";
+  }
+
+  function renderDecision(d) {
+    var card = el("article", { cls: "decision", id: "d-" + d.id });
+    var topicTitle = (DATA.topicTitles || {})[d.topic] || d.topic || "";
+    card.appendChild(el("div", { cls: "topline" }, [el("h3", { text: d.title }), el("span", { cls: "topic-label", text: topicTitle })]));
+    var kv = el("dl", { cls: "kv" });
+    [["What I decided", d.decision], ["Why", d.why], ["If you say no", d.if_no], ["The other option", d.alternative]].forEach(function (p) {
+      if (!p[1]) return;
+      kv.appendChild(el("dt", { text: p[0] })); kv.appendChild(el("dd", { text: p[1] }));
+    });
+    card.appendChild(kv);
+    var choices = el("div", { cls: "choices", role: "group", "aria-label": "Your answer" });
+    var noteId = "note-" + d.id;
+    var note = el("textarea", { id: noteId, placeholder: "What should change, or what is your question?", "aria-label": "Note for " + d.title });
+    var saved = el("span", { cls: "saved" });
+    CHOICES.forEach(function (c) {
+      var b = el("button", { cls: "choice", type: "button", "data-v": c[0], "aria-pressed": "false", text: c[1] });
+      b.addEventListener("click", async function () {
+        var cur = answers[d.id] || {};
+        var body = { status: c[0], note: note.value.trim() || cur.note || "", at: new Date().toISOString() };
+        paint();
+        saved.textContent = "Saving…";
+        saved.textContent = savedText(await writeAnswer(d.id, body));
+        paint();
+      });
+      choices.appendChild(b);
+    });
+    note.addEventListener("change", async function () {
+      var cur = answers[d.id];
+      if (!cur) return;
+      var body = { status: cur.status, note: note.value.trim(), at: new Date().toISOString() };
+      saved.textContent = "Saving…";
+      saved.textContent = savedText(await writeAnswer(d.id, body));
+    });
+    card.appendChild(choices);
+    card.appendChild(note);
+    card.appendChild(saved);
+    var r = refList(d.refs); if (r) card.appendChild(r);
+    function paint() {
+      var a = answers[d.id];
+      card.setAttribute("data-status", a ? a.status : "");
+      Array.prototype.forEach.call(choices.children, function (b) { b.setAttribute("aria-pressed", a && a.status === b.getAttribute("data-v") ? "true" : "false"); });
+      note.hidden = !(a && (a.status === "change" || a.status === "ask"));
+      if (a && document.activeElement !== note && a.note !== undefined && note.value !== a.note) note.value = a.note;
+    }
+    card._paint = paint;
+    paint();
+    return card;
+  }
+
+  function render() {
+    var ov = DATA.overview || {};
+    document.getElementById("oneLine").textContent = ov.one_line || "";
+    var nums = document.getElementById("numbers");
+    (ov.numbers || []).forEach(function (n) {
+      nums.appendChild(el("div", { cls: "num" }, [el("b", { text: n.value }), el("span", { text: n.label }), n.note ? el("small", { text: n.note }) : null]));
+    });
+    document.getElementById("timeline").textContent = ov.timeline || "";
+    var asked = document.getElementById("asked");
+    (ov.what_you_are_asked || []).forEach(function (t) { asked.appendChild(el("li", { text: t })); });
+
+    var steps = document.getElementById("ownerSteps");
+    (DATA.owner_steps || []).forEach(function (s) {
+      var kv = el("dl", { cls: "kv" });
+      [["What", s.what], ["Why", s.why], ["When", s.when]].forEach(function (p) { if (p[1]) { kv.appendChild(el("dt", { text: p[0] })); kv.appendChild(el("dd", { text: p[1] })); } });
+      steps.appendChild(el("div", { cls: "item" }, [el("h3", { text: s.title }), kv, refList(s.refs)]));
+    });
+
+    var hw = document.getElementById("hwSessions");
+    (DATA.hardware_sessions || []).forEach(function (s) {
+      var kv = el("dl", { cls: "kv" });
+      [["What happens", s.what_happens], ["Rounds", s.rounds], ["Your part", s.owner_present], ["How long", s.duration], ["Wear and risk", s.wear_or_risk]].forEach(function (p) {
+        if (p[1]) { kv.appendChild(el("dt", { text: p[0] })); kv.appendChild(el("dd", { text: p[1] })); }
+      });
+      hw.appendChild(el("div", { cls: "item" }, [el("h3", { text: s.title }), kv, refList(s.refs)]));
+    });
+
+    var tl = document.getElementById("topicList");
+    (DATA.topics || []).forEach(function (t) {
+      var sizeText = t.size ? (t.size.changes + " changes" + (t.size.units ? " · " + t.size.units : "")) : "";
+      var sum = el("summary", {}, [
+        el("div", { cls: "row" }, [el("h3", { text: t.title }), el("span", { cls: "size", text: sizeText })]),
+        el("p", { text: t.summary }),
+        el("span", { cls: "expand-hint", text: "Show highlights" })
+      ]);
+      var body = el("div", { cls: "body" });
+      (t.highlights || []).forEach(function (h) {
+        var head = el("h4", { text: h.title });
+        if (h.user_visible) head.appendChild(el("span", { cls: "tag", text: "noticeable" }));
+        body.appendChild(el("div", { cls: "hl" + (h.user_visible ? " visible" : "") }, [head, el("p", { text: h.text }), refList(h.refs)]));
+      });
+      if (t.unchanged) body.appendChild(el("p", { cls: "muted", text: "Stays as it is: " + t.unchanged }));
+      var r = refList(t.refs); if (r) body.appendChild(r);
+      var det = el("details", { cls: "topic", id: "t-" + t.id }, [sum, body]);
+      det.addEventListener("toggle", function () { sum.querySelector(".expand-hint").textContent = det.open ? "Hide highlights" : "Show highlights"; });
+      tl.appendChild(det);
+    });
+
+    var groups = document.getElementById("decisionGroups");
+    var cards = [];
+    WEIGHTS.forEach(function (w) {
+      var list = (DATA.decisions || []).filter(function (d) { return d.weight === w.key; });
+      if (!list.length) return;
+      var wrap = el("div", { cls: "items", id: "w-" + w.key });
+      var head = el("div", { cls: "group-head" }, [el("div", {}, [el("h3", { text: w.title + " (" + list.length + ")" }), el("p", { cls: "muted", text: w.text })])]);
+      wrap.appendChild(head);
+      var holder = el("div", { cls: w.key === "routine" ? "routine-list" : "items" });
+      list.forEach(function (d) { var c = renderDecision(d); cards.push(c); holder.appendChild(c); });
+      if (w.key === "routine") {
+        var all = el("button", { cls: "btn secondary", type: "button", text: "Mark all unanswered routine items fine" });
+        all.addEventListener("click", async function () {
+          all.disabled = true;
+          for (var i = 0; i < list.length; i++) {
+            if (answers[list[i].id]) continue;
+            await writeAnswer(list[i].id, { status: "ok", note: "", at: new Date().toISOString(), batch: true });
+          }
+          cards.forEach(function (c) { c._paint(); });
+          all.disabled = false;
+        });
+        head.appendChild(all);
+        var det = el("details", {}, [el("summary", { cls: "expand-hint", text: "Show the routine items one by one" }), holder]);
+        wrap.appendChild(det);
+      } else wrap.appendChild(holder);
+      groups.appendChild(wrap);
+    });
+
+    var pk = document.getElementById("parkedList");
+    var parked = DATA.parked || [];
+    if (!parked.length) pk.appendChild(el("p", { cls: "muted", text: "Nothing is parked." }));
+    parked.forEach(function (p) { pk.appendChild(el("div", { cls: "item" }, [el("h3", { text: p.title }), el("p", { text: p.why_parked }), refList(p.refs)])); });
+
+    var nav = [["start", "Start here"], ["glance", "At a glance"], ["steps", "Your to-dos"], ["hardware", "Hardware sessions"], ["topics", "Areas"], ["decisions", "Decisions"], ["parked", "Parked"], ["go", "Go-ahead"]];
+    var rail = document.getElementById("railNav"), mob = document.getElementById("mobileNav");
+    nav.forEach(function (n) {
+      var cnt = n[0] === "decisions" ? String((DATA.decisions || []).length) : n[0] === "topics" ? String((DATA.topics || []).length) : "";
+      rail.appendChild(el("a", { href: "#" + n[0] }, [el("span", { text: n[1] }), el("span", { cls: "count", text: cnt })]));
+      if (n[0] !== "start") mob.appendChild(el("a", { href: "#" + n[0], text: n[1] }));
+    });
+
+    document.getElementById("goSummary").textContent = DATA.go_summary || "";
+    var goNote = document.getElementById("goNote");
+    async function go(status) {
+      var r = await writeAnswer("go-ahead", { status: status, note: goNote.value.trim(), at: new Date().toISOString() });
+      document.getElementById("goSaved").textContent = (status === "given" ? "Go-ahead given. " : "Marked as not yet. ") + savedText(r);
+    }
+    document.getElementById("goGive").addEventListener("click", function () { go("given"); });
+    document.getElementById("goHold").addEventListener("click", function () { go("withheld"); });
+
+    return cards;
+  }
+
+  var cards = render();
+  answers = loadLocal();
+  cards.forEach(function (c) { c._paint(); });
+  if (answers["go-ahead"] && answers["go-ahead"].note) document.getElementById("goNote").value = answers["go-ahead"].note;
+  updateMeter();
+
+  (async function connect() {
+    var db = null;
+    try { db = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch (e) { db = null; }
+    var notice = document.getElementById("storeNotice");
+    if (!db) {
+      notice.textContent = "Your answers are saved on this device only in this view. Open the page on claude.ai, signed in, so Claude can read them.";
+      notice.hidden = false;
+      return;
+    }
+    store = db;
+    try {
+      var first = await db.collection("answers").get();
+      var have = {};
+      first.docs.forEach(function (d) { if (d.exists) have[d.id] = true; });
+      var pending = Object.keys(answers).filter(function (k) { return !have[k]; });
+      for (var i = 0; i < pending.length; i++) { await db.doc("answers/" + pending[i]).set(answers[pending[i]]); }
+    } catch (e) { /* the subscription below still delivers the stored answers */ }
+    db.collection("answers").onSnapshot(function (snap) {
+      var remote = {};
+      snap.docs.forEach(function (d) { if (d.exists) remote[d.id] = d.data(); });
+      answers = remote;
+      saveLocal();
+      cards.forEach(function (c) { c._paint(); });
+      updateMeter();
+    }, function () {
+      notice.textContent = "The connection to the answer store ended. New answers are kept on this device; reload the page to reconnect.";
+      notice.hidden = false;
+      store = null;
+    });
+  })();
+})();
+</script>
