@@ -1036,14 +1036,16 @@ Conventions every merged change below applies (stated once, not repeated per cha
   2026-09-21); and `build-lwip`, the real patched `extmod/modlwip.c` over loopback lwIP, which only the lwIP host files
   run (E.1, E.3; owner, 2026-09-30)." The flag paragraph ("**The flag is not inert when unused** (measured 2026-09-18)
   … 24.6s → 9.3s)") keeps its facts with "Since the split, the plain suite's figures" → "The plain suite's figures are
-  therefore". (3) "Because a build directory's name no longer tells you which variant is in it, `scripts/test.sh`
+  therefore", and its timing names the file as it was when measured: "(measured at the split of the two builds: `test_sensortask_wozi.py`,
+  today `tests/test_sensortask.py` run for `wozi`, 24.6 s → 9.3 s)" — A.U24.65 deletes the per-device wrappers (GAPS_G3
+  hand-off 5; gap pass G1). (3) "Because a build directory's name no longer tells you which variant is in it, `scripts/test.sh`
   verifies the binary rather than the path (E.5.2's first consequence)." → "A build directory's name does not tell you
   which build flavour it holds, so every runner asks the binary through `scripts/_unix_port.sh` (E.5.2)."
 - **Resolved**: A.U36.512's U36 word change (`:740`) is overtaken by A.U27.12's U27 sentence (same clause, flavour
   word already in it) — one text. A.U21.02 asks for "the help-text wording"; the comments carry it shortened to a
   comment column (agent decision, listed below).
 - **Unit**: Stage 1 U21 ((1), (2)); Stage 2 U27 ((3)).
-- **Depends**: A.U21.02, A.U21.08, A.U21.12, A.U27.12; M.SPEC.081.
+- **Depends**: A.U21.02, A.U21.08, A.U21.12, A.U27.12; M.SPEC.081; M.TEST_UNIT.337 (A.U24.65's per-device file).
 - **Blast carried by**: README flag table → A.U21.02 (DOCS); CLAUDE.md "Two Unix-port binaries" → A.U21.12/A.U36.546
   (DOCS).
 - **Kind**: doc

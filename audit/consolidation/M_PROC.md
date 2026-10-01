@@ -587,6 +587,25 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
   (read, colour mapping held).
 - **Kind**: test (audit check)
 
+### M.PROC.045 U23: check every legacy page function once against the generated site
+- **From**: A.U23.48 (its execution step; the permanent L0 half is M.WEB.066), M.WEB.066's Blast ("the audit's one-time
+  legacy page ledger … PROC"); gap pass G1 (pointer sweep).
+- **Site**: the audit working ledger (`audit/`; nothing permanent); read: the legacy pages at
+  `legacy/firmware/html_raw/{general,wozi,arzi,dev}/*.html` (M.PROC.014's paths) and the generated site of the matching
+  device.
+- **Change**: in U23, before M.WEB.066's test lands: each legacy page's controls (measurements, network/time, sensor,
+  system/LED configuration, commands, per-field result feedback, favicon) are listed once against the generated site of
+  the matching device, each marked "counterpart: <section/group>" or "none". A function with no counterpart goes to the
+  owner in the owner's format (OR48.a (2)); nothing else is recorded (OR48.a (3)). The legacy tree is only read (CLAUDE.md
+  legacy rule); no permanent test reads it.
+- **Resolved**: A.U23.48 places the step "in execution" with no cluster; M.WEB.066 carries the permanent test and points
+  the ledger here (agent decision, gap pass G1).
+- **Unit**: U23.
+- **Depends**: M.PROC.014 (legacy paths); M.WEB.050, M.WEB.066 (the generated site and its test).
+- **Blast carried by**: a missing counterpart → an owner question (DOCS M.DOCS.067's list if deferred); the L0 test →
+  M.WEB.066 (WEB).
+- **Kind**: test (audit check)
+
 ## P5 — B3: the test-integrity campaign (U35)
 
 ### M.PROC.022 Open the B3 working files; the campaign ends when every row is terminal
@@ -1249,6 +1268,7 @@ agent decisions below go to the OR2.c review.
 
 | action ID | merged into M-ID / dropped (reason) |
 |---|---|
+| A.U23.48 | M.PROC.045 (execution step; the L0 half is M.WEB.066; gap pass G1) |
 | A.C.07 | M.PROC.040 |
 | A.C.08 | M.PROC.041 |
 | A.C.09 | M.PROC.042 |

@@ -833,7 +833,8 @@ change lists its stages; the end state is the last stage's.
   (M.SRC_NET.153); the C-stack code is shared errno 25 `STACK_EXHAUSTED` "a C-stack overflow was recorded; rebooting"
   (M.SRC_CORE.005: SYSTEM's band 40-44 is full) and the `ResetReason` table gains 20 "C stack exhausted" (A.U30.19 (5));
   the timestamp pack-failure code `retired` (A.U35.55); code 34 renamed `SGP_BACKUP_AGE` "backup rejected: older than
-  `BackupMaxAge` or dated in the future"; errno 16 `CLOCK` `retired` (its last sites go: SYSTEM's with A.U10.06, NTP's
+  `BackupMaxAge` or dated in the future"; errno 15 `SOURCE` text "a producer's `get_data()` raised or returned a
+  non-numeric field" (A.U9.08, M.SRC_SENS.035); errno 16 `CLOCK` `retired` (its last sites go: SYSTEM's with A.U10.06, NTP's
   `cettime()` handler with U18 register fix 10 — M.SRC_CORE.005/.080, M.SRC_NET.047/.053); errno 69 `NTP_MALFORMED` text "the reply is
   malformed or could not be parsed" (M.SRC_NET.049); errno 72 `NTP_NOT_SENT` (A.U18.14, U18 register fix 9;
   M.SRC_NET.047); the shared warnings W11 `DERIVED_DOMAIN` (A.U15.24) and W12
@@ -1823,3 +1824,4 @@ change (the catalog rows and tag values their merges number):
 | A.U18.06 | M.GEN.034 (DNSSRV W42 `DNS_RECV_FAILED`, W43 unassigned) |
 | A.U18.14 | M.GEN.034 (errno 72 `NTP_NOT_SENT`) |
 | A.U18.15 | M.GEN.034 (W12 `SOCKET_TEARDOWN`) |
+| A.U9.08 | M.GEN.034 (errno 15 `SOURCE` text) |
