@@ -26,6 +26,9 @@ files completely rather than skim, and list the rest as NOT-DONE.
   corrections (each ends with a "Verified …" line); read the cited action in full, including its Depends/Blast notes
   and any "co-lands with … A-C merges" note, and the file's Conflicts/Open-points sections.
 - `audit/actions/AC_NOTES.md` (lead decisions, items 1-36+) — binding.
+- The finished merges `audit/consolidation/M_*.md`: their "Gaps for other clusters" sections name gaps your cluster
+  must carry (grep your cluster name), and their merged product end states are what your tests and docs must match
+  (cite the M-ID).
 - `PROJECT_AUDIT_PLAN.md` 3.2 owner rows OR1-OR130 (quote row + ".a" reading; the most recent owner decision wins;
   OR64: a missing owner trace never proves the owner did not decide); the register `audit/pass2/` (G1-G10, LEAD, REF).
 - CLAUDE.md in full (hard rules, working agreements, tooling rules) and SPECIFICATION.md as the actions amend it.
