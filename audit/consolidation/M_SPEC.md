@@ -1000,3 +1000,1340 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Blast carried by**: README intro sentence → A.U29.01 Blast (DOCS); CLAUDE.md credentials bullet → A.U29.03 (1)
   (DOCS); `pyproject.toml` S104/S105 comments → A.U28.27/A.U28.29/A.U29.03 (TOOL); the L0 check → A.U29.02 (TSC).
 - **Kind**: doc
+
+## SPECIFICATION.md — Part B (`:697-1483`)
+
+### M.SPEC.025 B.1 and B.3 step 3: picotool's real compatibility rule
+- **From**: A.U21.05 (B.1 item 1, B.3 step 3); A.U14.24 (the F.1 sentence it co-lands with, carried in M.SPEC[F.1]).
+- **Site**: `SPECIFICATION.md:705-707` (B.1 item 1), `:751-752` (B.3 step 3).
+- **Change**: B.1 item 1 → "**The four pieces must agree, or the build breaks** — `picotool` must be of `pico-sdk`'s
+  major version and at least the version `pico-sdk` requires, or the build fails ("Incompatible picotool installation
+  found"), and `pico-sdk` must match whatever MicroPython's build compiles against (B.3 derives this instead of
+  hand-tracking it)." B.3 step 3 appends "(narrower than pico-sdk's own rule, B.1)". The pico-sdk/picotool file:line
+  cites live in F.1 only; they are re-read in the refreshed pin's clones (C3).
+- **Resolved**: A.U14.24's "must match that major.minor or the build fails" is replaced by A.U21.05's clause (A.U21.05
+  Depends) — one rule in B.1 and F.1.
+- **Unit**: U21.
+- **Depends**: A.SDEP.08 (pin, C3); M.SPEC[F.1].
+- **Blast carried by**: `derive_picotool_ref()` docstring and `versions.toml:3-5` comment → A.U21.05 (TOOL).
+- **Kind**: doc
+
+### M.SPEC.026 B.2: quick start names three build flavours and the shared probe
+- **From**: A.U21.02 Blast (quick-start comments take the help-text wording), A.U21.08 Blast (`--toolchain-dir` row notes
+  the character limit), A.U21.12 Blast (three binaries), A.U27.12 Blast (one probe, flavours named), A.U36.512 (2)-(3)
+  (`:740` "which variant is in it"), A.U36.546 (CLAUDE.md's coverage bullet drops the 24.6 s → 9.3 s figure because
+  `:739` keeps it).
+- **Site**: `SPECIFICATION.md:712-743` (B.2 code block and the paragraph after it).
+- **Change**: (1) Code-block comments: `--latest` → "# pin versions.toml to the newest stable tag (a pin move: the
+  owner's call; the platform re-check follows)"; `--micropython-ref v1.26.1` → "# build this ref without changing
+  versions.toml (off-pin: re-check before trusting it)"; `--toolchain-dir /path` → "# default ~/pico-toolchain; the
+  path may not hold whitespace, quotes, \ $ # ; :". (2) "Both subcommands also build/verify **two** Unix-port
+  interpreters (owner decision, 2026-09-21): …" → "Both subcommands also build/verify **three** Unix-port interpreters,
+  one per build flavour: `build-standard` **without** `MICROPY_PY_SYS_SETTRACE` — the test rig, what plain
+  `scripts/test.sh` runs — and `build-settrace` with it, which only `scripts/test.sh --coverage` uses (E.5) (owner,
+  2026-09-21); and `build-lwip`, the real patched `extmod/modlwip.c` over loopback lwIP, which only the lwIP host files
+  run (E.1, E.3; owner, 2026-09-30)." The flag paragraph ("**The flag is not inert when unused** (measured 2026-09-18)
+  … 24.6s → 9.3s)") keeps its facts with "Since the split, the plain suite's figures" → "The plain suite's figures are
+  therefore". (3) "Because a build directory's name no longer tells you which variant is in it, `scripts/test.sh`
+  verifies the binary rather than the path (E.5.2's first consequence)." → "A build directory's name does not tell you
+  which build flavour it holds, so every runner asks the binary through `scripts/_unix_port.sh` (E.5.2)."
+- **Resolved**: A.U36.512's U36 word change (`:740`) is overtaken by A.U27.12's U27 sentence (same clause, flavour
+  word already in it) — one text. A.U21.02 asks for "the help-text wording"; the comments carry it shortened to a
+  comment column (agent decision, listed below).
+- **Unit**: Stage 1 U21 ((1), (2)); Stage 2 U27 ((3)).
+- **Depends**: A.U21.02, A.U21.08, A.U21.12, A.U27.12; M.SPEC[E.5.2].
+- **Blast carried by**: README flag table → A.U21.02 (DOCS); CLAUDE.md "Two Unix-port binaries" → A.U21.12/A.U36.546
+  (DOCS).
+- **Kind**: doc
+
+### M.SPEC.027 B.3: the pin line, the typed table, the build record
+- **From**: A.U21.01 (refusals cite B.3), A.U21.29 (typed table; errors cite B.3), A.U21.03 Blast (step 8 "record what
+  was built"), A.U27.02 (the `[stubs]` table the typed check also reads), A.U21.02 (pin moves on the owner's call).
+- **Site**: `SPECIFICATION.md:745-761` (B.3).
+- **Change**: (1) Step 1 → "Check out MicroPython at the pinned ref — `versions.toml`'s `[micropython] ref`, exactly
+  one `ref = "…"` line in that table (`--latest` rewrites that one line and re-reads the file; a missing or duplicate
+  line is refused). The pin moves only on the owner's call (owner, 2026-09-26)." (2) New sentence after the list:
+  "`versions.toml` is read as a typed table — `[micropython] ref` (a non-empty string), `[toolchain] board` (a string)
+  and `apt_packages` (a list of strings), `[lwip]` (B.14.2's options), `[stubs] board`/`stdlib` (B.15) — and a missing or
+  mistyped key fails naming its table and key, before anything is built." (3) New step 7: "Record what was built:
+  `toolchain-record.json` in the toolchain directory names every ref and commit, the picotool and compiler versions and
+  the hashes of the inputs (B.5)." (4) The closing paragraph's "`test` is `setup` with steps 1-4 skipped" holds.
+- **Resolved**: A.U21.03 calls it "step 8"; B.3 has six steps at HEAD — it becomes step 7 (agent decision).
+- **Unit**: U21 ((1)-(3)); the `[stubs]` key lands with A.U27.02 (U27) — Stage 2 U27 adds it to (2).
+- **Depends**: A.U21.01, A.U21.03, A.U21.29, A.U27.02.
+- **Blast carried by**: the `SetupError` texts → A.U21.01/A.U21.29 (TOOL).
+- **Kind**: doc
+
+### M.SPEC.028 B.4: bounded, streamed, retried, redacted subprocesses
+- **From**: A.U21.17 Blast, A.U21.18 Blast, M_TOOL gap 8 (D2: one retry pair for every retried network step).
+- **Site**: `SPECIFICATION.md:763-775` (B.4).
+- **Change**: (1) After the two env bullets, a new paragraph: "Every subprocess is bounded by one of three budgets —
+  `tool.remote_query_timeout_s`, `tool.network_step_timeout_s`, `tool.build_step_timeout_s` (Part N) — and streams its
+  output as it runs; a timeout kills the process group and names the limit. Network steps (clones, fetches,
+  `ls-remote`, submodule updates, the Node downloads, `uv sync`) are retried three times with growing pauses
+  (`tool.uv_sync_attempts`, `tool.uv_sync_backoff_step_s`). A secret passed to a step never appears in the echoed
+  command or its output." (2) The `network_env()` bullet gains "privileged apt calls keep them through `sudo
+  --preserve-env=<names>` (sudo's `env_reset` would drop them)."
+- **Unit**: U21.
+- **Depends**: A.U21.17, A.U21.18; M.SPEC[N] rows (A.U21.17, M_TOOL gap 8).
+- **Blast carried by**: `setup_toolchain.py` `run()` → A.U21.17 (TOOL).
+- **Kind**: doc
+
+### M.SPEC.029 B.5: directory layout
+- **From**: A.U21.03 Blast (record file), A.U21.22 Blast (lock), A.U21.27 Blast (picotool installed only when its tag
+  changed), A.U21.30 Blast (outdated leftovers removed), A.U21.12 Blast (`build-lwip`).
+- **Site**: `SPECIFICATION.md:777-792` (B.5).
+- **Change**: the tree gains `    ports/unix/build-lwip/      the same interpreter with the patched modlwip over
+  loopback lwIP - the lwIP host files only` after `build-settrace/`; `  toolchain-record.json  what was built from what
+  (refs, commits, picotool, compilers, input hashes)` and `  .toolchain.lock          held by the one setup run allowed
+  per directory` at the top level; the `picotool/` line → "full clone at the derived matching tag; built and
+  `sudo make install`ed only when its tag changed". After the tree: "Setup removes directories its own earlier versions
+  left (old Unix build names, retired overrides, superseded Node trees). One run at a time per toolchain directory: a
+  second run fails at once naming the first, and an interrupted one is detected at the next start."
+- **Unit**: U21.
+- **Depends**: A.U21.03, A.U21.12, A.U21.22, A.U21.27, A.U21.30.
+- **Blast carried by**: README toolchain section → A.U21.27 (DOCS).
+- **Kind**: doc
+
+### M.SPEC.030 B.6: verification steps
+- **From**: A.U21.15 Blast (step 2 zero errors and warnings), A.U21.12 Blast (step 8c), A.U21.06 (every Unix binary
+  re-proves the SIGINT override), A.U21.09 (the firmware build's post-build proof).
+- **Site**: `SPECIFICATION.md:794-805` (B.6).
+- **Change**: step 2 → "Build `mpy-cross`, zero errors and warnings."; step 8 → "8. Rebuild the vanilla Unix ports —
+  (a) `build-standard`, the standing test rig, (b) `build-settrace`, (c) `build-lwip`, the lwIP host build (B.14.3) —
+  each followed by its override readbacks (B.14)." The closing line → "A completed run leaves no vanilla RP2
+  `firmware.uf2`; step 8's three Unix ports are the kept artefacts."
+- **Resolved**: A.U21.12 names "step 8c"; B.6 at HEAD has one step 8 — it becomes (a)-(c). The cross-reference "B.14.3"
+  is the end-state number of the `modlwip_eagain` subsection (M.SPEC.042); in U21 it reads "B.14.4" (C6).
+- **Unit**: U21.
+- **Depends**: A.U21.06, A.U21.12, A.U21.15, M.SPEC.042.
+- **Blast carried by**: —
+- **Kind**: doc
+
+### M.SPEC.031 B.7 and B.7.1: evidence, warning-free builds, the mbedtls flag
+- **From**: A.U1.17 (`:808` "deployed" goes), A.U36.524 (6) (`:812` pointer), A.U21.15 (its error text cites "B.7"
+  for "every build is warning-free"), A.U21.16 (B.7.1 rewritten per branch), A.SDEP.12 (the mbedtls version at the
+  refreshed pin), A.U14.23 (BACKLOG's text cites B.7.1; no SPEC edit).
+- **Site**: `SPECIFICATION.md:807-822` (B.7, B.7.1).
+- **Change**: (1) `:808` "for both the deployed `v1.26.1` and latest stable" → "for both `v1.26.1` and latest stable".
+  (2) Gap fill: after B.7's first sentence, "Every build is warning-free: a `warning:` or `error:` in any build's output
+  fails the run (one helper checks every build; B.7.1 names the one suppression, if any)." — A.U21.15's message points
+  here and B.7 had no such sentence. (3) `:812` "See CLAUDE.md's "Build-environment verification" for the re-check
+  recipe." → "B.17 is the re-check recipe." (4) B.7.1 per A.U21.16's branch: 2a (clean on both targets) → "GCC ≥ 14
+  flagged `mbedtls_xor()` in `ctr_drbg.c` as `-Warray-bounds` with mbedtls 3.6.2; mbedtls 3.6.6 (vendored since the
+  v1.29.0 pin, `lib/mbedtls` `0bebf8b`) carries the fix (mbedtls `292b96c0a`), and a GCC <version> build of both targets
+  is clean without a suppression (agent, <date>)" with the heading → "### B.7.1 GCC ≥ 14 hosts: the mbedtls array-bounds
+  check"; 2b (a warning remains, or the GCC ≥ 14 build cannot run before B5) → "persists on GCC <version> despite mbedtls
+  3.6.6; scoped to `ctr_drbg.c` (the generated variant makefiles and board cmake, B.14); goes when a GCC ≥ 14 build is
+  clean without it, checked at every ref move (agent, <date>)". Both: "this project's pinned MicroPython vendors an
+  mbedtls commit predating that fix" goes; "Not yet fixed upstream (GCC bug #121044 still UNCONFIRMED)" goes (2a) or
+  becomes "GCC bug #121044's status is unread here (gcc.gnu.org unreachable)" (2b). Where A.SDEP.08 moved the pin, the
+  vendored mbedtls version and commit are A.SDEP.12's record, not "`0bebf8b` / v3.6.6" (C3).
+- **Resolved**: A.U1.17 lands in U1 on HEAD text; A.U36.524 (6) in U36; A.U21.16 in U21 or phase C (its step 1 needs a
+  GCC ≥ 14 build). Independent sentences.
+- **Unit**: Stage 1 U1 ((1)); Stage 2 U21 ((2), and (4) when step 1 ran in U21 — else (4) lands in phase C's delta,
+  A.C.10); Stage 3 U36 ((3), after M.SPEC.045 creates B.17).
+- **Depends**: A.U1.17, A.U21.15, A.U21.16, A.SDEP.12, M.SPEC.045.
+- **Blast carried by**: CLAUDE.md `:979-983` → A.U21.16 (DOCS); `setup_toolchain.py` constant → A.U21.16 (TOOL).
+- **Kind**: doc
+
+### M.SPEC.032 B.9 Coverage
+- **From**: A.U1.16 (B.9).
+- **Site**: `SPECIFICATION.md:830-835`.
+- **Change**: A.U1.16's text verbatim: title "## B.9 Coverage"; body "The RP2040 firmware build is covered for every
+  device (B.11, CI `firmware-build-verify`) and the Unix port by the test suite (E.3). The legacy build
+  (`legacy/firmware/build-*.sh`) is reference-only and never wired (CLAUDE.md)."
+- **Unit**: U1.
+- **Depends**: A.U1.03 (the `legacy/` layout).
+- **Blast carried by**: —
+- **Kind**: doc
+
+### M.SPEC.033 B.10: the CI job set, the cache key, the retried sync
+- **From**: A.U28.37 (B.10 text), A.U21.07 (cache key gains `micropython_overrides.py`), A.U28.04 (runner, GCC, glibc
+  in the key), A.U28.01 (one retried `uv sync --locked`), A.U28.06 (every device), A.U28.10 (outage dates stay as
+  facts), A.U28.42 (the composite actions' headers point to B.10), A.U7.03 Blast (`:867` "ALL PASSED" quote), A.SDEP.19
+  (the `actionlint-py` reason re-checked), A.SDEP.05 (no action version named; nothing to edit), A.U28.15 (Codecov
+  goes), M_TOOL gap 8 (D1: the two composite actions, the `devices` job, `env` for matrix values; `ci.devices_timeout_min`).
+- **Site**: `SPECIFICATION.md:837-870` (B.10).
+- **Change**: (1) `:839-848` A.U28.37's text: "**sixteen jobs** (fourteen of real work plus two that derive inputs:
+  `web-changes`, the path filter the web jobs gate on, and `devices`, the device list both per-device matrices read)";
+  "for each of the six devices" → "for every device". (2) Gap fill (M_TOOL gap 8 D1), new paragraph after the job list:
+  "Two composite actions carry the shared steps: `.github/actions/uv-sync` (the retried sync, the lint jobs) and
+  `.github/actions/setup-micropython-toolchain` (sync, then the cached Unix-port toolchain, built on a miss when a job
+  asks for it). A matrix value reaches a script through `env`, never through the script text." (3) `:850-853` → A.U28.37's
+  cache-key sentence (A.U21.07's third file and A.U28.04's runner identity in one): "The cache key hashes every input
+  compiled into the cached binaries — `versions.toml`, `setup_toolchain.py`, `micropython_overrides.py` — and the
+  runner image, host GCC and glibc: keying on `versions.toml` alone once let a stale binary survive (`--coverage`
+  failed in CI while passing locally). Every caller of the composite action shares that one key, so the first job in a
+  run builds and the rest hit." (4) `:855-862` → A.U28.37's sync paragraph verbatim ("Every job that syncs runs
+  `scripts/uv_sync_retried.sh` (`uv sync --locked`, three attempts, 10 s and 20 s pauses) … `pyproject.toml`'s
+  `required-version` pins uv itself."), with the named example (`actionlint-py` fetching its binary in its build
+  backend) kept only if A.SDEP.19 found it still true at the refreshed lock, else replaced by "a dependency's build-time
+  download". (5) `:864-870` (coverage rerun paragraph): "the plain suite reported `60/60 files passed / ALL PASSED`" →
+  "the plain suite had passed" (the quoted summary text no longer exists after A.U7.03's summary block); the run ID,
+  date and 13m24s stay as the evidence behind the rule (G9/R11).
+- **Resolved**: A.U21.07 (U21) and A.U28.04 (U28) edit the same sentence (A.U28.04: "one edit") — Stage 1 U21 writes
+  the three-file form, Stage 2 U28 adds the runner identity. A.U7.03 asks to "reword to the new text"; the quote goes
+  rather than quoting the new block (a quoted summary drifts, OR43.a).
+- **Unit**: Stage 1 U21 ((3) files part); Stage 2 U28 (rest).
+- **Depends**: A.U28.01-A.U28.36 (A.U28.37's Depends), A.U21.07, A.U7.03, A.SDEP.19.
+- **Blast carried by**: CLAUDE.md retry bullet → A.U28.10 (DOCS); `action.yml` comments → A.U28.04/A.U28.42 (TOOL).
+- **Kind**: doc
+
+### M.SPEC.034 B.10.1: why each job is shaped as it is
+- **From**: A.U28.37 (B.10.1 bullets), A.U1.16 (`:911-912` legacy clause), A.U27.14 (`unit-tests` retry budget),
+  A.U8.15 Blast (budgets cite Part N), A.U27.25 (`lint-and-typecheck` mypy paths), A.U28.05 (picotool from the cached
+  build; the `Findpicotool.cmake` record; `:933-934` cache-miss sentence), A.U28.07, A.U28.08, A.U28.09, A.U28.11,
+  A.U28.13, A.U28.15, A.U28.16, A.U28.17, A.U28.19, A.U28.43 (each "docs SPEC B.10.1 (A.U28.37)"), A.U28.42 (ci.yml
+  header points here), A.U21.18 (callers only), A.SDEP.19 Blast, M_TOOL gap 8.
+- **Site**: `SPECIFICATION.md:872-935` (B.10.1).
+- **Change**: every bullet as A.U28.37 states it, with these merged sentences: (a) permissions: "…nothing pushes,
+  comments or calls the API; `web-changes` alone adds `actions: read` to find its filter base. zizmor enforces it."
+  (b) `web-changes`: A.U28.07's rule — "a push compares against the last commit CI passed on that branch, a
+  `pull_request` against its base" — and the full input list (the paths of H.8). (c) `lint-and-typecheck`: "names every
+  ruff scope explicitly, `build/generated_src` included after a generation step, and lints the generated modules with
+  `src/`'s rules; for mypy it names exactly the main pass's `files`, checked by a test (B.15)"; the shellcheck sentence →
+  "shellcheck covers `scripts/` only: the legacy `legacy/firmware/build-*.sh` are never in scope (CLAUDE.md)" — no count.
+  (d) `unit-tests`: "…`timeout-minutes` is for many files hanging at once: a warm run plus one file's full 12-minute
+  retry budget (240 s x 3, `PER_FILE_TIMEOUT_S`), after a tighter cap cancelled a healthy run (`34755468619`). The
+  minutes are `ci.unit_tests_timeout_min` (Part N). The retried sync is the toolchain action's first step, ahead of
+  `scripts/test.sh`." — "~17-minute" and the cold-cache 16m58s/16m42s figures move to the Part N row's Basis (A.U8.15).
+  (e) `unit-tests-coverage`: the Codecov clause goes; "four summaries and four HTML artifacts"; its minutes → Part N.
+  (f) `digital-twin-e2e`: "One job per device from `devices`". (g) `firmware-build-verify`: "installs the cached
+  picotool build before building (picotool lives in `/usr/local`, outside the cache)"; the executor's one-line record of
+  what pico-sdk's `Findpicotool.cmake` does without an installed picotool (A.U28.05); `:933-934` "A cache miss fails on
+  `build_firmware.py`'s own "no toolchain found" rather than skipping the build." → "A cache miss fails the picotool step
+  by name (no cached build tree), never skipping the build." (h) web bullets: `web-unit-tests` "`needs:
+  web-lint-and-typecheck` for order only, `!cancelled()`"; `web-coverage` "its test step gates, its report steps
+  (`always()`) do not; success-gated on `web-unit-tests`"; smoke "`--require-all-engines`: a missing engine fails in CI;
+  Firefox's cache key rolls monthly and with the installer; each Xvfb reports its own display"; `web-lint-and-typecheck`
+  "syncs the Python environment and validates every device's built page (`npm run lint:html:built`)"; `dorny/paths-filter`
+  pinned to a v4 commit (A.U28.13). (i) Closing sentence: "`tests_scripts/test_ci_workflow.py` pins these rules."
+- **Resolved**: A.U1.16 and A.U1.21 disagree on the legacy shellcheck count ("28 findings"): A.U1.16 removes it from
+  B.10.1, A.U1.21 calls B.10 its "one home, U36", and no U36 action keeps it. A count of legacy findings explains no
+  current behaviour (CLAUDE.md legacy rule) — it goes. A.U27.14 (U27) and A.U8.15 (U8) touch the same sentence:
+  Stage 1 U8 tags the minutes in place, Stage 2 U27 writes the 240 s budget, Stage 3 U28 the rest.
+- **Unit**: Stage 1 U1 ((c)'s legacy clause); Stage 2 U8 (Part N pointer, A.U8.15); Stage 3 U27 ((c) mypy, (d));
+  Stage 4 U28 (rest).
+- **Depends**: A.U28.01-A.U28.43, A.U27.14, A.U27.25, A.U8.15, M.SPEC[N].
+- **Blast carried by**: `ci.yml` comments → A.U28.42 (TOOL); CLAUDE.md carriers → A.U28.11 (DOCS).
+- **Kind**: doc
+
+### M.SPEC.035 B.11: building this project's firmware
+- **From**: A.U1.16 (`:946-950`, `:983-985`), A.U1.03 (the legacy text moves to `legacy/README.md`), A.U21.02 Blast
+  (bump sentence), A.U27.02 Blast (stub sentence), A.U20.15 Blast (`:956` names the generator), M.GEN.019 (boot-entry
+  names), A.U36.544 (2) (no "Session N" label), A.U36.011 (`:967-968`), A.U27.04 Blast (strip paragraph), A.U27.05 Blast
+  (the shipped form boots under the twin), A.U27.06 Blast (build date the only varying value), A.U27.31 Blast (image
+  report), A.U27.34 Blast (sorted freeze), A.U27.35 Blast (intermediates kept), A.U27.36 Blast (`--no-autostart`),
+  A.U26.02 Blast (image record), A.U21.22 Blast (one build per toolchain directory).
+- **Site**: `SPECIFICATION.md:937-993` (B.11).
+- **Change**: (1) `:939-942` → "**Bumping the MicroPython version**: change `versions.toml`'s `[micropython] ref` — the
+  only place — then run the platform re-check (CLAUDE.md "Platform target"; Part F's opening checklist). Everything else
+  derives: matching pico-sdk/picotool (B.3) and the Unix ports; the stub X.Y.Z is checked against the ref and the
+  post-releases are pinned in `[stubs]` (B.15)." (2) `:944-948` → "The legacy build (`legacy/firmware/build-<device>.sh`)
+  is described in `legacy/README.md`; reference-only." (3) `:950-956` → "**The `src/`-based build**:
+  `scripts/build_firmware.py <device> [--output PATH] [--no-autostart]` assembles a real `firmware.uf2` from the
+  generated device module, its boot entry, `src/` + `ext/microdot.py` + the device's website (H) — build-only. Every
+  device needs its own `devices/<device>.toml` (Part L); `buildgen.codegen.generate_boot_entry_source()` emits the boot
+  entry `sensortask_<device>_main.py`, frozen as `main.py`; `--no-autostart` freezes
+  `sensortask_<device>_main_noautostart.py` instead, an image that starts at the REPL. One build at a time per toolchain
+  directory, enforced by a lock; a second run fails at once naming the first. Each build writes an image record beside
+  its `.uf2` and reports the image size against the filesystem boundary (the link refuses an overlap; the report gives
+  the headroom). Build intermediates stay under `build/` for inspection and are wiped at the next start." (4) `:958-968`
+  ("That entry point is frozen …"): "re-confirmed against pinned v1.29.0" → against the pin in force (C3); "A custom
+  `_boot.py` whose `asyncio.run(main())` never returns (this script's earlier approach) means USB never initializes" →
+  "A frozen `_boot.py` whose `asyncio.run(main())` never returns would keep USB from initializing"; "Fixed: freeze the
+  real entry point as `"main.py"`, reusing the stock `manifest.py` unchanged." → "So the entry point is frozen as
+  `"main.py"`, reusing the stock `manifest.py` unchanged."; `:967-968` → A.U36.011's sentence. (5) `:970-977` (strip
+  paragraph) → A.U27.04's mechanism: every `TYPE_CHECKING` form is blanked line for line in the staged copy, without
+  `ast.unparse()`, so comments elsewhere survive and an on-device traceback's line numbers match `src/`; the ~3.6 KB
+  figure stays as the reason. (6) `:979-984` → "`tests_scripts/` (CPython/pytest) covers the build tooling fast and
+  offline; `test_real_firmware_build_produces_a_valid_uf2` does the real end-to-end build, parametrized over every
+  device, gated behind `RUN_SLOW_FIRMWARE_BUILD=1` and run per device in CI's `firmware-build-verify` — this pipeline's
+  CI firmware-build stage. `freeze()` receives this project's modules as a sorted list, and the frozen inputs are
+  proven reproducible; the build date is the only varying value. The stock `ports/rp2/modules` freeze still follows
+  the checkout's directory order (upstream's manifest, not staged here)." (7) `:986-993` (production-readiness) →
+  "…proves the build assembles, that the stripped, compiled image set boots under the twin (the shipped form), and (via
+  `tests/test_digital_twin_real_website_integration.py`, H.7) that the booted twin serves the real website …";
+  "and on first run caught a real bug (an early manifest omitted `ports/rp2/modules/rp2.py`, since fixed by reusing the
+  stock manifest)" → "(it proved the stock manifest must be reused: an own manifest omitted `ports/rp2/modules/rp2.py`)".
+- **Resolved**: (a) "parametrized over `wozi`/`dev`" is false at HEAD (`tests_scripts/test_build_firmware.py:196`
+  parametrizes over `DEVICE_NAMES`) — corrected (adherence finding). (b) A.U20.15's "`<device>_boot.py`" naming is
+  superseded by M.GEN.019 (C7). (c) "(retired, Session 6's finish criterion)" goes under A.U36.544 (2) (G9/R12). (d) The
+  legacy paragraph's "path not yet genericized (BACKLOG.md)" goes with A.U1.16 (legacy work is never a to-do).
+- **Unit**: Stage 1 U1 ((2), (6)'s legacy clause); Stage 2 U20 ((3)'s generator/boot-entry names); Stage 3 U21 ((1)
+  re-check, (3) lock); Stage 4 U26/U27 ((1) stubs, (3) record/report/intermediates/`--no-autostart`, (5), (6), (7));
+  Stage 5 U36 ((4), A.U36.011).
+- **Depends**: A.U1.03, A.U20.05, A.U20.15, A.U21.22, A.U26.02, A.U27.02, A.U27.04-.06, A.U27.31, A.U27.34-.36,
+  M.GEN.019.
+- **Blast carried by**: README build section → A.U27.35/A.U27.36 (DOCS); `legacy/README.md` → A.U1.03 (DOCS).
+- **Kind**: doc
+
+### M.SPEC.036 B.12: tiered environment setup
+- **From**: A.U1.16 (`:999` recipe pointer), A.U21.19 Blast (`$BENCH_AP_PASSWORD`), A.U21.24 Blast (the command table),
+  A.U21.28 Blast (USB detection rule), A.U36.548 (G9/R11: incident pointer), A.U1.05 Blast (same pointer).
+- **Site**: `SPECIFICATION.md:995-1023` (B.12).
+- **Change**: (1) `:999` "automating `dev_legacy/README.md`'s manual `nmcli` recipe" → "automating
+  `tests_hardware/README.md`'s manual `nmcli` recipe". (2) "**USB device detection**" paragraph → A.U21.28's rule: one
+  board resolver — USB vendor `2e8a` plus MicroPython's by-id name, across every `ttyACM*`/`ttyUSB*` entry; exactly one
+  match required, zero or several a hard error naming `--device`. (3) "unless overridden" → "unless `$BENCH_AP_PASSWORD`
+  is set". (4) `:1017-1018` "`ip`/`nmcli` … missing ones auto-install via `apt`" → "every command a tier runs is checked
+  and, unless `--skip-apt`, installed (the `_TIER_COMMANDS` table)". (5) `:1020-1023` "**Full `flash`/`bench`
+  real-hardware verification is DONE** — both tiers run clean end to end on the real bench Rpi4 (2026-09-04); see B.13
+  for the incident that interrupted the first attempt." → "`flash` and `bench` ran clean end to end on the bench Pi4
+  (2026-09-04)."
+- **Resolved**: (5) is G9/R11 (incident narrative out, measured fact with date stays); no action names the sentence —
+  agent decision under A.U36.548's rule.
+- **Unit**: Stage 1 U1 ((1)); Stage 2 U21 ((2)-(4)); Stage 3 U36 ((5)).
+- **Depends**: A.U1.05, A.U21.19, A.U21.24, A.U21.28.
+- **Blast carried by**: README tier table → A.U21.24 (DOCS); `tests_hardware/README.md` → A.U21.19/A.U21.28 (DOCS).
+- **Kind**: doc
+
+### M.SPEC.037 B.13: the dead-man's switch, the bridge MAC, the recovery script
+- **From**: A.U36.523 (main), A.U0.33 C18 (`:1027` tag), A.U0.44 L36 (`:1037` tag), A.U0.19 H1.03 (`:1046-1047` tag),
+  A.U1.16 (`:1042-1043` pointer), A.U21.23 (the installer arms the switch itself; the remedy text), A.U1.05 (the moved
+  recipe points here), A.C.01 (reads B.13; no edit), A.U36.546 (CLAUDE.md keeps only the rule and pointer).
+- **Site**: `SPECIFICATION.md:1025-1070` (B.13).
+- **Change**: (1) `:1027` "**Standing rule**:" → "**Standing rule** (owner, 2026-09-26):"; the rest of the first
+  paragraph to "not guessed." holds; `:1031-1035` → A.U36.523 (1). (2) `:1037-1044` → A.U36.523 (2), whose "(observed
+  2026-09-04, `28c5d8e`)" reads "(agent, 2026-09-04, `28c5d8e`)" (A.U0.44 L36's tag folded), and its last clause "the
+  manual recipe (`tests_hardware/README.md`) pins it the same way" (A.U1.16's pointer). (3) New paragraph after it
+  (A.U21.23): "`ensure_bench_bridge()` arms the same switch itself for a bridge creation and for the channel re-pin: the
+  restore profile is read at run time, never hard-coded, the timer is verified armed before the first change and
+  disarmed only once the bridge has an address and the default route; the MAC-mismatch remedy it prints starts with
+  arming it." (4) `:1046-1047` "Recreate this script fresh in a session's own scratchpad each time (deliberately not a
+  committed file):" → "Recreate this script fresh in a session's own scratchpad each time (not a committed file: the
+  pattern, not the file, is what's durable — owner, 2026-09-04, `1096b31`):". (5) Script block and step 1 → A.U36.523
+  (3) (`RESTORE` read from `nmcli -g GENERAL.CONNECTION device show eth0`).
+- **Resolved**: five actions edit B.13 (A.U36.523 lists them); each owns distinct sentences except `:1037-1044`, where
+  A.U36.523's rewrite absorbs A.U0.44's tag and A.U1.16's pointer.
+- **Unit**: Stage 1 U0 ((1) tag, (4)); Stage 2 U1 (pointer, on HEAD text); Stage 3 U21 ((3)); Stage 4 U36 ((1) rest,
+  (2), (5)).
+- **Depends**: A.U0.19, A.U0.33, A.U0.44, A.U1.16, A.U21.23.
+- **Blast carried by**: CLAUDE.md dead-man's-switch/bridge-MAC rules → A.U36.546/A.U21.23 (DOCS); README `:104-108` →
+  A.U36.522 (DOCS); `tests_hardware/README.md` → A.U1.05 (DOCS).
+- **Kind**: doc
+
+### M.SPEC.038 B.14 intro and general shape: every override proven in the built artefact
+- **From**: A.U36.521 (2) (count-free intro), A.U21.09 Blast (intro count), A.U21.06 Blast (general shape: proven in the
+  artefact), A.U21.08 Blast (paths resolved and refused), A.U21.15 (one diagnostics helper), A.U21.16 Blast (`:1093-1094`
+  mbedtls mention follows the branch), A.U21.02 (the pin-move message cites B.14), A.SDEP.11 ((c): no SIGINT override).
+- **Site**: `SPECIFICATION.md:1072-1120` (B.14 up to B.14.1).
+- **Change**: (1) `:1074` "(so far: two implemented, one identified and planned)" → "(each subsection below is
+  implemented and proven in the built artefact)". (2) `:1093-1094` "the way the mbedtls GCC-14 workaround and
+  `MICROPY_PY_SYS_SETTRACE=1` already do it" → "the way `MICROPY_PY_SYS_SETTRACE=1` does it" under A.U21.16's 2a, or
+  "the way `MICROPY_PY_SYS_SETTRACE=1` and the one-file mbedtls flag do it" under 2b; "(`build_unix_port()`/
+  `build_firmware()` grep their own output for `warning:`)" → "(every build's output passes one diagnostics check, B.7)".
+  (3) The general-shape paragraph gains, after "or both;": "paths written into generated files are resolved and refused
+  when they hold a character the target syntax cannot carry;" and, after "every build", "and each override is then
+  proven in the built artefact — a readback of the preprocessed source or the build's own flags, never only the
+  generated input". (4) The "first real test" paragraph's runner list holds (`scripts/run_unix_port_integration.sh`
+  stays, M.SCR). (5) Under A.SDEP.11 outcome (c) only: the list gains "the Unix port delivers SIGINT through
+  `mp_sched_keyboard_interrupt()` by default (`<file:line>` at <tag>); no override is needed" and B.14.1 goes
+  (M.SPEC.039).
+- **Resolved**: A.U21.09 writes "three implemented" (U21); A.U36.521 replaces the count with a count-free form (U36),
+  which also survives A.SDEP.11 (c) — Stage 1 U21 "(so far: three implemented, one documented and not built)" keeps the
+  HEAD text true while B.14.3 still exists; Stage 2 U36 the count-free form.
+- **Unit**: Stage 1 U21 ((1) interim, (2), (3)); Stage 2 U36 ((1) final). (5) at U0 if A.SDEP.11 (c).
+- **Depends**: A.U21.06, A.U21.08, A.U21.09, A.U21.15, A.U21.16, A.SDEP.11.
+- **Blast carried by**: `micropython_overrides.py` docstrings → A.U21.08 (TOOL).
+- **Kind**: doc
+
+### M.SPEC.039 B.14.1 `unix_kbd_intr`: proven per binary, the problem stated as evidence
+- **From**: A.U21.06 (Change error text cites B.14.1; Blast "Verified" paragraph), A.U36.037 (2) (`:1154-1157`), A.U36.548
+  (10) (`:1126`, "Root-caused by reproducing"), A.U36.511 (4) (`:1132` device count), A.U36.512 (MicroPython's `VARIANT`
+  word stays here), A.U25.39 Blast (hands `:1156` to U36), A.SDEP.11 (re-check outcomes).
+- **Site**: `SPECIFICATION.md:1122-1222` (B.14.1).
+- **Change**: (1) `:1126` "**The problem, found root-causing a real, intermittent `digital-twin-e2e` CI failure**
+  (2026-09-14/15):" → "**The problem** (reproduced 2026-09-14/15):"; "Root-caused by reproducing it directly" →
+  "Reproduced by"; `:1132` "across all 6 real devices" → "across every device"; mechanism, reproducer and traceback stay
+  as the evidence. (2) `:1154-1157` → A.U36.037 (2): "- a `gc.collect()` recovery (F.6) would patch that one downstream
+  symptom, but nothing for" (the bullet keeps its tail). (3) "Verified" paragraph (`:1202-1208`) gains: "Every build
+  re-proves it: `build_unix_port()` preprocesses `unix_mphal.c` with the build's own flags (`make
+  <build>/unix_mphal.pp`) and fails unless the sentinel `MICROPY_SENSORS_KBD_INTR_OVERRIDE_APPLIED` and the deferred
+  branch are present and `nlr_jump(` is absent — for `build-standard`, `build-settrace` and `build-lwip` alike."; "`build_unix_port()`
+  (both call sites - the frozen-verification build and the vanilla test-rig rebuild) applies this unconditionally" →
+  "every Unix-port build applies this unconditionally"; "across all 6 real devices" (`:1204`) → "across all six devices
+  then defined". (4) "confirmed against the pinned `v1.29.0` source", `mpconfigvariant_common.h`'s anchor and the
+  re-verification checklist re-read at the refreshed pin (A.SDEP.11): under (a) unchanged but the tag; (b) the anchor
+  text, the generated pair and the hammer-loop record rewritten; (c) B.14.1 removed (M.SPEC.038 (5)).
+- **Resolved**: A.U36.548 (10) ties (1) to "only while A.SDEP.11 keeps the override" — under (c) the section goes and
+  (1)-(3) are void. The measured 700+ iterations were across the six devices of 2026-09-15; "every device" would restate
+  the evidence, so the Verified paragraph names the six of that day (agent decision); `:1132` follows A.U36.511 (4) as
+  written.
+- **Unit**: Stage 1 U0 ((4), A.SDEP.11); Stage 2 U21 ((3)); Stage 3 U36 ((1), (2)).
+- **Depends**: A.SDEP.11, A.U21.06, A.U21.12, A.U25.39, M.SPEC[F.6].
+- **Blast carried by**: CLAUDE.md `:665-695` → A.U36.037 (3)/A.SDEP.11 (DOCS).
+- **Kind**: doc
+
+### M.SPEC.040 B.14.2: the UDP pcb budget, the tunables, the anchors at the refreshed pin
+- **From**: A.U18.18 (UDP pcb budget), A.U8.14 Blast (B.14.2 cites Part N), A.SDEP.14 (anchors and ensemble re-verified;
+  `:1375` 2,324 B), A.SDEP.08 (C3 on every `v1.29.0` citation).
+- **Site**: `SPECIFICATION.md:1224-1306` (B.14.2).
+- **Change**: (1) After "`MEMP_NUM_UDP_PCB` is a **bare `#define`** (`4 + LWIP_MDNS_RESPONDER`)" A.U18.18's text verbatim
+  ("Its 5 pcbs cover every UDP user at once: … frees its pcb (`cyw43_ctrl.c:118-127`, `cyw43_lwip.c:251-257`, lwIP
+  `dhcp.c:1386-1389`)"), with its file:line cites re-read at the refreshed pin and lwIP commit (C3), and the module names
+  as landed (`asy_captive_dns`, NTP/resolver per M.SRC_NET). (2) The `[lwip]` paragraph ("`toolchain/versions.toml`'s
+  `[lwip]` table is that file") gains "each option a Part N row (`lwip.*`)". (3) "verified against `v1.29.0` as fetched"
+  and every upstream file:line in the section re-stamped at the refreshed pin, the twenty-one-anchor count restated if
+  A.SDEP.14 changed it.
+- **Unit**: Stage 1 U0 ((3)); Stage 2 U8 ((2)); Stage 3 U18 ((1)).
+- **Depends**: A.SDEP.08, A.SDEP.14, A.U8.14, A.U18.02/.09/.15/.16 (the bounds A.U18.18 states).
+- **Blast carried by**: `versions.toml` tags → A.U8.14 (TOOL).
+- **Kind**: doc
+
+### M.SPEC.041 B.14.2.1: the send stall, the segment pool and what fixes it
+- **From**: A.U14.30 (1)-(2) (and its H.7 change, carried in M.SPEC[H.7]), A.U21.09 Blast (the stall sentence names the
+  override, owner 2026-09-30), A.SDEP.13 (upstream fix at the refreshed pin), A.SDEP.08 (5) (baseline and table header
+  re-measured), A.SDEP.14, A.U0.44 L28 (`:1330` tag), A.U8.14 Blast (Part N), A.U21.14/A.C.06/A.C.10 (phase-C result
+  replaces the "Not yet reproduced" sentence), A.U36.548 (G9/R11: archive pointers stay as evidence).
+- **Site**: `SPECIFICATION.md:1308-1388` (B.14.2.1).
+- **Change**: (1) `:1315-1317` → A.U14.30 change 2 verbatim ("— a full window of full-MSS segments per admitted
+  connection. It does not stop the pool running out: … one of the three `ERR_MEM` sources below."). (2) `:1322-1325` →
+  A.U14.30 change 1 verbatim, its pointer reading "(B.14.3, the `modlwip_eagain` override)" and its stall-fix sentence
+  carrying A.U21.09's tag: "The firmware build replaces that loop (B.14.3, the `modlwip_eagain` override; owner,
+  2026-09-30): a non-blocking write that meets `ERR_MEM` returns `EAGAIN`, and the webserver's per-call write timeout
+  bounds the wait cooperatively." Under A.SDEP.13 (a) that sentence is instead "The pinned MicroPython carries the fix
+  (`<tag>`, `<file:line>`): …" with no override pointer. The last sentence "Not yet reproduced on silicon … (agent,
+  2026-09-30)." becomes phase C's recorded result (A.U21.14) when it has run: "Reproduced on `dev` on the pre-override
+  image and absent on the override image (agent, <date>, <image build dates>)". (3) `:1330` "**`PBUF_POOL_SIZE` is
+  deliberately left alone.**" → "**`PBUF_POOL_SIZE` stays at the port default (agent, 2026-09-22, `31da2b3`).**". (4)
+  "**Measured cost, from real builds** (`RPI_PICO_W`, v1.29.0, …)": under a moved pin, the baseline line, the table
+  header and the "shipped image's own linker heap" are re-measured (A.SDEP.08 (5)); the deltas stand unless the
+  measurement moves them; the 2,324 B figure re-checked (A.SDEP.14). (5) The ensemble values cite Part N's `lwip.*` rows.
+- **Resolved**: A.U14.30 (U14) and A.U21.09 (U21) rewrite the same sentence; A.U21.09's Blast routes its text onto
+  A.U14.30's revised one (A-C) — one sentence with A.U21.09's name and tag; the pointer is B.14.3's end-state number
+  (U21 writes "B.14.4", C6). A.U14.30 says the static `MEM_SIZE` proof and sizing are withdrawn (OR114.a) — nothing
+  else in the section moves.
+- **Unit**: Stage 1 U0 ((3) tag; (4) if the pin moved); Stage 2 U14 ((1)); Stage 3 U21 ((2) less its last sentence's
+  result); Stage 4 phase C delta (A.C.10, (2)'s result); U36 repoints "B.14.4" → "B.14.3" (M.SPEC.042).
+- **Depends**: A.U14.30, A.U21.09, A.U21.14, A.SDEP.08, A.SDEP.13, A.SDEP.14, M.SPEC.042, M.SPEC[H.7].
+- **Blast carried by**: `micropython_overrides.py:263-265` comment → A.U14.30 (TOOL).
+- **Kind**: doc
+
+### M.SPEC.042 B.14.3: the littlefs subsection goes; `modlwip_eagain` takes its number
+- **From**: A.U36.521 (B.14.3 deleted, deferral to BACKLOG), A.U21.09 (new subsection), A.U21.12 (the host build
+  belongs in it), A.U21.13 (the spin-round test bounds the busy wait), A.U21.14/A.C.06 (phase-C proof recorded),
+  A.SDEP.13 (outcome (a): no override), A.SDEP.08 (B.14.3's mechanism re-verified at the new tag while it exists),
+  A.U0.33 D04 (`:1390-1393` lead rewrite), A.U0.34 (BACKLOG item's pointer), A.U27.31 (the trigger).
+- **Site**: `SPECIFICATION.md:1390-1418` (HEAD B.14.3); new subsection after it.
+- **Change**: (1) U21: new "### B.14.4 `modlwip_eagain` (implemented) - a non-blocking modlwip send returns `EAGAIN` on
+  `ERR_MEM`" after HEAD's B.14.3, as A.U21.09's Blast lists it: the mechanism (the patched copy of `extmod/modlwip.c`
+  with the `socket->timeout == 0` early return inside the `ERR_MEM` retry loop, generated outside the checkout; the
+  CMake swap of `MICROPY_SOURCE_EXTMOD`'s entry; the include rewrite), the anchors (loop, insertion point, include and
+  the build files' lines), the post-build proof, the host build `build-lwip` (A.U21.12: the same copy over loopback lwIP,
+  `MEM_ALIGNMENT` at host pointer size, lwIP driven from the event hook, asserts that abort — its divergences are F.7's),
+  the removal trigger "the pin carries an upstream fix for micropython issue 19704 (PRs 19705/19708)", and the cost:
+  "POLLOUT reports writable while `tcp_sndbuf() > 0`, so with the arena full the retry is a cooperative busy wait until
+  the peer ACKs or the per-call timeout fires — its duration bounded by that timeout, its per-round cost by the lwIP
+  host build's spin-round test and on the dev bench (`l4.lwip_spin_concurrent_request_max_s`); a failed bound goes to the
+  owner as a change to the override (a short POLLOUT back-off after `EAGAIN`) (owner, 2026-09-30)." Under A.SDEP.13 (a)
+  the subsection is not written; B.14.2.1 states the upstream fix (M.SPEC.041). (2) U36: HEAD's B.14.3 (`:1390-1418`)
+  deleted (A.U36.521 (1)); "### B.14.4" renumbered "### B.14.3" and every citer repointed (M.SPEC.030, M.SPEC.041,
+  M.SPEC[F.7], M.SPEC[H.7]; code comments cite "SPECIFICATION.md B.14" only). (3) Phase C (A.C.10 delta): the proof
+  sentence records the A.U21.14 result.
+- **Resolved**: (a) A.U0.33 D04 rewrites B.14.3's lead in U0 and keeps "The mechanism below stays documented for that
+  day"; A.U36.521 (U36, the register's later clause) removes the text — A.U0.33's `:1390-1393` edit is dropped (void
+  at U36; landing it in U0 and deleting it in U36 would only churn). (b) A.U21.09 numbered its subsection after B.14.3
+  "goes with U36"; until U36 the old B.14.3 exists, so U21 lands B.14.4 and U36 renumbers it (C5/C6). (c) A.U0.34's
+  BACKLOG pointer "mechanism SPEC B.14.3" is replaced by A.U36.521 (3)'s self-contained item (DOCS).
+- **Unit**: Stage 1 U21 ((1)); Stage 2 phase C ((3)); Stage 3 U36 ((2)).
+- **Depends**: A.U21.09-A.U21.14, A.SDEP.13, A.U27.31, A.U0.34, A.U36.521.
+- **Blast carried by**: BACKLOG Deferred item → A.U36.521 (3)/A.U0.34 (DOCS); BACKLOG watch entry and CLAUDE.md
+  "Platform target" sentence → A.U21.09 (DOCS).
+- **Kind**: doc
+
+### M.SPEC.043 B.15: the three passes, what each checks, the stub workarounds
+- **From**: A.U27.25 (main-pass/CI paths), A.U27.09 (generated output; `:1440-1442`), A.U20.14 Blast, A.U28.41 Blast,
+  A.U27.23 (exclusions checked by another run), A.U0.60 (conftest label), A.U36.043 and A.U25.40 Blast
+  (`segfault_stress_repro.py`), A.U27.22 (`ignore-without-code`), A.U27.24 (scope test), A.U27.02 (stub pins; moved
+  tree fails), A.U27.03 (workaround list), A.U21.04 (`typings/.stub-spec`), A.U8.23 (Microdot stubs, OR131), A.U28.27
+  Blast (two ignore groups), A.U28.39 (path check), A.U33.06 Blast (E722 text may move here), A.U36.527 (B.15 lists the
+  passes; `disallow_any_explicit` is C.10's), A.U36.546 (CLAUDE.md's stub-gap and stub-repair narrative moves here),
+  A.SDEP.03/A.SDEP.15 (re-read at the refreshed tool and stub versions).
+- **Site**: `SPECIFICATION.md:1422-1482` (B.15).
+- **Change**: (1) Main pass heading paths → "(`src`, `tests`, `digital_twin`, `tests_hardware/device_scripts`,
+  `build/generated_src`)"; the `build/generated_src` bullet (`:1440-1442`) → "`build/generated_src` is both a `files`
+  entry — the generated device modules and boot entries are checked as sources, with `src/`'s lint rules and no emitted
+  suppression — and on `mypy_path` for the twin pass's imports; `typecheck.sh` generates it first." (2) `mypy_path`
+  bullet gains "`ext/typings` holds Microdot's upstream stub, vendored unmodified at `ext/typings/microdot/` (same policy
+  as `ext/microdot.py`)". (3) Excluded list: `segfault_stress_repro.py` goes; "Their apparent cleanliness in this pass was
+  accidental: …" → "The twin pass checks them (`digital_twin/typecheck.ini` `files` names `digital_twin`, every
+  `tests/test_digital_twin_*.py` and the two scenario libraries)."; `tests/network.py` gains "checked alone by
+  `typecheck.sh`". (4) Strictness line gains `ignore-without-code`; the `test_setter_microdot_integration`
+  decorator override is restated as "upstream's stub leaves `route`/`get`/`put` unannotated (v2.6.2)". (5) Twin pass:
+  "its strictness is kept in sync with the main pass by hand (INI has no include directive)" → "…, checked by
+  `tests_scripts/test_lint_type_scopes.py` (INI has no include directive)". (6) Host pass: the `tests_scripts/conftest.py`
+  bullet → "`tests_scripts/conftest.py` is checked alone by `typecheck.sh` (with both test roots on `mypy_path` it would
+  be a second bare `conftest`); `tests_hardware/conftest.py` keeps the slot." — or, if A.U27.23's single-file run still
+  reports a duplicate module, "excluded: <the true reason> (agent, 2026-09-24)" (A.U0.60). (7) New closing paragraphs:
+  "**CI and local runs agree**: CI passes exactly the main pass's `files`; a local run may narrow it with arguments.
+  `tests_scripts/test_lint_type_scopes.py` pins the three configs and every lint scope; an L0 check resolves every path
+  the config files name. Ruff's global ignores are two groups, each narrowed to the scopes its reason covers (D.6)."
+  and "**Stubs**: `typecheck.sh` installs the exact post-releases `toolchain/versions.toml` `[stubs]` pins, whose X.Y.Z
+  must equal the ref's, prints and records them in `typings/.stub-spec`, and repairs the package's verified defects
+  after installing it, each guarded on the defect still being present and failing when the file it targets moved
+  (F.5.5)." followed by A.U27.03's "Stub workarounds and their removal triggers" list (the two F.5.5 repairs first,
+  then `Timer()`, `const()` of a tuple, `_mpy_shed.time_mp._TicksMs`, `DeflateIO`), each line's stub version re-read at
+  the refreshed pin (A.SDEP.15). (8) If U36's CLAUDE.md pass moves the E722 bullet here (A.U33.06), it lands as is.
+- **Resolved**: (a) A.U0.60 is conditional on A.U27.23: (6) takes whichever outcome A.U27.23 records. (b) A.U36.043
+  (U36) and A.U25.40 (U25) remove the same token — lands with A.U25.40's retirement (U25) so the list never names a
+  deleted file; A.U36.043's SPEC half is then done. (c) A.U36.546 sends CLAUDE.md's stub narrative here "per
+  A.U27.02/A.U27.03" — the defect facts live in F.5.5; B.15 carries the list and pointer, not a second copy.
+- **Unit**: Stage 1 U8 ((2), (4) override text — A.U8.23); Stage 2 U25 ((3) token); Stage 3 U27 (rest); U36 (8) only.
+- **Depends**: A.U8.23, A.U21.04, A.U25.40, A.U27.02, A.U27.03, A.U27.09, A.U27.22-.25, A.U28.27, A.U28.39, A.U28.41,
+  M.SPEC[F.5.5], M.SPEC[D.6].
+- **Blast carried by**: CLAUDE.md mypy/stub/scope bullets → A.U36.546/A.U27.22/A.U27.23 (DOCS); `pyproject.toml`,
+  `host_typecheck.ini`, `typecheck.ini` comments → A.U27.23/A.U27.25/A.U0.60 (TOOL).
+- **Kind**: doc
+
+### M.SPEC.044 New B.16: checkers measured and declined
+- **From**: A.U33.05 (1) (section), A.U0.37 (tag on `BACKLOG.md:740`, moves with the text), A.U15.02 (vulture `cast()`
+  clause already absent).
+- **Site**: new `## B.16 Checkers measured and declined` after B.15 (`:1482`), before Part C.
+- **Change**: A.U33.05 (1)'s text verbatim, tagged "(agent, 2026-09-10)" with the vulture sentence's "(owner,
+  2026-09-26)". H.8's `npm audit` sentence is M.SPEC[H.8].
+- **Unit**: U33.
+- **Depends**: M.SPEC.043 (B.15 above it).
+- **Blast carried by**: `BACKLOG.md:739-776` deletion → A.U33.05 (3) (DOCS).
+- **Kind**: doc
+
+### M.SPEC.045 New B.17: build-environment verification (clean chroot)
+- **From**: A.U36.524 (1) (section), A.U28.02 (the pinned `pip install "uv==<v>"` line), A.U36.546 (CLAUDE.md sheds the
+  recipe), A.U36.548 (G9/R11 history out).
+- **Site**: new `## B.17 Build-environment verification (clean chroot: Ubuntu 24.04 and Debian trixie)` after B.16.
+- **Change**: A.U36.524 (1) (a)-(f) verbatim: CLAUDE.md `:870-1033` moved with the opening rewritten, each comment
+  block ≤ 3 lines, the trixie reason kept, the "last satisfied" paragraph and dated confirmations out, the installer
+  leg's B.6/B.7 pointers kept; the pip line in A.U28.02's pinned form.
+- **Unit**: U36.
+- **Depends**: A.U28.02, A.U33.04, M.SPEC.044.
+- **Blast carried by**: CLAUDE.md section, PR-workflow bullet, `:496` → A.U36.524 (2)-(4) (DOCS); BACKLOG chroot head →
+  A.U36.524 (5) (DOCS); SPEC `:6-7` → M.SPEC.001; SPEC `:812` → M.SPEC.031.
+- **Kind**: doc
+
+## SPECIFICATION.md — Part C (`:1484-2588`)
+
+### M.SPEC.046 Part C intro and C.1: the generated device module replaces the hand-written one
+- **From**: A.U36.543 (8) (`:1489-1491`), A.U36.535 (4) (C.1 `:1495`, `:1503-1504`), A.U15.40 (four drivers), A.U10.37
+  (module names, M.SPEC.008), A.U10.29 Blast (C.1 const pointer is U14's — nothing names it in C.1 at HEAD).
+- **Site**: `SPECIFICATION.md:1486-1504`.
+- **Change**: (1) `:1486-1489` "Extracted from the three drivers first promoted to `src/` (`asy_scd30_driver.py`,
+  `asy_bmp3xx_driver.py`, `asy_sgp40_driver.py`) plus shared infrastructure (…)" → "Extracted from the sensor drivers in
+  `src/` (four today: `asy_scd30_driver.py`, `asy_bmp3xx_driver.py`, `asy_sgp40_driver.py`, `asy_isl29125_driver.py`)
+  plus the shared infrastructure (`asy_base_classes.py`, `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_config_manager.py`,
+  `asy_print_log.py`, `asy_system_service.py`)" — module spellings as landed (C7). (2) `:1489-1491` → A.U36.543 (8)'s
+  sentence "Part D is the quality bar; Part K the ordered checklist that applies both." (3) C.1 code block and the
+  closing sentence → A.U36.535 (4) verbatim.
+- **Resolved**: "the three drivers" is false at HEAD (ISL29125 promoted) — corrected with A.U15.40's "four today"
+  (adherence finding: a stale count, stated as today's fact per OR43.a (3)).
+- **Unit**: U36 (with the Part K rewrite); module spellings from U10 (M.SPEC.008).
+- **Depends**: M.SPEC.008, M.SPEC[K].
+- **Blast carried by**: `src/system_service.py:1` header → A.U36.535 (5) (SRC_CORE).
+- **Kind**: doc
+
+### M.SPEC.047 C.2: naming, the shared session class, the constructor tail
+- **From**: A.U0.40 L01 (`:1510-1511`), A.U10.38 (derivation rule and exception table), A.U10.35 (private by default),
+  A.U10.39 (`_VAL_` names; `_cfg_schema` private), A.U10.21 (one `setup()` contract named), A.U15.40 (4) (`DeviceSession`),
+  A.U5.02 Blast (constructor-order rule → the tail), A.U5.09/A.U18.40 Blasts (WiFi's constructor), A.U36.542 (0.4 cites C.2
+  for naming and "private by default").
+- **Site**: `SPECIFICATION.md:1505-1544` (C.2).
+- **Change**: (1) First paragraph: after the CapWords sentence add A.U10.38's rule: "A module's primary class name derives
+  from its file name (`asy_<x>_service.py` → `<X>Service`, `asy_<x>_driver.py` → `<X>Driver` unless C.2's compound
+  applies); no class carries an `Asy` prefix; acronyms are upper-case (`UARTComm`, `CRCPass`, `NTPClient`,
+  `FRAMManager`). Exceptions: the peripheral wrappers `I2C`/`SPI`/`UART` keep the `machine` names (the originals are
+  imported under private aliases), and a chip class is the `<CHIP>_<Role>` compound with the chip spelled as its
+  `_NAME` (`BMP3XX_Reader`, `SCD30_I2C`, `FRAM_SPI`)." "Name-mangled …" holds. `:1510-1511` → A.U0.40 L01's "One named
+  exception to the casing rule (agent, 2026-08-11, `f27b33b`): `voc_algorithm.py`'s internals trace their
+  DFRobot/Sensirion source 1:1 (F.4)." (2) New sentence (A.U10.35): "Attributes and methods are private by default; one
+  is public only when another module needs it or it is general-purpose driver API (the FRAM and bus APIs, C.3.1)." (3)
+  `_VAL_` bullet: "`_VAL_<KEY_IN_UPPER_SNAKE> = const(((\"<Field>\", \"<type>\", default, min, max, special),))` — one
+  schema tuple per config field, named after its key (C.5)"; the `_WIRING` clause → "cross-instance dependencies are
+  `# @wiring …` comment tags beside the schema (C.14.2, L.6.4) — none when the driver has none" (gap fill: C.2 still
+  describes the pre-2026-09-10 Python `_WIRING` tuple that C.14.2 says no longer exists). (4) The session bullet and its
+  code block → A.U15.40 (4): "- `DeviceSession` (`asy_base_classes.py`, G.2): one device's session lock plus its bus
+  device; every driver builds its own `DeviceSession(I2CDevice(bus, addr))`, no per-driver subclass." (5) Constructor
+  order (`:1537-1544`) → "`<Chip>_I2C`/`_SPI` (layer 2), `<Chip>_Reader` (layer 3). A module constructor takes its own
+  parameters (bus handle, addressing/pins, `@wiring`-resolved references, `trigger_sec` where configurable — SGP40's is
+  not, C.11 item 6), then the fixed tail `max_module_error=5`, `name_ext=""`, `cfg_path=""` (those it has) and one
+  `log: LogConfig = DEFAULT_LOG` (C.7) (agent, 2026-08-07; checked by a test). `setup()` is `async def setup(self) ->
+  bool` with no parameters (C.13). **`max_module_error` is a generic failure-streak threshold, not I2C-specific** —
+  `asy_wifi_service.py` uses it too through `_error_check()` (C.7)." (`asy_ntp_client.py` leaves the sentence: NTP has no
+  streak, C.7.2.)
+- **Resolved**: A.U10.38 renames `BMP3xx_DeviceSession` → `BMP3XX_DeviceSession`, then A.U15.40 removes every per-driver
+  session class (M.SRC_SENS) — C.2 names only `DeviceSession`. "`trigger_sec: int = <n>` … `history_length: int = 10`,
+  `debug: int | None = None`" is replaced by the tail (A.U5.02); A.U5.02's Blast names "the constructor-order rule,
+  rewritten to the tail" without the text, written here (agent decision). The NTP mention of `max_module_error` goes:
+  C.7.2 already says NTP's constructor lost it (fact at HEAD; adherence finding).
+- **Unit**: Stage 1 U0 ((1) L01 tag); Stage 2 U5 ((5) tail); Stage 3 U10 ((1) rule, (2), (3) `_VAL_` names, (5) setup
+  contract); Stage 4 U15 ((4)); (3)'s `@wiring` gap fill lands in U10 with the names.
+- **Depends**: A.U5.01, A.U5.02, A.U10.21, A.U10.35, A.U10.38, A.U10.39, A.U15.40, M.SPEC.008.
+- **Blast carried by**: `pyproject.toml` N801 per-file entries → A.U10.38 (TOOL); the name/order checks → A.U15.40/A.U5.18
+  (TSC).
+- **Kind**: doc
+
+### M.SPEC.048 C.3: the protocol layer's raise surface and buffers
+- **From**: A.U13.01 (`:1550-1552`), A.U16.16 (`:1552-1555`), A.U13.07 (I2C transfers report bool on an uninitialised
+  bus), A.U13.08 (SPI availability as `False`), A.U13.09 (drivers treat it as a failed transfer), A.U13.10 (burst read),
+  A.U13.R01 (`clear()`/`recover()`), A.U10.45 (raise-message form), A.U0.19 H2.16 (`:1566` tag), A.U15.01 (no change: C.3
+  already requires the range gate), A.U14.14 Blast (C.3 points to F.1), A.C.15 (SCD30 facts belong to Part M; no C.3
+  edit).
+- **Site**: `SPECIFICATION.md:1546-1574` (C.3).
+- **Change**: (1) `:1550-1552` → A.U13.01's sentence (BMP3XX_I2C "needs no scratch of its own — those helpers read into
+  the bus's shared scratch (G.2)", `get_register_bytes()` listed). (2) `:1552-1555` → A.U16.16's sentence ("A class
+  that builds its own buffers allocates them once as well: `FRAM_SPI` keeps its ID, status, address and WRSR buffers
+  from `__init__` and sends its one-byte commands as module constants."). (3) The carve-out bullets: "**This carve-out's
+  fault surface is bus-specific.**" bullet → "`asy_i2c_driver.py` raises `OSError` from a transfer; `asy_spi_driver.py`'s
+  `write()` cannot raise on rp2, while `readinto()`/`write_readinto()` can raise `OSError(EIO)` on a 32+ byte RX overrun
+  (F.5.2). An uninitialised bus is never a raise: every I2C and SPI transfer, `configure()` and `session_begin()` answer
+  `False`/`None`, and a driver treats that as a failed transfer. `write_readinto()` returns `False` for a caller-input
+  length mismatch. What rp2's buses raise and answer: F.1." (4) New bullet after it (A.U13.R01): "**Bus recovery**:
+  `I2C.clear()` clocks a held bus free (at most nine pulses, then a STOP, bounded by the bus timeout) and `I2C.recover()` rebuilds the controller —
+  re-construction being the only controller re-init rp2 offers; both report their outcome as status bits, never a
+  raise. They are the bus rungs of the recovery ladder (C.7)." (5) `:1566` identity bullet gains "(SCD30's: owner,
+  2026-07-21, `e960d44`: 'Owner decision: add it.')". (6) A new closing sentence (A.U10.45): "A raise carries one message
+  form — a fixed string naming the condition, the values as separate arguments — and an `except` tuple lists its classes
+  alphabetically (`(MemoryError, OSError)`)."
+- **Resolved**: A.U13.01 and A.U16.16 edit adjacent sentences (A.U16.16 Depends) — one paragraph, both texts.
+- **Unit**: Stage 1 U0 ((5)); Stage 2 U10 ((6)); Stage 3 U13 ((1), (3), (4)); Stage 4 U16 ((2)).
+- **Depends**: A.U13.01, A.U13.07-.10, A.U13.R01, A.U16.16, M.SPEC[F.1], M.SPEC[F.5.2].
+- **Blast carried by**: bus driver code/tests → U13 actions (SRC_CORE/TEST_UNIT); Part N `i2c.clear_half_period_us` →
+  M.SPEC[N].
+- **Kind**: doc
+
+### M.SPEC.049 C.3.1: the SPI variant and FRAM's general-purpose API
+- **From**: A.U13.05 (per-CS init cost; CS pad state), A.U16.04 (FRAM API and caller rule), A.U16.20 + A.U20.10 (`max_size`
+  legal set; the TOML names its part), A.U16.15 (partly protected status register), A.U16.R01 (WREN retried once),
+  A.U16.R02 (three identification attempts), A.S0930.17/.30 (`quiesce()`, `erase_ready()`, `erase_chip()`), A.U36.546 (2)
+  (`:1603-1604` chip facts move to M.6), A.U1.04 (dev bench facts live in `tests_hardware/README.md`; no SPEC edit).
+- **Site**: `SPECIFICATION.md:1576-1605` (C.3.1).
+- **Change**: (1) The synchronous-session bullet (`:1591-1598`) gains A.U13.05's two sentences, the bracketed measurement
+  replaced by phase C's result when it exists (A.C.10), else the sentence ends "… only a board-level CS pull-up can meet
+  it; `setup()` sets the level before it drives the pad". (2) The `_setup_addr_buffer()` bullet (`:1599-1605`):
+  "Two real chips: `MB85RS64V` (8KB, `0x2000`) and `MB85RS2MTA` (256KB, `0x40000`, `datasheets/fram/…` p.10)." → "The
+  supported parts and their sizes: M.6."; "`setup()` raises `OSError` on a size/chip mismatch, `ValueError` on an
+  unrecognized `max_size`. A genuinely new size needs its own table entry." → "`setup()` makes up to three identification
+  attempts, then raises `OSError` on a size/chip mismatch, `ValueError` on an unrecognized `max_size`. Every device TOML
+  names its FRAM part; a genuinely new size needs its own `_KNOWN_PRODUCT_IDS` entry and the `@limits max_size` set
+  (checked equal by a test)." (3) New bullet after it: A.U16.04's text verbatim ("**`FRAM_SPI`'s general-purpose API** …
+  as the chunk layer's `_read_chunk()` does."), extended: "A WREN whose latch did not set is repeated once, like WRDI; a
+  status register with only some protection bits set is reported and treated as protected. The manager's
+  `quiesce()`, `erase_ready()` and `erase_chip()` serve the two shutdown commands (A.8): the erase holds both FRAM locks
+  per 256-byte unit and never across an await of another lock (C.8)."
+- **Resolved**: A.U16.20 and A.U20.10 rewrite the same sentence (A.U20.10: "joins the same sentence") — one sentence.
+  A.U36.546 moves the chip facts to M.6 in U36; until then the text stays in C.3.1.
+- **Unit**: Stage 1 U13 ((1)); Stage 2 U16 ((2) attempts/legal set, (3)); Stage 3 U20 ((2) "names its part"); Stage 4
+  S0930 per its unit ((3) erase API); Stage 5 U36 ((2) M.6 pointer).
+- **Depends**: A.U13.05, A.U16.04, A.U16.15, A.U16.20, A.U16.R01, A.U16.R02, A.U20.10, A.S0930.17, M.SPEC[M.2-6].
+- **Blast carried by**: BACKLOG `:52-57` deletion → A.U16.04 (DOCS); Part N rows for the attempts → A.U16.R02 (M.SPEC[N]).
+- **Kind**: doc
+
+### M.SPEC.050 C.3.2: the UART driver contract
+- **From**: A.U0.40 L52 (`:1613`), A.U12.03 (zero-length payload), A.U13.18 (concurrent `deinit()` seen at the next
+  `ready()` exit), A.U17.13 (`discarded_bytes`), A.U17.28 (masked sequences), A.U36.544 (3) (changelog label B15 goes,
+  `:1622`), A.U14.14 Blast (points to F.1), A.SDEP.08 (C3).
+- **Site**: `SPECIFICATION.md:1607-1631` (C.3.2).
+- **Change**: (1) `:1613` "Settled precedent: **one merged class**" → "Precedent (agent, 2026-08-08, `59d6b7b`): **one
+  merged class**". (2) The cancel clause: "published through monotonic request/ack counters and bounded so the call is
+  provably terminating. (It was an `asyncio.Event` handshake, which could both drop a request and hang the canceller
+  forever; see `UART_C_PORT_CHANGELOG.md` B15.)" → "published through request/ack sequences masked to 2**30 − 1 and
+  compared by distance, bounded so the call is provably terminating." (3) After the raise-contract clause: "A
+  zero-length payload is transferred as nothing, in every CRC and codec mode; a concurrent `deinit()` is seen at the
+  next `ready()` exit; `discarded_bytes` counts the bytes a failed `*_until_complete()` read consumed and dropped (masked
+  to 2**30 − 1)." (4) "re-verified against `ports/rp2/machine_uart.c` at v1.29.0" and "(re-traced 2026-09-13 …)" stand as
+  the dated facts at the pin in force (C3); the clause list points to F.1 for the raise surface.
+- **Resolved**: A.U36.544 (3) drops changelog labels from permanent text; A.U17.28's rewrite of the same sentence makes
+  the history parenthesis go with it (C2).
+- **Unit**: Stage 1 U0 ((1)); Stage 2 U12/U13/U17 ((3), (2)); U36 (label, if still present).
+- **Depends**: A.U12.03, A.U13.18, A.U17.13, A.U17.28.
+- **Blast carried by**: UART changelog entries → A.U17.* (SCR/DOCS per UCL rule).
+- **Kind**: doc
+
+### M.SPEC.051 C.4 and C.4.1: the reader contract, the loop skeleton, the ladder hooks
+- **From**: A.U11.37 (logging form, `:1635-1637`), A.U18.39 (mask-string PUT rule, "U36 places it" in C.4), A.U15.43
+  (reader tasks return `None`), A.U15.40 (4) (heading), A.U10.44 (starter/coroutine names), A.U10.R01 (driver skeleton:
+  recovery hooks), A.U3.03 (failed read persists only the driver's entry), A.U3.06 (one entry per supervised task end),
+  A.U2.22 Blast (`:1656` "`errno=10`"), A.U5.06 Blast (C.4 has no `:259-262`; nothing).
+- **Site**: `SPECIFICATION.md:1633-1667` (C.4, C.4.1).
+- **Change**: (1) C.4 `:1635-1637` → "**Contract: never raises.** Every public method returns a sentinel on failure.
+  Every layer-2 call is wrapped in its own `try/except Exception`, logged via `await self.pr.err_s("Message:", e,
+  errno=_ERR_<NAME>)` — the logger prefixes its own name; a fixed message string, then the exception or values as
+  separate arguments, never a pre-built or f-string, so a suppressed level allocates nothing." plus A.U18.39's rule as a
+  second paragraph: "A PUT stores any value its schema accepts — a password equal to the mask string `********`
+  included; a client that echoes the mask stores it, which is accepted (owner, 2026-09-29: 'I don't want to restrict it
+  in any way')." (2) C.4.1 heading → "`read_loop()` skeleton (identical across the sensor drivers)"; skeleton `-> bool` →
+  `-> None`, `return False` → `return`, with the loop's names as A.U10.44 lands them; "Returning `False` is the task
+  supervisor's restart signal." → "Returning ends the task; the supervisor restarts it." (3) `_init_<sensor>()` sentence:
+  "`try: await protocol.setup() except Exception: err_s(..., errno=10); return False`" → "a chip-setup failure persists
+  the driver's init code (C.7's catalog), calls `await self._init_failed()` and returns `False`; success calls `await
+  self._init_done()`"; new sentence (A.U10.R01): "An I2C driver sets `self._recovery_bus = i2c` and may override
+  `_recover_device() -> bool` (never raises; persists its own failure) — the participant rung of the recovery ladder
+  (C.7); only a chip failure calls `_init_failed()`." (4) "**A restart is not free.**" paragraph: "`system_service.py`'s
+  `_TASK_FAIL_INCREMENT` (100) against a `_TASK_FAIL_MAX` of 300" → the landed constant names with their Part N IDs; the
+  sentence "One bounded bus fault is one restart" gains "and one SYSTEM entry (one entry per supervised task end)".
+- **Resolved**: A.U11.37's form and A.U2.04's `_ERR_<NAME>` idiom are one sentence (A.U11.37 Depends A.U2.04). A.U18.39
+  says "U36 places it": C.4 is the Home its register names; placed in U18 with the code (the rule is current at U18),
+  since nothing in U36 moves C.4 (agent decision).
+- **Unit**: Stage 1 U2 (codes); Stage 2 U3 ((4) entry); Stage 3 U10 ((2) names, (3) ladder hooks — A.U10.R01); Stage 4
+  U11 ((1) form); Stage 5 U15 ((2) `None`, heading); U18 ((1) PUT rule).
+- **Depends**: A.U2.04, A.U3.03, A.U3.06, A.U10.44, A.U10.R01, A.U11.37, A.U15.40, A.U15.43, A.U18.39, M.SPEC[N].
+- **Blast carried by**: driver code → U15/U10 (SRC_SENS); G.2 ladder hooks → M.SPEC[G.2].
+- **Kind**: doc
+
+### M.SPEC.052 C.4.2: data access, narrowing, the one staleness rule
+- **From**: A.U0.39 L53 (`:1679`), A.U15.02 (`:1681-1682`), A.U15.22 (5) (staleness rule), A.U11.S01 (superseded by
+  M_SRC_CORE GAP-G13's per-kind validators), A.U10.06 (the `TS` capture; M_SRC_SENS GAP-15).
+- **Site**: `SPECIFICATION.md:1669-1682` (C.4.2).
+- **Change**: (1) `:1679` "the settled convention" → "the convention (owner, 2026-07-23, `eff19bf`)". (2) `:1681-1682` →
+  A.U15.02's sentence ("A `struct.unpack()` result is narrowed by assigning it to an annotated local … no `src/` module
+  calls `typing.cast()` or defines a `cast()` shim (owner, 2026-07-23)."). (3) After it, A.U15.22 (5)'s "**One staleness
+  rule** (owner, 2026-09-12; owner, 2026-09-29): …" verbatim, with one clause added from M_SRC_SENS GAP-15: "a reading
+  taken before the first NTP sync carries `TS` `None` and is a good reading: the reader's failure test looks only at the
+  measurement fields (`condition=results[0] is None`, C.7)".
+- **Resolved**: A.U11.S01's C.10 sentence ("a consumer … narrows it with `type()`/`isinstance()`") is replaced by GAP-G13's
+  per-kind validators (M.SPEC.061).
+- **Unit**: Stage 1 U0 ((1)); Stage 2 U15 ((2), (3)).
+- **Depends**: A.U15.02, A.U15.22, A.U10.06, M.SRC_SENS.083/.089-.091.
+- **Blast carried by**: `tests/test_asy_scd30_driver.py:454-457` comment → A.U15.22 (TEST_UNIT).
+- **Kind**: doc
+
+### M.SPEC.053 C.4.3 and C.4.4: the write path on `SensorReader`; no deferred construction
+- **From**: A.U4.03 (write orchestration on `SensorReader`), A.U4.04 (SCD30 answers PUTs through the chip store), A.U15.12
+  (SCD30 a `SensorReaderConfig` with a composite store), A.U5.06 (signals at construction; the deferred variant goes),
+  A.U18.37 (`_cfg_overlay()`), A.U10.38 (names).
+- **Site**: `SPECIFICATION.md:1684-1706` (C.4.3, C.4.4).
+- **Change**: (1) C.4.3 first paragraph → "Pick by where config values live. The write orchestration (validate, stage,
+  push, recover) lives on `SensorReader`, with the store behind two extension points (`_get_mgr_cfg()`/`_set_mgr_cfg()`);
+  **`SensorReaderConfig`** adds the file-backed `ConfigManager` store. A driver whose values live partly in the chip uses a
+  composite store: the SCD30 keeps six keys in its NVM, read back from the chip and written only when changed, and three
+  in its file (`SensorReaderConfig`, A.4). A field with a live chip readback is read through `get_dict_cfg()`'s
+  `callback`." (2) "**A `SensorReaderConfig` subclass whose field set isn't fixed at class-definition time …**" paragraph
+  (`:1693-1698`) → "Every module's schema is fixed at construction: `NotificationService` takes its signals as
+  constructor arguments, so no module completes itself after construction (no `register()`/`finalize()`)." (3) C.4.4:
+  "(BMP3xx: 3 of 8 fields; SGP40: none; SCD30: all fields)" → "(BMP3XX: 3 of 8 fields; SGP40: none; SCD30: its six chip
+  keys)"; "`asy_wifi_service.py`'s `callback= self._mask_pw` unconditionally overwrites the persisted `PW` with a fixed
+  mask" → "`WifiService`'s `callback=self._cfg_overlay` shows what the radio uses: passwords masked, and a stored value
+  the radio would refuse as the default it runs on (C.7.4)".
+- **Resolved**: A.U4.03 (U4) states SCD30 cannot be a `SensorReaderConfig`; A.U15.12 (U15, later) makes it one with a
+  composite store (M.SRC_SENS) — the end state is A.U15.12's; Stage 1 U4 writes the write-path move, Stage 2 U15 the
+  SCD30 composite.
+- **Unit**: Stage 1 U4 ((1) write path); Stage 2 U5 ((2)); Stage 3 U15 ((1) SCD30 composite, (3) SCD30 keys); U18 ((3)
+  overlay).
+- **Depends**: A.U4.03, A.U4.04, A.U5.06, A.U15.12, A.U18.37.
+- **Blast carried by**: A.4 SCD30 bullets → M.SPEC.011; A.7 step 12 → M.SPEC.020.
+- **Kind**: doc
+
+### M.SPEC.054 C.5 and C.5.1: the schema, its special slot, scopes, validators and guards
+- **From**: A.U0.17 (`:1711-1712` owner ruling), A.U15.17 Blast (special slot gains in-range meanings), A.U15.42
+  (`FiltCoeff` two meanings), A.U36.538 (scope rule), A.U35.43 (3) (`:1722-1725`), A.U11.17 (no change), A.U11.29 +
+  M_SRC_CORE GAP-G13 (typed getters; `checked_int()`/`checked_float()`/`checked_numeric()`, private coercion), A.U11.33
+  (script guard; golden stored-config fixture), A.U20.12 (generated schemas linted), A.U3.05 (a failed config read is
+  persisted by `ConfigManager` only), A.U11.21 (floats in stored form), A.U10.39 (`_cfg_schema` private), A.U10.29
+  Blast (C.5 const pointer is U14's: the `const()`-wrapped-tuple sentence stays).
+- **Site**: `SPECIFICATION.md:1708-1740` (C.5, C.5.1).
+- **Change**: (1) `:1710-1711` → "`special` is a single sentinel value (an "unset" value outside the normal range, e.g.
+  SCD30's `AmbPres=0` — deliberately outside it; the validation, not the schema, is what yields (owner-confirmed,
+  2026-07-15, `1ed1c9a`: 'Confirmed with the project owner which side was wrong (the validation, not the schema …)'))
+  or an in-range value with a documented meaning (SGP40's `BackupPeriod`/`BackupMaxAge`/`WaitTimeNTP` 0); a field with
+  `default=None` and a single-value `special` is "special-alone" …" (rest of the sentence as at HEAD). (2) After the
+  schema paragraph (`:1717`), two paragraphs: A.U15.42's "**`FiltCoeff` keeps two meanings** (owner, 2026-09-26): …"
+  verbatim, then A.U36.538's "**Every config value has one explicit scope** (owner, 2026-07-13, as recorded in
+  `144873f`: …)" verbatim. (3) `:1722-1725` (three defensive catches, "don't remove them") → A.U35.43 (3): "Type
+  mismatches are rejected statically: `ConfigManager` catches only the runtime failures of its file and heap operations
+  (the REST layer rejects a non-object body before it reaches a module)." followed by: "A float is validated, cached,
+  staged and compared in the form the file reloads as, so an identical PUT after a reboot answers "Unchanged". A failed
+  config read is persisted once, by `ConfigManager`; a caller prints its fallback line and runs on its documented
+  fallback." (4) The hazard paragraph (`:1727-1730`) gains: "A device script constructing a `ConfigManager` over a
+  production file is checked to pass that module's full schema (`tests_scripts/`), and every device's stored config —
+  each file and its keys' types — is pinned by a golden fixture from the release on: a change to it ships with a
+  migration (owner, 2026-09-26)." (5) Typed accessors (`:1731-1734`) → "Four typed accessors — `get_int_values()`/
+  `get_float_values()`/`get_str_values()`/`get_bool_values()` — return cache values checked by exact type (an `int` field
+  read as `float` is accepted), all or nothing; a consumer that needs an `int` or a `float` from a free value calls the
+  per-kind validator (`checked_int()`, `checked_float()`, `checked_numeric()`; `None` = refused), never a runtime cast."
+  (6) New closing sentence: "Every `src/` and generated schema is linted: its annotation form, and unique field names
+  across the schemas one `ConfigManager` or settings group serves." (7) C.5.1: "exposed via a plain sync
+  `get_cfg_schema()` (no I/O, deliberately not `async`) and as a public attribute directly" → "exposed only through the
+  plain sync `get_cfg_schema()` (no I/O, deliberately not `async`); the attribute is private (`_cfg_schema`)".
+- **Resolved**: A.U15.17's Blast sentence and A.U0.17's insertion edit the same clause — one sentence carrying both
+  (A.U15.17 "co-lands with A.U10.40/A.U10.42's C.5 edits"); A.U10.40/A.U10.42 touch C.5.3 only. A.U11.29's
+  `coerce_numeric()` naming is superseded by GAP-G13 (C7).
+- **Unit**: Stage 1 U0 ((1) owner insertion); Stage 2 U3 ((3) caller rule); Stage 3 U10 ((7)); Stage 4 U11 ((3) float,
+  (4), (5)); Stage 5 U15 ((1) in-range meanings, (2) `FiltCoeff`); Stage 6 U20 ((6)); Stage 7 U35 ((3) first sentence);
+  Stage 8 U36 ((2) scope rule).
+- **Depends**: A.U0.17, A.U3.05, A.U10.39, A.U11.21, A.U11.29, A.U11.33, A.U15.17, A.U15.42, A.U20.12, A.U35.43,
+  A.U36.538, M.SRC_CORE.047.
+- **Blast carried by**: BACKLOG `:478-480` → A.U15.42 (DOCS); H.5 special-value note → A.U15.17 (M.SPEC[H.5]).
+- **Kind**: doc
+
+### M.SPEC.055 C.5.2, C.5.2.1, C.5.2.2: setter dispatch on `SensorReader`
+- **From**: A.U4.03/A.U4.04 Blasts (`SensorReaderConfig`-only extension point; SCD30 hand-rolled setters; ContMeas
+  instance), A.U4.01/A.U4.02 (compare-before-write named), A.U10.25 (setter-result and registration check), A.U11.24
+  (holds), A.U11.25 (whole-operation failure narrows), A.U11.27 (PUTs per module serialised), A.U11.28 (stage first, then
+  push; flush follows), A.S0930.16 (closed store; `delete_file()`), A.U2.07 (`:1753` numbers, M.SPEC.008), A.U11.19
+  (command-only field creates no file), A.U10.40 (`SGPResetVOC` → `ResetVOC`, M.SPEC.008), A.U36.548 (G9/R11: "Since WP5"
+  label).
+- **Site**: `SPECIFICATION.md:1742-1786`.
+- **Change**: (1) C.5.2 first sentence → "`_set_mgr_cfg(data, cfg_vals) -> (bool, WriteValidity)` is `SensorReader`'s
+  store extension point (a file through `ConfigManager.write_config(...)`, or a chip, A.4's SCD30); every store write
+  goes through `compare_before_write()` (G.2), so an unchanged value is "Unchanged" and spends no write.
+  `_set_dict_cfg(data, cfg_vals) -> WriteValidity` validates and stages first, then pushes live only fields that both
+  changed (`"Valid"`) and have a registered push callback, and the flash write follows the pushes; PUTs to one module run
+  one at a time." "a whole-operation validation failure (an invalid `ConfigManager`, or an internal error raised out of
+  `write_config()`/`_set_mgr_cfg()` itself, never a later flash-write failure - see below)" → "a whole-operation failure
+  (an invalid manager or an internal error)". "**Since WP5** (SPECIFICATION.md Part F.2), the actual flash write is
+  deferred to an independent task" → "The flash write is deferred to an independent task (F.2)". New sentence: "A closed
+  store refuses writes; `delete_file()` removes the store's file for the config reset (A.8)." "Every setter's return
+  contract is uniformly `bool`" gains "— every method registered in `_push_callbacks` (assigned only in `__init__`) and
+  every `set_*` a settings group or dispatcher reaches, checked by a test". (2) C.5.2.1: `SGPResetVOC` → `ResetVOC`
+  throughout (M.SPEC.008); "and a special-alone write always reports `"Valid"` … re-fires every request" gains "; it
+  creates no file"; the closing "(SCD30's `ContMeas`, inverted, is the other instance)" goes (A.U4.04: SCD30's
+  `ContMeas` is a chip key now). (3) C.5.2.2 unchanged except "`_set_mgr_cfg`" now reads as the store extension point
+  above (the "Failed" sentence holds, A.U11.27).
+- **Resolved**: (a) A.U0.33 C14 tags "persist first, then push, and every setter returns `bool`" as owner text of
+  2026-09-26, but the owner's answer (OR69.a (4)) holds only the `res` semantics; the ordering is A.U11.28's mechanism
+  (stage, push, then the flash write) — C.5.2 states A.U11.28's order and C.5.3 keeps only the owner's `res` sentence
+  (adherence finding; agent decision). (b) A.U4.03's "SCD30 cannot become a `SensorReaderConfig`" is overtaken by A.U15.12
+  (M.SPEC.053).
+- **Unit**: Stage 1 U4 ((1) extension point, compare-before-write); Stage 2 U11 ((1) failure narrowing, serialised PUTs,
+  order, (2) no file); Stage 3 S0930 ((1) closed store); U10/U2 renames (M.SPEC.008); U36 ("Since WP5" if not already
+  gone).
+- **Depends**: A.U4.01-.04, A.U10.25, A.U11.19, A.U11.24-.28, A.S0930.16, M.SPEC.008, M.SPEC[G.2].
+- **Blast carried by**: `tests/test_base_classes.py` section comment → A.U4.03 (TEST_UNIT).
+- **Kind**: doc
+
+### M.SPEC.056 C.5.3: the one envelope catalog and the `res` rule
+- **From**: A.U19.15 (catalog table and rule), A.U11.26 (codes 4/5/100 go; hook failure is per field), A.U27.07 (2/3 go
+  with `parse_cmd_request()`), M.SRC_CORE.073 (end-state catalog), A.U32.03 (one hook per endpoint, its reason), A.U0.33
+  C14 (`res` rule), A.U10.42 (`:1801-1805`), A.U1.18 (`:1801` repath — void, sentence deleted), A.U0.38 V17 (`:1801`
+  nothing further), A.U2.18 (errno 99 row goes), A.U10.40 (keys), A.U36.542 (no edit).
+- **Site**: `SPECIFICATION.md:1788-1806` (C.5.3).
+- **Change**: (1) First paragraph → "Wire shape: `{"res": "OK"|"ERR", "code": int, "descr": str, "result": ...}`.
+  `make_response(code, descr=None, result=None)` draws from **one envelope code catalog**, every code with a producer:
+  [a Markdown table: `0` Command executed, `1` Invalid JSON request, `400` Bad request, `404` Not found, `405` Method not
+  allowed, `413` Payload too large, `500` Internal server error]; a shaped HTTP error uses its status as its code.
+  `handle_set_cmd(reader, data, cfg_vals, post_fct=None, post_asy_fct=None, ok_descr=None)` orchestrates
+  `_set_dict_cfg()` plus one optional post-write hook (fires once per call, only if a field actually changed — one hook
+  per endpoint, not one per field, as legacy's `post_fct`/`post_asy_fct` (agent, 2026-08-03)); a hook's failure reports
+  its group's fields "Failed" inside the OK envelope. Build `data` from only the keys the client sent. A per-field
+  failure never demotes the overall response below `"OK"`/`0` — detail lives in `"result"`: `res` is `"OK"` when the
+  request itself was processed; a non-`OK` `res` means the request was broken (unparseable, wrong shape, unknown
+  endpoint), never invalid or failed content (owner, 2026-09-26: 'res not "OK" means that the request itself was broken,
+  not invalid content')." (2)
+  `:1799-1801`: "Only legacy `html_raw/` isn't updated (H.1)." goes (A.U10.42). (3) `:1802-1805` → A.U10.42's sentence
+  ("`WifiService` owns one schema, but `/networking`'s settings groups each carry only their own subset
+  (`SettingsGroup(conn, (…))`, generated), so a LED-only change never fires `reconnect_wifi()`").
+- **Resolved**: (a) A.U19.15 and A.U11.26 edit the same catalog sentence ("one edit"), A.U27.07 removes 2/3 —
+  end state is M.SRC_CORE.073's seven codes. (b) A.U1.18 repaths `:1801` in U1 and A.U10.42 deletes it in U10: A.U1.18's
+  `:1801` edit is dropped (one landing that a later unit deletes; the legacy-path fact lives in H.1). (c) A.U0.33 C14's
+  "persist first, then push, and every setter returns `bool`" is not carried here (M.SPEC.055 (a)).
+- **Unit**: Stage 1 U0 ((1) `res` rule); Stage 2 U10 ((2), (3)); Stage 3 U11/U19 ((1) catalog without 4/5/100, hook
+  sentence, with 2/3 while `parse_cmd_request()` exists); Stage 4 U27 ((1) without 2/3); U32 ((1) hook reason).
+- **Depends**: A.U10.42, A.U11.26, A.U19.15, A.U27.07, A.U32.03, M.SRC_CORE.073.
+- **Blast carried by**: `api_response.py` comments → A.U32.03/A.U19.15 (SRC_CORE); A.8 envelope line → M.SPEC.021.
+- **Kind**: doc
+
+### M.SPEC.057 C.6: `make_dict()` reads fields by `getattr()`, one nested shape
+- **From**: A.U11.35 (C.6 and `:5687-5688`), A.U10.36 (one config-dict shape), A.U0.40 (L55 label; folded).
+- **Site**: `SPECIFICATION.md:1808-1814` (C.6); `:5687-5688` (J, carried in M.SPEC[J]).
+- **Change**: C.6 → A.U11.35's paragraph verbatim, plus "Every module's config dict has the same nested shape `{<name>:
+  {field: value}}`; no module returns a flat one."
+- **Unit**: Stage 1 U10 (shape sentence); Stage 2 U11 (paragraph).
+- **Depends**: A.U10.36, A.U11.34, A.U11.35.
+- **Blast carried by**: `:5687-5688` → M.SPEC[J].
+- **Kind**: doc
+
+### M.SPEC.058 C.7: the error-handling and logging contract
+- **From**: A.U5.01 (`LogConfig`, `make_logger(log, name)`), A.U16.01 (`:1818-1821` reflash pitfall), A.U26.22 (save,
+  then clear; "SPEC C.7 is U36's"), A.U10.10 (every logger store set up in the boot batch), A.U10.11 (pre-setup entries
+  survive setup), A.U16.17 (a declared FRAM chip that fails setup escalates), A.U16.06 (unreadable vs invalid chunk),
+  A.U11.16 (allocation failure degrades to RAM-only), A.U11.31 + A.U19.14 (`ResetErrors` measurements dated; BACKLOG item
+  32), A.U2.14 (`W5, W4, W4` numbers, M.SPEC.008), A.U11.13 (an invalid level is refused), A.U11.15 (no level accessors;
+  the `pr.level` attribute), A.U2.22 (numbering rules), A.U3.10 (one event, one entry; detecting layer), A.U2.04 + A.U11.37
+  (idiom), A.U2.06 + A.U2.08 (`_error_check()` bullet; no dynamic numbering), A.U3.03 (a failed read persists only the
+  driver's entry), A.U10.R01 (the recovery ladder), M_SRC_SENS GAP-15 (pre-sync `TS` excluded), A.U0.19 H1.02
+  (`:1894-1897` DNSSRV), A.U18.36 (WIFI observation sites), A.U18.15 (UDP users check `disconnect()`), A.U18.09
+  (resolver bounds), A.U13.16 + A.U10.22 (teardown returns `bool`), A.U30.19 + M_SRC_CORE GAP-G8 (`report_if_fatal()`
+  in `asy_print_log`), A.U3.11 (pair scan), A.U35.37 (normal situations log nothing), A.U6.26 (no C.7 text), A.U14.19
+  (nothing).
+- **Site**: `SPECIFICATION.md:1816-1900` (C.7).
+- **Change**: (1) First paragraph → "`self.pr` is `PrintLogHistory` (in-memory) or `PrintLogHistoryStore` (FRAM-backed),
+  chosen from the module's `log: LogConfig` (`fram`, `history_length`, `debug`); `make_logger(log, name)` is the same
+  branch for a module that is not a `SensorReader` (`SystemService`). **Known pitfall**: a FRAM-backed history survives
+  every reboot; after a reflash it survives only where the new build happens to keep the same chunk, and otherwise reads
+  as invalid and restarts empty (A.4). A persisted entry is therefore no proof that it came from *this* run: read and
+  save the log first (the one save primitive, `tests_hardware/`; CLAUDE.md's FRAM rule), then clear it (`PUT /status
+  {"ResetErrors": true}`). Every logger store is set up in the boot batch, first in its module's setup (A.7); entries
+  logged before `setup()` are kept and merged after the stored ones. A FRAM chip declared in the device TOML that fails
+  `setup()` escalates like any declared chip (owner, 2026-09-29: 'the same as all other chips'): one supervised task that
+  ends at once, so the supervisor reboots past its budget; modules log in RAM until then. Where no chip is declared,
+  every module runs RAM-only (owner, 2026-08-11). A chunk that cannot be read is left untouched and its owner logs in RAM
+  until the next boot; only a chunk proven blank or invalid is re-initialised. A FRAM chunk operation fails only by
+  allocation, which degrades that logger to RAM-only logging." (2) The `reset()` paragraph keeps its rule ("**`reset()`
+  writes unconditionally; `_store_err()` does not.** … `setup()` still runs normally.") and "Without this, a
+  `ResetErrors` landing in the boot window was silently undone: … Fixed 2026-09-11; covered at the mock, twin and flash
+  tiers." → "A reset issued before a logger's `setup()` clears the chip too, and that `setup()` then restores the cleared
+  ring, so a clear is all-or-nothing across modules (covered at the mock, twin and flash tiers)." (3) "**A `ResetErrors`
+  answering `OK` …**" paragraph unchanged (owner, 2026-09-17), except "answering `OK`" → "answering `Valid`" where
+  A.U11.31 makes the reply per field. (4) "**Confirmed on real hardware (dev bench board, 2026-09-17).**" keeps its three
+  measured bullets, dated as taken before the concurrent reset (A.U11.31); "`W5, W4, W4`" → the catalog codes
+  (M.SPEC.008); "Timings and the remaining load-case concern: BACKLOG.md item 24." → "…: BACKLOG.md item 32"; "All 21 of
+  `dev`'s chunks" stays a dated measurement. (5) Log-level paragraph gains "an invalid level is refused, never clamped;
+  the print methods read the logger's `level` attribute". (6) Numbering paragraph (`:1875-1883`) → A.U2.22's rules
+  ("codes are integers 1-127 (warnings stored with a `0x80` offset, 0 = nothing to record); one global catalog
+  (`buildgen/error_catalog.json`); … the catalog test (`tests_scripts/test_error_catalog.py`) enforces all of it") and,
+  as its last sentence, the idiom "codes are `_ERR_<NAME>`/`_WRN_<NAME>` `const()`s passed by keyword". (7) New paragraph
+  after it — A.U3.10's: "**One occurrence persists one entry, error or warning, never both** (owner, 2026-09-26: 'Either
+  it's a fault or a warning, but never both at a time'): the layer that detects a condition persists it; a caller above
+  prints, unless it has its own later event (the give-up). An expected condition prints only: a normal situation never
+  logs a code, and a test of one asserts no entry (owner, 2026-09-12, `8a45060`: 'no error/warning should ever be logged
+  for expected startup jitter on any boot, on any module'). Every same-path pair of persisted calls in `src/` and
+  generated code is checked by a scan, with an allow-list naming each pair's two events. A failed config read is
+  persisted by `ConfigManager` only (C.5)." (8) `_error_check()` paragraph (`:1885-1890`) → "`_error_check(results,
+  condition=True) -> bool` is the shared consecutive-failure counter every `read_loop()` calls once per cycle — `False`
+  (give up, restart) once the streak exceeds `max_module_error`; it decrements on a good read and the count shows in the
+  driver's `ErrCount`; a failed cycle prints, and only the give-up persists. Between the retry and the give-up it climbs
+  the recovery ladder once per episode: [A.U10.R01's sentence verbatim, "(owner, 2026-09-30: smallest blast radius
+  first; thresholds agent, 2026-09-30; F.2)"]. `condition` lets a driver exclude a cycle that is not a sensor failure
+  (SGP40's `condition=compensated`; every reader passes `condition=results[0] is None`, so a pre-sync `TS` of `None`
+  counts as a good read). **A call site with just one pass/fail flag** passes a fixed one-element sentinel …" (rest
+  holds); the "dynamically" sentence (`:1882-1883`) goes (A.U2.08). (9) `:1891-1897` → A.U0.19 H1.02's sentence
+  ("**An owned helper with no registered task/timer starter of its own may still own an independent, uniquely-named
+  logger** (agent, 2026-08-07, generalising the one case the owner decided): `asy_captive_dns.py`'s `CaptiveDNS` (owned by
+  `WifiService`) gets its own `"DNSSRV"` logger (owner, 2026-08-07, `74cfa7f`) so its history can be shown with the
+  networking data (owner, 2026-09-26)"). (10) The teardown sentence → "**A teardown/cleanup method on a class with no
+  logger of its own returns `bool`**, so its caller can log the failure — `UDPSocket.disconnect()` (every user checks it
+  and persists a failure), `WebserverService._close_writer()`, `UART.deinit()`, `I2C.deinit()`, `SPI.deinit()` (C.13)."
+  (11) New closing paragraphs: "**Every broad handler first calls `report_if_fatal()`** (`asy_print_log.py`): a C-stack
+  overflow is recorded by the handler that catches it and the supervisor reboots (reset code 20, F.1)." and the WIFI
+  observation rule (A.U18.36, agent, 2026-09-30): "`WifiService`'s radio observations (`status()`, `isconnected()`,
+  `ifconfig()`, the stations query, the LED helpers) stay print-only as routine observations; the persisted ones are the
+  connect-attempt tier and the timer arms. The resolver resolves only names RFC 1035 can encode (no empty label, at most
+  255 octets); anything else resolves to `None`."
+- **Resolved**: (a) A.U26.22 says "SPEC C.7 is U36's" and A.U16.01 (U16) rewrites the same sentence: Stage U16 lands
+  A.U16.01's "read and save the log first … then clear" and U36 adds "the one save primitive" pointer once A.U26.22's
+  primitive exists — one sentence. (b) A.U3.10 places "one event, one entry" in C.7 and A.U35.37's rule (G5/R21) is the
+  same family — one paragraph (agent decision). (c) A.U2.22 removes the per-module dynamic `wrnno` text that A.U2.08 also
+  removes — one deletion. (d) The boot-window history (`:1840-1846`) contradicts A.U10.10's end state (every store set up
+  before the server answers) — replaced by A.U25.65's statement of the end-state behaviour (agent decision).
+- **Unit**: Stage 1 U0 ((9)); Stage 2 U2 ((6), numbers); Stage 3 U3 ((7) first half, (8) failed read prints); Stage 4 U5
+  ((1) `LogConfig`); Stage 5 U10 ((1) boot batch/pre-setup, (8) ladder, (10)); Stage 6 U11 ((1) degrade, (3), (4), (5));
+  Stage 7 U16 ((1) pitfall, FRAM escalation, unreadable chunk); Stage 8 U18 ((10) UDP, (11) WIFI/resolver); Stage 9 U30
+  ((11) `report_if_fatal()`); Stage 10 U35/U36 ((7) normal situations, (1) save primitive).
+- **Depends**: A.U2.22, A.U3.03, A.U3.10, A.U3.11, A.U5.01, A.U10.10, A.U10.11, A.U10.R01, A.U11.13, A.U11.16,
+  A.U11.31, A.U13.16, A.U16.01, A.U16.06, A.U16.17, A.U18.09, A.U18.15, A.U18.36, A.U19.14, A.U26.22, A.U30.19,
+  A.U35.37, M.SRC_CORE.034, M.SRC_SENS.083.
+- **Blast carried by**: CLAUDE.md FRAM rule → A.U26.22/A.U2.08 (DOCS); `digital_twin/README.md:503-507` → A.U25.65 (TWIN).
+- **Kind**: doc
+
+### M.SPEC.059 C.7.1: the band table and the catalog
+- **From**: A.U2.22 (C.7.1 → band table + catalog pointer), A.U3.10 (repeat rule → the central rule), A.U2.01/A.U2.02
+  Blasts (catalog file, catalog test), A.U0.40 L56 (`:1948`), A.U0.38 V48 (`:1949`), A.U3.08 (UART W10 console, W11 drain
+  bound), A.U16.R03 (errno 54 row), A.U15.24 (W11 shared row), A.U18.06/A.U18.14/A.U2.09/A.U2.15/A.U2.19/A.U2.20/A.U3.09/
+  A.U9.08/A.U16.15 (row texts — generated from the catalog, nothing hand-written), A.U36.544 item 29 (WIFI reason
+  sentence), A.U18.36 (wrnno 36 text).
+- **Site**: `SPECIFICATION.md:1902-1950` (C.7.1).
+- **Change**: (1) Intro and repeat paragraph → A.U3.10's central rule: "**Repeats.** A history is a ring of ten slots
+  per logger with one shared saturating counter, codes only (errors and warnings share it; the `0x80` offset makes the
+  two kinds different codes); a code identical to the newest entry is counted and written through but spends no slot —
+  'just don't repeat the same error in the slots. Pure and simple' (owner, 2026-09-26). The console is unfiltered; RAM and
+  FRAM histories follow the same rule; there is no per-module episode state; alternating codes and reboots are outside
+  the rule." (2) The table → A.U2.22's band table (base 1-9/1-2; the shared band;
+  each owner's band) with "(owner, 2026-09-25)" and a pointer: "every code, its owner, name and meaning:
+  `buildgen/error_catalog.json`; `tests_scripts/test_error_catalog.py` checks every logging call against it". The
+  per-module rows, "Seven modules still number inside the reserved range" and "renumbered to 10+ on its next substantial
+  change" go. Kept as statements beside the table: "The FRAM manager's chunks log into the manager's RAM-only history:
+  the FRAM module never has FRAM logging of its own (owner)."; the UART decision "**`wrnno` W11 outranks W10** (owner,
+  2026-09-18): a resync prints; the drain bound persists W11, so 'the peer never stopped sending' is what a field log
+  carries"; the WIFI authentication code reads "authentication or handshake failed": cyw43 reports any failed AUTH event
+  or key exchange as BADAUTH (`lib/cyw43-driver/src/cyw43_ctrl.c`), not proof of a wrong password; the no-logging layers
+  "(owner, 2026-08-20, `c80d293`: no logging in these layers)" — the bus drivers, `asy_udp_socket.py`,
+  `asy_dns_client.py`, `asy_uart_driver.py` (whose `cancel_unacknowledged` its owner reads and logs).
+- **Resolved**: A.U0.40 L56 and A.U0.38 V48 tag rows that A.U2.22 deletes (U2, later): their tags survive in the kept
+  statements (C8). A.U3.08's W10/W11 restatement replaces A.U2.22's quoted "W11 outranks W10 … persisted when the drain
+  bound is hit". Catalog numbers in the statements are the catalog's (M.SPEC.008).
+- **Unit**: Stage 1 U0 (tags on HEAD rows); Stage 2 U2 ((2)); Stage 3 U3 ((1), UART statement).
+- **Depends**: A.U2.01, A.U2.02, A.U2.22, A.U3.08, A.U3.10.
+- **Blast carried by**: per-row codes → the catalog file (GEN/A.U2.01); C.11 item 8, K.1, K.9 → M.SPEC[C.11], M.SPEC[K].
+- **Kind**: doc
+
+### M.SPEC.060 C.7.2: which failures end a task; the network recovery ladder
+- **From**: A.U18.47 (NET ladder paragraph), A.U18.19 (NTP source/origin decision), A.U18.20 (`Synced` goes stale), A.U18.21
+  (a settings change clears `Synced`), A.U18.10 (`DNSFallback`, resolver order), A.U18.14 (both local codes), A.U5.10
+  (`retry_s`/`retry_max_s` wording after grouping), A.U8.09 (Part N), A.U2.15 (`E21` → catalog), A.U0.38 V51 (`:1976`),
+  A.U17.07 (UART link that never came up ends its task), A.U17.21 + A.U17.32 + A.S0930.01 (build refusals), A.U2.20
+  (UART numbers), A.U36.548 (G9/R11 history).
+- **Site**: `SPECIFICATION.md:1952-1984` (C.7.2).
+- **Change**: (1) First paragraph keeps the rule; "the NTP task used to end after six failed syncs, so an unreachable
+  server restarted it about once a minute and rebooted the device about every four minutes (owner, 2026-09-24). The
+  legacy client never gave up." → "(owner, 2026-09-24: an NTP task that gave up after six failed syncs rebooted a device
+  every few minutes; the legacy client never gave up)". (2) NTP bullet: "`retry_s` (default 10 s) doubling … `retry_max_s`
+  (default 600 s)" with the parameter names as A.U5.10 groups them and their Part N IDs; "**Confirmed on silicon
+  (2026-09-25)**: with UDP 123 blocked, one `E21` slot (count 3) …" → the catalog code; new sentences: "The resolver asks
+  the DHCP-provided DNS server first, then the `DNSFallback` servers (an NTP config value, at most three, emptiable at
+  the API). `Synced` is true only while the last success is less than three intervals old; a failed resync does not
+  extend it, and a PUT of an NTP setting clears it until the next successful sync (owner, 2026-09-29). A request that
+  could not be sent and a reply that never came are two local codes (`NTP_NOT_SENT`, `NTP_NO_REPLY`)." and A.U18.19's
+  paragraph: "**No origin check** (agent, 2026-09-30): a reply is accepted only from the resolved server's address and
+  port, because the fetch socket is connected and lwIP's `udp_input()` gives a connected pcb only that remote's datagrams;
+  each attempt uses a fresh socket, so a late reply to an earlier attempt reaches none; an on-path host forging the
+  server's address is outside the trusted-LAN model (A.11)." with its file:line sources re-read at the refreshed pin
+  (C3). (3) After the bullets, A.U18.47's paragraph verbatim ("Network faults recover with the smallest step first. …
+  (owner, 2026-09-26) (owner, 2026-09-30)."). (4) "**Out of scope (owner, 2026-09-24): hardware that is inoperational from
+  the start.**" → "… hardware that is inoperational from the start, or a chip that stalls (owner, 2026-09-25: 'a stalled
+  chip may recover by a reboot').**"; "and neither is a UART link whose `setup()` refused its construction" → "and
+  neither is a UART link whose `setup()` failed: it ends its task on both roles, and the supervisor's restart escalation
+  is its path to a reboot". (5) The build-refusal sentence → "The refusals a device TOML can cause are build errors
+  instead (`buildgen/validate.py`, reading the thresholds out of `asy_uart_comm.py`): a reply timeout below 2 ×
+  `poll_wait_ms` + `poll_idle_ms` + the GC pause, or above the ticks horizon its drain bound needs; a `poll_wait_ms`
+  outside 1 … 9 ms; an `rxbuf` below one frame or one poll's arrivals; a crossover pair whose baud rates or CRC modes
+  differ; every other refusal needs code the generator never emits." (codes by catalog name, not number).
+- **Resolved**: A.U17.07 asks U10's C.7.2 edit to merge "a UART link whose `setup()` failed ends its task on both roles"
+  beside the stalled chip — one sentence with A.U0.38 V51. A.U18.47's double tag is the constituent's own.
+- **Unit**: Stage 1 U0 ((4) V51); Stage 2 U2 (codes); Stage 3 U5/U8 ((2) names, Part N); Stage 4 U17 ((4) UART, (5)
+  poll/timeout/baud); Stage 5 U18 ((2) resolver/`Synced`/codes/origin, (3)); S0930 ((5) CRC mode); U36 ((1)).
+- **Depends**: A.U17.07, A.U17.21, A.U17.32, A.S0930.01, A.U18.10, A.U18.14, A.U18.19-.21, A.U18.47, A.U5.10, M.SPEC[A.11].
+- **Blast carried by**: DEVICE_REFERENCE `NtpSynced` → A.U18.20/.21 (DOCS); L.3/L.4 lists → M.SPEC[L.3]/[L.4].
+- **Kind**: doc
+
+### M.SPEC.061 C.7.3: a failed config write costs persistence, never the config
+- **From**: A.U11.20 (an unreadable file is never written that boot), A.U11.19 (a missing file is served from defaults
+  and written by the first accepted change), A.U11.28 (write-count sentence), A.U11.21 (stored form, C.5), A.S0930.16
+  (closed store), A.U2.07 (numbers), A.U0.37 V52 (`:1994` tag), A.U36.034 (CLAUDE.md points here), A.C.17 (power-loss
+  result, phase C), A.U36.548 (G9/R11).
+- **Site**: `SPECIFICATION.md:1986-2011` (C.7.3).
+- **Change**: (1) First paragraph: "`setup()` runs on the file's good keys and the defaults for the rest when its
+  create-or-repair write fails (errno 4)" → by catalog name; new sentences: "A missing file is served from defaults and
+  written by the first accepted change; an unreadable one is served from defaults and never written this boot." "Before
+  this, a failed setup write left the manager invalid: … (owner, 2026-09-24)." → "Were a failed setup write to leave the
+  manager invalid, every reader's init would fail, the supervisor would reboot and every boot would repeat the write —
+  a reboot loop writing the flash each pass (owner, 2026-09-24)." (2) Write-site list: "`setup()` writes at most once,
+  only when the file is missing or needs repair" → "only when the file exists and needs repair"; "`_flush_staged()` writes
+  once per accepted PUT that changes a value" → "once per accepted PUT that changes a value, after its pushes; a flush
+  equal to the file writes nothing". (3) "**Bounded by boots …**" paragraph: "(owner, 2026-09-24)" → A.U0.37 V52's
+  "(owner, 2026-09-24; the bound — each write once per explicit change or once per boot — confirmed by the owner,
+  2026-09-26)" at `:1994`. (4) Phase C (A.C.17): the power-loss result is recorded in F.2's sentence, which this section
+  cites ("A power cut during a write leaves a loadable file: F.2.").
+- **Resolved**: A.U11.19 and A.U11.20 contradict HEAD's "missing" case of `setup()` — the end state (no write for a
+  missing file) is theirs (M.SRC_CORE).
+- **Unit**: Stage 1 U0 ((3)); Stage 2 U2 (codes); Stage 3 U11 ((1), (2)); phase C ((4) pointer once F.2 has the result).
+- **Depends**: A.U11.19, A.U11.20, A.U11.28, A.C.17, M.SPEC[F.2].
+- **Blast carried by**: CLAUDE.md flash-write rule → A.U36.034 (DOCS).
+- **Kind**: doc
+
+### M.SPEC.062 C.7.4: the radio's string bounds and shapes
+- **From**: A.U14.37 (first sentence: raise types, cyw43 citations), A.U6.29 (host-label rule), A.U6.30 (country shape),
+  A.U18.37 (GET shows the radio value in use), A.U18.38 (no change), A.U3.07 (`errno 17` number), A.U2.14 (codes),
+  A.U26.20 (test only), A.U6.28 Blast (H.5 cross-reference, M.SPEC[H.5]), A.C.14 (unknown country code on silicon,
+  phase C).
+- **Site**: `SPECIFICATION.md:2013-2027` (C.7.4).
+- **Change**: (1) First sentence → A.U14.37's text verbatim (re-read at the refreshed pin and cyw43 commit, C3). (2)
+  "`asy_wifi_service.py` now bounds SSID, PW, Country, Hostname and HotspotPW in bytes at both ends" → "`WifiService`
+  bounds SSID, PW, Country, Hostname and HotspotPW in bytes at both ends, and checks two shapes: `Hostname` is a host
+  label — ASCII letters, digits and `-`, not starting or ending with `-` (RFC 1123), at PUT, use and build; `Country` is
+  two uppercase letters (ISO 3166-1 alpha-2) at PUT and use (agent, 2026-09-28)"; codes by catalog name. (3) New
+  sentence: "`GET /networking` shows the value the radio uses: passwords masked, and a stored value the radio would refuse
+  as the default it runs on." (4) "So a schema-valid `"ÄT"` … used to raise on every connect, set `hw_op_failed` and end
+  the task after `max_module_error` cycles (errno 17) — a config value treated as a hardware fault (C.7.2)." → "Unchecked,
+  a schema-valid `"ÄT"` or a 32-character SSID with umlauts would raise on every connect and end the task as a hardware
+  fault (C.7.2)." (5) Phase C (A.C.14): one dated sentence on what the radio does with a well-shaped but unknown country
+  code.
+- **Unit**: Stage 1 U2 (codes); Stage 2 U6 ((2) shapes); Stage 3 U14 ((1)); Stage 4 U18 ((3)); U36 ((4)); phase C ((5)).
+- **Depends**: A.U6.29, A.U6.30, A.U14.37, A.U18.37, A.C.14.
+- **Blast carried by**: H.5 FieldDef `shape`/`bytes` → M.SPEC[H.5].
+- **Kind**: doc
+
+### M.SPEC.063 New C.7.5: the captive DNS answers
+- **From**: A.U18.01 (creates the section; QTYPE rule, owner 2026-09-29), A.U18.02 (drop rule).
+- **Site**: new `### C.7.5 Captive DNS` after C.7.4 (`:2027`), before C.8.
+- **Change**: "`asy_captive_dns.py` answers every on-subnet A/ANY query with the AP's IP and every other type with an
+  empty NOERROR reply (owner, 2026-09-29). A datagram that is a response (QR), declares other than one question, uses a
+  compressed or reserved label or a name over 255 octets is dropped (agent, 2026-09-28); a reply is at most 287 B."
+- **Unit**: U18.
+- **Depends**: A.U18.01, A.U18.02.
+- **Blast carried by**: A.5 `:331` → M.SPEC.018; `THIRD_PARTY_LICENSES.md:145-148` → A.U18.01/.02 (DOCS); I.4 → M.SPEC[I.4].
+- **Kind**: doc
+
+### M.SPEC.064 C.8: locks, the lock table, the hold table, cancellation
+- **From**: A.U10.16 (lock table between `<!-- locks:begin -->`/`<!-- locks:end -->`; "a new lock takes its place"),
+  A.U10.17 (bare-lock reasons; `Locked*` hold no lock; NOTIFY no-lock sentence), A.U10.18 (lock names; `_locked` suffix
+  rule), A.U12.18 (per-call input staged inside the hold, owner 2026-09-29), A.U15.S01 (derived value inside the same
+  hold), A.U16.10 (`setup()`/`set_write_protected()` take both FRAM locks), A.U16.13 (chunk layer logs only into RAM),
+  A.S0930.17/.30 (erase holds both FRAM locks per unit), A.U18.33 (the "Known inconsistency" paragraph → one contract),
+  A.U18.32 (the STA-retry sentence goes), A.U18.34 (the `wifi_mode_lock` hold table), A.U18.10 (≤ 3 fallback servers bound
+  the NTP hold), A.U36.544 (`_config_lock` sentence), A.U11.27 (`_set_lock`), M_SRC_SENS GAP-13 (`_threshold_lock`;
+  resolver form), A.U18.07 + A.U18.31 + A.U35.48 (cancellation line — no action creates it: gap fill).
+- **Site**: `SPECIFICATION.md:2029-2058` (C.8 lock layers, FRAM scope, known-inconsistency paragraph).
+- **Change**: (1) Opening paragraph: lock names as A.U10.18 lands them (`I2C.bus_lock`/`SPI.bus_lock`, a device session's
+  `session_lock`); after "reversing risks a real deadlock" A.U12.18's sentence ("Every per-call input a multi-step operation
+  keeps in a shared buffer is written inside the device-session hold, never before it: an await before the hold (a CRC's
+  per-byte yield included) lets another caller overwrite it (owner, 2026-09-29: 'No races allowed').") with A.U15.S01's ",
+  and a value derived from shared driver state is derived inside the same hold (the ISL29125's resolution shadow)". (2)
+  New paragraph with the table (A.U10.16): "**Every lock, its level and what it may be held while taking** — a new lock
+  takes its place in this table in the same change; `tests_scripts/test_lock_order.py` resolves every `async with`/
+  `.acquire()` in `src/` against it." Rows: `Lockable.session_lock` (level 2, device session; a bus device's session lock
+  is its bus lock), `I2C.bus_lock`/`SPI.bus_lock` (level 1), `FRAM_SPI`'s bus-lock alias (level 1), `_FRAMBaseChunk._op_lock`
+  (level 3, taken before the FRAM driver's session), `ConfigManager._config_lock` (serialises the config file and its
+  staged snapshot: every config read and write), `SensorReader._set_lock` (one module's config GET and PUT),
+  `ISL29125_Reader._threshold_lock` (taken inside `_set_lock`, before the device session), `WifiService.wifi_mode_lock`,
+  `UDPSocket._connect_lock`, `NeopixelDriver._overlay_lock`, `SensorReader._data_lock` (leaf: nothing is acquired inside
+  it) — each with the external resource it serialises (A.U10.17's reasons); the check resolves `self._i2c_<chip>`/
+  `self._spi_<chip>` to the session level. Below it: "`LockedCounter`/`LockedFlag`/`LockedValue` hold no lock: no method
+  awaits. `NotificationService.monitor_loop()` reads its three config groups without a lock: `ConfigManager`'s value read
+  never suspends on its success path, so the three reads run as one uninterrupted unit (agent, 2026-08-19)." (3) The FRAM
+  scope paragraph (`:2041-2050`, "(owner's decision, 2026-09-18)") gains: "`setup()` and `set_write_protected()` take both
+  too, and the whole-chip erase holds both per 256-byte unit, never across an await of another lock. Nothing logged under
+  the FRAM driver lock reaches FRAM: the chunk layer and `FRAM_SPI` log only into the manager's RAM history (a FRAM-backed
+  one would re-enter the lock), pinned in `tests/test_asy_fram_manager.py`." (4) `:2052-2058` ("**Known inconsistency
+  (`asy_wifi_service.py`)** … not a bug.") → "**One getter contract (`WifiService`)** (agent, 2026-09-30): every public
+  getter reads state the service holds — the 1 Hz snapshot and the phase — and never touches the radio; the one radio
+  read a caller may make, `network_available_locked()`, requires `wifi_mode_lock`." followed by A.U18.34's hold table
+  (connect attempt, STA disconnect wait, mode switch, hotspot bring-up, permanent deactivation, stations query, status
+  read and snapshot, the NTP attempt with up to three `DNSFallback` servers ≈ 7.1 s, ≤ 9.1 s) and its waiter analysis
+  verbatim, tagged "(agent, 2026-09-30)" with the DNS-inside-the-lock row "(owner, 2026-07-28)"; "the 60 s STA-retry wait
+  is outside the lock". (5) Gap fill — new paragraph: "**Cancellation leaves shared state consistent**: every task path
+  in UART, NET and REST restores its locks, busy flags and indicators in `finally` and re-raises `CancelledError`, never
+  swallowing it in a widened `except`: the captive DNS re-raises after its cleanup, and the LED flash task leaves the LED
+  to its canceller. A test sweep cancels every such path at each of its awaits (agent)."
+- **Resolved**: (a) A.U10.16 lists "the `Locked*` `_value_lock`s (leaf)" and A.U10.17 (same unit) drops those locks —
+  the table has no `Locked*` rows (M.SRC_CORE). (b) A.U10.16's resolver names `self.i2c_<chip>`; A.U10.35 makes them
+  private — the table states `self._i2c_<chip>` (GAP-13). (c) A.U18.07/A.U18.31/A.U35.48 each say "C.8's cancellation
+  line/paragraph names …", yet no action writes that paragraph and HEAD has none — written here from their shared
+  requirement (G6/R54; agent decision, OR2.c).
+- **Unit**: Stage 1 U10 ((1) names, (2)); Stage 2 U11 (`_set_lock` row); Stage 3 U12 ((1) per-call input); Stage 4 U15
+  ((1) derived value, `_threshold_lock` row); Stage 5 U16 ((3)); Stage 6 U18 ((4), (5) first two instances); S0930 ((3)
+  erase); U35 ((5) sweep sentence); U36 (`_config_lock` read/write wording, A.U36.544).
+- **Depends**: A.U10.16-.18, A.U11.27, A.U12.18, A.U15.S01, A.U16.10, A.U16.13, A.U18.07, A.U18.31-.34, A.U35.48,
+  A.S0930.17, M.SRC_SENS.080.
+- **Blast carried by**: `tests_scripts/test_lock_order.py` → A.U10.16 (TSC); `src/` lock-reason comments → A.U10.17
+  (SRC_*).
+- **Kind**: doc
+
+### M.SPEC.065 C.8: the general-call reset, the hazard standing rule, the SCD30 budget, the device set
+- **From**: A.U15.15 (general-call paragraph → owner decision), A.U15.R02 (heater-off participant rung), A.U35.21 (lone
+  BMP3XX flash-tier check), A.U0.37 V22 (`:2070-2073` standing-rule head), A.U0.33 B04/B05 (`:2107`, `:2075-2076`,
+  `:2176-2178`), A.U0.25 A16/A17 (`:2118`, `:2141-2142`), A.U13.R02 (recovery scenario), A.U24.27 (generated scheme
+  drives every writer), A.U4.08 (REST half of the SCD30 budget), A.U26.08 + A.U26.09 (flash-tier budget after the fixture
+  split), A.U4.07 + A.U7.25 (the two exception shapes → pointer to E.6.6), A.U36.015 (per-device paragraph derived),
+  A.U24.66 (per-device statements go — carried by A.U36.015), A.U36.014 (C.8 stays the one list), A.U1.06 (C.8 (a)-(b) is
+  G1/R07's other home: nothing beyond A.U26.08/.09), A.U36.544 (2) ("Session 6.2" label).
+- **Site**: `SPECIFICATION.md:2059-2201` (C.8 from "Known structural gap" to the end).
+- **Change**: (1) `:2059-2068` → A.U15.15's "**Owner decision — the SGP40 general-call reset (`SGP40_I2C._reset()`)**: …"
+  paragraph verbatim, gaining (A.U15.R02) "A failing SGP40 is first recovered by the device-addressed heater-off (Table
+  14), which reaches only the SGP40; the general call stays at setup" and (A.U35.21) "a flash-tier script checks that a
+  BMP3XX alone on its bus keeps its configuration and readings across the broadcast"; "the bench tier lists it as an
+  exception (E.6)" names the E.6.6 row. (2) `:2070-2073` → A.U0.37 V22's head ("**Standing rule — hazard test coverage,
+  read before adding a new device on a shared resource or rewiring a bus** (owner, 2026-09-03, `da3a5b5`: 'note down to
+  never forget this'; every shared resource, owner, 2026-09-26): every promoted I2C/SPI device, and every other shared
+  resource (locks, FRAM, the config file, sockets, the heap), gets same-device read-vs-write concurrency coverage,
+  cross-device interleaving coverage (if it shares a bus with another device on any device's wiring), and an
+  address/command sweep confirming it never touches a foreign or reserved address, across as many of four tiers as apply
+  (cheapest first)") and gains "and the recovery ladder's bus rungs (a held-SDA bus) at every tier that can reach them".
+  (3) Item 1's "(project owner's own reframing, 2026-09-15)" → "(owner, 2026-09-15, `24d74a5`)"; the generated-scheme
+  bullet gains "the generated scheme drives every writer on every shared bus". (4) `:2107` "**Real-hardware write-safety
+  constraints, project-owner-mandated**:" gains "(owner, 2026-09-03, `7c8dbbc`, paraphrase; (a) generalised by the
+  owner's wear rule of 2026-09-17)"; `:2118` "(project owner's explicit direction)" → "(owner, 2026-09-15, `f9df9a2`)".
+  (5) The SCD30 exception bullet (`:2135-2152`): "**SCD30's own on-chip NVM write is opt-in, off by default, and capped
+  at one real write per test session**" gains "(owner, 2026-09-16, `98dc1b2`)"; the budget text → A.U26.09's flash-tier
+  table pointer (`tests_hardware/README.md`) plus A.U4.08's REST half: "a `PUT /sensors` to SCD30 spends one NVM write
+  per field whose value changed, one per `AmbPres`/`ForceCalRef` sent and one per `ContMeas=false`, none for an identical
+  TempOffs/MeasInt/Altitude/SelfCal"; the routine-write fixture wording follows A.U26.08 (the read-while-write test owns
+  its write; the five other dependents run by default). (6) `:2153-2175` (the flash-subset-of-bench bullet's two
+  exception shapes) → "**Flash-tier bus-hazard coverage is always a subset of bench-tier coverage** — whatever gets added
+  to `tests_hardware/flash/test_bus_concurrency.py` gets a bench-tier counterpart driven through the HTTP stack; every
+  exception is a row of E.6.6's one list." (the false "SCD30 registers zero `_push_callbacks` … no `PUT /sensors` field
+  can ever reach" goes with it). (7) `:2176-2184` → A.U0.33 B05: "**`test_bus_hazard_multi_device.py` is the permanent
+  home** for generic hazard shapes (owner, 2026-09-15, `24d74a5`) — each test in it takes its own necessity verdict; …"
+  (the rest of the bullet without "never retired … superseding an earlier plan"). (8) `:2185-2200` → A.U36.015's
+  paragraph verbatim ("**Which devices a cross-device check applies to is derived, never listed.** …").
+- **Resolved**: (a) A.U4.07 corrects the false SCD30 sentence and A.U7.25 replaces the whole exception text with a
+  pointer — A.U4.07 runs first (B1 order), so its correction lands in E.6.6's row, and C.8 keeps only the pointer (both
+  actions say so). (b) A.U4.08 (U4) and A.U26.09 (U26) rewrite the same SCD30 budget paragraph: U4 adds the REST half,
+  U26 the flash half; A.U0.25 A16's tag stays on the head sentence. (c) A.U15.15 (U15) supersedes A.U0.33's nearby tags
+  only for its own paragraph; `:2075-2076`/`:2107` tags are untouched by it.
+- **Unit**: Stage 1 U0 ((2), (3) tag, (4), (5) tag, (7)); Stage 2 U4 ((5) REST half); Stage 3 U7 ((6)); Stage 4 U13 ((2)
+  recovery rung); Stage 5 U15 ((1)); Stage 6 U24/U26 ((3) every writer, (5) flash half); Stage 7 U35 ((1) BMP3XX
+  sentence); Stage 8 U36 ((8)).
+- **Depends**: A.U0.25, A.U0.33, A.U0.37, A.U4.07, A.U4.08, A.U7.25, A.U13.R02, A.U15.15, A.U15.R02, A.U24.27, A.U25.48,
+  A.U26.08, A.U26.09, A.U35.21, A.U36.015, M.SPEC[E.6].
+- **Blast carried by**: CLAUDE.md hazard rule → A.U36.014/A.U0.37 (DOCS); `tests_hardware/conftest.py:109` marker text →
+  A.U4.08 (HW); test comments → A.U15.15 (TEST_UNIT).
+- **Kind**: doc
+
+### M.SPEC.066 C.9: timers, tasks and the task inventory
+- **From**: A.U10.14 (C.9 callback/one-shot wording; widening tag), A.U10.19 (task inventory table; opt-out relabelled),
+  A.U10.02 (`TickSeconds` pointer), A.U10.03 (the 1 s ticks share `arm_tick_timer()`), A.U10.44 (names), A.U15.41 (a
+  failed read-trigger arm ends its task), A.U18.22 (NTP retry `ONE_SHOT` and its backstop), A.U18.23/A.U18.24 (re-arm
+  points), A.U10.28 + A.U18.26 (wall-clock consumers survive an RTC step: tests cited), A.U10.45 (except-tuple order),
+  M.SPEC.008 (`asy_captive_dns.py`, `CaptiveDNS`).
+- **Site**: `SPECIFICATION.md:2203-2222` (C.9), `:2303-2311` (the cascading-recovery-storm paragraph after C.9.1).
+- **Change**: (1) First paragraph: "`get_task_starters()`/`get_timer_starters()`" → the three starter lists as A.U10.12/
+  A.U10.44 name them (task, timer and trigger starters); "a task tied to a runtime mode transition
+  (`asy_wifi_service.py`'s hotspot-mode DNS server task) is deliberately outside this generic supervision, a legitimate
+  opt-out" → "… is outside this generic supervision (agent, 2026-08-07)", followed by A.U10.19's inventory table between
+  `<!-- tasks:begin -->`/`<!-- tasks:end -->` (config flush, captive DNS, hotspot LED flash, per-connection HTTP — each
+  with its reason, lifetime, cancel path and the top that persists its failure) and "every `create_task(`/
+  `start_server(` in `src/` is a starter or a row of this table, checked by `tests_scripts/test_task_inventory.py`". (2)
+  Second paragraph → A.U10.14's C.9 sentence ("a callback only `.set()`s a `ThreadSafeFlag` or event; re-arming, resets
+  and storage state run in the task it wakes; a timer whose fire must not be lost is `PERIODIC`; each remaining
+  `ONE_SHOT` states why a dropped fire is acceptable or backstopped (the stagger wait: the watchdog; the reset timer:
+  `ONE_SHOT` by the owner's choice, 'brittle wrt. wdt timeout settings' (owner, 2026-07-18); the NTP retry: the next due
+  check); exactly one waiter per flag"), F.1 keeping only the platform fact. "A driver needing more than one rate
+  (BMP3xx: 1Hz base tick divided down) runs a small counting sub-task" → "… runs `SensorReader`'s shared trigger divider
+  (`_trigger_loop()`, G.2)". New sentences: "The 1 s tick timers (system uptime, WiFi uptime, NTP sync age) share
+  `arm_tick_timer()`; they start with the timer starters and never take a stagger slot. Every elapsed time is measured
+  in ticks (`TickSeconds`, G.2). A failed arm is re-armed at the task's next opportunity and persisted on a second
+  failure, then the task ends for the supervisor; a read-trigger arm failure wakes the task waiting on it, which persists
+  the failure and ends, and its restart re-arms. Wall-clock consumers survive an RTC step (the tests in
+  `tests/test_system_service.py` and the NTP/notification files pin it)." (3) The widening paragraph: "catches `except
+  (OSError, MemoryError) as e:`" → "`except (MemoryError, OSError) as e:`" and gains "(owner, 2026-08-07: every
+  `Timer.init()` catch widened to `(MemoryError, OSError)` however hard the failure is to provoke)". (4) Cascading
+  paragraph: "`captive_dns.py`'s `DNSServer.run()`" → "`CaptiveDNS.run()`"; "before this fix, a persistent failure produced
+  ~5 log lines/sec continuously" → "without it, a persistent failure printed ~5 lines per second"; the rest holds.
+- **Resolved**: A.U18.22's comment-only action also names C.9 (A.U10.14's text) — its backstop joins the `ONE_SHOT` list.
+  A.U10.12 moves read triggers out of `get_timer_starters()`; C.9's starter wording follows it (M.SPEC.067).
+- **Unit**: Stage 1 U10 ((1)-(3), (4)); Stage 2 U15 (read-trigger arm sentence); Stage 3 U18 (re-arm points, NTP retry).
+- **Depends**: A.U10.02, A.U10.03, A.U10.12, A.U10.14, A.U10.19, A.U10.28, A.U10.44, A.U15.41, A.U18.22-.24,
+  M.SPEC[F.1], M.SPEC[G.2].
+- **Blast carried by**: comments at the sites → A.U18.22-.24 (SRC_NET).
+- **Kind**: doc
+
+### M.SPEC.067 C.9.1: one shared start and a minimum separation
+- **From**: A.U10.14 (rewrite: mechanism, minimum-separation guarantee, SCD30 owner decision, labels out), A.U10.12
+  (mechanism), A.U10.13 + A.U11.39 (regression coverage: the per-device fake-clock scenario), A.U0.37 V10 (`:2249-2250`),
+  A.U0.33 C02 (`:2286-2298`), A.U15.03 (`:2288` SCD30 tick counts), A.U31.17 (task-start spread in whole milliseconds),
+  A.U26.41 (silicon spacing test reads the value), A.C.07 (measured separation, phase C), A.U10.43 (suffix names).
+- **Site**: `SPECIFICATION.md:2224-2302` (C.9.1).
+- **Change**: heading → "### C.9.1 Read-trigger stagger: one shared start, a minimum separation"; body as A.U10.14
+  states it: the design-intent paragraph in the owner's words, tagged "(owner, 2026-09-16)"; "The mechanism" → A.U10.12:
+  trigger starters only, run in task context by `start_timers(triggers, timers)`, trigger k at `t0 + k·slot` with `slot =
+  1000 // (len(triggers) + 1)`, each wait a flag-woken `ONE_SHOT` (the watchdog its backstop) with a plain sleep if the arm
+  fails, bus-sharing instances furthest apart; unstaggered: the three 1 s ticks and SCD30's 500 ms tick; the task-start
+  spread is a separate coarse one (`asyncio.sleep_ms(1000 // len(task_starters))`, no coincidence claim; owner, 2026-09-26)
+  and the boot `setup()` batch "is not staggered at all (owner, 2026-09-25)"; "The no-coincidence proof" → "the
+  minimum-separation guarantee": two whole-second periods bring two reads closest at the circular distance of their
+  offset difference modulo `1000·gcd`, kept ≥ `stagger.min_read_separation_ms` (Part N); the rp2 `alarm_callback()`
+  drift-free reschedule bullet keeps its facts at the pin in force (C3); the SCD30 bullet: "its base tick counts ticks
+  with the pin high since the last read …; SCD30's read may coincide with other reads on its bus: that is the chip's own
+  timing, outside the spacing rule (owner, 2026-09-26)"; "Regression coverage" → "the per-device scenario
+  (`tests/_sensortask_scenarios.py`) runs the real `start_timers()` under a fake clock and checks every pair's distance
+  for every period combination; on silicon, `tests_hardware/` measures the trigger spacing per bus against this
+  value". "WP7"/"WP6" leave the heading and text; dates stay. Phase C (A.C.07): the measured separation is recorded with
+  its date.
+- **Resolved**: A.U0.33 C02 and A.U0.37 V10 edit sentences A.U10.14 rewrites (U10, later) — their owner tags land in
+  A.U10.14's text (C8). A.U15.03 co-lands with A.U10.14's SCD30 bullet (its Blast says so).
+- **Unit**: Stage 1 U0 (tags on HEAD text); Stage 2 U10 (rewrite); Stage 3 U15 (SCD30 tick wording); U31 (spread form);
+  phase C (measurement).
+- **Depends**: A.U10.12, A.U10.13, A.U10.14, A.U11.39, A.U15.03, A.U31.17, A.C.07, M.SPEC[N].
+- **Blast carried by**: A.7 boot-latency note → M.SPEC.020; `tests_hardware` spacing test → A.U26.41 (HW_BENCH).
+- **Kind**: doc
+
+### M.SPEC.068 C.10: typing conventions, stated once
+- **From**: A.U36.534 (1) (C.10 rewrite), A.U15.02 (`cast()` sentence), A.U36.527 (the typing scheme lives here), A.U10.46 +
+  A.U11.S02 + A.U15.43 (alias lists), A.U11.S01 → M_SRC_CORE GAP-G13 (per-kind validator sentence), A.U11.S03 / A.U19.17
+  (no change).
+- **Site**: `SPECIFICATION.md:2313-2321` (C.10).
+- **Change**: A.U36.534 (1)'s text verbatim (its `print_log.py` example spelled `asy_print_log.py`, C7), followed by the
+  aliases A.U10.46/A.U11.S02/A.U15.43 add as they land, and the sentence from GAP-G13: "A consumer that needs an `int`
+  or a `float` calls the per-kind validator, which returns that type or `None`; it never narrows a validated value at
+  runtime."
+- **Resolved**: A.U11.S01's "narrows it with `type()`/`isinstance()`" is replaced by GAP-G13's sentence (lead's ruling).
+- **Unit**: Stage 1 U10/U11/U15 (alias lines as each lands, appended to HEAD's C.10); Stage 2 U36 (rewrite carrying them).
+- **Depends**: A.U10.46, A.U11.S02, A.U15.02, A.U15.43, A.U36.527, A.U36.534, M.SRC_CORE.047.
+- **Blast carried by**: D.6 and CLAUDE.md → A.U36.534 (2)-(3) (M.SPEC[D], DOCS).
+- **Kind**: doc
+
+### M.SPEC.069 C.11 and C.11.1: design decisions; the conformance probe moves to K.5.1
+- **From**: A.U36.039 (item 9; SPI clause to K.5), A.U36.516 (2) (dropped in favour of A.U36.039), A.U6.04 Blast (C.11
+  `:2344-2346`), A.U2.22 Blast (item 8), A.U36.543 (4) (C.11.1 → K.5.1; its closing paragraph stays as C.11's), A.U26.66
+  (conformance probes for every bus chip; the probe file name).
+- **Site**: `SPECIFICATION.md:2323-2366`.
+- **Change**: item 8 → "**Errno/wrnno numbering**: take numbers from the catalog's bands (C.7, C.7.1)."; item 9 → A.U36.039's
+  text verbatim; C.11.1 (`:2348-2366`) moves to K.5.1 (M.SPEC[K]) with A.U26.66's body; C.11 closes with the kept
+  paragraph "**Chip-specific facts go to Part M, not here.** …".
+- **Resolved**: A.U36.039 and A.U36.516 (2) rewrite the same sentences ("not both") — A.U36.039's item 9 carries the V28
+  clause; A.U36.516 (2) itself says "carried by part A's A.U36.039 … not re-planned here".
+- **Unit**: Stage 1 U2 (item 8); Stage 2 U36 (item 9, the move).
+- **Depends**: A.U2.22, A.U36.039, A.U36.543, M.SPEC[K].
+- **Blast carried by**: K.5 SPI sentence → A.U36.039 (M.SPEC[K]); `tests_hardware/README.md:404-415` → A.U26.66 (HW).
+- **Kind**: doc
+
+### M.SPEC.070 C.12 and C.13: fault injection; one readiness and teardown contract
+- **From**: A.U14.14 (C.12 sentence), A.U24.21/A.U25.17 (C.12 is U14's), A.U10.21 (one `setup()` contract), A.U10.22 (checks
+  named), A.U13.16 (I2C/SPI `deinit()` return bool), A.U5.06 (no staged variant), A.U10.38 (names).
+- **Site**: `SPECIFICATION.md:2368-2391`.
+- **Change**: (1) C.12 last sentence → A.U14.14's ("For fault injection, the fakes raise exactly what rp2 raises (F.1):
+  `EIO`/`ETIMEDOUT` from an I2C transfer, `ENODEV` only from a NAKed zero-length probe, nothing from `scan()`, and UART
+  faults as sentinels, never exceptions."). (2) C.13: "(proven first by `FRAM_SPI`/`SPIDevice`; standard for
+  `ConfigManager`, `NotificationCoordinator`'s staged variant)" → "(proven first by `FRAM_SPI`/`SPIDevice`; standard for
+  `ConfigManager`)"; after the gate sentence: "**One contract**: `async def setup(self) -> bool`, no parameters — `True` =
+  ready, `False` = degraded (already logged by the object); a protocol-layer setup keeps its documented raise for a chip
+  that fails identification, which its reader's init catches. A class whose constructor refused persists that code in
+  `setup()` and returns `False`."; closing: "Every class's gate (a call before `setup()` or after a failed one answers as
+  its contract says) and every teardown result is checked by a test (`tests/`)."
+- **Unit**: Stage 1 U10 ((2)); Stage 2 U13 (teardown list in C.7, M.SPEC.058); Stage 3 U14 ((1)); U5 (staged variant goes).
+- **Depends**: A.U5.06, A.U10.21, A.U10.22, A.U13.16, A.U14.14, M.SPEC[F.1].
+- **Blast carried by**: the fakes → A.U24.21/A.U25.17 (TEST_HELP/TWIN).
+- **Kind**: doc
+
+### M.SPEC.071 C.14 and C.14.1: instance naming, scope, seams
+- **From**: A.U0.21 (`:2399-2403` singleton scope), A.U36.544 (2) ("Session 1/3/6" labels), A.U9.10 (seam proofs named),
+  A.U35.45 (no `logger=` reach-through), A.U5.08 (level setters a construction-time provider; nothing in C.14 names
+  them — no edit), A.U11.32 (one helper for config and logger names), A.U15.40 (4) (`:2419-2420` "three promoted drivers"),
+  A.U10.38 (names), A.U6.06 (no change), A.U22.02 (nothing named).
+- **Site**: `SPECIFICATION.md:2393-2441` (C.14, C.14.1).
+- **Change**: (1) C.14 first paragraph: "Session 1 of the device-genericization initiative (`SPECIFICATION.md Part L`) —
+  the mechanism `buildgen/` (Session 3 on) now drives from each device's TOML, wired into the real build chain as of
+  Session 6." → "The mechanism `buildgen/` drives from each device's TOML (Part L)."; the singleton clause → A.U0.21's
+  text (with `NotificationService`, M.SPEC.008). (2) C.14.1: "`config_manager.py`'s `instance_name(base, ext) -> str` is
+  the one place the rule is implemented" holds and gains "and the config file and `CFGMGR_<name>` logger names are
+  built only by `SensorReaderConfig`, through one helper"; "before either the `logger=`-reuse or fresh-`make_logger()`
+  branch, so `self.pr.name`/`self.name` always agree" → "before `make_logger()`, so `self.pr.name` and `self.name` agree";
+  the REST-key paragraph: "This was a real, confirmed gap found by audit: … would have silently collided … Fixed by
+  threading `self.name` through both:" → "So both keys thread `self.name`:" and "every `get_dict_cfg()` across the three
+  promoted drivers" → "across the promoted sensor drivers (four today)". (3) A one-line seam sentence in C.14.3's fan-in
+  paragraph (A.U9.10): "Each LED and notification seam has an end-to-end test (`tests/test_notification_neopixel_
+  integration.py` and siblings)."
+- **Resolved**: A.U35.45 removes the `logger=` reach-through that C.14.1 describes as a branch — the sentence names only
+  `make_logger()` (grep at execution confirms no other mention).
+- **Unit**: Stage 1 U0 ((1) singleton clause); Stage 2 U9 ((3)); Stage 3 U11 ((2) helper); Stage 4 U15 ((2) four drivers);
+  Stage 5 U35 ((2) branch); U36 ((1) labels, (2) history).
+- **Depends**: A.U0.21, A.U9.10, A.U11.32, A.U15.40, A.U35.45, A.U36.544.
+- **Blast carried by**: BACKLOG `:81-82` → A.U0.21 (DOCS).
+- **Kind**: doc
+
+### M.SPEC.072 C.14.2 and C.14.3: wiring tags, construction order, fan-in
+- **From**: A.U36.514 (4) (`:2456-2462` → the L.6.4 pointer), A.U0.39 L12 (`:2456` tag — folds into L.6.4's owner quote),
+  A.U0.44 L58 (`:2506`), A.U5.03 (one `LogConfig` per FRAM store), A.U5.07 (WiFi LED at construction; construction order
+  with `led_target`), A.U5.11 (SGP40 value references, one backup group), A.U5.06 (signals at construction), A.U36.544 (2)
+  (Session labels), A.U36.511 (5) (`:2578-2579`), A.U36.513 (C.14.3 owns the `(source, field)` signal reference), A.U10.19
+  (C.14.3 cites the inventory), A.U10.38 (names), M.GEN.010 (setup order).
+- **Site**: `SPECIFICATION.md:2443-2587` (C.14.2, C.14.3).
+- **Change**: (1) C.14.2 opening: "**Extended by Session 3 of SPECIFICATION.md Part L** (the `buildgen/` generator) from
+  this Part's original 2-element shape to a 5-element one, resolving that plan's own two open `_WIRING`-coverage questions
+  (full rationale: that session's PR description) — purely additive, no existing driver's constructor signature changed
+  to make this possible:" → "Its five fields:". (2) `:2456-2462` → A.U36.514 (4): "**A comment, never a real Python value**
+  (L.6.4), read only by `buildgen/wiring.py`." — the "Every element is a bare word …" sentence stays. (3) `mode="setter"`
+  bullet: the WiFi LED is passed at construction now (A.U5.07) — the bullet keeps the mode's definition and its example
+  becomes whatever setter-mode tag remains at landing, or the bullet states "no driver uses it today" if none does
+  (grep at execution). (4) `:2506` "is a deliberate, narrow exception to" → "is a narrow exception (agent, 2026-09-10,
+  `e2bcf6f`) to". (5) "**Ordering hazard #1**": "The generated `sensortask_wozi.py` constructs `scd30` before `sgp40` for
+  exactly this reason (A.7's construction order) — a real, deliberate reordering of wozi's FRAM chunk allocation order,
+  safe only because wozi is never physically flashed (CLAUDE.md)." → "A producer is constructed before its consumer
+  (A.7's construction order); any order is valid for the FRAM layout, which is fixed within one build only (A.4)."; "plus
+  two fixed mandatory-infra edges and one conditional one" → the edges as A.U5.07 lands them ("every `sgp40` and every
+  `notification` instance depends on `ntp`; with `led_target` set, fram → neopixel → conn → ntp → sysfunct → sensors");
+  "`buildgen/graph.py` (Session 3)" → "`buildgen/graph.py`". (6) "**Ordering hazard #2**": "(fixed 2026-09-12; a full
+  audit … found no other occurrence in `src/`)" → "(agent, 2026-09-12: no other cross-module read in `src/` conflates the
+  two)"; "`NotificationCoordinator._check_one()`" → "`NotificationService._check_one()`". (7) C.14.3: the
+  `NotificationCoordinator` fan-in sentence → "`NotificationService`'s signals (`source`/`field` direct references) are
+  constructor arguments, resolved after every producer exists, so they need no `@wiring` declaration"; "(the common case —
+  every real `devices/*.toml` compensates both off one `SCD30_Reader`)" → "(the common case: one `SCD30_Reader` feeding
+  both)"; "SGP40_Reader.__init__ uses the same shape twice" gains "passed as value references, with its backup settings
+  one group"; "**Generalized per-value measurement wiring (SPECIFICATION.md Part L.6.3, 2026-09-10)**" → "**Per-value
+  measurement wiring (L.6.3)**"; the inventory pointer "Tasks created outside the starters: C.9's table."
+- **Resolved**: A.U0.39 L12 tags the owner sentence that A.U36.514 (4) removes from C.14.2 (U36, later); the quote and
+  its tag live in L.6.4 (M.SPEC[L.6.4]) — C8.
+- **Unit**: Stage 1 U0 ((4), L12 on HEAD text); Stage 2 U5 ((3), (5) edges, (7) signals); Stage 3 U10 (names); Stage 4
+  U16 ((5) layout clause, A.U16.01); Stage 5 U36 ((1), (2), (6), (7) count and labels).
+- **Depends**: A.U5.03, A.U5.06, A.U5.07, A.U5.11, A.U16.01, A.U36.511, A.U36.514, M.SPEC[L.6.4], M.SPEC.020.
+- **Blast carried by**: test comments citing C.14.3 → A.U36.513 (TEST_UNIT); L.2/L.3/L.6.4 → M.SPEC[L.*].
+- **Kind**: doc
