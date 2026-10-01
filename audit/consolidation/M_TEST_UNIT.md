@@ -1285,6 +1285,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `bus_lock` delays `clear()`/`recover()` until it exits (gated), and a session started during either waits for it.
 - **Resolved**: A.U13.R01's "each call increments once" with M.SRC_SENS.010's single step per public call.
 - **Unit**: U13.
+  A-C2 step order: stage U14 — the SCL-held timeout cases, which drive `ticks_us` through A.U14.34's fake time, land in U14; the pulse, STOP and status cases land in U13 with the clear.
 - **Depends**: M.SRC_SENS.008, .010; TEST_HELP `tests/machine.py` `Pin` `OPEN_DRAIN`/`ALT`/`ALT_I2C`/scripted levels/value log (M.TEST_HELP.012's A.U13.R01 part, U13; A.U24.16 [follows]), per-id I2C state and `raise_on_construct` (M.TEST_HELP.013's A.U13.R01 part, U13; A.U24.20 [follows]), fake clock for `ticks_us` (A.U14.34; A.U35.10 [follows] replaces it in U35).
 - **Blast carried by**: four-tier coverage of the bus rung → M.TEST_UNIT in `test_bus_hazard_multi_device.py`
   (A.U13.R02 L1), A.U13.R02 (TWIN, HW_DEV, HW_BENCH).
@@ -7914,6 +7915,7 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 | M.TEST_UNIT.022 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
 | M.TEST_UNIT.025 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it needs A.U24.65, which lands in U25). | dependency deferral (an edge ran from a later step) |
 | M.TEST_UNIT.056 | Depends | `value log (A.U24.16), per-id I2C state and `raise_on_construct` (A.U24.20), fake clock for `ticks_us` (A.U14.34/A.U35.10)` → `value log (M.TEST_HELP.012's A.U13.R01 part, U13; A.U24.16 [follows]), per-id I2C state and `raise_on_construct` (M.TEST_HELP.013's A.U13.R01 part, U13; A.U24.20 [follows]), fake clock for `ticks_us` (A.U14.34; A.U35.10 [follows] replaces it in U35)` | the fakes land with A.U13.R01 in U13; A.U24.16/.20 and A.U35.10 complete or replace them later |
+| M.TEST_UNIT.056 | Unit | appended: A-C2 step order: stage U14 — the SCL-held timeout cases, which drive `ticks_us` through A.U14.34's fake time, land in U14; the pulse, STOP and status cases land in U13 with the clear. | Depends edge ran from a later step: A.U14.34's fake time lands in U14 |
 | M.TEST_UNIT.060 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
 | M.TEST_UNIT.061 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
 | M.TEST_UNIT.062 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
