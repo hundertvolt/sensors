@@ -56,6 +56,7 @@ holds the item. "Amended" means this pass edited that change's body, and its led
 | S43 | GAPS_G2 H-5 (b) | C.10: validators take `object`; `type_or_range_error()` refuses with `(True, None)`; per-kind validators and their consumers | M.SPEC.068 | **amended** (M.SRC_CORE.047) |
 | S44 | GAPS_G2 H-5 (c) | E.5.1 gets no `_apply_settings_groups()` narrowing entry | M.SPEC.081 (2) | **amended** (M.SRC_NET.120, M.SRC_CORE.072) |
 | S45 | GAPS_G2 H-5 (d) | C.13 names the classes with `initialized`: `SystemService`, `SensorReader` (inherited by `SensorReaderConfig`), `FRAMManager` (replaces `_was_up`); `WifiService`/`WebserverService` `setup()` return `bool` | M.SPEC.070 | **amended**, adding the classes AC_NOTES 38/42/44 settle and the exempt protocol classes |
+| S46 | GAPS_G3 hand-off 5 (SPEC side) | B.2's `test_sensortask_wozi.py` 24.6 s → 9.3 s names a file A.U24.65 deletes | M.SPEC.026 | **amended**: kept as a measurement, naming the file as it was then and its successor |
 
 ### Target DOCS (`M_DOCS.md`)
 
@@ -81,6 +82,7 @@ holds the item. "Amended" means this pass edited that change's body, and its led
 | D18 | GAPS_G4 hand-off 1 (b) | CLI reference entry for the rollover runner, equal to its `--help` | M.DOCS.052 | **amended** |
 | D19 | GAPS_G4 hand-off 1 (c) | BACKLOG U27 chroot paragraph names the new runner | M.DOCS.066 | **amended** |
 | D20 | GAPS_G2 H-6 | `UART_C_PORT_CHANGELOG.md`: one Class B ("no C impact") line for the UART attributes G2 made private | M.DOCS.024 (B39) | **amended**: B39, the U10 privatisation row, now also lists `UARTComm`'s `uart`, `role`, `payload_size`, `timeout`, `uid`, `UART`'s `cancel`/`txbuf` and `UARTLinkDriver.role`. Kept as one row per change kind, so B40-B64 keep their numbers |
+| D21 | GAPS_G3 hand-off 5 | README `:157` tag example `[test_sensortask_dev]` names a deleted wrapper | M.DOCS.053 | **amended**: example `[test_microtest]`, `[test_sensortask[wozi]]` (the `<file>[<device>]` tag, M.SCR.040). CLAUDE.md `:577`'s copy is already deleted by M.DOCS.097 |
 
 ### Target PROC (`M_PROC.md`)
 
@@ -115,6 +117,42 @@ holds the item. "Amended" means this pass edited that change's body, and its led
 | G14 | AC_NOTES 41 | OR131/OR132 written firm in GEN | M.GEN.050, M.GEN.062, GEN Q1/Q2 | carried (answered, no "pending") |
 | G15 | GAPS_G2 H-1 | M.GEN.008 reads `wifi.RSSI` | M.GEN.008 | carried (already amended in this pass, G7) |
 
+## Pointer sweep: "Blast carried by" clauses naming SPEC, DOCS, PROC or GEN
+
+Method: every "Blast carried by" line of all 16 `M_*.md` was split into `;`-separated clauses. A clause counts when it
+names SPEC, DOCS/DOC, PROC or GEN, or an `M.SPEC/DOCS/PROC/GEN` ID. That gives 1,316 clauses: SPEC 764, DOCS 435,
+GEN 154, PROC 29.
+- **186 name an M-ID.** Every named change exists. The 13 from clusters outside G1 were read in body and all carry
+  their item: M.SPEC.043/.156, M.PROC.019/.041, M.DOCS.049/.052/.066, M.GEN.008/.034/.046/.060. The 173 inside G1's own
+  files were checked for existence only.
+- **1,040 name an A-ID that the target file holds.** For 1,034 the A-ID sits in a change body, or in a ledger row
+  mapping to a target M-ID that is not dropped. The 6 others were read:
+  - A.U35.13/.14/.15 (5 TEST_UNIT pointers) are carried by M.SPEC.157's rule ("a wait the driven clock replaced → the
+    row goes with its literal") and its ledger rows.
+  - M.SRC_CORE.012's new SYSTEM task needs no GEN edit: `sysfunct` is a construction-order node, so the collector
+    already gathers its starters.
+- **35 name an A-ID that the target file does not hold, and 55 name no ID.** All 90 were read against their action.
+  Most are carried in substance: generic carriers such as M.DOCS.066's "every A.U27 action's slot", M.DOCS.059's
+  "every action carrying a release-note line", M.SPEC.156/.157 for Part N, and M.PROC.036 (3)'s R0 sudo/bridge checks;
+  gap-section items already in table A; or "holds/unchanged" notes. Four carry a wrong target label but are carried by
+  their real owner: M.SCR.009 → TWIN, M.SRC_CORE.005/.049 mockdata → WEB, M.TEST_UNIT.245 `tests_hardware/README.md` →
+  HW_BENCH. The rest are below.
+
+| # | Pointer (source → named carrier) | Target | Gist | Result |
+|---|---|---|---|---|
+| B1 | M.PROC.041 → A.C.10 (DOCS) | DOCS | a delivered owed row (G6 after R6) leaves BACKLOG with its citations | **amended** M.DOCS.064 (phase-C stage: each round's delta removes its delivered rows; A.C.11) |
+| B2 | M.SPEC.018 → A.U19.19 Blast (DOCS) | DOCS | the CLAUDE.md standing practice points to A.5's Microdot pin-move list | **amended** M.DOCS.071 (U36 clause "a Microdot move runs SPECIFICATION.md A.5's re-check list") |
+| B3 | M.SPEC.058 → A.U26.22/A.U2.08 (DOCS) | DOCS | `CLAUDE.md:391`'s "seeded `errno=5` … Task N ended" example loses its number | **amended** M.DOCS.090 (A.U2.08's text, stage U2); the A.U26.22 half ("save, then clear") was already carried |
+| B4 | M.TSC.108 → A.U7.23 (DOC); M.SPEC.129 → A.U7.21 (DOCS) | DOCS | CLAUDE.md's "FOUR such gates" becomes the gate list by name (JS live twins, `tests_scripts` twin boots) | **amended** M.DOCS.089 (also `start_and_check_tasks()` → `start_tasks()`, M.SPEC.130's name) |
+| B5 | M.TEST_UNIT.087 / M.SRC_SENS.035 → A.U9.08 (GEN) | GEN | catalog errno 15 `SOURCE` text widens to "raised or returned a non-numeric field" | **amended** M.GEN.034 (+ ledger row) |
+| B6 | M.WEB.066 → A.U23.48 execution step (PROC) | PROC | the one-time legacy page ledger against the generated site | **new** M.PROC.045 (U23 audit check; owner question for a missing counterpart) |
+| B7 | M.HW_BENCH.085 → U15 (DOCS) | DOCS | DEVICE_REFERENCE's FRC Readiness text cites the measured defaults | **amended** M.DOCS.026 (cites the Part N `sens.scd30_frc_*` rows; the R5 delta restates any value) |
+| B8 | M.PROC.011 → DOCS (conditional) | DOCS | the UART no-block mechanism sentence follows a flipped W25 fact | **amended** M.DOCS.084 (conditional sentence; the rule stays) |
+| B9 | M_HW_DEV.020 → A.U4.08/A.U26.07 (DOCS) | DOCS | CLAUDE.md `:252-259` budget text | disposed: A.U4.08's own Blast says this doc "holds"; no edit |
+| B10 | M.SPEC.088 → A.U14.09 (DOCS) | DOCS | README hardware summary points to F.1 | disposed: README and DEVICE_REFERENCE restate no hardware figure (grep `PIO`, `133`: none), so A.U14.09's conditional finds nothing |
+| B11 | M.TSC.003 → A.U20.33 (GEN/SCR) | GEN | drop `from __future__ import annotations` | disposed: `buildgen/` has none (0/22, A.U20.33's Site) |
+| B12 | M.SPEC.102 → README `:611-613` U33 (DOCS) | DOCS | README text beside the heap figures | disposed: README `:611-614` is the float-strictness note, already rewritten by M.DOCS.051 (A.U11.36). It holds no heap figure |
+
 ## Hand-offs (items another group must carry)
 
 - **H1 → SRC_NET**: the catalog (M.GEN.034) numbers `SOCKET_TEARDOWN` W12. The constants
@@ -122,7 +160,7 @@ holds the item. "Amended" means this pass edited that change's body, and its led
   GAP-7 and M_TEST_UNIT GAP-U5, and is repeated here because the catalog row now depends on it.
 - **H2 → SRC_NET**: the `PW` `@web` tag gains `special:""="Open network"` (M_WEB gap 3's SRC_NET half). M.GEN.017/.046
   now emit and accept it.
-- **H3 → TWIN**: the change that carries A.U25.65 at `digital_twin/README.md:453-456` (M_TWIN, the CI-suite section,
+- **H3 → TWIN** (carried by G3: M.TWIN.064): the change that carries A.U25.65 at `digital_twin/README.md:453-456` (M_TWIN, the CI-suite section,
   From A.U25.65) should state the end state outright. "(BACKLOG.md)" names no item, and M.DOCS.064 holds no owed row
   "SCD30/BMP3XX history against a healthy chip after a faulted run". So A.U25.65's fallback applies: the clause "and one
   nothing re-checks against a *healthy* chip (BACKLOG.md)" goes (Run 5c checks every driver against a healthy chip,
@@ -148,15 +186,19 @@ not an owner question.
 
 ## Counts
 
-- Items read that target G1: 88 (SPEC 45, DOCS 20, PROC 8, GEN 15). That is 77 from the gap sections, 5 from
-  GAPS_G4's hand-offs (S41, D17-D19, P8) and 6 from GAPS_G2's (S42-S45, D20, G15).
+- Items read that target G1 (table A): 90 (SPEC 46, DOCS 21, PROC 8, GEN 15). That is 77 from the gap sections plus 5
+  hand-off items from GAPS_G4, 6 from GAPS_G2 and 2 from GAPS_G3 (S46, D21).
 - Carried as found: 57 (SPEC 38, DOCS 12, PROC 5, GEN 2).
-- Amended: 25 (SPEC S37, S40, S41, S42, S43, S44, S45; DOCS D1, D2, D17, D18, D19, D20; PROC P7, P8; GEN G1, G2, G4,
-  G6, G7, G8, G10, G11, G12, G13). S6 is counted as carried; its DOCS-side follow-up (M.DOCS.065) and D1's M.DOCS.070
-  Blast fix are edits made under those rows.
-- New merged changes: 0.
+- Amended: 27 (SPEC S37, S40-S46; DOCS D1, D2, D17-D21; PROC P7, P8; GEN G1, G2, G4, G6, G7, G8, G10, G11, G12, G13).
+  S6 is counted as carried; its DOCS-side follow-up (M.DOCS.065) and D1's M.DOCS.070 Blast fix are edits made under
+  those rows.
+- New merged changes: 0 for table A; 1 from the pointer sweep (M.PROC.045).
 - Disposed: 6 (D5, D15, P6, G3, G5, G9).
-- Handed off: 3 (H1 SRC_NET, H2 SRC_NET, H3 TWIN). G2 has carried H1 and H2 (GAPS_G2 items 35-36).
-- Changes edited: M.SPEC.056, .068, .070, .077, .081, .089, .156; M.DOCS.024, .048, .049, .052, .065, .066, .070, .071,
-  .092; M.PROC.008, .031, .041; M.GEN.003, .008, .010, .017, .019, .024, .034, .046, .062. Each of the four files gained
-  an "Incoming gaps, gap pass G1" note before its Adherence section.
+- Pointer sweep: 1,316 clauses read and 1,304 carried, including 4 carried by their real owner under a wrong label
+  (B-table intro). 8 were uncarried: 7 changes amended (M.DOCS.026, .064, .071, .084, .089, .090; M.GEN.034) and 1 new
+  change (M.PROC.045). 4 were disposed (B9-B12).
+- Handed off: 3 (H1 SRC_NET, H2 SRC_NET, H3 TWIN). G2 has carried H1 and H2; G3 has carried H3 (GAPS_G3 item 4).
+- Changes edited: M.SPEC.026, .056, .068, .070, .077, .081, .089, .156; M.DOCS.024, .026, .048, .049, .052, .053, .064,
+  .065, .066, .070, .071, .084, .089, .090, .092; M.PROC.008, .031, .041, new .045; M.GEN.003, .008, .010, .017, .019,
+  .024, .034, .046, .062. Each of the four files gained an "Incoming gaps, gap pass G1" note before its Adherence
+  section.

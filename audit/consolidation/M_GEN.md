@@ -1412,7 +1412,8 @@ values, string specials — M_WEB gaps 2-3), M.GEN.019 (`fram_backed_loggers` re
 GAP-G7/GAP-10), M.GEN.024 (`CRCPass`, `src/asy_crc_checks.py` — GAP-G10), M.GEN.034 (catalog rows — GAP-G2, M_SRC_NET gap
 1, M_SRC_SENS GAP-7), M.GEN.062 (code-value reset, `.code-number` — M_WEB gap 5). Disposed: GAP-G8 (no emitted broad
 handler), GAP-G13 and M_SRC_SENS GAP-14 (the LED callback validates nothing since A.U19.02; AC_NOTES 38). Carried as
-found: M_SRC_NET gap 2's `IP`/`IPv4` and `UARTLinkDriver(…, log=…)`/twin plan (M.GEN.008, .012, .043).
+found: M_SRC_NET gap 2's `IP`/`IPv4` and `UARTLinkDriver(…, log=…)`/twin plan (M.GEN.008, .012, .043). Pointer sweep
+(GAPS_G1 B5): M.GEN.034's errno 15 text (A.U9.08).
 
 ## Adherence findings
 

@@ -1204,6 +1204,7 @@ GAP-B9 by M.PROC.039; the `.gitignore` items (M_TWIN LEAD gap, M_SCR gap 2 (f), 
 M.PROC.019. Amended: M.PROC.008 and M.PROC.031 name the standing-workaround list by its landed number, SPEC F.9 (M_SPEC
 gap 1). M_DOCS gap 5 names nothing PROC must add.
 GAPS_G4 hand-off 2: M.PROC.041 now starts R6 with `scripts/run_bench_rollover_test.sh` (M.SCR.074).
+Pointer sweep (GAPS_G1 B6): new M.PROC.045, the U23 legacy-page check that M.WEB.066's Blast points to.
 
 ## Adherence findings
 
