@@ -148,3 +148,5 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     gets an `initialized` gate. Every later A-C cluster applies these.
 39. Lead ruling (2026-10-01): `CRC_Base` with an out-of-range polynomial degrades fully to pass-through (length 0), as
     its documented contract already states — M.SRC_CORE.131; TEST_UNIT carries the L1 cases.
+40. `M_WEB.md` read six `tests_js/` files at the action sites plus a grep, not in full (its header names them): the
+    end-state check reads those six in full and confirms M.WEB.052-.059 against them.
