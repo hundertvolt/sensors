@@ -91,9 +91,10 @@ change lists its stages; the end state is the last stage's.
   `RouteSources`, `ServingLimits`, `StaticSite`, `SgpBackup` — only those the device uses); `from asy_crc_checks import
   CRC16` only when a link names it (sorted, de-duplicated). No `from machine import WDT`, no `ThreadSafeFlag`, no
   `typing.Any` at runtime. `TYPE_CHECKING` block in `src/`'s exact form (`try: from typing import TYPE_CHECKING` /
-  `except ImportError: TYPE_CHECKING = False` / `if TYPE_CHECKING:` holding `from collections.abc import Awaitable,
-  Callable`, `from machine import WDT`, `from asy_base_classes import ErrorSource, SetupFct, TaskStarter, TimerStarter`
-  (the collector annotations, M.GEN.010) and the class names used only in annotations) so A.U20.14 (5)'s strip removes it
+  `except ImportError: TYPE_CHECKING = False` / `if TYPE_CHECKING:` holding `from collections.abc import Callable`
+  (`Awaitable` only while an emitted annotation still names it — `_collect_setups()` uses `SetupFct`), `from machine import
+  WDT`, `from asy_base_classes import ErrorSource, SetupFct, TaskStarter, TimerStarter` (the collector annotations,
+  M.GEN.010) and the class names used only in annotations) so A.U20.14 (5)'s strip removes it
   from the frozen copy. Emitted constants: `_MAX_MODULE_ERROR = const(5)`, `_FIRMWARE_VERSION`, `_WEBSITE_VERSION`,
   `_BUILD_DATE` (unchanged), and `_HOTSPOT_PW_DEFAULT = '<TOML hotspot_password>'` (per-device value, no S105/S106
   entry). No emitted line carries `# type: ignore` or `# noqa`.
@@ -526,8 +527,8 @@ change lists its stages; the end state is the last stage's.
   "fram_backed_loggers": [...]}` — `fram_wired` lists module labels only; `fram_backed_loggers` (A.U26.23 (1)) is the
   sorted logger names of the `fram_wired` modules: each module's own logger, `DNSSRV` with `conn`, and `CFGMGR_<name>`
   for a module whose class keeps its config log on FRAM — read from the driver source (a class-level `_CFG_LOG_FRAM =
-  False` on the class or a base, M.SRC_CORE.040; `SCD30_Reader` sets it), never from a list kept in `buildgen/`, so wozi
-  and dev name no `CFGMGR_SCD30`; no per-logger exemption list is emitted; the CLI writes `sensortask_<device>.py`, `sensortask_<device>_main.py`,
+  False` on the class or a base, M.SRC_CORE.040; `SCD30_Reader` sets it), never from a list kept in `buildgen/`, so no
+  device names `CFGMGR_SCD30`; no per-logger exemption list is emitted; the CLI writes `sensortask_<device>.py`, `sensortask_<device>_main.py`,
   `sensortask_<device>_main_noautostart.py` via `.tmp` + `os.replace()`, help "boot entry (frozen as main.py)",
   catches `BuildError`/`OSError` (exit 1, one line), ends `raise SystemExit(main())`.
 - **Resolved**: A.U24.54 names the generated boot-entry file `<device>_boot.py` "as `buildgen/generate.py:57`'s CLI
@@ -535,7 +536,7 @@ change lists its stages; the end state is the last stage's.
   `main.py`) — one name, A.U20.15's, since A.U24.54's own reason is parity with the CLI (agent decision D2; A.U24.54's
   glob and `scripts/_generate_sensortask_modules.py` follow — Gaps). A.U26.23 (1) adds "its `CFGMGR_<name>` where it has a
   config manager"; AC_NOTES 13 keeps `CFGMGR_SCD30` RAM-only, and the capacity script asserts the found FRAM-backed set
-  equals this list exactly (M.HW_DEV), so the derivation reads the class's `_CFG_LOG_FRAM` — the one fact the scenario
+  equals this list exactly (M.HW_DEV.073), so the derivation reads the class's `_CFG_LOG_FRAM` — the one fact the scenario
   also reads (M.TEST_HELP.036) — rather than a second hand list (M_TEST_HELP GAP-H7; agent decision, OR2.c review; gap
   pass G1).
 - **Unit**: U27 (latest: A.U27.29). Stages: U20 (all U20 constituents; prerequisite of U24-U26 tests), U26
@@ -1390,7 +1391,7 @@ change lists its stages; the end state is the last stage's.
    `watchdog, storage, cfg_path, log, level_setters, config_stores, reset_reason`.
 6. **Webserver/WiFi/NTP/NeoPixel APIs** (SRC_NET/SRC_SENS): `WebserverService(app, routes=, serving=, static=, log=)`,
    `get_dropped_count()`, `_LIGHT_CMD_FIELDS`, `ROUTES`; `WifiService(WifiConfig(...), ext_led=, log=)`,
-   `get_data()` snapshot with `IP/Subnet/Gateway/DNS/Rssi/TS`, `network_available_locked`; `NTPClient(...,
+   `get_data()` snapshot with `IP/Subnet/Gateway/DNS/RSSI/TS` (M.SRC_NET.074; `Rssi` corrected in gap pass G1), `network_available_locked`; `NTPClient(...,
    NtpTiming(...))`; `NeopixelDriver.led_signal(r, g, b, t) -> bool`.
 7. **SCD30 chunk count** (TST): A.U15.12's Blast expects `tests/_sensortask_scenarios.py:222-223` to count a
    `CFGMGR_SCD30` FRAM chunk; AC_NOTES 13 keeps it RAM-only — the expected chunk list gains the SCD30 reader's chunk
@@ -1401,6 +1402,16 @@ change lists its stages; the end state is the last stage's.
    name it under GEN.
 10. **Mention-only tests and docs** named in each "Blast carried by" line above (SPEC Parts A.7, H, L; tests under
     `tests_scripts/`, `tests/`, `tests_js/`; `js/`) belong to SPEC/TST/WEB/TWIN/SCR and are not repeated here.
+
+**Incoming gaps, gap pass G1 (2026-10-01, `audit/consolidation/GAPS_G1.md`)**: every item naming GEN re-read against the
+carrying change. Amended: M.GEN.003 (U10 module names `asy_print_log`/`asy_base_classes`/`asy_crc_checks`; collector
+aliases under TYPE_CHECKING — M_SRC_CORE GAP-G1, GAP-G10), M.GEN.008 (`wifi.RSSI`, M_SRC_NET gap 2), M.GEN.010
+(`SetupFct`/`TaskStarter`/`TimerStarter`; task-name form — GAP-G1, M_SRC_NET gap 2), M.GEN.017 and M.GEN.046 (four `shape`
+values, string specials — M_WEB gaps 2-3), M.GEN.019 (`fram_backed_loggers` reads `_CFG_LOG_FRAM` — M_TEST_HELP GAP-H7,
+GAP-G7/GAP-10), M.GEN.024 (`CRCPass`, `src/asy_crc_checks.py` — GAP-G10), M.GEN.034 (catalog rows — GAP-G2, M_SRC_NET gap
+1, M_SRC_SENS GAP-7), M.GEN.062 (code-value reset, `.code-number` — M_WEB gap 5). Disposed: GAP-G8 (no emitted broad
+handler), GAP-G13 and M_SRC_SENS GAP-14 (the LED callback validates nothing since A.U19.02; AC_NOTES 38). Carried as
+found: M_SRC_NET gap 2's `IP`/`IPv4` and `UARTLinkDriver(…, log=…)`/twin plan (M.GEN.008, .012, .043).
 
 ## Adherence findings
 

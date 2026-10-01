@@ -205,19 +205,21 @@ never flashed (A.C.01 (5)).
   `ResetReason`: it lives in RAM after boot and a raw-REPL entry ends it); otherwise a session note "pre-session
   /status not saved: no reachable --dut-ip" (`record_session_note(…, source="fram_evidence_saved")`); then
   `harness.save_fram_raw(board, "session-start")` (raw dump, read-only), then `board.hard_reset()` (the dump entered
-  the raw REPL). (2) `standard_state(request, fram_evidence_saved)` (A.U26.79, bench-aware): at start checks — over
+  the raw REPL); the fixture returns that `FramDump` (gap pass, M_HW_DEV GAP-D6). (2) `standard_state(request, fram_evidence_saved)` (A.U26.79, bench-aware): at start checks — over
   REST when a bench is configured (it requests `dut_ip`; the image check is `bench/conftest.py`'s `board_image`,
   M.HW_BENCH.060, the flash tier alone has no REST image proof), else through read-only execs — `DebugLevel` 5 (no
   bench: A.U26.12's reader `board.exec("import json\ntry:\n  print('LEVEL=' + str(json.load(open('config_SYSTEM.cfg')).get('DebugLevel')))\nexcept OSError:\n  print('LEVEL=absent')")`
-  then `board.hard_reset()`; bench: `GET /system`, strict parse), FRAM write-protect clear (a read-only status-register
-  read, HW_DEV's device script), no `config_HWTEST_*` file (read-only `os.listdir()` exec, then `hard_reset()`), and the
+  then `board.hard_reset()`; bench: `GET /system`, strict parse), FRAM write-protect clear (`fram_evidence_saved`'s dump
+  fact `write_protected` is `False` — `fram_raw_dump.py` reads the status register read-only, M.HW_DEV.150; no second
+  script, and never `fram_manager_roundtrip.py`, which writes chunk 0; gap pass, GAP-D6), no `config_HWTEST_*` file (read-only `os.listdir()` exec, then `hard_reset()`), and the
   SCD30 snapshot (`MeasInterval`, `AmbPres`, `TempOffs`, `Altitude`, `SelfCal` from `GET /sensors`; flash-only runs
   read it through the interval-read script of A.U26.07 and record what that script yields). `_STANDARD_DEBUG_LEVEL = 5`
   with its bound checked against `asy_system_service`'s `_VAL_DEBUG_LEVEL` maximum by `ast`. A deviation fails the
   session start with "board not in the standard state: <what>, expected <value> — rerun with --repair-standard-state";
   with that flag it is repaired (`PUT /system {"DebugLevel": 5}` with a bench, else
   `system_debug_level_set_standard.py`; write-protect cleared; scratch removed), each repair a session note and a pinned
-  prerequisite write (B9). At end: the same checks, the SCD30 values compared with the start snapshot (a difference
+  prerequisite write (B9). At end: the same checks (write-protect from a session-end dump,
+  `harness.save_fram_raw(board, "session-end")` then `board.hard_reset()`), the SCD30 values compared with the start snapshot (a difference
   fails the teardown naming the field), and the final `errcount` saved (`save_errcount(dut_ip, "session-end")` with a
   bench). (3) `report_recovery_events(board, request)`: at teardown every entry of `board.recovery_events` (A.U26.13 (3))
   goes through `record_session_note(…, recovery=True, source="mpremote")`.
@@ -233,8 +235,8 @@ never flashed (A.C.01 (5)).
 - **Depends**: M.HW_BENCH.001, M.HW_BENCH.004, M.HW_BENCH.007 (`dut_ip`), M.HW_BENCH.011 (`recovery_events`),
   M.HW_BENCH.012 (`save_fram_raw`), M.HW_BENCH.050 (`save_errcount`), A.U11.05 (`ResetReason`), A.U26.07 (interval script, HW_DEV),
   A.U26.79's two device scripts (HW_DEV).
-- **Blast carried by**: `fram_raw_dump.py`, `system_debug_level_set_standard.py`, the write-protect read script →
-  A.U26.22/A.U26.79 (HW_DEV); `_PREREQUISITE_DEVICE_SCRIPTS`/`_KNOWN_PERSISTING_HELPERS` gain the repairs with reason
+- **Blast carried by**: `fram_raw_dump.py` (its `write_protected` fact, M.HW_DEV.150), `system_debug_level_set_standard.py`
+  (its `system_schema`/`standard_debug_level` inputs, M.HW_BENCH.041) → A.U26.22/A.U26.79 (HW_DEV); `_PREREQUISITE_DEVICE_SCRIPTS`/`_KNOWN_PERSISTING_HELPERS` gain the repairs with reason
   "restores the standard board state" → A.U26.79 with A.U26.06 (TSC); L0 decision table with a fake board/fetch, and
   `tests_scripts/test_evidence_snapshot.py` (REST save before any raw-REPL call when `--dut-ip` answers) →
   A.U26.79/A.U26.22 (TSC; the `--dut-ip` order case is GAP-B2); the deleted `system_debug_level_raise_…`/`restore_…`
@@ -369,9 +371,13 @@ never flashed (A.C.01 (5)).
   failed" with the first call's output — never a re-run. `<arm>` is `"import machine; machine.WDT(timeout=8000)"`, the
   8000 carrying the `wdt.timeout_ms` mirror tag (A.U8.08). `run_isolated_expect_reset(script_path, *, timeout_s=None,
   **extras) -> str` renders and returns the captured stdout (possibly partial). `parse_facts(output) -> dict[str,
-  object]`: every `FACT <key>=<json>` line parsed; a missing `DONE` line raises `HardwareTestFailureError` quoting the
-  output. `save_fram_raw(board, reason) -> Path`: runs `device_scripts/fram_raw_dump.py` (rendered with the bench build's
-  allocation size) and saves its stdout through `evidence.save_text(f"fram-raw-<n>-{reason}.txt", …)`. Docstrings →
+  object]` (signature `parse_facts(output, *, allow_missing_done: bool = False)`): every `FACT <key>=<json>` line
+  parsed; a missing `DONE` line raises `HardwareTestFailureError` quoting the output, unless `allow_missing_done=True`,
+  the form every reader of a `run_isolated_expect_reset()` output uses (the script reports its facts before the reset
+  that ends it, so `DONE` cannot follow; gap pass, M_HW_DEV GAP-D11). `save_fram_raw(board, reason) -> FramDump` (a
+  `NamedTuple` `path: Path`, `facts: dict[str, object]`): runs `device_scripts/fram_raw_dump.py` rendered with
+  `dump_size` (the bench build's allocation size), saves its stdout through `evidence.save_text(f"fram-raw-<n>-{reason}.txt",
+  …)` and returns that path with `parse_facts(output)` (`status_register`, `write_protected`, `rdid`; gap pass, GAP-D6). Docstrings →
   `#` blocks (B3) stating once: raw-REPL entry stops `main.py`; the soft reset that follows keeps the armed watchdog, the
   GC threshold, `ticks_ms()` and pin muxing and never re-runs `main.py` (`ports/rp2/main.c:246-247`, v1.29.0).
 - **Resolved**: A.U26.13 (two calls) and A.U26.44 (render first) edit the same method: render, then the two calls.
@@ -409,8 +415,14 @@ never flashed (A.C.01 (5)).
 - **From**: A.S0930.06 (2), A.U26.14 (1)-(3), A.U26.85 (1) (its user), A.C.06 (1)-(3).
 - **Site**: `tests_hardware/harness.py` new function after `Board`.
 - **Change**: `reflash(board, uf2_path: Path) -> None`: `board.enter_bootloader()`; then `sudo picotool load -x -v
-  <uf2_path>` retried only while its exit code is 249 (BOOTSEL device not yet enumerated, `_retryable_picotool_exit(code)
-  -> bool`), at most 5 attempts, each retry appended to `board.recovery_events`; any other non-zero exit raises at once
+  <uf2_path>` (each call bounded by `timeout=_PICOTOOL_LOAD_TIMEOUT_S`) retried only while its exit code is 249 (BOOTSEL
+  device not yet enumerated, `_retryable_picotool_exit(code) -> bool`), at most `_PICOTOOL_LOAD_ATTEMPTS` attempts with
+  `time.sleep(_PICOTOOL_RETRY_BACKOFF_S)` between them, each retry appended to `board.recovery_events`; the three
+  module constants carry the tags of the loop they absorb (`flash/test_toolchain_flash_boot.py:76-87` at HEAD,
+  A.U8C.109/A.U8C2.46; gap pass, M_HW_DEV GAP-D5): `# @tunable l3.toolchain_flash_boot_picotool_load_attempts = 5`
+  above `_PICOTOOL_LOAD_ATTEMPTS = 5`, `# @tunable l3.toolchain_flash_boot_load_timeout_s = 120` above
+  `_PICOTOOL_LOAD_TIMEOUT_S = 120`, `# @tunable l3.toolchain_flash_boot_load_retry_backoff_s = 2.0` above
+  `_PICOTOOL_RETRY_BACKOFF_S = 2.0` (their Part N rows' Sites name `harness.py`); any other non-zero exit raises at once
   with its output (the comment: every other exit may already have written flash); then `wait_until(board.is_device_present,
   …)` and `wait_for_boot(board, …)` (M.HW_BENCH.016) over `tail_log()` — passive, no `is_reachable()` after the reset.
   It writes nothing else and builds nothing: callers pass an image they built (the round's standard `.uf2`, a CRC16
@@ -421,7 +433,8 @@ never flashed (A.C.01 (5)).
 - **Depends**: M.HW_BENCH.011, M.HW_BENCH.016.
 - **Blast carried by**: `flash/test_toolchain_flash_boot.py` → A.U26.14 (HW_DEV); `bench/test_uart_link_crc16.py` →
   M.HW_BENCH.094; `bench/test_modlwip_send_stall.py` → M.HW_BENCH.075; `_retryable_picotool_exit` L0 → A.U26.14 (TSC);
-  `picotool` under sudo `secure_path` → A.U21.27 (TOOL).
+  `picotool` under sudo `secure_path` → A.U21.27 (TOOL); the three Part N rows' Sites column (`harness.py`) →
+  A.U8C.109/A.U8C2.46 (SPEC, M.SPEC.156's tunables pass).
 - **Kind**: code, hardware (Round: R4 [H38, H39, H70])
 
 ### M.HW_BENCH.015 Recovery by reset is one reported helper; serving waits are tunable

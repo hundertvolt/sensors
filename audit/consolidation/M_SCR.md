@@ -236,7 +236,8 @@ Conventions used below (each defined once, then cited):
   `tests_js/_twin_process.js` (A.U27.15/M.WEB.082, WEB), `tests_scripts/test_coverage_runner.py`,
   `test_digital_twin_boot_contiguity.py`, `test_digital_twin_generated_boot.py` (A.U27.15, TSC),
   `tests_hardware/twin_board.py` (M.HW_BENCH.091); L0 check that no other file holds either literal (A.U27.15, TSC);
-  `digital_twin/README.md` copies → A.U27.15 docs slot (TWIN/DOCS); `.gitignore` sentence → LEAD gap 1.
+  `digital_twin/README.md` copies → A.U27.15 docs slot (TWIN/DOCS); `.gitignore` sentence → M.PROC.019 (PROC carries
+  `.gitignore`, M_PROC gap 7; gap pass).
 - **Kind**: code
 
 ## scripts/_require_python.sh (new)
@@ -1117,7 +1118,7 @@ Conventions used below (each defined once, then cited):
   A.U27.08 (`:115`, `:122-124` texts), A.U25.35 (state constants go), A.U10.37 (module names in
   text), A.U2.03 (`_NTP_ERRNO_NO_REPLY = 21` goes), A.U10.34 (function comments, module docstring kept for argparse),
   A.U36.513 (generator, not hand-written, in comments), A.U35.25/.27 (sampler interval, window — measured values),
-  A.U8.24 (`disallow_any_explicit` — blast).
+  A.U8.24 (`disallow_any_explicit` — blast); gap pass: A.U19.14 via M_DOCS gap 2 (item 24's citer), A.U11.31 (wording).
 - **Site**: `scripts/_digital_twin_ci_suite.py:1-170`.
 - **Change**: docstring (3 lines): "L2 system suite: boots one derived device's generated graph in the twin
   (digital_twin/run_generic_integration.py) as a subprocess and drives it over HTTP/UDP through real restarts, at
@@ -1794,6 +1795,46 @@ Conventions used below (each defined once, then cited):
   bad checksum fails) → A.U28.21/.22 (TSC); CI Firefox cache key → A.U28.19 (TOOL); BACKLOG list → A.U28.38 (DOCS).
 - **Kind**: code
 
+## scripts/run_bench_rollover_test.sh (new, A-C gap pass)
+
+### M.SCR.074 Rollover runner: the one documented path to `multi_day_rollover`
+- **From**: AC_NOTES 45 / M_PROC gap 5 (no runner selects `multi_day_rollover`: M.SCR.030/.031 floors exclude it,
+  M.SCR.032's floor is `soak_duration`), A.C.08/M.PROC.041 (R6 starts the rollover through the clean-run wrapper with a
+  `multi_day_rollover` floor, agent decision D8 there), A.U26.36/M.HW_BENCH.089 (the bench test, its in-test skip on
+  `--allow-multi-day-rollover`), A.U27.19 (`--marker-floor`; "a caller's `-m` narrows"), A.U26.74 (flag name), A.U7.13/
+  A.U7.14 (run record, verdict), A.U7.18 (a long opt-in runs on top of a clean bench run, no lower levels — as the soak
+  runner), A.U7.19 (`--help`), A.U26.75/A.U28.01 (one retried sync, then `--no-sync`, inside the wrapper), A.U27.33
+  (shell convention), OR133 (exit codes).
+- **Site**: new `scripts/run_bench_rollover_test.sh`.
+- **Change**: shell convention; header (3 lines): "Runs only @pytest.mark.multi_day_rollover tests - the ~12.4-day
+  ticks_ms() rollover observed over REST (tests_hardware/bench/test_ticks_ms_rollover.py) - on top of a clean bench run
+  of the same image. Never a soak and never bundled with a suite runner (owner, 2026-09-26); it writes nothing."
+  `--help` → "Usage: scripts/run_bench_rollover_test.sh [pytest args]", "other arguments go to pytest; a -m you pass
+  narrows the selection", "the run takes ~12.4 days: start it detached (tests_hardware/README.md)", exit 0, no side
+  effect; no option of its own, so no usage error of its own (every other argument reaches pytest, whose own usage
+  errors the wrapper reports). Body: `scripts/_require_clean_hardware_run.sh --runner run_bench_rollover_test --levels
+  "rollover (not a level)" --marker-floor "multi_day_rollover" tests_hardware/bench --allow-multi-day-rollover "$@"`,
+  exiting with its code (E.10: 0, 1, 2, 4). No lower levels, no trap (nothing temporary).
+- **Resolved**: AC_NOTES 45 leaves the path open: a soak-runner mode (M_PROC gap 5's example) or a README recipe naming
+  the wrapper call. A soak-runner mode is ruled out by G1/R23 ("runs only behind `multi_day_rollover`, never in a soak
+  tier", owner, 2026-09-26) and M.SCR.032's own header ("not a soak"). The README recipe at HEAD and in M.DOCS.049
+  (`uv run pytest tests_hardware/bench --allow-multi-day-rollover -k …`) bypasses the wrapper: no run record, no
+  verdict, no evidence archive, and a `uv run` that re-resolves (A.U26.75: nothing inside a run syncs); a recipe naming
+  `_require_clean_hardware_run.sh` with four internal options is not the copy-paste command OR15 asks for. A runner
+  per opt-in long run, like the soak runner, is the one shape (OR24 "one material"; OR15 "an automated summary at the
+  end") — agent decision AD-19 (gap pass). Its owner tag is G1/R23's rank line ("(owner, 2026-09-26)", OR33.a (1)).
+- **Unit**: U27 (with the other runners' floors, A.U27.19; the bench test exists from U26).
+- **Depends**: M.SCR.034 (`--marker-floor`, the verdict), M.SCR.014; M.HW_BENCH.089 (the test), M.HW_BENCH.001/.002
+  (the flag and marker).
+- **Blast carried by**: `tests_scripts/test_hardware_runners.py` (no lower-levels call; the block reads `Levels: rollover
+  (not a level)`), `test_require_clean_hardware_run_sh.py` (`-m foo` → `(multi_day_rollover) and (foo)`;
+  `--allow-multi-day-rollover` forwarded), `test_tool_help.py`'s `TOOLS` → hand-off TSC (M.TSC.196, M.TSC.122,
+  M.TSC.217, GAPS_G4); README.md Recipes rollover line and the CLI reference entry → hand-off DOCS (M.DOCS.049,
+  M.DOCS.052, GAPS_G4); R6's start command → hand-off PROC (M.PROC.041, GAPS_G4); `tests_hardware/README.md` Running
+  → M.HW_BENCH.126 (amended); M.SCR.032's header names it (amended); shellcheck and the comment-cap gate cover it by
+  glob (`scripts/*.sh`); BACKLOG chroot list — none (a runner, no environment change, as A.U27.19).
+- **Kind**: code
+
 ## Gaps for other clusters
 
 1. **WEB** — (a) `tests_js/_twin_process.js` (M.WEB.082) / M.WEB.061's `spawnTwin`: `MICROPYPATH` must be the twin layout
@@ -1907,6 +1948,10 @@ no owner row settles it; M.SCR.035/.045 written with (a), pending Q1.)
 - AD-17 The generator's single-device `--device-toml --out-dir` mode serves the suite's `--device-toml` (M.SCR.048/.068).
 - AD-18 The harness keeps its own `MEMORY_ERROR_MARKERS` copy in `_twin_process.py`, held equal by the agreement test,
   instead of importing `tests_hardware/harness.py` (M.SCR.016).
+- AD-19 (A-C gap pass) The `multi_day_rollover` observation gets its own runner, `scripts/run_bench_rollover_test.sh`,
+  rather than a soak-runner mode or a README recipe naming the wrapper (M.SCR.074; AC_NOTES 45).
+- AD-20 (A-C gap pass) The image record re-reads `lwip` and `overrides` from the build dir through
+  `micropython_overrides`' public readers, since `st.build_firmware()` keeps returning the uf2 path (M.SCR.067; M.TOOL.055 D3).
 
 ## Ledger
 
@@ -1965,7 +2010,7 @@ of `audit/actions/*.md`. A second table lists actions read into a merged change 
 | A.U11.03 | M.SCR.051 |
 | A.U11.05 | M.SCR.051, M.SCR.052 |
 | A.U11.10 | M.SCR.015, M.SCR.025; `lint.sh` grep edit dropped (greps removed by A.U27.21) |
-| A.U11.31 | M.SCR.049 |
+| A.U11.31 | M.SCR.049, M.SCR.046 (the concurrent reset's wording in the `:108-110` comment; gap pass) |
 | A.U14.28 | M.SCR.018, M.SCR.035 |
 | A.U15.R01 | M.SCR.051 |
 | A.U15.R02 | M.SCR.053; its twin-CI blast corrected (AC_NOTES 31): keyed read fault |
@@ -2057,7 +2102,7 @@ of `audit/actions/*.md`. A second table lists actions read into a merged change 
 | A.U26.35 | M.SCR.005, M.SCR.030, M.SCR.032, M.SCR.034 |
 | A.U26.42 | M.SCR.033 |
 | A.U26.66 | blast-only: conformance probes reach the binary through `TwinBoard`/`_unix_port.sh` (M.SCR.008, M.HW_BENCH.091) |
-| A.U26.74 | M.SCR.005, M.SCR.030, M.SCR.032, M.SCR.034 |
+| A.U26.74 | M.SCR.005, M.SCR.030, M.SCR.032, M.SCR.034, M.SCR.074 |
 | A.U26.75 | M.SCR.014, M.SCR.028, M.SCR.029, M.SCR.033, M.SCR.034 |
 | A.U26.85 | M.SCR.067 |
 | A.U27.01 | M.SCR.016, M.SCR.047 |
@@ -2077,7 +2122,7 @@ of `audit/actions/*.md`. A second table lists actions read into a merged change 
 | A.U27.16 | M.SCR.003, M.SCR.006, M.SCR.048, M.SCR.061, M.SCR.071 |
 | A.U27.17 | M.SCR.057 |
 | A.U27.18 | M.SCR.001, M.SCR.002, M.SCR.003, M.SCR.044, M.SCR.045 |
-| A.U27.19 | M.SCR.004, M.SCR.005, M.SCR.030, M.SCR.031, M.SCR.032, M.SCR.034 |
+| A.U27.19 | M.SCR.004, M.SCR.005, M.SCR.030, M.SCR.031, M.SCR.032, M.SCR.034, M.SCR.074 |
 | A.U27.20 | M.SCR.025 |
 | A.U27.21 | M.SCR.015, M.SCR.025 |
 | A.U27.23 | M.SCR.028 |
@@ -2259,3 +2304,6 @@ of `audit/actions/*.md`. A second table lists actions read into a merged change 
 | A.U8C.04 | M.SCR.018 |
 | A.U8C2.01 | M.SCR.018 |
 | A.U9.09 | M.SCR.018 |
+| A.U19.14 | M.SCR.046 (the `:108-110` comment's BACKLOG item 24 pointer → SPEC C.7 at U19; gap pass, M_DOCS gap 2) |
+| A.C.08 | M.SCR.074 (R6 runs through the rollover runner; gap pass, AC_NOTES 45) |
+| A.U26.36 | M.SCR.074 (the runner's selection; gap pass) |

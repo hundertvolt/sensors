@@ -633,9 +633,11 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   A.U37.02 (PLC0415 per scope), A.U25.42 (the twin's named exception), A.U36.544 (F.3 → F.2), A.U9.02 (ASYNC110 reason),
   A.U0.37 (S104 heading text), A.U29.01 (S104 may cite A.11); M.TWIN gap (`:294`/`:310` ANN401 with A.U25.63);
   M.TEST_HELP.003/.004 (S102 entries), M.HW_BENCH.038 (the conformance file's subprocess goes), M.TEST_HELP.031 (the
-  concurrency scenario library deleted). Dropped: A.U28.28 (3)'s new `tests_hardware/isl29125_conformance.py` `S603`
+  concurrency scenario library deleted), M_SCR gap 2 (b) (gap pass: the stripper's N802 entry). Dropped: A.U28.28 (3)'s new `tests_hardware/isl29125_conformance.py` `S603`
   entry — M.HW_BENCH.038 (U26) moves the file to `tests_hardware/conformance.py` and removes its subprocess launch and
-  `noqa: S603`, so nothing is left to exempt; A.U28.29 (2)'s "copies of that password" group — empty after A.U26.49 (U26).
+  `noqa: S603`, so nothing is left to exempt; A.U28.29 (2)'s "copies of that password" group — empty after A.U26.49 (U26);
+  A.U28.27's `"scripts/_strip_type_checking.py" = ["N802"]` — the rewritten stripper defines no `visit_*` method
+  (M.SCR.070), so A.U28.31's liveness check would fail on it (gap pass, M_SCR gap 2 (b)).
 - **Site**: `pyproject.toml:214-351` (`[tool.ruff.lint.per-file-ignores]`).
 - **Change**: end state (each comment block ≤ 3 prose lines; every cell confirmed with `ruff check --select <rule>` per
   scope at landing, A.U28.31's check the arbiter):
@@ -691,8 +693,9 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   mirror MicroPython's constructors, `id`, positional-only `stop`, and `machine.UART`/`SPI`'s parameter lists);
   `"tests/_coverage_runner.py"`, `"tests/_threshold_runner.py"` = `["S102"]` ("a runner exec()s the test file it runs");
   `"tests_scripts/test_bench_no_task_ended_completeness.py"` = `["FBT001"]` ("pytest passes parametrized values by name");
-  `"tests_scripts/test_digital_twin_ci_suite_ceiling.py"` = `["A002", "N802"]` and `"scripts/_strip_type_checking.py"` =
-  `["N802"]` ("the stdlib dispatches by this exact method name" / "overrides http.server's log_message(format, …)");
+  `"tests_scripts/test_digital_twin_ci_suite_ceiling.py"` = `["A002", "N802"]` ("overrides http.server's
+  log_message(format, …)" / "http.server dispatches by this exact method name, do_GET"); no entry for
+  `scripts/_strip_type_checking.py`: M.SCR.070 (U27) leaves it no `visit_*` method before N802 leaves the global list (U28);
   `"scripts/build_firmware.py"`, `"scripts/_digital_twin_ci_suite.py"`, `"toolchain/setup_toolchain.py"`,
   `"toolchain/micropython_overrides.py"` = `["S603"]` (reasons as today), `_digital_twin_ci_suite.py` also `"PLW0603"`
   ("the pass label the log helpers read") unless U27 passes it explicitly first; `"tests_hardware/harness.py"`,
@@ -809,8 +812,8 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   M.TOOL.033.
 - **Blast carried by**: `tests_scripts/test_lint_type_scopes.py` (strictness flags in all three configs; CI paths ==
   `files`) → A.U27.24 (TSC); `test_config_paths_resolve.py` (every `mypy_path`/`files` entry resolves; `build/generated_src`
-  excepted) → A.U28.39 (TSC); `digital_twin/typecheck.ini`, `host_typecheck.ini` same flags → M.TWIN.075, A.U27.22 (TWIN,
-  SCR/TSC); CLAUDE.md mypy and vendoring bullets, SPEC B.15/A.1 → A.U8.23, A.U27.22 (DOCS, SPEC); BACKLOG chroot entries
+  excepted) → A.U28.39 (TSC); `digital_twin/typecheck.ini`, `host_typecheck.ini` same flags → M.TWIN.075, M.TOOL.079 (TWIN, TOOL;
+  gap pass); CLAUDE.md mypy and vendoring bullets, SPEC B.15/A.1 → A.U8.23, A.U27.22 (DOCS, SPEC); BACKLOG chroot entries
   → A.U27.09/A.U27.22/A.U27.23 (DOCS), U8/U18/U25 lines → Gaps.
 - **Kind**: code, rule
 
@@ -1727,6 +1730,53 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   bullet → A.U36.528 (DOCS); the release-merge check → A.U37.16 (PROC).
 - **Kind**: code
 
+## host_typecheck.ini (A-C gap pass: the file sits in no cluster; TOOL carries it beside `pyproject.toml`'s passes)
+
+### M.TOOL.079 Host pass: scripts on the path, the strict flags, a true conftest reason
+- **From**: M_SCR gap 2 (a) / A.U27.27 (`mypy_path` gains `scripts`, so `build_firmware.py`'s and the suite's sibling
+  imports resolve and their ignores go), A.U27.22 (`enable_error_code`), A.U27.23 (2)-(3) (the conftest comment; the file
+  checked alone), A.U0.60 (the conftest label), A.U8.24 (`disallow_any_explicit` and the `[mypy-<module>]` baseline
+  sections), A.U20.32, A.U21.29, A.U23.47, A.U24.73, A.U26.76 (host modules leave the baseline as they clear),
+  A.U34.11 (the emptied sections go), A.U37.02 (DONE check); blast-only: A.U1.01 (no legacy path in `files`, holds),
+  M_SPEC's B.15 blast "`host_typecheck.ini` … comments → (TOOL)".
+- **Site**: `host_typecheck.ini:1-36` (whole file).
+- **Change**: end state, in order: `:1-6` header unchanged; `[mypy]`, `python_version = 3.11`, `files = buildgen,
+  scripts, toolchain, tests_scripts, tests_hardware` unchanged; `:11-12` comment unchanged; `:14-16` → "#
+  tests_scripts/conftest.py is checked alone by typecheck.sh: with both test tiers on mypy_path it would be a second
+  bare `conftest` in this run." (if A.U27.23's single-file run still reports a duplicate module at landing, the line
+  states that true reason instead, tagged "(agent, 2026-09-24)" — A.U0.60, the same outcome M.SPEC.043 (6) writes into
+  B.15); `exclude` unchanged; `:19` unchanged; `:21-22` → "# The other entries mirror the sys.path pytest and a running
+  script build (harness, dns_probe, runner, _toml_fixtures, micropython_overrides, the scripts' sibling modules),
+  without which those imports type as Any (B.15)."; `namespace_packages`, `explicit_package_bases` unchanged;
+  `mypy_path = ., tests_hardware, tests_hardware/bench, tests_hardware/manual, tests_scripts, toolchain, scripts`;
+  the three display flags unchanged; `:31-32` comment and `strict = true` unchanged; then "# a bare `# type: ignore` is
+  itself an error, so no suppression hides its code" / `enable_error_code = ignore-without-code`, then
+  `disallow_any_explicit = true`; `:34` comment, `no_implicit_optional = true`, `warn_unreachable = true` unchanged.
+  No `[mypy-<module>]` section remains. Every comment block ≤ 3 prose lines.
+- **Resolved**: A.U8.24 (U8) and A.U27.22 (U27) edit the strictness lines — one edit per config (A.U27.22 Depends), the
+  same structure M.TOOL.032 gives `pyproject.toml`'s pass. A.U0.60 is conditional on A.U27.23: the file stays excluded
+  from the directory pass and is checked alone, so the reason is restated without "an accepted gap"; the dated tag is
+  written only in the fallback outcome, as M.SPEC.043 does for B.15 (one text in both places). A.U27.27's ignore removal
+  in `scripts/build_firmware.py` lands in the same commit as the `scripts` entry (M.SCR.065), since
+  `warn_unused_ignores` (part of `strict`) fails it the day the import resolves.
+- **Unit**: U34 (end state). Stages: U8 — `disallow_any_explicit = true` and one `[mypy-<module>]` section with
+  `disallow_any_explicit = false` per host module holding findings at U8's end (A.U0.06's host-pass count gives the
+  list), under A.U8.24's comment "baseline: a module leaves this list once its explicit-`Any` findings are cleared; the
+  list ends empty (owner, 2026-09-28)"; U20 (`buildgen`, A.U20.32), U21 (`toolchain`, A.U21.29), U23 (A.U23.47), U24
+  (`tests_scripts`, A.U24.73), U26 (`tests_hardware`, A.U26.76) — each unit removes its modules' sections in the commit
+  that clears them; U27 — `scripts` on `mypy_path` with the `scripts/` sections removed (A.U27.27), `enable_error_code`
+  (A.U27.22), the conftest and `mypy_path` comments (A.U27.23, A.U0.60); U34 — any emptied section and the baseline
+  comment removed (A.U34.11); U37 — DONE check (A.U37.02).
+- **Depends**: A.U0.06 (the U8 list), M.SCR.028 (`typecheck.sh` runs the single-file check), M.SCR.065/M.SCR.046
+  (their import ignores go with the `scripts` entry).
+- **Blast carried by**: `tests_scripts/test_lint_type_scopes.py` (the three configs' strictness flags) → A.U27.24 (TSC);
+  `tests_scripts/test_mypy_any_baseline.py` → A.U8.24/A.U34.11 (TSC); `test_config_paths_resolve.py` (every `files`/
+  `mypy_path` entry resolves) → A.U28.39 (TSC); SPEC B.15 → M.SPEC.043; CLAUDE.md mypy bullet → A.U27.22 docs slot
+  (DOCS); BACKLOG chroot entries "all three mypy configs enable ignore-without-code", "typecheck.sh runs two single-file
+  mypy checks", "host_typecheck.ini mypy_path gains scripts" → A.U27.22/A.U27.23/A.U27.27 (DOCS), the U8 baseline line →
+  M_TOOL gap 7 (DOCS, M.DOCS.066); CLUSTERS.md names no cluster for this file → GAPS_G4 (orchestrator).
+- **Kind**: code, rule
+
 ## Gaps for other clusters
 
 1. **TSC** — A.U28.39's config-path check fails on a `pyproject.toml` per-file glob matching no tracked file; M.TOOL.030's
@@ -1859,6 +1909,8 @@ GEN Q2 (OR132) touches no TOOL file.
 - **D14** The global S110 and N8xx comments rewritten to stay true after the narrowing (M.TOOL.028).
 - **D15** The generated `modlwip.c` header names the MicroPython version read from `py/mpconfig.h` (M.TOOL.039).
 - **D16** The new readback functions take `env` from the installer rather than import it (M.TOOL.041).
+- **D17** (A-C gap pass) TOOL carries `host_typecheck.ini`, which CLUSTERS.md names under no cluster, beside the other
+  two mypy configs' strictness lines (M.TOOL.079); the stripper's N802 per-file entry is not written (M.TOOL.030).
 - Carried, decided in A-L and listed there for this review: A.U21.26 (sudoers checked and listed, never written),
   A.U21.19's argv fallback for the PSK, A.U21.13's one-time unpatched control build (not a CI arm), A.U28.07 (the web
   filter's last-green base), A.U28.19 (monthly Firefox period), A.U28.27 (host TRY003/EM exemptions), A.U28.36 (budget
@@ -1927,7 +1979,7 @@ GEN Q2 (OR132) touches no TOOL file.
 | A.U8.14 | M.TOOL.001, M.TOOL.014, M.TOOL.037, M.TOOL.038, M.TOOL.041, M.TOOL.046, M.TOOL.076 (the two `action.yml` loop tags dropped: A.U28.01 removes the loop; they move with it to `scripts/uv_sync_retried.sh`, SCR) |
 | A.U8.15 | M.TOOL.005, M.TOOL.006, M.TOOL.016, M.TOOL.019 |
 | A.U8.23 | M.TOOL.032, M.TOOL.033 (its restated decorator-override comment is an interim U8-U27 stage; A.U27.07 removes the override) |
-| A.U8.24 | M.TOOL.032, M.TOOL.033, M.TOOL.047 |
+| A.U8.24 | M.TOOL.032, M.TOOL.033, M.TOOL.047; M.TOOL.079 (gap pass: `host_typecheck.ini`) |
 | A.U9.02 | M.TOOL.028, M.TOOL.030 |
 | A.U10.30 | blast only — `buildgen/validate.py` loads `micropython_overrides.py` by path; stays stdlib-only (M.TOOL.035) |
 | A.U10.34 | M.TOOL.035, M.TOOL.043, M.TOOL.066, M.TOOL.067 |
@@ -1953,7 +2005,7 @@ GEN Q2 (OR132) touches no TOOL file.
 | A.U19.05 | M.TOOL.030 |
 | A.U19.17 | M.TOOL.030, M.TOOL.033 |
 | A.U20.14 | M.TOOL.031, M.TOOL.033 |
-| A.U20.32 | M.TOOL.030, M.TOOL.033 |
+| A.U20.32 | M.TOOL.030, M.TOOL.033; M.TOOL.079 (gap pass: `host_typecheck.ini`) |
 | A.U20.33 | M.TOOL.023, M.TOOL.035, M.TOOL.043 |
 | A.U20.35 | no TOOL edit (SPEC L.3 states `[lwip]`'s HEAD values, M.TOOL.076 keeps them) |
 | A.U21.01 | M.TOOL.048 |
@@ -1982,19 +2034,19 @@ GEN Q2 (OR132) touches no TOOL file.
 | A.U21.26 | M.TOOL.065, M.TOOL.071 |
 | A.U21.27 | M.TOOL.052, M.TOOL.060, M.TOOL.071 |
 | A.U21.28 | M.TOOL.064, M.TOOL.072 (its "FAILED: …" line superseded by A.U27.29's form, D7) |
-| A.U21.29 | M.TOOL.018, M.TOOL.043, M.TOOL.047 |
+| A.U21.29 | M.TOOL.018, M.TOOL.043, M.TOOL.047; M.TOOL.079 (gap pass: `host_typecheck.ini`) |
 | A.U21.30 | M.TOOL.042, M.TOOL.057, M.TOOL.060, M.TOOL.063, M.TOOL.069 |
 | A.U21.31 | M.TOOL.038, M.TOOL.075 |
 | A.U22.04 | M.TOOL.030, M.TOOL.033 |
 | A.U23.38 | M.TOOL.006, M.TOOL.019 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
-| A.U23.47 | M.TOOL.033 |
+| A.U23.47 | M.TOOL.033; M.TOOL.079 (gap pass: `host_typecheck.ini`) |
 | A.U24.40 | no TOOL edit (`tests_scripts` anchor-count test, TSC) |
 | A.U24.48 | no TOOL edit (ESLint; CI web lint step unchanged) |
 | A.U24.51 | no TOOL edit (`tests_scripts` device loops) |
 | A.U24.52 | no TOOL edit (JS message names `setup_toolchain.py setup`; command unchanged) |
 | A.U24.66 | no TOOL edit (`tests_scripts` device fixtures) |
 | A.U24.72 | M.TOOL.015, M.TOOL.019, M.TOOL.025, M.TOOL.078 |
-| A.U24.73 | M.TOOL.030, M.TOOL.033 |
+| A.U24.73 | M.TOOL.030, M.TOOL.033; M.TOOL.079 (gap pass: `host_typecheck.ini`) |
 | A.U24.75 | no TOOL edit (`test_micropython_overrides.py` → module-level tests, TSC) |
 | A.U25.37 | M.TOOL.019 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
 | A.U25.39 | no TOOL edit (no pyproject/CI entry names the unwedge helper; its retirement rests on M.TOOL.041's proof) |
@@ -2025,8 +2077,8 @@ GEN Q2 (OR132) touches no TOOL file.
 | A.U27.14 | M.TOOL.019 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
 | A.U27.16 | M.TOOL.017 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
 | A.U27.21 | no TOOL edit (CI runs the checker through the pytest tier) |
-| A.U27.22 | M.TOOL.032 |
-| A.U27.23 | M.TOOL.032 |
+| A.U27.22 | M.TOOL.032; M.TOOL.079 (gap pass: `host_typecheck.ini`) |
+| A.U27.23 | M.TOOL.032; M.TOOL.079 (gap pass: `host_typecheck.ini`) |
 | A.U27.24 | M.TOOL.011 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
 | A.U27.25 | M.TOOL.011, M.TOOL.032 |
 | A.U27.26 | M.TOOL.078 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
@@ -2059,7 +2111,7 @@ GEN Q2 (OR132) touches no TOOL file.
 | A.U28.23 | no TOOL edit (`package.json`, WEB) |
 | A.U28.24 | no TOOL edit (`package.json`/preview server, WEB/SCR) |
 | A.U28.25 | M.TOOL.005 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
-| A.U28.27 | M.TOOL.028, M.TOOL.030 |
+| A.U28.27 | M.TOOL.028, M.TOOL.030; (gap pass: the stripper's N802 entry dropped from M.TOOL.030, M_SCR gap 2 (b)) |
 | A.U28.28 | M.TOOL.030, M.TOOL.031, M.TOOL.038 (its `tests_hardware/isl29125_conformance.py` `S603` entry dropped: M.HW_BENCH.038 removes the subprocess, D10) |
 | A.U28.29 | M.TOOL.028, M.TOOL.030 (its "copies of that password" group dropped: empty after A.U26.49, U26) |
 | A.U28.31 | M.TOOL.027, M.TOOL.028, M.TOOL.030 |
@@ -2083,7 +2135,7 @@ GEN Q2 (OR132) touches no TOOL file.
 | A.U34.07 | M.TOOL.028 |
 | A.U34.08 | no TOOL edit (freezefs record) |
 | A.U34.09 | M.TOOL.020 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
-| A.U34.11 | M.TOOL.030, M.TOOL.033 |
+| A.U34.11 | M.TOOL.030, M.TOOL.033; M.TOOL.079 (gap pass: `host_typecheck.ini`) |
 | A.U35.04 | no TOOL edit (faults planted in a throwaway worktree only) |
 | A.U35.23 | no TOOL edit (timings recorded in an audit file) |
 | A.U36.007 | M.TOOL.072 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
@@ -2098,8 +2150,10 @@ GEN Q2 (OR132) touches no TOOL file.
 | A.U36.542 | no TOOL edit (SPEC 0.4 cites `max-args`) |
 | A.U36.544 | M.TOOL.028, M.TOOL.030, M.TOOL.037, M.TOOL.038, M.TOOL.067 |
 | A.U36.547 | M.TOOL.072 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
-| A.U37.02 | M.TOOL.030, M.TOOL.033 (its inline `# noqa: PLC0415` form dropped for per-file entries: owner rule L44/OR83) |
+| A.U37.02 | M.TOOL.030, M.TOOL.033 (its inline `# noqa: PLC0415` form dropped for per-file entries: owner rule L44/OR83); M.TOOL.079 (gap pass: `host_typecheck.ini`) |
 | A.U37.04 | no TOOL edit (close check of the chroot list) — Gap 7 |
 | A.U37.15 | no TOOL edit (no `audit/` exclusion in any TOOL file, grep) |
 | A.U37.16 | M.TOOL.078 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
-
+| A.U0.60 | M.TOOL.079 (the `host_typecheck.ini` half; gap pass) |
+| A.U27.27 | M.TOOL.079 (`mypy_path` gains `scripts`; gap pass, M_SCR gap 2 (a)) |
+| A.U26.76 | M.TOOL.079 (`tests_hardware` host modules leave the baseline; gap pass) |
