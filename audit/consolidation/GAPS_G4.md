@@ -55,6 +55,7 @@ files, `audit/actions/AC_NOTES.md` items 34-45, `PROJECT_AUDIT_PLAN.md` OR rows 
 | 42 | M_WEB gap 6 (a) | SCR | JS freshness stamp beside the generated definitions | M.SCR.068 | — |
 | 43 | M_WEB gap 6 (b) | SCR | `lint:html:built`'s `--stage-only` CLI | M.SCR.019/.020/.071 (AD-4) | — |
 | 44 | M_WEB gap 6 (c) | SCR | the smoke reuses `tests_js/_twin_process.js` | M.SCR.064 (AD-11) | — |
+| 45 | GAPS_G2.md H-3 (HW_DEV part; coordinator relay) | HW_DEV, HW_BENCH | readers of the attributes G2 made private (GAPS_G2.md item 12) follow the new names, `chunk._block_addr` included | amended M_HW_DEV's B1 convention (the full renamed set), M.HW_DEV.066 (`fram_busy_status_lockout.py:54` → `chunk._block_addr`), .097 and .099 (the watchdog proxy rebinds `sysfunct._watchdog`); M_HW_DEV GAP-D7's text follows | HW_BENCH: nothing to carry — a grep of `tests_hardware/` at HEAD for every renamed name finds only the two device-script readers above (`allocation_need_per_source.py:38`'s `sensortask_dev.watchdog` is a module global, removed by M.HW_DEV.119's A.U20.02 form); no M_HW_BENCH change reads one. Constructor keywords (`max_module_error=`) keep their names (M.SRC_CORE.036) |
 
 ## Hand-offs (other groups carry these; no file of theirs was edited)
 
@@ -96,9 +97,9 @@ above are agent decisions for the OR2.c review.
 
 ## Counts
 
-- Items read: 44 (rows above; the three late SPEC gaps name no G4 target).
+- Items read: 45 (rows above; the three late SPEC gaps name no G4 target; row 45 arrived from G2 via the coordinator).
 - Carried as found: 23 (rows 3, 4, 6, 7, 9, 20, 21, 23, 25, 26, 28, 30, 32, 35-44).
-- Amended: 13 (rows 1, 2, 10, 11, 12, 13, 14, 16, 19, 29, 31, 33, 34).
+- Amended: 14 (rows 1, 2, 10, 11, 12, 13, 14, 16, 19, 29, 31, 33, 34, 45).
 - New: 2 (M.SCR.074 for row 15, with M.SCR.032 and M.HW_BENCH.126 amended; M.TOOL.079 for row 18).
 - Disposed: 6 (rows 5, 8, 17, 22, 24, 27; row 14's `test_memory_stress_bench.py` part also disposed).
 - Handed off: 5 (DOCS, PROC, TSC, SPEC, orchestrator).

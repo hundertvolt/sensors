@@ -433,7 +433,7 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
 - **Kind**: doc
 
 ### M.DOCS.024 New Class B rows B33-B64, in landing order
-- **From**: A.U2.26 (+A.U2.20), A.U3.13 (+A.U3.02, A.U3.08; gap M_SRC_NET 6: `_note_valid_frame()`), A.U5.12 (+A.U5.02),
+- **From**: GAPS_G2 H-6 (the attributes G2 made private, into B39); A.U2.26 (+A.U2.20), A.U3.13 (+A.U3.02, A.U3.08; gap M_SRC_NET 6: `_note_valid_frame()`), A.U5.12 (+A.U5.02),
   A.U10.04, A.U10.18, A.U10.29, A.U10.35 (+`set_callback`, M_SRC_NET gap 6), A.U10.37 + A.U10.38, A.U10.44 + A.U32.06,
   A.U10.45, A.U11.31, A.U12.02, A.U12.03, A.U12.16, A.U13.12, A.U13.13, A.U13.14, A.U13.17, A.U13.18, A.U16.05, A.U17.01,
   A.U17.06, A.U17.10, A.U17.14, A.U17.20, A.U17.22, A.U17.26, A.U17.28, A.S0930.07, A.U24.67, A.U30.19, A.U35.44, A.U17.30
@@ -459,8 +459,9 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   - **B37** (U10): "`UART.asy_lock` (from `Lockable`) renamed `session_lock` | Names only".
   - **B38** (U10): "`CMD_ACK`/`CMD_GET` become module-private (`_CMD_ACK`/`_CMD_GET`); `CMD_SET` stays public | Values and
     wire unchanged".
-  - **B39** (U10): "`UARTComm`'s `get_callback`, `set_callback`, `message_callback` and `frame_size` become private
-    (`_get_callback`, `_set_callback`, `_message_callback`, `_frame_size`) | Python-internal; no C impact".
+  - **B39** (U10): "`UARTComm`'s `get_callback`, `set_callback`, `message_callback`, `frame_size`, `uart`, `role`,
+    `payload_size`, `timeout` and `uid`, `asy_uart_driver.UART`'s `cancel` and `txbuf`, and `UARTLinkDriver.role` become
+    private (`_`-prefixed; none is read outside its class) | Python-internal; no C impact".
   - **B40** (U10): "Modules `framing_codecs`/`crc_checks`/`base_classes`/`print_log` renamed `asy_framing_codecs`/
     `asy_crc_checks`/`asy_base_classes`/`asy_print_log`; classes `UART_Comm` → `UARTComm`, `UartLinkExerciser` →
     `UARTLinkDriver`, `CRC_Base`/`CRC_Pass` → `CRCBase`/`CRCPass`, `Framing_Base`/`Framing_Pass`/`Framing_COBS` →
@@ -528,6 +529,9 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   (M.SRC_NET.170, M_SRC_NET gap 6). A.U10.35's row adds `set_callback` (M.SRC_NET.155 makes it private; gap 6). A.U3.13's row
   adds the synchronous `_note_valid_frame()` (M.SRC_NET.164; gap 6 — no constituent carried it). A.U10.37/A.U10.38's two
   rows are one "names only" row also naming the CRC and codec classes A.U10.38 renames (agent, one row per change kind).
+  B39 also carries the attributes gap pass G2 makes private (M.SRC_NET.155/.192/.213; GAPS_G2 hand-off H-6): one Class B
+  row per change kind, landing with the U10 privatisation, so the later stages that touch `txbuf` (U13) or
+  `UARTLinkDriver` (U17) write the private names (gap pass G1).
   A.U35.44's text follows M.SRC_CORE.116 (the guard became a parameter). No row: A.U10.21 (its condition — a changed
   `setup()` docstring — does not occur, M.SRC_NET.169), A.U10.33 (member order is not recorded, its own text and
   M.SRC_NET.173, overriding A.U17.30's list), A.U13.19 (its own slot: no entry), A.U12.01 (bytes unchanged, its own slot),

@@ -1838,10 +1838,11 @@ Conventions every merged change below applies (stated once, not repeated per cha
   `make_response(code, descr=None, result=None)` draws from **one envelope code catalog**, every code with a producer:
   [a Markdown table: `0` Command executed, `1` Invalid JSON request, `400` Bad request, `404` Not found, `405` Method not
   allowed, `413` Payload too large, `500` Internal server error]; a shaped HTTP error uses its status as its code.
-  `handle_set_cmd(reader, data, cfg_vals, post_fct=None, post_asy_fct=None, ok_descr=None)` orchestrates
+  `handle_set_cmd(reader, data, cfg_vals, post_fct=None, post_asy_fct=None)` orchestrates
   `_set_dict_cfg()` plus one optional post-write hook (fires once per call, only if a field actually changed — one hook
-  per endpoint, not one per field, as legacy's `post_fct`/`post_asy_fct` (agent, 2026-08-03)); a hook's failure reports
-  its group's fields "Failed" inside the OK envelope. Build `data` from only the keys the client sent. A per-field
+  per endpoint, not one per field, as legacy's `post_fct`/`post_asy_fct` (agent, 2026-08-03)) and returns the per-field
+  result (`WriteValidity`), not an envelope; a hook's failure reports its group's fields "Failed", and the endpoint's OK
+  envelope carries the result. Build `data` from only the keys the client sent. A per-field
   failure never demotes the overall response below `"OK"`/`0` — detail lives in `"result"`: `res` is `"OK"` when the
   request itself was processed; a non-`OK` `res` means the request was broken (unparseable, wrong shape, unknown
   endpoint), never invalid or failed content (owner, 2026-09-26: 'res not "OK" means that the request itself was broken,
@@ -1852,10 +1853,12 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Resolved**: (a) A.U19.15 and A.U11.26 edit the same catalog sentence ("one edit"), A.U27.07 removes 2/3 —
   end state is M.SRC_CORE.073's seven codes. (b) A.U1.18 repaths `:1801` in U1 and A.U10.42 deletes it in U10: A.U1.18's
   `:1801` edit is dropped (one landing that a later unit deletes; the legacy-path fact lives in H.1). (c) A.U0.33 C14's
-  "persist first, then push, and every setter returns `bool`" is not carried here (M.SPEC.055 (a)).
+  "persist first, then push, and every setter returns `bool`" is not carried here (M.SPEC.055 (a)). (d) Gap pass G2
+  (M.SRC_CORE.070/.072, GAPS_G2 H-5 (a)): `handle_set_cmd()` loses `ok_descr` and returns the per-field result, so its
+  one caller needs no runtime narrowing; the sentence follows (gap pass G1).
 - **Unit**: Stage 1 U0 ((1) `res` rule); Stage 2 U10 ((2), (3)); Stage 3 U11/U19 ((1) catalog without 4/5/100, hook
   sentence, with 2/3 while `parse_cmd_request()` exists); Stage 4 U27 ((1) without 2/3); U32 ((1) hook reason).
-- **Depends**: A.U10.42, A.U11.26, A.U19.15, A.U27.07, A.U32.03, M.SRC_CORE.073.
+- **Depends**: A.U10.42, A.U11.26, A.U19.15, A.U27.07, A.U32.03, M.SRC_CORE.072, M.SRC_CORE.073.
 - **Blast carried by**: `api_response.py` comments → A.U32.03/A.U19.15 (SRC_CORE); A.8 envelope line → M.SPEC.021.
 - **Kind**: doc
 
@@ -2266,10 +2269,14 @@ Conventions every merged change below applies (stated once, not repeated per cha
   (no change).
 - **Site**: `SPECIFICATION.md:2313-2321` (C.10).
 - **Change**: A.U36.534 (1)'s text verbatim (its `print_log.py` example spelled `asy_print_log.py`, C7), followed by the
-  aliases A.U10.46/A.U11.S02/A.U15.43 add as they land, and the sentence from GAP-G13: "A consumer that needs an `int`
-  or a `float` calls the per-kind validator, which returns that type or `None`; it never narrows a validated value at
-  runtime."
+  aliases A.U10.46/A.U11.S02/A.U15.43 add as they land, and the sentence from GAP-G13, completed by gap pass G2: "A
+  validator takes the REST value as `object`. `type_or_range_error()` refuses with `(True, None)`. A consumer that needs an
+  `int` or a `float` calls the per-kind validator (`checked_int()`, `checked_float()`, `checked_numeric()`), which
+  returns that type or `None` — the webserver's notification fields, the ISL29125, SGP40 and BMP3XX settings, the SGP40
+  compensation read and BMP3XX `set_trigger_s()` among them; it never narrows a validated value at runtime."
 - **Resolved**: A.U11.S01's "narrows it with `type()`/`isinstance()`" is replaced by GAP-G13's sentence (lead's ruling).
+  Gap pass G2 (M.SRC_CORE.047, GAPS_G2 H-5 (b)) adds the `object` parameter, the `(True, None)` refusal and the
+  consumer list (gap pass G1).
 - **Unit**: Stage 1 U10/U11/U15 (alias lines as each lands, appended to HEAD's C.10); Stage 2 U36 (rewrite carrying them).
 - **Depends**: A.U10.46, A.U11.S02, A.U15.02, A.U15.43, A.U36.527, A.U36.534, M.SRC_CORE.047.
 - **Blast carried by**: D.6 and CLAUDE.md → A.U36.534 (2)-(3) (M.SPEC.075, DOCS).
@@ -2301,11 +2308,20 @@ Conventions every merged change below applies (stated once, not repeated per cha
   `ConfigManager`)"; after the gate sentence: "**One contract**: `async def setup(self) -> bool`, no parameters — `True` =
   ready, `False` = degraded (already logged by the object); a protocol-layer setup keeps its documented raise for a chip
   that fails identification, which its reader's init catches. A class whose constructor refused persists that code in
-  `setup()` and returns `False`."; closing: "Every class's gate (a call before `setup()` or after a failed one answers as
+  `setup()` and returns `False`." and "**Which classes carry it**: every class with an async `setup()` sets
+  `self.initialized = False` last in `__init__` and `True` in `setup()` — `SystemService`, `SensorReader` (inherited by
+  every `SensorReaderConfig` subclass, whose `setup()` awaits the base's), `FRAMManager` (its one readiness flag; no
+  second "was up" attribute), `NeopixelDriver`, `NotificationService` and `UARTLinkDriver` among them; `WifiService` and
+  `WebserverService` override `setup()` and return `bool` like the rest. The protocol classes and `I2CDevice` build
+  everything in `__init__` and are named exempt in the check (A.U10.22)."; closing: "Every class's gate (a call before `setup()` or after a failed one answers as
   its contract says) and every teardown result is checked by a test (`tests/`)."
-- **Resolved**: — (no conflict among the constituents)
-- **Unit**: Stage 1 U10 ((2)); Stage 2 U13 (teardown list in C.7, M.SPEC.058); Stage 3 U14 ((1)); U5 (staged variant goes).
-- **Depends**: A.U5.06, A.U10.21, A.U10.22, A.U13.16, A.U14.14, M.SPEC.090.
+- **Resolved**: Gap pass G2 (GAPS_G2 H-5 (d); M.SRC_CORE.008/.039/.092, M.SRC_NET.079/.119): `SystemService`,
+  `SensorReader` and `FRAMManager` gain the flag (`FRAMManager`'s replaces `_was_up`, D.10: one flag, one meaning), and
+  `WifiService`/`WebserverService`'s `setup()` return `bool`; AC_NOTES 38/42/44 settle the exempt protocol classes and
+  the `NeopixelDriver`/`NotificationService` flags. C.13 names them (gap pass G1).
+- **Unit**: Stage 1 U10 ((2)); Stage 2 U13 (teardown list in C.7, M.SPEC.058); Stage 3 U14 ((1)); U5 (staged variant goes);
+  the class list lands at U16 with `FRAMManager`'s flag (M.SRC_CORE.092).
+- **Depends**: A.U5.06, A.U10.21, A.U10.22, A.U13.16, A.U14.14, M.SPEC.090, M.SRC_CORE.039, M.SRC_CORE.092, M.SRC_NET.119.
 - **Blast carried by**: the fakes → A.U24.21/A.U25.17 (TEST_HELP/TWIN).
 - **Kind**: doc
 
@@ -2663,7 +2679,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
   it, listed in E.5.1 with its reason. (owner, 2026-09-26) A re-check that only narrows an `Optional` for the type checker
   stays, with a comment saying so (agent, 2026-09-30)."); the dead-code register (`:2994-3029`) → one line per entry A.U35.41's
   table keeps (keep / keep registered untestable / keep as type narrowing), each with its reason and the current names
-  (`RegionBuffer.buf`, `FRAMManager`); entries the table removes leave the text, and "That pass left **31 genuinely
+  (`RegionBuffer.buf`, `FRAMManager`) — no narrowing entry for the webserver's `_apply_settings_groups()`, whose
+  `isinstance()` unwrap goes once `handle_set_cmd()` returns the per-field result (M.SRC_NET.120, M.SRC_CORE.072; GAPS_G2
+  H-5 (c), gap pass G1); entries the table removes leave the text, and "That pass left **31 genuinely
   uncovered lines across 8 files**, all of which now have tests — the register above is what remains, not a backlog."
   goes (dated count, G9/R11); the `finally:` paragraph stays, its "Two more were found exactly that way in the 2026-09-22
   pass" → "`WifiService`'s `_locked_wlan_status()` and `_get_hotspot_stations()` release `wifi_mode_lock` in a `finally`;

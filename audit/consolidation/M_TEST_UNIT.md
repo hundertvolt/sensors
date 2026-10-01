@@ -161,13 +161,15 @@ no `parse_cmd_request()` tests.
 - **Kind**: test
 
 ### M.TEST_UNIT.004 Owner/agent labels on the envelope and hook comments
-- **From**: A.U0.35 (`:112`, `:183`), A.U11.26 (the section header's premise changes with the hook semantics).
+- **From**: A.U0.35 (`:112`, `:183`), A.U11.26 (the section header's premise changes with the hook semantics);
+  M.SRC_CORE.072 as amended in gap pass G2 (`handle_set_cmd()` returns the per-field result, the endpoint builds the
+  envelope; GAPS_G2 H-2 (a), gap pass G3).
 - **Site**: `tests/test_api_response.py:111-113`, `:180-184`.
 - **Change**: `:112-113` → "# (owner, 2026-09-26): per-field failures don't demote the overall response - res not OK
   would mean the request itself was broken; individual field outcomes live in "result"." (2 lines). Section header
-  `:180-184` → "# handle_set_cmd - drives SensorReaderConfig._set_dict_cfg, the post-write hook and the envelope; a
-  raising / # hook turns its group's fields "Failed" inside the OK envelope, caught as defense in depth on top of / #
-  Microdot's own per-request catch (agent, 2026-08-03: prior field experience with Microdot behaving unexpectedly)."
+  `:180-184` → "# handle_set_cmd - drives SensorReaderConfig._set_dict_cfg and the post-write hook and returns the
+  per-field result; / # a raising hook turns its group's fields "Failed", caught as defense in depth on top of
+  Microdot's own / # per-request catch (agent, 2026-08-03: prior field experience with Microdot behaving unexpectedly)."
   between the two `# ----` rules (3 prose lines).
 - **Resolved**: A.U0.35 relabels a header whose premise ("its own try/except as defense-in-depth" around the whole
   call) A.U11.26 narrows to the hook; one text carries both.
@@ -178,18 +180,23 @@ no `parse_cmd_request()` tests.
 
 ### M.TEST_UNIT.005 `handle_set_cmd()` tests: constructor tail, OK envelope on a raising hook
 - **From**: A.U5.02 (`:190` constructor), A.U11.26 (`:282-332` re-expected; new mixed-result and no-Valid tests),
-  A.U2.18 (persisted `code("E", "CALLBACK")`), A.U4.02, A.U32.03, A.U11.S02 (read: hold).
-- **Site**: `tests/test_api_response.py:187-192` (`_make_reader`), `:282-332` (three raising-hook tests), new tests
+  A.U2.18 (persisted `code("E", "CALLBACK")`), A.U4.02, A.U32.03, A.U11.S02 (read: hold); M.SRC_CORE.072 as amended in
+  gap pass G2 (the return is the per-field `WriteValidity`, `ok_descr` gone; GAPS_G2 H-2 (a), gap pass G3).
+- **Site**: `tests/test_api_response.py:187-192` (`_make_reader`), `:195-355` (every `handle_set_cmd()` test), new tests
   after `:355`.
 - **Change**: `_make_reader` builds `SensorReaderConfig(Meas(20.0, 50), name, cfg_vals, max_module_error=3,
-  cfg_path=path_prefix)` (M.SRC_CORE.040's order). The three raising-hook tests each assert `resp == {"res": "OK",
-  "code": 0, "descr": "Command executed", "result": {"SampleInterv": "Failed"}}`, `reader.pr.err_count == 1`, and
-  exactly one entry in `reader.pr.get_log()` with number `code("E", "CALLBACK")` and `ErrType` "E"; names →
-  `…_sync_post_fct_raising_fails_its_group_inside_an_ok_envelope`, `…_async_post_fct_raising_fails_its_group_inside_an_ok_envelope`;
-  `:313` keeps its name and "never scheduled" assertion, its comment's last sentence → "… and the group's fields read
-  Failed inside the OK envelope."; the `:283-285` comment → "# A raising post-write hook is caller-supplied code outside
-  _set_dict_cfg(): its failure is its group's outcome." New: `test_handle_set_cmd_hook_raising_after_a_mixed_result_fails_every_key`
-  (`{"SampleInterv": 42, "Ghost": 1}` with a raising `post_fct` → both keys "Failed", code 0, one CALLBACK entry);
+  cfg_path=path_prefix)` (M.SRC_CORE.040's order). Every `handle_set_cmd()` test asserts the returned per-field dict, not
+  an envelope: `:195` `== {"SampleInterv": "Valid"}` (name `…_valid_change_returns_its_per_field_result`); `:204`
+  `test_handle_set_cmd_ok_descr_override` goes (no `ok_descr`; no product caller passed one); `:214`
+  `…partial_failure_…` asserts the mixed dict; the hook tests `:225-281` assert the dict and the hook calls; `:335`
+  `…whole_persist_failure_…` → `…_marks_every_field_failed` (`{"SampleInterv": "Failed"}`); `:349` `…empty_data_…` →
+  `== {}`. The three raising-hook tests each assert `result == {"SampleInterv": "Failed"}`, `reader.pr.err_count == 1`,
+  and exactly one entry in `reader.pr.get_log()` with number `code("E", "CALLBACK")` and `ErrType` "E"; names →
+  `…_sync_post_fct_raising_fails_its_group`, `…_async_post_fct_raising_fails_its_group`; `:313` keeps its name and
+  "never scheduled" assertion, its comment's last sentence → "… and the group's fields read Failed."; the `:283-285`
+  comment → "# A raising post-write hook is caller-supplied code outside _set_dict_cfg(): its failure is its group's
+  outcome." New: `test_handle_set_cmd_hook_raising_after_a_mixed_result_fails_every_key` (`{"SampleInterv": 42,
+  "Ghost": 1}` with a raising `post_fct` → both keys "Failed", one CALLBACK entry);
   `test_handle_set_cmd_never_calls_a_hook_when_nothing_is_valid` (`{"SampleInterv": 9999}` → "Invalid", neither hook
   called).
 - **Resolved**: A.U11.26's "one persisted CALLBACK entry" and A.U2.18's "new L1 … persists exactly `code("E",
@@ -197,7 +204,8 @@ no `parse_cmd_request()` tests.
   so "persisted" is the logger's history entry read through `get_log()`.
 - **Unit**: U11 (stage U5: the constructor call co-lands with A.U5.02's signature change).
 - **Depends**: M.SRC_CORE.036, M.SRC_CORE.040, M.SRC_CORE.072; A.U2.03 (`tests/_error_codes.py`).
-- **Blast carried by**: webserver hook-failure tests → M.TEST_UNIT in `test_asy_webserver_service.py` (A.U11.26).
+- **Blast carried by**: webserver hook-failure tests → M.TEST_UNIT in `test_asy_webserver_service.py` (A.U11.26); the
+  envelope around the returned dict is the endpoint's (M.SRC_NET.120), asserted by the webserver PUT tests.
 - **Kind**: test
 
 ### M.TEST_UNIT.006 Remove the `parse_cmd_request()` tests and their request stand-in
@@ -5115,7 +5123,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
 ### M.TEST_UNIT.251 Numeric coercion: the private halves and the per-kind validators
 - **From**: GAP-G13 (M.SRC_CORE.047: `coerce_numeric()` → `_coerce_int()`/`_coerce_float()`; per-kind validators),
   A.U11.S01 (read: `:265-327` tuples hold in value), A.U19.02 + A.U36.513 (`:268`, `:340` comments), A.U24.62
-  (`:322-323`), A.U0.39 (`:355`).
+  (`:322-323`), A.U0.39 (`:355`); M.SRC_CORE.047 as amended in gap pass G2 (every validator takes `object`;
+  `type_or_range_error()` refuses with `(True, None)`; GAPS_G2 H-2 (b), gap pass G3).
 - **Site**: `tests/test_config_manager.py:263-363`; new tests after it.
 - **Change**: each `cm.coerce_numeric(v, int) == (True, x)` → `cm._coerce_int(v) == x` (same for `float` →
   `_coerce_float`), each `(False, v)` → `is None`; the identity, int↔float, `-0.0`, fractional, NaN/inf, bool and
@@ -5130,6 +5139,11 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `test_checked_int_and_checked_float_return_the_typed_value_or_none` — in range → the value with its type (`5.0` for an
   int field → `5`, `5` for a float field → `5.0`), out of range / fractional for int / wrong type → `None`, the special
   with `check_special=True` → the value, with `False` → `None`; `checked_numeric()` dispatches the same.
+  `test_a_refusal_carries_no_value`: `type_or_range_error()` answers `(True, None)` for an out-of-range int, a fractional
+  value for an int field, a too-long str and an int for a bool field (the second slot is `None`, never the refused
+  value). `test_a_list_or_dict_value_is_refused_by_every_validator`: `[5]` and `{"v": 5}` → `None` from
+  `checked_int`/`checked_float`/`checked_numeric` and `(True, None)` from `type_or_range_error()`, for an int, a float, a
+  str and a bool field; `compare_before_write({"X": [5]}, …)` reports `"X": "Invalid"` and stages nothing.
 - **Resolved**: A.U19.02 renames the `:268`/`:340` callers to the webserver's dispatcher; GAP-G13's end state has three
   callers of the per-kind validators and none of the halves outside the module — the banner names all three.
 - **Unit**: U11 (stages U0 tag line, U24 comment).

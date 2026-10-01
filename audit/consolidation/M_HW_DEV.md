@@ -33,7 +33,12 @@ changes cite.
   the end-state names — modules `asy_system_service`, `asy_config_manager`, `asy_crc_checks`, `asy_print_log`,
   `asy_base_classes`, `asy_framing_codecs`; classes `FRAMManager`, `FRAMChunk*`, `WifiService`, `UARTComm`,
   `UARTLinkDriver`, `CRCBase`/`CRCPass`, `BMP3XX_Reader`; private attributes (`_pixel`, `_overlay_*` for the
-  NeoPixel overlay state, `_trigger_timer`, `_cfg_schema` read through `get_cfg_schema()`, A.U24.61), starters
+  NeoPixel overlay state, `_trigger_timer`, `_cfg_schema` read through `get_cfg_schema()`, A.U24.61; and G2's gap-pass
+  set, GAPS_G2.md item 12 — `SystemService` `_watchdog`/`_ntp_is_synced`/`_boot_signature`, `_max_module_error`,
+  `_cfg_vals`, the FRAM chunk's `_block_addr`/`_verify_counter`, `DNSQuery._data`, NTP's `_network_available_locked`/
+  `_get_dns_server`/`_dns_timeout_ms`/`_dns_tries`/`_ntp_fetch_timeout_ms`/`_retry_s`/`_retry_max_s`, WiFi's
+  `_hotspot_time`/`_conn_fail_to_hotspot`, `UARTComm` `_uart`/`_role`/`_payload_size`/`_timeout`/`_uid`, `UART`
+  `_cancel`/`_txbuf`, `UARTLinkDriver._role`; constructor keywords such as `max_module_error=` keep their names), starters
   `start_asy_<what>()`, task coroutines `_<what>_loop`, `trigger_s`. Device scripts are in the main mypy pass, so the
   sweep finds every reader by `attr-defined`/`name-defined` errors (A.U10.35's method); flash tests by `grep -rnw`.
 - **B3** applies to `flash/*.py` and to every device script's functions: function/class docstrings become `#` blocks
@@ -943,11 +948,12 @@ changes cite.
   script is one of the on-target confirmations a pin move re-runs — listed in BACKLOG, no change here), B3 (the
   `_force_both_blocks_busy` docstring → `#` block).
 - **Site**: `tests_hardware/device_scripts/fram_busy_status_lockout.py:1-73`.
-- **Change**: wiring from `BENCH`; `check()` keeps its shape and its list feeds `fact("failures", …)` with the bounded
+- **Change**: wiring from `BENCH`; the chunk's block addresses read as `chunk._block_addr` (`:54`, private after
+  M.SRC_CORE.081 — gap pass G2/G4, GAPS_G2.md H-3); `check()` keeps its shape and its list feeds `fact("failures", …)` with the bounded
   record (`_shared/facts.py` `errors()`); facts `baseline_ok`, `locked_read_none`, `error_logged`, `recovered`; a
   `finally` rewrites the chunk with zeros (after the recovery write it holds `PATTERN_B`); the `_STATUS_BUSY`/`_STATUS_LEN`
   comment (const compiled away) stays.
-- **Resolved**: the raw `set_values` calls address the script's own chunk (`chunk.block_addr`), not a scratch region;
+- **Resolved**: the raw `set_values` calls address the script's own chunk (`chunk._block_addr`), not a scratch region;
   A.U26.24's region check must read calls addressed through a `get_chunk()` result as chunk-scoped (GAP-D7, TSC).
 - **Unit**: U26.
 - **Depends**: M.HW_DEV.006.
@@ -1449,7 +1455,8 @@ changes cite.
 ### M.HW_DEV.097 `erasefram` with a recording watchdog proxy
 - **From**: A.S0930.28 (2)(4)(6)(7), A.U26.44, A.U26.68.
 - **Site**: new `tests_hardware/device_scripts/system_command_fram_erase.py`.
-- **Change**: builds the generated system over the scratch path; wraps `sysfunct.watchdog` from outside with a proxy that
+- **Change**: builds the generated system over the scratch path; wraps `sysfunct._watchdog` (private after M.SRC_CORE.008,
+  gap pass G2/G4) from outside with a proxy that
   forwards `feed()` and records `ticks_ms()`; optional in-flight loads (a logger-write loop, an I2C read loop) and
   `mempause` by `STATE` extra; prints `ERASE START` before the callback, then the facts streamed before the reset
   (largest feed gap, erase duration) — read from the captured stream (AD-3).
@@ -1480,7 +1487,7 @@ changes cite.
 - **Site**: new `tests_hardware/device_scripts/system_command_reboot.py`.
 - **Change**: `COMMAND` from `BENCH`; builds the generated system over the scratch path with `debug=4`, starts
   `start_tasks(...)` and `supervise_tasks()` as its task, a logger-write loop and an I2C read loop, wraps the watchdog
-  with the recording proxy, calls `_system_cmd_callback(COMMAND)`; each written log entry is reported before the reset
+  with the recording proxy (rebinding `sysfunct._watchdog`, as M.HW_DEV.097; gap pass G2/G4), calls `_system_cmd_callback(COMMAND)`; each written log entry is reported before the reset
   so the host can check each ring's newest entry after the production boot.
 - **Resolved**: A.S0930.39 shares the proxy with A.S0930.28 (6): one shape, written in each script (an `_shared/
   watchdog_proxy.py` include if the clone check flags the two copies, A.U26.78 (3)).
@@ -2326,7 +2333,7 @@ changes cite.
   `isl29125.mode_rgb`, `fram_wired`, `fram_backed_loggers`, `depth` (scheduler queue), `CRC_MODE`, `SEAM`, `NONCE`,
   `COMMAND`, `STATE`, `PHASE`, `ARM`, `part`, `mode` (M.HW_DEV.001, .040, .061, .150).
 - **GAP-D7** (TSC): A.U26.24's region check treats raw FRAM calls addressed through a `get_chunk()` result
-  (`chunk.block_addr`) as chunk-scoped (covered by the clear-in-`finally` check), not as undeclared scratch
+  (`chunk._block_addr` after G2's gap pass) as chunk-scoped (covered by the clear-in-`finally` check), not as undeclared scratch
   (M.HW_DEV.066).
 - **GAP-D8** (TSC): A.U26.06's persisting-device-call detection also counts a write-mode `open(` and a raw SCD30
   configuration write (`writeto` of 0x4600/0x0010/0x5403…), so `config_files_restore.py`, `flash_write_loop_gap.py`,
