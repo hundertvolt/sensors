@@ -6,7 +6,8 @@ pass), every file there at HEAD and every new file an action creates there. Cons
 `by_file` actions plus every action whose Site, Change or Blast slot names the file or its basename (a script of 1,545
 action blocks over `audit/actions/*.md`: 310 blocks hit, 126 through the index, 184 beyond it, each read at the hit;
 blocks naming only "device scripts" in general were read too). `git diff --stat 8e36b1e 16e841a -- tests_hardware` is
-empty, so every line cited holds at HEAD `16e841a`. Read in full at HEAD: all 11 `flash/*.py` and all 58
+empty, so every line cited holds at HEAD `16e841a`; the tip moved to `27a3694` while this was written and
+`git diff 16e841a 27a3694 -- tests_hardware` is empty too. Read in full at HEAD: all 11 `flash/*.py` and all 58
 `device_scripts/*.py` (7,128 lines).
 
 **Hardware rule, every change below.** Nothing here runs: a `test`/`hardware` change is written and checked board-free
@@ -21,7 +22,7 @@ flashed and no script carries a wozi pin (A.C.01 (5); CLAUDE.md WoZi rule).
 The same B0-B9 conventions as `M_HW_BENCH.md` (B0 lines/units/rounds, B1 U10 rename sweep, B2 host annotations, B3
 docstrings to comments, B4 `@tunable` tags, B5 permanent text, B6 imports, B7 ordering last, B8 `--no-sync`/no `Any`,
 B9 wear and evidence) apply here unchanged and are not repeated per change; the device-script and flash-test contracts
-below are this cluster's own and are written once, each as a merged change (M.HW_DEV.001-.012) that the per-file
+below are this cluster's own and are written once, each as a merged change (M.HW_DEV.001-.013) that the per-file
 changes cite.
 
 - **B0** Line numbers are HEAD `16e841a`. Units run U0 (B0), U1-U8 (B1), U9-U34 (B2), U35-U37 (B3-B5), then phase-C
@@ -294,6 +295,20 @@ changes cite.
 - **Depends**: A.U2.01.
 - **Blast carried by**: check (9) "every binding in `device_scripts/` equals the catalog" → A.U2.02 (TSC).
 - **Kind**: test
+
+### M.HW_DEV.013 SPEC citations in this cluster follow the renumbered sections
+- **From**: A.U36.532 (F.5.7-F.5.9 move to F.8.1-F.8.3; H.7.1 citers unchanged), A.U36.544 (citations resolve to permanent
+  targets: BACKLOG item pointers go), A.U36.548 (current facts, no history).
+- **Site**: `tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py:2-3, :61`, `uart_idle_poll_rate.py:2`,
+  `tests_hardware/flash/test_uart_crossover.py:59, :67, :74`, and every other `Part F.5.7`-`F.5.9` citation in
+  `flash/`/`device_scripts/` (grep at U36).
+- **Change**: "Part F.5.8" → "Part F.8.2", "F.5.9" → "F.8.3", "F.5.7" → "F.8.1" (the mapping A.U36.532 states, re-read at
+  landing); the per-file changes above that rewrite these lines write the new number.
+- **Resolved**: —
+- **Unit**: U36 (B3 docs pass), after the U26 rewrites.
+- **Depends**: A.U36.532 (SPEC).
+- **Blast carried by**: SPEC renumbering → A.U36.532 (SPEC).
+- **Kind**: doc
 
 ## tests_hardware/flash/conftest.py
 
@@ -717,6 +732,7 @@ changes cite.
   `_HEAP_GROWTH_MAX_BYTES`), the `dev.uart_*` mirrors replaced by `BENCH`; `:121` → `arm()`. (6) Facts: `crc_mode`,
   `transfers`, `link_failures`, `worst_rtt_ms`, `timeout_ms`, `set_total`, `echo_intact`, `echo_mismatch` (bounded
   record), `error_counts`, the five load counters, `heap_at_third`, `heap_at_end`; the floors move host-side; `done()`.
+  (7) The `_heap_floor` comment `:108-110` loses "(queue F7)" (a work label, G9/R12), keeping its reason in ≤ 3 lines.
 - **Resolved**: A.U26.87 and A.S0930.05 edit the same script: the echo SET runs in both modes.
 - **Unit**: U26 (A.U17.05's line lands in U17 on the HEAD text).
 - **Depends**: M.HW_DEV.001-.005; U17's lock check (N.27) recorded either way.
@@ -1298,9 +1314,9 @@ changes cite.
 ### M.HW_DEV.089 ISL29125 read-vs-write concurrency, constants named
 - **From**: A.U15.S01/A.U15.R04 (blasts: unchanged, must pass), A.U26.44, A.U26.69, A.U8C.80, AD-1 (`:53`), A.U26.68.
 - **Site**: `tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py:1-90`.
-- **Change**: bus and mode from `BENCH`; `_READ_ITERATIONS`, `_WRITE_ITERATIONS`, `_READ_STEP_MS`, `_WRITE_STEP_MS` with
-  their rows; the `:53` settle kept as `_FIRST_CONVERSION_MS = 120` (`l3.isl29125_same_device_rw_concurrency_first_
-  conversion_ms`, AD-1); facts `reads`, `torn_reads`, `writes_ok`, `errors`; `done()`.
+- **Change**: bus from `BENCH`; `_READ_ITERATIONS`, `_WRITE_ITERATIONS`, `_READ_STEP_MS`, `_WRITE_STEP_MS` with their
+  rows; the `:53` writer head start kept as `_WRITER_DELAY_MS = 120` (`l3.isl29125_same_device_rw_concurrency_writer_
+  delay_ms`, AD-1); the reserved-bit mask `0xC8` stays a datasheet constant (p.12 Table 15) with its citation; facts `reads`, `torn_reads`, `writes_ok`, `errors`; `done()`.
 - **Resolved**: —
 - **Unit**: U26.
 - **Depends**: M.HW_DEV.001-.005.
@@ -1807,9 +1823,10 @@ changes cite.
 - **Site**: `tests_hardware/device_scripts/serving_at_default_gc.py:1-140`.
 - **Change**: `device = __import__(BENCH["device_module"])`; `asyncio.create_task(device.main(watchdog=arm()))`
   with the comment "production config path: the only write it can cause is the repair a production boot of a malformed
-  file makes anyway"; boot wait polled on the webserver instead of a fixed `sleep(20)` where the module exposes
-  readiness, else `_BOOT_WAIT_S` kept (AD-1); constants per A.U8C.86; the `HEAP`/state lines → facts (bounded per
-  sample count), `done()` at the window end.
+  file makes anyway"; `_BOOT_S` stays a fixed wait (no in-process readiness request: it would share the heap under
+  measurement, E.9) as `_BOOT_WAIT_S` with the shared row `l3.heap_under_connection_ceiling_boot_wait_s`; constants per
+  A.U8C.86; the `=== MAP … ===` blocks stay raw (`heap_map.parse_labelled()`'s input); `GC_THRESHOLD`,
+  `PHASES_INCOMPLETE`, `FAILURE_MAPS` → facts; `done()` at the window end.
 - **Resolved**: —
 - **Unit**: U26.
 - **Depends**: M.HW_DEV.001-.004, .009.
@@ -1823,8 +1840,10 @@ changes cite.
 - **From**: A.U26.10 (`:40` comment), A.U20.02, A.U26.44, A.U26.78 (`_dump` shared), A.U8.14 (`:15` mirror tag),
   A.U8C.73 (`sample_interval_ms`, `window_s`, `boot_wait_s`), A.U26.68 (HW_BENCH blast: its `FACT` lines).
 - **Site**: `tests_hardware/device_scripts/heap_under_connection_ceiling.py:1-60`.
-- **Change**: as M.HW_DEV.120 (device, `main(watchdog=arm())`, the comment on the production path, the shared dump);
-  samples become one fact per sample (`heap` with t, free, largest), `done()` after the window; `RESULT PASS` goes.
+- **Change**: as M.HW_DEV.120 (device, `main(watchdog=arm())`, the comment on the production path, the shared dump,
+  the fixed boot wait with no in-process probe); the per-sample `=== MAP …` blocks stay raw, `READY` stays the banner the
+  host waits on, `GC_THRESHOLD` a fact, `done()` after the window; `RESULT: PASS` goes; the comment's "MEASUREMENTS
+  archive 7R.2" citation becomes the archive section with its commit, or goes (A.U36.544's rule).
 - **Resolved**: —
 - **Unit**: U26.
 - **Depends**: M.HW_DEV.120.
@@ -2003,7 +2022,8 @@ changes cite.
 - **From**: A.U26.49, A.U15.40 (`:24` comment → `_divide_trigger()`), A.U15.25 (blast: unchanged), A.U1.06 (blast),
   A.U5.02, A.U26.44, A.U8C.58, A.U8C2.26, A.U26.68.
 - **Site**: `tests_hardware/device_scripts/bmp3xx_plausibility_read.py:1-45`.
-- **Change**: i2c0 and the address from `BENCH`; `:24` comment names `_divide_trigger()`; `_POLL_S = 0.5`, `_POLL_TRIES =
+- **Change**: i2c0 and the address from `BENCH`; `BMP3xx_Reader` → `BMP3XX_Reader` (B1); the priming line reads
+  `reader.get_cfg_schema()` (A.U10.39/A.U24.61); `:24` comment names `_divide_trigger()`; `_POLL_S = 0.5`, `_POLL_TRIES =
   30`; facts `pressure`, `temperature`, `polls`; bound checks host-side; `done()`.
 - **Resolved**: —
 - **Unit**: U26.
@@ -2018,10 +2038,12 @@ changes cite.
   a tagged script fact), A.U26.34 (blast: its RAM-priming pattern `:32-37` is reused), A.U5.02, A.U26.44, A.U8C.78,
   A.U8C2.34, AD-1 (`:29`), A.U26.68.
 - **Site**: `tests_hardware/device_scripts/isl29125_plausibility_read.py:1-60`.
-- **Change**: NeoPixel constructed as the first statement in the `try` whose `finally` sets it dark; bus, pins and mode
-  from `BENCH`; `_ROOM_LIGHT_MIN_LUX = 5.0`, `_POLL_S`, `_POLL_TRIES` tagged; the `:29` wait kept as
-  `_FIRST_SAMPLE_MS = 300` (`l3.isl29125_plausibility_read_first_sample_ms`, AD-1); facts `lux`, `rgb`, `room_light_min`;
-  `done()`.
+- **Change**: the raw `NeoPixel(Pin(18), 1)` (pin from `BENCH`) is the first statement in the `try` whose `finally` sets
+  it dark (HEAD parks it on the success path only; the early `return` after a failed wait skips it); bus and pins from
+  `BENCH`; the priming line reads `reader.get_cfg_schema()` (A.U10.39/A.U24.61's rule, this reader too);
+  `_ROOM_LIGHT_MIN_LUX = 5.0`, `_POLL_S`, `_POLL_TRIES` tagged; the `:29` light settle kept as `_LIGHT_SETTLE_MS = 300`
+  (`l3.isl29125_plausibility_read_light_settle_ms`, AD-1); facts `lux`, `rgb`, `hsb`, `cct`, `range_act`; the CCT/HSB
+  coherence checks host-side; `done()`.
 - **Resolved**: —
 - **Unit**: U26.
 - **Depends**: M.HW_DEV.001-.004, .008.
@@ -2052,7 +2074,8 @@ changes cite.
   after), A.U15.17/A.U15.18 (blasts: defaults and the `restored_from is None` check hold), A.U8C.87, AD-1 (`:15`, `:16`
   kept), A.U26.68.
 - **Site**: `tests_hardware/device_scripts/sgp40_fram_backup_restore.py:1-125`.
-- **Change**: bus from `BENCH`; reader in A.U5.11's shape; fixed source included; `_BACKUP_WAIT_S = 75.0`
+- **Change**: bus and FRAM from `BENCH`; readers in A.U5.11's shape; the two priming lines read
+  `reader.get_cfg_schema()` (A.U10.39/A.U24.61); fixed source included; `_BACKUP_WAIT_S = 75.0`
   (`l3.sgp40_fram_backup_restore_backup_wait_s`) and `_RESTORE_WAIT_S = 10.0` (`…_restore_wait_s`) tagged (AD-1), waited
   through `fed_sleep_ms`; facts `backup_written`, `restored_from`, `restored_state_matches`; the backup chunk cleared in
   `finally`; `done()`.
@@ -2076,7 +2099,12 @@ changes cite.
 - **Change**: start: `os.remove("config_HWTEST_ISL29125.cfg")` with ENOENT passing and any other errno a fact; NeoPixel
   and reader construction as the first statements of the `try`; `finally`: `pixel.off()` first, then `await
   reader.cfgmgr.flush_pending()`, then the scratch file removed; attributes through their end-state names and
-  `get_cfg_schema()`; codes from the catalog bindings; constants per A.U8C.76/A.U8C2.32; facts per check (steps, ratios,
+  `get_cfg_schema()`; the eleven `reader._set_dict_cfg({...}, reader.cfg_schema)` calls (`:150-193`) and the
+  `cfgmgr.config_file` rebinding `:105` follow the end-state signatures (A.U11.24; found by the main mypy pass);
+  `_log_entries()` from `_shared/isl_error_log.py` (shared with the lighting script); the `print_log` type import →
+  `asy_print_log`; `NeopixelDriver(18, fram=None, debug=None)` → the end-state `(neopixel_pin, log)` form with the pin from
+  `BENCH` (A.U5.02/A.U17.27); the overlay/signal starters by their A.U10.44 names;
+  codes from the catalog bindings; constants per A.U8C.76/A.U8C2.32; facts per check (steps, ratios,
   bit-depth margins, `warnings` with codes), `done()`; verdicts host-side.
 - **Resolved**: A.U9.07 is superseded by A.U17.27 (A.U17.27's Depends says so; the later unit's constant governs).
 - **Unit**: U26.
@@ -2092,7 +2120,12 @@ changes cite.
   `W13` → `W_ISL_PERIODIC_ONLY = 32`), A.U15.32 (blast: unchanged), A.U26.16, A.U5.02, A.U26.44, A.U8C.75 (its
   `step_ms` row withdrawn with `:33`), A.U8C2.31 (`isl29125.periodic_only_warn_at` mirror at `:335`), A.U26.68.
 - **Site**: `tests_hardware/device_scripts/isl29125_lighting_scenarios.py:1-340`.
-- **Change**: `_STEP_MS` deleted; the rig class reads `_pixel`; codes from the bindings; NeoPixel parked in `finally`;
+- **Change**: `_STEP_MS` deleted; the rig class's own attribute `self.pixel` → `self._pixel`; `_PIN_PIXEL`, the bus and
+  pins from `BENCH`; codes from the bindings; the raw `NeoPixel` construction (`:308`, before the `try` at `:321`) moves
+  inside the `try` whose `finally` parks it; the priming line reads `get_cfg_schema()`;
+  `check()` keeps a bounded record (count plus the first twelve, the twelve HEAD already prints) instead of one
+  string per failing sample over the ~9-minute run (G7/R21); `_log_entries()` (a clone of the envelope's) becomes
+  `_shared/isl_error_log.py`, included by both (A.U26.78 (3)'s clone check);
   constants per A.U8C.75/A.U8C2.31 (minus `step_ms`); facts per scenario, `done()`.
 - **Resolved**: A.U8C.75 tags `:33` (100), which A.U26.83 deletes as dead: the row is withdrawn (B4).
 - **Unit**: U26.
@@ -2107,7 +2140,9 @@ changes cite.
   (blast: already reads the configuration before/after reset, keys A03-A05), A.C.19 (2) (runs in R1), A.U8C.77 (`:12`
   wdt → `arm()`), A.U8C2.33 (deferred settles `:87`, `:104, :134, …` kept as named constants, AD-1).
 - **Site**: `tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:1-160`.
-- **Change**: bus, address and `_MODE_RGB` from `BENCH`; `_WDT = arm()`; `_WRITE_SETTLE_MS = 50`
+- **Change**: bus, `ADDR`, `INT_PIN` and `MODE_RGB` from `BENCH`; `_WDT = arm()` and the twin branch `:13-14` goes
+  (the twin runner arms a recording WDT, A.U26.05); the `REG_*`/`CFG1_*` register map stays the datasheet's, each with
+  its page, independent of the driver the probe's twin comparison is meant to check (GAP-D14); `_WRITE_SETTLE_MS = 50`
   (`l3.isl29125_mock_conformance_probe_write_settle_ms`) and `_CONVERSION_SETTLE_MS`
   (`l3.isl29125_mock_conformance_probe_conversion_settle_ms`) named; output stays `KEY=VALUE` plus `DONE=1` (the
   comparison protocol, M.HW_DEV.131); the conversion-cycle series added as keys.
@@ -2264,3 +2299,418 @@ changes cite.
 - **Blast carried by**: `scd30_prerequisite.py` → M.HW_BENCH.044; L0 failure modes → A.U26.07 (TSC); prerequisite pin →
   A.U26.06 (TSC).
 - **Kind**: test, hardware (Round: R1 [H31])
+
+## Gaps for other clusters
+
+- **GAP-D1** (TSC): a check that `tests_hardware/device_scripts/bench_facts.pyi`'s keys equal `bench_facts.build()`'s keys
+  plus the declared render extras (M.HW_DEV.001), beside A.U26.44's guard.
+- **GAP-D2** (SPEC): Part N `wdt.timeout_ms` — the 31 device-script sites collapse to `_shared/watchdog.py`; new row
+  `l3.device_script_feed_step_ms = 2000` (Dependant of `wdt.timeout_ms`); the per-script `*_feed_step_s`/
+  `*_wdt_feed_interval_s` rows of A.U8C.67/.89 are withdrawn into it (M.HW_DEV.004, .068, .140).
+- **GAP-D3** (TSC): A.U11.33's device-script schema guard accepts a schema argument read from `BENCH["system_schema"]`
+  (rendered by `buildgen.schema_ast` from the production module) as the production schema by construction
+  (M.HW_DEV.040, AD-4).
+- **GAP-D4** (SPEC): Part N row `loop.uart_call_span_max_us` "Checked by" names `flash/test_uart_crossover.py`'s driver test
+  (the verdict moved host-side), not the script's `:155-157` (M.HW_DEV.048).
+- **GAP-D5** (HW_BENCH): `harness.reflash()` (M.HW_BENCH.014) carries the tags of the loop it absorbs:
+  `l3.toolchain_flash_boot_load_timeout_s` (120), `l3.toolchain_flash_boot_load_retry_backoff_s` (2.0),
+  `l3.toolchain_flash_boot_picotool_load_attempts` (5) (M.HW_DEV.055).
+- **GAP-D6** (HW_BENCH): `standard_state` (M.HW_BENCH.006) reads FRAM write-protect from the `write_protected` fact of
+  the `fram_raw_dump.py` run it already makes, not from `fram_manager_roundtrip.py` (which writes chunk 0); and
+  `bench_facts`/`render_device_script()` provide every extra this cluster reads: `dump_size`, `system_schema`,
+  `standard_debug_level`, `bounds`, `worst_case_allocation`, `resync_bound_ms`, `scd30_schema`, `float_fields`,
+  `isl29125.mode_rgb`, `fram_wired`, `fram_backed_loggers`, `depth` (scheduler queue), `CRC_MODE`, `SEAM`, `NONCE`,
+  `COMMAND`, `STATE`, `PHASE`, `ARM`, `part`, `mode` (M.HW_DEV.001, .040, .061, .150).
+- **GAP-D7** (TSC): A.U26.24's region check treats raw FRAM calls addressed through a `get_chunk()` result
+  (`chunk.block_addr`) as chunk-scoped (covered by the clear-in-`finally` check), not as undeclared scratch
+  (M.HW_DEV.066).
+- **GAP-D8** (TSC): A.U26.06's persisting-device-call detection also counts a write-mode `open(` and a raw SCD30
+  configuration write (`writeto` of 0x4600/0x0010/0x5403…), so `config_files_restore.py`, `flash_write_loop_gap.py`,
+  `config_write_loop_scratch.py` and `scd30_argument_reaction.py` are seen (M.HW_DEV.101, .123, .155, .156).
+- **GAP-D9** (SRC_CORE, SRC_NET, TEST_UNIT executors of U5/U10/U18): the two WiFi repro scripts are deleted in U26
+  (M.HW_DEV.112); the U5/U10/U18 edits that list them are skipped there, not made.
+- **GAP-D10** (TSC): A.U25.61 (1)'s L0 equality of the probe constants reads `_shared/heap_probe.py` (one site), and
+  `tests_scripts/test_heap_map_parser.py`/`test_device_script_gc_threshold.py` read rendered or raw sources as A.U26.78
+  states per check (M.HW_DEV.116).
+- **GAP-D11** (TSC, HW_BENCH): A.U26.68's "missing `DONE` fails" and the "every runner calls `parse_facts`" check carve
+  out runners of `run_isolated_expect_reset()` (the starvation, reset-code, seed-phase, system-command and power-loss
+  scripts report banners before a reset, AD-3); `parse_facts` gains an `allow_missing_done=True` form for them.
+- **GAP-D14** (TSC): A.U26.44's "no copied driver constant" guard exempts the register maps of
+  `*_conformance_probe.py` scripts, which state the datasheet's values (with pages) independently of the drivers on
+  purpose; addresses, pins and mode values there still come from `BENCH` (M.HW_DEV.132, .144).
+- **GAP-D12** (HW_BENCH): the bench consumers of this cluster's scripts read facts — `bench/test_serving_heap_at_default_
+  gc.py`, `test_heap_under_connection_ceiling.py`, `test_memory_stress_bench.py` (allocation need),
+  `test_uart_link_under_api_load.py` (hazards H1/H2 subset, echo under serving load), `test_reset_reasons.py`,
+  `test_system_commands.py` (`config_files_*`), `test_wifi_radio_reinit.py`.
+
+## Adherence findings
+
+- **AF-1** (CLAUDE.md credentials rule): `device_scripts/wifi_reconnect_after_failed_attempts_repro.py:12` commits the
+  bench AP's PSK in plain text (`REAL_PW`), a second real credential beyond the one accepted hotspot fallback. The file
+  is deleted by A.U26.19 (M.HW_DEV.112); its git history is A.U29.04's scan. Reported, not acted on beyond the plan.
+- **AF-2** (stale fact): `flash/test_fram_storage.py:1` names the FRAM part "MB85RS64V"; the bench part is the
+  MB85RS2MTA (256 KB, `max_size=0x40000`; the scripts' own headers say so). M.HW_DEV.060 drops the part name from the
+  docstring (the TOML is the source).
+- **AF-3** (G9/R12, B5): work labels and history in permanent text — "WP4/Topic 6" (`test_fram_storage.py:116`,
+  capacity script `:1`), "measure A"/"archive §7D.5" (`fram_cs_hijack…py:38-40`, `fram_reset_race_during_write_seed…:56`),
+  "measure B"/"MEASUREMENTS M2.x/M3.x" (heap scripts, `test_memory_stress.py`), "G3: " in a reboot reason string
+  (`reboot_fallback_starves_the_watchdog.py:34`), "Item N" dividers (four flash modules), "queue F7"
+  (`uart_link_under_concurrent_system_load.py:109`). Each is rewritten by the change named in its file section.
+- **AF-4** (CLAUDE.md credentials rule): `config_files_dump.py` (A.S0930.29) copies the board's config files, the WiFi
+  credentials included, into the run's evidence directory (`build/archive/…`, gitignored). The restore needs them
+  verbatim; the evidence directory must stay out of commits, CI artifacts and PR attachments — stated in the README
+  "System commands" subsection (HW_BENCH).
+- **AF-5** (comment cap): several HEAD blocks exceed 3 prose lines (`heap_layout_after_full_boot_sequence.py:24-37`,
+  `test_memory_stress.py:22-28, 58-66`, `uart_crossover_exchange.py:34-36` region); A.U27.28 rewraps `tests_hardware/` in
+  U27, and every block a change above rewrites is written to the bar.
+- **AF-6** (G2/R02 orphan): `wifi_country_hostname_edge_values.py` has no runner anywhere (grep), so it never ran in a
+  suite; deleted by A.U26.20 (M.HW_DEV.111).
+- **AF-7** (a test that cannot pass): `flash/test_bus_electrical_timing.py:109-138` polls with `board.exec()`, which its own
+  failure text says resets the counter it waits on; moved and redesigned by A.U26.36 (M.HW_DEV.105).
+- **AF-8** (G7/R21): unbounded one-string-per-failure records also in `scd30_same_device_rw_concurrency.py:49-57` and
+  `bus_concurrency_same_device_scd30.py:144-150` beyond the two loops A.U26.69 names; covered by its execution-time check
+  and fixed in M.HW_DEV.081/.082.
+- **AF-9** (CLAUDE.md FRAM rule caveat): six HEAD scripts leave well-formed chunks on production's first chunk (the
+  "TEST"/"ERRRACE" histories, chunk patterns of the round-trip, busy, pause, WP and deinit scripts); M.HW_DEV.006 and the
+  per-file changes clear each on the way out.
+
+## Owner questions
+
+None. Every conflict met was settled by an owner row, the register, a verified fact or a stated agent decision below.
+
+## Agent decisions for the OR2.c review
+
+- **AD-1**: the device-script sleeps U8C/U8C2 deferred to U26 ("deferred U26") have no U26 keep-or-poll decision (G7/R23
+  ledger row "NO-CLAUSE"); each is kept and becomes the named constant with U8C's provisional ID ("if kept" branch).
+- **AD-2**: a script using a `_shared/` include also writes `if TYPE_CHECKING: from _shared.<name> import …` so the main
+  mypy pass resolves the inlined names (M.HW_DEV.003).
+- **AD-3**: scripts whose subject ends in a reset or never returns report banners/facts before it and no `DONE`; their
+  runners read the captured stream (GAP-D11).
+- **AD-4**: the standard-state repair script takes SYSTEM's full production schema as a render extra built by
+  `buildgen.schema_ast`, because an underscore `const()` is not a module attribute on the board (M.HW_DEV.040).
+- **AD-5**: the read-only FRAM write-protect check reads the raw dump's status register, not the chunk-writing round
+  trip (M.HW_DEV.061, .150).
+- **AD-6**: the reset-race nonce selects one of 27 seed sequences inside the catalog's test band 125-127, since a log
+  entry's code is 1..127 (`src/print_log.py:61-64, 168-172`) and A.U2.03 places seeds in that band (M.HW_DEV.063/.064).
+- **AD-7**: `float_boundary_2pow24.py`'s `sys.path.insert` (dead by its own comment) goes with the rewrite (M.HW_DEV.109).
+- **AD-8**: the loop-lag script and the FRAM conformance probe take their own scratch regions (0x3FE00, 0x3FD00) instead
+  of sharing the hold script's 0x3FF00, per A.U26.24's disjointness rule (M.HW_DEV.124, .132).
+- **AD-9**: the SGP40 cadence script sets the backup period on the reader in RAM, not in a config file, so its claim
+  needs no persisting write (M.HW_DEV.136).
+- **AD-10**: the float round-trip script receives the float fields' ranges through the rendering from the `_VAL_*`
+  tuples rather than embedding them (M.HW_DEV.153).
+
+## Ledger
+
+| action ID | merged into M-ID / dropped (reason) |
+|---|---|
+| A.C.01 | merged into M.HW_DEV.006, M.HW_DEV.010 |
+| A.C.03 | merged into M.HW_DEV.074, M.HW_DEV.107, M.HW_DEV.109 |
+| A.C.05 | merged into M.HW_DEV.152 |
+| A.C.06 | merged into M.HW_DEV.055 |
+| A.C.12 | merged into M.HW_DEV.154 |
+| A.C.14 | merged into M.HW_DEV.002, M.HW_DEV.105, M.HW_DEV.110, M.HW_DEV.111 |
+| A.C.15 | merged into M.HW_DEV.002, M.HW_DEV.131, M.HW_DEV.156 |
+| A.C.16 | merged into M.HW_DEV.131, M.HW_DEV.132, M.HW_DEV.144 |
+| A.C.17 | merged into M.HW_DEV.002, M.HW_DEV.155 |
+| A.C.18 | dropped (no site here: a planted script in A.U35.05's throwaway worktree, never committed; the gates are HW_BENCH/TSC) |
+| A.C.19 | merged into M.HW_DEV.080, M.HW_DEV.131, M.HW_DEV.144, M.HW_DEV.145 |
+| A.U15.S01 | merged into M.HW_DEV.085, M.HW_DEV.089 |
+| A.SDEP.08 | merged into M.HW_DEV.066, M.HW_DEV.074, M.HW_DEV.115 |
+| A.SDEP.17 | merged into M.HW_DEV.049, M.HW_DEV.074 |
+| A.S0930.05 | merged into M.HW_DEV.001, M.HW_DEV.002, M.HW_DEV.045, M.HW_DEV.046, M.HW_DEV.047, M.HW_DEV.051, M.HW_DEV.052 |
+| A.S0930.06 | merged into M.HW_DEV.055 |
+| A.S0930.12 | merged into M.HW_DEV.032, M.HW_DEV.068 |
+| A.S0930.13 | merged into M.HW_DEV.117 |
+| A.S0930.16 | dropped (blast holds: device scripts that flush keep `flush_pending()` semantics) |
+| A.S0930.19 | merged into M.HW_DEV.095 |
+| A.S0930.28 | merged into M.HW_DEV.080, M.HW_DEV.095, M.HW_DEV.096, M.HW_DEV.097, M.HW_DEV.098, M.HW_DEV.150 |
+| A.S0930.29 | merged into M.HW_DEV.100, M.HW_DEV.101 |
+| A.S0930.31 | merged into M.HW_DEV.030 |
+| A.S0930.33 | merged into M.HW_DEV.095 |
+| A.S0930.39 | merged into M.HW_DEV.080, M.HW_DEV.095, M.HW_DEV.098, M.HW_DEV.099, M.HW_DEV.150 |
+| A.S0930.40 | dropped (no site here: hit is `bench/test_system_commands.py`, HW_BENCH) |
+| A.U13.R02 | merged into M.HW_DEV.080, M.HW_DEV.090, M.HW_DEV.091 |
+| A.U15.R01 | merged into M.HW_DEV.083, M.HW_DEV.084 |
+| A.U15.R02 | merged into M.HW_DEV.083, M.HW_DEV.090 |
+| A.U15.R03 | merged into M.HW_DEV.088 |
+| A.U15.R04 | merged into M.HW_DEV.085, M.HW_DEV.089 |
+| A.U15.R05 | merged into M.HW_DEV.145 |
+| A.U16.R01 | merged into M.HW_DEV.070 |
+| A.U16.R02 | merged into M.HW_DEV.061 |
+| A.U16.R03 | merged into M.HW_DEV.070 |
+| A.U18.R01 | merged into M.HW_DEV.112, M.HW_DEV.113 |
+| A.U0.18 | merged into M.HW_DEV.070, M.HW_DEV.081 |
+| A.U0.28 | merged into M.HW_DEV.060, M.HW_DEV.116 |
+| A.U0.33 | dropped (SPEC text only; the flash-tier heap figure it closes on is read, not changed) |
+| A.U0.34 | merged into M.HW_DEV.115 |
+| A.U1.04 | dropped (blast only: the `uart_link_under_concurrent_system_load.py:141` comment is A.U1.25's, M.HW_DEV.051) |
+| A.U1.06 | merged into M.HW_DEV.035, M.HW_DEV.037, M.HW_DEV.039, M.HW_DEV.055, M.HW_DEV.112, M.HW_DEV.138, M.HW_DEV.142 |
+| A.U1.08 | dropped (blast only: same `:141` comment, A.U1.25 → M.HW_DEV.051) |
+| A.U1.11 | merged into M.HW_DEV.036 |
+| A.U1.19 | merged into M.HW_DEV.036 |
+| A.U1.25 | merged into M.HW_DEV.036, M.HW_DEV.051 |
+| A.U10.09 | merged into M.HW_DEV.030 |
+| A.U10.12 | merged into M.HW_DEV.009, M.HW_DEV.117 |
+| A.U10.15 | merged into M.HW_DEV.068 |
+| A.U10.21 | dropped (blast holds: scripts already `await …setup()` and branch on its result) |
+| A.U10.35 | merged into M.HW_DEV.142, M.HW_DEV.143 |
+| A.U10.37 | merged into M.HW_DEV.026, M.HW_DEV.032, M.HW_DEV.037, M.HW_DEV.038, M.HW_DEV.061, M.HW_DEV.062, M.HW_DEV.063, M.HW_DEV.064, M.HW_DEV.065, M.HW_DEV.066, M.HW_DEV.067, M.HW_DEV.068, M.HW_DEV.074, M.HW_DEV.109 |
+| A.U10.39 | merged into M.HW_DEV.142 |
+| A.U10.43 | merged into M.HW_DEV.108, M.HW_DEV.112, M.HW_DEV.137, M.HW_DEV.145 |
+| A.U10.44 | merged into M.HW_DEV.009, M.HW_DEV.051, M.HW_DEV.108, M.HW_DEV.142 |
+| A.U11.03 | merged into M.HW_DEV.030, M.HW_DEV.032 |
+| A.U11.06 | merged into M.HW_DEV.009, M.HW_DEV.026, M.HW_DEV.154 |
+| A.U11.10 | merged into M.HW_DEV.009, M.HW_DEV.117 |
+| A.U11.21 | merged into M.HW_DEV.002, M.HW_DEV.152, M.HW_DEV.153 |
+| A.U11.24 | merged into M.HW_DEV.036, M.HW_DEV.037, M.HW_DEV.039, M.HW_DEV.040, M.HW_DEV.142 |
+| A.U11.28 | dropped (blast holds: scripts flushing after a push keep working through `flush_pending()`) |
+| A.U11.33 | merged into M.HW_DEV.037, M.HW_DEV.038, M.HW_DEV.039, M.HW_DEV.040 |
+| A.U12.18 | merged into M.HW_DEV.080, M.HW_DEV.085, M.HW_DEV.090, M.HW_DEV.093 |
+| A.U13.08 | merged into M.HW_DEV.069, M.HW_DEV.080 |
+| A.U13.09 | merged into M.HW_DEV.070, M.HW_DEV.071 |
+| A.U13.12 | merged into M.HW_DEV.048 |
+| A.U13.13 | merged into M.HW_DEV.045 |
+| A.U13.16 | merged into M.HW_DEV.074 |
+| A.U13.17 | merged into M.HW_DEV.050 |
+| A.U14.01 | merged into M.HW_DEV.030 |
+| A.U14.02 | dropped (no site here: `tests_hardware/README.md` trap text, HW_BENCH) |
+| A.U14.04 | merged into M.HW_DEV.074, M.HW_DEV.140, M.HW_DEV.141 |
+| A.U14.12 | merged into M.HW_DEV.107 |
+| A.U14.28 | merged into M.HW_DEV.109 |
+| A.U15.12 | merged into M.HW_DEV.082, M.HW_DEV.083 |
+| A.U15.13 | merged into M.HW_DEV.086, M.HW_DEV.090 |
+| A.U15.15 | merged into M.HW_DEV.086 |
+| A.U15.17 | merged into M.HW_DEV.141 |
+| A.U15.18 | merged into M.HW_DEV.141 |
+| A.U15.20 | merged into M.HW_DEV.002, M.HW_DEV.130, M.HW_DEV.136 |
+| A.U15.25 | merged into M.HW_DEV.088, M.HW_DEV.138 |
+| A.U15.28 | merged into M.HW_DEV.090 |
+| A.U15.30 | merged into M.HW_DEV.080, M.HW_DEV.145 |
+| A.U15.32 | merged into M.HW_DEV.143, M.HW_DEV.145 |
+| A.U15.33 | merged into M.HW_DEV.085 |
+| A.U15.40 | merged into M.HW_DEV.138 |
+| A.U16.04 | merged into M.HW_DEV.067, M.HW_DEV.070, M.HW_DEV.072 |
+| A.U16.07 | merged into M.HW_DEV.002, M.HW_DEV.007, M.HW_DEV.060, M.HW_DEV.151 |
+| A.U16.10 | merged into M.HW_DEV.067, M.HW_DEV.080 |
+| A.U16.18 | merged into M.HW_DEV.068 |
+| A.U16.19 | merged into M.HW_DEV.060, M.HW_DEV.067, M.HW_DEV.068 |
+| A.U17.05 | merged into M.HW_DEV.048, M.HW_DEV.050, M.HW_DEV.051 |
+| A.U17.25 | merged into M.HW_DEV.047, M.HW_DEV.052 |
+| A.U17.27 | merged into M.HW_DEV.142 |
+| A.U17.33 | merged into M.HW_DEV.047 |
+| A.U18.27 | merged into M.HW_DEV.112 |
+| A.U18.40 | merged into M.HW_DEV.112 |
+| A.U18.42 | merged into M.HW_DEV.112 |
+| A.U19.20 | merged into M.HW_DEV.119 |
+| A.U2.01 | merged into M.HW_DEV.012 |
+| A.U2.02 | merged into M.HW_DEV.012 |
+| A.U2.03 | merged into M.HW_DEV.012, M.HW_DEV.062, M.HW_DEV.063, M.HW_DEV.064, M.HW_DEV.065, M.HW_DEV.142, M.HW_DEV.143 |
+| A.U2.12 | merged into M.HW_DEV.012, M.HW_DEV.142, M.HW_DEV.143 |
+| A.U2.20 | merged into M.HW_DEV.012, M.HW_DEV.046 |
+| A.U20.02 | merged into M.HW_DEV.004, M.HW_DEV.009, M.HW_DEV.053, M.HW_DEV.073, M.HW_DEV.116, M.HW_DEV.117, M.HW_DEV.119, M.HW_DEV.120, M.HW_DEV.121, M.HW_DEV.136, M.HW_DEV.154 |
+| A.U20.06 | merged into M.HW_DEV.009, M.HW_DEV.025, M.HW_DEV.026, M.HW_DEV.073, M.HW_DEV.116, M.HW_DEV.117 |
+| A.U20.11 | merged into M.HW_DEV.073 |
+| A.U20.15 | merged into M.HW_DEV.036 |
+| A.U20.33 | merged into M.HW_DEV.011, M.HW_DEV.020, M.HW_DEV.025, M.HW_DEV.030, M.HW_DEV.035, M.HW_DEV.045, M.HW_DEV.055, M.HW_DEV.060, M.HW_DEV.080, M.HW_DEV.105, M.HW_DEV.115, M.HW_DEV.130 |
+| A.U21.22 | merged into M.HW_DEV.055 |
+| A.U21.27 | dropped (no site here: picotool install and README flash-tier text, TOOL/HW_BENCH) |
+| A.U21.28 | dropped (no site here: board resolver and README, TOOL/HW_BENCH) |
+| A.U24.07 | dropped (false hit: `_shared` matched a fake-state name in `tests/`) |
+| A.U24.24 | dropped (false hit: `_shared` in `tests/` fakes) |
+| A.U24.60 | dropped (false hit: `_shared` in `tests/`) |
+| A.U24.61 | merged into M.HW_DEV.142 |
+| A.U24.73 | dropped (false hit: `_shared` in `tests/`; device-script `Any` is A.U26.76) |
+| A.U25.01 | merged into M.HW_DEV.107 |
+| A.U25.48 | dropped (false hit: `_shared` in twin code) |
+| A.U25.50 | merged into M.HW_DEV.080 |
+| A.U25.61 | merged into M.HW_DEV.116, M.HW_DEV.117, M.HW_DEV.118 |
+| A.U26.02 | merged into M.HW_DEV.055 |
+| A.U26.05 | merged into M.HW_DEV.010 |
+| A.U26.06 | merged into M.HW_DEV.009, M.HW_DEV.020, M.HW_DEV.040, M.HW_DEV.101, M.HW_DEV.157 |
+| A.U26.07 | merged into M.HW_DEV.002, M.HW_DEV.020, M.HW_DEV.080, M.HW_DEV.081, M.HW_DEV.082, M.HW_DEV.083, M.HW_DEV.086, M.HW_DEV.105, M.HW_DEV.108, M.HW_DEV.130, M.HW_DEV.137, M.HW_DEV.157 |
+| A.U26.08 | merged into M.HW_DEV.080, M.HW_DEV.081, M.HW_DEV.084 |
+| A.U26.10 | merged into M.HW_DEV.009, M.HW_DEV.053, M.HW_DEV.060, M.HW_DEV.073, M.HW_DEV.096, M.HW_DEV.113, M.HW_DEV.115, M.HW_DEV.116, M.HW_DEV.117, M.HW_DEV.119, M.HW_DEV.120, M.HW_DEV.121, M.HW_DEV.122, M.HW_DEV.136, M.HW_DEV.154 |
+| A.U26.11 | merged into M.HW_DEV.008, M.HW_DEV.130, M.HW_DEV.142 |
+| A.U26.12 | merged into M.HW_DEV.036, M.HW_DEV.039 |
+| A.U26.14 | merged into M.HW_DEV.055 |
+| A.U26.16 | merged into M.HW_DEV.008, M.HW_DEV.073, M.HW_DEV.139, M.HW_DEV.142, M.HW_DEV.143, M.HW_DEV.145 |
+| A.U26.17 | merged into M.HW_DEV.011, M.HW_DEV.021 |
+| A.U26.18 | merged into M.HW_DEV.035, M.HW_DEV.037, M.HW_DEV.038, M.HW_DEV.039, M.HW_DEV.096, M.HW_DEV.123, M.HW_DEV.153, M.HW_DEV.155 |
+| A.U26.19 | merged into M.HW_DEV.112 |
+| A.U26.20 | merged into M.HW_DEV.110, M.HW_DEV.111 |
+| A.U26.22 | merged into M.HW_DEV.006, M.HW_DEV.060, M.HW_DEV.061, M.HW_DEV.062, M.HW_DEV.063, M.HW_DEV.064, M.HW_DEV.065, M.HW_DEV.066, M.HW_DEV.067, M.HW_DEV.068, M.HW_DEV.074, M.HW_DEV.095, M.HW_DEV.124, M.HW_DEV.141, M.HW_DEV.150 |
+| A.U26.23 | merged into M.HW_DEV.001, M.HW_DEV.073 |
+| A.U26.24 | merged into M.HW_DEV.007, M.HW_DEV.051, M.HW_DEV.069, M.HW_DEV.070, M.HW_DEV.071, M.HW_DEV.072, M.HW_DEV.124, M.HW_DEV.132, M.HW_DEV.151 |
+| A.U26.25 | merged into M.HW_DEV.030 |
+| A.U26.26 | merged into M.HW_DEV.011, M.HW_DEV.021, M.HW_DEV.036, M.HW_DEV.095, M.HW_DEV.115 |
+| A.U26.28 | merged into M.HW_DEV.026, M.HW_DEV.032 |
+| A.U26.31 | dropped (no edit here: the collect-only matrix covers `flash/` collection, TSC) |
+| A.U26.32 | merged into M.HW_DEV.080, M.HW_DEV.084 |
+| A.U26.33 | merged into M.HW_DEV.045, M.HW_DEV.047, M.HW_DEV.052 |
+| A.U26.34 | merged into M.HW_DEV.002, M.HW_DEV.025, M.HW_DEV.026, M.HW_DEV.091, M.HW_DEV.112, M.HW_DEV.113, M.HW_DEV.139 |
+| A.U26.35 | merged into M.HW_DEV.011, M.HW_DEV.105, M.HW_DEV.115, M.HW_DEV.130 |
+| A.U26.36 | merged into M.HW_DEV.105 |
+| A.U26.43 | merged into M.HW_DEV.060, M.HW_DEV.063, M.HW_DEV.064, M.HW_DEV.080, M.HW_DEV.150 |
+| A.U26.44 | merged into M.HW_DEV.001, M.HW_DEV.046, M.HW_DEV.047, M.HW_DEV.048, M.HW_DEV.050, M.HW_DEV.051, M.HW_DEV.052, M.HW_DEV.053, M.HW_DEV.061, M.HW_DEV.062, M.HW_DEV.063, M.HW_DEV.064, M.HW_DEV.065, M.HW_DEV.066, M.HW_DEV.067, M.HW_DEV.068, M.HW_DEV.069, M.HW_DEV.070, M.HW_DEV.071, M.HW_DEV.072, M.HW_DEV.073, M.HW_DEV.074, M.HW_DEV.081, M.HW_DEV.082, M.HW_DEV.083, M.HW_DEV.084, M.HW_DEV.085, M.HW_DEV.086, M.HW_DEV.087, M.HW_DEV.088, M.HW_DEV.089, M.HW_DEV.090, M.HW_DEV.091, M.HW_DEV.092, M.HW_DEV.093, M.HW_DEV.096, M.HW_DEV.097, M.HW_DEV.098, M.HW_DEV.099, M.HW_DEV.108, M.HW_DEV.110, M.HW_DEV.113, M.HW_DEV.116, M.HW_DEV.117, M.HW_DEV.119, M.HW_DEV.120, M.HW_DEV.121, M.HW_DEV.122, M.HW_DEV.124, M.HW_DEV.125, M.HW_DEV.132, M.HW_DEV.136, M.HW_DEV.137, M.HW_DEV.138, M.HW_DEV.139, M.HW_DEV.140, M.HW_DEV.141, M.HW_DEV.142, M.HW_DEV.143, M.HW_DEV.144, M.HW_DEV.145, M.HW_DEV.150, M.HW_DEV.151, M.HW_DEV.153, M.HW_DEV.154, M.HW_DEV.156, M.HW_DEV.157 |
+| A.U26.45 | merged into M.HW_DEV.036, M.HW_DEV.045, M.HW_DEV.111, M.HW_DEV.112 |
+| A.U26.46 | merged into M.HW_DEV.061, M.HW_DEV.090 |
+| A.U26.47 | merged into M.HW_DEV.095 |
+| A.U26.48 | merged into M.HW_DEV.001, M.HW_DEV.002, M.HW_DEV.115, M.HW_DEV.116 |
+| A.U26.49 | merged into M.HW_DEV.001, M.HW_DEV.081, M.HW_DEV.082, M.HW_DEV.086, M.HW_DEV.130, M.HW_DEV.137, M.HW_DEV.138, M.HW_DEV.139, M.HW_DEV.140, M.HW_DEV.153 |
+| A.U26.50 | dropped (no site here: the worker guard excludes `device_scripts/`, TSC) |
+| A.U26.51 | merged into M.HW_DEV.011, M.HW_DEV.025, M.HW_DEV.030, M.HW_DEV.035, M.HW_DEV.045, M.HW_DEV.055, M.HW_DEV.060, M.HW_DEV.080, M.HW_DEV.095, M.HW_DEV.105, M.HW_DEV.115, M.HW_DEV.130 |
+| A.U26.52 | merged into M.HW_DEV.071, M.HW_DEV.072 |
+| A.U26.58 | merged into M.HW_DEV.074, M.HW_DEV.105, M.HW_DEV.106, M.HW_DEV.107, M.HW_DEV.109 |
+| A.U26.59 | merged into M.HW_DEV.045, M.HW_DEV.048, M.HW_DEV.049 |
+| A.U26.60 | merged into M.HW_DEV.035, M.HW_DEV.036 |
+| A.U26.61 | merged into M.HW_DEV.004, M.HW_DEV.026, M.HW_DEV.049, M.HW_DEV.111, M.HW_DEV.112 |
+| A.U26.62 | merged into M.HW_DEV.011, M.HW_DEV.070 |
+| A.U26.66 | merged into M.HW_DEV.130, M.HW_DEV.131, M.HW_DEV.132, M.HW_DEV.144 |
+| A.U26.68 | merged into M.HW_DEV.002, M.HW_DEV.011, M.HW_DEV.025, M.HW_DEV.026, M.HW_DEV.032, M.HW_DEV.035, M.HW_DEV.037, M.HW_DEV.038, M.HW_DEV.045, M.HW_DEV.046, M.HW_DEV.047, M.HW_DEV.048, M.HW_DEV.050, M.HW_DEV.051, M.HW_DEV.052, M.HW_DEV.053, M.HW_DEV.060, M.HW_DEV.061, M.HW_DEV.062, M.HW_DEV.063, M.HW_DEV.064, M.HW_DEV.065, M.HW_DEV.066, M.HW_DEV.067, M.HW_DEV.068, M.HW_DEV.069, M.HW_DEV.070, M.HW_DEV.071, M.HW_DEV.072, M.HW_DEV.073, M.HW_DEV.074, M.HW_DEV.080, M.HW_DEV.081, M.HW_DEV.082, M.HW_DEV.083, M.HW_DEV.084, M.HW_DEV.085, M.HW_DEV.086, M.HW_DEV.087, M.HW_DEV.088, M.HW_DEV.089, M.HW_DEV.090, M.HW_DEV.091, M.HW_DEV.092, M.HW_DEV.093, M.HW_DEV.095, M.HW_DEV.096, M.HW_DEV.097, M.HW_DEV.098, M.HW_DEV.099, M.HW_DEV.105, M.HW_DEV.106, M.HW_DEV.107, M.HW_DEV.108, M.HW_DEV.109, M.HW_DEV.110, M.HW_DEV.113, M.HW_DEV.115, M.HW_DEV.116, M.HW_DEV.117, M.HW_DEV.118, M.HW_DEV.119, M.HW_DEV.120, M.HW_DEV.121, M.HW_DEV.122, M.HW_DEV.123, M.HW_DEV.124, M.HW_DEV.125, M.HW_DEV.130, M.HW_DEV.136, M.HW_DEV.137, M.HW_DEV.138, M.HW_DEV.139, M.HW_DEV.140, M.HW_DEV.141, M.HW_DEV.142, M.HW_DEV.143, M.HW_DEV.145, M.HW_DEV.151, M.HW_DEV.153, M.HW_DEV.154, M.HW_DEV.155, M.HW_DEV.156, M.HW_DEV.157 |
+| A.U26.69 | merged into M.HW_DEV.003, M.HW_DEV.005, M.HW_DEV.069, M.HW_DEV.081, M.HW_DEV.082, M.HW_DEV.083, M.HW_DEV.084, M.HW_DEV.085, M.HW_DEV.086, M.HW_DEV.087, M.HW_DEV.088, M.HW_DEV.089 |
+| A.U26.74 | merged into M.HW_DEV.011, M.HW_DEV.020, M.HW_DEV.080, M.HW_DEV.084, M.HW_DEV.105, M.HW_DEV.115, M.HW_DEV.130 |
+| A.U26.75 | merged into M.HW_DEV.011, M.HW_DEV.055 |
+| A.U26.76 | merged into M.HW_DEV.011, M.HW_DEV.046, M.HW_DEV.047, M.HW_DEV.119 |
+| A.U26.77 | merged into M.HW_DEV.106 |
+| A.U26.78 | merged into M.HW_DEV.003, M.HW_DEV.005, M.HW_DEV.011, M.HW_DEV.046, M.HW_DEV.047, M.HW_DEV.069, M.HW_DEV.083, M.HW_DEV.084, M.HW_DEV.085, M.HW_DEV.086, M.HW_DEV.087, M.HW_DEV.116, M.HW_DEV.117, M.HW_DEV.120, M.HW_DEV.121, M.HW_DEV.140, M.HW_DEV.141 |
+| A.U26.79 | merged into M.HW_DEV.040, M.HW_DEV.061, M.HW_DEV.150 |
+| A.U26.81 | merged into M.HW_DEV.105 |
+| A.U26.82 | merged into M.HW_DEV.002, M.HW_DEV.045, M.HW_DEV.052 |
+| A.U26.83 | merged into M.HW_DEV.143 |
+| A.U26.85 | dropped (no site here: bench module, "no device script: n/a") |
+| A.U26.86 | merged into M.HW_DEV.030, M.HW_DEV.047 |
+| A.U26.87 | merged into M.HW_DEV.045, M.HW_DEV.051, M.HW_DEV.053, M.HW_DEV.120 |
+| A.U27.09 | merged into M.HW_DEV.116 |
+| A.U27.24 | merged into M.HW_DEV.003 |
+| A.U27.25 | merged into M.HW_DEV.001, M.HW_DEV.003 |
+| A.U28.27 | dropped (no edit here: `pyproject.toml` names `device_scripts/**` a MicroPython-run scope; the B905 entry M.HW_DEV.062 relies on is TOOL's) |
+| A.U28.28 | merged into M.HW_DEV.062, M.HW_DEV.063, M.HW_DEV.064, M.HW_DEV.090, M.HW_DEV.107, M.HW_DEV.140 |
+| A.U28.29 | merged into M.HW_DEV.112 |
+| A.U28.30 | merged into M.HW_DEV.048 |
+| A.U29.04 | merged into M.HW_DEV.112 |
+| A.U30.04 | merged into M.HW_DEV.115 |
+| A.U30.07 | merged into M.HW_DEV.090 |
+| A.U30.14 | dropped (no change here: device scripts stay allowed to set `gc.threshold()`, TSC) |
+| A.U30.15 | merged into M.HW_DEV.051 (its `:101` collect is A.U17.05's deletion) |
+| A.U30.16 | merged into M.HW_DEV.048, M.HW_DEV.050, M.HW_DEV.051, M.HW_DEV.116, M.HW_DEV.117, M.HW_DEV.119, M.HW_DEV.120 |
+| A.U30.18 | merged into M.HW_DEV.115, M.HW_DEV.125 |
+| A.U31.01 | merged into M.HW_DEV.095, M.HW_DEV.122, M.HW_DEV.151 |
+| A.U31.05 | merged into M.HW_DEV.002, M.HW_DEV.115, M.HW_DEV.116, M.HW_DEV.122, M.HW_DEV.123 |
+| A.U31.06 | merged into M.HW_DEV.115, M.HW_DEV.124 |
+| A.U32.06 | merged into M.HW_DEV.009, M.HW_DEV.025, M.HW_DEV.026, M.HW_DEV.080, M.HW_DEV.117 |
+| A.U33.07 | merged into M.HW_DEV.060, M.HW_DEV.151 |
+| A.U33.09 | merged into M.HW_DEV.105 |
+| A.U35.03 | merged into M.HW_DEV.010 |
+| A.U35.05 | merged into M.HW_DEV.010 |
+| A.U35.09 | merged into M.HW_DEV.080 |
+| A.U35.21 | merged into M.HW_DEV.080, M.HW_DEV.092 |
+| A.U35.22 | merged into M.HW_DEV.060 |
+| A.U35.28 | merged into M.HW_DEV.106, M.HW_DEV.107 |
+| A.U35.49 | merged into M.HW_DEV.010 |
+| A.U35.50 | merged into M.HW_DEV.080, M.HW_DEV.090 |
+| A.U35.51 | merged into M.HW_DEV.010 |
+| A.U36.005 | merged into M.HW_DEV.006 (the README chunk-rule line is HW_BENCH/U36's) |
+| A.U36.010 | merged into M.HW_DEV.055 |
+| A.U36.015 | dropped (false hit: `_shared` in SPEC C.8 text) |
+| A.U36.028 | merged into M.HW_DEV.047 |
+| A.U36.033 | dropped (SPEC F.2 text only) |
+| A.U36.532 | merged into M.HW_DEV.013 |
+| A.U36.539 | merged into M.HW_DEV.052 |
+| A.U36.543 | merged into M.HW_DEV.131 |
+| A.U36.544 | merged into M.HW_DEV.013, M.HW_DEV.036, M.HW_DEV.073, M.HW_DEV.105, M.HW_DEV.117 |
+| A.U36.548 | merged into M.HW_DEV.013 |
+| A.U4.08 | merged into M.HW_DEV.020 |
+| A.U5.01 | merged into M.HW_DEV.062, M.HW_DEV.063, M.HW_DEV.064, M.HW_DEV.065 |
+| A.U5.02 | merged into M.HW_DEV.032, M.HW_DEV.039, M.HW_DEV.061, M.HW_DEV.062, M.HW_DEV.063, M.HW_DEV.064, M.HW_DEV.065, M.HW_DEV.066, M.HW_DEV.067, M.HW_DEV.068, M.HW_DEV.074, M.HW_DEV.108, M.HW_DEV.112, M.HW_DEV.137, M.HW_DEV.138, M.HW_DEV.139, M.HW_DEV.141, M.HW_DEV.142, M.HW_DEV.143, M.HW_DEV.145 |
+| A.U5.09 | merged into M.HW_DEV.112 |
+| A.U5.11 | merged into M.HW_DEV.140, M.HW_DEV.141 |
+| A.U5.12 | merged into M.HW_DEV.046, M.HW_DEV.047, M.HW_DEV.050, M.HW_DEV.051 |
+| A.U7.01 | merged into M.HW_DEV.010 |
+| A.U7.16 | merged into M.HW_DEV.002, M.HW_DEV.045 |
+| A.U7.18 | merged into M.HW_DEV.010 |
+| A.U7.24 | merged into M.HW_DEV.011, M.HW_DEV.080, M.HW_DEV.118, M.HW_DEV.131 |
+| A.U7.25 | dropped (SPEC E.6.6 table, cited as blast carrier in M.HW_DEV.086, .092) |
+| A.U8.06 | merged into M.HW_DEV.001 |
+| A.U8.08 | merged into M.HW_DEV.004, M.HW_DEV.026, M.HW_DEV.031, M.HW_DEV.032 |
+| A.U8.14 | merged into M.HW_DEV.116, M.HW_DEV.117, M.HW_DEV.121 |
+| A.U8.19 | merged into M.HW_DEV.048 |
+| A.U8C.01 | merged into M.HW_DEV.117 |
+| A.U8C.58 | merged into M.HW_DEV.004, M.HW_DEV.138 |
+| A.U8C.59 | merged into M.HW_DEV.088 |
+| A.U8C.60 | merged into M.HW_DEV.005, M.HW_DEV.083 |
+| A.U8C.61 | merged into M.HW_DEV.085 |
+| A.U8C.62 | merged into M.HW_DEV.082 |
+| A.U8C.63 | merged into M.HW_DEV.084 |
+| A.U8C.64 | merged into M.HW_DEV.090 |
+| A.U8C.65 | merged into M.HW_DEV.070 |
+| A.U8C.66 | merged into M.HW_DEV.004, M.HW_DEV.063 |
+| A.U8C.67 | merged into M.HW_DEV.068 |
+| A.U8C.68 | merged into M.HW_DEV.071 |
+| A.U8C.69 | merged into M.HW_DEV.072 |
+| A.U8C.70 | merged into M.HW_DEV.069 |
+| A.U8C.71 | merged into M.HW_DEV.116 |
+| A.U8C.72 | merged into M.HW_DEV.116, M.HW_DEV.117 |
+| A.U8C.73 | merged into M.HW_DEV.121 |
+| A.U8C.74 | merged into M.HW_DEV.087 |
+| A.U8C.75 | merged into M.HW_DEV.143 |
+| A.U8C.76 | merged into M.HW_DEV.142 |
+| A.U8C.77 | merged into M.HW_DEV.144 |
+| A.U8C.78 | merged into M.HW_DEV.139 |
+| A.U8C.79 | merged into M.HW_DEV.145 |
+| A.U8C.80 | merged into M.HW_DEV.089 |
+| A.U8C.81 | merged into M.HW_DEV.032 |
+| A.U8C.82 | merged into M.HW_DEV.137 |
+| A.U8C.83 | merged into M.HW_DEV.108 |
+| A.U8C.84 | merged into M.HW_DEV.081 |
+| A.U8C.85 | merged into M.HW_DEV.106 |
+| A.U8C.86 | merged into M.HW_DEV.120 |
+| A.U8C.87 | merged into M.HW_DEV.141 |
+| A.U8C.88 | merged into M.HW_DEV.086 |
+| A.U8C.89 | merged into M.HW_DEV.140 |
+| A.U8C.90 | merged into M.HW_DEV.026 |
+| A.U8C.91 | merged into M.HW_DEV.001, M.HW_DEV.046 |
+| A.U8C.92 | merged into M.HW_DEV.047 |
+| A.U8C.93 | merged into M.HW_DEV.048 |
+| A.U8C.94 | merged into M.HW_DEV.050 |
+| A.U8C.95 | merged into M.HW_DEV.051 |
+| A.U8C.96 | merged into M.HW_DEV.049 |
+| A.U8C.97 | merged into M.HW_DEV.031 |
+| A.U8C.98 | merged into M.HW_DEV.112 |
+| A.U8C.99 | merged into M.HW_DEV.112 |
+| A.U8C.101 | merged into M.HW_DEV.011, M.HW_DEV.020 |
+| A.U8C.102 | merged into M.HW_DEV.080 |
+| A.U8C.103 | merged into M.HW_DEV.105 |
+| A.U8C.104 | merged into M.HW_DEV.060 |
+| A.U8C.105 | merged into M.HW_DEV.115 |
+| A.U8C.106 | merged into M.HW_DEV.035, M.HW_DEV.036 |
+| A.U8C.107 | merged into M.HW_DEV.130 |
+| A.U8C.108 | merged into M.HW_DEV.025 |
+| A.U8C.109 | merged into M.HW_DEV.055 |
+| A.U8C.110 | merged into M.HW_DEV.045 |
+| A.U8C.111 | merged into M.HW_DEV.030 |
+| A.U8C.117 | dropped (no site here: `manual/manual_toolchain.py`, HW_BENCH; shared tag IDs only) |
+| A.U8C.119 | merged into M.HW_DEV.105 |
+| A.U8C.121 | dropped (SPEC Part N Dependants list; the tags it lists land per file here) |
+| A.U8C2.26 | merged into M.HW_DEV.138 |
+| A.U8C2.27 | merged into M.HW_DEV.085 |
+| A.U8C2.28 | merged into M.HW_DEV.090 |
+| A.U8C2.29 | merged into M.HW_DEV.068 |
+| A.U8C2.30 | merged into M.HW_DEV.116 |
+| A.U8C2.31 | merged into M.HW_DEV.143 |
+| A.U8C2.32 | merged into M.HW_DEV.142 |
+| A.U8C2.33 | merged into M.HW_DEV.144 |
+| A.U8C2.34 | merged into M.HW_DEV.139 |
+| A.U8C2.35 | merged into M.HW_DEV.145 |
+| A.U8C2.36 | merged into M.HW_DEV.137 |
+| A.U8C2.37 | merged into M.HW_DEV.081 |
+| A.U8C2.38 | merged into M.HW_DEV.026 |
+| A.U8C2.39 | merged into M.HW_DEV.048 |
+| A.U8C2.40 | merged into M.HW_DEV.050 |
+| A.U8C2.41 | merged into M.HW_DEV.051 |
+| A.U8C2.42 | merged into M.HW_DEV.049 |
+| A.U8C2.43 | merged into M.HW_DEV.112 |
+| A.U8C2.44 | merged into M.HW_DEV.011, M.HW_DEV.105 |
+| A.U8C2.45 | merged into M.HW_DEV.115 |
+| A.U8C2.46 | merged into M.HW_DEV.055 |
+| A.U9.07 | merged into M.HW_DEV.142 |

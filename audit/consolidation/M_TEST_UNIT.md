@@ -1901,7 +1901,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   asy_base_classes import ValueRef, set_utc_valid`, `from asy_print_log import LogConfig`, `from _async_harness import
   run, cancel`, `from _driven_time import DrivenTime`, `from _fast_sleep import FastAsyncSleep`, `from _error_codes import
   code`, `from _src_const import src_const`; TYPE_CHECKING imports `asy_crc_checks.CRCBase`, `asy_print_log.ErrorLog`,
-  `asy_base_classes.JsonDict` and drops `Coroutine`/`Any`/`TypeVar`/`T`/`NoReturn`. `_FakeTime` stays; `_FakeValue(value:
+  `asy_base_classes.JsonDict` and drops `Coroutine`/`Any`/`TypeVar`/`T`/`NoReturn`. `_FakeTime` → the shared `FakeTime` of `tests/_fake_time.py` (M.TEST_HELP.054, the five notification copies); `_FakeValue(value:
   object = None, field="Value")`; `_FakeClock`, `_FakeSignalCb` unchanged in behaviour. `make_coordinator(...)` →
   `_make_service(signals: tuple[NotificationSignal, ...] = (), cfg_path=None, local_time=None, signal_cb=None)`
   constructing `NotificationService(cb, clock.get, signals, cfg_path=path)` and `run(service.setup())`, returning
@@ -5364,4 +5364,258 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Depends**: M.TEST_HELP.007, .010-.013, .021, .048.
 - **Blast carried by**: the twin runner `tests/test_digital_twin_machine.py` → A.U24.17 (TWIN); `tests_scripts/
   test_import_placement.py` / file lists naming the old path → A.U24.16 (TSC, if any by grep).
+- **Kind**: test
+
+## tests/test_fram_integration.py
+
+### M.TEST_UNIT.265 Harness, names, constructors and the reboot rebuild
+- **From**: A.U24.08 (`:42-43` `run`), A.U24.49 + M.TEST_HELP.057 (`make_manager` → `make_fram_manager()`; the reboot
+  rebuild `manager2.fram._spidev.spi._spi = chip` at `:240, :283, :320` → `make_fram_manager(chip=chip)`), A.U24.01
+  (`:37-39` `_STATUS_BUSY` → `src_const`), A.U10.37/A.U10.38 (`FRAMManager`, `FRAMChunk`, `asy_crc_checks`, `CRCPass`,
+  `asy_base_classes`, `asy_print_log`; docstring names), A.U5.02 (the 12 `SensorReader(Meas(…), 3, fram=manager)` calls
+  `:71-403`), A.U10.10 (`reader.pr.setup()` → `reader.setup()`), A.U16.18 (`:92` unpack order), A.U24.56 (`:300`),
+  A.U2.09 + A.U3.04 (the 19 code lines: literal errno/wrnno values), A.U24.73 (`Any`).
+- **Site**: `tests/test_fram_integration.py:1-56`, `:68-415`.
+- **Change**: docstring → "Full-stack integration: tests/_fram_chip_fake.py's MB85RS64V under asy_spi_driver/
+  asy_fram_driver/asy_fram_manager and their real consumers in asy_print_log/asy_base_classes - mocked at the SPI bus,
+  not at FRAMManager's boundary (SPECIFICATION.md Part E.4)." (3 lines). Imports per the names above plus `from
+  _async_harness import run`, `from _fram_builders import make_fram_manager`, `from _src_const import src_const`, `from
+  _error_codes import code`, `from asy_print_log import LogConfig`; the local `run`, `make_manager` and `TypeVar` go.
+  `_STATUS_BUSY = src_const("src/asy_fram_manager.py", "_STATUS_BUSY")` under "# The chunk's busy status value, read
+  from source.". Each reader is `SensorReader(Meas(…), log=LogConfig(manager, 3, None))` and is set up with
+  `run(reader.setup())`. The reboot tests build `manager2, _ = make_fram_manager(chip=chip)` (same chip, fresh objects).
+  `:92` → `write_ok, *_ = await value_chunk.write_into(buf)`. Each literal `errno=`/`wrnno=` value and the
+  `ErrNum[-1] == <n>` it is read back as become distinct catalog codes by name (`code("E", "CALLBACK")`, `code("E",
+  "UNEXPECTED")`, `code("E", "BAD_ARG")`, `code("E", "CONTRACT")`, `code("E", "LOCK_TIMEOUT")`, `code("W",
+  "STORED_DEFAULT")`, one per HEAD number); `:300` "(project owner, 2026-09-11)" → "(owner, 2026-09-11)".
+- **Resolved**: —
+- **Unit**: U24 (stages U2/U3 codes, U5 constructors, U10 names/setup, U16 unpack).
+- **Depends**: M.TEST_HELP.043, .044, .045, .057; M.SRC_CORE (`LogConfig`, A.U16.18's return order).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.266 The bus-fault comment states rp2's one SPI fault; no collect props up the cycle test
+- **From**: A.U16.14 (`:3-5`), A.U25.18 (read: the comment is U16's), A.U30.15 (`:159-163`, `:177`, `import gc`), A.U29.03
+  (read: the digit strings are FRAM payload bytes, not the hotspot password — no change).
+- **Site**: `tests/test_fram_integration.py:3-8`, `:158-180`.
+- **Change**: `:3-5` → "# No bus-level fault here: rp2 SPI's only one, an RX overrun raising OSError(EIO) on a 32+ byte
+  read (SPECIFICATION.md / # F.5.2), is modelled by tests/machine.py's rx_overrun and driven through this same stack in
+  test_asy_fram_manager.py." The `gc.collect()` in the 40-cycle loop and its two-paragraph comment go, the loop stays as
+  the state-leak regression ("# Forty cycles: a stale CRC, verify counter or lock state would show by the second."), and
+  `import gc` goes. Proof owed by the landing unit: the file ten times at `gc.threshold(-1)` and ten at
+  `GC_THRESHOLD=32768` with zero markers of either spelling; a failure is root-caused at the allocation (A.U30.15),
+  never patched back with a collect.
+- **Resolved**: —
+- **Unit**: U30 (stage U16 comment).
+- **Depends**: M.SRC_CORE (FRAM manager allocation shape, U16/U30).
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_framing_codecs.py (→ `tests/test_asy_framing_codecs.py`)
+
+### M.TEST_UNIT.267 Names, the bounded shared run, no test-only counter
+- **From**: A.U10.37/A.U10.38 (`from asy_framing_codecs import COBS_DELIMITER, FramingCOBS, FramingPass`; docstring),
+  A.U10.29 (read: `COBS_DELIMITER` stays public for this import), A.U24.08 (`:21-22` bounded copy keeps its 5 s),
+  A.U8C.34 (`:22` `l1.framing_codecs_run_bound_s`), A.U12.16 (`:176`, `:187-195`), A.U16.05 (`:165` comment), A.U12.05
+  (read: `:82-125` already pin the property).
+- **Site**: `tests/test_framing_codecs.py:1-37`, `:163-195`.
+- **Change**: docstring line 1 names `src/asy_framing_codecs.py`; `from _async_harness import run`; `_RUN_BOUND_S = 5
+  # @tunable l1.framing_codecs_run_bound_s = 5` and the helpers call `run(codec.…(…), _RUN_BOUND_S)` (the local `run` and
+  `TypeVar` go); type hints `FramingPass | FramingCOBS`. `:165` comment "the same guard RegionBuffer applies". `:176`
+  `assert codec._scratch is None`. `:187-195` → `scratch = codec._scratch` before the two encodes, `codec._scratch is
+  scratch` after, and the second encode's bytes sit where the first's were (reuse seen from outside).
+- **Resolved**: —
+- **Unit**: U12 (stages U8 tag, U10 names, U24 harness).
+- **Depends**: M.SRC_CORE.120, .121; M.TEST_HELP.043.
+- **Blast carried by**: SPEC Part N row → A.U8.01 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.268 Every length round-trips; views alias the scratch; decode bound
+- **From**: A.U12.17 (two L1 tests), A.U17.22 (every length 0 … 262 at `max_frame = 262`; one byte past the encoded
+  bound refused; `:83-189` hold).
+- **Site**: new tests after `:125`.
+- **Change**: `test_cobs_round_trips_every_length_up_to_the_frame_bound` (sizes 0..300 step 1; all-zero, no-zero and
+  zero-every-third patterns; `FramingCOBS(303)`); `test_a_returned_view_aliases_the_scratch_until_the_next_encode`
+  (A.U12.17's snapshot comparison); `test_a_262_byte_frame_bound_decodes_every_length_and_refuses_one_past`
+  (`FramingCOBS(262)`: every frame length 0..262 encodes and `decode_from()` returns the length; a decode input of
+  `max_encoded(262)` bytes — one past `max_encoded(262) − 1` — returns `None`).
+- **Resolved**: —
+- **Unit**: U17 (A.U12.17's tests stage in U12 and hold under U17's bound, `FramingCOBS(303)` passing either rule).
+- **Depends**: M.SRC_CORE.122.
+- **Blast carried by**: SPEC G.2 aliasing sentence → A.U12.17 (SPEC); the driver/comm halves → M.TEST_UNIT.153-.177.
+- **Kind**: test
+
+## tests/test_generated_boot_entry.py (new)
+
+### M.TEST_UNIT.269 Every generated boot entry executes at L1
+- **From**: A.U24.55 (1) (the L1 half; (2) is `tests_scripts/test_digital_twin_generated_boot.py`'s, TSC).
+- **Site**: new `tests/test_generated_boot_entry.py`.
+- **Change**: per derived device (the device list from `tests/_generated_tree.py`, `require_fresh()` first): read
+  `build/generated_src/sensortask_<device>_main.py` (M.GEN.019's name) and `exec()` it in a fresh namespace from the
+  test's synchronous scope, with `sys.modules["sensortask_<device>"]` a stub module whose `async def main(*, watchdog,
+  **_kw)` records the watchdog and `gc.threshold()` at its call, and `asyncio.new_event_loop` wrapped from outside to
+  record its call; `sys.path`, `sys.modules` and `asyncio.new_event_loop` restored in `finally`. Case 1: the stub saw a
+  `machine.WDT` whose timeout is 8000 (read from `src_const("buildgen/codegen.py", "_WDT_TIMEOUT_MS")`, not a copy) and
+  threshold 32768, `micropython.alloc_emergency_exception_buf` was reached (the entry ran past it), and
+  `new_event_loop` ran in the `finally`. Case 2: the stub's `main()` raises `RuntimeError("stub")` — it propagates out of
+  `exec()` and `new_event_loop` still ran. The no-autostart entry (`…_main_noautostart.py`): executing it prints the
+  manual start line naming `main(watchdog=WDT(timeout=8000))` (`tests/_recording_print.py`) and never calls `main()`.
+  `gc.threshold` is restored by the after-each hook (A.U24.07). Module docstring ≤ 3 lines naming the rule (G8/R03:
+  every generated module and its boot entry is executed by at least one tier).
+- **Resolved**: A.U24.55 names the file `build/generated_src/<device>_boot.py` (A.U24.54); M.GEN.019 settles the name
+  `sensortask_<device>_main.py` (M_GEN gap 1) — the test reads that name. A.U24.55 covers the autostart entry; the
+  no-autostart entry M.GEN.019 also emits is executed here too so both entries meet G8/R03 (agent decision D-T26).
+- **Unit**: U24.
+- **Depends**: M.GEN.001, M.GEN.019; M.TEST_HELP.044, .046, .050; A.U24.54 (the generated tree, SCR).
+- **Blast carried by**: SPEC L.5 "the boot entry is executed at L1" → A.U24.55 (SPEC); twin half → A.U24.55 (2) (TSC).
+- **Kind**: test
+
+## tests/test_math_helpers.py
+
+### M.TEST_UNIT.270 Wet bulb: the cold-dry corner refused; edge inputs against hand-worked values
+- **From**: A.U12.06 (`:49-51` corrected; new corner L1s; `:25-68` hold), A.U24.39 (`:49` (rewritten by A.U12.06),
+  `:118`, `:183`, `:328`, `:493`, `:541` compared with hand-worked references; `:236`/`:287` go with the helpers).
+- **Site**: `tests/test_math_helpers.py:49-51`, `:118-120`, `:183-185`, `:328-330`, `:493-495`, `:541-543`; new test after
+  `:68`.
+- **Change**: `:49` asserts `(-20.0, 75.0)`, `(10.0, 5.0)`, `(50.0, 5.0)`, `(50.0, 99.0)` accepted (the corner line's
+  end points and the far edge; Stull 2011 Fig. 3). New `test_wet_bulb_is_refused_in_the_cold_dry_corner`: `(-10.0,
+  20.0)`, `(-20.0, 74.9)`, `(5.0, 15.0)` → `None`, `(5.0, 20.0)` accepted, and the paper's worked example `(20.0, 50.0)`
+  → 13.699 ± 0.001. Edge inputs with the arithmetic in a ≤ 3-line comment each: `dew_point(50.0, 100.0)` → 50.0 (RH 100 %
+  makes the Magnus log term 0) and `dew_point(-40.0, 0.1)` → −88.357 (Sonntag ice branch 22.46/272.62, ln 0.001);
+  `pressure_at_height(300.0, -9000.0, -40.0)` → 1121.6 hPa and `(1250.0, 9000.0, 85.0)` → 529.76 hPa (barometric
+  formula with the inlined g, M, R); `rgb_to_hsb(0, 0, 0) == (0.0, 0.0, 0.0)` and `(1, 1, 1) == (0.0, 0.0, 1.0)` (HSB
+  hexcone: no chroma, brightness the max); `chromaticity_xy(1e-12, 0, 0)` and `(1e9, 0, 0)` → `(1.0, 0.0)` (x = X/(X+Y+Z));
+  `cct_mccamy(0.0, 0.0)` → 2021.3 K (n = −0.332/0.1858), each at the neighbouring tests' tolerance.
+- **Resolved**: —
+- **Unit**: U12 (stage U24 references).
+- **Depends**: M.SRC_CORE.126.
+- **Blast carried by**: SCD30 `WetBulb` in the corner → A.U12.06 (SRC_SENS, behaviour only).
+- **Kind**: test
+
+### M.TEST_UNIT.271 `altitude_baro` tests renamed; humidity-conversion tests go
+- **From**: A.U12.08 (`:139-201` banner and ten tests), A.U12.09 (`:204-299` go).
+- **Site**: `tests/test_math_helpers.py:138-299`.
+- **Change**: banner `pressure_at_height`; every `mh.altitude_baro(` → `mh.pressure_at_height(` and `test_altitude_baro_*`
+  → `test_pressure_at_height_*` (mechanical). The `abs_humidity`/`rel_humidity` section (`:204-299`) is deleted with the
+  functions (no product caller; AC_NOTES 8).
+- **Resolved**: —
+- **Unit**: U12.
+- **Depends**: M.SRC_CORE.127, .128.
+- **Blast carried by**: `tests/test_asy_bmp3xx_driver.py:1388` comment → M.TEST_UNIT.007-.024 (bmp section, A.U12.08).
+- **Kind**: test
+
+### M.TEST_UNIT.272 McCamy against the Planckian locus; the span comment
+- **From**: A.U12.07 (new L1; `:526-549` hold; `:535-536` comment), A.U28.27 (`:419` test name `…_sRGB_…` → `…_srgb_…`).
+- **Site**: `tests/test_math_helpers.py:419`, `:534-539`; new test after `:549`.
+- **Change**: `:535-536` → "# … outside the helper's output span (2000-12500 K) must return None, never a clamped
+  2000.0/12500.0 …"; `:419` → `test_rgb_to_xyz_pure_red_matches_the_srgb_matrix_column`. New
+  `test_cct_mccamy_tracks_the_planckian_locus_within_its_stated_error` with A.U12.07's six (x, y, T, bound) points, the
+  `(0.52668, 0.4133)` → `None` and `(0.26858, 0.27355)` → ≈ 12463 K cases, comment "# Oracle: colour-science 0.4.7
+  blackbody spectra against the CIE 1931 2-degree CMFs (agent, 2026-09-29) - / # not this port's own output." (2 lines).
+- **Resolved**: —
+- **Unit**: U12 (stage U28 name).
+- **Depends**: M.SRC_CORE.125.
+- **Blast carried by**: SPEC M.1.3 error sentence → A.U12.07 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.273 Every residual catch reached through a stand-in `math`
+- **From**: A.U35.42 (1) (one test per function with a residual catch).
+- **Site**: new tests at the end of `tests/test_math_helpers.py`.
+- **Change**: `test_residual_math_errors_return_none` — for `wet_bulb_temperature`, `dew_point`, `pressure_at_height`
+  (the three catches left, M.SRC_CORE.130): `mh.math` replaced by a stand-in whose `log`/`exp`/`atan`/`sqrt` raise
+  `ValueError("stand-in domain error")`, then `OverflowError` (an `ArithmeticError`); each call with an in-domain
+  argument returns `None`; the real `math` restored in `finally`.
+- **Resolved**: A.U35.42 lists five catches; A.U12.09 removes two functions first, so three remain (M.SRC_CORE.130).
+- **Unit**: U35.
+- **Depends**: M.SRC_CORE.130.
+- **Blast carried by**: SPEC E.5.1 row → A.U35.41 (SPEC).
+- **Kind**: test
+
+## tests/test_neopixel_wifi_integration.py
+
+### M.TEST_UNIT.274 A real NeopixelDriver behind WifiService, driven by condition, not sleeps
+- **From**: A.U9.10 (a) (the three sleeps → a condition wait; `:70-88` goes with A.U5.07), A.U8C.35 (`:53, :56, :59, :83`
+  tags), A.U17.27 (`:45, :74` construct `NeopixelDriver(0)`, values set after), A.U5.07 (`ext_led` only at
+  construction; `set_ext_led()` gone), A.U18.40 + A.U5.09 (`:46, :75` the `WifiConfig`, no `led_pin`), A.U10.44
+  (`start_asy_neopixel_led_overl` → `start_asy_overlay`), A.U10.38 (`AsyConnTime` → `WifiService`), A.U10.35/GAP-5
+  (`pixel.pixel` → `pixel._pixel`), A.U22.04 (`:18`, `:23` typing), A.U24.08 (`:36` `_cancel`, `run`).
+- **Site**: `tests/test_neopixel_wifi_integration.py:1-94`.
+- **Change**: docstring line 1 names `asy_wifi_service.py`'s `ext_led=` and `WifiService` (≤ 3 lines). Imports `from
+  _async_harness import cancel, run`, `from _driven_time import DrivenTime`, `import asy_neopixel_driver`, `from
+  asy_wifi_service import WifiConfig, WifiService`; `TYPE_CHECKING` keeps nothing it does not use. The test builds
+  `pixel = NeopixelDriver(0)`; `pixel._neopixel_freq = 100`; `pixel._frame_ms = 10` (the product's own state, set from
+  outside as M.TEST_UNIT.078 does), `run(pixel.setup())`, and `conn = WifiService(WifiConfig("SensorNode",
+  "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())`, `run(conn.setup())`. Inside `with DrivenTime() as
+  clock: clock.install(asy_neopixel_driver)` it starts `pixel.start_asy_overlay()`, calls `set_wifi_led(status=True)`,
+  then each of `_led_on()`, `_led_off()`, `_led_toggle()` is followed by `await clock.run_until(lambda:
+  pixel._pixel.writes[-1][0] == <expected>, <one ramp bound>)` instead of `asyncio.sleep(0.05)`; `cancel(task)` at the
+  end; the assertions `(50, 50, 50)`, `(0, 0, 0)`, `(50, 50, 50)` hold (`:65` default overlay brightness holds). The
+  `set_ext_led()` test (`:70-88`) goes (guard: `ext_led` reaches `WifiService` only at construction, pinned by
+  `tests_scripts/test_buildgen_generate.py`'s conn line, A.U5.07).
+- **Resolved**: A.U8C.35's `l1.asy_neopixel_driver_overlay_settle_s` tags vs A.U9.10 (a): the sleeps they tag are
+  replaced by a condition wait and `:83` leaves with its test — no tag is written, the row loses these sites (as
+  M.TEST_UNIT.078).
+- **Unit**: U9 (stages U5, U10, U17, U18, U22, U24; driven time U35).
+- **Depends**: M.SRC_SENS.021, .023; M.SRC_NET.078; M.TEST_HELP.043, .065.
+- **Blast carried by**: Part N row → A.U8C.35/A.U35.13 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.275 New seams: NeopixelDriver as an error source; its empty timer list
+- **From**: A.U9.10 (b), (c).
+- **Site**: new tests in `tests/test_neopixel_wifi_integration.py`.
+- **Change**: `test_a_neopixel_driver_is_an_error_source_of_the_webserver` — a real `NeopixelDriver` in a real
+  `WebserverService`'s `error_sources`: after one logged entry through `pixel.pr`, `GET /status`'s `errcount` carries
+  `NEOPIXEL` with it; `PUT /status {"ResetErrors": true}` answers "Valid" and clears it.
+  `test_the_drivers_empty_timer_list_reaches_a_generated_device` — one device built through
+  `tests/_sensortask_scenarios.py`'s `build()` collects `NeopixelDriver.get_timer_starters()`'s empty list in
+  `_collect_timer_starters()` without error.
+- **Resolved**: —
+- **Unit**: U9.
+- **Depends**: M.SRC_NET.123 (`ResetErrors`); TEST_HELP `_sensortask_scenarios.build()`.
+- **Blast carried by**: SPEC C.14 seam-proof line → A.U9.10 (SPEC).
+- **Kind**: test
+
+## tests/test_notification_neopixel_integration.py
+
+### M.TEST_UNIT.276 Construction-time signals, value references, driven ramps
+- **From**: A.U10.37/A.U10.38 (`NotificationCoordinator` → `NotificationService`), A.U5.06 (7 sites: signals at
+  construction, no `register()`/`finalize()`), A.U5.11 (`:86, :106, :109, :137` `NotificationSignal(…, ValueRef(…), …)`),
+  A.U10.10 (`notify.cfgmgr.setup()` → `notify.setup()`; `pixel.setup()`), A.U10.40 (`Interv` → `FlashInterval`),
+  A.U17.27 (`:62` `NeopixelDriver(0)`, values set after), A.U10.44 (starter names), A.U35.13 (`:94, :120, :145, :147`
+  under `DrivenTime`), A.U8C.36 (tags on those four), A.U8C.12/.37/.38/.39 (read: shared IDs sited here), A.U24.49
+  (`_FakeTime` → `tests/_fake_time.FakeTime`), A.U24.08 (`run`, `:73` `_cancel_all` → `cancel`), A.U22.04 (`:20`, `:25`
+  typing), A.U36.513 (`:2` docstring), A.U10.35/GAP-5 (`pixel.pixel` → `pixel._pixel`).
+- **Site**: `tests/test_notification_neopixel_integration.py:1-130`.
+- **Change**: docstring line 2 "… - the shape every generated build_system() wires (buildgen/codegen.py)." (3 lines in
+  all). Imports `NotificationService, NotificationSignal`, `ValueRef` from `asy_base_classes`, `FakeTime` from
+  `_fake_time`, `run`/`cancel` from `_async_harness`, `DrivenTime`, `asy_neopixel_driver`, `asy_notification_service`.
+  `_FakeSource` keeps its shape (an object carrying one named attribute); each signal is `NotificationSignal(name,
+  ValueRef(source, name), schema, colour)`. `make_pair(signals)` → `_make_pair(signals)`: `pixel = NeopixelDriver(0)`,
+  `pixel._neopixel_freq = 100`, `pixel._frame_ms = 10`, `notify = NotificationService(pixel.request_signal,
+  _local_time, signals, cfg_path=…)`, both `setup()` run. Scenarios set `{"FlashInterval": 3600.0, "FlashDur": 0.5}` and
+  run inside `with DrivenTime() as clock: clock.install(asy_neopixel_driver, asy_notification_service)`, each wait an
+  `await clock.advance(<ms>)` sized by the product's own durations (one triggered cycle `2 × FlashDur`; two cycles
+  twice that), never a margin; `_start_all()` keeps its one `sleep(0)` with the M.TEST_UNIT.078 comment.
+- **Resolved**: A.U8C.36's tags vs A.U35.13: the four literals become the product's own durations under driven time, so
+  no tag is written and the rows lose these sites (as M.TEST_UNIT.082).
+- **Unit**: U35 (stages U5, U10, U17, U22, U24, U36 docstring).
+- **Depends**: M.SRC_SENS.021, .023, .030, .033; M.TEST_HELP.043, .054, .065.
+- **Blast carried by**: Part N rows → A.U35.13 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.277 A busy LED refuses at once; local-time and default-sink seams
+- **From**: A.U9.02 (`:133-154` flips), A.U9.10 (d), (e).
+- **Site**: `tests/test_notification_neopixel_integration.py:133-154`; new tests.
+- **Change**: `:133` → `test_led_signal_during_a_notification_ramp_is_refused_at_once`: mid-ramp (`clock.advance(100)`),
+  `pixel.led_signal(11, 22, 33, 0.1)` returns `False` with no `await`; after the ramp's own duration `(11, 22, 33)` was
+  never written. New `test_the_window_check_reads_a_real_ntp_clock` — a real `NTPClient`, marked synced, its `cettime`
+  as `local_time_callback`; one cycle with a window around the returned `hour`/`minute` flashes, one with a window
+  outside it does not. New `test_a_service_on_the_default_sink_completes_a_cycle_silently` — `NotificationService(
+  _DefaultSignalSink().request_signal, …)` completes a triggered cycle, sets `Triggered`, logs nothing and writes no
+  frame (no pixel exists).
+- **Resolved**: — (the HEAD test pinned the queueing that A.U9.02 retires; guard: the refusal assertion itself and
+  M.TEST_UNIT.080's unit cases, OR111.a (2))
+- **Unit**: U9.
+- **Depends**: M.SRC_SENS.021, .022, .036 (sink); M.SRC_NET NTP client (`cettime`).
+- **Blast carried by**: SPEC C.14 seam line → A.U9.10 (SPEC).
 - **Kind**: test
