@@ -774,15 +774,27 @@ never flashed (A.C.01 (5)).
   I2C id/scl/sda/frequency/timeout, the key absent when the TOML sets none; SPI id/sck/mosi/miso; UART id/tx/rx/baudrate/
   rxbuf/txbuf/poll_wait_ms/poll_idle_ms and `crc`, `"none"` when absent), `instances` (per instance driver, bus,
   address, `irq_pin`/`cs_pin`/`pin`), `addresses`, `fram_max_size`, `fram_wired`, `fram_backed_loggers`, and the driver
-  constants a script copies (e.g. ISL29125 `_MODE_RGB`) read from `src/` by A.U20.28's `ast` reader (one reader, reused).
-  Per-run values (bounds, `SEAM`, `NONCE`, `CRC_MODE`, `COMMAND`, the FRAM dump size) are `extras` of
-  `render_device_script()`, never facts. Header ≤ 3 lines; no literal pin or address anywhere in the file.
+  constants a script copies, nested per chip (`isl29125`: `{"mode_rgb": …}`, read as `BENCH["isl29125"]["mode_rgb"]`),
+  read from `src/` by A.U20.28's `ast` reader (one reader, reused). Gap pass (M_HW_DEV GAP-D6), the further build facts
+  the device scripts read, each derived from its single source and never copied: `system_schema` (SYSTEM's `_VAL_*`
+  schema, `buildgen.schema_ast` over `src/asy_system_service.py`, AD-4 there), `scd30_schema` (the `MeasInterval`/
+  `ForceCalRef` ranges, same reader over `src/asy_scd30_driver.py`), `float_fields` (name → (min, max) of every float
+  `_VAL_*` field of the modules the device wires, same reader), `resync_bound_ms` (from `src/asy_uart_comm.py`'s
+  `const()` timings by `ast`, the formula M.HW_DEV.045 names), `depth` (the rp2 scheduler queue depth,
+  `MICROPY_SCHEDULER_DEPTH` as the pinned checkout under `$PICO_TOOLCHAIN_DIR` defines it — `ports/rp2/mpconfigport.h`,
+  else `py/mpconfig.h` — a missing checkout raising with "run `uv run toolchain/setup_toolchain.py setup` first").
+  Per-run values are `extras` of `render_device_script()`, never facts, each passed by its caller from one named
+  source: `dump_size` (`save_fram_raw()`, the bench build's allocation size), `standard_debug_level` (`standard_state`'s
+  `_STANDARD_DEBUG_LEVEL`), `bounds` (`plausibility_bounds.py`), `worst_case_allocation` (`heap_bounds.py`), and the
+  calling test's own parameters `CRC_MODE`, `SEAM`, `NONCE`, `COMMAND`, `STATE`, `PHASE`, `ARM`, `part`, `mode`, `files`.
+  Header ≤ 3 lines; no literal pin or address anywhere in the file.
 - **Resolved**: —
 - **Unit**: U26.
 - **Depends**: A.U20.28 (address reader), A.U20.07/A.U20.11 (`expected_facts()` keys), A.S0930.01 (`crc` key).
-- **Blast carried by**: `device_scripts/bench_facts.pyi` and every script's `BENCH` reads → A.U26.44 (HW_DEV); the guard
-  `tests_scripts/test_device_script_bench_facts.py` (builds for every derived device) → A.U26.44 (TSC); the twin plan
-  agreeing with it → A.U20.28's contract test (GEN/TSC).
+- **Blast carried by**: `device_scripts/bench_facts.pyi` and every script's `BENCH` reads → A.U26.44 (HW_DEV,
+  M.HW_DEV.001: its keys are exactly these facts plus these extras); the guard
+  `tests_scripts/test_device_script_bench_facts.py` (builds for every derived device) and the `.pyi`-keys check → A.U26.44,
+  GAP-D1 (TSC); the twin plan agreeing with it → A.U20.28's contract test (GEN/TSC).
 - **Kind**: code
 
 ### M.HW_BENCH.042 `kick_then_reset.py`: the ad-hoc reset never skips the kick
