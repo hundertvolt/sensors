@@ -1272,3 +1272,227 @@ changes cite.
 - **Depends**: M.HW_DEV.001-.005.
 - **Blast carried by**: host assertions → M.HW_DEV.080.
 - **Kind**: test, hardware (Round: R1 [H25])
+
+## tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py
+
+### M.HW_DEV.088 BMP3xx read-vs-write concurrency gains the reset-and-re-apply rung
+- **From**: A.U15.R03 (a `reset()` + OSR/IIR re-apply concurrent with the read loop: reads in the reset window fail
+  cleanly, after it valid with the re-applied OSR), A.U15.25 (blast: unchanged), A.U26.44 (i2c0, BMP3XX address from
+  `BENCH`), A.U26.69, A.U8C.59, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py:1-70`.
+- **Change**: after the existing write-vs-read phase, a reset phase: the reader loop runs while one task calls the
+  driver's reset path (soft reset plus stored-configuration re-apply, A.U15.R03's API); facts `reset_window_failures`
+  (each a clean exception or `None`, no wrong value), `post_reset_valid`, `osr_after` (equal to the configured OSR);
+  constants per A.U8C.59; bounded records; `done()`. Volatile registers only: no wear.
+- **Resolved**: —
+- **Unit**: U26 (the rung's product behaviour lands in U15).
+- **Depends**: M.SRC_SENS (A.U15.R03), M.HW_DEV.001-.005.
+- **Blast carried by**: host assertions → M.HW_DEV.080.
+- **Kind**: test, hardware (Round: R1 [H16, H25])
+
+## tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py
+
+### M.HW_DEV.089 ISL29125 read-vs-write concurrency, constants named
+- **From**: A.U15.S01/A.U15.R04 (blasts: unchanged, must pass), A.U26.44, A.U26.69, A.U8C.80, AD-1 (`:53`), A.U26.68.
+- **Site**: `tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py:1-90`.
+- **Change**: bus and mode from `BENCH`; `_READ_ITERATIONS`, `_WRITE_ITERATIONS`, `_READ_STEP_MS`, `_WRITE_STEP_MS` with
+  their rows; the `:53` settle kept as `_FIRST_CONVERSION_MS = 120` (`l3.isl29125_same_device_rw_concurrency_first_
+  conversion_ms`, AD-1); facts `reads`, `torn_reads`, `writes_ok`, `errors`; `done()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001-.005.
+- **Blast carried by**: host assertions → M.HW_DEV.080.
+- **Kind**: test, hardware (Round: R1 [H25])
+
+## tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py
+
+### M.HW_DEV.090 The live sweep: addresses from `BENCH`, a recovery step, heater-off, scan facts
+- **From**: A.U26.44 (`KNOWN_ADDRESSES`/`_BUSES` `:23, :30` → `BENCH["addresses"]`/`BENCH["bus"]`), A.U13.R02 (4) (a step
+  interleaving `recover()` with every discovered device's reads on a healthy bus), A.U15.R02 (the SGP40 command sweep
+  adds 0x3615 and a sibling read after it), A.U15.28 (`:103, 110, 114` construct without `address=`), A.U28.28 (2)
+  (the six `E731` lambdas become `def`s; their `noqa` go), A.U26.46 (the script prints `ADDRESSES bus=<id> <list>` →
+  fact `addresses`), A.U15.13/A.U30.07/A.U12.18/A.U35.50 (blasts: unchanged, must pass), A.U8C.64, A.U8C2.28, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py:1-180`.
+- **Change**: buses and the address table from `BENCH`; drivers built without `address=` for the three hard-wired chips;
+  the lambdas → named `async def`s; new step after the self-hazard branch: per bus, `recover()` interleaved with each
+  discovered device's reads (status 0, reads unaffected); the SGP40 command list gains 0x3615 followed by one sibling
+  read; facts `addresses` (per bus), `unknown_addresses`, `reserved_hits`, `self_hazard`, `recover_status`,
+  `recover_sibling_errors`, `heater_off_ok`; constants `_BROADCAST_STEP_S`, `_RUN_BOUND_S`, `_SELF_READS`,
+  `_BROADCASTS`; `arm()`; `done()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.SRC_SENS (A.U13.R02 `recover()`, A.U15.R02, A.U15.28), M.HW_DEV.001-.004.
+- **Blast carried by**: README "Bench facts" table → A.U26.46 (HW_BENCH); central `E731`/`noqa` → A.U28.28 (TOOL); host
+  assertions → M.HW_DEV.080.
+- **Kind**: test, hardware (Round: R1 [H25])
+
+## tests_hardware/device_scripts/i2c_held_sda_recovery.py (new)
+
+### M.HW_DEV.091 A held SDA made on silicon, cleared by the bus rung; the boot-time clear
+- **From**: A.U13.R02 (4) (the script), A.U26.34 (4) (second case: the boot-time bus clear before I2C construction),
+  A.U26.44, A.U26.68.
+- **Site**: new `tests_hardware/device_scripts/i2c_held_sda_recovery.py`.
+- **Change**: header ≤ 3 lines. Case 1: with the wrapper's bus lock held, bit-bang START, a discovered device's read
+  address, the ACK clock, and stop SCL low after the ACK of a register whose first data bit is 0 (picked from the
+  discovered set, recorded), so the slave keeps SDA low; a transfer then fails (`ETIMEDOUT`/`EIO`); `clear()` returns
+  status 1 without 2; every device answers its identification and one valid read; the recovery's duration is a fact.
+  Case 2: SDA held the same way, then the boot-time clear routine `build_system()` runs before constructing I2C is
+  called; SDA reads high, the controller constructs and every device answers. Pins from `BENCH`; every wait fed;
+  facts per case; `done()`. No write to any device register.
+- **Resolved**: A.U26.34 adds case 2 to the script A.U13.R02 creates (A-C merge, as A.U26.34 states).
+- **Unit**: U26 (U13's script, completed with U14's boot-clear function).
+- **Depends**: M.SRC_SENS (A.U13.R02 `clear()`), A.U14.17 (boot clear), M.HW_DEV.001-.004.
+- **Blast carried by**: flash test → M.HW_DEV.080 (5); README rungs table → A.U26.34 (HW_BENCH); BACKLOG hardware row
+  (SCL/SDA behaviour on silicon) → A.U13.R02 (DOCS); `_FLASH_FAULT_SCRIPTS` entry → A.U26.62 (TSC).
+- **Kind**: test, hardware (Round: R1 [H16])
+
+## tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py (new)
+
+### M.HW_DEV.092 A lone BMP3xx keeps its state through general calls
+- **From**: A.U35.21 (1)(4), A.U26.44, A.U26.68, M.HW_DEV.004 (the script's `WDT(timeout=8000)` → `arm()`).
+- **Site**: new `tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py`.
+- **Change**: as A.U35.21 (1): i2c0 and the BMP3XX address from `BENCH`; distinctive volatile settings; snapshot, chip
+  ID and PWR_CTRL bits before; a reader loop (range-checked against the datasheet operating range) concurrent with a
+  broadcaster issuing `writeto(0x00, b"\x06")` through a lock-taking `I2CDevice(i2c0, 0x00)`, NAKs counted, fed between
+  rounds; snapshot/ID/mode after; facts; schema defaults restored before exit; `done()`.
+- **Resolved**: A.U35.21 writes `machine.WDT(timeout=8000)` "as every device script does"; the shared helper is that
+  form now.
+- **Unit**: U35 (B2's last hardware-facing pass), written in U26's form.
+- **Depends**: M.HW_DEV.001-.004.
+- **Blast carried by**: mock test `tests/test_bus_hazard_multi_device.py:271-306` deleted → A.U35.21 (TEST_UNIT); E.6.6
+  row (no L4) → A.U35.21 (SPEC); flash test → M.HW_DEV.080.
+- **Kind**: test, hardware (Round: R1 [H29])
+
+## tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py (new)
+
+### M.HW_DEV.093 Three concurrent SGP40 measurements each get their own answer
+- **From**: A.U12.18 (L3 script and flash leg), A.U26.44, A.U26.68.
+- **Site**: new `tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py`.
+- **Change**: SGP40 on its `BENCH` bus; three concurrent `measure_raw()` calls with distinct T/RH; facts `ticks`
+  (each a value in range, none `None`), `errors`; `done()`. Header states that silicon proves serialisation only (the
+  chip CRC-checks what the overwriting caller also wrote), the payload being L1/L2's.
+- **Resolved**: —
+- **Unit**: U26 (A.U12.18 is U12; its L3 leg written in the fact form).
+- **Depends**: M.HW_DEV.001/.002.
+- **Blast carried by**: flash test → M.HW_DEV.080; SPEC C.8 sentence → A.U12.18 (SPEC).
+- **Kind**: test, hardware (Round: R1 [H25])
+
+## tests_hardware/flash/test_system_commands.py (new)
+
+### M.HW_DEV.095 The system commands on the bench board over USB
+- **From**: A.S0930.28 (1)-(4), (6)-(8), A.S0930.39 (2)-(5), A.S0930.19 (blast: `resetconfig` counts as persisting),
+  A.S0930.33 (blast: the starve script holds), A.U26.22, A.U26.26, A.U26.47 (soak markers), A.U26.68, A.U26.51 (its
+  `COVERS_TWIN_SCENARIOS`: the twin's command sequence runs, A.S0930.27), A.U31.01 (blast: the feed-gap figures are
+  F.3 rows' measurements).
+- **Site**: new `tests_hardware/flash/test_system_commands.py`.
+- **Change**: header ≤ 3 lines; module constants for every bound (the 7.5-10.0 s hang window, the < 100 ms erase feed
+  gap, `_TASK_CHECK_TIME + _RESET_DELAY` read from `src/asy_system_service.py` by `ast`). Tests, each saving FRAM
+  evidence first where the command or a reset can touch it (`save_fram_raw(board, <name>)`): (1)
+  `test_config_reset_deletes_every_config_file_and_reboots` `@pytest.mark.persistence_write` — production `config_*.cfg`
+  names and bytes read before and after (read-only exec) unchanged, the scratch directory empty after; (2)
+  `test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty` — after the production boot `fram_raw_dump.py`: every
+  byte outside the build's chunk layout 0x00, every chunk an empty ring or blank; (3) refusals — near-miss words
+  "Invalid", no reset; `erasefram` with the chip write-protected → "Failed" and no reset for 10 s; (4) states — the erase
+  and the reboot with a FRAM write and a bus session in flight, `mempause` active first; (6) the erase's feed gaps
+  (< 100 ms inside S5, every gap < 8,000 ms) recorded through `result_note`;
+  `test_a_hung_shutdown_step_ends_in_a_watchdog_reset` `@pytest.mark.persistence_write` (scratch writes) — reset
+  7.5-10.0 s after the `HANG` line; (7) `test_a_reset_mid_erase_leaves_every_chunk_old_or_blank` — `hard_reset()` at
+  0.2/1.0/2.0 s after `ERASE START`, raw dump: seeded ring or blank only; `test_bootloader_command_shuts_down_then_
+  enters_bootsel` — step lines in order, serial loss, `sudo picotool reboot` exits 0, production boot serves; the hang
+  case for `reboot`; (8) each test reads the output through `harness.MEMORY_ERROR_MARKERS`. The reboot no-tear test
+  lives in `flash/test_bus_concurrency.py` (M.HW_DEV.080).
+- **Resolved**: A.S0930.28's "prints the largest gap" and the step lines become facts/banners (AD-3 for the lines read
+  before a reset); markers per A.U26.74's names (`--allow-persistence-write`).
+- **Unit**: U26 (SUPP_owner_0930 with U26).
+- **Depends**: M.SRC_CORE (A.S0930.09-.17 command sequence), M.HW_DEV.096-.101, M.HW_BENCH.012/.014.
+- **Blast carried by**: persistence guard and marker completeness → A.U26.06/A.S0930.19 (TSC); `test_bench_restores_
+  serving.py` covers the module → A.S0930.28 (TSC); README "System commands" subsection → A.S0930.28/.39 (HW_BENCH).
+- **Kind**: test, hardware (Round: R1 default; R3 for the two `persistence_write` tests [H73])
+
+## tests_hardware/device_scripts/system_command_config_reset.py (new)
+
+### M.HW_DEV.096 `resetconfig` through the generated callback over a scratch store set
+- **From**: A.S0930.28 (1)(4), A.U26.10/A.U26.18 (scratch path removed on every path), A.U26.44, A.U26.68.
+- **Site**: new `tests_hardware/device_scripts/system_command_config_reset.py`.
+- **Change**: builds the generated bench system over `_SCRATCH_CFG_PATH` with `watchdog=arm()` (M.HW_DEV.009), writes one
+  changed value per store (each scratch file exists), reports the scratch listing, then calls the generated
+  `_system_cmd_callback("resetconfig")` and lets the product reset end the run (`run_isolated_expect_reset()`); a
+  pre-reset failure removes the scratch directory and reports; `STATE` extras select the in-flight variants of (4).
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.009, M.SRC_CORE (A.S0930.11 callback).
+- **Blast carried by**: `_PERSISTING_DEVICE_CALLS`/`build_system(` scratch rule (scratch writes are persisting; runner
+  marked) → A.U26.06 (TSC); the post-reset read-only listing → M.HW_DEV.095.
+- **Kind**: test, hardware (Round: R3 [H73])
+
+## tests_hardware/device_scripts/system_command_fram_erase.py (new)
+
+### M.HW_DEV.097 `erasefram` with a recording watchdog proxy
+- **From**: A.S0930.28 (2)(4)(6)(7), A.U26.44, A.U26.68.
+- **Site**: new `tests_hardware/device_scripts/system_command_fram_erase.py`.
+- **Change**: builds the generated system over the scratch path; wraps `sysfunct.watchdog` from outside with a proxy that
+  forwards `feed()` and records `ticks_ms()`; optional in-flight loads (a logger-write loop, an I2C read loop) and
+  `mempause` by `STATE` extra; prints `ERASE START` before the callback, then the facts streamed before the reset
+  (largest feed gap, erase duration) — read from the captured stream (AD-3).
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.009.
+- **Blast carried by**: M.HW_DEV.095 (2)(6)(7); M.HW_DEV.080's erase-race test.
+- **Kind**: test, hardware (Round: R1 [H72, H73])
+
+## tests_hardware/device_scripts/system_command_hang.py (new)
+
+### M.HW_DEV.098 A shutdown step that never returns ends in the watchdog reset
+- **From**: A.S0930.28 (6), A.S0930.39 (3), A.U26.44, A.U26.68.
+- **Site**: new `tests_hardware/device_scripts/system_command_hang.py`.
+- **Change**: builds the generated system over the scratch path; replaces, from outside, one store's `delete_file`
+  (`COMMAND="resetconfig"`) or `flush_pending` (`COMMAND="reboot"`) with a never-ending coroutine; issues the command;
+  prints `HANG <ticks>` after the last own feed; the host times the serial loss.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.009.
+- **Blast carried by**: M.HW_DEV.095; `_FLASH_FAULT_SCRIPTS` → A.U26.62 (TSC).
+- **Kind**: test, hardware (Round: R3 [H73])
+
+## tests_hardware/device_scripts/system_command_reboot.py (new)
+
+### M.HW_DEV.099 `reboot`/`bootloader` with the shutdown steps visible
+- **From**: A.S0930.39, A.U25.69 (`debug` keyword kept), A.U26.44, A.U26.68.
+- **Site**: new `tests_hardware/device_scripts/system_command_reboot.py`.
+- **Change**: `COMMAND` from `BENCH`; builds the generated system over the scratch path with `debug=4`, starts
+  `start_tasks(...)` and `supervise_tasks()` as its task, a logger-write loop and an I2C read loop, wraps the watchdog
+  with the recording proxy, calls `_system_cmd_callback(COMMAND)`; each written log entry is reported before the reset
+  so the host can check each ring's newest entry after the production boot.
+- **Resolved**: A.S0930.39 shares the proxy with A.S0930.28 (6): one shape, written in each script (an `_shared/
+  watchdog_proxy.py` include if the clone check flags the two copies, A.U26.78 (3)).
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.009.
+- **Blast carried by**: M.HW_DEV.080 (no-tear test), M.HW_DEV.095.
+- **Kind**: test, hardware (Round: R1 [H72])
+
+## tests_hardware/device_scripts/config_files_dump.py (new)
+
+### M.HW_DEV.100 Read-only dump of every config file
+- **From**: A.S0930.29 (1).
+- **Site**: new `tests_hardware/device_scripts/config_files_dump.py`.
+- **Change**: lists `config_*.cfg` and prints each verbatim as one fact (`files`: name → base64 text); opens read-only,
+  writes nothing; `done()`.
+- **Resolved**: the dump carries the real WiFi credential into the run's evidence directory (Adherence AF-4).
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001/.002.
+- **Blast carried by**: `bench/test_system_commands.py` (save through `evidence.save_text`) → A.S0930.29 (HW_BENCH).
+- **Kind**: test, hardware (Round: R3 bench [H73])
+
+## tests_hardware/device_scripts/config_files_restore.py (new)
+
+### M.HW_DEV.101 Write the saved config files back verbatim
+- **From**: A.S0930.29 (1), A.U26.06 (its writes are the owning test's).
+- **Site**: new `tests_hardware/device_scripts/config_files_restore.py`.
+- **Change**: takes `files` as a render extra and writes each verbatim (one flash write per file, owned by the gated
+  bench test); reports `written`; `done()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.100.
+- **Blast carried by**: the persistence guard (a raw `open(...,"w")` in a device script is persisting: add `write`-mode
+  `open` to `_PERSISTING_DEVICE_CALLS`'s detection) → GAP-D8 (TSC).
+- **Kind**: test, hardware (Round: R3 bench [H73])

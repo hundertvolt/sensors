@@ -3296,3 +3296,457 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   `digital_twin/typecheck.ini` glob — no edit (M.TWIN.075); README "Running the twin's own tests" (M.TWIN.063); CLAUDE.md
   bullet → A.U36.546 (DOCS)
 - **Kind**: test
+
+## Gaps for other clusters
+
+- **SCR — `scripts/_digital_twin_scenarios.py` (A.U25.46 harness; also M_TEST_HELP GAP-H2)**: receives the 8 HTTP tests of
+  `tests/test_digital_twin_sensortask_integration.py` with goals and assertions (M.TWIN.144 Blast lists each carried
+  edit: A.U10.36 `:211`, A.U25.33/A.U10.40 `NTPHost`, A.U10.11/A.U2.13 `:300-320`, A.U9.09/A.U22.03/A.U19.03 `PauseTime`,
+  A.U18.01/A.U18.03/A.U25.72 DNS answer and captive redirect, A.U10.15/A.S0930.27 mempause asserting `MemPaused` true only —
+  the unpause branch is in-process, M.TWIN.104), and an equivalent of `tests/_shared_rest_roundtrip.py`'s
+  `assert_sensor_payload_not_self_wrapped` on the host side; the 9 real-website tests (M.TWIN.136) and the bus-hazard burst
+  (M.TWIN.102); reads `FAULT_PENDING` lines (`--test-fault-status-interval-ms`, M.TWIN.051) for A.U24.47's consumption
+  proof; reads `WDT_AT_FAULT <feed_count>` for A.U35.31's three `--test-watchdog-fault` cases.
+- **SCR**: `scripts/micropypath.toml` twin layout and every launch script's twin `MICROPYPATH` gain `digital_twin/unixport`
+  (M.TWIN.017/.047/.053); Run 5's SGP40 fault aimed with `sgp40:readfrom_into:3:0x260F` and its expected counts re-derived
+  (AC_NOTES 31; M.TWIN.014); the CI suite asserts `public_destinations_refused=0` per run log (A.U25.35).
+- **TEST_HELP**: `tests/_twin_devices.py` — `device_with(*drivers)` (first generated device wiring every named driver; used
+  by M.TWIN.144/.146/.150) and `devices_with_shared_bus() -> [(device, bus, occupants)]` (A.U36.015's amendment of A.U25.48
+  (1); M.TWIN.102); GAP-H3 resolved by M.TWIN.053 — `tests/_generated_module.py` imports `write_offline_ntp_config` from
+  `digital_twin/unixport/_offline_ntp_config.py` and drops its copy; `tests/_uart_comm_harness.py` keeps its path-resolved
+  `from machine import UART, LinkPoller, UARTLink` and `Pair(crc_a=, crc_b=)` — the twin hazard files build their pair
+  through it with the twin's `machine` first on the path (M.TWIN.154/.156/.158); GAP-H4: no TWIN-file change (C4 and
+  M.TWIN.108's entry file serve A.U25.47's scenario).
+- **TOOL**: `pyproject.toml` `mypy_path` += `digital_twin/unixport` (A.U18.12 `:365`); `:383` exclude goes (A.U25.40);
+  `:294`/`:310` ANN401 per-file entries go with A.U25.63; A.U28.28 (7) PERF401 for `tests/test_digital_twin_uart_link.py`.
+- **TSC**: `tests_scripts/test_twin_runner_test_flags.py` (A.U25.74) gains `--test-fault-status-interval-ms`; A.U30.16's two
+  `tests/test_digital_twin_uart_link.py` rows keep their function names (M.TWIN.158).
+- **HW_BENCH**: `tests_hardware/twin_board.py` `MICROPYPATH` gains `digital_twin/unixport` (M.TWIN.054, A.U26.05).
+- **LEAD** (no cluster owns `.gitignore`): `digital_twin/mem_backup_state.json` ignored (A.U25.32 Blast; A.U28.33).
+- **SPEC**: A.U36.517's build-chain proof names the harness; Part N rows: `l2.uart_link_collect_*` → `…_pause_*`
+  (A.U17.04), `l2.uart_link_leak_budget_bytes` → `l2.uart_link_leak_rate_bytes_per_transfer` (M.TWIN.158), the withdrawn
+  `l2.sensortask_integration_dns_query_*`/`…_override_poll_*` rows (M.TWIN.144), new `l2.clock_jump_wait_timeout_s`
+  (M.TWIN.146); E.2.1/J.7 texts (A.U36.016, A.U36.539) name files that exist as written here.
+- **DOCS**: CLAUDE.md's two-suites bullet (A.U36.546) and the four-tier UART clause (A.U17.25) name
+  `tests/test_digital_twin_uart_{comm_hazard,field_sweep}.py`.
+
+## Adherence findings (per file: rule → result; breaches fixed by M-ID or raised as Qn)
+
+- `digital_twin/_twin_common.py`, `_wall_clock.py`, `run_device_script.py`, `unixport/*` (new): 3-line cap, no audit
+  IDs (C5) → pass; imports nothing from `src/`/`tests/` where stated (G7/R02) → pass; counters saturate (OR110.a) → pass.
+- `_bmp3xx_chip.py`: G7/R03 "not datasheet-derived" label → breach (`:107` false comment) fixed, M.TWIN.010.
+- `_scd30_chip.py`: G7/R03 every modelling gap a fidelity row → breach (compensation unmodelled, no row) fixed, M.TWIN.013 /
+  M.TWIN.059; ≤ 8 parameters (G6/R40) → pass via `SCD30Nvm`.
+- `_sgp40_chip.py`, `_isl29125_chip.py`, `_fram_chip.py`, `_fault_injection.py`, `_crc8.py`: C6 citations, fresh exception
+  per raise (G7/R16/OR110.a), bounded logs → pass after M.TWIN.002/.003/.011/.012/.014.
+- `network.py`: fresh exception per raise (G7/R16, OR110.a no-growth) → breach (A.U25.27's stored instance) fixed, M.TWIN.040.
+- `neopixel.py`, `machine.py`: rp2 semantics cited and pinned (C6), bounded logs, `TEST_API` (A.U24.18) → pass;
+  bounded pollers only (CLAUDE.md hang #1) → pass.
+- `launch.py`, `run_generic_integration.py`: OR125.a — `--test-*` flags off by default and kept off the production path by
+  A.U25.74's L0 check → pass (M.TWIN.051); OR126.a (1) `main()` keywords → pass (M.TWIN.050); OR36/G7/R01 product
+  interfaces only, the runner's stated exception named → pass; no unwedge, SIGINT override stays (CLAUDE.md) → pass.
+- `README.md`: G9/R12 no audit IDs in permanent text → breach (`[src: …]` notes) fixed, M.TWIN.059; history narrative
+  (OR27.a) → removed, M.TWIN.058-074.
+- `typecheck.ini`: coded ignores only → pass (M.TWIN.075).
+- `segfault_stress_repro.py`, `unix_port_gc_unwedge.py` and its test: deleted (M.TWIN.055/.056/.162).
+- `tests/test_digital_twin_sensortask_integration.py`: G7/R19 request driving in the DUT heap → breach fixed (moved,
+  M.TWIN.144); OR36-style product poke `conn.connection_failures = 4` and the mempause unpause call → removed, M.TWIN.144;
+  `gc.collect()` props (OR91.a) → removed at U30, M.TWIN.144; G7/R24 device literal → fixed (per device).
+- `tests/test_digital_twin_uart_link.py`: G7/R22 absolute leak delta → breach fixed (rate), M.TWIN.158; in-body
+  `gc.threshold`/`gc.collect` (OR40.a/OR91.a) → removed, M.TWIN.158.
+- `tests/test_digital_twin_{sgp40,scd30,isl29125*}.py`: G7/R19 in-DUT HTTP L2 cases → settled in-process, M.TWIN.122/
+  .142/.150.
+- Every other `tests/test_digital_twin_*` file: nested `asyncio.run()` (CLAUDE.md segfault rule) → none (fixtures built
+  at synchronous scope); bounded fake pollers → pass; 3-line cap and trailer (A.U24.04) → pass after each M-ID.
+- Not applicable to this cluster: `ext/`, legacy tree, credentials, wear gates, real hardware (none touched). UART
+  protocol: no module change here; the banner rename is A.U24.67's Class B entry (DOCS).
+
+## Owner questions
+
+None — every conflict was settled by a later action, an owner row, AC_NOTES or a register rule (cited in each Resolved).
+
+## Agent decisions for the OR2.c review
+
+1. One `_twin_common.py` (BoundedLog public, `COUNTER_CAP`, `fill_buffer`, `Walk`, `StatePaths(fram, scd30, mem_backup)`,
+   `Injections`) — M.TWIN.001.
+2. `Walk` applied to all four chip fakes — M.TWIN.010-014.
+3. `timer_factory` replaces `auto_refresh`; ISL `simulate_brownout` → `power_cycle` — M.TWIN.012/.013.
+4. `SCD30Nvm` keeps the constructor ≤ 8 parameters; `nvm_writes` counts accepted commands — M.TWIN.013.
+5. `corrupt_next()` method on SCD30 and SGP40 — M.TWIN.013/.014.
+6. `fetch(timeout_s=None)` default — M.TWIN.016.
+7. Shim refuses a public destination with EINVAL through the product path; shim in `digital_twin/unixport/` — M.TWIN.017.
+8. `reset_test_state()` in the twin, registered by each test — M.TWIN.035.
+9. `_collect_chips()` shared from `launch.py` — M.TWIN.045/.049.
+10. Exit code 5 for a simulated power loss — M.TWIN.050.
+11. `--test-fault-status-interval-ms` flag (consumption channel) — M.TWIN.051.
+12. The runner answers `--help` — M.TWIN.047.
+13. G7/R19: in-DUT HTTP L2 cases run in-process through the route's own config path — M.TWIN.122/.142/.144/.150.
+14. Fidelity table drops `[src: …]` notes; WLAN `raise_on` stores type and args — M.TWIN.059/.040.
+15. Offline-NTP writer moved to `digital_twin/unixport/_offline_ntp_config.py` (GAP-H3) — M.TWIN.053.
+16. Hotspot test split: LED/bind in-process, DNS/redirect host-side; offline-boot case shares the watchdog test's
+    `main()` window — M.TWIN.144.
+17. Clock-jump L2 file created; A.U18.26 (c)/(d) stay L1 (no offline sync possible) — M.TWIN.146.
+18. Twin UART hazard files reuse `tests/_uart_comm_harness.py`'s `Pair` — M.TWIN.154/.156.
+19. Twin UART leak bound becomes a calibrated per-transfer rate (A.U24.64 gap) — M.TWIN.158.
+
+## Ledger
+
+| action ID | merged into M-ID / dropped (reason) |
+|---|---|
+| A.C.10 | M.TWIN.010, M.TWIN.012, M.TWIN.013, M.TWIN.040, M.TWIN.059 |
+| A.C.14 | M.TWIN.040 |
+| A.C.15 | M.TWIN.013, M.TWIN.059 |
+| A.C.19 | M.TWIN.012, M.TWIN.059 |
+| A.S0930.04 | M.TWIN.027, M.TWIN.049, M.TWIN.064, M.TWIN.154, M.TWIN.156, M.TWIN.158 |
+| A.S0930.12 | M.TWIN.144 |
+| A.S0930.13 | M.TWIN.144 |
+| A.S0930.17 | M.TWIN.011 |
+| A.S0930.24 | M.TWIN.031 |
+| A.S0930.27 | M.TWIN.011, M.TWIN.026, M.TWIN.031, M.TWIN.051, M.TWIN.059, M.TWIN.064, M.TWIN.066, M.TWIN.104, M.TWIN.112, M.TWIN.144 |
+| A.S0930.38 | M.TWIN.051, M.TWIN.064, M.TWIN.104, M.TWIN.110, M.TWIN.152 |
+| A.S0930.41 | M.TWIN.064 |
+| A.SDEP.07 | M.TWIN.136 |
+| A.SDEP.08 | M.TWIN.017, M.TWIN.019, M.TWIN.021, M.TWIN.024, M.TWIN.026, M.TWIN.031, M.TWIN.057, M.TWIN.058, M.TWIN.102, M.TWIN.126 |
+| A.SDEP.11 | M.TWIN.056 |
+| A.SDEP.15 | M.TWIN.016, M.TWIN.057 |
+| A.SDEP.16 | M.TWIN.017, M.TWIN.019, M.TWIN.029, M.TWIN.055, M.TWIN.057, M.TWIN.071, M.TWIN.073, M.TWIN.134, M.TWIN.144, M.TWIN.164 |
+| A.SDEP.17 | M.TWIN.016, M.TWIN.019, M.TWIN.024, M.TWIN.070 |
+| A.U0.07 | M.TWIN.010, M.TWIN.012, M.TWIN.013, M.TWIN.016, M.TWIN.020, M.TWIN.023, M.TWIN.025 |
+| A.U0.29 | M.TWIN.047, M.TWIN.062, M.TWIN.144 |
+| A.U0.31 | M.TWIN.002, M.TWIN.016, M.TWIN.044, M.TWIN.058, M.TWIN.060, M.TWIN.062, M.TWIN.068, M.TWIN.072, M.TWIN.073, M.TWIN.075 |
+| A.U0.38 | M.TWIN.022, M.TWIN.036, M.TWIN.047 |
+| A.U0.43 | M.TWIN.064 |
+| A.U0.54 | M.TWIN.052, M.TWIN.065 |
+| A.U0.59 | dropped (void by its own condition: A.U25.01 turns the paragraph into a pointer — M.TWIN.059 Resolved) |
+| A.U1.04 | M.TWIN.027 |
+| A.U1.08 | M.TWIN.027 |
+| A.U1.25 | M.TWIN.027, M.TWIN.036 |
+| A.U10.07 | M.TWIN.031, M.TWIN.144 |
+| A.U10.11 | M.TWIN.144 |
+| A.U10.12 | M.TWIN.102, M.TWIN.126, M.TWIN.144, M.TWIN.152 |
+| A.U10.15 | M.TWIN.144 |
+| A.U10.18 | M.TWIN.102 |
+| A.U10.23 | M.TWIN.144 |
+| A.U10.28 | M.TWIN.019, M.TWIN.033, M.TWIN.146 |
+| A.U10.30 | M.TWIN.047, M.TWIN.054 |
+| A.U10.36 | M.TWIN.060, M.TWIN.144 |
+| A.U10.37 | M.TWIN.003, M.TWIN.064, M.TWIN.069, M.TWIN.071, M.TWIN.075 |
+| A.U10.38 | M.TWIN.017, M.TWIN.075 |
+| A.U10.40 | M.TWIN.053, M.TWIN.064, M.TWIN.075, M.TWIN.144 |
+| A.U10.44 | M.TWIN.102, M.TWIN.144 |
+| A.U11.01 | M.TWIN.158 |
+| A.U11.03 | M.TWIN.064 |
+| A.U11.05 | M.TWIN.032, M.TWIN.075 |
+| A.U11.07 | M.TWIN.059 |
+| A.U11.08 | M.TWIN.065 |
+| A.U11.09 | M.TWIN.011 |
+| A.U11.10 | M.TWIN.050 |
+| A.U11.24 | M.TWIN.102, M.TWIN.144 |
+| A.U11.31 | M.TWIN.064 |
+| A.U12.18 | M.TWIN.014, M.TWIN.024, M.TWIN.102 |
+| A.U13.R01 | M.TWIN.021, M.TWIN.024, M.TWIN.049 |
+| A.U13.R02 | M.TWIN.021, M.TWIN.102 |
+| A.U13.03 | M.TWIN.011, M.TWIN.021 |
+| A.U13.07 | M.TWIN.102 |
+| A.U13.10 | M.TWIN.102 |
+| A.U13.12 | M.TWIN.028, M.TWIN.059, M.TWIN.130, M.TWIN.158 |
+| A.U13.13 | M.TWIN.028, M.TWIN.059, M.TWIN.130, M.TWIN.158 |
+| A.U13.17 | M.TWIN.158 |
+| A.U14.R01 | M.TWIN.064 |
+| A.U14.12 | M.TWIN.030 |
+| A.U14.14 | M.TWIN.024 |
+| A.U14.17 | M.TWIN.021 |
+| A.U14.20 | M.TWIN.059 |
+| A.U14.21 | M.TWIN.026 |
+| A.U14.28 | M.TWIN.017, M.TWIN.057, M.TWIN.058, M.TWIN.071, M.TWIN.073, M.TWIN.144 |
+| A.U14.33 | M.TWIN.019, M.TWIN.027, M.TWIN.031 |
+| A.U14.37 | M.TWIN.040 |
+| A.U15.R01 | M.TWIN.013, M.TWIN.102 |
+| A.U15.R02 | M.TWIN.014, M.TWIN.102, M.TWIN.140 |
+| A.U15.R03 | M.TWIN.010, M.TWIN.100 |
+| A.U15.R05 | M.TWIN.122 |
+| A.U15.S01 | M.TWIN.102 |
+| A.U15.01 | M.TWIN.013 |
+| A.U15.05 | M.TWIN.059 |
+| A.U15.06 | M.TWIN.062 |
+| A.U15.08 | M.TWIN.062 |
+| A.U15.12 | M.TWIN.013, M.TWIN.102, M.TWIN.142 |
+| A.U15.13 | M.TWIN.014, M.TWIN.150 |
+| A.U15.14 | M.TWIN.014 |
+| A.U15.17 | M.TWIN.144 |
+| A.U15.19 | M.TWIN.150 |
+| A.U15.25 | M.TWIN.010, M.TWIN.102 |
+| A.U15.28 | M.TWIN.012, M.TWIN.013, M.TWIN.014 |
+| A.U15.30 | M.TWIN.120 |
+| A.U15.32 | M.TWIN.012, M.TWIN.102, M.TWIN.122 |
+| A.U15.33 | M.TWIN.102 |
+| A.U15.36 | M.TWIN.122 |
+| A.U15.37 | M.TWIN.012 |
+| A.U15.39 | M.TWIN.122, M.TWIN.126 |
+| A.U15.41 | M.TWIN.144, M.TWIN.152 |
+| A.U16.R01 | M.TWIN.011, M.TWIN.110 |
+| A.U16.R02 | M.TWIN.114 |
+| A.U16.R03 | M.TWIN.110 |
+| A.U16.01 | M.TWIN.158 |
+| A.U16.06 | M.TWIN.110 |
+| A.U16.09 | M.TWIN.011, M.TWIN.110 |
+| A.U16.10 | M.TWIN.102 |
+| A.U16.16 | M.TWIN.021 |
+| A.U16.17 | M.TWIN.114 |
+| A.U16.19 | M.TWIN.102 |
+| A.U17.04 | M.TWIN.158 |
+| A.U17.05 | M.TWIN.158 |
+| A.U17.13 | M.TWIN.158 |
+| A.U17.15 | M.TWIN.158 |
+| A.U17.18 | M.TWIN.049, M.TWIN.061, M.TWIN.158 |
+| A.U17.25 | M.TWIN.027, M.TWIN.154, M.TWIN.156 |
+| A.U18.R01 | M.TWIN.040, M.TWIN.144 |
+| A.U18.01 | M.TWIN.144 |
+| A.U18.03 | M.TWIN.144 |
+| A.U18.12 | M.TWIN.017, M.TWIN.053, M.TWIN.071, M.TWIN.075, M.TWIN.144 |
+| A.U18.13 | M.TWIN.017 |
+| A.U18.23 | M.TWIN.030, M.TWIN.152 |
+| A.U18.27 | M.TWIN.040 |
+| A.U18.28 | M.TWIN.040 |
+| A.U18.30 | M.TWIN.040, M.TWIN.132 |
+| A.U18.32 | M.TWIN.040 |
+| A.U18.33 | M.TWIN.040 |
+| A.U19.03 | M.TWIN.144 |
+| A.U19.17 | M.TWIN.016 |
+| A.U19.20 | M.TWIN.055, M.TWIN.102 |
+| A.U2.09 | M.TWIN.011 |
+| A.U2.12 | M.TWIN.122 |
+| A.U2.13 | M.TWIN.144 |
+| A.U20.02 | M.TWIN.045, M.TWIN.050, M.TWIN.055, M.TWIN.061, M.TWIN.102, M.TWIN.136, M.TWIN.140, M.TWIN.144, M.TWIN.158 |
+| A.U20.06 | M.TWIN.050, M.TWIN.060, M.TWIN.102, M.TWIN.144 |
+| A.U20.28 | M.TWIN.020, M.TWIN.025, M.TWIN.049, M.TWIN.050, M.TWIN.061, M.TWIN.072, M.TWIN.114, M.TWIN.140, M.TWIN.144 |
+| A.U20.42 | M.TWIN.049, M.TWIN.055 |
+| A.U22.03 | M.TWIN.144 |
+| A.U23.33 | M.TWIN.034 |
+| A.U23.47 | M.TWIN.136 |
+| A.U24.01 | M.TWIN.136 |
+| A.U24.04 | M.TWIN.100, M.TWIN.108, M.TWIN.134, M.TWIN.144 |
+| A.U24.06 | M.TWIN.130 |
+| A.U24.07 | M.TWIN.035 |
+| A.U24.08 | M.TWIN.057, M.TWIN.102, M.TWIN.118, M.TWIN.136, M.TWIN.140, M.TWIN.144, M.TWIN.158 |
+| A.U24.09 | M.TWIN.040 |
+| A.U24.12 | M.TWIN.126 |
+| A.U24.15 | M.TWIN.028, M.TWIN.029, M.TWIN.158 |
+| A.U24.16 | M.TWIN.021 |
+| A.U24.17 | M.TWIN.002, M.TWIN.021, M.TWIN.024, M.TWIN.028, M.TWIN.030, M.TWIN.031, M.TWIN.034, M.TWIN.059, M.TWIN.126 |
+| A.U24.18 | M.TWIN.019, M.TWIN.021, M.TWIN.024, M.TWIN.026, M.TWIN.027, M.TWIN.028, M.TWIN.029, M.TWIN.030, M.TWIN.031, M.TWIN.033, M.TWIN.072 |
+| A.U24.19 | M.TWIN.040 |
+| A.U24.20 | M.TWIN.024, M.TWIN.059 |
+| A.U24.22 | M.TWIN.011 |
+| A.U24.23 | M.TWIN.026 |
+| A.U24.26 | M.TWIN.059 |
+| A.U24.27 | M.TWIN.102 |
+| A.U24.29 | M.TWIN.102 |
+| A.U24.30 | M.TWIN.010, M.TWIN.013, M.TWIN.100, M.TWIN.120, M.TWIN.126, M.TWIN.142, M.TWIN.150 |
+| A.U24.34 | M.TWIN.016, M.TWIN.102 |
+| A.U24.35 | dropped (withdrawn by its own unit; its content carried by A.U25.31 (1) — M.TWIN.016) |
+| A.U24.36 | M.TWIN.102 |
+| A.U24.38 | M.TWIN.100, M.TWIN.142 |
+| A.U24.40 | M.TWIN.118 |
+| A.U24.46 | M.TWIN.047, M.TWIN.140 |
+| A.U24.53 | M.TWIN.047, M.TWIN.060, M.TWIN.066 |
+| A.U24.56 | M.TWIN.140 |
+| A.U24.60 | M.TWIN.016, M.TWIN.136 |
+| A.U24.64 | M.TWIN.158 |
+| A.U24.65 | M.TWIN.075, M.TWIN.108, M.TWIN.144, M.TWIN.164 |
+| A.U24.67 | M.TWIN.158 |
+| A.U24.68 | not a TWIN site (`scripts/run_unix_port_integration.sh`, SCR); blast-only on the runner — holds (the runner already takes `--device`, M.TWIN.047) |
+| A.U24.69 | not a TWIN site (port lock, SCR/WEB); blast-only — holds (the in-process hotspot half of M.TWIN.144 binds 53 under `scripts/test.sh`'s lock) |
+| A.U24.70 | M.TWIN.057, M.TWIN.102, M.TWIN.118, M.TWIN.136, M.TWIN.140, M.TWIN.144 |
+| A.U24.73 | M.TWIN.144 |
+| A.U24.77 | M.TWIN.027 |
+| A.U24.80 | M.TWIN.028, M.TWIN.029, M.TWIN.049, M.TWIN.059, M.TWIN.130, M.TWIN.158 |
+| A.U24.82 | M.TWIN.002, M.TWIN.058, M.TWIN.068 |
+| A.U25.01 | M.TWIN.010, M.TWIN.058, M.TWIN.059, M.TWIN.062, M.TWIN.072, M.TWIN.073, M.TWIN.100, M.TWIN.114, M.TWIN.150 |
+| A.U25.02 | M.TWIN.021, M.TWIN.126, M.TWIN.138 |
+| A.U25.03 | M.TWIN.024, M.TWIN.026, M.TWIN.035, M.TWIN.049, M.TWIN.058, M.TWIN.102, M.TWIN.110, M.TWIN.114, M.TWIN.122, M.TWIN.126, M.TWIN.136, M.TWIN.144, M.TWIN.158 |
+| A.U25.04 | M.TWIN.028, M.TWIN.059, M.TWIN.130, M.TWIN.138, M.TWIN.154, M.TWIN.158 |
+| A.U25.05 | M.TWIN.021, M.TWIN.102 |
+| A.U25.06 | M.TWIN.001, M.TWIN.011, M.TWIN.024, M.TWIN.026, M.TWIN.110, M.TWIN.126 |
+| A.U25.07 | M.TWIN.034, M.TWIN.063, M.TWIN.110, M.TWIN.128 |
+| A.U25.08 | M.TWIN.022, M.TWIN.032, M.TWIN.046, M.TWIN.058, M.TWIN.059, M.TWIN.062, M.TWIN.128, M.TWIN.138 |
+| A.U25.09 | M.TWIN.001, M.TWIN.034, M.TWIN.044, M.TWIN.046, M.TWIN.047, M.TWIN.050, M.TWIN.058, M.TWIN.064, M.TWIN.066, M.TWIN.110, M.TWIN.140 |
+| A.U25.10 | M.TWIN.014, M.TWIN.024, M.TWIN.058, M.TWIN.102, M.TWIN.126, M.TWIN.150 |
+| A.U25.11 | M.TWIN.013, M.TWIN.014, M.TWIN.059, M.TWIN.102, M.TWIN.150 |
+| A.U25.12 | M.TWIN.013, M.TWIN.062, M.TWIN.126, M.TWIN.142 |
+| A.U25.13 | M.TWIN.010, M.TWIN.100 |
+| A.U25.14 | M.TWIN.012, M.TWIN.059, M.TWIN.120 |
+| A.U25.15 | M.TWIN.011, M.TWIN.049, M.TWIN.104, M.TWIN.110, M.TWIN.114 |
+| A.U25.16 | M.TWIN.026, M.TWIN.110, M.TWIN.126, M.TWIN.138 |
+| A.U25.17 | M.TWIN.024, M.TWIN.126 |
+| A.U25.18 | M.TWIN.002, M.TWIN.010, M.TWIN.011, M.TWIN.044, M.TWIN.068, M.TWIN.110, M.TWIN.124 |
+| A.U25.19 | M.TWIN.012, M.TWIN.013, M.TWIN.023, M.TWIN.030, M.TWIN.128, M.TWIN.138, M.TWIN.152 |
+| A.U25.20 | M.TWIN.019, M.TWIN.033, M.TWIN.128 |
+| A.U25.21 | M.TWIN.042, M.TWIN.058, M.TWIN.132, M.TWIN.138, M.TWIN.144 |
+| A.U25.22 | M.TWIN.001, M.TWIN.020, M.TWIN.024, M.TWIN.026, M.TWIN.027, M.TWIN.028, M.TWIN.031, M.TWIN.040, M.TWIN.042, M.TWIN.052, M.TWIN.058, M.TWIN.102, M.TWIN.126, M.TWIN.130, M.TWIN.132 |
+| A.U25.23 | M.TWIN.001, M.TWIN.012, M.TWIN.013, M.TWIN.014, M.TWIN.019, M.TWIN.027, M.TWIN.028, M.TWIN.031, M.TWIN.034, M.TWIN.040, M.TWIN.045, M.TWIN.126, M.TWIN.128, M.TWIN.130 |
+| A.U25.24 | M.TWIN.022, M.TWIN.032, M.TWIN.035, M.TWIN.036, M.TWIN.040, M.TWIN.061, M.TWIN.126, M.TWIN.144 |
+| A.U25.25 | M.TWIN.020, M.TWIN.022, M.TWIN.044, M.TWIN.045, M.TWIN.058, M.TWIN.061, M.TWIN.072, M.TWIN.114, M.TWIN.122, M.TWIN.124, M.TWIN.126, M.TWIN.136, M.TWIN.144, M.TWIN.158 |
+| A.U25.26 | M.TWIN.040, M.TWIN.058, M.TWIN.132 |
+| A.U25.27 | M.TWIN.040, M.TWIN.044, M.TWIN.045, M.TWIN.049, M.TWIN.068, M.TWIN.124, M.TWIN.132, M.TWIN.144 |
+| A.U25.28 | M.TWIN.022, M.TWIN.035, M.TWIN.036, M.TWIN.045, M.TWIN.047, M.TWIN.049, M.TWIN.051, M.TWIN.055, M.TWIN.061, M.TWIN.140 |
+| A.U25.29 | M.TWIN.011, M.TWIN.025, M.TWIN.058, M.TWIN.110, M.TWIN.114 |
+| A.U25.30 | M.TWIN.027, M.TWIN.130 |
+| A.U25.31 | M.TWIN.016, M.TWIN.058, M.TWIN.070, M.TWIN.102, M.TWIN.118 |
+| A.U25.32 | M.TWIN.011, M.TWIN.013, M.TWIN.032, M.TWIN.044, M.TWIN.047, M.TWIN.050, M.TWIN.060, M.TWIN.062, M.TWIN.066, M.TWIN.110, M.TWIN.124, M.TWIN.140, M.TWIN.142 |
+| A.U25.33 | M.TWIN.017, M.TWIN.040, M.TWIN.047, M.TWIN.050, M.TWIN.053, M.TWIN.054, M.TWIN.058, M.TWIN.059, M.TWIN.061, M.TWIN.064, M.TWIN.066, M.TWIN.071, M.TWIN.102, M.TWIN.136, M.TWIN.144, M.TWIN.146 |
+| A.U25.34 | M.TWIN.017, M.TWIN.050, M.TWIN.054, M.TWIN.064, M.TWIN.071, M.TWIN.108, M.TWIN.144 |
+| A.U25.35 | M.TWIN.017, M.TWIN.047, M.TWIN.050, M.TWIN.064 |
+| A.U25.36 | M.TWIN.001, M.TWIN.024, M.TWIN.050, M.TWIN.064, M.TWIN.140 |
+| A.U25.37 | M.TWIN.011, M.TWIN.012, M.TWIN.014, M.TWIN.044, M.TWIN.045, M.TWIN.049, M.TWIN.064, M.TWIN.067, M.TWIN.068, M.TWIN.069, M.TWIN.124, M.TWIN.140, M.TWIN.158 |
+| A.U25.38 | M.TWIN.064 |
+| A.U25.39 | M.TWIN.044, M.TWIN.046, M.TWIN.047, M.TWIN.050, M.TWIN.056, M.TWIN.058, M.TWIN.073, M.TWIN.162 |
+| A.U25.40 | M.TWIN.017, M.TWIN.055, M.TWIN.058, M.TWIN.073, M.TWIN.075 |
+| A.U25.41 | M.TWIN.010, M.TWIN.044, M.TWIN.045, M.TWIN.046, M.TWIN.047, M.TWIN.049, M.TWIN.050, M.TWIN.060, M.TWIN.124, M.TWIN.140 |
+| A.U25.42 | M.TWIN.010, M.TWIN.012, M.TWIN.013, M.TWIN.014, M.TWIN.016, M.TWIN.020, M.TWIN.023, M.TWIN.025, M.TWIN.030, M.TWIN.044, M.TWIN.045, M.TWIN.047, M.TWIN.049, M.TWIN.072 |
+| A.U25.43 | M.TWIN.017, M.TWIN.050, M.TWIN.054, M.TWIN.057, M.TWIN.058, M.TWIN.073, M.TWIN.108, M.TWIN.140, M.TWIN.144, M.TWIN.164 |
+| A.U25.44 | M.TWIN.020, M.TWIN.047, M.TWIN.053, M.TWIN.060, M.TWIN.064 |
+| A.U25.45 | M.TWIN.136, M.TWIN.144 |
+| A.U25.46 | M.TWIN.051, M.TWIN.057, M.TWIN.060, M.TWIN.063, M.TWIN.065, M.TWIN.075, M.TWIN.102, M.TWIN.122, M.TWIN.136, M.TWIN.142, M.TWIN.144, M.TWIN.150, M.TWIN.164 |
+| A.U25.47 | not a TWIN site (`tests/_digital_twin_construction_scenarios.py`, TEST_HELP GAP-H4); its twin boot uses C4 and the entry file M.TWIN.108 — holds |
+| A.U25.48 | M.TWIN.058, M.TWIN.060, M.TWIN.064, M.TWIN.102, M.TWIN.136, M.TWIN.140, M.TWIN.144, M.TWIN.158 |
+| A.U25.49 | M.TWIN.012, M.TWIN.120, M.TWIN.122 |
+| A.U25.50 | M.TWIN.102, M.TWIN.144 |
+| A.U25.51 | M.TWIN.100, M.TWIN.102, M.TWIN.118, M.TWIN.126, M.TWIN.128, M.TWIN.142 |
+| A.U25.52 | M.TWIN.012, M.TWIN.058, M.TWIN.126 |
+| A.U25.53 | M.TWIN.114 |
+| A.U25.54 | M.TWIN.026, M.TWIN.032, M.TWIN.034, M.TWIN.050, M.TWIN.059, M.TWIN.112 |
+| A.U25.55 | M.TWIN.059, M.TWIN.064 |
+| A.U25.56 | M.TWIN.030, M.TWIN.152 |
+| A.U25.57 | M.TWIN.102, M.TWIN.144 |
+| A.U25.58 | not a TWIN site (`tests_scripts/`, TSC) |
+| A.U25.59 | M.TWIN.010, M.TWIN.012, M.TWIN.013, M.TWIN.014, M.TWIN.024, M.TWIN.035, M.TWIN.058, M.TWIN.059, M.TWIN.068, M.TWIN.072, M.TWIN.100, M.TWIN.116 |
+| A.U25.60 | M.TWIN.122 |
+| A.U25.61 | not a TWIN site (`tests_hardware/device_scripts/`, HW_DEV) |
+| A.U25.62 | M.TWIN.010, M.TWIN.011, M.TWIN.012, M.TWIN.013, M.TWIN.014, M.TWIN.020, M.TWIN.023, M.TWIN.025, M.TWIN.058, M.TWIN.062, M.TWIN.068, M.TWIN.072, M.TWIN.100, M.TWIN.110, M.TWIN.120, M.TWIN.142, M.TWIN.150 |
+| A.U25.63 | M.TWIN.016, M.TWIN.020, M.TWIN.022, M.TWIN.023, M.TWIN.024, M.TWIN.045, M.TWIN.047, M.TWIN.057, M.TWIN.075, M.TWIN.134 |
+| A.U25.64 | M.TWIN.064 |
+| A.U25.65 | M.TWIN.064, M.TWIN.067, M.TWIN.071, M.TWIN.075, M.TWIN.144 |
+| A.U25.66 | not a TWIN site (`scripts/_digital_twin_ci_suite.py`, SCR) |
+| A.U25.67 | M.TWIN.022, M.TWIN.023, M.TWIN.072, M.TWIN.158 |
+| A.U25.68 | M.TWIN.002, M.TWIN.011, M.TWIN.012, M.TWIN.013, M.TWIN.014, M.TWIN.021, M.TWIN.026, M.TWIN.028, M.TWIN.030, M.TWIN.031, M.TWIN.032, M.TWIN.033, M.TWIN.036, M.TWIN.042, M.TWIN.059, M.TWIN.072, M.TWIN.138 |
+| A.U25.69 | M.TWIN.050, M.TWIN.061 |
+| A.U25.70 | M.TWIN.002, M.TWIN.010, M.TWIN.011, M.TWIN.012, M.TWIN.013, M.TWIN.014, M.TWIN.040, M.TWIN.044, M.TWIN.045, M.TWIN.049, M.TWIN.058, M.TWIN.068, M.TWIN.072, M.TWIN.100, M.TWIN.124, M.TWIN.142, M.TWIN.150 |
+| A.U25.71 | M.TWIN.019, M.TWIN.033, M.TWIN.050, M.TWIN.058, M.TWIN.059, M.TWIN.128, M.TWIN.146 |
+| A.U25.72 | M.TWIN.040, M.TWIN.058, M.TWIN.132, M.TWIN.144 |
+| A.U25.73 | M.TWIN.010, M.TWIN.012, M.TWIN.013, M.TWIN.014, M.TWIN.072, M.TWIN.142, M.TWIN.150 |
+| A.U25.74 | M.TWIN.051, M.TWIN.066 |
+| A.U26.05 | M.TWIN.013, M.TWIN.054, M.TWIN.074 |
+| A.U26.07 | M.TWIN.013 |
+| A.U26.32 | M.TWIN.102 |
+| A.U26.53 | M.TWIN.120 |
+| A.U26.70 | M.TWIN.016 |
+| A.U27.01 | M.TWIN.050 |
+| A.U27.03 | M.TWIN.136 |
+| A.U27.08 | M.TWIN.065 |
+| A.U27.15 | M.TWIN.058, M.TWIN.060, M.TWIN.061, M.TWIN.063 |
+| A.U27.16 | M.TWIN.064 |
+| A.U27.17 | M.TWIN.052, M.TWIN.064, M.TWIN.065 |
+| A.U27.22 | M.TWIN.073, M.TWIN.075 |
+| A.U27.23 | M.TWIN.073, M.TWIN.075 |
+| A.U27.32 | M.TWIN.060, M.TWIN.064 |
+| A.U28.27 | M.TWIN.040 |
+| A.U28.28 | M.TWIN.057, M.TWIN.102, M.TWIN.122, M.TWIN.132, M.TWIN.144, M.TWIN.158, M.TWIN.164 |
+| A.U28.29 | M.TWIN.044, M.TWIN.132 |
+| A.U28.33 | not a TWIN site (`.gitignore`, LEAD gap); blast-only — the persistent state files it names are M.TWIN.044/.050's (holds) |
+| A.U28.35 | M.TWIN.011, M.TWIN.025 |
+| A.U3.04 | M.TWIN.011 |
+| A.U3.14 | M.TWIN.122 |
+| A.U30.05 | M.TWIN.142 |
+| A.U30.06 | M.TWIN.014 |
+| A.U30.07 | M.TWIN.102 |
+| A.U30.09 | M.TWIN.065 |
+| A.U30.13 | M.TWIN.158 |
+| A.U30.14 | not a TWIN site (checker, TSC); blast-only — the runner's `--gc-threshold` set stays its one allowed site (M.TWIN.047, holds) |
+| A.U30.15 | M.TWIN.055, M.TWIN.144, M.TWIN.158 |
+| A.U30.16 | M.TWIN.052, M.TWIN.056, M.TWIN.144, M.TWIN.158, M.TWIN.162 |
+| A.U30.17 | M.TWIN.052, M.TWIN.065 |
+| A.U30.18 | M.TWIN.054 |
+| A.U30.21 | M.TWIN.024 |
+| A.U31.03 | M.TWIN.144 |
+| A.U31.06 | M.TWIN.051, M.TWIN.066 |
+| A.U31.13 | M.TWIN.132 |
+| A.U31.15 | M.TWIN.040 |
+| A.U32.06 | M.TWIN.102, M.TWIN.144, M.TWIN.158 |
+| A.U34.11 | M.TWIN.075 |
+| A.U35.09 | M.TWIN.063, M.TWIN.102 |
+| A.U35.14 | M.TWIN.132 |
+| A.U35.21 | M.TWIN.102 |
+| A.U35.22 | M.TWIN.158 |
+| A.U35.25 | M.TWIN.052, M.TWIN.065 |
+| A.U35.26 | M.TWIN.052, M.TWIN.060, M.TWIN.065 |
+| A.U35.31 | M.TWIN.031, M.TWIN.051, M.TWIN.059, M.TWIN.066, M.TWIN.144 |
+| A.U35.38 | M.TWIN.064 |
+| A.U35.49 | M.TWIN.054, M.TWIN.074 |
+| A.U35.50 | M.TWIN.102 |
+| A.U36.004 | M.TWIN.136 |
+| A.U36.015 | M.TWIN.102 |
+| A.U36.016 | M.TWIN.063, M.TWIN.144, M.TWIN.146 |
+| A.U36.020 | M.TWIN.122, M.TWIN.126 |
+| A.U36.024 | M.TWIN.058, M.TWIN.060, M.TWIN.064, M.TWIN.075 |
+| A.U36.037 | M.TWIN.056 |
+| A.U36.039 | M.TWIN.025, M.TWIN.026, M.TWIN.072 |
+| A.U36.040 | M.TWIN.057, M.TWIN.058, M.TWIN.073 |
+| A.U36.041 | M.TWIN.059, M.TWIN.062 |
+| A.U36.043 | M.TWIN.050, M.TWIN.055 |
+| A.U36.511 | M.TWIN.075 |
+| A.U36.512 | M.TWIN.102, M.TWIN.136 |
+| A.U36.513 | M.TWIN.047, M.TWIN.050, M.TWIN.058, M.TWIN.060, M.TWIN.061, M.TWIN.140 |
+| A.U36.515 | M.TWIN.072 |
+| A.U36.516 | M.TWIN.072 |
+| A.U36.517 | M.TWIN.136 |
+| A.U36.518 | M.TWIN.022, M.TWIN.061 |
+| A.U36.532 | M.TWIN.028, M.TWIN.036, M.TWIN.064 |
+| A.U36.533 | not a TWIN site (CLAUDE.md, DOCS); blast-only — `digital_twin/README.md` as the twin's fact home holds (C5) |
+| A.U36.539 | M.TWIN.154, M.TWIN.156 |
+| A.U36.543 | M.TWIN.025, M.TWIN.072 |
+| A.U36.544 | M.TWIN.017, M.TWIN.022, M.TWIN.036, M.TWIN.040, M.TWIN.071, M.TWIN.102, M.TWIN.110, M.TWIN.158 |
+| A.U36.546 | M.TWIN.044, M.TWIN.045, M.TWIN.164 |
+| A.U36.547 | M.TWIN.044, M.TWIN.058, M.TWIN.060, M.TWIN.066 |
+| A.U37.02 | M.TWIN.075 |
+| A.U37.04 | M.TWIN.059 |
+| A.U4.02 | M.TWIN.013, M.TWIN.102, M.TWIN.144 |
+| A.U4.04 | M.TWIN.013, M.TWIN.062, M.TWIN.142 |
+| A.U4.05 | M.TWIN.013 |
+| A.U4.06 | M.TWIN.013, M.TWIN.059, M.TWIN.142 |
+| A.U5.02 | M.TWIN.064 |
+| A.U5.15 | M.TWIN.001, M.TWIN.010, M.TWIN.012, M.TWIN.013, M.TWIN.014, M.TWIN.023, M.TWIN.036, M.TWIN.044, M.TWIN.047, M.TWIN.072, M.TWIN.100, M.TWIN.120, M.TWIN.124, M.TWIN.140, M.TWIN.142, M.TWIN.150 |
+| A.U5.17 | M.TWIN.013, M.TWIN.028 |
+| A.U5.18 | M.TWIN.013, M.TWIN.028 |
+| A.U6.04 | M.TWIN.072 |
+| A.U6.10 | not a TWIN site (`tests_js/`, WEB M.WEB); blast-only — the runner flags it passes exist (M.TWIN.047, holds) |
+| A.U6.29 | M.TWIN.040 |
+| A.U6.30 | M.TWIN.040 |
+| A.U7.01 | M.TWIN.058 |
+| A.U7.09 | M.TWIN.064 |
+| A.U7.19 | M.TWIN.044, M.TWIN.047, M.TWIN.124 |
+| A.U8.08 | M.TWIN.031, M.TWIN.044, M.TWIN.045, M.TWIN.050, M.TWIN.054, M.TWIN.124, M.TWIN.126, M.TWIN.144 |
+| A.U8.10 | M.TWIN.040 |
+| A.U8.14 | M.TWIN.047, M.TWIN.140, M.TWIN.158 |
+| A.U8.15 | M.TWIN.102 |
+| A.U8.18 | M.TWIN.136 |
+| A.U8.20 | M.TWIN.040, M.TWIN.044, M.TWIN.049, M.TWIN.052, M.TWIN.055 |
+| A.U8.24 | M.TWIN.020, M.TWIN.073, M.TWIN.075 |
+| A.U8C.24 | M.TWIN.102, M.TWIN.144 |
+| A.U8C.25 | M.TWIN.118 |
+| A.U8C.26 | M.TWIN.044, M.TWIN.124 |
+| A.U8C.27 | M.TWIN.126 |
+| A.U8C.28 | M.TWIN.130 |
+| A.U8C.29 | M.TWIN.132 |
+| A.U8C.30 | M.TWIN.136 |
+| A.U8C.31 | M.TWIN.140 |
+| A.U8C.32 | M.TWIN.144 |
+| A.U8C.33 | M.TWIN.158 |
+| A.U8C.120 | M.TWIN.124, M.TWIN.132, M.TWIN.144 |
+| A.U8C2.08 | M.TWIN.102 |
+| A.U8C2.09 | M.TWIN.044, M.TWIN.124 |
+| A.U8C2.10 | M.TWIN.036, M.TWIN.126 |
+| A.U8C2.11 | M.TWIN.144 |
+| A.U8C2.12 | M.TWIN.158 |
+| A.U9.01 | M.TWIN.144, M.TWIN.146 |
+| A.U9.09 | M.TWIN.144 |
