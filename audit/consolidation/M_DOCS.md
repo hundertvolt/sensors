@@ -2803,6 +2803,7 @@ disposition. The merged-in column lists the blocks whose From line names the act
 | A.U26.01 | CL (extra) | — | "may cite" the bench-device key in the WoZi rule: not applied (optional), M.DOCS.078 unchanged |
 | A.U27.14 | CL (extra) | — | "names no number (holds)"; no edit |
 | AC3 O-22 | CL | M.DOCS.076 | "during this audit" → "until the C reconciliation" |
+| AC3 O-22 (lead) | CL | M.DOCS.076, M.DOCS.060 | "post-audit" stays: it is the owner's own wording, fixed as the one Arduino form (A.U34.01, G6/R02 V01, this file's convention); it names a time, not the deleted `audit/` |
 | AC3 O-23 | TPL | M.DOCS.008 | actor tag "(agent, 2026-08-20; …)" |
 | AC3 O-28 | CL, RM | M.DOCS.078, M.DOCS.045 | "exemplary/base" role dropped (OR78.a); M.GEN.055 header carries the TOML half |
 | AC3 R-03 | BL | M.DOCS.064 | A.U13.04 out of From; no FRAM-CS row |
