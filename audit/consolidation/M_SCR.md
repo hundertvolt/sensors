@@ -1654,8 +1654,8 @@ Conventions used below (each defined once, then cited):
 - **Unit**: U27.
 - **Depends**: M.SCR.070, M.SCR.071; A.U20.05/A.U20.14 (generated sources, GEN); A.U26.02 (`build_date` keyword).
 - **Blast carried by**: `tests_scripts/test_stripped_image_boots.py` (compiled stage boots in the twin) → A.U27.05 (TSC);
-  `tests_scripts/test_frozen_inputs_reproducible.py` → A.U27.34 (TSC), and it asserts the rendered manifest has no bare
-  directory `freeze()` (TSC, A.U27.34; AC3_R R-05); SPEC B.11 → A.U27.34/A.U36.534 docs (SPEC).
+  `tests_scripts/test_frozen_inputs_reproducible.py` → M.TSC.094 (A.U27.34), which also asserts the rendered manifest has
+  no bare directory `freeze()` (AC3_R R-05; hand-off to TSC, M.TSC.094's Change); SPEC B.11 → A.U27.34/A.U36.534 docs (SPEC).
 - **Kind**: code
 
 ### M.SCR.067 Image record and size report beside every `.uf2`
