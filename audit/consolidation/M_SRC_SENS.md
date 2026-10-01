@@ -719,14 +719,17 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `(message, wrnno)` in `self._pending_wrn`; then `super().__init__(NOTIFY(Triggered=False, TS=None), _NAME,
   combined_schema, max_module_error=0, cfg_path=cfg_path, log=log)`; `self._request_signal_cb`,
   `self._local_time_callback`, `self._registered` (the accepted tuple), `self._pause = TickSeconds(count_down=True)`,
-  `self._auto_active = True`. `register()`, `finalize()`, `_finalized`, `_reject_registration()`'s late/again codes and
+  `self._auto_active = True`, `self.initialized = False` (G5/R14's gate; AC_NOTES 42). `register()`, `finalize()`, `_finalized`, `_reject_registration()`'s late/again codes and
   every `if not self._finalized` guard (`get_data`, `get_dict_data`, `get_dict_cfg`, `get_error_counter`, `setup`,
   `reset_error_counter`, both loops) go; `get_data()` keeps `# Narrows to this Reader's concrete NOTIFY - see
   SPECIFICATION.md C.4.2's get_data() convention.` directly above `return await self._get_meas_data()  # type:
   ignore[return-value]`; `get_dict_data()` uses `name=self.name`; `get_dict_cfg()` → `self._get_dict_cfg(self.name,
   self._cfg_schema)`; `get_error_counter()` → `return await self.pr.get_log()`; the `reset_error_counter()` override
   goes (the inherited one returns the reset's bool, A.U11.31). `async def setup(self) -> bool:` `ok = await
-  super().setup()`; then each buffered refusal `await self.pr.wrn_s(msg, wrnno=code)` (the buffer emptied); `return ok`.
+  super().setup()`; then each buffered refusal `await self.pr.wrn_s(msg, wrnno=code)` (the buffer emptied); `self.initialized = True`;
+  `return ok`. No method guards on `initialized`: every member exists from construction, the config reads answer through
+  `ConfigManager.valid` and the log through `PrintLog`'s own gate, so a call before `setup()` answers the construction
+  defaults (`NOTIFY(Triggered=False, TS=None)`, the store's not-valid answer, an empty log) (AC_NOTES 42).
 - **Resolved**: (1) A.U11.31 gives the not-finalised early return `True` "until A.U5.06 removes the guard" — the guard
   is removed, so the override is not needed. (2) A.U28.30 asks a reason for the `:251` ignore; with the guard gone the
   C.4.2 comment sits directly above the ignored line, which A.U28.30's form rule accepts — no trailing reason added.

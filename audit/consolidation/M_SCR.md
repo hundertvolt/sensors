@@ -424,7 +424,8 @@ Conventions used below (each defined once, then cited):
   no <driver>" (a named skip, counted), never silently. Each scenario boots its own twin through `_twin_process.spawn()`
   with fresh state under `<logs-dir>/<scenario>/state/`, `MICROPYPATH` = the twin layout with `frozen_modules` replaced
   by `build/generated_html/<device>` (the device's own built site; missing → the scenario fails naming
-  `scripts/build_device_websites.sh`), ports from the harness's band (`tests/_port_bands.py` row, A.U24.70), and is
+  `scripts/build_device_websites.sh`), ports from the harness's band (`tests/_port_bands.py` row, A.U24.70; each device a fixed sub-range by its index in
+  the derived list, so per-device jobs running in parallel never share a port), and is
   shut down in `finally`; its log is checked by `close_log_and_check_memory_safety()` and for
   `public_destinations_refused=0` (A.U25.35). Fixed ports: when a scenario binds 53 (every boot does, the captive DNS) the
   harness holds `_port_lock.port_lock(53, "digital_twin_scenarios")` for its whole run — inherited when a runner above
@@ -657,7 +658,7 @@ Conventions used below (each defined once, then cited):
   host_typecheck.ini - plus two single-file checks; why three: CLAUDE.md "Code quality tooling". Stubs install into
   typings/ at the exact pins of toolchain/versions.toml [stubs] (SPECIFICATION.md B.15)." `--help` (usage: "scripts/
   typecheck.sh [PATH ...] - extra paths narrow the main pass for a local run; CI passes exactly its files
-  (tests_scripts/test_lint_type_scopes.py checks)"; env `UV`-free), exit 0. `source scripts/_require_venv.sh;
+  (tests_scripts/test_lint_type_scopes.py checks)"), exit 0. `source scripts/_require_venv.sh;
   require_project_venv` (mypy then runs from `$VIRTUAL_ENV`), `source scripts/_require_python.sh; require_python311`,
   `source scripts/_summary_block.sh; summary_unit checks`; a variable `stage` set before each step (`stub pins`, `stub
   install`, `stub repairs`, `module generation`, `main pass`, `twin pass`, `host pass`, `network check`, `conftest
@@ -1868,7 +1869,8 @@ no owner row settles it; M.SCR.035/.045 written with (a), pending Q1.)
   them (M.SCR.017/.045).
 - AD-4 `--stage-only` is `build_website.sh`'s mode, driven by `build_device_websites.sh --stage-only` (M.SCR.019/.020/.071).
 - AD-5 `test.sh` builds every derived device's site (`build_device_websites.sh`) for the per-device harness jobs, besides
-  the first device's `frozen_modules/` site for the unit tier (M.SCR.039).
+  the first device's `frozen_modules/` site for the unit tier (M.SCR.039); the website scenarios thus run on every device,
+  wider than M.TWIN.136's one-device narrowing (OR22.a (2)).
 - AD-6 The host-chain coverage report is rendered by `coverage` itself from `$results_dir/host.coverage` (M.SCR.044).
 - AD-7 The suite's pass label lives on a module state object, so no `global`/PLW0603 entry (M.SCR.046).
 - AD-8 Run 1 asserts `UTCTime`/`LocalTime` null while `NTPSynced` is false — A.U6.21's L2 clause had no carrier (M.SCR.049).
@@ -1884,3 +1886,354 @@ no owner row settles it; M.SCR.035/.045 written with (a), pending Q1.)
 - AD-18 The harness keeps its own `MEMORY_ERROR_MARKERS` copy in `_twin_process.py`, held equal by the agreement test,
   instead of importing `tests_hardware/harness.py` (M.SCR.016).
 
+## Ledger
+
+Every action whose Site, Change or Blast names a file of this cluster: 308, from the site index plus a slot-aware grep
+of `audit/actions/*.md`. A second table lists actions read into a merged change that name no `scripts/` path.
+
+| action ID | merged into M-ID / dropped (reason) |
+|---|---|
+| A.C.01 | M.SCR.006, M.SCR.065 |
+| A.C.03 | M.SCR.031 |
+| A.C.04 | M.SCR.033 |
+| A.C.05 | M.SCR.031 |
+| A.C.07 | M.SCR.032 |
+| A.C.18 | M.SCR.030 |
+| A.S0930.04 | M.SCR.048, M.SCR.051, M.SCR.061, M.SCR.068 |
+| A.S0930.06 | M.SCR.065, M.SCR.067 |
+| A.S0930.26 | M.SCR.040 |
+| A.S0930.27 | M.SCR.018, M.SCR.059, M.SCR.060 |
+| A.S0930.37 | M.SCR.040 |
+| A.S0930.38 | M.SCR.018, M.SCR.054, M.SCR.059, M.SCR.060 |
+| A.SDEP.02 | M.SCR.024, M.SCR.061 |
+| A.SDEP.03 | M.SCR.029, M.SCR.069 |
+| A.SDEP.04 | M.SCR.064, M.SCR.073 |
+| A.SDEP.06 | M.SCR.066 |
+| A.SDEP.07 | M.SCR.072 |
+| A.SDEP.08 | M.SCR.027, M.SCR.028, M.SCR.036, M.SCR.062 |
+| A.SDEP.09 | M.SCR.027 |
+| A.SDEP.15 | M.SCR.027 |
+| A.SDEP.16 | M.SCR.035, M.SCR.047, M.SCR.061, M.SCR.062, M.SCR.064 |
+| A.SDEP.19 | M.SCR.064, M.SCR.073 |
+| A.SDEP.25 | M.SCR.027, M.SCR.061 |
+| A.U0.03 | blast-only, holds: U0 procedure confirms both Unix ports with HEAD's probe before A.U27.12 renames it |
+| A.U0.04 | blast-only, holds: U0 execution agreement (flock around port-binding commands); coexists with M.SCR.012 |
+| A.U0.06 | M.SCR.024, M.SCR.061 |
+| A.U0.07 | M.SCR.046 |
+| A.U0.29 | M.SCR.018, M.SCR.073 |
+| A.U0.31 | M.SCR.062 |
+| A.U0.35 | M.SCR.005, M.SCR.018, M.SCR.032, M.SCR.034 |
+| A.U0.39 | M.SCR.025 |
+| A.U0.40 | M.SCR.040 |
+| A.U0.57 | M.SCR.024 |
+| A.U0.60 | M.SCR.040 |
+| A.U1.01 | blast-only, holds: no script scope names a legacy path (`lint.sh:13, :18` explicit lists) |
+| A.U1.04 | M.SCR.065 |
+| A.U1.06 | M.SCR.029 |
+| A.U1.09 | blast-only, holds: its new L0 file runs in `test.sh`'s pytest tier unchanged |
+| A.U1.16 | M.SCR.065 |
+| A.U1.21 | M.SCR.025, M.SCR.072; `build_frozen_html.sh:10-11` repath dropped (lines deleted by A.U27.06) |
+| A.U1.23 | M.SCR.066 |
+| A.U1.27 | M.SCR.072 |
+| A.U10.31 | M.SCR.028 |
+| A.U10.34 | M.SCR.046, M.SCR.065, M.SCR.069 |
+| A.U10.35 | M.SCR.026 |
+| A.U10.37 | M.SCR.015, M.SCR.025, M.SCR.046; its `lint.sh` grep path/message edit dropped (greps removed by A.U27.21) |
+| A.U10.46 | M.SCR.028 |
+| A.U11.03 | M.SCR.051 |
+| A.U11.05 | M.SCR.051, M.SCR.052 |
+| A.U11.10 | M.SCR.015, M.SCR.025; `lint.sh` grep edit dropped (greps removed by A.U27.21) |
+| A.U11.31 | M.SCR.049 |
+| A.U14.28 | M.SCR.018, M.SCR.035 |
+| A.U15.R01 | M.SCR.051 |
+| A.U15.R02 | M.SCR.053; its twin-CI blast corrected (AC_NOTES 31): keyed read fault |
+| A.U15.R03 | M.SCR.051 |
+| A.U15.R04 | M.SCR.051 |
+| A.U16.17 | M.SCR.051 |
+| A.U17.11 | M.SCR.045 |
+| A.U17.18 | M.SCR.061 |
+| A.U17.23 | M.SCR.045 |
+| A.U17.25 | M.SCR.045 |
+| A.U17.26 | M.SCR.028 |
+| A.U18.44 | M.SCR.028 |
+| A.U18.47 | blast-only: ledger mention of `test.sh:335-390` (DONE-AT-HEAD) |
+| A.U19.20 | M.SCR.018, M.SCR.068, M.SCR.071 |
+| A.U19.24 | M.SCR.040, M.SCR.058 |
+| A.U2.03 | M.SCR.046, M.SCR.049, M.SCR.053, M.SCR.055 |
+| A.U2.15 | M.SCR.053, M.SCR.055 |
+| A.U2.21 | M.SCR.071 |
+| A.U20.05 | M.SCR.066, M.SCR.068 |
+| A.U20.07 | M.SCR.037, M.SCR.068 |
+| A.U20.13 | M.SCR.066 |
+| A.U20.14 | M.SCR.066, M.SCR.070 |
+| A.U20.15 | M.SCR.068 |
+| A.U20.17 | M.SCR.068 |
+| A.U20.28 | M.SCR.018, M.SCR.062, M.SCR.064, M.SCR.068 |
+| A.U20.33 | M.SCR.028, M.SCR.046, M.SCR.065, M.SCR.069, M.SCR.070 |
+| A.U20.36 | M.SCR.066, M.SCR.070 |
+| A.U20.42 | blast-only: ledger row naming the image report as U27's → M.SCR.067 |
+| A.U21.02 | M.SCR.026 |
+| A.U21.03 | M.SCR.065 |
+| A.U21.04 | M.SCR.027; its `==X.Y.Z.*` spec superseded by A.U27.02's exact pins |
+| A.U21.08 | M.SCR.065 |
+| A.U21.09 | blast-only, holds: no manifest of `build_firmware.py` uses `c_module()` (M.SCR.066 keeps none) |
+| A.U21.10 | M.SCR.066 |
+| A.U21.12 | M.SCR.008, M.SCR.036, M.SCR.040, M.SCR.041, M.SCR.045 |
+| A.U21.17 | blast-only, holds: `build_firmware.py` calls only `st.build_mpy_cross`/`st.build_firmware` |
+| A.U21.22 | M.SCR.008, M.SCR.036, M.SCR.061, M.SCR.062, M.SCR.065 |
+| A.U21.24 | M.SCR.073 |
+| A.U21.28 | M.SCR.029 |
+| A.U21.29 | M.SCR.065 |
+| A.U21.31 | M.SCR.036 |
+| A.U22.04 | M.SCR.028 |
+| A.U23.15 | M.SCR.063 |
+| A.U23.31 | M.SCR.068 |
+| A.U23.33 | M.SCR.003 |
+| A.U23.38 | M.SCR.019, M.SCR.020, M.SCR.039, M.SCR.061, M.SCR.062, M.SCR.071, M.SCR.072 |
+| A.U23.39 | M.SCR.019 |
+| A.U23.42 | M.SCR.063 |
+| A.U23.47 | M.SCR.028 |
+| A.U23.49 | M.SCR.063, M.SCR.071 |
+| A.U24.05 | blast-only, holds: runner exit codes; `test.sh`'s runner selection unchanged (M.SCR.040) |
+| A.U24.36 | M.SCR.018, M.SCR.058 |
+| A.U24.42 | blast-only: a `tests/` header naming the build flavours, consistent with M.SCR.036 (TEST_UNIT) |
+| A.U24.43 | M.SCR.068 |
+| A.U24.46 | M.SCR.037, M.SCR.068; JS stamp path moved to `build/generated_src/definitions/` (M_WEB gap 6(a)) |
+| A.U24.48 | M.SCR.063 |
+| A.U24.53 | M.SCR.061 |
+| A.U24.54 | M.SCR.037, M.SCR.066, M.SCR.068; file name superseded by M.GEN.019 |
+| A.U24.64 | blast-only: measurement collects in `tests/` are baseline rows of the checker (M.SCR.015) |
+| A.U24.65 | M.SCR.040, M.SCR.041, M.SCR.042; the generic concurrency wrapper not created (A.U25.46 kept) |
+| A.U24.68 | M.SCR.048, M.SCR.062 |
+| A.U24.69 | M.SCR.012, M.SCR.013, M.SCR.039, M.SCR.061 |
+| A.U24.71 | blast-only: CLAUDE.md count text (DOCS); the guard itself is M.SCR.025 |
+| A.U24.72 | M.SCR.035, M.SCR.038, M.SCR.044, M.SCR.069 |
+| A.U24.82 | M.SCR.039, M.SCR.071 |
+| A.U25.18 | M.SCR.051 |
+| A.U25.25 | M.SCR.068 |
+| A.U25.32 | M.SCR.062, M.SCR.064 |
+| A.U25.34 | M.SCR.055 |
+| A.U25.35 | M.SCR.046, M.SCR.047, M.SCR.048, M.SCR.049, M.SCR.061 |
+| A.U25.36 | M.SCR.016, M.SCR.047, M.SCR.051, M.SCR.052, M.SCR.053, M.SCR.054 |
+| A.U25.37 | M.SCR.051, M.SCR.054, M.SCR.056 |
+| A.U25.38 | M.SCR.016, M.SCR.050, M.SCR.053, M.SCR.054, M.SCR.058 |
+| A.U25.39 | M.SCR.045 |
+| A.U25.44 | M.SCR.047, M.SCR.062, M.SCR.064 |
+| A.U25.46 | M.SCR.016, M.SCR.017, M.SCR.018, M.SCR.047 |
+| A.U25.48 | M.SCR.017, M.SCR.018, M.SCR.046, M.SCR.048, M.SCR.061 |
+| A.U25.55 | M.SCR.059, M.SCR.061 |
+| A.U25.62 | blast-only, holds: the suite names no chip-fake class; `:67`'s `_NAME` table is cited as fact |
+| A.U25.64 | M.SCR.016, M.SCR.047, M.SCR.048, M.SCR.054 |
+| A.U25.65 | blast-only: `digital_twin/README.md` text (TWIN); the strict readers it names stay (M.SCR.047) |
+| A.U25.66 | M.SCR.047, M.SCR.055 |
+| A.U25.74 | M.SCR.017, M.SCR.026, M.SCR.063 |
+| A.U26.02 | M.SCR.067 |
+| A.U26.03 | blast-only: reads the image record → M.SCR.067 (M.HW_BENCH.060) |
+| A.U26.05 | M.SCR.022 |
+| A.U26.14 | M.SCR.005, M.SCR.065 |
+| A.U26.22 | M.SCR.003 |
+| A.U26.35 | M.SCR.005, M.SCR.030, M.SCR.032, M.SCR.034 |
+| A.U26.42 | M.SCR.033 |
+| A.U26.66 | blast-only: conformance probes reach the binary through `TwinBoard`/`_unix_port.sh` (M.SCR.008, M.HW_BENCH.091) |
+| A.U26.74 | M.SCR.005, M.SCR.030, M.SCR.032, M.SCR.034 |
+| A.U26.75 | M.SCR.014, M.SCR.028, M.SCR.029, M.SCR.033, M.SCR.034 |
+| A.U26.85 | M.SCR.067 |
+| A.U27.01 | M.SCR.016, M.SCR.047 |
+| A.U27.02 | M.SCR.027 |
+| A.U27.03 | M.SCR.027 |
+| A.U27.04 | M.SCR.066, M.SCR.070 |
+| A.U27.05 | M.SCR.066 |
+| A.U27.06 | M.SCR.071, M.SCR.072 |
+| A.U27.08 | M.SCR.006, M.SCR.007, M.SCR.020, M.SCR.035, M.SCR.039, M.SCR.046, M.SCR.054, M.SCR.057, M.SCR.062, M.SCR.065, M.SCR.071, M.SCR.072 |
+| A.U27.09 | M.SCR.025, M.SCR.028, M.SCR.068 |
+| A.U27.10 | M.SCR.010, M.SCR.024, M.SCR.026, M.SCR.071, M.SCR.072 |
+| A.U27.11 | M.SCR.037, M.SCR.061, M.SCR.062, M.SCR.068 |
+| A.U27.12 | M.SCR.008, M.SCR.022, M.SCR.035, M.SCR.036, M.SCR.061, M.SCR.062, M.SCR.064 |
+| A.U27.13 | M.SCR.029 |
+| A.U27.14 | M.SCR.035, M.SCR.038 |
+| A.U27.15 | M.SCR.008, M.SCR.009, M.SCR.022, M.SCR.036, M.SCR.040, M.SCR.048, M.SCR.062, M.SCR.064 |
+| A.U27.16 | M.SCR.003, M.SCR.006, M.SCR.048, M.SCR.061, M.SCR.071 |
+| A.U27.17 | M.SCR.057 |
+| A.U27.18 | M.SCR.001, M.SCR.002, M.SCR.003, M.SCR.044, M.SCR.045 |
+| A.U27.19 | M.SCR.004, M.SCR.005, M.SCR.030, M.SCR.031, M.SCR.032, M.SCR.034 |
+| A.U27.20 | M.SCR.025 |
+| A.U27.21 | M.SCR.015, M.SCR.025 |
+| A.U27.23 | M.SCR.028 |
+| A.U27.25 | M.SCR.026, M.SCR.028 |
+| A.U27.26 | M.SCR.011, M.SCR.024, M.SCR.026 |
+| A.U27.27 | M.SCR.016, M.SCR.046, M.SCR.065, M.SCR.069 |
+| A.U27.28 | M.SCR.046, M.SCR.069 |
+| A.U27.29 | M.SCR.048, M.SCR.065, M.SCR.066, M.SCR.068, M.SCR.069 |
+| A.U27.31 | M.SCR.067 |
+| A.U27.32 | M.SCR.048, M.SCR.057, M.SCR.058 |
+| A.U27.33 | M.SCR.007, M.SCR.020, M.SCR.024, M.SCR.026, M.SCR.029, M.SCR.034, M.SCR.035, M.SCR.038, M.SCR.040, M.SCR.041, M.SCR.061, M.SCR.062, M.SCR.071, M.SCR.072, M.SCR.073 |
+| A.U27.34 | M.SCR.066, M.SCR.072 |
+| A.U27.35 | M.SCR.019, M.SCR.061, M.SCR.062, M.SCR.065, M.SCR.071, M.SCR.072 |
+| A.U27.36 | M.SCR.065, M.SCR.066, M.SCR.067 |
+| A.U27.37 | M.SCR.016, M.SCR.033, M.SCR.046 |
+| A.U27.38 | M.SCR.007, M.SCR.017, M.SCR.039, M.SCR.040, M.SCR.041, M.SCR.045, M.SCR.061 |
+| A.U27.39 | M.SCR.007, M.SCR.012, M.SCR.013, M.SCR.016, M.SCR.017, M.SCR.022, M.SCR.048, M.SCR.062, M.SCR.064, M.SCR.068 |
+| A.U28.01 | M.SCR.010, M.SCR.014, M.SCR.029, M.SCR.033, M.SCR.034 |
+| A.U28.02 | M.SCR.038, M.SCR.044, M.SCR.069 |
+| A.U28.03 | M.SCR.038, M.SCR.069 |
+| A.U28.04 | M.SCR.008, M.SCR.036 |
+| A.U28.05 | blast-only: `ci.yml` comment (TOOL); `build_firmware.py`'s cold-cache failure unchanged (M.SCR.065) |
+| A.U28.06 | M.SCR.061 |
+| A.U28.08 | M.SCR.061, M.SCR.064 |
+| A.U28.10 | M.SCR.014 |
+| A.U28.14 | M.SCR.025 |
+| A.U28.15 | M.SCR.038, M.SCR.044, M.SCR.069 |
+| A.U28.17 | M.SCR.023, M.SCR.063, M.SCR.073 |
+| A.U28.18 | M.SCR.064 |
+| A.U28.19 | M.SCR.073 |
+| A.U28.21 | M.SCR.064, M.SCR.073 |
+| A.U28.22 | M.SCR.073 |
+| A.U28.24 | M.SCR.021 |
+| A.U28.25 | M.SCR.023, M.SCR.064 |
+| A.U28.26 | M.SCR.064 |
+| A.U28.27 | M.SCR.046, M.SCR.069, M.SCR.070; PLW0603 per-file entry not needed (AD-7); N802 entry for the stripper not needed (TOOL gap) |
+| A.U28.28 | M.SCR.046, M.SCR.065, M.SCR.068 |
+| A.U28.33 | M.SCR.009, M.SCR.072 |
+| A.U28.37 | M.SCR.014 |
+| A.U28.38 | M.SCR.014, M.SCR.021, M.SCR.073 |
+| A.U28.41 | M.SCR.025 |
+| A.U28.43 | M.SCR.010, M.SCR.021, M.SCR.063, M.SCR.071 |
+| A.U29.02 | M.SCR.038 |
+| A.U3.02 | M.SCR.046 |
+| A.U30.03 | M.SCR.038 |
+| A.U30.12 | M.SCR.040 |
+| A.U30.13 | M.SCR.040 |
+| A.U30.14 | M.SCR.015, M.SCR.025 |
+| A.U30.16 | M.SCR.015, M.SCR.025 |
+| A.U30.17 | M.SCR.015 |
+| A.U30.21 | M.SCR.035 |
+| A.U31.06 | M.SCR.018 |
+| A.U32.01 | M.SCR.065 |
+| A.U33.04 | M.SCR.032, M.SCR.063, M.SCR.068, M.SCR.069, M.SCR.071 |
+| A.U33.05 | M.SCR.025 |
+| A.U33.07 | M.SCR.030 |
+| A.U33.09 | M.SCR.063, M.SCR.068, M.SCR.071 |
+| A.U34.05 | M.SCR.070 |
+| A.U34.08 | M.SCR.072 |
+| A.U34.09 | M.SCR.066 |
+| A.U34.11 | M.SCR.026, M.SCR.028 |
+| A.U34.12 | M.SCR.066, M.SCR.072 |
+| A.U35.02 | M.SCR.006, M.SCR.024, M.SCR.060 |
+| A.U35.05 | M.SCR.047 |
+| A.U35.09 | M.SCR.018 |
+| A.U35.15 | blast-only: a `tests/` root cause citing `test.sh`'s parallelism (J.7); no script change |
+| A.U35.23 | M.SCR.042 |
+| A.U35.24 | M.SCR.042 |
+| A.U35.25 | M.SCR.046, M.SCR.057 |
+| A.U35.26 | M.SCR.057 |
+| A.U35.27 | M.SCR.046, M.SCR.057 |
+| A.U35.28 | M.SCR.018, M.SCR.051 |
+| A.U35.29 | M.SCR.018 |
+| A.U35.37 | M.SCR.049 |
+| A.U35.38 | M.SCR.016, M.SCR.049 |
+| A.U35.39 | M.SCR.016 |
+| A.U35.49 | M.SCR.022 |
+| A.U35.57 | M.SCR.017 |
+| A.U36.004 | M.SCR.018, M.SCR.049, M.SCR.052, M.SCR.055 |
+| A.U36.008 | M.SCR.030, M.SCR.031, M.SCR.033 |
+| A.U36.023 | M.SCR.026 |
+| A.U36.024 | M.SCR.061, M.SCR.062 |
+| A.U36.038 | M.SCR.063 |
+| A.U36.511 | M.SCR.061, M.SCR.062, M.SCR.071 |
+| A.U36.512 | M.SCR.008, M.SCR.036 |
+| A.U36.513 | M.SCR.046, M.SCR.065 |
+| A.U36.515 | M.SCR.068, M.SCR.071 |
+| A.U36.516 | M.SCR.071 |
+| A.U36.517 | M.SCR.019, M.SCR.020, M.SCR.071 |
+| A.U36.518 | M.SCR.068 |
+| A.U36.521 | M.SCR.067 |
+| A.U36.524 | blast-only: CLAUDE.md/SPEC chroot-recipe comment naming `test.sh`; no script change |
+| A.U36.526 | M.SCR.044, M.SCR.069 |
+| A.U36.532 | M.SCR.058 |
+| A.U36.534 | M.SCR.026 |
+| A.U36.544 | M.SCR.018, M.SCR.037, M.SCR.053, M.SCR.066, M.SCR.071 |
+| A.U36.547 | M.SCR.029, M.SCR.061, M.SCR.062, M.SCR.065, M.SCR.071, M.SCR.072, M.SCR.073 |
+| A.U36.549 | M.SCR.071 |
+| A.U37.07 | M.SCR.024, M.SCR.061, M.SCR.065 |
+| A.U5.05 | M.SCR.018, M.SCR.046 |
+| A.U6.02 | M.SCR.028, M.SCR.037, M.SCR.061, M.SCR.062, M.SCR.068 |
+| A.U6.03 | M.SCR.020, M.SCR.039, M.SCR.061, M.SCR.062, M.SCR.071 |
+| A.U6.04 | M.SCR.071 |
+| A.U6.05 | M.SCR.068 |
+| A.U6.06 | M.SCR.071 |
+| A.U6.10 | M.SCR.068 |
+| A.U6.11 | M.SCR.023, M.SCR.063 |
+| A.U6.12 | M.SCR.068, M.SCR.071 |
+| A.U6.21 | M.SCR.049; its unowned L2 clause carried (AD-8) |
+| A.U6.27 | M.SCR.071 |
+| A.U6.30 | M.SCR.063, M.SCR.071 |
+| A.U7.01 | M.SCR.006, M.SCR.061 |
+| A.U7.02 | M.SCR.001, M.SCR.002, M.SCR.035; exit-2 rule for `test.sh` pending Q1 |
+| A.U7.03 | M.SCR.001, M.SCR.045, M.SCR.061 |
+| A.U7.04 | M.SCR.040, M.SCR.045 |
+| A.U7.05 | M.SCR.040 |
+| A.U7.06 | M.SCR.035; its exit 1 pending Q1 |
+| A.U7.08 | M.SCR.002, M.SCR.004, M.SCR.038, M.SCR.045 |
+| A.U7.09 | M.SCR.002, M.SCR.048, M.SCR.057, M.SCR.061; the attempt-2 `retried` filing dropped (A.U27.17, OR37.a (2)) |
+| A.U7.11 | M.SCR.001, M.SCR.024 |
+| A.U7.12 | M.SCR.001, M.SCR.026, M.SCR.028 |
+| A.U7.13 | M.SCR.004, M.SCR.005, M.SCR.034 |
+| A.U7.14 | M.SCR.002, M.SCR.005, M.SCR.030, M.SCR.034 |
+| A.U7.17 | M.SCR.002, M.SCR.033 |
+| A.U7.18 | M.SCR.001, M.SCR.005, M.SCR.006, M.SCR.030, M.SCR.031, M.SCR.032, M.SCR.034, M.SCR.061 |
+| A.U7.19 | M.SCR.024, M.SCR.026, M.SCR.029, M.SCR.030, M.SCR.031, M.SCR.032, M.SCR.033, M.SCR.035, M.SCR.061, M.SCR.062, M.SCR.063, M.SCR.065, M.SCR.071, M.SCR.072, M.SCR.073 |
+| A.U7.20 | M.SCR.003, M.SCR.034, M.SCR.044, M.SCR.061; the two XML archive entries dropped (A.U28.15) |
+| A.U7.21 | M.SCR.064 |
+| A.U7.23 | M.SCR.064 |
+| A.U7.24 | M.SCR.031, M.SCR.048 |
+| A.U7.26 | M.SCR.038 |
+| A.U8.04 | M.SCR.046 |
+| A.U8.05 | M.SCR.046, M.SCR.058 |
+| A.U8.14 | M.SCR.014, M.SCR.046, M.SCR.048 |
+| A.U8.15 | M.SCR.035, M.SCR.038, M.SCR.040, M.SCR.043 |
+| A.U8.16 | M.SCR.043 |
+| A.U8.18 | M.SCR.018, M.SCR.063 |
+| A.U8.20 | M.SCR.046, M.SCR.050, M.SCR.061; tags on `:680`/`:904` dropped (sleeps removed by A.U25.38) |
+| A.U8.21 | M.SCR.063 |
+| A.U8.23 | M.SCR.066 |
+| A.U8.24 | M.SCR.028, M.SCR.042, M.SCR.046, M.SCR.063 |
+| A.U8C.121 | M.SCR.065 |
+| A.U8C2.08 | M.SCR.045 |
+| A.U8C2.12 | M.SCR.045 |
+| A.U8C2.15 | M.SCR.045 |
+
+| action ID (read; names no `scripts/` path) | merged into M-ID |
+|---|---|
+| A.U0.28 | M.SCR.018 |
+| A.U10.11 | M.SCR.018 |
+| A.U10.15 | M.SCR.018 |
+| A.U10.36 | M.SCR.018 |
+| A.U10.38 | M.SCR.046, M.SCR.055 (its blast names no `scripts/` path; carried as an in-cluster gap) |
+| A.U10.40 | M.SCR.018, M.SCR.049, M.SCR.050, M.SCR.055, M.SCR.063, M.SCR.067 |
+| A.U10.R01 | M.SCR.053 |
+| A.U18.01 | M.SCR.018, M.SCR.055 |
+| A.U18.03 | M.SCR.018, M.SCR.055 |
+| A.U19.03 | M.SCR.018 |
+| A.U19.21 | M.SCR.018 |
+| A.U2.13 | M.SCR.018 |
+| A.U22.03 | M.SCR.018; withdrawn (AC_NOTES 37) — its comment edit dropped |
+| A.U24.34 | M.SCR.018 |
+| A.U24.37 | M.SCR.018 |
+| A.U24.47 | M.SCR.018 |
+| A.U24.60 | M.SCR.018 |
+| A.U24.70 | M.SCR.017 |
+| A.U25.13 | M.SCR.056 |
+| A.U25.14 | M.SCR.056 |
+| A.U25.31 | M.SCR.018 |
+| A.U25.33 | M.SCR.018 |
+| A.U25.45 | M.SCR.018 |
+| A.U25.57 | M.SCR.054 |
+| A.U25.72 | M.SCR.018 |
+| A.U27.24 | M.SCR.025 |
+| A.U30.15 | M.SCR.018 |
+| A.U35.31 | M.SCR.018 |
+| A.U7.07 | M.SCR.045 |
+| A.U8.02 | M.SCR.017 |
+| A.U8C.04 | M.SCR.018 |
+| A.U8C2.01 | M.SCR.018 |
+| A.U9.09 | M.SCR.018 |

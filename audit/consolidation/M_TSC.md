@@ -2136,3 +2136,107 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Depends**: {{tool_help}}, A.U36.547 (DOC).
 - **Blast carried by**: —
 - **Kind**: test
+
+## tests_scripts/test_micropython_overrides.py
+### M.TSC.114 Module-level tests, build-flavour names, derived devices, fail not skip
+- **From**: A.U24.75 (3) (nine `Test*` classes → module-level `def test_<class_snake>_<method>`), A.U36.512 (variant →
+  build flavour in names and text at `:174-230`), A.U7.26 (`:48`, `:350` skip → fail), A.U24.51 (`:488-495` →
+  `DEVICE_NAMES`), A.U24.73 (`Any`), A.U21.17 (fake `run`s accept the new keyword-only shape at `:153, :181, :243,
+  :813`), A.U27.29 (read: `pytest.raises(OverrideError)` holds — its base changes), A.SDEP.08 (read: `:857` fixture literal
+  stays), A.SDEP.03, A.U8.14, A.U21.03, A.U21.15 (read: fakes unaffected).
+- **Site**: `tests_scripts/test_micropython_overrides.py` (whole file; classes at `:44, 69, 135, 347, 373, 462, 680, 780,
+  804`).
+- **Change**: every class becomes module-level functions with module fixtures and `parametrize` (no `Test*` class
+  remains, including the classes U21 adds — they are written in function form from the start);
+  `test_the_test_rig_variant_is_built_without_the_settrace_flag` → `…_test_rig_flavour_…`,
+  `test_the_coverage_variant_gets_the_flag_and_its_own_build_dir` → `…_coverage_flavour_…`, "variant" → "build flavour"
+  in the other named lines (`test_the_constructed_make_command_carries_variant_and_variant_dir` keeps MicroPython's
+  `VARIANT`/`VARIANT_DIR`); a missing toolchain checkout fails naming `toolchain/setup_toolchain.py setup`; the per-device
+  loop is `@pytest.mark.parametrize("device", DEVICE_NAMES)`; fake `run`s take `(cmd, cwd=None, *, capture=False,
+  timeout_s=None, retries=0, redact=())`-shaped keywords as A.U21.17 defines them; no `Any`.
+- **Resolved**: A.U21.06/.11/.12 add classes in U21; A.U24.75 forbids classes in U24 — written as functions at once.
+- **Unit**: U24 (stages U7, U21; U36 wording).
+- **Depends**: A.U21.17 (`run()` signature, TOOLCHAIN/SCR).
+- **Blast carried by**: SPEC E.2.1 → A.U24.75 (SPEC).
+- **Kind**: test
+
+### M.TSC.115 The SIGINT override is proven in every built Unix binary
+- **From**: A.U21.06 (readback tests; `:83-96` header gains the sentinel; fake `make` branches), A.SDEP.11 (conditional:
+  if upstream made deferred delivery the Unix default, the override and its tests `:40-270` go).
+- **Site**: `tests_scripts/test_micropython_overrides.py:40-270`.
+- **Change**: the generated header test asserts the sentinel line and keeps the "include before #undef" order;
+  `fake_run` returns "LINK …" for `make` and gains a branch for the `…/unix_kbd_intr` preprocessed output; new
+  readback tests over fake `.pp` texts: clean passes; no sentinel → named error; last define `(1)` → named; `nlr_jump(`
+  in the handler body → named; no `sighandler` → named "re-verify"; the `make` command carries the build's own
+  `VARIANT`/`VARIANT_DIR`. If A.SDEP.11's re-check finds deferred delivery upstream-default at the new pin, the override's
+  tests are deleted with the override (and B.14.1/F.6 follow, SPEC).
+- **Resolved**: —
+- **Unit**: U21 (A.SDEP.11's branch decided at the pin refresh, U0/U37 per OR129).
+- **Depends**: A.U21.06 (TOOLCHAIN), A.SDEP.11.
+- **Blast carried by**: SPEC B.14.1/F.6 → A.SDEP.11/A.U21.06 (SPEC).
+- **Kind**: test
+
+### M.TSC.116 Override paths quoted; every anchor counted
+- **From**: A.U21.08 (`:105-112`, `:398-418` quoted `!r` forms; refusal cases), A.U24.40 (`:347-350` the anchor check
+  counts).
+- **Site**: `tests_scripts/test_micropython_overrides.py:105-112`, `:347-418`.
+- **Change**: manifest/board-cmake assertions take `f"include({str(path)!r})"`; new: a path with a space and one with `"`
+  → `OverrideError` naming the character, nothing written; a relative `overrides_dir` → every generated include line is
+  absolute; `:347`: besides the verify call, each of the 18 anchors of `_EVERY_LWIP_ANCHOR` occurs in the file
+  `verify_lwip_connection_counts_anchor()` reads it from, and the three relayed board files are present.
+- **Resolved**: —
+- **Unit**: U24 (stage U21).
+- **Depends**: A.U21.08 (TOOLCHAIN).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TSC.117 lwIP and modlwip overrides: anchors, copies, build readback, third binary
+- **From**: A.U21.10 (`_write_fake_lwip_tree()` gains the modlwip anchors; `:804-880` both overrides applied), A.U21.11
+  (modlwip anchor/apply/readback tests), A.U21.12 (third, `lwip`-flavour Unix binary; `:217-232` structural tests gain
+  it), A.U21.16 (`:194-203` `CFLAGS_EXTRA` assertion per the GCC branch), A.U21.29 (`:855-859` match `\[lwip\]`), A.U21.31
+  (`:643-646` test name and comment), A.U14.30 (read: `:625-647`, `:485-495` messages unchanged), A.SDEP.14 (read: the
+  lwIP tests are the re-verify's coverage), A.U8.14 (read: `:463-560` ensemble checks unchanged).
+- **Site**: `tests_scripts/test_micropython_overrides.py:194-232`, `:274-880`.
+- **Change**: the fake tree carries `extmod/modlwip.c` with the loop, the insertion point and the include, the
+  `extmod.cmake` line and the three CMake lines; modlwip tests: the real pinned source passes (after a toolchain build;
+  missing fails), each anchor dropped raises `OverrideError` naming it, the parametrisation covers every anchor the
+  code checks, the loop present twice or the CMake lines out of order are refused; apply returns `{"USER_C_MODULES":
+  …}`, never writes inside the fake tree (recursive listing/mtime compare), the copy differs from the pinned text by
+  exactly the insertion and include hunks (`difflib`), the inserted block sits after `tcp_output()`'s `ERR_OK` check and
+  before `MICROPY_PY_LWIP_EXIT`/`mp_hal_delay_ms(50)`, the generated `micropython.cmake` is pinned byte for byte,
+  idempotent, nothing written on a missing anchor; readback: `build.make` naming the copy + object passes, naming the
+  original or both → named error, no `build.make` → "layout changed", object missing/empty → named; structural:
+  `build_firmware()` calls both `apply_modlwip_eagain_override` and `verify_modlwip_eagain_in_build`; the `lwip` flavour
+  build is recorded with its own variant dir and the modlwip override; `:194-203` → per A.U21.16's branch (2a: no
+  `CFLAGS_EXTRA` argument carries `MICROPY_PY_SYS_SETTRACE`; 2b: the generated variant mk/board cmake carry the one-file
+  suppression and no global flag remains); `:855-859` `match=r"\[lwip\]"`;
+  `test_the_mem_size_floor_is_the_fielded_designs_own_share` → `…_is_the_earlier_configurations_share`, comment keeps
+  "8000 / 4 = 2000".
+- **Resolved**: —
+- **Unit**: U21
+- **Depends**: A.U21.09-.12, A.U21.16, A.U21.29, A.U21.31 (TOOLCHAIN).
+- **Blast carried by**: host lwIP hammer → A.U21.13 (TOOLCHAIN/TEST_UNIT); `test_test_sh.py` second loop → {{test_sh_lwip}}.
+- **Kind**: test
+
+## tests_scripts/test_microtest.py
+### M.TSC.118 The unit runner's contract and the test-tree conventions it relies on
+- **From**: A.U7.07 (runner behaviour on tmp files), A.U24.03 (`async def test_*` and `sys.exit` inside a test), A.U24.04
+  (canonical trailer), A.U24.08 (no `asyncio.run(` outside `tests/_async_harness.py`), A.U24.11 (unique scratch keys),
+  A.U24.60 (`json.loads(` only in `_strict_json.py` and the allow-list), A.U24.76 (no module-level `class Fake…`/`def
+  make_…` in a `tests/test_*.py` file).
+- **Site**: new `tests_scripts/test_microtest.py`.
+- **Change**: runner cases (tmp test files, `micropython_bin`, `MICROPYPATH=tests`): one Skip + one pass + one fail →
+  the `SKIP`/`PASS`/`FAIL` lines, closing `1/3 passed, 1 failed, 1 skipped`, exit 1; no `test_*` function → exit 1 with the
+  "no test_* functions" message; an `async def test_x` → exit 1, `FAIL test_x … async`; `sys.exit(0)` inside a test →
+  exit 1, `ABORT`, no later test run. Static checks over `tests/` (AST, each with a floor so it cannot pass vacuously):
+  every `tests/test_*.py` (≥ 80) ends with exactly `if __name__ == "__main__":` / `import microtest` /
+  `microtest.run(globals())`, has no module-level `async def test_*`, and binds `test_*` only to functions or
+  `register_for_device()` results; `asyncio.run(` only in `tests/_async_harness.py` (≥ 1 there); `json.loads(` only in
+  `tests/_strict_json.py` plus the named non-response reads; no module-level `class Fake…`/`def make_…` in a test file;
+  `TmpScratch(<key>)` keys (literal, or an f-string prefix expanded over `DEVICE_NAMES`) unique across files and never
+  colliding with another file's literal (≥ 10 keys found).
+- **Resolved**: —
+- **Unit**: U24 (stage U7 for the runner cases).
+- **Depends**: A.U7.07, A.U24.03/.04/.08/.11/.60/.76 (TEST_HELP/TEST_UNIT).
+- **Blast carried by**: SPEC E.2/E.2.1 → those actions (SPEC).
+- **Kind**: test

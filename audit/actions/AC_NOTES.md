@@ -152,3 +152,10 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     end-state check reads those six in full and confirms M.WEB.052-.059 against them.
 41. Owner, 2026-10-01: GEN Q1 → (a) (OR131: Microdot stubs byte-identical in `ext/typings/microdot/`, U0 re-vendor) and
     GEN Q2 → (a) (OR132: light-theme AA tokens applied, M.GEN.062). Every cluster writes both as firm, no "pending".
+42. Lead rulings on `M_TEST_UNIT.md`'s two questions (2026-10-01). (1) Header block: settled by G9/R16 (every file "opens
+    with exactly one header block", every-file scope owner PQ6, 2026-09-26; the gate "checks header presence") — the 23
+    L1 files without one each get a ≤ 3-line docstring, landing in U27 with the presence check; not an owner question.
+    (2) `NotificationService`: AC_NOTES 38's "`_finalized` counts as its gate" is void, since M.SRC_SENS.033 removes
+    `_finalized`. G5/R14 settles it: the class has an async `setup()`, so it carries `self.initialized` (False in
+    `__init__`, True in `setup()`) and stays in A.U10.22's check, not exempt. No method guards on it; a call before
+    `setup()` answers the construction defaults through its members' own gates (M.SRC_SENS.033).

@@ -1238,13 +1238,13 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
 - **From**: A.U21.27, A.U21.17 (budgets), A.U28.05 (blast: CI installs from the cached build tree into the same prefix).
 - **Site**: `toolchain/setup_toolchain.py:258-285` (`PICOTOOL_INSTALL_PREFIX`, `build_and_install_picotool()`).
 - **Change**: as A.U21.27: `build_and_install_picotool(picotool_dir, pico_sdk_dir, jobs, *, tag: str, previous_record:
-  dict | None, tier: str)`: (a) skip when the previous record names the same `picotool_tag`, `/usr/local/bin/picotool`
+  "ToolchainRecord | None", tier: str)`: (a) skip when the previous record names the same `picotool_tag`, `/usr/local/bin/picotool`
   exists and its `version` output contains the tag's version (form pinned by the executor from a real install) — log
   "picotool <tag> already installed in /usr/local - not rebuilt", no `cmake`, no `sudo`; else build (build budget) and
   `sudo make install` (build budget) as today; (b) `--help` containing "compiled without USB support" → `SetupError` in
   `flash`/`bench`, a warning in `setup`/`generic`; (c) `shutil.which("picotool", path=BUILD_ENV_PATH)` other than
   `/usr/local/bin/picotool` → warning naming both. The install prefix stays `/usr/local` (A.U28.05 relies on it).
-  Annotation: `previous_record: "ToolchainRecord | None"` (the record's `TypedDict`, M.TOOL.061), no `dict` of `Any`.
+  (`ToolchainRecord` is the record's `TypedDict`, M.TOOL.061: no `dict` of `Any`.)
 - **Resolved**: —
 - **Unit**: U21.
 - **Depends**: M.TOOL.061 (record), M.TOOL.046.
@@ -1611,7 +1611,7 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   versions.toml to the newest stable MicroPython tag (a pin move: the owner's call, and the platform re-check follows)"
   on both `setup` and `env`; `setup`'s `--clean` help "… ports/rp2/build-<board>, and every Unix-port build flavour
   (ports/unix/build-standard, build-settrace, build-lwip) …"; `env`'s `--password` removed (an explicit PSK comes from
-  `$BENCH_AP_PASSWORD`; `--ssid` help unchanged); new subparser `board` (parents `[common]`-less; one option `--device`)
+  `$BENCH_AP_PASSWORD`; `--ssid` help unchanged); new subparser `board` (no `--toolchain-dir`/`--jobs`; one option, `--device`)
   "Print the resolved MicroPython board's serial path". The bare-argv convenience accepts `board` too. `main()`: parse
   (so `-h` exits 0 before any lock, file read or side effect); `board` → print `resolve_pico_device(args.device)`,
   return 0 — before `load_versions()` and without the lock (D6: it reads /sys only); `setup`/`test`/`env` → `with
@@ -1863,4 +1863,243 @@ GEN Q2 (OR132) touches no TOOL file.
   A.U21.19's argv fallback for the PSK, A.U21.13's one-time unpatched control build (not a CI arm), A.U28.07 (the web
   filter's last-green base), A.U28.19 (monthly Firefox period), A.U28.27 (host TRY003/EM exemptions), A.U28.36 (budget
   margin rule), A.U28.01 (the second composite action).
+
+## Ledger
+
+| action ID | merged into M-ID / dropped (reason) |
+|---|---|
+| A.C.01 | no TOOL edit (C round frame reads `get_interface_mac()`/`ensure_bench_bridge()` behaviour; PROC) |
+| A.C.02 | no TOOL edit (R0 runs the installer's checks; PROC) |
+| A.S0930.04 | M.TOOL.019 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.S0930.27 | M.TOOL.019 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.SDEP.01 | no TOOL edit (refresh order and record; PROC) — order applied in every U0 stage above |
+| A.SDEP.02 | no TOOL edit (check gate; PROC) — new-rule decisions land via M.TOOL.025/.028/.030 |
+| A.SDEP.03 | M.TOOL.022, M.TOOL.024, M.TOOL.025, M.TOOL.028, M.TOOL.078 |
+| A.SDEP.04 | M.TOOL.069 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.SDEP.05 | M.TOOL.001, M.TOOL.005, M.TOOL.006, M.TOOL.020 |
+| A.SDEP.08 | M.TOOL.001, M.TOOL.073 |
+| A.SDEP.09 | M.TOOL.077 |
+| A.SDEP.11 | M.TOOL.037, M.TOOL.040, M.TOOL.056 |
+| A.SDEP.12 | M.TOOL.044, M.TOOL.055 |
+| A.SDEP.13 | M.TOOL.039, M.TOOL.040 |
+| A.SDEP.14 | M.TOOL.038, M.TOOL.075, M.TOOL.076 |
+| A.SDEP.15 | M.TOOL.077 |
+| A.SDEP.16 | M.TOOL.056 |
+| A.SDEP.19 | M.TOOL.001, M.TOOL.002, M.TOOL.010, M.TOOL.012, M.TOOL.020, M.TOOL.022 |
+| A.SDEP.21 | no TOOL edit (BACKLOG/SPEC/CLAUDE.md records; DOCS) |
+| A.SDEP.24 | no TOOL edit (plan corpus; audit file) |
+| A.SDEP.25 | M.TOOL.024, M.TOOL.061, M.TOOL.073, M.TOOL.077 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U0.03 | no TOOL edit (toolchain built for the corpus; PROC) |
+| A.U0.06 | no TOOL edit (baseline record; its uv line feeds M.TOOL.024) |
+| A.U0.07 | M.TOOL.030 |
+| A.U0.21 | M.TOOL.032, M.TOOL.033 |
+| A.U0.35 | M.TOOL.028, M.TOOL.030 |
+| A.U0.37 | M.TOOL.015, M.TOOL.028, M.TOOL.030 |
+| A.U0.39 | M.TOOL.030 |
+| A.U0.40 | M.TOOL.022 |
+| A.U0.55 | no TOOL edit (CLAUDE.md actor tags; `ci.yml:419-420` comment needs none) |
+| A.U0.57 | no TOOL edit (`pyproject.toml:50` needs none) |
+| A.U1.01 | M.TOOL.011 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U1.05 | no TOOL edit (recipe moved to `tests_hardware/README.md`; the two comments are A.U1.22 → M.TOOL.066) |
+| A.U1.07 | no TOOL edit (README prerequisite) |
+| A.U1.08 | no TOOL edit (`dev_legacy/` citers in `setup_toolchain.py` are A.U1.22 → M.TOOL.066) |
+| A.U1.09 | no TOOL edit (`tests_scripts` check; S603 already exempt) |
+| A.U1.12 | no TOOL edit (CLAUDE.md) |
+| A.U1.21 | M.TOOL.012, M.TOOL.026 |
+| A.U1.22 | M.TOOL.058, M.TOOL.066 |
+| A.U5.17 | M.TOOL.029, M.TOOL.030 |
+| A.U5.18 | M.TOOL.029 |
+| A.U6.03 | M.TOOL.010 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U6.04 | M.TOOL.027 |
+| A.U6.10 | M.TOOL.019 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U6.11 | M.TOOL.010, M.TOOL.019 |
+| A.U6.12 | M.TOOL.005, M.TOOL.007, M.TOOL.010 |
+| A.U6.15 | no TOOL edit (variant-literal check; its `ci.yml` entry clears with M.TOOL.016-.018) |
+| A.U7.03 | M.TOOL.013 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U7.08 | no TOOL edit (`scripts/test.sh` pytest record) |
+| A.U7.09 | no TOOL edit (twin suite summary; CI reads the exit code) |
+| A.U7.10 | M.TOOL.007, M.TOOL.009 |
+| A.U7.11 | no TOOL edit (`lint.sh` summary; CI runs tools directly) |
+| A.U7.12 | no TOOL edit (summary records; CI reads exit codes) |
+| A.U7.19 | M.TOOL.072 |
+| A.U7.21 | M.TOOL.010, M.TOOL.019 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U7.26 | no TOOL edit (`tests_scripts` skip → fail) |
+| A.U8.14 | M.TOOL.001, M.TOOL.014, M.TOOL.037, M.TOOL.038, M.TOOL.041, M.TOOL.046, M.TOOL.076 (the two `action.yml` loop tags dropped: A.U28.01 removes the loop; they move with it to `scripts/uv_sync_retried.sh`, SCR) |
+| A.U8.15 | M.TOOL.005, M.TOOL.006, M.TOOL.016, M.TOOL.019 |
+| A.U8.23 | M.TOOL.032, M.TOOL.033 (its restated decorator-override comment is an interim U8-U27 stage; A.U27.07 removes the override) |
+| A.U8.24 | M.TOOL.032, M.TOOL.033, M.TOOL.047 |
+| A.U9.02 | M.TOOL.028, M.TOOL.030 |
+| A.U10.30 | blast only — `buildgen/validate.py` loads `micropython_overrides.py` by path; stays stdlib-only (M.TOOL.035) |
+| A.U10.34 | M.TOOL.035, M.TOOL.043, M.TOOL.066, M.TOOL.067 |
+| A.U10.37 | M.TOOL.030 |
+| A.U10.38 | M.TOOL.028, M.TOOL.030 |
+| A.U10.46 | M.TOOL.033 |
+| A.U10.47 | M.TOOL.028 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U11.38 | M.TOOL.028, M.TOOL.030 |
+| A.U11.S01 | M.TOOL.033 |
+| A.U11.S02 | M.TOOL.033 |
+| A.U11.S03 | M.TOOL.030, M.TOOL.033 |
+| A.U14.23 | no TOOL edit (BACKLOG text) |
+| A.U14.24 | M.TOOL.051 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U14.30 | M.TOOL.038, M.TOOL.075, M.TOOL.076 (its OR112 sizing already withdrawn by OR114.a (3); text change 3 kept) |
+| A.U15.02 | no TOOL edit (no shim-specific pyproject entry) |
+| A.U15.43 | M.TOOL.030, M.TOOL.033 |
+| A.U16.S01 | M.TOOL.033 |
+| A.U17.11 | no TOOL edit (L0 reads the working tree; no `ci.yml` change) |
+| A.U17.26 | M.TOOL.033 |
+| A.U18.12 | M.TOOL.032 |
+| A.U18.18 | M.TOOL.038, M.TOOL.075, M.TOOL.076 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U18.44 | M.TOOL.033 |
+| A.U19.05 | M.TOOL.030 |
+| A.U19.17 | M.TOOL.030, M.TOOL.033 |
+| A.U20.14 | M.TOOL.031, M.TOOL.033 |
+| A.U20.32 | M.TOOL.030, M.TOOL.033 |
+| A.U20.33 | M.TOOL.023, M.TOOL.035, M.TOOL.043 |
+| A.U20.35 | no TOOL edit (SPEC L.3 states `[lwip]`'s HEAD values, M.TOOL.076 keeps them) |
+| A.U21.01 | M.TOOL.048 |
+| A.U21.02 | M.TOOL.060, M.TOOL.072, M.TOOL.073, M.TOOL.074 |
+| A.U21.03 | M.TOOL.043, M.TOOL.051, M.TOOL.058, M.TOOL.060, M.TOOL.061, M.TOOL.069, M.TOOL.071 |
+| A.U21.04 | no TOOL edit (`scripts/typecheck.sh`, SCR; CI runs it unchanged) |
+| A.U21.05 | M.TOOL.051, M.TOOL.060, M.TOOL.074 |
+| A.U21.06 | M.TOOL.037, M.TOOL.041, M.TOOL.056 |
+| A.U21.07 | M.TOOL.001 |
+| A.U21.08 | M.TOOL.036, M.TOOL.037, M.TOOL.038, M.TOOL.039, M.TOOL.040 |
+| A.U21.09 | M.TOOL.039 |
+| A.U21.10 | M.TOOL.018, M.TOOL.039, M.TOOL.041, M.TOOL.055 |
+| A.U21.11 | M.TOOL.018 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U21.12 | M.TOOL.013, M.TOOL.019, M.TOOL.037, M.TOOL.038, M.TOOL.040, M.TOOL.041, M.TOOL.054, M.TOOL.056, M.TOOL.057, M.TOOL.058 |
+| A.U21.15 | M.TOOL.053, M.TOOL.055, M.TOOL.056 |
+| A.U21.16 | M.TOOL.037, M.TOOL.038, M.TOOL.040, M.TOOL.044, M.TOOL.055, M.TOOL.056 |
+| A.U21.17 | M.TOOL.030, M.TOOL.046, M.TOOL.049, M.TOOL.050, M.TOOL.051, M.TOOL.052, M.TOOL.054, M.TOOL.055, M.TOOL.056, M.TOOL.059, M.TOOL.060, M.TOOL.067, M.TOOL.068, M.TOOL.069, M.TOOL.070 |
+| A.U21.18 | M.TOOL.018, M.TOOL.049 |
+| A.U21.19 | M.TOOL.046, M.TOOL.068, M.TOOL.071, M.TOOL.072 |
+| A.U21.20 | no TOOL edit (`tests_scripts` fixture, TSC) |
+| A.U21.21 | M.TOOL.061, M.TOOL.069 |
+| A.U21.22 | M.TOOL.050, M.TOOL.060, M.TOOL.061, M.TOOL.062, M.TOOL.072 |
+| A.U21.23 | M.TOOL.068 |
+| A.U21.24 | M.TOOL.065, M.TOOL.069, M.TOOL.071 |
+| A.U21.25 | M.TOOL.046, M.TOOL.067 |
+| A.U21.26 | M.TOOL.065, M.TOOL.071 |
+| A.U21.27 | M.TOOL.052, M.TOOL.060, M.TOOL.071 |
+| A.U21.28 | M.TOOL.064, M.TOOL.072 (its "FAILED: …" line superseded by A.U27.29's form, D7) |
+| A.U21.29 | M.TOOL.018, M.TOOL.043, M.TOOL.047 |
+| A.U21.30 | M.TOOL.042, M.TOOL.057, M.TOOL.060, M.TOOL.063, M.TOOL.069 |
+| A.U21.31 | M.TOOL.038, M.TOOL.075 |
+| A.U22.04 | M.TOOL.030, M.TOOL.033 |
+| A.U23.38 | M.TOOL.006, M.TOOL.019 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U23.47 | M.TOOL.033 |
+| A.U24.40 | no TOOL edit (`tests_scripts` anchor-count test, TSC) |
+| A.U24.48 | no TOOL edit (ESLint; CI web lint step unchanged) |
+| A.U24.51 | no TOOL edit (`tests_scripts` device loops) |
+| A.U24.52 | no TOOL edit (JS message names `setup_toolchain.py setup`; command unchanged) |
+| A.U24.66 | no TOOL edit (`tests_scripts` device fixtures) |
+| A.U24.72 | M.TOOL.015, M.TOOL.019, M.TOOL.025, M.TOOL.078 |
+| A.U24.73 | M.TOOL.030, M.TOOL.033 |
+| A.U24.75 | no TOOL edit (`test_micropython_overrides.py` → module-level tests, TSC) |
+| A.U25.37 | M.TOOL.019 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U25.39 | no TOOL edit (no pyproject/CI entry names the unwedge helper; its retirement rests on M.TOOL.041's proof) |
+| A.U25.40 | M.TOOL.032 |
+| A.U25.42 | M.TOOL.030 |
+| A.U25.46 | M.TOOL.032 |
+| A.U25.48 | M.TOOL.017, M.TOOL.019 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U25.55 | M.TOOL.019 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U25.62 | no TOOL edit (N801 comment is A.U10.38's → M.TOOL.028/.030) |
+| A.U25.63 | M.TOOL.030, M.TOOL.033 |
+| A.U25.74 | M.TOOL.019 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U26.02 | M.TOOL.041, M.TOOL.055 |
+| A.U26.03 | M.TOOL.038 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U26.19 | M.TOOL.030 |
+| A.U26.31 | no TOOL edit (collect matrix; reads `files`) |
+| A.U26.44 | M.TOOL.032 (its `:363`/`:370` comment text superseded by A.U27.25's, U27) |
+| A.U26.49 | M.TOOL.030 |
+| A.U26.54 | M.TOOL.030 |
+| A.U26.74 | M.TOOL.034 |
+| A.U26.75 | no TOOL edit (hardware runners call `scripts/uv_sync_retried.sh`, SCR) — provided by M.TOOL.002's script |
+| A.U27.02 | M.TOOL.047, M.TOOL.059, M.TOOL.074, M.TOOL.077 |
+| A.U27.07 | M.TOOL.033 |
+| A.U27.09 | M.TOOL.011, M.TOOL.026, M.TOOL.032 |
+| A.U27.10 | M.TOOL.002, M.TOOL.018, M.TOOL.023 |
+| A.U27.11 | M.TOOL.010 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U27.12 | M.TOOL.001, M.TOOL.007 |
+| A.U27.13 | no TOOL edit (SCR) — its quoted failure text follows M.TOOL.072 (Gap 4) |
+| A.U27.14 | M.TOOL.019 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U27.16 | M.TOOL.017 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U27.21 | no TOOL edit (CI runs the checker through the pytest tier) |
+| A.U27.22 | M.TOOL.032 |
+| A.U27.23 | M.TOOL.032 |
+| A.U27.24 | M.TOOL.011 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U27.25 | M.TOOL.011, M.TOOL.032 |
+| A.U27.26 | M.TOOL.078 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U27.28 | M.TOOL.003 |
+| A.U27.29 | M.TOOL.035, M.TOOL.045, M.TOOL.072 |
+| A.U27.31 | M.TOOL.018 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U27.35 | no TOOL edit (`build_website.sh` interface unchanged in CI) |
+| A.U27.37 | M.TOOL.034 |
+| A.U27.38 | M.TOOL.019 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U27.39 | M.TOOL.010 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U28.01 | M.TOOL.001, M.TOOL.002, M.TOOL.006, M.TOOL.011, M.TOOL.012, M.TOOL.013, M.TOOL.015, M.TOOL.046 |
+| A.U28.02 | M.TOOL.002, M.TOOL.024, M.TOOL.025, M.TOOL.078 |
+| A.U28.03 | M.TOOL.078 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U28.04 | M.TOOL.001, M.TOOL.007, M.TOOL.008, M.TOOL.009, M.TOOL.010 |
+| A.U28.05 | M.TOOL.018, M.TOOL.052 |
+| A.U28.06 | M.TOOL.016, M.TOOL.017, M.TOOL.018, M.TOOL.019 |
+| A.U28.07 | M.TOOL.004, M.TOOL.005 |
+| A.U28.08 | no TOOL edit (TSC) — its rules are what M.TOOL.001-.020 satisfy |
+| A.U28.09 | M.TOOL.007, M.TOOL.008, M.TOOL.009, M.TOOL.010 |
+| A.U28.10 | no TOOL edit (CLAUDE.md) |
+| A.U28.13 | M.TOOL.005, M.TOOL.021 |
+| A.U28.14 | M.TOOL.021 |
+| A.U28.15 | M.TOOL.015, M.TOOL.021 |
+| A.U28.16 | M.TOOL.009 |
+| A.U28.17 | M.TOOL.010 |
+| A.U28.19 | M.TOOL.010 |
+| A.U28.20 | M.TOOL.070, M.TOOL.071 |
+| A.U28.21 | no TOOL edit (cross-browser installer; `ci.yml:307` unchanged) |
+| A.U28.22 | no TOOL edit (cross-browser installer) |
+| A.U28.23 | no TOOL edit (`package.json`, WEB) |
+| A.U28.24 | no TOOL edit (`package.json`/preview server, WEB/SCR) |
+| A.U28.25 | M.TOOL.005 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U28.27 | M.TOOL.028, M.TOOL.030 |
+| A.U28.28 | M.TOOL.030, M.TOOL.031, M.TOOL.038 (its `tests_hardware/isl29125_conformance.py` `S603` entry dropped: M.HW_BENCH.038 removes the subprocess, D10) |
+| A.U28.29 | M.TOOL.028, M.TOOL.030 (its "copies of that password" group dropped: empty after A.U26.49, U26) |
+| A.U28.31 | M.TOOL.027, M.TOOL.028, M.TOOL.030 |
+| A.U28.32 | M.TOOL.028 |
+| A.U28.34 | no TOOL edit (CLAUDE.md scope sentence) |
+| A.U28.35 | M.TOOL.020 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U28.36 | M.TOOL.006, M.TOOL.019 |
+| A.U28.37 | no TOOL edit (SPEC) — carries the B.10/B.10.1 texts of M.TOOL.001-.020 |
+| A.U28.38 | no TOOL edit (BACKLOG) — carries the U28 chroot line |
+| A.U28.39 | no TOOL edit (TSC) — Gap 1 |
+| A.U28.40 | no TOOL edit (CLAUDE.md zizmor bullet) |
+| A.U28.41 | M.TOOL.011, M.TOOL.030 |
+| A.U28.42 | M.TOOL.001, M.TOOL.002, M.TOOL.003 |
+| A.U28.43 | M.TOOL.002, M.TOOL.006, M.TOOL.019 |
+| A.U29.01 | M.TOOL.028, M.TOOL.030 |
+| A.U29.03 | M.TOOL.030 |
+| A.U33.04 | no TOOL edit (BACKLOG chroot list) — Gap 7 |
+| A.U33.05 | no TOOL edit (BACKLOG → SPEC B.16) |
+| A.U33.06 | M.TOOL.028 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U34.05 | no TOOL edit (CPY001 reason unaffected) |
+| A.U34.07 | M.TOOL.028 |
+| A.U34.08 | no TOOL edit (freezefs record) |
+| A.U34.09 | M.TOOL.020 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U34.11 | M.TOOL.030, M.TOOL.033 |
+| A.U35.04 | no TOOL edit (faults planted in a throwaway worktree only) |
+| A.U35.23 | no TOOL edit (timings recorded in an audit file) |
+| A.U36.007 | M.TOOL.072 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U36.023 | no TOOL edit (SPEC Part F intro; the notice text M.TOOL.060 cites it) |
+| A.U36.043 | no TOOL edit (CLAUDE.md/SPEC exclusion lists; the pyproject line is A.U25.40 → M.TOOL.032) |
+| A.U36.512 | M.TOOL.056, M.TOOL.057, M.TOOL.072 |
+| A.U36.519 | M.TOOL.074 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U36.522 | M.TOOL.068 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U36.524 | no TOOL edit (chroot recipe → SPEC B.17; its uv line follows M.TOOL.024) |
+| A.U36.526 | M.TOOL.015, M.TOOL.021 |
+| A.U36.528 | M.TOOL.078 |
+| A.U36.542 | no TOOL edit (SPEC 0.4 cites `max-args`) |
+| A.U36.544 | M.TOOL.028, M.TOOL.030, M.TOOL.037, M.TOOL.038, M.TOOL.067 |
+| A.U36.547 | M.TOOL.072 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
+| A.U37.02 | M.TOOL.030, M.TOOL.033 (its inline `# noqa: PLC0415` form dropped for per-file entries: owner rule L44/OR83) |
+| A.U37.04 | no TOOL edit (close check of the chroot list) — Gap 7 |
+| A.U37.15 | no TOOL edit (no `audit/` exclusion in any TOOL file, grep) |
+| A.U37.16 | M.TOOL.078 (blast/read: no edit of its own to a TOOL file beyond what the cited change states) |
 
