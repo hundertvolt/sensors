@@ -139,7 +139,7 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 
 ### LEAD/R10 The website meets an accessibility baseline
 - **Req**: Unique DOM ids (field ids namespaced by group), every label targeting its control, a closed drawer `inert` with focus handled, WCAG 2.1 AA contrast in both themes, a non-colour cue beside colour where A28 allows, `autocomplete` on password inputs, every input kind the templates build styled like the others (`type="password"` included; `html/style.css:261-263` omits it, WEB.N179), reduced motion honoured; proven by an automated accessibility check in `tests_js`.
-- **Sources**: G7 gap 2 · OR44.a P4, OR43.a (2) · WEB.T07, WEB.S15-S17
+- **Sources**: G7 gap 2 · OR44.a P4, OR43.a (2) · WEB.T07, WEB.S15-S17 · OR132/OR132.a
 - **Rank**: agent — "(agent, 2026-09-27)"
 - **State**: work: code and test in U23
 - **Home**: SPEC H

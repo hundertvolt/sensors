@@ -5710,3 +5710,783 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Depends**: M.SRC_SENS.067, .068, .091; M.TEST_HELP.043, .052, .054, .065.
 - **Blast carried by**: —
 - **Kind**: test
+
+## tests/test_ntp_fram_system_integration.py
+
+### M.TEST_UNIT.282 Header and fixtures: generated-wiring parity, shared NTP frames, port redirect
+- **From**: A.U24.44 (`:75-90` `make_ntp()` keeps its local construction; `:79`, `:338-342` comments cite the generated
+  wiring; the L0 parity check is TSC's), A.U24.49 (`:57-58` self-containment sentence goes; `FakeNtpServer`,
+  `make_ntp_reply`, `make_fram_manager`, `_tick` → shared), A.U24.76 (`make_*` → `_make_*`), A.U24.70 (`:132` → port
+  band), A.U10.29 + A.U18.11 (`:147-173` `_RedirectNtpNetworking` → `redirect_udp_port(asy_ntp_client, 123, port)`),
+  A.U18.12 + A.U18.13 (`:149-172` pre-resolution and `conn_tries` go; plain tuples), A.U24.01 (`:206` → `NTP_EPOCH_DELTA`
+  via the shared builder; `:462` `_STATUS_BUSY` → `src_const`), A.U5.09 + A.U18.40 (`:71` `WifiService(WifiConfig(…))`),
+  A.U5.10 + A.U18.10 (`NTPClient(lock, net, dns, NtpTiming(…), cfg_path=…)`, `DNSFallback` empty), A.U10.40 (the
+  hand-written `config_NTP.cfg` keys), A.U10.38/A.U10.37 (class/module names), A.U10.18 (7: `network_available` →
+  `network_available_locked`, `wifi_mode_lock`), A.U10.35 (`conn.wlan` → `conn._wlan`, `svc.uptime_event` →
+  `svc._uptime_event`, `reader.bmp/scd/sgp` chains), A.U10.10 (setups), A.U18.33 (the DNS server read after one
+  `_update_wifi_snapshot()`), A.U24.08 (`run`, `_cancel`), A.U24.67 (3 variant sites `:1`, `:79`, `:341`), A.U24.73,
+  A.U8C.40 + A.U8C2.13 (tags), A.U8.17 (`:313`, `:329` constants), A.U29.03 (read: payload digits).
+- **Site**: `tests/test_ntp_fram_system_integration.py:1-240`, `:462`.
+- **Change**: docstring → "Integration across the real chain WifiService -> NTPClient -> {a timestamped FRAM chunk,
+  SystemService}, wired as the generated build_system() wires them (buildgen/codegen.py); proves the chain's value/
+  timing behaviour and the no-deadlock assumption around wifi_mode_lock." (3 lines). Imports per the renames plus
+  `from _async_harness import cancel, run`, `from _fram_builders import make_fram_manager`, `from _ntp_frames import
+  FakeNtpServer, make_ntp_reply`, `from _port_bands import PortAllocator`, `from _udp_port_redirect import
+  redirect_udp_port`, `from _fake_time import tick`, `from _src_const import src_const`, `from _error_codes import code`,
+  the address shim at import. `_make_conn()` → `WifiService(WifiConfig("SensorNode", "12345678", 5, 5), cfg_path=…)`,
+  `run(conn.setup())`. `_make_ntp(conn, host, fetch_timeout_ms=_FETCH_TIMEOUT_MS)` writes `{"NTPHost": host,
+  "NTPOffset": 0, "NTPInterval": 12, "GMTOffset": 0, "DSTOffset": 0, "DNSFallback": ""}` and builds
+  `NTPClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, NtpTiming(_DNS_TIMEOUT_MS,
+  _DNS_TRIES, fetch_timeout_ms, _RETRY_S, _RETRY_MAX_S), cfg_path=…)`, `run(ntp.setup())`; its comment "# The generated
+  build_system() wiring (buildgen/codegen.py): the three providers passed positionally, the real bound methods." `_connect_
+  wlan()` sets the fake's state through `conn._wlan` and then runs `run(conn._update_wifi_snapshot())`. The local
+  `FakeNtpServer`, `make_ntp_reply`, `_NTP_EPOCH_DELTA`, `make_fram_manager`, `_tick`, `_RedirectNtpNetworking`,
+  `_next_port`/`make_addr()`/`make_port()` go (`_PORTS = PortAllocator("test_ntp_fram_system_integration")`; an
+  unreachable address is `("127.0.0.1", _PORTS.next())`). `_sync_real_ntp_chain()` uses `with
+  redirect_udp_port(asy_ntp_client, 123, server.port)`, starts `ntp._sync_loop()`, sets `ntp._sync_trigger_event` (the
+  private name of M.SRC_NET's NTP section), waits under `_SERVE_WAIT_S = 5  # @tunable l1.asy_ntp_client_serve_wait_s`
+  and the `_SYNCED_POLL_TRIES`/`_STATE_POLL_MS` constants (tags `l1.asy_ntp_client_synced_poll_tries = 50`,
+  `l1.asy_ntp_client_state_poll_ms = 20`). Module constants: `_FETCH_TIMEOUT_MS = 5000  # @tunable ntp.fetch_timeout_ms`,
+  `_LOCK_HOLD_FETCH_TIMEOUT_MS = 2000  # @tunable l1.fram_lock_fetch_timeout_ms` (`:313`), `_WRITE_PROMPT_S = 1.0  #
+  @tunable l1.fram_write_prompt_s` (`:329`), `_UTC_TOLERANCE_S = 5` (`:263, :360`), `_SCAN_WAIT_S = 2.5` (`:443, :550,
+  :614, :644`), `_START_POLL_S = 0.01`/`_START_POLL_TRIES = 200` (`:542-548`, `:608-612`, `:638-642`) each with its
+  `l1.ntp_fram_system_integration_*` tag. `_STATUS_BUSY = src_const("src/asy_fram_manager.py", "_STATUS_BUSY")`.
+- **Resolved**: A.U8C.40's `udp.conn_tries_default` (`:161`) and `l1.asy_ntp_client_fake_server_poll_ms`/A.U8C2.13's
+  `…_fake_server_poll_tries` (`:190-200`) sites leave with the local classes (the shared `FakeNtpServer` carries them,
+  TEST_HELP); not written here.
+- **Unit**: U24 (stages U5, U10, U18, U8).
+- **Depends**: M.SRC_NET.041-.044, .078, the WiFi snapshot (M.SRC_NET A.U18.33); M.TEST_HELP.043, .054, .056-.058, .066.
+- **Blast carried by**: L0 provider-parity check → A.U24.44 (TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.283 FRAM timestamp tests: the write return order, setup-first chunks
+- **From**: A.U16.18 (`:256`, `:277` annotations; `:260`, `:281`, `:329`, `:397`, `:475-476` unpacks: `written` first),
+  A.U10.06 (read: the chunk's timestamp is `utc_now()` once synced — the real chain sets the flag; tests that run
+  unsynced keep `TS`/`utc` `None`), A.U35.12 (`:437` one `sleep(0)` states its limit).
+- **Site**: `tests/test_ntp_fram_system_integration.py:241-337`, `:379-500`.
+- **Change**: `chunk.write(...)` results unpack `write_ok, ntp_synced, utc` (annotations `tuple[bool, bool, int | None]`);
+  `:281` `== (False, False, None)`; `:329` `write_ok, *_ = await asyncio.wait_for(chunk.write(b"12345678"),
+  _WRITE_PROMPT_S)` with its comment trimmed to "# A fraction of _LOCK_HOLD_FETCH_TIMEOUT_MS: checks the write completes
+  promptly, not stuck behind the lock."; the reboot test builds `manager2, _ = make_fram_manager(chip=chip)`. Each
+  chunk's manager runs `setup()` before allocation as today.
+- **Resolved**: —
+- **Unit**: U16 (stage U24).
+- **Depends**: M.SRC_CORE (A.U16.18's return order); M.TEST_HELP.057.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.284 SystemService seams: measured uptime, split supervision, the task-end record
+- **From**: A.U11.01 (`:354`, `:370`, `:394` pumps advance the fake clock 1000 ms each), A.U20.06 + A.U32.06 (`:436`,
+  `:541`, `:607`, `:637` `start_and_check_tasks()` → `start_tasks()` then `supervise_tasks()`), GAP-G5 (`task_names`
+  required), A.U2.08 + A.U3.06 (`:557`, `:621`, `:651` "wrnno=1" → the task end's `code("E", "TASK_RETURNED")`), A.U2.15
+  (read: NTP failures keep `ErrCount == 20`; A.U3.12's one slot leaves the count), A.U5.02 (`SystemService(…)` `log=`
+  where passed), A.U10.44 (`start_asy_ntp_client()` → the NTP sync starter; `read_loop` → `_read_loop`), A.U15.12 +
+  A.U10.43 (SCD30 reader config), A.U5.11 (SGP40 compensation `ValueRef`s over the SCD30 reader), A.U35.12 (`:437`), A.U8C.120
+  (read: `_SCAN_WAIT_S` a Dependant of `system.task_check_s`).
+- **Site**: `tests/test_ntp_fram_system_integration.py:339-454`, `:502-651`.
+- **Change**: the boot-signature tests pump `tick(svc._uptime_event, n)` with the fake clock `TickSeconds` reads
+  advanced 1000 ms per pump (the shared `tick()`'s step parameter); `121` pumps → 121 s measured. Each supervisor test:
+  `await svc.start_tasks([spy_starter], ["NTP"])` (or `["BMP3XX"]`/`["SCD30"]`/`["SGP40"]`), then `sup =
+  asyncio.create_task(svc.supervise_tasks())`, the `:437` `sleep(0)` comment "# one yield: the start ran inside
+  start_tasks(); this only lets the supervisor park (a limit, not an interleaving claim)"; `cancel(sup)` at the end.
+  Assertions: NTP — `len(starts) == 1`, SYSTEM `ErrCount == 0`, NTP `ErrCount == 20`; each reader — `len(starts) == 2`,
+  SYSTEM `ErrCount == 1` with newest `code("E", "TASK_RETURNED")` (comment "# the task's end is persisted; the restart
+  line is console-only"). Builders: `_make_bmp_reader()`/`_make_scd30_reader()`/`_make_sgp40_reader()` call
+  `machine.I2C.reset_id(<bus>)` first and `run(reader.setup())`; `SCD30_Reader(i2c, irq_pin=5, trigger_s=…, max_module_
+  error=…, cfg_path=…)`; `SGP40_Reader(i2c, ValueRef(scd, "Temp"), ValueRef(scd, "Hum"), max_module_error=…, cfg_path=…)`;
+  attribute chains through `_bmp`/`_scd`/`_sgp`.
+- **Resolved**: GAP-G5 (task names required) and A.U20.06's split land in the same lines.
+- **Unit**: U20 (stages U2/U3 codes, U11 uptime, U15 readers).
+- **Depends**: M.SRC_CORE.005, .013, the supervisor (M.SRC_CORE `start_tasks`/`supervise_tasks`); M.TEST_HELP.054.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_ntp_wifi_dns_integration.py
+
+### M.TEST_UNIT.285 Header and fixtures: the generated wiring, shared frames, the port redirect, an empty fallback
+- **From**: A.U24.44 (`:66-80` `make_ntp()` kept local; `:71` comment), A.U24.49 + A.U24.76 (`FakeNtpServer`,
+  `make_ntp_reply`, `_tick`, `make_*`), A.U24.70 (`:245` port band), A.U10.29 + A.U18.11 (`:262-288` → `redirect_udp_port`),
+  A.U18.12 + A.U18.13 (pre-resolution and `conn_tries` go), A.U24.01 (`:322` `NTP_EPOCH_DELTA` via the shared builder),
+  A.U5.09 + A.U18.40 (`make_conn()` `WifiService(WifiConfig(…))`), A.U5.10 + A.U18.10 (`NTPClient(…, NtpTiming(…))`,
+  `DNSFallback` empty), A.U10.40 (config keys), A.U10.38/A.U10.37, A.U10.18 (7 lock-name sites), A.U10.35 (`conn.wlan`,
+  `ntp_sync_trigger_event`, `wifi_mode_lock` reads), A.U10.44 (`asy_ntp_time()` → `_sync_loop()`), A.U10.10 (setups;
+  `ntp.pr.setup()` `:193`, `:439` → `ntp.setup()` already run by the builder, the lines go), A.U24.08, A.U24.67 (2
+  variant sites `:1`, `:71`), A.U24.73 (7 `Any` lines), A.U8C.41 + A.U8C2.14 (tags), A.U36.544 (`:365`), A.U18.08 (`:429`).
+- **Site**: `tests/test_ntp_wifi_dns_integration.py:1-118`, `:238-332`, `:365-370`, `:427-432`.
+- **Change**: docstring → "Integration across the real chain WifiService -> NTPClient -> asy_dns_client.resolve_ipv4(),
+  wired as the generated build_system() wires them (buildgen/codegen.py): calling order, error handling and value
+  propagation a recorder-based unit test cannot observe." (3 lines; the "found and fixed a real bug" history goes). The
+  `:3-8` comment block → "# No real port-53 or port-123 exchange (both need root): a literal-IP NTPHost skips DNS, and
+  an / # empty DNSFallback with a 0.0.0.0 DHCP server leaves no candidate to ask." (2 lines). Builders as
+  M.TEST_UNIT.282 (`_make_conn()`, `_make_ntp(conn, host, cfg_path=None, fetch_timeout_ms=_FETCH_TIMEOUT_MS)`, the
+  written config file carrying `"DNSFallback": ""`); `_connect_wlan()` sets the fake through `conn._wlan` and runs one
+  `conn._update_wifi_snapshot()` (A.U18.33: the DNS server flows through the snapshot); the local `FakeNtpServer`,
+  `make_ntp_reply`, `_NTP_EPOCH_DELTA`, `_tick`, `_cancel`, `_RedirectNtpNetworking`, `_next_port`/`make_*` go for the
+  shared ones, `PortAllocator("test_ntp_wifi_dns_integration")` and `redirect_udp_port(asy_ntp_client, 123,
+  server.port)`. `_last_err()` stays (its "duplicated, not imported" comment → "# The newest entry of a log field."). Tag
+  constants: `_LOCK_BLOCKED_WAIT_S = 0.05` (`:229`), `_FETCH_TIMEOUT_NO_REPLY_MS = 100` (`:379`), `_PAST_FETCH_TIMEOUT_MS =
+  150` (`:388`), `_FAILURE_CYCLES = 8` (`:386`), `_SERVE_WAIT_S`, `_SYNCED_POLL_TRIES`, `_STATE_POLL_MS` (`:347-351`), each
+  tagged with its A.U8C.41/A.U8C2.14 ID. `:365` "(BACKLOG.md open question 6, closed 2026-09-04)" → "(SPECIFICATION.md
+  F.2)". `:429-431`: `import asy_dns_client` moves to module level; the comment names `ipv4_to_int()`.
+- **Resolved**: A.U8C.41's `udp.conn_tries_default` (`:274`) and the fake-server poll rows leave with the local classes.
+- **Unit**: U24 (stages U5, U10, U18, U8).
+- **Depends**: M.TEST_UNIT.282's builders (same shape); M.SRC_NET.041-.044, .078; M.TEST_HELP.043, .054, .056, .058, .066.
+- **Blast carried by**: L0 provider-parity check → A.U24.44 (TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.286 Value propagation and locking through the WiFi snapshot
+- **From**: A.U18.33 (`:122-190` one snapshot step before sampling), A.U18.34 (new L1s (a)-(c); `:226` flips), A.U18.15
+  (`_RecordingResolver` accepts `pr=`), A.U18.10 (the recorder sees the DHCP server alone; new L1: no socket built
+  without a candidate), A.U10.18 (`ntp._wifi_mode_lock is conn.get_wifi_mode_lock()`).
+- **Site**: `tests/test_ntp_wifi_dns_integration.py:120-236`; new tests.
+- **Change**: `_RecordingResolver.__call__(host, dns_servers=(), timeout_ms=0, tries=0, *, pr)` records the four
+  values; `:155` `== [("pool.ntp.org", ("203.0.113.9",), 500, 1)]` and `:178` `("0.0.0.0",)` hold (empty fallback list).
+  `:181-197` reads `ntp._safe_get_dns_server()` after a snapshot step taken with `ifconfig` raising: `None`, and
+  `_resolve_ntp_server()` still returns `("127.0.0.1", 123)`. `:207` → `ntp._wifi_mode_lock is
+  conn.get_wifi_mode_lock()`. `:213-235`: while the NTP attempt holds the lock, `conn.get_dns_server_ip() ==
+  "192.0.2.53"` (the pre-attempt snapshot, A.U18.34 (a) — HEAD's `is None` retired; guard: the snapshot test (a)
+  below) and the mode switch stays blocked past `_LOCK_BLOCKED_WAIT_S`. New: `test_a_held_lock_serves_the_snapshot_
+  and_uptime_keeps_counting` (A.U18.34 (a): a resolver taking 3 s of fake time holds the lock; `get_dns_server_ip()`
+  and the `/status` networking fields return the snapshot, `WifiUptime` advances by the fake ticks);
+  `test_the_wifi_loop_resumes_after_the_lock_without_a_fault` ((b): `_hw_op_failed` False, no log entry);
+  A.U18.34 (c)'s reconnect case as written there; `test_no_socket_is_built_without_a_dns_candidate` (A.U18.10: empty
+  `DNSFallback`, DHCP `0.0.0.0`, a non-literal host — zero `UDPSocket` constructions, counted through the port
+  redirect's wrapper).
+- **Resolved**: —
+- **Unit**: U18.
+- **Depends**: M.SRC_NET.044 (`_safe_get_dns_server`), the WiFi snapshot (M.SRC_NET.0xx, A.U18.33/.34), M.TEST_HELP.066.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.287 Full chain: sync, a silent server in one slot, no candidate at all
+- **From**: A.U2.15 (`:407` 21 → `NTP_NO_REPLY` 71; `:453` 12 → `NTP_DNS` 67), A.U3.12 (the repeated no-reply spends one
+  slot), A.U18.10 (`:425-445` the fallback swap → `DNSFallback` stored empty), A.U5.10 (`retry_max_s` read from the
+  timing), A.U2.14 (read: no WiFi code literal in this file, grep — the six lines are NTP's).
+- **Site**: `tests/test_ntp_wifi_dns_integration.py:334-454`.
+- **Change**: `:334` holds under the shared server and redirect. `:364-407`: `_FAILURE_CYCLES` triggers each
+  `_PAST_FETCH_TIMEOUT_MS` apart; `still_running`, not synced, `ntp._retry_wait_s == <the timing's retry cap>`;
+  `ErrCount == 8` and the ring holds exactly one entry, newest `code("E", "NTP_NO_REPLY")`; the comment → "# Never
+  synced, but the task handles it (Part C.7.2): still running, backed off to its cap, and the / # silent timeout
+  persisted once for the run (C.7.1's repeat rule) while counted every time." `:427` →
+  `test_dns_resolution_with_no_candidate_persists_the_dns_error`: `ntp._set_dict_cfg({"DNSFallback": ""}, …)` already
+  holds via the builder (no module swap), newest `code("E", "NTP_DNS")`, `ErrType` "E".
+- **Resolved**: —
+- **Unit**: U18 (stages U2, U3).
+- **Depends**: M.SRC_NET.042, .045-.049.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_print_log.py (→ `tests/test_asy_print_log.py`)
+
+### M.TEST_UNIT.288 Harness, names, structural FRAM fakes that fail only by allocation
+- **From**: A.U10.37 (`print_log` → `asy_print_log`; `import asy_print_log`), A.U10.38 (`FRAMManager`, `FRAMChunk`,
+  `CRCBase`), A.U16.05 (`:24`, `:53-63` `LockableBuffer` → `RegionBuffer`, 6 sites), A.U16.19 (`:58`, `:63`
+  `override_pause` goes), A.U11.S03 (2) (the fakes checked structurally against the non-generic Protocols — hold),
+  A.U11.16 (`:42-87` fakes raise `MemoryError`), A.U24.08 (`run`), A.U24.49 + M.TEST_HELP.057 (`make_fram_manager`; the
+  three reboot rebuilds `manager2.fram._spidev.spi._spi = chip` → `make_fram_manager(chip=chip)`), A.U10.35 (`err_count`
+  → `_err_count`), A.U0.07 (`:54` function-level import).
+- **Site**: `tests/test_print_log.py:1-84`; every `err_count` and rebuild site.
+- **Change**: imports `import asy_print_log`, `from asy_print_log import DEFAULT_LOG, LogConfig, PrintLog,
+  PrintLogHistory, PrintLogHistoryStore, fatal_reported, make_logger, report_if_fatal`, `from asy_fram_manager import
+  FRAMChunk`, `from asy_base_classes import RegionBuffer`, `from _async_harness import run`, `from _fram_builders import
+  make_fram_manager`, `from _recording_print import record_prints`; TYPE_CHECKING imports `asy_crc_checks.CRCBase` and
+  drops `Coroutine`/`Any`/`TypeVar`. `_RaisingFramChunk(raise_on_write, raise_on_read, none_buffer=False)`: `get_buffer()
+  -> RegionBuffer` (`RegionBuffer(6, data_start=0, data_length=6)`, or one whose data buffer is `None` when
+  `none_buffer`); `write_into(self, buf)`/`read_into(self, buf)` raise `MemoryError("simulated allocation failure")`
+  when set; `_RaisingFramManager.get_chunk(self, size, crc=None, verify=0, check_length=8)` (`FRAMManager.get_chunk()`'s
+  final parameters, M.SRC_CORE.090) raises `MemoryError`. Their comments → "# Fails only by allocation, the one failure
+  the real chunk documents (SPECIFICATION.md C.7); parameter names / # stay exact so mypy checks the fake against
+  asy_print_log's Protocols." Every `.err_count` → `._err_count`; the `deque` swap targets `asy_print_log.deque`.
+- **Resolved**: —
+- **Unit**: U16 (stages U10 names, U11 fakes, U24 harness).
+- **Depends**: M.SRC_CORE.060; M.TEST_HELP.043, .050, .057.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.289 Levels: numbers, refusal, what prints at each level
+- **From**: A.U11.15 (20 sites → `pr.level` and 0-5; `:107-118` goes), A.U11.13 (`:90-100`, `:131-136`; new L1), A.U24.38
+  (`:120` → recorded prints), A.U11.S03 (1) (read: `:128` `sep="-"` holds).
+- **Site**: `tests/test_print_log.py:85-146`, `:306-313`, `:355-375`.
+- **Change**: section banner "# PrintLog - levels 0 (off) .. 5 (all), refused when invalid". `:90` `PrintLog(None).level ==
+  0`; `:95` → `test_an_out_of_range_level_is_refused_not_clamped`: `PrintLog(-5).level == 0`; `pr = PrintLog(2)`,
+  `pr.set_level(10) is False`, `pr.level == 2`; `:102`, `:131` with numbers (`2`; `0` then `set_level(5) is True`).
+  `:107-118` goes (it tested only the removed accessors; guard: the refusal test). `:120` →
+  `test_each_level_prints_exactly_its_lines`: under `record_prints()`, level 0 prints none of `err/wrn/one/evt/all`, level
+  1 only `err`, level 5 all five, `all("a", sep="-")` printing `"-"`-joined (the "(expected) …" console banner goes). New
+  `test_set_level_refuses_non_int_and_out_of_range_values`: `set_level(True)`, `set_level(2.0)`, `set_level(None)`,
+  `set_level(6)` each `False` with the level unchanged; `set_level(3)` `True`. `:306-313` comment → "# deque(maxlen=…)
+  raises ValueError on a negative maxlen (pinned interpreter); the constructor clamps it to zero." `:359`, `:369` →
+  `level=0`.
+- **Resolved**: —
+- **Unit**: U11 (stage U24 recorded prints).
+- **Depends**: M.SRC_CORE.062, .066; M.TEST_HELP.050.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.290 History: the newest-entry rule, honest sentinels, pre-setup entries, bool results
+- **From**: A.U3.01 (new L1 per history type), A.U2.05 (42 code lines; `0x80` slot → `{num 0, "N"}`; negative code L1),
+  A.U24.39 + A.U35.35 (`:201-205` from `0xFFFE`), A.U10.11 (new L1s: merge, pre-setup repeat, reset inside setup's read),
+  A.U11.31 (`:217-225`, `:366-380` `reset()` returns `True`), A.U10.21 (read: `setup() -> bool`).
+- **Site**: `tests/test_print_log.py:148-375`; new tests.
+- **Change**: `:201-205` → `test_err_count_saturates_at_max_and_never_wraps`: `_err_count = 0xFFFE`; one `err_s` →
+  `0xFFFF`, a second (a different code) → still `0xFFFF` (`:289-293` then merges into it and goes as a duplicate).
+  `:217`, `:366` assert `run(hist.reset()) is True`; `:160` asserts `run(hist.setup()) is True`. The raw-history tests
+  (`:175`, `:182`, `:266`, `:279`) hold (they read the ring's stored bytes); `:226-232` `get_log()` expectations hold (the
+  initial slot reports `0, "N"`). New: `test_a_sustained_identical_code_spends_one_slot` per history type
+  (`PrintLogHistory`; `PrintLogHistoryStore` over a counting fake chunk): ten identical `err_s` → `ErrCount` 10, the
+  earlier entries intact, one chunk write per call; a different code between spends a slot; a recovered-then-recurring
+  identical code stays one slot; the console printed all ten (`record_prints()`). `test_a_restored_0x80_byte_reads_back_
+  as_no_entry` (store over the real chip: a `0x80` byte written into the stored ring reads back `num 0`, `"N"`).
+  `test_a_negative_code_is_counted_diagnosed_and_takes_no_slot`. `test_pre_setup_entries_are_kept_after_the_stored_
+  ones` (two stored entries, one pre-setup entry: after `setup()` the ring ends with the pre-setup entry, `ErrCount` 3;
+  a pre-setup repeat counts and takes no slot); `test_a_reset_landing_during_setups_read_clears_ram_and_chunk` (a fake
+  chunk whose `read_into()` awaits a barrier; `reset()` runs there; both end cleared).
+- **Resolved**: —
+- **Unit**: U11 (stages U2, U3, U10, U24).
+- **Depends**: M.SRC_CORE.063, .065.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.291 Store: allocation-only failures, the tri-state read, newest state last
+- **From**: A.U11.16 (`:579-603`: fakes raise `MemoryError`; `:589-597` goes; new L1 `None` data buffer), A.U16.06
+  (`:401`, `:408`, `:586`, `:601`, `:629`; new L1s: unreadable store kept, blank re-initialised), A.U11.31 (`:476-524`,
+  `:555-577` gain `reset()`'s result; `:511-524` → `False`; new L1), A.U11.09 (`:539-553` holds, gains the history bytes),
+  A.U14.19 (new gated-write L1; the existing fakes are not gated), A.U16.R03 (read: `tests/test_asy_fram_manager.py`'s
+  re-persist case uses this file's store pattern, M.TEST_UNIT.048).
+- **Site**: `tests/test_print_log.py:377-691`; new tests.
+- **Change**: `:399-401` (`fram is None`): `_write()` `False`, `_read()` `None`. `:408` (blank chunk) `_read() is False`
+  holds. `:536` → `run(store._read()) == (1, ())` (the read returns the stored count and entries). `:546` sets
+  `_err_count`; `:539-553` holds with the two history bytes asserted after the header. `:579-586` (get_chunk raising
+  `MemoryError`): `fram is None`, `_write()` `False`, `_read()` `None`. `:589-597` goes (the real chunk's `write_into()`
+  cannot raise; guard: `:598`'s MemoryError read case and the `None`-buffer case below). `:598-601` → `_read()` `None`.
+  `:629` → `_read()` `None` (both copies torn: unreadable, not blank). `:484`, `:505`, `:561` assert `reset()` is `True`;
+  `:518` asserts `run(store.reset()) is False`. New: `test_a_none_data_buffer_fails_write_and_read_without_raising`
+  (`none_buffer=True`: `_write()` `False`, `_read()` `None`); `test_an_unreadable_store_keeps_its_bytes_and_stays_ram_
+  only` (a chunk reading `None` at `setup()`: chip bytes untouched, `initialized is False`, `setup()` `False`, a later
+  `err_s()` writes nothing to the chip); `test_a_blank_store_is_reinitialised` (reads `False`: written, initialized);
+  `test_a_store_whose_reset_cannot_write_returns_false`; `test_concurrent_writes_land_newest_last` (a fake chunk whose
+  `write_into()` awaits a test-held `asyncio.Event` and records payloads; three concurrent `err_s()`: releasing the gate
+  lets exactly two writes through, the first and the newest, the last payload holds all three entries, the superseded
+  call returns `True`).
+- **Resolved**: A.U16.06 lists `:629` among the fault fakes going to `None` while the chunk's own split
+  (M.SRC_CORE.088) returns `False` for blank-or-invalid data; A.U16.06 states the site's end value and both blocks
+  carry a BUSY status (a status fault, not blank data) — `None` kept as written (agent decision D-T27).
+- **Unit**: U16 (stages U11, U14).
+- **Depends**: M.SRC_CORE.064, .065, .088.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.292 The logger factory and the C-stack fatal flag
+- **From**: A.U5.01 (new L1), GAP-G8 + A.U30.19 (the flag L1 moves here from `tests/test_base_classes.py`).
+- **Site**: new tests at the end of `tests/test_print_log.py`.
+- **Change**: `test_make_logger_builds_a_store_or_a_ram_history_by_config` — `make_logger(LogConfig(manager, 4, 2),
+  "SGP40")` is a `PrintLogHistoryStore` named "SGP40" at level 2 over a chunk of the manager; `make_logger(DEFAULT_LOG,
+  "X")` a `PrintLogHistory` named "X". `test_report_if_fatal_flags_only_a_stack_overflow` —
+  `report_if_fatal(RuntimeError("maximum recursion depth exceeded"))` sets `fatal_reported()`; `RuntimeError("CRC check
+  failed while reading data")`, `ValueError("maximum recursion depth exceeded")` and `MemoryError()` do not (each checked
+  from a cleared flag; the after-each hook resets it, A.U24.07). The expected message is cited to `py/runtime.c:1786`
+  (v1.29.0) in a one-line comment.
+- **Resolved**: A.U30.19 places this L1 in `tests/test_base_classes.py`; M.SRC_CORE.034 moved the flag to
+  `asy_print_log` (GAP-G8), so the test lives with its module.
+- **Unit**: U30 (factory case U5).
+- **Depends**: M.SRC_CORE.034, .061; TEST_HELP after-each flag reset (A.U24.07).
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_readiness_gates.py (new)
+
+### M.TEST_UNIT.293 Every class with an async setup answers before and after a failed setup
+- **From**: A.U10.22 (the L1 half; the L0 AST check is `tests_scripts/test_readiness_gates.py`, TSC), A.U10.21 (a
+  refused construction: `setup()` `False`, the refusal persisted), GAP-17 lead ruling (AC_NOTES 38).
+- **Site**: new `tests/test_readiness_gates.py`.
+- **Change**: one table of `(class, builder, forced-failure, {public method: documented answer})` rows, one row per `src/`
+  class with an async `setup()` that A.U10.22's L0 check gates (the same class list, read from the L0 test's exported
+  set so the two cannot drift): for each, every public method is called before `setup()` and after a `setup()` forced to
+  fail (a NAK'd bus, a directory in place of the config file, a write-dropping FRAM fake, a refused construction), and
+  the answer is the documented one — a sentinel (`None`, `False`, `{}`), `"Failed"` per requested key, or the documented
+  raise — never an `AttributeError`; a refused construction's `setup()` returns `False` and its log holds the refusal.
+  Exempt by name, as the L0 check names them (AC_NOTES 38): the chip protocol classes (`BMP3XX_I2C`, `SCD30_I2C`,
+  `SGP40_I2C`, `ISL29125_I2C`) and `I2CDevice`; `ConfigManager` is gated on `valid`; `NeopixelDriver` on its
+  `initialized` gate (its row: `on()`/`off()`/`toggle()`/`led_signal()`/`request_signal()` before `setup()` — the
+  answers M_SRC_SENS defines for the gate, GAP in "Gaps"); `NotificationService` on its guard (row pending the lead's
+  answer, "Owner questions": AC_NOTES 38 names `_finalized`, which M.SRC_SENS.033 removes). Module docstring ≤ 3 lines
+  naming G5/R14's rule in words.
+- **Resolved**: AC_NOTES 38 settles the exempt set and the NeopixelDriver gate.
+- **Unit**: U10 (lands after U13's `deinit()` bool, as A.U10.22 states).
+- **Depends**: M.TEST_UNIT.079 (NeopixelDriver gate cases); M_SRC_SENS NeopixelDriver gate (GAP); every class's
+  M.SRC_* `setup()` end state.
+- **Blast carried by**: L0 → A.U10.22 (TSC); SPEC C.13 → A.U10.22 (SPEC).
+- **Kind**: test
+
+## tests/test_reset_call_site_invariant.py
+
+### M.TEST_UNIT.294 Reset sites confined to the system service; the watchdog armed first in the boot entry
+- **From**: A.U24.54 (2)-(3) (the WDT half repointed to the generated boot entry; the reset half widened to aliased
+  imports and the generated modules; the comment `:30-35`), A.U20.02 (read: the boot entry arms the WDT; `src/` holds no
+  `watchdog` global), A.U10.08 + A.U8.08 (read: `:30-45` "U24 repoints it"; no value here), A.U10.37 (`system_service.py`
+  → `asy_system_service.py`).
+- **Site**: `tests/test_reset_call_site_invariant.py:1-45`.
+- **Change**: docstring → "Regression test: every reset goes through SystemService._reboot(), and the watchdog is armed
+  once, first, in each generated boot entry - another call site would reintroduce an unpaused reset or a circumventable
+  watchdog." Reset half: the excluded file is `asy_system_service.py`; the scan covers `src/*.py` and
+  `build/generated_src/sensortask_<device>.py` (after `require_fresh()`); offenders are the four needles, any `from machine
+  import` line naming `reset` or `bootloader`, and any `import machine as <alias>` followed by `<alias>.reset(` or
+  `<alias>.bootloader(`. WDT half: no `WDT(` in `src/*.py` or `sensortask_<device>.py`; each
+  `build/generated_src/sensortask_<device>_main.py` (one per `devices/*.toml`, the floor checked) holds exactly one
+  `WDT(`, and its first two statements after the docstring are `from machine import WDT` and `watchdog =
+  WDT(timeout=8000)`; each `sensortask_<device>_main_noautostart.py` constructs no `WDT` (an `ast` walk finds no call; its
+  `WDT(` appears only inside the printed start line). Comment `:30-35` → `# "must be hardcoded so no error ever can
+  circumvent it" (owner, 2026-08-11, eaafc2f) is about injection; / # placement first in the boot entry is the owner's
+  (2026-09-25).`
+- **Resolved**: A.U24.54 names the boot entry `<device>_boot.py`; M.GEN.019 settles `sensortask_<device>_main.py` (M_GEN
+  gap 1). M.GEN.019 also emits the no-autostart entry, whose printed start line contains `WDT(timeout=8000)` as text —
+  a plain substring count would flag it, so that file is checked by `ast` for no construction (agent decision D-T28).
+- **Unit**: U24.
+- **Depends**: M.GEN.001, .019; M.TEST_HELP.046 (`require_fresh`).
+- **Blast carried by**: the generated tree's writer → A.U24.54 (SCR, `scripts/_generate_sensortask_modules.py`).
+- **Kind**: test
+
+## tests/test_setter_microdot_integration.py
+
+### M.TEST_UNIT.295 One product fixture: real readers in a real WebserverService on the vendored Microdot
+- **From**: A.U27.07 (1), (6), (7) (the fixture; header; the decorator override goes once no local route remains),
+  A.U8.23 (`:24-27` import ignore → the vendored stub on `mypy_path`), A.U27.15 (`:17-20` comment → the unit tier's
+  `MICROPYPATH` rule), A.SDEP.06 (`:2`, `:272` "v2.6.2" re-stamped at the pin), A.U24.49 (`:5-10` the self-containment
+  sentence goes), A.U36.544 (`:274`, `:355`, `:374` pointers), A.U36.527 (read: the override and its CLAUDE.md sentence go
+  with the rewiring), A.U5.09 + A.U18.40 + A.U18.38 (`:64` `WifiService(WifiConfig(…))`), A.U5.10 + A.U18.10 + A.U10.18
+  (`:71` `NTPClient(lock, net, dns, NtpTiming(…))`, empty `DNSFallback`, local `def`s for the providers), A.U5.04 (the
+  webserver's construction config objects), A.U24.60 (17 `json.loads(res.body)` → `strict_loads`), A.U24.73 (9 `Any`
+  lines), A.U24.08 (`run`), A.U10.37/A.U10.38 (names), A.U10.10 (setups).
+- **Site**: `tests/test_setter_microdot_integration.py:1-90`, `:258-283`.
+- **Change**: docstring → "End to end over the product's REST routes: real readers, a real WebserverService and the
+  vendored Microdot (<pin>)." with the pin the re-check confirms. The `:4-10` scope comment and the self-containment
+  sentence go. `sys.path.insert(0, "ext")` stays under the comment "# The unit tier's MICROPYPATH holds src/ and tests/
+  only (scripts/micropypath.toml); this file alone reaches ext/microdot.py." (A.U27.15), and `from microdot import
+  Microdot, Request` carries no ignore (the stub is on `mypy_path`, A.U8.23). One builder `_make_service()` constructs
+  the real `WifiService`, `NTPClient`, `SystemService`, `BMP3XX_Reader`, `SGP40_Reader` and `SCD30_Reader` (each
+  `setup()` run; fake buses `reset_id` first) and a real `WebserverService` whose `sensors` are the three readers and whose
+  `settings` are the `SettingsGroup` lists exactly as `buildgen/codegen.py` emits them: `"networking"` — `conn` (`SSID`,
+  `PW`, `Country`, `Hostname`, `post_fct=conn.reconnect_wifi`), `conn` (`LEDWifiOn`), `ntp` (`NTPHost`, `NTPOffset`,
+  `NTPInterval`, `post_asy_fct=ntp.ntp_force_sync`); `"system"` — `sysfunct` (`DebugLevel`), `ntp` (`GMTOffset`,
+  `DSTOffset`); requests go through `_make_request()` (kept) and `service.app.dispatch_request()`. Every response body is
+  read with `strict_loads()` (A.U24.60). `_FakeRequest`, the `_simulated_*` endpoints, `_wifi_field_schema()`,
+  `_wifi_app()`, `_bmp_app()`, `_ntp_*_app()`, `_sgp_app()`, `_scd_*` helpers and every `@app.put`/`@app.get` local route
+  go.
+- **Resolved**: —
+- **Unit**: U27 (stages U5, U8, U10, U18, U24).
+- **Depends**: M.SRC_NET (webserver construction and routes, M.SRC_NET.110-.132), M.SRC_CORE.072 (`parse_cmd_request()`
+  deleted, U27), M.GEN (settings groups); M.TEST_HELP.008 (`strict_loads`), .043.
+- **Blast carried by**: `pyproject.toml:408-413` override removal → A.U27.07 (TOOL); CLAUDE.md sentence → A.U36.527
+  (DOCS); `tests/test_api_response.py:125-178`, `:42-44`, `:80-88` → M.TEST_UNIT.003-.005.
+- **Kind**: test
+
+### M.TEST_UNIT.296 Networking requests: sparse bodies, scoped groups, body-shape refusals
+- **From**: A.U27.07 (2), (3) (`:136-256` the mocked block and the scoping tests on the real app), A.U0.35 + A.U19.15
+  (`:193` "Final project decision:" → "(owner, 2026-09-26):"), A.U19.01 (`:193-199` an unknown key "Invalid", never a
+  whole-request refusal), A.U4.02 + A.U11.24 (read: the setters run on the store's own schema; unchanged PUT schedules
+  no flush), A.U10.40 (`LEDWifiOn`), A.U10.35 (`reconn_wifi` → the private flag M.SRC_NET.078 names).
+- **Site**: `tests/test_setter_microdot_integration.py:136-283`.
+- **Change**: each HEAD case on `PUT /networking` with a sparse body: fine data → `res` "OK", code 0, the four results
+  "Valid", the reconnect flag set, `get_dict()` the stored values; partial → mixed results, the reconnect still fires,
+  the refused keys at their defaults; a body that is not JSON (`req._body = b"{not valid json"`) → `res` not OK, code
+  1; a JSON array or a scalar → the same; `{}` → OK with an empty result and no reconnect; an unknown key → "Invalid"
+  beside the valid one (comment "# (owner, 2026-09-26): an unknown key is a per-field Invalid, never a whole-request
+  refusal."). The scoping tests keep their claims on the product groups: `{"LEDWifiOn": false}` alone → "Valid", no
+  reconnect; `{"Hostname": "NewHost", "LEDWifiOn": false}` → both "Valid", one reconnect (the Wi-Fi group changed);
+  `{"SSID": "Hacked"}` reaches the Wi-Fi group only. The two "missing/unrecognized `cmd`" tests go with the envelope
+  (no `cmd` exists; guard: the unknown-key case).
+- **Resolved**: A.U27.07 retires `cmd` envelopes (OR58.a); A.U19.01's `:193-199` rewire is the same lines — one test.
+- **Unit**: U27.
+- **Depends**: M.TEST_UNIT.295; M.SRC_NET webserver `_body_as_dict()`, unknown-key result (A.U19).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.297 Microdot's own semantics on the real app
+- **From**: A.U27.07 (4) (`:335-369`), A.U19.06 (read: `:284` never reaches a static route — unchanged).
+- **Site**: `tests/test_setter_microdot_integration.py:303-369`.
+- **Change**: an unregistered path → 404; `PUT /measurements` (the one GET-only route) → 405; the raising-handler case
+  uses a reader whose `_set_dict_cfg` raises (a test subclass) behind `PUT /sensors`, reaching the service's own 500
+  path, and the "(expected) traceback" banner names it. The comment `:374` → "Microdot's blanket catch (SPECIFICATION.md
+  A.5)".
+- **Resolved**: —
+- **Unit**: U27.
+- **Depends**: M.TEST_UNIT.295.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.298 Sensor PUTs: BMP3XX and SGP40 faults, the real SCD30 path for all seven fields
+- **From**: A.U27.07 (2) (`PUT /sensors {"<name>": {…}}` per reader, names from `_NAME`), A.U24.42 (2) + A.U4.04
+  (`:686-760` the local SCD30 dispatch goes; the real path for the seven product-schema fields), A.U2.07 (`:683` 14 →
+  `CFG_FILE_WRITE`), A.U2.11 (`:734` helper literal 30 and `:858-864` 15 → `CHIP_SET`), A.U24.78 (`inject_fault` form),
+  A.U10.43 (`trigger_sec` → `trigger_s`), A.U15.12 (SCD30 owns its config store), A.U11.S01 (read: `:728-732` `Any`
+  parameters cleared by the rewire), A.U10.40 (`PressOvers` → `PresOvers`, `MeasInt` → `MeasInterval`), A.U10.35
+  (`reader.reset` → `reader._reset_pending`).
+- **Site**: `tests/test_setter_microdot_integration.py:375-869`.
+- **Change**: BMP3XX: `PUT /sensors {"<BMP3XX name>": {"PresOvers": 8}}` with the address NAK'd → "Failed", the stored
+  value unchanged; the write-only fault → "Failed" and the live getter's value stored. SGP40: `{"SGPResetVOC": true,
+  "BackupPeriod": 5}` → both "Valid", `_reset_pending` set, `BackupPeriod` stored, `SGPResetVOC` never stored; the bus
+  fault case "Valid"; the flush-write fault case (its write and flush in one coroutine, convention) newest
+  `code("E", "CFG_FILE_WRITE")`. SCD30: the reader over the fake bus inside the service; one test per product-schema
+  field (`src_const("src/asy_scd30_driver.py", "_VAL_…")` for the seven) PUTs a valid value and asserts "Valid" and the
+  command word on the bus log (`0x4600` interval, `0x0010` ambient pressure, `0x5204` FRC reference, `0x5403` temperature
+  offset, `0x5102` altitude, `0x5306` ASC, the FRC store field per M.SRC_SENS's SCD30 schema); an out-of-range field
+  never reaches the bus; a faulted chip write → "Failed" with newest `code("E", "CHIP_SET")`; `AmbPres` 0 (the
+  documented bypass) holds.
+- **Resolved**: A.U24.42 (2) and A.U27.07's re-target land on the same lines (A.U27.07's Depends says so): one rewritten
+  section.
+- **Unit**: U27 (stages U2, U4, U15, U24).
+- **Depends**: M.TEST_UNIT.295; M.SRC_SENS SCD30 setters and store (A.U4.04, A.U15.12), BMP3XX/SGP40 setters.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.299 Time settings over `/networking` and `/system`: persisted, one resync per valid change
+- **From**: A.U27.07 (2) (`GET /time/config` → `GET /networking` + `GET /system`; `PUT /time/cmd` → `PUT /networking`
+  and `PUT /system`), A.U10.40 (NTP keys), A.U10.35 (`ntp_retries` → `_ntp_retries`).
+- **Site**: `tests/test_setter_microdot_integration.py:460-561`.
+- **Change**: `GET /networking` carries the NTP schema defaults and, after a valid `PUT /networking {"NTPHost":
+  "time.example.org"}`, the new host; `GET /system` carries `GMTOffset`/`DSTOffset`. `PUT /networking {"NTPHost":
+  "time.example.org"}` → "Valid", stored, the forced resync fired once (`_ntp_retries == 0`); `PUT /system {"GMTOffset":
+  99999}` → "Invalid", the default kept, no resync; `PUT /system {"GMTOffset": 7200}` → "Valid", stored.
+- **Resolved**: —
+- **Unit**: U27.
+- **Depends**: M.TEST_UNIT.295; M.SRC_NET NTP settings group.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_strict_json.py
+
+### M.TEST_UNIT.300 The canonical trailer; the positive check bites; duplicate keys refused
+- **From**: A.U24.04 (`:7`, `:100-101` trailer), A.U24.40 (`:48-51`: each valid document with one appended `,` must be
+  rejected), A.U24.60 (new L1: duplicate keys; `strict_loads`), A.U10.27 (read: `:85` pins the emit-side fact the route
+  gate relies on — holds), A.SDEP.17 (read: W39 — if the pinned `modjson.c` now rejects the slips, `:54-62`'s
+  `json.loads(text)` line is the one to re-check at the pin; the oracle stays as defence).
+- **Site**: `tests/test_strict_json.py:1-101`.
+- **Change**: the top-level `from microtest import run` goes; the file ends `if __name__ == "__main__":` / `import
+  microtest` / `microtest.run(globals())`. `:48` → `test_every_valid_document_passes_and_one_extra_comma_fails`: each
+  valid document passes as text and as bytes, and the same text with one `,` appended raises "not strict JSON" (so the
+  positive check cannot pass on an accept-all recogniser). New `test_a_duplicate_key_is_refused`: `{"a":1,"a":2}`, an
+  escaped duplicate `{"\/":1,"/":2}` and `{"A":1,"A":2}` raise "duplicate key"; nested objects keep their own key
+  sets (`{"a":{"x":1},"b":{"x":2}}` passes). New `test_strict_loads_returns_the_decoded_value` (`strict_loads(b'{"a": 1}')
+  == {"a": 1}`, a slip raises).
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: M.TEST_HELP.008.
+- **Blast carried by**: L0 trailer check → A.U24.04 (TSC); L0 `json.loads(` allow-list → A.U24.60 (TSC).
+- **Kind**: test
+
+## tests/test_system_service.py (→ `tests/test_asy_system_service.py`)
+
+### M.TEST_UNIT.301 Harness and builder: the final constructor, providers, shared doubles, driven uptime
+- **From**: A.U10.37/A.U10.38 (`system_service` → `asy_system_service`, `FRAMManager`, `asy_print_log`), A.U5.02 (24
+  constructor calls: `fram=`/`history_length=`/`debug=` → `storage=`/`log=`), A.U5.01 (one `LogConfig`), A.U5.08 +
+  A.U11.03 (1) (`set_level_setters()` → the `level_setters` provider; `config_stores` provider), A.U11.05 (read:
+  `reset_reason=`), A.U24.08 (`run`), A.U24.49 (`_RaiseOnArm` `:103`, `_FastAsyncSleep` `:86`, `make_fram_manager` → shared),
+  A.U31.17 (the fast sleep patches `sleep_ms` too), A.U24.07 (read: the after-each hook restores `Timer.all_timers`,
+  `raise_on_arm`, `reset_count`, `gc.threshold`; manual resets go unless mid-body), A.U10.35 (private attribute reads),
+  A.U11.01 (the pump advances the fake clock), A.U24.73 (`Any`), A.U24.67 (read: one variant-name site, `:1413`, M.TEST_UNIT.312),
+  GAP-T2 (reset/bootloader raise after counting).
+- **Site**: `tests/test_system_service.py:1-121`; every constructor call and private read.
+- **Change**: imports `import asy_system_service`, `import asy_base_classes`, `from asy_system_service import
+  SystemService`, `from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore`, `from _async_harness import
+  cancel, run`, `from _fast_sleep import FastAsyncSleep`, `from _fake_timer_arm import RaiseOnArm`, `from _fram_builders
+  import make_fram_manager`, `from _driven_time import DrivenTime`, `from _error_codes import code`, `from _src_const
+  import src_const`, `from _recording_print import record_prints`, `from _write_counters import WriteCountingOpen`.
+  `make_service(…)` → `_make_service(ntp=None, *, watchdog=None, storage=None, log=DEFAULT_LOG, cfg_path="",
+  level_setters=None, config_stores=None)` passing keywords to `SystemService(ntp, watchdog=…, storage=…,
+  level_setters=…, config_stores=…, cfg_path=…, log=…)`. `_pump(flag, ticks, clock, settle=5)` advances `clock` by 1000
+  ms before each `flag.set()` (scenarios run `with DrivenTime() as clock: clock.install(asy_base_classes)`, where
+  `TickSeconds` reads the clock). The local `_FastAsyncSleep`, `_RaiseOnArm`, `make_fram_manager`, `run` and the
+  `TYPE_CHECKING` `TypeVar`/`NoReturn`/`Self` go. Private reads: `_storage_pause`, `_uptime_event`, `_uptime_timer`,
+  `_reset_timer`, `_storage_timer`, `_sequencer_timer`, `_start_time_set`, `_err_count`. Every path that lets the reset
+  task run (`_reset_when_due()` calls `machine.reset()`/`bootloader()`) is driven inside `try:` … `except
+  machine.SimulatedResetError` (or `SimulatedBootloaderEntryError`): the fake counts, then raises (GAP-T2).
+- **Resolved**: —
+- **Unit**: U11 (stages U5, U10, U24, U31).
+- **Depends**: M.SRC_CORE.008; M.TEST_HELP.011 (reset raises), .043, .050, .052, .053, .057, .062, .065.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.302 Construction and the latched feed
+- **From**: A.U5.02, A.U11.15 (level accessors → `pr.level` and numbers), A.U10.35 (`storage_pause` → `_storage_pause`),
+  A.S0930.13 (1)(2) (read: `feed_watchdog()` also stops once `_feed_owned`; the takeover cases are M.TEST_UNIT.309).
+- **Site**: `tests/test_system_service.py:123-231`.
+- **Change**: `:128` `_storage_pause is None`, the logger a `PrintLogHistory` named "SYSTEM". `:135` builds with
+  `storage=manager, log=LogConfig(manager, 10, None)`: a `PrintLogHistoryStore`, `_storage_pause` reaches the manager's
+  pause. `:149` `log=LogConfig(None, 10, 1)` → `svc.pr.level == 1`; `:154` `LogConfig(None, 3, None)` → three slots;
+  `:204`, `:213` likewise (`run(svc.pr.setup())` then one `err_s` with `code("E", "CALLBACK")`, `_err_count == 1`); `:220`
+  all four together with `level == 5`. The `feed_watchdog()` tests hold; new
+  `test_feed_watchdog_stops_once_a_command_owns_the_feed` (`_feed_owned = True` → `feed_count` unchanged).
+- **Resolved**: —
+- **Unit**: U11 (stage U5).
+- **Depends**: M.SRC_CORE.008, .009.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.303 Uptime and boot signature on measured ticks
+- **From**: A.U11.01 (`:238-240` hold; `:332-346`, `:370-477` pumps advance the clock; new L1 (a)-(d)), A.U11.02 (`:449-477`
+  holds; new L1: a restarted counter keeps the signature), A.U10.06 (`:290-330` mktime/gmtime tests go; a synced
+  signature is `utc_now()`), A.U14.26 (read: its `:278-300` rename has no site once A.U10.06 removes them,
+  M.SRC_CORE.013 Resolved), A.U10.01 (`:245` comment; new L1 `1_790_000_000` round-trips), A.U3.12 (the repeated
+  callback failure spends one slot), A.U2.08 (codes).
+- **Site**: `tests/test_system_service.py:233-472`.
+- **Change**: `:245` comment "# LockedValue(init_value=None)'s own default". The synced tests (`:260`, `:349`, `:432`, `:449`)
+  call `asy_base_classes.set_utc_valid()` first (reset in `finally`, convention). `:269` asserts one `code("E",
+  "CALLBACK")` entry. `:277-325` (`_OverflowingTime`, `_RaisingGmtime` and their two tests) go: the timestamp has no
+  `try` (M.SRC_CORE.013); guard: `test_a_synced_signature_reads_utc_now` below. `:332` five pumps (5000 ms) → uptime 5;
+  `:390`, `:410` 120 pumps (120 s) → fallback; `:430` `ErrCount == 120` and one CALLBACK slot (comment "# every tick
+  retried and was counted; the repeat spends one slot"). New: `test_uptime_is_measured_not_counted` (A.U11.01 (a)
+  three wake-ups over 7,500 ms → 7; (b) none for 5,000 ms, then one → 5; (c) `_uptime_timer.drop()` loses nothing; (d)
+  `asy_system_service.time` replaced by a stub whose `gmtime`/`mktime`/`time` raise — uptime still advances);
+  `test_a_restarted_counter_keeps_the_signature` (A.U11.02, NTP and random cases); `test_a_32_bit_signature_round_
+  trips` (A.U10.01: a signature of `1_790_000_000` reads back unchanged); `test_a_synced_signature_reads_utc_now`.
+- **Resolved**: —
+- **Unit**: U11 (stages U2, U3, U10).
+- **Depends**: M.SRC_CORE.013, .032; M.TEST_HELP.065.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.304 Staggered triggers from one shared start
+- **From**: A.U10.12 (`:479-615` the seven sequencer tests rewritten to `start_timers(triggers, timers)`), A.U24.32 (5)
+  (`:552` renamed; the starter failure shown), A.U11.39 (read: the retired file's five tests live in the scenario),
+  A.U35.12 (`:509` one `sleep(0)` states its limit), A.U24.07 (manual `Timer.all_timers.clear()` go).
+- **Site**: `tests/test_system_service.py:474-611`.
+- **Change**: `test_start_timers_with_no_starters_arms_nothing`; `test_a_single_trigger_starts_without_a_stagger_timer`;
+  `test_triggers_start_in_order_on_the_one_preallocated_timer` (three triggers: after each `_sequencer_timer.trigger()`
+  the next starts; `id(svc._sequencer_timer)` constant; `Timer.all_timers` unchanged); the timer starters run first
+  in order; `test_a_raising_starter_is_persisted_and_sequencing_continues` (one `code("E", "TASK_STARTER_RAISED")` entry
+  and the recorded print "Timer starter 0 failed:" with the `RuntimeError`, `record_prints()`); the two arm-failure tests
+  → `test_an_arm_failure_falls_back_to_a_sleep_and_still_starts_every_trigger` (`RaiseOnArm(OSError)` and
+  `RaiseOnArm(MemoryError)` under `FastAsyncSleep()`: one `code("E", "TIMER")` entry each, every trigger started). The
+  `svc._timer_sequencer = …  # type: ignore[method-assign]` site goes with the method.
+- **Resolved**: A.U24.32 (5) asserts a printed `pr.err` line; M.SRC_CORE.014 persists the starter failure
+  (`err_s(…, errno=_ERR_TASK_STARTER_RAISED)`, A.U10.12's goal "a raising starter is persisted") — the test asserts the
+  entry and the printed line (err_s prints too).
+- **Unit**: U10 (stage U24 recorded print).
+- **Depends**: M.SRC_CORE.014.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.305 Reboot and bootloader through the command gate; `_reboot()` directly for the arm failures
+- **From**: A.S0930.35 (a)-(c), (e), (f), A.U11.03 (existing `:618-727`; new L1 (a)-(e)), A.S0930.12 (results read), A.U8.08 +
+  A.U8C.42 (`:623` mirror), A.U10.15 (the storage-unpause timer deinit), A.U11.07 (record codes), GAP-T2.
+- **Site**: `tests/test_system_service.py:613-727`; new tests.
+- **Change**: a scenario harness (one coroutine per test, `run()` at synchronous scope; the supervisor running as its
+  task over two sleeping supervised fakes; `FastAsyncSleep()`). The five arm-and-fire tests (`:618`, `:629`, `:639`,
+  `:711`, `:720`): `await svc.reboot_system()` is `True`; once `svc._shutdown_task` is done `_reset_timer` is ONE_SHOT with
+  period `src_const("src/asy_system_service.py", "_RESET_DELAY") * 1000` (the source read replaces A.U8C.42's mirror
+  tag, as M.TEST_UNIT.240), storage paused, `_storage_timer.deinit_called`; `trigger()` then a pump raises
+  `SimulatedResetError` (caught) and `reset_count` rose by one (`bootloader_count` for the bootloader). The six
+  arm-failure tests (`:648-708`) call `await svc._reboot(_RR_REBOOT, "…", system_reset)` /
+  `(_RR_BOOTLOADER, …, system_bootloader)` directly (constants by `src_const`): `_force_watchdog_starve` True, region 0
+  code 6, storage paused where wired. New: one test per command drives the arm failure through the sequence (S6's
+  `Timer.init` raising `OSError(12)`): starve set, code 6; `test_reboot_takes_over_closes_quiesces_stops_then_resets_with_
+  code_3` and the bootloader twin with code 4 (A.S0930.35 (b): the recorded order park → supervisor done → close×2 →
+  flush×2 → pause → `wait_idle` per chunk → tasks done → no delete, chip unchanged → code 3 → armed); results (A.S0930.35
+  (c): twice → both `True`, one task, one `init`; the other word → `False`; under an escalation's armed reset → `False`;
+  `pause_permanent_storage(300)` during a reboot → `False`; `create_task` raising `MemoryError` → `False`, nothing
+  changed); A.U11.03 (a) `_reboot()` twice — the second neither deinits nor re-arms; (b) a store whose `flush_pending()`
+  raises — still armed, one `code("E", "CALLBACK")`, the others flushed; (d) the record precedes the flush and the pause
+  follows it (a store fake recording `manager.get_pause()` during its flush sees `False`); (e) `create_task` raising
+  inside `_reboot()` — starve, code 6, no timer; A.S0930.35 (f) a healthy reboot with no writer leaves the chip
+  byte-identical and opens no file.
+- **Resolved**: A.U11.03 (a)'s "two `reboot_system()` calls" is realised twice: through the gate (A.S0930.35 (c), one
+  task) and on `_reboot()` itself (the armed-reset guard), since A.S0930.31 moved the public words onto the gate
+  (M.SRC_CORE.011 Resolved).
+- **Unit**: U11 (the gate stage; U16 adds the erase word's cases, M.TEST_UNIT.306).
+- **Depends**: M.SRC_CORE.006, .010, .011; M.TEST_HELP.011, .044.
+- **Blast carried by**: device script `reboot_fallback_starves_the_watchdog.py:38` → A.U11.03 (HW_DEV).
+- **Kind**: test
+
+### M.TEST_UNIT.306 Config reset and FRAM erase: the sequence, refusals, step errors, power cuts
+- **From**: A.S0930.21 (a)-(e), A.S0930.25 (power-cut proof), A.S0930.22 (1)-(5) (states and hazards, per purpose),
+  A.S0930.32 (the escalation-vs-preflight and command-during-escalation-log interleavings), A.U22.01 (read: a task ending
+  persists exactly one entry — M.TEST_UNIT.308).
+- **Site**: new section after the reboot tests.
+- **Change**: as A.S0930.21 lists: (a) `test_reset_to_defaults_closes_flushes_quiesces_stops_deletes_then_reboots_with_
+  code_7`; (b) `test_erase_fram_zeroes_every_byte_and_reboots_with_code_8` on the 8 KB and 256 KB fakes; (c)
+  `test_an_erased_chip_boots_like_a_new_one`, `test_an_all_zero_block_never_validates_even_with_an_idle_status`; (d) the
+  refusals (reset armed, no store, no storage, chip uninitialised, write-protected 0x8C, `create_task` raising, the other
+  command under way, the same one), each answering `False` with nothing changed and the supervisor still feeding; (e) the
+  step errors, each continuing to code 9 without hanging. A.S0930.25: the fake's `cut_after_bytes` knob and a test-local
+  `PowerCut(BaseException)`: (1) structural — after pass 1 every allocated block's status bytes are 0x00 and no pass-2
+  byte precedes the last pass-1 status write; (2) enumerated cut points (each status byte of pass 1; first, middle and
+  last byte of each overlapping pass-2 unit): a rebuild restores each ring exactly or blank, logging only {status bytes
+  disagree, block uninitialised}; config: `cm.os` replaced so `remove` raises `PowerCut` after k removals, k = 0 … stores:
+  the rebuild serves the remaining files and defaults, writing nothing at boot. A.S0930.22 (1)-(5) per purpose (boot
+  accepted before the supervisor ran; a flush in flight; a FRAM write between its blocks; a bus session cancelled by S4;
+  `mempause` active then `erase_fram()`), (6)-(9) (armed reset refused, the supervisor dying past budget during the
+  sequence arms nothing, both orders of two commands, a command + reboot + mempause at once, a PUT during S5 answering
+  "Failed"), each interleaving forced by an `asyncio.Event` gate, never a sleep. A.S0930.32:
+  `test_an_escalation_armed_during_the_erase_preflight_refuses_the_command` and
+  `test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset`.
+- **Resolved**: A.S0930.22 lists `tests/test_config_manager.py` beside this file; the store-level mechanics land in
+  M.TEST_UNIT.259, the command-level cases here.
+- **Unit**: U11 (config reset), U16 (erase).
+- **Depends**: M.SRC_CORE.011, .041, .042, .083; TEST_HELP fake `cut_after_bytes`, `size=` (A.S0930.25, A.U24.22).
+- **Blast carried by**: L2-L4 → A.S0930.27-.29 (TWIN, HW_DEV, HW_BENCH).
+- **Kind**: test
+
+### M.TEST_UNIT.307 Storage pause: the waiter task, refusals, a reset's pause stays
+- **From**: A.U10.15 (`:640-790` run the waiter; new L1), A.S0930.12 (`-> bool`, refused during a shutdown), GAP-G4 (new
+  L1), A.U10.35 (names).
+- **Site**: `tests/test_system_service.py:730-808`; new tests.
+- **Change**: each pause test starts `svc.start_asy_unpause()` and, after `_storage_timer.trigger()`, pumps until the
+  waiter ran; results read: `pause_permanent_storage(…)` is `True` (a call with no storage stays a no-op with the timer
+  unarmed). `:743` (negative) and `:750-762` (clamp to `src_const(…, "_MAX_STORAGE_PAUSE") * 1000`, the comments' "compiled
+  away, hardcoded" go) hold. New: `test_an_unpause_fire_with_the_waiter_running_unpauses_and_logs_one_line`;
+  `test_an_unpause_after_a_reset_or_an_accepted_command_leaves_storage_paused` (GAP-G4: a pending unpause fires after
+  `_reboot()` armed, and after a command was accepted — storage stays paused, no line).
+- **Resolved**: —
+- **Unit**: U11.
+- **Depends**: M.SRC_CORE.012.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.308 Starters, the error counter, task ends: one entry each
+- **From**: A.U10.03 (`:839-869` hold), M.SRC_CORE.018 (`:815-820` goes with `stop_uptime_timer()`), A.U10.15
+  (`get_task_starters()` has two), A.U11.31 (`reset_error_counter()` returns `True`), A.U3.06 (`:1129-1131`, `:1195-1206`,
+  the clean-return test: one entry per end; new L1 42/43/44 and 40), A.U2.08 (13 numeric lines), A.U22.01 (read: one
+  entry per task end), A.U0.28 (`:850` comment).
+- **Site**: `tests/test_system_service.py:810-935`, `:1104-1234`.
+- **Change**: `:815` goes (no product caller; guard: none needed — the method is removed). `:823` `len(starters) == 2`
+  (uptime counter and unpause waiter), each starter returns a task, both cancelled. `:850` comment "owner-confirmed
+  design (2026-07-18, `1df8bc4`)". `:876`, `:889` use `code("E", "CALLBACK")` for the probe and `run(svc.reset_error_counter())
+  is True`. `:925` one `code("E", "TASK_STARTER_RAISED")`. The task-end tests run `start_tasks([...], ["T"])` then the
+  supervisor task (M.TEST_UNIT.309's shape): `:1104` restart observed, newest `code("E", "TASK_RETURNED")`; `:1132`
+  `code("E", "TASK_RAISED")` in the ring; `:1167` exactly one entry, `code("E", "TASK_CANCELLED")` (the "plus the
+  routine warning" comment goes: the restart line is console-only); `:1206` no `TASK_RAISED`, one `TASK_RETURNED`. New
+  `test_each_task_end_adds_exactly_one_entry` (raised/cancelled/returned → 42/43/44; a starter raising at restart → only
+  40).
+- **Resolved**: —
+- **Unit**: U3 (stages U2, U10, U11, U20).
+- **Depends**: M.SRC_CORE.005, .012, .016, .018, .019.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.309 The supervisor: split start, its own task, the scan budget, the takeover
+- **From**: A.U20.06 + GAP-G5 (`start_and_check_tasks()` → `start_tasks(starters, names)` + `supervise_tasks()`), A.S0930.13
+  (`:1027-1103` the loop in a task), A.U10.23 (escalation tests hold), A.U11.03 (`:1236-1253` reworked), A.U31.07
+  (new L1: 22 dead fakes; 3 deaths), A.U8C.42 + A.U8C2.51 (`:1249` `_RUN_BOUND_S`, `:1251` `>= 4` restarts Dependant),
+  A.U11.10 (new `run_setups()` L1), A.U36.544 (`:1008` "Measure B (PLAN B.1.2 …)" → "The boot placement reset
+  (SPECIFICATION.md I.4(f.1))"), A.S0930.24 + A.S0930.36 (takeover, healthy feed counts, hangs, arm failure, refused
+  commands), A.U30.19 (C-stack escalation L1), A.U32.06 (`get_last_task_end()` L1), A.U8.12 (read: escalation
+  arithmetic unchanged), A.U31.01 (read: the stall budgets cite this file's section), A.U35.12 (`:945` limit comment).
+- **Site**: `tests/test_system_service.py:936-1254`; new tests.
+- **Change**: `_count_collects_during_supervision()` patches `asy_system_service.gc` and runs `await svc.start_tasks(
+  starters, ["T"] * len(starters))` then the supervisor task; `:1007-1025` hold (N + 1 boot collects, none in the
+  supervisor; an empty list collects once). `:941`, `:1027`, `:1052`, `:1081`: `start_tasks()` then `sup =
+  create_task(svc.supervise_tasks())`, `feed_count` asserted, `cancel(sup)`. `:1236` →
+  `test_the_supervisor_escalates_past_the_failure_budget`: `_RUN_BOUND_S = 5  # @tunable l1.system_service_run_bound_s`
+  bounds the wait for `svc._reset_armed`; the supervisor task is then cancelled, `_reset_timer.trigger()` and a pump
+  (`SimulatedResetError` caught): `reset_count == 1`, region 0 code 5, one `code("E", "TASK_BUDGET_REBOOT")`, `call_count
+  >= 4` (A.U8C2.51's Dependant). New: A.U31.07's 22-dead pass (exactly 4 task-end entries plus the escalation entry,
+  `feed_count` +1 inside the pass, starters called for the first three ends only) and 3 deaths (all restarted, decay);
+  A.U11.03 (c) (a store's staged write flushed before the arm; the supervisor still pending two passes later;
+  `feed_watchdog()` no longer feeds); A.U30.19 (the fatal flag set → one pass calls `_reboot()` with code 20, no feed
+  after it); A.U32.06 (`get_last_task_end()`: `None` before, `{"Task": "X", "Uptime": <fake uptime>}` after, a starter
+  raising at start sets nothing, two tasks of one module differ); A.U11.10 (`run_setups()` awaits in order, feeds once
+  after each, collects N + 1 times with the feed first, a raising setup propagates and nothing after it runs); A.S0930.24
+  (a)-(e) and A.S0930.36 (a)-(e) as listed there (takeover leaves direct/supervisor/`run_setups()` feeds unchanged; the
+  healthy count `2 + stores + chunks + tasks + (…) + 1` with the gap bounds from `_TASK_CHECK_TIME` read from source; one
+  hang test per step S1-S6, 1 s pumped with `feed_count` frozen; the S6 arm failure; a refused command never stops the
+  supervisor's feeding). Every task fake's `Task` name is passed through `start_tasks()`'s names.
+- **Resolved**: A.U20.06 (the split) and GAP-G5 (names required) land on the same calls.
+- **Unit**: U20 (stages U11 supervisor-as-task and takeover, U30 C-stack, U31 escalation feed, U32 names).
+- **Depends**: M.SRC_CORE.015, .016; M.TEST_HELP.052 (sleep_ms), `tests/machine.py` `WDT.feed_times` (A.S0930.24, TEST_HELP).
+- **Blast carried by**: twin/L3 supervisor checks → A.U20.06, A.S0930.28 (TWIN, HW_DEV); scan-budget scenario →
+  A.U10.08/A.U31.07 (TEST_HELP).
+- **Kind**: test
+
+### M.TEST_UNIT.310 The reset-reason record and boot phases
+- **From**: A.U11.07 (new section), A.U26.28 (read: the bench reads this file's boot-phase tests as the L1 reference).
+- **Site**: new section.
+- **Change**: each intended path — `reboot_system()`, `reboot_bootloader()`, the supervisor escalation, the arm-failure
+  starve — then the trigger or starve, then `begin_boot()` returns 3, 4, 5, 6 and clears region 0; `machine.power_on()`
+  → 1 even with a stale valid record; no record after a complete boot → 2; a wrong check word → 0; for p in 1-5:
+  `begin_boot()`, `boot_phase(q)` for every q ≤ p, then a simulated watchdog reset (`reset_cause_value = WDT_RESET`,
+  regions kept) → `begin_boot()` returns `10 + p`; after `boot_phase(BOOT_DONE)` → 2; the command codes 7, 8, 9 and 20
+  through their paths (M.TEST_UNIT.306, .309). Phase and code constants read with `src_const`.
+- **Resolved**: —
+- **Unit**: U11 (codes 7-9 with the gate; 20 in U30).
+- **Depends**: M.SRC_CORE.006; M.TEST_HELP (`mem_backup`, `reset_cause`, `power_on`, A.U11.07).
+- **Blast carried by**: generated-device boot-phase scenario → A.U11.07 (TEST_HELP).
+- **Kind**: test
+
+### M.TEST_UNIT.311 The settings store: through `_set_dict_cfg()`, the provider, the stored level wins
+- **From**: GAP-G3 (`get_debug_level()`/`set_debug_level()`/`_current_debug_level` gone: tests go through `_set_dict_cfg()`),
+  A.U5.08 (every `set_level_setters(` → the provider), A.U11.12 (`:1290-1308` rewritten; `:1271-1288` hold; new L1),
+  A.U10.36 (nested `get_dict_cfg()`), A.U11.24 (read: the store writes on its own schema), A.U2.08 (`:1380` 7 →
+  `CALLBACK`), A.U11.32 (read: `config_SYSTEM.cfg` path assertions hold), A.U36.544 (`:1370` "WP8:" label dropped).
+- **Site**: `tests/test_system_service.py:1256-1420`.
+- **Change**: a level is set with `await svc._set_dict_cfg({"DebugLevel": n}, svc.get_cfg_schema())` (the `/system`
+  PUT's call) and read back through `get_dict_cfg() == {"SYSTEM": {"DebugLevel": n}}` and the registered setters'
+  recorded calls. `:1271` → `cfgmgr.valid`, `get_dict_cfg()` reads 0. `:1278` `level_setters=lambda: [calls.append]`;
+  `calls == [0]`. `:1290` → `test_an_unreadable_store_keeps_the_constructed_level` (A.U11.12: `log=LogConfig(None, 10,
+  3)`, the store unreadable via a directory-free `cm.os` stand-in raising `OSError(5)` — `writable is False` — every
+  registered logger keeps 3, no setter call; the private seeding and the `get_int_values` method assignment go).
+  `:1310` → `…_set_dict_cfg_persists_and_calls_every_setter`; `:1323` → `{"DebugLevel": 99}` answers "Invalid", no setter
+  call; `:1335` before `setup()` → every key "Failed"; `:1341` holds through `_set_dict_cfg`; `:1353` holds; `:1369` →
+  `test_a_bad_setter_persists_one_callback_entry` (newest `code("E", "CALLBACK")`, the "WP8:" label goes); `:1384` reboot
+  survives: a second service over the same `cfg_path` reads the stored level (flush in the same coroutine, convention);
+  `:1395` holds; `:1401` (`set_level_setters()` replaces) goes with the method (guard: the provider is resolved once in
+  `setup()`, `:1278`). New: `test_a_stored_level_wins_over_the_constructed_one` (stored 4, `log=LogConfig(None, 10, 2)`:
+  every logger incl. `CFGMGR_SYSTEM` reads 4 after `setup()`).
+- **Resolved**: GAP-G3 (M_SRC_CORE) is this rewrite.
+- **Unit**: U11 (stages U5 provider, U10 nested shape).
+- **Depends**: M.SRC_CORE.017, .018, .043.
+- **Blast carried by**: `tests/_sensortask_scenarios.py:692-747, 937-940` → GAP-G3 (TEST_HELP).
+- **Kind**: test
+
+### M.TEST_UNIT.312 The logger registry end to end; comment names
+- **From**: A.U36.513 (`:1413-1414`), A.U11.13 (setters return `bool`), A.U11.15 (`get_level()` → `.level`).
+- **Site**: `tests/test_system_service.py:1412-1420`.
+- **Change**: `level_setters=lambda: [svc.pr.set_level]` cannot reference `svc` before construction — the provider closes
+  over a one-element list filled after construction (`holder = []`; `level_setters=lambda: [holder[0].pr.set_level]`);
+  `_set_dict_cfg({"DebugLevel": 1}, …)` → `svc.pr.level == 1`. Comment → "# (exactly what every generated module's
+  _collect_level_setters() does for every module, sysfunct's own included)".
+- **Resolved**: —
+- **Unit**: U11 (stage U36 comment).
+- **Depends**: M.SRC_CORE.017, .062.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_ticks_rollover.py
+
+### M.TEST_UNIT.313 Interpreter-level wrap tests stay; the line sweep moves to L0; docstring states the proof
+- **From**: A.U14.32 (docstring line 2; `:25-27` comment; `:57-73` unchanged), A.U14.33 (`:94-107` removed to the L0 scan,
+  `:110-123` kept and shared with it), A.SDEP.15 (`:35, :49, :51, :61-62, :70-71, :88-89` `type-var` ignores re-checked
+  against the refreshed stub), A.U14.28 (read: this file and the 2**30 fake are the tick-period row's mitigation).
+- **Site**: `tests/test_ticks_rollover.py:1-131`.
+- **Change**: docstring → "Real-interpreter checks of ticks_ms()/ticks_diff()/ticks_add() wraparound (SPECIFICATION.md
+  F.1: rp2's 2**30 period vs this rig's 2**62). No src/ tick user subtracts ticks directly; stored ticks and their
+  horizon are checked by the L0 scan and the 2**30 fake (Part F.1)." (3 lines). `:25-27` → "# time.ticks_add() accepts a
+  delta strictly between -period/2 and period/2 / # (extmod/modtime.c:178-196, <pin>) - the bisection finds the positive
+  bound." The wrap tests `:45-91` hold. `test_no_src_module_measures_elapsed_time_by_subtraction` (`:94-111`) goes
+  (guard: the L0 AST scan of A.U14.33 over `src/`, `digital_twin/` and every generated module, with its known-bad
+  fixtures). `_KNOWN_TICKS_USERS` stays as the one list both tiers read and follows the end-state tick users the scan
+  finds (`asy_base_classes.py` joins with `TickSeconds`; `asy_udp_socket.py` leaves once its `ready()` waits through
+  `wait_for_ms` with no tick use, M.SRC_NET.028); `test_every_known_ticks_user_…` (`:114-125`) holds over that list. The
+  `# type: ignore[type-var]` lines stay while the pinned stub still types `ticks_add()`'s first parameter as `_Ticks`;
+  they go (with `warn_unused_ignores` then flagging any left) if the re-check finds the gap fixed.
+- **Resolved**: A.U14.34 names `asy_udp_socket.py` among the users to cross-test; M_SRC_NET's UDP end state has no tick
+  site left (M_SRC_NET gap 5), so its crossing tests have nothing to cross and are not written (agent decision D-T30).
+- **Unit**: U14 (stage U0/U37 stub re-check).
+- **Depends**: M.SRC_NET.028; L0 scan (A.U14.33, TSC).
+- **Blast carried by**: L0 scan file and fixtures → A.U14.33 (TSC); SPEC F.1 sentence → A.U14.32 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.314 One crossing test per tick call site under the 2**30-period fake
+- **From**: A.U14.34 (the crossing tests; the helper is TEST_HELP's `tests/_ticks30.py`).
+- **Site**: new tests in `tests/test_ticks_rollover.py`.
+- **Change**: `test_ticks30_matches_the_real_module_away_from_the_wrap` (the fake's own self-test against the real
+  `time` on values away from the wrap). Then, per `ticks_diff()`/`ticks_add()` call site of the end-state users
+  (`asy_base_classes.py`, `asy_bmp3xx_driver.py`, `asy_isl29125_driver.py`, `asy_notification_service.py`,
+  `asy_uart_comm.py`, `asy_uart_driver.py`), grouped by function: `Ticks30Time` installed as the module's own `time`
+  (restored in `finally`), `now` placed so the function's interval straddles 2**30, and its result equals the same call
+  with `now = 10_000`. The ISL29125 stored-tick and UART `_holdoff_active` sites get their crossing tests with the U15/U17
+  fixes (M.TEST_UNIT.059 and .160 carry the rewritten rollover tests).
+- **Resolved**: —
+- **Unit**: U14 (stage U15/U17 for their sites).
+- **Depends**: M.TEST_HELP.064 (`_ticks30.py`); the end-state tick sites (M.SRC_CORE.032, M.SRC_SENS, M.SRC_NET UART).
+- **Blast carried by**: SPEC F.1 names the fake → A.U14.32 (SPEC).
+- **Kind**: test

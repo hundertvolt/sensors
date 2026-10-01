@@ -1254,8 +1254,8 @@ change lists its stages; the end state is the last stage's.
   H.4)"; `:411-413` → "a module carries up to history_length (10) entries, each a small number, so a strip reads as
   "one module's recent history at a glance" where a stack wastes height." `.hidden` stays as the templates utility.
 - **Resolved**: AC_NOTES 26/37 — A.U23.43 (6)'s per-type pill border cue dropped (OR94 "don't change the current
-  look", owner-accepted OR126.a). The token darkening (A.U23.44) against the same OR94 words is raised as Q2 (pending
-  Q2; recommended: apply).
+  look", owner-accepted OR126.a). The token darkening (A.U23.44) against the same OR94 words: Q2 answered (a), apply
+  (owner, 2026-10-01, OR132/OR132.a).
 - **Unit**: U23 (all constituents U23; A.U0.28's tag in U0, A.U36.507's comment in U36 as stages).
 - **Depends**: M.GEN.060; the JS writers of each attribute (WEB cluster).
 - **Blast carried by**: `tests_scripts/test_website_tokens.py` → A.U23.44 (TST); `tests_js/templates.test.js`
@@ -1297,16 +1297,16 @@ change lists its stages; the end state is the last stage's.
 
 ## ext/typings/microdot/*.pyi (new)
 
-### M.GEN.050 Upstream Microdot stubs under ext/ — pending Q1
+### M.GEN.050 Upstream Microdot stubs under ext/
 - **From**: A.U8.23 (copy three stubs unmodified), A.U34.12 (licence entry), A.U19.18 (hash pins), A.U20.14 (2)
   (generated `microdot` import loses its ignore through the stub).
 - **Site**: new `ext/typings/microdot/__init__.pyi`, `microdot.pyi`, `multipart.pyi`.
-- **Change** (pending Q1, recommended option (a)): the three files are byte-identical copies of upstream's
+- **Change** (option (a), owner, 2026-10-01, OR131): the three files are byte-identical copies of upstream's
   `typings/microdot/` at the same tag M.GEN.051 vendors, added in the same U0 re-vendor commit and hash-pinned by
-  A.U19.18's table; never edited. Option (b) places them outside `ext/` instead (see Q1).
-- **Resolved**: FLAG — an action adding files under `ext/` other than the refresh's re-vendor; CLAUDE.md/OR24.a (2)
-  "vendored ext/ … never touched" vs A.U8.23 → Q1.
-- **Unit**: U0 under option (a) (joins M.GEN.051); U8 under option (b).
+  A.U19.18's table; never edited.
+- **Resolved**: Q1 answered (a), OR131/OR131.a: `ext/` changes only by re-vendoring an unmodified upstream tag, which
+  these files are part of; CLAUDE.md/OR24.a (2) "never touched" reads as never edited.
+- **Unit**: U0 (joins M.GEN.051).
 - **Depends**: M.GEN.051.
 - **Blast carried by**: `pyproject.toml` `mypy_path` → A.U8.23 (CFG); the reworded comments in `src/` → A.U8.23
   (SRC_NET); M.GEN.003 (no ignore on the emitted import).
@@ -1379,7 +1379,7 @@ change lists its stages; the end state is the last stage's.
 
 ## Owner questions
 
-**Q1. Vendor Microdot's upstream stubs inside `ext/`?** (A.U8.23 against CLAUDE.md/OR24.a (2) "vendored `ext/` …
+**Q1. Vendor Microdot's upstream stubs inside `ext/`?** — answered (a), owner, 2026-10-01 (OR131). (A.U8.23 against CLAUDE.md/OR24.a (2) "vendored `ext/` …
 never touched"; M.GEN.050)
 - (a) **Recommended**: yes, as part of U0's re-vendor of the same tag, byte-identical, hash-pinned by
   `tests_scripts/test_vendored_microdot.py` — `ext/` still changes only by re-vendoring an unmodified tag; the
@@ -1389,7 +1389,7 @@ never touched"; M.GEN.050)
 - (c) no stubs — the `microdot` ignores stay, and generated code keeps one suppression, contradicting A.U20.14's
   "generated code carries no suppression" (needs a named exception).
 
-**Q2. Darken three light-theme status colours for AA contrast?** (A.U23.44 against OR94 "don't change the current
+**Q2. Darken three light-theme status colours for AA contrast?** — answered (a), owner, 2026-10-01 (OR132). (A.U23.44 against OR94 "don't change the current
 look of the website"; M.GEN.062)
 - (a) **Recommended**: apply — same hues, slightly darker success/danger/warn (≥ 4.5:1), a 3:1 control border and
   `color-scheme`; the look stays the design, text becomes readable to the WCAG AA bar.
@@ -1603,7 +1603,7 @@ look of the website"; M.GEN.062)
 | A.U23.39 | M.GEN.060, M.GEN.061 |
 | A.U23.42 | M.GEN.060, M.GEN.062 |
 | A.U23.43 | M.GEN.060, M.GEN.062 |
-| A.U23.44 | M.GEN.062 (tokens pending Q2) |
+| A.U23.44 | M.GEN.062 (tokens per Q2 (a), OR132) |
 | A.U23.45 | M.GEN.060, M.GEN.062 |
 | A.U23.49 | M.GEN.017, M.GEN.046 |
 | A.U24.20 | no change here (Blast: bus constructed once per id, unchanged) |
@@ -1730,7 +1730,7 @@ look of the website"; M.GEN.062)
 | A.U8.12 | M.GEN.002 |
 | A.U8.14 | M.GEN.001, M.GEN.025 |
 | A.U8.18 | M.GEN.018 (tag); its hand-copy sites dropped in M.GEN.063 |
-| A.U8.23 | M.GEN.050 (pending Q1) |
+| A.U8.23 | M.GEN.050 (per Q1 (a), OR131) |
 | A.U9.01 | M.GEN.063 (dropped: hand copy deleted by A.U6.04) |
 | A.U9.02 | no change here (Blast: callback calls `led_signal()`, M.GEN.008) |
 | A.U9.03 | M.GEN.008 (dropped: superseded by A.U19.02) |

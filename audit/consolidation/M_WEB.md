@@ -2151,7 +2151,7 @@ points" lists them):
 | A.U23.41 | read: TSC guard; the end state passes it (Adherence) |
 | A.U23.42 | M.WEB.017, .020, .022, .026, .054, .059; CSS/markup GEN |
 | A.U23.43 | M.WEB.014, .026, .058, .059, .080; CSS/markup GEN; (6) pill border cue dropped (AC_NOTES 26/37) |
-| A.U23.44 | GEN M.GEN.062 / TSC token test (pending GEN Q2); no WEB site |
+| A.U23.44 | GEN M.GEN.062 / TSC token test (GEN Q2 answered (a), OR132); no WEB site |
 | A.U23.45 | M.WEB.021 (`render.js:264-266`); SPEC row, `style.css` GEN |
 | A.U23.46 | M.WEB.063 |
 | A.U23.47 | TSC/TEST_UNIT (Python files); no WEB site |

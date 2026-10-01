@@ -150,3 +150,5 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     its documented contract already states — M.SRC_CORE.131; TEST_UNIT carries the L1 cases.
 40. `M_WEB.md` read six `tests_js/` files at the action sites plus a grep, not in full (its header names them): the
     end-state check reads those six in full and confirms M.WEB.052-.059 against them.
+41. Owner, 2026-10-01: GEN Q1 → (a) (OR131: Microdot stubs byte-identical in `ext/typings/microdot/`, U0 re-vendor) and
+    GEN Q2 → (a) (OR132: light-theme AA tokens applied, M.GEN.062). Every cluster writes both as firm, no "pending".
