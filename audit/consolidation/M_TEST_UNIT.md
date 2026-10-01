@@ -1286,7 +1286,10 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: A.U13.R01's "each call increments once" with M.SRC_SENS.010's single step per public call.
 - **Unit**: U13.
   A-C2 step order: stage U14 — the SCL-held timeout cases, which drive `ticks_us` through A.U14.34's fake time, land in U14; the pulse, STOP and status cases land in U13 with the clear.
-- **Depends**: M.SRC_SENS.008, .010; TEST_HELP `tests/machine.py` `Pin` `OPEN_DRAIN`/`ALT`/`ALT_I2C`/scripted levels/value log (M.TEST_HELP.012's A.U13.R01 part, U13; A.U24.16 [follows]), per-id I2C state and `raise_on_construct` (M.TEST_HELP.013's A.U13.R01 part, U13; A.U24.20 [follows]), fake clock for `ticks_us` (A.U14.34; A.U35.10 [follows] replaces it in U35).
+- **Depends**: M.SRC_SENS.008, .010; TEST_HELP `tests/machine.py` `Pin` `OPEN_DRAIN`/`ALT`/`ALT_I2C`/scripted
+  levels/value log (M.TEST_HELP.012's A.U13.R01 part, U13; A.U24.16 [follows]), per-id I2C state and
+  `raise_on_construct` (M.TEST_HELP.013's A.U13.R01 part, U13; A.U24.20 [follows]), fake clock for `ticks_us` (A.U14.34;
+  A.U35.10 [follows] replaces it in U35).
 - **Blast carried by**: four-tier coverage of the bus rung → M.TEST_UNIT in `test_bus_hazard_multi_device.py`
   (A.U13.R02 L1), A.U13.R02 (TWIN, HW_DEV, HW_BENCH).
 - **Kind**: test

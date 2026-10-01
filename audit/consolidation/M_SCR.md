@@ -1485,6 +1485,7 @@ Conventions used below (each defined once, then cited):
   shared keep-3 would drop earlier devices' evidence — the runner name carries the device (agent decision AD-9). The
   derived CRC16 TOML is built by `sed` (A.S0930.04 leaves the method open; agent decision AD-10).
 - **Unit**: U27 (A.S0930.04's CRC16 rerun on U27's runner; stages U24, U25 as listed). Stages: U24 (locks), U25 (device required, comment), U27 (archive, probe, harness, convention).
+  A-C2 step order: A.U24.53's part lands in U25, not U24 (it follows A.U24.53's own change, which lands in U25).
 - **Depends**: M.SCR.003, M.SCR.007, M.SCR.008, M.SCR.012, M.SCR.017, M.SCR.048, M.SCR.071, M.SCR.068.
 - **Blast carried by**: CI `digital-twin-e2e` (one leg per device from the `devices` job; artifact path
   `digital_twin_ci_logs/` unchanged; no `continue-on-error`) → A.U28.06/A.U28.08 (TOOL); L0

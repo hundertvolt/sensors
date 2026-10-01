@@ -3166,6 +3166,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `fram_writes_unattributed=<n>` when present an int; a line missing any required field fails naming it.
 - **Resolved**: —
 - **Unit**: U35 (stages U19 the `:257-259` pointer, U25, U27; the `fram_writes`/`fram_writes_by` cases with A.U35.28).
+  A-C2 step order: A.S0930.34 (4)'s part (the deadline-helper case AC3_S S-14 adds) lands in U26, not U25 (A.S0930.34 needs A.U26.71's guard derivation, which lands in U26).
 - **Depends**: M.SCR.046-.049, M.SCR.016; M.TWIN.050 (the shutdown line's fields).
 - **Blast carried by**: —
 - **Kind**: test
@@ -4736,6 +4737,7 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 | M.TSC.135 | Unit | appended: A-C2 step order: A.U24.65's part lands in U25, not U24 (it follows A.U24.65's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
 | M.TSC.155 | Unit | appended: A-C2 step order: A.S0930.34's part lands in U26, not U24 (it needs A.U26.71, which lands in U26). | dependency deferral (an edge ran from a later step) |
 | M.TSC.155 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.20 in U24, A.S0930.34 in U26. | AC3_R R-08 (h) |
+| M.TSC.165 | Unit | appended: A-C2 step order: A.S0930.34 (4)'s part (the deadline-helper case AC3_S S-14 adds) lands in U26, not U25 (A.S0930.34 needs A.U26.71's guard derivation, which lands in U26). | dependency deferral (an edge ran from a later step) |
 | M.TSC.168 | Unit | was: — → now: U28 (A-C2: check only, no edit — the pin is confirmed by U28's gate, the latest read constituent's unit). | no Unit slot |
 | M.TSC.169 | Unit | appended: A-C2 step order: A.U24.53's part lands in U25, not U24 (it follows A.U24.53's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
 | M.TSC.174 | Unit | was: — → now: U36 (A-C2: check only, no edit — the test is confirmed by U36's gate, the latest read constituent's unit). | no Unit slot |

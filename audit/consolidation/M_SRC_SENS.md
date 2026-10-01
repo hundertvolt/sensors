@@ -194,7 +194,9 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   (row 1). The timeout parameter is added here (A.U13.R01 bounds each wait by "the stored bus timeout", which does not
   exist yet when `__init__` calls this before `init()`).
 - **Unit**: U13 (A.U14.17 (a)'s code half co-lands with A.U13.R01 in U13; its F.2 doc half is U14's)
-- **Depends**: M.SRC_SENS.007; fakes: `tests/machine.py` `Pin` `OPEN_DRAIN`, scripted input levels, value log (M.TEST_HELP.012's A.U13.R01 part, U13; A.U24.16 [follows] completes it), twin `Pin` `OPEN_DRAIN` (M.TWIN.021's A.U14.17 part, U14, with the generated call; A.U25.05 [follows] completes it)
+- **Depends**: M.SRC_SENS.007; fakes: `tests/machine.py` `Pin` `OPEN_DRAIN`, scripted input levels, value log
+  (M.TEST_HELP.012's A.U13.R01 part, U13; A.U24.16 [follows] completes it), twin `Pin` `OPEN_DRAIN` (M.TWIN.021's
+  A.U14.17 part, U13 with A.U13.R01, with the generated call; A.U25.05 [follows] completes it)
 - **Blast carried by**: construction sites (generated `build_system()`, device scripts constructing
   `asy_i2c_driver.I2C`) → A.U14.17 (a) blast (signature unchanged); L1 pulse cases → A.U13.R01's L1 list (TEST_UNIT);
   SPEC F.2 text → A.U14.R01 (SPEC); DEVICE_REFERENCE operator line → A.U14.17/U36 (DOCS); BACKLOG hardware row →
@@ -2658,7 +2660,7 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 
 | M-ID | slot | edit | reason |
 |---|---|---|---|
-| M.SRC_SENS.008 | Depends | `value log (A.U24.16), twin `Pin` `OPEN_DRAIN` (A.U25.05)` → `value log (M.TEST_HELP.012's A.U13.R01 part, U13; A.U24.16 [follows] completes it), twin `Pin` `OPEN_DRAIN` (M.TWIN.021's A.U14.17 part, U14, with the generated call; A.U25.05 [follows] completes it)` | the fakes it needs land with A.U13.R01/A.U14.17 in U13/U14 (step rule); A.U24.16/A.U25.05 complete them later |
+| M.SRC_SENS.008 | Depends | `value log (A.U24.16), twin `Pin` `OPEN_DRAIN` (A.U25.05)` → `value log (M.TEST_HELP.012's A.U13.R01 part, U13; A.U24.16 [follows] completes it), twin `Pin` `OPEN_DRAIN` (M.TWIN.021's A.U14.17 part, U13 with A.U13.R01, with the generated call; A.U25.05 [follows] completes it)` | the fakes it needs land with A.U13.R01/A.U14.17 in U13 (step rule; A.U14.17's code half is pulled to U13); A.U24.16/A.U25.05 complete them later |
 | M.SRC_SENS.030 | Unit | appended: A-C2 step order: A.U9.09's part lands in U10, not U9 (it needs A.U10.02, which lands in U10). | dependency deferral (an edge ran from a later step) |
 | M.SRC_SENS.031 | Unit | appended: A-C2 step order: A.U2.17's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
 | M.SRC_SENS.033 | Unit | appended: A-C2 step order: A.U2.17's part lands in U3, not U2 (it needs A.U3.05, which lands in U3); A.U9.09's part lands in U10, not U9 (it needs A.U10.02, which lands in U10). | dependency deferral (an edge ran from a later step) |
