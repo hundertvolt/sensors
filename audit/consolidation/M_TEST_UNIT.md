@@ -1876,7 +1876,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   recorded, then black); `test_a_negative_duration_takes_the_floor` (`t = -1.0`: one step each way at 20 Hz).
 - **Resolved**: —
 - **Unit**: U9 (stages U14 comment, U24 fake fidelity).
-- **Depends**: M.SRC_SENS.022; TEST_HELP `tests/neopixel.py` (A.U24.25).
+- **Depends**: M.SRC_SENS.022; M.TEST_HELP.006 (the GRB-bytearray fake: wrap and float `TypeError`, GAP-T6).
 - **Blast carried by**: twin fake fidelity → A.U25.21 (TWIN).
 - **Kind**: test
 
@@ -2801,4 +2801,372 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Unit**: U24 (stage U35 gate).
 - **Depends**: M.SRC_SENS.057.
 - **Blast carried by**: `tests_scripts/test_const_mirrors.py` → A.U24.02 (TSC).
+- **Kind**: test
+
+## tests/test_asy_sgp40_driver.py
+
+### M.TEST_UNIT.125 Builders, doubles and names follow the merged reader
+- **From**: A.U5.11 (constructor with `ValueRef`/`SgpBackup`), A.U10.10 (`setup()` replaces `pr.setup()`/
+  `cfgmgr.setup()`), A.U10.35 (private attribute names), A.U10.40 (`ResetVOC`), A.U15.19 (four-field `SGP40`),
+  A.U24.20 (`:110` fresh bus), A.U24.49 (`_RaiseOnArm`, `_FastAsyncSleep` → shared helpers), A.U2.06 (catalog names),
+  A.U15.40 (`_i2c_sgp40` session path), A.U30.06 (`sleep_ms` patches).
+- **Site**: `tests/test_asy_sgp40_driver.py:1-131` (header, imports, `run`, `_last_err`, `make_i2c`, `bus`,
+  `queue_successful_init`, `make_sgp`), `:343-375` (`_FakeCompSource`, `make_reader`), `:559-570` (`_RaiseOnArm`),
+  `:1463-1477` (`_FastAsyncSleep`), `:1539-1576` (FRAM helpers) and every reader construction and attribute read in the
+  file.
+- **Change**: header docstring kept in substance and trimmed to ≤ 3 lines (the mocking boundary: raw I2C transactions
+  only, the real `VOCAlgorithm` unmocked); the `:2-3` comment block kept. `from _async_harness import run` replaces the
+  local `run`; `from _error_codes import code`; `make_i2c()` calls `machine.I2C.reset_id(1)` before `I2C(1, …)`.
+  `bus(i2c)` reads `i2c._i2c` unchanged; every `reader.sgp.i2c_sgp40.i2c_device.i2c` chain → `reader._sgp._i2c_sgp40.
+  i2c_device.i2c` (one helper `_fake_bus_of(reader)` carries it). `make_reader(**kwargs)` builds
+  `SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"),
+  max_module_error=2, cfg_path=…, **kwargs)` then `run(reader.setup())`; `_FakeCompSource`'s comment → "# Structural
+  stand-in for a compensation producer (Part C.14, L.6.3): only get_data() is read, through each ValueRef's field." and
+  `get_data() -> object`. Each direct `SGP40_Reader(…, temperature_source=…, temperature_field=…, humidity_source=…,
+  humidity_field=…, fram_storage=…, fram_ntp_callback=…)` call → the positional `ValueRef` pair plus
+  `backup=SgpBackup(<manager>, <ntp callback>)`; each `run(reader.cfgmgr.setup())`/`run(reader.pr.setup())` →
+  `run(reader.setup())`. Attribute reads follow the private names: `_sgp`, `_read_event`, `_trigger_timer`,
+  `_backup_counter`, `_voc_init`, `_voc_write`, `_ts_storage`, `_last_backup`, `_restored_from`, `_reset_pending`
+  (was `reset`), `_reset_fram_cleared`, `_reset_algo_applied`. Every `SGP40(a, b, c)` tuple gains `VOCState` in third
+  place (`SGP40(None, None, None, None)` for the empty result). `_RaiseOnArm` → `from _fake_timer_arm import
+  RaiseOnArm`; `_FastAsyncSleep` → `from _fast_sleep import FastAsyncSleep` (patches `sleep` and `sleep_ms`); every
+  bare errno/wrnno literal in an assertion → `code("E"|"W", NAME)`.
+- **Resolved**: —
+- **Unit**: U24 (stages U2 names, U5 constructor, U10 names/setup, U15 tuple/session).
+- **Depends**: M.SRC_SENS.058, .060, .062, .067; M.TEST_HELP.043, .045, .052, .053; M.SRC_CORE.032 (`ValueRef` in
+  `asy_base_classes`).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.126 initialize(): identity messages, three-word serial, self-test effect
+- **From**: A.U0.28 (`:129` comment), A.U10.45 (lowercase messages), A.U15.13 (serial reads 9 bytes, word-2 CRC
+  raises, no `None` paths), A.U24.38 (`:167` self-test pass).
+- **Site**: `tests/test_asy_sgp40_driver.py:128-212`.
+- **Change**: section comment `:129` → "# initialize() - serial number / self-test gates (feature-set check removed: not in
+  datasheet Table 8; owner-confirmed, 2026-07-21)". The message assertions follow the merged texts: `"serial number does
+  not match" in str(e)`, `"self test failed" in str(e)`, `"CRC check failed while reading data" in str(e)`. New
+  `test_the_serial_read_asks_for_nine_bytes` (the fake records `readinto` length 9 after the `0x3682` write);
+  `test_a_crc_error_in_the_third_serial_word_raises` (word 2's CRC byte corrupted → `RuntimeError` with the CRC text, no
+  self-test command written). `:167` (self-test `0xD4FF` passes) → `initialize()` returns `None` and the bus log's next
+  exchange after the self-test read is the general call `0x06` to `0x00` (the reset only runs on a passed self-test).
+- **Resolved**: A.U24.38 asks for "the reader's self-test status reads pass"; the merged protocol stores no self-test
+  status (M.SRC_SENS.069), so the observable effect is asserted instead (agent decision D-T12, same reading as D-T3).
+- **Unit**: U15 (stages U0 comment, U10 messages, U24 assertion).
+- **Depends**: M.SRC_SENS.068, .069.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.127 General-call reset: comment and exact bus log
+- **From**: A.U15.15 (`:215`), A.U35.17 (`:219` unchanged), A.U24.38 (`:228`), A.U13.09 (`_reset()` raises on an
+  uninitialised bus).
+- **Site**: `tests/test_asy_sgp40_driver.py:215-232`.
+- **Change**: `:215` → "# _reset() - one I2C general call, datasheet Table 17 (owner decision, SPECIFICATION.md C.8)".
+  `:228` (general call NAKed) → the fake bus log holds exactly one write, `0x06` to `0x00`, and nothing else. New
+  `test_reset_raises_when_the_bus_is_not_initialised` (the fake's `writeto` returning `None` → `OSError("I2C bus not
+  initialized")`). The test at `:219` stays as written.
+- **Resolved**: —
+- **Unit**: U15 (stages U13, U24).
+- **Depends**: M.SRC_SENS.069.
+- **Blast carried by**: four-tier general-call hazards → A.U15.15 (TWIN, HW_DEV).
+- **Kind**: test
+
+### M.TEST_UNIT.128 Tick conversions clamp to Table 10
+- **From**: A.U15.14 (`:240-262` hold; new clamp table).
+- **Site**: `tests/test_asy_sgp40_driver.py:236-265`.
+- **Change**: the Table 10 point and rounding tests hold. New `test_ticks_clamp_to_table_10_never_wrap`:
+  `_celsius_to_ticks()` at −45.1, −45, 130, 131, 1e6 → 0x0000, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF and
+  `_relative_humidity_to_ticks()` at −1, 0, 100, 101 → 0x0000, 0x0000, 0xFFFF, 0xFFFF (expected values from datasheet
+  Table 10, cited in the test's one comment line).
+- **Resolved**: —
+- **Unit**: U15.
+- **Depends**: M.SRC_SENS.068.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.129 Measurement paths: held behaviour, restored command, construction
+- **From**: A.U12.18 (`:273-301` hold), A.U30.04 (`:329` holds; new construction L1), A.U15.13 (CRC failure restores
+  the command buffer), A.U13.09 (bus-down read fails before any CRC), A.U30.06 (`sleep_ms` patches).
+- **Site**: `tests/test_asy_sgp40_driver.py:269-335`.
+- **Change**: the `measure_raw`/`get_raw`/`measure_index_and_raw` tests hold; any patch of `asyncio.sleep` used to skip
+  the command wait patches `asyncio.sleep_ms` as well (through `FastAsyncSleep`). New
+  `test_a_crc_failing_get_raw_restores_the_default_command` (a corrupted reply CRC → `RuntimeError`; a following
+  `initialize()` writes `0x3682` then `0x280e`, never the measure command); `test_a_read_on_a_down_bus_fails_without_a_crc_check`
+  (the fake's `readinto` reporting failure → `OSError("I2C bus not initialized")`, the stale reply buffer never
+  CRC-checked); `test_the_voc_algorithm_exists_at_construction` (right after `SGP40_I2C(make_i2c())` the algorithm
+  exists with `params.muptime == 0`; a second instance fed the same raw values from a fresh construction returns the
+  same first index).
+- **Resolved**: —
+- **Unit**: U30 (stages U12 hold, U13, U15).
+- **Depends**: M.SRC_SENS.067, .068.
+- **Blast carried by**: four-tier race fix → A.U12.18 (TEST_UNIT `tests/test_bus_hazard_multi_device.py`, TWIN, HW_DEV).
+- **Kind**: test
+
+### M.TEST_UNIT.130 Compensation reads: references, checked values, the source code
+- **From**: A.U5.11 (`ValueRef`), A.U15.14 (NaN/inf/`True` → READ before bus traffic; `:855-876` holds), A.U2.13
+  (18 → 15 SOURCE, 11 READ), A.U10.06 (`TS`), GAP-15 (lead ruling, M.SRC_SENS.091), A.U15.19 (tuples).
+- **Site**: `tests/test_asy_sgp40_driver.py:378-465`, `:799-880`.
+- **Change**: the no-compensation tests build through the `ValueRef` pair and assert `SGP40(None, None, None, None),
+  False, False`; their logs stay empty after `setup()`. `test_read_sgp_with_compensation_data_stores_a_result` sets the
+  UTC flag (`asy_base_classes.set_utc_valid()`, reset in `finally`) before asserting `data.TS is not None`. The
+  raising-source test (`:799-880`) asserts `code("E", "SOURCE")` (was 18); the non-numeric field test keeps its read
+  failure, now `code("E", "READ")` from the finite check. New
+  `test_a_nan_inf_or_bool_temperature_is_a_read_failure_without_bus_traffic` (`float("nan")`, `float("inf")`, `True` for
+  `Temp`: one `code("E", "READ")` each, the fake bus log empty); `test_a_pre_sync_read_publishes_ts_none_and_steps_no_streak`
+  (UTC flag unset: a successful read returns `TS is None` with `VOC`/`Raw` set, `_read_loop`'s condition
+  `compensated and data[0] is None` is false, `_err_cnt_internal` stays 0, the stored data carries `TS` None).
+- **Resolved**: —
+- **Unit**: U15 (stages U2, U5, U10).
+- **Depends**: M.SRC_SENS.064, .091; M.SRC_CORE.032.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.131 Store guard, storage checks and memory status
+- **From**: A.U10.06 (store guard on values only), A.U15.17 (`:481-485` seed holds), A.U10.35.
+- **Site**: `tests/test_asy_sgp40_driver.py:466-500`.
+- **Change**: `test_store_sgp_ignores_partial_none_results` stores `SGP40(None, 100, 1, 12345)`; the complete case
+  `SGP40(42, 31000, 2, 12345)`. New `test_store_sgp_accepts_a_result_without_a_timestamp` (`SGP40(42, 31000, 1, None)` is
+  stored). The storage and memory-status tests read and seed `_voc_init`, `_voc_write`, `_last_backup`,
+  `_restored_from`.
+- **Resolved**: —
+- **Unit**: U15 (stages U10).
+- **Depends**: M.SRC_SENS.065, .066.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.132 Streak tests follow the ladder; the heater-off rung
+- **From**: A.U10.R01, A.U15.R02 (re-derive `:369-443`, `:505-510`, `:585-589`; new heater-off L1), A.U3.03 (streak
+  increases print), A.U2.06.
+- **Site**: `tests/test_asy_sgp40_driver.py:502-512`, `:584-600`.
+- **Change**: `test_get_error_counter_reflects_logged_errors` → three failed checks at `max_module_error=2`: the 2nd
+  writes `0x36 0x15` to `0x59` once and logs one `code("W", "DEVICE_RECOVERY")`; the 3rd logs `code("E", "GIVE_UP")`;
+  no entry per streak step (`ErrCount == 2`). The give-up and recover tests keep their return values; the recover test
+  also asserts the heater-off write happened once. New `test_two_failed_cycles_turn_the_heater_off_once` (exactly one
+  `0x36 0x15` write to `0x59`, no write to `0x00` beyond setup's, one `DEVICE_RECOVERY`, the VOC algorithm object
+  identical before and after); `test_a_raising_heater_off_logs_one_chip_set_and_no_recovery_warning` (the write faults:
+  one `code("E", "CHIP_SET")`, no `DEVICE_RECOVERY`, no raise).
+- **Resolved**: —
+- **Unit**: U15 (stages U2, U3, U10).
+- **Depends**: M.SRC_CORE.037; M.SRC_SENS.065, .069.
+- **Blast carried by**: twin/L3 heater-off tiers → A.U15.R02 (TWIN, HW_DEV); hazard sweep → M.TEST_UNIT for
+  `tests/_bus_hazard_catalog.py` is TEST_HELP's (A.U15.R02).
+- **Kind**: test
+
+### M.TEST_UNIT.133 Timer, starters and the read event
+- **From**: A.U8C.15 (`:539` tag), A.U10.12 (`:563` comment; `:1263-1266` starters), A.U15.41 (arm failure wakes the
+  read task), A.U15.20 (two fires, one cycle), A.U24.49.
+- **Site**: `tests/test_asy_sgp40_driver.py:534-581`, `:1263-1266`.
+- **Change**: module level `# @tunable l1.asy_sgp40_driver_event_wait_s = 1` / `_EVENT_WAIT_S = 1`; `:539`'s literal →
+  `_EVENT_WAIT_S`. `:562-564` comment → "# start_timer() runs as a trigger starter (get_trigger_starters()); a raise
+  there would leave this sensor untriggered, so an arm failure degrades instead." The degrade test uses
+  `RaiseOnArm()` and asserts one `code("E", "TIMER")` and that `_read_event` is set (the read task wakes and sees the
+  fault). `:1263-1266` → `get_task_starters() == [reader.start_asy_read]`, `get_trigger_starters() ==
+  [reader.start_timer]`, `get_timer_starters() == []`. New `test_two_trigger_fires_before_the_loop_waits_give_one_cycle`
+  (two `_trigger_timer.trigger()` calls, one `_read_sgp` call recorded, `_backup_counter` stepped by one).
+- **Resolved**: —
+- **Unit**: U15 (stages U8C tag, U10 starters).
+- **Depends**: M.SRC_SENS.066; M.TEST_HELP.053.
+- **Blast carried by**: Part N row `l1.asy_sgp40_driver_event_wait_s` → A.U8C.15 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.134 reset_voc() and its push callback
+- **From**: A.U10.40 (`ResetVOC`), A.U10.25 (push returns True for a well-typed no-op), A.U15.21 (`:631-637` goes).
+- **Site**: `tests/test_asy_sgp40_driver.py:602-689`.
+- **Change**: every `SGPResetVOC` key → `ResetVOC`; `reader.reset` → `reader._reset_pending`. The non-bool push test
+  `:631-637` goes (the push guard is removed; the type check lives in the shared validation). New
+  `test_push_reset_voc_reports_success_for_a_well_typed_no_op` (`_push_reset_voc(False)` returns `True` while
+  `_reset_pending` stays `False`).
+- **Resolved**: —
+- **Unit**: U15 (stages U10).
+- **Depends**: M.SRC_SENS.060, .066.
+- **Blast carried by**: L0 setter contract → A.U10.25 (TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.135 Reset sub-parts through references; the lost-reset regression
+- **From**: A.U5.11 (`:691-796` direct `temperature_source` reassign), A.U3.09 (FRAM clear failure → console),
+  A.U15.14 (lost-reset regression), A.U10.35.
+- **Site**: `tests/test_asy_sgp40_driver.py:691-796`.
+- **Change**: each `reader.temperature_source = …`/`humidity_source = …` reassignment → `reader._temperature =
+  ValueRef(<source>, "Temp")`/`reader._humidity = ValueRef(<source>, "Hum")`; the sub-part flags read
+  `_reset_fram_cleared`/`_reset_algo_applied`. A FRAM clear failure leaves the SGP40 log empty (a console line). The
+  `:770-776` mypy narrowing workaround and its comment go (the algorithm is no longer optional, A.U30.04). New
+  `test_a_nan_cycle_keeps_a_pending_algorithm_reset` (`reset_voc(flag=True)`, a cycle with `Temp = nan` leaves
+  `_reset_algo_applied` `False`, the next valid cycle applies the reset).
+- **Resolved**: —
+- **Unit**: U15 (stages U3, U5, U30).
+- **Depends**: M.SRC_SENS.062, .064, .067.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.136 Backup writes: FRAM logs the cause, every untimestamped backup warns
+- **From**: A.U3.09 (`:883-913`; new three cases), A.U3.02 (`:1068-1140`), A.U15.18 (`(0, 0)` memory status; `:966`
+  comment), A.U16.18 (`:1055-1056` bool-first stub), A.U2.13 (13 → 35), A.U15.17 (`:916-961` holds).
+- **Site**: `tests/test_asy_sgp40_driver.py:883-1128`.
+- **Change**: `:883-913` → FRAM's log holds one `code("W", "FRAM_PAUSED")`, SGP40's `ErrCount == 0`. Escape-hatch tests
+  hold with `_voc_init` seeding; `:966`'s "-1" sentinel comment → "# 0 = no timestamp (the special value)". `_w13_slots`
+  → `_written_no_ts_slots` counting `code("W", "SGP_WRITTEN_NO_TS")`; each run of untimestamped backups spends one slot
+  (identical repeats spend none) while `ErrCount` counts every backup; the "ends the episode" tests flip to one slot.
+  `failing_write_into` stubs return `(False, False, -1)` → bool-first `(False, <ntp_synced>, <ts>)` order per the merged
+  `write_into()` shape. New: `test_crc_invalid_backup_logs_once_in_fram_and_never_in_sgp40`,
+  `test_a_paused_store_logs_once_in_fram_and_never_in_sgp40`, `test_a_failed_backup_write_logs_once_in_fram_and_never_in_sgp40`;
+  `test_an_untimestamped_backup_restores_to_memory_status_zero_zero` (`get_mem_status() == (0, 0)`).
+- **Resolved**: —
+- **Unit**: U16 (stages U2, U3, U15).
+- **Depends**: M.SRC_SENS.063; FRAM manager return shape (M.SRC_CORE, A.U16.18).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.137 Backup counter and the verify-period table
+- **From**: A.U15.17 (1) (`_verify_every()` table; `:1162-1184` holds), A.U8.13 (counter cap name).
+- **Site**: `tests/test_asy_sgp40_driver.py:1131-1184`.
+- **Change**: the wrap test reads the cap through `src_const("src/asy_sgp40_driver.py", "_BACKUP_COUNTER_MAX")`. New
+  `test_verify_every_table` (`_verify_every(p)` at p = 1, 7, 32, 60, 66, 67, 1440 → 60, 8, 1, 1, 1, 1, 1, the expected
+  values worked from the formula by hand with the `max(1, …)` floor).
+- **Resolved**: —
+- **Unit**: U15.
+- **Depends**: M.SRC_SENS.059, .063; M.TEST_HELP.044.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.138 Restore paths: wait semantics, age bounds, one read per wait
+- **From**: A.U15.17 (2)-(4) (WaitTimeNTP 0; −60 s age; one `read_into()` while waiting; first-boot blank chunk;
+  blackout skip), A.U16.18 (negative age expired under a nonzero limit, limit 0 accepts any age), A.U10.28 (age signed),
+  A.U10.06 (`_OldTime` → UTC flag), A.U30.04 (`:1601` comment), A.U11.24 (`write_config(data)`), A.U2.13 (11 → 33,
+  12 → 34), A.U3.09 (no-backup → console).
+- **Site**: `tests/test_asy_sgp40_driver.py:1187-1250`, `:1579-1770`, `:2064-2225`.
+- **Change**: `_OldTime` (monkeypatching `asy_fram_manager.time.mktime`) → the test drives the timestamp through
+  `asy_base_classes.set_utc_valid()` and a fake `time` on `asy_base_classes` (reset in `finally`). `:1601` comment →
+  "built at construction". Each `write_config({…}, schema)` → `write_config({…})`. Branch comments "wrnno=11"/"12" →
+  the catalog names; asserts `code("W", "SGP_RESTORED_NO_TS")`/`code("W", "SGP_BACKUP_AGE")`; a missing backup leaves
+  the SGP40 log empty. New: `test_wait_time_ntp_zero_restores_on_the_first_cycle` (timestamped backup, NTP never
+  synced: restored on cycle one, `_restored_from` = the backup's TS); `test_a_backup_dated_in_the_future_is_refused_under_a_limit`
+  (age −60 s, `BackupMaxAge` 120 → refused, one `SGP_BACKUP_AGE`); `test_a_zero_age_limit_accepts_a_future_dated_backup`
+  (age −60 s, `BackupMaxAge` 0 → restored); `test_waiting_for_ntp_reads_the_chunk_once` (30 cycles unsynced: one
+  `read_into()`; after `ntp_synced` turns True, one more); `test_a_first_boot_blank_chunk_logs_nothing` (SGP40's and FRAM's
+  logs empty); `test_a_restore_after_the_blackout_gives_a_nonzero_index_at_once`.
+- **Resolved**: M.SRC_SENS.063 writes A.U15.17 (3)'s `age < 0 or (limit > 0 and age > 60*limit)`, calling it "the same
+  condition" as A.U16.18's; they differ at limit 0 with a negative age. A.U16.18 quotes the register text (G5/R31: "a
+  staleness limit of 0 accepts any age; a negative age … counts as expired under a nonzero limit"), A.U15.17's own
+  wording ("0 = no age limit") agrees; settled by the register — the tests pin A.U16.18's condition and the product
+  fix is GAP-U1 (SRC_SENS) below.
+- **Unit**: U16 (stages U2, U3, U10, U11, U15, U30).
+- **Depends**: M.SRC_SENS.063 (with the gap's condition); M.SRC_CORE.032; M.TEST_HELP.057.
+- **Blast carried by**: L2 twin backup cases → A.U15.17 (TWIN).
+- **Kind**: test
+
+### M.TEST_UNIT.139 VOCState: blackout, learning, settled, restored
+- **From**: A.U15.19 (new L1 cases).
+- **Site**: new tests in `tests/test_asy_sgp40_driver.py`.
+- **Change**: `test_voc_state_is_zero_through_the_blackout_then_learning` (46 samples from a fresh algorithm: VOC 0,
+  state 0; the 47th: state 1); `test_a_restored_state_reads_three_then_settles` (state 3 at once; with `_voc_samples`
+  set one below `_VOC_SETTLED_SAMPLES` read via `src_const`, the next cycle reads 2); `test_reset_voc_returns_to_blackout`
+  (after `reset_voc(flag=True)` the next samples read 0 then 1); `test_the_sample_counter_saturates_at_the_cap`
+  (seeded at the cap, one more cycle leaves it there).
+- **Resolved**: —
+- **Unit**: U15.
+- **Depends**: M.SRC_SENS.059, .064.
+- **Blast carried by**: L2 `tests/test_digital_twin_sgp40.py` → A.U15.19 (TWIN).
+- **Kind**: test
+
+### M.TEST_UNIT.140 Config schema read from source; special slot 0
+- **From**: A.U24.01 (`:1277-1283`), A.U24.61 (`:1289`), A.U15.17 (5) (special slot 0), A.U10.40, A.U15.17
+  (`:1339-1343` holds), A.U11.24.
+- **Site**: `tests/test_asy_sgp40_driver.py:1253-1455`.
+- **Change**: the four mirrors and their comment → `_SGP = "src/asy_sgp40_driver.py"`; `_VAL_BP = src_const(_SGP,
+  "_VAL_BACKUP_PERIOD")`, `_VAL_BMAX = src_const(_SGP, "_VAL_BACKUP_MAX_AGE")`, `_VAL_WT = src_const(_SGP,
+  "_VAL_WAIT_TIME_NTP")`, `_VAL_RESET = src_const(_SGP, "_VAL_RESET_VOC")`; `test_get_cfg_schema_matches_the_public_attribute`
+  → `test_get_cfg_schema_is_the_module_schema` asserting `get_cfg_schema() == _VAL_BP + _VAL_BMAX + _VAL_WT + _VAL_RESET`
+  (comment: "inherited from SensorReaderConfig"). The dict-shape test keeps its key set. Each `write_config({…},
+  schema)` → `write_config({…})`.
+- **Resolved**: A.U15.17's "update the special slot to 0" is satisfied by reading the source (no literal left).
+- **Unit**: U24 (stages U10, U11, U15).
+- **Depends**: M.SRC_SENS.060; M.TEST_HELP.044.
+- **Blast carried by**: `tests_scripts/test_const_mirrors.py` → A.U24.02 (TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.141 Read loop returns None; fast sleep shared
+- **From**: A.U10.44 (`_read_loop`), A.U15.43 (`:2299` → `None`), A.U24.49.
+- **Site**: `tests/test_asy_sgp40_driver.py:1480-1531`, `:2294-2299`.
+- **Change**: `reader.read_loop()` → `reader._read_loop()`; `FastAsyncSleep()`; its comment "3ms/500ms/100ms…1s" →
+  the constant names (`_SERIAL_READ_WAIT_MS`, `_SELF_TEST_WAIT_MS`, `_MEASURE_WAIT_MS`, `_GENERAL_CALL_RESET_WAIT_S`).
+  `:2299` → `assert run(reader._read_loop()) is None` with the INIT entry and one `code("W", "BUS_RECOVERY")`
+  (`_init_failed()`).
+- **Resolved**: —
+- **Unit**: U15 (stages U8 names, U10).
+- **Depends**: M.SRC_SENS.059, .065, .066.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.142 Compensation encoding and the FRAM-backed log hold
+- **From**: A.U12.18 (`:1810-1820`, `:2357-2363` hold), A.U3.09, A.U2.13.
+- **Site**: `tests/test_asy_sgp40_driver.py:1778-1959`, `:2349-2370`.
+- **Change**: hold, with the shared builders (`make_fram_manager(chip=…)`, M.TEST_HELP.057, for the reboot-shaped
+  cases), `run(reader.setup())`, catalog names in the assertions and the four-field tuples.
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: M.TEST_HELP.057.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.143 Init failures: INIT plus controller rung; config reads to CFGMGR
+- **From**: A.U15.R02 (3) (`_init_failed()`), A.U10.R01 (5), A.U3.05 (`:1995-2002`, `:2047-2054`), A.U15.41 (re-arm in
+  `_init_sgp()`), A.U15.17 (`:2005-2030` cap holds).
+- **Site**: `tests/test_asy_sgp40_driver.py:1968-2054`.
+- **Change**: `:1968-1978` → newest `code("E", "INIT")` and one `code("W", "BUS_RECOVERY")`. `:1980-2002` and
+  `:2031-2054` break the real `ConfigManager` (an invalid stored key) instead of patching the read: the SGP40 log stays
+  empty, `CFGMGR_SGP40` holds one `code("E", "CFG_NOT_VALID")`. The stale-wait cap test holds with `_voc_init`/
+  `_voc_write`. New `test_init_rearms_a_failed_timer_first` (`_timer_error` set: `_init_sgp()` clears it and arms the
+  trigger timer before the setup exchange).
+- **Resolved**: —
+- **Unit**: U15 (stages U3, U10).
+- **Depends**: M.SRC_SENS.063, .065; M.SRC_CORE.037.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.144 _read_sgp branches: algorithm-state code, the format comment
+- **From**: A.U2.13 (16/17 → 58), A.U12.14 (`:2262-2265`).
+- **Site**: `tests/test_asy_sgp40_driver.py:2235-2286`.
+- **Change**: the serialize/deserialize failure assertions → `code("E", "SGP_ALGO_STATE")`; `_TooSmallBuf`'s comment
+  "32q" → "<32q".
+- **Resolved**: —
+- **Unit**: U15 (stages U2, U12).
+- **Depends**: M.SRC_SENS.064.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.145 None-word paths retire; word readers pinned
+- **From**: A.U15.13 (`:2302-2345` go), A.U30.06 (`_read_word`/`_read_words` L1; fakes patch `_read_word`), A.U8.07
+  (`:2330-2333` mirror site goes).
+- **Site**: `tests/test_asy_sgp40_driver.py:2302-2345`.
+- **Change**: the `_NoneReadWord` tests and the `:2330-2333` wait mirror go — the `None` paths no longer exist (guard:
+  the merged `_exchange()` raises on every failure, pinned by M.TEST_UNIT.126/.129). Any fake patching
+  `_read_word_from_command` patches `_read_word`. New `test_read_word_decodes_one_word_in_place` (one reply → the int,
+  no list) and `test_read_words_returns_three_serial_words`.
+- **Resolved**: —
+- **Unit**: U30 (stages U8, U15).
+- **Depends**: M.SRC_SENS.068.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.146 Address sweep by equality, heater-off included
+- **From**: A.U24.29, A.U15.R02 (heater-off joins).
+- **Site**: `tests/test_asy_sgp40_driver.py:2378-2404`.
+- **Change**: as A.U24.29: every public coroutine method of `SGP40_I2C` from `dir()` minus `setup`/`initialize`/`_reset`
+  (`get_raw`, `measure_raw`, `measure_index_and_raw`, `turn_heater_off`) runs from an argument table (a method missing
+  from the table fails) and the touched set equals `{0x59}`; `_reset()` alone touches `{0x00}` with payload `0x06`;
+  `setup()`/`initialize()` touch `{0x59, 0x00}`. The `except Exception: pass` goes; the fake is seeded per call.
+- **Resolved**: —
+- **Unit**: U24 (stage U15 method).
+- **Depends**: M.SRC_SENS.069.
+- **Blast carried by**: twin sweep → A.U13.R02 (TWIN).
+- **Kind**: test
+
+### M.TEST_UNIT.147 Unwritable config: defaults run, CFGMGR holds the write
+- **From**: A.U5.11, A.U10.10, A.U2.06.
+- **Site**: `tests/test_asy_sgp40_driver.py:2405-2428`.
+- **Change**: constructor and `setup()` per M.TEST_UNIT.125; `12 not in …` → the SGP40 log's `ErrCount == 0`;
+  the CFGMGR assertion → `code("E", "CFG_FILE_WRITE")`.
+- **Resolved**: —
+- **Unit**: U15.
+- **Depends**: M.SRC_SENS.062.
+- **Blast carried by**: —
 - **Kind**: test

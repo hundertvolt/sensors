@@ -1392,3 +1392,398 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
 - **Blast carried by**: the runner imports `_shutdown_cleanup` → M.TWIN.050; SPEC F.6/B.14.1 and CLAUDE.md unwedge text
   → A.U25.39 / U36 (SPEC, DOCS)
 - **Kind**: code
+
+## digital_twin/run_generic_integration.py
+
+### M.TWIN.047 Runner header, imports and grouped run config with per-run state paths
+- **From**: A.U25.28 / A.U36.513 (docstring `:1-3` current facts; `:32-34`, `:96-98` drop the retired runners), A.U5.15
+  (`RunConfig(module, wiring_plan_path, host, port, device, state, injections, *, run)`, `RunLimits(duration,
+  gc_threshold, mem_sample_interval_ms)`, `__eq__`/`__repr__`), A.U25.32 ((1) state-path defaults persist to
+  `digital_twin/*.json`, `""` in-memory; (2) `--config-dir PATH`, default `digital_twin/config/`; `_ensure_dir()`
+  swallows only `EEXIST`), A.U25.09 (1) (`--mem-backup-state-path`), A.U25.33 (`--online-ntp` skips the offline config),
+  A.U25.41 (`_pop_value` imported from `launch`), A.U25.42 (`import errno`, `os`, `random` at the top), A.U25.39 (the
+  unwedge import goes), A.U25.63 (no explicit `Any`: the booted module a `ModuleType` plus a `_Booted` Protocol), A.U8.14
+  (`_GC_THRESHOLD_DEFAULT = 32768` tagged `gc.threshold_bytes`), A.U24.53 (the `tests_js` launches pass `--config-dir`
+  — the flag is A.U25.32's), A.U10.30 (`__import__(config.module)` is F.1's named exception — stays), A.U24.46
+  (`require_fresh()` — see Resolved), A.U27.28 (header), A.U0.38 / A.U0.29 (owner tags of the persistent default: E09
+  "(owner, 2026-08-13)")
+- **Site**: `digital_twin/run_generic_integration.py:1-190`
+- **Change**: header → "Generic twin entry point: boots any buildgen-generated sensortask_<device> module against its
+  wiring-plan JSON and serves until stopped; chips are found through machine.peripheral() by walking the plan. Its
+  --test-* flags are test-only instrumentation, off by default (owner, 2026-09-30)." (≈ 290 characters, 3 counted
+  lines; the README pointer moves to `main()`'s comment). Imports: `asyncio`, `errno`, `gc`, `json`, `os`, `random`, `sys`, `time`;
+  `import machine`; `from launch import _collect_chips, _driver_of, _parse_wifi_outcome, _pop_value, _shutdown_cleanup,
+  parse_fault_spec, parse_hang_spec` (comment "# one implementation of each, in launch.py"); `from _twin_common import
+  Injections, StatePaths`; `from _offline_ntp_config import write_offline_ntp_config` (M.TWIN.053); `from
+  _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port`; `from unix_port_poll_prewarm import
+  prewarm_poll_set`; `import _wall_clock`; the `sys.path` gains `digital_twin/unixport` before those imports when the
+  launch's `MICROPYPATH` lacks it (the launch scripts set it — SCR gap). `_CONFIG_DIR_DEFAULT = "digital_twin/config/"`
+  (comment "# the manual run's persistent default (owner, 2026-08-13); automated callers pass their own --config-dir").
+  `_booted_module: "_Booted | None"` with comment "# the module is chosen at run time (--module)". `_GC_THRESHOLD_DEFAULT
+  = 32768` with `# @tunable gc.threshold_bytes = 32768` (A.U8.14's row) and its 3-line comment kept. `RunConfig(module,
+  wiring_plan_path, host="localhost", port=8080, device=None, state=None, injections=None, *, run=None, config_dir=
+  _CONFIG_DIR_DEFAULT, online_ntp=False, instrumentation=None)` — `state: StatePaths | None` (None → the three
+  persistent defaults), `injections: Injections | None` (None → empty), `run: RunLimits | None` (None →
+  `RunLimits(None, _GC_THRESHOLD_DEFAULT, None)`), `instrumentation: TestFlags | None` (M.TWIN.051); `RunLimits` a
+  namedtuple in this file; `__eq__`/`__repr__` compare/print the grouped fields; the `:96-98` comment keeps its first
+  two lines (the run_wozi clause goes). `parse_args(argv)`: `-h`/`--help` prints the usage block and exits 0 (A.U7.19's
+  set — `run_unix_port_integration.sh` documents the runner's flags; see Resolved); flags: `--module`, `--wiring-plan`
+  (both required), `--host`, `--port`, `--device`, `--fram-state-path`, `--scd30-state-path`, `--mem-backup-state-path`
+  (defaults `digital_twin/{fram,scd30,mem_backup}_state.json`; `""` → in-memory), `--config-dir`, `--online-ntp`,
+  `--seed`, `--fault`, `--hang`, `--wifi-outcome`, `--duration`, `--gc-threshold`, `--mem-sample-interval-ms`, and the
+  `--test-*` flags (M.TWIN.051). `_ensure_dir(path)` (module-top `os`): `os.mkdir(path)`; `except OSError as e: if
+  e.errno != errno.EEXIST: raise OSError(e.errno, f"cannot create config dir {path!r}")`.
+- **Resolved**: A.U24.46 says the twin runner "reads plans too (U25 adds the call)" to `tests/_generated_tree.py`
+  `require_fresh()`; the runner must never import from `tests/` (G7/R02; A.U25.44's path guard fails a launch site with
+  `tests` on its path), so the freshness guard is the caller's: every automated launch site already runs from a tree
+  `scripts/test.sh`/`run_digital_twin_ci.sh` regenerated, and the in-process twin tests call `require_fresh()` (C2) — the
+  runner itself adds no call (G7/R02 settles it; recorded for the OR2.c review). A.U7.19's `--help` set names
+  `run_unix_port_integration.sh` and `digital_twin/launch.py`, not this runner; the runner answers `--help` the same way
+  because it is the manual entry the README documents (D.10 consistency) — agent decision, OR2.c list.
+- **Unit**: U25 (stages: U5 grouping; U8 tag)
+- **Depends**: M.TWIN.001, M.TWIN.044, M.TWIN.046, M.TWIN.053
+- **Blast carried by**: `tests/test_digital_twin_run_generic_integration.py` parse tests (defaults flip to persistent
+  paths; the boot test passes `""` explicitly; grouped config) → M.TWIN.140; automated callers pass `--config-dir` and
+  `""` state paths: `tests_scripts/test_digital_twin_generated_boot.py:155-164` → A.U25.32 (TSC),
+  `scripts/cross_browser_smoke.mjs:451` → A.U25.32 (SCR), `tests_js/_live_twin_command.js`/`_live_matrix_command.js` →
+  A.U24.53 / A.U25.09 (WEB), the CI suite → A.U25.35 (SCR); `scripts/run_unix_port_integration.sh:78` (manual run now
+  persists) → A.U25.32 (SCR); README runner flag table → M.TWIN.066
+- **Kind**: code
+
+### M.TWIN.049 Runner wiring: chips by `peripheral()`, plan-keyed crossover, fresh faults, polled readiness
+- **From**: A.U25.28 (`_collect_chips(plan)` through `machine.peripheral()`; `_wire_uart_crossover(plan)` with
+  `initiator_bus`/`responder_bus`, pollers written through the module's public bus global — the `._uart` read goes),
+  A.U17.18 (3) (plan keys `initiator_bus`/`responder_bus`; its comment `:265-272`), A.U25.70 (`(OSError, errno.EIO,
+  message)`, `match`), A.U25.37 (instance keys, persistent modes, `uart_link:silent` applied after the crossover is
+  built), A.U25.27 (wlan `times`), A.U25.15 (`fram:wren`, `fram:silent`), A.U25.42 (`import errno` at the top), A.U25.41
+  (`_require_wired` shared — see Change), A.U24.80 Blast (the poller swap unchanged), A.U25.03 (registries), A.U13.R01
+  Blast (per-id bus keeps the injected FIFO), A.U20.42 Blast (`getattr(module, "webserver", None)` already), A.U8.20
+  (`:257` readiness-poll step → `l2.twin_ready_poll_ms`), A.U20.28 (3) / M_GEN gap 3 (the runner's plan keys are what
+  the contract test reads), A.S0930.04 Blast (the crossover wiring is CRC-blind — holds)
+- **Site**: `digital_twin/run_generic_integration.py:193-285`
+- **Change**: `_collect_chips` is imported from `launch` (M.TWIN.045; this file's copy `:193-222` goes, its two comments
+  with it). `_apply_fault`/`_apply_hang`/`_require_wired` are imported from `launch` too (the bodies are identical once
+  both read `_collect_chips()`'s keys; the runner's message prefix becomes a parameter `source="run_generic_integration.py"`)
+  — one implementation (REF/R05, the A.U25.41 pattern); `uart_link:silent` resolves to the instance's outgoing
+  direction through `link.direction_from(machine.peripheral(<that instance's bus>))` and sets `silent = True`, applied
+  after `_wire_uart_crossover()`. `_wait_until_built(module, timeout_s=10.0)`: the poll step becomes
+  `_READY_POLL_MS = 20` with `# @tunable l2.twin_ready_poll_ms = 20` (A.U8.20's row) and the comment "# webserver is the
+  last global build_system() assigns before its setup batch, so faults applied after it reach setup (the CI suite counts
+  on that, scripts/_digital_twin_ci_suite.py)". `_wire_uart_crossover(module, plan) -> "UARTLink | None"`: `uart_plan =
+  plan.get("uart")`; `a = machine.peripheral(uart_plan["initiator_bus"])`, `b = machine.peripheral(uart_plan[
+  "responder_bus"])`; `link, poll_a, poll_b = machine.attach_crossover_jumper(a, b)`; `getattr(module,
+  uart_plan["initiator_bus"]).poller = poll_a`, the responder likewise; comment (3 lines): "# Wires the bench's permanent
+  crossover jumper between the two generated UART buses once the module has built them; the bounded pollers replace the
+  product's public poller from outside, since a real select.poll() over the twin's UART never reports readiness on CI
+  runners (CLAUDE.md known hang cause)." The three `assert` lines become one `if a is None or b is None: raise
+  RuntimeError("the plan names a UART pair the booted module never constructed")`.
+- **Resolved**: A.U25.28 keeps `_collect_chips(plan)` in this file; M.TWIN.045 makes it the shared `launch` helper (one
+  copy) — agent decision, OR2.c list (the same reasoning as A.U25.41's `_pop_value`).
+- **Unit**: U25
+- **Depends**: M.TWIN.035, M.TWIN.045; A.U17.18 (plan keys, U17), A.U20.28 (plan producer)
+- **Blast carried by**: `tests/test_digital_twin_run_generic_integration.py` `_collect_chips`/`_require_wired` tests
+  (construct twin buses and pass the plan) → M.TWIN.140; `tests_scripts/test_twin_wiring_contract.py` (the runner's key
+  reads `initiator_bus`/`responder_bus`, `buses`, `spi`, `pins`) → A.U20.28 (TSC); README `:276-279`, `:288-297` →
+  M.TWIN.061
+- **Kind**: code
+
+### M.TWIN.050 Runner `main()` and exits: offline NTP, wall clock, passed watchdog, reset exit codes, one shutdown line
+- **From**: A.U25.33 (2)-(3) (writes the offline `config_NTP.cfg` before `module.main()` unless `--online-ntp`; prints
+  the shim's refused count in the shutdown line), A.U25.71 (installs the wall clock for every loaded `src/` module after
+  the import), A.U20.02 (passes `watchdog=machine.WDT(timeout=8000)` to `module.main()`; reads its own WDT, not the
+  removed module global), A.U20.06 (the `main()` keywords the runner passes), A.U25.69 / OR126.a (1) (the four
+  keywords stay — the runner passes `watchdog`, `cfg_path`, `web_host`, `web_port`), A.U25.09 ((1) configure the
+  mem-backup path; (2) `except machine.SimulatedRebootError` → cleanup, `machine reset:` line, WDT line, exit 3/4;
+  `main()`'s `finally` tolerates a reset during cleanup), A.U25.36 (2) (the shutdown line prints `mem_backup:
+  r0=<4 words>`), A.U25.39 (unwedge calls and comments go; one replacement line), A.U25.41 (`_shutdown_cleanup()`),
+  A.U25.32 (`--config-dir` is the `cfg_path`; `_ensure_dir`), A.U25.43 / A.U25.34 (prewarm, then the shim, the first two
+  statements of `main()`), A.U25.54 (`SimulatedPowerLoss` flushes FRAM/SCD30, never `mem_backup`), A.U27.01 (the
+  runner prints its `Serving forever` or shutdown line — holds), A.U36.513 (`:311-312` comment), A.U24.47 / GAP-H2
+  (consumption proof host-side — see M.TWIN.051), A.U8.08 (`WDT(timeout=8000)` tagged), A.U11.10 Blast (the runner boots
+  through `main()`, which runs the setups — holds), A.U36.043 (CLAUDE.md/SPEC lists drop `segfault_stress_repro.py` —
+  DOCS/SPEC)
+- **Site**: `digital_twin/run_generic_integration.py:311-439`
+- **Change**: `main(config)`: first `prewarm_poll_set()`, then `patch_asy_udp_socket_for_unix_port()` (their comments
+  one line each: "# first: before anything registers a poll object (unix_port_poll_prewarm.py)" / "# second: before any
+  UDPSocket exists (tests_scripts/test_twin_entry_point_order.py)"); `configure_fram_state_path`,
+  `configure_scd30_state_path`, `configure_mem_backup_state_path` (`""` → `None`); plan read, `configure_wiring(plan)`;
+  `random.seed(seed)` when given; `_ensure_dir(config.config_dir)`; unless `config.online_ntp`,
+  `write_offline_ntp_config(config.config_dir)`; the start line lists the grouped fields; `module = __import__(config.module)`
+  with the comment "# loaded by its run-time name (SPECIFICATION.md F.1 named exception)"; `_wall_clock.install(m for m in sys.modules.values() if
+  getattr(m, "time", None) is time)` (comment "# rp2's RTC is the wall clock: an NTP set must move time.time() here too");
+  `watchdog = machine.WDT(timeout=8000)` with `# @tunable wdt.timeout_ms = 8000`; `main_task =
+  create_task(module.main(watchdog=watchdog, cfg_path=config.config_dir, web_host=config.host, web_port=config.port))`;
+  the readiness wait, crossover, chip collection, faults, hangs, wifi outcomes and the instrumentation tasks
+  (M.TWIN.051) as today. `_print_wdt_status(config, watchdog)` prints one line `digital_twin/run_generic_integration.py
+  [<device>] shutdown: would_have_triggered_count=<n> feed_count=<n> mem_backup: r0=<4 words> public_destinations_refused=<n>`
+  (the first two from the runner's own WDT, the third `list(machine.mem_backup(0))`, the fourth from the shim); comment
+  (A.U36.513's text): "# Called from main()'s finally and from the KeyboardInterrupt handler: an interrupt landing while
+  main() is suspended never enters that finally (F.6)." `main()`'s `finally`: the unwedge call and its two comment blocks
+  go; `_print_wdt_status`, cancel the runner tasks, `main_task.cancel()`, `await main_task` under `except
+  (asyncio.CancelledError, KeyboardInterrupt, machine.SimulatedRebootError)`, then `_shutdown_cleanup()`. `__main__`:
+  `gc.threshold(...)` as today; `try: asyncio.run(main(_config))`; `except KeyboardInterrupt:` → A.U25.39's one line,
+  `_shutdown_cleanup()`, `_print_wdt_status`, "interrupted"; `except machine.SimulatedRebootError as e:` →
+  `_shutdown_cleanup()`, `machine.flush_mem_backup()`, the line `digital_twin/run_generic_integration.py [<device>]
+  machine reset: kind=<reset|bootloader> reset_count=<n> bootloader_count=<n>`, `_print_wdt_status`, `sys.exit(3 if
+  reset else 4)` via `_EXIT_SIMULATED_RESET = 3`, `_EXIT_SIMULATED_BOOTLOADER = 4`; `except machine.SimulatedPowerLoss:` →
+  `_shutdown_cleanup()` only (no mem-backup flush: a power loss clears it), a `power lost` line, `sys.exit(5)` via
+  `_EXIT_SIMULATED_POWER_LOSS = 5`. The runner's WDT reference is a module global `_watchdog` set by `main()` so both
+  handlers print it.
+- **Resolved**: A.U25.54 says a runner that sees `SimulatedPowerLoss` flushes FRAM/SCD30 but not `mem_backup` and names
+  no exit code; a distinct code (5) keeps it apart from a reset for the host (A.U25.09's 3/4 convention extended) —
+  agent decision, OR2.c list; the in-process crash-point test (M.TWIN.112) never goes through the runner.
+- **Unit**: U25 (after A.U21.06 for the unwedge removal; A.U20.02's keyword in U20 is already present)
+- **Depends**: M.TWIN.017, M.TWIN.019, M.TWIN.032, M.TWIN.034, M.TWIN.046, M.TWIN.047, M.TWIN.049, M.TWIN.053
+- **Blast carried by**: CI suite exit codes 3/4 (and 5 unused there), the `machine reset:` and shutdown-line fields
+  (`mem_backup: r0=`, `public_destinations_refused=`) → A.U25.36, A.U25.33/A.U25.35 (SCR) and their L0 parsers (TSC);
+  `tests_scripts/test_digital_twin_generated_boot.py` reset run (`--fault sgp40:writeto:500` exits 3) → A.U25.09 (TSC);
+  the generated-`main()` keyword contract → A.U20.28 (3) (TSC; M_GEN gap 3: runner keywords ⊆ `main()`'s);
+  README "Automated CI suite" exit codes and "What's here" runner bullet → M.TWIN.064, M.TWIN.058; L2 in-process only
+  the handler's pure helpers → M.TWIN.140
+- **Kind**: code
+
+### M.TWIN.051 Runner instrumentation: named `--test-*` flags, off by default, unreachable from the product path
+- **From**: A.U25.74 (`--test-hold-closing-slot`, `--test-stall-loop-ms N`, `--test-conn-status-interval-ms N`,
+  `--test-shutdown-hang <step>`; every rebind reached only under its flag; the L0 guard), A.S0930.27 (4)
+  (`--test-shutdown-hang` steps S1-S6 and what each rebinds; the `HANG <step>` line), A.S0930.38 / OR126.a (3) (reboot and
+  bootloader run the controlled sequence — the same steps apply to them), A.U31.06 (1) (`--test-loop-lag-ms N`,
+  `LOOP_LAG max_us= p99_us= samples=` every 5 s), A.U35.31 (2) (`--test-watchdog-fault
+  {supervisor-raise,main-exit,block}` and the `WDT_AT_FAULT <feed_count>` line), A.U24.47 / GAP-H2 of M_TEST_HELP (the
+  host-side bus-fault scenario reads "the twin's fault counter through the harness's status channel" — no action names
+  the channel: closed here by `--test-fault-status-interval-ms N`), OR125.a (1)-(3), G7/R01 (the runner is the stated
+  exception), G7/R19, OR36 (no product hook)
+- **Site**: `digital_twin/run_generic_integration.py` — `parse_args()`, a new `TestFlags` namedtuple, a new section
+  "test-only instrumentation" after `_wire_log_clearer()`, `main()` after `_wire_uart_crossover()`
+- **Change**: `TestFlags = namedtuple("TestFlags", ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms",
+  "fault_status_interval_ms", "shutdown_hang", "loop_lag_ms", "watchdog_fault"))` with `_NO_TEST_FLAGS = TestFlags(False,
+  None, None, None, None, None, None)` — every flag off by default; section comment (3 lines): "# Test-only
+  instrumentation (owner, 2026-09-30): the runner, never src/ or the image, may rebind a booted object from outside or
+  print internal state when a named --test-* flag asks; tests_scripts/test_twin_runner_test_flags.py keeps every one off
+  by default and out of the production entry path." Each flag's code is one function, called from `main()` only inside
+  `if config.instrumentation.<field>:` — `_test_hold_closing_slot(module)` (rebinds `module.webserver._close_writer` to
+  wait on a runner event, prints `SLOT_HELD`/`SLOT_RELEASED`; released by `--test-hold-closing-slot`'s companion: the
+  host closes the held socket); `_test_stall_loop(ms)` (one task that, on each `STALL_TRIGGER` read from the runner's
+  stdin, blocks with `time.sleep_ms(ms)` and prints `STALL`); `_test_conn_status(module, ms)` (prints `CONN_SLOTS
+  open=<n> backlog=<n>` from `webserver._open_conns.get_value()`/`_backlog` every `ms`); `_test_fault_status(chips, ms)`
+  (prints `FAULT_PENDING <key>:<op>=<n> …` for every chip injector op with a queued entry, via `fault.pending(op)`, every
+  `ms` — the host reads consumption before its GET); `_test_shutdown_hang(module, step)` with `step` in
+  `S1|S2|S3|S4|S5reset|S5erase|S6`: S1 rebinds `module.sysfunct._log_dead_task` to a coroutine that never returns and
+  ends one supervised task; S2 a config store's `flush_pending`; S3 holds one FRAM chunk's `_op_lock` from a runner task;
+  S4 starts a supervised-task stand-in that swallows `CancelledError`; S5reset holds a store's `_config_lock`; S5erase
+  rebinds the FRAM driver's `report_set_values` and sets the twin chip's `drop_next_wren = 1` (so pass 2 reaches it);
+  S6 replaces `sysfunct._reset_timer` with a twin `Timer` whose callback never fires — each prints `HANG <step>` when
+  armed; `_test_loop_lag(ms)` (A.U31.06's probe and line); `_test_watchdog_fault(module, kind, main_task)` (after the
+  first supervisor feed, observed as `watchdog.feed_count >= 1`: `supervisor-raise` rebinds `sysfunct._log_dead_task` to
+  raise and ends one task, `main-exit` cancels `main_task` while the runner loop stays alive, `block` runs one blocking
+  `time.sleep(9)` in a runner task; each prints `WDT_AT_FAULT <feed_count>`). Parsing: `--test-hold-closing-slot`
+  (bool), `--test-stall-loop-ms N`, `--test-conn-status-interval-ms N`, `--test-fault-status-interval-ms N`,
+  `--test-shutdown-hang STEP` (validated against the seven names), `--test-loop-lag-ms N`, `--test-watchdog-fault KIND`.
+  Every rebinding comment names the product object and why it is the one the step waits on (≤ 3 lines each). Nothing
+  under `src/`, no generated module and no frozen module references a `--test-` name, this file or `digital_twin/`.
+- **Resolved**: AC_NOTES 33/36: OR125 settles U25 Q2 as (a); A.U25.74 owns the flag list and its L0 check, and
+  A.S0930.27/A.U31.06/A.U35.31 each add their flag to that one table — merged into one section here. The consumption
+  channel for the moved bus-fault scenario is unnamed in A.U24.47/A.U25.46 ("the harness's status channel"); a named
+  flag of A.U25.74's kind serves it (OR125.a (2)) — agent decision, OR2.c list. The rebinds touch private product names
+  (`_log_dead_task`, `_op_lock`, `_config_lock`, `_reset_timer`, `_close_writer`): G7/R01's runner-only exception
+  (OR125.a (1)) covers exactly these, under their flags; A.U25.28's "reads no private product attribute" applies to the
+  runner's ordinary path, which keeps none.
+- **Unit**: U25 (A.S0930.27's step list co-lands per AC_NOTES 36; A.U31.06 and A.U35.31 add their flag in U31/U35 to
+  this section)
+- **Depends**: M.TWIN.047, M.TWIN.050; M.SRC_CORE names (`_log_dead_task`, `_reset_timer`, `_config_lock`, `_op_lock`,
+  `flush_pending`, `report_set_values`)
+- **Blast carried by**: L0 `tests_scripts/test_twin_runner_test_flags.py` (each flag's default off, every rebind under its
+  flag's `if`, no `--test-` name in `src/`/generated/frozen, a bite fixture; table gains `--test-fault-status-interval-ms`)
+  → A.U25.74 (TSC, gap: the new flag); the host harness that drives these flags (`scripts/_digital_twin_scenarios.py`) →
+  A.U25.46, A.S0930.27, A.U31.06, A.U35.31 (SCR); README flag table "test-only instrumentation (owner, 2026-09-30)" →
+  M.TWIN.066; SPEC E.9 runner-only exception names the flags → A.U25.74 / A.U31.06 (SPEC)
+- **Kind**: code
+
+### M.TWIN.052 Soak sampler and wire-log clearer: tagged, tick-stamped, kept or trimmed by B3's measurement
+- **From**: A.U35.25 (the sampler kept only if a 4× sparser interval gives Run 11 the same verdict; else its
+  `gc.collect()` goes), A.U35.26 (`MEM_SAMPLE` timestamp `time.time()` → `time.ticks_ms()`, diagnostics only), A.U30.16 /
+  A.U30.17 (the sampler's `gc.collect()` is an allow-listed instrumentation site while kept), A.U0.54 (`:302` "unbounded
+  by design" → "unbounded (agent, 2026-09-14)"), A.U8.20 (`_WIRE_LOG_CLEAR_INTERVAL_MS = 5000` tagged
+  `l2.twin_wire_log_clear_interval_ms`), A.U25.22 (the link's `wire_log` stays unbounded and the clearer stays: nothing
+  reads it in the runner — see Resolved)
+- **Site**: `digital_twin/run_generic_integration.py:288-308`
+- **Change**: `_mem_sampler(interval_ms)`: prints `MEM_SAMPLE {time.ticks_ms()} {gc.mem_free()}`; its `gc.collect()`
+  stays with the 3-line comment "Optional (--mem-sample-interval-ms): gc.mem_free() lives in this heap with no REST
+  route; the collection is the one allow-listed instrumentation site (tests_scripts/test_gc_collect_sites.py), kept
+  while B3 shows the sparser interval gives Run 11 the same verdict." — if B3's measurement (A.U35.25) differs, the
+  `gc.collect()` line goes and the comment's last clause with it (decided at execution, recorded in `timing.md`).
+  `_WIRE_LOG_CLEAR_INTERVAL_MS = 5000` with `# @tunable l2.twin_wire_log_clear_interval_ms = 5000`. `_wire_log_clearer`
+  comment → "# UARTLink.wire_log is unbounded (agent, 2026-09-14) and nothing in this process reads it, so it grows with
+  link traffic unless cleared - the growth Run 11's trend check caught for dev (README "Run 11's two calibrated
+  numbers")." (3 lines).
+- **Resolved**: A.U25.22 caps the twin's bookkeeping "or clears it by its owner"; `wire_log` keeps the second form (the
+  runner clears it), so G7/R21 holds without a cap.
+- **Unit**: U35 (stage U25 for the comment and tag lands earlier: U0 for A.U0.54's tag, U8 for the tag, U35 for the
+  sampler's verdict and the ticks stamp)
+- **Depends**: A.U35.27 (planted leak), A.U27.17 (Run 11 rewrite)
+- **Blast carried by**: `scripts/_digital_twin_ci_suite.py` `_parse_mem_samples()` by log offset → A.U35.26 (SCR) and its
+  L0 cases (TSC); `tests_scripts/test_gc_collect_sites.py` allow-list row → A.U30.16 (TSC); README sampler reasoning and
+  Run 11 paragraph → M.TWIN.065
+- **Kind**: code
+
+## digital_twin/unixport/_offline_ntp_config.py (new)
+
+### M.TWIN.053 One offline-NTP config writer both tiers import
+- **From**: A.U25.33 (2) (`write_offline_ntp_config(cfg_dir)` writes `config_NTP.cfg` only when absent), A.U18.10 (the
+  `DNSFallback` key), A.U10.40 (`NTP_Host` → `NTPHost`), GAP-H3 of M_TEST_HELP (one implementation; born in
+  `tests/_generated_module.py` at U20, "the twin runner imports it (or TWIN moves that one function to an import-safe
+  module both tiers reach)")
+- **Site**: new `digital_twin/unixport/_offline_ntp_config.py`
+- **Change**: header (≤ 3 lines) "Writes the offline NTP config a twin or Unix-port boot starts from, so no run reaches a
+  public NTP or DNS host: TEST-NET-1 (RFC 5737) as the NTP host and no DNS fallback." `def
+  write_offline_ntp_config(cfg_dir: str) -> None` — writes `{"NTPHost": "192.0.2.1", "DNSFallback": ""}` (the product's
+  flat JSON config format) to `<cfg_dir>/config_NTP.cfg` only when that file is absent (an existing file is the run's own
+  state). Imports only `json` and `os` (no `machine`, no `tests/`).
+- **Resolved**: GAP-H3: the runner may not import `tests/` (G7/R02, A.U25.44's guard), so the function moves at U25 from
+  `tests/_generated_module.py` (M.TEST_HELP.047, U20) to this import-safe module in A.U18.12's fake-free directory, which
+  L1 boots already put on `sys.path` for the UDP shim; `tests/_generated_module.py` then imports it — TEST_HELP gap.
+- **Unit**: U25
+- **Depends**: M.TWIN.017 (the directory), A.U10.40
+- **Blast carried by**: the runner → M.TWIN.050; `tests/_generated_module.py` drops its copy and imports this →
+  TEST_HELP gap (GAP-H3's resolution); the in-process twin boot helpers (C4) import it → M.TWIN.100-164; ruff/mypy scope
+  by directory
+- **Kind**: code
+
+## digital_twin/run_device_script.py (new)
+
+### M.TWIN.054 Device-script runner: the plan, a recording watchdog, the GC stage, the script unchanged
+- **From**: A.U26.05 (1) (`run_device_script.py <wiring-plan.json> <script.py> [--gc-threshold N]`: `configure_wiring`,
+  the recording `machine.WDT(timeout=8000)` as `Board.run_isolated()` arms it, `gc.threshold(N)` default -1, `exec` of
+  the script in a fresh `__main__`-like dict, exit with the script's status), A.U35.49 (runs every instrument at both GC
+  stages), A.U30.18 (3) Blast (the C-stack device script builds `dev` through this route — holds), A.U25.43 / A.U25.34
+  (a `main()` in `digital_twin/` that can boot a device prewarms, then shims, first), A.U25.33 (3) (the shim's
+  public-destination guard covers every Unix-port run), A.U8.08 (`wdt.timeout_ms` site), A.U10.30 (F.1's named `exec`
+  exception), C5
+- **Site**: new `digital_twin/run_device_script.py`
+- **Change**: header (≤ 3 lines): "Runs one tests_hardware device script unchanged under the twin, as Board.run_isolated()
+  runs it on silicon: the device's wiring plan, the one armed watchdog, the requested GC stage. Every instrument passes
+  here before the hardware queue (scripts/record_twin_instrument_runs.py)." `main(argv) -> int`: first
+  `prewarm_poll_set()`, then `patch_asy_udp_socket_for_unix_port()` (the A.U25.43/A.U25.34 order); parse `<plan>
+  <script> [--gc-threshold N]` (hand-rolled with `launch._pop_value`; `-h`/`--help` prints usage, exits 0);
+  `machine.configure_wiring(json.load(plan))`; `machine.WDT(timeout=8000)` with `# @tunable wdt.timeout_ms = 8000`
+  (comment "# armed before the script runs, as Board.run_isolated() does; a script constructing WDT again gets this one
+  (ports/rp2/machine_wdt.c:43-57)"); `gc.threshold(n)` (default -1, the reactive stage); `exec(compile(source, path,
+  "exec"), {"__name__": "__main__", "__file__": path})` with the comment "# SPECIFICATION.md F.1 named exception: a test
+  file executed by path"; a `SystemExit` from the script returns its code; any other exception prints its traceback and
+  returns 1; `machine.SimulatedRebootError` returns 3/4 (the runner's codes) after printing the `machine reset:` line.
+  `__main__`: `sys.exit(main(sys.argv[1:]))`. No `tests/` import; no instrumentation flag (the script is the
+  instrument).
+- **Resolved**: A.U26.05 lists the binary's `MICROPYPATH` as `digital_twin:build/generated_src:src:ext`; the shim's new
+  directory (M.TWIN.017) joins it in `tests_hardware/twin_board.py` — HW_BENCH gap.
+- **Unit**: U26 (A.U26.05; the prewarm/shim lines need M.TWIN.017's U25 move, which precedes it)
+- **Depends**: M.TWIN.017, M.TWIN.022, M.TWIN.031, M.TWIN.044 (`_pop_value`)
+- **Blast carried by**: `tests_hardware/twin_board.py` (spawns it; `MICROPYPATH` + `digital_twin/unixport`),
+  `tests_hardware/conftest.py --twin`, `scripts/record_twin_instrument_runs.py`, `tests_hardware/twin_record.json`, L0
+  `tests_scripts/test_twin_record.py`/`test_twin_board.py` → A.U26.05, A.U35.49 (HW_BENCH, SCR, TSC); the
+  `runner_sha256` covers this file → A.U26.05; README "Running device scripts in the twin" → M.TWIN.074; ruff/mypy scope by
+  directory; the twin mypy pass's `files` list → M.TWIN.075
+- **Kind**: code
+
+## digital_twin/segfault_stress_repro.py (deleted)
+
+### M.TWIN.055 Retire the segfault stress tool
+- **From**: A.U25.40 (delete; README `:80`, `:128`, `:886-906` mentions; `typecheck.ini:9`; `pyproject.toml:383`),
+  A.U30.15 (its `:92` `gc.collect()` — goes with the file), A.U36.043 (CLAUDE.md `:525-526` and SPEC `:1447` lists drop
+  it — DOCS/SPEC), A.SDEP.16 (W12: "deleted by A.U25.40 in any case"), A.U25.28 (its private-attribute reads — gone with
+  it); dropped with the file: A.U8.20's `l2.twin_ready_poll_ms` site `:24`, A.U20.02's caller entry, A.U20.42's `:23`
+  `getattr` adaptation, A.U19.20's `:18` endpoint tuple (U25 conflicts table rows 3 and 1 — settled by A.U25.40's own
+  Blast: "A.U8.20's tag … and A.U20.02's caller entry disappear")
+- **Site**: `digital_twin/segfault_stress_repro.py` (whole file)
+- **Change**: `git rm digital_twin/segfault_stress_repro.py`; README edits → M.TWIN.058/.073; `typecheck.ini` → M.TWIN.075;
+  `pyproject.toml:383` exclude line → A.U25.40 (TOOL).
+- **Resolved**: the earlier units that edit it (A.U8.20 in U8, A.U19.20, A.U20.02, A.U20.42 in U19-U20) run before U25:
+  each edits the file in its own unit (the file still exists then and must keep passing lint/typecheck) and the U25
+  deletion removes the result — staged, no conflict; A.U8.20's Part N row drops this site at U25 (SPEC).
+- **Unit**: U25
+- **Depends**: M.TWIN.057 (the modselect account's new home)
+- **Blast carried by**: `pyproject.toml:383` → A.U25.40 (TOOL); CLAUDE.md/SPEC lists → A.U36.043 (DOCS, SPEC); SPEC
+  `:4622` A33 tag → A.U25.40 / U36 (SPEC)
+- **Kind**: code
+
+## digital_twin/unix_port_gc_unwedge.py (deleted)
+
+### M.TWIN.056 Retire the heap-unwedge helper after the SIGINT-override proof
+- **From**: A.U25.39 (delete the module and its test; remove the import and the three calls with their comments),
+  A.SDEP.11 (re-check of the override at the new tag; the helper's retirement stays A.U25.39's after A.U21.06), A.U36.037
+  (SPEC F.6 keeps the mechanism and the `gc.collect()` recovery; B.14.1 and CLAUDE.md record the retirement — SPEC/DOCS),
+  A.U30.16 (its allow-list row exists only until A.U25.39 lands — TSC)
+- **Site**: `digital_twin/unix_port_gc_unwedge.py` (whole file)
+- **Change**: `git rm`; call sites → M.TWIN.046 (`launch.py`), M.TWIN.050 (runner); test file → M.TWIN.162; README
+  `:89-101` bullet → M.TWIN.058.
+- **Resolved**: —
+- **Unit**: U25, after A.U21.06 (A.U25.39's Depends)
+- **Depends**: A.U21.06
+- **Blast carried by**: SPEC F.6/B.14.1, CLAUDE.md `:665-680` → A.U36.037 (SPEC, DOCS); `tests_scripts/test_gc_collect_sites.py`
+  row → A.U30.16 (TSC)
+- **Kind**: code
+
+## digital_twin/unix_port_poll_prewarm.py
+
+### M.TWIN.057 Poll-set prewarm: the stated limitation, a margin from the TOMLs, no explicit Any
+- **From**: A.U25.43 (3) (the `_DEFAULT_CEILING` comment states the margin against the highest in-process concurrency,
+  re-derived once A.U25.46 moves the load host-side; L0 `3 × max_connections < 512`), A.U25.43 (4) (the modselect account
+  is the prewarm bullet's; "a known limitation, not reported upstream (owner, 2026-09-29)"), A.U25.63 / A.U28.28 (8)
+  (returns `object`; the `noqa: ANN401` goes), A.SDEP.08 / A.SDEP.16 (W12: the `modselect.c` growth path re-read at the
+  new tag; fixed → the module and its 15 call files go — conditional delta), A.SDEP.15 (W11: `import asyncio.core`'s
+  `import-not-found` ignore self-checking), A.U24.70 (its scan band `17400-17463` is a fixed row of `tests/_port_bands.py`
+  — the file unchanged), A.U24.08 (cites `:7` as the `asyncio.core` precedent — holds), A.U14.28 (SPEC F.7 row 12 —
+  SPEC), A.U36.040 (SPEC F home of the fact — SPEC), A.U27.28 (header over the cap)
+- **Site**: `digital_twin/unix_port_poll_prewarm.py:1-2, 4-7, 16-21, 48-50`
+- **Change**: header → "Workaround for the Unix port's extmod/modselect.c pollfds growth, which corrupts poll objects
+  registered over non-fd streams (rp2-immune: compiled out there): grow asyncio's poll set once, before anything
+  registers. A known limitation, not reported upstream (owner, 2026-09-29); SPECIFICATION.md F.7 states it." (3 lines);
+  the `:4-6` comment → "# asyncio.core is private: reaching its _io_queue is the point (the stubs cover only the public
+  API)." (1 line; the `type: ignore[import-not-found]` stays, self-checking under `warn_unused_ignores`). `TYPE_CHECKING`
+  block and `Any` go: `_bind_free_listener(...) -> "tuple[socket.socket, object]"`, `prewarm_poll_set(...) -> object`
+  (comment "# returns the packed sockaddr it bound (a bytes object on the Unix port)"), the `noqa` goes. `_DEFAULT_CEILING
+  = 512` comment → "# A raised threshold, not a fix: well above 3 x the largest max_connections of any devices/*.toml
+  (the peak accepted sockets of any tier; tests_scripts/test_twin_entry_point_order.py checks it); ~45 ms at startup."
+  (the "every device's max_connections is 6" and the scenario-file reference go). The port-band comment `:23-25` keeps
+  its reason and gains "(a fixed row of tests/_port_bands.py)".
+- **Resolved**: A.U25.43 (3) says the margin is re-derived after A.U25.46; the host-driven load still lands in the twin
+  process (its accepted sockets register here), bounded by the product's own ceiling and backlog, so `3 ×
+  max_connections` remains the bound — the comment states that rule, not a number.
+- **Unit**: U25
+- **Depends**: A.U25.46 (the in-process load leaves), A.U24.70 (port band row)
+- **Blast carried by**: L0 entry-order and margin checks → A.U25.43 (TSC, `tests_scripts/test_twin_entry_point_order.py`);
+  `tests/test_digital_twin_poll_prewarm.py` (canonical trailer, prewarm return type) → M.TWIN.134; README prewarm bullet
+  (with the modselect account) → M.TWIN.058; SPEC F.7 row → A.U14.28 / A.U36.040 (SPEC)
+- **Kind**: code
+
+## digital_twin/typecheck.ini
+
+### M.TWIN.075 Twin mypy pass: its own file list, coded ignores, the Any baseline that empties, the shim's path
+- **From**: A.U27.23 (1) (`files = digital_twin, tests/test_digital_twin_*.py, tests/_webserver_concurrency_scenarios.py,
+  tests/_digital_twin_construction_scenarios.py`; "a file A.U25.46/A.U24.65 retires leaves the list with it"), A.U27.22
+  (`enable_error_code = ignore-without-code` with its comment line), A.U8.24 (`disallow_any_explicit = True` plus
+  `[mypy-<module>]` baseline sections at U8's end), A.U34.11 / A.U37.02 (the baseline sections empty and go), A.U25.40
+  (`:9` drops `segfault_stress_repro.py`), A.U18.12 (`mypy_path` gains the shim's directory), A.U25.63 (the twin's
+  modules leave the baseline as their `Any` clears in U25), A.U11.05 Blast ("`digital_twin/typecheck.ini`'s pass needs the
+  same names" — `mem_backup`/`reset_cause` exist in the twin, M.TWIN.032), C5
+- **Site**: `digital_twin/typecheck.ini:1-28`
+- **Change**: header comment block `:1-10` → three blocks of ≤ 3 lines: "# mypy config for the twin pass scripts/typecheck.sh
+  runs beside the main one: mypy resolves each bare module name to one file per run, and the twin needs machine/network/
+  neopixel to mean its own fakes (SPECIFICATION.md B.15)." / "# digital_twin first so the twin's modules win; its
+  unixport/ subdirectory for the UDP shim and the offline-NTP writer; build/generated_src for the runner's device import
+  (typecheck.sh generates it first)." (the "Confirmed empirically" block keeps its 2 lines). `[mypy]`: `mypy_path =
+  digital_twin:digital_twin/unixport:src:build/generated_src:typings:tests`; `files = digital_twin, tests/test_digital_
+  twin_*.py, tests/_digital_twin_construction_scenarios.py` (`tests/_webserver_concurrency_scenarios.py` is retired by
+  A.U25.46 in U25, so it leaves the list there; the twelve per-device wrappers go with A.U25.46 — the glob no longer
+  matches them); `enable_error_code = ignore-without-code` with "# a bare `# type: ignore` is itself an error, so no
+  suppression hides its code"; `disallow_any_explicit = True` from U8's end, its `[mypy-<module>]` baseline sections
+  listing the twin modules with findings then (comment as A.U8.24), each section removed in the unit that clears it —
+  `machine`, `run_generic_integration`, `_http_client`, `launch`, `network`, `unix_port_poll_prewarm` in U25 (A.U25.63);
+  none left at U34 (A.U34.11).
+- **Resolved**: A.U27.23 (U27) writes the file list after U25 has already retired `_webserver_concurrency_scenarios.py` —
+  its own rule ("a file A.U25.46/A.U24.65 retires leaves the list with it") gives the end state without it.
+- **Unit**: U27 (stages: U8 the flag and baseline; U25 the baseline sections it clears, `:9`, `mypy_path`; U34 the empty
+  baseline's removal)
+- **Depends**: M.TWIN.017, M.TWIN.053
+- **Blast carried by**: `scripts/typecheck.sh:118` becomes `mypy --config-file digital_twin/typecheck.ini` → A.U27.23
+  (SCR); `tests_scripts/test_mypy_any_baseline.py` reads the sections → A.U8.24 / A.U34.11 (TSC); `pyproject.toml`
+  main pass: `:383` exclude goes (A.U25.40), `mypy_path` += `digital_twin/unixport` (A.U18.12) → TOOL
+- **Kind**: rule

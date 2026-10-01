@@ -4,9 +4,12 @@ Scope: CLUSTERS.md "## WEB" — `js/` (9 files at HEAD plus `js/api-contract.js`
 `tests_js/` (16 files at HEAD plus the files actions create), `eslint.config.js`, `package.json`, `package-lock.json`,
 `tsconfig.json`, `.nvmrc`. Taken here because no cluster lists them and every action on them is a website action
 (GEN's precedent with `buildgen/limits.py`): `mockdata/` (`dev.json`, `wozi.json`, new `samples.json`),
-`vitest.config.js`, `tsconfig.node.json` and the new `tsconfig.base.json` (Gaps, item 1). Every file was read whole at
-HEAD dd06040 (the `tests_js/*.test.js` files read whole for the sites actions name and their fixtures; the
-`package-lock.json` diff is generated, never hand-written).
+`vitest.config.js`, `tsconfig.node.json` and the new `tsconfig.base.json` (Gaps, item 1). Read at HEAD dd06040: every `js/` module,
+the config files, `mockdata/`, the two command modules, `_put_field_cases.js`, `vitest-commands.d.ts` and five test files
+(`live-backend*.test.js`, `poll-manager.test.js`, `definitions-mockdata-coverage.test.js`, `mock-server-put-matrix.test.js`)
+in full; the other six test files in full for every site an action names and their fixtures, plus a grep of each for
+every name, key, pointer and comment form a merged change touches (results folded into M.WEB.052-.059);
+`package-lock.json` is generated and was not read line by line. M-ID numbers are grouped by file and leave gaps.
 
 Inputs merged: the site index (85 action IDs), a grep of every `audit/actions/*.md` Site/Change/Blast/Why slot for these
 paths (116 further IDs, 67 of them blast-only), AC_NOTES 1-39, the finished merges M_SRC_CORE, M_SRC_SENS, M_SRC_NET,
@@ -141,7 +144,7 @@ every B1 action (AC_NOTES 34-second).
   visibility resume, each cancelled by `stop()`); `await pollOnce()` inside `try`: on success the failure count resets
   to 0 and `stopAfterSuccess` ends the loop (no further timer, the
   visibility subscription released); on a rejection `onError?.(error)` runs (no `console.error` here — `"Poll failed:"`
-  goes) and the count increments; afterwards, unless stopped, a timer is armed only when `!visibility.isHidden()`; a
+  goes) and the count increments only while `intervalMs * 2 ** (k - 1) < POLL_BACKOFF_MAX_MS` (a bounded counter, OR103); afterwards, unless stopped, a timer is armed only when `!visibility.isHidden()`; a
   `visibility.onChange` listener arms one immediate tick when the page becomes visible and no tick is in flight or
   scheduled, and clears the pending timer when it becomes hidden. The returned stop function sets `stopped`, clears the
   timer and calls the unsubscribe function `onChange` returned.
@@ -850,7 +853,8 @@ every B1 action (AC_NOTES 34-second).
   `alwaysExecuted` → validated, answered `VALID` (never `UNCHANGED`), and stored only when the device's composed data
   already carries the key (so `AmbPres` and `ForceCalRef` read back what was applied and `ContMeas`, which GET cannot
   report, never appears); every other field: invalid → `INVALID`; with `field.resolution = r` the stored and new values
-  are compared as `Math.round(v / r)` and the stored value is `Math.round(value / r) * r`; equal → `UNCHANGED`, else
+  are compared as `Math.round(v / r)` and the stored value is `Number((Math.round(value / r) * r).toPrecision(15))` (the
+  `toPrecision` drops binary noise such as `1235 * 0.01 = 12.350000000000001`); equal → `UNCHANGED`, else
   stored → `VALID`. `composite` non-dispatch fields keep today's all-sub-fields rule. `dispatchRangedAction()`,
   `dispatchLightCmdLed()`, `dispatchSensorQuirkField()`, `applySensorQuirksForGet()` go (their behaviour is the rules
   above); each remaining function's JSDoc states its rule in ≤ 3 lines.
@@ -1047,7 +1051,11 @@ every B1 action (AC_NOTES 34-second).
   `"nope"` → HTTP 200 code 1; `group-failure` → every attempted key "Failed"; `:539-549` (`partial-result`) goes;
   float field `50` → Valid and stored 50, int field `5.5` → Invalid, `5` → Valid, `true` → Invalid; one
   corpus-driven `it.each` per shape over `tests/_radio_shape_cases.json` (accept → "Valid", reject → "Invalid"); a
-  32-character SSID of 2-byte characters → "Invalid", 16 → "Valid". Trailing restores (`:400-403`) go.
+  32-character SSID of 2-byte characters → "Invalid", 16 → "Valid". Trailing restores (`:400-403`) go. Fixture and case
+  keys follow A.U10.40's map, synthetic ones included (`SGPResetVOC`/`ISLCalibrate` → `ResetVOC`/`Calibrate`, the
+  `:354-369`, `:447-465` names following); the
+  `:249`, `:275` comments' `coerce_numeric()` → "the server's per-kind validation" (the function is private after
+  M_SRC_CORE GAP-G13 / M.SRC_CORE.047).
 - **Resolved**: A.U9.03's "Failed for out-of-range" expectations at `:272-314` are A.U19.02's "Invalid" (A.U19.02 keeps
   only the busy refusal "Failed", M.SRC_NET.122).
 - **Unit**: U25 (A.U25.12). Stages: U6 (A.U6.13/.17/.28/.29/.30), U9 (busy), U10 (keys), U18 (`HotspotPW`, shapes), U19
@@ -1092,7 +1100,8 @@ every B1 action (AC_NOTES 34-second).
   fixed sleep: some flows chain two requests, so a fixed wait would be flaky or slow."; `:11` `2000` → a named constant
   under `// @tunable l0.render_wait_timeout_ms = 2000`, `:20`'s `10` under `// @tunable l0.render_poll_ms = 10`, `:665`'s
   `5000` under `// @tunable l0.render_banner_wait_ms = 5000`; `:18` disable gains "-- each retry waits out the previous
-  delay before rechecking" (its comment line above goes). Fixtures: `lightCmdLED` → `LightCmdLED` with `R/G/B/T`; `:84-86`
+  delay before rechecking" (its comment line above goes). Fixtures: every key A.U10.40's map renames, synthetic fixture keys included (its grep rule: no old key outside
+  `legacy/`/`audit/`) — `MeasInt` → `MeasInterval` throughout, `lightCmdLED` → `LightCmdLED` with `R/G/B/T`; `:84-86`
   comment → "// A plain toggle: no dispatch or alwaysExecuted flag, so the mock stores and echoes it (SPECIFICATION.md
   Part H.4)."; the status fixture's sections carry what each test needs. Changed expectations: `:323` → "Command executed
   — MeasInt: Valid"; `:382-415` comment "rebuild" → "update"; the latency comment `:399-401` → the fake-timer switch's
@@ -1108,7 +1117,9 @@ every B1 action (AC_NOTES 34-second).
   sub-inputs cleared after Valid; `:783-812` → "reads maintenance data by path" (`path: ["SGP40", "BackupTS"]`) plus two
   instances `SGP40` and `SGP40_x` each showing their own value; `:845-880` hold through the generic `/status` sub-fetch
   (`:851` code 4 → 404); `:882-930` in-place refresh holds; `:958` pointer → "(SPECIFICATION.md C.5.3)"; `:1015-1037`
-  builds its response with a local fetch stub and is renamed "… (defensive fallback)". Banner assertions read
+  builds its response with a local fetch stub and is renamed "… (defensive fallback)", its `:1016-1017` comment → "// Defensive
+  only: the server answers every submitted key (SPECIFICATION.md A.8)."; `:727`'s comment ("Invalid" only for a
+  non-dict) is rewritten to the A.U19.02 rule with the `:698-744` change. Banner assertions read
   `dataset.shown`. New: stop during a pending GET → no banner, no card appended after it settles, the next section's
   first GET is not queued behind the old one's timeout; the same readonly `.field-value` node survives three polls; focus
   on "Show all" survives a poll; a writable field's caption refreshes through its `path`; `/status` with `system:
@@ -1131,6 +1142,12 @@ every B1 action (AC_NOTES 34-second).
   behaviour it adds) turns it into "Nothing to submit" — A.U23.15's expectation stands. A.U23.05's "console.error once"
   case lands here (M.WEB.051's note). A.U36.544 (4) ":86 H.7 → H.4" applies to the comment A.U6.17 makes false (the mock
   no longer special-cases a name): the comment is rewritten with the H.4 pointer.
+- **Found while merging (no action names them; consequences of A.U23.26 and M.WEB.020)**: the banner test at
+  `:647-666` expects `/simulated failure/`, but an injected 500 now answers through `makeResponse(500)` with the
+  catalog text, so it expects "Internal server error". The one-shot settings banner test at `:668-676` asserts the
+  banner after the failure, but the one-shot section now retries on its failing-episode interval and hides the banner
+  on recovery; it runs under fake timers (`vi.useFakeTimers()`, advanced only past the first attempt) so the assertion
+  sees the failure state, not a later retry.
 - **Unit**: U24 (A.U24.14/.48). Stages: U8 (tags), U10 (keys), U19 (`:851`), U23 (behaviour cases and A.S0930.20 (5)),
   U27 (header), U36 (pointers — folded into the U23 rewrite of the same lines where those lines change; `:958` alone
   lands in U36).
@@ -1255,7 +1272,11 @@ every B1 action (AC_NOTES 34-second).
   comment goes (sections may be live now). `nav.test.js`: `initNav` gets `keyTarget` (a counting `EventTarget`) and
   returns `{setCurrent, dispose}`; `:38-92` assert `appShellEl.dataset.navOpen`; new: closed drawer `inert`, open not,
   opening focuses the first link and sets `aria-label` "Close navigation", closing with focus inside returns it to the
-  hamburger, `dispose()` leaves no listener on `keyTarget`; fixture id `"fixture-device"`.
+  hamburger, `dispose()` leaves no listener on `keyTarget`; fixture id `"fixture-device"`. `main.test.js:11-12` ("no stop handle") goes as in `app.test.js`; `:47-49` JSDoc names
+  `scripts/_stage_website.py` in place of "build_website.sh's "Inlining" note"; `nav.test.js`'s `afterEach` calls the returned
+  `dispose()`. `main.test.js:127-128` comment → "// The point of inlining
+  (SPECIFICATION.md H.2: the stager inlines definitions.json): a device build never fetches it." (the build script
+  that inlines moves to `scripts/_stage_website.py`, A.U23.38; "H.7's follow-up round" is a process label, G9/R12).
 - **Resolved**: —
 - **Unit**: U23. Stages: U6 (A.U6.07/.13), U27 (headers).
 - **Depends**: M.WEB.025, M.WEB.026, M.WEB.030, M.WEB.031.
@@ -1277,13 +1298,24 @@ every B1 action (AC_NOTES 34-second).
   SPECIFICATION.md Part A.8." (≤ 3 lines when wrapped); the four JSON imports and `DEV_UNIQUE_GROUPS` with its comment go;
   `CASES = dedupePutFieldCases(DEVICE_IDS.flatMap((d) => collectMockPutFieldCases(d, GENERATED_DEFINITIONS.get(d),
   composeMockData(...))))`; the resubmit-unchanged expectations `:118-121`, `:183-185` apply to non-`neverUnchanged()`
-  fields only; a new category asserts two identical valid sends of every `neverUnchanged()` field both answer "Valid";
+  fields only; a field with `resolution` expects the stored value rounded to it
+  (`Math.round(v / r) / Math.round(1 / r)`, the test's own arithmetic); `GET_READBACK_QUIRK_FIELDS` (`:23-26`, a hand list) goes: its SCD30/SGP40/ISL29125
+  members are `neverUnchanged()` fields the generic cases now skip, and `PW` is derived as "a field with `mask: true`"
+  (the GET masks it), comment one line naming that rule; the `:191`, `:203` test names cite "the server's per-kind
+  validation (SPECIFICATION.md Part A.8)" instead of `config_manager.py's coerce_numeric()` (renamed module, private
+  function, M.SRC_CORE.047); a new category asserts two identical valid sends of every `neverUnchanged()` field both answer "Valid";
   shard tests take `DEVICE_IDS[0]`; a dedupe case keeps a field differing in any attribute and drops an identical one
   from a later device. `_put_field_cases.js`: `DISPATCH_ONLY_KEYS` goes; `collectPutFieldCases()` skips readonly,
   composite and every `neverUnchanged(field)` field (`:63`); `:11-13` comment → "// Action fields (dispatch) and
   always-executed fields have their own categories: the matrices' never-"Unchanged" category and / // the live tier's
   action-field block." (2 lines); new `export function dedupePutFieldCases(cases)` — first case per `sectionKey + "|" +
-  driverBase(groupKey) + "|" + JSON.stringify(field)`, `driverBase` = the key up to its first `_`.
+  driverBase(groupKey) + "|" + JSON.stringify(field)`, `driverBase` = the key up to its first `_`. New `export function
+  validStringValue(field, length)` used by both matrices' string "valid" probes: no `shape` → `"x".repeat(length)`;
+  `hostLabel` → the same; `hostName` → labels of at most 63 `x` joined by `.` to `length`; `countryCode` → `"XX"`;
+  `ipv4List` → the corpus accept values (`"8.8.8.8"`, `"8.8.8.8,1.1.1.1"`, `"1.1.1.1,8.8.4.4,9.9.9.9"`) instead of a
+  length sweep. Without it the generic `"x".repeat(n)` probes fail the shape checks M.WEB.041 adds (`"xx"` is no
+  country code, `"x"` no IPv4 list) — a blast of A.U6.29/A.U6.30/A.U10.41/A.U18.10 no constituent carries (gap closed
+  here).
 - **Resolved**: A.U0.20 (U0) tags the header's `:2` and A.U6.09 (U6) rewrites what `:2` describes — one header carrying
   both (A.U0.20's own Blast: "A-C merges both edits into one header"). A.U0.40's L07 is void: A.U6.09 deletes
   `DEV_UNIQUE_GROUPS` and its comment (A.U0.40 names this itself). A.U23.33's comment text ("action fields are covered by
@@ -1423,7 +1455,8 @@ every B1 action (AC_NOTES 34-second).
   through `getRealCurrentValues()` inside the test (the toggle split moves into the body); `willRoundTrip = field.kind ===
   "number" || field.kind === "string" || field.dispatch === true`; the resubmit expects exactly `"unchanged"` (the
   `"ValidOrUnchanged"` mode and its comment go; the special-value probe expects `"unchanged"` when the special equals the
-  current value); every expected display through `expectedDisplay()`; `:185-187` "truncation" → "rounding to the nearest
+  current value); every expected display through `expectedDisplay()`; the string "valid" probes take `validStringValue()`
+  (M.WEB.060); `:185-187` "truncation" → "rounding to the nearest
   0.01"; `CASE_TIMEOUT_MS` under `// @tunable l0.put_matrix_case_timeout_ms = 15000`; `:87` → "(SPECIFICATION.md Part
   H.4)"; the mask exclusion `:134-137` stays and adds "(the page never sends a mask: render.test.js)". The derived
   never-"Unchanged" category (two identical valid sends both `"valid"`) runs for every `neverUnchanged()` non-composite
@@ -1927,4 +1960,300 @@ every B1 action (AC_NOTES 34-second).
    under the per-port lock (A.U24.69, M.WEB.078); A.U24.69's CLAUDE.md edit should name it. BACKLOG's chroot entry for the
    dependency refresh (A.SDEP.21) names `@eslint-community/eslint-plugin-eslint-comments` (moved into the refresh,
    M.WEB.071) instead of A.U24.48's own line.
+
+## Adherence findings (end state of each file, after every merged change)
+
+- **`js/` (all modules)**: comment cap — every header and inline block written above is ≤ 3 prose lines; typedef and
+  JSDoc `@param`/`@returns` runs are type data (`npm run typecheck`), not counted. Pointers — HEAD's wrong ones fixed in
+  place: `templates.js:8` "Part H.7's splitting rule" → H.2 (M.WEB.013); `render.js:44`, `:127`, `:225` (M.WEB.019/.021,
+  with A.U36.544); `field-format.js:27` the gone `src/sensortask_wozi.py` (M.WEB.012); `field-format.js:1-3`'s
+  Node-reuse reason, false once A.U23.32 lands (M.WEB.012; SPEC follow-up Gaps 4 (d)); `render.js:216-218` named
+  `coerce_numeric()`, which M_SRC_CORE GAP-G13 makes private (M.WEB.021). No temporary audit ID in any written text
+  (G9/R12): actor tags only. `src/`↔`js/` mirror (SPEC Part G): result words, the unavailable marker, time-struct keys
+  (M.WEB.001), the envelope code table and `COUNTER_CAP` (M.WEB.040), the dispatch fields, `SystemCmd` options,
+  `PauseTime` bounds and `LightCmdLED` members (derived from the definitions, M.WEB.041), the four shape rules (one corpus,
+  M.WEB.052) — each pinned by an L0 check (A.U23.24-.27, TSC) or the shared corpus; error numbers (including M_SRC_CORE
+  GAP-G2's new errno 25) reach the page only through the generated `codes` blocks, so no JS literal mirrors them. Layering
+  (A.U23.41): DOM creation only in `templates.js`; `document.` only in `main.js`/`app.js` (the shell takes `Document` and
+  `keyTarget` from the entry; nav reads focus through `:focus-within`, M.WEB.026); controllers write only `applyStatus`,
+  `shown`, `navOpen`, `sourceState` — checked. OR36.a (1): no test-only export or seam — `buildField`,
+  `SUPPORTED_SCHEMA_MAJOR`, `DEFAULT_TIMEOUT_MS` lose `export`, `isBusy` goes, A.U23.07's `fetchImpl?` goes (M.WEB.025),
+  `STANDARD_CODES` stays private (M.WEB.065). OR78.a (1): no variant literal (`app.js` defaults to the manifest's first
+  device, M.WEB.031). OR94 / A28: the look is unchanged — the history pills keep their look and the type only colours the
+  number (no border cue, AC_NOTES 26/37), `N` placeholders stay spans and the no-data rollup appears only when needed
+  (D3), the specials hint stays on number fields (D4); the code descriptions appear only on click (OR94 "14 b"). OR121/
+  OR122: "Reset to defaults"/"Erase FRAM" come from the definitions' options with the existing dropdown and Apply, no
+  dialog — `window.confirm` is reached only by the DNS fallback Clear (owner OR56.a (2)), pinned by A.S0930.20 (5)'s
+  zero-call spy (M.WEB.054). OR42.a (3): a PUT is never retried or repeated, and a sent PUT is never aborted
+  (M.WEB.021). OR103 "no unbounded counters": the mock's uptimes saturate at `COUNTER_CAP` (M.WEB.042); the page's own
+  failure count is bounded (finding below, fixed in M.WEB.003). ESLint rules the new code must pass: `prefer-named-capture-group` (regexes written
+  non-capturing or named, M.WEB.018/.068/.079), `no-console` (only `console.error`, M.WEB.020), the sink ban (M.WEB.070).
+  D.15 order: every new function is placed by A.U36.038's reorder, which lands last in U36.
+- **`mockdata/samples.json`**: no variant literal (`Hostname` "SensorNode"); codes catalogued, newest-entry rule;
+  credentials are fake test values (CLAUDE.md "no real credentials": `PW`/`HotspotPW` samples are placeholders, the one
+  real credential stays in `src/`).
+- **`tests_js/`**: every file has a ≤ 3-line header (A.U27.28's eight plus every new file); fake timers and spies are
+  restored on every path (M.WEB.067); no test reads a product-private value through an export (M.WEB.068); expected values
+  in the live tier come from an independent oracle (M.WEB.069, OR19.a (2)); a missing interpreter fails, never skips
+  (M.WEB.061-.063, OR21.a (3)); every live twin run is scanned for both memory markers (M.WEB.061, CLAUDE.md memory
+  rule); "two port-binding suites never concurrently" (CLAUDE.md, the brief's special care) is enforced by the port-53 lock
+  every JS twin launch takes (M.WEB.061/.078); live runs keep their twin state in a per-run temp dir and never delete
+  `digital_twin/config/` (G8/R33); the shared helpers are one copy each (M.WEB.082, G2/R26). Wear: no `tests_js` test
+  writes real hardware; the live tier's `ResetErrors` archives the errcount first (A.U23.33, OR38.a (2)).
+- **Config files** (`eslint.config.js`, `package.json`, `tsconfig*.json`, `vitest.config.js`): each opens with one
+  header block (A.U28.42/A.U28.25; JSON-with-comments files through their first comment); `package-lock.json` and
+  `.nvmrc` change only in the dependency refresh (the brief's rule; M.WEB.071/.072); every path a config names resolves
+  (A.U28.39); every Node-context `tests_js` file is in both Node lists (M.WEB.070/.073 — the gap for `_port_lock.js`,
+  `_micropypath.js`, `_lint_command.js`, `_twin_process.js` closed); every tool stays pinned through the lock.
+- **Finding fixed — the back-off counter**: as A.U23.05 wrote it, the consecutive-failure count grows for as long as a
+  section fails (OR103 "no unbounded counters anywhere"; `2 ** k` would also reach `Infinity`). M.WEB.003 stops the
+  increment once `intervalMs * 2 ** (k - 1)` reaches `POLL_BACKOFF_MAX_MS`.
+- **Brief "special care" items**: AC_NOTES 28 — confirmed, settled in M.WEB.020 (no extra site). OR94/A28, OR121/OR122,
+  the mirror obligation, JSDoc as type data, the mock/MicroPython concurrency rule, the lock/`.nvmrc` rule — as above. Every
+  other AC_NOTES item naming `js/`: 26/37 (border cue dropped, M.WEB.016), 38 (A.U28.24's `python3` → `uv run`, M.WEB.071),
+  34-second (dependency refresh before B1, M.WEB.072); items 33/36/27 reach the website only through definitions
+  (`SystemCmd` words, M.GEN.015).
+
+## Owner questions
+
+None. Every conflict at a WEB site is settled by an owner row, the register, AC_NOTES, the brief's lead rules or a later
+constituent (each named in its change's **Resolved** slot); M_SRC_SENS GAP-12's suggested question is settled by
+A.U23.14/A.U23.15 and OR94 (M.WEB.014). No WEB change is pending GEN Q2 (Gaps item 5).
+
+## Agent decisions for the OR2.c review
+
+Taken in this merge (the constituents' own agent decisions — back-off cap and watch interval, reload on a changed build,
+`ContMeas`'s unset state, the `CalLight` tones, the age breakpoints, the accepted number syntax, `window.confirm` before
+Clear, index-based ids, `autocomplete="new-password"`, recovery by one reload — stay as `audit/actions/U23.md` "Open
+points" lists them):
+
+- **D1** `startPolling()` takes one options object (`visibility`, `onError`, `stopAfterSuccess`) instead of four
+  positional parameters, and the end of a section's failure episode is tracked by the section, where the post-Apply
+  refresh also reports (M.WEB.003, .020).
+- **D2** `LastTaskEnd`'s display: "<Task> at uptime <Uptime> s", "invalid value" for a malformed one, "—" for `null`
+  (M.WEB.012).
+- **D3** history `N` placeholders stay plain spans (the catalog has no `N` table); the "<n> modules without data" rollup
+  span appears only when n > 0 (M.WEB.016).
+- **D4** special-value meanings appear in the hint for number fields only; a readonly field shows its special's meaning
+  in place (M.WEB.014).
+- **D5** the card update refreshes a cleared input's placeholder with its caption (M.WEB.015).
+- **D6** the section reports Apply start/end to the shell through `context.applyTracker` (M.WEB.020, .025).
+- **D7** A.U23.07's `fetchImpl?` parameter is dropped as a test-only seam; one `visibilityOf(document)` helper in the
+  shell serves both entries (M.WEB.025).
+- **D8** the mock stores an always-executed field only when the device's composed data carries it, and its config copies
+  exclude dispatch and `statusPath` fields — no readback key list (M.WEB.041, .043).
+- **D9** every live-tier reader waits for the re-enabled Apply button before reading `data-apply-status` (M.WEB.061,
+  .062).
+- **D10** the live matrix's two-identical-sends check covers the sensors section's non-composite never-"Unchanged"
+  fields; `PauseTime`'s twin-send check sits in the action-field block; `LightCmdLED` keeps its own busy cases
+  (M.WEB.063).
+- **D11** the mock's code table stays private; tests read it as text with a second source reader (M.WEB.065, .068).
+- **D12** the ESLint ceiling probe runs as a Commands API command in a Node-context module (M.WEB.081).
+- **D13** the duplicated live-twin process helpers and `mustQuery`/`buildElements` become one shared copy each;
+  `buildFetchStub()` stays per file (M.WEB.082).
+
+## Ledger
+| action ID | merged into M-ID / dropped (reason) |
+|---|---|
+| A.S0930.09 | read: `SystemCmd` options derived from the definitions, no JS literal (M.WEB.041); the tuple is SRC_NET's |
+| A.S0930.10 | read: no JS change, the dropdown renders the options (M.WEB.021); GEN M.GEN.015 |
+| A.S0930.20 | M.WEB.052 ((4) mock), M.WEB.054 ((5) website); (1)-(3), (6), (7) TSC |
+| A.S0930.27 | M.WEB.063 (the two words listed as not driven live); the rest TWIN/SCR |
+| A.S0930.31 | read: the mock stays stateless (M.WEB.041); SRC_CORE |
+| A.S0930.34 | read: website cases hold (M.WEB.054); (2)-(4) TSC |
+| A.S0930.38 | read: "reboot/bootloader not driven live" holds (M.WEB.063); TWIN/SCR |
+| A.SDEP.02 | read: suppression placement applied in M.WEB.070; the gate is PROC |
+| A.SDEP.04 | M.WEB.072, M.WEB.071 (ranges, `engines`, `@types/node`), M.WEB.070 (new core rules), M.WEB.073 (tsc options) |
+| A.SDEP.16 | M.WEB.061, M.WEB.062 (W15 `TZ`, conditional); the rest SCR/TWIN/TEST_UNIT |
+| A.SDEP.19 | M.WEB.061, M.WEB.074 (W34/W36, conditional); the rest TOOL/SCR |
+| A.SDEP.21 | DOCS (BACKLOG entry; Gaps item 8) |
+| A.U0.06 | PROC (records the pins; no file change here) |
+| A.U0.08 | read: the citation check scans `js/`/`tests_js/` text (TSC) |
+| A.U0.20 | M.WEB.060 (one header with A.U6.09) |
+| A.U0.28 | M.WEB.016 (stage U0), M.WEB.058; `html/style.css` GEN |
+| A.U0.40 | dropped for its L07 site: A.U6.09 deletes it (M.WEB.060); the rest SPEC/TEST_UNIT/DOCS |
+| A.U0.53 | M.WEB.021 (stage U0, superseded at U23 by A.U23.45's text) |
+| A.U1.01 | read: no legacy path in `package.json`/`tsconfig.json` |
+| A.U1.25 | dropped for `js/mock-server.js:178`: A.U23.27 deletes the comment (M.WEB.040); other sites other clusters |
+| A.U10.06 | read: `TS` null renders "—" (M.WEB.012) |
+| A.U10.32 | read: D.15 binds `js/`; applied through A.U36.038 (M.WEB.070); SPEC |
+| A.U10.37 | read: module names cited by M.WEB.001/.040 |
+| A.U10.40 | M.WEB.001, .012, .040-.045, .052, .054, .058, .063 (stage U10); the rest other clusters |
+| A.U10.41 | M.WEB.004, .006, .041, .052 (`hostName` shape); `src/` SRC_NET |
+| A.U11.21 | M.WEB.041 (gap listed, not mirrored); SPEC sentence |
+| A.U11.26 | M.WEB.019 |
+| A.U11.31 | M.WEB.019, M.WEB.041 |
+| A.U15.06 | read: the wording is A.U4.05's (M.WEB.063) |
+| A.U15.11 | read: no `tests_js` assertion |
+| A.U15.12 | M.WEB.045 (mock rows); read M.WEB.057; `src/` SRC_SENS |
+| A.U15.18 | M.WEB.045, M.WEB.012 |
+| A.U15.19 | M.WEB.045 (`VOCState` sample); SRC_SENS |
+| A.U15.36 | M.WEB.045 (`CalLight` sample); SRC_SENS |
+| A.U17.19 | read: the mock reset leaves `UARTLINK` alone (M.WEB.041) |
+| A.U18.10 | M.WEB.041, M.WEB.045, M.WEB.052; `src/` SRC_NET |
+| A.U18.37 | read: masks only (M.WEB.042) |
+| A.U18.38 | M.WEB.042, M.WEB.045, M.WEB.052 |
+| A.U18.39 | read: page half is A.U23.36 (M.WEB.054) |
+| A.U19.01 | M.WEB.041 |
+| A.U19.02 | M.WEB.041, M.WEB.052 (its comment rewrite dropped with the comment) |
+| A.U19.03 | M.WEB.041 |
+| A.U19.04 | read: equality membership (M.WEB.041) |
+| A.U19.06 | read: relied on by M.WEB.025 |
+| A.U19.10 | M.WEB.042, M.WEB.045 |
+| A.U19.15 | M.WEB.040, M.WEB.054 |
+| A.U19.16 | M.WEB.001 |
+| A.U19.20 | read: output consumed by M.WEB.050, M.WEB.065; GEN |
+| A.U2.05 | read: entry shape unchanged |
+| A.U2.21 | read: `codes` block consumed by M.WEB.016; GEN |
+| A.U2.25 | M.WEB.045 |
+| A.U20.16 | read: default instance key (M.WEB.043) |
+| A.U20.27 | read |
+| A.U23.01 | M.WEB.002, .007, .031, .053 |
+| A.U23.02 | M.WEB.002, .051 |
+| A.U23.03 | M.WEB.002, .020, .051, .054 |
+| A.U23.04 | M.WEB.003, .020, .025, .030, .051 |
+| A.U23.05 | M.WEB.003, .020, .021, .051, .054, .070 |
+| A.U23.06 | M.WEB.020, .025, .059, .064 |
+| A.U23.07 | M.WEB.022, .025, .026, .030, .031, .059, .064 (`fetchImpl?` dropped, D7) |
+| A.U23.08 | M.WEB.015, .016, .020, .054 |
+| A.U23.09 | M.WEB.005, .006, .053, .055; `_shape_problems()` TSC |
+| A.U23.10 | M.WEB.006, .055, .070 |
+| A.U23.11 | M.WEB.001, .016, .020, .054, .058; CSS GEN |
+| A.U23.12 | M.WEB.016, .019, .058; CSS GEN |
+| A.U23.13 | M.WEB.019, .021, .054 |
+| A.U23.14 | M.WEB.018, .019, .054, .063 |
+| A.U23.15 | M.WEB.015, .021, .054 |
+| A.U23.16 | M.WEB.004, .005, .014, .018, .021, .053, .054, .062; tag/grammar SRC_SENS/GEN |
+| A.U23.17 | M.WEB.004, .006, .014, .021, .054; tag/grammar SRC_NET/GEN |
+| A.U23.18 | M.WEB.004, .006, .020; generator GEN |
+| A.U23.19 | M.WEB.020, .054, .057; generator GEN |
+| A.U23.20 | M.WEB.004, .006, .014, .016, .058; CSS and catalog GEN |
+| A.U23.21 | M.WEB.012, .014, .058 |
+| A.U23.22 | GEN (template, catalog); its mock half M.WEB.042, .045 |
+| A.U23.23 | M.WEB.004, .006, .014, .021, .054; tag SRC_SENS, grammar and CSS GEN |
+| A.U23.24 | M.WEB.001, .012, .058; mirror test TSC |
+| A.U23.25 | M.WEB.001, .040; mirror test TSC |
+| A.U23.26 | M.WEB.040, .052, .054, .070 |
+| A.U23.27 | M.WEB.040, .041, .052, .054; mirror test TSC |
+| A.U23.28 | M.WEB.040, .041, .042, .052, .070 |
+| A.U23.29 | M.WEB.040, .042, .045, .052, .054 |
+| A.U23.30 | M.WEB.041 (holds), .052, .054; the definitions pytest TSC |
+| A.U23.31 | M.WEB.050, .063, .065 |
+| A.U23.32 | M.WEB.061, .062, .063, .069 |
+| A.U23.33 | M.WEB.060, .062, .063, .074, .076 |
+| A.U23.34 | M.WEB.061, .063, .076 |
+| A.U23.35 | M.WEB.061, .063, .074, .076 |
+| A.U23.36 | M.WEB.054, .063 |
+| A.U23.37 | M.WEB.002, .005, .014, .051, .053, .058, .068; the notification half SRC_SENS; regexes TSC |
+| A.U23.38 | SCR (stager); `package.json` script M.WEB.071; read M.WEB.013 |
+| A.U23.39 | GEN/SCR (favicon, staging); M.WEB.066 note |
+| A.U23.40 | M.WEB.014, .015, .018, .020, .054, .070 |
+| A.U23.41 | read: TSC guard; the end state passes it (Adherence) |
+| A.U23.42 | M.WEB.017, .020, .022, .026, .054, .059; CSS/markup GEN |
+| A.U23.43 | M.WEB.014, .026, .058, .059, .080; CSS/markup GEN; (6) pill border cue dropped (AC_NOTES 26/37) |
+| A.U23.44 | GEN M.GEN.062 / TSC token test (pending GEN Q2); no WEB site |
+| A.U23.45 | M.WEB.021 (`render.js:264-266`); SPEC row, `style.css` GEN |
+| A.U23.46 | M.WEB.063 |
+| A.U23.47 | TSC/TEST_UNIT (Python files); no WEB site |
+| A.U23.48 | M.WEB.066; the legacy-page ledger step PROC |
+| A.U23.49 | M.WEB.004, .006, .014, .041, .052, .058; tag SRC_SENS, grammar GEN |
+| A.U24.14 | M.WEB.051, .053, .054, .067, .074 |
+| A.U24.46 | M.WEB.050 (stamp path settled); writer SCR (Gaps item 6) |
+| A.U24.48 | M.WEB.021, .054, .070, .071 (dependency moved into the refresh) |
+| A.U24.49 | M.WEB.082 (the `tests_js` clone groups); Python helpers TEST_HELP |
+| A.U24.52 | M.WEB.061, .062, .063, .076 |
+| A.U24.53 | M.WEB.061, .062; the runner flag TWIN |
+| A.U24.56 | A28 bullet void — A.U0.28 carries it (M.WEB.058); the rest other clusters |
+| A.U24.69 | M.WEB.061, .062, .078; the bash half SCR |
+| A.U25.09 | M.WEB.061, .062 |
+| A.U25.12 | M.WEB.041, .052, .063; the SCD30 fake TWIN |
+| A.U25.32 | M.WEB.061, .062 (one change with A.U24.53) |
+| A.U25.44 | read: TSC guard (Gaps item 7) |
+| A.U26.64 | read: an L4 test reads `js/poll-manager.js` (HW_BENCH) |
+| A.U27.11 | read |
+| A.U27.12 | M.WEB.061, .062 |
+| A.U27.15 | M.WEB.061, .062, .079 |
+| A.U27.28 | headers in M.WEB.051-.059, .063 and every new file; the gate TSC |
+| A.U27.30 | read: no `=`/`~`/`*` rule in `js/`/`tests_js/` (its grep) |
+| A.U27.39 | read: the smoke imports M.WEB.078 (SCR) |
+| A.U28.18 | read: the smoke stays in the node pass (M.WEB.073) |
+| A.U28.23 | M.WEB.071, .072 (moved into the refresh); the pin test TSC |
+| A.U28.24 | M.WEB.071 (`uv run`, AC_NOTES 38); the server SCR |
+| A.U28.25 | M.WEB.073, .076 |
+| A.U28.26 | M.WEB.074; the smoke half SCR |
+| A.U28.37 | read: SPEC |
+| A.U28.38 | read: DOCS |
+| A.U28.39 | read: TSC |
+| A.U28.42 | M.WEB.070, .074; YAML files TOOL |
+| A.U3.15 | M.WEB.045 |
+| A.U32.05 | read: audit trace; displays in M.WEB.012 |
+| A.U32.06 | M.WEB.004, .006, .012, .045, .056, .058; the rest SRC_CORE/GEN/SRC_NET |
+| A.U33.04 | read: DOCS |
+| A.U33.05 | read: SPEC/DOCS (`npm audit` stays out of lint; no runtime dependency holds) |
+| A.U34.09 | read: DOCS (the website bundles no npm package — holds) |
+| A.U35.03 | read: U35's whole-suite review covers `tests_js/` (PROC) |
+| A.U35.46 | M.WEB.003, .025, .026, .030, .031, .051 |
+| A.U36.038 | M.WEB.070, .081 (rule); the JS pure reorder lands last in U36; Python other clusters |
+| A.U36.044 | SPEC (Gaps item 4 (a)(b)) |
+| A.U36.500 | read: SPEC |
+| A.U36.501 | M.WEB.070; H.1 SPEC |
+| A.U36.503 | M.WEB.002 (comments folded); rows SPEC |
+| A.U36.504 | read: SPEC (`neverUnchanged()` M.WEB.005) |
+| A.U36.505 | read: SPEC |
+| A.U36.507 | M.WEB.016; CSS GEN, H.4 SPEC |
+| A.U36.510 | read: SPEC (Gaps item 4 (c)) |
+| A.U36.513 | read: the `js/` comments are A.U6.10/A.U6.13's (M.WEB.012, .061) |
+| A.U36.515 | read: SPEC |
+| A.U36.516 | read: SPEC/DOCS |
+| A.U36.517 | read: SPEC |
+| A.U36.524 | read: DOCS |
+| A.U36.542 | read: SPEC |
+| A.U36.544 | M.WEB.012, .019, .021, .054, .062, .063, .070 (pointers); other sites other clusters |
+| A.U36.547 | read: DOCS/TSC (README npm table = M.WEB.071's scripts) |
+| A.U37.04 | read: PROC |
+| A.U4.01 | M.WEB.041 (superseded by the resolution compare of A.U23.49) |
+| A.U4.04 | M.WEB.063 |
+| A.U4.05 | M.WEB.063 |
+| A.U5.05 | read: the value (M.WEB.002) |
+| A.U5.18 | M.WEB.070, .081; Python half TSC |
+| A.U6.02 | read: SCR; consumed by M.WEB.031, .050 |
+| A.U6.03 | M.WEB.071; scripts SCR |
+| A.U6.04 | read: import moves in M.WEB.053, .057, .060, .063; comment M.WEB.074; files GEN |
+| A.U6.05 | M.WEB.050, .053, .073 |
+| A.U6.06 | M.WEB.004, .031, .043, .045, .056, .057 |
+| A.U6.07 | M.WEB.031, .059 |
+| A.U6.08 | M.WEB.056 |
+| A.U6.09 | M.WEB.060 |
+| A.U6.10 | M.WEB.061, .062, .063, .074, .076 |
+| A.U6.11 | read: smoke SCR; include M.WEB.073 |
+| A.U6.12 | read: CI TOOL |
+| A.U6.13 | M.WEB.052, .058, .059; its `js/` comments superseded (M.WEB.012) or dropped with the site (M.WEB.040) |
+| A.U6.15 | read: TSC check; the WEB end state is literal-free |
+| A.U6.16 | M.WEB.005, .006, .055; corpus and pytest TSC |
+| A.U6.17 | M.WEB.004, .005, .041, .060, .063; tags/generator other clusters |
+| A.U6.18 | read: `submitLabel` rendered (holds) |
+| A.U6.19 | M.WEB.004, .006, .012 |
+| A.U6.20 | M.WEB.004, .012, .014 |
+| A.U6.21 | read: no website change |
+| A.U6.22 | M.WEB.045 (`MemFree` sample); GEN |
+| A.U6.23 | M.WEB.045 (`ResetReason` sample); GEN |
+| A.U6.24 | read: `path` resolves (M.WEB.020) |
+| A.U6.25 | read: M.WEB.020, .043 |
+| A.U6.27 | M.WEB.004, .006 |
+| A.U6.28 | M.WEB.004, .006, .014, .041, .052 |
+| A.U6.29 | M.WEB.004, .006, .014, .041, .052 |
+| A.U6.30 | M.WEB.004, .006, .041, .052 (hint = tag description) |
+| A.U7.01 | read: SPEC |
+| A.U7.02 | read: layout used by M.WEB.077 |
+| A.U7.10 | M.WEB.070, .073, .074, .077 |
+| A.U7.20 | M.WEB.071; helper SCR; used by M.WEB.062 |
+| A.U7.21 | M.WEB.061, .062, .075 |
+| A.U7.23 | read: TSC (Gaps item 7) |
+| A.U8.01 | read: SPEC |
+| A.U8.02 | read: TSC scan covers `js/`/`tests_js/` |
+| A.U8.04 | M.WEB.002 |
+| A.U8.18 | read: `js/render.js` reads the interval (M.WEB.020); the smoke SCR |
+| A.U8.21 | M.WEB.051, .054, .061, .062, .063; the mock-latency half dropped (M.WEB.040: A.U23.29 removes the site) |
+| A.U9.01 | read |
+| A.U9.03 | M.WEB.041, .052 |
 
