@@ -2017,7 +2017,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   `microtest.after_each`, catches `machine.SimulatedRebootError` where a product reset is reachable and then calls
   `asyncio.new_event_loop()`, and calls `asyncio.run()` only from synchronous test scope." `:374-376` keeps the
   determinism fact. HTTP-driving scenarios: "run host-side by `scripts/_digital_twin_scenarios.py` against a runner
-  subprocess (SPECIFICATION.md E.9)".
+  subprocess (SPECIFICATION.md E.9)"; and "A file marked `PER_DEVICE = True` runs once per generated device, named by
+  `TEST_DEVICE` (`scripts/test.sh`); its driver-specific tests run on the device `tests/_twin_devices.py` picks." (A.U36.016,
+  M.TWIN.108/.144/.152).
 - **Resolved**: A.U35.09 says the README "test list gains the two (U36's count line)"; the README carries no test list or
   count (OR78.a/G9/R11 cut counts) — the two tests need no README line; nothing to add.
 - **Unit**: U27 (stage U25: the boot discipline paragraph)
@@ -3061,8 +3063,8 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   `resets == 0`; heater-off `b"\x36\x15"` after a measure write → the pending reply cleared, `heater_offs == 1`, the next
   measure answers a valid word; `power_cycle()` → idle. Driver-level cases (C4 module setup: prewarm, shim, both reset
   hooks; registers `machine.reset_test_state`): (1) A.U15.13 — `machine.configure_wiring(wiring_plan(device_with(
-  "sgp40")))`, the driver built on that bus, `await sgp.initialize()`; `chip = machine.peripheral(<bus>).device_at(0x59)`
-  (M.TWIN.024's accessor); `chip.corrupt_next()`; one measure raises the driver's CRC error; the next `initialize()`
+  "sgp40")))`, the driver built on that bus, `await sgp.initialize()`; `chip = machine.peripheral(<bus>).devices[0x59]`
+  (the public `devices` map, M.TWIN.024); `chip.corrupt_next()`; one measure raises the driver's CRC error; the next `initialize()`
   returns the serial reply. (2) A.U15.19 — C4 boot of `device_with("sgp40")` through `build_system(watchdog=…)`, the
   reader's read task started, cycles driven through its trigger event (no wall-clock wait per sample); the reader's
   published data reports `VOCState` 0 on the first cycle and 1 once the algorithm's blackout (A.U15.19's sample count)
@@ -3127,4 +3129,170 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   paths); M.TEST_HELP.045, .047, .055
 - **Blast carried by**: fidelity row "Timer finaliser not modelled" → M.TWIN.059; README `machine.py` pool bullet →
   M.TWIN.058; `PER_DEVICE` dispatch by marker (SCR, unchanged)
+- **Kind**: test
+
+## tests/test_digital_twin_uart_comm_hazard.py (new)
+
+### M.TWIN.154 UART comm hazards H1a/H1b/H2 over the twin wire, both CRC modes
+- **From**: A.U17.25 (the L2 file: payload 48, timeout 100 ms, poll 1/1, both CRC modes; H1a two tasks initiating at
+  once — one completes, the other returns its sentinel with the re-entrant code, the initiator's wire log parses into
+  whole well-formed frames only; H1b `clear()` on the responder before the first frame, mid-train and after the last ACK
+  — the transaction completes or fails cleanly and the next one succeeds; H2 a raw GET frame written from the
+  responder's fake while the initiator awaits an ACK — the initiator logs the peer-initiated code and both ends recover
+  within two attempts; pair on the twin's own `machine.UART` with `UARTLink` (real wire time) and `LinkPoller` (bounded),
+  constructed at synchronous scope, no device named; sized under the 240 s per-file timeout), A.S0930.04 (1) (both modes
+  by plan — referenced), A.U36.539 (SPEC J.7 tier map names this file — SPEC's site), LEAD/R28, C4 (UART half), C6
+- **Site**: new `tests/test_digital_twin_uart_comm_hazard.py`
+- **Change**: header (≤ 3 lines) "UART_Comm hazards across the twin's wire-timed crossover (SPECIFICATION.md J.7): two
+  initiations on one instance, clear() racing a transaction, both ends transmitting. Each check runs with no CRC and
+  with CRC16." `sys.path` puts `digital_twin` ahead of `tests` so `tests/_uart_comm_harness.py`'s `from machine import
+  …` binds the twin's `UART`/`UARTLink`/`LinkPoller` — the pair is built by that harness's `Pair(payload_size=48,
+  timeout=100, crc_a=crc, crc_b=crc)` (one builder for the mock and twin tiers, Part G reuse), after
+  `machine.reset_peripherals()` (the twin UARTs are static per id, A.U25.04), at synchronous scope; `await
+  pair.setup()` inside the one `run(coro, _RUN_LIMIT_S)` (`tests/_async_harness.py`, never nested). Checks
+  `_check_two_initiations_one_instance(crc)`, `_check_clear_racing_a_transaction(crc, point)` (three points),
+  `_check_both_ends_transmitting(crc)` with the assertions above; codes by name (`tests/_error_codes.py` `code()`); the
+  wire logs parsed with the harness's `frames()`. Registration per mode: `for crc in (None, CRC16())` builds one
+  `test_<check>_<mode>` per check into `globals()` (the mode as `nocrc`/`crc16`). Tunables per C3 (row basis U8's N.1;
+  `_RUN_LIMIT_S`, the H2 recovery bound); the file's measured duration recorded in its row (A.U17.25's "measured at
+  execution"). Registers `machine.reset_test_state`; trailer canonical.
+- **Resolved**: A.U17.25 says "building their pair on the twin's own `machine.UART` fakes with `UARTLink` … and
+  `LinkPoller`" without naming a builder; `tests/_uart_comm_harness.py`'s `Pair` already builds exactly that shape and
+  resolves `machine` by path, so the twin files reuse it instead of a third copy (SPECIFICATION.md Part G discovery, REF/R05) — agent
+  decision (OR2.c list).
+- **Unit**: U25 (A.U17.25's L2 files need A.U25.04's `reset_peripherals()`; S0930's both-mode plan co-lands)
+- **Depends**: M.TWIN.027, M.TWIN.028, M.TWIN.029, M.TWIN.035; M.TEST_HELP's `_uart_comm_harness` (guarded `run()`
+  removed there — this file uses `_async_harness`), M.TEST_HELP.045
+- **Blast carried by**: SPEC J.7 tier map row → A.U36.539 (SPEC); CLAUDE.md four-tier UART clause → A.U17.25/U36 (DOCS);
+  L3/L4 halves → U26 (HW_DEV/HW_BENCH)
+- **Kind**: test
+
+## tests/test_digital_twin_uart_field_sweep.py (new)
+
+### M.TWIN.156 UART frame and field sweep H3 through the twin wire
+- **From**: A.U17.25 (payload 8, timeout 30 ms, poll 1/1; H3 to a listening responder: every value of each field in the
+  first-chunk SET position with no CRC — accepted iff legal per J.3/J.4, no ACK on the responder's wire for a rejected
+  one, one clean exchange after each field's sweep; with CRC16 the boundary values CMD 0x00-0x05, 0xFF; SIZE 0, 1, 2, 8,
+  9, 255; CHUNKS 0, 1, 2, 255; CUR_CHUNK 0, 1, 2, 255; UID 0x00, 0xFE, 0xFF; sized under the 240 s per-file timeout — the
+  no-CRC sweep's ~1,280 rejections cost one 45 ms quiet window each), A.U17.24 / A.U17.16 (verdict rules), A.S0930.04 (1),
+  A.U36.539 (tier map — SPEC's site), C4 (UART half)
+- **Site**: new `tests/test_digital_twin_uart_field_sweep.py`
+- **Change**: header (≤ 3 lines) "Every CMD/SIZE/CHUNKS/CUR_CHUNK/UID value in a first-chunk SET, written raw into the
+  twin wire to a listening responder: legal frames are answered, illegal ones are not (SPECIFICATION.md J.3/J.4). Full set
+  without CRC, boundary values with CRC16." Pair from `tests/_uart_comm_harness.py` `Pair(payload_size=8, timeout=30,
+  crc_a=crc, crc_b=crc)` as M.TWIN.154 (twin `machine` first on the path, `reset_peripherals()` first, synchronous
+  construction); a raw frame is written through the initiator's twin fake (`pair.fake_a.write(frame)`) with the CRC
+  appended by the bus's own CRC object when the arm has one; the verdict per value from the J.3/J.4 rule table the L1
+  sweep (`tests/test_uart_comm_hazard.py:237-344`, A.U17.24) uses — imported from where A.U17.24 places it, not
+  restated; the responder's wire is read after one quiet window (`_QUIET_WINDOW_MS`, tagged, 45). One test per field and
+  mode (`test_<field>_sweep_nocrc`, `test_<field>_boundaries_crc16`), each ending with one clean exchange. If the
+  measured no-CRC duration exceeds the per-file timeout's margin the executor splits by field into two files — stated in
+  the row, never by raising the timeout. Registers `machine.reset_test_state`; trailer canonical.
+- **Resolved**: —
+- **Unit**: U25
+- **Depends**: M.TWIN.154 (same builder), A.U17.24 (rule table)
+- **Blast carried by**: as M.TWIN.154
+- **Kind**: test
+
+## tests/test_digital_twin_uart_link.py
+
+### M.TWIN.158 Generated UART link on the twin: device from data, both CRC modes, a pause not a collect, a retention rate
+- **From**: A.S0930.04 (2) (the generated no-CRC device; a CRC16 arm at the pair level: a `UARTLinkDriver` pair on the
+  twin's `machine.UART` with `UARTLink` and `LinkPoller`, buses built with `crc=CRC16()`, at synchronous scope —
+  exercise rounds complete, a mid-train corrupted byte is caught (failure counted, next round clean), `wrnno`/`errno`
+  history carries only the expected codes), A.U17.13 (new L2: a pair with the responder's `payload_size` 8 larger than the
+  initiator's, four SETs → the responder's history holds the link-unintelligible code, the initiator's the no-ACK code and
+  not the former), A.U17.15 (SPEC J names this file as the L2 pin of that diagnosis — the same case), A.U17.04 (`:283-305`
+  → `test_a_collection_length_pause_mid_transfer_does_not_break_the_link`, `pauser()` with `time.sleep_ms(_WORST_GC_PAUSE_MS)`
+  = 21, `uart.gc_pause_worst_ms`; rows renamed `l2.uart_link_pause_rounds`/`…_pause_step_ms`), A.U17.05 (`:396-403`
+  churn's recovery `gc.collect()` and `:387` `import gc` go), A.U30.13 (`:425-490` one test
+  `test_hammering_the_link_beside_the_graph_holds`, no parameter, no in-body `gc.threshold`; messages read the stage),
+  A.U30.16 (checker rows `test_many_back_to_back_transfers_do_not_degrade_or_leak.scenario` and
+  `_hammer_with_the_graph_running.scenario` stay baselines — function names kept), A.U8.14 (`:490` site goes), A.U24.64
+  ("the twin UART hammer's absolute bound … is U25's" — no U25 action writes it: see Resolved), A.U35.22 (`:265` gains one
+  multi-chunk SET echo while the graph runs), A.U24.67 (`:200` banner compared with `asy_uart_link_driver._BANNER`, now
+  `b"uart-crossover"`), A.U16.01 (`:173-174` "… IS the on-chip layout of this build."), A.U25.04 / A.U25.03 / A.U25.25
+  (`:66-78` `reset_peripherals()` and `configure_wiring(wiring_plan(device))` before each build — today it builds dev on
+  wozi's lazy plan), A.U25.48 / A.U24.67 (4) (device from data: `device_with("uart_link")`; no `sensortask_dev`
+  literal), A.U17.18 (the two bus globals named by the plan's `uart` key), A.U20.02 (`:70` `watchdog=`), A.U24.08
+  (`:48-49` → `_async_harness.run(coro, _RUN_LIMIT_S)`), A.U24.15 / A.U24.80 (`:69` poller comment), A.U36.544 (`:442`
+  "Part E.7" → "E.8"), A.U28.28 (7) (`:413` PERF401: the two-statement body, else the per-file entry — TOOL decides),
+  A.U8C.33 / A.U8C2.12 (tags), A.U32.06 (`:128-131` hold), A.U13.17 (`:169` holds), A.U11.01 (`:273, :478-481` hold),
+  A.U13.12 / A.U13.13 (unaffected — hold), A.U25.37 / A.U25.67 (this file is the link's L2 coverage — hold), A.U30.15 (no
+  prop here — hold), C1 (`UartLinkExerciser` → `UARTLinkDriver`, `UART_Comm` → `UARTComm`), C2, C4, C5
+- **Site**: `tests/test_digital_twin_uart_link.py` (whole file)
+- **Change**: header → "Twin-tier coverage of the generated UART crossover link (SPECIFICATION.md J.7) on the device
+  tests/_twin_devices.py finds wiring a uart_link pair, its two peripherals joined as the bench jumper joins them, plus
+  pair-level CRC16 and mismatch cases." Module setup per C4; `device = device_with("uart_link")`, `module =
+  load_generated(device)`, `_buses = wiring_plan(device)["uart"]` (`initiator_bus`/`responder_bus` name the module
+  globals, A.U17.18); `fakes()` and `build_linked_system()` read `getattr(module, _buses[...])`; the two exerciser
+  globals found by role on the module. `build_linked_system()`: `machine.reset_peripherals()`,
+  `network.reset_interfaces()`, `machine.configure_wiring(wiring_plan(device))`, `write_offline_ntp_config(cfg)`,
+  `run(module.build_system(watchdog=machine.WDT(timeout=8000), cfg_path=cfg), _RUN_LIMIT_S)`, then `UARTLink(fake_a,
+  fake_b)` and the bounded pollers; `:66-69` comment → "# Joined as the bench jumper joins them; the pollers are bounded
+  because the twin UART's ioctl() answers EINVAL to all but POLL, so a real select.poll() never sees readiness
+  (digital_twin/README.md)." `:200` → `bytes(answer) == asy_uart_link_driver._BANNER`. `:173-175` per A.U16.01.
+  `:265` test gains, after the banner GET, one `uart_set(0x02, bytes((i * 5) & 0xFF for i in range(140)))` (three data
+  chunks) asserted `True` while the noise tasks run (A.U35.22). `:283-305` per A.U17.04 (comment its three lines). `:382-423`
+  per A.U17.05; `:413` per A.U28.28 (7). Leak tests (`:339` and the hammer): retention as a per-transfer rate, G7/R22 —
+  after the warm-up, `gc.collect()` then `gc.mem_free()` at transfer counts N1 and N2 (wire logs cleared before each
+  reading), `rate = (free_N1 - free_N2) / (N2 - N1)` asserted below `_LEAK_RATE_BYTES_PER_TRANSFER`, calibrated once in
+  the B3 campaign against a planted 16-byte-per-transfer leak in a test double (two figures in a ≤ 3-line comment, as
+  A.U24.64); the `_LEAK_BUDGET_BYTES` row becomes `l2.uart_link_leak_rate_bytes_per_transfer`. `:425-490` per A.U30.13
+  (one test, the stage read in messages); `:442` comment pointer E.8. New pair-level cases (built at synchronous scope with
+  `tests/_uart_comm_harness.py`'s `Pair` for bare `UARTComm`, or two `asy_uart_driver.UART(…, crc=CRC16())` buses wrapped
+  in `UARTLinkDriver`s with the chosen device's `uart_link` TOML parameters, after `reset_peripherals()`): (a)
+  `test_a_crc16_exerciser_pair_completes_its_rounds`; (b) `test_a_crc16_exerciser_pair_catches_a_corrupted_byte` —
+  `link.direction_from(fake_a).corrupt_indices[k] = 0xFF` mid-train: the failure is counted, the next round is clean,
+  and both histories hold only the CRC and recovery codes named by `code()`; (c)
+  `test_a_payload_size_mismatch_is_diagnosed_as_unintelligible` (A.U17.13: responder `payload_size` +8, four SETs, the
+  two histories as stated). Tunables: A.U8C.33/A.U8C2.12 rows as listed except `l2.uart_link_collect_*` (renamed,
+  A.U17.04), `gc.threshold_bytes :490` (gone), `l2.uart_link_leak_budget_bytes` (replaced by the rate row). Trailer
+  canonical.
+- **Resolved**: (a) A.U24.64 leaves the twin hammer's absolute 8192-byte bound "U25's" and no U25 action rewrites it;
+  G7/R22 ("a rate calibrated against a real and an injected leak, never an absolute heap delta") fixes the form — the
+  gap is closed here with A.U24.64's own method, agent decision (OR2.c list). (b) A.U30.13 and A.U17.04/.05 edit the same
+  file's different tests — all applied (A.U30.13's own Blast says A-C merges). (c) A.S0930.04 names `UartLinkExerciser`;
+  C1's rename makes it `UARTLinkDriver`.
+- **Unit**: U36 (stages: U17 A.U17.04/.05/.13; U24 harness, banner; U25 device from data, C4, CRC16 arm, rate bound;
+  U30 A.U30.13; U35 A.U35.22; U36 A.U36.544's pointer)
+- **Depends**: M.TWIN.027-029, M.TWIN.035, M.TWIN.053; M.TEST_HELP.047, .055; A.U17.18 (plan `uart` key, GEN)
+- **Blast carried by**: Part N rows renamed/withdrawn → U8 rows (SPEC); the gc-site checker's two rows hold by name
+  (A.U30.16, TSC); `UART_C_PORT_CHANGELOG.md` Class B for the banner → A.U24.67 (DOCS); SPEC J text naming this file
+  (A.U17.15) → SPEC
+- **Kind**: test
+
+## tests/test_digital_twin_unix_port_gc_unwedge.py (deleted)
+
+### M.TWIN.162 The unwedge test goes with its module
+- **From**: A.U25.39 (delete the module and its test)
+- **Site**: `tests/test_digital_twin_unix_port_gc_unwedge.py`
+- **Change**: `git rm`.
+- **Resolved**: —
+- **Unit**: U25
+- **Depends**: M.TWIN.056
+- **Blast carried by**: `scripts/test.sh` finds files by glob (no list); the gc-site checker's conditional row for
+  `unwedge_heap_after_interrupt` does not apply (A.U30.16 — TSC)
+- **Kind**: test
+
+## tests/test_digital_twin_webserver_concurrency{,_arzi,_dev,_grkizi,_klkizi,_schlafzi,_wozi}.py
+
+### M.TWIN.164 The concurrency wrappers go; the host harness derives the device set
+- **From**: A.U25.46 (2) ("The per-device wrappers `tests/test_digital_twin_webserver_concurrency_<device>.py` go … once
+  this harness exists; A.U24.65's generic replacement file applies only if this action lands later (A-C keeps one)"),
+  A.U24.65 (2) (one generic `tests/test_digital_twin_webserver_concurrency.py` with `register_for_device(TEST_DEVICE)`),
+  A.U36.546 (CLAUDE.md's two-suites bullet drops its dated example naming that file — DOCS), A.SDEP.16 / A.U28.28 /
+  A.U25.43 (the wrappers' prewarm/shim lines and E402 — moot with the files)
+- **Site**: the six per-device wrappers (HEAD); A.U24.65's generic file (not created)
+- **Change**: at U24, A.U24.65 replaces the six wrappers with the generic file (as M.TWIN.108 does for construction);
+  at U25 A.U25.46 deletes that file with its library (`tests/_webserver_concurrency_scenarios.py`, TEST_HELP) once the
+  host harness runs the scenarios per device.
+- **Resolved**: A.U24.65 (U24) and A.U25.46 (U25) both act on the wrappers; A.U25.46 lands later, so A.U24.65's
+  generic file is an interim U24 state and the end state has none — settled by A.U25.46's own "A-C keeps one" (the
+  harness).
+- **Unit**: U25 (stage U24: the generic file)
+- **Depends**: A.U25.46's harness (SCR), M.TEST_HELP.031/.033 (library retired)
+- **Blast carried by**: `scripts/test.sh` per-device expansion has nothing to expand here after U25 (SCR);
+  `digital_twin/typecheck.ini` glob — no edit (M.TWIN.075); README "Running the twin's own tests" (M.TWIN.063); CLAUDE.md
+  bullet → A.U36.546 (DOCS)
 - **Kind**: test

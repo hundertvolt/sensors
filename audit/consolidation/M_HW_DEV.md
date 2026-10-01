@@ -313,7 +313,7 @@ changes cite.
 - **Unit**: U26.
 - **Depends**: M.HW_BENCH.044, M.HW_BENCH.004 (`record_session_note`), the three new scripts (M.HW_DEV.150-.152).
 - **Blast carried by**: every dependent test renames its fixture argument (`scd30_measuring`) and drops
-  `persistence_write` where the fixture was its only write → M.HW_DEV.031 (`test_bus_concurrency.py`); the prerequisite
+  `persistence_write` where the fixture was its only write → M.HW_DEV.080 (`test_bus_concurrency.py`); the prerequisite
   set `_PREREQUISITE_DEVICE_SCRIPTS` names `scd30_start_continuous_measurement.py` → A.U26.06 (TSC); L0
   `tests_scripts/test_scd30_prerequisite.py` → A.U26.07 (TSC); budget texts (`tests_hardware/README.md:101-106,
   1063-1071, 1310-1325`, `conftest.py:90-99, 110`, CLAUDE.md `:252-259`) → A.U26.07/A.U4.08 (HW_BENCH, DOCS).
@@ -999,7 +999,7 @@ changes cite.
 - **Resolved**: —
 - **Unit**: U26.
 - **Depends**: M.HW_DEV.004/.005/.007.
-- **Blast carried by**: region check → A.U26.24 (TSC); host assertions → M.HW_DEV.031 (bus concurrency module).
+- **Blast carried by**: region check → A.U26.24 (TSC); host assertions → M.HW_DEV.080 (bus concurrency module).
 - **Kind**: test, hardware (Round: R1 [H25-adjacent bus hazards])
 
 ## tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py
@@ -1043,7 +1043,7 @@ changes cite.
 - **Resolved**: —
 - **Unit**: U26.
 - **Depends**: M.HW_DEV.004/.007.
-- **Blast carried by**: host test (raw race in the bus-concurrency module) → M.HW_DEV.031.
+- **Blast carried by**: host test (raw race in the bus-concurrency module) → M.HW_DEV.080.
 - **Kind**: test, hardware (Round: R1 [H72])
 
 ## tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py
@@ -1059,5 +1059,216 @@ changes cite.
 - **Resolved**: —
 - **Unit**: U26.
 - **Depends**: M.HW_DEV.071.
-- **Blast carried by**: host assertion → M.HW_DEV.031.
+- **Blast carried by**: host assertion → M.HW_DEV.080.
 - **Kind**: test, hardware (Round: R1 [H72])
+
+## tests_hardware/device_scripts/fram_capacity_after_full_system_build.py
+
+### M.HW_DEV.073 Capacity check: derived logger set, scratch config, required watchdog, rig parked
+- **From**: A.U26.23 (3) (`fram_wired`/`fram_backed_loggers` rendered; hand tuple goes), A.U20.11 (blast: the L1 half
+  reads the same key), A.U26.10 (scratch `cfg_path`), A.U20.02 (`watchdog=`), A.U26.44 (device module from `BENCH`),
+  A.U26.16 (the build constructs the NeoPixel: parked in `finally`), A.U36.544 (`:1` "WP4/Topic 6's real-hardware
+  capacity check" → "the real-hardware FRAM capacity check"), A.U26.68.
+- **Site**: `tests_hardware/device_scripts/fram_capacity_after_full_system_build.py:1-54`.
+- **Change**: `device = __import__(BENCH["device_module"])`; `await device.build_system(watchdog=arm(),
+  cfg_path=_SCRATCH_CFG_PATH, web_host="127.0.0.1", web_port=8080)` (M.HW_DEV.009); `_CANDIDATE_MODULE_NAMES` and its
+  comment go: for each label in `BENCH["fram_wired"]`, every logger of `getattr(device, label).get_loggers()` must
+  have `fram is not None`; facts `found_fram_loggers` (sorted names), `ram_only` (labels/loggers without FRAM),
+  `allocated_size`, `size`; the host asserts `found == BENCH["fram_backed_loggers"]` exactly (missing/extra named) and
+  `ram_only == []`. The build's NeoPixel is set dark in a `finally`; the build's boot-phase mark cleared (M.HW_DEV.009
+  (4)); the `assert device.fram is not None` becomes a fact. Header per A.U36.544 (≤ 3 lines).
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.GEN (`expected_facts()` `fram_backed_loggers`, `get_loggers()`), M.HW_BENCH.010
+  (`fram_backed_logger_names`), M.HW_DEV.001/.008/.009.
+- **Blast carried by**: README capacity section → A.U20.11/A.U36.544 (HW_BENCH); host assertion → M.HW_DEV.060.
+- **Kind**: test, hardware (Round: R1 [H22])
+
+## tests_hardware/device_scripts/bus_deinit_is_a_noop_on_real_hardware.py
+
+### M.HW_DEV.074 The deinit/singleton pin-move check on the TOML's buses, chunk left clean
+- **From**: A.U14.04 (`:29`, `:41` I2C constructed with the TOML's `timeout`), A.U26.58/A.C.03 (KEEP as a pin-move
+  check, run in R1), A.U13.16 (blast: unchanged, raw `machine` objects), A.SDEP.08/A.SDEP.17 (the `:26-27` version
+  floor follows the pin; re-run on a pin move), A.U26.22 (5) (its chunk at offset 0), A.U5.02, A.U10.37/38, A.U26.44,
+  A.U26.68.
+- **Site**: `tests_hardware/device_scripts/bus_deinit_is_a_noop_on_real_hardware.py:1-71`.
+- **Change**: pins and bus parameters from `BENCH` (`:13-14` go): the I2C constructions pass `freq=bus["frequency"]`
+  and `timeout=bus["timeout"]` when the TOML sets it (a re-construction resets both for every user of the static
+  per-id object, `ports/rp2/machine_i2c.c:38, 50, 72, 87, 110`, v1.29.0); the SPI wrapper and FRAM from `BENCH`; the
+  `:26` comment states the floor as "deinit() exists from 1.29 (raises AttributeError before)" against the pinned
+  version; facts `i2c_has_deinit`, `scan_before`, `scan_after`, `i2c_singleton`, `spi_singleton`, `spi_read_after_deinit`;
+  the chunk zeroed in a `finally`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001/.006.
+- **Blast carried by**: SPEC F.5.1 on-target confirmation line and BACKLOG pin-move list → A.SDEP.08 (SPEC/DOCS);
+  host assertions → M.HW_DEV.080 (bus concurrency module runs it).
+- **Kind**: test, hardware (Round: R1 [H48])
+
+## tests_hardware/flash/test_bus_concurrency.py
+
+### M.HW_DEV.080 The flash bus-hazard module: one prerequisite, two owned writes, the new rungs
+- **From**: A.U26.08 (1)-(4), A.U26.07 (fixture rename), A.U26.74 (old flag names in comments), A.C.19 (`:95-97`
+  comment), A.U15.30 (blast: held), A.U26.43 (4) (raw race asserts its phase-1 banner), A.U13.R02 (4) (held-SDA
+  recovery test beside the sweep), A.U35.21 (2) (lone-BMP3xx general-call test), A.U12.18 (SGP40 concurrent-sessions
+  leg), A.S0930.28 (5) (erase racing a chunk write), A.S0930.39 (1) (reboot command, no torn chunk), A.U16.10/A.U13.08
+  (blasts: must pass unchanged), A.U7.24 (3) (each test names its bench counterpart or exception row), A.U35.50/A.U35.09
+  (blasts: matrix rows), A.U25.50 (blast: the twin comment naming this module's reset race, holds), A.U32.06/A.U26.32
+  (blasts: holds; bench arm is HW_BENCH's), A.U26.68, A.U26.51, A.U20.33 (B2), A.U8C.102.
+- **Site**: `tests_hardware/flash/test_bus_concurrency.py:1-149`.
+- **Change**: (1) `RESULT_RE`/`_assert_pass` go; each test asserts its script's facts (per script section). (2) `:23-28`
+  → `@pytest.mark.persistence_write def test_scd30_same_device_read_write_concurrency(board, scd30_measuring)` running
+  `scd30_same_device_rw_concurrency.py` (it owns the ambient-pressure re-send); `:31, :38, :44, :68, :76` lose
+  `persistence_write` and take `scd30_measuring`; their comments `:25-27, :70-71` say only what each test needs;
+  `:85-92` keeps `persistence_write` + `scd30_extra_write`, takes `scd30_measuring`, comment `:88-90` → "owns two SCD30
+  NVM writes (the offset and its restore), so it runs only with --allow-persistence-write and
+  --allow-scd30-extra-write". No test depends on another's order. (3) `:95-97` → "# The script fails unless PRST counts
+  whole RGB cycles, the unit persist_for_interval() assumes; / # whether a CONFIG1 write restarts a conversion is
+  reported only." (4) The raw reset race: `out = board.run_isolated_expect_reset(…)` asserts its seeding banner and no
+  failure fact, then `wait_until(board.is_reachable, …)` (the verify enters the raw REPL anyway), then the verify's
+  `target_state` in `{"original", "prefix:<n>"}`; the comment `:132-134` shortens to one line. (5) New tests:
+  `test_bmp3xx_alone_survives_a_general_call` (no marker; broadcasts ≥ planned, zero out-of-range reads, snapshot/ID/
+  mode unchanged); `test_a_held_sda_line_is_cleared_and_every_device_answers` (beside the sweep); `test_sgp40_concurrent_
+  sessions_each_get_a_tick` (three concurrent `measure_raw()` all return a tick); `test_fram_erase_racing_a_chunk_write_
+  leaves_no_torn_chunk` and `test_reboot_command_shuts_down_then_resets` (each first `save_fram_raw(board, <name>)`, then
+  `run_isolated_expect_reset()`, then after the production boot `fram_raw_dump.py`: no torn chunk, each ring's newest
+  entry one the script reported written). (6) The `:122` comment's BACKLOG pointer ("open question 8's …") → "needs no
+  separate fault-injection hardware: the RP2040 owns CS as a GPIO". (7) Each bus-hazard test's docstring-free `#` line
+  names its bench counterpart (`bench/test_bus_concurrency_under_api_load.py::<fn>`) or the E.6.6 row ID. (8) Timeouts
+  per A.U8C.102 (`_LONG_SCRIPT_TIMEOUT_S = 120.0`, `_SCRIPT_TIMEOUT_S = 90.0`, `_SHORT_SCRIPT_TIMEOUT_S = 60.0`,
+  `_RESET_SCRIPT_TIMEOUT_S = 30.0`, `_REACHABLE_TIMEOUT_S = 30.0`, `_REACHABLE_POLL_S = 1.0`); new tests reuse them or
+  take a row sized from the twin run.
+- **Resolved**: A.U26.08 (1) keeps "asserts its RESULT line"; facts per A.U26.68 (later contract). A.S0930.28 (5) and
+  A.S0930.39 (1) place one test each here as the flash tier of the four-tier rule; their scripts are new files below.
+- **Unit**: U26 (SUPP_owner_0930 tests with U26).
+- **Depends**: M.HW_DEV.020, M.HW_DEV.069-.074, .081-.098 (scripts), M.HW_BENCH.012/.044.
+- **Blast carried by**: `test_level_containment.py` bench-counterpart check → A.U7.24 (TSC); budget text "two SCD30 NVM
+  writes" → A.U26.09 (HW_BENCH); bench SCD30 write arm → A.U26.32 (HW_BENCH); four-tier matrix → A.U35.50 (U35 review);
+  persistence-marker guard → A.U26.06 (TSC).
+- **Kind**: test, hardware (Round: R1 default [H25, H29, H31]; R3 owned writes [H30, H31])
+
+## tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py
+
+### M.HW_DEV.081 SCD30 read-vs-write concurrency that re-sends the value the chip holds
+- **From**: A.U26.08 (1) (docstring drops "the ONE script allowed…"; the writer re-sends `get_ambient_pressure()`
+  instead of `1013` at `:67`), A.U26.07 (the start command moves to its own script; this one is no longer the
+  prerequisite), A.U0.18 (`:2-3` owner tag), A.U26.49 (bounds from `plausibility_bounds.py` as render extras),
+  A.U26.69 (bounded failure record), A.U26.44, A.U8C.84, A.U8C2.37, AD-1 (`:64`), A.U26.68.
+- **Site**: `tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py:1-89`.
+- **Change**: docstring → "Isolated-driver device script: the SCD30 same-device concurrency proof every device gets
+  (owner, 2026-09-03; SPECIFICATION.md Part C.8): a reader against a concurrent ambient-pressure write that re-sends
+  the value the chip reports, so its one NVM write leaves the setting unchanged." Bus from `BENCH`; the writer reads
+  `prior = await scd.get_ambient_pressure()` first and sends it back (a failed read or a value neither 0 nor 700..1400
+  → fact `write_skipped`, no send); CO2/humidity/temperature bounds from `BENCH["bounds"]`; the comment `:66` goes;
+  `_READ_ITERATIONS = 40`, `_SETTLE_S = 12.0`, `_SETTLE_STEP_S = 0.5` (`:32`, `:35`), `_RUN_BOUND_S = 60.0`,
+  `_WDT_FEED_EVERY = 10`, `_WRITER_DELAY_S = 0.2` (`l3.scd30_same_device_rw_concurrency_writer_delay_s`, AD-1); read
+  errors as the bounded record; facts `read_completed`, `write_done`, `write_error`, `ambient_sent`, `errors`; `done()`.
+- **Resolved**: A.U0.18 tags the HEAD sentence A.U26.08 rewrites; the tag is kept in the rewritten docstring.
+- **Unit**: U26 (A.U0.18's tag lands in U0 on the HEAD text).
+- **Depends**: M.HW_DEV.001-.005; M.HW_BENCH.043.
+- **Blast carried by**: `_PERSISTING_DEVICE_CALLS` sees `set_ambient_pressure` and the runner is marked → A.U26.06
+  (TSC); host assertions → M.HW_DEV.080.
+- **Kind**: test, hardware (Round: R3 [H31] — one owned NVM write)
+
+## tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py
+
+### M.HW_DEV.082 SCD30 reader vs snapshotter: bounds and schema ranges from their sources
+- **From**: A.U26.49 (1)(4) (bounds rendered; `2..1800`/`400..2000` read from the driver's `_VAL_*` by `ast`), A.U26.07
+  (blast: the `:18-20` comment naming the old fixture), A.U15.12 (blast: unchanged, must pass), A.U26.69, A.U26.44,
+  A.U8C.62, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py:1-100`.
+- **Change**: bus from `BENCH`; bounds `BENCH["bounds"]` and `BENCH["scd30_schema"]` (`MeasInterval`, `ForceCalRef`
+  ranges, rendered from `src/asy_scd30_driver.py`); the comment `:29-31` → "# The SCD30 measurement prerequisite is the
+  session's `scd30_measuring` fixture; this script writes nothing."; constants per A.U8C.62; bounded records; facts
+  `reader_completed`, `snapshot_completed`, `errors`; `done()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001-.005.
+- **Blast carried by**: drift fence → A.U26.49 (4) (TSC); host assertions → M.HW_DEV.080.
+- **Kind**: test, hardware (Round: R1 [H31])
+
+## tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py
+
+### M.HW_DEV.083 SCD30 × SGP40 interleave, plus the two participant rungs mid-traffic
+- **From**: A.U15.R01 (a step issuing `scd.reset()` while the SGP40 and ISL29125 loops run; every sibling read valid,
+  SCD30 measuring again after 2.5 s), A.U15.R02 (a heater-off step, 0x3615, while the siblings run), A.U15.12 (blast:
+  unchanged), A.U26.69/A.U26.78 (the `scd_loop`/`sgp_loop` bodies → `_shared/bus_reader_loops.py`; the failing branch
+  yields; bounded record), A.U26.44, A.U26.07 (blast: comment `:23-25`), A.U8C.60, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py:1-104`.
+- **Change**: bus and the ISL29125 mode constant from `BENCH`; the loops from the shared include; after the interleave
+  phase: (a) an ISL29125 reader joins the siblings and `await scd.reset()` is issued mid-traffic (soft reset, no NVM),
+  then the SCD30 must report a measurement within `_SCD30_RESUME_S = 2.5` (`l3.bus_concurrency_cross_device_resume_s`);
+  (b) the SGP40 heater-off command mid-traffic, then one SGP40 read and sibling reads valid. Comment `:23-25` → "# The
+  SCD30 measurement prerequisite is the session's `scd30_measuring` fixture; this script writes no NVM." Facts
+  `scd_reads`, `sgp_cycles`, `interleaved_total`, `windows_with_interleaving`, `reset_sibling_errors`,
+  `scd30_resumed`, `heater_off_sibling_errors`, `errors`; the interleave verdicts move host-side; `done()`.
+- **Resolved**: A.U15.R01 and A.U15.R02 both add a step to this script; both kept, run in sequence after the
+  interleave phase so its timing claim is measured unchanged.
+- **Unit**: U26 (the rungs' product behaviour lands in U15).
+- **Depends**: M.SRC_SENS (A.U15.R01/R02), M.HW_DEV.001-.005.
+- **Blast carried by**: host assertions → M.HW_DEV.080; twin record → M.HW_DEV.010.
+- **Kind**: test, hardware (Round: R1 [H16, H25])
+
+## tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py
+
+### M.HW_DEV.084 The SCD30 writer restores the offset it found: two owned NVM writes
+- **From**: A.U26.08 (3) (restore the prior offset read by `get_temperature_offset()`), A.U26.74 (`:3` flag names),
+  A.U15.R01 (blast: holds), A.U26.44 (`_MODE_RGB` from `BENCH`), A.U26.69/A.U26.78, A.U26.32 (blast: bench arm is
+  HW_BENCH's), A.U8C.63, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py:1-112` (`:1-3`, `:15`, `:60-80`).
+- **Change**: docstring `:1-3` → "…AND-gated behind --allow-persistence-write plus --allow-scd30-extra-write; it spends two
+  SCD30 NVM writes (the offset and its restore)." The writer reads `prior = await scd.get_temperature_offset()` first
+  (a failed read → fact `write_skipped`, no write), sends `4.0` mid-traffic, then after the siblings stop sends `prior`
+  back; facts `prior_offset`, `write_done`, `write_error`, `restored`, `isl_windows`, `sgp_reads`, `errors`. The
+  comment `:66-67` ("THE one extra real NVM write") → "# Owned writes: the offset, and its restore after the run."
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001-.005.
+- **Blast carried by**: budget text "two SCD30 NVM writes" → A.U26.09 (HW_BENCH); the persistence guard sees
+  `set_temperature_offset` behind a marked runner → A.U26.06 (TSC); host assertions → M.HW_DEV.080.
+- **Kind**: test, hardware (Round: R3 [H30] — two owned NVM writes behind `scd30_extra_write`)
+
+## tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py
+
+### M.HW_DEV.085 ISL29125 config writes among sibling reads, through the shared loops
+- **From**: A.U26.44 (`_MODE_RGB` copy), A.U26.69/A.U26.78, A.U15.S01/A.U15.R04/A.U15.33/A.U12.18 (blasts: unchanged,
+  must pass), A.U8C.61, A.U8C2.27, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py:1-112`.
+- **Change**: bus and `BENCH["isl29125"]["mode_rgb"]`; loops from the include; `_WRITE_DELAYS_MS` and
+  `_DELAY_REPEATS` named with their rows; facts `write_count`, `isl_windows`, `scd_reads`, `sgp_reads`, `errors`;
+  `done()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001-.005.
+- **Blast carried by**: host assertions → M.HW_DEV.080.
+- **Kind**: test, hardware (Round: R1 [H25])
+
+## tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py
+
+### M.HW_DEV.086 General-call regression: yielding loops, bounded records, rendered bounds
+- **From**: A.U26.69 (`:63-85` named site: no yield on a failing read, one string per failure), A.U26.78 (the loops
+  → include), A.U26.49 (bounds), A.U26.44 (`mode=0x05` at `:58` from `BENCH`), A.U15.15 (DONE-AT-HEAD: the ≥ 2 distinct
+  CO2 values check, kept host-side), A.U15.13 (blast: unchanged), A.U26.07 (comment `:52-54`), A.U8C.88, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py:1-130`.
+- **Change**: `_failures()` goes (verdicts host-side); facts `sgp_completed`, `scd_completed`, `isl_completed`,
+  `distinct_co2_count`, `errors` (bounded per chip); bounds from `BENCH["bounds"]`; the loops yield on every path;
+  comment `:52-54` as M.HW_DEV.083's; constants per A.U8C.88; `done()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001-.005.
+- **Blast carried by**: E.6.6 row `sgp40-general-call` (no L4 live-load counterpart) → A.U7.25 (SPEC); host assertions →
+  M.HW_DEV.080.
+- **Kind**: test, hardware (Round: R1 [H25])
+
+## tests_hardware/device_scripts/isl29125_cross_device_concurrency.py
+
+### M.HW_DEV.087 ISL29125 interleave across its i2c1 neighbours
+- **From**: A.U26.44 (`_MODE_RGB` `:16`), A.U26.69/A.U26.78 (`:61, 77, 91` loops), A.U8C.74, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/isl29125_cross_device_concurrency.py:1-125`.
+- **Change**: `_failures()` goes; facts `isl_reads`, `scd_reads`, `sgp_cycles`, `interleaved`, `errors`; bus and mode
+  from `BENCH`; loops from the include; the `:51` comment names the session fixture; `done()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001-.005.
+- **Blast carried by**: host assertions → M.HW_DEV.080.
+- **Kind**: test, hardware (Round: R1 [H25])

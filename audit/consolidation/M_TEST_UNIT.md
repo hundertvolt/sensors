@@ -4845,3 +4845,191 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Depends**: M.SRC_SENS (A.U13.R01, A.U15.R01, A.U15.R02); M.SRC_CORE (`erase_chip()`, A.S0930.17).
 - **Blast carried by**: L2-L4 → A.U13.R02, A.U15.R01, A.U15.R02, A.S0930.27-.29 (TWIN, HW_DEV, HW_BENCH).
 - **Kind**: test
+
+## tests/test_captive_dns.py (→ `tests/test_asy_captive_dns.py`)
+
+### M.TEST_UNIT.239 File harness: renames, shared run/cancel, port band, plain tuples
+- **From**: A.U10.37 (file and module rename), A.U10.38 (`DNSServer` → `CaptiveDNS`, `AsyUDPSocket` → `UDPSocket`,
+  `AsyConnTime` → `WifiService` in comments), A.U10.35 (`server.udps` → `server._udps`, `udps.sock` → `_udps._sock`),
+  A.U24.08 (`:23` local `run`, `:379` `_cancel` → `_async_harness`), A.U24.70 (`:31-37` → `PortAllocator`), A.U18.12
+  (`:39-44` `resolve_addr` shim; `:583, :839, :876` tuples), A.U18.15 (read: `:25-26` `make_pr` is the shape other files
+  copy — holds), A.U24.73 (the 9 `Any` sites), A.U0.07 (`:910` `import captive_dns as captive_dns_module` → module level).
+- **Site**: `tests/test_captive_dns.py:1-75`, every `DNSServer(`/`.udps` site, `:376-381`, `:583-602`, `:809-900`, `:910`.
+- **Change**: imports `from asy_captive_dns import CaptiveDNS, DNSQuery` (no `_ipv4_to_int`), `import asy_captive_dns`,
+  `from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore`, `from asy_udp_socket import UDPSocket`,
+  `from _async_harness import cancel, run`, `from _error_codes import code`, `from _port_bands import PortAllocator`,
+  `from _src_const import src_const`, and the address shim applied once at import (A.U18.12's location, as
+  M.TEST_UNIT.025). `_next_port`/`make_port()` → `_PORTS = PortAllocator("test_asy_captive_dns")`, `_PORTS.next()` at
+  each use. Every `UDPSocket(...)` built by a test takes a plain `("127.0.0.1", port)` tuple; `resolve_addr()` survives
+  only as `_resolved()` for the raw peer sockets' `bind()`/`sendto()` (comment "# This Unix build's raw bind()/sendto()
+  need getaddrinfo()'s opaque sockaddr (SPECIFICATION.md F.7); only the peer sockets use it."). `_cancel()` goes for
+  `cancel()`; `make_pr()` stays (it is a module-level builder used by `DNSQuery` tests; name unchanged, the shape other
+  files cite). Every `DNSServer(...)` → `CaptiveDNS(...)`, every `server.udps = fake  # type: ignore[assignment]` →
+  `server._udps = fake  # type: ignore[assignment]` (the fake is not a `UDPSocket`; the ignore stays inline), every
+  `.udps.sock` read → `._udps._sock`. Section banners name `CaptiveDNS`/`UDPSocket`; `:810-812`, `:862-866` and `:878`
+  name `WifiService` building one `CaptiveDNS` and cancelling it fire-and-forget (`async_connect.py`'s name goes).
+  `Any` sites: `recv_call_times_ms: list[object]`, the bad-value tables `list[object]`/`tuple[tuple[object, object],
+  ...]` (A.U24.73's "genuinely open values `object`"); `_cancel`'s `Task[Any]` goes with it.
+- **Resolved**: —
+- **Unit**: U18 (stages U10 names, U24 harness/ports/typing).
+- **Depends**: M.SRC_NET.001, .006, .026; M.TEST_HELP.043 (`run`/`cancel`), .056 (`PortAllocator`), .045 (`code`), .044
+  (`src_const`); the shim's move (A.U18.12, TWIN/TOOL).
+- **Blast carried by**: port table row → A.U24.70 (TEST_HELP); `pyproject.toml` ANN401 exemption → A.U24.73 (TOOL).
+- **Kind**: test
+
+### M.TEST_UNIT.240 Tag the tuned literals of the captive-DNS tests
+- **From**: A.U8C.23 (every row but the mirror), A.U8C2.07 (`:889` `cleanup_tick_count`), A.U8.11 (`:952` mirror,
+  `:1067` Dependant), A.U8C.120 (read: Dependant rows of the error wait and the backoff), A.U31.16 (`:1067` band
+  unchanged in value).
+- **Site**: `tests/test_captive_dns.py:370-375, 423, 482, 512, 595-597, 647, 824-890, 941-1067, 1077, 1096`.
+- **Change**: module constants exactly as A.U8C.23 writes them, each tagged `# @tunable l1.captive_dns_<name> = <value>`:
+  `_WAIT_UNTIL_TIMEOUT_MS = 1000`, `_WAIT_UNTIL_POLL_MS = 10`, `_STRAY_REPLY_WAIT_MS = 20`, `_NO_BACKOFF_ELAPSED_MAX_MS
+  = 1000`, `_REACH_RECV_MS = 20`, `_BIND_WAIT_MS = 50`, `_REPLY_WAIT_MS = 200`, `_CYCLE_WAIT_MS = 100`,
+  `_CLEANUP_TICK_MS = 10`, `_CLEANUP_TICK_COUNT = 10` (A.U8C2.07), `_BACKOFF_WAIT_TIMEOUT_MS = 5000`,
+  `_BACKOFF_SERIES_TIMEOUT_MS = 15000`, `_GAP_INITIAL_MIN_MS = 400`/`_MAX_MS = 800`, `_GAP_DOUBLED_MIN_MS = 900`/`_MAX_MS
+  = 1400`, `_GAP_QUAD_MIN_MS = 1900`/`_MAX_MS = 2600`, `_GAP_NO_BACKOFF_MAX_MS = 300`, `_BACKOFF_CAP_TIMEOUT_MS = 20000`,
+  `_GAP_CAP_MIN_MS = 4700`/`_MAX_MS = 5400`; each literal site reads its constant. `:952` `elapsed_ms >= 3000` →
+  `elapsed_ms >= src_const("src/asy_captive_dns.py", "_ERROR_RETRY_WAIT_S") * 1000` (comment "# the real
+  _ERROR_RETRY_WAIT_S pause ran, unlike the malformed-data path"), no tag.
+- **Resolved**: A.U8C.23 lists `:952` as the `dns_server.error_retry_wait_s` mirror and A.U8.11 names it a mirror site,
+  while A.U24.01's rule reads a value the product still defines from source: the product defines `_ERROR_RETRY_WAIT_S`
+  (M.SRC_NET.004), so the source read stands and the row loses the test site (as M.TEST_UNIT.095/.104).
+- **Unit**: U8 (stage U24 source read).
+- **Depends**: M.SRC_NET.004; M.TEST_HELP.044.
+- **Blast carried by**: SPEC Part N rows → A.U8.01 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.241 Dotted-quad tests leave; comments name `ipv4_to_int()`
+- **From**: A.U18.08.
+- **Site**: `tests/test_captive_dns.py:6`, `:76-122`, `:605-635`, `:673`, `:704-705`, `:769`, `:786`.
+- **Change**: the `_ipv4_to_int` import goes; the banner `:76-80` and the six `test_ipv4_to_int_*` tests move to
+  `tests/test_asy_dns_client.py` (M.TEST_UNIT.026). `_bad_ipv4_values()` stays here with banner "# Every distinct fault
+  shape a caller could hand a dotted-quad parameter: wrong type, and every malformed string ipv4_to_int() rejects."
+  (2 lines); the comments at `:632-633, :673, :704-705, :769, :786` read `ipv4_to_int()` (a non-str value still raises
+  through its `ip.split()`, M.SRC_NET.021 keeps the body).
+- **Resolved**: A.U18.08 moves `:607-630` too, but that span is `_bad_ipv4_values()`, the list four tests of this file
+  iterate (`:671, :680, :767, :789`); moving it would leave them without it — it stays (D-T20).
+- **Unit**: U18.
+- **Depends**: M.SRC_NET.021, M.TEST_UNIT.026.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.242 `DNSQuery`: drop rules, boundary pair, QTYPE-dependent answers
+- **From**: A.U18.02 (`:205-220` flips; `malformed_query_cases()` five shapes; 255/256 boundary pair), A.U18.01 (QTYPE
+  cases; existing A-query assertions hold).
+- **Site**: `tests/test_captive_dns.py:46-75`, `:129-265`; new tests after `:265`.
+- **Change**: `make_query()` gains `qtype: bytes = b"\x00\x01"` (default A, so every existing caller and answer
+  assertion holds). `malformed_query_cases()` gains five shapes, each with its comment: QR bit set, QDCOUNT 0, QDCOUNT 2,
+  a `0xC0` pointer byte as the first label length, a `0x40` reserved label type — `test_dns_query_malformed_or_truncated_
+  data_yields_empty_domain` (`:140`) and every `run()` test iterating the list cover them. `:205-220` →
+  `test_a_query_declaring_two_questions_is_dropped`: `domain == ""` and `response(ip) is None`. `:176-203` (EDNS0 OPT,
+  ARCOUNT 1) holds. New: `test_a_name_of_255_octets_is_answered_and_256_is_dropped` (labels 63, 63, 63, 61 answered;
+  63, 63, 63, 62 dropped); `test_an_a_or_any_query_gets_the_a_record` (QTYPE 1 and 255: ANCOUNT 1, the A record);
+  `test_other_query_types_get_an_empty_noerror_reply` (QTYPE 28, 65, 15 and the root query with QTYPE 2: flags
+  `0x8180`, QDCOUNT 1, ANCOUNT 0, question echoed, `len(packet) == 12 + question_len`). Expected bytes are assembled in
+  the test from the RFC 1035 §4.1.1 header layout and §3.2.2/§3.2.3 QTYPE values (cited in a one-line comment), never
+  from `response()`.
+- **Resolved**: —
+- **Unit**: U18.
+- **Depends**: M.SRC_NET.008, .009.
+- **Blast carried by**: L4 AAAA query and `dns_probe.build_query(qtype=)` → A.U18.01 (HW_BENCH); `test_asy_wifi_service.py:
+  2315` comment → M.TEST_UNIT.219.
+- **Kind**: test
+
+### M.TEST_UNIT.243 Construction and logging: one log path, level numbers, entry assertions
+- **From**: A.U5.02 (10 constructor calls → `log=`), A.U11.15 (12 accessor sites → `pr.level` and the numbers 0-5),
+  A.U11.13 (`:298-308` valid levels hold), A.U20.38 (`:279-281` fan-in test kept as this module's own), A.U11.S02 (read:
+  `:283` `==` holds), A.U24.39 (`:287` in-memory logging), A.U11.31 (`reset_error_counter() -> bool`).
+- **Site**: `tests/test_captive_dns.py:271-322`.
+- **Change**: `:273` `CaptiveDNS(log=LogConfig(None, 10, 5))`, asserts `_udps._addr == ("0.0.0.0", 53)`, `_mode ==
+  "server"`, `_sock is None`. `:287` → `test_captive_dns_logs_in_memory_without_fram`: `run(server.pr.err_s("probe",
+  errno=code("E", "UNEXPECTED")))` lands as the newest `get_log()` entry and the logger is not a
+  `PrintLogHistoryStore`. Level tests: `log=LogConfig(None, 10, 1)` → `server.pr.level == 1`; `LogConfig(None, 10,
+  None)` → `0`; default → `0` (the `PrintLog.level_*()` calls go; numbers per SPEC A.8's `DebugLevel`). `:318`'s
+  `errno=1` → `code("E", "UNEXPECTED")`. New: `test_reset_error_counter_returns_true_and_clears` (`ErrCount` 0 after).
+- **Resolved**: —
+- **Unit**: U11 (stages U5 `log=`, U18 annotation, U24 assertion).
+- **Depends**: M.SRC_NET.006; M.SRC_CORE (`LogConfig`, accessor removal A.U11.15).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.244 `run()` on the fake transport: codes, one slot per repeat, 512-byte receive
+- **From**: A.U24.41 (`:562-574` one entry, `ErrType` "W", repeated twice without a new slot), A.U3.12 (W41 and W42
+  repeats spend one slot), A.U2.16 (err_count checks by code), A.U18.06 (fake `connected`, W42 text), A.U18.03 (`:349`
+  comment; `run()` passes 512), A.U18.04 (read: no message-text assertion in the file — none added).
+- **Site**: `tests/test_captive_dns.py:337-370`, `:520-580`.
+- **Change**: `_FakeUDPS` gains `self.connected = True` and `self.bufsizes: list[int] = []` (`recvfrom(self, bufsize,
+  _timeout_ms=-1)` appends it); its comment → "# CaptiveDNS calls recvfrom(512)/sendto(packet, addr): the fake records
+  the buffer size; the timeout is never passed." `:528` (BAD_ARG) asserts one entry, `ErrType` "E", `code("E",
+  "BAD_ARG")`, and `_udps._sock is None`. `:544` sendto test: two queries both refused (`sendto_results = [None, None]`)
+  → `ErrCount` 2 and one `code("W", "DNS_REPLY_DROPPED")` entry. `:562` → `test_run_failed_receive_logs_one_warning_
+  per_code`: two `(None, None)` with the fake connected → `ErrCount` 2, one entry, `ErrType` "W", `code("W",
+  "DNS_RECV_FAILED")`. New: `test_run_reads_with_the_rfc_1035_udp_limit` — after one query, `fake.bufsizes == [512,
+  ...]` (RFC 1035 §2.3.4, cited).
+- **Resolved**: —
+- **Unit**: U18 (stages U2 codes, U3 slot rule, U24 assertions).
+- **Depends**: M.SRC_NET.004, .007; M.TEST_HELP.045.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.245 A socket that never bound: one E10, its own backoff
+- **From**: A.U18.06 (new L1, the growth branch).
+- **Site**: new test after `:580`.
+- **Change**: `test_run_bind_failure_logs_init_once_and_backs_off`: `asy_udp_socket.socket` replaced for the test by
+  a module whose socket's `bind()` raises `OSError(EADDRINUSE)` (the `_RaisingSocketModule` technique of
+  `tests/test_asy_udp_socket.py`, restored in `finally`); `server._udps` is a `_TimedUDPSocket(UDPSocket)` subclass
+  recording each `recvfrom()`'s entry and return ticks (no method assignment). After three receives: one entry,
+  `code("E", "INIT")`, `ErrCount` 3, no `DNS_RECV_FAILED` entry; the server's own pauses (next entry − previous return)
+  fall in `_GAP_INITIAL_*` then `_GAP_DOUBLED_*` (0.5 s then 1.0 s; the UDP layer's own one-attempt backoff,
+  M.SRC_NET.027, lies inside each call and is excluded by construction).
+- **Resolved**: —
+- **Unit**: U18 (stage U31 ms backoff, unchanged values).
+- **Depends**: M.SRC_NET.007, .027.
+- **Blast carried by**: `tests_hardware/README.md:879, 893` wording → A.U18.06 (DOC).
+- **Kind**: test
+
+### M.TEST_UNIT.246 Cancellation re-raised after cleanup; disconnect outcomes
+- **From**: A.U18.07 (`:505-516` comment, `:1070-1082` rename, new L1), A.U18.15 (`:1085-1103` count holds, number
+  `SOCKET_TEARDOWN`), A.U2.16 (codes of `:965`, `:1085`).
+- **Site**: `tests/test_captive_dns.py:505-516`, `:956-980`, `:1070-1103`; new test.
+- **Change**: `:512` comment → "# run() cleans up and re-raises the cancellation; cancel() absorbs it". `:965` asserts
+  one `code("E", "UNEXPECTED")` entry. `:1070` → `test_run_disconnect_reporting_a_second_cancellation_propagates_without
+  _logging` (`err_count == 0`; `cancel()` absorbs the propagated `CancelledError`). `:1085` asserts one entry,
+  `ErrType` "W", `code("W", "SOCKET_TEARDOWN")`. `:876-893` fire-and-forget holds (`_udps._sock is None`). New:
+  `test_awaiting_a_cancelled_run_raises_after_disconnect` — awaits the cancelled task directly, asserts
+  `CancelledError` and `fake.disconnect_called` set before it surfaced.
+- **Resolved**: —
+- **Unit**: U18.
+- **Depends**: M.SRC_NET.007.
+- **Blast carried by**: SPEC C.8 cancellation line → A.U18.07 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.247 Error and backoff paths: comments, unexpected-exception wait, receive backoff
+- **From**: A.U18.06 (backoff tests hold: their fake is connected), A.U8.11/A.U31.16 (read: values unchanged; tags in
+  M.TEST_UNIT.240), A.U30.19 (read: `report_if_fatal(e)` precedes the logged error; a `RuntimeError` is not fatal, so
+  `:908`'s count holds).
+- **Site**: `tests/test_captive_dns.py:896-952`, `:980-1068`.
+- **Change**: the `:896-906` banner names `_ERROR_RETRY_WAIT_S` for "the 3s backoff" and `asy_captive_dns.DNSQuery`
+  for the patched class (`captive_dns_module` → the module-level `asy_captive_dns`); `:931` asserts one `code("E",
+  "UNEXPECTED")` entry. The `:982-988` banner → "# run()'s receive-failure backoff: a receive that keeps returning
+  (None, None) on a bound socket logs DNS_RECV_FAILED and backs off 0.5, 1, 2 … 5 s (SPECIFICATION.md Part C.9).", the
+  "measured at ~5 wrn_s() lines/second before the fix" and "previously had none" history going; the bind-failure case
+  points to M.TEST_UNIT.245's test.
+- **Resolved**: —
+- **Unit**: U18.
+- **Depends**: M.SRC_NET.007, .011.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.248 Cancellation at each await of the server loop
+- **From**: A.U35.48.
+- **Site**: new test.
+- **Change**: `test_cancelling_run_at_each_await_disconnects_and_logs_nothing` drives `cancel_at_each_await()` from
+  synchronous scope over `server.run("127.0.0.1", "255.0.0.0")` on a `_FakeUDPS` with one query (the build constructs
+  the server and fake inside the swept coroutine); invariants: `CancelledError` raised, `disconnect()` called exactly
+  once, `ErrCount == 0`, no further `recvfrom()` after the cancel.
+- **Resolved**: —
+- **Unit**: U35.
+- **Depends**: M.TEST_HELP.067; M.SRC_NET.007.
+- **Blast carried by**: —
+- **Kind**: test
