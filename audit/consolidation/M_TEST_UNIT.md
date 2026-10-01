@@ -1137,3 +1137,110 @@ lines through `tests/_recording_print.py` where the test's point is the message)
 - **Blast carried by**: SPEC A.4 endurance sentence → A.U16.11 (SPEC).
 - **Kind**: test
 
+## tests/test_asy_i2c_driver.py
+
+End state: the I2C wrapper's tests against M.SRC_SENS.006-013 — bool results for every transfer and write, the new
+read helpers, the boot bus clear, `clear()`/`recover()` with their status bits and `recoveries` sequence, the bus and
+session lock names, and the fake's rp2 probe/scan semantics.
+
+### M.TEST_UNIT.052 Harness and names
+- **From**: A.U24.08 (`run()`), A.U24.20 (`make_i2c()` `:26` resets the id), A.U24.76 (`make_i2c`/`fake` →
+  `_make_i2c`/`_fake`), A.U10.18 (`async_lock` → `bus_lock` 18 sites, `device.asy_lock` → `session_lock`), A.U24.78
+  (`:484, :521, :533` fault shape), A.U8C.09 (`:719` 1.0, `:843` 0.2), A.U24.01 principle (`:1067` `_SCRATCH_SIZE` via
+  `src_const`), A.U31.12 (read: probe tests run the real 200 ms wait, unchanged).
+- **Site**: `tests/test_asy_i2c_driver.py:1-33`; the lock, fault and wait lines named.
+- **Change**: `from _async_harness import run`; `_make_i2c()` → `FakeI2C.reset_id(0)` then the construction; every
+  lock reference renamed (`:362` → `device.session_lock is i2c.bus_lock`); `inject_fault("readfrom_into", OSError,
+  errno.EIO, "no ACK")` form at the three sites; `_GATHER_WAIT_S = 1.0` (`# @tunable l1.asy_i2c_driver_gather_wait_s =
+  1.0`) and `_DEADLOCK_WAIT_S = 0.2` (`# @tunable l1.asy_i2c_driver_deadlock_wait_s = 0.2`) at `:719`, `:843`; `:1066`
+  `size = src_const("src/asy_i2c_driver.py", "_SCRATCH_SIZE") + 8` (comment → "# one past the shared scratch, read from
+  source").
+- **Resolved**: —
+- **Unit**: U24 (stages U8C tags, U10 names).
+- **Depends**: M.SRC_SENS.009, .013; TEST_HELP fakes.
+- **Blast carried by**: Part N rows → A.U8.01 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.053 Deinit returns `True`; a dead bus answers `False`/`None` by contract
+- **From**: A.U13.16 (`:40-58, 563-568` `deinit() is True`), A.U13.07 (`:69-98`, `:234-238`, `:343-352`, `:571-586`;
+  `:140, 417, 479-490, 993` assert `True`; new "every completed transfer returns `True`"), A.U24.21 (`:72` holds).
+- **Site**: `tests/test_asy_i2c_driver.py:35-160`, `:216-352`, `:408-436`, `:479-490`, `:544-610`, `:970-1000`.
+- **Change**: `deinit()` asserted `is True` (twice for the idempotence test); after deinit `readfrom_into`/`set_bits`/
+  `set_register_struct`/`writeto_then_readfrom` and the device forwarders assert `False` (getters keep `None`, `scan()`
+  `None`, `writeto` `None`); `:234-238` malformed format → `set_register_struct(...) is False`; `:343` →
+  `test_set_register_struct_type_mismatch_returns_false_instead_of_raising`; `:571-586` mid-session `readinto` →
+  `False`, buffer untouched; each completed call at `:140, :417, :479-490, :993` asserts `True`. New
+  `test_every_completed_transfer_and_write_returns_true` (readfrom_into, writeto_then_readfrom, set_bits,
+  set_register_struct, device readinto/write/write_then_readinto).
+- **Resolved**: —
+- **Unit**: U13.
+- **Depends**: M.SRC_SENS.009, .011, .012, .013.
+- **Blast carried by**: driver callers → M.TEST_UNIT for each driver file.
+- **Kind**: test
+
+### M.TEST_UNIT.054 Probe and scan follow rp2's zero-length transfer
+- **From**: A.U24.21 (`:112`, `:157`; zero-length writes raise `ENODEV`), A.U24.38 (`:378` probe ACKed), A.U10.45 +
+  A.U10.21 (probe message and `setup() -> True`).
+- **Site**: `tests/test_asy_i2c_driver.py:107-113`, `:147-160`, `:378-406`, `:494-506`, `:881-885`.
+- **Change**: `:107` scan lists `0x10` only (registers, minus NAK) — unchanged result, now through the probe;
+  `:147-160`: `scan()` after a NAKed address returns the short list without raising (asserted, not only "no raise").
+  `test_probe_succeeds_when_device_acks`: `setup()` is `True` and the log holds exactly one zero-length `writeto` to
+  `0x50`. Probe-failure tests assert the message `f"no I2C device at address: {0x50:#x}"` (M.SRC_SENS.013). `:881-885`:
+  `writeto(0x50, b"")` on an address with no device raises `OSError(ENODEV)`; with `fake.attached.add(0x50)` it returns
+  0. New `test_scan_on_a_busy_bus_returns_an_empty_list`.
+- **Resolved**: —
+- **Unit**: U24 (fake semantics; stage U10 message, U13 bool).
+- **Depends**: TEST_HELP `tests/machine.py` `attached`, zero-length semantics (A.U24.21).
+- **Blast carried by**: SCD30/SGP40 probes in other files gain `attached.add()` → A.U24.21 (each driver file's M-change).
+- **Kind**: test
+
+### M.TEST_UNIT.055 The read helpers: bytes copy, caller's buffer, one scratch view
+- **From**: A.U13.10 (`get_register_bytes()` L1), A.U30.07 (`get_register_into()` L1), A.U30.21 (identity and partial
+  view L1; the scratch view is one object), A.U13.01 (read: `:1022-1060` hold).
+- **Site**: new tests after `tests/test_asy_i2c_driver.py:1070`.
+- **Change**: `test_get_register_bytes_returns_a_copy_of_exactly_length_bytes` (copy: mutating the scratch afterwards
+  leaves it unchanged; `None` on no bus and `length <= 0`; over `_SCRATCH_SIZE` uses the allocating fallback; a bus
+  `OSError` propagates); `test_get_register_into_fills_exactly_the_callers_buffer` (shared scratch untouched; `False` on
+  no bus and on an empty buffer; `OSError` propagates); `test_a_full_buffer_transfer_hands_the_fake_the_callers_object`
+  (identity for whole buffers in `readinto`/`write`, a view of the right range for a partial one) and
+  `test_the_scratch_view_is_one_object_for_the_bus_life`.
+- **Resolved**: —
+- **Unit**: U30 (stage U13 for `get_register_bytes`).
+- **Depends**: M.SRC_SENS.011, .012.
+- **Blast carried by**: four tiers wire-identical → A.U13.10/A.U30.07/A.U30.21 (bus-hazard files run unchanged).
+- **Kind**: test
+
+### M.TEST_UNIT.056 Boot bus clear, runtime `clear()`/`recover()`, the recoveries sequence
+- **From**: A.U14.17 (a) (boot clear L1; OR113.a (1)), A.U13.R01 (the `clear()`/`recover()` L1 list), M_SRC_SENS GAP-2
+  (`recoveries` wraps at `COUNTER_CAP`).
+- **Site**: new section at the end of `tests/test_asy_i2c_driver.py`.
+- **Change**: boot clear (through construction, read with `take_boot_clear_status()`): SDA high → no SCL edge, status
+  0; SDA released after k pulses → k pulses, STOP, status 1; SDA held → 9 pulses, STOP, status 3, construction proceeds;
+  SCL held past the timeout → no pulse, status 4; a later `init()` never clears; `take_boot_clear_status()` returns the
+  value once, then 0. Runtime `clear()`: SDA high → no SCL edge, status 0, no construction, both pins end `ALT_I2C`
+  with pull-up; k pulses → status 1; held → 9 pulses, STOP, status 3; SCL held beyond the timeout on the fake clock →
+  status 4; a fake holding SCL k ms mid-pulse still sees nine effective pulses. `recover()`: the same cases followed by
+  one re-construction with the stored `freq`/`timeout` (also after status 4); construction raising
+  (`I2C.raise_on_construct`) → status 8 and `_i2c is None`. Each `clear()`/`recover()` steps `recoveries` once;
+  `recoveries` at `COUNTER_CAP` (via `src_const("src/asy_base_classes.py", "COUNTER_CAP")`) steps to 0. A session holding
+  `bus_lock` delays `clear()`/`recover()` until it exits (gated), and a session started during either waits for it.
+- **Resolved**: A.U13.R01's "each call increments once" with M.SRC_SENS.010's single step per public call.
+- **Unit**: U13.
+- **Depends**: M.SRC_SENS.008, .010; TEST_HELP `tests/machine.py` `Pin` `OPEN_DRAIN`/`ALT`/`ALT_I2C`/scripted levels/value
+  log (A.U24.16), per-id I2C state and `raise_on_construct` (A.U24.20), fake clock for `ticks_us` (A.U14.34/A.U35.10).
+- **Blast carried by**: four-tier coverage of the bus rung → M.TEST_UNIT in `test_bus_hazard_multi_device.py`
+  (A.U13.R02 L1), A.U13.R02 (TWIN, HW_DEV, HW_BENCH).
+- **Kind**: test
+
+### M.TEST_UNIT.057 Range parameters stay off the combined transfers
+- **From**: A.U5.14 (`:79, 93, 142, 420, 486, 558, 979, 988, 996` pass none — unchanged), A.U28.27 (read: the `x != x`
+  NaN idiom at `:320` keeps its comment; the ruff entry is TOOL's).
+- **Site**: `tests/test_asy_i2c_driver.py:131-139`, `:869-880` (start/end on `readfrom_into`/`writeto` only).
+- **Change**: none beyond M.TEST_UNIT.053's bool assertions — the sliced calls are `readfrom_into`/`writeto`, which keep
+  `start`/`end` (M.SRC_SENS.012).
+- **Resolved**: —
+- **Unit**: U5.
+- **Depends**: M.SRC_SENS.012.
+- **Blast carried by**: `pyproject.toml` PLR0124 entry → A.U28.27 (TOOL).
+- **Kind**: test
+
