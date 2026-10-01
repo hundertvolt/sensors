@@ -167,3 +167,7 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
 45. Cross-cluster gaps left after their owning merge closed, for the A-C gap pass before ordering: PROC gap 5 — no runner
     selects `multi_day_rollover` (SCR M.SCR.030-.032, HW_BENCH M.HW_BENCH.126); TSC's `NeopixelDriver` gap is already
     carried by M.SRC_SENS.023/.024 (AC_NOTES 44). Every other "Gaps for other clusters" item is checked in the same pass.
+46. Owner, 2026-10-01 (OR134 → LEAD/R34): execution schedules test runs for wall clock without weakening any gate —
+    scoped runs first, the full gate per unit unchanged, background runs on worktree snapshots, port-binding suites
+    isolated by network namespace (proven in U0) or serialised, GitHub CI as a parallel lane, hardware rounds batched.
+    A-C2 writes the schedule into the work order.

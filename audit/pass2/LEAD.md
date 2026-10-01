@@ -353,6 +353,15 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 - **Pillar**: P5
 - **Pass 2**: new (A-L, OR129) A-L: SUPP_deps register fix 1. A-L: SUPP_deps register fix 2.
 
+### LEAD/R34 Test runs are scheduled for wall clock, never at a gate's cost
+- **Req**: Execution schedules its script runs to cut wall-clock time without weakening any gate or adding tokens: (1) inside a unit, cheap checks run first and only on the test files each change's Blast field names; (2) every unit still closes on the full gate on its final tree — lint, typecheck, the unit tier at both GC stages, `tests_scripts`, the twin tier, the web tier and, where the unit touches `src/`, the coverage run; (3) long runs execute in the background on a worktree snapshot while agents continue on units the work order marks independent; (4) suites that bind real ports never run concurrently in one network namespace — each gets its own namespace, once U0 proves that equal to a serial run on the baseline, or they run one after another; (5) each pushed unit lets GitHub CI run the full job matrix as a parallel lane; (6) hardware rounds are batched into as few owner-approved sessions as the order allows. Agent parallelism stays at OR107's limit; local CPU sets how many script runs overlap. No permanent CI control arm is added (OR21.a (2)).
+- **Sources**: OR134/OR134.a · OR107 (accuracy before speed, moderate parallelism) · OR21.a (2) · CLAUDE.md "Two suites that both bind real ports must never run at the same time" · CLAUDE.md real-hardware go-ahead rule · LEAD/R33 (U0 baseline)
+- **Rank**: owner — "Savvy planning when to test which scope in which order and in which pace, combined with high parallelization could help reduce time without touching quality or raising token usage" (owner, 2026-10-01, OR134)
+- **State**: work: process — the test schedule is a section of the A-C2 work order; the namespace-isolation proof runs in U0 after the B0 baseline.
+- **Home**: the A-C2 work order (audit file, execution-time only)
+- **Pillar**: P5
+- **Pass 2**: new (A-C, OR134)
+
 ## 4 Questions for the owner (after self-resolution)
 
 All four are answered: OR80, OR81, OR75, OR82. Questions 1-2 came from the groups (facts re-checked by the lead); questions 3-4 from the
