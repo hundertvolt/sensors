@@ -304,8 +304,8 @@ UIDX = {u: i for i, u in enumerate(UNITS)}
 
 
 # ---- action-level dependencies (each action's Depends slot, abbreviations expanded) -------------------
-REV = re.compile(r"follow it|take the results|decides the shape|land later|execute later|append their own|"
-                 r"is this action|follows? this", re.I)
+REV = re.compile(r"follow it\b|take the results|decides the shape|land later|execute later|append their own|"
+                 r"is this action|follows? this|^\W*before\s*$", re.I)
 CO = re.compile(r"co-land|A-C merges|A-C keeps|A-C moves|same (?:function|file|site|line|bullet|section|table|test|class|"
                 r"block|lines|sentence|paragraph|row|module|helper|method|constant|loop|guard|rule|commit|getters|"
                 r"`|shape|contract|entry|class)", re.I)
@@ -336,7 +336,8 @@ def action_deps(S, canon):
                 tail = seg[e:]
                 if IGN.search(paren_after(seg, e)) or re.search(r"conflicts? with\s*$", seg[max(0, s - 20):s], re.I):
                     cls = "ign"
-                elif REV.search(seg[e:e + 60]) or REV.search(paren_after(seg, e)) or REV.search(seg[max(0, s - 40):s]):
+                elif (REV.search(seg[e:e + 60]) or REV.search(paren_after(seg, e)) or REV.search(seg[max(0, s - 40):s])
+                      or re.search(r"\bbefore\s+$", seg[max(0, s - 12):s])):
                     cls = "rev"
                 elif CO.search(around) or CO.search(seg[e:e + 80]) or re.search(r"A-C merges", tail[:200]):
                     cls = "co"
@@ -395,7 +396,7 @@ def landings(ch, D):
             elif u in T:
                 L[(k, a)], why[(k, a)] = u, "own unit, named in the Unit slot"
             elif all(ukey(t) < ukey(u) for t in T):
-                L[(k, a)], why[(k, a)] = T[-1], "pulled forward by the Unit slot"
+                L[(k, a)], why[(k, a)] = u, "own unit (the Unit slot writes it early in end form; confirmed in place here)"
             elif c["doc"] or c["new"]:
                 t = min((t for t in T if ukey(t) > ukey(u)), key=ukey)
                 L[(k, a)], why[(k, a)] = t, ("deferred to the next Unit-slot unit (doc site)" if c["doc"] else
@@ -412,13 +413,141 @@ def landings(ch, D):
                 for b, cls in D.get(a, ()):
                     if b not in live or cls == "ign":
                         continue
-                    x, y = (a, b) if cls != "rev" else (b, a)  # x needs y
+                    if cls not in ("order", "rev"):
+                        continue
+                    x, y = (a, b) if cls == "order" else (b, a)  # x needs y
                     if ukey(L[(k, y)]) > ukey(L[(k, x)]):
                         L[(k, x)] = L[(k, y)]
                         why[(k, x)] = f"deferred to land with {y} in this change"
                         changed = True
-                    if cls == "co" and ukey(L[(k, x)]) > ukey(L[(k, y)]):
-                        L[(k, y)] = L[(k, x)]
-                        why[(k, y)] = f"co-lands with {x} in this change"
-                        changed = True
     return L, why
+
+
+def holders(ch, L):
+    h = collections.defaultdict(list)
+    for (k, a), u in L.items():
+        h[a].append((k, u))
+    return h
+
+
+def own_holders(a, H, ch, act_files):
+    """Holders whose Site names one of the action's own site files; all holders when none does."""
+    af = act_files.get(a, set())
+    own = [(k, u) for k, u in H.get(a, ()) if af & {fkey(p) for p in ch[k]["files"]}]
+    return own or list(H.get(a, ()))
+
+
+def steps_of(ch, L):
+    st = collections.defaultdict(set)
+    for (k, a), u in L.items():
+        st[k].add(u)
+    for k, c in ch.items():
+        st[k] |= set(c["T"])
+        if not st[k]:
+            st[k] = set()
+    return {k: sorted(v, key=ukey) for k, v in st.items()}
+
+
+def edges(ch, D, L, act_files, canon, overrides=None):
+    """[(src_step, dst_step, kind, note)], a step being (M-ID, unit). kind: action | dep-A | dep-M."""
+    overrides = overrides or {}
+    H = holders(ch, L)
+    ST = steps_of(ch, L)
+    E = []
+    for a, deps in D.items():
+        if a not in H:
+            continue
+        for b, cls in deps:
+            cls = overrides.get((a, b), cls)
+            if cls == "ign" or b not in H:
+                continue
+            x, y = (a, b) if cls != "rev" else (b, a)  # x needs y
+            for kx, ux in own_holders(x, H, ch, act_files):
+                for ky, uy in own_holders(y, H, ch, act_files):
+                    if kx == ky or (ch[ky]["doc"] and not ch[kx]["doc"]):
+                        continue  # code never waits on a doc edit; doc checks are the unit gate's
+                    E.append(((ky, uy), (kx, ux), "action", f"{x} needs {y} ({cls})"))
+    for a in H:  # a blast edit follows its cause
+        own = own_holders(a, H, ch, act_files)
+        ownk = {k for k, _ in own}
+        for k, u in H[a]:
+            if k in ownk:
+                continue
+            for ko, uo in own:
+                if ch[ko]["doc"] and not ch[k]["doc"]:
+                    continue
+                E.append(((ko, uo), (k, u), "blast", f"{k} carries {a}'s blast"))
+    for k, c in ch.items():
+        mine = ST[k]
+        if not mine:
+            continue
+        dep = c["slots"]["Depends"]
+        for b, s, e in expand_a(dep, canon):
+            if b not in H or b in c["live"]:
+                continue
+            for kb, ub in own_holders(b, H, ch, act_files):
+                if kb == k or (ch[kb]["doc"] and not c["doc"]):
+                    continue
+                tgt = next((u for u in mine if ukey(u) >= ukey(ub)), mine[-1])
+                E.append(((kb, ub), (k, tgt), "dep-A", f"{k} Depends {b}"))
+        for n, s, e in expand_m(dep):
+            if n == k or n not in ch or not ST.get(n):
+                continue
+            theirs = ST[n]
+            for u in mine:
+                if u in theirs:
+                    E.append(((n, u), (k, u), "dep-M", f"{k} Depends {n} (same unit)"))
+            # the dependent completes no earlier than what it depends on starts; its first step at/after that
+            tgt = next((u for u in mine if ukey(u) >= ukey(theirs[0])), mine[-1])
+            E.append(((n, theirs[0]), (k, tgt), "dep-M", f"{k} Depends {n}"))
+    return E, ST
+
+
+def settle(ch, D, L, why, act_files, overrides=None):
+    """Earliest consistent landings: defer a part until every part it needs has landed (order deps, blasts).
+
+    Returns the moves {(M, a): (old unit, new unit, reason)}; L and why are updated in place.
+    """
+    overrides = overrides or {}
+    moves = {}
+    for _ in range(200):
+        H = holders(ch, L)
+        changed = False
+        for a, deps in D.items():
+            if a not in H:
+                continue
+            for b, cls in deps:
+                cls = overrides.get((a, b), cls)
+                if cls not in ("order", "rev") or b not in H:
+                    continue
+                x, y = (a, b) if cls == "order" else (b, a)
+                ys = [(k, u) for k, u in own_holders(y, H, ch, act_files)]
+                for kx, ux in own_holders(x, H, ch, act_files):
+                    need = [u for k, u in ys if k != kx and not (ch[k]["doc"] and not ch[kx]["doc"])]
+                    if need:
+                        top = max(need, key=ukey)
+                        if ukey(top) > ukey(L[(kx, x)]):
+                            old = moves.get((kx, x), (L[(kx, x)],))[0]
+                            L[(kx, x)] = top
+                            why[(kx, x)] = f"deferred: {x} needs {y}, which lands in {top}"
+                            moves[(kx, x)] = (old, top, why[(kx, x)])
+                            changed = True
+        H = holders(ch, L)
+        for a in H:
+            own = own_holders(a, H, ch, act_files)
+            ownk = {k for k, _ in own}
+            for k, u in H[a]:
+                if k in ownk:
+                    continue
+                need = [uo for ko, uo in own if not (ch[ko]["doc"] and not ch[k]["doc"])]
+                if need:
+                    top = min(need, key=ukey)  # a blast follows the first landing of its cause
+                    if ukey(top) > ukey(L[(k, a)]):
+                        old = moves.get((k, a), (L[(k, a)],))[0]
+                        L[(k, a)] = top
+                        why[(k, a)] = f"deferred: blast of {a}, whose own change lands in {top}"
+                        moves[(k, a)] = (old, top, why[(k, a)])
+                        changed = True
+        if not changed:
+            break
+    return moves

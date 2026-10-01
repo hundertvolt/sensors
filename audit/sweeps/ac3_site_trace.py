@@ -170,6 +170,40 @@ def extract(text, context=None):
     return out
 
 
+def owner_cluster(f):
+    """The cluster that owns a path (CLUSTERS.md lists, else by prefix)."""
+    if f in CLUSTER_OF:
+        return CLUSTER_OF[f]
+    rules = [("tests_hardware/device_scripts", "HW_DEV"), ("tests_hardware/flash", "HW_DEV"), ("tests_hardware", "HW_BENCH"),
+             ("tests/test_digital_twin", "TWIN"), ("digital_twin", "TWIN"), ("tests/test_", "TEST_UNIT"), ("tests/", "TEST_HELP"),
+             ("tests_scripts", "TSC"), ("scripts", "SCR"), ("buildgen", "GEN"), ("devices", "GEN"), ("ext", "GEN"), ("html", "GEN"),
+             ("js", "WEB"), ("tests_js", "WEB"), ("mockdata", "WEB"), ("toolchain", "TOOL"), (".github", "TOOL"), ("SPECIFICATION.md", "SPEC"),
+             ("audit", "PROC"), (".gitignore", "PROC")]
+    for pre, cl in rules:
+        if f.startswith(pre):
+            return cl
+    return "DOCS" if f.endswith(".md") and "/" not in f else "?"
+
+
+CLUSTER_OF = {}
+_cl = None
+for _line in (CONS / "CLUSTERS.md").read_text().splitlines():
+    if _line.startswith("## "):
+        _cl = _line[3:].split()[0]
+    elif _cl:
+        for _m in re.finditer(r"`([^`]+)`", _line):
+            CLUSTER_OF.setdefault(_m.group(1).rstrip("/"), _cl)
+
+
+def preambles():
+    """A-IDs each M file's preamble (text before its first merged change) names: cluster-wide conventions."""
+    out = {}
+    for p in sorted(CONS.glob("M_*.md")):
+        head = p.read_text().split("\n### M.", 1)[0]
+        out[p.stem[2:]] = set(ids_in(head))
+    return out
+
+
 def parse_actions():
     head = re.compile(r"^### (A\.[A-Za-z0-9]+\.[A-Za-z0-9]+)\b(.*)$")
     slot = re.compile(r"^- \*\*(Why|Site|Change|Blast|Depends|Kind|Site\*\* and \*\*Change|Site and [Cc]hange)\*\*\s?(?:\([^)]*\))?:?\s?(.*)$")
@@ -280,6 +314,8 @@ def main():
         for i in c["from_ids"]:
             by_from[i].append(c)
     ch_by_id = {c["id"]: c for c in changes}
+    global PRE
+    PRE = preambles()
     led = defaultdict(list)
     for r in ledgers:
         for i in r["ids"]:
@@ -303,9 +339,11 @@ def main():
             tmpl = [c["id"] for c in cs if any(tmatch(cf, s) for s in c["site_files"] | c["implicit"])]
             sitebody = [c["id"] for c in changes if (cf in c["site_files"] or cf in c["implicit"]) and a["id"] in c["body_ids"]]
             sect = [c["id"] for c in cs if cf in {canon(f) for f in c["sec_files"]}]
-            state = "exact" if exact else "implicit" if impl else "template" if tmpl else "section" if sect else "nested" if nest else "merged-elsewhere" if cs else "unmerged"
+            own = owner_cluster(cf)
+            conv = a["id"] in PRE.get(own, set())
+            state = "exact" if exact else "implicit" if impl else "template" if tmpl else "section" if sect else "convention" if conv else "nested" if nest else "merged-elsewhere" if cs else "unmerged"
             rows.append({"action": a["id"], "unit_file": a["file"], "file": f, "how": how, "exists": exists(f),
-                         "in_old_index": key in old_pairs, "state": state, "exact": exact, "implicit": impl, "nested": nest, "site_body": sitebody, "section": sect,
+                         "in_old_index": key in old_pairs, "state": state, "exact": exact, "implicit": impl, "nested": nest, "site_body": sitebody, "owner": own, "section": sect,
                          "range_only": bool(exact) and all(a["id"] not in ch_by_id[e]["from_literal"] for e in exact),
                          "from_changes": [c["id"] for c in cs],
                          "ledger": [f'{r["cluster"]}: {r["text"]}' for r in led.get(a["id"], [])],
