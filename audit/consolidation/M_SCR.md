@@ -506,7 +506,10 @@ Conventions used below (each defined once, then cited):
 - **From**: A.U23.38, A.U23.39, A.U27.35 (work-dir rule applies to its output dir), A.U36.517 (SPEC text, blast).
 - **Site**: new `scripts/_stage_website.py`.
 - **Change**: as A.U23.38 (1)-(5) and the bootstrap id/key check, CLI `scripts/_stage_website.py <definitions.json>
-  <stage_dir>` (CPython, stdlib only, Python script convention); plus A.U23.39: the exact tag `<link rel="icon"
+  <stage_dir>` (CPython, stdlib only, Python script convention); the bundle keeps HEAD's layout after the derived banner:
+  per module in the derived order, one blank line, then `// ---- js/<file> ----`, then the module body with its import
+  lines removed (`build_website.sh:78-81` today; M.TEST_UNIT.333 reads both banner and separators — M_TEST_UNIT GAP-U11,
+  gap pass); plus A.U23.39: the exact tag `<link rel="icon"
   href="favicon.ico">` in `html/index.html` is replaced in the staged copy by a `data:image/x-icon;base64,…` URI of
   `html/favicon.ico`, the tag missing → error naming `html/index.html`. The stager writes only inside `<stage_dir>` and
   creates it if absent; the caller owns wiping it (A.U27.35).
@@ -733,9 +736,14 @@ Conventions used below (each defined once, then cited):
   RAM-only; `cp`/`rm`/`mkdir`/`rmdir` write flash. The board comes from $MPREMOTE_DEVICE, else the one board
   toolchain/setup_toolchain.py's resolver finds (vendor 2e8a plus the MicroPython by-id name)." `--help` (usage,
   `MPREMOTE_DEVICE`, "other arguments go to mpremote"), exit 0; `scripts/uv_sync_retried.sh`; `device="${MPREMOTE_DEVICE:-$(uv
-  run --no-sync toolchain/setup_toolchain.py board)}"` (the resolver's zero/several-match error propagates, `set -e`);
-  `uv run --no-sync mpremote connect "$device" "$@"`.
-- **Resolved**: the `/dev/ttyACM0` default goes (A.U21.28: never a bare ttyACM scan).
+  run --no-sync toolchain/setup_toolchain.py board)}"` (the resolver's zero/several-match error propagates, `set -e`:
+  its own stderr line, `setup_toolchain: no MicroPython board found …` or the several-match form, reaches the user
+  unchanged and the script exits with the resolver's code, printing no message of its own); `uv run --no-sync mpremote
+  connect "$device" "$@"`.
+- **Resolved**: the `/dev/ttyACM0` default goes (A.U21.28: never a bare ttyACM scan). A.U27.13 quotes the resolver's
+  line as `FAILED: no MicroPython board found …` (A.U21.28's form); A.U27.29's one error contract (U27) words it
+  `setup_toolchain: …` — that form (M.TOOL.072, D7; M_TOOL gap 4, gap pass). The `board` subcommand takes no toolchain
+  lock and reads no `versions.toml` (M.TOOL.072, D6), so the resolver call cannot wait on a running build.
 - **Unit**: U27 (needs A.U21.28's `board` subcommand from U21).
 - **Depends**: M.SCR.014; A.U21.28 (`setup_toolchain.py board`, TOOL).
 - **Blast carried by**: `tests_scripts/test_mpremote_connect_sh.py` (stub `uv`: env wins; resolver called otherwise;
@@ -789,8 +797,8 @@ Conventions used below (each defined once, then cited):
 - **Site**: `scripts/run_bench_soak_tests.sh:1-22`.
 - **Change**: header (3 lines): "Runs only @pytest.mark.soak_duration tests at one named duration - an opt-in on top of
   the bench tier (owner, 2026-09-26) that the general runners never bundle (owner, 2026-09-04). Durations:
-  tests_hardware/soak_durations.py; the ~12.4-day rollover wait is not a soak and has its own --allow-multi-day-rollover
-  (tests_hardware/README.md)." Usage `scripts/run_bench_soak_tests.sh --duration {short,mid,long} [pytest args]`;
+  tests_hardware/soak_durations.py; the ~12.4-day rollover wait is not a soak: scripts/run_bench_rollover_test.sh."
+  (gap pass: names the rollover's own runner, M.SCR.074) Usage `scripts/run_bench_soak_tests.sh --duration {short,mid,long} [pytest args]`;
   `--help` exit 0; a missing or unknown duration → usage, exit 2; then `scripts/_require_clean_hardware_run.sh --runner
   run_bench_soak_tests --levels "soak duration <d> (not a level)" --marker-floor "soak_duration" tests_hardware/flash
   tests_hardware/bench --soak-duration "<d>" "$@"`.
@@ -1123,8 +1131,11 @@ Conventions used below (each defined once, then cited):
   through `tests/_error_codes.py`'s helper, A.U2.03, loaded by path); `_BUS_FAULT_OPS` → `_SUSTAINED_FAULT` (M.SCR.051).
   Comments: `:99-101` → "each injected fault fails one SGP40 measure read; three exhaust the supervisor's restart budget"
   (A.U25.36 (5) with the corrected aim, M.SCR.053); `:103-105` → "…the central newest-entry rule (asy_print_log.py)
-  spends one slot on them…" (value 1 kept); `:109-111` → "derived from the server's own `_DEFAULT_OUTER_CAP_S`"
-  with `# @tunable web.outer_cap_s = 15.0` on `_SERVER_OUTER_CAP_S`; `:115` → "a device wiring the most FRAM-backed
+  spends one slot on them…" (value 1 kept); `:108-110` → the three lines "# ResetErrors resets every source at once,
+  each FRAM-backed one still paying its own chunk write, so it far exceeds _http()'s 5s default. The value below is
+  derived from the server's own _DEFAULT_OUTER_CAP_S; README.md has the derivation and SPECIFICATION.md Part C.7 the
+  real-hardware measurements." (gap pass: "BACKLOG item 24" goes with the item at U19, M_DOCS gap 2; "in turn" is
+  false once the reset is concurrent, A.U11.31), with `# @tunable web.outer_cap_s = 15.0` on `_SERVER_OUTER_CAP_S`; `:115` → "a device wiring the most FRAM-backed
   sources still leaves ~10 before the budget"; `:122-124` → "100, not the 40 once used: a device with more instances
   settles longer after boot (digital_twin/README.md has the measurement)" (and the "once used" history clause cut if the
   cap counter flags it — the fact is the measurement). Tags (A.U8.20/A.U8.05/A.U8.14): `l2.ntp_unreachable_watch_s`,
@@ -1139,9 +1150,10 @@ Conventions used below (each defined once, then cited):
 - **Resolved**: A.U28.27 offers a per-file PLW0603 entry "unless U27 passes it explicitly first" — the state object
   removes the `global` (agent decision AD-7, no ignore needed). A.U8.20's tags on `:680` and `:904` are not written:
   A.U25.38 removes both sleeps (A.U25.74 conflict table row 1).
-- **Unit**: U27 (stages: U8 tags; U20 `from __future__`; U25 state, matrix names; U27 header, types, imports; U35 measured
-  values).
-- **Depends**: M.SCR.016; A.U27.37 (`device_max_connections_by_name`, GEN); A.U2.03 (`tests/_error_codes.py`, TEST_HELP).
+- **Unit**: U27 (stages: U8 tags; U19 the `:108-110` comment, in the commit where A.U19.14 deletes BACKLOG item 24; U20
+  `from __future__`; U25 state, matrix names; U27 header, types, imports; U35 measured values).
+- **Depends**: M.SCR.016; A.U27.37 (`device_max_connections_by_name`, GEN); A.U2.03 (`tests/_error_codes.py`, TEST_HELP);
+  A.U19.14/M.DOCS.063 (item 24 removed, its design in SPEC C.7), A.U11.31 (the concurrent reset) — gap pass.
 - **Blast carried by**: Part N rows → A.U8.20/A.U8.05/A.U8.04/A.U8.14 (SPEC); `tests_scripts/test_comment_block_cap.py`,
   `test_import_placement.py` (pending list drops this file) → A.U27.28/A.U0.07 (TSC); `pyproject.toml` per-file entries →
   A.U28.27 (TOOL, none needed here); `host_typecheck.ini` `mypy_path` gains `scripts` → A.U27.27 (TOOL).
@@ -1609,14 +1621,25 @@ Conventions used below (each defined once, then cited):
   `firmware.elf` beside the `.uf2`; `used > fs_base` → `BuildInternalError`), printed `== Image: <used> B of <fs_base> B
   before the filesystem (<pct> %), <free> B free`. Record `output.with_suffix(".json")` via a same-dir tmp +
   `os.replace`, sorted keys: `device`, `BuildDate`, `firmwareVersion`, `websiteVersion`, `commit` (or null), `dirty`,
-  `maxConnections` (`device_max_connections(toml, src)`), `lwip` (macros read back from the build), `overrides` (the list
-  `st.build_firmware()` applied), `deviceToml` (repo-relative path built from), `uartCrc` (per UART bus mode),
+  `maxConnections` (`device_max_connections(toml, src)`), `lwip` (`micropython_overrides.read_lwip_macros_from_build(
+  uf2.parent, lwip_macros)` — `uf2` the path `st.build_firmware()` returned, in the port's build dir, not the copied
+  output; `lwip_macros` from `st.load_lwip_macros()`), `overrides` (the optional overrides the build proves compiled in, re-read the same way:
+  `["modlwip_eagain"]` when `micropython_overrides.verify_modlwip_eagain_in_build(uf2.parent, micropython_dir,
+  copy_path)` passes with the `micropython_dir` and copy path `st.build_firmware()` used — `<overrides dir>/
+  modlwip_eagain/modlwip.c`, `MODLWIP_OVERRIDE_DIR_NAME` — `[]` when it raises `OverrideError`, as for the round's
+  control image built with the override call removed; `[]` throughout under A.SDEP.13 (a), where the section does not
+  exist), `deviceToml` (repo-relative path built from), `uartCrc` (per UART bus mode),
   `imageUsedBytes`, `filesystemBaseBytes`, `imageFreeBytes`, `autostart` (bool). Final line for `--no-autostart`: "Built
   without autostart: start with the line the board prints at boot".
 - **Resolved**: A.U26.02's key `buildDate` follows A.U10.40's rename to `BuildDate` (A.U26.02 states it; M.HW_BENCH.060
-  reads `record["BuildDate"]`).
+  reads `record["BuildDate"]`). A.U26.02 offers the lwIP dict "returned from it or re-read from its build dir" and
+  A.U26.85 reads `overrides` as "the list `st.build_firmware()` applied"; M.TOOL.055 (D3) keeps `build_firmware()`
+  returning the uf2 `Path`, so both keys are re-read from the build dir by the two public readers M.TOOL.041 keeps
+  (M_TOOL gap 3; M_SCR gap 2 (d) withdrawn, gap pass, agent decision AD-20). Only the modlwip override is optional: the
+  lwIP-options override is in every rp2 build and its effect is the `lwip` key, so a control image reads `[]`.
 - **Unit**: U27 (stages: U26 record and `overrides`; S0930 `deviceToml`/`uartCrc` after U27).
-- **Depends**: M.SCR.065; A.U21.10 (`st.build_firmware()` returns the applied overrides and macros, TOOL).
+- **Depends**: M.SCR.065; M.TOOL.041 (`read_lwip_macros_from_build()`, `verify_modlwip_eagain_in_build()` public),
+  M.TOOL.055 (D3: the uf2 path returned, the build dir beside it), M.TOOL.039 (`MODLWIP_OVERRIDE_DIR_NAME`) (TOOL).
 - **Blast carried by**: `bench/conftest.py` image check → M.HW_BENCH.060; lwIP control image (built in a throwaway worktree,
   record `overrides: []`) → M.HW_BENCH.075/A.C.06; CRC16 image → M.HW_BENCH.094; L0 `tests_scripts/test_build_firmware.py`
   record keys and report parse (fake `nm`) → A.U26.02/A.U27.31 (TSC); BACKLOG resize item → A.U36.521 (DOCS); CI

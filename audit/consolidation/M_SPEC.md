@@ -2504,7 +2504,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
   (named homes of each `buildgen/` module's tests), A.U24.76 (doubles and builders named by role), A.U35.07 (E.2.1's "stay
   wozi-only" is U36's), A.U36.544 (2) ("Part L's Session 6.2"), A.U36.532 (numbering), A.U36.017 (E.2.2), A.U36.542 (0.4
   cites E.2/E.3 for test conventions), A.U24.07 + A.U24.08 + A.U26.15 + A.U35.10 + A.U35.03 (the "Part E hygiene section"
-  / "test standard" each names — no action creates it: gap fill), M_TEST_HELP GAP-H5 (the deleted library's citers).
+  / "test standard" each names — no action creates it: gap fill), M_TEST_HELP GAP-H5 (the deleted library's citers),
+  M_TWIN gap (E.2.1's text names files that exist; gap pass G1).
 - **Site**: `SPECIFICATION.md:2803-2839`; new E.2.2 and E.2.3 after E.2.1.
 - **Change**: (1) E.2 → "`microtest.py` is a minimal collector/runner — not CPython's `unittest`, unavailable on the Unix
   port's standard build. It calls every synchronous `def test_*` and reports PASS, FAIL or SKIP (`microtest.Skip(reason)`,
@@ -2520,7 +2521,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   the host-side scenario harness `scripts/_digital_twin_scenarios.py`, one twin process per scenario (E.9)". The memory
   paragraph keeps its dated measurement; "It is **not** a reversion to the old per-device test-body duplication that Part
   L's Session 6.2 collapsed: …" → "Every scenario body lives once and stays device-generic; the per-device run adds no
-  logic."; `:2836-2839` → A.U36.016's paragraph verbatim. New closing paragraph (A.U24.75): "Every `buildgen/` module has
+  logic."; `:2836-2839` → A.U36.016's paragraph verbatim except its "one device per process like the wrapper files above", which reads "one device per process, the file marked `PER_DEVICE = True` (above)" (gap pass G1: the M_TWIN gap's "E.2.1 names files that exist" — no wrapper file exists after (2); `tests/test_digital_twin_sensortask_integration.py` and `tests/_twin_devices.py` exist, M.TWIN.144). New closing paragraph (A.U24.75): "Every `buildgen/` module has
   `tests_scripts/test_buildgen_<module>.py` or a named home (`buildspec` → `test_buildgen_driver_registry.py`/
   `test_buildgen_validate.py`, `codegen` → `test_buildgen_generate.py`, `errors` → every reject test, `model` →
   `test_buildgen_validate.py`); pytest suites use module-level `def test_*`, never `Test*` classes (checked). Test
@@ -2543,7 +2544,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
   sleep to one yield."
 - **Resolved**: (a) A.U24.65 (generic `PER_DEVICE` file for the concurrency library) vs A.U25.46 (library retired
   host-side) — A.U25.46 kept (M.TEST_HELP.033, M.SCR.017). (b) Several actions name "SPEC E hygiene section"/"test
-  standard" written by "U36", yet no U36 action writes it — created here from their texts (agent decision, OR2.c).
+  standard" written by "U36", yet no U36 action writes it — created here from their texts (agent decision, OR2.c). (c) A.U36.016's
+  "like the wrapper files above" predates A.U24.65 (3)'s `PER_DEVICE` dispatch, which (2) states — the clause names the
+  marker (M.TWIN.144 (d): the file meets the bar through `PER_DEVICE`; gap pass G1).
 - **Unit**: Stage 1 U7 ((1) skip/empty); Stage 2 U24 ((1) rest, (2) per-device runs, buildgen homes, (4) hygiene
   sentences); Stage 3 U25 ((2) concurrency row); Stage 4 U35 ((4) bite list, driven time); Stage 5 U36 ((2) A.U36.016,
   labels; (3)).
@@ -2949,7 +2952,7 @@ it; an unflipped fact keeps the text given here.
 - **Depends**: A.U0.07, A.U10.30, A.U14.10, A.U20.03, A.U25.42, A.U25.58 (M.TSC.093), A.U28.33, A.U36.036, A.U37.02,
   M.HW_BENCH.038, M.HW_BENCH.091.
 - **Blast carried by**: A.9/E.3 `.frozen` pointers → M.SPEC.022/M.SPEC.078; `.gitignore` parenthesis → A.U36.036 (4)
-  (TOOL); `pyproject.toml` PLC0415 entries → A.U37.02 (TOOL); the check's exception set → GAP-B4 (TSC); README
+  (M.PROC.019 (6), PROC — `.gitignore` is PROC's, gap pass G1); `pyproject.toml` PLC0415 entries → A.U37.02 (TOOL); the check's exception set → GAP-B4 (TSC); README
   frozen-code sentence → A.U32.02 (DOCS).
 - **Kind**: rule, doc
 
@@ -4912,6 +4915,10 @@ section that stays.
 - M_TOOL gap 8 → M.SPEC.028/.033/.034/.156. M_TWIN gap → M.SPEC.156 (rows), M.SPEC.137 (J.7 files), M.SPEC.035/.121 (the L2
   proof). M_WEB gap 4 (a)-(b) → M.SPEC.120; (c), (e) → M.SPEC.116; (d) → M.SPEC.114/.124; gap 7 → M.SPEC.156. M_GEN gap 10
   is mention-only (nothing to carry). M_SRC_NET and M_TSC name no SPEC gap.
+- Gap pass G1 (2026-10-01, `GAPS_G1.md`): every item above re-read in its carrying change's body; two amended —
+  M.SPEC.077 (A.U36.016's "wrapper files" clause names the `PER_DEVICE` marker; M_TWIN gap) and M.SPEC.089's Blast
+  (`.gitignore` is M.PROC.019's). M_TEST_HELP GAP-H5's H.7.1 citer list needs no edit: A.U36.532 (3) changes no H.7.1
+  citer.
 
 | Action | Src | Merged change(s), or dropped with reason |
 |---|---|---|

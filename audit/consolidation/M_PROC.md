@@ -260,12 +260,13 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
   validated in phase C (BACKLOG entry of A.SDEP.08 (6), phase C row H60).
 - **Resolved**: the U0 placement (OR129.a (1)) against A.SDEP.24's corpus dependency: A.SDEP.08 makes the new-tag
   checkout itself (its step (1)), so the refresh does not wait for the plan text. The family texts that write permanent
-  records (A.SDEP.21: F.5 record and F.5.10, CLAUDE.md "Last run", BACKLOG chroot, hardware and owner-question entries,
-  THIRD_PARTY) are DOCS/SPEC merges landing in the same U0 commits.
+  records (A.SDEP.21: F.5 record and its standing-workaround list — "F.5.10" in A.SDEP.21, landing as SPEC F.9
+  (M.SPEC.109; gap pass G1) —, CLAUDE.md "Last run", BACKLOG chroot, hardware and owner-question entries, THIRD_PARTY) are
+  DOCS/SPEC merges landing in the same U0 commits.
 - **Unit**: U0 (step (6) of M.PROC.003); before the first B1 action.
 - **Depends**: M.PROC.007 (the B0 column), A.U0.02, M.PROC.001.
 - **Blast carried by**: per family as named; A.SDEP.21 records → M_DOCS (THIRD_PARTY, BACKLOG, CLAUDE.md) and M_SPEC
-  (F.5, F.5.10); BACKLOG chroot entry naming the eslint-comments plugin → A.SDEP.21 (DOCS, M_WEB gap 8); A.SDEP.22's
+  (F.5, F.9 — M.SPEC.099/.109); BACKLOG chroot entry naming the eslint-comments plugin → A.SDEP.21 (DOCS, M_WEB gap 8); A.SDEP.22's
   CLAUDE.md practice bullet → DOCS.
 - **Kind**: rule
 
@@ -766,7 +767,7 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
 - **Change**: for every inventory line D1-D28 and every pin execution added (`[stubs]` in `versions.toml`, A.U27.02;
   `[tool.uv] required-version`, A.U28.02; the `coverage` pin, A.U24.72/A.U28.02; the dorny commit, A.U28.13; the Microdot
   hash table, A.U19.18; the freezefs commit, A.U34.08; A.U21.03's toolchain-record fields), the pinned value is compared
-  with the newest stable found by M.PROC.008's commands; every hold-back of M.PROC.008 (4) and every F.5.10 upstream item
+  with the newest stable found by M.PROC.008's commands; every hold-back of M.PROC.008 (4) and every SPEC F.9 upstream item
   (issue 19704 included) re-read. Nothing new → one line in the record, and CLAUDE.md's "Last run" line re-dated. A new
   release → that family's step and the workaround checks it touches run for it, with U37's re-verification passes
   (M.PROC.032) as the check gate in place of M.PROC.009; the permanent records updated (A.SDEP.21's sites); a MicroPython
@@ -776,7 +777,7 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
 - **Resolved**: —
 - **Unit**: U37 (step (2)).
 - **Depends**: U0-U36 executed; M.PROC.008-M.PROC.013.
-- **Blast carried by**: CLAUDE.md "Last run" re-date and F.5/F.5.10, BACKLOG records → A.SDEP.21 sites (DOCS/SPEC, U37
+- **Blast carried by**: CLAUDE.md "Last run" re-date and F.5/F.9 (M.SPEC.099/.109), BACKLOG records → A.SDEP.21 sites (DOCS/SPEC, U37
   stage — Gaps); pins → M.TOOL.024/.061/.073/.077/.078, M.SCR.027 (re-check, U37 stage); release note → A.U37.12 (DOCS).
 - **Kind**: rule, code, doc
 
@@ -1178,6 +1179,12 @@ Checked by reading every finished merge's ledger and From lines (2026-10-01). "R
 7. **CLUSTERS.md / orchestrator**: `.gitignore`, `legacy/` (and the dissolved `dev_legacy/`) sit in no cluster; PROC
    carries them (M.PROC.014, .015, .019). M_TWIN's and M_SCR's "LEAD gap" for `.gitignore` (`mem_backup_state.json`, the
    MICROPYPATH sentence) is closed by M.PROC.019.
+
+**Incoming gaps, gap pass G1 (2026-10-01, `audit/consolidation/GAPS_G1.md`)**: M_TOOL gap 11 is carried by M.PROC.008
+(the W32 outcome recorded first in family (f); A.U28.13 pulled into family (c)); M_HW_BENCH GAP-B8 by M.PROC.038 and
+GAP-B9 by M.PROC.039; the `.gitignore` items (M_TWIN LEAD gap, M_SCR gap 2 (f), M.SPEC.089's sentinel parenthesis) by
+M.PROC.019. Amended: M.PROC.008 and M.PROC.031 name the standing-workaround list by its landed number, SPEC F.9 (M_SPEC
+gap 1). M_DOCS gap 5 names nothing PROC must add.
 
 ## Adherence findings
 

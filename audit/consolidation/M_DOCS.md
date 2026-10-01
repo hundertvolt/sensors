@@ -951,7 +951,7 @@ place unchanged.
   is `build/firmware-dev.uf2` built as above; the rule (`:299-301`) → "A session always flashes a `dev` image, never
   `wozi`: only the `dev` board is flashed and bench-tested (owner, 2026-09-03), and `dev` is different hardware that
   wozi's firmware cannot run on (owner, 2026-09-26) — see CLAUDE.md's WoZi rule; moving one of the owner's own units is
-  his operation (see "Moving a legacy unit to this firmware")."; `:323-327` names the tests as M.HW_DEV/M.HW_BENCH leave
+  their operation (see "Moving a legacy unit to this firmware")."; `:323-327` names the tests as M.HW_DEV/M.HW_BENCH leave
   them (`flash/test_toolchain_flash_boot.py`'s reflash test behind `--allow-flash-cycle`; `manual/manual_toolchain.py`)
   and "see 'Real hardware: levels L3 (flash) and L4 (bench)' below". Runbook: A.U32.01's subsection verbatim (lead,
   Before (1)-(3), Flash (4)-(6), First boot (7)-(12), Back to legacy (13)-(15); no `[src: …]` note written), with
@@ -1419,7 +1419,8 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
   A.U0.34 at U0, deleted at U33 (A.U33.03, SPEC L.6.6); device-name entry — done, removed at U37; soak trap — deleted
   at U36 (A.U36.042, E.7 holds it); UART fakes and four UART findings — A.U0.12 relabels `:698-705` at U0 ("left as they
   are (agent, 2026-09-11)"; the first sub-bullet → "the peer-sized `_accept_set()` allocation is owner question 1
-  below"), removed at U37 with homes SPEC C.3.2/J.9/G.2 (Gaps: SPEC); loose ends — deleted at U33 (A.U33.07); mypy
+  below"), removed at U37 with homes SPEC C.3.2 (the two out-of-contract calls), J.7 (the fakes' facts), J.8 (the
+  peer-sized allocation advice) and G.2 (the shared codec) — as M.SPEC.050/.137/.138/.111 land them (gap pass G1); loose ends — deleted at U33 (A.U33.07); mypy
   standalone — removed at U37 (A.U27.02's stub repair and the `Timer()` stub fact are SPEC B.15's); checkers — tagged
   at U0 (A.U0.37), actionlint version per A.SDEP.19 (`:749`) at U0, A.U15.02's vulture clause at U15, deleted at U33
   (A.U33.05, SPEC B.16/H.8); segfault/soak — A.SDEP.16 edits `:787` at U0, deleted at U33 (A.U33.09: its silicon rows
@@ -1593,11 +1594,11 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
   sentence), U36 (pointer sentence), U37 (M.PROC.031 re-date).
 - **Depends**: SPEC Part F intro checklist (A.U36.023 (1), SPEC) names the Workarounds table too (Gaps: SPEC);
   `tests_hardware/README.md` Workarounds table (A.U26.65, HW_BENCH)
-- **Blast carried by**: SPEC F.5/F.5.10 (A.SDEP.21 (2), SPEC); M.PROC.031 (PROC)
+- **Blast carried by**: SPEC F.5/F.9 (A.SDEP.21 (2), M.SPEC.099/.109; A.SDEP.21's "F.5.10" lands as F.9); M.PROC.031 (PROC)
 - **Kind**: rule, doc
 
 ### M.DOCS.071 A third practice: every external dependency is refreshed as one step
-- **From**: A.SDEP.22
+- **From**: A.SDEP.22; M_SPEC gap 1 (the section is F.9, M.SPEC.109; gap pass G1)
 - **Site**: `CLAUDE.md` after `:49`
 - **Change**: new bullet, A.SDEP.22's text verbatim: "- **Every external dependency is refreshed as one step, not only
   MicroPython** (owner, 2026-09-30: "Check all external dependencies for updates - both modules, repos and tooling,
@@ -1605,11 +1606,12 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
   Python and npm tool with its lock, Node, the GitHub Actions pins and every other fetched source. Read each update's
   changelog and the diff of the parts this repo uses; fix what breaks with no regression at every level and both GC
   stages; take the fixes the project profits from; and re-check every standing workaround in SPECIFICATION.md Part
-  F.5.10, removing it for the clean form where upstream fixed it. Pins stay pinned; the bullet above runs whenever the
+  F.9, removing it for the clean form where upstream fixed it. Pins stay pinned; the bullet above runs whenever the
   MicroPython ref moves."
-- **Resolved**: —
+- **Resolved**: A.SDEP.22 cites "Part F.5.10"; the section lands as F.9 (M.SPEC.003/.109: standing facts are filed by
+  topic, not under F.5's per-pin record), so the bullet cites F.9 (M_SPEC gap 1; gap pass G1).
 - **Unit**: U0 (with the refresh record, M.PROC.008)
-- **Depends**: SPEC F.5.10 (A.SDEP.21 (2), SPEC)
+- **Depends**: SPEC F.9 (A.SDEP.21 (2), M.SPEC.109; created at U0)
 - **Blast carried by**: —
 - **Kind**: rule
 
@@ -1972,14 +1974,17 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 - **Kind**: rule
 
 ### M.DOCS.092 The comment rule: one header, the cap, one form, English
-- **From**: A.U36.533 (1); AC_NOTES 9 (tag-line pointer); AC_NOTES 42 (headers everywhere)
+- **From**: A.U36.533 (1); AC_NOTES 9 (tag-line pointer); AC_NOTES 42 (headers everywhere); M_SPEC gap 2 (the grammar's one
+  home is L.6.4, M.SPEC.118/.149; gap pass G1)
 - **Site**: `CLAUDE.md:412-443`
 - **Change**: A.U36.533 (1)'s bullet verbatim ("- **Every file opens with exactly one header comment block, and every
   comment block — header or inline — keeps to three prose lines, prefer fewer** (owner, 2026-09-14, re-confirmed
-  2026-09-18; every file of every language, owner, 2026-09-26) …"), with its tag-line pointer "(…, `// @tunable`;
-  SPECIFICATION.md L.6.4)" → "(…, `// @tunable`; SPECIFICATION.md L.6.4, the `@web`/`@web-group` grammar H.5.1)".
-- **Resolved**: AC_NOTES 9 leaves the choice (rows into L.6.4, or the pointer to H.5.1) to U36: the pointer names both
-  homes, H.5.1 being where the grammar lives (no row duplicated). `// @tunable` stays only if A.U8.02's grammar lands,
+  2026-09-18; every file of every language, owner, 2026-09-26) …"), its tag-line pointer kept as A.U36.533 writes it:
+  "(…, `// @tunable`; SPECIFICATION.md L.6.4)" — L.6.4 only.
+- **Resolved**: AC_NOTES 9 leaves the choice (rows into L.6.4, or the pointer to H.5.1) to U36. SPEC took the first
+  option: A.U36.514 (2) puts the `@web`/`@web-group` rows into L.6.4's table and H.5.1 points there for the grammar
+  (M.SPEC.118, M.SPEC.149), so the pointer names L.6.4 alone and the earlier "H.5.1" half is dropped (M_SPEC gap 2;
+  gap pass G1). `// @tunable` stays only if A.U8.02's grammar lands,
   as A.U36.533 says.
 - **Unit**: U36
 - **Depends**: SPEC D.11 (A.U36.533 (2), SPEC); `tests_scripts/test_comment_block_cap.py` header-presence check (U27,
@@ -2298,6 +2303,13 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 5. **PROC** — carried: the "Last run" re-date (M.PROC.031 → M.DOCS.070), the hold-back and parked entries (M.PROC.008
    (4)-(5) → M.DOCS.067), A.U1.02 → M.PROC.014 (ledger). A.U25.65's BACKLOG pointer (M_PROC gap 3(c)): no BACKLOG owed row
    matches the item `digital_twin/README.md:453-456` cites, so that sentence goes (TWIN).
+
+**Incoming gaps, gap pass G1 (2026-10-01, `audit/consolidation/GAPS_G1.md`)**: every item naming DOCS re-read in its
+carrying change. Amended: M.DOCS.071 and M.DOCS.070's Blast ("F.5.10" → "F.9", M_SPEC gap 1), M.DOCS.092 (the H.5.1
+half dropped, M_SPEC gap 2), M.DOCS.065 (the UART findings' SPEC homes as M.SPEC.050/.137/.138/.111 land them), and
+M.DOCS.048 (the owner's pronoun). Carried as found: M_SRC_CORE GAP-G7 / M_SRC_SENS GAP-10 (M.DOCS.090), M_SRC_NET gap 6
+(M.DOCS.024), M_TOOL gap 7, M_SCR gap 6 and M_WEB gap 8 (M.DOCS.066, M.DOCS.101), M_TSC gap 2 (M.DOCS.048), M_PROC gap
+3 (M.DOCS.060/.067/.070; (c) disposed above). M_TWIN's DOCS item is settled by M.DOCS.085/.101.
 
 ## Adherence findings
 
