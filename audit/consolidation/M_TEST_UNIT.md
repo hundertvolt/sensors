@@ -3170,3 +3170,1676 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Depends**: M.SRC_SENS.062.
 - **Blast carried by**: —
 - **Kind**: test
+
+## tests/test_asy_spi_driver.py
+
+### M.TEST_UNIT.148 Harness, lock and attribute names, wait tags, version stamps
+- **From**: A.U10.18 (`async_lock` → `bus_lock` 55 sites, `device.asy_lock` → `session_lock`), A.U10.35
+  (`cs_active_value` private; M.SRC_SENS.004 makes `cs_pin` and the five siblings private too), A.U8C.16 (`:655` 1.0,
+  `:831` 0.2), A.U8C.09/A.U8C.18 (read: shared IDs, no site of theirs here), A.SDEP.08 (`:168`, `:685` stamps),
+  A.U24.78 (`:736` fault shape).
+- **Site**: `tests/test_asy_spi_driver.py:1-42`; every lock and CS attribute reference; `:168`, `:655`, `:685`, `:736`,
+  `:831`.
+- **Change**: harness migration (Conventions: `from _async_harness import run`); `spi.async_lock` → `spi.bus_lock`
+  everywhere; `:263` → `assert device.session_lock is spi.bus_lock`; `device.cs_pin` → `device._cs_pin`,
+  `device.cs_active_value`/`other.cs_active_value` → `._cs_active_value`. Module level `# @tunable
+  l1.asy_i2c_driver_gather_wait_s = 1.0` / `_GATHER_WAIT_S = 1.0` and `# @tunable l1.asy_i2c_driver_deadlock_wait_s =
+  0.2` / `_DEADLOCK_WAIT_S = 0.2`; the literals at `:655`, `:831` become them. `:168` "at v1.29.0" and `:685` "added in
+  MicroPython 1.29" carry the version the pin re-check confirms (or the fact is corrected with F.5). `:736` →
+  `fake(spi).inject_fault("readinto", OSError, errno.EIO, "SPI RX overrun")` (64 bytes: at or above the fake's DMA
+  threshold, so the queued fault fires).
+- **Resolved**: —
+- **Unit**: U24 (stages U0/U37 stamps, U8C tags, U10 names).
+- **Depends**: M.SRC_SENS.003, .004; M.TEST_HELP.015, .016, .043.
+- **Blast carried by**: Part N rows (shared with `tests/test_asy_i2c_driver.py`, M.TEST_UNIT.052) → A.U8.01 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.149 A dead bus answers False; deinit returns True
+- **From**: A.U13.08 (`:89-95`, `:97-110` assert `False`; `:118-122`; `:151-160`; `:205-218`; `:427-440`; new L1s),
+  A.U13.16 (`:48-78` `deinit()` is `True`), A.U24.38 (`:89` no transfer logged).
+- **Site**: `tests/test_asy_spi_driver.py:48-160`, `:200-218`, `:427-440`.
+- **Change**: the three deinit tests gain `assert spi.deinit() is True` (both calls in the double-deinit test).
+  `test_operations_after_deinit_return_none_or_noop` → `…_return_false` asserting each of `write`, `readinto`,
+  `write_readinto` returns `False` and `len(mock.log)` is unchanged; the device-level twin of it → `…_return_false`,
+  each awaited op `False`, and its comment → "# Bypasses `async with device:` on purpose: this pins the transfer-level
+  False contract, reached directly as the I2C equivalent test does." `test_write_forwards_buffer_and_returns_none` →
+  `…_returns_true` asserting `spi.write(b"abc") is True`. The mismatch test → `…_returns_false_instead_of_raising`, each
+  call `is False`, its comment's "turned into a None return" → "turned into a False return".
+  `test_configure_raises_if_bus_deinitialized_even_with_lock_held` → `test_configure_returns_false_on_a_deinitialized_bus_with_the_lock_held`
+  (`spi.configure() is False`, no `init` logged). `test_deinit_mid_session_…` asserts the mid-session `readinto()`
+  returns `False` (buffer untouched). New `test_every_completed_transfer_returns_true` (write, readinto,
+  write_readinto, configure under the lock) and `test_async_write_readinto_inside_a_session_fills_the_buffer` (`async
+  with device:` on a live bus: `buffer_in` filled, `True`). `:1052-1056`'s length-mismatch-before-overrun comment's
+  "the wrapper's None" → "the wrapper's False".
+- **Resolved**: A.U24.38 writes "each returns `None`" for `:89`; the merged product returns `False` (M.SRC_SENS.003,
+  A.U13.08, an earlier unit whose contract A.U24.38's assertion text predates) — its substance, "the fake bus log gains
+  no transfer", is kept with the product's value.
+- **Unit**: U13 (stage U24 log assertion).
+- **Depends**: M.SRC_SENS.003, .004.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.150 Configure tuples use rp2's MSB number
+- **From**: A.U24.23 (`:229`, `:234-241`, `:982`).
+- **Site**: `tests/test_asy_spi_driver.py:221-252`, `:964-982`.
+- **Change**: `:229` passes `firstbit=FakeSPI.MSB` and expects `("init", 2000000, 1, 1, 8, 1)`; `:982` expects
+  `("init", 1000000, 0, 0, 8, 1)`; the `:238-240` comment ("FakeSPI.LSB mirrors the real constant value") holds as now
+  true.
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: M.TEST_HELP.016.
+- **Blast carried by**: golden `_INIT_EVENT` → M.TEST_UNIT.050 (`tests/test_asy_fram_wire_trace.py`).
+- **Kind**: test
+
+### M.TEST_UNIT.151 Setup cannot glitch CS; LSB triggers the session-entry failures
+- **From**: A.U13.03 (setup tests hold; new CS recorder L1), A.U13.08 (`:465-495`, `:940-960` trigger; new
+  session-begin case).
+- **Site**: `tests/test_asy_spi_driver.py:266-282`, `:465-495`, `:940-960`; a new test.
+- **Change**: the setup tests hold (reading `_cs_pin`). New `test_setup_never_drives_the_active_level_as_an_output`: a
+  test-local `_RecordingPin(machine.Pin)` overriding `init()`/`value()` to append `(mode, level)` after each call is put
+  in the device's `_cs_pin` before `setup()`; no recorded state has `mode == Pin.OUT` with the active level, for both
+  `cs_active_value` settings. `test_aenter_releases_the_lock_if_configure_raises`: the trigger becomes
+  `SPIDevice(spi, 1, firstbit=FakeSPI.LSB)` (set up), whose `configure()` the fake refuses with `NotImplementedError`;
+  `except RuntimeError` → `except NotImplementedError`; the retry runs on a fresh `make_device(spi)`; its comment →
+  "# If configure() raises after __aenter__ took the lock, `async with` never calls __aexit__: __aenter__ must release
+  the lock itself before the exception propagates." `test_session_begin_deasserts_cs_if_configure_raises_mid_session`:
+  same LSB trigger, `except NotImplementedError`. New `test_session_begin_returns_false_on_a_deinitialized_bus`
+  (`session_begin()` is `False`, CS never asserted, the caller's lock hold intact) and
+  `test_aenter_on_a_deinitialized_bus_holds_the_lock_and_every_transfer_is_false` (the session enters, each transfer
+  returns `False`, CS never asserted, the lock released after).
+- **Resolved**: —
+- **Unit**: U13.
+- **Depends**: M.SRC_SENS.004; M.TEST_HELP.012 (`Pin.init(value=)`), .016 (LSB refusal).
+- **Blast carried by**: L2-L4 tiers → A.U13.03 (TWIN, HW_DEV; no wire effect, sweeps unchanged).
+- **Kind**: test
+
+### M.TEST_UNIT.152 RX-overrun pins name their observable effect
+- **From**: A.U24.38 (`:689`, `:698`), A.U35.20 (`:736`, `:1055` stay).
+- **Site**: `tests/test_asy_spi_driver.py:684-740`, `:1050-1080`.
+- **Change**: `:689` (long write, overrun armed) → the write lands in the log (`log[-1] == ("write", bytes(64))`) and
+  `rx_overrun` is still `True`; `:698` (short reads) → with scripted bytes queued, both reads return them and
+  `rx_overrun` stays `True` (the DMA path not taken). `:736` and `:1055` hold (driver-level duplicates kept per
+  A.U35.20).
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: M.TEST_HELP.016.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_asy_uart_comm.py
+
+### M.TEST_UNIT.153 Imports, harness bounds, wire copies, tagged waits, dividers
+- **From**: GAP-T1 (M.TEST_HELP.023/.024: `RUN_LIMIT_S` public, `run(coro, RUN_LIMIT_S)`, `build_pair()` asserts setup),
+  A.U24.31 (60 `build_pair(` sites), A.U8C.03/A.U8C.17 (tags; `POLL_WAIT_MS` imported), A.U8C2.04 (`:949`, `:952`),
+  A.U8C2.51 (read: SPEC Dependants), A.U8C.19 (read: shared IDs), A.U24.01 (`:33-42` kept as J.3 copies, `:43-44`
+  mirrors go), A.U10.37/A.U10.38 (module and class names), A.U16.05 (`:19`), A.U24.73 (`Any`, 23 lines), A.U27.30
+  (dividers), A.U10.18 (`bus.asy_lock` → `session_lock`), A.U2.20/A.U2.03 (catalog names), A.U0.07 (function-level
+  imports).
+- **Site**: `tests/test_asy_uart_comm.py:1-62` and every `run(`, divider, lock and wait-literal line A.U8C.17/A.U8C2.04
+  list.
+- **Change**: imports `from _async_harness import run`; `from _uart_comm_harness import PAYLOAD_SIZE, POLL_WAIT_MS,
+  RUN_LIMIT_S, TIMEOUT_MS, Pair, accept_set, build_pair, echo_get, frames`; `from _error_codes import code`; `from
+  asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, ResponderCallbacks, UARTComm, _next_uid`; `from
+  asy_base_classes import RegionBuffer`; `from asy_crc_checks import CRC16`; `from asy_framing_codecs import
+  FramingCOBS`; `import time` module level (the two in-function imports at `:497`, `:509`, `:749` go). `_CMD_ACK`…
+  `_PAYLOAD` keep their values with one comment line "# The wire layout of SPECIFICATION.md Part J.3 - the protocol's
+  own copy, pinned to the module by tests_scripts/test_const_mirrors.py."; `_ERR_ALLOC`/`_ERR_RXBUF` go — every use
+  reads `code("E", "ALLOC")`/`code("E", "UART_RXBUF")`. `persisted()` keeps its shape and gains the helpers `_e(name) ->
+  str` / `_w(name) -> str` returning `f"E{code('E', name)}"`/`f"W{code('W', name)}"`, used by every expected list.
+  Every bare `run(x)` → `run(x, RUN_LIMIT_S)` (the harness's old default bound kept explicit), every `run(x, limit=N)`
+  → `run(x, <the A.U8C.17 constant for N at that line>)`. Module constants with tags exactly as A.U8C.17 lists
+  (`_SHORT_REPLY_TIMEOUT_MS = 30`, `_STEP_BOUND_S = 10`, `_LOOP_SURVIVAL_WAIT_MS = 20`, `_SILENT_BOUND_S = 15`,
+  `_LISTENER_RUN_BOUND_S = 25`, `_SHORT_BOUND_S = 5`, `_PAST_DEADLINE_BOUND_S = 2`, `_FLOOD_STEP_MS = 1`, `_RUN_BOUND_S
+  = 20`, `_LISTENER_PARK_MS = 10`, `_INSIDE_LOCK_MS = 5`, `_LISTENER_SHORT_BOUND_S = 8`, `_ASYNC_CALLBACK_YIELD_MS = 1`,
+  `_BSEC_RUN_BOUND_S = 60`) and `_PROMPT_HOLD_MS = 5` (tagged) / `_PAST_CANCEL_ACK_HOLD_MS = 1300` (untagged, derived) per
+  A.U8C2.04; the `poll_wait_ms=1` literals at `:57, :82, :145, :156, :160, :177, :183` → `POLL_WAIT_MS`. Every
+  `# ====…` divider (12) → `# ----…` of the same length. `bus.asy_lock` (`:1955-1975`) → `bus.session_lock`. `Any`
+  annotations → `object` or the harness's callback protocols per A.U24.73's scheme.
+- **Resolved**: —
+- **Unit**: U24 (stages U8C tags, U10 names, U27 dividers).
+- **Depends**: M.TEST_HELP.023, .024, .043, .045; M.SRC_NET.150, .151, .153.
+- **Blast carried by**: Part N rows → A.U8.01 (SPEC); `tests_scripts/test_const_mirrors.py` row for the J.3 copies →
+  A.U24.02 (TSC); the divider gate → A.U27.30 (TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.154 Construction passes one callbacks object; callback attributes private
+- **From**: A.U5.12 (12 `UART_Comm(` calls, 88 callback keywords, `make_comm()`), A.U10.35 (`get_callback`,
+  `message_callback` private; M.SRC_NET.155 adds `set_callback`), A.U13.17 (`poll_idle_ms` equal to `poll_wait_ms`
+  where one rate is assumed), GAP (M_SRC_NET gap 5: `set_callback` readers).
+- **Site**: `tests/test_asy_uart_comm.py:54-62` (`make_comm`), every `UART_Comm(`/`UART(` construction, `:1527`,
+  `:1555`, `:1700`.
+- **Change**: `make_comm(**kwargs)` builds `UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS,
+  poll_idle_ms=POLL_WAIT_MS)` and maps its `get_callback`/`set_callback`/`message_callback` keywords into
+  `callbacks=ResponderCallbacks(get, set, message)` (absent when none is given) before `UARTComm(bus, role, **params)`;
+  every direct `UART_Comm(…)` → `UARTComm(…)`; every test `UART(…)` passes `poll_idle_ms` equal to its `poll_wait_ms`
+  (`:57, 82, 108, 145, 156, 160, 168, 177, 183`). `logger=own.pr` (`:207`) stays. `pair.responder.get_callback =
+  reentrant` → `pair.responder._get_callback = reentrant`; `pair.responder.message_callback is None` →
+  `._message_callback is None`; `pair.responder.get_callback = None` → `._get_callback = None`.
+- **Resolved**: —
+- **Unit**: U5 (stages U10 names, U13 idle rate).
+- **Depends**: M.SRC_NET.154, .155.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.155 Construction refusals: poll range, timeout ceiling, codec size
+- **From**: A.U17.20 (`:105-111`, `:165-170`; new L1s), A.U17.22 (`:177`, `:183` hold; new L1), A.U2.20 (`:181`
+  code).
+- **Site**: `tests/test_asy_uart_comm.py:102-185`; new tests after `:185`.
+- **Change**: `:105-111` → `poll_wait_ms=9, poll_idle_ms=9` (floor 2 × 9 + 9 + 21 = 48: 30 still refused, 200
+  accepted). `:165-170` → `poll_wait_ms=9`; `assert … == code("E", "UART_RXBUF")`; comment → "# A 9ms poll interval plus
+  the module's 5ms of scheduling slack admits ~161 bytes at 115200 baud, so a 64-byte rxbuf loses the tail of anything
+  sustained even though a frame fits." `:181` → `code("E", "ALLOC")`; `Framing_COBS` → `FramingCOBS`. New
+  `test_the_timeout_ceiling_keeps_every_deadline_a_valid_tick_delay` (89_478_485 accepted, its `_resync_window_ms() * 4`
+  and `_backoff_max_ms` both below 2**29 by the test's own arithmetic; 89_478_486 refused with
+  `code("E", "UART_TIMEOUT_PARAM")`); `test_a_poll_rate_outside_one_to_nine_ms_is_refused` (0 and 10 →
+  `code("E", "UART_POLL_RATE")`; 1 and 9 accepted, rxbuf and timeout sized to pass);
+  `test_a_codec_below_one_frame_is_refused` (a `FramingCOBS` one byte below `5 + payload_size + crc.length()` →
+  `code("E", "UART_CODEC_SIZE")`, exactly that size accepted, and a pair on exact-sized codecs completes a GET and a SET
+  with no CRC and with CRC16).
+- **Resolved**: —
+- **Unit**: U17.
+- **Depends**: M.SRC_NET.152, .153, .156.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.156 One plain error helper: catalog codes, the central repeat rule
+- **From**: A.U3.02 (`:221-231` `_last_errno` goes; `:234-273` rewritten), A.U3.01, A.U10.04 (`:225` holds), A.U17.13
+  and A.U17.14 (`:221-231` hold), A.U2.20.
+- **Site**: `tests/test_asy_uart_comm.py:221-273`.
+- **Change**: the synthetic `_err(19, …)`/`_err(20, …)` → `_err(code("E", "UART_FRAME_INVALID"), …)`/`code("E",
+  "UART_NO_ACK")`. `test_reset_clears_the_history_and_the_streak_state`: the `_last_errno` assertion goes (the attribute
+  is gone); `_blind_resyncs == 0` and `ErrCount == 0` hold. `test_a_repeated_identical_fault_stops_persisting` →
+  `test_a_repeated_identical_fault_spends_one_slot_and_counts_every_time`: 21 identical faults leave one slot of that
+  code and `ErrCount == 21`; `comm._note_valid_frame()` (synchronous now, no `run`) adds nothing; a different code then
+  spends a second slot. `test_a_single_transient_fault_leaves_one_entry_not_a_pair` holds with the synchronous call.
+  `test_a_repeatedly_declined_command_does_not_refill_the_history`: five declines → `persisted == [_w("UART_CMD_DECLINED")]`
+  with `ErrCount == 5`; a second id `0x43` is the same code and spends no slot (`persisted` unchanged, `ErrCount == 6`);
+  its comment → "# A declined command persists W56 each time; identical codes share one slot under the central rule
+  (C.7.1), whatever the id." and `run(…, limit=10)` → `run(…, RUN_LIMIT_S)`.
+- **Resolved**: —
+- **Unit**: U3 (stage U2 names).
+- **Depends**: M.SRC_NET.158, .163, .164; M.SRC_CORE (A.U3.01 newest-entry rule).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.157 Range-sweep tests retire for the L0 catalog check
+- **From**: A.U2.02 (`:275-303`, `:306-317` removed), A.U24.50 (3) (`:308-316` keyword floor).
+- **Site**: `tests/test_asy_uart_comm.py:275-317`.
+- **Change**: both tests and the `_SRC` constant's use there go (`_SRC` stays for `:400`'s structural test). Guard
+  named: `tests_scripts/test_error_catalog.py` (A.U2.02) — every logging call is catalogued, by keyword and one idiom.
+- **Resolved**: A.U24.50 (3) (U24) hardens `:308-316` against matching nothing; A.U2.02 (U2) removes that test first
+  with its `_ERRNO_MIN/_MAX` source. The test's own target is gone, so A.U24.50 (3)'s non-vacuity requirement moves to the
+  L0 check that replaces it (agent decision D-T14; carried as GAP-U2 (TSC)).
+- **Unit**: U2.
+- **Depends**: M.SRC_NET.153.
+- **Blast carried by**: the keyword-matched-at-least-once floor → GAP-U2 (TSC, `tests_scripts/test_error_catalog.py`).
+- **Kind**: test
+
+### M.TEST_UNIT.158 Five buffers in region buffers
+- **From**: A.U3.02 (`:347-365` five-tuple), A.U16.05 (`:337`, `:1256`, `:2182`), A.U2.20 (`:362`).
+- **Site**: `tests/test_asy_uart_comm.py:333-365`, `:1253-1260`, `:2176-2186`.
+- **Change**: `starved()` unpacks `tx, rx, _ack, _zero, _cmd = real_allocate(self)` and returns `tx, rx, bytearray(0),
+  bytearray(0), bytearray(0)`; `UART_Comm._allocate` → `UARTComm._allocate` (the two inline `method-assign` ignores
+  stay); `:362` → `code("E", "ALLOC")`. The `:337` and `:1256` comments' `LockableBuffer` → `RegionBuffer`. `:2182` →
+  `comm._rx = RegionBuffer(-1)` (a region buffer whose allocation failed) with the same `get_buf() is None` premise
+  check.
+- **Resolved**: —
+- **Unit**: U16 (stage U3 tuple).
+- **Depends**: M.SRC_NET.157; M.SRC_CORE `RegionBuffer` (A.U16.05).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.159 Starters by name; the listen loop re-listens after a command
+- **From**: A.U32.06 + A.U10.44 (`:392-393`), A.U17.17 (`:425-431`, `:434-460`, `:1514-1560` hold; new L1s),
+  A.U17.20 (backoff under the ceiling), A.U3.08 (`:449`).
+- **Site**: `tests/test_asy_uart_comm.py:386-460`; new tests after `:460`.
+- **Change**: `:392-393` → `responder.get_task_starters() == [responder.start_asy_listen]`. New
+  `test_a_declined_get_does_not_back_off_the_next_answer` (pair built at sync scope `run(build_pair(…), RUN_LIMIT_S)`;
+  the responder's real listen task; `get_callback` declines 9, answers 1; four `uart_get(9)` → `None`, then `uart_get(1)`
+  right after the initiator's recovery returns the answer; a recorder replacing `asy_uart_comm.asyncio.sleep_ms`
+  (restored in `finally`) holds no delay ≥ `_backoff_initial_ms` between the first decline and the answer);
+  `test_a_dead_link_still_doubles_its_backoff` (noise fed each round, `_LISTEN_FAILED` each time: the recorded sleeps
+  double); `test_the_backoff_stays_a_valid_tick_delay_at_the_timeout_ceiling` (`timeout = 89_478_485`, `uart_listen`
+  replaced on the instance by a coroutine returning `_LISTEN_FAILED`, the module's `sleep_ms` by an immediate recorder,
+  8 rounds: delays double from `_backoff_initial_ms` to `_backoff_max_ms`, each below 2**29). The two delivery tests
+  (`:1514-1560`) call `start_asy_listen()` by name instead of indexing the starter list.
+- **Resolved**: —
+- **Unit**: U17 (stages U10 starter, U32 hold).
+- **Depends**: M.SRC_NET.170.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.160 Exchange layer: owner tag; the hold-off crosses a real wrap
+- **From**: A.U0.28 (`:704`), A.U17.12 (read: `:704` holds after A.U0.28), A.U14.34 (`:748-757`), A.U17.06 (new (a)-(c);
+  `:725-736` holds), A.U25.30 (read: `:641`, `:664` use the unit fake's `settle()`), A.U17.16 (read: `:529`, `:613` hold).
+- **Site**: `tests/test_asy_uart_comm.py:700-757`; new tests after `:757`.
+- **Change**: `:704` "folded into failure by decision" → "folded into failure (owner, 2026-09-11, `b131169`)".
+  `test_the_hold_off_deadline_survives_the_ticks_rollover` crosses a real 2**30 wrap: `Ticks30Time` installed as
+  `asy_uart_comm.time` (restored in `finally`), `now` set just below the wrap, the hold-off armed, the clock advanced
+  past the wrap by more than a window → the gate returns at once. New (A.U17.06):
+  `test_a_hold_off_aged_past_the_tick_horizon_expires` (armed at `now`, advanced 2**29 + 1000 ms → returns at once, flag
+  cleared); `test_the_aliased_band_holds_at_most_one_window` (advanced 2**30 + window/2 → still held, released once a
+  helper task advancing the fake clock 20 ms per real `sleep_ms(1)` has moved it a further window/2);
+  `test_an_unaged_hold_off_releases_at_its_window` (window − 1 → held; window + 1 → released).
+- **Resolved**: —
+- **Unit**: U17 (stages U0 tag, U14 wrap).
+- **Depends**: M.SRC_NET.160; M.TEST_HELP.064.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.161 Resyncs print; only the drain bound persists W54
+- **From**: A.U3.08 (`:801-835`; new L1), A.U17.14 (new L1), A.U10.04 (new L1), A.U2.20.
+- **Site**: `tests/test_asy_uart_comm.py:801-855`; new tests after `:855`.
+- **Change**: `test_a_drain_that_hits_its_bound_spends_the_episode_slot_on_the_more_specific_warning` →
+  `test_a_drain_that_hits_its_bound_persists_the_drain_warning` (`persisted == [_w("UART_DRAIN_BOUND")]`; comment →
+  "# W54 separates a babbling or misconfigured peer from ordinary line noise; a quiet resync only prints.");
+  `test_a_quiet_resync_still_persists_the_plain_resync_warning` → `test_a_quiet_resync_persists_nothing`
+  (`persisted == []`). The boot-drain test holds. New `test_one_fault_on_a_quiet_line_adds_one_entry` (the errno only) and
+  `test_one_fault_hitting_the_drain_bound_adds_the_errno_and_w54`; `test_the_blind_resync_streak_saturates` (`_blind_resyncs`
+  set to the streak threshold read with `src_const(_SRC, "_DIAG_RESYNC_STREAK")`; a further blind resync leaves it there
+  and still persists `code("E", "UART_LINK_UNINTELLIGIBLE")`); `test_the_valid_frame_count_saturates` (`_valid_frames =
+  COUNTER_CAP`, one more validated frame leaves it at `COUNTER_CAP`; `COUNTER_CAP` from `asy_base_classes`).
+- **Resolved**: A.U17.14 says the threshold literal is "tagged with its Part N row"; read from source instead, the
+  test carries no copy (A.U24.01's rule) — the row's Dependants name the test (agent decision, same as D-T4).
+- **Unit**: U17 (stages U3, U10).
+- **Depends**: M.SRC_NET.162, .164; M.TEST_HELP.044.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.162 Cancel-unacknowledged: W55 and the two hold constants
+- **From**: A.U8C2.04 (`:949`, `:952`), A.U2.20 (W13 → 55), A.U8C.17 (`:945`, `:949`, `:952` bounds).
+- **Site**: `tests/test_asy_uart_comm.py:925-953`.
+- **Change**: `scenario(1300)` → `scenario(_PAST_CANCEL_ACK_HOLD_MS)`, `scenario(5)` → `scenario(_PROMPT_HOLD_MS)`; the
+  comment "past the driver's own 1000ms acknowledgement bound" stays; `["W13"]` → `[_w("UART_CANCEL_UNACKED")]`; the
+  comment's "wrnno 13" → "W55".
+- **Resolved**: —
+- **Unit**: U8C (stage U2 code).
+- **Depends**: M.SRC_NET.153.
+- **Blast carried by**: Part N `uart.cancel_ack_timeout_ms` Dependants → A.U8C2.51 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.163 Gate first, then arguments; API-only section header
+- **From**: A.U17.01 (`:187-197`, `:1255-1260`, `:1336`, `:1353`, `:1365`, `:1390`, `:1430`, `:1443`, `:1451` hold; new
+  L1s), A.U17.02 (header after `:1336`), A.U2.20 (`:1450` 34 → BAD_ARG).
+- **Site**: `tests/test_asy_uart_comm.py:187-197`, `:1336-1451`; new tests.
+- **Change**: `:1450` `assert 34 in log["ErrNum"]` → `code("E", "BAD_ARG") in log["ErrNum"]`. After `:1336` the header
+  "# ---- General-purpose initiator API: no product caller; kept as the standalone module's API (owner, 2026-09-29) ----"
+  heads the stream/into tests that follow. New `test_every_initiator_entry_point_answers_not_initialised_before_setup`
+  (`uart_get_into(1, None)`, `uart_get_stream(1, None)`, `uart_set_stream(1, 4, None)`, `uart_get(256)` before
+  `setup()` each persist `code("E", "NOT_INIT")`, not ALLOC/BAD_ARG); `test_a_responder_refuses_the_role_before_any_argument`
+  (the same six calls with invalid arguments on a set-up responder each persist `code("E", "UART_ROLE_REFUSED")`);
+  `test_the_command_id_is_checked_first_on_an_initiator` (`uart_set_stream(256, -1, None)` persists `code("E",
+  "BAD_ARG")` for the id).
+- **Resolved**: —
+- **Unit**: U17 (stage U2).
+- **Depends**: M.SRC_NET.167.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.164 Fault histories without the resync warning; renumbered codes
+- **From**: A.U3.02 + A.U3.08 (`:1458-1506`, `:1729-1746`, `:1763, 1781, 1841, 1884, 1944, 2033`, `:1983-2000`),
+  A.U2.20 (`:1666`, `:1702`, `:1822`, and every `persisted()` literal), A.U10.35 (`:1700`).
+- **Site**: `tests/test_asy_uart_comm.py:1458-1506`, `:1640-2033`.
+- **Change**: `test_a_repeating_fault_does_not_bury_the_errno_under_resync_warnings` → `…_spends_one_slot`: five
+  identical no-ACK faults leave `recorded == [("E", code("E", "UART_NO_ACK"))]` and `ErrCount == 5` (no resync warning
+  exists). `test_a_recovered_link_starts_a_fresh_episode` → `test_a_recovered_link_counts_every_later_fault`: after the
+  recovery and one more fault, `ErrCount == 3` and the history still holds one no-ACK slot (identical to the newest
+  entry); its comment states the central rule. `test_a_rejected_command_is_distinguishable_from_a_link_fault`: `("W",
+  14)` → `("W", code("W", "UART_CMD_DECLINED"))`. `:1666` `["W14"]` → `[_w("UART_CMD_DECLINED")]`; `:1702` `["E16"]` →
+  `[_e("BAD_ARG")]`; `"E21"` → `_e("UART_WRITE_FAILED")`, `"E29"` → `_e("UART_GET_ID_MISMATCH")`, `"E24"`/`"E14"` →
+  `_e("ALLOC")`, `"E25"` → `_e("UART_SIZE_MISMATCH")`, `"E33"` → `_e("UART_STREAM_SHORT")`, `"E26"` → `_e("CALLBACK")`;
+  every `"W10"` element goes from its expected list (`[errno, "W10"]` → `[errno]`), and `:1729-1746`'s `"W10" in log`
+  becomes an assertion that the resync ran (`_holdoff_active is True`). The comments naming "errno 21"/"errno 33"/
+  "errno 26" name the catalog codes. `test_two_declined_ids_in_rotation_do_not_refill_the_history_either` →
+  `persisted == [_w("UART_CMD_DECLINED")]` after the twelve refusals (`ErrCount == 12`), unchanged after the third id;
+  after `reset_error_counter()` one more refusal gives the same one-slot history; comment → "# Alternating declined ids
+  are one code, W56: one slot, every refusal counted (C.7.1)."
+- **Resolved**: —
+- **Unit**: U3 (stage U2 numbers, U10 names).
+- **Depends**: M.SRC_NET.153, .158, .162, .163.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.165 A FRAM-backed comm log survives a second logger
+- **From**: A.U24.45 (1), A.U5.12 (`log=` object).
+- **Site**: new test in `tests/test_asy_uart_comm.py` (after `:217`).
+- **Change**: `test_a_fram_backed_log_reads_back_through_a_second_logger`: `manager = make_fram_manager()` (setup run),
+  `comm = make_comm(name="UART_X", log=LogConfig(manager, 10, None))`, one failed transaction (a silent peer) logs
+  `code("E", "UART_NO_ACK")`; a second logger over the same manager (`make_logger(LogConfig(manager, 10, None),
+  "UART_X")`, set up) reads the same newest entry back.
+- **Resolved**: —
+- **Unit**: U24 (stage U5 log object).
+- **Depends**: M.SRC_NET.155; M.TEST_HELP.057; M.SRC_CORE `LogConfig`/`make_logger`.
+- **Blast carried by**: `tests/test_asy_uart_link_driver.py:258-266` comment → M.TEST_UNIT in that file (A.U24.45).
+- **Kind**: test
+
+### M.TEST_UNIT.166 Cancellation at every await of the initiator and listener
+- **From**: A.U35.48 (one sweep per path), A.U10.18 (`:1955-1975` lock name).
+- **Site**: `tests/test_asy_uart_comm.py:1946-1977`; new test.
+- **Change**: the cancelled-transaction test reads `bus.session_lock.locked()`. New
+  `test_cancelling_at_each_await_leaves_no_lock_or_busy_flag` drives `cancel_at_each_await(build, start, invariants)`
+  from synchronous scope over `uart_set`, `uart_get` and `uart_listen` (build: a `Pair` on the harness's bounded
+  `LinkPoller`, set up inside the coroutine; invariants: `_busy is False`, the bus `session_lock` unlocked,
+  `_in_resync is False`).
+- **Resolved**: —
+- **Unit**: U35 (stage U10 name).
+- **Depends**: M.TEST_HELP.067; M.SRC_NET.167, .168.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.167 Legacy BSEC demonstration: paths, tags, codes
+- **From**: A.U1.25 (`:2037`, `:2041`, `:2138`), A.U0.35 (`:2159`), A.U36.544 (`:2161`), A.U36.027 (read: SPEC J.1),
+  A.S0930.03 (`:2163` CRC16 holds), A.U2.20 (`:2168-2169`), A.U35.22 (read: L1 trains named in the level matrix).
+- **Site**: `tests/test_asy_uart_comm.py:2035-2186`.
+- **Change**: `dev_legacy/…` → `legacy/dev_drivers/…` at the three sites; `:2159` "Kept rather than relaxed" → "Kept rather
+  than relaxed (agent, 2026-09-13)"; `:2161` "(SPECIFICATION.md Part J.1)" → "(SPECIFICATION.md Parts J.5, J.6)";
+  `UART_Comm` → `UARTComm`; `:2168-2169` `_ERR_RXBUF` → `code("E", "UART_RXBUF")`; `run(scenario(), limit=60)` →
+  `run(scenario(), _BSEC_RUN_BOUND_S)`.
+- **Resolved**: —
+- **Unit**: U36 (stages U0 tag, U1 path, U2 code).
+- **Depends**: M.SRC_NET.153.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_asy_uart_driver.py
+
+### M.TEST_UNIT.168 Harness, names, tagged waits, one-line poller rule
+- **From**: A.U24.08 (`:23-27` bound 5), A.U8C.18 (tags), A.U8C2.50 (`:1593`, `:1597`), A.U8C.09/A.U8C.16 (shared
+  `l1.asy_i2c_driver_deadlock_wait_s` at `:1372`), A.U8C2.51 (read: `:1862` a Dependant), A.U10.37/A.U10.38 (imports,
+  codec class names), A.U10.29 (`COBS_DELIMITER` stays public), A.U10.18 (`asy_lock` → `session_lock`, 9 sites),
+  A.U24.15 (4) (`:24-25, 32-33, 44-45, 439-441, 857-859` comments), A.U36.532 (`:1465`, `:1561`, `:1584` F.5.x →
+  F.8.x), A.U24.73 (`Any`), A.SDEP.16 (W14: `_StepPoller` stays, only its stated cause is re-read).
+- **Site**: `tests/test_asy_uart_driver.py:1-56`, the lock lines, the comment and wait-literal lines named.
+- **Change**: imports `from _async_harness import run`; `from asy_crc_checks import CRC16, CRCBase, CRCPass`; `from
+  asy_framing_codecs import COBS_DELIMITER, FramingBase, FramingCOBS, FramingPass` (class uses follow). The local `run()`
+  goes; calls pass `_RUN_BOUND_S` (`# @tunable l1.asy_uart_driver_run_bound_s = 5`). Module constants and tags exactly
+  as A.U8C.18 lists, except `_WEDGED_HOLD_MS` (withdrawn, M.TEST_UNIT.171); `_DEADLOCK_WAIT_S = 0.2` carries the shared
+  `l1.asy_i2c_driver_deadlock_wait_s` tag; `:1593` → `>= 2 * _IDLE_POLL_MS`, `:1597` → `< _IDLE_POLL_MS`. Every
+  `uart.asy_lock` → `uart.session_lock`. The poller comments at `:24-25`, `:32-33`, `:44-45`, `:439-441`, `:857-859`
+  each become the one line "# Bounded stand-in, never a real select.poll(): the fake's readiness must be scripted, not
+  polled in real time (CLAUDE.md "Known hang cause")." (`_StepPoller`'s second and third comment lines describing its
+  stepping stay). "F.5.7"/"F.5.8"/"F.5.9" → "F.8.1"/"F.8.2"/"F.8.3" at U36. `Any` → `object` per A.U24.73.
+- **Resolved**: —
+- **Unit**: U24 (stages U8C tags, U10 names, U36 repoint).
+- **Depends**: M.TEST_HELP.043; M.SRC_NET.190, .191, .193.
+- **Blast carried by**: Part N rows → A.U8.01 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.169 Readiness through the fake's poll mask; the real-poll guard holds
+- **From**: A.U24.15 (`:438-445` stay as local checks), GAP-T4 (M.TEST_HELP.010/.017).
+- **Site**: `tests/test_asy_uart_driver.py:438-445`.
+- **Change**: `test_no_uart_built_here_polls_through_a_real_select_poll` holds. No test in this file reads readiness
+  through `ioctl(…)` (grep at HEAD: none), so GAP-T4's `poll_mask()` rewrite has no site here; every test runs under the
+  after-each `real_poll_queries == 0` check and needs nothing more (none registers a real poll).
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: M.TEST_HELP.010, .017.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.170 Default poll rates change; timing tests re-checked
+- **From**: A.U13.17 (`make_uart()` defaults 2/50; re-check `:371, 405-420, 700-830, 875, 1140-1150`), A.U8C2.50.
+- **Site**: `tests/test_asy_uart_driver.py:30-36`, `:362-425`, `:690-850`, `:869-878`, `:1131-1170`, `:1582-1598`.
+- **Change**: `make_uart()` passes `poll_wait_ms=1, poll_idle_ms=1` unless the test names its own rates, so the
+  interleavings at the listed lines keep their HEAD timing (each was written against equal 20/20 rates and a bound in
+  ms; at 1/1 every bound keeps its margin). `test_a_deadlineless_wait_polls_at_the_idle_rate_and_a_bounded_one_does_not`
+  keeps its explicit `poll_wait_ms=_POLL_WAIT_MS, poll_idle_ms=_IDLE_POLL_MS`. New
+  `test_the_default_rates_are_two_and_fifty_ms` (`UART(0, tx_pin=0, rx_pin=1)` built directly: `poll_wait_ms == 2`,
+  `poll_idle_ms == 50`).
+- **Resolved**: A.U13.17 says "re-check at execution the timing-dependent ones"; pinning the file's builder to one fast
+  rate keeps every listed interleaving's premise without per-test edits, and the defaults get their own assertion
+  (agent decision D-T16).
+- **Unit**: U13.
+- **Depends**: M.SRC_NET.192.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.171 The wedged holder waits on an event, not a sleep
+- **From**: A.U35.14 (3) (`:790-806`), A.U8C.18 (`:799` row withdrawn, `:804` kept).
+- **Site**: `tests/test_asy_uart_driver.py:791-811`.
+- **Change**: `wedged()` awaits an `asyncio.Event` the test never sets (instead of `sleep_ms(400)`); the scenario
+  cancels the holder in `finally` and awaits it out; `cancel_read_timeout(timeout_ms=_SHORT_CANCEL_ACK_MS)` keeps its real
+  50 ms with one comment line "# A product bound waited out (the cancel acknowledgement), tagged as such." Assertions
+  unchanged. No `_WEDGED_HOLD_MS` constant or tag.
+- **Resolved**: —
+- **Unit**: U35.
+- **Depends**: M.TEST_HELP.065 (A.U35.10).
+- **Blast carried by**: Part N row `l1.asy_uart_driver_wedged_hold_ms` withdrawn → A.U35.14 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.172 Cancel handshake at the counter cap
+- **From**: A.U17.28 (`:402-835` hold; new L1s), A.U2.20 (the rise warning's code).
+- **Site**: new tests after `:851`.
+- **Change**: `test_a_cancel_at_the_counter_cap_wraps_and_is_acknowledged` (`_cancel_req` and `_cancel_ack` set to
+  `COUNTER_CAP`; a cancel against a holder that acknowledges returns with request 0 acknowledged);
+  `test_the_unacknowledged_count_wraps_and_clear_still_reports_a_rise` (`cancel_unacknowledged = COUNTER_CAP`, a wedged
+  holder wraps it to 0; `UARTComm.clear()` over that driver still persists `code("W", "UART_CANCEL_UNACKED")`).
+  `COUNTER_CAP` from `asy_base_classes`.
+- **Resolved**: —
+- **Unit**: U17.
+- **Depends**: M.SRC_NET.197.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.173 Writes wait for an empty TX ring, at most txbuf at a time
+- **From**: A.U13.13 (`:1090-1140` hold; new L1s), A.U14.31 (read: the L1 proof is this one).
+- **Site**: new tests after `:1250`.
+- **Change**: `test_a_long_message_goes_out_in_txbuf_sized_writes` (`txbuf=32`, a 96-byte message: three `write()`
+  entries in the fake log, each ≤ 32); `test_no_write_happens_while_the_ring_is_draining` (the fake's `txdone()` false
+  for N rounds: no `write` logged in those rounds and a counter task runs at least once per round);
+  `test_cancel_or_deinit_during_the_drain_wait_returns_false`.
+- **Resolved**: —
+- **Unit**: U13.
+- **Depends**: M.SRC_NET.195; M.TEST_HELP.017 (fake `txdone()`/`tx_pending_rounds`).
+- **Blast carried by**: L2 GET-answer case → A.U13.13 (TWIN).
+- **Kind**: test
+
+### M.TEST_UNIT.174 A zero-length payload is nothing to send
+- **From**: A.U12.03 (`:937-944`, `:1090-1102` hold; `:1866-1870` flips), A.U12.02 (`:648-658` holds).
+- **Site**: `tests/test_asy_uart_driver.py:1865-1870`.
+- **Change**: `test_a_crc_framed_write_of_nothing_is_refused_rather_than_sent_as_a_bare_crc` →
+  `test_a_crc_framed_write_of_nothing_succeeds_and_sends_nothing` (`locked_writefrom(uart, bytearray(8), 0) is True`,
+  `written(uart) == b""`), comment → "# A zero-length payload is nothing to transfer: writefrom() reports success and
+  sends nothing, never a bare CRC." New `test_a_crc_framed_read_of_nothing_returns_empty` (`crc=CRC16()`:
+  `read_until_complete(0) == bytearray()`, `readinto_until_complete(buf, 0) == 0`, nothing read).
+- **Resolved**: —
+- **Unit**: U12.
+- **Depends**: M.SRC_NET.200, .201, .203.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.175 Readline paths take a size and are clamped
+- **From**: A.U13.12 (`:920-929, 1040-1070, 1628-1660, 1872-1880` hold; `:1068`, `:1775` gain `size`; comments; new L1).
+- **Site**: `tests/test_asy_uart_driver.py:1040-1070`, `:1628-1660`, `:1670`, `:1770-1785`, `:1873`.
+- **Change**: `patched_readline()` (`:1068`) and `no_readline()` (`:1775`) take `size: int = -1` and forward it; the
+  "no count to clamp" comments at `:1629`, `:1648`, `:1670`, `:1873` → "clamped to `any()` like every counted read".
+  New `test_a_line_longer_than_the_buffer_is_read_in_clamped_rounds` (each `readline()` request ≤ `any()` in the fake
+  log, `would_have_blocked_bytes` stays 0).
+- **Resolved**: —
+- **Unit**: U13.
+- **Depends**: M.SRC_NET.202; M.TEST_HELP.017 (fake `readline(size)`).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.176 Delimited reads: yields, discard counts, exact codec size, deinit races
+- **From**: A.U13.14 (`:600-676` hold; new L1), A.U17.13 (new L1s), A.U17.22 (`:514`, `:600-603`, `:678` hold; new L1),
+  A.U13.18 (new L1), A.U13.19 (new L1).
+- **Site**: new tests in the B2 and never-raises sections.
+- **Change**: `test_a_run_of_delimiters_lets_another_task_run` (64 delimiters then a frame: a counter task runs ≥ 4 times
+  before the frame returns); discard-count cases on `discarded_bytes` — a mid-frame timeout adds the partial length, a
+  CRC16 failure the whole frame, a COBS decode failure the consumed bytes, a start timeout 0, a good frame nothing, and
+  a count set near `COUNTER_CAP` wraps without passing it; `test_an_exact_size_codec_delivers_a_full_frame`
+  (`cobs_uart(max_frame=<frame + CRC>)` through `readinto_until_complete()`); `test_a_deinit_during_readys_closing_yield_hands_back_no_dead_uart`
+  (a `_StepPoller` whose ready round is followed by a task calling `deinit()`: `read()`, `readinto_until_complete()`,
+  `write()` return `None`/`False` and the fake logs nothing after the deinit; the same for `_read_delimited()` with a
+  COBS codec after 16 bytes); `test_an_idle_wait_beyond_the_ticks_range_returns_false` (`poll_idle_ms = 2**29`, a bounded
+  never-ready `_StepPoller`: `ready(timeout_ms=-1)` is `False` without raising).
+- **Resolved**: —
+- **Unit**: U17 (stage U13).
+- **Depends**: M.SRC_NET.196, .199, .200, .201.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.177 Cancellation at every await of a session and of ready()
+- **From**: A.U35.48.
+- **Site**: new test in `tests/test_asy_uart_driver.py`.
+- **Change**: `test_cancelling_a_session_at_each_await_releases_the_lock` drives `cancel_at_each_await()` from
+  synchronous scope over a locked `read_until_complete()` and a `write()` on `make_uart()` (its `_StepPoller` bounded);
+  invariants: `session_lock` unlocked, `cancel_unacknowledged` unchanged, no `read`/`write` logged after the
+  cancellation.
+- **Resolved**: —
+- **Unit**: U35.
+- **Depends**: M.TEST_HELP.067.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_asy_uart_link_driver.py
+
+### M.TEST_UNIT.178 Harness bounds imported; local pair asserts setup and takes a CRC
+- **From**: GAP-T1 (M.TEST_HELP.023/.024), A.U8C.19 (`:25`, `:26`, `:29`, `:58` imported; `:151`, `:370` tagged),
+  A.U8C.03 (importer), A.U24.08 (`:29-31`), A.U24.31 (`:71-74`, 8 callers), A.U24.15 (`:43` comment), A.U13.17
+  (`:38-39`, `:78` idle rate), A.U17.20 (read: this file polls at 1), A.S0930.03 (`Pair`/`build_pair` gain `crc`; the
+  byte-moving tests run in both modes), A.U10.37/A.U10.38 (names), A.U24.73 (`Any`).
+- **Site**: `tests/test_asy_uart_link_driver.py:1-75`, `:151`, `:370`, and the byte-moving tests `:163, :175, :188, :200,
+  :227, :236, :247, :357`.
+- **Change**: imports `from _async_harness import run`; `from _uart_comm_harness import LISTENER_DRAIN_S,
+  POLL_WAIT_MS, RUN_LIMIT_S, TIMEOUT_MS`; `from asy_uart_link_driver import UARTLinkDriver`; `from asy_print_log import
+  LogConfig, make_logger`; `from asy_crc_checks import CRC16`. The local `PAYLOAD_SIZE = 8` stays (the exerciser's own
+  test size); `TIMEOUT_MS`/`POLL_WAIT_MS` and `run()` local definitions go; every `run(x)` → `run(x, RUN_LIMIT_S)`;
+  `:58` `wait_for(listener, 5)` → `wait_for(listener, LISTENER_DRAIN_S)`. `# @tunable l1.asy_uart_link_driver_round_poll_s =
+  0.005` / `_ROUND_POLL_S = 0.005` (`:151`) and `# @tunable l1.asy_uart_link_driver_ticker_step_ms = 1` / `_TICKER_STEP_MS
+  = 1` (`:370`). `Pair(payload_size, timeout, crc=None)` builds both `UART(…, poll_wait_ms=POLL_WAIT_MS,
+  poll_idle_ms=POLL_WAIT_MS, crc=crc() if crc else None)` and `UARTLinkDriver(…)`; its poller comment → "# Bounded
+  stand-in, never a real select.poll(): the fake's readiness must be scripted, not polled in real time (CLAUDE.md "Known
+  hang cause")."; `build_pair(payload_size, timeout, crc=None)` → `assert await pair.setup(), "Pair.setup() failed - both
+  roles must be ready before the test's own assertions mean anything"`. The eight byte-moving tests become `_check_*`
+  functions registered per mode by a file-local `_register_both_crc_modes()` (`("nocrc", None), ("crc16", CRC16)`, names
+  suffixed `_nocrc`/`_crc16`), the shape of `tests/test_uart_comm_hazard.py`'s (copied: the harness owns the protocol
+  layer's). Every `test_*` constructing `UART(…, poll_wait_ms=POLL_WAIT_MS)` adds `poll_idle_ms=POLL_WAIT_MS`.
+- **Resolved**: A.U8C.19 imports `_LISTENER_DRAIN_S`/`_RUN_LIMIT_S`; M.TEST_HELP.024 published them without the
+  underscore (D5 there), so this file imports the public names (GAP-T1).
+- **Unit**: U24 (stages U8C, U10, U13; A.S0930.03 in U24).
+- **Depends**: M.TEST_HELP.023, .024, .043; M.SRC_NET.211, .213.
+- **Blast carried by**: Part N rows → A.U8.01 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.179 Constructor log object, private counters, named starters
+- **From**: A.U5.02 (9 `fram=` sites → `log=`), A.U5.01 (`:334`-area `make_logger(` call), A.U5.12 (`logger=` stays),
+  A.U10.38 (`UartLinkExerciser` → `UARTLinkDriver`), A.U10.35 + M_SRC_NET gap 5 (`transfers`/`failures` →
+  `_transfers`/`_failures`; `_comm.get_callback` → `_comm._get_callback`), A.U32.06 + A.U10.44 (`:89-90`, `:107`,
+  `:210`), A.U11.S02 (read: `:122` holds), A.U11.S03 (read: ignores kept).
+- **Site**: every `UartLinkExerciser(` call; `:84-108`, `:122`, `:136-175`, `:210`, `:270-356`.
+- **Change**: `UartLinkExerciser(…)` → `UARTLinkDriver(…)`; each `fram=<manager>` → `log=LogConfig(<manager>, 10,
+  None)` (the inline `# type: ignore[arg-type]` moves with the fake manager to that argument); `make_logger(_FakeFramManager(),
+  name="UART_fram_test")` → `make_logger(LogConfig(_FakeFramManager(), 10, None), "UART_fram_test")`; `logger=owner.pr`
+  stays. Every `.transfers`/`.failures` → `._transfers`/`._failures` (the `_one_exercise_round` poll included);
+  `pair.responder._comm.get_callback = …` → `pair.responder._comm._get_callback = …` (its trailing comment kept). The
+  initiator starter test asserts `initiator.get_task_starters() == [initiator.start_asy_exercise]` before calling it;
+  the responder's asserts `== [responder._comm.start_asy_listen]`; `:210` calls `pair.responder.get_task_starters()[0]()`
+  unchanged; the `:89` comment's `UART_Comm` → `UARTComm`.
+- **Resolved**: —
+- **Unit**: U10 (stages U5 log object, U32 hold).
+- **Depends**: M.SRC_NET.213, .215; M.SRC_CORE `LogConfig`/`make_logger` (A.U5.01).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.180 The reset leaves the link counters; the counters cap
+- **From**: A.U17.19 (`:133-140` inverts), A.U17.29 (new L1).
+- **Site**: `tests/test_asy_uart_link_driver.py:133-140`; new tests after `:245`.
+- **Change**: `test_reset_error_counter_also_resets_link_counters` → `test_reset_error_counter_leaves_the_link_counters`:
+  `_transfers = 5`, `_failures = 2`, one `err_s` logged; after `reset_error_counter()` (returns `True`) the counters read
+  5 and 2 and the comm's history is empty. New `test_the_transfer_count_stops_at_the_counter_cap` (`_transfers =
+  COUNTER_CAP`, one successful `_one_exercise_round` leaves it there) and `test_the_failure_count_stops_at_the_counter_cap`
+  (the same with a silent peer).
+- **Resolved**: —
+- **Unit**: U17.
+- **Depends**: M.SRC_NET.214, .216.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.181 The banner is read from source
+- **From**: A.U24.67 (1) (`:189-195`), M_SRC_NET gap 5 (M.SRC_NET.212's `src_const` resolution).
+- **Site**: `tests/test_asy_uart_link_driver.py:186-195`.
+- **Change**: `assert bytes(answer) == b"dev-uart-crossover"` → `assert bytes(answer) == src_const(
+  "src/asy_uart_link_driver.py", "_BANNER")` (the module's `const(b"uart-crossover")`); the comment's "(SPECIFICATION.md
+  Part A.7 step 13b)" kept.
+- **Resolved**: A.U24.67 asks for an import of a plain global; M.SRC_NET.212 keeps `_BANNER` a folded `const()` (A.U10.29)
+  — the test reads it with `src_const` (agent decision there, carried here).
+- **Unit**: U24.
+- **Depends**: M.SRC_NET.212; M.TEST_HELP.044.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.182 A refused link ends its tasks
+- **From**: A.U17.07 (`:143-245` hold; new L1).
+- **Site**: new test after `:245`.
+- **Change**: `test_a_refused_construction_ends_every_task_for_both_roles`: for each role, an exerciser built with
+  `payload_size=0` on a `LinkPoller` bus (as `Pair` builds it) — `setup()` returns `False`, `initialized is False`, every
+  task its starters return is done within 200 ms (`run(…, RUN_LIMIT_S)` around a bounded wait), and its history holds
+  `code("E", "UART_PAYLOAD_SIZE")` and no `code("E", "NOT_INIT")`.
+- **Resolved**: —
+- **Unit**: U17.
+- **Depends**: M.SRC_NET.214, .215.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.183 Optional FRAM support: section comment, fake chunk, behaviour asserted
+- **From**: A.U24.45 (`:258-266`), A.U36.544 (`:310`), A.U16.19 (`:280`, `:284` keyword), A.U24.39 (`:300`), A.U10.10
+  (setup before reading a persisted log: holds), A.U2.20 (read: `:252-254` seed 7 stays).
+- **Site**: `tests/test_asy_uart_link_driver.py:250-392`.
+- **Change**: the section comment → "# ---- Optional FRAM support: UARTLinkDriver forwards log=/logger= into UARTComm, whose
+  FRAM-backed history is unit-tested in test_asy_uart_comm.py ----" plus one line naming what these cover (forwarding,
+  the default, the allocation-failure fallback, the logger reach-through, a reboot roundtrip). `_FakeFramChunk.write_into`/
+  `read_into` drop `override_pause`. `test_fram_kwarg_gives_the_instance_its_own_fram_backed_logger` →
+  `test_a_fram_log_config_lands_entries_in_the_managers_chunk`: an `err_s` through the instance lands in the fake chunk
+  and a second logger over the same manager reads it back. `test_no_fram_kwarg_stays_ram_only_exactly_as_before_wp3` →
+  `test_the_default_log_stays_ram_only`, comment → "# The default (no log=) stays a RAM-only history." The `print_log`
+  in-function imports move to module level from `asy_print_log`.
+- **Resolved**: —
+- **Unit**: U24 (stages U5, U16, U36).
+- **Depends**: M.SRC_CORE `PrintLogHistoryStore` (A.U5.01, A.U16.19).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.184 Cancellation at each await of the exercise round
+- **From**: A.U35.48.
+- **Site**: new test.
+- **Change**: `test_cancelling_an_exercise_round_at_each_await_leaves_the_bus_unlocked` drives `cancel_at_each_await()`
+  from synchronous scope over `_exercise_loop()` on a `Pair` built inside its coroutine; invariants: the initiator
+  bus's `session_lock` unlocked, the comm's `_busy is False`, `_transfers + _failures ≤ 1`.
+- **Resolved**: —
+- **Unit**: U35.
+- **Depends**: M.TEST_HELP.067.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.185 A corrupted frame costs one failure, CRC16 only
+- **From**: A.S0930.03 (new CRC16-only case).
+- **Site**: new test.
+- **Change**: `test_a_corrupted_frame_counts_one_failure_and_the_next_transfer_succeeds_crc16`: one payload byte flipped
+  on the link (the `UARTLink` corruption knob) during one exercise round — `_failures` rises by one, the next round's
+  `_transfers` rises, the banner answer intact.
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: M.TEST_UNIT.178.
+- **Blast carried by**: SPEC J.7 tier-map row "exerciser" → A.S0930.03 (SPEC).
+- **Kind**: test
+
+## tests/test_asy_udp_socket.py
+
+### M.TEST_UNIT.186 Tuple addresses through the moved shim; ports from the band table
+- **From**: A.U18.12 (`:30-51` `make_addr()`/`resolve_addr()` and users; `:73-80` inverts; `:115-121` gains bytes),
+  A.U24.70 (`_next_port = 21000` → `PortAllocator`), A.U24.76 (`AdversarialPeer`, `make_*` → private names), A.U10.38
+  (`AsyUDPSocket` → `UDPSocket`), A.U10.35 (`.sock` → `._sock`), harness migration (Conventions), A.U24.73 (`Any`).
+- **Site**: `tests/test_asy_udp_socket.py:1-80`, `:110-121`, `:769-774` (`unbindable_addr()`), every `make_addr()`/
+  `resolve_addr()`/`.sock` use.
+- **Change**: imports `from _async_harness import run`, `from _port_bands import PortAllocator`, `from asy_udp_socket
+  import UDPSocket`, and the Unix-port address shim from its moved, hardware-fake-free location (A.U18.12; path per
+  TWIN's merge), whose patch function is called once at module level after the imports (no `# noqa: E402`). `_PORTS =
+  PortAllocator("asy_udp_socket")`; `_make_addr() -> tuple[str, int]: return (_HOST, _PORTS.next())` and `_make_port()`
+  likewise, their sockaddr comments gone; `resolve_addr(host, port)` goes (callers write the tuple);
+  `_unbindable_addr()` returns `("10.255.255.254", 51999)` with its first comment sentence kept. `test_init_accepts_a_
+  pre_resolved_bytes_like_addr` → `test_init_rejects_a_pre_resolved_sockaddr` (a `bytes` and a `bytearray` sockaddr each
+  raise `TypeError`); `test_init_rejects_addr_of_the_wrong_type_entirely` gains `b"\x00" * 16`. Every comparison of a
+  received address with a pre-resolved sockaddr compares with the `(host, port)` tuple. `AdversarialPeer` →
+  `_AdversarialPeer` (its own `self.sock` is a raw socket and keeps its name); every `UDPSocket` attribute read `.sock`
+  → `._sock` (`:71, 562, 598-636, 680, 707-711, 811, 839, 960, 1013, 1034`); `AsyUDPSocket` → `UDPSocket` in code and
+  comments.
+- **Resolved**: —
+- **Unit**: U18 (stages U10 names, U24 ports/names).
+- **Depends**: M.SRC_NET.026; M.TEST_HELP.043, .056; TWIN shim move (A.U18.12).
+- **Blast carried by**: the shim's location and `mypy_path` → A.U18.12 (TWIN, TOOL).
+- **Kind**: test
+
+### M.TEST_UNIT.187 Tagged waits; withdrawn rows where the literal goes
+- **From**: A.U8C.20 (tags), A.U8C.120 (read: Dependants), A.U8.11 (read: behaviour unchanged), A.U18.05 (`:758`, `:919`,
+  `:1605` lose `wait_time_ms`), A.U18.13 (`:786` test goes), A.U35.14 (2) (`:1365`, `:1368` driven).
+- **Site**: every literal line A.U8C.20 lists.
+- **Change**: module constants with tags exactly as A.U8C.20 writes them for every literal that survives. No constant
+  or tag for: `l1.asy_udp_socket_ready_poll_ms` (`:758`, `:919` — the `wait_time_ms` argument goes) and
+  `l1.asy_udp_socket_forever_poll_ms` (`:1605`, likewise); `l1.asy_udp_socket_fix_address_after_retry_s` (`:786`, its
+  test goes); `l1.asy_udp_socket_fix_address_after_s` (`:1368`, driven time); `l1.asy_udp_socket_retry_cycle_min_ms`
+  (`:1350`, derived from the product backoff, M.TEST_UNIT.190). `_FIRST_ATTEMPT_S = 0.1` keeps its tag for `:1340`,
+  `:1394`, `:1423`; `:1365` (the driven test) no longer uses it.
+- **Resolved**: A.U35.14 withdraws `l1.asy_udp_socket_first_attempt_s` with its test's literal, but three other tests
+  keep the 0.1 s park — the row stays for them (Conventions: a literal a later constituent deletes takes no tag, every
+  other tagged literal keeps its constant; agent decision D-T17).
+- **Unit**: U8C (stages U18, U35 withdrawals).
+- **Depends**: —
+- **Blast carried by**: Part N rows (kept and withdrawn) → A.U8.01/A.U35.14 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.188 One connect attempt per call; constructor without retries
+- **From**: A.U18.13 (`:64-70`; `:122-148`; `:777-797` goes; `:799-820` renamed; `:1237-1270` goes; `:1330-1340` one
+  backoff), A.U31.16 (read: `:786` comment goes with its test; `:519-530` recorder unchanged).
+- **Site**: `tests/test_asy_udp_socket.py:64-148`, `:769-820`, the fifth-pass `_connect` tests (`:1194-1270`).
+- **Change**: `test_init_accepts_every_valid_mode_and_conn_tries_combination` → `test_init_accepts_every_valid_mode`
+  (both modes; `_mode`, `connected is False`, `_sock is None`); `test_init_rejects_non_int_conn_tries` goes and the three
+  combined-invalid cases drop `conn_tries=` (each still mixes two or more invalid arguments: addr and mode).
+  `test_conn_tries_retries_within_a_single_connect_call` goes — the property no longer exists; guard named: the
+  renamed self-heal test below (one attempt, then a fresh one). `test_connect_self_heals_after_conn_tries_exhausted` →
+  `test_connect_self_heals_after_a_failed_bind` (one failed attempt, `_sock is None`, then a fresh successful one on the
+  next call), its comment's "fully-exhausted conn_tries" → "a failed attempt". `test_connect_self_heals_when_conn_tries_
+  mutated_to_a_non_int` goes (no attribute); the section comment "_addr/_conn_tries" → "_addr". Every `conn_tries=N`
+  construction drops the argument.
+- **Resolved**: —
+- **Unit**: U18.
+- **Depends**: M.SRC_NET.026, .027.
+- **Blast carried by**: the doubles mirroring the signature → M.TEST_UNIT.025 (DNS), M.TEST_UNIT.103/.111 (NTP).
+- **Kind**: test
+
+### M.TEST_UNIT.189 ready(): two rates through the recorder; wait_time_ms gone
+- **From**: A.U18.05 (`:513-531` renamed; `:758`, `:919`, `:1605` drop the argument; `:1561-1575` goes; `:1538`
+  comment; `:905-930` rewritten; new L1; `:168-173, 234-235, 383` margins re-checked), A.U10.26 (new L1: a bounded
+  `ready()` leaves no runner), A.U24.59 (`:494-496` comment), A.U18.17 (`:970-994` holds).
+- **Site**: `tests/test_asy_udp_socket.py:483-531`, `:739-760`, `:897-930`, `:1538-1610`.
+- **Change**: `_RecordingAsyncio` comment → "# asyncio is a frozen Python package whose attributes tests may assign
+  (test_asy_bmp3xx_driver.py patches asyncio.sleep); this wraps it instead so the recording also sees ready()'s own
+  sleep_ms() calls through asy_udp_socket's module-level name, the way _RaisingSocketModule replaces the read-only C
+  `socket`." (≤ 3 lines). `test_ready_default_wait_time_ms_does_not_busy_spin` →
+  `test_ready_with_a_deadline_polls_at_the_transaction_rate` (`timeout_ms=_READY_EMPTY_TIMEOUT_MS`; every recorded sleep
+  equals `src_const(_UDP, "_POLL_WAIT_MS")`). New `test_ready_without_a_deadline_polls_at_the_idle_rate` (a task over
+  `ready(POLLIN)` with no deadline, cancelled after two recorded rounds: every recorded sleep equals `_POLL_IDLE_MS` read
+  the same way). `test_ready_wait_time_ms_is_milliseconds_not_seconds` → `test_ready_sleeps_milliseconds_not_seconds`
+  (through the recorder: the recorded values are the two constants, 20 and 100, not 0.02/0.1). The `wait_time_ms=`
+  arguments at `:758`, `:919`, `:1605` go; `test_ready_returns_false_sentinel_for_a_malformed_wait_time_ms` goes (no
+  parameter; guard: the malformed-`timeout_ms` and malformed-mask tests); the sixth-pass section comment loses
+  `wait_time_ms`. New `test_a_bounded_ready_leaves_no_poll_task_behind` (`ready(timeout_ms=50)` on a never-ready poller
+  returns `False` and no task is left runnable afterwards — the after-each queue check). The three real-socket tests
+  waiting with no deadline keep their ≥ 300 ms datagram margins (re-checked against the 100 ms idle rate).
+- **Resolved**: —
+- **Unit**: U18 (stage U10 `_poll()`).
+- **Depends**: M.SRC_NET.028; M.TEST_HELP.044.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.190 Connect-lock concurrency under one attempt and driven time
+- **From**: A.U18.13 (`:1330-1340` one backoff), A.U35.14 (2) (`:1354-1382` `DrivenTime`), A.U8C.20.
+- **Site**: `tests/test_asy_udp_socket.py:1265-1370` (the fifth-pass concurrency tests).
+- **Change**: `test_disconnect_no_longer_crashes_a_concurrent_in_flight_connect_retry`: constructions drop
+  `conn_tries`; its comment's "bounded by conn_tries * the backoff" → "bounded by one backoff"; `assert elapsed >= 1000`
+  → `assert elapsed >= src_const(_UDP, "_RETRY_BACKOFF_MS") - int(_FIRST_ATTEMPT_S * 1000)` with "# disconnect() waited
+  out the one backoff the failed attempt holds the lock for"; the upper bound keeps `_RETRY_CYCLE_MAX_MS`.
+  `test_concurrent_caller_joins_an_in_flight_connect_instead_of_a_premature_none`: `DrivenTime` installed on
+  `asy_udp_socket` (restored in `finally`); the fixer sets `sock._addr` once `run_until()` sees A's first failed attempt
+  counted, then `advance(500)`; assertions unchanged. The two cancellation tests drop `conn_tries` and hold.
+- **Resolved**: —
+- **Unit**: U35 (stage U18).
+- **Depends**: M.SRC_NET.027; M.TEST_HELP.065.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.191 write_and_recvfrom(): tries required; a failed send is not waited out
+- **From**: A.U18.14 (calls omitting `tries` pass `tries=1`; `:217-260`, `:1054-1140`, `:1524-1535`, `:1640-1650` hold; new
+  L1), A.U18.16 (read: `:1054-1140` builds its own replies).
+- **Site**: every `write_and_recvfrom(` call; new test after `:260`.
+- **Change**: every call without `tries` passes `tries=1`. New `test_a_failed_send_returns_without_waiting_for_a_reply`
+  (`asy_udp_socket.socket` replaced by the `_RaisingSocketModule` technique with a `send` that raises `OSError`:
+  `write_and_recvfrom(b"x", 64, timeout_ms=400, tries=1)` returns `(None, None)` in under 200 ms).
+- **Resolved**: —
+- **Unit**: U18.
+- **Depends**: M.SRC_NET.029.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.192 The adversarial peer reads by event; the context-manager tests go
+- **From**: A.U24.33 (`:286-295`), A.U18.46 (`:998-1030` go), A.U36.544 (`:399`).
+- **Site**: `tests/test_asy_udp_socket.py:286-295`, `:395-401`, `:996-1030`.
+- **Change**: `_AdversarialPeer.recv()`: `for _obj, event in poller.ipoll(0): if event & select.POLLIN: return
+  self.sock.recvfrom(bufsize)` before the timeout check and the `_PEER_POLL_MS` sleep; `poller.unregister(self.sock)` in
+  a `finally` (a real poll on a real socket, not a fake stream). Every `.recv(` user is re-derived: a test that passed
+  because `recv()` raised `EAGAIN` into an expected-failure path now receives and states what it receives. `:399`'s
+  "BACKLOG.md's open question 5" → "(SPECIFICATION.md F.1, UDP on rp2/lwIP)". The "async with support" section and its
+  two tests go (the context manager is removed; guard: `test_disconnect_is_idempotent_and_resets_state` covers teardown).
+- **Resolved**: —
+- **Unit**: U24 (stages U18, U36).
+- **Depends**: M.SRC_NET.031.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.193 Cancellation at each await of connect and ready
+- **From**: A.U35.48.
+- **Site**: new test.
+- **Change**: `test_cancelling_connect_or_ready_at_each_await_leaves_the_lock_free` drives `cancel_at_each_await()` from
+  synchronous scope over `_connect()` against `_unbindable_addr()` and over `recvfrom()` with no deadline; invariants:
+  `_connect_lock` unlocked, `_sock is None or connected`, a following `_connect()` to a good address succeeds.
+- **Resolved**: —
+- **Unit**: U35.
+- **Depends**: M.TEST_HELP.067.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_asy_webserver_service.py
+
+### M.TEST_UNIT.194 Imports, harness, typed Microdot, strict response parsing, tagged waits
+- **From**: A.U8.23 (`:17` ignore goes), A.U24.08 (`run`, `run_timed`), A.U24.60 (85 `json.loads(` of response bodies →
+  `strict_loads(`), A.U10.37/A.U10.38 (`config_manager` → `asy_config_manager`), A.U24.73 (39 `Any` lines), A.U19.17
+  (read: fakes typed against the Protocols hold; `_make_service(**kwargs)` stays the one `Any`-free forwarder), A.U8C.21,
+  A.U8C2.05 (tags), A.U8.17 (`:1285`, `:1835`), A.U2.19/A.U2.03 (catalog names, 26 lines), A.SDEP.06/A.SDEP.07 (read:
+  re-vendored Microdot and freezefs; `:16`, `:1848` hand-built `VfsFrozen` re-checked), A.U36.544 (`:1102`, `:1591`,
+  `:2377-2431` pointers).
+- **Site**: `tests/test_asy_webserver_service.py:1-50`; every response `json.loads(`; the literal lines A.U8C.21/A.U8C2.05
+  list; `:1102`, `:1591`, `:2377-2378`, `:2410-2411`, `:2430-2431`.
+- **Change**: imports: `from _async_harness import run, run_timed`; `from _strict_json import strict_loads`; `from
+  _error_codes import code`; `from microdot import Microdot, Request, Response` without its `type: ignore` (the vendored
+  stub types it); `import asy_config_manager as cm`; `from asy_webserver_service import ROUTES, RouteSources,
+  ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response,
+  _TimeoutStreamProxy`; the local `run`/`run_timed` go (`run_timed(coro, 5.0)` keeps its bound as `_RUN_BOUND_S`).
+  Every `json.loads(<response body>)` → `strict_loads(…)`; request-body JSON the test writes is not a response and keeps
+  `json.dumps`. Module constants and tags exactly as A.U8C.21 and A.U8C2.05 list; `:1285` → `timeout_s=outer_cap *
+  _SERVE_BACKSTOP_CAP_MULT` (`# @tunable l1.serve_backstop_cap_mult = 20`), `:1835` → `_LEAK_SCENARIO_TIMEOUT_S`
+  (`# @tunable l1.webserver_leak_scenario_timeout_s = 60.0`). Every bare errno/wrnno in an assertion → `code(…)` by the
+  catalog name of M.SRC_NET.112 (e4 → `UNEXPECTED`, e6/e3/e5 → `CALLBACK`, …). `:1102` "CLAUDE.md Part F" →
+  "SPECIFICATION.md A.8"; `:1591` "Step 6 (silent-failure-masking finding):" goes; the three comments naming
+  `test_h2_stream_yields_many_small_chunks_not_one_precomputed_buffer()` name
+  `test_h2_stream_yields_one_piece_per_top_level_section_not_one_precomputed_buffer()`. `Any` → the A.U24.73 scheme.
+- **Resolved**: —
+- **Unit**: U24 (stages U8 tags, U10 names, U19 typed Microdot, U36 pointers).
+- **Depends**: M.SRC_NET.110, .112; M.TEST_HELP.043, .045; TEST_HELP `_strict_json.strict_loads` (A.U24.60).
+- **Blast carried by**: `tests_scripts/test_microtest.py` `json.loads(` allow-list → A.U24.60 (TSC); Part N rows →
+  A.U8.01 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.195 Fakes: declared surface, nested config, bool reset, reader `read()`
+- **From**: A.U24.18 (`:52-56` comment; `_FakeModule`/`_FakeLogger` surface ⊆ the real classes'), A.U10.36
+  (`_FakeModule.get_dict_cfg()` nested), A.U11.31 (`_FakeLogger.reset()` → `True`; `_FakeModule.reset_error_counter() ->
+  bool`), A.U19.07 (reader fakes gain `read(n)`), A.U11.S03 (read: wider `err_s`/`wrn_s` signatures hold), A.U10.40
+  (`NTP_Host` → `NTPHost` in fake schemas), A.U19.05 (`:2085`, `:2170`, `:2200` comments).
+- **Site**: `tests/test_asy_webserver_service.py:52-241`, `:396-416`, `:1345-1358`, `:1647-1653`, `:3089-3091`, and the
+  fake schemas naming `NTP_Host`.
+- **Change**: section comment `:52-56` → "# Registered-module doubles. Their public surface is the real classes' (SensorReaderConfig,
+  PrintLogHistory) — tests_scripts/test_fake_surface_conformance.py checks it; anything test-only is listed in TEST_API."
+  (≤ 3 lines); `_FakeModule`/`_FakeLogger` gain `TEST_API` (`set_calls`, `reset_calls`, `history` …) and lose any method
+  the check flags. `_FakeModule.get_dict_cfg()` returns `{self.name: dict(self._values)}` (make_dict's shape); every
+  test reading `run(mod.get_dict_cfg())["X"]` reads `[mod.name]["X"]`. `_FakeLogger.reset()` returns `True`;
+  `reset_error_counter() -> bool` returns it. `_NestedCfgModule`'s comment loses the "two real production bugs" history:
+  "# make_dict()'s {name: {field: value}} shape, what every module's get_dict_cfg()/get_dict_data() returns." Reader
+  fakes gain `async def read(self, n: int) -> bytes`: `_ScriptedReader` returns up to `n` bytes after one `_pull()`
+  (`b""` at EOF), `_HangingReader` hangs, `_ClosedReader` returns `b""`, `_ResetReader` raises `OSError(104)`;
+  `_BodySizeReader`/`_ResetDuringBodyReader` keep their `readexactly()` overrides. Fake schemas `NTP_Host` → `NTPHost`.
+  The three `_serve_static()` comments name `_StaticRoutes.serve()`.
+- **Resolved**: —
+- **Unit**: U24 (stages U10, U11, U19).
+- **Depends**: M.SRC_NET.111, .116, .118, .124.
+- **Blast carried by**: the conformance L0 → A.U24.18 (TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.196 The builder makes the three config objects; millisecond attributes
+- **From**: A.U5.04 (`_make_service()` builds `RouteSources`/`ServingLimits`/`StaticSite`; its 153 call sites stay),
+  A.U5.02 (`history_length=` → `log=LogConfig(None, n, None)`), A.U5.05 (defaults read from the constants), A.U8.04
+  (`:255`, `:1362`, `:1954`, `:2469`, `:2501` mirror the shipped defaults), A.U31.18 (`:1673` `1.0` → `1000`; `:1974`
+  `_ms`), A.U19.06 (request builders pass `sock=`).
+- **Site**: `tests/test_asy_webserver_service.py:251-268`, `:1362`, `:1673`, `:1954`, `:1974`, `:2469`, `:2501`.
+- **Change**: `_make_service(**kwargs)` splits its keywords into `RouteSources(sensors, settings, build_info, system_cmd,
+  notification_led, notification_pause, status_sources, maintenance_sensors, error_sources)`, `ServingLimits(…)` and
+  (when `static_mount` is given) `StaticSite(mount, index, is_hotspot_active)`, maps `history_length=n` to
+  `log=LogConfig(None, n, None)`, and calls `WebserverService(app, routes, serving, static, log)` then `run(service.setup())`;
+  its defaults read the constants: `max_content_length = src_const(_WS, "_DEFAULT_MAX_CONTENT_LENGTH")` (comment "tracks
+  the shipped default"), `chunk_bytes = src_const(_WS, "_DEFAULT_CHUNK_BYTES")`, the test-tier tiny bounds unchanged.
+  `_BODY_CAP`, `_WIRE_CHUNK_BYTES`, `_HAMMER_PIECE_BUDGET` and `_written()`'s `max_bytes` default read the same two
+  constants (their "restated: a const() is not a module attribute" comments go). `_make_request()` passes
+  `sock=(_NoopHolder(), _NoopHolder())` (a one-method `hold()` fake). `:1673` → `_TimeoutStreamProxy(writer, 1000,
+  _FakeLogger("X"), [False], [False])`; `:1974` → `service._per_call_timeout_ms, service._outer_cap_ms = 2000, 4000`.
+- **Resolved**: —
+- **Unit**: U24 (stages U5 objects, U8 mirrors, U19 sock, U31 ms).
+- **Depends**: M.SRC_NET.112, .118, .119; M.TEST_HELP.044.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.197 Unknown keys answer Invalid; dispatch keys are never double-reported
+- **From**: A.U19.01 (`:356-362`; `:847-853`; new L1s), A.U11.26 (hook-failure tests see "Failed" from the envelope),
+  A.U27.07 (`:877` rename), A.U10.40 (keys).
+- **Site**: `tests/test_asy_webserver_service.py:356-470`, `:839-937`.
+- **Change**: `test_sensors_put_unknown_sensor_key_ignored` → `…_answers_invalid`: `result == {"BOGUS": "Invalid"}`,
+  `scd.set_calls == []`. `test_b_unknown_top_level_key_silently_ignored_on_every_settings_endpoint` →
+  `…_answers_invalid_on_every_settings_endpoint`: `body["result"]["Bogus"] == "Invalid"`, `res == "OK"`.
+  `test_b_malformed_json_body_handled_like_the_legacy_parse_cmd_request_path` → `test_b_malformed_json_body_answers_code_1`.
+  `test_networking_put_raising_post_fct_marks_every_attempted_field_in_that_group_failed` holds (now from the envelope
+  itself); its comment → "# A raising post hook marks every field of its group "Failed" (handle_set_cmd(), SPEC
+  H.6)." `NTP_Host` → `NTPHost`. New `test_a_non_object_sensor_entry_answers_invalid` (`PUT /sensors {"SCD30": 5}` →
+  `{"SCD30": "Invalid"}`), `test_a_dispatch_key_is_answered_once` (`PUT /system {"SystemCmd": "reboot", "Bogus": 1}`:
+  `SystemCmd` from the dispatcher, `Bogus` "Invalid"), `test_status_put_answers_unknown_keys` (`{"ResetErrors": true,
+  "X": 1}` → `{"ResetErrors": "Valid", "X": "Invalid"}`).
+- **Resolved**: —
+- **Unit**: U19 (stages U10, U11, U27).
+- **Depends**: M.SRC_NET.120, .123.
+- **Blast carried by**: per-device `PUT /networking {"NoSuchKey": 1}` → A.U19.01 (TEST_HELP `_sensortask_scenarios.py`).
+- **Kind**: test
+
+### M.TEST_UNIT.198 SystemCmd: exact words only
+- **From**: A.S0930.21 (`:520-590`; new L1), A.S0930.09 (`:520-541` holds), A.U19.04 (`:520-556` hold; new L1).
+- **Site**: `tests/test_asy_webserver_service.py:514-586`; new tests.
+- **Change**: the existing SystemCmd tests hold. New `test_system_put_systemcmd_runs_only_on_the_exact_action_word`: the
+  near-miss list of A.S0930.20 (4) (prefixes, case variants, padded and aliased words) as JSON bodies → "Invalid" and the
+  fake callback records no call; `"resetconfig"`/`"erasefram"` → one call each with that exact word, "Valid" for a `True`
+  return, "Failed" for `False`, "Failed" plus one `code("E", "CALLBACK")` for a raise.
+  `test_system_put_systemcmd_non_string_values_are_invalid` (`1`, `["reboot"]`, `{"x": 1}`, `null`, `true` → "Invalid",
+  no call).
+- **Resolved**: —
+- **Unit**: U19 (stage S0930 words).
+- **Depends**: M.SRC_NET.121.
+- **Blast carried by**: L0 mirror of the word list → A.S0930.20 (TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.199 Notification dispatch: LightCmdLED members and the pause through schemas
+- **From**: A.U19.02 (`:660-670`, `:791-800`, `:804-821` fakes; `:674`; new L1s), A.U19.03 (`:705-717` hold; new L1),
+  A.U10.40 (`lightCmdLED` → `LightCmdLED`, `r/g/b/t` → `R/G/B/T`), A.U1.25 (`:742` comment), A.U9.09 (read: `:742` wording).
+- **Site**: `tests/test_asy_webserver_service.py:646-825`.
+- **Change**: every `"lightCmdLED"` → `"LightCmdLED"` with members `R/G/B/T`; the fake `notification_led(payload)` →
+  `notification_led(r, g, b, t)` recording tuples; `:674` → `led_calls == [(10, 20, 30, 5.0)]`. `:742` "(modules/
+  sensortask-wozi.py)" → "(the legacy firmware's sensortask module, legacy/firmware/modules/)". New
+  `test_a_malformed_led_command_is_invalid_and_never_dispatched` (missing `T`, extra `"x"`, `R` 256, `T` `True` → each
+  "Invalid", callback never called); `test_an_integral_float_channel_is_coerced` (`R` `10.0` → the callback receives `int`
+  10); `test_a_led_callback_returning_false_answers_failed`; `test_a_pause_time_of_the_wrong_shape_is_invalid`
+  (`[60]`, `{"s": 60}` → "Invalid", callback not called).
+- **Resolved**: —
+- **Unit**: U19 (stages U1 path, U10 keys).
+- **Depends**: M.SRC_NET.112, .122.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.200 ResetErrors answers per source, concurrently
+- **From**: A.U11.31 (`:59-90`, `:624-633`, `:635-644`, `:1019-1081` hold plus the result word; new L1s), A.U0.35
+  (`:1052-1053`), A.U0.29 (`:1069`), A.U11.05 (read: `:592-604` unaffected), A.U11.S02 (read: `:1016` `==` holds).
+- **Site**: `tests/test_asy_webserver_service.py:587-645`, `:967-1083`.
+- **Change**: `{"ResetErrors": False}` now answers `{"ResetErrors": "Invalid"}` (still no reset); `True` answers
+  `"Valid"`. `:1052-1053` → "# Both reset together by this global action (owner, 2026-09-26: global only, permanently) -
+  the isolation property under test is that resetting doesn't cross-wire one module's history into another's."; `:1069`
+  → "# a warning, not an error - the owner's warning-not-error rule (SPEC A.8)". New
+  `test_a_failing_source_reset_answers_failed_and_the_others_still_reset` (one fake's reset returns `False`) and
+  `test_reset_errors_runs_every_source_at_once` (three sources whose resets each suspend on an `Event` record that the
+  others started before any finishes).
+- **Resolved**: —
+- **Unit**: U11 (stage U0 tags).
+- **Depends**: M.SRC_NET.123.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.201 The torn-read characterisation becomes a consistency test
+- **From**: A.U19.12 (`:1108-1137`).
+- **Site**: `tests/test_asy_webserver_service.py:1108-1137`.
+- **Change**: `test_e_scd30_bmp3xx_live_readback_torn_read_is_a_known_characterization_not_a_regression` →
+  `test_e_a_config_get_never_mixes_values_from_before_and_after_a_concurrent_put`: a real `SensorReaderConfig` subclass
+  whose `_get_mgr_cfg()` reads two fields across an `await asyncio.sleep(0)` and whose `_set_mgr_cfg()` writes both with a
+  yield between; `PUT /sensors` and `GET /sensors` started together through `app.dispatch_request()`; the GET body is
+  all-old or all-new, never a mix. Guard named: this test (the old one pinned the gap, OR111.a (2)).
+- **Resolved**: —
+- **Unit**: U19.
+- **Depends**: SRC_CORE config-lock read path (A.U19.12).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.202 Connection lifecycle: every drop logged once, split timeouts, released stream
+- **From**: A.U19.08 (ceiling refusals logged; peer-reset entries; seven-refusals L1), A.U2.19 (49 vs 50; new L1), A.U3.11
+  (new L1: one W52), A.U24.41 (`:1590-1597`, `:1606-1611`), A.U14.03 (`:1656-1665` holds, `:1657-1658` pointer), A.SDEP.13
+  (read: `:1648-1660` path re-checked at the pin), A.U19.06 (new L1s: closed stream on HEAD, raising and timed-out
+  writes; `Cache-Control`), A.U3.12 (reclaim repeats spend one slot), A.U3.01.
+- **Site**: `tests/test_asy_webserver_service.py:1149-1720`, `:3052-3101`.
+- **Change**: `test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_silently_closed` → `…_closed_and_logged`: the
+  refusal adds one `code("W", "HTTP_REFUSED")` and `get_dropped_count()` reads 1; the F1 slot-held test's refusal
+  likewise. `test_close_writer_logs_a_persisted_warning_when_close_raises`/`…_when_wait_closed_raises` assert one entry,
+  `ErrType` "W", `code("W", "HTTP_CLOSE_RAISED")`/`code("W", "HTTP_WAIT_CLOSED")`. `test_nothing_is_written_to_a_peer_whose_
+  read_saw_a_reset` and its body-phase sibling: one `code("W", "HTTP_PEER_RESET")` (`err_count == 1`), nothing written;
+  `:1657-1658` comment points to H.7.1 as A.U14.03 writes it. `test_serve_absorbs_an_eoferror_raised_directly_by_handle_
+  request` → `test_an_eoferror_from_handle_request_is_an_unexpected_error` (the `EOFError` arm is gone: one
+  `code("E", "UNEXPECTED")`, slot freed). `test_a_write_phase_timeout_is_logged_once_not_twice` asserts
+  `code("W", "HTTP_CALL_TIMEOUT")`. New: `test_seven_refusals_count_seven_and_spend_one_slot` (`_dropped` 7, `ErrCount`
+  +7, one history slot); `test_an_outer_cap_timeout_logs_the_request_cap_code` (a Slowloris-paced request tripping only
+  the outer cap → one `code("W", "HTTP_REQUEST_CAP")`); `test_a_close_that_raises_and_whose_wait_fails_adds_one_w52`;
+  `test_repeated_reclaims_spend_one_slot` (five per-call reclaims: `ErrCount` 5, one slot);
+  `test_a_head_request_closes_the_opened_static_stream`, `test_a_failed_or_timed_out_static_body_write_closes_the_stream`
+  (a stub mount whose file object records `close()`), `test_a_static_get_answers_cache_control_no_cache`.
+- **Resolved**: —
+- **Unit**: U19 (stages U2, U3, U14, U24).
+- **Depends**: M.SRC_NET.124, .126, .127, .129.
+- **Blast carried by**: twin concurrency scenarios → A.U19.08 (TWIN).
+- **Kind**: test
+
+### M.TEST_UNIT.203 Request-head bounds and the adversarial-client matrix
+- **From**: A.U19.07 (adversarial matrix through `_serve()`; `:897-917` comment; class-comment wording).
+- **Site**: `tests/test_asy_webserver_service.py:897-917`, `:1268-1345`; new section after `:1720`.
+- **Change**: `:897-917`'s depth comment keeps its measured facts (depth 1,000 within the 2,048 B cap; the pinned
+  interpreter parses 3,000). New adversarial-client tests, each through `_serve()` with `print` and
+  `microdot.print_exception` captured (module attribute, test-only): `Content-Length: -1` with a 3,000 B body → shaped 400,
+  no negative `readexactly`, nothing printed; `Content-Length: 99999999999999999999` → 413; `Content-Length: abc` and a
+  repeated `Content-Length` → 400; a short body (`Content-Length: 50`, 20 bytes) → 400; a header line over
+  `Request.max_readline`, more than 32 header lines, a head over 2,048 B, a non-UTF-8 line, a two-token request line, a
+  header without `:`, any `Transfer-Encoding` → each one `code("W", "HTTP_BAD_HEAD")` and 400, nothing printed.
+- **Resolved**: —
+- **Unit**: U19.
+- **Depends**: M.SRC_NET.118, .127.
+- **Blast carried by**: L2 raw-socket case → A.U19.07 (TWIN).
+- **Kind**: test
+
+### M.TEST_UNIT.204 Server start: bounded retry, cancel closes the port
+- **From**: A.U19.09 (new L1s; `:3005-3020` holds), A.S0930.18 (new L1 on a file-owned port block), A.U10.44
+  (`_start_serving()`/`_run()` by name → `start_asy_serve`).
+- **Site**: `tests/test_asy_webserver_service.py:1777-1802`, `:2996-3021`; new tests.
+- **Change**: F8 tests call `service.start_asy_serve()` by name (`get_task_starters() == [service.start_asy_serve]`);
+  `test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task` binds to a port from `PortAllocator(
+  "asy_webserver_service")` (the Unix port has no `getsockname()`). New `test_a_start_that_fails_twice_then_serves` (a
+  fake `start_server` failing twice: two printed lines, no persisted entry, then serving; `_START_RETRY_S` sleeps through
+  `FastAsyncSleep`); `test_a_start_that_fails_three_times_logs_once_and_raises` (one `code("W", "HTTP_START_FAILED")`,
+  re-raised); `test_cancelling_the_serve_task_closes_the_listening_port` (real `asyncio.start_server()` on the
+  file-owned port; after the cancel a fresh bind to the same port succeeds).
+- **Resolved**: —
+- **Unit**: U19 (stages U10, S0930).
+- **Depends**: M.SRC_NET.128, .129; M.TEST_HELP.052, .056.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.205 The soak measures a leak rate, not a drop
+- **From**: A.U24.64 (`:1822-1836`), A.U30.16 (read: the scenario is named in the allocation register), A.U8.17
+  (`:1835`).
+- **Site**: `tests/test_asy_webserver_service.py:1806-1836`.
+- **Change**: after the 20-cycle warm-up, `gc.collect()` then `gc.mem_free()` at 0, 60 and 180 cycles on the same service;
+  `rate = (free_60 - free_180) / 120` must be below `_LEAK_RATE_MAX_B = 8` (`# @tunable l1.webserver_leak_rate_max_b = 8`)
+  with the comment (≤ 3 lines) naming the calibration: a planted 16-byte-per-cycle leak exceeds it, the healthy path stays
+  under (figures recorded once in the B3 campaign). Each `gc.collect()` is followed directly by its reading; the function
+  -level `import gc` moves to module level. `run_timed(scenario(), _LEAK_SCENARIO_TIMEOUT_S)`.
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: —
+- **Blast carried by**: Part N row → A.U8.01 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.206 Static routes, bytes pieces and non-finite floats
+- **From**: A.U19.05 (static tests through the builder), A.U19.11 (`:2497-2583` bytes; `:3021-3029`; new L1s), A.U10.27
+  (new L1 NaN), A.U10.41 (`:2071-2083` the largest scalar), A.SDEP.18 (`:1977` holds), A.U19.15 (`descr` tests hold).
+- **Site**: `tests/test_asy_webserver_service.py:1839-2210`, `:2497-2583`, `:3021-3048`.
+- **Change**: `_written()` → `list[bytes]`; its users compare `b"".join(pieces) == json.dumps(value).encode()`; the piece
+  writer tests use bytes (`[len(p) …] == [255, 256, 1, 300, 14]` over encoded fragments, `pieces == [b"x"]`); `:3021-3029`
+  → `[b"abcd", b"e"]`. `test_g3_a_scalar_at_ntp_hosts_own_bound_still_makes_exactly_one_whole_piece` →
+  `…_fits_one_piece`: `longest = src_const("src/asy_ntp_client.py", "_VAL_NTP_HOST")[0][4]` (253); the value and its two
+  quotes (255 B) fit the 256 B cap, so no piece exceeds it and the piece holding it is whole; its comment → "# The longest
+  string any schema permits (NTPHost, RFC 1035's 253), read from source." New `test_h2_piece_writer_counts_bytes_not_characters`
+  (`_PieceWriter(pieces, max_bytes=4)` fed `"é"` three times → `[b"\xc3\xa9\xc3\xa9", b"\xc3\xa9"]`);
+  `test_a_networking_get_with_a_multibyte_ssid_stays_bounded` (a 200-character SSID of `"€"` keeps every piece ≤ 256 B
+  except the one-fragment rule); `test_h2_a_non_finite_float_is_written_as_null` (`float("nan")` → `null`).
+- **Resolved**: —
+- **Unit**: U19 (stages U10, U24).
+- **Depends**: M.SRC_NET.114, .115, .124; M.TEST_HELP.044.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.207 Hammers run at the process's GC stage; one test each
+- **From**: A.U30.12 (`:5`, `:1466-1492`, `:2584-2593`, `:2625-2642`, `:2756-2793`, `:2822-2853`, `:2899-2916`,
+  `:2949-2966`), A.U8.14 (tags on those 32768 literals withdrawn with them), A.U24.07 (read: the hook backstops the
+  restores that go), A.U0.28 (`:2733`), A.U24.36 (`:2886` from `ROUTES`), A.U19.20 (new L1 route table).
+- **Site**: `tests/test_asy_webserver_service.py:1464-1495`, `:2584-2970`.
+- **Change**: every `orig_threshold = gc.threshold()` / `gc.threshold(<n>)` / restore goes (39 calls); the pairs collapse
+  to `test_h3_hammer_concurrent_status_requests_stay_valid`, `test_i2_hammer_concurrent_measurements_requests_stay_valid`,
+  `test_i2_hammer_concurrent_sensors_requests_stay_valid`, `test_i2b_hammer_concurrent_{networking,system,notification}_
+  requests_stay_valid` (`_run_settings_hammer(endpoint, path)`), `test_i3_hammer_every_memory_bounded_get_route_concurrently`,
+  `test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write`; the two F.2b tests stay two, their
+  threshold lines gone. Section comment `:2590-2593` → "# Each hammer runs at its process's GC stage: scripts/test.sh runs
+  every file at gc.threshold(-1) and again at 32768 (SPECIFICATION.md I.4(e)/(f))."; `:1469`'s "I.4(e) first" comment goes;
+  top-level `import gc` stays only for the soak (M.TEST_UNIT.205). `:2733` "the project owner's own named top candidate" →
+  "the owner's named top candidate (owner, 2026-09-07)". `_ALL_MEMORY_BOUNDED_GET_ROUTES = tuple(p for m, p, _ in ROUTES if m
+  == "GET")`. New `test_the_route_table_is_registered_exactly` (Microdot's URL map equals `ROUTES`, in order).
+- **Resolved**: —
+- **Unit**: U30 (stages U0 tag, U8 withdrawn tags, U19 table, U24 route set).
+- **Depends**: M.SRC_NET.112, .119.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.208 Load without prints; the EAGAIN writer
+- **From**: A.U19.23 (new L1), A.U19.24 (new section and `_EagainWriter` double), A.U35.28 (read: PERF gap scenario is
+  TEST_HELP/TWIN's per-device library).
+- **Site**: new section after `:1771`; new double beside `_ScriptedWriter`.
+- **Change**: `test_client_faults_print_nothing_at_debug_level_zero`: `print` and `microdot.print_exception` replaced by a
+  fake that blocks 500 ms per call (restored in `finally`); `DebugLevel` 0; for a driven 10 s (`DrivenTime`), six Slowloris
+  connections, refused heads, truncated bodies, resets and ceiling refusals run against `_serve()`; the fake is never
+  called and a feeder task's largest gap stays below 2,000 ms. `_EagainWriter(_ScriptedWriter)`: its `awrite()` refuses
+  the first N sends as a full lwIP queue would (`None`, one round each) and then accepts; tests: a stuck write ends at the
+  per-call timeout with one `code("W", "HTTP_CALL_TIMEOUT")`, the feeder's largest gap stays bounded, and the other
+  concurrent requests are served intact.
+- **Resolved**: —
+- **Unit**: U19.
+- **Depends**: M.SRC_NET.118, .127; M.TEST_HELP.065.
+- **Blast carried by**: phase-C hardware row → A.U19.23 (HW_BENCH).
+- **Kind**: test
+
+### M.TEST_UNIT.209 Cancellation at each await of serving
+- **From**: A.U35.48.
+- **Site**: new test.
+- **Change**: `test_cancelling_a_connection_at_each_await_frees_its_slot` drives `cancel_at_each_await()` from
+  synchronous scope over `_serve()` with a scripted request; invariants: `_open_conns` back to 0, the writer closed, the
+  held static stream released.
+- **Resolved**: —
+- **Unit**: U35.
+- **Depends**: M.TEST_HELP.067.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_asy_wifi_service.py
+
+### M.TEST_UNIT.210 Header: schema and phases from source, the config object, shared doubles
+- **From**: A.U24.01 (`:14-29` mirrors → `src_const`), A.U10.38 (`AsyConnTime` → `WifiService`), A.U10.39 (`_VAL_CTRY`/
+  `_VAL_HOST`/`_VAL_LED` → `_VAL_COUNTRY`/`_VAL_HOSTNAME`/`_VAL_LED_WIFI_ON`), A.U10.40 (`LedWifiOn` → `LEDWifiOn`),
+  A.U18.40 + A.U5.09 (`make_client()` builds a `WifiConfig`; `led_pin`, `wifi_refresh_sec` go; `:139-141` comment goes),
+  A.U24.45 (2) (`:141-143` stale Pin reason goes; its led_pin L1s void, M.SRC_NET.078), A.U5.02 (`debug=` → `log=`),
+  A.U5.07 (`ext_led` at construction), A.U24.67 (device strings), A.U24.49 (`_RaiseOnArm`, `_FastAsyncSleep` → shared; `:272-286, 2540`), A.U31.15
+  (`_FastAsyncSleep` also patches `sleep_ms` and records durations), A.U8.10 (`:208` comment), A.U24.08 (`run`,
+  `_cancel`), A.U24.76 (`FakeLED` → `_FakeLED`, `make_*` → `_make_*`), A.U24.73 (13 `Any` lines), A.U10.35 (`.wlan` →
+  `._wlan`, `hw_op_failed` → `_hw_op_failed`, the other privatised names), A.U10.37 (`print_log` → `asy_print_log`),
+  A.U28.28 (read: the `S106` per-file entry with its reason), A.U29.03 (read: the 19 `12345678` lines point at A.11).
+- **Site**: `tests/test_asy_wifi_service.py:1-222`; every attribute read the renames reach.
+- **Change**: imports `from asy_wifi_service import WIFI, WifiConfig, WifiService`, `from asy_udp_socket import
+  UDPSocket`, `from _async_harness import run, cancel`, `from _fake_timer_arm import RaiseOnArm`, `from _fast_sleep import
+  FastAsyncSleep`, `from _src_const import src_const`, `from _error_codes import code`, `from asy_print_log import
+  LogConfig`. `:14-29` → `_WIFI = "src/asy_wifi_service.py"`; `_PHASE_STA_SEEKING = src_const(_WIFI,
+  "_PHASE_STA_SEEKING")` … (the four), `_VAL_SSID`, `_VAL_PW`, `_VAL_COUNTRY`, `_VAL_HOSTNAME`, `_VAL_LED_WIFI_ON`,
+  `_VAL_HOTSPOT_PW` read the same way, one comment line "# Read from source: const() folds them out of the module
+  (tests/_src_const.py)." `_wlan(client)` returns `client._wlan` (its comment kept in substance). `_make_client(
+  conn_fail_to_hotspot=5, ext_led=None, hotspot_time_min=5, max_module_error=5, cfg_path=None, debug=None)` builds
+  `WifiService(WifiConfig("SensorNode", "12345678", conn_fail_to_hotspot, hotspot_time_min), ext_led=ext_led,
+  max_module_error=…, cfg_path=…, log=LogConfig(None, 10, debug))` and calls `run(client.setup())`; `_make_client_with_json`
+  likewise; every direct construction (`:245, 255, 2845, 2855, 2864, 2995`) passes a `WifiConfig` with both strings; the
+  14 `wifi_refresh_sec=0` arguments go (each such test runs its loop under `FastAsyncSleep()`, added where missing). The
+  `:208` comment's "2s+1s+1s" names `_WLAN_DOWN_SETTLE_S`/`_WLAN_DEINIT_SETTLE_S`/`_WLAN_MODE_SETTLE_S`. Every
+  `LedWifiOn` key → `LEDWifiOn`; every `wlan_connect`/`time_counter`/`_watch_hotspot_timeout` call → `_connect_loop`/
+  `_uptime_loop`/`_hotspot_timeout_loop` (A.U10.44); private attribute reads follow M.SRC_NET.078. Device strings used
+  as test input (`"SensorStationWozi"`, `"SensorStationDev"`, `"SensorStationSomethingElse"`, `:245-3000`, A.U24.67 (4))
+  → neutral values (`"SensorStationTest"`, `"SensorStationOther"`); the inline `# noqa: S106` comments go (the file's
+  per-file `S106` entry carries the reason, A.U28.28; an inline one would then trip RUF100).
+- **Resolved**: A.U24.45 (2) asks for `led_pin` L1s; the merged constructor has no `led_pin` (M.SRC_NET.078, ruling
+  V.U18.D) — those tests are void; the stale-comment half applies.
+- **Unit**: U24 (stages U5, U10, U18, U31).
+- **Depends**: M.SRC_NET.072, .077, .078, .079; M.TEST_HELP.043, .044, .052, .053.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.211 Construction, starters and the uptime tick
+- **From**: A.U10.44 + A.U32.01 (starters by name), A.U18.24 (`:272-293` gain `_tick_armed is False`; new L1s),
+  A.U10.03 (`:272-293` hold; `:956-998` → driven ticks; `:2609` → `get_wifi_uptime()`; new L1 delayed wake), A.U11.15
+  (`:299` level accessor), A.U10.10 (`:2060-2095` both loggers in `setup()`), A.U0.35 (`:649`), A.SDEP.08 (`:440` stamp),
+  A.U1.26 (`:439-440`).
+- **Site**: `tests/test_asy_wifi_service.py:229-300`, `:439-462`, `:648-656`, `:952-1002`, `:2054-2110`, `:2508-2546`,
+  `:2596-2612`.
+- **Change**: `get_task_starters() == [client.start_asy_connect, client.start_asy_uptime, client.start_asy_hotspot_timeout]`;
+  `get_timer_starters() == [client.start_uptime_timer]`; the counter-timer tests call `start_uptime_timer()`/
+  `stop_uptime_timer()` and the degrade tests assert `client._tick_armed is False`. The three `time_counter()` tests
+  drive `_uptime_loop()` with `_tick()` and read `get_wifi_uptime()`. `:299`'s level read follows A.U11.15's accessor
+  removal (the logger's level attribute read directly). The two lazy-setup tests (`:2061-2093`) → `test_setup_runs_both_
+  loggers_in_the_boot_batch` (`run(client.setup())` initialises `pr` and `_dns_server.pr`; the connect loop calls neither).
+  `:649` "Project-wide decision" → "(owner, 2026-09-26)". `:439-440`'s legacy path and version stamp follow A.U1.26 and
+  the pin re-check. New `test_a_failed_tick_arm_is_retried_by_the_next_loop_iteration` (a failed arm, two iterations: the
+  second re-arms, or logs one `code("E", "TIMER")` if it fails again); `test_max_failed_rearms_end_the_loop`;
+  `test_a_delayed_wake_advances_uptime_by_the_measured_time` (a wake 2.5 s late adds 2 s).
+- **Resolved**: —
+- **Unit**: U18 (stages U10, U11).
+- **Depends**: M.SRC_NET.079, .094, .100, .101.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.212 Config bounds, shapes and what GET shows
+- **From**: A.U18.37 (`:307-312`, `:526-545` hold; `:2964-3016` gain "GET shows the default"; new L1), A.U6.29 (`:2893-2941`;
+  `_BYTE_BOUNDS` drops Hostname; corpus L1s), A.U6.30 (`:236-238`, `:326-377` hold; corpus L1s), A.U24.56 (`:306-307`),
+  A.U36.513 (`:306-307`), A.U24.61 (`:2482, 2489, 2499`), A.U10.39 (`:2487`), A.U11.24 (5 `write_config` sites), A.U24.09
+  (`:2962-2975, 2988-3000, 3004-3014`; tests reading `network.country()`/`hostname()` re-derived), A.U18.39 (the mask
+  resubmitted is stored and connects with `********`), A.U10.25 (push returns True for a well-typed no-op), A.U18.41
+  (`:729-737` renamed), A.U32.01 (read: `:1645-1651` holds), A.U4.02 (read: hold).
+- **Site**: `tests/test_asy_wifi_service.py:302-816`, `:2477-2507`, `:2841-3056`.
+- **Change**: `:306-307` → "# the /networking GET masks PW (SPEC A.8)". The bound tests read the source schema
+  (`_VAL_*` above). `get_cfg_schema()` replaces `.cfg_schema` reads; `test_get_cfg_schema_matches_the_public_attribute` →
+  asserts equality with the source schema; each `write_config({…}, schema)` → `write_config({…})`. `:2907-2911` call
+  `_radio_value_ok(field, value)`; `_BYTE_BOUNDS` loses the Hostname row; the refusal text asserted is "outside the radio's
+  accepted form". Each stored-over-bound test adds that `get_dict_cfg()` shows the default in use. `:729-737` →
+  `test_led_wifi_on_push_narrowing_arm_returns_false_for_a_non_bool`. New: `test_a_stored_overlong_ssid_reads_back_as_the_
+  default_with_no_log` (33-byte SSID → `""`, no entry added by the GET); corpus-driven `test_every_host_label_and_country_
+  case_is_judged_as_the_corpus_says` (`tests/_radio_shape_cases.json`: PUT of each reject case answers `Invalid` and stores
+  nothing; a stored reject case runs on the default with one `code("W", "STORED_DEFAULT")`); `test_a_resubmitted_password_
+  mask_is_stored_and_connects_with_it` (A.U18.39: the WLAN fake's `connect()` record shows `"********"`);
+  `test_push_wifi_led_reports_success_for_a_well_typed_no_op`. Tests reading `network.country()`/`hostname()` without
+  setting them expect the product default (A.U24.09).
+- **Resolved**: —
+- **Unit**: U18 (stages U6, U10, U11, U24).
+- **Depends**: M.SRC_NET.072, .075, .080, .096; M.TEST_HELP.063 (the corpus).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.213 LED: construction-time LED, one flash task, two patterns
+- **From**: A.U5.07 (`:699-715` `set_ext_led` test goes), A.U18.30 (`:1701-1709` gains `client._led is not None`; `:2109`
+  gains the deactivated pattern; new L1s), A.U18.31 (`:657-690` inverted; `:2626-2640`, `:866-884` hold), A.U10.20 (new
+  L1 through a raising `_led_on` double, M_SRC_NET gap 5), A.U24.38 (`:565-575`, `:621-640` via recorded prints), A.U24.32
+  (read here: the `record_prints` helper), A.U31.15 (`:659` comment; durations 100/2900 ms), A.U18.40 (`set_wifi_led`
+  selects the ext LED).
+- **Site**: `tests/test_asy_wifi_service.py:558-768`, `:1377-1387`, `:1695-1716`, `:2109-2134`, `:2618-2646`.
+- **Change**: `test_set_wifi_led_true_selects_the_ext_led_when_no_gpio_pin` → `…selects_the_ext_led`.
+  `test_set_ext_led_never_touches_push_callbacks_or_triggers_a_reconnect` goes (no setter; guard: the generated
+  construction passes `ext_led=`, A.U5.07's L0). The no-LED tests assert via `record_prints()` that no LED failure line
+  appears and the state is unchanged; the raising-LED tests assert exactly one `pr.err` line ("LED on() failed:" /
+  off / toggle) and that the next call still reaches the LED. `test_flash_led_off_cancelled_mid_off_phase_still_leaves_
+  the_led_on` → `test_a_cancelled_flash_leaves_the_led_as_the_canceller_sets_it` (after `_hotspot_client_connected()` the
+  LED is on; after `_reset_wlan_connect_state()` it is off and stays off once the cancelled task has run; awaiting the
+  cancelled task raises `CancelledError`). New `test_the_hotspot_pattern_is_on_2900_off_100` and
+  `test_deactivated_with_the_led_enabled_blinks_100_on_2900_off` (the recorded `sleep_ms` durations); `…deactivated_with_
+  the_led_disabled_stays_dark`; `test_a_raising_led_helper_ends_the_flash_task_with_one_unexpected_entry` (`_led_on`
+  replaced on the instance by a raising double — the real helper absorbs the LED's own raise — one `code("E",
+  "UNEXPECTED")`).
+- **Resolved**: A.U10.20's L1 ("an LED whose `on()` raises") cannot reach the task top through the real helper; it is
+  driven through a replaced `_led_on` (M_SRC_NET gap 5, G5/R54).
+- **Unit**: U18 (stages U5, U10, U24, U31).
+- **Depends**: M.SRC_NET.084, .087, .092, .098, .100; M.TEST_HELP.050 (`record_prints`).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.214 Locks: `async with`, no release helper, the retry wait unlocked
+- **From**: A.U10.18 (21 sites; `network_available` → `network_available_locked`), A.U18.32 (`:1661-1685`; `:1179-1230`
+  inverted), A.U35.12 (`:196`, `:858`, `:877` parks reviewed), A.U8C.120 (read: `:1215` Dependant), A.U8.10 (`:1179`,
+  `:1663` comments).
+- **Site**: `tests/test_asy_wifi_service.py:817-891`, `:1066-1086`, `:1174-1246`, `:1654-1694`.
+- **Change**: the two `_release_wifi_lock()` tests go (the helper is gone; guard: `test_locked_wlan_status_releases_the_
+  lock_even_if_the_status_read_raises`, now through `async with`). `network_available()` → `network_available_locked()`
+  with the lock held by the test. `test_on_sta_disconnected_retries_after_a_minute_when_previously_connected` asserts the
+  returned `True` and that `_run_sta_mode()` sleeps `_STA_RETRY_AFTER_LOSS_S` with `wifi_mode_lock.locked() is False`
+  during the wait. `test_status_getters_return_locked_defaults_during_a_real_concurrent_outage_retry` →
+  `test_status_getters_return_the_last_snapshot_during_an_outage_retry` (during the retry wait `get_data()`,
+  `get_dns_server_ip()`, `is_hotspot_active()` answer from held state). Each `asyncio.sleep(0)` park at `:196`, `:858`,
+  `:877` that claims an interleaving becomes an `Event` gate; one that only lets a task park says so in its comment.
+- **Resolved**: —
+- **Unit**: U18 (stages U10, U35).
+- **Depends**: M.SRC_NET.081, .088, .098.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.215 The snapshot replaces the radio getters
+- **From**: A.U18.33 (`:893-1060`; `:1027-1044` go; `:1046-1064` read the snapshot; `:1135-1158` rssi → snapshot),
+  A.U18.42 (`:1160-1175` go; `:1135` comment; `:1208`), A.U24.19 (`:1146-1157`; hotspot rssi/STA stations cases),
+  A.U10.06 + A.U14.26 (`:2545-2590` `_now()` tests retire), A.U18.27 (`:2667` named status).
+- **Site**: `tests/test_asy_wifi_service.py:892-1173`, `:2547-2590`.
+- **Change**: `WIFI(...)` tuples carry eight fields (`Mode, Connected, IP, Subnet, Gateway, DNS, RSSI, TS`); the snapshot
+  tests assert the four address fields from `ifconfig()` and `RSSI` from `status("rssi")` only in STA with a link; the
+  `get_wlan_ifconfig`/`get_wlan_rssi`/`wlan_isconnected` tests go (guard: the snapshot tests; the raw read stays
+  reachable through `_wlan`); `get_dns_server_ip()` reads `_dhcp_dns`: "returns the last snapshot value while the lock is
+  held". New `test_hotspot_snapshot_has_no_rssi` (AP selected: `RSSI is None`, no `status("rssi")` call) and
+  `test_deactivated_snapshot_makes_no_radio_call` (`Connected False`, addresses and `RSSI` `None`). The two `_now()`
+  overflow tests and `_OverflowingTime` go with the method (guard: `utc_now()`'s own L1, M.TEST_UNIT in
+  `tests/test_base_classes.py`). `:2667` `_status = 2` → the mirror `_STAT_JOINED_NO_IP = src_const(_WIFI,
+  "_STAT_JOINED_NO_IP")`, the comment pointing to the constant's own.
+- **Resolved**: —
+- **Unit**: U18 (stages U10, U14).
+- **Depends**: M.SRC_NET.074, .080, .091, .098; M.TEST_HELP.007 (GAP-T5: `status("rssi")` raises off STA).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.216 Hotspot: timer failures persist, the selected AP is re-activated in place
+- **From**: A.U18.24 (`:1363-1378` one `TIMER` entry; `:1349-1360` holds), A.U18.28 (`:1864-1875` holds; new sibling;
+  `:2724-2770` header reworded; `:2729-2730` comment), GAP-T5 (M.TEST_HELP.007: an active AP reports `STAT_GOT_IP`),
+  A.U18.29 (`:1957-2012` hold; new end-to-end L1), A.U20.06 (read: `:2767` names `start_tasks()`), A.U18.43 (read:
+  `:1833-1848` hold), A.SDEP.17 (read: W42).
+- **Site**: `tests/test_asy_wifi_service.py:1247-1387`, `:1833-1949`, `:1950-2053`, `:2674-2876`.
+- **Change**: the two alarm-pool degrade tests gain one `code("E", "TIMER")` in the WIFI log. New
+  `test_run_hotspot_mode_re_activates_without_a_mode_switch_when_the_selected_ap_reports_no_link` (`_ap_selected =
+  True`, status IDLE: `_select_wifi_mode` not called, `_bring_up_hotspot_ap` and `_hotspot_client_absent` called). The
+  leak-test section header → "# _run_hotspot_mode() brings the selected AP up again on a tick without a link; it must
+  never leak a second DNS server task." and `:2729-2730`'s comment states the fake now reports `STAT_GOT_IP` for an active
+  AP (M.TEST_HELP.007). New `test_a_restart_in_hotspot_ends_in_sta_with_a_fresh_streak` (restart in HOTSPOT, two loop
+  iterations: STA, `_hotspot_started_once False`, DNS task cancelled).
+- **Resolved**: —
+- **Unit**: U18 (stage U24 fake).
+- **Depends**: M.SRC_NET.083, .086, .087, .093; M.TEST_HELP.007.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.217 Codes renumbered; connect verdicts under the central rule
+- **From**: A.U2.14 (44 lines; `:2653, 2660, 2667` RF287 names), A.U3.02 (`:1505-1560` rewritten; the "ends the episode"
+  test flips), A.U3.12 (WIFI BAD_ARG and STORED_DEFAULT repeats spend one slot), A.U18.36 (`:1463-1471` renamed), A.U36.544
+  (`:1527` pointer; `:2592` "attempt operations" convention), A.U24.32 (`:2653-2671` print assertions), A.U18.27
+  (`pm=0xA11140` literals), A.U8.10 (`:1564` comment).
+- **Site**: `tests/test_asy_wifi_service.py:1388-1592`, `:2590-2672`.
+- **Change**: every errno/wrnno in a test name and assertion follows the catalog: `…persists_errno_11` →
+  `…persists_wlan_mode_switch` (`code("E", "WLAN_MODE_SWITCH")`), 12 → `WLAN_AP_START`, 13 → `WLAN_STA_START`, 14 →
+  `WLAN_STA_POLL`, 15 → `WLAN_STA_DISCONNECT`; `wrnno_4` → `…authentication_failure_persists_wlan_auth_failed`, 5 →
+  `WLAN_NO_AP`, 6 → `WLAN_CONNECT_FAILED`, 7 → `WLAN_STATUS_UNKNOWN`. The episode section comment → "# A repeated connect
+  verdict is one code: one slot, every attempt counted (C.7.1's central rule)."; the first test keeps its assertions with
+  `code(…)`; the different-verdict test expects both codes; `test_a_successful_connection_ends_the_episode_so_a_later_
+  outage_persists_again` → `test_a_recurrence_after_recovery_stays_one_slot` (`[NO_AP]`, `ErrCount == 2`). `:1527`'s
+  pointer → "(SPECIFICATION.md C.7.1, `W4`)" as A.U36.544 writes it; `:2592` states the plain fact. The three in-progress
+  status tests (`:2653-2671`) assert their printed state line through `record_prints()` (IDLE, CONNECTING, "WLAN obtaining
+  IP") and that nothing persists. `pm=0xA11140` literals → `src_const(_WIFI, "_PM_NO_POWERSAVE")`. `:1564` comment names
+  `_STA_DISCONNECT_WAIT_ITERS × _STA_DISCONNECT_POLL_MS` and the test runs under `FastAsyncSleep()`.
+- **Resolved**: —
+- **Unit**: U18 (stages U2, U3, U36).
+- **Depends**: M.SRC_NET.077, .089; M.TEST_HELP.050.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.218 Missing config goes to CFGMGR; give-up persists GIVE_UP; the radio rung
+- **From**: A.U3.05 (`:1700-1737` → `CFGMGR_WIFI`), A.U3.07 (`:2229-2238` renamed; `:3050`; new L1), A.U10.R01 + A.U18.R01
+  (streak tests re-derived; new L1s), A.U10.18 (read: the give-up test's patched loop).
+- **Site**: `tests/test_asy_wifi_service.py:1695-1749`, `:2220-2283`, `:3040-3056`; new tests.
+- **Change**: the three missing-config tests break the real `ConfigManager` (`_make_invalid_cfg_client()`): WIFI's log
+  holds no entry, `CFGMGR_WIFI` one `code("E", "CFG_NOT_VALID")`; the names lose `persists_wrnno_N`. `test_wlan_connect_
+  gives_up_after_repeated_hardware_failures_and_persists_errno_17` → `test_connect_loop_gives_up_after_repeated_hardware_
+  failures_and_persists_give_up` (runs under `FastAsyncSleep()`: the 2nd failure's radio rung sleeps its settles; the log
+  ends `code("E", "GIVE_UP")`, exactly once); `:3050` → `assert code("E", "GIVE_UP") not in …`. New
+  `test_two_failed_iterations_re_select_the_radio_once` (one `deinit()` and one `WLAN(STA_IF)` construction on the fake,
+  one `code("W", "DEVICE_RECOVERY")`); `…in_hotspot_the_ap_is_re_selected`; `…deactivated_makes_no_radio_call`;
+  `test_a_raising_deinit_logs_one_mode_switch_entry_and_no_recovery_warning`; `test_the_radio_rung_fires_again_after_a_
+  restart_and_a_good_iteration`.
+- **Resolved**: —
+- **Unit**: U18 (stages U3, U10).
+- **Depends**: M.SRC_NET.084, .100, .102; M.SRC_CORE.037.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.219 STA connect: one status call on success, the authentication wording
+- **From**: A.U18.32 (one status call on success), A.U18.36, A.U35.12, A.U24.81 (two clients expect independent WLAN
+  objects: re-derived against the one static object per interface, GAP-T5), A.U18.01 (`:2312-2319` QTYPE comment),
+  A.U0.35 (`:1790-1791`).
+- **Site**: `tests/test_asy_wifi_service.py:1593-1694`, `:1750-1832`, `:2416-2476`, `:2312-2319`.
+- **Change**: `_poll_sta_connect_status()` with `STAT_GOT_IP` returns after one `status()` call (asserted on the fake's
+  call log). `:1790-1791`'s "CLAUDE.md's 'physical intervention as the accepted backstop' pattern" → "CLAUDE.md's
+  power-cycle recovery (owner, 2026-09-04)". Tests building two clients that expected independent WLAN objects assert the shared per-interface object
+  instead (the network fake returns one static object per interface). `:2315`'s comment "QTYPE=A/QCLASS=IN, never read
+  by parsing that stops at the QNAME terminator" → "QTYPE=A/QCLASS=IN: an A query gets the A record".
+- **Resolved**: —
+- **Unit**: U18 (stage U24 fake).
+- **Depends**: M.SRC_NET.089; M.SRC_NET (captive DNS QTYPE, A.U18.01); M.TEST_HELP.007.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.220 Captive-DNS integration: tuple addresses, port band, ordered proof
+- **From**: A.U18.12 (`:2303-2309`, `:2320-2345` tuples, shim), A.U24.70 (`:2301-…` → `PortAllocator`), A.U18.05
+  (`:2320-2345` wake at 100 ms, margins re-checked), A.U35.14 (4) (`:2343` ordered proof; row withdrawn), A.U8C.22 (tags),
+  A.U8C2.06 (tags), A.U10.38 (`AsyUDPSocket` → `UDPSocket`, `DNSServer` → `CaptiveDNS`), A.U27.30 (4 dividers),
+  A.U36.544 (read: none here beyond `:2592`), A.U25.37 (read: the twin fault matrix names this file's scope only).
+- **Site**: `tests/test_asy_wifi_service.py:2284-2476`.
+- **Change**: `make_addr()` → `_make_addr()` returning `("127.0.0.1", _PORTS.next())` (`PortAllocator("asy_wifi_service")`),
+  the shim applied once at module level; the comments naming the sockaddr workaround go. `:2343`'s `sleep(0.3)` → after the
+  malformed datagram the test sends one well-formed query and waits for its reply; the only reply carries the well-formed
+  query's ID and the task is alive (no `_NO_REPLY_WAIT_S`; its row withdrawn). Module constants and tags as A.U8C.22 and
+  A.U8C2.06 write them for the surviving literals (`_CONNECT_BOUND_S`, `_SENT_POLL_MS`/`_SENT_POLL_TRIES`,
+  `_OFF_SUBNET_WAIT_S`, `_CONNECT_POLL_MS`/`_TRIES`, `_PHASE_POLL_MS`/`_TRIES`, `_FLASH_CANCEL_BOUND_S`). The four
+  `# ====` dividers → `# ----`.
+- **Resolved**: —
+- **Unit**: U24 (stages U18, U27, U35).
+- **Depends**: M.SRC_NET (`UDPSocket`, `CaptiveDNS`); M.TEST_HELP.056.
+- **Blast carried by**: Part N rows → A.U8.01 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.221 Cancellation at each await of the WiFi tasks
+- **From**: A.U35.48.
+- **Site**: new test.
+- **Change**: `test_cancelling_a_wifi_task_at_each_await_leaves_the_mode_lock_free` drives `cancel_at_each_await()` from
+  synchronous scope over `_run_sta_mode()` and the LED flash task (`FastAsyncSleep` inside the coroutine); invariants:
+  `wifi_mode_lock` unlocked, `_ledflash` either `None` or done, the LED state a canceller set.
+- **Resolved**: —
+- **Unit**: U35.
+- **Depends**: M.TEST_HELP.067.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_base_classes.py (→ `tests/test_asy_base_classes.py`)
+
+### M.TEST_UNIT.222 Header: renamed modules, shared builders, no shadowing schema names
+- **From**: A.U10.37/A.U10.38 (file rename; `base_classes`/`print_log`/`config_manager` → `asy_*`; `AsyFramManager` →
+  `FRAMManager`), A.U24.01 (2) (`:103` `_VAL_SI` → `_TEST_SCHEMA_SI`), A.U24.08 (`run`), A.U24.49 (`make_fram_manager`),
+  A.U16.05 (18 `LockableBuffer` mentions → `RegionBuffer`), A.U16.19 (`:69`, `:74` fake chunks drop `override_pause`),
+  A.U11.S03 (read: `:52-95` buffer types hold under the rename), A.U10.18 (7 lock-name sites).
+- **Site**: `tests/test_base_classes.py:1-113`; every lock and buffer reference.
+- **Change**: the file moves to `tests/test_asy_base_classes.py` (U10 `git mv`). Imports `from asy_base_classes import
+  COUNTER_CAP, Lockable, LockedCounter, LockedFlag, LockedValue, RegionBuffer, SensorReader, SensorReaderConfig,
+  TickSeconds, ValueRef, arm_tick_timer, set_utc_valid, utc_now`; `import asy_base_classes`; `from asy_print_log import
+  LogConfig, PrintLog, PrintLogHistory, PrintLogHistoryStore`; `from _async_harness import run`; `from _fram_builders
+  import make_fram_manager` (the local builder goes; `asy_fram_manager.FRAMManager` in its users). The two
+  `_RaisingFram*` doubles type their buffers `RegionBuffer` and drop `override_pause`. `_VAL_SI`/`_VAL_BOOL`/`_VAL_SPECIAL`
+  → `_TEST_SCHEMA_SI`/`_TEST_SCHEMA_BOOL`/`_TEST_SCHEMA_SPECIAL` with every use (no test name shadows a src const); the
+  special-alone comment names `asy_sgp40_driver.py`'s `ResetVOC`. Every `.asy_lock` → `.session_lock`.
+- **Resolved**: —
+- **Unit**: U24 (stages U10 rename/names, U16 buffer).
+- **Depends**: M.SRC_CORE.027, .030, .033; M.TEST_HELP.043, .057.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.223 Region buffers hold no lock
+- **From**: A.U16.05 (`:259-266` deleted; `:269-270` → `test_regionbuffer_holds_no_lock`), A.U24.39 (`:269` behaviour
+  assertion: superseded by the deletion).
+- **Site**: `tests/test_base_classes.py:116-272`.
+- **Change**: the `LockableBuffer` tests become `RegionBuffer` tests (same region assertions). `test_lockablebuffer_is_
+  still_lockable` goes (it tests the removed lock; guard: the next test). `test_lockablebuffer_is_a_lockable_instance` →
+  `test_regionbuffer_holds_no_lock` (`not isinstance(RegionBuffer(4), Lockable)` and no `session_lock` attribute).
+- **Resolved**: A.U24.39 rewrites `:269` to "its lock serialises two holders"; A.U16.05 (U16, the decision) removes the
+  lock that sentence would test — the deletion and the decision-pinning test stand (agent decision D-T18).
+- **Unit**: U16.
+- **Depends**: M.SRC_CORE.027.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.224 Shared scalars: the cap, lock-free, None round-trips
+- **From**: A.U10.01 (`:278-281` → `COUNTER_CAP`, `_max_val`; `:284-360` hold; new L1s), A.U10.17 (`:357-366` holds;
+  `value_lock` references go).
+- **Site**: `tests/test_base_classes.py:274-396`.
+- **Change**: `test_lockedcounter_defaults` asserts `_max_val == COUNTER_CAP`. Any `value_lock` read goes. New
+  `test_a_max_val_above_the_cap_is_clamped_to_it` (`LockedCounter(max_val=COUNTER_CAP + 5)._max_val == COUNTER_CAP`);
+  `test_increment_near_the_cap_stays_there` (set to `COUNTER_CAP - 1`, two increments → `COUNTER_CAP`, no exception);
+  `test_lockedvalue_round_trips_none_and_a_32_bit_value`.
+- **Resolved**: —
+- **Unit**: U10.
+- **Depends**: M.SRC_CORE.031.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.225 New primitives: TickSeconds, arm_tick_timer, utc_now, ValueRef
+- **From**: A.U10.02 (fake ticks cases), A.U10.03 (`arm_tick_timer()` L1), A.U10.06 + A.U10.28 (`utc_now()` before/after
+  `set_utc_valid()`; stepped clock), A.U5.11 (`ValueRef`).
+- **Site**: new section after `:396`.
+- **Change**: with `asy_base_classes.time` replaced by a fake ticks source (restored in `finally`): up — 999 ms reads 0,
+  +1 ms reads 1, 3 × 700 ms reads 2 with 100 ms kept; down — `restart(3)`, 2500 ms reads 1, 600 ms more reads 0, more
+  reads 0; saturation — `restart(COUNTER_CAP - 1)`, +5000 ms reads `COUNTER_CAP`; a fake clock with a 2**30 period
+  crossing its wrap counts the true elapsed time. `arm_tick_timer()` arms PERIODIC 1000 ms and returns `True`; under
+  `RaiseOnArm(OSError)` and `RaiseOnArm(MemoryError)` it returns `False` and prints one line (`record_prints()`).
+  `utc_now()` is `None` before `set_utc_valid()` and an int after (`_utc_valid = False` restored in `finally`); with a
+  settable wall clock, `utc_now()` follows a backward and a forward step while a running `TickSeconds` is unaffected.
+  `ValueRef(src, "Temp")` exposes `source`/`field`.
+- **Resolved**: —
+- **Unit**: U10.
+- **Depends**: M.SRC_CORE.032, .035; M.TEST_HELP.050, .053.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.226 SensorReader construction: one log path, no logger reach-through
+- **From**: A.U5.02 (49 calls and 7 subclasses; `fram=`/`history_length=`/`debug=` → `log=`), A.U35.45 (`:450-470`
+  `logger=` tests go), A.U5.12 (read: the reach-through is removed here by A.U35.45), A.U11.15 + A.U11.13 (`:409-415`
+  level reads hold for valid levels), A.U11.S02 (read: `:445`, `:795` `==` hold), A.U10.10 (`:650-740` `pr.initialized`
+  after `setup()`).
+- **Site**: `tests/test_base_classes.py:399-740`.
+- **Change**: every `SensorReader(…)`/`SensorReaderConfig(…)` construction passes `log=LogConfig(<fram or None>,
+  <history_length>, <debug>)` by keyword and `max_module_error=` by keyword. `test_sensorreader_reuses_a_given_logger_
+  instead_of_constructing_a_fresh_one` and its sibling go (the parameter is removed; guard: the one-path construction
+  test `…name_is_baked_into_a_freshly_constructed_logger`). The FRAM-backed cases call `run(reader.setup())` where they
+  read a persisted log; `test_sensorreader_fram_backed_error_check_without_setup_never_raises` keeps its premise (no
+  setup) and asserts the RAM fallback.
+- **Resolved**: —
+- **Unit**: U5 (stages U10, U11, U35).
+- **Depends**: M.SRC_CORE.036, .039.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.227 The streak prints; the ladder climbs one rung per failure
+- **From**: A.U3.03 (`:474, 638, 647, 658, 668, 690, 706, 718, 739` drive persistence through `err_s()` or assert
+  `err_count == 0`; new L1), A.U2.06 (5 lines), A.U10.R01 (`:472-510` hold; new ladder L1s), A.U11.31 (reset returns
+  `True`).
+- **Site**: `tests/test_base_classes.py:472-740`; new tests.
+- **Change**: tests that used the streak entry to persist now persist through an explicit `err_s()` or assert
+  `err_count == 0` after a streak increment (a console line only). `test_sensorreader_reset_error_counter_clears_history`
+  asserts `run(reader.reset_error_counter()) is True`. New `test_a_failing_cycle_adds_exactly_the_drivers_entry` (a
+  failing cycle: one persisted entry, the driver's own, `ErrCount` +1; the give-up adds `code("E", "GIVE_UP")`);
+  `test_the_ladder_fires_each_rung_once_in_order` (a subclass with a counting `_recover_device()` and a stub bus whose
+  `clear()`/`recover()` count: failures 1…6 fire nothing / device once / bus clear once / controller once / nothing /
+  give-up); `test_a_success_mid_streak_fires_nothing_new_until_the_streak_returns_to_zero`;
+  `test_an_externally_zeroed_streak_re_arms_every_rung` (a task restart, one good cycle, a new streak climbs again).
+- **Resolved**: —
+- **Unit**: U10 (stages U2, U3, U11).
+- **Depends**: M.SRC_CORE.037.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.228 The shared trigger divider and the timer fault
+- **From**: A.U15.40 (new L1 `_divide_trigger()` n = 1, 3), A.U15.41 (`_timer_failed()`/`_timer_fault()` L1).
+- **Site**: new tests.
+- **Change**: `test_divide_trigger_sets_read_event_on_every_nth_tick` (n = 1 and n = 3: `read_event` set on ticks 1, 2,
+  3 … and 3, 6 …); `test_a_failed_timer_wakes_the_reader_and_logs_once` (`_timer_failed(e, flag)` sets the flag and
+  prints; `_timer_fault()` then persists one `code("E", "TIMER")` and returns `True`); `test_divide_trigger_re_arms_a_
+  failed_timer_first`.
+- **Resolved**: —
+- **Unit**: U15.
+- **Depends**: M.SRC_CORE.039.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.229 SensorReaderConfig: schema getter, setup verdict, FRAM rule comment
+- **From**: A.U24.61 (`:840`; `:833` comment goes), A.U10.39 (`cfg_schema` → `get_cfg_schema()`), A.U36.004 (`:984-986`),
+  A.U11.17 (read: `:945-957` holds), A.U11.19 (`:1013-1016` baseline 1 → 0), A.U35.37 (checks A.U11.19 landed),
+  A.U11.24 (5 `write_config` sites), A.U10.10 (`setup() -> bool`).
+- **Site**: `tests/test_base_classes.py:743-1127`.
+- **Change**: `.cfg_schema` reads → `get_cfg_schema()`; `:833`'s "self.cfg_schema stays public too" comment goes;
+  `test_sensorreaderconfig_setup_awaits_cfgmgr_setup` asserts `run(reader.setup()) is True` for a valid manager.
+  `:984-986` → "# The implicit FRAM-wiring rule (SPECIFICATION.md A.7): SensorReaderConfig forwards its own in-scope /
+  # log config into the ConfigManager it owns, in its own chunk, separate from reader.pr's." `:1013-1016`'s first-boot
+  baseline → no entry (`0`); each `write_config({…}, schema)` → `write_config({…})`. New
+  `test_a_cfg_log_fram_false_class_keeps_its_config_store_ram_only` (a subclass with `_CFG_LOG_FRAM = False` given a FRAM
+  log: `cfgmgr.pr` is a RAM history, `reader.pr` the store).
+- **Resolved**: —
+- **Unit**: U11 (stages U10, U24, U36).
+- **Depends**: M.SRC_CORE.040.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.230 Write orchestration on SensorReader: lock, deferred commit, concurrent recovery
+- **From**: A.U4.03 (`:1128-1136` comment; `:1203-1524` hold; new L1s), A.U11.27 (`:1204-1617` hold; `:1544-1577`; new
+  L1s), A.U11.28 (`:1204-1235` write count; new L1s with `WriteCountingOpen`), A.U30.08 (read: same results), A.U0.35
+  (`:1132`, `:1664`, `:1825`), A.U19.15 (read: `:1664`), A.U24.38 (`:1530` unknown key → config unchanged on read-back),
+  A.U11.19 + A.U35.37 (`:1449-1452` comment), A.U19.12 (read: single-task read path holds), A.U35.41 (read: E.5.1 row),
+  A.U4.02 (read: hold).
+- **Site**: `tests/test_base_classes.py:1128-1851`.
+- **Change**: `:1128-1136` → "# The write orchestration lives on SensorReader; SensorReaderConfig adds the file store (SCD30's
+  AmbPres uses this path as an always key). Persist first, then push (owner, 2026-09-26): …" (≤ 3 lines; the push-only-on-
+  change sentence kept). `:1664` "Final project decision:" → "(owner, 2026-09-26):"; `:1825` "(project decision)" →
+  "(agent, 2026-08-03)"; `:1449-1452`'s "two benign warnings" → none (the test asserts no entry). `:1530` → the schema
+  values and the config file read back unchanged. `test_set_dict_cfg_push_callback_returning_false_marks_the_field_
+  failed` gains a write count (`WriteCountingOpen`). New: `test_a_plain_sensorreader_answers_every_key_failed`;
+  `test_a_key_without_a_push_callback_triggers_no_pre_write_read`; `test_concurrent_puts_keep_the_later_value` (the
+  first PUT's push suspended on an `Event` then failing, the second accepted meanwhile: the stored value is the second's);
+  `test_a_recovery_write_answering_false_prints_and_persists_nothing_of_its_own`;
+  `test_a_push_that_fails_and_recovers_writes_nothing`; `test_a_successful_push_writes_once_after_it_returned` (the fake
+  push records the write count it saw: 0); `test_a_put_cancelled_mid_push_still_flushes_its_staged_value`.
+- **Resolved**: —
+- **Unit**: U11 (stages U0 tags, U4, U19, U24, U30).
+- **Depends**: M.SRC_CORE.038; M.TEST_HELP.062 (`WriteCountingOpen`).
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_bus_hazard_generated.py
+
+### M.TEST_UNIT.231 Freshness guard, every bus kind, a test per writer
+- **From**: A.U24.46 (`require_fresh()` first), A.U24.27 (`:66-71` `_port_id_for_bus()` takes `spi<n>`; `:130-132` loop
+  over `plan["buses"]` and `plan["spi"]`; generated names gain the writer), A.U24.20 (`:74-81` builds through the
+  catalog's `make_i2c()`, which resets the id), A.U24.28 (`:84-87` the sweep asserts by equality, in the catalog),
+  A.U35.16 (read: the all-occupants cases carry the window check, in the catalog), A.U15.25 (read: the generated
+  scenarios keep the default BMP chip id), A.U24.08 (`run`), A.U24.73 (`Any`), A.U0.07 (`import asyncio` at the top).
+- **Site**: `tests/test_bus_hazard_generated.py:1-133`.
+- **Change**: `import asyncio` joins the module imports at the top; `from _async_harness import run`; `from
+  _generated_tree import require_fresh` called once at module level before `_all_device_wiring_plans()`;
+  `_generated_src_dir()`'s comment kept. `_port_id_for_bus()` accepts `i2c<n>` and `spi<n>` (the assertion message names
+  both); the registration loop walks `plan["buses"]` and `plan.get("spi", {})`; an SPI bus with ≥ 2 occupants builds
+  through `SPI_HAZARD_CATALOG` (an occupant missing from it raises the catalog's actionable `KeyError`). The write-vs-
+  siblings registration registers one test per writer: `test_<device>_<bus>_a_<driver>_write_does_not_disturb_
+  concurrent_sibling_reads_across_timing_offsets`; a bus with no writer or no broadcaster reports SKIP with the
+  catalog's reason (A.U7.07), never a silent pass. `_all_device_wiring_plans()`'s docstring → a `#` comment (≤ 3 lines,
+  the one header block rule).
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: M.TEST_HELP.026, .027, .046.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.232 A bus recovery mid-read, per generated bus
+- **From**: A.U13.R02 (2) (the recovery scenario for every generated bus topology), A.U35.50 (read: the conformance
+  matrix lists this cell), A.U36.014 (read: CLAUDE.md points to SPEC C.8's list).
+- **Site**: `tests/test_bus_hazard_generated.py:89-127` (`_register_bus_tests`).
+- **Change**: every I2C bus with ≥ 2 occupants also registers `test_<device>_<bus>_a_bus_recovery_does_not_disturb_
+  concurrent_sibling_reads_across_timing_offsets` running `scenario_bus_recovery_does_not_disturb_concurrent_siblings(
+  _make_build_fresh(bus_name, attachments))`.
+- **Resolved**: A.U13.R02 (2) places the L1 "for every generated bus topology (the file's existing per-bus
+  parametrisation)" in `tests/test_bus_hazard_multi_device.py`; that per-bus parametrisation is this file's, so the
+  per-topology case lands here and the per-driver split-session cases stay in the hand-paired file (agent decision
+  D-T19).
+- **Unit**: U13.
+- **Depends**: M.TEST_HELP.027 (4); M.SRC_SENS (A.U13.R01 `recover()`).
+- **Blast carried by**: L2-L4 tiers → A.U13.R02 (TWIN, HW_DEV, HW_BENCH).
+- **Kind**: test
+
+## tests/test_bus_hazard_multi_device.py
+
+### M.TEST_UNIT.233 Header, shared doubles, catalog constants, no address keywords
+- **From**: A.U24.08 (`run`), A.U24.49 + A.U31.09 + A.U31.11 (`:42-56` `_FastAsyncSleep` → shared, patches `sleep_ms`
+  too), A.U24.01 (4) (`:87` `BMP_EXPECTED_TEMPERATURE` from the catalog), A.U15.28 (`:117, 166-167, 210, 249-250, 316-317,
+  358` no `address=`), A.U10.18 (6 lock sites), A.U24.67 (variant names in comments), A.U24.73 (`Any`), A.U15.15 (`:68-70`
+  comment holds), A.U0.33 (read: SPEC's "permanent home" wording), A.U36.014 (read: CLAUDE.md points to C.8), A.U36.544
+  (read: a SPEC comment naming this file).
+- **Site**: `tests/test_bus_hazard_multi_device.py:1-112`; the constructions and lock references named.
+- **Change**: `from _async_harness import run`; `from _fast_sleep import FastAsyncSleep`; `from _bus_hazard_catalog import
+  BMP_EXPECTED_TEMPERATURE, RESERVED_I2C_RANGES, fake, is_reserved, make_i2c, seed_bmp_ready, seed_isl_ready, sgp_word`;
+  the local `_FastAsyncSleep`, `seed_bmp_ready`, `_BMP_EXPECTED_TEMPERATURE` and the reserved-range copy go (the file's
+  `_BMP_EXPECTED_PRESSURE_HPA` stays with its derivation note). Every `SGP40_I2C(i2c, address=_SGP_ADDR)` /
+  `ISL29125_I2C(i2c, address=_ISL_ADDR)` → no address keyword (fixed addresses). `bus.async_lock` → `bus.bus_lock`;
+  `.cs_pin`/`.cs_active_value` → `._cs_pin`/`._cs_active_value`. Comments naming a variant ("matches wozi's real i2c1 port
+  id", "dev's own i2c1 grouping", "dev's real i2c0 wiring") state the wiring fact instead ("the BMP3XX+SGP40 pairing on
+  i2c1", "the ISL29125+SGP40 pairing on i2c1").
+- **Resolved**: —
+- **Unit**: U24 (stages U10, U15, U31).
+- **Depends**: M.TEST_HELP.026, .043, .052.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.234 Cross-device interleaves: both BMP chip ids, the window check
+- **From**: A.U15.25 (`:114` runs once per chip id `(0x50, 0x60)`), A.U35.16 (`:152-159`, `:193-197` → `sibling_inside_
+  window`), A.U12.18 (read: `:138`, `:186` calls unchanged), A.U15.S01 (read: no transaction moved), A.U15.32/A.U15.33
+  (read: ISL write-vs-read cases run unchanged), A.U13.07/A.U13.09/A.U13.10/A.U15.01/A.U15.12/A.U15.13/A.U30.06/A.U30.07
+  (read: healthy-bus cases hold).
+- **Site**: `tests/test_bus_hazard_multi_device.py:114-197`.
+- **Change**: the BMP3XX+SGP40 test loops over `(0x50, 0x60)` (`seed_bmp_ready(i2c, chip_id=…)`), each run asserting the
+  BMP results and the SGP40 words. Both tests replace `switches >= 2` with `assert sibling_inside_window(fake_bus.log,
+  _SGP_ADDR), "no sibling transaction landed inside an SGP40 conversion window - the bus was held across the delay"`;
+  the result assertions stay.
+- **Resolved**: —
+- **Unit**: U35 (stage U15 chip ids).
+- **Depends**: M.TEST_HELP.026, .027 (`sibling_inside_window`).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.235 General call: count pinned, the lone-BMP case moves to silicon
+- **From**: A.U35.17 (`:240-242` deleted), A.U35.21 (`:271-306` deleted; L3 replaces it), A.U15.15 (`:282` comment goes
+  with the deleted test).
+- **Site**: `tests/test_bus_hazard_multi_device.py:200-306`.
+- **Change**: in `test_sgp40_general_call_reset_does_not_disturb_a_concurrent_bmp3xx_read` the comment and the
+  `all(entry[1] != _BMP_ADDR …)` line (filtered to address 0x00, it can never fail) go; the count and payload assertions
+  stay. `test_general_call_absent_sibling_bmp3xx_alone_on_the_bus_survives_a_broadcast_too` goes — guard named: the new
+  L3 `tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py` with its flash test (A.U35.21, HW_DEV); the
+  SGP40-issued broadcast cases (`:207`, `:245`) and the generated sweep keep L1.
+- **Resolved**: —
+- **Unit**: U35.
+- **Depends**: —
+- **Blast carried by**: the L3 script and flash test → A.U35.21 (HW_DEV).
+- **Kind**: test
+
+### M.TEST_UNIT.236 Fault isolation bounded; sessions with distinct commands; reserved addresses from adapters
+- **From**: A.U35.18 (`:314-354` bounded, lock free after), A.U24.74 (`:356-377` distinct sessions), A.U35.19 (`:63-75`,
+  `:385-388` from the adapters), A.U8.02 (tag grammar).
+- **Site**: `tests/test_bus_hazard_multi_device.py:309-388`.
+- **Change**: the fault-isolation gather runs under `asyncio.wait_for(…, _ISOLATION_BOUND_S)` (`# @tunable
+  l1.bus_fault_isolation_bound_s = 5`), a `TimeoutError` failing with "the shared I2C lock was not released after the
+  SGP40's EIO - the ISL29125 loop never finished"; after it `assert not i2c.bus_lock.locked()`. The three-sessions test
+  uses distinct inputs (25 °C/50 %, 10 °C/30 %, 35 °C/80 %); the expected 8-byte command per session is computed in the
+  test from the SGP40 datasheet's measure-raw layout (command 0x260F, RH ticks and T ticks each with its CRC-8, poly 0x31
+  init 0xFF, cited) — not from the driver's tick helpers; the fake answers `0x8000 + k` per read; asserts the log is
+  three `writeto(0x59, …)` each directly followed by its `readfrom_into(0x59, …)`, the payload set equals the expected
+  set with valid CRCs, and each session's value is the word read right after its own write. The reserved-address test
+  loops over every catalog adapter's `default_address(i2c)` and asserts each is outside `RESERVED_I2C_RANGES`, naming the
+  driver; the hand-kept address constants stay only where a test uses them as fixture addresses.
+- **Resolved**: —
+- **Unit**: U35 (stage U12 with the race fix).
+- **Depends**: M.SRC_SENS.068 (A.U12.18 staging); M.TEST_HELP.026.
+- **Blast carried by**: Part N row → A.U8.01 (SPEC); L2/L3 of the race fix → A.U12.18 (TWIN, HW_DEV).
+- **Kind**: test
+
+### M.TEST_UNIT.237 SPI: a real FRAM against an async session; the overrun through the FRAM path
+- **From**: A.U35.20 (`:395`, `:449`), A.U10.18 (`async_lock` → `bus_lock`).
+- **Site**: `tests/test_bus_hazard_multi_device.py:390-487`.
+- **Change**: `:395`'s synchronous worker becomes a real `FRAM_SPI` over the same `SPI` wrapper (CS 6, `FakeMB85RS64V` on
+  that CS) looping `async with fram: fram._read_address(0, buf)`; the async worker holds its session across an `await
+  asyncio.sleep(0)` inside the CS window; `overlap_observed` stays false only because `FRAM_SPI.__aenter__` takes the bus
+  lock; counts and final CS/lock states stay. `:449`: `bus._spi.rx_overrun = True`, then `async with fram:
+  fram._read_address(0, bytearray(32))` raises `OSError` (caught by the test); then, inside `asyncio.wait_for(…,
+  _ISOLATION_BOUND_S)`, a neighbour `SPIDevice` takes the bus and writes; FRAM's CS inactive, the neighbour's write logged,
+  `not bus.bus_lock.locked()`; the test's own lock/`finally` goes.
+- **Resolved**: —
+- **Unit**: U35.
+- **Depends**: M.SRC_CORE (FRAM_SPI sessions, A.U16.10); M.TEST_UNIT.236 (`_ISOLATION_BOUND_S`).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.238 New hazard cases: recovery split sessions, SCD30 reset, heater-off, FRAM erase
+- **From**: A.U13.R02 (2) (one split-session case per driver), A.U15.R01 (mid-operation SCD30 reset while sibling loops
+  run), A.U15.R02 (heater-off concurrent with the SCD30 read loop across offsets; same-device vs the SGP40's own measure),
+  A.S0930.23 (a)-(c) (erase hazards, mock tier), A.S0930.35 (read: names this file for the erase harness), A.U35.50 (read:
+  conformance matrix rows).
+- **Site**: new section in `tests/test_bus_hazard_multi_device.py`.
+- **Change**: `test_a_recovery_between_a_split_session_still_returns_a_valid_value` per driver with one (SCD30 command →
+  read, SGP40 command → read, BMP3XX trigger → read): `i2c.recover()` lands between the halves, the transaction returns a
+  valid value. `test_an_scd30_soft_reset_mid_read_leaves_every_sibling_read_valid` (SGP40/ISL29125/BMP3XX loops on the
+  same bus, the reset at each offset). `test_sgp40_heater_off_does_not_disturb_a_concurrent_scd30_read_loop` across offsets,
+  and `test_heater_off_and_an_sgp40_measure_serialise_through_the_device_session`. FRAM erase: (a) `erase_chip()` started
+  while a chunk write and a chunk read are suspended mid-operation — in-flight ones finish with both copies equal, later
+  ones refused, no chunk torn, each erase unit's five sessions contiguous in the SPI log; (b) a sensor cancelled inside its
+  I2C session leaves the next sibling transaction succeeding and the lock free; (c) the erase units cover `[0, size)` once,
+  ascending, with the 3-byte header on the 256 KB fake and 2-byte on the 8 KB one, no `_SV_BAD_RANGE`; pass-1 status
+  writes touch exactly each allocated block's two status bytes.
+- **Resolved**: —
+- **Unit**: U15 (A.U15.R01/R02; stage U13 recovery, S0930 erase).
+- **Depends**: M.SRC_SENS (A.U13.R01, A.U15.R01, A.U15.R02); M.SRC_CORE (`erase_chip()`, A.S0930.17).
+- **Blast carried by**: L2-L4 → A.U13.R02, A.U15.R01, A.U15.R02, A.S0930.27-.29 (TWIN, HW_DEV, HW_BENCH).
+- **Kind**: test

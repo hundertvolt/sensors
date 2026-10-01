@@ -42,7 +42,7 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
   A.U24.78); generated modules through `tests/_generated_module.py` `load_generated(device)` (A.U10.30) after
   `tests/_generated_tree.py` `require_fresh()` (A.U24.46); the device set from `tests/_twin_devices.py`
   (`generated_devices()`, `wiring_plan(device)`, `device_with(driver)`, `device_with_shared_bus(a, b)`; A.U25.25 /
-  A.U25.48, the one helper A.U24.65 also uses); catalog codes `code("E"|"W", <NAME>)` (A.U2.03).
+  A.U25.48, the one helper A.U24.65 also uses); catalog codes `code("E"|"W", <NAME>)` from `tests/_error_codes.py` (A.U2.03, M.TEST_HELP.045).
 - **C3 `@tunable` tags** (A.U8C/A.U8C2, grammar A.U8.02): every tagged literal becomes the module constant the U8C row
   writes, except a literal a later constituent deletes (polls of A.U25.45, the removed in-body `gc.threshold` of
   A.U30.13, the driven windows of A.U35.14, the in-DUT HTTP code A.U25.46 moves host-side): its row is withdrawn, named in
@@ -1787,3 +1787,1059 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   (SCR); `tests_scripts/test_mypy_any_baseline.py` reads the sections → A.U8.24 / A.U34.11 (TSC); `pyproject.toml`
   main pass: `:383` exclude goes (A.U25.40), `mypy_path` += `digital_twin/unixport` (A.U18.12) → TOOL
 - **Kind**: rule
+
+## digital_twin/README.md
+
+Shared for M.TWIN.058-074: every edited paragraph states current facts only (OR27.a; A.U25.65's rule: "used to",
+"once", "the first version did", dated fixes and "Session-N"/"Step 5" pointers fold into the fact or go), cites no audit
+ID (G9/R12), keeps owner tags on decisions (A.U0.31's list: `:5`, `:19`, `:50`, `:70`, `:104-112`, `:145`, `:155`, `:204`,
+`:810-813`, `:877` — each tag travels with its sentence wherever this merge moves it), and A.U10.37/A.U10.38/A.U10.40
+renames apply to every module, class and key named (C1). Device counts and device names are not copied from the TOMLs
+(OR78.a, A.U36.024/A.U36.511): "every device of `devices/*.toml`". Units: each constituent edits its own lines in its own
+unit; the end state below is the text after U36 (the latest constituent unit); U25 is the unit that restructures.
+
+### M.TWIN.058 Intro and "What's here": one bullet per module, current facts, pointers to the fidelity table
+- **From**: A.U36.024 (`:6` → "— any real device of `devices/*.toml`, or a synthetic fixture —"), A.U25.48 (`:6` the count is
+  a fact, U36), A.U0.31 (`:5`, `:19`, `:50`, `:70`, `:104-112` incl. `:105` "independent, duplicated (not reused) copies
+  (owner, 2026-08-12: the owner's choice over reuse)", `:145` tags), A.U25.25 (`:26-35` profile sugar goes), A.U25.03
+  (`:18-45` states the per-id static model), A.U25.22 (`:41-45` `I2C.log` bullet states the drop count), A.U25.52 (`:36-41`
+  names the identity guard), A.U25.08 (`machine.py` bullet names `mem_backup()`), A.U25.29 (`_fram_chip.py` bullet
+  `:69-75`), A.U25.10 (`_sgp40_chip.py` bullet `:46-68`), A.U25.62 (class names), A.U25.26 (`:107-109` → the connect
+  phase sentence), A.U25.72 (`:114-116` AP-mode gap sentence goes — the fidelity row says fixed), A.U25.33 (`network.py`
+  bullet: TEST-NET addresses), A.U25.21 (`network.py`/`neopixel.py` bullet `:105-116`), A.U25.31 (`_http_client.py`
+  bullet `:117-128`), A.U25.39 (`:89-101` unwedge bullet removed; the prewarm bullet's "its sibling" wording adjusted),
+  A.U25.40 (`:80` and `:128` mentions of `segfault_stress_repro.py` go), A.U25.43 (4) / A.U36.040 (2) (the prewarm bullet
+  keeps its how-to and points to SPEC F.7 for the defect; "a known limitation, not reported upstream (owner,
+  2026-09-29)"), A.U25.09 (the runner bullet states exit codes 3/4), A.U36.513 (7) (`:136-141` → "The single entry point
+  every automated level drives (SPECIFICATION.md L.4) — see "Booting a generated device" below for the general mechanism
+  and "Swapping the twin in" for a manual run."), A.U25.25 (4) (launch bullet: the bus wiring of the device whose plan it
+  is given), A.U25.70 / A.U24.82 (`:144-147` fault-surface paragraph: fresh exceptions, `match`, `pending()`), A.U25.59
+  (`unplug`/`plug` named), A.U14.28 (shim bullet keeps its pointer), A.U7.01 (level wording follows SPEC E.6), A.SDEP.08
+  (`:78` re-read at the pin), A.U25.71 / M.TWIN.019 (`_wall_clock.py` bullet, gap: no action writes it), M.TWIN.001,
+  M.TWIN.053, M.TWIN.054 (new modules' bullets)
+- **Site**: `digital_twin/README.md:1-147`
+- **Change**: intro `:1-14`: "— any real device of `devices/*.toml`, or a synthetic fixture —"; the real-time Timers and
+  bounded random values carry "(owner, 2026-08-12)"; `:12-14` keeps the separation sentence and names
+  `scripts/micropypath.toml`'s twin layout instead of copying a `MICROPYPATH` value (A.U27.15). Bullets, in this order:
+  `machine.py` (Pin with rp2's ids/names/modes and the external line level; static per-id I2C/SPI/UART wired from
+  `configure_wiring(plan)` — "constructing a bus before a plan is configured raises", no profile sugar, no default
+  device; the IRQ-pin identity and its guard (the construction scenarios, A.U25.52); Timer as an asyncio task with rp2's
+  alarm pool (owner tag `:19`); WDT that records; RTC + wall clock; `mem_backup()`/`reset_cause()`; `I2C.log`/`SPI.log`
+  bounded to the last 200 with a `dropped` count; `peripheral()`/`reset_peripherals()`/`reset_test_state()` test-only);
+  the four I2C chip fakes (one line each, facts that are not rows of the fidelity table: the ISL29125's non-nominal ratio
+  and measured register-map behaviours with their SPEC M.1.2/M.1.4 pointers, `power_cycle()` and `set_illumination()`;
+  the SGP40's general-call reset; the SCD30's provisioned default and RDY edge; the BMP3XX's inverted compensation, owner
+  tag `:877`); `_fram_chip.py` (opcode protocol, size and RDID from `machine.py`'s one table, knobs `drop_next_wren`,
+  `rdid_once`, `silent` — the "real bug (fixed 2026-09-04)" history goes); `_twin_common.py`; `_crc8.py` /
+  `_fault_injection.py`; `_wall_clock.py`; `network.py` / `neopixel.py` (owner tag `:105`; connect phase "moves through a
+  real `STAT_CONNECTING` phase and connects after `_CONNECT_DELAY_S` (0.7 s), under `_poll_sta_connect_status()`'s 5 s
+  budget"; STA address in TEST-NET-1 so no twin run reaches a public resolver; AP singletons answer `192.168.4.1`; the
+  NeoPixel stores a GRB bytearray; owner tag `:104-112` "reaching the host's real network through every connect phase");
+  `_http_client.py` (real HTTP over real sockets, owner tag; refusal → `CeilingRefusedError`, incomplete →
+  `IncompleteResponseError`, both `OSError`; strict JSON check, the lazy import's reason "so `_http_client` imports without
+  `tests/` on the path"; `timeout_s`; shape parity with `tests_hardware/http_client.py`); `unixport/` (the UDP shim and the
+  offline-NTP writer; L1 tests may put it on their path because it holds no hardware fake); `unix_port_poll_prewarm.py`
+  (callers: every entry that boots a device with real sockets, first; the 64-port scan from 17400, a fixed row of
+  `tests/_port_bands.py`; "(the defect and its removal trigger: SPECIFICATION.md F.7)"); `launch.py` (`--wiring-plan`
+  required; reads every wired SCD30/SGP40/BMP3XX; owner tag on `--fault`); `run_generic_integration.py` (A.U36.513 (7)'s
+  sentence; exit codes 3 reset, 4 bootloader, 5 power loss; `--test-*` flags, see "Runner flags"); `run_device_script.py`
+  (see "Running device scripts in the twin"). The fault-surface paragraph `:144-147` → "Every chip fake exposes `.fault`, a
+  `FaultInjector`: `inject_fault(op, exc_type, *args, times=1, match=None)` raises a fresh exception per call, optionally
+  only for one command word, register or opcode; `pending(op)` counts what is queued; `inject_hang()` is a real blocking
+  sleep (see `--hang`). Faults the rp2 port cannot produce are refused (fidelity table). `I2C.unplug(address)`/
+  `plug(address)` model a sensor pulled and re-seated; off/clean by default (owner, 2026-08-12)."
+- **Resolved**: A.U36.040 (U36) turns A.U25.43 (4)'s README account (U25) into a pointer — the later action's end state
+  (SPEC F.7 is the fact's one home, both actions agree). A.U25.71 adds `_wall_clock.py` with no README line; the bullet
+  is added here (gap closed).
+- **Unit**: U36 (U25 restructures)
+- **Depends**: M.TWIN.001-057
+- **Blast carried by**: SPEC A.10/E.6.5 point to the fidelity table → A.U25.01 (SPEC); root README recipe pointers →
+  A.U36.547 (DOCS)
+- **Kind**: doc
+
+### M.TWIN.059 New "Fidelity table" section
+- **From**: A.U25.01 (the section, columns `Class | Fact on silicon | Twin | Evidence | Proven at | Status`, every row it
+  lists), A.C.10 / A.C.15 / A.C.19 (phase C updates rows: measured facts move rows to `fixed`/measured), A.U37.04 (close
+  check reads the table), A.U36.041 (the Persistence row is the one place for the multi-instance limit; SPEC L.4
+  points here), A.U0.59 (`:354` tag — void: the paragraph becomes a pointer, A.U25.01), A.U14.20 (`mem_backup()` row),
+  A.U24.17 (the shared contract noted), A.U24.20 ("bus objects are static per id"), A.U24.26 (fakes cite their port
+  facts), A.U24.80 ("UART stream ioctl answers as rp2"), A.U15.05 (SGP40/SCD30 timing rows may cite SPEC M.3/M.2),
+  A.U11.07 (the twin `mem_backup` row), A.U25.08 / .10 / .11 / .12 / .13 / .14 / .15 / .16 / .17 / .18 / .19 / .20 / .21 /
+  .26 / .27 / .55 / .59 / .68 / .71 / .72 / .73 (their rows), A.U4.06 (the SCD30 NVM write counter is a test surface, not
+  chip behaviour), A.U25.54 (power loss at SPI-transaction granularity; mid-byte loss is L3's), A.S0930.27 ("SPI wire time:
+  off by default, 8 µs/byte for timing proofs"), A.U35.31 (the twin countdown dies with its loop), A.U25.68 (the "Pinned
+  constants" subsection lists `tests/test_digital_twin_rp2_constants.py`), adherence additions of this merge (below)
+- **Site**: `digital_twin/README.md` new `## Fidelity table` after "What's here", before "Swapping the twin in"
+- **Change**: A.U25.01's table verbatim in structure and rows (its Change text is the content spec), with these
+  end-state adjustments: (1) the RTC row reads "RTC: no constructor argument, an 8-tuple, weekday recomputed, setter
+  returns `None`; with the runner's wall clock installed a set moves `time.time()`/`gmtime()` (fixed,
+  `tests/test_digital_twin_machine.py`); uninstalled it holds a fixed tuple" (A.U25.71's "fixed (installed by the
+  runner)"); (2) rows added from merged changes: SCD30 provisioned default `measuring=True` (not datasheet-derived;
+  `nvm=SCD30Nvm(…, False)` models an unprovisioned unit); SCD30 0x5204 outside [400, 2000] ignored (assumption, BACKLOG
+  row with the wrong-CRC one); SCD30 0x0010 overwriting altitude compensation (Interface Description 1.4.1) not modelled
+  (accepted until a driver depends on it) — an adherence addition (G7/R03: every modelling gap is a row); the SCD30
+  `nvm_writes` counter counts accepted NVM commands — a test surface (A.U4.06); SGP40 unknown command keeps the pending
+  reply (assumption, A.U25.11); ISL29125 PRST counter stops at its target (fixed, `tests/test_digital_twin_isl29125.py`,
+  A.U25.14); I2C `unplug`/`plug` and every chip's `power_cycle()` (twin-only knobs; fixed by
+  `tests/test_digital_twin_hot_replug.py`, A.U25.59); SPI power loss after k transactions, never mid-byte (L3 `fram_reset_
+  race_*`, A.U25.54); SPI wire time off by default (A.S0930.27); UART: static per id, ring re-allocated on
+  re-construction, `ioctl()` `EINVAL` except POLL, `readline(size)` clamped and counted, `txdone()` always `True` (the link
+  delivers at once; accepted; L3 `uart_*` scripts) (A.U25.04, A.U24.80, A.U13.12, A.U13.13); the twin WDT never resets,
+  so codes reached only through a real watchdog reset are L1 and phase C (A.U25.55); a runner-cancelled `main()` keeps
+  the runner's loop and with it the WDT countdown alive (A.U35.31); public-destination UDP refused by the shim (fixed,
+  `tests/test_digital_twin_sensortask_integration.py`, A.U25.33); the twin's `machine` fake meets the shared contract
+  `tests/_machine_contract.py` (A.U24.17) — one sentence under the table, with "every rp2 constant the twin models is
+  pinned by `tests/test_digital_twin_rp2_constants.py`" as the "Pinned constants" subsection (A.U25.68). (3) Each row with
+  Status `assumption` names its BACKLOG "Real-hardware work still owed" line (A.U25.01; the BACKLOG lines are DOCS's).
+  (4) `[src: …]` notes are not written into the permanent README (G9/R12, C5): the table's Evidence column cites the
+  source line, datasheet page or test, never an audit ID — A.U25.01's own "register and action IDs go only in `[src: …]`
+  notes beside each row" is replaced by this, see Resolved.
+- **Resolved**: A.U25.01 keeps `[src: A.U…]` notes "beside each row, never in the table"; G9/R12 / AC_NOTES 4 forbid
+  temporary audit IDs in permanent text, and the README is permanent — the notes are dropped (adherence fix; the
+  provenance stays in the audit files). A.U0.59 tags `:354`; A.U25.01 turns `:354-358` into a pointer — A.U0.59 is void
+  (its own text: "void if U25's G7/R15 work removes the limitation" — the limitation is restated as the Persistence row).
+- **Unit**: U25 (phase C updates by A.C.10 deltas)
+- **Depends**: M.TWIN.002-057
+- **Blast carried by**: BACKLOG assumption rows → A.U25.01/.08/.10/.12/.14/.15 (DOCS); SPEC A.10/E.6.5 pointers →
+  A.U25.01 (SPEC); SPEC L.4 → A.U36.041 (SPEC); close check → A.U37.04 (PROC)
+- **Kind**: doc
+
+### M.TWIN.060 "Swapping the twin in": one recipe pointer, persistent manual defaults, current facts
+- **From**: A.U36.547 (`:158-163` command block → "(README.md, Recipes: <name>)", explanation kept), A.U36.024 (`:158-163`
+  examples name a device; no default), A.U25.48 (`:161-162` no `wozi` default), A.U27.15 (`:178` literal layout →
+  `scripts/micropypath.toml` named; `:188-195` names the file), A.U25.44 (`:188-195` names the path guard), A.U0.31 (`:155`
+  "real HTTP over real sockets (owner, 2026-08-13)", `:204` "settable address, default `localhost:8080`, browser-reachable
+  (owner, 2026-08-13)"), A.U25.32 (`:197-204` "defaults every state-persistence path to `None`" → "the manual entry point
+  persists to `digital_twin/*.json` by default (owner, 2026-08-13); automated callers pass per-run paths or `""`"),
+  A.U25.41 (`:197-198` names the reuse: parsers, `_pop_value`, `_collect_chips`, `_shutdown_cleanup` from `launch.py`),
+  A.U25.46 / A.U27.32 (the soak and every HTTP scenario are host-side), A.U35.26 (`MEM_SAMPLE <ticks_ms> <mem_free>`),
+  A.U10.36 (`:227-229` the `_get_settings_flat()` bug history goes — the one shape is SPEC C.6's), A.U20.06 (`:221`
+  `start_and_check_tasks()` → `start_tasks()`/`supervise_tasks()`), A.U36.513 (`:217-230` hand-written module references),
+  A.U24.53 (runner flags: `--config-dir`)
+- **Site**: `digital_twin/README.md:149-230`
+- **Change**: `:151-158`: "The generated `sensortask_<device>.py` needs zero twin-awareness … pure `MICROPYPATH` ordering"
+  kept; real HTTP sentence tagged (owner, 2026-08-13); "`scripts/run_unix_port_integration.sh --device <device>` does
+  exactly this (README.md, Recipes: twin launch)". `:166-195`: the build steps kept as prose; the literal `MICROPYPATH` line
+  → "with `scripts/micropypath.toml`'s twin layout (`build/generated_src`, `src`, `digital_twin`, `digital_twin/unixport`,
+  `ext`, `frozen_modules`, `.frozen`; never `tests`, which `tests_scripts/test_twin_never_needs_tests_on_its_path.py`
+  guards)"; the `frozen_html` and ordering explanations kept. `:197-215` → the runner reuses `launch.py`'s parsers and
+  helpers (one copy); "the manual entry point persists FRAM, SCD30 and mem-backup state to `digital_twin/*.json` and its
+  config to `digital_twin/config/` by default (owner, 2026-08-13); automated callers pass their own `--config-dir` and `""`
+  state paths"; `--host localhost --port 8080` default (owner tag); a bare run serves forever; the soak is host-side
+  (`scripts/_digital_twin_ci_suite.py` Run 11) and reads the runner's `MEM_SAMPLE <ticks_ms> <gc.mem_free()>` lines by
+  their position in the log. `:217-230` → "`tests/test_digital_twin_sensortask_integration.py` builds a generated graph
+  against the twin buses in-process and starts only the tasks each test needs (never `supervise_tasks()`); its HTTP
+  checks run host-side (`scripts/_digital_twin_scenarios.py`)." — the `_get_settings_flat()` bug history goes.
+- **Resolved**: —
+- **Unit**: U36
+- **Depends**: M.TWIN.044-053
+- **Blast carried by**: root README "Recipes" → A.U36.547 (DOCS); `scripts/micropypath.toml` twin layout gains
+  `digital_twin/unixport` → SCR gap
+- **Kind**: doc
+
+### M.TWIN.061 "Booting a generated device": the plan's one shape, the passed watchdog, crossover by bus
+- **From**: A.U25.25 (`:236` profile enum sentence goes), A.U36.513 (`:270-272` "(via `subprocess.Popen`, as
+  `scripts/_digital_twin_ci_suite.py` does) for every device of `devices/*.toml` plus both mandatory synthetic fixtures";
+  "— so a generated module is run, not only parsed."; `:276-279` → "`_collect_chips()` walks the same wiring plan
+  `configure_wiring()` was given, never a hand-picked `i2c0`/`i2c1` literal."; `:282-287` goes; `:295-297` "— driven by the
+  wiring plan, for whichever device declares the pair."), A.U25.28 (`:276-279`, `:288-297` the `._i2c.devices`
+  description → `machine.peripheral()`), A.U17.18 (`:288-297` → "carries a fourth, optional `"uart"` key (`{"initiator_bus",
+  "responder_bus"}`, the two generated UART bus globals …)" and "reads the two already-built `asy_uart_driver.UART` buses
+  off the booted module by name"), A.U20.28 (`:288-291` states the shape once by pointing at `buildgen/twin_wiring.py`'s
+  `TwinWiringPlan`), A.U20.02 ("Booting a generated device": the runner passes the WDT to `main(watchdog=…)`), A.U25.69 /
+  OR126.a (1) (the four keywords), A.U27.15 (`:265` generated-boot form names `scripts/micropypath.toml`), A.U25.33 (the
+  runner writes the offline NTP config before boot), A.U25.24 (the configure order stated once), A.U36.513 (the
+  "Session-3" wording goes)
+- **Site**: `digital_twin/README.md:232-297`
+- **Change**: `:234-239`: "`run_generic_integration.py` boots any device by consuming a `buildgen.generate.generate_device()`
+  module and the wiring plan `buildgen.twin_wiring.compute_twin_wiring()` derives from that device's TOML (SPECIFICATION.md
+  L.4); both are produced host-side in CPython (the Unix port has no `tomllib`)." The Python example keeps the synthetic
+  fixture path. `:253-268` keeps the "first on `MICROPYPATH`" explanation; the shell line names the layout file. New
+  paragraph: "Before the boot the runner calls `machine.configure_wiring(plan)` and every `configure_*_state_path()`
+  (each raises once a bus exists), writes the offline NTP config into its `--config-dir` unless `--online-ntp`, then runs
+  `module.main(watchdog=machine.WDT(timeout=8000), cfg_path=…, web_host=…, web_port=…)` — the generated entry's four
+  keywords (owner, 2026-09-30)." `:270-279`, `:282-287`, `:288-297` per A.U36.513 (7) and A.U17.18, with the plan shape
+  stated once: "the plan's shape is `buildgen/twin_wiring.py`'s `TwinWiringPlan` (`buses`, `spi`, `pins`, optional `uart`
+  with `initiator_bus`/`responder_bus`); `tests_scripts/test_twin_wiring_contract.py` checks every reader". `:281-282`
+  (launch "left alone") → "`launch.py` reads the same plan for its bus wiring (`--wiring-plan`) but boots no product
+  module."
+- **Resolved**: —
+- **Unit**: U36
+- **Depends**: M.TWIN.044-050
+- **Blast carried by**: SPEC L.4 → A.U36.518 (SPEC)
+- **Kind**: doc
+
+### M.TWIN.062 FRAM and SCD30 persistence: the owner's write-cycle reason, six SCD30 values, one limit pointer
+- **From**: A.U0.29 (`:301-303` "never automatically — the owner's 'don't do unnecessary write cycles' for an SSD-hosted
+  state file (owner, 2026-08-12)"), A.U0.31 (`:50`, `:70` "(owner, 2026-08-12)" on explicit `save_state()`/load), A.U25.12
+  (`:330-346` names the six persisted values — five settings plus the measuring status — and the pressure assumption),
+  A.U15.06 / A.U4.04 (SCD30 section: compare-before-write, the counter; text from A.U4.04's Blast), A.U15.08 (`:330-335`
+  five NVM-backed settings → the six, U25's), A.U25.32 (`:348-352` → "the manual entry point persists by default (owner,
+  2026-08-13); automated callers pass per-run paths or `""`"; `:317-319`), A.U25.62 (`FramChip` → `FRAMChip`), A.U25.08
+  (a third persisted state: `mem_backup`), A.U25.01 / A.U36.041 (`:354-358` → a pointer to the Persistence row), A.U0.59
+  (void, see M.TWIN.059)
+- **Site**: `digital_twin/README.md:299-358`
+- **Change**: FRAM `:301-304` per A.U0.29 (owner tag); example keeps `configure_fram_state_path()`/`flush_fram()` but
+  shows `_shutdown_cleanup()`; `:317-319` → "`""` (or `None` in code) runs it in memory only, as
+  `tests/test_digital_twin_fram.py` does by constructing `FRAMChip(size, rdid_response)` directly"; the chunked-stream
+  paragraph keeps its fact and drops "Found via … during baseline verification" (it states the rule: "streamed in
+  512-byte chunks so no contiguous allocation of the whole image is needed (MicroPython's GC never relocates live
+  blocks)"). SCD30 `:332-338` → "Real SCD30 hardware keeps the measurement interval, ambient pressure, altitude, temperature
+  offset, ASC enable and the continuous-measurement status in NVM (Interface Description 1.4.1-1.4.8); the twin persists
+  those six on explicit flush. Whether the ambient-pressure value itself persists is an assumption (the datasheet names
+  only the status) — fidelity table, BACKLOG row."; `:348-352` per A.U25.32. New short paragraph "mem_backup: the runner
+  writes `digital_twin/mem_backup_state.json` only on a simulated reset and the next launch consumes and deletes it
+  (M.TWIN.032)". `:354-358` → "Only the last-wired SCD30 and FRAM instance persist — the fidelity table's Persistence row
+  states the limit and the change that lifts it."
+- **Resolved**: A.U15.08 says the five-settings text is "U25's with the fidelity row"; A.U25.12 makes it six — the U25
+  text wins (later, and it names the measuring status). A.U0.59's tag on `:354` is void (M.TWIN.059 Resolved).
+- **Unit**: U25 (stage U0: A.U0.29/A.U0.31 tags; U4: A.U4.04's SCD30 sentence)
+- **Depends**: M.TWIN.011, M.TWIN.013, M.TWIN.032
+- **Blast carried by**: `.gitignore` mem-backup line → lead gap
+- **Kind**: doc
+
+### M.TWIN.063 "Running the twin's own tests": paths from the layout file, the harness rules
+- **From**: A.U27.15 (`:370` stale "currently "src:tests:frozen_modules:.frozen"" → name `scripts/micropypath.toml`), A.U25.46
+  (HTTP scenarios run host-side; "Running the twin's own tests" names the harness), A.U35.09 (the test list gains two —
+  U36's count line: no count, see Resolved), A.U25.07 (a test that can reach a reset catches `SimulatedRebootError` and
+  calls `asyncio.new_event_loop()`), C4 (the boot discipline), CLAUDE.md segfault rule (no nested `asyncio.run()`)
+- **Site**: `digital_twin/README.md:360-376`
+- **Change**: `:362-372`: the per-file `sys.path` insert of `digital_twin` (and `digital_twin/unixport`) kept;
+  `MICROPYPATH` → "the unit layout of `scripts/micropypath.toml`"; new 3-sentence paragraph: "A file that boots a device
+  prewarms the poll set, then applies the UDP shim, at module level (`tests_scripts/test_twin_entry_point_order.py`);
+  before each build it calls `machine.reset_peripherals()`, `network.reset_interfaces()`, `configure_wiring(...)` and
+  writes the offline NTP config; it registers `machine.reset_test_state` and `network.reset_test_state` with
+  `microtest.after_each`, catches `machine.SimulatedRebootError` where a product reset is reachable and then calls
+  `asyncio.new_event_loop()`, and calls `asyncio.run()` only from synchronous test scope." `:374-376` keeps the
+  determinism fact. HTTP-driving scenarios: "run host-side by `scripts/_digital_twin_scenarios.py` against a runner
+  subprocess (SPECIFICATION.md E.9)".
+- **Resolved**: A.U35.09 says the README "test list gains the two (U36's count line)"; the README carries no test list or
+  count (OR78.a/G9/R11 cut counts) — the two tests need no README line; nothing to add.
+- **Unit**: U27 (stage U25: the boot discipline paragraph)
+- **Depends**: M.TWIN.035, M.TWIN.040
+- **Blast carried by**: —
+- **Kind**: doc
+
+### M.TWIN.064 "Automated CI suite": per-pass state archive, required device, every run's current claims
+- **From**: A.U25.35 (`:388-395` "**Clean**: …" → "each pass keeps its state under `digital_twin_ci_logs/<pass>/state/`
+  and archives it before every fresh start"), A.U27.16 (the logs directory archived under `build/archive/`), A.U36.024 /
+  A.U25.48 (`:388-391` examples name a device; a missing device is a usage error), A.U25.55 (Run 12 added; the counts at
+  `:390`, `:408`, `:412` cut to "every run"), A.U27.17 (`:410` "one more if run 11's soak retries" goes), A.U25.64 (lists
+  `--only`/`--repeat`), A.U7.09 (the summary block text), A.U35.38 (Run 1: "reads, keeps and checks the logs, then
+  clears them"), A.U25.36 (Runs 3, 4, 5, 5b, 5c rewritten to their new claims: Run 3 the combined-fault escalation cell
+  ending in a simulated reset with exit 3; Run 4 `ResetReason` = supervisor escalation and region 0 cleared; Run 5 counts
+  failure events, codes by name; 5b the exact ring all-or-nothing; 5c through the product reboot path), A.S0930.38 /
+  A.S0930.41 (`:483-489` → "5c. A commanded reboot through the controlled shutdown — FRAM drained, then every task stopped,
+  then the reset — the case that must never lose anything"; Run 13's rows), A.S0930.27 (Run 13 "system commands" and its
+  knob), A.U25.37 (Run 3's sustained set per instance, `fram:silent`; Run 10 `_HANG_MATRIX`; `_LEFT_OUT`; `:478-482` tag
+  "(owner, 2026-09-26)" with the decision's words "an abrupt reset mid-write may lose a module's whole FRAM history,
+  all-or-nothing, never partial or garbled"; `:440, :454, :460` restate Run 3's FRAM fault as `fram:silent`), A.U25.38
+  (Run 2/5 text: polls, no fixed sleeps), A.U25.33 (each run's log asserts `public_destinations_refused=0`), A.U25.65
+  (`:453-456` BACKLOG pointer; `:503-507` the reset-before-setup fact), A.U11.31 (`:505-507` "dropped by design" is U25's —
+  carried by A.U25.65), A.U14.R01 (`:543-544` → "matching CLAUDE.md's recovery-ladder rule: a transfer that never returns
+  is the watchdog's"), A.U11.03 (`:484` holds), A.U5.02 (`:451` `fram=fram` in the generated module — keeps its fact, the
+  module wiring by `fram_target`), A.U0.43 (`:564-566` "the owner's rule (2026-09-26) that a threshold is never the fix"),
+  A.U27.32 (Run 11/11b "every GET route"), A.U36.532 (`:578` H.7.1 citation lands unchanged), A.U25.09 (exit codes 3/4),
+  A.U10.40 (Run 1 PUT examples use the renamed keys: `SCD30.MeasInterval`, …), A.U10.37 (`captive_dns` → `asy_captive_dns`,
+  `DNSServer` → `CaptiveDNS`), A.S0930.04 (the `dev` runs in both CRC modes via `--device-toml`), A.U25.44 (Run 7's shim
+  sentence points to `unixport/`), A.U25.34 (Run 7's capability check fails loudly)
+- **Site**: `digital_twin/README.md:378-585`
+- **Change**: the section keeps its structure (intro, Clean/Build/Test, numbered runs, logs paragraph) with: intro
+  `:380-386` unchanged in substance; examples `scripts/run_digital_twin_ci.sh <device>` (a missing device prints usage and
+  exits 2) and `--only <run>`/`--repeat <n>`; **State** replaces **Clean** (A.U25.35's sentence) with A.U27.16's archive
+  sentence; **Test** drops every run count ("runs every run twice, once per GC stage"; "a fixed port 18080"); runs 1-11b
+  rewritten to A.U25.36/A.U25.37/A.U25.38/A.U35.38's claims; Run 3 restates the FRAM fault as `fram:silent` (the chip
+  answers zeros and keeps its bytes, so nothing is torn) and whether `fram` stays out of Run 4's reset-to-0 sweep is
+  recorded from one execution run (A.U25.37's own instruction); Run 5c per A.S0930.38's sentence; Run 7 names the shim
+  in `digital_twin/unixport/` and the capability check; Run 10's matrix sentence (one bounded hang per bus-attached
+  driver, each in its own process); new **Run 12** (reset reasons: power-on, bootloader with its assumption, region 0
+  cleared — A.U25.55) and **Run 13** (system commands: `resetconfig`, `erasefram`, the near-miss list, states, hazards,
+  watchdog with the SPI wire-time knob, per-step hangs through `--test-shutdown-hang`, power loss — A.S0930.27/.38); a
+  sentence "every run's log is checked for zero `MemoryError`/`memory allocation failed` and for
+  `public_destinations_refused=0`"; the `dev` passes run once per CRC mode (A.S0930.04). Every history clause ("used to
+  stand here", "until both were corrected", "measured here at roughly 1 in 8" kept only as the measured fact with its
+  date) goes per OR27.a.
+- **Resolved**: A.U25.65 and A.U25.37 both edit `:453-456`/`:642-656`; A.U25.37's Blast says "A.U25.65's `:642-649` edit
+  starts from this text (A-C merges)" — applied in that order. A.U11.31 hands `:505-507` to U25 (A.U25.65).
+- **Unit**: U36 (U25 rewrites; U27 archive; U35 Run 1 sentence)
+- **Depends**: M.TWIN.050, M.TWIN.051
+- **Blast carried by**: `scripts/_digital_twin_ci_suite.py`, `scripts/run_digital_twin_ci.sh` → their actions (SCR)
+- **Kind**: doc
+
+### M.TWIN.065 "What the runner keeps in-process" and Run 11's numbers: sampler verdict, wire log, ticks stamps
+- **From**: A.U11.08 (`:591-592` → "`gc.mem_free()` is also published as `/status`'s `MemFree`, but one poll's reading is
+  not a stream: this flag samples it inside the process on a fixed timer"), A.U30.09 (same sentence — A.U11.08's), A.U30.17 /
+  A.U35.25 (the sampler paragraph states the outcome of B3's sparser-interval check and the I.4(e) exception sentence),
+  A.U35.26 (Run 11 paragraph: samples joined by log position; the timestamp is `ticks_ms`), A.U0.54 (the wire log
+  "unbounded (agent, 2026-09-14)"), A.U27.08 (`:613-620` "100, not the 40 once used" → the measurement stays here; the
+  suite's comment points to it), A.U27.17 (Run 11 decided on one attempt), A.U25.46 (`:589-590` the host-side move)
+- **Site**: `digital_twin/README.md:587-640`
+- **Change**: `:589-590` keeps "Almost every request-driving job runs host-side (SPECIFICATION.md E.9). Two things stay in
+  the runner process, deliberately — plus the named `--test-*` instrumentation (see Runner flags)". The sampler bullet:
+  A.U11.08's first sentence; "Each line carries `time.ticks_ms()` for diagnostics only; the host selects the samples
+  inside its window by their position in the log, never by either process's clock."; the `gc.collect()` sentence states
+  B3's verdict (kept as the one allow-listed instrumentation site at the interval B3 settled, or removed — whichever
+  A.U35.25 records); the 2026-09-14 removal experiment stays as a dated measured fact. The wire-log bullet keeps its
+  fact, "unbounded (agent, 2026-09-14)". Run 11's numbers: the warmup paragraph keeps the measurement (dated) and drops
+  "wozi's original 40"/"not wozi's" (devices are not named: "a device with more instances settles longer"); the tolerance
+  section keeps its derivation (dated measurements are facts) and gains "one attempt decides (no retry)".
+- **Resolved**: —
+- **Unit**: U35
+- **Depends**: M.TWIN.052
+- **Blast carried by**: SPEC I.4(e) twin-exception sentence → A.U30.17 (SPEC)
+- **Kind**: doc
+
+### M.TWIN.066 New "Runner flags" subsection: the runner's flags and its test-only instrumentation
+- **From**: A.U25.74 (README flag table "test-only instrumentation (owner, 2026-09-30)"), A.U31.06 (`--test-loop-lag-ms`
+  in the flag table), A.U35.31 (`--test-watchdog-fault` beside `--fault`/`--wifi-outcome`; the fidelity note), A.S0930.27
+  (`--test-shutdown-hang` and its steps), A.U24.53 (runner flags: `--config-dir`), A.U25.32 / A.U25.09 / A.U25.33 (state
+  paths, `--config-dir`, `--mem-backup-state-path`, `--online-ntp`), M.TWIN.051 (`--test-fault-status-interval-ms`)
+- **Site**: `digital_twin/README.md` new `### Runner flags` after "Booting a generated device"
+- **Change**: a table `Flag | Default | Effect`: `--module`, `--wiring-plan` (required), `--device`, `--host`/`--port`
+  (`localhost`/`8080`, owner, 2026-08-13), `--config-dir` (`digital_twin/config/`), `--fram-state-path`,
+  `--scd30-state-path`, `--mem-backup-state-path` (`digital_twin/*.json`; `""` in memory), `--online-ntp` (off: the
+  offline NTP config is written), `--seed`, `--fault DEVICE:OP[:TIMES[:MATCH]]`, `--hang DEVICE:OP:SECONDS[:TIMES]`,
+  `--wifi-outcome`, `--duration`, `--gc-threshold` (32768), `--mem-sample-interval-ms`; then "Test-only instrumentation
+  (owner, 2026-09-30), every flag off by default and absent from the product's entry path
+  (`tests_scripts/test_twin_runner_test_flags.py`):" `--test-hold-closing-slot` (`SLOT_HELD`/`SLOT_RELEASED`),
+  `--test-stall-loop-ms N` (`STALL`), `--test-conn-status-interval-ms N` (`CONN_SLOTS open= backlog=`),
+  `--test-fault-status-interval-ms N` (`FAULT_PENDING`), `--test-shutdown-hang STEP` (`HANG <step>`, steps
+  S1-S6), `--test-loop-lag-ms N` (`LOOP_LAG`), `--test-watchdog-fault KIND` (`WDT_AT_FAULT <feed_count>`); one sentence:
+  "`main-exit` keeps the runner's loop alive, since the twin's WDT countdown dies with its loop." Exit codes: 0 normal, 1
+  error, 3 simulated reset, 4 bootloader, 5 power loss.
+- **Resolved**: —
+- **Unit**: U25 (U31 and U35 add their rows)
+- **Depends**: M.TWIN.047, M.TWIN.050, M.TWIN.051
+- **Blast carried by**: root README command-line reference → A.U36.547 (DOCS)
+- **Kind**: doc
+
+### M.TWIN.067 "Two suite-table subtleties": the strict set as the code holds it
+- **From**: A.U25.65 (`:642-649` names `scd30`, `bmp3xx`, `isl29125` and the strict readers sentence), A.U25.37 (`:644-656`
+  restated with `fram:silent`; whether `fram` stays out of Run 4's sweep recorded from one execution run)
+- **Site**: `digital_twin/README.md:642-669`
+- **Change**: the first subtlety: "`_NO_PERSIST_WHEN_FRAM_FAULTED` (`scd30`, `bmp3xx`, `isl29125`) is not "these logs are
+  in-memory": every one is FRAM-backed; Run 3 sets the FRAM `silent`, so nothing they log reaches the chip" + A.U25.65's
+  strict-readers sentence; the `fram` paragraph restated for a silent chip (no torn chunk: the bytes are kept) with the
+  execution result; the `_RESET_ERRORS_TIMEOUT_S` subtlety keeps its derivation and names BACKLOG item 24 by title.
+  History clauses ("It was named and described that way once") go (OR27.a).
+- **Resolved**: A.U25.37 then A.U25.65 on the same lines (A.U25.37's Blast fixes the order).
+- **Unit**: U25
+- **Depends**: M.TWIN.011 (`silent`)
+- **Blast carried by**: `scripts/_digital_twin_ci_suite.py:726-736` restatement → A.U25.37 (SCR)
+- **Kind**: doc
+
+### M.TWIN.068 Fault and hang sections: the shared vocabulary, instance keys, persistent modes, refused faults
+- **From**: A.U25.37 (`--hang` section `:671-680`: the new vocabulary incl. `bmp3xx:writeto`, `isl29125:writeto`; the
+  `Isl29125Chip.configure_fault()` section `:682-690` now CLI-reachable as `isl29125:int_stuck_high`), A.U25.18 ("Fault
+  injection" row and the `--hang` section: `fram` `readinto|wren|silent`, `write` refused), A.U25.70 (`MATCH`), A.U24.82
+  (one line on `pending()`), A.U25.27 (`wlan` `:TIMES`), A.U25.62 (`ISL29125Chip`), A.U25.59 (`unplug`/`plug`), A.U0.31
+  (`:145` fault injection built in, off by default "(owner, 2026-08-12)")
+- **Site**: `digital_twin/README.md:671-690`
+- **Change**: one section `### Faults, hangs and modes`: `--fault DEVICE:OP[:TIMES[:MATCH]]` (bounded, a fresh `OSError`
+  per raise, `MATCH` a hex command/register/opcode) and `--hang DEVICE:OP:SECONDS[:TIMES]` (a real blocking sleep), with
+  DEVICE a driver name or an instance key `<driver>_<name_ext>`; the per-driver op table (A.U25.37 (1)); the persistent
+  modes `isl29125:int_stuck_high`, `fram:silent`, `uart_link:silent` (no TIMES/MATCH) and `fram:wren:N` (the next N
+  WRENs dropped); "faults the rp2 port cannot raise are refused: an SPI write never raises, a read raises only from 32
+  bytes on (fidelity table)"; "`wlan` takes every `raise_on` method with `:TIMES`, and has no `--hang`" (its reason kept);
+  "`pending(op)` reports what is still queued; the runner's `--test-fault-status-interval-ms` prints it". The
+  `configure_fault()` subsection's text becomes the `int_stuck_high` line ("the bus works and conversions continue, only
+  the INT line never moves — the silent failure the periodic range evaluation exists to survive").
+- **Resolved**: —
+- **Unit**: U25
+- **Depends**: M.TWIN.002, M.TWIN.044
+- **Blast carried by**: —
+- **Kind**: doc
+
+### M.TWIN.069 "WDT._arm()'s late-feed backstop": current facts
+- **From**: A.U25.37 (Run 10 per driver, `--duration 15`), C5, A.U10.37 (`system_service.py` → `asy_system_service.py`)
+- **Site**: `digital_twin/README.md:692-708`
+- **Change**: the mechanism paragraph kept; "`_arm()` now checks" → "`_arm()` checks"; the closing sentence names Run 10's
+  per-driver hangs (one bounded hang per bus-attached driver the device wires, `--duration 15`) instead of
+  `run10_watchdog_hang_backstop.log` and SGP40 alone; `system_service.py` → `asy_system_service.py`.
+- **Resolved**: —
+- **Unit**: U25
+- **Depends**: M.TWIN.031
+- **Blast carried by**: —
+- **Kind**: doc
+
+### M.TWIN.070 "`_http_client.py`'s read paths": current facts, the incomplete-response class
+- **From**: A.U25.31 (the bullet `:117-128` and this section: `IncompleteResponseError`), A.SDEP.17 (W40: the
+  `readexactly()` premise re-read at the new tag — conditional), C5 (`:725` "This file's first version did." goes)
+- **Site**: `digital_twin/README.md:710-745`
+- **Change**: the two read paths kept; `:721-725` drops "This file's first version did." and states "an EOF inside a sized
+  body raises `IncompleteResponseError`"; `:741-745` keeps the measured CI failure as a dated fact (`dev`'s figure stays a
+  measurement of one device, worded "a device's frozen website of 7579 bytes"). If W40 finds `extmod/asyncio/stream.py`
+  fixed at the refreshed pin, the section is rewritten to the then-current fact (a delta, A.SDEP.17).
+- **Resolved**: —
+- **Unit**: U25 (B0 re-check may follow)
+- **Depends**: M.TWIN.016
+- **Blast carried by**: —
+- **Kind**: doc
+
+### M.TWIN.071 "`_unix_port_udp_addr_shim.py`" section: new home, tuple-only src/, the order rule, loud failures
+- **From**: A.U18.12 (the same sentence as the shim comment: "the opaque sockaddr bytes object this Unix build's socket
+  needs; src/ only ever sees tuples"), A.U25.33 (the guard: refused destinations, counter), A.U25.34 (`:749-767` the order
+  rule and the loud Run 7 failure), A.U25.65 (`:761-767` the two messages that tell the faults apart), A.U14.28 (the
+  section keeps its source-level account; SPEC F.7 rows point here), A.U36.544 (SPEC points to this section), A.SDEP.16
+  (W13 conditional), A.U10.37/38 (`captive_dns.py` → `asy_captive_dns.py`, `AsyUDPSocket` → `UDPSocket`, `DNSServer` →
+  `CaptiveDNS`)
+- **Site**: `digital_twin/README.md:747-795`
+- **Change**: heading → "### `unixport/_unix_port_udp_addr_shim.py` (real UDP round trips under the Unix port)";
+  `:749-759` → "`patch_asy_udp_socket_for_unix_port()` runs once, before any `UDPSocket` exists: every entry that boots a
+  device calls `prewarm_poll_set()` then the shim first (`tests_scripts/test_twin_entry_point_order.py`). The port-53 tests
+  need `CAP_NET_BIND_SERVICE` on the interpreter (`scripts/test.sh` and `scripts/run_digital_twin_ci.sh` grant it); Run 7
+  checks the capability first and fails naming it."; the note `:761-767` → A.U25.65's two messages ("the real DNSServer
+  never bound its port 53 socket" = missing capability; "real hotspot activation never started the real DNSServer task"
+  = CPU starvation), "check `getcap` first", ≤ 3 lines; the three quirks kept with point 1 ending "`src/` passes and
+  accepts only `(host, port)` tuples; the shim keeps the packed form outside `src/`"; new paragraph: "The shim also refuses
+  any destination outside 127.0.0.0/8, 0.0.0.0 and 192.0.2.0/24 through the product's own failure path and counts it;
+  the runner prints `public_destinations_refused=<n>` and the CI suite requires 0." The last paragraph's "Every real call
+  site … always local" kept.
+- **Resolved**: —
+- **Unit**: U25
+- **Depends**: M.TWIN.017
+- **Blast carried by**: SPEC F.7/G.2 pointers → A.U14.28, A.U36.544 (SPEC)
+- **Kind**: doc
+
+### M.TWIN.072 "Adding a new chip fake": the current shape a new fake copies
+- **From**: A.U36.516 (6) (step 5 → "5. The new driver's website fields come from its `@web` tags alone (`SPECIFICATION.md`
+  Part H.5/K.4) — nothing to edit here or in any definitions file."), A.U6.04 / A.U36.515 (the same step — carried by
+  A.U36.516), A.U20.28 (`:826` "add it to `buildgen/twin_wiring.py`'s own `FIXED_ADDRESSES` table" → "declare the address as
+  a module-level const in the driver"), A.U25.25 (step 2: no `configure_i2c_wiring()`/wozi-dev sentence), A.U25.67 (step 3
+  names `tests_scripts/test_twin_fake_catalog.py`), A.U36.039 (the SPI one-device-per-id fact: SPEC K.5 states it; this
+  section points there and keeps the CS-routing note), A.U25.01 (`:844-850` moves to the fidelity table's Buses row),
+  A.U0.31 (`:810-813` tags: seedable random source "(owner, 2026-08-12)", bounded random walk "(owner, 2026-08-12, round
+  2)"), A.U25.73 (ranges cite their datasheet page; a judgment call says "not datasheet-derived"), A.U5.15 (`Walk`),
+  A.U25.42 (`timer_factory`), A.U25.59 (`power_cycle()`), A.U25.70 (`key=` on `maybe_raise`), A.U25.68 / A.U24.18
+  (knobs say "twin-only test knob" and join `TEST_API`), A.U25.62 (`<CHIP>Chip` spelled as the driver's `_NAME`),
+  A.U36.543 (SPEC D.16 lists this README in the documentation line)
+- **Site**: `digital_twin/README.md:797-850`
+- **Change**: intro `:799-802` keeps "required whenever a new sensor driver lands (SPECIFICATION.md K.5)", drops "the three
+  sensors it started with". Step 1: read the datasheet first; add `_<chip>_chip.py` with class `<NAME>Chip` (the driver's
+  `_NAME` spelling); its shape: a `FaultInjector` passed `key=` on every `maybe_raise`; `random_source` (owner tag) and
+  `Walk(lo, hi, step)` bounds — `lo`/`hi` citing the datasheet page, the step "not datasheet-derived" (owner tag on the
+  bounded walk); `timer_factory` if it has its own measurement clock (never `import machine`); `power_cycle()`;
+  `handle_*` methods answering the driver's exact transactions; every test-only knob commented "twin-only test knob".
+  Step 2: a branch in `machine._build_i2c_chip()` (the wiring plan is generic); a hardwired address is a module-level const
+  in the driver, which buildgen reads. Step 3: `tests/test_digital_twin_<chip>.py` plus the catalog check
+  (`tests_scripts/test_twin_fake_catalog.py` fails until the fake exists) and a fidelity-table row per unmodelled fact.
+  Step 4: "What's here" and `launch.py`'s op vocabulary. Step 5: A.U36.516's sentence. The SPI paragraph `:844-850` →
+  "A new SPI device on an occupied bus id needs chip-select routing in the twin first (SPECIFICATION.md K.5; fidelity
+  table)."
+- **Resolved**: A.U6.04 (U6), A.U36.515 and A.U36.516 (U36) edit step 5; A.U36.516's text is the latest — its Why names
+  the same handoff.
+- **Unit**: U36 (U25 rewrites steps 1-4)
+- **Depends**: M.TWIN.010-014, M.TWIN.023
+- **Blast carried by**: SPEC K.5/D.16 → A.U36.039, A.U36.543 (SPEC)
+- **Kind**: doc
+
+### M.TWIN.073 Code quality, harness pitfalls and known gaps: current scope, pointers, gaps dissolved
+- **From**: A.U27.23 (the twin pass's file list lives in `typecheck.ini`), A.U27.22 / A.U8.24 (strictness lines), A.U14.28
+  (`:867-871` harness pitfalls keep the habit rules; Unix-port divergences point to SPEC F.7), A.SDEP.16 (`:867-918`
+  re-read at the pin), A.U25.01 (`:876-886` first two bullets become fidelity rows), A.U25.40 (`:886-906` bullet goes),
+  A.U25.43 (4) / A.U36.040 (the modselect account: prewarm bullet → SPEC F.7; "worth filing one upstream" → "a known
+  limitation, not reported upstream (owner, 2026-09-29)"), A.U0.31 (`:877` "(owner, 2026-08-12)" on the inverted
+  compensation — travels to the BMP3XX fidelity row / chip bullet), A.U25.39 (no unwedge mention remains)
+- **Site**: `digital_twin/README.md:852-919`
+- **Change**: "Code quality tooling" `:854-865` → "`digital_twin/` is in the ruff scope; mypy checks it in its own pass
+  (`digital_twin/typecheck.ini`, whose `files` names the twin tests too), because each bare `machine`/`network`/
+  `neopixel` resolves to one file per run (SPECIFICATION.md B.15)." (≤ 4 lines prose; the excluded-file list goes — the
+  ini holds it). "Harness pitfalls" `:867-872` kept (habit rules), ending "Every Unix-port-vs-rp2 difference worked around
+  in test code is listed in SPECIFICATION.md F.7." "Known gaps / follow-ups" `:874-919` is removed: the calibration and
+  fault-queue bullets are fidelity rows (M.TWIN.059), the stress-tool bullet goes with the file (M.TWIN.055), the
+  modselect account is SPEC F.7's with the README prewarm bullet pointing there (M.TWIN.058).
+- **Resolved**: A.U25.43 (4) (U25) moves the modselect account into the prewarm bullet; A.U36.040 (U36) moves it to SPEC
+  F.7 and leaves a pointer — end state the pointer (both actions name F.7 the one home).
+- **Unit**: U36 (U25 removes the gaps section)
+- **Depends**: M.TWIN.058, M.TWIN.059, M.TWIN.075
+- **Blast carried by**: SPEC F.7 → A.U14.28, A.U36.040 (SPEC)
+- **Kind**: doc
+
+### M.TWIN.074 New "Running device scripts in the twin" section
+- **From**: A.U26.05 (the README gains this section; the exception list lives in the record, not prose), A.U35.49 (every
+  instrument through the runner at both GC stages, after B2 and B3), M.TWIN.054
+- **Site**: `digital_twin/README.md` new `## Running device scripts in the twin` after "Running the twin's own tests"
+- **Change**: ≤ 12 lines: what `run_device_script.py` does (plan, armed watchdog, GC stage, the script unchanged; prewarm
+  and shim first); how `tests_hardware/twin_board.py`'s `TwinBoard` and `pytest tests_hardware/flash --twin` use it;
+  `scripts/record_twin_instrument_runs.py` writes `tests_hardware/twin_record.json` and `tests_scripts/test_twin_record.py`
+  fails when a script, the runner or the `src/` API a script imports changed since its record; a script that cannot run
+  in the twin is an `exception` entry with its reason in the record (never listed here).
+- **Resolved**: —
+- **Unit**: U26
+- **Depends**: M.TWIN.054
+- **Blast carried by**: `tests_hardware/README.md` habit 5 → A.U26.05 (HW_BENCH/DOCS)
+- **Kind**: doc
+
+## tests/test_digital_twin_bmp3xx.py
+
+### M.TWIN.100 BMP3XX fake tests: reset values, hooked probe, shared random double, renamed class
+- **From**: A.U25.13 (OSR 0x02 at power-up and after 0xB6 following a 0x0D write; a queued `writeto` hang delays the
+  probe; any test reading OSR before a write expecting 0 follows), A.U25.51 (`:218` asserts register state unchanged by
+  the probe and a queued `writeto` fault consumed), A.U24.38 (hands `:218` to A.U25.51), A.U24.30 (`_FixedRandom` →
+  `tests/_twin_random.FixedRandom`; `:151-158` asserts the recorded step ranges `(-0.1, 0.1)`, `(-0.5, 0.5)`; the "would
+  violate the default bounds" comment goes), A.U25.62 (`BMP3XXChip`), A.U5.15 (constructor `temp=Walk(…)`,
+  `pressure=Walk(…)`), A.U25.70 (fault calls `inject_fault(op, OSError, errno.EIO, "m", times=n)`; a `match` case on a
+  register address), A.U15.R03 Blast (the twin tests re-checked against setup's reset — holds after the reset values),
+  A.U25.59 (`power_cycle()` case), A.U25.01 (the 0xB6 row cites this file), C2, C5
+- **Site**: `tests/test_digital_twin_bmp3xx.py` (whole file; `:9`, `:61-70`, `:94-189`, `:189-205`, `:218-257`)
+- **Change**: import `BMP3XXChip` and `from _twin_common import Walk`; `_FixedRandom` (`:61-70`) deleted, `from _twin_random
+  import FixedRandom` (with `tests` already on the unit layout path); every construction passes `temp=Walk(lo, hi,
+  step)`/`pressure=Walk(...)` where it set `min_*`/`max_*`/`*_step`; `:151-158` asserts `chip._random.calls` holds the
+  two overridden step ranges; `:189-197` gains "OSR reads 0x02 and CONFIG 0x00 at construction" and "after writing 0x0D
+  to OSR, 0xB6 to CMD restores 0x02" (DS001 register table cited on the line); `:199-205` asserts the reset constants
+  too; `:218-228` (probe) asserts the register image (OSR, CONFIG, status) unchanged by `handle_writeto(b"")` and that a
+  queued `writeto` fault is consumed by it (`fault.pending("writeto") == 0`); new: a queued `writeto` hang of 0.05 s delays
+  `handle_writeto(b"")` by at least 0.05 s (measured with `ticks_diff`, a bounded small hang), a `readfrom_mem` fault with
+  `match=0x04` spares a read of 0x31 and hits the next 0x04 read, two raises of a `times=2` fault are distinct objects,
+  `power_cycle()` restores OSR/CONFIG/status and keeps the walk position; `:229-257` use the class-plus-args form; the
+  canonical trailer (A.U24.04).
+- **Resolved**: —
+- **Unit**: U25 (stage U24: `FixedRandom` import and A.U24.30's assertions)
+- **Depends**: M.TWIN.010; M.TEST_HELP.059 (`FixedRandom`)
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_digital_twin_fram.py
+
+### M.TWIN.110 FRAM fake tests: rollover, framing, knobs, refused faults, RDID table, booted-device cases
+- **From**: A.U25.15 (wrap on write/read past the end, one-write framing raises, `drop_next_wren=1` drops one WREN only,
+  `rdid_once` answers once, `silent` reads zeros and ignores writes; 24-bit tests hold), A.U25.06 (RDID into an 8-byte
+  buffer keeps 8 bytes), A.U25.18 (`:275-290` → a `write` injection raises `ValueError`, a `readinto` fault fires on a
+  32-byte read and not a 4-byte one; `_OVERRUN_MIN_READ == machine._SPI_DMA_MIN_SIZE`), A.U25.29 (`:74` constructs with an
+  explicit RDID; for every `asy_fram_driver._KNOWN_PRODUCT_IDS` entry the twin table holds `[0x04, 0x7F, pid >> 8, pid &
+  0xFF]` and the key sets are equal), A.U25.32 (a 0x2000-size file into a 0x40000 chip loads blank), A.U25.62 (`FRAMChip`),
+  A.U25.16 (SPI init tuples carry `firstbit` 1), A.U25.03 (a test building `SPI(0, …)` calls `reset_peripherals()` first),
+  A.U16.R01 (L2: a booted write surviving one dropped WREN), A.U16.R03 (L2: a booted device whose chip goes silent — the
+  FRAM task ends, a restart recovers when cleared, staying silent arms the reboot within the budget), A.U16.06 (L2: a
+  booted device whose chip holds a written logger chunk and SR 0x8C: that logger's `setup()` reads `None`,
+  `initialized` stays `False`, the chunk bytes unchanged), A.U16.09 (L2: a never-written chunk read twice reports
+  uninitialised both times), A.U36.544 (`:303` "L.4" → the fact in place), C2, C4 (booted cases)
+- **Site**: `tests/test_digital_twin_fram.py` (whole file)
+- **Change**: `FRAMChip(size, rdid_response=…)` everywhere (a module constant `_MB85RS64V_RDID = bytes([0x04, 0x7F, 0x03,
+  0x02])  # MB85RS64V datasheet p.10`); `:74` → "RDID reports the ID it was constructed with"; `:275-290` split into
+  `test_write_fault_injection_is_refused` and `test_readinto_fault_fires_only_on_a_long_read`; `:303` comment states the
+  fact ("the low address byte must survive: 0x010000 and 0x000000 are distinct cells") instead of "L.4"; new chip-level
+  cases per A.U25.15/.06/.18/.32 above and `test_fram_rdid_table_matches_the_driver` (imports `asy_fram_driver` from
+  `src/`, reads `_KNOWN_PRODUCT_IDS` — a `const()`-free dict, checked at execution — and compares with
+  `machine._FRAM_RDID_BY_MAX_SIZE`). Booted-device cases (in-process, no HTTP; C4 discipline, a device from
+  `device_with("fram")`): A.U16.R01's (`chip.drop_next_wren = 1`, one logger write → the chunk reads back intact), A.U16.06's
+  (chip pre-loaded with a written chunk and SR 0x8C), A.U16.09's (double read of a blank chunk), A.U16.R03's (`silent =
+  True` → the FRAM manager's task ends and the supervisor restarts it; cleared → `setup()` succeeds and the next logger
+  write lands; kept silent → the reset is armed within the restart budget — asserted at the armed point
+  (`sysfunct._reset_armed`) before the reset Timer fires, then the Timer is deinit'ed and the supervisor task cancelled
+  from outside, as A.S0930.38 does, so no `SimulatedRebootError` strands the in-process graph). The canonical trailer.
+- **Resolved**: A.U16.R03 wants the twin's "`SimulatedResetError` path"; an in-process graph that raises it strands its
+  tasks (A.U25.07), so the case asserts the armed reset and stops there (A.S0930.38's pattern); the full reset-and-relaunch
+  is the CI suite's subprocess territory (A.U25.09) — settled by A.U25.07's rule.
+- **Unit**: U25 (A.U16's L2 cases are written in U25 on the knobs; stage U16: none — the knobs do not exist before U25)
+- **Depends**: M.TWIN.011, M.TWIN.025, M.TWIN.026, M.TWIN.035
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_digital_twin_fram_crash_points.py (new)
+
+### M.TWIN.112 FRAM crash-point enumeration: power loss after every SPI transaction, chunk and erase
+- **From**: A.U25.54 (per FRAM size and for one logger store and the SGP40 timestamped chunk: write A; count B's SPI
+  transactions; for every k, lose power after k, rebuild the manager and store over the same chip memory, assert exactly A
+  or B, next write C succeeds, logged entries within {none, E31, W71, W72, W73} by catalog name), A.S0930.27 (5) (the
+  erase on dev's layout: every k inside pass 1 and the first/last pass-2 unit of each allocated block; a fresh manager
+  restores each ring exactly or blank; the reset command's delete loop cut after k removals), A.U2.01 (codes by name)
+- **Site**: new `tests/test_digital_twin_fram_crash_points.py`
+- **Change**: header (≤ 3 lines) "Crash consistency on the twin chip: power lost after every SPI transaction of one chunk
+  write and of the FRAM erase; a restored history is exactly the old or the new, never another (owner, 2026-09-26)."
+  Builds the manager in-process over `machine.SPI(0, …)` from `device_with("fram")`'s plan, one write per boot (no
+  unbounded interleave claimed); the chip object is kept across the simulated reboot: after
+  `SimulatedPowerLoss` the test calls `machine.reset_peripherals()`, constructs `SPI(0, …)` again and sets
+  `machine.peripheral("spi0").device = chip` (the same memory; `device` is in `SPI.TEST_API`); codes looked up through
+  `tests/_error_codes.py` `code(...)` (A.U2.03, M.TEST_HELP.045); the erase half uses the product's `erase_fram()` path (M.SRC_CORE) with
+  `lose_power_after(k)`; the delete-loop half patches `os.remove` from outside to raise after k removals. Registers
+  `machine.reset_test_state` (C4). k loops are bounded by the dry-run count, no wall-clock waits.
+- **Resolved**: A.U25.54 says "build a fresh `AsyFramManager` + store over the **same** chip memory (`reset_peripherals()`
+  keeps nothing else)"; with static per-id SPI objects the next construction wires a fresh chip, so the test re-attaches
+  the kept chip through the `device` test attribute — the stated intent (same memory, nothing else kept).
+- **Unit**: U25 (A.S0930.27's erase half co-lands)
+- **Depends**: M.TWIN.026, M.TWIN.034, M.TWIN.035; M.SRC_CORE erase/reset sequence
+- **Blast carried by**: U35's matrix row names it → A.U25.54 (PROC); fidelity row → M.TWIN.059
+- **Kind**: test
+
+## tests/test_digital_twin_generic_wiring.py
+
+### M.TWIN.114 Wiring tests: per-device plans, RDID per table size, one-shot RDID, single-instance persistence
+- **From**: A.U25.25 (`:126-189` `configure_i2c_wiring` regression tests replaced by one test per generated device
+  asserting the booted buses carry the plan's attachments; `:182-190` → "constructing a bus with no plan raises
+  RuntimeError"), A.U25.29 (`:98-116` → one case per table size), A.U25.03 (`reset_peripherals()` before each
+  construction; bus pins from the plan), A.U25.53 (new: a tmp state path, an inline plan of two SCD30 on `i2c0`/`i2c1` with
+  rp2-valid pins and one FRAM on `spi0`, persists exactly the last-constructed SCD30's settings through `flush_scd30()` and
+  `flush_fram()` writes the one FRAM), A.U16.R02 (`:105-163`'s `rdid_response` override gains a one-shot bad answer —
+  `rdid_once`), A.U16.17 (a dead-chip boot reaches the reboot — U25's tier: asserted at the armed point, as M.TWIN.110),
+  A.U25.15 (knob users), A.U20.28 (the file reads the plan's keys — the contract test's scan), A.U25.01 (the Persistence
+  row cites this file), C2
+- **Site**: `tests/test_digital_twin_generic_wiring.py` (whole file)
+- **Change**: every test starts `machine.reset_peripherals()`; inline plans use rp2-valid pins (`i2c0` scl 13/sda 12, `i2c1`
+  scl 15/sda 14, `spi0` sck 2/mosi 3/miso 4) and carry the `pins` key; `:98-116` → `test_fram_rdid_follows_the_plans_size`
+  over both table sizes and `test_unknown_fram_size_raises`; `:126-189` → `test_each_generated_device_boots_its_plans_
+  attachments` (loop over `generated_devices()`: construct each plan bus with its pins, assert `peripheral(bus).devices`
+  keys equal the plan's addresses and each chip's class matches the driver) and `test_constructing_a_bus_with_no_plan_
+  raises`; new `test_one_shot_bad_rdid_then_good` (A.U16.R02, `chip.rdid_once = bytes(4)`), A.U16.17's dead-chip boot,
+  A.U25.53's two persistence cases. `reset_test_state` registered.
+- **Resolved**: —
+- **Unit**: U25
+- **Depends**: M.TWIN.022, M.TWIN.024, M.TWIN.025; `tests/_twin_devices.py` (M.TEST_HELP.055)
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_digital_twin_hot_replug.py (new)
+
+### M.TWIN.116 Hot re-plug: every bus-attached driver recovers without a reboot
+- **From**: A.U25.59 (per generated device and per bus-attached driver: start the real supervisor and the reader's task,
+  unplug, wait until the reader's task ended at least once, plug back within the restart budget, assert a reading again,
+  `machine.reset_count` unchanged, `would_have_triggered_count == 0`; FRAM via `silent` then cleared: the task ends, its
+  restart re-runs `setup()`, the next logger write lands), A.U14.38 (SPEC F.2's proof sentence names this file)
+- **Site**: new `tests/test_digital_twin_hot_replug.py`
+- **Change**: header (≤ 3 lines) "A sensor or the FRAM re-plugged on a running unit recovers without a reboot: the task
+  ends, the supervisor restarts it, setup() runs again (owner, 2026-07-13)." C4 boot per device (`generated_devices()`),
+  `supervise_tasks()` started as a tracked task; for each I2C attachment `peripheral(bus).unplug(addr)`, poll (bounded,
+  tunable deadline) the supervisor's restart count for that task, `plug(addr)`, poll for a fresh reading (the reader's
+  published value changes or its `TS` advances); FRAM: `chip.silent = True` … `False`. Ends by cancelling every task it
+  started (`_async_harness.cancel_all`). No HTTP. Registers both reset hooks.
+- **Resolved**: —
+- **Unit**: U25
+- **Depends**: M.TWIN.010-014, M.TWIN.024
+- **Blast carried by**: SPEC F.2 → A.U14.38 (SPEC); README fault paragraph → M.TWIN.058
+- **Kind**: test
+
+## tests/test_digital_twin_http_client.py
+
+### M.TWIN.118 HTTP client tests: refusal vs incomplete, timeout, consumption asserted, shared harness
+- **From**: A.U25.31 (`b""` header terminator flips to `IncompleteResponseError`; new: close after `HTTP/1.1 200 OK\r\n
+  Content-Length: 5\r\n` → `IncompleteResponseError`, reset before any byte → `CeilingRefusedError`, closed port → an
+  `OSError` that is not `CeilingRefusedError`; `:85-101` holds), A.U25.51 (`:268, :273` assert the reader consumed exactly
+  `n` and no request exceeded the chunk size; `:292, :297` assert EOF reached and each chunk requested once), A.U24.40
+  (hands the two to A.U25.51), A.U24.08 (`:24` `run` → `_async_harness`, bounded), A.U8C.25 (`_RUN_BOUND_S = 5.0` tagged
+  `l2.http_client_run_bound_s`; `_MID_BODY_PAUSE_MS = 20` tagged), A.U24.70 (the canned servers' 18099-18103 become a
+  `tests/_port_bands.py` row), M.TWIN.016 (`timeout_s`)
+- **Site**: `tests/test_digital_twin_http_client.py` (whole file)
+- **Change**: imports `_async_harness.run`; `_RUN_BOUND_S`/`_MID_BODY_PAUSE_MS` constants with their tags at module top,
+  every literal site uses them; the canned servers take ports from `PortAllocator("test_digital_twin_http_client")`; the
+  header-parse tests: `parse_header_line(b"")` raises `IncompleteResponseError`; new cases per A.U25.31 and
+  `fetch(..., timeout_s=0.1)` against a listener that never answers raises `asyncio.TimeoutError`; A.U25.51's four
+  strengthened tests (the fake reader records each `readinto` request length and its remaining buffer). Trailer.
+- **Resolved**: —
+- **Unit**: U25 (stages U8C tags, U24 harness)
+- **Depends**: M.TWIN.016; M.TEST_HELP.056 (port bands)
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_digital_twin_isl29125.py
+
+### M.TWIN.120 ISL29125 fake tests: bounded PRST count, cited constants, grouped constructor, power cycle
+- **From**: A.U25.14 ((4) the `:264-266` comment; new: under constant out-of-window light with no status read
+  `_prst_count` stays at the PRST target after 50 cycles; persistence tests `:317-360` hold), A.U25.49 (`:10-27` register
+  and bit constants cite FN8424 per line — `_ADDR_*` p9 Table 1, `_MODE_RGB`/`_RNG_HIGH`/`_BITS_12` p10 Tables 4-6,
+  `_INTSEL_GREEN` p11 Table 11, `_STATUS_*` p12 Tables 16-19, `_DEVICE_ID` p9 Table 2), A.U15.30 (`:264-266` is U25's —
+  carried by A.U25.14), A.U26.53 (the L2 equivalent unchanged — holds), A.U24.30 (`_FixedRandom` → `FixedRandom`),
+  A.U5.15 (`lux=Walk(…)`), A.U25.62 (`ISL29125Chip`), M.TWIN.012 (`timer_factory`; `simulate_brownout()` →
+  `power_cycle()`; a `writeto` hang on the probe; `key=` faults)
+- **Site**: `tests/test_digital_twin_isl29125.py` (whole file)
+- **Change**: constants cite FN8424 per line; `FixedRandom` imported; every construction `ISL29125Chip(..., lux=Walk(lo,
+  hi, step))` and no `auto_refresh=` (the default builds no Timer); tests calling `simulate_brownout()` call
+  `power_cycle()`; the `:264-266` comment → A.U25.14 (4)'s text; new `test_prst_count_stops_at_the_target` (50 cycles of
+  `_produce_new_reading(walk=False)` with green outside the window, no status read → `_prst_count == target`), a probe
+  `writeto` hang case, a `readfrom_mem` fault with `match=0x08`. Trailer.
+- **Resolved**: —
+- **Unit**: U25 (stage U24: `FixedRandom`)
+- **Depends**: M.TWIN.012
+- **Blast carried by**: L0 copy check `tests_scripts/test_isl29125_copies.py` → A.U25.49 (TSC)
+- **Kind**: test
+
+## tests/test_digital_twin_isl29125_autorange.py
+
+### M.TWIN.122 Auto-range twin tests: plan-derived device and pins, in-process band codes, INT parking, re-arm
+- **From**: A.U25.25 (`:58-60` hard-coded pins and `configure_i2c_wiring` → `device_with("isl29125")`'s plan and pins),
+  A.U25.03 (`reset_peripherals()`), A.U25.49 (`:34-40` driver-derived values cite `src/asy_isl29125_driver.py` by constant
+  name; `_CHIP_GAIN_RATIO` cites the chip default), A.U25.60 (band codes from `set_illumination()` scenes read in-process:
+  inside → suitable, below → too dark, above → too bright, fixed range → not applicable, right after a switch → not
+  applicable then suitable), A.U15.36 (dark/mid/bright → 2, 1, 3 — "through `GET /measurements`", see Resolved), A.U15.32
+  (L2: a red-dominant scene on the high range with `SampleInterv` 5: over 20 s of twin time at most ⌈20/5⌉ + 2 cycles and
+  the range stays high; the dead-line test `:292-307` holds), A.U15.R05 (L2: INT muted → re-arm → INT delivers), A.U2.12
+  (`:96` W filter by catalog code), A.U3.14 (brownout tests assert no log — hold), A.U28.28 (`:96` B905 inline comment goes
+  — the per-file entry is TOOL's), A.U36.020 (`:57` → "# A device carries this sensor only where its TOML declares an
+  isl29125 instance (SPECIFICATION.md M.1.1 / # req 18)."), A.U15.39 (hands `:56` to U36 — carried by A.U36.020)
+- **Site**: `tests/test_digital_twin_isl29125_autorange.py` (whole file)
+- **Change**: device from `device_with("isl29125")`, its plan and bus pins; C4 boot; constants cite their sources;
+  `:57` comment per A.U36.020; `:96` reads the W code through `code("W", <NAME>)`; new cases: A.U25.60's band-code
+  scenes; A.U15.36's three scenes (2, 1, 3) read from the reader's published data in-process; A.U15.32's red-dominant
+  scene counts reader cycles over 20 s of twin time (the twin Timer runs in real time: the test bounds it with a tunable
+  `l2.` deadline and counts the reader's cycle counter, not HTTP); A.U15.R05's mute/re-arm (the chip's
+  `configure_fault("isl29125:int_stuck_high", active=True)` then `False`). Trailer.
+- **Resolved**: A.U15.36 phrases its L2 check "through `GET /measurements`"; G7/R19 and A.U25.46 put request driving
+  host-side, and A.U25.60 (same file, same codes) reads "the reader's published data (in-process)" — the end state reads
+  in-process; the GET form is the host harness's measurements scenario (A.U25.46).
+- **Unit**: U25 (stage U15: A.U15.32/.36/.R05 cases written on the HEAD harness; U25 rebases them on C4)
+- **Depends**: M.TWIN.012, M.TWIN.024; `tests/_twin_devices.py`
+- **Blast carried by**: `pyproject.toml` B905 per-file entry → A.U28.28 (TOOL)
+- **Kind**: test
+
+## tests/test_digital_twin_launch.py
+
+### M.TWIN.124 Launcher tests: the new vocabulary and fault spec, required plan, persistent defaults, grouped config
+- **From**: A.U25.37 (`:33-75` vocabulary parse tests follow the new tables, instance keys), A.U25.70 (parse tests gain
+  `MATCH`), A.U25.27 (`wlan:…:TIMES` refusal flips to acceptance), A.U25.18 (`:41` every documented device/op parses —
+  `fram` `readinto|wren|silent`), A.U25.25 (`parse_args` tests: `--wiring-plan` required), A.U25.32 (the defaults test,
+  grep `fram_state_path`, flips to the persistent paths), A.U25.41 (parse tests hold with the shared `_pop_value`),
+  A.U5.15 (`:212-258` `LaunchConfig(state, injections, …)`), A.U8.08 (`:216, :261` comments quoting 8000 ms → name
+  `wdt.timeout_ms`), A.U8C.26 / A.U8C2.09 (`_SHORT_DURATION_S`, `_MAIN_BOUND_S`, `_FAULT_DURATION_S`, `_LONG_DURATION_S`,
+  `_LONG_MAIN_BOUND_S`, `_LONG_MIN_READINGS` with their `l2.launch_*` tags), A.U8C.120 (`:230` Dependant of
+  `l2.twin_wifi_connect_delay_s`), A.U7.19 (`--help` exits 0 — its L0 test is TSC; one L2 case here: `parse_args(["--help"])`
+  raises `SystemExit(0)`)
+- **Site**: `tests/test_digital_twin_launch.py` (whole file)
+- **Change**: the six module constants with their tags; vocabulary tests iterate `launch._FAULT_DEVICE_OPS` and
+  `_HANG_DEVICE_OPS` (no copied list); new parse cases: `scd30_x:writeto` resolves to `scd30` (`_driver_of`),
+  `uart_link_init:silent` resolves to `uart_link`, `fram:silent:2` and `isl29125:int_stuck_high:0x08` refused,
+  `scd30:readfrom_into:3:0x0300` → `(…, 3, 0x300)`, `wlan:status:2` accepted, `fram:write` refused; `parse_args([])`
+  raises "--wiring-plan PATH is required"; defaults equal `StatePaths("digital_twin/fram_state.json",
+  "digital_twin/scd30_state.json", "digital_twin/mem_backup_state.json")`; main-run tests pass a generated plan path
+  (`build/generated_src/sensortask_<device>_wiring_plan.json` for `device_with("bmp3xx")`) and `""` state paths, assert
+  `summary["readings"] >= _LONG_MIN_READINGS`; comments `:216, :261` name `wdt.timeout_ms`. Trailer.
+- **Resolved**: —
+- **Unit**: U25 (stages U5, U8C)
+- **Depends**: M.TWIN.044-046
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_digital_twin_machine.py
+
+### M.TWIN.126 Twin `machine` tests: the shared contract, Pin, buses, general call, probe, fill, WDT, reset, logs
+- **From**: A.U24.17 (runs `tests/_machine_contract.py` `ALL_CHECKS` against `digital_twin/machine.py`), A.U25.02 / .05
+  (Pin L2 lists), A.U25.03 (per-id I2C/SPI list), A.U25.06 (short chip reply into `bytearray`/`memoryview`), A.U25.10
+  (`:140-142` asserts the wired SGP40's `resets` +1 and the BMP3XX on the same bus kept OSR/CONFIG; a general call with no
+  SGP40 raises `EIO`), A.U25.12 (`:207-223` CRC-correct frame — holds), A.U25.16 (SPI LSB refused, default MSB), A.U25.17
+  (empty write to an absent address `ENODEV`, one byte `EIO`, a queued `sgp40:writeto` EIO fault then `writeto(0x59, b"")`
+  `ENODEV`), A.U25.22 (`BoundedLog` cap/`dropped`/order; WDT log `dropped == n - 200`), A.U25.23 (each counter at
+  `COUNTER_CAP` stays), A.U25.24 (each hook raises after a construction and passes after `reset_peripherals()`; `:134`,
+  `:231` post-construction resets → `reset_peripherals()` first), A.U25.25 (`:135-200` pins from the plan; `:161-194`
+  `configure_i2c_wiring` → `configure_wiring(wiring_plan(...))`), A.U25.51 (`:142` → A.U25.10's assertions), A.U25.52
+  (identity `:178-180` holds), A.U24.12 (`:200-236` uses a `TmpScratch("dtmachine")` path and restores `sys.path`),
+  A.U24.30 (`:119` `_FixedRandom` → `FixedRandom`), A.U36.020 (`:162-163` → "# A device carries this sensor only where
+  its TOML declares an isl29125 instance."), A.U15.39 (hands `:161` to U36 — carried by A.U36.020), A.U8.08 (WDT
+  construction inputs 8000/8388/8389 — facts; short timeouts tuned), A.U8C.27 / A.U8C2.10 (the `l2.machine_*` constants:
+  `_WDT_SHORT_TIMEOUT_MS = 150`, `_WDT_POLL_MS = 5`, `_RUN_BOUND_S = 5`, `_WDT_FED_TIMEOUT_MS = 100`, `_FEED_STEP_MS = 20`,
+  `_DOUBLE_TRIGGER_BOUND_S = 8`, `_TIMER_PERIOD_MS = 20`, `_BEFORE_DEINIT_MS = 60` and A.U8C.27's remaining rows as it
+  lists them, `_WDT_POLL_TRIES = 200`,
+  `_FEED_ROUNDS = 6`, `_WDT_SECOND_NOTICE_POLL_TRIES = 600`, `_CHAIN_POLL_TRIES = 100`, `_FIRE_POLL_TRIES = 100`, each
+  tagged), A.U10.12 (`:475-500` keeps its twin-fidelity goal; its comment stops naming the product sequencer), A.SDEP.08
+  (`:319` version-stamped claim re-read), M.TWIN.001 (`fill_buffer`), M.TWIN.031 (`feed_times`), M.TWIN.019/.033 (RTC and
+  wall clock cases — M.TWIN.128), M.TWIN.035 (`reset_test_state()`)
+- **Site**: `tests/test_digital_twin_machine.py` `:1-330` (module setup, Pin, buses, general call, wiring, WDT)
+- **Change**: module setup: `sys.path` gains `digital_twin` (kept) and the `microtest.after_each(machine.reset_test_state)`
+  registration; `from _machine_contract import ALL_CHECKS` and one test per check calling it with the twin module (the
+  contract's `make_injector` factory for `check_inject_fault_fifo` builds a chip's `FaultInjector`); every bus test
+  takes its pins from `wiring_plan(device_with(...))["pins"]`; the cases listed under From, each one test with an exact
+  assertion; the tagged constants at module top; the `:162-163` comment; `:200-236` on the scratch path. The Timer, RTC,
+  reset and mem-backup cases are M.TWIN.128 (same file, separate merged change for size).
+- **Resolved**: —
+- **Unit**: U25 (stages U8C/U8C2 tags, U24 scratch/contract/`FixedRandom`, U36 comment)
+- **Depends**: M.TWIN.020-036; `tests/_machine_contract.py` (M.TEST_HELP, A.U24.17)
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TWIN.128 Twin `machine` tests, runtime half: Timer pool and schedule, reset exceptions, mem_backup, RTC
+- **From**: A.U25.19 (`:460-520` hold; `:505` asserts the alarm returned to the pool; pool+1 → ENOMEM; `deinit()` frees one;
+  a re-arm inside the callback runs one loop — 3 calls over three periods; `freq=10` → 100 ms; `Timer(0)` → `ValueError`; a
+  soft PERIODIC raising once still runs its second; a hard one stops and frees), A.U25.51 (`:505` → that assertion),
+  A.U25.07 (`:420-450` hold; `not issubclass(SimulatedRebootError, Exception)`; a Timer calling `machine.reset()` makes
+  `asyncio.run()` raise `SimulatedResetError` while an `except Exception` sibling keeps nothing alive; then
+  `asyncio.new_event_loop()`), A.U25.08 (sizes 4 and 3 words; identity; `-1` tuple; `2`/`-2` raise; `power_on()` clears;
+  flush + configure round trip restores regions and cause 3 and deletes the file; a missing, malformed or wrong-length
+  file leaves power-on; runs `tests/_mem_backup_contract.py`), A.U25.20 (`:451-455` holds; setter returns `None`; `RTC(0)`
+  → `TypeError`; a 7-tuple → `ValueError`; a wrong weekday reads back corrected), A.U25.71 / M.TWIN.019 (installed clock
+  cases), A.U25.23 (`reset_count`, `bootloader_count` at the cap)
+- **Site**: `tests/test_digital_twin_machine.py:420-539`
+- **Change**: the cases under From, one test each, using the tagged poll/bound constants of M.TWIN.126 and
+  `_async_harness.run(coro, _RUN_BOUND_S)`; every test that drives a reset catches `machine.SimulatedRebootError` and
+  calls `asyncio.new_event_loop()` before returning; `set_alarm_pool_free()` restored by `reset_test_state()`.
+- **Resolved**: —
+- **Unit**: U25
+- **Depends**: M.TWIN.019, M.TWIN.030-035
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_digital_twin_machine_uart.py
+
+### M.TWIN.130 Twin UART tests: one static object per id, the contract via `poll_mask`, overflow, bounded settle
+- **From**: A.U25.04 (`:28-43` supersede test → `test_a_second_construction_on_one_bus_id_returns_the_same_live_object`
+  (same object, settings replaced, rx queue emptied, link still delivering); `make_link()` `:16-20` and `:49, :67` call
+  `machine.reset_peripherals()`), A.U24.80 (`:24` the contract via `poll_mask`), A.U24.06 (the contract's completeness
+  — holds), A.U25.22 (4097 bytes in flight → `dropped_overrun == 1`), A.U25.23 (`offered`/`delivered`/`dropped_overrun`/
+  `would_have_blocked_bytes` at the cap stay), A.U25.30 (`settle()` inside a coroutine raises `RuntimeError`; 64 bytes at
+  1200 baud settle no earlier than their wire time, with a bounded count of `_advance()` calls), A.U8C.28 (its tags),
+  A.U13.12 (a `readline(n)` with fewer queued counts `n - queued` — the contract's new check), A.U13.13 (`txdone()` True),
+  M.TWIN.028 (ioctl `-EINVAL` for `MP_STREAM_GET_FILENO`)
+- **Site**: `tests/test_digital_twin_machine_uart.py` (whole file)
+- **Change**: as listed; UART constructions pass rp2-valid TX/RX pins from the plan; a new `test_ioctl_answers_einval_
+  to_get_fileno` (`uart.ioctl(10, 0) == -errno.EINVAL`) and `test_a_buffer_below_32_is_clamped`; the `l2.machine_uart_*`
+  tags per A.U8C.28. Trailer.
+- **Resolved**: —
+- **Unit**: U25 (stage U8C)
+- **Depends**: M.TWIN.027-029
+- **Blast carried by**: `tests/_uart_link_contract.py` (`poll_mask`, `readline(size)` check) → A.U24.80/A.U13.12 (TEST_HELP)
+- **Kind**: test
+
+## tests/test_digital_twin_bus_hazard_concurrency.py
+
+### M.TWIN.102 Twin bus-hazard tier: devices from data, real recovery rungs, general call that resets, no in-DUT HTTP
+- **From**: A.U25.48 (device choice from data, `test_wozi_*` names drop the device) as amended by A.U36.015 (A-C: loop over
+  every device whose TOML puts two or more occupants on one bus, each case taking that device's own occupants; FRAM's
+  same-device hazards and the WiFi-disconnect scenario run on one data-chosen device, naming that reason), A.U25.46 (the
+  `_api_burst_at_the_ceiling()` half `:90-111` moves to the host harness; the bus-load half stays, no HTTP), A.U25.51
+  (`:107` route set — moot once the burst moves; the host harness reads every registered GET route, A.U19.20/A.U24.36),
+  A.U24.34 / A.U25.31 (`:99-104` classifier → moves with the burst), A.U25.22 (`_run_real_task_graph_and_assert_healthy()`
+  asserts `shared_bus_log.dropped == 0` before its `:156` membership check; the `:368-370` comment says the helper checks
+  its window), A.U25.10 (the general-call scenario now resets the twin SGP40 for real; reads after it re-checked: a read
+  returns the zero reply until the next measure), A.U15.R02 (L2: heater-off on the twin concurrent with the SCD30 read loop
+  on a shared bus across offsets), A.U25.11 (its L2 case authored by A.U15.R02 — here), A.U15.R01 (L2: the SCD30 soft reset
+  issued while SGP40/ISL29125/BMP3XX read loops run on the same bus leaves every sibling read valid), A.U13.R02 (3) (the
+  held-SDA/controller-rung scenario on the twin chips, plus two ladder cases: (a) a sustained fault on one chip until
+  its reader persists wrnno 15, then the fault FIFO cleared and the reader returns; (b) as its text), A.U25.05 (its
+  clear/recover cases run on the twin Pin), A.U12.18 (new: three concurrent `measure_raw()` with distinct T/RH on the twin
+  SGP40, each 8-byte `writeto` followed by its own read in `I2C.log`, words matching one session each), A.U15.32 (ISL29125
+  concurrency runs unchanged), A.U15.S01 / A.U15.25 / A.U15.33 / A.U13.07 / A.U13.10 / A.U16.10 / A.U30.07 / A.U15.12 /
+  A.U26.32 / A.U35.21 (run unchanged and must pass — hold), A.U16.19 (`:414-432` refused write checked after unpausing;
+  `:463-464` the WP-vs-override assertion goes, the WP read refusal stays asserted unpaused), A.U25.57 (new case beside
+  `:501-530`: per device with FRAM, `mempause` through the generated `SystemCmd` dispatch in-process arms the 300 s unpause
+  Timer (read from the manager); a 2 s pause through the manager's own entry drops a logger write, then after the
+  one-shot `get_pause()` is false and the next write lands; no read or clear deferred), A.U25.50 (`:364` comment head →
+  "# Recombination test (owner, 2026-09-04): the fully wired system tolerates a genuine 60 s wifi_mode_lock hold while
+  concurrent bus load …"), A.U35.09 (nothing added here; `:363`'s owner tag is A.U25.50's — holds), A.U20.02 (13
+  `build_system()`/`main()` calls pass `watchdog=`; `:115-133, :378-393` read the WDT they passed), A.U20.06 / A.U10.12 /
+  A.U32.06 (`:118`, `:387` `start_timers()` two lists; `:119`, `:388` `start_tasks(…, task_names=…)`), A.U10.44 (starter
+  names), A.U25.03 / .24 / .25 (`reset_peripherals()` before each build — `:514`, `:524` simulated-reboot build;
+  `:179-508` twelve `configure_i2c_wiring` → `configure_wiring(wiring_plan(...))`), A.U25.33 (offline NTP config per
+  boot), A.U24.08 (`:44` `run`, `:65` `_cancel` → `_async_harness`), A.U24.70 (`:51` port allocator → `PortAllocator`),
+  A.U8C.24 / A.U8C2.08 (`_WDT_FEED_INTERVAL_S` `l2.twin_wdt_feed_interval_s`, `_RUN_BOUND_S`, `_API_RUN_BOUND_S` (moot with
+  the burst — its row closes), `_ESTABLISHED_POLL_S`, `_RUN_SECONDS = 9.0` and A.U8C.24's remaining rows as it lists them), A.U8.15 (the `-X heapsize` row cites
+  this file's dev scenario — holds), A.U10.18 (lock renames in assertions), A.U11.24 / A.U4.02 (`:384` config writes
+  follow the new `write_config` signature), A.U36.512 (`:112` "for both variants" → "for every device"), A.U36.544
+  (comment pointers), A.U28.28 (`:…` bare E402 gains its reason), A.SDEP.08 (`:475` version-stamped claim re-read),
+  A.U35.50 (the four-tier conformance row reads this file), A.U19.20 (`:107` route tuple — moot, moves host-side),
+  A.U24.27 / A.U24.29 (the twin counterpart is A.U13.R02's — this change), C2, C4
+- **Site**: `tests/test_digital_twin_bus_hazard_concurrency.py` (whole file)
+- **Change**: module setup per C4 (prewarm, shim, both reset hooks); `_DEVICES_SHARED = devices_with_shared_bus()` (each
+  `(device, bus, occupants)`), FRAM/WiFi cases on `device_with("fram")` with a one-line reason; tests renamed
+  `test_<scenario>` and parametrised by a loop over the derived set (one assertion message names the device);
+  `_run_real_task_graph_and_assert_healthy(module, watchdog, shared_bus_log, run_seconds)` drops `api_port` and the
+  burst (the two `…_api_burst_during_bus_load` tests become host scenarios — SCR, A.U25.46 — and leave this file); its
+  per-driver health check stays TOML-driven (the hard-coded SGP40/BMP3XX/SCD30 asserts go: the plan loop covers every
+  occupant); `assert shared_bus_log.dropped == 0` precedes the general-call membership check; the general-call scenario
+  asserts the SGP40's `resets` rose and its next measure after a reset answers; new cases: A.U15.R02's heater-off
+  interleave, A.U15.R01's soft-reset interleave, A.U13.R02's ladder cases (a)/(b), A.U12.18's three-session measure,
+  A.U25.57's pause cases; FRAM WP/pause cases per A.U16.19; tagged constants at module top; every reset-reachable
+  case catches `SimulatedRebootError` and calls `asyncio.new_event_loop()`. The `:364` owner tag per A.U25.50.
+- **Resolved**: A.U25.48 (1) picks one device for the SGP40+BMP3XX pair; A.U36.015's Blast states "A-C amends A.U25.48 (1)
+  to loop over every device whose TOML puts two or more bus occupants on one bus (`devices_with_shared_bus()`)" — settled
+  by that text (V24). A.U25.51 and A.U24.36 edit `:107`, which A.U25.46 moves host-side — their content travels with the
+  burst (GAP-H2, SCR). The `_API_RUN_BOUND_S` row (A.U8C.24) closes with the burst's move (C3).
+- **Unit**: U25 (stages: U8C tags, U13/U15 L2 cases on the HEAD harness, U16 pause edits, U20 `watchdog=`, U24 harness)
+- **Depends**: M.TWIN.014, M.TWIN.021, M.TWIN.024, M.TWIN.035; `tests/_twin_devices.py` `devices_with_shared_bus()`
+  (TEST_HELP gap)
+- **Blast carried by**: `tests/_twin_devices.py` gains `devices_with_shared_bus()` → TEST_HELP gap; the API-burst
+  scenario host-side → A.U25.46 (SCR); SPEC C.8 per-device paragraph → A.U36.015 (SPEC)
+- **Kind**: test
+
+### M.TWIN.104 Twin bus-hazard tier, system commands: erase vs logger write, cancelled session, watchdog on the erase
+- **From**: A.S0930.27 (3) (in this file: the erase racing a logger write on the twin chip — in-flight completes, later
+  refused, no torn chunk; a sensor task cancelled inside its I2C session on a shared bus — the sibling's next read
+  succeeds; the twin chip's rollover never reached), A.S0930.27 (4) (healthy: the dev-layout erase with
+  `wire_time_us_per_byte = 8` ends with `would_have_triggered_count == 0`; a blocking hang inside one SPI transfer (the knob
+  set for a 9 s transfer) is caught by `_arm()`'s late-feed backstop at the next own feed), A.S0930.38 (5) (in-process: stop
+  at the armed reset (`_reset_armed` True) before the Timer fires; then from outside `sysfunct._reset_timer.deinit()`,
+  `sysfunct._reset_task.cancel()` and the `supervise_tasks()` task's cancel, each awaited), A.S0930.27 (0) (FRAM evidence
+  first: a copy of the twin chip's memory into the test's scratch before the command), A.U25.15 (rollover, `silent`,
+  WREN-drop)
+- **Site**: `tests/test_digital_twin_bus_hazard_concurrency.py` (new section "system commands")
+- **Change**: three cases on `device_with("fram")` (FRAM alone on its bus — stated) and one on a shared-bus device:
+  `test_erase_racing_a_logger_write_never_tears_a_chunk`, `test_a_sensor_task_cancelled_inside_its_session_leaves_the_bus_
+  usable`, `test_the_erase_feeds_the_watchdog_at_bus_speed` (knob 8 µs/byte; asserts `would_have_triggered_count == 0` and
+  every unit address below `size`), `test_a_hung_spi_transfer_is_caught_by_the_late_feed_backstop`; each stops at the
+  armed reset and tears down as A.S0930.38 (5) states; before each command the chip memory is copied into the test's
+  `TmpScratch` (the FRAM-log rule, twin case).
+- **Resolved**: —
+- **Unit**: U25 (co-lands with SUPP_owner_0930, AC_NOTES 34/36)
+- **Depends**: M.TWIN.011, M.TWIN.026, M.TWIN.031; M.SRC_CORE controlled-shutdown sequence (`_reset_armed`,
+  `_reset_task`, `_reset_timer`)
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_digital_twin_construction_<device>.py (six, deleted) → tests/test_digital_twin_construction.py (new)
+
+### M.TWIN.108 One per-device construction file replaces the six wrappers
+- **From**: A.U24.65 (2) (the six wrappers replaced by `tests/test_digital_twin_construction.py` with
+  `globals().update(register_for_device(os.getenv("TEST_DEVICE")))`, `PER_DEVICE = True`, raising at import without
+  `TEST_DEVICE`), A.U25.43 (the entry file, not the library, carries the prewarm and shim calls), A.U25.34, C4, A.U24.04
+  (trailer)
+- **Site**: `tests/test_digital_twin_construction_{arzi,dev,grkizi,klkizi,schlafzi,wozi}.py` (deleted); new
+  `tests/test_digital_twin_construction.py`
+- **Change**: the new file: header (≤ 3 lines) "Digital-twin construction, wiring and boot checks for the device named by
+  TEST_DEVICE - one job per generated device, dispatched by scripts/test.sh (SPECIFICATION.md E.2.1)."; `sys.path` gains
+  `digital_twin` and `digital_twin/unixport`; module level `prewarm_poll_set()` then `patch_asy_udp_socket_for_unix_port()`;
+  `PER_DEVICE = True`; `device = os.getenv("TEST_DEVICE")` with the import-time `RuntimeError("run through scripts/test.sh,
+  or set TEST_DEVICE to one of devices/*.toml")` when unset; `globals().update(register_for_device(device))`; the
+  canonical trailer.
+- **Resolved**: —
+- **Unit**: U24 (A.U24.65; the prewarm/shim lines move to the new file in U24 already, as the wrappers carry them — the
+  wrappers at HEAD carry none because the library prewarms; A.U25.43 (U25) moves the call out of the library into this
+  entry file)
+- **Depends**: M.TEST_HELP.029 (the library's `register_for_device`), M.TEST_HELP.055
+- **Blast carried by**: `scripts/test.sh` per-device expansion → A.U24.65 (3) (SCR); the twin pass `files` glob picks it
+  up (M.TWIN.075)
+- **Kind**: test
+
+## tests/test_digital_twin_network_neopixel.py
+
+### M.TWIN.132 Twin network and NeoPixel tests: singletons, cyw43 status rules, AP address, byte store, structural waits
+- **From**: A.U25.27 (`reset_interfaces()` before isolated constructions; singleton identity, `WLAN(5) is WLAN(AP_IF)`,
+  counts per interface, `deinit()` resets link state and takes the STA link down from the AP, `raise_on` with `times=2`
+  raises twice then stops; `:156-165` holds with `times=None`), A.U25.26 (`:66-70` → rssi on STA, stations on AP, the three
+  raises; `_CONNECT_DELAY_S` < the service's poll budget, read through its module attribute or an L0 AST read), A.U25.72
+  (AP `ifconfig()[3]` equals the STA's; config truncation; A.U18.30's deactivated-radio LED pattern on the twin NeoPixel),
+  A.U18.30 ("U25 may add the L2 case" — added), A.U25.21 (`:291-323` frames compared as `bytes` or read back through
+  `__getitem__`; `(256, 0, 0)` → `(0, 0, 0)`; `(1.5, 0, 0)` raises; `(10, 1.5, 0)` raises leaving G = 10), A.U25.22
+  (`:79-90, :276-289, :302-312` bounded-size tests gain `dropped == n - 200`), A.U35.14 (1) (`:149`, `:251` negative
+  windows become structural: after `disconnect()`, one `await asyncio.sleep(0)`, the kept connect task is `done()` and
+  awaiting it raises `CancelledError`), A.U8C.29 (`_WAIT_TIMEOUT_S`, `_POLL_MS` tagged; the `l2.network_neopixel_never_
+  connects_wait_s` row closes — the wait is gone, C3), A.U8C.120 (that row's Dependant note — closes with it), A.U31.13
+  (real-time NeoPixel — holds), A.U28.28 / A.U28.29 (S106 reason line above the file's per-file entry — TOOL), M.TWIN.040
+  (`raise_on` stores type and args; seeds `"XX"`/`"PicoW"`)
+- **Site**: `tests/test_digital_twin_network_neopixel.py` (whole file)
+- **Change**: every isolated `WLAN(...)` test starts `network.reset_interfaces()`; `raise_on` set with
+  `(OSError, (errno.EIO, "m"), times)`; the cases listed under From; the seed test asserts `network.country() == "XX"` and
+  `hostname() == "PicoW"` before any product call; the NeoPixel tests use the bytearray model; both reset hooks
+  registered; trailer.
+- **Resolved**: A.U35.14 removes the wall-clock waits `:149`, `:251` that A.U8C.29's row `l2.network_neopixel_never_connects_
+  wait_s` tags — the later action wins and the row closes (C3, A.U8C.120's Dependant note with it).
+- **Unit**: U35 (stages: U8C tags, U25 the fake cases)
+- **Depends**: M.TWIN.040, M.TWIN.042
+- **Blast carried by**: `pyproject.toml` S106 per-file reason → A.U28.28/A.U28.29 (TOOL)
+- **Kind**: test
+
+## tests/test_digital_twin_poll_prewarm.py
+
+### M.TWIN.134 Prewarm tests: canonical trailer, the returned sockaddr typed `object`
+- **From**: A.U24.04 (`:11` `from microtest import run` at the top and `:142-143` `run(globals())` → the canonical
+  trailer), A.SDEP.16 (W12: the file is deleted if `extmod/modselect.c` is fixed at the refreshed pin — conditional),
+  A.U25.63 (`prewarm_poll_set()` returns `object`)
+- **Site**: `tests/test_digital_twin_poll_prewarm.py:11, 142-143`
+- **Change**: per A.U24.04; no assertion relies on the return value being a tuple; the 17400 band is the
+  `tests/_port_bands.py` row.
+- **Resolved**: —
+- **Unit**: U24 (stage U25 for the return type)
+- **Depends**: M.TWIN.057
+- **Blast carried by**: L0 trailer check → A.U24.04 (TSC)
+- **Kind**: test
+
+## tests/test_digital_twin_real_website_integration.py (deleted)
+
+### M.TWIN.136 The real-website checks move to the host harness; the file goes
+- **From**: A.U25.46 (2) (its 9 HTTP tests `:98-345` move to `scripts/_digital_twin_scenarios.py`, goals and assertions
+  kept), A.U25.48 (one device: the one `scripts/test.sh` built the site for, read from the bundle; `:120-128` comment),
+  A.U25.45 (`:75` readiness poll), A.U25.33 / A.U25.03 / A.U25.25 / A.U20.02 / A.U24.70 (boot discipline), A.U8C.30 (tags),
+  A.U36.004 (5) (`:69-71` comment), A.U36.512 (`:134` "exemplary base device"), A.U24.01 (`:26-27` `_PHASE_*` mirrors →
+  `_src_const`), A.U24.60 (`:150` strict loads of the definitions), A.U27.03 (`:87-95` `DeflateIO` without `with` and its
+  ignore), A.U23.47 (its `Any` sweep is U25's — moot), A.U8.18 (`:305` comment names the figure), A.U24.08, A.SDEP.07 (the
+  archive-format change's L2 coverage), A.U36.517 (SPEC E text naming this file's mechanism)
+- **Site**: `tests/test_digital_twin_real_website_integration.py` (whole file, deleted)
+- **Change**: `git rm` in U25 once the harness carries its nine scenarios (A.U25.46); every content item above that
+  applies to the moved scenarios is carried into the harness (SCR gap, GAP-H2's list extended by: the one-device choice
+  from the built bundle, the `:150` strict definitions read, the concurrent page-load figure's tag). The in-process
+  helpers `_boot`/`_start_webserver`/`_cancel` go with it. Edits made to this file in U8C/U20/U24 (tags, `watchdog=`,
+  harness imports, mirrors) are made in their units (the file exists until U25) and removed with it.
+- **Resolved**: A.U25.46 (U25) moves every test the U8C/U20/U24/U27 constituents edit; those edits land in their own
+  units and the U25 deletion supersedes them — no conflict. A.U36.517 (U36) describes the L2 proof as this file "boots that
+  device's generated object graph against the twin's buses and drives real HTTP" — after U25 the proof is the harness
+  scenario (a runner subprocess serving the built site): SPEC gap.
+- **Unit**: U25
+- **Depends**: A.U25.46 (harness, SCR)
+- **Blast carried by**: harness scenarios → A.U25.46 (SCR gap with the listed items); SPEC E/H build-chain proof text →
+  A.U36.517 (SPEC gap); `pyproject.toml`/`typecheck.ini` scope by glob (no entry)
+- **Kind**: test
+
+## tests/test_digital_twin_rp2_constants.py (new)
+
+### M.TWIN.138 One L2 file pins every rp2 value the twin models
+- **From**: A.U25.68 (one assertion per constant, the expected value typed from the cited source with the citation
+  beside it), A.U25.08 (`PWRON_RESET`, `WDT_RESET`, region sizes), A.U25.19 (pool size, Timer defaults), A.U25.21
+  (NeoPixel `ORDER`), A.U25.02/.05 (Pin constants and names), A.U25.16 (`SPI.MSB`/`LSB`), A.U25.04 (UART bounds), M.TWIN.031
+  (WDT cap), M.TWIN.040 (STAT constants, seeds), M.TWIN.011 (`_OVERRUN_MIN_READ` equal to `_SPI_DMA_MIN_SIZE`)
+- **Site**: new `tests/test_digital_twin_rp2_constants.py`
+- **Change**: header (≤ 3 lines) "Pins every rp2 constant the twin models to the value its cited v1.29.0 source line holds;
+  a pin move that changes one fails here and names the line to re-read (CLAUDE.md's re-check practice)." One test per
+  constant: Pin `IN/OUT/OPEN_DRAIN/ALT/PULL_UP/PULL_DOWN/ALT_I2C/IRQ_FALLING/IRQ_RISING`, `SPI.MSB/LSB`,
+  `machine._SPI_DMA_MIN_SIZE`, `UART._MP_STREAM_POLL/_MAX_BUFFER_SIZE/_MIN_BUFFER_SIZE/_UART_INVERT_MASK/_DEFAULT_BAUDRATE`,
+  `_WDT_TIMEOUT_MAX_MS`, `_ALARM_POOL_SIZE`, `PWRON_RESET`, `WDT_RESET`, `len(mem_backup(0)) == 4`, `len(mem_backup(1)) == 3`,
+  `NeoPixel.ORDER`, the `network.STAT_*` values and power-on seeds; each expected literal carries its source line in a
+  trailing comment. Trailer.
+- **Resolved**: —
+- **Unit**: U25
+- **Depends**: M.TWIN.021-042
+- **Blast carried by**: README "Pinned constants" → M.TWIN.059
+- **Kind**: test
+
+## tests/test_digital_twin_run_generic_integration.py
+
+### M.TWIN.140 Runner tests: grouped config, plan-driven chip lookup, prewarm first, generated device, handler helpers
+- **From**: A.U25.43 (1) (prewarm then shim at module level), A.U25.28 (`_collect_chips` tests construct twin buses and pass
+  the plan), A.U5.15 (`:56`, `:234` grouped `RunConfig`), A.U25.32 (`test_parse_args_minimal_valid_config` holds — both
+  sides default; the boot test passes `""` state paths), A.U25.37 (`_require_wired` tests hold; instance keys), A.U25.41
+  (parse tests hold), A.U25.48 (`:48` placeholder `"sensortask_x"`; `:235-236` first `generated_devices()` entry), A.U24.56
+  (`:1-2` → "boots a generated module through the generic entry point"; `:136-138`, `:218-220` drop retired runner
+  names), A.U36.513 (same lines — A.U24.56's), A.U20.02 (`:249` reads the WDT it passed), A.U20.28 (plan reader), A.U24.08
+  (`:29` harness), A.U24.46 (`require_fresh()` at import), A.U24.70 (`:238` inline 19099 → `PortAllocator` band), A.U8.14
+  (`:112` `gc.threshold_bytes` mirror site), A.U8C.31 (`_RUN_BOUND_S`, `_MAIN_RUN_BOUND_S` tagged), A.U15.R02 (`:80`
+  `sgp40:writeto:2` re-derives — the expected counts follow A.U25.36's failure-event form), A.U25.09 (L2 in-process only
+  the handler's pure helpers), M.TWIN.051 (`TestFlags` parse cases)
+- **Site**: `tests/test_digital_twin_run_generic_integration.py` (whole file)
+- **Change**: module level prewarm, shim, `require_fresh()`; `RunConfig` tests use `StatePaths`/`Injections`/`RunLimits`
+  and the new flags (`--config-dir`, `--mem-backup-state-path`, `--online-ntp`, every `--test-*` defaulting off — one
+  test asserts `parse_args([...]).instrumentation == _NO_TEST_FLAGS`); `_collect_chips` tests build twin buses from an
+  inline plan; the boot test boots the first generated device through `main()` with `""` state paths and a scratch
+  `--config-dir`, asserts `would_have_triggered_count == 0` on the WDT the runner passed and that the offline NTP file
+  exists; pure-helper tests for the exit-code mapping and the shutdown line format (`mem_backup: r0=`,
+  `public_destinations_refused=`); the docstring and comments per A.U24.56; tags; trailer.
+- **Resolved**: A.U24.56 (U24) and A.U36.513 (U36) both name `:1-2`, `:136-138`, `:218-220`; A.U36.513 itself says these are
+  A.U24.56's — one edit in U24.
+- **Unit**: U25 (stages U8C, U24)
+- **Depends**: M.TWIN.047-053
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_digital_twin_scd30.py
+
+### M.TWIN.142 SCD30 fake tests: measuring status, argument CRCs, FRC, power-up, counter, graceful load, grouped constructor
+- **From**: A.U25.12 (stop → no RDY edge for 3 intervals, 0x0010 → edges resume; wrong CRC → setting unchanged; interval 0
+  and 1801 → unchanged; FRC 900 → 900, after 0xD304 → 400, a new chip from the same state file → 400; state file
+  round-trips `measuring`; `:106-112` → set 900 reads 900; `:80-84` → data-ready 0 and FRC 400 after reset; interval tests
+  keep 2-1800), A.U25.51 (`:80` per A.U25.12; `:325` `clear()` with no op → both ops answer normally (the bytes); `:426`
+  state path `None` → no file created in the cwd), A.U25.70 (a fault matched to 0x0300 spares a 0x0202 read and hits the
+  next 0x0300; two raises of one queued fault are distinct objects; `pending()` counts down), A.U25.32 (`:414-423` holds;
+  `"[1, 2]"` and `{"altitude": "x"}` load factory defaults), A.U25.73 (`:227-230` range comment), A.U4.06 (counter test),
+  A.U4.04 (two identical PUTs: the chip's NVM counter rises only for AmbPres/ForceCalRef on the second — see Resolved),
+  A.U15.12 (with the CO2 walk step 0 the booted device reaches `FRCState` 4, and the three settings round-trip — see
+  Resolved), A.U24.30 (`:32-40` `FixedRandom`; `:202-210` asserts `calls[3:6] == [(-5.0, 5.0), (-0.1, 0.1), (-0.5,
+  0.5)]`), A.U24.38 (hands `:80, :325, :426` to A.U25.51), A.U30.05 (`:137-139, :222` decode their own way — holds),
+  A.U5.15 (36 `Scd30Chip(` calls regrouped), A.U25.62 (`SCD30Chip`), M.TWIN.013 (`nvm=`, `timer_factory`, `corrupt_next()`)
+- **Site**: `tests/test_digital_twin_scd30.py` (whole file)
+- **Change**: constructions `SCD30Chip(co2=Walk(…), temp=…, hum=…, nvm=SCD30Nvm(interval, measuring))`, no
+  `auto_refresh` (the refresh tests pass `timer_factory=machine._simulation_timer`); `corrupt_next_measurement = True` →
+  `corrupt_next()`; frames written with their argument CRC (`crc8` from `_crc8`); the cases under From; the booted
+  cases (A.U4.04, A.U15.12) run in-process on `device_with("scd30")` with C4: the settings are applied through the
+  module's own config-apply path the REST handler calls (no HTTP), the counter read from the chip, `FRCState` read from
+  the reader's published data, the CO2 walk made constant by `chip.co2 = Walk(800.0, 800.0, 0.0)`; trailer.
+- **Resolved**: A.U4.04 ("through the real HTTP route") and A.U15.12 ("through `GET /measurements` … `PUT /sensors`")
+  write in-DUT request driving; G7/R19 / A.U25.46 put request driving host-side, while the NVM counter and the walk knob
+  are only reachable in-process — the cases run in-process through the same config-apply path the route calls, and the
+  route itself is covered by the host harness's PUT and measurement scenarios (A.U25.46) — settled by G7/R19 (the same
+  rule M.TWIN.122 applies).
+- **Unit**: U25 (stages U4 for A.U4.06's counter test on the HEAD shape, U15 for A.U15.12's case, U24 `FixedRandom`)
+- **Depends**: M.TWIN.013
+- **Blast carried by**: —
+- **Kind**: test
