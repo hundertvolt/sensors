@@ -164,3 +164,6 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
 44. Lead (2026-10-01), TEST_UNIT GAP-U3 and the TSC gap: `NeopixelDriver` gets `self.initialized` (False last in
     `__init__`, True in `setup()`, which returns the logger's result) — M.SRC_SENS.023/.024 amended. As for
     `NotificationService` (42), no method guards on it; a call before `setup()` answers as after it.
+45. Cross-cluster gaps left after their owning merge closed, for the A-C gap pass before ordering: PROC gap 5 — no runner
+    selects `multi_day_rollover` (SCR M.SCR.030-.032, HW_BENCH M.HW_BENCH.126); TSC's `NeopixelDriver` gap is already
+    carried by M.SRC_SENS.023/.024 (AC_NOTES 44). Every other "Gaps for other clusters" item is checked in the same pass.

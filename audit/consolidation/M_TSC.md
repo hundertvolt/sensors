@@ -2132,7 +2132,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `NeopixelDriver` gets `initialized`; AC_NOTES 42 (2) voids "`_finalized` counts as its gate" (M.SRC_SENS.033 removes
   `_finalized`): `NotificationService` carries `initialized` and stays in the check.
 - **Unit**: U10 (after A.U13's `deinit()` changes; until then they are listed pending).
-- **Depends**: M.SRC_SENS (NeopixelDriver gate; TEST_UNIT GAP-U3 names it unset), M.SRC_SENS.033 (NotificationService
+- **Depends**: M.SRC_SENS.023/.024 (NeopixelDriver gate, AC_NOTES 44), M.SRC_SENS.033 (NotificationService
   gate), M.SRC_NET.213/.215, A.U10.21.
 - **Blast carried by**: the L1 half → M.TEST_UNIT (A.U10.22 L1); SPEC C.13 → A.U10.22 (SPEC).
 - **Kind**: test
