@@ -162,7 +162,7 @@
     },
     {
      "title": "New fields in the status page",
-     "text": "/status gains free heap, the last reset reason, the last task that ended, the device clock as Unix time, a count of dropped connections and the Wi-Fi status time.",
+     "text": "/status gains free heap, the last reset reason, the last task that ended, the device clock as Unix time, a count of web connections the device dropped before answering and the Wi-Fi status time.",
      "user_visible": true,
      "refs": [
       "M.GEN.014"
@@ -384,7 +384,7 @@
     },
     {
      "title": "Config files: no surprise writes",
-     "text": "A missing config file writes nothing (the defaults stay in RAM until your first change), an unreadable one is never overwritten, and a repair writes at most once per boot. The compare-before-write step is one shared building block.",
+     "text": "A config file that is genuinely missing (after a fresh flash, an erase or Reset to defaults) is written once with its defaults at that boot (your answer in this review). An unreadable one is never overwritten, and a repair writes at most once per boot. The compare-before-write step is one shared building block.",
      "user_visible": false,
      "refs": [
       "M.SRC_CORE.043",
