@@ -141,3 +141,8 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
 37. `verify/U36b.md` accepted: moving `datasheets/` into the owner's private `hundertvolt/datasheets` submodule
     (A.U36.545, A.U28.35; OR80, OR95) needs push access nobody has verified (OR95.a verified a clone only). A-C lists it
     as an explicit owner step before the move, shown at the A-C review.
+38. A-C lead rulings from `M_SRC_SENS.md`'s gaps (2026-10-01): GAP-14 — A.U11.S01's never-true runtime type checks are
+    not written anywhere (the lead's L1 answer: the fix is at the type level); GAP-15 — `_error_check()` unchanged, each
+    reader passes `condition=results[0] is None`; GAP-17 (G5/R14, agent rank) — protocol classes and `I2CDevice` are
+    named exempt in A.U10.22's check, `NotificationService`'s `_finalized` guard counts as its gate, `NeopixelDriver`
+    gets an `initialized` gate. Every later A-C cluster applies these.
