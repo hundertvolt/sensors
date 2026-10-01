@@ -40,7 +40,7 @@ did not carry was read against its action (table B). Edited: `M_TEST_UNIT.md`, `
 | 26 | M_PROC gap 7 | TWIN | M_TWIN's LEAD gap (`.gitignore`) | disposed | closed by M.PROC.019 (PROC owns `.gitignore`) |
 | 27 | M_SCR gap 3 | TSC | port-lock inheritance, scenario harness, twin-CI runner, generator, archive, `EVIDENCE_DIR`, `-noautostart`, `test.sh` jobs and exit 2, Run 1 nulls | M.TSC.206, .192, .211, .158, .177, .122, .032, .134-.136, .165 | — |
 | 28 | M_SCR gap 3 (M_SRC_NET gap 3) | TSC | A.U6.28 radio fields, A.U10.05 counters, A.U30.03 run-phase rows, A.U10.22 readiness | M.TSC.040, .069, .107, .112 | — |
-| 29 | M_SCR gap 4 | TWIN | the runner's shutdown line carries the twin FRAM chip's write count (A.U35.28 (3)) | amended M.TWIN.011 (`write_count`), .050 (`fram_writes=`), .110, .140; M.TSC.165 parser | — (total count only; see hand-off 3 (b)) |
+| 29 | M_SCR gap 4 | TWIN | the runner's shutdown line carries the twin FRAM chip's write count (A.U35.28 (3)) | amended M.TWIN.011 (`write_count`, `writes_at`), .050 (`fram_writes=`, `fram_writes_by=`), .110, .140; M.TSC.165 parser | — (per-logger field added by row 96) |
 | 30 | M_SPEC gap 3 = late SPEC gap 3 | TEST_UNIT | idle-wait degrade test cannot reach its path on the 2**62 rig | amended M.TEST_UNIT.176 | — (`poll_idle_ms = 2**61`, a precondition that the rig raises, and a poller ready on its second poll; F.8.2 is unchanged) |
 | 31 | M_SRC_CORE GAP-G3 | TEST_UNIT, TEST_HELP | debug-level tests go through the `/system` PUT | M.TEST_UNIT.311; M.TEST_HELP.039 | — |
 | 32 | M_SRC_CORE GAP-G4 | TEST_UNIT | unpause after `_reboot()`/acceptance leaves storage paused | M.TEST_UNIT.307 | — |
@@ -107,6 +107,7 @@ did not carry was read against its action (table B). Edited: `M_TEST_UNIT.md`, `
 | 93 | GAPS_G2 H-4 (b) | TSC | GAP-D7 check reads `chunk._block_addr` | amended M.TSC.075 | — |
 | 94 | GAPS_G2 H-4 (c) | TSC | `test_port_lock.py` also drives the JS lock (re-entrant, inherited) | amended M.TSC.206 | — |
 | 95 | GAPS_G2 H-4 (d) | TSC | no E.5.1 narrowing row | disposed | no TSC change writes an E.5.1 row (grep of `E.5.1`/A.U35.41 in M_TSC: none). The row is SPEC's (GAPS_G2 H-5 (c)) |
+| 96 | Lead, via coordinator (follow-up to row 29) | TWIN (+TSC) | M.SCR.018 (h) keeps its per-module bound: the shutdown line keeps `fram_writes=<total>` and adds `fram_writes_by=<LOGGER>:<n>,…` (loggers that wrote, sorted, SPEC A.7 names) | amended M.TWIN.011 (chip keeps `writes_at` by start address, capped at 2048 keys with a dropped counter), .050 (runner attributes each address to the logger whose chunk `_block_addr` holds it; `_module` global), .110, .140, .059; M.TSC.165 (parser cases) | — (unit: one landed multi-byte copy write; one persisted entry counts 2, in the total too. TEST_UNIT pins no shutdown line) |
 
 ## B. "Blast carried by" pointers naming a G3 cluster that no G3 change carried
 
@@ -160,10 +161,10 @@ an "unchanged/holds" note.
    `Content-Length: -1` request answers 400); A.U19.08/.10 (`/status` `HTTPDropped` rises by one after a forced refusal
    at the ceiling); A.U19.12 (an ISL29125 `Resolution` PUT concurrent with `GET /sensors` loops, every GET consistent);
    A.U30.19, in Run 12 or a sibling run (`--fault <device>:<op>:stack` on a device that wires the driver; the run exits 3
-   and the relaunch reads `ResetReason` 20; the form is M.TWIN.044). (b) M.SCR.018 (h) reads "per-module FRAM write
-   count … from the runner's exit line". The line carries one total, `fram_writes=<n>` (M.TWIN.050). The bounded storm
-   asserts either total ≤ (FRAM-backed modules) × `rate.persisted_log` × window, or per-module counts from a source SCR
-   names. M.SCR.051's Run 3 total reads as written.
+   and the relaunch reads `ResetReason` 20; the form is M.TWIN.044). (b) M.SCR.018 (h) and M.SCR.051 read
+   `fram_writes_by=` per logger (row 96, the lead's direction; G4 is amending (h) in parallel). Counts are copy writes:
+   one persisted entry is 2, so a logger's bound is 2 × `rate.persisted_log` × window; `fram_writes_unattributed=` above
+   0 means attribution was incomplete.
 4. **SRC_NET**: M.SRC_NET.199's Blast line describes the L1 as "`poll_idle_ms = 2**29`". The test uses `2**61` with a
    poller that is ready on its second poll (M.TEST_UNIT.176). The code change is unaffected; only the pointer text is.
 5. **DOCS**: `README.md:157`'s status-tag example `[test_sensortask_dev]` names a file A.U24.65 deletes. The tag is
@@ -187,17 +188,19 @@ action's own stated alternative (A.U26.43's L1 form; A.U25.65's "else the senten
 
 - **G3-1**: the A.U30.19 L2 fault is a `DEVICE:OP:stack` form in the existing `--fault` grammar (a fifth spec element
   `kind`). It is not a new flag, which follows A.U30.19's own wording ("`--fault` vocabulary").
-- **G3-2**: the twin FRAM chip counts completed WRITE data phases, one total per process. Per-chunk attribution would
-  need the manager's layout inside the chip fake (hand-off 3 (b)).
+- **G3-2**: the twin FRAM chip records landed copy writes by start address; the runner, which holds the booted module,
+  attributes them to loggers through each chunk's `_block_addr`, so the chip fake needs no knowledge of the manager's
+  layout (row 96).
 - **G3-3**: A.U26.43's seam count is an L1 in `test_asy_fram_manager.py`, not a TSC `ast` check (row B6).
 - **G3-4**: the four orphan L1 files and the per-device wrapper set are taken into TEST_UNIT (rows B1-B4).
 
 ## Counts
 
-- Items read: 116. Table A has 95: 77 gap-section items (row 30 is also late SPEC gap 3; row 4 is also GAPS_G1 H3), 4
-  AC_NOTES items, 4 GAPS_G4 hand-off items and 10 GAPS_G2 hand-off items. Table B has 21 uncarried blast pointers.
+- Items read: 117. Table A has 96: 77 gap-section items (row 30 is also late SPEC gap 3; row 4 is also GAPS_G1 H3), 4
+  AC_NOTES items, 4 GAPS_G4 hand-off items, 10 GAPS_G2 hand-off items and 1 lead follow-up (row 96). Table B has 21
+  uncarried blast pointers.
 - Carried as found: 56 (table A).
-- Amended: 44. Table A has 31: rows 1-4, 25, 29, 30, 37, 46, 55, 61, 65, 66, 69, 70, 72-74, 82-85 and 86-94. Table B
+- Amended: 45. Table A has 32: rows 1-4, 25, 29, 30, 37, 46, 55, 61, 65, 66, 69, 70, 72-74, 82-94 and 96. Table B
   has 13: B6-B12 and B15-B20.
 - New merged changes: 7. They are M.TEST_UNIT.335-.339 (B1-B5; .335 also carries table A row 56) and M.TSC.226 and .227
   (B13, B14).

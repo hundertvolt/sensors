@@ -561,14 +561,17 @@ baseline FRAM backup; ISL29125 colour sensor; Clearing the error logs. Key names
 labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
 
 ### M.DOCS.026 A commissioning-and-operating section lists what needs a person
-- **From**: A.U36.531; A.U14.R01 / A.U14.17 (the power-cycle item), A.U15.11/A.U15.12 (operator procedure handed here),
+- **From**: A.U36.531; A.U26.84 (the readiness defaults cited; M.HW_BENCH.085's Blast, gap pass G1); A.U14.R01 / A.U14.17 (the power-cycle item), A.U15.11/A.U15.12 (operator procedure handed here),
   A.U32.01 (the runbook pointer), A.U19.14 (linked section)
 - **Site**: `DEVICE_REFERENCE.md`, new "## Commissioning and operating: what needs a person" after the header (`:1-5`),
   before "## Neopixel LED"
 - **Change**: A.U36.531's section verbatim (items 1-8: Wi-Fi setup through the hotspot; `AmbPres` once; `ForceCalRef`
   with **FRC Readiness**; `SelfCal`; ISL29125 calibration; read **Last Reset Reason** and save `GET /status` before
   clearing; power-cycle a unit whose I2C sensors stay unreadable after a reboot; the reflash runbook in README.md
-  "Moving a legacy unit to this firmware"), with the labels as the definitions carry them at landing.
+  "Moving a legacy unit to this firmware"), with the labels as the definitions carry them at landing. The `ForceCalRef`
+  item cites the FRC readiness defaults by their SPECIFICATION.md Part N rows (`sens.scd30_frc_*`), not by value; the
+  bench measures them in phase C (M.HW_BENCH.085, R5), and that round's delta (A.C.10) restates any figure this file
+  gives (A.U26.84's docs slot; gap pass G1).
 - **Resolved**: —
 - **Unit**: U36
 - **Depends**: A.U6.18, A.U6.23 (labels; GEN/WEB), A.U15.12 (`FRCState`, SRC_SENS), A.U14.17 (SPEC F.2 text), A.U32.01 (README
@@ -1089,7 +1092,8 @@ place unchanged.
   section keeps one sentence: "Every runner validates its arguments and settings first; a usage or setting error exits 2
   before anything is touched (owner, 2026-10-01)."; `:155-164` → "Every `tests/test_*.py` file runs as its own
   interpreter process (per derived device for a PER_DEVICE file) and prints its `PASS`/`FAIL`/`SKIP` lines and its
-  count, prefixed with its own name; a file collecting no test fails. The run ends with the summary block every runner
+  count, each prefixed with its tag in brackets — the file's name, plus the device for a PER_DEVICE file (e.g.
+  `[test_microtest]`, `[test_sensortask[wozi]]`); a file collecting no test fails. The run ends with the summary block every runner
   prints (SPECIFICATION.md E.10): units, levels, the GC stage, counts, the failures named, and any file whose output
   contained a `MemoryError` or `memory allocation failed` — which fails the run even when its tests passed (`src/` logs the
   message, not the class)." and the sample block (`:166-173`) → the E.10 block as `scripts/test.sh` prints it, counts as
@@ -1099,10 +1103,11 @@ place unchanged.
   `[tool.uv] required-version`; `lint.sh` and `typecheck.sh` refuse a venv `uv sync --locked` would change." The Pi4 probe
   figure (`:145`) leaves README (A.U8.16 records it as a Part N basis).
 - **Resolved**: A.U36.548 (6) asks for "the summary block A.U7's runner contract prints"; A.U7.03 owns the block —
-  one text.
+  one text. HEAD's tag example `[test_sensortask_dev]` names a wrapper A.U24.65 deletes; the example names surviving
+  files and the `<file>[<device>]` tag of M.SCR.040-.042/M.TEST_UNIT.337 (GAPS_G3 hand-off 5, gap pass G1).
 - **Unit**: U36. Stages: U1 (`:115-117`), U7 (summary paragraph and block, with A.U7.03), U27 (venv), U28 (pin), U36
   (moves, wording).
-- **Depends**: M.SCR (summary block, exit codes), A.U7.02 (SPEC E.10)
+- **Depends**: M.SCR (summary block, exit codes, the per-device tag M.SCR.040-.042), A.U7.02 (SPEC E.10), M.TEST_UNIT.337
 - **Blast carried by**: CLAUDE.md tooling bullets → M.DOCS.094-.098
 - **Kind**: doc
 
@@ -1383,9 +1388,11 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
   their row content is its input. A.U33.09 (3) deletes the board-state line once A.U26.79's fixtures exist (U26 lands
   first, so the line goes at U33). `audit/b3/queue_c.md` rows missing from the inventory are reported by A.U37.05's
   executor, not here.
-- **Unit**: U37. Stages: U0, U2, U3, U16, U33, U36 as listed; each adding action's own unit for its row.
+- **Unit**: U37. Stages: U0, U2, U3, U16, U33, U36 as listed; each adding action's own unit for its row; then phase C —
+  each round's delta (A.C.10, M.PROC.036 (2)) removes every row it delivered, with every citation of it (G9/R31; e.g.
+  G6 after R6, M.PROC.041), and A.C.11 leaves only rows the owner re-queued (gap pass G1).
 - **Depends**: A.U36.001 (`tests_hardware/README.md` "How a round runs", HW_BENCH); the phase-C inventory (PROC,
-  M.PROC.036-.043)
+  M.PROC.036-.043); A.C.10, A.C.11 (the phase-C removals)
 - **Blast carried by**: no test cites these bullets (grep `Real-hardware work` in `tests*/`: none); twin parameters
   named per row (TWIN); CLAUDE.md go-ahead rule (M.DOCS.087) unchanged
 - **Kind**: doc
@@ -1611,7 +1618,8 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 - **Kind**: rule, doc
 
 ### M.DOCS.071 A third practice: every external dependency is refreshed as one step
-- **From**: A.SDEP.22; M_SPEC gap 1 (the section is F.9, M.SPEC.109; gap pass G1)
+- **From**: A.SDEP.22; M_SPEC gap 1 (the section is F.9, M.SPEC.109; gap pass G1); A.U19.19 (A.5 pointer; M.SPEC.018's
+  Blast, gap pass G1)
 - **Site**: `CLAUDE.md` after `:49`
 - **Change**: new bullet, A.SDEP.22's text verbatim: "- **Every external dependency is refreshed as one step, not only
   MicroPython** (owner, 2026-09-30: "Check all external dependencies for updates - both modules, repos and tooling,
@@ -1620,10 +1628,11 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
   changelog and the diff of the parts this repo uses; fix what breaks with no regression at every level and both GC
   stages; take the fixes the project profits from; and re-check every standing workaround in SPECIFICATION.md Part
   F.9, removing it for the clean form where upstream fixed it. Pins stay pinned; the bullet above runs whenever the
-  MicroPython ref moves."
+  MicroPython ref moves." — and, at U36, after "only as an unmodified upstream tag or commit": "(a Microdot move runs
+  SPECIFICATION.md A.5's re-check list)" (A.U19.19's Blast: the standing practice points to A.5's list).
 - **Resolved**: A.SDEP.22 cites "Part F.5.10"; the section lands as F.9 (M.SPEC.003/.109: standing facts are filed by
   topic, not under F.5's per-pin record), so the bullet cites F.9 (M_SPEC gap 1; gap pass G1).
-- **Unit**: U0 (with the refresh record, M.PROC.008)
+- **Unit**: U0 (with the refresh record, M.PROC.008); stage U36 (the A.5 pointer, once A.U19.19's list exists, U19)
 - **Depends**: SPEC F.9 (A.SDEP.21 (2), M.SPEC.109; created at U0)
 - **Blast carried by**: —
 - **Kind**: rule
@@ -1837,7 +1846,7 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 
 ### M.DOCS.084 Adafruit, long-blocking, boot latency, UART no-block: tags, paths, pointers
 - **From**: A.U0.23 (`:207`, `:213`, `:231`); A.U1.12 (`:208`); A.U36.541 (3) (`:214`); A.U31.03 (boot-latency last
-  sentence); A.U36.532 (`:233-234`); A.U31.01 (`:210-212` unchanged)
+  sentence); A.U36.532 (`:233-234`); A.U31.01 (`:210-212` unchanged); A.SDEP.17 W25 via M.PROC.011 (conditional; gap pass G1)
 - **Site**: `CLAUDE.md:207-236`
 - **Change**: `:207` "(keeping attribution)" gains "(owner, 2026-07-13, `b64857d`)"; `:208` the Microdot path →
   `legacy/firmware/python/CommonDrivers/microdot.py`; `:210-212` unchanged; `:213` "(WP6, owner-established
@@ -1846,7 +1855,10 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
   the bullet's last sentence ends "; each inter-feed boot stretch and its margin are rows of SPECIFICATION.md Part F.3's
   timing budget table" (A.U31.03); `:231` "**The mirror-image failure is just as forbidden**" gains "(agent, 2026-09-11,
   extending the owner's rule)"; `:233-234` "SPECIFICATION.md Parts F.5.8 and F.5.9 — F.5.8 also states" → "Parts F.8.2
-  and F.8.3 — F.8.2 also states" (and "(Part F.5.9)" at `:231` → "(Part F.8.3)").
+  and F.8.3 — F.8.2 also states" (and "(Part F.5.9)" at `:231` → "(Part F.8.3)"). Conditional (M.PROC.011, W25): if
+  the U0 re-read finds `machine.UART.read()/readinto()`'s per-byte wait changed at the refreshed pin, the bullet's
+  mechanism sentence ("wait out `timeout_char` for every byte … measured: 4.4ms per 53-byte frame") follows the source
+  and F.8.2; the rule (clamp to `uart.any()`, a real yield in `ready()`) stays as the owner set it.
 - **Resolved**: —
 - **Unit**: U36. Stages U0, U1, U31.
 - **Depends**: SPEC 0.1 (A.U36.541), F.3 table (A.U31.01), F.8 renumbering (A.U36.532) — SPEC
@@ -1921,14 +1933,19 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 
 ### M.DOCS.089 The memory rule: owner's words, the boot reset in `run_setups()`, the test collect rule
 - **From**: A.U0.43 (`:307-308`, `:320`); A.U11.10 (`:340-342`); A.U27.21 (aliases); A.U30.10; A.U30.14; A.U30.17 (1);
-  A.U36.546 (1) (`:349-356`)
+  A.U36.546 (1) (`:349-356`); A.U7.21/A.U7.22/A.U7.23 (the gate list by name; M_TSC/M_SPEC Blast pointers, gap pass G1)
 - **Site**: `CLAUDE.md:307-366`
 - **Change**: `:320` "**Standing rule, every test, …**:" gains "(owner, 2026-09-26: 'The firmware must be rock solid
   without the threshold, and the threshold is finally applied to move it even further into the stable region, but must
   be tested and verified by itself.')"; `:340-342` the boot-confined placement reset is "`gc.collect()` between the units
-  of the two one-time lists, both run by `SystemService` (`run_setups()` and `start_and_check_tasks()`'s starter loop),
+  of the two one-time lists, both run by `SystemService` (`run_setups()` and `start_tasks()`'s starter loop),
   and nowhere else, mechanically confined by `scripts/_check_gc_collect_sites.py` (aliases included) and
-  `tests_scripts/test_gc_collect_sites.py` on the *sites* …"; after "…Full account and its measured effect:
+  `tests_scripts/test_gc_collect_sites.py` on the *sites* …"; `:329-337` "**There are FOUR such gates — the unit tier,
+  the twin tier and the flash/bench real-hardware soak gates — and all four match …**" → "**Every memory gate — the unit
+  tier, the twin tier, the `tests_scripts` twin boots, the JS live twins and cross-browser smoke, and the flash and bench
+  real-hardware gates — matches `MemoryError` OR `memory allocation failed`, the second being the half that matters**"
+  (names, no count, so it cannot drift: A.U7.21), and "keeps all four agreeing" → "keeps them all agreeing" (the JS gate
+  reads `tests_js/_memory_markers.js`, A.U7.23); after "…Full account and its measured effect:
   `SPECIFICATION.md` Part I.4(f.1)." A.U30.17's paragraph "**Outside the firmware** — tests, the twin, device scripts and
   tools — `gc.collect()` sets a baseline … `scripts/_check_gc_collect_sites.py` names every allowed site."; "the value
   the firmware's boot entry sets" gains "(set once, checked)"; "(86/86 on 2026-09-24)" deleted; "on silicon it is what
@@ -1941,13 +1958,15 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
   2026-09-19; archive §7H.3) is the I.4(f.1) sentence's content, replacing A.U36.546's "recorded 2026-09-21" placeholder
   (A.U30.10 located the figure; Gaps: SPEC). A.U27.21 replaces `lint.sh`'s greps by the AST checker, so the confinement
   sentence names the checker.
-- **Unit**: U36. Stages: U0 (A.U0.43), U11 (A.U11.10), U27 (checker name), U30 (A.U30.10/.14/.17), U36.
+- **Unit**: U36. Stages: U0 (A.U0.43), U7 (the gate list, with A.U7.21-.23), U11 (A.U11.10), U20 (`start_tasks()`), U27
+  (checker name), U30 (A.U30.10/.14/.17), U36.
 - **Depends**: SPEC I.4(e)/(f)/(f.1) (A.U30.14/.17, A.U36.546, SPEC)
 - **Blast carried by**: `tests_scripts/test_gc_collect_sites.py` (TSC)
 - **Kind**: rule
 
 ### M.DOCS.090 The FRAM-log rule: save then clear; the logger set derived per device
-- **From**: A.U0.37 (`:367-370` tag); A.U36.002 (1)-(2); A.S0930.30; GAP-G7 / GAP-10 (M.SRC_CORE.040, M.SRC_SENS.052)
+- **From**: A.U0.37 (`:367-370` tag); A.U36.002 (1)-(2); A.S0930.30; GAP-G7 / GAP-10 (M.SRC_CORE.040, M.SRC_SENS.052);
+  A.U2.08 (`:391`, M.SPEC.058's Blast pointer; gap pass G1)
 - **Site**: `CLAUDE.md:367-394`
 - **Change**: `:367-377` → A.U36.002 (1)'s text with A.U0.37's tag after the bold head: "- **When investigating any
   unexpected real-hardware error or reset — read and save, verbatim, the FRAM-persisted per-module error logs (`GET
@@ -1958,10 +1977,12 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
   except the FRAM module itself, whenever its instance is wired to FRAM, and except the SCD30 reader's config-store
   logger (`CFGMGR_SCD30`), which stays RAM-only (SPECIFICATION.md Part A.7 states the rule and its derivation)."
   `:377-385` unchanged; `:386-394` gains A.U36.002 (2)'s "A reflash may also re-initialise the chunks: the layout is
-  fixed within one build only (owner, 2026-09-26)."
+  fixed within one build only (owner, 2026-09-26)." and, at `:391`, A.U2.08's "(a seeded `errno=5` read back as SYSTEM's
+  `"Task N ended with exception"`, …)" → "(a seeded entry read back as a plausible SYSTEM task end (test data, not
+  firmware evidence), …)", with no number — the per-task code is gone (U2)
 - **Resolved**: A.S0930.30's "a `SystemCmd` `"erasefram"`" clause is already in A.U36.002's text — once. GAP-G7: the
   derivation sentence names the one exception the code makes (`_CFG_LOG_FRAM = False`, M.SRC_CORE.040).
-- **Unit**: U36. Stage U0 (tag).
+- **Unit**: U36. Stage U0 (tag); stage U2 (the `:391` example, with A.U2.08).
 - **Depends**: SPEC A.7 FRAM list names the same exception (GAP-G7, SPEC)
 - **Blast carried by**: `tests/_sensortask_scenarios.py` chunk list (TEST_HELP, M.SRC_SENS.052)
 - **Kind**: rule
@@ -2383,6 +2404,13 @@ disposition. The merged-in column lists the blocks whose From line names the act
 | Action | File(s) | Merged in | Note |
 |---|---|---|---|
 | A.C.04 | extra | M.DOCS.064 | merged |
+| A.U2.08 | extra (gap pass G1) | M.DOCS.090 | merged (`:391` example) |
+| A.U7.21 | extra (gap pass G1) | M.DOCS.089 | merged (gate list by name) |
+| A.U7.22 | extra (gap pass G1) | M.DOCS.089 | merged |
+| A.U7.23 | extra (gap pass G1) | M.DOCS.089 | merged |
+| A.U19.19 | extra (gap pass G1) | M.DOCS.071 | merged (A.5 pointer) |
+| A.U26.84 | extra (gap pass G1) | M.DOCS.026 | merged (readiness defaults cited) |
+| A.C.10 | extra (gap pass G1) | M.DOCS.064 | merged (phase-C removals) |
 | A.S0930.01 | extra | M.DOCS.021 | merged |
 | A.S0930.07 | UCL | M.DOCS.024 | merged |
 | A.S0930.08 | extra | M.DOCS.085 | merged |
@@ -2396,7 +2424,7 @@ disposition. The merged-in column lists the blocks whose From line names the act
 | A.SDEP.11 | extra | M.DOCS.035, M.DOCS.066, M.DOCS.100 | merged |
 | A.SDEP.15 | extra | M.DOCS.105 | merged |
 | A.SDEP.16 | extra | M.DOCS.065, M.DOCS.099, M.DOCS.100, M.DOCS.103 | merged |
-| A.SDEP.17 | extra | M.DOCS.069, M.DOCS.099 | merged |
+| A.SDEP.17 | extra | M.DOCS.069, M.DOCS.084, M.DOCS.099 | merged |
 | A.SDEP.19 | extra | M.DOCS.065, M.DOCS.070, M.DOCS.095, M.DOCS.098 | merged |
 | A.SDEP.21 | CL, TPL | M.DOCS.002, M.DOCS.003, M.DOCS.061, M.DOCS.064, M.DOCS.066, M.DOCS.067, M.DOCS.069, M.DOCS.070 | merged |
 | A.SDEP.22 | CL | M.DOCS.069, M.DOCS.071 | merged |

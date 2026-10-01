@@ -1555,8 +1555,8 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   persisted entry counts 2 (both copies), in the same unit as the total, whose remainder is the non-logger writes
   (SGP40 backup, clears, erase units). The runner keeps the booted module in a module global `_module` beside
   `_watchdog`, so both handlers print the line; counts are per process, so a line after a simulated reset counts the
-  writes up to it; a `writes_at_dropped` above 0 is printed as `fram_writes_unattributed=<n>` and fails the harness's
-  bound as unknown); comment
+  writes up to it; a `writes_at_dropped` above 0 adds `fram_writes_unattributed=<n>`, telling the harness the
+  per-logger counts are incomplete); comment
   (A.U36.513's text): "# Called from main()'s finally and from the KeyboardInterrupt handler: an interrupt landing while
   main() is suspended never enters that finally (F.6)." `main()`'s `finally`: the unwedge call and its two comment blocks
   go; `_print_wdt_status`, cancel the runner tasks, `main_task.cancel()`, `await main_task` under `except
